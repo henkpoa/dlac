@@ -374,6 +374,55 @@ research already recorded. In rough priority order:
 
 ## Current state (as of 2026-07-26)
 
+- **2026-07-27: the Wishlist — ON `dev`, awaiting field test** (`2026.07.27q`, ADR 0026).
+  Henrik: *"add 'Show gear I don't own' like with lockstyle in all equipment… right click
+  and add pieces to wish list… also have this when building sets, so you can add stuff you
+  don't have (it won't try to use em, but if you get it, it's preemptively there, right?)"*
+  Yes — and the engine already did the hard half. Grilled to a shared design first
+  (`/grill-with-docs`); the two rulings that shaped it are his.
+  - **A Wishlist entry is an ENTITY** (`feature/wishlist.lua`, `<char>\dlac\wishlist.lua`),
+    keyed by item **Id**, existing on its own with one free-text note and any number of
+    **links**. His correction to the first design, and the better model: you can wishlist
+    a piece *for* WHM/Idle without stuffing it into the set at all.
+  - **Links are intentions, ownership is a fact.** A link is stored and dlac never revokes
+    it; whether the piece is actually in that set is read fresh from the set files and
+    shown beside it (`in the set (Body)` / `not added yet`). Ownership is never stored
+    either — read from the bags by Id, so selling a piece returns it to wanted. Nothing
+    can go stale because nothing derived is cached. Where the two disagree is exactly
+    where the **Apply** button lives; dlac never edits a set on its own.
+  - **Set files did NOT change.** `BuildDynamicSets` already skips a name it cannot
+    resolve, so a wishlisted piece can never shadow gear you own and starts working by
+    itself the day you get it. The only problem was `warnMissingGear` calling it a typo
+    every commit — so the engine now asks `wishlist.isWished(name)` and stays quiet.
+    A missing name that is *not* wishlisted still warns. (Considered and rejected:
+    `{ gear = 'X', wish = true }` — self-describing, but it changes a format that is
+    shared, hand-edited and round-tripped.)
+  - **The apostrophe trap, closed at the root.** The API drops the possessive apostrophe
+    (`Arhats Gi` vs the client's `Arhat's Gi`) but *keeps* the one in `San D'Orian`, so
+    `utils.resolveGearName` now strips on **both sides** — added as a FALLBACK layer under
+    the exact-lowercase index, so nothing that resolves today can resolve differently.
+    Without it the whole feature would have failed silently at the one moment it exists
+    for. Tests U4–U7.
+  - **A real bug found on the way:** catalog records carry a `Key` just like owned ones,
+    so `recordPath` would have rendered `gear.Body.Dalmatica` for an unowned piece — an
+    expression that evaluates to `nil` in the set file and drops the entry without a word.
+    Unowned pieces now serialize as a quoted **name**, which is the form `resolveGearName`
+    resolves.
+  - **Surfaces:** the All Equipment tab gets the tick it should always have had (same
+    `ui.showAll` flag Menu > Settings drives — one setting, two surfaces, both now worded
+    *"Show gear I don't own"*), orange for unowned, and a right-click `Wishlist ▸` submenu
+    (`IsMouseClicked(1)` + `OpenPopup` after the tree's `EndChild`; **never**
+    `BeginPopupContextItem`). The + Add picker gets the same tick, and adding an unowned
+    piece there auto-wishlists **and** auto-links it. Set totals count only gear you own.
+    Apply works for **any** job (`setmanager.commitSet` already takes one) and refuses
+    while the Sets tab holds uncommitted edits to that exact set; rings and ears cascade
+    one level to Ring1/Ring2, showing what already sits in each.
+  - **Watch in the field:** the `Wishlist ▸ → Add for ▸ → row` cascade is **one level
+    deeper than anything proven in this binding** (floatgear proved one). `hasMenu` is
+    probed and there is a flat drill-down fallback, but this wants eyes in-game.
+  - Green on both suites (3875 + 679), Windows and WSL lua5.4. New tests WL1–WL34, U4–U7,
+    S60–S95 and the render-balance section S150–S163.
+
 - **2026-07-27: reserved slots stop being invisible — ON `dev`, awaiting field test**
   (`2026.07.27p`). Henrik: *"if we equip a tunic that takes up the headslot, it ignores
   to equip the headslot… there are more items like this. How do we keep track of all

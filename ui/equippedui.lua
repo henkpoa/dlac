@@ -30,6 +30,13 @@ local gearOracle = require("dlac\\gear\\gearoracle");
 local statdefs = try("dlac\\data\\statdefs");
 local uistyle  = try("dlac\\ui\\uistyle");   -- helpLabel: underline + hover, the panel-text standard
 
+-- The Wishlist owns the item context-menu BODY (so the same rows can hang off
+-- other surfaces later); this module owns only the right-click detection and the
+-- popup scope. Required through try(): a missing/broken wishlistui must cost the
+-- menu, never the tab.
+local wishui = try("dlac\\ui\\wishlistui");
+local ITEM_MENU = '##dlac_itemmenu';
+
 local S = host.services;
 -- Stable shared tables/constants, captured once (gearui provides before it
 -- requires this module; registration below refuses to run if they're absent).
@@ -82,7 +89,13 @@ end
 -- Browse row (All Equipment tree): icon + Name + Level + stats in STATIC COLUMNS --
 -- nameW is computed per group from the longest name so every row in a section
 -- aligns. Alternating bg, whole-row hover tooltip; job list lives in the tooltip.
-local function renderBrowseRow(rec, ordinal, job, level, nameW)
+--
+-- Right-click reports through `onRight` (the renderSlotGrid contract): the row
+-- can only SAY it was right-clicked, because OpenPopup and BeginPopup must share
+-- a window scope and this row is drawn inside the tree's BeginChild. The tab
+-- opens the popup after EndChild. IsMouseClicked(1) + IsItemHovered, never
+-- BeginPopupContextItem -- that one is the twice-failed dead end.
+local function renderBrowseRow(rec, ordinal, job, level, nameW, onRight)
     local bg = (ordinal % 2 == 0) and { 1, 1, 1, 0.03 } or { 1, 1, 1, 0.07 };
     imgui.PushStyleColor(ImGuiCol_ChildBg, bg);
     imgui.BeginChild('##aeqrow_' .. tostring(rec.Id or ('n' .. ordinal)), { -1, 22 }, false);
@@ -90,8 +103,19 @@ local function renderBrowseRow(rec, ordinal, job, level, nameW)
     local usable = S.isUsable(rec, job, level);
     -- stored beats locked beats ok -- the precedence lives in ownedcache.verdict
     -- (tests AV*); this panel only maps states onto its palette.
-    local v = owned.verdict(rec, usable);
-    local nameColr = (v == 'stored' and COL.ERR) or (v == 'locked' and COL.LOCKED) or COL.USABLE;
+    --
+    -- UNOWNED sits ABOVE all three (Henrik's call): not having a piece at all is
+    -- the more basic fact than which bag it is in or whether this job could wear
+    -- it, and the job gate is spelled out in the hover anyway. haveInBags fails
+    -- OPEN, so pre-login (empty bag map) nothing is painted orange.
+    local mine = owned.haveInBags(rec);
+    local nameColr;
+    if not mine then
+        nameColr = COL.WANT;
+    else
+        local v = owned.verdict(rec, usable);
+        nameColr = (v == 'stored' and COL.ERR) or (v == 'locked' and COL.LOCKED) or COL.USABLE;
+    end
     imgui.TextColored(nameColr, fmt.esc(rec.Name or '?'));
     local nameCol = 26 + (nameW or 200);               -- icon (18+6 pad) + name column
     imgui.SameLine(nameCol);
@@ -108,7 +132,10 @@ local function renderBrowseRow(rec, ordinal, job, level, nameW)
     end
     imgui.EndChild();
     imgui.PopStyleColor(1);
-    if imgui.IsItemHovered() then S.renderItemTooltip(rec); end
+    if imgui.IsItemHovered() then
+        if onRight ~= nil and imgui.IsMouseClicked(1) then onRight(rec); end
+        S.renderItemTooltip(rec);
+    end
 end
 
 -- One item card: icon + name / [Slot] tag / stats / augments / Lv+jobs. STATIC,
@@ -532,6 +559,23 @@ local function renderAllEquipTab(job, level)
     imgui.SameLine(0, 10);
     imgui.Checkbox('Usable now', ui.usableNow);
     imgui.SameLine(0, 10);
+    -- The SAME flag Menu > Settings drives (ui.showAll) -- one setting, two
+    -- surfaces. It lived only in Settings from 07-24, where it read as a
+    -- preference called "Show all equipment"; this is the tab you are looking at
+    -- when you notice a piece is missing, so the switch belongs here too, worded
+    -- the way the lockstyle picker has worded it since 07-15.
+    local sa = { ui.showAll[1] == true };
+    if imgui.Checkbox("Show gear I don't own##aeqall", sa) then
+        ui.showAll[1] = sa[1];
+        ui._flagsDirty = true;                         -- remembered across sessions
+    end
+    if imgui.IsItemHovered() then
+        imgui.SetTooltip('Off (default): only gear you own (anywhere).\n'
+            .. 'On: every piece of equipment in the game -- yours and the rest.\n\n'
+            .. 'Orange = you do not own it. Right-click any row to put it on your Wishlist.\n'
+            .. 'Combine with "Usable now" for "what could my job wear that I do not have".');
+    end
+    imgui.SameLine(0, 10);
     imgui.TextColored(COL.DIM, 'Search:');
     imgui.SameLine(0, 4);
     imgui.PushItemWidth(-1);
@@ -568,17 +612,25 @@ local function renderAllEquipTab(job, level)
         end
     end
 
-    imgui.TextColored(COL.DIM, string.format('Showing %d of %d  |  source: %s  |  red = in storage (not equippable)',
+    imgui.TextColored(COL.DIM, string.format('Showing %d of %d  |  source: %s  |  red = in storage (not equippable)%s',
         shown, #items, showAll and (S.hasCatalog and 'full catalog (catalog.lua)' or 'gear.lua (no catalog)')
-                              or 'gear you own (anywhere)'));
+                              or 'gear you own (anywhere)',
+        showAll and '  |  orange = not owned' or ''));
     if not showAll then
         imgui.SameLine(0, 8);
-        imgui.TextColored(COL.DIM, '-- tick "Show all" (top) to browse the full catalog.');
+        imgui.TextColored(COL.DIM, '-- tick "Show gear I don\'t own" to browse the full catalog.');
     end
     imgui.Separator();
 
     -- Force-open sections while searching; collapse once when the search is cleared.
     local forceClose = (not searching) and (ui._treeWasSearching == true);
+
+    -- Right-click target for this frame. The rows detect the click inside the
+    -- tree's BeginChild and only REPORT it; the popup is opened below, after
+    -- EndChild, because OpenPopup and BeginPopup resolve their id against the
+    -- current window and must share one (floatgear's law).
+    local rmb = nil;
+    local function onRight(rec) rmb = rec; end
 
     imgui.BeginChild('##ffxilac_tree', { -1, -1 }, false);
     for _, slot in ipairs(SLOT_TREE_ORDER) do
@@ -605,7 +657,7 @@ local function renderAllEquipTab(job, level)
                         elseif forceClose then imgui.SetNextItemOpen(false); end
                         if imgui.TreeNode(string.format('%s (%d)###aeqc_%s_%s', cat, #list, slot, cat)) then
                             local nW = fmt.nameWidthOf(list);
-                            for i, rec in ipairs(list) do renderBrowseRow(rec, i, job, level, nW); end
+                            for i, rec in ipairs(list) do renderBrowseRow(rec, i, job, level, nW, onRight); end
                             imgui.TreePop();
                         end
                     end
@@ -616,12 +668,32 @@ local function renderAllEquipTab(job, level)
                     for _, cat in ipairs(extra) do renderCat(cat); end
                 else
                     local nW = fmt.nameWidthOf(data);
-                    for i, rec in ipairs(data) do renderBrowseRow(rec, i, job, level, nW); end
+                    for i, rec in ipairs(data) do renderBrowseRow(rec, i, job, level, nW, onRight); end
                 end
             end
         end
     end
     imgui.EndChild();
+
+    -- The item context menu. Popup at WINDOW scope (see onRight above). The menu
+    -- BODY lives in wishlistui so the same rows can hang off other surfaces
+    -- later; this tab owns only which record it is for.
+    if rmb ~= nil then
+        ui._itemMenuRec = rmb;
+        imgui.OpenPopup(ITEM_MENU);
+    end
+    -- Constrained rather than wrapped in a child: a BeginChild anywhere in a menu
+    -- chain tears the whole popup down the moment the cursor moves toward a
+    -- submenu (floatgear paid for this one twice).
+    imgui.SetNextWindowSizeConstraints({ 210, 0 }, { 380, 460 });
+    if imgui.BeginPopup(ITEM_MENU) then
+        if wishui ~= nil and type(wishui.renderItemMenu) == 'function' then
+            pcall(wishui.renderItemMenu, ui._itemMenuRec, job);
+        else
+            imgui.TextColored(COL.DIM, 'Wishlist unavailable.');
+        end
+        imgui.EndPopup();
+    end
 
     ui._treeWasSearching = searching;
 end

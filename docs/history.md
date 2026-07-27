@@ -6046,3 +6046,102 @@ a reservation.
 
 **Status:** on `dev`, **not** in the merge queue — Henrik has not field-tested it yet.
 Suites 3836 + 609 (AK23–33, TR4c–e, S16a–p added), green on Windows lua and WSL lua5.4.
+
+## Session "the wishlist: intentions and facts" (2026-07-27, on `dev` — addon 2026.07.27p → q, ADR 0026)
+
+Henrik, in one message: *"add 'Show gear I don't own' like with lockstyle in all
+equipment… right click and add pieces to wish list… also have this when building sets, so
+you can add stuff you don't have (it won't try to use em, but if you get it, it's
+preemptively there, right?)"* Grilled to a shared design first (`/grill-with-docs`,
+eleven questions), then built.
+
+### The three things the code already knew
+
+Reading before designing changed the shape of all three asks:
+
+1. **"Show gear I don't own" already existed in All Equipment** — as `ui.showAll`, moved
+   into Menu > Settings on 07-24 and renamed *"Show all equipment"*, where it read as a
+   preference and nobody found it. So the ask was **discoverability**, not a feature: the
+   tick is now on the tab too, bound to the same flag, and both places use the lockstyle
+   wording. One setting, two surfaces.
+2. **The engine already did what he hoped it did.** *"it won't try to use em, but if you
+   get it, it's preemptively there, right?"* — right. `BuildDynamicSets` resolves a set
+   entry by NAME against `gear.lua`; a miss is skipped at flatten time, so an unowned
+   piece cannot shadow a lower-level piece you own, and it starts being worn the day it
+   lands in your bags with nothing to change. The only thing wrong was the *noise*.
+3. **There was a trap sitting directly in the path.** The API drops the possessive
+   apostrophe: the Catalog says `Arhats Gi` where the client says `Arhat's Gi`. Sets
+   resolve by name. So a wishlisted piece would have failed to resolve **on the very day
+   you finally got it** — the one moment the feature exists for. This is the same trap
+   the lockstyle picker refuses to save into (07-15); it just reappeared somewhere the
+   refusal was not an option.
+
+### Henrik's two rulings
+
+The first design made set links **derived** — scan the sets, show what's there, nothing
+to go stale. He rejected it: *"When I add something to a wish list, even from sets, add
+the item to the wish list as its own entity, being able to exist on its own. Then connect
+the set / sets that want it."*
+
+That is the better model, and it unlocks something the derived version could not: you can
+wishlist a piece **for** WHM/Idle without stuffing it into the set at all. The set stays
+clean; the intention is recorded. It also creates the disagreement the derived design
+existed to prevent — so the answer is to keep both halves and never derive one from the
+other:
+
+> **The stored half is an intention. The computed half is a fact. They are allowed to
+> disagree, and where they do is exactly where the Apply button belongs.**
+
+A link is written down and never revoked by dlac. Whether the piece is *in* that set is
+re-read from the set files. Ownership follows the same rule in the other direction — never
+stored, always read from the bags by Id, so selling a piece silently returns it to wanted.
+Nothing needs reconciling because nothing derived is kept.
+
+Second ruling, on set totals: *"set totals should only count towards the gear you own. If
+you want to rebuild according to new pieces, we already have a simple 'Auto Build all'
+button that should suffice."* A "what-if" toggle was on the table and he killed it — the
+existing button already answers that question.
+
+### What the set files did NOT get
+
+The one warning left over was `warnMissingGear` calling a deliberate entry a typo on every
+commit. Two ways out: mark it in the file (`{ gear = 'X', wish = true }`) or teach the
+engine to ask. He picked the second — *"b, keep set files clean"* — so the format players
+share, hand-edit and round-trip is untouched, and the engine reads `wishlist.lua` beside
+`pinstate.lua`. A name that is neither resolvable **nor** wishlisted still warns, and the
+suppression fails toward warning: no file, no character, a parse error, all answer false.
+
+### The bug found on the way
+
+`recordPath` builds a set entry's Lua expression from `rec.Key` — and **catalog records
+carry a `Key` exactly like owned ones do** (it is `catalog.lua`'s table key). So the first
+unowned piece committed to a set would have rendered `gear.Body.Dalmatica`: an expression
+that evaluates to `nil` in the set file, taking the entry with it, silently. Unowned
+pieces now serialize as a quoted **name** — the form `resolveGearName` resolves, and the
+form that keeps working forever once you own the thing.
+
+### Durable
+
+- **A feature can be a naming problem.** Ask 1 needed one checkbox and two label changes;
+  the capability had shipped three days earlier under a name that hid it. Read before
+  building — half this session's work was already written.
+- **`pcall(require, 'x')` binds the ERROR STRING, not nil.** `gearfmt` does this, so
+  `fmt.textWrapped` indexes a *string* when imgui is absent and throws a "field is nil"
+  error that reads nothing like a missing module. Latent for months; the Wishlist window
+  is simply the first thing in `smoke_ui` to call it. Modules that use `try()` (which
+  returns nil properly) are fine.
+- **The apostrophe fix went in as a FALLBACK layer, not a replacement.** Every plain
+  lowercase key is indexed first and a stripped key added only where nothing sits, so
+  exact-lowercase always wins and no lookup that resolves today can start resolving
+  differently. U7 pins that; a blanket normalization would have been a silent behaviour
+  change across every set on disk.
+- **The 200-local cap bites test files too** (hard rule 1). The new WL section broke
+  `run_tests.lua`'s main chunk; scoping it in `do … end` is the fix.
+
+**Watch in the field:** `Wishlist ▸ → Add for ▸ → row` is **one level deeper** than any
+cascade proven in this binding (floatgear proved one, 07-15). `hasMenu` is probed and a
+flat drill-down fallback exists, but this one wants eyes in-game.
+
+**Status:** on `dev`, **not** in the merge queue — Henrik has not field-tested it yet.
+Suites 3875 + 679 (WL1–WL34, U4–U7, S60–S95, S150–S163 added), green on Windows lua and
+WSL lua5.4.

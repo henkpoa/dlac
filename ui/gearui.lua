@@ -192,6 +192,13 @@ local COL = {   -- ONE table, not ten locals: the 200-local chunk cap
     SCORE  = { 0.95, 0.85, 0.45, 1.00 },
     DMG    = { 0.90, 0.80, 0.45, 1.00 },
     ERR    = { 1.00, 0.45, 0.40, 1.00 },
+    -- Gear you do NOT own. Deliberately the same orange the lockstyle picker has
+    -- used for this since 07-15 (its COL_WARN): "you don't have this" already
+    -- means one thing to the eye here, and All Equipment / the + Add picker /
+    -- the Wishlist window all inherit it rather than inventing a third shade.
+    WANT   = { 1.00, 0.55, 0.30, 1.00 },
+    -- ...and the green for a wishlisted piece that has since landed in your bags.
+    HAVE   = { 0.45, 0.90, 0.45, 1.00 },
 };
 pmenu.configure({ ui = ui, COL = COL });   -- Profiles popup state lives in the shared ui table
 
@@ -637,15 +644,32 @@ local function setBuildLevel(level)
     return level;
 end
 
-local function candidatesForSlot(gearSlotKey, job, level)
-    local key = tostring(job) .. '|' .. tostring(level);   -- sub job does not affect wearability
+-- `all` (the + Add picker's "Show gear I don't own" tick, ADR 0026): ALSO offer
+-- catalog pieces you do not own, so a set can be built ahead of the hunt. It
+-- LIFTS the ownership filter, it never adds a new one -- the job/level gate is
+-- untouched, because a set for WHM should not start offering PLD gear. Owned
+-- records always win their Id: they carry your augments, counts and enrichment,
+-- which the catalog row does not.
+local function candidatesForSlot(gearSlotKey, job, level, all)
+    -- `all` is part of the cache key: the two pools are different answers to the
+    -- same question and must never be served for one another.
+    local key = tostring(job) .. '|' .. tostring(level) .. '|' .. tostring(all == true);
     if candCache.key ~= key then candCache.key = key; candCache.data = {}; end
     if candCache.data[gearSlotKey] ~= nil then return candCache.data[gearSlotKey]; end
 
-    local out = {};
+    local out, seen = {}, {};
     for _, rec in ipairs(buildOwned()) do
         if rec.Slot == gearSlotKey and isUsable(rec, job, level) and owned.haveInBags(rec) then
             out[#out + 1] = rec;
+            if rec.Id ~= nil then seen[rec.Id] = true; end
+        end
+    end
+    if all == true then
+        for _, rec in ipairs(buildAllEquip()) do
+            if rec.Slot == gearSlotKey and isUsable(rec, job, level)
+               and (rec.Id == nil or not seen[rec.Id]) and not owned.haveInBags(rec) then
+                out[#out + 1] = rec;
+            end
         end
     end
 
@@ -667,10 +691,10 @@ end
 -- records that live under Main -- off-hand weapons are Main-slot items in
 -- gear.lua, so a plain candidatesForSlot('Sub') can never offer them.
 -- subFilter applies the pairing rule on top.
-local function subCandidatePool(job, level)
+local function subCandidatePool(job, level, all)
     local pool = {};
-    for _, r in ipairs(candidatesForSlot('Sub', job, level)) do pool[#pool + 1] = r; end
-    for _, r in ipairs(candidatesForSlot('Main', job, level)) do
+    for _, r in ipairs(candidatesForSlot('Sub', job, level, all)) do pool[#pool + 1] = r; end
+    for _, r in ipairs(candidatesForSlot('Main', job, level, all)) do
         if r.OneHanded == true then pool[#pool + 1] = r; end
     end
     return pool;
@@ -2045,6 +2069,20 @@ local function recordPath(rec)
     if rec == nil then return nil; end
     if rec.Virtual == true and type(rec.Name) == 'string' then return string.format('%q', rec.Name); end
     if rec.Key == nil or rec.Slot == nil then return nil; end
+    -- A piece you do NOT own serializes as a quoted NAME, never a gear.* path
+    -- (ADR 0026). Catalog records carry a Key just like owned ones do -- it is
+    -- catalog.lua's table key -- so the path form would happily render
+    -- `gear.Body.Dalmatica`, an expression that evaluates to nil in the set file
+    -- and makes the entry vanish without a word. The quoted name is the form
+    -- BuildDynamicSets resolves through resolveGearName: unresolvable (and so
+    -- skipped) while you lack the piece, and live the moment you own it -- which
+    -- is the entire promise of parking a wishlisted piece in a set.
+    --
+    -- haveInBags fails OPEN, so pre-login and headless this branch is never
+    -- taken and every existing commit renders exactly as it always has.
+    if not owned.haveInBags(rec) and type(rec.Name) == 'string' then
+        return string.format('%q', rec.Name);
+    end
     local p = 'gear.' .. rec.Slot;
     if rec.Category ~= nil then p = p .. '.' .. rec.Category; end
     return p .. '.' .. rec.Key;
@@ -3163,7 +3201,14 @@ local function renderAddRow(rec, ordinal, level, nameW)
     if imgui.IsItemHovered() then renderItemTooltip(rec); end
     local nameCol = 26;
     imgui.SameLine(nameCol);
-    imgui.TextColored(owned.isStored(rec) and COL.ERR or COL.USABLE, fmt.esc(rec.Name or '?') .. fmt.qtyTag(rec));
+    -- Orange = you do not own it (ADR 0026): addable on purpose, and the engine
+    -- skips it until the day it lands in your bags. Same shade the All Equipment
+    -- tab and the lockstyle picker use, and it outranks the in-storage red for
+    -- the same reason -- not having it at all is the more basic fact.
+    local mine = (rec.Virtual == true) or owned.haveInBags(rec);
+    local nameColr = (not mine) and COL.WANT or (owned.isStored(rec) and COL.ERR or COL.USABLE);
+    imgui.TextColored(nameColr, fmt.esc(rec.Name or '?') .. fmt.qtyTag(rec)
+        .. ((not mine) and '   (not owned)' or ''));
     imgui.SameLine(nameCol + (nameW or 200));
     imgui.TextColored(COL.LEVEL, string.format('Lv%2d', rec.Level or 0));
     local ss = fmt.statSummary(rec, level);
@@ -3202,14 +3247,22 @@ local function renderAddPopup(job, level)
         local inList = {};
         for _, it in ipairs(list) do if it.rec and it.rec.Name then inList[it.rec.Name] = true; end end
         local useLevel = setBuildLevel(level);   -- "Build as lv.75" lifts the cap for + Add too
-        local cands = candidatesForSlot(gearKey, job, useLevel);
+        -- "Show gear I don't own" (ADR 0026). Sticky across opens (ui state), NOT
+        -- persisted: like the lockstyle picker's tick, it is a way of looking at
+        -- the list, not a setting. ANDed with the catalog actually being present,
+        -- so `wantAll` means "this list IS the wider pool" and never merely "the
+        -- box is ticked" -- otherwise rows would be painted as gear you don't own
+        -- on an install with no catalog to have offered them.
+        ui.addShowAll = ui.addShowAll or { false };
+        local wantAll = (ui.addShowAll[1] == true) and has.catalog;
+        local cands = candidatesForSlot(gearKey, job, useLevel, wantAll);
         if gearKey == 'Sub' then
             -- Full pool (shields/grips + 1H weapons), paired against EVERY Main
             -- plan -- not just the current pick: that pick is mode/level-dependent,
             -- and a mode-gated staff pick would wrongly hide all 1H weapons. Sets
             -- are plans: a 1H off-hand is addable without the DW trait;
             -- BuildDynamicSets decides at equip time (shield = fallback).
-            cands = subFilterAnyMain(subCandidatePool(job, useLevel), M.working['Main'], job, useLevel);
+            cands = subFilterAnyMain(subCandidatePool(job, useLevel, wantAll), M.working['Main'], job, useLevel);
         end
         local blocked = pairedBlockedIds(ui.setSelected, true);
         cands = sortForDisplay(cands);
@@ -3237,6 +3290,15 @@ local function renderAddPopup(job, level)
         imgui.Checkbox('Hide teleport/exp items', ui.addHideTravel);
         if imgui.IsItemHovered() then
             imgui.SetTooltip('Hide the Teleports-menu utility items (Warp / Provenance Ring, Shadow\nLord Shirt, teleport earrings/rings, exp rings) -- no combat stats, they\nonly bloat the Ear/Ring lists. Untick to add one to a set deliberately.');
+        end
+        imgui.SameLine(0, 14);
+        imgui.Checkbox("Show gear I don't own##addall", ui.addShowAll);
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('Also offer gear you do not have yet, so a set can be built ahead of the hunt.\n\n'
+                .. 'A piece you do not own is SKIPPED by the engine -- the slot keeps its normal\n'
+                .. 'best-by-level pick, and set totals do not count it. The day it reaches your\n'
+                .. 'bags it starts being worn, with nothing to change.\n\n'
+                .. 'Adding one also puts it on your Wishlist, linked to this job and set.');
         end
         -- Weapon-type filter (F2a/F2b, PRD #14): a multiselect narrowing the VISIBLE
         -- candidates by weapon type -- view-only, never eligibility (HARD RULE 6 /
@@ -3337,7 +3399,14 @@ local function renderAddPopup(job, level)
             end
             imgui.Separator();
         end
-        for i, rec in ipairs(shown) do
+        -- With the wider pool on, a slot can offer well over a thousand catalog
+        -- rows (Body alone is ~1485) and this list is not virtualised. Cap the
+        -- DRAW and say what was dropped -- never truncate quietly (the lockstyle
+        -- picker's BROWSE_CAP rule).
+        local drawn, capped = #shown, false;
+        if wantAll and drawn > 300 then drawn, capped = 300, true; end
+        for i = 1, drawn do
+            local rec = shown[i];
             any = true;
             if renderAddRow(rec, i, useLevel, nW) then
                 -- No CloseCurrentPopup (Henrik): stay open for multi-add; the row
@@ -3345,7 +3414,23 @@ local function renderAddPopup(job, level)
                 list[#list + 1] = { rec = rec, mode = ui._addGate };   -- gate nil unless a section's gated add
                 M.working[ui.setSelected] = list;
                 _setDirty = true;   -- added an item to the slot -> unsaved changes
+                -- Putting a piece you do not own into a set IS wishing for it
+                -- (ADR 0026) -- the strongest possible signal, so you never have
+                -- to say it twice. The link records which set wanted it; both are
+                -- yours to edit or delete in the Wishlist window afterwards.
+                if rec.Virtual ~= true and rec.Id ~= nil and not owned.haveInBags(rec) then
+                    pcall(function()
+                        local wl = require('dlac\\feature\\wishlist');
+                        wl.add(rec.Id, rec.Name);
+                        local _, jb = jobFile();
+                        if jb ~= nil then wl.addLink(rec.Id, jb, M.workingSetName); end
+                    end);
+                end
             end
+        end
+        if capped then
+            imgui.TextColored(COL.DIM, string.format(
+                '... and %d more not drawn -- search to narrow the list.', #shown - drawn));
         end
         if not any then
             imgui.TextColored(COL.DIM, (q ~= '' or ui.addAvail[1] == true or travelHidden > 0 or typeHidden > 0)
@@ -4290,12 +4375,30 @@ host.provide({
     engineHeld = engineHeld,                   -- the locked set (ADR 0022); Equipped tab owns its state
     isNative = setup.isNative,                 -- native => no LuaAshitacast, so no /lac disable fence
     lockMirrorDirty = function() _lockMirror.at = -1; end,
+    -- Which set the Sets tab is holding UNCOMMITTED edits to (nil, nil when
+    -- clean). The Wishlist's "apply to set" refuses to write that exact set:
+    -- it edits the committed file, and the next Commit here would silently
+    -- stomp whatever it wrote (ADR 0026).
+    setsDirtyFor = function()
+        if not _setDirty then return nil, nil; end
+        local j = nil;
+        pcall(function() local _; _, j = jobFile(); end);
+        return j, M.workingSetName;
+    end,
     wornSetTotals = wornSetTotals, setLabelOf = setLabelOf,
     -- shared render helpers
     renderStatsPanel = renderStatsPanel, renderSlotGrid = renderSlotGrid,
     renderSortCombo = renderSortCombo, renderItemTooltip = renderItemTooltip,
 });
 do
+    -- The Wishlist window + the shared item context-menu BODY. FIRST on purpose:
+    -- equippedui captures it at its own require time (for the All Equipment
+    -- right-click), and loading it here means a failure prints once, here,
+    -- rather than silently costing the menu inside another module's try().
+    local wok, werr = pcall(require, "dlac\\ui\\wishlistui");
+    if not wok then
+        pcall(function() print('[dlac] wishlistui failed to load: ' .. tostring(werr)); end);
+    end
     local ok, err = pcall(require, "dlac\\ui\\equippedui");   -- self-registers its two tabs
     if not ok then
         pcall(function() print('[dlac] equippedui failed to load: ' .. tostring(err)); end);
@@ -4478,6 +4581,13 @@ end);
 ashita.events.register('packet_in', 'dlac-gearui-invdirty', function(e)
     if e.id == 0x020 or e.id == 0x01D then
         sf.invDirty();
+        -- ...and arm the Wishlist's "you got it" check. Hung off THIS signal
+        -- rather than a timer: an item landing in your bags is exactly the event
+        -- that can flip a wishlisted piece to owned, so away from a pickup the
+        -- feature costs nothing at all. ~2s of slack lets a multi-packet loot or
+        -- a zone-in flood settle into one check (sf.invDirty's own reason for
+        -- debouncing), and re-arming just pushes the deadline out.
+        ui._wishCheckAt = cmdq.frame() + 120;
     end
 end);
 
@@ -4485,6 +4595,13 @@ ashita.events.register('d3d_present', 'dlac-gearui-render', function()
     cmdq.tick();   -- advance the frame clock, flush due commands
     if (cmdq.frame() % 240) == 0 then owned.resetCache(); end   -- availability heartbeat (~4s):
                                                                 -- container moves recolour live
+    -- Wishlist "you got it" check, armed by the inventory packet hook below and
+    -- fired once the bags have settled. Runs whether or not any window is open --
+    -- the whole point is that it finds you while you play.
+    if ui._wishCheckAt ~= nil and cmdq.frame() >= ui._wishCheckAt then
+        ui._wishCheckAt = nil;
+        pcall(function() require('dlac\\ui\\wishlistui').checkObtained(); end);
+    end
     pcall(sf.loadUiFlags);
     if ui._flagsDirty then ui._flagsDirty = nil; pcall(sf.saveUiFlags); end
     pcall(sf.tick);
@@ -4633,6 +4750,18 @@ ashita.events.register('d3d_present', 'dlac-gearui-render', function()
             local fgThemed = style ~= nil and style.push();
             pcall(fgMod.render);
             if fgThemed then style.pop(); end
+        end
+    end
+    -- Wishlist window: INDEPENDENT of the main box, same reason as the two above
+    -- (the Menu row opens it and it stays up while you play). Own theme bracket,
+    -- function-scoped require -- no new chunk local (hard rule 1).
+    if has.imgui then
+        local wlMod = nil;
+        pcall(function() wlMod = require('dlac\\ui\\wishlistui'); end);
+        if wlMod ~= nil and wlMod.visible == true then
+            local wlThemed = style ~= nil and style.push();
+            pcall(wlMod.render);
+            if wlThemed then style.pop(); end
         end
     end
     -- The E-Box Restock nudge: also INDEPENDENT of the main box (it pops up near

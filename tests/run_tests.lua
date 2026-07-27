@@ -18,6 +18,7 @@ package.loaded['dlac\\lib\\safewrite'] = dofile('lib/safewrite.lua');   -- safe-
 package.loaded['dlac\\gear\\catalogindex'] = dofile('gear/catalogindex.lua');   -- catalog walker: gearimport requires it (no catalog headless -> empty indexes)
 package.loaded['dlac\\gear\\gearoracle'] = dofile('gear/gearoracle.lua');   -- THE worn-item/bag door: gearimport + useitem require it (issue #70; parity-pinned below)
 package.loaded['dlac\\lib\\statefile'] = dofile('lib/statefile.lua');   -- addon-side charDir: the watchers require it (guarded)
+package.loaded['dlac\\feature\\wishlist'] = dofile('feature/wishlist.lua');   -- utils asks it before warning about an unresolvable set entry (ADR 0026)
 
 local TEST_PLAYER = nil;                                -- set per test
 gData = { GetPlayer = function() return TEST_PLAYER; end };
@@ -2028,6 +2029,138 @@ local sWrap = utils.BuildDynamicSets({ Dynamic = { Idle = { Main = { { gear = 'S
 check('U2 wrapper ref resolves case-blind', sWrap.Idle and sWrap.Idle.Main, 'Solid Wand');
 local sMiss = utils.BuildDynamicSets({ Dynamic = { Idle = { Main = { 'No Such Item' } } } });
 check('U3 missing name flattens empty, no error', sMiss.Idle and sMiss.Idle.Main, nil);
+
+-- U4-U7: the APOSTROPHE bridge (ADR 0026). The CatsEyeXI API drops the
+-- possessive apostrophe, so anything sourced from the catalog -- a wishlisted
+-- piece parked in a set until you own it -- spells the name without one, while
+-- gear.lua carries the client's spelling. Without this the entry would still
+-- fail to resolve on the day you finally got the item.
+-- (Scoped: this file's main chunk lives against the 200-local cap, hard rule 1.)
+do
+package.loaded['dlac\\gear'].NameToObject["Arhat's Gi"] =
+    { Name = "Arhat's Gi", Level = 71, Slot = 'Body' };
+utils._resetNameIndex();
+local sApos = utils.BuildDynamicSets({ Dynamic = { Idle = { Body = { 'Arhats Gi' } } } });
+check('U4 catalog spelling resolves to the client name', sApos.Idle and sApos.Idle.Body, "Arhat's Gi");
+local sAposC = utils.BuildDynamicSets({ Dynamic = { Idle = { Body = { 'arhats gi' } } } });
+check('U5 ...case-blind too', sAposC.Idle and sAposC.Idle.Body, "Arhat's Gi");
+-- ...and the other direction: the API KEEPS the apostrophe in "San D'Orian", so
+-- a set may hold one the gear table lacks. Both sides are stripped, so it works.
+package.loaded['dlac\\gear'].NameToObject['San DOrian Bow'] =
+    { Name = 'San DOrian Bow', Level = 9, Slot = 'Range' };
+utils._resetNameIndex();
+local sApos2 = utils.BuildDynamicSets({ Dynamic = { Idle = { Range = { "San D'Orian Bow" } } } });
+check('U6 apostrophe in the SET, none in gear.lua', sApos2.Idle and sApos2.Idle.Range, 'San DOrian Bow');
+-- The fallback must never outrank an exact lowercase hit: two names that differ
+-- only by an apostrophe each keep their own record.
+package.loaded['dlac\\gear'].NameToObject['Arhats Gi'] =
+    { Name = 'Arhats Gi', Level = 1, Slot = 'Body' };
+utils._resetNameIndex();
+local sExact = utils.BuildDynamicSets({ Dynamic = { Idle = { Body = { 'Arhats Gi' } } } });
+check('U7 exact lowercase still wins over the stripped fallback',
+    sExact.Idle and sExact.Idle.Body, 'Arhats Gi');
+package.loaded['dlac\\gear'].NameToObject['Arhats Gi'] = nil;
+package.loaded['dlac\\gear'].NameToObject['San DOrian Bow'] = nil;
+utils._resetNameIndex();
+
+-- ---------------------------------------------------------------------------
+-- WL. The Wishlist model (feature\wishlist, ADR 0026). Everything here is pure:
+--     no character, no disk -- M.path() is nil without a login, so load() leaves
+--     M.entries exactly as a test put it.
+-- ---------------------------------------------------------------------------
+local wlm = require('dlac\\feature\\wishlist');
+
+check('WL1 normName lowercases',            wlm.normName('Solid Wand'), 'solid wand');
+check('WL2 normName drops the apostrophe',  wlm.normName("Arhat's Gi"), 'arhats gi');
+check('WL3 normName is idempotent',         wlm.normName(wlm.normName("Arhat's Gi")), 'arhats gi');
+check('WL4 normName tolerates a non-string', wlm.normName(nil), '');
+
+-- A job-only link is a COARSER wish, not the same thing as a job+set link.
+check('WL5 same job+set links match',
+    wlm.sameLink({ job = 'WHM', set = 'Idle' }, { job = 'WHM', set = 'Idle' }), true);
+check('WL6 different set differs',
+    wlm.sameLink({ job = 'WHM', set = 'Idle' }, { job = 'WHM', set = 'TP' }), false);
+check('WL7 job-only is not job+set',
+    wlm.sameLink({ job = 'WHM' }, { job = 'WHM', set = 'Idle' }), false);
+
+local lks = {};
+local _, addedA = wlm.addLinkTo(lks, 'WHM', 'Idle');
+local _, addedB = wlm.addLinkTo(lks, 'WHM', 'Idle');      -- exact repeat
+local _, addedC = wlm.addLinkTo(lks, 'WHM', nil);         -- coarser: a NEW link
+check('WL8 first link is added',        addedA, true);
+check('WL9 duplicate link is refused',  addedB, false);
+check('WL10 job-only link still added', addedC, true);
+check('WL11 two links stored',          #lks, 2);
+local _, addedD = wlm.addLinkTo(lks, '', 'Idle');         -- no job = not a link
+check('WL12 empty job refused',         addedD, false);
+
+-- fromRaw DROPS anything malformed rather than repairing it: a half-understood
+-- entry that silences a warning is worse than no entry at all.
+local raw = wlm.fromRaw({
+    [13795] = { name = "Arhat's Gi", note = 'Sky', links = { { job = 'WHM', set = 'Idle' }, { job = 'BLM' } } },
+    [222]   = { note = 'no name -- dropped' },
+    [333]   = { name = 'Kept', links = { { set = 'Idle' }, { job = 'RDM' } } },   -- jobless link dropped
+    ['xx']  = { name = 'Bad key -- dropped' },
+});
+check('WL13 good entry kept',        raw[13795] ~= nil, true);
+check('WL14 nameless entry dropped', raw[222], nil);
+check('WL15 non-numeric key dropped',raw['xx'], nil);
+check('WL16 links normalized',       #raw[13795].links, 2);
+check('WL17 jobless link dropped',   #raw[333].links, 1);
+check('WL18 missing note defaults',  raw[333].note, '');
+check('WL19 id stamped onto entry',  raw[13795].id, 13795);
+
+-- Serialization is STABLE (ids ascending) so an unchanged file is byte-identical
+-- and the engine's raw-text compare can skip the re-parse.
+local ser = wlm.serialize(raw);
+check('WL20 serialize round-trips through fromRaw',
+    (function()
+        local t = assert((loadstring or load)(ser))();
+        local back = wlm.fromRaw(t);
+        return back[13795] ~= nil and back[13795].note == 'Sky'
+           and #back[13795].links == 2 and back[13795].links[1].set == 'Idle'
+           and back[333] ~= nil and back[333].links[1].job == 'RDM'
+           and back[333].links[1].set == nil;
+    end)(), true);
+check('WL21 serialize is byte-stable', wlm.serialize(wlm.fromRaw(assert((loadstring or load)(ser))())), ser);
+check('WL22 empty list serializes', wlm.serialize({}), 'return { }\n');
+check('WL23 ids ascending', (ser:find('%[333%]') < ser:find('%[13795%]')), true);
+
+-- isWished is the ENGINE seam: name-based (the engine has no ids in a set file)
+-- and normalized on both sides, so the catalog's spelling matches gear.lua's.
+wlm._reset();
+wlm.entries = wlm.fromRaw({ [13795] = { name = 'Arhats Gi', links = {} } });
+check('WL24 exact name is wished',      wlm.isWished('Arhats Gi'), true);
+check('WL25 client spelling is wished', wlm.isWished("Arhat's Gi"), true);
+check('WL26 case-blind',                wlm.isWished('arhats gi'), true);
+check('WL27 unrelated name is not',     wlm.isWished('Dalmatica'), false);
+check('WL28 empty name is not',         wlm.isWished(''), false);
+check('WL29 nil is not',                wlm.isWished(nil), false);
+
+-- ...and the suppression it exists for. utils binds `print` at LOAD, so the
+-- capture needs a stubbed chatfmt and a re-required utils (the documented
+-- dispatch-test dance); both are restored afterwards.
+do
+    local savedChat = package.loaded['dlac\\chatfmt'];
+    local lines = {};
+    package.loaded['dlac\\chatfmt'] = { print = function(s) lines[#lines + 1] = tostring(s); end };
+    -- dofile, not require: this harness loads utils by dofile, so there is no
+    -- searcher to find it again. A fresh chunk also means a fresh _warnedMissing.
+    local u2 = dofile('utils.lua');
+    wlm._reset();
+    wlm.entries = wlm.fromRaw({ [999] = { name = 'Wished Nonexistent', links = {} } });
+    local sW = u2.BuildDynamicSets({ Dynamic = { Idle = { Body = { 'Wished Nonexistent' } } } });
+    check('WL30 a wished name warns NOT', #lines, 0);
+    check('WL31 ...and is still skipped', sW.Idle and sW.Idle.Body, nil);
+    local sU = u2.BuildDynamicSets({ Dynamic = { Idle = { Body = { 'Plain Nonexistent' } } } });
+    check('WL32 an unwished name still warns', #lines, 1);
+    check('WL33 ...and says so',
+        lines[1] ~= nil and lines[1]:find('Plain Nonexistent', 1, true) ~= nil, true);
+    check('WL34 ...and is skipped too', sU.Idle and sU.Idle.Body, nil);
+    wlm._reset();
+    package.loaded['dlac\\chatfmt'] = savedChat;
+end
+end   -- U4-WL34 scope (200-local cap)
 
 -- ---------------------------------------------------------------------------
 -- T. deleteStaticSetText: removes a direct child of the sets ROOT (a legacy
@@ -12781,8 +12914,10 @@ end)();
     -- under /dl debug on.
     local plain = mn._menuRows(false);
     local dbg   = mn._menuRows(true);
-    check('SET32 six rows when not debugging', #plain, 6);
+    check('SET32 seven rows when not debugging', #plain, 7);   -- +wishlist (2026-07-27)
     check('SET33 first row is lockstyle',      plain[1], 'lockstyle');
+    check('SET55 wishlist is a plain row',
+        (function() for _, k in ipairs(plain) do if k == 'wishlist' then return true; end end return false; end)(), true);
     check('SET34 settings is the last plain row', plain[#plain], 'settings');
     check('SET35 debug adds exactly four',     #dbg - #plain, 4);
     check('SET36 augs only under debug',       dbg[#dbg], 'augs');
@@ -12816,9 +12951,9 @@ end)();
     -- Every row icon must exist as assets\<name>.png. filetex returns nil for a
     -- missing file and the row just draws a blank cell of the right width -- correct
     -- behaviour, but it means a typo or a rename is INVISIBLE in game. Pin it here.
-    -- Six row icons + the header button + the Developer section heading.
+    -- Seven row icons + the header button + the Developer section heading.
     local icons = mn._menuIcons();
-    check('SET42 every icon slot is named', #icons, 8);
+    check('SET42 every icon slot is named', #icons, 9);
     local missing = {};
     for _, name in ipairs(icons) do
         local f = io.open('assets/' .. name .. '.png', 'rb');

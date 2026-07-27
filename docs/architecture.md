@@ -222,7 +222,10 @@ tabs, sortable columns, clear buttons; scoring stays in gearui/gearoptim),
 **profilesmenu.lua** (the Profiles popup tree + forms; state in the shared ui
 table), **floatgear.lua** (the floating 4x4 equipment window + the PIN menu — v44; a
 `window`-only module, no tab; reuses `S.renderSlotGrid` so its icons and hover tooltip
-are literally the Equipped tab's and cannot drift). `tests\smoke_ui.lua` headless-loads
+are literally the Equipped tab's and cannot drift), **wishlistui.lua** (the Wishlist
+window AND the item context-menu **body** — a floating window, no tab; the menu body
+lives here rather than in the tab that right-clicks so future rows like `Move To ▸` join
+`Wishlist ▸` without moving house). `tests\smoke_ui.lua` headless-loads
 the whole chunk: 200-cap breaches, registration order, services contract.
 
 ### Floating windows — many openers, ONE draw site
@@ -247,6 +250,33 @@ Two consequences worth stating: the render call site is where `deps` comes from
 (`M._deps`, built once at gearui load), so an opener never needs it; and the window body
 must re-derive its own data rather than take it from whatever panel used to hold it —
 `fishui.renderTargetBody` re-reads db/owned counts/skill for exactly this reason.
+
+### Wishlist — ui/wishlistui.lua + feature/wishlist.lua (ADR 0026)
+Gear you mean to own. The model file (`<char>\dlac\wishlist.lua`) is id-keyed and carries
+the item NAME because the **engine** reads it: `utils.warnMissingGear` asks
+`wishlist.isWished(name)` before calling an unresolvable set entry a typo, which is the
+one and only reason the engine knows this feature exists. Everything else — slot, level,
+icon, stats — is looked up from the Catalog by the UI.
+
+The shape worth remembering is the split (see CONTEXT.md's **Wishlist link**):
+
+> **The stored half is an intention. The computed half is a fact. Neither is derived
+> from the other, and they are allowed to disagree.**
+
+A link (`WHM/Idle`) is written down and never revoked by dlac; whether the piece is *in*
+that set is re-read from the set files (`wishlistui.whereInSet`, all jobs, cached per
+window-open). Ownership follows the same rule — never stored, read from the bags by Id.
+So there is no reconcile step anywhere, and the disagreement is not a bug to fix but the
+signal that puts an **Apply** button on that row. Apply writes through
+`setmanager.commitSet(job, …)` — which already takes a job, so any job's set can be
+edited — and refuses while the Sets tab holds uncommitted edits to that exact set.
+
+Set files are UNCHANGED by design: an unowned name is skipped by `BuildDynamicSets`
+(`resolveGearName` misses → `warnMissingGear` → return), so the slot's real
+best-by-level pick wins and the piece starts being worn the day it lands in the bags.
+The one thing that had to be fixed for that promise to hold is the **apostrophe**: the
+API drops the possessive (`Arhats Gi`) and keeps `San D'Orian`, so `resolveGearName`
+strips on both sides, as a fallback layer beneath the exact-lowercase index.
 
 ### Pins — floatgear.lua + feature/pinwatch.lua + dispatch v44
 "Equip item, lock slot so nothing removes equipped item" (Henrik), built as an OVERLAY

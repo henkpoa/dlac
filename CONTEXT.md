@@ -129,6 +129,14 @@ _Avoid_: staff bonus (that's the related per-element potency mod)
 Two distinct facts about an item. *Owned* = present in any of the 17 containers (`ALL_CONTAINERS` — the truth `gear.lua` and `/dl prune` use). *Available* = in an equip-eligible bag right now (Inventory + the 8 Wardrobes, `SCAN_CONTAINERS`) — what the engine and the GUI's red-name marking use. Gear can be owned and unavailable (parked in storage). The combined per-surface answer is `ownedcache.verdict` (stored beats locked beats ok); panels map states onto their own palette — the state is the shared meaning, the colour is theirs.
 _Avoid_: "has it" without saying which of the two you mean
 
+**Wishlist entry**:
+A player-authored record of an item they mean to acquire, keyed by item **Id** and existing on its own — independent of any set, and never created or removed by dlac on the player's behalf. Carries one free-text note and any number of **Wishlist links**. Whether the item is *Owned* is never stored on it: that is read from the bags every time, so an entry can never claim you still have something you sold.
+_Avoid_: wanted item, shopping-list item, TODO
+
+**Wishlist link**:
+A player's stated intention that a **Wishlist entry** belongs to a job, or to one of that job's named sets. Recorded on the entry, never derived, and never revoked by dlac. Deliberately distinct from the *fact* of whether the piece currently sits in that set — which is read live from the set file and shown beside the link. The two are allowed to disagree: the link is what you meant, the fact is what is.
+_Avoid_: tag, assignment, set membership
+
 **E-Box (Ephemeral Box)**:
 CatsEyeXI's custom Crystal-Warrior-only item store, reached only while in **Crystal Warrior** play mode and standing near an in-world "Ephemeral Box". It is NOT one of the 17 ownership containers: an item sitting in the E-Box is neither *Owned* nor *Available* until it is withdrawn into the bags. Every dlac feature that reads or withdraws from it (today: **E-Box Restock** alone) speaks through the one shared **E-Box client**.
 _Avoid_: bank, storage (dlac has several — say which), moogle/porter storage (a different game system)

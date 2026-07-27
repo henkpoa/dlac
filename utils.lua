@@ -277,6 +277,22 @@ end
 -- the client names in gear.lua read "Solid Wand" -- a rebuild must not fail on
 -- caps. The lowercase index is built lazily once per Lua state (gear.lua is
 -- static until a LAC reload rebuilds this state anyway; tests use _resetNameIndex).
+-- ...and apostrophe-insensitive on top of that, because the two spellings of an
+-- item name in this project come from two sources that disagree: the CatsEyeXI
+-- API drops the possessive apostrophe, so catalog.lua says "Arhats Gi" where the
+-- client (and therefore gear.lua) says "Arhat's Gi". Anything sourced from the
+-- catalog -- a wishlisted piece parked in a set until you own it (ADR 0026) --
+-- would otherwise still fail to resolve on the day you finally got it, which is
+-- precisely when it is supposed to start working. The API is not even consistent
+-- about it (it KEEPS the one in "San D'Orian"), so the strip runs on both sides.
+--
+-- Built as a FALLBACK layer, never a replacement: every plain lowercase key goes
+-- in first and an apostrophe-stripped key is only added where nothing already
+-- sits. Exact-lowercase therefore always wins and no lookup that resolves today
+-- can start resolving differently.
+-- (feature\wishlist.normName carries the same transform for its own comparisons;
+-- it is duplicated rather than shared so this rebuild path gains no load-time
+-- dependency on a feature module. Change one, change the other.)
 local _lcIndex = nil;
 local function resolveGearName(name)
     local hit = gear.NameToObject[name];
@@ -286,8 +302,15 @@ local function resolveGearName(name)
         for k, v in pairs(gear.NameToObject) do
             if type(k) == 'string' then _lcIndex[string.lower(k)] = v; end
         end
+        for k, v in pairs(gear.NameToObject) do
+            if type(k) == 'string' then
+                local stripped = string.gsub(string.lower(k), "'", "");
+                if _lcIndex[stripped] == nil then _lcIndex[stripped] = v; end
+            end
+        end
     end
-    return _lcIndex[string.lower(name)];
+    local lc = string.lower(name);
+    return _lcIndex[lc] or _lcIndex[(string.gsub(lc, "'", ""))];
 end
 function M._resetNameIndex() _lcIndex = nil; end
 M.resolveGearName = resolveGearName;   -- the house name->record resolver (dispatch's
@@ -299,7 +322,24 @@ M.resolveGearName = resolveGearName;   -- the house name->record resolver (dispa
 local _warnedMissing = {};
 local function warnMissingGear(name)
     if _warnedMissing[name] then return; end
+    -- A WISHLISTED name is unresolvable on purpose (ADR 0026): you parked a piece
+    -- you do not own yet in a set so it starts working the day you get it. The
+    -- skip above already does the right thing -- the slot's real best-by-level
+    -- pick wins -- so the only thing left to get right is the noise. Warning
+    -- about it on every commit would read as a bug dlac introduced.
+    --
+    -- Lazily required, at call time, and swallowed on failure: this runs in the
+    -- rebuild path, so it must not gain a load-time dependency on a feature
+    -- module, and a broken/absent wishlist must LOSE THE SUPPRESSION rather than
+    -- the warning. A name that is neither resolvable nor wishlisted is still a
+    -- typo, and still says so.
+    local wished = false;
+    pcall(function()
+        local wl = require('dlac\\feature\\wishlist');
+        wished = (type(wl) == 'table') and wl.isWished(name) == true;
+    end);
     _warnedMissing[name] = true;
+    if wished then return; end
     print('[dlac] set entry "' .. tostring(name) .. '" is not in the gear table -- typo, or not yet indexed (/dl sync).');
 end
 

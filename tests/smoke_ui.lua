@@ -192,6 +192,115 @@ check('S40 an in-range scale passes through', fgMod.scale(), 1.75);
 host.services.ui._gfScale = nil;
 
 -- ---------------------------------------------------------------------------
+-- 2b. The Wishlist (wishlistui, ADR 0026). Same contract as floatgear: gearui
+--     requires it in a pcall that only PRINTS, and it is NOT a uihost window
+--     (the Menu opens it and it stays up when the main box shuts). It also owns
+--     the item context-menu BODY that equippedui's All Equipment right-click
+--     draws, so a load failure would silently cost that menu too.
+-- ---------------------------------------------------------------------------
+local wlOk, wlMod = pcall(require, 'dlac\\ui\\wishlistui');
+check('S60 wishlistui loads headless', wlOk, true);
+check('S61 exposes render',            wlOk and type(wlMod.render) == 'function', true);
+check('S62 exposes the shared item menu body',
+    wlOk and type(wlMod.renderItemMenu) == 'function', true);
+check('S63 exposes open/close/toggle',
+    wlOk and type(wlMod.open) == 'function' and type(wlMod.close) == 'function'
+        and type(wlMod.toggle) == 'function', true);
+check('S64 registers NO uihost window (it must outlive the main box)',
+    host.get('wishlist'), nil);
+check('S65 starts hidden',             wlMod.visible, false);
+check('S66 toggle flips it',           (function() wlMod.toggle(); local v = wlMod.visible; wlMod.close(); return v; end)(), true);
+-- render must be a no-op without imgui rather than a crash (imgui is nil here).
+check('S67 render is inert headless',  pcall(wlMod.render), true);
+check('S68 the item menu is inert headless', pcall(wlMod.renderItemMenu, { Id = 1, Name = 'X' }, 'WHM'), true);
+
+-- entryName: a set list element arrives in three shapes once the file has run.
+check('S69 bare string element',   wlMod._entryName('Dalmatica'), 'Dalmatica');
+check('S70 resolved record element', wlMod._entryName({ Name = 'Dalmatica', Level = 71 }), 'Dalmatica');
+check('S71 wrapper around a record',
+    wlMod._entryName({ gear = { Name = 'Dalmatica' }, minLevel = 10 }), 'Dalmatica');
+check('S72 wrapper around a string',
+    wlMod._entryName({ gear = 'Dalmatica', maxLevel = 50 }), 'Dalmatica');
+check('S73 unrecognized element',  wlMod._entryName(42), nil);
+
+-- The FACT half: membership is read from the set, and normalized on both sides
+-- so the catalog's apostrophe-less spelling matches a set that has one.
+wlMod._setDyn({ WHM = {
+    Idle = { Body = { { Name = "Arhat's Gi" } }, Ring1 = { 'Rajas Ring' } },
+    TP   = { Body = { 'Something Else' } },
+} });
+check('S74 finds the slot it sits in', wlMod.whereInSet('WHM', 'Idle', "Arhat's Gi"), 'Body');
+check('S75 apostrophe-blind match',    wlMod.whereInSet('WHM', 'Idle', 'Arhats Gi'), 'Body');
+check('S76 absent from the set',       wlMod.whereInSet('WHM', 'TP', 'Arhats Gi'), nil);
+check('S77 unknown set',               wlMod.whereInSet('WHM', 'Nope', 'Arhats Gi'), nil);
+check('S78 unknown job',               wlMod.whereInSet('BLM', 'Idle', 'Arhats Gi'), nil);
+check('S79 jobs with sets listed',     #wlMod.jobsWithSets() >= 1, true);
+check('S80 set names sorted',          table.concat(wlMod.setNames('WHM'), ','), 'Idle,TP');
+
+-- linkFacts pairs each stored INTENTION with the live fact; they may disagree,
+-- and a link naming a set that no longer exists says so rather than reading as
+-- "not added yet".
+local lf = wlMod.linkFacts({ name = 'Arhats Gi', links = {
+    { job = 'WHM', set = 'Idle' }, { job = 'WHM', set = 'TP' },
+    { job = 'WHM', set = 'Gone' }, { job = 'RDM' },
+} });
+check('S81 four facts back',        #lf, 4);
+check('S82 in-set link resolved',   lf[1].inSlot, 'Body');
+check('S83 linked-but-absent',      lf[2].inSlot, nil);
+check('S84 ...and is not "gone"',   lf[2].gone, false);
+check('S85 vanished set flagged',   lf[3].gone, true);
+check('S86 job-only carries no set', lf[4].set, nil);
+
+-- slotsFor rebuilds setmanager's ordered slots array, and appending puts the new
+-- name in the right slot without disturbing the rest. EQUIP_SLOTS order, and a
+-- slot the equipment model does not know is CARRIED, never dropped.
+wlMod._setDyn({ WHM = { Idle = {
+    Body  = { 'A' }, Ring1 = { 'B' }, Main = { 'C' }, Weird = { 'D' },
+} } });
+local sl = wlMod._slotsFor('WHM', 'Idle');
+check('S87 four slots rebuilt', #sl, 4);
+check('S88 Main comes first (EQUIP_SLOTS order)', sl[1].name, 'Main');
+check('S89 unknown slot carried, last',
+    sl[#sl].name, 'Weird');
+local sl2 = wlMod._slotsFor('WHM', 'Idle', 'Body', 'Dalmatica');
+check('S90 append lands in Body', (function()
+    for _, s in ipairs(sl2) do
+        if s.name == 'Body' then return #s.items == 2 and s.items[2].path == '"Dalmatica"'; end
+    end
+    return false;
+end)(), true);
+local sl3 = wlMod._slotsFor('WHM', 'Idle', 'Legs', 'New Pants');
+check('S91 append can create a slot, in model order', (function()
+    local names = {};
+    for _, s in ipairs(sl3) do names[#names + 1] = s.name; end
+    -- Legs sits after Ring1 and before the unknown tail in EQUIP_SLOTS order
+    return table.concat(names, ',') == 'Main,Body,Ring1,Legs,Weird';
+end)(), true);
+check('S92 unknown set returns nil', wlMod._slotsFor('WHM', 'Nope'), nil);
+
+-- The slot guard. A record whose Slot never resolved ('?') must never reach the
+-- set file: it would parse, commit, and be ignored by everything forever.
+check('S92a a real slot is valid',   wlMod._validSlot('Ring1'), true);
+check('S92b Ring is NOT a set slot', wlMod._validSlot('Ring'),  false);   -- gear-model key
+check('S92c unresolved slot refused',wlMod._validSlot('?'),     false);
+check('S92d nil refused',            wlMod._validSlot(nil),     false);
+check('S92e applyToSet refuses a bogus slot',
+    select(1, wlMod.applyToSet({ id = 1, name = 'X' }, 'WHM', 'Idle', '?')), false);
+
+-- Display order: owned first (the piece that just landed is what you came for),
+-- then equipment-model slot order, then name.
+local rows = wlMod._sortRows({
+    { entry = { name = 'Zeta' },  own = false, slot = 'Body' },
+    { entry = { name = 'Alpha' }, own = false, slot = 'Main' },
+    { entry = { name = 'Beta' },  own = true,  slot = 'Feet' },
+    { entry = { name = 'Aardvark' }, own = false, slot = 'Body' },
+});
+check('S93 owned sorts first',   rows[1].entry.name, 'Beta');
+check('S94 then by slot order',  rows[2].entry.name, 'Alpha');
+check('S95 then by name',        rows[3].entry.name, 'Aardvark');
+wlMod._setDyn({});
+
+-- ---------------------------------------------------------------------------
 -- 3. services contract: what equippedui (and future modules) capture at load
 -- ---------------------------------------------------------------------------
 local S = host.services;
@@ -629,6 +738,165 @@ check('S20 gear you really do not own stays unowned',
     end
     package.loaded['imgui'] = nil;
     package.loaded['dlac\\ui\\floatgear'] = nil;
+end)();
+
+-- ---------------------------------------------------------------------------
+-- 6b. IMGUI STACK BALANCE for the All Equipment tab + the Wishlist window
+--     (S150+) -- the same RENDER test as section 6, for the surfaces the
+--     wishlist added to (ADR 0026).
+--
+--     Worth its own section because both grew stack-discipline work this
+--     session: renderBrowseRow pushes a colour per row and must pop it on every
+--     path, and the tab now opens a POPUP after the tree's EndChild -- the
+--     scope rule that, done wrong, leaves a popup open across frames. Neither is
+--     a Lua error when it breaks; it is native UB inside ImGui.
+-- ---------------------------------------------------------------------------
+;(function()
+    local depth = { var = 0, col = 0, win = 0, child = 0, popup = 0 };
+    local drew = { checkbox = 0, popup = 0 };
+    local popupOpen = true;                 -- exercise the popup body, not just the guard
+    local function nop() end
+    local IM = {};
+    for _, n in ipairs({ 'SetNextWindowPos', 'SetNextWindowSize', 'SetNextWindowSizeConstraints',
+        'Separator', 'Text', 'TextColored', 'TextWrapped', 'SameLine', 'Dummy', 'Image',
+        'PushItemWidth', 'PopItemWidth', 'OpenPopup', 'CloseCurrentPopup', 'SetTooltip',
+        'PushID', 'PopID', 'Spacing', 'InputText', 'SetNextItemOpen', 'TreePop',
+        'Indent', 'Unindent', 'BeginGroup', 'EndGroup', 'PushTextWrapPos', 'PopTextWrapPos' }) do
+        IM[n] = nop;
+    end
+    IM.PushStyleVar   = function() depth.var = depth.var + 1; end
+    IM.PopStyleVar    = function(n) depth.var = depth.var - (tonumber(n) or 1); end
+    IM.PushStyleColor = function() depth.col = depth.col + 1; end
+    IM.PopStyleColor  = function(n) depth.col = depth.col - (tonumber(n) or 1); end
+    IM.Begin      = function() depth.win = depth.win + 1; return true; end
+    IM['End']     = function() depth.win = depth.win - 1; end
+    IM.BeginChild = function() depth.child = depth.child + 1; return true; end
+    IM.EndChild   = function() depth.child = depth.child - 1; end
+    IM.BeginPopup = function()
+        if popupOpen then depth.popup = depth.popup + 1; drew.popup = drew.popup + 1; end
+        return popupOpen;
+    end
+    IM.EndPopup   = function() depth.popup = depth.popup - 1; end
+    IM.BeginMenu  = function() return false; end          -- cascade shut: the common frame
+    IM.EndMenu    = nop;
+    IM.BeginCombo = function() return false; end
+    IM.EndCombo   = nop;
+    IM.CollapsingHeader = function() return true; end     -- OPEN, so the rows really render
+    IM.TreeNode         = function() return true; end
+    IM.Checkbox   = function() drew.checkbox = drew.checkbox + 1; return false; end
+    for _, n in ipairs({ 'Button', 'ImageButton', 'SmallButton', 'Selectable', 'MenuItem',
+        'SliderFloat', 'IsItemHovered', 'IsWindowHovered', 'IsMouseDragging',
+        'IsMouseClicked', 'IsItemClicked', 'IsItemActive', 'IsMouseDown', 'IsMouseReleased' }) do
+        IM[n] = function() return false; end
+    end
+    IM.GetIO              = function() return { KeyShift = false }; end
+    IM.GetWindowPos       = function() return 10, 20; end
+    IM.GetCursorScreenPos = function() return 0, 0; end
+    IM.GetItemRectMin     = function() return 0, 0; end
+    IM.GetColorU32        = function() return 0; end
+    IM.CalcTextSize       = function() return 10, 10; end
+    IM.GetContentRegionAvail        = function() return 400, 400; end
+    IM.GetTextLineHeightWithSpacing = function() return 14; end
+    IM.GetWindowDrawList  = function()
+        return { AddCircleFilled = nop, AddRectFilled = nop, AddRect = nop, AddLine = nop };
+    end
+
+    package.loaded['imgui'] = IM;
+    -- gearfmt binds imgui at ITS OWN load through pcall(require, 'imgui') -- which
+    -- yields the ERROR STRING, not nil, when imgui is absent. fmt.textWrapped then
+    -- indexes a string and throws, and the pcall'd drives below would swallow it.
+    -- Re-require gearfmt against THIS stub (the section-9 precedent); restored at
+    -- the end so later sections keep the module they were loaded with.
+    local keepFmt = package.loaded['dlac\\gear\\gearfmt'];
+    package.loaded['dlac\\gear\\gearfmt'] = nil;
+    package.loaded['dlac\\ui\\wishlistui'] = nil;
+    package.loaded['dlac\\ui\\equippedui'] = nil;
+    local wok, wui = pcall(require, 'dlac\\ui\\wishlistui');
+    local eok, eui = pcall(require, 'dlac\\ui\\equippedui');
+    check('S150 wishlistui re-requires against a stub imgui', wok and type(wui.render), 'function');
+    check('S151 equippedui re-requires against a stub imgui',
+        eok and type(eui.renderAllEquipTab), 'function');
+    if not (wok and eok) then
+        package.loaded['imgui'] = nil;
+        package.loaded['dlac\\gear\\gearfmt'] = keepFmt;
+        return;
+    end
+
+    local Sx = host.services;
+    local keep = { Sx.buildOwned, Sx.buildAllEquip, Sx.isUsable, Sx.renderItemTooltip };
+    -- Two rows, one owned and one not, so BOTH colour branches of renderBrowseRow
+    -- run in the same frame -- the orange path is new and pushes like the rest.
+    local ROWS = {
+        { Id = 13795, Name = "Arhat's Gi", Level = 71, Slot = 'Body' },
+        { Id = 99991, Name = 'Dalmatica',  Level = 71, Slot = 'Body' },
+        { Id = 99992, Name = 'Kraken Club', Level = 99, Slot = 'Main', Category = 'Club' },
+    };
+    Sx.buildOwned        = function() return ROWS; end
+    Sx.buildAllEquip     = function() return ROWS; end
+    Sx.isUsable          = function() return true; end
+    Sx.renderItemTooltip = nop;
+
+    local function balanced(tag)
+        check(tag .. ': style VAR stack balanced',     depth.var, 0);
+        check(tag .. ': style COLOR stack balanced',   depth.col, 0);
+        check(tag .. ': Begin/End balanced',           depth.win, 0);
+        check(tag .. ': BeginChild/EndChild balanced', depth.child, 0);
+        check(tag .. ': BeginPopup/EndPopup balanced', depth.popup, 0);
+    end
+
+    -- Owned view (the default) -- and the popup body drawn, since BeginPopup is
+    -- forced open: that is the frame where the item menu runs for real.
+    Sx.ui.showAll[1] = false;
+    Sx.ui.search[1]  = '';
+    Sx.ui._itemMenuRec = ROWS[1];
+    local okR = pcall(eui.renderAllEquipTab, 'WHM', 75);
+    check('S152 All Equipment renders (owned view)', okR, true);
+    balanced('S153 all-equip owned');
+    check('S154 the item context menu was drawn', drew.popup > 0, true);
+    -- Both ticks are on the filter row now: "Usable now" and the new one.
+    check('S155 two filter checkboxes drawn', drew.checkbox >= 2, true);
+
+    -- Unowned view: the orange branch of every row, plus the legend change.
+    drew.checkbox = 0;
+    Sx.ui.showAll[1] = true;
+    check('S156 All Equipment renders (unowned view)', pcall(eui.renderAllEquipTab, 'WHM', 75), true);
+    balanced('S157 all-equip unowned');
+
+    -- ...and while SEARCHING, which force-opens every section (a different path
+    -- through the tree, and the one that draws the most rows).
+    Sx.ui.search[1] = 'a';
+    check('S158 All Equipment renders while searching',
+        pcall(eui.renderAllEquipTab, 'WHM', 75), true);
+    balanced('S159 all-equip searching');
+    Sx.ui.search[1] = '';
+    Sx.ui.showAll[1] = false;
+
+    -- The Wishlist window, empty and populated (the populated frame runs the row
+    -- renderer, the link rows and the selected-row editor).
+    wui.visible = true;
+    check('S160 Wishlist window renders empty', pcall(wui.render), true);
+    balanced('S161 wishlist empty');
+    local wl = require('dlac\\feature\\wishlist');
+    wl._reset();
+    wl.entries = wl.fromRaw({
+        [13795] = { name = 'Arhats Gi', note = 'Sky drop', links = {
+            { job = 'WHM', set = 'Idle' }, { job = 'WHM', set = 'Gone' }, { job = 'RDM' } } },
+        [99991] = { name = 'Dalmatica', links = {} },
+    });
+    wui._setDyn({ WHM = { Idle = { Body = { { Name = 'Arhats Gi' } } } } });
+    check('S162 Wishlist window renders populated', pcall(wui.render), true);
+    balanced('S163 wishlist populated');
+    wl._reset();
+    wui._setDyn({});
+    wui.visible = false;
+
+    Sx.buildOwned, Sx.buildAllEquip, Sx.isUsable, Sx.renderItemTooltip =
+        keep[1], keep[2], keep[3], keep[4];
+    Sx.ui._itemMenuRec = nil;
+    package.loaded['imgui'] = nil;
+    package.loaded['dlac\\gear\\gearfmt'] = keepFmt;
+    package.loaded['dlac\\ui\\wishlistui'] = nil;
+    package.loaded['dlac\\ui\\equippedui'] = nil;
 end)();
 
 -- ---------------------------------------------------------------------------
@@ -2017,7 +2285,7 @@ end)();
         check('MN7 open: popup stack balanced', depth.popup, 0);
         check('MN8 open: colour stack balanced', depth.col, 0);
         check('MN9 open: Begin/End balanced',   depth.win, 0);
-        check('MN10 six menu rows drawn', drew.selectable, 6);
+        check('MN10 seven menu rows drawn', drew.selectable, 7);   -- +wishlist (2026-07-27)
         check('MN11 every row reserved an icon cell (no PNG -> Dummy)', drew.dummy >= 6, true);
         check('MN12 no texture drawn when filetex has none', drew.image, 0);
         -- The bodies run GUARDED, so an exception inside one would otherwise be
@@ -2032,7 +2300,7 @@ end)();
         flags.debug = true;
         drew.selectable = 0;
         check('MN13 renders under debug', pcall(mn.renderPopups), true);
-        check('MN14 debug adds the four developer rows', drew.selectable, 10);
+        check('MN14 debug adds the four developer rows', drew.selectable, 11);
         check('MN15 debug: popup stack balanced', depth.popup, 0);
         check('MN16 debug: colour stack balanced', depth.col, 0);
         flags.debug = false;
@@ -2075,7 +2343,7 @@ end)();
         flags.debug = true;
         drew.image = 0;
         check('MN33 renders debug section with art', pcall(mn.renderPopups), true);
-        check('MN34 debug heading drew one icon per row + one heading', drew.image, 7);
+        check('MN34 debug heading drew one icon per row + one heading', drew.image, 8);
         check('MN35 debug section: popup stack balanced', depth.popup, 0);
         flags.debug = false;
         package.loaded['dlac\\ui\\filetex'] = { handle = function() return nil; end };
