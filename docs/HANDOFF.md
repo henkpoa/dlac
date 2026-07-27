@@ -317,8 +317,12 @@ field validated."* Waits only on the go-ahead.
   `ctx.pinReserved` stays as a redundant belt this slice. Deferred, named: claim-side
   ladders, sentinel rows (lock/ceiling bulldozing), pinReserved + naked-voids retirement.
 
-**On dev, NOT yet field-looked (shipped autonomously 2026-07-27 evening, Henrik away —
-they join the queue on his confirmation, not before):**
+### The evening batch: sentinel rows + the lock rulings + /dl why <slot> — `a02f295`..`e9f0c91` (2026-07-27)
+
+Engine v141 → **v145**, addon `27zc` → **`27zg`**. Suites **4042 + 693**, Windows and WSL
+lua5.4. **FIELD-CONFIRMED 2026-07-27** by Henrik — *"All work"* — after driving two live
+refinements himself the same evening (the empty-lock waiver, v144; a lock-vetoed claim
+is no claim at all, v145). Waits only on the go-ahead. The four commits:
 
 - `a02f295` (v142, `27zd`) — **sentinel defense rows** (stage 4 slice 2): '(locked)' /
   '(free equip)' placeholders stand at their rank rows in the verdict, so a reserving
