@@ -19,6 +19,7 @@ package.loaded['dlac\\gear\\catalogindex'] = dofile('gear/catalogindex.lua');   
 package.loaded['dlac\\gear\\gearoracle'] = dofile('gear/gearoracle.lua');   -- THE worn-item/bag door: gearimport + useitem require it (issue #70; parity-pinned below)
 package.loaded['dlac\\lib\\statefile'] = dofile('lib/statefile.lua');   -- addon-side charDir: the watchers require it (guarded)
 package.loaded['dlac\\feature\\wishlist'] = dofile('feature/wishlist.lua');   -- utils asks it before warning about an unresolvable set entry (ADR 0026)
+package.loaded['dlac\\gear\\arbiter'] = dofile('gear/arbiter.lua');   -- THE pure decision core (ADR 0027 stage 3): dispatch hard-requires it; one shared instance for every dofile('dispatch.lua') below
 
 local TEST_PLAYER = nil;                                -- set per test
 gData = { GetPlayer = function() return TEST_PLAYER; end };
@@ -223,7 +224,7 @@ end)();
     local UI = { 'ammoui','automationsui','craftbar','equippedui','filetex','fishbar','fishui',
                  'floatgear','gearui','helmbar','helmui','hobbybar','idlefloat','itemicons','menuui','priorityui','profilesmenu',
                  'restockui','setupui','triggersui','uihost','uistyle','weightsui' };
-    local GEAR = { 'actionpicker','blueprintsmodel','catalogindex','gearcheck','geareffects','gearexport',
+    local GEAR = { 'actionpicker','arbiter','blueprintsmodel','catalogindex','gearcheck','geareffects','gearexport',
                    'gearfmt','gearimport','gearoptim','gearoracle','gearrecord','groupimport','groupscan',
                    'groupsmodel','jobgate','modeslibrary','ownedcache','profileexport','profilesets','setimport',
                    'setmanager','syncflags','triggermodel','weaponfilter','weightimport' };
@@ -7225,6 +7226,48 @@ end)();
     local _, bt = dispatchM._equipResolved({ Body = 'Bronze Harness' },
         { reserveReplace = { Body = { from = 'Royal Cloak', to = 'Scorpion Harness +1', by = 'Head' } } });
     check('AKF10 a different writer in the slot flows through untouched', bt.Body, 'Bronze Harness');
+end)();
+
+-- ---------------------------------------------------------------------------
+-- ARM. THE ARBITER MODULE (ADR 0027, stage 3 -- gear/arbiter.lua). The pure
+--      decision core, extracted: the slot + rank vocabulary, the reservation
+--      family, resolve/explain, and arbitrate() (the apply order M.dispatch
+--      executes). These pin the extraction's two promises: the module is PURE
+--      (loads with no stubs at all), and every old dispatch seam is the SAME
+--      function (delegation, not a twin).
+-- ---------------------------------------------------------------------------
+(function()
+    -- Purity: a bare dofile in a scratch environment -- no gData, no ashita,
+    -- no AshitaCore -- must load and answer. (The suite's own stubs exist,
+    -- but the module must not NEED them: no engine reads inside the decider.)
+    local arb = dofile('gear/arbiter.lua');
+    check('ARM1 the module loads', type(arb), 'table');
+    check('ARM1b arbitrate exists', type(arb.arbitrate), 'function');
+
+    -- Delegation identity: dispatch's old doors ARE the module's functions --
+    -- rawequal, so a drifting twin is structurally impossible. (dispatchM was
+    -- loaded with the seeded instance, not this fresh dofile -- compare
+    -- against the seed.)
+    local seeded = package.loaded['dlac\\gear\\arbiter'];
+    check('ARM2 the seeded instance backs dispatch', type(seeded), 'table');
+    check('ARM2b reserveFloor is the same function', rawequal(dispatchM.reserveFloor, seeded.reserveFloor), true);
+    check('ARM2c reserveVerdict too', rawequal(dispatchM.reserveVerdict, seeded.reserveVerdict), true);
+    check('ARM2d reserveResolve too', rawequal(dispatchM.reserveResolve, seeded.reserveResolve), true);
+    check('ARM2e arbResolve too', rawequal(dispatchM.arbResolve, seeded.arbResolve), true);
+    check('ARM2f arbWhyLines too', rawequal(dispatchM.arbWhyLines, seeded.arbWhyLines), true);
+    check('ARM2g arbOrder too', rawequal(dispatchM.arbOrder, seeded.arbOrder), true);
+    check('ARM2h the default order is the same table', rawequal(dispatchM._arbDefaultOrder, seeded.ARB_ORDER_DEFAULT), true);
+    check('ARM2i LOCK_HELD keeps its identity', rawequal(dispatchM.LOCK_HELD, seeded.LOCK_HELD), true);
+    check('ARM2j the LAC slot lists ride along',
+        rawequal(dispatchM._lacSlotsCanon, seeded.LAC_SLOTS_CANON), true);
+
+    -- arbitrate: the apply order is the reverse rank walk over ACTIVE claims
+    -- -- exactly the inline loop it replaced.
+    local plan = arb.arbitrate({ order = { 'A', 'B', 'C', 'D' },
+                                 claims = { A = {}, C = {} } });
+    check('ARM3 the apply order is reverse rank, active rows only',
+        table.concat(plan.applies, '>'), 'C>A');
+    check('ARM3b no session -> an empty plan', #arb.arbitrate(nil).applies, 0);
 end)();
 
 -- ---------------------------------------------------------------------------

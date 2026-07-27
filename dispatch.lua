@@ -47,7 +47,7 @@ M._loadStamp = M._loadStamp or string.format('%d:%.3f', os.time(), os.clock());
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code. From v32 the engine self-swaps when the seeded file's version moves, so
 -- the banner should only persist when a swap FAILED (or pre-v32 code is live).
-M.VERSION = 139;  -- 139: THE FALL (ADR 0027, stage 2 -- the deferred half of the v135 ruling, "go for the next available piece"). An INELIGIBLE piece no longer strands its slot: M.reserveResolve (reserveFloor -> reserveVerdict -> the ladder walk, a fixed point capped at three verdict re-runs) asks the source set's ladder (M.candidatesFor, stage 1) for the next rung, each replacement re-judged by the same verdict -- a rung that reserves a slot a higher claim owns is refused too, and a rung that reserves DOMINATED slots suppresses them exactly like any dominant reserver. The refused PIECE falls; a reserved SLOT still never does (the asymmetry law, ADR 0027). The floor entries carry their source set name through reserveFloor (src) so the fall knows whose ladder to ask; inline `equip` rules have no ladder and keep the unwritten-slot behavior; a ladder that runs dry reads INELIGIBLE in /dl why exactly as v135 did; the winner lands via ctx.reserveReplace in the refused piece's own writer pass ('Body=Royal Cloak fell -> Scorpion Harness +1 (reserves Head -- owned above)'). Field case this exists for (Henrik, Mindie BRD, 2026-07-27): Idle Body = Royal Cloak > Scorpion Harness +1 under Movement Head = Genbu's Kabuto -- the Kabuto wins Head, the cloak is ineligible, and Body now falls to the harness instead of standing bare. Tests AKF1-AKF10. 138: LADDERS ON DEMAND (ADR 0027, stage 1 -- docs/design/two-way-arbiter.md section 7; zero behavior change by construction). utils.BuildDynamicSets no longer truncates: ONE evaluator (utils.slotLadder) produces each slot's ordered candidate list -- the field-proven pick comparator (active-mode tier, live-range tier, item level, earlier-on-ties) kept as a SORT -- and the flatten derives its pick from the ladder's head (utils.flattenHead owns the 'marker|fallback' and AutoAcc composition, the ONE site). M.candidatesFor(setName, slot) is the on-demand door: reads the authored Dynamic store (the ladders never left memory), answers with the SAME context the last flatten used (utils._lastFlattenCtx), memoized per utils._laddersRev (bumped each rebuild). The old two-pass walk's virtual re-adoption quirk is PRESERVED and pinned (LD8): with no eligible mode item, the last BARE virtual beats a later mode-gated one. No consumer yet -- stage 2 (an ineligible reserver falls to its next rung) is the first. Tests LD1-LD10. 137: the AutoAmmo /dl prio line is JOB-AWARE (Henrik's stage-0 field report, 2026-07-27: "auto ammo is ON ... when it really isn't on" -- the line read ammoStateOn, which answers for the FILE: ANY job's enabled section made it ON, while the job being played had no setup and the claim never built). M._ammoJobLine answers for the CURRENT job -- fmt-2 section enabled + non-empty, or fmt-1 with resolveAmmoPlan's jobs-gate mirrored -- and an off line NAMES the jobs that do have it set up ("off (this job -- set up on DRK)"), so both directions of the confusion answer themselves; nil job keeps the file-level fallback. ammoStateOn itself is UNTOUCHED: it feeds the dispatch bail, where "some job claims" is the right question. Tests CR10*. 136: THE CLAIMANT REGISTRY (ADR 0027, stage 0 -- docs/design/two-way-arbiter.md section 7; zero behavior change by construction). One CLAIMANTS table, one row per rank row except the Triggers floor, and M.dispatch's six hand-copied per-claimant shapes now ITERATE it: the ensure/active pass, both bail guards, the claims map, the retrace-signature legs (CLAIMANT_SIG_ORDER pins the old byte order, so a live session does not retrace once on upgrade), the rank-walk applies and /dl prio's status lines. The 2026-07-25 architecture review measured adding a claimant at 15 hunks across 6 non-adjacent regions, three of which failed SILENTLY when forgotten (a missed bail term was a claimant that never dispatched; a missed signature leg was a stale /dl why); a new claimant is now ONE row + one ARB_ORDER_DEFAULT entry. MaxMP stays the one inline-built claim (order-coupled to mpRespectLocks/mpCeded; its equip stays woven until ADR 0027 stage 6) and Disabled/MaxMP stay out of both bails by design (free equip or a bare mode is not a reason to dispatch). Tests CR* pin the registry's shape as data; NK26 drives the rewired body end to end. 135: MULTI-SLOT DOMINANCE (Henrik's ruling 2026-07-27, two field cases the same afternoon). A piece that reserves other slots is a CANDIDATE only while the claim wanting it is dominant over every slot it takes -- dominant, it wins its slot AND claims the reserved ones (left EMPTY; the server clears them itself); beaten, it is INELIGIBLE and its own slot goes unwritten. The gap was structural: the overlay applies each matching rule's set through its OWN equipResolved, so reservedDrops never saw more than one rule at a time and priority never got a vote. Hunklor SAM -- Movement(25) Body=Kupo Suit (reserves Legs) over Idle(20) Legs=Amir Dirs: Idle wrote the legs, Movement wrote the suit, the server stripped the legs, repeat every ~0.4s with moving=true throughout. Mindie SCH -- Idle(20) Body=Royal Cloak (reserves Head) under Movement(25) Head: reservedDrops' `worn` arm made it WORSE, the cloak already on his back reserving Head out from under the rule that OUTRANKED it ("This is the wrong logic"). Both are the one rule pulling opposite ways. M.reserveFloor merges every matching rule's set in APPLY order (last-writer-wins, each slot tagged with the priority that won it) and M.reserveVerdict judges it in RSLOT_ORDER -- dominance resolved BEFORE anything is suppressed, so a piece never reserves on its way out, and a claimed slot cannot itself claim (Body takes Legs, so the Legs piece cannot go on to take Feet). The engine builds the floor BEFORE the first write and retires it right after the trigger loop: Claim layers keep the single-set + worn judgement they were field-tested with, because this floor describes the TRIGGER contest ("on a trigger level") and a rank contest is not a priority number. NOT YET: "go for the next available piece" -- utils.BuildDynamicSets collapses each slot's list to ONE name before the engine sees it (the AutoAmmo rung-2 trap), so an ineligible piece leaves its slot unwritten rather than falling to the next rung; carrying per-slot alternates is the follow-up. Tests AKD1-26. 134: AutoAmmo's ladder learns the LEVEL (field report 2026-07-27, Henrik's DRK: a list of Acid Bolt 15 / Blind Bolt 10 / Crossbow Bolt 1, sorted best-first by the panel's own button, loaded nothing at level 8 and nothing at 10 -- "when I make the slot empty, it still tries to auto equip acid bolts"). resolveAmmoPlan asked three questions per entry (flag, pair since v128, stock) and never asked the fourth, so the top entry won whatever the player's level was, and the overlay COLLAPSES A LADDER TO ONE NAME before the equip layer sees it -- there is no rung 2 to fall to, unlike a set slot, which is why the failure was total and silent. Now a fourth gate (M.resolveAmmoPlan's `wearable`, mirroring gear\equipcore checkUsable: level < Level, Jobs & 2^job) reads f.gate -> itemGate(id), the live client resource for an item already counted in the bags, with the entry's stored level as fallback; UNKNOWN NEVER DISQUALIFIES (the pairsWith three-valued law). The level is playerLevel(ctx) -- so `/dl set level main N` wins, exactly as it does in the set flatten and the virtual slot entries; reading MainJobSync straight would have left AutoAmmo the last picker in dlac that ignores the override. The Default arm now RE-JUDGES what is worn (empty slot, or the worn ammo is over-level, or it is one of OURS and no longer the best rung) instead of only reloading an empty slot -- the other half of the report, "I had acid bolts on me already but didn't change" -- while anything worn that is NOT on the list stays untouchable (a Midshot set's trinket must survive every idle tick; owning the slot outright is ADR 0010's flap through a third door). Default also holds while ctx.syncHold is up, since the level is now an input; an OVERRIDE never arms that hold and must not. resolveAmmoPlan returns four values (plan, why, code, chat): stock-outs print edge-triggered on a change of cause, level-driven rung changes print nothing at all (Henrik). docs/design/auto-ammo.md Section 10; tests AM51-AM68. 133: the purge, Phase 3-4 -- native-aware surfaces + the allowlist. /dl check reads the NATIVE home (stamp, sets file) and the seeded-copies/shim lines died (#131 CLOSED); debug.lua's handoff reads follow (handoffDir = profiles.dataDir) and requestEngine is a no-op; charDir has NO legacy fallback; '/dl profile migrate go' no longer reloads anything; every 'Reload LAC' user string became /dl reload or died; gearui equip-now uses the game's native /equip; legacy job files are READ-ONLY (the delete-static writer refuses); the module-local legacy path fallbacks (gearimport x2, gearexport, augments, debug) are gone. Tests PRG1-2 pin the allowlist: a uashitacast string literal may exist only in the keep-list readers. 132: the purge, Phase 2 -- LEGACY MODE DIES WHOLE. inLac(), the gProfile/gFunc world, the LAC-hosted engine path, readJobSets + the legacy sets fallback, warnShadowedStatics, the HandleEquipEvent wrap, the LAC tick half, the request-file bridge and both lockstyle engine halves are DELETED; nativeMode() is constant true, the engine flag is retired in place, /dl engine is status-only. One state, one engine, one sets store. 131: the LuaShitacast purge, Phase 1 (docs/design/lac-purge-plan.md). The engine SELF-SWAP died whole -- M.swapWanted, trySelfSwap, the __dlacEngineRoot handshake, tests SW* -- because the LAC seeder that fed it died in dlac.lua the same day: with seeds frozen forever, the watch could only ever DOWNGRADE a running engine to stale bytes. profiles.migrate step 4 (rewrite the job file as a clean shim) died too: originals now stay in place, inert and importable (the keep-list promise), and the shim WRITER (shimFileText/SHIM_BODY/BOOT_LINE) went with it -- only the recognizers (SHIM_MARKER, isCleanShim) remain for files already on disk. Setup writes NO job files anymore (MIGRATE_BOOT/STARTER_PROFILE deleted; storage + base sets + starter triggers ARE the setup). The LAC-alive polite ask (lacAlive/shouldAskUnloadLac) is gone; the coexistence tripwire remains the backstop. Nothing in dlac writes under config\addons\luashitacast\ anymore -- that tree is read-only import/migration territory. 130: the native flatten no longer waits for the GUI (Xvs field case 2026-07-27). Every utils lookup assumed "loaded first in the LAC state" -- the job shim's first require -- but the NATIVE state has no shim and NOTHING loaded utils at boot: package.loaded read nil, installSets skipped the flatten, and every install refused "flatten produced no sets (world not settled)" every 0.4s until a GUI picker's own lazy pcall(require, 'dlac\\utils') happened to run (gearui's isDualWieldAvailable / subCandidateOk -- the accidental medic; that's why it read as per-JOB in the field: the healed session's job "worked", a reload broke it). utilsModule() now requires lazily at call time -- cycle-safe, see its comment. Tests RQU0-RQU2. 129: /dl disable -- free equip, the native-era answer to /lac disable (Henrik 2026-07-26: "make it claim the slot / slots, then don't do anything at all with it, so people can free equip all they want without DLAC intervention"). Not a lock (a lock is a veto INSIDE the rank walk -- four rows punch through it) and not a claim to dress (every other row wins a slot in order to put something there; this one wins it to write nothing). It is the CEILING: pinned first in ARB_ORDER_DEFAULT, undraggable like the Triggers floor, and enforced at engineEquipSet -- the one write seam -- rather than in equipResolved's per-slot chain, because the whole-table post-passes that run after that chain write slots the set never named (mp-stage's battery, trinket-vs-ranged's worn-Ammo displace) and would put a slot straight back. Registered as a claim ONLY for attribution, so /dl why and the Priority panel can name it and woven MaxMP cedes it for free. Shares M.worldWatch with naked / locked set / slot locks (v124's one lifetime rule): drops on a main job change and on leaving the world, never written to disk. The Equipped tab's "Free equip" switch now drives THIS instead of /lac disable, which under the native engine talked to a LuaAshitacast that no longer does the equipping and therefore did nothing at all. ADR 0024; tests DS1-DS30.
+M.VERSION = 140;  -- 140: THE ARBITER MODULE (ADR 0027, stage 3, first slice -- zero behavior change by construction). The pure decision core is EXTRACTED to gear\arbiter.lua, equipcore's sibling under the same layering law (no AshitaCore, no gData, no io -- ARM1 loads it with no stubs at all): the slot + rank vocabulary (LAC_SLOTS/LAC_SLOTS_CANON/RSLOT_ORDER/hasBit/rslotText, ARB_ORDER_DEFAULT + the pinned rows + arbOrder's restore-at-default law, the LOCK_HELD sentinel + arbLockClaim), the reservation family (reservedDrops; v135's reserveFloor/reserveVerdict; stage 2's reserveResolve), and the resolve/explain family (arbResolve/arbCededAbove/arbExplain/arbWhyLines) -- all moved VERBATIM, with every old M.* seam re-exported by direct assignment (rawequal-pinned, ARM2*: a delegation, never a twin; LOCK_HELD keeps its identity). NEW: ARB.arbitrate(session) -- one arbitration per dispatch, first slice: it owns the APPLY ORDER (the reverse rank walk over active claims) and M.dispatch executes the plan instead of walking inline. Later slices grow the plan into per-slot contests + the trace /dl why renders; stage 4 hands it the ladders and cross-rank dominance. dispatch hard-requires the module (failing loud beats deciding wrong); the harnesses seed package.loaded (run_tests) or resolve via the searcher hook (smoke_ui). Tests ARM1-ARM3b; the whole AR*/LV*/AKD*/AKF* families now drive the module THROUGH the old doors. 139: THE FALL (ADR 0027, stage 2 -- the deferred half of the v135 ruling, "go for the next available piece"). An INELIGIBLE piece no longer strands its slot: M.reserveResolve (reserveFloor -> reserveVerdict -> the ladder walk, a fixed point capped at three verdict re-runs) asks the source set's ladder (M.candidatesFor, stage 1) for the next rung, each replacement re-judged by the same verdict -- a rung that reserves a slot a higher claim owns is refused too, and a rung that reserves DOMINATED slots suppresses them exactly like any dominant reserver. The refused PIECE falls; a reserved SLOT still never does (the asymmetry law, ADR 0027). The floor entries carry their source set name through reserveFloor (src) so the fall knows whose ladder to ask; inline `equip` rules have no ladder and keep the unwritten-slot behavior; a ladder that runs dry reads INELIGIBLE in /dl why exactly as v135 did; the winner lands via ctx.reserveReplace in the refused piece's own writer pass ('Body=Royal Cloak fell -> Scorpion Harness +1 (reserves Head -- owned above)'). Field case this exists for (Henrik, Mindie BRD, 2026-07-27): Idle Body = Royal Cloak > Scorpion Harness +1 under Movement Head = Genbu's Kabuto -- the Kabuto wins Head, the cloak is ineligible, and Body now falls to the harness instead of standing bare. Tests AKF1-AKF10. 138: LADDERS ON DEMAND (ADR 0027, stage 1 -- docs/design/two-way-arbiter.md section 7; zero behavior change by construction). utils.BuildDynamicSets no longer truncates: ONE evaluator (utils.slotLadder) produces each slot's ordered candidate list -- the field-proven pick comparator (active-mode tier, live-range tier, item level, earlier-on-ties) kept as a SORT -- and the flatten derives its pick from the ladder's head (utils.flattenHead owns the 'marker|fallback' and AutoAcc composition, the ONE site). M.candidatesFor(setName, slot) is the on-demand door: reads the authored Dynamic store (the ladders never left memory), answers with the SAME context the last flatten used (utils._lastFlattenCtx), memoized per utils._laddersRev (bumped each rebuild). The old two-pass walk's virtual re-adoption quirk is PRESERVED and pinned (LD8): with no eligible mode item, the last BARE virtual beats a later mode-gated one. No consumer yet -- stage 2 (an ineligible reserver falls to its next rung) is the first. Tests LD1-LD10. 137: the AutoAmmo /dl prio line is JOB-AWARE (Henrik's stage-0 field report, 2026-07-27: "auto ammo is ON ... when it really isn't on" -- the line read ammoStateOn, which answers for the FILE: ANY job's enabled section made it ON, while the job being played had no setup and the claim never built). M._ammoJobLine answers for the CURRENT job -- fmt-2 section enabled + non-empty, or fmt-1 with resolveAmmoPlan's jobs-gate mirrored -- and an off line NAMES the jobs that do have it set up ("off (this job -- set up on DRK)"), so both directions of the confusion answer themselves; nil job keeps the file-level fallback. ammoStateOn itself is UNTOUCHED: it feeds the dispatch bail, where "some job claims" is the right question. Tests CR10*. 136: THE CLAIMANT REGISTRY (ADR 0027, stage 0 -- docs/design/two-way-arbiter.md section 7; zero behavior change by construction). One CLAIMANTS table, one row per rank row except the Triggers floor, and M.dispatch's six hand-copied per-claimant shapes now ITERATE it: the ensure/active pass, both bail guards, the claims map, the retrace-signature legs (CLAIMANT_SIG_ORDER pins the old byte order, so a live session does not retrace once on upgrade), the rank-walk applies and /dl prio's status lines. The 2026-07-25 architecture review measured adding a claimant at 15 hunks across 6 non-adjacent regions, three of which failed SILENTLY when forgotten (a missed bail term was a claimant that never dispatched; a missed signature leg was a stale /dl why); a new claimant is now ONE row + one ARB_ORDER_DEFAULT entry. MaxMP stays the one inline-built claim (order-coupled to mpRespectLocks/mpCeded; its equip stays woven until ADR 0027 stage 6) and Disabled/MaxMP stay out of both bails by design (free equip or a bare mode is not a reason to dispatch). Tests CR* pin the registry's shape as data; NK26 drives the rewired body end to end. 135: MULTI-SLOT DOMINANCE (Henrik's ruling 2026-07-27, two field cases the same afternoon). A piece that reserves other slots is a CANDIDATE only while the claim wanting it is dominant over every slot it takes -- dominant, it wins its slot AND claims the reserved ones (left EMPTY; the server clears them itself); beaten, it is INELIGIBLE and its own slot goes unwritten. The gap was structural: the overlay applies each matching rule's set through its OWN equipResolved, so reservedDrops never saw more than one rule at a time and priority never got a vote. Hunklor SAM -- Movement(25) Body=Kupo Suit (reserves Legs) over Idle(20) Legs=Amir Dirs: Idle wrote the legs, Movement wrote the suit, the server stripped the legs, repeat every ~0.4s with moving=true throughout. Mindie SCH -- Idle(20) Body=Royal Cloak (reserves Head) under Movement(25) Head: reservedDrops' `worn` arm made it WORSE, the cloak already on his back reserving Head out from under the rule that OUTRANKED it ("This is the wrong logic"). Both are the one rule pulling opposite ways. M.reserveFloor merges every matching rule's set in APPLY order (last-writer-wins, each slot tagged with the priority that won it) and M.reserveVerdict judges it in RSLOT_ORDER -- dominance resolved BEFORE anything is suppressed, so a piece never reserves on its way out, and a claimed slot cannot itself claim (Body takes Legs, so the Legs piece cannot go on to take Feet). The engine builds the floor BEFORE the first write and retires it right after the trigger loop: Claim layers keep the single-set + worn judgement they were field-tested with, because this floor describes the TRIGGER contest ("on a trigger level") and a rank contest is not a priority number. NOT YET: "go for the next available piece" -- utils.BuildDynamicSets collapses each slot's list to ONE name before the engine sees it (the AutoAmmo rung-2 trap), so an ineligible piece leaves its slot unwritten rather than falling to the next rung; carrying per-slot alternates is the follow-up. Tests AKD1-26. 134: AutoAmmo's ladder learns the LEVEL (field report 2026-07-27, Henrik's DRK: a list of Acid Bolt 15 / Blind Bolt 10 / Crossbow Bolt 1, sorted best-first by the panel's own button, loaded nothing at level 8 and nothing at 10 -- "when I make the slot empty, it still tries to auto equip acid bolts"). resolveAmmoPlan asked three questions per entry (flag, pair since v128, stock) and never asked the fourth, so the top entry won whatever the player's level was, and the overlay COLLAPSES A LADDER TO ONE NAME before the equip layer sees it -- there is no rung 2 to fall to, unlike a set slot, which is why the failure was total and silent. Now a fourth gate (M.resolveAmmoPlan's `wearable`, mirroring gear\equipcore checkUsable: level < Level, Jobs & 2^job) reads f.gate -> itemGate(id), the live client resource for an item already counted in the bags, with the entry's stored level as fallback; UNKNOWN NEVER DISQUALIFIES (the pairsWith three-valued law). The level is playerLevel(ctx) -- so `/dl set level main N` wins, exactly as it does in the set flatten and the virtual slot entries; reading MainJobSync straight would have left AutoAmmo the last picker in dlac that ignores the override. The Default arm now RE-JUDGES what is worn (empty slot, or the worn ammo is over-level, or it is one of OURS and no longer the best rung) instead of only reloading an empty slot -- the other half of the report, "I had acid bolts on me already but didn't change" -- while anything worn that is NOT on the list stays untouchable (a Midshot set's trinket must survive every idle tick; owning the slot outright is ADR 0010's flap through a third door). Default also holds while ctx.syncHold is up, since the level is now an input; an OVERRIDE never arms that hold and must not. resolveAmmoPlan returns four values (plan, why, code, chat): stock-outs print edge-triggered on a change of cause, level-driven rung changes print nothing at all (Henrik). docs/design/auto-ammo.md Section 10; tests AM51-AM68. 133: the purge, Phase 3-4 -- native-aware surfaces + the allowlist. /dl check reads the NATIVE home (stamp, sets file) and the seeded-copies/shim lines died (#131 CLOSED); debug.lua's handoff reads follow (handoffDir = profiles.dataDir) and requestEngine is a no-op; charDir has NO legacy fallback; '/dl profile migrate go' no longer reloads anything; every 'Reload LAC' user string became /dl reload or died; gearui equip-now uses the game's native /equip; legacy job files are READ-ONLY (the delete-static writer refuses); the module-local legacy path fallbacks (gearimport x2, gearexport, augments, debug) are gone. Tests PRG1-2 pin the allowlist: a uashitacast string literal may exist only in the keep-list readers. 132: the purge, Phase 2 -- LEGACY MODE DIES WHOLE. inLac(), the gProfile/gFunc world, the LAC-hosted engine path, readJobSets + the legacy sets fallback, warnShadowedStatics, the HandleEquipEvent wrap, the LAC tick half, the request-file bridge and both lockstyle engine halves are DELETED; nativeMode() is constant true, the engine flag is retired in place, /dl engine is status-only. One state, one engine, one sets store. 131: the LuaShitacast purge, Phase 1 (docs/design/lac-purge-plan.md). The engine SELF-SWAP died whole -- M.swapWanted, trySelfSwap, the __dlacEngineRoot handshake, tests SW* -- because the LAC seeder that fed it died in dlac.lua the same day: with seeds frozen forever, the watch could only ever DOWNGRADE a running engine to stale bytes. profiles.migrate step 4 (rewrite the job file as a clean shim) died too: originals now stay in place, inert and importable (the keep-list promise), and the shim WRITER (shimFileText/SHIM_BODY/BOOT_LINE) went with it -- only the recognizers (SHIM_MARKER, isCleanShim) remain for files already on disk. Setup writes NO job files anymore (MIGRATE_BOOT/STARTER_PROFILE deleted; storage + base sets + starter triggers ARE the setup). The LAC-alive polite ask (lacAlive/shouldAskUnloadLac) is gone; the coexistence tripwire remains the backstop. Nothing in dlac writes under config\addons\luashitacast\ anymore -- that tree is read-only import/migration territory. 130: the native flatten no longer waits for the GUI (Xvs field case 2026-07-27). Every utils lookup assumed "loaded first in the LAC state" -- the job shim's first require -- but the NATIVE state has no shim and NOTHING loaded utils at boot: package.loaded read nil, installSets skipped the flatten, and every install refused "flatten produced no sets (world not settled)" every 0.4s until a GUI picker's own lazy pcall(require, 'dlac\\utils') happened to run (gearui's isDualWieldAvailable / subCandidateOk -- the accidental medic; that's why it read as per-JOB in the field: the healed session's job "worked", a reload broke it). utilsModule() now requires lazily at call time -- cycle-safe, see its comment. Tests RQU0-RQU2. 129: /dl disable -- free equip, the native-era answer to /lac disable (Henrik 2026-07-26: "make it claim the slot / slots, then don't do anything at all with it, so people can free equip all they want without DLAC intervention"). Not a lock (a lock is a veto INSIDE the rank walk -- four rows punch through it) and not a claim to dress (every other row wins a slot in order to put something there; this one wins it to write nothing). It is the CEILING: pinned first in ARB_ORDER_DEFAULT, undraggable like the Triggers floor, and enforced at engineEquipSet -- the one write seam -- rather than in equipResolved's per-slot chain, because the whole-table post-passes that run after that chain write slots the set never named (mp-stage's battery, trinket-vs-ranged's worn-Ammo displace) and would put a slot straight back. Registered as a claim ONLY for attribution, so /dl why and the Priority panel can name it and woven MaxMP cedes it for free. Shares M.worldWatch with naked / locked set / slot locks (v124's one lifetime rule): drops on a main job change and on leaving the world, never written to disk. The Equipped tab's "Free equip" switch now drives THIS instead of /lac disable, which under the native engine talked to a LuaAshitacast that no longer does the equipping and therefore did nothing at all. ADR 0024; tests DS1-DS30.
                   -- 128: 128: AutoAmmo asks what is in RANGE before it picks (field, Henrik 2026-07-26: "AutoAmmo does NOT dictate if it's bolt, arrows or what not that gets equipped. That is 100% decided on what gets put in ranged"). resolveAmmoPlan was type-BLIND -- it took the first `ranged`-flagged entry with stock, so a bolt above your arrows won with a bow equipped -- and the panel's Bullets/Bolts/Arrows selector never constrained it (categoryOf is a VIEW, stored nowhere). The cost was not a wasted swap: charutils.cpp EquipItem STRIPS THE OTHER SLOT on an incompatible Range/Ammo pair, so the bolt took the bow off, the trigger re-equipped it, and the two flapped forever -- ADR 0010's failure through the skill/subskill door instead of the rslot one. New pure M.pairsWith over a "<skill>:<subskill>" key (26:1 gun/bullet, 26:0 crossbow/bolt, 26:2 culverin/shell, 27:0 boomerang/pebble, 27:3 shuriken, 0:10 Animator/oil), three-valued so an unknown pair degrades to today's behaviour instead of switching AutoAmmo off; ARCHERY is exempt from the subskill half exactly as the server writes it (Shortbow 25:0 and Longbow 25:4 share arrows). Range is never written -- AutoAmmo only ever READS it. Two rulings, both Henrik's: no ranged weapon worn = do nothing at all (safe -- with Range empty the server refuses the shot, so nothing can be consumed), and a weapon worn with nothing in the list able to pair = hold, never force a mismatch in. THROWING with an empty Range (a NIN's shuriken, CanUseRangedAttack's `|| PAmmo->isThrowing()`) is the ONE known exception and stays parked behind the §8 NIN field tests. The key rides the manifest like RSlot (gearimport stamps Pair from the catalog's new field); worn Range falls back to the client resource's Skill when the manifest predates it, so the update alone separates bow/gun/throwing for everyone and a manifest refresh upgrades it to gun-vs-crossbow. Tests PW1-PW14, AM40-AM58.
                   -- 127: trigger CASES, the schema backbone (issue #126, slice 2/5; ADR 0023) -- rules gain an optional `cases` list (a second `&`/`|` tier: op + the same two legs a body has), evaluated by matches()/matchedCase() over a factored legMatches so both tiers share one code path; normalize validates + drops empty cases + strips the always-true `hasCases` version guard; auto-priority + ruleLabel span every leg of every case (case-LESS rules match/label/serialize byte-for-byte as before -- pinned). serializeTriggers is oldest-form-first (a `| case` of only `&` rows -> a whenAny multi-entry; only `&` cases and `| cases` with internal OR use the new list) and stamps the guard so OLDER engines drop the rule with the standard warn instead of misreading it. Seeded-file bump: normalize + matches run engine-side (hard rule 4). Tests CX1-CX35, MC19-23. (PR #132 shipped as v126/2026.07.26c off a pre-97f1edc dev; renumbered at merge.)
                   -- 126: the /dl why trace can no longer outlive the sets store it described (field, Mindie 2026-07-26 01:31): the retrace sig now carries the store REVISION (M.modesRev -- bumped by every install and re-flatten, 5668/5714), so lines built against the empty boot-window store ("[NOT FOUND in profile Sets]", true for ~2s of designed install refusals) die the moment the install lands, instead of printing with a fresh timestamp for the rest of the session while equips worked fine. The v118 law applied to the trace: THE INSTALL INVALIDATES THE BELIEF. Display only, no equip change. Tests TRC0-TRC3 (the trace-vs-store contract, driven through the real command handler + dispatch like CMD).
@@ -262,8 +262,15 @@ M.lockedSet = M.lockedSet;
 local saveModeState;   -- defined in the mode section below; used by the trigger loader
 
 -- The 16 lac slot names (also the /dl lock vocabulary; 'all' fans out to every one).
-local LAC_SLOTS = { 'main', 'sub', 'range', 'ammo', 'head', 'neck', 'ear1', 'ear2',
-                    'body', 'hands', 'ring1', 'ring2', 'back', 'waist', 'legs', 'feet' };
+-- THE ARBITER MODULE (ADR 0027, stage 3): the pure decision core, extracted
+-- to gearrbiter.lua -- the slot + rank vocabulary, the reservation family,
+-- the resolve/explain family and arbitrate(). Hard require on purpose:
+-- without it there is no decider, and failing loud beats deciding wrong (the
+-- test harnesses seed package.loaded before loading this file). Every old
+-- M.* seam is re-exported below, so callers and tests keep their doors.
+local ARB = require('dlac\\gear\\arbiter');
+
+local LAC_SLOTS = ARB.LAC_SLOTS;
 local LAC_SLOT_OK = {};
 for _, s in ipairs(LAC_SLOTS) do LAC_SLOT_OK[s] = true; end
 
@@ -274,8 +281,7 @@ for _, s in ipairs(LAC_SLOTS) do LAC_SLOT_OK[s] = true; end
 -- therefore work in LAC and silently strip NOTHING natively -- the worst kind of
 -- divergence, because the mode that ships today is the one that breaks. Test NK3
 -- pins the case; NK1 pins the two lists to the same 16 slots.
-local LAC_SLOTS_CANON = { 'Main', 'Sub', 'Range', 'Ammo', 'Head', 'Neck', 'Ear1', 'Ear2',
-                          'Body', 'Hands', 'Ring1', 'Ring2', 'Back', 'Waist', 'Legs', 'Feet' };
+local LAC_SLOTS_CANON = ARB.LAC_SLOTS_CANON;
 M._lacSlotsCanon = LAC_SLOTS_CANON;
 
 -- PetAction is DLAC-SYNTHESIZED. No LuaAshitacast version calls a pet handler:
@@ -2534,278 +2540,19 @@ function M._accReset()              -- headless tests: fresh-session state
 end
 
 -- ---------------------------------------------------------------------------
--- Reserved slots (RSlot). Some pieces take another slot away while worn: the
--- Ryl.Ftm. Tunic is a Body that reserves Head; robes reserve Hands; a boomerang
--- (Range) reserves Ammo; suits reserve most of the body. It is the server's
--- item_equipment.rslot, carried per item in gear.lua (the engine's only item
--- source -- it has no catalog) and stamped there by the scan / `/dl fix`.
---
--- Equipping into a reserved slot is not a partial failure the server tolerates:
--- it strips the piece straight back, dlac sees the slot is wrong and re-equips,
--- and the two flap forever. Dropping the reserved slot is the only stable state.
---
--- Bit order matches the client's slot order. Tested arithmetically (no `bit`
--- library): dispatch also runs headless on 5.4, where `bit` does not exist and
--- `&` would not parse under LuaJIT.
-local RSLOT_ORDER = {
-    { 0x0001, 'Main'  }, { 0x0002, 'Sub'   }, { 0x0004, 'Range' }, { 0x0008, 'Ammo'  },
-    { 0x0010, 'Head'  }, { 0x0020, 'Body'  }, { 0x0040, 'Hands' }, { 0x0080, 'Legs'  },
-    { 0x0100, 'Feet'  }, { 0x0200, 'Neck'  }, { 0x0400, 'Waist' }, { 0x0800, 'Ear1'  },
-    { 0x1000, 'Ear2'  }, { 0x2000, 'Ring1' }, { 0x4000, 'Ring2' }, { 0x8000, 'Back'  },
-};
-local function hasBit(mask, b) return math.floor(mask / b) % 2 == 1; end
-
--- A mask as slot names, in the order above: 16 -> 'Head', 448 -> 'Hands, Legs,
--- Feet', 0/nil -> nil. The engine owns the vocabulary because the engine owns the
--- behaviour -- the GUI prints reservations but must never keep its own copy of
--- which bit is which slot (the twin that drifts is the one nobody re-reads).
-function M.rslotText(mask)
-    mask = tonumber(mask) or 0;
-    if mask <= 0 then return nil; end
-    local out = {};
-    for _, e in ipairs(RSLOT_ORDER) do
-        if hasBit(mask, e[1]) then out[#out + 1] = e[2]; end
-    end
-    if #out == 0 then return nil; end
-    return table.concat(out, ', ');
-end
-
--- Which slots of a RESOLVED set are reserved out from under it.
---   set    -- the resolved slot->name plan; ONLY these slots can be dropped
---   lookup -- itemName -> RSlot mask or nil (injected; tests drive it directly)
---   worn   -- SlotKey -> the name you are wearing there, or nil. Optional, and the
---             reason this is not a pure set-vs-itself check: the Tunic already on
---             your back reserves Head from a set that only writes Head. A slot the
---             set DOES write is judged by the plan, not by what it replaces.
--- Returns { [SlotKey] = reserverName } or nil when nothing is reserved.
---
--- The reserver wins and the reserved slot is dropped -- matching the server, which
--- clears that slot anyway the moment the reserver goes on. Slots are walked in a
--- fixed order, so mutual reservations (a boomerang reserves Ammo; a pebble in Ammo
--- reserves Range) always resolve the same way instead of by pairs() luck, and a
--- slot already dropped never reserves anything itself (Body takes Legs, so the Legs
--- piece must not go on to take Feet).
-function M.reservedDrops(set, lookup, worn)
-    local keyOf = {};   -- lowercase slot -> the set's actual key, whatever its case
-    for slot, v in pairs(set) do
-        if type(v) == 'string' then keyOf[string.lower(tostring(slot))] = slot; end
-    end
-    local name = {};    -- what each slot will actually hold once this set lands
-    for _, e in ipairs(RSLOT_ORDER) do
-        local ls = string.lower(e[2]);
-        if keyOf[ls] ~= nil then
-            name[ls] = set[keyOf[ls]];
-        elseif worn ~= nil then
-            local ok, w = pcall(worn, e[2]);
-            if ok and type(w) == 'string' then name[ls] = w; end
-        end
-    end
-    local gone, dropped = {}, nil;
-    for _, e in ipairs(RSLOT_ORDER) do
-        local ls = string.lower(e[2]);
-        if name[ls] ~= nil and not gone[ls] then
-            local mask = tonumber(lookup(name[ls])) or 0;
-            if mask > 0 then
-                for _, r in ipairs(RSLOT_ORDER) do
-                    local rls = string.lower(r[2]);
-                    if rls ~= ls and keyOf[rls] ~= nil and not gone[rls] and hasBit(mask, r[1]) then
-                        gone[rls] = true;
-                        dropped = dropped or {};
-                        dropped[keyOf[rls]] = name[ls];
-                    end
-                end
-            end
-        end
-    end
-    return dropped;
-end
-
+-- Reserved slots (RSlot) -- MOVED to gearrbiter.lua (ADR 0027, stage 3):
+-- the bit-order vocabulary, rslotText, reservedDrops, the v135 dominance
+-- verdict (reserveFloor/reserveVerdict) and the stage-2 fall (reserveResolve)
+-- live there now, verbatim. The aliases + re-exports below keep every
+-- internal caller, GUI reader and test seam on its old door.
 -- ---------------------------------------------------------------------------
--- Multi-slot DOMINANCE (Henrik's ruling, 2026-07-27) -- v135.
--- ---------------------------------------------------------------------------
--- "If an item that reserves more than one slot wins in priority, then it shall
--- claim both slots on a trigger level, where that slot will not be used... he
--- needs to check, am I dominant in both pieces according to you? If not, this
--- piece is not a candidate."
---
--- So a reserving piece is only a CANDIDATE while the claim that wants it is
--- dominant over every slot it reserves:
---   dominant     -> it wins its own slot AND claims the reserved ones, which are
---                   left unwritten (the server empties them itself, natively).
---   not dominant -> the piece is INELIGIBLE; its slot is not written at all.
---
--- Why this cannot live in reservedDrops: the overlay applies each matching rule's
--- set through its OWN equipResolved, so that pass never sees more than one rule's
--- set at a time. It has no way to know another rule wants the slot, let alone at
--- what priority. Two field cases the same day, the two directions of one gap:
---
---   * Hunklor SAM. Movement(25) Body = Kupo Suit (reserves Legs); Idle(20)
---     Legs = Amir Dirs. Idle wrote the legs, Movement wrote the suit, the server
---     stripped the legs, and the next dispatch did it again -- ~0.4s forever,
---     with moving=true the whole time. Idle's set was never wrong on its own.
---   * Mindie SCH. Idle(20) Body = Royal Cloak (reserves Head); Movement(25)
---     Head = <piece>. Here reservedDrops' `worn` arm made it WORSE: the cloak
---     already on his back reserved Head out from under the higher-priority rule,
---     so the headpiece could never land. Henrik: "This is the wrong logic."
---
--- Both fall out of the one rule above, in opposite directions -- which is the
--- test that it IS the rule, and not two patches wearing a coat.
-
--- The merged floor: entries in APPLY order (lowest priority first, exactly the
--- order the overlay writes them), last-writer-wins, each slot tagged with the
--- priority that won it -- and, since stage 2, with `src` (the entry's set
--- name, when it has one): the FALL needs to know whose ladder to ask. Pure.
--- `__`-prefixed keys are metadata, never slots.
-function M.reserveFloor(entries)
-    local floor = {};
-    for _, e in ipairs(entries or {}) do
-        if type(e) == 'table' and type(e.set) == 'table' then
-            local p = tonumber(e.prio) or 0;
-            for slot, item in pairs(e.set) do
-                if type(item) == 'string' and string.sub(tostring(slot), 1, 2) ~= '__' then
-                    floor[slot] = { name = item, prio = p, src = e.src };
-                end
-            end
-        end
-    end
-    return floor;
-end
-
--- The verdict over a merged floor. Two maps, both keyed by the floor's own slot
--- keys (whatever case they arrived in):
---   suppressed[T] = <reserver name>  -- T is claimed and left EMPTY
---   ineligible[S] = <the slot that beat it>  -- S's piece is not a candidate
---
--- Walked in RSLOT_ORDER, like reservedDrops, so the answer never depends on
--- pairs() luck and a chain resolves the same way every time. Two invariants that
--- look small and are not:
---   * the dominance check completes BEFORE anything is suppressed -- ONE contested
---     slot disqualifies the piece, so a piece must never suppress a slot on its
---     way out. An ineligible piece is not being worn; it reserves nothing.
---   * a slot already claimed by an earlier reserver cannot itself reserve (Body
---     takes Legs, so the Legs piece must not go on to take Feet).
-function M.reserveVerdict(floor, lookup)
-    if type(floor) ~= 'table' or type(lookup) ~= 'function' then return nil, nil; end
-    local keyOf = {};
-    for slot, e in pairs(floor) do
-        if type(e) == 'table' and type(e.name) == 'string' then
-            keyOf[string.lower(tostring(slot))] = slot;
-        end
-    end
-    local suppressed, ineligible = nil, nil;
-    for _, se in ipairs(RSLOT_ORDER) do
-        local sk = keyOf[string.lower(se[2])];
-        if sk ~= nil and (suppressed == nil or suppressed[sk] == nil) then
-            local ent = floor[sk];
-            local mask = tonumber(lookup(ent.name)) or 0;
-            if mask > 0 then
-                local beatenBy = nil;
-                for _, re in ipairs(RSLOT_ORDER) do
-                    local rk = keyOf[string.lower(re[2])];
-                    if rk ~= nil and rk ~= sk and hasBit(mask, re[1])
-                       and (tonumber(floor[rk].prio) or 0) > (tonumber(ent.prio) or 0) then
-                        beatenBy = rk;
-                        break;
-                    end
-                end
-                if beatenBy ~= nil then
-                    ineligible = ineligible or {};
-                    ineligible[sk] = beatenBy;
-                else
-                    for _, re in ipairs(RSLOT_ORDER) do
-                        local rk = keyOf[string.lower(re[2])];
-                        if rk ~= nil and rk ~= sk and hasBit(mask, re[1]) then
-                            suppressed = suppressed or {};
-                            suppressed[rk] = ent.name;
-                        end
-                    end
-                end
-            end
-        end
-    end
-    return suppressed, ineligible;
-end
-
--- THE FALL (ADR 0027, stage 2 -- the deferred half of the v135 ruling: "go
--- for the next available piece"). An INELIGIBLE piece no longer strands its
--- slot: its source set's LADDER is asked for the next rung, the verdict
--- re-judges the amended floor, and the loop runs to a fixed point. The two
--- directions of the multi-slot law, now both built:
---   * a refused PIECE falls -- rung by rung, each replacement re-checked, so
---     a rung that reserves a slot a higher claim owns is refused too, and a
---     rung that reserves DOMINATED slots suppresses them exactly like any
---     dominant reserver;
---   * a reserved SLOT never falls -- it is claimed empty by the dominant
---     reserver, and offering it a rung would re-derive the flap the server
---     law exists to kill (the asymmetry pinned in ADR 0027).
--- entries -- reserveFloor's input, each entry optionally carrying `src` (the
---            set NAME its table came from; nil = an inline equip, which has
---            no ladder and keeps v135's unwritten-slot behavior).
--- lookup  -- itemName -> RSlot mask (injected, as everywhere in this family).
--- ladderOf(src, slot) -> the slot's ladder ({ items = { {name=...},... } })
---            -- M.candidatesFor in the live wiring; injected so tests AKF*
---            drive it with plain tables.
--- Returns (suppressed, ineligible, replaced):
---   replaced[slot] = { from, to, by } -- the ORIGINAL pick, the rung that
---   passed, and the slot that beat the original (for the trace). A slot
---   whose every offered rung failed keeps its ineligible entry and gets NO
---   replaced record -- the equip path kills it exactly as v135 did.
--- Cap: three verdict re-runs. Refusals only accumulate (each slot's tried
--- set grows monotonically), so the loop terminates on its own; the cap is
--- the backstop against a pathological reserver chain, and a slot still
--- ineligible when it trips reads INELIGIBLE in /dl why -- visible, never
--- silent.
-function M.reserveResolve(entries, lookup, ladderOf)
-    local floor = M.reserveFloor(entries);
-    local sup, inel = M.reserveVerdict(floor, lookup);
-    if inel == nil or type(ladderOf) ~= 'function' then return sup, inel, nil; end
-    local replaced, tried = nil, {};
-    for _ = 1, 3 do
-        local changed = false;
-        for slot, beatenBy in pairs(inel) do
-            local e = floor[slot];
-            if type(e) == 'table' and e.src ~= nil then
-                if tried[slot] == nil then tried[slot] = { [e.name] = true }; end
-                local from = (replaced ~= nil and replaced[slot] ~= nil)
-                             and replaced[slot].from or e.name;
-                local by = (replaced ~= nil and replaced[slot] ~= nil)
-                             and replaced[slot].by or beatenBy;
-                local lad = nil;
-                local lok, got = pcall(ladderOf, e.src, slot);
-                if lok then lad = got; end
-                local items = (type(lad) == 'table') and lad.items or nil;
-                local nxt = nil;
-                if type(items) == 'table' then
-                    for _, r in ipairs(items) do
-                        if type(r) == 'table' and type(r.name) == 'string'
-                           and not tried[slot][r.name] then
-                            nxt = r.name;
-                            break;
-                        end
-                    end
-                end
-                if nxt ~= nil then
-                    tried[slot][nxt] = true;
-                    floor[slot] = { name = nxt, prio = e.prio, src = e.src };
-                    replaced = replaced or {};
-                    replaced[slot] = { from = from, to = nxt, by = by };
-                    changed = true;
-                end
-            end
-        end
-        if not changed then break; end
-        sup, inel = M.reserveVerdict(floor, lookup);
-        if inel == nil then break; end
-    end
-    -- A slot still ineligible after the loop must not read as replaced: its
-    -- last offered rung failed too, so the equip path kills it (v135's
-    -- behavior, INELIGIBLE note included).
-    if inel ~= nil and replaced ~= nil then
-        for slot in pairs(inel) do replaced[slot] = nil; end
-        if next(replaced) == nil then replaced = nil; end
-    end
-    return sup, inel, replaced;
-end
+local RSLOT_ORDER = ARB.RSLOT_ORDER;
+local hasBit = ARB.hasBit;
+M.rslotText      = ARB.rslotText;
+M.reservedDrops  = ARB.reservedDrops;
+M.reserveFloor   = ARB.reserveFloor;
+M.reserveVerdict = ARB.reserveVerdict;
+M.reserveResolve = ARB.reserveResolve;
 
 -- A Range/Ammo pair the server will not let coexist -- it clears one the moment both are
 -- worn, so keeping both flaps forever and re-sends an equip every dispatch. Henrik,
@@ -3116,119 +2863,17 @@ local POST_ORDER = { 'mp-stage', 'craft-sub-guard', 'sync-hold-ammo',
 M._postPassOrder = POST_ORDER;
 
 -- ---------------------------------------------------------------------------
--- The Arbiter (ADR 0012, step 1) -- ONE data-driven registry that orders every
--- Claim's application, replacing the hardcoded overlay sequence at the bottom
--- of M.dispatch. A Claim is a feature's declared wish to dress slots (Pins,
--- AutoAmmo, MaxMP, Craft, HELM, Fishing); the Arbiter decides, per slot, which
--- claimant wins by the user's rank order (CONTEXT.md: Claim / Arbiter).
---
--- The rank is ONE strict list per character, highest priority first, persisted
--- as the `arbstate` Statefile (GUI writer: arbwatch). 'Triggers' is the fixed
--- FLOOR the claims dress over; 'Locks' is the draggable VETO row (step 3): a
--- claimant ranked ABOVE it punches through a locked slot, one below stops (the
--- live wiring is equipResolved's per-layer respectLocks + ctx.mpRespectLocks;
--- the pure model puts Locks in `claims` as a veto, M.arbLockClaim). MaxMP is
--- still WOVEN through the resolves (not a discrete overlay); it keeps its rank
--- ROW so a reorder moves it, and it consults the rank with one rule -- never
--- contest a slot won by a claimant ranked above it (M.arbCededAbove), Locks
--- included via ctx.mpRespectLocks. Default order reproduces today's winners with
--- exactly ONE deliberate change: AutoAmmo's named projectile now beats a MaxMP
--- battery in Ammo (it ranks above MaxMP, so Ammo is ceded to it).
+-- The Arbiter's RANK VOCABULARY -- MOVED to gearrbiter.lua (ADR 0027,
+-- stage 3): ARB_ORDER_DEFAULT, the pinned ceiling/floor rows, arbOrder (the
+-- restore-at-default-position law, v122), the LOCK_HELD veto sentinel and
+-- arbLockClaim live there now, verbatim. Re-exports keep the old doors --
+-- LOCK_HELD keeps its IDENTITY (comparers rely on it being one object).
 -- ---------------------------------------------------------------------------
--- 'Disabled' is the CEILING (ADR 0024) -- the mirror of the Triggers floor, and
--- the second fixed row. Both ends of this list are now invariants rather than
--- rankings: the claims dress OVER Triggers, and NOTHING dresses THROUGH Disabled.
--- It is listed here so the Priority panel can show it (a player has to be able to
--- see why a slot is inert), never so it can be dragged.
-local ARB_ORDER_DEFAULT = { 'Disabled', 'Naked', 'Pins', 'Locks', 'AutoAmmo', 'MaxMP',
-                            'Craft', 'HELM', 'Fishing', 'Chocobo', 'Triggers' };
-M._arbDefaultOrder = ARB_ORDER_DEFAULT;
-
--- The rows a player can never pick up, and that arbOrder places itself: the
--- Disabled ceiling (first) and the Triggers floor (last). arbwatch.FIXED is the
--- GUI's copy of this same set -- keep them in step.
-local ARB_PINNED = { Disabled = true, Triggers = true };
-M._arbPinnedRows = ARB_PINNED;
-
--- The live rank order: arbstate's `order` array sanitized against the KNOWN
--- rows -- unknown names dropped, missing known rows restored AT THEIR DEFAULT
--- POSITION, so a partial or hand-mangled (but still parseable) file yields a
--- COMPLETE strict order. A torn/missing file (ensureStateFile drops it to nil)
--- reads as the built-in default. Pure so tests can drive it directly.
---
--- WHERE A MISSING ROW LANDS IS THE WHOLE PROBLEM. Every character who has ever
--- opened the Priority section has an arbstate.lua on disk listing the rows that
--- existed THEN, so every new claimant arrives missing from real files. This used
--- to be a plain APPEND, which is right only for a row that belongs at the bottom
--- (Chocobo, v120) and silently wrong for one that belongs anywhere else: Naked
--- (ADR 0021) appended would ship at rank 9 -- under Locks, under everything --
--- and lose every slot it exists to win, for everyone except a fresh character.
--- The bug would be invisible in test and near-invisible in the field.
---
--- So: insert each missing row BEFORE the first present row that IT OUTRANKS in
--- ARB_ORDER_DEFAULT -- i.e. the first one with a LARGER default index; append
--- when there is none. (Mind the direction: a larger index is a LOWER rank, so
--- the comparison below is `>`. Write `<` and Naked, which outranks everything,
--- finds no row above it and sinks to the bottom -- the exact regression this
--- replaced.) That is one law covering all three
--- cases -- Naked prepends, Chocobo appends, and a future middle row lands in the
--- middle -- with no per-row table to keep in sync. Rows the file DOES list keep
--- the user's order absolutely; this only ever places rows the user has never
--- seen, and once the file names a row this never touches it again.
---
--- The Triggers floor stays a separate hard invariant on top: the claims dress
--- OVER it, so it is always last no matter where a hand-mangled or older file put
--- it. Both passes skip it and it is appended once at the end.
-function M.arbOrder(st)
-    local given = (type(st) == 'table' and type(st.order) == 'table') and st.order or nil;
-    local out, seen = {}, {};
-    local known, defIdx = {}, {};
-    for i, n in ipairs(ARB_ORDER_DEFAULT) do known[n] = true; defIdx[n] = i; end
-    if given ~= nil then
-        for _, n in ipairs(given) do
-            if known[n] and not seen[n] and not ARB_PINNED[n] then out[#out + 1] = n; seen[n] = true; end
-        end
-    end
-    for _, n in ipairs(ARB_ORDER_DEFAULT) do
-        if not seen[n] and not ARB_PINNED[n] then
-            local at = #out + 1;                       -- default: the bottom
-            for i, have in ipairs(out) do
-                if (defIdx[have] or 0) > defIdx[n] then at = i; break; end
-            end
-            table.insert(out, at, n);
-            seen[n] = true;
-        end
-    end
-    -- The two PINNED rows, put back at the ends. Both passes above skip them, so
-    -- a hand-mangled (or merely older) file cannot move either one -- which is
-    -- the whole point of Disabled: "over EVERYTHING" has to survive a file that
-    -- lists it in the middle, or it is a default rather than a ceiling.
-    table.insert(out, 1, 'Disabled');
-    out[#out + 1] = 'Triggers';
-    return out;
-end
-
--- The Locks VETO, modelled as a claim value (ADR 0012, step 3). A locked slot is
--- a Locks "claim" whose winning value is this sentinel -- "keep what is worn". In
--- the rank walk it behaves like any other claimant: a claim ranked ABOVE Locks
--- wins the slot first (punches through), a claim ranked BELOW never reaches it
--- (stops at the lock). The live engine expresses the same law by per-layer
--- lock-respect flags in equipResolved; this is the pure model the tests pin.
-M.LOCK_HELD = setmetatable({}, { __tostring = function() return 'LOCK-HELD'; end });
-
--- Build the Locks claim table for arbResolve from a set of locked slot keys
--- ({ 'head', 'ring1', ... } or { head = true, ... }) -> { [slot] = M.LOCK_HELD }.
--- Pure; the caller passes it in as claims['Locks'].
-function M.arbLockClaim(locked)
-    local out = {};
-    if type(locked) ~= 'table' then return out; end
-    if locked[1] ~= nil then
-        for _, s in ipairs(locked) do out[s] = M.LOCK_HELD; end
-    else
-        for s, on in pairs(locked) do if on then out[s] = M.LOCK_HELD; end end
-    end
-    return out;
-end
+M._arbDefaultOrder = ARB.ARB_ORDER_DEFAULT;
+M._arbPinnedRows   = ARB.ARB_PINNED;
+M.arbOrder     = ARB.arbOrder;
+M.LOCK_HELD    = ARB.LOCK_HELD;
+M.arbLockClaim = ARB.arbLockClaim;
 
 -- ---------------------------------------------------------------------------
 -- DISABLED SLOTS (ADR 0024) -- `/dl disable`, the ceiling.
@@ -3667,210 +3312,13 @@ function M.clearLockedSet()
     return had;
 end
 
--- The Arbiter's pure RESOLVE CORE (the seam the acceptance criteria pin): given
--- each active claimant's claim table (slot -> item), the rank `order` (highest
--- first, including the 'Triggers' floor row) and the trigger floor result,
--- decide per slot which claimant wins -- walk the order TOP-DOWN, the first
--- claimant with an opinion on that slot takes it ('Triggers' resolves to the
--- floor). 'Locks' is passed in `claims` as a veto table (M.arbLockClaim): a slot
--- it wins resolves to M.LOCK_HELD (keep worn), so its rank decides who punches
--- through it and who stops. Rows with no claim table (woven MaxMP) are skipped.
--- Returns winners (slot -> item or LOCK_HELD) and by (slot -> claimant).
--- Slot keys are the canonical LAC keys every producer emits, matched as-is.
-function M.arbResolve(claims, order, floor)
-    local src = {};                       -- claimant name -> claim table
-    for name, tbl in pairs(claims or {}) do
-        if type(tbl) == 'table' then src[name] = tbl; end
-    end
-    src['Triggers'] = floor or {};
-    local slots = {};                     -- every slot any layer names
-    for _, tbl in pairs(src) do
-        for slot in pairs(tbl) do slots[slot] = true; end
-    end
-    local winners, by = {}, {};
-    for slot in pairs(slots) do
-        for _, name in ipairs(order or {}) do
-            local tbl = src[name];
-            if tbl ~= nil and tbl[slot] ~= nil then
-                winners[slot], by[slot] = tbl[slot], name;
-                break;
-            end
-        end
-    end
-    return winners, by;
-end
-
--- Slots claimed by any ACTIVE claimant ranked strictly ABOVE `who` in `order`,
--- as { [lowercase slot] = winning-claimant-name }. This is how woven MaxMP
--- "never contests a slot won above me" (ADR 0012): at default order the ceded
--- set is the union of Pins' and AutoAmmo's slots, so a battery yields the Ammo
--- slot to an AutoAmmo projectile but still overrides Craft/HELM/Fishing armor
--- (both ranked below MaxMP). Pure. Reorder MaxMP above AutoAmmo and the Ammo
--- slot is no longer ceded -- the battery wins again, no LAC reload.
-function M.arbCededAbove(claims, order, who)
-    local rankOf = {};
-    for i, n in ipairs(order or {}) do rankOf[n] = i; end
-    local mine = rankOf[who];
-    local ceded = {};
-    if mine == nil then return ceded; end
-    for name, tbl in pairs(claims or {}) do
-        local r = rankOf[name];
-        if r ~= nil and r < mine and type(tbl) == 'table' then
-            for slot in pairs(tbl) do ceded[string.lower(tostring(slot))] = name; end
-        end
-    end
-    return ceded;
-end
-
--- ---------------------------------------------------------------------------
--- /dl why claimant attribution (ADR 0012, step 4). The Arbiter is the SINGLE
--- precedence authority, so the same pure resolve that decides winners also
--- EXPLAINS them. arbExplain returns, per slot, the rank-ordered list of every
--- claimant that had an opinion on it (highest rank first) -- the first is the
--- winner, the rest are who it beat. Slot matching is case-insensitive because
--- the producers disagree on case: overlay tables use proper-case LAC keys, the
--- Locks veto rides M.locks (lowercased). 'Triggers' is the floor row; 'Locks'
--- the veto. Pure -- the order-pinning tests drive it directly (AR*/LV*).
---
--- THE CLAIM RECORD SHAPE (documented here for whatever claimant comes next --
--- NOT AutoAcc: Henrik's ruling 2026-07-21 places AutoAcc at within-set
--- altitude, a per-piece Type automation releasing candidates while over the
--- hit cap, the AutoStaff/AutoObi family; the Arbiter never sees it):
--- a Claim is just `{ [SlotKey] = itemName }` -- the slots a feature wants to
--- dress, one item per slot (or the M.LOCK_HELD sentinel for the veto). A new
--- claimant joins the Arbiter with exactly TWO things and NO new arm:
---   1. one rank row  -- add its name to ARB_ORDER_DEFAULT (and arbwatch's UI);
---   2. one CLAIMANTS row (the registry above M.dispatch -- ADR 0027 stage 0):
---      ensure/active/claim/sig/apply/prioStatus in one place; the dispatch
---      loops, both bail guards, the signature legs and /dl prio iterate it.
--- Everything else -- who wins each contested slot, ceding, the Locks veto,
--- /dl why attribution -- falls out of the rank list automatically. MaxMP is the
--- worked example: it registers a claim (mpClaimFor) yet keeps its equip WOVEN,
--- because hold/release/upgrade/sticky/movement-yield are within-set resolution
--- deliberately outside the Arbiter (ADR 0012 consequences).
-function M.arbExplain(claims, order, floor)
-    local src = {};
-    for name, tbl in pairs(claims or {}) do
-        if type(tbl) == 'table' then src[name] = tbl; end
-    end
-    src['Triggers'] = floor or {};
-    local rankOf = {};
-    for i, n in ipairs(order or {}) do rankOf[n] = i; end
-    -- Index each claimant's slots by lowercase key; keep a display key (prefer a
-    -- proper-case one when any producer used it).
-    local disp, held = {}, {};
-    for name, tbl in pairs(src) do
-        local m = {};
-        for slot, item in pairs(tbl) do
-            local ls = string.lower(tostring(slot));
-            m[ls] = item;
-            if disp[ls] == nil or string.find(tostring(slot), '%u') ~= nil then disp[ls] = slot; end
-        end
-        held[name] = m;
-    end
-    local out = {};
-    for ls, d in pairs(disp) do
-        local ops = {};
-        for _, name in ipairs(order or {}) do
-            local m = held[name];
-            if m ~= nil and m[ls] ~= nil then
-                ops[#ops + 1] = { name = name, rank = rankOf[name], item = m[ls] };
-            end
-        end
-        if #ops > 0 then out[d] = ops; end
-    end
-    return out;
-end
-
--- The /dl why claimant lines: one per slot, naming the winning claimant + rank
--- and, when contested, who it beat -- 'Ammo: AutoAmmo (rank 3) over MaxMP
--- (rank 4)'. A slot the Locks veto won reads 'stopped by Locks'; a slot only the
--- trigger floor named reads 'Triggers (floor)'. Slots emit in canonical LAC
--- order for a stable, greppable trace. Pure (headless-tested): arbExplain +
--- formatting, no engine reads.
-function M.arbWhyLines(claims, order, floor)
-    local attrib = M.arbExplain(claims, order, floor);
-    local slotRank = {};
-    for i, s in ipairs(LAC_SLOTS) do slotRank[s] = i; end
-    local rows = {};
-    for slot, ops in pairs(attrib) do rows[#rows + 1] = { slot = slot, ops = ops }; end
-    table.sort(rows, function(a, b)
-        local ra = slotRank[string.lower(tostring(a.slot))] or 99;
-        local rb = slotRank[string.lower(tostring(b.slot))] or 99;
-        if ra ~= rb then return ra < rb; end
-        return tostring(a.slot) < tostring(b.slot);
-    end);
-    -- Contested / veto slots get their own line; slots the trigger floor dressed
-    -- uncontested collapse into ONE trailing summary (a floor-only slot wins only
-    -- when NO claim touched it -- #ops == 1 -- so nothing is lost, and idle /dl
-    -- why is not buried under a dozen 'Triggers (floor)' lines).
-    -- Naked collapses the same way, and for a sharper reason: it claims ALL 16, so
-    -- without this every other thing /dl why exists to tell you sits under sixteen
-    -- identical 'Naked (rank 1)' rows -- and /dl why is exactly what a confused
-    -- naked player runs. Who it beat is still reported, deduped across the sweep.
-    local lines, floorOnly, floorRank = {}, {}, nil;
-    local nakedSlots, nakedRank, nakedBeat, nakedSeen = {}, nil, {}, {};
-    -- Disabled (ADR 0024) collapses like Naked, and for the same reason: it can
-    -- claim up to sixteen slots and /dl why is exactly what someone runs when a
-    -- slot has stopped moving. It goes FIRST in the output, because when it is on
-    -- it is the answer to the question that was asked.
-    local disSlots, disRank, disBeat, disSeen = {}, nil, {}, {};
-    for _, r in ipairs(rows) do
-        local ops, win = r.ops, r.ops[1];
-        if win.name == 'Triggers' then
-            floorOnly[#floorOnly + 1] = tostring(r.slot);
-            floorRank = win.rank;
-        elseif win.name == 'Disabled' then
-            disSlots[#disSlots + 1] = tostring(r.slot);
-            disRank = win.rank;
-            for i = 2, #ops do
-                if not disSeen[ops[i].name] then
-                    disSeen[ops[i].name] = true;
-                    disBeat[#disBeat + 1] = string.format('%s (rank %d)', ops[i].name, ops[i].rank or 0);
-                end
-            end
-        elseif win.name == 'Naked' then
-            nakedSlots[#nakedSlots + 1] = tostring(r.slot);
-            nakedRank = win.rank;
-            for i = 2, #ops do
-                if not nakedSeen[ops[i].name] then
-                    nakedSeen[ops[i].name] = true;
-                    nakedBeat[#nakedBeat + 1] = string.format('%s (rank %d)', ops[i].name, ops[i].rank or 0);
-                end
-            end
-        else
-            local rest = {};
-            for i = 2, #ops do rest[#rest + 1] = string.format('%s (rank %d)', ops[i].name, ops[i].rank or 0); end
-            local restStr = table.concat(rest, ', ');
-            if win.name == 'Locks' then
-                lines[#lines + 1] = string.format('%s: stopped by Locks (rank %d)%s',
-                    tostring(r.slot), win.rank or 0,
-                    (#rest > 0) and ('  [' .. restStr .. ' held off]') or '');
-            else
-                lines[#lines + 1] = string.format('%s: %s (rank %d)%s',
-                    tostring(r.slot), win.name, win.rank or 0,
-                    (#rest > 0) and ('  over ' .. restStr) or '');
-            end
-        end
-    end
-    if #nakedSlots > 0 then
-        table.insert(lines, 1, string.format('NAKED (rank %d) holds %d slot%s empty: %s%s',
-            nakedRank or 0, #nakedSlots, (#nakedSlots == 1) and '' or 's',
-            table.concat(nakedSlots, ', '),
-            (#nakedBeat > 0) and ('  over ' .. table.concat(nakedBeat, ', ')) or ''));
-    end
-    if #disSlots > 0 then
-        table.insert(lines, 1, string.format('FREE EQUIP (ceiling, rank %d) -- dlac writes nothing to %d slot%s: %s%s',
-            disRank or 0, #disSlots, (#disSlots == 1) and '' or 's',
-            table.concat(disSlots, ', '),
-            (#disBeat > 0) and ('  over ' .. table.concat(disBeat, ', ')) or ''));
-    end
-    if #floorOnly > 0 then
-        lines[#lines + 1] = 'Triggers floor (rank ' .. tostring(floorRank or 0) .. ', uncontested): '
-                            .. table.concat(floorOnly, ', ');
-    end
-    return lines;
-end
+-- (The Arbiter's resolve/explain family -- arbResolve, arbCededAbove,
+--  arbExplain + the claim-record recipe, arbWhyLines -- MOVED to
+--  gearrbiter.lua, ADR 0027 stage 3. Re-exported verbatim.)
+M.arbResolve    = ARB.arbResolve;
+M.arbCededAbove = ARB.arbCededAbove;
+M.arbExplain    = ARB.arbExplain;
+M.arbWhyLines   = ARB.arbWhyLines;
 
 -- MaxMP's CLAIM table (ADR 0012, step 4): canonical slot -> the rung name the
 -- banded ladder wants ON, for every slot mpBands targets a battery. This is
@@ -6452,9 +5900,14 @@ function M.dispatch(event)
         -- walk just calls them in rank order.)
         local aenv = { built = built, bx = bx, ctx = ctx, retrace = retrace,
                        lines = lines, respect = layerRespectsLocks, rankOf = rankOf };
-        for i = #arbOrder, 1, -1 do
-            local row = CLAIMANT_BY[arbOrder[i]];
-            if row ~= nil and claims[row.name] ~= nil and row.apply ~= nil then row.apply(aenv); end
+        -- THE ARBITRATION (ADR 0027, stage 3, first slice): the apply order is
+        -- the arbiter's answer, not an inline walk -- M.dispatch executes the
+        -- plan. Later slices grow the plan into per-slot contests + the trace;
+        -- stage 4 hands it the ladders.
+        local plan = ARB.arbitrate({ order = arbOrder, claims = claims });
+        for _, name in ipairs(plan.applies) do
+            local row = CLAIMANT_BY[name];
+            if row ~= nil and row.apply ~= nil then row.apply(aenv); end
         end
 
         if retrace and #hits > 1 then                    -- who won each slot (overlap visibility)
