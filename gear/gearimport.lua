@@ -715,6 +715,12 @@ local function renderEntry(rec)
 end
 M.renderEntry = renderEntry;
 M.effectiveRSlot = effectiveRSlot;   -- exported for the trinket-RSlot tests
+-- The reserved-slot mask BY ID, catalog-sourced, with the ADR 0010 completion
+-- already applied -- i.e. the exact value the scan stamps into gear.lua. The GUI
+-- reads it through here rather than off an owned record on purpose: a gear.lua
+-- written before v43 carries no RSlot at all, and reading that would show a
+-- Vermillion Cloak as harmless right up until the engine drops the Head anyway.
+M.rslotFor = rslotFor;
 
 -- Preview: scan, then print the generated entry for each NEW item. Read-only.
 function M.preview(containers)

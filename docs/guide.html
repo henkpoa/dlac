@@ -86,7 +86,7 @@
     <li><a href="#automations">Automations — gear that picks itself</a></li>
     <li><a href="#priority">Priority — who wins a contested slot</a></li>
     <li><a href="#lockstyle">Lockstyle — your look, not your gear</a></li>
-    <li><a href="#extras">Small conveniences — Teleports, floating gear &amp; macro books</a></li>
+    <li><a href="#extras">Small conveniences — Teleports, Wishlist, floating gear &amp; macro books</a></li>
     <li><a href="#debug">When something looks wrong</a></li>
   </ol>
 </nav>
@@ -587,6 +587,48 @@ movable with <kbd>SHIFT</kbd>+drag, with the same hover tooltips as the tab.
 wears that item no matter what any set, trigger, or automation wants — the strongest
 claim in the game (see Priority above). Right-click again to unpin. It's the "I want
 THIS ring on until I say otherwise" gesture, one click deep.</p>
+
+<h3>Wishlist — gear you mean to own</h3>
+<p>The <b>All Equipment</b> tab has a tick called <b>"Show gear I don't own"</b>. Turn it
+on and the list stops being your gear and becomes <i>every piece of equipment in the
+game</i>, with everything you lack in <b>orange</b>. Leave <b>Usable now</b> ticked at the
+same time and you have a shopping list: gear your job could wear, at your level, that
+isn't yours yet.</p>
+<p><b>Right-click any row → Wishlist → Add</b> to start a list of what you're hunting.
+It lives under <b>Menu → Wishlist</b> (or <code>/dl wish</code>).</p>
+
+<p>Each entry carries two things beyond the item itself:</p>
+<ul>
+<li>a <b>note</b> — why you wanted it, which is the part you forget. <i>"Sky drop, need a
+static."</i> <i>"Cheap on AH right now."</i> <i>"The +1 is the real target."</i></li>
+<li>any number of <b>links</b> to the jobs and sets that want it — <code>WHM / Idle</code>,
+<code>BLM / Idle</code>, or just <code>RDM</code> when you haven't decided on a set yet.
+Add them from the right-click cascade for the job you're on, or from the window for any
+job.</li>
+</ul>
+
+<p>A link is a <b>plan, not a claim</b>. You can link a piece to WHM/Idle without putting
+it in that set — and beside every link the window tells you what is actually true right
+now: <i>in the set (Body)</i>, or <i>not added yet</i>. When those two disagree and you
+own the piece, an <b>Add</b> button appears on that row and puts it in for you. dlac never
+edits one of your sets on its own. Rings and earrings ask <i>which</i> of the two slots,
+showing what already sits in each so you're choosing with the set in front of you.</p>
+
+<figure><figcaption><b>Why the list can't lie to you.</b> What you <i>meant</i> is
+remembered; what is <i>true</i> is looked up fresh every time you open the window. That
+includes whether you own the thing — read from your bags, never remembered — so an entry
+turns <b>green</b> the moment the item arrives, and goes back to orange if you sell it.
+Nothing is ever deleted for you: clearing an entry is always your call, even after you've
+got the piece.</figcaption></figure>
+
+<h3>Building sets before you own the gear</h3>
+<p>The set editor's <b>+ Add</b> picker has the same <b>"Show gear I don't own"</b> tick,
+so a piece you're still hunting can go <i>straight into a set</i>. Nothing breaks: the
+engine skips gear you don't have, so the slot keeps its normal best-by-level pick and your
+set totals ignore the missing piece entirely. Then the day it lands in your bags it simply
+starts being worn — no editing, no remembering, nothing to switch on.</p>
+<p>Adding a piece that way also puts it on your Wishlist and links it to that job and set,
+so you never have to say you want something twice.</p>
 
 <h3>Macro books</h3>
 <p>The <b>Macro</b> header button stores your macro book and set per job, applied

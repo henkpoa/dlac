@@ -5922,3 +5922,489 @@ allowlist test BEFORE declaring a sweep done; it found what three grep passes mi
 **Awaiting:** Henrik's field beat on `27l` (equips, a commit, `/dl check`, `/dl engine`,
 and the three-way import round), then promotion. Suites at 3815 + 584, green on both
 interpreters, at every phase boundary.
+
+
+## Session "the level decides which rung" (2026-07-27, on `dev` — addon 2026.07.27l → o, engine v133 → v134)
+
+**Theme:** Henrik, on his DRK: *"even though I made a list of bolts on autoammo and
+enabled it is not equipping automatically... When I went from level 50+ to 8 it didn't
+equip any bolt, then I leveled up to 10 it did not equip blind bolt."* AutoAmmo's
+ladder knew what the WEAPON could fire (v128) and nothing about what the PLAYER could
+wear. Grilled to a design, built in three commits (`41432db`, `401a6bb`, `4d6bb12`),
+field-confirmed the same day.
+
+**Diagnosed from artifacts, not theory.** His live `ammostate.lua` held Acid Bolt 15 /
+Blind Bolt 10 / Crossbow Bolt 1, best-first — exactly what the panel's own *Sort by
+level* button produces — and his DRK sets carried a real Range ladder, so a crossbow
+WAS worn and v128's no-weapon gate never fired. Three of the four inputs were right;
+the fourth was never asked for.
+
+**THE LAW THIS PAID FOR, and it is not AutoAmmo-specific:** *an overlay collapses a
+ladder to ONE name before the equip layer ever sees it.* A set hands `equipcore` a slot
+with candidates and its level walk picks a rung; an overlay hands over
+`{ Ammo = "Acid Bolt" }` and there is no rung 2. So any gate an overlay does not apply
+ITSELF becomes a total, silent failure downstream — no fallback, no message, no trace.
+
+**The trap that nearly shipped a dead fix.** The first design said read `MainJobSync`.
+Henrik tests with the **level override** (`/dl set level main N`), which is honoured by
+the set flatten, the virtual-slot resolver, gearoptim and gearui — but NOT by
+`equipengine`, whose `snap.level` reads live memory. Reading `MainJobSync` would have
+"fixed" the bug while still ignoring the override, i.e. the report, unfixed. He caught
+it with one sentence: *"When I use my level override feature, it doesn't automatically
+equip blind bolt."* The authority already existed: `dispatch.playerLevel(ctx)`.
+**The division worth keeping — `playerLevel` is what dlac gears you AT (choice);
+`equipcore`'s level is a legality gate against the real game (permission). A chooser
+reads the chooser's level.** Its corollary explains why the failure looked different
+under an override than under a cap: with a real level of 50+ nothing downstream refuses,
+so the WRONG bolt equips happily; under a cap the same wrong pick dies one step later
+and quieter. Same bug, two exits.
+
+**Landed:** a fourth gate mirroring `equipcore.checkUsable` (level + Jobs mask) read off
+the live client resource for an item already counted in the bags, unknown never
+disqualifying (the `pairsWith` three-valued law) and a level `<= 0` treated as the v49
+not-ready read; the Default arm re-judging what is WORN — empty slot, over-level, or
+ours-and-no-longer-best — while anything worn that is not on the list stays untouchable
+(the guard that keeps a Midshot set's trinket alive; owning the slot outright is ADR
+0010's flap through a third door); `syncHold` parking the pick at Default only, because
+protection must never be suspended on an action event, and an override deliberately
+never arming it; four return values from `resolveAmmoPlan` so **stock talks and level
+does not**, edge-triggered on a change of cause rather than a timer. Then the CW E-Box
+side removed whole (Henrik: *"we have E-box restocker now which is better"*) —
+`feature/eboxammo.lua` deleted, the panel left with no gamemode awareness at all, and
+the `/dl ebox` entity probe moved to `eboxtrace` as **`/dl debug ebox scan`** rather than
+dying with it. Finally the panel: a red `Lv` column when a rung is out of reach, and the
+row actually in your Ammo slot rendering green — the v128 tab law, green = live fact.
+
+**Worth carrying:** `helmwatch.playerLevel` had the level-aware ladder right from the
+start — AutoAmmo was the one gear picker that never got it, so *check the siblings before
+assuming a gap is universal*. And the AU harness had to start RECORDING `TextColored`
+instead of no-op'ing it: **a stub that throws away colour cannot see a feature that
+speaks in colour**, the craftbar trap in a new costume.
+
+**Status:** field-confirmed by Henrik the same day — *"it works now"* — and queued for
+promotion. Suites 3821 + 593, green on both interpreters.
+
+## Session "the slot that was never missing" (2026-07-27, on `dev` — addon 2026.07.27o → p)
+
+**Theme:** Henrik asked a bookkeeping question — *"we have a feature where if we equip a
+tunic that takes up the headslot, it ignores to equip the headslot… there are more items
+like this, for different slots. How do you propose we keep track of all of these
+different iterations of 'uses two slots'? Kupo suit, decennial coat, decennial hose."*
+The answer turned out to be **there is nothing to keep track of**, and the work was
+proving that and then fixing the two things that actually were missing.
+
+**The diagnosis.** `RSlot` is the server's `item_equipment.rslot` — a 16-bit "removed
+slot" mask — mirrored per item in `catalog.lua` since v43, stamped into `gear.lua` by the
+scan, backfilled by `/dl fix`, and consumed **generically** by `dispatch.reservedDrops`.
+Vermillion Cloak is not special-cased anywhere; it carries `RSlot = 16` and the engine
+does the rest. So the premise of the question — a growing list of hand-maintained special
+cases — never existed.
+
+Verified instead of asserted: `catalog.lua` diffed by id against the local server clone's
+`sql/item_equipment.sql` gave **383 items with a non-zero rslot, 383 present in the
+catalog with the identical value, 0 missing, 0 mismatched, 0 absent entirely**. The only
+four divergences are Ammo trinkets/shuriken, which is `effectiveRSlot`'s deliberate ADR
+0010 completion. All three items Henrik named were already right: Kupo Suit → Legs
+(`128`), Decennial Coat → Hands (`64`), Decennial Hose → Feet (`256`). And the space is
+much smaller than "all these different iterations" suggests — **nine distinct masks**:
+Range 131, Hands 74, Feet 71, Head 52, Ammo 35, Legs 11, Hands+Feet 4, Hands+Legs+Feet 3,
+Head+Hands 2. `reservedDrops` has walked arbitrary multi-bit masks in a fixed slot order
+since v43, so nothing about a suit that eats three slots is new work.
+
+**Landed (the two real gaps).** *Visibility:* the drop was completely silent — which is
+precisely why a correct feature reads as a bug. `renderItemTooltip` now prints *"Takes
+Head — that slot stays empty while this is worn"* on the ONE hover card every equipment
+surface shares, and the Sets builder previews the conflict before dispatch ever runs it:
+the reserved tile goes dark red, its hover names the reserver, and a single line under
+the grid lists the slots. Two new seams exist so the GUI owns **neither** rule —
+`dispatch.rslotText` (bit → slot name, because the engine owns the vocabulary it owns the
+behaviour of) and `gearimport.rslotFor` (the mask by id, the *same* resolver the scan
+stamps `gear.lua` with, ADR 0010 completion included). The preview itself calls
+`reservedDrops`, the equip-time pass, with no `worn` argument: the builder shows the SET,
+not the character. *Drift:* `apicrawl.py` now prints an **RSlot audit** on every rebuild
+(`--rslot-audit` reports without writing), naming each item that gained, lost or changed
+a reservation.
+
+**Worth carrying:**
+- **`rslotlook` is not `rslot`.** A Kupo Suit *looks* like it covers hands, legs and feet
+  (`rslotlook=448`) but only **Legs** is actually blocked (`rslot=128`). Anyone "fixing"
+  this class of item by eye from the in-game model would stamp the wrong mask on the
+  whole family. We mirror `rslot` and ignore `rslotlook` — deliberately.
+- **A silent safety warning is the worst failure mode there is.** `rsv.dropsIn` runs
+  inside a render `pcall` (a warning must never crash a frame), so a typo in it fails
+  *quietly* and the builder simply stops warning — invisible by definition, because the
+  feature's normal state is "says nothing". That is why `rsv` is exported through
+  `host.provide` rather than kept private: smoke drives it against the real catalog
+  (S16a–p), so a dead resolver is a red test instead of a permanent quiet nothing.
+- **The audit direction that matters is the LOSS.** An item *gaining* a reservation is
+  loud in play. An item *losing* one is silent, and `/dl fix` will dutifully retract that
+  stamp from every player's `gear.lua`. The audit prints the retraction consequence on
+  that line for exactly this reason.
+- The question was bookkeeping; the answer was arithmetic already in the repo. **Check
+  what the data says before designing a registry for it** — the diff took minutes and
+  deleted the entire proposed feature.
+
+**Status:** on `dev`, **not** in the merge queue — Henrik has not field-tested it yet.
+Suites 3836 + 609 (AK23–33, TR4c–e, S16a–p added), green on Windows lua and WSL lua5.4.
+
+## Session "the wishlist: intentions and facts" (2026-07-27, on `dev` — addon 2026.07.27p → q, ADR 0026)
+
+Henrik, in one message: *"add 'Show gear I don't own' like with lockstyle in all
+equipment… right click and add pieces to wish list… also have this when building sets, so
+you can add stuff you don't have (it won't try to use em, but if you get it, it's
+preemptively there, right?)"* Grilled to a shared design first (`/grill-with-docs`,
+eleven questions), then built.
+
+### The three things the code already knew
+
+Reading before designing changed the shape of all three asks:
+
+1. **"Show gear I don't own" already existed in All Equipment** — as `ui.showAll`, moved
+   into Menu > Settings on 07-24 and renamed *"Show all equipment"*, where it read as a
+   preference and nobody found it. So the ask was **discoverability**, not a feature: the
+   tick is now on the tab too, bound to the same flag, and both places use the lockstyle
+   wording. One setting, two surfaces.
+2. **The engine already did what he hoped it did.** *"it won't try to use em, but if you
+   get it, it's preemptively there, right?"* — right. `BuildDynamicSets` resolves a set
+   entry by NAME against `gear.lua`; a miss is skipped at flatten time, so an unowned
+   piece cannot shadow a lower-level piece you own, and it starts being worn the day it
+   lands in your bags with nothing to change. The only thing wrong was the *noise*.
+3. **There was a trap sitting directly in the path.** The API drops the possessive
+   apostrophe: the Catalog says `Arhats Gi` where the client says `Arhat's Gi`. Sets
+   resolve by name. So a wishlisted piece would have failed to resolve **on the very day
+   you finally got it** — the one moment the feature exists for. This is the same trap
+   the lockstyle picker refuses to save into (07-15); it just reappeared somewhere the
+   refusal was not an option.
+
+### Henrik's two rulings
+
+The first design made set links **derived** — scan the sets, show what's there, nothing
+to go stale. He rejected it: *"When I add something to a wish list, even from sets, add
+the item to the wish list as its own entity, being able to exist on its own. Then connect
+the set / sets that want it."*
+
+That is the better model, and it unlocks something the derived version could not: you can
+wishlist a piece **for** WHM/Idle without stuffing it into the set at all. The set stays
+clean; the intention is recorded. It also creates the disagreement the derived design
+existed to prevent — so the answer is to keep both halves and never derive one from the
+other:
+
+> **The stored half is an intention. The computed half is a fact. They are allowed to
+> disagree, and where they do is exactly where the Apply button belongs.**
+
+A link is written down and never revoked by dlac. Whether the piece is *in* that set is
+re-read from the set files. Ownership follows the same rule in the other direction — never
+stored, always read from the bags by Id, so selling a piece silently returns it to wanted.
+Nothing needs reconciling because nothing derived is kept.
+
+Second ruling, on set totals: *"set totals should only count towards the gear you own. If
+you want to rebuild according to new pieces, we already have a simple 'Auto Build all'
+button that should suffice."* A "what-if" toggle was on the table and he killed it — the
+existing button already answers that question.
+
+### What the set files did NOT get
+
+The one warning left over was `warnMissingGear` calling a deliberate entry a typo on every
+commit. Two ways out: mark it in the file (`{ gear = 'X', wish = true }`) or teach the
+engine to ask. He picked the second — *"b, keep set files clean"* — so the format players
+share, hand-edit and round-trip is untouched, and the engine reads `wishlist.lua` beside
+`pinstate.lua`. A name that is neither resolvable **nor** wishlisted still warns, and the
+suppression fails toward warning: no file, no character, a parse error, all answer false.
+
+### The bug found on the way
+
+`recordPath` builds a set entry's Lua expression from `rec.Key` — and **catalog records
+carry a `Key` exactly like owned ones do** (it is `catalog.lua`'s table key). So the first
+unowned piece committed to a set would have rendered `gear.Body.Dalmatica`: an expression
+that evaluates to `nil` in the set file, taking the entry with it, silently. Unowned
+pieces now serialize as a quoted **name** — the form `resolveGearName` resolves, and the
+form that keeps working forever once you own the thing.
+
+### Durable
+
+- **A feature can be a naming problem.** Ask 1 needed one checkbox and two label changes;
+  the capability had shipped three days earlier under a name that hid it. Read before
+  building — half this session's work was already written.
+- **`pcall(require, 'x')` binds the ERROR STRING, not nil.** `gearfmt` does this, so
+  `fmt.textWrapped` indexes a *string* when imgui is absent and throws a "field is nil"
+  error that reads nothing like a missing module. Latent for months; the Wishlist window
+  is simply the first thing in `smoke_ui` to call it. Modules that use `try()` (which
+  returns nil properly) are fine.
+- **The apostrophe fix went in as a FALLBACK layer, not a replacement.** Every plain
+  lowercase key is indexed first and a stripped key added only where nothing sits, so
+  exact-lowercase always wins and no lookup that resolves today can start resolving
+  differently. U7 pins that; a blanket normalization would have been a silent behaviour
+  change across every set on disk.
+- **The 200-local cap bites test files too** (hard rule 1). The new WL section broke
+  `run_tests.lua`'s main chunk; scoping it in `do … end` is the fix.
+
+**Watch in the field:** `Wishlist ▸ → Add for ▸ → row` is **one level deeper** than any
+cascade proven in this binding (floatgear proved one, 07-15). `hasMenu` is probed and a
+flat drill-down fallback exists, but this one wants eyes in-game.
+
+### The field rounds
+
+**Round 1** answered the one thing the suite could not: *"The extra level worked cascade
+menu wise… It looks great! I can also add the stuff to sets if I press add, also works!"*
+So **two-level imgui cascades ARE supported in this binding** — floatgear had only ever
+proven one, which is why the drill-down fallback exists and why this was flagged as the
+open risk. `popup → BeginMenu → BeginMenu → MenuItem` is now a known-good shape for any
+future context menu, and the fallback stays as insurance rather than as a live path.
+
+What he flagged instead was layout, and it was one mistake made in five places: hardcoded
+pixel columns in a window whose content is **player-named**. `SAM / Tp_Default` printed
+straight through the status beside it (`SameLine(140)`), and both filter combos clipped to
+`All jo▼` / `All slo▼`. Every column now derives from the widest string it will actually
+draw — the link column off the *same* `linkLabel()` the row prints, so the width and the
+text can never be computed differently.
+
+**Round 2** — *"`<JOB>` / `<SET>` still need more space, give it twice the space as it
+has, so we can handle longer set names"* — is the more interesting correction, because
+measuring was already *correct*. A column fitted to the current entry is the right width
+for that entry and the wrong width for the next one: it moves under you every time you
+select a different row, and a set name longer than today's has nowhere to go. Reserving
+beats fitting when the content is not yours to predict. Now `2×` the widest label on a
+180 floor, capped at 360 so the status and its buttons cannot leave the window.
+
+- **A stub that answers a CONSTANT cannot test a measurement.** `smoke_ui` was green
+  straight through the column bug because its `CalcTextSize` returned 10 for every string.
+  Section 6b's stub is proportional (~10px/char) now, and S92f–S92m pin the label/column
+  pair against Henrik's exact reported string. Same shape as the `pcall(require)` trap
+  above: a stub too obliging to fail hides the thing it was added to guard.
+- **A nil check is NOT redundant with a pcall around an imgui call.**
+  `pcall(imgui.CalcTextSize, s)` on a nil `imgui` throws while *evaluating the argument*,
+  before pcall ever runs.
+
+**Status:** on `dev`, **FIELD-CONFIRMED** across both rounds (*"It looks good and
+works."*) and **in the merge queue**. Addon `27q` → `27s`. Suites 3875 + 692 (WL1–WL34,
+U4–U7, S60–S95, S150–S163 added), green on Windows lua and WSL lua5.4.
+
+## Session "am I dominant in both pieces?" (2026-07-27, on `dev` — addon 2026.07.27t, engine v134 → v135)
+
+**Theme:** the reserved-slot feature was correct and still visibly broken, twice, in
+opposite directions — and the fix was not in the reserve rule at all.
+
+**The two field cases.** Hunklor SAM: Movement(25) `Body = Kupo Suit` (reserves Legs)
+over Idle(20) `Legs = Amir Dirs`. It flapped Kupo Suit ↔ Amir Dirs continuously while
+running. Mindie SCH: Idle(20) `Body = Royal Cloak` (reserves Head) under Movement(25)
+`Head = <piece>` — the headpiece could never land, however high its priority. Henrik:
+*"So to me it looks like it's locking the head piece as long as royal cloak stays on.
+This is the wrong logic."*
+
+**Two wrong diagnoses first, both killed by evidence — worth recording.** (1) A repro
+against Hunklor's real `gear.lua` showed `Legs=RESERVED by Kupo Suit (kept as worn)` and
+the Legs dropped: the manifest, the mask and the pass were all fine. So the flap "had to
+be" `moving` flickering — the detector has a thin 0.1s margin over the dispatch tick.
+Henrik's `/dl why` screenshot printed `moving=true`, and that was that. (2) The same
+screenshot showed `Legs<-Idle` surviving into the slot list with no RESERVED note, which
+read as "the drop never fires live" — but that block is the **Arbiter's claim
+attribution**, which runs separately from the post-passes. Nearly a second confident
+wrong answer off a truncated screenshot. *Read what a trace is actually printing before
+concluding from what it does not print.*
+
+**The real root cause.** `dispatch.lua`'s overlay loop applies each matching rule's set
+through its **own** `equipResolved` (`equipSetByName` resolves *and* equips, per rule).
+So `reservedDrops` only ever sees one rule's set. Idle resolved alone → nothing reserves
+→ Amir Dirs equipped. Movement resolved alone → `{Body}` only, no Legs to drop → suit
+equipped, server stripped the legs. Both every dispatch. The merged view existed a few
+lines away as `floorTbl` — but only `if retrace`, i.e. purely to draw `/dl why`. The
+equip path never had it. Henrik named it before the code did: *"I think the problem lies
+in the overlying eye."*
+
+**Henrik's ruling, built as stated.** A piece that reserves other slots is a **candidate
+only while the claim wanting it is dominant over every slot it takes** — *"am I dominant
+in both pieces according to you? If not, this piece is not a candidate."* Dominant → it
+wins its slot and **claims** the reserved ones, left empty (the server clears them
+natively). Beaten → **ineligible**, its own slot unwritten. `M.reserveFloor` +
+`M.reserveVerdict` are pure; the engine builds the floor before the first write and
+retires it right after the trigger loop.
+
+**Worth carrying:**
+- **A correct rule fed the wrong input looks exactly like a wrong rule.** Three separate
+  investigations (data, mask, pass) all came back clean while the feature was plainly
+  broken, because none of them asked *what is this function being handed*. The repro that
+  "proved" the engine right had constructed the merged plan by hand — the one thing the
+  engine never does.
+- **Both directions or it isn't the rule.** The SAM case alone is fixable by suppressing
+  the reserved slot; the SCH case alone by ignoring the worn reserver. Only dominance
+  produces both, which is why AKD1–12 test them side by side.
+- **Order inside the verdict is load-bearing**: dominance must resolve *before* anything
+  is suppressed (a piece judged ineligible is not worn, so it reserves nothing), and a
+  claimed slot must not claim further.
+- **The AutoAmmo rung-2 trap is general.** *"Go for the next available piece"* is not
+  buildable today because `BuildDynamicSets` collapses each slot's list to one name before
+  the engine sees it — the same collapse that made the AutoAmmo ladder fail silently. An
+  ineligible piece leaves its slot unwritten instead. Carrying alternates is the follow-up.
+
+**Status:** on `dev`, **FIELD-CONFIRMED** by Henrik the same day — *"It works now."* — and
+queued for promotion. Suites 3901 + 692, green on Windows lua and WSL lua5.4. Both real cases also driven end-to-end
+against the actual `gear.lua` files of both characters.
+
+## Session "minimizing the hobby bar ate the other windows" (2026-07-27u)
+
+**Theme:** a one-line ImGui misuse, four days old, that only showed itself when Henrik
+finally minimized the window it lived in.
+
+**Reported:** *"if I open the Hobby Bar, then minimize it, our floating icon for DLAC /
+Teleports disappear when I click it… the moment I unminimize the hobby bar, I can see the
+menu flash up and disappear real quick."* Then, unprompted: `/dl ui` was **also** up and
+invisible, and something invisible was refusing his clicks on the hobby bar's title bar.
+
+**The discriminators, all from Henrik in one message.** Minimizing the main window,
+Lockstyle or the Wishlist does nothing. **Closing** the hobby bar does nothing. Expanding
+it brings everything back with no further click. So: not popups, not window order, not
+the float — the *collapsed hobby bar* specifically. His `/dl metrics` screenshots pinned
+the rest: ImGui **1.81**, `Popups (0)` after the click (so `OpenPopup` never even ran),
+`NavWindow: '##dlac_tpfloat'` with a live `NavId` (so the mouse-**down** registered and
+the mouse-**up** frame never drew the button), and `11 active windows (10 visible)` in
+every shot while ~48 vertices vanished — a window still active, still counted as
+rendered, drawing nothing.
+
+**Root cause — the LAW, worth carrying.** `ui/hobbybar.lua` opened with
+`imgui.SetNextWindowSize({0,0}, ImGuiCond_Always)` every frame, right before an
+`AlwaysAutoResize` `Begin`. A zero component makes ImGui's `SetWindowSize` set
+`AutoFitFramesX/Y = 2` — *"submit the body anyway, I still need to measure it"* — and
+`ImGuiCond_Always` re-armed those counters on every single frame, so they never reached
+zero. ImGui's own rule is
+
+    skip_items = (Collapsed or not Active or Hidden) and AutoFitFrames <= 0
+
+so a **collapsed** hobby bar kept returning `true` from `Begin()` and kept drawing its
+whole body into a title-bar-sized window, forever. Every other dlac window collapses
+normally, which is exactly why this one was the only trigger. Focus decided *who* got
+eaten: `FocusWindow` moves a window's draw list to the display front — i.e. **behind**
+this one in emission order — so clicking the Teleports float, or opening `/dl ui`, put it
+there. Closing the bar was always safe: a window that is never begun cannot leak.
+
+**Fix:** delete the line. `AlwaysAutoResize` already sizes the window to its content
+every frame; the call was redundant from the day the bar shipped (`92e1fb2`, 07-24).
+`HB21` pins it — the smoke stub records every size requested and asserts none is zero.
+Mutation-verified: re-add the line and HB21 fails.
+
+**Worth carrying:**
+- **`SetNextWindowSize` with a zero component is not "auto-size", it is "keep measuring".**
+  With `ImGuiCond_Always` it is a permanent instruction, and it silently defeats *collapse*
+  — a state most windows are never tested in.
+- **Two symptoms, one window.** "The float dies" and "`/dl ui` is invisible" looked like
+  two bugs and named one cause. The second report is what killed every theory built around
+  the Teleports popup.
+- **The metrics window is the artifact.** `active` vs `visible` counts plus the vertex
+  delta said *active, rendered, drawing nothing* — which no amount of reading the addon's
+  own Lua could have said.
+
+**Status:** on `dev` (`ad476ea`, addon `27u`), **FIELD-CONFIRMED** by Henrik the same day
+— *"it works now :)"* — and then **ACCEPTED** by him for promotion: *"Document this as an
+accepted fix and put it as an accepted part of the dev → main merge in the future."* The
+next dev → main merge carries it without a fresh go-ahead (HANDOFF's queue marks it ✅).
+Suites 3901 + 693, green on Windows lua and WSL lua5.4.
+
+## Session "an import should be able to land verbatim" (2026-07-27w)
+
+**Theme:** the first feature dlac has taken from a **second player's** field report — and
+a behavior that was correct-by-design in only half the cases it ran in.
+
+**Reported**, by a friend of Henrik's who runs dlac and had been round-tripping his own
+profiles to compare them against what dlac would pick: *"I'm importing dlac how I want
+them, and it's just changing it every time."* With a theory attached, and a good one:
+*"If I'm on the job, and profile that I am importing it to, it will auto refresh stats
+based on weight. If I'm not on the job it doesn't."* That is exactly the shape of
+`gearui`'s `afterImport` hook — it refuses when the import lands outside the current
+character's active profile, or under a job you are not on, because the candidate pools
+(owned gear, job/level usability) are the current job's. He had reverse-engineered the
+guard from the outside, from behavior alone.
+
+He also arrived with a **patch**, written with his own Claude: `sf.flags.autoBuildOnImport`
++ `/dl autobuildimport`, defaulted on, persisted through `uiflags.lua`. The reasoning and
+the seams were right and are what shipped. The two files themselves were not usable —
+his gearui.lua is a **pre-purge** copy (it still calls `/lac equip`, still composes the
+legacy `luashitacast\<Char>_<id>\` path by hand, and predates the Wishlist and the
+reserved-slot work), so applying them would have reverted five sessions. Ported by hand
+onto current `dev` instead. *Worth stating plainly: the patch was read, not run.*
+
+**Why he was right, in dlac's own terms.** The hook exists because an export ships sets
+as **EMPTY shells** — names, no gear — on the theory that gear rarely aligns between
+characters, so the receiver's own gear should fill them. But the export form has had a
+**"Set equipment"** tick since the selective export landed (07-19): when it is on, the
+exact gear ladders travel verbatim. In that case the post-import re-solve overwrites
+precisely what the exporter chose to send, and no amount of re-exporting can show you
+what you actually shipped. The premise in the hook's own comment ("the exported shells
+are EMPTY on purpose") is simply false for that path.
+
+**Landed:**
+- **`sf.flags.autobuildimport`** in `gear/syncflags.lua`, saved and loaded with the rest
+  of `uiflags.lua`. **Default on**, and an **absent key reads as on** — every uiflags.lua
+  written before today lacks it, and those installs must not have their imports change
+  behavior because they updated. Read everywhere as `~= false` for the same reason.
+- **The gate in `afterImport`**, checked **last** — after the wrong-profile and wrong-job
+  guards. Order is deliberate: turning the setting off must never change *which* reason
+  you are told, or "it didn't build" stops being diagnosable.
+- **Two surfaces, one flag:** `/dl autobuildimport [on|off]` (bare = toggle, the
+  `/dl autosync` shape) and **Menu > Settings > "Auto-build sets on import"**. The
+  Settings checkbox is the house surface for a Setting (ADR 0019); the command is what
+  the reporter was told to type, so it works.
+- **The status line says which happened.** Off, the import reports that the sets landed
+  exactly as exported and points at Auto-Build All on the Sets tab.
+- **Tests:** `UIF6a` / `UIF18a` round-trip and load the key, `UIF21a` pins the absent-key
+  default at **on** (the one that would silently change everyone's behavior if it broke),
+  and `UIF21b/21c` pin at the SOURCE that the hook reads the flag and reads it before it
+  builds — the hook needs imgui and a logged-in character, so a source pin is the honest
+  alternative to no coverage at all. `MN12a` counts nine Settings checkboxes.
+
+**Worth carrying:**
+- **A default is only as good as the premise under it.** This one was written for the
+  empty-shell path and then ran on every path, including the one it destroys. The tick
+  that made it wrong shipped eight days later than the hook and nothing connected them.
+- **Second-hand field reports arrive with the guard already reverse-engineered.** He
+  named the exact two conditions the hook checks without ever seeing it. When a report
+  describes behavior that precisely, spend the time to find the code it describes.
+- **A patch from another install is EVIDENCE, not a diff.** Version-drift makes an
+  attractive-looking file a revert in disguise; read it for reasoning and re-derive.
+
+**Left open — a real product question, deliberately not decided here.** dlac knows, at
+import time, whether the payload's sets carry gear or are shells. The case for making
+that the *default* discriminator — re-solve shells, respect gear that travelled — is
+strong, and would fix the reporter's complaint with no setting to find. The case against
+is that the tick was the **exporter's** choice, and a receiver who owns none of that gear
+is better served by the re-solve. That is a behavior call for Henrik, and the setting
+delivers his friend's ask either way.
+
+**Status:** on `dev`, addon `27u` → **`27w`** (`27v` belongs to a parallel session's
+uncommitted engine work in this shared checkout), engine unchanged. Suites **3906 + 693**,
+green on Windows lua and WSL lua5.4. **Awaiting field test** — by the reporter, who has
+the round-trip that found it.
+
+### Follow-on, same session — the last legacy fallback under the flag (`27y`)
+
+Henrik, reading the above: *"Has this been set up with the purge in mind? So we don't add
+legacy crap towards LAC?"* The new code adds none — grepping the commit for
+`luashitacast`, `/lac `, `GetInstallPath` and hand-composed `<Char>_<id>` paths returns
+nothing, and `PRG1` passes. **His friend's patch was the legacy crap**, which is the point
+worth keeping: applying it would have reintroduced `/lac equip`, a hand-composed
+`config\addons\luashitacast\%s_%u\dlac\gear.lua`, and a hand-composed `charBase` in place
+of the delegation to `profiles.charBase` — while deleting **299 lines** of Wishlist and
+reserved-slot work. `PRG1` would have caught two of those three; nothing would have caught
+the deletions.
+
+But the question found a real leftover in the chain the new flag rides. Three functions
+still ended in a `charBase() .. 'dlac\'` fallback from the engine-flag era:
+`gearui.dataDir`, `gearui.charRoot`, `syncflags.uiFlagsPath`. **All three were
+unreachable**, and provably so: `profiles.dataDir` (→ `nativeCharBase`) and
+`profiles.charBase` are the same `charFolder()` behind two different roots, so they go nil
+together and non-nil together. The fallback could only fire in a world where they diverge
+— and in *that* world it would have pointed dlac's own writes at the read-only import
+tree. `uiflags.lua` (which now carries the import setting) was the one with a player-facing
+consequence: a Setting written into `luashitacast\` would never be read back.
+
+Deleted, all three, returning `nil` — the answer every caller already handles as "not
+logged in yet, retry next frame". **`NE30`** pins the nil-together invariant the deletion
+rests on: no identity → both nil; identity → both answer. **Mutation-verified** — make
+`charBase` fall back to a placeholder folder and `NE30b` fails, naming the
+`luashitacast\Ghost_1\` path it would have used.
+
+**Worth carrying:** *unreachable* and *harmless* are different claims. This code could not
+run, but it encoded a rule the purge deleted — "when the native home has no answer, use
+LAC's" — and the next person to touch path resolution would have read it as current. Dead
+code is documentation that nobody proofreads.
+
+**Status:** on `dev`, addon `27x` → **`27y`**, engine untouched. Suites **3947 + 693**,
+green on Windows lua and WSL lua5.4.

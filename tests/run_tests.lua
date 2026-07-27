@@ -18,6 +18,8 @@ package.loaded['dlac\\lib\\safewrite'] = dofile('lib/safewrite.lua');   -- safe-
 package.loaded['dlac\\gear\\catalogindex'] = dofile('gear/catalogindex.lua');   -- catalog walker: gearimport requires it (no catalog headless -> empty indexes)
 package.loaded['dlac\\gear\\gearoracle'] = dofile('gear/gearoracle.lua');   -- THE worn-item/bag door: gearimport + useitem require it (issue #70; parity-pinned below)
 package.loaded['dlac\\lib\\statefile'] = dofile('lib/statefile.lua');   -- addon-side charDir: the watchers require it (guarded)
+package.loaded['dlac\\feature\\wishlist'] = dofile('feature/wishlist.lua');   -- utils asks it before warning about an unresolvable set entry (ADR 0026)
+package.loaded['dlac\\gear\\arbiter'] = dofile('gear/arbiter.lua');   -- THE pure decision core (ADR 0027 stage 3): dispatch hard-requires it; one shared instance for every dofile('dispatch.lua') below
 
 local TEST_PLAYER = nil;                                -- set per test
 gData = { GetPlayer = function() return TEST_PLAYER; end };
@@ -222,12 +224,12 @@ end)();
     local UI = { 'ammoui','automationsui','craftbar','equippedui','filetex','fishbar','fishui',
                  'floatgear','gearui','helmbar','helmui','hobbybar','idlefloat','itemicons','menuui','priorityui','profilesmenu',
                  'restockui','setupui','triggersui','uihost','uistyle','weightsui' };
-    local GEAR = { 'actionpicker','blueprintsmodel','catalogindex','gearcheck','geareffects','gearexport',
+    local GEAR = { 'actionpicker','arbiter','blueprintsmodel','catalogindex','gearcheck','geareffects','gearexport',
                    'gearfmt','gearimport','gearoptim','gearoracle','gearrecord','groupimport','groupscan',
                    'groupsmodel','jobgate','modeslibrary','ownedcache','profileexport','profilesets','setimport',
                    'setmanager','syncflags','triggermodel','weaponfilter','weightimport' };
     local FEATURE = { 'ammowatch','arbwatch','augments','check','chocowatch','craftwatch','debug','digcalc','digrank',
-                      'eboxammo','eboxclient','eboxtrace','fishcalc','fishwatch','gamemode','helmwatch','idleexcl','location','lockstyle','lookpreview',
+                      'eboxclient','eboxtrace','fishcalc','fishwatch','gamemode','helmwatch','idleexcl','location','lockstyle','lookpreview',
                       'macrobook','meritwatch','mpbands','pinwatch','restockwatch','synthrun','useitem','vanamoon' };
     local LIB = { 'cmdqueue','entwatch','safewrite','statefile' };
 
@@ -2029,6 +2031,138 @@ check('U2 wrapper ref resolves case-blind', sWrap.Idle and sWrap.Idle.Main, 'Sol
 local sMiss = utils.BuildDynamicSets({ Dynamic = { Idle = { Main = { 'No Such Item' } } } });
 check('U3 missing name flattens empty, no error', sMiss.Idle and sMiss.Idle.Main, nil);
 
+-- U4-U7: the APOSTROPHE bridge (ADR 0026). The CatsEyeXI API drops the
+-- possessive apostrophe, so anything sourced from the catalog -- a wishlisted
+-- piece parked in a set until you own it -- spells the name without one, while
+-- gear.lua carries the client's spelling. Without this the entry would still
+-- fail to resolve on the day you finally got the item.
+-- (Scoped: this file's main chunk lives against the 200-local cap, hard rule 1.)
+do
+package.loaded['dlac\\gear'].NameToObject["Arhat's Gi"] =
+    { Name = "Arhat's Gi", Level = 71, Slot = 'Body' };
+utils._resetNameIndex();
+local sApos = utils.BuildDynamicSets({ Dynamic = { Idle = { Body = { 'Arhats Gi' } } } });
+check('U4 catalog spelling resolves to the client name', sApos.Idle and sApos.Idle.Body, "Arhat's Gi");
+local sAposC = utils.BuildDynamicSets({ Dynamic = { Idle = { Body = { 'arhats gi' } } } });
+check('U5 ...case-blind too', sAposC.Idle and sAposC.Idle.Body, "Arhat's Gi");
+-- ...and the other direction: the API KEEPS the apostrophe in "San D'Orian", so
+-- a set may hold one the gear table lacks. Both sides are stripped, so it works.
+package.loaded['dlac\\gear'].NameToObject['San DOrian Bow'] =
+    { Name = 'San DOrian Bow', Level = 9, Slot = 'Range' };
+utils._resetNameIndex();
+local sApos2 = utils.BuildDynamicSets({ Dynamic = { Idle = { Range = { "San D'Orian Bow" } } } });
+check('U6 apostrophe in the SET, none in gear.lua', sApos2.Idle and sApos2.Idle.Range, 'San DOrian Bow');
+-- The fallback must never outrank an exact lowercase hit: two names that differ
+-- only by an apostrophe each keep their own record.
+package.loaded['dlac\\gear'].NameToObject['Arhats Gi'] =
+    { Name = 'Arhats Gi', Level = 1, Slot = 'Body' };
+utils._resetNameIndex();
+local sExact = utils.BuildDynamicSets({ Dynamic = { Idle = { Body = { 'Arhats Gi' } } } });
+check('U7 exact lowercase still wins over the stripped fallback',
+    sExact.Idle and sExact.Idle.Body, 'Arhats Gi');
+package.loaded['dlac\\gear'].NameToObject['Arhats Gi'] = nil;
+package.loaded['dlac\\gear'].NameToObject['San DOrian Bow'] = nil;
+utils._resetNameIndex();
+
+-- ---------------------------------------------------------------------------
+-- WL. The Wishlist model (feature\wishlist, ADR 0026). Everything here is pure:
+--     no character, no disk -- M.path() is nil without a login, so load() leaves
+--     M.entries exactly as a test put it.
+-- ---------------------------------------------------------------------------
+local wlm = require('dlac\\feature\\wishlist');
+
+check('WL1 normName lowercases',            wlm.normName('Solid Wand'), 'solid wand');
+check('WL2 normName drops the apostrophe',  wlm.normName("Arhat's Gi"), 'arhats gi');
+check('WL3 normName is idempotent',         wlm.normName(wlm.normName("Arhat's Gi")), 'arhats gi');
+check('WL4 normName tolerates a non-string', wlm.normName(nil), '');
+
+-- A job-only link is a COARSER wish, not the same thing as a job+set link.
+check('WL5 same job+set links match',
+    wlm.sameLink({ job = 'WHM', set = 'Idle' }, { job = 'WHM', set = 'Idle' }), true);
+check('WL6 different set differs',
+    wlm.sameLink({ job = 'WHM', set = 'Idle' }, { job = 'WHM', set = 'TP' }), false);
+check('WL7 job-only is not job+set',
+    wlm.sameLink({ job = 'WHM' }, { job = 'WHM', set = 'Idle' }), false);
+
+local lks = {};
+local _, addedA = wlm.addLinkTo(lks, 'WHM', 'Idle');
+local _, addedB = wlm.addLinkTo(lks, 'WHM', 'Idle');      -- exact repeat
+local _, addedC = wlm.addLinkTo(lks, 'WHM', nil);         -- coarser: a NEW link
+check('WL8 first link is added',        addedA, true);
+check('WL9 duplicate link is refused',  addedB, false);
+check('WL10 job-only link still added', addedC, true);
+check('WL11 two links stored',          #lks, 2);
+local _, addedD = wlm.addLinkTo(lks, '', 'Idle');         -- no job = not a link
+check('WL12 empty job refused',         addedD, false);
+
+-- fromRaw DROPS anything malformed rather than repairing it: a half-understood
+-- entry that silences a warning is worse than no entry at all.
+local raw = wlm.fromRaw({
+    [13795] = { name = "Arhat's Gi", note = 'Sky', links = { { job = 'WHM', set = 'Idle' }, { job = 'BLM' } } },
+    [222]   = { note = 'no name -- dropped' },
+    [333]   = { name = 'Kept', links = { { set = 'Idle' }, { job = 'RDM' } } },   -- jobless link dropped
+    ['xx']  = { name = 'Bad key -- dropped' },
+});
+check('WL13 good entry kept',        raw[13795] ~= nil, true);
+check('WL14 nameless entry dropped', raw[222], nil);
+check('WL15 non-numeric key dropped',raw['xx'], nil);
+check('WL16 links normalized',       #raw[13795].links, 2);
+check('WL17 jobless link dropped',   #raw[333].links, 1);
+check('WL18 missing note defaults',  raw[333].note, '');
+check('WL19 id stamped onto entry',  raw[13795].id, 13795);
+
+-- Serialization is STABLE (ids ascending) so an unchanged file is byte-identical
+-- and the engine's raw-text compare can skip the re-parse.
+local ser = wlm.serialize(raw);
+check('WL20 serialize round-trips through fromRaw',
+    (function()
+        local t = assert((loadstring or load)(ser))();
+        local back = wlm.fromRaw(t);
+        return back[13795] ~= nil and back[13795].note == 'Sky'
+           and #back[13795].links == 2 and back[13795].links[1].set == 'Idle'
+           and back[333] ~= nil and back[333].links[1].job == 'RDM'
+           and back[333].links[1].set == nil;
+    end)(), true);
+check('WL21 serialize is byte-stable', wlm.serialize(wlm.fromRaw(assert((loadstring or load)(ser))())), ser);
+check('WL22 empty list serializes', wlm.serialize({}), 'return { }\n');
+check('WL23 ids ascending', (ser:find('%[333%]') < ser:find('%[13795%]')), true);
+
+-- isWished is the ENGINE seam: name-based (the engine has no ids in a set file)
+-- and normalized on both sides, so the catalog's spelling matches gear.lua's.
+wlm._reset();
+wlm.entries = wlm.fromRaw({ [13795] = { name = 'Arhats Gi', links = {} } });
+check('WL24 exact name is wished',      wlm.isWished('Arhats Gi'), true);
+check('WL25 client spelling is wished', wlm.isWished("Arhat's Gi"), true);
+check('WL26 case-blind',                wlm.isWished('arhats gi'), true);
+check('WL27 unrelated name is not',     wlm.isWished('Dalmatica'), false);
+check('WL28 empty name is not',         wlm.isWished(''), false);
+check('WL29 nil is not',                wlm.isWished(nil), false);
+
+-- ...and the suppression it exists for. utils binds `print` at LOAD, so the
+-- capture needs a stubbed chatfmt and a re-required utils (the documented
+-- dispatch-test dance); both are restored afterwards.
+do
+    local savedChat = package.loaded['dlac\\chatfmt'];
+    local lines = {};
+    package.loaded['dlac\\chatfmt'] = { print = function(s) lines[#lines + 1] = tostring(s); end };
+    -- dofile, not require: this harness loads utils by dofile, so there is no
+    -- searcher to find it again. A fresh chunk also means a fresh _warnedMissing.
+    local u2 = dofile('utils.lua');
+    wlm._reset();
+    wlm.entries = wlm.fromRaw({ [999] = { name = 'Wished Nonexistent', links = {} } });
+    local sW = u2.BuildDynamicSets({ Dynamic = { Idle = { Body = { 'Wished Nonexistent' } } } });
+    check('WL30 a wished name warns NOT', #lines, 0);
+    check('WL31 ...and is still skipped', sW.Idle and sW.Idle.Body, nil);
+    local sU = u2.BuildDynamicSets({ Dynamic = { Idle = { Body = { 'Plain Nonexistent' } } } });
+    check('WL32 an unwished name still warns', #lines, 1);
+    check('WL33 ...and says so',
+        lines[1] ~= nil and lines[1]:find('Plain Nonexistent', 1, true) ~= nil, true);
+    check('WL34 ...and is skipped too', sU.Idle and sU.Idle.Body, nil);
+    wlm._reset();
+    package.loaded['dlac\\chatfmt'] = savedChat;
+end
+end   -- U4-WL34 scope (200-local cap)
+
 -- ---------------------------------------------------------------------------
 -- T. deleteStaticSetText: removes a direct child of the sets ROOT (a legacy
 --    static set), never the Dynamic block, never nested lookalikes.
@@ -3361,7 +3495,150 @@ do
     check('AK21 the reserver still equips',               akTbl2.Body, 'Ryl.Ftm. Tunic');
     check('AK22 the drop is traced for /dl why',
         string.find(akNote, 'RESERVED', 1, true) ~= nil, true);
+
+    -- AK23+. dispatch.rslotText -- the mask as slot NAMES, for the GUI. The engine
+    -- owns this vocabulary because it owns the behaviour: gearui prints reservations
+    -- ("Takes Head") and marks the builder's reserved tiles, and a private bit->slot
+    -- table over there is exactly the twin that drifts unnoticed. Order follows
+    -- RSLOT_ORDER, not the mask's numeric order, so 448 always reads Hands, Legs, Feet.
+    check('AK23 rslotText exported',        type(dispatchM.rslotText), 'function');
+    check('AK24 single bit -> slot name',   dispatchM.rslotText(0x0010), 'Head');
+    check('AK25 Hands',                     dispatchM.rslotText(0x0040), 'Hands');
+    check('AK26 Legs (Kupo Suit)',          dispatchM.rslotText(0x0080), 'Legs');
+    check('AK27 Feet (Decennial Hose)',     dispatchM.rslotText(0x0100), 'Feet');
+    check('AK28 multi-bit in slot order',   dispatchM.rslotText(0x01C0), 'Hands, Legs, Feet');
+    check('AK29 Head+Hands (the real 80)',  dispatchM.rslotText(0x0050), 'Head, Hands');
+    check('AK29b Hands+Feet (the real 320)', dispatchM.rslotText(0x0140), 'Hands, Feet');
+    check('AK30 Range (trinket, ADR 0010)', dispatchM.rslotText(0x0004), 'Range');
+    -- nil, not '': every caller tests the return for nil to decide whether to draw
+    -- the line at all, and an empty string would draw an empty warning row.
+    check('AK31 zero -> nil',               dispatchM.rslotText(0), nil);
+    check('AK32 nil -> nil',                dispatchM.rslotText(nil), nil);
+    check('AK33 garbage -> nil',            dispatchM.rslotText('x'), nil);
+
 end
+
+-- ---------------------------------------------------------------------------
+-- AKD. MULTI-SLOT DOMINANCE (v135) -- Henrik's ruling, 2026-07-27: "he needs to
+--      check, am I dominant in both pieces according to you? If not, this piece
+--      is not a candidate." A reserving piece is a candidate only while its claim
+--      is dominant over every slot it takes. Dominant -> it claims those slots
+--      and they are left EMPTY; beaten -> the piece is INELIGIBLE and its own
+--      slot goes unwritten too.
+--
+--      Driven off the two REAL field cases, which are the same rule pulling in
+--      OPPOSITE directions -- which is exactly why both belong here. Neither is
+--      reachable by judging one set at a time, the pass reservedDrops does.
+--
+--      Own function scope, not `do`: the 200-local cap (see the AL note).
+-- ---------------------------------------------------------------------------
+(function()
+    local RS = {};
+    local function look(n) return RS[n]; end
+    local function verdict(entries)
+        return dispatchM.reserveVerdict(dispatchM.reserveFloor(entries), look);
+    end
+
+    -- Hunklor SAM. Movement(25) Body = Kupo Suit (reserves Legs) over Idle(20)
+    -- Legs = Amir Dirs. Movement is dominant -> the suit claims Legs, Idle never
+    -- writes them, and the ~0.4s flap has nothing left to flap with.
+    RS['Kupo Suit'] = 0x0080;
+    local kSup, kInel = verdict({
+        { prio = 20, set = { Body = 'Haubergeon', Legs = 'Amir Dirs', Head = 'Walahra Turban' } },
+        { prio = 25, set = { Body = 'Kupo Suit' } },
+    });
+    check('AKD1 SAM: the suit claims Legs',           kSup and kSup.Legs, 'Kupo Suit');
+    check('AKD2 SAM: the suit itself stays eligible', kInel and kInel.Body, nil);
+    check('AKD3 SAM: an unrelated slot is untouched', kSup and kSup.Head, nil);
+
+    -- Mindie SCH. Idle(20) Body = Royal Cloak (reserves Head) UNDER Movement(25)
+    -- Head = a headpiece. The cloak is beaten on Head, so it is not a candidate:
+    -- Body goes unwritten and the higher-priority headpiece finally lands. Before
+    -- v135 the WORN cloak reserved Head away from the rule that outranked it --
+    -- Henrik: "it is still not overriding Royal cloak... This is the wrong logic."
+    RS['Royal Cloak'] = 0x0010;
+    local rSup, rInel = verdict({
+        { prio = 20, set = { Body = 'Royal Cloak', Head = 'Idle Hat' } },
+        { prio = 25, set = { Head = 'Move Hat' } },
+    });
+    check('AKD4 SCH: the cloak is INELIGIBLE',        rInel and rInel.Body, 'Head');
+    check('AKD5 SCH: Head is NOT claimed away',       rSup and rSup.Head, nil);
+    -- a piece that lost must not reserve on its way out: it is not being worn
+    check('AKD6 SCH: an ineligible piece suppresses nothing', rSup, nil);
+
+    -- One rule naming both is that rule describing itself. EQUAL priority is
+    -- dominant, so this keeps pre-v135 behaviour exactly (AK1's law via the floor).
+    local sSup, sInel = verdict({ { prio = 20, set = { Body = 'Royal Cloak', Head = 'Idle Hat' } } });
+    check('AKD7 one set: the cloak claims Head',      sSup and sSup.Head, 'Royal Cloak');
+    check('AKD8 one set: the cloak stays eligible',   sInel, nil);
+
+    -- No cascade: Body takes Legs, so the claimed Legs piece never goes on and
+    -- cannot take Feet with it.
+    RS['Marine Boxers'] = 0x0100;
+    local cSup = verdict({ { prio = 20, set = {
+        Body = 'Kupo Suit', Legs = 'Marine Boxers', Feet = 'Amir Boots' } } });
+    check('AKD9 chain: Legs claimed by the suit',     cSup and cSup.Legs, 'Kupo Suit');
+    check('AKD10 chain: a claimed piece cannot claim Feet', cSup and cSup.Feet, nil);
+
+    -- ONE contested slot disqualifies the WHOLE piece -- a suit taking
+    -- Hands+Legs+Feet loses if any single one of them is outranked.
+    RS['Moogle Suit'] = 0x01C0;
+    local mSup, mInel = verdict({
+        { prio = 20, set = { Body = 'Moogle Suit', Hands = 'A', Legs = 'B' } },
+        { prio = 30, set = { Feet = 'Fast Boots' } },
+    });
+    check('AKD11 one contested slot beats the whole piece', mInel and mInel.Body, 'Feet');
+    check('AKD12 ... so it claims neither Hands nor Legs',
+        (mSup == nil) or (mSup.Hands == nil and mSup.Legs == nil), true);
+
+    -- Floor merge order == apply order: later entries overwrite, and the priority
+    -- recorded is the one that actually WON the slot (not the first to name it).
+    local fl = dispatchM.reserveFloor({
+        { prio = 20, set = { Body = 'Haubergeon' } },
+        { prio = 25, set = { Body = 'Kupo Suit' } },
+    });
+    check('AKD13 last writer wins the floor',   fl.Body.name, 'Kupo Suit');
+    check('AKD14 ... and carries ITS priority', fl.Body.prio, 25);
+    check('AKD15 metadata keys are not slots',
+        dispatchM.reserveFloor({ { prio = 1, set = { __alt = 'x', Body = 'y' } } }).__alt, nil);
+
+    -- Degenerate inputs never throw and never invent a verdict.
+    check('AKD16 no entries -> no verdict', (verdict({})), nil);
+    check('AKD17 no lookup -> no verdict',
+        (dispatchM.reserveVerdict({ Body = { name = 'x', prio = 1 } }, nil)), nil);
+    check('AKD18 no floor -> no verdict', (dispatchM.reserveVerdict(nil, look)), nil);
+    -- A piece nothing knows about reserves nothing (an old manifest, an uncrawled
+    -- custom): unknown must read as "no reservation", never as a guess.
+    check('AKD19 unknown piece -> no verdict',
+        (verdict({ { prio = 20, set = { Body = 'Mystery Robe', Head = 'H' } } })), nil);
+
+    -- The CONSUMPTION seam. The rules above are pure; these drive the real
+    -- post-pass chain, because a verdict nothing reads is worth nothing. The
+    -- manifest is stamped so the PRE-v135 path would actively do the wrong
+    -- thing -- that is what makes AKD22 a regression guard and not a tautology.
+    local gAK = package.loaded['dlac\\gear'];
+    gAK.NameToObject['Royal Cloak'] = { Name = 'Royal Cloak', RSlot = 0x0010 };
+
+    local _, t1 = dispatchM._equipResolved({ Body = 'Haubergeon', Legs = 'Amir Dirs' },
+        { reserveSuppressed = { Legs = 'Kupo Suit' } });
+    check('AKD20 a claimed slot is not written',        t1.Legs, nil);
+    check('AKD21 ... the rest of the set still is',     t1.Body, 'Haubergeon');
+
+    local nte, t2 = dispatchM._equipResolved({ Body = 'Royal Cloak', Head = 'Move Hat' },
+        { reserveIneligible = { Body = 'Head' } });
+    check('AKD22 an ineligible cloak is not written',   t2.Body, nil);
+    -- THE SCH BUG, pinned: the same input WITHOUT a verdict drops Head (AKD24).
+    check('AKD23 ... and the higher-priority hat SURVIVES', t2.Head, 'Move Hat');
+    check('AKD24 the drop is traced for /dl why',
+        string.find(tostring(nte), 'INELIGIBLE', 1, true) ~= nil, true);
+
+    -- No verdict (a Claim layer's own overlay, or any direct caller) -> the
+    -- single-set + worn judgement, byte-identical to pre-v135.
+    local _, t3 = dispatchM._equipResolved({ Body = 'Royal Cloak', Head = 'Idle Hat' }, {});
+    check('AKD25 with NO verdict the old path still drops Head', t3.Head, nil);
+    check('AKD26 ... and the cloak still equips',                t3.Body, 'Royal Cloak');
+    gAK.NameToObject['Royal Cloak'] = nil;
+end)();
 
 -- ---------------------------------------------------------------------------
 -- AL. PINNED slots (dispatch v44) -- "equip item, lock slot so nothing removes
@@ -5243,6 +5520,14 @@ end)();
     -- Range-reserving (field case 2026-07-22: a manually equipped Automat. Oil +2
     -- was displaced every Default dispatch).
     check('TR4b Animator-fed oil exempt -> nil',           gimp.effectiveRSlot({ Type = 'Ammo', Id = 18733 }), nil);
+    -- TR4c. rslotFor: the catalog-sourced mask BY ID -- the value the scan stamps
+    -- into gear.lua, and (since the builder's reserved-tile preview) what the GUI
+    -- reads too. Exported so those two can never answer differently; headless it
+    -- returns nil for everything (no catalog), which every caller reads as "no
+    -- reservation", so the absence of a catalog can only under-warn, never misfire.
+    check('TR4c rslotFor exported',        type(gimp.rslotFor), 'function');
+    check('TR4d rslotFor(nil) is safe',    gimp.rslotFor(nil), nil);
+    check('TR4e unknown id -> nil',        gimp.rslotFor(999999), nil);
 
     -- the level tiebreak (dispatchM.trinketRangeDrop). rslot: only the stat sticks reserve Range.
     local rslot = function(n) return ({ Cinderstone = 4, Morion = 4 })[n]; end
@@ -6495,12 +6780,34 @@ end)();
     -- never clears package.loaded), so this watch is what actually clears it.
     check('NK28 same job, in the world -> stays armed', dispatchM.nakedWorldWatch(7, 7), nil);
     check('NK28b and the flag is untouched',    dispatchM.nakedOn(), true);
-    check('NK28c job 0 (character select) disarms', dispatchM.nakedWorldWatch(0, 7), 'world');
+    -- ZONES SURVIVE (Henrik, 2026-07-27): a zone load reads job 0/nil exactly
+    -- like character select, so absence alone HOLDS -- only outlasting a zone
+    -- (WORLD_GONE_S) or returning with a different job drops. `now` injected.
+    check('NK28c a world-gone read HOLDS (a zone load looks like char select)',
+        dispatchM.nakedWorldWatch(0, 7), nil);
+    check('NK28c2 still armed through the load', dispatchM.nakedOn(), true);
+    check('NK28c3 coming back the SAME job keeps it', dispatchM.nakedWorldWatch(7, 0), nil);
+    check('NK28c4 ...armed', dispatchM.nakedOn(), true);
+    dispatchM.nakedWorldWatch(0, 7);
+    check('NK28c5 outlasting a zone disarms', dispatchM.nakedWorldWatch(0, 7, 1e9), 'world');
     check('NK28d you come back dressed',        dispatchM.nakedOn(), false);
     check('NK28e the mirror follows it down',
         (readMirror() or ''):find('["__naked"] = false', 1, true) ~= nil, true);
     dispatchM.setNaked(true);
-    check('NK28f a nil job read disarms too',   dispatchM.nakedWorldWatch(nil, 7), 'world');
+    dispatchM.nakedWorldWatch(nil, 7);
+    check('NK28f a nil job read holds too, then times out the same way',
+        dispatchM.nakedWorldWatch(nil, 7, 1e9), 'world');
+    dispatchM.setNaked(true);
+    -- Returning from absence with a DIFFERENT job still disarms because the
+    -- tick's _tickJob latch only advances on LIVE reads (source-pinned
+    -- below), so the return is judged against the job you LEFT with.
+    check('NK28f2 returning from absence with a DIFFERENT job disarms',
+        (function() dispatchM.nakedWorldWatch(7, 7); dispatchM.nakedWorldWatch(0, 7);
+                    return dispatchM.nakedWorldWatch(3, 7); end)(), 'job');
+    check('NK28f3 the tick latches prevJob on LIVE reads only (source pin)',
+        (function() local f = io.open('dispatch.lua', 'r'); local d = f:read('*a'); f:close();
+            return d:find('if j ~= nil and j ~= 0 then', 1, true) ~= nil
+               and d:find('_tickJob = j;', 1, true) ~= nil; end)(), true);
     dispatchM.setNaked(true);
     check('NK28g a JOB CHANGE disarms',         dispatchM.nakedWorldWatch(3, 7), 'job');
     check('NK28h ...and dresses you',           dispatchM.nakedOn(), false);
@@ -6512,8 +6819,9 @@ end)();
         dispatchM.nakedWorldWatch(7, 0), nil);
     check('NK28k still armed through both',     dispatchM.nakedOn(), true);
     check('NK28l it only ever CLEARS, never arms', (function()
-        dispatchM.nakedWorldWatch(0, 7);                     -- disarm
-        return dispatchM.nakedWorldWatch(0, 7) == nil and dispatchM.nakedOn() == false;
+        dispatchM.nakedWorldWatch(0, 7);                     -- absence starts
+        dispatchM.nakedWorldWatch(0, 7, 1e9);                -- ...and times out (disarm)
+        return dispatchM.nakedWorldWatch(0, 7, 1e9) == nil and dispatchM.nakedOn() == false;
     end)(), true);
     -- NK29. THE LOCKSTYLE REFUSAL, on the door that actually runs.
     --
@@ -6556,6 +6864,620 @@ end)();
     _G.gFunc, _G.gState = savedFunc, savedState;
     package.loaded['dlac\\feature\\equipengine'] = savedEngNK;
     dispatchM.nakedArmed = false;
+end)();
+
+-- ---------------------------------------------------------------------------
+-- CR. THE CLAIMANT REGISTRY (ADR 0027, stage 0 -- engine v136). CLAIMANTS is
+--     the one table M.dispatch's ensure pass, both bail guards, the claims
+--     map, the signature legs, the rank-walk applies and /dl prio all
+--     iterate; these pin its SHAPE as data, so the silent-bail class (a
+--     missed bail term, a missed signature leg) cannot come back as drift.
+--     NK26 above drives the rewired dispatch body end to end; these drive
+--     the rows directly.
+-- ---------------------------------------------------------------------------
+(function()
+    local reg = dispatchM._claimants;
+    check('CR0 the registry is exported', type(reg), 'table');
+
+    -- One row per rank row except the Triggers floor -- both directions.
+    local names = {};
+    for _, row in ipairs(reg) do names[row.name] = true; end
+    local missing, extra, inOrder = {}, {}, {};
+    for _, n in ipairs(dispatchM._arbDefaultOrder) do
+        if n ~= 'Triggers' then
+            inOrder[n] = true;
+            if not names[n] then missing[#missing + 1] = n; end
+        end
+    end
+    for n in pairs(names) do
+        if not inOrder[n] then extra[#extra + 1] = n; end
+    end
+    check('CR1 every rank row except Triggers has a registry row', table.concat(missing, ','), '');
+    check('CR1b and no registry row lacks a rank row', table.concat(extra, ','), '');
+    check('CR1c the row count is exact', #reg, #dispatchM._arbDefaultOrder - 1);
+
+    -- The signature-leg order is the pre-registry byte order -- craft | pins |
+    -- HELM | fishing | chocobo | ammo | mp | naked | disabled. Reordering
+    -- retraces every live session once: do it on purpose or not at all.
+    check('CR2 the signature legs keep the pre-registry byte order',
+        table.concat(dispatchM._claimantSigOrder, '|'),
+        'Craft|Pins|HELM|Fishing|Chocobo|AutoAmmo|MaxMP|Naked|Disabled');
+
+    -- The documented exceptions are EXACTLY the documented exceptions. MaxMP:
+    -- no claim builder (inline-built, order-coupled to mpRespectLocks/mpCeded)
+    -- and no apply (its equip stays WOVEN until ADR 0027 stage 6). Locks: no
+    -- signature leg (pre-registry parity -- it never had one).
+    local noClaim, noApply, noSig = {}, {}, {};
+    for _, row in ipairs(reg) do
+        if row.claim == nil then noClaim[#noClaim + 1] = row.name; end
+        if row.apply == nil then noApply[#noApply + 1] = row.name; end
+        if row.sig == nil then noSig[#noSig + 1] = row.name; end
+    end
+    check('CR3 MaxMP is the only row without a claim builder', table.concat(noClaim, ','), 'MaxMP');
+    check('CR3b MaxMP is the only row without an apply (woven)', table.concat(noApply, ','), 'MaxMP');
+    check('CR3c Locks is the only row without a signature leg', table.concat(noSig, ','), 'Locks');
+
+    -- The bail sets: Disabled and MaxMP sit out BOTH bails by design (free
+    -- equip or a bare mode is not a reason to dispatch); the other eight
+    -- participate in both.
+    local b1, b2 = {}, {};
+    for _, row in ipairs(reg) do
+        if row.bail1 == true then b1[#b1 + 1] = row.name; end
+        if row.bail2 == true then b2[#b2 + 1] = row.name; end
+    end
+    table.sort(b1); table.sort(b2);
+    check('CR4 the bail #1 set is exactly the eight dispatch reasons',
+        table.concat(b1, ','), 'AutoAmmo,Chocobo,Craft,Fishing,HELM,Locks,Naked,Pins');
+    check('CR4b the bail #2 set is the same eight', table.concat(b2, ','), table.concat(b1, ','));
+    check('CR4c every row carries a prioStatus (the /dl prio twin is dead)',
+        (function()
+            for _, row in ipairs(reg) do if type(row.prioStatus) ~= 'function' then return row.name; end end
+            return true;
+        end)(), true);
+
+    -- The rows themselves, driven directly -- the same tables the dispatch
+    -- loops hand them.
+    local by = {};
+    for _, row in ipairs(reg) do by[row.name] = row; end
+
+    -- Pins: active on a non-empty state; the claim builds even when inactive
+    -- (scoped pins decide inside pinOverlayFor, against the dispatch's hits).
+    check('CR5 pins are active on a non-empty state', by['Pins'].active({ Head = { item = 'X' } }), true);
+    check('CR5b and inactive on an empty one', by['Pins'].active({}), false);
+    local pinsBuilt = by['Pins'].claim({ Head = { item = 'Pinned Crown', scope = 'All' } }, false,
+        { hits = {}, event = 'Default' });
+    check('CR5c the pin claim builds regardless of active', type(pinsBuilt), 'table');
+    check('CR5d and carries the pinned item', pinsBuilt.Head, 'Pinned Crown');
+
+    -- Craft: the active predicate is the enabled-plus-name check, verbatim.
+    check('CR6 craft is active when enabled with a craft name',
+        by['Craft'].active({ enabled = true, craft = 'Alchemy' }), true);
+    check('CR6b not without the name', by['Craft'].active({ enabled = true }), false);
+    check('CR6c not when disabled', by['Craft'].active({ enabled = false, craft = 'Alchemy' }), false);
+
+    -- The signature legs: generic = sorted slot=item, '' on nil; the specials
+    -- keep their exact pre-registry spellings.
+    check('CR7 the generic leg is sorted slot=item',
+        by['Craft'].sig({ Body = 'Weaver Apron', Head = 'Chef Hat' }), 'Body=Weaver Apron,Head=Chef Hat');
+    check('CR7b a nil claim is a quiet leg', by['Craft'].sig(nil), '');
+    check('CR7c AutoAmmo names only the Ammo decision',
+        by['AutoAmmo'].sig({ Ammo = 'Iron Arrow' }), 'Ammo=Iron Arrow');
+    check('CR7d naked is the flag, not a table walk', by['Naked'].sig(nil, true), 'NAKED');
+    check('CR7e released naked is quiet', by['Naked'].sig(nil, false), '');
+
+    -- An apply through the REAL equipResolved and the REAL write seam: the
+    -- row's overlay lands on the (stubbed) engine and traces its line.
+    dispatchM.setLock('all', false);   -- a stray lock from an earlier section must not hold the slot
+    local savedEngCR = package.loaded['dlac\\feature\\equipengine'];
+    local wroteCR = {};
+    package.loaded['dlac\\feature\\equipengine'] = {
+        nativeOn = function() return true; end,
+        equipSet = function(t) for k, v in pairs(t or {}) do wroteCR[k] = v; end end,
+        state = { tripped = false },
+    };
+    local linesCR = {};
+    by['Craft'].apply({ built = { Craft = { Body = 'Weaver Apron' } }, bx = {},
+                        ctx = {}, retrace = true, lines = linesCR,
+                        respect = function() return true; end, rankOf = {} });
+    check('CR8 a row apply reaches the equip door', wroteCR.Body, 'Weaver Apron');
+    check('CR8b and traces the overlay slot list', linesCR[1], 'craft gear (overlay)  ->  Body');
+    package.loaded['dlac\\feature\\equipengine'] = savedEngCR;
+
+    -- /dl prio's status strings come from the rows now. Naked is provably off
+    -- (NK's cleanup above); Locks/Disabled are pattern-checked so a stray
+    -- state from an earlier section cannot flake the wording pin.
+    check('CR9 prio: naked reads off', by['Naked'].prioStatus(), 'off');
+    check('CR9b prio: the Locks row reports the VETO, not the locked set',
+        by['Locks'].prioStatus():find('veto', 1, true) ~= nil, true);
+    check('CR9c prio: the ceiling names itself',
+        by['Disabled'].prioStatus():find('ceiling', 1, true) ~= nil, true);
+
+    -- CR10. The AutoAmmo prio line is JOB-AWARE (v137 -- Henrik's stage-0
+    -- field report: the file-level read said ON on a job with no setup).
+    -- Driven through the pure seam: fmt-2 sections, the fmt-1 jobs gate
+    -- (resolveAmmoPlan's, mirrored), the who-has-it naming, and the nil-job
+    -- fallback to the file-level answer. ammoStateOn itself stays file-level
+    -- (it feeds the dispatch bail) -- CR10i pins that it did not move.
+    local ajl = dispatchM._ammoJobLine;
+    local AMMO_ON = 'ON (claims Ammo on shooting events)';
+    local fmt2 = { jobs = { DRK = { enabled = true,  ammo = { { name = 'Acid Bolt' } } },
+                            WAR = { enabled = false, ammo = { { name = 'Stone' } } } } };
+    check('CR10 fmt2: the set-up job reads ON', ajl(fmt2, 'DRK'), AMMO_ON);
+    check('CR10b fmt2: another job reads off AND names who has it',
+        ajl(fmt2, 'SCH'), 'off (this job -- set up on DRK)');
+    check('CR10c fmt2: a disabled section is not "set up"',
+        ajl(fmt2, 'WAR'), 'off (this job -- set up on DRK)');
+    check('CR10d a nil job falls back to the file-level answer', ajl(fmt2, nil), AMMO_ON);
+    local fmt1 = { enabled = true, ammo = { 'Iron Arrow' }, jobs = { RNG = true } };
+    check('CR10e fmt1: the gated-in job reads ON', ajl(fmt1, 'RNG'), AMMO_ON);
+    check('CR10f fmt1: a gated-out job reads off and names the gate',
+        ajl(fmt1, 'SCH'), 'off (this job -- set up on RNG)');
+    check('CR10g fmt1: no jobs map = every job',
+        ajl({ enabled = true, ammo = { 'X' } }, 'SCH'), AMMO_ON);
+    check('CR10h an absent state is off', ajl(nil, 'DRK'), 'off');
+    check('CR10i ammoStateOn stays file-level (the bail read is untouched)',
+        dispatchM._ammoStateOn(fmt2), true);
+end)();
+
+-- ---------------------------------------------------------------------------
+-- LD. THE SLOT LADDER (ADR 0027, stage 1 -- utils.slotLadder/flattenHead +
+--     dispatch.candidatesFor). BuildDynamicSets now DERIVES its pick from the
+--     ladder's head, so parity holds by construction; these pin the pieces:
+--     the comparator as data, the composition encodings, the pass-2 virtual
+--     quirk (preserved on purpose), and the on-demand door with its memo.
+-- ---------------------------------------------------------------------------
+(function()
+    local cctx = { mjLevel = 50, isDW = false };
+    local L = utils.slotLadder;
+    local H = utils.flattenHead;
+
+    -- The comparator: a live range beats an unbounded level (the Garrison
+    -- Tunica field case), level within tier, earlier entry on ties.
+    local lad = L({ { Name = 'Druid Robe', Level = 50 },
+                    { Name = 'Garrison Tunica', Level = 20, minLevel = 20, maxLevel = 51 } },
+                  'Body', nil, cctx);
+    check('LD1 a live range outranks a higher unbounded level', lad.items[1].name, 'Garrison Tunica');
+    check('LD1b the unbounded piece is rung 2, not discarded', lad.items[2].name, 'Druid Robe');
+    check('LD1c the head is the flatten pick', (H(lad, 'Body')), 'Garrison Tunica');
+    lad = L({ { Name = 'First', Level = 40 }, { Name = 'Second', Level = 40 } }, 'Body', nil, cctx);
+    check('LD2 an exact tie keeps the earlier entry', lad.items[1].name, 'First');
+    lad = L({ { Name = 'Too Big', Level = 60 }, { Name = 'Fits', Level = 10 } }, 'Body', nil, cctx);
+    check('LD3 an over-level entry is not a rung at all', #lad.items, 1);
+    check('LD3b the declared window gates too',
+        #L({ { Name = 'Old Cap', Level = 5, maxLevel = 30 } }, 'Body', nil, cctx).items, 0);
+
+    -- The mode tier (save/restore the real dispatch binding).
+    local savedDM = utils.dispatchModule;
+    utils.dispatchModule = { modeActive = function(v) return v == 'DT' end };
+    lad = L({ { Name = 'Plain Body', Level = 40 }, { Name = 'DT Body', Level = 10, mode = 'DT' } },
+            'Body', nil, cctx);
+    check('LD4 an ACTIVE mode entry outranks every unconditional one', lad.items[1].name, 'DT Body');
+    check('LD4b the unconditional piece is its fallback rung', lad.items[2].name, 'Plain Body');
+    lad = L({ { Name = 'Plain Body', Level = 40 }, { Name = 'PDT Body', Level = 10, mode = 'PDT' } },
+            'Body', nil, cctx);
+    check('LD4c an INACTIVE mode entry is excluded outright', #lad.items, 1);
+
+    -- Virtuals: marker|fallback composition + the minLevel rung law.
+    utils.dispatchModule = { virtualMinLevel = function() return 3 end };
+    lad = L({ 'dlac:AutoStaff', { Name = 'Maple Wand', Level = 5 } }, 'Main', nil, cctx);
+    check('LD5 the virtual tops the slot with the item as fallback',
+        (H(lad, 'Main')), 'dlac:AutoStaff|Maple Wand');
+    local _, moLD = H(lad, 'Main');
+    check('LD5b a Main staff marker synthesizes the 2H pairing object', moLD.Type, 'Staff');
+    utils.dispatchModule = { virtualMinLevel = function() return 60 end };
+    lad = L({ 'dlac:AutoStaff', { Name = 'Maple Wand', Level = 5 } }, 'Main', nil, cctx);
+    check('LD5c below the marker level the real pick owns the slot',
+        (H(lad, 'Main')), 'Maple Wand');
+    utils.dispatchModule = savedDM;
+
+    -- Sub pairing per CANDIDATE: a 2H main takes grips, never shields.
+    local twoH = { Name = 'Heavy Great Axe', Type = 'Great Axe', OneHanded = false, Level = 1 };
+    lad = L({ { Name = 'Kite Shield', Type = 'Shield', Level = 1 },
+              { Name = 'Dark Grip', Type = 'Sub', Level = 1 } }, 'Sub', twoH, cctx);
+    check('LD6 a 2H main gates the Sub ladder to grips', #lad.items, 1);
+    check('LD6b and the grip is the rung', lad.items[1].name, 'Dark Grip');
+
+    -- The AutoAcc pool: its own winner, composed only under no virtual.
+    lad = L({ { Name = 'Plain Ring', Level = 40 },
+              { Name = 'Acc Ring', Level = 30, autoType = 'AutoAcc', removePrio = 2, acc = 15 } },
+            'Ring1', nil, cctx);
+    check('LD7 the acc pool never contests the normal pick', lad.items[1].name, 'Plain Ring');
+    check('LD7b it composes the AutoAcc marker over the fallback',
+        (H(lad, 'Ring1')), 'dlac:AutoAcc:2:15:Acc Ring|Plain Ring');
+
+    -- The pass-2 virtual re-adoption QUIRK, preserved on purpose (see the
+    -- slotLadder comment): with no eligible mode item, the last BARE virtual
+    -- beats a later mode-gated one; with one, file order stands.
+    utils.dispatchModule = { modeActive = function(v) return v == 'DT' end };
+    local quirk = { 'dlac:AutoObi', { gear = 'dlac:AutoStaff', mode = 'DT' } };
+    check('LD8 no mode item -> the bare virtual re-adopts last',
+        L(quirk, 'Waist', nil, cctx).virt, 'dlac:AutoObi');
+    local quirk2 = { 'dlac:AutoObi', { gear = 'dlac:AutoStaff', mode = 'DT' },
+                     { Name = 'DT Belt', Level = 10, mode = 'DT' } };
+    check('LD8b a mode item present -> file order stands',
+        L(quirk2, 'Waist', nil, cctx).virt, 'dlac:AutoStaff');
+    utils.dispatchModule = savedDM;
+
+    -- LD9. PARITY BY CONSTRUCTION, verified anyway: a full BuildDynamicSets
+    -- run equals flattenHead over each slot's own ladder.
+    local savedPlayerLD = TEST_PLAYER;
+    TEST_PLAYER = { MainJob = 'WHM', MainJobLevel = 50, SubJob = 'BLM', SubJobLevel = 25,
+                    MainJobSync = 50, SubJobSync = 25, Status = 'Idle', IsMoving = false };
+    local dynLD = {
+        Main = { 'dlac:AutoStaff', { Name = 'Pilgrim Wand', Type = 'Staff', OneHanded = false, Level = 1 } },
+        Sub  = { { Name = 'Dark Grip', Type = 'Sub', Level = 1 },
+                 { Name = 'Kite Shield', Type = 'Shield', Level = 1 } },
+        Body = { { Name = 'Druid Robe', Level = 50 },
+                 { Name = 'Garrison Tunica', Level = 20, minLevel = 20, maxLevel = 51 } },
+    };
+    local setsP = { Dynamic = { LadP = dynLD } };
+    utils.BuildDynamicSets(setsP);
+    local cctxP = utils._lastFlattenCtx;
+    check('LD9 the flatten stamps its context', type(cctxP), 'table');
+    local mladP = utils.slotLadder(dynLD.Main, 'Main', nil, cctxP);
+    local headM, moP = utils.flattenHead(mladP, 'Main');
+    check('LD9b Main parity', headM, setsP.LadP.Main);
+    check('LD9c Sub parity (judged against the derived Main)',
+        (utils.flattenHead(utils.slotLadder(dynLD.Sub, 'Sub', moP, cctxP), 'Sub')), setsP.LadP.Sub);
+    check('LD9d Body parity',
+        (utils.flattenHead(utils.slotLadder(dynLD.Body, 'Body', nil, cctxP), 'Body')), setsP.LadP.Body);
+    TEST_PLAYER = savedPlayerLD;
+
+    -- LD10. The on-demand door + its memo epoch (dispatch.candidatesFor).
+    -- dispatch reaches utils through utilsModule() -> require('dlac\\utils');
+    -- seed package.loaded with THE harness's own utils instance so the door
+    -- and the epoch bump below talk about the same module (the RQU idiom).
+    local savedPkgU = package.loaded['dlac\\utils'];
+    package.loaded['dlac\\utils'] = utils;
+    local savedNS = dispatchM._nativeSets;
+    dispatchM._nativeSets = { Dynamic = { CF = { Body = { { Name = 'X Robe', Level = 10 } } } } };
+    local l1 = dispatchM.candidatesFor('CF', 'Body');
+    check('LD10 candidatesFor reads the authored store',
+        type(l1) == 'table' and l1.items[1] ~= nil and l1.items[1].name or '?', 'X Robe');
+    check('LD10b the memo returns the same ladder within an epoch',
+        rawequal(dispatchM.candidatesFor('CF', 'Body'), l1), true);
+    utils._laddersRev = (utils._laddersRev or 0) + 1;   -- a rebuild bumps the epoch
+    check('LD10c a new epoch recomputes',
+        rawequal(dispatchM.candidatesFor('CF', 'Body'), l1), false);
+    check('LD10d an unknown set is nil', dispatchM.candidatesFor('Nope', 'Body'), nil);
+    dispatchM._nativeSets = savedNS;
+    package.loaded['dlac\\utils'] = savedPkgU;
+end)();
+
+-- ---------------------------------------------------------------------------
+-- AKF. THE FALL (ADR 0027, stage 2 -- M.reserveResolve + the FELL branch in
+--      equipResolved). The deferred half of the v135 ruling: an ineligible
+--      piece falls down its source ladder, each rung re-judged; a reserved
+--      slot never falls (the asymmetry law). Field case: Henrik's Mindie BRD
+--      -- Idle Body = Royal Cloak > Scorpion Harness +1 under Movement Head.
+-- ---------------------------------------------------------------------------
+(function()
+    local HEAD, LEGS = 0x0010, 0x0080;
+    local function look(masks) return function(n) return masks[n] or 0; end end
+    local function ladders(map)
+        return function(src, slot)
+            local bySlot = map[src];
+            local names = bySlot and bySlot[slot] or nil;
+            if names == nil then return nil; end
+            local items = {};
+            for _, n in ipairs(names) do items[#items + 1] = { name = n }; end
+            return { items = items };
+        end
+    end
+
+    -- AKF1: the floor carries its source set through.
+    local fl = dispatchM.reserveFloor({ { prio = 20, set = { Body = 'Royal Cloak' }, src = 'IdleSet' } });
+    check('AKF1 the floor remembers whose set won the slot', fl.Body.src, 'IdleSet');
+
+    -- AKF2: the Mindie case -- the cloak is beaten on Head and FALLS to the
+    -- harness; nothing ends ineligible or suppressed.
+    local mindie = {
+        { prio = 20, set = { Body = 'Royal Cloak' },   src = 'IdleSet' },
+        { prio = 25, set = { Head = 'Genbu Kabuto' },  src = 'MoveSet' },
+    };
+    local cloakLook = look({ ['Royal Cloak'] = HEAD });
+    local mindieLad = ladders({ IdleSet = { Body = { 'Royal Cloak', 'Scorpion Harness +1' } } });
+    local sup, inel, rep = dispatchM.reserveResolve(mindie, cloakLook, mindieLad);
+    check('AKF2 the fall resolves the contest', inel, nil);
+    check('AKF2b nothing is suppressed', sup, nil);
+    check('AKF2c the slot fell to the next rung', rep.Body.to, 'Scorpion Harness +1');
+    check('AKF2d the trace knows what fell', rep.Body.from, 'Royal Cloak');
+    check('AKF2e ...and who beat it', rep.Body.by, 'Head');
+
+    -- AKF3: a replacement that reserves DOMINATED slots suppresses them like
+    -- any dominant reserver (the re-run verdict is the same verdict).
+    local chain = {
+        { prio = 10, set = { Legs = 'Amir Dirs' },     src = 'LowSet' },
+        { prio = 20, set = { Body = 'Royal Cloak' },   src = 'IdleSet' },
+        { prio = 25, set = { Head = 'Genbu Kabuto' },  src = 'MoveSet' },
+    };
+    local suitLook = look({ ['Royal Cloak'] = HEAD, ['Party Suit'] = LEGS });
+    sup, inel, rep = dispatchM.reserveResolve(chain, suitLook,
+        ladders({ IdleSet = { Body = { 'Royal Cloak', 'Party Suit' } } }));
+    check('AKF3 the replacement lands', rep.Body.to, 'Party Suit');
+    check('AKF3b and its own reservation suppresses the dominated slot', sup.Legs, 'Party Suit');
+    check('AKF3c nothing ends ineligible', inel, nil);
+
+    -- AKF4: rung 2 fails the same test rung 1 did -> rung 3 wins (two rounds).
+    sup, inel, rep = dispatchM.reserveResolve(mindie,
+        look({ ['Royal Cloak'] = HEAD, ['Hat Eater'] = HEAD }),
+        ladders({ IdleSet = { Body = { 'Royal Cloak', 'Hat Eater', 'Scorpion Harness +1' } } }));
+    check('AKF4 a refused rung falls again', rep.Body.to, 'Scorpion Harness +1');
+    check('AKF4b and the trace still names the ORIGINAL piece', rep.Body.from, 'Royal Cloak');
+    check('AKF4c clean end state', inel, nil);
+
+    -- AKF5: a dry ladder keeps v135's behavior -- ineligible, no replacement.
+    sup, inel, rep = dispatchM.reserveResolve(mindie, cloakLook,
+        ladders({ IdleSet = { Body = { 'Royal Cloak' } } }));
+    check('AKF5 a dry ladder stays ineligible', inel.Body, 'Head');
+    check('AKF5b and nothing reads as replaced', rep, nil);
+
+    -- AKF6: an inline equip has no ladder (src nil) -- v135 behavior exactly.
+    sup, inel, rep = dispatchM.reserveResolve({
+        { prio = 20, set = { Body = 'Royal Cloak' } },
+        { prio = 25, set = { Head = 'Genbu Kabuto' }, src = 'MoveSet' },
+    }, cloakLook, mindieLad);
+    check('AKF6 an inline equip cannot fall', inel.Body, 'Head');
+    check('AKF6b no replacement invented for it', rep, nil);
+
+    -- AKF7: the cap -- a ladder of nothing but reservers exhausts three
+    -- re-runs and reads INELIGIBLE (visible, never silent), not replaced.
+    sup, inel, rep = dispatchM.reserveResolve(mindie,
+        look({ ['Royal Cloak'] = HEAD, ['R2'] = HEAD, ['R3'] = HEAD, ['R4'] = HEAD, ['R5'] = HEAD }),
+        ladders({ IdleSet = { Body = { 'Royal Cloak', 'R2', 'R3', 'R4', 'R5' } } }));
+    check('AKF7 an all-reserver ladder ends ineligible', inel.Body, 'Head');
+    check('AKF7b with no replacement record', rep, nil);
+
+    -- AKF8: the ASYMMETRY LAW -- a reserved slot never falls, ladder or not.
+    sup, inel, rep = dispatchM.reserveResolve({
+        { prio = 20, set = { Head = 'Silver Hairpin' }, src = 'IdleSet' },
+        { prio = 25, set = { Body = 'Royal Cloak' },    src = 'MoveSet' },
+    }, cloakLook, ladders({ IdleSet = { Head = { 'Silver Hairpin', 'Leather Bandana' } } }));
+    check('AKF8 the dominant reserver claims the slot empty', sup.Head, 'Royal Cloak');
+    check('AKF8b the reserved slot is NOT offered a rung', rep, nil);
+    check('AKF8c and nothing is ineligible', inel, nil);
+
+    -- AKF9/10: the FELL branch in the real equipResolved.
+    dispatchM.setLock('all', false);
+    local _, ft = dispatchM._equipResolved({ Body = 'Royal Cloak' },
+        { reserveReplace = { Body = { from = 'Royal Cloak', to = 'Scorpion Harness +1', by = 'Head' } } });
+    check('AKF9 the refused writer equips the rung that passed', ft.Body, 'Scorpion Harness +1');
+    local fn = dispatchM._equipResolved({ Body = 'Royal Cloak' },
+        { reserveReplace = { Body = { from = 'Royal Cloak', to = 'Scorpion Harness +1', by = 'Head' } } });
+    check('AKF9b and the note names the fall',
+        fn:find('Body=Royal Cloak fell -> Scorpion Harness +1', 1, true) ~= nil, true);
+    local _, bt = dispatchM._equipResolved({ Body = 'Bronze Harness' },
+        { reserveReplace = { Body = { from = 'Royal Cloak', to = 'Scorpion Harness +1', by = 'Head' } } });
+    check('AKF10 a different writer in the slot flows through untouched', bt.Body, 'Bronze Harness');
+end)();
+
+-- ---------------------------------------------------------------------------
+-- ARM. THE ARBITER MODULE (ADR 0027, stage 3 -- gear/arbiter.lua). The pure
+--      decision core, extracted: the slot + rank vocabulary, the reservation
+--      family, resolve/explain, and arbitrate() (the apply order M.dispatch
+--      executes). These pin the extraction's two promises: the module is PURE
+--      (loads with no stubs at all), and every old dispatch seam is the SAME
+--      function (delegation, not a twin).
+-- ---------------------------------------------------------------------------
+(function()
+    -- Purity: a bare dofile in a scratch environment -- no gData, no ashita,
+    -- no AshitaCore -- must load and answer. (The suite's own stubs exist,
+    -- but the module must not NEED them: no engine reads inside the decider.)
+    local arb = dofile('gear/arbiter.lua');
+    check('ARM1 the module loads', type(arb), 'table');
+    check('ARM1b arbitrate exists', type(arb.arbitrate), 'function');
+
+    -- Delegation identity: dispatch's old doors ARE the module's functions --
+    -- rawequal, so a drifting twin is structurally impossible. (dispatchM was
+    -- loaded with the seeded instance, not this fresh dofile -- compare
+    -- against the seed.)
+    local seeded = package.loaded['dlac\\gear\\arbiter'];
+    check('ARM2 the seeded instance backs dispatch', type(seeded), 'table');
+    check('ARM2b reserveFloor is the same function', rawequal(dispatchM.reserveFloor, seeded.reserveFloor), true);
+    check('ARM2c reserveVerdict too', rawequal(dispatchM.reserveVerdict, seeded.reserveVerdict), true);
+    check('ARM2d reserveResolve too', rawequal(dispatchM.reserveResolve, seeded.reserveResolve), true);
+    check('ARM2e arbResolve too', rawequal(dispatchM.arbResolve, seeded.arbResolve), true);
+    check('ARM2f arbWhyLines too', rawequal(dispatchM.arbWhyLines, seeded.arbWhyLines), true);
+    check('ARM2g arbOrder too', rawequal(dispatchM.arbOrder, seeded.arbOrder), true);
+    check('ARM2h the default order is the same table', rawequal(dispatchM._arbDefaultOrder, seeded.ARB_ORDER_DEFAULT), true);
+    check('ARM2i LOCK_HELD keeps its identity', rawequal(dispatchM.LOCK_HELD, seeded.LOCK_HELD), true);
+    check('ARM2j the LAC slot lists ride along',
+        rawequal(dispatchM._lacSlotsCanon, seeded.LAC_SLOTS_CANON), true);
+
+    -- arbitrate: the apply order is the reverse rank walk over ACTIVE claims
+    -- -- exactly the inline loop it replaced.
+    local plan = arb.arbitrate({ order = { 'A', 'B', 'C', 'D' },
+                                 claims = { A = {}, C = {} } });
+    check('ARM3 the apply order is reverse rank, active rows only',
+        table.concat(plan.applies, '>'), 'C>A');
+    check('ARM3b no session -> an empty plan', #arb.arbitrate(nil).applies, 0);
+end)();
+
+-- ---------------------------------------------------------------------------
+-- ARK. DOMINANCE ACROSS RANK (ADR 0027 item 2 + stage 4, first slice). The
+--      verdict's entries now carry `row` (the Arbiter rank index -- smaller
+--      is stronger): across rows RANK wins outright, within a row trigger
+--      priority decides, ties favor the reserver, ord is excluded, and WORN
+--      pieces are not claims (they simply are not entries). Henrik's craft
+--      bench is the acceptance: the floor's Royal Cloak vs the Craft claim's
+--      Midras's Helm +1.
+-- ---------------------------------------------------------------------------
+(function()
+    local HEAD = 0x0010;
+    local function look(masks) return function(n) return masks[n] or 0; end end
+    local cloakLook = look({ ['Royal Cloak'] = HEAD });
+    local function ladders(map)
+        return function(src, slot)
+            local names = map[src] and map[src][slot] or nil;
+            if names == nil then return nil; end
+            local items = {};
+            for _, n in ipairs(names) do items[#items + 1] = { name = n }; end
+            return { items = items };
+        end
+    end
+    local idleLad = ladders({ IdleSet = { Body = { 'Royal Cloak', 'Scorpion Harness +1' } } });
+
+    -- ARK1: THE CRAFT BENCH. Floor cloak (Triggers row 11, prio 20) reserves
+    -- Head; the Craft claim (row 7) owns Head. Rank beats priority outright:
+    -- the cloak is ineligible and FALLS down Idle's ladder; the helm stands.
+    local sup, inel, rep = dispatchM.reserveResolve({
+        { prio = 20, row = 11, set = { Body = 'Royal Cloak' }, src = 'IdleSet' },
+        { prio = 0,  row = 7,  set = { Head = 'Midras Helm +1' } },
+    }, cloakLook, idleLad);
+    check('ARK1 a claim-row slot beats a floor reserver outright', inel, nil);
+    check('ARK1b the cloak fell down its ladder', rep.Body.to, 'Scorpion Harness +1');
+    check('ARK1c the trace names the contested slot', rep.Body.by, 'Head');
+    check('ARK1d nothing is suppressed', sup, nil);
+
+    -- ARK2: within one row, priority still decides -- the v135/AKF behavior,
+    -- byte-for-byte (rows equal cancel out of the compare).
+    sup, inel, rep = dispatchM.reserveResolve({
+        { prio = 20, row = 11, set = { Body = 'Royal Cloak' }, src = 'IdleSet' },
+        { prio = 25, row = 11, set = { Head = 'Genbu Kabuto' } },
+    }, cloakLook, idleLad);
+    check('ARK2 same row -> priority decides, the fall lands', rep.Body.to, 'Scorpion Harness +1');
+    sup, inel, rep = dispatchM.reserveResolve({
+        { prio = 25, row = 11, set = { Body = 'Royal Cloak' }, src = 'IdleSet' },
+        { prio = 20, row = 11, set = { Head = 'Silver Hairpin' } },
+    }, cloakLook, idleLad);
+    check('ARK2b same row, reserver stronger -> it claims the slot empty', sup.Head, 'Royal Cloak');
+    check('ARK2c and nothing falls', rep, nil);
+
+    -- ARK3: an exact strength tie favors the reserver (ratified: ord is not
+    -- in the dominance compare, so a file reorder can never flip this).
+    sup, inel, rep = dispatchM.reserveResolve({
+        { prio = 20, row = 11, set = { Body = 'Royal Cloak' }, src = 'IdleSet' },
+        { prio = 20, row = 11, set = { Head = 'Silver Hairpin' } },
+    }, cloakLook, idleLad);
+    check('ARK3 a strength tie keeps the reserver dominant', sup.Head, 'Royal Cloak');
+
+    -- ARK4: a CLAIM-row reserver dominant over a floor slot suppresses it --
+    -- the general rule pins' bespoke hold has always special-cased.
+    sup, inel, rep = dispatchM.reserveResolve({
+        { prio = 20, row = 11, set = { Head = 'Silver Hairpin' }, src = 'IdleSet' },
+        { prio = 0,  row = 3,  set = { Body = 'Royal Cloak' } },
+    }, cloakLook, ladders({ IdleSet = { Head = { 'Silver Hairpin' } } }));
+    check('ARK4 a dominant claim reserver claims the floor slot empty', sup.Head, 'Royal Cloak');
+    check('ARK4b the floor piece does not read as ineligible', inel, nil);
+
+    -- ARK5: a claim reserver BEATEN by a higher row is ineligible, and with
+    -- no ladder (claim pieces carry none in this slice) its slot is killed --
+    -- v135's law at claim altitude.
+    sup, inel, rep = dispatchM.reserveResolve({
+        { prio = 0, row = 8, set = { Body = 'Royal Cloak' } },
+        { prio = 0, row = 3, set = { Head = 'Pinned Crown' } },
+    }, cloakLook, idleLad);
+    check('ARK5 a beaten claim reserver is ineligible', inel.Body, 'Head');
+    check('ARK5b and cannot fall without a ladder', rep, nil);
+
+    -- ARK6: the merged winner is the strongest WRITER -- a claim overwriting
+    -- the reserver's own slot moots the reservation entirely (apply order:
+    -- claims appended after the floor, strongest last).
+    sup, inel, rep = dispatchM.reserveResolve({
+        { prio = 20, row = 11, set = { Body = 'Royal Cloak' }, src = 'IdleSet' },
+        { prio = 0,  row = 7,  set = { Body = 'Weaver Apron' } },
+    }, cloakLook, idleLad);
+    check('ARK6 a claim overwriting the reserver moots the reservation',
+        (sup == nil and inel == nil and rep == nil), true);
+
+    -- ARK7: the GLOBAL flag retires the worn arm for dispatch passes. The
+    -- same table that the single-set fallback WOULD prune (AK: the Tunic
+    -- takes Head within one plan) passes through untouched when the dispatch
+    -- verdict is the one authority and its maps are empty...
+    dispatchM.setLock('all', false);
+    local _, gt = dispatchM._equipResolved({ Body = 'Ryl.Ftm. Tunic', Head = 'Silver Hairpin' },
+        { reserveGlobal = true });
+    check('ARK7 with the global verdict, the per-pass fallback is silent', gt.Head, 'Silver Hairpin');
+    -- ...while a DIRECT caller (no flag) keeps the pre-v135 judgement whole.
+    local _, dt = dispatchM._equipResolved({ Body = 'Ryl.Ftm. Tunic', Head = 'Silver Hairpin' }, {});
+    check('ARK7b a direct caller still gets the single-set judgement', dt.Head, nil);
+
+    -- ARK8: SENTINEL DEFENSE ROWS (stage 4, slice 2). A '(locked)'
+    -- placeholder at the Locks row defends its slot: the floor reserver is
+    -- beaten by rank and FALLS -- a reserver can no longer bulldoze a locked
+    -- slot. The placeholder itself never reserves (mask 0 -> inert).
+    sup, inel, rep = dispatchM.reserveResolve({
+        { prio = 20, row = 11, set = { Body = 'Royal Cloak' }, src = 'IdleSet' },
+        { prio = 0,  row = 4,  set = { Head = '(locked)' } },
+    }, cloakLook, idleLad);
+    check('ARK8 a locked slot defends against a reserver', rep.Body.to, 'Scorpion Harness +1');
+    check('ARK8b the placeholder reserves nothing', sup, nil);
+
+    -- ARK9: punch-through preserved -- a claim ABOVE Locks overwrites the
+    -- placeholder in the merge, and the contest is judged against ITS row.
+    -- (Pins row 3 over Locks row 4: the reserver still loses, but to Pins.)
+    sup, inel, rep = dispatchM.reserveResolve({
+        { prio = 20, row = 11, set = { Body = 'Royal Cloak' }, src = 'IdleSet' },
+        { prio = 0,  row = 4,  set = { Head = '(locked)' } },
+        { prio = 0,  row = 3,  set = { Head = 'Pinned Crown' } },
+    }, cloakLook, idleLad);
+    check('ARK9 a punch-through claim takes over the defense', rep.Body.by, 'Head');
+    check('ARK9b and the fall still lands', rep.Body.to, 'Scorpion Harness +1');
+
+    -- ARK10: the ceiling defends the same way at row 1 -- free-equip slots
+    -- cannot be emptied by a reserver landing next door.
+    sup, inel, rep = dispatchM.reserveResolve({
+        { prio = 20, row = 11, set = { Body = 'Royal Cloak' } },
+        { prio = 0,  row = 1,  set = { Head = '(free equip)' } },
+    }, cloakLook, idleLad);
+    check('ARK10 a free-equip slot defends against a reserver', inel.Body, 'Head');
+    check('ARK10b with no ladder the reserver dies v135-style', rep, nil);
+
+    -- ARK11: the EMPTY-LOCK WAIVER (Henrik's field refinement, 2026-07-27):
+    -- a lock on an empty slot does not defend -- freezing "empty" is exactly
+    -- what a reservation preserves. The waiver lives at the BUILD site (the
+    -- worn read is engine state, unreachable headless), so it is pinned as
+    -- source, the NK23 idiom: the '(locked)' placeholder must be gated on a
+    -- worn read, and the ceiling's placeholder must NOT be (free equip
+    -- defends the FUTURE hand-equip, empty or not).
+    local dsrc = (function() local f = io.open('dispatch.lua', 'r'); local d = f:read('*a'); f:close(); return d; end)();
+    check('ARK11 the lock entry is the WORN piece, gated on the worn read',
+        dsrc:find("local wn = wornItemName(canon);", 1, true) ~= nil
+        and dsrc:find("held[canon] = wn;", 1, true) ~= nil, true);
+    check('ARK11b the ceiling defense is not',
+        dsrc:find("free[CANON_OF[ls] or ls] = '(free equip)'", 1, true) ~= nil, true);
+
+    -- ARK12: A LOCK-VETOED CLAIM IS NO CLAIM AT ALL (Henrik's locked-empty-
+    -- Head field case): floor entries and respect-locks claim rows must strip
+    -- locked slots before the verdict, so a claim the lock will veto cannot
+    -- evict a reserver on its way to not landing. Build-site law -> source
+    -- pins (the worn/lock reads are engine state, unreachable headless), plus
+    -- the pure consequence: with the dead claim absent, the reserver is
+    -- dominant and holds its ground.
+    check('ARK12 floor entries strip locked slots',
+        dsrc:find('set = minusLocked(st), src = sn', 1, true) ~= nil, true);
+    check('ARK12b respect-locks claim rows strip too',
+        dsrc:find('if layerRespectsLocks(cn) then ctbl = minusLocked(ctbl); end', 1, true) ~= nil, true);
+    sup, inel, rep = dispatchM.reserveResolve({
+        { prio = 20, row = 11, set = { Body = 'Royal Cloak' }, src = 'IdleSet' },
+        -- (the Movement Head claim is ABSENT -- stripped at the build site)
+    }, cloakLook, idleLad);
+    check('ARK12c with the dead claim gone, the reserver is dominant', inel, nil);
+    check('ARK12d nothing contests, so nothing is even suppressed (the slot is not in the floor)', sup, nil);
+    check('ARK12e and nothing falls -- the reserver is simply undisturbed', rep, nil);
+
+    -- ARK13: A LOCK-FROZEN RESERVER STILL RESERVES (Henrik's locked-cloak
+    -- case): locking Body with the Royal Cloak worn enters the CLOAK at the
+    -- Locks row -- so Idle's Head piece stays suppressed instead of landing
+    -- and having the server displace the very piece the lock froze.
+    sup, inel, rep = dispatchM.reserveResolve({
+        { prio = 20, row = 11, set = { Head = 'Choral Roundlet +1' }, src = 'IdleSet' },
+        { prio = 0,  row = 4,  set = { Body = 'Royal Cloak' } },
+    }, cloakLook, ladders({ IdleSet = { Head = { 'Choral Roundlet +1' } } }));
+    check('ARK13 the frozen cloak suppresses the floor Head claim', sup.Head, 'Royal Cloak');
+    check('ARK13b nothing reads ineligible', inel, nil);
+    check('ARK13c and nothing falls', rep, nil);
+
+    -- WY1: the contest stash (/dl why <slot>, ADR 0027 item 4). NK26's real
+    -- dispatch above ran the stash path; its Default trace must carry the
+    -- structured contest the drill-down renders -- the same object that
+    -- decided, never a re-derivation.
+    local wtr = dispatchM.getTrace()['Default'];
+    check('WY1 the trace stashes the contest', wtr ~= nil and type(wtr.contest) == 'table', true);
+    check('WY1b it carries the rank-ordered explain',
+        wtr ~= nil and type(wtr.contest) == 'table' and type(wtr.contest.explain) == 'table', true);
+    check('WY1c and the order it decided with',
+        wtr ~= nil and type(wtr.contest) == 'table' and type(wtr.contest.order) == 'table', true);
 end)();
 
 -- ---------------------------------------------------------------------------
@@ -9382,6 +10304,115 @@ end)();
         rap(SPEC, FM({ event = 'Ability', abilityType = 'Quick Draw' })), 'Animikii Bullet');
     check('AM50d a bow opens NEITHER special -> hold',
         rap(SPEC, FM({ rangeWorn = 'Longbow', rangePair = '25:4', unlimited = true })), nil);
+
+    -- -----------------------------------------------------------------------
+    -- AM51+. THE LEVEL DECIDES WHICH RUNG (v134; Henrik 2026-07-27). §9's twin,
+    -- one door along: the ladder knew what the WEAPON could fire and nothing at
+    -- all about what the PLAYER could wear, so the top entry won at every level.
+    -- The field list, verbatim from his ammostate.lua and sorted best-first by
+    -- the panel's own button -- "when I make the slot empty, it still tries to
+    -- auto equip acid bolts", at an overridden level of 10.
+    -- -----------------------------------------------------------------------
+    local DRK = { enabled = true, ammo = {
+        { name = 'Acid Bolt',     id = 18148, type = 'Marksmanship', pair = '26:0', level = 15, ranged = true, ws = true, special = false },
+        { name = 'Blind Bolt',    id = 18150, type = 'Marksmanship', pair = '26:0', level = 10, ranged = true, ws = true, special = false },
+        { name = 'Crossbow Bolt', id = 17336, type = 'Marksmanship', pair = '26:0', level =  1, ranged = true, ws = true, special = false },
+    } };
+    local BOLT_LV = { [18148] = 15, [18150] = 10, [17336] = 1 };
+    -- A crossbow is worn throughout (§9's gate) and the gate seam answers with
+    -- the resource's level, jobs mask left unknown unless a case sets one.
+    local function FD(over, stock)
+        local f = { event = 'Default', job = 'DRK',
+                    rangeWorn = 'Light Crossbow +1', rangePair = '26:0',
+                    gate = function(e) return BOLT_LV[e.id], nil; end,
+                    count = function(e)
+                        return (stock or { [18148] = 99, [18150] = 99, [17336] = 99 })[e.id] or 0;
+                    end };
+        for k, v in pairs(over or {}) do f[k] = (v ~= NONE) and v or nil; end
+        return f;
+    end
+
+    -- The report itself, one line per rung.
+    check('AM51 level 10, empty slot -> Blind Bolt, NOT the Acid Bolt on top',
+        rap(DRK, FD({ level = 10 })), 'Blind Bolt');
+    check('AM52 level 8 -> the only bolt that fits, Crossbow Bolt',
+        rap(DRK, FD({ level = 8 })), 'Crossbow Bolt');
+    check('AM53 level 15 -> the top entry wins again',
+        rap(DRK, FD({ level = 15 })), 'Acid Bolt');
+    check('AM54 no level known -> no level gating at all (the override-off case)',
+        rap(DRK, FD()), 'Acid Bolt');
+    check('AM55 level 0 is not a level -- the v49 not-ready read must not gate the list empty',
+        rap(DRK, FD({ level = 0 })), 'Acid Bolt');
+
+    -- The gate FILTERS, it never REORDERS: the player's order stays the authority,
+    -- which is the whole reason "Sort by level" keeps meaning something.
+    local DRKlow = { enabled = true, ammo = {
+        { name = 'Crossbow Bolt', id = 17336, type = 'Marksmanship', pair = '26:0', level =  1, ranged = true, ws = true, special = false },
+        { name = 'Acid Bolt',     id = 18148, type = 'Marksmanship', pair = '26:0', level = 15, ranged = true, ws = true, special = false },
+    } };
+    check('AM56 a worse rung listed FIRST still wins at full level',
+        rap(DRKlow, FD({ level = 75 })), 'Crossbow Bolt');
+
+    -- Every context arm inherits the gate, because they all walk the same picker.
+    check('AM57 Preshot is gated too', rap(DRK, FD({ event = 'Preshot', level = 10 })), 'Blind Bolt');
+    check('AM58 a consuming WS is gated too',
+        rap(DRK, FD({ event = 'Weaponskill', wsId = 221, level = 10 })), 'Blind Bolt');
+
+    -- Unknown never disqualifies (the pairsWith three-valued law).
+    check('AM59 an entry the gate cannot answer for is still a candidate',
+        rap(DRK, FD({ level = 10, gate = function() return nil, nil; end })), 'Acid Bolt');
+
+    -- The job bitmask, the same read and the same rule (equipcore.checkUsable).
+    local JM = { [18148] = 0, [18150] = 2 ^ 8, [17336] = 2 ^ 8 };   -- Acid Bolt: no jobs at all
+    check('AM60 an entry this job cannot use is skipped, not stalled on',
+        rap(DRK, FD({ level = 75, jobId = 8,
+                      gate = function(e) return BOLT_LV[e.id], JM[e.id]; end })), 'Blind Bolt');
+    check('AM61 jobId unknown -> no job gating',
+        rap(DRK, FD({ level = 75, gate = function(e) return BOLT_LV[e.id], JM[e.id]; end })), 'Acid Bolt');
+
+    -- The other half of the report: what is ALREADY WORN gets re-judged.
+    -- "When I was my normal level, and set it lower, I had acid bolts on me
+    --  already but didn't change."
+    check('AM62 worn ammo that is over-level is replaced, not respected',
+        rap(DRK, FD({ level = 10, worn = 'Acid Bolt', wornLevel = 15 })), 'Blind Bolt');
+    check('AM63 an over-level ammo that is NOT on the list is replaced too',
+        rap(DRK, FD({ level = 10, worn = 'Holy Bolt', wornLevel = 30 })), 'Blind Bolt');
+    check('AM64 worn ammo of OURS that is no longer the best rung swaps up',
+        rap(DRK, FD({ level = 15, worn = 'Crossbow Bolt', wornLevel = 1 })), 'Acid Bolt');
+    -- The plan is STATELESS: it names the winner even when you already wear it,
+    -- and ammoOverlayFor's "already wearing the plan" check is what stops the
+    -- churn (same layering as AM15's Unlimited Shot keep).
+    check('AM65 worn ammo of ours that IS the best rung re-plans the same name',
+        rap(DRK, FD({ level = 10, worn = 'Blind Bolt', wornLevel = 10 })), 'Blind Bolt');
+    check('AM66 a LEGAL ammo that is not on the list is untouchable (the Midshot trinket)',
+        rap(DRK, FD({ level = 75, worn = 'Cinderstone', wornLevel = 1 })), nil);
+    check('AM66b ...and the sets still win outright when they planned one',
+        rap(DRK, FD({ level = 75, worn = 'Cinderstone', wornLevel = 1, plannedAmmo = true })), nil);
+
+    -- A level reading that just jumped is not trusted yet (v56, now that the
+    -- level is an input). Default only -- protection must never be suspended.
+    check('AM67 syncHold parks the Default pass',
+        rap(DRK, FD({ level = 10, syncHold = true })), nil);
+    check('AM67b ...and never the shooting events',
+        rap(DRK, FD({ event = 'Preshot', level = 10, syncHold = true })), 'Blind Bolt');
+
+    -- Reason codes: stock talks, level does not (Henrik).
+    local _, wLv, cLv, chLv = rap(DRK, FD({ level = 10 }));
+    check('AM68 a level-driven rung change is code "level"', cLv, 'level');
+    check('AM68b ...and says nothing in chat', chLv, nil);
+    check('AM68c ...but /dl why names what it skipped',
+        (wLv or ''):find('Acid Bolt', 1, true) ~= nil, true);
+    local pSo, _, cSo, chSo = rap(DRK, FD({ level = 75 }, { [18150] = 99, [17336] = 99 }));
+    check('AM69 a stack that ran dry is code "stockout"', cSo, 'stockout');
+    check('AM69b ...names what ran out and what replaced it',
+        chSo, 'Acid Bolt is out -- loading Blind Bolt.');
+    check('AM69c ...and still loads the fallback', pSo, 'Blind Bolt');
+    local pDe, _, cDe, chDe = rap(DRK, FD({ event = 'Preshot', level = 75 }, {}));
+    check('AM70 nothing left in the bags -> the dead-end line', chDe, 'no enabled ammo left in your bags.');
+    check('AM70b ...still code "stockout"', cDe, 'stockout');
+    check('AM70c ...and nothing is planned (the server refuses the empty shot)', pDe, nil);
+    local _, _, cOk = rap(DRK, FD({ level = 75 }));
+    check('AM71 a routine pick is code "pick" and prints nothing', cOk, 'pick');
 end)();
 
 -- ---------------------------------------------------------------------------
@@ -9580,15 +10611,13 @@ end)();
     aw.removeAmmo(1);
     check('AW15 removeAmmo', #aw.list == 1 and aw.list[1].name == 'Iron Bullet', true);
 
-    -- EB. eboxammo -- now a THIN ADAPTER over the one client (ADR 0016). The
-    -- wire itself is tested on the client (EBC*); these checks pin the ADAPTER:
-    -- delegation + the cat-15 mirror ui/ammoui reads. A fresh client is injected
-    -- (require fails headless) and driven THROUGH the adapter. pk/msgAt build the
-    -- synthetic packets (also used by EBC/RS below).
-    local eb  = dofile('feature/eboxammo.lua');
-    local ebc = dofile('feature/eboxclient.lua');
-    eb._setClient(ebc);
-    ebc._now = function() return 4000; end
+    -- EB. RETIRED 2026-07-27. These pinned feature/eboxammo, the thin adapter that
+    -- carried AutoAmmo's E-Box counts and fetch buttons; the module was deleted
+    -- whole when the panel's CW section went (auto-ammo.md Section 10.8, "we have
+    -- E-box restocker now which is better"). Nothing is uncovered: the wire, the
+    -- cat-15 cache and BOX_RANGE were always pinned on the client itself (EBC*),
+    -- which is what the adapter delegated to. pk/msgAt live on here -- EBC and RS
+    -- build their synthetic packets with them.
     local function pk(bytes)
         local t = {};
         for off = 0, 63 do t[off + 1] = string.char(bytes[off] or 0); end
@@ -9598,53 +10627,6 @@ end)();
         for k = 1, #s do t[off + k - 1] = string.byte(s, k); end
         return t;
     end
-    check('EB1 clamp: none in box -> 0', eb._clampQty(99, 0), 0);
-    check('EB1b clamp to what the box holds', eb._clampQty(99, 12), 12);
-    check('EB1c junk qty -> 0', eb._clampQty('x', 5), 0);
-    check('EB1d floors fractions', eb._clampQty(3.7, 5), 3);
-
-    check('EB2 ITEM outside our stream is not ours (party line)',
-        eb._onPacket(pk({ [0x04] = 1, [0x08] = 10 })), false);
-    eb._beginStream();   -- delegates to the client's cat-15 request
-    check('EB3 CLEAR consumed while pending', eb._onPacket(pk({ [0x04] = 0 })), true);
-    eb._onPacket(pk({ [0x04] = 1, [0x08] = 0x36, [0x09] = 0x53, [0x0C] = 200 }));   -- id 21302 x200
-    eb._onPacket(pk({ [0x04] = 1, [0x08] = 0x56, [0x09] = 0x53, [0x0C] = 1 }));     -- id 21334 x1
-    check('EB3b END_LIST from another source does not commit',
-        eb._onPacket(pk({ [0x04] = 2, [0x05] = 3 })), false);
-    check('EB3c END_LIST source 0 commits', eb._onPacket(pk({ [0x04] = 2, [0x05] = 0 })), true);
-    check('EB3d counts mirror the committed cat-15 stream',
-        eb.counts ~= nil and eb.counts[21302] == 200 and eb.counts[21334] == 1, true);
-    check('EB4 stream closed: a late ITEM is not ours',
-        eb._onPacket(pk({ [0x04] = 1, [0x08] = 10 })), false);
-
-    -- withdraw ACK: stage the batch on the client, drive it through the adapter
-    ebc._beginBatch(1);
-    check('EB5 ACK for someone else\'s action is not ours',
-        eb._onPacket(pk({ [0x04] = 3, [0x05] = 15, [0x06] = 1 })), false);
-    check('EB5b withdraw ACK success consumed + busy mirror clears',
-        eb._onPacket(pk({ [0x04] = 3, [0x05] = 2, [0x06] = 1 })) == true and eb.busy == false, true);
-    check('EB5c success status is not an error', eb.statusErr, false);
-    ebc._beginBatch(1);
-    eb._onPacket(pk(msgAt({ [0x04] = 3, [0x05] = 2, [0x06] = 0 }, 0x10, 'Inventory full.')));
-    check('EB5d refusal carries the server\'s words', eb.status, 'Inventory full.');
-    check('EB5e refusal is an error', eb.statusErr, true);
-    check('EB5f ACK with nothing in flight is not ours',
-        eb._onPacket(pk({ [0x04] = 3, [0x05] = 2, [0x06] = 1 })), false);
-
-    check('EB6 unsolicited LOCKED is not ours (must not shut the panel)',
-        eb._onPacket(pk({ [0x04] = 4, [0x05] = 1 })), false);
-    eb._beginStream();
-    eb._onPacket(pk({ [0x04] = 4, [0x05] = 1 }));
-    check('EB6b LOCKED reason 1 while pending = not a Crystal Warrior', eb.lockedReason, 'cw');
-    ebc.lockedReason = nil; eb._sync();
-    eb._beginStream();
-    eb._onPacket(pk(msgAt({ [0x04] = 4, [0x05] = 2 }, 0x10, 'Locked.')));
-    check('EB6c LOCKED reason 2 = box not unlocked', eb.lockedReason == 'locked' and eb.lockedMsg == 'Locked.', true);
-    ebc.lockedReason = nil; eb._sync();
-
-    check('EB7 refresh refuses headless (not CW -- the affirmative-only gate)', eb.refresh(), false);
-    check('EB7b withdraw refuses headless too', eb.withdraw(21334, 1), false);
-
     -- EW. lib/entwatch -- the CENTRAL entity watcher (field round 6; built
     -- from this feature's scan lessons, eboxammo is consumer #1). Injected
     -- probe + clock; the padded/cased names, index 0 and the 0x802 dynamic
@@ -9702,10 +10684,8 @@ end)();
     ew.unwatch('t_poll');
     check('EW10 empty registry reports empty', #ew.debugState(), 0);
 
-    check('EB9 box range is FIELD-PINNED at 5 yalms (Henrik 2026-07-20)', eb.BOX_RANGE, 5);
-    check('EB10 boxDistance is headless-safe through the watcher', eb.boxDistance(), nil);
-
-    -- EBC. eboxclient -- THE one 0x1A4 client (ADR 0016). Same wire as eboxammo,
+    -- EBC. eboxclient -- THE one 0x1A4 client (ADR 0016). Same wire the retired
+    -- eboxammo adapter spoke,
     -- reimplemented with a MULTI-category shared counts cache + batch withdraw +
     -- search + throttle; every future E-Box feature consumes this, never a second
     -- speaker. Injected clock; the pk/msgAt helpers above build synthetic packets.
@@ -11055,6 +12035,21 @@ end)();
           'I:\\game\\config\\addons\\dlac\\Mindie_12345\\backups\\pre-profiles\\WHM.lua');
     check('NE25 legacy trigger tier rides the data home too', prof.legacyTriggersPath('WHM'),
           'I:\\game\\config\\addons\\dlac\\Mindie_12345\\triggers\\WHM.lua');
+
+    -- NE30. THE NIL-TOGETHER INVARIANT. dataDir (nativeCharBase) and charBase are
+    -- the same charFolder() behind two roots, so they answer or fall silent as one.
+    -- gearui.dataDir / gearui.charRoot / syncflags.uiFlagsPath each used to end in
+    -- a `charBase() .. 'dlac\\'` fallback; those were deleted on 2026-07-27 because
+    -- this invariant makes them unreachable. If anyone ever makes the two diverge,
+    -- the deletion stops being safe -- and this fires before the field finds out.
+    local savedFolder = prof.charFolder;
+    prof.charFolder = function() return nil; end          -- pre-login
+    check('NE30 no identity -> dataDir is nil',  prof.dataDir(),  nil);
+    check('NE30b ...and charBase is nil TOO',    prof.charBase(), nil);
+    prof.charFolder = function() return 'Mindie_12345'; end
+    check('NE30c identity -> both answer: dataDir',  prof.dataDir() ~= nil,  true);
+    check('NE30d ...and charBase',                   prof.charBase() ~= nil, true);
+    prof.charFolder = savedFolder;
 
     prof.nativeMode = savedNative;
     AshitaCore = savedAC;
@@ -12695,8 +13690,10 @@ end)();
     -- under /dl debug on.
     local plain = mn._menuRows(false);
     local dbg   = mn._menuRows(true);
-    check('SET32 six rows when not debugging', #plain, 6);
+    check('SET32 seven rows when not debugging', #plain, 7);   -- +wishlist (2026-07-27)
     check('SET33 first row is lockstyle',      plain[1], 'lockstyle');
+    check('SET55 wishlist is a plain row',
+        (function() for _, k in ipairs(plain) do if k == 'wishlist' then return true; end end return false; end)(), true);
     check('SET34 settings is the last plain row', plain[#plain], 'settings');
     check('SET35 debug adds exactly four',     #dbg - #plain, 4);
     check('SET36 augs only under debug',       dbg[#dbg], 'augs');
@@ -12730,9 +13727,9 @@ end)();
     -- Every row icon must exist as assets\<name>.png. filetex returns nil for a
     -- missing file and the row just draws a blank cell of the right width -- correct
     -- behaviour, but it means a typo or a rename is INVISIBLE in game. Pin it here.
-    -- Six row icons + the header button + the Developer section heading.
+    -- Seven row icons + the header button + the Developer section heading.
     local icons = mn._menuIcons();
-    check('SET42 every icon slot is named', #icons, 8);
+    check('SET42 every icon slot is named', #icons, 9);
     local missing = {};
     for _, name in ipairs(icons) do
         local f = io.open('assets/' .. name .. '.png', 'rb');
@@ -12813,6 +13810,7 @@ end)();
         ui = ui,
     });
     sf.flags.debug, sf.flags.autosync, sf.flags.viewids = true, false, true;
+    sf.flags.autobuildimport = false;      -- the 2026-07-27 opt-out
     sf.saveUiFlags();
     check('UIF2 wrote to the mode-aware home', wrote.path, 'X:\\char\\dlac\\uiflags.lua');
     check('UIF3 emitted text parses', (function()
@@ -12823,6 +13821,7 @@ end)();
     check('UIF4 debug round-trips',    t.debug,    true);
     check('UIF5 autosync round-trips', t.autosync, false);
     check('UIF6 viewids round-trips',  t.viewids,  true);
+    check('UIF6a autobuildimport round-trips', t.autobuildimport, false);
     check('UIF7 openui round-trips',   t.openui,   'job');
     check('UIF8 openui is a STRING',   type(t.openui), 'string');
     check('UIF9 showall round-trips',  t.showall,  false);
@@ -12847,7 +13846,8 @@ end)();
     local realLoadfile = loadfile;
     _G.loadfile = function() return function()
         return { debug = false, autosync = true, viewids = false,
-                 openui = 'login', showall = true, gfscale = 2.0 };
+                 openui = 'login', showall = true, gfscale = 2.0,
+                 autobuildimport = false };
     end; end
     sf2.configure({
         dataDir = function() return 'X:\\char\\dlac\\'; end,
@@ -12862,6 +13862,7 @@ end)();
     check('UIF16 showall loads',  ui2.showAll[1], true);
     check('UIF17 autosync loads', sf2.flags.autosync, true);
     check('UIF18 viewids loads',  sf2.flags.viewids,  false);
+    check('UIF18a autobuildimport loads', sf2.flags.autobuildimport, false);
 
     -- Absent keys keep their defaults -- an old uiflags.lua written before this
     -- slice must not start opening windows or flipping Show all.
@@ -12881,6 +13882,25 @@ end)();
     check('UIF20 ...which normalizes to never',
         dofile('ui/menuui.lua')._normalizeOpenMode(ui3._openMode), 'never');
     check('UIF21 absent showall stays off', ui3.showAll[1], false);
+    -- Every uiflags.lua written before 2026-07-27 lacks the key. Those installs
+    -- must keep auto-building on import, or a dlac update would silently change
+    -- what an import does to everybody who never asked for the opt-out.
+    check('UIF21a absent autobuildimport stays ON', sf3.flags.autobuildimport, true);
+
+    -- The gate itself lives in gearui's afterImport hook, which needs imgui and a
+    -- logged-in character to reach. Pin it at the source instead of not at all:
+    -- the flag must be READ there, and read AFTER the two "we couldn't build
+    -- anyway" gates, so the opt-out never steals their diagnosis.
+    do
+        local src = nil;
+        local f = io.open('ui/gearui.lua', 'r');
+        if f ~= nil then src = f:read('*a'); f:close(); end
+        local hook = tostring(src or ''):match('afterImport = function.-\nend %}%);') or '';
+        check('UIF21b afterImport reads the flag',
+            hook:find('sf%.flags%.autobuildimport') ~= nil, true);
+        check('UIF21c ...and only then auto-builds',
+            (hook:find('sf%.flags%.autobuildimport') or 0) < (hook:find('autoBuildAll') or 0), true);
+    end
 
     package.loaded['dlac\\lib\\cmdqueue'] = nil;
 end)();
@@ -13039,8 +14059,10 @@ end)();
     D.setLockedSet({ name = 'Incursion T3', mode = 'set', claim = { Head = 'Set Hat' }, n = 1 });
     check('LS14 same job, in the world -> stays locked', D.nakedWorldWatch(7, 7), nil);
     check('LS14b ...and it is still armed',              D.lockedSetOn(), true);
-    local why14, drop14 = D.nakedWorldWatch(0, 7);
-    check('LS14c character select releases it',          why14, 'world');
+    -- Zones survive (Henrik, 2026-07-27): absence holds; outlasting drops.
+    check('LS14c0 a zone-length absence holds the locked set', D.nakedWorldWatch(0, 7), nil);
+    local why14, drop14 = D.nakedWorldWatch(0, 7, 1e9);
+    check('LS14c outlasting a zone releases it',         why14, 'world');
     check('LS14d ...and it is gone',                     D.lockedSetOn(), false);
     check('LS14e ...the caller is told what dropped',    drop14 and drop14.locked, 'Incursion T3');
     check('LS14f ...and that naked was not part of it',  drop14 and drop14.naked, false);
@@ -13052,7 +14074,8 @@ end)();
     -- both can drop in one pass, and the watch only ever CLEARS
     D.setLockedSet({ name = 'Incursion T3', mode = 'set', claim = { Head = 'Set Hat' }, n = 1 });
     D.nakedArmed = true;
-    local _, drop14c = D.nakedWorldWatch(0, 7);
+    D.nakedWorldWatch(0, 7);
+    local _, drop14c = D.nakedWorldWatch(0, 7, 1e9);
     check('LS14i both drop together',
         (drop14c and drop14c.naked == true and drop14c.locked == 'Incursion T3'), true);
     check('LS14j ...and neither is re-armed', D.nakedOn() == false and D.lockedSetOn() == false, true);
@@ -13072,7 +14095,8 @@ end)();
     check('LS14n ...all of them',                          next(D.locks), nil);
     check('LS14o ...counted for the chat line',            drop14d and drop14d.locks, 2);
     D.locks['head'] = true;
-    check('LS14p leaving the world releases them too',     D.worldWatch(0, 7), 'world');
+    D.worldWatch(0, 7);
+    check('LS14p outlasting a zone releases them too',     D.worldWatch(0, 7, 1e9), 'world');
     check('LS14q ...leaving nothing behind',               next(D.locks), nil);
     -- ...and with nothing held at all the watch stays silent, so the tick does
     -- not write the mirror on every frame of character select.
@@ -13275,8 +14299,11 @@ end)();
     check('DS13c ...and reports how many slots',         dzDrop and dzDrop.disabled, 1);
     check('DS13d ...leaving nothing behind',             D.disabledOn(), false);
     D.setDisabled('waist', true);
-    check('DS14 leaving the world releases it too',      (D.worldWatch(nil, 7)), 'world');
-    check('DS14b ...and it is gone',                     D.disabledOn(), false);
+    -- Zones survive (Henrik, 2026-07-27): absence HOLDS free equip too;
+    -- only outlasting a zone releases it -- the one lifetime rule, still.
+    check('DS14 a world-gone read holds free equip through a zone', (D.worldWatch(nil, 7)), nil);
+    check('DS14b outlasting a zone releases it',         (D.worldWatch(nil, 7, 1e9)), 'world');
+    check('DS14c ...and it is gone',                     D.disabledOn(), false);
 
     D.setLockedSet(nil);
     TEST_PLAYER = savedPlayer;
@@ -13876,7 +14903,7 @@ end)();
 (function()
     local SHIPPED = { 'dlac.lua','utils.lua','dispatch.lua','profiles.lua','chatfmt.lua','gear.lua',
         'feature/augments.lua','feature/check.lua','feature/chocowatch.lua','feature/craftwatch.lua',
-        'feature/debug.lua','feature/eboxammo.lua','feature/eboxclient.lua','feature/engine.lua',
+        'feature/debug.lua','feature/eboxclient.lua','feature/eboxtrace.lua','feature/engine.lua',
         'feature/equipengine.lua','feature/fishwatch.lua','feature/helmwatch.lua','feature/lockstyle.lua',
         'feature/lockstyleapply.lua','feature/location.lua','feature/macrobook.lua','feature/meritwatch.lua',
         'feature/mpbands.lua','feature/nativedata.lua','feature/synthrun.lua','feature/useitem.lua',

@@ -205,7 +205,9 @@ agent; the per-repo setup lives in `docs/agents/`.
     a session repeated that to Henrik, who had to correct it. Two duties follow. **Writing:**
     a finished, field-confirmed commit goes in the **Ready to merge** section above, never
     only in a per-day "Current state" bullet. **Merging:** empty that section in the same
-    commit as the merge, and fix any "on `dev`" claim the merge just falsified.
+    commit as the merge, and fix any "on `dev`" claim the merge just falsified. An entry
+    marked **ACCEPTED** there already has Henrik's go-ahead — carry it and don't re-ask;
+    only he may add that marker.
 
 ## Working with Henrik
 
@@ -232,74 +234,14 @@ that performs the promotion **empties this section in the same commit as the mer
 entry left standing here after a merge is how "is this on main?" becomes unanswerable —
 see hard rule 14, which this section exists to serve.
 
-*(Empty. Last promotion: 2026-07-27 — **THE LUASHITACAST PURGE, all five phases**,
-`e478817`..`489e677`, addon `2026.07.27j` → **`27l`**, engine v131 → **v133**, on
-Henrik's go-ahead: *"go ahead."* Field-confirmed on Mindie 11:48 — the first ever
-clean `/dl check` on a native install: stamp v133 matching file v133 from the NATIVE
-home (#131 closed), no seeded/shim lines, "NO ISSUES" verdict, engine ARMED. One Lua
-state, one engine, one storage home; luashitacast\ is read-only import territory
-(keep-list intact + PRG1/2 allowlist guard). Per-phase log:
-docs/design/lac-purge-plan.md. Still open, post-promotion: the three-way import field
-round (static / group / Copy-from-static) — guard-tested, not yet field-driven. The
-record is the merge commit on `main`.)*
+**Two states, and the difference matters.** *Field-confirmed* means it works on Henrik's
+machine; **ACCEPTED** means he has additionally said *promote it* — so the next dev → main
+merge carries it **without asking him again**. Only he can move an entry to ACCEPTED. Note
+this does not make an accepted entry mergeable *alone*: `dev` promotes
+**whole-or-not-at-all**, so an accepted entry rides the next promotion of the whole branch.
 
-*(Previous promotion: 2026-07-27 evening — **the Xvs engine-era batch**,
-`0f1ae6e`..`c074da9`, addon `2026.07.27f` → **`2026.07.27i`**, engine **v130**, ADR 0025 —
-on Henrik's go-ahead: *"Everything is working perfectly now. … Regardless, push to main."*
-Field-confirmed on Xvs's live installs, the boxes the bugs owned: **the native flatten no
-longer waits for the GUI** (`utilsModule()` lazy require at all five bare
-`package.loaded['dlac\\utils']` sites — the per-session "won't equip whatsoever" killer),
-**dataDir holds while the first run is undecided** (the manufactured-legacy-evidence
-race), and **born native, always** (ADR 0025: flag absent → native, the boot never scans
-luashitacast\, an explicit flag stays the only road to legacy). Even the WS-menu-closing
-weirdness stopped with it — the sick engine's full re-equip volleys were colliding with
-open native menus via the server's 0x0AC rebuild. The record is the merge commit on
-`main`.)*
-
-*(Previous promotion: 2026-07-27 — **the hobby-bar day**, `96b49be`..`3446978`, addon
-`2026.07.27a` → **`2026.07.27e`**, on Henrik's go-ahead: *"merge dev into main and push
-both."* Two halves, promoted as one. **The searches came to the bar**: Fishing's
-`TARGET FISH` section became a Floating window (`fishui.renderSearch` →
-`renderTargetBody`) that the bar's target NAME opens, Chocobo's tab got the panel's own
-Area/Item buttons via new `chocoui` openers, both tabs gained a `Panel` button, plus
-`/dl fish find [name]` and `/dl choco dig [item]`; the invariant it rests on — any
-surface may OPEN a floating window, exactly one place may DRAW it — went into
-architecture.md, and CONTEXT.md gained **Floating window / Panel / Hobby bar**. **The
-tabs became art**: all four draw Henrik's chocobo set (smith, miner, angler, digger) at
-64px, hovers cut to one plain word each — Crafting / HELM / Fishing / Digging — with the
-text button kept as the fallback for a missing or failed PNG.
-
-The ART was field-approved (*"This was sooo good"*, *"Looks great"*). The SEARCH windows
-went out **WITHOUT a field run of their own**, on the promote-the-queue call and the
-whole-or-not-at-all rule — the Auto HELM 4s→5s precedent. Of the three questions that rode
-to main, Henrik answered two later the same day: **three pills — bar, window, panel — is
-right** (*"Perfection"*), and the **armed green frame reads fine** (*"Looks great"*), so
-that pair is settled and neither needs revisiting.
-
-**All three are answered now.** The target window was opened and approved — *"very
-satisfied with how it opens a new window and search for the fish, instead of having to do
-it solely WITHIN the fish automation menu"* — and its 760×520 default drew no complaint, so
-the column-width worry closes unchanged.
-
-**Second promotion the same day (`2026.07.27f`)**, carrying what that field run surfaced —
-a fault older than anything above it: only the bait CELL was clickable in the spot list, a
-~6-character hit box at 55% across a row you read left-to-right, so the natural click on
-the place name did nothing. Present since the original fishing feature, through five field
-rounds, unreported. The whole row is the hit target now (a full-width Selectable first,
-columns drawn over it with an absolute SameLine — `automationsui.autoRow`'s shape), with
-the three per-cell tooltips merged into one row hover. `FS9b/FS9c` pin the SHAPE of the
-interaction rather than "does a click work", because the old test clicked the bait
-Selectable and passed. The record is the merge commits on `main`.)*
-
-*(Previous promotion: 2026-07-26 night — the **Teleports floating menu rework**
-(`2026.07.26v`; Nexus Cape + Shadow Lord Shirt into "Other Teleports", the
-Automations/HELM/Fishing cascades deleted, Hobby bar + Lockstyle rows added —
-field-confirmed by Henrik: *"Looks good and works great"*), the **Sets-tab selection
-drop on job change** (`2026.07.26t`, field-confirmed), the **WSL `nul`-file test fix**,
-and the **Auto HELM hold tail 4s → 5s** (`2026.07.26u`) — the one entry that went out
-WITHOUT its own field run, on Henrik's promote-the-queue call and the whole-or-not-at-all
-rule. Its open question rides to main with it: whether 5s covers a brisk re-trade pace
-without costing movement gear between points. The record is the merge commit on `main`.)*
+*(Empty -- last emptied by the 2026-07-27 promotion of the two-way Arbiter train,
+v136-v146 + the day's features; ADR 0027 + docs/design/two-way-arbiter.md are the record.)*
 
 ## What's left (open work, as of 2026-07-25)
 
@@ -345,6 +287,61 @@ research already recorded. In rough priority order:
 
 ## Current state (as of 2026-07-26)
 
+- **2026-07-27: an import can land verbatim — ON `dev`, awaiting field test**
+  (`2026.07.27w`). The first feature dlac has taken from **a second player's field
+  report** — a friend of Henrik's, who round-trips his own profiles to compare them:
+  *"I'm importing dlac how I want them, and it's just changing it every time."* He was
+  right, and about a behavior that was correct-by-design in only half its cases: the
+  `afterImport` hook re-solves every weighted set from the importer's own gear because
+  an export ships **empty shells** — but the export form has a **"Set equipment"** tick,
+  and when that gear travels on purpose the re-solve overwrites exactly what was sent.
+  New Setting **"Auto-build sets on import"** (Menu > Settings) / `/dl autobuildimport
+  [on|off]`, persisted in `uiflags.lua`, **default on** — an absent key reads as on, so
+  no existing install changes behavior. Off makes an import land byte-for-byte as
+  exported; **Auto-Build All** on the Sets tab still does the re-solve on demand, and the
+  import status line says which of the two happened. The gate is checked **after** the
+  two "we couldn't build anyway" guards (wrong profile / wrong job), so the opt-out never
+  masks their diagnosis. `UIF6a/18a/21a` pin the round-trip, the load and the
+  absent-key default; `UIF21b/21c` pin at the source that the hook reads the flag and
+  reads it *before* it builds. Suites **3906 + 693**, Windows and WSL lua5.4.
+  Still open: whether **default** behavior should also skip the re-solve when the payload
+  carried gear — see the note at the end of history.md's entry.
+  **Follow-on (`27y`): the last engine-flag-era legacy fallback is gone.** `gearui.dataDir`,
+  `gearui.charRoot` and `syncflags.uiFlagsPath` all ended in `charBase() .. 'dlac\\'` —
+  unreachable (`profiles.dataDir` and `profiles.charBase` are one `charFolder()` behind two
+  roots, so they go nil together), and its only possible effect was to write a dlac-owned
+  file into the read-only import tree. All three return `nil` now. **`NE30`** pins the
+  nil-together invariant, mutation-verified. Suites **3947 + 693**.
+- **2026-07-27: reserved slots stop being invisible — ON `dev`, awaiting field test**
+  (`2026.07.27p`). Henrik: *"if we equip a tunic that takes up the headslot, it ignores
+  to equip the headslot… there are more items like this. How do we keep track of all
+  of these?"* **Answer: we already do, and there is nothing to keep.** `RSlot` (the
+  server's `item_equipment.rslot`) has been mirrored per item since v43 and resolved
+  generically by `dispatch.reservedDrops` — Vermillion Cloak is not special-cased
+  anywhere, it just carries `RSlot = 16`. Verified rather than assumed: catalog.lua
+  diffed against the server clone's `sql/item_equipment.sql` = **383 reserving items,
+  383 present, 0 missing, 0 mismatched, 0 absent**. The three he named were already
+  correct (Kupo Suit → Legs `128`, Decennial Coat → Hands `64`, Decennial Hose → Feet
+  `256`), and the whole space is only **9 distinct masks** (Range 131, Hands 74, Feet
+  71, Head 52, Ammo 35, Legs 11, Hands+Feet 4, Hands+Legs+Feet 3, Head+Hands 2).
+  So the two real gaps were **visibility** and **drift**, and both are now closed:
+  1) **The GUI says it out loud.** `renderItemTooltip` prints *"Takes Head — that slot
+  stays empty while this is worn"* on every hover card (Equipped / All Equipment / Sets
+  / floatgear / lockstyle all share it), and the Sets builder previews the conflict
+  *before* dispatch eats it: the reserved tile goes dark red, the hover names the
+  reserver (*"Head is RESERVED by Vermillion Cloak — this piece will NOT be equipped"*),
+  and one line under the grid lists the slots. New seams `dispatch.rslotText` and
+  `gearimport.rslotFor`, so the UI owns **neither** rule — a builder warning that
+  disagreed with the engine would be worse than no warning at all. `rsv` is exported
+  through `host.provide` on purpose: it runs inside a render pcall, so smoke drives it
+  directly rather than letting a dead resolver fail silently forever.
+  2) **`apicrawl.py` audits RSlot on every rebuild** (`--rslot-audit` = report only,
+  no write), naming every item that gained, lost or changed a reservation. Cosmetic-armour
+  batches are exactly this drift class (the clone's last item commit is literally
+  "Cosmetic Armor Update"), and a *lost* reservation is the quiet one — `/dl fix` will
+  retract that stamp from every player's gear.lua.
+  Tests AK23–33 / TR4c–e / smoke S16a–p (3836 + 609, Windows **and** WSL lua5.4).
+  Not in the merge queue: Henrik has not field-tested it yet.
 - **2026-07-27: the Xvs field day — THREE engine-era fixes, ON MAIN, FIELD-CONFIRMED**
   (`0f1ae6e` v130/`2026.07.27g`, `67edec8` `2026.07.27h`, `c074da9` `2026.07.27i`/ADR
   0025; promoted the same evening on Henrik's go-ahead after Xvs confirmed:
@@ -730,7 +727,8 @@ research already recorded. In rough priority order:
   - **Settings** (Menu > Settings) is the one place every **Setting** (CONTEXT.md term)
     is reachable: *Open the dlac window* (**new**, 3 values — Never / On login / On login
     + job change), Show all (moved out of the header **and now remembered**), Auto-sync,
-    Show item IDs, Debug mode — plus mirrors of Build as lv.75, Floating equipment
+    Show item IDs, Auto-build sets on import (**added 07-27**), Debug mode — plus mirrors
+    of Build as lv.75, Floating equipment
     window, Teleports floating button and Trigger monitor. The mirrors rebuild from the
     live source field every frame, so they cannot drift from their contextual checkboxes.
   - **Level override is a TYPED number now** (Henrik: the ± buttons "spam level changes,
@@ -855,8 +853,8 @@ research already recorded. In rough priority order:
   panel. Field-confirmed working (panel, planner, Fetch all, E-Box detection, nudge).
   **↳ REUSE THE E-BOX CLIENT:** ALL E-Box traffic goes through the ONE client
   **`feature/eboxclient.lua`** (**ADR 0016**; it's in architecture.md's Central-services table
-  with the full API) — every E-Box feature is a thin CONSUMER (AutoAmmo's `eboxammo` = a
-  category-15 adapter; `ui/restockui` = Restock). **NEVER open a second 0x1A4 client** — it's a
+  with the full API) — every E-Box feature is a thin CONSUMER (`ui/restockui` = Restock, the
+  only one since AutoAmmo's section was removed 2026-07-27). **NEVER open a second 0x1A4 client** — it's a
   party line; two clients race and double the traffic. The client owns the protocol, a shared
   multi-category counts cache, entwatch proximity (`BOX_RANGE = 5`), and the server-load
   throttle (one-in-flight, global min-gap, near-box gate, per-category coalesced). Full spec:
@@ -977,10 +975,13 @@ research already recorded. In rough priority order:
   core `M.resolveAmmoPlan` (tests AM*), ammowatch serializer (AW*), smoke
   S135-138. **Read docs/design/auto-ammo.md before touching it** — the decision
   table (§3) and the field-test checklist (§6, unrun) live there.
-  - **E-Box counts + fetch (same day, field round 1) — CRYSTAL WARRIORS
-    ONLY**, the FIRST consumer of `gamemode.get()` (affirmative `'CW'` shows,
-    Wings/ACE/nil see NOTHING; the server's 0x1A4 `LOCKED` reply is the second
-    gate). `feature/eboxammo.lua` = trove's ebox wire format reimplemented
+  - **E-Box counts + fetch — REMOVED 2026-07-27** (auto-ammo.md Section 10.8;
+    Henrik: "we have E-box restocker now which is better" — Restock reaches
+    category 15 with targets and top-up). `feature/eboxammo.lua` is DELETED and
+    the panel has no gamemode awareness left at all. Kept below because the
+    lessons outlived the feature. It was the FIRST consumer of `gamemode.get()`
+    (affirmative `'CW'` shows, Wings/ACE/nil see NOTHING; the server's 0x1A4
+    `LOCKED` reply is the second gate), and trove's ebox wire format reimplemented
     (GET_CATEGORY ahCat 15 streams every boxed ammo's count in one request;
     WITHDRAW + ACK with the server's refusal words; pending discipline on the
     shared 0x1A4 party line; `string.byte` parsing, headless EB*). Per-row
@@ -993,9 +994,9 @@ research already recorded. In rough priority order:
     central entity watcher** (watch(who, name[, cb]) subscriptions, one shared
     0x000-0x8FF sweep, fast tracked-distance refresh with slot-reuse eviction
     that notifies, demand-windowed when callback-less; every entity-array
-    idiom lives THERE, tests EW*). eboxammo is consumer #1; use entwatch for
-    any future "is there an X near me?" — never a local scan. Hidden
-    diagnostic: `/dl ebox`.
+    idiom lives THERE, tests EW*) — use entwatch for any future "is there an X
+    near me?", never a local scan. The hidden diagnostic SURVIVED the removal:
+    it is `/dl debug ebox scan` now, in `feature/eboxtrace.lua`.
 - **GEAR-SET BONUSES ARE LIVE — display + optimizer (07-18, ADR 0011).**
   `gear\geareffects.lua` is THE evaluator (`comboStats` = whole-composition truth;
   `setsOf`/`setTier` the optimizer seam; counting per SLOT — duplicates twice,
@@ -1090,6 +1091,47 @@ research already recorded. In rough priority order:
   touching it: build-time stripping (what ffxi-lac did, and what dlac had ported as
   dead code in utils.lua) is WRONG under overlay. Worn pieces reserve too. Tests: AK,
   E7–E11. history.md "Reserved slots" has the data scan + the two traps.
+  **Visible since `2026.07.27p`:** the drop used to happen in silence, which is exactly
+  why it reads as a bug ("it ignores the head slot"). Every hover card now says *"Takes
+  Head — that slot stays empty while this is worn"*, and the Sets builder marks a
+  reserved tile dark red with a one-line summary under the grid. The GUI keeps **no**
+  copy of either rule: masks come from `gearimport.rslotFor` (the resolver the scan
+  stamps gear.lua with) and slot names from `dispatch.rslotText`; the preview itself is
+  `dispatch.reservedDrops`, the same pass that runs at equip time. Tests: AK23–33,
+  TR4c–e, smoke S16a–p (the full live chain against the real catalog).
+  **Coverage is not a list to maintain** — the catalog carries all 383 reserving items,
+  diffed byte-exact against the server's `item_equipment.rslot` on 2026-07-27. Drift is
+  guarded at the source: `apicrawl.py` prints an **RSlot audit** on every rebuild
+  (`--rslot-audit` = report only, no write) naming every item that gained, lost or
+  changed a reservation. A LOST reservation is the loud one — `/dl fix` will retract
+  that stamp from every player's gear.lua. Note `rslotlook` is appearance-only and is
+  deliberately NOT mirrored: a Kupo Suit *looks* like it covers hands/legs/feet
+  (`rslotlook=448`) but only **Legs** is actually blocked (`rslot=128`).
+- **Multi-slot DOMINANCE — dispatch v135 (`2026.07.27t`), Henrik's ruling.** `RSlot` data
+  was right and `reservedDrops` was right, but it was being **handed the wrong input**:
+  the overlay applies each matching rule's set through its *own* `equipResolved`, so that
+  pass never sees more than one rule at a time and **priority never gets a vote**. Two
+  field cases the same afternoon, the one gap pulling opposite ways — Hunklor SAM
+  (Movement(25) `Body=Kupo Suit` over Idle(20) `Legs=Amir Dirs`: Idle wrote the legs,
+  Movement wrote the suit, the server stripped the legs, ~0.4s forever with `moving=true`
+  throughout) and Mindie SCH (Idle(20) `Body=Royal Cloak` under Movement(25) `Head=…`,
+  where the `worn` arm let the cloak already on his back reserve Head away from the rule
+  that **outranked** it — *"This is the wrong logic"*). The rule now: a reserving piece is
+  a **candidate only while its claim is dominant over every slot it takes**. Dominant → it
+  wins its slot **and claims the reserved ones**, left empty (the server clears them
+  itself). Beaten → **ineligible**, its own slot unwritten. `M.reserveFloor` merges every
+  matching rule's set in apply order (last-writer-wins, each slot tagged with the priority
+  that won it); `M.reserveVerdict` judges it in `RSLOT_ORDER`, resolving dominance **before**
+  suppressing anything (a piece must never reserve on its way out) and refusing to let a
+  claimed slot claim further (Body takes Legs, so the Legs piece cannot take Feet). Built
+  before the first write, **retired right after the trigger loop** — Claim layers keep the
+  single-set + worn judgement they were field-tested with, because this floor is the
+  *trigger* contest and a rank contest is not a priority number. **NOT YET:** *"go for the
+  next available piece"* — `utils.BuildDynamicSets` collapses each slot's list to one name
+  before the engine sees it (the AutoAmmo rung-2 trap again), so an ineligible piece leaves
+  its slot **unwritten** rather than falling to its next rung. Carrying per-slot alternates
+  is the follow-up. Tests AKD1–26 (both real cases, both directions, plus the consumption
+  seam pinned so a verdict nothing reads fails loudly).
 - **`/dl view_ids` + lockstyle "Show gear I don't own" — new this session (07-15).**
   `/dl view_ids [on|off]` appends **item id + model id** to `renderItemTooltip`, which is
   the ONE hover card every equipment surface shares (Equipped / All Equipment / Sets /

@@ -150,6 +150,12 @@ Layout, top to bottom:
 
 ### 2b. E-Box counts + fetch — CRYSTAL WARRIORS ONLY (field round 1)
 
+> **REMOVED 2026-07-27 — see §10.8.** The whole section below is history: the
+> panel's E-Box surface and `feature/eboxammo.lua` are gone, superseded by
+> **E-Box Restock**, and the panel no longer consults `gamemode` at all. Kept
+> because the wire facts and the entity-scan lessons outlived the feature (they
+> live on in `feature/eboxclient.lua` and `/dl debug ebox scan`).
+
 Henrik: "This should not be seen at all if you are not Crystal Warrior mode,
 only crystal warriors may view this." The gate is `gamemode.get() == 'CW'`
 **affirmative only** (Wings/ACE/nil-unknown all see nothing — the
@@ -295,7 +301,7 @@ the live Range/Ammo picks — lands AutoAmmo entirely on the state-file side.
 | File | Role |
 |---|---|
 | `feature/ammowatch.lua` | config state + load/save (persisted enabled), pure list helpers; test seams `_saveState`, `_setDeps` |
-| `feature/eboxammo.lua` | E-Box 0x1A4 client (CW-only): GET_CATEGORY(15) counts, WITHDRAW + ACK, LOCKED gates, Ephemeral-Box proximity scan; seams `_onPacket`/`_beginStream`/`_scanBox`/`_clampQty` |
+| ~~`feature/eboxammo.lua`~~ | **DELETED 2026-07-27 (§10.8).** Was the E-Box 0x1A4 client (CW-only), a thin adapter over `feature/eboxclient.lua` from ADR 0016 onward. Its `/dl ebox` entity probe moved to `feature/eboxtrace.lua` as `/dl debug ebox scan` |
 | `ui/ammoui.lua` | Automations detail view (helmui contract); owned-ammo enumeration via catalogindex.flat() ∩ ownedcache.counts(); CW-gated E-Box rows |
 | `ui/automationsui.lua` | +1 row (`ammo`) + detail-view dispatch arm (pcall-require pattern) |
 | `dispatch.lua` | ensureAmmoState, bag counter, WS id sets, resolveAmmoPlan (pure), ammoOverlayFor, M.dispatch wiring; **M.VERSION 73** |
@@ -642,3 +648,301 @@ once per weapon branch with stack-balance assertions (the S50 crash class).
    the green without moving your selected tab.
 7. PUP: an Animator with oils still behaves (0:10 pairs) — this is the regression
    risk from retiring nothing but touching the same law.
+
+## 10. The level decides which rung (v134, 2026-07-27)
+
+**Status: BUILT on dev + FIELD-CONFIRMED 2026-07-27** (Henrik: *"it works now"*) —
+queued for promotion in HANDOFF's **Ready to merge**. `41432db` (engine, v134,
+`2026.07.27m`), `401a6bb` (the CW removal, `27n`), `4d6bb12` (the panel, `27o`).
+Henrik's report: *"on my Mindie DRK, even though I made a list of bolts on AutoAmmo and
+enabled it, it is not equipping automatically even though I have them set to
+ranged and ws. When I went from level 50+ to 8 it didn't equip any bolt (crossbow
+bolt), then I levelled up to 10 (or rather, level cap did), it did not equip blind
+bolt."*
+
+The sibling of §9, and the same shape of hole one door further along: v128 taught
+the ladder what the **weapon** can fire; it still had no idea what the **player**
+can wear.
+
+### 10.1 The artifacts answered it before any theory did
+
+Live `ammostate.lua`, DRK section, exactly as the GUI wrote it:
+
+| # | entry | Lv | flags | pair |
+|---|---|---|---|---|
+| 1 | Acid Bolt | 15 | ranged + ws | 26:0 |
+| 2 | Blind Bolt | 10 | ranged + ws | 26:0 |
+| 3 | Crossbow Bolt | 1 | ranged + ws | 26:0 |
+
+Best-first — what the *Sort by level* button produces, and per field round 1
+"that's usually how you want it either way". `enabled = true`, pair stamps all
+present, so §9's machinery was working perfectly. And his DRK sets carry a real
+Range ladder (`Light Crossbow +1` → `Lgn. Crossbow` → `Crossbow +1` → …), so a
+crossbow WAS worn and §9's no-weapon gate never fired. Three of the four inputs
+were right; the fourth was never asked for.
+
+**The two observations are one bug, and it is blind twice over.** The testing was
+done with the **level override** (`/dl set level main N`, §10.3) on a DRK whose
+real level is 50-something — which is what makes the symptom so clean, because
+the override is invisible to everything downstream:
+
+- *"I have it overridden to level 10 now. When I make the slot empty, it still
+  tries to auto equip acid bolts."* — `firstRanged` returns Acid Bolt (it pairs
+  26:0, it is stocked, it is ranged-flagged) and stops. The equip then
+  **succeeds**: `equipcore` and the server both judge the REAL level. Blind when
+  choosing.
+- *"When I was my normal level, and set it lower, I had acid bolts on me already
+  but didn't change."* — the Default arm never re-judges what is already worn
+  (`if wornL == nil`, `dispatch.lua:4830`). Blind to what it had already chosen.
+
+**The override is the sharpest case, not a special one.** A real low level or a
+real level cap produces the same wrong pick — it just fails one step later, and
+more quietly, because there the name dies at `equipcore.checkUsable`
+(`gear/equipcore.lua:170-176`, the `level < item.Level` arm) or at the server. And
+nothing downstream can recover it:
+
+> **The overlay collapses a ladder to a single name before the equip layer ever
+> sees it.** A set hands `equipcore` a slot with candidates and the level walk
+> picks a rung; AutoAmmo hands it `{ Ammo = "Acid Bolt" }` and there is no rung 2.
+
+(Under a real cap, `equipengine.SETTINGS.AllowSyncEquip = true` feeds dlac's own
+gate the TRUE job level, so the over-cap plan sails past dlac and dies silently on
+the wire: no bolt, no message, no trace.)
+
+**Why the Range slot looked fine while the Ammo slot did nothing** — the two
+travel different roads. `utils.determineLevels` (`utils.lua:69-87`) reads
+`player.MainJobSync`, the capped number, and `checkRebuildNeeded` re-flattens on
+every level change, so set rungs follow the cap by themselves. AutoAmmo's ladder
+had no level input and no re-ask.
+
+`helmwatch` had this right all along (`feature/helmwatch.lua:721-752`:
+`playerLevel()` off `GetMainJobLevel()`, `(hat.level or 0) <= lvl` down the
+ladder). AutoAmmo was the one gear picker that never got it.
+
+### 10.2 The rule, in Henrik's words
+
+> *"Ammo should scale with level according to the list if they have an
+> interoperable ranged. So take the best ammo out of the list according to the
+> sort order based off of the current level."*
+
+**List order stays the authority; level is a filter, not a sort key.** Walk the
+list top-down and take the first entry that clears all four gates:
+
+1. **flag** — ranged / ws / the special's window, per the §3 decision table
+2. **pair** — §9's `M.pairsWith` against what is in Range (unknown never disqualifies)
+3. **stock** — count ≥ 1 in the equippable bags (`AMMO_BAGS`, `dispatch.lua:4538`)
+4. **level + job** — NEW: the current level can actually wear it
+
+Gate 4 goes inside `firstRanged` / `firstWs` / `firstSpecial` (`dispatch.lua:4739-4759`),
+so every context inherits it at once — normal shots, consuming WS, free WS,
+Quick Draw. The ladder now asks exactly the question the equip layer will ask,
+one step earlier, where it can still fall through to the next rung.
+
+### 10.3 Where the level comes from — the resource, not the record
+
+`ammostate.lua` persists a `level` per entry, but that is a GUI convenience
+written for the *Sort by level* button: it can be stale and pre-2026-07-20
+entries have none.
+
+The authoritative source is already in hand. `bagCounts` (`dispatch.lua:4542`)
+calls `GetItemById` for every item in the bags and memoizes id → name; `Level`
+and the `Jobs` bitmask come off the **same resource**, so a parallel memo is two
+lines in a loop that already runs. And because gate 3 already requires the item
+to be in your bags, **every candidate gate 4 judges has a live resource** —
+"unknown level" is very nearly unreachable.
+
+Ladder: client resource by id → stored `entry.level` → unknown. Unknown **allows**
+— the standing law from `M.pairsWith`, *a missing data field must never read as
+"AutoAmmo stopped working"*.
+
+**The job bitmask rides along**, same read, same reason: `equipcore.checkUsable`
+refuses a wrong-job item at the equip layer (`bitSet(item.Jobs, job)`), which is
+the identical silent dead-end one door down. A DRK list carrying a RNG-only bolt
+should skip that entry, not stall on it.
+
+**The level source is `playerLevel(ctx)` (`dispatch.lua:1305`) — the house
+authority, and the engine already owns it:**
+
+```lua
+-- The character's current effective level (honours the /dl set level main override).
+local function playerLevel(ctx)
+    local sl = rawget(_G, 'staticMainLevel');
+    if type(sl) == 'number' and sl > 0 then return sl; end
+    local lv = ctx.player and ctx.player.MainJobSync;
+    if type(lv) == 'number' and lv > 0 then return lv; end
+    return 75;
+end
+```
+
+Not raw `MainJobSync`, and this is the correction the field round forced. The
+**level override** (`staticMainLevel`, typed via `/dl set level main N` or the
+`ui/menuui.lua:369` panel) is honoured by the set flatten (`utils.lua:74`), by
+the virtual-slot resolver (AutoStaff / AutoObi are gated on this very function),
+by the optimizer and by the GUI — but **not** by `feature/equipengine.lua`, whose
+`snap.level` reads live memory only. So under an override your sets gear down
+while the equip layer keeps accepting anything your real level can wear. Reading
+`MainJobSync` would have left AutoAmmo the last picker in dlac that ignores the
+override — which is exactly the bug the player reported, unfixed.
+
+The division is clean and worth keeping straight: **`playerLevel` is what dlac
+gears you AT (choice); `equipcore`'s level is only a legality gate against the
+real game (permission).** AutoAmmo is a chooser.
+
+And `MainJobSync` is still the fallback inside it, so a real low job and a real
+level cap ride the same code — the same number the set flatten and `helmwatch`
+already use. Never `MainJobLevel`: under a cap the true level is exactly the
+number that produces the bug.
+
+### 10.4 The Default arm re-judges what is already worn
+
+The level filter alone fixes observation 1 and **not** observation 2. The Default
+arm is `if wornL == nil then` (`dispatch.lua:4830`) — it only ever loads into an
+EMPTY slot. Ding 8 → 10 with Crossbow Bolt worn and Blind Bolt would sit
+unreachable until the next Preshot re-asked the question.
+
+Henrik: *"if a level moves down, and you have an ammo in it that is over the
+level, then it should automatically equip the next best thing according to that
+level"*, and on the way up, *"yes, swap it up."*
+
+So the arm becomes: compute the best legal pick, then act when **any** of these
+holds —
+
+- the slot is **empty** (today's reload), or
+- the worn ammo is **over-level** (explicit — do not trust the server's strip; a
+  sync that doesn't strip must still be corrected; worn level via `levelOf`,
+  `dispatch.lua:2878`), or
+- the worn ammo is **on this job's own list** and is no longer the best pick.
+
+— and otherwise hold. **The guard is the whole safety story: AutoAmmo only ever
+replaces ammo that is on its own list.** A legal ammo that is not on the list is
+untouchable, which is what keeps the DRK **Midshot** set's `Cinderstone` in place
+after every ranged attack. The rejected alternative was *"AutoAmmo owns the Ammo
+slot outright when enabled"* — that strips Cinderstone every idle tick after a
+shot, which is ADR 0010's keeping-both-flaps-forever arriving through a third
+door.
+
+No new level-change hook is needed: Default already re-asks every ~0.4 s, so a
+cap landing re-picks by itself once the arm is allowed to act on an occupied slot.
+
+### 10.5 The sync-settle coupling (new, and it is the point of this scenario)
+
+`M.syncSettleHold` (v56, `dispatch.lua:1890`) arms a 1 s hold the instant
+`MainJobSync` jumps, and while it is up every dispatch keeps Main/Sub/Range **as
+worn** — *a level reading that just changed is not trusted yet*. Ammo is not a
+weapon slot (`WEAPON_SLOTS`, `dispatch.lua:3759`), so AutoAmmo ran straight
+through that window.
+
+That was harmless while the picker ignored the level. **It is not any more.**
+`ammoOverlayFor` now holds while `ctx.syncHold` is true: at most one second, only
+when the level moves, and it stops AutoAmmo planning a bolt off a half-settled
+level against a Range slot that is itself being held as worn. Same reasoning that
+already governs the weapon slots, applied to the one other slot that just became
+level-sensitive. The cost — a second of empty Ammo slot at a cap landing — buys
+nothing back for an attacker, because an empty slot is a server-blocked shot.
+
+**A level OVERRIDE change does not arm this hold, and must not.** `syncSettleStep`
+tracks `MainJobSync`, which an override never moves. That asymmetry is correct:
+typing a level is a deliberate act with nothing in flight to settle, so the new
+pick should land on the very next dispatch (~0.4 s) — which is also what makes the
+override the fastest way to field-test this whole section. Do not "fix" it into
+symmetry.
+
+### 10.6 Loudness: stock talks, level doesn't
+
+Henrik: *"If you run out of ammo, do a print to notify the player. [...] But no
+prints should be necessary for ammo change due to level change."*
+
+This forces a mechanical change: **`resolveAmmoPlan` returns a machine-readable
+reason code** beside the prose `why` — `stockout` / `level` / `pick` / `protect`
+— because the printer now speaks for one class and stays silent for another. The
+prose string keeps carrying the detail for `/dl why`.
+
+| event | channel |
+|---|---|
+| a stack empties, ladder falls through | chat: *"AutoAmmo: Acid Bolt is out — loading Blind Bolt."* |
+| nothing enabled left in the bags | chat, red: *"AutoAmmo: no enabled ammo left in your bags."* |
+| protection `remove` (existing) | chat, unchanged |
+| the pick changed because the level moved | **nothing** |
+| routine skips down the ladder | nothing (`/dl why` carries it) |
+
+Prints are **edge-triggered on a change of cause**, not on a timer: the engine
+re-plans every ~0.4 s, so a remembered last-cause is what keeps one stack-out
+from becoming a scroll. (The existing 10 s `_ammoWarnAt` throttle stays as the
+backstop for the `remove` line.)
+
+`/dl why` gains the skip in its note: `ranged pick: Crossbow Bolt (Acid Bolt,
+Blind Bolt need a higher level)`.
+
+### 10.7 UI — the Lv column and the green row
+
+- **A level column in the priority row**, mirroring the qty column's idiom
+  exactly: `Lv15` in red when out of reach, tooltip *"Needs Lv 15, you are Lv 10 —
+  the engine skips this entry"*, the twin of the existing *"None in your
+  equippable bags — the engine skips this entry"*. Had it existed, the DRK list
+  would have shown two red rows and one white one at a glance.
+- **The live row is green** — green marks *the entry actually in your Ammo slot
+  right now*, the same law the §9.6 type tabs already follow (green = live fact,
+  blue = your selection). If a set or a trinket owns the slot, no row is green,
+  which reads correctly.
+- Row space comes free from §10.8.
+
+### 10.8 The Crystal Warrior half is removed
+
+Henrik: *"let's remove the CW side of it. Please also remove the fetch rows for
+CW. We have E-box restocker now which is better."*
+
+Out of `ui/ammoui.lua`: the `eboxammo` require, the `cwBox` gate +
+`refreshIfStale(15)`, the proximity strip (*in range / too far / none in sight* +
+`rescan`), the per-row `E-Box: xN` + qty input + **Fetch** / **Fetch up to**, and
+the trailing status line. **The panel keeps no gamemode awareness at all** — no
+`gamemode.get()` call remains in it, everyone sees the same AutoAmmo.
+
+Nothing is lost: `restockwatch` entries carry an `ahCat`, so category 15
+(Ammunition) is already fully within **E-Box Restock**'s reach, with targets and
+top-up — which is what *"Fetch up to"* was reaching for.
+
+`feature/eboxammo.lua` (a 199-line thin adapter over `eboxclient` since ADR 0016)
+is **deleted whole**. Its one non-panel surface — the hidden `/dl ebox`
+diagnostic: gamemode + entwatch state + the full 0x000-0x8FF entity dump with
+render flags and distances — **moves to `feature/eboxtrace.lua` as
+`/dl debug ebox scan`** rather than dying with it. That probe ended the two
+"buttons are always red" field rounds; proximity is still what refuses a
+Restocker withdraw, so the day a fetch goes dead-red again it answers it in one
+command — and it lands in the module that already owns E-Box diagnostics.
+
+§2b above is superseded and kept only as history.
+
+### 10.9 Tests
+
+- `AM51-AM6x` on `resolveAmmoPlan`: the level filter on every context arm
+  (ranged / consuming WS / free WS / Quick Draw / specials); list order preserved
+  under the filter; job-bitmask skip; unknown level allows; the exact field case
+  (Acid 15 / Blind 10 / Crossbow 1 at levels 8, 10 and 15); the Default arm's
+  three act-conditions and the not-on-my-list hold; the reason codes.
+- `PW`-style pins for the level source ladder (resource → entry → unknown).
+- `AU*` gains the Lv column and the green row; its E-Box branches are deleted.
+- `EB*` (the eboxammo adapter checks) are deleted with the module; the entity-dump
+  move gets one `/dl debug ebox scan` smoke check.
+- The sync-hold coupling gets a pure test alongside the `LS*` family.
+
+### 10.10 Field tests this needs
+
+1. **The report itself, via the override** (fastest loop — no zoning, no
+   levelling): DRK, `/dl set level main 10`, empty the Ammo slot → **Blind Bolt**
+   loads, not Acid Bolt. Set 8 → Crossbow Bolt. Set 15 → Acid Bolt. Set 0
+   (override off) → back to Acid Bolt. Each swap lands within ~0.4 s and prints
+   **nothing**.
+2. **Wearing the wrong one already**: at full level with Acid Bolt worn, drop the
+   override to 10 → Acid Bolt is swapped out for Blind Bolt on its own (the case
+   that "didn't change" in the field).
+3. A **real** cap or a genuinely low job behaves identically — the override is
+   only the fast path to the same code (`playerLevel`'s `MainJobSync` fallback).
+4. Run a stack dry mid-fight → one chat line naming the fallback; run them all dry
+   → the red dead-end line, once, not per tick.
+5. A trinket in Ammo from a Midshot set → still there at idle, never swept.
+6. RNG at 75 with the mixed bullets/bolts/arrows list → §9's behaviour is
+   unchanged (the level gate must be invisible when everything is wearable).
+7. Panel: the worn bolt's row is green, out-of-reach rows show a red `Lv`, and no
+   E-Box anything appears on a Crystal Warrior character.
+8. `/dl debug ebox scan` near an Ephemeral Box reports it, and E-Box Restock is
+   untouched by the removal.

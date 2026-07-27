@@ -7,11 +7,11 @@
     * auto-sync -- keep gear.lua current: a quiet add-only scan ~2s after a job
       change (the LAC profile reload) and ~5s after the LAST inventory-changing
       packet (debounced, so zone-in floods run one scan). Toggle: /dl autosync.
-    * ui-flags -- debug / autosync / view_ids / "Build as lv.75" / teleport-button
-      state survive reloads via <char>\dlac\uiflags.lua.
+    * ui-flags -- debug / autosync / view_ids / auto-build-on-import / "Build as
+      lv.75" / teleport-button state survive reloads via <char>\dlac\uiflags.lua.
 
     The module OWNS the flag state (sf.flags.debug / sf.flags.autosync /
-    sf.flags.viewids);
+    sf.flags.viewids / sf.flags.autobuildimport);
     gearui's /dl handler and header buttons read/write those fields directly.
     gearui keeps the actual Ashita event hooks and calls sf.loadUiFlags /
     sf.tick / sf.invDirty from them -- hook ORDER is load-bearing (loadUiFlags
@@ -39,7 +39,17 @@ end)();
 -- viewids (/dl view_ids): append the item id + appearance model id to every
 -- equipment hover tooltip -- the two numbers you need when reasoning about a
 -- lockstyle (the look is the MODEL id, not the item id).
-sf.flags = { debug = false, autosync = true, viewids = false };
+-- autobuildimport (/dl autobuildimport, 2026-07-27): a weights-bearing job
+-- import re-solves every weighted set from the IMPORTER's own gear the moment
+-- it lands (gearui's afterImport hook). That is right when the sets arrived as
+-- the EMPTY shells an export ships by default -- and wrong when the exporter
+-- ticked "Set equipment" and the gear travelled on purpose, because the
+-- re-solve overwrites exactly what was sent. Field report 2026-07-27 (a
+-- friend of Henrik's, round-tripping his own profiles to compare them):
+-- "I'm importing dlac how I want them, and it's just changing it every time."
+-- Default true = the long-standing behavior; false makes an import land
+-- verbatim and leaves the re-solve to Auto-Build All on the Sets tab.
+sf.flags = { debug = false, autosync = true, viewids = false, autobuildimport = true };
 
 local D = nil;   -- deps from gearui; sync/persistence no-op until configured
 sf.configure = function(deps)
@@ -50,14 +60,15 @@ local _syncedJob, _syncDueFrame = nil, nil;
 local _invSyncAt = nil;   -- debounced: ~5s after the LAST inventory-changing packet
 local _flagsLoaded = false;
 
+-- The native data home, or nothing. The `D.charBase() .. 'dlac\\'` fallback that
+-- used to sit here died with gearui's twin on 2026-07-27: it was unreachable
+-- (dataDir and charBase go nil together -- NE30) and its only possible effect
+-- was to write a dlac-owned file into the read-only import tree. nil = not
+-- logged in yet; the caller retries next frame, which is what it always did.
 local function uiFlagsPath()
-    -- mode-aware data home when gearui passes it (feature/native-engine)
-    if type(D.dataDir) == 'function' then
-        local d = D.dataDir();
-        if d ~= nil then return d .. 'uiflags.lua'; end
-    end
-    local base = D.charBase();
-    return base and (base .. 'dlac\\uiflags.lua') or nil;
+    if type(D.dataDir) ~= 'function' then return nil; end
+    local d = D.dataDir();
+    return d and (d .. 'uiflags.lua') or nil;
 end
 
 sf.saveUiFlags = function()
@@ -91,13 +102,13 @@ sf.saveUiFlags = function()
         -- "Show all" became a Setting when it moved out of the header, so it is
         -- remembered now like every other one.
         local showall = (type(ui.showAll) == 'table' and ui.showAll[1] == true);
-        D.writeFileText(p, string.format('return { debug = %s, autosync = %s, viewids = %s, buildmax = %s, tgmon = %s, tpfloat = %s, tpx = %d, tpy = %d, gearfloat = %s, gfx = %d, gfy = %d, gfscale = %.2f, ifx = %d, ify = %d, openui = %q, showall = %s }\n',
+        D.writeFileText(p, string.format('return { debug = %s, autosync = %s, viewids = %s, buildmax = %s, tgmon = %s, tpfloat = %s, tpx = %d, tpy = %d, gearfloat = %s, gfx = %d, gfy = %d, gfscale = %.2f, ifx = %d, ify = %d, openui = %q, showall = %s, autobuildimport = %s }\n',
             tostring(sf.flags.debug), tostring(sf.flags.autosync), tostring(sf.flags.viewids), tostring(bm),
             tostring(ui._tgMon == true),
             tostring(ui._tpFloat == true), tpx, tpy,
             tostring(ui._gearFloat == true), gfx, gfy,
             tonumber(ui._gfScale) or 1.0, ifx, ify,
-            openui, tostring(showall)));
+            openui, tostring(showall), tostring(sf.flags.autobuildimport ~= false)));
     end);
 end
 
@@ -123,6 +134,10 @@ sf.loadUiFlags = function()
             if type(t.debug)    == 'boolean' then sf.flags.debug    = t.debug;    end
             if type(t.autosync) == 'boolean' then sf.flags.autosync = t.autosync; end
             if type(t.viewids)  == 'boolean' then sf.flags.viewids  = t.viewids;  end
+            -- "Auto-build sets on import": absent key = the ON default (every
+            -- uiflags.lua written before 2026-07-27 lacks it, and those installs
+            -- must keep the behavior they have); a saved false is the opt-out.
+            if type(t.autobuildimport) == 'boolean' then sf.flags.autobuildimport = t.autobuildimport; end
             -- "Build as lv.75": absent key = the ON default; a saved false is an
             -- explicit untick and is honored (remembered across reloads).
             if type(t.buildmax) == 'boolean' and optim ~= nil then optim.buildAtMaxLevel = t.buildmax; end

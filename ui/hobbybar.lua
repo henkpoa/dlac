@@ -242,7 +242,23 @@ function M.render()
     local active = excl ~= nil and excl.getActive() or nil;
     local activeKey = active and active.key or nil;
 
-    imgui.SetNextWindowSize({ 0, 0 }, ImGuiCond_Always or 0);
+    -- NO SetNextWindowSize HERE. `AlwaysAutoResize` below already sizes this
+    -- window to its content every frame, so the zero-size call that used to sit
+    -- here (since 92e1fb2) was redundant -- and it was the MINIMIZE BUG.
+    --
+    -- THE LAW (field-diagnosed 2026-07-27, ImGui 1.81): SetNextWindowSize with a
+    -- zero component runs ImGui's SetWindowSize(), which sets
+    -- `AutoFitFramesX/Y = 2` -- "submit the body anyway, I still need to measure
+    -- it". Called EVERY frame with ImGuiCond_Always, those counters never reach
+    -- zero, and ImGui's SkipItems rule is
+    --     skip = (Collapsed or not Active or Hidden) and AutoFitFrames <= 0
+    -- so a COLLAPSED window keeps returning true from Begin() and keeps drawing
+    -- its whole body into a title-bar-sized window, forever. Every other dlac
+    -- window collapses normally; this one was the exception, which is exactly why
+    -- minimizing THIS bar -- and only this bar -- swallowed the Teleports float
+    -- and the main /dl window whenever they were focused (focus moves a window's
+    -- draw list behind this one's). Closing the bar was always fine: a window
+    -- that is never begun cannot leak.
     isOpen[1] = true;
     if imgui.Begin('dlac Hobbies##dlac_hobbybar', isOpen, ImGuiWindowFlags_AlwaysAutoResize or 0) then
         -- Selector row: every tab is always reachable; the armed one is marked

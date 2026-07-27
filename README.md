@@ -43,13 +43,14 @@ and from here on everything is GUI work. Repeat for each job.
 | Tab | Does |
 |---|---|
 | **Equipped** | Live 16-slot view, worn stat totals (augment- and set-bonus-aware), per-slot alternatives, slot locking, the **floating equipment window** (an always-up 4×4 with right-click item **pins**) |
-| **All Equipment** | Browse everything you own — or the full CatsEyeXI catalog — with search and stats |
+| **All Equipment** | Browse everything you own — or the full CatsEyeXI catalog — with search and stats; **"Show gear I don't own"** paints what you lack orange, and right-click adds it to your **Wishlist** |
 | **Sets** | Build sets by hand or **Auto-build** from stat weights (**Points** or ordered **Priority** mode); level-scaling candidate lists per slot; live score; **Equip & Lock**; import your old profile's sets via **Copy from** |
 | **Triggers** | Wire sets to the game: statuses, spells (by skill / type / element / `contains` / exact name), abilities, items, weaponskills, pets, **player state** (HP/MP — raw or percent — TP, active buffs & debuffs), **in-town**, **target = Self**, with **AND/OR condition groups** — plus player-defined **Modes** with live toggle buttons and the **Blueprints** rule library |
 | **Automations** | The self-driving gear family (below) with live per-job coverage, and the **Priority** section — the draggable ladder that referees which automation wins a contested slot |
 
 Beyond the tabs: **lockstyle sets** (the armor header button — your look, in 30
-saved boxes per job, with town behaviour), the **Teleports** menu (one click from
+saved boxes per job, with town behaviour), your **Wishlist** (gear you're hunting,
+with notes and the jobs/sets that want it), the **Teleports** menu (one click from
 anywhere to anywhere, plus quick rows for every automation), per-job **macro
 books**, and named **profiles** per character.
 
@@ -145,6 +146,33 @@ in towns, choose either **Disable in town** (drop the style so your real gear
 shows) or a dedicated **town box** worn while you're there. The picker offers
 anything *any* of your jobs can wear at its current level.
 
+### Wishlist — gear you mean to own
+
+The **All Equipment** tab has a **"Show gear I don't own"** tick: it opens the
+full CatsEyeXI catalog and paints what you lack orange. Combine it with **Usable
+now** and you have a shopping list — everything your job could wear at your level
+that isn't yours yet. **Right-click any row → Wishlist** to put it on the list.
+
+The list itself lives under **Menu → Wishlist** (or `/dl wish`), and each entry
+carries a **note** ("Sky drop, need a static") plus any number of **links** to
+the jobs and sets that want it — as many as you like, across any of your jobs.
+A link is a plan, not a claim: you can link a piece to WHM/Idle without putting
+it in that set, and beside every link the window shows what is actually true
+right now — *in the set (Body)* or *not added yet*. When the two disagree and
+you own the piece, an **Add** button appears on that row. dlac never edits a set
+on its own. Rings and earrings ask which of the two slots, showing what already
+sits in each.
+
+You can also build sets **ahead of the hunt**: the set editor's **+ Add** picker
+has the same tick, and a piece you don't own can go straight into a set. The
+engine skips it — the slot keeps its normal best-by-level pick and set totals
+ignore it — and the day it lands in your bags it simply starts being worn, with
+nothing to change. Adding one that way also wishlists and links it for you.
+
+Entries turn **green** the moment the item reaches your bags (ownership is read
+from your bags, never remembered, so selling it puts it back on the list), and
+nothing is ever deleted for you — clearing an entry is always your call.
+
 ## Commands
 
 `/dl` (or `/dlac`):
@@ -165,6 +193,7 @@ anything *any* of your jobs can wear at its current level.
 | `/dl prune` (then `/dl prune commit`) | Remove gear.lua entries for items you no longer own anywhere — dry-run first; checks every container incl. storage |
 | `/dl fix` | Re-stamp gear.lua entries with fields the scan has since learned (reserved slots etc.) |
 | `/dl ls apply [box]` | Apply a saved lockstyle box (GUI: the armor header button) |
+| `/dl wish` | Open the Wishlist window (also **Menu → Wishlist**) |
 | `/dl weight` / `best` | Stat-weight helpers for set auto-building |
 | `/dl set level main <n>` | Preview as another level |
 | `/dl p` / `/dl w` | Panic escape: lock Ring2, equip the Provenance/Warp Ring, wait out its equip delay, use it (`off` cancels) |

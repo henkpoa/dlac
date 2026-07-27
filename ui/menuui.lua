@@ -99,6 +99,8 @@ local ROWS = {
       tip = 'One shared window for Craft / HELM / Fishing / Chocobo:\npick controls and switch a hobby on (idle only).' },
     { key = 'teleports', icon = 'teleports', label = 'Teleports',
       tip = 'Warp / Retrace scrolls, teleport earrings and rings, the Chocobo Whistle,\nevery other travel enchant you own and your exp rings -- plus quick rows\nfor the Hobby bar and Lockstyle.' },
+    { key = 'wishlist',  icon = 'wishlist',  label = 'Wishlist',
+      tip = 'Gear you are hunting -- what it is for, and what you wanted it for.\nRight-click anything in All Equipment to add it; a piece you don\'t own\nadded to a set lands here too. Turns green when it reaches your bags.' },
     { key = 'level',     icon = 'level',     label = 'Level override',
       tip = 'Preview / test at another MAIN level: the pickers, set previews and\nthe live set flattening all follow it.' },
     { key = 'settings',  icon = 'settings',  label = 'Settings',
@@ -306,8 +308,10 @@ local function renderSettingsBody()
 
     imgui.Separator();
 
-    settingCheck('showall', 'Show all equipment',
-        'Off (default): the All Equipment tab lists only gear you own.\nOn: it lists the full CatsEyeXI catalog.',
+    -- Same wording as the tab's own tick (they are ONE flag): "Show all
+    -- equipment" read as a preference and nobody found it here.
+    settingCheck('showall', "Show gear I don't own",
+        'Off (default): the All Equipment tab lists only gear you own.\nOn: it lists the full CatsEyeXI catalog, with what you lack in orange.\n\nSame switch as the tick on the All Equipment tab itself.',
         function() return type(ui.showAll) == 'table' and ui.showAll[1] == true; end,
         function(v) if type(ui.showAll) == 'table' then ui.showAll[1] = v; end end);
 
@@ -321,6 +325,11 @@ local function renderSettingsBody()
             'Append the item id and appearance model id to every equipment tooltip --\nthe two numbers you need when reasoning about a lockstyle (the look is\nthe MODEL id, not the item id). (Same switch as /dl view_ids.)',
             function() return sf.flags.viewids == true; end,
             function(v) sf.flags.viewids = v; end);
+
+        settingCheck('autobuildimport', 'Auto-build sets on import',
+            'On (default): importing a job that carries stat weights rebuilds its sets\nfrom YOUR gear the moment it lands -- the point of the empty shells an\nexport ships by default.\nOff: the import lands exactly as exported, gear and all. Auto-Build All on\nthe Sets tab still does the re-solve on demand. (Same switch as\n/dl autobuildimport.)',
+            function() return sf.flags.autobuildimport ~= false; end,
+            function(v) sf.flags.autobuildimport = v; end);
 
         settingCheck('debug', 'Debug mode',
             'Reveal the developer tools: the Scan / Stage / Commit / Augs rows in this\nmenu, plus extra chat output. (Same switch as /dl debug.)',
@@ -432,6 +441,7 @@ function M.activate(key)
     if     key == 'lockstyle' then pcall(function() require('dlac\\feature\\lockstyle').open(); end);
     elseif key == 'macrobook' then pcall(function() require('dlac\\feature\\macrobook').open(); end);
     elseif key == 'hobbybar'  then pcall(function() require('dlac\\ui\\hobbybar').toggleVisible(); end);
+    elseif key == 'wishlist'  then pcall(function() require('dlac\\ui\\wishlistui').open(); end);
     elseif key == 'teleports' then ui._tpOpen = true;
     elseif key == 'level'     then ui._lvlOpen = true; ui._lvlSeed = nil;
     elseif key == 'settings'  then ui._setOpen = true;
@@ -452,7 +462,7 @@ end
 -- The header button entry. gearui's btns loop draws it like any other declarative
 -- entry -- this just keeps the label, width and tooltip next to the menu they open.
 -- ---------------------------------------------------------------------------
-M._TIP = 'Lockstyle, Macro book, Hobby bar, Teleports, the level override --\nand Settings. (Developer tools appear here under /dl debug on.)';
+M._TIP = 'Lockstyle, Macro book, Hobby bar, Teleports, your Wishlist, the level\noverride -- and Settings. (Developer tools appear here under /dl debug on.)';
 
 function M.headerButton()
     local function arm() if D ~= nil then D.ui._menuOpen = true; end end

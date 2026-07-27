@@ -141,9 +141,80 @@ pcall(function()
     ashita.events.register('d3d_present', 'dlac_eboxtrace_echo', function() M.pump(); end);
 end);
 
+-- ---------------------------------------------------------------------------
+-- `/dl debug ebox scan` -- the ENTITY probe. MOVED HERE 2026-07-27 from
+-- feature/eboxammo (deleted with AutoAmmo's E-Box section; auto-ammo.md §10.8)
+-- rather than deleted with it: this is the readout that ended two field rounds
+-- of always-red fetch buttons, proximity is still what refuses an E-Box Restock
+-- withdraw, and it answers the one question the traffic report above cannot --
+-- is there a box out there at all, and where?
+--
+-- Three rules are baked in and every one of them cost a field round:
+--   * sweep the WHOLE array 0x000-0x8FF -- E-Boxes are DYNAMIC entities (a live
+--     Bastok Mines sample, server id 17737730, decodes to index 0x802), so a
+--     0-1023 static sweep can never see one;
+--   * GetName returns TRAILING WHITESPACE -- trim it, and compare ci;
+--   * check RenderFlags0 bit 0x200 (rendered; the flags read back SIGNED) before
+--     trusting GetDistance, which is SQUARED.
+-- ---------------------------------------------------------------------------
+local _gmok, _gm = pcall(require, 'dlac\\feature\\gamemode');
+_gmok = _gmok and type(_gm) == 'table';
+local _ewok, _ew = pcall(require, 'dlac\\lib\\entwatch');
+_ewok = _ewok and type(_ew) == 'table';
+
+function M.scan()
+    local gm, cw, dist = nil, nil, nil;
+    if _gmok then pcall(function() gm = _gm.get(); end); end
+    if _ecok then
+        pcall(function() cw = ec.isCW(); end);
+        pcall(function() dist = ec.boxDistance(); end);
+    end
+    print(string.format('[dlac] ebox scan: gamemode=%s isCW=%s locked=%s dist=%s range=%d',
+        tostring(gm), tostring(cw), tostring(_ecok and ec.lockedReason or 'n/a'),
+        tostring(dist), (_ecok and ec.BOX_RANGE) or 5));
+    if _ewok then
+        for _, w in ipairs(_ew.debugState()) do
+            print(string.format('[dlac] ebox watch: %q subs=[%s] matches=%d active=%s',
+                w.name, w.subs, w.matches, tostring(w.active)));
+        end
+    end
+    local ok = pcall(function()
+        local em = AshitaCore:GetMemoryManager():GetEntity();
+        local nRaw, nRen, nHit, near = 0, 0, 0, {};
+        for i = 0, 2303 do
+            pcall(function()
+                if em:GetRawEntity(i) == nil then return; end
+                nRaw = nRaw + 1;
+                local rf = em:GetRenderFlags0(i) or 0;
+                if rf < 0 then rf = rf + 4294967296; end
+                local ren = (math.floor(rf / 0x200) % 2) == 1;
+                if ren then nRen = nRen + 1; end
+                local nm = tostring(em:GetName(i) or ''):gsub('%s+$', '');
+                local d = em:GetDistance(i);
+                if string.find(string.lower(nm), 'ephemeral', 1, true) ~= nil then
+                    nHit = nHit + 1;
+                    print(string.format('[dlac] ebox HIT idx=0x%03X name=%q sid=%s rf0=0x%08X rendered=%s distSq=%s (%.1fy)',
+                        i, nm, tostring(em:GetServerId(i)), rf, tostring(ren), tostring(d),
+                        (type(d) == 'number' and d >= 0) and math.sqrt(d) or -1));
+                elseif ren and nm ~= '' and type(d) == 'number' and d >= 0 and d < 900 then
+                    near[#near + 1] = { i = i, nm = nm, d = d };
+                end
+            end);
+        end
+        table.sort(near, function(x, y) return x.d < y.d; end);
+        local parts = {};
+        for k = 1, math.min(8, #near) do
+            parts[#parts + 1] = string.format('%s(0x%03X,%.1fy)', near[k].nm, near[k].i, math.sqrt(near[k].d));
+        end
+        print(string.format('[dlac] ebox scan: raw=%d rendered=%d ephemeral-hits=%d; nearest named: %s',
+            nRaw, nRen, nHit, table.concat(parts, ', ')));
+    end);
+    if not ok then print('[dlac] ebox scan: no entity array to read (headless?).'); end
+end
+
 -- The topic body. feature/debug.lua's router owns the command itself; `rest` is
--- everything after 'debug', i.e. 'ebox' / 'ebox on' / 'ebox reset'. Pure-ish
--- word split so tests can drive it (EBT*).
+-- everything after 'debug', i.e. 'ebox' / 'ebox on' / 'ebox reset' / 'ebox scan'.
+-- Pure-ish word split so tests can drive it (EBT*).
 function M._word(rest)
     return string.match(string.lower(tostring(rest or '')), '^%S+%s+(%S+)') or '';
 end
@@ -161,8 +232,9 @@ function M.run(rest)
         print('[dlac] E-Box traffic counters and log cleared.');
         return;
     end
+    if w == 'scan' then M.scan(); return; end
     M.report(ec);
-    print('[dlac]   on|off = echo it live as it happens   |   reset = clear the counters');
+    print('[dlac]   on|off = echo it live   |   reset = clear the counters   |   scan = find the box');
 end
 
 return M;
