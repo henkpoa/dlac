@@ -6203,6 +6203,6 @@ retires it right after the trigger loop.
   the engine sees it — the same collapse that made the AutoAmmo ladder fail silently. An
   ineligible piece leaves its slot unwritten instead. Carrying alternates is the follow-up.
 
-**Status:** on `dev`, awaiting Henrik's field test; **not** in the merge queue. Suites
-3901 + 692, green on Windows lua and WSL lua5.4. Both real cases also driven end-to-end
+**Status:** on `dev`, **FIELD-CONFIRMED** by Henrik the same day — *"It works now."* — and
+queued for promotion. Suites 3901 + 692, green on Windows lua and WSL lua5.4. Both real cases also driven end-to-end
 against the actual `gear.lua` files of both characters.

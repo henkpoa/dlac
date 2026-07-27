@@ -232,6 +232,28 @@ that performs the promotion **empties this section in the same commit as the mer
 entry left standing here after a merge is how "is this on main?" becomes unanswerable —
 see hard rule 14, which this section exists to serve.
 
+### Reserved slots: visible, then correct — `05da34a` + `aa3c60d` (2026-07-27)
+
+Addon `27o` → **`27t`**, engine v134 → **v135**. Suites 3901 + 692, Windows and WSL lua5.4.
+**FIELD-CONFIRMED 2026-07-27** by Henrik on both reported characters — *"It works now."*
+Waits only on the go-ahead. (The `27q`–`27s` wishlist commits between these two are a
+separate session's work with its own queue standing.)
+
+- **`05da34a` — the reservation stops being invisible.** Every hover card says *"Takes Head
+  — that slot stays empty while this is worn"*; the Sets builder marks a reserved tile and
+  names the reserver. New seams `dispatch.rslotText` + `gearimport.rslotFor` so the GUI owns
+  neither rule. Also: `apicrawl.py` audits RSlot on every rebuild (`--rslot-audit`), because
+  a *lost* reservation is silent and `/dl fix` would retract it from every player's gear.lua.
+  Coverage was verified, not assumed: 383 reserving items, byte-exact against the server's
+  `item_equipment.rslot`. **There is no list to maintain** — that was the question that
+  started the day, and the answer was arithmetic already in the repo.
+- **`aa3c60d` — multi-slot dominance (v135).** The reserve rule was correct and being handed
+  the wrong input: each rule's set is resolved through its own `equipResolved`, so priority
+  never got a vote. Now a reserving piece is a candidate only while its claim is dominant
+  over every slot it takes — dominant, it claims them (left empty); beaten, it is ineligible.
+  Fixed both field cases at once, in opposite directions. See history.md for the two wrong
+  diagnoses that came first; the trace killed both.
+
 ### AutoAmmo: the level ladder + the CW removal — `41432db`..`4d6bb12` (2026-07-27)
 
 Three commits, addon `2026.07.27l` → **`27o`**, engine v133 → **v134**. Green on both
