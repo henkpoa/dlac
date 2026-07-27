@@ -115,6 +115,65 @@ retire.
 already promises a new claimant costs "exactly TWO things and NO new arm". The Arbiter part genuinely
 *is* 3 edits; the other 11 are the surrounding bookkeeping this candidate absorbs.
 
+> #### 2026-07-27 — Henrik has raised the ceiling on this candidate. READ BEFORE GRILLING #1.
+>
+> After the multi-slot dominance work (engine v135), Henrik asked for something **larger than the
+> registry refactor described above**, and explicitly parked it for a dedicated session rather than
+> letting it be decided on a whim: *"I feel like utils.BuildDynamicSets are very legacy… I feel like
+> just having one point where gears are built is very limiting. The Claim Arbiter really has a
+> central role, and I'd like for it to be able to talk back to the functions that call it so it's
+> just not a one way communication, and that sets can be changed on the fly."*
+>
+> **The diagnosis this candidate should absorb: `utils.BuildDynamicSets` is EARLY BINDING.** It
+> collapses each slot's ladder to one name (`utils.lua:554`) using only level / subjob / mode — the
+> least information anyone in the pipeline will ever have. It cannot know which triggers matched,
+> which priority won a slot, what is worn, what reserves what, or what the Arbiter concluded. Every
+> later pass is therefore left with a single name, so its only available move is **veto** — and a
+> veto is terminal. Two shipped bugs are the same root:
+> * **AutoAmmo v134** — "the overlay COLLAPSES A LADDER TO ONE NAME before the equip layer sees it,
+>   so there is no rung 2 to fall to"; the failure was total and silent.
+> * **Dominance v135** — an ineligible Royal Cloak leaves Body **unwritten** instead of falling to
+>   the next Body piece, which is the one part of Henrik's ruling that could not be built.
+>
+> That is also *why* the Arbiter is one-way: by the time it speaks, the alternatives are gone, so
+> there is nobody left to answer. #1 as written above only makes the existing one-way contract
+> cheaper to add to. The upgraded contract to grill:
+>
+> ```lua
+> -- today:    one-way, one name, decided long before anyone can object
+> overlayFor(state, ctx)            -> { Body = 'Kupo Suit' }
+> -- proposed: the claimant can be asked again, and told why
+> propose(ctx, slot, refusedSoFar)  -> candidate | nil
+> refuse(slot, candidate, reason)      -- 'reserved-by' | 'pair' | 'locked' | 'level' | ...
+> ```
+>
+> The resolve becomes a bounded negotiation over a deterministic slot walk (the `RSLOT_ORDER` law):
+> highest-ranked claimant proposes, constraints validate, a refusal returns **with its reason**, the
+> claimant offers its next candidate, loop to a fixed point. Today's post-passes (dominance, the
+> Range/Ammo pair law, trinket displacement, sub-slot pairing, locks, disabled) each become a refusal
+> reason rather than a veto. "Sets changed on the fly" falls out for free — the collapse happens per
+> dispatch against live context instead of being baked at flatten time. `BuildDynamicSets` survives
+> as a candidate **filter** (level/subjob/mode is legitimately its job) and stops being a picker.
+>
+> **Why this is the right place to test it:** the review's own headline finding is that `M.dispatch`
+> is called **zero times** by either suite. A pure `negotiate(slots, proposers, constraints) -> plan`
+> is exactly the `equipcore.planSet(set, snapshot)` shape praised above, whose tests are the least
+> stubbed in the repo. The prize is not only fewer hunks per claimant — it is making the path every
+> feature rides testable at all.
+>
+> **A staging sketch (unvalidated — the grill should challenge it, not inherit it):** (1) carry the
+> ladder additively, zero behaviour change; (2) first consumer — v135's ineligible piece falls to its
+> next rung, completing the ruling; (3) extract pure `negotiate()`, migrating post-passes into it one
+> at a time, each pinned by tests that already exist (AK\*, AKD\*, TR\*, TB\*, AM\*); (4) claimants
+> become rows with the proposer contract — #1 delivered; (5) retire the collapse. Stage 4 also gets
+> the deferred half of Henrik's ruling for free: dominance across **arbiter rank**, not just trigger
+> priority, so a Craft or AutoAmmo claim on a reserved slot makes the reserving piece ineligible by
+> the same rule instead of a second copy of it.
+>
+> Nothing above is built. Stages 1–2 were offered on 07-27 and Henrik declined to start them yet:
+> *"this is too central and too big of a decision to just be made on a whim."* **Do not begin any
+> stage without his pick.**
+
 **Fix on the way:** `dispatch.lua:4271-4283` does hardcoded Pins-beats-Craft Sub arbitration *before*
 the rank walk, contradicting the "single precedence authority" claim 1,700 lines above it.
 
