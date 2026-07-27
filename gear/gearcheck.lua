@@ -14,7 +14,8 @@
 
 local M = {};
 
-local deps = nil;   -- { setsRoot = fn, lookupByName = fn, model = fn -> (model, job) }
+local deps = nil;   -- { setsRoot = fn, lookupByName = fn, model = fn -> (model, job),
+                    --   candidatesFor = fn|nil (the engine's ladder door, stage 5) }
 function M.configure(d) deps = d; end
 
 -- chat output through chatfmt when present (addon-side), plain print otherwise
@@ -60,6 +61,29 @@ local function setContents(name)
     if type(S) ~= 'table' then return nil; end
     if type(S.Dynamic) == 'table' and type(S.Dynamic[name]) == 'table' then return S.Dynamic[name]; end
     if type(S[name]) == 'table' then return S[name]; end
+    return nil;
+end
+
+-- The ladder door (ADR 0027, stage 5): when the engine's on-demand ladder
+-- answers (dispatch.candidatesFor via deps), a named set audits each slot's
+-- HEAD rung -- the piece the set will actually ask for at the current level,
+-- wrapper entries included -- instead of walking raw store entries (which
+-- silently skipped list-valued slots and audited level-ineligible singles).
+-- Returns slot -> head name, or nil when the door has no answer (pre-login,
+-- no engine store, headless) -- the raw walk stays as the degraded path.
+local function ladderHeads(setName, contents)
+    if deps == nil or type(deps.candidatesFor) ~= 'function' then return nil; end
+    local out, any = {}, false;
+    for slot in pairs(contents) do
+        local lad = nil;
+        pcall(function() lad = deps.candidatesFor(setName, slot); end);
+        if type(lad) == 'table' then
+            any = true;
+            local head = (type(lad.items) == 'table') and lad.items[1] or nil;
+            if head ~= nil and type(head.name) == 'string' then out[slot] = head.name; end
+        end
+    end
+    if any then return out; end
     return nil;
 end
 
@@ -160,7 +184,7 @@ function M.audit()
         if contents == nil then
             out[#out + 1] = { kind = 'noset', set = nm, handlers = ctx.handlers };
         else
-            auditSlotMap(contents, ctx, split, gi, out);
+            auditSlotMap(ladderHeads(nm, contents) or contents, ctx, split, gi, out);
         end
     end
     for _, iv in ipairs(inline) do

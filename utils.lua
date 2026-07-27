@@ -361,10 +361,13 @@ end
 --   * within the same tier the highest item level wins; on an exact tie the
 --     EARLIER list entry keeps its place.
 --
--- cctx = { mjLevel, isDW } -- the flatten's own context, stamped per rebuild
--- as M._lastFlattenCtx so on-demand ladders (dispatch.candidatesFor) answer
--- AS OF the flatten they accompany. modeActive/virtualMinLevel stay LIVE
--- reads of M.dispatchModule, exactly as the old walk read them.
+-- cctx = { mjLevel, isDW, modeOk } -- the flatten's own context, stamped per
+-- rebuild as M._lastFlattenCtx so on-demand ladders (dispatch.candidatesFor)
+-- answer AS OF the flatten they accompany. modeActive/virtualMinLevel stay
+-- LIVE reads of M.dispatchModule, exactly as the old walk read them --
+-- unless the caller supplies its OWN mode judge as cctx.modeOk (stage 5:
+-- the Sets-tab preview passes its display-truth judge), the one way a
+-- preview may legitimately answer differently.
 --
 -- Returns { items = {rung...}, accs = {rung...}, virt = marker|nil }:
 --   item rung -- { name, level, rank, modeTier, ord, gear = <resolved obj> }
@@ -376,6 +379,11 @@ function M.slotLadder(slotTable, slotName, currentMain, cctx)
     if type(slotTable) ~= 'table' or type(cctx) ~= 'table' then return out; end
     local mjLv = tonumber(cctx.mjLevel) or 0;
     local dwCtx = { dw = (cctx.isDW == true) };
+    local function modeOk(mode)
+        if type(cctx.modeOk) == 'function' then return cctx.modeOk(mode) == true; end
+        local dsp = M.dispatchModule;
+        return dsp ~= nil and type(dsp.modeActive) == 'function' and dsp.modeActive(mode) == true;
+    end
     local lastVirt, lastBareVirt = nil, nil;
     local ord = 0;
     -- pairs(), not ipairs(), on purpose: the old walk iterated pairs() and the
@@ -401,11 +409,7 @@ function M.slotLadder(slotTable, slotName, currentMain, cctx)
                 virt, vmode = gearVar.gear, gearVar.mode;
             end
             if virt ~= nil and string.lower(string.sub(virt, 1, 5)) == "dlac:" then
-                if vmode ~= nil then
-                    local dsp = M.dispatchModule;
-                    if dsp == nil or type(dsp.modeActive) ~= 'function'
-                       or dsp.modeActive(vmode) ~= true then break; end
-                end
+                if vmode ~= nil and not modeOk(vmode) then break; end
                 -- A marker is a ladder RUNG at the level of the lowest item
                 -- it can resolve to (dispatch.virtualMinLevel), not a Lv0
                 -- wildcard: below that level it is SKIPPED, so the slot's
@@ -478,9 +482,7 @@ function M.slotLadder(slotTable, slotName, currentMain, cctx)
             -- old pass-1/pass-2 split as a comparator tier).
             local modeTier = 0;
             if gearObject.mode ~= nil then
-                local dsp = M.dispatchModule;
-                if dsp == nil or type(dsp.modeActive) ~= 'function'
-                   or dsp.modeActive(gearObject.mode) ~= true then break; end
+                if not modeOk(gearObject.mode) then break; end
                 modeTier = 1;
             end
 
@@ -600,6 +602,49 @@ function M.flattenHead(ladder, slotName)
         head = itemHead.name;
     end
     return head, mainObj;
+end
+
+-- The Sets-tab preview's pick, through THE evaluator (ADR 0027, stage 5 --
+-- the GUI's hand-mirrored comparator retired into this). `list` is the
+-- editor's WORKING model ({ rec = <record>, minLevel, maxLevel, mode,
+-- autoType, removePrio, acc } per entry; rec.Virtual = a marker); each entry
+-- is shaped into its authored form INDEX-ALIGNED (a rung's ord maps back to
+-- the working entry) and judged by slotLadder -- same comparator, same
+-- virtual-adoption law (the LD8 quirk included), same Sub pairing against
+-- the planned Main. cctx is the caller's: its preview level and its own
+-- mode judge (cctx.modeOk), the two ways a preview may differ from the
+-- live flatten. Returns (entry, ladder): the winning WORKING entry --
+-- virtual > AutoAcc > item, flattenHead's composition order -- and the
+-- ladder itself (rung 2+ = what the piece would fall to).
+function M.workingPick(list, slotName, currentMain, cctx)
+    if type(list) ~= 'table' or list[1] == nil then return nil, nil; end
+    local authored = {};
+    for i, it in ipairs(list) do
+        local a = {};   -- an unresolvable entry stays a HOLE (no Level -> skipped)
+        if type(it) == 'table' and type(it.rec) == 'table' then
+            if it.rec.Virtual == true and type(it.rec.Name) == 'string' then
+                a = (it.mode ~= nil) and { gear = it.rec.Name, mode = it.mode } or it.rec.Name;
+            else
+                a = { gear = it.rec, minLevel = it.minLevel, maxLevel = it.maxLevel,
+                      mode = it.mode, autoType = it.autoType,
+                      removePrio = it.removePrio, acc = it.acc };
+            end
+        end
+        authored[i] = a;
+    end
+    local lad = M.slotLadder(authored, slotName, currentMain, cctx);
+    if lad.virt ~= nil then
+        for _, it in ipairs(list) do
+            if type(it) == 'table' and type(it.rec) == 'table'
+               and it.rec.Virtual == true and it.rec.Name == lad.virt then
+                return it, lad;
+            end
+        end
+    end
+    local head = (type(lad.accs) == 'table') and lad.accs[1] or nil;
+    if head == nil then head = (type(lad.items) == 'table') and lad.items[1] or nil; end
+    if head ~= nil then return list[head.ord], lad; end
+    return nil, lad;
 end
 
 function M.BuildDynamicSets(sets)

@@ -1,7 +1,7 @@
 # The two-way Arbiter — late binding, ladders, one arbitration per dispatch
 
-> **Status: RATIFIED 2026-07-27; stages 0–4 + 6 SHIPPED on dev the same day (engine
-> v136 → v151) — stage 5 (collapse retirement) is the one stage left.** This is the
+> **Status: RATIFIED 2026-07-27; ALL SEVEN STAGES SHIPPED — stages 0–4 + 6 on dev the
+> same day (engine v136 → v151), stage 5 on 2026-07-28 (addon `2026.07.28a`).** This is the
 > dedicated hard look Henrik parked on 07-27 (*"too central and too big of a decision to
 > just be made on a whim"*) and then asked for: *"take a hard look and see if we can in a
 > scalable way move away from this legacy, where things talk to each other much better…
@@ -451,6 +451,41 @@ Follow-ons unlocked, not scoped: `arbiter.preview(claim)` for GUI equip-now surf
 ("would this land, or be fought?"), immediate-equip paths routing through the
 arbitration, the ADR 0002 twin collapse.
 
+> **Stage 5 status: SHIPPED on dev 2026-07-28 (addon `2026.07.28a`; engine untouched, so
+> `M.VERSION` stays 151) — awaiting Henrik's GUI glance.** Where the sketch met the code:
+>
+> - **The store-as-derived-cache and the `BuildDynamicSets` shrink were already DONE by
+>   stage 1's deeper-than-sketched rebuild** — the flatten IS `slotLadder` (filter+sort)
+>   + `flattenHead` (compose) + the store write, and has been since v138. Nothing to do
+>   but say so.
+> - **`gearcheck` migrated to `candidatesFor`** — via a `deps.candidatesFor` seam
+>   (triggersui wires the engine door in; the module stays pure). A named set now audits
+>   each slot's HEAD rung — what the set will actually ask for at the current level,
+>   wrapper entries included. This fixes a real hole: the raw store walk silently
+>   skipped list-valued slots (an array has no `.Name`) and audited level-ineligible
+>   single entries. Deeper rungs are alternatives, never false needs (GC1–GC3 pin all
+>   of it). The raw walk stays as the degraded path (pre-login, no engine store).
+> - **The Sets-tab preview migrated to the EVALUATOR, not the door** — deliberately:
+>   the preview judges the editor's *working model* (uncommitted edits), which
+>   `candidatesFor` cannot see (it reads the committed store). New `utils.workingPick`
+>   shapes working entries into authored form index-aligned and judges them with
+>   `slotLadder` itself — the door and the preview now share the one law, so parity
+>   holds the same way stage 1's did. `slotLadder` gained `cctx.modeOk` so the preview
+>   keeps its display-truth mode judge. gearui's hand-mirrored `bestByLevel` comparator
+>   (which had drifted four ways: first-vs-last virtual adoption, no LD8 quirk, no Sub
+>   pairing, a different maxLevel default) is DELETED — the twin the §7 risks block
+>   predicted, retired. The preview now also pairs Sub against the set's planned Main,
+>   exactly as the flatten walks it (LD11a–j).
+> - **Marker strings do NOT expand at install** — deferred on purpose. §5 already says
+>   "retire gradually": the expansion changes the store shape every consumer reads, for
+>   zero field-visible change; it belongs with the other unlocked follow-ons
+>   (`arbiter.preview`, immediate-equip arbitration, the ADR 0002 twins), not in this
+>   slice. The "(fell to X — /dl why)" Sets-tab hint stays a follow-on with them.
+>
+> Suites 4075 + 693, Windows Lua and WSL lua5.4. With stage 6 field-confirmed and this,
+> **ADR 0027's staging is code-complete**; what remains of the program is Henrik's GUI
+> glance here and the recorded follow-ons.
+
 **Stage 6 — the MaxMP migration (the fold, ratified §10 item 3).** Last on purpose:
 the constraint vocabulary is proven on simpler constraints first, and MP regressions
 are the worst class to field-confirm (they show as mana quietly wasted over a session,
@@ -460,8 +495,9 @@ named constraint; movement yield and sticky pairs become view-reading gates;
 behind band-behavior parity tests + goldens + a dedicated field campaign; the woven
 code is deleted only after its replacement is field-confirmed.
 
-> **Stage 6 status: SHIPPED on dev 2026-07-27 (engine v151, addon `27zm`) — code-complete,
-> FIELD CAMPAIGN PENDING (the ratified gate).** The woven per-slot MP branch + the mp-stage
+> **Stage 6 status: SHIPPED on dev 2026-07-27, commit `88f0d14` (engine v151, addon
+> `27zm`); FIELD-CONFIRMED same day — *"MaxMP mode seem to work just like before"* —
+> the ratified parity gate passed.** The woven per-slot MP branch + the mp-stage
 > post-pass are DELETED; MaxMP claims and applies through its registry row: band targets →
 > the claim (`mpClaimFor` as the row's `claim`), and the apply runs the four gates —
 > remove-respect (v91), movement yield (v96), sticky pairs (v93/v94, museum #7), RSlot

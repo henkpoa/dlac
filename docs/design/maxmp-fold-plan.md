@@ -1,6 +1,9 @@
 # The MaxMP fold — stage 6 implementation plan (ADR 0027)
 
-> **EXECUTED 2026-07-27 (engine v151, addon `27zm`; 4059 checks, Windows + WSL).**
+> **EXECUTED 2026-07-27 (engine v151, addon `27zm`; 4059 checks, Windows + WSL) —
+> FIELD-CONFIRMED same day: "MaxMP mode seem to work just like before". The known
+> pre-fold earring oddity (Cassandra's over Outlaw's) persists as expected and has
+> its own diagnosis session pending.**
 > Three deltas surfaced during the splice, all in the shipped code:
 > 1. **The rank order hoists above the claim build pass** — the plan said the claim
 >    "moves into the registry row" but the build pass ran before `rankOf` existed;

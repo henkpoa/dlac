@@ -247,7 +247,30 @@ lua5.4. **FIELD-CONFIRMED 2026-07-27** by Henrik — *"what I tried seem to work
 only on the go-ahead. The pair-law family lives in `gear/arbiter.lua`; every dispatch
 sends ONE merged plan (OS1 pins exactly-one-send; the map is identical by construction).
 
-### Stage 6: the MaxMP fold — 2026-07-27, NOT YET FIELD-CONFIRMED
+### Stage 5: the collapse retirement — 2026-07-28, NOT YET FIELD-CONFIRMED
+
+Addon `27zm` → **`2026.07.28a`** (engine untouched — `M.VERSION` stays 151). Suites
+**4075 + 693**, Windows and WSL lua5.4. The LAST stage of ADR 0027 — the staging is now
+code-complete. What moved (full deviations log in the §7 stage-5 status block of
+`docs/design/two-way-arbiter.md`):
+
+- **gearcheck audits through the engine's ladder door** (`deps.candidatesFor`, wired by
+  triggersui): each slot's HEAD rung — what the set will actually ask for — wrapper
+  entries now covered, level-ineligible singles no longer false-flagged, list-valued
+  slots no longer silently skipped. Degraded raw walk kept for pre-login.
+- **The Sets-tab preview asks THE evaluator** (`utils.workingPick` → `slotLadder` with
+  `cctx.modeOk`): gearui's hand-mirrored comparator deleted; the preview now obeys the
+  same virtual-adoption law (LD8 quirk included) and pairs Sub against the set's
+  planned Main, like the flatten.
+- The store-as-cache + `BuildDynamicSets` shrink were already done by stage 1 (recorded);
+  marker-expansion-at-install deferred with the follow-ons ("retire gradually", §5).
+
+**Henrik's glance:** Sets tab — the yellow current-pick and slot tiles should read as
+before (the Sub tile may now honestly show what pairs with the planned Main); trigger
+gear warnings (`/dl gearcheck`) should read the same or truer. Field parity everywhere
+else is expected — the engine did not change.
+
+### Stage 6: the MaxMP fold — `88f0d14` (2026-07-27)
 
 Engine v150 → **v151**, addon `27zl` → **`27zm`**. Suites **4059 + 693**, Windows and
 WSL lua5.4. **Executed on Henrik's order** (*"Go for the MaxMP fold"* + the standing
@@ -258,10 +281,12 @@ sticky-pairs / RSlot-eligibility gates against the same-dispatch view — `ctx.p
 plus unapplied above-rank claims); ceding is apply order; lock-respect is the ordinary
 `respect('MaxMP')`; the `mp-hold` constraint heads `POST_ORDER` (rank-guarded via
 `who`/`ctx.rankOf`); `mpBands` memoizes per dispatch. Bands + resolvers untouched.
-**Not in the merge queue proper until Henrik's MP field campaign passes** (the ratified
-gate): band thresholds unchanged in `/dl plan`, batteries stage/hold/release as before,
-movement yield + sticky pairs + locks above/below + AutoAmmo-over-battery unchanged.
-Execution log: `docs/design/maxmp-fold-plan.md`. Stage 5 (collapse retirement) follows.
+**FIELD-CONFIRMED 2026-07-27** by Henrik — *"MaxMP mode seem to work just like before
+(for both good and bad :) )"*. The ratified gate passed: parity confirmed. Waits only
+on the go-ahead. ("Both good and bad": the pre-fold Cassandra's-over-Outlaw's earring
+oddity persists exactly as before — it predates the fold, its inputs are manifest data
+/ band ordering, and it is deferred to its own diagnosis session with a `/dl plan`
+capture.) Execution log: `docs/design/maxmp-fold-plan.md`.
 
 ### Claim-side ladders + the belts come off — `acc26c9` + `60ef4fa` (2026-07-27)
 

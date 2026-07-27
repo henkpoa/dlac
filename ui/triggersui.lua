@@ -70,7 +70,11 @@ function M.init(d)
     pcall(function()
         local gc = require("dlac\\gear\\gearcheck");
         gc.configure({ setsRoot = d.setsRoot, lookupByName = d.lookupByName,
-                       model = M.currentModel });
+                       model = M.currentModel,
+                       -- the engine's ladder door (stage 5): the audit reads
+                       -- each slot's head rung instead of raw store entries
+                       candidatesFor = (hasDispatch and type(dsp.candidatesFor) == 'function')
+                           and function(s, sl) return dsp.candidatesFor(s, sl); end or nil });
     end);
 end
 

@@ -7198,6 +7198,117 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- LD11. THE WORKING-MODEL BRIDGE (ADR 0027, stage 5 -- utils.workingPick).
+--       The Sets tab's preview twin (gearui's hand-mirrored bestByLevel)
+--       retired into this: working entries are shaped into authored form and
+--       judged by slotLadder, so the preview obeys the SAME laws -- the
+--       comparator, virtual adoption (LD8's quirk included), Sub pairing --
+--       with the caller's own level and mode judge (cctx.modeOk).
+-- ---------------------------------------------------------------------------
+(function()
+    local cctx = { mjLevel = 50, isDW = false };
+    local W = utils.workingPick;
+
+    -- The comparator through the bridge; the winner is the WORKING entry itself.
+    local wl = { { rec = { Name = 'Druid Robe', Level = 50 } },
+                 { rec = { Name = 'Garrison Tunica', Level = 20 }, minLevel = 20, maxLevel = 51 } };
+    local pick, lad = W(wl, 'Body', nil, cctx);
+    check('LD11 the bridge answers with the evaluator comparator',
+        pick ~= nil and pick.rec.Name or '?', 'Garrison Tunica');
+    check('LD11b the winner is the working entry itself (identity)', rawequal(pick, wl[2]), true);
+    check('LD11c the ladder rides along (rung 2 = the fall)', lad.items[2].name, 'Druid Robe');
+
+    -- The caller's own mode judge (display truth), never the engine's.
+    local wm = { { rec = { Name = 'Plain Body', Level = 40 } },
+                 { rec = { Name = 'DT Body', Level = 10 }, mode = 'DT' } };
+    local pOn  = W(wm, 'Body', nil, { mjLevel = 50, modeOk = function(m) return m == 'DT' end });
+    local pOff = W(wm, 'Body', nil, { mjLevel = 50, modeOk = function() return false end });
+    check('LD11d cctx.modeOk active -> the gated entry outranks', pOn ~= nil and pOn.rec.Name or '?', 'DT Body');
+    check('LD11e cctx.modeOk inactive -> excluded outright', pOff ~= nil and pOff.rec.Name or '?', 'Plain Body');
+
+    -- Virtual adoption follows the ENGINE law and maps back to the marker entry.
+    local savedDM3 = utils.dispatchModule;
+    utils.dispatchModule = { virtualMinLevel = function() return 3 end };
+    local wv = { { rec = { Name = 'dlac:AutoObi', Level = 3, Virtual = true } },
+                 { rec = { Name = 'Corsette', Level = 40 } } };
+    local pv = W(wv, 'Waist', nil, cctx);
+    check('LD11f a virtual takes the slot and maps to its working entry', rawequal(pv, wv[1]), true);
+    utils.dispatchModule = savedDM3;
+
+    -- Sub pairing judges against the planned Main, exactly like the flatten.
+    local twoH2 = { Name = 'Heavy Great Axe', Type = 'Great Axe', OneHanded = false, Level = 1 };
+    local ws = { { rec = { Name = 'Kite Shield', Type = 'Shield', Level = 1 } },
+                 { rec = { Name = 'Dark Grip', Type = 'Sub', Level = 1 } } };
+    local ps = W(ws, 'Sub', twoH2, cctx);
+    check('LD11g Sub pairing gates the preview like the flatten', ps ~= nil and ps.rec.Name or '?', 'Dark Grip');
+
+    -- A rec-less entry is a HOLE (skipped cleanly); ord still maps back.
+    local wh = { { rec = nil }, { rec = { Name = 'Real Robe', Level = 10 } } };
+    check('LD11h a hole entry skips and ord still maps back',
+        rawequal((W(wh, 'Body', nil, cctx)), wh[2]), true);
+
+    -- AutoAcc fields ride the working entry into the pool split; the marker
+    -- composes over the fallback exactly as the flatten stores it.
+    local wa = { { rec = { Name = 'Plain Ring', Level = 40 } },
+                 { rec = { Name = 'Acc Ring', Level = 30 }, autoType = 'AutoAcc', removePrio = 2, acc = 15 } };
+    local pa, laa = W(wa, 'Ring1', nil, cctx);
+    check('LD11i the AutoAcc entry wins as the composed head (pool split)', rawequal(pa, wa[2]), true);
+    check('LD11j ...and its ladder still composes the flatten marker',
+        (utils.flattenHead(laa, 'Ring1')), 'dlac:AutoAcc:2:15:Acc Ring|Plain Ring');
+end)();
+
+-- ---------------------------------------------------------------------------
+-- GC. GEARCHECK THROUGH THE LADDER DOOR (ADR 0027, stage 5). With
+--     deps.candidatesFor wired, a named set audits each slot's HEAD rung --
+--     what the set will actually ask for -- so list-valued slots (silently
+--     skipped by the raw walk) are covered and deeper rungs are not false
+--     needs. Without the door, the raw degraded walk stands as before.
+-- ---------------------------------------------------------------------------
+(function()
+    local gcm = dofile('gear/gearcheck.lua');   -- fresh instance (the harness idiom)
+    local savedGI = package.loaded['dlac\\gear\\gearimport'];
+    package.loaded['dlac\\gear\\gearimport'] = {
+        ownedSplit = function()
+            return { avail = { [77] = 0, [88] = 1 }, total = { [77] = 1, [88] = 1 },
+                     where = { [77] = { [5] = 1 } } };
+        end,
+        containerName = function(cid) return 'Mog Safe'; end,
+    };
+    local lookup = { ['Head Robe'] = { Id = 77 }, ['Deep Robe'] = { Id = 88 } };
+    local base = {
+        setsRoot = function() return { Dynamic = { LadSet = { Body = { 'authored entry' } } } }; end,
+        lookupByName = function(nm) return lookup[nm]; end,
+        model = function() return { HandleDefault = { { set = 'LadSet' } } }; end,
+    };
+
+    -- The door answers: the audit reads the HEAD rung only.
+    base.candidatesFor = function(s, sl)
+        if s == 'LadSet' and sl == 'Body' then
+            return { items = { { name = 'Head Robe' }, { name = 'Deep Robe' } }, accs = {} };
+        end
+        return nil;
+    end;
+    gcm.configure(base);
+    local warns = gcm.audit();
+    check('GC1 the ladder-door audit warns on the head rung', #warns, 1);
+    check('GC1b ...as stored (owned, not equippable)', warns[1] ~= nil and warns[1].kind or '?', 'stored');
+    check('GC1c ...naming the head piece', warns[1] ~= nil and warns[1].item or '?', 'Head Robe');
+    check('GC1d ...with the retrieve-from location', warns[1] ~= nil and warns[1].where or '?', 'Mog Safe');
+    local deepNamed = false;
+    for _, w in ipairs(warns) do if w.item == 'Deep Robe' then deepNamed = true; end end
+    check('GC2 deeper rungs are alternatives, never false needs', deepNamed, false);
+
+    -- Without the door: the raw degraded walk (a list-valued slot is silently
+    -- skipped -- the pre-stage-5 hole, pinned here as WHY the door matters).
+    base.candidatesFor = nil;
+    gcm.configure(base);
+    check('GC3 the degraded raw walk still skips list-valued slots', #gcm.audit(), 0);
+
+    gcm.configure(nil);
+    package.loaded['dlac\\gear\\gearimport'] = savedGI;
+end)();
+
+-- ---------------------------------------------------------------------------
 -- AKF. THE FALL (ADR 0027, stage 2 -- M.reserveResolve + the FELL branch in
 --      equipResolved). The deferred half of the v135 ruling: an ineligible
 --      piece falls down its source ladder, each rung re-judged; a reserved

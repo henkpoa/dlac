@@ -7,8 +7,8 @@ heuristic to a precomputed plan. This document is the definitive reference:
 the final architecture, the rulings that shaped it, and the failure museum
 (kept deliberately — the dead ends teach more than the survivor).
 
-> **DELIVERY FOLDED 2026-07-27 (engine v151, ADR 0027 stage 6 — field campaign
-> pending).** The bands still decide WHEN (`mpbands.lua`, untouched) and the
+> **DELIVERY FOLDED 2026-07-27 (engine v151, ADR 0027 stage 6 — FIELD-CONFIRMED
+> same day: "works just like before").** The bands still decide WHEN (`mpbands.lua`, untouched) and the
 > resolvers WHAT (`mpRungs`/`mpBestPick`/`mpStickyPairs`/`mpStageEligible`,
 > untouched); the woven per-slot branch + mp-stage pass that DELIVERED them are
 > gone. Batteries now arrive as the MaxMP registry row's CLAIM (ranked by the
