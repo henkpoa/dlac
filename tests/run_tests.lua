@@ -11551,6 +11551,21 @@ end)();
     check('NE25 legacy trigger tier rides the data home too', prof.legacyTriggersPath('WHM'),
           'I:\\game\\config\\addons\\dlac\\Mindie_12345\\triggers\\WHM.lua');
 
+    -- NE30. THE NIL-TOGETHER INVARIANT. dataDir (nativeCharBase) and charBase are
+    -- the same charFolder() behind two roots, so they answer or fall silent as one.
+    -- gearui.dataDir / gearui.charRoot / syncflags.uiFlagsPath each used to end in
+    -- a `charBase() .. 'dlac\\'` fallback; those were deleted on 2026-07-27 because
+    -- this invariant makes them unreachable. If anyone ever makes the two diverge,
+    -- the deletion stops being safe -- and this fires before the field finds out.
+    local savedFolder = prof.charFolder;
+    prof.charFolder = function() return nil; end          -- pre-login
+    check('NE30 no identity -> dataDir is nil',  prof.dataDir(),  nil);
+    check('NE30b ...and charBase is nil TOO',    prof.charBase(), nil);
+    prof.charFolder = function() return 'Mindie_12345'; end
+    check('NE30c identity -> both answer: dataDir',  prof.dataDir() ~= nil,  true);
+    check('NE30d ...and charBase',                   prof.charBase() ~= nil, true);
+    prof.charFolder = savedFolder;
+
     prof.nativeMode = savedNative;
     AshitaCore = savedAC;
 

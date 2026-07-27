@@ -510,6 +510,12 @@ research already recorded. In rough priority order:
   reads it *before* it builds. Suites **3906 + 693**, Windows and WSL lua5.4.
   Still open: whether **default** behavior should also skip the re-solve when the payload
   carried gear — see the note at the end of history.md's entry.
+  **Follow-on (`27y`): the last engine-flag-era legacy fallback is gone.** `gearui.dataDir`,
+  `gearui.charRoot` and `syncflags.uiFlagsPath` all ended in `charBase() .. 'dlac\\'` —
+  unreachable (`profiles.dataDir` and `profiles.charBase` are one `charFolder()` behind two
+  roots, so they go nil together), and its only possible effect was to write a dlac-owned
+  file into the read-only import tree. All three return `nil` now. **`NE30`** pins the
+  nil-together invariant, mutation-verified. Suites **3947 + 693**.
 - **2026-07-27: reserved slots stop being invisible — ON `dev`, awaiting field test**
   (`2026.07.27p`). Henrik: *"if we equip a tunic that takes up the headslot, it ignores
   to equip the headslot… there are more items like this. How do we keep track of all

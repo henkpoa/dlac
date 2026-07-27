@@ -1201,26 +1201,34 @@ local function charBase()
     return base;
 end
 
--- The dlac data home (mode-aware -- feature/native-engine): profiles.dataDir()
--- with the legacy composition as fallback.
+-- The dlac data home: profiles.dataDir(), or NOTHING.
+--
+-- Both of these ended in `charBase()` until 2026-07-27 -- a legacy fallback
+-- from the days when the engine flag decided where storage lived. Post-purge
+-- it was not just wrong, it was UNREACHABLE: profiles.dataDir (nativeCharBase)
+-- and profiles.charBase are the same charFolder() behind two roots, so they go
+-- nil together and non-nil together. The fallback could only ever have fired
+-- in a world where they diverge -- and in that world it would have pointed
+-- dlac's writes at the read-only import tree. Nil is the honest answer: every
+-- caller already treats it as "not logged in yet" and retries. (NE30 pins the
+-- nil-together invariant this deletion rests on.)
 local function dataDir()
     local ok, prof = pcall(require, 'dlac\\profiles');
     if ok and type(prof) == 'table' and type(prof.dataDir) == 'function' then
         local ok2, d = pcall(prof.dataDir);
         if ok2 and d ~= nil then return d; end
     end
-    local base = charBase();
-    return base and (base .. 'dlac\\') or nil;
+    return nil;
 end
 
--- The per-char home backups\ composes off (mode-aware like dataDir).
+-- The per-char home backups\ composes off. Same rule, same reason.
 local function charRoot()
     local ok, prof = pcall(require, 'dlac\\profiles');
     if ok and type(prof) == 'table' and type(prof.charRoot) == 'function' then
         local ok2, r = pcall(prof.charRoot);
         if ok2 and r ~= nil then return r; end
     end
-    return charBase();
+    return nil;
 end
 
 -- Engine-owned slot locks, read from the modestate mirror (__locks). The ENGINE is

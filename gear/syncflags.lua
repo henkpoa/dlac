@@ -60,14 +60,15 @@ local _syncedJob, _syncDueFrame = nil, nil;
 local _invSyncAt = nil;   -- debounced: ~5s after the LAST inventory-changing packet
 local _flagsLoaded = false;
 
+-- The native data home, or nothing. The `D.charBase() .. 'dlac\\'` fallback that
+-- used to sit here died with gearui's twin on 2026-07-27: it was unreachable
+-- (dataDir and charBase go nil together -- NE30) and its only possible effect
+-- was to write a dlac-owned file into the read-only import tree. nil = not
+-- logged in yet; the caller retries next frame, which is what it always did.
 local function uiFlagsPath()
-    -- mode-aware data home when gearui passes it (feature/native-engine)
-    if type(D.dataDir) == 'function' then
-        local d = D.dataDir();
-        if d ~= nil then return d .. 'uiflags.lua'; end
-    end
-    local base = D.charBase();
-    return base and (base .. 'dlac\\uiflags.lua') or nil;
+    if type(D.dataDir) ~= 'function' then return nil; end
+    local d = D.dataDir();
+    return d and (d .. 'uiflags.lua') or nil;
 end
 
 sf.saveUiFlags = function()

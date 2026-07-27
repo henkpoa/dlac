@@ -6372,3 +6372,39 @@ delivers his friend's ask either way.
 uncommitted engine work in this shared checkout), engine unchanged. Suites **3906 + 693**,
 green on Windows lua and WSL lua5.4. **Awaiting field test** — by the reporter, who has
 the round-trip that found it.
+
+### Follow-on, same session — the last legacy fallback under the flag (`27y`)
+
+Henrik, reading the above: *"Has this been set up with the purge in mind? So we don't add
+legacy crap towards LAC?"* The new code adds none — grepping the commit for
+`luashitacast`, `/lac `, `GetInstallPath` and hand-composed `<Char>_<id>` paths returns
+nothing, and `PRG1` passes. **His friend's patch was the legacy crap**, which is the point
+worth keeping: applying it would have reintroduced `/lac equip`, a hand-composed
+`config\addons\luashitacast\%s_%u\dlac\gear.lua`, and a hand-composed `charBase` in place
+of the delegation to `profiles.charBase` — while deleting **299 lines** of Wishlist and
+reserved-slot work. `PRG1` would have caught two of those three; nothing would have caught
+the deletions.
+
+But the question found a real leftover in the chain the new flag rides. Three functions
+still ended in a `charBase() .. 'dlac\'` fallback from the engine-flag era:
+`gearui.dataDir`, `gearui.charRoot`, `syncflags.uiFlagsPath`. **All three were
+unreachable**, and provably so: `profiles.dataDir` (→ `nativeCharBase`) and
+`profiles.charBase` are the same `charFolder()` behind two different roots, so they go nil
+together and non-nil together. The fallback could only fire in a world where they diverge
+— and in *that* world it would have pointed dlac's own writes at the read-only import
+tree. `uiflags.lua` (which now carries the import setting) was the one with a player-facing
+consequence: a Setting written into `luashitacast\` would never be read back.
+
+Deleted, all three, returning `nil` — the answer every caller already handles as "not
+logged in yet, retry next frame". **`NE30`** pins the nil-together invariant the deletion
+rests on: no identity → both nil; identity → both answer. **Mutation-verified** — make
+`charBase` fall back to a placeholder folder and `NE30b` fails, naming the
+`luashitacast\Ghost_1\` path it would have used.
+
+**Worth carrying:** *unreachable* and *harmless* are different claims. This code could not
+run, but it encoded a rule the purge deleted — "when the native home has no answer, use
+LAC's" — and the next person to touch path resolution would have read it as current. Dead
+code is documentation that nobody proofreads.
+
+**Status:** on `dev`, addon `27x` → **`27y`**, engine untouched. Suites **3947 + 693**,
+green on Windows lua and WSL lua5.4.
