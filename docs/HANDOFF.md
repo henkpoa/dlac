@@ -43,6 +43,12 @@ maintainer IMO, I am just the one with the creative vision."*
    the gearmove branch), [design/picker-database.md](design/picker-database.md),
    [design/sync-settle-hold.md](design/sync-settle-hold.md) (the level-sync TP fix,
    v56/v57 — and the WRAP_GEN rule for anything that must survive an engine hot-swap).
+9. **How other addons read dlac** (designed 2026-07-28, NOT built):
+   [design/integration-surface.md](design/integration-surface.md) — the push/pull
+   `plugin_event` surface, its two timing contracts, and the **parked plugin-folder**
+   design with its rulings (section 10), so neither gets re-derived.
+   [reference/integration-guide.md](reference/integration-guide.md) is the consumer-facing
+   spec written to be handed to a third-party addon author verbatim.
 
 There is also a cross-session memory dir (Claude-specific) at
 `~\.claude\projects\C--catseyexi-catseyexi-client-Ashita-addons-dlac\memory\` — it

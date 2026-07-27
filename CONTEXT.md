@@ -176,6 +176,14 @@ _Avoid_: config file, settings file
 A player preference the GUI remembers for a character, held in `<char>\dlac\uiflags.lua` and owned by `gear\syncflags.lua` (the one loader/writer). Addon-state only: the Engine never reads it — a Setting changes what the GUI *shows or does*, never what gets equipped. That is the whole line between a Setting and a **Statefile** (which exists to cross into the Engine). Every Setting is reachable from the Menu's **Settings** panel; some also keep a shortcut checkbox where they're used.
 _Avoid_: config, option, flag (the file is called uiflags for history, but "flag" also means the Engine flag — say Setting)
 
+**Session switch**:
+A player-controlled switch dlac deliberately forgets — never written to disk, gone by the next session. The sibling of a **Setting** (which is remembered) and named because dlac has several: naked, slot locks, free equip, the locked set, every Floating window's open flag, and the **Integration surface**'s stream. Session-only is not free: an Ashita addon survives a logout, so a switch that must die with the session has to be dropped explicitly — and the world read goes 0/nil during a *zone load* exactly as it does at character select, so the drop keys on absence OUTLASTING a zone, never on absence itself (engine v146).
+_Avoid_: Setting (that one persists), temporary flag, toggle
+
+**Integration surface**:
+The one channel another addon reads dlac through (`docs/design/integration-surface.md`, designed 2026-07-28): a **push** stream of labelled events plus **pull** queries, both over Ashita's `plugin_event` broadcast — the mechanism LuaAshitacast's own `integration.lua` already uses. It exists because every Ashita addon gets its own Lua state, so a foreign addon can otherwise reach dlac only by file or the command bus that ADR 0014 outlawed. Deliberately **read-only and gated behind a Session switch**: it publishes what dlac decided, and nothing on it can equip, commit or configure anything.
+_Avoid_: API (it is a channel, not a callable surface — nothing outside dlac's state can call in), export, plugin (a plugin runs INSIDE dlac's state — designed and parked, section 10 of the design doc)
+
 **Set bonus**:
 A server-applied stat package for wearing N+ pieces of a gear set (`data\gearsets.lua`, 126 sets). Tiers are value-AT-count replacements (`tiers[min(count, max)]`, nil below `min`), counting is per SLOT (two copies count twice) and level-gated. Evaluated by `gear\geareffects.lua`; the game applies the real thing at equip time — dlac only plans, displays and scores it.
 _Avoid_: treating tier values as cumulative increments; per-item "set piece" scores
