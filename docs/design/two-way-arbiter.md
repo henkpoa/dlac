@@ -362,9 +362,8 @@ shipping.
 > parity holds by construction (LD9 verifies anyway). `dispatch.candidatesFor(setName,
 > slot)` is the on-demand door, answering with the last flatten's own context, memoized per
 > `utils._laddersRev`. The old walk's virtual re-adoption quirk is preserved and pinned
-> (LD8). Tests LD1–LD10d; suites 3973 + 693 on Windows Lua and WSL lua5.4. **Awaiting
-> field confirmation** (zero behavior change: sets flatten identically); stage 2 on
-> Henrik's go after that.
+> (LD8). Tests LD1–LD10d; suites 3973 + 693 on Windows Lua and WSL lua5.4.
+> **FIELD-CONFIRMED 2026-07-27 with stage 2 and queued (hard rule 14).**
 
 **Stage 1 — ladders on demand.** `candidatesFor(setName, slot)` — the `evalEntry` walk
 emitting the *ordered list* instead of its head, memoized on the existing rebuild latch
@@ -380,7 +379,10 @@ the rounds. The Royal Cloak falls to the next Body piece. Floor-scoped exactly l
 v135; small diff; immediately field-testable by the two 07-27 cases.
 
 > **Stage 2 status: SHIPPED on dev 2026-07-27, commit `ad7ab30` (engine v139, addon
-> `27za`) — Henrik's go, same session, spec'd by his own Mindie BRD test.** One
+> `27za`) — Henrik's go, same session, spec'd by his own Mindie BRD test.
+> FIELD-CONFIRMED 2026-07-27 — "Yes, the harness landed on Body" — and queued with
+> stage 1 (hard rule 14). The craft-bench worn-reserver case he hit is the PRE-EXISTING
+> Example C from the item-2 ruling, recorded as the stage-4 acceptance test.** One
 > implementation deviation: provenance rides `reserveFloor` itself (`entries[].src` →
 > `floor[slot].src`) rather than `slotSrc`, and the fall is the pure
 > `M.reserveResolve(entries, lookup, ladderOf)` — verdict → ladder walk → re-verdict,

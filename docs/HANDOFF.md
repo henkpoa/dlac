@@ -286,6 +286,34 @@ intact), craft and HELM work. Waits only on the go-ahead.
   MaxMP Cassandra's-over-Outlaw's earring pick is OLD weave behavior, untouched by both
   commits — one `/dl plan` while it is happening will name the rung and thresholds.)
 
+### Ladders on demand + the fall — ADR 0027 stages 1–2 — `b26a1da` + `ad7ab30` (2026-07-27)
+
+Engine v137 → **v139**, addon `27z` → **`27za`**. Suites **3997 + 693**, Windows and WSL
+lua5.4. **FIELD-CONFIRMED 2026-07-27** by Henrik — the acceptance was his own Mindie BRD
+setup (Idle Body = Royal Cloak > Scorpion Harness +1 under Movement Head = Genbu's Kabuto):
+*"Yes, the harness landed on Body"*, with movement/idle/HELM/fishing/digging/midcast/
+precast/resting all behaving. Waits only on the go-ahead.
+
+- **Stage 1 (`b26a1da`, v138, zero behavior change):** `BuildDynamicSets` rebuilt on ONE
+  evaluator — `utils.slotLadder` (the pick comparator as a sort) + `utils.flattenHead`
+  (the one `marker|fallback`/AutoAcc composition site) — so the flatten IS the ladder's
+  head and parity holds by construction (LD9 verifies anyway). `dispatch.candidatesFor`
+  is the on-demand door, memoized per `utils._laddersRev`. The old walk's bare-virtual
+  re-adoption quirk is preserved and pinned (LD8). Tests LD1–LD10d.
+- **Stage 2 (`ad7ab30`, v139) — THE FALL, the deferred half of the v135 ruling:** an
+  INELIGIBLE piece falls down its source ladder (`M.reserveResolve`: verdict → ladder →
+  re-verdict, capped at three re-runs; `reserveFloor` entries carry `src`), landing via
+  `ctx.reserveReplace` in the refused piece's own writer pass — `/dl why`:
+  `Body=Royal Cloak fell -> Scorpion Harness +1 (reserves Head -- owned above)`. A rung
+  is re-judged like any piece; a reserved slot NEVER falls (AKF8, the asymmetry law);
+  dry ladders and inline equips keep v135's visible INELIGIBLE. Tests AKF1–AKF10.
+- **Known pre-existing case, field-hit and scheduled, NOT a regression:** a WORN floor
+  reserver still beats a hobby claim's slot through the claim layers' single-set+worn
+  fallback (Henrik's craft bench: worn Royal Cloak drops the Craft claim's Midras's Helm
+  +1 with `Head=RESERVED by Royal Cloak (kept as worn)` in the craft line). Fix = the
+  ratified cross-rank dominance law (ADR 0027 item 2), which lands at stage 4; this case
+  is recorded there as the stage-4 acceptance test.
+
 ### Reserved slots: visible, then correct — `05da34a` + `aa3c60d` (2026-07-27)
 
 Addon `27o` → **`27t`**, engine v134 → **v135**. Suites 3901 + 692, Windows and WSL lua5.4.
