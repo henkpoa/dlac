@@ -230,7 +230,20 @@ that performs the promotion **empties this section in the same commit as the mer
 entry left standing here after a merge is how "is this on main?" becomes unanswerable —
 see hard rule 14, which this section exists to serve.
 
-*(Empty. Last promotion: 2026-07-27 — **the hobby-bar day**, `96b49be`..`3446978`, addon
+*(Empty. Last promotion: 2026-07-27 evening — **the Xvs engine-era batch**,
+`0f1ae6e`..`c074da9`, addon `2026.07.27f` → **`2026.07.27i`**, engine **v130**, ADR 0025 —
+on Henrik's go-ahead: *"Everything is working perfectly now. … Regardless, push to main."*
+Field-confirmed on Xvs's live installs, the boxes the bugs owned: **the native flatten no
+longer waits for the GUI** (`utilsModule()` lazy require at all five bare
+`package.loaded['dlac\\utils']` sites — the per-session "won't equip whatsoever" killer),
+**dataDir holds while the first run is undecided** (the manufactured-legacy-evidence
+race), and **born native, always** (ADR 0025: flag absent → native, the boot never scans
+luashitacast\, an explicit flag stays the only road to legacy). Even the WS-menu-closing
+weirdness stopped with it — the sick engine's full re-equip volleys were colliding with
+open native menus via the server's 0x0AC rebuild. The record is the merge commit on
+`main`.)*
+
+*(Previous promotion: 2026-07-27 — **the hobby-bar day**, `96b49be`..`3446978`, addon
 `2026.07.27a` → **`2026.07.27e`**, on Henrik's go-ahead: *"merge dev into main and push
 both."* Two halves, promoted as one. **The searches came to the bar**: Fishing's
 `TARGET FISH` section became a Floating window (`fishui.renderSearch` →
@@ -306,10 +319,11 @@ research already recorded. In rough priority order:
 
 ## Current state (as of 2026-07-26)
 
-- **2026-07-27: the Xvs field day — TWO engine-era fixes on `dev`, WAITING ON FIELD
-  CONFIRM** (`0f1ae6e` v130/`2026.07.27g`, `67edec8` `2026.07.27h`; both suites green at
-  3878; they enter the Ready-to-merge queue when Xvs confirms — his broken install IS the
-  field rig).
+- **2026-07-27: the Xvs field day — THREE engine-era fixes, ON MAIN, FIELD-CONFIRMED**
+  (`0f1ae6e` v130/`2026.07.27g`, `67edec8` `2026.07.27h`, `c074da9` `2026.07.27i`/ADR
+  0025; promoted the same evening on Henrik's go-ahead after Xvs confirmed:
+  *"Everything is working perfectly now"* — equips, commits, reinstall, and even the
+  WS-menu weirdness gone).
   1) **The native flatten never ran without the GUI.** Every dispatch utils lookup read
   `package.loaded['dlac\\utils']` bare — "loaded first in the LAC state", the job shim's
   own first require — but the NATIVE state has no shim and nothing loads utils at boot,
