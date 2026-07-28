@@ -3437,6 +3437,10 @@ end)();
     IM.GetItemRectMin = function() return 0, 0; end
     IM.GetColorU32    = function() return 0; end
     IM.GetWindowDrawList = function() return { AddRectFilled = nop }; end
+    -- Responsive grid: the stub's width picks the MODE (narrow = icon-only,
+    -- wide = names). Both frames are driven below.
+    local availStub = 400;
+    IM.GetContentRegionAvail = function() return availStub, 400; end
 
     local saved = { imgui = package.loaded['imgui'],
                     icons = package.loaded['dlac\\ui\\itemicons'],
@@ -3487,10 +3491,17 @@ end)();
             check('AM5 the seeded ring holds records', #ring >= 2, true);
 
             local lok, lerr = pcall(am.renderMonitor, ui);
-            check('AM6 the live grid + log frame renders (hover on)', lok, true);
+            check('AM6 the live grid + log frame renders (hover on, icon mode)', lok, true);
             if not lok then print('   arbmonui error: ' .. tostring(lerr)); end
             check('AM6b Begin/End balanced', depth.win, 0);
             check('AM6c child (log) balanced', depth.child, 0);
+
+            -- wide window: the NAME-mode branch (double-space cells, names on)
+            availStub = 990;
+            local wok, werr = pcall(am.renderMonitor, ui);
+            check('AM6d the name-mode frame renders (wide)', wok, true);
+            if not wok then print('   arbmonui wide error: ' .. tostring(werr)); end
+            check('AM6e stacks balanced wide', depth.win + depth.child, 0);
 
             ui._arbPin = ring[#ring - 1].seq;
             local pok2, perr2 = pcall(am.renderMonitor, ui);

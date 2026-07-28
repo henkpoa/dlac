@@ -68,7 +68,15 @@ local COL_BRIGHT = { 0.95, 0.97, 1.00, 1.0 };   -- changed THIS decision
 local COL_DIM    = { 0.55, 0.58, 0.63, 1.0 };
 local COL_WARN   = { 0.95, 0.70, 0.30, 1.0 };
 
-local CELL_W = 118;
+-- Responsive grid (Henrik, field round 1: "only show icons until you move it
+-- to become wide enough... make every slot have double the space and print the
+-- equipment name"). The window's width decides the mode: at NAME_MIN per cell
+-- the names appear, truncated to what the cell actually fits (themed font,
+-- ~9.5px/char); below it the grid collapses to chip + icon, the icon growing
+-- into the freed space. NAME_CELL_W (the fresh-install default) is double the
+-- original fixed cell.
+local NAME_CELL_W = 236;
+local NAME_MIN    = 160;
 
 local function esc(s) return (tostring(s):gsub('%%', '%%%%')); end
 
@@ -139,10 +147,20 @@ local function cellInfo(rec, slot)
     end
 
     local changed = findCI(rec.changed, ls) == true;
+    -- The icon-mode fallback marker for cells with nothing to draw: kept,
+    -- removed, lock-held, reserved-empty, a defending sentinel, or an item
+    -- whose icon cannot resolve. Two glyphs, dim; the hover is the authority.
+    local mark = '--';
+    if sup ~= nil then mark = 'rs';
+    elseif win ~= nil and LOCK_HELD ~= nil and win.item == LOCK_HELD then mark = 'lk';
+    elseif item == 'remove' then mark = 'rm';
+    elseif isItem then mark = '[?]';
+    elseif win ~= nil then mark = (win.name == 'Disabled') and 'fe' or '..';
+    end
     return {
         text = text, color = color, changed = changed,
         iconId = isItem and idOf(text) or nil,
-        winner = win, ops = ops,
+        winner = win, ops = ops, mark = mark,
     };
 end
 
@@ -243,22 +261,41 @@ function M.renderRecord(rec, ui)
     renderCtxLine(rec);
     imgui.Separator();
 
-    -- the 4x4 grid
+    -- the 4x4 grid, responsive: measure the window, size the cells from it
+    local availW = 4 * NAME_CELL_W;
+    pcall(function()
+        local w = imgui.GetContentRegionAvail();
+        if type(w) == 'table' then w = (w[1] or w.x); end
+        if type(w) == 'number' and w > 40 then availW = w; end
+    end);
+    local cellW = math.max(40, math.floor((availW - 8) / 4));
+    local nameMode = cellW >= NAME_MIN;
+    local nameChars = math.max(8, math.min(26, math.floor((cellW - 45) / 9.5)));
+    local iconSz = nameMode and 16 or math.max(18, math.min(32, cellW - 20));
     for r = 1, 4 do
         for c = 1, 4 do
             local slot = GRID[r][c];
-            if c > 1 then imgui.SameLine(8 + (c - 1) * CELL_W); end
+            if c > 1 then imgui.SameLine(8 + (c - 1) * cellW); end
             imgui.BeginGroup();
             local d = cellInfo(rec, slot);
             chip(d.color);
-            imgui.SameLine(0, 4);
-            imgui.TextColored(COL_DIM, slot);
-            if d.iconId ~= nil and icons ~= nil then
-                pcall(icons.renderIcon, d.iconId, 16);
-                imgui.SameLine(0, 3);
-                imgui.TextColored(d.changed and COL_BRIGHT or COL_TEXT, esc(trunc(d.text, 11)));
+            if nameMode then
+                imgui.SameLine(0, 4);
+                imgui.TextColored(COL_DIM, slot);
+                if d.iconId ~= nil and icons ~= nil then
+                    pcall(icons.renderIcon, d.iconId, iconSz);
+                    imgui.SameLine(0, 3);
+                end
+                imgui.TextColored(d.changed and COL_BRIGHT or COL_TEXT, esc(trunc(d.text, nameChars)));
             else
-                imgui.TextColored(d.changed and COL_BRIGHT or COL_TEXT, esc(trunc(d.text, 14)));
+                -- icon-only: slot identity is the grid position (the game's own
+                -- equip layout) + the hover; the icon takes the space instead
+                imgui.SameLine(0, 3);
+                if d.iconId ~= nil and icons ~= nil then
+                    pcall(icons.renderIcon, d.iconId, iconSz);
+                else
+                    imgui.TextColored(COL_DIM, d.mark);
+                end
             end
             imgui.EndGroup();
             if imgui.IsItemHovered() then
@@ -313,7 +350,10 @@ end
 -- clears the toggle, exactly like the Trigger Monitor.
 function M.renderMonitor(ui)
     if not hasImgui or ui == nil or ui._arbMon ~= true then return; end
-    imgui.SetNextWindowSize({ 510, 470 }, ImGuiCond_FirstUseEver);
+    -- Fresh-install default = the wide NAME layout (4 double-space cells);
+    -- shrink it and the grid collapses to icons. An existing imgui.ini keeps
+    -- whatever size the player last dragged (FirstUseEver).
+    imgui.SetNextWindowSize({ 4 * NAME_CELL_W + 26, 480 }, ImGuiCond_FirstUseEver);
     local open = { true };
     if imgui.Begin('dlac Arbiter Monitor##dlac_arbmon', open) then
         local ring = hasDispatch and dsp.getDecisions() or nil;
