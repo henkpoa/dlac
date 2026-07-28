@@ -7732,6 +7732,69 @@ end)();
         wtr ~= nil and type(wtr.contest) == 'table' and type(wtr.contest.explain) == 'table', true);
     check('WY1c and the order it decided with',
         wtr ~= nil and type(wtr.contest) == 'table' and type(wtr.contest.order) == 'table', true);
+
+    -- DR: THE DECISION RING (v152, the Arbiter Monitor's record). The one law:
+    -- append on OUTCOME change only (Henrik: 'only push changes'). OS1's naked
+    -- dispatch above already ran the append path -- the ring's newest record
+    -- must be that 16-remove plan, whichever dispatch first recorded it.
+    local ring = dispatchM.getDecisions();
+    local newest = ring[#ring];
+    local nRemove = 0;
+    if newest ~= nil then
+        for _, v in pairs(newest.plan) do if v == 'remove' then nRemove = nRemove + 1; end end
+    end
+    check('DR1 the naked dispatch recorded its decision (16 removes)', nRemove, 16);
+    check('DR1b the record carries fp + time + event', newest ~= nil
+        and type(newest.fp) == 'string' and type(newest.time) == 'string'
+        and newest.event == 'Default', true);
+
+    -- DR2: a byte-identical re-dispatch appends NOTHING; an empty plan is not
+    -- a decision at all.
+    local savedPlayerDR, savedStateDR = TEST_PLAYER, rawget(_G, 'gState');
+    TEST_PLAYER = { MainJob = 'WHM', MainJobLevel = 75, SubJob = 'BLM', SubJobLevel = 37,
+                    MainJobSync = 75, SubJobSync = 37, Status = 'Idle', IsMoving = false };
+    _G.gState = { CurrentCall = 'N/A', Disabled = {} };
+    local savedEngDR = package.loaded['dlac\\feature\\equipengine'];
+    package.loaded['dlac\\feature\\equipengine'] = {
+        nativeOn = function() return true; end,
+        equipSet = function() end,
+        state = { tripped = false },
+    };
+    dispatchM.nakedArmed = true;
+    local n0 = #ring;
+    pcall(dispatchM.dispatch, 'Default');
+    check('DR2 an identical outcome appends nothing', #dispatchM.getDecisions(), n0);
+    dispatchM.nakedArmed = false;
+    package.loaded['dlac\\feature\\equipengine'] = savedEngDR;
+    TEST_PLAYER = savedPlayerDR;
+    _G.gState = savedStateDR;
+    dispatchM._recordDecision('Default', {}, {}, nil);
+    check('DR2b an empty plan records nothing', #dispatchM.getDecisions(), n0);
+
+    -- DR3: the rank order is a retrace-sig leg (source pin, the ARK11 idiom):
+    -- a dragged row must re-explain, or the ring misses a winner change and
+    -- /dl why keeps stale attribution after a drag.
+    check('DR3 the rank order is a retrace-sig leg',
+        dsrc:find("'|ao' .. table.concat(arbOrder", 1, true) ~= nil, true);
+
+    -- DR4-DR7: the fingerprint law, pure.
+    local e1 = { Body = { { name = 'Triggers', rank = 11, item = 'X' } } };
+    check('DR4 same items + same winners -> same fp',
+        dispatchM.decisionFp({ Body = 'X' }, e1), dispatchM.decisionFp({ Body = 'X' }, e1));
+    check('DR5 an item move changes the fp',
+        dispatchM.decisionFp({ Body = 'X' }, e1) == dispatchM.decisionFp({ Body = 'Y' }, e1), false);
+    local e2 = { Body = { { name = 'Craft', rank = 7, item = 'X' } } };
+    check('DR6 a WINNER move under the same item changes the fp',
+        dispatchM.decisionFp({ Body = 'X' }, e1) == dispatchM.decisionFp({ Body = 'X' }, e2), false);
+    check('DR7 slot-key case never splits the fp',
+        dispatchM.decisionFp({ Body = 'X' }, nil), dispatchM.decisionFp({ body = 'X' }, nil));
+
+    -- DR8: the ring caps (oldest dropped). Distinct outcomes through the test
+    -- seam; ctx {} is fine -- every snapshot read is defensive.
+    for i = 1, dispatchM.DECISION_CAP + 10 do
+        dispatchM._recordDecision('Default', {}, { Body = 'It' .. i }, nil);
+    end
+    check('DR8 the ring caps at DECISION_CAP', #dispatchM.getDecisions(), dispatchM.DECISION_CAP);
 end)();
 
 -- ---------------------------------------------------------------------------
