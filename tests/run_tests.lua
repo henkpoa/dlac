@@ -7807,13 +7807,14 @@ end)();
     dispatchM.worldWatch(6, nil, 5200);
     check('WW3 a live world clears the clock', dispatchM.worldAbsentOutlasted(5200 + 3600), false);
 
-    -- IN: the Integration surface -- push half + the worn query
-    -- (feature\integration, design section 11 step 2/2b). The collector
+    -- IN: the Integration surface COMPLETE v1 -- worn + anchors + invalidate
+    -- + confirm + the five queries (feature\integration). The collector
     -- decodes exactly as a consumer would: bytes -> string -> load() -- which
     -- also pins the byte-table SEND convention the probe verified.
     local _inok, IN = pcall(dofile, 'feature/integration.lua');   -- the harness seeds, it does not search
     check('IN1 integration loads headless', _inok and type(IN) == 'table', true);
     if _inok and type(IN) == 'table' then
+        IN.CONFIRM_S = 999999;   -- confirms fire only when a test asks them to
         local fix = { a = 1, z = 'two words', n = { 1, 2, { deep = true } }, ok = false };
         local rt = nil;
         pcall(function() rt = (loadstring or load)('return ' .. IN._ser(fix))(); end);
@@ -7829,22 +7830,25 @@ end)();
             sent[#sent + 1] = { name = name, env = t };
         end;
 
-        -- enable -> immediate snapshot of the newest ring record (6.5)
+        -- enable -> immediate snapshot of the newest ring record (6.5); the
+        -- stream seq is OBSERVER-side now (one sequence across all kinds),
+        -- the ring's own number rides as decisionSeq
         local ring = dispatchM.getDecisions();
         local newestSeq = ring[#ring].seq;
         IN.setOn(true);
         check('IN3 enable emits a snapshot on dlac_worn', #sent >= 1 and sent[#sent].name == 'dlac_worn'
             and sent[#sent].env ~= nil and sent[#sent].env.snapshot == true, true);
-        check('IN3b the snapshot carries the current seq', sent[#sent].env.seq, newestSeq);
+        check('IN3b the snapshot carries the ring seq as decisionSeq', sent[#sent].env.decisionSeq, newestSeq);
+        check('IN3c and the stream seq starts at 1', sent[#sent].env.seq, 1);
 
-        -- the pump drains new records FIFO, in seq order, once each
+        -- the pump drains new records FIFO, stream seq strictly continuous
         sent = {};
         dispatchM._recordDecision('Weaponskill', {}, { Body = 'StreamPiece A' }, nil);
         dispatchM._recordDecision('Default',     {}, { Body = 'StreamPiece B' }, nil);
         IN._pump();
         check('IN4 two new records -> two envelopes in order', #sent == 2
             and sent[1].env ~= nil and sent[2].env ~= nil
-            and sent[1].env.seq < sent[2].env.seq
+            and sent[2].env.seq == sent[1].env.seq + 1
             and sent[1].env.kind == 'worn' and sent[1].env.snapshot == false, true);
         check('IN4b the envelope names the items',
             sent[1].env.worn ~= nil and type(sent[1].env.worn.Body) == 'table'
@@ -7852,15 +7856,47 @@ end)();
         check('IN4c nothing new -> nothing sent', (function()
             local n0 = #sent; IN._pump(); return #sent == n0; end)(), true);
 
-        -- a seq gap (the ring overflowed past us): seqs older than ring[1] are
-        -- PRUNED, so a lastSeq below them is a real loss and must be reported
+        -- a ring gap (overflowed past us): seqs older than ring[1] are PRUNED,
+        -- so a watermark below them is a real loss and must be reported
         sent = {};
         dispatchM._recordDecision('Default', {}, { Body = 'StreamPiece C' }, nil);
         local ring2 = dispatchM.getDecisions();
-        IN._lastSeq = math.max(1, (ring2[1].seq or 2) - 5);
+        IN._lastRingSeq = math.max(1, (ring2[1].seq or 2) - 5);
         IN._pump();
         check('IN5 the first envelope after a gap carries dropped', #sent >= 1
             and sent[1].env ~= nil and (sent[1].env.dropped or 0) > 0, true);
+
+        -- THE ANCHOR (v154): an action stub with no decision -> kind=dispatch,
+        -- join key + ctx, no items; a stub LINKED to a decision emits nothing
+        -- of its own (one anchor per action, never both)
+        sent = {};
+        dispatchM._recordAction('Weaponskill',
+            { action = { Name = 'Test WS', actionId = 143, category = 7, target = 300 } }, nil);
+        IN._pump();
+        check('IN10 a no-change action emits a dispatch anchor', #sent == 1
+            and sent[1].name == 'dlac_dispatch' and sent[1].env ~= nil
+            and sent[1].env.kind == 'dispatch' and sent[1].env.actionId == 143
+            and sent[1].env.worn == nil, true);
+        sent = {};
+        local ds = dispatchM._recordDecision('Ability', {}, { Body = 'AnchorLink' }, nil);
+        dispatchM._recordAction('Ability', {}, ds);
+        IN._pump();
+        check('IN11 a gear-moving action emits ONE envelope (worn, no anchor)', #sent == 1
+            and sent[1].env ~= nil and sent[1].env.kind == 'worn', true);
+
+        -- invalidate: the sets-store rev watch (baselined at setOn, so this is
+        -- the FIRST movement it can see)
+        sent = {};
+        local savedRev = dispatchM.modesRev;
+        dispatchM.modesRev = (tonumber(dispatchM.modesRev) or 0) + 1;
+        IN._pump();
+        check('IN12 a sets-store rev bump emits invalidate', #sent == 1
+            and sent[1].name == 'dlac_invalidate' and sent[1].env ~= nil
+            and sent[1].env.kind == 'invalidate' and sent[1].env.changed ~= nil
+            and sent[1].env.changed[1] == 'sets', true);
+        dispatchM.modesRev = savedRev;
+        IN._pump();   -- restoring the rev is itself a change; swallow it
+        sent = {};
 
         -- outlasted world absence kills the switch silently (section 3)
         local savedWA = dispatchM.worldAbsentOutlasted;
@@ -7869,9 +7905,38 @@ end)();
         check('IN6 outlasted absence turns the stream off', IN.on, false);
         dispatchM.worldAbsentOutlasted = savedWA;
 
-        -- the worn query: caller's reply channel, snapshot flag, unknown-what,
-        -- and off = silent on the whole channel (queries included)
+        -- confirm: injected services -- worn memory disagrees with the plan ->
+        -- delta envelope; agrees -> silence (delta-only, the design's word)
+        local fakeWornName = 'WrongPiece';
+        IN._services = function()
+            return {
+                EQUIP_SLOTS = { { label = 'Body', equip = 5 } },
+                getEquippedId = function() return 111; end,
+                lookupById = function() return { Id = 111, Name = fakeWornName }; end,
+                lookupByName = function(n) return { Id = 999, Name = n, Level = 70 }; end,
+            };
+        end;
         IN.setOn(true);
+        IN.CONFIRM_S = -1;                      -- due immediately, same pump
+        sent = {};
+        dispatchM._recordDecision('Weaponskill', {}, { Body = 'PlannedPiece' }, nil);
+        IN._pump();
+        check('IN13 reality diverging from the plan emits confirm', #sent == 2
+            and sent[2].name == 'dlac_confirm' and sent[2].env ~= nil
+            and sent[2].env.kind == 'confirm'
+            and sent[2].env.forSeq == sent[1].env.seq
+            and sent[2].env.delta ~= nil and sent[2].env.delta.Body ~= nil
+            and sent[2].env.delta.Body.actual == 'WrongPiece', true);
+        fakeWornName = 'PlannedPiece2';
+        sent = {};
+        dispatchM._recordDecision('Weaponskill', {}, { Body = 'PlannedPiece2' }, nil);
+        IN._pump();
+        check('IN13b a plan that landed whole confirms by silence', #sent == 1
+            and sent[1].env ~= nil and sent[1].env.kind == 'worn', true);
+        IN.CONFIRM_S = 999999;
+
+        -- the queries: worn, stats (routing), sets, gear, item -- and the
+        -- channel gate. Replies always name their what; unknown answers err.
         sent = {};
         IN._onEvent({ name = 'dlac_query', data = 'return { reply = "tprs", what = "worn" }' });
         check('IN7 the worn query answers on the caller channel', #sent == 1 and sent[1].name == 'tprs_r'
@@ -7881,6 +7946,42 @@ end)();
         IN._onEvent({ name = 'dlac_query', data = 'return { reply = "tprs", what = "nosuch" }' });
         check('IN8 an unknown what answers with err, never silence', #sent == 1
             and sent[1].env ~= nil and sent[1].env.err ~= nil, true);
+        sent = {};
+        IN._onEvent({ name = 'dlac_query', data = 'return { reply = "tprs", what = "stats", comp = { Body = "PlannedPiece" } }' });
+        check('IN14 the stats query routes and answers (data or a named err)', #sent == 1
+            and sent[1].env ~= nil and sent[1].env.what == 'stats'
+            and (sent[1].env.data ~= nil or sent[1].env.err ~= nil), true);
+        local savedSets = dispatchM._nativeSets;
+        dispatchM._nativeSets = { Dynamic = {}, TestSet = { Body = 'PlannedPiece' } };
+        sent = {};
+        IN._onEvent({ name = 'dlac_query', data = 'return { reply = "tprs", what = "sets" }' });
+        local names = (#sent == 1 and sent[1].env ~= nil and sent[1].env.data ~= nil)
+            and sent[1].env.data.names or nil;
+        check('IN15 the sets query lists set names', names ~= nil and names[1], 'TestSet');
+        sent = {};
+        IN._onEvent({ name = 'dlac_query', data = 'return { reply = "tprs", what = "sets", set = "TestSet" }' });
+        check('IN15b one set resolves to concrete slots', #sent == 1 and sent[1].env ~= nil
+            and sent[1].env.data ~= nil and sent[1].env.data.slots ~= nil
+            and sent[1].env.data.slots.Body ~= nil
+            and sent[1].env.data.slots.Body.name, 'PlannedPiece');
+        dispatchM._nativeSets = savedSets;
+        local G = package.loaded['dlac\\gear'];
+        G.NameToObject['TestBlade'] = { Id = 4242, Level = 50 };
+        sent = {};
+        IN._onEvent({ name = 'dlac_query', data = 'return { reply = "tprs", what = "gear" }' });
+        local foundBlade = false;
+        if #sent == 1 and sent[1].env ~= nil and sent[1].env.data ~= nil then
+            for _, it in ipairs(sent[1].env.data.items or {}) do
+                if it.name == 'TestBlade' and it.id == 4242 then foundBlade = true; end
+            end
+        end
+        check('IN16 the gear query carries the owned record', foundBlade, true);
+        G.NameToObject['TestBlade'] = nil;
+        sent = {};
+        IN._onEvent({ name = 'dlac_query', data = 'return { reply = "tprs", what = "item", name = "Anything" }' });
+        check('IN17 the item query answers through the lookup door', #sent == 1
+            and sent[1].env ~= nil and sent[1].env.data ~= nil
+            and sent[1].env.data.id == 999, true);
         IN.setOn(false);
         sent = {};
         IN._onEvent({ name = 'dlac_query', data = 'return { reply = "tprs", what = "worn" }' });
