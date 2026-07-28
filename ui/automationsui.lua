@@ -1822,6 +1822,19 @@ local function renderAutomations()
     -- the title, so render() drops its inline one (embedded) but keeps the hint.
     imgui.Spacing();
     if imgui.CollapsingHeader('Claim Priority###autosec_priority', DEFOPEN) then
+        -- The Arbiter Monitor toggle lives where the ranks do (the Trigger
+        -- Monitor's second home is the Triggers tab for the same reason: the
+        -- window watches what this list decides).
+        pcall(function()
+            local mb = { deps.ui._arbMon == true };
+            if imgui.Checkbox('Arbiter monitor (floating window)##arbmon_auto', mb) then
+                deps.ui._arbMon = (mb[1] == true);
+                deps.ui._flagsDirty = true;
+            end
+            if imgui.IsItemHovered() then
+                imgui.SetTooltip('The live window: what won each slot on the last gear decision and why,\nwith a history of decisions. Also in the Menu under Settings.');
+            end
+        end);
         pcall(function()
             local priorityui = require('dlac\\ui\\priorityui');
             priorityui.render(deps, { embedded = true });

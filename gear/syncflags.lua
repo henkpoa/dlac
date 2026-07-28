@@ -102,9 +102,10 @@ sf.saveUiFlags = function()
         -- "Show all" became a Setting when it moved out of the header, so it is
         -- remembered now like every other one.
         local showall = (type(ui.showAll) == 'table' and ui.showAll[1] == true);
-        D.writeFileText(p, string.format('return { debug = %s, autosync = %s, viewids = %s, buildmax = %s, tgmon = %s, tpfloat = %s, tpx = %d, tpy = %d, gearfloat = %s, gfx = %d, gfy = %d, gfscale = %.2f, ifx = %d, ify = %d, openui = %q, showall = %s, autobuildimport = %s }\n',
+        D.writeFileText(p, string.format('return { debug = %s, autosync = %s, viewids = %s, buildmax = %s, tgmon = %s, arbmon = %s, tpfloat = %s, tpx = %d, tpy = %d, gearfloat = %s, gfx = %d, gfy = %d, gfscale = %.2f, ifx = %d, ify = %d, openui = %q, showall = %s, autobuildimport = %s }\n',
             tostring(sf.flags.debug), tostring(sf.flags.autosync), tostring(sf.flags.viewids), tostring(bm),
             tostring(ui._tgMon == true),
+            tostring(ui._arbMon == true),
             tostring(ui._tpFloat == true), tpx, tpy,
             tostring(ui._gearFloat == true), gfx, gfy,
             tonumber(ui._gfScale) or 1.0, ifx, ify,
@@ -143,6 +144,7 @@ sf.loadUiFlags = function()
             if type(t.buildmax) == 'boolean' and optim ~= nil then optim.buildAtMaxLevel = t.buildmax; end
             if type(t.tpfloat)  == 'boolean' then ui._tpFloat = t.tpfloat; end
             if type(t.tgmon)    == 'boolean' then ui._tgMon   = t.tgmon;   end
+            if type(t.arbmon)   == 'boolean' then ui._arbMon  = t.arbmon;  end
             if type(t.tpx) == 'number' and type(t.tpy) == 'number' and (t.tpx ~= 0 or t.tpy ~= 0) then
                 ui._tpPos = { t.tpx, t.tpy };
             end

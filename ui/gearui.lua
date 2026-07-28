@@ -4792,6 +4792,18 @@ ashita.events.register('d3d_present', 'dlac-gearui-render', function()
         pcall(trigui.renderMonitor, ui);
         if tgThemed then style.pop(); end
     end
+    -- Floating Arbiter Monitor (v152): the decision-ring renderer -- same
+    -- independence, own theme bracket. Function-scoped require, no new chunk
+    -- local (hard rule 1 -- this chunk sits at the 200-local cap).
+    if ui._arbMon == true and has.imgui then
+        local amMod = nil;
+        pcall(function() amMod = require('dlac\\ui\\arbmonui'); end);
+        if amMod ~= nil then
+            local amThemed = style ~= nil and style.push();
+            pcall(amMod.renderMonitor, ui);
+            if amThemed then style.pop(); end
+        end
+    end
     -- Lockstyle window: INDEPENDENT of the main box (the header armor button
     -- opens it; it stays up if the main window closes). Own theme bracket,
     -- function-scoped require -- no new chunk local (hard rule 1).

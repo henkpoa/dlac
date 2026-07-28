@@ -2338,7 +2338,7 @@ end)();
         -- draws LAST-ish and assert it: the Settings panel owns 8 checkboxes, the
         -- level panel owns the typed-number InputText. If either body dies early,
         -- these drop and the section fails instead of lying.
-        check('MN12a Settings body ran to completion (9 checkboxes)', drew.checkbox, 9);
+        check('MN12a Settings body ran to completion (10 checkboxes)', drew.checkbox, 10);
         check('MN12b level body drew its typed-number box', drew.input, 1);
 
         -- debug on: the developer quartet appears
@@ -3409,6 +3409,104 @@ end)();
 
     for _, k in ipairs(NAMES) do package.loaded[k] = saved[k]; end
     package.loaded['imgui'] = nil;
+end)();
+
+-- ---------------------------------------------------------------------------
+-- 7g. ARBITER MONITOR render for real (v152, 2026-07-28). A new floating
+--     window over the decision ring -- the craftbar/fishui lesson: a window
+--     body must be EXECUTED once headless (the nil-global + stack-balance
+--     failure class), not just loaded. Stub imgui with hover ON so every
+--     tooltip builder runs, seed the REAL dispatch ring through its test seam,
+--     and drive all four frames: closed, empty, live, pinned.
+-- ---------------------------------------------------------------------------
+;(function()
+    local depth = { win = 0, col = 0, child = 0 };
+    local function nop() end
+    local IM = {};
+    for _, n in ipairs({ 'SetNextWindowSize', 'Separator', 'Spacing', 'Text', 'TextColored',
+        'SameLine', 'Dummy', 'SetTooltip', 'BeginGroup', 'EndGroup' }) do IM[n] = nop; end
+    IM.Begin      = function() depth.win = depth.win + 1; return true; end
+    IM['End']     = function() depth.win = depth.win - 1; end
+    IM.BeginChild = function() depth.child = depth.child + 1; return true; end
+    IM.EndChild   = function() depth.child = depth.child - 1; end
+    IM.PushStyleColor = function() depth.col = depth.col + 1; end
+    IM.PopStyleColor  = function(n) depth.col = depth.col - (tonumber(n) or 1); end
+    IM.IsItemHovered  = function() return true; end       -- exercise EVERY tooltip builder
+    IM.SmallButton    = function() return false; end
+    IM.Selectable     = function() return false; end
+    IM.GetItemRectMin = function() return 0, 0; end
+    IM.GetColorU32    = function() return 0; end
+    IM.GetWindowDrawList = function() return { AddRectFilled = nop }; end
+
+    local saved = { imgui = package.loaded['imgui'],
+                    icons = package.loaded['dlac\\ui\\itemicons'],
+                    am = package.loaded['dlac\\ui\\arbmonui'] };
+    package.loaded['imgui'] = IM;
+    package.loaded['dlac\\ui\\itemicons'] = { renderIcon = nop };
+    package.loaded['dlac\\ui\\arbmonui'] = nil;
+    local ok, am = pcall(require, 'dlac\\ui\\arbmonui');
+    check('AM1 arbmonui re-requires against a stub imgui', ok and type(am.renderMonitor), 'function');
+    if ok then
+        local ui = { _arbMon = false };
+        depth.win = 0;
+        pcall(am.renderMonitor, ui);
+        check('AM2 a closed monitor opens no window', depth.win, 0);
+
+        ui._arbMon = true;
+        local dspS = package.loaded['dlac\\dispatch'];
+        check('AM3 the dispatch ring is reachable', dspS ~= nil and type(dspS.getDecisions) == 'function', true);
+        local rok = pcall(am.renderMonitor, ui);
+        check('AM4 a ring-less/empty frame renders', rok, true);
+        check('AM4b Begin/End balanced', depth.win, 0);
+
+        -- Seed the REAL ring through the engine's own test seam, then drive the
+        -- full grid + legend + log with hover on everywhere. Shapes mirror the
+        -- stash: explain ops, verdict maps, src, ladders ride separately.
+        if dspS ~= nil and type(dspS._recordDecision) == 'function' then
+            local wsCtx = { player = { MainJob = 'THF', SubJob = 'NIN', MainJobSync = 75,
+                                       SubJobSync = 37, HPP = 100, MPP = 50, TP = 1000,
+                                       Status = 'Engaged', IsMoving = false } };
+            dspS._recordDecision('Default', {}, { Main = 'Bee Spatha', Body = 'Royal Cloak' }, {
+                explain = { Main = { { name = 'Triggers', rank = 11, item = 'Bee Spatha' } },
+                            Body = { { name = 'Triggers', rank = 11, item = 'Royal Cloak' } } },
+                order = { 'Locks', 'Triggers' }, src = { Main = 'IdleSet', Body = 'IdleSet' },
+            });
+            dspS._recordDecision('Weaponskill', wsCtx, { Main = 'Rune Chopper', Ammo = 'Fire Bomblet' }, {
+                explain = {
+                    Main = { { name = 'Triggers', rank = 11, item = 'Rune Chopper' } },
+                    Ammo = { { name = 'AutoAmmo', rank = 5, item = 'Fire Bomblet' },
+                             { name = 'MaxMP',    rank = 6, item = 'nothing' } },
+                    Head = { { name = 'Locks',    rank = 4, item = dspS.LOCK_HELD } },
+                },
+                order = { 'Locks', 'AutoAmmo', 'MaxMP', 'Triggers' },
+                rep = { Body = { from = 'Royal Cloak', to = 'Scorpion Harness +1', by = 'Head' } },
+                sup = {}, inel = {},
+                src = { Main = 'WS_Default' },
+            });
+            local ring = dspS.getDecisions();
+            check('AM5 the seeded ring holds records', #ring >= 2, true);
+
+            local lok, lerr = pcall(am.renderMonitor, ui);
+            check('AM6 the live grid + log frame renders (hover on)', lok, true);
+            if not lok then print('   arbmonui error: ' .. tostring(lerr)); end
+            check('AM6b Begin/End balanced', depth.win, 0);
+            check('AM6c child (log) balanced', depth.child, 0);
+
+            ui._arbPin = ring[#ring - 1].seq;
+            local pok2, perr2 = pcall(am.renderMonitor, ui);
+            check('AM7 a pinned frame renders', pok2, true);
+            if not pok2 then print('   arbmonui pinned error: ' .. tostring(perr2)); end
+            check('AM7b stacks balanced pinned', depth.win + depth.child, 0);
+
+            -- a pin that fell off the ring must self-heal to Live, never stick
+            ui._arbPin = -999;
+            pcall(am.renderMonitor, ui);
+            check('AM8 a pruned pin self-heals to Live', ui._arbPin, nil);
+        end
+    end
+    package.loaded['imgui'] = saved.imgui;
+    package.loaded['dlac\\ui\\itemicons'] = saved.icons;
+    package.loaded['dlac\\ui\\arbmonui'] = saved.am;
 end)();
 
 -- ---------------------------------------------------------------------------
