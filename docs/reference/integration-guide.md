@@ -17,6 +17,44 @@ Design docs behind this: `docs/design/integration-surface.md` in the dlac repo.
 
 ---
 
+## Start here — building against dlac today (2026-07-28)
+
+What is LIVE right now: the **`worn` stream** and the **`worn` query**. Everything
+else in this document is specified and arrives additively on the same channel. The
+shortest path to a working connection:
+
+1. **Read the static data first** (§1) — catalog, statdefs, gearsets. No dlac
+   cooperation needed, and canonicalise your stat-key spelling via `statdefs` from
+   day one.
+2. **Register one `plugin_event` handler** filtering `e.name` for `dlac_worn` and for
+   your own reply channel (§2.2, §4). Decoding is one line — `local t =
+   (loadstring or load)(e.data)();` — because `e.data` arrives as a ready STRING
+   (probe-verified; `e` is userdata, so read named fields, never `pairs(e)`).
+3. **Bootstrap with the `worn` query at load** (§3): serialize
+   `return { reply = "<yourprefix>", what = "worn" }` and send it **as a byte table**
+   (`{ s:byte(i) }` in a loop — the binding refuses plain strings on send).
+4. **Keep a ring of received envelopes** (64 is plenty) and join your combat packets
+   by `actionId` + `actionCategory`, searching backwards — never "the latest
+   envelope" (§2.4; that shortcut produces plausible wrong numbers as a function of
+   server latency).
+5. **The player must type `/dl stream on`.** The whole channel — queries included —
+   is silent until they do. Receiving nothing is a configuration state, not an
+   error; say "stream off?" in your UI instead of failing quietly.
+6. **Report back after your first connection.** Two things dlac's maintainer wants
+   to hear: do the field names and shapes serve you as-is, and do you have a
+   concrete use for the rule-match trace (which trigger rule fired, at what
+   priority) on the future `dispatch` anchors — it stays off the wire until you name
+   one.
+
+**What a healthy connection looks like:** one `snapshot = true` envelope the moment
+the stream comes on (or your query lands); then *silence* while nothing changes; then
+bursts of `worn` envelopes with monotonically rising `seq` as the player acts. If you
+receive an envelope on every idle tick, something is wrong on dlac's side — report
+it. If you never receive anything: the stream is off, or you are reading the wrong
+field of `e`.
+
+---
+
 ## 0. The mental model you need
 
 dlac is an Ashita addon that **decides and equips your gear itself**. Two facts shape
@@ -34,6 +72,44 @@ everything below:
 Consequence (2) is the single most important thing in this document: **dlac always knows
 first, and by the time you see damage, the gear has usually already changed back.** See
 §2.4.
+
+---
+
+## 0.5 How dlac decides — the Arbiter, in ninety seconds
+
+You will interpret this data far better knowing how it is made. Every gear decision in
+dlac is ONE **arbitration**:
+
+- **The floor: Triggers.** The player writes rules ("when I use Rudra's Storm → set
+  `WS_Default`"; "when the weather matches the spell's element → this obi"). Every rule
+  that matches the current moment overlays, in priority order, into one proposed
+  outfit — the *floor*.
+- **Claimants dress over the floor.** Independent features each CLAIM slots on every
+  decision: Naked (strip everything), Pins (hand-pinned pieces), Locks (frozen slots or
+  a frozen set), AutoAmmo (ammo matched to the wielded ranged weapon), MaxMP (MP
+  batteries by remaining-MP band), the craft/gathering/fishing/chocobo outfits, and the
+  trigger floor as the bottom row. A player-draggable **rank order** (top wins) settles
+  every contested slot — "which feature owns Ammo right now" is a live question with a
+  per-decision answer, and the player can reorder it mid-session.
+- **The ceiling: free equip.** Slots the player told dlac to keep its hands off
+  entirely. Nothing dresses through them; hand-equipped gear stays put.
+- **Reservations and ladders.** Some items reserve OTHER slots while worn (a robe that
+  takes Head with it). A piece only wins while its claim dominates *every* slot it
+  takes; beaten, it **falls** down its set's *ladder* (the ordered candidate list it
+  was flattened from) to the next eligible piece — or its slot is **held EMPTY** by
+  the stronger reserver. These verdicts are the `fell` / `INELIGIBLE` / `held EMPTY`
+  words you will meet inside `by` when it ships (§2.7).
+- **One plan, one send.** The whole arbitration produces ONE 16-slot plan, sent to the
+  client once. That plan — never a set name — is what your `worn` envelope carries,
+  with the totals folded from it (§2.3 explains why a set name would be a lie).
+- **One record, three renderers.** The same decision record drives dlac's own
+  `/dl why` chat command, its Arbiter Monitor window, and this stream. What you
+  receive is byte-for-byte the truth the player can see on screen; none of the three
+  re-derives.
+- **"Only push changes."** A new envelope means the outcome moved — different items,
+  or a different winning claimant for some slot. No envelope means the last one still
+  describes reality (§2.5). This is a design law, not an optimization, and it is why
+  the `dispatch` anchor exists for actions that moved nothing.
 
 ---
 
@@ -308,7 +384,9 @@ and take the newest `worn` before that anchor.
   item broke, or the server stripped a piece. Those change your totals with no dispatch at
   all, so they are emitted too, with no provenance to give. If you only handled `'plan'`
   events you would compute confidently wrong stats for the rest of the fight.
-- **That is why `dispatch` exists — it is your ANCHOR for no-change actions.** When an
+- **That is why `dispatch` exists — it is your ANCHOR for no-change actions** *(specified,
+  not yet live — see the status table; until it lands, the carried-composition fallback
+  below is your answer and it is correct)*. When an
   action goes through dlac's pipeline and the composition does *not* move, you get
   `kind = 'dispatch'`: the same envelope metadata, the same numeric join key, and `ctx`
   (TP at the moment the WS was decided — worth having), just no `worn` table. An action
