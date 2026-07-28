@@ -131,7 +131,7 @@ re-detected on login/job change/inventory change. Every row here only picks
 
 Gear helpers claim slots; the **Priority** section (Gear Helpers tab) is ONE
 draggable ladder that referees them: Pins, the **Locks veto row** (a claimant
-above it punches through a locked slot, one below it stops), AutoAmmo, MaxMP,
+above it punches through a locked slot, one below it stops), the Ammo rule, MaxMP,
 Craft, HELM, Fishing, and the immovable **Triggers floor** — what you wear when
 no claim wins. Reordering is live, no reload. `/dl prio` prints the ladder with
 live claim status; `/dl why` names the winning claimant and its rank per slot.

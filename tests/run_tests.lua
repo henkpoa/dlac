@@ -6372,8 +6372,11 @@ end)();
     local floor = { Ammo = 'Idle Ammo', Ring1 = 'Idle Ring', Hands = 'Idle Hands',
                     Legs = 'Idle Legs', Body = 'Idle Body' };
     local joined = table.concat(dispatchM.arbWhyLines(claims, ord, floor), '\n');
+    -- The winner is named by its DISPLAY LABEL (arbiter.claimantLabel): the
+    -- claimant identity stays 'AutoAmmo' in claims/order/arbstate, but no
+    -- player-facing surface prints it (2026-07-28, Henrik: "not in the GUI").
     check('AR12 the Ammo contest line names winner over runner-up (the issue example)',
-        joined:find('Ammo: AutoAmmo (rank 5)  over MaxMP (rank 6)', 1, true) ~= nil, true);
+        joined:find('Ammo: Ammo rule (rank 5)  over MaxMP (rank 6)', 1, true) ~= nil, true);
     check('AR12b a MaxMP-only slot reads MaxMP over the floor',
         joined:find('Ring1: MaxMP (rank 6)  over Triggers (rank 11)', 1, true) ~= nil, true);
     check('AR12c a veto slot reads stopped by Locks (even from a lowercase key)',
@@ -6386,6 +6389,45 @@ end)();
     local iAmmo, iHands, iRing = joined:find('Ammo:', 1, true), joined:find('Hands:', 1, true), joined:find('Ring1:', 1, true);
     check('AR12e contested slots emit in canonical LAC order (Ammo < Hands < Ring1)',
         iAmmo < iHands and iHands < iRing, true);
+    -- THE GUARD (2026-07-28). The claimant IDENTITY 'AutoAmmo' is persisted in
+    -- arbstate's order and keys claims/CLAIMANTS/CLAIM_COL/HINT -- it must not
+    -- move. What must never happen is a PLAYER reading it. /dl why is the
+    -- richest naming surface, so it is the one pinned here: the identity is
+    -- still what the caller passed in, and it appears nowhere in the output.
+    check('AR12f the claim table still keys on the IDENTITY (nothing was renamed)',
+        claims.AutoAmmo ~= nil and claims.AutoAmmo.Ammo, 'Orichalc. Bullet');
+    check('AR12g ...and no /dl why line ever prints it',
+        joined:find('AutoAmmo', 1, true), nil);
+end)();
+
+-- ---------------------------------------------------------------------------
+-- ARL. CLAIMANT DISPLAY LABELS (2026-07-28, Henrik: "I don't mind its name
+--      being that internally, but not in the GUI"). ONE map in gear/arbiter
+--      feeds every surface that names a claimant to a human -- the Priority
+--      list, the Arbiter Monitor, /dl prio, /dl why -- so the GUI and the chat
+--      cannot drift apart. Identity in, label out; unmapped = itself, so a new
+--      claimant needs an entry only when its internal name is not readable.
+-- ---------------------------------------------------------------------------
+(function()
+    local ARB = require('dlac\\gear\\arbiter');
+    check('ARL1 the one Auto name a player could still see is mapped',
+        ARB.claimantLabel('AutoAmmo'), 'Ammo rule');
+    check('ARL2 an unmapped claimant is its own label',
+        ARB.claimantLabel('MaxMP'), 'MaxMP');
+    check('ARL3 ...for every other rank row too (no accidental entries)',
+        ARB.claimantLabel('Pins') .. '/' .. ARB.claimantLabel('Locks')
+            .. '/' .. ARB.claimantLabel('Triggers'), 'Pins/Locks/Triggers');
+    check('ARL4 a nil/non-string is handed straight back (never a crash)',
+        ARB.claimantLabel(nil), nil);
+    -- The identity list is untouched: renaming a rank row would silently
+    -- reorder every character's saved arbstate ladder.
+    local n = 0;
+    for _, name in ipairs(ARB.ARB_ORDER_DEFAULT) do
+        if name == 'AutoAmmo' then n = n + 1; end
+    end
+    check('ARL5 the rank vocabulary still carries the IDENTITY', n, 1);
+    -- (The GUI end of this -- priorityui.label + the Arbiter Monitor -- is
+    -- pinned in smoke_ui: UI modules load only in that harness.)
 end)();
 
 -- ---------------------------------------------------------------------------

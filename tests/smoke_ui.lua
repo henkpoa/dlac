@@ -1552,6 +1552,28 @@ end)();
     check('S194 AutoAmmo stands down while fishing is live',
         pui.statusText('AutoAmmo', { ammo = { on = true }, fishing = true }), 'standing down: fishing live');
     check('S195 the Triggers floor is always on', pui.statusText('Triggers', {}), 'floor -- always on');
+    -- DISPLAY LABELS (2026-07-28, Henrik: "I don't mind its name being that
+    -- internally, but not in the GUI"). buildRows still yields the IDENTITY as
+    -- r.name -- it keys the imgui id, the drag, SOURCE/HINT and arbstate's saved
+    -- order -- and the renderer draws pui.label(r.name) instead. One map, in
+    -- gear/arbiter, shared with the Arbiter Monitor and /dl prio + /dl why.
+    check('S195b the Priority list LABELS the ammo claimant, never its identity',
+        pui.label('AutoAmmo'), 'Ammo rule');
+    check('S195c an unmapped claimant labels as itself', pui.label('MaxMP'), 'MaxMP');
+    check('S195d buildRows still carries the IDENTITY (SOURCE/HINT/arbstate key on it)', (function()
+        for _, r in ipairs(pui.buildRows(aw.defaultOrder(), {})) do
+            if r.name == 'AutoAmmo' then return true; end
+        end
+        return false;
+    end)(), true);
+    -- The Arbiter Monitor names claimants in its legend chips and slot hovers --
+    -- same map, so the two windows can never disagree.
+    check('S195e the Arbiter Monitor shares the map', (function()
+        local oka, amu = pcall(require, 'dlac\\ui\\arbmonui');
+        if not oka or type(amu) ~= 'table' then return 'arbmonui failed to load'; end
+        local okb, arb = pcall(require, 'dlac\\gear\\arbiter');
+        return okb and arb.claimantLabel('AutoAmmo') == pui.label('AutoAmmo');
+    end)(), true);
     -- buildRows: only the Triggers floor is non-draggable now (step 3 folded the
     -- Locks veto into the list). Locks drags but stays a SPECIAL row (distinct
     -- color); the six claimants drag.

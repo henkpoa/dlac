@@ -428,9 +428,14 @@ research already recorded. In rough priority order:
   **Display-only, and that boundary is the point:** `dlac:Auto*` slot markers are on-disk
   contracts inside users' set files, row `key`s index `openDetail`/`AUTO_SECTIONS`/the quick
   menu, and Arbiter claimant names are persisted in `arbstate` **and printed by `/dl why`**
-  — none of them moved. So the Claim Priority list still reads **AutoAmmo** while its own
-  row reads **Ammo**: deliberate, because chat and UI must agree. Renaming the claimant is a
-  separate engine-side change (registry + arbstate migration) — the one loose end.
+  — none of those identities moved. **Follow-up the same day** (Henrik: *"I'd rather not
+  have it called AutoAmmo in the arbiter list. I don't mind its name being that internally,
+  but not in the GUI"*): `arbiter.ARB_DISPLAY` / `claimantLabel` — one map, and every
+  surface that names a claimant to a human goes through it (Priority list, Arbiter Monitor
+  chips + hover, `/dl why`, `/dl prio`, the naked/lock "rank ABOVE" notices), so the GUI and
+  the chat cannot drift. `AutoAmmo` renders **"Ammo rule"** — *rule*, because a claimant
+  prints next to a slot (`Ammo: <claimant> (rank 5) over MaxMP`) and test `AR12` caught
+  "Ammo: Ammo". Identity untouched, so no saved ladder reorders.
   The full split is a table in architecture.md ("Naming: display labels vs internal
   names"); `CONTEXT.md` retires **Automation** as user-facing vocabulary in favour of
   **gear helper** / **gear rule**. `host.selectTab` matches on the tab LABEL, so
