@@ -761,13 +761,13 @@ if ashita ~= nil and ashita.events ~= nil and type(ashita.events.register) == 'f
                 for _, slot in ipairs(SLOT_LABELS) do
                     if picks[slot] ~= nil then any = true; say(string.format('  %-6s %s', slot, picks[slot])); end
                 end
-                if not any then say('  (nothing -- open the Automations tab; the manifest rescans itself)'); end
+                if not any then say('  (nothing -- open the Gear Helpers tab; the manifest rescans itself)'); end
                 return;
             end
             -- bare /dl craft: status.
             say(string.format('craft: selected = %s, goal = %s, switch = %s.',
                 M.getCraft() or '(none -- /dl craft <name>)', M.getGoal(), M.isEnabled() and 'ON' or 'off'));
-            say('  pick a craft + goal on the bar (/dl craft bar) or Automations panel, then flip the switch ON --');
+            say('  pick a craft + goal on the bar (/dl craft bar) or Gear Helpers panel, then flip the switch ON --');
             say('  the engine wears that craft\'s gear until you turn it off. /dl craft show lists the pieces.');
             if M.current ~= nil then
                 say(string.format('  last synth seen: %s%s.', M.current.skill,

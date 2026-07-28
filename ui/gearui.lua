@@ -1445,8 +1445,8 @@ local function renderTeleportGroup(title, list, key)
     end
 end
 
--- Open one automation's panel from ANYWHERE (/dl restock, the restock nudge):
--- show the window, one-shot select the Automations tab (uihost), land on the
+-- Open one gear helper's panel from ANYWHERE (/dl restock, the restock nudge):
+-- show the window, one-shot select the Gear Helpers tab (uihost), land on the
 -- detail view. automationsui is pcall-required, not captured (the autoui local
 -- is declared far below -- hard rule 8: a forward reference here would be a
 -- silent nil global).
@@ -1455,7 +1455,7 @@ function M.openAutomation(key)
         local au = require('dlac\\ui\\automationsui');
         if type(au.openDetail) == 'function' then au.openDetail(key); end
     end);
-    pcall(host.selectTab, 'Automations');
+    pcall(host.selectTab, 'Gear Helpers');
     M.visible = true;
 end
 
@@ -3386,7 +3386,7 @@ local function renderAddPopup(job, level)
             -- level = 75: the grip is one fixed Lv75 item, so the marker IS a
             -- Lv75 rung -- the editor row shows it (AutoStaff/Obi stay level 0:
             -- their rung varies with owned gear, virtualMinLevel derives it).
-            vlist[#vlist + 1] = { name = 'dlac:AutoOneiros', level = 75, tip = 'Equips Oneiros Grip while its latent Refresh +1 is LIVE: current MP at\nor below 50%% of your BASE pool -- the race/job/sub formula plus Max MP\nmerits, gear excluded (set your merit count on the Automations tab;\nthe threshold re-aims itself on job change and level sync). Needs a\ntwo-handed main; other items in this slot\'s list are the fallback.' };
+            vlist[#vlist + 1] = { name = 'dlac:AutoOneiros', level = 75, tip = 'Equips Oneiros Grip while its latent Refresh +1 is LIVE: current MP at\nor below 50%% of your BASE pool -- the race/job/sub formula plus Max MP\nmerits, gear excluded (set your merit count on the Gear Helpers tab;\nthe threshold re-aims itself on job change and level sync). Needs a\ntwo-handed main; other items in this slot\'s list are the fallback.' };
         end
         -- NOTE: dlac:AutoCraft is deliberately NOT offered here. Craft gear is a SET
         -- automation -- the engine overlays the whole craft set (dispatch.craftOverlay)
@@ -3585,9 +3585,9 @@ local function renderEntryEditPopup()
     -- offered on virtual rows (they are already automations).
     if it.rec == nil or it.rec.Virtual ~= true then
         imgui.Separator();
-        imgui.TextColored(COL.DIM, 'Auto Type');
+        imgui.TextColored(COL.DIM, 'Gear Rule');
         if imgui.IsItemHovered() then
-            imgui.SetTooltip('Give this piece an automation type: the engine then decides at\nequip time whether to wear it or the slot\'s next-best piece.\nNo types are available yet.');
+            imgui.SetTooltip('Give this piece a gear rule: the engine then decides at\nequip time whether to wear it or the slot\'s next-best piece.\nNo rules are available yet.');
         end
         local curType = (it.autoType ~= nil) and tostring(it.autoType) or 'None';
         imgui.PushItemWidth(120);
@@ -4022,7 +4022,7 @@ local function renderSetsTab(job, level)
         end
     end
     if imgui.IsItemHovered() then
-        imgui.SetTooltip('Locks current set so most things cannot override it (see Claim Priority under Automation Tab).\n'
+        imgui.SetTooltip('Locks current set so most things cannot override it (see Claim Priority under the Gear Helpers tab).\n'
             .. 'Strict: Lock all 16 slots, empty slots will be empty.\n'
             .. 'Loose: Lock only the populated slots.');
     end
@@ -4474,7 +4474,7 @@ host.register({ name = 'triggers', tabs = {
 -- its own module since 2026-07-18 -- ui\automationsui.lua owns the whole manifest
 -- machinery (the extraction architecture.md used to note as "later").
 host.register({ name = 'automations', tabs = {
-    { label = 'Automations', render = function(job, level)
+    { label = 'Gear Helpers', render = function(job, level)
         if autoui ~= nil and type(autoui.renderTab) == 'function' then
             autoui.renderTab(job, level);
         else imgui.TextColored(COL.ERR, 'automationsui module unavailable.'); end

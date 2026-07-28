@@ -87,7 +87,7 @@ engine cannot require them; it has its own minimal reads).
 | **Queue a chat/game command safely?** | `cmdqueue` | `lib/cmdqueue.lua` | Two same-frame QueueCommands arrive REVERSED in other states — this queue drains one per frame. Also: an addon state never hears its OWN queued commands back. |
 | **E-Box (CW storage): counts / search / withdraw / proximity?** | `eboxclient.boxCount(id[, ahCat])` · `.categoryCounts(ahCat)` · `.ensureCategory(ahCat, maxAge)` / `.ensureCategories({ahCats}, maxAge)` · `.search(q)` + `.searchResults` · `.withdraw(id, qty)` / `.withdrawBatch({{id,qty},…})` · `.boxDistance()` / `.nearBox()` · `.isCW()` · `.rescan()` | `feature/eboxclient.lua` | **THE ONE 0x1A4 client (ADR 0016) — every E-Box feature is a thin CONSUMER; NEVER open a second client.** 0x1A4 is a party line, and two clients race on it AND double the traffic (CatsEyeXI operators care). CW only (gamemode row). It owns the whole protocol (summary/category/search/withdraw/ACK/LOCKED), a SHARED multi-category counts cache (`cat[ahCat]` authoritative + `counts` flat merged), Ephemeral-Box proximity (via `entwatch`, `BOX_RANGE = 5` field-pinned), and the server-load throttle that makes the NFR structural: one request in flight, a global min-gap, per-category stale windows, and a **near-box gate — query ONLY near a box**. Batch withdraw = the trove `executePrepare` shape (one WITHDRAW per pull, ACK-counted). Consumer: `ui/restockui` (**E-Box Restock**) — the only one. AutoAmmo carried a counts-and-fetch section through the `feature/eboxammo` adapter until 2026-07-27, when it was removed as redundant (Restock reaches category 15 with targets and top-up) and the adapter was deleted; its entity probe lives on as `/dl debug ebox scan`. The withdrawal SLOT-SAFETY rule (each drawn stack lands in a FRESH Inventory slot; never over-draw) lives in the pure planner `feature/restockwatch.plan`. See `docs/design/ebox-restock.md`. |
 | **Item icon / hover card in UI?** | `deps.renderIcon(id, size)` / `deps.itemTooltip(rec)` | `ui/itemicons.lua` + gearui's `renderItemTooltip`, injected via the shared deps table | ONE hover card serves every equipment surface — never draw a rival. |
-| **The automations list + coverage status?** | `automationsui.listRows()` + `.levelColor(level, max)` | `ui/automationsui.lua` | The SAME rows/ramp the Automations tab shows — never rebuild the list or invent a rival color ramp. `{}` before init/login; MaxMP graduated 2026-07-21 and rides the same list. (The Teleports quick menu was consumer #1 until 2026-07-26, when its Automations/HELM/Fishing cascades were replaced by two rows that open the Hobby bar and Lockstyle windows.) |
+| **The gear-helper list + coverage status?** | `automationsui.listRows()` + `.levelColor(level, max)` | `ui/automationsui.lua` | The SAME rows/ramp the Gear Helpers tab shows — never rebuild the list or invent a rival color ramp. `{}` before init/login; MaxMP graduated 2026-07-21 and rides the same list. (The Teleports quick menu was consumer #1 until 2026-07-26, when its Automations/HELM/Fishing cascades were replaced by two rows that open the Hobby bar and Lockstyle windows.) |
 | **Is the MaxMP mode on? / flip it** | `automationsui.maxmpMode()` / `.maxmpToggle()` | `ui/automationsui.lua` | THE shared reader/flipper for every surface (panel button, list row). Reads the LAC engine's modestate mirror (1s TTL — display can lag a beat); the toggle sends the EXPLICIT `/dl mode maxmp on\|off`, never a blind flip. Auto-disables on job change. |
 | **The max-MP band plan?** | `dispatch.M.mpBands(ctx)` → context; `mpbands.build/target/tick` (pure core) | `dispatch.lua` (LAC state) + `feature/mpbands.lua` | ONE context serves the engine AND `/dl plan` — the plan IS the behavior, never render a rival. Current MP is the only live read; `GetMPMax` is unreliable during gear churn and floored party MP% == 100 is the only exact fullness signal. Read docs/design/maxmp-mode.md (rulings ledger + failure museum) before touching. |
 
@@ -348,7 +348,7 @@ fishing stand-down, `'remove'`-respect) stay inside the feature.
 GUI editor for the dispatch engine's data: rules per handler, mode toggle buttons.
 Split out of gearui for the 200-local cap. Commit rewrites the trigger file via
 `dispatch.serializeTriggers` and pings the engine to hot-reload. Writes
-`<char>\dlac\triggers\<JOB>.lua`. The Automations machinery lived here until
+`<char>\dlac\triggers\<JOB>.lua`. The gear-helper machinery lived here until
 2026-07-18 — it is now `ui/automationsui.lua` (below), which freed 30 of this
 module's 123 top-level locals (cap 200; the "noted 200-local relief", done).
 
@@ -372,8 +372,9 @@ hot-reloads it, no Reload LAC; warn-but-allow on an identical rule), **Edit** (t
 editor bound to the library entry via `trig._bpEdit` — no second editor, never retro-edits
 stamped Triggers), rename and Delete. Library writes go through the `lib/safewrite` ladder.
 
-### ui/automationsui.lua — Automations tab + the manifest machinery
-The whole automations block, extracted verbatim from triggersui 2026-07-18 (it owned
+### ui/automationsui.lua — the Gear Helpers tab + the manifest machinery
+(Tab label renamed Automations → **Gear Helpers** 2026-07-28; module/file/key names are
+unchanged, see "Naming" below.) The whole block, extracted verbatim from triggersui 2026-07-18 (it owned
 30 of triggersui's top-level locals and shared nothing with the trigger editor beyond
 the deps table). Owns DERIVING the manifest — staves/obis/Iridescence (ADR 0004),
 MaxMP battery ladders, craft/HELM/fish gear ladders — from the player's bags via
@@ -393,6 +394,30 @@ auto-sync hook at login/job-change/inventory cadence), `M.manifestStale` /
 reads stale ladders). `M.renderTab` is the tab entry point (guard ladder + login
 gate). No forwarders were left on triggersui — smoke_ui S140–S151 pin both the new
 home and the absence of the old one.
+
+#### Naming: display labels vs internal names (2026-07-28)
+A GM read `Auto <activity>` ("Auto Fish Set", "Auto HELM Set") as *the addon performs the
+activity*. Nothing in this family does: every row picks EQUIPMENT and nothing else. The
+rename therefore names the GEAR, not the act — "Fishing Gear", "Gathering Gear",
+"Crafting Gear", "Elemental Staff", "Ammo" — under a tab called **Gear Helpers**, with a
+standing one-liner above the list ("dlac equips gear. It never acts for you").
+
+The rename is **display-only**, and that split is load-bearing:
+
+| Layer | Renamed? | Why |
+| --- | --- | --- |
+| imgui labels, tooltips, chat text, docs | YES | pure display |
+| `dlac:AutoStaff` / `AutoIridescence` / `AutoOneiros` / `AutoHelm` / `AutoFish` / `AutoChoco` / `AutoAmmo` slot markers | **NO** | written into users' set files; renaming breaks every set on disk |
+| row `key`s (`iridescence`, `helm`, `fish`, …) | **NO** | `openDetail`/`DETAIL_KEYS`/`AUTO_SECTIONS`/quick menu all index by key |
+| Arbiter claimant names (`AutoAmmo`, `Craft`, `HELM`, …) | **NO** | persisted in `arbstate` order, printed by `/dl why` and `/dl prio` — the UI must match the chat |
+| module + file names (`automationsui.lua`, `openAutomation`, `buildAutoRows`) | **NO** | internal; churn without user benefit |
+
+Consequence to keep in mind: the Claim Priority list still shows the claimant name
+**AutoAmmo** while its own row reads **Ammo**. That is deliberate — chat and UI agree.
+Renaming the claimant is a separate, engine-side change (registry + arbstate migration).
+
+`host.selectTab` matches on the tab LABEL — `gearui.openAutomation` passes `'Gear Helpers'`
+and smoke_ui S10b pins it. Change one, change both.
 
 ### gear/groupsmodel.lua — Trigger-Groups model core (pure)
 The Ashita/imgui/file-IO-free CRUD + name/member validation the Groups tab drives (issue
@@ -839,7 +864,7 @@ Per-character, under `<install>\config\addons\luashitacast\<Char>_<ServerId>\`
 | `dlac\triggers\<JOB>.lua` | (legacy, read-only fallback) | pre-profile trigger rules |
 | `dlac\autogear.lua` | automationsui | automations manifest |
 | `dlac\blueprints.lua` | triggersui (Blueprints section) | per-character Blueprint library (reusable trigger rules; outside Profiles, addon-state only — the engine never reads it) |
-| `dlac\ammostate.lua` | ammowatch (Automations > AutoAmmo) | AutoAmmo config (persisted `enabled`, jobs map, the priority list) — the engine reads it per second |
+| `dlac\ammostate.lua` | ammowatch (Gear Helpers > Ammo) | AutoAmmo config (persisted `enabled`, jobs map, the priority list) — the engine reads it per second |
 | `dlac\modestate.lua` | dispatch | mode/lock/VERSION mirror |
 | `dlac\uiflags.lua` | gearui | debug/autosync flags |
 | `dlac\gearweights.lua` | gearoptim | stat weights |

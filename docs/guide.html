@@ -72,7 +72,7 @@
 <body>
 <main>
 
-<h1>dlac — gear automation without the Lua</h1>
+<h1>dlac — gear that dresses itself, without the Lua</h1>
 <p class="sub">A beginner's guide. You need to know nothing about LuaAshitacast, and you will never edit a file.</p>
 
 <nav class="toc">
@@ -83,7 +83,7 @@
     <li><a href="#sets">Sets — your gear plans</a></li>
     <li><a href="#triggers">Triggers — when sets get worn</a></li>
     <li><a href="#modes">Modes — one set, several behaviours</a></li>
-    <li><a href="#automations">Automations — gear that picks itself</a></li>
+    <li><a href="#automations">Gear Helpers — gear that picks itself</a></li>
     <li><a href="#priority">Priority — who wins a contested slot</a></li>
     <li><a href="#lockstyle">Lockstyle — your look, not your gear</a></li>
     <li><a href="#extras">Small conveniences — Teleports, Wishlist, floating gear &amp; macro books</a></li>
@@ -162,7 +162,7 @@ rules via the <b>B</b> (behaviour) button: a level range (<code>min 30 / max 54<
 a <span class="mode">mode gate</span> (see Modes below). That's how one set stays correct
 from level 10 to 75.</div>
 <div class="box tip"><b>Equip &amp; Lock.</b> One click wears the committed set
-<i>right now</i> and locks all 16 slots, so nothing — triggers, automations, anything —
+<i>right now</i> and locks all 16 slots, so nothing — triggers, gear helpers, anything —
 changes you out of it (Incursion T3 locks your equipment menu; this is the same idea,
 self-imposed). The button flips to <b>Unlock</b> while everything is locked; click again
 to release. The manual override for "wear exactly this until I say otherwise".</div>
@@ -362,23 +362,25 @@ AutoIridescence row is the live one (shown green): Main wears the auto-picked st
 with a grip in Sub — and Kraken Club stays home until you cycle to
 <span class="mode">SoloKC</span>.</figcaption></figure>
 
-<h2 id="automations">6. Automations — gear that picks itself</h2>
+<h2 id="automations">6. Gear Helpers — gear that picks itself</h2>
 <p>Some gear decisions are pure bookkeeping — the right elemental staff per spell, the
 right obi per day, ammo in the Ammo slot, MP gear while your pool refills, the crafting
-apron the moment you sit down at a crystal. Automations do those for you. The
-<b>Automations</b> tab lists the whole family; each row's status column tells you at a
-glance what that automation can do on this job (brighter = better coverage), and clicking
+apron the moment you sit down at a crystal. Gear helpers do those for you. The
+<b>Gear Helpers</b> tab lists the whole family; each row's status column tells you at a
+glance what that helper can do on this job (brighter = better coverage), and clicking
 a row opens its detail panel. The four idle hobbies (Craft, HELM, Fishing, Chocobo) also
 have their own always-on-screen <a href="#extras">hobby bar</a>, which the Teleports menu
 opens in one click.</p>
-<p>They come in two shapes. <b>Slot automations</b> are virtual entries: in the + Add
+<p>Every one of them only picks <i>equipment</i>. dlac never acts for you — you still
+cast, craft, fish and dig.</p>
+<p>They come in two shapes. <b>Slot rules</b> are virtual entries: in the + Add
 picker you'll find pseudo-items (their icon is the 8-colour element wheel) that you place
 in a set slot like any other item — the other items in the slot's list are the fallback,
-so an automation that has nothing to say never blocks the slot. <b>Set automations</b>
+so a rule that has nothing to say never blocks the slot. <b>Set-wide rules</b>
 work without touching your sets at all: switch them on and they overlay whole outfits or
 walk gear in and out on their own schedule.</p>
 
-<h3>AutoIridescence (elemental staves) — Main slot</h3>
+<h3>Elemental Staff — Main slot</h3>
 <p>Add <code>dlac:AutoIridescence</code> to a set's <b>Main</b> slot (your caster/idle
 set, or gated behind <span class="mode">Weapon:Caster</span>). On every cast, dlac equips
 the best staff you own for that spell's element:</p>
@@ -395,7 +397,7 @@ the best staff you own for that spell's element:</p>
       lets you preview them.</li>
 </ul>
 <p>Grips pair correctly under it: the slot counts as a two-handed staff, so your Sub-slot
-grip stays legal. The Automations tab shows exactly which staves you own
+grip stays legal. The Gear Helpers tab shows exactly which staves you own
 (<span class="green">green</span>), which you own but this job can't wear
 (<span class="red">red</span>), and which you're missing (dim).</p>
 
@@ -405,27 +407,27 @@ checks the day and weather: <b>only when the bonus for your spell's element is p
 does the matching obi (or the universal Hachirin-no-Obi) swap in — otherwise your set's
 regular waist piece stays put, so you never wear an obi that does nothing.</p>
 
-<figure class="shot"><img src="img/automations-list.png" alt="The Automations list">
-<figcaption>The Automations tab: the status column tells you at a glance what each
-automation can do on this job (brighter = better coverage).</figcaption></figure>
-<figure class="shot"><img src="img/automation-iridescence.png" alt="AutoIridescence detail">
-<figcaption>The AutoIridescence detail: <span class="green">green</span> = owned and
+<figure class="shot"><img src="img/automations-list.png" alt="The Gear Helpers list">
+<figcaption>The Gear Helpers tab: the status column tells you at a glance what each
+helper can do on this job (brighter = better coverage).</figcaption></figure>
+<figure class="shot"><img src="img/automation-iridescence.png" alt="Elemental Staff detail">
+<figcaption>The Elemental Staff detail: <span class="green">green</span> = owned and
 equippable (Terra's Staff, Chatoyant), <span class="red">red</span> = owned but this job
-can't wear it (Foreshadow +1 on WHM — the automation skips it), dim = not owned.</figcaption></figure>
+can't wear it (Foreshadow +1 on WHM — the rule skips it), dim = not owned.</figcaption></figure>
 <figure class="shot"><img src="img/automation-obi.png" alt="ElementalObi detail">
 <figcaption>The ElementalObi detail: one universal obi covers every element; it only swaps
 in when the day/weather bonus is positive.</figcaption></figure>
 
-<h3>Auto Oneiros Grip — Sub slot</h3>
+<h3>Oneiros Grip — Sub slot</h3>
 <p>Add <code>dlac:AutoOneiros</code> to a set's <b>Sub</b> slot (needs a two-handed
 main). The Oneiros Grip's Refresh +1 is a latent: it only works while your MP is at or
 below half of your <i>base</i> pool. dlac does that arithmetic per dispatch — race, job,
 sub, and your Max MP merits (learned automatically when you open the merit menu, or set
-by hand on the Automations tab), gear excluded — and wears the grip exactly while the
+by hand on the Gear Helpers tab), gear excluded — and wears the grip exactly while the
 latent is live, your regular grip otherwise.</p>
 
-<h3>AutoAmmo — the Ammo slot feeds itself</h3>
-<p>Switch <b>AutoAmmo</b> on (its Automations row) and the
+<h3>Ammo — the Ammo slot feeds itself</h3>
+<p>Switch the <b>Ammo</b> rule on (its Gear Helpers row) and the
 Ammo slot stays stocked: your owned ammo, grouped by category — Bullets, Bolts, Arrows,
 Throwing — and sorted by level, with the best usable one equipped for your ranged weapon.
 The detail panel is per job, so your RNG and your COR can disagree about what "best"
@@ -445,23 +447,23 @@ the whole ladder — which piece releases at which MP — if you want to watch i
 <h3>Craft, HELM &amp; Fishing — outfits for the job at hand</h3>
 <p>Three whole-set helpers, each with its own floating bar you can leave on screen:</p>
 <ul>
-  <li><b>Auto Craft Set</b> — pick a craft on the bar and dlac overlays your best
+  <li><b>Crafting Gear</b> — pick a craft on the bar and dlac overlays your best
       crafting gear while you synth, with a goal switch: <b>HQ</b> (break HQ tiers),
       <b>NQ</b> (the anti-HQ guild rings, for materials you do <i>not</i> want HQ'd),
       or <b>Skill-Up</b> (Synth Skill+ first).</li>
-  <li><b>Auto HELM Set</b> — Harvesting/Excavation/Logging/Mining gear while you're
-      idle: flip the bar's switch to wear it until you turn it off, or arm <b>Auto
-      HELM</b> (Automations panel) and it engages by itself while you stand at a
+  <li><b>Gathering Gear</b> — Harvesting/Excavation/Logging/Mining gear while you're
+      idle: flip the bar's switch to wear it until you turn it off, or <b>arm</b> it
+      (Gear Helpers panel) and it engages by itself while you stand at a
       gathering point. The bar shows your Venture Points and tool rating per
       category.</li>
-  <li><b>Auto Fish Set</b> — fishing gear while idle, re-ranked every beat (Ebisu &gt;
+  <li><b>Fishing Gear</b> — fishing gear while idle, re-ranked every beat (Ebisu &gt;
       Lu Shang's &gt; base at equal risk); the bar's dropdowns <b>pin</b> a rod and bait
       when you'd rather choose yourself, and a wielded rod owns the Ammo slot for its
       bait — no idle trinket fights over it mid-cast. Click the <b>target fish</b> on the
       bar (or <code>/dl fish find</code>) for the target window: search a fish, see which
       of your rods survive it, and pick a spot + bait from the list — best isolation
       first, so you catch what you came for.</li>
-  <li><b>Chocobo</b> — riding-time gear while idle, plus the dig guide. The bar's
+  <li><b>Chocobo Gear</b> — riding-time gear while idle, plus the dig guide. The bar's
       <b>Area</b> and <b>Item</b> buttons (or <code>/dl choco dig</code>) open the dig
       search: everything diggable in a zone priced for your rank and the live moon, or one
       item traced back to every zone that drops it.</li>
@@ -469,15 +471,15 @@ the whole ladder — which piece releases at which MP — if you want to watch i
 <div class="box warn"><b>Gear only.</b> These dress you for the activity — they never
 perform it. dlac will not cast your line, swing your pickaxe, or run your synth.</div>
 
-<div class="box"><b>No upkeep.</b> The automation data maintains itself — it rescans on
+<div class="box"><b>No upkeep.</b> The helper data maintains itself — it rescans on
 login, job change, and any inventory change. Buy a new staff and it's a candidate before
 you've closed the shop window.</div>
 
 <h2 id="priority">7. Priority — who wins a contested slot</h2>
-<p>Turn on a few automations and sooner or later two of them want the same slot — the
-fishing rod and AutoAmmo both claiming Ammo, a MaxMP battery in a ring slot your craft
+<p>Turn on a few helpers and sooner or later two of them want the same slot — the
+fishing rod and the ammo rule both claiming Ammo, a MaxMP battery in a ring slot your craft
 set also fills. dlac referees this with one ladder, and shows it to you: the
-<b>Priority</b> section at the top of the Automations tab.</p>
+<b>Priority</b> section at the top of the Gear Helpers tab.</p>
 <p>It's a strict, draggable list — top wins. The claimants (Pins, AutoAmmo, MaxMP, Craft,
 HELM, Fishing) each show where they're controlled from and a live status ("claiming
 Ammo on RNG", "idle"). Two rows are special:</p>
@@ -486,7 +488,7 @@ Ammo on RNG", "idle"). Two rows are special:</p>
       <i>above</i> it punches through a locked slot; a claimant <i>below</i> it is
       stopped by the lock. At the top, a lock stops everyone — pins included.</li>
   <li><b>Triggers</b> is the immovable <b>floor</b>: your trigger rules dress every slot
-      no claimant takes. Automations ride on top of your sets, never instead of
+      no claimant takes. Gear helpers ride on top of your sets, never instead of
       them.</li>
 </ul>
 <p>Reordering commits instantly — no reload. The same ladder is printed by
@@ -587,7 +589,7 @@ sends <code>/dl w off</code> and everything unwinds.</figcaption></figure>
 little sibling that stays on screen while you play — scalable (the tab's slider),
 movable with <kbd>SHIFT</kbd>+drag, with the same hover tooltips as the tab.
 <b>Right-click any slot</b> to <b>pin</b> an item into it: a pinned slot turns red and
-wears that item no matter what any set, trigger, or automation wants — the strongest
+wears that item no matter what any set, trigger, or gear helper wants — the strongest
 claim in the game (see Priority above). Right-click again to unpin. It's the "I want
 THIS ring on until I say otherwise" gesture, one click deep.</p>
 
@@ -649,11 +651,11 @@ nothing changes.</p>
   <li><b>Red banner in the window?</b> Do what it says — usually <b>Reload LAC</b>. It
       appears when the running engine is older than the addon (after an update).</li>
   <li><code>/dl why</code> — the single most useful command: it prints the last thing each
-      event did — which rules matched, which set won each slot, what the automations
+      event did — which rules matched, which set won each slot, what the gear helpers
       resolved to, which claimant took a contested slot (and at what priority rank), and
       why something was skipped.</li>
   <li><code>/dl prio</code> — the claim ladder as chat lines: every claimant, its rank,
-      and whether it's claiming right now. The fastest answer to "which automation is
+      and whether it's claiming right now. The fastest answer to "what is
       dressing me?".</li>
   <li><code>/dl plan</code> — MaxMP's battery ladder: which piece releases at which MP,
       and what's currently held.</li>

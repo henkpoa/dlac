@@ -1,5 +1,5 @@
 --[[
-    dlac/helmui.lua -- the Auto HELM Set panel (docs/design/helm-gear.md).
+    dlac/helmui.lua -- the Gathering Gear panel (docs/design/helm-gear.md).
 
     Rendered inside automationsui's Automations detail (auto.view == 'helm');
     its OWN module (predates the automations extraction) -- automationsui only
@@ -213,21 +213,21 @@ function M.render(deps, availW)
     local hwok, hw = pcall(require, 'dlac\\feature\\helmwatch');
     hwok = hwok and type(hw) == 'table';
 
-    imgui.TextColored(COL_HEADER, 'Auto HELM Set');
+    imgui.TextColored(COL_HEADER, 'Gathering Gear');
     imgui.SameLine(0, 10);
-    imgui.TextColored(COL_TEXT, 'pick a category (on the hobby bar) -> Auto HELM wears your best gathering gear near a Point, IDLE ONLY.');
-    -- ONE switch now: Auto HELM (Henrik -- two toggles was confusing, and Auto
-    -- works best). Gathering gear equips when you're near a <category> Point (or on
+    imgui.TextColored(COL_TEXT, 'pick a category (on the hobby bar) -> your best gathering gear equips near a Point, IDLE ONLY.');
+    -- ONE switch now (Henrik -- two toggles was confusing, and arming works
+    -- best). Gathering gear equips when you're near a <category> Point (or on
     -- a swing); there is no separate always-on manual idle set anymore.
     local cbok, craftbar = pcall(require, 'dlac\\ui\\craftbar');
     local pill = (cbok and type(craftbar) == 'table' and type(craftbar.onOffSwitch) == 'function')
         and craftbar.onOffSwitch or nil;
     local autoOn = hwok and hw.isAutoHelm();
-    imgui.TextColored(COL_TEXT, 'Auto HELM:');
+    imgui.TextColored(COL_TEXT, 'Equip near Points:');
     imgui.SameLine(0, 6);
     local rangeY = (hwok and type(hw.proxEnter) == 'function') and hw.proxEnter() or 10;
-    local AUTO_ON  = string.format('Auto HELM is ON: come within %d yalms of a gathering Point and that\ncategory\'s gear equips itself -- no targeting needed; it stays on while ANY\nPoint is near (stacked respawns included) and your normal gear returns\nmoments after you walk away. Starts OFF each session.\nClick to turn off.', rangeY);
-    local AUTO_OFF = string.format('Come within %d yalms of a gathering Point and Auto HELM equips that\ncategory\'s gear -- no targeting needed; it stays on while ANY Point is near\nand your normal gear returns moments after you leave. This is the ONE HELM\nswitch now -- there is no separate always-on manual idle set. Starts OFF\neach session.', rangeY);
+    local AUTO_ON  = string.format('ARMED: come within %d yalms of a gathering Point and that\ncategory\'s gear equips itself -- no targeting needed; it stays on while ANY\nPoint is near (stacked respawns included) and your normal gear returns\nmoments after you walk away. Starts OFF each session.\nClick to turn off.', rangeY);
+    local AUTO_OFF = string.format('Arm it and your gathering gear equips within %d yalms of a Point --\nno targeting needed; it stays on while ANY Point is near and your normal\ngear returns moments after you leave. This is the ONE HELM switch now --\nthere is no separate always-on manual idle set. Starts OFF each session.', rangeY);
     if pill ~= nil then
         if pill(autoOn, 'helmauto', AUTO_ON, AUTO_OFF) and hwok then hw.setAutoHelm(not autoOn); end
     else
@@ -247,7 +247,7 @@ function M.render(deps, availW)
     end
     imgui.PopItemWidth();
     if imgui.IsItemHovered() then
-        imgui.SetTooltip('Auto HELM detect range in yalms (3-20, default 10): how close a gathering\nPoint must be before the gear equips -- no targeting needed. Raise it if lag\nor macro spam makes your swings land from further out; the keep-wearing\nleash is +2y. Remembered per character.');
+        imgui.SetTooltip('Detect range in yalms (3-20, default 10): how close a gathering\nPoint must be before the gear equips -- no targeting needed. Raise it if lag\nor macro spam makes your swings land from further out; the keep-wearing\nleash is +2y. Remembered per character.');
     end
     imgui.SameLine(0, 10);
     local barShown = false;
@@ -256,7 +256,7 @@ function M.render(deps, availW)
         pcall(function() require('dlac\\ui\\hobbybar').toggle('helm'); end);
     end
     if imgui.IsItemHovered() then
-        imgui.SetTooltip('The shared hobby bar, on HELM: category glyphs, the Auto HELM switch, points\nand rating. Also /dl helm bar.');
+        imgui.SetTooltip('The shared hobby bar, on HELM: category glyphs, the arm switch, points\nand rating. Also /dl helm bar.');
     end
     imgui.SameLine(0, 14);
     local activeG = hwok and hw.getGather() or nil;

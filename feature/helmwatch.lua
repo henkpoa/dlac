@@ -913,15 +913,15 @@ if ashita ~= nil and ashita.events ~= nil and type(ashita.events.register) == 'f
                 say('capturing system chat for 8s -> helmventures_capture.txt (type !ventures now).');
                 return;
             end
-            if b == 'auto' then                        -- Auto HELM: detection-armed overlay
+            if b == 'auto' then                        -- detection-armed gathering-gear overlay
                 M.setAutoHelm(not M.isAutoHelm());
-                say('Auto HELM ' .. (M.isAutoHelm()
-                    and string.format('ON -- within %dy of a gathering Point that category\'s gear auto-equips (no targeting needed); normal gear returns after you leave. Starts off each session.', M.proxEnter())
-                    or 'off.'));
+                say('gathering gear ' .. (M.isAutoHelm()
+                    and string.format('ARMED -- within %dy of a gathering Point that category\'s gear equips itself (no targeting needed); normal gear returns after you leave. Starts off each session.', M.proxEnter())
+                    or 'disarmed.'));
                 return;
             end
             -- bare /dl helm: status.
-            say(string.format('helm: category = %s, idle set = %s, Auto HELM = %s%s.',
+            say(string.format('helm: category = %s, idle set = %s, armed = %s%s.',
                 M.getGather() or '(none -- /dl helm mining etc)', M.isEnabled() and 'ON' or 'off',
                 M.isAutoHelm() and 'ON' or 'off',
                 M.autoActive() and ' (holding now)' or ''));

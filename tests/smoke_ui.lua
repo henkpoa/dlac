@@ -134,7 +134,7 @@ check('S7 tab order 1', labels[1], 'Equipped');
 check('S8 tab order 2', labels[2], 'All Equipment');
 check('S9 tab order 3', labels[3], 'Sets');
 check('S10 tab order 4', labels[4], 'Triggers');
-check('S10b tab order 5 (Automations right of Triggers)', labels[5], 'Automations');
+check('S10b tab order 5 (Gear Helpers right of Triggers)', labels[5], 'Gear Helpers');
 
 -- every registered tab render must be callable
 for i, l in ipairs(labels) do

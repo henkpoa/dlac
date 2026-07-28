@@ -83,9 +83,9 @@ function M.renderContent(availW)
         imgui.SameLine(0, 6);
     end
     if onOffSwitch(on, 'helmbar',
-        'Auto HELM is ON -- gathering gear equips when you\'re near a '
+        'ARMED -- gathering gear equips when you\'re near a '
             .. tostring(sel or 'gathering') .. ' Point. Click to turn off.',
-        'Auto HELM: equips your best gathering gear when you\'re near a <category> Point\n(or right after a swing) -- not "always on regardless of location". Pick the\ncategory with the glyphs.')
+        'Equips your best gathering gear when you\'re near a <category> Point\n(or right after a swing) -- not "always on regardless of location". Pick the\ncategory with the glyphs.')
     then hw.setAutoHelm(not on); end
     imgui.Separator();
     -- Status line: points + rating + surveyor for the selected category.
@@ -115,15 +115,15 @@ function M.renderContent(availW)
             imgui.TextColored({ 0.70, 0.70, 0.70, 1 }, string.format('Surveyor +%d', surv));
         end
     end
-    -- Auto HELM hold state: dressing now, or armed-and-waiting-for-a-Point.
+    -- Hold state: dressing now, or armed-and-waiting-for-a-Point.
     if hw.isAutoHelm() then
         if hw.autoActive() then
             imgui.TextColored({ 0.45, 0.90, 0.45, 1 },
-                string.format('AUTO: wearing %s gear', tostring(hw.getGather() or '?')));
+                string.format('WEARING %s gear', tostring(hw.getGather() or '?')));
         else
             local ry = (type(hw.proxEnter) == 'function') and hw.proxEnter() or 10;
             imgui.TextColored({ 0.55, 0.55, 0.55, 1 },
-                string.format('Auto HELM armed -- gear equips within %dy of a Point', ry));
+                string.format('ARMED -- gear equips within %dy of a Point', ry));
         end
     elseif hw.lastDetect ~= nil and (os.clock() - (hw.lastDetect.at or 0)) < 120 then
         imgui.TextColored({ 0.55, 0.55, 0.55, 1 },

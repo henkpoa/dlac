@@ -6016,7 +6016,7 @@ end)();
     local n10, w10 = rg(g, 75, 714, 358);
     check('VG10 one MP above -> refused', n10, nil);
     check('VG10b threshold spelled in the reason', w10, 'MP 358 above the latent threshold 357 (half of base 714)');
-    check('VG11 not owned',      select(2, rg(nil, 75, 714, 100)), 'Oneiros Grip not owned (the Automations tab rescans itself)');
+    check('VG11 not owned',      select(2, rg(nil, 75, 714, 100)), 'Oneiros Grip not owned (the Gear Helpers tab rescans itself)');
     check('VG12 under level',    select(2, rg(g, 74, 714, 100)), 'under level for Oneiros Grip (Lv75)');
     check('VG13 base unreadable', select(2, rg(g, 75, nil, 100)), 'native MP unreadable (login settle?)');
     check('VG14 no pool',        select(2, rg(g, 75, 0, 0)), 'no native MP pool on this job');

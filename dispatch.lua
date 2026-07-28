@@ -1302,7 +1302,7 @@ local function ensureAutoLoaded()
     -- Old boolean-format manifest: we can't know the universal weapon's name, so
     -- staff swapping stays suppressed. Tell the player how to fix it (once per change).
     if t ~= nil and t ~= before and t.universal == nil and t.iridescence == true then
-        printwarn('autogear.lua is an old format (staff swapping is OFF) -- open the GUI\'s Automations tab (the manifest self-heals on render).');
+        printwarn('autogear.lua is an old format (staff swapping is OFF) -- open the GUI\'s Gear Helpers tab (the manifest self-heals on render).');
     end
     return t;
 end
@@ -1401,7 +1401,7 @@ end
 -- so the threshold rule the field calibration paid for is pinned headless.
 local function resolveOneiros(g, lvl, base, cur)
     if type(g) ~= 'table' or type(g.name) ~= 'string' then
-        return nil, 'Oneiros Grip not owned (the Automations tab rescans itself)';
+        return nil, 'Oneiros Grip not owned (the Gear Helpers tab rescans itself)';
     end
     if not usableAt(g.level, lvl) then
         return nil, string.format('under level for %s (Lv%d)', g.name, tonumber(g.level) or 0);
@@ -1428,7 +1428,7 @@ end
 -- families (staff/obi/oneiros) ignore it: a one-rung ladder has no tail.
 local function resolveVirtual(marker, ctx, slot, all)
     local a = ensureAutoLoaded();
-    if a == nil then return nil, 'no autogear manifest (open the Automations tab -- it rescans itself)'; end
+    if a == nil then return nil, 'no autogear manifest (open the Gear Helpers tab -- it rescans itself)'; end
     local el = ctx.action and ctx.action.Element;
     if type(el) ~= 'string' or ci(el, 'Non-Elemental') then el = nil; end
     local lvl = playerLevel(ctx);
@@ -1493,7 +1493,7 @@ local function resolveVirtual(marker, ctx, slot, all)
         local gv = ctx.gatherOverride;
         if type(gv) ~= 'string' or gv == '' then return nil, 'no gather category (HELM bar)'; end
         local h = (type(a.helm) == 'table') and a.helm or nil;
-        if h == nil then return nil, 'no helm gear data (open the Automations tab -- it rescans itself)'; end
+        if h == nil then return nil, 'no helm gear data (open the Gear Helpers tab -- it rescans itself)'; end
         local slotKey = string.lower(tostring(slot or ''));
         if slotKey == 'head' and type(h.hats) == 'table' then
             local hat = h.hats[gv];
@@ -1527,7 +1527,7 @@ local function resolveVirtual(marker, ctx, slot, all)
         -- No category, no hat map: fishing is one activity. Range/Ammo never
         -- resolve here -- rod and bait are target-specific state-file picks.
         local f = (type(a.fish) == 'table') and a.fish or nil;
-        if f == nil then return nil, 'no fishing gear data (open the Automations tab -- it rescans itself)'; end
+        if f == nil then return nil, 'no fishing gear data (open the Gear Helpers tab -- it rescans itself)'; end
         local slotKey = string.lower(tostring(slot or ''));
         local chain = f[slotKey];
         if type(chain) ~= 'table' then
@@ -1550,7 +1550,7 @@ local function resolveVirtual(marker, ctx, slot, all)
         -- Main-slot weapon and IS included -- riding-time totals beat the TP a
         -- swap costs while idle before a whistle).
         local c = (type(a.choco) == 'table') and a.choco or nil;
-        if c == nil then return nil, 'no chocobo gear data (open the Automations tab -- it rescans itself)'; end
+        if c == nil then return nil, 'no chocobo gear data (open the Gear Helpers tab -- it rescans itself)'; end
         local slotKey = string.lower(tostring(slot or ''));
         local chain = c[slotKey];
         if type(chain) ~= 'table' then
@@ -1839,7 +1839,7 @@ end
 -- recovers, before the pool is full, so recovery ticks land in headroom).
 function M.mpPlanLines(mpCtx, wornOf)
     if mpCtx == nil or type(mpCtx.bands) ~= 'table' then
-        return { 'maxmp plan: no battery data yet -- right after a reload this means the world is still loading (ask again in a few seconds); otherwise open the Automations tab (the manifest self-heals) or relog.' };
+        return { 'maxmp plan: no battery data yet -- right after a reload this means the world is still loading (ask again in a few seconds); otherwise open the Gear Helpers tab (the manifest self-heals) or relog.' };
     end
     local lines = {};
     lines[1] = string.format('maxmp band plan -- MP %s of %s (every battery worn), recovery tick %s%s. Spending releases TOP-DOWN at off<=; recovery re-equips BOTTOM-UP at on>= (early on purpose: the next tick lands in the headroom).',
@@ -3294,7 +3294,7 @@ local function equipResolved(s, ctx, respectLocks, who)
             -- The mode is ON but there is no battery data (or no mpbands
             -- module): say so ONCE instead of silently doing nothing.
             M._mpWarned = true;
-            print('[dlac] maxmp is ON but the gear manifest has no MP data yet -- open the Automations tab (it self-heals) or relog, then act again.');
+            print('[dlac] maxmp is ON but the gear manifest has no MP data yet -- open the Gear Helpers tab (it self-heals) or relog, then act again.');
         end
     end
     -- AutoAcc (Type automation) decisions for this set; nil when it carries no
@@ -7177,7 +7177,7 @@ if engineActive() then
                 if n ~= 'Triggers' and n ~= 'MaxMP' and n ~= 'Disabled' then above[#above + 1] = n; end
             end
             if #above > 0 then
-                print(string.format('[dlac]   %s rank ABOVE Naked, so their slots stay dressed. Automations > Claim Priority reorders them.',
+                print(string.format('[dlac]   %s rank ABOVE Naked, so their slots stay dressed. Gear Helpers > Claim Priority reorders them.',
                     table.concat(above, ', ')));
             end
             -- Free equip (ADR 0024) is the ceiling, so a disabled slot keeps its
@@ -7303,7 +7303,7 @@ if engineActive() then
                     if n ~= 'Triggers' and n ~= 'MaxMP' and n ~= 'Naked' then above[#above + 1] = n; end
                 end
                 if #above > 0 then
-                    print(string.format('[dlac]   %s rank ABOVE a lock, so they can still change their slots. Automations > Claim Priority reorders them.',
+                    print(string.format('[dlac]   %s rank ABOVE a lock, so they can still change their slots. Gear Helpers > Claim Priority reorders them.',
                         table.concat(above, ', ')));
                 end
                 if M.nakedOn() then

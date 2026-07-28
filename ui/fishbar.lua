@@ -193,7 +193,7 @@ function M.renderContent(availW)
     -- Row 1: pill + target.
     if onOffSwitch(on, 'fishbar',
         'Fishing idle set is ON -- rod, bait and fishing gear stay on while idle. Click to turn off.',
-        'Set Fish Idle: wears your best fishing kit whenever idle, until turned off.\nRod and bait follow the target fish (Automations > Auto Fish Set).')
+        'Set Fish Idle: wears your best fishing kit whenever idle, until turned off.\nRod and bait follow the target fish (Gear Helpers > Fishing Gear).')
     then fw.setEnabled(not on); end
     imgui.SameLine(0, 10);
     -- The target name IS the picker (2026-07-27). Both names on row 2 have worked
@@ -225,7 +225,7 @@ function M.renderContent(availW)
         end);
     end
     if imgui.IsItemHovered() then
-        imgui.SetTooltip('Open Automations > Auto Fish Set: the fishing gear matrix,\ntoday\'s ventures and the guild corner.');
+        imgui.SetTooltip('Open Gear Helpers > Fishing Gear: the fishing gear matrix,\ntoday\'s ventures and the guild corner.');
     end
     imgui.Separator();
     -- Row 2: rod + bait, icons first (the identity); the names are BUTTONS --

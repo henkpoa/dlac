@@ -47,13 +47,13 @@ equipengine's coexistence guard: every packet it injects is fingerprinted; a for
 A data rule connecting a game condition to gear: *when* (matcher on the current action / player state) → *action* (a set name, or an inline slot→item payload), evaluated by the dispatch engine inside a Handler.
 _Avoid_: binding, hook, rule
 
-**Automation**:
-A dlac-shipped behavior (auto elemental staff, auto obi) expressed as a **virtual slot entry** inside a set (`dlac:AutoStaff` in Main, `dlac:AutoObi` in Waist) and resolved by the engine at equip time from owned gear.
-_Avoid_: smart swap, feature flag, SetOptions (retired)
+**Gear helper**:
+A dlac-shipped behavior that picks EQUIPMENT for a situation (elemental staff, obi, ammo, MP batteries, the hobby outfits). Slot rules are expressed as a **virtual slot entry** inside a set (`dlac:AutoStaff` in Main, `dlac:AutoObi` in Waist) and resolved by the engine at equip time from owned gear; set-wide rules overlay outfits without touching the sets. All of them live on the **Gear Helpers** tab.
+_Avoid_: **automation** (RETIRED as user-facing wording 2026-07-28 — a GM read "Auto \<activity\>" as *the addon performs the activity*; a helper only equips gear, the player still casts/crafts/fishes/digs); "Auto \<activity\>" names (Auto Fish Set → **Fishing Gear**, Auto HELM Set → **Gathering Gear**, Auto Craft Set → **Crafting Gear**, AutoIridescence → **Elemental Staff**, AutoAmmo → **Ammo**); smart swap, feature flag, SetOptions (retired). The word survives ONLY in internals never shown as prose: `dlac:Auto*` slot markers (on-disk set contracts), row keys, Arbiter claimant names, module/file names — see architecture.md "Naming: display labels vs internal names".
 
-**Type automation**:
-An Automation assigned to a specific set PIECE through its Behaviour rules (`autoType` on the entry wrapper), as opposed to occupying a slot: the engine decides at equip time whether to wear the piece or the slot's normal pick, releasing candidates in the player's **Removal Priority** order (`removePrio`, higher releases first). Main ships the FOUNDATION only (the Auto Type combo offers None); the first member, **AutoAcc** — released while the acc watch measures the player over the hit cap by at least the piece's baked ACC — lives on `feature/autoacc` pending GM approval.
-_Avoid_: per-piece automation, gear tag
+**Gear rule**:
+A gear helper assigned to a specific set PIECE through its Behaviour rules (`autoType` on the entry wrapper), as opposed to occupying a slot: the engine decides at equip time whether to wear the piece or the slot's normal pick, releasing candidates in the player's **Removal Priority** order (`removePrio`, higher releases first). Main ships the FOUNDATION only (the Gear Rule combo offers None); the first member, **AutoAcc** — released while the acc watch measures the player over the hit cap by at least the piece's baked ACC — lives on `feature/autoacc` pending GM approval.
+_Avoid_: type automation / per-piece automation (pre-2026-07-28 wording), gear tag
 
 **Virtual slot entry**:
 A `dlac:`-prefixed marker string occupying a set's slot in place of an item; the dispatch engine substitutes the concrete item per cast, or drops the slot when unresolvable.
@@ -158,7 +158,7 @@ The one dlac module (`feature/eboxclient.lua`) that speaks CatsEyeXI's custom **
 _Avoid_: trove wrapper (a clean reimplementation, no trove dependency); a per-feature client (only one exists — features consume it, they never each open the box)
 
 **E-Box Restock**:
-The Crystal-Warrior-only feature that keeps chosen items topped up from the **E-Box**: the player names items to carry and a per-item Target ("keep N"), and Restock fetches the shortfall from the box — clamped to what the box holds and to free bag space — on demand while standing near a box. A pure GUI-plus-**E-Box client** feature (its own Automations row, no gear and no dispatch-engine involvement); it nudges and fetches on a click, never withdrawing on its own.
+The Crystal-Warrior-only feature that keeps chosen items topped up from the **E-Box**: the player names items to carry and a per-item Target ("keep N"), and Restock fetches the shortfall from the box — clamped to what the box holds and to free bag space — on demand while standing near a box. A pure GUI-plus-**E-Box client** feature (its own Gear Helpers row, no gear and no dispatch-engine involvement); it nudges and fetches on a click, never withdrawing on its own.
 _Avoid_: part of AutoAmmo (a separate feature — a sibling consumer of the E-Box client, not folded in); auto-restock / silent withdrawal (it never fetches without a click)
 
 **Plan vs Equip**:

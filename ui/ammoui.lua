@@ -1,5 +1,5 @@
 --[[
-    dlac/ui/ammoui.lua -- the AutoAmmo panel (docs/design/auto-ammo.md).
+    dlac/ui/ammoui.lua -- the Ammo panel (docs/design/auto-ammo.md).
 
     Rendered inside automationsui's Automations detail (auto.view == 'ammo');
     its own module (the 200-local law). automationsui pcall-requires this at
@@ -194,14 +194,14 @@ function M.render(deps, availW)
             return (type(r) == 'table') and r.Pair or nil;
         end);
     end);
-    imgui.TextColored(COL_HEADER, 'AutoAmmo');
+    imgui.TextColored(COL_HEADER, 'Ammo');
     imgui.SameLine(0, 10);
     imgui.TextColored(COL_TEXT, 'decides what sits in the Ammo slot, per shot and per weapon skill.');
 
     -- Per-job switch (field round 2: "all jobs can't use all ammos") -- each
     -- job keeps its OWN priority list and its OWN persisted on/off.
     local on = (aw.enabled == true);
-    imgui.TextColored(COL_TEXT, 'AutoAmmo on');
+    imgui.TextColored(COL_TEXT, 'Ammo rule on');
     imgui.SameLine(0, 5);
     imgui.TextColored(COL_GOLD, tostring(job or '?'));
     imgui.SameLine(0, 2);
@@ -210,7 +210,7 @@ function M.render(deps, availW)
     local cbok, craftbar = pcall(require, 'dlac\\ui\\craftbar');
     local pill = (cbok and type(craftbar) == 'table' and type(craftbar.onOffSwitch) == 'function')
         and craftbar.onOffSwitch or nil;
-    local TIP_ON  = 'AutoAmmo is ON for this job (each job remembers its own switch and list;\nstays on across sessions -- it is a protection system). Click to turn off.';
+    local TIP_ON  = 'The ammo rule is ON for this job (each job remembers its own switch and list;\nstays on across sessions -- it is a protection system). Click to turn off.';
     local TIP_OFF = 'Loads this job\'s enabled ammo for ranged attacks and weapon skills, and\nstrictly guards special ammo (equipped only for its windows; swept off --\nor the slot emptied -- anywhere a shot could consume it). Each job keeps\nits own list and switch, remembered across sessions.';
     if job == nil then
         imgui.TextColored(COL_DIM, '(log in first)');
@@ -298,13 +298,13 @@ function M.render(deps, availW)
             if imgui.IsItemHovered() then
                 local t = string.format('%s -- %d set up, %d more owned.', c, nCfg, nOwn);
                 if isLive then
-                    t = t .. string.format('\n\nGREEN: your %s fires this type, so this is what\nAutoAmmo can load right now.',
+                    t = t .. string.format('\n\nGREEN: your %s fires this type, so this is what\nthe ammo rule can load right now.',
                         esc(tostring(liveWeapon or 'ranged weapon')));
                 elseif liveCat ~= nil then
-                    t = t .. string.format('\n\nYour %s cannot fire these -- AutoAmmo will not load\nthem while it is equipped. (%s is green.)',
+                    t = t .. string.format('\n\nYour %s cannot fire these -- the rule will not load\nthem while it is equipped. (%s is green.)',
                         esc(tostring(liveWeapon or 'ranged weapon')), liveCat);
                 elseif liveWeapon == nil then
-                    t = t .. '\n\nNothing in your Range slot -- with no ranged weapon\nequipped AutoAmmo does nothing at all.';
+                    t = t .. '\n\nNothing in your Range slot -- with no ranged weapon\nequipped the ammo rule does nothing at all.';
                 end
                 imgui.SetTooltip(t);
             end
@@ -423,7 +423,7 @@ function M.render(deps, availW)
         end
         imgui.SameLine(DEL_X);
         if imgui.SmallButton('x##del' .. i) then removeAt = i; end
-        if imgui.IsItemHovered() then imgui.SetTooltip('Remove from AutoAmmo (the item itself is untouched).'); end
+        if imgui.IsItemHovered() then imgui.SetTooltip('Remove from the ammo rule (the item itself is untouched).'); end
         if sp then
             imgui.Dummy({ 0, 0 }); imgui.SameLine(NAME_X);
             imgui.TextColored(COL_GOLD, 'windows:');

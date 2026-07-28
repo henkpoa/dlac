@@ -325,8 +325,8 @@ local function renderEquippedTab(job, level)
               .. 'has been told not to touch, so stripping would silently do nothing.\n'
               .. 'Uncheck Free equip first.')
              or ('Takes EVERY piece off and keeps it off -- a standing claim, not a one-off strip,\n'
-              .. 'so your triggers and every automation ranked below it stay off your gear.\n'
-              .. 'It sits at the top of Automations > Claim Priority and beats everything, pins\n'
+              .. 'so your triggers and every gear rule ranked below it stay off your gear.\n'
+              .. 'It sits at the top of Gear Helpers > Claim Priority and beats everything, pins\n'
               .. 'included; drag Pins above it there to stay naked EXCEPT your pinned pieces.\n\n'
               .. 'Taking a weapon off zeroes your TP and drops Aftermath -- that is the server.\n'
               .. 'Getting dressed brings back what your sets NAME; anything you had put on by\n'
@@ -357,7 +357,7 @@ local function renderEquippedTab(job, level)
         end
         if imgui.IsItemHovered() then
             imgui.SetTooltip('Locks what you are wearing right now -- all 16 slots, empty stays empty.\n'
-                .. 'Most things cannot override it (see Claim Priority under Automation Tab).\n'
+                .. 'Most things cannot override it (see Claim Priority under the Gear Helpers tab).\n'
                 .. 'To lock a named set instead, use Equip & Lock on the Sets tab.');
         end
         if held ~= nil then

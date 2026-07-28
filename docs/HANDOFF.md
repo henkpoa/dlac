@@ -372,6 +372,35 @@ research already recorded. In rough priority order:
 
 ## Current state (as of 2026-07-26)
 
+- **2026-07-28: "Automations" is now "Gear Helpers" — ON `dev`, NOT yet field-confirmed**
+  (`2026.07.28j`). A **GM** objected to the naming: a tab called *Automations* full of
+  *Auto \<activity\>* rows reads as *the addon plays for you*, and botting is not allowed
+  on CatsEyeXI. Henrik brought it as a naming question. The diagnosis: a synonym for
+  "automation" fixes nothing — the rows were named after the **activity** ("Auto Fish
+  Set"), when every one of them only picks **equipment**. So the rename **names the gear,
+  not the act**: tab **Gear Helpers**; rows **Elemental Staff**, **Elemental Obi**,
+  **Oneiros Grip**, **Ammo**, **MaxMP**, **Crafting Gear**, **Gathering Gear**, **Fishing
+  Gear**, **Chocobo Gear**, **E-Box Restock**; Kind column **gear rule (Main slot)** /
+  **hobby gear (idle only)**. HELM's proximity switch speaks **armed / ARMED** instead of
+  "Auto HELM is ON" (the verb `helmbar` already used). A standing line sits above the list
+  and in the guide: *"dlac equips gear. It never acts for you — you still cast, craft, fish
+  and dig."* — the reply to the objection, on screen, permanently.
+  **Display-only, and that boundary is the point:** `dlac:Auto*` slot markers are on-disk
+  contracts inside users' set files, row `key`s index `openDetail`/`AUTO_SECTIONS`/the quick
+  menu, and Arbiter claimant names are persisted in `arbstate` **and printed by `/dl why`**
+  — none of them moved. So the Claim Priority list still reads **AutoAmmo** while its own
+  row reads **Ammo**: deliberate, because chat and UI must agree. Renaming the claimant is a
+  separate engine-side change (registry + arbstate migration) — the one loose end.
+  The full split is a table in architecture.md ("Naming: display labels vs internal
+  names"); `CONTEXT.md` retires **Automation** as user-facing vocabulary in favour of
+  **gear helper** / **gear rule**. `host.selectTab` matches on the tab LABEL, so
+  `gearui.openAutomation` and smoke_ui `S10b` moved with it. Also renamed: the Equipped
+  tab's per-piece **Auto Type** → **Gear Rule** (dormant on main). `Auto-build` /
+  `Auto-Import` were left alone on purpose — those are GUI tools the player clicks, not
+  gear that moves on its own. `autogear.golden` regenerated for the manifest's header line
+  (`gen_goldens.lua`, one-line diff, reviewed). Suites **4146 + 707**.
+  **Needs a field round** before it can enter the merge queue.
+
 - **2026-07-28: the old FFXI-LAC *Dynamic* sets import too — ON `dev`, FIELD-CONFIRMED,
   ACCEPTED (in the merge queue above)** (`2026.07.28d`). Henrik: *"when it sees a dynamic set, it's old FFXI-lac… it should be
   detected and enabled to be imported as a LAC import. If set names collide, prioritize

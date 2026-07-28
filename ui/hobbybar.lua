@@ -222,7 +222,7 @@ local function renderChocoContent()
         end);
     end
     if imgui.IsItemHovered() then
-        imgui.SetTooltip('Open Automations > Chocobo: the dig rank picker, riding-time\ngear and the live moon/day/weather odds.');
+        imgui.SetTooltip('Open Gear Helpers > Chocobo Gear: the dig rank picker, riding-time\ngear and the live moon/day/weather odds.');
     end
     imgui.Dummy({ 300, 1 });
 end
