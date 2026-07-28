@@ -249,7 +249,11 @@ merge carries it **without asking him again**. Only he can move an entry to ACCE
 this does not make an accepted entry mergeable *alone*: `dev` promotes
 **whole-or-not-at-all**, so an accepted entry rides the next promotion of the whole branch.
 
-*(Empty — last emptied by the THIRD 2026-07-28 promotion: `2026.07.28m`, the fishing
+*(Empty — last emptied by the FOURTH 2026-07-28 promotion: `2026.07.28n`, the legacy-import
+robustness fix, promoted **deliberately un-field-confirmed** on Henrik's *"push to main so
+he can test"* — the second tester cannot re-test the thing that broke for him unless it is
+on main first. His re-test is still owed and the Current-state entry says so; nothing else
+was riding. Before that, the THIRD 2026-07-28 promotion: `2026.07.28m`, the fishing
 ventures wrap fix, field-confirmed by Henrik the same hour ("Works") and promoted on his
 "push to main"; it rode with the integration session-handover doc commit. The entry that
 follows records it. Before that, the SECOND 2026-07-28 promotion: the whole `dev` train
@@ -315,8 +319,9 @@ research already recorded. In rough priority order:
 
 ## Current state (as of 2026-07-26)
 
-- **2026-07-28: three faults, one sentence — the tester's SCH import — ON `dev`, the
-  tester's re-test owed** (`2026.07.28n`). He tried to import his **Cure** set with the new
+- **2026-07-28: three faults, one sentence — the tester's SCH import — ON MAIN (promoted
+  un-field-confirmed, on purpose), the tester's re-test owed** (`2026.07.28n`; Henrik:
+  *"push to main so he can test"* — he cannot re-test what broke for him until it ships). He tried to import his **Cure** set with the new
   FFXI-LAC column and got *"Created 0 new sets — nothing created, 1 skipped: no owned/known
   gear."* Henrik sent the file; it carries **three** independent faults, and dlac answered
   all three with that one sentence (hard rule 12, undiluted). **(1)** It does not parse —

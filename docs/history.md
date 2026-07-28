@@ -6745,5 +6745,8 @@ the whole chain: the alias resolves, an unknown piece keeps its slot and is skip
 import lands what he HAS, a throwing resolver costs one candidate, and the unparsable file
 reports itself while an absent one stays quiet. The section installs a `setfenv` polyfill
 so 5.4 exercises the LuaJIT sandbox path that all of this lives in — untested until now.
-Suites **4198 + 707**. Awaiting the tester: he must still add the comma; nothing dlac does
-can read a file Lua itself refuses.
+Suites **4198 + 707**. **Promoted to main the same hour, deliberately un-field-confirmed**
+(Henrik: *"push to main so he can test"*) — the tester cannot re-test the thing that broke
+for him until it is on main, so the usual field-confirm-then-promote order is inverted on
+purpose here, and the merge queue records that. Awaiting the tester: he must still add the
+comma; nothing dlac does can read a file Lua itself refuses.
