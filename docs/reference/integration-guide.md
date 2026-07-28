@@ -9,7 +9,8 @@ your own packet stream.
 | Part | Status |
 |---|---|
 | **Part 1 — static data files** | ✅ **Available now.** Nothing to enable, no dlac cooperation needed. |
-| **Part 2–5 — the live stream + queries** | 🔧 **Specified, NOT BUILT YET** (spec dated 2026-07-28). Do not write code that expects a reply today; it will silently receive nothing. |
+| **The `worn` stream + the `worn` query** | ✅ **BUILT 2026-07-28** (dlac `2026.07.28k`+). Transport verified by probe (§2.2). The player must type `/dl stream on` — off means dlac is silent on the channel, **queries included**. |
+| **`dispatch` / `invalidate` / `confirm` + the other four queries** | 🔧 **Specified, not built yet.** Code written against them receives nothing until they land — additive, on the same channel. |
 
 If you build the Part 1 half first you can make real progress before dlac's side exists.
 Design docs behind this: `docs/design/integration-surface.md` in the dlac repo.
@@ -129,11 +130,13 @@ local function decode(e)
 end
 ```
 
-> **PROBE, unresolved:** the field name the payload arrives under is **not verified**.
-> LuaAshitacast's handler reads only `e.name`, and `minimapmon` only ever sends, so nothing
-> in a stock install proves it. The helper above tries three names defensively. **If you
-> settle this before dlac's side is built, report which one works** — it removes the last
-> unknown in the whole design.
+> **PROBED AND VERIFIED (2026-07-28):** the payload arrives as **`e.data`, already a
+> STRING** (the bytes reassembled for you), with **`e.size`** carrying the length. `e`
+> is **userdata** — read named fields; `pairs(e)` will not work. On the SEND side the
+> binding **refuses plain strings** — serialize, then send a byte table
+> (`{ s:byte(1, #s) }` built in a loop). The defensive helper above still works;
+> `local s = e.data` is the verified fast path. Bonus fact: a state DOES hear its own
+> `RaiseEvent`, so filter your own event names anywhere you both speak and listen.
 
 Why Lua source rather than a packed struct: both ends are Lua, dlac already serialises this
 shape everywhere, and **adding a field can never break you** — ignore keys you do not know,

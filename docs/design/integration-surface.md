@@ -145,11 +145,16 @@ better for a Lua reader).
 `RaiseEvent` is a **broadcast** — there is no addressing, so "subscribing" is just
 filtering `e.name`, and dlac cannot know who is listening. Hence the switch.
 
-**Probe required before building** (hard rule 2 — *probe the binding, presence proves
-nothing*): the field name the payload arrives under on the receive side.
-`luashitacast\integration.lua`'s handler reads only `e.name`, and `minimapmon` only ever
-sends, so **nothing in this install proves the data field's name.** Five minutes with a
-throwaway pair of addons settles it; do not design around a guess.
+**PROBED AND RESOLVED (2026-07-28** — evprobe + dlacprobe 2.3, Henrik's field run; the
+throwaway pair lives outside dlac, probe code never ships in the addon):
+
+- **Send: a byte table.** `RaiseEvent` REFUSES a plain string (a sol2 type error on the
+  spot) — LAC's `:totable()` convention is the only one.
+- **Receive: `e.data`, already a STRING** — the bytes arrive reassembled; `e.size`
+  carries the length. **`e` is userdata**, so consumers read named fields and never
+  iterate `pairs(e)`.
+- **A state hears its own RaiseEvent** (unlike its own QueueCommand — the cmdqueue fact
+  does not transfer). Filter your own names anywhere you both speak and listen.
 
 Size is not a concern: LAC's own struct on this channel is ~1 MB.
 
@@ -648,20 +653,29 @@ runtimes. **Awaiting Henrik's field round.** What landed:
   join key + `ctx`, no rule trace — and an action gets exactly ONE anchor (`worn` when
   gear moved, `dispatch` when not, never both).
 
-### Next, in §11's order — nothing here blocks the monitor's field round
+### Next, in §11's order — updated same day, third session
 
-1. **The probe** — the `plugin_event` payload field name (§4). A throwaway
-   sender/receiver pair lives outside dlac (probe code never ships in the addon);
-   five minutes in game settles it. The consumer may settle it first — his guide asks
-   him to report.
-2. **`feature\integration.lua`** — the observer + `/dl stream on|off` (Session switch,
-   §3's lifetime law from the worldWatch home) + snapshot-on-enable (§6.5).
-3. **The `worn` query** — the consumer's bootstrap and re-sync; the stream is unusable
-   without it.
-4. `dispatch` + `invalidate`, then `confirm`; then the five queries, `rev`s last.
+1. ~~**The probe**~~ **DONE** (§4 — resolved: send byte table, receive `e.data` string,
+   `e` userdata, self-hear yes).
+2. ~~**`feature\integration.lua`**~~ **BUILT** (engine v153, addon `2026.07.28k`): the
+   observer pumps the decision ring FIFO on `d3d_present` into `dlac_worn` envelopes
+   (v1 scope: worn + ctx + totals + metadata, `actionId`/`actionCategory`/`targetIndex`
+   captured into the record at decision time); `/dl stream on|off` + a Menu Settings row
+   ("this session" on its face); snapshot-on-enable (§6.5); lifetime =
+   `M.worldAbsentOutlasted` — a new read-only engine seam over the worldWatch timestamp
+   (bookkeeping now runs unarmed; job changes deliberately invisible to it). Tests
+   WW1–3 + IN1–IN9.
+3. ~~**The `worn` query**~~ **BUILT** (same commit): `dlac_query` → `{ reply, what =
+   'worn' }` answers on `<reply>_r` with a full snapshot envelope; unknown `what`
+   answers with `err`, never silence. **The switch gates the whole channel, queries
+   included** — off means dlac is silent here (the guide's "tolerate no reply" reading,
+   made explicit).
+4. **Open:** `dispatch` (the anchor — needs the no-change action signal; see §5) +
+   `invalidate`, then `confirm`; then the remaining four queries, `rev`s last.
+   **All of it awaits Henrik's field round + the consumer's first real connection.**
 
-The stream reads the SAME ring the monitor renders — the record is being proven by eye
-before it ships to someone else's product, which was the whole point of building the
+The stream reads the SAME ring the monitor renders — the record was proven by eye
+before it shipped to someone else's product, which was the whole point of building the
 window first.
 
 ### Open, not blocking
