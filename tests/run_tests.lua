@@ -11906,38 +11906,55 @@ end)();
     check('RS8f removeItem drops it',
         rs.removeItem('job', 'RNG', 3) and #rs.jobs.RNG == 0, true);
 
-    -- RS9. otherBagNeed -- the YELLOW icon's question (v2 grill C2): which
-    -- tracked items do you already own, but not where you can use them? It
-    -- qualifies only when Inventory alone is short AND another field bag holds
-    -- some, which is exactly when the Inventory-only plan differs from the
-    -- field-bag plan. Equal plans would mean a second icon doing the first's job.
-    local rsInv   = { [1] = 1,  [2] = 12, [3] = 0 };
-    local rsOther = { [1] = 11, [2] = 0,  [3] = 0 };
-    local rsYCtx  = { inv   = function(id) return rsInv[id]   or 0; end,
-                      other = function(id) return rsOther[id] or 0; end };
+    -- RS9. homeStockNeed -- the YELLOW icon's question (v2 grill C2, REVISED by
+    -- Henrik 2026-07-28): which tracked items are you short of out here while
+    -- copies sit at your MOG HOUSE, where nothing you do in the field reaches
+    -- them? `held` is everything you carry -- Inventory, Satchel, Sack, Case,
+    -- quivers -- so a field-bag copy silences this icon exactly as it silences
+    -- green. The old ruling counted Satchel/Sack/Case as out of reach and nagged
+    -- about stock already in the player's pocket.
+    local rsHeld = { [1] = 1,  [2] = 12, [3] = 0 };
+    local rsHome = { [1] = 11, [2] = 4,  [3] = 0 };
+    local rsYCtx  = { held   = function(id) return rsHeld[id] or 0; end,
+                      stored = function(id) return rsHome[id] or 0; end };
     local rsYEnt  = { { id = 1, name = 'Grape Daifuku', target = 12 },
                       { id = 2, name = 'Silent Oil',    target = 12 },
                       { id = 3, name = 'Echo Drops',    target = 12 } };
-    local rsYn = rs.otherBagNeed(rsYEnt, rsYCtx);
-    check('RS9 only the item short in Inventory AND held in another bag', #rsYn, 1);
-    check('RS9b it reports where it is and what the box must cover',
-        rsYn[1].id == 1 and rsYn[1].inv == 1 and rsYn[1].other == 11 and rsYn[1].want == 11, true);
-    check('RS9c at target in Inventory -> nothing to do',
-        rs.needsOtherBag({ rsYEnt[2] }, rsYCtx), false);
-    check('RS9d short but nothing in the other bags -> the green icon covers it',
-        rs.needsOtherBag({ rsYEnt[3] }, rsYCtx), false);
-    check('RS9e the divergence itself: field-bag plan fetches nothing, Inventory-only plan fetches 11',
+    local rsYn = rs.homeStockNeed(rsYEnt, rsYCtx);
+    check('RS9 only the item short on your person AND stored at the Mog House', #rsYn, 1);
+    check('RS9b it reports what you carry, what is at home, and the shortfall',
+        rsYn[1].id == 1 and rsYn[1].held == 1 and rsYn[1].stored == 11 and rsYn[1].want == 11, true);
+    check('RS9c at target on you -> nothing to do, however much is at home',
+        rs.needsHomeStock({ rsYEnt[2] }, rsYCtx), false);
+    check('RS9d short but nothing at home -> the green icon covers it',
+        rs.needsHomeStock({ rsYEnt[3] }, rsYCtx), false);
+    check('RS9e THE 07-28 RULING: a Mog Case copy is held, so it never raises the icon',
         (function()
-            local box = function() return 99; end;
-            local st  = function() return 12;  end;
-            local green = rs.plan({ rsYEnt[1] }, { freeSlots = 9, inBox = box, stackOf = st,
-                onHand = function(id) return (rsInv[id] or 0) + (rsOther[id] or 0); end });
-            local yellow = rs.plan({ rsYEnt[1] }, { freeSlots = 9, inBox = box, stackOf = st,
-                onHand = function(id) return rsInv[id] or 0; end });
-            return #green.fetches == 0 and yellow.fetches[1].qty == 11;
+            local ent = { { id = 9, name = 'Grape Daifuku', target = 12 } };
+            local inCase = rs.needsHomeStock(ent, {          -- 12 with you, none at home
+                held = function() return 12; end, stored = function() return 0; end });
+            local atHome = rs.needsHomeStock(ent, {          -- none with you, 12 at home
+                held = function() return 0; end,  stored = function() return 12; end });
+            return inCase == false and atHome == true;
         end)(), true);
-    check('RS9f no ctx = no claims (never invent a reason to show the icon)',
-        #rs.otherBagNeed(rsYEnt, nil), 0);
+    check('RS9f an EMPTY box still raises it -- "yours are at home" is the whole message',
+        (function()
+            local plan = rs.plan({ rsYEnt[1] }, { freeSlots = 9, inBox = function() return 0; end,
+                stackOf = function() return 12; end, onHand = function() return 1; end });
+            return plan.badge == 0 and #rs.homeStockNeed({ rsYEnt[1] }, rsYCtx) == 1;
+        end)(), true);
+    check('RS9g no ctx = no claims (never invent a reason to show the icon)',
+        #rs.homeStockNeed(rsYEnt, nil), 0);
+    check('RS9h the bag split itself: Satchel/Sack/Case are carried, never "home"',
+        (function()
+            local rsui = dofile('ui/restockui.lua');
+            local home = {}; for _, b in ipairs(rsui._HOME_BAGS) do home[b] = true; end
+            for _, b in ipairs(rsui._FIELD_BAGS) do
+                if home[b] then return 'bag ' .. tostring(b) .. ' is in both lists'; end
+            end
+            return (#rsui._HOME_BAGS == 4) and home[1] and home[2] and home[4] and home[9]
+               and not home[5] and not home[6] and not home[7];
+        end)(), true);
 
     -- AC. data/ammocontainers -- the quiver/pouch pairing (Henrik, field
     -- 2026-07-25). `!box ammo` hands back CONTAINERS: a Blind Bolt withdrawal

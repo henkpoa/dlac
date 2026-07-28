@@ -25,7 +25,7 @@ compute changed it. Crafting at a box now costs **zero**.
 | File | What |
 |---|---|
 | `feature/eboxclient.lua` | The arithmetic model, the dirty marks, the menu rule, the party-line repair, the traffic trace |
-| `feature/restockwatch.lua` | `otherBagNeed` — the yellow icon's pure question |
+| `feature/restockwatch.lua` | `otherBagNeed` — the yellow icon's pure question (**renamed `homeStockNeed` on 07-28**, see the grill's C2 revision: the icon asks about the Mog House, not the other field bags) |
 | `feature/eboxtrace.lua` **(new)** | The `/dl debug ebox` readout |
 | `feature/debug.lua` | New `ebox` topic (alias `box`) — **and a prefix fix, see §5** |
 | `ui/restockui.lua` | Search button, panel rework, the 3-icon nudge, container-aware on-hand |

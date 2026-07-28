@@ -6817,3 +6817,50 @@ prices, the hovers and both coverage-light states. Suites **4198 + 726**.
 is read into `nqScore` and nowhere else, so it can never be picked for `hq` or `skillup` even
 when the slot is empty. Arguably material loss helps every goal. That is a *scoring* change
 (it moves what the engine equips), so it waits on Henrik rather than riding a display commit.
+
+## Session "the bag you are carrying is not somewhere else" (2026-07-28, on `dev` — addon `2026.07.28p`)
+
+Henrik, from the field: the E-Box Restock **yellow** icon *"is showing itself if we have items
+in our field containers (mog sack, mog case and mog satchel). This is wrong. It should only
+show if the item is in mog house containers, such as mog locker, storage etc."*
+
+**The premise was wrong, not the code.** Three days earlier (v2 grill C2) the icon was
+specified as *"you own these — just not in Inventory"*, counting Satchel/Sack/Case as places
+you cannot use an item from. Mechanically true; in play, false — those bags are **on your
+person**, one drag away, and the game will happily let you fix that yourself in the field. So
+the icon lit up about stock already in the player's pocket, and its click spent **box** stock
+buying duplicates of it (the deliberate over-draw, hover-explained, that C2 signed off on).
+The stock that genuinely cannot answer a shortfall out here is what sits at the **Mog House**:
+Safe (1), Storage (2), Locker (4), Safe 2 (9) — you cannot reach any of it until you go home,
+which is exactly when the box is the only fix.
+
+**What changed.** `rw.otherBagNeed`/`needsOtherBag` → **`homeStockNeed`/`needsHomeStock`**, ctx
+`{ inv, other }` → `{ held, stored }`. `held` is now *green's own on-hand* — Inventory +
+Satchel + Sack + Case + what your quivers hold — so a Mog Case copy silences yellow exactly the
+way it already silenced green. `stored` is a second bag pass over the Mog House containers
+(`restockui.homeScan`, the field scan refactored into a shared `scanBags`; quivers are **not**
+unpacked there — a pouch in the Safe is stock you cannot reach either, and this icon reports
+*where things are*, not what they would be worth once opened).
+
+**The over-draw died with the premise.** Yellow now plans on green's arithmetic, restricted to
+the flagged items, because there is no longer a reachable copy to double up on. What keeps it
+from being a second green button: **it does not require the box to stock the item**, so it
+fires precisely when green is silent — *"the box can't help and yours are at home"* is the most
+useful sentence this icon ever says, and the dimmed-button path already had the words for it.
+
+**Wardrobes are not Mog House bags here.** They hold gear only, and gear in a wardrobe is
+equippable where you stand — the opposite of the thing being flagged. Temporary (3) is out for
+the same reason in reverse: event items are not stock. That the ruling *is* a bag split, and a
+split that will be tempting to widen later, is why `restockui._HOME_BAGS` / `._FIELD_BAGS` are
+test seams and **RS9h** asserts the two lists are disjoint and that 5/6/7 are on the carried
+side. RS9e pins the reported bug directly: a Mog Case copy is held, so it never raises the
+icon. RS9f pins the new distinctness: an empty box still raises it (`plan.badge == 0`, one
+`homeStockNeed` row).
+
+**Deferred, and now narrower:** C2's option (b) — *moving* items instead of buying more — only
+ever applied to the field-bag case this revision retires. If the 0x029 move path ever lands it
+belongs in the panel as a convenience, not on this icon. Suites **4200 + 726**, both runtimes.
+Not yet field-tested: the icon's whole trigger now depends on Mog House containers being
+readable from memory while you stand in the field. `gear/gearcheck.lua` has warned *"it is in
+Mog Safe"* during play since the native era, so the reads are proven — but proven for gear in
+the Safe, not for a Locker on this server; Henrik confirms it at a box.

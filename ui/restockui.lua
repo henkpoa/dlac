@@ -91,8 +91,18 @@ end
 -- Live bag reads (AshitaCore; pcall-guarded, headless-safe).
 -- ---------------------------------------------------------------------------
 local FIELD_BAGS = { 0, 5, 6, 7 };   -- Inventory, Satchel, Sack, Case (useitem BAG_NAMES)
-local OTHER_BAGS = { 5, 6, 7 };      -- the three that are NOT where you use things from
-local BAG_NAMES  = { [0] = 'Inventory', [5] = 'Mog Satchel', [6] = 'Mog Sack', [7] = 'Mog Case' };
+
+-- The MOG HOUSE bags: Safe, Storage, Locker, Safe 2. Reachable only at a moogle,
+-- so stock parked here cannot answer a shortfall in the field -- which is the
+-- yellow icon's whole question (Henrik, 2026-07-28). Wardrobes are deliberately
+-- absent (gear only, and equippable where you stand), and so is Temporary (3):
+-- event items are not stock.
+local HOME_BAGS  = { 1, 2, 4, 9 };
+local BAG_NAMES  = { [0] = 'Inventory',  [1] = 'Mog Safe',  [2] = 'Storage',
+                     [4] = 'Mog Locker', [5] = 'Mog Satchel', [6] = 'Mog Sack',
+                     [7] = 'Mog Case',   [9] = 'Mog Safe 2' };
+M._FIELD_BAGS = FIELD_BAGS;   -- test seams (RS9g): the ruling is the bag split
+M._HOME_BAGS  = HOME_BAGS;
 
 -- Quiver/pouch -> ammo, generated from the server's own item scripts
 -- (tools/gen_ammocontainers.py). `!box ammo` hands back CONTAINERS: a Blind Bolt
@@ -112,11 +122,11 @@ _acok = _acok and type(AMMO_BOX) == 'table';
 -- ammo: you cannot shoot a quiver, and the fix for an empty Inventory is to open
 -- one, not to withdraw from the box. Folding them into `per` would make the
 -- yellow icon offer a box withdrawal for ammo already in your bags.
-local function bagScan()
-    local all, per, boxed = {}, {}, {};
+local function scanBags(bags, boxed)
+    local all, per = {}, {};
     pcall(function()
         local inv = AshitaCore:GetMemoryManager():GetInventory();
-        for _, bag in ipairs(FIELD_BAGS) do
+        for _, bag in ipairs(bags) do
             local max = inv:GetContainerCountMax(bag) or 0;
             for i = 1, max do
                 local it = inv:GetContainerItem(bag, i);
@@ -125,7 +135,7 @@ local function bagScan()
                     local p = per[it.Id];
                     if p == nil then p = {}; per[it.Id] = p; end
                     p[bag] = (p[bag] or 0) + it.Count;
-                    local c = _acok and AMMO_BOX[it.Id] or nil;
+                    local c = (boxed ~= nil) and _acok and AMMO_BOX[it.Id] or nil;
                     if c ~= nil then
                         local b = boxed[c.id];
                         if b == nil then b = { qty = 0, n = 0, name = c.name }; boxed[c.id] = b; end
@@ -136,8 +146,19 @@ local function bagScan()
             end
         end
     end);
+    return all, per;
+end
+
+local function bagScan()
+    local boxed = {};
+    local all, per = scanBags(FIELD_BAGS, boxed);
     return all, per, boxed;
 end
+
+-- The same pass over the Mog House bags. Quivers are NOT unpacked here: a pouch
+-- in the Mog Safe is stock you cannot reach either, and the yellow icon reports
+-- WHERE things are, not what they would be worth once opened.
+local function homeScan() return scanBags(HOME_BAGS, nil); end
 
 -- What "do I have enough?" should count: loose + what your containers hold.
 local function stockOf(all, boxed, id)
@@ -147,11 +168,11 @@ local function stockOf(all, boxed, id)
 end
 M._stockOf = stockOf;   -- test seam (AC*), above the imgui guard
 
--- "1 in Mog Case, 4 in Mog Sack" -- where the non-Inventory copies actually are.
+-- "1 in Mog Safe, 4 in Mog Locker" -- where the out-of-reach copies actually are.
 local function whereText(p)
     if type(p) ~= 'table' then return ''; end
     local parts = {};
-    for _, bag in ipairs(OTHER_BAGS) do
+    for _, bag in ipairs(HOME_BAGS) do
         local n = p[bag];
         if n ~= nil and n > 0 then
             parts[#parts + 1] = string.format('%d in %s', n, BAG_NAMES[bag] or ('bag ' .. tostring(bag)));
@@ -614,27 +635,32 @@ function M.nudge(deps)
     local entries = rw.effectiveList(job);
     ec.verifyCategories(rw.categoriesOf(entries));
 
-    local all, per, boxed = bagScan();
+    local all, _per, boxed = bagScan();
+    local home, homePer    = homeScan();
     local free = freeInvSlots();
-    local function invOf(id)   local p = per[id]; return (p ~= nil and p[0]) or 0; end
-    local function otherOf(id) return math.max(0, (all[id] or 0) - invOf(id)); end
+    local function heldOf(id)  return stockOf(all, boxed, id); end
+    local function homeOf(id)  return home[id] or 0; end
     local function inBox(id)   return ec.boxCount(id); end
 
     -- GREEN: on-hand = every field bag (a Mog Case copy counts, which is right)
     -- PLUS what your quivers/pouches hold, so it stops offering to fetch bolts
-    -- you are already carrying 1188 of. Yellow deliberately does NOT count them:
-    -- a quiver is not ammo in your Inventory, and the fix for that is to open it.
+    -- you are already carrying 1188 of.
     local plan = rw.plan(entries, { freeSlots = free,
-        onHand = function(id) return stockOf(all, boxed, id); end, inBox = inBox, stackOf = stackOf });
+        onHand = heldOf, inBox = inBox, stackOf = stackOf });
 
-    -- YELLOW: on-hand = Inventory ONLY. Shown only when that makes a DIFFERENT
-    -- plan from green's -- i.e. something you own is sitting in another field
-    -- bag while Inventory is short. Equal plans would mean a second icon that
-    -- does the first icon's job.
-    local need  = rw.otherBagNeed(entries, { inv = invOf, other = otherOf });
-    local yplan = (#need > 0)
-        and rw.plan(entries, { freeSlots = free, onHand = invOf, inBox = inBox, stackOf = stackOf })
-        or nil;
+    -- YELLOW (revised 07-28): the shortfalls whose missing copies are sitting at
+    -- your MOG HOUSE -- Safe, Storage, Locker -- where nothing you do out here
+    -- can reach them. The other field bags are with you and count as held, so
+    -- they no longer raise this icon. Its click fetches JUST these items, on
+    -- green's own arithmetic (no deliberate over-draw any more: there is nothing
+    -- reachable left to double up on).
+    local need, yplan = rw.homeStockNeed(entries, { held = heldOf, stored = homeOf }), nil;
+    if #need > 0 then
+        local want, sub = {}, {};
+        for _, n in ipairs(need) do want[n.id] = true; end
+        for _, e in ipairs(entries) do if want[e.id] then sub[#sub + 1] = e; end end
+        yplan = rw.plan(sub, { freeSlots = free, onHand = heldOf, inBox = inBox, stackOf = stackOf });
+    end
 
     -- "Only when needed" governs the GREEN crate. The deposit icon ignores it:
     -- Henrik's rule is that it is always there near a box, and there is nothing
@@ -688,30 +714,28 @@ function M.nudge(deps)
 
         if yplan ~= nil then
             local canY = (#yplan.pulls > 0) and not busy;
-            local clicked, rightClicked, hovered = iconButton('ebox_yellow', 'In bags', 'rsnudge_yellow');
+            local clicked, rightClicked, hovered = iconButton('ebox_yellow', 'At home', 'rsnudge_yellow');
             imgui.SameLine(0, 6);
             imgui.TextColored(canY and COL_GOLD or COL_DIM, 'x' .. tostring(#need));
             if clicked and canY then ec.withdrawBatch(yplan.pulls); end
             if rightClicked then openPanel(); end
             if hovered then
                 imgui.BeginTooltip();
-                imgui.TextColored(COL_HEADER, 'You own these -- just not in Inventory');
-                -- What the click will ACTUALLY pull, per item: otherBagNeed's
-                -- `want` is the raw Inventory shortfall and knows nothing about
-                -- box stock or free slots, so quoting it would contradict the
-                -- planner's own list a few lines below in the same tooltip.
+                imgui.TextColored(COL_HEADER, 'You own these -- but they are at your Mog House');
+                -- What the click will ACTUALLY pull, per item: homeStockNeed's
+                -- `want` is the raw shortfall and knows nothing about box stock
+                -- or free slots, so quoting it would contradict the planner's own
+                -- list a few lines below in the same tooltip.
                 local yq = {};
                 for _, f in ipairs(yplan.fetches) do yq[f.id] = (yq[f.id] or 0) + f.qty; end
                 for i, n in ipairs(need) do
                     if i <= TIP_MAX then
-                        -- ...and what clicking would leave you holding, so the
-                        -- deliberate over-draw is a number and not a warning.
                         local got = yq[n.id] or 0;
-                        imgui.TextColored(COL_TEXT, string.format('   %s  --  x%d in Inventory, %s  ->  %s (%d total)',
-                            esc(n.name or ('#' .. tostring(n.id))), n.inv, whereText(per[n.id]),
+                        imgui.TextColored(COL_TEXT, string.format('   %s  --  x%d on you of %d, %s  ->  %s',
+                            esc(n.name or ('#' .. tostring(n.id))), n.held, n.target,
+                            whereText(homePer[n.id]),
                             (got < n.want) and string.format('pull %d of %d', got, n.want)
-                                            or string.format('pull %d', got),
-                            n.inv + got + n.other));
+                                            or string.format('pull %d', got)));
                     end
                 end
                 if #need > TIP_MAX then
@@ -719,7 +743,7 @@ function M.nudge(deps)
                 end
                 imgui.Separator();
                 if #yplan.fetches > 0 then
-                    imgui.TextColored(COL_TEXT, 'Left-click tops up INVENTORY from the box:');
+                    imgui.TextColored(COL_TEXT, 'Left-click fetches just these from the box:');
                     local shown = 0;
                     for _, f in ipairs(yplan.fetches) do
                         if shown < TIP_MAX then
@@ -727,11 +751,11 @@ function M.nudge(deps)
                             shown = shown + 1;
                         end
                     end
-                    imgui.TextColored(COL_DIM, 'The copies in your other bags stay where they are, so this');
-                    imgui.TextColored(COL_DIM, 'spends box stock and puts you over target on purpose.');
+                    imgui.TextColored(COL_DIM, 'Your Mog House copies stay there -- you cannot reach them');
+                    imgui.TextColored(COL_DIM, 'from here, so the box covers you until you go home.');
                 else
                     imgui.TextColored(COL_DIM, busy and 'A fetch is already in flight.'
-                        or 'The box cannot add any of these right now.');
+                        or 'The box cannot add any of these -- yours are at the Mog House.');
                 end
                 imgui.Separator();
                 imgui.TextColored(COL_DIM, 'Left-click: fetch to Inventory    Right-click: open panel');
