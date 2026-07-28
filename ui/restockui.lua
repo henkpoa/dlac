@@ -104,13 +104,20 @@ local BAG_NAMES  = { [0] = 'Inventory',  [1] = 'Mog Safe',  [2] = 'Storage',
 M._FIELD_BAGS = FIELD_BAGS;   -- test seams (RS9g): the ruling is the bag split
 M._HOME_BAGS  = HOME_BAGS;
 
--- Quiver/pouch -> ammo, generated from the server's own item scripts
--- (tools/gen_ammocontainers.py). `!box ammo` hands back CONTAINERS: a Blind Bolt
--- withdrawal arrives as a Blind Bolt Quiver, stack 12, each one 99 bolts -- so a
--- single Inventory slot holds 1188 and NONE of it is visible as "Blind Bolt".
--- Without this, on-hand read 0 and Restock kept offering to fetch more.
-local _acok, AMMO_BOX = pcall(require, 'dlac\\data\\ammocontainers');
-_acok = _acok and type(AMMO_BOX) == 'table';
+-- Bundle -> contents, generated from the server's own item scripts
+-- (tools/gen_itembundles.py). A withdrawal hands back the BUNDLE, not what is
+-- in it: `!box ammo` turns a Blind Bolt into a Blind Bolt Quiver (stack 12,
+-- each one 99 bolts, so a single Inventory slot holds 1188 and NONE of it reads
+-- as "Blind Bolt"), and `!box cluster` turns 12 Wind Crystal into 1 Wind
+-- Cluster. Without this, on-hand read 0 and Restock kept offering to fetch more.
+--
+-- WIDENED 2026-07-28: this was quivers and pouches only (62 rows), which missed
+-- the two shapes a crafter and a NIN hit first -- clusters and TOOLBAGS -- plus
+-- card cases and the stone pouches. It is now every usable item the server
+-- defines as a single-item bundle (109), minus equippable minters like
+-- Annihilator: a relic that mints its ammo on demand is a source, not stock.
+local _acok, BUNDLES = pcall(require, 'dlac\\data\\itembundles');
+_acok = _acok and type(BUNDLES) == 'table';
 
 -- On-hand across the FIELD bags, ONE pass. Returns:
 --   all   { id -> count }            LOOSE items only
@@ -135,7 +142,7 @@ local function scanBags(bags, boxed)
                     local p = per[it.Id];
                     if p == nil then p = {}; per[it.Id] = p; end
                     p[bag] = (p[bag] or 0) + it.Count;
-                    local c = (boxed ~= nil) and _acok and AMMO_BOX[it.Id] or nil;
+                    local c = (boxed ~= nil) and _acok and BUNDLES[it.Id] or nil;
                     if c ~= nil then
                         local b = boxed[c.id];
                         if b == nil then b = { qty = 0, n = 0, name = c.name }; boxed[c.id] = b; end

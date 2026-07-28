@@ -11986,17 +11986,28 @@ end)();
                and not home[5] and not home[6] and not home[7];
         end)(), true);
 
-    -- AC. data/ammocontainers -- the quiver/pouch pairing (Henrik, field
-    -- 2026-07-25). `!box ammo` hands back CONTAINERS: a Blind Bolt withdrawal
-    -- arrives as a Blind Bolt Quiver, stack 12, each worth 99 bolts -- so one
-    -- Inventory slot holds 1188 and NONE of it reads as "Blind Bolt". Restock
-    -- saw on-hand 0 and kept offering to fetch more. Generated from the server's
-    -- own item scripts, because the naming is irregular ("Beetle Arrow" ->
-    -- "Beetle Quiver" drops the word, "Blind Bolt" -> "Blind Bolt Quiver"
-    -- appends it) and the catalog abbreviates the containers on top of that.
-    local ac = dofile('data/ammocontainers.lua');
+    -- AC. data/itembundles -- the bundle -> contents pairing (Henrik, field
+    -- 2026-07-25 and -28). A withdrawal hands back the BUNDLE, not what is in
+    -- it: a Blind Bolt arrives as a Blind Bolt Quiver, stack 12, each worth 99
+    -- bolts -- so one Inventory slot holds 1188 and NONE of it reads as "Blind
+    -- Bolt". Restock saw on-hand 0 and kept offering to fetch more. Field-
+    -- confirmed 07-28: 2 Beetle Quivers, one opened, reads 198* (99 loose + 99
+    -- still sealed). Generated from the server's own item scripts, because the
+    -- naming is irregular ("Beetle Arrow" -> "Beetle Quiver" drops the word,
+    -- "Blind Bolt" -> "Blind Bolt Quiver" appends it) and the catalog
+    -- abbreviates on top of that.
+    --
+    -- WIDENED 07-28 from quivers+pouches (62) to every single-item bundle the
+    -- server defines (109): the old glob missed CLUSTERS (`!box cluster`, the
+    -- shape a crafter hits first) and TOOLBAGS (ninjutsu tools, in the
+    -- restocker's staple set), plus card cases and stone pouches.
+    local ac = dofile('data/itembundles.lua');
     local acN = 0; for _ in pairs(ac) do acN = acN + 1; end
-    check('AC1 the generated pairing table loads with rows', acN > 50, true);
+    check('AC1 the generated pairing table loads with rows', acN > 100, true);
+    check('AC1b clusters: `!box cluster` returns one Wind Cluster worth 12 crystal',
+        ac[4106] ~= nil and ac[4106].id == 4098 and ac[4106].qty == 12, true);
+    check('AC1c toolbags: a NIN tracking Shihei is carrying 99 per bag',
+        ac[5314] ~= nil and ac[5314].id == 1179 and ac[5314].qty == 99, true);
     check('AC2 a bolt quiver names its ammo and its multiplier',
         ac[5334] ~= nil and ac[5334].id == 18150 and ac[5334].qty == 99, true);
     check('AC3 an arrow quiver too -- whose name DROPS the word "Arrow"',
@@ -12005,10 +12016,21 @@ end)();
        .. '      oberon script header claims 5822 (dweomer\'s); item_basic.sql is the authority',
         ac[5822] ~= nil and ac[5823] ~= nil
         and ac[5822].id == 19198 and ac[5823].id == 19199, true);
-    check('AC5 every row is usable: real container id, real ammo id, positive qty, a name',
+    check('AC4b the SECOND header lie: toolbag_sanjaku-tenugui claims 5314, which is\n'
+       .. '      shihei\'s -- trusting headers would have collided and dropped a row',
+        ac[5417] ~= nil and ac[5417].id == 2553
+        and ac[5314] ~= nil and ac[5314].id == 1179, true);
+    -- THE JUDGEMENT CALL, pinned. Gear that mints ammo has the same script shape
+    -- (Annihilator -> 99 Eradicating Bullet, Bolt Belt -> 99 Bronze Bolt), and is
+    -- deliberately NOT here: this table answers "how much do I already have", and
+    -- a relic that mints on demand is a source, not a pile. Counting one as 99
+    -- would silence Restock about that ammo permanently.
+    check('AC5b equippable minters are absent -- a source is not stock',
+        ac[15289] == nil and ac[15296] == nil and ac[14532] == nil, true);
+    check('AC5 every row is usable: real bundle id, real contents id, positive qty, a name',
         (function()
             for cid, r in pairs(ac) do
-                if type(cid) ~= 'number' or cid <= 0 then return 'bad container id'; end
+                if type(cid) ~= 'number' or cid <= 0 then return 'bad bundle id'; end
                 if type(r) ~= 'table' or (tonumber(r.id) or 0) <= 0
                    or (tonumber(r.qty) or 0) <= 0
                    or type(r.name) ~= 'string' or r.name == '' then
