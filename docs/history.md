@@ -6606,7 +6606,7 @@ number ~6400 lines away. It is deliberately shape-**agnostic**: it flags a slot 
 "you nested a slot we write flat", because that is the file's business. A category is
 identified structurally (a table with no `Name` that *holds* named tables), not by
 head-count, so one new entry beside three categories and thirty beside three read the
-same way round (`GS12-17`).
+same way round (`SH12-17`).
 
 **And a latent one, found while fixing the first.** `parseGearEntries` (fix/dedupe/prune)
 tolerated a trailing `-- comment` on a header — pinned by test `D`, after 25 hand-
@@ -6623,7 +6623,7 @@ B. category header has a trailing comment
 ```
 
 All three commit-side readers now share `hdrAt`/`closeAt` with `parseGearEntries`
-(`GS18-20`).
+(`SH18-20`).
 
 ### Silence, twice
 
@@ -6634,6 +6634,65 @@ entry away. Both say so now. That failure mode did *not* fire here — but it is
 the shape of the theory that cost the first half hour, and it was one `pcall` away from
 being true.
 
-Suites **4134 + 693**, Windows and WSL lua5.4. Tests `GS1-20`. Henrik's remedy for the
+Suites **4134 + 693**, Windows and WSL lua5.4. Tests `SH1-20`. Henrik's remedy for the
 friend is the blunt one, and the right one: delete `gear.lua` and let `/dl scan` rebuild
 it in dlac's own shape.
+
+### The same day, the follow-up question that found the real entry point
+
+Henrik, on reading the diagnosis: *"how can a LEGACY LAC gear.lua come here? He installed
+DLAC just now, and we purged most connections to it yesterday."*
+
+Fair question, and the answer was not the migration. **dlac put it there itself.**
+`setupui.seedGearFile` — the fresh-install auto-setup (`autoSetupNative`, issue #91) —
+seeded a new character's gear inventory by *preferring* an existing
+`<charBase>\ffxi-lac\gear.lua`, falling back to the bundled empty template only when there
+wasn't one. Its own comment said why: *"a returning player keeps their scanned
+inventory."* So:
+
+```
+config\addons\luashitacast\Abraxis_42505\ffxi-lac\gear.lua
+   -> config\addons\dlac\Abraxis_42505\gear.lua      (verbatim, on first login)
+```
+
+Not a purge leak. The purge killed the `luashitacast\` **engine** coupling; `charBase()`
+survived deliberately as the importers' read-only door, and `ffxi-lac\` is a folder inside
+that tree. A kept feature, firing as designed.
+
+**Why it could never reproduce on Henrik's machine.** His own `ffxi-lac\gear.lua` (Mindie,
+10,907 lines) is a *newer generation* of the same file:
+
+| | Mindie's | Abraxis's |
+|---|---|---|
+| Ammo | **flat** | nested by category |
+| trailer | `Main or Range` | `Main or Range or **Ammo**` |
+| `Id =` fields | 697 | **0** |
+
+FFXI-LAC itself moved to flat Ammo and started stamping `Id` at some point; dlac inherited
+the new shape, and the seeder copied files of the old one without looking.
+
+**The ruling** (Henrik): *"Drop the ffxi-lac preference, ALWAYS handle your own gear
+locally in DLAC. ONLY FFXI-LAC integration we should have, is SOLELY on importing dynamic
+gear, which has been solved by another agent."*
+
+The courtesy was worth less than it looked even when the shapes matched. A seeded
+ffxi-lac file has **no `Id`** on any entry — and `RSlot` and the Range/Ammo `Pair` key are
+both looked up BY id, so reserved-slot conflict handling and ammo pairing were dead for
+every item in it. Its `Stats` blocks are inert (dlac derives stats from the catalog by
+id). And its contents are a *catalogue* — Abraxis's carries transcription comments like
+`-- *** NEW CATSEYEXI AMMO (None specifically listed on the page) ***` and
+`Jobs = {"All Jobs"}`, which is not even dlac's sentinel (`"All"`) — not the player's
+bags. `/dl scan` rebuilds the lot correctly, from the real bags, in seconds. A head start
+that is wrong in three dimensions is not a head start.
+
+`seedGearFile` now always copies dlac's own bundled template. Guard `SH21` fails if any
+core file reads a **path** out of the ffxi-lac tree again; `SH22` pins the door that must
+survive — the **content** sniff (`text:find('ffxi-lac')` → `st = 'ffxilac'`) that routes an
+old profile into the sets migration. The guard was negative-tested against the pre-change
+file: it flags the old `seedGearFile` and passes the new one. Prose mentions of ffxi-lac
+are deliberately untouched — this is a path guard, not a word ban.
+
+*(Housekeeping in the same commit: this session's `GS1-20` were renamed `SH1-20`. A
+parallel session landed its own `GS.` block — the groups auto-import scanner — and two
+blocks answering to `GS1` makes a failure line meaningless. Committed work renames itself;
+in-flight work is left alone.)*

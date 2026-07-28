@@ -15332,7 +15332,7 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
--- GS. Commit reads gear.lua's SHAPE instead of assuming its own (field bug,
+-- SH. Commit reads gear.lua's SHAPE instead of assuming its own (field bug,
 --     07-28, Abraxis). A legacy LuAshitacast gear.lua nests Ammo by category
 --     (Archery/Marksmanship/Throwing) and says so in its own trailer; dlac
 --     writes Ammo flat. The splice inserted the flat entry as a SIBLING of the
@@ -15375,10 +15375,10 @@ local legacy = table.concat({
 }, '\n');
 
 local shapes = gi._slotShapes(L(legacy));
-check('GS1 nested Ammo read as category', shapes.Ammo, 'category');
-check('GS2 flat Head read as entry',      shapes.Head, 'entry');
+check('SH1 nested Ammo read as category', shapes.Ammo, 'category');
+check('SH2 flat Head read as entry',      shapes.Head, 'entry');
 -- an entry carrying a multi-line Stats block must NOT read as a category
-check('GS3 Stats block does not fake a category', gi._slotShapes(L(table.concat({
+check('SH3 Stats block does not fake a category', gi._slotShapes(L(table.concat({
     'gear = {', '    Head = {',
     '        StatCap = {',
     '            Name = "Stat Cap",',
@@ -15399,21 +15399,21 @@ local ammoStaging = table.concat({
     '}',
 }, '\n') .. '\n';
 local spliced, rep = gi.spliceStaging(legacy, ammoStaging);
-check('GS4 shape conflict reported',   #rep.shapeConflict, 1);
-check('GS5 conflict names the slot',   rep.shapeConflict[1] and rep.shapeConflict[1].slot, 'Ammo');
-check('GS6 conflict names the file shape', rep.shapeConflict[1] and rep.shapeConflict[1].found, 'category');
-check('GS7 nothing spliced into it',   rep.inserted, 0);
-check('GS8 text left byte-identical',  spliced, legacy .. '\n');
+check('SH4 shape conflict reported',   #rep.shapeConflict, 1);
+check('SH5 conflict names the slot',   rep.shapeConflict[1] and rep.shapeConflict[1].slot, 'Ammo');
+check('SH6 conflict names the file shape', rep.shapeConflict[1] and rep.shapeConflict[1].found, 'category');
+check('SH7 nothing spliced into it',   rep.inserted, 0);
+check('SH8 text left byte-identical',  spliced, legacy .. '\n');
 -- the pre-fix behaviour, pinned as the thing that must never come back
-check('GS9 not silently reported as notfound', #rep.notfound, 0);
+check('SH9 not silently reported as notfound', #rep.notfound, 0);
 
 -- a flat slot in a flat file still takes its entry
 local okSplice = select(2, gi.spliceStaging(legacy, table.concat({
     'return {', '    Head = {', '        NewCap = {', '            Name = "New Cap",',
     '        },', '    },', '}',
 }, '\n') .. '\n'));
-check('GS10 matching shape still inserts', okSplice.inserted, 1);
-check('GS11 matching shape has no conflict', #okSplice.shapeConflict, 0);
+check('SH10 matching shape still inserts', okSplice.inserted, 1);
+check('SH11 matching shape has no conflict', #okSplice.shapeConflict, 0);
 
 -- gearProblems: names the culprit, and stays quiet on a consistent legacy file
 local function built(text)
@@ -15424,7 +15424,7 @@ local function built(text)
     return env.gear, L(text);
 end
 local okGear, okLines = built(legacy);
-check('GS12 consistent nested file is NOT flagged', #gi.gearProblems(okGear, okLines), 0);
+check('SH12 consistent nested file is NOT flagged', #gi.gearProblems(okGear, okLines), 0);
 
 local badGear, badLines = built(table.concat({
     'gear = {',
@@ -15441,10 +15441,10 @@ local badGear, badLines = built(table.concat({
     '};',
 }, '\n'));
 local probs = gi.gearProblems(badGear, badLines);
-check('GS13 wrong-depth entry diagnosed', #probs, 1);
-check('GS14 diagnosis names the entry, not the trailer',
+check('SH13 wrong-depth entry diagnosed', #probs, 1);
+check('SH14 diagnosis names the entry, not the trailer',
       probs[1] ~= nil and probs[1]:find('SilverArrow', 1, true) ~= nil, true);
-check('GS15 diagnosis carries a line number',
+check('SH15 diagnosis carries a line number',
       probs[1] ~= nil and probs[1]:find('line 3', 1, true) ~= nil, true);
 
 local nnGear, nnLines = built(table.concat({
@@ -15456,8 +15456,8 @@ local nnGear, nnLines = built(table.concat({
     '    },', '};',
 }, '\n'));
 local nnProbs = gi.gearProblems(nnGear, nnLines);
-check('GS16 Name-less entry diagnosed', #nnProbs, 1);
-check('GS17 Name-less diagnosis names it',
+check('SH16 Name-less entry diagnosed', #nnProbs, 1);
+check('SH17 Name-less diagnosis names it',
       nnProbs[1] ~= nil and nnProbs[1]:find('BadCap', 1, true) ~= nil, true);
 
 -- Defect from the same family: indexGear/parseStaging used their own
@@ -15481,9 +15481,36 @@ local _, cRep = gi.spliceStaging(commented, table.concat({
     'return {', '    Main = {', '        Sword = {', '            NewSword = {',
     '                Name = "New Sword",', '            },', '        },', '    },', '}',
 }, '\n') .. '\n');
-check('GS18 commented headers still index',  cRep.inserted, 1);
-check('GS19 no phantom duplicate section',   #cRep.created, 0);
-check('GS20 commented slot header found',    #cRep.notfound, 0);
+check('SH18 commented headers still index',  cRep.inserted, 1);
+check('SH19 no phantom duplicate section',   #cRep.created, 0);
+check('SH20 commented slot header found',    #cRep.notfound, 0);
+
+-- Henrik's ruling, 2026-07-28: **dlac handles its own gear locally; the ONLY
+-- FFXI-LAC integration is the Dynamic sets import.** Setup used to seed a new
+-- character's gear.lua by COPYING `<charBase>\ffxi-lac\gear.lua` when one
+-- existed -- which is how a brand-new install ended up with a foreign,
+-- Ammo-nested, Id-less inventory dlac could not extend. The guard is a path
+-- guard, deliberately: prose about ffxi-lac is fine and the CONTENT sniff that
+-- routes an old profile into the sets migration must survive (SH22) -- what may
+-- never come back is dlac READING a file out of that tree to seed itself.
+local ffxiLacPathUsers = {};
+for _, f in ipairs({ 'dlac.lua', 'utils.lua', 'profiles.lua', 'dispatch.lua',
+                     'ui/setupui.lua', 'ui/gearui.lua', 'gear/gearimport.lua',
+                     'gear/setmanager.lua', 'gear/profilesets.lua', 'gear/setimport.lua' }) do
+    local fh = io.open(f, 'rb');
+    if fh ~= nil then
+        local raw = fh:read('*a'); fh:close();
+        -- the PATH form only: 'ffxi-lac\' as written in a Lua string literal
+        if raw:find('ffxi%-lac\\\\') ~= nil then ffxiLacPathUsers[#ffxiLacPathUsers + 1] = f; end
+    end
+end
+check('SH21 nothing reads out of the ffxi-lac tree', table.concat(ffxiLacPathUsers, ','), '');
+check('SH22 the sets-migration door still exists', (function()
+    local fh = io.open('ui/setupui.lua', 'rb');
+    if fh == nil then return false; end
+    local raw = fh:read('*a'); fh:close();
+    return raw:find("'ffxi-lac'", 1, true) ~= nil;   -- the CONTENT sniff -> st = 'ffxilac'
+end)(), true);
 end)();
 
 -- The warm-note artifact the dispatch-driving sections leave behind (dataDir

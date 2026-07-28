@@ -138,19 +138,34 @@ setup.seedSetsFile = function(base, abbr)
     return written;
 end
 
--- Seed the data home's gear.lua (the gear inventory): copied from an existing
--- ffxi-lac\gear.lua when there is one (a returning player keeps their scanned
--- inventory), else the bundled empty template so the profile loads and
--- Scan/Commit can populate it. Never clobbers an existing file. The home is
--- mode-aware (feature/native-engine) via D.dataDir; the ffxi-lac source stays
--- on the LAC char base -- that is where a pre-migration profile ever lived.
+-- Seed the data home's gear.lua (the gear inventory) from dlac's OWN bundled
+-- template, always. Never clobbers an existing file. The home is mode-aware
+-- (feature/native-engine) via D.dataDir.
+--
+-- It used to PREFER an existing `ffxi-lac\gear.lua` on the LAC char base, to
+-- let a returning player keep their scanned inventory. Henrik's ruling,
+-- 2026-07-28, after that seeding cost a new player his whole gear import:
+-- **dlac handles its own gear locally; the only FFXI-LAC integration is the
+-- Dynamic sets import.** The courtesy was never worth it -- a seeded ffxi-lac
+-- file is a foreign artifact dlac cannot safely extend:
+--   * it can be an OLDER ffxi-lac generation that nests Ammo by category and
+--     says so in its own trailer. dlac writes Ammo flat, so commit spliced the
+--     new entry in at the wrong depth -- a file that parses and then dies in
+--     the trailer (fixed separately, gearimport slotShapes / `2026.07.28e`).
+--   * it carries no Id (older generations never stamped one), and RSlot and
+--     the Range/Ammo Pair key are looked up BY Id -- so reserved-slot conflicts
+--     and ammo pairing were dead for every entry in it.
+--   * its Stats blocks are inert (dlac derives stats from the catalog by Id),
+--     and its contents are a catalogue, not the player's bags.
+-- `/dl scan` rebuilds all of it correctly from the real bags in seconds, which
+-- is strictly better than anything the copy could give. The empty template is
+-- enough for the profile to load and for Scan/Commit to populate.
 local function seedGearFile(base)
     local ddir = (type(D.dataDir) == 'function') and D.dataDir() or nil;
     if ddir == nil then ddir = base .. 'dlac\\'; end
     pcall(function() os.execute('mkdir "' .. ddir:gsub('\\+$', '') .. '" 2>nul'); end);
     if D.readFileText(ddir .. 'gear.lua') ~= nil then return; end
-    local src = D.readFileText(base .. 'ffxi-lac\\gear.lua');
-    if src == nil then src = D.readFileText(AshitaCore:GetInstallPath() .. 'addons\\dlac\\gear.lua'); end
+    local src = D.readFileText(AshitaCore:GetInstallPath() .. 'addons\\dlac\\gear.lua');
     if src ~= nil then D.writeFileText(ddir .. 'gear.lua', src); end
 end
 

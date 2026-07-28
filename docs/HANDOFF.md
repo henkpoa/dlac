@@ -369,6 +369,22 @@ research already recorded. In rough priority order:
   column with dim `Dynamic` / `Static` sub-headers under one blue heading, and *"Static atm
   is greyed out like dynamic, so it's hard to notice… even I got confused"*. Group labels
   are not dim.
+- **2026-07-28: dlac seeds its OWN gear.lua, always — ON `dev`** (`2026.07.28f`).
+  Henrik's ruling once the entry below was diagnosed: *"ALWAYS handle your own gear
+  locally in DLAC. ONLY FFXI-LAC integration we should have, is SOLELY on importing
+  dynamic gear."* `setupui.seedGearFile` used to **prefer** an existing
+  `<charBase>\ffxi-lac\gear.lua` over dlac's bundled template — *"a returning player
+  keeps their scanned inventory"* — which is exactly how a **brand-new install** ended up
+  with a legacy, Ammo-nested, `Id`-less inventory (the entry below). It never paid: such a
+  file carries **no `Id`**, and `RSlot` + the Range/Ammo `Pair` key are looked up BY id, so
+  reserved-slot conflicts and ammo pairing were dead for every entry in it; its `Stats`
+  blocks are inert (dlac derives stats from the catalog); and its contents are a
+  *catalogue*, not the player's bags. `/dl scan` rebuilds all of it correctly in seconds.
+  Now: bundled template, always. Guard `SH21` fails if anything reads a path out of that
+  tree again; `SH22` pins the one door that must survive — the **content** sniff
+  (`text:find('ffxi-lac')` → `st = 'ffxilac'`) that routes an old profile into the sets
+  migration, i.e. the Dynamic-sets import, which is the only sanctioned integration.
+  Prose about ffxi-lac is untouched; it is a **path** guard.
 - **2026-07-28: commit READS gear.lua's shape instead of assuming its own — ON `dev`,
   awaiting field test** (`2026.07.28e`). The second field report from Henrik's friend
   (character `Abraxis_42505`), and the first bug that **needed a second player's file to
@@ -384,16 +400,16 @@ research already recorded. In rough priority order:
   90 minutes. Three fixes, one family — *commit's text readers disagreeing with the file
   in front of them*:
   **(1)** new `slotShapes` reads each slot's actual shape, and a disagreement ABORTS
-  naming the slot (`GS1-11`) instead of writing a file that cannot load;
+  naming the slot (`SH1-11`) instead of writing a file that cannot load;
   **(2)** `gearProblems` walks the built table and names the culprit entry **and its
-  line** — the raw error only ever named the trailer (`GS12-17`). Deliberately
+  line** — the raw error only ever named the trailer (`SH12-17`). Deliberately
   shape-**agnostic**: a consistent legacy file is never flagged, because which slots
   nest is that file's trailer's business, not ours;
   **(3)** `parseStaging`/`indexGear` now share `hdrAt`/`closeAt` with
   `parseGearEntries`, which already tolerated a trailing `-- comment` — a commented
   CATEGORY header was invisible to `indexGear` alone, so commit "created" a section that
   already existed, Lua's last-key-wins discarded the new block, and it **reported success
-  while the items never landed** (`GS18-20`). Independent of the Ammo bug, and latent for
+  while the items never landed** (`SH18-20`). Independent of the Ammo bug, and latent for
   anyone with a hand-annotated `gear.lua`.
   Two silent fallbacks lost their silence with it: `dlac.lua`'s boot preload and
   `gearui.refreshGear` both swallowed an unloadable `gear.lua` and ran on the bundled
