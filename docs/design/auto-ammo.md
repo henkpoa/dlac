@@ -350,6 +350,12 @@ the live Range/Ammo picks — lands AutoAmmo entirely on the state-file side.
 - ~~Does the server enforce Ephemeral-Box PROXIMITY, and at what range?~~
   **ANSWERED (field round 2, Henrik): the box range is 5 yalms** —
   `BOX_RANGE = 5`, pinned by test EB9; the fetch buttons go dead-red beyond it.
+  **Refined 2026-07-28: that answer is about WITHDRAWING.** Henrik: *"Trove can
+  always search items when out in the field"* — and `trove/plugins/ebox.lua`
+  carries no distance or zone check on any 0x1A4 action, so the server answers a
+  **SEARCH** wherever you stand. Restock's add-picker is ungated accordingly
+  (`EBC21d`); `eboxclient.search` says so at the seam. The near-box rule now
+  covers exactly what earns it: withdrawals, and the automatic counting.
 - ~~PLANNED: a central entity watcher~~ **BUILT (field round 6, after Henrik
   confirmed the box detection works): `lib/entwatch.lua`** — the subscription
   registry he specced: `watch(who, name [, cb])` registers WHAT is looked for

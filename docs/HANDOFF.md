@@ -1121,7 +1121,10 @@ research already recorded. In rough priority order:
   only one since AutoAmmo's section was removed 2026-07-27). **NEVER open a second 0x1A4 client** — it's a
   party line; two clients race and double the traffic. The client owns the protocol, a shared
   multi-category counts cache, entwatch proximity (`BOX_RANGE = 5`), and the server-load
-  throttle (one-in-flight, global min-gap, near-box gate, per-category coalesced). Full spec:
+  throttle (one-in-flight, global min-gap, near-box gate, per-category coalesced). **The
+  near-box gate covers traffic nobody clicked for — the automatic counting — plus withdrawals;
+  SEARCH is exempt since 2026-07-28** (trove searches from anywhere in the field; see the v2
+  grill's §B1 revision and `eboxclient.search`). Full spec:
   [design/ebox-restock.md](design/ebox-restock.md). Commits `975896a..b2fab33` on main;
   addon.version 2026.07.24b.
 

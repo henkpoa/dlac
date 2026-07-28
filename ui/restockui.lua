@@ -339,9 +339,9 @@ function M.render(deps, availW)
             imgui.TextColored(COL_DIM, 'E-Box: '
                 .. ((ec.lockedMsg ~= nil and ec.lockedMsg ~= '') and esc(ec.lockedMsg) or 'not unlocked yet'));
         elseif dist == nil then
-            imgui.TextColored(COL_DIM, 'No Ephemeral Box in sight -- stand near one to fetch or add.');
+            imgui.TextColored(COL_DIM, 'No Ephemeral Box in sight -- stand near one to fetch (searching works anywhere).');
         elseif not nearOK then
-            imgui.TextColored(COL_ERR, string.format('Too far from the Ephemeral Box (%.1f yalms -- get within %d).', dist, ec.BOX_RANGE));
+            imgui.TextColored(COL_ERR, string.format('Too far from the Ephemeral Box (%.1f yalms -- get within %d to fetch).', dist, ec.BOX_RANGE));
         else
             imgui.TextColored(COL_GREEN, string.format('Ephemeral Box in range (%.1f yalms).', dist));
         end
@@ -504,80 +504,85 @@ function M.render(deps, availW)
         -- is the last thing render draws, so bail out rather than nest the rest.
         -- (Anything appended to render() after this point must move ABOVE it.)
         if _add == nil then return; end
-        if not nearOK then
-            imgui.TextColored(COL_DIM, 'Stand near an Ephemeral Box to search its contents.');
-        else
-            imgui.PushItemWidth(260);
-            imgui.InputText('##rssearch', _addBuf, 64);
-            imgui.PopItemWidth();
-            if imgui.IsItemHovered() then
-                imgui.SetTooltip('Part of an item name. Nothing is sent until you click Search.');
-            end
-            local buf = _addBuf[1] or '';
-            local searching = ec.searchBusy();
+        -- NO proximity gate on the picker (Henrik, 2026-07-28): trove searches the
+        -- box from anywhere in the field -- `trove/plugins/ebox.lua` has no
+        -- distance or zone check on ANY 0x1A4 action -- so the server plainly
+        -- answers a SEARCH wherever you stand, and refusing to ask was our
+        -- invention, not the protocol's. The NFR is untouched: this is one packet
+        -- per explicit click, still behind one-in-flight and MIN_GAP. Building the
+        -- list is the half of the feature you do while you have a spare minute;
+        -- FETCHING is what still needs you standing at a box.
+        imgui.PushItemWidth(260);
+        imgui.InputText('##rssearch', _addBuf, 64);
+        imgui.PopItemWidth();
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('Part of an item name. Nothing is sent until you click Search.');
+        end
+        local buf = _addBuf[1] or '';
+        local searching = ec.searchBusy();
 
-            -- THE button. One click = one query; no typing ever reaches the wire,
-            -- and a refused click is visibly refused instead of silently dropped
-            -- (the old debounce marked the text as "asked" before the throttle
-            -- had accepted it, so the search never went out at all).
-            imgui.SameLine(0, GAP);
-            local canSearch = (#buf > 0) and (not searching) and ec.canQuery();
-            if offableButton((searching and 'searching...' or 'Search') .. '##rsdosearch',
-                             canSearch, BTN_GREY_OFF) then
-                ec.search(buf);
-            end
-            if imgui.IsItemHovered() then
-                if searching then imgui.SetTooltip('Waiting for the box to answer.');
-                elseif #buf == 0 then imgui.SetTooltip('Type part of an item name first.');
-                elseif not canSearch then imgui.SetTooltip('One box query at a time -- try again in a moment.');
-                else imgui.SetTooltip('Ask the box what it holds matching this name.'); end
-            end
+        -- THE button. One click = one query; no typing ever reaches the wire,
+        -- and a refused click is visibly refused instead of silently dropped
+        -- (the old debounce marked the text as "asked" before the throttle
+        -- had accepted it, so the search never went out at all).
+        imgui.SameLine(0, GAP);
+        local canSearch = (#buf > 0) and (not searching) and ec.canQuery();
+        if offableButton((searching and 'searching...' or 'Search') .. '##rsdosearch',
+                         canSearch, BTN_GREY_OFF) then
+            ec.search(buf);
+        end
+        if imgui.IsItemHovered() then
+            if searching then imgui.SetTooltip('Waiting for the box to answer.');
+            elseif #buf == 0 then imgui.SetTooltip('Type part of an item name first.');
+            elseif not canSearch then imgui.SetTooltip('One box query at a time -- try again in a moment.');
+            else imgui.SetTooltip('Ask the box what it holds matching this name.\n'
+                .. 'Works anywhere -- you only need to stand at a box to FETCH.'); end
+        end
 
-            -- Already-tracked ids in the list we are adding TO: those rows are
-            -- hidden, so searching "bolt" twice shows only what is left to add.
-            local intoList = (_add.scope == 'character') and rw.character
-                or ((_add.job ~= nil) and (rw.jobs[_add.job] or {}) or {});
-            local tracked = {};
-            for _, e in ipairs(intoList) do tracked[e.id] = true; end
+        -- Already-tracked ids in the list we are adding TO: those rows are
+        -- hidden, so searching "bolt" twice shows only what is left to add.
+        local intoList = (_add.scope == 'character') and rw.character
+            or ((_add.job ~= nil) and (rw.jobs[_add.job] or {}) or {});
+        local tracked = {};
+        for _, e in ipairs(intoList) do tracked[e.id] = true; end
 
-            -- Results answer ONE string. If the box came back for "bolt" and the
-            -- text now reads "bolts", we show nothing rather than last question's
-            -- hits (which is what made the old picker feel like it was lying).
-            local answered = (ec.searchFor ~= nil and ec.searchFor == buf);
-            local res = answered and ec.searchResults or nil;
-            if searching then
-                imgui.TextColored(COL_DIM, 'searching the box...');
-            elseif type(res) == 'table' then
-                local shown = 0;
-                for _, r in ipairs(res) do
-                    if not tracked[r.id] then
-                        shown = shown + 1;
-                        imgui.PushID('rsres_' .. tostring(r.id));
-                        imgui.Dummy({ 0, 0 }); imgui.SameLine(NAME_X);
-                        if deps ~= nil and type(deps.renderIcon) == 'function' then deps.renderIcon(r.id, 18); end
-                        imgui.TextColored(COL_TEXT, esc(clip(r.name or ('#' .. tostring(r.id)), NAME_MAX)));
-                        if imgui.IsItemHovered() and r.name ~= nil then imgui.SetTooltip(esc(r.name)); end
-                        imgui.SameLine(BOX_X);
-                        imgui.TextColored(COL_DIM, 'box x' .. tostring(r.qty or 0));
-                        imgui.SameLine(0, GAP);
-                        -- Adding does NOT close the picker: you usually add several
-                        -- (every bolt) from one search. The row simply disappears.
-                        if imgui.SmallButton('+ track##rsadd' .. tostring(r.id)) then
-                            rw.addItem(_add.scope, _add.job, {
-                                id = r.id, name = r.name, ahCat = r.ahCat, stack = stackOf(r.id),
-                            });
-                        end
-                        imgui.PopID();
+        -- Results answer ONE string. If the box came back for "bolt" and the
+        -- text now reads "bolts", we show nothing rather than last question's
+        -- hits (which is what made the old picker feel like it was lying).
+        local answered = (ec.searchFor ~= nil and ec.searchFor == buf);
+        local res = answered and ec.searchResults or nil;
+        if searching then
+            imgui.TextColored(COL_DIM, 'searching the box...');
+        elseif type(res) == 'table' then
+            local shown = 0;
+            for _, r in ipairs(res) do
+                if not tracked[r.id] then
+                    shown = shown + 1;
+                    imgui.PushID('rsres_' .. tostring(r.id));
+                    imgui.Dummy({ 0, 0 }); imgui.SameLine(NAME_X);
+                    if deps ~= nil and type(deps.renderIcon) == 'function' then deps.renderIcon(r.id, 18); end
+                    imgui.TextColored(COL_TEXT, esc(clip(r.name or ('#' .. tostring(r.id)), NAME_MAX)));
+                    if imgui.IsItemHovered() and r.name ~= nil then imgui.SetTooltip(esc(r.name)); end
+                    imgui.SameLine(BOX_X);
+                    imgui.TextColored(COL_DIM, 'box x' .. tostring(r.qty or 0));
+                    imgui.SameLine(0, GAP);
+                    -- Adding does NOT close the picker: you usually add several
+                    -- (every bolt) from one search. The row simply disappears.
+                    if imgui.SmallButton('+ track##rsadd' .. tostring(r.id)) then
+                        rw.addItem(_add.scope, _add.job, {
+                            id = r.id, name = r.name, ahCat = r.ahCat, stack = stackOf(r.id),
+                        });
                     end
+                    imgui.PopID();
                 end
-                if shown == 0 then
-                    imgui.TextColored(COL_DIM, (#res > 0)
-                        and 'every match is already on this list.'
-                        or  'no matches in the box (try a shorter name).');
-                end
-            elseif #buf > 0 then
-                imgui.TextColored(COL_DIM, 'press Search to look in the box.');
             end
+            if shown == 0 then
+                imgui.TextColored(COL_DIM, (#res > 0)
+                    and 'every match is already on this list.'
+                    or  'no matches in the box (try a shorter name).');
+            end
+        elseif #buf > 0 then
+            imgui.TextColored(COL_DIM, 'press Search to look in the box.');
         end
     end
 

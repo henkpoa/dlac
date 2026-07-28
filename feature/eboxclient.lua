@@ -450,6 +450,15 @@ end
 -- query costs a packet, so it goes out when the player asks for it, once).
 -- Results are stamped with the string they answer for (M.searchFor) and the old
 -- set is dropped at send, so nothing on screen can belong to a previous query.
+--
+-- NO PROXIMITY GATE, deliberately (Henrik, field 2026-07-28: "Trove can always
+-- search items when out in the field"). `trove/plugins/ebox.lua` carries no
+-- distance or zone check on any 0x1A4 action, so the server answers a SEARCH
+-- wherever you stand -- the near-box rule was dlac's invention. The NFR this
+-- client exists to serve is untouched: a search is one packet per explicit
+-- click, still behind one-in-flight and MIN_GAP, and the AUTOMATIC traffic
+-- (ensureCategory -- see its note) is what stays near-box only. Withdrawals
+-- keep their caller-side proximity gate: that scope was Henrik's, "search only".
 function M.search(query)
     query = tostring(query or '');
     if query == '' then return false; end

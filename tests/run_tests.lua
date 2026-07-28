@@ -11696,6 +11696,17 @@ end)();
     ecNow = ecNow + ec.BUSY_HOLD + 1;
     check('EBC21c a lost ACK repairs what the BATCH debited',
         ec.isBusy() == false and ec.categoryFresh(15, math.huge) == false, true);
+
+    -- EBC21d. SEARCH IS NOT PROXIMITY-GATED (Henrik, field 2026-07-28: "Trove can
+    -- always search items when out in the field" -- trove/plugins/ebox.lua has no
+    -- distance or zone check on any 0x1A4 action). The near-box rule was ours, and
+    -- it only ever belonged to the AUTOMATIC traffic. Headless has no entity
+    -- watcher, so nearBox() is false here: that is exactly the state this pins.
+    ecNow = ecNow + 100;
+    ec.clearSearch();
+    check('EBC21d a search fires with no box in reach -- the gate lives on FETCHING',
+        ec.nearBox() == false and ec.search('bolt') == true and ec.searchBusy() == true, true);
+    ecNow = ecNow + 100;
     ec.isCW = ecCW;
 
     -- Source shape, because no runtime check can see this one: a local declared

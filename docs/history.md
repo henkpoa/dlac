@@ -6857,9 +6857,32 @@ side. RS9e pins the reported bug directly: a Mog Case copy is held, so it never 
 icon. RS9f pins the new distinctness: an empty box still raises it (`plan.badge == 0`, one
 `homeStockNeed` row).
 
+**Same session, second ruling: the add-picker stops asking you to walk over** (`2026.07.28q`).
+Henrik: *"Trove can always search items when out in the field, maybe we should remove that
+distance limitation as well for search only."* He is right, and the sibling proves it —
+`trove/plugins/ebox.lua` has **no distance or zone check on any 0x1A4 action**; it sends
+SEARCH, GET_SUMMARY, GET_CATEGORY and WITHDRAW whenever its window is open. So the server
+answers a search wherever you stand, and the near-box rule on *ours* was dlac's invention, not
+the protocol's. [[sibling-addons-signature-authority]] again: the answer was on disk.
+
+Worth being precise about what the 07-20 field round actually established, because the doc
+line read broader than the evidence: *"the box range is 5 yalms"* was measured on **fetching**
+(the buttons go dead-red beyond it). Nothing was ever tested about search. The picker's gate
+was inherited from the fetch gate by proximity of code, not of reasoning.
+
+The NFR is untouched, and it is worth saying why rather than asserting it: the rule this
+client exists to serve is *don't put traffic on the wire that nobody asked for*. A search is
+one packet **per explicit click**, still behind one-in-flight and `MIN_GAP`. What stays
+near-box is exactly the traffic with no click behind it — `verifyCategories`, the automatic
+counting — plus withdrawals, which Henrik scoped out himself ("for search only"). The panel's
+proximity line now says what it really means (*"get within 5 to fetch"*), and `/dl debug
+ebox`'s *"too far to query"* became *"too far to fetch or count"* — a readout that overstates
+a gate teaches the wrong model to whoever reads it next. `EBC21d` pins the decision headlessly:
+`nearBox()` false, `search()` still returns true.
+
 **Deferred, and now narrower:** C2's option (b) — *moving* items instead of buying more — only
 ever applied to the field-bag case this revision retires. If the 0x029 move path ever lands it
-belongs in the panel as a convenience, not on this icon. Suites **4200 + 726**, both runtimes.
+belongs in the panel as a convenience, not on this icon. Suites **4201 + 726**, both runtimes.
 Not yet field-tested: the icon's whole trigger now depends on Mog House containers being
 readable from memory while you stand in the field. `gear/gearcheck.lua` has warned *"it is in
 Mog Safe"* during play since the native era, so the reads are proven — but proven for gear in

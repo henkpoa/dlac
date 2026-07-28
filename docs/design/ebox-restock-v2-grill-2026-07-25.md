@@ -31,6 +31,15 @@ to use. Reading the code found three separate defects behind that feeling
 - Search results **hide items already in the list** being added to.
 - Adding an item **does not close the picker** — you often add several (e.g. all the bolts).
   The manual close button already exists.
+- **REVISED 2026-07-28: the picker is NOT proximity-gated.** Henrik: *"Trove can always search
+  items when out in the field, maybe we should remove that distance limitation as well for
+  search only."* Verified in the sibling: `trove/plugins/ebox.lua` has **no distance or zone
+  check on any 0x1A4 action** — the server answers a SEARCH wherever you stand, and the
+  near-box rule on it was dlac's own invention. Building the list is what you do with a spare
+  minute; **fetching** is what needs you at a box, and that gate stays (as does the near-box
+  gate on the automatic counting — the NFR below is about traffic *nobody clicked for*).
+  A search remains one packet per explicit click, behind one-in-flight and `MIN_GAP`. `EBC21d`
+  pins it: a search fires while `nearBox()` is false.
 
 ### B2. Box-quantity polling — the model changed completely
 Henrik's ruling (12:24), which overrode the design we'd been building toward:
