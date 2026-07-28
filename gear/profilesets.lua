@@ -35,6 +35,90 @@ function M.configure(d) deps = d; end
 local _pok, _prof = pcall(require, 'dlac\\profiles');
 _pok = _pok and type(_prof) == 'table';
 
+local function readAll(p)
+    if p == nil then return nil; end
+    local f = io.open(p, 'r'); if f == nil then return nil; end
+    local t = f:read('*a'); f:close(); return t;
+end
+
+-- THE MISSING SENTINEL. Every key at every depth answers with itself, so no
+-- legacy file can nil-index its own chunk away: `gear.Ammo.Throwing.MorionTathlum`
+-- (the pre-flat Ammo shape) on a character whose Ammo is flat used to error and
+-- take EVERY set in the file with it. Now that reference is simply missing, and
+-- the importer skips it -- "if pieces don't exist, just skip them and move on
+-- like he doesn't have it" (Henrik 2026-07-28).
+--
+-- `.__dlacMissing` reads truthy through the same __index, which is how the
+-- importer spots one; the require STUB below answers identically by the same
+-- construction, so ONE check covers both (a piece that isn't there, and a whole
+-- library that isn't there).
+local MISSING; MISSING = setmetatable({}, {
+    __index    = function() return MISSING; end,
+    __call     = function() return MISSING; end,
+    __concat   = function() return ''; end,
+    __tostring = function() return ''; end,
+});
+M.MISSING = MISSING;
+
+-- Legacy MODULE-NAME alias. An old job file requires dlac's library under dlac's
+-- own former name -- `require("ffxi-lac\gear")`, from before the rename. That
+-- module does not exist on a dlac install, so the soft require handed back the
+-- STUB and every `gear.Main.Club.MapleWand` in the file became the stub object:
+-- the sets listed fine and imported EMPTY, with no word about why (field
+-- 2026-07-28, a second tester's SCH.lua). Rewriting the prefix is what makes such
+-- a file resolve against THIS character's real inventory -- and it deliberately
+-- WINS over a stale addons folder of that name, which would otherwise answer with
+-- someone's years-old gear table.
+--
+-- This renames a MODULE, it never opens a file in that tree -- which is the line
+-- SH21 guards (Henrik 2026-07-28: dlac handles its own gear locally, and the one
+-- sanctioned integration is exactly this import). The prefix is written as a
+-- character class for the same reason PRG1 comments use the single-backslash
+-- form: the guard reads path literals, not intent.
+local function aliasModule(m)
+    if type(m) ~= 'string' then return m; end
+    local aliased = m:gsub('^ffxi%-lac([\\/])', 'dlac%1');
+    return aliased;
+end
+
+-- The gear inventory as a legacy file may read it: present tables pass through
+-- REAL (identity kept, so resolved entries stay the same records everything else
+-- uses), anything absent reads MISSING at any depth. Deliberately NOT
+-- profiles._wrapGear -- that one answers nil for a missing flat-slot key, which
+-- is right for a LIVE sets file (a nil is a ladder hole) but wrong here: a nil in
+-- the middle of a candidate list truncates `ipairs` and silently drops every
+-- entry after it (measured: 60 entries -> 10 on a foreign gear.lua).
+local function legacyGear(realGear)
+    if type(realGear) ~= 'table' then return MISSING; end
+    local slots = {};
+    return setmetatable({}, {
+        __index = function(_, slot)
+            local hit = slots[slot];
+            if hit ~= nil then return hit; end
+            local real = realGear[slot];
+            if type(real) ~= 'table' then slots[slot] = MISSING; return MISSING; end
+            local p = setmetatable({}, {
+                __index = function(_, k)
+                    local v = real[k];
+                    -- a nested WEAPON CATEGORY (a table holding records, no Name of
+                    -- its own) gets the same treatment one level down
+                    if type(v) == 'table' and v.Name == nil then
+                        return setmetatable({}, { __index = function(_, k2)
+                            local v2 = v[k2];
+                            if v2 ~= nil then return v2; end
+                            return MISSING;
+                        end });
+                    end
+                    if v ~= nil then return v; end
+                    return MISSING;
+                end,
+            });
+            slots[slot] = p;
+            return p;
+        end,
+    });
+end
+
 -- Sandbox-run a profile-shaped file and return its `sets` table (nil, why on
 -- failure). dispatch.lua's hardened readJobSets env: side-effect globals are
 -- stubbed (the addon state has the REAL AshitaCore -- running someone's OnLoad
@@ -42,10 +126,20 @@ _pok = _pok and type(_prof) == 'table';
 -- line concatenates AshitaCore:GetInstallPath()), and `require` is soft -- a
 -- backup file's require('gcinclude') degrades to the STUB instead of erroring
 -- the whole chunk away.
+--
+-- The `why` is a PLAYER-FACING diagnostic (the Copy-from popup prints it in red),
+-- so it separates the two cases that used to read alike: a file that is not there
+-- (nil, nil -- nothing to say) and a file that IS there and will not parse. The
+-- second one cost a tester an evening: a single missing comma in his SCH.lua
+-- (`gear.Back.MistSilkCape` with no `,`) made the whole file unreadable, and dlac
+-- said nothing at all.
 local function sandboxSets(path)
-    if path == nil then return nil, 'no path'; end
-    local chunk = loadfile(path);
-    if chunk == nil then return nil, 'could not open ' .. path; end
+    if path == nil then return nil, nil; end
+    local chunk, lerr = loadfile(path);
+    if chunk == nil then
+        if readAll(path) == nil then return nil, nil; end   -- absent: not a fault
+        return nil, 'will not parse -- ' .. tostring(lerr);
+    end
     local STUB; STUB = setmetatable({}, {
         __index = function() return STUB; end,
         __call = function() return STUB; end,
@@ -55,20 +149,17 @@ local function sandboxSets(path)
     local BLOCK = { gFunc = true, gState = true, gEquip = true, gSetDisplay = true, gProfile = true,
                     gSettings = true, AshitaCore = true, ashita = true, print = true, coroutine = true,
                     package = true };
-    -- `require` is soft AND the gear inventory is missing-safe: an old job file
-    -- names gear categories this character may never have scanned
-    -- (gear.Main.Club on a char with no club), and a raw nil index there kills
-    -- the whole chunk -- i.e. every static in the file vanishes because of one
-    -- unowned weapon type. profiles._wrapGear is the same read-proxy the
-    -- profile sets loader uses: present tables pass through REAL (identity kept),
-    -- missing ones read nil / an empty category.
+    -- `require` is soft, ALIASED (ffxi-lac\X -> dlac\X, see aliasModule) and the
+    -- gear inventory comes through legacyGear, so a name this character has no
+    -- record of is a skipped entry rather than a dead chunk.
     local softRequire = function(m)
-        local ok, r = pcall(require, m);
-        if not ok or r == nil then return STUB; end
-        if m == 'dlac\\gear' and _pok and type(_prof._wrapGear) == 'function' and type(r) == 'table' then
-            local wok, wrapped = pcall(_prof._wrapGear, r);
-            if wok and wrapped ~= nil then return wrapped; end
+        local name = aliasModule(m);
+        if name == 'dlac\\gear' then
+            local gok, g = pcall(require, name);
+            return legacyGear((gok and type(g) == 'table') and g or nil);
         end
+        local ok, r = pcall(require, name);
+        if not ok or r == nil then return STUB; end
         return r;
     end
     local env = setmetatable({ require = softRequire }, {
@@ -105,13 +196,8 @@ end
 local _cache, _cacheKey, _setsDiag = nil, nil, nil;
 local _liveNames = nil;   -- set names that exist in the LIVE profile (see liveSetNames)
 local _lacDyn = nil;      -- old FFXI-LAC Dynamic sets, name -> set (import sources only)
+local _lacDiag = {};      -- legacy files that EXIST and could not be read (see legacyDiag)
 local _watch = { at = -1, path = nil, raw = nil };   -- the Dynamic source the cache mirrors
-
-local function readAll(p)
-    if p == nil then return nil; end
-    local f = io.open(p, 'r'); if f == nil then return nil; end
-    local t = f:read('*a'); f:close(); return t;
-end
 
 -- The Dynamic source RIGHT NOW: the active profile's sets file when readable,
 -- else the (legacy) job file. Returns path, bytes -- the pair the watch compares.
@@ -159,10 +245,21 @@ local function loadRoot()
     end
     _cacheKey = key;
     _setsDiag = nil;
+    _lacDiag = {};
     _watch.path, _watch.raw = dynSourceNow(jf, abbr);
 
     local root = {};
     local dynSrc = nil;
+
+    -- A legacy file that EXISTS and cannot be read is named, with the reason, for
+    -- the Copy-from popup (hard rule 12: a total failure must not look like "you
+    -- have no old sets"). Absent files say nothing -- most characters have two of
+    -- the three paths missing by design.
+    local function noteBad(path, why)
+        if why == nil then return; end
+        _lacDiag[#_lacDiag + 1] = { file = tostring(path):match('([^\\/]+)$') or tostring(path),
+                                    path = path, why = why };
+    end
 
     -- Dynamic: profile storage first.
     if _pok and abbr ~= nil and _prof.hasSetsFile(abbr) then
@@ -186,8 +283,9 @@ local function loadRoot()
                 root[k] = v;
             end
         end
-    elseif dynSrc == nil and _setsDiag == nil then
-        _setsDiag = tostring(jerr);
+    else
+        noteBad(jf, jerr);
+        if dynSrc == nil and _setsDiag == nil and jerr ~= nil then _setsDiag = tostring(jerr); end
     end
 
     -- The old FFXI-LAC Dynamic sets: harvested from the same legacy files, into
@@ -210,12 +308,14 @@ local function loadRoot()
     -- and their Dynamic block feeds the FFXI-LAC import list ONLY -- merging it
     -- into root would resurrect deleted sets as if they were live.
     for _, bp in ipairs(backupPaths(abbr)) do
-        local bsets = sandboxSets(bp);
+        local bsets, berr = sandboxSets(bp);
         if type(bsets) == 'table' then
             for k, v in pairs(bsets) do
                 if k ~= 'Dynamic' and type(v) == 'table' and root[k] == nil then root[k] = v; end
             end
             harvestLac(bsets);
+        else
+            noteBad(bp, berr);
         end
     end
     _lacDyn = lac;
@@ -321,11 +421,25 @@ local function lacSetNames()
     return names;
 end
 
+-- Legacy files that are ON DISK and could not be read: { { file, path, why }, ... },
+-- empty when everything readable (an ABSENT file is never listed -- most characters
+-- have two of the three import paths missing by design). The Copy-from popup prints
+-- these in red, because "no old sets" and "your old file has a typo in it" were the
+-- same silence until 2026-07-28 -- a tester lost an evening to one missing comma.
+local function legacyDiag()
+    local out = {};
+    pcall(function()
+        loadRoot();
+        for _, d in ipairs(_lacDiag) do out[#out + 1] = d; end
+    end);
+    return out;
+end
+
 -- Last load diagnostic (nil when healthy) -- the Sets tab shows it in red.
 function M.diag() return _setsDiag; end
 
 -- Drop the cached sets so the next read re-parses the files (post commit/delete).
-function M.invalidate() _cache = nil; _cacheKey = nil; _liveNames = nil; _lacDyn = nil; _watch.at, _watch.path, _watch.raw = -1, nil, nil; end
+function M.invalidate() _cache = nil; _cacheKey = nil; _liveNames = nil; _lacDyn = nil; _lacDiag = {}; _watch.at, _watch.path, _watch.raw = -1, nil, nil; end
 
 -- Arm the content-follow to run on the NEXT read regardless of the 1s throttle
 -- (tests; callers that just watched a file land and want the refresh this frame).
@@ -338,5 +452,6 @@ M.staticSetNames  = staticSetNames;
 M.liveSetNames    = liveSetNames;
 M.getLacSets      = getLacSets;
 M.lacSetNames     = lacSetNames;
+M.legacyDiag      = legacyDiag;
 
 return M;

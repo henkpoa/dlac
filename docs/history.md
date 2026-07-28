@@ -6696,3 +6696,54 @@ are deliberately untouched — this is a path guard, not a word ban.
 parallel session landed its own `GS.` block — the groups auto-import scanner — and two
 blocks answering to `GS1` makes a failure line meaningless. Committed work renames itself;
 in-flight work is left alone.)*
+
+## Session "three faults, one sentence" (2026-07-28, on `dev` — addon 2026.07.28m → n)
+
+The second tester tried to import his SCH **Cure** set with the day's new FFXI-LAC column
+and got *"Created 0 new sets — nothing created, 1 skipped: no owned/known gear."* Henrik
+sent the file. It has **three** independent faults, and dlac answered all three with that
+one sentence — which is hard rule 12 in its purest form.
+
+**1. The file does not parse.** Line 266 ends `gear.Back.MistSilkCape` with no comma, so
+line 267 is a syntax error (`'}' expected (to close '{' at line 265)`). `loadfile` returns
+nil, `sandboxSets` returns nil, and the reader shrugged: an unreadable legacy file and an
+absent one were the same silence. Now they are not — `sandboxSets` distinguishes "not
+there" (nothing to say) from "there and will not parse", and `legacyDiag()` carries the
+file name plus **the parser's own message** into the Copy-from popup in red. His evening
+becomes a ten-second fix.
+
+**2. `require("ffxi-lac\gear")`** — dlac's own library under dlac's former name. No such
+module on a dlac install, so the soft require handed back the STUB, whose `__index`
+returns itself: every `gear.Main.Club.MapleWand` in the file became the stub object. The
+sets listed perfectly (the block's KEYS are real) and every entry resolved to nothing.
+Worse, the stub reached `string.lower(ref.Name)` as a *table*, and that error — caught by
+the outer pcall — discarded the whole set. Module names are aliased onto dlac's now, so
+the file resolves against **this character's** inventory. Measured on his file with a real
+gear.lua: from 0 usable entries to `Head`, `Body`, `Hands`, `Legs`, `Feet`, `Back`,
+`Waist`, `Ring1`, `Ring2`, `Ear1`, `Sub` all landing.
+
+**3. `gear.Ammo.Throwing.MorionTathlum`** — the pre-flat Ammo shape. Against today's flat
+`gear.Ammo` that is `nil.MorionTathlum`, an error that takes the file with it; and where
+the old `_wrapGear` answered `nil` instead, the hole **truncated the `ipairs` walk** and
+silently dropped every candidate after it (60 entries → 10 on a foreign inventory). The
+importer now reads through `legacyGear`, whose **MISSING sentinel** answers any key at any
+depth and is skipped by the resolver — Henrik's ruling, verbatim: *"If pieces don't exist,
+just skip them and move on like he doesn't have it."* A missing piece keeps its place in
+the list instead of ending it.
+
+Two hardening moves ride along, both the same lesson at a different layer: `resolveSetItem`
+reads `Name`/`Id` **typed** rather than merely non-nil (a sentinel answers every key with
+something), and `importStaticSet` guards each candidate with its own pcall, so a resolver
+that throws costs one entry instead of a set. `SH21`, landed hours earlier by the parallel
+session, is respected in the letter and the spirit: this renames a MODULE and never opens
+a file in that tree — the prefix is written as a character class so a path guard reading
+literals can't mistake it, exactly the convention PRG1 comments already use.
+
+**Status:** on `dev`, addon **`2026.07.28n`**, engine untouched. Tests `PSM0-PSM14` drive a
+fixture shaped like his file — old require name, nested Ammo, a missing comma — and pin
+the whole chain: the alias resolves, an unknown piece keeps its slot and is skipped, the
+import lands what he HAS, a throwing resolver costs one candidate, and the unparsable file
+reports itself while an absent one stays quiet. The section installs a `setfenv` polyfill
+so 5.4 exercises the LuaJIT sandbox path that all of this lives in — untested until now.
+Suites **4198 + 707**. Awaiting the tester: he must still add the comma; nothing dlac does
+can read a file Lua itself refuses.

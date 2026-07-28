@@ -534,9 +534,19 @@ exactly one catalog nested walk in the codebase.
 
 ### gear/profilesets.lua — profile `sets` reader
 Reads the loaded profile's `sets` table for the Sets tab. In LAC state reads
-`gProfile.Sets`; in addon state parses the current `<JOB>.lua` in a permissive sandbox
-(the gear inventory goes in through `profiles._wrapGear`, so an unowned weapon category
-named by an old file can't nil-index the whole chunk away). Cache hits content-follow
+`gProfile.Sets`; in addon state parses the current `<JOB>.lua` in a permissive sandbox.
+
+**The sandbox is an IMPORTER, so it assumes nothing about the file** (all three learned
+from one tester's SCH.lua, 2026-07-28, whose every symptom was the same sentence — *"no
+owned/known gear"*): module names are **aliased** from dlac's former addon name onto its
+current one, so a file that requires the old library resolves against *this* character's
+inventory instead of a stub; the inventory itself goes in through `legacyGear`, whose
+**MISSING sentinel** answers any key at any depth (`gear.Ammo.Throwing.X` on a flat-Ammo
+inventory is a skipped entry, not a dead chunk, and never a `nil` hole that truncates the
+`ipairs` walk of a candidate list); and a file that is present but unreadable is reported
+by name through `legacyDiag()` — the Copy-from popup prints it in red. Consumers spot a
+sentinel by `.__dlacMissing`, which the require STUB answers identically by construction,
+so one check covers both a missing piece and a missing library. Cache hits content-follow
 the Dynamic source file (1s byte compare) — a Profiles-menu import rewrites the active
 profile's files without moving the cache key. The same follow idiom lives in triggersui's
 edit model (dirty models get a drift banner instead of a silent clobber) and lockstyle's
