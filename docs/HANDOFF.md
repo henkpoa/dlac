@@ -263,12 +263,27 @@ this does not make an accepted entry mergeable *alone*: `dev` promotes
   (*"even I got confused"*). Henrik: *"have it ready to merge to main."* Record:
   history.md "a dynamic set in an old file is an FFXI-LAC set" + architecture.md
   (`gear/profilesets.lua`, `gear/setimport.lua`).
-- **Riding along, not separately accepted: `4d9d7f0` — the whole UI hides on Scroll Lock**
-  (`2026.07.28c`, `feature\gamehud.lua`). It landed on `dev` before this entry existed and
-  was never queued or written up here; `dev` promotes whole-or-not, so the next promotion
-  carries it. Its own commit message is the full record. Fails open by construction (a bad
-  signature read answers "not hidden"), suites were green at **4088 + 693**. **No field
-  report recorded** — if that matters, drive Scroll Lock once before promoting.
+- **ACCEPTED — the whole UI hides with the game's on Scroll Lock** (`4d9d7f0`,
+  `2026.07.28c`). FFXI's own hide-the-interface key blanks the game's HUD for a clean
+  screenshot but never touched an addon's windows, so dlac stayed pasted across every
+  picture (a friend of Henrik's reported it). `feature\gamehud.lua` is the new central
+  service — `gamehud.hidden()`, built on the Velyn signature that `xivbar` and `HXUI`
+  both already ship with in this same Ashita install, so it is field-proven on this
+  client. **Fails open by construction:** unmatched signature, null pointer or headless
+  all answer *not hidden*, because a UI that vanishes on a bad read is a bug no player
+  can explain while one that stays up is merely yesterday's behaviour. ONE consumer, and
+  the one-draw-site law is what makes one enough: a single gate in gearui's `d3d_present`
+  at the seam between what dlac **does** every frame (command queue, uiflags, auto-sync,
+  the macro-book/lockstyle/pin pumps, the wishlist check — all still run) and what it
+  **draws**. Hiding costs no state: every window below that line is already skipped
+  whenever its own flag is off, so each returns where it was. Deliberately the
+  SCREENSHOT flag only — cutscenes and the fullscreen map carry their own signatures
+  (`xivbar` folds all three into one answer; dlac does not, because a cutscene is when
+  you may still want a plan up — Henrik's call to make, still open). Suites **4134 +
+  693** at the dev tip; section `HUD` (10 checks) pins the fail-open paths and the scan
+  cache. Field-confirmed 2026-07-28 — *"Seems to work"* — Henrik: *"can you document
+  this as ready for merge to main?"* Record: the commit message + architecture.md
+  (Central services) + CONTEXT.md (Floating window).
 
 *(Last emptied by the 2026-07-28 promotion of the MaxMP pair-home fix
 `1b8aad2` (`2026.07.28b`): pair homes anchor the idle set's CHOSEN picks only, unchosen
