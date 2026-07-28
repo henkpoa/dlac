@@ -6934,3 +6934,13 @@ into the hover, and that a click reaches `setOn` with the right key and directio
 `setOn` headlessly, including the two things a careless dispatcher gets wrong: HELM must arm
 **Auto HELM** and not the unwired manual idle flag, and an arm refused by the lock must report
 `false`. Suites **4218 + 751**, both runtimes.
+
+**Field round, same day.** Henrik: *"the on and off syncs to hobby bar as well, so seems to be
+the same listener."* Confirmed — and worth naming precisely, because the mechanism is the
+opposite of a listener. Nothing subscribes to anything: every surface **re-reads the watcher's
+live in-memory state each frame** (`idleexcl.getActive()` → `craftwatch.enabled` /
+`helmwatch.autoHelm` / …, one module instance per addon state), so the bar, the badge, the
+detail panels and now the list are all views of the same variable and *cannot* drift. That is
+the same lesson [[ebox-v2-arithmetic-model]] paid for in the other direction — the read that
+looks redundant is what heals a wrong belief. The rule for the next hobby surface: read live,
+never cache an armed flag.
