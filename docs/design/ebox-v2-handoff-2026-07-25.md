@@ -53,23 +53,54 @@ arithmetic and its floor, refusal-repairs-vs-success-doesn't, the settle window,
 the party-line repair and its brakes, the menu rule and its burst coalescing, search
 correlation, the yellow icon's divergence rule, the container pairings.
 
-## 4. NOT verified — the next session's job
+## 4. FIELD ROUND 2 (Henrik, 2026-07-28, on `2026.07.28s`) — 3 of 5 closed
 
-1. **Does dlac hear the `!box store` that TROVE queued?** Type `!box store` yourself, then click
-   trove's Store All, and watch `/dl debug ebox` for both. If trove's does **not** register,
-   `!box <item name>` withdrawals drift our count low silently, and the fallback is to add the
-   tracked-item inventory heuristic back as a narrow safety net.
-2. **The zero-packet promise.** `/dl debug ebox on`, then synth at a box for a few minutes with
-   crystals tracked. Nothing should scroll. (An empty log is also what a dead instrument looks
-   like — EBC23f/g pin that the instrument is alive, so an empty log is now real evidence.)
-3. **Container counting against real inventory.** Track an ammo you hold a pouch for; the panel
-   should read `have x99*` with the star's hover breaking it down. Never run against real bags.
-4. **The nudge's three icons** — imgui is not headless-testable. Green fetch, yellow (needs
-   tracked ammo in a Mog Case/Sack/Satchel while Inventory is short), and red arm-then-confirm.
-   **Do not test red carelessly: `!box store` instantly deposits every storable item you carry.**
-5. **Does the foreign-stream loop return?** If `dirty ... (a foreign 0x1A4 stream overlapped our
-   answer)` reappears, the log now names the intruder: `foreign list ended: rows=N source=S`.
-   That line is the evidence — bring it back.
+1. ~~**Does dlac hear the `!box store` that TROVE queued?**~~ **CONFIRMED — yes, we saw it.**
+   Cross-addon `command` visibility is real, so the `!box` prefix watch covers trove's four
+   commands as designed. **The fallback is dead:** the tracked-item inventory heuristic is not
+   needed and must not be re-added — `!box <item name>` withdrawals cannot drift us low.
+2. ~~**The zero-packet promise.**~~ **CONFIRMED — the design's central claim holds.** Henrik
+   tracked Wind Crystal and synthed at a box: **no packets.** This is the one that justified the
+   whole v2 rewrite, and it is now measured rather than argued — with a *live* instrument
+   (§5's `at`/`when` fix), so the empty log is real evidence and not a dead readout.
+3. **Container counting — STILL OPEN, and it needs an ammo item.** Round 2 ran against Wind
+   Crystal, which has no quiver or pouch, so the `have x99*` star and its breakdown were never
+   exercised. Needs a tracked ammo you hold a quiver/pouch for. **But it surfaced a bigger
+   hole — see §4b, clusters.**
+4. ~~**The nudge's three icons.**~~ **CONFIRMED, including the 07-28 Mog House ruling.** Henrik:
+   *"properly tested and works, it will clearly state if any item is in a non field-container and
+   where, and let you draw extra if you want."* The C2 revision is field-good.
+5. **The foreign-stream loop — INCONCLUSIVE, needs the actual numbers.** Henrik sees
+   `foreign list ended: rows=N source=S` lines. **That line alone is the instrument working**,
+   not the bug: it fires whenever trove or an open box menu talks on 0x1A4 while we have nothing
+   pending. The *loop* symptom is `dirty cat=N (a foreign 0x1A4 stream overlapped our answer)`
+   at ~1/s. Owed: the literal lines. `rows=0` is the dangerous shape (a zero-match search, the
+   E-review-2 case); and **`source` matters because the code is asymmetric** — the commit path
+   requires `source == 0` (`eboxclient.lua:757`, "source 0 = ebox") but the foreign-repair path
+   (`:702-713`, `:750-752`) triggers on **any** source. If the field lines show `source ~= 0`
+   we are repairing against traffic that was never the box.
+
+### 4b. NEW — `!box cluster` is the quiver hole again, for crystals (found 07-28, NOT built)
+`data/ammocontainers.lua` covers quivers and pouches only. **Clusters are the same trick and
+are not in it**, verified in the server clone: `scripts/items/wind_cluster.lua` (ID 4106) is
+`onItemUse → npcUtil.giveItem(target, { { xi.item.WIND_CRYSTAL, 12 } })` — byte-for-byte the
+shape `gen_ammocontainers.py` already parses. Eight elemental clusters, **ids 4104-4111**
+(fire 4104, ice 4105, wind 4106, earth 4107, lightning 4108, water 4109, light 4110, dark 4111),
+each worth **12** of its crystal.
+
+**Why it bites exactly the user we have:** `!box cluster` is one of trove's four commands and one
+of the box's own subcommands, Henrik tracks Wind Crystal, and a cluster is invisible to the
+on-hand scan — so Restock keeps offering to fetch crystals he is already carrying 12×N of. Same
+defect as F3, same fix as G1, same counting rule (a cluster counts toward *"do I have enough"*
+but **never** toward *"is it in my Inventory"* — you cannot synth with a cluster any more than
+you can shoot a quiver; you must break it first).
+
+Mechanical, if Henrik wants it: extend the generator's glob to `*_cluster.lua` / `cluster_of_*.lua`,
+keep every existing rule (single-`giveItem` only, key off `item_basic.sql`, refuse duplicate ids).
+The existing skip logic already handles the non-elemental strays correctly — `cluster_of_paprika`
+is a food (`addStatusEffect`, no `giveItem`) and is dropped; `cluster_of_bitter_memories` is a
+true 12-pack and would be picked up, which is harmless and arguably right. Open naming question:
+the data file is called `ammocontainers` and would no longer be about ammo.
 
 ## 5. Landmines for whoever picks this up
 
