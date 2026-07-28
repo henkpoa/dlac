@@ -249,6 +249,40 @@ merge carries it **without asking him again**. Only he can move an entry to ACCE
 this does not make an accepted entry mergeable *alone*: `dev` promotes
 **whole-or-not-at-all**, so an accepted entry rides the next promotion of the whole branch.
 
+- **ACCEPTED — FIX: commit reads gear.lua's shape, and dlac seeds its own gear**
+  (`49da97f` + `316bcdb`, `2026.07.28e` / `2026.07.28f`). **Two commits, one story** — a
+  field bug from Henrik's friend (`Abraxis_42505`) on a **new install**, and the entry
+  point that put it there. Every `/dl commit` aborted with `gear.lua.tmp:9765: table index
+  is nil`, so **no gear of any slot ever landed**; auto-sync re-staged the same batch and
+  aborted again, leaving 15 byte-identical backups in 90 minutes. `gear.lua` was never
+  written — the `safewrite` rails held throughout, which is why the whole thing was
+  recoverable from the backups alone.
+  **The bug:** his `gear.lua` is a legacy LuAshitacast one that nests **Ammo** by category
+  and declares that in its own trailer; dlac writes Ammo flat, so `spliceStaging` inserted
+  the entry as a *sibling* of the category tables. That text **parses** — so the parse
+  check passed — and the trailer then evaluated `("Bone Arrow").Name` → nil, blamed on the
+  trailer ~6400 lines away. Fixes: `slotShapes` READS each slot's shape and aborts naming
+  the slot; `gearProblems` names the culprit entry and line (shape-**agnostic**, so a
+  consistent legacy file is never flagged); `parseStaging`/`indexGear` now share
+  `hdrAt`/`closeAt` with `parseGearEntries` — an independent latent bug where a
+  comment-suffixed CATEGORY header made commit "create" a section that already existed and
+  **report success while the items never landed**. Plus `dlac.lua`'s boot preload and
+  `gearui.refreshGear` no longer swallow an unloadable `gear.lua` in silence.
+  **The entry point:** `setupui.seedGearFile` had been seeding a new character by
+  *preferring* `<charBase>\ffxi-lac\gear.lua`. Not a purge leak — a kept feature. Henrik's
+  ruling: *"ALWAYS handle your own gear locally in DLAC. ONLY FFXI-LAC integration we
+  should have, is SOLELY on importing dynamic gear."* Bundled template always; guards
+  `SH21` (no core file reads a **path** out of that tree — negative-tested against the
+  pre-change file) and `SH22` (the **content** sniff routing an old profile into the sets
+  migration must survive, so the guard can't be satisfied by deleting the import too).
+  Suites **4136 + 693**, Windows and WSL lua5.4, verified in a detached worktree at the
+  commit. Tests `SH1-22`.
+  **Field status, stated plainly: NOT yet field-confirmed** — unlike the two entries
+  below. Henrik accepted it for merge on the diagnosis and the reproduction, before the
+  friend re-tests (*"Document this as a fix and ready to be merged"*). The friend's
+  re-test is: delete `gear.lua`, let `/dl scan` rebuild it, then `/dl commit`. Record:
+  history.md *"the file that told us its own shape, and we did not listen"* + its
+  follow-up section.
 - **ACCEPTED — the old FFXI-LAC *Dynamic* sets import** (`2026.07.28d`). Copy-from's
   legacy column now carries both kinds an old `<JOB>.lua` holds: **Old FFXI-LAC sets**
   (its `sets.Dynamic` block — dlac's own sets from before profile storage) above **Old
@@ -369,7 +403,8 @@ research already recorded. In rough priority order:
   column with dim `Dynamic` / `Static` sub-headers under one blue heading, and *"Static atm
   is greyed out like dynamic, so it's hard to notice… even I got confused"*. Group labels
   are not dim.
-- **2026-07-28: dlac seeds its OWN gear.lua, always — ON `dev`** (`2026.07.28f`).
+- **2026-07-28: dlac seeds its OWN gear.lua, always — ON `dev`, ACCEPTED** (`2026.07.28f`;
+  merge-queue entry above carries it together with `2026.07.28e`).
   Henrik's ruling once the entry below was diagnosed: *"ALWAYS handle your own gear
   locally in DLAC. ONLY FFXI-LAC integration we should have, is SOLELY on importing
   dynamic gear."* `setupui.seedGearFile` used to **prefer** an existing
@@ -416,7 +451,9 @@ research already recorded. In rough priority order:
   empty template — GUI shows no gear, every scan calls every item new, nothing says why.
   Suites **4134 + 693**, Windows and WSL lua5.4; reproduced and re-verified against his
   real 8,895-line file. Henrik's remedy for the friend: delete `gear.lua`, let `/dl scan`
-  rebuild it flat. **Not in the merge queue: not yet field-tested.**
+  rebuild it flat. **ACCEPTED into the merge queue above** on the diagnosis and the
+  reproduction, before the friend re-tests — the one entry there that is not
+  field-confirmed, and the queue says so.
 - **2026-07-28: MaxMP pair homes anchor CHOSEN picks only — ON MAIN, FIELD-CONFIRMED**
   (`2026.07.28b`, promoted 2026-07-28 on Henrik's "push to main").
   Henrik's own diagnosis of the stage 6 field oddity (Outlaws
