@@ -101,3 +101,16 @@ even grips off an H2H main, and a shield equipped onto one knocks the MAIN off
   Any real pick replaces it; `loadCraftState` only overrides from a
   non-empty persisted value, so an old `craft=""` state file heals to the
   default. T14b pins it.
+- **The Populox rings (2026-07-28, panel only):** the EXP Ventures exchange sells
+  Craftkeeper's / Artificer's Ring (1,000), Craftmaster's Ring (2,000) and
+  Midras's Helm +1 (3,000); Craftmaster's Ring +1 comes off the Port Jeuno
+  synergy furnace for the NQ ring + 3x Guild Token (CatsEyeXI never implemented
+  the synergy minigame — you trade to the furnace). All four carry a FLAT synth
+  mod rather than a per-craft one, so the ladders above already scored them the
+  day the catalog learned them; the panel just never named them. They now render
+  in the matrix's third column under a `Ventures` divider, and `CRAFT_UI.level()`
+  counts them as craft gear (it used to answer "nothing applicable" to a
+  Craftmaster's-only character while the engine was equipping the ring).
+  Note the one asymmetry left standing: `SynthMaterialLoss` feeds `nqScore` only,
+  so Craftkeeper's Ring can never be picked for `hq`/`skillup` — a scoring change,
+  parked for Henrik.

@@ -249,11 +249,16 @@ merge carries it **without asking him again**. Only he can move an entry to ACCE
 this does not make an accepted entry mergeable *alone*: `dev` promotes
 **whole-or-not-at-all**, so an accepted entry rides the next promotion of the whole branch.
 
-*(Empty — last emptied by the FOURTH 2026-07-28 promotion: `2026.07.28n`, the legacy-import
+*(Empty — last emptied by the FIFTH 2026-07-28 promotion: `2026.07.28o`, the Ventures rings
+in the Crafting Gear panel, promoted on Henrik's *"push to main"* **before its field round**
+— the second deliberate inversion today, and a cheaper one: display plus one coverage light,
+no scoring change, so the worst case is a panel column reading wrong. It rode with the
+already-on-dev docs commit confirming the legacy-import fix. Before that, the FOURTH
+2026-07-28 promotion: `2026.07.28n`, the legacy-import
 robustness fix, promoted **deliberately un-field-confirmed** on Henrik's *"push to main so
 he can test"* — the second tester cannot re-test the thing that broke for him unless it is
-on main first. His re-test is still owed and the Current-state entry says so; nothing else
-was riding. Before that, the THIRD 2026-07-28 promotion: `2026.07.28m`, the fishing
+on main first. **He confirmed it the same hour** (*"it works"*), so the inversion paid for
+itself; nothing else was riding. Before that, the THIRD 2026-07-28 promotion: `2026.07.28m`, the fishing
 ventures wrap fix, field-confirmed by Henrik the same hour ("Works") and promoted on his
 "push to main"; it rode with the integration session-handover doc commit. The entry that
 follows records it. Before that, the SECOND 2026-07-28 promotion: the whole `dev` train
@@ -319,9 +324,38 @@ research already recorded. In rough priority order:
 
 ## Current state (as of 2026-07-26)
 
-- **2026-07-28: three faults, one sentence — the tester's SCH import — ON MAIN (promoted
-  un-field-confirmed, on purpose), the tester's re-test owed** (`2026.07.28n`; Henrik:
-  *"push to main so he can test"* — he cannot re-test what broke for him until it ships). He tried to import his **Cure** set with the new
+- **2026-07-28: the Ventures rings reach the Crafting Gear panel — ON MAIN, field round
+  owed** (`2026.07.28o`; promoted the same hour on Henrik's *"push to main"*, deliberately
+  un-field-confirmed — the second such call today. It is display + one coverage light with
+  no scoring change, so the blast radius is a panel column). Henrik, with the two wiki pages: the EXP Ventures exchange belongs
+  in Gear Helpers → Crafting Gear — Craftkeeper's / Artificer's Ring at 1,000, Craftmaster's
+  at 2,000 — plus the **+1** upgrade through Synergy. The rings were never invisible to the
+  ENGINE: all four sit in the catalog with their synth mods and the craft ladders are
+  data-driven off exactly those stats, so an owned Craftmaster's Ring has been equipping on
+  the `hq` goal all along. Only the *panel* omitted them, which meant it answered "what
+  should I go get?" with eight guild grinds and no mention of Populox. They render in the
+  **third** column under a `Ventures` divider (a per-row price tag needs a column with
+  nothing to its right); Midras's Helm +1 moved into the same block — same exchange, 3,000
+  — because one home per item beats two. Prose lives in hovers per the panel-text standard:
+  Populox at Upper Jeuno (I-11), and the Port Jeuno furnace wanting **3x Guild Token** for
+  the +1 (CatsEyeXI never implemented the synergy minigame — no skill, fewell or rank). The
+  `Torques`/`Rings` headers became help labels for the Artisan's +1 halves, one string
+  re-worded by gsub so they cannot drift. **One bug fell out of listing them:**
+  `CRAFT_UI.level()` counted only guild gear, so a Craftmaster's-only character read
+  *"nothing applicable"* while the ladder was equipping the ring; Populox rings now count as
+  level 1 and that label reads "basic craft gear". New smoke `CV0-CV14` drives the **real**
+  craft detail view — it had **no** render coverage, and `renderTab` swallows render errors
+  in a pcall, so a typo'd upvalue would have blanked the panel in-game and passed every load
+  test. Suites **4198 + 726**. Display + one coverage light; **no scoring change**. Not in
+  Open question left for him:
+  Craftkeeper's Ring scores only on `nq` (`SynthMaterialLoss` is read into `nqScore` and
+  nowhere else) — arguably it helps every goal, but that moves what the engine equips.
+- **2026-07-28: three faults, one sentence — the tester's SCH import — ON MAIN,
+  FIELD-CONFIRMED** (`2026.07.28n`; promoted un-field-confirmed on Henrik's *"push to main
+  so he can test"*, confirmed within the hour: *"it works"*). The parse error was **his own
+  hand edit**, not decay: he had removed an even-older aug-suffixed entry
+  (`MistSilkCapeAug`) from the list and not put the comma back — which is the ordinary way
+  a legacy file breaks, and exactly why the red parse line earns its place. He tried to import his **Cure** set with the new
   FFXI-LAC column and got *"Created 0 new sets — nothing created, 1 skipped: no owned/known
   gear."* Henrik sent the file; it carries **three** independent faults, and dlac answered
   all three with that one sentence (hard rule 12, undiluted). **(1)** It does not parse —

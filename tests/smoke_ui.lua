@@ -3521,6 +3521,140 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- Crafting Gear panel: the Ventures block (2026-07-28). The craft DETAIL view
+-- had no render coverage at all -- section 8 only exercises the manifest
+-- ladders -- and renderTab wraps renderAutomations in a pcall, so a fresh
+-- typo'd upvalue (the silent-nil-global class) would blank the panel in the
+-- field and pass every load test. So: stub imgui, re-require automationsui
+-- against it, drive the REAL craft view and assert the rows/prices/hovers
+-- actually reached the screen.
+-- ---------------------------------------------------------------------------
+;(function()
+    local saved = { imgui = package.loaded['imgui'], aui = package.loaded['dlac\\ui\\automationsui'] };
+    local log = {};
+    local function nop() end
+    local IM = {};
+    for _, n in ipairs({ 'Text', 'TextWrapped', 'SameLine', 'Spacing', 'Separator', 'Dummy',
+        'Image', 'PushItemWidth', 'PopItemWidth', 'BeginGroup', 'EndGroup', 'NewLine',
+        'PushID', 'PopID', 'PushStyleColor', 'PopStyleColor', 'PushStyleVar', 'PopStyleVar',
+        'InputText', 'EndCombo', 'Indent', 'Unindent' }) do
+        IM[n] = nop;
+    end
+    IM.TextColored   = function(_, t) log[#log + 1] = tostring(t); end
+    IM.SetTooltip    = function(t) log[#log + 1] = tostring(t); end
+    IM.Button        = function() return false; end
+    IM.Selectable    = function() return false; end
+    IM.Checkbox      = function() return false; end
+    IM.InputInt      = function() return false; end
+    IM.BeginCombo    = function() return false; end
+    IM.IsItemHovered = function() return true; end     -- reveal every helpLabel tip
+    IM.IsItemClicked = function() return false; end
+    IM.GetWindowWidth        = function() return 900; end
+    IM.GetContentRegionAvail = function() return 860; end
+    IM.GetCursorScreenPos    = function() return 0, 0; end
+    IM.GetItemRectMin        = function() return 0, 0; end
+    IM.GetItemRectMax        = function() return 20, 10; end
+    IM.GetWindowDrawList     = function() return { AddLine = nop }; end
+    IM.GetColorU32           = function() return 0xFFFFFFFF; end
+
+    -- Just enough catalog for the Ventures column. A directory that does not
+    -- exist keeps autoPath() non-nil (the render gate) while the manifest read
+    -- fails harmlessly inside the module's own pcalls. The WRITE is stubbed out
+    -- below rather than trusted to fail: rendering a stale-fmtver manifest
+    -- triggers a self-healing rescan, and on a POSIX runner (the WSL lua5.4 CI
+    -- parity run) this backslash path is a legal FILENAME -- the first version
+    -- of this test dropped a literal `.\tests\__no_such_dir__\autogear.lua` in
+    -- the repo root. A test may not write outside its own fixtures.
+    local TMP = '.\\tests\\__no_such_dir__\\';
+    local realOpen = io.open;
+    io.open = function(p, mode)                        -- luacheck: ignore
+        if type(mode) == 'string' and mode:find('[wa+]') then return nil; end
+        return realOpen(p, mode);
+    end;
+    local CAT = {
+        { Name = 'Craftkeepers Ring',    Id = 28585, Level = 1, Slot = 'Ring', Type = 'Ring',
+          Jobs = { 'All' }, Stats = { SynthMaterialLoss = 1 } },
+        { Name = 'Artificers Ring',      Id = 28587, Level = 1, Slot = 'Ring', Type = 'Ring',
+          Jobs = { 'All' }, Stats = { SynthSuccessRate = 1 } },
+        { Name = 'Craftmasters Ring',    Id = 28586, Level = 1, Slot = 'Ring', Type = 'Ring',
+          Jobs = { 'All' }, Stats = { SynthHQRate = 1 } },
+        { Name = 'Craftmasters Ring +1', Id = 26171, Level = 1, Slot = 'Ring', Type = 'Ring',
+          Jobs = { 'All' }, Stats = { SynthHQRate = 2 } },
+        { Name = 'Midrass Helm +1',      Id = 27000, Level = 1, Slot = 'Head', Type = 'Head',
+          Jobs = { 'All' }, Stats = { SynthSkillGain = 3 } },
+    };
+    local ownedIds = { [28586] = 1 };                  -- ONLY Craftmaster's Ring
+    local deps = {
+        dataDir      = function() return TMP; end,
+        charBase     = function() return TMP; end,
+        lookupByName = function(n) for _, r in ipairs(CAT) do if r.Name == n then return r; end end return nil; end,
+        lookupById   = function(id) for _, r in ipairs(CAT) do if r.Id == id then return r; end end return nil; end,
+        ownedCounts  = function() return ownedIds; end,
+        ownedList    = function()
+            local o = {};
+            for _, r in ipairs(CAT) do if (ownedIds[r.Id] or 0) > 0 then o[#o + 1] = r; end end
+            return o;
+        end,
+        allEquipList = function() return CAT; end,
+        haveInBags   = function() return true; end,
+        playerJob    = function() return 'WHM'; end,
+        renderIcon   = nop,
+        itemTooltip  = nop,
+    };
+
+    package.loaded['imgui'] = IM;
+    package.loaded['dlac\\ui\\automationsui'] = nil;
+    local ok, aui = pcall(require, 'dlac\\ui\\automationsui');
+    check('CV0 automationsui re-requires against a stub imgui', ok and type(aui) == 'table', true);
+    if ok and type(aui) == 'table' then
+        aui.init(deps);
+        aui.openDetail('craft');
+        local rok = pcall(aui.renderTab, 'WHM', 99);
+        check('CV1 the Crafting Gear detail view renders', rok, true);
+        local text = table.concat(log, '\n');
+        local function said(s) return text:find(s, 1, true) ~= nil; end
+        -- The view got all the way to the third column (renderTab swallows
+        -- errors, so reaching the LAST row is the only honest liveness proof).
+        check('CV2 the matrix headers render', said('Torques') and said('Rings') and said('Universals'), true);
+        check('CV3 the Ventures section renders', said('Ventures'), true);
+        for _, n in ipairs({ 'Craftkeepers Ring', 'Artificers Ring', 'Craftmasters Ring',
+                             'Midrass Helm +1', 'Craftmasters Ring +1' }) do
+            check('CV4 Ventures row: ' .. n, said(n), true);
+        end
+        -- Prices are the whole point of the block -- a row without its tag is
+        -- an item the player cannot find.
+        check('CV5 the 1,000-point rows are priced', said('1,000 pts'), true);
+        check('CV6 Craftmaster\'s Ring is priced',   said('2,000 pts'), true);
+        check('CV7 Midras\'s Helm +1 is priced',     said('3,000 pts'), true);
+        check('CV8 the +1 reads as a synergy upgrade', said('synergy'), true);
+        -- The hovers: where you buy them, and what the furnace wants.
+        check('CV9 the Ventures hover names Populox', said('Populox, Upper Jeuno (I-11)'), true);
+        check('CV10 the +1 hover names the token cost', said('3x Guild Token'), true);
+        -- The column headers carry the Artisan's upgrade note, and the Rings
+        -- header is the Torque text re-worded (the gsub must not leak "Torque").
+        check('CV11 the Torques header explains its +1', said('Artisan\'s Torque +1: the Synergy furnace'), true);
+        check('CV12 the Rings header is re-worded, not copied', said('Artisan\'s Ring +1: the Synergy furnace'), true);
+        -- Coverage light: owning a Populox ring is owning craft gear. Before
+        -- 2026-07-28 this read "nothing applicable" while the ladders were
+        -- already equipping the ring.
+        local function craftTxt()
+            for _, r in ipairs(aui.listRows() or {}) do
+                if r.key == 'craft' then return r.txt; end
+            end
+            return nil;
+        end
+        check('CV13 a Craftmaster\'s-only character reads as owning craft gear',
+            craftTxt(), 'basic craft gear');
+        ownedIds = {};
+        check('CV14 ...and an empty bag still reads nothing applicable',
+            craftTxt(), 'nothing applicable');
+    end
+    io.open = realOpen;
+    package.loaded['imgui'] = saved.imgui;
+    package.loaded['dlac\\ui\\automationsui'] = saved.aui;
+end)();
+
+-- ---------------------------------------------------------------------------
 -- verdict
 -- ---------------------------------------------------------------------------
 if #failures > 0 then
