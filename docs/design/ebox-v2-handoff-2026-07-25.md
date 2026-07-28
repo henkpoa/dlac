@@ -1,6 +1,7 @@
 # E-Box Restock v2 — handoff (2026-07-25 evening)
 
-**Pick this up here.** Built, **partly field-tested**, on `main` since the `7231143` merge.
+**Pick this up here.** Built, **field-confirmed — both rounds CLOSED** (last check 07-28
+22:54), on `main` since the `7231143` merge.
 `addon.version 2026.07.25e`. 3420 checks green on Windows lua **and** WSL lua5.4.
 
 - The design + the whole decision record: **`docs/design/ebox-restock-v2-grill-2026-07-25.md`**
@@ -45,15 +46,20 @@ server clone at `~\scripts\catseyexi`. Re-run it if CatsEye adds ammo, tools or 
   seconds he browsed** → fired only when items actually moved at `18:47:13`.
 - ~~`/dl debug ebox` prints and reads correctly in game.~~ **WITHDRAWN 07-28 — this was a false
   positive, see §5.** It printed the *empty-ring* line; the first time it had an event to
-  format it threw and Ashita unloaded the addon. Fixed in `2026.07.28s`; **still owed a real
-  field round with traffic in the ring.**
+  format it threw and Ashita unloaded the addon. Fixed in `2026.07.28s`; ~~still owed a real
+  field round with traffic in the ring~~ **PAID 07-28 22:54 — the bare snapshot formatted a
+  live 11-event ring spanning 1h24m (every line takes the `e.at` arithmetic path) and dlac
+  stayed loaded. The header quantified the promise while it was at it: `1 packet sent, 4
+  received, over 1h24m (0.0/min)`, standing 1.9 yalms from the box. And cat 35 sat dirty
+  while IN RANGE with no re-count — the lazy re-count working: nobody asked for the number,
+  so no packet was spent on it.**
 
 **Headless (3420 checks, both runtimes):** the whole model — believe/dirty/re-count, debit
 arithmetic and its floor, refusal-repairs-vs-success-doesn't, the settle window, PEND_HOLD,
 the party-line repair and its brakes, the menu rule and its burst coalescing, search
 correlation, the yellow icon's divergence rule, the container pairings.
 
-## 4. FIELD ROUND 2 (Henrik, 2026-07-28, on `2026.07.28s`) — 3 of 5 closed
+## 4. FIELD ROUND 2 (Henrik, 2026-07-28, on `2026.07.28s`; item 5 on the evening build) — CLOSED, 5 of 5
 
 1. ~~**Does dlac hear the `!box store` that TROVE queued?**~~ **CONFIRMED — yes, we saw it.**
    Cross-addon `command` visibility is real, so the `!box` prefix watch covers trove's four
@@ -70,15 +76,28 @@ correlation, the yellow icon's divergence rule, the container pairings.
 4. ~~**The nudge's three icons.**~~ **CONFIRMED, including the 07-28 Mog House ruling.** Henrik:
    *"properly tested and works, it will clearly state if any item is in a non field-container and
    where, and let you draw extra if you want."* The C2 revision is field-good.
-5. **The foreign-stream loop — INCONCLUSIVE, needs the actual numbers.** Henrik sees
-   `foreign list ended: rows=N source=S` lines. **That line alone is the instrument working**,
-   not the bug: it fires whenever trove or an open box menu talks on 0x1A4 while we have nothing
-   pending. The *loop* symptom is `dirty cat=N (a foreign 0x1A4 stream overlapped our answer)`
-   at ~1/s. Owed: the literal lines. `rows=0` is the dangerous shape (a zero-match search, the
-   E-review-2 case); and **`source` matters because the code is asymmetric** — the commit path
-   requires `source == 0` (`eboxclient.lua:757`, "source 0 = ebox") but the foreign-repair path
-   (`:702-713`, `:750-752`) triggers on **any** source. If the field lines show `source ~= 0`
-   we are repairing against traffic that was never the box.
+5. ~~**The foreign-stream loop — INCONCLUSIVE, needs the actual numbers.**~~ **CLOSED 07-28
+   evening — no loop, and the intruder is named: trove's own ebox streams.** The round's
+   reasoning, kept for the record: the *loop* symptom is `dirty cat=N (a foreign 0x1A4 stream
+   overlapped our answer)` at ~1/s; `rows=0` is the dangerous shape (a zero-match search, the
+   E-review-2 case); and `source` mattered because the commit path requires `source == 0`
+   (`eboxclient.lua:757`) while the foreign-repair path (`:702-713`, `:750-752`) triggers on
+   **any** source.
+
+   The literal lines (echo live through a deliberately noisy session: trove recipe-withdraw of
+   12 Wind Crystals + 12 Arrowwood Logs, two synths, `!box cluster` twice, `!box ammo` once):
+   - `21:30:29  < foreign list ended: rows=0 source=0`
+   - `21:30:42  < foreign list ended: rows=0 source=0` — same second as both obtain lines
+   - **zero repair lines all session** — the 07-25 ~1/s loop is dead, both brakes held
+   - three clean arm → items-move → `dirty ALL` cycles, and the whole session cost **one
+     packet**: `> GET_CATEGORY cat=56 (verify)` → `< LIST cat=56 rows=11`
+
+   Reading it: `source=0` means the foreign traffic **is** the ebox module — trove's
+   withdraw-response streams — so the commit/repair asymmetry never met a non-box stream in
+   the field; leave that code alone. The `rows=0` streams landed while nothing was pending and
+   were logged-and-ignored, which is the design working (the E-review-2 overlap stays
+   theoretical, covered by the self-repair). **But the session surfaced a gap this round never
+   asked about — §4c.**
 
 ### 4b. `ammocontainers` → `itembundles` — the glob was the bug (DONE 07-28, `2026.07.28t`)
 Chasing "does `!box cluster` have the quiver problem too?" found that the **glob itself** was the
@@ -112,6 +131,36 @@ server's own: present in `item_equipment.sql` or `item_weapon.sql` ⇒ gear ⇒ 
 5417. Keying off `item_basic.sql` (the rule the oberon/dweomer clash bought) is what kept both
 rows. Pinned by `AC4b`.
 
+### 4c. Trove ALSO injects raw 0x1A4 — the `!box` watch misses its recipe/vault flows (FOUND 07-28 evening; **RULED same night: accepted cost, no watch**)
+
+§4.1 confirmed dlac hears the four `!box` commands trove QUEUES (`trove/plugins/ebox.lua:594`,
+`:628`, `:641`, `:649` — all `QueueCommand`). But trove speaks the wire directly too:
+`trove/utils/packet.lua` builds 0x1A4 (`C2S.WITHDRAW = 2`) and `sendRaw`s it via
+`AddOutgoingPacket`, and the recipe-materials flow uses exactly that
+(`trove/core/crafting.lua:140-143`). Henrik's 12x Wind Crystal + 12x Arrowwood Log withdraw
+arrived with **no chat command** — nothing armed, nothing debited, nothing dirtied. The
+crystal/log beliefs sat stale-HIGH from `21:30:42` until his own `!box cluster` dirtied ALL at
+`21:31:39`.
+
+Blast radius: a wrong panel/yellow-icon number until the next `!box` command — or until a fetch
+is refused, because refusal-repairs already heals it at the moment it matters. Self-limiting and
+self-correcting, but silent — and §4.1's "the fallback is dead" was argued on the premise that
+all of trove's box traffic is command-visible. It is not.
+
+The precise fix, if wanted (NOT built — Henrik's call): eboxclient registers `packet_out` for
+0x1A4; an outgoing WITHDRAW we did not send ourselves → dirty ALL. Own-send discrimination gets
+bookkept at the send site (`eboxclient.lua:253`) — assume our own injected sends may echo back
+through our own hook. One dlacprobe minute first: confirm an `AddOutgoingPacket`-injected 0x1A4
+is visible to another addon's `packet_out` at all. Do NOT resurrect the v1 inventory heuristic
+for this — the wire says it plainly.
+
+**Henrik's ruling, same night: DECLINED.** *"I don't really see the win in trying to keep track
+of everything trove does, I just don't want our addon to send packets needlessly."* The mission
+is dlac not spamming — not mirroring the box against all comers. The stale-high window
+self-heals at every moment that matters (next `!box` command, refused fetch), so the watch
+stays unbuilt. Do not re-propose it; the only thing that reopens this is field evidence of a
+stale belief that did NOT self-heal.
+
 ## 5. Landmines for whoever picks this up
 
 - **`/dl debug <topic>` was unreachable from `/dl` for its whole life.** The router matched
@@ -123,6 +172,10 @@ rows. Pinned by `AC4b`.
   opcode. A foreign stream landing while our GET_CATEGORY is out is consumed as our answer. It
   **cannot be prevented** — only made self-correcting. Any future 0x1A4 work must assume someone
   else is talking.
+- **Trove also INJECTS raw 0x1A4** (`utils/packet.lua` `sendRaw`; recipe + vault flows) — the
+  `!box` command watch covers only its four `QueueCommand` paths. dlac registers no `packet_out`,
+  so a foreign outgoing WITHDRAW is invisible and box beliefs go stale-high until the next
+  `!box` command or a refused fetch. **Accepted cost by ruling — no watch (§4c).**
 - **A `!box ...` command does not change the box** — it opens a *menu*, and an open menu streams
   0x1A4 lists of its own. We arm and wait for inventory movement as proof, and stay off the wire
   while armed.
@@ -162,6 +215,9 @@ rows. Pinned by `AC4b`.
   (`qty u32 @0x04, from @0x08, to @0x09, fromSlot @0x0A, toSlot @0x0B`; success = 2× `0x020` +
   `0x01D`). Open question for that day: does a moved partial stack merge into an existing
   Inventory stack, or take a fresh slot the way box withdrawals do?
+- ~~**Hear trove's direct withdraws (§4c)**~~ — **DECLINED 07-28**: tracking trove is not the
+  mission, the mission is not sending needless packets. §4c carries the ruling and the one
+  condition that would reopen it.
 - **Opening a quiver from the panel.** We can count containers now but not open them; `!box ammo`
   fills your bags with quivers and the only way to use one is manually. `feature/useitem` exists
   and is the obvious seam. Not designed, not asked for — Henrik's call.
