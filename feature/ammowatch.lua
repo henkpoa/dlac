@@ -75,7 +75,7 @@ end
 -- Serializer, pure (tests AW*): stable multi-line output, %q for names.
 function M._serialize(jobsData)
     local L = {
-        '-- dlac AutoAmmo state -- written by the GUI (Automations > AutoAmmo).',
+        '-- dlac ammo-rule state -- written by the GUI (Gear Helpers > Ammo).',
         '-- The dispatch engine (v74+) reads this per second; edit via the GUI.',
         '-- fmt 2: one section per job (each keeps its own list and on/off).',
         'return {',

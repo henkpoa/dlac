@@ -102,7 +102,7 @@ end
 function M._serialize(cfg)
     cfg = cfg or {};
     local L = {
-        '-- dlac E-Box Restock config -- written by the GUI (Automations > E-Box Restock).',
+        '-- dlac E-Box Restock config -- written by the GUI (Gear Helpers > E-Box Restock).',
         '-- Per-character; NOT a Statefile (no engine reads it). See docs/design/ebox-restock.md.',
         'return {',
         '    fmt = 1,',

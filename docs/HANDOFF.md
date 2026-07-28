@@ -249,12 +249,20 @@ merge carries it **without asking him again**. Only he can move an entry to ACCE
 this does not make an accepted entry mergeable *alone*: `dev` promotes
 **whole-or-not-at-all**, so an accepted entry rides the next promotion of the whole branch.
 
-*(Empty -- last emptied by the 2026-07-28 promotion of the MaxMP pair-home fix
-`1b8aad2` (`2026.07.28b`): pair homes anchor the idle set's CHOSEN picks only, unchosen
-ladder rungs float -- Henrik's own diagnosis, field-confirmed same day ("Now it
-works!"). The promotion also carried the integration-surface design docs (designed,
-not built). history.md "the earring that could never equip" +
-docs/design/maxmp-mode.md are the record.)*
+*(Empty — last emptied by the SECOND 2026-07-28 promotion: the whole `dev` train
+`2026.07.28c`–`2026.07.28l` went to main on Henrik's "push it all to main". It carried
+four ACCEPTED entries — the **Integration surface end to end + the Arbiter Monitor**
+(v152–v154; field-confirmed by eye and by dlacprobe: "I can see the events happening…
+it is streaming as we think"; invalidate/confirm/anchors/queries headless-only until
+the parser friend connects), the **gear.lua shape fix + seed-own-gear ruling**
+(`e`/`f` — accepted un-field-confirmed on the diagnosis; the friend's re-test still
+owed), the **old FFXI-LAC Dynamic sets import** (`d`, field-confirmed), and the
+**Scroll Lock hide** (`c`, field-confirmed "Seems to work" — `gamehud.hidden()`
+central service, fails open, one gate at gearui's draw seam; record: the commit
+message + architecture.md Central services + CONTEXT.md Floating window) — plus the
+**"Gear Helpers" display rename** (`j`) riding whole-or-not ahead of its own field
+round. Full records: the dated entries below, `docs/design/integration-surface.md`
+§13, history.md, architecture.md.)*
 
 ## What's left (open work, as of 2026-07-25)
 
@@ -273,7 +281,9 @@ research already recorded. In rough priority order:
    static/group/whole-block imports + the migrate carriers, all intact).
    **ON MAIN since 2026-07-27** (field-confirmed on Mindie, promoted on Henrik's
    "go ahead"). Only open thread: the three-way import field round (static / group /
-   Copy-from-static) — guard-tested, not yet field-driven.
+   Copy-from-static) — guard-tested, not yet field-driven. The Copy-from leg grew a
+   fourth source on 2026-07-28 (the old files' `sets.Dynamic` block) and a second
+   backup home; that ride wants the same field round.
 1. **FIELD TEST the 07-25 release.** Henrik approved the Menu/Settings **visuals**, but
    the **Mode library has not been driven in-game at all**. Everything in it is
    headless-tested only; the suites stub imgui by design, so popup behaviour, the
@@ -300,6 +310,145 @@ research already recorded. In rough priority order:
 
 ## Current state (as of 2026-07-26)
 
+- **2026-07-28: "Automations" is now "Gear Helpers" — ON `dev`, NOT yet field-confirmed**
+  (`2026.07.28j`). A **GM** objected to the naming: a tab called *Automations* full of
+  *Auto \<activity\>* rows reads as *the addon plays for you*, and botting is not allowed
+  on CatsEyeXI. Henrik brought it as a naming question. The diagnosis: a synonym for
+  "automation" fixes nothing — the rows were named after the **activity** ("Auto Fish
+  Set"), when every one of them only picks **equipment**. So the rename **names the gear,
+  not the act**: tab **Gear Helpers**; rows **Elemental Staff**, **Elemental Obi**,
+  **Oneiros Grip**, **Ammo**, **MaxMP**, **Crafting Gear**, **Gathering Gear**, **Fishing
+  Gear**, **Chocobo Gear**, **E-Box Restock**; Kind column **gear rule (Main slot)** /
+  **hobby gear (idle only)**. HELM's proximity switch speaks **armed / ARMED** instead of
+  "Auto HELM is ON" (the verb `helmbar` already used). A standing line sits above the list
+  and in the guide: *"dlac equips gear. It never acts for you — you still cast, craft, fish
+  and dig."* — the reply to the objection, on screen, permanently.
+  **Display-only, and that boundary is the point:** `dlac:Auto*` slot markers are on-disk
+  contracts inside users' set files, row `key`s index `openDetail`/`AUTO_SECTIONS`/the quick
+  menu, and Arbiter claimant names are persisted in `arbstate` **and printed by `/dl why`**
+  — none of them moved. So the Claim Priority list still reads **AutoAmmo** while its own
+  row reads **Ammo**: deliberate, because chat and UI must agree. Renaming the claimant is a
+  separate engine-side change (registry + arbstate migration) — the one loose end.
+  The full split is a table in architecture.md ("Naming: display labels vs internal
+  names"); `CONTEXT.md` retires **Automation** as user-facing vocabulary in favour of
+  **gear helper** / **gear rule**. `host.selectTab` matches on the tab LABEL, so
+  `gearui.openAutomation` and smoke_ui `S10b` moved with it. Also renamed: the Equipped
+  tab's per-piece **Auto Type** → **Gear Rule** (dormant on main). `Auto-build` /
+  `Auto-Import` were left alone on purpose — those are GUI tools the player clicks, not
+  gear that moves on its own. `autogear.golden` regenerated for the manifest's header line
+  (`gen_goldens.lua`, one-line diff, reviewed). Suites **4146 + 707**.
+  **Rode the 2026-07-28 promotion to main** (`dev` promotes whole-or-not) ahead of its
+  own field round — the round is still owed, though Henrik played the whole 07-28
+  session on it without a snag; display-only by construction.
+
+- **2026-07-28: the INTEGRATION SURFACE end to end + the ARBITER MONITOR — ON MAIN
+  (promoted 2026-07-28), FIELD-CONFIRMED** (engine v152–v154, `2026.07.28g`–`l`;
+  commits `5c1874b` `f645d25` `1eeb749` `9c4b17c` `b3e3e72` + five docs commits). The
+  one-day arc, Henrik managing: the **decision ring** (one record per moved outcome —
+  items or any slot's winning claimant, *"only push changes"*; the rank order became a
+  retrace-sig leg, `|ao`); the **Arbiter Monitor** (4x4 equip-screen grid of the viewed
+  decision, claimant chips + legend, hover = the full per-slot contest, decision log
+  with pin-to-moment + Live; responsive on Henrik's call — icon-only narrow, double-
+  space names wide; openers Menu → Settings + Gear Helpers → Claim Priority; the
+  Trigger Monitor untouched — proposals there, outcomes here, one record three
+  renderers); the **plugin_event probe verdict** (evprobe + dlacprobe 2.3: send = byte
+  table only, receive = `e.data` already a STRING + `e.size`, `e` is userdata, a state
+  hears its own RaiseEvent); and the **stream end to end** (`feature\integration.lua`,
+  `/dl stream on|off` Session switch dying only when world absence outlasts a zone —
+  the new read-only `worldAbsentOutlasted` seam — and surviving job changes; snapshot-
+  on-enable; four kinds on ONE stream-side `seq` — `worn`, `dispatch` ANCHORS off the
+  v154 engine ACTION FEED (one anchor per action, worn XOR dispatch), `invalidate`
+  (sets-rev + job), delta-only `confirm` (landed-whole = silence); five queries, the
+  switch gating the whole channel). Suites **4172 + 707** both runtimes.
+  Field-confirmed: the monitor by eye (*"Looks good"*), the stream envelope-by-envelope
+  through dlacprobe (*"I can see the events happening… it is streaming as we think"*);
+  `invalidate`/`confirm`/anchors/queries are headless-tested only until the parser
+  friend's first connection — the consumer handover
+  (`docs/reference/integration-guide.md`: start-here + "the Arbiter in 90 seconds")
+  says so. Record: `docs/design/integration-surface.md` (§13 = the living state) +
+  CONTEXT.md (Decision record, Arbiter Monitor, Integration surface, Session switch).
+- **2026-07-28: the old FFXI-LAC *Dynamic* sets import too — ON MAIN (promoted
+  2026-07-28), FIELD-CONFIRMED** (`2026.07.28d`). Henrik: *"when it sees a dynamic set, it's old FFXI-lac… it should be
+  detected and enabled to be imported as a LAC import. If set names collide, prioritize
+  the dynamic ones."* A legacy `<JOB>.lua` (and its pre-profiles backup) carries **both**
+  kinds of source — LuaAshitacast statics at the root and dlac's own `sets.Dynamic` block
+  from before profile storage — and only the statics were reachable. Now
+  `profilesets.lacSetNames/getLacSets` harvest that block as an import source (never into
+  the sets root: an FFXI-LAC set must never look live, and `liveSetNames` stays the
+  trigger-target authority — `PSL7/8`), the Copy-from picker's right column carries both
+  kinds as two headed lists — **Old FFXI-LAC sets** above **Old Static Sets**, both in the
+  header blue (a dim sub-header under a blue one confused Henrik himself on the first
+  pass) — and a name in both is listed once, as the **dynamic** one
+  (`setimport.mergeLegacySources`, `AQ*`). The unmigrated
+  character is the one exception: there the job file's block *is* the live list, so it is
+  not offered as an import of itself (`PSL1/2`). The import itself rides the pinned
+  `importStaticSet` transform — minus the not-best-first warning, which is a
+  LuaAshitacast-static fact (those lists were always read by dlac's highest-Level rule).
+  **Two bugs fell out of the same file read**, both real on this install:
+  `profiles.legacyBackupPath` adds the pre-storage-move backup home
+  (`luashitacast\<char>\backups\pre-profiles\`) — a character migrated in the LAC-tree era
+  had its originals *only* there, so its whole legacy column read empty (5 SAM + 10 WAR
+  statics were invisible); and the sandbox now hands legacy files the **missing-safe gear
+  proxy** (`profiles._wrapGear`), so one unowned weapon category (`gear.Main.Club` on a
+  char who never scanned a club) can no longer nil-index the chunk away and take every
+  static in the file with it. Suites **4114 + 693**, Windows and WSL lua5.4; driven
+  against the real files on this install before shipping (Mindie BLU: 8 old dynamic sets
+  found, `Idle` resolving to 15 ordered slots). **Field-confirmed the same day** — *"looks
+  good and works"* — after one revision Henrik called in himself: the first cut split the
+  column with dim `Dynamic` / `Static` sub-headers under one blue heading, and *"Static atm
+  is greyed out like dynamic, so it's hard to notice… even I got confused"*. Group labels
+  are not dim.
+- **2026-07-28: dlac seeds its OWN gear.lua, always — ON MAIN (promoted 2026-07-28)**
+  (`2026.07.28f`, together with `2026.07.28e`).
+  Henrik's ruling once the entry below was diagnosed: *"ALWAYS handle your own gear
+  locally in DLAC. ONLY FFXI-LAC integration we should have, is SOLELY on importing
+  dynamic gear."* `setupui.seedGearFile` used to **prefer** an existing
+  `<charBase>\ffxi-lac\gear.lua` over dlac's bundled template — *"a returning player
+  keeps their scanned inventory"* — which is exactly how a **brand-new install** ended up
+  with a legacy, Ammo-nested, `Id`-less inventory (the entry below). It never paid: such a
+  file carries **no `Id`**, and `RSlot` + the Range/Ammo `Pair` key are looked up BY id, so
+  reserved-slot conflicts and ammo pairing were dead for every entry in it; its `Stats`
+  blocks are inert (dlac derives stats from the catalog); and its contents are a
+  *catalogue*, not the player's bags. `/dl scan` rebuilds all of it correctly in seconds.
+  Now: bundled template, always. Guard `SH21` fails if anything reads a path out of that
+  tree again; `SH22` pins the one door that must survive — the **content** sniff
+  (`text:find('ffxi-lac')` → `st = 'ffxilac'`) that routes an old profile into the sets
+  migration, i.e. the Dynamic-sets import, which is the only sanctioned integration.
+  Prose about ffxi-lac is untouched; it is a **path** guard.
+- **2026-07-28: commit READS gear.lua's shape instead of assuming its own — ON `dev`,
+  awaiting field test** (`2026.07.28e`). The second field report from Henrik's friend
+  (character `Abraxis_42505`), and the first bug that **needed a second player's file to
+  see at all**. His `gear.lua` is a legacy LuAshitacast one: it nests **Ammo** by category
+  (`Archery`/`Marksmanship`/`Throwing`) and its own trailer says so (`slotName == "Main"
+  or "Range" or "Ammo"`). dlac writes Ammo flat (`WEAPON_SLOTS = { Main, Range }`), so
+  `spliceStaging` inserted the new flat entry as a **sibling of the category tables**.
+  The result still *parses* — which is why the parse check passed — and then the trailer
+  descends into the entry's own fields and evaluates `("Bone Arrow").Name` → nil →
+  `table index is nil`, reported against the **trailer**, ~6400 lines from the cause.
+  Commit is all-or-nothing, so **no gear of any slot ever landed**: the same batch
+  re-staged on every auto-sync and aborted again, leaving 15 byte-identical backups in
+  90 minutes. Three fixes, one family — *commit's text readers disagreeing with the file
+  in front of them*:
+  **(1)** new `slotShapes` reads each slot's actual shape, and a disagreement ABORTS
+  naming the slot (`SH1-11`) instead of writing a file that cannot load;
+  **(2)** `gearProblems` walks the built table and names the culprit entry **and its
+  line** — the raw error only ever named the trailer (`SH12-17`). Deliberately
+  shape-**agnostic**: a consistent legacy file is never flagged, because which slots
+  nest is that file's trailer's business, not ours;
+  **(3)** `parseStaging`/`indexGear` now share `hdrAt`/`closeAt` with
+  `parseGearEntries`, which already tolerated a trailing `-- comment` — a commented
+  CATEGORY header was invisible to `indexGear` alone, so commit "created" a section that
+  already existed, Lua's last-key-wins discarded the new block, and it **reported success
+  while the items never landed** (`SH18-20`). Independent of the Ammo bug, and latent for
+  anyone with a hand-annotated `gear.lua`.
+  Two silent fallbacks lost their silence with it: `dlac.lua`'s boot preload and
+  `gearui.refreshGear` both swallowed an unloadable `gear.lua` and ran on the bundled
+  empty template — GUI shows no gear, every scan calls every item new, nothing says why.
+  Suites **4134 + 693**, Windows and WSL lua5.4; reproduced and re-verified against his
+  real 8,895-line file. Henrik's remedy for the friend: delete `gear.lua`, let `/dl scan`
+  rebuild it flat. **PROMOTED to main 2026-07-28** on the diagnosis and the
+  reproduction, before the friend re-tests — accepted un-field-confirmed, and this
+  record says so.
 - **2026-07-28: MaxMP pair homes anchor CHOSEN picks only — ON MAIN, FIELD-CONFIRMED**
   (`2026.07.28b`, promoted 2026-07-28 on Henrik's "push to main").
   Henrik's own diagnosis of the stage 6 field oddity (Outlaws

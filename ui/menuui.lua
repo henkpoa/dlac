@@ -364,6 +364,22 @@ local function renderSettingsBody()
         'The live window showing which triggers fired on your last action.\nAlso on the Triggers tab.',
         function() return ui._tgMon == true; end,
         function(v) ui._tgMon = v; end);
+
+    settingCheck('arbmon', 'Arbiter monitor',
+        'The live window showing what WON each equipment slot on the last gear\ndecision and why -- hover a slot for the full contest -- plus a history of\ndecisions. Also under Gear Helpers > Claim Priority.',
+        function() return ui._arbMon == true; end,
+        function(v) ui._arbMon = v; end);
+
+    settingCheck('stream', 'Gear data stream (this session)',
+        'Broadcast every gear decision to other addons on this machine (the\nIntegration surface -- e.g. a damage parser correlating your gear). Session\nonly: never saved, dies on logout. Same switch as /dl stream.',
+        function()
+            local on = false;
+            pcall(function() on = require('dlac\\feature\\integration').on == true; end);
+            return on;
+        end,
+        function(v)
+            pcall(function() require('dlac\\feature\\integration').setOn(v == true); end);
+        end);
 end
 
 -- ---------------------------------------------------------------------------

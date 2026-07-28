@@ -1,14 +1,19 @@
 --[[
-    dlac/automationsui.lua -- the Automations tab (its own MAIN tab, right of Triggers)
-    plus the whole automations manifest machinery (ADR 0004 and everything that grew
+    dlac/automationsui.lua -- the Gear Helpers tab (its own MAIN tab, right of Triggers)
+    plus the whole gear-helper manifest machinery (ADR 0004 and everything that grew
     on it: staves/obis, MaxMP batteries, craft/HELM/fish ladders).
+
+    NAME: the tab was "Automations" until 2026-07-28 (a GM read "Auto <activity>" as
+    "the addon does the activity"). Labels renamed, internals NOT -- the dlac: slot
+    markers, row keys, claimant names and this file's own name all stay. The split is
+    documented in architecture.md ("Naming: display labels vs internal names").
 
     Extracted from triggersui.lua 2026-07-18: LuaJIT caps a chunk at 200 local
     variables; the automation block owned 30 of triggersui's 123 and shared nothing
     with the trigger editor beyond the deps table. This module gets its own budget.
 
     gearui injects the SAME deps table triggersui gets (M.init) and registers the
-    Automations tab (M.renderTab). The rescan seams live HERE now:
+    Gear Helpers tab (M.renderTab). The rescan seams live HERE now:
     M.rescanAutogear / M.manifestStale / M.currentFmt -- craftwatch, helmwatch,
     fishwatch and gearui's auto-sync hook (syncflags) all require THIS module.
     Everything is defensive: no deps / no imgui just renders a notice instead of
@@ -677,7 +682,7 @@ local function autoCommit()
     end);
     if goal ~= 'nq' and goal ~= 'skillup' then goal = 'hq'; end
     local L = {
-        '-- dlac automation manifest -- written by the GUI (Automations tab).',
+        '-- dlac gear-helper manifest -- written by the GUI (Gear Helpers tab).',
         '-- Tiered Iridescence: per-element staves (NQ +1 / HQ +2, own element only) and',
         '-- universals (all elements, +1..+3; `universals` = the full preference-ordered',
         '-- ladder, first rung usable at the live level wins). The engine picks the',
@@ -1191,32 +1196,32 @@ end
 -- banded-ladder field rounds); its row is appended last below.
 local function buildAutoRows()
     local rows = {
-        { key = 'iridescence', name = 'AutoIridescence', kind = 'slot automation (Main)',
+        { key = 'iridescence', name = 'Elemental Staff', kind = 'gear rule (Main slot)',
           level = iridescenceLevel(), max = 5, txt = nil },
-        { key = 'obi',         name = 'ElementalObi',    kind = 'slot automation (Waist)',
+        { key = 'obi',         name = 'Elemental Obi',   kind = 'gear rule (Waist slot)',
           level = obiLevel(),         max = 2, txt = nil },
-        { key = 'oneiros',     name = 'Auto Oneiros Grip', kind = 'slot automation (Sub)',
+        { key = 'oneiros',     name = 'Oneiros Grip',    kind = 'gear rule (Sub slot)',
           level = oneirosLevel(),     max = 1, txt = nil },
-        { key = 'craft',       name = 'Auto Craft Set',  kind = 'craft-gear helper (manual pick)',
+        { key = 'craft',       name = 'Crafting Gear',   kind = 'hobby gear (manual pick)',
           level = CRAFT_UI.level(),   max = 4, txt = nil },
-        { key = 'helm',        name = 'Auto HELM Set',   kind = 'gathering-gear helper (idle only)',
+        { key = 'helm',        name = 'Gathering Gear',  kind = 'hobby gear (idle only)',
           level = 0,                  max = 4, txt = nil },
-        { key = 'fish',        name = 'Auto Fish Set',   kind = 'fishing-gear helper (idle only)',
+        { key = 'fish',        name = 'Fishing Gear',    kind = 'hobby gear (idle only)',
           level = 0,                  max = 4, txt = nil },
         -- Chocobo sits AFTER fish (index 7): rows[5]/rows[6] stay helm/fish, and
         -- its own status is patched by KEY below (chocoui), never by index.
-        { key = 'choco',       name = 'Chocobo',         kind = 'riding-gear helper (idle only)',
+        { key = 'choco',       name = 'Chocobo Gear',    kind = 'hobby gear (idle only)',
           level = 0,                  max = 3, txt = nil },
         -- AutoAmmo is appended LAST on purpose: rows[5]/rows[6] are read by
         -- index below (helm/fish) -- keep every existing index stable. (The
         -- combo branch appends its AutoAcc row before this one; the status
         -- patch below finds this row by KEY, so the index difference is fine.)
-        { key = 'ammo',        name = 'AutoAmmo',        kind = 'slot automation (Ammo)',
+        { key = 'ammo',        name = 'Ammo',            kind = 'gear rule (Ammo slot)',
           level = 0,                  max = 1, txt = nil },
         -- MaxMP GRADUATED 2026-07-21 (Henrik: "reenable now in GUI") after
         -- the banded-ladder field rounds -- appended last so every existing
         -- row index stays stable.
-        { key = 'maxmp',       name = 'MaxMP',           kind = 'set automation (MP batteries)',
+        { key = 'maxmp',       name = 'MaxMP',           kind = 'set-wide gear rule (MP batteries)',
           level = 0,                  max = 1, txt = 'no battery data yet' },
     };
     pcall(function()
@@ -1352,7 +1357,7 @@ local function autoRow(r)
     imgui.PushID('autorow_' .. r.key);
     if imgui.Selectable('##sel', false, ImGuiSelectableFlags_None, { 0, 20 }) then auto.view = r.key; end
     if imgui.IsItemHovered() then
-        imgui.SetTooltip('Click for details. Slot automations go INSIDE a set (add the dlac: entry\nto the slot via + Add); set automations apply everywhere via their mode.');
+        imgui.SetTooltip('Click for details. Slot gear rules go INSIDE a set (add the dlac: entry\nto the slot via + Add); set-wide rules apply everywhere via their mode.');
     end
     imgui.SameLine(8);   imgui.TextColored(col, r.name);
     imgui.SameLine(215); imgui.TextColored(COL_DIM, r.kind);
@@ -1370,7 +1375,7 @@ local function renderAutomations()
     end
 
     if auto.view ~= nil then                            -- DETAIL views
-        if imgui.Button('< Automations##autoback', { 0, 22 }) then auto.view = nil; end
+        if imgui.Button('< Gear Helpers##autoback', { 0, 22 }) then auto.view = nil; end
         if auto.view == 'craft' then
             -- Header controls (Henrik: right side, same row as the back button):
             -- crafting-mode picker + the auto-craft toggle.
@@ -1393,7 +1398,7 @@ local function renderAutomations()
             local winW = imgui.GetWindowWidth();
             local on = cwok and type(cw.isEnabled) == 'function' and cw.isEnabled();
             imgui.SameLine(math.max(180, math.floor(winW / 2) - 118));   -- centered (no right-edge clip)
-            imgui.TextColored(COL_DIM, 'Auto craft set:');
+            imgui.TextColored(COL_DIM, 'Crafting gear:');
             imgui.SameLine(0, 6);
             local cbok, craftbar = pcall(require, 'dlac\\ui\\craftbar');
             if cbok and type(craftbar) == 'table' and type(craftbar.onOffSwitch) == 'function' then
@@ -1416,8 +1421,8 @@ local function renderAutomations()
         if type(availW) ~= 'number' or availW < 400 then availW = 800; end
 
         if auto.view == 'iridescence' then
-            imgui.TextColored(COL_HEADER, 'AutoIridescence');
-            imgui.SameLine(0, 10); imgui.TextColored(COL_DIM, 'slot automation -- dlac:AutoIridescence in a set\'s Main slot');
+            imgui.TextColored(COL_HEADER, 'Elemental Staff');
+            imgui.SameLine(0, 10); imgui.TextColored(COL_DIM, 'gear rule -- dlac:AutoIridescence in a set\'s Main slot');
             imgui.Spacing();
             -- CW-only rows (the Incursion lines) gate on the AFFIRMATIVE mode
             -- read (architecture.md): shown in 'CW', hidden on Wings/ACE and
@@ -1462,7 +1467,7 @@ local function renderAutomations()
             imgui.Spacing();
             imgui.TextColored(COL_DIM, 'Fires only when the day/weather bonus is positive. Green = owned.');
         elseif auto.view == 'craft' then
-            imgui.TextColored(COL_HEADER, 'Auto Craft Set');
+            imgui.TextColored(COL_HEADER, 'Crafting Gear');
             imgui.SameLine(0, 10);
             imgui.TextColored(COL_DIM, 'pick a craft + goal (here or the floating bar) -> equips your best PIECES for it. It never crafts for you.');
             imgui.Spacing();
@@ -1630,8 +1635,8 @@ local function renderAutomations()
                 imgui.TextColored(COL_ERR, 'restockui failed to load.');
             end
         elseif auto.view == 'oneiros' then
-            imgui.TextColored(COL_HEADER, 'Auto Oneiros Grip');
-            imgui.SameLine(0, 10); imgui.TextColored(COL_DIM, 'slot automation -- dlac:AutoOneiros in a set\'s Sub slot (needs a 2H main)');
+            imgui.TextColored(COL_HEADER, 'Oneiros Grip');
+            imgui.SameLine(0, 10); imgui.TextColored(COL_DIM, 'gear rule -- dlac:AutoOneiros in a set\'s Sub slot (needs a 2H main)');
             imgui.Spacing();
             autoItemLine('Oneiros Grip');
             imgui.Spacing();
@@ -1779,6 +1784,12 @@ local function renderAutomations()
     -- from the shared builder (buildAutoRows -- gearui's Teleports quick menu
     -- shows the SAME flat list); we only group them by key for display. How-it-
     -- works still lives in the per-row tooltips and detail views.
+    -- The standing answer to "is this a bot?" (Henrik 2026-07-28, after the GM
+    -- read "Auto <activity>" as "the addon does the activity"): every row here
+    -- only picks EQUIPMENT. One line, above the sections, always on screen.
+    imgui.TextColored(COL_DIM, 'dlac equips gear. It never acts for you -- you still cast, craft, fish and dig.');
+    imgui.Spacing();
+
     local rows = buildAutoRows();
     local byKey = {};
     for _, r in ipairs(rows) do byKey[r.key] = r; end
@@ -1822,6 +1833,19 @@ local function renderAutomations()
     -- the title, so render() drops its inline one (embedded) but keeps the hint.
     imgui.Spacing();
     if imgui.CollapsingHeader('Claim Priority###autosec_priority', DEFOPEN) then
+        -- The Arbiter Monitor toggle lives where the ranks do (the Trigger
+        -- Monitor's second home is the Triggers tab for the same reason: the
+        -- window watches what this list decides).
+        pcall(function()
+            local mb = { deps.ui._arbMon == true };
+            if imgui.Checkbox('Arbiter monitor (floating window)##arbmon_auto', mb) then
+                deps.ui._arbMon = (mb[1] == true);
+                deps.ui._flagsDirty = true;
+            end
+            if imgui.IsItemHovered() then
+                imgui.SetTooltip('The live window: what won each slot on the last gear decision and why,\nwith a history of decisions. Also in the Menu under Settings.');
+            end
+        end);
         pcall(function()
             local priorityui = require('dlac\\ui\\priorityui');
             priorityui.render(deps, { embedded = true });
@@ -1835,11 +1859,11 @@ end
 function M.renderTab(job, level)
     if not hasImgui then return; end
     if deps == nil then
-        imgui.TextColored(COL_ERR, 'Automations tab not initialized (gearui deps missing).');
+        imgui.TextColored(COL_ERR, 'Gear Helpers tab not initialized (gearui deps missing).');
         return;
     end
     if autoPath() == nil then
-        imgui.TextColored(COL_DIM, 'Log in to manage automations.');
+        imgui.TextColored(COL_DIM, 'Log in to manage gear helpers.');
         return;
     end
     pcall(renderAutomations);

@@ -145,11 +145,16 @@ better for a Lua reader).
 `RaiseEvent` is a **broadcast** — there is no addressing, so "subscribing" is just
 filtering `e.name`, and dlac cannot know who is listening. Hence the switch.
 
-**Probe required before building** (hard rule 2 — *probe the binding, presence proves
-nothing*): the field name the payload arrives under on the receive side.
-`luashitacast\integration.lua`'s handler reads only `e.name`, and `minimapmon` only ever
-sends, so **nothing in this install proves the data field's name.** Five minutes with a
-throwaway pair of addons settles it; do not design around a guess.
+**PROBED AND RESOLVED (2026-07-28** — evprobe + dlacprobe 2.3, Henrik's field run; the
+throwaway pair lives outside dlac, probe code never ships in the addon):
+
+- **Send: a byte table.** `RaiseEvent` REFUSES a plain string (a sol2 type error on the
+  spot) — LAC's `:totable()` convention is the only one.
+- **Receive: `e.data`, already a STRING** — the bytes arrive reassembled; `e.size`
+  carries the length. **`e` is userdata**, so consumers read named fields and never
+  iterate `pairs(e)`.
+- **A state hears its own RaiseEvent** (unlike its own QueueCommand — the cmdqueue fact
+  does not transfer). Filter your own names anywhere you both speak and listen.
 
 Size is not a concern: LAC's own struct on this channel is ~1 MB.
 
@@ -253,13 +258,29 @@ observer's *internals* even while it stays off the wire — it costs nothing and
 | kind | Fires when | Carries |
 |---|---|---|
 | `worn` | the composition genuinely changed — **two triggers, see 5.4** | the whole envelope above |
-| `dispatch` | dlac saw an action fire a handler, **whether or not gear moved** | event, action, matched rules + priorities + cases |
+| `dispatch` | an action went through the pipeline and **gear did not move** (a moved outcome emits `worn` instead — one anchor per action, never both) | envelope metadata + `actionId`/`actionCategory`/target + `ctx` — **no rule trace in v1**, see below |
 | `invalidate` | job change, Commit, inventory moved, profile switch | which `rev`s advanced |
 | `confirm` | a few hundred ms after a `worn` — see below | the actual worn read vs the plan |
 
 `dispatch` exists because of the second contract in section 6: if a weaponskill's set
 resolves identically to what is already on, **no `worn` event fires** — correctly — and a
 consumer listening only to `worn` is blind to the fact that the weaponskill happened at all.
+
+**Refined 2026-07-28 (Henrik's correlation question):** `dispatch` is the **anchor**
+kind — its job is the *join*, not the reasoning. Without it, a no-change action leaves
+the consumer joining against *silence* (sound, but an inference); with it, every action
+he sees in his own packets gets a positive envelope naming the same numeric `actionId`,
+and his join collapses to one uniform rule: *find the anchor; the composition is either
+inside it (`worn`) or is the newest `worn` before it (`dispatch`)*. Carrying `ctx` on the
+anchor is deliberate — TP at the WS moment is exactly what a damage parser wants. Two
+consequences of the same no-flooding law that shaped the monitor's log:
+
+- **One anchor per action.** `worn` when the composition moved, `dispatch` when it did
+  not — never both for the same action (a `dispatch` beside a `worn` is the same data
+  twice).
+- **No rule-match trace in v1.** The trace exports the shape of live trigger internals,
+  which we refactor freely; it stays off the wire until the consumer names a concrete
+  use, then arrives as additive keys — exactly the `by` treatment.
 
 ### 5.4 What triggers a push — corrected 2026-07-28
 
@@ -571,7 +592,8 @@ Where it does **not** hold, and this is real data loss today:
 
    **[RULING] 2026-07-28: the Trigger Monitor stays exactly as it is** — *"trigger monitor
    can still be trigger monitor, because you still wanna know specifically what happens at a
-   trigger level"* — and the arbitration view is a **NEW Dispatch Monitor**, a separate
+   trigger level"* — and the arbitration view is a **NEW Arbiter Monitor** (the final name,
+   Henrik's, 2026-07-28 — earlier drafts here said "Dispatch Monitor"), a separate
    window populated from the same record. Better than deepening the old one in both
    directions: the trigger-level view keeps its narrow, useful honesty (this is what the
    floor proposed), and the new window can be shaped around the question it actually answers
@@ -606,42 +628,78 @@ under and over the grace window, job change **not** dropping it); and payload ro
 
 ---
 
-## 13. RESUME HERE — handover, end of 2026-07-28
+## 13. RESUME HERE — handover, updated 2026-07-28 (second session, Henrik managing)
 
-**State: designed, nothing built.** No code, no tests, no `M.VERSION` change, no behaviour
-change anywhere. Three docs-only commits on `dev`, clean tree:
+**The record and the Arbiter Monitor are BUILT** — engine v152, addon `2026.07.28g`/`h`
+(commits `5c1874b` engine + `f645d25` window), tests DR1–DR8 + smoke AM1–AM8 green both
+runtimes. **Awaiting Henrik's field round.** What landed:
 
-| | |
-|---|---|
-| `07ce85a` | the design + the consumer guide + two CONTEXT.md terms (already pushed, riding the parallel session's `10acc88`) |
-| `124dceb` | one decision record, three renderers; the stale `architecture.md` monitor bullet corrected |
-| `6b1b496` | items-not-set-names, `ctx.modes`, `totals` back in v1, the real change trigger |
+- **The DECISION RING** (`dispatch.lua`, `M.getDecisions()`, cap 50, session-only): one
+  record per dispatch whose OUTCOME moved — the plan snapshot (display names, taken
+  before the one send retires `ctx.planOut`), the stashed contest, the source ladders
+  *as they were asked* (a pinned old record must not re-derive), and a defensive ctx
+  snapshot (job/levels, HPP/MPP/TP, status, day/weather/moon, modes, buffs, pet).
+  Append law is Henrik's *"only push changes"*: fingerprint = resolved items + each
+  slot's **winning claimant** (`M.decisionFp`, pure). The rank order is a retrace-sig
+  leg now (the `|ao` leg) — without it a dragged row kept stale `/dl why` attribution
+  and the ring missed winner changes under identical items.
+- **The Arbiter Monitor** (`ui\arbmonui.lua`): the 4x4 equip-screen grid of the viewed
+  decision, cells chip-coloured by the winning claimant, hover = the full
+  `/dl why <slot>` answer *of that record*, a "decided under" ctx line, and the
+  decision log — click a line to pin the grid to that moment, Live snaps back.
+  Openers: Menu → Settings (under Trigger monitor) + a checkbox atop Automations →
+  Claim Priority; persists as uiflags `arbmon`.
+- **The `dispatch` kind refined** (§5): v1 is a slim **anchor** — metadata + numeric
+  join key + `ctx`, no rule trace — and an action gets exactly ONE anchor (`worn` when
+  gear moved, `dispatch` when not, never both).
 
-**`dev` is 2 commits ahead of `origin/dev` (`124dceb`, `6b1b496`) — unpushed.** Not promoted
-to main, and deliberately **not** in the merge queue: docs for unbuilt work are not a
-field-confirmed change.
+### Next, in §11's order — updated same day, third session
 
-### Tomorrow's first move — Henrik is managing this one
+1. ~~**The probe**~~ **DONE** (§4 — resolved: send byte table, receive `e.data` string,
+   `e` userdata, self-hear yes).
+2. ~~**`feature\integration.lua`**~~ **BUILT** (engine v153, addon `2026.07.28k`): the
+   observer pumps the decision ring FIFO on `d3d_present` into `dlac_worn` envelopes
+   (v1 scope: worn + ctx + totals + metadata, `actionId`/`actionCategory`/`targetIndex`
+   captured into the record at decision time); `/dl stream on|off` + a Menu Settings row
+   ("this session" on its face); snapshot-on-enable (§6.5); lifetime =
+   `M.worldAbsentOutlasted` — a new read-only engine seam over the worldWatch timestamp
+   (bookkeeping now runs unarmed; job changes deliberately invisible to it). Tests
+   WW1–3 + IN1–IN9.
+3. ~~**The `worn` query**~~ **BUILT** (same commit): `dlac_query` → `{ reply, what =
+   'worn' }` answers on `<reply>_r` with a full snapshot envelope; unknown `what`
+   answers with `err`, never silence. **The switch gates the whole channel, queries
+   included** — off means dlac is silent here (the guide's "tolerate no reply" reading,
+   made explicit).
+4. ~~**Open**~~ **ALL BUILT** (engine v154, addon `2026.07.28l`): the **anchor** rides a
+   new engine ACTION FEED (`M.getActions` — every non-Default dispatch stubs, os.clock
+   fine-grained, `decSeq` linking a stub to its decision; the 1-second trace stamp
+   could never tell two fast casts apart); **`invalidate`** watches the sets-store rev
+   (`M.modesRev`) + the main job, baselined at enable; **`confirm`** is delta-only and
+   newest-worn-only (a plan that landed whole confirms by silence — the no-flood law;
+   a superseded plan's check is moot and dropped); the **five queries** all answer
+   (`worn`/`stats`/`sets`/`gear`/`item` — `sets` rev = modesRev, the rest rev 0 in v1).
+   One stream-side `seq` spans every kind (gap detection needs one sequence); a worn
+   envelope carries the engine's own number as `decisionSeq`. Tests IN1–IN17.
+   **Everything now awaits Henrik's field round + the consumer's first real
+   connection** — plus, later: real revs for gear/item, and the rule-match trace on
+   anchors if the consumer ever names a use.
 
-**Build the Dispatch Monitor, not the wire.** Henrik, 2026-07-28: *"We will build the
-dispatcher tomorrow… this is something I wanna manage."* The Trigger Monitor stays
-**untouched** (§11 item 3 ruling — trigger level is worth seeing on its own). What the new
-window needs:
+The stream reads the SAME ring the monitor renders — the record was proven by eye
+before it shipped to someone else's product, which was the whole point of building the
+window first.
 
-1. **Publish the decision record.** It already exists: `_trace[event].contest`
-   (`{ explain = arbExplain(claims, order, floor), … }`, stashed at retrace, v143) plus
-   `ctx.planOut` (the final plan as a value, v150). The work is *exposing* those as one
-   read-only record — computing nothing new, changing nothing about how the engine decides.
-2. **Render the per-slot outcome:** the winning item, the claimant that won it, who it beat,
-   and the verdict's word where there was one (`fell → X`, `INELIGIBLE`, `held EMPTY:
-   reserved by Y`). `/dl why` and `/dl why <slot>` already print exactly this to chat, so the
-   window is a second **renderer**, never a second derivation (mpBands' law: *never render a
-   rival*).
-3. **Keep `by` in the record** even though the stream defers it (§5.2) — this window is what
-   needs it, and it is the honest proof the record is right before anything reaches the wire.
+### Open, not blocking
 
-Then §11's order: the probe → the observer + switch → the `worn` query → the remaining kinds
-→ the five queries.
+- **§11 item 3b — the Trigger Monitor's plumbing cleanup** (read the `_fired` ring
+  directly in one state; delete the dead `/dlacmonev` push + the file round-trip).
+  Deliberately not done with the monitor: zero user-visible gain against field risk in
+  a confirmed-working feature. Its face changes nothing either way.
+- **Relay to the parser's author** (§12, updated): the guide is usable TODAY for Part 1
+  (static data); ask him to (a) report the payload field name if his side probes it
+  first, and (b) name a concrete use for the rule-match trace if he ever wants it on
+  `dispatch` — otherwise it stays off the wire.
+- **The parked plugin folder** (§10) stays parked. Revive only for something genuinely
+  in-state: a tab inside dlac's own window, or a gear claimant.
 
 ### Do not re-derive these — each one cost something today
 
@@ -657,9 +715,3 @@ Then §11's order: the probe → the observer + switch → the `worn` query → 
 - **`plugin_event`'s receive-side payload field name is still unverified.** Probe before
   building anything on it; the consumer may settle it first.
 
-### Open, not blocking
-
-- **Relay question:** does the parser author want the `dispatch` kind (the rule-match trace on
-  the wire)? §5 argues yes; it is a bigger surface to keep stable.
-- **The parked plugin folder** (§10) stays parked. Revive only for something genuinely
-  in-state: a tab inside dlac's own window, or a gear claimant.

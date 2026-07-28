@@ -229,7 +229,7 @@ end)();
                    'groupsmodel','jobgate','modeslibrary','ownedcache','profileexport','profilesets','setimport',
                    'setmanager','syncflags','triggermodel','weaponfilter','weightimport' };
     local FEATURE = { 'ammowatch','arbwatch','augments','check','chocowatch','craftwatch','debug','digcalc','digrank',
-                      'eboxclient','eboxtrace','fishcalc','fishwatch','gamemode','helmwatch','idleexcl','location','lockstyle','lookpreview',
+                      'eboxclient','eboxtrace','fishcalc','fishwatch','gamehud','gamemode','helmwatch','idleexcl','location','lockstyle','lookpreview',
                       'macrobook','meritwatch','mpbands','pinwatch','restockwatch','synthrun','useitem','vanamoon' };
     local LIB = { 'cmdqueue','entwatch','safewrite','statefile' };
 
@@ -4152,6 +4152,39 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- AQ. setimport.mergeLegacySources -- the "Copy from" legacy column (2026-07-28).
+--
+--   One old FFXI-LAC job file carries BOTH kinds: LuaAshitacast statics at the root
+--   and dlac's own `sets.Dynamic` block. Merged into ONE deduped, name-sorted list;
+--   Henrik's ruling: a name in both imports as the DYNAMIC one.
+-- ---------------------------------------------------------------------------
+(function()
+    local simport = dofile('gear/setimport.lua');   -- forward slash: also loads on Linux CI
+    check('AQ0 mergeLegacySources exported', type(simport.mergeLegacySources), 'function');
+
+    local m = simport.mergeLegacySources({ 'Idle', 'Precast', 'Tp' }, { 'Idle', 'Pollen' });
+    check('AQ1 merged count (Idle deduped)', #m, 4);
+    check('AQ2 sorted by name [1]', m[1].name, 'Idle');
+    check('AQ3 sorted by name [2]', m[2].name, 'Pollen');
+    check('AQ4 sorted by name [3]', m[3].name, 'Precast');
+    check('AQ5 sorted by name [4]', m[4].name, 'Tp');
+    check('AQ6 THE RULE: a shared name is the dynamic one', m[1].kind, 'lac');
+    check('AQ7 a dynamic-only name is dynamic', m[2].kind, 'lac');
+    check('AQ8 a static-only name stays static', m[3].kind, 'static');
+
+    -- Case-insensitive, like every other set-name rule (the Sets tab lowercases).
+    local ci = simport.mergeLegacySources({ 'idle' }, { 'Idle' });
+    check('AQ9 case-insensitive dedup', #ci, 1);
+    check('AQ10 ...and the dynamic spelling survives', ci[1].name, 'Idle');
+
+    -- One side empty / absent: the other passes through whole.
+    check('AQ11 statics only', #simport.mergeLegacySources({ 'A', 'B' }, {}), 2);
+    check('AQ12 dynamics only kind', simport.mergeLegacySources({}, { 'A' })[1].kind, 'lac');
+    check('AQ13 nil inputs -> empty', #simport.mergeLegacySources(nil, nil), 0);
+    check('AQ14 nil statics tolerated', simport.mergeLegacySources(nil, { 'A' })[1].name, 'A');
+end)();
+
+-- ---------------------------------------------------------------------------
 -- AP. weaponfilter -- the pure weapon-type picker filter (#16 F2a, PRD #14)
 --
 --   Two pure decisions the Add-item picker's weapon-type dropdown is a thin shell over:
@@ -5983,7 +6016,7 @@ end)();
     local n10, w10 = rg(g, 75, 714, 358);
     check('VG10 one MP above -> refused', n10, nil);
     check('VG10b threshold spelled in the reason', w10, 'MP 358 above the latent threshold 357 (half of base 714)');
-    check('VG11 not owned',      select(2, rg(nil, 75, 714, 100)), 'Oneiros Grip not owned (the Automations tab rescans itself)');
+    check('VG11 not owned',      select(2, rg(nil, 75, 714, 100)), 'Oneiros Grip not owned (the Gear Helpers tab rescans itself)');
     check('VG12 under level',    select(2, rg(g, 74, 714, 100)), 'under level for Oneiros Grip (Lv75)');
     check('VG13 base unreadable', select(2, rg(g, 75, nil, 100)), 'native MP unreadable (login settle?)');
     check('VG14 no pool',        select(2, rg(g, 75, 0, 0)), 'no native MP pool on this job');
@@ -7699,6 +7732,261 @@ end)();
         wtr ~= nil and type(wtr.contest) == 'table' and type(wtr.contest.explain) == 'table', true);
     check('WY1c and the order it decided with',
         wtr ~= nil and type(wtr.contest) == 'table' and type(wtr.contest.order) == 'table', true);
+
+    -- DR: THE DECISION RING (v152, the Arbiter Monitor's record). The one law:
+    -- append on OUTCOME change only (Henrik: 'only push changes'). OS1's naked
+    -- dispatch above already ran the append path -- the ring's newest record
+    -- must be that 16-remove plan, whichever dispatch first recorded it.
+    local ring = dispatchM.getDecisions();
+    local newest = ring[#ring];
+    local nRemove = 0;
+    if newest ~= nil then
+        for _, v in pairs(newest.plan) do if v == 'remove' then nRemove = nRemove + 1; end end
+    end
+    check('DR1 the naked dispatch recorded its decision (16 removes)', nRemove, 16);
+    check('DR1b the record carries fp + time + event', newest ~= nil
+        and type(newest.fp) == 'string' and type(newest.time) == 'string'
+        and newest.event == 'Default', true);
+
+    -- DR2: a byte-identical re-dispatch appends NOTHING; an empty plan is not
+    -- a decision at all.
+    local savedPlayerDR, savedStateDR = TEST_PLAYER, rawget(_G, 'gState');
+    TEST_PLAYER = { MainJob = 'WHM', MainJobLevel = 75, SubJob = 'BLM', SubJobLevel = 37,
+                    MainJobSync = 75, SubJobSync = 37, Status = 'Idle', IsMoving = false };
+    _G.gState = { CurrentCall = 'N/A', Disabled = {} };
+    local savedEngDR = package.loaded['dlac\\feature\\equipengine'];
+    package.loaded['dlac\\feature\\equipengine'] = {
+        nativeOn = function() return true; end,
+        equipSet = function() end,
+        state = { tripped = false },
+    };
+    dispatchM.nakedArmed = true;
+    local n0 = #ring;
+    pcall(dispatchM.dispatch, 'Default');
+    check('DR2 an identical outcome appends nothing', #dispatchM.getDecisions(), n0);
+    dispatchM.nakedArmed = false;
+    package.loaded['dlac\\feature\\equipengine'] = savedEngDR;
+    TEST_PLAYER = savedPlayerDR;
+    _G.gState = savedStateDR;
+    dispatchM._recordDecision('Default', {}, {}, nil);
+    check('DR2b an empty plan records nothing', #dispatchM.getDecisions(), n0);
+
+    -- DR3: the rank order is a retrace-sig leg (source pin, the ARK11 idiom):
+    -- a dragged row must re-explain, or the ring misses a winner change and
+    -- /dl why keeps stale attribution after a drag.
+    check('DR3 the rank order is a retrace-sig leg',
+        dsrc:find("'|ao' .. table.concat(arbOrder", 1, true) ~= nil, true);
+
+    -- DR4-DR7: the fingerprint law, pure.
+    local e1 = { Body = { { name = 'Triggers', rank = 11, item = 'X' } } };
+    check('DR4 same items + same winners -> same fp',
+        dispatchM.decisionFp({ Body = 'X' }, e1), dispatchM.decisionFp({ Body = 'X' }, e1));
+    check('DR5 an item move changes the fp',
+        dispatchM.decisionFp({ Body = 'X' }, e1) == dispatchM.decisionFp({ Body = 'Y' }, e1), false);
+    local e2 = { Body = { { name = 'Craft', rank = 7, item = 'X' } } };
+    check('DR6 a WINNER move under the same item changes the fp',
+        dispatchM.decisionFp({ Body = 'X' }, e1) == dispatchM.decisionFp({ Body = 'X' }, e2), false);
+    check('DR7 slot-key case never splits the fp',
+        dispatchM.decisionFp({ Body = 'X' }, nil), dispatchM.decisionFp({ body = 'X' }, nil));
+
+    -- DR8: the ring caps (oldest dropped). Distinct outcomes through the test
+    -- seam; ctx {} is fine -- every snapshot read is defensive.
+    for i = 1, dispatchM.DECISION_CAP + 10 do
+        dispatchM._recordDecision('Default', {}, { Body = 'It' .. i }, nil);
+    end
+    check('DR8 the ring caps at DECISION_CAP', #dispatchM.getDecisions(), dispatchM.DECISION_CAP);
+
+    -- WW: the worldAbsentOutlasted seam (v153) -- the stream's lifetime gate.
+    -- Bookkeeping must run UNARMED (nothing is armed here), and the boolean
+    -- must flip only when absence OUTLASTS the zone window, never on absence
+    -- alone -- the ZONES SURVIVE law (v146), read-only.
+    dispatchM._worldGoneAt = nil;
+    dispatchM.worldWatch(0, nil, 5000);
+    check('WW1 absence alone does not outlast', dispatchM.worldAbsentOutlasted(5000 + 59), false);
+    check('WW2 outlasting the zone window does', dispatchM.worldAbsentOutlasted(5000 + 61), true);
+    dispatchM.worldWatch(6, nil, 5200);
+    check('WW3 a live world clears the clock', dispatchM.worldAbsentOutlasted(5200 + 3600), false);
+
+    -- IN: the Integration surface COMPLETE v1 -- worn + anchors + invalidate
+    -- + confirm + the five queries (feature\integration). The collector
+    -- decodes exactly as a consumer would: bytes -> string -> load() -- which
+    -- also pins the byte-table SEND convention the probe verified.
+    local _inok, IN = pcall(dofile, 'feature/integration.lua');   -- the harness seeds, it does not search
+    check('IN1 integration loads headless', _inok and type(IN) == 'table', true);
+    if _inok and type(IN) == 'table' then
+        IN.CONFIRM_S = 999999;   -- confirms fire only when a test asks them to
+        local fix = { a = 1, z = 'two words', n = { 1, 2, { deep = true } }, ok = false };
+        local rt = nil;
+        pcall(function() rt = (loadstring or load)('return ' .. IN._ser(fix))(); end);
+        check('IN2 the serializer round-trips', rt ~= nil and rt.a == 1 and rt.z == 'two words'
+            and rt.n[3].deep == true and rt.ok == false, true);
+
+        local sent = {};
+        IN._raise = function(name, bytes)
+            local b = {};
+            for i = 1, #bytes do b[i] = string.char(bytes[i]); end
+            local t = nil;
+            pcall(function() t = (loadstring or load)(table.concat(b))(); end);
+            sent[#sent + 1] = { name = name, env = t };
+        end;
+
+        -- enable -> immediate snapshot of the newest ring record (6.5); the
+        -- stream seq is OBSERVER-side now (one sequence across all kinds),
+        -- the ring's own number rides as decisionSeq
+        local ring = dispatchM.getDecisions();
+        local newestSeq = ring[#ring].seq;
+        IN.setOn(true);
+        check('IN3 enable emits a snapshot on dlac_worn', #sent >= 1 and sent[#sent].name == 'dlac_worn'
+            and sent[#sent].env ~= nil and sent[#sent].env.snapshot == true, true);
+        check('IN3b the snapshot carries the ring seq as decisionSeq', sent[#sent].env.decisionSeq, newestSeq);
+        check('IN3c and the stream seq starts at 1', sent[#sent].env.seq, 1);
+
+        -- the pump drains new records FIFO, stream seq strictly continuous
+        sent = {};
+        dispatchM._recordDecision('Weaponskill', {}, { Body = 'StreamPiece A' }, nil);
+        dispatchM._recordDecision('Default',     {}, { Body = 'StreamPiece B' }, nil);
+        IN._pump();
+        check('IN4 two new records -> two envelopes in order', #sent == 2
+            and sent[1].env ~= nil and sent[2].env ~= nil
+            and sent[2].env.seq == sent[1].env.seq + 1
+            and sent[1].env.kind == 'worn' and sent[1].env.snapshot == false, true);
+        check('IN4b the envelope names the items',
+            sent[1].env.worn ~= nil and type(sent[1].env.worn.Body) == 'table'
+            and sent[1].env.worn.Body.name, 'StreamPiece A');
+        check('IN4c nothing new -> nothing sent', (function()
+            local n0 = #sent; IN._pump(); return #sent == n0; end)(), true);
+
+        -- a ring gap (overflowed past us): seqs older than ring[1] are PRUNED,
+        -- so a watermark below them is a real loss and must be reported
+        sent = {};
+        dispatchM._recordDecision('Default', {}, { Body = 'StreamPiece C' }, nil);
+        local ring2 = dispatchM.getDecisions();
+        IN._lastRingSeq = math.max(1, (ring2[1].seq or 2) - 5);
+        IN._pump();
+        check('IN5 the first envelope after a gap carries dropped', #sent >= 1
+            and sent[1].env ~= nil and (sent[1].env.dropped or 0) > 0, true);
+
+        -- THE ANCHOR (v154): an action stub with no decision -> kind=dispatch,
+        -- join key + ctx, no items; a stub LINKED to a decision emits nothing
+        -- of its own (one anchor per action, never both)
+        sent = {};
+        dispatchM._recordAction('Weaponskill',
+            { action = { Name = 'Test WS', actionId = 143, category = 7, target = 300 } }, nil);
+        IN._pump();
+        check('IN10 a no-change action emits a dispatch anchor', #sent == 1
+            and sent[1].name == 'dlac_dispatch' and sent[1].env ~= nil
+            and sent[1].env.kind == 'dispatch' and sent[1].env.actionId == 143
+            and sent[1].env.worn == nil, true);
+        sent = {};
+        local ds = dispatchM._recordDecision('Ability', {}, { Body = 'AnchorLink' }, nil);
+        dispatchM._recordAction('Ability', {}, ds);
+        IN._pump();
+        check('IN11 a gear-moving action emits ONE envelope (worn, no anchor)', #sent == 1
+            and sent[1].env ~= nil and sent[1].env.kind == 'worn', true);
+
+        -- invalidate: the sets-store rev watch (baselined at setOn, so this is
+        -- the FIRST movement it can see)
+        sent = {};
+        local savedRev = dispatchM.modesRev;
+        dispatchM.modesRev = (tonumber(dispatchM.modesRev) or 0) + 1;
+        IN._pump();
+        check('IN12 a sets-store rev bump emits invalidate', #sent == 1
+            and sent[1].name == 'dlac_invalidate' and sent[1].env ~= nil
+            and sent[1].env.kind == 'invalidate' and sent[1].env.changed ~= nil
+            and sent[1].env.changed[1] == 'sets', true);
+        dispatchM.modesRev = savedRev;
+        IN._pump();   -- restoring the rev is itself a change; swallow it
+        sent = {};
+
+        -- outlasted world absence kills the switch silently (section 3)
+        local savedWA = dispatchM.worldAbsentOutlasted;
+        dispatchM.worldAbsentOutlasted = function() return true; end
+        IN._pump();
+        check('IN6 outlasted absence turns the stream off', IN.on, false);
+        dispatchM.worldAbsentOutlasted = savedWA;
+
+        -- confirm: injected services -- worn memory disagrees with the plan ->
+        -- delta envelope; agrees -> silence (delta-only, the design's word)
+        local fakeWornName = 'WrongPiece';
+        IN._services = function()
+            return {
+                EQUIP_SLOTS = { { label = 'Body', equip = 5 } },
+                getEquippedId = function() return 111; end,
+                lookupById = function() return { Id = 111, Name = fakeWornName }; end,
+                lookupByName = function(n) return { Id = 999, Name = n, Level = 70 }; end,
+            };
+        end;
+        IN.setOn(true);
+        IN.CONFIRM_S = -1;                      -- due immediately, same pump
+        sent = {};
+        dispatchM._recordDecision('Weaponskill', {}, { Body = 'PlannedPiece' }, nil);
+        IN._pump();
+        check('IN13 reality diverging from the plan emits confirm', #sent == 2
+            and sent[2].name == 'dlac_confirm' and sent[2].env ~= nil
+            and sent[2].env.kind == 'confirm'
+            and sent[2].env.forSeq == sent[1].env.seq
+            and sent[2].env.delta ~= nil and sent[2].env.delta.Body ~= nil
+            and sent[2].env.delta.Body.actual == 'WrongPiece', true);
+        fakeWornName = 'PlannedPiece2';
+        sent = {};
+        dispatchM._recordDecision('Weaponskill', {}, { Body = 'PlannedPiece2' }, nil);
+        IN._pump();
+        check('IN13b a plan that landed whole confirms by silence', #sent == 1
+            and sent[1].env ~= nil and sent[1].env.kind == 'worn', true);
+        IN.CONFIRM_S = 999999;
+
+        -- the queries: worn, stats (routing), sets, gear, item -- and the
+        -- channel gate. Replies always name their what; unknown answers err.
+        sent = {};
+        IN._onEvent({ name = 'dlac_query', data = 'return { reply = "tprs", what = "worn" }' });
+        check('IN7 the worn query answers on the caller channel', #sent == 1 and sent[1].name == 'tprs_r'
+            and sent[1].env ~= nil and sent[1].env.what == 'worn'
+            and type(sent[1].env.data) == 'table' and sent[1].env.data.snapshot == true, true);
+        sent = {};
+        IN._onEvent({ name = 'dlac_query', data = 'return { reply = "tprs", what = "nosuch" }' });
+        check('IN8 an unknown what answers with err, never silence', #sent == 1
+            and sent[1].env ~= nil and sent[1].env.err ~= nil, true);
+        sent = {};
+        IN._onEvent({ name = 'dlac_query', data = 'return { reply = "tprs", what = "stats", comp = { Body = "PlannedPiece" } }' });
+        check('IN14 the stats query routes and answers (data or a named err)', #sent == 1
+            and sent[1].env ~= nil and sent[1].env.what == 'stats'
+            and (sent[1].env.data ~= nil or sent[1].env.err ~= nil), true);
+        local savedSets = dispatchM._nativeSets;
+        dispatchM._nativeSets = { Dynamic = {}, TestSet = { Body = 'PlannedPiece' } };
+        sent = {};
+        IN._onEvent({ name = 'dlac_query', data = 'return { reply = "tprs", what = "sets" }' });
+        local names = (#sent == 1 and sent[1].env ~= nil and sent[1].env.data ~= nil)
+            and sent[1].env.data.names or nil;
+        check('IN15 the sets query lists set names', names ~= nil and names[1], 'TestSet');
+        sent = {};
+        IN._onEvent({ name = 'dlac_query', data = 'return { reply = "tprs", what = "sets", set = "TestSet" }' });
+        check('IN15b one set resolves to concrete slots', #sent == 1 and sent[1].env ~= nil
+            and sent[1].env.data ~= nil and sent[1].env.data.slots ~= nil
+            and sent[1].env.data.slots.Body ~= nil
+            and sent[1].env.data.slots.Body.name, 'PlannedPiece');
+        dispatchM._nativeSets = savedSets;
+        local G = package.loaded['dlac\\gear'];
+        G.NameToObject['TestBlade'] = { Id = 4242, Level = 50 };
+        sent = {};
+        IN._onEvent({ name = 'dlac_query', data = 'return { reply = "tprs", what = "gear" }' });
+        local foundBlade = false;
+        if #sent == 1 and sent[1].env ~= nil and sent[1].env.data ~= nil then
+            for _, it in ipairs(sent[1].env.data.items or {}) do
+                if it.name == 'TestBlade' and it.id == 4242 then foundBlade = true; end
+            end
+        end
+        check('IN16 the gear query carries the owned record', foundBlade, true);
+        G.NameToObject['TestBlade'] = nil;
+        sent = {};
+        IN._onEvent({ name = 'dlac_query', data = 'return { reply = "tprs", what = "item", name = "Anything" }' });
+        check('IN17 the item query answers through the lookup door', #sent == 1
+            and sent[1].env ~= nil and sent[1].env.data ~= nil
+            and sent[1].env.data.id == 999, true);
+        IN.setOn(false);
+        sent = {};
+        IN._onEvent({ name = 'dlac_query', data = 'return { reply = "tprs", what = "worn" }' });
+        check('IN9 off = silent on the whole channel, queries included', #sent, 0);
+    end
 end)();
 
 -- ---------------------------------------------------------------------------
@@ -9156,6 +9444,65 @@ end)();
     check('GM8 negative dword normalized -> CW', gamemode.get(), 'CW');
 
     AshitaCore = nil;
+end)();
+
+-- ---------------------------------------------------------------------------
+-- section HUD: the game's own interface-hidden flag (feature/gamehud.lua)
+-- Scroll Lock blanks the game's HUD for a screenshot and dlac's windows have to
+-- go with it. The module is two memory reads behind a memoized signature scan,
+-- so what these pin is the part that actually bites: it must FAIL OPEN. A
+-- missing signature, a null pointer, a headless state -- every one of them
+-- answers "not hidden", because a UI that vanishes on a bad read is a bug no
+-- player can explain, while one that stays up is just today's behavior.
+-- ---------------------------------------------------------------------------
+(function()
+    local gamehud = dofile('feature/gamehud.lua');
+
+    -- headless: the harness's `ashita` stub has no .memory, so every reader nils
+    gamehud._reset();
+    check('HUD1 headless available -> false', gamehud.available(), false);
+    check('HUD2 headless hidden -> false', gamehud.hidden(), false);
+
+    -- a fake client: signature at BASE, structure pointer at BASE+PTR_OFF,
+    -- the flag byte at STRUCT+FLAG_OFF
+    local BASE, STRUCT = 0x1000, 0x50000;
+    local mem, reads = {}, 0;
+    local function fakeClient(found, flag)
+        mem   = { [BASE + gamehud.PTR_OFF] = STRUCT, [STRUCT + gamehud.FLAG_OFF] = flag };
+        reads = 0;
+        gamehud.find    = function() return found; end
+        gamehud.readU32 = function(a) reads = reads + 1; return mem[a]; end
+        gamehud.readU8  = function(a) reads = reads + 1; return mem[a]; end
+        gamehud._reset();
+    end
+
+    fakeClient(BASE, 0);
+    check('HUD3 interface shown (flag 0) -> false', gamehud.hidden(), false);
+
+    fakeClient(BASE, 1);
+    check('HUD4 scroll lock on (flag 1) -> true', gamehud.hidden(), true);
+
+    fakeClient(BASE, 2);      -- only an explicit 1 hides; anything else is junk
+    check('HUD5 junk flag byte -> false', gamehud.hidden(), false);
+
+    fakeClient(BASE, 1);      -- the pointer is read at SIG+10, not at SIG
+    mem[BASE + gamehud.PTR_OFF] = nil;
+    check('HUD6 pointer lives at SIG+PTR_OFF (empty -> false)', gamehud.hidden(), false);
+
+    fakeClient(BASE, 1);
+    mem[BASE + gamehud.PTR_OFF] = 0;
+    check('HUD7 null structure pointer -> false', gamehud.hidden(), false);
+
+    -- a client the signature does not fit: answer false, touch no memory, and
+    -- remember the failure (a pattern walk per frame would be the real cost)
+    local scans = 0;
+    fakeClient(0, 1);
+    gamehud.find = function() scans = scans + 1; return 0; end
+    gamehud._reset();
+    check('HUD8 unmatched signature -> false', gamehud.hidden(), false);
+    gamehud.hidden(); gamehud.hidden();
+    check('HUD9 failed scan cached (one walk, not one per frame)', scans, 1);
+    check('HUD10 unmatched signature reads no memory', reads, 0);
 end)();
 
 -- ---------------------------------------------------------------------------
@@ -11985,6 +12332,82 @@ end)();
     ps._recheck();
     check('PSW3 unchanged bytes keep the answer', ps.liveSetNames()[1], 'SetB');
     os.remove(TMP);
+end)();
+
+-- PSL. profilesets: the OLD FFXI-LAC Dynamic sets (Henrik 2026-07-28 -- "when it
+--      sees a dynamic set, it's old FFXI-lac"). A legacy <JOB>.lua and its
+--      pre-profiles backup carry BOTH the player's LuaAshitacast statics and
+--      dlac's own `sets.Dynamic` block from before profile storage. The block is
+--      an IMPORT SOURCE, never live -- with one exception: the unmigrated
+--      character whose job file IS the live Dynamic source, where offering it
+--      again would list every set twice. profiles.lua is stubbed per phase (the
+--      module captures it at load, so each phase gets a fresh instance).
+(function()
+    local JOB    = 'tests/_tmp_psl_job.lua';
+    local BACKUP = 'tests/_tmp_psl_backup.lua';
+    local LEGACY = 'tests/_tmp_psl_legacy.lua';
+    local function writeSets(path, body)
+        local f = assert(io.open(path, 'w'));
+        f:write('local profile = {};\nlocal sets = ' .. body .. ';\nprofile.Sets = sets;\nreturn profile;\n');
+        f:close();
+    end
+    writeSets(JOB,    '{ Dynamic = { JobDyn = {} }, Idle = {}, Tp = {} }');
+    writeSets(BACKUP, '{ Dynamic = { BackDyn = {}, Idle = {} }, Precast = {} }');
+    writeSets(LEGACY, '{ Dynamic = { OldHomeDyn = {} }, OldHomeStatic = {} }');
+
+    local savedProf = package.loaded['dlac\\profiles'];
+    local function freshWith(stub)
+        stub.activeName = stub.activeName or function() return 'Default'; end;
+        stub.setsPath   = stub.setsPath   or function() return nil; end;
+        package.loaded['dlac\\profiles'] = stub;
+        local ps = dofile('gear/profilesets.lua');
+        ps.configure({ jobFile = function() return JOB, 'BLU'; end });
+        return ps;
+    end
+    local function names(t) return table.concat(t, ','); end
+
+    -- 1. Unmigrated: no profile sets file, so the job file's Dynamic block IS the
+    --    live list. It must not ALSO be offered as an import of itself.
+    local ps1 = freshWith({ hasSetsFile = function() return false; end,
+                            backupPath = function() return nil; end,
+                            legacyBackupPath = function() return nil; end });
+    check('PSL1 adopted job-file Dynamic is the live list', names(ps1.dynamicSetNames()), 'JobDyn');
+    check('PSL2 ...and is NOT offered as an FFXI-LAC source', #ps1.lacSetNames(), 0);
+    check('PSL3 its statics still list', names(ps1.staticSetNames()), 'Idle,Tp');
+
+    -- 2. Migrated: the profile owns Dynamic, so the job file's block AND the
+    --    pre-profiles backup's block are both import sources.
+    local ps2 = freshWith({ hasSetsFile = function() return true; end,
+                            readSetsFile = function() return { Live = {} }; end,
+                            backupPath = function() return BACKUP; end,
+                            legacyBackupPath = function() return nil; end });
+    check('PSL4 live sets come from the profile', names(ps2.dynamicSetNames()), 'Live');
+    check('PSL5 both legacy Dynamic blocks are sources', names(ps2.lacSetNames()), 'BackDyn,Idle,JobDyn');
+    check('PSL6 backup statics still fill in', names(ps2.staticSetNames()), 'Idle,Precast,Tp');
+    check('PSL7 an FFXI-LAC set is NEVER live (trigger targets)', names(ps2.liveSetNames()), 'Idle,Live,Tp');
+    check('PSL8 nor does it reach the sets root', ps2.getSetsRoot().BackDyn, nil);
+
+    -- ...and the picker's column merges them by Henrik's rule, on real reader output.
+    local simport = dofile('gear/setimport.lua');
+    local merged = simport.mergeLegacySources(ps2.staticSetNames(), ps2.lacSetNames());
+    check('PSL9 merged column', (function()
+        local acc = {};
+        for _, s in ipairs(merged) do acc[#acc + 1] = s.name .. ':' .. s.kind; end
+        return table.concat(acc, ',');
+    end)(), 'BackDyn:lac,Idle:lac,JobDyn:lac,Precast:static,Tp:static');
+
+    -- 3. Migrated BEFORE the storage move: the originals sit in the old home
+    --    only. Without that tier the whole legacy column reads empty (field
+    --    2026-07-28: a character whose SAM/WAR originals live there alone).
+    local ps3 = freshWith({ hasSetsFile = function() return true; end,
+                            readSetsFile = function() return { Live = {} }; end,
+                            backupPath = function() return 'tests/_tmp_psl_absent.lua'; end,
+                            legacyBackupPath = function() return LEGACY; end });
+    check('PSL10 old-home statics are reachable', names(ps3.staticSetNames()), 'Idle,OldHomeStatic,Tp');
+    check('PSL11 old-home Dynamic sets are reachable', names(ps3.lacSetNames()), 'JobDyn,OldHomeDyn');
+
+    package.loaded['dlac\\profiles'] = savedProf;
+    os.remove(JOB); os.remove(BACKUP); os.remove(LEGACY);
 end)();
 
 -- LGW. lockstyle boxes follow decision (feature/lockstyle.lua : M._followBoxes).
@@ -15161,6 +15584,188 @@ end)();
         local raw = fh:read('*a'); fh:close();
         return raw:find('\\\\luashitacast', 1, true) ~= nil;
     end)(), true);
+end)();
+
+-- ---------------------------------------------------------------------------
+-- SH. Commit reads gear.lua's SHAPE instead of assuming its own (field bug,
+--     07-28, Abraxis). A legacy LuAshitacast gear.lua nests Ammo by category
+--     (Archery/Marksmanship/Throwing) and says so in its own trailer; dlac
+--     writes Ammo flat. The splice inserted the flat entry as a SIBLING of the
+--     category tables -- the file still parsed, so the parse check passed, and
+--     the trailer then evaluated ("Bone Arrow").Name -> nil:
+--
+--         gear.lua.tmp:9765: table index is nil
+--
+--     ...which named the trailer, ~6400 lines from the cause. Commit aborted
+--     every time, so NO gear of any slot ever landed, the same batch re-staged
+--     forever, and 15 identical backups piled up in 90 minutes.
+--
+--     Three pins: the shape is READ, a disagreement ABORTS with the slot named,
+--     and a legitimately category-nested file is NOT flagged as broken.
+-- ---------------------------------------------------------------------------
+(function()
+local gi = dofile('gear/gearimport.lua');
+local function L(t) local o = {}; for l in (t .. '\n'):gmatch('([^\n]*)\n') do o[#o+1] = l; end return o; end
+
+-- a file shaped like the field one: Ammo nested, Head flat
+local legacy = table.concat({
+    'gear = {',
+    '    Ammo = {',
+    '        Archery = {',
+    '            BoneArrow = {',
+    '                Name = "Bone Arrow",',
+    '                Level = 7,',
+    '                Stats = {',
+    '                    DMG = 9,',
+    '                }',
+    '            },',
+    '        },',
+    '    },',
+    '    Head = {',
+    '        OldCap = {',
+    '            Name = "Old Cap",',
+    '        },',
+    '    },',
+    '};',
+}, '\n');
+
+local shapes = gi._slotShapes(L(legacy));
+check('SH1 nested Ammo read as category', shapes.Ammo, 'category');
+check('SH2 flat Head read as entry',      shapes.Head, 'entry');
+-- an entry carrying a multi-line Stats block must NOT read as a category
+check('SH3 Stats block does not fake a category', gi._slotShapes(L(table.concat({
+    'gear = {', '    Head = {',
+    '        StatCap = {',
+    '            Name = "Stat Cap",',
+    '            Stats = {',
+    '                DEF = 9,',
+    '            }',
+    '        },',
+    '    },', '};',
+}, '\n'))).Head, 'entry');
+
+local ammoStaging = table.concat({
+    'return {',
+    '    Ammo = {',
+    '        SilverArrow = {',
+    '            Name = "Silver Arrow",',
+    '        },',
+    '    },',
+    '}',
+}, '\n') .. '\n';
+local spliced, rep = gi.spliceStaging(legacy, ammoStaging);
+check('SH4 shape conflict reported',   #rep.shapeConflict, 1);
+check('SH5 conflict names the slot',   rep.shapeConflict[1] and rep.shapeConflict[1].slot, 'Ammo');
+check('SH6 conflict names the file shape', rep.shapeConflict[1] and rep.shapeConflict[1].found, 'category');
+check('SH7 nothing spliced into it',   rep.inserted, 0);
+check('SH8 text left byte-identical',  spliced, legacy .. '\n');
+-- the pre-fix behaviour, pinned as the thing that must never come back
+check('SH9 not silently reported as notfound', #rep.notfound, 0);
+
+-- a flat slot in a flat file still takes its entry
+local okSplice = select(2, gi.spliceStaging(legacy, table.concat({
+    'return {', '    Head = {', '        NewCap = {', '            Name = "New Cap",',
+    '        },', '    },', '}',
+}, '\n') .. '\n'));
+check('SH10 matching shape still inserts', okSplice.inserted, 1);
+check('SH11 matching shape has no conflict', #okSplice.shapeConflict, 0);
+
+-- gearProblems: names the culprit, and stays quiet on a consistent legacy file
+local function built(text)
+    local c = (loadstring or load)(text);
+    local env = setmetatable({}, { __index = _G });
+    if setfenv ~= nil then setfenv(c, env); end
+    pcall(c);
+    return env.gear, L(text);
+end
+local okGear, okLines = built(legacy);
+check('SH12 consistent nested file is NOT flagged', #gi.gearProblems(okGear, okLines), 0);
+
+local badGear, badLines = built(table.concat({
+    'gear = {',
+    '    Ammo = {',
+    '        SilverArrow = {',
+    '            Name = "Silver Arrow",',
+    '        },',
+    '        Archery = {',
+    '            BoneArrow = {',
+    '                Name = "Bone Arrow",',
+    '            },',
+    '        },',
+    '    },',
+    '};',
+}, '\n'));
+local probs = gi.gearProblems(badGear, badLines);
+check('SH13 wrong-depth entry diagnosed', #probs, 1);
+check('SH14 diagnosis names the entry, not the trailer',
+      probs[1] ~= nil and probs[1]:find('SilverArrow', 1, true) ~= nil, true);
+check('SH15 diagnosis carries a line number',
+      probs[1] ~= nil and probs[1]:find('line 3', 1, true) ~= nil, true);
+
+local nnGear, nnLines = built(table.concat({
+    'gear = {', '    Head = {',
+    '        GoodCap = { Name = "Good Cap", },',
+    '        BadCap = {',
+    '            Level = 20,',
+    '        },',
+    '    },', '};',
+}, '\n'));
+local nnProbs = gi.gearProblems(nnGear, nnLines);
+check('SH16 Name-less entry diagnosed', #nnProbs, 1);
+check('SH17 Name-less diagnosis names it',
+      nnProbs[1] ~= nil and nnProbs[1]:find('BadCap', 1, true) ~= nil, true);
+
+-- Defect from the same family: indexGear/parseStaging used their own
+-- `= {%s*$` patterns while parseGearEntries (fix/dedupe/prune) tolerated a
+-- trailing comment. A commented CATEGORY header was invisible to indexGear
+-- alone, so commit "created" a section that already existed, Lua's
+-- last-key-wins discarded the new block, and commit reported success while
+-- the items silently never landed.
+local commented = table.concat({
+    'gear = {',
+    '    Main = { -- weapons',
+    '        Sword = { -- my swords',
+    '            OldSword = {',
+    '                Name = "Old Sword",',
+    '            },',
+    '        },',
+    '    },',
+    '};',
+}, '\n');
+local _, cRep = gi.spliceStaging(commented, table.concat({
+    'return {', '    Main = {', '        Sword = {', '            NewSword = {',
+    '                Name = "New Sword",', '            },', '        },', '    },', '}',
+}, '\n') .. '\n');
+check('SH18 commented headers still index',  cRep.inserted, 1);
+check('SH19 no phantom duplicate section',   #cRep.created, 0);
+check('SH20 commented slot header found',    #cRep.notfound, 0);
+
+-- Henrik's ruling, 2026-07-28: **dlac handles its own gear locally; the ONLY
+-- FFXI-LAC integration is the Dynamic sets import.** Setup used to seed a new
+-- character's gear.lua by COPYING `<charBase>\ffxi-lac\gear.lua` when one
+-- existed -- which is how a brand-new install ended up with a foreign,
+-- Ammo-nested, Id-less inventory dlac could not extend. The guard is a path
+-- guard, deliberately: prose about ffxi-lac is fine and the CONTENT sniff that
+-- routes an old profile into the sets migration must survive (SH22) -- what may
+-- never come back is dlac READING a file out of that tree to seed itself.
+local ffxiLacPathUsers = {};
+for _, f in ipairs({ 'dlac.lua', 'utils.lua', 'profiles.lua', 'dispatch.lua',
+                     'ui/setupui.lua', 'ui/gearui.lua', 'gear/gearimport.lua',
+                     'gear/setmanager.lua', 'gear/profilesets.lua', 'gear/setimport.lua' }) do
+    local fh = io.open(f, 'rb');
+    if fh ~= nil then
+        local raw = fh:read('*a'); fh:close();
+        -- the PATH form only: 'ffxi-lac\' as written in a Lua string literal
+        if raw:find('ffxi%-lac\\\\') ~= nil then ffxiLacPathUsers[#ffxiLacPathUsers + 1] = f; end
+    end
+end
+check('SH21 nothing reads out of the ffxi-lac tree', table.concat(ffxiLacPathUsers, ','), '');
+check('SH22 the sets-migration door still exists', (function()
+    local fh = io.open('ui/setupui.lua', 'rb');
+    if fh == nil then return false; end
+    local raw = fh:read('*a'); fh:close();
+    return raw:find("'ffxi-lac'", 1, true) ~= nil;   -- the CONTENT sniff -> st = 'ffxilac'
+end)(), true);
 end)();
 
 -- The warm-note artifact the dispatch-driving sections leave behind (dataDir

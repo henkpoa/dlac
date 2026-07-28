@@ -1,16 +1,16 @@
 ﻿# dlac — dynamic LuaAshitacast
 
 A GUI companion for **LuAshitacast** (Final Fantasy XI on Ashita v4, built for
-**CatsEyeXI**) that removes the Lua editing from gear automation: build sets, wire
+**CatsEyeXI**) that removes the Lua editing from gear management: build sets, wire
 them to game events, toggle combat modes, and let situational gear resolve itself —
 all from a window in game.
 
 **Nothing dlac does requires you to open or edit a Lua file.** The files stay
 hand-editable for power users, but they are storage, not the interface.
 
-**New to LuaAshitacast or gear automation entirely?** Open
+**New to LuaAshitacast or self-dressing gear entirely?** Open
 [docs/guide.html](docs/guide.html) in a browser — a from-zero walkthrough of sets,
-triggers, modes, the automations and their priority ladder, lockstyle, and the
+triggers, modes, the gear helpers and their priority ladder, lockstyle, and the
 teleport/convenience surfaces.
 
 ## Setup — two clicks per job
@@ -46,12 +46,12 @@ and from here on everything is GUI work. Repeat for each job.
 | **All Equipment** | Browse everything you own — or the full CatsEyeXI catalog — with search and stats; **"Show gear I don't own"** paints what you lack orange, and right-click adds it to your **Wishlist** |
 | **Sets** | Build sets by hand or **Auto-build** from stat weights (**Points** or ordered **Priority** mode); level-scaling candidate lists per slot; live score; **Equip & Lock**; import your old profile's sets via **Copy from** |
 | **Triggers** | Wire sets to the game: statuses, spells (by skill / type / element / `contains` / exact name), abilities, items, weaponskills, pets, **player state** (HP/MP — raw or percent — TP, active buffs & debuffs), **in-town**, **target = Self**, with **AND/OR condition groups** — plus player-defined **Modes** with live toggle buttons and the **Blueprints** rule library |
-| **Automations** | The self-driving gear family (below) with live per-job coverage, and the **Priority** section — the draggable ladder that referees which automation wins a contested slot |
+| **Gear Helpers** | The self-dressing gear family (below) with live per-job coverage, and the **Priority** section — the draggable ladder that referees which helper wins a contested slot |
 
 Beyond the tabs: **lockstyle sets** (the armor header button — your look, in 30
 saved boxes per job, with town behaviour), your **Wishlist** (gear you're hunting,
 with notes and the jobs/sets that want it), the **Teleports** menu (one click from
-anywhere to anywhere, plus quick rows for every automation), per-job **macro
+anywhere to anywhere, plus quick rows for every gear helper), per-job **macro
 books**, and named **profiles** per character.
 
 ### Triggers, in short
@@ -87,16 +87,17 @@ plain text: **View/Copy** per entry, **Copy all** for the whole library, and
 collision choices. The payload is the rule verbatim; a stamped rule that names a
 set the job doesn't have simply warns until you create it.
 
-### Automations — gear that picks itself
+### Gear Helpers — gear that picks itself
 
-The **Automations** tab hosts the whole family; each row shows live per-job
+The **Gear Helpers** tab hosts the whole family; each row shows live per-job
 coverage, and the same rows appear as quick controls inside the Teleports menu
-(left-click opens the panel, right-click toggles). Slot automations are **virtual
+(left-click opens the panel, right-click toggles). Slot rules are **virtual
 entries** you place in a set slot via the normal **+ Add** picker; the other items
 in the same slot list act as the fallback, and everything is level-checked and
-re-detected on login/job change/inventory change.
+re-detected on login/job change/inventory change. Every row here only picks
+*equipment* — dlac never acts for you.
 
-- **`dlac:AutoIridescence`** (Main) — your best *usable* Iridescence option per
+- **Elemental Staff** — `dlac:AutoIridescence` (Main) — your best *usable* Iridescence option per
   cast: HQ/NQ elemental staff vs a universal weapon (Chatoyant/Iridal for anyone;
   job-specific pieces up to Iridescence +3 — Inanna, Keraunos, Gridarvor, the Lv75
   relic staves — rank above them), highest tier wins, ties go to the universal.
@@ -104,13 +105,13 @@ re-detected on login/job change/inventory change.
   through to the best one you can still wear. CW-only Incursion weapons appear in
   the tab only in CW mode (other modes get a "Show Crystal Warrior gear" preview
   checkbox). *(Sets written as `dlac:AutoStaff` keep working.)*
-- **`dlac:ElementalObi`** (Waist) — the matching elemental obi (or the universal
+- **Elemental Obi** — `dlac:ElementalObi` (Waist) — the matching elemental obi (or the universal
   Hachirin-no-obi) only when the day/weather bonus for the spell's element is net
   positive. *(`dlac:AutoObi` keeps working.)*
-- **`dlac:AutoOneiros`** (Sub) — Oneiros Grip while its latent Refresh +1 is
+- **Oneiros Grip** — `dlac:AutoOneiros` (Sub) — the grip while its latent Refresh +1 is
   actually live (MP at or below 50% of your *base* pool — merit-aware, gear
   excluded), your regular grip otherwise.
-- **AutoAmmo** (Ammo) — keeps the slot fed per job: your ammo by category
+- **Ammo** — keeps the slot fed per job: your ammo by category
   (Bullets / Bolts / Arrows / Throwing), level-sorted, with the free-WS trio
   recognized; Crystal Warriors get Ephemeral Box counts and one-click fetch.
 - **MaxMP** — the battery ladder: when ON, your MP+ "battery" pieces are worn
@@ -118,7 +119,7 @@ re-detected on login/job change/inventory change.
   the normal set piece as MP falls past that piece's break-even point — strongest
   refresh batteries last, ear/ring pairs kept stable, movement gear allowed
   through while you move. `/dl plan` prints the ladder.
-- **Auto Craft / HELM / Fishing sets** — whole-set helpers with their own
+- **Crafting / Gathering / Fishing / Chocobo gear** — whole-set helpers with their own
   floating bars: craft gear per craft with an HQ / NQ / Skill-Up goal, gathering
   gear while idle near a HELM point, fishing gear that re-ranks rod/bait every
   heartbeat (Ebisu > Lu Shang's > base at equal risk) with rod/bait pins on the
@@ -126,7 +127,7 @@ re-detected on login/job change/inventory change.
 
 ### Priority — who wins a contested slot
 
-Automations claim slots; the **Priority** section (Automations tab) is ONE
+Gear helpers claim slots; the **Priority** section (Gear Helpers tab) is ONE
 draggable ladder that referees them: Pins, the **Locks veto row** (a claimant
 above it punches through a locked slot, one below it stops), AutoAmmo, MaxMP,
 Craft, HELM, Fishing, and the immovable **Triggers floor** — what you wear when
@@ -185,7 +186,7 @@ nothing is ever deleted for you — clearing an entry is always your call.
 | `/dl disable [slot\|all]` / `/dl enable [slot\|all]` | **Free equip** — hand slots back to yourself. dlac writes nothing to them (no equip, no unequip), so what you put on stays on. Beats everything, including `/dl naked`. Bare `/dl disable` takes all 16; releases on a job change or logout |
 | `/dl naked` / `/dl dress` | Take everything off and hold it off; `/dl dress` gives your gear back to the triggers |
 | `/dl why` | Explain the last dispatch per handler — what matched, what equipped, which claimant won each contested slot and at what rank |
-| `/dl prio` | The live claim-priority ladder (Pins / Locks veto / automations / Triggers floor) with per-claimant status |
+| `/dl prio` | The live claim-priority ladder (Pins / Locks veto / gear helpers / Triggers floor) with per-claimant status |
 | `/dl plan` | The MaxMP battery ladder: release order, thresholds, live state per band |
 | `/dl env` | Day/weather as dlac sees it + per-element obi math |
 | `/dl triggers reload\|init\|path` | Force re-read / seed / locate the trigger file |

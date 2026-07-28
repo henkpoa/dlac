@@ -12,8 +12,18 @@
     Profile storage layer (profiles.lua): the Dynamic sets come from the ACTIVE
     profile's sets\<JOB>.lua when it exists, else (legacy) from sandbox-running
     <JOB>.lua. STATIC sets are listed from <JOB>.lua AND from the pre-migration
-    backup (backups\pre-profiles\<JOB>.lua) -- that is what keeps "Copy from
-    static" working forever after a migration cleans the job file.
+    backups (backups\pre-profiles\<JOB>.lua, in BOTH storage homes) -- that is
+    what keeps "Copy from static" working forever after a migration cleans the
+    job file.
+
+    Those same legacy files also carry a `sets.Dynamic` block -- dlac's OWN sets
+    from before the profile storage layer existed ("old FFXI-LAC sets", Henrik
+    2026-07-28). They are offered as IMPORT SOURCES through lacSetNames /
+    getLacSets and are deliberately kept OUT of the sets root: the engine never
+    loads them, so a set that only exists there must never look live (nor come
+    back from the dead after you deleted it). The one exception is the
+    unmigrated character whose job file IS the live Dynamic source -- there the
+    same block is already the live list, so it is not offered a second time.
 ]]--
 
 local M = {};
@@ -45,10 +55,21 @@ local function sandboxSets(path)
     local BLOCK = { gFunc = true, gState = true, gEquip = true, gSetDisplay = true, gProfile = true,
                     gSettings = true, AshitaCore = true, ashita = true, print = true, coroutine = true,
                     package = true };
+    -- `require` is soft AND the gear inventory is missing-safe: an old job file
+    -- names gear categories this character may never have scanned
+    -- (gear.Main.Club on a char with no club), and a raw nil index there kills
+    -- the whole chunk -- i.e. every static in the file vanishes because of one
+    -- unowned weapon type. profiles._wrapGear is the same read-proxy the
+    -- profile sets loader uses: present tables pass through REAL (identity kept),
+    -- missing ones read nil / an empty category.
     local softRequire = function(m)
         local ok, r = pcall(require, m);
-        if ok and r ~= nil then return r; end
-        return STUB;
+        if not ok or r == nil then return STUB; end
+        if m == 'dlac\\gear' and _pok and type(_prof._wrapGear) == 'function' and type(r) == 'table' then
+            local wok, wrapped = pcall(_prof._wrapGear, r);
+            if wok and wrapped ~= nil then return wrapped; end
+        end
+        return r;
     end
     local env = setmetatable({ require = softRequire }, {
         __index = function(_, k)
@@ -83,6 +104,7 @@ end
 -- content-keyed watch idiom (triggers ensureLoaded / the v102 self-swap).
 local _cache, _cacheKey, _setsDiag = nil, nil, nil;
 local _liveNames = nil;   -- set names that exist in the LIVE profile (see liveSetNames)
+local _lacDyn = nil;      -- old FFXI-LAC Dynamic sets, name -> set (import sources only)
 local _watch = { at = -1, path = nil, raw = nil };   -- the Dynamic source the cache mirrors
 
 local function readAll(p)
@@ -101,6 +123,24 @@ local function dynSourceNow(jf, abbr)
         if t ~= nil then return pp, t; end
     end
     return jf, readAll(jf);
+end
+
+-- Every pre-migration backup of this job's original file, in read order: the
+-- native home first, then the copy left under LuaAshitacast's tree by a
+-- character that migrated BEFORE the storage move. Both are read-only import
+-- territory, and a character usually has one home or the other, not both.
+local function backupPaths(abbr)
+    local out = {};
+    if not _pok or abbr == nil then return out; end
+    pcall(function()
+        local p = _prof.backupPath(abbr);
+        if p ~= nil then out[#out + 1] = p; end
+        if type(_prof.legacyBackupPath) == 'function' then
+            local q = _prof.legacyBackupPath(abbr);
+            if q ~= nil and q ~= out[1] then out[#out + 1] = q; end
+        end
+    end);
+    return out;
 end
 
 local function loadRoot()
@@ -136,11 +176,12 @@ local function loadRoot()
     end
 
     -- The live job file: legacy Dynamic (when no profile file) + its statics.
+    local adopted = false;   -- did the job file's Dynamic block become the LIVE one?
     local jsets, jerr = sandboxSets(jf);
     if type(jsets) == 'table' then
         for k, v in pairs(jsets) do
             if k == 'Dynamic' then
-                if root.Dynamic == nil and type(v) == 'table' then root.Dynamic = v; end
+                if root.Dynamic == nil and type(v) == 'table' then root.Dynamic = v; adopted = true; end
             elseif type(v) == 'table' and root[k] == nil then
                 root[k] = v;
             end
@@ -149,17 +190,35 @@ local function loadRoot()
         _setsDiag = tostring(jerr);
     end
 
-    -- The pre-migration backup: statics only, never Dynamic (its Dynamic block
-    -- was imported into the profile at migration time -- reading it again would
-    -- resurrect deleted sets).
-    if _pok and abbr ~= nil then
-        local bsets = sandboxSets(_prof.backupPath(abbr));
+    -- The old FFXI-LAC Dynamic sets: harvested from the same legacy files, into
+    -- their OWN list (never into root -- see the header). First file wins a name,
+    -- matching the statics' merge order. An ADOPTED job-file block is skipped: it
+    -- is already the live Dynamic list, and offering a set as an import of itself
+    -- is noise, not a source.
+    local lac = {};
+    local function harvestLac(s)
+        if type(s) ~= 'table' or type(s.Dynamic) ~= 'table' then return; end
+        for k, v in pairs(s.Dynamic) do
+            local nm = tostring(k);
+            if type(v) == 'table' and lac[nm] == nil then lac[nm] = v; end
+        end
+    end
+    if not adopted then harvestLac(jsets); end
+
+    -- The pre-migration backups: statics fill names the live job file no longer
+    -- has (that is what keeps "Copy from" alive after a migration shims the file),
+    -- and their Dynamic block feeds the FFXI-LAC import list ONLY -- merging it
+    -- into root would resurrect deleted sets as if they were live.
+    for _, bp in ipairs(backupPaths(abbr)) do
+        local bsets = sandboxSets(bp);
         if type(bsets) == 'table' then
             for k, v in pairs(bsets) do
                 if k ~= 'Dynamic' and type(v) == 'table' and root[k] == nil then root[k] = v; end
             end
+            harvestLac(bsets);
         end
     end
+    _lacDyn = lac;
 
     if root.Dynamic == nil and _setsDiag == nil then
         _setsDiag = 'ran ' .. jf .. ' but it has no sets.Dynamic';
@@ -241,11 +300,32 @@ local function staticSetNames()
     return names;
 end
 
+-- The old FFXI-LAC Dynamic sets (name -> set table), from the legacy job file
+-- and its pre-migration backups. IMPORT SOURCES ONLY -- the engine never loads
+-- them, so they are absent from getSetsRoot / dynamicSetNames / liveSetNames
+-- exactly like the backup statics. Empty until load.
+local function getLacSets()
+    local out = {};
+    pcall(function()
+        loadRoot();   -- refresh the cache (and _lacDyn) if the key moved
+        if type(_lacDyn) == 'table' then out = _lacDyn; end
+    end);
+    return out;
+end
+
+-- Sorted array of those set names (the "Copy from" picker's FFXI-LAC column).
+local function lacSetNames()
+    local names = {};
+    for k in pairs(getLacSets()) do names[#names + 1] = k; end
+    table.sort(names);
+    return names;
+end
+
 -- Last load diagnostic (nil when healthy) -- the Sets tab shows it in red.
 function M.diag() return _setsDiag; end
 
 -- Drop the cached sets so the next read re-parses the files (post commit/delete).
-function M.invalidate() _cache = nil; _cacheKey = nil; _liveNames = nil; _watch.at, _watch.path, _watch.raw = -1, nil, nil; end
+function M.invalidate() _cache = nil; _cacheKey = nil; _liveNames = nil; _lacDyn = nil; _watch.at, _watch.path, _watch.raw = -1, nil, nil; end
 
 -- Arm the content-follow to run on the NEXT read regardless of the 1s throttle
 -- (tests; callers that just watched a file land and want the refresh this frame).
@@ -256,5 +336,7 @@ M.getDynamicSets  = getDynamicSets;
 M.dynamicSetNames = dynamicSetNames;
 M.staticSetNames  = staticSetNames;
 M.liveSetNames    = liveSetNames;
+M.getLacSets      = getLacSets;
+M.lacSetNames     = lacSetNames;
 
 return M;

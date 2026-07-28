@@ -1,4 +1,4 @@
--- fishui.lua -- the fishing panel (Automations -> "Auto Fish Set").
+-- fishui.lua -- the fishing panel (Gear Helpers -> "Fishing Gear").
 -- docs/design/fishing-gear.md #2. helmui's sibling: rendered from
 -- automationsui's detail delegation with the SAME deps table.
 -- Coverage/status live ABOVE the imgui guard so the

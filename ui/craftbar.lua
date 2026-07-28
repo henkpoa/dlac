@@ -113,8 +113,8 @@ function M.onOffSwitch(on, id, tipOn, tipOff)
         if ImGuiCol_Button ~= nil then imgui.PopStyleColor(1); end
     end
     if imgui.IsItemHovered() then
-        imgui.SetTooltip(on and (tipOn or 'Auto craft set is ON -- click to turn off.')
-                           or  (tipOff or 'Auto craft set is OFF -- click to turn on (equips your selected craft).'));
+        imgui.SetTooltip(on and (tipOn or 'Crafting gear is ON -- click to turn off.')
+                           or  (tipOff or 'Crafting gear is OFF -- click to turn on (equips your selected craft).'));
     end
     return toggled;
 end

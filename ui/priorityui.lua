@@ -1,5 +1,5 @@
 --[[
-    dlac/ui/priorityui.lua -- the Priority section of the Automations tab
+    dlac/ui/priorityui.lua -- the Priority section of the Gear Helpers tab
     (ADR 0012, step 2 / issue #49).
 
     ONE strict draggable list, top wins: the seven claimants (Pins, AutoAmmo,
@@ -38,9 +38,9 @@ M.HINT = {
     Naked    = '/dl naked | Equipped tab',
     Pins     = 'floating gear pin menu',
     Locks    = '/dl lock | Equipped tab | Sets tab',
-    AutoAmmo = 'AutoAmmo row',
+    AutoAmmo = 'Ammo row',
     MaxMP    = 'MaxMP row',
-    Craft    = 'Auto Craft Set row / craft bar',
+    Craft    = 'Crafting Gear row / craft bar',
     HELM     = 'HELM row / HELM bar',
     Fishing  = 'Fishing row / fish bar',
     Chocobo  = 'Chocobo row',
@@ -70,9 +70,9 @@ M.SOURCE = {
             .. 'A claim ranked ABOVE this row punches through both; a claim below it stops. '
             .. 'Drag it to choose which claimants a lock stops: at the top it vetoes everyone (pins included); '
             .. 'lower, everyone above it punches through.',
-    AutoAmmo = 'Set on the AutoAmmo row above (click it for the per-job ammo panel).',
+    AutoAmmo = 'Set on the Ammo row above (click it for the per-job ammo panel).',
     MaxMP    = 'Set on the MaxMP row above (click it for the band panel), or /dl mode maxmp.',
-    Craft    = 'Set on the Auto Craft Set row above, or the floating craft bar.',
+    Craft    = 'Set on the Crafting Gear row above, or the floating craft bar.',
     HELM     = 'Set on the HELM row above, or the floating HELM bar.',
     Fishing  = 'Set on the Fishing row above, or the floating fish bar.',
     Chocobo  = 'Set on the Chocobo row above (click it for the riding-gear panel).',

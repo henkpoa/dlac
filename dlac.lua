@@ -18,7 +18,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.07.28b';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.07.28l';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
 addon.desc    = 'Gear sets, triggers and live stats with level scaling -- dlac equips your gear itself.';
 
@@ -65,13 +65,25 @@ pcall(function()
     -- native home; old trees are the IMPORTERS' territory, and auto-migration
     -- carries a straggler's gear.lua in before this matters.)
     for _, p in ipairs(candidates) do
-        local chunk = loadfile(p);
+        local present = false;
+        local fh = io.open(p, 'r'); if fh ~= nil then present = true; fh:close(); end
+        local chunk, lerr = loadfile(p);
         if chunk ~= nil then
             local ok, g = pcall(chunk);
             if ok and type(g) == 'table' then
                 package.loaded['dlac\\gear'] = g;   -- routine: no chat line (see the banner)
                 break;
             end
+            -- A gear.lua that EXISTS but won't load used to fall through in
+            -- silence, leaving the bundled empty template in package.loaded: the
+            -- GUI shows no gear, every scan calls every item new, and nothing
+            -- anywhere says a real inventory is sitting on disk one bad entry
+            -- away. Never silent again.
+            print('[dlac] gear.lua exists but failed to load: ' .. tostring(g));
+            print('[dlac] running on an EMPTY inventory -- /dl commit names the entry at fault.');
+        elseif present then
+            print('[dlac] gear.lua will not parse: ' .. tostring(lerr));
+            print('[dlac] running on an EMPTY inventory until it does.');
         end
     end
 end);
@@ -200,7 +212,7 @@ for _, mod in ipairs({ 'gear', 'feature\\augments', 'gear\\gearoptim', 'gear\\ge
                        'feature\\synthrun',
                        'ui\\craftbar', 'feature\\helmwatch', 'ui\\helmbar',
                        'feature\\fishwatch', 'ui\\fishbar', 'feature\\chocowatch',
-                       'feature\\meritwatch',
+                       'feature\\meritwatch', 'feature\\integration',
                        'feature\\check', 'feature\\debug', 'feature\\lockstyle',
                        'feature\\lockstyleapply', 'feature\\equipengine',
                        'feature\\engine', 'ui\\gearui' }) do

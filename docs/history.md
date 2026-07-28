@@ -6461,3 +6461,238 @@ manifest builder + one dispatch accessor). Tests `FS*` pin the seam. Suites **40
 693**, green on Windows lua and WSL lua5.4. **FIELD-CONFIRMED the same day** — Henrik
 restored the rung and re-planned: *"Now it works!"* Documenting leveling gear costs
 nothing again, which was the point. In the merge queue (hard rule 14).
+
+## Session "a dynamic set in an old file is an FFXI-LAC set" (2026-07-28, on `dev` — addon 2026.07.28c → d)
+
+Henrik, on the Sets tab's **Manage… → Copy from**: *"when you wanna copy old statics, I
+want it to enable copying old FFXI-LAC Dynamic sets. So when it sees a dynamic set, it's
+old FFXI-lac… If set names collide, prioritize the dynamic ones."* The purge made the
+LuaAshitacast tree read-only import territory, not deleted — and the import door was
+only half open: a legacy `<JOB>.lua` and its pre-profiles backup carry **two** kinds of
+source side by side, LAC's statics at the root and dlac's OWN `sets.Dynamic` block from
+before profile storage existed, and only the statics were ever listed. The reader had
+even said so out loud since the migration landed — *"the pre-migration backup: statics
+only, never Dynamic (reading it again would resurrect deleted sets)"*. That fear was
+right about the **sets root** and wrong about the **picker**: the danger was a deleted
+set looking *live*, not a deleted set being *offerable*. So the block is harvested into
+its own list (`profilesets.lacSetNames` / `getLacSets`) that never touches the root —
+`liveSetNames` stays exactly the trigger-target authority it was (`PSL7/8`).
+
+One exception falls out of the same rule: the **unmigrated** character, whose job file
+IS the live Dynamic source. There the same block is already the set list, so offering it
+would list every set twice — the harvest skips an *adopted* block (`PSL1/2`). The
+collision rule is Henrik's, one line, in the pure layer: `setimport.mergeLegacySources`
+merges statics and old dynamics into one name-sorted column, dynamics claim their names
+first, so a set that grew from a static into a Dynamic set imports as what it *became*
+(`AQ*`). The first cut of the column presented that split as one blue heading with dim
+`Dynamic` / `Static` sub-headers, and Henrik bounced it immediately — *"Static atm is
+greyed out like dynamic, so it's hard to notice… even I got confused"*. It ships as TWO
+headings in the same list-header blue, **Old FFXI-LAC sets** above **Old Static Sets**,
+each naming what its rows ARE; an empty group draws no heading. Dim is for things you
+may ignore, and a group label is never one of them. The import itself reuses the pinned `importStaticSet` transform — but **not**
+its not-best-first warning: that divergence (ADR 0008, dlac takes the highest item-Level
+rung where LAC took the first in the list) is a LuaAshitacast-static fact. An old dlac
+Dynamic set was always read by the highest-Level rule, so importing one reproduces
+exactly what it did, and a warning there would be noise about nothing.
+
+**Two live bugs surfaced from reading the real files before shipping** (artifacts first,
+not theory). *One:* `profiles.backupPath` composes off the native home only, but a
+character migrated in the LAC-tree era left its pre-profiles originals under
+`luashitacast\<char>\backups\pre-profiles\` — and its live job file is a shim. Copy-from
+had therefore been listing **nothing at all** for such a character: 5 SAM + 10 WAR
+statics on this very install, invisible. New `profiles.legacyBackupPath` (allowlisted
+door, PRG1) adds that home as a second read tier. *Two:* the sets sandbox handed legacy
+files the **real** gear table, so one unowned weapon category — `gear.Main.Club` on a
+character who never scanned a club — nil-indexed the whole chunk away and took every
+static in the file with it, silently. It now hands them `profiles._wrapGear`, the same
+missing-safe read proxy the profile sets loader has always used (present tables pass
+through by identity; absent ones read nil / an empty category).
+
+**Status:** on `dev`, addon `2026.07.28c` → **`2026.07.28d`**, engine untouched (GUI +
+readers only). Tests `AQ*` (the merge rule) and `PSL*` (the reader, all three storage
+shapes). Suites **4114 + 693**, green on Windows lua and WSL lua5.4. Driven headlessly
+against this install's real files first: BLU surfaces 8 old FFXI-LAC dynamic sets
+(`Pollen`, `BlueMagic`, `Requiescat` exist *nowhere else* today), and importing `Idle`
+resolves 15 slots of ordered candidates. **FIELD-CONFIRMED the same day** — *"looks good
+and works"* — and **ACCEPTED** for the next promotion (*"have it ready to merge to
+main"*); it sits in the merge queue with `4d9d7f0` (Scroll Lock), which `dev`'s
+whole-or-not promotion carries along. One judgment call left standing, deliberately: on a
+job whose pre-profiles backup was migrated whole, the FFXI-LAC list repeats names you
+already have live (WHM lists 19). That is honest — they are the pre-migration *versions*,
+and the "New set(s)" path lands them as `_Copy` — but if it ever reads as noise, hiding
+names that already exist live is a one-line filter.
+
+---
+
+## 2026-07-28 — "table index is nil": the file that told us its own shape, and we did not listen
+
+The second field report from Henrik's friend (`Abraxis_42505`), one screenshot:
+
+```
+[dlac] commit ABORTED: would error on load: ...\Abraxis_42505\gear.lua.tmp:9765:
+table index is nil. backup: ...\backups\gear_20260728_111330.lua
+```
+
+He was on a **new dlac install** and *"can't get all the gear in"*. Auto-sync retried on
+its own, so the line kept coming back.
+
+**The artifacts settled it in minutes, and the first theory was wrong.** He sent
+`gear.lua` plus fourteen backups. All fifteen were **byte-identical** (md5 `861d7c6f…`,
+261,341 bytes) — proof the rails held: `safewrite.replaceLua` validates *before* it
+touches the live file, so nothing was ever written, and each aborted commit had simply
+backed the same file up again. The standing hypothesis walking in was that his `gear.lua`
+was already corrupt and `dlac.lua`'s boot preload was silently falling back to the empty
+template. **It was not.** His file runs clean — 691 entries — and it is internally
+consistent:
+
+```
+Main  categories=12   Range categories=8   Ammo categories=3   (everything else flat)
+```
+
+It is a legacy LuAshitacast file: it nests **Ammo** by weapon category
+(`Archery`/`Marksmanship`/`Throwing`), and its own trailer declares exactly that —
+`if slotName == "Main" or slotName == "Range" or slotName == "Ammo" then`. Which slots
+nest is **a property of the file**, written down in the file, and dlac never read it:
+
+```lua
+local WEAPON_SLOTS = { Main = true, Range = true };   -- category-nested slots (Ammo is flat)
+```
+
+So `spliceStaging` filed new ammo flat and dropped it in right after `    Ammo = {` — as
+a **sibling of the category tables**. Reproduced against his real file with one item:
+
+```
+ 3355|     Ammo = {
+ 3356|         SilverArrow = {        <-- inserted here
+ 3357|             Name = "Silver Arrow",
+ 3362|         },
+ 3363|         Archery = {            <-- where it needed to go
+```
+
+That text **parses**, which is why the parse check waved it through. Then the trailer
+descends three levels into `Ammo`, reaches `SilverArrow`'s own fields, and evaluates
+`("Silver Arrow").Name` — indexing a string is legal and yields nil — so
+`NameToObject[nil] = …` → **table index is nil**, blamed on the trailer. His 9765 checks
+out exactly: his trailer's weapon-branch assignment sits at line 8880 and his staging
+batch added 885 lines. 8880 + 885 = 9765.
+
+And because commit is **all-or-nothing**, one bad ammo entry blocked *every* slot. The
+batch re-staged on the next auto-sync and aborted again — fifteen identical backups in
+ninety minutes, and not one item in.
+
+### The rule that came out of it
+
+**A file's shape is data, not an assumption.** `gear.lua` carries its own nesting rule in
+its own trailer; any writer that splices into it has to *read* that, or it is guessing
+about someone else's file. New `slotShapes(lines)` decides per slot from the text — an
+8-space child carrying its own `Name = "…"` is an ENTRY, one holding only deeper tables
+is a CATEGORY (a multi-line `Stats = {}` block does not fake a category, `GS3`) — and a
+disagreement now **aborts naming the slot** instead of writing a file that cannot load:
+
+```
+[dlac] commit ABORTED: gear.lua shape conflict -- Ammo is nested by category here,
+dlac writes it flat.
+[dlac] nothing written. Delete gear.lua and let /dl scan rebuild it, or reshape by hand.
+```
+
+### Two more, from the same family: readers that disagree with the file
+
+**The error named the trailer, never the cause.** `gear = {…}` is fully built before the
+trailer runs, so even a trailer blow-up leaves the table sitting there — `gearProblems`
+now walks it and reports `gear.Ammo is category-nested (Archery, Marksmanship, Throwing)
+but SilverArrow sits directly under it (line 3356) -- wrong depth` instead of a line
+number ~6400 lines away. It is deliberately shape-**agnostic**: it flags a slot that
+*mixes* entries with categories, a child that is neither, an entry with no `Name` — never
+"you nested a slot we write flat", because that is the file's business. A category is
+identified structurally (a table with no `Name` that *holds* named tables), not by
+head-count, so one new entry beside three categories and thirty beside three read the
+same way round (`SH12-17`).
+
+**And a latent one, found while fixing the first.** `parseGearEntries` (fix/dedupe/prune)
+tolerated a trailing `-- comment` on a header — pinned by test `D`, after 25 hand-
+annotated entries went invisible to `/dl prune` in the field. But `parseStaging` and
+`indexGear` carried their own stricter `= {%s*$` patterns. A commented **category** header
+was therefore invisible to `indexGear` alone, so commit "created" a section that already
+existed; Lua's last-key-wins threw the new block away; and commit **reported success while
+the items silently never landed** — so they scanned as new again forever, the file growing
+by a dead duplicate block each pass. Demonstrated before the fix:
+
+```
+B. category header has a trailing comment
+    inserted=2 created=[Main.Sword]   reachable Main.Sword entries: 1  [Old Sword]
+```
+
+All three commit-side readers now share `hdrAt`/`closeAt` with `parseGearEntries`
+(`SH18-20`).
+
+### Silence, twice
+
+`dlac.lua`'s boot preload and `gearui.refreshGear` both swallowed an unloadable
+`gear.lua` and carried on with the bundled empty template: the GUI shows no gear, every
+scan calls every item new, and nothing anywhere says a real inventory is on disk one bad
+entry away. Both say so now. That failure mode did *not* fire here — but it is precisely
+the shape of the theory that cost the first half hour, and it was one `pcall` away from
+being true.
+
+Suites **4134 + 693**, Windows and WSL lua5.4. Tests `SH1-20`. Henrik's remedy for the
+friend is the blunt one, and the right one: delete `gear.lua` and let `/dl scan` rebuild
+it in dlac's own shape.
+
+### The same day, the follow-up question that found the real entry point
+
+Henrik, on reading the diagnosis: *"how can a LEGACY LAC gear.lua come here? He installed
+DLAC just now, and we purged most connections to it yesterday."*
+
+Fair question, and the answer was not the migration. **dlac put it there itself.**
+`setupui.seedGearFile` — the fresh-install auto-setup (`autoSetupNative`, issue #91) —
+seeded a new character's gear inventory by *preferring* an existing
+`<charBase>\ffxi-lac\gear.lua`, falling back to the bundled empty template only when there
+wasn't one. Its own comment said why: *"a returning player keeps their scanned
+inventory."* So:
+
+```
+config\addons\luashitacast\Abraxis_42505\ffxi-lac\gear.lua
+   -> config\addons\dlac\Abraxis_42505\gear.lua      (verbatim, on first login)
+```
+
+Not a purge leak. The purge killed the `luashitacast\` **engine** coupling; `charBase()`
+survived deliberately as the importers' read-only door, and `ffxi-lac\` is a folder inside
+that tree. A kept feature, firing as designed.
+
+**Why it could never reproduce on Henrik's machine.** His own `ffxi-lac\gear.lua` (Mindie,
+10,907 lines) is a *newer generation* of the same file:
+
+| | Mindie's | Abraxis's |
+|---|---|---|
+| Ammo | **flat** | nested by category |
+| trailer | `Main or Range` | `Main or Range or **Ammo**` |
+| `Id =` fields | 697 | **0** |
+
+FFXI-LAC itself moved to flat Ammo and started stamping `Id` at some point; dlac inherited
+the new shape, and the seeder copied files of the old one without looking.
+
+**The ruling** (Henrik): *"Drop the ffxi-lac preference, ALWAYS handle your own gear
+locally in DLAC. ONLY FFXI-LAC integration we should have, is SOLELY on importing dynamic
+gear, which has been solved by another agent."*
+
+The courtesy was worth less than it looked even when the shapes matched. A seeded
+ffxi-lac file has **no `Id`** on any entry — and `RSlot` and the Range/Ammo `Pair` key are
+both looked up BY id, so reserved-slot conflict handling and ammo pairing were dead for
+every item in it. Its `Stats` blocks are inert (dlac derives stats from the catalog by
+id). And its contents are a *catalogue* — Abraxis's carries transcription comments like
+`-- *** NEW CATSEYEXI AMMO (None specifically listed on the page) ***` and
+`Jobs = {"All Jobs"}`, which is not even dlac's sentinel (`"All"`) — not the player's
+bags. `/dl scan` rebuilds the lot correctly, from the real bags, in seconds. A head start
+that is wrong in three dimensions is not a head start.
+
+`seedGearFile` now always copies dlac's own bundled template. Guard `SH21` fails if any
+core file reads a **path** out of the ffxi-lac tree again; `SH22` pins the door that must
+survive — the **content** sniff (`text:find('ffxi-lac')` → `st = 'ffxilac'`) that routes an
+old profile into the sets migration. The guard was negative-tested against the pre-change
+file: it flags the old `seedGearFile` and passes the new one. Prose mentions of ffxi-lac
+are deliberately untouched — this is a path guard, not a word ban.
+
+*(Housekeeping in the same commit: this session's `GS1-20` were renamed `SH1-20`. A
+parallel session landed its own `GS.` block — the groups auto-import scanner — and two
+blocks answering to `GS1` makes a failure line meaningless. Committed work renames itself;
+in-flight work is left alone.)*

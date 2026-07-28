@@ -9,10 +9,48 @@ your own packet stream.
 | Part | Status |
 |---|---|
 | **Part 1 — static data files** | ✅ **Available now.** Nothing to enable, no dlac cooperation needed. |
-| **Part 2–5 — the live stream + queries** | 🔧 **Specified, NOT BUILT YET** (spec dated 2026-07-28). Do not write code that expects a reply today; it will silently receive nothing. |
+| **The live stream — all four kinds (`worn` / `dispatch` / `invalidate` / `confirm`) — and the five queries** | ✅ **BUILT 2026-07-28** (dlac `2026.07.28l`+). Transport verified by probe (§2.2). The player must type `/dl stream on` — off means dlac is silent on the channel, **queries included**. `dispatch` anchors carry no rule-match trace yet (additive later, on a named use); `gear`/`item`/`stats` replies carry `rev = 0` in v1 (only `sets` has a real revision so far). |
 
 If you build the Part 1 half first you can make real progress before dlac's side exists.
 Design docs behind this: `docs/design/integration-surface.md` in the dlac repo.
+
+---
+
+## Start here — building against dlac today (2026-07-28)
+
+What is LIVE right now: the **`worn` stream** and the **`worn` query**. Everything
+else in this document is specified and arrives additively on the same channel. The
+shortest path to a working connection:
+
+1. **Read the static data first** (§1) — catalog, statdefs, gearsets. No dlac
+   cooperation needed, and canonicalise your stat-key spelling via `statdefs` from
+   day one.
+2. **Register one `plugin_event` handler** filtering `e.name` for `dlac_worn` and for
+   your own reply channel (§2.2, §4). Decoding is one line — `local t =
+   (loadstring or load)(e.data)();` — because `e.data` arrives as a ready STRING
+   (probe-verified; `e` is userdata, so read named fields, never `pairs(e)`).
+3. **Bootstrap with the `worn` query at load** (§3): serialize
+   `return { reply = "<yourprefix>", what = "worn" }` and send it **as a byte table**
+   (`{ s:byte(i) }` in a loop — the binding refuses plain strings on send).
+4. **Keep a ring of received envelopes** (64 is plenty) and join your combat packets
+   by `actionId` + `actionCategory`, searching backwards — never "the latest
+   envelope" (§2.4; that shortcut produces plausible wrong numbers as a function of
+   server latency).
+5. **The player must type `/dl stream on`.** The whole channel — queries included —
+   is silent until they do. Receiving nothing is a configuration state, not an
+   error; say "stream off?" in your UI instead of failing quietly.
+6. **Report back after your first connection.** Two things dlac's maintainer wants
+   to hear: do the field names and shapes serve you as-is, and do you have a
+   concrete use for the rule-match trace (which trigger rule fired, at what
+   priority) on the future `dispatch` anchors — it stays off the wire until you name
+   one.
+
+**What a healthy connection looks like:** one `snapshot = true` envelope the moment
+the stream comes on (or your query lands); then *silence* while nothing changes; then
+bursts of `worn` envelopes with monotonically rising `seq` as the player acts. If you
+receive an envelope on every idle tick, something is wrong on dlac's side — report
+it. If you never receive anything: the stream is off, or you are reading the wrong
+field of `e`.
 
 ---
 
@@ -33,6 +71,44 @@ everything below:
 Consequence (2) is the single most important thing in this document: **dlac always knows
 first, and by the time you see damage, the gear has usually already changed back.** See
 §2.4.
+
+---
+
+## 0.5 How dlac decides — the Arbiter, in ninety seconds
+
+You will interpret this data far better knowing how it is made. Every gear decision in
+dlac is ONE **arbitration**:
+
+- **The floor: Triggers.** The player writes rules ("when I use Rudra's Storm → set
+  `WS_Default`"; "when the weather matches the spell's element → this obi"). Every rule
+  that matches the current moment overlays, in priority order, into one proposed
+  outfit — the *floor*.
+- **Claimants dress over the floor.** Independent features each CLAIM slots on every
+  decision: Naked (strip everything), Pins (hand-pinned pieces), Locks (frozen slots or
+  a frozen set), AutoAmmo (ammo matched to the wielded ranged weapon), MaxMP (MP
+  batteries by remaining-MP band), the craft/gathering/fishing/chocobo outfits, and the
+  trigger floor as the bottom row. A player-draggable **rank order** (top wins) settles
+  every contested slot — "which feature owns Ammo right now" is a live question with a
+  per-decision answer, and the player can reorder it mid-session.
+- **The ceiling: free equip.** Slots the player told dlac to keep its hands off
+  entirely. Nothing dresses through them; hand-equipped gear stays put.
+- **Reservations and ladders.** Some items reserve OTHER slots while worn (a robe that
+  takes Head with it). A piece only wins while its claim dominates *every* slot it
+  takes; beaten, it **falls** down its set's *ladder* (the ordered candidate list it
+  was flattened from) to the next eligible piece — or its slot is **held EMPTY** by
+  the stronger reserver. These verdicts are the `fell` / `INELIGIBLE` / `held EMPTY`
+  words you will meet inside `by` when it ships (§2.7).
+- **One plan, one send.** The whole arbitration produces ONE 16-slot plan, sent to the
+  client once. That plan — never a set name — is what your `worn` envelope carries,
+  with the totals folded from it (§2.3 explains why a set name would be a lie).
+- **One record, three renderers.** The same decision record drives dlac's own
+  `/dl why` chat command, its Arbiter Monitor window, and this stream. What you
+  receive is byte-for-byte the truth the player can see on screen; none of the three
+  re-derives.
+- **"Only push changes."** A new envelope means the outcome moved — different items,
+  or a different winning claimant for some slot. No envelope means the last one still
+  describes reality (§2.5). This is a design law, not an optimization, and it is why
+  the `dispatch` anchor exists for actions that moved nothing.
 
 ---
 
@@ -129,11 +205,13 @@ local function decode(e)
 end
 ```
 
-> **PROBE, unresolved:** the field name the payload arrives under is **not verified**.
-> LuaAshitacast's handler reads only `e.name`, and `minimapmon` only ever sends, so nothing
-> in a stock install proves it. The helper above tries three names defensively. **If you
-> settle this before dlac's side is built, report which one works** — it removes the last
-> unknown in the whole design.
+> **PROBED AND VERIFIED (2026-07-28):** the payload arrives as **`e.data`, already a
+> STRING** (the bytes reassembled for you), with **`e.size`** carrying the length. `e`
+> is **userdata** — read named fields; `pairs(e)` will not work. On the SEND side the
+> binding **refuses plain strings** — serialize, then send a byte table
+> (`{ s:byte(1, #s) }` built in a loop). The defensive helper above still works;
+> `local s = e.data` is the verified fast path. Bonus fact: a state DOES hear its own
+> `RaiseEvent`, so filter your own event names anywhere you both speak and listen.
 
 Why Lua source rather than a packed struct: both ends are Lua, dlac already serialises this
 shape everywhere, and **adding a field can never break you** — ignore keys you do not know,
@@ -165,7 +243,9 @@ Every event, of every kind, has this shape:
 ```lua
 return {
   v = 1,                        -- envelope version; refuse anything with a major you don't know
-  seq = 41,                     -- monotonic per session. Gaps mean you missed events (§2.5)
+  seq = 41,                     -- STREAM-side, monotonic per session ACROSS ALL KINDS.
+                                --   Gaps mean you missed events, whatever their kind (§2.5)
+  decisionSeq = 38,             -- worn only: the engine's own decision number (debugging)
   kind = 'worn',                -- 'worn' | 'dispatch' | 'invalidate' | 'confirm'
   dropped = 0,                  -- events discarded by queue overflow since the last envelope
   at = 1774689871.42,           -- stamped when dlac DECIDED, not when you received it
@@ -212,6 +292,24 @@ return {
           pet = nil, gameMode = 'CW', moon = 42, meritMP = 60 },
 }
 ```
+
+A **`dispatch` anchor** is the same envelope minus the payload — no `worn`, no `totals`,
+no `by` ever. What remains is exactly the join + the moment:
+
+```lua
+return {
+  v = 1, seq = 42, kind = 'dispatch', dropped = 0,
+  at = 1774689872.1, source = 'plan', snapshot = false,
+  char = 'Mindie', charId = 29909, dlac = '2026.07.28l', engine = 154,
+  event = 'Weaponskill', action = "Rudra's Storm",
+  actionId = 143, actionCategory = 0x07, targetIndex = 0x1A3,
+  job = 'THF', jobLevel = 75, sub = 'NIN', subLevel = 37,
+  ctx = { --[[ same shape as worn's ctx: TP at the decision, buffs, day/weather... ]] },
+}
+```
+
+Read it as: *"dlac saw this action, decided, and changed nothing — the newest `worn`
+before me is the composition."*
 
 **Slot keys are exactly these, in this spelling:**
 `Main` `Sub` `Range` `Ammo` `Head` `Neck` `Ear1` `Ear2` `Body` `Hands` `Ring1` `Ring2`
@@ -288,6 +386,10 @@ local function compositionFor(actionId, category)
 end
 ```
 
+With `dispatch` anchors (v1 ships them — see §2.5) you can make the `'carried'` case
+*positive* instead of inferred: match your `actionId` against `dispatch` envelopes too,
+and take the newest `worn` before that anchor.
+
 ### 2.5 Absence, gaps, and re-syncing
 
 - **No event means nothing changed.** dlac emits `worn` only when the composition genuinely
@@ -301,9 +403,16 @@ end
   item broke, or the server stripped a piece. Those change your totals with no dispatch at
   all, so they are emitted too, with no provenance to give. If you only handled `'plan'`
   events you would compute confidently wrong stats for the rest of the fight.
-- **That is why `dispatch` exists.** `kind = 'dispatch'` fires when an action fired a
-  handler *whether or not gear moved*, and carries the matched rules. If you need to know
-  that an action happened at all, listen to `dispatch`, not `worn`.
+- **That is why `dispatch` exists — it is your ANCHOR for no-change actions.** When an
+  action goes through dlac's pipeline and the composition does *not* move, you get
+  `kind = 'dispatch'`: the same envelope metadata, the same numeric join key, and `ctx`
+  (TP at the moment the WS was decided — worth having), just no `worn` table. An action
+  gets exactly **one** anchor: a `worn` when gear moved, a `dispatch` when it did not,
+  never both. So your join is uniform and never reasons from silence: search backwards
+  for the anchor matching your `actionId`; if it is a `dispatch`, the composition is the
+  newest `worn` before it. (v1 carries **no rule-match trace** on `dispatch` — if you
+  have a concrete use for "which trigger rules matched, at what priority", say so and it
+  arrives later as additive keys, the same contract as `by`.)
 - **`seq` gaps and `dropped > 0` mean you lost events.** They are two signals for two
   different failures, and you want both: **`dropped > 0`** on an envelope you *did* receive
   means dlac's own queue overflowed — we know we lost some and are telling you. A
@@ -320,13 +429,21 @@ end
   which is what a snapshot falls back to when dlac has not dispatched yet this session (fresh
   login, standing still). At rest, `'worn'` is the *more* accurate answer — it just cannot
   tell you *why* anything is on.
-- **`kind = 'invalidate'`** tells you cached query results are stale (job change, the player
-  committed set/trigger edits, inventory moved) and carries the new `rev` values.
-- **`kind = 'confirm'`** arrives a few hundred ms after a `worn` and reports what the client
-  *actually* ended up wearing. It exists because the server can refuse an equip (level, job,
-  cutscene, mid-action). **A `worn` envelope is dlac's intent; a `confirm` is fact.** If you
-  are computing anything you would defend to another player, prefer `confirm` where you have
-  it.
+- **`kind = 'invalidate'`** tells you cached query results are stale. v1 watches two
+  things: the **sets store** (the player edited/committed sets or a level change
+  re-flattened them) and the **main job**. The envelope carries `changed` (an array of
+  `'sets'` / `'job'`), `rev = { sets = <n> }` and `job`. Inventory-move invalidation is
+  future work, which is also why `gear`/`item` replies carry `rev = 0` for now — do not
+  cache those two hard.
+- **`kind = 'confirm'` is DELTA-ONLY: silence after a `worn` IS the confirmation.** It
+  exists because the server can refuse an equip (level, job, cutscene, mid-action). A
+  few hundred ms after a `worn`, dlac re-reads what the client *actually* wears; **only
+  if reality diverged** do you get a `confirm` — `forSeq` (the `seq` of the `worn` it
+  checks), `decisionSeq`, and `delta = { Slot = { planned = ..., actual = ... }, ... }`
+  for exactly the slots that differ. No `confirm` within a second of a `worn` means the
+  plan landed whole. Only the *newest* plan is ever checked — a plan superseded before
+  its check was moot and is silently skipped. **A `worn` envelope is dlac's intent;
+  apply any `confirm` delta on top of it and you hold fact.**
 
 ### 2.6 Cold start — you are never blind, but you must ask
 
@@ -399,7 +516,7 @@ Pick a `reply` prefix unique to your addon; two consumers must not collide.
 | `gear` | — | the character's owned-gear record: id, name, level, type, and per-item augments |
 | `sets` | `job` | that job's set **names**; add `set = '<name>'` for one set **resolved** to concrete items plus its `totals` |
 | `item` | `id` or `name` | one item: catalog record, whether it is owned/available/stored, and augments if a copy is worn |
-| `stats` | `comp = { Head = 'Walahra Turban', … }` | **folded totals for a composition you invent** — level scaling, augments and set bonuses included |
+| `stats` | `comp = { Head = 'Walahra Turban', … }`, optional `level = <n>` | **folded totals for a composition you invent** — level scaling, augments and set bonuses included |
 
 `stats` is the important one for analysis: it lets you ask *"what would these numbers be
 with a different ring"* without reimplementing level scaling, augment folding and set-bonus
@@ -430,11 +547,11 @@ local rev = { gear = nil, sets = nil };
 local function onEnv(env)
     if env.v ~= 1 then return; end                       -- unknown major: ignore, don't guess
     if env.kind == 'invalidate' then
-        if env.rev and env.rev.gear ~= rev.gear then ask('gear'); end
-        return;
+        if env.rev and env.rev.sets ~= rev.sets then rev.sets = env.rev.sets; ask('sets'); end
+        return;                                          -- (gear/item revs are v2 -- see §2.5)
     end
     if env.dropped and env.dropped > 0 then ask('worn'); end   -- we lost some: resync
-    ring[#ring + 1] = env;
+    ring[#ring + 1] = env;                               -- worn AND dispatch anchors both go in
     if #ring > RING then table.remove(ring, 1); end
 end
 
@@ -467,7 +584,9 @@ Everything else is your own packet handling joined against `ring` by §2.4.
 6. **You get no greeting on load — ask** (§2.6). And be ready for an unsolicited snapshot at
    any time, because the player can enable the stream after you start.
 7. **Absence of an event is information, not a dropped packet** (§2.5).
-8. **A `worn` envelope is intent, not fact** — prefer `confirm` when correctness matters.
+8. **A `worn` envelope is intent, not fact** — but `confirm` is delta-only (§2.5): no
+   `confirm` shortly after a `worn` means the plan landed whole. Waiting for a positive
+   confirmation that never comes is the wrong loop; apply deltas when they arrive.
 9. **Do not assume the key set is closed.** Fields will be added (`by` and `totals` first).
    Ignore what you do not know; never validate by rejecting unknown keys.
 10. **Stat key spelling comes from `statdefs`** (§1), not from your intuition.

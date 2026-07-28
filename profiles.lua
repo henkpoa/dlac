@@ -187,6 +187,16 @@ end
 function M.backupPath(job)
     local b = M.charRoot(); return b and (b .. 'backups\\pre-profiles\\' .. job .. '.lua') or nil;
 end
+-- The SAME backup, in the home it was written to before the storage move
+-- (config\addons\luashitacast\<char>\backups\pre-profiles\): a character
+-- migrated in the LAC-tree era has its originals there and nowhere else.
+-- A READER, like charBase itself -- the importers' read-only door. Field
+-- 2026-07-28: those originals are exactly the statics (and the old FFXI-LAC
+-- Dynamic block) the Sets tab's "Copy from" offers, and it was listing
+-- nothing for such a character because only the native path was consulted.
+function M.legacyBackupPath(job)
+    local b = charBase(); return b and (b .. 'backups\\pre-profiles\\' .. job .. '.lua') or nil;
+end
 function M.triggerBackupPath(job)
     local b = M.charRoot(); return b and (b .. 'backups\\pre-profiles\\triggers\\' .. job .. '.lua') or nil;
 end
