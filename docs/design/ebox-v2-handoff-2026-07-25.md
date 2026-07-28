@@ -208,19 +208,24 @@ stale belief that did NOT self-heal.
 
 ## 6. Still open
 
-- **Yellow icon option (b)** — MOVING items Mog Case → Inventory instead of buying more from the
-  box. Better design (zero box stock, composes with green to land exactly `target`), blocked on
-  dlac being allowed to move items between containers. **Wire format already known, do not
-  re-research:** `dlacprobe.lua:1238-1258` decodes OUT `0x029` from a real capture
-  (`qty u32 @0x04, from @0x08, to @0x09, fromSlot @0x0A, toSlot @0x0B`; success = 2× `0x020` +
-  `0x01D`). Open question for that day: does a moved partial stack merge into an existing
-  Inventory stack, or take a fresh slot the way box withdrawals do?
+- ~~**Yellow icon option (b)** — MOVING items Mog Case → Inventory instead of buying more from
+  the box.~~ **CLOSED 07-28 — obsoleted, then declined.** Written 07-25, before the C2 Mog House
+  ruling: field bags (Case/Satchel/Sack) now count as HELD so no icon ever points at them, and
+  what yellow points at now is the Mog House. Henrik, 07-28: satisfied with the yellow icon as
+  it is (informational + draw-extra). Nothing left for a move to do. **The `0x029` decode stays
+  worth keeping for any FUTURE container-move feature, do not re-research:**
+  `dlacprobe.lua:1238-1258` decodes OUT `0x029` from a real capture (`qty u32 @0x04, from @0x08,
+  to @0x09, fromSlot @0x0A, toSlot @0x0B`; success = 2× `0x020` + `0x01D`); the open question if
+  that day ever comes — does a moved partial stack merge into an existing Inventory stack, or
+  take a fresh slot the way box withdrawals do?
 - ~~**Hear trove's direct withdraws (§4c)**~~ — **DECLINED 07-28**: tracking trove is not the
   mission, the mission is not sending needless packets. §4c carries the ruling and the one
   condition that would reopen it.
-- **Opening a quiver from the panel.** We can count containers now but not open them; `!box ammo`
-  fills your bags with quivers and the only way to use one is manually. `feature/useitem` exists
-  and is the obvious seam. Not designed, not asked for — Henrik's call.
+- ~~**Opening a quiver from the panel.**~~ **DECLINED 07-28** ("we don't need to enable opening
+  quivers"). The part that matters — knowing what's packed — already ships:
+  `data/itembundles.lua` (109 pairings) counts bundle contents toward "do I have enough" and
+  never toward "is it in my Inventory", field-confirmed by the `198*` Beetle Quiver reading.
+  Opening one stays manual.
 - **Deposit is still WITHDRAW-ONLY at the packet level** (server-ask #7 in
   `docs/server-questions.md`). The red icon is a `!box store` chat command, not a packet.
 - ~~**`main` has none of this.**~~ **STALE — all of it is on `main`** (promoted in `7231143`,
