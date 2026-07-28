@@ -630,6 +630,11 @@ under and over the grace window, job change **not** dropping it); and payload ro
 
 ## 13. RESUME HERE — handover, updated 2026-07-28 (second session, Henrik managing)
 
+> **The session handover lives in `docs/design/integration-handoff-2026-07-28.md`** —
+> state table, the laws, every seam, and where each likely piece of the parser
+> friend's feedback lands. Start THERE when he comes back; this section stays the
+> design-level state.
+
 **The record and the Arbiter Monitor are BUILT** — engine v152, addon `2026.07.28g`/`h`
 (commits `5c1874b` engine + `f645d25` window), tests DR1–DR8 + smoke AM1–AM8 green both
 runtimes. **Awaiting Henrik's field round.** What landed:
