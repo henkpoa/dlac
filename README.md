@@ -89,9 +89,11 @@ set the job doesn't have simply warns until you create it.
 
 ### Gear Helpers — gear that picks itself
 
-The **Gear Helpers** tab hosts the whole family; each row shows live per-job
-coverage, and the same rows appear as quick controls inside the Teleports menu
-(left-click opens the panel, right-click toggles). Slot rules are **virtual
+The **Gear Helpers** tab hosts the whole family; each row's name is colored by live
+per-job coverage, the four hobby rows (Crafting / Gathering / Fishing / Chocobo)
+carry an **on/off switch** in the Status column — one at a time, the same rule and
+the same switch as the hobby bar (Menu → **Hobby bar**, or the Teleports menu's own
+row for it, is the same four hobbies in a floating window). Slot rules are **virtual
 entries** you place in a set slot via the normal **+ Add** picker; the other items
 in the same slot list act as the fallback, and everything is level-checked and
 re-detected on login/job change/inventory change. Every row here only picks
@@ -129,7 +131,7 @@ re-detected on login/job change/inventory change. Every row here only picks
 
 Gear helpers claim slots; the **Priority** section (Gear Helpers tab) is ONE
 draggable ladder that referees them: Pins, the **Locks veto row** (a claimant
-above it punches through a locked slot, one below it stops), AutoAmmo, MaxMP,
+above it punches through a locked slot, one below it stops), the Ammo rule, MaxMP,
 Craft, HELM, Fishing, and the immovable **Triggers floor** — what you wear when
 no claim wins. Reordering is live, no reload. `/dl prio` prints the ladder with
 live claim status; `/dl why` names the winning claimant and its rank per slot.

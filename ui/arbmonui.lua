@@ -29,6 +29,16 @@ end
 local imgui = try('imgui');
 local dsp   = try('dlac\\dispatch');
 local icons = try('dlac\\ui\\itemicons');
+local arb   = try('dlac\\gear\\arbiter');
+
+-- Claimant identity -> what a player reads (gear/arbiter owns the map; the
+-- Priority list and /dl prio + /dl why go through the same one). CLAIM_COL and
+-- every lookup below stay keyed by the IDENTITY -- only the drawn string moves.
+local function claimLabel(name)
+    if arb == nil or type(arb.claimantLabel) ~= 'function' then return name; end
+    local ok, s = pcall(arb.claimantLabel, name);
+    return (ok and type(s) == 'string') and s or name;
+end
 
 local hasImgui    = imgui ~= nil;
 local hasDispatch = dsp ~= nil and type(dsp.getDecisions) == 'function';
@@ -176,7 +186,7 @@ local function tooltipText(rec, slot, d)
         for i, op in ipairs(d.ops) do
             local item = (LOCK_HELD ~= nil and op.item == LOCK_HELD) and 'LOCK-HELD (keep worn)' or tostring(op.item);
             out[#out + 1] = string.format('  %d. %s (rank %d): %s%s',
-                i, tostring(op.name), op.rank or 0, item, (i == 1) and '   <- winner' or '');
+                i, tostring(claimLabel(op.name)), op.rank or 0, item, (i == 1) and '   <- winner' or '');
         end
     end
     local con = rec.contest;
@@ -323,7 +333,7 @@ function M.renderRecord(rec, ui)
             firstChip = false;
             chip(CLAIM_COL[name] or COL_OTHER);
             imgui.SameLine(0, 3);
-            imgui.TextColored(COL_DIM, esc(name));
+            imgui.TextColored(COL_DIM, esc(claimLabel(name)));
         end
     end
 end

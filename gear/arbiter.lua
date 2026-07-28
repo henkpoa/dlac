@@ -352,6 +352,32 @@ local ARB_ORDER_DEFAULT = M.ARB_ORDER_DEFAULT;
 M.ARB_PINNED = { Disabled = true, Triggers = true };
 local ARB_PINNED = M.ARB_PINNED;
 
+-- ---------------------------------------------------------------------------
+-- DISPLAY NAMES (2026-07-28). A claimant's name above is its IDENTITY: it is
+-- persisted in arbstate's `order`, it keys CLAIMANTS/ARB_PINNED/the UI's colour
+-- and hint maps, and a rename would silently reorder every character's saved
+-- ladder. So identities never move -- but a player must not have to read one.
+--
+-- 'AutoAmmo' was the last "Auto <thing>" a player could see after the Gear
+-- Helpers rename (Henrik: "I don't mind its name being that internally, but not
+-- in the GUI"). Every surface that NAMES a claimant to a human -- the Priority
+-- list, the Arbiter Monitor, /dl prio, /dl why -- goes through claimantLabel, so
+-- the GUI and the chat can never drift apart. Identity in, label out; anything
+-- unmapped is its own label, so a new claimant needs an entry here only if its
+-- internal name is not what a player should read.
+-- ---------------------------------------------------------------------------
+-- 'Ammo rule', not plain 'Ammo': a claimant is named NEXT TO a slot in the /dl
+-- why lines ('Ammo: <claimant> (rank 5) over MaxMP'), and 'Ammo: Ammo' is not a
+-- sentence. AR12 caught exactly that. It also matches the ammo panel's own
+-- switch ("Ammo rule on RNG:"), so one wording covers claimant + switch.
+M.ARB_DISPLAY = { AutoAmmo = 'Ammo rule' };
+local ARB_DISPLAY = M.ARB_DISPLAY;
+
+function M.claimantLabel(name)
+    if type(name) ~= 'string' then return name; end
+    return ARB_DISPLAY[name] or name;
+end
+
 -- The live rank order: arbstate's `order` array sanitized against the KNOWN
 -- rows -- unknown names dropped, missing known rows restored AT THEIR DEFAULT
 -- POSITION, so a partial or hand-mangled (but still parseable) file yields a
@@ -591,7 +617,7 @@ function M.arbWhyLines(claims, order, floor)
             for i = 2, #ops do
                 if not disSeen[ops[i].name] then
                     disSeen[ops[i].name] = true;
-                    disBeat[#disBeat + 1] = string.format('%s (rank %d)', ops[i].name, ops[i].rank or 0);
+                    disBeat[#disBeat + 1] = string.format('%s (rank %d)', M.claimantLabel(ops[i].name), ops[i].rank or 0);
                 end
             end
         elseif win.name == 'Naked' then
@@ -600,20 +626,22 @@ function M.arbWhyLines(claims, order, floor)
             for i = 2, #ops do
                 if not nakedSeen[ops[i].name] then
                     nakedSeen[ops[i].name] = true;
-                    nakedBeat[#nakedBeat + 1] = string.format('%s (rank %d)', ops[i].name, ops[i].rank or 0);
+                    nakedBeat[#nakedBeat + 1] = string.format('%s (rank %d)', M.claimantLabel(ops[i].name), ops[i].rank or 0);
                 end
             end
         else
             local rest = {};
-            for i = 2, #ops do rest[#rest + 1] = string.format('%s (rank %d)', ops[i].name, ops[i].rank or 0); end
+            for i = 2, #ops do rest[#rest + 1] = string.format('%s (rank %d)', M.claimantLabel(ops[i].name), ops[i].rank or 0); end
             local restStr = table.concat(rest, ', ');
+            -- win.name stays the IDENTITY for the branch tests below; only the
+            -- rendered string goes through claimantLabel.
             if win.name == 'Locks' then
                 lines[#lines + 1] = string.format('%s: stopped by Locks (rank %d)%s',
                     tostring(r.slot), win.rank or 0,
                     (#rest > 0) and ('  [' .. restStr .. ' held off]') or '');
             else
                 lines[#lines + 1] = string.format('%s: %s (rank %d)%s',
-                    tostring(r.slot), win.name, win.rank or 0,
+                    tostring(r.slot), M.claimantLabel(win.name), win.rank or 0,
                     (#rest > 0) and ('  over ' .. restStr) or '');
             end
         end

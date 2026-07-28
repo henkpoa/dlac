@@ -331,7 +331,7 @@ the Arbiter. Its effect is part of whatever the floor or a claimant resolves.)
 **Pure seams** (all headless-tested, tests `AR*`/`LV*`): `arbResolve(claims, order, floor)`
 → winners + `by` attribution; `arbCededAbove(claims, order, who)` → slots a claimant must
 not contest (won above it); `arbLockClaim(locked)` → the veto Claim; `arbExplain` /
-`arbWhyLines` → the per-slot `/dl why` claimant lines ("`Ammo: AutoAmmo (rank 3) over MaxMP
+`arbWhyLines` → the per-slot `/dl why` claimant lines ("`Ammo: Ammo rule (rank 3) over MaxMP
 (rank 4)`"; veto slots read "stopped by Locks"; the slots the floor dressed uncontested
 collapse into one trailing "Triggers floor (uncontested): …" summary).
 
@@ -395,6 +395,25 @@ reads stale ladders). `M.renderTab` is the tab entry point (guard ladder + login
 gate). No forwarders were left on triggersui — smoke_ui S140–S151 pin both the new
 home and the absence of the old one.
 
+#### The Status column: sentence or switch (2026-07-28)
+The list view's Status column prints a coverage sentence for every row EXCEPT the four
+idle hobbies (`craft` / `helm` / `fish` / `choco` — exactly `idleexcl.MEMBERS`), which
+draw the shared **on/off pill** (`craftbar.onOffSwitch`) instead. Those four are the only
+rows describing something you ARM; the rest are slot rules waiting for their `dlac:` entry
+or switches that live elsewhere. Coverage is not lost: the row NAME keeps the `levelColor`
+ramp and the sentence rides the pill's hover.
+
+The pill drives **`idleexcl.setOn(key, on)`**, which routes through each watcher's own
+`setEnabled` / `setAutoHelm` — so `guardActivate` still refuses a second hobby from inside
+the watcher (lock-while-active, ADR 0017), and this surface holds no lock logic of its own;
+it just reports the state it did not reach. `listRows()` is UNCHANGED (`txt` still carries
+the sentence) — the switch is a rendering decision in `autoRow`, not a data one.
+
+One layout rule worth keeping: a pill row's `Selectable` click target ends at **570** while
+the switch starts at 580. A full-width Selectable underneath a widget swallows its press
+unless the row calls `SetItemAllowOverlap` (which `profilesmenu` feature-detects because not
+every binding has it); non-overlapping hit boxes need no API at all. smoke_ui `HP0`–`HP16`.
+
 #### Naming: display labels vs internal names (2026-07-28)
 A GM read `Auto <activity>` ("Auto Fish Set", "Auto HELM Set") as *the addon performs the
 activity*. Nothing in this family does: every row picks EQUIPMENT and nothing else. The
@@ -409,12 +428,28 @@ The rename is **display-only**, and that split is load-bearing:
 | imgui labels, tooltips, chat text, docs | YES | pure display |
 | `dlac:AutoStaff` / `AutoIridescence` / `AutoOneiros` / `AutoHelm` / `AutoFish` / `AutoChoco` / `AutoAmmo` slot markers | **NO** | written into users' set files; renaming breaks every set on disk |
 | row `key`s (`iridescence`, `helm`, `fish`, …) | **NO** | `openDetail`/`DETAIL_KEYS`/`AUTO_SECTIONS`/quick menu all index by key |
-| Arbiter claimant names (`AutoAmmo`, `Craft`, `HELM`, …) | **NO** | persisted in `arbstate` order, printed by `/dl why` and `/dl prio` — the UI must match the chat |
+| Arbiter claimant names (`AutoAmmo`, `Craft`, `HELM`, …) | **identity NO, label YES** | persisted in `arbstate` order and keys `CLAIMANTS`/`CLAIM_COL`/`SOURCE`/`HINT` — but nothing shows it to a player, see below |
 | module + file names (`automationsui.lua`, `openAutomation`, `buildAutoRows`) | **NO** | internal; churn without user benefit |
 
-Consequence to keep in mind: the Claim Priority list still shows the claimant name
-**AutoAmmo** while its own row reads **Ammo**. That is deliberate — chat and UI agree.
-Renaming the claimant is a separate, engine-side change (registry + arbstate migration).
+**Claimant display labels** (`arbiter.ARB_DISPLAY` / `arbiter.claimantLabel`, added
+2026-07-28 on Henrik's *"I don't mind its name being that internally, but not in the
+GUI"*). A claimant's name is its **identity**: renaming a rank row would silently reorder
+every character's saved `arbstate` ladder. So identities never move — instead every
+surface that names a claimant **to a human** passes it through `claimantLabel` first:
+
+- `priorityui` — the Claim Priority row (via its own pure `M.label` seam)
+- `arbmonui` — the legend chips and the per-slot contest hover
+- `arbiter.arbWhyLines` — every `/dl why` claimant line (winner, "over …", "held off")
+- `dispatch` — `/dl prio`, the `/dl why` retrace line, and the naked/lock "rank ABOVE"
+  notices
+
+One map, so the GUI and the chat cannot drift apart. Identity in, label out; an unmapped
+name is its own label, so a new claimant needs an entry only when its internal name is not
+what a player should read. Today the map holds exactly one: `AutoAmmo` → **"Ammo rule"**
+— *rule*, not bare *Ammo*, because a claimant is printed next to a slot (`Ammo: <claimant>
+(rank 5) over MaxMP`) and "Ammo: Ammo" is not a sentence (test `AR12` caught it). Guards:
+`ARL1`–`ARL5` + `AR12f/g` (identity intact, and no `/dl why` line prints it), `S195b`–`S195e`
+(the two windows share the map).
 
 `host.selectTab` matches on the tab LABEL — `gearui.openAutomation` passes `'Gear Helpers'`
 and smoke_ui S10b pins it. Change one, change both.

@@ -4943,7 +4943,7 @@ local function ammoOverlayFor(as, ctx, event, hits, fishOn)
     if code == 'stockout' and type(chat) == 'string' then
         if M._ammoLastCause ~= chat then
             M._ammoLastCause = chat;
-            pcall(function() print('[dlac] AutoAmmo: ' .. chat); end);
+            pcall(function() print('[dlac] Ammo: ' .. chat); end);
         end
     elseif code ~= 'hold' then
         M._ammoLastCause = nil;   -- the condition cleared: the next one speaks again
@@ -4963,7 +4963,7 @@ local function ammoOverlayFor(as, ctx, event, hits, fishOn)
         local now = os.time();
         if now >= (tonumber(M._ammoWarnAt) or 0) then
             M._ammoWarnAt = now + 10;
-            pcall(function() print('[dlac] AutoAmmo: ' .. tostring(why) .. ' -- Ammo slot emptied.'); end);
+            pcall(function() print('[dlac] Ammo: ' .. tostring(why) .. ' -- Ammo slot emptied.'); end);
         end
     end
     return { Ammo = plan }, why;
@@ -5454,7 +5454,9 @@ local CLAIMANTS = {
       apply = function(env)
           equipResolved(env.built['AutoAmmo'], env.ctx, env.respect('AutoAmmo'), 'AutoAmmo');
           if env.retrace then
-              env.lines[#env.lines + 1] = string.format('AutoAmmo  ->  Ammo=%s  (%s)',
+              -- label on the left (the player's word), identity in the lookups
+              env.lines[#env.lines + 1] = string.format('%s  ->  Ammo=%s  (%s)',
+                  ARB.claimantLabel('AutoAmmo'),
                   tostring(env.built['AutoAmmo'].Ammo), tostring(env.bx['AutoAmmo']));
           end
       end,
@@ -7029,7 +7031,10 @@ if engineActive() then
             end
             print('[dlac] Claim priority (arbstate rank, highest first):');
             for i, name in ipairs(order) do
-                print(string.format('    %d. %-9s %s', i, name, status[name] or '?'));
+                -- The player reads the LABEL (ARB.claimantLabel -- the same map
+                -- the Priority list and the Arbiter Monitor use); `name` stays
+                -- the identity that keys status and arbstate's saved order.
+                print(string.format('    %d. %-9s %s', i, ARB.claimantLabel(name), status[name] or '?'));
             end
             return;
         end
@@ -7244,7 +7249,8 @@ if engineActive() then
                 -- is not a rank the player can reorder, so listing it under
                 -- "Claim Priority reorders them" would point at a drag that does
                 -- not exist. It gets its own line below, and only when it is ON.
-                if n ~= 'Triggers' and n ~= 'MaxMP' and n ~= 'Disabled' then above[#above + 1] = n; end
+                -- display list: labels, not identities (ARB.claimantLabel)
+                if n ~= 'Triggers' and n ~= 'MaxMP' and n ~= 'Disabled' then above[#above + 1] = ARB.claimantLabel(n); end
             end
             if #above > 0 then
                 print(string.format('[dlac]   %s rank ABOVE Naked, so their slots stay dressed. Gear Helpers > Claim Priority reorders them.',
@@ -7370,7 +7376,7 @@ if engineActive() then
                 local ord, above = M.arbOrder(ensureArbState()), {};
                 for _, n in ipairs(ord) do
                     if n == 'Locks' then break; end
-                    if n ~= 'Triggers' and n ~= 'MaxMP' and n ~= 'Naked' then above[#above + 1] = n; end
+                    if n ~= 'Triggers' and n ~= 'MaxMP' and n ~= 'Naked' then above[#above + 1] = ARB.claimantLabel(n); end
                 end
                 if #above > 0 then
                     print(string.format('[dlac]   %s rank ABOVE a lock, so they can still change their slots. Gear Helpers > Claim Priority reorders them.',
@@ -7529,7 +7535,7 @@ if engineActive() then
                     for i, op in ipairs(ops) do
                         local item = (op.item == M.LOCK_HELD) and 'LOCK-HELD (keep worn)' or tostring(op.item);
                         print(string.format('    %d. %s (rank %d): %s%s',
-                            i, tostring(op.name), op.rank or 0, item, (i == 1) and '   <- winner' or ''));
+                            i, tostring(ARB.claimantLabel(op.name)), op.rank or 0, item, (i == 1) and '   <- winner' or ''));
                     end
                 end
                 local rv = findCI(c.rep);

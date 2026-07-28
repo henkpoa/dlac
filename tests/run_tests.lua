@@ -2006,6 +2006,24 @@ check('T35 current keeps ings order', curT.ings[1] == 1165 and #curT.ings == 2, 
     check('IE6 chocobo arms when idle',             (idleexcl.getActive() or {}).key, 'choco');
     check('IE6b exactly one armed',                 armedCount(), 1);
 
+    -- setOn: arm/disarm ONE hobby by key -- the switch behind a surface that
+    -- shows all four at once (the Gear Helpers Status pills, 2026-07-28). It
+    -- routes through each watcher's own setter, so the LOCK is untouched: an arm
+    -- against a running hobby is refused and setOn reports the state it did NOT
+    -- reach. HELM must route to Auto HELM (its one switch), never the unwired
+    -- manual idle flag.
+    check('IE7 setOn refuses a 2nd hobby',          idleexcl.setOn('craft', true), false);
+    check('IE7b the refused arm left craft off',    IE_cw.isEnabled(), false);
+    check('IE7c chocobo is still the armed one',    (idleexcl.getActive() or {}).key, 'choco');
+    check('IE7d setOn(false) stands it down',       idleexcl.setOn('choco', false), false);
+    check('IE7e nothing armed now',                 idleexcl.getActive(), nil);
+    check('IE7f setOn arms when idle',              idleexcl.setOn('helm', true), true);
+    check('IE7g HELM armed = AUTO HELM',            IE_hw.isAutoHelm(), true);
+    check('IE7h ...not the manual idle flag',       IE_hw.isEnabled(), false);
+    check('IE7i setOn(false) clears BOTH switches', idleexcl.setOn('helm', false), false);
+    check('IE7j exactly nothing armed after',       armedCount(), 0);
+    check('IE7k an unknown key is a no-op',         idleexcl.setOn('nosuch', true), false);
+
     -- Restore: stand everything down and put package.loaded back so later blocks
     -- are unaffected (a later fishwatch.setEnabled must NOT reach these peers).
     IE_ch.setEnabled(false);
@@ -6354,8 +6372,11 @@ end)();
     local floor = { Ammo = 'Idle Ammo', Ring1 = 'Idle Ring', Hands = 'Idle Hands',
                     Legs = 'Idle Legs', Body = 'Idle Body' };
     local joined = table.concat(dispatchM.arbWhyLines(claims, ord, floor), '\n');
+    -- The winner is named by its DISPLAY LABEL (arbiter.claimantLabel): the
+    -- claimant identity stays 'AutoAmmo' in claims/order/arbstate, but no
+    -- player-facing surface prints it (2026-07-28, Henrik: "not in the GUI").
     check('AR12 the Ammo contest line names winner over runner-up (the issue example)',
-        joined:find('Ammo: AutoAmmo (rank 5)  over MaxMP (rank 6)', 1, true) ~= nil, true);
+        joined:find('Ammo: Ammo rule (rank 5)  over MaxMP (rank 6)', 1, true) ~= nil, true);
     check('AR12b a MaxMP-only slot reads MaxMP over the floor',
         joined:find('Ring1: MaxMP (rank 6)  over Triggers (rank 11)', 1, true) ~= nil, true);
     check('AR12c a veto slot reads stopped by Locks (even from a lowercase key)',
@@ -6368,6 +6389,45 @@ end)();
     local iAmmo, iHands, iRing = joined:find('Ammo:', 1, true), joined:find('Hands:', 1, true), joined:find('Ring1:', 1, true);
     check('AR12e contested slots emit in canonical LAC order (Ammo < Hands < Ring1)',
         iAmmo < iHands and iHands < iRing, true);
+    -- THE GUARD (2026-07-28). The claimant IDENTITY 'AutoAmmo' is persisted in
+    -- arbstate's order and keys claims/CLAIMANTS/CLAIM_COL/HINT -- it must not
+    -- move. What must never happen is a PLAYER reading it. /dl why is the
+    -- richest naming surface, so it is the one pinned here: the identity is
+    -- still what the caller passed in, and it appears nowhere in the output.
+    check('AR12f the claim table still keys on the IDENTITY (nothing was renamed)',
+        claims.AutoAmmo ~= nil and claims.AutoAmmo.Ammo, 'Orichalc. Bullet');
+    check('AR12g ...and no /dl why line ever prints it',
+        joined:find('AutoAmmo', 1, true), nil);
+end)();
+
+-- ---------------------------------------------------------------------------
+-- ARL. CLAIMANT DISPLAY LABELS (2026-07-28, Henrik: "I don't mind its name
+--      being that internally, but not in the GUI"). ONE map in gear/arbiter
+--      feeds every surface that names a claimant to a human -- the Priority
+--      list, the Arbiter Monitor, /dl prio, /dl why -- so the GUI and the chat
+--      cannot drift apart. Identity in, label out; unmapped = itself, so a new
+--      claimant needs an entry only when its internal name is not readable.
+-- ---------------------------------------------------------------------------
+(function()
+    local ARB = require('dlac\\gear\\arbiter');
+    check('ARL1 the one Auto name a player could still see is mapped',
+        ARB.claimantLabel('AutoAmmo'), 'Ammo rule');
+    check('ARL2 an unmapped claimant is its own label',
+        ARB.claimantLabel('MaxMP'), 'MaxMP');
+    check('ARL3 ...for every other rank row too (no accidental entries)',
+        ARB.claimantLabel('Pins') .. '/' .. ARB.claimantLabel('Locks')
+            .. '/' .. ARB.claimantLabel('Triggers'), 'Pins/Locks/Triggers');
+    check('ARL4 a nil/non-string is handed straight back (never a crash)',
+        ARB.claimantLabel(nil), nil);
+    -- The identity list is untouched: renaming a rank row would silently
+    -- reorder every character's saved arbstate ladder.
+    local n = 0;
+    for _, name in ipairs(ARB.ARB_ORDER_DEFAULT) do
+        if name == 'AutoAmmo' then n = n + 1; end
+    end
+    check('ARL5 the rank vocabulary still carries the IDENTITY', n, 1);
+    -- (The GUI end of this -- priorityui.label + the Arbiter Monitor -- is
+    -- pinned in smoke_ui: UI modules load only in that harness.)
 end)();
 
 -- ---------------------------------------------------------------------------
@@ -11809,6 +11869,25 @@ end)();
     check('EBT8 a client that failed to load says so rather than erroring',
         et.lines(nil)[1]:find('failed to load', 1, true) ~= nil, true);
 
+    -- EBT9. THE TWO HALVES, JOINED -- and the reason this test exists.
+    -- EBT3-8 format a hand-built stand-in; EBC23f/g drive the real production
+    -- trace calls. Both were green from the day v2 shipped, and neither could
+    -- see that `_trace` wrote `when` while `lines` read `at`: the stand-in above
+    -- spells the field the formatter's way, and EBC23g only ever inspects
+    -- dir/what. The real ring was never handed to the real formatter, so
+    -- `/dl debug ebox` threw on the first event it ever had to print and Ashita
+    -- unloaded the addon (field, 2026-07-28). It survived the 07-25 field round
+    -- only because the ring was empty then -- the `#tr == 0` branch, which is
+    -- the one path that never touches a timestamp.
+    -- The ring loaded by EBC23f/g above is still live; format THAT.
+    etL = tostring(select(2, pcall(function() return table.concat(et.lines(ec), '\n'); end)));
+    check('EBT9 the REAL ring through the REAL formatter: every event renders an age',
+        #ec.trace >= 4 and select(2, etL:gsub(' ago  ', '')) == #ec.trace, true);
+    check('EBT9b and the events say what they were, not nil',
+        etL:find('GET_CATEGORY cat=15', 1, true) ~= nil
+        and etL:find('WITHDRAW id=21302 x5', 1, true) ~= nil
+        and etL:find('dirty cat=15', 1, true) ~= nil, true);
+
     -- RS. restockwatch -- E-Box Restock config + the two PURE cores (ADR 0016;
     -- docs/design/ebox-restock.md). No packets/engine: the union+override and the
     -- slot-safety planner are arithmetic, so the panel and the nudge share ONE answer.
@@ -11967,17 +12046,28 @@ end)();
                and not home[5] and not home[6] and not home[7];
         end)(), true);
 
-    -- AC. data/ammocontainers -- the quiver/pouch pairing (Henrik, field
-    -- 2026-07-25). `!box ammo` hands back CONTAINERS: a Blind Bolt withdrawal
-    -- arrives as a Blind Bolt Quiver, stack 12, each worth 99 bolts -- so one
-    -- Inventory slot holds 1188 and NONE of it reads as "Blind Bolt". Restock
-    -- saw on-hand 0 and kept offering to fetch more. Generated from the server's
-    -- own item scripts, because the naming is irregular ("Beetle Arrow" ->
-    -- "Beetle Quiver" drops the word, "Blind Bolt" -> "Blind Bolt Quiver"
-    -- appends it) and the catalog abbreviates the containers on top of that.
-    local ac = dofile('data/ammocontainers.lua');
+    -- AC. data/itembundles -- the bundle -> contents pairing (Henrik, field
+    -- 2026-07-25 and -28). A withdrawal hands back the BUNDLE, not what is in
+    -- it: a Blind Bolt arrives as a Blind Bolt Quiver, stack 12, each worth 99
+    -- bolts -- so one Inventory slot holds 1188 and NONE of it reads as "Blind
+    -- Bolt". Restock saw on-hand 0 and kept offering to fetch more. Field-
+    -- confirmed 07-28: 2 Beetle Quivers, one opened, reads 198* (99 loose + 99
+    -- still sealed). Generated from the server's own item scripts, because the
+    -- naming is irregular ("Beetle Arrow" -> "Beetle Quiver" drops the word,
+    -- "Blind Bolt" -> "Blind Bolt Quiver" appends it) and the catalog
+    -- abbreviates on top of that.
+    --
+    -- WIDENED 07-28 from quivers+pouches (62) to every single-item bundle the
+    -- server defines (109): the old glob missed CLUSTERS (`!box cluster`, the
+    -- shape a crafter hits first) and TOOLBAGS (ninjutsu tools, in the
+    -- restocker's staple set), plus card cases and stone pouches.
+    local ac = dofile('data/itembundles.lua');
     local acN = 0; for _ in pairs(ac) do acN = acN + 1; end
-    check('AC1 the generated pairing table loads with rows', acN > 50, true);
+    check('AC1 the generated pairing table loads with rows', acN > 100, true);
+    check('AC1b clusters: `!box cluster` returns one Wind Cluster worth 12 crystal',
+        ac[4106] ~= nil and ac[4106].id == 4098 and ac[4106].qty == 12, true);
+    check('AC1c toolbags: a NIN tracking Shihei is carrying 99 per bag',
+        ac[5314] ~= nil and ac[5314].id == 1179 and ac[5314].qty == 99, true);
     check('AC2 a bolt quiver names its ammo and its multiplier',
         ac[5334] ~= nil and ac[5334].id == 18150 and ac[5334].qty == 99, true);
     check('AC3 an arrow quiver too -- whose name DROPS the word "Arrow"',
@@ -11986,10 +12076,21 @@ end)();
        .. '      oberon script header claims 5822 (dweomer\'s); item_basic.sql is the authority',
         ac[5822] ~= nil and ac[5823] ~= nil
         and ac[5822].id == 19198 and ac[5823].id == 19199, true);
-    check('AC5 every row is usable: real container id, real ammo id, positive qty, a name',
+    check('AC4b the SECOND header lie: toolbag_sanjaku-tenugui claims 5314, which is\n'
+       .. '      shihei\'s -- trusting headers would have collided and dropped a row',
+        ac[5417] ~= nil and ac[5417].id == 2553
+        and ac[5314] ~= nil and ac[5314].id == 1179, true);
+    -- THE JUDGEMENT CALL, pinned. Gear that mints ammo has the same script shape
+    -- (Annihilator -> 99 Eradicating Bullet, Bolt Belt -> 99 Bronze Bolt), and is
+    -- deliberately NOT here: this table answers "how much do I already have", and
+    -- a relic that mints on demand is a source, not a pile. Counting one as 99
+    -- would silence Restock about that ammo permanently.
+    check('AC5b equippable minters are absent -- a source is not stock',
+        ac[15289] == nil and ac[15296] == nil and ac[14532] == nil, true);
+    check('AC5 every row is usable: real bundle id, real contents id, positive qty, a name',
         (function()
             for cid, r in pairs(ac) do
-                if type(cid) ~= 'number' or cid <= 0 then return 'bad container id'; end
+                if type(cid) ~= 'number' or cid <= 0 then return 'bad bundle id'; end
                 if type(r) ~= 'table' or (tonumber(r.id) or 0) <= 0
                    or (tonumber(r.qty) or 0) <= 0
                    or type(r.name) ~= 'string' or r.name == '' then

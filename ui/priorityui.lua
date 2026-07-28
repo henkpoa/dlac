@@ -32,6 +32,18 @@ local COL_ON     = { 0.55, 0.90, 0.55, 1.00 };   -- a claim actively dressing sl
 local COL_IDLE   = { 0.70, 0.70, 0.70, 1.00 };   -- present but not claiming
 local COL_FLOOR  = { 0.80, 0.72, 0.45, 1.00 };   -- the Triggers floor / veto (special rows)
 
+-- What a PLAYER reads for a claimant. The identity (r.name / the keys below /
+-- arbstate's saved order) never moves; only the rendered string does -- one map,
+-- in gear/arbiter, shared with the Arbiter Monitor and /dl prio + /dl why so no
+-- surface can drift. Pure + above the imgui guard, so the headless suite reaches
+-- it; a load knot degrades to the identity rather than blanking the row.
+function M.label(name)
+    local ok, s = pcall(function()
+        return require('dlac\\gear\\arbiter').claimantLabel(name);
+    end);
+    return (ok and type(s) == 'string') and s or name;
+end
+
 -- Short, always-visible "controlled from" label (the source hint inline).
 M.HINT = {
     Disabled = '/dl disable | Equipped tab',
@@ -298,7 +310,9 @@ function M.render(deps, opts)
         -- Overlaid row text. Special rows (Locks veto / Triggers floor) read in
         -- the floor color so they are visibly not ordinary claimants.
         local nameCol = r.special and COL_FLOOR or COL_TEXT;
-        imgui.SameLine(X_NAME);   imgui.TextColored(nameCol, r.name);
+        -- The LABEL, never the identity (arbiter.claimantLabel): r.name still
+        -- keys the imgui id, the drag, HINT/SOURCE and arbstate's saved order.
+        imgui.SameLine(X_NAME);   imgui.TextColored(nameCol, M.label(r.name));
         imgui.SameLine(X_STATUS); imgui.TextColored(r.active and COL_ON or COL_IDLE, r.status);
         imgui.SameLine(X_HINT);   imgui.TextColored(COL_DIM, r.hint);
         imgui.PopID();

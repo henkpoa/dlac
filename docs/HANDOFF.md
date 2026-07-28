@@ -249,7 +249,21 @@ merge carries it **without asking him again**. Only he can move an entry to ACCE
 this does not make an accepted entry mergeable *alone*: `dev` promotes
 **whole-or-not-at-all**, so an accepted entry rides the next promotion of the whole branch.
 
-*(Empty — last emptied by the SEVENTH 2026-07-28 promotion: `2026.07.28r`, a two-line trim to
+*(Empty — last emptied by the FIRST 2026-07-29 promotion: `2026.07.28s`–`2026.07.28v`, the
+nine-commit train that closed the E-Box v2 record — the `/dl debug ebox` crash fix (`28s`,
+field-confirmed by the bare-snapshot pass: an 11-event ring spanning 1h24m formatted clean, and
+the header measured the design's whole promise on its way past — **1 packet sent, 0.0/min,
+standing 1.9 yalms from the box**), itembundles 62 → 109 (`28t`, field-confirmed via the
+fire-cluster and `198*` Beetle Quiver readings), the Gear Helpers Status column (`28u`,
+field-confirmed), the arbiter claimant display labels (`28v`, promoted **before its field
+glance** — display-only strings at the render seam, the bounded shape), and five docs commits
+closing the record: field round 2 went 5-of-5 (the foreign-stream loop is dead; the "intruder"
+was trove's own ebox streams, `rows=0 source=0`), trove's raw 0x1A4 withdraws ruled an
+**ACCEPTED COST** ("don't track trove, just don't spam" — §4c of the v2 handoff carries the
+ruling and the one condition that reopens it), §6 emptied (option (b) obsoleted-then-declined,
+quiver-opening declined, the deposit ask HENRIK-CARRIED to the Trove creator). Both suites
+green at 4225. Promoted on Henrik's *"push to origin main"*. Before that, the SEVENTH
+2026-07-28 promotion: `2026.07.28r`, a two-line trim to
 the yellow hover on Henrik's *"Completely unnecessary. Just bloats the window."* — the header
 already said the copies are at your Mog House. Nothing else rode with it. Before that, the
 SIXTH 2026-07-28 promotion: `2026.07.28p`–`q`, the two E-Box
@@ -428,9 +442,14 @@ research already recorded. In rough priority order:
   **Display-only, and that boundary is the point:** `dlac:Auto*` slot markers are on-disk
   contracts inside users' set files, row `key`s index `openDetail`/`AUTO_SECTIONS`/the quick
   menu, and Arbiter claimant names are persisted in `arbstate` **and printed by `/dl why`**
-  — none of them moved. So the Claim Priority list still reads **AutoAmmo** while its own
-  row reads **Ammo**: deliberate, because chat and UI must agree. Renaming the claimant is a
-  separate engine-side change (registry + arbstate migration) — the one loose end.
+  — none of those identities moved. **Follow-up the same day** (Henrik: *"I'd rather not
+  have it called AutoAmmo in the arbiter list. I don't mind its name being that internally,
+  but not in the GUI"*): `arbiter.ARB_DISPLAY` / `claimantLabel` — one map, and every
+  surface that names a claimant to a human goes through it (Priority list, Arbiter Monitor
+  chips + hover, `/dl why`, `/dl prio`, the naked/lock "rank ABOVE" notices), so the GUI and
+  the chat cannot drift. `AutoAmmo` renders **"Ammo rule"** — *rule*, because a claimant
+  prints next to a slot (`Ammo: <claimant> (rank 5) over MaxMP`) and test `AR12` caught
+  "Ammo: Ammo". Identity untouched, so no saved ladder reorders.
   The full split is a table in architecture.md ("Naming: display labels vs internal
   names"); `CONTEXT.md` retires **Automation** as user-facing vocabulary in favour of
   **gear helper** / **gear rule**. `host.selectTab` matches on the tab LABEL, so
@@ -1084,6 +1103,16 @@ research already recorded. In rough priority order:
   the ADR 0012 claim-side dead end — the engine's co-claim is untouched (AR8/9/10 green).
   The three old craft/helm/fish bar windows were unified: each bar body is now
   `<bar>.renderContent(availW)` drawn by `hobbybar`.
+  **2026-07-28 (`u`), on `dev`, FIELD-CONFIRMED same day:** those same four hobbies now
+  carry the SAME on/off pill in the Gear Helpers **Status** column (Henrik: *"on or off
+  slider, same as hobby, only one can be active"*) — one row per hobby, all four visible
+  at once. It drives the new `idleexcl.setOn(key, on)`, which routes through the watchers,
+  so the lock and its chat refusal are unchanged; the coverage sentence the column used to
+  print moved into the pill's hover. The other five rows (Elemental Staff / Obi / Oneiros
+  Grip / Ammo / MaxMP, plus E-Box Restock on CW) keep their status sentence untouched.
+  Field read: flipping either surface moves the other. There is **no listener** — every
+  surface re-reads the watcher's live state each frame, which is why they cannot drift.
+  A new hobby surface must read live too; never cache an armed flag.
 
 - **weatherMatch trigger condition — SHIPPED 2026-07-24 (ADR 0018).** New trigger flag
   `weatherMatch` (Precast+Midcast, tier 30): true when the action's element == the

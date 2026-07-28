@@ -419,7 +419,15 @@ ashita.events.register('command', 'dlac-debug', function(e)
     M.heard('/dl debug ' .. tostring(rest) .. ' (addon handler)');
     local topic = M._topic(w1);
     if topic == nil then print('[dlac] ' .. M._usage()); return; end
-    PRINTERS[topic](rest);
+    -- A READOUT MUST NOT BE ABLE TO KILL THE ADDON. `/dl debug ebox` threw on a
+    -- nil field 2026-07-28 and Ashita unloaded dlac mid-session -- the player
+    -- lost every dlac feature for asking a question about traffic. Nothing in
+    -- here writes anything, so a failure is worth one honest line and nothing
+    -- more. (Containment, not gating: the error is printed, never swallowed.)
+    local pok, perr = pcall(PRINTERS[topic], rest);
+    if not pok then
+        print('[dlac] debug ' .. tostring(topic) .. ' failed: ' .. tostring(perr));
+    end
 end);
 
 return M;

@@ -52,18 +52,22 @@ local function chocoMod() return try('dlac\\feature\\chocowatch'); end
 --   key      : stable id passed to canActivate() / guardActivate()
 --   name     : label for the float, the bar selector, and hints
 --   isOn()   : armed right now?  HELM = Auto HELM (the only HELM switch now).
+--   enable() : arm it -- through the watcher's OWN setter, so guardActivate still
+--              refuses it while another hobby runs (this table never bypasses the lock).
 --   disable(): stand it FULLY down. HELM clears BOTH switches.
 --   detail() : short sub-label for the float / bar (craft/category/target), or nil.
 M.MEMBERS = {
     {
         key = 'craft', name = 'Craft',
         isOn    = function() local w = craftMod(); return w ~= nil and w.isEnabled() == true; end,
+        enable  = function() local w = craftMod(); if w ~= nil then pcall(w.setEnabled, true); end end,
         disable = function() local w = craftMod(); if w ~= nil then pcall(w.setEnabled, false); end end,
         detail  = function() local w = craftMod(); return w ~= nil and w.getCraft() or nil; end,
     },
     {
         key = 'helm', name = 'HELM',
         isOn    = function() local w = helmMod(); return w ~= nil and w.isAutoHelm() == true; end,
+        enable  = function() local w = helmMod(); if w ~= nil then pcall(w.setAutoHelm, true); end end,
         disable = function()
             local w = helmMod();
             if w ~= nil then pcall(w.setAutoHelm, false); pcall(w.setEnabled, false); end
@@ -73,6 +77,7 @@ M.MEMBERS = {
     {
         key = 'fish', name = 'Fishing',
         isOn    = function() local w = fishMod(); return w ~= nil and w.isEnabled() == true; end,
+        enable  = function() local w = fishMod(); if w ~= nil then pcall(w.setEnabled, true); end end,
         disable = function() local w = fishMod(); if w ~= nil then pcall(w.setEnabled, false); end end,
         detail  = function()
             local w = fishMod(); if w == nil then return nil; end
@@ -83,6 +88,7 @@ M.MEMBERS = {
     {
         key = 'choco', name = 'Chocobo',
         isOn    = function() local w = chocoMod(); return w ~= nil and w.isEnabled() == true; end,
+        enable  = function() local w = chocoMod(); if w ~= nil then pcall(w.setEnabled, true); end end,
         disable = function() local w = chocoMod(); if w ~= nil then pcall(w.setEnabled, false); end end,
         detail  = function() return nil; end,
     },
@@ -132,6 +138,25 @@ function M.guardActivate(key)
     end);
     if not ok then return true; end   -- fail open
     return allowed == true;
+end
+
+-- Arm or disarm ONE hobby by key -- the switch behind a surface that shows all
+-- four at once (the Gear Helpers Status pills). It routes through the member's
+-- own enable/disable, i.e. the watcher's setEnabled / setAutoHelm, so the LOCK
+-- still lives exactly where it did: arming a second hobby is refused by
+-- guardActivate inside the watcher, in chat, and this returns false. It is a
+-- dispatcher, never a second rule.
+--   returns the hobby's state AFTER the attempt (false when an arm was refused).
+function M.setOn(key, on)
+    local m = memberOf(key);
+    if m == nil then return false; end
+    if on == true then
+        if type(m.enable) == 'function' then m.enable(); end
+    else
+        m.disable();
+    end
+    local ok, state = pcall(m.isOn);
+    return ok and state == true;
 end
 
 -- Stand the currently-armed hobby down (the badge's Off button, the bar's pill).

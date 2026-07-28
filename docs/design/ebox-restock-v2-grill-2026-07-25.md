@@ -446,6 +446,14 @@ through `scripts/enum/item.lua`, and writes **`data/ammocontainers.lua`** — 62
 `[containerId] = { id = ammoId, qty = 99, name }`. Four were correctly skipped (bead/silt/
 heavy-metal pouch and old_quiver give random or multiple things, not ammo).
 
+> **SUPERSEDED 2026-07-28 — the glob was the bug.** Filename-globbing found 62; the server has
+> ~130 items of this exact shape, and the misses were **toolbags** (ninjutsu tools) and
+> **clusters** (`!box cluster`) — both in the restocker's staple set. Now
+> `tools/gen_itembundles.py` → **`data/itembundles.lua`**, 109 rows, selected *structurally*
+> (one `npcUtil.giveItem`, one item, qty > 1) rather than by name, minus 21 equippable minters
+> (Annihilator, Bolt Belt) because a source that mints on demand is not stock. See the handoff's
+> §4b for the full ruling.
+
 **A server bug fell out of it:** `oberon_bullet_pouch.lua`'s header says `-- ID: 5822`, which is
 *dweomer's* id — `item_basic.sql` says 5823. Trusting the script headers produced a table with
 a duplicate key that silently dropped a row (62 written, 61 loaded). The generator now keys off
