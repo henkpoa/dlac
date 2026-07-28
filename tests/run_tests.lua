@@ -12438,6 +12438,127 @@ end)();
     os.remove(JOB); os.remove(BACKUP); os.remove(LEGACY);
 end)();
 
+-- PSM. Legacy files that fight back (field 2026-07-28, a second tester's SCH.lua:
+--      "Created 0 new sets -- nothing created, 1 skipped: no owned/known gear").
+--      THREE independent faults in one file, each of which produced that same
+--      sentence:
+--        1. `require("ffxi-lac\\gear")` -- dlac's OWN name before the rename. No
+--           such module here, so the soft require handed back the STUB and EVERY
+--           `gear.X.Y.Z` became the stub object.
+--        2. `gear.Ammo.Throwing.X` -- the pre-flat Ammo shape. A raw nil index
+--           there killed the whole chunk (or truncated the list at the hole).
+--        3. one missing comma -> the file does not parse at all, and nothing said so.
+--      Henrik's ruling: "If pieces don't exist, just skip them and move on like he
+--      doesn't have it." So: the file resolves against THIS character's gear, an
+--      unknown piece is a skipped entry (never a hole, never a crash), and an
+--      unreadable file NAMES ITSELF.
+--
+--      Ashita is LuaJIT, where setfenv exists and the sandbox env is real; the
+--      suite runs on 5.4, so the section installs a faithful polyfill (and removes
+--      it again) -- without it the fixture would run against the real _G and this
+--      whole path would go untested.
+(function()
+    local JOB = 'tests/_tmp_psm_job.lua';
+    local BAD = 'tests/_tmp_psm_bad.lua';
+
+    local savedSetfenv = rawget(_G, 'setfenv');
+    _G.setfenv = function(fn, env)
+        local i = 1;
+        while true do
+            local name = debug.getupvalue(fn, i);
+            if name == '_ENV' then debug.setupvalue(fn, i, env); return fn; end
+            if name == nil then return fn; end
+            i = i + 1;
+        end
+    end
+
+    -- An ffxi-lac-era job file, verbatim in shape: old require name, a nested-Ammo
+    -- reference, and pieces this character does and does not have.
+    local f = assert(io.open(JOB, 'w'));
+    f:write('local profile = {};\n'
+        .. 'local gear = require("ffxi-lac\\\\gear");\n'
+        .. 'local sets = { Dynamic = { Cure = {\n'
+        .. '    Head = { gear.Head.RealHat, gear.Head.NoSuchHat },\n'
+        .. '    Ammo = { gear.Ammo.Throwing.NoSuchTathlum },\n'
+        .. '    Body = { gear.Body.RealRobe },\n'
+        .. '} } };\nprofile.Sets = sets;\nreturn profile;\n');
+    f:close();
+
+    local fb = assert(io.open(BAD, 'w'));   -- his exact fault: a missing comma
+    fb:write('local profile = {};\nlocal sets = { Dynamic = { Cure = {\n'
+        .. '    Back = { "Mist Silk Cape"\n              "Tundra Mantle" },\n'
+        .. '} } };\nprofile.Sets = sets;\nreturn profile;\n');
+    fb:close();
+
+    local savedProf = package.loaded['dlac\\profiles'];
+    local savedGear = package.loaded['dlac\\gear'];
+    package.loaded['dlac\\gear'] = {   -- this character's inventory: FLAT Ammo, two pieces
+        Head = { RealHat  = { Name = 'Real Hat',  Level = 50, Id = 111 } },
+        Body = { RealRobe = { Name = 'Real Robe', Level = 50, Id = 222 } },
+        Ammo = {},
+    };
+    package.loaded['dlac\\profiles'] = {
+        activeName = function() return 'Default'; end,
+        setsPath = function() return nil; end,
+        hasSetsFile = function() return true; end,
+        readSetsFile = function() return { Live = {} }; end,
+        backupPath = function() return BAD; end,          -- the unreadable one
+        legacyBackupPath = function() return nil; end,
+    };
+    local ps = dofile('gear/profilesets.lua');
+    ps.configure({ jobFile = function() return JOB, 'SCH'; end });
+
+    check('PSM0 MISSING sentinel exported', type(ps.MISSING), 'table');
+    check('PSM1 a sentinel answers __dlacMissing through ANY key', ps.MISSING.Anything.Deeper.__dlacMissing ~= nil, true);
+
+    local cure = ps.getLacSets()['Cure'];
+    check('PSM2 an ffxi-lac-era file still yields its sets', type(cure), 'table');
+    check('PSM3 the OLD require name resolves to THIS gear (alias)',
+          (type(cure) == 'table' and type(cure.Head) == 'table' and type(cure.Head[1]) == 'table')
+          and cure.Head[1].Name or '(nothing)', 'Real Hat');
+    -- the whole point of the sentinel: a missing piece keeps its PLACE in the list
+    check('PSM4 an unknown piece does not truncate the list', #cure.Head, 2);
+    check('PSM5 ...and is flagged missing, not nil', cure.Head[2].__dlacMissing ~= nil, true);
+    check('PSM6 nested Ammo on a flat inventory is missing, not an error',
+          (type(cure.Ammo) == 'table' and type(cure.Ammo[1]) == 'table')
+          and (cure.Ammo[1].__dlacMissing ~= nil) or false, true);
+
+    -- ...and the import skips exactly those, per Henrik's ruling.
+    local simport = dofile('gear/setimport.lua');
+    local SLOTS = { { label = 'Head' }, { label = 'Ammo' }, { label = 'Body' } };
+    local function resolve(elem)          -- mirrors gearui.resolveSetItem's two gates
+        if type(elem) ~= 'table' then return nil; end
+        if elem.__dlacMissing then return nil; end
+        if type(elem.Name) ~= 'string' then return nil; end
+        return { rec = { Name = elem.Name, Level = elem.Level or 0 } };
+    end
+    local r = simport.importStaticSet(cure, SLOTS, resolve);
+    check('PSM7 the import lands the pieces he HAS', r.slotCount, 2);
+    check('PSM8 Head keeps only the real one', #r.working.Head, 1);
+    check('PSM9 the nested-Ammo slot is simply absent', r.working.Ammo, nil);
+    check('PSM10 a resolver that THROWS costs one candidate, not the set',
+          simport.importStaticSet({ Head = { { Name = 'Real Hat' }, { Name = 'boom' } } }, SLOTS,
+              function(e) if e.Name == 'boom' then error('kaboom'); end return resolve(e); end
+          ).slotCount, 1);
+
+    -- The unreadable file names itself instead of reading as "no old sets".
+    local diag = ps.legacyDiag();
+    check('PSM11 the unparsable file is reported', #diag, 1);
+    check('PSM12 ...by name', diag[1].file, '_tmp_psm_bad.lua');
+    check('PSM13 ...with the parser\'s own reason', (diag[1].why or ''):find('will not parse', 1, true) ~= nil, true);
+    check('PSM14 an ABSENT file is never reported as broken', (function()
+        package.loaded['dlac\\profiles'].backupPath = function() return 'tests/_tmp_psm_absent.lua'; end
+        local ps2 = dofile('gear/profilesets.lua');
+        ps2.configure({ jobFile = function() return JOB, 'SCH'; end });
+        return #ps2.legacyDiag();
+    end)(), 0);
+
+    _G.setfenv = savedSetfenv;
+    package.loaded['dlac\\profiles'] = savedProf;
+    package.loaded['dlac\\gear'] = savedGear;
+    os.remove(JOB); os.remove(BAD);
+end)();
+
 -- LGW. lockstyle boxes follow decision (feature/lockstyle.lua : M._followBoxes).
 --      Boxes save on click (no tab-level dirty state), so changed bytes always
 --      follow; only the 4x4's mid-edit working copy is carried across.

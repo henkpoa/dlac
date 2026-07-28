@@ -2132,6 +2132,13 @@ local function resolveSetItem(elem)
         return rec and { rec = rec } or nil;
     end
     if type(elem) ~= 'table' then return nil; end
+    -- A legacy import's unresolvable reference: profilesets' MISSING sentinel (a
+    -- piece this character has no record of) or its require STUB (a whole library
+    -- the old file wanted and this install hasn't got). Both answer truthy here by
+    -- construction. Skip it and move on, exactly as if the piece were not owned
+    -- (Henrik 2026-07-28) -- before this, one of them reached string.lower() as a
+    -- TABLE and the error took the entire set down as "no owned/known gear".
+    if elem.__dlacMissing then return nil; end
 
     local ref, minL, maxL, modeC = elem, nil, nil, nil;
     local autoT, remP, accV = nil, nil, nil;   -- Type automation fields (AutoAcc)
@@ -2154,11 +2161,18 @@ local function resolveSetItem(elem)
     end
     if type(ref) ~= 'table' then return nil; end
 
+    -- Name/Id are read TYPED, never merely non-nil: a sentinel or a foreign table
+    -- answers every key with something, and `string.lower(<table>)` is an error,
+    -- not a miss (see the __dlacMissing note above -- this is the same lesson
+    -- applied where the value is finally used).
     local rec = nil;
-    if ref.Id ~= nil then rec = _ownedById[ref.Id]; end
-    if rec == nil and ref.Name ~= nil then rec = _ownedByName[string.lower(ref.Name)]; end
-    if rec == nil and ref.Name ~= nil then     -- not in gear.lua: display-only, no path
-        rec = { Name = ref.Name, Level = ref.Level or 0, Id = ref.Id, Jobs = ref.Jobs, Stats = ref.Stats };
+    local refName = (type(ref.Name) == 'string') and ref.Name or nil;
+    if type(ref.Id) == 'number' then rec = _ownedById[ref.Id]; end
+    if rec == nil and refName ~= nil then rec = _ownedByName[string.lower(refName)]; end
+    if rec == nil and refName ~= nil then     -- not in gear.lua: display-only, no path
+        rec = { Name = refName, Level = tonumber(ref.Level) or 0, Id = tonumber(ref.Id),
+                Jobs = (type(ref.Jobs) == 'table') and ref.Jobs or nil,
+                Stats = (type(ref.Stats) == 'table') and ref.Stats or nil };
     end
     if rec == nil then return nil; end
     return { rec = rec, minLevel = minL, maxLevel = maxL, mode = modeC,
@@ -4262,6 +4276,13 @@ local function renderSetsTab(job, level)
             end
         end
         imgui.EndChild();
+        -- A legacy file that is ON DISK and unreadable is named here, in red, with
+        -- the reason. It is the difference between "you have no old sets" and "your
+        -- old file has a typo on line 267" -- the same silence until a tester lost
+        -- an evening to one missing comma (hard rule 12).
+        for _, d in ipairs(profsets.legacyDiag()) do
+            fmt.textWrapped(COL.ERR, string.format('%s %s', tostring(d.file), tostring(d.why)));
+        end
         -- The explainer only when there IS something to explain: a player with no
         -- legacy files at all gets the empty column and no paragraph about files
         -- they have never had.

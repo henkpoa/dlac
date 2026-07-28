@@ -64,8 +64,13 @@ function M.importStaticSet(staticSet, slotLabels, resolve)
             local elems = (type(slotVal) == 'table' and slotVal[1] ~= nil) and slotVal or { slotVal };
             local items = {};
             for _, elem in ipairs(elems) do
-                local it = resolve(elem);
-                if it ~= nil then items[#items + 1] = it; end
+                -- Per CANDIDATE, not per set: an import reads files nobody has
+                -- validated in years, and one entry the resolver chokes on used to
+                -- take the whole set with it -- reported as "no owned/known gear",
+                -- indistinguishable from an empty set (hard rule 12). A candidate
+                -- that cannot be resolved is simply skipped.
+                local ok, it = pcall(resolve, elem);
+                if ok and it ~= nil then items[#items + 1] = it; end
             end
             if #items > 0 then
                 working[label] = items;

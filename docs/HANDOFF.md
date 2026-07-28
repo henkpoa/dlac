@@ -249,7 +249,11 @@ merge carries it **without asking him again**. Only he can move an entry to ACCE
 this does not make an accepted entry mergeable *alone*: `dev` promotes
 **whole-or-not-at-all**, so an accepted entry rides the next promotion of the whole branch.
 
-*(Empty — last emptied by the THIRD 2026-07-28 promotion: `2026.07.28m`, the fishing
+*(Empty — last emptied by the FOURTH 2026-07-28 promotion: `2026.07.28n`, the legacy-import
+robustness fix, promoted **deliberately un-field-confirmed** on Henrik's *"push to main so
+he can test"* — the second tester cannot re-test the thing that broke for him unless it is
+on main first. His re-test is still owed and the Current-state entry says so; nothing else
+was riding. Before that, the THIRD 2026-07-28 promotion: `2026.07.28m`, the fishing
 ventures wrap fix, field-confirmed by Henrik the same hour ("Works") and promoted on his
 "push to main"; it rode with the integration session-handover doc commit. The entry that
 follows records it. Before that, the SECOND 2026-07-28 promotion: the whole `dev` train
@@ -286,7 +290,9 @@ research already recorded. In rough priority order:
    "go ahead"). Only open thread: the three-way import field round (static / group /
    Copy-from-static) — guard-tested, not yet field-driven. The Copy-from leg grew a
    fourth source on 2026-07-28 (the old files' `sets.Dynamic` block) and a second
-   backup home; that ride wants the same field round.
+   backup home; that ride wants the same field round. Its first real-world file
+   (a tester's SCH.lua, same day) failed on all three of parse / old module name /
+   pre-flat Ammo — all three now handled or reported (`2026.07.28n`), his re-test owed.
 1. **FIELD TEST the 07-25 release.** Henrik approved the Menu/Settings **visuals**, but
    the **Mode library has not been driven in-game at all**. Everything in it is
    headless-tested only; the suites stub imgui by design, so popup behaviour, the
@@ -313,6 +319,30 @@ research already recorded. In rough priority order:
 
 ## Current state (as of 2026-07-26)
 
+- **2026-07-28: three faults, one sentence — the tester's SCH import — ON MAIN (promoted
+  un-field-confirmed, on purpose), the tester's re-test owed** (`2026.07.28n`; Henrik:
+  *"push to main so he can test"* — he cannot re-test what broke for him until it ships). He tried to import his **Cure** set with the new
+  FFXI-LAC column and got *"Created 0 new sets — nothing created, 1 skipped: no owned/known
+  gear."* Henrik sent the file; it carries **three** independent faults, and dlac answered
+  all three with that one sentence (hard rule 12, undiluted). **(1)** It does not parse —
+  line 266 ends `gear.Back.MistSilkCape` with no comma. `sandboxSets` now separates "file
+  absent" from "file present and will not parse", and `legacyDiag()` prints the name plus
+  **the parser's own message** in the Copy-from popup, in red. **(2)** It requires dlac's
+  library under dlac's former addon name, which does not exist here — the soft require
+  returned the STUB, so every `gear.X.Y.Z` became the stub object (and reached
+  `string.lower()` as a table, whose error discarded the whole set). Module names are
+  aliased onto dlac's now, so the file resolves against **this character's** inventory.
+  **(3)** It uses the pre-flat `gear.Ammo.Throwing.X` shape, which either errored or left a
+  `nil` hole that **truncated the `ipairs` walk** of a candidate list (60 entries → 10).
+  The importer reads through `legacyGear` now, whose **MISSING sentinel** answers any key at
+  any depth and is skipped — Henrik's ruling verbatim: *"If pieces don't exist, just skip
+  them and move on like he doesn't have it."* Hardening rides along: `resolveSetItem` reads
+  `Name`/`Id` **typed**, and `importStaticSet` pcalls each candidate so a throwing resolver
+  costs one entry, not a set. `SH21` respected in letter and spirit (this renames a MODULE,
+  it never opens a file in that tree). Tests **`PSM0-PSM14`** drive a fixture shaped like
+  his file and install a `setfenv` polyfill so 5.4 finally exercises the LuaJIT sandbox
+  path all of this lives in. Suites **4198 + 707**. **He must still add the comma** — no
+  reader can load a file Lua itself refuses.
 - **2026-07-28: today's fishing ventures lost the wrapped line — ON MAIN, FIELD-CONFIRMED**
   (`11aa270`, `2026.07.28m`). Henrik: clicking **[!ventures fishing]** "only reads the first
   line, not the 2nd". The capture mirror answered it before any theory did
