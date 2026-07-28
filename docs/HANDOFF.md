@@ -319,6 +319,30 @@ research already recorded. In rough priority order:
 
 ## Current state (as of 2026-07-26)
 
+- **2026-07-28: the Ventures rings reach the Crafting Gear panel — ON `dev`, field round
+  owed** (`2026.07.28o`). Henrik, with the two wiki pages: the EXP Ventures exchange belongs
+  in Gear Helpers → Crafting Gear — Craftkeeper's / Artificer's Ring at 1,000, Craftmaster's
+  at 2,000 — plus the **+1** upgrade through Synergy. The rings were never invisible to the
+  ENGINE: all four sit in the catalog with their synth mods and the craft ladders are
+  data-driven off exactly those stats, so an owned Craftmaster's Ring has been equipping on
+  the `hq` goal all along. Only the *panel* omitted them, which meant it answered "what
+  should I go get?" with eight guild grinds and no mention of Populox. They render in the
+  **third** column under a `Ventures` divider (a per-row price tag needs a column with
+  nothing to its right); Midras's Helm +1 moved into the same block — same exchange, 3,000
+  — because one home per item beats two. Prose lives in hovers per the panel-text standard:
+  Populox at Upper Jeuno (I-11), and the Port Jeuno furnace wanting **3x Guild Token** for
+  the +1 (CatsEyeXI never implemented the synergy minigame — no skill, fewell or rank). The
+  `Torques`/`Rings` headers became help labels for the Artisan's +1 halves, one string
+  re-worded by gsub so they cannot drift. **One bug fell out of listing them:**
+  `CRAFT_UI.level()` counted only guild gear, so a Craftmaster's-only character read
+  *"nothing applicable"* while the ladder was equipping the ring; Populox rings now count as
+  level 1 and that label reads "basic craft gear". New smoke `CV0-CV14` drives the **real**
+  craft detail view — it had **no** render coverage, and `renderTab` swallows render errors
+  in a pcall, so a typo'd upvalue would have blanked the panel in-game and passed every load
+  test. Suites **4198 + 726**. Display + one coverage light; **no scoring change**. Not in
+  the merge queue: Henrik has not seen it in-game yet. Open question left for him:
+  Craftkeeper's Ring scores only on `nq` (`SynthMaterialLoss` is read into `nqScore` and
+  nowhere else) — arguably it helps every goal, but that moves what the engine equips.
 - **2026-07-28: three faults, one sentence — the tester's SCH import — ON MAIN,
   FIELD-CONFIRMED** (`2026.07.28n`; promoted un-field-confirmed on Henrik's *"push to main
   so he can test"*, confirmed within the hour: *"it works"*). The parse error was **his own

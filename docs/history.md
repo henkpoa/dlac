@@ -6758,3 +6758,60 @@ augment into the key) out of that list and not put the comma back. So a legacy j
 not a fossil to be read once; it is a file people still edit, with the ordinary consequence.
 That is the whole argument for the red parse line: the failure mode isn't exotic decay, it's
 a Tuesday.
+
+## Session "the Ventures rings" (2026-07-28, on `dev`)
+
+Henrik, with two wiki links: the Gear Helpers → **Crafting Gear** panel needs the EXP
+Ventures exchange in it — Craftkeeper's Ring 1,000, Artificer's Ring 1,000, Craftmaster's
+Ring 2,000 — and the note that Craftmaster's Ring upgrades to **+1** through Synergy.
+
+**The rings were never invisible to the ENGINE — only to the player.** All four are in the
+catalog with their synth mods (`SynthMaterialLoss` / `SynthSuccessRate` / `SynthHQRate` 1
+and 2), and the craft ladders are data-driven off exactly those stats, so an owned
+Craftmaster's Ring has been getting equipped on the `hq` goal all along. What the panel
+showed was guild torques, guild rings and four universals — nothing that mentions Populox.
+So a player reading the panel to answer *"what should I go get?"* was told to grind eight
+guilds and never told about a 2,000-point ring that beats most of them.
+
+**Where they went.** The matrix is three columns (Torques | Rings | Universals) at a fixed
+`colW` pitch. The Ventures pieces are rings, but they went in the **third** column, under
+its own `Ventures` divider — because the useful part is the *price*, a per-row tag has to
+fit, and only the rightmost column has nothing to its right to collide with. Midras's Helm
++1 moved out of the plain universals list into the same block: it is the same Populox
+exchange at 3,000, and one home per item beats two. Craftmaster's Ring +1 closes the block
+tagged `synergy`.
+
+**The prose is hovers, not paragraphs** (the 07-24 panel-text standard): the `Ventures`
+label carries where Populox stands (Upper Jeuno I-11) and the point that these carry a flat
+synth mod, so unlike guild gear they count for *every* craft. Each price tag carries its own
+hover. The `Torques` and `Rings` column headers became help labels too, since the Artisan's
++1 halves come off the same furnace — one string, re-worded for the Rings column by gsub, so
+the two can never drift apart.
+
+**One real bug fell out of listing them.** `CRAFT_UI.level()` — the coverage light on the
+Gear Helpers row — only counted guild torques/rings. A character whose only craft gear was a
+Craftmaster's Ring read **"nothing applicable"** while the ladder was busy equipping it.
+Populox rings now count as level 1 alongside guild gear, and the level-1 label changed from
+"craft-specific gear" to "basic craft gear", which is what it now means.
+
+**Sources, and one discrepancy worth recording.** Costs and the furnace recipe are the
+CatsEyeXI wiki (`Content/Ventures`, `Systems/Synergy`); the mods are the server's own
+`item_mods.sql` (28585/28586/28587). CatsEyeXI never implemented the synergy minigame —
+you trade to the furnace in Port Jeuno; there is no skill, fewell or rank check, and the
++1 wants 3x Guild Token. **The local server clone still calls id 26171 `rufescent_ring`;
+the shipped catalog (scraped from the live API) calls it Craftmasters Ring +1 with
+`SynthHQRate` 2, and the wiki agrees with the catalog.** The clone is simply behind the
+live server on this item — worth remembering the next time the clone and the catalog
+disagree about a custom item: recency, not authority, is usually the difference.
+
+**Status:** on `dev`, addon **`2026.07.28o`**, engine untouched — display and one coverage
+light, no scoring change. New smoke section `CV0-CV14` drives the **real** craft detail view
+against a stub imgui: the view had no render coverage at all (section 8 only exercised the
+manifest ladders) and `renderTab` swallows render errors in a pcall, so a typo'd upvalue
+would have blanked the panel in-game and passed every load test. It asserts the rows, the
+prices, the hovers and both coverage-light states. Suites **4198 + 726**.
+
+**Known, not changed:** Craftkeeper's Ring scores only on the `nq` goal — `SynthMaterialLoss`
+is read into `nqScore` and nowhere else, so it can never be picked for `hq` or `skillup` even
+when the slot is empty. Arguably material loss helps every goal. That is a *scoring* change
+(it moves what the engine equips), so it waits on Henrik rather than riding a display commit.

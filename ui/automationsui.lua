@@ -31,6 +31,9 @@ local _dpok, dsp  = pcall(require, "dlac\\dispatch");
 local gearOracle  = require("dlac\\gear\\gearoracle");
 local _nmok, nmp  = pcall(require, "dlac\\data\\nativemp");
 local _gmok, gmode = pcall(require, "dlac\\feature\\gamemode");
+-- helpLabel: the panel-text standard (underline the label, explain in a hover).
+local _usok, uistyle = pcall(require, "dlac\\ui\\uistyle");
+_usok = _usok and type(uistyle) == 'table' and type(uistyle.helpLabel) == 'function';
 local hasImgui    = _iok and imgui ~= nil;
 local hasDispatch = _dpok and type(dsp) == 'table';
 local hasNmp      = _nmok and type(nmp) == 'table';
@@ -978,6 +981,16 @@ end
 local IRID_TXT = { [0] = 'nothing applicable', 'NQ staves', 'HQ staves', 'universal +1', 'universal +2', 'universal +3' };
 local OBI_TXT  = { [0] = 'nothing applicable', 'elemental obis', 'universal obi' };
 local ONEIROS_TXT = { [0] = 'grip not owned', 'Oneiros Grip' };
+-- Craft-panel hovers that are pure prose (file-scope constants: they never vary,
+-- and renderTab's local budget is the reason this module exists at all).
+local VENT_TIP = 'EXP Ventures rewards, exchanged with Populox in Upper Jeuno (I-11).\n'
+              .. 'Venture Points come from the daily EXP Ventures objectives.\n'
+              .. 'Unlike the guild torques and rings these carry a flat synth mod, so\n'
+              .. 'they count for EVERY craft -- once owned they ride along in any ladder.';
+local UPG_TIP  = 'Artisan\'s Torque +1: the Synergy furnace in Port Jeuno --\n'
+              .. 'trade Artisan\'s Torque + 1x Guild Token.\n'
+              .. 'CatsEyeXI never implemented the synergy minigame: no skill, no\n'
+              .. 'fewell, no rank -- the furnace only wants inventory space.';
 
 -- One item row in a detail column: green = owned and equippable by this job,
 -- red = owned but this JOB can't wear it (the automation skips it) OR owned
@@ -1034,6 +1047,23 @@ local function autoColumn(title, names)
     imgui.EndGroup();
 end
 
+-- An item row that also says WHERE the piece comes from: the normal owned/dim
+-- name (keeping its item card on hover) plus a short dim tag carrying the
+-- acquisition note in ITS own hover -- the panel-text standard, so a price list
+-- never becomes an inline paragraph. Only ever used in the RIGHTMOST column: the
+-- tag runs past the fixed column pitch, and nothing sits to its right there.
+local function autoSourceLine(name, tag, tip)
+    autoItemLine(name);
+    if tag == nil then return; end
+    imgui.SameLine(0, 8);
+    if _usok then
+        uistyle.helpLabel(imgui, tag, tip, COL_DIM);
+    else
+        imgui.TextColored(COL_DIM, tag);
+        if tip ~= nil and imgui.IsItemHovered() then imgui.SetTooltip(tip); end
+    end
+end
+
 -- AutoCraft panel (docs/design/craft-automation.md; layout per Henrik).
 -- Names are catalog short names (the API stores them apostrophe-less); KI ids
 -- from the server's own enum (scripts/enum/key_item.lua on the public repo).
@@ -1068,8 +1098,34 @@ local CRAFT_UI = {
         Alchemy      = { {2032,'Anima Synthesis'},{2033,'Alchemic Purification'},{2034,'Alchemic Ensorcellment'},{2035,'Trituration'},{2036,'Concoction'},{2037,'Iatrochemistry'},{2038,'Miasmal Counteragent Recipe'},{2039,'Way of the Alchemist'} },
         Cooking      = { {2040,'Raw Fish Handling'},{2041,'Noodle Kneading'},{2042,'Patissier'},{2043,'Stewpot Mastery'},{2044,'Way of the Culinarian'} },
     },
-    universals = { 'Kupo Shield', 'Bonze Cape', 'Shapers Shawl', 'Midrass Helm +1' },
-    txt = { [0] = 'nothing applicable', 'craft-specific gear', 'Artisans (NQ)', 'Artisans +1', 'Kupo Shield' },
+    universals = { 'Kupo Shield', 'Bonze Cape', 'Shapers Shawl' },
+    -- Populox's EXP Ventures exchange (Upper Jeuno I-11) -- the craft half of it,
+    -- costs from the CatsEyeXI wiki (Content/Ventures). These are NOT guild gear:
+    -- they carry a flat synth mod (success / HQ / material loss) that counts for
+    -- every craft, so the ladders above pick them up on any craft once owned.
+    -- Midras's Helm +1 sat in `universals` before 2026-07-28; it moved here
+    -- because it is the same exchange, and one home per item beats two.
+    -- Craftmaster's Ring +1 is the ONE synergy line: CatsEyeXI never implemented
+    -- the synergy minigame, you just trade to the furnace in Port Jeuno
+    -- (Systems/Synergy). The Artisan's +1 pieces upgrade the same way -- that
+    -- note rides on the Torques/Rings column headers.
+    ventures = {
+        { name = 'Craftkeepers Ring', tag = '1,000 pts',
+          tip = '1,000 Venture Points -- Populox, Upper Jeuno (I-11).\nDecreases the likelihood of losing materials on a failed synth.' },
+        { name = 'Artificers Ring',   tag = '1,000 pts',
+          tip = '1,000 Venture Points -- Populox, Upper Jeuno (I-11).\nRaises plain synthesis success on every craft.' },
+        { name = 'Craftmasters Ring', tag = '2,000 pts',
+          tip = '2,000 Venture Points -- Populox, Upper Jeuno (I-11).\nRaises the high-quality rate on every craft. Upgrades to +1 below.' },
+        { name = 'Midrass Helm +1',   tag = '3,000 pts',
+          tip = '3,000 Venture Points -- Populox, Upper Jeuno (I-11).\nSynthesis skill gain -- the skill-up goal\'s best head piece.' },
+        { name = 'Craftmasters Ring +1', tag = 'synergy',
+          tip = 'Synergy furnace, Port Jeuno: trade Craftmaster\'s Ring + 3x Guild Token.\nCatsEyeXI never implemented the synergy minigame -- there is no skill,\nno fewell and no rank check; the furnace only wants inventory space.\nDouble the HQ rate of the base ring.' },
+    },
+    -- Level 1 = "you own SOMETHING the craft ladders can use" -- a guild
+    -- torque/ring or a Populox ring (2026-07-28: before the Ventures rows landed,
+    -- a Craftmaster's-only character read "nothing applicable" while the engine
+    -- was happily equipping the ring).
+    txt = { [0] = 'nothing applicable', 'basic craft gear', 'Artisans (NQ)', 'Artisans +1', 'Kupo Shield' },
     selected = 'Alchemy',
     _cache = {},   -- per-craft item lists (full-catalog walk: build on demand, never per frame)
     _tex = {},     -- craft glyph textures (assets/craft/<Craft>.png), false = load failed
@@ -1102,6 +1158,12 @@ function CRAFT_UI.level()
     local lv = 0;
     for _, cr in ipairs(CRAFT_UI.order) do
         if owns(CRAFT_UI.torque[cr]) or owns(CRAFT_UI.nqring[cr]) then lv = 1; break; end
+    end
+    -- A Populox ring counts the same as guild gear: it is craft gear you own and
+    -- the ladders will equip it (the +1 is stronger, but the tiers above are the
+    -- Artisans/Kupo story -- one Ventures piece does not jump you past them).
+    for _, v in ipairs(CRAFT_UI.ventures) do
+        if owns(v.name) then lv = math.max(lv, 1); break; end
     end
     if owns('Artisans Torque') or owns('Artisans Ring') then lv = math.max(lv, 2); end
     if owns('Artisans Torque +1') or owns('Artisans Ring +1') then lv = math.max(lv, 3); end
@@ -1480,8 +1542,12 @@ local function renderAutomations()
             local haveArtR = owns('Artisans Ring') or owns('Artisans Ring +1');
             local synT = 'Green via synergy: you own an Artisans Torque, which requires\nevery guild torque -- so you had this one.';
             local synR = 'Green via synergy: you own an Artisans Ring, which requires\nevery guild ring -- so you had this one.';
+            -- The +1 halves come off the Port Jeuno furnace, not a drop -- said on
+            -- the column HEADER because these two columns have a neighbour to the
+            -- right and cannot afford a per-row tag (the Ventures column can).
             imgui.BeginGroup();
-            imgui.TextColored(COL_HEADER, 'Torques');
+            if _usok then uistyle.helpLabel(imgui, 'Torques', UPG_TIP, COL_HEADER);
+            else imgui.TextColored(COL_HEADER, 'Torques'); end
             autoItemLine('Artisans Torque');
             autoItemLine('Artisans Torque +1');
             imgui.TextColored(COL_DIM, '- - - - - - - -');
@@ -1489,14 +1555,26 @@ local function renderAutomations()
             imgui.EndGroup();
             imgui.SameLine(colW);
             imgui.BeginGroup();
-            imgui.TextColored(COL_HEADER, 'Rings');
+            if _usok then uistyle.helpLabel(imgui, 'Rings', (UPG_TIP:gsub('Torque', 'Ring')), COL_HEADER);
+            else imgui.TextColored(COL_HEADER, 'Rings'); end
             autoItemLine('Artisans Ring');
             autoItemLine('Artisans Ring +1');
             imgui.TextColored(COL_DIM, '- - - - - - - -');
             for _, cr in ipairs(CRAFT_UI.order) do autoItemLine(CRAFT_UI.nqring[cr], haveArtR and synR or nil); end
             imgui.EndGroup();
             imgui.SameLine(colW * 2);
-            autoColumn('Universals', CRAFT_UI.universals);
+            imgui.BeginGroup();
+            imgui.TextColored(COL_HEADER, 'Universals');
+            for _, nm in ipairs(CRAFT_UI.universals) do autoItemLine(nm); end
+            imgui.TextColored(COL_DIM, '- - - - - - - -');
+            if _usok then
+                uistyle.helpLabel(imgui, 'Ventures', VENT_TIP, COL_HEADER);
+            else
+                imgui.TextColored(COL_HEADER, 'Ventures');
+                if imgui.IsItemHovered() then imgui.SetTooltip(VENT_TIP); end
+            end
+            for _, v in ipairs(CRAFT_UI.ventures) do autoSourceLine(v.name, v.tag, v.tip); end
+            imgui.EndGroup();
             imgui.Spacing();
             imgui.Separator();
             imgui.Spacing();
