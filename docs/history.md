@@ -6748,5 +6748,13 @@ so 5.4 exercises the LuaJIT sandbox path that all of this lives in — untested 
 Suites **4198 + 707**. **Promoted to main the same hour, deliberately un-field-confirmed**
 (Henrik: *"push to main so he can test"*) — the tester cannot re-test the thing that broke
 for him until it is on main, so the usual field-confirm-then-promote order is inverted on
-purpose here, and the merge queue records that. Awaiting the tester: he must still add the
-comma; nothing dlac does can read a file Lua itself refuses.
+purpose here, and the merge queue records that. **FIELD-CONFIRMED within the hour: "it
+works."**
+
+One correction to the story, and it matters for the next legacy file: the missing comma was
+**not** rot in an ancient file — it was a fresh hand edit. He had pulled an even-older
+aug-suffixed entry (`MistSilkCapeAug`, from a generation of the format that baked the
+augment into the key) out of that list and not put the comma back. So a legacy job file is
+not a fossil to be read once; it is a file people still edit, with the ordinary consequence.
+That is the whole argument for the red parse line: the failure mode isn't exotic decay, it's
+a Tuesday.

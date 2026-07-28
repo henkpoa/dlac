@@ -252,8 +252,8 @@ this does not make an accepted entry mergeable *alone*: `dev` promotes
 *(Empty — last emptied by the FOURTH 2026-07-28 promotion: `2026.07.28n`, the legacy-import
 robustness fix, promoted **deliberately un-field-confirmed** on Henrik's *"push to main so
 he can test"* — the second tester cannot re-test the thing that broke for him unless it is
-on main first. His re-test is still owed and the Current-state entry says so; nothing else
-was riding. Before that, the THIRD 2026-07-28 promotion: `2026.07.28m`, the fishing
+on main first. **He confirmed it the same hour** (*"it works"*), so the inversion paid for
+itself; nothing else was riding. Before that, the THIRD 2026-07-28 promotion: `2026.07.28m`, the fishing
 ventures wrap fix, field-confirmed by Henrik the same hour ("Works") and promoted on his
 "push to main"; it rode with the integration session-handover doc commit. The entry that
 follows records it. Before that, the SECOND 2026-07-28 promotion: the whole `dev` train
@@ -319,9 +319,12 @@ research already recorded. In rough priority order:
 
 ## Current state (as of 2026-07-26)
 
-- **2026-07-28: three faults, one sentence — the tester's SCH import — ON MAIN (promoted
-  un-field-confirmed, on purpose), the tester's re-test owed** (`2026.07.28n`; Henrik:
-  *"push to main so he can test"* — he cannot re-test what broke for him until it ships). He tried to import his **Cure** set with the new
+- **2026-07-28: three faults, one sentence — the tester's SCH import — ON MAIN,
+  FIELD-CONFIRMED** (`2026.07.28n`; promoted un-field-confirmed on Henrik's *"push to main
+  so he can test"*, confirmed within the hour: *"it works"*). The parse error was **his own
+  hand edit**, not decay: he had removed an even-older aug-suffixed entry
+  (`MistSilkCapeAug`) from the list and not put the comma back — which is the ordinary way
+  a legacy file breaks, and exactly why the red parse line earns its place. He tried to import his **Cure** set with the new
   FFXI-LAC column and got *"Created 0 new sets — nothing created, 1 skipped: no owned/known
   gear."* Henrik sent the file; it carries **three** independent faults, and dlac answered
   all three with that one sentence (hard rule 12, undiluted). **(1)** It does not parse —
