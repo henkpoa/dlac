@@ -720,6 +720,12 @@ function M.render(deps, availW)
         if lines ~= nil then
             if not fresh then imgui.TextColored(COL_WARN, 'stale (past JST midnight) -- refresh:'); end
             for _, ln in ipairs(lines) do imgui.TextColored(COL_TEXT, esc(ln)); end
+            -- Captured but unparsed lines are shown here rather than swallowed:
+            -- the reply wraps, and a shape we don't know yet is still an answer.
+            if general ~= nil and #general > 0 then
+                imgui.TextColored(COL_DIM, 'also captured:');
+                for _, ln in ipairs(general) do imgui.TextColored(COL_DIM, esc(ln)); end
+            end
         elseif general ~= nil and #general > 0 then
             imgui.TextColored(COL_DIM, 'captured (format not recognized yet):');
             for _, ln in ipairs(general) do imgui.TextColored(COL_TEXT, esc(ln)); end

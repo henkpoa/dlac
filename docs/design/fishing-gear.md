@@ -196,9 +196,21 @@ Panel layout, top to bottom:
 5. **Today's fishing ventures** — `[!ventures fishing]` button (types the command
    user-visibly, opens the 6 s 0x017 capture window — helmwatch's exact pattern) +
    parsed objective lines with JST-day staleness ("run !ventures fishing to refresh").
-   Format is UNPINNED until a field capture (private module); parser is tolerant
-   (helm line shape first: `Fishing: (Low) …, (Mid) …, (High) …`), raw lines kept +
-   mirrored to `fishventures_capture.txt` until pinned.
+   Format PINNED by field capture (2026-07-18, re-confirmed 07-28): the fishing
+   reply is **level bands, over TWO chat lines** — the second one carries no
+   `Fishing:` prefix, so it only counts while armed by the header right before it:
+
+   ```
+   Fishing: (0-19) Quus, (20-39) Cheval Salmon, (40-59) Bluetail,
+   (60-79) Bladefish, (80-99) Gavial Fish, (100+) Giant Chirai
+   ```
+
+   The `(Low)/(Mid)/(High)` shape (HELM's) is still read in case Fishing ever wears
+   it, a drifted line keeps its raw tail, and unrecognized captured lines are drawn
+   dim under the block ("also captured") rather than swallowed — the wrap going
+   missing there was the 07-28 bug. Raw lines still mirror to
+   `fishventures_capture.txt`. A re-ask reprints the whole reply, so its first
+   named line (banner / header / wrap) replaces what was stored.
 6. **Guild corner**: GP balance, the static GP shop list (what to save for), the
    rank-up test fish for your NEXT rank (Thubu Parohren, Port Windurst), Lu Shang
    carp-quest note (Moat Carp 4401 pays 10 g, Forest Carp 15 g, counter is server-side).
