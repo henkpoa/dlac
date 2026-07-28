@@ -249,6 +249,43 @@ merge carries it **without asking him again**. Only he can move an entry to ACCE
 this does not make an accepted entry mergeable *alone*: `dev` promotes
 **whole-or-not-at-all**, so an accepted entry rides the next promotion of the whole branch.
 
+- **ACCEPTED — the INTEGRATION SURFACE end to end + the ARBITER MONITOR** (engine
+  v152→v154, `2026.07.28g`–`2026.07.28l`; commits `5c1874b` `f645d25` `1eeb749`
+  `9c4b17c` `b3e3e72` + five docs commits). One day, one arc, Henrik managing:
+  1. **The DECISION RING** (v152) — one record per dispatch whose OUTCOME moved (items
+     or any slot's winning claimant; Henrik's law *"only push changes"*): plan snapshot
+     taken before the one send, the stashed contest, ladders as asked, ctx snapshot.
+     The rank order became a retrace-sig leg (`|ao`) — a dragged row used to keep stale
+     `/dl why` attribution.
+  2. **The ARBITER MONITOR** (`ui\arbmonui.lua`) — the 4x4 equip-screen grid of the
+     viewed decision, claimant chip colours + legend, hover = the full per-slot contest
+     of THAT record, "decided under" ctx line, decision log with pin-to-moment + Live.
+     Responsive on Henrik's field call: icon-only cells when narrow (icons grow),
+     double-space cells with names when wide. Openers: Menu → Settings + Gear Helpers →
+     Claim Priority; persists as uiflags `arbmon`. The Trigger Monitor untouched —
+     proposals there, outcomes here; one record, three renderers.
+  3. **The PROBE** (evprobe + dlacprobe 2.3, Henrik's run) — the channel's last unknown
+     settled: send = byte table only, receive = `e.data` already a STRING + `e.size`,
+     `e` is userdata, a state hears its own RaiseEvent.
+  4. **THE STREAM** (`feature\integration.lua`, v153–v154) — `/dl stream on|off`
+     (Session switch: never saved, dies when world absence outlasts a zone via the new
+     read-only `worldAbsentOutlasted` seam, survives job changes), snapshot-on-enable,
+     all four kinds on one stream-side `seq`: `worn` (items+totals+ctx, join key from
+     the engine's own 0x01A decode), `dispatch` ANCHORS off the new engine ACTION FEED
+     (one anchor per action — worn XOR dispatch), `invalidate` (sets-rev + job watch),
+     `confirm` (delta-only; landed-whole = silence). All five queries answer
+     (`worn`/`stats`/`sets`/`gear`/`item`); the switch gates the whole channel, queries
+     included. Consumer handover = `docs/reference/integration-guide.md` (start-here +
+     "the Arbiter in 90 seconds"), build-audited same day.
+  Suites **4172 + 707**, Windows and WSL lua5.4. **Field-confirmed 2026-07-28:** the
+  monitor (*"Looks good"*, colours *"I love the idea"*, then the responsive cut) and
+  the live stream watched envelope-by-envelope through dlacprobe (*"I can see the
+  events happening… it is streaming as we think"*). Stated plainly: `invalidate`/
+  `confirm`/anchors/queries are headless-tested, not yet field-exercised — the parser
+  friend's first connection is their field test, and the guide says so. Henrik:
+  *"properly document this as ready for merge to main… then push it all to main."*
+  Record: `docs/design/integration-surface.md` (§13 = the living state) + CONTEXT.md
+  (Decision record, Arbiter Monitor, Integration surface, Session switch).
 - **ACCEPTED — FIX: commit reads gear.lua's shape, and dlac seeds its own gear**
   (`49da97f` + `316bcdb`, `2026.07.28e` / `2026.07.28f`). **Two commits, one story** — a
   field bug from Henrik's friend (`Abraxis_42505`) on a **new install**, and the entry
