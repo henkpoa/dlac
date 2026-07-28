@@ -443,6 +443,8 @@ end
 M.ventures = nil;        -- { day = <JST daystamp>, lines = {..}, general = {..} }
 local _capUntil = -1;
 local _vLoaded = false;
+local _contArmed = false;   -- the last kept line was a Fishing header/wrap
+local _capFresh = false;    -- this window hasn't replaced the stored reply yet
 
 function M.jstDay(t) return math.floor(((t or os.time()) + 9 * 3600) / 86400); end
 
@@ -474,15 +476,42 @@ local function ventLoad()
     end);
 end
 
--- One server venture line, structurally: 'Fishing: (Low) x, (Mid) y, (High) z'
--- (the pinned HELM shape with the Fishing category). A drifted format keeps
--- the raw tail as one line.
+-- Level-band entries: '(0-19) Quus, (20-39) Cheval Salmon, (40-59) Bluetail,'
+-- -> aligned display lines. Two entries minimum, so a stray parenthesis in
+-- chatter can't pass for a band list. '(Low)' never matches (no leading
+-- digit) -- that shape keeps its own branch below.
+function M.parseBands(rest)
+    local out = {};
+    for band, name in tostring(rest or ''):gmatch('%((%d[%d%-%+]*)%)%s*([^,]+)') do
+        name = name:gsub('%s+$', '');
+        if name ~= '' then out[#out + 1] = string.format('%-6s %s', band .. ':', name); end
+    end
+    if #out < 2 then return nil; end
+    return out;
+end
+
+-- One server venture line, structurally. The FIELD shape (capture 2026-07-18,
+-- re-confirmed 07-28) is level bands, and six of them don't fit one chat line:
+--     Fishing: (0-19) Quus, (20-39) Cheval Salmon, (40-59) Bluetail,
+--     (60-79) Bladefish, (80-99) Gavial Fish, (100+) Giant Chirai
+-- The '(Low)/(Mid)/(High)' shape (the HELM categories' one) is still read in
+-- case Fishing ever wears it. A drifted format keeps the raw tail as one line.
 function M.parseVentureLine(msg)
     local cat, rest = tostring(msg or ''):match('^%s*(%a+):%s*(.+)$');
     if cat == nil or string.lower(cat) ~= 'fishing' then return nil; end
     local low, mid, high = rest:match('%(Low%)%s*(.-)%s*,%s*%(Mid%)%s*(.-)%s*,%s*%(High%)%s*(.-)%s*$');
-    if low == nil then return { rest }; end
-    return { 'Low:  ' .. low, 'Mid:  ' .. mid, 'High: ' .. high };
+    if low ~= nil then return { 'Low:  ' .. low, 'Mid:  ' .. mid, 'High: ' .. high }; end
+    return M.parseBands(rest) or { rest };
+end
+
+-- The reply's SECOND line: bare bands, no 'Fishing:' prefix, so on its own it
+-- is indistinguishable from chatter -- it only counts while armed by the
+-- header line right before it. (Unarmed it used to fall into `general`, which
+-- the panel never draws beside a parsed first line: the wrap went missing.)
+function M.parseVentureCont(msg)
+    local s = tostring(msg or '');
+    if s:match('^%s*%(%d') == nil then return nil; end
+    return M.parseBands(s);
 end
 
 function M.cleanLine(msg)
@@ -493,11 +522,23 @@ end
 
 function M.openCapture(seconds)
     _capUntil = os.clock() + (tonumber(seconds) or 6);
+    _contArmed = false;
+    _capFresh = true;
     ventLoad();
     local day = M.jstDay();
     if M.ventures == nil or (M.ventures.day or 0) ~= day then
         M.ventures = { day = day, lines = {}, general = {} };
     end
+end
+
+-- A re-ask reprints the whole reply, so the first line of it that we can
+-- name (banner / header / wrap) clears the last one -- otherwise leftovers
+-- from an older format sit under today's answer forever. Chatter that merely
+-- says "fish" isn't the reply and doesn't trigger the swap.
+local function ventFreshen()
+    if not _capFresh then return; end
+    _capFresh = false;
+    if M.ventures ~= nil then M.ventures.lines = {}; M.ventures.general = {}; end
 end
 function M.captureOpen() return os.clock() < _capUntil; end
 
@@ -518,12 +559,28 @@ function M.onChatLine(chatType, sender, msg)
     if M.ventures == nil or (M.ventures.day or 0) ~= day then
         M.ventures = { day = day, lines = {}, general = {} };
     end
-    if clean:find('=== Today', 1, true) ~= nil then return; end   -- banner
+    if clean:find('=== Today', 1, true) ~= nil then ventFreshen(); return; end   -- banner
     local lines = M.parseVentureLine(clean);
     if lines ~= nil then
+        ventFreshen();
         M.ventures.lines = lines;
+        _contArmed = true;
         ventSave();
         return;
+    end
+    if _contArmed then
+        -- Wrapped tail of the header line above: append, and stay armed so a
+        -- third line would join too.
+        local more = M.parseVentureCont(clean);
+        if more ~= nil then
+            ventFreshen();
+            local t = M.ventures.lines or {};
+            for _, ln in ipairs(more) do t[#t + 1] = ln; end
+            M.ventures.lines = t;
+            ventSave();
+            return;
+        end
+        _contArmed = false;                                       -- block ended
     end
     if clean:lower():find('venture', 1, true) or clean:lower():find('fish', 1, true) then
         for _, ln in ipairs(M.ventures.general) do

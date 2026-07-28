@@ -9160,6 +9160,34 @@ end)();
     check('F38 helm categories are not ours', fw.parseVentureLine('Mining: (Low) Ordelles Caves, (Mid) X, (High) Y'), nil);
     local drift = fw.parseVentureLine('Fishing: something new the server said');
     check('F39 drifted format keeps raw tail', drift ~= nil and drift[1], 'something new the server said');
+    -- The FIELD shape (capture 2026-07-18, re-confirmed 07-28) is level bands,
+    -- and six of them WRAP onto a second, prefix-less chat line.
+    local band = fw.parseVentureLine('Fishing: (0-19) Quus, (20-39) Cheval Salmon, (40-59) Bluetail,');
+    check('F39b band shape parses', band ~= nil and #band or 0, 3);
+    check('F39c first band', band ~= nil and band[1], '0-19:  Quus');
+    check('F39d the wrap comma is not eaten into the name', band ~= nil and band[3], '40-59: Bluetail');
+    fw.openCapture(6);
+    fw.onChatLine(29, 'Mindie', "=== Today's Goblin Ventures ===");
+    fw.onChatLine(13, 'Mindie', 'Fishing: (0-19) Quus, (20-39) Cheval Salmon, (40-59) Bluetail,');
+    fw.onChatLine(13, 'Mindie', '(60-79) Bladefish, (80-99) Gavial Fish, (100+) Giant Chirai');
+    local vl, vfresh, vgen = fw.venturesFor();
+    check('F39e the wrapped reply keeps all six bands', vl ~= nil and #vl or 0, 6);
+    check('F39f the second line joins the block', vl ~= nil and vl[6], '100+:  Giant Chirai');
+    check('F39g nothing stranded in general', vgen ~= nil and #vgen or 0, 0);
+    check('F39h today\'s capture is fresh', vfresh, true);
+    -- unarmed bands are chatter, not the reply: they must not extend the block
+    fw.openCapture(6);
+    fw.onChatLine(5, 'Squee', '(10-19) Bass, (20-29) Trout -- nice fish');
+    local vl2, _, vgen2 = fw.venturesFor();
+    check('F39i bare bands cannot hijack the block', vl2 ~= nil and #vl2 or 0, 6);
+    check('F39j ...they land in general', vgen2 ~= nil and #vgen2 or 0, 1);
+    -- a re-ask reprints everything, so the first named reply line swaps it out
+    fw.openCapture(6);
+    fw.onChatLine(29, 'Mindie', "=== Today's Goblin Ventures ===");
+    fw.onChatLine(13, 'Mindie', 'Fishing: (0-19) Hamsi, (20-39) Tricolored Carp, (40-59) Black Eel,');
+    local vl3, _, vgen3 = fw.venturesFor();
+    check('F39k a re-ask replaces the stored reply', vl3 ~= nil and #vl3 or 0, 3);
+    check('F39l ...and clears the last window\'s leftovers', vgen3 ~= nil and #vgen3 or 0, 0);
     check('F40 chatter -> nil', fw.parseVentureLine('gone fishing brb'), nil);
     check('F41 jst rollover', fw.jstDay(15 * 3600) - fw.jstDay(0), 1);
     fw._clientName = function(id)
