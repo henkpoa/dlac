@@ -249,7 +249,10 @@ merge carries it **without asking him again**. Only he can move an entry to ACCE
 this does not make an accepted entry mergeable *alone*: `dev` promotes
 **whole-or-not-at-all**, so an accepted entry rides the next promotion of the whole branch.
 
-*(Empty — last emptied by the SECOND 2026-07-28 promotion: the whole `dev` train
+*(Empty — last emptied by the THIRD 2026-07-28 promotion: `2026.07.28m`, the fishing
+ventures wrap fix, field-confirmed by Henrik the same hour ("Works") and promoted on his
+"push to main"; it rode with the integration session-handover doc commit. The entry that
+follows records it. Before that, the SECOND 2026-07-28 promotion: the whole `dev` train
 `2026.07.28c`–`2026.07.28l` went to main on Henrik's "push it all to main". It carried
 four ACCEPTED entries — the **Integration surface end to end + the Arbiter Monitor**
 (v152–v154; field-confirmed by eye and by dlacprobe: "I can see the events happening…
@@ -309,6 +312,28 @@ research already recorded. In rough priority order:
    section heading rather than each carrying one. Trivial to change if it reads wrong.
 
 ## Current state (as of 2026-07-26)
+
+- **2026-07-28: today's fishing ventures lost the wrapped line — ON MAIN, FIELD-CONFIRMED**
+  (`11aa270`, `2026.07.28m`). Henrik: clicking **[!ventures fishing]** "only reads the first
+  line, not the 2nd". The capture mirror answered it before any theory did
+  (`Mindie_29909\fishventures_capture.txt` — *artifacts first*): the server's fishing reply
+  is **level bands over TWO chat lines**, and the second carries no `Fishing:` prefix —
+  `Fishing: (0-19) Quus, (20-39) Cheval Salmon, (40-59) Bluetail,` / `(60-79) Bladefish,
+  (80-99) Gavial Fish, (100+) Giant Chirai`. The parser knew only HELM's
+  `(Low)/(Mid)/(High)` shape, so line 1 survived as an unparsed raw tail and line 2 — a
+  category line without a category — fell to the `general` bucket, which the panel draws
+  **only in the `elseif`**, i.e. never beside a parsed line. The saved `fishventures.lua`
+  showed the split verbatim: line 1 in `lines`, line 2 in `general`, captured and invisible.
+  Fix: `parseBands` (band entries → aligned rows, **two minimum** so a stray parenthesis in
+  party chat can't pass for a band list) + `parseVentureCont` gated on an **armed** flag —
+  the wrap joins the header's block and stays armed, so a third line would join too; unarmed,
+  bare bands are chatter and cannot hijack the block. A re-ask reprints everything, so the
+  first *named* reply line (banner / header / wrap) swaps the stored answer out instead of
+  layering on old-format leftovers. And the panel now draws unrecognized captured lines dim
+  ("also captured") **beside** a parsed block — the bug class was a line being kept but
+  never shown, and that hole is closed for the next format drift too. 11 checks replay the
+  real field lines through `onChatLine`; format now PINNED in
+  `docs/design/fishing-gear.md` §2.5. Suites **4183 + 707**.
 
 - **2026-07-28: "Automations" is now "Gear Helpers" — ON `dev`, NOT yet field-confirmed**
   (`2026.07.28j`). A **GM** objected to the naming: a tab called *Automations* full of
