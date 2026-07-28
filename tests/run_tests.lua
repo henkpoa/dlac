@@ -229,7 +229,7 @@ end)();
                    'groupsmodel','jobgate','modeslibrary','ownedcache','profileexport','profilesets','setimport',
                    'setmanager','syncflags','triggermodel','weaponfilter','weightimport' };
     local FEATURE = { 'ammowatch','arbwatch','augments','check','chocowatch','craftwatch','debug','digcalc','digrank',
-                      'eboxclient','eboxtrace','fishcalc','fishwatch','gamemode','helmwatch','idleexcl','location','lockstyle','lookpreview',
+                      'eboxclient','eboxtrace','fishcalc','fishwatch','gamehud','gamemode','helmwatch','idleexcl','location','lockstyle','lookpreview',
                       'macrobook','meritwatch','mpbands','pinwatch','restockwatch','synthrun','useitem','vanamoon' };
     local LIB = { 'cmdqueue','entwatch','safewrite','statefile' };
 
@@ -9156,6 +9156,65 @@ end)();
     check('GM8 negative dword normalized -> CW', gamemode.get(), 'CW');
 
     AshitaCore = nil;
+end)();
+
+-- ---------------------------------------------------------------------------
+-- section HUD: the game's own interface-hidden flag (feature/gamehud.lua)
+-- Scroll Lock blanks the game's HUD for a screenshot and dlac's windows have to
+-- go with it. The module is two memory reads behind a memoized signature scan,
+-- so what these pin is the part that actually bites: it must FAIL OPEN. A
+-- missing signature, a null pointer, a headless state -- every one of them
+-- answers "not hidden", because a UI that vanishes on a bad read is a bug no
+-- player can explain, while one that stays up is just today's behavior.
+-- ---------------------------------------------------------------------------
+(function()
+    local gamehud = dofile('feature/gamehud.lua');
+
+    -- headless: the harness's `ashita` stub has no .memory, so every reader nils
+    gamehud._reset();
+    check('HUD1 headless available -> false', gamehud.available(), false);
+    check('HUD2 headless hidden -> false', gamehud.hidden(), false);
+
+    -- a fake client: signature at BASE, structure pointer at BASE+PTR_OFF,
+    -- the flag byte at STRUCT+FLAG_OFF
+    local BASE, STRUCT = 0x1000, 0x50000;
+    local mem, reads = {}, 0;
+    local function fakeClient(found, flag)
+        mem   = { [BASE + gamehud.PTR_OFF] = STRUCT, [STRUCT + gamehud.FLAG_OFF] = flag };
+        reads = 0;
+        gamehud.find    = function() return found; end
+        gamehud.readU32 = function(a) reads = reads + 1; return mem[a]; end
+        gamehud.readU8  = function(a) reads = reads + 1; return mem[a]; end
+        gamehud._reset();
+    end
+
+    fakeClient(BASE, 0);
+    check('HUD3 interface shown (flag 0) -> false', gamehud.hidden(), false);
+
+    fakeClient(BASE, 1);
+    check('HUD4 scroll lock on (flag 1) -> true', gamehud.hidden(), true);
+
+    fakeClient(BASE, 2);      -- only an explicit 1 hides; anything else is junk
+    check('HUD5 junk flag byte -> false', gamehud.hidden(), false);
+
+    fakeClient(BASE, 1);      -- the pointer is read at SIG+10, not at SIG
+    mem[BASE + gamehud.PTR_OFF] = nil;
+    check('HUD6 pointer lives at SIG+PTR_OFF (empty -> false)', gamehud.hidden(), false);
+
+    fakeClient(BASE, 1);
+    mem[BASE + gamehud.PTR_OFF] = 0;
+    check('HUD7 null structure pointer -> false', gamehud.hidden(), false);
+
+    -- a client the signature does not fit: answer false, touch no memory, and
+    -- remember the failure (a pattern walk per frame would be the real cost)
+    local scans = 0;
+    fakeClient(0, 1);
+    gamehud.find = function() scans = scans + 1; return 0; end
+    gamehud._reset();
+    check('HUD8 unmatched signature -> false', gamehud.hidden(), false);
+    gamehud.hidden(); gamehud.hidden();
+    check('HUD9 failed scan cached (one walk, not one per frame)', scans, 1);
+    check('HUD10 unmatched signature reads no memory', reads, 0);
 end)();
 
 -- ---------------------------------------------------------------------------

@@ -4629,6 +4629,24 @@ ashita.events.register('d3d_present', 'dlac-gearui-render', function()
     -- from last session would glue gear on at login. This must run whether or not
     -- the floating window is open -- it is the only thing that clears it.
     pcall(function() require('dlac\\feature\\pinwatch').loadPinState(); end);
+    -- SCROLL LOCK -- the game's own hide-the-interface key (Henrik's field report
+    -- 2026-07-28: "the addon windows don't disappear"). The game's HUD blinks out
+    -- for a clean screenshot; ours has to go with it, or every picture the player
+    -- takes has dlac pasted across it.
+    --
+    -- The gate sits exactly HERE for a reason. Everything ABOVE this line is work
+    -- dlac DOES every frame -- the command queue, the uiflags load/save, the gear
+    -- auto-sync tick, the macro-book / lockstyle / pin pumps, the wishlist check --
+    -- and none of it may pause while you take a picture. Everything BELOW is what
+    -- dlac DRAWS, and every window down there is already skipped whenever its own
+    -- flag is off, so skipping them together costs no state: hiding is exactly
+    -- "closed for a moment", and each reappears where it was.
+    --
+    -- Fails open (see feature\gamehud): an unmatched signature draws as before.
+    -- Function-scoped require -- no new chunk local (hard rule 1).
+    local hudHidden = false;
+    pcall(function() hudHidden = require('dlac\\feature\\gamehud').hidden(); end);
+    if hudHidden then return; end
     if ui.showMetrics == true and has.imgui then       -- /dl metrics: overlay hunter
         pcall(function() imgui.ShowMetricsWindow(ui.metricsOpen); end);
         if ui.metricsOpen ~= nil and ui.metricsOpen[1] == false then ui.showMetrics = false; end

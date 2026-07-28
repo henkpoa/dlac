@@ -91,6 +91,8 @@ engine cannot require them; it has its own minimal reads).
 | **Is the MaxMP mode on? / flip it** | `automationsui.maxmpMode()` / `.maxmpToggle()` | `ui/automationsui.lua` | THE shared reader/flipper for every surface (panel button, list row). Reads the LAC engine's modestate mirror (1s TTL — display can lag a beat); the toggle sends the EXPLICIT `/dl mode maxmp on\|off`, never a blind flip. Auto-disables on job change. |
 | **The max-MP band plan?** | `dispatch.M.mpBands(ctx)` → context; `mpbands.build/target/tick` (pure core) | `dispatch.lua` (LAC state) + `feature/mpbands.lua` | ONE context serves the engine AND `/dl plan` — the plan IS the behavior, never render a rival. Current MP is the only live read; `GetMPMax` is unreliable during gear churn and floored party MP% == 100 is the only exact fullness signal. Read docs/design/maxmp-mode.md (rulings ledger + failure museum) before touching. |
 
+| **Is the game hiding its own interface?** (Scroll Lock) | `gamehud.hidden()` → `true` \| `false` | `feature\gamehud.lua` | FAILS OPEN — unmatched signature, null pointer or headless all answer `false`, because a UI that vanishes on a bad read is unexplainable to a player. The SCREENSHOT flag only: cutscenes and the fullscreen map have their own signatures and dlac deliberately does not fold them in (xivbar/HXUI do). One consumer, and there should only ever be one: the gate in gearui's `d3d_present`, above the first imgui call and below every per-frame pump. |
+
 Adding a new central service: generic plumbing goes in `lib/`, game-domain
 answers in `feature/` or `data/`; give it the gamemode shape (one exported
 question, injectable reads, headless tests) and ADD IT TO THIS TABLE.

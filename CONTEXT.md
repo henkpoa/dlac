@@ -199,7 +199,7 @@ _Avoid_: summing per-item scores and calling it a set total
 An optimizePicks restart from the converged baseline with a feasible gear set's pieces force-placed (least-loss slot choice, hard 6/12 seed caps), kept only on strict improvement. Exists because single-slot hill climbing can never enter a bonus whose pieces are each a solo loss. ADR 0011.
 
 **Floating window**:
-An ImGui window a UI module owns, gated on its own session-only open flag and drawn from exactly ONE call site — gearui's `d3d_present`, above its `M.visible` return — so it lives whether or not the main window is open. Any surface may OPEN one (a bar button, a panel button, a `/dl` command); only that one site may DRAW it. Today: lockstyle, floatgear, the Trigger Monitor, the restock nudge, the two Chocobo dig searches, the Hobby bar, idlefloat, the fishing target window.
+An ImGui window a UI module owns, gated on its own session-only open flag and drawn from exactly ONE call site — gearui's `d3d_present`, above its `M.visible` return — so it lives whether or not the main window is open. Any surface may OPEN one (a bar button, a panel button, a `/dl` command); only that one site may DRAW it. Today: lockstyle, floatgear, the Trigger Monitor, the restock nudge, the two Chocobo dig searches, the Hobby bar, idlefloat, the fishing target window. That one site is also what makes **Scroll Lock** work: it gates every dlac window — floating and main alike — on `gamehud.hidden()`, so the whole UI blinks out with the game's own HUD and comes back where it was.
 _Avoid_: popup (that is the Menu/Teleports kind, which closes on click-away and draws inline), dialog, panel
 
 **Panel**:
