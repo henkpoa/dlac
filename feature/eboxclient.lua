@@ -176,7 +176,7 @@ function M._trace(dir, what)
     local now = M._now();
     if M.stats.since == nil then M.stats.since = now; end
     local t = M.trace;
-    t[#t + 1] = { when = now, dir = dir, what = what };
+    t[#t + 1] = { at = now, dir = dir, what = what };
     while #t > M.TRACE_MAX do
         table.remove(t, 1);
         if M.echoAt > 0 then M.echoAt = M.echoAt - 1; end   -- keep the pump's place

@@ -43,7 +43,10 @@ server clone at `~\scripts\catseyexi`. Re-run it if CatsEye adds ammo:
 - The `!box` watch fires and **there is no spam**.
 - The menu rule works end to end: `!box ammo` at `18:47:05` → armed → **silent for the eight
   seconds he browsed** → fired only when items actually moved at `18:47:13`.
-- `/dl debug ebox` prints and reads correctly in game.
+- ~~`/dl debug ebox` prints and reads correctly in game.~~ **WITHDRAWN 07-28 — this was a false
+  positive, see §5.** It printed the *empty-ring* line; the first time it had an event to
+  format it threw and Ashita unloaded the addon. Fixed in `2026.07.28s`; **still owed a real
+  field round with traffic in the ring.**
 
 **Headless (3420 checks, both runtimes):** the whole model — believe/dirty/re-count, debit
 arithmetic and its floor, refusal-repairs-vs-success-doesn't, the settle window, PEND_HOLD,
@@ -91,6 +94,19 @@ correlation, the yellow icon's divergence rule, the container pairings.
 - **A local declared after its use is a nil GLOBAL, silently** — `M.rescan` read `_ewok`/`_ew`
   that way for its whole life, so Rescan's box re-sweep never ran. EBC22 pins it as a
   source-order check because nothing at runtime can see it.
+- **A green suite on both sides of a seam does not mean the seam is joined (07-28, cost: the
+  addon).** `eboxclient._trace` wrote `{ when = … }` from its first commit; `eboxtrace.lines`
+  read `e.at`. `/dl debug ebox` therefore threw `arithmetic on field 'at' (a nil value)` and
+  **Ashita unloaded dlac** — asking a question about traffic cost the player every dlac
+  feature. It hid for three days behind two green halves that never touched: EBT3-8 format a
+  *hand-built* stand-in that spells the field the formatter's way, and EBC23f/g drive the real
+  trace calls but only ever inspect `dir`/`what`. Nothing handed the real ring to the real
+  formatter. It then survived the 07-25 field round because the ring was **empty** — the
+  `#tr == 0` branch is the one path that never touches a timestamp, which is E-review-3's own
+  warning ("an empty log is what a dead instrument looks like") landing on the instrument
+  itself. **EBT9/EBT9b now format the live ring left by EBC23f/g** (mutation-verified: put
+  `when` back and exactly those two fail). And `/dl debug`'s router now `pcall`s the topic —
+  a read-only readout must never be able to unload the addon.
 - **Deleting a refresh cycle deletes what was quietly healing things.** Four of the five
   round-one review defects were transient wrong beliefs that the 25s poll used to age out and
   now never would. When you remove a poll, audit everything that was leaning on it.
@@ -109,10 +125,10 @@ correlation, the yellow icon's divergence rule, the container pairings.
   and is the obvious seam. Not designed, not asked for — Henrik's call.
 - **Deposit is still WITHDRAW-ONLY at the packet level** (server-ask #7 in
   `docs/server-questions.md`). The red icon is a `!box store` chat command, not a packet.
-- **`main` has none of this.** dev → main is Henrik's call.
+- ~~**`main` has none of this.**~~ **STALE — all of it is on `main`** (promoted in `7231143`,
+  07-25), as are the two 07-28 rulings (`ef82f1f`) and the yellow-hover trim. `dev` and `main`
+  are level.
 
-## 7. Also uncommitted, unrelated
+## 7. ~~Also uncommitted, unrelated~~ — resolved
 
-`.gitignore` has a `share/` rule in the working tree that **this session did not write** —
-probably a parallel session (the checkout is shared). It was deliberately left out of these
-commits.
+The stray `.gitignore` `share/` rule from a parallel session is gone; the tree is clean.

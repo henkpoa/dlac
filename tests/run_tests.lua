@@ -11809,6 +11809,25 @@ end)();
     check('EBT8 a client that failed to load says so rather than erroring',
         et.lines(nil)[1]:find('failed to load', 1, true) ~= nil, true);
 
+    -- EBT9. THE TWO HALVES, JOINED -- and the reason this test exists.
+    -- EBT3-8 format a hand-built stand-in; EBC23f/g drive the real production
+    -- trace calls. Both were green from the day v2 shipped, and neither could
+    -- see that `_trace` wrote `when` while `lines` read `at`: the stand-in above
+    -- spells the field the formatter's way, and EBC23g only ever inspects
+    -- dir/what. The real ring was never handed to the real formatter, so
+    -- `/dl debug ebox` threw on the first event it ever had to print and Ashita
+    -- unloaded the addon (field, 2026-07-28). It survived the 07-25 field round
+    -- only because the ring was empty then -- the `#tr == 0` branch, which is
+    -- the one path that never touches a timestamp.
+    -- The ring loaded by EBC23f/g above is still live; format THAT.
+    etL = tostring(select(2, pcall(function() return table.concat(et.lines(ec), '\n'); end)));
+    check('EBT9 the REAL ring through the REAL formatter: every event renders an age',
+        #ec.trace >= 4 and select(2, etL:gsub(' ago  ', '')) == #ec.trace, true);
+    check('EBT9b and the events say what they were, not nil',
+        etL:find('GET_CATEGORY cat=15', 1, true) ~= nil
+        and etL:find('WITHDRAW id=21302 x5', 1, true) ~= nil
+        and etL:find('dirty cat=15', 1, true) ~= nil, true);
+
     -- RS. restockwatch -- E-Box Restock config + the two PURE cores (ADR 0016;
     -- docs/design/ebox-restock.md). No packets/engine: the union+override and the
     -- slot-safety planner are arithmetic, so the panel and the nudge share ONE answer.
