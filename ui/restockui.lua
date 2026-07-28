@@ -756,8 +756,6 @@ function M.nudge(deps)
                             shown = shown + 1;
                         end
                     end
-                    imgui.TextColored(COL_DIM, 'Your Mog House copies stay there -- you cannot reach them');
-                    imgui.TextColored(COL_DIM, 'from here, so the box covers you until you go home.');
                 else
                     imgui.TextColored(COL_DIM, busy and 'A fetch is already in flight.'
                         or 'The box cannot add any of these -- yours are at the Mog House.');
