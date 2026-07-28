@@ -293,6 +293,24 @@ return {
 }
 ```
 
+A **`dispatch` anchor** is the same envelope minus the payload — no `worn`, no `totals`,
+no `by` ever. What remains is exactly the join + the moment:
+
+```lua
+return {
+  v = 1, seq = 42, kind = 'dispatch', dropped = 0,
+  at = 1774689872.1, source = 'plan', snapshot = false,
+  char = 'Mindie', charId = 29909, dlac = '2026.07.28l', engine = 154,
+  event = 'Weaponskill', action = "Rudra's Storm",
+  actionId = 143, actionCategory = 0x07, targetIndex = 0x1A3,
+  job = 'THF', jobLevel = 75, sub = 'NIN', subLevel = 37,
+  ctx = { --[[ same shape as worn's ctx: TP at the decision, buffs, day/weather... ]] },
+}
+```
+
+Read it as: *"dlac saw this action, decided, and changed nothing — the newest `worn`
+before me is the composition."*
+
 **Slot keys are exactly these, in this spelling:**
 `Main` `Sub` `Range` `Ammo` `Head` `Neck` `Ear1` `Ear2` `Body` `Hands` `Ring1` `Ring2`
 `Back` `Waist` `Legs` `Feet`
@@ -411,13 +429,21 @@ and take the newest `worn` before that anchor.
   which is what a snapshot falls back to when dlac has not dispatched yet this session (fresh
   login, standing still). At rest, `'worn'` is the *more* accurate answer — it just cannot
   tell you *why* anything is on.
-- **`kind = 'invalidate'`** tells you cached query results are stale (job change, the player
-  committed set/trigger edits, inventory moved) and carries the new `rev` values.
-- **`kind = 'confirm'`** arrives a few hundred ms after a `worn` and reports what the client
-  *actually* ended up wearing. It exists because the server can refuse an equip (level, job,
-  cutscene, mid-action). **A `worn` envelope is dlac's intent; a `confirm` is fact.** If you
-  are computing anything you would defend to another player, prefer `confirm` where you have
-  it.
+- **`kind = 'invalidate'`** tells you cached query results are stale. v1 watches two
+  things: the **sets store** (the player edited/committed sets or a level change
+  re-flattened them) and the **main job**. The envelope carries `changed` (an array of
+  `'sets'` / `'job'`), `rev = { sets = <n> }` and `job`. Inventory-move invalidation is
+  future work, which is also why `gear`/`item` replies carry `rev = 0` for now — do not
+  cache those two hard.
+- **`kind = 'confirm'` is DELTA-ONLY: silence after a `worn` IS the confirmation.** It
+  exists because the server can refuse an equip (level, job, cutscene, mid-action). A
+  few hundred ms after a `worn`, dlac re-reads what the client *actually* wears; **only
+  if reality diverged** do you get a `confirm` — `forSeq` (the `seq` of the `worn` it
+  checks), `decisionSeq`, and `delta = { Slot = { planned = ..., actual = ... }, ... }`
+  for exactly the slots that differ. No `confirm` within a second of a `worn` means the
+  plan landed whole. Only the *newest* plan is ever checked — a plan superseded before
+  its check was moot and is silently skipped. **A `worn` envelope is dlac's intent;
+  apply any `confirm` delta on top of it and you hold fact.**
 
 ### 2.6 Cold start — you are never blind, but you must ask
 
@@ -521,11 +547,11 @@ local rev = { gear = nil, sets = nil };
 local function onEnv(env)
     if env.v ~= 1 then return; end                       -- unknown major: ignore, don't guess
     if env.kind == 'invalidate' then
-        if env.rev and env.rev.gear ~= rev.gear then ask('gear'); end
-        return;
+        if env.rev and env.rev.sets ~= rev.sets then rev.sets = env.rev.sets; ask('sets'); end
+        return;                                          -- (gear/item revs are v2 -- see §2.5)
     end
     if env.dropped and env.dropped > 0 then ask('worn'); end   -- we lost some: resync
-    ring[#ring + 1] = env;
+    ring[#ring + 1] = env;                               -- worn AND dispatch anchors both go in
     if #ring > RING then table.remove(ring, 1); end
 end
 
@@ -558,7 +584,9 @@ Everything else is your own packet handling joined against `ring` by §2.4.
 6. **You get no greeting on load — ask** (§2.6). And be ready for an unsolicited snapshot at
    any time, because the player can enable the stream after you start.
 7. **Absence of an event is information, not a dropped packet** (§2.5).
-8. **A `worn` envelope is intent, not fact** — prefer `confirm` when correctness matters.
+8. **A `worn` envelope is intent, not fact** — but `confirm` is delta-only (§2.5): no
+   `confirm` shortly after a `worn` means the plan landed whole. Waiting for a positive
+   confirmation that never comes is the wrong loop; apply deltas when they arrive.
 9. **Do not assume the key set is closed.** Fields will be added (`by` and `totals` first).
    Ignore what you do not know; never validate by rejecting unknown keys.
 10. **Stat key spelling comes from `statdefs`** (§1), not from your intuition.
