@@ -920,6 +920,28 @@ local function toLines(text)
     return lines;
 end
 
+-- Header/closer matchers tolerant of a trailing "-- comment". Hand-annotated
+-- legacy entries (`MtlMufflers = { -- Mtl. Mufflers/Mythril Mufflers`) must be
+-- visible here, or prune/fix/dedupe silently skip them. Anything else after
+-- the brace (e.g. an inline table) still disqualifies the line.
+--
+-- The COMMIT readers (parseStaging / indexGear / slotShapes) share these on
+-- purpose. They used to carry their own `= {%s*$` patterns, which meant a
+-- commented category header was invisible to indexGear alone: commit then
+-- "created" a section that already existed, Lua's last-key-wins threw the new
+-- block away, and it reported success while the items silently never landed --
+-- so they scanned as new again on the next sync, forever.
+local function restOk(rest) return rest:match('^%s*$') ~= nil or rest:match('^%s*%-%-') ~= nil; end
+local function hdrAt(line, nsp)
+    local key, rest = line:match('^' .. string.rep(' ', nsp) .. '([%w_]+) = {(.*)$');
+    if key ~= nil and restOk(rest) then return key; end
+    return nil;
+end
+local function closeAt(line, nsp)
+    local rest = line:match('^' .. string.rep(' ', nsp) .. '},(.*)$');
+    return rest ~= nil and restOk(rest);
+end
+
 -- Parse a staging module's TEXT into { targetKey -> { entryBlock, ... } } where
 -- targetKey is "Head" (armor) or "Main.Sword" (weapon). Entry blocks are verbatim
 -- source (comments preserved), already at gear.lua's indentation.
@@ -929,23 +951,23 @@ local function parseStaging(text)
     local i = 1;
     while i <= #lines do
         local line = lines[i];
-        local slotOpen = line:match('^    ([%w_]+) = {%s*$');
-        local slotClose = line:match('^    },%s*$');
-        local h8 = line:match('^        ([%w_]+) = {%s*$');
-        local c8 = line:match('^        },%s*$');
-        local h12 = line:match('^            ([%w_]+) = {%s*$');
+        local slotOpen = hdrAt(line, 4);
+        local slotClose = closeAt(line, 4);
+        local h8 = hdrAt(line, 8);
+        local c8 = closeAt(line, 8);
+        local h12 = hdrAt(line, 12);
         if slotOpen then curSlot = slotOpen; curCat = nil; i = i + 1;
         elseif slotClose then curSlot = nil; curCat = nil; i = i + 1;
         elseif h8 and curSlot and WEAPON_SLOTS[curSlot] then curCat = h8; i = i + 1;
         elseif c8 and curSlot and WEAPON_SLOTS[curSlot] then curCat = nil; i = i + 1;
         elseif h8 and curSlot then                       -- armor entry (8-space)
             local block = { line }; i = i + 1;
-            while i <= #lines and not lines[i]:match('^        },%s*$') do block[#block + 1] = lines[i]; i = i + 1; end
+            while i <= #lines and not closeAt(lines[i], 8) do block[#block + 1] = lines[i]; i = i + 1; end
             if i <= #lines then block[#block + 1] = lines[i]; i = i + 1; end
             sections[curSlot] = sections[curSlot] or {}; table.insert(sections[curSlot], table.concat(block, '\n'));
         elseif h12 and curSlot and curCat then           -- weapon entry (12-space)
             local key = curSlot .. '.' .. curCat; local block = { line }; i = i + 1;
-            while i <= #lines and not lines[i]:match('^            },%s*$') do block[#block + 1] = lines[i]; i = i + 1; end
+            while i <= #lines and not closeAt(lines[i], 12) do block[#block + 1] = lines[i]; i = i + 1; end
             if i <= #lines then block[#block + 1] = lines[i]; i = i + 1; end
             sections[key] = sections[key] or {}; table.insert(sections[key], table.concat(block, '\n'));
         else i = i + 1;
@@ -959,8 +981,8 @@ end
 local function indexGear(lines)
     local idx, curSlot = {}, nil;
     for i = 1, #lines do
-        local s4 = lines[i]:match('^    ([%w_]+) = {%s*$');
-        local s8 = lines[i]:match('^        ([%w_]+) = {%s*$');
+        local s4 = hdrAt(lines[i], 4);
+        local s8 = hdrAt(lines[i], 8);
         if s4 then curSlot = s4; if idx[s4] == nil then idx[s4] = i; end
         elseif s8 and curSlot and WEAPON_SLOTS[curSlot] then
             local k = curSlot .. '.' .. s8; if idx[k] == nil then idx[k] = i; end
@@ -969,23 +991,65 @@ local function indexGear(lines)
     return idx;
 end
 
+-- How is each slot section actually written in THIS file -- flat entries, or
+-- category tables?  An 8-space child that carries its own `Name = "..."` (at
+-- 12) is an ENTRY; one that only holds deeper tables is a CATEGORY.
+--
+-- Commit cannot assume its own layout here. gear.lua's trailer decides per file
+-- which slots it walks three levels deep, and a legacy LuAshitacast file nests
+-- Ammo by Archery/Marksmanship/Throwing where dlac writes it flat. Splicing a
+-- flat entry into a category-nested slot leaves that entry as a sibling of the
+-- category tables -- the file still PARSES, so parse-checking sees nothing, but
+-- the trailer then descends into the entry's own fields and evaluates
+-- ("Bone Arrow").Name -> nil -> "table index is nil", pointing at the trailer
+-- hundreds of lines from the cause. So: read the shape, never assume it.
+-- Returns { [slot] = 'entry' | 'category' }; a slot with no children is absent.
+local function slotShapes(lines)
+    local shapes, curSlot, i = {}, nil, 1;
+    while i <= #lines do
+        local s4, h8 = hdrAt(lines[i], 4), hdrAt(lines[i], 8);
+        if s4 then curSlot = s4; i = i + 1;
+        elseif closeAt(lines[i], 4) then curSlot = nil; i = i + 1;
+        elseif h8 and curSlot then
+            local named, j = false, i + 1;
+            while j <= #lines and not closeAt(lines[j], 8) do
+                if lines[j]:match('^            Name%s*=') then named = true; end
+                j = j + 1;
+            end
+            if shapes[curSlot] == nil then shapes[curSlot] = named and 'entry' or 'category'; end
+            i = j + 1;
+        else i = i + 1;
+        end
+    end
+    return shapes;
+end
+M._slotShapes = slotShapes;   -- exported for the tests
+
 -- Pure text transform: return gear.lua text with staging entries spliced in as
 -- first children. Never modifies existing lines. Reports counts / created / notfound.
 function M.spliceStaging(gearText, stagingText)
     local sections = parseStaging(stagingText);
     local gearLines = toLines(gearText);
     local idx = indexGear(gearLines);
-    local insertAfter, report = {}, { inserted = 0, created = {}, notfound = {} };
+    local shapes = slotShapes(gearLines);
+    local insertAfter, report = {}, { inserted = 0, created = {}, notfound = {}, shapeConflict = {} };
 
     local function queue(ln, block) insertAfter[ln] = insertAfter[ln] or {}; table.insert(insertAfter[ln], block); end
 
     for targetKey, blocks in pairs(sections) do
-        local ln = idx[targetKey];
-        if ln ~= nil then
-            for _, b in ipairs(blocks) do queue(ln, b); report.inserted = report.inserted + 1; end
+        local parent, cat = targetKey:match('^([%w_]+)%.([%w_]+)$');
+        local slot = parent or targetKey;
+        -- What this staging block needs the slot to be, vs what the file IS.
+        -- A disagreement is never splice-able: inserting anyway writes a file
+        -- that parses and then dies in the trailer (see slotShapes).
+        local want = (cat ~= nil) and 'category' or 'entry';
+        if shapes[slot] ~= nil and shapes[slot] ~= want then
+            table.insert(report.shapeConflict, { slot = slot, found = shapes[slot], want = want });
         else
-            local parent, cat = targetKey:match('^([%w]+)%.([%w]+)$');
-            if parent and idx[parent] then                -- create missing weapon category
+            local ln = idx[targetKey];
+            if ln ~= nil then
+                for _, b in ipairs(blocks) do queue(ln, b); report.inserted = report.inserted + 1; end
+            elseif parent and idx[parent] then            -- create missing weapon category
                 local nc = { '        ' .. cat .. ' = {' };
                 for _, b in ipairs(blocks) do nc[#nc + 1] = b; report.inserted = report.inserted + 1; end
                 nc[#nc + 1] = '        },';
@@ -996,6 +1060,7 @@ function M.spliceStaging(gearText, stagingText)
             end
         end
     end
+    table.sort(report.shapeConflict, function(a, b) return a.slot < b.slot; end);
 
     local out = {};
     for i = 1, #gearLines do
@@ -1029,12 +1094,79 @@ end
 -- runtime errors a parse-only check misses -- e.g. a mis-shaped entry making
 -- NameToObject[nil] blow up. Shared by commit and /dl fix (it used to live in
 -- both, and only one copy would have gotten a future fix).
-local function gearLoadValidator(chunk)
+-- Why won't this gear table load?  Every gear.lua ends with the same trailer --
+-- NameToObject[gearVars.Name] = gearVars -- walked at whatever depth that file
+-- declares per slot, so ONE mis-shaped entry takes the whole inventory down and
+-- the raw error only ever names the trailer, hundreds of lines from the cause.
+-- Walk the built table and name the culprit instead.
+--
+-- Deliberately shape-AGNOSTIC: a file may legitimately nest a slot we write
+-- flat (Ammo, in LAC-era files), and that is its trailer's business, not ours.
+-- What is broken under ANY trailer is a slot that MIXES entries with category
+-- tables, a child that is neither, or an entry with no Name.
+function M.gearProblems(gearT, lines)
+    local out = {};
+    local function lineOf(key)
+        if lines == nil or type(key) ~= 'string' or key:match('^[%a_][%w_]*$') == nil then return nil; end
+        for i = 1, #lines do if lines[i]:match('^%s*' .. key .. ' = {') then return i; end end
+        return nil;
+    end
+    local function at(key) local l = lineOf(key); return (l ~= nil) and (' (line ' .. l .. ')') or ''; end
+    -- A table with no Name that HOLDS named tables is a category, not a broken
+    -- entry. Structural, not a head-count: one new entry beside three categories
+    -- and thirty beside three must both read the same way round.
+    local function isCategory(v)
+        for _, c in pairs(v) do if type(c) == 'table' and c.Name ~= nil then return true; end end
+        return false;
+    end
+
+    for slot, sv in pairs(gearT) do
+        if slot ~= 'NameToObject' and type(sv) == 'table' then
+            local entries, cats, loose, empty = {}, {}, {}, {};
+            for k, v in pairs(sv) do
+                if type(v) ~= 'table' then loose[#loose + 1] = k;
+                elseif v.Name ~= nil then entries[#entries + 1] = k;
+                elseif isCategory(v) then cats[#cats + 1] = k;
+                elseif next(v) == nil then empty[#empty + 1] = k;
+                else loose[#loose + 1] = k; end
+            end
+            table.sort(entries); table.sort(cats); table.sort(loose); table.sort(empty);
+            if #loose > 0 then
+                out[#out + 1] = string.format('gear.%s.%s has no Name%s', slot, loose[1],
+                                              at(loose[1])) .. ((#loose > 1) and (' (+%d more)'):format(#loose - 1) or '');
+            end
+            if #cats > 0 and #entries > 0 then
+                out[#out + 1] = string.format(
+                    'gear.%s is category-nested (%s) but %s sits directly under it%s -- wrong depth',
+                    slot, table.concat(cats, ', '), entries[1], at(entries[1]))
+                    .. ((#entries > 1) and (' (+%d more)'):format(#entries - 1) or '');
+            elseif #cats == 0 and #empty > 0 then
+                out[#out + 1] = string.format('gear.%s.%s is an empty table, not an entry%s',
+                                              slot, empty[1], at(empty[1]));
+            end
+        elseif slot ~= 'NameToObject' then
+            out[#out + 1] = string.format('gear.%s is a %s, not a table', slot, type(sv));
+        end
+    end
+    table.sort(out);
+    return out;
+end
+
+local function gearLoadValidator(chunk, tmpPath)
     local env = setmetatable({}, { __index = _G });
     if setfenv ~= nil then setfenv(chunk, env); end
     local runok, runerr = pcall(chunk);
-    if not runok or type(env.gear) ~= 'table' then return nil, runerr; end
-    return true;
+    if runok and type(env.gear) == 'table' then return true; end
+    -- gear = {...} is built BEFORE the trailer runs, so even a trailer blow-up
+    -- leaves the table right there to be inspected.
+    if type(env.gear) == 'table' then
+        local text = readFile(tmpPath);
+        local probs = M.gearProblems(env.gear, text ~= nil and toLines(text) or nil);
+        if #probs > 0 then
+            return nil, tostring(runerr) .. ' -- ' .. table.concat(probs, '; ');
+        end
+    end
+    return nil, runerr;
 end
 
 -- quiet: only the success narration is suppressed (auto-sync); every abort/failure
@@ -1054,6 +1186,19 @@ function M.commit(quiet)
     if gearText == nil then print('[dlac] commit: cannot read gear.lua.'); return; end
 
     local newText, report = M.spliceStaging(gearText, stagingText);
+    -- Shape first: this one is about the FILE, not about any one item, and the
+    -- remedy is different (reshape or rebuild, not "why is this item missing").
+    if #report.shapeConflict > 0 then
+        local parts = {};
+        for _, c in ipairs(report.shapeConflict) do
+            parts[#parts + 1] = string.format('%s is %s here, dlac writes it %s', c.slot,
+                (c.found == 'category') and 'nested by category' or 'flat',
+                (c.want == 'entry') and 'flat' or 'nested by category');
+        end
+        print('[dlac] commit ABORTED: gear.lua shape conflict -- ' .. table.concat(parts, '; ') .. '.');
+        print('[dlac] nothing written. Delete gear.lua and let /dl scan rebuild it, or reshape that section by hand.');
+        return;
+    end
     if #report.notfound > 0 then
         print('[dlac] commit: no gear.lua section for: ' .. table.concat(report.notfound, ', ') .. '. Aborting, nothing written.'); return;
     end
@@ -1089,21 +1234,7 @@ end
 
 -- Parse gear.lua text into a flat list of entries with line positions and the
 -- parsed Name/Level/Id (+ the line each lives on, for surgical edits).
-
--- Header/closer matchers tolerant of a trailing "-- comment". Hand-annotated
--- legacy entries (`MtlMufflers = { -- Mtl. Mufflers/Mythril Mufflers`) must be
--- visible here, or prune/fix/dedupe silently skip them. Anything else after
--- the brace (e.g. an inline table) still disqualifies the line.
-local function restOk(rest) return rest:match('^%s*$') ~= nil or rest:match('^%s*%-%-') ~= nil; end
-local function hdrAt(line, nsp)
-    local key, rest = line:match('^' .. string.rep(' ', nsp) .. '([%w_]+) = {(.*)$');
-    if key ~= nil and restOk(rest) then return key; end
-    return nil;
-end
-local function closeAt(line, nsp)
-    local rest = line:match('^' .. string.rep(' ', nsp) .. '},(.*)$');
-    return rest ~= nil and restOk(rest);
-end
+-- (hdrAt / closeAt live up by toLines -- the commit-side readers need them too.)
 
 local function parseGearEntries(lines)
     local entries = {};

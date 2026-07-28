@@ -15331,6 +15331,161 @@ end)();
     end)(), true);
 end)();
 
+-- ---------------------------------------------------------------------------
+-- GS. Commit reads gear.lua's SHAPE instead of assuming its own (field bug,
+--     07-28, Abraxis). A legacy LuAshitacast gear.lua nests Ammo by category
+--     (Archery/Marksmanship/Throwing) and says so in its own trailer; dlac
+--     writes Ammo flat. The splice inserted the flat entry as a SIBLING of the
+--     category tables -- the file still parsed, so the parse check passed, and
+--     the trailer then evaluated ("Bone Arrow").Name -> nil:
+--
+--         gear.lua.tmp:9765: table index is nil
+--
+--     ...which named the trailer, ~6400 lines from the cause. Commit aborted
+--     every time, so NO gear of any slot ever landed, the same batch re-staged
+--     forever, and 15 identical backups piled up in 90 minutes.
+--
+--     Three pins: the shape is READ, a disagreement ABORTS with the slot named,
+--     and a legitimately category-nested file is NOT flagged as broken.
+-- ---------------------------------------------------------------------------
+(function()
+local gi = dofile('gear/gearimport.lua');
+local function L(t) local o = {}; for l in (t .. '\n'):gmatch('([^\n]*)\n') do o[#o+1] = l; end return o; end
+
+-- a file shaped like the field one: Ammo nested, Head flat
+local legacy = table.concat({
+    'gear = {',
+    '    Ammo = {',
+    '        Archery = {',
+    '            BoneArrow = {',
+    '                Name = "Bone Arrow",',
+    '                Level = 7,',
+    '                Stats = {',
+    '                    DMG = 9,',
+    '                }',
+    '            },',
+    '        },',
+    '    },',
+    '    Head = {',
+    '        OldCap = {',
+    '            Name = "Old Cap",',
+    '        },',
+    '    },',
+    '};',
+}, '\n');
+
+local shapes = gi._slotShapes(L(legacy));
+check('GS1 nested Ammo read as category', shapes.Ammo, 'category');
+check('GS2 flat Head read as entry',      shapes.Head, 'entry');
+-- an entry carrying a multi-line Stats block must NOT read as a category
+check('GS3 Stats block does not fake a category', gi._slotShapes(L(table.concat({
+    'gear = {', '    Head = {',
+    '        StatCap = {',
+    '            Name = "Stat Cap",',
+    '            Stats = {',
+    '                DEF = 9,',
+    '            }',
+    '        },',
+    '    },', '};',
+}, '\n'))).Head, 'entry');
+
+local ammoStaging = table.concat({
+    'return {',
+    '    Ammo = {',
+    '        SilverArrow = {',
+    '            Name = "Silver Arrow",',
+    '        },',
+    '    },',
+    '}',
+}, '\n') .. '\n';
+local spliced, rep = gi.spliceStaging(legacy, ammoStaging);
+check('GS4 shape conflict reported',   #rep.shapeConflict, 1);
+check('GS5 conflict names the slot',   rep.shapeConflict[1] and rep.shapeConflict[1].slot, 'Ammo');
+check('GS6 conflict names the file shape', rep.shapeConflict[1] and rep.shapeConflict[1].found, 'category');
+check('GS7 nothing spliced into it',   rep.inserted, 0);
+check('GS8 text left byte-identical',  spliced, legacy .. '\n');
+-- the pre-fix behaviour, pinned as the thing that must never come back
+check('GS9 not silently reported as notfound', #rep.notfound, 0);
+
+-- a flat slot in a flat file still takes its entry
+local okSplice = select(2, gi.spliceStaging(legacy, table.concat({
+    'return {', '    Head = {', '        NewCap = {', '            Name = "New Cap",',
+    '        },', '    },', '}',
+}, '\n') .. '\n'));
+check('GS10 matching shape still inserts', okSplice.inserted, 1);
+check('GS11 matching shape has no conflict', #okSplice.shapeConflict, 0);
+
+-- gearProblems: names the culprit, and stays quiet on a consistent legacy file
+local function built(text)
+    local c = (loadstring or load)(text);
+    local env = setmetatable({}, { __index = _G });
+    if setfenv ~= nil then setfenv(c, env); end
+    pcall(c);
+    return env.gear, L(text);
+end
+local okGear, okLines = built(legacy);
+check('GS12 consistent nested file is NOT flagged', #gi.gearProblems(okGear, okLines), 0);
+
+local badGear, badLines = built(table.concat({
+    'gear = {',
+    '    Ammo = {',
+    '        SilverArrow = {',
+    '            Name = "Silver Arrow",',
+    '        },',
+    '        Archery = {',
+    '            BoneArrow = {',
+    '                Name = "Bone Arrow",',
+    '            },',
+    '        },',
+    '    },',
+    '};',
+}, '\n'));
+local probs = gi.gearProblems(badGear, badLines);
+check('GS13 wrong-depth entry diagnosed', #probs, 1);
+check('GS14 diagnosis names the entry, not the trailer',
+      probs[1] ~= nil and probs[1]:find('SilverArrow', 1, true) ~= nil, true);
+check('GS15 diagnosis carries a line number',
+      probs[1] ~= nil and probs[1]:find('line 3', 1, true) ~= nil, true);
+
+local nnGear, nnLines = built(table.concat({
+    'gear = {', '    Head = {',
+    '        GoodCap = { Name = "Good Cap", },',
+    '        BadCap = {',
+    '            Level = 20,',
+    '        },',
+    '    },', '};',
+}, '\n'));
+local nnProbs = gi.gearProblems(nnGear, nnLines);
+check('GS16 Name-less entry diagnosed', #nnProbs, 1);
+check('GS17 Name-less diagnosis names it',
+      nnProbs[1] ~= nil and nnProbs[1]:find('BadCap', 1, true) ~= nil, true);
+
+-- Defect from the same family: indexGear/parseStaging used their own
+-- `= {%s*$` patterns while parseGearEntries (fix/dedupe/prune) tolerated a
+-- trailing comment. A commented CATEGORY header was invisible to indexGear
+-- alone, so commit "created" a section that already existed, Lua's
+-- last-key-wins discarded the new block, and commit reported success while
+-- the items silently never landed.
+local commented = table.concat({
+    'gear = {',
+    '    Main = { -- weapons',
+    '        Sword = { -- my swords',
+    '            OldSword = {',
+    '                Name = "Old Sword",',
+    '            },',
+    '        },',
+    '    },',
+    '};',
+}, '\n');
+local _, cRep = gi.spliceStaging(commented, table.concat({
+    'return {', '    Main = {', '        Sword = {', '            NewSword = {',
+    '                Name = "New Sword",', '            },', '        },', '    },', '}',
+}, '\n') .. '\n');
+check('GS18 commented headers still index',  cRep.inserted, 1);
+check('GS19 no phantom duplicate section',   #cRep.created, 0);
+check('GS20 commented slot header found',    #cRep.notfound, 0);
+end)();
+
 -- The warm-note artifact the dispatch-driving sections leave behind (dataDir
 -- stubbed 'tests\'): on Windows a real tests\debug\mpwarm.txt (gitignored via
 -- debug/), under WSL ONE backslash-bearing filename that drvfs PUA-mangles on

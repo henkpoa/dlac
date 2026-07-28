@@ -831,9 +831,15 @@ local function refreshGear()
             if d ~= nil then path = d .. 'gear.lua'; end
         end);
         if path == nil then return; end   -- purge Phase 4: native home only
-        local chunk = loadfile(path);
-        if chunk == nil then return; end
+        local chunk, lerr = loadfile(path);
+        if chunk == nil then print('[dlac] reload: gear.lua will not parse: ' .. tostring(lerr)); return; end
         local ok, g = pcall(chunk);
+        if not ok then
+            -- Same silence as the boot preload used to have: the GUI would keep
+            -- showing the PREVIOUS gear table and give no hint the file on disk
+            -- is broken. The Commit that just ran is the likeliest cause.
+            print('[dlac] reload: gear.lua failed to load: ' .. tostring(g));
+        end
         if ok and type(g) == 'table' then
             for k in pairs(gear) do gear[k] = nil; end   -- refresh the shared gear table in place
             for k, v in pairs(g)  do gear[k] = v;   end

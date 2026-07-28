@@ -6521,3 +6521,119 @@ job whose pre-profiles backup was migrated whole, the FFXI-LAC list repeats name
 already have live (WHM lists 19). That is honest — they are the pre-migration *versions*,
 and the "New set(s)" path lands them as `_Copy` — but if it ever reads as noise, hiding
 names that already exist live is a one-line filter.
+
+---
+
+## 2026-07-28 — "table index is nil": the file that told us its own shape, and we did not listen
+
+The second field report from Henrik's friend (`Abraxis_42505`), one screenshot:
+
+```
+[dlac] commit ABORTED: would error on load: ...\Abraxis_42505\gear.lua.tmp:9765:
+table index is nil. backup: ...\backups\gear_20260728_111330.lua
+```
+
+He was on a **new dlac install** and *"can't get all the gear in"*. Auto-sync retried on
+its own, so the line kept coming back.
+
+**The artifacts settled it in minutes, and the first theory was wrong.** He sent
+`gear.lua` plus fourteen backups. All fifteen were **byte-identical** (md5 `861d7c6f…`,
+261,341 bytes) — proof the rails held: `safewrite.replaceLua` validates *before* it
+touches the live file, so nothing was ever written, and each aborted commit had simply
+backed the same file up again. The standing hypothesis walking in was that his `gear.lua`
+was already corrupt and `dlac.lua`'s boot preload was silently falling back to the empty
+template. **It was not.** His file runs clean — 691 entries — and it is internally
+consistent:
+
+```
+Main  categories=12   Range categories=8   Ammo categories=3   (everything else flat)
+```
+
+It is a legacy LuAshitacast file: it nests **Ammo** by weapon category
+(`Archery`/`Marksmanship`/`Throwing`), and its own trailer declares exactly that —
+`if slotName == "Main" or slotName == "Range" or slotName == "Ammo" then`. Which slots
+nest is **a property of the file**, written down in the file, and dlac never read it:
+
+```lua
+local WEAPON_SLOTS = { Main = true, Range = true };   -- category-nested slots (Ammo is flat)
+```
+
+So `spliceStaging` filed new ammo flat and dropped it in right after `    Ammo = {` — as
+a **sibling of the category tables**. Reproduced against his real file with one item:
+
+```
+ 3355|     Ammo = {
+ 3356|         SilverArrow = {        <-- inserted here
+ 3357|             Name = "Silver Arrow",
+ 3362|         },
+ 3363|         Archery = {            <-- where it needed to go
+```
+
+That text **parses**, which is why the parse check waved it through. Then the trailer
+descends three levels into `Ammo`, reaches `SilverArrow`'s own fields, and evaluates
+`("Silver Arrow").Name` — indexing a string is legal and yields nil — so
+`NameToObject[nil] = …` → **table index is nil**, blamed on the trailer. His 9765 checks
+out exactly: his trailer's weapon-branch assignment sits at line 8880 and his staging
+batch added 885 lines. 8880 + 885 = 9765.
+
+And because commit is **all-or-nothing**, one bad ammo entry blocked *every* slot. The
+batch re-staged on the next auto-sync and aborted again — fifteen identical backups in
+ninety minutes, and not one item in.
+
+### The rule that came out of it
+
+**A file's shape is data, not an assumption.** `gear.lua` carries its own nesting rule in
+its own trailer; any writer that splices into it has to *read* that, or it is guessing
+about someone else's file. New `slotShapes(lines)` decides per slot from the text — an
+8-space child carrying its own `Name = "…"` is an ENTRY, one holding only deeper tables
+is a CATEGORY (a multi-line `Stats = {}` block does not fake a category, `GS3`) — and a
+disagreement now **aborts naming the slot** instead of writing a file that cannot load:
+
+```
+[dlac] commit ABORTED: gear.lua shape conflict -- Ammo is nested by category here,
+dlac writes it flat.
+[dlac] nothing written. Delete gear.lua and let /dl scan rebuild it, or reshape by hand.
+```
+
+### Two more, from the same family: readers that disagree with the file
+
+**The error named the trailer, never the cause.** `gear = {…}` is fully built before the
+trailer runs, so even a trailer blow-up leaves the table sitting there — `gearProblems`
+now walks it and reports `gear.Ammo is category-nested (Archery, Marksmanship, Throwing)
+but SilverArrow sits directly under it (line 3356) -- wrong depth` instead of a line
+number ~6400 lines away. It is deliberately shape-**agnostic**: it flags a slot that
+*mixes* entries with categories, a child that is neither, an entry with no `Name` — never
+"you nested a slot we write flat", because that is the file's business. A category is
+identified structurally (a table with no `Name` that *holds* named tables), not by
+head-count, so one new entry beside three categories and thirty beside three read the
+same way round (`GS12-17`).
+
+**And a latent one, found while fixing the first.** `parseGearEntries` (fix/dedupe/prune)
+tolerated a trailing `-- comment` on a header — pinned by test `D`, after 25 hand-
+annotated entries went invisible to `/dl prune` in the field. But `parseStaging` and
+`indexGear` carried their own stricter `= {%s*$` patterns. A commented **category** header
+was therefore invisible to `indexGear` alone, so commit "created" a section that already
+existed; Lua's last-key-wins threw the new block away; and commit **reported success while
+the items silently never landed** — so they scanned as new again forever, the file growing
+by a dead duplicate block each pass. Demonstrated before the fix:
+
+```
+B. category header has a trailing comment
+    inserted=2 created=[Main.Sword]   reachable Main.Sword entries: 1  [Old Sword]
+```
+
+All three commit-side readers now share `hdrAt`/`closeAt` with `parseGearEntries`
+(`GS18-20`).
+
+### Silence, twice
+
+`dlac.lua`'s boot preload and `gearui.refreshGear` both swallowed an unloadable
+`gear.lua` and carried on with the bundled empty template: the GUI shows no gear, every
+scan calls every item new, and nothing anywhere says a real inventory is on disk one bad
+entry away. Both say so now. That failure mode did *not* fire here — but it is precisely
+the shape of the theory that cost the first half hour, and it was one `pcall` away from
+being true.
+
+Suites **4134 + 693**, Windows and WSL lua5.4. Tests `GS1-20`. Henrik's remedy for the
+friend is the blunt one, and the right one: delete `gear.lua` and let `/dl scan` rebuild
+it in dlac's own shape.

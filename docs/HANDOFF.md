@@ -354,6 +354,38 @@ research already recorded. In rough priority order:
   column with dim `Dynamic` / `Static` sub-headers under one blue heading, and *"Static atm
   is greyed out like dynamic, so it's hard to notice… even I got confused"*. Group labels
   are not dim.
+- **2026-07-28: commit READS gear.lua's shape instead of assuming its own — ON `dev`,
+  awaiting field test** (`2026.07.28e`). The second field report from Henrik's friend
+  (character `Abraxis_42505`), and the first bug that **needed a second player's file to
+  see at all**. His `gear.lua` is a legacy LuAshitacast one: it nests **Ammo** by category
+  (`Archery`/`Marksmanship`/`Throwing`) and its own trailer says so (`slotName == "Main"
+  or "Range" or "Ammo"`). dlac writes Ammo flat (`WEAPON_SLOTS = { Main, Range }`), so
+  `spliceStaging` inserted the new flat entry as a **sibling of the category tables**.
+  The result still *parses* — which is why the parse check passed — and then the trailer
+  descends into the entry's own fields and evaluates `("Bone Arrow").Name` → nil →
+  `table index is nil`, reported against the **trailer**, ~6400 lines from the cause.
+  Commit is all-or-nothing, so **no gear of any slot ever landed**: the same batch
+  re-staged on every auto-sync and aborted again, leaving 15 byte-identical backups in
+  90 minutes. Three fixes, one family — *commit's text readers disagreeing with the file
+  in front of them*:
+  **(1)** new `slotShapes` reads each slot's actual shape, and a disagreement ABORTS
+  naming the slot (`GS1-11`) instead of writing a file that cannot load;
+  **(2)** `gearProblems` walks the built table and names the culprit entry **and its
+  line** — the raw error only ever named the trailer (`GS12-17`). Deliberately
+  shape-**agnostic**: a consistent legacy file is never flagged, because which slots
+  nest is that file's trailer's business, not ours;
+  **(3)** `parseStaging`/`indexGear` now share `hdrAt`/`closeAt` with
+  `parseGearEntries`, which already tolerated a trailing `-- comment` — a commented
+  CATEGORY header was invisible to `indexGear` alone, so commit "created" a section that
+  already existed, Lua's last-key-wins discarded the new block, and it **reported success
+  while the items never landed** (`GS18-20`). Independent of the Ammo bug, and latent for
+  anyone with a hand-annotated `gear.lua`.
+  Two silent fallbacks lost their silence with it: `dlac.lua`'s boot preload and
+  `gearui.refreshGear` both swallowed an unloadable `gear.lua` and ran on the bundled
+  empty template — GUI shows no gear, every scan calls every item new, nothing says why.
+  Suites **4134 + 693**, Windows and WSL lua5.4; reproduced and re-verified against his
+  real 8,895-line file. Henrik's remedy for the friend: delete `gear.lua`, let `/dl scan`
+  rebuild it flat. **Not in the merge queue: not yet field-tested.**
 - **2026-07-28: MaxMP pair homes anchor CHOSEN picks only — ON MAIN, FIELD-CONFIRMED**
   (`2026.07.28b`, promoted 2026-07-28 on Henrik's "push to main").
   Henrik's own diagnosis of the stage 6 field oddity (Outlaws
