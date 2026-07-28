@@ -9,8 +9,7 @@ your own packet stream.
 | Part | Status |
 |---|---|
 | **Part 1 — static data files** | ✅ **Available now.** Nothing to enable, no dlac cooperation needed. |
-| **The `worn` stream + the `worn` query** | ✅ **BUILT 2026-07-28** (dlac `2026.07.28k`+). Transport verified by probe (§2.2). The player must type `/dl stream on` — off means dlac is silent on the channel, **queries included**. |
-| **`dispatch` / `invalidate` / `confirm` + the other four queries** | 🔧 **Specified, not built yet.** Code written against them receives nothing until they land — additive, on the same channel. |
+| **The live stream — all four kinds (`worn` / `dispatch` / `invalidate` / `confirm`) — and the five queries** | ✅ **BUILT 2026-07-28** (dlac `2026.07.28l`+). Transport verified by probe (§2.2). The player must type `/dl stream on` — off means dlac is silent on the channel, **queries included**. `dispatch` anchors carry no rule-match trace yet (additive later, on a named use); `gear`/`item`/`stats` replies carry `rev = 0` in v1 (only `sets` has a real revision so far). |
 
 If you build the Part 1 half first you can make real progress before dlac's side exists.
 Design docs behind this: `docs/design/integration-surface.md` in the dlac repo.
@@ -244,7 +243,9 @@ Every event, of every kind, has this shape:
 ```lua
 return {
   v = 1,                        -- envelope version; refuse anything with a major you don't know
-  seq = 41,                     -- monotonic per session. Gaps mean you missed events (§2.5)
+  seq = 41,                     -- STREAM-side, monotonic per session ACROSS ALL KINDS.
+                                --   Gaps mean you missed events, whatever their kind (§2.5)
+  decisionSeq = 38,             -- worn only: the engine's own decision number (debugging)
   kind = 'worn',                -- 'worn' | 'dispatch' | 'invalidate' | 'confirm'
   dropped = 0,                  -- events discarded by queue overflow since the last envelope
   at = 1774689871.42,           -- stamped when dlac DECIDED, not when you received it
@@ -384,9 +385,7 @@ and take the newest `worn` before that anchor.
   item broke, or the server stripped a piece. Those change your totals with no dispatch at
   all, so they are emitted too, with no provenance to give. If you only handled `'plan'`
   events you would compute confidently wrong stats for the rest of the fight.
-- **That is why `dispatch` exists — it is your ANCHOR for no-change actions** *(specified,
-  not yet live — see the status table; until it lands, the carried-composition fallback
-  below is your answer and it is correct)*. When an
+- **That is why `dispatch` exists — it is your ANCHOR for no-change actions.** When an
   action goes through dlac's pipeline and the composition does *not* move, you get
   `kind = 'dispatch'`: the same envelope metadata, the same numeric join key, and `ctx`
   (TP at the moment the WS was decided — worth having), just no `worn` table. An action
@@ -491,7 +490,7 @@ Pick a `reply` prefix unique to your addon; two consumers must not collide.
 | `gear` | — | the character's owned-gear record: id, name, level, type, and per-item augments |
 | `sets` | `job` | that job's set **names**; add `set = '<name>'` for one set **resolved** to concrete items plus its `totals` |
 | `item` | `id` or `name` | one item: catalog record, whether it is owned/available/stored, and augments if a copy is worn |
-| `stats` | `comp = { Head = 'Walahra Turban', … }` | **folded totals for a composition you invent** — level scaling, augments and set bonuses included |
+| `stats` | `comp = { Head = 'Walahra Turban', … }`, optional `level = <n>` | **folded totals for a composition you invent** — level scaling, augments and set bonuses included |
 
 `stats` is the important one for analysis: it lets you ask *"what would these numbers be
 with a different ring"* without reimplementing level scaling, augment folding and set-bonus

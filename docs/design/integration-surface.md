@@ -670,9 +670,19 @@ runtimes. **Awaiting Henrik's field round.** What landed:
    answers with `err`, never silence. **The switch gates the whole channel, queries
    included** — off means dlac is silent here (the guide's "tolerate no reply" reading,
    made explicit).
-4. **Open:** `dispatch` (the anchor — needs the no-change action signal; see §5) +
-   `invalidate`, then `confirm`; then the remaining four queries, `rev`s last.
-   **All of it awaits Henrik's field round + the consumer's first real connection.**
+4. ~~**Open**~~ **ALL BUILT** (engine v154, addon `2026.07.28l`): the **anchor** rides a
+   new engine ACTION FEED (`M.getActions` — every non-Default dispatch stubs, os.clock
+   fine-grained, `decSeq` linking a stub to its decision; the 1-second trace stamp
+   could never tell two fast casts apart); **`invalidate`** watches the sets-store rev
+   (`M.modesRev`) + the main job, baselined at enable; **`confirm`** is delta-only and
+   newest-worn-only (a plan that landed whole confirms by silence — the no-flood law;
+   a superseded plan's check is moot and dropped); the **five queries** all answer
+   (`worn`/`stats`/`sets`/`gear`/`item` — `sets` rev = modesRev, the rest rev 0 in v1).
+   One stream-side `seq` spans every kind (gap detection needs one sequence); a worn
+   envelope carries the engine's own number as `decisionSeq`. Tests IN1–IN17.
+   **Everything now awaits Henrik's field round + the consumer's first real
+   connection** — plus, later: real revs for gear/item, and the rule-match trace on
+   anchors if the consumer ever names a use.
 
 The stream reads the SAME ring the monitor renders — the record was proven by eye
 before it shipped to someone else's product, which was the whole point of building the
