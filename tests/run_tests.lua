@@ -7795,6 +7795,97 @@ end)();
         dispatchM._recordDecision('Default', {}, { Body = 'It' .. i }, nil);
     end
     check('DR8 the ring caps at DECISION_CAP', #dispatchM.getDecisions(), dispatchM.DECISION_CAP);
+
+    -- WW: the worldAbsentOutlasted seam (v153) -- the stream's lifetime gate.
+    -- Bookkeeping must run UNARMED (nothing is armed here), and the boolean
+    -- must flip only when absence OUTLASTS the zone window, never on absence
+    -- alone -- the ZONES SURVIVE law (v146), read-only.
+    dispatchM._worldGoneAt = nil;
+    dispatchM.worldWatch(0, nil, 5000);
+    check('WW1 absence alone does not outlast', dispatchM.worldAbsentOutlasted(5000 + 59), false);
+    check('WW2 outlasting the zone window does', dispatchM.worldAbsentOutlasted(5000 + 61), true);
+    dispatchM.worldWatch(6, nil, 5200);
+    check('WW3 a live world clears the clock', dispatchM.worldAbsentOutlasted(5200 + 3600), false);
+
+    -- IN: the Integration surface -- push half + the worn query
+    -- (feature\integration, design section 11 step 2/2b). The collector
+    -- decodes exactly as a consumer would: bytes -> string -> load() -- which
+    -- also pins the byte-table SEND convention the probe verified.
+    local _inok, IN = pcall(dofile, 'feature/integration.lua');   -- the harness seeds, it does not search
+    check('IN1 integration loads headless', _inok and type(IN) == 'table', true);
+    if _inok and type(IN) == 'table' then
+        local fix = { a = 1, z = 'two words', n = { 1, 2, { deep = true } }, ok = false };
+        local rt = nil;
+        pcall(function() rt = (loadstring or load)('return ' .. IN._ser(fix))(); end);
+        check('IN2 the serializer round-trips', rt ~= nil and rt.a == 1 and rt.z == 'two words'
+            and rt.n[3].deep == true and rt.ok == false, true);
+
+        local sent = {};
+        IN._raise = function(name, bytes)
+            local b = {};
+            for i = 1, #bytes do b[i] = string.char(bytes[i]); end
+            local t = nil;
+            pcall(function() t = (loadstring or load)(table.concat(b))(); end);
+            sent[#sent + 1] = { name = name, env = t };
+        end;
+
+        -- enable -> immediate snapshot of the newest ring record (6.5)
+        local ring = dispatchM.getDecisions();
+        local newestSeq = ring[#ring].seq;
+        IN.setOn(true);
+        check('IN3 enable emits a snapshot on dlac_worn', #sent >= 1 and sent[#sent].name == 'dlac_worn'
+            and sent[#sent].env ~= nil and sent[#sent].env.snapshot == true, true);
+        check('IN3b the snapshot carries the current seq', sent[#sent].env.seq, newestSeq);
+
+        -- the pump drains new records FIFO, in seq order, once each
+        sent = {};
+        dispatchM._recordDecision('Weaponskill', {}, { Body = 'StreamPiece A' }, nil);
+        dispatchM._recordDecision('Default',     {}, { Body = 'StreamPiece B' }, nil);
+        IN._pump();
+        check('IN4 two new records -> two envelopes in order', #sent == 2
+            and sent[1].env ~= nil and sent[2].env ~= nil
+            and sent[1].env.seq < sent[2].env.seq
+            and sent[1].env.kind == 'worn' and sent[1].env.snapshot == false, true);
+        check('IN4b the envelope names the items',
+            sent[1].env.worn ~= nil and type(sent[1].env.worn.Body) == 'table'
+            and sent[1].env.worn.Body.name, 'StreamPiece A');
+        check('IN4c nothing new -> nothing sent', (function()
+            local n0 = #sent; IN._pump(); return #sent == n0; end)(), true);
+
+        -- a seq gap (the ring overflowed past us): seqs older than ring[1] are
+        -- PRUNED, so a lastSeq below them is a real loss and must be reported
+        sent = {};
+        dispatchM._recordDecision('Default', {}, { Body = 'StreamPiece C' }, nil);
+        local ring2 = dispatchM.getDecisions();
+        IN._lastSeq = math.max(1, (ring2[1].seq or 2) - 5);
+        IN._pump();
+        check('IN5 the first envelope after a gap carries dropped', #sent >= 1
+            and sent[1].env ~= nil and (sent[1].env.dropped or 0) > 0, true);
+
+        -- outlasted world absence kills the switch silently (section 3)
+        local savedWA = dispatchM.worldAbsentOutlasted;
+        dispatchM.worldAbsentOutlasted = function() return true; end
+        IN._pump();
+        check('IN6 outlasted absence turns the stream off', IN.on, false);
+        dispatchM.worldAbsentOutlasted = savedWA;
+
+        -- the worn query: caller's reply channel, snapshot flag, unknown-what,
+        -- and off = silent on the whole channel (queries included)
+        IN.setOn(true);
+        sent = {};
+        IN._onEvent({ name = 'dlac_query', data = 'return { reply = "tprs", what = "worn" }' });
+        check('IN7 the worn query answers on the caller channel', #sent == 1 and sent[1].name == 'tprs_r'
+            and sent[1].env ~= nil and sent[1].env.what == 'worn'
+            and type(sent[1].env.data) == 'table' and sent[1].env.data.snapshot == true, true);
+        sent = {};
+        IN._onEvent({ name = 'dlac_query', data = 'return { reply = "tprs", what = "nosuch" }' });
+        check('IN8 an unknown what answers with err, never silence', #sent == 1
+            and sent[1].env ~= nil and sent[1].env.err ~= nil, true);
+        IN.setOn(false);
+        sent = {};
+        IN._onEvent({ name = 'dlac_query', data = 'return { reply = "tprs", what = "worn" }' });
+        check('IN9 off = silent on the whole channel, queries included', #sent, 0);
+    end
 end)();
 
 -- ---------------------------------------------------------------------------

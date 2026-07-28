@@ -2338,7 +2338,7 @@ end)();
         -- draws LAST-ish and assert it: the Settings panel owns 8 checkboxes, the
         -- level panel owns the typed-number InputText. If either body dies early,
         -- these drop and the section fails instead of lying.
-        check('MN12a Settings body ran to completion (10 checkboxes)', drew.checkbox, 10);
+        check('MN12a Settings body ran to completion (11 checkboxes)', drew.checkbox, 11);
         check('MN12b level body drew its typed-number box', drew.input, 1);
 
         -- debug on: the developer quartet appears
