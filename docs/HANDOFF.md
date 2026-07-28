@@ -249,119 +249,20 @@ merge carries it **without asking him again**. Only he can move an entry to ACCE
 this does not make an accepted entry mergeable *alone*: `dev` promotes
 **whole-or-not-at-all**, so an accepted entry rides the next promotion of the whole branch.
 
-- **ACCEPTED — the INTEGRATION SURFACE end to end + the ARBITER MONITOR** (engine
-  v152→v154, `2026.07.28g`–`2026.07.28l`; commits `5c1874b` `f645d25` `1eeb749`
-  `9c4b17c` `b3e3e72` + five docs commits). One day, one arc, Henrik managing:
-  1. **The DECISION RING** (v152) — one record per dispatch whose OUTCOME moved (items
-     or any slot's winning claimant; Henrik's law *"only push changes"*): plan snapshot
-     taken before the one send, the stashed contest, ladders as asked, ctx snapshot.
-     The rank order became a retrace-sig leg (`|ao`) — a dragged row used to keep stale
-     `/dl why` attribution.
-  2. **The ARBITER MONITOR** (`ui\arbmonui.lua`) — the 4x4 equip-screen grid of the
-     viewed decision, claimant chip colours + legend, hover = the full per-slot contest
-     of THAT record, "decided under" ctx line, decision log with pin-to-moment + Live.
-     Responsive on Henrik's field call: icon-only cells when narrow (icons grow),
-     double-space cells with names when wide. Openers: Menu → Settings + Gear Helpers →
-     Claim Priority; persists as uiflags `arbmon`. The Trigger Monitor untouched —
-     proposals there, outcomes here; one record, three renderers.
-  3. **The PROBE** (evprobe + dlacprobe 2.3, Henrik's run) — the channel's last unknown
-     settled: send = byte table only, receive = `e.data` already a STRING + `e.size`,
-     `e` is userdata, a state hears its own RaiseEvent.
-  4. **THE STREAM** (`feature\integration.lua`, v153–v154) — `/dl stream on|off`
-     (Session switch: never saved, dies when world absence outlasts a zone via the new
-     read-only `worldAbsentOutlasted` seam, survives job changes), snapshot-on-enable,
-     all four kinds on one stream-side `seq`: `worn` (items+totals+ctx, join key from
-     the engine's own 0x01A decode), `dispatch` ANCHORS off the new engine ACTION FEED
-     (one anchor per action — worn XOR dispatch), `invalidate` (sets-rev + job watch),
-     `confirm` (delta-only; landed-whole = silence). All five queries answer
-     (`worn`/`stats`/`sets`/`gear`/`item`); the switch gates the whole channel, queries
-     included. Consumer handover = `docs/reference/integration-guide.md` (start-here +
-     "the Arbiter in 90 seconds"), build-audited same day.
-  Suites **4172 + 707**, Windows and WSL lua5.4. **Field-confirmed 2026-07-28:** the
-  monitor (*"Looks good"*, colours *"I love the idea"*, then the responsive cut) and
-  the live stream watched envelope-by-envelope through dlacprobe (*"I can see the
-  events happening… it is streaming as we think"*). Stated plainly: `invalidate`/
-  `confirm`/anchors/queries are headless-tested, not yet field-exercised — the parser
-  friend's first connection is their field test, and the guide says so. Henrik:
-  *"properly document this as ready for merge to main… then push it all to main."*
-  Record: `docs/design/integration-surface.md` (§13 = the living state) + CONTEXT.md
-  (Decision record, Arbiter Monitor, Integration surface, Session switch).
-- **ACCEPTED — FIX: commit reads gear.lua's shape, and dlac seeds its own gear**
-  (`49da97f` + `316bcdb`, `2026.07.28e` / `2026.07.28f`). **Two commits, one story** — a
-  field bug from Henrik's friend (`Abraxis_42505`) on a **new install**, and the entry
-  point that put it there. Every `/dl commit` aborted with `gear.lua.tmp:9765: table index
-  is nil`, so **no gear of any slot ever landed**; auto-sync re-staged the same batch and
-  aborted again, leaving 15 byte-identical backups in 90 minutes. `gear.lua` was never
-  written — the `safewrite` rails held throughout, which is why the whole thing was
-  recoverable from the backups alone.
-  **The bug:** his `gear.lua` is a legacy LuAshitacast one that nests **Ammo** by category
-  and declares that in its own trailer; dlac writes Ammo flat, so `spliceStaging` inserted
-  the entry as a *sibling* of the category tables. That text **parses** — so the parse
-  check passed — and the trailer then evaluated `("Bone Arrow").Name` → nil, blamed on the
-  trailer ~6400 lines away. Fixes: `slotShapes` READS each slot's shape and aborts naming
-  the slot; `gearProblems` names the culprit entry and line (shape-**agnostic**, so a
-  consistent legacy file is never flagged); `parseStaging`/`indexGear` now share
-  `hdrAt`/`closeAt` with `parseGearEntries` — an independent latent bug where a
-  comment-suffixed CATEGORY header made commit "create" a section that already existed and
-  **report success while the items never landed**. Plus `dlac.lua`'s boot preload and
-  `gearui.refreshGear` no longer swallow an unloadable `gear.lua` in silence.
-  **The entry point:** `setupui.seedGearFile` had been seeding a new character by
-  *preferring* `<charBase>\ffxi-lac\gear.lua`. Not a purge leak — a kept feature. Henrik's
-  ruling: *"ALWAYS handle your own gear locally in DLAC. ONLY FFXI-LAC integration we
-  should have, is SOLELY on importing dynamic gear."* Bundled template always; guards
-  `SH21` (no core file reads a **path** out of that tree — negative-tested against the
-  pre-change file) and `SH22` (the **content** sniff routing an old profile into the sets
-  migration must survive, so the guard can't be satisfied by deleting the import too).
-  Suites **4136 + 693**, Windows and WSL lua5.4, verified in a detached worktree at the
-  commit. Tests `SH1-22`.
-  **Field status, stated plainly: NOT yet field-confirmed** — unlike the two entries
-  below. Henrik accepted it for merge on the diagnosis and the reproduction, before the
-  friend re-tests (*"Document this as a fix and ready to be merged"*). The friend's
-  re-test is: delete `gear.lua`, let `/dl scan` rebuild it, then `/dl commit`. Record:
-  history.md *"the file that told us its own shape, and we did not listen"* + its
-  follow-up section.
-- **ACCEPTED — the old FFXI-LAC *Dynamic* sets import** (`2026.07.28d`). Copy-from's
-  legacy column now carries both kinds an old `<JOB>.lua` holds: **Old FFXI-LAC sets**
-  (its `sets.Dynamic` block — dlac's own sets from before profile storage) above **Old
-  Static Sets**, a shared name listed once as the dynamic one. Import sources only —
-  never the sets root, never a trigger target (`PSL7/8`). Rides two fixes found in the
-  same file read: `profiles.legacyBackupPath` (the pre-profiles backup home a
-  LAC-tree-era migration used — a character with its originals only there had an EMPTY
-  legacy column) and the missing-safe gear proxy in `profilesets.sandboxSets` (one
-  unowned weapon category used to nil-index a whole legacy file away, taking every
-  static in it). Suites **4114 + 693**, Windows and WSL lua5.4. Field-confirmed
-  2026-07-28 — *"looks good and works"* — after Henrik re-cut the column headings
-  (*"even I got confused"*). Henrik: *"have it ready to merge to main."* Record:
-  history.md "a dynamic set in an old file is an FFXI-LAC set" + architecture.md
-  (`gear/profilesets.lua`, `gear/setimport.lua`).
-- **ACCEPTED — the whole UI hides with the game's on Scroll Lock** (`4d9d7f0`,
-  `2026.07.28c`). FFXI's own hide-the-interface key blanks the game's HUD for a clean
-  screenshot but never touched an addon's windows, so dlac stayed pasted across every
-  picture (a friend of Henrik's reported it). `feature\gamehud.lua` is the new central
-  service — `gamehud.hidden()`, built on the Velyn signature that `xivbar` and `HXUI`
-  both already ship with in this same Ashita install, so it is field-proven on this
-  client. **Fails open by construction:** unmatched signature, null pointer or headless
-  all answer *not hidden*, because a UI that vanishes on a bad read is a bug no player
-  can explain while one that stays up is merely yesterday's behaviour. ONE consumer, and
-  the one-draw-site law is what makes one enough: a single gate in gearui's `d3d_present`
-  at the seam between what dlac **does** every frame (command queue, uiflags, auto-sync,
-  the macro-book/lockstyle/pin pumps, the wishlist check — all still run) and what it
-  **draws**. Hiding costs no state: every window below that line is already skipped
-  whenever its own flag is off, so each returns where it was. Deliberately the
-  SCREENSHOT flag only — cutscenes and the fullscreen map carry their own signatures
-  (`xivbar` folds all three into one answer; dlac does not, because a cutscene is when
-  you may still want a plan up — Henrik's call to make, still open). Suites **4134 +
-  693** at the dev tip; section `HUD` (10 checks) pins the fail-open paths and the scan
-  cache. Field-confirmed 2026-07-28 — *"Seems to work"* — Henrik: *"can you document
-  this as ready for merge to main?"* Record: the commit message + architecture.md
-  (Central services) + CONTEXT.md (Floating window).
-
-*(Last emptied by the 2026-07-28 promotion of the MaxMP pair-home fix
-`1b8aad2` (`2026.07.28b`): pair homes anchor the idle set's CHOSEN picks only, unchosen
-ladder rungs float -- Henrik's own diagnosis, field-confirmed same day ("Now it
-works!"). The promotion also carried the integration-surface design docs (designed,
-not built). history.md "the earring that could never equip" +
-docs/design/maxmp-mode.md are the record.)*
+*(Empty — last emptied by the SECOND 2026-07-28 promotion: the whole `dev` train
+`2026.07.28c`–`2026.07.28l` went to main on Henrik's "push it all to main". It carried
+four ACCEPTED entries — the **Integration surface end to end + the Arbiter Monitor**
+(v152–v154; field-confirmed by eye and by dlacprobe: "I can see the events happening…
+it is streaming as we think"; invalidate/confirm/anchors/queries headless-only until
+the parser friend connects), the **gear.lua shape fix + seed-own-gear ruling**
+(`e`/`f` — accepted un-field-confirmed on the diagnosis; the friend's re-test still
+owed), the **old FFXI-LAC Dynamic sets import** (`d`, field-confirmed), and the
+**Scroll Lock hide** (`c`, field-confirmed "Seems to work" — `gamehud.hidden()`
+central service, fails open, one gate at gearui's draw seam; record: the commit
+message + architecture.md Central services + CONTEXT.md Floating window) — plus the
+**"Gear Helpers" display rename** (`j`) riding whole-or-not ahead of its own field
+round. Full records: the dated entries below, `docs/design/integration-surface.md`
+§13, history.md, architecture.md.)*
 
 ## What's left (open work, as of 2026-07-25)
 
@@ -436,10 +337,38 @@ research already recorded. In rough priority order:
   `Auto-Import` were left alone on purpose — those are GUI tools the player clicks, not
   gear that moves on its own. `autogear.golden` regenerated for the manifest's header line
   (`gen_goldens.lua`, one-line diff, reviewed). Suites **4146 + 707**.
-  **Needs a field round** before it can enter the merge queue.
+  **Rode the 2026-07-28 promotion to main** (`dev` promotes whole-or-not) ahead of its
+  own field round — the round is still owed, though Henrik played the whole 07-28
+  session on it without a snag; display-only by construction.
 
-- **2026-07-28: the old FFXI-LAC *Dynamic* sets import too — ON `dev`, FIELD-CONFIRMED,
-  ACCEPTED (in the merge queue above)** (`2026.07.28d`). Henrik: *"when it sees a dynamic set, it's old FFXI-lac… it should be
+- **2026-07-28: the INTEGRATION SURFACE end to end + the ARBITER MONITOR — ON MAIN
+  (promoted 2026-07-28), FIELD-CONFIRMED** (engine v152–v154, `2026.07.28g`–`l`;
+  commits `5c1874b` `f645d25` `1eeb749` `9c4b17c` `b3e3e72` + five docs commits). The
+  one-day arc, Henrik managing: the **decision ring** (one record per moved outcome —
+  items or any slot's winning claimant, *"only push changes"*; the rank order became a
+  retrace-sig leg, `|ao`); the **Arbiter Monitor** (4x4 equip-screen grid of the viewed
+  decision, claimant chips + legend, hover = the full per-slot contest, decision log
+  with pin-to-moment + Live; responsive on Henrik's call — icon-only narrow, double-
+  space names wide; openers Menu → Settings + Gear Helpers → Claim Priority; the
+  Trigger Monitor untouched — proposals there, outcomes here, one record three
+  renderers); the **plugin_event probe verdict** (evprobe + dlacprobe 2.3: send = byte
+  table only, receive = `e.data` already a STRING + `e.size`, `e` is userdata, a state
+  hears its own RaiseEvent); and the **stream end to end** (`feature\integration.lua`,
+  `/dl stream on|off` Session switch dying only when world absence outlasts a zone —
+  the new read-only `worldAbsentOutlasted` seam — and surviving job changes; snapshot-
+  on-enable; four kinds on ONE stream-side `seq` — `worn`, `dispatch` ANCHORS off the
+  v154 engine ACTION FEED (one anchor per action, worn XOR dispatch), `invalidate`
+  (sets-rev + job), delta-only `confirm` (landed-whole = silence); five queries, the
+  switch gating the whole channel). Suites **4172 + 707** both runtimes.
+  Field-confirmed: the monitor by eye (*"Looks good"*), the stream envelope-by-envelope
+  through dlacprobe (*"I can see the events happening… it is streaming as we think"*);
+  `invalidate`/`confirm`/anchors/queries are headless-tested only until the parser
+  friend's first connection — the consumer handover
+  (`docs/reference/integration-guide.md`: start-here + "the Arbiter in 90 seconds")
+  says so. Record: `docs/design/integration-surface.md` (§13 = the living state) +
+  CONTEXT.md (Decision record, Arbiter Monitor, Integration surface, Session switch).
+- **2026-07-28: the old FFXI-LAC *Dynamic* sets import too — ON MAIN (promoted
+  2026-07-28), FIELD-CONFIRMED** (`2026.07.28d`). Henrik: *"when it sees a dynamic set, it's old FFXI-lac… it should be
   detected and enabled to be imported as a LAC import. If set names collide, prioritize
   the dynamic ones."* A legacy `<JOB>.lua` (and its pre-profiles backup) carries **both**
   kinds of source — LuaAshitacast statics at the root and dlac's own `sets.Dynamic` block
@@ -469,8 +398,8 @@ research already recorded. In rough priority order:
   column with dim `Dynamic` / `Static` sub-headers under one blue heading, and *"Static atm
   is greyed out like dynamic, so it's hard to notice… even I got confused"*. Group labels
   are not dim.
-- **2026-07-28: dlac seeds its OWN gear.lua, always — ON `dev`, ACCEPTED** (`2026.07.28f`;
-  merge-queue entry above carries it together with `2026.07.28e`).
+- **2026-07-28: dlac seeds its OWN gear.lua, always — ON MAIN (promoted 2026-07-28)**
+  (`2026.07.28f`, together with `2026.07.28e`).
   Henrik's ruling once the entry below was diagnosed: *"ALWAYS handle your own gear
   locally in DLAC. ONLY FFXI-LAC integration we should have, is SOLELY on importing
   dynamic gear."* `setupui.seedGearFile` used to **prefer** an existing
@@ -517,9 +446,9 @@ research already recorded. In rough priority order:
   empty template — GUI shows no gear, every scan calls every item new, nothing says why.
   Suites **4134 + 693**, Windows and WSL lua5.4; reproduced and re-verified against his
   real 8,895-line file. Henrik's remedy for the friend: delete `gear.lua`, let `/dl scan`
-  rebuild it flat. **ACCEPTED into the merge queue above** on the diagnosis and the
-  reproduction, before the friend re-tests — the one entry there that is not
-  field-confirmed, and the queue says so.
+  rebuild it flat. **PROMOTED to main 2026-07-28** on the diagnosis and the
+  reproduction, before the friend re-tests — accepted un-field-confirmed, and this
+  record says so.
 - **2026-07-28: MaxMP pair homes anchor CHOSEN picks only — ON MAIN, FIELD-CONFIRMED**
   (`2026.07.28b`, promoted 2026-07-28 on Henrik's "push to main").
   Henrik's own diagnosis of the stage 6 field oddity (Outlaws
