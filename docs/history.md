@@ -6804,7 +6804,9 @@ the shipped catalog (scraped from the live API) calls it Craftmasters Ring +1 wi
 live server on this item — worth remembering the next time the clone and the catalog
 disagree about a custom item: recency, not authority, is usually the difference.
 
-**Status:** on `dev`, addon **`2026.07.28o`**, engine untouched — display and one coverage
+**Status:** **ON MAIN** (promoted the same hour on Henrik's *"push to main"*, deliberately
+ahead of its field round — the second such inversion today, and a cheaper one: no scoring
+change, so the worst case is a panel column reading wrong). Addon **`2026.07.28o`**, engine untouched — display and one coverage
 light, no scoring change. New smoke section `CV0-CV14` drives the **real** craft detail view
 against a stub imgui: the view had no render coverage at all (section 8 only exercised the
 manifest ladders) and `renderTab` swallows render errors in a pcall, so a typo'd upvalue

@@ -249,7 +249,12 @@ merge carries it **without asking him again**. Only he can move an entry to ACCE
 this does not make an accepted entry mergeable *alone*: `dev` promotes
 **whole-or-not-at-all**, so an accepted entry rides the next promotion of the whole branch.
 
-*(Empty — last emptied by the FOURTH 2026-07-28 promotion: `2026.07.28n`, the legacy-import
+*(Empty — last emptied by the FIFTH 2026-07-28 promotion: `2026.07.28o`, the Ventures rings
+in the Crafting Gear panel, promoted on Henrik's *"push to main"* **before its field round**
+— the second deliberate inversion today, and a cheaper one: display plus one coverage light,
+no scoring change, so the worst case is a panel column reading wrong. It rode with the
+already-on-dev docs commit confirming the legacy-import fix. Before that, the FOURTH
+2026-07-28 promotion: `2026.07.28n`, the legacy-import
 robustness fix, promoted **deliberately un-field-confirmed** on Henrik's *"push to main so
 he can test"* — the second tester cannot re-test the thing that broke for him unless it is
 on main first. **He confirmed it the same hour** (*"it works"*), so the inversion paid for
@@ -319,8 +324,10 @@ research already recorded. In rough priority order:
 
 ## Current state (as of 2026-07-26)
 
-- **2026-07-28: the Ventures rings reach the Crafting Gear panel — ON `dev`, field round
-  owed** (`2026.07.28o`). Henrik, with the two wiki pages: the EXP Ventures exchange belongs
+- **2026-07-28: the Ventures rings reach the Crafting Gear panel — ON MAIN, field round
+  owed** (`2026.07.28o`; promoted the same hour on Henrik's *"push to main"*, deliberately
+  un-field-confirmed — the second such call today. It is display + one coverage light with
+  no scoring change, so the blast radius is a panel column). Henrik, with the two wiki pages: the EXP Ventures exchange belongs
   in Gear Helpers → Crafting Gear — Craftkeeper's / Artificer's Ring at 1,000, Craftmaster's
   at 2,000 — plus the **+1** upgrade through Synergy. The rings were never invisible to the
   ENGINE: all four sit in the catalog with their synth mods and the craft ladders are
@@ -340,7 +347,7 @@ research already recorded. In rough priority order:
   craft detail view — it had **no** render coverage, and `renderTab` swallows render errors
   in a pcall, so a typo'd upvalue would have blanked the panel in-game and passed every load
   test. Suites **4198 + 726**. Display + one coverage light; **no scoring change**. Not in
-  the merge queue: Henrik has not seen it in-game yet. Open question left for him:
+  Open question left for him:
   Craftkeeper's Ring scores only on `nq` (`SynthMaterialLoss` is read into `nqScore` and
   nowhere else) — arguably it helps every goal, but that moves what the engine equips.
 - **2026-07-28: three faults, one sentence — the tester's SCH import — ON MAIN,
