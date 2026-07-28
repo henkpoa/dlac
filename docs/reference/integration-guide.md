@@ -288,6 +288,10 @@ local function compositionFor(actionId, category)
 end
 ```
 
+With `dispatch` anchors (v1 ships them — see §2.5) you can make the `'carried'` case
+*positive* instead of inferred: match your `actionId` against `dispatch` envelopes too,
+and take the newest `worn` before that anchor.
+
 ### 2.5 Absence, gaps, and re-syncing
 
 - **No event means nothing changed.** dlac emits `worn` only when the composition genuinely
@@ -301,9 +305,16 @@ end
   item broke, or the server stripped a piece. Those change your totals with no dispatch at
   all, so they are emitted too, with no provenance to give. If you only handled `'plan'`
   events you would compute confidently wrong stats for the rest of the fight.
-- **That is why `dispatch` exists.** `kind = 'dispatch'` fires when an action fired a
-  handler *whether or not gear moved*, and carries the matched rules. If you need to know
-  that an action happened at all, listen to `dispatch`, not `worn`.
+- **That is why `dispatch` exists — it is your ANCHOR for no-change actions.** When an
+  action goes through dlac's pipeline and the composition does *not* move, you get
+  `kind = 'dispatch'`: the same envelope metadata, the same numeric join key, and `ctx`
+  (TP at the moment the WS was decided — worth having), just no `worn` table. An action
+  gets exactly **one** anchor: a `worn` when gear moved, a `dispatch` when it did not,
+  never both. So your join is uniform and never reasons from silence: search backwards
+  for the anchor matching your `actionId`; if it is a `dispatch`, the composition is the
+  newest `worn` before it. (v1 carries **no rule-match trace** on `dispatch` — if you
+  have a concrete use for "which trigger rules matched, at what priority", say so and it
+  arrives later as additive keys, the same contract as `by`.)
 - **`seq` gaps and `dropped > 0` mean you lost events.** They are two signals for two
   different failures, and you want both: **`dropped > 0`** on an envelope you *did* receive
   means dlac's own queue overflowed — we know we lost some and are telling you. A

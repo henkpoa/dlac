@@ -24,7 +24,7 @@ AutoAmmo's per-job ordered list of ammo *plus the rule that reads it*: walk top-
 _Avoid_: priority list (that is the order alone; the gates are what make it a ladder), fallback list
 
 **Ladder**:
-The general term the Ammo ladder is one instance of (ratified 2026-07-27): an ordered candidate list *plus the rule that reads it* — walk top-down, take the first **rung** that clears every gate; gates only ever *remove* candidates, never reorder them. A Dynamic Set's per-slot lists, the automation manifest chains (craft / HELM / fishing / chocobo / staff / obi) and the Ammo ladder are all ladders. Today every ladder is collapsed to one name before the equip layer sees it; the two-way Arbiter design (`docs/design/two-way-arbiter.md` — vocabulary ratified, mechanics unbuilt) keeps ladders alive into the arbitration so a refused rung can *fall* to the next.
+The general term the Ammo ladder is one instance of (ratified 2026-07-27): an ordered candidate list *plus the rule that reads it* — walk top-down, take the first **rung** that clears every gate; gates only ever *remove* candidates, never reorder them. A Dynamic Set's per-slot lists, the automation manifest chains (craft / HELM / fishing / chocobo / staff / obi) and the Ammo ladder are all ladders. The two-way Arbiter (`docs/design/two-way-arbiter.md`, built 2026-07-28) keeps ladders alive into the arbitration so a refused rung *falls* to the next.
 _Avoid_: priority list, fallback list (the order alone; the gates make it a ladder)
 
 **Handler**:
@@ -95,8 +95,16 @@ A feature's declared wish to dress one or more slots (wear this item, or keep wh
 _Avoid_: pin (the floatgear feature — one claimant among many), override, hijack
 
 **Arbiter**:
-The single decision point that gathers every Claim and decides, per slot, which claimant wins, by user-visible priority. The Triggers' overlay result is the floor that Claims dress over; the Arbiter can list every claimant and why each slot went the way it did. A two-way deepening is designed and its vocabulary ratified (2026-07-27, mechanics unbuilt — `docs/design/two-way-arbiter.md`): Claims carry whole **Ladders** submitted up front, a Refusal either **falls** a rung or **holds** a slot, and one **arbitration** per dispatch (sixteen contests) produces the plan plus the **trace** `/dl why` renders.
+The single decision point that gathers every Claim and decides, per slot, which claimant wins, by user-visible priority. The Triggers' overlay result is the floor that Claims dress over; the Arbiter can list every claimant and why each slot went the way it did. The two-way deepening is BUILT (vocabulary ratified 2026-07-27; mechanics landed and promoted 2026-07-28, ADR 0027 — `docs/design/two-way-arbiter.md`): Claims carry whole **Ladders** submitted up front, a Refusal either **falls** a rung or **holds** a slot, and one **arbitration** per dispatch (sixteen contests) produces the plan plus the **trace** `/dl why` renders and the **Decision record** captures.
 _Avoid_: pinning system, priority manager
+
+**Decision record**:
+One dispatch's arbitration answer, captured the moment it was decided: the resolved items per slot, the contest (every claimant in rank order, the winner first), the verdict words (fell / ineligible / held empty), the source ladders as they were asked, and the world context it was decided under. Kept in a session ring, appended only when the OUTCOME moved — the resolved items, or any slot's winning claimant ("only push changes"). ONE record, three renderers — `/dl why` in chat, the **Arbiter Monitor**, and the **Integration surface**'s stream — none of which re-derives.
+_Avoid_: trace (`/dl why`'s per-event stash the record is built from), history log (the log renders records; it is not the record)
+
+**Arbiter Monitor**:
+The Floating window rendering the **Decision record**: the 4x4 equip-screen grid of the viewed decision, each cell coloured by the claimant that won the slot with the full per-slot contest on hover, and the decision log underneath — clicking a line pins the grid to that moment. It shows what the Arbiter DID; the Trigger Monitor keeps showing what the trigger layer PROPOSED — two altitudes, one record underneath.
+_Avoid_: Dispatch Monitor (the design doc's earlier name for it)
 
 **Naked**:
 A Claim that dresses every slot with *nothing* (`/dl naked`; `/dl dress` releases). Ranked first among the *claimants*, so it beats every other one — a player who wants "naked except my pins" drags Pins above it in Claim Priority. It is a standing claim re-applied every dispatch, which is what makes it survive a strip the server refuses. Free equip outranks it and is not draggable.
@@ -199,7 +207,7 @@ _Avoid_: summing per-item scores and calling it a set total
 An optimizePicks restart from the converged baseline with a feasible gear set's pieces force-placed (least-loss slot choice, hard 6/12 seed caps), kept only on strict improvement. Exists because single-slot hill climbing can never enter a bonus whose pieces are each a solo loss. ADR 0011.
 
 **Floating window**:
-An ImGui window a UI module owns, gated on its own session-only open flag and drawn from exactly ONE call site — gearui's `d3d_present`, above its `M.visible` return — so it lives whether or not the main window is open. Any surface may OPEN one (a bar button, a panel button, a `/dl` command); only that one site may DRAW it. Today: lockstyle, floatgear, the Trigger Monitor, the restock nudge, the two Chocobo dig searches, the Hobby bar, idlefloat, the fishing target window. That one site is also what makes **Scroll Lock** work: it gates every dlac window — floating and main alike — on `gamehud.hidden()`, so the whole UI blinks out with the game's own HUD and comes back where it was.
+An ImGui window a UI module owns, gated on its own session-only open flag and drawn from exactly ONE call site — gearui's `d3d_present`, above its `M.visible` return — so it lives whether or not the main window is open. Any surface may OPEN one (a bar button, a panel button, a `/dl` command); only that one site may DRAW it. Today: lockstyle, floatgear, the Trigger Monitor, the Arbiter Monitor, the restock nudge, the two Chocobo dig searches, the Hobby bar, idlefloat, the fishing target window. That one site is also what makes **Scroll Lock** work: it gates every dlac window — floating and main alike — on `gamehud.hidden()`, so the whole UI blinks out with the game's own HUD and comes back where it was.
 _Avoid_: popup (that is the Menu/Teleports kind, which closes on click-away and draws inline), dialog, panel
 
 **Panel**:
