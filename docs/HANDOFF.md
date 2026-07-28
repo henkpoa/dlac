@@ -249,7 +249,21 @@ merge carries it **without asking him again**. Only he can move an entry to ACCE
 this does not make an accepted entry mergeable *alone*: `dev` promotes
 **whole-or-not-at-all**, so an accepted entry rides the next promotion of the whole branch.
 
-*(Empty — last emptied by the SEVENTH 2026-07-28 promotion: `2026.07.28r`, a two-line trim to
+*(Empty — last emptied by the FIRST 2026-07-29 promotion: `2026.07.28s`–`2026.07.28v`, the
+nine-commit train that closed the E-Box v2 record — the `/dl debug ebox` crash fix (`28s`,
+field-confirmed by the bare-snapshot pass: an 11-event ring spanning 1h24m formatted clean, and
+the header measured the design's whole promise on its way past — **1 packet sent, 0.0/min,
+standing 1.9 yalms from the box**), itembundles 62 → 109 (`28t`, field-confirmed via the
+fire-cluster and `198*` Beetle Quiver readings), the Gear Helpers Status column (`28u`,
+field-confirmed), the arbiter claimant display labels (`28v`, promoted **before its field
+glance** — display-only strings at the render seam, the bounded shape), and five docs commits
+closing the record: field round 2 went 5-of-5 (the foreign-stream loop is dead; the "intruder"
+was trove's own ebox streams, `rows=0 source=0`), trove's raw 0x1A4 withdraws ruled an
+**ACCEPTED COST** ("don't track trove, just don't spam" — §4c of the v2 handoff carries the
+ruling and the one condition that reopens it), §6 emptied (option (b) obsoleted-then-declined,
+quiver-opening declined, the deposit ask HENRIK-CARRIED to the Trove creator). Both suites
+green at 4225. Promoted on Henrik's *"push to origin main"*. Before that, the SEVENTH
+2026-07-28 promotion: `2026.07.28r`, a two-line trim to
 the yellow hover on Henrik's *"Completely unnecessary. Just bloats the window."* — the header
 already said the copies are at your Mog House. Nothing else rode with it. Before that, the
 SIXTH 2026-07-28 promotion: `2026.07.28p`–`q`, the two E-Box
