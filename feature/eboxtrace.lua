@@ -77,7 +77,7 @@ function M.lines(c)
         cw and 'Crystal Warrior' or 'NOT CW -- every query refused',
         (dist == nil) and 'no Ephemeral Box in sight'
             or string.format('box %.1f yalms (%s)', dist,
-                (dist <= (c.BOX_RANGE or 5)) and 'IN RANGE' or 'too far to query'),
+                (dist <= (c.BOX_RANGE or 5)) and 'IN RANGE' or 'too far to fetch or count'),
         c.busy and 'withdraw in flight' or (sBusy and 'search in flight' or 'idle'),
         (st.lastOutAt ~= nil) and ('last sent ' .. M._dur(now - st.lastOutAt) .. ' ago')
             or 'nothing sent yet');

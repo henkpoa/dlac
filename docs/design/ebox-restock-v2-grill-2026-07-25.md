@@ -31,6 +31,15 @@ to use. Reading the code found three separate defects behind that feeling
 - Search results **hide items already in the list** being added to.
 - Adding an item **does not close the picker** — you often add several (e.g. all the bolts).
   The manual close button already exists.
+- **REVISED 2026-07-28: the picker is NOT proximity-gated.** Henrik: *"Trove can always search
+  items when out in the field, maybe we should remove that distance limitation as well for
+  search only."* Verified in the sibling: `trove/plugins/ebox.lua` has **no distance or zone
+  check on any 0x1A4 action** — the server answers a SEARCH wherever you stand, and the
+  near-box rule on it was dlac's own invention. Building the list is what you do with a spare
+  minute; **fetching** is what needs you at a box, and that gate stays (as does the near-box
+  gate on the automatic counting — the NFR below is about traffic *nobody clicked for*).
+  A search remains one packet per explicit click, behind one-in-flight and `MIN_GAP`. `EBC21d`
+  pins it: a search fires while `nearBox()` is false.
 
 ### B2. Box-quantity polling — the model changed completely
 Henrik's ruling (12:24), which overrode the design we'd been building toward:
@@ -136,6 +145,31 @@ implemented later! For now, A is real."*
 - **(b) DEFERRED — dlac may not move items between containers yet.** Revisit when that's
   allowed; it's the better design (zero box stock, and it composes with the green icon to
   land exactly `target` in Inventory).
+
+#### REVISED 2026-07-28 — the icon asks about the **Mog House**, not the other field bags
+Henrik, from the field: *"it is showing itself if we have items in our field containers (mog
+sack, mog case and mog satchel). This is wrong. It should only show if the item is in mog house
+containers, such as mog locker, storage etc."*
+
+The premise under (a) was that a Mog Case copy is "somewhere you can't use it from". In play it
+is one drag away — you are carrying it — so the icon was nagging about stock already in the
+player's pocket, and offering to spend box stock on duplicates. The stock that genuinely cannot
+answer a field shortfall is what's at the **Mog House**: Safe (1), Storage (2), Locker (4),
+Safe 2 (9). That's the trigger now.
+
+- `rw.otherBagNeed`/`needsOtherBag` → **`rw.homeStockNeed`/`needsHomeStock`**, ctx
+  `{ inv, other }` → `{ held, stored }`. `held` = green's own on-hand (Inventory + Satchel +
+  Sack + Case + what your quivers hold), `stored` = the Mog House bags.
+- **The deliberate over-draw is gone with it.** Yellow plans on green's arithmetic, restricted
+  to the flagged items — there is no longer a reachable copy to double up on, so nothing to
+  over-draw against. What still makes the icon distinct from green: it does **not** require the
+  box to stock the item, so it fires precisely when green is silent — *"the box can't help you
+  and yours are at home"* is the most useful thing it ever says.
+- Wardrobes are **not** Mog House bags here (gear only, equippable where you stand), nor is
+  Temporary (3). `restockui._HOME_BAGS` / `._FIELD_BAGS` are test seams; RS9h pins the split.
+- (b) — MOVING items instead of buying more — stays deferred, and now only ever applied to the
+  field-bag case this revision retires. If it ever ships it is a *panel* convenience, not this
+  icon.
 
 **Wire format for (b), already known — don't re-research it.** `dlacprobe.lua:1238-1258`
 decodes **OUT 0x029** native item move from a real capture: `qty u32 @0x04`, `from u8 @0x08`,

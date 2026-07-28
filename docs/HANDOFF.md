@@ -249,7 +249,17 @@ merge carries it **without asking him again**. Only he can move an entry to ACCE
 this does not make an accepted entry mergeable *alone*: `dev` promotes
 **whole-or-not-at-all**, so an accepted entry rides the next promotion of the whole branch.
 
-*(Empty — last emptied by the FIFTH 2026-07-28 promotion: `2026.07.28o`, the Ventures rings
+*(Empty — last emptied by the SIXTH 2026-07-28 promotion: `2026.07.28p`–`q`, the two E-Box
+Restock rulings — the **yellow icon now asks about the Mog House** (your own Sack/Case/Satchel
+count as held; the deliberate over-draw retired) and **searching the box no longer needs a box
+in reach** (trove has no distance check on any 0x1A4 action; the near-box gate now covers only
+the automatic counting and withdrawals). Promoted on Henrik's *"push to main"* **before their
+field round** — the third such inversion today. Both are bounded: the yellow icon is one
+advisory surface, and the search ungate can only fail as a query the server ignores. The one
+open field question rode with it: whether Mog House containers read from memory while you are
+standing in the field (proven for the Mog Safe by gearcheck, unproven for the Locker here).
+Records: history.md's *"the bag you are carrying is not somewhere else"* entry, the v2 grill's
+C2 revision and §B1. Before that, the FIFTH 2026-07-28 promotion: `2026.07.28o`, the Ventures rings
 in the Crafting Gear panel, promoted on Henrik's *"push to main"* **before its field round**
 — the second deliberate inversion today, and a cheaper one: display plus one coverage light,
 no scoring change, so the worst case is a panel column reading wrong. It rode with the
@@ -1121,7 +1131,10 @@ research already recorded. In rough priority order:
   only one since AutoAmmo's section was removed 2026-07-27). **NEVER open a second 0x1A4 client** — it's a
   party line; two clients race and double the traffic. The client owns the protocol, a shared
   multi-category counts cache, entwatch proximity (`BOX_RANGE = 5`), and the server-load
-  throttle (one-in-flight, global min-gap, near-box gate, per-category coalesced). Full spec:
+  throttle (one-in-flight, global min-gap, near-box gate, per-category coalesced). **The
+  near-box gate covers traffic nobody clicked for — the automatic counting — plus withdrawals;
+  SEARCH is exempt since 2026-07-28** (trove searches from anywhere in the field; see the v2
+  grill's §B1 revision and `eboxclient.search`). Full spec:
   [design/ebox-restock.md](design/ebox-restock.md). Commits `975896a..b2fab33` on main;
   addon.version 2026.07.24b.
 

@@ -91,8 +91,18 @@ end
 -- Live bag reads (AshitaCore; pcall-guarded, headless-safe).
 -- ---------------------------------------------------------------------------
 local FIELD_BAGS = { 0, 5, 6, 7 };   -- Inventory, Satchel, Sack, Case (useitem BAG_NAMES)
-local OTHER_BAGS = { 5, 6, 7 };      -- the three that are NOT where you use things from
-local BAG_NAMES  = { [0] = 'Inventory', [5] = 'Mog Satchel', [6] = 'Mog Sack', [7] = 'Mog Case' };
+
+-- The MOG HOUSE bags: Safe, Storage, Locker, Safe 2. Reachable only at a moogle,
+-- so stock parked here cannot answer a shortfall in the field -- which is the
+-- yellow icon's whole question (Henrik, 2026-07-28). Wardrobes are deliberately
+-- absent (gear only, and equippable where you stand), and so is Temporary (3):
+-- event items are not stock.
+local HOME_BAGS  = { 1, 2, 4, 9 };
+local BAG_NAMES  = { [0] = 'Inventory',  [1] = 'Mog Safe',  [2] = 'Storage',
+                     [4] = 'Mog Locker', [5] = 'Mog Satchel', [6] = 'Mog Sack',
+                     [7] = 'Mog Case',   [9] = 'Mog Safe 2' };
+M._FIELD_BAGS = FIELD_BAGS;   -- test seams (RS9g): the ruling is the bag split
+M._HOME_BAGS  = HOME_BAGS;
 
 -- Quiver/pouch -> ammo, generated from the server's own item scripts
 -- (tools/gen_ammocontainers.py). `!box ammo` hands back CONTAINERS: a Blind Bolt
@@ -112,11 +122,11 @@ _acok = _acok and type(AMMO_BOX) == 'table';
 -- ammo: you cannot shoot a quiver, and the fix for an empty Inventory is to open
 -- one, not to withdraw from the box. Folding them into `per` would make the
 -- yellow icon offer a box withdrawal for ammo already in your bags.
-local function bagScan()
-    local all, per, boxed = {}, {}, {};
+local function scanBags(bags, boxed)
+    local all, per = {}, {};
     pcall(function()
         local inv = AshitaCore:GetMemoryManager():GetInventory();
-        for _, bag in ipairs(FIELD_BAGS) do
+        for _, bag in ipairs(bags) do
             local max = inv:GetContainerCountMax(bag) or 0;
             for i = 1, max do
                 local it = inv:GetContainerItem(bag, i);
@@ -125,7 +135,7 @@ local function bagScan()
                     local p = per[it.Id];
                     if p == nil then p = {}; per[it.Id] = p; end
                     p[bag] = (p[bag] or 0) + it.Count;
-                    local c = _acok and AMMO_BOX[it.Id] or nil;
+                    local c = (boxed ~= nil) and _acok and AMMO_BOX[it.Id] or nil;
                     if c ~= nil then
                         local b = boxed[c.id];
                         if b == nil then b = { qty = 0, n = 0, name = c.name }; boxed[c.id] = b; end
@@ -136,8 +146,19 @@ local function bagScan()
             end
         end
     end);
+    return all, per;
+end
+
+local function bagScan()
+    local boxed = {};
+    local all, per = scanBags(FIELD_BAGS, boxed);
     return all, per, boxed;
 end
+
+-- The same pass over the Mog House bags. Quivers are NOT unpacked here: a pouch
+-- in the Mog Safe is stock you cannot reach either, and the yellow icon reports
+-- WHERE things are, not what they would be worth once opened.
+local function homeScan() return scanBags(HOME_BAGS, nil); end
 
 -- What "do I have enough?" should count: loose + what your containers hold.
 local function stockOf(all, boxed, id)
@@ -147,11 +168,11 @@ local function stockOf(all, boxed, id)
 end
 M._stockOf = stockOf;   -- test seam (AC*), above the imgui guard
 
--- "1 in Mog Case, 4 in Mog Sack" -- where the non-Inventory copies actually are.
+-- "1 in Mog Safe, 4 in Mog Locker" -- where the out-of-reach copies actually are.
 local function whereText(p)
     if type(p) ~= 'table' then return ''; end
     local parts = {};
-    for _, bag in ipairs(OTHER_BAGS) do
+    for _, bag in ipairs(HOME_BAGS) do
         local n = p[bag];
         if n ~= nil and n > 0 then
             parts[#parts + 1] = string.format('%d in %s', n, BAG_NAMES[bag] or ('bag ' .. tostring(bag)));
@@ -318,9 +339,9 @@ function M.render(deps, availW)
             imgui.TextColored(COL_DIM, 'E-Box: '
                 .. ((ec.lockedMsg ~= nil and ec.lockedMsg ~= '') and esc(ec.lockedMsg) or 'not unlocked yet'));
         elseif dist == nil then
-            imgui.TextColored(COL_DIM, 'No Ephemeral Box in sight -- stand near one to fetch or add.');
+            imgui.TextColored(COL_DIM, 'No Ephemeral Box in sight -- stand near one to fetch (searching works anywhere).');
         elseif not nearOK then
-            imgui.TextColored(COL_ERR, string.format('Too far from the Ephemeral Box (%.1f yalms -- get within %d).', dist, ec.BOX_RANGE));
+            imgui.TextColored(COL_ERR, string.format('Too far from the Ephemeral Box (%.1f yalms -- get within %d to fetch).', dist, ec.BOX_RANGE));
         else
             imgui.TextColored(COL_GREEN, string.format('Ephemeral Box in range (%.1f yalms).', dist));
         end
@@ -483,80 +504,85 @@ function M.render(deps, availW)
         -- is the last thing render draws, so bail out rather than nest the rest.
         -- (Anything appended to render() after this point must move ABOVE it.)
         if _add == nil then return; end
-        if not nearOK then
-            imgui.TextColored(COL_DIM, 'Stand near an Ephemeral Box to search its contents.');
-        else
-            imgui.PushItemWidth(260);
-            imgui.InputText('##rssearch', _addBuf, 64);
-            imgui.PopItemWidth();
-            if imgui.IsItemHovered() then
-                imgui.SetTooltip('Part of an item name. Nothing is sent until you click Search.');
-            end
-            local buf = _addBuf[1] or '';
-            local searching = ec.searchBusy();
+        -- NO proximity gate on the picker (Henrik, 2026-07-28): trove searches the
+        -- box from anywhere in the field -- `trove/plugins/ebox.lua` has no
+        -- distance or zone check on ANY 0x1A4 action -- so the server plainly
+        -- answers a SEARCH wherever you stand, and refusing to ask was our
+        -- invention, not the protocol's. The NFR is untouched: this is one packet
+        -- per explicit click, still behind one-in-flight and MIN_GAP. Building the
+        -- list is the half of the feature you do while you have a spare minute;
+        -- FETCHING is what still needs you standing at a box.
+        imgui.PushItemWidth(260);
+        imgui.InputText('##rssearch', _addBuf, 64);
+        imgui.PopItemWidth();
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('Part of an item name. Nothing is sent until you click Search.');
+        end
+        local buf = _addBuf[1] or '';
+        local searching = ec.searchBusy();
 
-            -- THE button. One click = one query; no typing ever reaches the wire,
-            -- and a refused click is visibly refused instead of silently dropped
-            -- (the old debounce marked the text as "asked" before the throttle
-            -- had accepted it, so the search never went out at all).
-            imgui.SameLine(0, GAP);
-            local canSearch = (#buf > 0) and (not searching) and ec.canQuery();
-            if offableButton((searching and 'searching...' or 'Search') .. '##rsdosearch',
-                             canSearch, BTN_GREY_OFF) then
-                ec.search(buf);
-            end
-            if imgui.IsItemHovered() then
-                if searching then imgui.SetTooltip('Waiting for the box to answer.');
-                elseif #buf == 0 then imgui.SetTooltip('Type part of an item name first.');
-                elseif not canSearch then imgui.SetTooltip('One box query at a time -- try again in a moment.');
-                else imgui.SetTooltip('Ask the box what it holds matching this name.'); end
-            end
+        -- THE button. One click = one query; no typing ever reaches the wire,
+        -- and a refused click is visibly refused instead of silently dropped
+        -- (the old debounce marked the text as "asked" before the throttle
+        -- had accepted it, so the search never went out at all).
+        imgui.SameLine(0, GAP);
+        local canSearch = (#buf > 0) and (not searching) and ec.canQuery();
+        if offableButton((searching and 'searching...' or 'Search') .. '##rsdosearch',
+                         canSearch, BTN_GREY_OFF) then
+            ec.search(buf);
+        end
+        if imgui.IsItemHovered() then
+            if searching then imgui.SetTooltip('Waiting for the box to answer.');
+            elseif #buf == 0 then imgui.SetTooltip('Type part of an item name first.');
+            elseif not canSearch then imgui.SetTooltip('One box query at a time -- try again in a moment.');
+            else imgui.SetTooltip('Ask the box what it holds matching this name.\n'
+                .. 'Works anywhere -- you only need to stand at a box to FETCH.'); end
+        end
 
-            -- Already-tracked ids in the list we are adding TO: those rows are
-            -- hidden, so searching "bolt" twice shows only what is left to add.
-            local intoList = (_add.scope == 'character') and rw.character
-                or ((_add.job ~= nil) and (rw.jobs[_add.job] or {}) or {});
-            local tracked = {};
-            for _, e in ipairs(intoList) do tracked[e.id] = true; end
+        -- Already-tracked ids in the list we are adding TO: those rows are
+        -- hidden, so searching "bolt" twice shows only what is left to add.
+        local intoList = (_add.scope == 'character') and rw.character
+            or ((_add.job ~= nil) and (rw.jobs[_add.job] or {}) or {});
+        local tracked = {};
+        for _, e in ipairs(intoList) do tracked[e.id] = true; end
 
-            -- Results answer ONE string. If the box came back for "bolt" and the
-            -- text now reads "bolts", we show nothing rather than last question's
-            -- hits (which is what made the old picker feel like it was lying).
-            local answered = (ec.searchFor ~= nil and ec.searchFor == buf);
-            local res = answered and ec.searchResults or nil;
-            if searching then
-                imgui.TextColored(COL_DIM, 'searching the box...');
-            elseif type(res) == 'table' then
-                local shown = 0;
-                for _, r in ipairs(res) do
-                    if not tracked[r.id] then
-                        shown = shown + 1;
-                        imgui.PushID('rsres_' .. tostring(r.id));
-                        imgui.Dummy({ 0, 0 }); imgui.SameLine(NAME_X);
-                        if deps ~= nil and type(deps.renderIcon) == 'function' then deps.renderIcon(r.id, 18); end
-                        imgui.TextColored(COL_TEXT, esc(clip(r.name or ('#' .. tostring(r.id)), NAME_MAX)));
-                        if imgui.IsItemHovered() and r.name ~= nil then imgui.SetTooltip(esc(r.name)); end
-                        imgui.SameLine(BOX_X);
-                        imgui.TextColored(COL_DIM, 'box x' .. tostring(r.qty or 0));
-                        imgui.SameLine(0, GAP);
-                        -- Adding does NOT close the picker: you usually add several
-                        -- (every bolt) from one search. The row simply disappears.
-                        if imgui.SmallButton('+ track##rsadd' .. tostring(r.id)) then
-                            rw.addItem(_add.scope, _add.job, {
-                                id = r.id, name = r.name, ahCat = r.ahCat, stack = stackOf(r.id),
-                            });
-                        end
-                        imgui.PopID();
+        -- Results answer ONE string. If the box came back for "bolt" and the
+        -- text now reads "bolts", we show nothing rather than last question's
+        -- hits (which is what made the old picker feel like it was lying).
+        local answered = (ec.searchFor ~= nil and ec.searchFor == buf);
+        local res = answered and ec.searchResults or nil;
+        if searching then
+            imgui.TextColored(COL_DIM, 'searching the box...');
+        elseif type(res) == 'table' then
+            local shown = 0;
+            for _, r in ipairs(res) do
+                if not tracked[r.id] then
+                    shown = shown + 1;
+                    imgui.PushID('rsres_' .. tostring(r.id));
+                    imgui.Dummy({ 0, 0 }); imgui.SameLine(NAME_X);
+                    if deps ~= nil and type(deps.renderIcon) == 'function' then deps.renderIcon(r.id, 18); end
+                    imgui.TextColored(COL_TEXT, esc(clip(r.name or ('#' .. tostring(r.id)), NAME_MAX)));
+                    if imgui.IsItemHovered() and r.name ~= nil then imgui.SetTooltip(esc(r.name)); end
+                    imgui.SameLine(BOX_X);
+                    imgui.TextColored(COL_DIM, 'box x' .. tostring(r.qty or 0));
+                    imgui.SameLine(0, GAP);
+                    -- Adding does NOT close the picker: you usually add several
+                    -- (every bolt) from one search. The row simply disappears.
+                    if imgui.SmallButton('+ track##rsadd' .. tostring(r.id)) then
+                        rw.addItem(_add.scope, _add.job, {
+                            id = r.id, name = r.name, ahCat = r.ahCat, stack = stackOf(r.id),
+                        });
                     end
+                    imgui.PopID();
                 end
-                if shown == 0 then
-                    imgui.TextColored(COL_DIM, (#res > 0)
-                        and 'every match is already on this list.'
-                        or  'no matches in the box (try a shorter name).');
-                end
-            elseif #buf > 0 then
-                imgui.TextColored(COL_DIM, 'press Search to look in the box.');
             end
+            if shown == 0 then
+                imgui.TextColored(COL_DIM, (#res > 0)
+                    and 'every match is already on this list.'
+                    or  'no matches in the box (try a shorter name).');
+            end
+        elseif #buf > 0 then
+            imgui.TextColored(COL_DIM, 'press Search to look in the box.');
         end
     end
 
@@ -614,27 +640,32 @@ function M.nudge(deps)
     local entries = rw.effectiveList(job);
     ec.verifyCategories(rw.categoriesOf(entries));
 
-    local all, per, boxed = bagScan();
+    local all, _per, boxed = bagScan();
+    local home, homePer    = homeScan();
     local free = freeInvSlots();
-    local function invOf(id)   local p = per[id]; return (p ~= nil and p[0]) or 0; end
-    local function otherOf(id) return math.max(0, (all[id] or 0) - invOf(id)); end
+    local function heldOf(id)  return stockOf(all, boxed, id); end
+    local function homeOf(id)  return home[id] or 0; end
     local function inBox(id)   return ec.boxCount(id); end
 
     -- GREEN: on-hand = every field bag (a Mog Case copy counts, which is right)
     -- PLUS what your quivers/pouches hold, so it stops offering to fetch bolts
-    -- you are already carrying 1188 of. Yellow deliberately does NOT count them:
-    -- a quiver is not ammo in your Inventory, and the fix for that is to open it.
+    -- you are already carrying 1188 of.
     local plan = rw.plan(entries, { freeSlots = free,
-        onHand = function(id) return stockOf(all, boxed, id); end, inBox = inBox, stackOf = stackOf });
+        onHand = heldOf, inBox = inBox, stackOf = stackOf });
 
-    -- YELLOW: on-hand = Inventory ONLY. Shown only when that makes a DIFFERENT
-    -- plan from green's -- i.e. something you own is sitting in another field
-    -- bag while Inventory is short. Equal plans would mean a second icon that
-    -- does the first icon's job.
-    local need  = rw.otherBagNeed(entries, { inv = invOf, other = otherOf });
-    local yplan = (#need > 0)
-        and rw.plan(entries, { freeSlots = free, onHand = invOf, inBox = inBox, stackOf = stackOf })
-        or nil;
+    -- YELLOW (revised 07-28): the shortfalls whose missing copies are sitting at
+    -- your MOG HOUSE -- Safe, Storage, Locker -- where nothing you do out here
+    -- can reach them. The other field bags are with you and count as held, so
+    -- they no longer raise this icon. Its click fetches JUST these items, on
+    -- green's own arithmetic (no deliberate over-draw any more: there is nothing
+    -- reachable left to double up on).
+    local need, yplan = rw.homeStockNeed(entries, { held = heldOf, stored = homeOf }), nil;
+    if #need > 0 then
+        local want, sub = {}, {};
+        for _, n in ipairs(need) do want[n.id] = true; end
+        for _, e in ipairs(entries) do if want[e.id] then sub[#sub + 1] = e; end end
+        yplan = rw.plan(sub, { freeSlots = free, onHand = heldOf, inBox = inBox, stackOf = stackOf });
+    end
 
     -- "Only when needed" governs the GREEN crate. The deposit icon ignores it:
     -- Henrik's rule is that it is always there near a box, and there is nothing
@@ -688,30 +719,28 @@ function M.nudge(deps)
 
         if yplan ~= nil then
             local canY = (#yplan.pulls > 0) and not busy;
-            local clicked, rightClicked, hovered = iconButton('ebox_yellow', 'In bags', 'rsnudge_yellow');
+            local clicked, rightClicked, hovered = iconButton('ebox_yellow', 'At home', 'rsnudge_yellow');
             imgui.SameLine(0, 6);
             imgui.TextColored(canY and COL_GOLD or COL_DIM, 'x' .. tostring(#need));
             if clicked and canY then ec.withdrawBatch(yplan.pulls); end
             if rightClicked then openPanel(); end
             if hovered then
                 imgui.BeginTooltip();
-                imgui.TextColored(COL_HEADER, 'You own these -- just not in Inventory');
-                -- What the click will ACTUALLY pull, per item: otherBagNeed's
-                -- `want` is the raw Inventory shortfall and knows nothing about
-                -- box stock or free slots, so quoting it would contradict the
-                -- planner's own list a few lines below in the same tooltip.
+                imgui.TextColored(COL_HEADER, 'You own these -- but they are at your Mog House');
+                -- What the click will ACTUALLY pull, per item: homeStockNeed's
+                -- `want` is the raw shortfall and knows nothing about box stock
+                -- or free slots, so quoting it would contradict the planner's own
+                -- list a few lines below in the same tooltip.
                 local yq = {};
                 for _, f in ipairs(yplan.fetches) do yq[f.id] = (yq[f.id] or 0) + f.qty; end
                 for i, n in ipairs(need) do
                     if i <= TIP_MAX then
-                        -- ...and what clicking would leave you holding, so the
-                        -- deliberate over-draw is a number and not a warning.
                         local got = yq[n.id] or 0;
-                        imgui.TextColored(COL_TEXT, string.format('   %s  --  x%d in Inventory, %s  ->  %s (%d total)',
-                            esc(n.name or ('#' .. tostring(n.id))), n.inv, whereText(per[n.id]),
+                        imgui.TextColored(COL_TEXT, string.format('   %s  --  x%d on you of %d, %s  ->  %s',
+                            esc(n.name or ('#' .. tostring(n.id))), n.held, n.target,
+                            whereText(homePer[n.id]),
                             (got < n.want) and string.format('pull %d of %d', got, n.want)
-                                            or string.format('pull %d', got),
-                            n.inv + got + n.other));
+                                            or string.format('pull %d', got)));
                     end
                 end
                 if #need > TIP_MAX then
@@ -719,7 +748,7 @@ function M.nudge(deps)
                 end
                 imgui.Separator();
                 if #yplan.fetches > 0 then
-                    imgui.TextColored(COL_TEXT, 'Left-click tops up INVENTORY from the box:');
+                    imgui.TextColored(COL_TEXT, 'Left-click fetches just these from the box:');
                     local shown = 0;
                     for _, f in ipairs(yplan.fetches) do
                         if shown < TIP_MAX then
@@ -727,11 +756,11 @@ function M.nudge(deps)
                             shown = shown + 1;
                         end
                     end
-                    imgui.TextColored(COL_DIM, 'The copies in your other bags stay where they are, so this');
-                    imgui.TextColored(COL_DIM, 'spends box stock and puts you over target on purpose.');
+                    imgui.TextColored(COL_DIM, 'Your Mog House copies stay there -- you cannot reach them');
+                    imgui.TextColored(COL_DIM, 'from here, so the box covers you until you go home.');
                 else
                     imgui.TextColored(COL_DIM, busy and 'A fetch is already in flight.'
-                        or 'The box cannot add any of these right now.');
+                        or 'The box cannot add any of these -- yours are at the Mog House.');
                 end
                 imgui.Separator();
                 imgui.TextColored(COL_DIM, 'Left-click: fetch to Inventory    Right-click: open panel');

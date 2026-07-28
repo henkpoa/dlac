@@ -261,40 +261,44 @@ function M.needsFetch(entries, ctx)
 end
 
 -- ---------------------------------------------------------------------------
--- THE YELLOW ICON's question (v2 grill C2, 2026-07-25): which tracked items do
--- you already own, but not where you can use them?
+-- THE YELLOW ICON's question (v2 grill C2, REVISED by Henrik 2026-07-28): which
+-- tracked items are you short of out here, while copies of them sit at your MOG
+-- HOUSE -- Mog Safe, Storage, Mog Locker, Mog Safe 2?
 --
--- The normal fetch counts every FIELD bag as on-hand -- 2 Grape Daifuku in the
--- Mog Case means it only pulls 10 of a 12 target, which is correct and stays
--- correct. But a Mog Case copy is not in your Inventory, and dlac may not move
--- items between containers yet (the 0x029 path is deferred), so the escape
--- hatch is to pull the FULL Inventory shortfall from the box and let the player
--- see the cost first: hence `other` and `inv` are reported per item.
+-- The original ruling counted the other FIELD bags (Satchel/Sack/Case) as
+-- "somewhere you can't use it from" and offered to buy duplicates out of the
+-- box. Field reality says otherwise: those bags are with you, one drag away, so
+-- the icon was nagging about stock you already have. Mog House stock is the
+-- real trap -- unreachable until you go home, and the box IS the only fix.
 --
--- ctx = { inv(id) -> n in Inventory(0), other(id) -> n in Satchel/Sack/Case }.
--- An entry qualifies when it has copies in another field bag AND Inventory
--- alone is below target -- exactly the case where the yellow plan differs from
--- the green one (equal plans = no reason for a second icon). Pure (RS*).
+-- `held` is therefore everything you are CARRYING (Inventory + Satchel + Sack +
+-- Case + what your quivers hold) -- the same on-hand the green plan uses -- so a
+-- Mog Case copy silences this icon exactly the way it silences green.
+--
+-- ctx = { held(id) -> n on your person, stored(id) -> n in the Mog House }.
+-- An entry qualifies when it has Mog House copies AND what you carry is below
+-- target. Note this does NOT require the box to hold any: "the box can't help
+-- and yours are at home" is the most useful thing this icon ever says. Pure (RS*).
 -- ---------------------------------------------------------------------------
-function M.otherBagNeed(entries, ctx)
+function M.homeStockNeed(entries, ctx)
     entries, ctx = entries or {}, ctx or {};
-    local inv   = (type(ctx.inv)   == 'function') and ctx.inv   or function() return 0; end;
-    local other = (type(ctx.other) == 'function') and ctx.other or function() return 0; end;
+    local held   = (type(ctx.held)   == 'function') and ctx.held   or function() return 0; end;
+    local stored = (type(ctx.stored) == 'function') and ctx.stored or function() return 0; end;
     local out = {};
     for _, e in ipairs(entries) do
         local target = math.max(0, math.floor(tonumber(e.target) or 0));
-        local i = math.max(0, math.floor(tonumber(inv(e.id))   or 0));
-        local o = math.max(0, math.floor(tonumber(other(e.id)) or 0));
-        if o > 0 and i < target then
+        local h = math.max(0, math.floor(tonumber(held(e.id))   or 0));
+        local s = math.max(0, math.floor(tonumber(stored(e.id)) or 0));
+        if s > 0 and h < target then
             out[#out + 1] = { id = e.id, name = e.name, target = target,
-                              inv = i, other = o, want = target - i };
+                              held = h, stored = s, want = target - h };
         end
     end
     return out;
 end
 
-function M.needsOtherBag(entries, ctx)
-    return #M.otherBagNeed(entries, ctx) > 0;
+function M.needsHomeStock(entries, ctx)
+    return #M.homeStockNeed(entries, ctx) > 0;
 end
 
 -- ---------------------------------------------------------------------------
