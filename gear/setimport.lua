@@ -77,6 +77,40 @@ function M.importStaticSet(staticSet, slotLabels, resolve)
     return { working = working, notBestFirst = notBestFirst, slotCount = slotCount };
 end
 
+-- The "Copy from" picker's LEGACY column. One old FFXI-LAC job file holds BOTH
+-- kinds of source: LuaAshitacast's static sets at the root, and dlac's own
+-- `sets.Dynamic` block from before the profile storage layer -- and the same name
+-- can appear in both (a static you later rebuilt as a Dynamic set, in the file
+-- that predates the split). Henrik's ruling 2026-07-28: the DYNAMIC one wins, so
+-- such a name imports as what it grew INTO, never as the static it grew out of.
+-- Case-insensitive, like every other set-name rule here (the Sets tab compares
+-- via string.lower), and sorted by name so the picker reads alphabetically.
+--
+--   staticNames / lacNames : arrays of set-name strings
+--   -> ordered array of { name = 'Idle', kind = 'lac'|'static' }
+function M.mergeLegacySources(staticNames, lacNames)
+    local out, taken = {}, {};
+    local function add(names, kind)
+        if type(names) ~= 'table' then return; end
+        for _, nm in ipairs(names) do
+            local s = tostring(nm);
+            local lk = string.lower(s);
+            if not taken[lk] then
+                taken[lk] = true;
+                out[#out + 1] = { name = s, kind = kind };
+            end
+        end
+    end
+    add(lacNames, 'lac');          -- dynamics claim their names first...
+    add(staticNames, 'static');    -- ...statics only fill what is left
+    table.sort(out, function(a, b)
+        local la, lb = string.lower(a.name), string.lower(b.name);
+        if la ~= lb then return la < lb; end
+        return a.name < b.name;
+    end);
+    return out;
+end
+
 -- "Copy from" -> "New set(s)" mode: pick the DESTINATION name for each source in a
 -- migrate-many batch. Each new set is kept under its SOURCE name; a name that already
 -- exists among the dynamic sets -- OR one already claimed earlier in this same batch --

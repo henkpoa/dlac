@@ -249,7 +249,28 @@ merge carries it **without asking him again**. Only he can move an entry to ACCE
 this does not make an accepted entry mergeable *alone*: `dev` promotes
 **whole-or-not-at-all**, so an accepted entry rides the next promotion of the whole branch.
 
-*(Empty -- last emptied by the 2026-07-28 promotion of the MaxMP pair-home fix
+- **ACCEPTED — the old FFXI-LAC *Dynamic* sets import** (`2026.07.28d`). Copy-from's
+  legacy column now carries both kinds an old `<JOB>.lua` holds: **Old FFXI-LAC sets**
+  (its `sets.Dynamic` block — dlac's own sets from before profile storage) above **Old
+  Static Sets**, a shared name listed once as the dynamic one. Import sources only —
+  never the sets root, never a trigger target (`PSL7/8`). Rides two fixes found in the
+  same file read: `profiles.legacyBackupPath` (the pre-profiles backup home a
+  LAC-tree-era migration used — a character with its originals only there had an EMPTY
+  legacy column) and the missing-safe gear proxy in `profilesets.sandboxSets` (one
+  unowned weapon category used to nil-index a whole legacy file away, taking every
+  static in it). Suites **4114 + 693**, Windows and WSL lua5.4. Field-confirmed
+  2026-07-28 — *"looks good and works"* — after Henrik re-cut the column headings
+  (*"even I got confused"*). Henrik: *"have it ready to merge to main."* Record:
+  history.md "a dynamic set in an old file is an FFXI-LAC set" + architecture.md
+  (`gear/profilesets.lua`, `gear/setimport.lua`).
+- **Riding along, not separately accepted: `4d9d7f0` — the whole UI hides on Scroll Lock**
+  (`2026.07.28c`, `feature\gamehud.lua`). It landed on `dev` before this entry existed and
+  was never queued or written up here; `dev` promotes whole-or-not, so the next promotion
+  carries it. Its own commit message is the full record. Fails open by construction (a bad
+  signature read answers "not hidden"), suites were green at **4088 + 693**. **No field
+  report recorded** — if that matters, drive Scroll Lock once before promoting.
+
+*(Last emptied by the 2026-07-28 promotion of the MaxMP pair-home fix
 `1b8aad2` (`2026.07.28b`): pair homes anchor the idle set's CHOSEN picks only, unchosen
 ladder rungs float -- Henrik's own diagnosis, field-confirmed same day ("Now it
 works!"). The promotion also carried the integration-surface design docs (designed,
@@ -273,7 +294,9 @@ research already recorded. In rough priority order:
    static/group/whole-block imports + the migrate carriers, all intact).
    **ON MAIN since 2026-07-27** (field-confirmed on Mindie, promoted on Henrik's
    "go ahead"). Only open thread: the three-way import field round (static / group /
-   Copy-from-static) — guard-tested, not yet field-driven.
+   Copy-from-static) — guard-tested, not yet field-driven. The Copy-from leg grew a
+   fourth source on 2026-07-28 (the old files' `sets.Dynamic` block) and a second
+   backup home; that ride wants the same field round.
 1. **FIELD TEST the 07-25 release.** Henrik approved the Menu/Settings **visuals**, but
    the **Mode library has not been driven in-game at all**. Everything in it is
    headless-tested only; the suites stub imgui by design, so popup behaviour, the
@@ -300,6 +323,37 @@ research already recorded. In rough priority order:
 
 ## Current state (as of 2026-07-26)
 
+- **2026-07-28: the old FFXI-LAC *Dynamic* sets import too — ON `dev`, FIELD-CONFIRMED,
+  ACCEPTED (in the merge queue above)** (`2026.07.28d`). Henrik: *"when it sees a dynamic set, it's old FFXI-lac… it should be
+  detected and enabled to be imported as a LAC import. If set names collide, prioritize
+  the dynamic ones."* A legacy `<JOB>.lua` (and its pre-profiles backup) carries **both**
+  kinds of source — LuaAshitacast statics at the root and dlac's own `sets.Dynamic` block
+  from before profile storage — and only the statics were reachable. Now
+  `profilesets.lacSetNames/getLacSets` harvest that block as an import source (never into
+  the sets root: an FFXI-LAC set must never look live, and `liveSetNames` stays the
+  trigger-target authority — `PSL7/8`), the Copy-from picker's right column carries both
+  kinds as two headed lists — **Old FFXI-LAC sets** above **Old Static Sets**, both in the
+  header blue (a dim sub-header under a blue one confused Henrik himself on the first
+  pass) — and a name in both is listed once, as the **dynamic** one
+  (`setimport.mergeLegacySources`, `AQ*`). The unmigrated
+  character is the one exception: there the job file's block *is* the live list, so it is
+  not offered as an import of itself (`PSL1/2`). The import itself rides the pinned
+  `importStaticSet` transform — minus the not-best-first warning, which is a
+  LuaAshitacast-static fact (those lists were always read by dlac's highest-Level rule).
+  **Two bugs fell out of the same file read**, both real on this install:
+  `profiles.legacyBackupPath` adds the pre-storage-move backup home
+  (`luashitacast\<char>\backups\pre-profiles\`) — a character migrated in the LAC-tree era
+  had its originals *only* there, so its whole legacy column read empty (5 SAM + 10 WAR
+  statics were invisible); and the sandbox now hands legacy files the **missing-safe gear
+  proxy** (`profiles._wrapGear`), so one unowned weapon category (`gear.Main.Club` on a
+  char who never scanned a club) can no longer nil-index the chunk away and take every
+  static in the file with it. Suites **4114 + 693**, Windows and WSL lua5.4; driven
+  against the real files on this install before shipping (Mindie BLU: 8 old dynamic sets
+  found, `Idle` resolving to 15 ordered slots). **Field-confirmed the same day** — *"looks
+  good and works"* — after one revision Henrik called in himself: the first cut split the
+  column with dim `Dynamic` / `Static` sub-headers under one blue heading, and *"Static atm
+  is greyed out like dynamic, so it's hard to notice… even I got confused"*. Group labels
+  are not dim.
 - **2026-07-28: MaxMP pair homes anchor CHOSEN picks only — ON MAIN, FIELD-CONFIRMED**
   (`2026.07.28b`, promoted 2026-07-28 on Henrik's "push to main").
   Henrik's own diagnosis of the stage 6 field oddity (Outlaws

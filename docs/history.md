@@ -6461,3 +6461,63 @@ manifest builder + one dispatch accessor). Tests `FS*` pin the seam. Suites **40
 693**, green on Windows lua and WSL lua5.4. **FIELD-CONFIRMED the same day** — Henrik
 restored the rung and re-planned: *"Now it works!"* Documenting leveling gear costs
 nothing again, which was the point. In the merge queue (hard rule 14).
+
+## Session "a dynamic set in an old file is an FFXI-LAC set" (2026-07-28, on `dev` — addon 2026.07.28c → d)
+
+Henrik, on the Sets tab's **Manage… → Copy from**: *"when you wanna copy old statics, I
+want it to enable copying old FFXI-LAC Dynamic sets. So when it sees a dynamic set, it's
+old FFXI-lac… If set names collide, prioritize the dynamic ones."* The purge made the
+LuaAshitacast tree read-only import territory, not deleted — and the import door was
+only half open: a legacy `<JOB>.lua` and its pre-profiles backup carry **two** kinds of
+source side by side, LAC's statics at the root and dlac's OWN `sets.Dynamic` block from
+before profile storage existed, and only the statics were ever listed. The reader had
+even said so out loud since the migration landed — *"the pre-migration backup: statics
+only, never Dynamic (reading it again would resurrect deleted sets)"*. That fear was
+right about the **sets root** and wrong about the **picker**: the danger was a deleted
+set looking *live*, not a deleted set being *offerable*. So the block is harvested into
+its own list (`profilesets.lacSetNames` / `getLacSets`) that never touches the root —
+`liveSetNames` stays exactly the trigger-target authority it was (`PSL7/8`).
+
+One exception falls out of the same rule: the **unmigrated** character, whose job file
+IS the live Dynamic source. There the same block is already the set list, so offering it
+would list every set twice — the harvest skips an *adopted* block (`PSL1/2`). The
+collision rule is Henrik's, one line, in the pure layer: `setimport.mergeLegacySources`
+merges statics and old dynamics into one name-sorted column, dynamics claim their names
+first, so a set that grew from a static into a Dynamic set imports as what it *became*
+(`AQ*`). The first cut of the column presented that split as one blue heading with dim
+`Dynamic` / `Static` sub-headers, and Henrik bounced it immediately — *"Static atm is
+greyed out like dynamic, so it's hard to notice… even I got confused"*. It ships as TWO
+headings in the same list-header blue, **Old FFXI-LAC sets** above **Old Static Sets**,
+each naming what its rows ARE; an empty group draws no heading. Dim is for things you
+may ignore, and a group label is never one of them. The import itself reuses the pinned `importStaticSet` transform — but **not**
+its not-best-first warning: that divergence (ADR 0008, dlac takes the highest item-Level
+rung where LAC took the first in the list) is a LuaAshitacast-static fact. An old dlac
+Dynamic set was always read by the highest-Level rule, so importing one reproduces
+exactly what it did, and a warning there would be noise about nothing.
+
+**Two live bugs surfaced from reading the real files before shipping** (artifacts first,
+not theory). *One:* `profiles.backupPath` composes off the native home only, but a
+character migrated in the LAC-tree era left its pre-profiles originals under
+`luashitacast\<char>\backups\pre-profiles\` — and its live job file is a shim. Copy-from
+had therefore been listing **nothing at all** for such a character: 5 SAM + 10 WAR
+statics on this very install, invisible. New `profiles.legacyBackupPath` (allowlisted
+door, PRG1) adds that home as a second read tier. *Two:* the sets sandbox handed legacy
+files the **real** gear table, so one unowned weapon category — `gear.Main.Club` on a
+character who never scanned a club — nil-indexed the whole chunk away and took every
+static in the file with it, silently. It now hands them `profiles._wrapGear`, the same
+missing-safe read proxy the profile sets loader has always used (present tables pass
+through by identity; absent ones read nil / an empty category).
+
+**Status:** on `dev`, addon `2026.07.28c` → **`2026.07.28d`**, engine untouched (GUI +
+readers only). Tests `AQ*` (the merge rule) and `PSL*` (the reader, all three storage
+shapes). Suites **4114 + 693**, green on Windows lua and WSL lua5.4. Driven headlessly
+against this install's real files first: BLU surfaces 8 old FFXI-LAC dynamic sets
+(`Pollen`, `BlueMagic`, `Requiescat` exist *nowhere else* today), and importing `Idle`
+resolves 15 slots of ordered candidates. **FIELD-CONFIRMED the same day** — *"looks good
+and works"* — and **ACCEPTED** for the next promotion (*"have it ready to merge to
+main"*); it sits in the merge queue with `4d9d7f0` (Scroll Lock), which `dev`'s
+whole-or-not promotion carries along. One judgment call left standing, deliberately: on a
+job whose pre-profiles backup was migrated whole, the FFXI-LAC list repeats names you
+already have live (WHM lists 19). That is honest — they are the pre-migration *versions*,
+and the "New set(s)" path lands them as `_Copy` — but if it ever reads as noise, hiding
+names that already exist live is a one-line filter.

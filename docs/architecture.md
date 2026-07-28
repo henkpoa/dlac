@@ -509,11 +509,24 @@ exactly one catalog nested walk in the codebase.
 
 ### gear/profilesets.lua — profile `sets` reader
 Reads the loaded profile's `sets` table for the Sets tab. In LAC state reads
-`gProfile.Sets`; in addon state parses the current `<JOB>.lua` in a permissive sandbox.
-Cache hits content-follow the Dynamic source file (1s byte compare) — a Profiles-menu
-import rewrites the active profile's files without moving the cache key. The same
-follow idiom lives in triggersui's edit model (dirty models get a drift banner instead
-of a silent clobber) and lockstyle's boxes (2026-07-22; tests TGW/PSW/LGW).
+`gProfile.Sets`; in addon state parses the current `<JOB>.lua` in a permissive sandbox
+(the gear inventory goes in through `profiles._wrapGear`, so an unowned weapon category
+named by an old file can't nil-index the whole chunk away). Cache hits content-follow
+the Dynamic source file (1s byte compare) — a Profiles-menu import rewrites the active
+profile's files without moving the cache key. The same follow idiom lives in triggersui's
+edit model (dirty models get a drift banner instead of a silent clobber) and lockstyle's
+boxes (2026-07-22; tests TGW/PSW/LGW).
+
+**Three tiers, and which one is LIVE matters.** Dynamic sets come from the active
+profile's `sets\<JOB>.lua`, else (unmigrated) from the job file's own block. Statics come
+from the job file AND both pre-profiles backup homes — the native one and, for a
+character migrated before the storage move, `luashitacast\<char>\backups\pre-profiles\`
+(`profiles.legacyBackupPath`). Those same legacy files' `sets.Dynamic` blocks are
+harvested separately as **old FFXI-LAC sets** (`lacSetNames` / `getLacSets`, 2026-07-28):
+import sources for the Sets tab's Copy-from, deliberately absent from `getSetsRoot` and
+`liveSetNames` — the engine never loads them, so one must never look live or become a
+trigger target. A block already ADOPTED as the live Dynamic list is not offered a second
+time (tests PSL1–PSL11).
 
 ### gear/setmanager.lua — `<JOB>.lua` reader/writer
 Splices dynamic sets into `<JOB>.lua` and analyzes the dispatch handler shims —
@@ -534,6 +547,13 @@ record) is **injected** — gearui passes its `resolveSetItem`, the headless sui
 over owned records — so the transform is pure and testable (tests AO0–AO23). Candidate
 order is carried verbatim; gearui does the full-replace into the selected set, the
 overwrite confirmation, and the per-slot divergence warning. Never seeded into LAC.
+
+`mergeLegacySources(staticNames, lacNames)` (2026-07-28) builds the picker's legacy
+column: one name-sorted, case-insensitively deduped list of both kinds an old FFXI-LAC
+job file holds, where a name in both is kept as the **dynamic** one (Henrik's ruling).
+The same transform serves the old dynamics themselves — minus the not-best-first warning,
+which is a LuaAshitacast-static fact: those lists were always read by dlac's
+highest-item-Level rule, so importing one changes nothing (tests AQ0–AQ14).
 
 ### gear/gearoptim.lua — stat-weight optimizer
 Two read-only tools: MP-spent→potency swap advice, and a stat-weight scorer/best-set

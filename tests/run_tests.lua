@@ -4152,6 +4152,39 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- AQ. setimport.mergeLegacySources -- the "Copy from" legacy column (2026-07-28).
+--
+--   One old FFXI-LAC job file carries BOTH kinds: LuaAshitacast statics at the root
+--   and dlac's own `sets.Dynamic` block. Merged into ONE deduped, name-sorted list;
+--   Henrik's ruling: a name in both imports as the DYNAMIC one.
+-- ---------------------------------------------------------------------------
+(function()
+    local simport = dofile('gear/setimport.lua');   -- forward slash: also loads on Linux CI
+    check('AQ0 mergeLegacySources exported', type(simport.mergeLegacySources), 'function');
+
+    local m = simport.mergeLegacySources({ 'Idle', 'Precast', 'Tp' }, { 'Idle', 'Pollen' });
+    check('AQ1 merged count (Idle deduped)', #m, 4);
+    check('AQ2 sorted by name [1]', m[1].name, 'Idle');
+    check('AQ3 sorted by name [2]', m[2].name, 'Pollen');
+    check('AQ4 sorted by name [3]', m[3].name, 'Precast');
+    check('AQ5 sorted by name [4]', m[4].name, 'Tp');
+    check('AQ6 THE RULE: a shared name is the dynamic one', m[1].kind, 'lac');
+    check('AQ7 a dynamic-only name is dynamic', m[2].kind, 'lac');
+    check('AQ8 a static-only name stays static', m[3].kind, 'static');
+
+    -- Case-insensitive, like every other set-name rule (the Sets tab lowercases).
+    local ci = simport.mergeLegacySources({ 'idle' }, { 'Idle' });
+    check('AQ9 case-insensitive dedup', #ci, 1);
+    check('AQ10 ...and the dynamic spelling survives', ci[1].name, 'Idle');
+
+    -- One side empty / absent: the other passes through whole.
+    check('AQ11 statics only', #simport.mergeLegacySources({ 'A', 'B' }, {}), 2);
+    check('AQ12 dynamics only kind', simport.mergeLegacySources({}, { 'A' })[1].kind, 'lac');
+    check('AQ13 nil inputs -> empty', #simport.mergeLegacySources(nil, nil), 0);
+    check('AQ14 nil statics tolerated', simport.mergeLegacySources(nil, { 'A' })[1].name, 'A');
+end)();
+
+-- ---------------------------------------------------------------------------
 -- AP. weaponfilter -- the pure weapon-type picker filter (#16 F2a, PRD #14)
 --
 --   Two pure decisions the Add-item picker's weapon-type dropdown is a thin shell over:
@@ -12044,6 +12077,82 @@ end)();
     ps._recheck();
     check('PSW3 unchanged bytes keep the answer', ps.liveSetNames()[1], 'SetB');
     os.remove(TMP);
+end)();
+
+-- PSL. profilesets: the OLD FFXI-LAC Dynamic sets (Henrik 2026-07-28 -- "when it
+--      sees a dynamic set, it's old FFXI-lac"). A legacy <JOB>.lua and its
+--      pre-profiles backup carry BOTH the player's LuaAshitacast statics and
+--      dlac's own `sets.Dynamic` block from before profile storage. The block is
+--      an IMPORT SOURCE, never live -- with one exception: the unmigrated
+--      character whose job file IS the live Dynamic source, where offering it
+--      again would list every set twice. profiles.lua is stubbed per phase (the
+--      module captures it at load, so each phase gets a fresh instance).
+(function()
+    local JOB    = 'tests/_tmp_psl_job.lua';
+    local BACKUP = 'tests/_tmp_psl_backup.lua';
+    local LEGACY = 'tests/_tmp_psl_legacy.lua';
+    local function writeSets(path, body)
+        local f = assert(io.open(path, 'w'));
+        f:write('local profile = {};\nlocal sets = ' .. body .. ';\nprofile.Sets = sets;\nreturn profile;\n');
+        f:close();
+    end
+    writeSets(JOB,    '{ Dynamic = { JobDyn = {} }, Idle = {}, Tp = {} }');
+    writeSets(BACKUP, '{ Dynamic = { BackDyn = {}, Idle = {} }, Precast = {} }');
+    writeSets(LEGACY, '{ Dynamic = { OldHomeDyn = {} }, OldHomeStatic = {} }');
+
+    local savedProf = package.loaded['dlac\\profiles'];
+    local function freshWith(stub)
+        stub.activeName = stub.activeName or function() return 'Default'; end;
+        stub.setsPath   = stub.setsPath   or function() return nil; end;
+        package.loaded['dlac\\profiles'] = stub;
+        local ps = dofile('gear/profilesets.lua');
+        ps.configure({ jobFile = function() return JOB, 'BLU'; end });
+        return ps;
+    end
+    local function names(t) return table.concat(t, ','); end
+
+    -- 1. Unmigrated: no profile sets file, so the job file's Dynamic block IS the
+    --    live list. It must not ALSO be offered as an import of itself.
+    local ps1 = freshWith({ hasSetsFile = function() return false; end,
+                            backupPath = function() return nil; end,
+                            legacyBackupPath = function() return nil; end });
+    check('PSL1 adopted job-file Dynamic is the live list', names(ps1.dynamicSetNames()), 'JobDyn');
+    check('PSL2 ...and is NOT offered as an FFXI-LAC source', #ps1.lacSetNames(), 0);
+    check('PSL3 its statics still list', names(ps1.staticSetNames()), 'Idle,Tp');
+
+    -- 2. Migrated: the profile owns Dynamic, so the job file's block AND the
+    --    pre-profiles backup's block are both import sources.
+    local ps2 = freshWith({ hasSetsFile = function() return true; end,
+                            readSetsFile = function() return { Live = {} }; end,
+                            backupPath = function() return BACKUP; end,
+                            legacyBackupPath = function() return nil; end });
+    check('PSL4 live sets come from the profile', names(ps2.dynamicSetNames()), 'Live');
+    check('PSL5 both legacy Dynamic blocks are sources', names(ps2.lacSetNames()), 'BackDyn,Idle,JobDyn');
+    check('PSL6 backup statics still fill in', names(ps2.staticSetNames()), 'Idle,Precast,Tp');
+    check('PSL7 an FFXI-LAC set is NEVER live (trigger targets)', names(ps2.liveSetNames()), 'Idle,Live,Tp');
+    check('PSL8 nor does it reach the sets root', ps2.getSetsRoot().BackDyn, nil);
+
+    -- ...and the picker's column merges them by Henrik's rule, on real reader output.
+    local simport = dofile('gear/setimport.lua');
+    local merged = simport.mergeLegacySources(ps2.staticSetNames(), ps2.lacSetNames());
+    check('PSL9 merged column', (function()
+        local acc = {};
+        for _, s in ipairs(merged) do acc[#acc + 1] = s.name .. ':' .. s.kind; end
+        return table.concat(acc, ',');
+    end)(), 'BackDyn:lac,Idle:lac,JobDyn:lac,Precast:static,Tp:static');
+
+    -- 3. Migrated BEFORE the storage move: the originals sit in the old home
+    --    only. Without that tier the whole legacy column reads empty (field
+    --    2026-07-28: a character whose SAM/WAR originals live there alone).
+    local ps3 = freshWith({ hasSetsFile = function() return true; end,
+                            readSetsFile = function() return { Live = {} }; end,
+                            backupPath = function() return 'tests/_tmp_psl_absent.lua'; end,
+                            legacyBackupPath = function() return LEGACY; end });
+    check('PSL10 old-home statics are reachable', names(ps3.staticSetNames()), 'Idle,OldHomeStatic,Tp');
+    check('PSL11 old-home Dynamic sets are reachable', names(ps3.lacSetNames()), 'JobDyn,OldHomeDyn');
+
+    package.loaded['dlac\\profiles'] = savedProf;
+    os.remove(JOB); os.remove(BACKUP); os.remove(LEGACY);
 end)();
 
 -- LGW. lockstyle boxes follow decision (feature/lockstyle.lua : M._followBoxes).

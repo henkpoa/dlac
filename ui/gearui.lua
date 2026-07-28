@@ -2785,12 +2785,13 @@ end
 -- Resolve a source set into the working model (slotLabel -> { entry, ... }), owned/known
 -- gear only -- the shared core of every "Copy from" flow. No side effects: the callers
 -- decide whether to load the result into M.working (single copy) or feed it straight to
--- buildCommitSlots for a new set (the "New set(s)" batch). Two source kinds:
+-- buildCommitSlots for a new set (the "New set(s)" batch). Three source kinds:
 --
 --   workingFromDynamic(name)  -> working                 (another Dynamic set)
 --   workingFromStatic(name)   -> working, notBestFirst   (a legacy static set)
+--   workingFromLac(name)      -> working                 (an old FFXI-LAC Dynamic set)
 --
--- The static path routes through the pinned pure transform in dlac\gear\setimport (the
+-- The legacy paths route through the pinned pure transform in dlac\gear\setimport (the
 -- headless suite covers its ordering / best-first rules); notBestFirst names the slots
 -- whose candidate order diverges from LAC's first-in-list (ADR 0008), for the caller's
 -- per-slot chat warning.
@@ -2829,6 +2830,24 @@ local function workingFromStatic(srcName)
     return working, notBest;
 end
 
+-- An old FFXI-LAC Dynamic set: the `sets.Dynamic` block inside a legacy <JOB>.lua
+-- (or its pre-profiles backup) -- dlac's own sets from before profile storage.
+-- Same per-slot candidate shape as a Dynamic set, so it rides the same transform
+-- as the statics -- but NOT their best-first warning: those lists were already
+-- read by dlac's highest-item-Level rule, so importing one reproduces exactly
+-- what it did. The ADR 0008 divergence is a LuaAshitacast-static fact only.
+local function workingFromLac(srcName)
+    local working = {};
+    pcall(function()
+        local simport = require('dlac\\gear\\setimport');
+        local sets = profsets.getLacSets();
+        local setT = (type(sets) == 'table') and sets[srcName] or nil;
+        if type(setT) ~= 'table' then return; end
+        working = simport.importStaticSet(setT, EQUIP_SLOTS, resolveSetItem).working;
+    end);
+    return working;
+end
+
 -- #(a working table): count filled slots (working is keyed by label, not an array).
 local function countFilledSlots(working)
     local n = 0;
@@ -2838,46 +2857,64 @@ local function countFilledSlots(working)
     return n;
 end
 
--- Copy a static (non-Dynamic) set's slots INTO the currently-selected dynamic set,
--- keeping that set's name (issue #15 / ADR 0008). No longer spawns a set named after
--- the source. FULL-REPLACE: the target becomes the static's contents; slots the static
--- doesn't define are cleared. Candidate ORDER is carried verbatim, so a priority list
--- keeps its order; dlac still equips the highest-item-Level candidate (ADR 0008), which
--- diverges from LAC's first-in-list only for a not-best-first slot -- those are named in
--- a per-slot chat warning. The pure transform (static set + resolver -> working lists +
--- not-best-first slots) lives in dlac\gear\setimport so the headless suite can pin it.
-local function doCopyFromStatic(srcName)
+-- What each source kind is CALLED, everywhere the player is told about it (status
+-- lines, the replace confirmation, the chat warning). One table, so a fourth kind
+-- can never end up named two different things in two places.
+local KIND_WORD = { dynamic = 'dynamic', static = 'static', lac = 'FFXI-LAC' };
+
+-- The one resolver seam: kind -> working, notBestFirst.
+local function workingForSource(kind, name)
+    if kind == 'dynamic' then return workingFromDynamic(name), {}; end
+    if kind == 'lac'     then return workingFromLac(name), {}; end
+    return workingFromStatic(name);
+end
+
+-- Copy a source set's slots INTO the currently-selected dynamic set, keeping that
+-- set's name (issue #15 / ADR 0008). Never spawns a set named after the source.
+-- FULL-REPLACE: the target becomes the source's contents; slots the source doesn't
+-- define are cleared. Candidate ORDER is carried verbatim, so a priority list keeps
+-- its order; dlac still equips the highest-item-Level candidate (ADR 0008), which
+-- diverges from LAC's first-in-list only for a not-best-first slot -- those are named
+-- in a per-slot chat warning (statics only; see workingFromLac). The pure transform
+-- lives in dlac\gear\setimport so the headless suite can pin it.
+local function doCopyFrom(kind, srcName)
     local target = M.workingSetName;
-    local working, notBest = workingFromStatic(srcName);
-    local result = { working = working, notBestFirst = notBest, slotCount = countFilledSlots(working) };
-    if result.slotCount > 0 then
-        M.working = result.working;   -- FULL-REPLACE: undefined slots are gone
+    local working, notBest = workingForSource(kind, srcName);
+    local word = KIND_WORD[kind] or 'static';
+    local Word = word:sub(1, 1):upper() .. word:sub(2);
+    local nSlots = countFilledSlots(working);
+    if nSlots > 0 then
+        M.working = working;   -- FULL-REPLACE: undefined slots are gone
         ui.setSelected = nil;
-        _setDirty = true;             -- copied into the set -> unsaved changes to commit
+        _setDirty = true;      -- copied into the set -> unsaved changes to commit
         -- Per-slot warning for any slot NOT ordered best-first (highest item-Level
         -- first) -- the one case dlac's highest-Level pick diverges from LAC's
         -- first-in-list (ADR 0008). Loud, per hard rule 12: a silent behaviour change
         -- is the failure mode, not the divergence itself.
-        for _, label in ipairs(result.notBestFirst) do
-            pcall(print, string.format('[dlac] Copy from static "%s": slot %s is not ordered best-first (highest item-Level first) -- dlac equips the highest-Level candidate, so its pick may differ from the first in your list. Reorder the slot if you meant strict priority.', srcName, label));
+        for _, label in ipairs(notBest) do
+            pcall(print, string.format('[dlac] Copy from %s "%s": slot %s is not ordered best-first (highest item-Level first) -- dlac equips the highest-Level candidate, so its pick may differ from the first in your list. Reorder the slot if you meant strict priority.', word, srcName, label));
         end
-        local warnNote = (#result.notBestFirst > 0)
-            and string.format('  %d slot(s) not best-first -- see chat.', #result.notBestFirst) or '';
-        setStatus(string.format('Copied static "%s" into "%s" (%d slots -- whole set replaced). Edit, then Commit.%s',
-            srcName, target, result.slotCount, warnNote), false);
+        local warnNote = (#notBest > 0)
+            and string.format('  %d slot(s) not best-first -- see chat.', #notBest) or '';
+        setStatus(string.format('Copied %s "%s" into "%s" (%d slots -- whole set replaced). Edit, then Commit.%s',
+            word, srcName, target, nSlots, warnNote), false);
     else
         -- Nothing resolved to owned/known gear: leave the target untouched rather than
         -- silently wipe the player's work on a copy that produced nothing (hard rule 12).
-        setStatus(string.format('Static set "%s" has no owned/known items to copy (blank, or names not in gear.lua). "%s" left unchanged.',
-            srcName, target), true);
+        setStatus(string.format('%s set "%s" has nothing to copy (empty, or its items are not in your gear.lua). "%s" left unchanged.',
+            Word, srcName, target), true);
     end
 end
 
 -- Entry point from the Copy from window: refuse without a target, confirm an
 -- overwrite, else copy straight in. The overwrite modal is rendered in renderSetsTab.
-local function copyFromStaticSet(srcName)
+local function copyFromSet(kind, srcName)
     if M.workingSetName == nil or M.workingSetName == '' then
-        setStatus('Create a set first (have a dlac set open), then copy the static set into it.', true);
+        setStatus('Create or pick a set first, then copy into it.', true);
+        return;
+    end
+    if kind == 'dynamic' and srcName == M.workingSetName then
+        setStatus('That IS the selected set -- pick a different source.', true);
         return;
     end
     -- Non-empty target -> confirm before anything changes (cancel / click-away aborts).
@@ -2886,51 +2923,11 @@ local function copyFromStaticSet(srcName)
         if type(list) == 'table' and #list > 0 then filled = filled + 1; end
     end
     if filled > 0 then
-        ui._copyConfirm = { src = srcName, target = M.workingSetName, filled = filled, kind = 'static' };
+        ui._copyConfirm = { src = srcName, target = M.workingSetName, filled = filled, kind = kind };
         ui._copyConfirmOpen = true;   -- one-shot OpenPopup (see renderSetsTab)
         return;
     end
-    doCopyFromStatic(srcName);
-end
-
--- Copy another DYNAMIC set's slots INTO the selected set (Henrik 2026-07-20:
--- the Copy from window offers dynamic sources beside the legacy statics).
--- Same FULL-REPLACE contract as the static copy; the source set is untouched.
-local function doCopyFromDynamic(srcName)
-    local target = M.workingSetName;
-    local built = workingFromDynamic(srcName);
-    local nSlots = countFilledSlots(built);
-    if nSlots > 0 then
-        M.working = built;   -- FULL-REPLACE: slots the source doesn't fill are cleared
-        ui.setSelected = nil;
-        _setDirty = true;
-        setStatus(string.format('Copied dynamic "%s" into "%s" (%d slots -- whole set replaced). Edit, then Commit.',
-            srcName, target, nSlots), false);
-    else
-        setStatus(string.format('Dynamic set "%s" has nothing to copy (empty, or its items are not resolvable). "%s" left unchanged.',
-            srcName, target), true);
-    end
-end
-
-local function copyFromDynamicSet(srcName)
-    if M.workingSetName == nil or M.workingSetName == '' then
-        setStatus('Create or pick a set first, then copy into it.', true);
-        return;
-    end
-    if srcName == M.workingSetName then
-        setStatus('That IS the selected set -- pick a different source.', true);
-        return;
-    end
-    local filled = 0;
-    for _, list in pairs(M.working) do
-        if type(list) == 'table' and #list > 0 then filled = filled + 1; end
-    end
-    if filled > 0 then
-        ui._copyConfirm = { src = srcName, target = M.workingSetName, filled = filled, kind = 'dynamic' };
-        ui._copyConfirmOpen = true;
-        return;
-    end
-    doCopyFromDynamic(srcName);
+    doCopyFrom(kind, srcName);
 end
 
 -- "Copy from" > "New set(s)" mode: create a fresh dynamic set for EACH marked source,
@@ -2940,7 +2937,7 @@ end
 -- Each source is resolved with YOUR owned gear and committed straight into <JOB>.lua
 -- (a backup per commit, like Auto-Build All), then ONE '/dl sets reload'. The panel's
 -- in-progress working set is borrowed for the build and restored, so an uncommitted edit
--- survives untouched. `sources` = ordered array of { name, kind = 'static'|'dynamic' }.
+-- survives untouched. `sources` = ordered array of { name, kind = 'static'|'dynamic'|'lac' }.
 local function copyAsNewSets(job, sources)
     if not has.setmgr then setStatus('setmanager unavailable.', true); return; end
     if job == nil or job == '' then setStatus('Unknown job (are you logged in?).', true); return; end
@@ -2954,7 +2951,7 @@ local function copyAsNewSets(job, sources)
     local keepW, keepN, keepSel, keepDirty = M.working, M.workingSetName, ui.setSelected, _setDirty;
     local made, blank, failed, renamed = 0, 0, 0, 0;
     for _, p in ipairs(plan) do
-        local built = (p.kind == 'dynamic') and workingFromDynamic(p.name) or workingFromStatic(p.name);
+        local built = workingForSource(p.kind, p.name);
         M.working = built;
         local slots = buildCommitSlots();
         if #slots > 0 then
@@ -3952,7 +3949,7 @@ local function renderSetsTab(job, level)
     end
     imgui.PopItemWidth();
     if imgui.IsItemHovered() then
-        imgui.SetTooltip('Everything that manages the selected set: New, Rename (propagates\neverywhere), Delete, Copy from another set -- and Delete static when\nlegacy static sets are present.');
+        imgui.SetTooltip('Everything that manages the selected set: New, Rename (propagates\neverywhere), Delete, Copy from another set or an old FFXI-LAC one\n(Dynamic and static alike) -- and Delete static when legacy static\nsets are present.');
     end
 
     imgui.SameLine();
@@ -4094,9 +4091,9 @@ local function renderSetsTab(job, level)
         if c == nil then imgui.CloseCurrentPopup(); imgui.EndPopup(); return; end
         imgui.TextColored(COL.HEADER, 'Replace set contents?');
         imgui.Separator();
-        fmt.textWrapped(COL.USABLE, string.format('Replace "%s" (%d filled slot%s) with %s "%s"?',
+        fmt.textWrapped(COL.USABLE, string.format('Replace "%s" (%d filled slot%s) with %s set "%s"?',
             tostring(c.target), c.filled, (c.filled == 1) and '' or 's',
-            (c.kind == 'dynamic') and 'dynamic set' or 'static', tostring(c.src)));
+            KIND_WORD[c.kind] or 'static', tostring(c.src)));
         fmt.textWrapped(COL.DIM, 'The whole set is replaced: slots the source does not define are cleared. Nothing is committed until you press Commit.');
         imgui.Separator();
         local red = (ImGuiCol_Button ~= nil);
@@ -4105,7 +4102,7 @@ local function renderSetsTab(job, level)
             local src, kind = c.src, c.kind;
             ui._copyConfirm = nil;
             imgui.CloseCurrentPopup();
-            if kind == 'dynamic' then doCopyFromDynamic(src); else doCopyFromStatic(src); end
+            doCopyFrom(kind, src);
         end
         if red then imgui.PopStyleColor(1); end
         imgui.SameLine(0, 8);
@@ -4162,8 +4159,11 @@ local function renderSetsTab(job, level)
         imgui.EndPopup();
     end
 
-    -- Copy from (Manage... > Copy from): dynamic OR legacy static sources, each in
-    -- its own scroll list. A destination selector at the top picks WHERE they land:
+    -- Copy from (Manage... > Copy from): this profile's Dynamic sets on the left,
+    -- everything the old FFXI-LAC files still hold on the right -- their `sets.Dynamic`
+    -- block (dlac's own sets from before profile storage) above their LuaAshitacast
+    -- statics, one name kept per set (the dynamic wins a collision -- setimport
+    -- .mergeLegacySources). A destination selector at the top picks WHERE they land:
     --   Current set : the marked set is REPLACED by the one source you click (legacy
     --                 behaviour -- a filled target still goes through the Replace confirm).
     --   New set(s)  : mark ANY number of sources; each becomes a fresh set kept under
@@ -4200,7 +4200,10 @@ local function renderSetsTab(job, level)
         end
         imgui.Separator();
 
-        local statics = profsets.staticSetNames();
+        -- The legacy column: old FFXI-LAC Dynamic sets and LuaAshitacast statics in
+        -- ONE deduped list (dynamic wins a shared name), split by kind for the eye.
+        local simport = require('dlac\\gear\\setimport');
+        local legacy = simport.mergeLegacySources(profsets.staticSetNames(), profsets.lacSetNames());
         local pick = nil;   -- 'current' mode: single immediate pick
 
         imgui.BeginChild('##setcf_dyn', { 210, 240 }, true);
@@ -4223,33 +4226,60 @@ local function renderSetsTab(job, level)
         if not anyD then imgui.TextColored(COL.DIM, newMode and '(no dynamic sets)' or '(no other dynamic sets)'); end
         imgui.EndChild();
         imgui.SameLine(0, 8);
-        imgui.BeginChild('##setcf_stat', { 210, 240 }, true);
-        imgui.TextColored(COL.HEADER, 'Static sets (legacy)');
-        if #statics == 0 then imgui.TextColored(COL.DIM, '(none on this profile)'); end
-        for _, nm in ipairs(statics) do
-            if newMode then
-                local key = 'static\0' .. nm;
-                local on = ui._copyMarks[key] == true;
-                if imgui.Selectable(nm .. '##cfs_' .. nm, on) then ui._copyMarks[key] = (not on) or nil; end
-            else
-                if imgui.Selectable(nm .. '##cfs_' .. nm, false) then pick = { kind = 'static', nm = nm }; end
+        imgui.BeginChild('##setcf_stat', { 240, 240 }, true);
+        -- TWO headings, both in the list-header blue (Henrik 2026-07-28: a dim
+        -- sub-header under a blue one reads as one list with noise in it -- "even I
+        -- got confused"). Old dynamic sets first, then the statics, each group named
+        -- by what it IS; a group with nothing in it draws no heading at all.
+        if #legacy == 0 then
+            imgui.TextColored(COL.HEADER, 'Old FFXI-LAC sets');
+            imgui.TextColored(COL.DIM, '(none found for this job)');
+        end
+        for _, grp in ipairs({ { kind = 'lac', title = 'Old FFXI-LAC sets' },
+                               { kind = 'static', title = 'Old Static Sets' } }) do
+            local shown = false;
+            for _, s in ipairs(legacy) do
+                if s.kind == grp.kind then
+                    if not shown then
+                        shown = true;
+                        if #legacy > 0 and grp.kind == 'static' then imgui.Spacing(); end
+                        imgui.TextColored(COL.HEADER, grp.title);
+                    end
+                    local key = s.kind .. '\0' .. s.name;
+                    if newMode then
+                        local on = ui._copyMarks[key] == true;
+                        if imgui.Selectable(s.name .. '##cfs_' .. key, on) then ui._copyMarks[key] = (not on) or nil; end
+                    else
+                        if imgui.Selectable(s.name .. '##cfs_' .. key, false) then pick = { kind = s.kind, nm = s.name }; end
+                    end
+                end
             end
         end
         imgui.EndChild();
+        -- The explainer only when there IS something to explain: a player with no
+        -- legacy files at all gets the empty column and no paragraph about files
+        -- they have never had.
+        if #legacy > 0 then
+            fmt.textWrapped(COL.DIM, 'Both lists are read (never written) from this job\'s old files: FFXI-LAC sets are dlac\'s own from before profiles, Static sets are LuaAshitacast\'s. A name in both is listed once, as the FFXI-LAC one.');
+        end
 
         if newMode then
-            -- Gather marks in display order (dynamic list, then static list) so the
-            -- create plan / duplicate warning line up with what the eye sees.
+            -- Gather marks in display order (dynamic list, then the legacy column in
+            -- its own order) so the create plan / duplicate warning line up with what
+            -- the eye sees.
             local sources = {};
             for _, nm in ipairs(profsets.dynamicSetNames()) do
                 if ui._copyMarks['dynamic\0' .. nm] then sources[#sources + 1] = { name = nm, kind = 'dynamic' }; end
             end
-            for _, nm in ipairs(statics) do
-                if ui._copyMarks['static\0' .. nm] then sources[#sources + 1] = { name = nm, kind = 'static' }; end
+            for _, want in ipairs({ 'lac', 'static' }) do
+                for _, s in ipairs(legacy) do
+                    if s.kind == want and ui._copyMarks[s.kind .. '\0' .. s.name] then
+                        sources[#sources + 1] = { name = s.name, kind = s.kind };
+                    end
+                end
             end
             -- Duplicate warning: run the SAME plan the commit will, so the names shown
             -- are exactly what gets created (existing names, and in-batch collisions).
-            local simport = require('dlac\\gear\\setimport');
             local plan = simport.resolveNewSetNames(sources, profsets.dynamicSetNames());
             local dups = {};
             for _, p in ipairs(plan) do
@@ -4275,7 +4305,7 @@ local function renderSetsTab(job, level)
         else
             if pick ~= nil then
                 imgui.CloseCurrentPopup();
-                if pick.kind == 'dynamic' then copyFromDynamicSet(pick.nm); else copyFromStaticSet(pick.nm); end
+                copyFromSet(pick.kind, pick.nm);
             end
         end
         imgui.EndPopup();
