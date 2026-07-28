@@ -249,7 +249,10 @@ merge carries it **without asking him again**. Only he can move an entry to ACCE
 this does not make an accepted entry mergeable *alone*: `dev` promotes
 **whole-or-not-at-all**, so an accepted entry rides the next promotion of the whole branch.
 
-*(Empty — last emptied by the SIXTH 2026-07-28 promotion: `2026.07.28p`–`q`, the two E-Box
+*(Empty — last emptied by the SEVENTH 2026-07-28 promotion: `2026.07.28r`, a two-line trim to
+the yellow hover on Henrik's *"Completely unnecessary. Just bloats the window."* — the header
+already said the copies are at your Mog House. Nothing else rode with it. Before that, the
+SIXTH 2026-07-28 promotion: `2026.07.28p`–`q`, the two E-Box
 Restock rulings — the **yellow icon now asks about the Mog House** (your own Sack/Case/Satchel
 count as held; the deliberate over-draw retired) and **searching the box no longer needs a box
 in reach** (trove has no distance check on any 0x1A4 action; the near-box gate now covers only
