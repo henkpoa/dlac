@@ -6887,3 +6887,50 @@ Not yet field-tested: the icon's whole trigger now depends on Mog House containe
 readable from memory while you stand in the field. `gear/gearcheck.lua` has warned *"it is in
 Mog Safe"* during play since the native era, so the reads are proven — but proven for gear in
 the Safe, not for a Locker on this server; Henrik confirms it at a box.
+
+## Session "the Status column becomes a switch" (2026-07-28, on `dev` — addon `2026.07.28u`)
+
+Henrik, going down the Gear Helpers list row by row: Elemental Staff, Elemental Obi, Oneiros
+Grip and E-Box Restock are *"fine, don't touch"* — Crafting, Gathering, Fishing and Chocobo
+each get **"an on or off slider (same as hobby, only one can be active)"**.
+
+The four he named are exactly `idleexcl.MEMBERS`, which is the whole reason the ruling is
+coherent rather than cosmetic: those four rows describe something you **arm**, and the other
+five describe something that is either always available (a slot rule waiting for its `dlac:`
+entry) or switched somewhere else. A column that says *"FULL KIT -- awesome"* answers "how good
+is my gear", which the row's **name colour** already answers on the same line. It never
+answered "is it running right now" — and for an armed hobby that is the only question the list
+view is asked.
+
+**Nothing new was invented to do it.** The pill is `craftbar.onOffSwitch` (its sixth surface),
+and the switch behind it is the watcher's own `setEnabled` / `setAutoHelm` reached through a new
+`idleexcl.setOn(key, on)`. That indirection is the point: `idleexcl` already owned *which four*
+and *how each stands down* (`disable()`, HELM clearing both flags), but could only ever disarm —
+the arming half lived scattered in each caller. `setOn` completes the table with `enable()` and
+routes through the watcher, so `guardActivate` still refuses a second hobby, in chat, from
+inside the watcher. The list surface has **no lock logic of its own**; it returns the state it
+did not reach and the pill snaps back. Lock-while-active, never auto-disarm (ADR 0017), holds
+unchanged — and the hover names the blocker *before* the click, which the bar could not do
+because it only ever shows one hobby at a time.
+
+**Where the coverage sentence went.** Into the pill's hover (`Your gear: FULL KIT -- awesome
+(HELM+3, Surv+8).`) — the panel-text standard, and the detail view is still one click away.
+The row name keeps its coverage ramp, so the green-to-red glance survives.
+
+**The one real trap was ImGui, not product.** These rows are drawn as a full-width `Selectable`
+with the three columns painted on top by `SameLine` — so the switch would have sat *inside*
+another item's hit box, and ImGui gives an earlier item's `HoveredId` right of way unless the
+row calls `SetItemAllowOverlap` (which `profilesmenu` feature-detects precisely because not
+every binding exposes it). Rather than depend on that, a pill row **ends its click target at
+570** and the switch starts at 580: the two hit boxes never share a pixel, so there is no
+overlap to resolve and no API to detect. `HP8`/`HP9` pin the widths.
+
+The list view had **zero** render coverage before this — `renderTab` pcalls `renderAutomations`,
+so a silent nil global here blanks the entire tab in the field while every load test stays
+green (hard rule 8, the fault this project keeps re-learning). `HP0`–`HP16` now drive the real
+render against a stub imgui: which rows got a pill and which kept their sentence, that ON
+follows the *armed* hobby rather than the row's own coverage, that the coverage line survived
+into the hover, and that a click reaches `setOn` with the right key and direction. `IE7*` pins
+`setOn` headlessly, including the two things a careless dispatcher gets wrong: HELM must arm
+**Auto HELM** and not the unwired manual idle flag, and an arm refused by the lock must report
+`false`. Suites **4218 + 751**, both runtimes.

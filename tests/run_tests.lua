@@ -2006,6 +2006,24 @@ check('T35 current keeps ings order', curT.ings[1] == 1165 and #curT.ings == 2, 
     check('IE6 chocobo arms when idle',             (idleexcl.getActive() or {}).key, 'choco');
     check('IE6b exactly one armed',                 armedCount(), 1);
 
+    -- setOn: arm/disarm ONE hobby by key -- the switch behind a surface that
+    -- shows all four at once (the Gear Helpers Status pills, 2026-07-28). It
+    -- routes through each watcher's own setter, so the LOCK is untouched: an arm
+    -- against a running hobby is refused and setOn reports the state it did NOT
+    -- reach. HELM must route to Auto HELM (its one switch), never the unwired
+    -- manual idle flag.
+    check('IE7 setOn refuses a 2nd hobby',          idleexcl.setOn('craft', true), false);
+    check('IE7b the refused arm left craft off',    IE_cw.isEnabled(), false);
+    check('IE7c chocobo is still the armed one',    (idleexcl.getActive() or {}).key, 'choco');
+    check('IE7d setOn(false) stands it down',       idleexcl.setOn('choco', false), false);
+    check('IE7e nothing armed now',                 idleexcl.getActive(), nil);
+    check('IE7f setOn arms when idle',              idleexcl.setOn('helm', true), true);
+    check('IE7g HELM armed = AUTO HELM',            IE_hw.isAutoHelm(), true);
+    check('IE7h ...not the manual idle flag',       IE_hw.isEnabled(), false);
+    check('IE7i setOn(false) clears BOTH switches', idleexcl.setOn('helm', false), false);
+    check('IE7j exactly nothing armed after',       armedCount(), 0);
+    check('IE7k an unknown key is a no-op',         idleexcl.setOn('nosuch', true), false);
+
     -- Restore: stand everything down and put package.loaded back so later blocks
     -- are unaffected (a later fishwatch.setEnabled must NOT reach these peers).
     IE_ch.setEnabled(false);

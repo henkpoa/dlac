@@ -3655,6 +3655,158 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- HP. Gear Helpers LIST view: the four idle hobbies answer Status with the
+--     SHARED on/off pill, everything else keeps its status sentence (Henrik
+--     2026-07-28). The list view had no render coverage at all -- renderTab
+--     pcalls renderAutomations, so a nil-global here blanks the whole tab in the
+--     field and passes every load test. Drive the real render against a stub
+--     imgui and assert: which rows got a pill, that its ON state follows the
+--     ARMED hobby (not the row's own coverage), that the coverage line survived
+--     into the hover, and that a click reaches idleexcl.setOn.
+-- ---------------------------------------------------------------------------
+;(function()
+    local saved = {
+        imgui = package.loaded['imgui'], aui = package.loaded['dlac\\ui\\automationsui'],
+        cb = package.loaded['dlac\\ui\\craftbar'], ie = package.loaded['dlac\\feature\\idleexcl'],
+    };
+    local log, pills, setOnLog = {}, {}, {};
+    local function nop() end
+    local IM = {};
+    for _, n in ipairs({ 'Text', 'TextWrapped', 'SameLine', 'Spacing', 'Separator', 'Dummy',
+        'Image', 'PushItemWidth', 'PopItemWidth', 'BeginGroup', 'EndGroup', 'NewLine',
+        'PushID', 'PopID', 'PushStyleColor', 'PopStyleColor', 'PushStyleVar', 'PopStyleVar',
+        'InputText', 'EndCombo', 'Indent', 'Unindent', 'InvisibleButton' }) do
+        IM[n] = nop;
+    end
+    IM.TextColored   = function(_, t) log[#log + 1] = tostring(t); end
+    IM.SetTooltip    = function(t) log[#log + 1] = tostring(t); end
+    IM.Button        = function() return false; end
+    IM.Checkbox      = function() return false; end
+    IM.BeginCombo    = function() return false; end
+    IM.CollapsingHeader = function() return true; end   -- every section OPEN
+    IM.IsItemHovered = function() return false; end
+    IM.IsItemClicked = function() return false; end
+    IM.GetWindowWidth        = function() return 900; end
+    IM.GetContentRegionAvail = function() return 860; end
+    IM.GetCursorScreenPos    = function() return 0, 0; end
+    IM.GetWindowDrawList     = function() return { AddLine = nop, AddRect = nop,
+                                                   AddRectFilled = nop, AddCircleFilled = nop }; end
+    IM.GetColorU32           = function() return 0xFFFFFFFF; end
+    -- Selectable records the WIDTH it was asked for: the pill rows must end
+    -- their click target before the switch (the overlap rule in autoRow).
+    local selW = {};
+    IM.Selectable = function(_, _, _, size)
+        selW[#selW + 1] = (type(size) == 'table') and size[1] or nil;
+        return false;
+    end
+
+    -- The pill: record every call, and "click" whichever id the test wants.
+    local clickId = nil;
+    package.loaded['dlac\\ui\\craftbar'] = {
+        onOffSwitch = function(on, id, tipOn, tipOff)
+            pills[id] = { on = on, tipOn = tostring(tipOn), tipOff = tostring(tipOff) };
+            return id == clickId;
+        end,
+    };
+    local activeStub = nil;
+    package.loaded['dlac\\feature\\idleexcl'] = {
+        getActive = function() return activeStub; end,
+        setOn     = function(k, v) setOnLog[#setOnLog + 1] = tostring(k) .. '=' .. tostring(v); return false; end,
+    };
+
+    local TMP = '.\\tests\\__no_such_dir__\\';
+    local realOpen = io.open;
+    io.open = function(p, mode)                        -- luacheck: ignore
+        if type(mode) == 'string' and mode:find('[wa+]') then return nil; end
+        return realOpen(p, mode);
+    end;
+    local deps = {
+        dataDir      = function() return TMP; end,
+        charBase     = function() return TMP; end,
+        lookupByName = function() return nil; end,
+        lookupById   = function() return nil; end,
+        ownedCounts  = function() return {}; end,
+        ownedList    = function() return {}; end,
+        allEquipList = function() return {}; end,
+        haveInBags   = function() return true; end,
+        playerJob    = function() return 'WHM'; end,
+        renderIcon   = nop,
+        itemTooltip  = nop,
+        ui           = {},
+    };
+
+    package.loaded['imgui'] = IM;
+    package.loaded['dlac\\ui\\automationsui'] = nil;
+    local ok, aui = pcall(require, 'dlac\\ui\\automationsui');
+    check('HP0 automationsui re-requires for the list view', ok and type(aui) == 'table', true);
+    if ok and type(aui) == 'table' then
+        aui.init(deps);
+        aui.openDetail(nil);                            -- the LIST view
+        local rok = pcall(aui.renderTab, 'WHM', 99);
+        check('HP1 the Gear Helpers list renders', rok, true);
+        -- Exactly the four idle hobbies get a switch...
+        for _, k in ipairs({ 'craft', 'helm', 'fish', 'choco' }) do
+            check('HP2 ' .. k .. ' Status is a pill', pills['autorow_' .. k] ~= nil, true);
+        end
+        -- ...and nothing else does (the three "don't touch" rows + the ammo /
+        -- MaxMP rules keep their status sentence).
+        for _, k in ipairs({ 'iridescence', 'obi', 'oneiros', 'ammo', 'maxmp', 'restock' }) do
+            check('HP3 ' .. k .. ' Status is NOT a pill', pills['autorow_' .. k], nil);
+        end
+        check('HP4 nothing armed -> every pill reads off',
+            (pills['autorow_craft'].on == false) and (pills['autorow_fish'].on == false), true);
+        -- The status sentence the pills replaced still reaches the screen on the
+        -- untouched rows.
+        local text = table.concat(log, '\n');
+        check('HP5 the untouched rows still print a status',
+            text:find('Elemental Staff', 1, true) ~= nil, true);
+        -- ...and the hobby rows' coverage moved into the hover, not the bin.
+        check('HP6 the coverage line rides the pill hover',
+            pills['autorow_craft'].tipOff:find('Your gear:', 1, true) ~= nil, true);
+        check('HP7 the off hover says what turning it on WEARS',
+            pills['autorow_fish'].tipOff:find('fishing kit', 1, true) ~= nil, true);
+        -- The click target stops short of the Status column on a pill row (570),
+        -- and stays full-width (0) on the others.
+        local narrow, full = 0, 0;
+        for _, w in ipairs(selW) do
+            if w == 570 then narrow = narrow + 1; elseif w == 0 then full = full + 1; end
+        end
+        check('HP8 four rows shorten their click target', narrow, 4);
+        check('HP9 the other rows keep the full-width one', full > 0, true);
+
+        -- ARMED: the pill follows idleexcl, and the other three say who blocks.
+        log, pills, selW = {}, {}, {};
+        activeStub = { key = 'helm', name = 'HELM' };
+        pcall(aui.renderTab, 'WHM', 99);
+        check('HP10 the armed hobby reads ON',  pills['autorow_helm'].on, true);
+        check('HP11 the others read off',       pills['autorow_craft'].on, false);
+        check('HP12 the armed hover offers OFF',
+            pills['autorow_helm'].tipOn:find('Click to turn off', 1, true) ~= nil, true);
+        check('HP13 a blocked hover NAMES the blocker',
+            pills['autorow_craft'].tipOff:find('HELM is on', 1, true) ~= nil, true);
+        check('HP14 ...and says only one at a time',
+            pills['autorow_craft'].tipOff:find('only one hobby at a time', 1, true) ~= nil, true);
+
+        -- A click on an off pill asks idleexcl to arm THAT hobby (the guard --
+        -- and the refusal -- stay inside the watcher; the row never bypasses it).
+        log, pills = {}, {};
+        clickId, activeStub = 'autorow_choco', nil;
+        pcall(aui.renderTab, 'WHM', 99);
+        check('HP15 clicking an off pill arms that hobby', setOnLog[#setOnLog], 'choco=true');
+        -- ...and a click on the ARMED one turns it off.
+        setOnLog = {};
+        clickId, activeStub = 'autorow_helm', { key = 'helm', name = 'HELM' };
+        pcall(aui.renderTab, 'WHM', 99);
+        check('HP16 clicking the armed pill turns it off', setOnLog[#setOnLog], 'helm=false');
+    end
+    io.open = realOpen;
+    package.loaded['imgui'] = saved.imgui;
+    package.loaded['dlac\\ui\\automationsui'] = saved.aui;
+    package.loaded['dlac\\ui\\craftbar'] = saved.cb;
+    package.loaded['dlac\\feature\\idleexcl'] = saved.ie;
+end)();
+
+-- ---------------------------------------------------------------------------
 -- verdict
 -- ---------------------------------------------------------------------------
 if #failures > 0 then

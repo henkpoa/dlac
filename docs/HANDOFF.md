@@ -1084,6 +1084,13 @@ research already recorded. In rough priority order:
   the ADR 0012 claim-side dead end — the engine's co-claim is untouched (AR8/9/10 green).
   The three old craft/helm/fish bar windows were unified: each bar body is now
   `<bar>.renderContent(availW)` drawn by `hobbybar`.
+  **2026-07-28 (`u`), on `dev`, not yet field-confirmed:** those same four hobbies now
+  carry the SAME on/off pill in the Gear Helpers **Status** column (Henrik: *"on or off
+  slider, same as hobby, only one can be active"*) — one row per hobby, all four visible
+  at once. It drives the new `idleexcl.setOn(key, on)`, which routes through the watchers,
+  so the lock and its chat refusal are unchanged; the coverage sentence the column used to
+  print moved into the pill's hover. The other five rows (Elemental Staff / Obi / Oneiros
+  Grip / Ammo / MaxMP, plus E-Box Restock on CW) keep their status sentence untouched.
 
 - **weatherMatch trigger condition — SHIPPED 2026-07-24 (ADR 0018).** New trigger flag
   `weatherMatch` (Precast+Midcast, tier 30): true when the action's element == the

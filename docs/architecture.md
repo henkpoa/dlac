@@ -395,6 +395,25 @@ reads stale ladders). `M.renderTab` is the tab entry point (guard ladder + login
 gate). No forwarders were left on triggersui — smoke_ui S140–S151 pin both the new
 home and the absence of the old one.
 
+#### The Status column: sentence or switch (2026-07-28)
+The list view's Status column prints a coverage sentence for every row EXCEPT the four
+idle hobbies (`craft` / `helm` / `fish` / `choco` — exactly `idleexcl.MEMBERS`), which
+draw the shared **on/off pill** (`craftbar.onOffSwitch`) instead. Those four are the only
+rows describing something you ARM; the rest are slot rules waiting for their `dlac:` entry
+or switches that live elsewhere. Coverage is not lost: the row NAME keeps the `levelColor`
+ramp and the sentence rides the pill's hover.
+
+The pill drives **`idleexcl.setOn(key, on)`**, which routes through each watcher's own
+`setEnabled` / `setAutoHelm` — so `guardActivate` still refuses a second hobby from inside
+the watcher (lock-while-active, ADR 0017), and this surface holds no lock logic of its own;
+it just reports the state it did not reach. `listRows()` is UNCHANGED (`txt` still carries
+the sentence) — the switch is a rendering decision in `autoRow`, not a data one.
+
+One layout rule worth keeping: a pill row's `Selectable` click target ends at **570** while
+the switch starts at 580. A full-width Selectable underneath a widget swallows its press
+unless the row calls `SetItemAllowOverlap` (which `profilesmenu` feature-detects because not
+every binding has it); non-overlapping hit boxes need no API at all. smoke_ui `HP0`–`HP16`.
+
 #### Naming: display labels vs internal names (2026-07-28)
 A GM read `Auto <activity>` ("Auto Fish Set", "Auto HELM Set") as *the addon performs the
 activity*. Nothing in this family does: every row picks EQUIPMENT and nothing else. The

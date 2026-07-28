@@ -1411,19 +1411,84 @@ local function autoColHeader()
     imgui.Separator();
 end
 
+-- The four idle hobbies answer Status with a SWITCH, not a sentence (Henrik
+-- 2026-07-28): "on or off slider, same as the hobby bar, only one can be active".
+-- It is the bar's pill and the bar's switch -- craftbar.onOffSwitch draws it,
+-- idleexcl.setOn arms it -- so the lock is unchanged: arming a second hobby is
+-- refused in chat by guardActivate (ADR 0017, lock-while-active, never
+-- auto-disarm). The coverage line this column used to print is not lost; it
+-- rides the pill's hover (the panel-text standard: label on screen, detail in
+-- the hover). Row NAME colour still carries coverage, so the ramp is still read
+-- at a glance. `does` = what turning it on equips -- gear only, never the act.
+local HOBBY_PILL = {
+    craft = { label = 'Crafting gear',
+              does  = 'wear your best gear for the selected craft while it is on.\nIt never crafts for you.' },
+    helm  = { label = 'Gathering gear',
+              does  = 'wear your best gathering gear when you are near a Point\n(or right after a swing). You still swing.' },
+    fish  = { label = 'Fishing gear',
+              does  = 'wear your best fishing kit while idle -- rod and bait follow\nthe target fish. You still fish.' },
+    choco = { label = 'Chocobo gear',
+              does  = 'wear your best riding-time gear while idle. You still dig.' },
+};
+
+-- Draw one hobby's Status pill. Falls back to the row's old status text if
+-- idleexcl cannot be reached -- a load knot must dim the switch, never blank the
+-- column (the same rule the detail panels' pills follow).
+local function hobbyPill(r, p)
+    local excl = nil;
+    pcall(function() excl = require('dlac\\feature\\idleexcl'); end);
+    if type(excl) ~= 'table' or type(excl.setOn) ~= 'function'
+       or type(excl.getActive) ~= 'function' then
+        imgui.TextColored(COL_DIM, r.txt or '');
+        return;
+    end
+    local a = excl.getActive();
+    local on = (type(a) == 'table' and a.key == r.key);
+    local cover = (type(r.txt) == 'string' and r.txt ~= '') and ('\nYour gear: ' .. r.txt .. '.') or '';
+    local tipOn = p.label .. ' is ON. Click to turn off.' .. cover;
+    local tipOff;
+    if a ~= nil then
+        -- Name the blocker HERE too: the refusal itself is a chat line, and a
+        -- hover that explains it before the click is cheaper than one after.
+        tipOff = string.format('%s is on -- turn that off first (only one hobby at a time).%s',
+            tostring(a.name), cover);
+    else
+        tipOff = 'Click to turn on: ' .. p.does .. cover;
+    end
+    local toggled = false;
+    local cbok, craftbar = pcall(require, 'dlac\\ui\\craftbar');
+    if cbok and type(craftbar) == 'table' and type(craftbar.onOffSwitch) == 'function' then
+        toggled = craftbar.onOffSwitch(on, 'autorow_' .. r.key, tipOn, tipOff);
+    else
+        toggled = imgui.Button((on and 'ON' or 'OFF') .. '##autopill_' .. r.key, { 46, 22 });
+        if imgui.IsItemHovered() then imgui.SetTooltip(on and tipOn or tipOff); end
+    end
+    if toggled then excl.setOn(r.key, not on); end
+end
+
 -- One automation row (click opens its detail view). Module-level so it stays out
 -- of renderAutomations' local budget (the 200-local chunk cap, this file's whole
 -- reason for existing).
 local function autoRow(r)
     local col = levelColor(r.level, r.max);
+    local pill = HOBBY_PILL[r.key];
     imgui.PushID('autorow_' .. r.key);
-    if imgui.Selectable('##sel', false, ImGuiSelectableFlags_None, { 0, 20 }) then auto.view = r.key; end
+    -- A pill row's click target STOPS SHORT of the Status column (570 of the 580
+    -- offset). A full-width Selectable under the switch takes the press that
+    -- belongs to it unless the row opts into item overlap -- and not every imgui
+    -- binding exposes SetItemAllowOverlap (profilesmenu feature-detects it for
+    -- exactly this reason). Ending the hit box before the switch needs no API at
+    -- all: the two targets simply never share a pixel.
+    if imgui.Selectable('##sel', false, ImGuiSelectableFlags_None,
+                        { (pill ~= nil) and 570 or 0, 20 }) then auto.view = r.key; end
     if imgui.IsItemHovered() then
         imgui.SetTooltip('Click for details. Slot gear rules go INSIDE a set (add the dlac: entry\nto the slot via + Add); set-wide rules apply everywhere via their mode.');
     end
     imgui.SameLine(8);   imgui.TextColored(col, r.name);
     imgui.SameLine(215); imgui.TextColored(COL_DIM, r.kind);
-    imgui.SameLine(580); imgui.TextColored(col, r.txt or '');
+    imgui.SameLine(580);
+    if pill ~= nil then hobbyPill(r, pill);
+    else imgui.TextColored(col, r.txt or ''); end
     imgui.PopID();
 end
 
