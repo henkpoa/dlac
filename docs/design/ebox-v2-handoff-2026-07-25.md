@@ -206,7 +206,7 @@ stale belief that did NOT self-heal.
   round-one review defects were transient wrong beliefs that the 25s poll used to age out and
   now never would. When you remove a poll, audit everything that was leaning on it.
 
-## 6. Still open
+## 6. Still open — nothing (07-28: everything here closed, declined, or carried by Henrik)
 
 - ~~**Yellow icon option (b)** — MOVING items Mog Case → Inventory instead of buying more from
   the box.~~ **CLOSED 07-28 — obsoleted, then declined.** Written 07-25, before the C2 Mog House
@@ -228,6 +228,8 @@ stale belief that did NOT self-heal.
   Opening one stays manual.
 - **Deposit is still WITHDRAW-ONLY at the packet level** (server-ask #7 in
   `docs/server-questions.md`). The red icon is a `!box store` chat command, not a packet.
+  **07-28: not an open point — Henrik carries the ask to the Trove creator himself.** If a
+  deposit action ever lands, #7 says what to do (delete the entry, build the Dump button).
 - ~~**`main` has none of this.**~~ **STALE — all of it is on `main`** (promoted in `7231143`,
   07-25), as are the two 07-28 rulings (`ef82f1f`) and the yellow-hover trim. `dev` and `main`
   are level.

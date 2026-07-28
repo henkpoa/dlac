@@ -157,7 +157,7 @@ rule — `floor(maxmp × 50/100)`, boundary inclusive (`dispatch.lua` v67, the o
 
 ---
 
-## 7. The E-Box (Ephemeral Box) has no per-item deposit action — OPEN (feature dependency)
+## 7. The E-Box (Ephemeral Box) has no per-item deposit action — HENRIK-CARRIED (2026-07-28: he takes it to the Trove creator directly; not open dlac work)
 
 The trove `0x1A4` protocol — the E-Box wire protocol dlac's `eboxclient` speaks (the
 authoritative source is the `trove` Ashita addon, `trove/utils/packet.lua`) — has a
