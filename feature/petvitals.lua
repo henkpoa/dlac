@@ -70,7 +70,12 @@ function M.fromPet(pet)
         name = (pet.Name:gsub('%z', ''):gsub('%s+$', ''));
         if name == '' then name = nil; end
     end
-    return { present = true, hpp = hpp, tp = tonumber(pet.TP), name = name };
+    -- Status rides along verbatim ('Idle' / 'Engaged' / ...; nativedata resolves
+    -- it): the Fight poll gates on pet-IDLE (2026-07-29 rewrite), and a consumer
+    -- must not open a second status read beside this service.
+    local status = nil;
+    if type(pet.Status) == 'string' and pet.Status ~= '' then status = pet.Status; end
+    return { present = true, hpp = hpp, tp = tonumber(pet.TP), name = name, status = status };
 end
 
 -- ---------------------------------------------------------------------------

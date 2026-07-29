@@ -16789,221 +16789,151 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
--- BFT: the BST Helper's FIGHT switch (issue #139). The decision is a PURE
--- function -- edge + state in, command decision out -- so every acceptance
--- criterion is a headless check: engage-only vs follow, the module gates, the
--- pet gate, the captured-target confirm, and "nothing re-fires without a new
--- edge" (Heel). Plus the module's own per-character config file.
--- AC1/AC2/AC3/AC4/AC5/AC6.
+-- BFT: the BST Helper's FIGHT switch (issue #139; POLL rewrite 2026-07-29 --
+-- the Pup-Helper-proven shape after two failed edge-driven field rounds). The
+-- decision is a PURE function -- poll state in, command decision out -- so
+-- every rule is a headless check: the three modes, the module gates, the
+-- positive-true act gates, the retry spacing + cap, the follow retarget, and
+-- the disengage reset. Then the vitals-beat glue end to end, injected reads.
 -- ---------------------------------------------------------------------------
 ;(function()
-    local cfgMod = dofile('jobhelpers/bst/config.lua');
-    package.loaded['dlac\\jobhelpers\\bst\\config'] = cfgMod;
+    -- config + jobhelpers stubbed at the require seam: fight.lua asks for both
+    -- at CALL time, so package.loaded fakes are the whole harness.
+    local savedCfg = package.loaded['dlac\\jobhelpers\\bst\\config'];
+    local savedJH  = package.loaded['dlac\\feature\\jobhelpers'];
+    local fakeCfg = { vals = { fight = 'attack' } };
+    fakeCfg.get = function(k) return fakeCfg.vals[k]; end
+    fakeCfg.set = function(k, v) fakeCfg.vals[k] = v; return true; end
+    package.loaded['dlac\\jobhelpers\\bst\\config'] = fakeCfg;
+    package.loaded['dlac\\feature\\jobhelpers'] = {
+        activity = function() return { active = true }; end,
+    };
     local ft = dofile('jobhelpers/bst/fight.lua');
     package.loaded['dlac\\jobhelpers\\bst\\fight'] = ft;
 
-    local ENGAGE   = { kind = 'engage',   index = 0x2E1, serverId = 17797121, name = 'Nursery Nazuna' };
-    local RETARGET = { kind = 'retarget', index = 0x2E2, serverId = 17797122, name = 'Wild Rabbit' };
-    -- The armed baseline: BST, out of town, alive, not zoning, pill on, pet out.
+    -- The armed baseline: acting, engaged, pet out and idle, a target, clean history.
     local function armed(t)
-        local st = { mode = 'follow', active = true, hasPet = true, targetOk = true };
+        local st = { mode = 'attack', active = true, engaged = true, hasPet = true,
+                     petIdle = true, targetIndex = 0x2E1, now = 100 };
         for k, v in pairs(t or {}) do st[k] = v; end
         return st;
     end
 
-    -- --- "When I attack": one send per engage, target changes do nothing (AC1)
-    local d = ft.decide(ENGAGE, armed({ mode = 'attack' }));
-    check('BFT1 attack mode: engaging a mob sends the pet', d.act, true);
-    check('BFT2 ...at the packet-captured entity', d.target.serverId, ENGAGE.serverId);
-    check('BFT3 ...with the pet Fight command', d.command, ft.COMMAND);
-    check('BFT4 attack mode: a mid-fight target change does NOTHING',
-          ft.decide(RETARGET, armed({ mode = 'attack' })).act, false);
-    check('BFT5 ...and says why', ft.decide(RETARGET, armed({ mode = 'attack' })).reason, 'mode');
+    -- the act path + the positive-true gates
+    check('BFT1 engaged + idle pet + target -> send', ft.pollDecide(armed()).act, true);
+    check('BFT2 ...with the pet Fight command', ft.pollDecide(armed()).command, ft.COMMAND);
+    check('BFT3 off mode never acts', ft.pollDecide(armed({ mode = 'off' })).reason, 'off');
+    check('BFT4 inactive module never acts (reason carried)',
+          ft.pollDecide(armed({ active = false, reason = 'job' })).reason, 'job');
+    check('BFT5 not engaged -> quiet', ft.pollDecide(armed({ engaged = false })).reason, 'not-engaged');
+    -- `{ k = nil }` is an EMPTY table constructor -- a nil override never
+    -- reaches armed()'s pairs loop, so unreadable-state cases are built as
+    -- explicit literal states instead.
+    check('BFT6 unreadable engagement is NOT permission',
+          ft.pollDecide({ mode = 'attack', active = true, hasPet = true,
+                          petIdle = true, targetIndex = 0x2E1, now = 100 }).reason, 'not-engaged');
+    check('BFT7 no pet -> quiet', ft.pollDecide(armed({ hasPet = false })).reason, 'no-pet');
+    check('BFT8 no target -> quiet',
+          ft.pollDecide({ mode = 'attack', active = true, engaged = true,
+                          hasPet = true, petIdle = true, now = 100 }).reason, 'no-target');
+    check('BFT9 unreadable pet state is NOT permission',
+          ft.pollDecide({ mode = 'attack', active = true, engaged = true,
+                          hasPet = true, targetIndex = 0x2E1, now = 100 }).reason, 'pet-state-unknown');
 
-    -- --- "Follow my target": the retarget edge re-sends too (AC2)
-    check('BFT6 follow mode: a target change re-sends the pet',
-          ft.decide(RETARGET, armed()).act, true);
-    check('BFT7 ...at the NEW entity', ft.decide(RETARGET, armed()).target.serverId, RETARGET.serverId);
-    check('BFT8 follow mode still sends on the engage edge', ft.decide(ENGAGE, armed()).act, true);
+    -- pacing: the retry window and the cap, dying with the target
+    check('BFT10 same target inside RETRY_S waits',
+          ft.pollDecide(armed({ last = { target = 0x2E1, at = 99, tries = 1 } })).reason, 'waiting');
+    check('BFT11 same target after the window retries',
+          ft.pollDecide(armed({ last = { target = 0x2E1, at = 90, tries = 1 } })).act, true);
+    check('BFT12 the cap goes quiet after MAX_TRIES',
+          ft.pollDecide(armed({ last = { target = 0x2E1, at = 90, tries = 3 } })).reason, 'capped');
+    check('BFT13 a DIFFERENT target starts clean past the cap',
+          ft.pollDecide(armed({ targetIndex = 0x2E2,
+                                last = { target = 0x2E1, at = 99, tries = 3 } })).act, true);
 
-    -- --- Off, and the module gates: no command is EVER issued (AC4)
-    check('BFT9 Off: an engage does nothing', ft.decide(ENGAGE, armed({ mode = 'off' })).act, false);
-    check('BFT10 ...for the obvious reason', ft.decide(ENGAGE, armed({ mode = 'off' })).reason, 'off');
-    check('BFT11 an unknown mode reads as Off', ft.decide(ENGAGE, armed({ mode = 'sometimes' })).reason, 'off');
-    for _, r in ipairs({ 'job', 'town', 'dead', 'zoning', 'off' }) do
-        local dd = ft.decide(ENGAGE, armed({ active = false, reason = r }));
-        check('BFT12 the module gate holds it (' .. r .. ')', dd.act == false and dd.reason, r);
-    end
-    check('BFT13 no pet: no command is issued',
-          ft.decide(ENGAGE, armed({ hasPet = false })).reason, 'no-pet');
-    -- nil means UNREADABLE, so these two states are built by hand: `armed`'s
-    -- pairs() copy cannot express "this key is absent".
-    check('BFT14 an UNREADABLE pet is not permission to command one',
-          ft.decide(ENGAGE, { mode = 'follow', active = true, targetOk = true }).reason, 'no-pet');
-    check('BFT15 an UNREADABLE world is not permission either',
-          ft.decide(ENGAGE, { mode = 'follow', hasPet = true, targetOk = true }).act, false);
-    check('BFT16 a non-edge decides nothing', ft.decide({ kind = 'zone' }, armed()).reason, 'no-edge');
-    check('BFT17 no edge at all decides nothing', ft.decide(nil, armed()).reason, 'no-edge');
+    -- the busy pet: attack stops, follow re-sends on a target change
+    check('BFT14 attack: a fighting pet is left alone',
+          ft.pollDecide(armed({ petIdle = false })).reason, 'pet-busy');
+    check('BFT15 follow: a fighting pet re-sends when MY target changed',
+          ft.pollDecide(armed({ mode = 'follow', petIdle = false, targetChanged = true })).act, true);
+    check('BFT16 follow: same target keeps the pet where it is',
+          ft.pollDecide(armed({ mode = 'follow', petIdle = false, targetChanged = false })).reason, 'pet-busy');
+    check('BFT17 attack ignores the change signal',
+          ft.pollDecide(armed({ petIdle = false, targetChanged = true })).reason, 'pet-busy');
 
-    -- --- a charmed pet behaves exactly like a jug pet (AC5): the decision has
-    -- NO pet-identity input -- only "is there one" -- so the two are the same
-    -- call by construction.
-    local jug   = ft.decide(ENGAGE, armed({ petName = 'Courier Carrie' }));
-    local charm = ft.decide(ENGAGE, armed({ petName = 'Wild Sheep' }));
-    check('BFT18 a charmed pet decides identically to a jug pet',
-          (jug.act == charm.act) and (jug.command == charm.command), true);
+    -- decision text stays honest
+    check('BFT18 the capped reason names the command-wording suspicion',
+          ft.decisionText({ act = false, reason = 'capped' }):find('capped', 1, true) ~= nil, true);
+    check('BFT19 an act with a name reads as sent-at',
+          ft.decisionText({ act = true, targetName = 'Nursery Nazuna' }),
+          'sent your pet at Nursery Nazuna');
 
-    -- --- the captured target vs the live one (no target-word ambiguity)
-    check('BFT19 the target rolled on before the command could go -> no send',
-          ft.decide(ENGAGE, armed({ targetOk = false })).reason, 'target-moved');
-    check('BFT20 an UNREADABLE target still sends (the confirm is a second opinion)',
-          ft.decide(ENGAGE, armed({ targetOk = nil })).act, true);
-    check('BFT21 targetConfirms: same server id confirms',
-          ft.targetConfirms(ENGAGE, { index = 0, serverId = 17797121 }), true);
-    check('BFT22 targetConfirms: a different server id CONTRADICTS',
-          ft.targetConfirms(ENGAGE, { index = 0, serverId = 17797122 }), false);
-    check('BFT23 targetConfirms: the entity index is the fallback',
-          ft.targetConfirms({ serverId = 0, index = 0x2E1 }, { serverId = 0, index = 0x2E1 }), true);
-    check('BFT24 targetConfirms: nothing to compare is UNKNOWN, never false',
-          ft.targetConfirms(ENGAGE, nil), nil);
-
-    -- --- one edge -> at most one command, and nothing re-fires without a new
-    -- edge (AC3 -- Heel is respected because there is no other trigger).
+    -- --- the vitals-beat glue end to end: injected reads, captured fires ------
     local sent = {};
-    local realFire = ft._fire;
-    ft._fire = function(cmd) sent[#sent + 1] = cmd; return true; end
-    local READS = { pet = function() return true; end,
-                    target = function() return { index = ENGAGE.index, serverId = ENGAGE.serverId }; end };
-    local savedJH = package.loaded['dlac\\feature\\jobhelpers'];
-    package.loaded['dlac\\feature\\jobhelpers'] = { activity = function() return { active = true }; end };
-    cfgMod._charDir = function() return nil; end        -- pre-login: mode reads the default
-    check('BFT25 the default Fight mode is OFF (a helper never arms itself)', ft.mode(), 'off');
-    check('BFT26 ...so an edge issues no command', (ft.onEdge(ENGAGE, READS)).act, false);
-    check('BFT27 ...none at all', #sent, 0);
+    local realFire, realNow = ft._fire, ft._now;
+    ft._fire = function(c) sent[#sent + 1] = c; return true; end
+    local clock = 100;
+    ft._now = function() return clock; end
+    local world = { engaged = true, target = 0x2E1 };
+    local reads = {
+        engaged = function() return world.engaged; end,
+        target  = function() return world.target; end,
+        nameOf  = function() return 'Nursery Nazuna'; end,
+    };
+    local IDLE  = { present = true, status = 'Idle' };
+    local BUSY  = { present = true, status = 'Engaged' };
+    ft.resetIssues();
 
-    -- arm it through the module's own config file (scratch dir + stubbed io)
-    local FILES = {};
-    local realOpen, realLoadfile = io.open, loadfile;
-    cfgMod.forget();
-    cfgMod._charDir = function() return 'BFTDIR\\'; end
-    io.open = function(path, mode)
-        if type(path) == 'string' and path:find('BFTDIR', 1, true) then
-            if (mode or 'r'):find('w') then
-                return { write = function(_, s) FILES[path] = (FILES[path] or '') .. s; end, close = function() end };
-            end
-            return nil;
-        end
-        return realOpen(path, mode);
+    local d = ft.onBeat(IDLE, reads);
+    check('BFT20 beat 1: idle pet is sent at the target', #sent, 1);
+    check('BFT21 ...and the Panel line names the mob', ft.decisionText(d), 'sent your pet at Nursery Nazuna');
+    clock = clock + 0.4;
+    ft.onBeat(IDLE, reads);
+    check('BFT22 beat 2 inside the window: no second command', #sent, 1);
+    clock = clock + 0.4;
+    ft.onBeat(BUSY, reads);
+    check('BFT23 the pet took: quiet', #sent, 1);
+    check('BFT24 ...and says so', ft.lastDecision().reason, 'pet-busy');
+
+    -- follow: rolling to the next mob re-sends a FIGHTING pet
+    fakeCfg.vals.fight = 'follow';
+    clock = clock + 2.5;
+    world.target = 0x2E2;
+    ft.onBeat(BUSY, reads);
+    check('BFT25 follow: the target roll re-sends the pet', #sent, 2);
+    -- attack mode ignores the roll
+    fakeCfg.vals.fight = 'attack';
+    clock = clock + 2.5;
+    world.target = 0x2E3;
+    ft.onBeat(BUSY, reads);
+    check('BFT26 attack: the roll leaves a fighting pet alone', #sent, 2);
+
+    -- the retry-until-taken loop caps loudly-in-panel, silently in chat
+    fakeCfg.vals.fight = 'attack';
+    world.target = 0x2E4;
+    ft.resetIssues();
+    for i = 1, 6 do
+        clock = clock + 2.1;
+        ft.onBeat(IDLE, reads);
     end
-    loadfile = function(path)
-        if type(path) == 'string' and path:find('BFTDIR', 1, true) then
-            local s = FILES[path]; if s == nil then return nil; end return (loadstring or load)(s);
-        end
-        return realLoadfile(path);
-    end
+    check('BFT27 a command that never takes stops at MAX_TRIES', #sent, 2 + ft.MAX_TRIES);
+    check('BFT28 ...and the Panel reads capped', ft.lastDecision().reason, 'capped');
 
-    check('BFT28 an absent config file reads the default', ft.mode(), 'off');
-    check('BFT29 the file is not written until something changes', FILES['BFTDIR\\jobhelper-bst.lua'], nil);
-    check('BFT30 setting the mode persists it', ft.setMode('follow'), true);
-    check('BFT31 ...and it reads back', ft.mode(), 'follow');
-    check('BFT32 ...into the module\'s OWN per-character file',
-          FILES['BFTDIR\\jobhelper-bst.lua'] ~= nil, true);
-    check('BFT33 ...format-versioned',
-          (cfgMod._normalize((loadstring or load)(FILES['BFTDIR\\jobhelper-bst.lua'])()) or {}).fmt, 1);
-    check('BFT34 a mode that is not one of the three is refused', ft.setMode('berserk'), false);
-    check('BFT35 ...and the stored mode is untouched', ft.mode(), 'follow');
-    check('BFT36 an unknown key on disk is dropped, never carried',
-          cfgMod._normalize({ fight = 'follow', someNewKey = 7 }).someNewKey, nil);
-    check('BFT37 a wrong-typed value on disk falls back to the default',
-          cfgMod._normalize({ fight = 42 }).fight, nil);
+    -- disengage resets the bookkeeping; re-engaging starts clean
+    world.engaged = false;
+    clock = clock + 0.4;
+    ft.onBeat(IDLE, reads);
+    check('BFT29 disengaged: quiet', ft.lastDecision().reason, 'not-engaged');
+    world.engaged = true;
+    clock = clock + 0.4;
+    ft.onBeat(IDLE, reads);
+    check('BFT30 re-engaging the same mob starts a fresh engagement', #sent, 3 + ft.MAX_TRIES);
 
-    -- armed: one edge, one command, once
-    sent = {};
-    check('BFT38 an armed helper sends on the engage edge', (ft.onEdge(ENGAGE, READS)).act, true);
-    check('BFT39 exactly one command went out', #sent, 1);
-    check('BFT40 ...the pet Fight command', sent[1], ft.COMMAND);
-    check('BFT41 nothing re-fires without a NEW edge (Heel stays respected)', #sent, 1);
-    check('BFT42 the last decision is readable for the Panel (never chat)',
-          (ft.lastDecision() or {}).act, true);
-    check('BFT43 ...and reads as a human line',
-          ft.decisionText(ft.lastDecision()):find('Nursery Nazuna', 1, true) ~= nil, true);
-
-    -- fire-and-forget: a send the command bus refuses is NOT retried
-    sent = {};
-    ft._fire = function() return false; end
-    ft.onEdge(ENGAGE, READS);
-    ft._fire = function(cmd) sent[#sent + 1] = cmd; return true; end
-    check('BFT44 a refused send is not retried (the next edge is the next try)', #sent, 0);
-
-    -- the live target contradicting the captured one cancels the send
-    sent = {};
-    ft.onEdge(ENGAGE, { pet = function() return true; end,
-                        target = function() return { index = 0x999, serverId = 17797999 }; end });
-    check('BFT45 a target that moved on cancels the send', #sent, 0);
-    check('BFT46 ...and says so', (ft.lastDecision() or {}).reason, 'target-moved');
-
-    -- no pet: no command is ever issued, whatever the mode
-    sent = {};
-    ft.onEdge(ENGAGE, { pet = function() return false; end, target = READS.target });
-    check('BFT47 no pet: still no command', #sent, 0);
-
-    -- the module gate: the activity predicate holding means no command
-    sent = {};
-    package.loaded['dlac\\feature\\jobhelpers'] = {
-        activity = function() return { active = false, reason = 'town' }; end };
-    ft.onEdge(ENGAGE, READS);
-    check('BFT48 in town: no command is issued', #sent, 0);
-    check('BFT49 ...naming the gate that held it', (ft.lastDecision() or {}).reason, 'town');
-
-    -- --- the two services wired together end to end: bytes in, one command out
-    local ew = dofile('feature/engagewatch.lua');
-    package.loaded['dlac\\feature\\engagewatch'] = ew;
-    package.loaded['dlac\\feature\\jobhelpers'] = { activity = function() return { active = true }; end };
-    sent = {};
-    ew.reset(true);
-    check('BFT50 the module subscribes to the edge service', ft.init('bst'), true);
-    local function u16(v) return string.char(v % 256, math.floor(v / 256) % 256); end
-    local function pkt(sid, ix, cat)
-        return u16(0x081A) .. u16(0)
-            .. string.char(sid % 256, math.floor(sid / 256) % 256,
-                           math.floor(sid / 65536) % 256, math.floor(sid / 16777216) % 256)
-            .. u16(ix) .. u16(cat) .. u16(0);
-    end
-    -- the live target read follows the packet (the client targets what it engaged)
-    local liveTarget = { index = ENGAGE.index, serverId = ENGAGE.serverId };
-    ft.reads.pet    = function() return true; end
-    ft.reads.target = function() return liveTarget; end
-    ew.onPacket(pkt(ENGAGE.serverId, ENGAGE.index, ew.CAT_ENGAGE), 500);
-    ew.pump(nil, function() return 'Nursery Nazuna'; end);
-    check('BFT51 an engage packet ends as ONE pet command', #sent, 1);
-    -- packet stutter on the same mob: the edge service swallows it
-    ew.onPacket(pkt(ENGAGE.serverId, ENGAGE.index, ew.CAT_ENGAGE), 501);
-    ew.pump(nil, function() return 'Nursery Nazuna'; end);
-    check('BFT52 same-target stutter never reaches the module', #sent, 1);
-    -- auto-target rolls to the next mob: follow mode re-sends
-    liveTarget = { index = RETARGET.index, serverId = RETARGET.serverId };
-    ew.onPacket(pkt(RETARGET.serverId, RETARGET.index, ew.CAT_RETARGET), 502);
-    ew.pump(nil, function() return 'Wild Rabbit'; end);
-    check('BFT53 rolling to the next mob re-sends the pet', #sent, 2);
-    -- Heel: no new edge, no send, however many frames go by
-    for i = 1, 10 do ew.pump(nil, function() return nil; end); end
-    check('BFT54 Heel: a pulled-back pet stays back with no new edge', #sent, 2);
-    -- and "When I attack" ignores the roll
-    ft.setMode('attack');
-    liveTarget = { index = 0x2E3, serverId = 17797123 };
-    ew.onPacket(pkt(17797123, 0x2E3, ew.CAT_RETARGET), 520);
-    ew.pump(nil, function() return 'Nursery Nazuna'; end);
-    check('BFT55 attack mode ignores the target roll end to end', #sent, 2);
-
-    io.open, loadfile = realOpen, realLoadfile;
-    ft._fire = realFire;
-    ew.reset(true);
-    cfgMod.forget();
+    ft._fire, ft._now = realFire, realNow;
+    ft.resetIssues();
     package.loaded['dlac\\feature\\jobhelpers'] = savedJH;
-    package.loaded['dlac\\feature\\engagewatch'] = nil;
+    package.loaded['dlac\\jobhelpers\\bst\\config'] = savedCfg;
     package.loaded['dlac\\jobhelpers\\bst\\fight'] = nil;
-    package.loaded['dlac\\jobhelpers\\bst\\config'] = nil;
-    package.loaded['dlac\\lib\\statefile'] = nil;
 end)();
 
 -- ---------------------------------------------------------------------------

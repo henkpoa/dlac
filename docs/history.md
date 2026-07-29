@@ -7169,3 +7169,24 @@ untouched. Player-facing strings (**"Reward my pet when it drops low"**, *below 
 the 30-second lockout, and the ships-off default await the maintainer's sign-off and a field
 round; pet TP is published but nothing consumes it yet, and its scale is unverified against
 the live server.
+
+## Session "Fight goes poll-driven" (2026-07-29, field round 2, addon 2026.07.29j)
+
+**Theme:** the edge-driven Fight failed its second live round -- after the (target,kind)
+debounce fix, the captured-entity confirm still refused every send. Henrik: "can you look
+at the pup-helper addon, see how he handles it? I think he has it all covered."
+
+**Landed:** `bst\fight.lua` REWRITTEN on the field-proven POLL shape (Pup-Helper's, and
+the GearSwap BST convention -- pet-handling reference section 4.2): every pet-vitals beat
+(0.4s), a PURE `pollDecide` asks "engaged + pet idle + target?" and issues `/pet "Fight"
+<t>` through the central door. The pet-idle gate is the spam brake AND the retry -- a
+refused command leaves the pet idle so the next beat tries again; a command that took
+makes the pet non-idle and the issuing stops. `follow` re-sends a FIGHTING pet when the
+POLLED target changes (works for hand-sent pets too). Restraint: RETRY_S = 2 per target,
+MAX_TRIES = 3 per (engagement, target), then a visible `capped` Panel reason that names
+the command-wording suspicion -- the remaining unknown if the field round still fails.
+`petvitals.fromPet` now carries `status` verbatim (the idle gate consumes the service --
+no second status read). engagewatch stays a central service (subscriber-less until
+autoacc lands). Edge-driven `decide`/`targetConfirms`/`onEdge` died with their tests;
+BFT1-30 pin the poll core + the beat glue (nil-override trap: `{k=nil}` is an EMPTY
+constructor -- unreadable-state cases are literal states).
