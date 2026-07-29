@@ -88,11 +88,15 @@ How narrowly a Trigger's condition matches (Any → skill/status → class/eleme
 
 **Weather match**:
 The Trigger condition (`weatherMatch`) true when the action's element equals the CURRENT weather element — a plain equality, day-agnostic. It is what CatsEyeXI's Scholar cast-time bonus (server mod `ALACRITY_CELERITY_EFFECT`, active under Celerity/Alacrity) actually keys on — verified in the server: weather only, no day and no opposition. Reads the same `gData.GetEnvironment().WeatherElement` the obi uses, so a Scholar's own storm buff (which overrides zone weather) counts; single and double weather both match.
-_Avoid_: favourability (that is the obi's signed day+weather net — see Day/weather favourability); day match (day is not part of this)
+_Avoid_: favourability (that is the obi's signed day+weather net — see Day/weather favourability); day match (a DIFFERENT condition — see Day match)
+
+**Day match**:
+The Trigger condition (`dayMatch`, engine v156) true when the action's element equals TODAY's day element — a plain equality, weather-agnostic, with no opposing-element penalty. The day half of the favourability net standing alone, for gear whose bonus keys on the day and nothing else. Reads `gData.GetEnvironment().DayElement`, the same field the net scores, so the two can never disagree about the day. There is no "clear day" — all eight weekdays carry an element — so a day we can read is always a real match or a real non-match, and only a failed read is unknown; and the day is NOT storm-aware, unlike the weather read.
+_Avoid_: favourability (the signed net both over- and under-fires a day-only item — ADR 0029); weather match (the other one-sided equality — see Weather match)
 
 **Day/weather favourability**:
-The obi's environment score for an element: +1 per matching day OR weather, −1 per the OPPOSING element on the elemental wheel; net > 0 = favourable. Powers `dlac:AutoObi` and the `dayWeatherBonus` Trigger condition. A SIGNED net over day AND weather WITH opposition — deliberately different from a plain Weather match.
-_Avoid_: weather match (the day-agnostic equality above); "favourable weather" (it folds in day and opposition, not just weather)
+The obi's environment score for an element: +1 per matching day OR weather, −1 per the OPPOSING element on the elemental wheel; net > 0 = favourable. Powers `dlac:AutoObi` and the `dayWeatherBonus` Trigger condition. A SIGNED net over day AND weather WITH opposition — deliberately different from both one-sided equalities.
+_Avoid_: weather match / day match (the two one-sided equalities above — the net over- and under-fires either one); "favourable weather" (it folds in day and opposition, not just weather)
 
 **Claim**:
 A feature's declared wish to dress one or more slots (wear this item, or keep what's worn), registered with the Arbiter instead of equipped directly. Slots are contested one by one — losing a contest costs a claimant only that slot.

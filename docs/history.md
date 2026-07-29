@@ -7090,3 +7090,46 @@ not.
 Both suites green (**4429 + 793**, lua5.4). Player-facing strings (**Fight**, *Off* / *When I
 attack* / *Follow my target*) and the exact `/pet "Fight"` command spelling on CatsEyeXI await
 the maintainer's sign-off and a field round.
+
+## dayMatch trigger condition (2026-07-29, ADR 0029, engine v156)
+
+**Theme:** the environment vocabulary gets its missing third. Henrik, field: *"We currently
+have dayWeatherBonus and weatherMatch as conditions in precast and midcast. But we need one
+for dayMatch as well. There are items that give you bonus solely if the day match what you're
+casting."*
+
+**Landed:** `dayMatch` (Precast + Midcast, tier 30, true/false polarity) — true when the
+action's element equals TODAY's day element. `dayMatchesAction` (dispatch.lua) reads
+`gData.GetEnvironment().DayElement` — the SAME field `netForElement` already scores for the
+obi, so the net's day half and this condition can never disagree — cached on `ctx.del`, the
+`ctx.wel` pattern. No action element / Non-Elemental / unreadable day matches NEITHER
+polarity (never fires blind). GUI: a third flag in the Precast/Midcast builder under
+`weatherMatch`, its own colour in the rule boxes (a warm rose — the environment trio must not
+read as one colour), and all three hints now cross-reference each other so the menu itself
+steers you to the right one.
+
+**Why a third condition and not a mode of `dayWeatherBonus`:** ADR 0018's both-directions
+proof, re-run on the day axis. For a Fire spell — on **Firesday in Water (opposing) weather**
+the net is +1 −1 = 0, so `dayWeatherBonus` stays quiet while a day-only item IS paying out
+(under-fires); on **Earthsday in Fire weather** the net is +1, so `dayWeatherBonus` fires while
+the item is dark (over-fires). `weatherMatch` has no day term at all — wrong axis outright.
+Only the plain day equality tracks when a day-only bonus is live. DM14–DM17 pin exactly that
+independence, in both directions, against both neighbours.
+
+**The asymmetry worth remembering:** there is **no "clear day."** All eight weekdays carry an
+element (`WeekDayElement` / `WEEK_DAY_ELEMENT`, Fire..Dark), so a day we can read is always a
+real match or a real non-match and only a broken read is unknown — where weather has a genuine
+`None` (Clear / Sunshine / Clouds / Fog) that `weatherMatch` has to treat as a real non-match.
+Day is also **not** storm-aware: the weather read folds a Scholar's own storm over the zone,
+but nothing in the game changes the day, so `DayElement` is the plain calendar read.
+
+**Deliberately NOT claimed:** unlike ADR 0018, this one is not pinned to a named server
+mechanic — the CatsEyeXI source is not on this machine and no specific item was named. It
+ships as a calendar primitive ("the day element equals the spell's element"), true regardless
+of which item motivated it; pinning one item's exact gate (day only, or day-or-weather the way
+the retail obi tooltip reads?) is a follow-up that changes what a player **composes**, not what
+this condition means.
+
+`addon.version` 2026.07.29h; DM1–DM24 green, both suites **4455 + 793** (Windows lua 5.4).
+Note for the record: the working tree was shared with a live session mid-round on
+`engagewatch`, so the run counts include its two new EDG checks.

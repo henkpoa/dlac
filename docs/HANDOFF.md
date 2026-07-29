@@ -351,6 +351,26 @@ research already recorded. In rough priority order:
 
 ## Current state (as of 2026-07-26)
 
+- **2026-07-29: `dayMatch`, the day-only environment condition — ON `dev`, IN THE MERGE
+  QUEUE, field round owed** (`2026.07.29h`, engine v156, ADR 0029; the queue entry above is
+  the status authority). Henrik: *"there are items that give you bonus solely if the day
+  match what you're casting."* The environment vocabulary is now a TRIO, and the three are
+  three different questions about the world: `dayWeatherBonus` (the obi's signed day+weather
+  net, with opposition), `weatherMatch` (spell element == CURRENT weather element),
+  `dayMatch` (spell element == TODAY's day element). The net cannot stand in for a day-only
+  item — on Firesday in Water weather it reads +1 −1 = 0 and stays quiet while the item IS
+  paying out, and on Earthsday in Fire weather it reads +1 and fires while the item is dark;
+  `weatherMatch` has no day term at all. Precast + Midcast, tier 30; `dayMatchesAction` reads
+  `GetEnvironment().DayElement` (the same field `netForElement` scores, cached on `ctx.del`);
+  unknown day or no action element matches NEITHER polarity. **There is no "clear day"** —
+  all eight weekdays carry an element, so only a broken read is unknown (weather's `None` has
+  no day counterpart), and the day is not storm-aware. **Deliberately NOT pinned to a named
+  server mechanic** the way ADR 0018 pinned `weatherMatch` to `ALACRITY_CELERITY_EFFECT`: the
+  server source is not on this machine and no item was named, so it ships as a calendar
+  primitive. Pinning one item's exact gate (day only, or day-or-weather the way the retail
+  obi tooltip reads?) is an open follow-up that changes what a player *composes*, not what
+  this condition means. Tests DM1–DM24; full story in `docs/history.md`.
+
 - **2026-07-28: the Ventures rings reach the Crafting Gear panel — ON MAIN, field round
   owed** (`2026.07.28o`; promoted the same hour on Henrik's *"push to main"*, deliberately
   un-field-confirmed — the second such call today. It is display + one coverage light with
