@@ -1,4 +1,4 @@
---[[
+﻿--[[
     dlac/jobhelpers/bst/resummon.lua -- the BST Helper's RESUMMON rule (issue
     #141, PRD #135 user stories 25-30). The module's third standing behavior,
     and the one that spends the most expensive item it will ever touch.
@@ -67,7 +67,7 @@ M.VERIFY_TIMEOUT = 4;
 
 -- The module's folder name -- the loader assigns identity FROM the folder, so
 -- this is only the fallback for the paths that run without a render ctx.
-local DEFAULT_ID = 'bst';
+local DEFAULT_ID = 'bst-helper';
 
 local _id     = DEFAULT_ID;
 local _last   = nil;    -- the last decision (the Panel reports it)
@@ -103,9 +103,9 @@ M._now = function()
     return tonumber(t) or 0;
 end;
 
-local function cfg() return req('dlac\\jobhelpers\\bst\\config'); end
+local function cfg() return req('dlac\\jobhelpers\\bst\\bst-helper\\config'); end
 
-local function jugsMod() return req('dlac\\jobhelpers\\bst\\jugs'); end
+local function jugsMod() return req('dlac\\jobhelpers\\bst\\bst-helper\\jugs'); end
 
 -- ---------------------------------------------------------------------------
 -- the settings (persisted in the module's OWN per-character config file)
@@ -420,7 +420,7 @@ end
 M._stockOf = function(itemName)
     local n = 0;
     pcall(function()
-        local jugs = require('dlac\\jobhelpers\\bst\\jugs');
+        local jugs = require('dlac\\jobhelpers\\bst\\bst-helper\\jugs');
         local row = jugs.find(itemName);
         if type(row) ~= 'table' or row.id == nil then return; end
         local oc = require('dlac\\gear\\ownedcache');

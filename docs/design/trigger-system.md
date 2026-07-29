@@ -55,7 +55,7 @@ at dispatch time:
 | Handler | Conditions |
 |---|---|
 | Default | `status` (Engaged/Resting/Idle), `moving`, `inTown` (v84 — see below), `mode` (user-defined name) |
-| Precast / Midcast | `any`, `skill` (Enfeebling Magic, Singing, ...), `magicType` (White/Black Magic, Bard Song, ...), `element` (Fire..Dark), `songType` (Buff/Debuff — small static list of debuff families), `contains` (substring: "Madrigal" matches Blade+Sword, "Stone" every tier; legacy alias `family`), `group` (action name is in the named Groups list — single name or list-OR; ADR 0009), `name`, `dayWeatherBonus` (net day+weather sign for the spell's element — the obi's logic), `weatherMatch` (the spell's element equals the CURRENT weather element — a plain weather match, no day and no opposition; single/double weather and a Scholar's own storm all count; engine v121) |
+| Precast / Midcast | `any`, `skill` (Enfeebling Magic, Singing, ...), `magicType` (White/Black Magic, Bard Song, ...), `element` (Fire..Dark), `songType` (Buff/Debuff — small static list of debuff families), `contains` (substring: "Madrigal" matches Blade+Sword, "Stone" every tier; legacy alias `family`), `group` (action name is in the named Groups list — single name or list-OR; ADR 0009), `name`, `dayWeatherBonus` (net day+weather sign for the spell's element — the obi's logic), `weatherMatch` (the spell's element equals the CURRENT weather element — a plain weather match, no day and no opposition; single/double weather and a Scholar's own storm all count; engine v121), `dayMatch` (the spell's element equals TODAY's day element — a plain day match, no weather and no opposition; engine v156) |
 | Ability | `any`, `abilityType` (Blood Pact: Rage/Ward, Corsair Roll, Quick Draw, Ready, Rune Enchantment), `contains`, `group`, `name` |
 | Item | `name`, `contains`, `group` |
 | Weaponskill | `any`, `name`, `group` |
@@ -79,6 +79,25 @@ uses; tier 30 (element band); offered on Precast + Midcast (cast-time snapshots 
 recast at Midcast). The buff gate (Celerity for white magic / Alacrity for black) is left to
 the player to compose via the existing `buff` conditions — `weatherMatch` is the minimal
 reusable primitive, nothing bundled. Tests WM1–WM21.
+
+**`dayMatch`, the third environment test (engine v156; ADR 0029).** Henrik, field: *"there are
+items that give you bonus solely if the day match what you're casting."* `dayMatch` is the day
+half of the above, alone: the spell's element == TODAY's day element, no weather term and no
+opposition. It is a THIRD condition because neither neighbour tracks a day-only bonus — the
+same both-directions proof ADR 0018 ran for weather, for a Fire spell: on **Firesday in Water
+(opposing) weather** the net is +1 −1 = 0, so `dayWeatherBonus` is quiet while the item IS
+paying out (under-fires); on **Earthsday in Fire weather** the net is +1, so `dayWeatherBonus`
+fires while the item is dark (over-fires). `weatherMatch` has no day term at all, so it is the
+wrong axis outright. `dayMatchesAction` reads `gData.GetEnvironment().DayElement` — the same
+field `netForElement` already scores, so the net's day half and this condition can never
+disagree — cached on `ctx.del` beside `weatherMatch`'s `ctx.wel`; tier 30; Precast + Midcast;
+unknown day or no action element matches NEITHER polarity. **The asymmetry to know:** there is
+no "clear day" — all eight weekdays carry an element — so a readable day is always a real match
+or a real non-match, and only a broken read is unknown; weather's genuine `None` (Clear /
+Sunshine / Clouds / Fog) has no day counterpart. Day is also **not** storm-aware (nothing in
+game changes the day), unlike the weather read. Unlike ADR 0018 this one is **not** pinned to a
+named server mechanic — it ships as a calendar primitive, and pinning a specific item's exact
+gate is a follow-up. Tests DM1–DM24 (DM14–DM17 pin the independence from both neighbours).
 
 **OR groups (v54).** A rule may carry `whenAny = { { buff = "Sleep" }, { buff = "Lullaby" } }`
 beside `when`: the rule matches when ALL `when` conditions hold **or** ANY `whenAny` entry

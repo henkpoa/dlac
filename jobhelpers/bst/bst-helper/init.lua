@@ -61,7 +61,7 @@ local COL_HEAD = { 0.60, 0.75, 1.00, 1.00 };
 -- The module's own folder name. The LOADER is the identity authority (it reads
 -- the folder), so this is only the fallback for the paths that run without a
 -- render ctx -- the init hook, which receives deps but not an id.
-local MODULE_ID = 'bst';
+local MODULE_ID = 'bst-helper';
 
 -- ---------------------------------------------------------------------------
 -- helpers (all contained -- a missing service degrades, never throws)
@@ -75,10 +75,10 @@ end
 -- The Reward rule + the act itself. Both the button and the automatic rule go
 -- through this ONE module, which is why "identical refusal behavior to the
 -- button" needs no second implementation to agree with.
-local function rewardMod() return req('dlac\\jobhelpers\\bst\\reward'); end
+local function rewardMod() return req('dlac\\jobhelpers\\bst\\bst-helper\\reward'); end
 
 -- The Resummon rule (issue #141) -- the death-only jug summon and its queue.
-local function resummonMod() return req('dlac\\jobhelpers\\bst\\resummon'); end
+local function resummonMod() return req('dlac\\jobhelpers\\bst\\bst-helper\\resummon'); end
 
 -- A section header per the PANEL-TEXT STANDARD (uistyle.helpLabel): the label
 -- underlined, the explanation in its HOVER -- never an inline paragraph, which
@@ -99,7 +99,7 @@ end
 -- the Fight switch (issue #139) -- three buttons, one of them lit
 -- ---------------------------------------------------------------------------
 
-local function fightMod() return req('dlac\\jobhelpers\\bst\\fight'); end
+local function fightMod() return req('dlac\\jobhelpers\\bst\\bst-helper\\fight'); end
 
 -- The widest of the three labels, MEASURED (the craftbar "Last Synth" lesson --
 -- a hardcoded width clipped the trailing character). Falls back to a width that
@@ -234,7 +234,7 @@ return {
     -- SEPARATELY, so a broken edge service cannot cost the Reward rule its beat.
     init = function(deps)
         pcall(function()
-            local fight = req('dlac\\jobhelpers\\bst\\fight');
+            local fight = req('dlac\\jobhelpers\\bst\\bst-helper\\fight');
             if fight ~= nil and type(fight.init) == 'function' then fight.init(MODULE_ID); end
         end);
         pcall(function()
@@ -261,9 +261,10 @@ return {
         local fight = fightMod();
         if fight ~= nil then
             head(imgui, 'Fight',
-                'Send your pet in off your own attacks. Nothing here polls or repeats:'
-                .. ' every send follows one attack or target change, so Heel is respected until'
-                .. ' the next one. Jug and charmed pets behave identically.');
+                'While you are engaged with a target and your pet stands idle, it is sent in'
+                .. ' -- retried a few times if the command does not take, then it goes quiet.'
+                .. ' Follow my target also re-sends a fighting pet when your target changes.'
+                .. ' Jug and charmed pets behave identically.');
             space();
 
             local cur = fight.mode();
@@ -272,6 +273,48 @@ return {
                 if modeButton(imgui, fight, id, m, cur, w) then fight.setMode(m); end
             end
             space();
+
+            -- Send when -- the player's option (Henrik's 2026-07-29): from the
+            -- engage, or only after the first auto-attack swing.
+            if type(imgui.Button) == 'function' then
+                txt(COL_DIM, 'Send when:');
+                local curWhen = fight.when();
+                for _, wv in ipairs(fight.WHENS) do
+                    local lit = (curWhen == wv);
+                    local pushed = false;
+                    if lit and ImGuiCol_Button ~= nil and type(imgui.PushStyleColor) == 'function' then
+                        imgui.PushStyleColor(ImGuiCol_Button, { 0.18, 0.55, 0.18, 1.00 });
+                        pushed = true;
+                    end
+                    if imgui.Button(fight.WHEN_LABEL[wv] .. '##bstwhen_' .. wv .. '_' .. id, { 150, 22 }) then
+                        fight.setWhen(wv);
+                    end
+                    if pushed then imgui.PopStyleColor(1); end
+                    if type(imgui.IsItemHovered) == 'function' and imgui.IsItemHovered()
+                       and type(imgui.SetTooltip) == 'function' then
+                        imgui.SetTooltip(fight.WHEN_HELP[wv]);
+                    end
+                    if wv ~= fight.WHENS[#fight.WHENS] and type(imgui.SameLine) == 'function' then
+                        imgui.SameLine(0, 6);
+                    end
+                end
+                space();
+            end
+
+            -- Respect Heel -- the player's option (Henrik's ruling 2026-07-29).
+            if type(imgui.Checkbox) == 'function' then
+                local heel = { fight.heelRespect() };
+                if imgui.Checkbox('Respect Heel##bstheel_' .. id, heel) then
+                    fight.setHeelRespect(heel[1]);
+                end
+                if type(imgui.IsItemHovered) == 'function' and imgui.IsItemHovered()
+                   and type(imgui.SetTooltip) == 'function' then
+                    imgui.SetTooltip('On: once your pet takes a send, pulling it back with Heel sticks --\n'
+                        .. 'nothing is re-sent at that mob for the rest of the fight.\n'
+                        .. 'Off: an idle pet keeps being re-sent while you are engaged (a few tries).');
+                end
+                space();
+            end
 
             -- Why it is or is not acting right now, plus what the last edge did.
             -- Deliberately here and NOT in chat: Fight fires on every pull, and a
@@ -290,7 +333,7 @@ return {
             end
             local lastD = fight.lastDecision();
             if lastD ~= nil then
-                txt(COL_DIM, 'Last edge: ' .. fight.decisionText(lastD) .. '.');
+                txt(COL_DIM, 'Last: ' .. fight.decisionText(lastD) .. '.');
             end
             space();
             rule();
@@ -445,7 +488,7 @@ return {
 
             -- the jug picker: every catalog jug, level-ordered, each naming the
             -- pet it calls (guarded -- the combo is not in every binding).
-            local jugs = req('dlac\\jobhelpers\\bst\\jugs');
+            local jugs = req('dlac\\jobhelpers\\bst\\bst-helper\\jugs');
             local curJug = resummon.jug();
             if jugs ~= nil and type(imgui.BeginCombo) == 'function' and type(imgui.EndCombo) == 'function' then
                 txt(COL_DIM, 'Jug:');

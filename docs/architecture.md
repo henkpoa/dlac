@@ -492,8 +492,11 @@ apply. Headless-tested (GS*). Never seeded into LAC.
 ### feature/jobhelpers.lua + ui/jobhelpersui.lua — the Job helper module system (issue #137, PRD #135)
 The **Job helper** (CONTEXT.md) module system: first-party modules that revive the parked
 plugin-folder design (`docs/design/integration-surface.md` §10) as dlac-shipped code. A module is
-a drop-in FOLDER under `addons\dlac\jobhelpers\` (never a loose file); its `<id>\init.lua` returns
-a contract table `{ api, label, jobs, init?, panel, status? }`. **Identity is the folder name**, not
+a drop-in FOLDER under its job's directory — `addons\dlac\jobhelpers\<job>\<module>\` (Henrik's
+layout ruling 2026-07-29: the job folder GROUPS, each module under it is its own separable folder;
+never a loose file); its `<module>\init.lua` returns
+a contract table `{ api, label, jobs, init?, panel, status? }`. **Identity is the MODULE folder
+name**, unique addon-wide (a duplicate under a second job folder is refused loudly), not
 a self-declared id — the folder is the unit of server approval (one folder = one row = one approval,
 the Pup-Helper precedent).
 

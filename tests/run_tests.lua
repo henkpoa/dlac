@@ -234,11 +234,11 @@ end)();
     local LIB = { 'cmdqueue','entwatch','safewrite','statefile' };
     -- Job helper modules (issue #137): each is a drop-in FOLDER under jobhelpers\
     -- with an init.lua, plus whatever pure cores it splits out beside it (issue
-    -- #139: bst\config + bst\fight; #140: bst\reward; #141: bst\resummon +
-    -- bst\jugs). They ship inside dlac, so they join the ratchet too -- entries
-    -- are folder-relative module paths, no extension.
-    local JOBHELP = { 'bst/init', 'bst/config', 'bst/fight', 'bst/reward',
-                      'bst/resummon', 'bst/jugs' };
+    -- #139: config + fight; #140: reward; #141: resummon + jugs). They ship
+    -- inside dlac, so they join the ratchet too -- entries are folder-relative
+    -- module paths under jobhelpers\<job>\<module>\, no extension.
+    local JOBHELP = { 'bst/bst-helper/init', 'bst/bst-helper/config', 'bst/bst-helper/fight',
+                      'bst/bst-helper/reward', 'bst/bst-helper/resummon', 'bst/bst-helper/jugs' };
 
     local ALL = {};
     for _, f in ipairs(ROOT_FILES) do ALL[#ALL + 1] = f; end
@@ -5219,6 +5219,73 @@ end)();
     check('WM20 normalize keeps weatherMatch rule', norm.Midcast ~= nil and #norm.Midcast, 1);
     check('WM21 normalized prio = 30',              norm.Midcast[1].prio, 30);
 end)();
+-- ---------------------------------------------------------------------------
+-- dayMatch (engine v156): weatherMatch's sibling -- a spell-handler flag, true
+-- when TODAY's day element equals the action's element. The obi's DAY term with
+-- nothing else: no weather, no opposition -- for gear whose bonus keys on the day
+-- alone, which neither dayWeatherBonus (the signed net) nor weatherMatch tracks.
+-- ctx.del is the cached day-element seam (the ctx.wel pattern): set it to drive
+-- the matcher headlessly (nil -> a live gData read, '' in the harness = unknown).
+-- There is no "clear day" -- all eight weekdays carry an element -- so every
+-- readable day is a real match or a real non-match. Tier 30 (element band).
+-- ---------------------------------------------------------------------------
+(function()
+    local mm = dispatchM._matchers;
+    local fireOnFire  = { action = { Element = 'Fire' }, del = 'Fire'  };
+    local fireOnIce   = { action = { Element = 'Fire' }, del = 'Ice'   };
+    local fireOnWater = { action = { Element = 'Fire' }, del = 'Water' };   -- the OPPOSING day
+    check('DM1 match: dayMatch=true fires (Fire on Firesday)',    mm.daymatch(true,  fireOnFire), true);
+    check('DM2 mismatch: dayMatch=true quiet (Fire on Iceday)',   mm.daymatch(true,  fireOnIce),  false);
+    check('DM3 mismatch: dayMatch=false fires (Fire on Iceday)',  mm.daymatch(false, fireOnIce),  true);
+    check('DM4 match: dayMatch=false quiet (Fire on Firesday)',   mm.daymatch(false, fireOnFire), false);
+    check('DM5 element match is case-insensitive',                mm.daymatch(true,  { action = { Element = 'fire' }, del = 'FIRE' }), true);
+    -- The OPPOSING day is a plain non-match, not a minus: no opposition term here.
+    check('DM6 opposing day: dayMatch=true quiet',                mm.daymatch(true,  fireOnWater), false);
+    check('DM7 opposing day: dayMatch=false fires',               mm.daymatch(false, fireOnWater), true);
+    -- No action element (Default handler / Non-Elemental) -> matches NEITHER polarity.
+    check('DM8 no action element: =true quiet',                   mm.daymatch(true,  { del = 'Fire' }), false);
+    check('DM9 no action element: =false quiet',                  mm.daymatch(false, { del = 'Fire' }), false);
+    check('DM10 Non-Elemental action: =true quiet',               mm.daymatch(true,  { action = { Element = 'Non-Elemental' }, del = 'Fire' }), false);
+    check('DM11 Non-Elemental action: =false quiet',              mm.daymatch(false, { action = { Element = 'Non-Elemental' }, del = 'Fire' }), false);
+    -- Unreadable day ('' sentinel, e.g. a failed live read) -> matches NEITHER.
+    check('DM12 unreadable day: =true quiet',                     mm.daymatch(true,  { action = { Element = 'Fire' }, del = '' }), false);
+    check('DM13 unreadable day: =false quiet',                    mm.daymatch(false, { action = { Element = 'Fire' }, del = '' }), false);
+    -- INDEPENDENCE from its two neighbours -- the reason it is its own condition.
+    -- Fire on Firesday in Water (opposing) weather: the obi's net is 0 (quiet),
+    -- weatherMatch is a non-match (quiet), but a day-only item IS paying out.
+    local fireFiredayWaterWx = { action = { Element = 'Fire' }, del = 'Fire', wel = 'Water', dw = 0 };
+    check('DM14 day-only payout: dayMatch fires where the net does not',
+        mm.daymatch(true, fireFiredayWaterWx) == true and mm.dayweatherbonus(true, fireFiredayWaterWx) == false, true);
+    check('DM15 day-only payout: weatherMatch stays quiet on it',
+        mm.weathermatch(true, fireFiredayWaterWx), false);
+    -- ...and the mirror: Fire in Fire weather on Iceday -- weatherMatch fires, dayMatch does not.
+    local fireIcedayFireWx = { action = { Element = 'Fire' }, del = 'Ice', wel = 'Fire' };
+    check('DM16 weather-only payout: dayMatch stays quiet',       mm.daymatch(true, fireIcedayFireWx), false);
+    check('DM17 weather-only payout: weatherMatch fires',         mm.weathermatch(true, fireIcedayFireWx), true);
+    -- Tier ladder: dayMatch sits at 30 (element band), like weatherMatch/dayWeatherBonus.
+    check('DM18 dayMatch sits at 30', dispatchM.defaultPriority({ dayMatch = true }), 30);
+    -- Through matches(): the AND leg with a live day ctx (post-load lowercase key).
+    local mt = dispatchM._matches;
+    check('DM19 matches() fires on a day match',
+        mt({ when = { daymatch = true } }, { action = { Element = 'Fire' }, del = 'Fire' }), true);
+    check('DM20 matches() quiet on a mismatch',
+        mt({ when = { daymatch = true } }, { action = { Element = 'Fire' }, del = 'Ice' }), false);
+    -- First-class vocabulary: PRETTY-case dayMatch serializes + round-trips, and
+    -- _normalize accepts it (loader lowercases + TIER-validates) at prio 30.
+    local text = dispatchM.serializeTriggers({
+        Midcast = { { when = { dayMatch = true }, set = 'DayNuke' } },
+    });
+    check('DM21 dayMatch serializes PRETTY-case', text:find('dayMatch', 1, true) ~= nil, true);
+    local t2 = (loadstring or load)(text)();
+    check('DM22 round-trip byte-stable', dispatchM.serializeTriggers(t2) == text, true);
+    local norm = dispatchM._normalize({
+        Midcast = { { when = { dayMatch = true }, set = 'DayNuke' } },
+    });
+    check('DM23 normalize keeps dayMatch rule', norm.Midcast ~= nil and #norm.Midcast, 1);
+    check('DM24 normalized prio = 30',          norm.Midcast[1].prio, 30);
+end)();
+
+-- ---------------------------------------------------------------------------
 
 -- ---------------------------------------------------------------------------
 -- TGM. Trigger Groups model (G2, issue #25, ADR 0009): the pure GUI-side CRUD +
@@ -16693,7 +16760,7 @@ end)();
 -- The jug LIST itself is the catalog's, joined here, with the walk injected.
 -- ---------------------------------------------------------------------------
 ;(function()
-    local jugs = dofile('jobhelpers/bst/jugs.lua');
+    local jugs = dofile('jobhelpers/bst/bst-helper/jugs.lua');
 
     -- --- the roster: the classifier's whole jug-vs-charm rule
     check('JUG1 a jug pet is on the roster', jugs.isJugPet('Hare Familiar'), true);
@@ -16769,7 +16836,7 @@ end)();
 -- never a summon on a Leave, a zone, a logout or a charmed pet. AC1-AC6.
 -- ---------------------------------------------------------------------------
 ;(function()
-    local rs = dofile('jobhelpers/bst/resummon.lua');
+    local rs = dofile('jobhelpers/bst/bst-helper/resummon.lua');
 
     local DEATH = { lost = true, kind = 'death', confirmed = true, pet = 'jug',
                     name = 'Hare Familiar', hpp = 4 };
@@ -17342,6 +17409,37 @@ end)();
     ew.reset(true);
     check('EDG34 reset clears the answer', ew.lastEdge(), nil);
     check('EDG35 the debounce window is the PRD 5 seconds', ew.DEBOUNCE_S, 5.0);
+
+    -- --- the FIRST-SWING signal (Henrik's "Send when" option, 2026-07-29) ----
+    -- 0x028 fixture: actor u32 @0x05 (chars 6-9 LE), action type = 4 bits at
+    -- byte 10 bit 2 (char 11, LSB-first -> type*4). equipengine.parse0x28's
+    -- exact field layout.
+    local function swingPkt(actor, atype)
+        local a1 = actor % 256;
+        local a2 = math.floor(actor / 256) % 256;
+        local a3 = math.floor(actor / 65536) % 256;
+        local a4 = math.floor(actor / 16777216) % 256;
+        return string.char(0, 0, 0, 0, 0, a1, a2, a3, a4, 0, (atype or 1) * 4, 0, 0, 0, 0, 0);
+    end
+    check('EDG36 a melee round decodes to its actor', ew.decodeSwing(swingPkt(4242, 1)), 4242);
+    check('EDG37 a non-melee action decodes to nil', ew.decodeSwing(swingPkt(4242, 4)), nil);
+    check('EDG38 a short packet decodes to nil', ew.decodeSwing('abc'), nil);
+
+    ew._myId = function() return 4242; end
+    ew.reset();
+    ew.onPacket(actionPkt(MOB_A.id, MOB_A.ix, ew.CAT_ENGAGE), 600);
+    ew.pump(nil, function() return nil; end);
+    check('EDG39 a fresh engagement has not swung', ew.swungThisEngagement(), false);
+    ew.onSwingPacket(swingPkt(9999, 1));      -- someone ELSE's swing
+    ew.pump(nil, function() return nil; end);
+    check('EDG40 a stranger swing is not mine', ew.swungThisEngagement(), false);
+    ew.onSwingPacket(swingPkt(4242, 1));      -- MY swing
+    ew.pump(nil, function() return nil; end);
+    check('EDG41 my melee round arms the flag', ew.swungThisEngagement(), true);
+    ew.onPacket(actionPkt(MOB_B.id, MOB_B.ix, ew.CAT_ENGAGE), 620);
+    ew.pump(nil, function() return nil; end);
+    check('EDG42 the next engage edge resets it', ew.swungThisEngagement(), false);
+    ew.reset(true);
 end)();
 
 -- ---------------------------------------------------------------------------
@@ -17355,17 +17453,17 @@ end)();
 ;(function()
     -- config + jobhelpers stubbed at the require seam: fight.lua asks for both
     -- at CALL time, so package.loaded fakes are the whole harness.
-    local savedCfg = package.loaded['dlac\\jobhelpers\\bst\\config'];
+    local savedCfg = package.loaded['dlac\\jobhelpers\\bst\\bst-helper\\config'];
     local savedJH  = package.loaded['dlac\\feature\\jobhelpers'];
     local fakeCfg = { vals = { fight = 'attack' } };
     fakeCfg.get = function(k) return fakeCfg.vals[k]; end
     fakeCfg.set = function(k, v) fakeCfg.vals[k] = v; return true; end
-    package.loaded['dlac\\jobhelpers\\bst\\config'] = fakeCfg;
+    package.loaded['dlac\\jobhelpers\\bst\\bst-helper\\config'] = fakeCfg;
     package.loaded['dlac\\feature\\jobhelpers'] = {
         activity = function() return { active = true }; end,
     };
-    local ft = dofile('jobhelpers/bst/fight.lua');
-    package.loaded['dlac\\jobhelpers\\bst\\fight'] = ft;
+    local ft = dofile('jobhelpers/bst/bst-helper/fight.lua');
+    package.loaded['dlac\\jobhelpers\\bst\\bst-helper\\fight'] = ft;
 
     -- The armed baseline: acting, engaged, pet out and idle, a target, clean history.
     local function armed(t)
@@ -17485,11 +17583,66 @@ end)();
     ft.onBeat(IDLE, reads);
     check('BFT30 re-engaging the same mob starts a fresh engagement', #sent, 3 + ft.MAX_TRIES);
 
+    -- --- Respect Heel: the player's option (Henrik's ruling 2026-07-29) ------
+    -- Pure core first: took + same target + option ON -> heeled; OFF -> resend;
+    -- a different target clears the latch either way.
+    check('BFT31 heeled: a TAKEN send is never repeated (option on)',
+          ft.pollDecide(armed({ heelRespect = true,
+                                last = { target = 0x2E1, at = 90, tries = 1, took = true } })).reason, 'heeled');
+    check('BFT32 option off: an idle pet is re-sent past the latch',
+          ft.pollDecide(armed({ heelRespect = false,
+                                last = { target = 0x2E1, at = 90, tries = 1, took = true } })).act, true);
+    check('BFT33 the latch dies with the target',
+          ft.pollDecide(armed({ heelRespect = true, targetIndex = 0x2E9,
+                                last = { target = 0x2E1, at = 90, tries = 1, took = true } })).act, true);
+
+    -- Glue: send -> the pet takes (latch) -> Heel (idle again) -> respected;
+    -- option off -> re-sent. fightHeel is ABSENT from fakeCfg, so the first
+    -- pass also proves the default reads ON.
+    local base = 3 + ft.MAX_TRIES;
+    ft.resetIssues();
+    world.target = 0x2F0;
+    clock = clock + 5;
+    ft.onBeat(IDLE, reads);
+    check('BFT34 fresh mob: sent', #sent, base + 1);
+    clock = clock + 0.4;
+    ft.onBeat(BUSY, reads);            -- the send TOOK: the latch arms
+    clock = clock + 2.5;
+    ft.onBeat(IDLE, reads);            -- the player heeled
+    check('BFT35 Heel respected by default: no re-send', #sent, base + 1);
+    check('BFT36 ...and the Panel says so', ft.lastDecision().reason, 'heeled');
+    fakeCfg.vals.fightHeel = false;
+    clock = clock + 2.5;
+    ft.onBeat(IDLE, reads);
+    check('BFT37 option off: the idle pet is re-sent', #sent, base + 2);
+    fakeCfg.vals.fightHeel = nil;
+
+    -- --- "Send when": drawn (default) vs first swing (Henrik's option) -------
+    check('BFT38 swing mode holds before the first swing',
+          ft.pollDecide(armed({ needSwing = true })).reason, 'no-swing-yet');
+    check('BFT39 ...and releases once it swung',
+          ft.pollDecide(armed({ needSwing = true, swung = true })).act, true);
+    local worldSwung = false;
+    reads.swung = function() return worldSwung; end
+    fakeCfg.vals.fightWhen = 'swing';
+    ft.resetIssues();
+    world.target = 0x2F5;
+    clock = clock + 5;
+    ft.onBeat(IDLE, reads);
+    check('BFT40 glue: engaged but unswung sends nothing', #sent, base + 2);
+    check('BFT41 ...and the Panel says why', ft.lastDecision().reason, 'no-swing-yet');
+    worldSwung = true;
+    clock = clock + 0.4;
+    ft.onBeat(IDLE, reads);
+    check('BFT42 the first swing releases the send', #sent, base + 3);
+    fakeCfg.vals.fightWhen = nil;
+    reads.swung = nil;
+
     ft._fire, ft._now = realFire, realNow;
     ft.resetIssues();
     package.loaded['dlac\\feature\\jobhelpers'] = savedJH;
-    package.loaded['dlac\\jobhelpers\\bst\\config'] = savedCfg;
-    package.loaded['dlac\\jobhelpers\\bst\\fight'] = nil;
+    package.loaded['dlac\\jobhelpers\\bst\\bst-helper\\config'] = savedCfg;
+    package.loaded['dlac\\jobhelpers\\bst\\bst-helper\\fight'] = nil;
 end)();
 
 -- ---------------------------------------------------------------------------
@@ -17503,10 +17656,10 @@ end)();
 -- AC1/AC2/AC3/AC4/AC5.
 -- ---------------------------------------------------------------------------
 ;(function()
-    local cfgMod = dofile('jobhelpers/bst/config.lua');
-    package.loaded['dlac\\jobhelpers\\bst\\config'] = cfgMod;
-    local rw = dofile('jobhelpers/bst/reward.lua');
-    package.loaded['dlac\\jobhelpers\\bst\\reward'] = rw;
+    local cfgMod = dofile('jobhelpers/bst/bst-helper/config.lua');
+    package.loaded['dlac\\jobhelpers\\bst\\bst-helper\\config'] = cfgMod;
+    local rw = dofile('jobhelpers/bst/bst-helper/reward.lua');
+    package.loaded['dlac\\jobhelpers\\bst\\bst-helper\\reward'] = rw;
 
     -- The armed baseline: rule on, threshold 50, module acting, nothing running,
     -- Reward off cooldown, no lockout live.
@@ -17836,8 +17989,8 @@ end)();
     package.loaded['dlac\\gear\\profilesets']   = saved.ps;
     package.loaded['dlac\\dispatch']            = saved.dsp;
     package.loaded['dlac\\feature\\petvitals']  = saved.pv;
-    package.loaded['dlac\\jobhelpers\\bst\\reward'] = nil;
-    package.loaded['dlac\\jobhelpers\\bst\\config'] = nil;
+    package.loaded['dlac\\jobhelpers\\bst\\bst-helper\\reward'] = nil;
+    package.loaded['dlac\\jobhelpers\\bst\\bst-helper\\config'] = nil;
     package.loaded['dlac\\lib\\statefile'] = nil;
 end)();
 

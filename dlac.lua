@@ -18,9 +18,9 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.07.29k';  -- date of the last shipped change (Ashita prints it at
-                                -- load; 29h = the parallel session's day-match work)
+addon.version = '2026.07.29o';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
+                                -- (29k = the day-match train 29h merged with 29i/29j)
 addon.desc    = 'Gear sets, triggers and live stats with level scaling -- dlac equips your gear itself.';
 
 -- Load BEACON ('/dl check' field round, 2026-07-23): written by PLAIN io at

@@ -3,8 +3,11 @@
     PRD #135). Revives the parked plugin-folder design (integration-surface
     doc section 10) as FIRST-PARTY modules.
 
-    A Job helper is a drop-in FOLDER under addons\dlac\jobhelpers\ (never a
-    loose file). Its <name>\init.lua returns a contract table:
+    A Job helper is a drop-in FOLDER under its JOB's directory (never a loose
+    file): addons\dlac\jobhelpers\<job>\<module>\ -- Henrik's layout ruling
+    2026-07-29, "bst-helper is the module OF bst": the job folder groups, each
+    module under it is its own separable folder. The <module>\init.lua returns
+    a contract table:
 
         return {
             api    = 1,                       -- must equal M.API or it is refused
@@ -15,9 +18,13 @@
             status = function(ctx) end,       -- optional; extra row-status draw
         }
 
-    IDENTITY is the FOLDER NAME, never a self-declared id: the folder is the
-    unit of server approval (Pup-Helper precedent), so the name on disk is the
-    authority. A module carrying its own `id` cannot masquerade as another.
+    IDENTITY is the MODULE folder name, never a self-declared id: the folder is
+    the unit of server approval (Pup-Helper precedent), so the name on disk is
+    the authority. A module carrying its own `id` cannot masquerade as another.
+    Names are unique addon-wide (a duplicate under a second job folder is
+    refused loudly); the JOB folder only says where the module FILES -- the
+    contract's `jobs` list is what decides where it acts and shows, and a
+    multi-job module simply files under its primary job.
 
     Containment is the whole point (hard rules 6, 12): a wrong `api`, a folder
     whose init.lua is missing/malformed, or a module whose init THROWS gets ONE
@@ -514,13 +521,10 @@ local function jobhelpersDir()
     return dir;
 end
 
--- List candidate module folder names. Folders only: get_dir mixes files and
--- dirs and does not say which, so a name carrying a '.' (a loose file's
--- extension) is skipped -- a module is a FOLDER, never a loose file. Injectable
--- (the profiles._listDirs precedent) so headless tests feed a synthetic listing.
-M._listModuleDirs = function()
-    local dir = jobhelpersDir();
-    if dir == nil then return {}; end
+-- List one directory's FOLDER names. get_dir mixes files and dirs and does not
+-- say which, so a name carrying a '.' (a loose file's extension) is skipped --
+-- the profiles._listDirs precedent, mask '.*' never recursive.
+local function listDirs(dir)
     local names = {};
     pcall(function()
         if not (ashita and ashita.fs and ashita.fs.get_dir) then return; end
@@ -537,10 +541,38 @@ M._listModuleDirs = function()
     return names;
 end
 
--- Require a module folder's entry (jobhelpers\<id>\init.lua). Returns ok, table
--- | ok=false, err. Injectable so headless tests bypass the require path.
+-- List candidate modules, TWO levels deep (Henrik's layout ruling 2026-07-29:
+-- `jobhelpers\<job>\<module>\` -- "bst-helper is the module OF bst", so the
+-- job folder groups and each module under it is its own separable folder =
+-- its own approval unit). Returns { { id = <module folder>, job = <job
+-- folder> }, ... } sorted by job then id. The job folder is only WHERE a
+-- module FILES; the contract's declared `jobs` list stays what decides where
+-- it acts and shows -- a multi-job module lives under its primary job's
+-- folder. Injectable so headless tests feed a synthetic listing.
+M._listModules = function()
+    local root = jobhelpersDir();
+    if root == nil then return {}; end
+    local out = {};
+    for _, job in ipairs(listDirs(root)) do
+        for _, id in ipairs(listDirs(root .. job .. '\\')) do
+            out[#out + 1] = { id = id, job = job };
+        end
+    end
+    return out;
+end
+
+-- id -> job-folder map for the require path (filled by M.load from the scan;
+-- a test that drives _requireModule directly can seed it).
+M._jobOf = {};
+
+-- Require a module folder's entry (jobhelpers\<job>\<id>\init.lua). Returns
+-- ok, table | ok=false, err. Injectable so headless tests bypass the require.
 M._requireModule = function(id)
-    return pcall(require, 'dlac\\jobhelpers\\' .. id .. '\\init');
+    local job = M._jobOf[id];
+    if type(job) ~= 'string' or job == '' then
+        return false, 'no job folder recorded for this module';
+    end
+    return pcall(require, 'dlac\\jobhelpers\\' .. job .. '\\' .. id .. '\\init');
 end
 
 -- Run the loader against the real filesystem, wiring the load ledger and the
@@ -555,8 +587,22 @@ function M.load(deps)
         local cf = require('dlac\\chatfmt');
         if type(cf) == 'table' and type(cf.err) == 'function' then emit = cf.err; end
     end);
+    -- The two-level scan, deduped: a module NAME is the identity, so the same
+    -- name under two job folders is a collision -- the first (job-sorted) wins
+    -- and the second is refused loudly, exactly like any other bad module.
+    local names, jobOf = {}, {};
+    for _, c in ipairs(M._listModules()) do
+        if jobOf[c.id] ~= nil then
+            fail(ledger, emit, c.job .. '\\' .. c.id,
+                 string.format('duplicate module name (already loaded from %s\\)', jobOf[c.id]));
+        else
+            jobOf[c.id] = c.job;
+            names[#names + 1] = c.id;
+        end
+    end
+    M._jobOf = jobOf;
     return M.loadAll({
-        names      = M._listModuleDirs(),
+        names      = names,
         loadModule = M._requireModule,
         deps       = deps,
         ledger     = ledger,

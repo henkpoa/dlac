@@ -249,7 +249,39 @@ merge carries it **without asking him again**. Only he can move an entry to ACCE
 this does not make an accepted entry mergeable *alone*: `dev` promotes
 **whole-or-not-at-all**, so an accepted entry rides the next promotion of the whole branch.
 
-*(Empty — last emptied by the FIRST 2026-07-29 promotion: `2026.07.28s`–`2026.07.28v`, the
+### `dayMatch` — the day-only environment condition — `a2153ba` (2026-07-29)
+
+Addon `2026.07.29g` → **`2026.07.29h`**, engine **v155 → v156**. Suites **4455 + 793**,
+Windows lua 5.4. ADR 0029. Henrik's ask: *"there are items that give you bonus solely if the
+day match what you're casting."* The environment vocabulary becomes a TRIO — `dayWeatherBonus`
+(the obi's signed day+weather net, with opposition), `weatherMatch` (spell element == CURRENT
+weather element), `dayMatch` (spell element == TODAY's day element) — because the net cannot
+stand in for a day-only item in **either** direction: on Firesday in Water weather it reads
++1 −1 = 0 and stays quiet while the item IS paying out, and on Earthsday in Fire weather it
+reads +1 and fires while the item is dark. Precast + Midcast, tier 30; reads the same
+`GetEnvironment().DayElement` that `netForElement` already scores, so the net's day half and
+this condition can never disagree; unknown day / no action element matches NEITHER polarity.
+Tests DM1–DM24 (DM14–DM17 pin the independence from both neighbours).
+
+**FIELD ROUND OWED — not yet field-confirmed**, so this entry does not meet the section's
+normal bar and is queued on Henrik's explicit *"add this as a candidate to be merged to main
+and pushed."* The field check is one cast: on a day matching the spell's element, a
+`dayMatch = true` Midcast rule must equip its set, and it must go quiet the next Vana'diel day
+— `/dl env` prints the live day and its element, and `/dl why` names the rule that decided.
+
+**One thing a promoter should know:** unlike ADR 0018, this is **not** pinned to a named
+server mechanic — the CatsEyeXI source is not on this machine and no specific item was named,
+so it ships as a calendar primitive ("the day element equals the spell's element"), which is
+true regardless of the item. If a day-only item turns out to want *day-or-weather* (the way
+the retail obi tooltip reads), that changes which conditions a player **composes**, not this
+condition's meaning — an open follow-up, not a blocker.
+
+**Provenance oddity, recorded so nobody hunts for it:** the DM1–DM24 test block is committed
+inside **`65ba01d`** (the BST Fight debounce fix), not inside `a2153ba` — that commit's
+`git commit -a` swept this work-in-progress file out of the shared working tree. The block is
+intact and green; `a2153ba` carries everything else.
+
+*(Last emptied by the FIRST 2026-07-29 promotion: `2026.07.28s`–`2026.07.28v`, the
 nine-commit train that closed the E-Box v2 record — the `/dl debug ebox` crash fix (`28s`,
 field-confirmed by the bare-snapshot pass: an 11-event ring spanning 1h24m formatted clean, and
 the header measured the design's whole promise on its way past — **1 packet sent, 0.0/min,
@@ -352,8 +384,8 @@ research already recorded. In rough priority order:
 ## Current state (as of 2026-07-26)
 
 - **2026-07-29: BST Resummon — the pet-loss edge gets CLASSIFIED, and only a proven jug
-  death spends a jug — ON `issue-141-bst-resummon`, awaiting review + field test**
-  (`2026.07.29k`, issue #141, PRD #135). The third standing BST Helper behavior, and the
+  death spends a jug — MERGED to `dev` (`2026.07.29o`), field round owed**
+  (issue #141, PRD #135). The third standing BST Helper behavior, and the
   one whose failure mode costs real money. Its whole design is one asymmetry: **a missed
   resummon costs the player nothing, a wrongly-assumed one costs them a jug** — so
   `petvitals.classifyLoss` proves a death or reports `unknown`, and never guesses.
@@ -382,6 +414,26 @@ research already recorded. In rough priority order:
   commands really ride action category 0x09. All three fail SAFE: the worst case of each is
   a resummon that does not happen. The maintainer's ruling for this slice is recorded in
   `jugs.lua`'s header — live > wiki > repo, and repo SQL is inherited-base only.
+- **2026-07-29: `dayMatch`, the day-only environment condition — ON `dev`, IN THE MERGE
+  QUEUE, field round owed** (`2026.07.29h`, engine v156, ADR 0029; the queue entry above is
+  the status authority). Henrik: *"there are items that give you bonus solely if the day
+  match what you're casting."* The environment vocabulary is now a TRIO, and the three are
+  three different questions about the world: `dayWeatherBonus` (the obi's signed day+weather
+  net, with opposition), `weatherMatch` (spell element == CURRENT weather element),
+  `dayMatch` (spell element == TODAY's day element). The net cannot stand in for a day-only
+  item — on Firesday in Water weather it reads +1 −1 = 0 and stays quiet while the item IS
+  paying out, and on Earthsday in Fire weather it reads +1 and fires while the item is dark;
+  `weatherMatch` has no day term at all. Precast + Midcast, tier 30; `dayMatchesAction` reads
+  `GetEnvironment().DayElement` (the same field `netForElement` scores, cached on `ctx.del`);
+  unknown day or no action element matches NEITHER polarity. **There is no "clear day"** —
+  all eight weekdays carry an element, so only a broken read is unknown (weather's `None` has
+  no day counterpart), and the day is not storm-aware. **Deliberately NOT pinned to a named
+  server mechanic** the way ADR 0018 pinned `weatherMatch` to `ALACRITY_CELERITY_EFFECT`: the
+  server source is not on this machine and no item was named, so it ships as a calendar
+  primitive. Pinning one item's exact gate (day only, or day-or-weather the way the retail
+  obi tooltip reads?) is an open follow-up that changes what a player *composes*, not what
+  this condition means. Tests DM1–DM24; full story in `docs/history.md`.
+
 - **2026-07-28: the Ventures rings reach the Crafting Gear panel — ON MAIN, field round
   owed** (`2026.07.28o`; promoted the same hour on Henrik's *"push to main"*, deliberately
   un-field-confirmed — the second such call today. It is display + one coverage light with
