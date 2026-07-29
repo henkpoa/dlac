@@ -1,4 +1,4 @@
-# dlac — Project history & session journal
+﻿# dlac â€” Project history & session journal
 
 > What happened, in order, with the reasoning that is NOT recoverable from the code.
 > Sources: git history + mined Claude Code session transcripts (2026-07-10).
@@ -7,30 +7,30 @@
 The project was born 2026-07-09 and reached its current shape in two days of intense
 Henrik+Claude sessions, several running in parallel on the same checkout.
 
-## Day 1 (07-09) — bootstrap era *(documented from git log only; no transcripts survive)*
+## Day 1 (07-09) â€” bootstrap era *(documented from git log only; no transcripts survive)*
 
 Initial import of the pre-dlac profile code ("ffxi-lac") into an addon: entry point,
 per-char gear loading, Sets tab reading `sets.Dynamic` from `<JOB>.lua` on disk, path
 fixes for running without `gState` (party manager fallback), full catalog crawl
-(~1.7k → 14.9k items), Setup button (fresh profiles based on LAC's `/lac newlua`
+(~1.7k â†’ 14.9k items), Setup button (fresh profiles based on LAC's `/lac newlua`
 skeleton + dlac wiring; migration keeps player code), library seeding into
 `<char>\dlac\`, stats moved 100% to the catalog (scanner stopped parsing them), add-only
-auto-sync on job change, first augment id→stat maps.
+auto-sync on job change, first augment idâ†’stat maps.
 
-## Session "augments → stat standard" (08a38488)
+## Session "augments â†’ stat standard" (08a38488)
 
 **Theme:** decode a friend's augment dump; then a full stat-vocabulary standardization
 with Henrik ruling on every name ("if there is ANYTHING people will complain about, it
 is this").
 
 **Landed:** 58 of 64 unknown augment ids resolved (LSB `augments.sql`, then confirmed by
-CatsEyeXI's own `enum_augment_name` from the private server repo — the remaining 6 are
+CatsEyeXI's own `enum_augment_name` from the private server repo â€” the remaining 6 are
 undefined no-op gaps, do not chase); augment display value = base-in-name + tier (SCALE
 table); full AUG_NAME regeneration (~328 ids). Debug flag persistence
 (`<char>\dlac\uiflags.lua`); stat-weights GUI moved to its own window, integer inputs,
 searchable stat dropdown. Crawl-side: `apicrawl.py` taught to emit ignored-mod reports;
 14,874 items cached; 574 unmapped mods triaged to 105 real stats; `statdefs.lua` grown
-49 → 178 entries with Henrik's naming standard (extreme abbreviations for extremely
+49 â†’ 178 entries with Henrik's naming standard (extreme abbreviations for extremely
 common terms: PDT/MDT/DT/MDMG/MAB/MACC canonical, descriptive forms as aliases).
 `tools/` untracked+gitignored (privacy; history rewrite declined).
 
@@ -39,26 +39,26 @@ must never be committed); non-linear augment ids stay display-only (would corrup
 totals); 311 = flat Magic Damage (MDMG), NOT Magic Attack Bonus; ThunderResistance not
 LightningResistance (reuse existing keys, never invent parallels); status resists verb
 style (ResistPoison); lowerBetter flags so positive weights reward reductions; statdefs
-carries no server mod-ids ("I don't think the server wants to expose it") — the
-mod→key bridge lives in gitignored `tools/api_cache/stats_decisions.txt`.
+carries no server mod-ids ("I don't think the server wants to expose it") â€” the
+modâ†’key bridge lives in gitignored `tools/api_cache/stats_decisions.txt`.
 
-**Field-verified:** DT-family mods and SkillchainDamage are stored ×100 (Defending Ring
-= −1000); TP_BONUS 345 is literal TP; 1472 is Parrying *rate*.
+**Field-verified:** DT-family mods and SkillchainDamage are stored Ã—100 (Defending Ring
+= âˆ’1000); TP_BONUS 345 is literal TP; 1472 is Parrying *rate*.
 
 **Dead ends:** asking what the 6 unknown augments "read in-game" (they're gaps); live-API
 fetching when `apicrawl.py` exists ("Calm down, we already have a python script").
 
-**Follow-through (landed in later commits):** the three wiring tasks — crawler CORE
+**Follow-through (landed in later commits):** the three wiring tasks â€” crawler CORE
 expansion (ed97adb, 96f113c), catalog/statdefs review (1971bb0), weights picker via
 statdefs (9099837). Still open from this session: stat hover descriptors (text ready in
 `tools/api_cache/stats_tiers.txt`); augment decoder boundary fix (stop at first 0x0000
-word — verify against real scans first).
+word â€” verify against real scans first).
 
-## Session "trigger system day" (96c90bd5 — the big one)
+## Session "trigger system day" (96c90bd5 â€” the big one)
 
-**Theme:** opened with `/grill-with-docs` — "challenge me properly, it is important to
-get this right." Full design → ADRs 0001-0004 + glossary + trigger-system.md + 13 GitHub
-issues → same-day implementation of the engine, Triggers tab, automations, modes — then
+**Theme:** opened with `/grill-with-docs` â€” "challenge me properly, it is important to
+get this right." Full design â†’ ADRs 0001-0004 + glossary + trigger-system.md + 13 GitHub
+issues â†’ same-day implementation of the engine, Triggers tab, automations, modes â€” then
 storage-move research and the gearmove branch. Henrik's product rule, verbatim:
 **"nothing that this addon makes should force a player to use lua files or edit them
 manually."** And the working agreement: **"don't ask for permissions to edit files
@@ -68,55 +68,55 @@ vision."**
 **Landed (chronological):** dispatch engine (data-driven triggers, hot-reload, `/dl
 mode|why|triggers`); Triggers tab + convert-in-place Setup (per-handler health check,
 append-only shims, `.flbak` + rotated backups); LuaJIT 200-local cap forced the
-triggersui split; automations saga — ADR 0004 revised 4×: global toggles → per-set
-flags → **virtual slot entries** (`dlac:AutoStaff`/`dlac:AutoObi` living IN the set,
+triggersui split; automations saga â€” ADR 0004 revised 4Ã—: global toggles â†’ per-set
+flags â†’ **virtual slot entries** (`dlac:AutoStaff`/`dlac:AutoObi` living IN the set,
 Henrik's "maybe it's simpler to handle this as a slot function?"), tiered Iridescence
 (NQ+1/HQ+2 elemental, universals; ties to universal), level-gating with best-by-level
 fallback; `contains` condition + AND-stacking; universal Hachirin-no-obi reality;
 manifest auto-regen on login/job change; picker DB from the server's public SQL
 (Pianissimo is BRD 20 here vs retail 45); README rewrite; cycle modes replacing the
-hand-written variant-table pattern (keybinds, builder popup, from→to prints, VERSION
+hand-written variant-table pattern (keybinds, builder popup, fromâ†’to prints, VERSION
 staleness banner); `/dl why` per-slot attribution; level-scaling (31 items from
-`item_latents`); catalog stat keys 41→176; engine-owned slot locks (LAC forgets
+`item_latents`); catalog stat keys 41â†’176; engine-owned slot locks (LAC forgets
 `/lac disable` on reload); `/dl prune`; all-container ownership + red stored names +
 container-naming tooltips; quiet auto-sync; DW from live memory (`HasAbility(1554)`);
 CatsEyeXI jobs reference from BG-wiki; storage-move research + live packet probe
-(dlacprobe) + gearmove v1→v7 + gearcheck on `feature/storage-move`.
+(dlacprobe) + gearmove v1â†’v7 + gearcheck on `feature/storage-move`.
 
 **Key decisions:** see ADRs 0001-0004 (all written this session) and
 docs/design/storage-move.md. Highlights not in the ADRs: modes are session-only (all
-OFF / first cycle value at login — "no surprise DT-mode from last Tuesday"); trigger
+OFF / first cycle value at login â€” "no surprise DT-mode from last Tuesday"); trigger
 Commit is live but set Commit needs Reload LAC (accepted asymmetry); storage-move gate
 is client-side and fail-closed, trusting only 0x00A LoginState (the memory MH flag is
-field-falsified — ACE `!mog` flips it anywhere); feature/storage-move stays local
+field-falsified â€” ACE `!mog` flips it anywhere); feature/storage-move stays local
 pending GM approval; gearcheck deliberately self-contained for cherry-picking; move UI
 only in the All Equipment browser, equipped gear green + blocked.
 
 **Field-verified (live CatsEyeXI):** trigger hot-reload end-to-end ("I can do pianissimo
 and it changes even without reload lac, incredible"); ACE `!mog` falsifies the memory MH
-flag; **Provenance broadcasts MogZoneFlag=1 — the live DB diverges from every public
-repo branch**; Safe↔Inventory moves work at the Provenance hub today; Storage absent
+flag; **Provenance broadcasts MogZoneFlag=1 â€” the live DB diverges from every public
+repo branch**; Safeâ†”Inventory moves work at the Provenance hub today; Storage absent
 from the hub moogle menu; 0x029 packet layout byte-for-byte, ~150 ms confirm, silence =
 rejection; ~900 item packets flood zone-in; Chatoyant Staff carries Iridescence +2;
 Blade Madrigal is Thunder element; LAC only re-requires seeded files on ITS reload.
 
 **Dead ends (do not retry):** codegen for triggers (ADR 0002); global automation
-toggles AND per-set SetOptions (both fully built, then deleted — the SetOptions
+toggles AND per-set SetOptions (both fully built, then deleted â€” the SetOptions
 serializer also caused the flag-wipe bug: fileToModel must carry ALL sections);
-Iridescence-as-suppression (inverted — Chatoyant IS the auto staff);
+Iridescence-as-suppression (inverted â€” Chatoyant IS the auto staff);
 eight-era-elemental-obi assumption; **`BeginPopupContextItem`** in this ImGui binding
-(two failed rounds → Trove-style `[mv]` left-click button — but see the CORRECTION
+(two failed rounds â†’ Trove-style `[mv]` left-click button â€” but see the CORRECTION
 below: right-click ITSELF works, this entry used to say "right-click context menus"
 and was wrong); LAC memory MH flag as a
 gate; nomad-moogle interaction gating (access is zone-wide; 0x02E has no close event);
 inventory-hop move routing (direct is legal); `/lac disable` slot locks;
 catseyexi.com API for spells/abilities (items only); public repo SQL for job mechanics
-(byte-identical to stock LSB — customization lives in private submodules; trust ladder:
+(byte-identical to stock LSB â€” customization lives in private submodules; trust ladder:
 live memory > BG-wiki > public SQL).
 
 ## Session "offhand" (f3c35992)
 
-**Theme:** "I can't set off-hand weapons… you should still be able to build what you can
+**Theme:** "I can't set off-hand weaponsâ€¦ you should still be able to build what you can
 wield in sub as long as it is one-handed. Then the logic if you have dual wield or not
 should decide." Established the **"builder is a plan, the engine decides"** principle
 (ADR 0006), lifted from Henrik's old ffxi-lac code.
@@ -125,23 +125,23 @@ should decide." Established the **"builder is a plan, the engine decides"** prin
 immediately-equipping Alternatives list keeps the gate); `BuildDynamicSets` resolves
 Main before Sub explicitly (pairs() hash order starved Sub); `jobCanEquip` honors the
 support job; `utils.subSlotAllowed` as the one shared pairing rule;
-`utils.classifySub` (catalog says `Type="Sub"` for shields AND grips — classify by "*
+`utils.classifySub` (catalog says `Type="Sub"` for shields AND grips â€” classify by "*
 Grip"/"* Strap" name); `subCandidatePool` (1H Main-slot weapons now reach the Sub
 picker); `/dl fix` backfills Type/OneHanded into gear.lua (the LAC-state engine reads
 raw gear.lua and never sees GUI enrichment); `/dl dw` probe; comment-aware shim parser
-(commented-out handlers no longer wedge Setup — they count as missing and get a fresh
+(commented-out handlers no longer wedge Setup â€” they count as missing and get a fresh
 shim); Reload LAC clears the setup status line; chat overhaul (chatfmt.lua palette,
 print-shadowing, coral vs LAC's teal, quiet routine loads); author/license = Mindie,
 MIT. Headless test suite born this session (`winget install DEVCOM.Lua`;
-`tests\run_tests.lua`, 21 → 44 checks).
+`tests\run_tests.lua`, 21 â†’ 44 checks).
 
 **Key decisions:** asymmetric gating (planning permissive, immediate-equip strict);
-Auto-build stays equip-correct (shield when no DW) — making it permissive is an open
+Auto-build stays equip-correct (shield when no DW) â€” making it permissive is an open
 user decision; repairer's conservatism preserved (fix the parser's honesty, not the
 repairer's caution); commented-out player code is never uncommented.
 
 **Dead ends:** fixing only the visible filter (the pool and metadata upstream still
-blocked everything — trace the full pipeline: pool → metadata → vocabulary → filter);
+blocked everything â€” trace the full pipeline: pool â†’ metadata â†’ vocabulary â†’ filter);
 chasing "still prints" ghosts (stale LAC memory state, not code).
 
 **Open:** `/dl dw` positive-case verification on an actual DW job (the trait bit has
@@ -149,44 +149,44 @@ only ever been observed false; if NIN main shows shield-paired, suspect a HasAbi
 id-cap and reprioritize the fallback).
 
 **Correction (07-11, field-falsified):** this session's "main OR support job wields
-it" rule in gearui's `jobCanEquip` was wrong on CatsEyeXI — RDM74/WHM37 cannot wear
+it" rule in gearui's `jobCanEquip` was wrong on CatsEyeXI â€” RDM74/WHM37 cannot wear
 Hlr. Bliaut +1 (WHM Lv74); another job's gear stays unwearable even with that job
 subbed. Wearability is MAIN job only (as gearoptim's `jobAllowed` always had it).
 The sub job still legitimately feeds Dual Wield detection for off-hand pairing.
 
-## Session "GM feedback & prune" (c89bcd85 — this one)
+## Session "GM feedback & prune" (c89bcd85 â€” this one)
 
 **Theme:** polish while a GM evaluates the addon for approval; then this documentation
 effort.
 
-**Landed (main):** word-wrap for long status lines (GM feedback — `textWrapped` helper);
+**Landed (main):** word-wrap for long status lines (GM feedback â€” `textWrapped` helper);
 `/dl prune` parser made comment-tolerant (25 of 637 real gear.lua entries had trailing
 `-- comments` on their headers and were invisible to prune/fix/dedupe); `/dl prune why
 <item>` per-container ownership probe; scan messages updated to the all-container
 reality (ADR 0005). Meanwhile a parallel session ran the gearui modularization
-(profilesets/gearfmt/cmdqueue extractions, locals 200 → 180) on feature/storage-move.
+(profilesets/gearfmt/cmdqueue extractions, locals 200 â†’ 180) on feature/storage-move.
 
-**Key decisions:** delete-and-regenerate gear.lua rejected — nothing recreates a missing
+**Key decisions:** delete-and-regenerate gear.lua rejected â€” nothing recreates a missing
 gear.lua (the commit pipeline aborts), and regeneration would lose deep-storage entries;
-prune is the tool. Brigandine's survival was a genuine ownership match, not a bug — use
+prune is the tool. Brigandine's survival was a genuine ownership match, not a bug â€” use
 `/dl prune why` before assuming.
 
 **Late additions (same day):** CTRL+K GUI keybind; partyfinder-matched window theme
 (uistyle.lua); branch hygiene restored (modularization + theme + gearcheck promoted to
-main; feature/storage-move = exactly gearmove again); **mode-gated set entries** — a
+main; feature/storage-move = exactly gearmove again); **mode-gated set entries** â€” a
 slot-list entry can carry `mode = 'Weapon:Melee'` (wrapper form, like
 minLevel/maxLevel, now GUI-editable via the `~` button): active-mode entries OUTRANK
 unconditional ones, inactive ones are excluded, so ONE set adapts per mode instead of
 mode-switched set pairs. Same matcher as trigger `mode` conditions
 (`dispatch.modeActive`, VERSION 5); the GUI previews against the modestate mirror. Also
 fixed: the engine's wrapper merge mutated the SHARED gear.lua record (an item wrapped
-differently in two sets leaked fields between them) — it now merges onto a copy.
+differently in two sets leaked fields between them) â€” it now merges onto a copy.
 Tests G1-G12 (the suite now loads the real dispatch.lua headlessly).
 
-## Session "crafting system + catalog pipeline" (2026-07-11 → 07-13, on `main`)
+## Session "crafting system + catalog pipeline" (2026-07-11 â†’ 07-13, on `main`)
 
-**Theme:** a long multi-day arc — hardened the catalog/data pipeline, shipped the whole
-crafting-gear system (detection → manual craft bar → engine overlay → guild-points/key-item
+**Theme:** a long multi-day arc â€” hardened the catalog/data pipeline, shipped the whole
+crafting-gear system (detection â†’ manual craft bar â†’ engine overlay â†’ guild-points/key-item
 panel), and fixed several load-bearing bugs. All landed on **`main`** and pushed to GitHub
 (`henkpoa/dlac`). `feature/storage-move` stays local, untouched.
 
@@ -194,57 +194,57 @@ panel), and fixed several load-bearing bugs. All landed on **`main`** and pushed
 - **Distribution model, ruled by Henrik (memory: catalog-distribution-model):** the addon
   MUST NEVER fetch from the API at runtime. Only Henrik scrapes (`tools/apicrawl.py`), ships
   `catalog.lua` in the addon update; the ONLY live-parsed data is augments. Client-side
-  fetching was rejected a 2nd time — do not re-propose.
+  fetching was rejected a 2nd time â€” do not re-propose.
 - `apicrawl.py` gained `--gaps` (fetch ids in every char's `<char>\dlac\gear.lua` the cache
-  lacks/has as 404 — the fix for "new item shows no stats") and `--refresh N` (re-fetch cache
+  lacks/has as 404 â€” the fix for "new item shows no stats") and `--refresh N` (re-fetch cache
   older than N days). `equipment_ids.txt` is a STATIC retail-era dump; CatsEyeXI customs
-  (e.g. Hieratic Ring 23994, and the 39xxx block) aren't in it → `--gaps` or a GM
+  (e.g. Hieratic Ring 23994, and the 39xxx block) aren't in it â†’ `--gaps` or a GM
   `SELECT itemid FROM item_equipment` dump, or a full `--range` sweep. **Item ids are u16
   (cap 65535)**; 28671 = end of retail equipment DAT block; customs live in unused holes
   (23994) and past the end (39xxx).
-- **Reproducibility bug fixed:** DT-family mods are mixed-scale (percent×100 vs literal) —
+- **Reproducibility bug fixed:** DT-family mods are mixed-scale (percentÃ—100 vs literal) â€”
   the builder now applies the `|v|>=100` rule (same as SkillchainDamage) so a rebuild
   reproduces `catalog.lua` byte-for-byte. Per-item desc-vs-DB drift fixups live in
   `MOD_STRIP`/`MOD_ADD` (Neph. Grip 22198 has phantom craft mods; Hocho/Debahocho lack
-  their Cooking mod) — KEEP IN SYNC across apicrawl.py + apiscan.py. Report drift to GMs.
+  their Cooking mod) â€” KEEP IN SYNC across apicrawl.py + apiscan.py. Report drift to GMs.
 
 ### Crafting stat family
-- Mapped (Henrik-approved names): 8 craft skills (`WoodworkingSkill`…`CookingSkill`),
-  `SynthHQRate`, `SynthMaterialLoss`, `AntiHQ<craft>` (×8), `ConserveIngredient`
+- Mapped (Henrik-approved names): 8 craft skills (`WoodworkingSkill`â€¦`CookingSkill`),
+  `SynthHQRate`, `SynthMaterialLoss`, `AntiHQ<craft>` (Ã—8), `ConserveIngredient`
   (CatsEyeXI custom **modid 2016**). `AntiHQ` = a hard "Cannot Synthesize HQ" block.
   Universal pieces carry all 8 per-craft mods individually (there is NO single "all
   crafts" mod). gearfmt collapses uniform 8-way families to "All Craft Skills+2" /
   "All Anti-HQ+1" for display only.
 
 ### Craft gear system (the big one)
-- **Detection** (`craftwatch.lua`): c2s `0x096` (synth confirm) → crystal+ingredient
-  multiset → `crafts.lua` (9,470 recipes, `tools/gen_craftdb.py` from the server's
-  `synth_recipes.sql`) → craft skill. **Binding-craft/tier calc:** subcraft recipes carry
+- **Detection** (`craftwatch.lua`): c2s `0x096` (synth confirm) â†’ crystal+ingredient
+  multiset â†’ `crafts.lua` (9,470 recipes, `tools/gen_craftdb.py` from the server's
+  `synth_recipes.sql`) â†’ craft skill. **Binding-craft/tier calc:** subcraft recipes carry
   a `skills` map; the craft with the smallest player-skill margin limits the HQ tier
   (breaks at >11/>31/>51). Detection is now **INFO ONLY**.
-- **DEAD END — auto-equip by detection:** `0x096` is the FIRST packet the synth flow emits
+- **DEAD END â€” auto-equip by detection:** `0x096` is the FIRST packet the synth flow emits
   (crystal use + ingredient placement are client-local), so nothing can dress you for the
   synth that triggered it. Do not revive detection-driven equipping.
 - **MANUAL model (Henrik's design):** the floating **craft bar** (`craftbar.lua`, toggle
-  `/dl craft bar` or the header helmet icon) + the Automations→AutoCraft panel let you pick
+  `/dl craft bar` or the header helmet icon) + the Automationsâ†’AutoCraft panel let you pick
   a craft + goal (**hq / nq / skillup**) and flip an on/off switch. craftwatch WRITES
   `<char>\dlac\craftstate.lua` (`{craft, goal, enabled}`); state persists (enabled is
   session-only, starts OFF).
-- **THE architecture — engine OVERLAY (dispatch v31):** don't fight the engine, BE it.
+- **THE architecture â€” engine OVERLAY (dispatch v31):** don't fight the engine, BE it.
   `dispatch.craftOverlay` reads `craftstate.lua` and, on every Default dispatch, overlays
   the resolved craft gear (`dlac:AutoCraft` per slot from the manifest craft ladders) LAST
   = top priority, even with no trigger match. So the engine WEARS the craft gear; nothing
-  reverts it; switch off → overlay gone → normal Default returns.
+  reverts it; switch off â†’ overlay gone â†’ normal Default returns.
   - Why not commands/locks: `/lac disable` blocks `/lac equip` on that slot; `/dl lock` is
     set in the ADDON state and its command is `e.blocked` before reaching the LAC state that
-    does the revert. Both dead ends — the overlay is the answer.
-- **Manifest craft ladders** (`triggersui.lua` autoCommit, `AUTO_FMT` now 6): per slot →
-  craft → goal, best-first. Skill-up items (Midras's Helm, Bonze Cape, Shapers Shawl) fill
+    does the revert. Both dead ends â€” the overlay is the answer.
+- **Manifest craft ladders** (`triggersui.lua` autoCommit, `AUTO_FMT` now 6): per slot â†’
+  craft â†’ goal, best-first. Skill-up items (Midras's Helm, Bonze Cape, Shapers Shawl) fill
   hq/nq slots as LOW-priority fillers (`floor(gain*0.3)`, always < a skill=1 item's 10) so
   a real craft-skill item (Chef's Hat for HQ head) still wins.
 - **THE bug that hid #2 for many rounds (hard rule 8):** `autoCommit` read `CRAFT_UI.goal`,
-  but `CRAFT_UI` is a `local` declared LATER in the file → nil global → `.goal` threw →
-  `rescanAutogear`'s pcall swallowed it → the manifest never regenerated past `fmtver 5`
+  but `CRAFT_UI` is a `local` declared LATER in the file â†’ nil global â†’ `.goal` threw â†’
+  `rescanAutogear`'s pcall swallowed it â†’ the manifest never regenerated past `fmtver 5`
   (whose head/back only had the skillup goal). Forward-reference to a later local = silent
   nil global. Fixed; watch for this class.
 
@@ -257,123 +257,123 @@ panel), and fixed several load-bearing bugs. All landed on **`main`** and pushed
   Way-of-the per craft (ids from the server `key_item` enum), ownership from the tracker.
 - **Guild points per craft:** s2c **`0x113`** (currencies_1), 8 int32 LE at absolute
   offsets `0x24..0x40` ('Weaving' = Clothcraft), persisted (`guildpoints.lua`). Fetched by
-  sending header-only c2s **`0x10F`** ourselves (server `validate()` ungated — exactly what
+  sending header-only c2s **`0x10F`** ourselves (server `validate()` ungated â€” exactly what
   opening the currency menu does). **VERIFIED 2026-07-13** (a real turn-in reflected via
   `/dl craft gp`), so it now fires automatically: one-shot on login (craftwatch
   `dlac-craftwatch-gp` tick) + on EVERY entry into the Auto Craft Set view (triggersui,
-  >1s render gap = just entered; `force=true` skips the 5s debounce — Henrik wants each
-  visit fresh — with a 1s anti-flicker floor). Offsets locked by tests T27–T33.
+  >1s render gap = just entered; `force=true` skips the 5s debounce â€” Henrik wants each
+  visit fresh â€” with a 1s anti-flicker floor). Offsets locked by tests T27â€“T33.
 
 ### UI / misc
-- Sets: **duplicate-row button (D)** — one item across several level ranges (Rajas 30-54,
+- Sets: **duplicate-row button (D)** â€” one item across several level ranges (Rajas 30-54,
   Lava's 55-74, Rajas 75+); prominent `[Lv 30-54]` badges (green = live now).
-- **Sub-slot HARD RULE (reverted 3×, ADR 0006 addendum, memory: sub-slot-building-never-gated):**
-  while BUILDING, the Sub picker ALWAYS offers every shield/grip/one-hander — never gate on
+- **Sub-slot HARD RULE (reverted 3Ã—, ADR 0006 addendum, memory: sub-slot-building-never-gated):**
+  while BUILDING, the Sub picker ALWAYS offers every shield/grip/one-hander â€” never gate on
   DW / Main shape / empty Main. The `A* HARD RULE` tests fail on any re-gating.
 - Set-entry names resolve **case-insensitively**; a missing name warns ONCE (not per rebuild).
 - Augment stats now show (gold `Aug:` tag) in Sets rows, the +Add picker, and Alternatives.
-- Header: Macro button → small book icon; new craft-bar helmet toggle. `filetex.lua` loads
-  `assets/*.png` (MUST retain the texture object — storing only the numeric handle GC'd the
+- Header: Macro button â†’ small book icon; new craft-bar helmet toggle. `filetex.lua` loads
+  `assets/*.png` (MUST retain the texture object â€” storing only the numeric handle GC'd the
   texture and hard-crashed the game on ImageButton).
 - Craft glyphs: FFXIV Set-8 class icons in `assets/craft/` (Miner = Bonecraft). Panel craft
   icons are a VIEW-ONLY section switch (centered, no label); the craft BAR sets the active
-  craft. Artisans Torque/Ring owned ⇒ the guild torques/rings show green (synergy implies
+  craft. Artisans Torque/Ring owned â‡’ the guild torques/rings show green (synergy implies
   you owned them all).
 
 **Test suite: 189 checks, all green.** Sections T (craftwatch), V (AutoCraft overlay
 resolution), W (tier/binding calc) added this arc.
 
-## Session "field-hardening marathon" (c89bcd85 continued, 2026-07-11 → 07-13, on `main`)
+## Session "field-hardening marathon" (c89bcd85 continued, 2026-07-11 â†’ 07-13, on `main`)
 
 **Theme:** Henrik live-tested everything on WHM/BRD/SMN and every report became a
-same-hour fix with a pinned regression test. Engine VERSION 12 → 29. Ran **in parallel**
-with the crafting session above — two Claude sessions committing to the same checkout
+same-hour fix with a pinned regression test. Engine VERSION 12 â†’ 29. Ran **in parallel**
+with the crafting session above â€” two Claude sessions committing to the same checkout
 and to `main` simultaneously (expect branch flips, swept working-tree edits, and version
 numbers claimed under you; always re-read files after any git operation).
 
 **Max-MP grew up, then stepped back into the shadows (v13, fmtver 2-4).** Four field
 bugs in one report: the manifest derivation read `gData` (which DOES NOT EXIST in the
-addon state — job was always nil, only All-jobs gear passed); single level-99-checked
-picks had no fallback (Bunzi's Robe blocked the whole body slot at RDM74) → per-slot
+addon state â€” job was always nil, only All-jobs gear passed); single level-99-checked
+picks had no fallback (Bunzi's Robe blocked the whole body slot at RDM74) â†’ per-slot
 LADDERS picked at live level (`dispatch.mpPick`, K-tests); MP-EQUIP only touched slots
-the dispatched set wrote → coverage pass for unaddressed slots; Convert and level-scaled
-MP now count (Tamas Ring 15→29@74, via THE central `levelstats.effective` resolver —
+the dispatched set wrote â†’ coverage pass for unaddressed slots; Convert and level-scaled
+MP now count (Tamas Ring 15â†’29@74, via THE central `levelstats.effective` resolver â€”
 gearui/gearoptim/triggersui all delegate; L-tests). Verdict: picks now believed right,
 but MaxMP is **unlisted from the Automations table** (unofficial pending more
 troubleshooting; `/dl mode maxmp` + manifest data + detail view all still work).
 
-**The engine tick (v15) — the biggest architectural change.** LAC only parses
+**The engine tick (v15) â€” the biggest architectural change.** LAC only parses
 HandleDefault while OUTGOING packets flow; standing still in a menu starved dispatches
-(first misread as an equip-menu block — **field-falsified**: `/lac equip` works with the
+(first misread as an equip-menu block â€” **field-falsified**: `/lac equip` works with the
 window open; v14's pause was removed). A throttled d3d tick in the LAC state now drives
-`gState.HandleEquipEvent('HandleDefault','auto')` every 0.4s — menus open, standing
-still, whatever. It also: drops maxmp on job change, skips while ZONING (v24 — the tick
+`gState.HandleEquipEvent('HandleDefault','auto')` every 0.4s â€” menus open, standing
+still, whatever. It also: drops maxmp on job change, skips while ZONING (v24 â€” the tick
 otherwise crashed legacy profiles in LAC's equip.lua mid-zone), and synthesizes
 PetAction (below).
 
 **Modes are dlac-owned now (v15-v17).** modestate.lua is written on change AND read back
-on engine load (same-job + 1-hour freshness guards — a mid-session Reload LAC heals,
+on engine load (same-job + 1-hour freshness guards â€” a mid-session Reload LAC heals,
 last Tuesday's DT-mode stays dead). The v16 "stale cycle value purge" was
 **field-falsified on WHM**: mode DEFINITIONS are per-job trigger data but VALUES are
-session-global by design ("WHM Weapons" defined in BRD's file gates WHM's sets) — purge
+session-global by design ("WHM Weapons" defined in BRD's file gates WHM's sets) â€” purge
 removed (v17), setMode hardened (cross-job value jumps work; bare flips can't
 toggle-corrupt a foreign cycle value; M-tests). Mode keybinds queue ONCE per session
-(v18 — the automations rescan pings '/dl triggers reload' constantly and re-parsing
+(v18 â€” the automations rescan pings '/dl triggers reload' constantly and re-parsing
 re-queued /bind forever). Mode DELETE is reference-aware (v16): a movable window lists
 every rule and set-entry reference with one-click cleanup; delete commits immediately
 and clears the live flag.
 
 **Virtual markers hardened (v19, v20).** The Sets tab commits a GATED virtual as
-`{gear="dlac:AutoIridescence", mode="Weapon:Caster"}` — BOTH utils' flatten (v19,
+`{gear="dlac:AutoIridescence", mode="Weapon:Caster"}` â€” BOTH utils' flatten (v19,
 N-tests) and gearui's resolveSetItem (v20) only recognized bare strings; the wrapper
 form vanished/flattened to nothing. A Main staff marker now pairs as a 2H staff so
 grips stay legal in Sub (P-tests), gets an 8-element wheel icon (drawn, no texture),
 and the automations derivation is JOB-CHECKED like everything else (Foreshadow +1 is
-BLM/DRK — it sat in WHM's manifest looking dead; fmtver 4, red rows for
+BLM/DRK â€” it sat in WHM's manifest looking dead; fmtver 4, red rows for
 owned-but-wrong-job in the detail views).
 
 **Reload LAC is nearly extinct (v21-v22).** Henrik's insight: gProfile.Sets is a live
-Lua table — the reload was only ever about the FILE changing under it. '/dl sets reload'
+Lua table â€” the reload was only ever about the FILE changing under it. '/dl sets reload'
 re-reads <JOB>.lua SANDBOXED (profilesets' extractor hardened for the LAC state: gFunc/
 AshitaCore/package/print/coroutine stubbed, stub __concat survives the boot line's
 path-building) and swaps .Dynamic in place + re-flattens. The GUI pings it on every set
 Commit/Delete. Reload LAC remains for: engine updates (version banner) and failed swaps.
 
 **Level ranges own their windows (v23).** Garrison Tunica +1 ranged 20-51 lost to an
-unbounded Lv48 robe at 50 — ranged-and-live entries now form a tier above unbounded ones
+unbounded Lv48 robe at 50 â€” ranged-and-live entries now form a tier above unbounded ones
 (engine + GUI preview mirror, Q-tests). A header `Lv <n>` button overrides the main
 level for testing/preparing (addon global + '/dl set level main' for the engine; `*`
 while active).
 
 **Trigger rules: multi-set + searchable (v25).** One rule may wear an ORDERED list of
-sets (`set = { 'WindSkill', 'Madrigal' }` — the Madrigal case), applied later-overlays-
+sets (`set = { 'WindSkill', 'Madrigal' }` â€” the Madrigal case), applied later-overlays-
 earlier per slot; rule boxes grew reorder arrows and per-name [missing] checks
-(R-tests). All set pickers are searchable — built as button+popup (InputText inside
-BeginCombo kills clicks on this imgui build) — and every list row's imgui id must carry
+(R-tests). All set pickers are searchable â€” built as button+popup (InputText inside
+BeginCombo kills clicks on this imgui build) â€” and every list row's imgui id must carry
 the NAME (a shared '##..._o' suffix made only the first row clickable).
 
-**PetAction — pets work now (v26, v27, v29).** NO LuaAshitacast version calls a pet
+**PetAction â€” pets work now (v26, v27, v29).** NO LuaAshitacast version calls a pet
 handler (the upstream tutorial's HandlePetAction says "you'll have to call it yourself"
-— it's a DIY pattern); dlac's tick IS that pattern: dispatches 'PetAction' once per
-pet-action start (ctx from gData.GetPetAction — Name/Skill/Element shape, matchers just
+â€” it's a DIY pattern); dlac's tick IS that pattern: dispatches 'PetAction' once per
+pet-action start (ctx from gData.GetPetAction â€” Name/Skill/Element shape, matchers just
 work; S-tests). Two field bugs: equips must be BRACKETED (gFunc.EquipSet only writes
-LAC's buffer; the tick wraps ClearBuffer→dispatch→ProcessBuffer, v27) and the
+LAC's buffer; the tick wraps ClearBufferâ†’dispatchâ†’ProcessBuffer, v27) and the
 Default-hold must cover LEGACY profiles (gState.HandleEquipEvent wrapped once: while
-the pet acts, HandleDefault is skipped entirely — a hand-written SMN profile stomped
+the pet acts, HandleDefault is skipped entirely â€” a hand-written SMN profile stomped
 the pact gear every tick, v29). **Field-verified end to end: Shining Ruby equips,
 holds, releases.**
 
 **Files & data:** login dup-burst root-caused (pre-login addon load left the EMPTY gear
-template as the sync baseline → +620 duplicates spliced into gear.lua; fixed + restored
+template as the sync baseline â†’ +620 duplicates spliced into gear.lua; fixed + restored
 from the same-second backup; sync prints debug-gated). BRD.lua stripped to pure dlac
 (sets + shims only; backup `BRD.lua.pre-strip`). STATIC set deletion shipped
 (structural root-walk, T-tests; picker next to Copy from; the main Delete explains
 statics). Static sets on SMN cleaned by Henrik.
 
 **GUI conveniences:** per-job macro books (header button; picker = the game's own list
-look, 2 columns × 20 named rows — names decoded from USER/<id-hex>/mcr.ttl+mcr_2.ttl,
+look, 2 columns Ã— 20 named rows â€” names decoded from USER/<id-hex>/mcr.ttl+mcr_2.ttl,
 24-byte header + twenty 16-byte titles; applies on click AND login/job change).
-Teleports header dropdown + PF-style floating pinned button (themed — unthemed windows
+Teleports header dropdown + PF-style floating pinned button (themed â€” unthemed windows
 let the game world tint icons "red") that becomes the ABORT stop-sign while a use is in
 flight. Automations list: headers, table-first, no chrome. `docs/guide.html`: an
 illustrated from-zero user guide (9 screenshots, annotated mode-gates figure).
@@ -390,12 +390,12 @@ was the engine's own require-cache staleness: the seeder refreshes
 code until Reload LAC (the version banner's whole reason). Now the engine tick parses
 the seeded file's `M.VERSION = <n>` every ~2s; when it differs from the running version,
 the file is re-executed INTO THE SAME MODULE TABLE via the `_G.__dlacEngineRoot`
-handshake at the top of dispatch.lua — utils' captured reference and the profile shims
+handshake at the top of dispatch.lua â€” utils' captured reference and the profile shims
 run the new code with no re-require. Why this was nearly free: mode state already
 survives via the modestate mirror (loadModeState on init), the pet-hold wrap is
 guarded (`_dlacPetHold`) and captures no engine state, and utils calls
 `_dispatch.dispatch` through the table at call time. The re-run re-registers both
-event handlers (unregister-first, pcall'd — deterministic whatever Ashita's same-alias
+event handlers (unregister-first, pcall'd â€” deterministic whatever Ashita's same-alias
 behavior); swap semantics = Reload LAC semantics (modes kept, slot locks reset,
 modestate re-stamped so the banner clears). Failures degrade to today: syntax errors
 are caught by loadstring before execution; a mid-execution error rolls `M.VERSION`
@@ -405,11 +405,11 @@ re-tried every 2s. X-tests cover the handshake identity and the version-parse (a
 reformat of the VERSION line would kill the swap silently). **One manual Reload LAC
 is still needed to get v32 itself live** (v31 has no swapper); after that, engine
 updates land within ~2s of an addon reload. The banner stays as the fallback detector.
-Dev loop is now: edit → reload dlac addon → watch for "[dlac] engine hot-swapped".
+Dev loop is now: edit â†’ reload dlac addon â†’ watch for "[dlac] engine hot-swapped".
 NOT yet covered: utils.lua staleness (rarer; same trick applies if it earns it).
-**Field-verified same day, both directions** (v32→v33→v32 by editing the SEEDED file
+**Field-verified same day, both directions** (v32â†’v33â†’v32 by editing the SEEDED file
 while Henrik played; modestate re-stamped within seconds each time). Bonus find: the
-login BOOT RACE is real — at 13:15 LAC required the old v31 file ~seconds before the
+login BOOT RACE is real â€” at 13:15 LAC required the old v31 file ~seconds before the
 seeder wrote v32 (modestate stamped 31 against a v32 file on disk), which is exactly
 the strand the swapper now heals: from v32 on, a race-loser engine notices the fresh
 seed within ~2s and swaps itself.
@@ -424,71 +424,71 @@ seed within ~2s and swaps itself.
 - **GitHub issues open:** #8 multi-mark browse-assign; #9 in-GUI `/dl why` panel;
   #12 wire spells.lua/abilities.lua into the Triggers tab pickers; #13 polish
   (Sets-tab trigger cross-ref, mode mini-HUD, user docs).
-- **Picker DB corrections:** ~40 ability/spell levels differ from the wiki — planned
+- **Picker DB corrections:** ~40 ability/spell levels differ from the wiki â€” planned
   wiki-sourced overlay (list in docs/reference/catseyexi-jobs.md "dlac impact").
 - **Stat hover descriptors** (text ready in tools/api_cache/stats_tiers.txt).
 - **Iridescence detection**: replace triggersui's curated UNIVERSAL list with a catalog
   `Stats.Iridescence` scan.
 - **TPBonus display scale** decision open (server stores 1000 = +100 TP).
-- **Auto-build permissiveness** (plan-style like the Add popup?) — open user decision.
-- **Augment decoder boundary** (stop at first 0x0000 word) — verify before changing.
-- dlacprobe addon dormant at `Ashita\addons\dlacprobe\` — reuse for packet questions.
+- **Auto-build permissiveness** (plan-style like the Add popup?) â€” open user decision.
+- **Augment decoder boundary** (stop at first 0x0000 word) â€” verify before changing.
+- dlacprobe addon dormant at `Ashita\addons\dlacprobe\` â€” reuse for packet questions.
 - ~~**Guild-points self-request (VERIFY, then automate)**~~ **CLOSED 2026-07-13:**
-  Henrik turned in GP items and confirmed `/dl craft gp` (c2s `0x10F` self-request →
+  Henrik turned in GP items and confirmed `/dl craft gp` (c2s `0x10F` self-request â†’
   s2c `0x113`) reflects the new total. Automation re-enabled exactly as planned:
-  one-shot fetch on login (craftwatch `dlac-craftwatch-gp` d3d_present tick — waits
-  for main job ≠ 0 and not zoning, fires once, unregisters itself) + a fetch on EVERY
+  one-shot fetch on login (craftwatch `dlac-craftwatch-gp` d3d_present tick â€” waits
+  for main job â‰  0 and not zoning, fires once, unregisters itself) + a fetch on EVERY
   entry into the Auto Craft Set view (triggersui `_gpSectionSeen`, >1s render gap =
-  just entered; `requestGuildPoints(true)` forces past the 5s debounce per Henrik —
+  just entered; `requestGuildPoints(true)` forces past the 5s debounce per Henrik â€”
   1s floor dedupes flicker). `/dl craft gp` stays as the manual verify tool. Offsets
-  locked by tests T27–T33.
+  locked by tests T27â€“T33.
 
 ### Loose ends added 07-13 (field-hardening arc)
 
 - **MaxMP relisting**: the Automations row is removed on purpose (picks believed correct
-  now — job/bag/ladder/scaling all fixed); re-add one `rows` entry in triggersui when
+  now â€” job/bag/ladder/scaling all fixed); re-add one `rows` entry in triggersui when
   Henrik declares it official.
 - **WS bailout gap**: stripping legacy profiles (BRD done, backup `.pre-strip`) lost
   gcinclude's CheckWsBailout (cancel WS at bad TP/range). No dlac equivalent yet;
-  offered as a feature, unclaimed. SMN/others still run legacy handlers — strip per
+  offered as a feature, unclaimed. SMN/others still run legacy handlers â€” strip per
   job only on request.
 - **Two sessions, one checkout**: the git checkout flip-flops between `main` and
-  `feature/storage-move` (game loads whatever is checked out; both carry everything —
+  `feature/storage-move` (game loads whatever is checked out; both carry everything â€”
   only /dlmv differs). Commit on the CURRENT branch, sync the other via worktree,
   never push feature/storage-move.
 
 ## Session "profile storage layer" (07-13, engine v33)
 
-**Theme:** Henrik's brother suggested a layer of PROFILES — named bundles of sets.
+**Theme:** Henrik's brother suggested a layer of PROFILES â€” named bundles of sets.
 One design conversation later it became the storage move that also answers
 import/export and "new players never touch legacy files".
 
-**Landed:** `profiles.lua` (new, seeded to `<char>\dlac\` like utils/dispatch) —
+**Landed:** `profiles.lua` (new, seeded to `<char>\dlac\` like utils/dispatch) â€”
 active pointer `dlac\profile.lua`, storage `dlac\profiles\<Name>\{sets,triggers}\<JOB>.lua`;
 engine v33 auto-installs "active profile + current job" into every fresh `gProfile`
-(LAC load / job change / `/dl profile use` — the factored `/dl sets reload` core), so
+(LAC load / job change / `/dl profile use` â€” the factored `/dl sets reload` core), so
 LAC's own job auto-load composes with profiles for free: the profile picks the folder,
 the job picks the file. Commits/deletes now land in profile storage (first commit
 imports the job file's Dynamic block verbatim); `/dl profile use|new|clone|migrate`;
-migration = backup-first (byte-verified, never overwritten, refuses re-runs) →
-verbatim Dynamic move → trigger move → clean-shim rewrite, dry-run by default, every
-step printed. "Copy from static" reads `backups\pre-profiles\` forever. Tests Y1–Y33
-(extract→frame→extract byte-identical roundtrip; setmanager scanners unchanged on the
+migration = backup-first (byte-verified, never overwritten, refuses re-runs) â†’
+verbatim Dynamic move â†’ trigger move â†’ clean-shim rewrite, dry-run by default, every
+step printed. "Copy from static" reads `backups\pre-profiles\` forever. Tests Y1â€“Y33
+(extractâ†’frameâ†’extract byte-identical roundtrip; setmanager scanners unchanged on the
 framed file; planner skip rules; headless safety). Docs: `docs/design/profiles.md`.
 
 **Key decisions:** one compatibility rule everywhere (reads fall back per file to
 legacy; writes always land in profile storage); collision semantics stay FULL REPLACE
-(merge rejected — nothing to merge against after the first flatten; sparse sets should
+(merge rejected â€” nothing to merge against after the first flatten; sparse sets should
 seed via Copy-from-static) with a once-per-load `warnShadowedStatics`; profile names
 one word `[%w_-]`; migration always lands in `Default`; the first backup is sacred
 (existing backup = file skipped). Veterans: dlac stops writing their `<JOB>.lua`
-entirely — the overlay contract (their code first, dispatch last per slot) unchanged.
+entirely â€” the overlay contract (their code first, dispatch last per slot) unchanged.
 
 **Loose ends:** GUI has no profile switcher yet (chat commands + a "Profile: X" line
-in the Sets tab — deliberate, gearui is at the 200-local cap); "Delete static" on a
+in the Sets tab â€” deliberate, gearui is at the 200-local cap); "Delete static" on a
 backup-sourced static reports not-found (harmless; statics live in the backup after
 migration); `ashita.fs.get_dir(root, '.*', true)` as a DIRECTORY lister is unverified
-in the field — `listProfiles` degrades to nil (status still names the active profile).
+in the field â€” `listProfiles` degrades to nil (status still names the active profile).
 Field test pending on Mindie: `/dl profile migrate` (dry run first), confirm dynamic
 sets survive + statics copyable from backup.
 
@@ -1140,7 +1140,7 @@ good word to describe that process."*
 ### CORRECTION: right-click WORKS. The dead-ends list was wrong for 5 days.
 
 The 07-10 entry read "right-click context menus in this ImGui binding (two failed
-rounds)". That is **false and it nearly killed this feature** — the first design round
+rounds)". That is **false and it nearly killed this feature** â€” the first design round
 here was built around avoiding right-click entirely. Henrik: *"check
 feature/storage-move, that one has right click working in the all equipment menu."* He
 was right. `gearmove.lua:663-669` on that branch:
@@ -1153,18 +1153,18 @@ if imgui.IsMouseClicked(1) then
 end
 ```
 
-What actually failed twice was **`BeginPopupContextItem`** specifically — not RMB
+What actually failed twice was **`BeginPopupContextItem`** specifically â€” not RMB
 delivery. `IsMouseClicked(1)` + `IsItemHovered()` feeding the ordinary
 `OpenPopup`/`BeginPopup` pair is field-confirmed. The `[mv]` button survives on that
 branch only as "Trigger 2 (guaranteed)", and `moveButton`'s comment there still claims
-RMB is unreliable — stale, contradicted by the function right below it. Dead-ends
+RMB is unreliable â€” stale, contradicted by the function right below it. Dead-ends
 entry corrected. **Lesson: record the API that failed, not the gesture you gave up on.**
 
 ### The pin, and why it is not a lock
 
-Henrik's ask was literally "lock the slot" and dlac already has `/dl lock` — but that
+Henrik's ask was literally "lock the slot" and dlac already has `/dl lock` â€” but that
 word is taken, and it means close to the OPPOSITE: `M.locks` makes the engine *ignore*
-a slot. A lock is passive (anything else that strips the piece wins) and it LEAKS —
+a slot. A lock is passive (anything else that strips the piece wins) and it LEAKS â€”
 history: *"engine-owned slot locks (LAC forgets `/lac disable` on reload)"*. So the
 outcome he described is delivered by the craft-overlay pattern instead: the engine
 **wears** the pinned item at top priority every dispatch. Nothing can remove it,
@@ -1172,17 +1172,17 @@ nothing to restore, nothing to leak. He named it **Pin**; "lock" keeps its old m
 
 ### Landed
 
-- **dispatch v44**: `ensurePinState` (clone of `ensureCraftState` — 1/sec throttle,
+- **dispatch v44**: `ensurePinState` (clone of `ensureCraftState` â€” 1/sec throttle,
   raw-text compare), `pinOverlayFor(ps, hits, event)`, applied as the LAST
-  `equipResolved` of the dispatch — above the craft overlay, on **every event** (a pin
+  `equipResolved` of the dispatch â€” above the craft overlay, on **every event** (a pin
   that lost its slot mid-cast would not be a pin) and with zero trigger hits.
 - **Scope.** `scope = 'All'` or a list of `"<Event>|<rule label>"` keys
-  (`M.pinScopeKey`). Label alone is ambiguous — `any` is the label of EVERY
+  (`M.pinScopeKey`). Label alone is ambiguous â€” `any` is the label of EVERY
   unconditional rule, so a Precast `any` and a Midcast `any` are indistinguishable and
   one pin would silently cover both. An unknown key goes **quiet** rather than
   falling back to "All" (a pin on a trigger you later edited must not start forcing
   gear everywhere).
-- **`M.ruleLabel(when)` — new, and a real bug fix.** normalize built the label with
+- **`M.ruleLabel(when)` â€” new, and a real bug fix.** normalize built the label with
   `tostring(cv)`, but `when.mode` can hold a LIST (triggersui.lua:312) and
   `tostring(table)` is an ADDRESS: different in each Lua state, different after every
   reload. Multi-mode rules had garbage labels in `/dl why` already; a scoped pin could
@@ -1195,17 +1195,17 @@ nothing to restore, nothing to leak. He named it **Pin**; "lock" keeps its old m
 - **`feature/pinwatch.lua`** (addon state): owns the table, writes `pinstate.lua`,
   `serialize` is pure + **sorted** (dispatch content-compares the raw text before
   re-parsing; unstable key order would defeat that cache every second).
-- **`ui/floatgear.lua`** (uihost module, hard rule 1 — gearui gained no locals): the
+- **`ui/floatgear.lua`** (uihost module, hard rule 1 â€” gearui gained no locals): the
   4x4 window via the shared `S.renderSlotGrid`, so icons and the full hover tooltip
   can never drift from the Equipped tab's. Toggle + position persist via uiflags
   (`gearfloat`/`gfx`/`gfy`, the `tpfloat` precedent). Pinned slot = **red box**.
 - `renderSlotGrid` grew two optional hooks: `opts.boxColorOf(sl)` and
-  `opts.onRightClick(label)`. The grid only REPORTS the RMB — it lives inside its own
+  `opts.onRightClick(label)`. The grid only REPORTS the RMB â€” it lives inside its own
   `BeginChild` and OpenPopup/BeginPopup must share a window scope, so floatgear raises
   a flag and opens the popup at its own level.
 - Tests: **AL** (pin overlay, scope, ruleLabel, guards, the RSlot flap) + **AM**
   (pinwatch round-trip through the engine's own reader, adversarial names). 426 -> 490
-  green; smoke_ui 49 -> 53 (S14-17 prove floatgear actually loaded — gearui requires it
+  green; smoke_ui 49 -> 53 (S14-17 prove floatgear actually loaded â€” gearui requires it
   inside a pcall that only PRINTS on failure, so without those checks a broken module
   would sail through as a silent no-op window).
 
@@ -1214,26 +1214,26 @@ nothing to restore, nothing to leak. He named it **Pin**; "lock" keeps its old m
 Worth recording because all three were invisible to 471 passing checks:
 
 1. **The v43 flap, reached through the overlay.** `reservedDrops` judges ONE table at a
-   time, on its final names — but the pin lands in its OWN `equipResolved`. So the SET's
+   time, on its final names â€” but the pin lands in its OWN `equipResolved`. So the SET's
    pass never learned that the pinned Ryl.Ftm. Tunic was about to reserve the Head it
    was equipping, and the pin's pass couldn't drop a Head its table never named. Set
-   equips Head → pin equips Tunic → server strips Head → forever. Craft has the same
-   hole but its catalog is narrow; **a pin is any item you own — including the Tunic,
+   equips Head â†’ pin equips Tunic â†’ server strips Head â†’ forever. Craft has the same
+   hole but its catalog is narrow; **a pin is any item you own â€” including the Tunic,
    the exact item that motivated v43.** Fixed with `pinReservedSlots` + `ctx.pinReserved`,
    a stateless hold in `equipResolved` (the ratified pattern) rather than widening
    `reservedDrops`. Tests AL34-41.
 2. **Both overlays were dead whenever the event had no rules.** `if list == nil or
    #list == 0 then return; end` fired BEFORE the overlays were consulted, so an "All"
-   pin did nothing on a profile with no triggers — and the craft overlay's own comment
+   pin did nothing on a profile with no triggers â€” and the craft overlay's own comment
    ("a plain profile still gets craft gear") had been **false since v31**. M.dispatch now
    decides whether there is anything to do from rules + pins + craft together, ahead of
    the early return, using the already-throttled cached reads.
 3. **A corrupt pinstate.lua kept the LAST GOOD pins forever.** `_pin.raw = raw` is
    assigned before the parse, so on a syntax error the raw-compare short-circuited every
-   later call and stale pins stayed glued on with nothing able to clear them — including
+   later call and stale pins stayed glued on with nothing able to clear them â€” including
    pinwatch's clear-on-load. `ensureCraftState` still has the identical shape (v31).
 
-Also from that pass: `fmt.esc` was being applied to Selectable/MenuItem labels — esc
+Also from that pass: `fmt.esc` was being applied to Selectable/MenuItem labels â€” esc
 doubles `%` for imgui's FORMATTING calls (Text/TextColored) only, so escaping a
 non-format label renders a literal `%%`. Nothing else in dlac escapes a Selectable
 label; matched.
@@ -1242,24 +1242,24 @@ label; matched.
 
 - **The clear must reach DISK, not just the table.** Pins are session-only (craftwatch's
   rule: no gear glued on at login from last Tuesday). But the ENGINE reads pinstate.lua
-  from LAC's own state on its own schedule — clearing only the addon-side table would
+  from LAC's own state on its own schedule â€” clearing only the addon-side table would
   leave a stale file dressing you at login with nothing aware of it. `loadPinState`
   writes the empty file, and it is pumped from gearui's `d3d_present` **whether or not
-  the window is open** — it is the only thing that clears it.
+  the window is open** â€” it is the only thing that clears it.
 - **`tests\run_tests.lua` hit the 200-local cap too** (it is one ~1800-line main chunk;
-  482 checks got it there). A `do ... end` block does NOT help — its locals share the
+  482 checks got it there). A `do ... end` block does NOT help â€” its locals share the
   enclosing chunk's budget. New sections are `(function() ... end)()`, which gets its
   own 200; that is also the cheapest fix when an older `do` section tips it over.
-- `subFilter(cands, mainRec, job, level, building)` — the 2nd arg is the Main RECORD,
+- `subFilter(cands, mainRec, job, level, building)` â€” the 2nd arg is the Main RECORD,
   not the job. Gating the pin menu's Sub by the worn Main is correct and NOT a breach
   of the Sub HARD RULE: that rule protects the BUILDER's Sub picker (sets are plans);
   a pin equips immediately, like the Alternatives list, which gates too (ADR 0006).
 - `BeginMenu`/`EndMenu` are in the SDK and their symbols are in Addons.dll, but NOTHING
-  in the whole install calls them from Lua — and presence proves nothing
+  in the whole install calls them from Lua â€” and presence proves nothing
   (`BeginPopupContextItem` is bound too, and broken). floatgear probes
   `type(imgui.BeginMenu) == 'function'` at load: bound -> the cascade Henrik asked for;
   not bound -> the same choices as an in-place drill-down (gearmove's quantity-chooser
-  pattern, proven). **Unverified live — first thing to check in-game.**
+  pattern, proven). **Unverified live â€” first thing to check in-game.**
 
 ### Field round 1 (07-15, same day): "It works!"
 
@@ -1537,8 +1537,8 @@ check."*
 
 His hedge was right, and the numbers say why: **Arhat's Gi is item 13795, model 59.**
 The item id is what a packet names; the MODEL id is what a lockstyle shows (0x051 carries
-base+model — `0x2000+59` for Body). Rings/necks/ears/backs/waists have **no model at all**
-(`Model = nil` in the catalog — "no look slot", not "unknown"), so the tooltip says
+base+model â€” `0x2000+59` for Body). Rings/necks/ears/backs/waists have **no model at all**
+(`Model = nil` in the catalog â€” "no look slot", not "unknown"), so the tooltip says
 `none (no look)` rather than `0`.
 
 ### view_ids
@@ -1546,26 +1546,26 @@ base+model — `0x2000+59` for Body). Rings/necks/ears/backs/waists have **no mo
 One flag, one line, no new surface. `sf.flags.viewids` (syncflags, beside `debug`/
 `autosync`, persisted in `uiflags.lua`); `/dl view_ids [on|off]` is a toggle in gearui's
 existing `dlac-ui` handler, cloned from `/dl debug`. The whole feature is a block at the
-end of **`renderItemTooltip`** — which is *the* shared hover card, so "all equipment
+end of **`renderItemTooltip`** â€” which is *the* shared hover card, so "all equipment
 hover" came free: Equipped, All Equipment, Sets, floatgear and the lockstyle picker all
 render through it (that sharing is also why floatgear's tooltip can't drift). Model
-resolves the way lockstyle's `modelOf` does — the record's own field, then the catalog
-**by Id** — because an owned record only carries `Model` once the enrichment pass has run.
+resolves the way lockstyle's `modelOf` does â€” the record's own field, then the catalog
+**by Id** â€” because an owned record only carries `Model` once the enrichment pass has run.
 
 ### "Show gear I don't own"
 
 The preview injects your own 0x051 and never asks the server, so it can already render
-anything in the game — the only thing standing between it and unowned gear was the
+anything in the game â€” the only thing standing between it and unowned gear was the
 picker's source. So `listFor(slot, q, all)` grew a third arg: `all` sources gearui's flat
 catalog list (already `.Slot`-carrying) instead of gear.lua. **`all` LIFTS the ownership
-filter; it must never ADD one** — the AH HARD RULE (no job/level gate, ever) governs the
+filter; it must never ADD one** â€” the AH HARD RULE (no job/level gate, ever) governs the
 catalog list too. A 2-arg call stays owned-only and byte-identical; AH1-AH9 never moved.
 
-**Save is the gate, not the list.** The server renders a style only if `HasItem` — a
+**Save is the gate, not the list.** The server renders a style only if `HasItem` â€” a
 piece you lack silently leaves the slot's OLD look in place (the "why is my lockstyle
 stale" trap). So Save refuses while an unowned piece is in the working copy, and says
 which slots. **Apply needed no gate of its own**: it reads the SAVED file, which an
-ownership-gated Save can never have written. Note this is *not* the off-job case — an
+ownership-gated Save can never have written. Note this is *not* the off-job case â€” an
 off-job pick is ordinary here and must never be dimmed ([[lockstyle-anything-you-own]]);
 ownership is a different axis, and it genuinely cannot work.
 
@@ -1578,10 +1578,10 @@ Three things that were nearly bugs:
   is decided **by Id** (`W.ownedById`, the `catalogById` precedent), and picking your own
   item off the catalog list stores *your* spelling. AN24/AN25 pin the bridge: the same
   pick is accepted with it and rejected without.
-- **The gate must fail OPEN.** First cut returned "unowned" whenever the lookup failed —
+- **The gate must fail OPEN.** First cut returned "unowned" whenever the lookup failed â€”
   and pre-login `gear.lua` is the bundled EMPTY template (dlac.lua preloads at Ashita
   boot; the real one swaps in on the first frame after login). That version bricked Save
-  entirely. Now an absent/empty table means "can't tell → don't block", which is
+  entirely. Now an absent/empty table means "can't tell â†’ don't block", which is
   ownedcache's own rule ("a failed lookup must never take a feature away"). AN27/AN28.
   Choosing gear.lua membership over a live bag scan is the same instinct: gear.lua is
   add-only and a **superset** of what you hold, so nothing the owned picker would have
@@ -1589,16 +1589,16 @@ Three things that were nearly bugs:
 - **`Main` is 3749 catalog rows** (Body 1743, Head 1391; 14941 total) and every rendered
   row loads an icon texture. The All Equipment tab gets away with the full catalog only
   because its slot headers start COLLAPSED; the picker list renders immediately. Hence
-  `BROWSE_CAP = 200`, highest-level-first so the cap keeps the good end — and it is
+  `BROWSE_CAP = 200`, highest-level-first so the cap keeps the good end â€” and it is
   announced ("... N more -- showing the 200 highest-level. Type above to narrow."), never
   silent. Cap applies to the catalog list only; the owned list is untouched.
 
 The toggle sits in the picker popup rather than the window's button column: that list is
 the only thing it changes, and it is where you notice the piece you want is missing. It
-is sticky across opens but deliberately NOT persisted — it's a look-at-things mode, not a
+is sticky across opens but deliberately NOT persisted â€” it's a look-at-things mode, not a
 setting. `all` is ANDed with `W.allEquip ~= nil` so it means "this list IS the catalog"
 and unwired rows can't be painted as gear you don't own. Save is greyed + refuses with a
-reason rather than `BeginDisabled` — that API is used nowhere in this install and hard
+reason rather than `BeginDisabled` â€” that API is used nowhere in this install and hard
 rule 2 says presence proves nothing.
 
 Tests: **AN1-AN28** (490 -> 518) + **S17-S20** (111 -> 115). The smoke checks matter more
@@ -1616,17 +1616,17 @@ you are choosing a body piece."* The filter (`rec.Slot == slot`) was correct and
 tests passed. **The catalog data was wrong**, and the picker was the first surface that
 ever looked at `Slot` closely enough to notice.
 
-His instruction — *"check under tools, apiscrape or w/e ... you can use that to fetch data
-and validate the source"* — is what settled it. `tools/api_cache/23363.json`, straight
+His instruction â€” *"check under tools, apiscrape or w/e ... you can use that to fetch data
+and validate the source"* â€” is what settled it. `tools/api_cache/23363.json`, straight
 from the server:
 
     "name": "Amini Bottillons +2",  "slot": 32,  "MId": 0,  "jobs": 0
 
 Bottillons are BOOTS. The server says Body. **CatsEyeXI's `item_equipment` carries rows
-for unimplemented items with default values, and the default `slot` is 32 — which decodes
+for unimplemented items with default values, and the default `slot` is 32 â€” which decodes
 to Body.** 259 such rows; **258 land in Body** (the 1 other is Main). Their names give the
 game away: `Gletis Crossbow`, `Mpacas Bow`, `Pinaka`, `Earp`, `Loughnashade`, and the
-entire **Amini/Boii `+2`/`+3` reforge tier** — a tier this server has not implemented.
+entire **Amini/Boii `+2`/`+3` reforge tier** â€” a tier this server has not implemented.
 All 190 distinct stub names are **orphans**: no proper row anywhere shares the name, so
 they are not duplicates of real items. The crawler copied the server faithfully, we listed
 it faithfully, and Body silently carried 258 foreign names.
@@ -1635,22 +1635,22 @@ it faithfully, and Body silently carried 258 foreign names.
 
     jobs = '{"All"}' if (len(js) >= 22 or not js) else ...
 
-`not js` — an EMPTY jobs mask was published as **`Jobs = {"All"}`**. Every stub row was
+`not js` â€” an EMPTY jobs mask was published as **`Jobs = {"All"}`**. Every stub row was
 advertised as equippable by *every job*, the exact opposite of the truth. That is why the
 junk never looked suspicious in the catalog: it claimed to be All Jobs gear.
 
 Fixed in **both layers, because they fail independently**:
 
-- **DATA** — apicrawl skips `jobs == 0` and prints the count (`skipped 259 unimplemented
+- **DATA** â€” apicrawl skips `jobs == 0` and prints the count (`skipped 259 unimplemented
   stub rows`); the `{"All"}` conflation is gone. Rebuild is surgical, verified by diffing
-  old vs new: **REMOVED 258, ADDED 0, and Body is the only slot that moved** (1743 → 1485);
+  old vs new: **REMOVED 258, ADDED 0, and Body is the only slot that moved** (1743 â†’ 1485);
   all 258 removed were modelless. `tools/README.md` "The junk rows" is the runbook.
-- **PICKER** — `hasLook(rec)` refuses any catalog row with no model. A lockstyle shows a
-  MODEL; an item without one cannot be shown (lookpreview DROPS a modelless slot — the AI
-  tests — and the server would render it EMPTY), so offering it is offering a no-op. This
+- **PICKER** â€” `hasLook(rec)` refuses any catalog row with no model. A lockstyle shows a
+  MODEL; an item without one cannot be shown (lookpreview DROPS a modelless slot â€” the AI
+  tests â€” and the server would render it EMPTY), so offering it is offering a no-op. This
   layer must hold on a dirty catalog too.
 
-**`jobs==0` is the marker; `MId==0` is NOT** — and the difference is load-bearing.
+**`jobs==0` is the marker; `MId==0` is NOT** â€” and the difference is load-bearing.
 `jobs==0` (259) is a strict subset of `MId==0` (1073). The other **814** are real,
 equippable, wanted items that merely have no model (all the `Hexed` gear). Dropping those
 from the catalog would strip their stats, and the catalog is where every owned item gets
@@ -1661,28 +1661,28 @@ Not applied to the owned list: gear.lua is slotted from the CLIENT's own resourc
 (`gearimport.slotFromMask`), so it has no stub rows, and the AH HARD RULE says that list
 filters on the search box and nothing else (AH6 pins a fixture carrying no Model at all).
 The client resource stays the fallback answer if a wrong slot ever turns up on an item
-that has real jobs — none did: a name sweep of all 1470 surviving Body pieces found zero
+that has real jobs â€” none did: a name sweep of all 1470 surviving Body pieces found zero
 wrong-slot names.
 
 Tests: AN9a-AN9g + S21-S25 (525 + 120). S21 pins the DATA and S22/S23 the PICKER; both
-verified to bite — rebuilding the catalog with the stub skip disabled fails S21, and
+verified to bite â€” rebuilding the catalog with the stub skip disabled fails S21, and
 removing `hasLook` fails S22/S23 and drags 'Amini Bottillons +2' to the TOP of the Body
 list (AN9's failure text is the bug, reproduced).
 
-## Session "NON is not a job" — the login that silently ate your sets (07-15, engine v49)
+## Session "NON is not a job" â€” the login that silently ate your sets (07-15, engine v49)
 
 Henrik: *"Uuuh, I don't know exactly when, but either when we did the equipmon floating
 box, earlier or later, my triggers don't work? Did something implement itself too hard?"*
 
 Nothing did. The equipmon window was innocent, and the bug was **latent since the storage
-move (v33, 07-13 13:55)** — 108 commits and two days earlier. Decision of record:
+move (v33, 07-13 13:55)** â€” 108 commits and two days earlier. Decision of record:
 **ADR 0007**.
 
 ### The bug
 
 At login the client's player block is not populated yet, so `GetMainJob()` returns **0**
-(= None). gData resolves the main job through the resource manager —
-`GetString('jobs.names_abbr', GetMainJob())` — and **0 stringifies to `"NON"`**. The
+(= None). gData resolves the main job through the resource manager â€”
+`GetString('jobs.names_abbr', GetMainJob())` â€” and **0 stringifies to `"NON"`**. The
 profile auto-install guarded with:
 
 ```lua
@@ -1690,14 +1690,14 @@ if type(job) == 'string' and job ~= '' and job ~= '?' then   -- "NON" sails thro
 ```
 
 So it took `"NON"` for a real job, went looking for `sets\NON.lua`, found nothing
-(**nobody has one** — which is why it hit every migrated character identically), installed
+(**nobody has one** â€” which is why it hit every migrated character identically), installed
 nothing, and **LATCHED**: the latch keyed on `gProfile` + profile name and never recorded
 *which job* it had answered for. ~6.4 s later (16 ticks) the read settles to the real job,
 but `gProfile` has not changed, so the guard never re-fires.
 
 Result: the whole session runs on the shim's empty `.Dynamic`. Every trigger matches and
-equips **nothing**, in silence — `equipSetByName` skips a missing set without a word since
-v35. `/lac set Idle` → *"Set not found: Idle"*.
+equips **nothing**, in silence â€” `equipSetByName` skips a missing set without a word since
+v35. `/lac set Idle` â†’ *"Set not found: Idle"*.
 
 ### Why it hid for two days
 
@@ -1708,18 +1708,18 @@ feature work settled down and he actually just *played*. His own words: *"I've b
 and running around a lot and haven't really done much that would make me detect this issue."*
 
 The storage move is what made it possible. **Pre-v33 the job file CONTAINED the sets**, so
-LAC populated `gProfile.Sets.Dynamic` merely by loading it — no install, no tick, no race.
+LAC populated `gProfile.Sets.Dynamic` merely by loading it â€” no install, no tick, no race.
 After v33 the job file is a 1770-byte shim with `Dynamic = {}` and the engine must fill it.
 
 ### Two wrong theories (both from reading code, not running it)
 
 1. **Royal Cloak / RSlot (v43).** Confirmed `RSlot = 16` on the Royal Cloak in the live
    `gear.lua`, and it *is* in the WHM Idle Body ladder. Dead end: best-by-level picks
-   `Clr. Bliaut +1` (60) over it (59), and reservedDrops only ever drops ONE slot — never
+   `Clr. Bliaut +1` (60) over it (59), and reservedDrops only ever drops ONE slot â€” never
    "triggers don't work". Cost: an hour.
 2. **The latch fires on an unanswerable `hasSetsFile` (v45).** Right about *the latch being
    the bug*, wrong about *why it latched*. Shipped v45 (`answerable = setsPath(job) ~= nil`)
-   and it did **not** fix it — `setsPath` is non-nil the moment `charBase()` resolves, which
+   and it did **not** fix it â€” `setsPath` is non-nil the moment `charBase()` resolves, which
    is well before the job read settles. Kept anyway (it is a real second hole), but it was
    not this.
 
@@ -1728,8 +1728,8 @@ answer only arrived when the engine printed its own state.
 
 ### What actually found it
 
-Henrik: *"Look, ask me to do whatever helps you, it's better than guessing."* — then
-`/dl instdiag` (temporary, v46–v48: tick counters + a latch log):
+Henrik: *"Look, ask me to do whatever helps you, it's better than guessing."* â€” then
+`/dl instdiag` (temporary, v46â€“v48: tick counters + a latch log):
 
 ```
 instdiag: engine v48  ticks=101 reached=100
@@ -1743,23 +1743,23 @@ v48 job-keyed latch re-firing and installing.
 
 Two false starts on the instrument itself, both worth remembering:
 - **v46's `/dl instdiag` printed nothing.** The LAC command handler gates on a
-  **whitelist** of subcommands *before* the branches — adding a branch alone does nothing.
+  **whitelist** of subcommands *before* the branches â€” adding a branch alone does nothing.
   Whitelist first, branch second.
 - **The version must move or the instrument never loads.** `trySelfSwap` compares the
   seeded file's `M.VERSION` to the running one; a changed file at the same version is
   silently ignored. Same for the GUI's red Reload-LAC banner.
 
-### The fix (v49) — both ends
+### The fix (v49) â€” both ends
 
 - **`M.jobReady(jobId, jobName)`** rejects a not-ready job, gating on the **id** (0 is
   authoritative; `readJobSets` twenty lines away already did exactly this). The `"NON"`
-  name check stays as belt-and-braces — id and string are two different reads.
+  name check stays as belt-and-braces â€” id and string are two different reads.
 - **The latch records the job it answered for**, so a settling read re-fires the guard.
   Defense in depth: `jobReady` stops the bogus resolve, the job-keyed latch stops any
   future wrong-job resolve from being permanent.
 
-Tests 527 → 534 (Z1–Z7 pin `jobReady`, incl. **Z7: WAR (id 1) is a real job** — the fix
-must not overreach; Y55–Y56 pin the `setsPath == nil` retry signal).
+Tests 527 â†’ 534 (Z1â€“Z7 pin `jobReady`, incl. **Z7: WAR (id 1) is a real job** â€” the fix
+must not overreach; Y55â€“Y56 pin the `setsPath == nil` retry signal).
 
 ### Lessons
 
@@ -1767,8 +1767,8 @@ must not overreach; Y55–Y56 pin the `setsPath == nil` retry signal).
   `'?'` were a blocklist; `"NON"` was a *valid string*. Gate on the signal the game uses
   for "not ready", not on the shape of the value.
 - **The dangerous not-ready read is the one that returns a plausible value, not nil.**
-  `charBase()` returns nil pre-login and every caller retries — that one never bit.
-  `GetMainJob() == 0 → "NON"` returns *good-looking data*, and cost hours.
+  `charBase()` returns nil pre-login and every caller retries â€” that one never bit.
+  `GetMainJob() == 0 â†’ "NON"` returns *good-looking data*, and cost hours.
 - **The engine's only latch was its only non-retrying reader.** Everything else re-reads on
   a throttle and self-heals. That asymmetry was the tell, visible from the first hour and
   under-weighed: **triggers recovered at login and sets never did.**
@@ -1782,7 +1782,7 @@ must not overreach; Y55–Y56 pin the `setsPath == nil` retry signal).
 
 - **Hunklor is not a second data point for this** and cost a detour. He was un-migrated at
   login, so the tick correctly installed nothing; Setup migrated him mid-session, and
-  `profiles.migrate` **does not install into the live `gProfile`** (it cannot — LAC is still
+  `profiles.migrate` **does not install into the live `gProfile`** (it cannot â€” LAC is still
   running the old in-memory profile until a Reload LAC). His "same issue" was a
   half-migrated profile plus genuinely empty sets.
 - **Migration carries `Dynamic` only, and that is by design.** His SAM was a hand-written
@@ -1790,18 +1790,18 @@ must not overreach; Y55–Y56 pin the `setsPath == nil` retry signal).
   `HandleDefault`, gcinclude wiring and a `Packer` belt. `extractDynamicText` found no
   `Dynamic` block, so migration correctly wrote an empty one; the statics live on in
   `backups\pre-profiles\` for the Sets tab's "Copy from static". The shim does not carry
-  hand-written logic — say so when someone migrates a rich profile.
+  hand-written logic â€” say so when someone migrates a rich profile.
 
 ### Confirmed + closed (07-15, engine v50)
 
 Field-verified on **both** characters, each a fresh login touching nothing: Hunklor (SAM,
 `latches=tick 1: job=NON ... | tick 17: job=SAM ...`, `Dynamic=1 flattened=1`) and then
-Mindie (WHM) — Henrik: *"logged in on Mindie, worked."* Two characters, two profile
+Mindie (WHM) â€” Henrik: *"logged in on Mindie, worked."* Two characters, two profile
 shapes, two jobs; that is the fix confirmed on the exact path that used to fail.
 
-`/dl instdiag` and the tick counters are **stripped again in v50** — they were explicit
+`/dl instdiag` and the tick counters are **stripped again in v50** â€” they were explicit
 scaffolding, and dev diagnostics belong in dlacprobe (they live in `cb2fbe2..40288e3` if
-this class ever returns). What stays is `M.jobReady` + the job-keyed latch, tests Z1–Z7,
+this class ever returns). What stays is `M.jobReady` + the job-keyed latch, tests Z1â€“Z7,
 and two comments left exactly where the scaffolding taught something: the command
 handler's **whitelist-before-branch** note, and the `jobReady` header carrying the actual
 field line that proved it. The cost of the instrument was ~15 minutes; it should have been
@@ -1818,17 +1818,17 @@ already has selected**, keeping that set's name.
 ### What landed
 
 - **Target is the selected set.** `copyFromStaticSet` refuses when `M.workingSetName` is
-  empty ("Select or create a set first, then copy into it") — the copy no longer invents
+  empty ("Select or create a set first, then copy into it") â€” the copy no longer invents
   a set. The New-box-rename path is gone; the flow is now *pick/create a set, then copy*.
 - **Overwrite is confirmed.** A non-empty target opens a `BeginPopup` (not Modal, so
-  click-away aborts — same reasoning as the Setup-plan popup): "Replace '<Set>' (N filled
+  click-away aborts â€” same reasoning as the Setup-plan popup): "Replace '<Set>' (N filled
   slots) with static '<Source>'?" Replace / Cancel / click-away. Nothing changes until
   Replace. The one-shot `ui._copyConfirmOpen` drives `OpenPopup` while the data in
-  `ui._copyConfirm` persists for the popup's lifetime — calling `OpenPopup` every frame
+  `ui._copyConfirm` persists for the popup's lifetime â€” calling `OpenPopup` every frame
   would defeat the click-away close.
 - **Full-replace.** The target becomes the static's contents; slots the static doesn't
   define are cleared (`M.working = result.working`). An all-unowned copy that resolves to
-  **nothing** is the one exception — it leaves the target untouched and says so loudly,
+  **nothing** is the one exception â€” it leaves the target untouched and says so loudly,
   rather than silently wiping the player's work (hard rule 12).
 - **Order verbatim + best-first warning (ADR 0008).** Candidate order is carried as-is;
   dlac still equips the highest-item-Level candidate, which diverges from LAC's
@@ -1838,11 +1838,11 @@ already has selected**, keeping that set's name.
 
 ### Where the logic lives
 
-The pure transform is its own module, `gear/setimport.lua` —
+The pure transform is its own module, `gear/setimport.lua` â€”
 `importStaticSet(staticSet, slotLabels, resolve) -> { working, notBestFirst, slotCount }`
-— with the resolver **injected** (gearui passes `resolveSetItem`; the headless suite
+â€” with the resolver **injected** (gearui passes `resolveSetItem`; the headless suite
 passes a stub over owned records), which is what keeps it Ashita-free and testable. The
-UI shell (refuse / confirm / warn) stays in gearui. Tests **AO0–AO23** pin the transform:
+UI shell (refuse / confirm / warn) stays in gearui. Tests **AO0â€“AO23** pin the transform:
 plain single-element slots, a level-descending `_Priority` list (silent), a not-best-first
 list (named), equal-Level ties (not a divergence), unowned candidates dropped, an
 all-unowned slot absent, and a virtual entry (`dlac:AutoStaff`) skipped by the best-first
@@ -1859,21 +1859,21 @@ maintainer sign-off** in the PR, not finalized.
 The fast path for a player who already keeps their spells grouped in a Lua table (by stat
 scaling, by role, ...): an **"Import Lua Table(s)"** control in the Groups section that
 parses pasted `Name = T{...}` assignments and bulk-creates **one Group per top-level key**,
-members = the key's string array. Builds on G1/G2's `groupsmodel` / `Groups` storage —
+members = the key's string array. Builds on G1/G2's `groupsmodel` / `Groups` storage â€”
 same file, same Commit.
 
 ### What landed
 
-- **The pure transform is its own module, `gear/groupimport.lua`** —
+- **The pure transform is its own module, `gear/groupimport.lua`** â€”
   `parse(text) -> (groups | nil, errors[])`, plus `classify` (created vs collide, CI) and
   `apply` (write into the live map, overwriting under the existing stored spelling). No
-  Ashita, no ImGui, no file I/O — the same shape as `setimport.lua`. Tests **TGI0–TGI33**
+  Ashita, no ImGui, no file I/O â€” the same shape as `setimport.lua`. Tests **TGI0â€“TGI33**
   pin it: the issue's own paste (T{...} + plain {...} mixed, trailing comma), the
   single-element `STR_VIT = T{'Quad. Continuum', }` -> `["Quad. Continuum"]` exactly, the
   whole `{ Key = {...} }` form, flat-only rejection (nested / non-string / named-field skips
   THAT key while the rest import), malformed input, a sandbox-blocked global, blank/nil
   input, and empty groups.
-- **`T` is identity, sandboxed.** The text is evaluated in a minimal env — `T = function(t)
+- **`T` is identity, sandboxed.** The text is evaluated in a minimal env â€” `T = function(t)
   return t end` and **nothing else**, no metatable, so every other global (`os`, `io`,
   `require`, ...) reads nil and a hostile paste errors at eval rather than running (the
   hardened `profilesets.sandboxSets` pattern). Compiled with `load(code, name, 't', env)` /
@@ -1886,19 +1886,19 @@ same file, same Commit.
   imports immediately; with collisions it waits for a red **"Overwrite N & import"** click
   (parity with "Copy from static"). Overwrite replaces members **under the existing stored
   spelling** (`str_dex` pasted over `STR_DEX` keeps `STR_DEX`). A skipped key always states
-  its reason — no silent drop (hard rule 12). Commit still writes the file.
-- **`InputTextMultiline` is probed, not assumed** (hard rule 2 — it is used nowhere else in
+  its reason â€” no silent drop (hard rule 12). Commit still writes the file.
+- **`InputTextMultiline` is probed, not assumed** (hard rule 2 â€” it is used nowhere else in
   this install). Present -> the paste box; absent -> a single-line box with a visible note
-  (the parser is comma-separated, so one line still works) — a visible degrade, never a
+  (the parser is comma-separated, so one line still works) â€” a visible degrade, never a
   silent disable.
 
 ### Where it lives / what did NOT change
 
-`renderGroupImport` is a `local` in `ui/triggersui.lua` (addon-state, 92 top-level locals —
+`renderGroupImport` is a `local` in `ui/triggersui.lua` (addon-state, 92 top-level locals â€”
 well under the 200 cap; smoke_ui guards the load). State rides on the existing `groupUI`
-table (no new UI-chunk pressure). **No seeded-file behaviour changed** — `groupimport.lua`
+table (no new UI-chunk pressure). **No seeded-file behaviour changed** â€” `groupimport.lua`
 is never seeded, the trigger-file `Groups` format is exactly G2's, and the engine reads it
-unchanged — so **no `dispatch.M.VERSION` bump**. Player-facing strings (the control label,
+unchanged â€” so **no `dispatch.M.VERSION` bump**. Player-facing strings (the control label,
 the preview/summary wording, the skip reasons) are **proposed for maintainer sign-off** in
 the PR, not finalized.
 
@@ -1911,24 +1911,24 @@ once as a shared, coupling-free core.
 
 ### What landed
 
-- **`gear/actionpicker.lua` — the pure core.** `buildList(job, spells, abilities)` returns
+- **`gear/actionpicker.lua` â€” the pure core.** `buildList(job, spells, abilities)` returns
   the job's learnable spells + abilities as ONE combined, case-insensitively sorted list of
-  `{ name, kind, level }` (kind = `'spell'`/`'ability'`), **ungated** — the level is display
+  `{ name, kind, level }` (kind = `'spell'`/`'ability'`), **ungated** â€” the level is display
   only (build-ahead, HARD RULE 6 / ADR 0006). The picker-DB tables are **injected** (the
   setimport resolver precedent) so it stays Ashita/imgui/file-IO-free. `parseQuery` +
-  `matches` are the comma-separated, ALL-terms-substring search predicate — the item-search
+  `matches` are the comma-separated, ALL-terms-substring search predicate â€” the item-search
   shape (gearui `parseSearch`/`itemSearchMatch`), minus the stat-alias canon (actions carry
-  no stats). Never seeded into LAC. Tests **ACP0–ACP26**.
+  no stats). Never seeded into LAC. Tests **ACP0â€“ACP26**.
 - **The Groups tab picker (triggersui).** Each group box gains a **Browse...** button that
   opens ONE shared popup retargeted per group via `groupUI.browseFor`. Search narrows the
-  cached job list; each row is a **checkbox** mark (not a Selectable — the field-proven
+  cached job list; each row is a **checkbox** mark (not a Selectable â€” the field-proven
   idiom keeps the popup open across marks without a DontClosePopups flag, mirroring gearui's
   weapon-type filter) + a `[S]`/`[A]` marker + name + dim `Lv`. **Add N marked** commits
   every mark through `gm.addMember` (case-insensitive dedup), then closes so the section
   status + member list show the result. Entries already in the group render dimmed with
   `(in group)` and no checkbox. The list is cached per job (`_listJob`) so the ~1000-row
   scan runs once per job, not per frame.
-- **Free-name entry stays.** The typed input + `+ member` is untouched — the picker is only
+- **Free-name entry stays.** The typed input + `+ member` is untouched â€” the picker is only
   a faster path for the job's known actions; anything the data misses is still typeable.
 - **Untyped, so twins are one mark.** A rare spell+ability sharing a name (e.g. BLU
   "Head Butt") lists as two rows, each labelled, but marking either sets the one
@@ -1939,10 +1939,10 @@ once as a shared, coupling-free core.
 
 Pure transform + search: `gear/actionpicker.lua` (tests ACP*). UI shell (button, popup,
 mark state, cache): `ui/triggersui.lua` `renderGroupBrowsePopup` + `renderGroupBox`, covered
-by `smoke_ui`'s chunk load. Data: `data/spells.lua` / `data/abilities.lua` — issue #26 is
+by `smoke_ui`'s chunk load. Data: `data/spells.lua` / `data/abilities.lua` â€” issue #26 is
 their FIRST consumer (#12 is the next adopter of the same seam).
 
-No seeded-file behaviour changed (the group storage format is unchanged — still bare-name
+No seeded-file behaviour changed (the group storage format is unchanged â€” still bare-name
 arrays via `gm.addMember`; the engine reads the same file), so **no `dispatch.M.VERSION`
 bump**. New player-facing strings (the Browse... button + tooltip, the popup title, the
 `[S]`/`[A]` markers, "Add N marked", the status line) are **proposed for maintainer
@@ -1986,20 +1986,20 @@ lists every group-shaped table as a tick-able candidate.
 
 ### What landed
 
-- **`gear/groupscan.lua` — the pure scanner.** `scan(fileText) -> (candidates, notes)`. The
+- **`gear/groupscan.lua` â€” the pure scanner.** `scan(fileText) -> (candidates, notes)`. The
   player's group tables are usually `local`s (invisible to a sandbox-run env), so this is a TEXT
   scan: a `%b{}` walk pulls each top-level `[local] NAME = T?{...}` block (never descending, so a
   gear set's inner `['Idle'] = {...}` is not a top-level hit), evaluates its body in `groupimport`'s
-  hardened sandbox, and classifies it — a flat string array → one candidate; a container of flat
-  arrays → one candidate per inner key (the `BlueSpells` case); a gear set / settings block →
+  hardened sandbox, and classifies it â€” a flat string array â†’ one candidate; a container of flat
+  arrays â†’ one candidate per inner key (the `BlueSpells` case); a gear set / settings block â†’
   skipped with a note. Comments are stripped first so a stray brace can't unbalance the walk;
-  candidates are deduped case-insensitively and sorted. Tests **GS0–GS9**.
+  candidates are deduped case-insensitively and sorted. Tests **GS0â€“GS9**.
 - **`groupimport` grew two exports** (`membersOf`, `evalTable`) so the flat-list heuristic and the
   safe eval live in ONE place instead of being re-implemented by the scanner.
 - **Reads both files.** dlac's profile migration shims the live `<JOB>.lua`, so the real tables
-  survive in `backups\pre-profiles\<JOB>.lua` — the scan reads the live file AND the backup and
+  survive in `backups\pre-profiles\<JOB>.lua` â€” the scan reads the live file AND the backup and
   concatenates them.
-- **The UI (`triggersui.renderGroupAutoImport`).** A `Scan my Lua file` button → a tick-list of
+- **The UI (`triggersui.renderGroupAutoImport`).** A `Scan my Lua file` button â†’ a tick-list of
   candidates (name + member count), pre-ticked EXCEPT obvious config tables (`*Variant*`,
   `*Settings*`, `*Table`) so `IdleVariantTable`-style false positives don't import unless chosen,
   plus a dim "skipped N" note for the gear-set/settings blocks. Import reuses the SAME `classify` /
@@ -2008,12 +2008,12 @@ lists every group-shaped table as a tick-able candidate.
 ### Where it lives / what did NOT change
 
 `renderGroupAutoImport` is a `local` in `ui/triggersui.lua` (addon-state; smoke_ui guards the load).
-No seeded-file behaviour changed — `groupscan` is never seeded and the `Groups` storage format is
-G2's, read by the engine unchanged — so **no `dispatch.M.VERSION` bump**. New player-facing strings
+No seeded-file behaviour changed â€” `groupscan` is never seeded and the `Groups` storage format is
+G2's, read by the engine unchanged â€” so **no `dispatch.M.VERSION` bump**. New player-facing strings
 (the control label, `Scan my Lua file`, `Found N tables`, `Import N selected`, the skip notes) are
 **proposed for maintainer sign-off** in the PR, not finalized.
 
-## Session "conditional effects design + the night shift" (44212a0..dadd9a8, PR #45) — 2026-07-17
+## Session "conditional effects design + the night shift" (44212a0..dadd9a8, PR #45) â€” 2026-07-17
 
 **Theme:** Henrik expanded the latent/set-bonus scope (optimizer + totals now IN), delegated
 every open decision, and left the maintainer running overnight ("you are super, go by your
@@ -2021,31 +2021,31 @@ recommendations").
 
 **Landed (day):** direct server-source re-verification of the conditional-effects research
 (sparse clone: the gear_sets applier + latent_effect_container.cpp, which the original
-research never opened) — found and FIXED the gen_levelscaling latent-id bug (52 is
+research never opened) â€” found and FIXED the gen_levelscaling latent-id bug (52 is
 WEATHER_ELEMENT, 50 is the real under-level latent; shipped data carried 57 weather rows as
-bogus below-Lv entries and missed all 9 real ones — `44212a0`). Full design via judge-panel
+bogus below-Lv entries and missed all 9 real ones â€” `44212a0`). Full design via judge-panel
 workflow + source amendments: `docs/design/conditional-effects.md` (`d16449a`; all six
-decisions resolved `d938f7c`). PRD #39 → issues #40–#44 (one per phase; #40 dispatched to
-the cloud agent, #42 pre-carries agent:max). Generators built — `tools/modmap.py` shared
-modId→stat bridge with the x100 scale traps, `gen_gearsets.py`, the latent router inside
-`gen_levelscaling.py` (all disk-only; tools/ is gitignored) — and `data/gearsets.lua` +
+decisions resolved `d938f7c`). PRD #39 â†’ issues #40â€“#44 (one per phase; #40 dispatched to
+the cloud agent, #42 pre-carries agent:max). Generators built â€” `tools/modmap.py` shared
+modIdâ†’stat bridge with the x100 scale traps, `gen_gearsets.py`, the latent router inside
+`gen_levelscaling.py` (all disk-only; tools/ is gitignored) â€” and `data/gearsets.lua` +
 `data/latentstats.lua` shipped (`4af3e5f`) so the cloud slices are pure addon work. Henrik
 live-confirmed the Lava/Kusha de-equip drops ATT + ACC + DEF (the flat-set field check).
 
 **Landed (night):** "Build as lv.75" defaults ON, deliberately session-only (`6577f68`).
-Instant Warp scroll tops the Teleports menu — `/dl iw`, usable-item path (no equip/lock/
+Instant Warp scroll tops the Teleports menu â€” `/dl iw`, usable-item path (no equip/lock/
 wait), stack count in the charges column; swept the parallel session's completed Chocobo
 Whistle changeset along (`9e1df2e`). Per-set 4x4 build-slot grid replaces "Skip weapons":
 the mask rides bindSetWeights (one binding, two payloads) and persists beside the weights
-as slotsShared/slotsPerSet; AS1–AS20 (`ad79e61`). Player trigger conditions: hpBelow/
-hpAbove, mpBelow/mpAbove (percent), tpBelow/tpAbove (raw TP), buff/buffNot (name or id) —
-engine VERSION 53 with a per-dispatch buff cache and PM1–PM21 (`88bb3ba`); editor UI with
+as slotsShared/slotsPerSet; AS1â€“AS20 (`ad79e61`). Player trigger conditions: hpBelow/
+hpAbove, mpBelow/mpAbove (percent), tpBelow/tpAbove (raw TP), buff/buffNot (name or id) â€”
+engine VERSION 53 with a per-dispatch buff cache and PM1â€“PM21 (`88bb3ba`); editor UI with
 number thresholds + a searchable status-effect picker (`dadd9a8`). PR #45 (extras, for
-morning review): live `[on now]`/`[off now]` markers on player-gated rules — evaluated by
-the ENGINE's own matcher seam, never a re-implementation — and weights "copy from..."
-(weights + slot marks together; AW1–AW11).
+morning review): live `[on now]`/`[off now]` markers on player-gated rules â€” evaluated by
+the ENGINE's own matcher seam, never a re-implementation â€” and weights "copy from..."
+(weights + slot marks together; AW1â€“AW11).
 
-**Key decisions:** duplicate set pieces count TWICE (verified straight from the applier —
+**Key decisions:** duplicate set pieces count TWICE (verified straight from the applier â€”
 the design draft's "unverified, default once" was flipped); set piece counting is
 level-sync-gated server-side and dlac mirrors it; 37 of 126 sets have ALTERNATE pieces
 spanning weapon slots (weapon slots feed the optimizer via baseComposition); unreadable
@@ -2053,10 +2053,10 @@ player state matches NEITHER buff polarity (a failed read must never flap gear);
 build-as-75 off-state deliberately does NOT persist; main pushed (9 commits) so the extras
 PR reviews cleanly and origin can't diverge under the incoming cloud-agent PRs.
 
-## Session "level-sync settle hold" (after adaab2c, engine v56) — 2026-07-17
+## Session "level-sync settle hold" (after adaab2c, engine v56) â€” 2026-07-17
 
-**Theme:** Henrik's field report — "in Incursion you are already level synced, then you pop
-a boss, a new level sync is in place. That's when I lose TP" — diagnosed and fixed
+**Theme:** Henrik's field report â€” "in Incursion you are already level synced, then you pop
+a boss, a new level sync is in place. That's when I lose TP" â€” diagnosed and fixed
 engine-native.
 
 **Root cause:** the engine trusts a just-changed MainJobSync reading immediately. A sync
@@ -2068,28 +2068,28 @@ transient window.
 **Landed (dispatch.lua v56):** the level-sync settle hold, the ratified stateless-hold
 pattern. Pure rule `M.syncSettleStep`: a level jump on the SAME job arms a ~3s hold
 (`M.SYNC_SETTLE_S`); job changes and first reads adopt instantly; not-ready readings
-(level 0, job '?'/'NON') never touch the tracker (parked on M — survives self-swap
+(level 0, job '?'/'NON') never touch the tracker (parked on M â€” survives self-swap
 mid-hold). While holding: every dispatch keeps Main/Sub/Range as worn (`ctx.syncHold`, the
-pinReserved pattern — sits ABOVE the AutoAcc/virtual branches so markers hold UNRESOLVED),
+pinReserved pattern â€” sits ABOVE the AutoAcc/virtual branches so markers hold UNRESOLVED),
 a Range-reserving stat-stick Ammo holds WITH the Range it reserves (else the server strips
-the worn ranged weapon — the ADR 0010 inversion the review caught), and HandleDefault is
+the worn ranged weapon â€” the ADR 0010 inversion the review caught), and HandleDefault is
 gated whole for legacy profiles via `M.defaultGateHold`, consulted AT CALL TIME by a thin
 generational wrap shell (`WRAP_GEN` + preserved `_dlacOrigHEE` original) so the gate
-hot-swaps live — the old `_dlacPetHold` boolean guard would have left a v55→v56 hot-swap
-without the gate until a full Reload LAC. Traced as `SYNC-HOLD` in /dl why. LS1–LS34
+hot-swaps live â€” the old `_dlacPetHold` boolean guard would have left a v55â†’v56 hot-swap
+without the gate until a full Reload LAC. Traced as `SYNC-HOLD` in /dl why. LS1â€“LS34
 headless tests (929 total), including a real drive of the wrap shell over a v55-shaped
 pre-wrap.
 
 **Process note:** adversarial review workflow (4 lenses, refutation verify) confirmed 4
-real defects in the first draft — trinket/Range inversion, the hot-swap wrap gap, the
-tracker reset on self-swap, and mutation-tested coverage holes — all fixed before commit.
+real defects in the first draft â€” trinket/Range inversion, the hot-swap wrap gap, the
+tracker reset on self-swap, and mutation-tested coverage holes â€” all fixed before commit.
 
-**Revision (same day, v57):** settle window 3s → 1s (Henrik: "3 sounds like a long time").
-Safe because the window is stability-since-last-change — every flip re-arms it — so 1s only
+**Revision (same day, v57):** settle window 3s â†’ 1s (Henrik: "3 sounds like a long time").
+Safe because the window is stability-since-last-change â€” every flip re-arms it â€” so 1s only
 has to outlast the quiet gap after the final flip. `M.SYNC_SETTLE_S` is the lever if a sync
 ever eats TP again.
 
-**Field confirmation (same day):** Henrik tested in Incursion — TP survived the boss pop.
+**Field confirmation (same day):** Henrik tested in Incursion â€” TP survived the boss pop.
 Henrik's framing, adopted: this was a LAC-layer reflex ("LAC is too fast, dlac gives it
 leeway"), not a dlac bug; plain-LAC users with level-dependent weapon rules remain exposed
 by design. Full write-up with code context: `docs/design/sync-settle-hold.md`.
@@ -2098,25 +2098,25 @@ by design. Full write-up with code context: `docs/design/sync-settle-hold.md`.
 
 **Field case (Henrik, WHM):** Cure Potency + Cure Potency II weighted 10/pt; owning
 Curates' Earring (Lv30) and Roundel Earring (Lv73) produced BOTH as Ear1 candidates
-(rungs at 30 and 73) and left Ear2 empty — the pair never wore both, so the Curates'
+(rungs at 30 and 73) and left Ear2 empty â€” the pair never wore both, so the Curates'
 potency was lost outright. Root cause in `autoBuild` (gearui): dynamic mode built
 slot 1's full ladder first (every score-improving item lands there), then barred
-slot 2 from everything in slot 1's list — correct for double-equip safety, but it
+slot 2 from everything in slot 1's list â€” correct for double-equip safety, but it
 starves slot 2 whenever each upgrade beats the last. Same defect for rings.
 
 **Fix:** paired slots (Ear1/Ear2, Ring1/Ring2) with both halves masked now ladder as
-a PAIR via `gearoptim.pairLadders` — one running TOP-2 walk over the level-sorted
+a PAIR via `gearoptim.pairLadders` â€” one running TOP-2 walk over the level-sorted
 candidates; each upgrade lands in whichever chain holds the weaker top, so the two
 flattens together wear the best two distinct pieces at EVERY level, with disjoint
 chains by construction (no double-equip). Owned counts pass through: an Id owned 2+
-may fill both slots. The joint optimizer's picks arrive as `pins` — a pin already
+may fill both slots. The joint optimizer's picks arrive as `pins` â€” a pin already
 topping a chain claims it untouched (ears are interchangeable, matched as a set);
 a leftover pin trims an unclaimed chain like the single-slot ladder cap and is
 stripped from the other chain (single copy) to keep the pair disjoint. The old
 block-filter remains for pairs whose partner is NOT being rebuilt (unmasked half,
 non-dynamic modes). Also fixed en route: unmasked slots are preserved BEFORE the
 build loop, so a rebuilt Ear2 sees a hand-pinned Ear1 regardless of slot order.
-PL1–PL13 headless tests (942 total); pairLadders is pure — scores computed by the
+PL1â€“PL13 headless tests (942 total); pairLadders is pure â€” scores computed by the
 caller, no gear/weight reads.
 
 **Field confirmation (same day):** Henrik re-ran the WHM Cure Potency build -- both
@@ -2131,7 +2131,7 @@ priority list ("this stat first, then that one"), with caps still available.
 **Feature (gearoptim + weightsui):** the Stat Weights editor is now two tabs.
 **Points** is the classic editor, now with clickable Stat/Points/Cap column
 headers (click to sort, click again to flip). **Priority** is the simple mode:
-an ordered stat list — top matters most — with an optional cap per row, up/down
+an ordered stat list â€” top matters most â€” with an optional cap per row, up/down
 reorder, and the same copy from.../save as... verbs against its OWN stores
 ("Saved Lists" + per-set lists; a point template and a priority list never
 cross-load, per Henrik). Both tabs carry a **clear** button to the right of
@@ -2139,31 +2139,31 @@ cross-load, per Henrik). Both tabs carry a **clear** button to the right of
 
 **Implementation ruling:** priority scoring is dominance-DERIVED point weights
 (bottom-up, one point of a higher rank outranks everything below it combined;
-uncapped stats assumed ≤500 set-total), resolved behind `activeWeights()` — so
+uncapped stats assumed â‰¤500 set-total), resolved behind `activeWeights()` â€” so
 score/optimizePicks/pairLadders/Auto-build run untouched. Which mode builds a
-set is per-binding state flipped by whichever editor's data you MUTATE — looking
+set is per-binding state flipped by whichever editor's data you MUTATE â€” looking
 at a tab never switches it (a banner on the inactive tab says which one builds).
 
 **Bug fixed en route (Henrik):** new sets no longer seed their weights from the
-shared table — that seeding is why every new set arrived with a mystery "STR 5"
+shared table â€” that seeding is why every new set arrived with a mystery "STR 5"
 (leftovers in his shared table). New bindings start BLANK for weights AND
 priority lists; only the build-slot mask still seeds from shared (a blank mask
 would read as a dead Auto-build button). Empty per-set tables are no longer
 persisted or offered as copy sources. AE4/AE6 rewritten to pin the new ruling;
-AP1–AP38 cover the priority mode (980 checks total).
+AP1â€“AP38 cover the priority mode (980 checks total).
 
 **Round 3 (same day): the shared table is deleted.** Henrik asked what "shared
 weights" even were; on hearing it (the pre-per-set single table, kept as the
 no-set fallback / new-set seed / legacy-file landing spot) he ruled it a dead
-concept — "we start blank, have weights per set and can save. Delete it."
+concept â€” "we start blank, have weights per set and can save. Delete it."
 Implementation: unbound, the actives alias read-only EMPTY sentinels; every
 mutator (weights, priority, masks, copies, saves, modes) refuses with 'no set
 selected'; the weights panel and `/dl weight` say "pick a set" instead of
 editing a phantom table; the "(shared weights)"/"(shared list)" copy rows are
 gone; build-slot masks seed from the fixed default. Persistence no longer
 writes `shared`/`slotsShared`/`prioShared`/`mode`, and the loader DROPS those
-sections from older files (pre-per-set flat files — which were only a shared
-table — load as nothing). Also folded in: an x with a red second-click confirm
+sections from older files (pre-per-set flat files â€” which were only a shared
+table â€” load as nothing). Also folded in: an x with a red second-click confirm
 on every Saved Sets / Saved Lists row in the copy-from menus, so "save as..."
 templates can finally be deleted. AE/AS/AW/AP rewritten for the unbound
 semantics (987 checks).
@@ -2171,54 +2171,54 @@ semantics (987 checks).
 ## Session "HELM gear automation" (2026-07-17, engine v59, docs/design/helm-gear.md)
 
 **Feature: the craft-gear system's gathering twin** for Harvesting / Excavation
-/ Logging / Mining (fishing excluded on purpose — it gets its own automation
+/ Logging / Mining (fishing excluded on purpose â€” it gets its own automation
 someday). Research fanned out three ways before a line was written: the dlac
 craftgear map (the template), the trove + ventures addons (the 0x1A4 protocol),
 and the public server fork + wiki (mechanics, IDs, prices).
 
 **What research settled:**
 - The catalog already carries machine-readable `Stats.HELM` and
-  `Stats.Surveyor` — HELM ladders are stat-driven exactly like craft skill
+  `Stats.Surveyor` â€” HELM ladders are stat-driven exactly like craft skill
   ladders. All item IDs verified catalog-vs-server-SQL (design doc table).
 - **The "+5 removes breakage" math decoded**: every field/plain piece carries a
   +73 result mod = +7.3 on the break roll (`hobbies/helm/logic.lua`: break if
-  `rand(1,100)+mod/10 <= 33`) — five pieces → min 37.5 → unbreakable. This also
-  explains server-questions §2's mystery flat 73. Excavation's result mod
-  (2006) is private-module-added and stays breakable — As Square Enix Intended.
-- **Venture points**: no retail packet — but trove's custom 0x1A4
+  `rand(1,100)+mod/10 <= 33`) â€” five pieces â†’ min 37.5 â†’ unbreakable. This also
+  explains server-questions Â§2's mystery flat 73. Excavation's result mod
+  (2006) is private-module-added and stays breakable â€” As Square Enix Intended.
+- **Venture points**: no retail packet â€” but trove's custom 0x1A4
   request/response streams a server-authoritative Points list (group/label/
   value; DVP arrives as group `Ventures`). helmwatch speaks the protocol
   itself (GET_POINTS=8 / POINTS_ENTRY=7); whether the four HELM pools ride the
   stream is field-test #1 (`/dl helm points` dumps everything).
 - **`!ventures` reply format is unknowable from source** (private submodules:
-  modules/catseyexi, cexi-src — all 404). helmwatch watches outgoing 0x0B5 for
+  modules/catseyexi, cexi-src â€” all 404). helmwatch watches outgoing 0x0B5 for
   a typed `!ventures`, opens a 6s capture on incoming 0x017, mirrors raw lines
   to `helmventures_capture.txt` (the data that will pin the real regexes) and
   keyword-buckets them per category for display meanwhile.
 - **Category auto-detection is NOT a dead end** (Henrik suspected it was): the
-  point NPCs are literally named `Mining Point` etc. — outgoing trade 0x036
-  target index → entity name → category; with the bar ON the hat auto-follows.
+  point NPCs are literally named `Mining Point` etc. â€” outgoing trade 0x036
+  target index â†’ entity name â†’ category; with the bar ON the hat auto-follows.
 - 0x1A3 (the `ventures` addon's packet) is the venture-NM daily rotation, NOT
-  HELM — a different system wearing the same name.
+  HELM â€” a different system wearing the same name.
 
 **What shipped:** `feature/helmwatch.lua` (state owner: helmstate/venturepoints/
 helmventures mirrors, 0x1A4 + 0x017 + 0x036 + 0x0B5 glue, `/dl helm`),
 `ui/helmui.lua` (the Automations panel: Henrik's four-column progression matrix
-— Field / Plain / Plain +1 / Hats — with the "you're awesome" green cascade
+â€” Field / Plain / Plain +1 / Hats â€” with the "you're awesome" green cascade
 (better piece greens its ancestors) and a holy-light backlight on owned
 top-tier pieces; category tabs with the new gold glyphs; VP + today's ventures
 per tab), `ui/helmbar.lua` (floating bar: four glyphs + pill + VP/rating/
 Surveyor status line), engine v59 (`dlac:AutoHelm`, helmstate read gated to
-Default — IDLE-ONLY is the feature — armor+neck+waist only, never weapons;
+Default â€” IDLE-ONLY is the feature â€” armor+neck+waist only, never weapons;
 craft-vs-helm both-on arbitration by newer `at` stamp), manifest fmtver 7
 (helm ladders Surveyor-major + owned-hat map). Icons: Henrik's four SVGs
-rasterized to `assets/helm/*.png` at the craft-glyph spec (40×40 alpha).
-En route: helmOverlayFor passes ctx.player through to the ladder level gate —
+rasterized to `assets/helm/*.png` at the craft-glyph spec (40Ã—40 alpha).
+En route: helmOverlayFor passes ctx.player through to the ladder level gate â€”
 the craft overlay's inner ctx drops it (harmless there, Lv65 Field Torque/Rope
-would flap here). H1–H36 cover state rules, wire parsers, overlay resolution,
+would flap here). H1â€“H36 cover state rules, wire parsers, overlay resolution,
 rating math (1023 checks).
 
-**Field tests pending (dlacprobe / live):** §7 of the design doc — the 0x1A4
+**Field tests pending (dlacprobe / live):** Â§7 of the design doc â€” the 0x1A4
 points dump, one `!ventures helm` capture, one Alternix menu, one swing per
 category to confirm 0x036 offsets.
 
@@ -2237,27 +2237,27 @@ storage-move nomadNearestSq precedent Henrik remembered). Final lesson (v61):
 **"Default" is NOT "idle"** -- HandleDefault runs every frame, so the overlay was
 pinning over combat gear; it now stands aside while Engaged/Dead ('Event' stays
 dressed -- the swing animation would churn otherwise). Craft overlay deliberately
-not gated (safe-zone activity). 1065 + 123 checks green; all §7 field tests closed
+not gated (safe-zone activity). 1065 + 123 checks green; all Â§7 field tests closed
 same-day.
 
 ## Session "virtual markers get a ladder level" (2026-07-17, engine v62)
 
 Henrik's field report on his leveling Mindie WHM: the Sets tab showed
 `dlac:AutoIridescence` as the Main pick "at level 0" while the character
-actually wears Pilgrim's Wand — the marker was a Lv0 wildcard that shadowed
+actually wears Pilgrim's Wand â€” the marker was a Lv0 wildcard that shadowed
 the real weapon ladder everywhere below the level of any owned iridescence
 staff. His ruling: **a marker's level is the level of the item it resolves
 to** (for him Chatoyant Staff, Lv51).
 
 Implemented as `M.virtualMinLevel(marker)` (dispatch, v62): the LOWEST level
-among the manifest items the marker can resolve to — AutoStaff/AutoIridescence
+among the manifest items the marker can resolve to â€” AutoStaff/AutoIridescence
 scan `universal` + per-element `staff`, AutoObi scans `obi` + `obiUniversal`;
 craft/helm/acc families and legacy name-only shapes return nil ("no answer").
 Consumers, all nil-safe (nil keeps the old always-adopt behavior, so the rule
 can only ever REMOVE a marker that cannot resolve):
 
 - **BuildDynamicSets** skips a virtual whose min level is above the main level
-  — the flattened set then shows the real best-by-level item outright instead
+  â€” the flattened set then shows the real best-by-level item outright instead
   of `marker|fallback` (the engine's equip-time fallback made this invisible
   on the wire; the FLATTENED SET was what lied).
 - **gearui resolveSetItem** stamps the derived level on virtual records
@@ -2265,9 +2265,9 @@ can only ever REMOVE a marker that cannot resolve):
   virtual-takes-the-slot short-circuit now honours it, so the "current pick"
   highlight mirrors the new flatten exactly.
 
-Tests VL1–VL7 (min-level derivation incl. the `marker|fallback` composite
+Tests VL1â€“VL7 (min-level derivation incl. the `marker|fallback` composite
 form, flatten below/at the rung, legacy-manifest passthrough). 1078 + 125
-green. Note: utils.lua changed too — a **Reload LAC** is needed for the
+green. Note: utils.lua changed too â€” a **Reload LAC** is needed for the
 flatten half; the engine half self-swaps.
 
 ## Session "THE SETUP STANDARD -- clean shim, always" (2026-07-17)
@@ -2364,7 +2364,7 @@ colored green, live `[on now]` markers via an addon-side GetPet mirror
 (matchers, tier ladder, 2x2 through _matches, serializer round-trip incl.
 `pet = false`, normalize). 1112 green.
 
-## Session "set bonuses land — display + optimizer" (2026-07-18)
+## Session "set bonuses land â€” display + optimizer" (2026-07-18)
 
 **Theme:** Henrik: "First and foremost, show sets stats on gear! Secondly, make
 them count in weight evaluations!" The conditional-effects groundwork (design
@@ -2409,7 +2409,7 @@ augmentation end-to-end through buildBestSet). 1161 + 125 green.
 
 ## Session "fishing gear system" (2026-07-18, engine v64, docs/design/fishing-gear.md)
 
-**Feature: the third sibling** — Auto Fish Set beside Auto Craft Set and Auto HELM
+**Feature: the third sibling** â€” Auto Fish Set beside Auto Craft Set and Auto HELM
 Set (Henrik: "I am NOT out to automate fishing, I just want to streamline the
 experience"). Research fanned out three ways before a line was written: the dlac
 HELM/craft map (the template), the CatsEyeXI server source on GitHub (mechanics),
@@ -2418,89 +2418,89 @@ and the local catalog/api_cache (items).
 **What research settled:**
 - **Fishing on CatsEyeXI is stock-LSB C++** (`src/map/utils/fishingutils.cpp`,
   3,242 lines, an older snapshot: chart quests stripped, chest catching commented
-  out) driven by public SQL — no hobbies/fishing dir, no Lua fishing scripts. The
-  catch pools (zone+area → group → fish, gated HARD by `fishing_bait_affinity`:
+  out) driven by public SQL â€” no hobbies/fishing dir, no Lua fishing scripts. The
+  catch pools (zone+area â†’ group â†’ fish, gated HARD by `fishing_bait_affinity`:
   no row = that fish can never bite that bait) and the three reel-in fail rolls
   (lose :719 / line snap :784 / rod break :828) are all public, formula-exact.
   That makes **bait isolation** ("which bait+zone makes ONLY my fish bite")
-  and **rod safety verdicts** computable offline — the two flagship asks.
+  and **rod safety verdicts** computable offline â€” the two flagship asks.
 - **The private overlay provably adds content on top**: custom mods 2004/2005
   (carriers: Ebisu =10, Ebisu +1 =15, Halieutica =50/5, Mariners pieces,
-  Brigands Eyepatch; semantics NOT public — server-questions.md §4 stays open,
+  Brigands Eyepatch; semantics NOT public â€” server-questions.md Â§4 stays open,
   the addon uses them as ladder tiebreakers only). **Halieutica 20945 is a
   Main-slot fishing weapon** (polearm-skill spear, Fish+2), not a rod. **The
-  Mariners set is fishing's VP tier** — its ids interleave HELM's Plain block
+  Mariners set is fishing's VP tier** â€” its ids interleave HELM's Plain block
   (25899/900, 25966/67, 25986/87, 26535/36 + Brigands Eyepatch 28443 as the
   hat analog).
 - **Fishing VP was already streaming**: helmwatch's 0x1A4 parse stores every
   group/label and the field capture had confirmed a `Fishing` label back on
-  07-17 — `pointsFor('Fishing')` worked before this session started. **Fishing
+  07-17 â€” `pointsFor('Fishing')` worked before this session started. **Fishing
   guild GP sits at 0x113 offset 0x20**, one map entry away from craftwatch's
   GP_OFFSET (a run_tests fixture had it labeled "ignored" since the craft arc).
-- Skill is `GetCraftSkill(0)` — the index craftwatch's map deliberately
+- Skill is `GetCraftSkill(0)` â€” the index craftwatch's map deliberately
   skipped. Effective skill = display skill + worn Mod::FISH; cap = (guild
-  rank+1)×10, rank-ups at Thubu Parohren (Port Windurst), Expert = 110. Lu
+  rank+1)Ã—10, rank-ups at Thubu Parohren (Port Windurst), Expert = 110. Lu
   Shang's 10k-carp quest pair is active in public scripts; Ebisu acquisition is
   private.
 
 **What shipped:** `tools/gen_fishdb.py` (fetches the nine fishing SQL tables,
-CREATE TABLE-driven parsing, scans api_cache for mods 127/2004/2005) →
+CREATE TABLE-driven parsing, scans api_cache for mods 127/2004/2005) â†’
 `data/fishdb.lua` (128 fish, 39 baits, 575 affinities, 20 rods, 95 zone pools,
 259 fishable mobs, guild tables, gearBonus supplement; ~70 KB).
-`feature/fishcalc.lua` — PURE math: the three fail formulas ported VERBATIM
+`feature/fishcalc.lua` â€” PURE math: the three fail formulas ported VERBATIM
 (including the uint8 wrap on tooBig's over-skill rebate and tooSmall's guarded
-subtraction — F11/F12 pin both), rod ranking, live isolation derivation,
-mob-bite risk, search. `feature/fishwatch.lua` — state owner (fishstate.lua:
+subtraction â€” F11/F12 pin both), rod ranking, live isolation derivation,
+mob-bite risk, search. `feature/fishwatch.lua` â€” state owner (fishstate.lua:
 enabled session-only, target/rod/bait persist as CLIENT names), rod/bait
-auto-pick + ~2s bag heartbeat re-pick (bait runs dry → next owned bait + chat
-line), fishing-only !ventures 0x017 capture (format UNPINNED — raw mirror to
-fishventures_capture.txt), `/dl fish` commands. `ui/fishui.lua` — the panel:
+auto-pick + ~2s bag heartbeat re-pick (bait runs dry â†’ next owned bait + chat
+line), fishing-only !ventures 0x017 capture (format UNPINNED â€” raw mirror to
+fishventures_capture.txt), `/dl fish` commands. `ui/fishui.lua` â€” the panel:
 status line (skill/GP/VP), 4-column gear matrix (BASE / ANGLER'S / GUILD GP /
 MARINERS VP + Halieutica), rod columns (standard/legendary), target-fish search
-with ISOLATION-first spot×bait rows (mob ⚠, "items can always bite" footnote),
+with ISOLATION-first spotÃ—bait rows (mob âš , "items can always bite" footnote),
 rod verdicts from the real math, per-container bait census, ventures, guild
-corner; coverage/status sit ABOVE the imgui guard (headless-testable — helmui
-improvement). `ui/fishbar.lua` — pill + target + rod/bait item icons (zero new
+corner; coverage/status sit ABOVE the imgui guard (headless-testable â€” helmui
+improvement). `ui/fishbar.lua` â€” pill + target + rod/bait item icons (zero new
 assets). Engine v64: `ensureFishState`/`fishOverlayFor` (Default-only,
 Engaged/Dead stand-aside; Range/Ammo straight from state, armor + Main via the
-manifest `fish` ladders — Main included on the CRAFT precedent because of
+manifest `fish` ladders â€” Main included on the CRAFT precedent because of
 Halieutica), `dlac:AutoFish` in resolveVirtual, **three-way at-stamp
 arbitration** (ties keep the older system: craft > helm > fish). triggersui:
-AUTO_FMT 7→8 (fish ladders: FishingSkill-major, cx tiebreak, disjoint rings),
+AUTO_FMT 7â†’8 (fish ladders: FishingSkill-major, cx tiebreak, disjoint rings),
 fifth Automations row + fishui delegation. craftwatch: GP_OFFSET gains
 `Fishing = 0x20`.
 
-**Tests:** F1-F69 (hand-derived server-math cases — the expectations carry a
-"re-derive from the C++ before editing" warning — fishdb integrity, pick rules
+**Tests:** F1-F69 (hand-derived server-math cases â€” the expectations carry a
+"re-derive from the C++ before editing" warning â€” fishdb integrity, pick rules
 incl. the Yew-over-Willow least-risk case, overlay resolution, GP 0x20) +
 smoke S130-134 (headless loads; fishui.status callable without imgui).
 1231 + 130 green. NOTE: the F-section itself rode into cd2381c via the
-parallel session's staging — harmless overlap, this commit brings the modules
+parallel session's staging â€” harmless overlap, this commit brings the modules
 it exercises.
 
 **Deliberately NOT done:** any automation of fishing (no casting, no 0x115
-mini-game reads, no bite reactions — the server carries an anti-bot surface,
+mini-game reads, no bite reactions â€” the server carries an anti-bot surface,
 `GetRecentFishers()`/`[Fish]LastCastTime`, and the bright line stays bright).
-Field tests pending: design doc §6 — `!ventures fishing` format pin, GP/VP
+Field tests pending: design doc Â§6 â€” `!ventures fishing` format pin, GP/VP
 sanity, first live overlay run, custom-gear stat text.
 
-**Field round 1 (same day, Henrik live):** the panel worked on contact — his
+**Field round 1 (same day, Henrik live):** the panel worked on contact â€” his
 screenshot shows Lu Shang's SAFE verdicts and Giant Donko isolation rows.
 Five fixes from the pass, plus one identification that closed a server
 question: **the bg-wiki CatsEyeXI Ventures page lists "Expert Angler:
-Fatigue Limit +10%, Golden Arrow Rate +1%" on Mariners Tunica/Boots — values
+Fatigue Limit +10%, Golden Arrow Rate +1%" on Mariners Tunica/Boots â€” values
 matching mods 2004/2005 in the live DB exactly (10/20 base/+1, 1/2), so
-2004 = Fatigue Limit +%, 2005 = Golden Arrow Rate +%** (server-questions §4:
+2004 = Fatigue Limit +%, 2005 = Golden Arrow Rate +%** (server-questions Â§4:
 two of the three unknowns answered; 2017 remains). Panel rulings: glow is
-MARINERS-ONLY (the real fishing end-game — Angler's/guild gear just green;
+MARINERS-ONLY (the real fishing end-game â€” Angler's/guild gear just green;
 Expert Angler tooltips on the carrying pieces); Lu Shang's +1 / Ebisu +1 /
 Halieutica / Brigands Eyepatch UNDISPLAYED (unmentioned in-game, look
-unobtainable — data stays, autoPick honours an owned one); owning Lu
+unobtainable â€” data stays, autoPick honours an owned one); owning Lu
 Shang's/Ebisu greens the whole standard rod ladder (the cascade); the buy
 suggestion only appears when no owned rod is SAFE (and never suggests the
-+1s); [ISOLATED] column widened 90→128 (themed-font clipping, the
++1s); [ISOLATED] column widened 90â†’128 (themed-font clipping, the
 button-width lesson again); the 10k-carp guild line hides once Lu Shang's is
-owned. itemLine also inherited helmui's note-beats-tooltip order en route —
+owned. itemLine also inherited helmui's note-beats-tooltip order en route â€”
 the cascade/Expert Angler notes were silently losing to the stat card.
 
 ### Field round 1 (same day): the Salvage label bug
@@ -2514,61 +2514,61 @@ label fallback was the bug:** "<first piece> +N-more" reads as an HQ item name
 ("Ares' Cuirass +4"), and it fired because piece names drift per source --
 owned resolves "Ares's Cuirass" (game), unowned "Ares Mask" (catalog short
 
-## Session "architecture review → refactor/deepening" (2026-07-18/19)
+## Session "architecture review â†’ refactor/deepening" (2026-07-18/19)
 
 **Theme:** /improve-codebase-architecture over the whole addon (four explorer
 walks: engine, GUI, gear data, test surface), then Henrik: *"You are the
 maintainer, do it all, but keep it in a separate branch where we test each
 step."* Eight deepening steps landed on `refactor/deepening`, one commit each,
-suite-gated (1355 → 1508 headless checks + 170 smoke); engine v68 → v71.
+suite-gated (1355 â†’ 1508 headless checks + 170 smoke); engine v68 â†’ v71.
 
 **Landed (in order):**
-1. `gear\triggermodel.lua` — the Triggers tab's raw→edit-model translation,
+1. `gear\triggermodel.lua` â€” the Triggers tab's rawâ†’edit-model translation,
    pure (canonEvent injected, groupsmodel pattern). THE wipe contract (Commit
-   serializes the whole model; an uncarried section is erased — shipped once)
+   serializes the whole model; an uncarried section is erased â€” shipped once)
    finally test-pinned: TM1-19.
-2. `gear\gearrecord.lua` — the Owned-gear record rules in one home: canonType/
+2. `gear\gearrecord.lua` â€” the Owned-gear record rules in one home: canonType/
    healType (legacy-spelling heal), subTypeFromName, effectiveRSlot (ADR 0010),
    enrich/mergedStats precedence. Five stamp sites delegate; REC0-26 include a
    vocabulary-closure check (every filter bucket key canonizes to itself).
    Deliberate alignment: gearexport now heals drifted Types like the GUI.
-3. `lib\safewrite.lua` — backup/tmp/validate/rename/restore written once
+3. `lib\safewrite.lua` â€” backup/tmp/validate/rename/restore written once
    (gearimport carried it twice, near-copies); profiles' deleters ride
    verifiedMove and REFUSE when the net is missing. setmanager's rotated
    policy deliberately stays its own (one adapter = hypothetical seam). SW0-14.
-4. `gear\catalogindex.lua` — the one catalog walker: lazy load, rawIndex/
+4. `gear\catalogindex.lua` â€” the one catalog walker: lazy load, rawIndex/
    rawById, flat browse copies, the generic flatten (gearui's flattenGear is a
    delegate; owned gear flattens through the same code). Engine still never
    loads the catalog. CI0-12.
-5. ownedcache deepened (no parallel module — it already IS the ADR 0005 home):
+5. ownedcache deepened (no parallel module â€” it already IS the ADR 0005 home):
    verdict(rec, usable) with stored>locked>ok precedence + whereText caption
    builder + _splitOverride = its first test reach ever (AV1-13). Noted, not
    changed: automationsui lights an owned-but-STORED staff green.
-6. **v69** — obi + Oneiros decisions extracted pure (resolveObi /
+6. **v69** â€” obi + Oneiros decisions extracted pure (resolveObi /
    resolveOneiros, the resolveStaff shape); the two field-calibrated gates
-   pinned headless (VG1-15, incl. the Mindie 714→357-inclusive boundary
+   pinned headless (VG1-15, incl. the Mindie 714â†’357-inclusive boundary
    verbatim).
-7. **v70** — the statefile seam: ensureStateFile behind the auto/acc/craft/
+7. **v70** â€” the statefile seam: ensureStateFile behind the auto/acc/craft/
    helm/fish/pin caches (six near-identical clones that had DRIFTED); corrupt-
-   write policy unified on pin's v44 DROP — craft/helm/fish/auto used to keep
+   write policy unified on pin's v44 DROP â€” craft/helm/fish/auto used to keep
    stale state glued on forever after a torn write. _charDirOverride runs the
    file-driven surface headless (SF0-9). Then `lib\statefile.lua` = the one
    addon-side charDir (four watcher copies deleted); watcher write sites
    deliberately untouched (3-line dances, churn > depth).
-8. **v71** — equipResolved: the five whole-table post-passes are named entries
+8. **v71** â€” equipResolved: the five whole-table post-passes are named entries
    run in M._postPassOrder (trinket-BEFORE-reserved is checkable adjacency,
    PL1-3); the per-slot chain keeps its elseif precedence, now named; copy-on-
    write + note built once. The review card's "11 uniform passes" sketch was
-   wrong about the shape — the per-slot chain is correct as-is and stayed.
+   wrong about the shape â€” the per-slot chain is correct as-is and stayed.
 
-**Key decisions:** candidate 9 (watch-bar chassis) NOT built — its own deletion
+**Key decisions:** candidate 9 (watch-bar chassis) NOT built â€” its own deletion
 test failed (deleting fishbar deletes a feature, not a coupling); revisit if a
 fourth gear-system twin lands. The one deliberate behavior change on the
 branch: statefile corrupt policy = DROP everywhere (+ gearexport's Type heal);
 everything else bit-identical by test.
 
 **Standing:** branch `refactor/deepening`, 10 commits, unmerged. Field-test the
-engine steps (the Reload LAC banner will prompt — v71), then merge to main.
+engine steps (the Reload LAC banner will prompt â€” v71), then merge to main.
 names; the +1 sets even mix "Marduks Jubbah +1" with "Mdk. Dastanas +1"), so
 the all-pieces word-prefix never matched. setLabelOf rebuilt: majority
 first-word family via a drift-tolerant stem (lowercase, punctuation out,
@@ -2579,7 +2579,7 @@ uihost service; smoke S41-S44 pin Ares/Ares+1/Mdk.+1 against the REAL catalog
 plus a sweep: every one of the 126 labels is a pair or "... set", never an
 HQ-item shape. 1234 + 135 green.
 
-## Session "automationsui extraction — the migration completed" (2026-07-18, overnight)
+## Session "automationsui extraction â€” the migration completed" (2026-07-18, overnight)
 
 Henrik, heading to bed: "complete the automation tab migration -- last time we
 did the cheap way and let a lot be left." The cheap move (07-17) promoted
@@ -2593,7 +2593,7 @@ tab entry) went to `ui/automationsui.lua` verbatim -- manifest derivation
 the self-heal, the list/detail views, and the seams `rescanAutogear` /
 `manifestStale` / `currentFmt`. The tab entry is `M.renderTab`; the dead
 `noHeader` CollapsingHeader path (unreachable since the tab promotion) was
-dropped rather than carried. triggersui 3713 → 2609 lines, 30 top-level locals
+dropped rather than carried. triggersui 3713 â†’ 2609 lines, 30 top-level locals
 freed (plus 3 more: its `levelstats` require turned out to be automation-only).
 
 **The seam repoint is COMPLETE -- no forwarders.** craftwatch, helmwatch and
@@ -3821,12 +3821,12 @@ engine change.
 
 **MaxMP becomes a registered CLAIM (the scaffolding retires).** Through step 3 MaxMP
 was woven-only: it had a rank *row* but no claim *table*, so its precedence lived in
-`ctx.mpCeded` — a rank-consult computed from `arbCededAbove` and read from *inside
+`ctx.mpCeded` â€” a rank-consult computed from `arbCededAbove` and read from *inside
 every other claimant's* `equipResolved`. Step 4 gives it a real registry entry:
 `mpClaimFor(ctx)` turns the banded ladder's per-slot target into a claim table
 (`{ [Slot] = rungName }`) and `M.dispatch` registers `claims['MaxMP'] = mpClaim`
 before computing `ctx.mpCeded` from that same `claims`. `arbCededAbove` excludes
-MaxMP's own row, so the ceded set is byte-identical — **no behavior change**, but the
+MaxMP's own row, so the ceded set is byte-identical â€” **no behavior change**, but the
 *precedence* now flows from one registry rather than woven scaffolding. Only MaxMP's
 EQUIP stays woven (hold/release/upgrade, sticky pairs, movement yield are within-set
 resolution, deliberately outside the Arbiter per ADR 0012). `ctx.mpRespectLocks` is
@@ -3837,9 +3837,9 @@ locked slots MaxMP dresses.
 discrete claims; step 4 also merges the trigger-overlay result into `floorTbl` (the
 floor the claims dress over), then runs the Arbiter's pure resolve over the SAME
 claims + rank + floor and appends a `claimants (rank order)` block to the trace. New
-pure seams: `M.arbExplain(claims, order, floor)` → per slot, the rank-ordered list of
-every claimant with an opinion (first = winner); `M.arbWhyLines` → the formatted lines
-— `Ammo: AutoAmmo (rank 3) over MaxMP (rank 4)`, a veto slot reads `stopped by Locks`,
+pure seams: `M.arbExplain(claims, order, floor)` â†’ per slot, the rank-ordered list of
+every claimant with an opinion (first = winner); `M.arbWhyLines` â†’ the formatted lines
+â€” `Ammo: AutoAmmo (rank 3) over MaxMP (rank 4)`, a veto slot reads `stopped by Locks`,
 and the slots the trigger floor dressed uncontested collapse into one trailing
 `Triggers floor (rank 8, uncontested): ...` summary (a floor-only slot wins only when no
 claim touched it, so nothing is lost and idle `/dl why` stays readable). Slot matching is
@@ -3850,19 +3850,19 @@ them via `layerRespectsLocks` / `ctx.mpRespectLocks`. A new `mSig` (MaxMP target
 the retrace signature so the attribution stays fresh when the battery plan shifts.
 
 **The Claim record shape is documented** (arbExplain header comment + architecture.md
-"The Arbiter — claim registry"): a Claim is `{ [SlotKey] = itemName }`; a new claimant
+"The Arbiter â€” claim registry"): a Claim is `{ [SlotKey] = itemName }`; a new claimant
 joins with ONE rank row + ONE claim table (+ an `applyClaim` closure if it applies a
-discrete overlay), never a new engine arm. AutoAcc — the per-piece claimant on
-`feature/autoacc` — is the shape's first future consumer; its `accResolveSet` arm in
+discrete overlay), never a new engine arm. AutoAcc â€” the per-piece claimant on
+`feature/autoacc` â€” is the shape's first future consumer; its `accResolveSet` arm in
 `equipResolved` stays put as the shape-ready seam.
 
-**What stayed OUT, unchanged** (existing test families prove it — the whole suite is
+**What stayed OUT, unchanged** (existing test families prove it â€” the whole suite is
 green): sync-settle/proximity holds, the PetAction gate, AutoStaff/AutoObi virtual
 entries, Dynamic flattening, the ADR 0010 trinket contests, and every within-set
 resolution arm of `equipResolved`. The Arbiter arbitrates *between* claimants; a
 claimant's own conditions stay inside the feature.
 
-**Tests:** AR11 (whole claim path pinned in one `arbExplain` resolve — the Ammo cede,
+**Tests:** AR11 (whole claim path pinned in one `arbExplain` resolve â€” the Ammo cede,
 a battery over craft armor, a battery in a bare ring, the Locks veto, a floor-only
 slot), AR12 (the `/dl why` line format incl. the issue's headline example + canonical
 LAC slot order). 2151 headless + 199 smoke green. Engine v100, addon.version
@@ -3871,69 +3871,69 @@ LAC slot order). 2151 headless + 199 smoke green. Engine v100, addon.version
 ## Engine-native slot locks: /lac disable retired from the lock path (2026-07-21, PRD #57)
 
 **The field find (Henrik, step-3 checkpoint):** pin-into-locked-slot did NOT punch
-through at default rank — yet every LV* test said it must. Root cause: the Equipped-tab
+through at default rank â€” yet every LV* test said it must. Root cause: the Equipped-tab
 lock paths queued `/lac disable <slot>` alongside the engine lock ("belt-and-suspenders
-for legacy profile code"). `/lac disable` blocks the slot BELOW the engine — LAC refuses
-every write — so the Arbiter's rank law was correct and unobeyable. The Priority list
+for legacy profile code"). `/lac disable` blocks the slot BELOW the engine â€” LAC refuses
+every write â€” so the Arbiter's rank law was correct and unobeyable. The Priority list
 showed a law the game ignored.
 
 **The fix (#58/PR #60):** the engine lock is the ONLY lock. Lock actions queue no `/lac`
 at all; unlock keeps `/lac enable <slot>` as a self-healing release for stale legacy
-disables (the whole migration story — no sweep). Scope fences pinned BY TEST: Free equip
+disables (the whole migration story â€” no sweep). Scope fences pinned BY TEST: Free equip
 keeps its global `/lac disable` pair (that feature's point is "LAC hands off"), useitem's
-countdown disable stays (a temporal hold, future engine-hold candidate). Tests S200–S211.
-With the clean-shim Setup standard, legacy hand-written equip code — the original reason
-for the belt — is explicitly outside the lock's guarantee. Field-confirmed same evening:
+countdown disable stays (a temporal hold, future engine-hold candidate). Tests S200â€“S211.
+With the clean-shim Setup standard, legacy hand-written equip code â€” the original reason
+for the belt â€” is explicitly outside the lock's guarantee. Field-confirmed same evening:
 punch-through at defaults, Locks-at-top vetoes pins. The standing lesson generalized:
 **a command-layer state the engine doesn't own will eventually contradict the engine**
 (same family as [[self-queued-commands-not-heard]] and the v43 lockstyle saga).
 
 ## Blueprints: the trigger-rule library (2026-07-21, PRD #64, engine untouched)
 
-**Origin (Henrik):** "slept or lullaby'd → Toxic Earring" belongs on all 22 jobs;
+**Origin (Henrik):** "slept or lullaby'd â†’ Toxic Earring" belongs on all 22 jobs;
 rebuilding it per job is "atrocious". Grilled to a decision record the same evening.
 
 **The rulings:** *Blueprint* (CONTEXT.md; _avoid_ favourite/template/preset) = a
 job-independent saved Trigger in ONE per-character library file OUTSIDE Profiles;
 *stamping* creates an ordinary Trigger in the job entry, detached both ways. Payload =
-the rule VERBATIM (when/whenAny, action, priority) + Handler + display name — **carrying
+the rule VERBATIM (when/whenAny, action, priority) + Handler + display name â€” **carrying
 referenced sets was REJECTED** (Henrik: dangling set/Mode/Group references stamp anyway
 and the existing missing-reference warnings suffice; revisit only on field demand).
-Inline-payload rules are the dependency-free sweet spot — the export system already
+Inline-payload rules are the dependency-free sweet spot â€” the export system already
 treats them as self-contained.
 
-**Shape (#67+#68):** pure core `gear/blueprintsmodel.lua` (TGB1–46: naming, detachment,
+**Shape (#67+#68):** pure core `gear/blueprintsmodel.lua` (TGB1â€“46: naming, detachment,
 warn-but-allow double-stamp, byte-stable `blueprints v1` round-trip, sandbox hardness,
 import collision matrix); Blueprints section in the Triggers tab (Groups-section
-precedent — NOT a uihost tab); "bp" button on every rule row; Stamp/Edit/View
+precedent â€” NOT a uihost tab); "bp" button on every rule row; Stamp/Edit/View
 text/Copy/Copy all/paste-import with live preview. **Maintenance tripwire:** `emitRule`
 is a deliberate MIRROR of `serializeTriggers`' per-rule form (the issues forbade engine
-changes) — TGB34/35 pin behavioral parity through the REAL engine path; if the engine's
+changes) â€” TGB34/35 pin behavioral parity through the REAL engine path; if the engine's
 rule form ever changes, the mirror follows. Polish from the first field round: rule text
 wraps at the live box edge, the library scrolls in a capped child (the Sets-list
 pattern). Fully field-confirmed incl. the sharing round trip.
 
 ## The day of the agents: CI parity, serial dispatch, and two corrections (2026-07-21)
 
-Eight label-dispatched cloud-agent PRs shipped in one day (#52→#68: Arbiter v97–v100,
-engine-native locks, Venture Ring, Blueprints ×2), every one review-gated and
+Eight label-dispatched cloud-agent PRs shipped in one day (#52â†’#68: Arbiter v97â€“v100,
+engine-native locks, Venture Ring, Blueprints Ã—2), every one review-gated and
 field-gated. What made it possible and what it taught:
 
-- **CI had been red since 07-19** — LGF4/6/8 failed ONLY on Ubuntu lua5.4: lockstyle's
+- **CI had been red since 07-19** â€” LGF4/6/8 failed ONLY on Ubuntu lua5.4: lockstyle's
   `'\'`-joined io paths are literal filename chars on Linux, so the keepflow fixture
   never loaded (the stray files literally NAMED `tests\fixtures\...` were the
   fingerprint). Fix: `fsp()` separator normalization at lockstyle's io boundaries, a
-  no-op under Ashita. **Windows-green ≠ CI-green** — the parity loop is lua5.4 under
+  no-op under Ashita. **Windows-green â‰  CI-green** â€” the parity loop is lua5.4 under
   WSL; agents self-verify with this suite, so a red main poisons every dispatch.
 - **Serial dispatch is law** when issues share files (dispatch.lua, run_tests.lua):
   one `ready-for-agent` at a time, review, merge, next.
 - **Correction 1:** step 4's docs named AutoAcc the next-claimant example. Henrik's
-  ruling: AutoAcc is a **Type automation** — per-piece candidate release at WITHIN-SET
-  altitude, any slot — never a claimant; the Arbiter never sees it. Docs fixed
+  ruling: AutoAcc is a **Type automation** â€” per-piece candidate release at WITHIN-SET
+  altitude, any slot â€” never a claimant; the Arbiter never sees it. Docs fixed
   (ADR 0012, architecture.md, the registry comment). The rank-row+claim-table recipe
   stands for genuine future claimants.
 - **Correction 2:** Venture Ring's bonus is **Venture Points +100%** (the HELM
-  currency), not exp — it keeps its seat in the exp-rings section by ruling, labeled
+  currency), not exp â€” it keeps its seat in the exp-rings section by ruling, labeled
   `+100% VP`.
 
 ## Gear Oracle step 3: the golden-output harness (2026-07-22, tests-only, PRD #69)
@@ -3946,25 +3946,25 @@ stats + augment fold" onto a shared `oracle.stats()` recipe. The PRD's phasing d
 explicit: Phase 2 must be *proven* byte-identical, not assumed, so a later field failure
 can never be misattributed to the refactor. This slice builds the proof harness.
 
-**Landed (tests + docs only — no runtime file touched, no seeded behavior, no VERSION bump):**
-- `tests/goldenfixtures.lua` — one deterministic, synthetic, headless BLM at Lv74 and one
+**Landed (tests + docs only â€” no runtime file touched, no seeded behavior, no VERSION bump):**
+- `tests/goldenfixtures.lua` â€” one deterministic, synthetic, headless BLM at Lv74 and one
   curated bag, fed through the REAL builders (`automationsui.rescanAutogear` for the
   manifest; `fishcalc` for the rod-ranking reads). Captures the builders' own output
   verbatim; the only value dropped is the manifest's `written` clock stamp (normalized).
-- `tests/golden/autogear.golden` + `tests/golden/fishcalc.golden` — the committed goldens.
-- `tests/gen_goldens.lua` — the regenerator (run ONLY after an intentional builder change,
+- `tests/golden/autogear.golden` + `tests/golden/fishcalc.golden` â€” the committed goldens.
+- `tests/gen_goldens.lua` â€” the regenerator (run ONLY after an intentional builder change,
   review the diff).
-- **smoke_ui section 12** (S220–S223) — asserts the builders reproduce the goldens
+- **smoke_ui section 12** (S220â€“S223) â€” asserts the builders reproduce the goldens
   BYTE-IDENTICALLY; on drift it names the first differing line and points at the
   regenerator. `.gitattributes` pins `tests/golden/*.golden -text` so Windows autocrlf
   can't turn a byte-identical golden into a CRLF mismatch.
 
 **Coverage (the interesting cases the PRD names, one item carries each):**
-- **level-scaling** valued at the character's level, not base — Tamas Ring (catalog id
-  15545): MP 15 base → **29 at Lv74** through the central `levelstats.effective` resolver;
-- **augment fold** — Hlr. Bliaut +1 reads MP 35+18 = **53**, Clr. Bliaut +1 reads Refresh
+- **level-scaling** valued at the character's level, not base â€” Tamas Ring (catalog id
+  15545): MP 15 base â†’ **29 at Lv74** through the central `levelstats.effective` resolver;
+- **augment fold** â€” Hlr. Bliaut +1 reads MP 35+18 = **53**, Clr. Bliaut +1 reads Refresh
   1 native + 1 aug = **2** (the same decoder the set scoring uses, stubbed by id);
-- **one item across multiple ladders** — Survey Sash lands in `mpBest.waist` + `helm.waist`
+- **one item across multiple ladders** â€” Survey Sash lands in `mpBest.waist` + `helm.waist`
   + `fish.waist`;
 - every named builder: MaxMP battery ladder (mp/rf/mv/mpBest incl. Convert), HELM ladders +
   hat map, fishing ladders + the fishcalc rod ranking / `wornFishTotal` / `gearScore`, and
@@ -3982,34 +3982,34 @@ suites). Full headless suite green: 2268 run_tests + 225 smoke_ui, Ubuntu lua5.4
 **Theme:** Phase 1's second slice (#71). Step 1 (#70) moved the mechanical FETCH layer
 (worn-item decode, equip-bag list) behind the oracle; this slice moves the ELIGIBILITY and
 IDENTITY questions the same way, and deletes the private re-statements that were the whole
-point — the "no job list means wearable" rule existed inline in two places besides the
+point â€” the "no job list means wearable" rule existed inline in two places besides the
 central one, exactly the deduction drift the oracle ends.
 
-**Three questions get their one door (facade, not absorb — the interpreters keep their homes):**
-- **`canWear(rec, job, level)`** — main-job/level equip gate. DELEGATES to the engine
-  module's addon-visible rule (`dispatch.canWear`: main job only — sub never widens,
-  field-verified — level on main). The two inline fallbacks are DELETED: gearoptim's
+**Three questions get their one door (facade, not absorb â€” the interpreters keep their homes):**
+- **`canWear(rec, job, level)`** â€” main-job/level equip gate. DELEGATES to the engine
+  module's addon-visible rule (`dispatch.canWear`: main job only â€” sub never widens,
+  field-verified â€” level on main). The two inline fallbacks are DELETED: gearoptim's
   `jobAllowed` (its own `All`/job loop) and gearui's `jobCanEquip`/`isUsable` fallback (its
   own `#jobs == 0 -> wearable` restatement). Both now call `oracle.canWear`; gearui's
   `has.dsp` flag went with them (`_dsp` stays only for `virtualMinLevel`). gearoptim keeps
-  its own "unknown job → don't job-filter, level still gates" (canWear would reject a
-  restricted piece against an empty job — not that tool's intent).
-- **`anyJobCanWear(rec, jobLevels)`** — the any-job-at-current-level gate (the lockstyle
+  its own "unknown job â†’ don't job-filter, level still gates" (canWear would reject a
+  restricted piece against an empty job â€” not that tool's intent).
+- **`anyJobCanWear(rec, jobLevels)`** â€” the any-job-at-current-level gate (the lockstyle
   rule, the server's `canEquipItemOnAnyJob`). DELEGATES to the existing addon-state gate
   module (`gear/jobgate.canEquip`), which keeps its home, tests and FAIL-OPEN semantics.
   lockstyle's two gate calls (`gateOk`, `_boxBadPiece`) migrated to the door; jobgate stays
   required there for its live level READER (`jobgate.levels()`), which the oracle does not
   front. The nil-jobLevels fail-open stays the CALLER's (lockstyle short-circuits on a nil
-  levels read) — the door copies no logic and fabricates none; only a missing gate MODULE
+  levels read) â€” the door copies no logic and fabricates none; only a missing gate MODULE
   fails open inside `anyJobCanWear`.
-- **`lookup(idOrName)`** — "what is this item": the owned-record + catalog-record join
+- **`lookup(idOrName)`** â€” "what is this item": the owned-record + catalog-record join
   (owned first, then the full catalog; id authoritative, name the case-insensitive
   fallback), moved out of its UI-local home. The JOIN recipe lives in the oracle now;
   gearui's `lookupById`/`lookupByName` are thin adapters over it. **The trap:** the oracle
-  can't just flatten raw `gear.lua` itself — a Phase-2 owned record carries no stats until
+  can't just flatten raw `gear.lua` itself â€” a Phase-2 owned record carries no stats until
   gearui's enrichment pass mutates the shared table, so the oracle takes the enriched,
   flattened indexes through `setLookupSource` (READ-ONLY accessors that never trigger a
-  build — the render paths own when the flatten happens, exactly the old pair's lazy-read
+  build â€” the render paths own when the flatten happens, exactly the old pair's lazy-read
   semantics; a first cut that forced `buildOwned()` inside the accessor early-cached the
   owned table and broke smoke_ui S19, the apostrophe-bridge test that adds gear AFTER load).
 
@@ -4020,133 +4020,133 @@ acknowledged tech-debt cleanup from architecture.md; the Z-tests inject a pre-bu
 into `buildExport` directly, so nothing there re-walks either).
 
 **Claim-blind, permanently:** every answer is a CAPABILITY (could this character use it),
-never permission (may this slot change now — the Arbiter's word). Method names use
+never permission (may this slot change now â€” the Arbiter's word). Method names use
 could-words (`canWear`), never may-words; OR29 pins that the oracle exposes no `canEquip`
-door. Behaviour-identical by construction — no engine change, no seeded-file behaviour, no
+door. Behaviour-identical by construction â€” no engine change, no seeded-file behaviour, no
 `dispatch.M.VERSION` bump; only the addon `version` date-bumped (`2026.07.22b`). Tests:
-OR14–OR29 (canWear vs `dispatch.canWear`, anyJobCanWear vs `jobgate.canEquip`, the lookup
+OR14â€“OR29 (canWear vs `dispatch.canWear`, anyJobCanWear vs `jobgate.canEquip`, the lookup
 join, the claim-blind boundary). Full headless suite green: 2293 run_tests + 225 smoke_ui,
 Ubuntu lua5.4 CI parity.
 
 ## The pet channel: stats the API never showed us (2026-07-22)
 
 A friend's report ("dlac shows no Wyvern HP+ on my gear") uncovered a whole invisible
-stat channel. CatsEyeXI applies pet-targeted gear stats — Drachen Brais "Wyvern:
-HP+10%", Wyvern Mail's hidden wyvern HP+65/HHP+65 — through a separate
+stat channel. CatsEyeXI applies pet-targeted gear stats â€” Drachen Brais "Wyvern:
+HP+10%", Wyvern Mail's hidden wyvern HP+65/HHP+65 â€” through a separate
 `item_mods_pet` table loaded into `CItemEquipment::addPetModifier` (a channel apart
 from the regular mods). The live API serializes only `{item, mods, latents, weapon}`:
 verified across all 21,860 cached responses, the pet channel NEVER leaves the server.
 So apicrawl was blameless and the repo SQL is the only possible source (corollary:
 live-only custom pet mods, if the live DB ever diverges like it does for latents,
-stay invisible — nothing to cross-check).
+stay invisible â€” nothing to cross-check).
 
 Shipped as the established sibling-data pattern, per Henrik's tooling ruling (one
 umbrella command, independently runnable steps, one shared parser):
 
-- **`gen_petmods.py`** (gitignored tools/) parses the SQL (anchored INSERTs — the
+- **`gen_petmods.py`** (gitignored tools/) parses the SQL (anchored INSERTs â€” the
   table carries ~21 commented-out rows, the item_latents trap again) through
-  **`modmap.py`**, THE shared modid→stat-key bridge, into shipped
+  **`modmap.py`**, THE shared modidâ†’stat-key bridge, into shipped
   **`data/petmods.lua`**: `[itemId] = { Wyvern = { HPP = 10 } }` on canonical catalog
   keys. 396 items, 816 rows, 9 pet types; generation asserts pin the field cases.
-- **`refresh_all.py`** = the one-command maintainer update (apicrawl → petmods →
-  levelscaling → gearsets, continue-on-error summary). Adopting the pet mod names
+- **`refresh_all.py`** = the one-command maintainer update (apicrawl â†’ petmods â†’
+  levelscaling â†’ gearsets, continue-on-error summary). Adopting the pet mod names
   into modmap.CORE immediately rippled canonical spellings into latentstats.lua and
-  gearsets.lua (`REGAIN`→`Regain`, `ABSORB_DMG_CHANCE`→`AbsorbDamageChance`) — the
+  gearsets.lua (`REGAIN`â†’`Regain`, `ABSORB_DMG_CHANCE`â†’`AbsorbDamageChance`) â€” the
   shared-parser effect working as intended, plus four new statdefs entries (DEFP,
   AbsorbDamageChance, MainDMGRating, MonsterCorrelation).
 - **Display-first** (`gearfmt.petLines`): tooltips get one line per pet type
   ("Wyvern: HPP+10"; `All` reads as "Pet"), row summaries spend leftover token budget
   ("Wyvern:HPP+10") which also makes pet gear findable by the stat search.
-  No engine/optimizer participation — that is a separate later call.
+  No engine/optimizer participation â€” that is a separate later call.
 
 ## The Gear Oracle: one door for every gear question (2026-07-22, PRD #69, COMPLETE)
 
-**The arc:** Henrik's morning suspicion — "every time gear data tries to be fetched,
-many areas of the code do their own thing" — grilled into PRD #69 and shipped complete
-the same day: five squash-merged PRs (#75–#79), agent-built via the label-dispatch
+**The arc:** Henrik's morning suspicion â€” "every time gear data tries to be fetched,
+many areas of the code do their own thing" â€” grilled into PRD #69 and shipped complete
+the same day: five squash-merged PRs (#75â€“#79), agent-built via the label-dispatch
 pipeline, every PR maintainer-reviewed (footprint, claim-blind grep, both-platform
 battery, golden cleanliness). Full reference: **docs/design/gear-oracle.md**; rulings:
 **ADR 0013**. The investigation's surprise: the *interpretation* layer was already
-centralized (`comboStats`/`levelstats`/`augments` — Henrik's hunch about the weighing
-path confirmed); the real drift was the *fetch* layer (worn-item decode ×4, bag list
-×4, gate fallbacks, catalog walk ×2). The oracle deleted every copy.
+centralized (`comboStats`/`levelstats`/`augments` â€” Henrik's hunch about the weighing
+path confirmed); the real drift was the *fetch* layer (worn-item decode Ã—4, bag list
+Ã—4, gate fallbacks, catalog walk Ã—2). The oracle deleted every copy.
 
-**What shipped, per slice:** #75 — `gear/gearoracle.lua` born: `wornItem`/`equipBags`,
+**What shipped, per slice:** #75 â€” `gear/gearoracle.lua` born: `wornItem`/`equipBags`,
 three addon-state decodes deleted, engine twins hoisted to named form
-(`M.decodeEquipIndex`, `M.AMMO_BAGS`) and parity-pinned. #76 — the golden harness
+(`M.decodeEquipIndex`, `M.AMMO_BAGS`) and parity-pinned. #76 â€” the golden harness
 (separate entry above) + the Windows scaffold-dir fix (`60facb5`: `dlac\autogear.lua`
-is one *filename* on Linux, a *subpath* on Windows — CI-green ≠ Windows-green on
-golden work). #77 — `canWear`/`anyJobCanWear`/`lookup`; the gearoptim/gearui inline
+is one *filename* on Linux, a *subpath* on Windows â€” CI-green â‰  Windows-green on
+golden work). #77 â€” `canWear`/`anyJobCanWear`/`lookup`; the gearoptim/gearui inline
 gate fallbacks deleted; gearexport's duplicate catalog walk retired onto catalogindex.
-#78 — GRD1–5 HARD RULE guards (three-way self-checks incl. sanctioned-home-contains-
+#78 â€” GRD1â€“5 HARD RULE guards (three-way self-checks incl. sanctioned-home-contains-
 idiom), ADR 0013, the Central-services row; temporary allowlist named automationsui +
-gearui + equippedui (wider than the issue's prose — the guard found every interpreter
-load). #79 — `stats()`/`setStats()` recipes; the three allowlisted surfaces migrated;
+gearui + equippedui (wider than the issue's prose â€” the guard found every interpreter
+load). #79 â€” `stats()`/`setStats()` recipes; the three allowlisted surfaces migrated;
 **goldens byte-identical on both platforms with the .golden files untouched in the
 diff**; allowlist emptied, rule absolute. One disclosed widening: the augment fold is
 now the full map, not MP/Refresh-only (correct per "augs must always be calculated
-into the total"). fishcalc untouched by design: pure/parameterized — its stat feed was
+into the total"). fishcalc untouched by design: pure/parameterized â€” its stat feed was
 automationsui's ladder read, now oracle-sourced.
 
 **The boundary that matters most:** the oracle is CLAIM-BLIND, permanently. Capability
 ("could I wear this") lives here; permission ("may this slot change, who wins") stays
 the Arbiter's (ADR 0012). Henrik's ruling verbatim: "otherwise they would contest,
-that would only create complexity." Names enforce it — `canWear`, never `canEquip`.
+that would only create complexity." Names enforce it â€” `canWear`, never `canEquip`.
 
-**Same-day housekeeping:** the field ledger emptied — Henrik blanket-confirmed the
+**Same-day housekeeping:** the field ledger emptied â€” Henrik blanket-confirmed the
 whole UNRUN pile (fishing v91, Blueprints, town lockstyle v46, Iridescence sweep,
 MaxMP pair homes, then Target condition, Teleports quick menus, Sets Equip & Lock T3,
 AutoAmmo v73). Two flags turned out doubly stale (Blueprints, MaxMP pair homes were
-already confirmed in their files — index rot). Engine VERSION untouched all day; the
-pet-mods commit rode the rebases (held by its session for the oracle-reporter rewrite —
+already confirmed in their files â€” index rot). Engine VERSION untouched all day; the
+pet-mods commit rode the rebases (held by its session for the oracle-reporter rewrite â€”
 the oracle's first post-ship consumer).
 
 ## The oracle's first new answer: pet stats enter the door (2026-07-22, same evening)
 
 The pet-mods session validated its held commit against the freshly-written oracle
 reference and found the predicted mini rival door: `gearfmt` requiring
-`data/petmods.lua` directly. GRD5 does not police data tables — the commit passed CI
-by the letter — but "extending gear knowledge = adding an answer to the oracle" is
+`data/petmods.lua` directly. GRD5 does not police data tables â€” the commit passed CI
+by the letter â€” but "extending gear knowledge = adding an answer to the oracle" is
 the law's spirit, and the design doc had already named pet-mods the first planned
 consumer. The alignment landed the same evening:
 
-- **`oracle.petStats(recOrId)`** — the pet-channel answer, in the oracle's own idiom
+- **`oracle.petStats(recOrId)`** â€” the pet-channel answer, in the oracle's own idiom
   (lazy `interp` require, FRESH each call, nil-safe). **Deliberately separate from
   `stats()`**: pet values never fold into master stats (wyvern HP is not your HP),
-  and the golden gate pins `stats()` byte-identical — a fold would be a gate breach.
-- **`gearfmt` asks the door** and keeps only composition (labels, order, budget) —
+  and the golden gate pins `stats()` byte-identical â€” a fold would be a gate breach.
+- **`gearfmt` asks the door** and keeps only composition (labels, order, budget) â€”
   presenter, not knower.
 - **PM section grew the door proof:** swap `package.loaded['dlac\data\petmods']`
-  under a live gearfmt and watch petLines change — observable only because the
+  under a live gearfmt and watch petLines change â€” observable only because the
   oracle requires fresh each call. A private copy in any presenter now fails CI.
 
 Goldens stayed byte-identical through the rewire on both platforms (2345 + 225
-checks). The extension path — "if the oracle can't answer it, that's a gap in the
-oracle" — worked exactly as the doc promised on its first exercise.
+checks). The extension path â€” "if the oracle can't answer it, that's a gap in the
+oracle" â€” worked exactly as the doc promised on its first exercise.
 
 ## Pet stats become priceable: the channel enters the weights system (2026-07-22, later that evening)
 
 Henrik made the "optimizer = later call" call the same day the channel shipped:
 pet stats should be weightable and listed in the stat menu. The design problem was
-squaring two rulings — pet values must never fold into master stats, yet the weights
-system prices ONE flat map — and the answer was a **namespace**: `Pet:`-prefixed keys
+squaring two rulings â€” pet values must never fold into master stats, yet the weights
+system prices ONE flat map â€” and the answer was a **namespace**: `Pet:`-prefixed keys
 (`Pet:Haste`) live in the same scoring map without ever colliding with `Haste`.
 
-- **`oracle.petScoreStats(recOrId)`** — the channel flattened for scoring. Per stat
+- **`oracle.petScoreStats(recOrId)`** â€” the channel flattened for scoring. Per stat
   the context-free scalar is **All + the BEST named type**: the server grants a pet
-  All plus its own type's mods, and a pet is exactly ONE type — summing across named
+  All plus its own type's mods, and a pet is exactly ONE type â€” summing across named
   types would credit mutually exclusive pets. Max is exact whenever one named type
   carries the stat, which is nearly every row in the data.
-- **`oracle.petStatKeys()`** — the distinct stat keys the pet data actually delivers;
+- **`oracle.petStatKeys()`** â€” the distinct stat keys the pet data actually delivers;
   the weights editor's "add stat" picker lists the family from it (type "pet" to
   browse it; "haste" surfaces `Pet:Haste` beside `Haste`).
 - **One seam, no drift:** gearui's `candidateStats` merges the pet keys, so every
-  scoring consumer — per-item sorts, Auto-build's joint pools, pair ladders — prices
+  scoring consumer â€” per-item sorts, Auto-build's joint pools, pair ladders â€” prices
   pet gear identically; `workingWeightedScore` folds the same keys per piece on top
-  of `setStats` (which stays pet-blind — the goldens pin it byte-identical, and they
+  of `setStats` (which stays pet-blind â€” the goldens pin it byte-identical, and they
   stayed so through this change).
 - **The pricing plumbing followed:** `statdefs` derives label/section for the
-  namespace (`Pet:Haste` → "Pet: Haste", section Pet; `canon` keeps the prefix and
+  namespace (`Pet:Haste` â†’ "Pet: Haste", section Pet; `canon` keeps the prefix and
   canonicalizes the inner stat), `gearoptim`'s spelling table learns the family from
   the oracle (a typed `pet:haste` resolves), and `Pet:PDT` is negative-good exactly
   like `PDT`.
@@ -4154,87 +4154,87 @@ system prices ONE flat map — and the answer was a **namespace**: `Pet:`-prefix
   namespace hygiene (no bare master key ever leaks), statdefs derivation, and
   gearoptim's pricing + negation. 2363 + 225 green on Windows and WSL lua5.4.
 
-Field rounds, same night. Round 1: "not seeing wyvern hpp+" — the code was fine;
+Field rounds, same night. Round 1: "not seeing wyvern hpp+" â€” the code was fine;
 the DEPLOYMENT seam wasn't. The game loads the MAIN checkout, and the feature sat
-two commits ahead of it on origin — **pushed ≠ playable**, now a survival rule:
+two commits ahead of it on origin â€” **pushed â‰  playable**, now a survival rule:
 after pushing, pull the main checkout before asking for a field round. The report
 also exposed a search-instinct gap: Henrik looked for the stat by his PET's name.
-So `petStatKeys` grew a second return — { statKey → the pet types carrying it } —
+So `petStatKeys` grew a second return â€” { statKey â†’ the pet types carrying it } â€”
 and the picker folds those names into its search terms: typing "wyvern" surfaces
 Pet:HP%, "automaton" its accuracy family (7cc98f1; PM18a/b pin the shape). Round 2:
-**field-CONFIRMED** — "It's there."
+**field-CONFIRMED** â€” "It's there."
 
 ## The oil that would not stay: a stale stamp, not the Arbiter (2026-07-22, night)
 
 Field report (Mindie, PUP): a MANUALLY equipped Automat. Oil +2 vanished from Ammo
-every Default dispatch — suspicion fell on the new Claim Arbiter "blocking manual
+every Default dispatch â€” suspicion fell on the new Claim Arbiter "blocking manual
 equips completely". The Arbiter was innocent: manual equips never pass through it.
-The killer was ADR 0010's worn-trinket displace running on wrong data — the trinket
-completion ("Ammo with no AmmoType ⇒ RSlot=4") had stamped the oil Range-reserving
+The killer was ADR 0010's worn-trinket displace running on wrong data â€” the trinket
+completion ("Ammo with no AmmoType â‡’ RSlot=4") had stamped the oil Range-reserving
 in the manifest, so any plan holding the idle set's Animator in Range displaced the
 worn oil with `Ammo='remove'`, every dispatch.
 
-The census that settled it (local server clone, item_equipment × item_weapon over
+The census that settled it (local server clone, item_equipment Ã— item_weapon over
 every Ammo-slot item): the real Range/Ammo conflict law is **charutils' weapon
-skill/subskill compat check**, not rslot — Rimestone, Cinderstone and Coiste Bodhar
+skill/subskill compat check**, not rslot â€” Rimestone, Cinderstone and Coiste Bodhar
 all carry server rslot=0 yet genuinely conflict through that check (skill 0:0
-matches no Range piece). The four Automaton Oils are skill 0 / **subskill 10 — the
-subskill of every Animator** — so the server KEEPS oil + Animator together; they
+matches no Range piece). The four Automaton Oils are skill 0 / **subskill 10 â€” the
+subskill of every Animator** â€” so the server KEEPS oil + Animator together; they
 are the ONLY AmmoType-less ammo class that PAIRS with a Range piece. (Animator II
 variants are subskill 11: oils do not pair with them, server-enforced. Henrik's
-field statement — "automaton oils are operable with animators" — was the exact
+field statement â€” "automaton oils are operable with animators" â€” was the exact
 falsifier of the blanket completion.)
 
 The fix, two altitudes (6b149ea + d4c602f, engine v101, addon 2026.07.22h):
 
 - **gearrecord.ANIMATOR_FED** id-pins the oils (18731/18732/18733/19185) out of
-  the completion — the one place RSlot is decided — and `/dl fix` learned that the
+  the completion â€” the one place RSlot is decided â€” and `/dl fix` learned that the
   RSlot stamp is machine-owned BOTH ways: a reservation the rule no longer asserts
-  is retracted, a changed catalog value corrected in place (E12–E17).
+  is retracted, a changed catalog value corrected in place (E12â€“E17).
 - **The engine distrusts the stale stamp itself**: `M.recordRSlot` is now the one
   reader of a manifest record's RSlot and ignores it for the pinned ids (engine
   mirror of the addon-side set, TR17 parity-pinned). Because dispatch.lua re-seeds
   into every character folder on every addon load, the update alone heals every
-  user — no `/dl fix` migration step required (that command remains as tidying).
+  user â€” no `/dl fix` migration step required (that command remains as tidying).
   TB8 drives the field case end-to-end through the real glue.
 
 **Field-CONFIRMED same night**: "I can equip all the oils now." Noted for a
 follow-up during verification: the engine self-swap is keyed on `M.VERSION` alone,
-so same-version content edits go unswapped until a manual Reload LAC — a
+so same-version content edits go unswapped until a manual Reload LAC â€” a
 content-keyed swap is the proposed cure.
 
 ## Hand-to-Hand slips the craft Sub guard: the flag lied, Type now decides (2026-07-22)
 
 Round 2 of the v37 Kupo-Shield flap, monk edition: with the craft overlay owning
-Sub, a Hand-to-Hand Main was NOT held — it equipped, the server knocked the shield
+Sub, a Hand-to-Hand Main was NOT held â€” it equipped, the server knocked the shield
 off, craft re-equipped the shield, forever. The guard asks `utils.subSlotAllowed`,
-and the rule read `OneHanded` — which for H2H is a lie with three faces: fresh
+and the rule read `OneHanded` â€” which for H2H is a lie with three faces: fresh
 scans stamp `false` (gearimport's TWO_HANDED includes skill 1), the CATALOG stamped
-`true` (apicrawl's `ONE` set wrongly listed HandToHand — fixed; Henrik's next
+`true` (apicrawl's `ONE` set wrongly listed HandToHand â€” fixed; Henrik's next
 `--refresh` heals catalog.lua), `/dl fix` backfilled that `true` into gear.lua
-files, and legacy entries carry none. Test AF4 even "covered" H2H — with a
+files, and legacy entries carry none. Test AF4 even "covered" H2H â€” with a
 flag-less fixture that passed by accident while every backfilled record failed in
 the field.
 
 A boolean cannot say "both hands" anyway: server law (charutils.cpp EquipItem) is
-that an H2H main knocks ANY Sub off — grips included, unlike 2H — and a shield
+that an H2H main knocks ANY Sub off â€” grips included, unlike 2H â€” and a shield
 equipped onto an H2H main knocks the MAIN off. So the shared rule now keys on Type
 for H2H (`isH2H`, normalized 'HandToHand' / legacy 'Hand-to-Hand'): an H2H main
 pairs with NOTHING at equip time; an H2H item never sits in Sub, building included
-(a physical impossibility, the HARD RULE's exempt class — building stays
+(a physical impossibility, the HARD RULE's exempt class â€” building stays
 Main-blind otherwise, pinned A24/A25). gearui's fallback mirror matches; AF4 now
-wears the catalog-lie shape so the accident cannot repeat. Tests A18–A25.
+wears the catalog-lie shape so the accident cannot repeat. Tests A18â€“A25.
 (utils.lua rides the seeder + a profile reload, not the engine self-swap: one
 `/lac load` or job flip boards it; the GUI mirror boards on `/addon reload dlac`.)
 
 Close-out, same evening: the lie's WRITERS are fixed through one record rule,
 `gearrecord.healOneHanded` (H2H pins false; false/nil pass through intact).
 enrich corrects the flag in memory, gearexport stops exporting it, and /dl fix
-treats OneHanded as machine-owned BOTH ways like RSlot — a missing flag
+treats OneHanded as machine-owned BOTH ways like RSlot â€” a missing flag
 backfills the healed value, the previously propagated true is corrected in
-place, idempotent (REC27–33, E18–21). The shipped catalog keeps its wrong H2H
+place, idempotent (REC27â€“33, E18â€“21). The shipped catalog keeps its wrong H2H
 flags until Henrik's next crawl (tools/ is gitignored; the apicrawl fix cannot
-ship via git) — inert either way: readers key on Type, writers heal on contact.
+ship via git) â€” inert either way: readers key on Type, writers heal on contact.
 
 ## Same-job profile import left the GUI in limbo: the addon-state readers now content-follow (2026-07-22)
 
@@ -4642,80 +4642,80 @@ button apply on both machines + one LAC-absent demonstration. If the injection
 itself fails => STOP; the superseded `docs/design/lockstyle-engine-move.md` is
 the designated fallback (do not improvise one).
 
-## Session "the absorption": dlac becomes its own equip engine (2026-07-23, feature/native-engine, dispatch v110–v119, addon 2026.07.23m→y)
+## Session "the absorption": dlac becomes its own equip engine (2026-07-23, feature/native-engine, dispatch v110â€“v119, addon 2026.07.23mâ†’y)
 
-Henrik's morning curiosity — "could DLAC technically do LAC's job?" — was sized
+Henrik's morning curiosity â€” "could DLAC technically do LAC's job?" â€” was sized
 (LAC 2.02 is ~5,361 lines; the engine's ENTIRE consumption of it is
 `gFunc.EquipSet` + eight gData reads + the Handle* timing contract), ruled GO by
 evening, BUILT the same day, and survived six field rounds before midnight. By
 the Addendum-2 ruling on #80, `feature/native-engine` is THE development branch
 and main is frozen as the stable fallback.
 
-**The build (steps 1–6, a84ef5e..688a623).** (1) The storage-home seam:
+**The build (steps 1â€“6, a84ef5e..688a623).** (1) The storage-home seam:
 `profiles.dataDir()/charRoot()/storageRoot()/charDataDirAt()` are the only path
 composers; native home `config\addons\dlac\<char>\` (no `dlac\` level) behind
 the install-wide Engine flag (`engine.lua`; broken file reads OFF); copy-only
 migration + per-char auto-migration. (2) ~15 modules swept onto the seam
-(check/debug/setmanager-jobPath stay legacy BY DESIGN — they diagnose the
+(check/debug/setmanager-jobPath stay legacy BY DESIGN â€” they diagnose the
 bridge). (3) `gear/equipcore.lua`: the pure LAC-parity resolver +
-0x050/0x051 builders (EQC*; the FlagEquippedItems short-circuit — displaced-only
-sets are satisfied silence — is a REAL LAC pin). (4) `feature/equipengine.lua`:
-the timing service — block outgoing 0x01A/0x037 → Precast → re-inject →
+0x050/0x051 builders (EQC*; the FlagEquippedItems short-circuit â€” displaced-only
+sets are satisfied silence â€” is a REAL LAC pin). (4) `feature/equipengine.lua`:
+the timing service â€” block outgoing 0x01A/0x037 â†’ Precast â†’ re-inject â†’
 Midcast; LAC's completion formulas verbatim; 0x028 completion/interrupt (28787)
 + the pet stream firing `PetAction` at action START; resend dedup;
 name-prefiltered bag scans; the coexistence TRIPWIRE (fingerprinted injections;
 a foreign echo disarms loudly); refuses to arm inside LAC's state.
-`ACTION_ROUTES` is the dispatch-point table — a future dispatch point is one
+`ACTION_ROUTES` is the dispatch-point table â€” a future dispatch point is one
 row. (5) dispatch v111: `engineActive()` widens every engine gate;
 `engineEquipSet` is the one write seam; `M._nativeSets` replaces gProfile.Sets
 (tick identity latch + `utils.rebuildSets` on the shim's cadence); LAC-bridge
 machinery stays `inLac()`-pinned. `feature/nativedata.lua` supplies LAC-parity
 gData (sig-scan vanatime/weather, storm override). (6) `/dl engine` command +
-docs (architecture § The Native engine).
+docs (architecture Â§ The Native engine).
 
-**The maxmp boot saga (field rounds 1–6, v112–v119) — read this before
+**The maxmp boot saga (field rounds 1â€“6, v112â€“v119) â€” read this before
 trusting any cached compute over a staged boot.** Round 1: the observer only
-ran in the LAC tick tail and `mpLowMap` read gProfile.Sets directly → v112
+ran in the LAC tick tail and `mpLowMap` read gProfile.Sets directly â†’ v112
 (the seam-hunting pattern: grep the automation's dispatch region for
 gProfile/gState/gEquip and check the LAC tail behind the native `return`).
-Round 2: a self-healing glimpse → v113 (don't cache store-less results) —
+Round 2: a self-healing glimpse â†’ v113 (don't cache store-less results) â€”
 INSUFFICIENT. Round 3: Henrik's /dl plan screenshots (lows 0, tags gone, a
-phantom ammo band) → v114 THE READINESS GATE (his spec: band order is a pure
+phantom ammo band) â†’ v114 THE READINESS GATE (his spec: band order is a pure
 function of manifest+sets+rules) + v115 widened to LAC mode on his attribution
-note ("this was the case earlier as well" — the install latch races existed all
+note ("this was the case earlier as well" â€” the install latch races existed all
 along; when Henrik says a symptom feels old, believe him). Round 4: the gate
-passed while the world was still wrong → v116 THE STABILITY LATCH (belief
-requires two identical computes ≥2s apart) — DEFEATED by a stable-wrong state.
+passed while the world was still wrong â†’ v116 THE STABILITY LATCH (belief
+requires two identical computes â‰¥2s apart) â€” DEFEATED by a stable-wrong state.
 **Dead end, named: proxy-readiness attestations and self-agreement both lose to
 a world that is wrong AND stable** (a flatten over a not-yet-live input is
-hollow STABLY). Round 5: v117 instrument-first — the WARM TRACE
+hollow STABLY). Round 5: v117 instrument-first â€” the WARM TRACE
 (`debug\mpwarm.txt`, one row per compute: latch verdict + world counts) + the
 gear ordering gate. The trace caught it in ONE reload: 'BELIEVED setN=0 flat=0'
-behind a "20 set(s) installed" print — the install-time flatten was empty and
+behind a "20 set(s) installed" print â€” the install-time flatten was empty and
 the belief cache (keyed by TIME) outlived the real store arriving. v118: a
 hollow install is not an install (refuse + retry); BOTH install branches
 invalidate the belief (caches must be keyed by world identity, not time);
 flatten counts ride the signature. Round 6: Henrik's trace showed the designed
-boot verbatim — 12 refusals holding ~4.5s, then the first-ever belief granted
+boot verbatim â€” 12 refusals holding ~4.5s, then the first-ever belief granted
 to the TRUE world. **"It works now."** v119 also lands Henrik's debug-folder
 rule: per-char debug artifacts live in `<data home>\debug\` (the LAC-bridge
-handoff files stay put — they die with LAC).
+handoff files stay put â€” they die with LAC).
 
 **The refocus (same evening).** Step 0 done: main (executor #86 + ADR 0014)
-merged in (00e6f45; reconcile list applied — CONTEXT's Engine entry is
+merged in (00e6f45; reconcile list applied â€” CONTEXT's Engine entry is
 native-aware, the ADR-0014 boundary paragraph gained its one-state postscript).
-#83 done (9214912): every lockstyle apply path is addon-resident natively — the
+#83 done (9214912): every lockstyle apply path is addon-resident natively â€” the
 `queueCmd` apply funnel (town/OnLoad/keep-sub) and the typed handler route to
 `M._applyDirect` (nil box = the marked one) because one state means a
 self-queued command is heard by NO ONE; legacy paths untouched. **ADR 0015**
 (3f86c3c) records Henrik's four rulings: legacy is a sunset (push migration
 hard); new features are native-first (LAC is no longer a design input); dlac
 never writes `<JOB>.lua` again but reads them forever (imports); new users
-default native with a polite LAC-alive ask. Four phases: field rounds → recruit
-the roster → graduation merge (+ legacy nudge) → the deletion party (the bridge
+default native with a polite LAC-alive ask. Four phases: field rounds â†’ recruit
+the roster â†’ graduation merge (+ legacy nudge) â†’ the deletion party (the bridge
 machinery, the oracle twins, the inLac paths).
 
-**Tests:** 2648→2671 checks (NE/EQC/EQE/NEB sections + main's LAP arrived in
+**Tests:** 2648â†’2671 checks (NE/EQC/EQE/NEB sections + main's LAP arrived in
 the merge), 225 smoke, green Windows Lua + WSL lua5.4 at every commit.
 
 **Deferred / next:** ruling-4 onboarding (first-run native default + LAC-alive
@@ -4723,36 +4723,36 @@ ask + a Setup path that never writes job files); the legacy-mode nudge banner;
 Trigger Monitor's native feed; augment-string pins (`augmentStringsOf`); maxmp
 tick+offset persistence (standing offer). FIELD CONFIRM pending: the three
 native lockstyle paths (Apply button / town flip / typed apply). #84 (delete
-dispatch's lockstyle machinery) is safe to dispatch — origin's branch is
+dispatch's lockstyle machinery) is safe to dispatch â€” origin's branch is
 current.
 
 ## Ruling-4 onboarding: fresh installs boot native by default; Setup never writes a job file (2026-07-23, feature/native-engine, addon 2026.07.23z, issue #87)
 
-**Theme:** the "Deferred / next" item from the absorption session — ADR 0015
+**Theme:** the "Deferred / next" item from the absorption session â€” ADR 0015
 ruling 4 (new users native by default) plus ruling 3's Setup consequence (dlac
-never writes a `<JOB>.lua` again) — built on `feature/native-engine`.
+never writes a `<JOB>.lua` again) â€” built on `feature/native-engine`.
 
 **The first-run decision is a pure seam.** `profiles.firstRunAction(flagState,
 legacyPresent)` maps the flag file state (`'native' | 'legacy' | 'absent'`,
-where a present-but-broken file counts as `'legacy'` — present, so never
-clobbered) × whether ANY character on the install has legacy dlac data
+where a present-but-broken file counts as `'legacy'` â€” present, so never
+clobbered) Ã— whether ANY character on the install has legacy dlac data
 (`config\addons\luashitacast\<char>\dlac\`) to one of three actions:
-`'respect'` (a flag is on disk — honor it, boot NEVER rewrites it, existing
-users are never auto-flipped), `'legacy'` (no flag but legacy data present — an
+`'respect'` (a flag is on disk â€” honor it, boot NEVER rewrites it, existing
+users are never auto-flipped), `'legacy'` (no flag but legacy data present â€” an
 existing user, stay legacy, write nothing), or `'write-native'` (no flag, no
-legacy data — a FRESH install, born native). `profiles.firstRunInit()` runs it
+legacy data â€” a FRESH install, born native). `profiles.firstRunInit()` runs it
 once at boot (`dlac.lua` `maintainStorage`, before the native-mode branch) and
 writes `native = true` only for the fresh case. The one trap avoided: a
 directory-listing API that returns nil ("couldn't tell") must NOT be read as
-"fresh" — `legacyDataPresent()` returns `present, scanned` and firstRunInit
+"fresh" â€” `legacyDataPresent()` returns `present, scanned` and firstRunInit
 declines to decide (retries next beat, not latched) when the scan failed, so a
 transient fs hiccup can never wrongly flip an existing legacy user. A missing
-`luashitacast\` dir lists as `{}` (the popen fallback) — a real "no legacy data"
+`luashitacast\` dir lists as `{}` (the popen fallback) â€” a real "no legacy data"
 answer, exactly the fresh install.
 
 **Ordering matters:** because firstRunInit runs at the top of `maintainStorage`
 and writes the flag before the `if prof.nativeMode()` branch, a fresh install is
-native by the time the same beat reaches the seeding fork — so `seedCharFolder`
+native by the time the same beat reaches the seeding fork â€” so `seedCharFolder`
 (the only writer under `config\addons\luashitacast\`) is never reached, and NO
 file is created in the LAC tree. The decision is install-wide (no character
 needed), so it lands pre-login on frame one.
@@ -4762,7 +4762,7 @@ is a pure latch: fed the live "is LuaAshitacast alive?" reading, it returns true
 the first time that is true and then stays false for the session. Detection
 (`dlac.lua` `lacAlive()`, best-effort) is the equipengine coexistence tripwire
 having fired OR a legacy-home `modestate.lua` written in the last ~15s (a dlac
-engine hosted inside LAC stamped it — native mode writes only the native home).
+engine hosted inside LAC stamped it â€” native mode writes only the native home).
 The ask names the exact command (`/addon unload luashitacast`); the tripwire
 remains the hard backstop, so a detection miss only means the loud DISARMED line
 arrives instead of the polite one.
@@ -4770,7 +4770,7 @@ arrives instead of the polite one.
 **Setup goes native.** Under the flag, `setupui.migrateCurrentJob` routes to the
 new `setup.setupNative`: ensure storage + seed the gear inventory + the four
 base sets + starter triggers, all mode-aware (they resolve to
-`config\addons\dlac\`), never clobbering an existing file — and writing **zero**
+`config\addons\dlac\`), never clobbering an existing file â€” and writing **zero**
 `<JOB>.lua`/shim/backup files (ruling 3: what is never written needs no backup).
 The legacy migration writer (`migrateToCleanProfiles`) now refuses under the
 native flag as a defense-in-depth guard, so no stray caller can breach the rule.
@@ -4779,17 +4779,17 @@ existence (not the absent shim) in native mode, the Setup plan popup shows a
 native-worded plan (no shim, no backup, no luashitacast writes), and the legacy
 "not on the clean standard" migration nag stays silent under the flag. Job-file
 imports (Sets "Copy from", Groups "Scan my Lua", the `backups\pre-profiles\`
-corpus) keep reading the LAC tree READ-ONLY in both modes — untouched.
+corpus) keep reading the LAC tree READ-ONLY in both modes â€” untouched.
 
 **Why no `dispatch.M.VERSION` bump:** `profiles.lua` is a seeded file and its
 bytes changed, but the new functions are dormant inside LAC's state (called only
 from the addon state's `dlac.lua`), so the engine's equipping behavior is
-byte-identical — the staleness handshake has nothing to announce.
+byte-identical â€” the staleness handshake has nothing to announce.
 
-**Tests:** NO1–NO19 — the decision matrix, the once-per-session gate (fire →
-latch → reset re-arms), and the native Setup path (capture every write, assert
+**Tests:** NO1â€“NO19 â€” the decision matrix, the once-per-session gate (fire â†’
+latch â†’ reset re-arms), and the native Setup path (capture every write, assert
 zero land under `luashitacast\` / on the `<JOB>.lua` shim / in `backups\`, with
-a legacy contrast that still writes the shim). 2671→2690 checks, 225 smoke,
+a legacy contrast that still writes the shim). 2671â†’2690 checks, 225 smoke,
 green Windows Lua + WSL lua5.4.
 
 **Deferred / next (this arc):** the legacy-mode nudge banner (Phase C); Trigger
@@ -4807,20 +4807,20 @@ in and the dlac.lua collision cleared.
 `lockstyleapply.apply()` returns `{ ok, ... } | { ok = false, why }`
 SYNCHRONOUSLY, but the GUI Apply button's call site (`feature/lockstyle.lua`
 `M._applyDirect`) used to note `lastBox` and arm the zone guard
-UNCONDITIONALLY — before the call, inside a `pcall` that swallowed the return.
+UNCONDITIONALLY â€” before the call, inside a `pcall` that swallowed the return.
 So a refused apply (an empty box, an inject failure) still taught keep-on-sub a
 box the server never got and armed the guard around a style that never went out.
 Now the note+arm ride `res.ok`: on refusal neither fires, and the reason (which
 the executor already emits to chat) is also surfaced in the window's `_status`
-line — a failed button apply is visible in the GUI, not only in chat. A
+line â€” a failed button apply is visible in the GUI, not only in chat. A
 SUCCESSFUL apply is byte-identical to before: the same order (note `lastBox`,
 then arm) with the same effect, because the executor reads `data`, never
 `lastBox` or the guard, so moving the two below the call cannot change a good
 apply. The executor-unavailable branch (`_laok` false) and a pcall'd executor
-error are refusals too, each named in `_status`. Tests LAD0–12 drive
+error are refusals too, each named in `_status`. Tests LAD0â€“12 drive
 `_applyDirect` with a STUB executor so the `ok` flag is controlled rather than
 derived from headless inject quirks; LAP + LGF stay green (LGF runs the whole
-chain on the legacy queue path — `nativeArmed()` is false headless — so it never
+chain on the legacy queue path â€” `nativeArmed()` is false headless â€” so it never
 touched `_applyDirect` and could not regress).
 
 **`feature/lockstyleapply` joins dlac.lua's load-loop ledger.** The executor is
@@ -4828,14 +4828,14 @@ the one lockstyle module whose silent absence breaks Apply, yet it rode in only
 transitively (required inside `feature/lockstyle`, guarded, `_laok`), so
 `/dl check`'s module census could not name a broken or half-synced copy of it.
 It now sits beside `feature\lockstyle` in the load loop, counted like its
-siblings — a corrupt copy shows up as a NAMED failure in the census
+siblings â€” a corrupt copy shows up as a NAMED failure in the census
 (`check.lua` reads the ledger's `total`/`failed` dynamically, so nothing pins
 the count). Bumped `addon.version` to `2026.07.23za` (the letters ran out at
 `z`; `za` sorts after). No `dispatch.M.VERSION` bump: the touched files
-(`dlac.lua`, `feature/lockstyle.lua`) are addon-only, not seeded — the engine's
+(`dlac.lua`, `feature/lockstyle.lua`) are addon-only, not seeded â€” the engine's
 equipping behavior is unchanged, so the staleness handshake has nothing to say.
 
-**Tests:** 2690→2703 checks, 225 smoke, green lua5.4. FIELD CONFIRM pending
+**Tests:** 2690â†’2703 checks, 225 smoke, green lua5.4. FIELD CONFIRM pending
 (Henrik): a button apply of an empty/unwearable box shows the `_status` refusal
 and does NOT arm the guard; a good apply is unchanged; `/dl check` counts
 lockstyleapply and names a corrupted copy.
@@ -4843,71 +4843,71 @@ lockstyleapply and names a corrupted copy.
 ## Onboarding v2: Setup is now the migration wizard; fresh installs auto-setup with zero ceremony (2026-07-23, feature/native-engine, addon 2026.07.23zb, issue #91)
 
 **Henrik's ruling (same evening #87 landed):** Setup exists for exactly ONE
-reason now — migrating a current *legacy* dlac user to native. New players get
+reason now â€” migrating a current *legacy* dlac user to native. New players get
 the native engine automatically, with zero ceremony. This refines ADR 0015
-ruling 4 (which #87 implemented as a fresh-install *boot* — flag auto-written)
+ruling 4 (which #87 implemented as a fresh-install *boot* â€” flag auto-written)
 by removing the remaining ceremony, and implements the Phase-C migration nudge
 banner early. Recorded as the ADR 0015 addendum; architecture.md's Onboarding
 section rewritten to "Onboarding v2".
 
 **Fresh installs auto-setup at the login/job beat.** `setupui.autoSetupNative`
 runs from `dlac.lua` `maintainStorage` in the native branch: when this
-character+job's baseline is missing it seeds it silently — storage, gear
+character+job's baseline is missing it seeds it silently â€” storage, gear
 inventory, the four base sets, starter triggers (the existing `setupNative`
-content, per job, idempotent, never clobbering) — apart from ONE friendly
+content, per job, idempotent, never clobbering) â€” apart from ONE friendly
 chat/status line the first time anything lands. No Setup button, no popup, no
 Commit for a new user, ever. A later login on a NEW job auto-seeds that job's
 starters the same way (gear.lua is shared, not rewritten). The gates that
 mattered: **never in legacy mode** (the very first check); **never before
-`firstRunInit` resolves** — `maintainStorage` now captures its return and bails
+`firstRunInit` resolves** â€” `maintainStorage` now captures its return and bails
 on `nil` (couldn't decide yet), so auto-setup can't run against an unresolved
-first-run; **never for a not-ready job** — `jobFile()` returns nil until
+first-run; **never for a not-ready job** â€” `jobFile()` returns nil until
 `GetMainJob` settles, so the id-0 `NON` login state (hard rule 11) seeds
 nothing. Completeness is `nativeBaselineComplete` (storage + gear.lua + this
 job's sets + this job's triggers), read through the same deps the seeders write
 through so there's no torn view between write and verify. **Failure is a line,
 not a ceremony:** if the baseline never lands (disk error), it names itself in
-status/chat ONCE (a per-job `_autoWarned` throttle) and keeps retrying quietly —
+status/chat ONCE (a per-job `_autoWarned` throttle) and keeps retrying quietly â€”
 it is never escalated into the Setup box. The self-healing shape: no success
-latch — a complete baseline returns `'complete'` silently every beat (four cheap
+latch â€” a complete baseline returns `'complete'` silently every beat (four cheap
 reads), so a deleted file re-seeds on its own; only the failure *notice* is
 latched, and it clears on the next success.
 
 **The Setup button + popup become THE migration box.** `needsSetup` v2:
-native → always false (auto-setup owns fresh installs, nothing to migrate);
-legacy with dlac data → true (`setupui.hasDlacData` — the storage pointer, or a
+native â†’ always false (auto-setup owns fresh installs, nothing to migrate);
+legacy with dlac data â†’ true (`setupui.hasDlacData` â€” the storage pointer, or a
 pre-storage-move user's bare gear.lua). For that one user the red button is the
 standing nudge (present all session until they flip), and the popup is a
-three-part migration box — what you should do (migrate, then unload LAC + drop
+three-part migration box â€” what you should do (migrate, then unload LAC + drop
 it from autoload) / what Commit will do (copy ALL dlac data to
 `config\addons\dlac\`, COPY-ONLY, flip-back-any-time, then write the flag) / why
-(one engine must own your gear) — closing on the hard rule stated
-verbatim-clear: **"It's either LAC or DLAC — never both at once. Once migrated,
+(one engine must own your gear) â€” closing on the hard rule stated
+verbatim-clear: **"It's either LAC or DLAC â€” never both at once. Once migrated,
 do NOT run LuaAshitacast."** Commit is `setupui.migrateToNative`, the GUI twin of
 `/dl engine native on`: `engineMigrateStorage` (copy-only) then
-`setNativeMode(true)`, then the unload/reload checklist — and it refuses under
+`setNativeMode(true)`, then the unload/reload checklist â€” and it refuses under
 native (nothing to migrate). A flag-write failure after a good copy is reported
 without leaving the player mid-migration: their legacy tree is byte-for-byte
 untouched, so they lost nothing.
 
 **What retired from the UI, what stayed in the code.** The legacy clean-shim /
 ffxilac / per-job-plan Setup modes are gone from the button handler and the
-popup (a legacy user's answer to ANY setup state is now "migrate to native" — a
+popup (a legacy user's answer to ANY setup state is now "migrate to native" â€” a
 broken shim is irrelevant the moment they flip). The in-window warning banner
 rewords from "X.lua is NOT set up for dlac" to the migration nudge. The
-underlying legacy writers — `migrateToCleanProfiles`, `migrateCurrentJob`,
-`setupNative`, `jobSetupState` — stay in the code untouched: Phase D deletes
+underlying legacy writers â€” `migrateToCleanProfiles`, `migrateCurrentJob`,
+`setupNative`, `jobSetupState` â€” stay in the code untouched: Phase D deletes
 them, and `setupNative`'s seed helpers are the auto-setup content source
 meanwhile.
 
-**Tests:** NO20–NO42 (23 checks) drive it all against a name→content virtual
-disk — the needsSetup matrix, auto-setup seeding + idempotence + zero-clobber +
+**Tests:** NO20â€“NO42 (23 checks) drive it all against a nameâ†’content virtual
+disk â€” the needsSetup matrix, auto-setup seeding + idempotence + zero-clobber +
 zero-`luashitacast\`-writes + the new-job case + the not-ready-job gate + the
 persistent-failure line, and the migration Commit's captured call sequence
-(`migrate,flag:true`) + copy-only + checklist + native-refusal. 2703→2726
+(`migrate,flag:true`) + copy-only + checklist + native-refusal. 2703â†’2726
 checks, 225 smoke, green lua5.4. No `dispatch.M.VERSION` bump: the touched files
-(`ui/setupui.lua`, `ui/gearui.lua`, `dlac.lua`) are addon-only, not seeded — the
-engine's equipping behavior is unchanged. `addon.version` → `2026.07.23zb`.
+(`ui/setupui.lua`, `ui/gearui.lua`, `dlac.lua`) are addon-only, not seeded â€” the
+engine's equipping behavior is unchanged. `addon.version` â†’ `2026.07.23zb`.
 
 **FIELD CONFIRM pending (Henrik):** a fresh-install sim logs into playable with
 zero interaction; his real (already-native) install boots unchanged (no auto-setup
@@ -5028,41 +5028,41 @@ never delete/push) plus storage-move + hidden-features (superseded,
 Henrik's to delete). Confirmed in passing: the whole maxmp boot saga
 (v112-v119) rode the graduation -- main's dispatch reads M.VERSION = 119.
 
-## Session "E-Box Restock — the reusable E-Box client" (07-23 → 07-24)
+## Session "E-Box Restock â€” the reusable E-Box client" (07-23 â†’ 07-24)
 
-**Theme:** a grill-with-docs feature for Henrik — keep chosen items topped up from the
-Crystal-Warrior **Ephemeral Box**, near a box, on a click — and, on Henrik's call, carve
+**Theme:** a grill-with-docs feature for Henrik â€” keep chosen items topped up from the
+Crystal-Warrior **Ephemeral Box**, near a box, on a click â€” and, on Henrik's call, carve
 out a REUSABLE E-Box client FIRST ("we will probably make many more, good idea").
 
-**Design (grilled, R1-R11):** two lists that combine — a **Character** list (staples:
-food, silent oil, prism powder, tools) ∪ the **current-Job** list (job consumables:
+**Design (grilled, R1-R11):** two lists that combine â€” a **Character** list (staples:
+food, silent oil, prism powder, tools) âˆª the **current-Job** list (job consumables:
 RNG/COR ammo, DRG angons); a same-item Job **Target** OVERRIDES the character baseline
-(specificity). Per-item Target ("keep N"); fetch the **Shortfall** = Target − on-hand.
+(specificity). Per-item Target ("keep N"); fetch the **Shortfall** = Target âˆ’ on-hand.
 On-hand = the FIELD bags {Inventory 0, Satchel 5, Sack 6, Case 7} (Henrik: "usable in the
-field"); room = free Inventory(0) slots. **The load-bearing ruling — slot-loss safety:**
-the E-Box withdraw lands each stack in a FRESH inventory slot (per item AND per stack —
+field"); room = free Inventory(0) slots. **The load-bearing ruling â€” slot-loss safety:**
+the E-Box withdraw lands each stack in a FRESH inventory slot (per item AND per stack â€”
 24 fire crystal @ stack 12 = 2 slots), never merging into an existing partial on arrival,
 and the box does NOT protect you: too few slots = LOST items. So a fetch costs
-⌈fetch/stackSize⌉ slots and must NEVER over-draw; under space pressure => greedy partial,
+âŒˆfetch/stackSizeâŒ‰ slots and must NEVER over-draw; under space pressure => greedy partial,
 job-first, remainder reported. A floating nudge near a box (hover = plan, left = Fetch all,
-right = open panel). 100% CW-only — invisible AND inert off-CW at every surface.
+right = open panel). 100% CW-only â€” invisible AND inert off-CW at every surface.
 
 **Architecture (ADR 0016):** exactly ONE 0x1A4 client, `feature/eboxclient.lua`, because
 0x1A4 is a party line and the server-load NFR (Henrik: operators care) needs coalescing +
-throttle to be STRUCTURAL, not per-feature — a shared multi-category counts cache,
+throttle to be STRUCTURAL, not per-feature â€” a shared multi-category counts cache,
 one-request-in-flight, a global min-gap, per-category stale windows, a near-box gate (query
 ONLY near a box). The shipped AutoAmmo E-Box code (`eboxammo`) was FOLDED onto the client as
 a thin category-15 adapter (public surface unchanged, so `ammoui` needed no edit; its own
 packet handler removed so the two features never race). Every future E-Box feature is a
-CONSUMER, never a second client — it's in architecture.md's Central-services table.
+CONSUMER, never a second client â€” it's in architecture.md's Central-services table.
 
 **Landed (main `975896a..b2fab33`, addon.version 2026.07.24b):** `feature/eboxclient` (EBC*
-tests) · `feature/restockwatch` (config + the pure `_merge` union/override + `plan`
-slot-budget; RS* tests) · the `eboxammo` fold (EB* reworked to adapter-parity) ·
-`ui/restockui` panel wired into `ui/automationsui` (CW-gated row + detail arm) · a GUI
-layout pass (wider number columns for 10000+, "keep"→"Target", type-only input, no clipping)
-· the floating nudge (`M.nudge` + a gearui d3d_present hook + `gearui.openAutomation` +
-`/dl restock`) using Henrik's crate art (`assets/ebox.png`) · the CW-gate closed on the
+tests) Â· `feature/restockwatch` (config + the pure `_merge` union/override + `plan`
+slot-budget; RS* tests) Â· the `eboxammo` fold (EB* reworked to adapter-parity) Â·
+`ui/restockui` panel wired into `ui/automationsui` (CW-gated row + detail arm) Â· a GUI
+layout pass (wider number columns for 10000+, "keep"â†’"Target", type-only input, no clipping)
+Â· the floating nudge (`M.nudge` + a gearui d3d_present hook + `gearui.openAutomation` +
+`/dl restock`) using Henrik's crate art (`assets/ebox.png`) Â· the CW-gate closed on the
 command too. Design doc `docs/design/ebox-restock.md`, ADR 0016, CONTEXT.md glossary
 (E-Box / E-Box client / E-Box Restock). 2801 headless checks green (Windows lua + WSL lua5.4).
 
@@ -5073,7 +5073,7 @@ stands: withdrawals land in Inventory(0).
 
 **Ops note (the parallel-session hazard, lived):** built entirely alongside a parallel
 chocobo-digging session (`feature/probe-dig`) that repeatedly FLIPPED the shared checkout
-between branches — a `git checkout` round-trip briefly showed pre-fold content and tripped
+between branches â€” a `git checkout` round-trip briefly showed pre-fold content and tripped
 the "modified on disk" reminders (a false "everything reverted" scare, resolved by reading
 the reflog: all commits were safe on main). Lesson reaffirmed: on a shared checkout,
 `git status` / `git branch` before every edit, stage ONLY your own paths, and commit promptly.
@@ -5110,7 +5110,7 @@ fmtver 15 (regenerated, reviewed). 2757 + 238 green both loops. **Player-facing 
 
 **The dig half's foundation** (parent PRD #93; docs/design/chocobo-dig.md "The rank
 model + guide scaffold"): the dig-rank model both search tabs will read, plus the guide
-panel scaffold — the live moon/day/weather header and the general dig-success line — hung
+panel scaffold â€” the live moon/day/weather header and the general dig-success line â€” hung
 below the existing riding-gear section. Not the tabs themselves, and not the timing
 auto-detect (that later slice is gated on the `/probe dig` calibration from #96).
 
@@ -5118,10 +5118,10 @@ auto-detect (that later slice is gated on the `/probe dig` calibration from #96)
 `GetCraftSkill(11)` returns the server's `0xFFFF` sentinel forever (confirmed by `/probe
 dig`), so `feature/digrank.lua` (a PURE, headless-tested brain) resolves the rank from:
 a **manual** dropdown seed; a one-way **ratchet** floor (`>= from digs`) raised whenever an
-`Obtained: <item>` chat line maps — via the shipped `digdata` — to a dig-rank requirement
+`Obtained: <item>` chat line maps â€” via the shipped `digdata` â€” to a dig-rank requirement
 above it, never lowered; and a live **server** read that stays silent under the mask but
 would win, labelled `reported by server`, if a build ever unmasks index 59. Only the server
-source carries `exact = true`. `chocowatch` owns the glue — the persisted `rankManual` /
+source carries `exact = true`. `chocowatch` owns the glue â€” the persisted `rankManual` /
 `rankFloor` in `chocostate.lua` (they survive relog, unlike the session-only `enabled`), the
 throttled skill read, and an always-on `text_in` hook (the rank baseline is independent of
 the riding-gear toggle).
@@ -5133,28 +5133,28 @@ will call for every row, and the reason a scaffold shipped before real zone data
 trusted not to mislead.
 
 **The scaffold degrades honestly.** `feature/vanamoon.lua` computes moon phase from the
-Vana'diel day (84-day cycle, illumination 0 New → 100 Full); `chocoui.clock()` reads day +
+Vana'diel day (84-day cycle, illumination 0 New â†’ 100 Full); `chocoui.clock()` reads day +
 weather from `nativedata` and the moon from vanamoon, each guarded so a failed weather scan
 shows "unavailable" without taking the header down. The general dig-success line uses a new
-`digcalc.averageSuccess` (mean combined success across enabled zones) — nil while `zones` is
+`digcalc.averageSuccess` (mean combined success across enabled zones) â€” nil while `zones` is
 empty, so the panel says "run gen_digdata.py" rather than print a fake 0. No `dispatch.M.VERSION`
 bump: the engine reads only `enabled`/`at` from `chocostate.lua`, and the added rank fields do
-not change seeded-file behaviour. New tests DR1–44 + gate DR40a–f + VM1–10 (digrank/vanamoon
-pure math), DR41–44 (averageSuccess), S139o–s (the headless scaffold seams). 2878 + 243 green.
+not change seeded-file behaviour. New tests DR1â€“44 + gate DR40aâ€“f + VM1â€“10 (digrank/vanamoon
+pure math), DR41â€“44 (averageSuccess), S139oâ€“s (the headless scaffold seams). 2878 + 243 green.
 
 **Flagged for the maintainer.** (1) `vanamoon.OFFSET` (the community-standard epoch 26) wants
 a one-time field cross-check against the in-game moon; if the ore-gate percent must be
 server-exact, swap the linear curve for the 84-entry LSB moon table (isolated in vanamoon).
-(2) Every new player-facing string — the rank ladder labels, the source labels, the header /
-note wording — is proposed, pending row-by-row sign-off.
+(2) Every new player-facing string â€” the rank ladder labels, the source labels, the header /
+note wording â€” is proposed, pending row-by-row sign-off.
 
 ## Chocobo: By-item tab (2026-07-24, issue #99)
 
 **The second dig-guide tab** (parent PRD #93; docs/design/chocobo-dig.md "The By-item tab"):
-a fuzzy item search → the matching diggable items → the selected item's every zone + pool
+a fuzzy item search â†’ the matching diggable items â†’ the selected item's every zone + pool
 with rank + the two live odds, greyed by the SAME `digrank.gate` rule the by-area tab uses,
-plus the item ↔ area cross-link. It reuses the by-area row/odds rendering and adds **no new
-odds math** — two pure `digcalc` seams feed it.
+plus the item â†” area cross-link. It reuses the by-area row/odds rendering and adds **no new
+odds math** â€” two pure `digcalc` seams feed it.
 
 `digcalc.itemIndex()` is the fuzzy-search source: every unique pool item (deduped by id, its
 `minRank` the lowest requirement across the zones it drops in) PLUS the conditional
@@ -5162,13 +5162,13 @@ crystals/clusters/rocks/ores **synthesised** from the `cond` rule tables (8 each
 so "Fire Crystal" / "Chunk of Fire Ore" are searchable even though they live in no static
 pool. `digcalc.itemSources(entry, rank, mu, clock)` prices the selected item's every source:
 a pool item's rows carry `{ zoneId, zoneName, pool, req, onHit, perDig, locked }` (sorted by
-② per-dig descending, the by-area order); a conditional item's rows carry the per-zone
-`{ condKind, chance, minRank, condition, clockActive, rankOk, active }` — crystals/rocks span
+â‘¡ per-dig descending, the by-area order); a conditional item's rows carry the per-zone
+`{ condKind, chance, minRank, condition, clockActive, rankOk, active }` â€” crystals/rocks span
 every enabled zone (`allZones`), ores only the 9 ore zones. Both are PURE (the clock is
 passed in) and fail soft. `chocoui.itemList`/`itemRows` wrap them and stamp `digrank.gate`.
 
 **Two things worth remembering.** (1) An item can be BOTH a static pool drop AND a conditional
-— Fire Crystal is listed in some zones' pools *and* is the Fire-weather conditional — so the
+â€” Fire Crystal is listed in some zones' pools *and* is the Fire-weather conditional â€” so the
 index carries a DISTINCT entry for each, keyed `pool:<id>` vs `condKind:element`, never by name
 (a name-keyed lookup collided in the first test pass and masked the conditional entry). (2) The
 cross-link reuses the `uihost.selectTab` idiom on this panel's OWN tab bar: a zone click sets
@@ -5178,55 +5178,55 @@ jump instead of crashing (hard rule 2). All-zone conditionals show a note rather
 identical clickable rows; ores list their 9 specific zones as cross-link buttons.
 
 No `dispatch.M.VERSION` bump (digcalc/chocoui are addon-state only; the engine reads just
-`enabled`/`at` from `chocostate.lua`). New tests BI1–BI27 (the two pure seams) + S139z–S139aa4
+`enabled`/`at` from `chocostate.lua`). New tests BI1â€“BI27 (the two pure seams) + S139zâ€“S139aa4
 (the composed seams) + the render-balance section now driving the By-item tab with the search
 filled. 2937 + 259 green. **Flagged:** the new player-facing strings (the `By item` tab name,
-the `Item:` / `needs X` / `Conditional drop` / `Diggable in …` labels) are proposed, pending
+the `Item:` / `needs X` / `Conditional drop` / `Diggable in â€¦` labels) are proposed, pending
 the maintainer's row-by-row sign-off with the rest of the guide's wording.
 
-## Chocobo: dig feature field-hardening — GUI polish + the item-ratchet fix (2026-07-24, PRs #112–#119)
+## Chocobo: dig feature field-hardening â€” GUI polish + the item-ratchet fix (2026-07-24, PRs #112â€“#119)
 
 The whole PRD #93 was shipped; this block is Henrik field-testing it and me hardening what
 broke in-game. Three threads:
 
-**Timing auto-detect — round → floor.** The first pass inverted the zone-in→first-dig delay
+**Timing auto-detect â€” round â†’ floor.** The first pass inverted the zone-inâ†’first-dig delay
 with `round`, but lag only ever makes a dig land LATER, never earlier. A lagged Expert dig at
-11–14s rounded DOWN to Veteran. Fixed to a **floor bracket** `clamp(12 − floor(t/5))`: each 5s
-rung reads as its FASTEST rank (10–14.9s → Expert). Henrik confirmed by reset + dig. A secret
+11â€“14s rounded DOWN to Veteran. Fixed to a **floor bracket** `clamp(12 âˆ’ floor(t/5))`: each 5s
+rung reads as its FASTEST rank (10â€“14.9s â†’ Expert). Henrik confirmed by reset + dig. A secret
 `/dl choco reset` (rank back to Amateur) exists for exactly this re-testing.
 
-**GUI polish → the panel-text standard.** Henrik: the panels have "WAY too much text, hard to
+**GUI polish â†’ the panel-text standard.** Henrik: the panels have "WAY too much text, hard to
 use." New house rule (now `docs`-wide as panels are touched): **underline the key label and put
 the explanation in a HOVER**, never an inline paragraph; cut obvious mechanics entirely. Built
-`uistyle.helpLabel(im, text, tip, col)` (PR #115) — an underlined "link" (guarded draw-list)
+`uistyle.helpLabel(im, text, tip, col)` (PR #115) â€” an underlined "link" (guarded draw-list)
 whose tip shows on hover, taking the caller's imgui so it stays binding-agnostic + headless
-(US1–6). The riding-gear + dig-guide panels were rebuilt onto it; the search moved to the TOP
+(US1â€“6). The riding-gear + dig-guide panels were rebuilt onto it; the search moved to the TOP
 as two buttons (**Area** / **Item**) opening their own windows (in an applicable digging zone
-Area opens on your current zone), with item→area cross-nav and a back step — scrolling to search
+Area opens on your current zone), with itemâ†’area cross-nav and a back step â€” scrolling to search
 at the bottom was the complaint.
 
 **The item ratchet was deaf (the long one).** Henrik: reset, dug items above Amateur, rank
 didn't move. Two wrong cuts before the fix:
-- I assumed the dig-obtained line doesn't reach `text_in` and hooked a **packet** —
-  `messageSpecial` → `0x02A` TALKNUMWORK, item id at raw offset `0x08` (a first draft even had
+- I assumed the dig-obtained line doesn't reach `text_in` and hooked a **packet** â€”
+  `messageSpecial` â†’ `0x02A` TALKNUMWORK, item id at raw offset `0x08` (a first draft even had
   the wrong packet, `0x02D`; an adversarial review caught it). It didn't fix it (PR #118).
 - Henrik pointed at the **hgather** digging addon (`Ashita/addons/hgather`, working). It reads
   dug items straight off `text_in` after `string.lower()`:
-  `string.match(message, "obtained: (.*).")` — so the line **is** ordinary chat; the packet hunt
+  `string.match(message, "obtained: (.*).")` â€” so the line **is** ordinary chat; the packet hunt
   was the wrong channel. Our `parseObtained` matched `[Oo]btained:` (only the leading `O`
-  case-flexed), so the real line's casing/prefix slipped past — and an unclassified dig is
+  case-flexed), so the real line's casing/prefix slipped past â€” and an unclassified dig is
   neither `obtained` NOR a completed dig, so ONE miss silenced BOTH the ratchet and the timing
   read on every item dig. Fixed to match `obtained:` **case-insensitively**, name sliced from the
-  original for display case (PR #119, `DR21f`–`DR21i`). The names were never wrong — the data
+  original for display case (PR #119, `DR21f`â€“`DR21i`). The names were never wrong â€” the data
   holds the full forms ("Chunk of Gold Ore"/737 etc.); Henrik's "gold ore" was shorthand. The
   packet path stays as a gated, fail-safe, idempotent second source.
 
 **Key decision / durable lesson:** when a working addon already handles the event you're
-reverse-engineering, read it before theorising from server source — hgather answered in one grep
+reverse-engineering, read it before theorising from server source â€” hgather answered in one grep
 what two packet guesses did not. And match chat-tag text case-insensitively (lower a copy);
 a fixed-case Lua pattern silently misses real messages. **All PRD #93 slices are now
 field-confirmed working in-game.** Known gap: conditional crystals/rocks/ores are synthesised
-(no static pool row) so a dug conditional doesn't ratchet yet — a harmless under-claim, follow-up.
+(no static pool row) so a dug conditional doesn't ratchet yet â€” a harmless under-claim, follow-up.
 `addon.version` 2026.07.24j; `run_tests` 3044 + `smoke_ui` 284 green (Windows lua 5.4.6 + WSL
 lua5.4).
 
@@ -5242,9 +5242,9 @@ name the active one and offer to turn it off; when nothing is armed, the badge
 disappears.
 
 **The tension, surfaced before building.** These four *co-claim* by deliberate
-design — ADR 0012's Amendment (step 1.5, above) removed the pre-Arbiter
+design â€” ADR 0012's Amendment (step 1.5, above) removed the pre-Arbiter
 "newest-armed exclusivity" and recorded it as a **dead end**. So the request looked
-like a reversal of a documented ruling. It is not — the dead end was a **claim-side**
+like a reversal of a documented ruling. It is not â€” the dead end was a **claim-side**
 rule that reached into `M.dispatch` and silenced a peer's *slots* at dispatch time
 (the AR10 PUP case: arming HELM yanked the fishing rod out of Range). What Henrik
 asked for sits at a different seam entirely.
@@ -5252,10 +5252,10 @@ asked for sits at a different seam entirely.
 **The seam (why it is not the dead end).** Exclusivity lives at the **enable
 toggle**, not the claim. A tiny coordinator, `feature/idleexcl.lua`, is called from
 each watcher's `setEnabled(true)` (and helm's `setAutoHelm(true)`). Because only one
-hobby is ever *armed*, the Arbiter never sees a conflict among the four — the engine
+hobby is ever *armed*, the Arbiter never sees a conflict among the four â€” the engine
 is untouched, and AR8/AR9/AR10 (which stub state files and never call `setEnabled`)
 stay green unchanged. The enable seam is the one choke point every surface funnels
-through — bar, panel pill, Automations row, quick-menu flip, `/dl` command — so
+through â€” bar, panel pill, Automations row, quick-menu flip, `/dl` command â€” so
 hooking it there caught all of them without touching a single UI file.
 
 **Two rounds, and the model Henrik settled on: lock-while-active, not auto-disarm.**
@@ -5269,14 +5269,14 @@ the peers) to `canActivate`/`guardActivate` (refuse the arm).
 windows; round 2 unified them (Henrik: "the same window shared between them all, so
 you can easily switch"). The three bar bodies were extracted verbatim into
 `<bar>.renderContent(availW)` (their own `d3d_present` windows deleted); one window
-with a `Craft | HELM | Fishing | Chocobo` selector draws the selected one. Chocobo —
-which never had a bar — got a minimal tab. The **active hobby's tab is marked** (green
+with a `Craft | HELM | Fishing | Chocobo` selector draws the selected one. Chocobo â€”
+which never had a bar â€” got a minimal tab. The **active hobby's tab is marked** (green
 + trailing `*`, Henrik's ask) and while a hobby runs the selector **locks** to it
-(other tabs dim, un-clickable) — the UI mirror of the enable-layer refusal. A pure
+(other tabs dim, un-clickable) â€” the UI mirror of the enable-layer refusal. A pure
 `toggleVisible` on the header button (vs the hobby-specific `toggle`) so the bar can
 always be dismissed even while locked.
 
-**One HELM switch: Auto HELM.** HELM had two toggles — manual "Set HELM Idle"
+**One HELM switch: Auto HELM.** HELM had two toggles â€” manual "Set HELM Idle"
 (always-on while idle) and "Auto HELM" (equips near a Point). Henrik: "confusing to
 have two, and Auto works best." Manual idle was removed from every surface (panel,
 quick menu, bar); Auto HELM is the sole switch and `idleexcl`'s HELM member keys on
@@ -5284,21 +5284,21 @@ quick menu, bar); Auto HELM is the sole switch and `idleexcl`'s HELM member keys
 nothing downstream breaks. Trade taken deliberately: HELM gear now equips only near a
 gathering Point, never "always on regardless of location".
 
-**The badge (`ui/idlefloat.lua`) stays** — names the one active hobby with an Off
+**The badge (`ui/idlefloat.lua`) stays** â€” names the one active hobby with an Off
 button when the bar is closed; self-gates on `idleexcl.getActive()`, so visibility is
 derived (position persists via uiflags `ifx/ify`, visibility never does).
 
-**Consequence, taken deliberately.** The AR10 combination — HELM's armor *and* a
-fishing rod in Range at once — is no longer expressible, because Fishing and HELM
+**Consequence, taken deliberately.** The AR10 combination â€” HELM's armor *and* a
+fishing rod in Range at once â€” is no longer expressible, because Fishing and HELM
 can't both be armed. That is the point: these are competing hobbies now, made
 transparent by the bar's active mark and the badge. The claim-side dead end stays
 dead; this revises only the UX convenience ADR 0012 had accepted.
 
 **Key decision / durable lesson:** re-introducing a removed behaviour is safe when it
-lands at a *different seam* than the one that failed — here the enable toggle
+lands at a *different seam* than the one that failed â€” here the enable toggle
 (features decide what's armed) vs. the claim layer (the engine decides who wears each
 slot). Also: unify sibling windows by extracting each one's body to
-`renderContent(availW)` and giving one shell the chrome + a selector — the shared
+`renderContent(availW)` and giving one shell the chrome + a selector â€” the shared
 `onOffSwitch` pill already proved the bars were the same shape. And the new
 `hobbybar` got an `HB*` render-stack-balance smoke (the floatgear S50 lesson: a
 selector's PushStyleColor/PopStyleColor mismatch is a silent client crash).
@@ -5310,34 +5310,34 @@ source-scan roster); `craftbar`/`helmbar`/`fishbar` reduced to `renderContent`.
 
 ## weatherMatch trigger condition (2026-07-24, ADR 0018, engine v121)
 
-**Theme:** a new trigger flag `weatherMatch` — true when the action's element equals
-the **current weather** element — built grill-with-docs, the first feature under the
+**Theme:** a new trigger flag `weatherMatch` â€” true when the action's element equals
+the **current weather** element â€” built grill-with-docs, the first feature under the
 new branch model (`feature/weather-match-condition` off `dev` off `main`).
 
 **Landed:** `weatherMatch` (Precast + Midcast, tier 30, true/false polarity).
 `weatherMatchesAction` (dispatch.lua) reads `gData.GetEnvironment().WeatherElement`
 (cached on `ctx.wel`); nil action-element / Non-Elemental / unreadable weather matches
 NEITHER polarity. **DISTINCT from `dayWeatherBonus`** (the obi's signed day+weather net
-WITH opposition) — this is plain weather equality, no day, no opposition. The env read
+WITH opposition) â€” this is plain weather equality, no day, no opposition. The env read
 is **storm-aware**: `GetEnvironment().WeatherElement` already overrides zone weather with
 the player's own storm buffs (`nativedata.lua`, storm ids 178-185 single / 589-596
-double → all 8 elements), so a Scholar's own Firestorm→Fire nuke trips it for free. The
-buff gate (e.g. Celerity/Alacrity, whose cast-time bonus is **weather-only** — no day,
+double â†’ all 8 elements), so a Scholar's own Firestormâ†’Fire nuke trips it for free. The
+buff gate (e.g. Celerity/Alacrity, whose cast-time bonus is **weather-only** â€” no day,
 no opposition) is left to the player to compose via existing `buff` conditions. WM1-21
 green Win + WSL.
 
-## Release: idle-hobby + weatherMatch promoted to main; first full `feature → dev → main` cycle (2026-07-24)
+## Release: idle-hobby + weatherMatch promoted to main; first full `feature â†’ dev â†’ main` cycle (2026-07-24)
 
 **Theme:** the branch model ([[HANDOFF]] hard rules) went live end-to-end. Two
 field-confirmed features rode the chain to a stable `main`, and origin was cleaned up.
 
 **Landed:**
-- **idle-hobby** merged `feature/idle-hobby-exclusion → dev` (PR #123, merge `3465d68`),
-  then `dev → main` (ff) at Henrik's go-ahead after in-game confirmation.
+- **idle-hobby** merged `feature/idle-hobby-exclusion â†’ dev` (PR #123, merge `3465d68`),
+  then `dev â†’ main` (ff) at Henrik's go-ahead after in-game confirmation.
 - **weatherMatch** was still only on its own branch (never on `dev`). Merged
-  `feature/weather-match-condition → dev` (merge `5379884`) — one conflict, the
+  `feature/weather-match-condition â†’ dev` (merge `5379884`) â€” one conflict, the
   `dlac.lua` version line (`m` idle-hobby / `n` weatherMatch) **resolved to `2026.07.24o`**
-  so the combined build is identifiable — then `dev → main` (ff).
+  so the combined build is identifiable â€” then `dev â†’ main` (ff).
 - **Result:** `origin/main` == `origin/dev` == **`5379884`**, `addon.version`
   **2026.07.24o**, combined **3102 run_tests + 296 smoke_ui** green (Windows + WSL).
 - **Git cleanup:** 14 merged-PR remote branches pruned (the chocobo/dig/ebox #101-#121
@@ -5345,31 +5345,31 @@ field-confirmed features rode the chain to a stable `main`, and origin was clean
   `feature/autoacc` (GM pending) and `feature/storage-move` kept, never merged.
 
 **Durable lesson:** the model's promotions are Henrik's call, one at a time, each after a
-field check. A feature that "should be on dev" may not be — verify with
-`git log dev..feature/x` before assuming `dev → main` carries it (weatherMatch was NOT on
+field check. A feature that "should be on dev" may not be â€” verify with
+`git log dev..feature/x` before assuming `dev â†’ main` carries it (weatherMatch was NOT on
 dev when its `dev == main` looked done).
 
-## Header Menu + Settings, and the Mode library (2026-07-24 → 07-25, ADR 0019)
+## Header Menu + Settings, and the Mode library (2026-07-24 â†’ 07-25, ADR 0019)
 
 A `/grill-with-docs` session on four Henrik asks. Two shipped, one was corrected mid-grill,
 one was researched and deliberately parked.
 
-**The branch model changed first.** The morning's `main → dev → feature/<slug>` rule lasted
+**The branch model changed first.** The morning's `main â†’ dev â†’ feature/<slug>` rule lasted
 half a day. A branch checked out in the working tree cannot be checked out anywhere else, and
-several Claude sessions plus Henrik share ONE checkout — so feature branches made the sessions
-fight over the tree. The chain is now just `main → dev`, everything commits on `dev` directly,
+several Claude sessions plus Henrik share ONE checkout â€” so feature branches made the sessions
+fight over the tree. The chain is now just `main â†’ dev`, everything commits on `dev` directly,
 and Henrik accepted the cost explicitly: **`dev` promotes as a whole or not at all.** Cloud
 agent runs keep their own branches (they clone their own workspace and cannot collide).
 
 **Header Menu + Settings.** The header was eight right-aligned buttons; it became Profiles
 (left) and Menu + Migrate (right). Lockstyle / Macro book / Hobby bar / Teleports / Level
 moved into a Menu popup along with a new Settings panel and a debug-only developer section.
-**"Reload LAC" was deleted outright**, not relocated — legacy LAC is no longer a design
+**"Reload LAC" was deleted outright**, not relocated â€” legacy LAC is no longer a design
 consideration, and both of its red-arm sites in setupui are legacy-only, so under the native
 engine the button could never go red. The one thing kept OUT of the menu is the in-flight
 ABORT: transient state must not hide behind a click, which is the same reasoning that killed
 Reload LAC. Settings gave the three `/dl`-command-only flags (autosync, view_ids, debug) their
-first visible home, and added *Open the dlac window* — one setting with three values rather
+first visible home, and added *Open the dlac window* â€” one setting with three values rather
 than two booleans, because "off but also on job change" is a combination someone would tick.
 
 **A recurring bug class, three times in one session.** Lua resolves an unknown name to a
@@ -5377,57 +5377,57 @@ GLOBAL, which is valid syntax, loads fine, and only errors when the line actuall
 via an invented `helpLine()` helper, and nearly again where `renderModeBox` (defined above the
 Mode-library code) would have resolved `mlCapture` to a nil global. The existing smoke suite
 could not catch either, because it only *load*-tests UI modules. Hence **smoke section MLU**,
-which drives the real render path against a stub imgui — mutation-verified. When touching a
+which drives the real render path against a stub imgui â€” mutation-verified. When touching a
 large UI chunk, dumping `_ENV` references with `luac -l -l` is a cheap way to see every global
 a file actually touches.
 
 **The Mode library (ADR 0019)** gave Modes the Blueprint treatment: a per-character
 `modes.lua` outside Profiles, stamped onto whichever job you are on, shareable as text. The
 design decision worth remembering is that a `Modes` section is a **map keyed by name**, so
-stamping an existing name is an overwrite, not a duplicate — hence Append (default, merges,
+stamping an existing name is an overwrite, not a duplicate â€” hence Append (default, merges,
 can never strand a reference) vs Overwrite (routed through a pre-commit reference window).
 
 **Recon corrected the ADR twice, and both would have shipped a broken feature.** (1) The
 cascade needs TWO ref-walkers: trigger conditions and set-entry gates are separate stores with
 separate files and serializers, and a dead gate on the Sets tab renders *byte-identical* to a
 live-but-inactive one, so a half-cascade would never have been noticed. (2) The ADR claimed a
-stranded value "makes the engine complain on every dispatch" — false on both counts; that line
+stranded value "makes the engine complain on every dispatch" â€” false on both counts; that line
 is in the `/dl mode` command handler, and the real consequence is **silence**. A cycle also
 re-seats itself on the commit's trigger reload, so only a demotion to toggle needs an explicit
 clear. Lesson: an ADR written during design is a hypothesis about the code until someone reads
 the code.
 
 **Also fixed while building:** Append would delete a cycle's values when a toggle was stamped
-onto it — violating its one guarantee. And `modeSetRefs`, the half of the cascade that DELETES
+onto it â€” violating its one guarantee. And `modeSetRefs`, the half of the cascade that DELETES
 gear rows, was a gearui chunk-local with no headless coverage; its decision logic moved to
 `modeslibrary.gateRefsInSet` (tests MG*), with gearui now bailing entirely rather than
 half-running if the walker is unavailable.
 
 **Parked, with the research recorded:** the NIN Daken/Sange/Yoru Shuriken work
-(`docs/design/auto-ammo.md` §8) — Henrik's call, it needs a real NIN to field test. It uncovered
+(`docs/design/auto-ammo.md` Â§8) â€” Henrik's call, it needs a real NIN to field test. It uncovered
 two live bugs on main in the process (the WS-ammo leak at Preshot, and Special-vs-trigger having
 no safe configuration), both documented there rather than fixed blind.
 
-## Session "/dl naked" (2026-07-25, on `dev` — engine v122, addon 2026.07.25f)
+## Session "/dl naked" (2026-07-25, on `dev` â€” engine v122, addon 2026.07.25f)
 
-**Theme:** Henrik asked for LuaAshitacast's `/lac naked` — *"Be sure to use the claim arbiter,
+**Theme:** Henrik asked for LuaAshitacast's `/lac naked` â€” *"Be sure to use the claim arbiter,
 maybe use locks?"*. The arbiter half was right; the locks half was the interesting question,
 and the answer is no. Recorded as [ADR 0021](adr/0021-naked-is-a-claim.md).
 
 **The argument against locks was already in the codebase, written for pins.** `pinOverlay`'s
 header explains why a pin is an overlay and not a `/dl lock`: *a lock only makes the engine
-ignore the slot, so anything else that strips the piece wins — and the state leaks when a
+ignore the slot, so anything else that strips the piece wins â€” and the state leaks when a
 session ends abnormally.* Naked is that argument with the sign flipped. Concretely, a lock
-**cannot undress you** — `equipResolved`'s lock branch writes `W()[slot] = nil`, never a value,
+**cannot undress you** â€” `equipResolved`'s lock branch writes `W()[slot] = nil`, never a value,
 so it only ever *withholds*. A lock-based naked is therefore strip-once-plus-fence, and the
 fence is the weak half: `M.locks = {}` is re-executed by every engine **self-swap** (the 2s
 content check that carries a `git pull` into the running engine), Pins outrank Locks and punch
 straight through, and three unrelated buttons release it. Arming it would also destroy the
-player's own locks — the Incursion-T3 state `/dl lock set` exists for.
+player's own locks â€” the Incursion-T3 state `/dl lock set` exists for.
 
 **So naked is a Claim, and the payoff is bigger than avoiding those bugs.** Because the claim
-is recomputed every dispatch, every way the server can refuse a strip — dead or in a cutscene,
-mid-ranged-attack, the level-sync settle holding the weapon slots — **heals on the next pass**
+is recomputed every dispatch, every way the server can refuse a strip â€” dead or in a cutscene,
+mid-ranged-attack, the level-sync settle holding the weapon slots â€” **heals on the next pass**
 instead of leaking a dressed slot forever. And precedence becomes the player's for free: at
 rank 1 it beats everything, and *"naked except my pins"* is a **drag** in Claim Priority, not a
 code path. That is ADR 0012's promise (a new claimant = one rank row + one claim table) actually
@@ -5438,42 +5438,42 @@ paying out; nothing in the engine grew an arm.
 1. **A new rank row must not be APPENDED.** `arbOrder` restored missing rows at the bottom,
    which is correct only for a row that belongs there (Chocobo, v120). Every character who has
    ever opened the Priority section has an `arbstate.lua` listing the rows that existed *then*,
-   so **every** new claimant arrives missing from real files — and appended, Naked would have
+   so **every** new claimant arrives missing from real files â€” and appended, Naked would have
    ranked 9th, under Locks, losing every slot it exists to win, for everyone except a fresh
    character. Fixed with one positional law (insert before the first present row that outranks
    it) that subsumes the old append, the Chocobo case and the Triggers-last floor pin, rather
    than the per-row exception table this was heading toward.
 2. **The claim must use PROPER-CASE slot keys.** `equipcore.SLOT_ID` is case-sensitive and
-   LuaAshitacast's `GetEquipSlot` is not — so a lowercase claim works in LAC and strips
+   LuaAshitacast's `GetEquipSlot` is not â€” so a lowercase claim works in LAC and strips
    *nothing* natively. Broken only in the mode that actually ships.
 
 **The optimization that is actually a correctness bug:** claiming only the slots that currently
 hold something. It looks free (it would also stop LAC re-scanning the bags every pass, since
 `FlagEquippedItems` can never mark a set containing a `remove` as satisfied). But the apply loop
 walks rank **low to high**, so an unclaimed slot keeps whatever a *lower*-ranked layer wrote into
-the buffer that pass — drop the empty slots and a MaxMP battery lands in every slot the previous
+the buffer that pass â€” drop the empty slots and a MaxMP battery lands in every slot the previous
 dispatch just cleared. The claim is always all 16.
 
 **Lifetime turned out to be one line plus a guard, and the obvious homes were both wrong.**
-`M.nakedArmed = (M.nakedArmed == true)` — the `M._loadStamp` idiom — because `M` is `rawget(_G,
+`M.nakedArmed = (M.nakedArmed == true)` â€” the `M._loadStamp` idiom â€” because `M` is `rawget(_G,
 '__dlacEngineRoot') or {}`: the same table across a self-swap, a fresh one in a new Lua state.
 So the flag survives a `git pull` and dies at Reload LAC. **It does NOT die at a relog**, which
 the first draft of the ADR asserted it did: an Ashita addon survives a logout (pinwatch's header
 already says so, which is why pins re-key on the character dir) and LAC never clears
-`package.loaded` either, so neither engine gets a new state when you change characters — and
+`package.loaded` either, so neither engine gets a new state when you change characters â€” and
 re-keying on charDir would not help, since a same-character relog gives the same dir. The tick
-disarms on the character-select read (`GetMainJob()` nil/0) instead — and on a **job change**
+disarms on the character-select read (`GetMainJob()` nil/0) instead â€” and on a **job change**
 too, once Henrik ruled it should not survive one (main job only, the same signal the maxmp drop
 already used). Worth remembering as a general trap: **"a fresh Lua state" and "a new session"
-are not the same event in Ashita** — an addon survives a logout, so any module-level flag needs
+are not the same event in Ashita** â€” an addon survives a logout, so any module-level flag needs
 an explicit disarm rather than relying on state teardown.
 
 **Henrik's rulings on the behaviour, after the build:** no persistence through a logout, no
 persistence through a job change, and the TP wipe is *acceptable* because the command is
-deliberate — so nothing is built around it. He also noted, fairly, that these were his calls to
+deliberate â€” so nothing is built around it. He also noted, fairly, that these were his calls to
 make and should have been asked before the build rather than presented after it. The rejected homes are worth remembering: `M.modes` would collide with a
 user-defined Mode named `naked`, re-gate their Dynamic sets on every toggle, and inherit
-`loadModeState`'s restore window — whose only relog protection is the documented
+`loadModeState`'s restore window â€” whose only relog protection is the documented
 `GetMainJob() == 0` race, i.e. a coin flip on whether you log in naked. A Statefile would have
 been strictly worse (it persists across everything).
 
@@ -5481,16 +5481,16 @@ been strictly worse (it persists across everything).
 the zoning, player-action, pet-action and sync-settle gates; a command-path dispatch would fire
 a full re-equip inside a cast or mid-zone to save 400ms, against a claim that is standing anyway.
 
-**M.dispatch had been called ZERO times by the test suite** — every existing test drives a pure
+**M.dispatch had been called ZERO times by the test suite** â€” every existing test drives a pure
 seam beneath it, so the wiring *between* the seams was covered by nothing, and an out-of-scope
 local in Lua is not an error but a silent nil global. Naked is the cheapest possible driver for
-it (flag on, nothing else armed → all 16 removes must still reach the equip door), so NK26 now
+it (flag on, nothing else armed â†’ all 16 removes must still reach the equip door), so NK26 now
 executes the real `M.dispatch` end to end and asserts no local leaked to `_G`. Mutation-verified
 both ways.
 
 **The smoke harness was lying about the Equipped tab.** Its `renderEquippedTab` drives are
 `pcall`'d without checking the result, and the render had been dying partway through on a
-`gearfmt` helper whose captured imgui stub lacked `PushTextWrapPos` — the earlier checks passed
+`gearfmt` helper whose captured imgui stub lacked `PushTextWrapPos` â€” the earlier checks passed
 because they only read side effects from *before* the throw. Fixed so the render completes, and
 the new `NKU*` checks assert the pcall result, which is the only thing that catches the
 nil-global class in that file (mutation-verified: renaming `S.setEngineNaked` fails NKU3/NKU3b).
@@ -5498,7 +5498,7 @@ nil-global class in that file (mutation-verified: renaming `S.setEngineNaked` fa
 **Three field notes that are the server's doing, not dlac's:** unequipping a weapon **zeroes
 your TP** and drops Aftermath (Main/Sub/Range with no incoming item; the instrument exemption
 cannot apply to an unequip); **Free equip / `/lac disable` silently defeats naked in legacy
-mode**, because LAC's `PrepareEquip` drops the unequip for any `gState.Disabled` slot — hence
+mode**, because LAC's `PrepareEquip` drops the unequip for any `gState.Disabled` slot â€” hence
 the warning and the disabled switch; and a **lockstyle applied while naked bakes permanent
 nudity** into every unnamed visual slot (unnamed slots freeze to `equippedId`, which is 0, and
 style 0 renders empty), so `/dl ls apply` is refused while stripped.
@@ -5506,26 +5506,26 @@ style 0 renders empty), so `/dl ls apply` is refused while stripped.
 **Found, deliberately NOT fixed** (so a regression has one suspect, per ADR 0012's own migration
 ruling): `/dl lock set` is broken in **native** mode. Its `rawget(_G,'gEquip')` bracket is nil in
 the addon state, so the equip falls through to the unbracketed path and writes into
-`equipengine`'s buffer — which only `fireEvent` flushes, and `fireEvent` opens by clearing it.
+`equipengine`'s buffer â€” which only `fireEvent` flushes, and `fireEvent` opens by clearing it.
 The set evaporates on the next tick. Its own commit.
 
 **Implementation review found two more that would have shipped.** (1) The lockstyle refusal was
-written into the *engine's* apply half — which `dispatch.lua`'s `/dl ls` branch pins behind
+written into the *engine's* apply half â€” which `dispatch.lua`'s `/dl ls` branch pins behind
 `if not inLac() then return; end`, i.e. **dead code in native mode**, the mode that ships. The
 door that actually runs is the addon-resident `lockstyle._applyDirect`, which every scripted
-apply funnels into — town transitions, OnLoad restore, keep-on-subjob, all with no user action.
+apply funnels into â€” town transitions, OnLoad restore, keep-on-subjob, all with no user action.
 (2) The relog gap above. Both were found by reading the *callers* of the guarded function rather
-than the function; the lesson is the same one twice — **guarding the door you happened to be
+than the function; the lesson is the same one twice â€” **guarding the door you happened to be
 looking at is not guarding the feature.**
 
 **Two testing notes worth carrying forward.** `M.dispatch` had never been executed by the suite,
-and naked is the cheapest possible driver for it (flag on, nothing else armed → all 16 removes
+and naked is the cheapest possible driver for it (flag on, nothing else armed â†’ all 16 removes
 must still reach the equip door), so NK26 now runs it end to end and asserts no local leaked to
 `_G`. And a "test seam" that the production code calls as a **file-local** is not a seam at all:
-`_applyDirect` had to be changed to call `M._nakedArmed()` before NK29 could stub it —
+`_applyDirect` had to be changed to call `M._nakedArmed()` before NK29 could stub it â€”
 mutation-verified in both directions, which is the only way to know a new test can fail.
 
-## Session "a locked set is a claim" (2026-07-26, on `dev` — engine v124, addon 2026.07.26c)
+## Session "a locked set is a claim" (2026-07-26, on `dev` â€” engine v124, addon 2026.07.26c)
 
 **Theme:** the bug the naked session found and deliberately left ("its own commit") turned out
 not to want a fix. It wanted deleting. Recorded as
@@ -5533,24 +5533,24 @@ not to want a fix. It wanted deleting. Recorded as
 
 **Why it was invisible, which matters more than the bug.** `/dl lock set` was inert in native
 mode: `rawget(_G,'gEquip')` is nil in the addon state, so the equip fell to the unbracketed path
-and `equipengine`'s next `bufferClear` wiped it — then it locked all 16 slots onto whatever you
+and `equipengine`'s next `bufferClear` wiped it â€” then it locked all 16 slots onto whatever you
 were wearing and printed success. Two things hid it. First, **three other unbracketed
-`M.dispatch('Default')` calls in the same file have the identical flaw and are harmless** —
-`installSets` twice and `/dl mode` — because Default is idempotent and re-fires every 0.4s, so
+`M.dispatch('Default')` calls in the same file have the identical flaw and are harmless** â€”
+`installSets` twice and `/dl mode` â€” because Default is idempotent and re-fires every 0.4s, so
 the next tick heals them. `/dl lock set` was the one site where that is structurally impossible:
 the locks it installed were exactly what stopped the next dispatch from equipping. Second,
 **every `/dl` subcommand was tested by grepping `dispatch.lua` for its own name** (NK23 says so
 outright: the handler only registers inside `engineActive()`, false headlessly, "so the whitelist
-cannot be driven — pin it as SOURCE instead"). The command was present, spelled right, and
+cannot be driven â€” pin it as SOURCE instead"). The command was present, spelled right, and
 whitelisted. So the first commit was a test harness, not a fix: arm the native flag, re-load
 dispatch, capture the registered handler, and call `/dl` commands with the game closed.
 
 **The design was Henrik's, and it went somewhere I did not propose.** I offered a new `Held`
-Arbiter row at rank 2. He pushed back on the premise — *"I am personally also a bit confused to
+Arbiter row at rank 2. He pushed back on the premise â€” *"I am personally also a bit confused to
 why we aren't simply using lock when it would do what we needed, why we must create new
-categories for every function"* — and he was right: to a player "lock" is one word, and the
+categories for every function"* â€” and he was right: to a player "lock" is one word, and the
 Priority panel's tooltip already described `/dl lock`, the Equipped tab and the Sets tab as one
-row. So it rides the **existing Locks row**. `arbResolve` already returned "slot → item **or**
+row. So it rides the **existing Locks row**. `arbResolve` already returned "slot â†’ item **or**
 LOCK_HELD", so the row carries real item names for held slots and the veto sentinel for plainly
 locked ones; the only new machinery is an `applyClaim['Locks']` closure, which a veto never
 needed. **One thing genuinely cannot be a lock and is worth not re-deriving**: a lock cannot put
@@ -5560,16 +5560,16 @@ player.
 
 **I then proposed moving `Locks` above `Pins` and was overruled, correctly.** Henrik had said
 "whatever happens, that slot is locked (besides naked)", which is not what the default order
-does — `layerRespectsLocks` is false for Pins too. His ruling: *"Pins needs to be above locks,
+does â€” `layerRespectsLocks` is false for Pins too. His ruling: *"Pins needs to be above locks,
 cause pins are always on demand and is universally understood to be there when needed."* So
-`ARB_ORDER_DEFAULT` is untouched, and this change alters no precedence at all — which also
+`ARB_ORDER_DEFAULT` is untouched, and this change alters no precedence at all â€” which also
 avoided a split rollout, since `arbOrder` keeps the user's order for any row their `arbstate.lua`
 already lists, so a new default would only have reached players who never opened that panel.
 
 **Frozen at arm, and the distinction that makes it safe.** *"Once you lock, it shall be constant,
 like with naked. Even if you lock a set then change it, it should not change what you wear."*
 Freezing means the **instruction**, never the outcome: `dlac:` markers collapse to concrete
-entries once, so a locked obi cannot follow the weather — but the claim still re-**locates** those
+entries once, so a locked obi cannot follow the weather â€” but the claim still re-**locates** those
 names in your bags every dispatch, because freezing container+index would strand the hold the
 first time a bag shuffled, which is strip-once-with-no-retry again. His ruling also deleted three
 consequences I had listed for a live re-read (no store lookup per dispatch, no "the set stopped
@@ -5577,7 +5577,7 @@ resolving" drop path, no live-edit surprise) and collapsed the fill policy out o
 entirely: all four commands became four *builders* producing one identical claim shape.
 
 **A missing piece leaves its slot LOOSE, not empty.** *"That's better than an empty slot, is it
-not?"* — yes, and it corrected a sloppy claim of mine in the same breath: I had said a loose slot
+not?"* â€” yes, and it corrected a sloppy claim of mine in the same breath: I had said a loose slot
 means the engine fights the server, which is wrong. Inside Incursion the server refuses every
 equip regardless; outside it refuses none. What is true is narrower and pre-existing: any equip
 the server silently drops is re-proposed next dispatch, because `planSet` compares against what is
@@ -5585,52 +5585,52 @@ the server silently drops is re-proposed next dispatch, because `planSet` compar
 
 **One lifetime rule, added after the fact.** *"I don't want locks to outlive a relog, it should
 not outlive a main job change nor a log. It should not be saved. Same with naked."* Naked and a
-locked set already behaved that way; plain slot locks did not, **and only by accident** — nothing
+locked set already behaved that way; plain slot locks did not, **and only by accident** â€” nothing
 ever watched them, so they rode straight through character select. Before this session an engine
 self-swap happened to wipe them, which *looked* like a lifetime rule and was really a bug (a
 `git pull` unlocking your gear mid-Incursion). Fixing that accident in its own commit is what left
-the real gap visible. `M.nakedWorldWatch` became `M.worldWatch` (old name kept as an alias — the
+the real gap visible. `M.nakedWorldWatch` became `M.worldWatch` (old name kept as an alias â€” the
 seeded LAC-side engine calls it) and now drops all three.
 
 **A field report that was not a bug, worth carrying.** *"I can lock the DT set on Mindie, on WHM,
 but doesn't feel like he releases it."* Cause: a leftover test trigger on idle re-equipping DT.
 The generic lesson is that **a hold that looks stuck is indistinguishable from a trigger
-re-equipping the same gear** — check the Triggers tab before the lock; `/dl why` names the winner.
+re-equipping the same gear** â€” check the Triggers tab before the lock; `/dl why` names the winner.
 The diagnosis question that would have split it in one line was "does the Sets tab button say
 `Unlock` or `Equip & Lock`?", because in native mode there is no hot-swap (`trySelfSwap` is
 `inLac()`-gated), so stale code was the other live hypothesis.
 
 **And the tooltips were wrong in a way worth naming.** *"There is TOOOOO much text and description
-straight out of this conversation… this is minimalistic and every word matters."* Correct: I had
-pasted the design reasoning into the hover. Everything cut had a home already — precedence is
+straight out of this conversationâ€¦ this is minimalistic and every word matters."* Correct: I had
+pasted the design reasoning into the hover. Everything cut had a home already â€” precedence is
 Claim Priority, release is the Equipped tab, the missing-piece list is said in chat at the moment
 it matters. The Sets tab button also became a **Strict / Loose** popup rather than firing strict
 blind, which gave `set-loose` its first GUI home. That popup is the least-covered thing in the
 change: the Sets tab render has no smoke drive, so `LSP*` pins it as *source*, which can only
-prove the `OpenPopup`/`BeginPopup` ids agree — the failure that would otherwise register a click,
+prove the `OpenPopup`/`BeginPopup` ids agree â€” the failure that would otherwise register a click,
 open nothing, and log nothing.
 
 **Testing note worth carrying forward.** Every new check in this session was mutation-verified in
 both directions, and it paid twice: reverting the dispatch bail guard fails six checks (the NK26
-lesson — a lone claim with no triggers is exactly the path a bail guard swallows), and one of my
+lesson â€” a lone claim with no triggers is exactly the path a bail guard swallows), and one of my
 own assertions was simply wrong. I claimed modes survive a self-swap on the module table; they do
 not. They are reset by the same re-execution and heal from the `modestate` mirror on load. Locks
-never could — `__locks` is display-only and deliberately never restored — which is precisely why
+never could â€” `__locks` is display-only and deliberately never restored â€” which is precisely why
 their fix had to live on the table instead of in the mirror.
 
-## Session "the hobby bar reaches the searches" (2026-07-27, on `dev` — addon 2026.07.27a)
+## Session "the hobby bar reaches the searches" (2026-07-27, on `dev` â€” addon 2026.07.27a)
 
 **The ask, and what it actually was.** Henrik, pasting a note he could no longer see:
-*"In the hobby bar, the fishing menu… most things are available just fine in the hobby bar,
+*"In the hobby bar, the fishing menuâ€¦ most things are available just fine in the hobby bar,
 except for fishing, but we don't want to overdo it. Please add a button to open the fish
 automation directly from the fish tab in hobby. Please do the same with fishing."* Fishing
-twice — the second was Chocobo, which the code could have guessed: those are exactly the two
+twice â€” the second was Chocobo, which the code could have guessed: those are exactly the two
 tabs whose bodies admitted the real controls lived elsewhere (Chocobo printed *"Dig rank,
 guide and by-item search: Automations > Chocobo"* in grey; Fishing's target line was a label
 whose tooltip said to go to the panel). Craft and HELM are self-sufficient in the bar.
 
 Then the ask grew, and the growth was the interesting part: *"technically if we could open up
-a menu to search for target fish from the hobby bar, reuse that search body window… maybe
+a menu to search for target fish from the hobby bar, reuse that search body windowâ€¦ maybe
 problematic to use same windows that spawn from different places?"*
 
 **The answer to that worry, which is now a written invariant.** It lands on the *draw*, never
@@ -5638,226 +5638,226 @@ the *opener*:
 
 > Any surface may OPEN a floating window; exactly one place may DRAW it.
 
-Two `imgui.Begin()` calls on one window name in a frame do not error — ImGui **appends** the
+Two `imgui.Begin()` calls on one window name in a frame do not error â€” ImGui **appends** the
 second body into the same window. Content renders twice, ids collide, a shared InputText
 buffer gets written twice a frame. Silent, and it looks like a UI bug rather than a crash
 (the floatgear S50 class). So openers set a module-owned flag and never render; gearui's
 `d3d_present` is the single draw site, sitting *above* its `M.visible` return so every one of
 these windows outlives the main box. Written into architecture.md; **Floating window**,
-**Panel** and **Hobby bar** went into CONTEXT.md, which had no UI vocabulary at all — which
+**Panel** and **Hobby bar** went into CONTEXT.md, which had no UI vocabulary at all â€” which
 is precisely why the request needed three rounds of grilling to pin down.
 
 **Chocobo cost almost nothing** because 07-24 had already done the hard part: the Area/Item
 dig searches were floating windows, opened by two panel buttons that did nothing but set
 flags. Those bodies became `chocoui.openAreaSearch` / `openItemSearch`, the panel now calls
-them, and so does the bar — one behaviour for both surfaces rather than a copy-paste of "land
+them, and so does the bar â€” one behaviour for both surfaces rather than a copy-paste of "land
 on the zone you're standing in, and close the other window".
 
 **Fishing was a real extraction.** `TARGET FISH` was ~180 lines inline at line 376 of a
-663-line panel — buried in exactly the way the Chocobo search had been fixed for. It moved to
+663-line panel â€” buried in exactly the way the Chocobo search had been fixed for. It moved to
 `fishui.renderTargetBody`, wrapped by `fishui.renderSearch`
-(`Fishing -- Target fish###dlac_fish_target`, 760×520). The extraction was clean because
-`sel` — the query buffer, the viewed fish, the expanded-spots flag — was referenced *only*
+(`Fishing -- Target fish###dlac_fish_target`, 760Ã—520). The extraction was clean because
+`sel` â€” the query buffer, the viewed fish, the expanded-spots flag â€” was referenced *only*
 inside that block; nothing above or below it touched the picker's state. The body re-derives
 db / owned counts / skill / worn Fish+ instead of inheriting the panel's locals, so it has one
 contract for every caller.
 
 **Three design calls worth keeping.** The bar's target name **is** the button rather than
-gaining a labelled one beside it — the rod and bait names one row below have worked that way
+gaining a labelled one beside it â€” the rod and bait names one row below have worked that way
 since field round 5, so the tab gained zero widgets, which is the least "overdone" reading of
 the request. The panel's section was **replaced**, not duplicated: two live copies would have
 put one `sel.q` buffer behind two InputTexts. And the fish panel finally uses the shared
-`craftbar.onOffSwitch` pill — it was the only one of six panels with a hand-rolled text
+`craftbar.onOffSwitch` pill â€” it was the only one of six panels with a hand-rolled text
 switch, and the comment above it named the reason (*"label shortened so the row survives Make
 target + target + Clear"*), a workaround for the very row that just left.
 
-**What the tests caught, and what they now cover.** The first build failed `HB3.choco` —
+**What the tests caught, and what they now cover.** The first build failed `HB3.choco` â€”
 7c's stub imgui had no `SmallButton`, which is the section doing its job. More importantly,
 `fishbar.renderContent` and the whole target body had **never been executed by any test**: 7c
 stubs the bar with a no-op and section 7 only reaches fishui's pure status half. That is the
 craftbar lesson of 7d, repeated on a second file. New smoke `FS1-FS19` drive the real window
-and the real bar — including the wire that matters, that clicking the target name reaches the
+and the real bar â€” including the wire that matters, that clicking the target name reaches the
 opener, and that `no target fish` is clickable too (or a fresh character has no way in).
 
-**Not field-tested.** Two things only live play can answer: whether 760×520 gives the spot
+**Not field-tested.** Two things only live play can answer: whether 760Ã—520 gives the spot
 list enough room (its bait column sits at `availW * 0.55`, ~50px tighter than the panel gave
-it), and whether three pills — bar, window, panel — read as convenient or as clutter.
+it), and whether three pills â€” bar, window, panel â€” read as convenient or as clutter.
 
-### Addendum, same day — tab art (`2026.07.27b`)
+### Addendum, same day â€” tab art (`2026.07.27b`)
 
 Henrik: *"Are you able to remove the text for all the tab titles, so we can replace them
-with 30x30 pixel icons instead? Are you able to use this picture for chocobo digging?"* —
+with 30x30 pixel icons instead? Are you able to use this picture for chocobo digging?"* â€”
 with one chocobo image attached. `assets/` had eight craft glyphs and four HELM glyphs but
 no single Craft, HELM or Fishing icon, so the honest answer was *yes, and here is the gap:
-you have art for one tab of four*. His call: **new art for all four, one at a time** —
+you have art for one tab of four*. His call: **new art for all four, one at a time** â€”
 *"I just want to see how one of them would look with that art, I'll give you more for the
 other tabs later once I see."*
 
 So the mechanism is built to accept art incrementally: a tab with
 `assets\hobby\<Name>.png` draws as a 64px icon, a tab without keeps its **text button**.
 Dropping `Craft.png` / `HELM.png` / `Fishing.png` in beside `Chocobo.png` converts them
-with no code change. That fallback is also the old menuui rule — a texture that fails to
+with no code change. That fallback is also the old menuui rule â€” a texture that fails to
 load must leave a labelled button, never a mystery 30px hole.
 
 **Two things colour cannot do once a tab is art.** The text tabs carry both *selected* and
 *armed* in the button colour; tinting art recolours the art (a green wash turns a yellow
 chocobo olive), and recognising the icon is the entire point. So selection rides
-**brightness** — the craft-glyph idiom — and armed rides a literal **green frame** drawn on
+**brightness** â€” the craft-glyph idiom â€” and armed rides a literal **green frame** drawn on
 the window draw list. The frame colour is `0xFF00CC00`, which reads green whichever byte
 order the binding packs, so the armed marker cannot come out red on a different imgui build.
 
-**The asset.** 1408×768 RGBA with a genuinely transparent background, art occupying
-551×634; styled as pixel art but gradient-shaded inside the blocks, so it downsamples
+**The asset.** 1408Ã—768 RGBA with a genuinely transparent background, art occupying
+551Ã—634; styled as pixel art but gradient-shaded inside the blocks, so it downsamples
 smoothly rather than going to mush. Cropped to the art, centred in a square with a 6%
-margin (never distorted), LANCZOS to **128×128**, drawn at 64. Shipping double the draw
-size puts the GPU on mip level 1 — a clean 2:1 box filter, as sharp as shipping 64 — and
+margin (never distorted), LANCZOS to **128Ã—128**, drawn at 64. Shipping double the draw
+size puts the GPU on mip level 1 â€” a clean 2:1 box filter, as sharp as shipping 64 â€” and
 leaves headroom to grow the tabs again without regenerating every file. (The first cut was
-64 drawn at 30, matching the 40×40 craft/HELM glyphs; Henrik wanted them at least twice as
-big, so both numbers doubled -- and the tab gap went 4px → 6px, because the armed frame is
+64 drawn at 30, matching the 40Ã—40 craft/HELM glyphs; Henrik wanted them at least twice as
+big, so both numbers doubled -- and the tab gap went 4px â†’ 6px, because the armed frame is
 drawn 2px outside the icon and would otherwise nearly touch its neighbour's art.)
 
 **Testing note.** Headless there is no d3d, so `filetex.handle` always returns nil and every
-tab takes the text path — the icon branch would have shipped with zero coverage while the
+tab takes the text path â€” the icon branch would have shipped with zero coverage while the
 suite stayed green. `HB15-HB19` stub the loader so exactly ONE tab has art, which is both
 the real shipping state and the mixed row most likely to break. Both new behaviours were
 mutation-verified: disabling the icon path fails three checks, removing only the armed
-frame fails exactly one. The stub's own first cut had the classic bug it exists to catch —
-`btns` captured by a closure declared above it, a silent nil global — and it failed
+frame fails exactly one. The stub's own first cut had the classic bug it exists to catch â€”
+`btns` captured by a closure declared above it, a silent nil global â€” and it failed
 loudly rather than hiding.
 
 **Craft.png, and the alpha lesson (`2026.07.27d`).** The second piece of art arrived on a
-white page rather than a transparent one — *"I haven't cleaned it up as much but I think you
+white page rather than a transparent one â€” *"I haven't cleaned it up as much but I think you
 may be able to do it?"* The naive fix, keying out white, would have **punched holes in the
 eyes**: this chocobo has white sclera and white highlights on its metal, and a colour key
 cannot tell those from the page. So the background is removed by a **flood fill from the
-image borders** — only white *connected to the edge* is background, and anything the dark
+image borders** â€” only white *connected to the edge* is background, and anything the dark
 outline encloses survives. 812,033 pixels went; 3,700 near-white pixels were kept because
 they were enclosed. The fill threshold is deliberately generous (bright AND unsaturated), so
 the anti-aliased fringe between page and outline goes with it: at 128px a hair of erosion is
 invisible, whereas a white halo on the bar's dark background is not.
 
 Worth a number for next time: measuring the mean min-channel of the partial-alpha edge
-pixels catches a halo objectively — the chocobo reads 22.6, the smith 88.3, and the
+pixels catches a halo objectively â€” the chocobo reads 22.6, the smith 88.3, and the
 difference is genuine light-grey metal (hammer, chainmail, anvil) rather than a fringe, which
 the zoomed composite on a dark background confirmed. Do both: the number tells you where to
 look, the composite tells you whether it matters.
 
 **The full set, and what a flattened preview costs (`2026.07.27e`).** The remaining three
-arrived twice: first as screenshots of a transparency preview — **checkerboard baked into
-the pixels**, alpha 255 everywhere — and then, after I said so, on white pages. Both were
+arrived twice: first as screenshots of a transparency preview â€” **checkerboard baked into
+the pixels**, alpha 255 everywhere â€” and then, after I said so, on white pages. Both were
 processed and compared at 128px on the bar's dark background, best-of-each kept.
 
 White won for **Fishing** and **Digging**: crisper line, hook and float, cleaner dirt
 specks. The checkerboard version won for **HELM**, and the reason is worth keeping. The
 miner's lamp beam was *semi-transparent* in the original, so on the checkerboard it carried
-the checker pattern straight through it — visibly mottled at zoom. But that same modulation
+the checker pattern straight through it â€” visibly mottled at zoom. But that same modulation
 is a **signal**: build the checker grid (period measured at 22px, tones 211/241), compare
 the two parities in a local window, and any pixel where they still differ is either
 background or something translucent over it. Opaque art modulates by ~0 whatever its colour,
 so the pickaxe, the eye whites and the fishing float were never at risk. Flood that from the
 borders and the beam comes off cleanly. On the white page the same beam is just an opaque
-cream blob no colour threshold could separate from the art — tried at four saturation
+cream blob no colour threshold could separate from the art â€” tried at four saturation
 windows, it survived all of them.
 
 So: **a flattened checkerboard preview is harder to key than a white page, but it encodes
-which pixels were translucent — and sometimes that is exactly what you need.**
+which pixels were translucent â€” and sometimes that is exactly what you need.**
 
 **Hover text.** Henrik: *"Just show simple terms. Crafting / HELM / Fishing / Digging."*
 The three-branch tooltip (which hobby is armed, which to turn off first) is gone: the green
 frame says the former, and the pill that actually refuses says the latter in chat at the
 moment you try it. A hover on a picture only has to answer "what is this?". `TABS` now
-separates `n` (the player-facing word) from `img` (the asset basename) — the art is a
+separates `n` (the player-facing word) from `img` (the asset basename) â€” the art is a
 digging chocobo, so `Chocobo.png` is the right file name while "Digging" is the right word.
 `HB20` pins the exact four strings, because that is the kind of text that grows a sentence
 back.
 
 **Field verdicts, and one question that only looked answered.** Two of the three open
-questions came back the same day: three pills — bar, window, panel — is *"Perfection"*,
+questions came back the same day: three pills â€” bar, window, panel â€” is *"Perfection"*,
 and the armed green frame *"Looks great"*, so the two calls that had no precedent to lean
 on (a switch on three surfaces; a frame instead of a colour, once colour belongs to the
 art) are both settled in favour of what shipped.
 
 The third did not, and the way it failed is the useful part. Asked whether the target
-window's 760×520 default gave the spot list enough room, the answer was *"if you're talking
-about the icons, looks great!"* — the icons were on screen, the window never had been. Three
+window's 760Ã—520 default gave the spot list enough room, the answer was *"if you're talking
+about the icons, looks great!"* â€” the icons were on screen, the window never had been. Three
 "looks great"s in a row is exactly the shape a false confirmation takes: the verdicts are
 genuine, but they answer the surface in front of the player, not the one in the question. So
 it stays recorded as UNSEEN rather than confirmed. A question that names a surface the
-player has not opened cannot be answered by looking at the one they have — and the fix is to
+player has not opened cannot be answered by looking at the one they have â€” and the fix is to
 say how to reach it, not to ask again.
 
 **The window landed, and the field found something older (`2026.07.27f`).** The target
-window came back approved — *"very satisfied with how it opens a new window and search for
-the fish, instead of having to do it solely WITHIN the fish automation menu"* — and the
-760×520 default drew no complaint, so the width worry closes unchanged. What the run
+window came back approved â€” *"very satisfied with how it opens a new window and search for
+the fish, instead of having to do it solely WITHIN the fish automation menu"* â€” and the
+760Ã—520 default drew no complaint, so the width worry closes unchanged. What the run
 surfaced was not in the new work at all: *"I cannot target the end result without clicking
 on the bait, I would like to be able to click on the whole row. But that has been there
 since start, I just haven't complained about it yet."*
 
 He was right. The spot row rendered `[ISOLATED] | place | bait` but only the **bait cell**
-was a Selectable — a ~6-character hit box at 55% across a row you read left-to-right, so
+was a Selectable â€” a ~6-character hit box at 55% across a row you read left-to-right, so
 the most natural click, on the place name, did nothing at all. It shipped that way with the
 original fishing feature and survived five field rounds unreported, because the person who
 built it knew where to click.
 
 The fix is the shape `automationsui.autoRow` has always used: a full-width Selectable
-FIRST, then every column drawn over it with an **absolute** `SameLine` — absolute because
+FIRST, then every column drawn over it with an **absolute** `SameLine` â€” absolute because
 `SameLine(0)` means "after the previous item", which for a full-width Selectable is off the
 right edge. The three per-cell tooltips (rivals / bait+affinity / monster) merge into one
 row hover, since there is now one item to hover.
 
 Worth carrying: **a hit target smaller than the row it belongs to is invisible to whoever
-built it.** No test could have caught this one either — the old test clicked the bait
+built it.** No test could have caught this one either â€” the old test clicked the bait
 Selectable and passed. `FS9b/FS9c` now assert the row's hit target is a bare `##isorow`
 and that no bait-labelled Selectable remains, which is a claim about the SHAPE of the
 interaction rather than about whether a click works.
 
-## Session "the Xvs field day: three engine-era fixes, born-native, purge Phase 1" (2026-07-27, dev → main e6ea704, then dev — addon 2026.07.27g → j, engine v129 → v131)
+## Session "the Xvs field day: three engine-era fixes, born-native, purge Phase 1" (2026-07-27, dev â†’ main e6ea704, then dev â€” addon 2026.07.27g â†’ j, engine v129 â†’ v131)
 
-**Theme:** Henrik's friend (Xvs) updates dlac and *nothing equips at all* — the GUI sees
+**Theme:** Henrik's friend (Xvs) updates dlac and *nothing equips at all* â€” the GUI sees
 every set, the engine sees none. One field day later: two ancient onboarding traps and a
 load-order contract from the LAC era are dead, users are born native unconditionally
 (ADR 0025), and the LuaShitacast purge (Henrik's ruling) has its plan and its first
 executed phase.
 
-**Landed (promoted to `main` the same evening, `e6ea704`, field-confirmed by Xvs —
+**Landed (promoted to `main` the same evening, `e6ea704`, field-confirmed by Xvs â€”
 "Everything is working perfectly now"):**
 
-- **v130 — the native flatten no longer waits for the GUI.** Every dispatch utils lookup
-  read `package.loaded['dlac\utils']` bare ("loaded first in the LAC state" — the job
+- **v130 â€” the native flatten no longer waits for the GUI.** Every dispatch utils lookup
+  read `package.loaded['dlac\utils']` bare ("loaded first in the LAC state" â€” the job
   shim's first require). The native state has no shim and *nothing* loads utils at boot:
   installs refused `flatten produced no sets (world not settled)` every 0.4s forever, the
-  refusal nil'd `M._nativeSets` (GUI fine — it reads files; `/dl lock set` finds nothing;
+  refusal nil'd `M._nativeSets` (GUI fine â€” it reads files; `/dl lock set` finds nothing;
   zero equips), and a session healed only when a gearui picker's own lazy
   `pcall(require)` happened to run. Hence the field shape "DRK works, BLU/COR don't":
-  per-SESSION, not per-job — a reload broke DRK too. Mindie's own mpwarm.txt opens with
-  the same wall every boot, healed in ~1.6s by GUI habit — the "~2s of designed boot
+  per-SESSION, not per-job â€” a reload broke DRK too. Mindie's own mpwarm.txt opens with
+  the same wall every boot, healed in ~1.6s by GUI habit â€” the "~2s of designed boot
   refusals" lore was this bug all along. Fix: `utilsModule()` lazy require at all five
   sites (cycle-safe both states). Tests RQU0-2 drive the real `/dl sets reload` through
   the boot shape. Diagnosis method worth keeping: zip the user's whole char home and
-  replay the exact engine path headless with the run_tests stubs — clean run = the
+  replay the exact engine path headless with the run_tests stubs â€” clean run = the
   runtime differs, not the data.
-- **2026.07.27h — dataDir holds while the first run is undecided.** Xvs's *clean*
+- **2026.07.27h â€” dataDir holds while the first run is undecided.** Xvs's *clean*
   reinstall (both config trees deleted) still got "migrate to native": the 07-23 fix held
   maintainStorage's own writers, but `profiles.dataDir` kept composing the legacy home
   during the undecided window, so the login gear scan planted `gear.lua` under
-  `luashitacast\` and the next beat read dlac's own file back as legacy evidence —
+  `luashitacast\` and the next beat read dlac's own file back as legacy evidence â€”
   manufactured evidence, round two. dataDir now answers nil until firstRunInit latches
   (addon state only: the LAC state's presence IS the legacy verdict).
-- **2026.07.27i — ADR 0025, born native, always.** Henrik: "users start in native mode by
-  default, regardless if there are dlac files under luashitacast conf." Flag absent →
+- **2026.07.27i â€” ADR 0025, born native, always.** Henrik: "users start in native mode by
+  default, regardless if there are dlac files under luashitacast conf." Flag absent â†’
   `write-native` unconditionally; the boot never scans for legacy data (the can't-tell
-  limbo is unreachable); an explicit flag on disk stays honored — `/dl engine native off`
+  limbo is unreachable); an explicit flag on disk stays honored â€” `/dl engine native off`
   is the only road to legacy; flag-less legacy data becomes a migration source
   (engineAutoMigrate carries it in). Supersedes ADR 0015's "never auto-flip" for
   flag-less users.
 - **The WS-menu mystery closed as a side effect.** The 07-26 diagnosis stands (server
   0x0AC rebuilds the ability/WS tables on Main/Sub/Range changes and latent flips; an
-  open menu dies in the rebuild) — what the sick engine changed was the COLLISION RATE:
+  open menu dies in the rebuild) â€” what the sick engine changed was the COLLISION RATE:
   store dying/reinstalling all session = full re-equip volleys at arbitrary moments.
   Healthy engine, narrow swaps, no noticeable collisions. Field: gone.
 
-**Landed (on `dev`, addon 2026.07.27j / engine v131 — Henrik field-running it now):**
+**Landed (on `dev`, addon 2026.07.27j / engine v131 â€” Henrik field-running it now):**
 
 - **The LuaShitacast purge: plan + Phase 1** (`docs/design/lac-purge-plan.md`; Henrik's
   ruling with the keep-list "import from the job files, group (table) and static set
@@ -5866,11 +5866,11 @@ executed phase.
   stay), Setup's job-file writes (both modes), `PROFILE_TEMPLATE.lua`, the LAC-alive
   polite ask, and the *entire* engine self-swap (`swapWanted`, `trySelfSwap`, the
   `__dlacEngineRoot` handshake) are deleted. `M.migrate` (kept, Henrik's call) now leaves
-  originals in place — inert, importable, no shim rewrite, no mixed-tree write. The
+  originals in place â€” inert, importable, no shim rewrite, no mixed-tree write. The
   "`M.x = {}` at file scope is wiped by every self-swap" hazard class is extinct; X0 pins
   that a set `__dlacEngineRoot` is ignored.
 
-**Key decisions:** bare `package.loaded` lookups are load-order contracts — grep for them
+**Key decisions:** bare `package.loaded` lookups are load-order contracts â€” grep for them
 first when something "works in one state, dies in the other"; a per-job-looking field
 report can be per-session (ask "does a reload break the working job?"); legacy evidence
 demoted from verdict to migration source; Setup writes no job files in either mode;
@@ -5878,43 +5878,43 @@ migrate carriers stay, `/dl engine` goes status-only in Phase 2, the engine flag
 in place in Phase 2.
 
 **Worth carrying:** dlac manufactured its own legacy evidence TWICE through two different
-doors (the seeder 07-23, the gear scan via dataDir 07-27) — when a verdict can be decided
+doors (the seeder 07-23, the gear scan via dataDir 07-27) â€” when a verdict can be decided
 by files your own writers create, the verdict is wrong by construction; ADR 0025 removed
 the verdict rather than guarding a third door. And the accidental medic pattern: a lazy
 `pcall(require)` in a GUI picker was silently repairing every session that touched the
 right tab, which made a total engine failure look like a flaky per-job bug for days.
 
 **Pinned next (the coming days):** field-confirm + promote the Phase 1 batch (27j); then
-purge Phase 2 — legacy MODE dies (the dispatch diet: 16 `inLac` sites, 44
+purge Phase 2 â€” legacy MODE dies (the dispatch diet: 16 `inLac` sites, 44
 `gProfile`/`gFunc` refs, `/dl engine` status-only, flag retired in place, dataDir loses
 its legacy branch) on its own quiet day; Phase 3 native-aware surfaces (#131 dies, every
 "Reload LAC" string dies); Phase 4 keep-list hardening (allowlist grep test + a field
 round importing all three ways); Phase 5 docs sweep. The full roadmap with per-phase
 detail lives in `docs/design/lac-purge-plan.md` and HANDOFF "What's left" item 0.
 
-## Session "the purge, all the way down" (2026-07-27 late, on `dev` — addon 2026.07.27j → l, engine v131 → v133)
+## Session "the purge, all the way down" (2026-07-27 late, on `dev` â€” addon 2026.07.27j â†’ l, engine v131 â†’ v133)
 
 **Theme:** Henrik: *"Can't you just go all the way to phase 5, I really just want this
 to die."* All five purge phases executed in one sitting, suite-gated, phase-sized
 commits (`e478817`, `8b5e8fd`, `58c75e0` + docs).
 
-**Landed:** Phase 1 — the seeder, shim writer, Setup's job-file writes, the LAC-alive
+**Landed:** Phase 1 â€” the seeder, shim writer, Setup's job-file writes, the LAC-alive
 ask and the ENTIRE engine self-swap (with the `__dlacEngineRoot` handshake and the
-"`M.x = {}` wiped by self-swap" hazard class). Phase 2 — legacy MODE whole:
+"`M.x = {}` wiped by self-swap" hazard class). Phase 2 â€” legacy MODE whole:
 `nativeMode()` constant true, flag retired in place, first-run machinery deleted,
-`inLac()` + the gProfile/gFunc world out of dispatch (−1063 lines), `/dl engine`
-status-only, end-to-end rigs re-pointed at the native equip door. Phase 3 — `/dl check`
+`inLac()` + the gProfile/gFunc world out of dispatch (âˆ’1063 lines), `/dl engine`
+status-only, end-to-end rigs re-pointed at the native equip door. Phase 3 â€” `/dl check`
 and debug.lua read the NATIVE home (**#131 closed**: the reader finally reads where the
 writer writes), every "Reload LAC" string became `/dl reload` or died, the last LAC
 resurrection (`/dl profile migrate go` queueing `/addon reload luashitacast`) died,
-legacy job files are READ-ONLY. Phase 4 — every module-local legacy path fallback died
-(gearimport ×2, gearexport, augments, statefile, gearui ×2, debug); the PRG1/2
+legacy job files are READ-ONLY. Phase 4 â€” every module-local legacy path fallback died
+(gearimport Ã—2, gearexport, augments, statefile, gearui Ã—2, debug); the PRG1/2
 allowlist guard pins that a `\luashitacast` string literal exists ONLY in the
-keep-list readers (profiles, setmanager, lockstyle, macrobook, gearoptim) — it caught
-three stragglers on its first run. Phase 5 — dlac.lua's header, HANDOFF's mental model
+keep-list readers (profiles, setmanager, lockstyle, macrobook, gearoptim) â€” it caught
+three stragglers on its first run. Phase 5 â€” dlac.lua's header, HANDOFF's mental model
 and hard rule 4, architecture.md's purge banner.
 
-**Worth carrying:** the literal-form discriminator — in source bytes a PATH STRING
+**Worth carrying:** the literal-form discriminator â€” in source bytes a PATH STRING
 carries `\` while a comment carries `\`, so a guard scanning for `\luashitacast`
 polices code without tripping on history. And the guard-first payoff: write the
 allowlist test BEFORE declaring a sweep done; it found what three grep passes missed.
@@ -5924,7 +5924,7 @@ and the three-way import round), then promotion. Suites at 3815 + 584, green on 
 interpreters, at every phase boundary.
 
 
-## Session "the level decides which rung" (2026-07-27, on `dev` — addon 2026.07.27l → o, engine v133 → v134)
+## Session "the level decides which rung" (2026-07-27, on `dev` â€” addon 2026.07.27l â†’ o, engine v133 â†’ v134)
 
 **Theme:** Henrik, on his DRK: *"even though I made a list of bolts on autoammo and
 enabled it is not equipping automatically... When I went from level 50+ to 8 it didn't
@@ -5934,8 +5934,8 @@ wear. Grilled to a design, built in three commits (`41432db`, `401a6bb`, `4d6bb1
 field-confirmed the same day.
 
 **Diagnosed from artifacts, not theory.** His live `ammostate.lua` held Acid Bolt 15 /
-Blind Bolt 10 / Crossbow Bolt 1, best-first — exactly what the panel's own *Sort by
-level* button produces — and his DRK sets carried a real Range ladder, so a crossbow
+Blind Bolt 10 / Crossbow Bolt 1, best-first â€” exactly what the panel's own *Sort by
+level* button produces â€” and his DRK sets carried a real Range ladder, so a crossbow
 WAS worn and v128's no-weapon gate never fired. Three of the four inputs were right;
 the fourth was never asked for.
 
@@ -5943,16 +5943,16 @@ the fourth was never asked for.
 ladder to ONE name before the equip layer ever sees it.* A set hands `equipcore` a slot
 with candidates and its level walk picks a rung; an overlay hands over
 `{ Ammo = "Acid Bolt" }` and there is no rung 2. So any gate an overlay does not apply
-ITSELF becomes a total, silent failure downstream — no fallback, no message, no trace.
+ITSELF becomes a total, silent failure downstream â€” no fallback, no message, no trace.
 
 **The trap that nearly shipped a dead fix.** The first design said read `MainJobSync`.
 Henrik tests with the **level override** (`/dl set level main N`), which is honoured by
-the set flatten, the virtual-slot resolver, gearoptim and gearui — but NOT by
+the set flatten, the virtual-slot resolver, gearoptim and gearui â€” but NOT by
 `equipengine`, whose `snap.level` reads live memory. Reading `MainJobSync` would have
 "fixed" the bug while still ignoring the override, i.e. the report, unfixed. He caught
 it with one sentence: *"When I use my level override feature, it doesn't automatically
 equip blind bolt."* The authority already existed: `dispatch.playerLevel(ctx)`.
-**The division worth keeping — `playerLevel` is what dlac gears you AT (choice);
+**The division worth keeping â€” `playerLevel` is what dlac gears you AT (choice);
 `equipcore`'s level is a legality gate against the real game (permission). A chooser
 reads the chooser's level.** Its corollary explains why the failure looked different
 under an override than under a cap: with a real level of 50+ nothing downstream refuses,
@@ -5962,62 +5962,62 @@ and quieter. Same bug, two exits.
 **Landed:** a fourth gate mirroring `equipcore.checkUsable` (level + Jobs mask) read off
 the live client resource for an item already counted in the bags, unknown never
 disqualifying (the `pairsWith` three-valued law) and a level `<= 0` treated as the v49
-not-ready read; the Default arm re-judging what is WORN — empty slot, over-level, or
-ours-and-no-longer-best — while anything worn that is not on the list stays untouchable
+not-ready read; the Default arm re-judging what is WORN â€” empty slot, over-level, or
+ours-and-no-longer-best â€” while anything worn that is not on the list stays untouchable
 (the guard that keeps a Midshot set's trinket alive; owning the slot outright is ADR
 0010's flap through a third door); `syncHold` parking the pick at Default only, because
 protection must never be suspended on an action event, and an override deliberately
 never arming it; four return values from `resolveAmmoPlan` so **stock talks and level
 does not**, edge-triggered on a change of cause rather than a timer. Then the CW E-Box
-side removed whole (Henrik: *"we have E-box restocker now which is better"*) —
+side removed whole (Henrik: *"we have E-box restocker now which is better"*) â€”
 `feature/eboxammo.lua` deleted, the panel left with no gamemode awareness at all, and
 the `/dl ebox` entity probe moved to `eboxtrace` as **`/dl debug ebox scan`** rather than
 dying with it. Finally the panel: a red `Lv` column when a rung is out of reach, and the
-row actually in your Ammo slot rendering green — the v128 tab law, green = live fact.
+row actually in your Ammo slot rendering green â€” the v128 tab law, green = live fact.
 
 **Worth carrying:** `helmwatch.playerLevel` had the level-aware ladder right from the
-start — AutoAmmo was the one gear picker that never got it, so *check the siblings before
+start â€” AutoAmmo was the one gear picker that never got it, so *check the siblings before
 assuming a gap is universal*. And the AU harness had to start RECORDING `TextColored`
 instead of no-op'ing it: **a stub that throws away colour cannot see a feature that
 speaks in colour**, the craftbar trap in a new costume.
 
-**Status:** field-confirmed by Henrik the same day — *"it works now"* — and queued for
+**Status:** field-confirmed by Henrik the same day â€” *"it works now"* â€” and queued for
 promotion. Suites 3821 + 593, green on both interpreters.
 
-## Session "the slot that was never missing" (2026-07-27, on `dev` — addon 2026.07.27o → p)
+## Session "the slot that was never missing" (2026-07-27, on `dev` â€” addon 2026.07.27o â†’ p)
 
-**Theme:** Henrik asked a bookkeeping question — *"we have a feature where if we equip a
-tunic that takes up the headslot, it ignores to equip the headslot… there are more items
+**Theme:** Henrik asked a bookkeeping question â€” *"we have a feature where if we equip a
+tunic that takes up the headslot, it ignores to equip the headslotâ€¦ there are more items
 like this, for different slots. How do you propose we keep track of all of these
 different iterations of 'uses two slots'? Kupo suit, decennial coat, decennial hose."*
 The answer turned out to be **there is nothing to keep track of**, and the work was
 proving that and then fixing the two things that actually were missing.
 
-**The diagnosis.** `RSlot` is the server's `item_equipment.rslot` — a 16-bit "removed
-slot" mask — mirrored per item in `catalog.lua` since v43, stamped into `gear.lua` by the
+**The diagnosis.** `RSlot` is the server's `item_equipment.rslot` â€” a 16-bit "removed
+slot" mask â€” mirrored per item in `catalog.lua` since v43, stamped into `gear.lua` by the
 scan, backfilled by `/dl fix`, and consumed **generically** by `dispatch.reservedDrops`.
 Vermillion Cloak is not special-cased anywhere; it carries `RSlot = 16` and the engine
-does the rest. So the premise of the question — a growing list of hand-maintained special
-cases — never existed.
+does the rest. So the premise of the question â€” a growing list of hand-maintained special
+cases â€” never existed.
 
 Verified instead of asserted: `catalog.lua` diffed by id against the local server clone's
 `sql/item_equipment.sql` gave **383 items with a non-zero rslot, 383 present in the
 catalog with the identical value, 0 missing, 0 mismatched, 0 absent entirely**. The only
 four divergences are Ammo trinkets/shuriken, which is `effectiveRSlot`'s deliberate ADR
-0010 completion. All three items Henrik named were already right: Kupo Suit → Legs
-(`128`), Decennial Coat → Hands (`64`), Decennial Hose → Feet (`256`). And the space is
-much smaller than "all these different iterations" suggests — **nine distinct masks**:
+0010 completion. All three items Henrik named were already right: Kupo Suit â†’ Legs
+(`128`), Decennial Coat â†’ Hands (`64`), Decennial Hose â†’ Feet (`256`). And the space is
+much smaller than "all these different iterations" suggests â€” **nine distinct masks**:
 Range 131, Hands 74, Feet 71, Head 52, Ammo 35, Legs 11, Hands+Feet 4, Hands+Legs+Feet 3,
 Head+Hands 2. `reservedDrops` has walked arbitrary multi-bit masks in a fixed slot order
 since v43, so nothing about a suit that eats three slots is new work.
 
-**Landed (the two real gaps).** *Visibility:* the drop was completely silent — which is
+**Landed (the two real gaps).** *Visibility:* the drop was completely silent â€” which is
 precisely why a correct feature reads as a bug. `renderItemTooltip` now prints *"Takes
-Head — that slot stays empty while this is worn"* on the ONE hover card every equipment
+Head â€” that slot stays empty while this is worn"* on the ONE hover card every equipment
 surface shares, and the Sets builder previews the conflict before dispatch ever runs it:
 the reserved tile goes dark red, its hover names the reserver, and a single line under
-the grid lists the slots. Two new seams exist so the GUI owns **neither** rule —
-`dispatch.rslotText` (bit → slot name, because the engine owns the vocabulary it owns the
+the grid lists the slots. Two new seams exist so the GUI owns **neither** rule â€”
+`dispatch.rslotText` (bit â†’ slot name, because the engine owns the vocabulary it owns the
 behaviour of) and `gearimport.rslotFor` (the mask by id, the *same* resolver the scan
 stamps `gear.lua` with, ADR 0010 completion included). The preview itself calls
 `reservedDrops`, the equip-time pass, with no `worn` argument: the builder shows the SET,
@@ -6029,28 +6029,28 @@ a reservation.
 - **`rslotlook` is not `rslot`.** A Kupo Suit *looks* like it covers hands, legs and feet
   (`rslotlook=448`) but only **Legs** is actually blocked (`rslot=128`). Anyone "fixing"
   this class of item by eye from the in-game model would stamp the wrong mask on the
-  whole family. We mirror `rslot` and ignore `rslotlook` — deliberately.
+  whole family. We mirror `rslot` and ignore `rslotlook` â€” deliberately.
 - **A silent safety warning is the worst failure mode there is.** `rsv.dropsIn` runs
   inside a render `pcall` (a warning must never crash a frame), so a typo in it fails
-  *quietly* and the builder simply stops warning — invisible by definition, because the
+  *quietly* and the builder simply stops warning â€” invisible by definition, because the
   feature's normal state is "says nothing". That is why `rsv` is exported through
   `host.provide` rather than kept private: smoke drives it against the real catalog
-  (S16a–p), so a dead resolver is a red test instead of a permanent quiet nothing.
+  (S16aâ€“p), so a dead resolver is a red test instead of a permanent quiet nothing.
 - **The audit direction that matters is the LOSS.** An item *gaining* a reservation is
   loud in play. An item *losing* one is silent, and `/dl fix` will dutifully retract that
   stamp from every player's `gear.lua`. The audit prints the retraction consequence on
   that line for exactly this reason.
 - The question was bookkeeping; the answer was arithmetic already in the repo. **Check
-  what the data says before designing a registry for it** — the diff took minutes and
+  what the data says before designing a registry for it** â€” the diff took minutes and
   deleted the entire proposed feature.
 
-**Status:** on `dev`, **not** in the merge queue — Henrik has not field-tested it yet.
-Suites 3836 + 609 (AK23–33, TR4c–e, S16a–p added), green on Windows lua and WSL lua5.4.
+**Status:** on `dev`, **not** in the merge queue â€” Henrik has not field-tested it yet.
+Suites 3836 + 609 (AK23â€“33, TR4câ€“e, S16aâ€“p added), green on Windows lua and WSL lua5.4.
 
-## Session "the wishlist: intentions and facts" (2026-07-27, on `dev` — addon 2026.07.27p → q, ADR 0026)
+## Session "the wishlist: intentions and facts" (2026-07-27, on `dev` â€” addon 2026.07.27p â†’ q, ADR 0026)
 
 Henrik, in one message: *"add 'Show gear I don't own' like with lockstyle in all
-equipment… right click and add pieces to wish list… also have this when building sets, so
+equipmentâ€¦ right click and add pieces to wish listâ€¦ also have this when building sets, so
 you can add stuff you don't have (it won't try to use em, but if you get it, it's
 preemptively there, right?)"* Grilled to a shared design first (`/grill-with-docs`,
 eleven questions), then built.
@@ -6059,26 +6059,26 @@ eleven questions), then built.
 
 Reading before designing changed the shape of all three asks:
 
-1. **"Show gear I don't own" already existed in All Equipment** — as `ui.showAll`, moved
+1. **"Show gear I don't own" already existed in All Equipment** â€” as `ui.showAll`, moved
    into Menu > Settings on 07-24 and renamed *"Show all equipment"*, where it read as a
    preference and nobody found it. So the ask was **discoverability**, not a feature: the
    tick is now on the tab too, bound to the same flag, and both places use the lockstyle
    wording. One setting, two surfaces.
 2. **The engine already did what he hoped it did.** *"it won't try to use em, but if you
-   get it, it's preemptively there, right?"* — right. `BuildDynamicSets` resolves a set
+   get it, it's preemptively there, right?"* â€” right. `BuildDynamicSets` resolves a set
    entry by NAME against `gear.lua`; a miss is skipped at flatten time, so an unowned
    piece cannot shadow a lower-level piece you own, and it starts being worn the day it
    lands in your bags with nothing to change. The only thing wrong was the *noise*.
 3. **There was a trap sitting directly in the path.** The API drops the possessive
    apostrophe: the Catalog says `Arhats Gi` where the client says `Arhat's Gi`. Sets
    resolve by name. So a wishlisted piece would have failed to resolve **on the very day
-   you finally got it** — the one moment the feature exists for. This is the same trap
+   you finally got it** â€” the one moment the feature exists for. This is the same trap
    the lockstyle picker refuses to save into (07-15); it just reappeared somewhere the
    refusal was not an option.
 
 ### Henrik's two rulings
 
-The first design made set links **derived** — scan the sets, show what's there, nothing
+The first design made set links **derived** â€” scan the sets, show what's there, nothing
 to go stale. He rejected it: *"When I add something to a wish list, even from sets, add
 the item to the wish list as its own entity, being able to exist on its own. Then connect
 the set / sets that want it."*
@@ -6086,45 +6086,45 @@ the set / sets that want it."*
 That is the better model, and it unlocks something the derived version could not: you can
 wishlist a piece **for** WHM/Idle without stuffing it into the set at all. The set stays
 clean; the intention is recorded. It also creates the disagreement the derived design
-existed to prevent — so the answer is to keep both halves and never derive one from the
+existed to prevent â€” so the answer is to keep both halves and never derive one from the
 other:
 
 > **The stored half is an intention. The computed half is a fact. They are allowed to
 > disagree, and where they do is exactly where the Apply button belongs.**
 
 A link is written down and never revoked by dlac. Whether the piece is *in* that set is
-re-read from the set files. Ownership follows the same rule in the other direction — never
+re-read from the set files. Ownership follows the same rule in the other direction â€” never
 stored, always read from the bags by Id, so selling a piece silently returns it to wanted.
 Nothing needs reconciling because nothing derived is kept.
 
 Second ruling, on set totals: *"set totals should only count towards the gear you own. If
 you want to rebuild according to new pieces, we already have a simple 'Auto Build all'
-button that should suffice."* A "what-if" toggle was on the table and he killed it — the
+button that should suffice."* A "what-if" toggle was on the table and he killed it â€” the
 existing button already answers that question.
 
 ### What the set files did NOT get
 
 The one warning left over was `warnMissingGear` calling a deliberate entry a typo on every
 commit. Two ways out: mark it in the file (`{ gear = 'X', wish = true }`) or teach the
-engine to ask. He picked the second — *"b, keep set files clean"* — so the format players
+engine to ask. He picked the second â€” *"b, keep set files clean"* â€” so the format players
 share, hand-edit and round-trip is untouched, and the engine reads `wishlist.lua` beside
 `pinstate.lua`. A name that is neither resolvable **nor** wishlisted still warns, and the
 suppression fails toward warning: no file, no character, a parse error, all answer false.
 
 ### The bug found on the way
 
-`recordPath` builds a set entry's Lua expression from `rec.Key` — and **catalog records
+`recordPath` builds a set entry's Lua expression from `rec.Key` â€” and **catalog records
 carry a `Key` exactly like owned ones do** (it is `catalog.lua`'s table key). So the first
 unowned piece committed to a set would have rendered `gear.Body.Dalmatica`: an expression
 that evaluates to `nil` in the set file, taking the entry with it, silently. Unowned
-pieces now serialize as a quoted **name** — the form `resolveGearName` resolves, and the
+pieces now serialize as a quoted **name** â€” the form `resolveGearName` resolves, and the
 form that keeps working forever once you own the thing.
 
 ### Durable
 
 - **A feature can be a naming problem.** Ask 1 needed one checkbox and two label changes;
   the capability had shipped three days earlier under a name that hid it. Read before
-  building — half this session's work was already written.
+  building â€” half this session's work was already written.
 - **`pcall(require, 'x')` binds the ERROR STRING, not nil.** `gearfmt` does this, so
   `fmt.textWrapped` indexes a *string* when imgui is absent and throws a "field is nil"
   error that reads nothing like a missing module. Latent for months; the Wishlist window
@@ -6136,39 +6136,39 @@ form that keeps working forever once you own the thing.
   differently. U7 pins that; a blanket normalization would have been a silent behaviour
   change across every set on disk.
 - **The 200-local cap bites test files too** (hard rule 1). The new WL section broke
-  `run_tests.lua`'s main chunk; scoping it in `do … end` is the fix.
+  `run_tests.lua`'s main chunk; scoping it in `do â€¦ end` is the fix.
 
-**Watch in the field:** `Wishlist ▸ → Add for ▸ → row` is **one level deeper** than any
+**Watch in the field:** `Wishlist â–¸ â†’ Add for â–¸ â†’ row` is **one level deeper** than any
 cascade proven in this binding (floatgear proved one, 07-15). `hasMenu` is probed and a
 flat drill-down fallback exists, but this one wants eyes in-game.
 
 ### The field rounds
 
 **Round 1** answered the one thing the suite could not: *"The extra level worked cascade
-menu wise… It looks great! I can also add the stuff to sets if I press add, also works!"*
-So **two-level imgui cascades ARE supported in this binding** — floatgear had only ever
+menu wiseâ€¦ It looks great! I can also add the stuff to sets if I press add, also works!"*
+So **two-level imgui cascades ARE supported in this binding** â€” floatgear had only ever
 proven one, which is why the drill-down fallback exists and why this was flagged as the
-open risk. `popup → BeginMenu → BeginMenu → MenuItem` is now a known-good shape for any
+open risk. `popup â†’ BeginMenu â†’ BeginMenu â†’ MenuItem` is now a known-good shape for any
 future context menu, and the fallback stays as insurance rather than as a live path.
 
 What he flagged instead was layout, and it was one mistake made in five places: hardcoded
 pixel columns in a window whose content is **player-named**. `SAM / Tp_Default` printed
 straight through the status beside it (`SameLine(140)`), and both filter combos clipped to
-`All jo▼` / `All slo▼`. Every column now derives from the widest string it will actually
-draw — the link column off the *same* `linkLabel()` the row prints, so the width and the
+`All joâ–¼` / `All sloâ–¼`. Every column now derives from the widest string it will actually
+draw â€” the link column off the *same* `linkLabel()` the row prints, so the width and the
 text can never be computed differently.
 
-**Round 2** — *"`<JOB>` / `<SET>` still need more space, give it twice the space as it
-has, so we can handle longer set names"* — is the more interesting correction, because
+**Round 2** â€” *"`<JOB>` / `<SET>` still need more space, give it twice the space as it
+has, so we can handle longer set names"* â€” is the more interesting correction, because
 measuring was already *correct*. A column fitted to the current entry is the right width
 for that entry and the wrong width for the next one: it moves under you every time you
 select a different row, and a set name longer than today's has nowhere to go. Reserving
-beats fitting when the content is not yours to predict. Now `2×` the widest label on a
+beats fitting when the content is not yours to predict. Now `2Ã—` the widest label on a
 180 floor, capped at 360 so the status and its buttons cannot leave the window.
 
 - **A stub that answers a CONSTANT cannot test a measurement.** `smoke_ui` was green
   straight through the column bug because its `CalcTextSize` returned 10 for every string.
-  Section 6b's stub is proportional (~10px/char) now, and S92f–S92m pin the label/column
+  Section 6b's stub is proportional (~10px/char) now, and S92fâ€“S92m pin the label/column
   pair against Henrik's exact reported string. Same shape as the `pcall(require)` trap
   above: a stub too obliging to fail hides the thing it was added to guard.
 - **A nil check is NOT redundant with a pcall around an imgui call.**
@@ -6176,46 +6176,46 @@ beats fitting when the content is not yours to predict. Now `2×` the widest lab
   before pcall ever runs.
 
 **Status:** on `dev`, **FIELD-CONFIRMED** across both rounds (*"It looks good and
-works."*) and **in the merge queue**. Addon `27q` → `27s`. Suites 3875 + 692 (WL1–WL34,
-U4–U7, S60–S95, S150–S163 added), green on Windows lua and WSL lua5.4.
+works."*) and **in the merge queue**. Addon `27q` â†’ `27s`. Suites 3875 + 692 (WL1â€“WL34,
+U4â€“U7, S60â€“S95, S150â€“S163 added), green on Windows lua and WSL lua5.4.
 
-## Session "am I dominant in both pieces?" (2026-07-27, on `dev` — addon 2026.07.27t, engine v134 → v135)
+## Session "am I dominant in both pieces?" (2026-07-27, on `dev` â€” addon 2026.07.27t, engine v134 â†’ v135)
 
 **Theme:** the reserved-slot feature was correct and still visibly broken, twice, in
-opposite directions — and the fix was not in the reserve rule at all.
+opposite directions â€” and the fix was not in the reserve rule at all.
 
 **The two field cases.** Hunklor SAM: Movement(25) `Body = Kupo Suit` (reserves Legs)
-over Idle(20) `Legs = Amir Dirs`. It flapped Kupo Suit ↔ Amir Dirs continuously while
+over Idle(20) `Legs = Amir Dirs`. It flapped Kupo Suit â†” Amir Dirs continuously while
 running. Mindie SCH: Idle(20) `Body = Royal Cloak` (reserves Head) under Movement(25)
-`Head = <piece>` — the headpiece could never land, however high its priority. Henrik:
+`Head = <piece>` â€” the headpiece could never land, however high its priority. Henrik:
 *"So to me it looks like it's locking the head piece as long as royal cloak stays on.
 This is the wrong logic."*
 
-**Two wrong diagnoses first, both killed by evidence — worth recording.** (1) A repro
+**Two wrong diagnoses first, both killed by evidence â€” worth recording.** (1) A repro
 against Hunklor's real `gear.lua` showed `Legs=RESERVED by Kupo Suit (kept as worn)` and
 the Legs dropped: the manifest, the mask and the pass were all fine. So the flap "had to
-be" `moving` flickering — the detector has a thin 0.1s margin over the dispatch tick.
+be" `moving` flickering â€” the detector has a thin 0.1s margin over the dispatch tick.
 Henrik's `/dl why` screenshot printed `moving=true`, and that was that. (2) The same
 screenshot showed `Legs<-Idle` surviving into the slot list with no RESERVED note, which
-read as "the drop never fires live" — but that block is the **Arbiter's claim
+read as "the drop never fires live" â€” but that block is the **Arbiter's claim
 attribution**, which runs separately from the post-passes. Nearly a second confident
 wrong answer off a truncated screenshot. *Read what a trace is actually printing before
 concluding from what it does not print.*
 
 **The real root cause.** `dispatch.lua`'s overlay loop applies each matching rule's set
 through its **own** `equipResolved` (`equipSetByName` resolves *and* equips, per rule).
-So `reservedDrops` only ever sees one rule's set. Idle resolved alone → nothing reserves
-→ Amir Dirs equipped. Movement resolved alone → `{Body}` only, no Legs to drop → suit
+So `reservedDrops` only ever sees one rule's set. Idle resolved alone â†’ nothing reserves
+â†’ Amir Dirs equipped. Movement resolved alone â†’ `{Body}` only, no Legs to drop â†’ suit
 equipped, server stripped the legs. Both every dispatch. The merged view existed a few
-lines away as `floorTbl` — but only `if retrace`, i.e. purely to draw `/dl why`. The
+lines away as `floorTbl` â€” but only `if retrace`, i.e. purely to draw `/dl why`. The
 equip path never had it. Henrik named it before the code did: *"I think the problem lies
 in the overlying eye."*
 
 **Henrik's ruling, built as stated.** A piece that reserves other slots is a **candidate
-only while the claim wanting it is dominant over every slot it takes** — *"am I dominant
-in both pieces according to you? If not, this piece is not a candidate."* Dominant → it
+only while the claim wanting it is dominant over every slot it takes** â€” *"am I dominant
+in both pieces according to you? If not, this piece is not a candidate."* Dominant â†’ it
 wins its slot and **claims** the reserved ones, left empty (the server clears them
-natively). Beaten → **ineligible**, its own slot unwritten. `M.reserveFloor` +
+natively). Beaten â†’ **ineligible**, its own slot unwritten. `M.reserveFloor` +
 `M.reserveVerdict` are pure; the engine builds the floor before the first write and
 retires it right after the trigger loop.
 
@@ -6223,20 +6223,20 @@ retires it right after the trigger loop.
 - **A correct rule fed the wrong input looks exactly like a wrong rule.** Three separate
   investigations (data, mask, pass) all came back clean while the feature was plainly
   broken, because none of them asked *what is this function being handed*. The repro that
-  "proved" the engine right had constructed the merged plan by hand — the one thing the
+  "proved" the engine right had constructed the merged plan by hand â€” the one thing the
   engine never does.
 - **Both directions or it isn't the rule.** The SAM case alone is fixable by suppressing
   the reserved slot; the SCH case alone by ignoring the worn reserver. Only dominance
-  produces both, which is why AKD1–12 test them side by side.
+  produces both, which is why AKD1â€“12 test them side by side.
 - **Order inside the verdict is load-bearing**: dominance must resolve *before* anything
   is suppressed (a piece judged ineligible is not worn, so it reserves nothing), and a
   claimed slot must not claim further.
 - **The AutoAmmo rung-2 trap is general.** *"Go for the next available piece"* is not
   buildable today because `BuildDynamicSets` collapses each slot's list to one name before
-  the engine sees it — the same collapse that made the AutoAmmo ladder fail silently. An
+  the engine sees it â€” the same collapse that made the AutoAmmo ladder fail silently. An
   ineligible piece leaves its slot unwritten instead. Carrying alternates is the follow-up.
 
-**Status:** on `dev`, **FIELD-CONFIRMED** by Henrik the same day — *"It works now."* — and
+**Status:** on `dev`, **FIELD-CONFIRMED** by Henrik the same day â€” *"It works now."* â€” and
 queued for promotion. Suites 3901 + 692, green on Windows lua and WSL lua5.4. Both real cases also driven end-to-end
 against the actual `gear.lua` files of both characters.
 
@@ -6246,24 +6246,24 @@ against the actual `gear.lua` files of both characters.
 finally minimized the window it lived in.
 
 **Reported:** *"if I open the Hobby Bar, then minimize it, our floating icon for DLAC /
-Teleports disappear when I click it… the moment I unminimize the hobby bar, I can see the
+Teleports disappear when I click itâ€¦ the moment I unminimize the hobby bar, I can see the
 menu flash up and disappear real quick."* Then, unprompted: `/dl ui` was **also** up and
 invisible, and something invisible was refusing his clicks on the hobby bar's title bar.
 
 **The discriminators, all from Henrik in one message.** Minimizing the main window,
 Lockstyle or the Wishlist does nothing. **Closing** the hobby bar does nothing. Expanding
 it brings everything back with no further click. So: not popups, not window order, not
-the float — the *collapsed hobby bar* specifically. His `/dl metrics` screenshots pinned
+the float â€” the *collapsed hobby bar* specifically. His `/dl metrics` screenshots pinned
 the rest: ImGui **1.81**, `Popups (0)` after the click (so `OpenPopup` never even ran),
 `NavWindow: '##dlac_tpfloat'` with a live `NavId` (so the mouse-**down** registered and
 the mouse-**up** frame never drew the button), and `11 active windows (10 visible)` in
-every shot while ~48 vertices vanished — a window still active, still counted as
+every shot while ~48 vertices vanished â€” a window still active, still counted as
 rendered, drawing nothing.
 
-**Root cause — the LAW, worth carrying.** `ui/hobbybar.lua` opened with
+**Root cause â€” the LAW, worth carrying.** `ui/hobbybar.lua` opened with
 `imgui.SetNextWindowSize({0,0}, ImGuiCond_Always)` every frame, right before an
 `AlwaysAutoResize` `Begin`. A zero component makes ImGui's `SetWindowSize` set
-`AutoFitFramesX/Y = 2` — *"submit the body anyway, I still need to measure it"* — and
+`AutoFitFramesX/Y = 2` â€” *"submit the body anyway, I still need to measure it"* â€” and
 `ImGuiCond_Always` re-armed those counters on every single frame, so they never reached
 zero. ImGui's own rule is
 
@@ -6272,35 +6272,35 @@ zero. ImGui's own rule is
 so a **collapsed** hobby bar kept returning `true` from `Begin()` and kept drawing its
 whole body into a title-bar-sized window, forever. Every other dlac window collapses
 normally, which is exactly why this one was the only trigger. Focus decided *who* got
-eaten: `FocusWindow` moves a window's draw list to the display front — i.e. **behind**
-this one in emission order — so clicking the Teleports float, or opening `/dl ui`, put it
+eaten: `FocusWindow` moves a window's draw list to the display front â€” i.e. **behind**
+this one in emission order â€” so clicking the Teleports float, or opening `/dl ui`, put it
 there. Closing the bar was always safe: a window that is never begun cannot leak.
 
 **Fix:** delete the line. `AlwaysAutoResize` already sizes the window to its content
 every frame; the call was redundant from the day the bar shipped (`92e1fb2`, 07-24).
-`HB21` pins it — the smoke stub records every size requested and asserts none is zero.
+`HB21` pins it â€” the smoke stub records every size requested and asserts none is zero.
 Mutation-verified: re-add the line and HB21 fails.
 
 **Worth carrying:**
 - **`SetNextWindowSize` with a zero component is not "auto-size", it is "keep measuring".**
   With `ImGuiCond_Always` it is a permanent instruction, and it silently defeats *collapse*
-  — a state most windows are never tested in.
+  â€” a state most windows are never tested in.
 - **Two symptoms, one window.** "The float dies" and "`/dl ui` is invisible" looked like
   two bugs and named one cause. The second report is what killed every theory built around
   the Teleports popup.
 - **The metrics window is the artifact.** `active` vs `visible` counts plus the vertex
-  delta said *active, rendered, drawing nothing* — which no amount of reading the addon's
+  delta said *active, rendered, drawing nothing* â€” which no amount of reading the addon's
   own Lua could have said.
 
 **Status:** on `dev` (`ad476ea`, addon `27u`), **FIELD-CONFIRMED** by Henrik the same day
-— *"it works now :)"* — and then **ACCEPTED** by him for promotion: *"Document this as an
-accepted fix and put it as an accepted part of the dev → main merge in the future."* The
-next dev → main merge carries it without a fresh go-ahead (HANDOFF's queue marks it ✅).
+â€” *"it works now :)"* â€” and then **ACCEPTED** by him for promotion: *"Document this as an
+accepted fix and put it as an accepted part of the dev â†’ main merge in the future."* The
+next dev â†’ main merge carries it without a fresh go-ahead (HANDOFF's queue marks it âœ…).
 Suites 3901 + 693, green on Windows lua and WSL lua5.4.
 
 ## Session "an import should be able to land verbatim" (2026-07-27w)
 
-**Theme:** the first feature dlac has taken from a **second player's** field report — and
+**Theme:** the first feature dlac has taken from a **second player's** field report â€” and
 a behavior that was correct-by-design in only half the cases it ran in.
 
 **Reported**, by a friend of Henrik's who runs dlac and had been round-tripping his own
@@ -6308,21 +6308,21 @@ profiles to compare them against what dlac would pick: *"I'm importing dlac how 
 them, and it's just changing it every time."* With a theory attached, and a good one:
 *"If I'm on the job, and profile that I am importing it to, it will auto refresh stats
 based on weight. If I'm not on the job it doesn't."* That is exactly the shape of
-`gearui`'s `afterImport` hook — it refuses when the import lands outside the current
+`gearui`'s `afterImport` hook â€” it refuses when the import lands outside the current
 character's active profile, or under a job you are not on, because the candidate pools
 (owned gear, job/level usability) are the current job's. He had reverse-engineered the
 guard from the outside, from behavior alone.
 
 He also arrived with a **patch**, written with his own Claude: `sf.flags.autoBuildOnImport`
 + `/dl autobuildimport`, defaulted on, persisted through `uiflags.lua`. The reasoning and
-the seams were right and are what shipped. The two files themselves were not usable —
+the seams were right and are what shipped. The two files themselves were not usable â€”
 his gearui.lua is a **pre-purge** copy (it still calls `/lac equip`, still composes the
 legacy `luashitacast\<Char>_<id>\` path by hand, and predates the Wishlist and the
 reserved-slot work), so applying them would have reverted five sessions. Ported by hand
 onto current `dev` instead. *Worth stating plainly: the patch was read, not run.*
 
 **Why he was right, in dlac's own terms.** The hook exists because an export ships sets
-as **EMPTY shells** — names, no gear — on the theory that gear rarely aligns between
+as **EMPTY shells** â€” names, no gear â€” on the theory that gear rarely aligns between
 characters, so the receiver's own gear should fill them. But the export form has had a
 **"Set equipment"** tick since the selective export landed (07-19): when it is on, the
 exact gear ladders travel verbatim. In that case the post-import re-solve overwrites
@@ -6332,10 +6332,10 @@ are EMPTY on purpose") is simply false for that path.
 
 **Landed:**
 - **`sf.flags.autobuildimport`** in `gear/syncflags.lua`, saved and loaded with the rest
-  of `uiflags.lua`. **Default on**, and an **absent key reads as on** — every uiflags.lua
+  of `uiflags.lua`. **Default on**, and an **absent key reads as on** â€” every uiflags.lua
   written before today lacks it, and those installs must not have their imports change
   behavior because they updated. Read everywhere as `~= false` for the same reason.
-- **The gate in `afterImport`**, checked **last** — after the wrong-profile and wrong-job
+- **The gate in `afterImport`**, checked **last** â€” after the wrong-profile and wrong-job
   guards. Order is deliberate: turning the setting off must never change *which* reason
   you are told, or "it didn't build" stops being diagnosable.
 - **Two surfaces, one flag:** `/dl autobuildimport [on|off]` (bare = toggle, the
@@ -6347,7 +6347,7 @@ are EMPTY on purpose") is simply false for that path.
 - **Tests:** `UIF6a` / `UIF18a` round-trip and load the key, `UIF21a` pins the absent-key
   default at **on** (the one that would silently change everyone's behavior if it broke),
   and `UIF21b/21c` pin at the SOURCE that the hook reads the flag and reads it before it
-  builds — the hook needs imgui and a logged-in character, so a source pin is the honest
+  builds â€” the hook needs imgui and a logged-in character, so a source pin is the honest
   alternative to no coverage at all. `MN12a` counts nine Settings checkboxes.
 
 **Worth carrying:**
@@ -6360,136 +6360,136 @@ are EMPTY on purpose") is simply false for that path.
 - **A patch from another install is EVIDENCE, not a diff.** Version-drift makes an
   attractive-looking file a revert in disguise; read it for reasoning and re-derive.
 
-**Left open — a real product question, deliberately not decided here.** dlac knows, at
+**Left open â€” a real product question, deliberately not decided here.** dlac knows, at
 import time, whether the payload's sets carry gear or are shells. The case for making
-that the *default* discriminator — re-solve shells, respect gear that travelled — is
+that the *default* discriminator â€” re-solve shells, respect gear that travelled â€” is
 strong, and would fix the reporter's complaint with no setting to find. The case against
 is that the tick was the **exporter's** choice, and a receiver who owns none of that gear
 is better served by the re-solve. That is a behavior call for Henrik, and the setting
 delivers his friend's ask either way.
 
-**Status:** on `dev`, addon `27u` → **`27w`** (`27v` belongs to a parallel session's
+**Status:** on `dev`, addon `27u` â†’ **`27w`** (`27v` belongs to a parallel session's
 uncommitted engine work in this shared checkout), engine unchanged. Suites **3906 + 693**,
-green on Windows lua and WSL lua5.4. **Awaiting field test** — by the reporter, who has
+green on Windows lua and WSL lua5.4. **Awaiting field test** â€” by the reporter, who has
 the round-trip that found it.
 
-### Follow-on, same session — the last legacy fallback under the flag (`27y`)
+### Follow-on, same session â€” the last legacy fallback under the flag (`27y`)
 
 Henrik, reading the above: *"Has this been set up with the purge in mind? So we don't add
-legacy crap towards LAC?"* The new code adds none — grepping the commit for
+legacy crap towards LAC?"* The new code adds none â€” grepping the commit for
 `luashitacast`, `/lac `, `GetInstallPath` and hand-composed `<Char>_<id>` paths returns
 nothing, and `PRG1` passes. **His friend's patch was the legacy crap**, which is the point
 worth keeping: applying it would have reintroduced `/lac equip`, a hand-composed
 `config\addons\luashitacast\%s_%u\dlac\gear.lua`, and a hand-composed `charBase` in place
-of the delegation to `profiles.charBase` — while deleting **299 lines** of Wishlist and
+of the delegation to `profiles.charBase` â€” while deleting **299 lines** of Wishlist and
 reserved-slot work. `PRG1` would have caught two of those three; nothing would have caught
 the deletions.
 
 But the question found a real leftover in the chain the new flag rides. Three functions
 still ended in a `charBase() .. 'dlac\'` fallback from the engine-flag era:
 `gearui.dataDir`, `gearui.charRoot`, `syncflags.uiFlagsPath`. **All three were
-unreachable**, and provably so: `profiles.dataDir` (→ `nativeCharBase`) and
+unreachable**, and provably so: `profiles.dataDir` (â†’ `nativeCharBase`) and
 `profiles.charBase` are the same `charFolder()` behind two different roots, so they go nil
 together and non-nil together. The fallback could only fire in a world where they diverge
-— and in *that* world it would have pointed dlac's own writes at the read-only import
+â€” and in *that* world it would have pointed dlac's own writes at the read-only import
 tree. `uiflags.lua` (which now carries the import setting) was the one with a player-facing
 consequence: a Setting written into `luashitacast\` would never be read back.
 
-Deleted, all three, returning `nil` — the answer every caller already handles as "not
+Deleted, all three, returning `nil` â€” the answer every caller already handles as "not
 logged in yet, retry next frame". **`NE30`** pins the nil-together invariant the deletion
-rests on: no identity → both nil; identity → both answer. **Mutation-verified** — make
+rests on: no identity â†’ both nil; identity â†’ both answer. **Mutation-verified** â€” make
 `charBase` fall back to a placeholder folder and `NE30b` fails, naming the
 `luashitacast\Ghost_1\` path it would have used.
 
 **Worth carrying:** *unreachable* and *harmless* are different claims. This code could not
-run, but it encoded a rule the purge deleted — "when the native home has no answer, use
-LAC's" — and the next person to touch path resolution would have read it as current. Dead
+run, but it encoded a rule the purge deleted â€” "when the native home has no answer, use
+LAC's" â€” and the next person to touch path resolution would have read it as current. Dead
 code is documentation that nobody proofreads.
 
-**Status:** on `dev`, addon `27x` → **`27y`**, engine untouched. Suites **3947 + 693**,
+**Status:** on `dev`, addon `27x` â†’ **`27y`**, engine untouched. Suites **3947 + 693**,
 green on Windows lua and WSL lua5.4.
 
-## Session "the earring that could never equip" (2026-07-28, on `dev` — addon 2026.07.28a → b)
+## Session "the earring that could never equip" (2026-07-28, on `dev` â€” addon 2026.07.28a â†’ b)
 
-Henrik came back with the MaxMP oddity he'd flagged during the stage 6 field round — the
-mode never equipped Outlaws Earring — and he came back with the diagnosis, not just the
+Henrik came back with the MaxMP oddity he'd flagged during the stage 6 field round â€” the
+mode never equipped Outlaws Earring â€” and he came back with the diagnosis, not just the
 symptom. He had already run the experiment: remove Outlaws Earring from the idle set's
 Ear2 ladder, re-plan, and it equips fine. His read: the pair-position rule was treating
 **every earring documented in the idle set** as position-anchored, "even if they are not
-used" — and his ruling: only the **currently chosen** pair pieces should anchor; the rest
+used" â€” and his ruling: only the **currently chosen** pair pieces should anchor; the rest
 are floating.
 
 The code agreed with him on every point. The fmt 13 pair-home harvest
 (`automationsui`'s manifest builder) read the **authored** sets file
 (`prof.readSetsFile`) and homed every entry of every Ear/Ring slot list. That was
 faithful to the original ruling ("a piece the idle set lists under Ear2 is an ear2
-piece, full stop") — but the ruling predates ADR 0027's slot LADDERS. Once a slot
+piece, full stop") â€” but the ruling predates ADR 0027's slot LADDERS. Once a slot
 became a level-graded list, "lists under Ear2" started matching gear documented only
 as leveling rungs. Henrik's Ear2 ladder holds Loquacious (Lv75, MP 30) with Outlaws
-(Lv50, MP 15) as the rung to grow through — at 75 the flatten picks Loquacious and
+(Lv50, MP 15) as the rung to grow through â€” at 75 the flatten picks Loquacious and
 Outlaws is dead weight in the authored list.
 
 The kill chain was arithmetic, and it's worth spelling out because *nothing errored*:
 both earrings homed to ear2, so ear2's battery ladder was [Loquacious 30, Outlaws 15]
-and ear1's ladder had **no MP earrings at all** — no ear1 band can ever build. Ear2's
-band takes the ladder TOP (one band per slot, v92) — Loquacious — against the potency
+and ear1's ladder had **no MP earrings at all** â€” no ear1 band can ever build. Ear2's
+band takes the ladder TOP (one band per slot, v92) â€” Loquacious â€” against the potency
 point, which is *also* Loquacious (it's the set's own pick, and `mpLowMap` reads the
-**flattened** store). Top mp − low = 0, and `mpbands.build` drops zero-diff bands. No
+**flattened** store). Top mp âˆ’ low = 0, and `mpbands.build` drops zero-diff bands. No
 band on ear2 either. Outlaws, mp 15 against a 30-MP potency point, was invisible from
 every direction. Remove the rung and it floats to the emptier ear1 ladder: top 15
 against a 0-MP ear1 potency point = a 15-MP band that fires. His experiment was the
 whole proof; the catalog stats matched it line for line.
 
 The asymmetry is the actual lesson: the LOW side of the band (potency point) always
-read the **flattened** set — the chosen pick at the live level — while the HOME side
+read the **flattened** set â€” the chosen pick at the live level â€” while the HOME side
 read the **authored** rungs. Two sides of the same band disagreeing about what "the
 set's piece" means. The fix makes both sides read the same world: a new
 `dispatch.flattenedSet(name)` accessor (the top-level store entry, one chosen piece
 per slot; statics included, they were born flat) and the harvest homes only those
-picks. Deliberately NOT `candidatesFor` + a head-pick — that would have been a fourth
+picks. Deliberately NOT `candidatesFor` + a head-pick â€” that would have been a fourth
 copy of "the pick" (the stage 5 lesson about the `bestByLevel` twin). The flatten
 already computed it; read it.
 
 What survives unchanged: the chosen pieces still never plan across the pair (Loquacious
-stays in ear2 — the churn rule that started all of this, v83/v93, is untouched), dup
+stays in ear2 â€” the churn rule that started all of this, v83/v93, is untouched), dup
 twins still ride both ladders, and the sticky apply veto still kills any transient
-tug. Boot warm-up degrades gracefully: no flatten yet → no homes this pass → the
+tug. Boot warm-up degrades gracefully: no flatten yet â†’ no homes this pass â†’ the
 constant rescans (login, job change, any inventory change) re-home within a beat.
 
-**Status:** on `dev`, addon `2026.07.28a` → **`2026.07.28b`**, engine untouched (the
+**Status:** on `dev`, addon `2026.07.28a` â†’ **`2026.07.28b`**, engine untouched (the
 manifest builder + one dispatch accessor). Tests `FS*` pin the seam. Suites **4078 +
-693**, green on Windows lua and WSL lua5.4. **FIELD-CONFIRMED the same day** — Henrik
+693**, green on Windows lua and WSL lua5.4. **FIELD-CONFIRMED the same day** â€” Henrik
 restored the rung and re-planned: *"Now it works!"* Documenting leveling gear costs
 nothing again, which was the point. In the merge queue (hard rule 14).
 
-## Session "a dynamic set in an old file is an FFXI-LAC set" (2026-07-28, on `dev` — addon 2026.07.28c → d)
+## Session "a dynamic set in an old file is an FFXI-LAC set" (2026-07-28, on `dev` â€” addon 2026.07.28c â†’ d)
 
-Henrik, on the Sets tab's **Manage… → Copy from**: *"when you wanna copy old statics, I
+Henrik, on the Sets tab's **Manageâ€¦ â†’ Copy from**: *"when you wanna copy old statics, I
 want it to enable copying old FFXI-LAC Dynamic sets. So when it sees a dynamic set, it's
-old FFXI-lac… If set names collide, prioritize the dynamic ones."* The purge made the
-LuaAshitacast tree read-only import territory, not deleted — and the import door was
+old FFXI-lacâ€¦ If set names collide, prioritize the dynamic ones."* The purge made the
+LuaAshitacast tree read-only import territory, not deleted â€” and the import door was
 only half open: a legacy `<JOB>.lua` and its pre-profiles backup carry **two** kinds of
 source side by side, LAC's statics at the root and dlac's OWN `sets.Dynamic` block from
 before profile storage existed, and only the statics were ever listed. The reader had
-even said so out loud since the migration landed — *"the pre-migration backup: statics
+even said so out loud since the migration landed â€” *"the pre-migration backup: statics
 only, never Dynamic (reading it again would resurrect deleted sets)"*. That fear was
 right about the **sets root** and wrong about the **picker**: the danger was a deleted
 set looking *live*, not a deleted set being *offerable*. So the block is harvested into
-its own list (`profilesets.lacSetNames` / `getLacSets`) that never touches the root —
+its own list (`profilesets.lacSetNames` / `getLacSets`) that never touches the root â€”
 `liveSetNames` stays exactly the trigger-target authority it was (`PSL7/8`).
 
 One exception falls out of the same rule: the **unmigrated** character, whose job file
 IS the live Dynamic source. There the same block is already the set list, so offering it
-would list every set twice — the harvest skips an *adopted* block (`PSL1/2`). The
+would list every set twice â€” the harvest skips an *adopted* block (`PSL1/2`). The
 collision rule is Henrik's, one line, in the pure layer: `setimport.mergeLegacySources`
 merges statics and old dynamics into one name-sorted column, dynamics claim their names
 first, so a set that grew from a static into a Dynamic set imports as what it *became*
 (`AQ*`). The first cut of the column presented that split as one blue heading with dim
-`Dynamic` / `Static` sub-headers, and Henrik bounced it immediately — *"Static atm is
-greyed out like dynamic, so it's hard to notice… even I got confused"*. It ships as TWO
+`Dynamic` / `Static` sub-headers, and Henrik bounced it immediately â€” *"Static atm is
+greyed out like dynamic, so it's hard to noticeâ€¦ even I got confused"*. It ships as TWO
 headings in the same list-header blue, **Old FFXI-LAC sets** above **Old Static Sets**,
 each naming what its rows ARE; an empty group draws no heading. Dim is for things you
-may ignore, and a group label is never one of them. The import itself reuses the pinned `importStaticSet` transform — but **not**
+may ignore, and a group label is never one of them. The import itself reuses the pinned `importStaticSet` transform â€” but **not**
 its not-best-first warning: that divergence (ADR 0008, dlac takes the highest item-Level
 rung where LAC took the first in the list) is a LuaAshitacast-static fact. An old dlac
 Dynamic set was always read by the highest-Level rule, so importing one reproduces
@@ -6498,33 +6498,33 @@ exactly what it did, and a warning there would be noise about nothing.
 **Two live bugs surfaced from reading the real files before shipping** (artifacts first,
 not theory). *One:* `profiles.backupPath` composes off the native home only, but a
 character migrated in the LAC-tree era left its pre-profiles originals under
-`luashitacast\<char>\backups\pre-profiles\` — and its live job file is a shim. Copy-from
+`luashitacast\<char>\backups\pre-profiles\` â€” and its live job file is a shim. Copy-from
 had therefore been listing **nothing at all** for such a character: 5 SAM + 10 WAR
 statics on this very install, invisible. New `profiles.legacyBackupPath` (allowlisted
 door, PRG1) adds that home as a second read tier. *Two:* the sets sandbox handed legacy
-files the **real** gear table, so one unowned weapon category — `gear.Main.Club` on a
-character who never scanned a club — nil-indexed the whole chunk away and took every
+files the **real** gear table, so one unowned weapon category â€” `gear.Main.Club` on a
+character who never scanned a club â€” nil-indexed the whole chunk away and took every
 static in the file with it, silently. It now hands them `profiles._wrapGear`, the same
 missing-safe read proxy the profile sets loader has always used (present tables pass
 through by identity; absent ones read nil / an empty category).
 
-**Status:** on `dev`, addon `2026.07.28c` → **`2026.07.28d`**, engine untouched (GUI +
+**Status:** on `dev`, addon `2026.07.28c` â†’ **`2026.07.28d`**, engine untouched (GUI +
 readers only). Tests `AQ*` (the merge rule) and `PSL*` (the reader, all three storage
 shapes). Suites **4114 + 693**, green on Windows lua and WSL lua5.4. Driven headlessly
 against this install's real files first: BLU surfaces 8 old FFXI-LAC dynamic sets
 (`Pollen`, `BlueMagic`, `Requiescat` exist *nowhere else* today), and importing `Idle`
-resolves 15 slots of ordered candidates. **FIELD-CONFIRMED the same day** — *"looks good
-and works"* — and **ACCEPTED** for the next promotion (*"have it ready to merge to
+resolves 15 slots of ordered candidates. **FIELD-CONFIRMED the same day** â€” *"looks good
+and works"* â€” and **ACCEPTED** for the next promotion (*"have it ready to merge to
 main"*); it sits in the merge queue with `4d9d7f0` (Scroll Lock), which `dev`'s
 whole-or-not promotion carries along. One judgment call left standing, deliberately: on a
 job whose pre-profiles backup was migrated whole, the FFXI-LAC list repeats names you
-already have live (WHM lists 19). That is honest — they are the pre-migration *versions*,
-and the "New set(s)" path lands them as `_Copy` — but if it ever reads as noise, hiding
+already have live (WHM lists 19). That is honest â€” they are the pre-migration *versions*,
+and the "New set(s)" path lands them as `_Copy` â€” but if it ever reads as noise, hiding
 names that already exist live is a one-line filter.
 
 ---
 
-## 2026-07-28 — "table index is nil": the file that told us its own shape, and we did not listen
+## 2026-07-28 â€” "table index is nil": the file that told us its own shape, and we did not listen
 
 The second field report from Henrik's friend (`Abraxis_42505`), one screenshot:
 
@@ -6537,12 +6537,12 @@ He was on a **new dlac install** and *"can't get all the gear in"*. Auto-sync re
 its own, so the line kept coming back.
 
 **The artifacts settled it in minutes, and the first theory was wrong.** He sent
-`gear.lua` plus fourteen backups. All fifteen were **byte-identical** (md5 `861d7c6f…`,
-261,341 bytes) — proof the rails held: `safewrite.replaceLua` validates *before* it
+`gear.lua` plus fourteen backups. All fifteen were **byte-identical** (md5 `861d7c6fâ€¦`,
+261,341 bytes) â€” proof the rails held: `safewrite.replaceLua` validates *before* it
 touches the live file, so nothing was ever written, and each aborted commit had simply
 backed the same file up again. The standing hypothesis walking in was that his `gear.lua`
 was already corrupt and `dlac.lua`'s boot preload was silently falling back to the empty
-template. **It was not.** His file runs clean — 691 entries — and it is internally
+template. **It was not.** His file runs clean â€” 691 entries â€” and it is internally
 consistent:
 
 ```
@@ -6550,7 +6550,7 @@ Main  categories=12   Range categories=8   Ammo categories=3   (everything else 
 ```
 
 It is a legacy LuAshitacast file: it nests **Ammo** by weapon category
-(`Archery`/`Marksmanship`/`Throwing`), and its own trailer declares exactly that —
+(`Archery`/`Marksmanship`/`Throwing`), and its own trailer declares exactly that â€”
 `if slotName == "Main" or slotName == "Range" or slotName == "Ammo" then`. Which slots
 nest is **a property of the file**, written down in the file, and dlac never read it:
 
@@ -6558,7 +6558,7 @@ nest is **a property of the file**, written down in the file, and dlac never rea
 local WEAPON_SLOTS = { Main = true, Range = true };   -- category-nested slots (Ammo is flat)
 ```
 
-So `spliceStaging` filed new ammo flat and dropped it in right after `    Ammo = {` — as
+So `spliceStaging` filed new ammo flat and dropped it in right after `    Ammo = {` â€” as
 a **sibling of the category tables**. Reproduced against his real file with one item:
 
 ```
@@ -6571,22 +6571,22 @@ a **sibling of the category tables**. Reproduced against his real file with one 
 
 That text **parses**, which is why the parse check waved it through. Then the trailer
 descends three levels into `Ammo`, reaches `SilverArrow`'s own fields, and evaluates
-`("Silver Arrow").Name` — indexing a string is legal and yields nil — so
-`NameToObject[nil] = …` → **table index is nil**, blamed on the trailer. His 9765 checks
+`("Silver Arrow").Name` â€” indexing a string is legal and yields nil â€” so
+`NameToObject[nil] = â€¦` â†’ **table index is nil**, blamed on the trailer. His 9765 checks
 out exactly: his trailer's weapon-branch assignment sits at line 8880 and his staging
 batch added 885 lines. 8880 + 885 = 9765.
 
 And because commit is **all-or-nothing**, one bad ammo entry blocked *every* slot. The
-batch re-staged on the next auto-sync and aborted again — fifteen identical backups in
+batch re-staged on the next auto-sync and aborted again â€” fifteen identical backups in
 ninety minutes, and not one item in.
 
 ### The rule that came out of it
 
 **A file's shape is data, not an assumption.** `gear.lua` carries its own nesting rule in
 its own trailer; any writer that splices into it has to *read* that, or it is guessing
-about someone else's file. New `slotShapes(lines)` decides per slot from the text — an
-8-space child carrying its own `Name = "…"` is an ENTRY, one holding only deeper tables
-is a CATEGORY (a multi-line `Stats = {}` block does not fake a category, `GS3`) — and a
+about someone else's file. New `slotShapes(lines)` decides per slot from the text â€” an
+8-space child carrying its own `Name = "â€¦"` is an ENTRY, one holding only deeper tables
+is a CATEGORY (a multi-line `Stats = {}` block does not fake a category, `GS3`) â€” and a
 disagreement now **aborts naming the slot** instead of writing a file that cannot load:
 
 ```
@@ -6597,24 +6597,24 @@ dlac writes it flat.
 
 ### Two more, from the same family: readers that disagree with the file
 
-**The error named the trailer, never the cause.** `gear = {…}` is fully built before the
-trailer runs, so even a trailer blow-up leaves the table sitting there — `gearProblems`
+**The error named the trailer, never the cause.** `gear = {â€¦}` is fully built before the
+trailer runs, so even a trailer blow-up leaves the table sitting there â€” `gearProblems`
 now walks it and reports `gear.Ammo is category-nested (Archery, Marksmanship, Throwing)
 but SilverArrow sits directly under it (line 3356) -- wrong depth` instead of a line
 number ~6400 lines away. It is deliberately shape-**agnostic**: it flags a slot that
-*mixes* entries with categories, a child that is neither, an entry with no `Name` — never
+*mixes* entries with categories, a child that is neither, an entry with no `Name` â€” never
 "you nested a slot we write flat", because that is the file's business. A category is
 identified structurally (a table with no `Name` that *holds* named tables), not by
 head-count, so one new entry beside three categories and thirty beside three read the
 same way round (`SH12-17`).
 
 **And a latent one, found while fixing the first.** `parseGearEntries` (fix/dedupe/prune)
-tolerated a trailing `-- comment` on a header — pinned by test `D`, after 25 hand-
+tolerated a trailing `-- comment` on a header â€” pinned by test `D`, after 25 hand-
 annotated entries went invisible to `/dl prune` in the field. But `parseStaging` and
 `indexGear` carried their own stricter `= {%s*$` patterns. A commented **category** header
 was therefore invisible to `indexGear` alone, so commit "created" a section that already
 existed; Lua's last-key-wins threw the new block away; and commit **reported success while
-the items silently never landed** — so they scanned as new again forever, the file growing
+the items silently never landed** â€” so they scanned as new again forever, the file growing
 by a dead duplicate block each pass. Demonstrated before the fix:
 
 ```
@@ -6630,7 +6630,7 @@ All three commit-side readers now share `hdrAt`/`closeAt` with `parseGearEntries
 `dlac.lua`'s boot preload and `gearui.refreshGear` both swallowed an unloadable
 `gear.lua` and carried on with the bundled empty template: the GUI shows no gear, every
 scan calls every item new, and nothing anywhere says a real inventory is on disk one bad
-entry away. Both say so now. That failure mode did *not* fire here — but it is precisely
+entry away. Both say so now. That failure mode did *not* fire here â€” but it is precisely
 the shape of the theory that cost the first half hour, and it was one `pcall` away from
 being true.
 
@@ -6644,7 +6644,7 @@ Henrik, on reading the diagnosis: *"how can a LEGACY LAC gear.lua come here? He 
 DLAC just now, and we purged most connections to it yesterday."*
 
 Fair question, and the answer was not the migration. **dlac put it there itself.**
-`setupui.seedGearFile` — the fresh-install auto-setup (`autoSetupNative`, issue #91) —
+`setupui.seedGearFile` â€” the fresh-install auto-setup (`autoSetupNative`, issue #91) â€”
 seeded a new character's gear inventory by *preferring* an existing
 `<charBase>\ffxi-lac\gear.lua`, falling back to the bundled empty template only when there
 wasn't one. Its own comment said why: *"a returning player keeps their scanned
@@ -6676,58 +6676,58 @@ locally in DLAC. ONLY FFXI-LAC integration we should have, is SOLELY on importin
 gear, which has been solved by another agent."*
 
 The courtesy was worth less than it looked even when the shapes matched. A seeded
-ffxi-lac file has **no `Id`** on any entry — and `RSlot` and the Range/Ammo `Pair` key are
+ffxi-lac file has **no `Id`** on any entry â€” and `RSlot` and the Range/Ammo `Pair` key are
 both looked up BY id, so reserved-slot conflict handling and ammo pairing were dead for
 every item in it. Its `Stats` blocks are inert (dlac derives stats from the catalog by
-id). And its contents are a *catalogue* — Abraxis's carries transcription comments like
+id). And its contents are a *catalogue* â€” Abraxis's carries transcription comments like
 `-- *** NEW CATSEYEXI AMMO (None specifically listed on the page) ***` and
-`Jobs = {"All Jobs"}`, which is not even dlac's sentinel (`"All"`) — not the player's
+`Jobs = {"All Jobs"}`, which is not even dlac's sentinel (`"All"`) â€” not the player's
 bags. `/dl scan` rebuilds the lot correctly, from the real bags, in seconds. A head start
 that is wrong in three dimensions is not a head start.
 
 `seedGearFile` now always copies dlac's own bundled template. Guard `SH21` fails if any
 core file reads a **path** out of the ffxi-lac tree again; `SH22` pins the door that must
-survive — the **content** sniff (`text:find('ffxi-lac')` → `st = 'ffxilac'`) that routes an
+survive â€” the **content** sniff (`text:find('ffxi-lac')` â†’ `st = 'ffxilac'`) that routes an
 old profile into the sets migration. The guard was negative-tested against the pre-change
 file: it flags the old `seedGearFile` and passes the new one. Prose mentions of ffxi-lac
-are deliberately untouched — this is a path guard, not a word ban.
+are deliberately untouched â€” this is a path guard, not a word ban.
 
 *(Housekeeping in the same commit: this session's `GS1-20` were renamed `SH1-20`. A
-parallel session landed its own `GS.` block — the groups auto-import scanner — and two
+parallel session landed its own `GS.` block â€” the groups auto-import scanner â€” and two
 blocks answering to `GS1` makes a failure line meaningless. Committed work renames itself;
 in-flight work is left alone.)*
 
-## Session "three faults, one sentence" (2026-07-28, on `dev` — addon 2026.07.28m → n)
+## Session "three faults, one sentence" (2026-07-28, on `dev` â€” addon 2026.07.28m â†’ n)
 
 The second tester tried to import his SCH **Cure** set with the day's new FFXI-LAC column
-and got *"Created 0 new sets — nothing created, 1 skipped: no owned/known gear."* Henrik
+and got *"Created 0 new sets â€” nothing created, 1 skipped: no owned/known gear."* Henrik
 sent the file. It has **three** independent faults, and dlac answered all three with that
-one sentence — which is hard rule 12 in its purest form.
+one sentence â€” which is hard rule 12 in its purest form.
 
 **1. The file does not parse.** Line 266 ends `gear.Back.MistSilkCape` with no comma, so
 line 267 is a syntax error (`'}' expected (to close '{' at line 265)`). `loadfile` returns
 nil, `sandboxSets` returns nil, and the reader shrugged: an unreadable legacy file and an
-absent one were the same silence. Now they are not — `sandboxSets` distinguishes "not
+absent one were the same silence. Now they are not â€” `sandboxSets` distinguishes "not
 there" (nothing to say) from "there and will not parse", and `legacyDiag()` carries the
 file name plus **the parser's own message** into the Copy-from popup in red. His evening
 becomes a ten-second fix.
 
-**2. `require("ffxi-lac\gear")`** — dlac's own library under dlac's former name. No such
+**2. `require("ffxi-lac\gear")`** â€” dlac's own library under dlac's former name. No such
 module on a dlac install, so the soft require handed back the STUB, whose `__index`
 returns itself: every `gear.Main.Club.MapleWand` in the file became the stub object. The
 sets listed perfectly (the block's KEYS are real) and every entry resolved to nothing.
-Worse, the stub reached `string.lower(ref.Name)` as a *table*, and that error — caught by
-the outer pcall — discarded the whole set. Module names are aliased onto dlac's now, so
+Worse, the stub reached `string.lower(ref.Name)` as a *table*, and that error â€” caught by
+the outer pcall â€” discarded the whole set. Module names are aliased onto dlac's now, so
 the file resolves against **this character's** inventory. Measured on his file with a real
 gear.lua: from 0 usable entries to `Head`, `Body`, `Hands`, `Legs`, `Feet`, `Back`,
 `Waist`, `Ring1`, `Ring2`, `Ear1`, `Sub` all landing.
 
-**3. `gear.Ammo.Throwing.MorionTathlum`** — the pre-flat Ammo shape. Against today's flat
+**3. `gear.Ammo.Throwing.MorionTathlum`** â€” the pre-flat Ammo shape. Against today's flat
 `gear.Ammo` that is `nil.MorionTathlum`, an error that takes the file with it; and where
 the old `_wrapGear` answered `nil` instead, the hole **truncated the `ipairs` walk** and
-silently dropped every candidate after it (60 entries → 10 on a foreign inventory). The
+silently dropped every candidate after it (60 entries â†’ 10 on a foreign inventory). The
 importer now reads through `legacyGear`, whose **MISSING sentinel** answers any key at any
-depth and is skipped by the resolver — Henrik's ruling, verbatim: *"If pieces don't exist,
+depth and is skipped by the resolver â€” Henrik's ruling, verbatim: *"If pieces don't exist,
 just skip them and move on like he doesn't have it."* A missing piece keeps its place in
 the list instead of ending it.
 
@@ -6736,23 +6736,23 @@ reads `Name`/`Id` **typed** rather than merely non-nil (a sentinel answers every
 something), and `importStaticSet` guards each candidate with its own pcall, so a resolver
 that throws costs one entry instead of a set. `SH21`, landed hours earlier by the parallel
 session, is respected in the letter and the spirit: this renames a MODULE and never opens
-a file in that tree — the prefix is written as a character class so a path guard reading
+a file in that tree â€” the prefix is written as a character class so a path guard reading
 literals can't mistake it, exactly the convention PRG1 comments already use.
 
 **Status:** on `dev`, addon **`2026.07.28n`**, engine untouched. Tests `PSM0-PSM14` drive a
-fixture shaped like his file — old require name, nested Ammo, a missing comma — and pin
+fixture shaped like his file â€” old require name, nested Ammo, a missing comma â€” and pin
 the whole chain: the alias resolves, an unknown piece keeps its slot and is skipped, the
 import lands what he HAS, a throwing resolver costs one candidate, and the unparsable file
 reports itself while an absent one stays quiet. The section installs a `setfenv` polyfill
-so 5.4 exercises the LuaJIT sandbox path that all of this lives in — untested until now.
+so 5.4 exercises the LuaJIT sandbox path that all of this lives in â€” untested until now.
 Suites **4198 + 707**. **Promoted to main the same hour, deliberately un-field-confirmed**
-(Henrik: *"push to main so he can test"*) — the tester cannot re-test the thing that broke
+(Henrik: *"push to main so he can test"*) â€” the tester cannot re-test the thing that broke
 for him until it is on main, so the usual field-confirm-then-promote order is inverted on
 purpose here, and the merge queue records that. **FIELD-CONFIRMED within the hour: "it
 works."**
 
 One correction to the story, and it matters for the next legacy file: the missing comma was
-**not** rot in an ancient file — it was a fresh hand edit. He had pulled an even-older
+**not** rot in an ancient file â€” it was a fresh hand edit. He had pulled an even-older
 aug-suffixed entry (`MistSilkCapeAug`, from a generation of the format that baked the
 augment into the key) out of that list and not put the comma back. So a legacy job file is
 not a fossil to be read once; it is a file people still edit, with the ordinary consequence.
@@ -6761,21 +6761,21 @@ a Tuesday.
 
 ## Session "the Ventures rings" (2026-07-28, on `dev`)
 
-Henrik, with two wiki links: the Gear Helpers → **Crafting Gear** panel needs the EXP
-Ventures exchange in it — Craftkeeper's Ring 1,000, Artificer's Ring 1,000, Craftmaster's
-Ring 2,000 — and the note that Craftmaster's Ring upgrades to **+1** through Synergy.
+Henrik, with two wiki links: the Gear Helpers â†’ **Crafting Gear** panel needs the EXP
+Ventures exchange in it â€” Craftkeeper's Ring 1,000, Artificer's Ring 1,000, Craftmaster's
+Ring 2,000 â€” and the note that Craftmaster's Ring upgrades to **+1** through Synergy.
 
-**The rings were never invisible to the ENGINE — only to the player.** All four are in the
+**The rings were never invisible to the ENGINE â€” only to the player.** All four are in the
 catalog with their synth mods (`SynthMaterialLoss` / `SynthSuccessRate` / `SynthHQRate` 1
 and 2), and the craft ladders are data-driven off exactly those stats, so an owned
 Craftmaster's Ring has been getting equipped on the `hq` goal all along. What the panel
-showed was guild torques, guild rings and four universals — nothing that mentions Populox.
+showed was guild torques, guild rings and four universals â€” nothing that mentions Populox.
 So a player reading the panel to answer *"what should I go get?"* was told to grind eight
 guilds and never told about a 2,000-point ring that beats most of them.
 
 **Where they went.** The matrix is three columns (Torques | Rings | Universals) at a fixed
 `colW` pitch. The Ventures pieces are rings, but they went in the **third** column, under
-its own `Ventures` divider — because the useful part is the *price*, a per-row tag has to
+its own `Ventures` divider â€” because the useful part is the *price*, a per-row tag has to
 fit, and only the rightmost column has nothing to its right to collide with. Midras's Helm
 +1 moved out of the plain universals list into the same block: it is the same Populox
 exchange at 3,000, and one home per item beats two. Craftmaster's Ring +1 closes the block
@@ -6785,71 +6785,71 @@ tagged `synergy`.
 label carries where Populox stands (Upper Jeuno I-11) and the point that these carry a flat
 synth mod, so unlike guild gear they count for *every* craft. Each price tag carries its own
 hover. The `Torques` and `Rings` column headers became help labels too, since the Artisan's
-+1 halves come off the same furnace — one string, re-worded for the Rings column by gsub, so
++1 halves come off the same furnace â€” one string, re-worded for the Rings column by gsub, so
 the two can never drift apart.
 
-**One real bug fell out of listing them.** `CRAFT_UI.level()` — the coverage light on the
-Gear Helpers row — only counted guild torques/rings. A character whose only craft gear was a
+**One real bug fell out of listing them.** `CRAFT_UI.level()` â€” the coverage light on the
+Gear Helpers row â€” only counted guild torques/rings. A character whose only craft gear was a
 Craftmaster's Ring read **"nothing applicable"** while the ladder was busy equipping it.
 Populox rings now count as level 1 alongside guild gear, and the level-1 label changed from
 "craft-specific gear" to "basic craft gear", which is what it now means.
 
 **Sources, and one discrepancy worth recording.** Costs and the furnace recipe are the
 CatsEyeXI wiki (`Content/Ventures`, `Systems/Synergy`); the mods are the server's own
-`item_mods.sql` (28585/28586/28587). CatsEyeXI never implemented the synergy minigame —
+`item_mods.sql` (28585/28586/28587). CatsEyeXI never implemented the synergy minigame â€”
 you trade to the furnace in Port Jeuno; there is no skill, fewell or rank check, and the
 +1 wants 3x Guild Token. **The local server clone still calls id 26171 `rufescent_ring`;
 the shipped catalog (scraped from the live API) calls it Craftmasters Ring +1 with
 `SynthHQRate` 2, and the wiki agrees with the catalog.** The clone is simply behind the
-live server on this item — worth remembering the next time the clone and the catalog
+live server on this item â€” worth remembering the next time the clone and the catalog
 disagree about a custom item: recency, not authority, is usually the difference.
 
 **Status:** **ON MAIN** (promoted the same hour on Henrik's *"push to main"*, deliberately
-ahead of its field round — the second such inversion today, and a cheaper one: no scoring
-change, so the worst case is a panel column reading wrong). Addon **`2026.07.28o`**, engine untouched — display and one coverage
+ahead of its field round â€” the second such inversion today, and a cheaper one: no scoring
+change, so the worst case is a panel column reading wrong). Addon **`2026.07.28o`**, engine untouched â€” display and one coverage
 light, no scoring change. New smoke section `CV0-CV14` drives the **real** craft detail view
 against a stub imgui: the view had no render coverage at all (section 8 only exercised the
 manifest ladders) and `renderTab` swallows render errors in a pcall, so a typo'd upvalue
 would have blanked the panel in-game and passed every load test. It asserts the rows, the
 prices, the hovers and both coverage-light states. Suites **4198 + 726**.
 
-**Known, not changed:** Craftkeeper's Ring scores only on the `nq` goal — `SynthMaterialLoss`
+**Known, not changed:** Craftkeeper's Ring scores only on the `nq` goal â€” `SynthMaterialLoss`
 is read into `nqScore` and nowhere else, so it can never be picked for `hq` or `skillup` even
 when the slot is empty. Arguably material loss helps every goal. That is a *scoring* change
 (it moves what the engine equips), so it waits on Henrik rather than riding a display commit.
 
-## Session "the bag you are carrying is not somewhere else" (2026-07-28, on `dev` — addon `2026.07.28p`)
+## Session "the bag you are carrying is not somewhere else" (2026-07-28, on `dev` â€” addon `2026.07.28p`)
 
 Henrik, from the field: the E-Box Restock **yellow** icon *"is showing itself if we have items
 in our field containers (mog sack, mog case and mog satchel). This is wrong. It should only
 show if the item is in mog house containers, such as mog locker, storage etc."*
 
 **The premise was wrong, not the code.** Three days earlier (v2 grill C2) the icon was
-specified as *"you own these — just not in Inventory"*, counting Satchel/Sack/Case as places
-you cannot use an item from. Mechanically true; in play, false — those bags are **on your
+specified as *"you own these â€” just not in Inventory"*, counting Satchel/Sack/Case as places
+you cannot use an item from. Mechanically true; in play, false â€” those bags are **on your
 person**, one drag away, and the game will happily let you fix that yourself in the field. So
 the icon lit up about stock already in the player's pocket, and its click spent **box** stock
 buying duplicates of it (the deliberate over-draw, hover-explained, that C2 signed off on).
 The stock that genuinely cannot answer a shortfall out here is what sits at the **Mog House**:
-Safe (1), Storage (2), Locker (4), Safe 2 (9) — you cannot reach any of it until you go home,
+Safe (1), Storage (2), Locker (4), Safe 2 (9) â€” you cannot reach any of it until you go home,
 which is exactly when the box is the only fix.
 
-**What changed.** `rw.otherBagNeed`/`needsOtherBag` → **`homeStockNeed`/`needsHomeStock`**, ctx
-`{ inv, other }` → `{ held, stored }`. `held` is now *green's own on-hand* — Inventory +
-Satchel + Sack + Case + what your quivers hold — so a Mog Case copy silences yellow exactly the
+**What changed.** `rw.otherBagNeed`/`needsOtherBag` â†’ **`homeStockNeed`/`needsHomeStock`**, ctx
+`{ inv, other }` â†’ `{ held, stored }`. `held` is now *green's own on-hand* â€” Inventory +
+Satchel + Sack + Case + what your quivers hold â€” so a Mog Case copy silences yellow exactly the
 way it already silenced green. `stored` is a second bag pass over the Mog House containers
 (`restockui.homeScan`, the field scan refactored into a shared `scanBags`; quivers are **not**
-unpacked there — a pouch in the Safe is stock you cannot reach either, and this icon reports
+unpacked there â€” a pouch in the Safe is stock you cannot reach either, and this icon reports
 *where things are*, not what they would be worth once opened).
 
 **The over-draw died with the premise.** Yellow now plans on green's arithmetic, restricted to
 the flagged items, because there is no longer a reachable copy to double up on. What keeps it
 from being a second green button: **it does not require the box to stock the item**, so it
-fires precisely when green is silent — *"the box can't help and yours are at home"* is the most
+fires precisely when green is silent â€” *"the box can't help and yours are at home"* is the most
 useful sentence this icon ever says, and the dimmed-button path already had the words for it.
 
 **Wardrobes are not Mog House bags here.** They hold gear only, and gear in a wardrobe is
-equippable where you stand — the opposite of the thing being flagged. Temporary (3) is out for
+equippable where you stand â€” the opposite of the thing being flagged. Temporary (3) is out for
 the same reason in reverse: event items are not stock. That the ruling *is* a bag split, and a
 split that will be tempting to widen later, is why `restockui._HOME_BAGS` / `._FIELD_BAGS` are
 test seams and **RS9h** asserts the two lists are disjoint and that 5/6/7 are on the carried
@@ -6859,7 +6859,7 @@ icon. RS9f pins the new distinctness: an empty box still raises it (`plan.badge 
 
 **Same session, second ruling: the add-picker stops asking you to walk over** (`2026.07.28q`).
 Henrik: *"Trove can always search items when out in the field, maybe we should remove that
-distance limitation as well for search only."* He is right, and the sibling proves it —
+distance limitation as well for search only."* He is right, and the sibling proves it â€”
 `trove/plugins/ebox.lua` has **no distance or zone check on any 0x1A4 action**; it sends
 SEARCH, GET_SUMMARY, GET_CATEGORY and WITHDRAW whenever its window is open. So the server
 answers a search wherever you stand, and the near-box rule on *ours* was dlac's invention, not
@@ -6873,25 +6873,25 @@ was inherited from the fetch gate by proximity of code, not of reasoning.
 The NFR is untouched, and it is worth saying why rather than asserting it: the rule this
 client exists to serve is *don't put traffic on the wire that nobody asked for*. A search is
 one packet **per explicit click**, still behind one-in-flight and `MIN_GAP`. What stays
-near-box is exactly the traffic with no click behind it — `verifyCategories`, the automatic
-counting — plus withdrawals, which Henrik scoped out himself ("for search only"). The panel's
+near-box is exactly the traffic with no click behind it â€” `verifyCategories`, the automatic
+counting â€” plus withdrawals, which Henrik scoped out himself ("for search only"). The panel's
 proximity line now says what it really means (*"get within 5 to fetch"*), and `/dl debug
-ebox`'s *"too far to query"* became *"too far to fetch or count"* — a readout that overstates
+ebox`'s *"too far to query"* became *"too far to fetch or count"* â€” a readout that overstates
 a gate teaches the wrong model to whoever reads it next. `EBC21d` pins the decision headlessly:
 `nearBox()` false, `search()` still returns true.
 
-**Deferred, and now narrower:** C2's option (b) — *moving* items instead of buying more — only
+**Deferred, and now narrower:** C2's option (b) â€” *moving* items instead of buying more â€” only
 ever applied to the field-bag case this revision retires. If the 0x029 move path ever lands it
 belongs in the panel as a convenience, not on this icon. Suites **4201 + 726**, both runtimes.
 Not yet field-tested: the icon's whole trigger now depends on Mog House containers being
 readable from memory while you stand in the field. `gear/gearcheck.lua` has warned *"it is in
-Mog Safe"* during play since the native era, so the reads are proven — but proven for gear in
+Mog Safe"* during play since the native era, so the reads are proven â€” but proven for gear in
 the Safe, not for a Locker on this server; Henrik confirms it at a box.
 
-## Session "the Status column becomes a switch" (2026-07-28, on `dev` — addon `2026.07.28u`)
+## Session "the Status column becomes a switch" (2026-07-28, on `dev` â€” addon `2026.07.28u`)
 
 Henrik, going down the Gear Helpers list row by row: Elemental Staff, Elemental Obi, Oneiros
-Grip and E-Box Restock are *"fine, don't touch"* — Crafting, Gathering, Fishing and Chocobo
+Grip and E-Box Restock are *"fine, don't touch"* â€” Crafting, Gathering, Fishing and Chocobo
 each get **"an on or off slider (same as hobby, only one can be active)"**.
 
 The four he named are exactly `idleexcl.MEMBERS`, which is the whole reason the ruling is
@@ -6899,35 +6899,35 @@ coherent rather than cosmetic: those four rows describe something you **arm**, a
 five describe something that is either always available (a slot rule waiting for its `dlac:`
 entry) or switched somewhere else. A column that says *"FULL KIT -- awesome"* answers "how good
 is my gear", which the row's **name colour** already answers on the same line. It never
-answered "is it running right now" — and for an armed hobby that is the only question the list
+answered "is it running right now" â€” and for an armed hobby that is the only question the list
 view is asked.
 
 **Nothing new was invented to do it.** The pill is `craftbar.onOffSwitch` (its sixth surface),
 and the switch behind it is the watcher's own `setEnabled` / `setAutoHelm` reached through a new
 `idleexcl.setOn(key, on)`. That indirection is the point: `idleexcl` already owned *which four*
-and *how each stands down* (`disable()`, HELM clearing both flags), but could only ever disarm —
+and *how each stands down* (`disable()`, HELM clearing both flags), but could only ever disarm â€”
 the arming half lived scattered in each caller. `setOn` completes the table with `enable()` and
 routes through the watcher, so `guardActivate` still refuses a second hobby, in chat, from
 inside the watcher. The list surface has **no lock logic of its own**; it returns the state it
 did not reach and the pill snaps back. Lock-while-active, never auto-disarm (ADR 0017), holds
-unchanged — and the hover names the blocker *before* the click, which the bar could not do
+unchanged â€” and the hover names the blocker *before* the click, which the bar could not do
 because it only ever shows one hobby at a time.
 
 **Where the coverage sentence went.** Into the pill's hover (`Your gear: FULL KIT -- awesome
-(HELM+3, Surv+8).`) — the panel-text standard, and the detail view is still one click away.
+(HELM+3, Surv+8).`) â€” the panel-text standard, and the detail view is still one click away.
 The row name keeps its coverage ramp, so the green-to-red glance survives.
 
 **The one real trap was ImGui, not product.** These rows are drawn as a full-width `Selectable`
-with the three columns painted on top by `SameLine` — so the switch would have sat *inside*
+with the three columns painted on top by `SameLine` â€” so the switch would have sat *inside*
 another item's hit box, and ImGui gives an earlier item's `HoveredId` right of way unless the
 row calls `SetItemAllowOverlap` (which `profilesmenu` feature-detects precisely because not
 every binding exposes it). Rather than depend on that, a pill row **ends its click target at
 570** and the switch starts at 580: the two hit boxes never share a pixel, so there is no
 overlap to resolve and no API to detect. `HP8`/`HP9` pin the widths.
 
-The list view had **zero** render coverage before this — `renderTab` pcalls `renderAutomations`,
+The list view had **zero** render coverage before this â€” `renderTab` pcalls `renderAutomations`,
 so a silent nil global here blanks the entire tab in the field while every load test stays
-green (hard rule 8, the fault this project keeps re-learning). `HP0`–`HP16` now drive the real
+green (hard rule 8, the fault this project keeps re-learning). `HP0`â€“`HP16` now drive the real
 render against a stub imgui: which rows got a pill and which kept their sentence, that ON
 follows the *armed* hobby rather than the row's own coverage, that the coverage line survived
 into the hover, and that a click reaches `setOn` with the right key and direction. `IE7*` pins
@@ -6936,11 +6936,299 @@ into the hover, and that a click reaches `setOn` with the right key and directio
 `false`. Suites **4218 + 751**, both runtimes.
 
 **Field round, same day.** Henrik: *"the on and off syncs to hobby bar as well, so seems to be
-the same listener."* Confirmed — and worth naming precisely, because the mechanism is the
+the same listener."* Confirmed â€” and worth naming precisely, because the mechanism is the
 opposite of a listener. Nothing subscribes to anything: every surface **re-reads the watcher's
-live in-memory state each frame** (`idleexcl.getActive()` → `craftwatch.enabled` /
-`helmwatch.autoHelm` / …, one module instance per addon state), so the bar, the badge, the
+live in-memory state each frame** (`idleexcl.getActive()` â†’ `craftwatch.enabled` /
+`helmwatch.autoHelm` / â€¦, one module instance per addon state), so the bar, the badge, the
 detail panels and now the list are all views of the same variable and *cannot* drift. That is
-the same lesson [[ebox-v2-arithmetic-model]] paid for in the other direction — the read that
+the same lesson [[ebox-v2-arithmetic-model]] paid for in the other direction â€” the read that
 looks redundant is what heals a wrong belief. The rule for the next hobby surface: read live,
 never cache an armed flag.
+
+## Session "Arbiter: preserve unknown Claim Priority rows" (2026-07-29, issue #136)
+
+**Theme:** the Claim Priority order file was silently deleting rank rows it did not
+recognize. `arbOrder` (the live view) drops any unknown name â€” correct for the
+arbitration walk and the Priority tab (no ghost rows, resolution unchanged) â€” but that
+same drop ran again at WRITE time: `arbwatch.setOrder` sanitized before serializing, so
+the next drag/save rebuilt the file from known claimants only. An uninstalled module's
+claimant, a future claimant, or a hand-added row lost the player's drag position forever.
+
+**Landed:** a second, WRITE view â€” `arbiter.arbOrderPersist(newOrder, rawSt)` (pure;
+re-exported as `dispatch.arbOrderPersist`, mirrored in `arbwatch.persist` with the same
+keep-in-step discipline as `sanitize`, NK25c). The known rows are ordered by `arbOrder`
+(so a drag, restore-at-default and the ceiling/floor invariants all still hold); each
+unknown row is woven back ANCHORED to the known row it followed in the raw file, so it
+keeps its place relative to the rows around it across any number of reorders. `setOrder`
+now reads the raw (unsanitized) file â€” new `readRawState` seam, shared with `M.order` â€”
+and persists through `persist` instead of `sanitize`.
+
+**Why anchoring, not an absolute index:** a drag operates on the known-only live list, so
+the writer has to re-place the unknown against a list the unknown was never in. Anchoring
+to the preceding known row keeps the row "in the same gap between claimants" no matter how
+the knowns reshuffle around it. Front-anchored unknowns (no known predecessor) sit right
+under the Disabled ceiling; the ceiling/floor are re-pinned last, so a hand-mangled file
+that put an unknown at an extreme can never displace either invariant.
+
+**Reclaim-on-return falls out for free:** once the identity is a KNOWN claimant, `arbOrder`
+finds the row LISTED in the file and honors its saved position over the default â€” the same
+restore-at-default law (v122), read the other way. No new code; ARP5 pins it.
+
+**Engine behavior is unchanged**, so `dispatch.M.VERSION` is NOT bumped: `arbOrderPersist`
+is called only by the addon-side writer, never in the equip/dispatch path, and the arbstate
+file format (`return { order = {...} }`) is untouched â€” it may just carry more names now,
+which the engine already drops on read. Tests ARP1â€“6 (engine seam), AB8â€“8e (writer seam +
+on-disk round-trip), NK25c (fallback mirror). Suites **4237 + 755**, lua5.4.
+
+## Session "Action sequencer + JobHelper row + Reward now" (issue #138, PRD #135)
+
+**Theme:** make the CONTEXT.md **Action sequence** real, demoable by the BST Panel's
+**"Reward now"** button. Builds on the #137 Job helper module system (both on `dev`).
+
+**Landed (four pure cores + live glue, all headless-tested at their seams):**
+- `feature/actionseq.lua` â€” the singleton Action sequencer. `request/tick/arbitrateRequests`
+  drive `claiming â†’ firing â†’ released` / `refused` / `aborted` against an injected io
+  (`worn/blocker/fire/release/emit`). Never-fire-bare (the command fires ONLY after every
+  needed slot verifies worn, and exactly once via the `_fired` latch); a definitive blocker
+  on a needed slot refuses loudly; the gear never landing inside the timeout aborts; success
+  is silent; one sequence live at a time (a started one is never preempted; simultaneous
+  contenders resolve by module order). Live `pump()` (wired in `dlac.lua` d3d_present) reads
+  worn via `dispatch.wornName`, blockers via `disabledOn`/`isLockedSlot`, fires the chat
+  command, releases via `dispatch.kickDefault` (the next arbitration restores gear). Tests AS*.
+- `feature/recast.lua` â€” the ability recast READINESS service (the Central-services gap).
+  `readyFor/rewardReady` â€” reader injected, UNKNOWN reads READY (the courtesy gate; the
+  sequencer's own verify is the real safety net). Reward = ability 103; the recast-timer slot
+  is ported from the Pup-Helper reference and FLAGGED for field verification. Tests RC*.
+- `feature/petfood.lua` â€” the eight-tier pet-food **Ladder** (`pick`): highest tier first,
+  gated by equip level and equippable-bag stock; carrying none is a loud refusal. Tier data
+  is local (the catalog ships only six of eight â€” Gamma/Epsilon absent). Tests PF*.
+- The `JobHelper` claimant row. `arbiter.placeJobHelper` weaves it into the live rank order
+  directly below its anchor (default Locks) â€” deliberately NOT in `ARB_ORDER_DEFAULT`,
+  because its Claim Priority position is per JOB (`jobhelpers.rankAnchorFor/setRankAnchor/
+  placedOrder/moveRankRow`, stored in a new `rank = {[JOB]=row}` config block). A CLAIMANTS
+  row reading `actionseq` rides the standing rank walk; `dispatch.jobHelperPlace` runs it
+  every Default and for `/dl prio`; the row hides with zero modules. Rendered "Job helper"
+  via `claimantLabel`. Tests JHR*/JHW* + the CR* registry pins updated (JobHelper is the one
+  per-job "extra" not in the global default order).
+- `jobhelpers/bst/init.lua` â€” the "Reward now" button: pick food, overlay an optional Reward
+  set, open the sequence, gray while Reward is down; main-job + module-activity gates apply.
+
+**Why the per-job placement is not in the global arbstate:** the row's position must be
+per job while every other claimant is global, so it is placed live (`placeJobHelper`) on top
+of the sanitized global order rather than persisted into it â€” which also makes "preserved
+positions stay dormant with zero modules" fall out of the config store for free, mirroring
+the #136 unknown-row preservation slice.
+
+**Engine behavior:** a new claimant row + a new sig leg (APPENDED, so the nine existing legs
+stay byte-identical and no live session retraces until a sequence claims). `dispatch.M.VERSION`
+was bumped 154 â†’ **155** at the merge (the new claimant row IS a handshake change).
+Both suites green (**4332 + 789**, lua5.4). Player-facing strings and the
+Reward command token await the maintainer's sign-off and a field round.
+
+## Session "BST Fight: the engage/target edge service + the three-way switch" (issue #139, PRD #135)
+
+**Theme:** the first Job-helper behavior that acts on its OWN signal instead of a button â€”
+and the central service that supplies the signal. Builds on #137 (module system) and #138
+(Action sequencer + the `JobHelper` claimant row), both on `dev`.
+
+**Landed:**
+- `feature/engagewatch.lua` â€” the **engage/target edge** central service (new row in the
+  architecture doc's Central-services table). ONE decoder for both battle edges off the
+  outgoing action packet: `0x01A` category `0x02` = **engage**, category `0x0F` = **retarget**
+  (what auto-target rolling to the next mob sends). The entity comes from the PACKET
+  (UniqueNo u32 @0x04, ActIndex u16 @0x08) and travels with the edge; a **per-target**
+  5-second debounce means the same entity notifies at most once a window while a different
+  one notifies immediately. Subscribers are pcall'd. Tests EDG* replay both packet kinds byte
+  for byte through the pure decode and drive the debounce at the pump seam.
+- `jobhelpers/bst/fight.lua` â€” the three-way **Fight** switch: Off / When I attack (engage
+  edges only) / Follow my target (both). `decide(edge, state)` is pure â€” edge + state in,
+  command decision out â€” so every acceptance criterion is a headless check (BFT*).
+- `jobhelpers/bst/config.lua` â€” the BST Helper's OWN per-character settings file
+  (`<char>\dlac\jobhelper-bst.lua`, `fmt`-versioned, declared keys only, written on mutation
+  only), the PRD's "one config file per module". Fight defaults **off**.
+
+**The three things worth not re-deriving:**
+
+1. **Capture the entity, do not re-read it.** `/pet "Fight" <t>` is the only chat command that
+   can name an arbitrary monster, and `<t>` resolves at EXECUTION time â€” one more auto-target
+   roll and the pet goes at the wrong mob. So the packet's entity is confirmed against the live
+   target before the command is issued, and a positive mismatch cancels the send. An
+   *unreadable* target does not cancel it: a read we cannot make must not silently disable the
+   whole feature. The three states (confirmed / contradicted / unknown) are the point; collapsing
+   them to a boolean loses either the safety or the feature.
+2. **Two gates read UNKNOWN as no, one reads it as yes â€” deliberately.** `active` (the module
+   activity predicate) and `hasPet` must be positively true, which is the opposite of dlac's
+   standing buff-cache discipline ("an unknown read must not flip behavior"). That discipline is
+   about GEAR, where the unknown-reads-as-no branch is the one that changes what you wear; here
+   the unknown-reads-as-yes branch is the one that ISSUES A COMMAND, and AC4 is literal â€” no pet
+   means no command is ever issued, not "a command the client refuses". `targetOk` keeps the
+   original discipline, because there the unknown branch is the passive one.
+3. **Heel needed no code, and that is the design working.** Nothing polls pet status, nothing
+   repeats, nothing retries a refused send: every send traces to one packet the player's own
+   client sent. So a pulled-back pet stays back until the next real edge, and "fire-and-forget"
+   and "no pet-idle gate" (both PRD requirements) turn out to be the same property stated twice.
+   A "pet is idle, nudge it" beat would break all three at once.
+
+**Threading:** the `packet_out` handler decodes three integers and appends to a capped queue â€”
+nothing else. The debounce, the entity-name read and every subscriber callback run on the MAIN
+thread in `pump()`, wired into `dlac.lua`'s `d3d_present` beside the sequencer's. That is the
+chocowatch rule, and the dlacprobe crash is why it exists.
+
+**On "extract the existing inert reference implementation":** the field-proven decode of these
+two edges is `accwatch.lua`'s `/dl acc` engage watch â€” *"Every engage (0x01A action 0x02) AND
+battle-target switch (action 0x0F, auto-target)"* â€” live on the parked `feature/autoacc` branch
+pending GM approval, with an inert byte-identical dev copy at `share/mob-stats/accwatch.lua`
+(reference only, never loaded; the decode here was verified against it at review). `engagewatch`
+is the one LIVE shared implementation; when autoacc lands it subscribes here instead of carrying
+a second copy, and the module header, the Central-services row and this entry all say so.
+
+**Chat stays silent.** Fight fires on every pull, so a line per pull is noise, not news; the
+Panel reports the last decision instead ("sent your pet at Nursery Nazuna", "in town", "no pet
+out"). A refusal here costs nothing, unlike Reward's â€” which is why Reward is loud and this is
+not.
+
+Both suites green (**4429 + 793**, lua5.4). Player-facing strings (**Fight**, *Off* / *When I
+attack* / *Follow my target*) and the exact `/pet "Fight"` command spelling on CatsEyeXI await
+the maintainer's sign-off and a field round.
+
+## dayMatch trigger condition (2026-07-29, ADR 0029, engine v156)
+
+**Theme:** the environment vocabulary gets its missing third. Henrik, field: *"We currently
+have dayWeatherBonus and weatherMatch as conditions in precast and midcast. But we need one
+for dayMatch as well. There are items that give you bonus solely if the day match what you're
+casting."*
+
+**Landed:** `dayMatch` (Precast + Midcast, tier 30, true/false polarity) â€” true when the
+action's element equals TODAY's day element. `dayMatchesAction` (dispatch.lua) reads
+`gData.GetEnvironment().DayElement` â€” the SAME field `netForElement` already scores for the
+obi, so the net's day half and this condition can never disagree â€” cached on `ctx.del`, the
+`ctx.wel` pattern. No action element / Non-Elemental / unreadable day matches NEITHER
+polarity (never fires blind). GUI: a third flag in the Precast/Midcast builder under
+`weatherMatch`, its own colour in the rule boxes (a warm rose â€” the environment trio must not
+read as one colour), and all three hints now cross-reference each other so the menu itself
+steers you to the right one.
+
+**Why a third condition and not a mode of `dayWeatherBonus`:** ADR 0018's both-directions
+proof, re-run on the day axis. For a Fire spell â€” on **Firesday in Water (opposing) weather**
+the net is +1 âˆ’1 = 0, so `dayWeatherBonus` stays quiet while a day-only item IS paying out
+(under-fires); on **Earthsday in Fire weather** the net is +1, so `dayWeatherBonus` fires while
+the item is dark (over-fires). `weatherMatch` has no day term at all â€” wrong axis outright.
+Only the plain day equality tracks when a day-only bonus is live. DM14â€“DM17 pin exactly that
+independence, in both directions, against both neighbours.
+
+**The asymmetry worth remembering:** there is **no "clear day."** All eight weekdays carry an
+element (`WeekDayElement` / `WEEK_DAY_ELEMENT`, Fire..Dark), so a day we can read is always a
+real match or a real non-match and only a broken read is unknown â€” where weather has a genuine
+`None` (Clear / Sunshine / Clouds / Fog) that `weatherMatch` has to treat as a real non-match.
+Day is also **not** storm-aware: the weather read folds a Scholar's own storm over the zone,
+but nothing in the game changes the day, so `DayElement` is the plain calendar read.
+
+**Deliberately NOT claimed:** unlike ADR 0018, this one is not pinned to a named server
+mechanic â€” the CatsEyeXI source is not on this machine and no specific item was named. It
+ships as a calendar primitive ("the day element equals the spell's element"), true regardless
+of which item motivated it; pinning one item's exact gate (day only, or day-or-weather the way
+the retail obi tooltip reads?) is a follow-up that changes what a player **composes**, not what
+this condition means.
+
+`addon.version` 2026.07.29h; DM1â€“DM24 green, both suites **4455 + 793** (Windows lua 5.4).
+Note for the record: the working tree was shared with a live session mid-round on
+`engagewatch`, so the run counts include its two new EDG checks.
+## Session "BST auto-Reward: the pet vitals service + the threshold" (issue #140, PRD #135)
+
+**Theme:** the second standing Job-helper behavior, the first that SPENDS AN ITEM, and the
+central service that supplies its signal. Builds on #137 (module system), #138 (Action
+sequencer + the "Reward now" button) and #139 (the Fight switch), all on `dev`.
+
+**Landed:**
+- `feature/petvitals.lua` â€” the **pet vitals** central service (new row in the architecture
+  doc's Central-services table). One question â€” presence / HP% / TP / name â€” published to
+  subscribers once per dispatch beat by `pump()` and answered on demand by `get()`.
+- `jobhelpers/bst/reward.lua` â€” the **Reward rule** AND the act. `decide(vitals, state)` is
+  pure, so the threshold, the lockout and every gate are headless checks (BRW*).
+- `jobhelpers/bst/config.lua` â€” three new rows: `rewardArmed` (default **off**),
+  `rewardThreshold` (default **50**) and `rewardSet`.
+- The Panel's Reward section gains the rule switch and the pet-HP% slider; the "Reward now"
+  button stays exactly where it was.
+
+**The five things worth not re-deriving:**
+
+1. **The rule is a second REQUESTER, not a second implementation.** The act â€” pick the food
+   off the Ladder, overlay the optional Reward set, open ONE Action sequence â€” moved out of
+   the button's click handler into `reward.request(id)`, and both callers land there. So the
+   acceptance criterion "identical refusal behavior to the button" is a property of the code
+   rather than of two test suites agreeing with each other, and BRW62â€“BRW66 prove it by
+   comparing the two paths' requests claim-for-claim. A copy would have passed its own tests
+   and drifted on the first change.
+2. **A central service must not be born as the second implementation of its own answer.**
+   dlac already had exactly one pet reader â€” `gData.GetPet()`, the LAC-parity provider in
+   `feature/nativedata` that the ENGINE reads every dispatch for the pet trigger conditions
+   (v63). `petvitals` consumes it; it does not open a second `GetPetTargetIndex` /
+   `GetHPPercent` pair. And the Fight switch's own raw pair â€” written in #139, before there
+   was anywhere else to ask â€” was deleted in the same commit, the same move `engagewatch`
+   made for the edge decode.
+3. **Presence is two-state on purpose, and that is not a shortcut.** `gData.GetPet()` answers
+   nil for both "no pet" and "the read failed", and the two are deliberately NOT separated:
+   every consumer of this service issues a command or spends an item, and #139 already ruled
+   that a read we cannot make is not permission to do either. The individual vitals stay
+   nil-able, because there the honest answer IS available â€” a present pet whose HP could not
+   be read is reported, never guessed at, and `decide` refuses on it (`no-hp`). Guessing a
+   pet's HP is how a Reward gets fired at a healthy pet.
+4. **The lockout is armed by ATTEMPTS, and two holds are deliberately not attempts.** A rule
+   reads a STATE, and a state persists â€” a pet under the threshold is still under it on the
+   next beat â€” so without a lockout one hurt pet becomes a stream of commands and a stream of
+   chat lines. One attempt per window gives "at most one refusal line per window" for free.
+   But "a sequence is already running" and "Reward is still on cooldown" attempted nothing,
+   so neither burns the window: the moment the recast returns, the held Reward goes (BRW84).
+   The recast hold is also **silent** â€” the button it mirrors is greyed out and says nothing,
+   so "identical to the button" means saying nothing here too. That is what stops Reward's
+   ~90-second recast from becoming three refusal lines a minute, which a naive "every hold is
+   a refusal" reading would have shipped.
+5. **The food ladder was reading the wrong level.** Carried over from the #138 merge review:
+   `petfood` gated on raw `MainJobLevel`, making it the one picker in dlac that ignores
+   `/dl set level main` â€” and under LEVEL SYNC it would pick a tier above the cap, have the
+   equip refused, and end in a contained verify TIMEOUT instead of correctly falling a rung.
+   It now reads the override first and `MainJobSync` second, exactly as `dispatch`'s
+   `playerLevel`, `utils.determineLevels` and the Ammo panel's `gearLevel` do. PF7â€“PF12; the
+   house law is the AutoAmmo v134 lesson, stated a third time.
+
+**The one design call that is not in the issue text: the rule ships OFF.** The issue names a
+slider defaulting to 50 and no switch, but `jobhelpers/bst/config.lua` already carries the law
+that produced Fight's default â€” *"this module ISSUES COMMANDS, so a freshly installed helper
+must never start driving the pet on its own"* â€” and this rule additionally EATS a player's
+food. So the switch is new and defaults off, and 50 is the slider's resting position rather
+than an arming decision. Flagged for the maintainer in the PR: overruling it is one default.
+
+**Threading and cost.** `petvitals.pump()` rides `dlac.lua`'s `d3d_present` beside the
+sequencer's and the edge service's, throttles itself to `TICK_S` = 0.4s (the engine's own
+dispatch beat), and **does not read the world at all while nothing is subscribed** â€” so the
+service is free on every job that is not BST. `get()` has no cache and reads now, so no caller
+can be handed a record older than its own question. The service also joined the load array,
+not just the pcall'd pump: the #139 review lesson is that a module only ever required inside a
+per-frame pcall fails silently forever and is invisible to `/dl check`.
+
+Both suites green (**4572 + 798**, lua5.4). No seeded file changed, so `dispatch.M.VERSION` is
+untouched. Player-facing strings (**"Reward my pet when it drops low"**, *below N% pet HP*),
+the 30-second lockout, and the ships-off default await the maintainer's sign-off and a field
+round; pet TP is published but nothing consumes it yet, and its scale is unverified against
+the live server.
+
+## Session "Fight goes poll-driven" (2026-07-29, field round 2, addon 2026.07.29j)
+
+**Theme:** the edge-driven Fight failed its second live round -- after the (target,kind)
+debounce fix, the captured-entity confirm still refused every send. Henrik: "can you look
+at the pup-helper addon, see how he handles it? I think he has it all covered."
+
+**Landed:** `bst\fight.lua` REWRITTEN on the field-proven POLL shape (Pup-Helper's, and
+the GearSwap BST convention -- pet-handling reference section 4.2): every pet-vitals beat
+(0.4s), a PURE `pollDecide` asks "engaged + pet idle + target?" and issues `/pet "Fight"
+<t>` through the central door. The pet-idle gate is the spam brake AND the retry -- a
+refused command leaves the pet idle so the next beat tries again; a command that took
+makes the pet non-idle and the issuing stops. `follow` re-sends a FIGHTING pet when the
+POLLED target changes (works for hand-sent pets too). Restraint: RETRY_S = 2 per target,
+MAX_TRIES = 3 per (engagement, target), then a visible `capped` Panel reason that names
+the command-wording suspicion -- the remaining unknown if the field round still fails.
+`petvitals.fromPet` now carries `status` verbatim (the idle gate consumes the service --
+no second status read). engagewatch stays a central service (subscriber-less until
+autoacc lands). Edge-driven `decide`/`targetConfirms`/`onEdge` died with their tests;
+BFT1-30 pin the poll core + the beat glue (nil-override trap: `{k=nil}` is an EMPTY
+constructor -- unreadable-state cases are literal states).

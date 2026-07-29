@@ -1,4 +1,4 @@
--- Headless tests for the profile-side rebuild engine (utils.lua).
+﻿-- Headless tests for the profile-side rebuild engine (utils.lua).
 -- Run from the dlac addon root:   lua tests\run_tests.lua
 -- No Ashita required: gData / AshitaCore / ashita are stubbed below.
 
@@ -222,16 +222,23 @@ end)();
     -- (data/catalog, fishdb, spells, ...) carry no gear-fetch logic and are excluded.
     local ROOT_FILES = { 'utils.lua', 'dispatch.lua', 'chatfmt.lua', 'profiles.lua', 'gear.lua', 'dlac.lua' };
     local UI = { 'ammoui','automationsui','craftbar','equippedui','filetex','fishbar','fishui',
-                 'floatgear','gearui','helmbar','helmui','hobbybar','idlefloat','itemicons','menuui','priorityui','profilesmenu',
+                 'floatgear','gearui','helmbar','helmui','hobbybar','idlefloat','itemicons','jobhelpersui','menuui','priorityui','profilesmenu',
                  'restockui','setupui','triggersui','uihost','uistyle','weightsui' };
     local GEAR = { 'actionpicker','arbiter','blueprintsmodel','catalogindex','gearcheck','geareffects','gearexport',
                    'gearfmt','gearimport','gearoptim','gearoracle','gearrecord','groupimport','groupscan',
                    'groupsmodel','jobgate','modeslibrary','ownedcache','profileexport','profilesets','setimport',
                    'setmanager','syncflags','triggermodel','weaponfilter','weightimport' };
-    local FEATURE = { 'ammowatch','arbwatch','augments','check','chocowatch','craftwatch','debug','digcalc','digrank',
-                      'eboxclient','eboxtrace','fishcalc','fishwatch','gamehud','gamemode','helmwatch','idleexcl','location','lockstyle','lookpreview',
-                      'macrobook','meritwatch','mpbands','pinwatch','restockwatch','synthrun','useitem','vanamoon' };
+    local FEATURE = { 'actionseq','ammowatch','arbwatch','augments','check','chocowatch','craftwatch','debug','digcalc','digrank',
+                      'eboxclient','eboxtrace','engagewatch','fishcalc','fishwatch','gamehud','gamemode','helmwatch','idleexcl','jobhelpers','location','lockstyle','lookpreview',
+                      'macrobook','meritwatch','mpbands','petfood','petvitals','pinwatch','recast','restockwatch','synthrun','useitem','vanamoon' };
     local LIB = { 'cmdqueue','entwatch','safewrite','statefile' };
+    -- Job helper modules (issue #137): each is a drop-in FOLDER under jobhelpers\
+    -- with an init.lua, plus whatever pure cores it splits out beside it (issue
+    -- #139: config + fight; #140: reward; #141: resummon + jugs). They ship
+    -- inside dlac, so they join the ratchet too -- entries are folder-relative
+    -- module paths under jobhelpers\<job>\<module>\, no extension.
+    local JOBHELP = { 'bst/bst-helper/init', 'bst/bst-helper/config', 'bst/bst-helper/fight',
+                      'bst/bst-helper/reward', 'bst/bst-helper/resummon', 'bst/bst-helper/jugs' };
 
     local ALL = {};
     for _, f in ipairs(ROOT_FILES) do ALL[#ALL + 1] = f; end
@@ -239,6 +246,7 @@ end)();
     for _, n in ipairs(GEAR)    do ALL[#ALL + 1] = 'gear/' .. n .. '.lua'; end
     for _, n in ipairs(FEATURE) do ALL[#ALL + 1] = 'feature/' .. n .. '.lua'; end
     for _, n in ipairs(LIB)     do ALL[#ALL + 1] = 'lib/' .. n .. '.lua'; end
+    for _, n in ipairs(JOBHELP) do ALL[#ALL + 1] = 'jobhelpers/' .. n .. '.lua'; end
 
     -- Cache each scanned file's stripped source once.
     local STRIPPED = {};
@@ -5211,6 +5219,73 @@ end)();
     check('WM20 normalize keeps weatherMatch rule', norm.Midcast ~= nil and #norm.Midcast, 1);
     check('WM21 normalized prio = 30',              norm.Midcast[1].prio, 30);
 end)();
+-- ---------------------------------------------------------------------------
+-- dayMatch (engine v156): weatherMatch's sibling -- a spell-handler flag, true
+-- when TODAY's day element equals the action's element. The obi's DAY term with
+-- nothing else: no weather, no opposition -- for gear whose bonus keys on the day
+-- alone, which neither dayWeatherBonus (the signed net) nor weatherMatch tracks.
+-- ctx.del is the cached day-element seam (the ctx.wel pattern): set it to drive
+-- the matcher headlessly (nil -> a live gData read, '' in the harness = unknown).
+-- There is no "clear day" -- all eight weekdays carry an element -- so every
+-- readable day is a real match or a real non-match. Tier 30 (element band).
+-- ---------------------------------------------------------------------------
+(function()
+    local mm = dispatchM._matchers;
+    local fireOnFire  = { action = { Element = 'Fire' }, del = 'Fire'  };
+    local fireOnIce   = { action = { Element = 'Fire' }, del = 'Ice'   };
+    local fireOnWater = { action = { Element = 'Fire' }, del = 'Water' };   -- the OPPOSING day
+    check('DM1 match: dayMatch=true fires (Fire on Firesday)',    mm.daymatch(true,  fireOnFire), true);
+    check('DM2 mismatch: dayMatch=true quiet (Fire on Iceday)',   mm.daymatch(true,  fireOnIce),  false);
+    check('DM3 mismatch: dayMatch=false fires (Fire on Iceday)',  mm.daymatch(false, fireOnIce),  true);
+    check('DM4 match: dayMatch=false quiet (Fire on Firesday)',   mm.daymatch(false, fireOnFire), false);
+    check('DM5 element match is case-insensitive',                mm.daymatch(true,  { action = { Element = 'fire' }, del = 'FIRE' }), true);
+    -- The OPPOSING day is a plain non-match, not a minus: no opposition term here.
+    check('DM6 opposing day: dayMatch=true quiet',                mm.daymatch(true,  fireOnWater), false);
+    check('DM7 opposing day: dayMatch=false fires',               mm.daymatch(false, fireOnWater), true);
+    -- No action element (Default handler / Non-Elemental) -> matches NEITHER polarity.
+    check('DM8 no action element: =true quiet',                   mm.daymatch(true,  { del = 'Fire' }), false);
+    check('DM9 no action element: =false quiet',                  mm.daymatch(false, { del = 'Fire' }), false);
+    check('DM10 Non-Elemental action: =true quiet',               mm.daymatch(true,  { action = { Element = 'Non-Elemental' }, del = 'Fire' }), false);
+    check('DM11 Non-Elemental action: =false quiet',              mm.daymatch(false, { action = { Element = 'Non-Elemental' }, del = 'Fire' }), false);
+    -- Unreadable day ('' sentinel, e.g. a failed live read) -> matches NEITHER.
+    check('DM12 unreadable day: =true quiet',                     mm.daymatch(true,  { action = { Element = 'Fire' }, del = '' }), false);
+    check('DM13 unreadable day: =false quiet',                    mm.daymatch(false, { action = { Element = 'Fire' }, del = '' }), false);
+    -- INDEPENDENCE from its two neighbours -- the reason it is its own condition.
+    -- Fire on Firesday in Water (opposing) weather: the obi's net is 0 (quiet),
+    -- weatherMatch is a non-match (quiet), but a day-only item IS paying out.
+    local fireFiredayWaterWx = { action = { Element = 'Fire' }, del = 'Fire', wel = 'Water', dw = 0 };
+    check('DM14 day-only payout: dayMatch fires where the net does not',
+        mm.daymatch(true, fireFiredayWaterWx) == true and mm.dayweatherbonus(true, fireFiredayWaterWx) == false, true);
+    check('DM15 day-only payout: weatherMatch stays quiet on it',
+        mm.weathermatch(true, fireFiredayWaterWx), false);
+    -- ...and the mirror: Fire in Fire weather on Iceday -- weatherMatch fires, dayMatch does not.
+    local fireIcedayFireWx = { action = { Element = 'Fire' }, del = 'Ice', wel = 'Fire' };
+    check('DM16 weather-only payout: dayMatch stays quiet',       mm.daymatch(true, fireIcedayFireWx), false);
+    check('DM17 weather-only payout: weatherMatch fires',         mm.weathermatch(true, fireIcedayFireWx), true);
+    -- Tier ladder: dayMatch sits at 30 (element band), like weatherMatch/dayWeatherBonus.
+    check('DM18 dayMatch sits at 30', dispatchM.defaultPriority({ dayMatch = true }), 30);
+    -- Through matches(): the AND leg with a live day ctx (post-load lowercase key).
+    local mt = dispatchM._matches;
+    check('DM19 matches() fires on a day match',
+        mt({ when = { daymatch = true } }, { action = { Element = 'Fire' }, del = 'Fire' }), true);
+    check('DM20 matches() quiet on a mismatch',
+        mt({ when = { daymatch = true } }, { action = { Element = 'Fire' }, del = 'Ice' }), false);
+    -- First-class vocabulary: PRETTY-case dayMatch serializes + round-trips, and
+    -- _normalize accepts it (loader lowercases + TIER-validates) at prio 30.
+    local text = dispatchM.serializeTriggers({
+        Midcast = { { when = { dayMatch = true }, set = 'DayNuke' } },
+    });
+    check('DM21 dayMatch serializes PRETTY-case', text:find('dayMatch', 1, true) ~= nil, true);
+    local t2 = (loadstring or load)(text)();
+    check('DM22 round-trip byte-stable', dispatchM.serializeTriggers(t2) == text, true);
+    local norm = dispatchM._normalize({
+        Midcast = { { when = { dayMatch = true }, set = 'DayNuke' } },
+    });
+    check('DM23 normalize keeps dayMatch rule', norm.Midcast ~= nil and #norm.Midcast, 1);
+    check('DM24 normalized prio = 30',          norm.Midcast[1].prio, 30);
+end)();
+
+-- ---------------------------------------------------------------------------
 
 -- ---------------------------------------------------------------------------
 -- TGM. Trigger Groups model (G2, issue #25, ADR 0009): the pure GUI-side CRUD +
@@ -6176,6 +6251,57 @@ end)();
         table.concat(dispatchM.arbOrder({ order = { 'Pins', 'Pins', 'AutoAmmo' } }), '>'),
         'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
 
+    -- ARP: arbOrderPersist -- the WRITE view (issue #136). arbOrder above drops
+    -- unknown rows (right for the walk + the Priority tab); arbOrderPersist keeps
+    -- them at their position so the file survives a rewrite and a claimant can
+    -- reclaim its saved spot when it later exists. The ceiling/floor stay pinned.
+    do
+        -- A file the player has dragged, carrying one row THIS build does not know
+        -- (an uninstalled module's claimant), anchored between MaxMP and Craft.
+        local fileWithGhost = { order = { 'Disabled', 'Naked', 'Pins', 'Locks',
+            'AutoAmmo', 'MaxMP', 'Ghost', 'Craft', 'HELM', 'Fishing', 'Chocobo', 'Triggers' } };
+        -- The live walk / Priority tab NEVER see Ghost.
+        check('ARP1 arbOrder (the live view) drops the unknown row',
+            table.concat(dispatchM.arbOrder(fileWithGhost), '>'),
+            'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
+        -- The drag produced a new KNOWN order (Craft moved below HELM); persisting
+        -- it weaves Ghost back in anchored to MaxMP -- position intact.
+        local dragged = { 'Disabled', 'Naked', 'Pins', 'Locks', 'AutoAmmo', 'MaxMP',
+            'HELM', 'Craft', 'Fishing', 'Chocobo', 'Triggers' };
+        local persisted = dispatchM.arbOrderPersist(dragged, fileWithGhost);
+        check('ARP2 persist keeps the unknown row anchored to its predecessor',
+            table.concat(persisted, '>'),
+            'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Ghost>HELM>Craft>Fishing>Chocobo>Triggers');
+        -- Preserve-through-rewrite: feed the persisted order back as the raw file
+        -- and drag again -- Ghost survives ANY number of rewrites, still anchored.
+        local persisted2 = dispatchM.arbOrderPersist(
+            dispatchM.arbOrder({ order = persisted }), { order = persisted });
+        check('ARP3 unknown row survives a second rewrite intact',
+            table.concat(persisted2, '>'),
+            'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Ghost>HELM>Craft>Fishing>Chocobo>Triggers');
+        -- No raw file / no unknowns -> persist == arbOrder (a fresh character).
+        check('ARP4 no raw file -> plain sanitized order (nothing to preserve)',
+            table.concat(dispatchM.arbOrderPersist(dispatchM.arbOrder(nil), nil), '>'),
+            'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
+        -- Reclaim-on-return: the file position of a LISTED row is honored by
+        -- arbOrder over the default -- so the instant Ghost's identity becomes a
+        -- known claimant, it takes its preserved spot, not its default one. Pinned
+        -- here with Chocobo listed OUT of its default place (which is last-before-
+        -- Triggers): arbOrder keeps it where the file puts it, exactly as it will
+        -- for a returning claimant.
+        check('ARP5 a listed row keeps its saved position (reclaim law)',
+            table.concat(dispatchM.arbOrder({ order = { 'Disabled', 'Naked', 'Pins',
+                'Locks', 'Chocobo', 'AutoAmmo', 'MaxMP', 'Craft', 'HELM', 'Fishing', 'Triggers' } }), '>'),
+            'Disabled>Naked>Pins>Locks>Chocobo>AutoAmmo>MaxMP>Craft>HELM>Fishing>Triggers');
+        -- Two unknowns in a row share an anchor and keep their relative order; the
+        -- ceiling/floor stay pinned even when an unknown sits at an extreme.
+        local twoGhosts = { order = { 'Zeta', 'Disabled', 'Naked', 'Pins', 'Locks',
+            'AutoAmmo', 'MaxMP', 'Craft', 'HELM', 'Fishing', 'Chocobo', 'Alpha', 'Beta', 'Triggers' } };
+        check('ARP6 multiple unknowns keep order; ceiling first / floor last hold',
+            table.concat(dispatchM.arbOrderPersist(dispatchM.arbOrder(twoGhosts), twoGhosts), '>'),
+            'Disabled>Zeta>Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Alpha>Beta>Triggers');
+    end
+
     -- AR3: the PURE resolve core -- claims + rank + floor -> winners + by.
     local order = dispatchM.arbOrder(nil);
     local floor = { Head = 'Idle Hat', Body = 'Idle Robe', Ammo = 'Iron Arrow' };
@@ -6849,6 +6975,17 @@ end)();
                                                'Craft', 'HELM', 'Fishing', 'Chocobo', 'Triggers' } }), '>'),
         table.concat(dispatchM.arbOrder({ order = { 'Pins', 'Locks', 'AutoAmmo', 'MaxMP',
                                                'Craft', 'HELM', 'Fishing', 'Chocobo', 'Triggers' } }), '>'));
+    -- NK25c: and on preserving unknown rows (issue #136). The no-dispatch mirror
+    -- of arbOrderPersist must weave an unknown row back exactly as the engine does.
+    do
+        local rawG = { order = { 'Disabled', 'Naked', 'Pins', 'Locks', 'AutoAmmo',
+            'MaxMP', 'Ghost', 'Craft', 'HELM', 'Fishing', 'Chocobo', 'Triggers' } };
+        local dragK = { 'Disabled', 'Naked', 'Pins', 'Locks', 'AutoAmmo', 'MaxMP',
+            'Craft', 'HELM', 'Fishing', 'Chocobo', 'Triggers' };
+        check('NK25c the no-dispatch fallback preserves unknown rows identically',
+            table.concat(awNo.persist(dragK, rawG), '>'),
+            table.concat(dispatchM.arbOrderPersist(dragK, rawG), '>'));
+    end
 
     -- NK26. END TO END through the REAL M.dispatch.
     --
@@ -7039,15 +7176,24 @@ end)();
         if not inOrder[n] then extra[#extra + 1] = n; end
     end
     check('CR1 every rank row except Triggers has a registry row', table.concat(missing, ','), '');
-    check('CR1b and no registry row lacks a rank row', table.concat(extra, ','), '');
-    check('CR1c the row count is exact', #reg, #dispatchM._arbDefaultOrder - 1);
+    -- JobHelper (issue #138) is the ONE registry row deliberately NOT in the
+    -- GLOBAL ARB_ORDER_DEFAULT: its Claim Priority position is per job, woven into
+    -- the live order by jobHelperPlace, so it is an intentional "extra".
+    table.sort(extra);
+    check('CR1b the only registry row without a global rank row is the per-job JobHelper',
+        table.concat(extra, ','), 'JobHelper');
+    -- #reg = (#order - 1 for the floorless Triggers) + 1 for the per-job JobHelper.
+    check('CR1c the row count is exact', #reg, #dispatchM._arbDefaultOrder);
 
-    -- The signature-leg order is the pre-registry byte order -- craft | pins |
-    -- HELM | fishing | chocobo | ammo | mp | naked | disabled. Reordering
-    -- retraces every live session once: do it on purpose or not at all.
-    check('CR2 the signature legs keep the pre-registry byte order',
+    -- The signature-leg order keeps the pre-registry byte order for the nine
+    -- original legs -- craft | pins | HELM | fishing | chocobo | ammo | mp |
+    -- naked | disabled -- with JobHelper APPENDED (issue #138): a new trailing
+    -- leg leaves the nine byte-identical, so no live session retraces on upgrade
+    -- until a sequence claims. Reordering the nine still retraces: on purpose or
+    -- not at all.
+    check('CR2 the signature legs keep the pre-registry byte order, JobHelper appended',
         table.concat(dispatchM._claimantSigOrder, '|'),
-        'Craft|Pins|HELM|Fishing|Chocobo|AutoAmmo|MaxMP|Naked|Disabled');
+        'Craft|Pins|HELM|Fishing|Chocobo|AutoAmmo|MaxMP|Naked|Disabled|JobHelper');
 
     -- The documented exceptions are EXACTLY the documented exceptions. Since
     -- the FOLD (stage 6) EVERY row builds its claim and applies through the
@@ -7072,8 +7218,8 @@ end)();
         if row.bail2 == true then b2[#b2 + 1] = row.name; end
     end
     table.sort(b1); table.sort(b2);
-    check('CR4 the bail #1 set is exactly the eight dispatch reasons',
-        table.concat(b1, ','), 'AutoAmmo,Chocobo,Craft,Fishing,HELM,Locks,Naked,Pins');
+    check('CR4 the bail #1 set is exactly the dispatch reasons (JobHelper joined, #138)',
+        table.concat(b1, ','), 'AutoAmmo,Chocobo,Craft,Fishing,HELM,JobHelper,Locks,Naked,Pins');
     check('CR4b the bail #2 set is the same eight', table.concat(b2, ','), table.concat(b1, ','));
     check('CR4c every row carries a prioStatus (the /dl prio twin is dead)',
         (function()
@@ -8119,6 +8265,40 @@ end)();
     check('AB7 out-of-range / bad args are nil, never a throw',
         aw.moveClaimant(def, 1, -1) == nil and aw.moveClaimant(def, 0, 1) == nil
         and aw.moveClaimant(def, 3, 0) == nil and aw.moveClaimant(nil, 1, 1) == nil, true);
+
+    -- AB8. persist -- the WRITER's preserve-unknowns seam (issue #136). A drag
+    -- gives arbwatch a KNOWN-only order; the file it overwrites may hold rows
+    -- this build does not know, and those must not be dropped. persist weaves
+    -- them back (delegating to the engine's arbOrderPersist); the serialized
+    -- file keeps them, so setOrder no longer deletes a future/uninstalled/hand-
+    -- added claimant's saved position.
+    local rawGhost = { order = { 'Disabled', 'Naked', 'Pins', 'Locks', 'AutoAmmo',
+        'MaxMP', 'Ghost', 'Craft', 'HELM', 'Fishing', 'Chocobo', 'Triggers' } };
+    local dragKnown = { 'Disabled', 'Naked', 'Pins', 'Locks', 'AutoAmmo', 'MaxMP',
+        'Craft', 'HELM', 'Fishing', 'Chocobo', 'Triggers' };
+    check('AB8 persist weaves the unknown row back in at its position',
+        table.concat(aw.persist(dragKnown, rawGhost), '>'),
+        'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Ghost>Craft>HELM>Fishing>Chocobo>Triggers');
+    check('AB8b persist matches the engine seam exactly',
+        table.concat(aw.persist(dragKnown, rawGhost), '>'),
+        table.concat(dispatchM.arbOrderPersist(dragKnown, rawGhost), '>'));
+    -- The serialized file the writer emits carries the unknown row through, so it
+    -- reloads with the row intact (survives the round-trip on disk).
+    local ghostTxt = aw.serialize(aw.persist(dragKnown, rawGhost));
+    check('AB8c serialized file carries the unknown row',
+        ghostTxt:find('"Ghost"', 1, true) ~= nil, true);
+    local reGhost = (loadstring or load)(ghostTxt)();
+    check('AB8d reload -> live view still drops it, persist still keeps it',
+        (function()
+            local live = table.concat(dispatchM.arbOrder(reGhost), '>');
+            local kept = table.concat(aw.persist(dispatchM.arbOrder(reGhost), reGhost), '>');
+            return (live:find('Ghost') == nil)
+               and (kept:find('MaxMP>Ghost>Craft', 1, true) ~= nil);
+        end)(), true);
+    -- No raw file (fresh character) -> persist is just the sanitized order.
+    check('AB8e no raw file -> plain sanitized order',
+        table.concat(aw.persist(dragKnown, nil), '>'),
+        'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
 end)();
 
 -- ---------------------------------------------------------------------------
@@ -10962,7 +11142,7 @@ end)();
         rap(SPEC, FM({ rangeWorn = 'Longbow', rangePair = '25:4', unlimited = true })), nil);
 
     -- -----------------------------------------------------------------------
-    -- AM51+. THE LEVEL DECIDES WHICH RUNG (v134; Henrik 2026-07-27). §9's twin,
+    -- AM51+. THE LEVEL DECIDES WHICH RUNG (v134; Henrik 2026-07-27). Â§9's twin,
     -- one door along: the ladder knew what the WEAPON could fire and nothing at
     -- all about what the PLAYER could wear, so the top entry won at every level.
     -- The field list, verbatim from his ammostate.lua and sorted best-first by
@@ -10975,7 +11155,7 @@ end)();
         { name = 'Crossbow Bolt', id = 17336, type = 'Marksmanship', pair = '26:0', level =  1, ranged = true, ws = true, special = false },
     } };
     local BOLT_LV = { [18148] = 15, [18150] = 10, [17336] = 1 };
-    -- A crossbow is worn throughout (§9's gate) and the gate seam answers with
+    -- A crossbow is worn throughout (Â§9's gate) and the gate seam answers with
     -- the resource's level, jobs mask left unknown unless a case sets one.
     local function FD(over, stock)
         local f = { event = 'Default', job = 'DRK',
@@ -16044,6 +16224,1774 @@ check('SH22 the sets-migration door still exists', (function()
     local raw = fh:read('*a'); fh:close();
     return raw:find("'ffxi-lac'", 1, true) ~= nil;   -- the CONTENT sniff -> st = 'ffxilac'
 end)(), true);
+end)();
+
+-- ---------------------------------------------------------------------------
+-- JH: the Job helper module system (issue #137) -- loader containment (good /
+-- wrong-api / throwing / malformed fixtures), the config store, the per-job
+-- order, and the module-activity predicate. All driven through injected seams
+-- so no filesystem or Ashita is touched (the house shape).
+-- ---------------------------------------------------------------------------
+(function()
+    package.loaded['dlac\\lib\\statefile'] = { charDir = function() return nil; end };
+    local jh = dofile('feature/jobhelpers.lua');
+    package.loaded['dlac\\feature\\jobhelpers'] = jh;
+
+    -- ---- loader containment -------------------------------------------------
+    -- Fixture "folders": each loadModule thunk returns what a folder's init.lua
+    -- would (a good table, a wrong-api table), or ERRORS (a throwing/malformed
+    -- folder). The loader must keep the good one and refuse the rest, one loud
+    -- line + one ledger entry each, no crash.
+    local good = { api = jh.API, label = 'Good Helper', jobs = { 'BST' },
+                   panel = function() end };
+    local wrongApi = { api = jh.API + 1, label = 'Old Helper', jobs = { 'BST' },
+                       panel = function() end };
+    local loaders = {
+        good     = function() return true, good; end,
+        wrongapi = function() return true, wrongApi; end,
+        throwing = function() return pcall(function() error('boom in init.lua'); end); end,
+        malformed= function() return true, 'not a table'; end,
+    };
+    local ledger = { total = 0, failed = {} };
+    local lines = {};
+    jh.loadAll({
+        names      = { 'good', 'malformed', 'throwing', 'wrongapi' },  -- unsorted on purpose
+        loadModule = function(id) return loaders[id](); end,
+        ledger     = ledger,
+        emit       = function(s) lines[#lines + 1] = s; end,
+    });
+    check('JH1 only the good module loads', jh.count(), 1);
+    check('JH2 the survivor is the good one', jh.list()[1].id, 'good');
+    check('JH3 three failures fed the ledger', #ledger.failed, 3);
+    check('JH4 ledger total counts every candidate (1 good + 3 failed)', ledger.total, 4);
+    check('JH5 one loud line per failure', #lines, 3);
+    -- ledger entries are namespaced so /dl check reads them
+    local failIds = {};
+    for _, f in ipairs(ledger.failed) do failIds[f.mod] = f.err; end
+    check('JH6 wrong-api named in the ledger',
+          failIds['jobhelper:wrongapi'] ~= nil and failIds['jobhelper:wrongapi']:find('api', 1, true) ~= nil, true);
+    check('JH7 throwing module contained + named', failIds['jobhelper:throwing'] ~= nil, true);
+    check('JH8 malformed folder named', failIds['jobhelper:malformed'] ~= nil, true);
+
+    -- a module whose OWN init hook throws is contained too (distinct from a load
+    -- failure): it loads fine, then init errors -> refused, one line, ledger.
+    local ledger2 = { total = 0, failed = {} };
+    local lines2 = {};
+    jh.loadAll({
+        names      = { 'boominit' },
+        loadModule = function() return true, { api = jh.API, label = 'B', jobs = { 'BST' },
+            init = function() error('init explode'); end, panel = function() end }; end,
+        ledger = ledger2, emit = function(s) lines2[#lines2 + 1] = s; end,
+    });
+    check('JH9 init-throw drops the module', jh.count(), 0);
+    check('JH10 init-throw is one ledger failure', #ledger2.failed, 1);
+    check('JH11 init-throw named as init', (ledger2.failed[1] or {}).err and ledger2.failed[1].err:find('init', 1, true) ~= nil, true);
+
+    -- ---- registry queries ---------------------------------------------------
+    local a = { api = jh.API, label = 'Alpha', jobs = { 'BST', 'PUP' }, panel = function() end };
+    local b = { api = jh.API, label = 'Beta',  jobs = { 'PUP' },        panel = function() end };
+    jh.loadAll({ names = { 'alpha', 'beta' },
+        loadModule = function(id) return true, ({ alpha = a, beta = b })[id]; end });
+    check('JH12 both loaded', jh.count(), 2);
+    check('JH13 jobs() lists the union, sorted', table.concat(jh.jobs(), ','), 'BST,PUP');
+    check('JH14 idsForJob BST = the multi-job module only', table.concat(jh.idsForJob('BST'), ','), 'alpha');
+    check('JH15 idsForJob PUP = both, default order', table.concat(jh.idsForJob('PUP'), ','), 'alpha,beta');
+
+    -- ---- config store (pill + per-job order) -------------------------------
+    -- point the store at an in-memory fake dir so writes round-trip through the
+    -- real serialize/normalize path with a stubbed file layer.
+    local FILES = {};
+    local realOpen = io.open;
+    jh._charDir = function() return 'FAKEDIR\\'; end
+    io.open = function(path, mode)
+        if type(path) == 'string' and path:find('FAKEDIR', 1, true) then
+            if (mode or 'r'):find('w') then
+                return { write = function(_, s) FILES[path] = (FILES[path] or '') .. s; end,
+                         close = function() end };
+            else
+                if FILES[path] == nil then return nil; end
+                local consumed = false;
+                return { read = function() if consumed then return nil; end consumed = true; return FILES[path]; end,
+                         close = function() end };
+            end
+        end
+        return realOpen(path, mode);
+    end
+    -- loadfile is what the reader uses; back it with our FILES table.
+    local realLoadfile = loadfile;
+    loadfile = function(path)
+        if type(path) == 'string' and path:find('FAKEDIR', 1, true) then
+            local src = FILES[path];
+            if src == nil then return nil; end
+            return (loadstring or load)(src);
+        end
+        return realLoadfile(path);
+    end
+
+    check('JH16 pill default is ON for an untouched module', jh.isEnabled('alpha'), true);
+    jh.setEnabled('alpha', false);
+    check('JH17 pill toggles off', jh.isEnabled('alpha'), false);
+    check('JH18 the config file was written', FILES['FAKEDIR\\jobhelpers.lua'] ~= nil, true);
+    -- reload from disk (fresh char dir key) proves it round-trips
+    jh._loadCfg();  -- warm
+    local reread = jh._normalizeCfg((loadstring or load)(FILES['FAKEDIR\\jobhelpers.lua'])());
+    check('JH19 off state survives a re-read', reread.enabled['alpha'], false);
+
+    -- per-job order: reorder PUP section (alpha,beta) -> (beta,alpha), persisted.
+    local moved = jh.moveInSection('PUP', { 'alpha', 'beta' }, 1, 1);
+    check('JH20 move swaps within the section', table.concat(moved, ','), 'beta,alpha');
+    check('JH21 orderFor now returns the remembered order',
+          table.concat(jh.orderFor('PUP', { 'alpha', 'beta' }), ','), 'beta,alpha');
+    -- a newly installed module backfills at the bottom, unknown ones drop
+    check('JH22 order backfills a new id at the bottom',
+          table.concat(jh.orderFor('PUP', { 'alpha', 'beta', 'gamma' }), ','), 'beta,alpha,gamma');
+    check('JH23 order drops an uninstalled id from the walk',
+          table.concat(jh.orderFor('PUP', { 'beta' }), ','), 'beta');
+    -- an out-of-range move is a no-op (nil)
+    check('JH24 move past the top is refused', jh.moveInSection('PUP', { 'beta', 'alpha' }, 1, -1), nil);
+
+    io.open = realOpen; loadfile = realLoadfile;
+
+    -- ---- the module-activity predicate -------------------------------------
+    local mod = { jobs = { 'BST' } };
+    check('JH25 off pill -> reason off',
+          jh.activityCore(mod, { enabled = false, mainJob = 'BST' }).reason, 'off');
+    check('JH26 wrong main job -> reason job',
+          jh.activityCore(mod, { enabled = true, mainJob = 'WHM' }).reason, 'job');
+    check('JH27 right job, in town -> reason town',
+          jh.activityCore(mod, { enabled = true, mainJob = 'BST', inTown = true }).reason, 'town');
+    check('JH28 dead outranks town',
+          jh.activityCore(mod, { enabled = true, mainJob = 'BST', inTown = true, dead = true }).reason, 'dead');
+    check('JH29 zoning outranks dead',
+          jh.activityCore(mod, { enabled = true, mainJob = 'BST', dead = true, zoning = true }).reason, 'zoning');
+    check('JH30 clear world -> active',
+          jh.activityCore(mod, { enabled = true, mainJob = 'BST' }).active, true);
+    check('JH31 unknown job never manufactures a reason (nil job -> active)',
+          jh.activityCore(mod, { enabled = true, mainJob = nil }).active, true);
+    check('JH32 the pre-login unreadable job string is not a false wrong-job',
+          jh.activityCore(mod, { enabled = true, mainJob = '?' }).active, true);
+
+    -- reset the registry so nothing downstream sees the fixtures.
+    jh.modules = {};
+    package.loaded['dlac\\feature\\jobhelpers'] = nil;
+    package.loaded['dlac\\lib\\statefile'] = nil;
+end)();
+
+-- ---------------------------------------------------------------------------
+-- RC: the ability recast READINESS service (issue #138). One-question core,
+-- reader injected -- ready when off cooldown, down otherwise, and UNKNOWN reads
+-- READY (the courtesy gate, hard rule 11). AC7/AC8.
+-- ---------------------------------------------------------------------------
+;(function()
+    local rc = dofile('feature/recast.lua');
+    local sig = rc.REWARD;
+    check('RC1 ready when the reader says 0s', (rc.readyFor(sig, function() return 0; end)), true);
+    check('RC2 down when the reader says 12s', (rc.readyFor(sig, function() return 12; end)), false);
+    local ready2, rem2 = rc.readyFor(sig, function() return 12; end);
+    check('RC3 the remaining seconds come back too', rem2, 12);
+    check('RC4 unknown (nil) reads READY', (rc.readyFor(sig, function() return nil; end)), true);
+    check('RC5 a throwing reader is unknown -> ready', (rc.readyFor(sig, function() error('boom'); end)), true);
+    check('RC6 a negative recast clamps to 0 (ready)', (rc.readyFor(sig, function() return -3; end)), true);
+    check('RC7 remainingFor returns nil on a non-number', rc.remainingFor(sig, function() return 'x'; end), nil);
+    check('RC8 Reward is ability 103 (ported from Pup-Helper)', sig.id, 103);
+
+    -- The two SUMMON methods (issue #141). Neither hardcodes a recast slot: the
+    -- Pup-Helper reference only ever named Reward's, so these resolve theirs by
+    -- NAME through the client's own ability resource -- live memory over every
+    -- other source (hard rule 9) -- and an unresolvable one reads READY.
+    check('RC9 Call Beast is named, not numbered', rc.CALL_BEAST.name, 'Call Beast');
+    check('RC10 ...and so is Bestial Loyalty', rc.BESTIAL_LOYALTY.name, 'Bestial Loyalty');
+    check('RC11 a declared timer id still wins (Reward\'s port)', rc.timerIdFor(rc.REWARD), 103);
+    local asked = {};
+    rc._abilityRes = function(name) asked[#asked + 1] = name; return { RecastTimerId = 77 }; end;
+    check('RC12 an undeclared one resolves BY NAME off the resource',
+          rc.timerIdFor({ name = 'Call Beast' }), 77);
+    check('RC13 ...asking for exactly that ability', asked[1], 'Call Beast');
+    rc._abilityRes = function() return nil; end;
+    check('RC14 an unresolvable slot is UNKNOWN, never a guess',
+          rc.timerIdFor({ name = 'Nonesuch' }), nil);
+    check('RC15 ...which the live read turns into "ready" (the courtesy gate)',
+          (rc.readyFor({ name = 'Nonesuch' }, rc.liveRemaining)), true);
+    check('RC16 a resolution failure is NOT latched (hard rule 11)', (function()
+        local sig2 = { name = 'Call Beast' };
+        rc.timerIdFor(sig2);                                     -- fails: no resource yet
+        rc._abilityRes = function() return { RecastTimerId = 42 }; end;
+        return rc.timerIdFor(sig2);                              -- the resource is up now
+    end)(), 42);
+    check('RC17 Call Beast reads ready through its own one-liner',
+          (rc.callBeastReady(function() return 0; end)), true);
+    check('RC18 ...and down when measured down',
+          (rc.bestialLoyaltyReady(function() return 900; end)), false);
+end)();
+
+-- ---------------------------------------------------------------------------
+-- PF: the pet-food LADDER (issue #138). Highest tier the level allows AND the
+-- bags hold; carrying none is a LOUD refusal. AC4/AC8.
+-- ---------------------------------------------------------------------------
+;(function()
+    local pf = dofile('feature/petfood.lua');
+    local stock = { [17016] = 2, [17019] = 1 };    -- carrying Alpha(12) + Delta(48)
+    local function of(t) return function(id) return t[id] or 0; end end
+    local p = pf.pick({ level = 50, stockOf = of(stock) });
+    check('PF1 picks the highest carried tier the level allows', p.ok and p.name, 'Pet Food Delta');
+    local p2 = pf.pick({ level = 40, stockOf = of(stock) });
+    check('PF2 falls to a lower tier when the top carried one is over-level', p2.ok and p2.name, 'Pet Food Alpha');
+    local p3 = pf.pick({ level = 30, stockOf = of({ [17023] = 1 }) });   -- only Theta(96)
+    check('PF3 carrying only over-level food -> level refusal', p3.ok == false and p3.reason, 'level');
+    local p4 = pf.pick({ level = 75, stockOf = of({}) });
+    check('PF4 carrying none -> none-carried refusal', p4.ok == false and p4.reason, 'none-carried');
+    check('PF4b and it is a loud honest line', pf.refusalLine(p4):find('not carrying', 1, true) ~= nil, true);
+    local p5 = pf.pick({ level = nil, stockOf = of({ [17023] = 1 }) });
+    check('PF5 unknown level treats the carried tier as wearable', p5.ok and p5.name, 'Pet Food Theta');
+    check('PF6 the ladder carries all eight tiers', #pf.TIERS, 8);
+
+    -- --- the LEVEL the ladder gates on is the one the ENGINE gears at (issue
+    -- #140, from the #138 merge review). House law, paid for by AutoAmmo v134:
+    -- every picker reads the /dl set level main override and then the SYNC-aware
+    -- level -- never raw MainJobLevel. Under level sync a raw read picks a food
+    -- tier above the cap, the equip is refused, and the sequence ends in a
+    -- contained verify timeout instead of correctly falling a rung.
+    local realG, realOvr = rawget(_G, 'gData'), rawget(_G, 'staticMainLevel');
+    _G.gData = { GetPlayer = function() return { MainJobSync = 40, MainJobLevel = 75 }; end };
+    _G.staticMainLevel = nil;
+    check('PF7 the level read is the SYNC-aware one, not the true job level', pf._playerLevel(), 40);
+    _G.staticMainLevel = 62;
+    check('PF8 ...and /dl set level main overrides even that', pf._playerLevel(), 62);
+    _G.staticMainLevel = 0;
+    check('PF9 an unset override (0) is not an override', pf._playerLevel(), 40);
+    _G.gData = { GetPlayer = function() return { MainJobSync = 0 }; end };
+    _G.staticMainLevel = nil;
+    check('PF10 a not-yet-settled level reads UNKNOWN, never 0', pf._playerLevel(), nil);
+    -- ...and unknown never hides a carried tier (PF5's rule, through liveReads)
+    pf._stockOf = function(id) if id == 17023 then return 1; end return 0; end
+    check('PF11 an unknown level still picks the carried tier',
+          (pf.choose(pf.liveReads()) or {}).name, 'Pet Food Theta');
+    -- the sync cap FALLS a rung rather than picking over it
+    _G.gData = { GetPlayer = function() return { MainJobSync = 30, MainJobLevel = 99 }; end };
+    pf._stockOf = function(id) if id == 17023 or id == 17016 then return 1; end return 0; end
+    check('PF12 under level sync the ladder falls to the tier the cap allows',
+          (pf.choose(pf.liveReads()) or {}).name, 'Pet Food Alpha');
+    _G.gData, _G.staticMainLevel = realG, realOvr;
+end)();
+
+-- ---------------------------------------------------------------------------
+-- PV: the PET VITALS service (issue #140). ONE question -- "is a pet out right
+-- now, and how is it doing?" -- with the pet read injected, so presence, the
+-- dead-pet law, the individually-nil-able vitals, the subscriber push and the
+-- per-beat throttle all drive headlessly. AC5.
+-- ---------------------------------------------------------------------------
+;(function()
+    local pv = dofile('feature/petvitals.lua');
+
+    -- --- the pure core: a gData.GetPet() record in, the vitals answer out
+    local live = { HPP = 62, TP = 1250, Name = 'Courier Carrie', Index = 745, Status = 'Engaged' };
+    local v = pv.fromPet(live);
+    check('PV1 a live pet is PRESENT', v.present, true);
+    check('PV2 ...with its HP%', v.hpp, 62);
+    check('PV3 ...its TP', v.tp, 1250);
+    check('PV4 ...and its name', v.name, 'Courier Carrie');
+    check('PV5 no pet record at all -> not present', pv.fromPet(nil).present, false);
+
+    -- THE LAW: dead pet = no pet.
+    check('PV6 a pet at 0 HP% is NOT a pet', pv.fromPet({ HPP = 0, Name = 'Courier Carrie' }).present, false);
+    check('PV7 ...and carries no vitals to act on', pv.fromPet({ HPP = 0, TP = 3000 }).tp, nil);
+    check('PV8 1 HP% is still a pet', pv.fromPet({ HPP = 1 }).present, true);
+
+    -- an unreadable vital is reported honestly, never guessed
+    check('PV9 a present pet with no readable HP says so', pv.fromPet({ Name = 'Carrie' }).hpp, nil);
+    check('PV10 ...and is still present', pv.fromPet({ Name = 'Carrie' }).present, true);
+    check('PV11 a padded entity name is trimmed (the GetName idiom)',
+          pv.fromPet({ HPP = 50, Name = 'Sheep Familiar\0  ' }).name, 'Sheep Familiar');
+    check('PV12 a blank name reads as no name', pv.fromPet({ HPP = 50, Name = '   ' }).name, nil);
+
+    -- --- the one exported question, reads injected
+    check('PV13 get() answers through the injected read',
+          pv.get({ pet = function() return live; end }).name, 'Courier Carrie');
+    check('PV14 a THROWING read is not permission to act',
+          pv.get({ pet = function() error('boom'); end }).present, false);
+    check('PV15 an absent read is not permission either', pv.get({}).present, false);
+
+    -- --- subscribers + the per-beat throttle
+    pv.reset(true);
+    local beats = {};
+    check('PV16 the pump does not read the world with nobody listening',
+          pv.pump(0, { pet = function() error('must not be called'); end }), nil);
+    check('PV17 subscribing takes a name and a callback', pv.subscribe('t', function(x) beats[#beats + 1] = x; end), true);
+    check('PV18 ...and is counted', pv.subscriberCount(), 1);
+    local READS = { pet = function() return live; end };
+    pv.pump(100, READS);
+    check('PV19 one beat pushes the vitals', #beats, 1);
+    check('PV20 ...the live record', beats[1].hpp, 62);
+    check('PV21 ...stamped', beats[1].at, 100);
+    pv.pump(100.2, READS);
+    check('PV22 a second beat inside the window is skipped', #beats, 1);
+    pv.pump(100.5, READS);
+    check('PV23 ...and published once the beat elapses', #beats, 2);
+    check('PV24 last() is the published record', pv.last().hpp, 62);
+    -- a clock that went BACKWARDS publishes rather than muting for a window
+    pv.pump(3, READS);
+    check('PV25 a backwards clock publishes, never mutes', #beats, 3);
+    -- one throwing subscriber never costs another its beat
+    pv.subscribe('bad', function() error('boom'); end);
+    pv.pump(10, READS);
+    check('PV26 a throwing subscriber does not cost the others their beat', #beats, 4);
+    check('PV27 unsubscribing drops it', pv.unsubscribe('bad') and pv.subscriberCount(), 1);
+    pv.reset(true);
+    check('PV28 reset(true) drops the subscribers too', pv.subscriberCount(), 0);
+    check('PV29 ...and the published record', pv.last(), nil);
+
+    -- --- the live read consumes gData.GetPet (the ONE pet reader), never a
+    -- second GetPetTargetIndex/GetHPPercent pair of its own.
+    local realG = rawget(_G, 'gData');
+    _G.gData = { GetPet = function() return live; end };
+    check('PV30 the live read goes through gData.GetPet', pv.get().name, 'Courier Carrie');
+    _G.gData = { GetPet = function() return nil; end };
+    check('PV31 ...and a petless gData answers not present', pv.get().present, false);
+    _G.gData = {};
+    check('PV32 a gData without the provider is not permission to act', pv.get().present, false);
+    _G.gData = realG;
+end)();
+
+-- ---------------------------------------------------------------------------
+-- PVL: the CLASSIFIED PET-LOSS EDGE the vitals service gained (issue #141).
+-- "My pet is gone -- why?", answered as a PURE function of the before/after
+-- vitals plus what the world was observed doing. DEATH IS CONFIRMED, NEVER
+-- ASSUMED: only the falls line or a low last-seen HP% prove one, and an
+-- observed Leave / zoning / logout each suppress ahead of both. AC2/AC6.
+-- ---------------------------------------------------------------------------
+;(function()
+    local pv = dofile('feature/petvitals.lua');
+
+    local OUT  = { present = true, hpp = 78, name = 'Hare Familiar' };
+    local HURT = { present = true, hpp = 9,  name = 'Hare Familiar' };
+    local GONE = { present = false };
+    -- The BST module's roster stands in as the injected name authority.
+    local function jugAuth(name)
+        if name == 'Hare Familiar' or name == 'Courier Carrie' then return true; end
+        return false;
+    end
+
+    -- --- the falls line: matched lowercased, subject sliced from the original
+    check('PVL1 a falls line names its subject', pv.fallsSubject('Hare Familiar falls to the ground.'),
+          'Hare Familiar');
+    check('PVL2 ...the message article is not part of the name',
+          pv.fallsSubject('The Forest Hare falls to the ground.'), 'Forest Hare');
+    check('PVL3 matched case-insensitively (the digrank lesson)',
+          pv.fallsSubject('Hare Familiar FALLS TO THE GROUND.'), 'Hare Familiar');
+    check('PVL4 an unrelated line is not a falls line',
+          pv.fallsSubject('Hare Familiar hits the Forest Hare for 12 points of damage.'), nil);
+    check('PVL4a the client\'s inline colour codes do not stick to the name',
+          pv.fallsSubject('\30\01Hare Familiar\30\02 falls to the ground.'), 'Hare Familiar');
+    check('PVL4b ...so such a line still matches MY pet',
+          pv.isPetFalls('\30\01Hare Familiar\30\02 falls to the ground.', 'Hare Familiar'), true);
+    check('PVL5 MY pet falling matches', pv.isPetFalls('Hare Familiar falls to the ground.', 'Hare Familiar'), true);
+    check('PVL6 the mob I just killed does NOT',
+          pv.isPetFalls('The Forest Hare falls to the ground.', 'Hare Familiar'), false);
+    check('PVL7 a server that writes "Your pet" is still understood',
+          pv.isPetFalls('Your pet falls to the ground.', 'Hare Familiar'), true);
+    check('PVL8 ...and without a known pet name, a named subject is not assumed to be mine',
+          pv.isPetFalls('The Forest Hare falls to the ground.', nil), false);
+
+    -- --- nothing to classify
+    check('PVL9 no pet was out -> no edge', pv.classifyLoss(nil, GONE, {}).lost, false);
+    check('PVL10 a pet still out -> no edge', pv.classifyLoss(OUT, OUT, {}).lost, false);
+
+    -- --- the three suppressors, checked BEFORE any death proof
+    check('PVL11 zoning suppresses', pv.classifyLoss(HURT, GONE, { zoning = true }).kind, 'zone');
+    check('PVL12 ...even with a falls line in the window',
+          pv.classifyLoss(HURT, GONE, { zoning = true, falls = true }).confirmed, false);
+    check('PVL13 logging out suppresses', pv.classifyLoss(HURT, GONE, { logout = true }).kind, 'logout');
+    check('PVL14 an observed Leave suppresses', pv.classifyLoss(HURT, GONE, { leave = true }).kind, 'leave');
+    check('PVL15 ...and a Leave on a DYING pet is still a Leave, never a death',
+          pv.classifyLoss(HURT, GONE, { leave = true, falls = true }).kind, 'leave');
+
+    -- --- the two proofs of death
+    local d1 = pv.classifyLoss(OUT, GONE, { falls = 'Hare Familiar', isJugPet = jugAuth });
+    check('PVL16 a falls line confirms a death at ANY last-seen HP', d1.kind, 'death');
+    check('PVL17 ...and says so', d1.confirmed, true);
+    check('PVL18 ...naming which proof', d1.how, 'falls');
+    local d2 = pv.classifyLoss(HURT, GONE, { isJugPet = jugAuth });
+    check('PVL19 a vanish after LOW HP confirms a death with no line at all', d2.kind, 'death');
+    check('PVL20 ...by the other proof', d2.how, 'low-hp');
+    check('PVL21 the low-HP ceiling is a threshold, not a guess',
+          pv.classifyLoss({ present = true, hpp = pv.LOW_HP_PCT + 1, name = 'Hare Familiar' },
+                          GONE, {}).kind, 'unknown');
+    check('PVL22 ...and sitting exactly on it still confirms',
+          pv.classifyLoss({ present = true, hpp = pv.LOW_HP_PCT, name = 'Hare Familiar' },
+                          GONE, {}).kind, 'death');
+    check('PVL23 an override moves the ceiling',
+          pv.classifyLoss(OUT, GONE, { lowHp = 90 }).kind, 'death');
+
+    -- --- gone with nothing to say why: confirms NOTHING (the whole law)
+    local d3 = pv.classifyLoss(OUT, GONE, { isJugPet = jugAuth });
+    check('PVL24 a healthy pet that vanished is UNKNOWN, never a death', d3.kind, 'unknown');
+    check('PVL25 ...and confirms nothing', d3.confirmed, false);
+    check('PVL26 ...but is still a loss', d3.lost, true);
+
+    -- --- jug vs charm, decided by NAME through the injected authority
+    check('PVL27 a jug pet is recognised by name', d1.pet, 'jug');
+    check('PVL28 a charmed pet keeps its mob name and reads as charm',
+          pv.classifyLoss({ present = true, hpp = 4, name = 'Forest Hare' }, GONE,
+                          { isJugPet = jugAuth }).pet, 'charm');
+    check('PVL29 ...and its death is still a DEATH, just not a jug one',
+          pv.classifyLoss({ present = true, hpp = 4, name = 'Forest Hare' }, GONE,
+                          { isJugPet = jugAuth }).kind, 'death');
+    check('PVL30 no authority at all -> unknown, which is not a jug',
+          pv.classifyLoss(HURT, GONE, {}).pet, 'unknown');
+    check('PVL31 a THROWING authority is not permission either',
+          pv.classifyLoss(HURT, GONE, { isJugPet = function() error('boom'); end }).pet, 'unknown');
+    check('PVL32 the edge carries the pet as last seen', d2.name .. '/' .. tostring(d2.hpp),
+          'Hare Familiar/9');
+
+    -- --- the signal inbox: what the world said, with a shelf life
+    pv.clearSignals();
+    pv.noteSignal('falls', 100, 'Hare Familiar');
+    check('PVL33 a noted signal is readable inside the window', pv.signals(101).falls, 'Hare Familiar');
+    check('PVL34 ...and expires after the TTL', pv.signals(100 + pv.SIGNAL_TTL_S + 1).falls, nil);
+    pv.noteSignal('leave', 200);
+    check('PVL35 a signal with no name reads as true', pv.signals(201).leave, true);
+    check('PVL36 a backwards clock keeps the signal rather than expiring it',
+          pv.signals(150).leave, true);
+    pv.clearSignals();
+    check('PVL37 clearing empties the inbox', pv.signals(201).leave, nil);
+
+    -- --- the edge on the BEAT: one loss, published once, to loss subscribers
+    pv.reset(true);
+    pv.lossCtx.isJugPet = jugAuth;
+    local edges = {};
+    local petNow = HURT;
+    local READS = { pet = function() return (petNow.present and { HPP = petNow.hpp, Name = petNow.name }) or nil; end,
+                    zoning = function() return false; end, loggingOut = function() return false; end };
+    check('PVL38 a LOSS subscriber alone keeps the beat alive',
+          pv.subscribeLoss('t', function(e) edges[#edges + 1] = e; end) and pv.lossSubscriberCount(), 1);
+    check('PVL39 ...so the pump reads the world with no vitals subscriber at all',
+          (pv.pump(100, READS) or {}).present, true);
+    check('PVL40 a pet that is OUT publishes no loss', #edges, 0);
+    check('PVL41 ...and is remembered as the edge\'s "before"', pv.lastPresent().hpp, 9);
+    petNow = GONE;
+    pv.pump(101, READS);
+    check('PVL42 the vanish publishes exactly one edge', #edges, 1);
+    check('PVL43 ...classified as a confirmed death', edges[1].kind .. '/' .. tostring(edges[1].confirmed),
+          'death/true');
+    check('PVL44 ...of a jug pet', edges[1].pet, 'jug');
+    check('PVL45 ...stamped with the beat', edges[1].at, 101);
+    pv.pump(102, READS);
+    pv.pump(103, READS);
+    check('PVL46 a pet that stays gone never re-fires the edge', #edges, 1);
+    check('PVL47 lastLoss() answers the same edge', pv.lastLoss().kind, 'death');
+    check('PVL48 ...and the "before" is spent', pv.lastPresent(), nil);
+
+    -- a Leave observed in the window suppresses the very same transition
+    pv.reset(false);
+    edges, petNow = {}, HURT;
+    pv.pump(200, READS);
+    pv.noteSignal('leave', 200);
+    petNow = GONE;
+    pv.pump(201, READS);
+    check('PVL49 the same vanish reads as a LEAVE once one was observed', edges[1].kind, 'leave');
+    check('PVL50 ...and the signal does not explain the NEXT loss too', pv.signals(201).leave, nil);
+
+    -- zoning wins over everything, read live through the injected reads
+    pv.reset(false);
+    edges, petNow = {}, HURT;
+    READS.zoning = function() return true; end;
+    pv.pump(300, READS);
+    petNow = GONE;
+    pv.pump(301, READS);
+    check('PVL51 the live zoning read suppresses at the beat too', edges[1].kind, 'zone');
+    READS.zoning = function() return false; end;
+
+    -- a text line only becomes a signal while a pet is actually out
+    pv.reset(false);
+    petNow = OUT;
+    pv.pump(400, READS);
+    check('PVL52 a falls line about MY pet becomes a signal',
+          pv.onTextLine('Hare Familiar falls to the ground.', 400) and pv.signals(400).falls,
+          'Hare Familiar');
+    pv.clearSignals();
+    check('PVL53 ...a line about the mob does not',
+          pv.onTextLine('The Forest Hare falls to the ground.', 400), false);
+
+    -- --- the LEAVE observation: decode on the packet thread, resolve on ours
+    pv.resetCommands();
+    pv.clearSignals();
+    -- an outgoing 0x01A: category 0x09 (Ability) at 0x0A, ability id at 0x0C
+    local function actionPkt(cat, abil)
+        local b = {};
+        for i = 1, 16 do b[i] = 0; end
+        b[0x0A + 1] = cat % 256;  b[0x0A + 2] = math.floor(cat / 256);
+        b[0x0C + 1] = abil % 256; b[0x0C + 2] = math.floor(abil / 256);
+        local s = '';
+        for i = 1, 16 do s = s .. string.char(b[i]); end
+        return s;
+    end
+    check('PVL54 an ability action packet decodes to its ability id',
+          pv.decodeCommand(actionPkt(0x09, 261)), 261);
+    check('PVL55 a battle EDGE is not this reader\'s packet (engagewatch owns those)',
+          pv.decodeCommand(actionPkt(0x02, 261)), nil);
+    check('PVL56 a torn packet decodes to nothing', pv.decodeCommand('\0\0'), nil);
+    pv.onCommandPacket(actionPkt(0x09, 261));
+    check('PVL57 the drain notes a Leave when the name resolves to one',
+          pv.drainCommands(500, function(id) if id == 261 then return 'leave'; end return 'sic'; end), 1);
+    check('PVL58 ...as a signal on THIS service\'s clock', pv.signals(500).leave, true);
+    pv.clearSignals();
+    pv.onCommandPacket(actionPkt(0x09, 262));
+    check('PVL59 any other ability is not a Leave',
+          pv.drainCommands(510, function() return 'reward'; end), 0);
+    check('PVL60 ...and notes nothing', pv.signals(510).leave, nil);
+    pv.onCommandPacket(actionPkt(0x09, 263));
+    check('PVL61 an unresolvable ability name is not a Leave either (fails SAFE)',
+          pv.drainCommands(520, function() return nil; end), 0);
+    check('PVL62 draining an empty stash is free', pv.drainCommands(530), 0);
+
+    -- --- the human line the Panel reports
+    check('PVL63 the loss text names the death', pv.lossText(d1):find('died', 1, true) ~= nil, true);
+    check('PVL64 ...and a charmed one says so',
+          pv.lossText(pv.classifyLoss({ present = true, hpp = 4, name = 'Forest Hare' }, GONE,
+                                      { isJugPet = jugAuth })):find('charmed', 1, true) ~= nil, true);
+    check('PVL65 ...and a Leave reads as a dismissal',
+          pv.lossText(pv.classifyLoss(HURT, GONE, { leave = true })):find('dismissed', 1, true) ~= nil, true);
+    check('PVL66 nothing lost has nothing to say', pv.lossText(nil), 'no pet loss yet');
+end)();
+
+-- ---------------------------------------------------------------------------
+-- JUG: the BST Helper's jug DATA (issue #141) -- the pet roster the death
+-- classifier judges names against, and the jug -> pet mapping the picker shows.
+-- The jug LIST itself is the catalog's, joined here, with the walk injected.
+-- ---------------------------------------------------------------------------
+;(function()
+    local jugs = dofile('jobhelpers/bst/bst-helper/jugs.lua');
+
+    -- --- the roster: the classifier's whole jug-vs-charm rule
+    check('JUG1 a jug pet is on the roster', jugs.isJugPet('Hare Familiar'), true);
+    check('JUG2 ...an HQ one too', jugs.isJugPet('Keeneared Steffi'), true);
+    check('JUG3 a charmed mob keeps its mob name and is NOT one', jugs.isJugPet('Forest Hare'), false);
+    check('JUG4 matched case-insensitively', jugs.isJugPet('hare familiar'), true);
+    check('JUG5 ...and padding-trimmed (the GetName idiom)', jugs.isJugPet('Hare Familiar  '), true);
+    check('JUG6 no name to judge answers "cannot tell"', jugs.isJugPet(nil), nil);
+    check('JUG7 an empty name too', jugs.isJugPet('   '), nil);
+    check('JUG8 the player\'s own configured pet counts even off-roster',
+          jugs.isJugPet('Wyvern Familiar', 'Wyvern Familiar'), true);
+    check('JUG9 ...and only that one', jugs.isJugPet('Other Familiar', 'Wyvern Familiar'), false);
+    check('JUG10 the roster is 14 families of NQ + HQ', #jugs.PETS, 28);
+
+    -- --- the mapping: display only, and honest about what it does not know
+    check('JUG11 a mapped jug names its pet', jugs.petFor('Carrot Broth'), 'Hare Familiar');
+    check('JUG12 ...and where the row came from', jugs.sourceFor('Carrot Broth'), 'cexi');
+    check('JUG13 an unmapped jug names nobody rather than guessing',
+          jugs.petFor('Shadowy Broth'), nil);
+    check('JUG14 a non-jug maps to nothing', jugs.petFor('Pet Food Alpha'), nil);
+    check('JUG15 no mapping row points at a pet the roster does not carry', (function()
+        local roster = {};
+        for _, n in ipairs(jugs.PETS) do roster[n] = true; end
+        for item, row in pairs(jugs.MAP) do
+            if roster[row.pet] ~= true then return item .. ' -> ' .. tostring(row.pet); end
+        end
+        return 'ok';
+    end)(), 'ok');
+    check('JUG16 ...and no two jugs claim the same pet', (function()
+        local seen = {};
+        for item, row in pairs(jugs.MAP) do
+            if seen[row.pet] ~= nil then return row.pet .. ' claimed twice'; end
+            seen[row.pet] = item;
+        end
+        return 'ok';
+    end)(), 'ok');
+
+    -- --- the list: a jug is a BST-ONLY Ammo item, joined with the mapping
+    local FIXTURE = {
+        [17860] = { Name = 'Carrot Broth', Level = 10, Type = 'Ammo', Jobs = { 'BST' } },
+        [17864] = { Name = 'Herbal Broth', Level = 15, Type = 'Ammo', Jobs = { 'BST' } },
+        [17903] = { Name = 'Shadowy Broth', Level = 96, Type = 'Ammo', Jobs = { 'BST' } },
+        [17016] = { Name = 'Pet Food Alpha', Level = 12, Type = 'Ammo',
+                    Jobs = { 'WAR', 'BST', 'DRG' } },                       -- not BST-only
+        [18761] = { Name = 'Acantha Shavers', Level = 69, Type = 'HandToHand', Jobs = { 'BST' } },
+    };
+    local READS = { index = function() return FIXTURE; end };
+    local list = jugs.list(READS);
+    check('JUG17 only BST-only Ammo is a jug', #list, 3);
+    check('JUG18 ...ordered lowest level first', list[1].name, 'Carrot Broth');
+    check('JUG19 ...then the rest', list[2].name .. '/' .. list[3].name, 'Herbal Broth/Shadowy Broth');
+    check('JUG20 a row carries its catalog id and level', list[1].id .. '/' .. list[1].level, '17860/10');
+    check('JUG21 ...and the pet it calls', list[1].pet, 'Hare Familiar');
+    check('JUG22 an unmapped jug rides the list with no pet name', list[3].pet, nil);
+    check('JUG23 find() is case-insensitive (a name travels through a config file)',
+          (jugs.find('carrot broth', READS) or {}).id, 17860);
+    check('JUG24 ...and a non-jug is not found', jugs.find('Pet Food Alpha', READS), nil);
+    check('JUG25 an unreadable catalog is an empty list, never a throw',
+          #jugs.list({ index = function() error('no catalog'); end }), 0);
+
+    -- a LIVE-observed level override wins over the catalog's inherited base
+    jugs.LEVEL['Carrot Broth'] = 8;
+    check('JUG26 a live-observed level beats the repo one', jugs.list(READS)[1].level, 8);
+    jugs.LEVEL['Carrot Broth'] = nil;
+    check('JUG27 the default LEVEL table ships empty (nothing observed live yet)',
+          next(jugs.LEVEL), nil);
+end)();
+
+-- ---------------------------------------------------------------------------
+-- BRS: the BST Helper's RESUMMON rule (issue #141), driven at its DECISION
+-- SEAM -- a classified loss edge + state in, "summon / queue / hold" out, and
+-- the queue tick's fire/cancel the same way. Death only, jug pets only, and
+-- never a summon on a Leave, a zone, a logout or a charmed pet. AC1-AC6.
+-- ---------------------------------------------------------------------------
+;(function()
+    local rs = dofile('jobhelpers/bst/bst-helper/resummon.lua');
+
+    local DEATH = { lost = true, kind = 'death', confirmed = true, pet = 'jug',
+                    name = 'Hare Familiar', hpp = 4 };
+    -- `nil` in a table literal cannot CLEAR a key (pairs never sees it), and
+    -- half these cases are exactly "this read came back unreadable" -- so the
+    -- overrides carry an explicit unset marker.
+    local UNSET = {};
+    local function armed(over)
+        local st = { armed = true, active = true, jug = 'Carrot Broth', method = 'call',
+                     fallback = true, stock = 3, busy = false, now = 100 };
+        for k, v in pairs(over or {}) do
+            if v == UNSET then st[k] = nil; else st[k] = v; end
+        end
+        return st;
+    end
+    local function edge(over)
+        local e = {};
+        for k, v in pairs(DEATH) do e[k] = v; end
+        for k, v in pairs(over or {}) do e[k] = v; end
+        return e;
+    end
+
+    -- --- the happy path (AC1)
+    local d = rs.decideLoss(DEATH, armed());
+    check('BRS1 a confirmed jug-pet death summons', d.act, true);
+    check('BRS2 ...with the chosen method', d.method, 'call');
+    check('BRS3 ...and the configured jug', d.jug, 'Carrot Broth');
+    check('BRS4 the request claims the jug into Ammo',
+          rs.buildRequest('bst', 'Carrot Broth', 'call').claim.Ammo, 'Carrot Broth');
+    check('BRS5 ...and that same slot must VERIFY WORN before anything fires',
+          rs.buildRequest('bst', 'Carrot Broth', 'call').need.Ammo, 'Carrot Broth');
+    check('BRS6 ...firing the chosen ability', rs.buildRequest('bst', 'Carrot Broth', 'call').command,
+          rs.METHOD_COMMAND.call);
+    check('BRS7 ...labelled with the act, not the rule',
+          rs.buildRequest('bst', 'Carrot Broth', 'loyalty').label, 'Bestial Loyalty');
+
+    -- --- the switches
+    check('BRS8 an unarmed rule never acts', rs.decideLoss(DEATH, armed({ armed = false })).reason, 'off');
+    check('BRS9 an inactive module never acts (reason carried)',
+          rs.decideLoss(DEATH, armed({ active = false, reason = 'town' })).reason, 'town');
+    check('BRS10 an unreadable world is not permission either',
+          rs.decideLoss(DEATH, armed({ active = UNSET })).act, false);
+
+    -- --- NEVER on anything but a proven jug-pet death (AC2)
+    check('BRS11 a Leave is never a summon', rs.decideLoss(edge({ kind = 'leave', confirmed = false }),
+          armed()).reason, 'leave');
+    check('BRS12 zoning is never a summon', rs.decideLoss(edge({ kind = 'zone', confirmed = false }),
+          armed()).reason, 'zone');
+    check('BRS13 logging out is never a summon', rs.decideLoss(edge({ kind = 'logout', confirmed = false }),
+          armed()).reason, 'logout');
+    check('BRS14 an UNEXPLAINED vanish is never a summon',
+          rs.decideLoss(edge({ kind = 'unknown', confirmed = false }), armed()).reason, 'unknown');
+    check('BRS15 a charmed pet\'s death triggers nothing',
+          rs.decideLoss(edge({ pet = 'charm' }), armed()).reason, 'charm');
+    check('BRS16 ...and neither does an unidentifiable pet',
+          rs.decideLoss(edge({ pet = 'unknown' }), armed()).reason, 'not-jug');
+    check('BRS17 a "death" that confirmed nothing is not a death',
+          rs.decideLoss(edge({ confirmed = false }), armed()).reason, 'unconfirmed');
+    check('BRS18 no loss at all -> nothing', rs.decideLoss({ lost = false }, armed()).reason, 'no-loss');
+    check('BRS19 none of them ever act', (function()
+        for _, e in ipairs({ edge({ kind = 'leave' }), edge({ kind = 'zone' }), edge({ kind = 'logout' }),
+                             edge({ kind = 'unknown' }), edge({ pet = 'charm' }),
+                             edge({ confirmed = false }) }) do
+            if rs.decideLoss(e, armed()).act == true then return 'one acted'; end
+        end
+        return 'none';
+    end)(), 'none');
+
+    -- --- out of jug: ONE loud line, and Loyalty still needs one (AC5)
+    local nj = rs.decideLoss(DEATH, armed({ jug = UNSET }));
+    check('BRS20 no jug picked refuses', nj.act, false);
+    check('BRS21 ...loudly', nj.loud, true);
+    check('BRS22 ...naming what to do',
+          rs.refusalLine(nj):find('choose one', 1, true) ~= nil, true);
+    local ns = rs.decideLoss(DEATH, armed({ stock = 0 }));
+    check('BRS23 zero of the configured jug refuses', ns.reason, 'no-stock');
+    check('BRS24 ...loudly, naming the jug', rs.refusalLine(ns):find('Carrot Broth', 1, true) ~= nil, true);
+    check('BRS25 ...and says BOTH methods need one equipped',
+          rs.refusalLine(ns):find('Bestial Loyalty', 1, true) ~= nil, true);
+    check('BRS26 the Loyalty fallback does NOT rescue an empty bag',
+          rs.decideLoss(DEATH, armed({ stock = 0, method = 'loyalty', callReady = false })).act, false);
+    check('BRS27 an unreadable stock refuses rather than firing bare',
+          rs.decideLoss(DEATH, armed({ stock = UNSET })).reason, 'no-stock');
+
+    -- --- the binary choice + the cooldown fallback (AC3)
+    check('BRS28 the chosen method wins while it is ready',
+          rs.pickMethod('loyalty', true, true, true), 'loyalty');
+    check('BRS29 chosen down + checkbox ON -> the other one',
+          rs.pickMethod('call', true, false, true), 'loyalty');
+    check('BRS30 ...and the other way round', rs.pickMethod('loyalty', true, true, false), 'call');
+    check('BRS31 chosen down + checkbox OFF -> nothing (it will queue)',
+          rs.pickMethod('call', false, false, true), nil);
+    check('BRS32 both down -> nothing, whatever the checkbox says',
+          rs.pickMethod('call', true, false, false), nil);
+    check('BRS33 an UNMEASURED recast reads READY (the courtesy gate)',
+          rs.pickMethod('call', true, nil, nil), 'call');
+    check('BRS34 the fallback reaches the other on the loss decision too',
+          rs.decideLoss(DEATH, armed({ callReady = false })).method, 'loyalty');
+    check('BRS35 ...and with the checkbox off it queues instead',
+          rs.decideLoss(DEATH, armed({ callReady = false, fallback = false })).queue, true);
+    check('BRS36 both down queues (AC4)',
+          rs.decideLoss(DEATH, armed({ callReady = false, loyaltyReady = false })).queue, true);
+    check('BRS37 ...naming why', rs.decideLoss(DEATH,
+          armed({ callReady = false, loyaltyReady = false })).reason, 'recast');
+    check('BRS38 a live sequence queues rather than being dropped',
+          rs.decideLoss(DEATH, armed({ busy = true })).queue, true);
+
+    -- --- the queue tick: cancels first, then holds, then fire (AC4)
+    local function q(over)
+        local st = armed(over);
+        st.queued = { jug = 'Carrot Broth', method = 'call', fallback = true };
+        st.callReady, st.loyaltyReady = false, false;   -- queued BECAUSE both are down
+        for k, v in pairs(over or {}) do
+            if v == UNSET then st[k] = nil; else st[k] = v; end
+        end
+        return st;
+    end
+    check('BRS39 nothing queued -> nothing to decide', rs.queueDecide(armed()).reason, 'none');
+    check('BRS40 a pet appearing ANY other way cancels', rs.queueDecide(q({ petPresent = true })).cancel,
+          'pet-appeared');
+    check('BRS41 zoning cancels', rs.queueDecide(q({ zoning = true })).cancel, 'zone');
+    check('BRS42 logging out cancels', rs.queueDecide(q({ logout = true })).cancel, 'logout');
+    check('BRS43 an observed Leave cancels', rs.queueDecide(q({ leave = true })).cancel, 'leave');
+    check('BRS44 disarming the rule cancels', rs.queueDecide(q({ armed = false })).cancel, 'off');
+    check('BRS45 running out of the jug while queued cancels, loudly',
+          rs.queueDecide(q({ stock = 0 })).cancel .. '/' .. tostring(rs.queueDecide(q({ stock = 0 })).loud),
+          'no-stock/true');
+    check('BRS46 an inactive module HOLDS, it does not cancel',
+          rs.queueDecide(q({ active = false, reason = 'town' })).cancel, nil);
+    check('BRS47 ...and says why it is waiting',
+          rs.queueDecide(q({ active = false, reason = 'town' })).reason, 'town');
+    check('BRS48 a busy sequencer holds too', rs.queueDecide(q({ busy = true })).reason, 'busy');
+    check('BRS49 still on recast holds', rs.queueDecide(q()).reason, 'recast');
+    check('BRS50 ...and fires the moment one comes up', rs.queueDecide(q({ callReady = true })).fire, true);
+    check('BRS51 ...with that method', rs.queueDecide(q({ callReady = true })).method, 'call');
+    check('BRS52 the queue re-decides which ability against what is ready NOW',
+          rs.queueDecide(q({ loyaltyReady = true })).method, 'loyalty');
+    check('BRS53 ...and honours the checkbox it was queued with', (function()
+        local st = q({ loyaltyReady = true });
+        st.queued = { jug = 'Carrot Broth', method = 'call', fallback = false };
+        return rs.queueDecide(st).fire;
+    end)(), false);
+    check('BRS53a the JUG is read live, not off the queue record',
+          rs.queueDecide(q({ callReady = true, jug = 'Herbal Broth' })).jug, 'Herbal Broth');
+    check('BRS53b ...and clearing the picker while queued cancels, loudly',
+          rs.queueDecide(q({ callReady = true, jug = UNSET })).cancel, 'no-jug');
+
+    -- --- the reported lines (Panel, never chat -- except the two loud ones)
+    check('BRS54 an act reports the ability it used',
+          rs.decisionText({ act = true, method = 'loyalty' }), 'summoned with Bestial Loyalty');
+    check('BRS55 a queue says it queued and why',
+          rs.decisionText({ queue = true, reason = 'recast' }):find('queued', 1, true) ~= nil, true);
+    check('BRS56 a cancel says it was cancelled and why',
+          rs.decisionText({ cancel = 'pet-appeared' }):find('cancelled', 1, true) ~= nil, true);
+    check('BRS57 a charmed pet\'s line does not blame the player',
+          rs.decisionText({ reason = 'charm' }):find('charm stays yours', 1, true) ~= nil, true);
+    check('BRS58 nothing yet reads as nothing yet', rs.decisionText(nil), 'nothing yet');
+
+    -- --- the methods themselves
+    check('BRS59 exactly two methods', #rs.METHODS, 2);
+    check('BRS60 an unknown method is not one', rs.isMethod('sic'), false);
+    check('BRS61 ...and a request built with one falls back to Call Beast',
+          rs.buildRequest('bst', 'Carrot Broth', 'sic').command, rs.METHOD_COMMAND.call);
+
+    -- --- the GLUE: edge -> decision -> at most one act or one queued resummon.
+    -- liveState and request are the two seams, so the whole lifecycle drives
+    -- with no world, no sequencer and no chat.
+    local acts, lines, WORLD = {}, {}, armed();
+    rs.liveState = function() local c = {}; for k, v in pairs(WORLD) do c[k] = v; end return c; end;
+    rs.request   = function(_, m) acts[#acts + 1] = m; return { ok = true }; end;
+    rs._emit     = function(l) lines[#lines + 1] = l; end;
+
+    rs.reset();
+    rs.onLoss(DEATH, 'bst');
+    check('BRS62 a confirmed jug death asks for the summon once', #acts, 1);
+    check('BRS63 ...with the chosen method', acts[1], 'call');
+    check('BRS64 ...and queues nothing', rs.queued(), nil);
+
+    acts = {};
+    rs.reset();
+    WORLD = armed({ callReady = false, loyaltyReady = false });
+    rs.onLoss(DEATH, 'bst');
+    check('BRS65 both recasts down asks for nothing', #acts, 0);
+    check('BRS66 ...and queues the resummon', (rs.queued() or {}).jug, 'Carrot Broth');
+    check('BRS67 ...remembering the PICK, not a resolved method', rs.queued().method, 'call');
+    check('BRS68 ...and the checkbox it was queued with', rs.queued().fallback, true);
+
+    -- the queue tick rides the ordinary vitals beat
+    rs.onVitals({ present = false, at = 101 }, 'bst');
+    check('BRS69 still down: the queue holds', (rs.queued() or {}).jug, 'Carrot Broth');
+    check('BRS70 ...and nothing was asked for', #acts, 0);
+    WORLD = armed({ callReady = false, loyaltyReady = true });
+    rs.onVitals({ present = false, at = 102 }, 'bst');
+    check('BRS71 one coming up fires the queued resummon', acts[#acts], 'loyalty');
+    check('BRS72 ...and spends the queue', rs.queued(), nil);
+    check('BRS73 a beat with nothing queued is a no-op',
+          rs.onVitals({ present = false, at = 103 }, 'bst'), nil);
+
+    -- a pet appearing ANY other way cancels it
+    acts = {};
+    rs.reset();
+    WORLD = armed({ callReady = false, loyaltyReady = false });
+    rs.onLoss(DEATH, 'bst');
+    rs.onVitals({ present = true, at = 110, name = 'Hare Familiar' }, 'bst');
+    check('BRS74 a pet coming out cancels the queue', rs.queued(), nil);
+    check('BRS75 ...without summoning anything', #acts, 0);
+
+    -- zoning cancels it, read through liveState's world
+    rs.reset();
+    rs.onLoss(DEATH, 'bst');
+    WORLD = armed({ callReady = false, loyaltyReady = false, zoning = true });
+    rs.onVitals({ present = false, at = 120 }, 'bst');
+    check('BRS76 zoning cancels the queue', rs.queued(), nil);
+
+    -- ...and so does disarming the rule, which is the row pill's whole job
+    rs.reset();
+    WORLD = armed({ callReady = false, loyaltyReady = false });
+    rs.onLoss(DEATH, 'bst');
+    check('BRS77 a queue is standing', rs.queued() ~= nil, true);
+    rs.setArmed(false);
+    check('BRS78 disarming drops it on the spot', rs.queued(), nil);
+
+    -- the loud refusals speak exactly once each
+    lines, acts = {}, {};
+    rs.reset();
+    WORLD = armed({ stock = 0 });
+    rs.onLoss(DEATH, 'bst');
+    check('BRS79 out of jug says so, once', #lines, 1);
+    check('BRS80 ...naming the jug', lines[1]:find('Carrot Broth', 1, true) ~= nil, true);
+    check('BRS81 ...and summons nothing', #acts, 0);
+    lines = {};
+    WORLD = armed({ jug = UNSET });
+    rs.onLoss(DEATH, 'bst');
+    check('BRS82 no jug picked says so, once', #lines, 1);
+    lines = {};
+    WORLD = armed();
+    rs.onLoss(edge({ kind = 'leave', confirmed = false }), 'bst');
+    check('BRS83 a Leave is silent -- it is the rule working, not a blocker', #lines, 0);
+    check('BRS84 ...and reported in the Panel line instead',
+          rs.lastDecision().reason, 'leave');
+end)();
+
+-- ---------------------------------------------------------------------------
+-- AS: the ACTION SEQUENCER (issue #138), driven at its SEAM with injected
+-- worn / blocker / fire / release fakes -- never-fire-bare, timeout abort,
+-- senior-claimant refusal, release, exactly one send, one-live-at-a-time, and
+-- the simultaneous-request module-order tiebreak. AC1/AC2/AC3/AC6/AC8.
+-- ---------------------------------------------------------------------------
+;(function()
+    local as = dofile('feature/actionseq.lua');
+    local function mkio(worn, blocker)
+        local rec = { fired = {}, released = 0, emits = {} };
+        rec.io = {
+            worn    = function(slot) return (worn or {})[slot]; end,
+            blocker = function(slot) return (blocker or {})[slot]; end,
+            fire    = function(cmd) rec.fired[#rec.fired + 1] = cmd; end,
+            release = function() rec.released = rec.released + 1; end,
+            emit    = function(line) rec.emits[#rec.emits + 1] = line; end,
+        };
+        return rec;
+    end
+
+    -- happy path: verified worn -> fire once -> hold -> release (AC1)
+    as.reset();
+    check('AS1 idle at rest', as.state(), 'idle');
+    local acc = as.request({ module = 'bst', label = 'Reward', order = 1,
+        claim = { Ammo = 'Pet Food Delta' }, need = { Ammo = 'Pet Food Delta' },
+        command = '/ja "Reward" <me>', timeout = 4 });
+    check('AS2 request accepted', acc.ok, true);
+    check('AS3 the claim is live while claiming', (as.claim() or {}).Ammo, 'Pet Food Delta');
+    check('AS4 active while claiming', as.active(), true);
+    local r = mkio({}, {});
+    as.tick(0, r.io);
+    check('AS5 not worn yet -> still claiming, no fire', #r.fired, 0);
+    local r2 = mkio({ Ammo = 'Pet Food Delta' }, {});
+    as.tick(0.5, r2.io);
+    check('AS6 verified worn -> fired once', #r2.fired, 1);
+    check('AS7 fired the right command', r2.fired[1], '/ja "Reward" <me>');
+    check('AS8 state is firing (gear held through the cast)', as.state(), 'firing');
+    as.tick(0.6, r2.io);
+    check('AS9 exactly ONE send across ticks', #r2.fired, 1);
+    as.tick(1.5, r2.io);
+    check('AS10 released after the hold', r2.released >= 1, true);
+    check('AS11 idle after release', as.state(), 'idle');
+    check('AS12 success is SILENT (no chat)', #r2.emits, 0);
+    check('AS13 last outcome is fired', (as.lastOutcome() or {}).outcome, 'fired');
+
+    -- never-fire-bare + timeout abort (AC3): the gear never matches
+    as.reset();
+    as.request({ module = 'bst', label = 'Reward', order = 1,
+        claim = { Ammo = 'Pet Food Delta' }, need = { Ammo = 'Pet Food Delta' },
+        command = 'FIRE', timeout = 4 });
+    local r3 = mkio({ Ammo = 'Something Else' }, {});
+    as.tick(0, r3.io);          -- startAt = 0
+    as.tick(2, r3.io);          -- within the window, wrong gear worn
+    check('AS14 never fires bare (wrong gear worn)', #r3.fired, 0);
+    as.tick(4, r3.io);          -- timeout
+    check('AS15 timeout -> aborted, nothing fired', #r3.fired, 0);
+    check('AS16 abort emits one line', #r3.emits, 1);
+    check('AS17 abort released the claim', r3.released >= 1, true);
+    check('AS18 idle after abort', as.state(), 'idle');
+    check('AS19 last outcome is aborted', (as.lastOutcome() or {}).outcome, 'aborted');
+
+    -- senior-claimant refusal (AC2): a definitive blocker on a needed slot
+    as.reset();
+    as.request({ module = 'bst', label = 'Reward', order = 1,
+        claim = { Ammo = 'Pet Food Delta' }, need = { Ammo = 'Pet Food Delta' },
+        command = 'FIRE', timeout = 4 });
+    local r4 = mkio({}, { Ammo = 'Free equip' });
+    as.tick(0, r4.io);
+    check('AS20 a blocker on a needed slot -> refused, no fire', #r4.fired, 0);
+    check('AS21 refusal NAMES the blocker', (r4.emits[1] or ''):find('Free equip', 1, true) ~= nil, true);
+    check('AS22 refusal released the claim', r4.released >= 1, true);
+    check('AS23 last outcome is refused', (as.lastOutcome() or {}).outcome, 'refused');
+
+    -- one live at a time: a started sequence is never preempted
+    as.reset();
+    as.request({ module = 'bst', label = 'Reward', order = 1, claim = { Ammo = 'X' }, command = 'FIRE', timeout = 4 });
+    local busy = as.request({ module = 'pup', label = 'Ready', order = 1, claim = { Ammo = 'Y' }, command = 'FIRE2', timeout = 4 });
+    check('AS24 a second request while one runs is refused', busy.ok, false);
+    check('AS25 the refusal names the holder', busy.holder, 'bst');
+
+    -- simultaneous contenders resolve by module order (AC6)
+    as.reset();
+    local win, losers = as.arbitrateRequests({
+        { module = 'bst', order = 1 }, { module = 'pup', order = 3 }, { module = 'dnc', order = 2 } });
+    check('AS26 the highest module order wins', win.module, 'pup');
+    check('AS27 the losers are the rest', #losers, 2);
+    check('AS28 a tie breaks deterministically by module id',
+          (as.arbitrateRequests({ { module = 'zeta', order = 5 }, { module = 'alpha', order = 5 } })).module, 'alpha');
+    as.reset();
+end)();
+
+-- ---------------------------------------------------------------------------
+-- JHR: the JobHelper CLAIM PRIORITY row (issue #138). arbiter.placeJobHelper
+-- (default below Locks), the per-job anchor store, moveRankRow, and placedOrder
+-- hiding the row with zero modules. AC5.
+-- ---------------------------------------------------------------------------
+;(function()
+    local ARB = dofile('gear/arbiter.lua');
+    local BASE = { 'Disabled', 'Naked', 'Pins', 'Locks', 'AutoAmmo', 'MaxMP',
+                   'Craft', 'HELM', 'Fishing', 'Chocobo', 'Triggers' };
+
+    local function idxOf(list, name)
+        for i, n in ipairs(list) do if n == name then return i; end end
+        return nil;
+    end
+
+    local p = ARB.placeJobHelper(BASE, nil);
+    check('JHR1 default places JobHelper directly below Locks', idxOf(p, 'JobHelper'), idxOf(p, 'Locks') + 1);
+    check('JHR2 the Disabled ceiling stays first', p[1], 'Disabled');
+    check('JHR3 the Triggers floor stays last', p[#p], 'Triggers');
+    local p2 = ARB.placeJobHelper(BASE, 'Chocobo');
+    check('JHR4 a chosen anchor places it directly below that row', idxOf(p2, 'JobHelper'), idxOf(p2, 'Chocobo') + 1);
+    local p3 = ARB.placeJobHelper(BASE, 'Triggers');
+    check('JHR5 anchor Triggers is refused -> falls back below Locks', p3[idxOf(p3, 'JobHelper') - 1], 'Locks');
+    local p4 = ARB.placeJobHelper(p, nil);   -- placing over an order that already has it
+    local cnt = 0; for _, n in ipairs(p4) do if n == 'JobHelper' then cnt = cnt + 1; end end
+    check('JHR6 placeJobHelper is idempotent (exactly one JobHelper)', cnt, 1);
+
+    -- the per-job store (jobhelpers) -- stub the config file layer
+    local savedArb = package.loaded['dlac\\gear\\arbiter'];
+    package.loaded['dlac\\gear\\arbiter'] = ARB;   -- jobhelpers lazily requires it
+    local jh = dofile('feature/jobhelpers.lua');
+    package.loaded['dlac\\feature\\jobhelpers'] = jh;
+    local FILES = {};
+    local realOpen, realLoadfile = io.open, loadfile;
+    jh._charDir = function() return 'JHRDIR\\'; end
+    io.open = function(path, mode)
+        if type(path) == 'string' and path:find('JHRDIR', 1, true) then
+            if (mode or 'r'):find('w') then
+                return { write = function(_, s) FILES[path] = (FILES[path] or '') .. s; end, close = function() end };
+            else
+                if FILES[path] == nil then return nil; end
+                local c = false;
+                return { read = function() if c then return nil; end c = true; return FILES[path]; end, close = function() end };
+            end
+        end
+        return realOpen(path, mode);
+    end
+    loadfile = function(path)
+        if type(path) == 'string' and path:find('JHRDIR', 1, true) then
+            local s = FILES[path]; if s == nil then return nil; end return (loadstring or load)(s);
+        end
+        return realLoadfile(path);
+    end
+
+    jh.modules = {};
+    check('JHR7 placedOrder hides JobHelper with zero modules', idxOf(jh.placedOrder(BASE, 'BST'), 'JobHelper'), nil);
+
+    jh.modules = { { id = 'bst', label = 'BST Helper', jobs = { 'BST' }, mod = {} } };
+    check('JHR8 default anchor is Locks', jh.rankAnchorFor('BST'), 'Locks');
+    local placed = jh.placedOrder(BASE, 'BST');
+    check('JHR9 with a module installed JobHelper sits below Locks',
+          placed[idxOf(placed, 'JobHelper') - 1], 'Locks');
+    local moved = jh.moveRankRow(placed, 'BST', -1);   -- up one, above Locks
+    check('JHR10 moveRankRow returns a new order', type(moved), 'table');
+    check('JHR11 the anchor for BST is remembered (now Pins)', jh.rankAnchorFor('BST'), 'Pins');
+    check('JHR12 a job never dragged keeps the default', jh.rankAnchorFor('PUP'), 'Locks');
+    check('JHR13 the per-job anchor was written to disk', FILES['JHRDIR\\jobhelpers.lua'] ~= nil, true);
+    check('JHR14 the anchor survives a re-read',
+          (jh._normalizeCfg((loadstring or load)(FILES['JHRDIR\\jobhelpers.lua'])()).rank or {})['BST'], 'Pins');
+    -- placedOrder now honors the remembered anchor for BST only
+    check('JHR15 placedOrder reflects the remembered BST anchor',
+          jh.placedOrder(BASE, 'BST')[idxOf(jh.placedOrder(BASE, 'BST'), 'JobHelper') - 1], 'Pins');
+    check('JHR16 a different job still places at the default',
+          jh.placedOrder(BASE, 'PUP')[idxOf(jh.placedOrder(BASE, 'PUP'), 'JobHelper') - 1], 'Locks');
+
+    io.open = realOpen; loadfile = realLoadfile;
+    jh.modules = {};
+    package.loaded['dlac\\gear\\arbiter'] = savedArb;
+    package.loaded['dlac\\feature\\jobhelpers'] = nil;
+    package.loaded['dlac\\lib\\statefile'] = nil;
+end)();
+
+-- ---------------------------------------------------------------------------
+-- JHW: the JobHelper claimant at the /dl why seam (issue #138). The row is
+-- named by its DISPLAY LABEL everywhere a player reads it, never the internal
+-- identity. AC8 ("claimant row tested at the registry seam including /dl why").
+-- ---------------------------------------------------------------------------
+;(function()
+    local ARB = dofile('gear/arbiter.lua');
+    check('JHW1 claimantLabel maps JobHelper -> "Job helper"', ARB.claimantLabel('JobHelper'), 'Job helper');
+    local order = ARB.placeJobHelper({ 'Disabled', 'Naked', 'Pins', 'Locks', 'AutoAmmo', 'MaxMP',
+                                       'Craft', 'HELM', 'Fishing', 'Chocobo', 'Triggers' }, nil);
+    local lines = ARB.arbWhyLines({ JobHelper = { Ammo = 'Pet Food Delta' } }, order, {});
+    local joined = table.concat(lines, '\n');
+    check('JHW2 /dl why names the Job helper claimant by LABEL', joined:find('Job helper', 1, true) ~= nil, true);
+    check('JHW3 /dl why never leaks the internal identity', joined:find('JobHelper', 1, true), nil);
+    check('JHW4 the line names the Ammo slot it won', joined:find('Ammo', 1, true) ~= nil, true);
+end)();
+
+-- ---------------------------------------------------------------------------
+-- EDG: the ENGAGE / TARGET EDGE service (issue #139). Recorded-byte replays of
+-- BOTH packet kinds through the pure decode, then the per-target debounce and
+-- the subscriber notification driven at the pump seam with an injected entity
+-- reader. The bytes below are laid out per the pinned GP_CLI_COMMAND_ACTION
+-- struct (u32 UniqueNo @0x04, u16 ActIndex @0x08, u16 Category @0x0A) -- the
+-- same layout feature\equipengine's parseAction reads for the timing engine, and
+-- the one accwatch's field-proven engage watch reads on feature/autoacc.
+-- AC1/AC2/AC3/AC6.
+-- ---------------------------------------------------------------------------
+;(function()
+    local ew = dofile('feature/engagewatch.lua');
+
+    local function u16(v) return string.char(v % 256, math.floor(v / 256) % 256); end
+    local function u32(v)
+        return string.char(v % 256, math.floor(v / 256) % 256,
+                           math.floor(v / 65536) % 256, math.floor(v / 16777216) % 256);
+    end
+    -- One outgoing 0x01A, 16 bytes: header, sync, UniqueNo, ActIndex, Category,
+    -- Param. The header word is the FFXI packing -- id in the low 9 bits, size in
+    -- 4-byte units above it: 0x1A + (16/4)*512 = 0x081A.
+    local function actionPkt(serverId, index, category)
+        return u16(0x081A) .. u16(0)          -- 0x00 id|size (16 bytes), 0x02 sync
+            .. u32(serverId)                   -- 0x04 UniqueNo (target server id)
+            .. u16(index)                      -- 0x08 ActIndex (target entity index)
+            .. u16(category)                   -- 0x0A Category
+            .. u16(0);                         -- 0x0C Param
+    end
+    -- Two real-shaped battle targets: dynamic-entity ids in the CatsEyeXI range.
+    local MOB_A = { id = 17797121, ix = 0x2E1 };
+    local MOB_B = { id = 17797122, ix = 0x2E2 };
+
+    -- --- the pure decode, both kinds ---
+    local e1 = ew.decode(actionPkt(MOB_A.id, MOB_A.ix, ew.CAT_ENGAGE));
+    check('EDG1 an ENGAGE packet decodes as an engage edge', e1 ~= nil and e1.kind, 'engage');
+    check('EDG2 it captures the exact entity index from the packet', e1.index, MOB_A.ix);
+    check('EDG3 ...and the target server id', e1.serverId, MOB_A.id);
+    local e2 = ew.decode(actionPkt(MOB_B.id, MOB_B.ix, ew.CAT_RETARGET));
+    check('EDG4 a CHANGE-TARGET packet decodes as a retarget edge', e2 ~= nil and e2.kind, 'retarget');
+    check('EDG5 ...with its own entity', e2.index, MOB_B.ix);
+    check('EDG6 a spell action (category 3) is not an edge', ew.decode(actionPkt(MOB_A.id, MOB_A.ix, 0x03)), nil);
+    check('EDG7 a weaponskill (category 7) is not an edge', ew.decode(actionPkt(MOB_A.id, MOB_A.ix, 0x07)), nil);
+    check('EDG8 a torn/short packet decodes to nothing', ew.decode(string.rep('\0', 6)), nil);
+    check('EDG9 a non-string decodes to nothing', ew.decode(nil), nil);
+    check('EDG10 the readers are little-endian', ew._u32at(u32(17797121), 0), 17797121);
+    check('EDG11 reading past the end is zeros, never an error', ew._u16at('ab', 40), 0);
+
+    -- The fixture is byte-accurate, proved against the ENGINE's own readers
+    -- rather than asserted: equipengine walks the header as a real chunk and its
+    -- parseAction (the twin that reads the same packet for the timing engine)
+    -- must see the same target and category. A fixture only this module can read
+    -- would prove nothing about the wire.
+    local eng = dofile('feature/equipengine.lua');
+    local raw = actionPkt(MOB_A.id, MOB_A.ix, ew.CAT_ENGAGE);
+    local walked = eng.parseChunk(raw);
+    check('EDG11a the fixture is a well-formed 16-byte 0x01A chunk',
+          #walked == 1 and walked[1].id == 0x1A and walked[1].size, 16);
+    local twin = eng.parseAction(raw);
+    check('EDG11b the engine twin decodes the same target index', twin.target, MOB_A.ix);
+    check('EDG11c ...and the same category', twin.category, ew.CAT_ENGAGE);
+
+    -- --- the target key: server id wins, index is the fallback, nothing is nil ---
+    check('EDG12 the debounce key prefers the server id',
+          ew.targetKey({ serverId = MOB_A.id, index = MOB_A.ix }), 'id:17797121');
+    check('EDG13 ...and falls back to the entity index',
+          ew.targetKey({ serverId = 0, index = MOB_A.ix }), 'ix:737');
+    check('EDG14 a packet naming NO entity is not an actionable edge',
+          ew.targetKey({ serverId = 0, index = 0 }), nil);
+
+    -- --- the pump: debounce + notify, with the entity read injected ---
+    local NAMES = { [MOB_A.ix] = 'Nursery Nazuna  ', [MOB_B.ix] = 'Wild Rabbit' };
+    local function nameOf(ix) local n = NAMES[ix]; if n == nil then return nil; end
+        return (n:gsub('%s+$', '')); end
+    local seen = {};
+    ew.reset(true);
+    ew.subscribe('test', function(edge) seen[#seen + 1] = edge; end);
+
+    ew.onPacket(actionPkt(MOB_A.id, MOB_A.ix, ew.CAT_ENGAGE), 100);
+    check('EDG15 the network-thread half notifies nobody by itself', #seen, 0);
+    check('EDG16 the main-thread pump accepts the edge', ew.pump(nil, nameOf), 1);
+    check('EDG17 the subscriber got the edge', #seen, 1);
+    check('EDG18 ...carrying the packet-captured entity', seen[1].serverId, MOB_A.id);
+    check('EDG19 ...and the trimmed entity name', seen[1].name, 'Nursery Nazuna');
+    check('EDG20 lastEdge answers the same record', (ew.lastEdge() or {}).serverId, MOB_A.id);
+
+    -- same target, 2s later: stutter, debounced (AC2 "same-target stutter")
+    ew.onPacket(actionPkt(MOB_A.id, MOB_A.ix, ew.CAT_ENGAGE), 102);
+    check('EDG21 the SAME target inside 5s is debounced', ew.pump(nil, nameOf), 0);
+    check('EDG22 ...so no subscriber heard it', #seen, 1);
+    -- a retarget onto the same mob is a DIFFERENT KIND: it fires. FIELD-RULED
+    -- 2026-07-29 (Henrik's BST, Fight round 1): a fresh attack sends 0x0F then
+    -- 0x02 milliseconds apart, so a target-only key let the refused retarget
+    -- swallow the engage as "stutter" and Fight never heard a single attack.
+    -- The key is (target, kind); same-kind stutter stays muted (EDG21).
+    ew.onPacket(actionPkt(MOB_A.id, MOB_A.ix, ew.CAT_RETARGET), 103);
+    check('EDG23 the debounce is per (TARGET, KIND): a retarget after an engage fires', ew.pump(nil, nameOf), 1);
+    -- ...and the field pair the ruling came from: retarget-then-engage on a
+    -- FRESH mob (the client's real attack order) -- BOTH notify.
+    ew.onPacket(actionPkt(77771, 0x341, ew.CAT_RETARGET), 103.4);
+    ew.onPacket(actionPkt(77771, 0x341, ew.CAT_ENGAGE), 103.5);
+    check('EDG23b the 0x0F-then-0x02 attack pair BOTH notify (the Fight field bug)', ew.pump(nil, nameOf), 2);
+    -- same-kind stutter on that mob stays muted, both kinds
+    ew.onPacket(actionPkt(77771, 0x341, ew.CAT_ENGAGE), 103.6);
+    ew.onPacket(actionPkt(77771, 0x341, ew.CAT_RETARGET), 103.7);
+    check('EDG23c same-kind repeats inside the window stay muted', ew.pump(nil, nameOf), 0);
+    -- a DIFFERENT target inside the window fires at once (AC2 "rolling to the next mob")
+    ew.onPacket(actionPkt(MOB_B.id, MOB_B.ix, ew.CAT_RETARGET), 103.2);
+    check('EDG24 a DIFFERENT target inside the window fires immediately', ew.pump(nil, nameOf), 1);
+    check('EDG25 ...as a retarget edge on the new entity',
+          seen[#seen].kind == 'retarget' and seen[#seen].serverId, MOB_B.id);
+    -- and the first mob again, after the window
+    ew.onPacket(actionPkt(MOB_A.id, MOB_A.ix, ew.CAT_ENGAGE), 106);
+    check('EDG26 the same target AFTER the window fires again', ew.pump(nil, nameOf), 1);
+
+    -- a target the packet did not name never reaches a subscriber
+    local before = #seen;
+    ew.onPacket(actionPkt(0, 0, ew.CAT_RETARGET), 120);
+    check('EDG27 clearing the target notifies nobody', ew.pump(nil, nameOf), 0);
+    check('EDG28 ...and does not disturb the last edge', #seen, before);
+
+    -- containment + housekeeping
+    local other = 0;
+    ew.subscribe('boom', function() error('subscriber boom'); end);
+    ew.subscribe('other', function() other = other + 1; end);
+    ew.onPacket(actionPkt(MOB_B.id, MOB_B.ix, ew.CAT_ENGAGE), 140);
+    ew.pump(nil, nameOf);
+    check('EDG29 a throwing subscriber never costs another its notification', other, 1);
+    ew.unsubscribe('boom'); ew.unsubscribe('other');
+    check('EDG30 unsubscribe drops it', ew.subscriberCount(), 1);
+
+    ew.reset(true);
+    for i = 1, ew.QUEUE_MAX + 4 do ew.onPacket(actionPkt(17800000 + i, 100 + i, ew.CAT_ENGAGE), 200 + i); end
+    check('EDG31 the network-thread queue is capped (oldest dropped)', ew.pump(nil, nameOf), ew.QUEUE_MAX);
+    check('EDG32 an empty queue is a cheap no-op', ew.pump(nil, nameOf), 0);
+    ew._prune(1e6);
+    ew.onPacket(actionPkt(17800005, 105, ew.CAT_ENGAGE), 1e6);
+    check('EDG33 a pruned debounce key fires again', ew.pump(nil, nameOf), 1);
+    ew.reset(true);
+    check('EDG34 reset clears the answer', ew.lastEdge(), nil);
+    check('EDG35 the debounce window is the PRD 5 seconds', ew.DEBOUNCE_S, 5.0);
+
+    -- --- the FIRST-SWING signal (Henrik's "Send when" option, 2026-07-29) ----
+    -- 0x028 fixture: actor u32 @0x05 (chars 6-9 LE), action type = 4 bits at
+    -- byte 10 bit 2 (char 11, LSB-first -> type*4). equipengine.parse0x28's
+    -- exact field layout.
+    local function swingPkt(actor, atype)
+        local a1 = actor % 256;
+        local a2 = math.floor(actor / 256) % 256;
+        local a3 = math.floor(actor / 65536) % 256;
+        local a4 = math.floor(actor / 16777216) % 256;
+        return string.char(0, 0, 0, 0, 0, a1, a2, a3, a4, 0, (atype or 1) * 4, 0, 0, 0, 0, 0);
+    end
+    check('EDG36 a melee round decodes to its actor', ew.decodeSwing(swingPkt(4242, 1)), 4242);
+    check('EDG37 a non-melee action decodes to nil', ew.decodeSwing(swingPkt(4242, 4)), nil);
+    check('EDG38 a short packet decodes to nil', ew.decodeSwing('abc'), nil);
+
+    ew._myId = function() return 4242; end
+    ew.reset();
+    ew.onPacket(actionPkt(MOB_A.id, MOB_A.ix, ew.CAT_ENGAGE), 600);
+    ew.pump(nil, function() return nil; end);
+    check('EDG39 a fresh engagement has not swung', ew.swungThisEngagement(), false);
+    ew.onSwingPacket(swingPkt(9999, 1));      -- someone ELSE's swing
+    ew.pump(nil, function() return nil; end);
+    check('EDG40 a stranger swing is not mine', ew.swungThisEngagement(), false);
+    ew.onSwingPacket(swingPkt(4242, 1));      -- MY swing
+    ew.pump(nil, function() return nil; end);
+    check('EDG41 my melee round arms the flag', ew.swungThisEngagement(), true);
+    ew.onPacket(actionPkt(MOB_B.id, MOB_B.ix, ew.CAT_ENGAGE), 620);
+    ew.pump(nil, function() return nil; end);
+    check('EDG42 the next engage edge resets it', ew.swungThisEngagement(), false);
+    ew.reset(true);
+end)();
+
+-- ---------------------------------------------------------------------------
+-- BFT: the BST Helper's FIGHT switch (issue #139; POLL rewrite 2026-07-29 --
+-- the Pup-Helper-proven shape after two failed edge-driven field rounds). The
+-- decision is a PURE function -- poll state in, command decision out -- so
+-- every rule is a headless check: the three modes, the module gates, the
+-- positive-true act gates, the retry spacing + cap, the follow retarget, and
+-- the disengage reset. Then the vitals-beat glue end to end, injected reads.
+-- ---------------------------------------------------------------------------
+;(function()
+    -- config + jobhelpers stubbed at the require seam: fight.lua asks for both
+    -- at CALL time, so package.loaded fakes are the whole harness.
+    local savedCfg = package.loaded['dlac\\jobhelpers\\bst\\bst-helper\\config'];
+    local savedJH  = package.loaded['dlac\\feature\\jobhelpers'];
+    local fakeCfg = { vals = { fight = 'attack' } };
+    fakeCfg.get = function(k) return fakeCfg.vals[k]; end
+    fakeCfg.set = function(k, v) fakeCfg.vals[k] = v; return true; end
+    package.loaded['dlac\\jobhelpers\\bst\\bst-helper\\config'] = fakeCfg;
+    package.loaded['dlac\\feature\\jobhelpers'] = {
+        activity = function() return { active = true }; end,
+    };
+    local ft = dofile('jobhelpers/bst/bst-helper/fight.lua');
+    package.loaded['dlac\\jobhelpers\\bst\\bst-helper\\fight'] = ft;
+
+    -- The armed baseline: acting, engaged, pet out and idle, a target, clean history.
+    local function armed(t)
+        local st = { mode = 'attack', active = true, engaged = true, hasPet = true,
+                     petIdle = true, targetIndex = 0x2E1, now = 100 };
+        for k, v in pairs(t or {}) do st[k] = v; end
+        return st;
+    end
+
+    -- the act path + the positive-true gates
+    check('BFT1 engaged + idle pet + target -> send', ft.pollDecide(armed()).act, true);
+    check('BFT2 ...with the pet Fight command', ft.pollDecide(armed()).command, ft.COMMAND);
+    check('BFT3 off mode never acts', ft.pollDecide(armed({ mode = 'off' })).reason, 'off');
+    check('BFT4 inactive module never acts (reason carried)',
+          ft.pollDecide(armed({ active = false, reason = 'job' })).reason, 'job');
+    check('BFT5 not engaged -> quiet', ft.pollDecide(armed({ engaged = false })).reason, 'not-engaged');
+    -- `{ k = nil }` is an EMPTY table constructor -- a nil override never
+    -- reaches armed()'s pairs loop, so unreadable-state cases are built as
+    -- explicit literal states instead.
+    check('BFT6 unreadable engagement is NOT permission',
+          ft.pollDecide({ mode = 'attack', active = true, hasPet = true,
+                          petIdle = true, targetIndex = 0x2E1, now = 100 }).reason, 'not-engaged');
+    check('BFT7 no pet -> quiet', ft.pollDecide(armed({ hasPet = false })).reason, 'no-pet');
+    check('BFT8 no target -> quiet',
+          ft.pollDecide({ mode = 'attack', active = true, engaged = true,
+                          hasPet = true, petIdle = true, now = 100 }).reason, 'no-target');
+    check('BFT9 unreadable pet state is NOT permission',
+          ft.pollDecide({ mode = 'attack', active = true, engaged = true,
+                          hasPet = true, targetIndex = 0x2E1, now = 100 }).reason, 'pet-state-unknown');
+
+    -- pacing: the retry window and the cap, dying with the target
+    check('BFT10 same target inside RETRY_S waits',
+          ft.pollDecide(armed({ last = { target = 0x2E1, at = 99, tries = 1 } })).reason, 'waiting');
+    check('BFT11 same target after the window retries',
+          ft.pollDecide(armed({ last = { target = 0x2E1, at = 90, tries = 1 } })).act, true);
+    check('BFT12 the cap goes quiet after MAX_TRIES',
+          ft.pollDecide(armed({ last = { target = 0x2E1, at = 90, tries = 3 } })).reason, 'capped');
+    check('BFT13 a DIFFERENT target starts clean past the cap',
+          ft.pollDecide(armed({ targetIndex = 0x2E2,
+                                last = { target = 0x2E1, at = 99, tries = 3 } })).act, true);
+
+    -- the busy pet: attack stops, follow re-sends on a target change
+    check('BFT14 attack: a fighting pet is left alone',
+          ft.pollDecide(armed({ petIdle = false })).reason, 'pet-busy');
+    check('BFT15 follow: a fighting pet re-sends when MY target changed',
+          ft.pollDecide(armed({ mode = 'follow', petIdle = false, targetChanged = true })).act, true);
+    check('BFT16 follow: same target keeps the pet where it is',
+          ft.pollDecide(armed({ mode = 'follow', petIdle = false, targetChanged = false })).reason, 'pet-busy');
+    check('BFT17 attack ignores the change signal',
+          ft.pollDecide(armed({ petIdle = false, targetChanged = true })).reason, 'pet-busy');
+
+    -- decision text stays honest
+    check('BFT18 the capped reason names the command-wording suspicion',
+          ft.decisionText({ act = false, reason = 'capped' }):find('capped', 1, true) ~= nil, true);
+    check('BFT19 an act with a name reads as sent-at',
+          ft.decisionText({ act = true, targetName = 'Nursery Nazuna' }),
+          'sent your pet at Nursery Nazuna');
+
+    -- --- the vitals-beat glue end to end: injected reads, captured fires ------
+    local sent = {};
+    local realFire, realNow = ft._fire, ft._now;
+    ft._fire = function(c) sent[#sent + 1] = c; return true; end
+    local clock = 100;
+    ft._now = function() return clock; end
+    local world = { engaged = true, target = 0x2E1 };
+    local reads = {
+        engaged = function() return world.engaged; end,
+        target  = function() return world.target; end,
+        nameOf  = function() return 'Nursery Nazuna'; end,
+    };
+    local IDLE  = { present = true, status = 'Idle' };
+    local BUSY  = { present = true, status = 'Engaged' };
+    ft.resetIssues();
+
+    local d = ft.onBeat(IDLE, reads);
+    check('BFT20 beat 1: idle pet is sent at the target', #sent, 1);
+    check('BFT21 ...and the Panel line names the mob', ft.decisionText(d), 'sent your pet at Nursery Nazuna');
+    clock = clock + 0.4;
+    ft.onBeat(IDLE, reads);
+    check('BFT22 beat 2 inside the window: no second command', #sent, 1);
+    clock = clock + 0.4;
+    ft.onBeat(BUSY, reads);
+    check('BFT23 the pet took: quiet', #sent, 1);
+    check('BFT24 ...and says so', ft.lastDecision().reason, 'pet-busy');
+
+    -- follow: rolling to the next mob re-sends a FIGHTING pet
+    fakeCfg.vals.fight = 'follow';
+    clock = clock + 2.5;
+    world.target = 0x2E2;
+    ft.onBeat(BUSY, reads);
+    check('BFT25 follow: the target roll re-sends the pet', #sent, 2);
+    -- attack mode ignores the roll
+    fakeCfg.vals.fight = 'attack';
+    clock = clock + 2.5;
+    world.target = 0x2E3;
+    ft.onBeat(BUSY, reads);
+    check('BFT26 attack: the roll leaves a fighting pet alone', #sent, 2);
+
+    -- the retry-until-taken loop caps loudly-in-panel, silently in chat
+    fakeCfg.vals.fight = 'attack';
+    world.target = 0x2E4;
+    ft.resetIssues();
+    for i = 1, 6 do
+        clock = clock + 2.1;
+        ft.onBeat(IDLE, reads);
+    end
+    check('BFT27 a command that never takes stops at MAX_TRIES', #sent, 2 + ft.MAX_TRIES);
+    check('BFT28 ...and the Panel reads capped', ft.lastDecision().reason, 'capped');
+
+    -- disengage resets the bookkeeping; re-engaging starts clean
+    world.engaged = false;
+    clock = clock + 0.4;
+    ft.onBeat(IDLE, reads);
+    check('BFT29 disengaged: quiet', ft.lastDecision().reason, 'not-engaged');
+    world.engaged = true;
+    clock = clock + 0.4;
+    ft.onBeat(IDLE, reads);
+    check('BFT30 re-engaging the same mob starts a fresh engagement', #sent, 3 + ft.MAX_TRIES);
+
+    -- --- Respect Heel: the player's option (Henrik's ruling 2026-07-29) ------
+    -- Pure core first: took + same target + option ON -> heeled; OFF -> resend;
+    -- a different target clears the latch either way.
+    check('BFT31 heeled: a TAKEN send is never repeated (option on)',
+          ft.pollDecide(armed({ heelRespect = true,
+                                last = { target = 0x2E1, at = 90, tries = 1, took = true } })).reason, 'heeled');
+    check('BFT32 option off: an idle pet is re-sent past the latch',
+          ft.pollDecide(armed({ heelRespect = false,
+                                last = { target = 0x2E1, at = 90, tries = 1, took = true } })).act, true);
+    check('BFT33 the latch dies with the target',
+          ft.pollDecide(armed({ heelRespect = true, targetIndex = 0x2E9,
+                                last = { target = 0x2E1, at = 90, tries = 1, took = true } })).act, true);
+
+    -- Glue: send -> the pet takes (latch) -> Heel (idle again) -> respected;
+    -- option off -> re-sent. fightHeel is ABSENT from fakeCfg, so the first
+    -- pass also proves the default reads ON.
+    local base = 3 + ft.MAX_TRIES;
+    ft.resetIssues();
+    world.target = 0x2F0;
+    clock = clock + 5;
+    ft.onBeat(IDLE, reads);
+    check('BFT34 fresh mob: sent', #sent, base + 1);
+    clock = clock + 0.4;
+    ft.onBeat(BUSY, reads);            -- the send TOOK: the latch arms
+    clock = clock + 2.5;
+    ft.onBeat(IDLE, reads);            -- the player heeled
+    check('BFT35 Heel respected by default: no re-send', #sent, base + 1);
+    check('BFT36 ...and the Panel says so', ft.lastDecision().reason, 'heeled');
+    fakeCfg.vals.fightHeel = false;
+    clock = clock + 2.5;
+    ft.onBeat(IDLE, reads);
+    check('BFT37 option off: the idle pet is re-sent', #sent, base + 2);
+    fakeCfg.vals.fightHeel = nil;
+
+    -- --- "Send when": drawn (default) vs first swing (Henrik's option) -------
+    check('BFT38 swing mode holds before the first swing',
+          ft.pollDecide(armed({ needSwing = true })).reason, 'no-swing-yet');
+    check('BFT39 ...and releases once it swung',
+          ft.pollDecide(armed({ needSwing = true, swung = true })).act, true);
+    local worldSwung = false;
+    reads.swung = function() return worldSwung; end
+    fakeCfg.vals.fightWhen = 'swing';
+    ft.resetIssues();
+    world.target = 0x2F5;
+    clock = clock + 5;
+    ft.onBeat(IDLE, reads);
+    check('BFT40 glue: engaged but unswung sends nothing', #sent, base + 2);
+    check('BFT41 ...and the Panel says why', ft.lastDecision().reason, 'no-swing-yet');
+    worldSwung = true;
+    clock = clock + 0.4;
+    ft.onBeat(IDLE, reads);
+    check('BFT42 the first swing releases the send', #sent, base + 3);
+    fakeCfg.vals.fightWhen = nil;
+    reads.swung = nil;
+
+    ft._fire, ft._now = realFire, realNow;
+    ft.resetIssues();
+    package.loaded['dlac\\feature\\jobhelpers'] = savedJH;
+    package.loaded['dlac\\jobhelpers\\bst\\bst-helper\\config'] = savedCfg;
+    package.loaded['dlac\\jobhelpers\\bst\\bst-helper\\fight'] = nil;
+end)();
+
+-- ---------------------------------------------------------------------------
+-- BRW: the BST Helper's REWARD rule (issue #140). The decision is a PURE
+-- function -- vitals + state in, "request the sequence?" out -- so the
+-- threshold, the retry lockout and every module gate are headless checks. Then
+-- the store (the slider persisted per character) and the two requesters driven
+-- end to end against fakes, which is where "identical refusal behavior to the
+-- button" is actually PROVEN rather than asserted: both paths are compared
+-- claim-for-claim and line-for-line.
+-- AC1/AC2/AC3/AC4/AC5.
+-- ---------------------------------------------------------------------------
+;(function()
+    local cfgMod = dofile('jobhelpers/bst/bst-helper/config.lua');
+    package.loaded['dlac\\jobhelpers\\bst\\bst-helper\\config'] = cfgMod;
+    local rw = dofile('jobhelpers/bst/bst-helper/reward.lua');
+    package.loaded['dlac\\jobhelpers\\bst\\bst-helper\\reward'] = rw;
+
+    -- The armed baseline: rule on, threshold 50, module acting, nothing running,
+    -- Reward off cooldown, no lockout live.
+    local function armed(t)
+        local st = { armed = true, threshold = 50, active = true, busy = false,
+                     recastReady = true, now = 1000 };
+        for k, v in pairs(t or {}) do st[k] = v; end
+        return st;
+    end
+    local function pet(hpp) return { present = true, hpp = hpp, tp = 500, name = 'Courier Carrie' }; end
+
+    -- --- the THRESHOLD: strictly below fires, at or above never does (AC1)
+    check('BRW1 a pet below the threshold asks for Reward', rw.decide(pet(30), armed()).act, true);
+    check('BRW2 ...and carries the HP% it decided on', rw.decide(pet(30), armed()).hpp, 30);
+    check('BRW3 a pet EXACTLY at the threshold does not', rw.decide(pet(50), armed()).act, false);
+    check('BRW4 ...for the honest reason', rw.decide(pet(50), armed()).reason, 'above');
+    check('BRW5 a pet above the threshold does not', rw.decide(pet(80), armed()).act, false);
+    check('BRW6 one point under IS under', rw.decide(pet(49), armed()).act, true);
+    check('BRW7 a full pet never fires at the top of the band',
+          rw.decide(pet(100), armed({ threshold = 99 })).act, false);
+    check('BRW8 the threshold is the player\'s, not a constant',
+          rw.decide(pet(70), armed({ threshold = 75 })).act, true);
+
+    -- --- the rule switch and the module gates (AC4)
+    check('BRW9 the rule off: nothing is ever asked for', rw.decide(pet(5), armed({ armed = false })).act, false);
+    check('BRW10 ...for the obvious reason', rw.decide(pet(5), armed({ armed = false })).reason, 'off');
+    for _, r in ipairs({ 'job', 'town', 'dead', 'zoning', 'off' }) do
+        local d = rw.decide(pet(5), armed({ active = false, reason = r }));
+        check('BRW11 the module gate holds it (' .. r .. ')', d.act == false and d.reason, r);
+    end
+    -- nil means UNREADABLE, so this state is built by hand (armed()'s pairs copy
+    -- cannot express "this key is absent").
+    check('BRW12 an UNREADABLE world is not permission to spend food',
+          rw.decide(pet(5), { armed = true, threshold = 50, now = 1000 }).act, false);
+
+    -- --- the pet gates: no pet, dead pet, unreadable HP
+    check('BRW13 no pet: nothing to Reward', rw.decide({ present = false }, armed()).reason, 'no-pet');
+    check('BRW14 an UNREADABLE pet is not permission either', rw.decide({}, armed()).reason, 'no-pet');
+    check('BRW15 no vitals at all decides nothing', rw.decide(nil, armed()).reason, 'no-pet');
+    check('BRW16 a present pet whose HP could not be read is never guessed at',
+          rw.decide({ present = true }, armed()).reason, 'no-hp');
+
+    -- --- the LOCKOUT (AC2): one attempt per window, whatever the bar does
+    check('BRW17 an attempt 5s ago holds the next one',
+          rw.decide(pet(10), armed({ lastAttemptAt = 995 })).reason, 'lockout');
+    check('BRW18 ...and says how long is left',
+          rw.decide(pet(10), armed({ lastAttemptAt = 995 })).retryIn, 25);
+    check('BRW19 an attempt a whole window ago does not',
+          rw.decide(pet(10), armed({ lastAttemptAt = 1000 - rw.LOCKOUT_S })).act, true);
+    check('BRW20 a clock that went BACKWARDS accepts, never mutes for a window',
+          rw.decide(pet(10), armed({ lastAttemptAt = 5000 })).act, true);
+    check('BRW21 the window is the rule\'s, not a constant',
+          rw.decide(pet(10), armed({ lastAttemptAt = 995, lockout = 2 })).act, true);
+    -- and the lockout never overrides the more specific truth above it
+    check('BRW22 a pet ABOVE the threshold reports that, not the lockout',
+          rw.decide(pet(80), armed({ lastAttemptAt = 995 })).reason, 'above');
+
+    -- --- busy + recast: real holds, but nothing was ATTEMPTED, so neither is a
+    -- refusal and neither arms the lockout.
+    check('BRW23 a sequence already running holds it', rw.decide(pet(10), armed({ busy = true })).reason, 'busy');
+    check('BRW24 Reward on cooldown holds it', rw.decide(pet(10), armed({ recastReady = false })).reason, 'recast');
+    check('BRW25 an UNKNOWN recast reads READY (the courtesy gate)',
+          rw.decide(pet(10), armed({ recastReady = nil })).act, true);
+
+    -- --- the threshold clamp
+    check('BRW26 an absent threshold is the default', rw.clampThreshold(nil), rw.DEFAULT_THRESHOLD);
+    check('BRW27 the default is the PRD\'s 50', rw.DEFAULT_THRESHOLD, 50);
+    check('BRW28 0 clamps into the band (the switch is the off switch)', rw.clampThreshold(0), rw.MIN_THRESHOLD);
+    check('BRW29 100 clamps into the band (a full pet needs no Reward)', rw.clampThreshold(100), rw.MAX_THRESHOLD);
+    check('BRW30 a fractional slider value lands on a whole percent', rw.clampThreshold(62.7), 63);
+    check('BRW31 a numeric string is read, not dropped', rw.clampThreshold('75'), 75);
+    check('BRW32 junk is the default, never 0', rw.clampThreshold('half'), 50);
+
+    -- --- the decision reads as a human line (the Panel's report; never chat)
+    check('BRW33 an act reads as a sentence',
+          rw.decisionText(rw.decide(pet(30), armed())):find('30', 1, true) ~= nil, true);
+    check('BRW34 a hold names the gate',
+          rw.decisionText(rw.decide(pet(5), armed({ active = false, reason = 'town' }))), 'in town');
+    check('BRW35 a lockout counts down',
+          rw.decisionText(rw.decide(pet(10), armed({ lastAttemptAt = 995 }))):find('25', 1, true) ~= nil, true);
+    check('BRW36 nothing yet reads as nothing yet', rw.decisionText(nil), 'nothing yet');
+
+    -- --- the STORE: the slider persisted per character (AC4)
+    local FILES = {};
+    local realOpen, realLoadfile = io.open, loadfile;
+    cfgMod.forget();
+    cfgMod._charDir = function() return nil; end
+    check('BRW37 pre-login the rule reads its default (OFF)', rw.armed(), false);
+    check('BRW38 ...and the threshold its default', rw.threshold(), 50);
+    check('BRW39 ...and no Reward set', rw.setName(), nil);
+
+    cfgMod._charDir = function() return 'BRWDIR\\'; end
+    io.open = function(path, mode)
+        if type(path) == 'string' and path:find('BRWDIR', 1, true) then
+            if (mode or 'r'):find('w') then
+                FILES[path] = '';      -- 'wb' TRUNCATES; this store is rewritten every save
+                return { write = function(_, s) FILES[path] = (FILES[path] or '') .. s; end, close = function() end };
+            end
+            return nil;
+        end
+        return realOpen(path, mode);
+    end
+    loadfile = function(path)
+        if type(path) == 'string' and path:find('BRWDIR', 1, true) then
+            local s = FILES[path]; if s == nil then return nil; end return (loadstring or load)(s);
+        end
+        return realLoadfile(path);
+    end
+    local CFGFILE = 'BRWDIR\\jobhelper-bst.lua';
+
+    check('BRW40 an absent config file reads the defaults', rw.armed() == false and rw.threshold(), 50);
+    check('BRW41 the file is not written until something changes', FILES[CFGFILE], nil);
+    check('BRW42 moving the slider persists it', rw.setThreshold(35), true);
+    check('BRW43 ...and it reads back', rw.threshold(), 35);
+    check('BRW44 ...into the module\'s OWN per-character file', FILES[CFGFILE] ~= nil, true);
+    check('BRW45 an out-of-band write is clamped on the way IN, never stored raw',
+          rw.setThreshold(300) and rw.threshold(), rw.MAX_THRESHOLD);
+    rw.setThreshold(35);
+    check('BRW46 arming the rule persists it', rw.setArmed(true) and rw.armed(), true);
+    check('BRW47 ...and disarming it persists too', rw.setArmed(false) and rw.armed(), false);
+    check('BRW48 the Reward set persists (the rule has no Panel to read it from)',
+          rw.setSetName('Reward') and rw.setName(), 'Reward');
+    check('BRW49 ...and "None" clears it', rw.setSetName('None') and rw.setName(), nil);
+    check('BRW50 the file stays format-versioned',
+          (cfgMod._normalize((loadstring or load)(FILES[CFGFILE])()) or {}).fmt, 1);
+    check('BRW51 a wrong-typed threshold on disk falls back to the default',
+          cfgMod._normalize({ rewardThreshold = 'fifty' }).rewardThreshold, nil);
+    check('BRW52 a stored FALSE survives normalization (it is not "absent")',
+          cfgMod._normalize({ rewardArmed = false }).rewardArmed, false);
+    check('BRW53 the Fight setting is untouched by the Reward rows',
+          cfgMod._normalize({ fight = 'follow', rewardArmed = true }).fight, 'follow');
+    -- ...and a fresh read off the written file survives a character switch
+    cfgMod.forget();
+    check('BRW54 the slider survives a reload (read back off the file)', rw.threshold(), 35);
+
+    -- --- END TO END: the two requesters, driven against fakes.
+    local saved = {
+        jh  = package.loaded['dlac\\feature\\jobhelpers'],
+        as  = package.loaded['dlac\\feature\\actionseq'],
+        pf  = package.loaded['dlac\\feature\\petfood'],
+        rc  = package.loaded['dlac\\feature\\recast'],
+        ps  = package.loaded['dlac\\gear\\profilesets'],
+        dsp = package.loaded['dlac\\dispatch'],
+        pv  = package.loaded['dlac\\feature\\petvitals'],
+    };
+    local requests, lines, kicks = {}, {}, 0;
+    local seqBusy, foodPick = false, { ok = true, name = 'Pet Food Delta', key = 'Delta' };
+    package.loaded['dlac\\feature\\jobhelpers'] = {
+        activity  = function() return { active = true }; end,
+        idsForJob = function() return { 'bst' }; end,
+    };
+    package.loaded['dlac\\feature\\actionseq'] = {
+        active  = function() return seqBusy; end,
+        request = function(r) requests[#requests + 1] = r; return { ok = true }; end,
+    };
+    package.loaded['dlac\\feature\\petfood'] = {
+        choose      = function() return foodPick; end,
+        refusalLine = function(p) if p.reason == 'level' then return 'the pet food you are carrying is above your level.'; end
+                                  return 'you are not carrying any pet food.'; end,
+    };
+    package.loaded['dlac\\gear\\profilesets'] = {
+        staticSetNames = function() return { 'Idle', 'Reward' }; end,
+        getSetsRoot    = function() return { Reward = { Head = 'Beast Helm', Body = 'Beast Jackcoat' } }; end,
+    };
+    package.loaded['dlac\\dispatch'] = { kickDefault = function() kicks = kicks + 1; end };
+    rw._emit = function(l) lines[#lines + 1] = tostring(l); end
+
+    -- the BUTTON path
+    rw.setSetName('Reward');
+    local bres = rw.request('bst');
+    check('BRW55 the button opens one sequence', bres.ok == true and #requests, 1);
+    local btnReq = requests[1];
+    check('BRW56 ...claiming the food in Ammo', btnReq.claim.Ammo, 'Pet Food Delta');
+    check('BRW57 ...with the chosen Reward set overlaid', btnReq.claim.Head, 'Beast Helm');
+    check('BRW58 ...verifying the CONSUMED slot alone (the accepted ruling)',
+          btnReq.need.Ammo == 'Pet Food Delta' and btnReq.need.Head, nil);
+    check('BRW59 ...firing the Reward command', btnReq.command, rw.COMMAND);
+    check('BRW60 ...and kicking one Default so the claim applies now', kicks, 1);
+    check('BRW61 success is SILENT', #lines, 0);
+
+    -- the AUTOMATIC path: the same request, byte for byte (AC3 -- "identical",
+    -- proven rather than asserted).
+    requests, kicks = {}, 0;
+    rw.resetLockout();
+    rw.setArmed(true);
+    rw.setThreshold(50);
+    local d = rw.onVitals({ present = true, hpp = 30, name = 'Courier Carrie', at = 2000 });
+    check('BRW62 a pet under the threshold opens the sequence on its own', d.act, true);
+    check('BRW63 ...exactly one', #requests, 1);
+    local autoReq = requests[1];
+    check('BRW64 ...the SAME claim the button builds', autoReq.claim.Ammo == btnReq.claim.Ammo
+          and autoReq.claim.Head == btnReq.claim.Head, true);
+    check('BRW65 ...the SAME needed slot', autoReq.need.Ammo, btnReq.need.Ammo);
+    check('BRW66 ...the SAME command', autoReq.command, btnReq.command);
+    check('BRW67 ...and it too is silent', #lines, 0);
+
+    -- AC2: a SUSTAINED sub-threshold pet is one attempt per window, not a stream
+    for i = 1, 20 do rw.onVitals({ present = true, hpp = 12, at = 2000 + i }); end
+    check('BRW68 twenty more beats under the threshold add no commands', #requests, 1);
+    check('BRW69 ...and no chat', #lines, 0);
+    check('BRW70 ...the beats say why', rw.lastDecision().reason, 'lockout');
+    rw.onVitals({ present = true, hpp = 12, at = 2000 + rw.LOCKOUT_S });
+    check('BRW71 once the window elapses it tries again, once', #requests, 2);
+
+    -- a pet ABOVE the threshold never fires, however many beats go by
+    requests = {};
+    rw.resetLockout();
+    for i = 1, 10 do rw.onVitals({ present = true, hpp = 90, at = 3000 + i }); end
+    check('BRW72 a healthy pet is never Rewarded', #requests, 0);
+    check('BRW73 ...and the rule says so', rw.lastDecision().reason, 'above');
+
+    -- AC3: no food carried -- the button's own line, at most one per window
+    requests, lines = {}, {};
+    rw.resetLockout();
+    foodPick = { ok = false, reason = 'none-carried' };
+    rw.request('bst');
+    local buttonLine = lines[1];
+    check('BRW74 the button refuses loudly when the bags are empty',
+          (buttonLine or ''):find('not carrying', 1, true) ~= nil, true);
+    check('BRW75 ...and opens no sequence', #requests, 0);
+    lines = {};
+    for i = 1, 20 do rw.onVitals({ present = true, hpp = 10, at = 4000 + i }); end
+    check('BRW76 the rule refuses with the IDENTICAL line', lines[1], buttonLine);
+    check('BRW77 ...exactly once per lockout window, not once per beat', #lines, 1);
+    check('BRW78 ...and still opens no sequence', #requests, 0);
+    rw.onVitals({ present = true, hpp = 10, at = 4001 + rw.LOCKOUT_S });
+    check('BRW79 the next window is allowed to say it again', #lines, 2);
+    foodPick = { ok = true, name = 'Pet Food Delta', key = 'Delta' };
+
+    -- AC3: Reward on cooldown -- the button GRAYS OUT and says nothing, so the
+    -- rule holds and says nothing either. It is not an attempt, so no lockout.
+    requests, lines = {}, {};
+    rw.resetLockout();
+    package.loaded['dlac\\feature\\recast'] = { rewardReady = function() return false, 42; end };
+    for i = 1, 10 do rw.onVitals({ present = true, hpp = 10, at = 5000 + i }); end
+    check('BRW80 Reward on cooldown opens no sequence', #requests, 0);
+    check('BRW81 ...and says NOTHING (the greyed button says nothing either)', #lines, 0);
+    check('BRW82 ...naming the hold for the Panel', rw.lastDecision().reason, 'recast');
+    check('BRW83 ...and it did not burn the lockout', rw.lockedUntil(), nil);
+    package.loaded['dlac\\feature\\recast'] = { rewardReady = function() return true, nil; end };
+    rw.onVitals({ present = true, hpp = 10, at = 5100 });
+    check('BRW84 the moment the recast is back, the held Reward goes', #requests, 1);
+
+    -- AC3: a senior claimant holding the slot. The sequencer owns that refusal,
+    -- and BOTH requesters hand it the same request -- so "identical" is the same
+    -- code path, not two agreeing implementations. Driven through the REAL
+    -- sequencer here to prove the refusal actually lands.
+    local realSeq = dofile('feature/actionseq.lua');
+    package.loaded['dlac\\feature\\actionseq'] = realSeq;
+    local emits = {};
+    local io2 = { worn = function() return nil; end,
+                  blocker = function(slot) if slot == 'Ammo' then return 'Locks'; end return nil; end,
+                  fire = function() emits[#emits + 1] = 'FIRED'; end,
+                  release = function() end,
+                  emit = function(l) emits[#emits + 1] = l; end };
+    realSeq.reset();
+    rw.resetLockout();
+    rw.onVitals({ present = true, hpp = 10, at = 6000 });
+    realSeq.tick(0, io2);
+    check('BRW85 a senior holder on the food slot refuses, and nothing fires',
+          (emits[1] or ''):find('held by Locks', 1, true) ~= nil, true);
+    check('BRW86 ...never-fire-bare holds for the automatic requester too', #emits, 1);
+    realSeq.reset();
+
+    -- the module gates, end to end: a held module issues nothing and says nothing
+    requests, lines = {}, {};
+    package.loaded['dlac\\feature\\actionseq'] = {
+        active  = function() return seqBusy; end,
+        request = function(r) requests[#requests + 1] = r; return { ok = true }; end,
+    };
+    for _, r in ipairs({ 'job', 'town', 'dead', 'zoning', 'off' }) do
+        rw.resetLockout();
+        package.loaded['dlac\\feature\\jobhelpers'] = {
+            activity  = function() return { active = false, reason = r }; end,
+            idsForJob = function() return { 'bst' }; end,
+        };
+        rw.onVitals({ present = true, hpp = 5, at = 7000 });
+        check('BRW87 the module gate stops the rule dead (' .. r .. ')',
+              #requests == 0 and rw.lastDecision().reason, r);
+    end
+    check('BRW88 ...and none of them said a word', #lines, 0);
+
+    -- the rule DISARMED: the beat still runs, nothing ever happens
+    package.loaded['dlac\\feature\\jobhelpers'] = {
+        activity  = function() return { active = true }; end,
+        idsForJob = function() return { 'bst' }; end,
+    };
+    rw.resetLockout();
+    rw.setArmed(false);
+    for i = 1, 10 do rw.onVitals({ present = true, hpp = 5, at = 8000 + i }); end
+    check('BRW89 a disarmed rule never acts', #requests, 0);
+    check('BRW90 ...and the default IS disarmed (a helper never arms itself)',
+          cfgMod.DEFAULTS.rewardArmed, false);
+
+    -- --- the vitals service and the rule wired together: a real subscription
+    local pvMod = dofile('feature/petvitals.lua');
+    package.loaded['dlac\\feature\\petvitals'] = pvMod;
+    pvMod.reset(true);
+    requests = {};
+    rw.resetLockout();
+    rw.setArmed(true);
+    check('BRW91 the rule subscribes to the pet vitals service', rw.init('bst'), true);
+    check('BRW92 ...as one named consumer', pvMod.subscriberCount(), 1);
+    local PETHP = 12;
+    local READS = { pet = function() return { HPP = PETHP, TP = 100, Name = 'Courier Carrie' }; end };
+    pvMod.pump(9000, READS);
+    check('BRW93 one vitals beat under the threshold ends as ONE sequence', #requests, 1);
+    for i = 1, rw.LOCKOUT_S - 1 do pvMod.pump(9000 + i, READS); end
+    check('BRW94 a whole lockout window of beats adds nothing', #requests, 1);
+    PETHP = 95;
+    pvMod.pump(9100, READS);
+    check('BRW95 a healed pet stops the rule cold', #requests, 1);
+    -- and a dead pet is no pet, so the rule never fires at a corpse
+    PETHP = 0;
+    rw.resetLockout();
+    pvMod.pump(9200, READS);
+    check('BRW96 a DEAD pet is no pet: nothing is asked for', #requests, 1);
+    check('BRW97 ...and the rule says so', rw.lastDecision().reason, 'no-pet');
+
+    pvMod.reset(true);
+    io.open, loadfile = realOpen, realLoadfile;
+    cfgMod.forget();
+    package.loaded['dlac\\feature\\jobhelpers'] = saved.jh;
+    package.loaded['dlac\\feature\\actionseq']  = saved.as;
+    package.loaded['dlac\\feature\\petfood']    = saved.pf;
+    package.loaded['dlac\\feature\\recast']     = saved.rc;
+    package.loaded['dlac\\gear\\profilesets']   = saved.ps;
+    package.loaded['dlac\\dispatch']            = saved.dsp;
+    package.loaded['dlac\\feature\\petvitals']  = saved.pv;
+    package.loaded['dlac\\jobhelpers\\bst\\bst-helper\\reward'] = nil;
+    package.loaded['dlac\\jobhelpers\\bst\\bst-helper\\config'] = nil;
+    package.loaded['dlac\\lib\\statefile'] = nil;
 end)();
 
 -- The warm-note artifact the dispatch-driving sections leave behind (dataDir

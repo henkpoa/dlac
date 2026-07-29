@@ -1,4 +1,4 @@
--- Headless smoke-load of the UI chunk: gearui + uihost + itemicons + equippedui
+﻿-- Headless smoke-load of the UI chunk: gearui + uihost + itemicons + equippedui
 -- (+ every module they pull in). Run from the dlac addon root:
 --     lua tests\smoke_ui.lua
 --
@@ -123,7 +123,7 @@ do
 end
 
 local labels = {};
-for _, name in ipairs({ 'equipped', 'sets', 'triggers', 'automations', 'groups' }) do
+for _, name in ipairs({ 'equipped', 'sets', 'triggers', 'automations', 'groups', 'jobhelpers' }) do
     local m = host.get(name);
     if m ~= nil and type(m.tabs) == 'table' then
         for _, t in ipairs(m.tabs) do labels[#labels + 1] = t.label; end
@@ -135,11 +135,14 @@ check('S8 tab order 2', labels[2], 'All Equipment');
 check('S9 tab order 3', labels[3], 'Sets');
 check('S10 tab order 4', labels[4], 'Triggers');
 check('S10b tab order 5 (Gear Helpers right of Triggers)', labels[5], 'Gear Helpers');
+-- Job Helpers (issue #137): NO tab while zero modules are loaded. The loader
+-- has not run here, so jobhelpersui never registered -- the acceptance case.
+check('S10c Job Helpers tab ABSENT with zero modules', host.get('jobhelpers') == nil, true);
 
 -- every registered tab render must be callable
 for i, l in ipairs(labels) do
     local found = false;
-    for _, name in ipairs({ 'equipped', 'sets', 'triggers', 'automations', 'groups' }) do
+    for _, name in ipairs({ 'equipped', 'sets', 'triggers', 'automations', 'groups', 'jobhelpers' }) do
         local m = host.get(name);
         if m ~= nil then
             for _, t in ipairs(m.tabs or {}) do
@@ -2937,6 +2940,20 @@ end)();
         check('TE55 the field rule (both conds via + |) folds to the old pure-OR form', tH, tCanon);
         check('TE56 ...and carries no version guard', tH:find('hasCases', 1, true) == nil, true);
 
+        -- copyConds (issue #128): an EDITABLE duplicate. Editing the copy must
+        -- never reach back into the original -- rows AND a table value (mode list)
+        -- are both cloned.
+        local src = { { key = 'name', value = 'test' },
+                      { key = 'element', value = 'Fire', any = true },
+                      { key = 'mode', value = { 'DT', 'Idle' } } };
+        local dup = tg._copyConds(src);
+        check('TE57 copyConds duplicates every row, op flags and all',
+            (#dup == 3) and dup[1].key == 'name' and dup[1].value == 'test'
+            and dup[2].any == true and dup[3].key == 'mode', true);
+        dup[1].value = 'CHANGED'; dup[3].value[1] = 'GONE';
+        check('TE58 the duplicate is independent -- editing it never touches the original',
+            (src[1].value == 'test') and (src[3].value[1] == 'DT'), true);
+
         -- ---- the REAL popup, frame by frame ----
         local UP = {};
         for i = 1, 250 do
@@ -3072,6 +3089,74 @@ end)();
             check('TE53 deleting case 1 promotes the next case into the seat, op and all',
                 (#trig.addCases == 0) and (#trig.addConds == 1)
                 and (trig.addConds[1].value == 'alt') and trig.addBodyOp, '|');
+
+            -- Scenario G: copy case (issue #128). In box mode the body is case 1
+            -- with its own copy affordance, so "copy the rule body into a new
+            -- case" is just copying case 1; copying an added case duplicates it.
+            fresh();
+            trig.addValText[1] = 'anchor'; frame('+ & condition##trgac');
+            frame('+ | case##trgaddorcase');            -- body becomes case 1 (a box)
+            trig.addValText[1] = 'alt'; frame('+ & condition##trgaccase1');
+            local _, recG = frame(nil);
+            check('TE59 every box has a copy affordance, case 1 (the body) included',
+                sawIn(recG, 'copy##trgcopybody') and sawIn(recG, 'copy##trgcopycase1'), true);
+            frame('copy##trgcopybody');                  -- copy the rule body into a new case
+            local dupB = trig.addCases[2];
+            check('TE60 copying case 1 appends a new case duplicating the body',
+                (#trig.addCases == 2) and (dupB ~= nil) and (dupB.op == '&')
+                and (type(dupB.conds) == 'table') and (#dupB.conds == 1)
+                and (dupB.conds[1].value == 'anchor'), true);
+            trig.addConds[1].value = 'edited';           -- mutate the body...
+            check('TE61 the duplicate is independent of the body it was copied from',
+                (dupB and dupB.conds and dupB.conds[1] and dupB.conds[1].value) or nil, 'anchor');
+            frame('copy##trgcopycase1');                 -- copy an added case
+            local dupC = trig.addCases[3];
+            check('TE62 copying an added case appends a duplicate of the right kind',
+                (#trig.addCases == 3) and (dupC ~= nil) and (dupC.op == '|')
+                and (type(dupC.conds) == 'table') and (dupC.conds[1] ~= nil)
+                and (dupC.conds[1].value == 'alt'), true);
+
+            -- Scenario H: the repeat-replaces note and "Match either instead"
+            -- escape behave INSIDE a case exactly as in the body (issue #128).
+            fresh();
+            trig.addValText[1] = 'anchor'; frame('+ & condition##trgac');
+            frame('+ & case##trgaddandcase');            -- body -> case 1; a fresh & case
+            trig.addValText[1] = 'foo'; frame('+ & condition##trgaccase1');
+            trig.addValText[1] = 'bar'; frame('+ & condition##trgaccase1');   -- same type: replaces
+            check('TE63 a repeated & type inside a case replaces, and says so (not silent)',
+                (#trig.addCases[1].conds == 1) and (trig.addCases[1].conds[1].value == 'bar')
+                and (trig.addCases[1].note ~= nil) and (trig.addCases[1].swap ~= nil), true);
+            local _, recH = frame(nil);
+            check('TE64 the "Match either instead" escape renders on the case box',
+                sawIn(recH, 'Match either instead##trgorbothcase1'), true);
+            frame('Match either instead##trgorbothcase1');
+            local hc = trig.addCases[1];
+            check('TE65 the escape moves BOTH values to the case | leg, note cleared',
+                (hc ~= nil) and (#hc.conds == 2) and hc.conds[1].any
+                and hc.conds[2].any and (hc.note == nil), true);
+
+            -- Scenario I: a case-bearing rule captured as a Blueprint carries its
+            -- cases verbatim (issue #128 edge case: blueprint capture from the
+            -- editor's case-bearing state). Build the rule, then round-trip its
+            -- saved shape through loadCases -> buildRuleShape and byte-compare the
+            -- serialized form -- the path a Blueprint stamp/share takes.
+            fresh();
+            trig.addValText[1] = 'body'; frame('+ & condition##trgac');
+            frame('+ & case##trgaddandcase');
+            trig.addValText[1] = 'inside'; frame('+ | condition##trgoccase1');
+            trig.addValText[1] = 'more';   frame('+ | condition##trgoccase1');
+            frame('Add rule###trgaddgo');
+            local rI = trig.data.Item and trig.data.Item[1];
+            check('TE66a the case-bearing rule saved (a Blueprint would capture this shape)',
+                (type(rI) == 'table') and (type(rI.cases) == 'table') and (#rI.cases == 1), true);
+            if type(rI) == 'table' then
+                local before = D.serializeTriggers({ Item = { rI } });
+                local cI, csI, opI = tg._loadCases(rI);
+                local wI, aI, clI = tg._buildRuleShape(cI, opI, csI);
+                local rebuilt = { when = wI, whenAny = aI, cases = clI, set = rI.set };
+                check('TE66 a case-bearing rule round-trips byte-identically (the Blueprint path)',
+                    D.serializeTriggers({ Item = { rebuilt } }), before);
+            end
 
             check('TE40 the popup stack stayed balanced', depth.popup, 0);
             check('TE41 the colour stack stayed balanced', depth.col, 0);
@@ -3826,6 +3911,286 @@ end)();
     package.loaded['dlac\\ui\\automationsui'] = saved.aui;
     package.loaded['dlac\\ui\\craftbar'] = saved.cb;
     package.loaded['dlac\\feature\\idleexcl'] = saved.ie;
+end)();
+
+-- ---------------------------------------------------------------------------
+-- Job Helpers tab (issue #137): tab appears once a module loads, to the right of
+-- Gear Helpers; the real BST skeleton loads through the loader; the tab + the
+-- selected module's Panel render with a BALANCED imgui stack (the crash class the
+-- floatgear block guards -- a module's Panel must not corrupt ImGui's stacks).
+-- ---------------------------------------------------------------------------
+;(function()
+    local saved = {
+        imgui = package.loaded['imgui'],
+        jh    = package.loaded['dlac\\feature\\jobhelpers'],
+        jhui  = package.loaded['dlac\\ui\\jobhelpersui'],
+        cb    = package.loaded['dlac\\ui\\craftbar'],
+    };
+
+    local depth = { var = 0, col = 0, win = 0, child = 0, combo = 0 };
+    local function nop() end
+    local IM = {};
+    for _, n in ipairs({ 'SetNextWindowPos', 'SetNextWindowSize', 'Separator', 'Text',
+        'TextColored', 'TextWrapped', 'TextDisabled', 'SameLine', 'Dummy', 'Spacing',
+        'Indent', 'Unindent', 'PushID', 'PopID', 'SetTooltip', 'PushItemWidth',
+        'PopItemWidth', 'InvisibleButton', 'SetCursorScreenPos' }) do
+        IM[n] = nop;
+    end
+    IM.PushStyleVar   = function() depth.var = depth.var + 1; end
+    IM.PopStyleVar    = function(n) depth.var = depth.var - (tonumber(n) or 1); end
+    IM.PushStyleColor = function() depth.col = depth.col + 1; end
+    IM.PopStyleColor  = function(n) depth.col = depth.col - (tonumber(n) or 1); end
+    IM.Begin      = function() depth.win = depth.win + 1; return true; end
+    IM['End']     = function() depth.win = depth.win - 1; end
+    IM.BeginChild = function() depth.child = depth.child + 1; return true; end
+    IM.EndChild   = function() depth.child = depth.child - 1; end
+    IM.CollapsingHeader = function() return true; end        -- sections open so rows draw
+    -- Selectables are RECORDED, and click either EVERYTHING (the default: the
+    -- module row selects, so its Panel draws) or exactly one id -- which is how
+    -- the Resummon jug picker's rows (issue #141) are driven precisely. By then
+    -- jobhelpersui already holds the selected module, so pinning the click to a
+    -- combo row does not un-select the Panel.
+    local selectables, selPick = {}, nil;
+    IM.Selectable = function(label)
+        selectables[#selectables + 1] = tostring(label);
+        if selPick == nil then return true; end
+        return type(label) == 'string' and label:find(selPick, 1, true) ~= nil;
+    end
+    -- The jug picker is a combo; its Begin/End pair joins the balance assertions
+    -- (an unbalanced combo corrupts ImGui exactly like an unbalanced child).
+    IM.BeginCombo = function() depth.combo = depth.combo + 1; return true; end
+    IM.EndCombo   = function() depth.combo = depth.combo - 1; end
+    for _, n in ipairs({ 'Button', 'IsItemHovered', 'IsItemClicked', 'IsItemActive' }) do
+        IM[n] = function() return false; end
+    end
+    -- Buttons are RECORDED (and one can be clicked by id): the BST Panel's Fight
+    -- switch (issue #139) is three of them, drawn inside jobhelpersui's render
+    -- pcall -- a typo there would blank the switch in-game and pass a load test.
+    local buttons, clickId = {}, nil;
+    IM.Button = function(label)
+        buttons[#buttons + 1] = tostring(label);
+        return clickId ~= nil and type(label) == 'string' and label:find(clickId, 1, true) ~= nil;
+    end
+    -- The Reward rule's two controls (issue #140) are recorded the same way: a
+    -- Checkbox (the rule switch) and a SliderFloat (the pet-HP% threshold), both
+    -- drivable by id so the click/drag is proven to reach the setter and not
+    -- just to draw.
+    local checks, sliders, tickId, dragId, dragTo = {}, {}, nil, nil, 0;
+    IM.Checkbox = function(label, t)
+        checks[#checks + 1] = tostring(label);
+        if tickId ~= nil and type(label) == 'string' and label:find(tickId, 1, true) ~= nil then
+            if type(t) == 'table' then t[1] = not t[1]; end
+            return true;
+        end
+        return false;
+    end
+    IM.SliderFloat = function(label, t)
+        sliders[#sliders + 1] = tostring(label);
+        if dragId ~= nil and type(label) == 'string' and label:find(dragId, 1, true) ~= nil then
+            if type(t) == 'table' then t[1] = dragTo; end
+            return true;
+        end
+        return false;
+    end
+    IM.GetCursorScreenPos    = function() return 0, 0; end
+    IM.GetContentRegionAvail = function() return 400, 400; end
+    IM.GetWindowDrawList = function()
+        return { AddCircleFilled = nop, AddRectFilled = nop, AddRect = nop, AddLine = nop };
+    end
+
+    package.loaded['imgui'] = IM;
+    package.loaded['dlac\\feature\\jobhelpers'] = nil;   -- re-require against the stub
+    package.loaded['dlac\\ui\\jobhelpersui']    = nil;
+    package.loaded['dlac\\ui\\craftbar']        = nil;
+
+    local jhok, jhui = pcall(require, 'dlac\\ui\\jobhelpersui');
+    check('S320 jobhelpersui re-requires against a stub imgui', jhok and type(jhui.renderTab), 'function');
+    if jhok then
+        local jh = require('dlac\\feature\\jobhelpers');
+        jh.modules = {};
+
+        -- zero modules: maybeRegister is a no-op and the tab stays absent.
+        check('S321 maybeRegister no-ops with zero modules', jhui.maybeRegister(host), false);
+        check('S322 tab still absent', host.get('jobhelpers') == nil, true);
+
+        -- load the REAL BST module through the loader (proves the drop-in path).
+        -- The layout is jobhelpers\<job>\<module>\ (Henrik's ruling 2026-07-29),
+        -- so the require seam needs the job folder seeded, as M.load does live.
+        jh._jobOf = { ['bst-helper'] = 'bst' };
+        jh.loadAll({ names = { 'bst-helper' }, loadModule = jh._requireModule });
+        check('S323 the BST module loads as one module', jh.count(), 1);
+        check('S324 identity is the MODULE folder name', jh.list()[1].id, 'bst-helper');
+        check('S325 its display label', jh.list()[1].label, 'BST Helper');
+        check('S326 it declares BST', table.concat(jh.list()[1].jobs, ','), 'BST');
+
+        -- now the tab registers, to the RIGHT of Gear Helpers.
+        jhui.init({});
+        check('S327 maybeRegister now registers the tab', jhui.maybeRegister(host), true);
+        check('S328 Job Helpers tab now present', host.get('jobhelpers') ~= nil, true);
+        local labels2 = {};
+        for _, name in ipairs({ 'equipped', 'sets', 'triggers', 'automations', 'groups', 'jobhelpers' }) do
+            local m = host.get(name);
+            if m ~= nil and type(m.tabs) == 'table' then
+                for _, t in ipairs(m.tabs) do labels2[#labels2 + 1] = t.label; end
+            end
+        end
+        check('S329 tab count is now 6', #labels2, 6);
+        check('S330 Job Helpers sits right of Gear Helpers', labels2[6], 'Job Helpers');
+
+        -- render the tab (sections + rows + the selected module's Panel) and prove
+        -- the imgui stack came back balanced. gData/AshitaCore are the smoke stubs
+        -- (GetPlayer -> nil), so the activity predicate reads unknown -> active.
+        local function balanced(tag)
+            check(tag .. ': style VAR stack balanced',   depth.var, 0);
+            check(tag .. ': style COLOR stack balanced', depth.col, 0);
+            check(tag .. ': Begin/End balanced',         depth.win, 0);
+            check(tag .. ': BeginChild/EndChild balanced', depth.child, 0);
+            check(tag .. ': BeginCombo/EndCombo balanced', depth.combo, 0);
+        end
+        local rok, rerr = pcall(jhui.renderTab, 'BST', 99);
+        check('S331 tab render runs against the stub', rok, true);
+        if not rok then print('   jobhelpers render error: ' .. tostring(rerr)); end
+        balanced('S332 tab + BST Panel');
+
+        -- the BST Panel's three-way Fight switch actually reaches the screen
+        -- (issue #139), and a click on one of its ways reaches the setter.
+        local drawn = table.concat(buttons, '|');
+        check('S336 the Fight switch draws its three ways',
+              drawn:find('Off##bstfight_off_bst', 1, true) ~= nil
+              and drawn:find('When I attack##bstfight_attack_bst', 1, true) ~= nil
+              and drawn:find('Follow my target##bstfight_follow_bst', 1, true) ~= nil, true);
+        check('S337 the Reward button is still there beside it',
+              drawn:find('Reward now##bstreward_bst', 1, true) ~= nil, true);
+        local fightOk, fight = pcall(require, 'dlac\\jobhelpers\\bst\\bst-helper\\fight');
+        check('S338 the Fight core loads as a module-folder sibling', fightOk and type(fight), 'table');
+        if fightOk then
+            local realSet, setLog = fight.setMode, {};
+            fight.setMode = function(m) setLog[#setLog + 1] = m; return true; end
+            clickId = 'bstfight_follow_bst';
+            pcall(jhui.renderTab, 'BST', 99);
+            clickId = nil;
+            check('S339 clicking a way sets that mode', setLog[#setLog], 'follow');
+            fight.setMode = realSet;
+        end
+
+        -- the Reward RULE's two controls actually reach the screen (issue #140),
+        -- and a tick / a drag reaches its setter. Same reasoning as S336-S339:
+        -- the Panel draws inside a render pcall, so a typo here would silently
+        -- blank the switch in-game and still pass every load test.
+        check('S340 the Reward rule switch draws',
+              table.concat(checks, '|'):find('bstrewardauto_bst', 1, true) ~= nil, true);
+        check('S341 the pet-HP threshold slider draws beside it',
+              table.concat(sliders, '|'):find('bstrewardthr_bst', 1, true) ~= nil, true);
+        local rwOk, reward = pcall(require, 'dlac\\jobhelpers\\bst\\bst-helper\\reward');
+        check('S342 the Reward rule loads as a module-folder sibling', rwOk and type(reward), 'table');
+        if rwOk then
+            local realArm, realThr = reward.setArmed, reward.setThreshold;
+            local armLog, thrLog = {}, {};
+            reward.setArmed     = function(v) armLog[#armLog + 1] = v; return true; end
+            reward.setThreshold = function(v) thrLog[#thrLog + 1] = v; return true; end
+            tickId = 'bstrewardauto_bst';
+            pcall(jhui.renderTab, 'BST', 99);
+            tickId = nil;
+            check('S343 ticking the switch reaches the setter', armLog[#armLog], true);
+            dragId, dragTo = 'bstrewardthr_bst', 35;
+            pcall(jhui.renderTab, 'BST', 99);
+            dragId = nil;
+            check('S344 dragging the slider reaches the setter', thrLog[#thrLog], 35);
+            reward.setArmed, reward.setThreshold = realArm, realThr;
+        end
+
+        -- the RESUMMON section's four controls (issue #141) reach the screen,
+        -- and each one's click/tick reaches its setter. Same reasoning as
+        -- S336-S344: the Panel draws inside a render pcall, so a typo here
+        -- would silently blank the section in-game and pass every load test.
+        buttons, checks, selectables = {}, {}, {};
+        pcall(jhui.renderTab, 'BST', 99);
+        local rdrawn, cdrawn = table.concat(buttons, '|'), table.concat(checks, '|');
+        check('S345 the Resummon rule switch draws',
+              cdrawn:find('bstresumauto_bst', 1, true) ~= nil, true);
+        check('S346 the binary method choice draws BOTH ways',
+              rdrawn:find('Call Beast##bstresum_call_bst', 1, true) ~= nil
+              and rdrawn:find('Bestial Loyalty##bstresum_loyalty_bst', 1, true) ~= nil, true);
+        check('S347 the cooldown-fallback checkbox draws beside them',
+              cdrawn:find('bstresumfb_bst', 1, true) ~= nil, true);
+        check('S348 the jug picker draws its combo',
+              table.concat(selectables, '|'):find('bstresumjug', 1, true) ~= nil
+              or table.concat(selectables, '|'):find('None', 1, true) ~= nil, true);
+        local rsOk, resummon = pcall(require, 'dlac\\jobhelpers\\bst\\bst-helper\\resummon');
+        check('S349 the Resummon rule loads as a module-folder sibling', rsOk and type(resummon), 'table');
+        if rsOk then
+            local realA, realM, realF, realJ =
+                resummon.setArmed, resummon.setMethod, resummon.setFallback, resummon.setJug;
+            local aLog, mLog, fLog, jLog = {}, {}, {}, {};
+            resummon.setArmed    = function(v) aLog[#aLog + 1] = v; return true; end
+            resummon.setMethod   = function(v) mLog[#mLog + 1] = v; return true; end
+            resummon.setFallback = function(v) fLog[#fLog + 1] = v; return true; end
+            resummon.setJug      = function(v) jLog[#jLog + 1] = v; return true; end
+
+            tickId = 'bstresumauto_bst';
+            pcall(jhui.renderTab, 'BST', 99);
+            tickId = nil;
+            check('S350 ticking the Resummon switch reaches the setter', aLog[#aLog], true);
+
+            clickId = 'bstresum_loyalty_bst';
+            pcall(jhui.renderTab, 'BST', 99);
+            clickId = nil;
+            check('S351 clicking a method sets it', mLog[#mLog], 'loyalty');
+
+            tickId = 'bstresumfb_bst';
+            pcall(jhui.renderTab, 'BST', 99);
+            tickId = nil;
+            check('S352 ticking the fallback checkbox reaches the setter', #fLog >= 1, true);
+
+            -- one picker row, driven precisely: the label carries the jug, its
+            -- level and the pet it calls, and clicking it stores the JUG NAME
+            -- (never the label) -- that name is what the claim and the config
+            -- both carry.
+            jLog, selectables = {}, {};
+            local jugsOk, jugs = pcall(require, 'dlac\\jobhelpers\\bst\\bst-helper\\jugs');
+            check('S353 the jug data loads as a module-folder sibling', jugsOk and type(jugs), 'table');
+            if jugsOk then
+                local rows = jugs.list();
+                check('S354 the catalog yields a real jug list', #rows > 0, true);
+                if #rows > 0 then
+                    selPick = 'bstresumjugrow_' .. tostring(rows[1].id);
+                    pcall(jhui.renderTab, 'BST', 99);
+                    selPick = nil;
+                    check('S355 clicking a jug row stores the JUG NAME', jLog[#jLog], rows[1].name);
+                    check('S356 ...and the row it drew names the pet it calls', (function()
+                        local all = table.concat(selectables, '|');
+                        if rows[1].pet == nil then return true; end       -- unmapped: nothing to claim
+                        return all:find(rows[1].pet, 1, true) ~= nil;
+                    end)(), true);
+                end
+            end
+            balanced('S357 tab + BST Panel with Resummon');
+
+            resummon.setArmed, resummon.setMethod = realA, realM;
+            resummon.setFallback, resummon.setJug = realF, realJ;
+        end
+
+        -- the optional row-status hook is actually invoked during a row render.
+        local statusCalls = 0;
+        jh.modules[1].mod.status = function() statusCalls = statusCalls + 1; end
+        pcall(jhui.renderTab, 'BST', 99);
+        check('S335 the module row-status hook is called', statusCalls >= 1, true);
+
+        -- a module whose Panel THROWS is contained: the render still returns and the
+        -- stack stays balanced (the tab and other rows are unharmed).
+        jh.modules[1].mod.panel = function() error('panel boom'); end
+        local rok2 = pcall(jhui.renderTab, 'BST', 99);
+        check('S333 a throwing Panel does not break the tab render', rok2, true);
+        balanced('S334 after a throwing Panel');
+
+        -- clean the shared host so the verdict-time state matches a normal run.
+        jh.modules = {};
+    end
+
+    package.loaded['imgui'] = saved.imgui;
+    package.loaded['dlac\\feature\\jobhelpers'] = saved.jh;
+    package.loaded['dlac\\ui\\jobhelpersui']    = saved.jhui;
+    package.loaded['dlac\\ui\\craftbar']        = saved.cb;
 end)();
 
 -- ---------------------------------------------------------------------------

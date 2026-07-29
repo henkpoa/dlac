@@ -370,7 +370,11 @@ local ARB_PINNED = M.ARB_PINNED;
 -- why lines ('Ammo: <claimant> (rank 5) over MaxMP'), and 'Ammo: Ammo' is not a
 -- sentence. AR12 caught exactly that. It also matches the ammo panel's own
 -- switch ("Ammo rule on RNG:"), so one wording covers claimant + switch.
-M.ARB_DISPLAY = { AutoAmmo = 'Ammo rule' };
+-- 'Job helper' for the JobHelper row (issue #138): the identity stays camel-case
+-- (it keys CLAIMANTS + the per-job anchor store), but a player reads the two
+-- words. Like AutoAmmo, it is named next to a slot in /dl why ('Ammo: Job helper
+-- (rank 5) ...'), so the label is a phrase, not a bare 'JobHelper'.
+M.ARB_DISPLAY = { AutoAmmo = 'Ammo rule', JobHelper = 'Job helper' };
 local ARB_DISPLAY = M.ARB_DISPLAY;
 
 function M.claimantLabel(name)
@@ -433,6 +437,134 @@ function M.arbOrder(st)
     -- lists it in the middle, or it is a default rather than a ceiling.
     table.insert(out, 1, 'Disabled');
     out[#out + 1] = 'Triggers';
+    return out;
+end
+
+-- ---------------------------------------------------------------------------
+-- PRESERVE UNKNOWN ROWS (issue #136). arbOrder above is the LIVE view: it
+-- DROPS any row it does not recognize, which is exactly right for the
+-- arbitration walk and the Priority tab -- no ghost rows, resolution unchanged.
+-- But that same drop, run at WRITE time, silently deletes an unrecognized row
+-- from the file forever: an uninstalled module's claimant, a future claimant, a
+-- hand-added one loses the player's drag position the next time the order is
+-- saved.
+--
+-- arbOrderPersist is the WRITE view -- the full order to serialize to disk. It
+-- keeps every unknown row at its position, so it survives any number of
+-- rewrites and takes effect again the moment a claimant with that identity
+-- exists: once the row is a KNOWN name, arbOrder finds it LISTED and honors its
+-- saved position instead of restoring it at the default one. The known rows are
+-- ordered by arbOrder (so a drag, restore-at-default and the ceiling/floor
+-- invariants all hold), and each unknown row is woven back in ANCHORED to the
+-- known row it followed in the raw file, so it keeps its place relative to the
+-- rows around it across reorders.
+--
+--   newOrder -- the (known-only) order a drag produced: a plain array, or an
+--               { order = ... } table. Ordered through arbOrder; any unknown in
+--               it is dropped there -- unknowns are preserved from rawSt, which
+--               is the file that actually holds them.
+--   rawSt    -- the raw on-disk { order = ... } table, UNSANITIZED, so its
+--               unknown rows are still visible. nil / no order field -> nothing
+--               to preserve, and this equals arbOrder(newOrder).
+-- Pure; the ceiling stays first and the floor last, exactly as arbOrder pins
+-- them.
+function M.arbOrderPersist(newOrder, rawSt)
+    local nlist = newOrder;
+    if type(newOrder) == 'table' and type(newOrder.order) == 'table' then
+        nlist = newOrder.order;
+    end
+    local known = M.arbOrder({ order = (type(nlist) == 'table') and nlist or nil });
+
+    local raw = (type(rawSt) == 'table' and type(rawSt.order) == 'table') and rawSt.order or nil;
+    if raw == nil then return known; end
+
+    local isKnown = {};
+    for _, n in ipairs(ARB_ORDER_DEFAULT) do isKnown[n] = true; end
+
+    -- Collect unknown rows in raw order, each ANCHORED to the known row that
+    -- most recently preceded it (FRONT = it sits before any known row). Dedupe
+    -- by first occurrence -- one row, one saved position.
+    local FRONT = {};
+    local byAnchor = {};             -- anchor-key -> { unknown names, in raw order }
+    local seen, lastKnown, any = {}, nil, false;
+    for _, n in ipairs(raw) do
+        if type(n) == 'string' and n ~= '' then
+            if isKnown[n] then
+                lastKnown = n;
+            elseif not seen[n] then
+                seen[n] = true; any = true;
+                local key = lastKnown or FRONT;
+                if byAnchor[key] == nil then byAnchor[key] = {}; end
+                byAnchor[key][#byAnchor[key] + 1] = n;
+            end
+        end
+    end
+    if not any then return known; end
+
+    -- Weave: front-anchored unknowns first, then each known row followed by the
+    -- unknowns anchored to it.
+    local out = {};
+    if byAnchor[FRONT] ~= nil then
+        for _, n in ipairs(byAnchor[FRONT]) do out[#out + 1] = n; end
+    end
+    for _, k in ipairs(known) do
+        out[#out + 1] = k;
+        if byAnchor[k] ~= nil then
+            for _, n in ipairs(byAnchor[k]) do out[#out + 1] = n; end
+        end
+    end
+
+    -- Re-pin the ceiling first and the floor last: an unknown anchored to
+    -- Triggers, or one that sat before Disabled in a hand-mangled file, must
+    -- never displace either invariant (the whole point of Disabled/Triggers --
+    -- arbOrder's law, held here too).
+    local final = {};
+    for _, n in ipairs(out) do
+        if n ~= 'Disabled' and n ~= 'Triggers' then final[#final + 1] = n; end
+    end
+    table.insert(final, 1, 'Disabled');
+    final[#final + 1] = 'Triggers';
+    return final;
+end
+
+-- ---------------------------------------------------------------------------
+-- THE JOBHELPER ROW (issue #138). Unlike every other claimant, its Claim
+-- Priority position is remembered PER JOB (dragging writes the current job's
+-- placement only; jobs never moved keep the default). So it is deliberately NOT
+-- in ARB_ORDER_DEFAULT / the persistent global arbstate: the live order is the
+-- global order with JobHelper woven in HERE, directly below its per-job anchor
+-- (default 'Locks' -- above every standing Gear helper, below Locks/Naked/Free
+-- equip, so a senior holder means a loud refusal and the action does not fire).
+-- Keeping it out of the global order is also why "preserved positions stay
+-- dormant" falls out for free -- the per-job store holds a placement whether or
+-- not any module is installed, exactly like the unknown-row preservation slice.
+--
+--   order  -- a sanitized global order (WITHOUT JobHelper), array of names.
+--   anchor -- the row JobHelper sits directly below; nil / '' / 'Triggers'
+--             falls back to 'Locks', then to just-before-Triggers.
+-- Returns a NEW array (the input is untouched); the Disabled ceiling stays first
+-- and the Triggers floor last. Pure.
+M.JOBHELPER = 'JobHelper';
+M.JOBHELPER_ANCHOR = 'Locks';
+function M.placeJobHelper(order, anchor)
+    local out = {};
+    for _, n in ipairs(order or {}) do
+        if n ~= M.JOBHELPER then out[#out + 1] = n; end   -- drop any stale copy
+    end
+    anchor = (type(anchor) == 'string' and anchor ~= '' and anchor ~= 'Triggers')
+             and anchor or M.JOBHELPER_ANCHOR;
+    local triggersIdx = nil;
+    for i, n in ipairs(out) do if n == 'Triggers' then triggersIdx = i; break; end end
+    local at = nil;
+    for i, n in ipairs(out) do if n == anchor then at = i + 1; break; end end
+    if at == nil then
+        for i, n in ipairs(out) do if n == M.JOBHELPER_ANCHOR then at = i + 1; break; end end
+    end
+    if at == nil then at = triggersIdx or (#out + 1); end
+    if at < 2 then at = 2; end                                   -- never before the ceiling
+    if triggersIdx ~= nil and at > triggersIdx then at = triggersIdx; end   -- never after the floor
+    if at > #out + 1 then at = #out + 1; end
+    table.insert(out, at, M.JOBHELPER);
     return out;
 end
 

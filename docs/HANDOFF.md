@@ -249,7 +249,39 @@ merge carries it **without asking him again**. Only he can move an entry to ACCE
 this does not make an accepted entry mergeable *alone*: `dev` promotes
 **whole-or-not-at-all**, so an accepted entry rides the next promotion of the whole branch.
 
-*(Empty — last emptied by the FIRST 2026-07-29 promotion: `2026.07.28s`–`2026.07.28v`, the
+### `dayMatch` — the day-only environment condition — `a2153ba` (2026-07-29)
+
+Addon `2026.07.29g` → **`2026.07.29h`**, engine **v155 → v156**. Suites **4455 + 793**,
+Windows lua 5.4. ADR 0029. Henrik's ask: *"there are items that give you bonus solely if the
+day match what you're casting."* The environment vocabulary becomes a TRIO — `dayWeatherBonus`
+(the obi's signed day+weather net, with opposition), `weatherMatch` (spell element == CURRENT
+weather element), `dayMatch` (spell element == TODAY's day element) — because the net cannot
+stand in for a day-only item in **either** direction: on Firesday in Water weather it reads
++1 −1 = 0 and stays quiet while the item IS paying out, and on Earthsday in Fire weather it
+reads +1 and fires while the item is dark. Precast + Midcast, tier 30; reads the same
+`GetEnvironment().DayElement` that `netForElement` already scores, so the net's day half and
+this condition can never disagree; unknown day / no action element matches NEITHER polarity.
+Tests DM1–DM24 (DM14–DM17 pin the independence from both neighbours).
+
+**FIELD ROUND OWED — not yet field-confirmed**, so this entry does not meet the section's
+normal bar and is queued on Henrik's explicit *"add this as a candidate to be merged to main
+and pushed."* The field check is one cast: on a day matching the spell's element, a
+`dayMatch = true` Midcast rule must equip its set, and it must go quiet the next Vana'diel day
+— `/dl env` prints the live day and its element, and `/dl why` names the rule that decided.
+
+**One thing a promoter should know:** unlike ADR 0018, this is **not** pinned to a named
+server mechanic — the CatsEyeXI source is not on this machine and no specific item was named,
+so it ships as a calendar primitive ("the day element equals the spell's element"), which is
+true regardless of the item. If a day-only item turns out to want *day-or-weather* (the way
+the retail obi tooltip reads), that changes which conditions a player **composes**, not this
+condition's meaning — an open follow-up, not a blocker.
+
+**Provenance oddity, recorded so nobody hunts for it:** the DM1–DM24 test block is committed
+inside **`65ba01d`** (the BST Fight debounce fix), not inside `a2153ba` — that commit's
+`git commit -a` swept this work-in-progress file out of the shared working tree. The block is
+intact and green; `a2153ba` carries everything else.
+
+*(Last emptied by the FIRST 2026-07-29 promotion: `2026.07.28s`–`2026.07.28v`, the
 nine-commit train that closed the E-Box v2 record — the `/dl debug ebox` crash fix (`28s`,
 field-confirmed by the bare-snapshot pass: an 11-event ring spanning 1h24m formatted clean, and
 the header measured the design's whole promise on its way past — **1 packet sent, 0.0/min,
@@ -350,6 +382,57 @@ research already recorded. In rough priority order:
    section heading rather than each carrying one. Trivial to change if it reads wrong.
 
 ## Current state (as of 2026-07-26)
+
+- **2026-07-29: BST Resummon — the pet-loss edge gets CLASSIFIED, and only a proven jug
+  death spends a jug — MERGED to `dev` (`2026.07.29o`), field round owed**
+  (issue #141, PRD #135). The third standing BST Helper behavior, and the
+  one whose failure mode costs real money. Its whole design is one asymmetry: **a missed
+  resummon costs the player nothing, a wrongly-assumed one costs them a jug** — so
+  `petvitals.classifyLoss` proves a death or reports `unknown`, and never guesses.
+  **Two proofs**: the pet-falls chat line (read off `text_in`, the channel the client
+  already renders — history.md's dig-obtained lesson, where two packet guesses lost to one
+  hgather grep) and a present→absent transition after a **low last-seen HP%**
+  (`LOW_HP_PCT = 25`). **Three suppressors, checked first**: an observed outgoing Leave
+  (0x01A category 0x09, ability resolved BY NAME off the client's own resource — no
+  hardcoded ability id anywhere in this slice), zoning, and logging out. **Jug vs charm is
+  decided by NAME** through an injected authority, so the service owns the rule and the
+  BST module owns the list (`jobhelpers/bst/jugs.lua`) — charm loss and a charmed pet's
+  death trigger nothing at all.
+  The Panel gains the **Resummon** section: a jug picker over the CATALOG's own jugs (a jug
+  is exactly a BST-only Ammo item — the mapping module ships the jug→pet names and the
+  level *overrides*, never a second copy of the catalog), the binary Call Beast / Bestial
+  Loyalty choice, and the "use the other if mine is on cooldown" checkbox (default on) with
+  the trade in its hover. Out of jug is ONE loud line, and the Loyalty fallback does not
+  rescue an empty bag — both methods need the jug WORN, which is why this is an Action
+  sequence and not a bare command. Both recasts down **queues**, and the queue is cancelled
+  by zoning / Leave / logout / any pet appearing — and by disarming the rule, which is the
+  row pill's whole job. It deliberately has no expiry: Bestial Loyalty's recast is measured
+  in minutes.
+  Suites **4732 + 817**. **NOT field-tested** — and three things in it can only be settled
+  in the field: every jug→pet row (hand-transcribed, `cexi`-anchored rows first, unplaceable
+  rows shipped EMPTY rather than guessed), the exact pet-falls wording, and whether pet
+  commands really ride action category 0x09. All three fail SAFE: the worst case of each is
+  a resummon that does not happen. The maintainer's ruling for this slice is recorded in
+  `jugs.lua`'s header — live > wiki > repo, and repo SQL is inherited-base only.
+- **2026-07-29: `dayMatch`, the day-only environment condition — ON `dev`, IN THE MERGE
+  QUEUE, field round owed** (`2026.07.29h`, engine v156, ADR 0029; the queue entry above is
+  the status authority). Henrik: *"there are items that give you bonus solely if the day
+  match what you're casting."* The environment vocabulary is now a TRIO, and the three are
+  three different questions about the world: `dayWeatherBonus` (the obi's signed day+weather
+  net, with opposition), `weatherMatch` (spell element == CURRENT weather element),
+  `dayMatch` (spell element == TODAY's day element). The net cannot stand in for a day-only
+  item — on Firesday in Water weather it reads +1 −1 = 0 and stays quiet while the item IS
+  paying out, and on Earthsday in Fire weather it reads +1 and fires while the item is dark;
+  `weatherMatch` has no day term at all. Precast + Midcast, tier 30; `dayMatchesAction` reads
+  `GetEnvironment().DayElement` (the same field `netForElement` scores, cached on `ctx.del`);
+  unknown day or no action element matches NEITHER polarity. **There is no "clear day"** —
+  all eight weekdays carry an element, so only a broken read is unknown (weather's `None` has
+  no day counterpart), and the day is not storm-aware. **Deliberately NOT pinned to a named
+  server mechanic** the way ADR 0018 pinned `weatherMatch` to `ALACRITY_CELERITY_EFFECT`: the
+  server source is not on this machine and no item was named, so it ships as a calendar
+  primitive. Pinning one item's exact gate (day only, or day-or-weather the way the retail
+  obi tooltip reads?) is an open follow-up that changes what a player *composes*, not what
+  this condition means. Tests DM1–DM24; full story in `docs/history.md`.
 
 - **2026-07-28: the Ventures rings reach the Crafting Gear panel — ON MAIN, field round
   owed** (`2026.07.28o`; promoted the same hour on Henrik's *"push to main"*, deliberately
@@ -791,19 +874,33 @@ research already recorded. In rough priority order:
     re-saves as the old pure-OR form, named `standalone status=Resting`. Already-saved
     noisy rules canonicalize on their next edit-save. TE54–TE56;
     trigger-system.md §"Field round 2".
-  - **In flight: #128 (polish) — `ready-for-agent` toggled 2026-07-26 after the field
-    read landed.** Shepherd its PR next. The agent must NOT regress field iteration 1
-    (TE45–TE53 pin it; the layout reactions on #128/#127 override the skeleton's own
-    choices). #129 (blueprints) stays unlabeled until #128 merges — one at a time.
-    Collision watchlist: engine **v128 is TAKEN** (AutoAmmo Range-awareness, same day) and
-    addon is at **`26m`** → next free **v129** / **`26n`**; test ranges
-    CS/TC/TE/TRC/MC/TB/LS*/CMD/NK*/LSP are all taken (TE runs through TE56).
+  - **Completion slice #128 — MERGED to `dev` 2026-07-29 (PR #134, addon `2026.07.29a`),
+    NOT FIELD-TESTED as a whole.** Copy case (per-box `copy` affordance; case 1 = the body
+    box, so "copy the rule body into a new case" falls straight out — pure seam
+    `_copyConds`, deep-copy so the duplicate is independent), "Match either instead" + the
+    repeat-replaces note working INSIDE a case (field iteration 1's `renderBox`
+    already carried it; #128 pins it under test), box-header **hover help** via the
+    panel-text standard (`uistyle.helpLabel` — underlined `& case`/`| case` label,
+    one-sentence semantics in the hover), and the empty-case save refusal (incl. an
+    empty case 1). No engine bump — pure addon-state UI (hard rule 4). Tests
+    **TE57–TE66** (the PR predated field round 2 and numbered them TE54–TE63; renumbered
+    at merge — field round 2 owns TE54–TE56). **Field-test gate:**
+    [design/trigger-cases-fieldtest.md](design/trigger-cases-fieldtest.md) — the
+    dev→main acceptance list (old rules byte-identical, `| case` fires independently,
+    `& case` gates, `/dl why` names the case, old-version drop-with-warn). Did NOT
+    regress field iteration 1 (TE45–TE53 still green). **#129 (blueprints) stays
+    unlabeled** — the Job Helpers train (#135 PRD, #136–#142) holds the one-label
+    pipeline now; queue order between them is Henrik's call.
+    Collision watchlist: engine **v128 is TAKEN** (AutoAmmo Range-awareness); addon now
+    **`2026.07.29a`**; test ranges CS/TC/TE/TRC/MC/TB/LS*/CMD/NK*/LSP are all taken
+    (TE runs through **TE66**).
   - **Both naming decisions CLOSED 2026-07-26**: (1) the `hasCases` guard token stays —
     maintainer sign-off (camelCase like every condition key; a post-main rename would
     need a player-file migration, so it was decided before promotion, deliberately);
     (2) the slice-1 `/dl why` strings were field-witnessed in Henrik's screenshot and
     survive as designed (`standalone <k=v>` for a lone condition — field round 2's
-    canonical legs made that the shape simple rules actually take).
+    canonical legs made that the shape simple rules actually take). The completion PR's
+    "open Henrik decisions" flag predated this closure — nothing is owed there.
   - Also from this session: the `/dl why` frozen-trace field bug — diagnosed, fixed
     (v126, `97f1edc`), **field-confirmed**; see Ready-to-merge. `/dl check` turned out
     **native-era-blind** (three false alarms on a healthy native setup) — filed as **#131**,

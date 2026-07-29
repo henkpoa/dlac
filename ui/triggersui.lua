@@ -119,8 +119,9 @@ local SPELL_CONDS = {
     { key = 'group',     kind = 'group', hint = 'match every action in a named group -- one rule gears many\nspells that share gear. Build groups in the Groups section; a per-spell\nname rule still overrides the group.' },
     { key = 'name',      kind = 'text', hint = 'exact spell name, e.g. Slow II' },
     { key = 'target',    kind = 'list', items = TARGET_ITEMS, hint = TARGET_HINT },
-    { key = 'dayWeatherBonus', kind = 'flag', hint = 'the day + weather NET favours the spell you are casting\n(+1 per matching day/weather, -1 per the opposing element; fires when\nthe net is positive) -- the obi rule. For a plain weather-only match\n(no day), use weatherMatch below.' },
+    { key = 'dayWeatherBonus', kind = 'flag', hint = 'the day + weather NET favours the spell you are casting\n(+1 per matching day/weather, -1 per the opposing element; fires when\nthe net is positive) -- the obi rule. For a plain one-sided match,\nuse weatherMatch or dayMatch below.' },
     { key = 'weatherMatch', kind = 'flag', hint = 'the CURRENT weather element matches the spell you are casting\n(single or double weather, and your own storm counts) -- NOT the\nday+weather net, a plain weather match. Stack with a buff condition\n(Celerity / Alacrity) to gate a Scholar cast-time set.' },
+    { key = 'dayMatch', kind = 'flag', hint = 'TODAY\'S day element matches the spell you are casting --\nFire spells on Firesday. Weather is not part of it, and the opposing\nelement costs nothing: for gear that pays out on the DAY alone. The\nnet (dayWeatherBonus) would miss it in opposing weather.' },
     { key = 'mode',      kind = 'text', hint = 'a player-toggled mode must be ON (e.g. DT) -- stack with other\nconditions to make a rule mode-dependent' },
     { key = 'any',       kind = 'flag' },
 };
@@ -1356,6 +1357,10 @@ local COND_COLORS = {
     element = { 0.95, 0.70, 0.45, 1.0 },  songtype = { 0.80, 0.85, 0.50, 1.0 },
     dayweatherbonus = { 0.60, 0.90, 0.90, 1.0 },
     weathermatch = { 0.55, 0.80, 0.95, 1.0 },
+    -- dayMatch is weatherMatch's sibling but must not LOOK like it: the two fire on
+    -- different worlds and a rule box that reads them as one colour hides that. The
+    -- warm rose is the map's one free band (element/contains own the golds).
+    daymatch = { 1.00, 0.70, 0.85, 1.0 },
     contains = { 0.95, 0.85, 0.45, 1.0 }, family = { 0.95, 0.85, 0.45, 1.0 },
     group = { 0.55, 0.80, 1.00, 1.0 },
     name = { 1.00, 0.95, 0.75, 1.0 },
@@ -2215,6 +2220,29 @@ local function hasEmptyCase(addCases)
 end
 M._hasEmptyCase = hasEmptyCase;   -- headless test seam
 
+-- Deep-copy a builder conds list (issue #128, copy-case). Every row is cloned,
+-- including a table VALUE (a mode list), so editing the duplicate can never reach
+-- back into the original -- an EDITABLE duplicate, not a shared reference. Copying
+-- a box's rows into a fresh case is the whole of "copy case" and "copy the rule
+-- body into a new case"; the op rides along at the call site. Pure seam, tested
+-- headless for independence (TE54-TE55).
+local function copyConds(conds)
+    local out = {};
+    for _, c in ipairs(conds or {}) do
+        if type(c) == 'table' then
+            local v = c.value;
+            if type(v) == 'table' then
+                local vv = {};
+                for i, x in ipairs(v) do vv[i] = x; end
+                v = vv;
+            end
+            out[#out + 1] = { key = c.key, value = v, any = c.any };
+        end
+    end
+    return out;
+end
+M._copyConds = copyConds;   -- headless test seam
+
 -- Add-rule popup: build conditions (type + value, [+ condition] to AND more), pick the
 -- target set, optional priority, Add.
 local function renderTrigAddPopup()
@@ -2229,6 +2257,13 @@ local function renderTrigAddPopup()
     imgui.Separator();
 
     local defs = COND_DEFS[h] or {};
+    -- Panel-text standard (issue #128): the case-box header carries its
+    -- one-sentence semantics in a HOVER off an underlined label, not an inline
+    -- paragraph. helpLabel takes the caller's imgui handle and degrades to plain
+    -- coloured text when the binding lacks the draw-list, so it is never
+    -- load-bearing (the Mode-library precedent below).
+    local _usok, ust = pcall(require, 'dlac\\ui\\uistyle');
+    local hasHelp = _usok and type(ust) == 'table' and type(ust.helpLabel) == 'function';
 
     -- 'e' on a pending row: load the condition back into the pickers and lift
     -- the row out, so a small tweak never means retype-from-scratch (Henrik).
@@ -2549,6 +2584,7 @@ local function renderTrigAddPopup()
     -- to be the one case whose type only the system could set). Together-block
     -- (AND) boxes first, an "-- or --" divider, then standalone (OR) boxes.
     local delCase, delBody = nil, false;
+    local copyReq = nil;   -- a deferred copy-case request (applied after the render loop)
     local caseLh = lineH();
     local bop = (trig.addBodyOp == '|') and '|' or '&';
     -- ONE renderer for every box -- case 1 and added cases alike; only where
@@ -2560,7 +2596,27 @@ local function renderTrigAddPopup()
         if cs.note ~= nil then nLines = nLines + ((cs.swap ~= nil) and 2 or 1); end
         imgui.BeginChild('##trg' .. sfx, { -1, nLines * caseLh + 20 }, true, BOX_FLAGS);
         local availW = imgui.GetContentRegionAvail();
-        imgui.TextColored(COL_HEADER, (cs.op == '&') and '& case' or '| case');
+        -- Header (issue #128): an underlined help-label carrying the one-sentence
+        -- semantics in its hover (panel-text standard), then a copy affordance on
+        -- the LEFT -- the short header leaves room, so the fixed-width right
+        -- cluster (AND/OR selection + delete) never grows and clips under a wide
+        -- themed font.
+        local hdr = (cs.op == '&') and '& case' or '| case';
+        local hdrTip = (cs.op == '&')
+            and 'Together-block case: it binds with the other AND cases -- all of them must hold together for the rule to fire.'
+            or  'Standalone alternative: the rule fires if this case holds on its own, regardless of the together-block.';
+        if hasHelp then ust.helpLabel(imgui, hdr, hdrTip, COL_HEADER);
+        else
+            imgui.TextColored(COL_HEADER, hdr);
+            if imgui.IsItemHovered() then imgui.SetTooltip(hdrTip); end
+        end
+        imgui.SameLine(0, 8);
+        if imgui.SmallButton('copy##trgcopy' .. sfx) then
+            copyReq = { op = cs.op, conds = copyConds(cs.conds) };
+        end
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('Copy this case into a new one -- the starting point for a near-identical alternative.\nThe copy is fully editable and never touches this case.');
+        end
         -- The AND/OR selection, top right on EVERY box -- flip a case's type on
         -- the fly; the box moves across the "-- or --" divider as it changes.
         imgui.SameLine(availW - 96);
@@ -2679,6 +2735,14 @@ local function renderTrigAddPopup()
         end
     elseif delCase ~= nil then
         table.remove(trig.addCases, delCase);
+    end
+    if copyReq ~= nil then
+        -- Copy case (issue #128): append the duplicate. Deferred out of the
+        -- render loop -- appending mid-ipairs over trig.addCases is the mutate-
+        -- while-iterating trap. Copying case 1 (the body box) drops a duplicate
+        -- of the rule body in as a new case -- "copy the rule body into a new
+        -- case" falls straight out of case 1 being a real box.
+        trig.addCases[#trig.addCases + 1] = copyReq;
     end
     -- The two new buttons -- the ONLY new chrome a case-less rule shows.
     if imgui.Button('+ & case##trgaddandcase', { 0, 0 }) then

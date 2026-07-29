@@ -90,7 +90,9 @@ engine cannot require them; it has its own minimal reads).
 | **The gear-helper list + coverage status?** | `automationsui.listRows()` + `.levelColor(level, max)` | `ui/automationsui.lua` | The SAME rows/ramp the Gear Helpers tab shows — never rebuild the list or invent a rival color ramp. `{}` before init/login; MaxMP graduated 2026-07-21 and rides the same list. (The Teleports quick menu was consumer #1 until 2026-07-26, when its Automations/HELM/Fishing cascades were replaced by two rows that open the Hobby bar and Lockstyle windows.) |
 | **Is the MaxMP mode on? / flip it** | `automationsui.maxmpMode()` / `.maxmpToggle()` | `ui/automationsui.lua` | THE shared reader/flipper for every surface (panel button, list row). Reads the LAC engine's modestate mirror (1s TTL — display can lag a beat); the toggle sends the EXPLICIT `/dl mode maxmp on\|off`, never a blind flip. Auto-disables on job change. |
 | **The max-MP band plan?** | `dispatch.M.mpBands(ctx)` → context; `mpbands.build/target/tick` (pure core) | `dispatch.lua` (LAC state) + `feature/mpbands.lua` | ONE context serves the engine AND `/dl plan` — the plan IS the behavior, never render a rival. Current MP is the only live read; `GetMPMax` is unreliable during gear churn and floored party MP% == 100 is the only exact fullness signal. Read docs/design/maxmp-mode.md (rulings ledger + failure museum) before touching. |
-
+| **Did I just engage / re-target something, and exactly what?** | `engagewatch.lastEdge()` → `{ kind, index, serverId, name, at }` \| nil; `.subscribe(who, cb)` / `.unsubscribe(who)`; `.decode(bytes)` (pure) | `feature/engagewatch.lua` | THE one decoder of the two battle EDGES — never register a second `0x01A` reader for them. `kind` is `'engage'` (category `0x02`) or `'retarget'` (category `0x0F`, which is what auto-target rolling to the next mob sends). The entity comes **from the packet** (UniqueNo u32 @0x04, ActIndex u16 @0x08), never re-read at consumption time — by then the target has moved on, and that is the whole point. A **per-TARGET debounce** (`DEBOUNCE_S = 5`) means the same entity notifies at most once a window while a different one notifies immediately, so client re-sends and target stutter never reach a subscriber. THREADING (the chocowatch rule): the `packet_out` handler decodes and stashes on the NETWORK thread and does nothing else; `pump()` — wired in dlac.lua's `d3d_present` — does the debounce, the entity-name read and the callbacks on the MAIN thread. Subscribers are pcall'd, so one throwing consumer never costs another its notification. Consumer: the BST Helper's Fight switch (`jobhelpers/bst/fight.lua`). The field-proven decode of both kinds is `accwatch.lua`'s engage watch on the parked `feature/autoacc` branch (history.md, "ACC calculator → acc watch"); its inert byte-identical dev copy at `share/mob-stats/accwatch.lua` is REFERENCE ONLY — THIS is the one live shared implementation, and accwatch subscribes here when it lands. |
+| **Is a pet out right now, and how is it doing?** | `petvitals.get()` → `{ present, hpp, tp, name }`; `.subscribe(who, cb)` / `.unsubscribe(who)`; `.fromPet(pet)` (pure) | `feature/petvitals.lua` | THE pet read — never open a second `GetPetTargetIndex`/`GetHPPercent` pair (the BST Fight switch carried one until this landed, and it now asks here). It CONSUMES `gData.GetPet()`, dlac's one existing pet reader (`feature/nativedata`, the LAC-parity provider the engine already reads every dispatch for the pet trigger conditions) — a central service must not begin life as the second implementation of its own answer. **`present` is TWO-state on purpose:** `gData.GetPet()` answers nil for both "no pet" and "the read failed", and every consumer here ISSUES A COMMAND or SPENDS AN ITEM, so an unreadable pet must decide exactly the way an absent one does (the #139 `hasPet` rule). **Dead pet = no pet** — HP% 0 is not a pet, encoded both in `GetPet` and re-stated in `fromPet` for hand-built records. `hpp`/`tp`/`name` are individually nil-able: a present pet whose HP could not be read is reported honestly, never guessed. `pump()` (dlac.lua's `d3d_present`) publishes to subscribers once per `TICK_S` = 0.4 s (the engine's own dispatch beat) and **does not read the world at all while nothing is subscribed**; `get()` has no cache and reads now, so a caller can never be handed a record older than its question. Consumers: the BST Helper's Reward rule (`jobhelpers/bst/reward.lua`) and its Fight switch's pet gate. |
+| **My pet is gone — WHY?** (the classified pet-loss edge) | `petvitals.classifyLoss(prev, cur, ctx)` (pure) → `{ lost, kind, confirmed, how, pet, name, hpp }`; `.subscribeLoss(who, cb)` / `.unsubscribeLoss(who)`; `.lastLoss()`; `.lossText(edge)` | `feature/petvitals.lua` (issue #141) | **DEATH IS CONFIRMED, NEVER ASSUMED** — the whole law, and it exists because the one consumer SPENDS A JUG. Two proofs only: the **pet-falls chat line** (matched on `text_in`, the channel the client already renders — history.md's dig-obtained lesson: two packet guesses lost to one grep) and a present→absent transition after a **low last-seen HP%** (`LOW_HP_PCT = 25`, the one knob between "missed a death" and "burned a jug on a Leave"). An observed outgoing **Leave**, **zoning** and **logging out** each SUPPRESS, and they are checked FIRST, so a Leave pressed on a dying pet can never read as a death. Everything else is `unknown`, which confirms nothing. **Jug vs charm is decided by NAME**, through an injected authority (`M.lossCtx.isJugPet`) — the service deliberately does not own the roster: that is the BST module's data (`jobhelpers/bst/jugs.lua`), and the next module's will be its own. Signals live in a TTL inbox (`SIGNAL_TTL_S = 8`) so nothing observed a minute ago explains a pet lost now, and they are cleared once they have explained one loss. The edge fires **once** per loss on the ordinary vitals beat; a loss subscriber alone keeps that beat alive. The Leave observation reads outgoing `0x01A` **category 0x09 (Ability)** — deliberately not one of engagewatch's two battle edges — stashing on the network thread and resolving the ability NAME on the main thread through the client's own resource tables (no hardcoded ability id). Consumer: the BST Helper's Resummon rule (`jobhelpers/bst/resummon.lua`). |
 | **Is the game hiding its own interface?** (Scroll Lock) | `gamehud.hidden()` → `true` \| `false` | `feature\gamehud.lua` | FAILS OPEN — unmatched signature, null pointer or headless all answer `false`, because a UI that vanishes on a bad read is unexplainable to a player. The SCREENSHOT flag only: cutscenes and the fullscreen map have their own signatures and dlac deliberately does not fold them in (xivbar/HXUI do). One consumer, and there should only ever be one: the gate in gearui's `d3d_present`, above the first imgui call and below every per-frame pump. |
 
 Adding a new central service: generic plumbing goes in `lib/`, game-domain
@@ -486,6 +488,196 @@ skipped with a note. Candidates are deduped case-insensitively and sorted; comme
 first so a stray brace can't unbalance the scan. triggersui draws the `Scan → tick → Import` panel
 (config-looking names pre-unticked) and reuses `groupimport`'s classify / overwrite-confirm /
 apply. Headless-tested (GS*). Never seeded into LAC.
+
+### feature/jobhelpers.lua + ui/jobhelpersui.lua — the Job helper module system (issue #137, PRD #135)
+The **Job helper** (CONTEXT.md) module system: first-party modules that revive the parked
+plugin-folder design (`docs/design/integration-surface.md` §10) as dlac-shipped code. A module is
+a drop-in FOLDER under its job's directory — `addons\dlac\jobhelpers\<job>\<module>\` (Henrik's
+layout ruling 2026-07-29: the job folder GROUPS, each module under it is its own separable folder;
+never a loose file); its `<module>\init.lua` returns
+a contract table `{ api, label, jobs, init?, panel, status? }`. **Identity is the MODULE folder
+name**, unique addon-wide (a duplicate under a second job folder is refused loudly), not
+a self-declared id — the folder is the unit of server approval (one folder = one row = one approval,
+the Pup-Helper precedent).
+
+- **`feature/jobhelpers.lua`** — the loader + registry + config store + the module-activity predicate.
+  `M.loadAll(opts)` is the loader CORE: injected seams (`names`, `loadModule`, `ledger`, `emit`, `deps`)
+  so the good / wrong-api / throwing / malformed fixtures drive it headlessly (tests JH1–JH32). It
+  validates the contract, **contains** a wrong `api` / a throwing init / a malformed folder to ONE loud
+  line + one entry in the SAME load ledger `dlac.lua` stashes (`package.loaded['dlac\\loadledger']`,
+  namespaced `jobhelper:<id>`), so `/dl check` counts modules and names failures with no change to
+  `feature/check.lua`. `M.load(deps)` is the live glue (real `ashita.fs.get_dir` scan via
+  `M._listModuleDirs`, the `profiles._listDirs` precedent; folders only — a name with a `.` is a loose
+  file, skipped — and `require('dlac\\jobhelpers\\<id>\\init')` via `M._requireModule`). The **config
+  store** is ONE per-character statefile `<char>\dlac\jobhelpers.lua` (`fmt`-versioned; `enabled = {[id]=bool}`
+  the row pill default-ON, `order = {[JOB]={id,..}}` the per-job section order written on mutation only;
+  plain write + tolerant reader, the ammowatch precedent, via `M._charDir`). The **module-activity
+  predicate** `M.activityCore(mod, reads)` is pure: precedence `off → wrong job → zoning → dead → town →
+  active`, and an unknown read (nil job, nil inTown) never manufactures a reason — the buff-cache
+  discipline. `M.liveReads` wires `gData.GetPlayer()` (job + Status), `location.inTown()`, and the
+  `GetIsZoning()` probe. Future features consult this predicate too.
+- **`ui/jobhelpersui.lua`** — the **Job Helpers** tab. It does NOT self-register at require time; `dlac.lua`
+  calls `M.maybeRegister(host)` AFTER `jobhelpers.load` and it registers nothing when zero modules loaded
+  (drop a folder + reload → tab appears; remove it → tab gone). Because the register call runs after gearui
+  already registered its tabs, the tab lands to the RIGHT of Gear Helpers. Layout is the Gear Helpers pattern:
+  display-only PER-JOB sections (`CollapsingHeader` per `jobhelpers.jobs()`) over a flat module list; one row
+  per module per declared job, a multi-job module under each with one shared switch (every row re-reads live
+  pill + activity). The pill is the master switch (`craftbar.onOffSwitch` → `jobhelpers.setEnabled`); the row
+  status shows the live inactivity reason; rows drag-reorder (up/down buttons + a drag-selectable, the Claim
+  Priority mechanism — no working `BeginPopupContextItem` in this install) persisting per job. Every call INTO
+  a module's render hooks is pcall-wrapped — a throwing Panel loses its own Panel and prints once, never the
+  tab or other rows (frame-level imgui stack recovery is uihost's `tabGuard`).
+- **`jobhelpers/bst/init.lua`** — the **BST Helper**, first real module, and a folder with more than one file in
+  it: `init.lua` is the contract + the Panel, and the behaviors live beside it. Its Panel carries the three-way
+  **Fight** switch (issue #139) and the demoable **"Reward now"** button (issue #138): pick the best carried pet
+  food (the eight-tier Ladder), overlay an optional Reward set from the job entry's Sets, open an Action
+  sequence, and gray the button while Reward is down. Death-only resummon lands in a later PRD #135 slice.
+- **Load wiring:** `dlac.lua` adds `feature\jobhelpers` + `ui\jobhelpersui` to the module-load loop, then runs
+  the loader + `maybeRegister` in one guarded block after the loop (so job-helper counts/failures ride the load
+  beacon too). ADR 0028 records the module-system decision.
+- **Test rosters:** `feature/jobhelpers` + `feature/engagewatch` → `FEATURE`, `ui/jobhelpersui` → `UI`, and the
+  `JOBHELP` roster (folder-relative module paths: `bst/init`, `bst/config`, `bst/fight`, `bst/reward`) in
+  `tests/run_tests.lua`'s GRD block; `'jobhelpers'` added to `tests/smoke_ui.lua`'s tab-name roster (smoke S10c
+  absent / S320–S344 present + balanced Panel + the Fight switch and the Reward rule's two controls drawn and
+  clickable).
+
+### The BST Resummon rule (issue #141, PRD #135) — death-only, and death is proven
+The third standing Job-helper behavior, and the one that spends the most expensive item the module touches.
+Everything new is either the **classified pet-loss edge** (a second question on the existing vitals service —
+its own row in the table above) or module-local:
+- **`jobhelpers/bst/jugs.lua`** — the module's DATA, and two tables answering two different questions.
+  `M.PETS` is the **jug pet roster** (this server's own published BST tables: 14 families of NQ + HQ), and it
+  is the whole of the classifier's jug-vs-charm rule — a name that is not on it is a charmed mob, so the helper
+  does nothing for it. `M.MAP` is the **jug → pet mapping** the picker shows; nothing acts on it. The jugs
+  THEMSELVES are not copied here: a jug is exactly a **BST-only Ammo item**, so `M.list()` joins the catalog
+  (`catalogindex.rawIndex`) with the mapping and sorts by level. `M.LEVEL` is the live-observed level override
+  table, **empty by design** — the catalog's level is the inherited base, and a field-observed level is one row
+  here that wins everywhere (the maintainer's rule for this slice: live > wiki > repo, repo SQL is
+  inherited-base only). The live list is memoized once (the Panel redraws its picker every frame; the catalog
+  is generated and static) but an EMPTY build is never cached — hard rule 11.
+- **`jobhelpers/bst/resummon.lua`** — two PURE deciders and one act. `decideLoss(edge, state)` funnels from
+  "should I care" (armed, acting, a loss at all, a **death**, **confirmed**, a **jug** pet) down to "can I do
+  it" (a jug configured, one in the bags, the sequencer free, an ability ready). `queueDecide(state)` is the
+  queue tick: **cancels first and absolutely** (a pet appearing any other way, zoning, an observed Leave,
+  logging out, the rule being switched off, running out of the jug), then holds (inactive, busy, still on
+  recast), then fire. `pickMethod` is the binary choice plus the checkbox, shared by both — and an UNMEASURED
+  recast reads READY, matching the recast service's courtesy gate. The act claims the jug into **Ammo alone**
+  and verifies that same slot worn: both methods read the ammo slot for the species, so the jug is the act's
+  precondition, not its costume — and no optional set rides along, because every extra claimed slot is one
+  more chance for a senior claimant to refuse the whole sequence. The queue deliberately has **no expiry**:
+  Bestial Loyalty's recast is measured in minutes, and a queue that expired before the ability it waits for
+  would be a queue that never worked.
+- **`feature/recast.lua`** gains `CALL_BEAST` / `BESTIAL_LOYALTY` and `timerIdFor(sig)`. Neither carries a
+  hardcoded recast slot: the Pup-Helper reference only ever named Reward's, so these resolve theirs **by name**
+  through the client's own ability resource (live memory over every other source — hard rule 9), and an
+  unresolvable one reads UNKNOWN → READY. A failed resolution is not latched (hard rule 11).
+- **`feature/jobhelpers.lua`** gains `sectionOrder(id)` — the module's Action-sequence priority within the
+  current job's section. It moved here from `bst/reward.lua` when Resummon needed the same answer: it is a fact
+  about the MODULE, not about whichever of its rules is asking, so the two share one implementation.
+- **`jobhelpers/bst/config.lua`** gains four rows — `resummonArmed` (default **off**, for the reason the other
+  two are), `resummonJug` (no default: nothing here picks a jug for the player, and none picked is a loud
+  refusal), `resummonMethod` (default `call` — the one that earns Beast Raising bonuses) and
+  `resummonFallback` (default **on**, the PRD's own; it can only ever change WHICH ready ability is used,
+  never whether one is).
+- **Test rosters:** `bst/resummon` + `bst/jugs` → `JOBHELP`. Tests: PVL*/JUG*/BRS*/RC9–RC18 in
+  `run_tests.lua`, smoke S345–S357.
+- **Deferred / flagged:** every jug→pet row is **field-verify before trust** (hand-transcribed; rows that could
+  not be placed honestly are ABSENT, and the picker shows those jugs with no pet name); the exact pet-falls
+  wording, `LOW_HP_PCT = 25`, the two summon command target tokens, and that pet commands ride action category
+  0x09 are all field-round calls. Player-facing strings ("Resummon", "Jug", "Use the other if mine is on
+  cooldown") await the maintainer's sign-off. A summon sequence that ABORTS (verify timeout) is not retried —
+  the death edge is spent, and the sequencer's abort is its own loud line.
+
+### The BST Reward rule (issue #140, PRD #135) — the pet-HP threshold
+The second standing Job-helper behavior, and the first that SPENDS AN ITEM. One new central service plus one
+new module file; the "Reward now" button from #138 stays, and the automatic rule is deliberately just a
+**second requester on the same path**:
+- **`feature/petvitals.lua`** — the **pet vitals** central service (its own row in the table above). One
+  question — presence / HP% / TP / name — read through `gData.GetPet()`, published to subscribers once per
+  dispatch beat by `pump()`, and answered on demand by `get()`. Carries the *dead pet = no pet* law and the
+  deliberate two-state `present`.
+- **`jobhelpers/bst/reward.lua`** — the rule AND the act. `decide(vitals, state)` is PURE — vitals + state in,
+  "request the sequence?" out — so the threshold, the lockout and every gate are headless checks (BRW*). The
+  threshold fires **strictly below** (a pet exactly at 50 is not below 50); the **retry lockout**
+  (`LOCKOUT_S = 30`) is armed by every ATTEMPT, so a sustained sub-threshold pet costs at most one command and
+  one refusal line per window. Two holds deliberately do NOT arm it because nothing was attempted: a sequence
+  already running, and Reward still on cooldown — and the recast hold is **silent**, which is exactly what the
+  greyed-out button says. Below it sits `request(id)`: pick the food off the Ladder, overlay the optional
+  Reward set, open ONE Action sequence. The button calls it and so does the rule, which is what makes
+  "identical refusal behavior to the button" a property of the code rather than of two test suites agreeing.
+  `need` is the CONSUMED slot alone (Ammo = food) — the maintainer's accepted ruling at the #138 merge: the
+  food is the precondition, the Reward set dresses best-effort, and that is also what lets a player's own
+  Reward-gear Trigger compose with a food-only claim.
+- **`jobhelpers/bst/config.lua`** gains three rows — `rewardArmed` (the rule switch, default **off**, for the
+  reason Fight is: a helper that issues commands and eats a player's food never arms itself), `rewardThreshold`
+  (default **50**, the slider's resting position, not an arming decision) and `rewardSet` (persisted since the
+  rule has no Panel open to read a session-only choice from).
+- **`feature/petfood.lua`** now reads the **override/sync-aware** level (`/dl set level main`, then
+  `MainJobSync`), not raw `MainJobLevel` — the house law every picker follows, paid for by AutoAmmo v134. A raw
+  read under level sync picks a tier over the cap, the equip is refused, and the sequence ends in a contained
+  verify timeout instead of correctly falling a rung.
+- **`jobhelpers/bst/fight.lua`**'s pet gate now asks `petvitals`, dropping the raw
+  `GetPetTargetIndex`/`GetHPPercent` pair it carried — the same "one live shared implementation" move
+  `engagewatch` made for the edge decode.
+- **Test rosters:** `petvitals` → `FEATURE`; `bst/reward` → `JOBHELP`. Tests: PV*/BRW*/PF7–PF12 in
+  `run_tests.lua`, smoke S340–S344.
+- **Deferred / flagged:** the rule's player-facing strings ("Reward my pet when it drops low", "below N% pet
+  HP") await the maintainer's sign-off; `LOCKOUT_S = 30` and the arm-by-default question (shipped OFF) are
+  field-round calls. Pet TP is published but nothing consumes it yet — the scale (`GetPetTP` raw) is unverified
+  against the live server.
+
+### The BST Fight switch (issue #139, PRD #135) — the first standing Job-helper behavior
+The first behavior a Job helper performs on its OWN signal rather than a button. Two new files beside the
+central service, all pure-core-plus-thin-glue:
+- **`feature/engagewatch.lua`** — the **engage/target edge** central service (its own row in the table above).
+  One `0x01A` decoder for both edges, the packet's own entity, a 5-second per-target debounce, subscribers.
+  Network thread decodes and stashes; `pump()` (dlac.lua's `d3d_present`) debounces, names and notifies.
+- **`jobhelpers/bst/fight.lua`** — the switch itself. `decide(edge, state)` is PURE — edge + state in, command
+  decision out — so every rule is a headless check (BFT*): `off` never acts; `attack` hears ENGAGE edges only
+  (a mid-fight target change does nothing); `follow` hears both. `active` and `hasPet` must be POSITIVELY true
+  (an unreadable world or pet read is not permission to command a pet — the one deliberate departure from the
+  buff-cache "unknown never flips behavior" rule, because here the unknown-reads-as-yes branch is the one that
+  ACTS), while `targetOk` blocks only on a positive contradiction. Heel needs no code: nothing polls, nothing
+  repeats, so a pulled-back pet stays back until the next real edge. Jug and charmed pets are identical
+  because the decision has no pet-identity input at all. The command goes through `lib/cmdqueue`, once,
+  fire-and-forget. Chat stays SILENT (a line per pull is noise); the Panel reports the last decision instead.
+- **`jobhelpers/bst/config.lua`** — the module's OWN per-character settings file,
+  `<char>\dlac\jobhelper-bst.lua` (`fmt`-versioned, declared keys only, written on mutation only). Deliberately
+  NOT the shared `jobhelpers.lua`, which holds the FRAMEWORK's state (pill, section order, rank anchor): one
+  config file per module is part of what makes a module separable — Fight defaults **off**, because a helper
+  that issues commands never arms itself.
+
+### The Action sequence machinery (issue #138, PRD #135) — the "Reward now" slice
+The CONTEXT.md **Action sequence** made demoable. Four pure cores with injected seams (headless-tested)
+plus thin live glue:
+- **`feature/actionseq.lua`** — the singleton sequencer state machine. `request(req)` opens a sequence
+  (`req = { module, label, order, claim = {SlotKey=item}, need, command, timeout }`); `tick(now, io)` drives
+  the lifecycle `claiming → firing → released` / `refused` / `aborted` against an injected io
+  (`worn / blocker / fire / release / emit`). Success is SILENT; a definitive blocker on a needed slot refuses
+  loudly (never-fire-bare); the gear never landing inside the timeout aborts; the command fires exactly once
+  (`_fired` latch). `arbitrateRequests(reqs)` resolves simultaneous contenders by module order. `claim()` /
+  `active()` / `statusText()` are the CLAIMANTS-row seams. Live glue: `pump()` (wired in `dlac.lua`'s
+  `d3d_present`) reads worn via `dispatch.wornName`, blockers via `dispatch.disabledOn`/`isLockedSlot`, fires
+  via the chat command bus, and releases via `dispatch.kickDefault` (the next arbitration restores gear).
+- **`feature/recast.lua`** — the ability recast READINESS service (Central services: "is this ability off
+  cooldown?"). `readyFor(sig, reader)` / `rewardReady()` — pure, reader injected; UNKNOWN reads READY (the
+  courtesy gate). Reward = ability 103; the recast-timer-slot signature is ported from the Pup-Helper reference
+  and FLAGGED for field verification.
+- **`feature/petfood.lua`** — the eight-tier pet-food **Ladder** (`pick(reads)`): highest tier first, gated by
+  equip level and equippable-bag stock; carrying none is a loud refusal. Tier data is carried locally (the
+  catalog ships only six of the eight). Live reads via `ownedcache.counts` + the player level.
+- **The `JobHelper` claimant row.** `arbiter.placeJobHelper(order, anchor)` weaves the row into the live rank
+  order directly below its anchor (default `Locks`) — deliberately NOT in `ARB_ORDER_DEFAULT`, because its
+  Claim Priority position is remembered **per job** (`jobhelpers.rankAnchorFor` / `setRankAnchor` /
+  `placedOrder` / `moveRankRow`; anchor stored in the `rank = {[JOB]=row}` block of the jobhelpers config).
+  `dispatch.jobHelperPlace` runs it every Default (and for `/dl prio`); the row hides with zero modules. A
+  CLAIMANTS row (`active`/`claim`/`apply` reading `actionseq`) rides the standing rank walk, so a senior holder
+  wins its slot and the sequencer refuses. `arbiter.claimantLabel` renders the identity as **"Job helper"**.
+- **Test rosters:** `actionseq`, `petfood`, `recast` → `FEATURE`. Tests: RC*/PF*/AS*/JHR*/JHW* in
+  `run_tests.lua`; the CR* registry pins updated for the new row (JobHelper is the one per-job "extra").
+- **Deferred / flagged:** live blocker attribution names locks + free-equip today; naming a senior *claimant*
+  from the Arbiter trace is a follow-on. The Reward command target token and the recast-timer slot need field
+  confirmation. Player-facing strings ("BST Helper", "Reward now") await the maintainer's sign-off.
 
 ### gear/actionpicker.lua — searchable spell/ability browse-list core (pure)
 The Ashita/imgui/file-IO-free core behind the Groups tab's member browse-list (issue #26,
