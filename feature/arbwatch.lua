@@ -100,6 +100,57 @@ function M.sanitize(st)
     return out;
 end
 
+-- Weave a new (known-only) drag order together with the UNKNOWN rows the raw
+-- file still holds, producing the FULL order to persist (issue #136). Delegates
+-- to the engine's arbOrderPersist (one truth); the fallback below is the same
+-- policy for a headless load where dispatch is absent.
+--
+-- KEEP THE TWO IN STEP, exactly like M.sanitize. This branch is dead whenever
+-- dispatch loads; NK25c forces it by hiding dispatch. If you change
+-- dispatch/arbiter.arbOrderPersist, change this too.
+function M.persist(newOrder, rawSt)
+    if hasDispatch and type(dsp.arbOrderPersist) == 'function' then
+        return dsp.arbOrderPersist(newOrder, rawSt);
+    end
+    local known = M.sanitize({ order = newOrder });
+    local raw = (type(rawSt) == 'table' and type(rawSt.order) == 'table') and rawSt.order or nil;
+    if raw == nil then return known; end
+    local isKnown = {};
+    for _, n in ipairs(FALLBACK_DEFAULT) do isKnown[n] = true; end
+    local FRONT = {};
+    local byAnchor, seen, lastKnown, any = {}, {}, nil, false;
+    for _, n in ipairs(raw) do
+        if type(n) == 'string' and n ~= '' then
+            if isKnown[n] then
+                lastKnown = n;
+            elseif not seen[n] then
+                seen[n] = true; any = true;
+                local key = lastKnown or FRONT;
+                if byAnchor[key] == nil then byAnchor[key] = {}; end
+                byAnchor[key][#byAnchor[key] + 1] = n;
+            end
+        end
+    end
+    if not any then return known; end
+    local out = {};
+    if byAnchor[FRONT] ~= nil then
+        for _, n in ipairs(byAnchor[FRONT]) do out[#out + 1] = n; end
+    end
+    for _, k in ipairs(known) do
+        out[#out + 1] = k;
+        if byAnchor[k] ~= nil then
+            for _, n in ipairs(byAnchor[k]) do out[#out + 1] = n; end
+        end
+    end
+    local final = {};
+    for _, n in ipairs(out) do
+        if n ~= 'Disabled' and n ~= 'Triggers' then final[#final + 1] = n; end
+    end
+    table.insert(final, 1, 'Disabled');
+    final[#final + 1] = 'Triggers';
+    return final;
+end
+
 -- <char>\dlac\ dir (lib\statefile -- the one addon-side copy). nil pre-login;
 -- callers just retry on their next frame.
 local _sfok, _sfile = pcall(require, 'dlac\\lib\\statefile');
@@ -125,10 +176,10 @@ function M.serialize(order)
     return 'return { order = { ' .. table.concat(parts, ', ') .. ' } }\n';
 end
 
--- The live rank as the engine sees it: the on-disk order, sanitized. A missing
--- or torn/unparseable file reads as the built-in default (the Statefile drop
--- policy). Never throws -- the GUI calls it every frame.
-function M.order()
+-- The RAW on-disk { order = ... } table, UNSANITIZED (unknown rows intact) --
+-- nil if absent/torn. M.order sanitizes it for the live view; setOrder needs it
+-- raw to recover the unknown rows it must preserve (issue #136).
+local function readRawState()
     local st = nil;
     pcall(function()
         local p = arbStatePath();
@@ -138,7 +189,16 @@ function M.order()
         local ok, t = pcall(chunk);
         if ok and type(t) == 'table' then st = t; end
     end);
-    return M.sanitize(st);
+    return st;
+end
+M._readRaw = readRawState;   -- test seam
+
+-- The live rank as the engine sees it: the on-disk order, sanitized (unknown
+-- rows DROPPED -- no ghost rows in the walk or the Priority tab). A missing or
+-- torn/unparseable file reads as the built-in default (the Statefile drop
+-- policy). Never throws -- the GUI calls it every frame.
+function M.order()
+    return M.sanitize(readRawState());
 end
 
 -- The safe replace ladder (temp -> parse/validate -> atomic swap -> restore on
@@ -148,12 +208,15 @@ end
 local _swok, safewrite = pcall(require, 'dlac\\lib\\safewrite');
 local hasSafe = _swok and type(safewrite) == 'table';
 
--- Commit a rank order to disk (sanitized first, so a bad drag can never persist
--- a partial or unknown-row list). Returns true on a successful write.
+-- Commit a rank order to disk. The known rows are sanitized (so a bad drag can
+-- never persist a partial list), and any UNRECOGNIZED row the file already held
+-- is woven back in at its position (issue #136) -- an uninstalled/future/hand-
+-- added claimant keeps the player's drag spot across every rewrite instead of
+-- being silently deleted. Returns true on a successful write.
 function M.setOrder(order)
     local p = arbStatePath();
     if p == nil then return false; end
-    local clean = M.sanitize({ order = order });
+    local clean = M.persist(order, readRawState());
     local text = M.serialize(clean);
     local ok = false;
     if hasSafe and type(safewrite.replaceLua) == 'function' then

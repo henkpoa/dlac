@@ -6944,3 +6944,38 @@ detail panels and now the list are all views of the same variable and *cannot* d
 the same lesson [[ebox-v2-arithmetic-model]] paid for in the other direction — the read that
 looks redundant is what heals a wrong belief. The rule for the next hobby surface: read live,
 never cache an armed flag.
+
+## Session "Arbiter: preserve unknown Claim Priority rows" (2026-07-29, issue #136)
+
+**Theme:** the Claim Priority order file was silently deleting rank rows it did not
+recognize. `arbOrder` (the live view) drops any unknown name — correct for the
+arbitration walk and the Priority tab (no ghost rows, resolution unchanged) — but that
+same drop ran again at WRITE time: `arbwatch.setOrder` sanitized before serializing, so
+the next drag/save rebuilt the file from known claimants only. An uninstalled module's
+claimant, a future claimant, or a hand-added row lost the player's drag position forever.
+
+**Landed:** a second, WRITE view — `arbiter.arbOrderPersist(newOrder, rawSt)` (pure;
+re-exported as `dispatch.arbOrderPersist`, mirrored in `arbwatch.persist` with the same
+keep-in-step discipline as `sanitize`, NK25c). The known rows are ordered by `arbOrder`
+(so a drag, restore-at-default and the ceiling/floor invariants all still hold); each
+unknown row is woven back ANCHORED to the known row it followed in the raw file, so it
+keeps its place relative to the rows around it across any number of reorders. `setOrder`
+now reads the raw (unsanitized) file — new `readRawState` seam, shared with `M.order` —
+and persists through `persist` instead of `sanitize`.
+
+**Why anchoring, not an absolute index:** a drag operates on the known-only live list, so
+the writer has to re-place the unknown against a list the unknown was never in. Anchoring
+to the preceding known row keeps the row "in the same gap between claimants" no matter how
+the knowns reshuffle around it. Front-anchored unknowns (no known predecessor) sit right
+under the Disabled ceiling; the ceiling/floor are re-pinned last, so a hand-mangled file
+that put an unknown at an extreme can never displace either invariant.
+
+**Reclaim-on-return falls out for free:** once the identity is a KNOWN claimant, `arbOrder`
+finds the row LISTED in the file and honors its saved position over the default — the same
+restore-at-default law (v122), read the other way. No new code; ARP5 pins it.
+
+**Engine behavior is unchanged**, so `dispatch.M.VERSION` is NOT bumped: `arbOrderPersist`
+is called only by the addon-side writer, never in the equip/dispatch path, and the arbstate
+file format (`return { order = {...} }`) is untouched — it may just carry more names now,
+which the engine already drops on read. Tests ARP1–6 (engine seam), AB8–8e (writer seam +
+on-disk round-trip), NK25c (fallback mirror). Suites **4237 + 755**, lua5.4.
