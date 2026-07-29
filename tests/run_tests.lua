@@ -222,16 +222,19 @@ end)();
     -- (data/catalog, fishdb, spells, ...) carry no gear-fetch logic and are excluded.
     local ROOT_FILES = { 'utils.lua', 'dispatch.lua', 'chatfmt.lua', 'profiles.lua', 'gear.lua', 'dlac.lua' };
     local UI = { 'ammoui','automationsui','craftbar','equippedui','filetex','fishbar','fishui',
-                 'floatgear','gearui','helmbar','helmui','hobbybar','idlefloat','itemicons','menuui','priorityui','profilesmenu',
+                 'floatgear','gearui','helmbar','helmui','hobbybar','idlefloat','itemicons','jobhelpersui','menuui','priorityui','profilesmenu',
                  'restockui','setupui','triggersui','uihost','uistyle','weightsui' };
     local GEAR = { 'actionpicker','arbiter','blueprintsmodel','catalogindex','gearcheck','geareffects','gearexport',
                    'gearfmt','gearimport','gearoptim','gearoracle','gearrecord','groupimport','groupscan',
                    'groupsmodel','jobgate','modeslibrary','ownedcache','profileexport','profilesets','setimport',
                    'setmanager','syncflags','triggermodel','weaponfilter','weightimport' };
     local FEATURE = { 'ammowatch','arbwatch','augments','check','chocowatch','craftwatch','debug','digcalc','digrank',
-                      'eboxclient','eboxtrace','fishcalc','fishwatch','gamehud','gamemode','helmwatch','idleexcl','location','lockstyle','lookpreview',
+                      'eboxclient','eboxtrace','fishcalc','fishwatch','gamehud','gamemode','helmwatch','idleexcl','jobhelpers','location','lockstyle','lookpreview',
                       'macrobook','meritwatch','mpbands','pinwatch','restockwatch','synthrun','useitem','vanamoon' };
     local LIB = { 'cmdqueue','entwatch','safewrite','statefile' };
+    -- Job helper modules (issue #137): each is a drop-in FOLDER under jobhelpers\
+    -- with an init.lua. They ship inside dlac, so they join the ratchet too.
+    local JOBHELP = { 'bst' };
 
     local ALL = {};
     for _, f in ipairs(ROOT_FILES) do ALL[#ALL + 1] = f; end
@@ -239,6 +242,7 @@ end)();
     for _, n in ipairs(GEAR)    do ALL[#ALL + 1] = 'gear/' .. n .. '.lua'; end
     for _, n in ipairs(FEATURE) do ALL[#ALL + 1] = 'feature/' .. n .. '.lua'; end
     for _, n in ipairs(LIB)     do ALL[#ALL + 1] = 'lib/' .. n .. '.lua'; end
+    for _, n in ipairs(JOBHELP) do ALL[#ALL + 1] = 'jobhelpers/' .. n .. '/init.lua'; end
 
     -- Cache each scanned file's stripped source once.
     local STRIPPED = {};
@@ -16140,6 +16144,157 @@ check('SH22 the sets-migration door still exists', (function()
     local raw = fh:read('*a'); fh:close();
     return raw:find("'ffxi-lac'", 1, true) ~= nil;   -- the CONTENT sniff -> st = 'ffxilac'
 end)(), true);
+end)();
+
+-- ---------------------------------------------------------------------------
+-- JH: the Job helper module system (issue #137) -- loader containment (good /
+-- wrong-api / throwing / malformed fixtures), the config store, the per-job
+-- order, and the module-activity predicate. All driven through injected seams
+-- so no filesystem or Ashita is touched (the house shape).
+-- ---------------------------------------------------------------------------
+(function()
+    package.loaded['dlac\\lib\\statefile'] = { charDir = function() return nil; end };
+    local jh = dofile('feature/jobhelpers.lua');
+    package.loaded['dlac\\feature\\jobhelpers'] = jh;
+
+    -- ---- loader containment -------------------------------------------------
+    -- Fixture "folders": each loadModule thunk returns what a folder's init.lua
+    -- would (a good table, a wrong-api table), or ERRORS (a throwing/malformed
+    -- folder). The loader must keep the good one and refuse the rest, one loud
+    -- line + one ledger entry each, no crash.
+    local good = { api = jh.API, label = 'Good Helper', jobs = { 'BST' },
+                   panel = function() end };
+    local wrongApi = { api = jh.API + 1, label = 'Old Helper', jobs = { 'BST' },
+                       panel = function() end };
+    local loaders = {
+        good     = function() return true, good; end,
+        wrongapi = function() return true, wrongApi; end,
+        throwing = function() return pcall(function() error('boom in init.lua'); end); end,
+        malformed= function() return true, 'not a table'; end,
+    };
+    local ledger = { total = 0, failed = {} };
+    local lines = {};
+    jh.loadAll({
+        names      = { 'good', 'malformed', 'throwing', 'wrongapi' },  -- unsorted on purpose
+        loadModule = function(id) return loaders[id](); end,
+        ledger     = ledger,
+        emit       = function(s) lines[#lines + 1] = s; end,
+    });
+    check('JH1 only the good module loads', jh.count(), 1);
+    check('JH2 the survivor is the good one', jh.list()[1].id, 'good');
+    check('JH3 three failures fed the ledger', #ledger.failed, 3);
+    check('JH4 ledger total counts every candidate (1 good + 3 failed)', ledger.total, 4);
+    check('JH5 one loud line per failure', #lines, 3);
+    -- ledger entries are namespaced so /dl check reads them
+    local failIds = {};
+    for _, f in ipairs(ledger.failed) do failIds[f.mod] = f.err; end
+    check('JH6 wrong-api named in the ledger',
+          failIds['jobhelper:wrongapi'] ~= nil and failIds['jobhelper:wrongapi']:find('api', 1, true) ~= nil, true);
+    check('JH7 throwing module contained + named', failIds['jobhelper:throwing'] ~= nil, true);
+    check('JH8 malformed folder named', failIds['jobhelper:malformed'] ~= nil, true);
+
+    -- a module whose OWN init hook throws is contained too (distinct from a load
+    -- failure): it loads fine, then init errors -> refused, one line, ledger.
+    local ledger2 = { total = 0, failed = {} };
+    local lines2 = {};
+    jh.loadAll({
+        names      = { 'boominit' },
+        loadModule = function() return true, { api = jh.API, label = 'B', jobs = { 'BST' },
+            init = function() error('init explode'); end, panel = function() end }; end,
+        ledger = ledger2, emit = function(s) lines2[#lines2 + 1] = s; end,
+    });
+    check('JH9 init-throw drops the module', jh.count(), 0);
+    check('JH10 init-throw is one ledger failure', #ledger2.failed, 1);
+    check('JH11 init-throw named as init', (ledger2.failed[1] or {}).err and ledger2.failed[1].err:find('init', 1, true) ~= nil, true);
+
+    -- ---- registry queries ---------------------------------------------------
+    local a = { api = jh.API, label = 'Alpha', jobs = { 'BST', 'PUP' }, panel = function() end };
+    local b = { api = jh.API, label = 'Beta',  jobs = { 'PUP' },        panel = function() end };
+    jh.loadAll({ names = { 'alpha', 'beta' },
+        loadModule = function(id) return true, ({ alpha = a, beta = b })[id]; end });
+    check('JH12 both loaded', jh.count(), 2);
+    check('JH13 jobs() lists the union, sorted', table.concat(jh.jobs(), ','), 'BST,PUP');
+    check('JH14 idsForJob BST = the multi-job module only', table.concat(jh.idsForJob('BST'), ','), 'alpha');
+    check('JH15 idsForJob PUP = both, default order', table.concat(jh.idsForJob('PUP'), ','), 'alpha,beta');
+
+    -- ---- config store (pill + per-job order) -------------------------------
+    -- point the store at an in-memory fake dir so writes round-trip through the
+    -- real serialize/normalize path with a stubbed file layer.
+    local FILES = {};
+    local realOpen = io.open;
+    jh._charDir = function() return 'FAKEDIR\\'; end
+    io.open = function(path, mode)
+        if type(path) == 'string' and path:find('FAKEDIR', 1, true) then
+            if (mode or 'r'):find('w') then
+                return { write = function(_, s) FILES[path] = (FILES[path] or '') .. s; end,
+                         close = function() end };
+            else
+                if FILES[path] == nil then return nil; end
+                local consumed = false;
+                return { read = function() if consumed then return nil; end consumed = true; return FILES[path]; end,
+                         close = function() end };
+            end
+        end
+        return realOpen(path, mode);
+    end
+    -- loadfile is what the reader uses; back it with our FILES table.
+    local realLoadfile = loadfile;
+    loadfile = function(path)
+        if type(path) == 'string' and path:find('FAKEDIR', 1, true) then
+            local src = FILES[path];
+            if src == nil then return nil; end
+            return (loadstring or load)(src);
+        end
+        return realLoadfile(path);
+    end
+
+    check('JH16 pill default is ON for an untouched module', jh.isEnabled('alpha'), true);
+    jh.setEnabled('alpha', false);
+    check('JH17 pill toggles off', jh.isEnabled('alpha'), false);
+    check('JH18 the config file was written', FILES['FAKEDIR\\jobhelpers.lua'] ~= nil, true);
+    -- reload from disk (fresh char dir key) proves it round-trips
+    jh._loadCfg();  -- warm
+    local reread = jh._normalizeCfg((loadstring or load)(FILES['FAKEDIR\\jobhelpers.lua'])());
+    check('JH19 off state survives a re-read', reread.enabled['alpha'], false);
+
+    -- per-job order: reorder PUP section (alpha,beta) -> (beta,alpha), persisted.
+    local moved = jh.moveInSection('PUP', { 'alpha', 'beta' }, 1, 1);
+    check('JH20 move swaps within the section', table.concat(moved, ','), 'beta,alpha');
+    check('JH21 orderFor now returns the remembered order',
+          table.concat(jh.orderFor('PUP', { 'alpha', 'beta' }), ','), 'beta,alpha');
+    -- a newly installed module backfills at the bottom, unknown ones drop
+    check('JH22 order backfills a new id at the bottom',
+          table.concat(jh.orderFor('PUP', { 'alpha', 'beta', 'gamma' }), ','), 'beta,alpha,gamma');
+    check('JH23 order drops an uninstalled id from the walk',
+          table.concat(jh.orderFor('PUP', { 'beta' }), ','), 'beta');
+    -- an out-of-range move is a no-op (nil)
+    check('JH24 move past the top is refused', jh.moveInSection('PUP', { 'beta', 'alpha' }, 1, -1), nil);
+
+    io.open = realOpen; loadfile = realLoadfile;
+
+    -- ---- the module-activity predicate -------------------------------------
+    local mod = { jobs = { 'BST' } };
+    check('JH25 off pill -> reason off',
+          jh.activityCore(mod, { enabled = false, mainJob = 'BST' }).reason, 'off');
+    check('JH26 wrong main job -> reason job',
+          jh.activityCore(mod, { enabled = true, mainJob = 'WHM' }).reason, 'job');
+    check('JH27 right job, in town -> reason town',
+          jh.activityCore(mod, { enabled = true, mainJob = 'BST', inTown = true }).reason, 'town');
+    check('JH28 dead outranks town',
+          jh.activityCore(mod, { enabled = true, mainJob = 'BST', inTown = true, dead = true }).reason, 'dead');
+    check('JH29 zoning outranks dead',
+          jh.activityCore(mod, { enabled = true, mainJob = 'BST', dead = true, zoning = true }).reason, 'zoning');
+    check('JH30 clear world -> active',
+          jh.activityCore(mod, { enabled = true, mainJob = 'BST' }).active, true);
+    check('JH31 unknown job never manufactures a reason (nil job -> active)',
+          jh.activityCore(mod, { enabled = true, mainJob = nil }).active, true);
+    check('JH32 the pre-login unreadable job string is not a false wrong-job',
+          jh.activityCore(mod, { enabled = true, mainJob = '?' }).active, true);
+
+    -- reset the registry so nothing downstream sees the fixtures.
+    jh.modules = {};
+    package.loaded['dlac\\feature\\jobhelpers'] = nil;
+    package.loaded['dlac\\lib\\statefile'] = nil;
 end)();
 
 -- The warm-note artifact the dispatch-driving sections leave behind (dataDir

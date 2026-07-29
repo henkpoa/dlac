@@ -123,7 +123,7 @@ do
 end
 
 local labels = {};
-for _, name in ipairs({ 'equipped', 'sets', 'triggers', 'automations', 'groups' }) do
+for _, name in ipairs({ 'equipped', 'sets', 'triggers', 'automations', 'groups', 'jobhelpers' }) do
     local m = host.get(name);
     if m ~= nil and type(m.tabs) == 'table' then
         for _, t in ipairs(m.tabs) do labels[#labels + 1] = t.label; end
@@ -135,11 +135,14 @@ check('S8 tab order 2', labels[2], 'All Equipment');
 check('S9 tab order 3', labels[3], 'Sets');
 check('S10 tab order 4', labels[4], 'Triggers');
 check('S10b tab order 5 (Gear Helpers right of Triggers)', labels[5], 'Gear Helpers');
+-- Job Helpers (issue #137): NO tab while zero modules are loaded. The loader
+-- has not run here, so jobhelpersui never registered -- the acceptance case.
+check('S10c Job Helpers tab ABSENT with zero modules', host.get('jobhelpers') == nil, true);
 
 -- every registered tab render must be callable
 for i, l in ipairs(labels) do
     local found = false;
-    for _, name in ipairs({ 'equipped', 'sets', 'triggers', 'automations', 'groups' }) do
+    for _, name in ipairs({ 'equipped', 'sets', 'triggers', 'automations', 'groups', 'jobhelpers' }) do
         local m = host.get(name);
         if m ~= nil then
             for _, t in ipairs(m.tabs or {}) do
@@ -3908,6 +3911,121 @@ end)();
     package.loaded['dlac\\ui\\automationsui'] = saved.aui;
     package.loaded['dlac\\ui\\craftbar'] = saved.cb;
     package.loaded['dlac\\feature\\idleexcl'] = saved.ie;
+end)();
+
+-- ---------------------------------------------------------------------------
+-- Job Helpers tab (issue #137): tab appears once a module loads, to the right of
+-- Gear Helpers; the real BST skeleton loads through the loader; the tab + the
+-- selected module's Panel render with a BALANCED imgui stack (the crash class the
+-- floatgear block guards -- a module's Panel must not corrupt ImGui's stacks).
+-- ---------------------------------------------------------------------------
+;(function()
+    local saved = {
+        imgui = package.loaded['imgui'],
+        jh    = package.loaded['dlac\\feature\\jobhelpers'],
+        jhui  = package.loaded['dlac\\ui\\jobhelpersui'],
+        cb    = package.loaded['dlac\\ui\\craftbar'],
+    };
+
+    local depth = { var = 0, col = 0, win = 0, child = 0 };
+    local function nop() end
+    local IM = {};
+    for _, n in ipairs({ 'SetNextWindowPos', 'SetNextWindowSize', 'Separator', 'Text',
+        'TextColored', 'TextWrapped', 'TextDisabled', 'SameLine', 'Dummy', 'Spacing',
+        'Indent', 'Unindent', 'PushID', 'PopID', 'SetTooltip', 'PushItemWidth',
+        'PopItemWidth', 'InvisibleButton', 'SetCursorScreenPos' }) do
+        IM[n] = nop;
+    end
+    IM.PushStyleVar   = function() depth.var = depth.var + 1; end
+    IM.PopStyleVar    = function(n) depth.var = depth.var - (tonumber(n) or 1); end
+    IM.PushStyleColor = function() depth.col = depth.col + 1; end
+    IM.PopStyleColor  = function(n) depth.col = depth.col - (tonumber(n) or 1); end
+    IM.Begin      = function() depth.win = depth.win + 1; return true; end
+    IM['End']     = function() depth.win = depth.win - 1; end
+    IM.BeginChild = function() depth.child = depth.child + 1; return true; end
+    IM.EndChild   = function() depth.child = depth.child - 1; end
+    IM.CollapsingHeader = function() return true; end        -- sections open so rows draw
+    IM.Selectable       = function() return true; end        -- click: selects the module -> its Panel draws
+    for _, n in ipairs({ 'Button', 'IsItemHovered', 'IsItemClicked', 'IsItemActive' }) do
+        IM[n] = function() return false; end
+    end
+    IM.GetCursorScreenPos    = function() return 0, 0; end
+    IM.GetContentRegionAvail = function() return 400, 400; end
+    IM.GetWindowDrawList = function()
+        return { AddCircleFilled = nop, AddRectFilled = nop, AddRect = nop, AddLine = nop };
+    end
+
+    package.loaded['imgui'] = IM;
+    package.loaded['dlac\\feature\\jobhelpers'] = nil;   -- re-require against the stub
+    package.loaded['dlac\\ui\\jobhelpersui']    = nil;
+    package.loaded['dlac\\ui\\craftbar']        = nil;
+
+    local jhok, jhui = pcall(require, 'dlac\\ui\\jobhelpersui');
+    check('S320 jobhelpersui re-requires against a stub imgui', jhok and type(jhui.renderTab), 'function');
+    if jhok then
+        local jh = require('dlac\\feature\\jobhelpers');
+        jh.modules = {};
+
+        -- zero modules: maybeRegister is a no-op and the tab stays absent.
+        check('S321 maybeRegister no-ops with zero modules', jhui.maybeRegister(host), false);
+        check('S322 tab still absent', host.get('jobhelpers') == nil, true);
+
+        -- load the REAL BST skeleton through the loader (proves the drop-in path).
+        jh.loadAll({ names = { 'bst' }, loadModule = jh._requireModule });
+        check('S323 the BST skeleton loads as one module', jh.count(), 1);
+        check('S324 identity is the folder name', jh.list()[1].id, 'bst');
+        check('S325 its display label', jh.list()[1].label, 'BST Helper');
+        check('S326 it declares BST', table.concat(jh.list()[1].jobs, ','), 'BST');
+
+        -- now the tab registers, to the RIGHT of Gear Helpers.
+        jhui.init({});
+        check('S327 maybeRegister now registers the tab', jhui.maybeRegister(host), true);
+        check('S328 Job Helpers tab now present', host.get('jobhelpers') ~= nil, true);
+        local labels2 = {};
+        for _, name in ipairs({ 'equipped', 'sets', 'triggers', 'automations', 'groups', 'jobhelpers' }) do
+            local m = host.get(name);
+            if m ~= nil and type(m.tabs) == 'table' then
+                for _, t in ipairs(m.tabs) do labels2[#labels2 + 1] = t.label; end
+            end
+        end
+        check('S329 tab count is now 6', #labels2, 6);
+        check('S330 Job Helpers sits right of Gear Helpers', labels2[6], 'Job Helpers');
+
+        -- render the tab (sections + rows + the selected module's Panel) and prove
+        -- the imgui stack came back balanced. gData/AshitaCore are the smoke stubs
+        -- (GetPlayer -> nil), so the activity predicate reads unknown -> active.
+        local function balanced(tag)
+            check(tag .. ': style VAR stack balanced',   depth.var, 0);
+            check(tag .. ': style COLOR stack balanced', depth.col, 0);
+            check(tag .. ': Begin/End balanced',         depth.win, 0);
+            check(tag .. ': BeginChild/EndChild balanced', depth.child, 0);
+        end
+        local rok, rerr = pcall(jhui.renderTab, 'BST', 99);
+        check('S331 tab render runs against the stub', rok, true);
+        if not rok then print('   jobhelpers render error: ' .. tostring(rerr)); end
+        balanced('S332 tab + BST Panel');
+
+        -- the optional row-status hook is actually invoked during a row render.
+        local statusCalls = 0;
+        jh.modules[1].mod.status = function() statusCalls = statusCalls + 1; end
+        pcall(jhui.renderTab, 'BST', 99);
+        check('S335 the module row-status hook is called', statusCalls >= 1, true);
+
+        -- a module whose Panel THROWS is contained: the render still returns and the
+        -- stack stays balanced (the tab and other rows are unharmed).
+        jh.modules[1].mod.panel = function() error('panel boom'); end
+        local rok2 = pcall(jhui.renderTab, 'BST', 99);
+        check('S333 a throwing Panel does not break the tab render', rok2, true);
+        balanced('S334 after a throwing Panel');
+
+        -- clean the shared host so the verdict-time state matches a normal run.
+        jh.modules = {};
+    end
+
+    package.loaded['imgui'] = saved.imgui;
+    package.loaded['dlac\\feature\\jobhelpers'] = saved.jh;
+    package.loaded['dlac\\ui\\jobhelpersui']    = saved.jhui;
+    package.loaded['dlac\\ui\\craftbar']        = saved.cb;
 end)();
 
 -- ---------------------------------------------------------------------------

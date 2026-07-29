@@ -487,6 +487,51 @@ first so a stray brace can't unbalance the scan. triggersui draws the `Scan → 
 (config-looking names pre-unticked) and reuses `groupimport`'s classify / overwrite-confirm /
 apply. Headless-tested (GS*). Never seeded into LAC.
 
+### feature/jobhelpers.lua + ui/jobhelpersui.lua — the Job helper module system (issue #137, PRD #135)
+The **Job helper** (CONTEXT.md) module system: first-party modules that revive the parked
+plugin-folder design (`docs/design/integration-surface.md` §10) as dlac-shipped code. A module is
+a drop-in FOLDER under `addons\dlac\jobhelpers\` (never a loose file); its `<id>\init.lua` returns
+a contract table `{ api, label, jobs, init?, panel, status? }`. **Identity is the folder name**, not
+a self-declared id — the folder is the unit of server approval (one folder = one row = one approval,
+the Pup-Helper precedent).
+
+- **`feature/jobhelpers.lua`** — the loader + registry + config store + the module-activity predicate.
+  `M.loadAll(opts)` is the loader CORE: injected seams (`names`, `loadModule`, `ledger`, `emit`, `deps`)
+  so the good / wrong-api / throwing / malformed fixtures drive it headlessly (tests JH1–JH32). It
+  validates the contract, **contains** a wrong `api` / a throwing init / a malformed folder to ONE loud
+  line + one entry in the SAME load ledger `dlac.lua` stashes (`package.loaded['dlac\\loadledger']`,
+  namespaced `jobhelper:<id>`), so `/dl check` counts modules and names failures with no change to
+  `feature/check.lua`. `M.load(deps)` is the live glue (real `ashita.fs.get_dir` scan via
+  `M._listModuleDirs`, the `profiles._listDirs` precedent; folders only — a name with a `.` is a loose
+  file, skipped — and `require('dlac\\jobhelpers\\<id>\\init')` via `M._requireModule`). The **config
+  store** is ONE per-character statefile `<char>\dlac\jobhelpers.lua` (`fmt`-versioned; `enabled = {[id]=bool}`
+  the row pill default-ON, `order = {[JOB]={id,..}}` the per-job section order written on mutation only;
+  plain write + tolerant reader, the ammowatch precedent, via `M._charDir`). The **module-activity
+  predicate** `M.activityCore(mod, reads)` is pure: precedence `off → wrong job → zoning → dead → town →
+  active`, and an unknown read (nil job, nil inTown) never manufactures a reason — the buff-cache
+  discipline. `M.liveReads` wires `gData.GetPlayer()` (job + Status), `location.inTown()`, and the
+  `GetIsZoning()` probe. Future features consult this predicate too.
+- **`ui/jobhelpersui.lua`** — the **Job Helpers** tab. It does NOT self-register at require time; `dlac.lua`
+  calls `M.maybeRegister(host)` AFTER `jobhelpers.load` and it registers nothing when zero modules loaded
+  (drop a folder + reload → tab appears; remove it → tab gone). Because the register call runs after gearui
+  already registered its tabs, the tab lands to the RIGHT of Gear Helpers. Layout is the Gear Helpers pattern:
+  display-only PER-JOB sections (`CollapsingHeader` per `jobhelpers.jobs()`) over a flat module list; one row
+  per module per declared job, a multi-job module under each with one shared switch (every row re-reads live
+  pill + activity). The pill is the master switch (`craftbar.onOffSwitch` → `jobhelpers.setEnabled`); the row
+  status shows the live inactivity reason; rows drag-reorder (up/down buttons + a drag-selectable, the Claim
+  Priority mechanism — no working `BeginPopupContextItem` in this install) persisting per job. Every call INTO
+  a module's render hooks is pcall-wrapped — a throwing Panel loses its own Panel and prints once, never the
+  tab or other rows (frame-level imgui stack recovery is uihost's `tabGuard`).
+- **`jobhelpers/bst/init.lua`** — the **BST Helper** skeleton, the first real module and the drop-in proof:
+  it loads, shows one row under BST, and renders an empty Panel. Its behaviors (Fight switch, Reward, resummon)
+  land in later PRD #135 slices; the central services + the Action sequencer are separate slices, not here.
+- **Load wiring:** `dlac.lua` adds `feature\jobhelpers` + `ui\jobhelpersui` to the module-load loop, then runs
+  the loader + `maybeRegister` in one guarded block after the loop (so job-helper counts/failures ride the load
+  beacon too). ADR 0028 records the module-system decision.
+- **Test rosters:** `feature/jobhelpers` → `FEATURE`, `ui/jobhelpersui` → `UI`, and a new `JOBHELP` roster
+  (`jobhelpers/<id>/init.lua`) in `tests/run_tests.lua`'s GRD block; `'jobhelpers'` added to `tests/smoke_ui.lua`'s
+  tab-name roster (smoke S10c absent / S320–S334 present + balanced Panel).
+
 ### gear/actionpicker.lua — searchable spell/ability browse-list core (pure)
 The Ashita/imgui/file-IO-free core behind the Groups tab's member browse-list (issue #26,
 G3; ADR 0009). `buildList(job, spells, abilities)` returns the job's LEARNABLE spells +
