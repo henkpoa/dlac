@@ -147,11 +147,15 @@ end
 -- }
 -- `now` is a monotonic clock in seconds. Returns the resulting state string.
 local function finish(io, outcome, reason)
-    -- release the claim (idempotent-safe: the caller's release just clears a flag)
-    if type(io) == 'table' and type(io.release) == 'function' then pcall(io.release); end
+    -- Capture-then-clear BEFORE releasing: liveRelease kicks a Default dispatch
+    -- synchronously, and the claimant row reads M.active() -- releasing while
+    -- _seq is still set would re-apply the very claim the release is dropping,
+    -- leaving the real restore to the next standing tick. Same order as M.reset.
     _last = { outcome = outcome, reason = reason,
               module = _seq and _seq.module or nil, label = _seq and _seq.label or nil };
     _seq = nil;
+    -- release the claim (idempotent-safe: the caller's release just clears a flag)
+    if type(io) == 'table' and type(io.release) == 'function' then pcall(io.release); end
     return S_IDLE;
 end
 

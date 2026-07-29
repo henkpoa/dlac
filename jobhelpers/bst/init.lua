@@ -208,7 +208,9 @@ return {
                 for _, n in ipairs(names) do
                     local sel = (cur == n);
                     if type(imgui.Selectable) == 'function' and imgui.Selectable(n, sel) then
-                        _setChoice = (n == 'None') and nil or n;
+                        -- plain if/else: `(x) and nil or y` always yields y --
+                        -- the documented ternary trap (07-23 review lesson).
+                        if n == 'None' then _setChoice = nil; else _setChoice = n; end
                     end
                 end
                 imgui.EndCombo();
