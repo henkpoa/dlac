@@ -249,7 +249,39 @@ merge carries it **without asking him again**. Only he can move an entry to ACCE
 this does not make an accepted entry mergeable *alone*: `dev` promotes
 **whole-or-not-at-all**, so an accepted entry rides the next promotion of the whole branch.
 
-*(Empty — last emptied by the FIRST 2026-07-29 promotion: `2026.07.28s`–`2026.07.28v`, the
+### `dayMatch` — the day-only environment condition — `a2153ba` (2026-07-29)
+
+Addon `2026.07.29g` → **`2026.07.29h`**, engine **v155 → v156**. Suites **4455 + 793**,
+Windows lua 5.4. ADR 0029. Henrik's ask: *"there are items that give you bonus solely if the
+day match what you're casting."* The environment vocabulary becomes a TRIO — `dayWeatherBonus`
+(the obi's signed day+weather net, with opposition), `weatherMatch` (spell element == CURRENT
+weather element), `dayMatch` (spell element == TODAY's day element) — because the net cannot
+stand in for a day-only item in **either** direction: on Firesday in Water weather it reads
++1 −1 = 0 and stays quiet while the item IS paying out, and on Earthsday in Fire weather it
+reads +1 and fires while the item is dark. Precast + Midcast, tier 30; reads the same
+`GetEnvironment().DayElement` that `netForElement` already scores, so the net's day half and
+this condition can never disagree; unknown day / no action element matches NEITHER polarity.
+Tests DM1–DM24 (DM14–DM17 pin the independence from both neighbours).
+
+**FIELD ROUND OWED — not yet field-confirmed**, so this entry does not meet the section's
+normal bar and is queued on Henrik's explicit *"add this as a candidate to be merged to main
+and pushed."* The field check is one cast: on a day matching the spell's element, a
+`dayMatch = true` Midcast rule must equip its set, and it must go quiet the next Vana'diel day
+— `/dl env` prints the live day and its element, and `/dl why` names the rule that decided.
+
+**One thing a promoter should know:** unlike ADR 0018, this is **not** pinned to a named
+server mechanic — the CatsEyeXI source is not on this machine and no specific item was named,
+so it ships as a calendar primitive ("the day element equals the spell's element"), which is
+true regardless of the item. If a day-only item turns out to want *day-or-weather* (the way
+the retail obi tooltip reads), that changes which conditions a player **composes**, not this
+condition's meaning — an open follow-up, not a blocker.
+
+**Provenance oddity, recorded so nobody hunts for it:** the DM1–DM24 test block is committed
+inside **`65ba01d`** (the BST Fight debounce fix), not inside `a2153ba` — that commit's
+`git commit -a` swept this work-in-progress file out of the shared working tree. The block is
+intact and green; `a2153ba` carries everything else.
+
+*(Last emptied by the FIRST 2026-07-29 promotion: `2026.07.28s`–`2026.07.28v`, the
 nine-commit train that closed the E-Box v2 record — the `/dl debug ebox` crash fix (`28s`,
 field-confirmed by the bare-snapshot pass: an 11-event ring spanning 1h24m formatted clean, and
 the header measured the design's whole promise on its way past — **1 packet sent, 0.0/min,
