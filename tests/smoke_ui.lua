@@ -1,4 +1,4 @@
--- Headless smoke-load of the UI chunk: gearui + uihost + itemicons + equippedui
+﻿-- Headless smoke-load of the UI chunk: gearui + uihost + itemicons + equippedui
 -- (+ every module they pull in). Run from the dlac addon root:
 --     lua tests\smoke_ui.lua
 --
@@ -3999,10 +3999,13 @@ end)();
         check('S321 maybeRegister no-ops with zero modules', jhui.maybeRegister(host), false);
         check('S322 tab still absent', host.get('jobhelpers') == nil, true);
 
-        -- load the REAL BST skeleton through the loader (proves the drop-in path).
-        jh.loadAll({ names = { 'bst' }, loadModule = jh._requireModule });
-        check('S323 the BST skeleton loads as one module', jh.count(), 1);
-        check('S324 identity is the folder name', jh.list()[1].id, 'bst');
+        -- load the REAL BST module through the loader (proves the drop-in path).
+        -- The layout is jobhelpers\<job>\<module>\ (Henrik's ruling 2026-07-29),
+        -- so the require seam needs the job folder seeded, as M.load does live.
+        jh._jobOf = { ['bst-helper'] = 'bst' };
+        jh.loadAll({ names = { 'bst-helper' }, loadModule = jh._requireModule });
+        check('S323 the BST module loads as one module', jh.count(), 1);
+        check('S324 identity is the MODULE folder name', jh.list()[1].id, 'bst-helper');
         check('S325 its display label', jh.list()[1].label, 'BST Helper');
         check('S326 it declares BST', table.concat(jh.list()[1].jobs, ','), 'BST');
 
@@ -4043,7 +4046,7 @@ end)();
               and drawn:find('Follow my target##bstfight_follow_bst', 1, true) ~= nil, true);
         check('S337 the Reward button is still there beside it',
               drawn:find('Reward now##bstreward_bst', 1, true) ~= nil, true);
-        local fightOk, fight = pcall(require, 'dlac\\jobhelpers\\bst\\fight');
+        local fightOk, fight = pcall(require, 'dlac\\jobhelpers\\bst\\bst-helper\\fight');
         check('S338 the Fight core loads as a module-folder sibling', fightOk and type(fight), 'table');
         if fightOk then
             local realSet, setLog = fight.setMode, {};
@@ -4063,7 +4066,7 @@ end)();
               table.concat(checks, '|'):find('bstrewardauto_bst', 1, true) ~= nil, true);
         check('S341 the pet-HP threshold slider draws beside it',
               table.concat(sliders, '|'):find('bstrewardthr_bst', 1, true) ~= nil, true);
-        local rwOk, reward = pcall(require, 'dlac\\jobhelpers\\bst\\reward');
+        local rwOk, reward = pcall(require, 'dlac\\jobhelpers\\bst\\bst-helper\\reward');
         check('S342 the Reward rule loads as a module-folder sibling', rwOk and type(reward), 'table');
         if rwOk then
             local realArm, realThr = reward.setArmed, reward.setThreshold;

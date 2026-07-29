@@ -54,7 +54,7 @@ local COL_HEAD = { 0.60, 0.75, 1.00, 1.00 };
 -- The module's own folder name. The LOADER is the identity authority (it reads
 -- the folder), so this is only the fallback for the paths that run without a
 -- render ctx -- the init hook, which receives deps but not an id.
-local MODULE_ID = 'bst';
+local MODULE_ID = 'bst-helper';
 
 -- ---------------------------------------------------------------------------
 -- helpers (all contained -- a missing service degrades, never throws)
@@ -68,7 +68,7 @@ end
 -- The Reward rule + the act itself. Both the button and the automatic rule go
 -- through this ONE module, which is why "identical refusal behavior to the
 -- button" needs no second implementation to agree with.
-local function rewardMod() return req('dlac\\jobhelpers\\bst\\reward'); end
+local function rewardMod() return req('dlac\\jobhelpers\\bst\\bst-helper\\reward'); end
 
 -- A section header per the PANEL-TEXT STANDARD (uistyle.helpLabel): the label
 -- underlined, the explanation in its HOVER -- never an inline paragraph, which
@@ -89,7 +89,7 @@ end
 -- the Fight switch (issue #139) -- three buttons, one of them lit
 -- ---------------------------------------------------------------------------
 
-local function fightMod() return req('dlac\\jobhelpers\\bst\\fight'); end
+local function fightMod() return req('dlac\\jobhelpers\\bst\\bst-helper\\fight'); end
 
 -- The widest of the three labels, MEASURED (the craftbar "Last Synth" lesson --
 -- a hardcoded width clipped the trailing character). Falls back to a width that
@@ -189,7 +189,7 @@ return {
     -- SEPARATELY, so a broken edge service cannot cost the Reward rule its beat.
     init = function(deps)
         pcall(function()
-            local fight = req('dlac\\jobhelpers\\bst\\fight');
+            local fight = req('dlac\\jobhelpers\\bst\\bst-helper\\fight');
             if fight ~= nil and type(fight.init) == 'function' then fight.init(MODULE_ID); end
         end);
         pcall(function()

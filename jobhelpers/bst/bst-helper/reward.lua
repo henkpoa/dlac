@@ -1,4 +1,4 @@
---[[
+﻿--[[
     dlac/jobhelpers/bst/reward.lua -- the BST Helper's REWARD rule (issue #140,
     PRD #135 user stories 18-24). The module's second standing behavior, and the
     one that SPENDS AN ITEM.
@@ -59,7 +59,7 @@ M.VERIFY_TIMEOUT = 4;
 
 -- The module's folder name -- the loader assigns identity FROM the folder, so
 -- this is only the fallback for the paths that run without a render ctx.
-local DEFAULT_ID = 'bst';
+local DEFAULT_ID = 'bst-helper';
 
 local _id            = DEFAULT_ID;
 local _last          = nil;    -- the last automatic decision (the Panel reports it)
@@ -95,7 +95,7 @@ M._now = function()
     return tonumber(t) or 0;
 end;
 
-local function cfg() return req('dlac\\jobhelpers\\bst\\config'); end
+local function cfg() return req('dlac\\jobhelpers\\bst\\bst-helper\\config'); end
 
 -- ---------------------------------------------------------------------------
 -- the settings (persisted in the module's OWN per-character config file)
@@ -355,7 +355,7 @@ end
 -- rest at precast.
 function M.buildRequest(id, foodName, setName)
     local claim = M.setSlots(setName);
-    claim.Ammo = foodName;                  -- food ∪ set; food owns Ammo
+    claim.Ammo = foodName;                  -- food âˆª set; food owns Ammo
     return {
         module  = id,
         label   = 'Reward',

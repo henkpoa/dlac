@@ -1,4 +1,4 @@
---[[
+﻿--[[
     dlac/jobhelpers/bst/fight.lua -- the BST Helper's FIGHT switch (issue #139;
     POLL rewrite 2026-07-29 after two field rounds).
 
@@ -75,7 +75,7 @@ M.MAX_TRIES = 3;
 
 -- This module's folder name -- the loader assigns identity FROM the folder;
 -- `init(id)` overrides if the folder is ever renamed.
-local DEFAULT_ID = 'bst';
+local DEFAULT_ID = 'bst-helper';
 
 local _id   = DEFAULT_ID;
 local _last = nil;        -- the last decision (what the Panel reports; no chat)
@@ -90,7 +90,7 @@ local _prevTarget = nil;  -- last polled target index (the follow change signal)
 
 local function cfg()
     local c = nil;
-    pcall(function() c = require('dlac\\jobhelpers\\bst\\config'); end);
+    pcall(function() c = require('dlac\\jobhelpers\\bst\\bst-helper\\config'); end);
     return (type(c) == 'table') and c or nil;
 end
 

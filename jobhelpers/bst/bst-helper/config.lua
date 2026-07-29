@@ -1,4 +1,4 @@
---[[
+﻿--[[
     dlac/jobhelpers/bst/config.lua -- the BST Helper's OWN per-character settings
     file (issue #139, PRD #135: "one per-character statefile-shaped config file
     per module, format-versioned, sections created only on mutation").

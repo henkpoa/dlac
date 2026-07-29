@@ -237,7 +237,7 @@ end)();
     -- #139: bst\config + bst\fight; #140: bst\reward). They ship inside dlac, so
     -- they join the ratchet too -- entries are folder-relative module paths, no
     -- extension.
-    local JOBHELP = { 'bst/init', 'bst/config', 'bst/fight', 'bst/reward' };
+    local JOBHELP = { 'bst/bst-helper/init', 'bst/bst-helper/config', 'bst/bst-helper/fight', 'bst/bst-helper/reward' };
 
     local ALL = {};
     for _, f in ipairs(ROOT_FILES) do ALL[#ALL + 1] = f; end
@@ -16866,17 +16866,17 @@ end)();
 ;(function()
     -- config + jobhelpers stubbed at the require seam: fight.lua asks for both
     -- at CALL time, so package.loaded fakes are the whole harness.
-    local savedCfg = package.loaded['dlac\\jobhelpers\\bst\\config'];
+    local savedCfg = package.loaded['dlac\\jobhelpers\\bst\\bst-helper\\config'];
     local savedJH  = package.loaded['dlac\\feature\\jobhelpers'];
     local fakeCfg = { vals = { fight = 'attack' } };
     fakeCfg.get = function(k) return fakeCfg.vals[k]; end
     fakeCfg.set = function(k, v) fakeCfg.vals[k] = v; return true; end
-    package.loaded['dlac\\jobhelpers\\bst\\config'] = fakeCfg;
+    package.loaded['dlac\\jobhelpers\\bst\\bst-helper\\config'] = fakeCfg;
     package.loaded['dlac\\feature\\jobhelpers'] = {
         activity = function() return { active = true }; end,
     };
-    local ft = dofile('jobhelpers/bst/fight.lua');
-    package.loaded['dlac\\jobhelpers\\bst\\fight'] = ft;
+    local ft = dofile('jobhelpers/bst/bst-helper/fight.lua');
+    package.loaded['dlac\\jobhelpers\\bst\\bst-helper\\fight'] = ft;
 
     -- The armed baseline: acting, engaged, pet out and idle, a target, clean history.
     local function armed(t)
@@ -17033,8 +17033,8 @@ end)();
     ft._fire, ft._now = realFire, realNow;
     ft.resetIssues();
     package.loaded['dlac\\feature\\jobhelpers'] = savedJH;
-    package.loaded['dlac\\jobhelpers\\bst\\config'] = savedCfg;
-    package.loaded['dlac\\jobhelpers\\bst\\fight'] = nil;
+    package.loaded['dlac\\jobhelpers\\bst\\bst-helper\\config'] = savedCfg;
+    package.loaded['dlac\\jobhelpers\\bst\\bst-helper\\fight'] = nil;
 end)();
 
 -- ---------------------------------------------------------------------------
@@ -17048,10 +17048,10 @@ end)();
 -- AC1/AC2/AC3/AC4/AC5.
 -- ---------------------------------------------------------------------------
 ;(function()
-    local cfgMod = dofile('jobhelpers/bst/config.lua');
-    package.loaded['dlac\\jobhelpers\\bst\\config'] = cfgMod;
-    local rw = dofile('jobhelpers/bst/reward.lua');
-    package.loaded['dlac\\jobhelpers\\bst\\reward'] = rw;
+    local cfgMod = dofile('jobhelpers/bst/bst-helper/config.lua');
+    package.loaded['dlac\\jobhelpers\\bst\\bst-helper\\config'] = cfgMod;
+    local rw = dofile('jobhelpers/bst/bst-helper/reward.lua');
+    package.loaded['dlac\\jobhelpers\\bst\\bst-helper\\reward'] = rw;
 
     -- The armed baseline: rule on, threshold 50, module acting, nothing running,
     -- Reward off cooldown, no lockout live.
@@ -17381,8 +17381,8 @@ end)();
     package.loaded['dlac\\gear\\profilesets']   = saved.ps;
     package.loaded['dlac\\dispatch']            = saved.dsp;
     package.loaded['dlac\\feature\\petvitals']  = saved.pv;
-    package.loaded['dlac\\jobhelpers\\bst\\reward'] = nil;
-    package.loaded['dlac\\jobhelpers\\bst\\config'] = nil;
+    package.loaded['dlac\\jobhelpers\\bst\\bst-helper\\reward'] = nil;
+    package.loaded['dlac\\jobhelpers\\bst\\bst-helper\\config'] = nil;
     package.loaded['dlac\\lib\\statefile'] = nil;
 end)();
 

@@ -59,3 +59,12 @@ to a conclusion and left parked until something needed to live in-state. This is
   not a hash break — walls buy attribution, not prevention. Visibility and contracts, not walls.
 - **Hot-plugging without a reload.** A watch on the folder adds a moving part for a case a reload
   already covers; modules appear on addon (re)load, full stop.
+
+## Amended 2026-07-29 (Henrik): the layout is job-first
+
+`jobhelpers\<job>\<module>\` -- "bst-helper is the module of bst": the job folder GROUPS its
+modules, each module under it is its own separable folder and stays the unit of approval.
+Identity is still the MODULE folder name, unique addon-wide (a duplicate name under a second
+job folder is refused loudly at load). The job folder only says where a module FILES; the
+contract's declared `jobs` list remains what decides where it acts and shows -- a multi-job
+module files under its primary job. First applied to `jobhelpers\bst\bst-helper\` (2026.07.29m).
