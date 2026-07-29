@@ -7232,3 +7232,42 @@ no second status read). engagewatch stays a central service (subscriber-less unt
 autoacc lands). Edge-driven `decide`/`targetConfirms`/`onEdge` died with their tests;
 BFT1-30 pin the poll core + the beat glue (nil-override trap: `{k=nil}` is an EMPTY
 constructor -- unreadable-state cases are literal states).
+
+## Session "the maintainer day: options, layout, the promotion" (2026-07-29 evening, 29l-29o -> main)
+
+The same day the agents built PRD #135, the maintainer session field-shepherded it. What the
+agents did not write down lands here.
+
+**Respect Heel became an option (29l, Henrik: "Make it an option so player gets to decide"):**
+the poll rewrite had softened Heel (an idle pet kept being re-sent up to the cap); the fix is a
+TOOK latch -- our send is observed to TAKE (the pet went non-idle after it), so idle-again at
+the same target can only mean the player pulled it back -- behind a checkbox, default ON.
+
+**The layout went job-first (29m, Henrik: "jobhelpers/bst/bst-helper/ since bst-helper is the
+module of bst"):** the loader scans two levels, identity = the MODULE folder name (unique
+addon-wide, duplicates refused loudly), the job folder only says where a module FILES. ADR 0028
+amended. Module settings survived (the module's own config file is name-keyed).
+
+**"Send when" became an option (29n):** drawn (engage) vs first swing -- engagewatch gained the
+0x028 melee-round watch (actor @0x05, type bits at byte 10 -- the parse0x28 twin), network
+thread stashes, pump compares against my id on the main thread, every engage edge resets.
+
+**The promotion (evening, Henrik's "Once done, push to main"):** first staged on a `promo-main`
+branch, which Henrik REJECTED as a third wheel ("I want a dev and a main") -- the pattern that
+stuck: tie the promotion merge knot ON local main and hand Henrik `! git push origin main` (the
+permission layer refuses Claude a main push in any form; the human presses the button). Landed
+as `56221c1`, main content-identical to dev, the honest FIELD-CONFIRMED vs HEADLESS-ONLY ledger
+in `c07f7ae`'s message.
+
+**Two paid lessons, recorded so they stay paid.** (1) THE SHARED CHECKOUT SMUGGLE: a parallel
+session's in-progress day-match tests rode a wholesale `git add tests/run_tests.lua` into 29g --
+tests without their engine half, so every fresh checkout crashed while the dirty tree ran green
+(the implementation sat uncommitted BESIDE the smuggled tests). Evicted (`47b7b20`); at the
+day-match merge the eviction then outvoted their tests from the merge BASE and silently deleted
+them again -- the suite TOTAL was the tell (restored verbatim, `54dc778`). Diff the staged copy
+of any shared file before committing; treat a totals shortfall as a lost hunk. (2) THE
+DEPLOYMENT GAP: the game plays the MAIN CHECKOUT's working tree -- worktree merges pushed to
+origin/dev reach the field only when the checkout pulls, and a parallel session's dirty files
+block that pull. A whole Fight field round was voided testing stale code. The load beacon
+(debug\load-report.txt) is the one-line proof of what the game actually loaded; read it before
+any "reload and retest" ask.

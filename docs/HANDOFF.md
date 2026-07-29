@@ -392,7 +392,34 @@ research already recorded. In rough priority order:
 5. **Icon polish, optional:** the four developer rows share one question mark on their
    section heading rather than each carrying one. Trivial to change if it reads wrong.
 
-## Current state (as of 2026-07-26)
+## Current state (as of 2026-07-29, end of day)
+
+- **2026-07-29: THE JOB HELPERS ERA IS ON MAIN — the whole PRD #135 train, grill to guide
+  in ONE day, promoted `56221c1` on Henrik's push (main content-identical to dev).**
+  What exists now: the **Job helper** module system (drop-in folders `jobhelpers\<job>\<module>\`,
+  one folder = one row = one server-approval unit — ADR 0028 as amended; loader with loud
+  containment; per-job tab sections; the per-job `JobHelper` Claim Priority anchor), the
+  complete **BST Helper** (`bst\bst-helper\`: Fight — POLL-driven after two failed edge field
+  rounds, with the **Respect Heel** and **Send when: drawn/first-swing** options; **Reward
+  now** + the auto-Reward rule; death-only **Resummon** over the classified pet-loss edge),
+  six consumable central services (Action sequencer ADR 0030, engagewatch + first-swing,
+  petvitals + classifyLoss, recast, petfood, `cmdqueue.issue`), and the
+  [authoring guide](reference/jobhelper-authoring-guide.md). Engine v154 → **v156** (v156 =
+  dayMatch, the parallel session's train, promoted together). Addon `2026.07.29a`–`29o`.
+  **FIELD-CONFIRMED:** the tab + sections, Fight (both modes), Reward-now end-to-end
+  (recast id 103 + the `/ja` token proven), the Locks refusal, per-job rank drag, the
+  blueprint round-trip of case rules. **FIELD ROUND OWED (every unknown fails SAFE —
+  worst case is an act that does not happen):** the auto-Reward rule at its threshold;
+  Resummon whole (jug→pet rows, the pet-falls wording, `LOW_HP_PCT = 25`, summon target
+  tokens, pet commands on category 0x09); the Heel latch and the first-swing gate in real
+  pulls; `dayMatch` on a matching day; the trigger-cases fieldtest checklist
+  ([design/trigger-cases-fieldtest.md](design/trigger-cases-fieldtest.md), copy-case above
+  all). **Queue:** the agent pipeline is EMPTY (all of #136–#142 merged + closed; workers
+  now run Opus 5 at max effort); **#129** (blueprints finish, de-risked by the field
+  round-trip) waits unlabeled as the next natural dispatch. The tester's BST is level 21:
+  Bestial Loyalty and food tiers ≥ Beta stay out of field reach for now. Deep story:
+  `docs/history.md` ("the maintainer day") for the two paid ops lessons — the shared-checkout
+  smuggle and the deployment gap — plus this train's per-slice entries below.
 
 - **2026-07-29: the Job helper module paper — authoring guide + ADR 0030 + the service rows
   — DOCS ONLY, no behavior** (issue #142, PRD #135; the last slice of the Job Helpers train).
