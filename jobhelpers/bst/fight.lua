@@ -19,10 +19,11 @@
     so the next beat tries again; a command that took makes the pet non-idle,
     which stops the issuing. The GearSwap BST convention is the same shape
     (docs/reference/pet-handling-other-luas.md section 4.2: `pet.status ==
-    'Idle' and player.target.type == 'MONSTER'` -> `/pet Fight`). Heel still
-    holds where it matters: a heeled pet is idle, so while you STAY engaged
-    with a target the poll will re-send it (capped below); pull back and
-    disengage -- or drop the target -- and nothing fires.
+    'Idle' and player.target.type == 'MONSTER'` -> `/pet Fight`). HEEL is the
+    player's OPTION (Henrik's ruling, same day): with Respect Heel ON (the
+    default) a send that TOOK is never repeated at that target -- pulling the
+    pet back sticks until you switch targets or disengage; OFF, an idle pet
+    keeps being re-sent while you are engaged, up to the cap.
 
     THE METRONOME is the pet vitals beat (feature\petvitals.subscribe, 0.4s --
     the engine's own dispatch cadence): no new frame wiring, and the vitals
@@ -119,6 +120,24 @@ function M.setMode(m)
     return c.set('fight', m);
 end
 
+-- Respect Heel? (Henrik's option ruling 2026-07-29 -- the player decides.)
+-- ON (default): once a send TAKES for this (engagement, target), the pet is
+-- never re-sent at it -- pulling it back with Heel sticks until you switch
+-- targets or disengage. OFF: an idle pet keeps being re-sent up to the cap.
+function M.heelRespect()
+    local c = cfg();
+    local v = nil;
+    if c ~= nil then v = c.get('fightHeel'); end
+    if v == nil then return true; end
+    return (v == true);
+end
+
+function M.setHeelRespect(on)
+    local c = cfg();
+    if c == nil then return false; end
+    return c.set('fightHeel', on == true);
+end
+
 -- ---------------------------------------------------------------------------
 -- the PURE decision -- poll state in, command decision out
 -- ---------------------------------------------------------------------------
@@ -172,6 +191,13 @@ function M.pollDecide(state)
     end
 
     if state.petIdle == true then
+        -- Respect Heel (the option): a send that TOOK for this same target is
+        -- never repeated while the option is on -- an idle pet here means the
+        -- PLAYER pulled it back, and the helper does not fight the player. A
+        -- different target (or a fresh engagement) starts clean.
+        if sameTarget and last.took == true and state.heelRespect == true then
+            return { act = false, reason = 'heeled' };
+        end
         local p = paced();
         if p ~= nil then return { act = false, reason = p }; end
         return { act = true, reason = nil, targetIndex = tgt, command = M.COMMAND };
@@ -206,6 +232,7 @@ local DECISION_TEXT = {
     ['waiting']           = 'sent -- waiting for the pet to take',
     ['capped']            = 'the command is not taking (capped -- check the pet command wording)',
     ['pet-busy']          = 'your pet is already fighting',
+    ['heeled']            = 'pet pulled back -- respecting Heel until you switch targets',
     ['pet-state-unknown'] = 'pet state unreadable',
 };
 
@@ -327,6 +354,8 @@ function M.onBeat(vitals, reads, id)
         st.reason = act.reason;
     end);
 
+    st.heelRespect = M.heelRespect();
+
     if type(vitals) == 'table' then
         st.hasPet = (vitals.present == true);
         local s = vitals.status;
@@ -352,6 +381,13 @@ function M.onBeat(vitals, reads, id)
         if tgt > 0 then
             st.targetChanged = (_prevTarget ~= nil and _prevTarget ~= tgt);
             _prevTarget = tgt;
+            -- The TOOK latch (the Respect-Heel option's memory): our send is on
+            -- record for this target and the pet is now FIGHTING -- the command
+            -- took. From here an idle pet at the same target means the player
+            -- pulled it back.
+            if _issue ~= nil and _issue.target == tgt and st.petIdle == false then
+                _issue.took = true;
+            end
         end
         st.last = _issue;
     end

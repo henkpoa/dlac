@@ -16996,6 +16996,40 @@ end)();
     ft.onBeat(IDLE, reads);
     check('BFT30 re-engaging the same mob starts a fresh engagement', #sent, 3 + ft.MAX_TRIES);
 
+    -- --- Respect Heel: the player's option (Henrik's ruling 2026-07-29) ------
+    -- Pure core first: took + same target + option ON -> heeled; OFF -> resend;
+    -- a different target clears the latch either way.
+    check('BFT31 heeled: a TAKEN send is never repeated (option on)',
+          ft.pollDecide(armed({ heelRespect = true,
+                                last = { target = 0x2E1, at = 90, tries = 1, took = true } })).reason, 'heeled');
+    check('BFT32 option off: an idle pet is re-sent past the latch',
+          ft.pollDecide(armed({ heelRespect = false,
+                                last = { target = 0x2E1, at = 90, tries = 1, took = true } })).act, true);
+    check('BFT33 the latch dies with the target',
+          ft.pollDecide(armed({ heelRespect = true, targetIndex = 0x2E9,
+                                last = { target = 0x2E1, at = 90, tries = 1, took = true } })).act, true);
+
+    -- Glue: send -> the pet takes (latch) -> Heel (idle again) -> respected;
+    -- option off -> re-sent. fightHeel is ABSENT from fakeCfg, so the first
+    -- pass also proves the default reads ON.
+    local base = 3 + ft.MAX_TRIES;
+    ft.resetIssues();
+    world.target = 0x2F0;
+    clock = clock + 5;
+    ft.onBeat(IDLE, reads);
+    check('BFT34 fresh mob: sent', #sent, base + 1);
+    clock = clock + 0.4;
+    ft.onBeat(BUSY, reads);            -- the send TOOK: the latch arms
+    clock = clock + 2.5;
+    ft.onBeat(IDLE, reads);            -- the player heeled
+    check('BFT35 Heel respected by default: no re-send', #sent, base + 1);
+    check('BFT36 ...and the Panel says so', ft.lastDecision().reason, 'heeled');
+    fakeCfg.vals.fightHeel = false;
+    clock = clock + 2.5;
+    ft.onBeat(IDLE, reads);
+    check('BFT37 option off: the idle pet is re-sent', #sent, base + 2);
+    fakeCfg.vals.fightHeel = nil;
+
     ft._fire, ft._now = realFire, realNow;
     ft.resetIssues();
     package.loaded['dlac\\feature\\jobhelpers'] = savedJH;

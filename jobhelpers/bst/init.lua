@@ -212,9 +212,10 @@ return {
         local fight = fightMod();
         if fight ~= nil then
             head(imgui, 'Fight',
-                'Send your pet in off your own attacks. Nothing here polls or repeats:'
-                .. ' every send follows one attack or target change, so Heel is respected until'
-                .. ' the next one. Jug and charmed pets behave identically.');
+                'While you are engaged with a target and your pet stands idle, it is sent in'
+                .. ' -- retried a few times if the command does not take, then it goes quiet.'
+                .. ' Follow my target also re-sends a fighting pet when your target changes.'
+                .. ' Jug and charmed pets behave identically.');
             space();
 
             local cur = fight.mode();
@@ -223,6 +224,21 @@ return {
                 if modeButton(imgui, fight, id, m, cur, w) then fight.setMode(m); end
             end
             space();
+
+            -- Respect Heel -- the player's option (Henrik's ruling 2026-07-29).
+            if type(imgui.Checkbox) == 'function' then
+                local heel = { fight.heelRespect() };
+                if imgui.Checkbox('Respect Heel##bstheel_' .. id, heel) then
+                    fight.setHeelRespect(heel[1]);
+                end
+                if type(imgui.IsItemHovered) == 'function' and imgui.IsItemHovered()
+                   and type(imgui.SetTooltip) == 'function' then
+                    imgui.SetTooltip('On: once your pet takes a send, pulling it back with Heel sticks --\n'
+                        .. 'nothing is re-sent at that mob for the rest of the fight.\n'
+                        .. 'Off: an idle pet keeps being re-sent while you are engaged (a few tries).');
+                end
+                space();
+            end
 
             -- Why it is or is not acting right now, plus what the last edge did.
             -- Deliberately here and NOT in chat: Fight fires on every pull, and a
@@ -241,7 +257,7 @@ return {
             end
             local lastD = fight.lastDecision();
             if lastD ~= nil then
-                txt(COL_DIM, 'Last edge: ' .. fight.decisionText(lastD) .. '.');
+                txt(COL_DIM, 'Last: ' .. fight.decisionText(lastD) .. '.');
             end
             space();
             rule();

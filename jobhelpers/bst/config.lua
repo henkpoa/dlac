@@ -34,6 +34,7 @@ M.FMT  = 1;
 -- the three Reward rows with #140; resummon adds its own when that slice lands.
 M.KEYS = {
     fight           = 'string',     -- 'off' | 'attack' | 'follow' (see fight.lua)
+    fightHeel       = 'boolean',    -- respect Heel: a send that TOOK is never re-sent (fight.lua)
     rewardArmed     = 'boolean',    -- the automatic Reward rule switch (reward.lua)
     rewardThreshold = 'number',     -- pet HP%; the rule fires strictly below it
     rewardSet       = 'string',     -- the optional Reward set by name; '' = food only
@@ -47,6 +48,8 @@ M.KEYS = {
 -- resting position, not an arming decision.
 M.DEFAULTS = {
     fight           = 'off',
+    fightHeel       = true,         -- respecting the player's own pet command is the
+                                    -- polite default (Henrik's option ruling, 2026-07-29)
     rewardArmed     = false,
     rewardThreshold = 50,
     -- rewardSet has no default: absent means "food only" (see reward.setName).
