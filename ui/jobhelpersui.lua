@@ -104,8 +104,12 @@ local function moduleRow(job, ids, i)
 
     -- the module label (a Selectable so clicking the row opens its Panel).
     local selected = (_sel == id);
+    -- 150 wide, not more: the themed font runs ~9.5px/char, and the status
+    -- column after this must FIT inside the 380px left child -- at 190 the
+    -- status was pushed past the child edge and clipped invisible (field
+    -- screenshot, 2026-07-29: a SAM saw no "Wrong job" on the BST row).
     if imgui.Selectable(rec.label .. '##jhsel_' .. job .. '_' .. id, selected,
-                        ImGuiSelectableFlags_None or 0, { 190, 22 }) then
+                        ImGuiSelectableFlags_None or 0, { 150, 22 }) then
         _sel = id;
     end
 
@@ -181,7 +185,7 @@ function M.renderTab(job, level)
         'One row per installed helper, grouped by the jobs it supports. The pill is its master switch.');
     imgui.Spacing();
 
-    local okL = imgui.BeginChild('##jh_left', { 300, 0 }, true);
+    local okL = imgui.BeginChild('##jh_left', { 380, 0 }, true);
     if okL then
         for _, j in ipairs(jobs) do jobSection(j); end
     end
