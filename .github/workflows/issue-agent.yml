@@ -11,9 +11,10 @@
 # The OAuth token bills runs against the Claude subscription (Max 20x), not
 # metered API credits.
 #
-# Model tiering: default = Opus 4.8. Add the `agent:max` label to the hardest
-# issues (deep FFXI / engine internals) to raise the turn budget. Packet-level
-# work is local-only in this project and must never be labeled ready-for-agent.
+# Model tiering: Opus 5 at MAX reasoning effort on every run (Henrik's call,
+# 2026-07-29). The `agent:max` label raises the turn budget (150 -> 300) for the
+# hardest issues (deep FFXI / engine internals). Packet-level work is local-only
+# in this project and must never be labeled ready-for-agent.
 
 name: Issue agent
 
@@ -47,16 +48,17 @@ jobs:
       - name: Install Lua 5.4 (headless test runner)
         run: sudo apt-get update && sudo apt-get install -y lua5.4
 
-      # Default = Opus 4.8. The `agent:max` label raises the turn budget for the
-      # hardest FFXI/engine issues. (No reasoning-effort input exists on the
-      # action; model + turn budget are the levers.)
+      # Opus 5 at MAX effort on both tiers; the `agent:max` label raises only the
+      # turn budget (150 -> 300). Effort rides claude_args (--effort) -- the
+      # action has no dedicated input (verified against the CLI reference +
+      # action docs, 2026-07-29).
       - name: Select model tier
         id: tier
         run: |
           if ${{ contains(github.event.issue.labels.*.name, 'agent:max') }}; then
-            echo 'args=--model claude-opus-4-8 --max-turns 300 --allowedTools "Bash(git:*),Bash(gh:*),Bash(lua5.4:*),Bash(lua:*),Bash(luac5.4:*),Edit,Write,Read,Glob,Grep"' >> "$GITHUB_OUTPUT"
+            echo 'args=--model claude-opus-5 --effort max --max-turns 300 --allowedTools "Bash(git:*),Bash(gh:*),Bash(lua5.4:*),Bash(lua:*),Bash(luac5.4:*),Edit,Write,Read,Glob,Grep"' >> "$GITHUB_OUTPUT"
           else
-            echo 'args=--model claude-opus-4-8 --max-turns 150 --allowedTools "Bash(git:*),Bash(gh:*),Bash(lua5.4:*),Bash(lua:*),Bash(luac5.4:*),Edit,Write,Read,Glob,Grep"' >> "$GITHUB_OUTPUT"
+            echo 'args=--model claude-opus-5 --effort max --max-turns 150 --allowedTools "Bash(git:*),Bash(gh:*),Bash(lua5.4:*),Bash(lua:*),Bash(luac5.4:*),Edit,Write,Read,Glob,Grep"' >> "$GITHUB_OUTPUT"
           fi
 
       - uses: anthropics/claude-code-action@v1
