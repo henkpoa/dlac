@@ -58,6 +58,14 @@ M.PKT_ACTION   = 0x01A;
 M.CAT_ENGAGE   = 0x02;
 M.CAT_RETARGET = 0x0F;
 
+-- The incoming action packet and the melee-round type: the FIRST-SWING signal
+-- (Henrik's option 2026-07-29 -- "send Fight on engage, or the moment you
+-- actually auto attack"). Same field layout equipengine.parse0x28 reads:
+-- actor u32 @0x05, action type = 4 bits at byte 10, bit 2; type 1 = a melee
+-- attack round.
+M.PKT_ACTIONIN = 0x028;
+M.TYPE_MELEE   = 0x01;
+
 -- The per-target debounce window, seconds (PRD: "a 5-second same-target
 -- debounce"). Same entity inside the window: silent. Different entity: fires.
 M.DEBOUNCE_S = 5.0;
@@ -86,8 +94,23 @@ local function u32at(str, byteOff)
     return u16at(str, byteOff) + u16at(str, byteOff + 2) * 65536;
 end
 
-M._u16at = u16at;   -- test seams (the replay fixtures assert the readers too)
-M._u32at = u32at;
+-- LSB-first bit read (the equipengine parse0x28 twin -- same math, locally
+-- owned per the watcher rule). byteOff is 0-based.
+local function bitsAt(str, byteOff, bitOff, nbits)
+    local v, place = 0, 1;
+    for i = 0, nbits - 1 do
+        local bitpos = bitOff + i;
+        local byte = string.byte(str, byteOff + math.floor(bitpos / 8) + 1) or 0;
+        local bit = math.floor(byte / (2 ^ (bitpos % 8))) % 2;
+        v = v + bit * place;
+        place = place * 2;
+    end
+    return v;
+end
+
+M._u16at  = u16at;   -- test seams (the replay fixtures assert the readers too)
+M._u32at  = u32at;
+M._bitsAt = bitsAt;
 
 -- ---------------------------------------------------------------------------
 -- the pure decode: recorded bytes -> an edge, or nil
@@ -166,6 +189,8 @@ local _queue = {};    -- edges stashed by the packet handler (network thread)
 local _seen  = {};    -- [targetKey] = clock of the last ACCEPTED edge
 local _subs  = {};    -- who -> cb
 local _last  = nil;   -- the last ACCEPTED edge (what lastEdge() answers)
+local _swingQ = {};   -- melee-round actor ids stashed by the 0x028 handler
+local _swung  = false; -- has MY auto-attack swung since the last engage edge?
 
 -- Subscribe to accepted edges. `who` names the consumer so a module can drop its
 -- own subscription wholesale (the entwatch contract). cb(edge) is pcall'd -- a
@@ -192,10 +217,37 @@ end
 -- The one exported question. nil until the first accepted edge this session.
 function M.lastEdge() return _last; end
 
+-- Has the player's own auto-attack swung since the last ENGAGE edge? The
+-- first-swing signal for the Fight switch's "Send when" option. Resets on
+-- every engage edge (a fresh engagement has not swung yet) and on reset().
+function M.swungThisEngagement() return _swung == true; end
+
+-- The pure 0x028 sieve: bytes in -> the melee actor's server id, or nil when
+-- the packet is not a melee round (or too short to say).
+function M.decodeSwing(data)
+    if type(data) ~= 'string' or #data < 12 then return nil; end
+    if bitsAt(data, 10, 2, 4) ~= M.TYPE_MELEE then return nil; end
+    local actor = u32at(data, 0x05);
+    if actor <= 0 then return nil; end
+    return actor;
+end
+
+-- The player's own server id, main-thread read (the dlac.lua boot idiom).
+-- Injectable for the headless suite.
+M._myId = function()
+    local id = nil;
+    pcall(function()
+        id = AshitaCore:GetMemoryManager():GetParty():GetMemberServerId(0);
+    end);
+    if type(id) ~= 'number' or id <= 0 then return nil; end
+    return id;
+end;
+
 -- Drop everything (job change / logout / test reset). Subscribers survive a
 -- reset(false); reset(true) drops them too.
 function M.reset(dropSubs)
     _queue, _seen, _last = {}, {}, nil;
+    _swingQ, _swung = {}, false;
     if dropSubs == true then _subs = {}; end
 end
 
@@ -212,6 +264,16 @@ function M.onPacket(data, now)
     if #_queue >= M.QUEUE_MAX then table.remove(_queue, 1); end
     _queue[#_queue + 1] = edge;
     return edge;
+end
+
+-- The 0x028 half: a melee round's actor id, stashed. The MY-id compare happens
+-- in pump() on the main thread (the memory read must not run here).
+function M.onSwingPacket(data)
+    local actor = M.decodeSwing(data);
+    if actor == nil then return nil; end
+    if #_swingQ >= M.QUEUE_MAX then table.remove(_swingQ, 1); end
+    _swingQ[#_swingQ + 1] = actor;
+    return actor;
 end
 
 -- ---------------------------------------------------------------------------
@@ -250,6 +312,27 @@ end
 -- the entity read. Returns how many edges were ACCEPTED (0 = all debounced /
 -- nothing queued), so a caller can cheaply tell "nothing happened".
 function M.pump(now, nameOf)
+    -- The first-swing flag first: a fresh ENGAGE edge in the raw queue resets
+    -- it (a new engagement has not swung), then this beat's melee rounds may
+    -- set it -- an engage and its first swing in one beat land as "swung",
+    -- which is exactly that engagement's truth.
+    for _, edge in ipairs(_queue) do
+        if edge.kind == 'engage' then _swung = false; end
+    end
+    if #_swingQ > 0 then
+        local sq = _swingQ;
+        _swingQ = {};
+        if not _swung then
+            local mine = nil;
+            pcall(function() mine = M._myId(); end);
+            if mine ~= nil then
+                for _, actor in ipairs(sq) do
+                    if actor == mine then _swung = true; break; end
+                end
+            end
+        end
+    end
+
     if #_queue == 0 then return 0; end
     local q = _queue;
     _queue = {};
@@ -286,6 +369,11 @@ pcall(function()
         -- filtered out: another addon engaging on the player's behalf is still a
         -- real edge, and a duplicate of our own is what the debounce is for.
         pcall(function() M.onPacket(e.data, os.clock()); end);
+    end);
+    ashita.events.register('packet_in', 'dlac-engagewatch-in', function(e)
+        if e.id ~= M.PKT_ACTIONIN then return; end
+        -- Bare decode + stash (network thread); the my-id compare is pump()'s.
+        pcall(function() M.onSwingPacket(e.data); end);
     end);
 end);
 

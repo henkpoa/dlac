@@ -225,6 +225,33 @@ return {
             end
             space();
 
+            -- Send when -- the player's option (Henrik's 2026-07-29): from the
+            -- engage, or only after the first auto-attack swing.
+            if type(imgui.Button) == 'function' then
+                txt(COL_DIM, 'Send when:');
+                local curWhen = fight.when();
+                for _, wv in ipairs(fight.WHENS) do
+                    local lit = (curWhen == wv);
+                    local pushed = false;
+                    if lit and ImGuiCol_Button ~= nil and type(imgui.PushStyleColor) == 'function' then
+                        imgui.PushStyleColor(ImGuiCol_Button, { 0.18, 0.55, 0.18, 1.00 });
+                        pushed = true;
+                    end
+                    if imgui.Button(fight.WHEN_LABEL[wv] .. '##bstwhen_' .. wv .. '_' .. id, { 150, 22 }) then
+                        fight.setWhen(wv);
+                    end
+                    if pushed then imgui.PopStyleColor(1); end
+                    if type(imgui.IsItemHovered) == 'function' and imgui.IsItemHovered()
+                       and type(imgui.SetTooltip) == 'function' then
+                        imgui.SetTooltip(fight.WHEN_HELP[wv]);
+                    end
+                    if wv ~= fight.WHENS[#fight.WHENS] and type(imgui.SameLine) == 'function' then
+                        imgui.SameLine(0, 6);
+                    end
+                end
+                space();
+            end
+
             -- Respect Heel -- the player's option (Henrik's ruling 2026-07-29).
             if type(imgui.Checkbox) == 'function' then
                 local heel = { fight.heelRespect() };

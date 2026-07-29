@@ -120,6 +120,43 @@ function M.setMode(m)
     return c.set('fight', m);
 end
 
+-- WHEN to start sending (Henrik's option 2026-07-29): 'drawn' = the moment you
+-- engage (weapon drawn -- the default, the Pup shape); 'swing' = only once your
+-- own auto-attack has actually swung this engagement (for early engages where
+-- you draw at range and close in).
+M.WHENS = { 'drawn', 'swing' };
+M.WHEN_LABEL = {
+    drawn = 'Weapon drawn',
+    swing = 'First swing',
+};
+M.WHEN_HELP = {
+    drawn = 'Your pet is sent as soon as you engage (draw your weapon) with a target.',
+    swing = 'Your pet waits until your first auto-attack actually swings this engagement --'
+            .. ' engage early and close in without sending it.',
+};
+
+function M.isWhen(w)
+    for _, v in ipairs(M.WHENS) do
+        if v == w then return true; end
+    end
+    return false;
+end
+
+function M.when()
+    local c = cfg();
+    local w = nil;
+    if c ~= nil then w = c.get('fightWhen'); end
+    if not M.isWhen(w) then return 'drawn'; end
+    return w;
+end
+
+function M.setWhen(w)
+    if not M.isWhen(w) then return false; end
+    local c = cfg();
+    if c == nil then return false; end
+    return c.set('fightWhen', w);
+end
+
 -- Respect Heel? (Henrik's option ruling 2026-07-29 -- the player decides.)
 -- ON (default): once a send TAKES for this (engagement, target), the pet is
 -- never re-sent at it -- pulling it back with Heel sticks until you switch
@@ -171,6 +208,11 @@ function M.pollDecide(state)
         return { act = false, reason = state.reason or 'inactive' };
     end
     if state.engaged ~= true then return { act = false, reason = 'not-engaged' }; end
+    -- The "Send when" option: 'swing' holds every send until the player's own
+    -- auto-attack has swung this engagement (positive-true, like every gate).
+    if state.needSwing == true and state.swung ~= true then
+        return { act = false, reason = 'no-swing-yet' };
+    end
     if state.hasPet  ~= true then return { act = false, reason = 'no-pet' }; end
 
     local tgt = tonumber(state.targetIndex) or 0;
@@ -227,6 +269,7 @@ local DECISION_TEXT = {
     ['dead']              = 'dead',
     ['zoning']            = 'zoning',
     ['not-engaged']       = 'you are not engaged',
+    ['no-swing-yet']      = 'waiting for your first swing',
     ['no-pet']            = 'no pet out',
     ['no-target']         = 'no battle target',
     ['waiting']           = 'sent -- waiting for the pet to take',
@@ -293,6 +336,19 @@ M.reads.nameOf = function(index)
     return nm;
 end;
 
+-- Has my own auto-attack swung this engagement? (The 'swing' option's read;
+-- the edge service owns the 0x028 watch.) nil when unreadable.
+M.reads.swung = function()
+    local s = nil;
+    pcall(function()
+        local ew = require('dlac\\feature\\engagewatch');
+        if type(ew) == 'table' and type(ew.swungThisEngagement) == 'function' then
+            s = (ew.swungThisEngagement() == true);
+        end
+    end);
+    return s;
+end;
+
 -- The same monotonic clock the sequencer/reward use (cmdqueue frames ->
 -- seconds; os.clock when the queue is unreachable -- headless).
 M._now = function()
@@ -355,6 +411,11 @@ function M.onBeat(vitals, reads, id)
     end);
 
     st.heelRespect = M.heelRespect();
+    st.needSwing = (M.when() == 'swing');
+    if st.needSwing and type(reads.swung) == 'function' then
+        local ok, s = pcall(reads.swung);
+        if ok then st.swung = s; end
+    end
 
     if type(vitals) == 'table' then
         st.hasPet = (vitals.present == true);

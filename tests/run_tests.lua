@@ -16853,6 +16853,37 @@ end)();
     ew.reset(true);
     check('EDG34 reset clears the answer', ew.lastEdge(), nil);
     check('EDG35 the debounce window is the PRD 5 seconds', ew.DEBOUNCE_S, 5.0);
+
+    -- --- the FIRST-SWING signal (Henrik's "Send when" option, 2026-07-29) ----
+    -- 0x028 fixture: actor u32 @0x05 (chars 6-9 LE), action type = 4 bits at
+    -- byte 10 bit 2 (char 11, LSB-first -> type*4). equipengine.parse0x28's
+    -- exact field layout.
+    local function swingPkt(actor, atype)
+        local a1 = actor % 256;
+        local a2 = math.floor(actor / 256) % 256;
+        local a3 = math.floor(actor / 65536) % 256;
+        local a4 = math.floor(actor / 16777216) % 256;
+        return string.char(0, 0, 0, 0, 0, a1, a2, a3, a4, 0, (atype or 1) * 4, 0, 0, 0, 0, 0);
+    end
+    check('EDG36 a melee round decodes to its actor', ew.decodeSwing(swingPkt(4242, 1)), 4242);
+    check('EDG37 a non-melee action decodes to nil', ew.decodeSwing(swingPkt(4242, 4)), nil);
+    check('EDG38 a short packet decodes to nil', ew.decodeSwing('abc'), nil);
+
+    ew._myId = function() return 4242; end
+    ew.reset();
+    ew.onPacket(actionPkt(MOB_A.id, MOB_A.ix, ew.CAT_ENGAGE), 600);
+    ew.pump(nil, function() return nil; end);
+    check('EDG39 a fresh engagement has not swung', ew.swungThisEngagement(), false);
+    ew.onSwingPacket(swingPkt(9999, 1));      -- someone ELSE's swing
+    ew.pump(nil, function() return nil; end);
+    check('EDG40 a stranger swing is not mine', ew.swungThisEngagement(), false);
+    ew.onSwingPacket(swingPkt(4242, 1));      -- MY swing
+    ew.pump(nil, function() return nil; end);
+    check('EDG41 my melee round arms the flag', ew.swungThisEngagement(), true);
+    ew.onPacket(actionPkt(MOB_B.id, MOB_B.ix, ew.CAT_ENGAGE), 620);
+    ew.pump(nil, function() return nil; end);
+    check('EDG42 the next engage edge resets it', ew.swungThisEngagement(), false);
+    ew.reset(true);
 end)();
 
 -- ---------------------------------------------------------------------------
@@ -17029,6 +17060,27 @@ end)();
     ft.onBeat(IDLE, reads);
     check('BFT37 option off: the idle pet is re-sent', #sent, base + 2);
     fakeCfg.vals.fightHeel = nil;
+
+    -- --- "Send when": drawn (default) vs first swing (Henrik's option) -------
+    check('BFT38 swing mode holds before the first swing',
+          ft.pollDecide(armed({ needSwing = true })).reason, 'no-swing-yet');
+    check('BFT39 ...and releases once it swung',
+          ft.pollDecide(armed({ needSwing = true, swung = true })).act, true);
+    local worldSwung = false;
+    reads.swung = function() return worldSwung; end
+    fakeCfg.vals.fightWhen = 'swing';
+    ft.resetIssues();
+    world.target = 0x2F5;
+    clock = clock + 5;
+    ft.onBeat(IDLE, reads);
+    check('BFT40 glue: engaged but unswung sends nothing', #sent, base + 2);
+    check('BFT41 ...and the Panel says why', ft.lastDecision().reason, 'no-swing-yet');
+    worldSwung = true;
+    clock = clock + 0.4;
+    ft.onBeat(IDLE, reads);
+    check('BFT42 the first swing releases the send', #sent, base + 3);
+    fakeCfg.vals.fightWhen = nil;
+    reads.swung = nil;
 
     ft._fire, ft._now = realFire, realNow;
     ft.resetIssues();

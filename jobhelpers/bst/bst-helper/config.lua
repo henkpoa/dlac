@@ -35,6 +35,7 @@ M.FMT  = 1;
 M.KEYS = {
     fight           = 'string',     -- 'off' | 'attack' | 'follow' (see fight.lua)
     fightHeel       = 'boolean',    -- respect Heel: a send that TOOK is never re-sent (fight.lua)
+    fightWhen       = 'string',     -- 'drawn' | 'swing' -- when sends may start (fight.lua)
     rewardArmed     = 'boolean',    -- the automatic Reward rule switch (reward.lua)
     rewardThreshold = 'number',     -- pet HP%; the rule fires strictly below it
     rewardSet       = 'string',     -- the optional Reward set by name; '' = food only
@@ -50,6 +51,8 @@ M.DEFAULTS = {
     fight           = 'off',
     fightHeel       = true,         -- respecting the player's own pet command is the
                                     -- polite default (Henrik's option ruling, 2026-07-29)
+    fightWhen       = 'drawn',      -- send from the engage; 'swing' waits for the
+                                    -- first auto-attack (Henrik's option, 2026-07-29)
     rewardArmed     = false,
     rewardThreshold = 50,
     -- rewardSet has no default: absent means "food only" (see reward.setName).
