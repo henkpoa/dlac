@@ -18,8 +18,9 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.07.29h';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.07.29k';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
+                                -- (29k = the day-match train 29h merged with 29i/29j)
 addon.desc    = 'Gear sets, triggers and live stats with level scaling -- dlac equips your gear itself.';
 
 -- Load BEACON ('/dl check' field round, 2026-07-23): written by PLAIN io at
@@ -156,6 +157,15 @@ ashita.events.register('d3d_present', 'dlac-seed-watch', function()
         local ew = require('dlac\\feature\\engagewatch');
         if type(ew) == 'table' and type(ew.pump) == 'function' then ew.pump(); end
     end);
+    -- The pet vitals service's beat (issue #140): publish presence / HP% / TP /
+    -- name to its subscribers once per dispatch beat, so a Job helper's rule
+    -- (BST's Reward threshold) sees the same pet the engine does. The service
+    -- throttles itself to TICK_S and does not read the world at all while
+    -- nothing is subscribed, so this call is free on every other job.
+    pcall(function()
+        local pv = require('dlac\\feature\\petvitals');
+        if type(pv) == 'table' and type(pv.pump) == 'function' then pv.pump(); end
+    end);
     if os.clock() < _seedAt then return; end
     _seedAt = os.clock() + 5.0;
     maintainStorage();
@@ -229,7 +239,7 @@ for _, mod in ipairs({ 'gear', 'feature\\augments', 'gear\\gearoptim', 'gear\\ge
                        'ui\\craftbar', 'feature\\helmwatch', 'ui\\helmbar',
                        'feature\\fishwatch', 'ui\\fishbar', 'feature\\chocowatch',
                        'feature\\meritwatch', 'feature\\integration',
-                       'feature\\engagewatch',
+                       'feature\\engagewatch', 'feature\\petvitals',
                        'feature\\check', 'feature\\debug', 'feature\\lockstyle',
                        'feature\\lockstyleapply', 'feature\\equipengine',
                        'feature\\engine', 'ui\\gearui',

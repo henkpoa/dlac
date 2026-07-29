@@ -91,6 +91,7 @@ engine cannot require them; it has its own minimal reads).
 | **Is the MaxMP mode on? / flip it** | `automationsui.maxmpMode()` / `.maxmpToggle()` | `ui/automationsui.lua` | THE shared reader/flipper for every surface (panel button, list row). Reads the LAC engine's modestate mirror (1s TTL — display can lag a beat); the toggle sends the EXPLICIT `/dl mode maxmp on\|off`, never a blind flip. Auto-disables on job change. |
 | **The max-MP band plan?** | `dispatch.M.mpBands(ctx)` → context; `mpbands.build/target/tick` (pure core) | `dispatch.lua` (LAC state) + `feature/mpbands.lua` | ONE context serves the engine AND `/dl plan` — the plan IS the behavior, never render a rival. Current MP is the only live read; `GetMPMax` is unreliable during gear churn and floored party MP% == 100 is the only exact fullness signal. Read docs/design/maxmp-mode.md (rulings ledger + failure museum) before touching. |
 | **Did I just engage / re-target something, and exactly what?** | `engagewatch.lastEdge()` → `{ kind, index, serverId, name, at }` \| nil; `.subscribe(who, cb)` / `.unsubscribe(who)`; `.decode(bytes)` (pure) | `feature/engagewatch.lua` | THE one decoder of the two battle EDGES — never register a second `0x01A` reader for them. `kind` is `'engage'` (category `0x02`) or `'retarget'` (category `0x0F`, which is what auto-target rolling to the next mob sends). The entity comes **from the packet** (UniqueNo u32 @0x04, ActIndex u16 @0x08), never re-read at consumption time — by then the target has moved on, and that is the whole point. A **per-TARGET debounce** (`DEBOUNCE_S = 5`) means the same entity notifies at most once a window while a different one notifies immediately, so client re-sends and target stutter never reach a subscriber. THREADING (the chocowatch rule): the `packet_out` handler decodes and stashes on the NETWORK thread and does nothing else; `pump()` — wired in dlac.lua's `d3d_present` — does the debounce, the entity-name read and the callbacks on the MAIN thread. Subscribers are pcall'd, so one throwing consumer never costs another its notification. Consumer: the BST Helper's Fight switch (`jobhelpers/bst/fight.lua`). The field-proven decode of both kinds is `accwatch.lua`'s engage watch on the parked `feature/autoacc` branch (history.md, "ACC calculator → acc watch"); its inert byte-identical dev copy at `share/mob-stats/accwatch.lua` is REFERENCE ONLY — THIS is the one live shared implementation, and accwatch subscribes here when it lands. |
+| **Is a pet out right now, and how is it doing?** | `petvitals.get()` → `{ present, hpp, tp, name }`; `.subscribe(who, cb)` / `.unsubscribe(who)`; `.fromPet(pet)` (pure) | `feature/petvitals.lua` | THE pet read — never open a second `GetPetTargetIndex`/`GetHPPercent` pair (the BST Fight switch carried one until this landed, and it now asks here). It CONSUMES `gData.GetPet()`, dlac's one existing pet reader (`feature/nativedata`, the LAC-parity provider the engine already reads every dispatch for the pet trigger conditions) — a central service must not begin life as the second implementation of its own answer. **`present` is TWO-state on purpose:** `gData.GetPet()` answers nil for both "no pet" and "the read failed", and every consumer here ISSUES A COMMAND or SPENDS AN ITEM, so an unreadable pet must decide exactly the way an absent one does (the #139 `hasPet` rule). **Dead pet = no pet** — HP% 0 is not a pet, encoded both in `GetPet` and re-stated in `fromPet` for hand-built records. `hpp`/`tp`/`name` are individually nil-able: a present pet whose HP could not be read is reported honestly, never guessed. `pump()` (dlac.lua's `d3d_present`) publishes to subscribers once per `TICK_S` = 0.4 s (the engine's own dispatch beat) and **does not read the world at all while nothing is subscribed**; `get()` has no cache and reads now, so a caller can never be handed a record older than its question. Consumers: the BST Helper's Reward rule (`jobhelpers/bst/reward.lua`) and its Fight switch's pet gate. |
 | **Is the game hiding its own interface?** (Scroll Lock) | `gamehud.hidden()` → `true` \| `false` | `feature\gamehud.lua` | FAILS OPEN — unmatched signature, null pointer or headless all answer `false`, because a UI that vanishes on a bad read is unexplainable to a player. The SCREENSHOT flag only: cutscenes and the fullscreen map have their own signatures and dlac deliberately does not fold them in (xivbar/HXUI do). One consumer, and there should only ever be one: the gate in gearui's `d3d_present`, above the first imgui call and below every per-frame pump. |
 
 Adding a new central service: generic plumbing goes in `lib/`, game-domain
@@ -531,9 +532,48 @@ the Pup-Helper precedent).
   the loader + `maybeRegister` in one guarded block after the loop (so job-helper counts/failures ride the load
   beacon too). ADR 0028 records the module-system decision.
 - **Test rosters:** `feature/jobhelpers` + `feature/engagewatch` → `FEATURE`, `ui/jobhelpersui` → `UI`, and the
-  `JOBHELP` roster (folder-relative module paths: `bst/init`, `bst/config`, `bst/fight`) in
+  `JOBHELP` roster (folder-relative module paths: `bst/init`, `bst/config`, `bst/fight`, `bst/reward`) in
   `tests/run_tests.lua`'s GRD block; `'jobhelpers'` added to `tests/smoke_ui.lua`'s tab-name roster (smoke S10c
-  absent / S320–S339 present + balanced Panel + the Fight switch drawn and clickable).
+  absent / S320–S344 present + balanced Panel + the Fight switch and the Reward rule's two controls drawn and
+  clickable).
+
+### The BST Reward rule (issue #140, PRD #135) — the pet-HP threshold
+The second standing Job-helper behavior, and the first that SPENDS AN ITEM. One new central service plus one
+new module file; the "Reward now" button from #138 stays, and the automatic rule is deliberately just a
+**second requester on the same path**:
+- **`feature/petvitals.lua`** — the **pet vitals** central service (its own row in the table above). One
+  question — presence / HP% / TP / name — read through `gData.GetPet()`, published to subscribers once per
+  dispatch beat by `pump()`, and answered on demand by `get()`. Carries the *dead pet = no pet* law and the
+  deliberate two-state `present`.
+- **`jobhelpers/bst/reward.lua`** — the rule AND the act. `decide(vitals, state)` is PURE — vitals + state in,
+  "request the sequence?" out — so the threshold, the lockout and every gate are headless checks (BRW*). The
+  threshold fires **strictly below** (a pet exactly at 50 is not below 50); the **retry lockout**
+  (`LOCKOUT_S = 30`) is armed by every ATTEMPT, so a sustained sub-threshold pet costs at most one command and
+  one refusal line per window. Two holds deliberately do NOT arm it because nothing was attempted: a sequence
+  already running, and Reward still on cooldown — and the recast hold is **silent**, which is exactly what the
+  greyed-out button says. Below it sits `request(id)`: pick the food off the Ladder, overlay the optional
+  Reward set, open ONE Action sequence. The button calls it and so does the rule, which is what makes
+  "identical refusal behavior to the button" a property of the code rather than of two test suites agreeing.
+  `need` is the CONSUMED slot alone (Ammo = food) — the maintainer's accepted ruling at the #138 merge: the
+  food is the precondition, the Reward set dresses best-effort, and that is also what lets a player's own
+  Reward-gear Trigger compose with a food-only claim.
+- **`jobhelpers/bst/config.lua`** gains three rows — `rewardArmed` (the rule switch, default **off**, for the
+  reason Fight is: a helper that issues commands and eats a player's food never arms itself), `rewardThreshold`
+  (default **50**, the slider's resting position, not an arming decision) and `rewardSet` (persisted since the
+  rule has no Panel open to read a session-only choice from).
+- **`feature/petfood.lua`** now reads the **override/sync-aware** level (`/dl set level main`, then
+  `MainJobSync`), not raw `MainJobLevel` — the house law every picker follows, paid for by AutoAmmo v134. A raw
+  read under level sync picks a tier over the cap, the equip is refused, and the sequence ends in a contained
+  verify timeout instead of correctly falling a rung.
+- **`jobhelpers/bst/fight.lua`**'s pet gate now asks `petvitals`, dropping the raw
+  `GetPetTargetIndex`/`GetHPPercent` pair it carried — the same "one live shared implementation" move
+  `engagewatch` made for the edge decode.
+- **Test rosters:** `petvitals` → `FEATURE`; `bst/reward` → `JOBHELP`. Tests: PV*/BRW*/PF7–PF12 in
+  `run_tests.lua`, smoke S340–S344.
+- **Deferred / flagged:** the rule's player-facing strings ("Reward my pet when it drops low", "below N% pet
+  HP") await the maintainer's sign-off; `LOCKOUT_S = 30` and the arm-by-default question (shipped OFF) are
+  field-round calls. Pet TP is published but nothing consumes it yet — the scale (`GetPetTP` raw) is unverified
+  against the live server.
 
 ### The BST Fight switch (issue #139, PRD #135) — the first standing Job-helper behavior
 The first behavior a Job helper performs on its OWN signal rather than a button. Two new files beside the
