@@ -136,18 +136,18 @@ end
 -- notify? Returns accepted(bool), key. A clock that went BACKWARDS (os.clock
 -- across a reset) accepts rather than muting for a whole window.
 --
--- The key is the TARGET ALONE, not (target, kind) -- the PRD says "a per-target
--- debounce", and this is that, literally. ONE consequence is worth knowing
--- before the field round: a retarget edge onto a mob mutes an ENGAGE edge on the
--- same mob for the rest of the window, so a player in "When I attack" who lets
--- auto-target roll onto a mob and then disengages and re-engages it inside 5
--- seconds gets no send. Keying on (target, kind) would close that and would
--- still swallow all real stutter (a client re-send is a byte-identical packet,
--- so always the same kind) -- flagged for the maintainer rather than taken
--- unilaterally, because the debounce shape is the design record's call.
+-- The key is (TARGET, KIND), not the target alone -- FIELD-RULED 2026-07-29
+-- (Henrik's BST, the first Fight round): a fresh attack makes the client send
+-- the RETARGET packet first and the ENGAGE packet milliseconds later, so a
+-- target-only key let the refused retarget claim the slot and swallow the
+-- engage as "stutter" -- Fight never heard a single attack. Keying on the kind
+-- still swallows all real stutter (a client re-send is byte-identical, so
+-- always the same kind); the 0x0F-then-0x02 pair is two DIFFERENT questions
+-- about one mob and both deserve their answer.
 function M.debounceCore(edge, now, seen, window)
-    local key = M.targetKey(edge);
-    if key == nil then return false, nil; end
+    local tkey = M.targetKey(edge);
+    if tkey == nil then return false, nil; end
+    local key = tkey .. '|' .. tostring((type(edge) == 'table') and edge.kind or '?');
     now = tonumber(now) or 0;
     window = tonumber(window) or M.DEBOUNCE_S;
     local last = tonumber((type(seen) == 'table') and seen[key] or nil);

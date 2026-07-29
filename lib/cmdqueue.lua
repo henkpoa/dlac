@@ -43,4 +43,15 @@ function M.tick()
     processCmdQueue();
 end
 
+-- THE central "issue a game command" door (Henrik's ruling 2026-07-29: every
+-- helper that auto-issues commands goes through ONE reusable function, never a
+-- per-module wrapper). Queues on the frame clock, so the command leaves on the
+-- next tick, on the MAIN thread -- never inside the caller's packet or render
+-- context. Returns true when the command was accepted.
+function M.issue(cmd)
+    if type(cmd) ~= 'string' or cmd == '' then return false; end
+    M.enqueue(0, cmd);
+    return true;
+end
+
 return M;

@@ -283,14 +283,17 @@ end
 -- firing + the engagewatch subscription
 -- ---------------------------------------------------------------------------
 
--- Send the command through the central command queue (lib\cmdqueue -- "queue a
--- chat/game command safely"), which drains one frame later on the MAIN thread.
--- Falls back to a direct QueueCommand only if the queue is unreachable.
+-- Send the command through the CENTRAL issue door (lib\cmdqueue.issue -- the
+-- one reusable "auto-issue a game command" function every helper shares,
+-- Henrik's ruling 2026-07-29). Falls back to a direct QueueCommand only if the
+-- queue is unreachable.
 M._fire = function(command)
     local queued = false;
     pcall(function()
         local cq = require('dlac\\lib\\cmdqueue');
-        if type(cq) == 'table' and type(cq.enqueue) == 'function' then
+        if type(cq) == 'table' and type(cq.issue) == 'function' then
+            queued = (cq.issue(command) == true);
+        elseif type(cq) == 'table' and type(cq.enqueue) == 'function' then
             cq.enqueue(0, command);
             queued = true;
         end
