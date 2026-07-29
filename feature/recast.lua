@@ -35,6 +35,17 @@ local M = {};
 -- sequencer's own verify.
 M.REWARD = { id = 103, timerId = 103, label = 'Reward' };
 
+-- The two SUMMON methods (issue #141). Neither carries a hardcoded timer id,
+-- and that is deliberate: the Pup-Helper reference only ever named Reward's, and
+-- hard rule 9 puts LIVE GAME MEMORY above every other source -- so these resolve
+-- their recast slot by NAME through the client's own ability resource
+-- (M.timerIdFor), and a resolution that fails answers UNKNOWN, which reads
+-- READY. The courtesy gate never manufactures a "down" it did not measure; the
+-- sequencer's verify-worn is the real safety net, and a command the client
+-- rejects costs nothing (Bestial Loyalty does not even consume the jug).
+M.CALL_BEAST      = { name = 'Call Beast',      label = 'Call Beast' };
+M.BESTIAL_LOYALTY = { name = 'Bestial Loyalty', label = 'Bestial Loyalty' };
+
 -- The recast clock unit. The client stores ability recast as an integer count
 -- of QUARTER-SECONDS (the /4 convention shared with nativedata's RecastDelay,
 -- which multiplies resource delay by 250ms). liveRemaining converts to whole
@@ -87,6 +98,43 @@ M._recastMgr = function()
     return mgr;
 end
 
+-- The recast TIMER SLOT id for a signature. A declared `timerId` wins (the
+-- Pup-Helper port); otherwise the ability's own resource record is asked BY
+-- NAME -- live memory, the top data authority, so an ability whose slot id this
+-- server renumbered still resolves. Memoized per signature; nil = unknown.
+--
+-- Both binding shapes are PROBED, never assumed (hard rule 2 -- presence proves
+-- nothing here): the resource-string table the buff pickers already use, and
+-- the object accessor. `M._abilityRes` is the one seam a test replaces.
+M._abilityRes = function(name)
+    local rec = nil;
+    pcall(function()
+        local resx = AshitaCore:GetResourceManager();
+        if resx == nil or type(resx.GetAbilityByName) ~= 'function' then return; end
+        rec = resx:GetAbilityByName(name, 0);
+    end);
+    return rec;
+end;
+
+function M.timerIdFor(sig)
+    if type(sig) ~= 'table' then return nil; end
+    if tonumber(sig.timerId) ~= nil then return tonumber(sig.timerId); end
+    if sig._resolved ~= nil then
+        if sig._resolved == false then return nil; end
+        return sig._resolved;
+    end
+    local tid = nil;
+    if type(sig.name) == 'string' and sig.name ~= '' then
+        local rec = M._abilityRes(sig.name);
+        if type(rec) == 'table' then tid = tonumber(rec.RecastTimerId) or tonumber(rec.TimerId); end
+    end
+    -- Cache the answer, INCLUDING the failure -- but only as `false`, so a
+    -- pre-login miss is retried the next time something asks (never latch a
+    -- question you could not answer -- hard rule 11).
+    if tid ~= nil then sig._resolved = tid; end
+    return tid;
+end
+
 -- The whole-seconds remaining for `sig` off the live client, or nil (unknown).
 -- The ability-recast table is 32 slots (0..31); each slot has a timer id and a
 -- remaining count. We find the slot carrying our timer id and convert its count
@@ -94,6 +142,9 @@ end
 -- readyFor reads it as ready, which it is.
 function M.liveRemaining(sig)
     if type(sig) ~= 'table' then return nil; end
+    local want = M.timerIdFor(sig);
+    if want == nil then return nil; end          -- unresolvable slot -> unknown -> ready
+    if want ~= sig.timerId then sig = { timerId = want }; end
     local mgr = M._recastMgr();
     if mgr == nil then return nil; end
     local rem = nil;
@@ -116,6 +167,15 @@ end
 -- live reader wired. A caller override (`reader`) keeps it drivable in a test.
 function M.rewardReady(reader)
     return M.readyFor(M.REWARD, reader or M.liveRemaining);
+end
+
+-- The two summon methods (issue #141), same shape, same courtesy gate.
+function M.callBeastReady(reader)
+    return M.readyFor(M.CALL_BEAST, reader or M.liveRemaining);
+end
+
+function M.bestialLoyaltyReady(reader)
+    return M.readyFor(M.BESTIAL_LOYALTY, reader or M.liveRemaining);
 end
 
 return M;

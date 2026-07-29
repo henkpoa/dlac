@@ -92,6 +92,7 @@ engine cannot require them; it has its own minimal reads).
 | **The max-MP band plan?** | `dispatch.M.mpBands(ctx)` → context; `mpbands.build/target/tick` (pure core) | `dispatch.lua` (LAC state) + `feature/mpbands.lua` | ONE context serves the engine AND `/dl plan` — the plan IS the behavior, never render a rival. Current MP is the only live read; `GetMPMax` is unreliable during gear churn and floored party MP% == 100 is the only exact fullness signal. Read docs/design/maxmp-mode.md (rulings ledger + failure museum) before touching. |
 | **Did I just engage / re-target something, and exactly what?** | `engagewatch.lastEdge()` → `{ kind, index, serverId, name, at }` \| nil; `.subscribe(who, cb)` / `.unsubscribe(who)`; `.decode(bytes)` (pure) | `feature/engagewatch.lua` | THE one decoder of the two battle EDGES — never register a second `0x01A` reader for them. `kind` is `'engage'` (category `0x02`) or `'retarget'` (category `0x0F`, which is what auto-target rolling to the next mob sends). The entity comes **from the packet** (UniqueNo u32 @0x04, ActIndex u16 @0x08), never re-read at consumption time — by then the target has moved on, and that is the whole point. A **per-TARGET debounce** (`DEBOUNCE_S = 5`) means the same entity notifies at most once a window while a different one notifies immediately, so client re-sends and target stutter never reach a subscriber. THREADING (the chocowatch rule): the `packet_out` handler decodes and stashes on the NETWORK thread and does nothing else; `pump()` — wired in dlac.lua's `d3d_present` — does the debounce, the entity-name read and the callbacks on the MAIN thread. Subscribers are pcall'd, so one throwing consumer never costs another its notification. Consumer: the BST Helper's Fight switch (`jobhelpers/bst/fight.lua`). The field-proven decode of both kinds is `accwatch.lua`'s engage watch on the parked `feature/autoacc` branch (history.md, "ACC calculator → acc watch"); its inert byte-identical dev copy at `share/mob-stats/accwatch.lua` is REFERENCE ONLY — THIS is the one live shared implementation, and accwatch subscribes here when it lands. |
 | **Is a pet out right now, and how is it doing?** | `petvitals.get()` → `{ present, hpp, tp, name }`; `.subscribe(who, cb)` / `.unsubscribe(who)`; `.fromPet(pet)` (pure) | `feature/petvitals.lua` | THE pet read — never open a second `GetPetTargetIndex`/`GetHPPercent` pair (the BST Fight switch carried one until this landed, and it now asks here). It CONSUMES `gData.GetPet()`, dlac's one existing pet reader (`feature/nativedata`, the LAC-parity provider the engine already reads every dispatch for the pet trigger conditions) — a central service must not begin life as the second implementation of its own answer. **`present` is TWO-state on purpose:** `gData.GetPet()` answers nil for both "no pet" and "the read failed", and every consumer here ISSUES A COMMAND or SPENDS AN ITEM, so an unreadable pet must decide exactly the way an absent one does (the #139 `hasPet` rule). **Dead pet = no pet** — HP% 0 is not a pet, encoded both in `GetPet` and re-stated in `fromPet` for hand-built records. `hpp`/`tp`/`name` are individually nil-able: a present pet whose HP could not be read is reported honestly, never guessed. `pump()` (dlac.lua's `d3d_present`) publishes to subscribers once per `TICK_S` = 0.4 s (the engine's own dispatch beat) and **does not read the world at all while nothing is subscribed**; `get()` has no cache and reads now, so a caller can never be handed a record older than its question. Consumers: the BST Helper's Reward rule (`jobhelpers/bst/reward.lua`) and its Fight switch's pet gate. |
+| **My pet is gone — WHY?** (the classified pet-loss edge) | `petvitals.classifyLoss(prev, cur, ctx)` (pure) → `{ lost, kind, confirmed, how, pet, name, hpp }`; `.subscribeLoss(who, cb)` / `.unsubscribeLoss(who)`; `.lastLoss()`; `.lossText(edge)` | `feature/petvitals.lua` (issue #141) | **DEATH IS CONFIRMED, NEVER ASSUMED** — the whole law, and it exists because the one consumer SPENDS A JUG. Two proofs only: the **pet-falls chat line** (matched on `text_in`, the channel the client already renders — history.md's dig-obtained lesson: two packet guesses lost to one grep) and a present→absent transition after a **low last-seen HP%** (`LOW_HP_PCT = 25`, the one knob between "missed a death" and "burned a jug on a Leave"). An observed outgoing **Leave**, **zoning** and **logging out** each SUPPRESS, and they are checked FIRST, so a Leave pressed on a dying pet can never read as a death. Everything else is `unknown`, which confirms nothing. **Jug vs charm is decided by NAME**, through an injected authority (`M.lossCtx.isJugPet`) — the service deliberately does not own the roster: that is the BST module's data (`jobhelpers/bst/jugs.lua`), and the next module's will be its own. Signals live in a TTL inbox (`SIGNAL_TTL_S = 8`) so nothing observed a minute ago explains a pet lost now, and they are cleared once they have explained one loss. The edge fires **once** per loss on the ordinary vitals beat; a loss subscriber alone keeps that beat alive. The Leave observation reads outgoing `0x01A` **category 0x09 (Ability)** — deliberately not one of engagewatch's two battle edges — stashing on the network thread and resolving the ability NAME on the main thread through the client's own resource tables (no hardcoded ability id). Consumer: the BST Helper's Resummon rule (`jobhelpers/bst/resummon.lua`). |
 | **Is the game hiding its own interface?** (Scroll Lock) | `gamehud.hidden()` → `true` \| `false` | `feature\gamehud.lua` | FAILS OPEN — unmatched signature, null pointer or headless all answer `false`, because a UI that vanishes on a bad read is unexplainable to a player. The SCREENSHOT flag only: cutscenes and the fullscreen map have their own signatures and dlac deliberately does not fold them in (xivbar/HXUI do). One consumer, and there should only ever be one: the gate in gearui's `d3d_present`, above the first imgui call and below every per-frame pump. |
 
 Adding a new central service: generic plumbing goes in `lib/`, game-domain
@@ -539,6 +540,53 @@ the Pup-Helper precedent).
   `tests/run_tests.lua`'s GRD block; `'jobhelpers'` added to `tests/smoke_ui.lua`'s tab-name roster (smoke S10c
   absent / S320–S344 present + balanced Panel + the Fight switch and the Reward rule's two controls drawn and
   clickable).
+
+### The BST Resummon rule (issue #141, PRD #135) — death-only, and death is proven
+The third standing Job-helper behavior, and the one that spends the most expensive item the module touches.
+Everything new is either the **classified pet-loss edge** (a second question on the existing vitals service —
+its own row in the table above) or module-local:
+- **`jobhelpers/bst/jugs.lua`** — the module's DATA, and two tables answering two different questions.
+  `M.PETS` is the **jug pet roster** (this server's own published BST tables: 14 families of NQ + HQ), and it
+  is the whole of the classifier's jug-vs-charm rule — a name that is not on it is a charmed mob, so the helper
+  does nothing for it. `M.MAP` is the **jug → pet mapping** the picker shows; nothing acts on it. The jugs
+  THEMSELVES are not copied here: a jug is exactly a **BST-only Ammo item**, so `M.list()` joins the catalog
+  (`catalogindex.rawIndex`) with the mapping and sorts by level. `M.LEVEL` is the live-observed level override
+  table, **empty by design** — the catalog's level is the inherited base, and a field-observed level is one row
+  here that wins everywhere (the maintainer's rule for this slice: live > wiki > repo, repo SQL is
+  inherited-base only). The live list is memoized once (the Panel redraws its picker every frame; the catalog
+  is generated and static) but an EMPTY build is never cached — hard rule 11.
+- **`jobhelpers/bst/resummon.lua`** — two PURE deciders and one act. `decideLoss(edge, state)` funnels from
+  "should I care" (armed, acting, a loss at all, a **death**, **confirmed**, a **jug** pet) down to "can I do
+  it" (a jug configured, one in the bags, the sequencer free, an ability ready). `queueDecide(state)` is the
+  queue tick: **cancels first and absolutely** (a pet appearing any other way, zoning, an observed Leave,
+  logging out, the rule being switched off, running out of the jug), then holds (inactive, busy, still on
+  recast), then fire. `pickMethod` is the binary choice plus the checkbox, shared by both — and an UNMEASURED
+  recast reads READY, matching the recast service's courtesy gate. The act claims the jug into **Ammo alone**
+  and verifies that same slot worn: both methods read the ammo slot for the species, so the jug is the act's
+  precondition, not its costume — and no optional set rides along, because every extra claimed slot is one
+  more chance for a senior claimant to refuse the whole sequence. The queue deliberately has **no expiry**:
+  Bestial Loyalty's recast is measured in minutes, and a queue that expired before the ability it waits for
+  would be a queue that never worked.
+- **`feature/recast.lua`** gains `CALL_BEAST` / `BESTIAL_LOYALTY` and `timerIdFor(sig)`. Neither carries a
+  hardcoded recast slot: the Pup-Helper reference only ever named Reward's, so these resolve theirs **by name**
+  through the client's own ability resource (live memory over every other source — hard rule 9), and an
+  unresolvable one reads UNKNOWN → READY. A failed resolution is not latched (hard rule 11).
+- **`feature/jobhelpers.lua`** gains `sectionOrder(id)` — the module's Action-sequence priority within the
+  current job's section. It moved here from `bst/reward.lua` when Resummon needed the same answer: it is a fact
+  about the MODULE, not about whichever of its rules is asking, so the two share one implementation.
+- **`jobhelpers/bst/config.lua`** gains four rows — `resummonArmed` (default **off**, for the reason the other
+  two are), `resummonJug` (no default: nothing here picks a jug for the player, and none picked is a loud
+  refusal), `resummonMethod` (default `call` — the one that earns Beast Raising bonuses) and
+  `resummonFallback` (default **on**, the PRD's own; it can only ever change WHICH ready ability is used,
+  never whether one is).
+- **Test rosters:** `bst/resummon` + `bst/jugs` → `JOBHELP`. Tests: PVL*/JUG*/BRS*/RC9–RC18 in
+  `run_tests.lua`, smoke S345–S357.
+- **Deferred / flagged:** every jug→pet row is **field-verify before trust** (hand-transcribed; rows that could
+  not be placed honestly are ABSENT, and the picker shows those jugs with no pet name); the exact pet-falls
+  wording, `LOW_HP_PCT = 25`, the two summon command target tokens, and that pet commands ride action category
+  0x09 are all field-round calls. Player-facing strings ("Resummon", "Jug", "Use the other if mine is on
+  cooldown") await the maintainer's sign-off. A summon sequence that ABORTS (verify timeout) is not retried —
+  the death edge is spent, and the sequencer's abort is its own loud line.
 
 ### The BST Reward rule (issue #140, PRD #135) — the pet-HP threshold
 The second standing Job-helper behavior, and the first that SPENDS AN ITEM. One new central service plus one

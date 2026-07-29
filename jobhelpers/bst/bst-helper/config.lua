@@ -31,14 +31,18 @@ M.FILE = 'jobhelper-bst.lua';
 M.FMT  = 1;
 
 -- The settings this module persists, and their types. Fight came with #139;
--- the three Reward rows with #140; resummon adds its own when that slice lands.
+-- the three Reward rows with #140; the four Resummon rows with #141.
 M.KEYS = {
-    fight           = 'string',     -- 'off' | 'attack' | 'follow' (see fight.lua)
-    fightHeel       = 'boolean',    -- respect Heel: a send that TOOK is never re-sent (fight.lua)
-    fightWhen       = 'string',     -- 'drawn' | 'swing' -- when sends may start (fight.lua)
-    rewardArmed     = 'boolean',    -- the automatic Reward rule switch (reward.lua)
-    rewardThreshold = 'number',     -- pet HP%; the rule fires strictly below it
-    rewardSet       = 'string',     -- the optional Reward set by name; '' = food only
+    fight            = 'string',     -- 'off' | 'attack' | 'follow' (see fight.lua)
+    fightHeel        = 'boolean',    -- respect Heel: a send that TOOK is never re-sent (fight.lua)
+    fightWhen        = 'string',     -- 'drawn' | 'swing' -- when sends may start (fight.lua)
+    rewardArmed      = 'boolean',    -- the automatic Reward rule switch (reward.lua)
+    rewardThreshold  = 'number',     -- pet HP%; the rule fires strictly below it
+    rewardSet        = 'string',     -- the optional Reward set by name; '' = food only
+    resummonArmed    = 'boolean',    -- the death-only Resummon rule switch (resummon.lua)
+    resummonJug      = 'string',     -- the configured jug by item name; '' = none picked
+    resummonMethod   = 'string',     -- 'call' | 'loyalty' (see resummon.METHODS)
+    resummonFallback = 'boolean',    -- "use the other if mine is on cooldown"
 };
 
 -- Defaults for an absent key. The two switches default OFF: this module ISSUES
@@ -47,15 +51,25 @@ M.KEYS = {
 -- its own. The player arms them, unlike the row pill (default on, and it only
 -- un-silences). The threshold's default is the PRD's 50; it is the slider's
 -- resting position, not an arming decision.
+-- ...and the same for Resummon: OFF, because it summons AND (via Call Beast)
+-- consumes a jug. `resummonFallback` is the one default that is ON -- it is not
+-- an arming decision, it is what the player almost always wants once they HAVE
+-- armed the rule (the PRD's own "default on"), and it can only ever change
+-- WHICH ready ability is used, never whether one is.
 M.DEFAULTS = {
-    fight           = 'off',
-    fightHeel       = true,         -- respecting the player's own pet command is the
+    fight            = 'off',
+    fightHeel        = true,        -- respecting the player's own pet command is the
                                     -- polite default (Henrik's option ruling, 2026-07-29)
-    fightWhen       = 'drawn',      -- send from the engage; 'swing' waits for the
+    fightWhen        = 'drawn',     -- send from the engage; 'swing' waits for the
                                     -- first auto-attack (Henrik's option, 2026-07-29)
-    rewardArmed     = false,
-    rewardThreshold = 50,
+    rewardArmed      = false,
+    rewardThreshold  = 50,
+    resummonArmed    = false,
+    resummonMethod   = 'call',
+    resummonFallback = true,
     -- rewardSet has no default: absent means "food only" (see reward.setName).
+    -- resummonJug has none either: absent means "no jug picked", which the rule
+    -- refuses on, loudly -- never a guess at which jug to spend.
 };
 
 -- The <char>\dlac\ dir resolver (lib\statefile -> profiles.dataDir). Injectable
