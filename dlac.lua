@@ -140,6 +140,13 @@ ashita.events.register('d3d_present', 'dlac-seed-watch', function()
         -- network thread -- ratchet + save + announce here on the MAIN thread.
         if type(cw.pumpObtains) == 'function' then cw.pumpObtains(); end
     end);
+    -- The Action sequencer's frame pump (issue #138): advance any live sequence
+    -- (verify worn -> fire -> release) against the live gear/command io. A no-op
+    -- when idle; contained, so a bad frame never breaks present.
+    pcall(function()
+        local aseq = require('dlac\\feature\\actionseq');
+        if type(aseq) == 'table' and type(aseq.pump) == 'function' then aseq.pump(); end
+    end);
     if os.clock() < _seedAt then return; end
     _seedAt = os.clock() + 5.0;
     maintainStorage();

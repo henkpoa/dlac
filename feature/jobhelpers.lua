@@ -107,6 +107,19 @@ function M._serialize(cfg)
         end
     end
     out[#out + 1] = '    },\n';
+    -- rank = { [JOB] = <anchor row name> } -- the JobHelper Claim Priority
+    -- position, per job (issue #138). Written on mutation only, like `order`.
+    local rjobs = {};
+    for job in pairs(type(cfg.rank) == 'table' and cfg.rank or {}) do rjobs[#rjobs + 1] = job; end
+    table.sort(rjobs);
+    out[#out + 1] = '    rank = {\n';
+    for _, job in ipairs(rjobs) do
+        local anchor = cfg.rank[job];
+        if type(anchor) == 'string' and anchor ~= '' then
+            out[#out + 1] = string.format('        [%q] = %q,\n', tostring(job), anchor);
+        end
+    end
+    out[#out + 1] = '    },\n';
     out[#out + 1] = '}\n';
     return table.concat(out);
 end
@@ -114,8 +127,15 @@ end
 -- Normalize a table read off disk into the live shape, tolerating a torn or
 -- older file (drop-on-corrupt / self-heal, the watcher-statefile policy).
 local function normalizeCfg(t)
-    local cfg = { fmt = 1, enabled = {}, order = {} };
+    local cfg = { fmt = 1, enabled = {}, order = {}, rank = {} };
     if type(t) ~= 'table' then return cfg; end
+    if type(t.rank) == 'table' then
+        for job, anchor in pairs(t.rank) do
+            if type(job) == 'string' and type(anchor) == 'string' and anchor ~= '' then
+                cfg.rank[job] = anchor;
+            end
+        end
+    end
     if type(t.enabled) == 'table' then
         for id, v in pairs(t.enabled) do
             if type(id) == 'string' then cfg.enabled[id] = (v == true); end
@@ -228,6 +248,90 @@ function M.moveInSection(job, defaultIds, from, dir)
     cfg.order[job] = order;                      -- the section is written now (mutation)
     saveCfg();
     return order;
+end
+
+-- ---------------------------------------------------------------------------
+-- the JobHelper CLAIM PRIORITY position -- remembered PER JOB (issue #138)
+-- ---------------------------------------------------------------------------
+--
+-- Unlike the global Claim Priority order (arbstate), the JobHelper row's rank
+-- position is per job. It is stored as the ANCHOR row it sits directly below
+-- (robust to other rows moving), default 'Locks' -- above every standing Gear
+-- helper, below Locks/Naked/Free equip. Dragging writes the current job's anchor
+-- ONLY; jobs never dragged keep the default; a stored anchor stays dormant while
+-- no modules are installed and takes effect again the moment one exists
+-- (consistent with the unknown-row preservation slice, #136).
+
+local DEFAULT_ANCHOR = 'Locks';
+
+-- The arbiter's placement law, lazily (it owns placeJobHelper + the identity).
+local function arbiterMod()
+    local a = nil;
+    pcall(function() a = require('dlac\\gear\\arbiter'); end);
+    return (type(a) == 'table') and a or nil;
+end
+
+-- The saved anchor for a job, or the default. nil job -> default.
+function M.rankAnchorFor(job)
+    if type(job) ~= 'string' or job == '' then return DEFAULT_ANCHOR; end
+    local cfg = loadCfg();
+    local a = (cfg ~= nil and type(cfg.rank) == 'table') and cfg.rank[job] or nil;
+    return (type(a) == 'string' and a ~= '') and a or DEFAULT_ANCHOR;
+end
+
+-- Persist the JobHelper anchor for a job (mutation only: a job's rank entry is
+-- created the first time that job drags the row). Dropping to the default clears
+-- the entry, so "jobs never moved keep the default" stays literally true.
+function M.setRankAnchor(job, anchor)
+    if type(job) ~= 'string' or job == '' then return false; end
+    if type(anchor) ~= 'string' or anchor == '' then return false; end
+    local cfg = loadCfg();
+    if cfg == nil then return false; end               -- pre-login: nothing to write to
+    if cfg.rank[job] == anchor then return true; end   -- no change
+    if anchor == DEFAULT_ANCHOR then
+        if cfg.rank[job] == nil then return true; end  -- already default
+        cfg.rank[job] = nil;
+    else
+        cfg.rank[job] = anchor;
+    end
+    saveCfg();
+    return true;
+end
+
+-- The live rank order with the JobHelper row woven in at THIS job's position, or
+-- the base order UNCHANGED when no modules are installed (the row hides). Pure
+-- of engine state; `baseOrder` is the sanitized global order (no JobHelper).
+function M.placedOrder(baseOrder, job)
+    if type(baseOrder) ~= 'table' then return baseOrder; end
+    if M.count() < 1 then return baseOrder; end        -- zero modules: row hidden
+    local arb = arbiterMod();
+    if arb == nil or type(arb.placeJobHelper) ~= 'function' then return baseOrder; end
+    return arb.placeJobHelper(baseOrder, M.rankAnchorFor(job));
+end
+
+-- Move the JobHelper row one step within a job's CURRENT placed order (dir -1 up
+-- / +1 down), persist the new anchor for THAT job, and return the new placed
+-- order (or nil on a no-op / illegal move). The ceiling (Disabled) and floor
+-- (Triggers) are never crossed; only the JobHelper anchor is written -- the
+-- global arbstate is untouched.
+function M.moveRankRow(placedOrder, job, dir)
+    if type(placedOrder) ~= 'table' then return nil; end
+    if type(job) ~= 'string' or job == '' then return nil; end
+    local jhName = 'JobHelper';
+    local arb = arbiterMod();
+    if arb ~= nil and type(arb.JOBHELPER) == 'string' then jhName = arb.JOBHELPER; end
+    local from = nil;
+    for i, n in ipairs(placedOrder) do if n == jhName then from = i; break; end end
+    if from == nil then return nil; end
+    local to = from + (dir < 0 and -1 or 1);
+    if to < 1 or to > #placedOrder then return nil; end
+    if placedOrder[to] == 'Disabled' or placedOrder[to] == 'Triggers' then return nil; end
+    local out = {};
+    for i, v in ipairs(placedOrder) do out[i] = v; end
+    out[from], out[to] = out[to], out[from];
+    local anchor = (to > 1) and out[to - 1] or DEFAULT_ANCHOR;   -- the row now above JobHelper
+    M.setRankAnchor(job, anchor);
+    return out;
 end
 
 -- ---------------------------------------------------------------------------
