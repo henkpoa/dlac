@@ -791,19 +791,33 @@ research already recorded. In rough priority order:
     re-saves as the old pure-OR form, named `standalone status=Resting`. Already-saved
     noisy rules canonicalize on their next edit-save. TE54–TE56;
     trigger-system.md §"Field round 2".
-  - **In flight: #128 (polish) — `ready-for-agent` toggled 2026-07-26 after the field
-    read landed.** Shepherd its PR next. The agent must NOT regress field iteration 1
-    (TE45–TE53 pin it; the layout reactions on #128/#127 override the skeleton's own
-    choices). #129 (blueprints) stays unlabeled until #128 merges — one at a time.
-    Collision watchlist: engine **v128 is TAKEN** (AutoAmmo Range-awareness, same day) and
-    addon is at **`26m`** → next free **v129** / **`26n`**; test ranges
-    CS/TC/TE/TRC/MC/TB/LS*/CMD/NK*/LSP are all taken (TE runs through TE56).
+  - **Completion slice #128 — MERGED to `dev` 2026-07-29 (PR #134, addon `2026.07.29a`),
+    NOT FIELD-TESTED as a whole.** Copy case (per-box `copy` affordance; case 1 = the body
+    box, so "copy the rule body into a new case" falls straight out — pure seam
+    `_copyConds`, deep-copy so the duplicate is independent), "Match either instead" + the
+    repeat-replaces note working INSIDE a case (field iteration 1's `renderBox`
+    already carried it; #128 pins it under test), box-header **hover help** via the
+    panel-text standard (`uistyle.helpLabel` — underlined `& case`/`| case` label,
+    one-sentence semantics in the hover), and the empty-case save refusal (incl. an
+    empty case 1). No engine bump — pure addon-state UI (hard rule 4). Tests
+    **TE57–TE66** (the PR predated field round 2 and numbered them TE54–TE63; renumbered
+    at merge — field round 2 owns TE54–TE56). **Field-test gate:**
+    [design/trigger-cases-fieldtest.md](design/trigger-cases-fieldtest.md) — the
+    dev→main acceptance list (old rules byte-identical, `| case` fires independently,
+    `& case` gates, `/dl why` names the case, old-version drop-with-warn). Did NOT
+    regress field iteration 1 (TE45–TE53 still green). **#129 (blueprints) stays
+    unlabeled** — the Job Helpers train (#135 PRD, #136–#142) holds the one-label
+    pipeline now; queue order between them is Henrik's call.
+    Collision watchlist: engine **v128 is TAKEN** (AutoAmmo Range-awareness); addon now
+    **`2026.07.29a`**; test ranges CS/TC/TE/TRC/MC/TB/LS*/CMD/NK*/LSP are all taken
+    (TE runs through **TE66**).
   - **Both naming decisions CLOSED 2026-07-26**: (1) the `hasCases` guard token stays —
     maintainer sign-off (camelCase like every condition key; a post-main rename would
     need a player-file migration, so it was decided before promotion, deliberately);
     (2) the slice-1 `/dl why` strings were field-witnessed in Henrik's screenshot and
     survive as designed (`standalone <k=v>` for a lone condition — field round 2's
-    canonical legs made that the shape simple rules actually take).
+    canonical legs made that the shape simple rules actually take). The completion PR's
+    "open Henrik decisions" flag predated this closure — nothing is owed there.
   - Also from this session: the `/dl why` frozen-trace field bug — diagnosed, fixed
     (v126, `97f1edc`), **field-confirmed**; see Ready-to-merge. `/dl check` turned out
     **native-era-blind** (three false alarms on a healthy native setup) — filed as **#131**,
