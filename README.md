@@ -227,6 +227,11 @@ state, with a reading order. Then: [CONTEXT.md](CONTEXT.md) (glossary),
 spec), and [docs/history.md](docs/history.md) (session journal — including the
 dead-ends worth not retrying). dlac is CatsEyeXI-only by design (ADR 0001).
 
+**Writing a Job helper module?** Start at
+[docs/reference/jobhelper-authoring-guide.md](docs/reference/jobhelper-authoring-guide.md) —
+the module contract, the services a module may consume, and the hard rules, written so a
+module can be built without reading dlac's source.
+
 **Repository layout** (full version: [docs/architecture.md](docs/architecture.md)):
 the addon root is what LuaAshitacast sees, folders are what only the addon sees.
 
@@ -238,6 +243,7 @@ the addon root is what LuaAshitacast sees, folders are what only the addon sees.
 | `gear/` | the gear pipeline (`gearimport`, `gearoptim`, `setmanager`, ...) |
 | `feature/` | self-contained features (`lockstyle`, `craftwatch`, `useitem`, ...) |
 | `lib/` | generic helpers (`cmdqueue`) |
+| `jobhelpers/` | drop-in Job helper modules, `<job>/<module>/` (one folder = one module) |
 
 The five engine files at root are copied into each character's `<char>\dlac\` folder and
 load a second time inside LuaAshitacast's Lua state, so they cannot move into a subfolder:

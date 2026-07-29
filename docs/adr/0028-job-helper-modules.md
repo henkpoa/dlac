@@ -43,12 +43,16 @@ to a conclusion and left parked until something needed to live in-state. This is
 
 ## Deferred (recorded so the boundary is explicit)
 
-- **The sequencer's "module owns initiation, never reactive" stance** — an instant ability's action
-  packet leaves before any equip it triggers could land, so a module must OWN initiation — is the
-  load-bearing design stance of PRD #135. It belongs in an ADR, but it is recorded WITH the Action
-  sequencer when that slice is built; #137 ships only the module system, the tab, and the BST
-  skeleton. Central services (engage/target edges, pet vitals, ability recasts) and the shared
-  `JobHelper` arbiter claimant are likewise separate slices.
+- **The sequencer's "module owns initiation" stance** — the load-bearing design stance of PRD
+  #135 — was deferred out of #137, which ships only the module system, the tab, and the BST
+  skeleton. It is now recorded in **ADR [0030](0030-module-owns-initiation.md)** (issues
+  #138–#141), and the rationale there is NOT the one this section originally carried: "an instant
+  ability's action packet leaves before any equip it triggers could land" was **falsified in the
+  field on 2026-07-29** — dlac's re-inject pipeline dresses a player-pressed Reward in time. The
+  reasons that hold are *initiation* (the module fires on its own signal, which no Trigger can
+  match) and the *equip precondition* (the act consumes or reads what is WORN). Central services
+  (engage/target edges, pet vitals, ability recasts) and the shared `JobHelper` arbiter claimant
+  landed in those same slices.
 
 ## Considered and rejected
 

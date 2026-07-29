@@ -52,6 +52,17 @@ maintainer IMO, I am just the one with the creative vision."*
    **Resuming this work: read §13 of the design doc first** — it holds the state, the
    decision ledger, tomorrow's first move (the **Dispatch Monitor**, which Henrik is
    managing), and the four things not to re-derive.
+10. **Writing or reviewing a Job helper module** (the modules that ACT — pet commands,
+    ability use — as opposed to Gear helpers, which only equip):
+    [reference/jobhelper-authoring-guide.md](reference/jobhelper-authoring-guide.md) is the
+    author-facing contract, written as the sibling of the integration guide and to be
+    buildable-from without reading dlac source — folder anatomy, the exported table and what
+    an `api` mismatch does, the lifecycle and containment guarantees, per-character config
+    storage, the central services a module may consume, and the five hard rules
+    (claim-not-commit, one-line acks, consume central services, module independence, the
+    sequencer's serialization). The decisions behind it: **ADR 0028** (a module is a folder;
+    one folder = one unit of server approval) and **ADR 0030** (a module owns initiation —
+    and the "can't catch it in time" rationale that was falsified in the field).
 
 There is also a cross-session memory dir (Claude-specific) at
 `~\.claude\projects\C--catseyexi-catseyexi-client-Ashita-addons-dlac\memory\` — it
@@ -383,6 +394,27 @@ research already recorded. In rough priority order:
 
 ## Current state (as of 2026-07-26)
 
+- **2026-07-29: the Job helper module paper — authoring guide + ADR 0030 + the service rows
+  — DOCS ONLY, no behavior** (issue #142, PRD #135; the last slice of the Job Helpers train).
+  [`reference/jobhelper-authoring-guide.md`](reference/jobhelper-authoring-guide.md) is the
+  author-facing contract, written as the sibling of the integration guide and *as shipped*:
+  folder anatomy (`jobhelpers\<job>\<module>\`), the exported table and what an `api`
+  mismatch does, the load lifecycle, the containment table (what dlac guarantees, what it
+  expects back), per-character config storage, every central service a module may consume
+  with the rules that bite, a complete two-file working module, and the five hard rules —
+  **claim-not-commit**, **one-line acks**, **consume the central services**, **module
+  independence on shared jobs**, and the **sequencer's serialization**. Glossary terms are
+  linked to CONTEXT.md, never restated. **ADR 0030** records "a module owns initiation" with
+  its real alternatives — and records that the rationale the PRD carried (*an instant ability
+  cannot be caught reactively*) was **falsified in the field on 2026-07-29**: the reasons that
+  hold are initiation and the equip precondition, and a player's own precast Trigger composes
+  freely with a food-only claim. ADR 0028's Deferred section now points at it. The
+  Central-services table gains the **recast** and **Action sequencer** rows (the edge and
+  vitals rows were already there; their consumer/path lines are corrected to the job-first
+  layout and to Fight's poll rewrite). **Doc drift corrected:** the command queue does *not*
+  "drain one per frame" — `tick()` flushes everything due, in insertion order, and spacing is
+  the caller's `delayFrames`. No engine change, no `dispatch.M.VERSION` bump, no version
+  date-bump: nothing executable moved. Suites **4779 + 817**.
 - **2026-07-29: BST Resummon — the pet-loss edge gets CLASSIFIED, and only a proven jug
   death spends a jug — MERGED to `dev` (`2026.07.29o`), field round owed**
   (issue #141, PRD #135). The third standing BST Helper behavior, and the
