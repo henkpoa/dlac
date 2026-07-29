@@ -1,37 +1,49 @@
 --[[
-    dlac/jobhelpers/bst/init.lua -- the BST Helper module (issue #139 adds the
-    three-way Fight switch; #138 brought "Reward now" and the Action sequence
-    machinery; #137 shipped the skeleton both replace).
+    dlac/jobhelpers/bst/init.lua -- the BST Helper module (issue #140 adds the
+    automatic Reward rule; #139 the three-way Fight switch; #138 brought "Reward
+    now" and the Action sequence machinery; #137 shipped the skeleton they
+    replace).
 
     The FIRST real Job helper, and the proof of the drop-in path end to end.
 
-    Its Panel carries TWO behaviors. The **Fight switch** (bst\fight.lua) is the
-    module's first standing one: Off / When I attack / Follow my target, driven
-    entirely by the engage/target edge service, storing its setting in the
-    module's OWN per-character config file (bst\config.lua). It is wired in the
-    `init` hook below, not by rendering -- a helper must act whether or not its
-    Panel is open.
+    Its Panel carries TWO behaviors, both of them STANDING -- wired in the `init`
+    hook below rather than by rendering, because a helper must act whether or not
+    its Panel is open:
 
-    And the "Reward now" button, which:
-      * picks the best pet food the character both can wear AND is carrying (the
+      * the **Fight switch** (bst\fight.lua) -- Off / When I attack / Follow my
+        target, driven entirely by the engage/target edge service;
+      * the **Reward rule** (bst\reward.lua) -- while it is armed and the pet
+        sits below the player's pet-HP% threshold, it asks for the very sequence
+        the "Reward now" button asks for, once per lockout window. It is driven
+        by the pet vitals service (feature\petvitals), which publishes presence /
+        HP% / TP / name once per dispatch beat.
+
+    Both store their settings in the module's OWN per-character config file
+    (bst\config.lua), and both default OFF.
+
+    The act itself -- button and rule alike -- lives in bst\reward.lua, so there
+    is exactly ONE implementation of it:
+      * pick the best pet food the character both can wear AND is carrying (the
         eight-tier pet-food Ladder, feature\petfood -- no list UI, the bags are
         the control);
-      * optionally overlays a chosen Reward set from the job entry's own Sets;
-      * opens an Action sequence (feature\actionseq): ONE claim (set union food),
-        verified WORN through the gear oracle, then Reward FIRES, then the claim
-        releases and the next arbitration restores gear;
-      * GRAYS OUT while Reward is on cooldown (the ability recast readiness
-        service, feature\recast), rather than firing a command the client
-        rejects.
+      * optionally overlay a chosen Reward set from the job entry's own Sets;
+      * open an Action sequence (feature\actionseq): ONE claim (set union food),
+        the CONSUMED slot verified WORN, then Reward FIRES, then the claim
+        releases and the next arbitration restores gear.
+    The button additionally GRAYS OUT while Reward is on cooldown (the ability
+    recast readiness service, feature\recast) rather than firing a command the
+    client rejects; the rule simply holds, silently, which is the same thing said
+    without a button.
 
     IDENTITY is the folder name ('bst'), assigned by the loader -- this table does
     NOT declare its own id. `label`, `jobs` and `api` are the contract.
 
-    Player-facing names ("BST Helper", "Reward now", "Fight" and its three ways)
-    are PROPOSED, pending the maintainer's sign-off (naming law -- helpers are
-    named, never "Auto <activity>"). Defensive throughout: every imgui + service
-    touch is guarded so the Panel renders headlessly (the smoke suite) and a
-    missing service never tears the tab (hard rules 6, 12).
+    Player-facing names ("BST Helper", "Reward now", "Fight" and its three ways,
+    "Reward my pet when it drops below") are PROPOSED, pending the maintainer's
+    sign-off (naming law -- helpers are named, never "Auto <activity>").
+    Defensive throughout: every imgui + service touch is guarded so the Panel
+    renders headlessly (the smoke suite) and a missing service never tears the
+    tab (hard rules 6, 12).
 ]]--
 
 local COL_DIM  = { 0.70, 0.70, 0.70, 1.00 };
@@ -39,24 +51,10 @@ local COL_WARN = { 1.00, 0.72, 0.30, 1.00 };
 local COL_OK   = { 0.55, 0.90, 0.55, 1.00 };
 local COL_HEAD = { 0.60, 0.75, 1.00, 1.00 };
 
--- The action command. Reward is a BST job ability used on the pet. FLAGGED for
--- field verification: the exact target token on CatsEyeXI (<me> vs <pet>) is
--- confirmed in-game before this ships to players -- the sequencer's verify-worn
--- gate protects the GEAR either way, but a wrong token means the command no-ops.
-local REWARD_CMD = '/ja "Reward" <me>';
-
--- The verify window: how long the sequencer waits for the food to land worn
--- before it ABORTS (nothing fired). A handful of 0.4s dispatches.
-local VERIFY_TIMEOUT = 4;
-
 -- The module's own folder name. The LOADER is the identity authority (it reads
 -- the folder), so this is only the fallback for the paths that run without a
 -- render ctx -- the init hook, which receives deps but not an id.
 local MODULE_ID = 'bst';
-
--- Panel state (file-scope locals, captured by the contract closures below): the
--- optional Reward set the picker chose. 'None' = food only.
-local _setChoice = nil;
 
 -- ---------------------------------------------------------------------------
 -- helpers (all contained -- a missing service degrades, never throws)
@@ -67,118 +65,10 @@ local function req(name)
     return (ok and type(m) == 'table') and m or nil;
 end
 
-local function emit(line)
-    local done = false;
-    local cf = req('dlac\\chatfmt');
-    if cf ~= nil and type(cf.err) == 'function' then pcall(cf.err, line); done = true; end
-    if not done then pcall(function() print('[dlac] ' .. tostring(line)); end); end
-end
-
--- The player's current main job, or nil.
-local function playerJob()
-    local j = nil;
-    pcall(function() j = gData.GetPlayer().MainJob; end);
-    if type(j) ~= 'string' or j == '' or j == '?' then return nil; end
-    return j;
-end
-
--- This module's priority among the current job's section (the tab's section
--- order). Higher wins a simultaneous contention (actionseq.arbitrateRequests);
--- top-of-section is highest, so order = (count - index + 1). Defaults to 1.
-local function sectionOrder(id)
-    local order = 1;
-    pcall(function()
-        local jh = req('dlac\\feature\\jobhelpers');
-        local job = playerJob();
-        if jh == nil or job == nil then return; end
-        local ids = jh.idsForJob(job);
-        for i, n in ipairs(ids) do
-            if n == id then order = (#ids - i + 1); return; end
-        end
-    end);
-    return order;
-end
-
--- The named Reward sets available to pick from -- the job entry's static Sets
--- (Idle, Reward, ...). Never the Dynamic build sets. A short list; the picker is
--- optional.
-local function rewardSetNames()
-    local out = {};
-    pcall(function()
-        local ps = req('dlac\\gear\\profilesets');
-        if ps == nil or type(ps.staticSetNames) ~= 'function' then return; end
-        out = ps.staticSetNames() or {};
-    end);
-    return out;
-end
-
--- Pull a slot -> item-name map from a named set (best-effort: strings and the
--- common wrapper shapes). Missing / unreadable -> empty (food-only claim).
-local function setSlots(name)
-    local slots = {};
-    if type(name) ~= 'string' or name == '' or name == 'None' then return slots; end
-    pcall(function()
-        local ps = req('dlac\\gear\\profilesets');
-        if ps == nil or type(ps.getSetsRoot) ~= 'function' then return; end
-        local root = ps.getSetsRoot();
-        local set = (type(root) == 'table') and root[name] or nil;
-        if type(set) ~= 'table' then return; end
-        for slot, v in pairs(set) do
-            local item = nil;
-            if type(v) == 'string' then item = v;
-            elseif type(v) == 'table' then item = v.Name or v.name or v.item; end
-            if type(item) == 'string' and item ~= '' then slots[slot] = item; end
-        end
-    end);
-    return slots;
-end
-
--- Build the Action sequence claim: the optional Reward set overlaid, then the
--- chosen food forced into Ammo (food always wins the ammo slot -- the union the
--- PRD names). Returns claim, need.
-local function buildRequest(id, foodName, setName)
-    local claim = setSlots(setName);
-    claim.Ammo = foodName;                 -- food ∪ set; food owns Ammo
-    return {
-        module  = id,
-        label   = 'Reward',
-        order   = sectionOrder(id),
-        claim   = claim,
-        need    = { Ammo = foodName },      -- the one slot that MUST verify worn
-        command = REWARD_CMD,
-        timeout = VERIFY_TIMEOUT,
-    };
-end
-
--- The click handler: pick food, refuse loudly if none, else open the sequence.
-local function doReward(id)
-    local petfood   = req('dlac\\feature\\petfood');
-    local actionseq = req('dlac\\feature\\actionseq');
-    if petfood == nil or actionseq == nil then
-        emit('Reward unavailable: a required service failed to load.');
-        return;
-    end
-    local pick = petfood.choose();
-    if not pick.ok then
-        emit('Reward: ' .. petfood.refusalLine(pick));     -- loud refusal (AC4)
-        return;
-    end
-    local res = actionseq.request(buildRequest(id, pick.name, _setChoice));
-    if type(res) == 'table' and res.ok ~= true then
-        if res.reason == 'busy' then
-            emit(string.format('Reward is busy -- %s is running a sequence.',
-                tostring(res.holderLabel or res.holder or 'another helper')));
-        end
-        return;
-    end
-    -- Kick one Default so the claim applies now rather than on the next 0.4s
-    -- tick (the same explicit re-dispatch a mode flip does). The pump then reads
-    -- the worn food and fires. Contained: the tick is the fallback.
-    pcall(function()
-        local dsp = req('dlac\\dispatch');
-        if dsp ~= nil and type(dsp.kickDefault) == 'function' then dsp.kickDefault(); end
-    end);
-end
+-- The Reward rule + the act itself. Both the button and the automatic rule go
+-- through this ONE module, which is why "identical refusal behavior to the
+-- button" needs no second implementation to agree with.
+local function rewardMod() return req('dlac\\jobhelpers\\bst\\reward'); end
 
 -- ---------------------------------------------------------------------------
 -- the Fight switch (issue #139) -- three buttons, one of them lit
@@ -230,6 +120,44 @@ local function modeButton(imgui, fight, id, m, current, w)
 end
 
 -- ---------------------------------------------------------------------------
+-- the Reward rule's threshold widget (issue #140)
+-- ---------------------------------------------------------------------------
+
+-- The pet-HP% slider. Returns (newValue|nil, drew) -- `drew` so the caller only
+-- SameLines a label onto a widget that actually reached the screen.
+--
+-- SliderFloat, not SliderInt: SliderInt is called nowhere in dlac and presence
+-- would prove nothing about it (hard rule 2 -- BeginPopupContextItem was bound
+-- and did not work), whereas SliderFloat is FIELD-PROVEN as the floating-gear
+-- scale slider in equippedui. The '%.0f%%' format makes it read as whole
+-- percent, and the value is clamped to whole numbers by reward.clampThreshold on
+-- the way into the config. InputInt (also proven, three panels use it) is the
+-- fallback for a binding without either.
+local function thresholdWidget(imgui, reward, id, cur)
+    local out, drew = nil, false;
+    local key = '##bstrewardthr_' .. id;
+    if type(imgui.PushItemWidth) == 'function' then imgui.PushItemWidth(150); end
+    if type(imgui.SliderFloat) == 'function' then
+        local buf = { cur };
+        drew = true;
+        if imgui.SliderFloat(key, buf, reward.MIN_THRESHOLD, reward.MAX_THRESHOLD, '%.0f%%') then
+            out = buf[1];
+        end
+    elseif type(imgui.InputInt) == 'function' then
+        local buf = { cur };
+        drew = true;
+        if imgui.InputInt(key, buf) then out = buf[1]; end
+    end
+    if type(imgui.PopItemWidth) == 'function' then imgui.PopItemWidth(); end
+    if drew and type(imgui.IsItemHovered) == 'function' and imgui.IsItemHovered()
+       and type(imgui.SetTooltip) == 'function' then
+        imgui.SetTooltip('Your pet has to be BELOW this to be fed -- a pet sitting exactly on it is not.\n'
+            .. 'Drag it, or double-click to type a number.');
+    end
+    return out, drew;
+end
+
+-- ---------------------------------------------------------------------------
 -- the contract
 -- ---------------------------------------------------------------------------
 return {
@@ -238,14 +166,20 @@ return {
     jobs  = { 'BST' },         -- declared main jobs
 
     -- The init hook: arm the standing behaviors. Runs ONCE at addon load, from
-    -- the loader, and deliberately not from a render -- Fight must work with the
-    -- Job Helpers tab closed. `deps` is the shared-services table (unused here;
-    -- fight.lua consumes the central services by name). Contained by the loader:
-    -- a throw here refuses the whole module, so nothing in it may throw.
+    -- the loader, and deliberately not from a render -- both behaviors must work
+    -- with the Job Helpers tab closed. `deps` is the shared-services table
+    -- (unused here; fight.lua and reward.lua consume the central services by
+    -- name). Contained by the loader: a throw here refuses the whole module, so
+    -- nothing in it may throw -- and the two subscriptions are contained
+    -- SEPARATELY, so a broken edge service cannot cost the Reward rule its beat.
     init = function(deps)
         pcall(function()
             local fight = req('dlac\\jobhelpers\\bst\\fight');
             if fight ~= nil and type(fight.init) == 'function' then fight.init(MODULE_ID); end
+        end);
+        pcall(function()
+            local reward = rewardMod();
+            if reward ~= nil and type(reward.init) == 'function' then reward.init(MODULE_ID); end
         end);
     end,
 
@@ -299,7 +233,8 @@ return {
             space();
         end
 
-        -- ----- Reward (issue #138) ------------------------------------------
+        -- ----- Reward (issues #138 + #140) ----------------------------------
+        local reward = rewardMod();
         txt(COL_HEAD, 'Reward');
         txt(COL_DIM, 'Reward tops up your pet with the best pet food you carry -- highest tier'
             .. ' your level allows and your bags hold. dlac equips the food, verifies it landed,'
@@ -315,19 +250,75 @@ return {
         local petfood = req('dlac\\feature\\petfood');
         local pick = petfood ~= nil and petfood.choose() or { ok = false, reason = 'none-carried' };
 
-        -- optional Reward set picker (guarded: the combo is not in every binding)
-        if type(imgui.BeginCombo) == 'function' and type(imgui.EndCombo) == 'function' then
+        -- ----- the automatic rule (issue #140): switch + threshold ----------
+        -- The switch comes FIRST and the slider under it, because the slider is
+        -- meaningless until the rule is armed -- and the switch is what a player
+        -- scanning the Panel for "is this thing going to act on its own?" is
+        -- looking for.
+        if reward ~= nil then
+            local armed = reward.armed();
+            if type(imgui.Checkbox) == 'function' then
+                local buf = { armed };
+                if imgui.Checkbox('Reward my pet when it drops low##bstrewardauto_' .. id, buf) then
+                    reward.setArmed(buf[1]);
+                    armed = buf[1];
+                end
+                if type(imgui.IsItemHovered) == 'function' and imgui.IsItemHovered()
+                   and type(imgui.SetTooltip) == 'function' then
+                    imgui.SetTooltip('Off by default. Armed, dlac runs the same sequence the button below runs\n'
+                        .. 'whenever your pet is under the threshold -- once per '
+                        .. tostring(reward.LOCKOUT_S) .. ' seconds at most, so a hurt pet\n'
+                        .. 'never turns into a stream of commands or chat lines.');
+                end
+            end
+
+            local th = reward.threshold();
+            local newTh, drewThr = thresholdWidget(imgui, reward, id, th);
+            if newTh ~= nil then reward.setThreshold(newTh); th = reward.clampThreshold(newTh); end
+            if drewThr and type(imgui.SameLine) == 'function' then imgui.SameLine(0, 8); end
+            txt(COL_DIM, string.format('below %d%% pet HP', th));
+
+            -- Why the rule is or is not acting right now, and what the last beat
+            -- decided. Deliberately here and NOT in chat: the rule evaluates
+            -- every dispatch beat, and only an ATTEMPT is news.
+            --
+            -- The WARN line is reserved for the module gates -- the same reads
+            -- the Fight section warns on. "No pet out", "above the threshold"
+            -- and "waiting out the lockout" are the rule working, not the rule
+            -- blocked, and colouring them orange would cry wolf all session;
+            -- they land in the dim "Last beat" line below instead.
+            local ract = nil;
+            pcall(function()
+                local jh = req('dlac\\feature\\jobhelpers');
+                if jh ~= nil and type(jh.activity) == 'function' then ract = jh.activity(id); end
+            end);
+            local lastD = reward.lastDecision();
+            if not armed then
+                txt(COL_DIM, 'The rule is off -- the button below is the only thing that feeds your pet.');
+            elseif type(ract) == 'table' and ract.active ~= true then
+                txt(COL_WARN, 'Not acting: ' .. tostring(ract.label or 'inactive') .. '.');
+            else
+                txt(COL_OK, string.format('Armed: below %d%% pet HP.', th));
+            end
+            if lastD ~= nil then
+                txt(COL_DIM, 'Last beat: ' .. reward.decisionText(lastD) .. '.');
+            end
+            space();
+        end
+
+        -- optional Reward set picker (guarded: the combo is not in every
+        -- binding). PERSISTED since #140: the automatic rule has no Panel to
+        -- read a session-only choice from.
+        if reward ~= nil and type(imgui.BeginCombo) == 'function' and type(imgui.EndCombo) == 'function' then
             txt(COL_DIM, 'Reward set (optional):');
-            local cur = _setChoice or 'None';
+            local cur = reward.setName() or 'None';
             if imgui.BeginCombo('##bstrewardset_' .. id, cur) then
                 local names = { 'None' };
-                for _, n in ipairs(rewardSetNames()) do names[#names + 1] = n; end
+                for _, n in ipairs(reward.setNames()) do names[#names + 1] = n; end
                 for _, n in ipairs(names) do
                     local sel = (cur == n);
                     if type(imgui.Selectable) == 'function' and imgui.Selectable(n, sel) then
-                        -- plain if/else: `(x) and nil or y` always yields y --
-                        -- the documented ternary trap (07-23 review lesson).
-                        if n == 'None' then _setChoice = nil; else _setChoice = n; end
+                        reward.setSetName(n);
                     end
                 end
                 imgui.EndCombo();
@@ -335,13 +326,15 @@ return {
             space();
         end
 
-        -- the button -- a real Button when ready, a dim countdown when down
+        -- the button -- a real Button when ready, a dim countdown when down. It
+        -- stays whatever the rule is set to: it is the deliberate feed, and the
+        -- field-test lever for the whole sequence.
         if ready then
             local clicked = false;
             if type(imgui.Button) == 'function' then
                 clicked = imgui.Button('Reward now##bstreward_' .. id, { 130, 26 });
             end
-            if clicked then doReward(id); end
+            if clicked and reward ~= nil then reward.request(id); end
         else
             if type(imgui.TextDisabled) == 'function' then
                 imgui.TextDisabled(string.format('Reward now  (down %ss)', tostring(remaining or '?')));
@@ -356,6 +349,19 @@ return {
             txt(COL_OK, 'Food: ' .. tostring(pick.name));
         else
             txt(COL_WARN, petfood ~= nil and petfood.refusalLine(pick) or 'no pet food available.');
+        end
+
+        -- the live pet, when there is one -- the vitals service's own answer, so
+        -- the Panel and the rule can never disagree about the bar they read.
+        local pv = req('dlac\\feature\\petvitals');
+        if pv ~= nil then
+            local v = pv.get();
+            if type(v) == 'table' and v.present == true then
+                txt(COL_DIM, string.format('Pet: %s at %s%% HP.',
+                    tostring(v.name or 'your pet'), tostring(v.hpp or '?')));
+            else
+                txt(COL_DIM, 'Pet: none out.');
+            end
         end
 
         -- the live sequence state, if one is running

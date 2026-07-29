@@ -7090,3 +7090,82 @@ not.
 Both suites green (**4429 + 793**, lua5.4). Player-facing strings (**Fight**, *Off* / *When I
 attack* / *Follow my target*) and the exact `/pet "Fight"` command spelling on CatsEyeXI await
 the maintainer's sign-off and a field round.
+
+## Session "BST auto-Reward: the pet vitals service + the threshold" (issue #140, PRD #135)
+
+**Theme:** the second standing Job-helper behavior, the first that SPENDS AN ITEM, and the
+central service that supplies its signal. Builds on #137 (module system), #138 (Action
+sequencer + the "Reward now" button) and #139 (the Fight switch), all on `dev`.
+
+**Landed:**
+- `feature/petvitals.lua` — the **pet vitals** central service (new row in the architecture
+  doc's Central-services table). One question — presence / HP% / TP / name — published to
+  subscribers once per dispatch beat by `pump()` and answered on demand by `get()`.
+- `jobhelpers/bst/reward.lua` — the **Reward rule** AND the act. `decide(vitals, state)` is
+  pure, so the threshold, the lockout and every gate are headless checks (BRW*).
+- `jobhelpers/bst/config.lua` — three new rows: `rewardArmed` (default **off**),
+  `rewardThreshold` (default **50**) and `rewardSet`.
+- The Panel's Reward section gains the rule switch and the pet-HP% slider; the "Reward now"
+  button stays exactly where it was.
+
+**The five things worth not re-deriving:**
+
+1. **The rule is a second REQUESTER, not a second implementation.** The act — pick the food
+   off the Ladder, overlay the optional Reward set, open ONE Action sequence — moved out of
+   the button's click handler into `reward.request(id)`, and both callers land there. So the
+   acceptance criterion "identical refusal behavior to the button" is a property of the code
+   rather than of two test suites agreeing with each other, and BRW62–BRW66 prove it by
+   comparing the two paths' requests claim-for-claim. A copy would have passed its own tests
+   and drifted on the first change.
+2. **A central service must not be born as the second implementation of its own answer.**
+   dlac already had exactly one pet reader — `gData.GetPet()`, the LAC-parity provider in
+   `feature/nativedata` that the ENGINE reads every dispatch for the pet trigger conditions
+   (v63). `petvitals` consumes it; it does not open a second `GetPetTargetIndex` /
+   `GetHPPercent` pair. And the Fight switch's own raw pair — written in #139, before there
+   was anywhere else to ask — was deleted in the same commit, the same move `engagewatch`
+   made for the edge decode.
+3. **Presence is two-state on purpose, and that is not a shortcut.** `gData.GetPet()` answers
+   nil for both "no pet" and "the read failed", and the two are deliberately NOT separated:
+   every consumer of this service issues a command or spends an item, and #139 already ruled
+   that a read we cannot make is not permission to do either. The individual vitals stay
+   nil-able, because there the honest answer IS available — a present pet whose HP could not
+   be read is reported, never guessed at, and `decide` refuses on it (`no-hp`). Guessing a
+   pet's HP is how a Reward gets fired at a healthy pet.
+4. **The lockout is armed by ATTEMPTS, and two holds are deliberately not attempts.** A rule
+   reads a STATE, and a state persists — a pet under the threshold is still under it on the
+   next beat — so without a lockout one hurt pet becomes a stream of commands and a stream of
+   chat lines. One attempt per window gives "at most one refusal line per window" for free.
+   But "a sequence is already running" and "Reward is still on cooldown" attempted nothing,
+   so neither burns the window: the moment the recast returns, the held Reward goes (BRW84).
+   The recast hold is also **silent** — the button it mirrors is greyed out and says nothing,
+   so "identical to the button" means saying nothing here too. That is what stops Reward's
+   ~90-second recast from becoming three refusal lines a minute, which a naive "every hold is
+   a refusal" reading would have shipped.
+5. **The food ladder was reading the wrong level.** Carried over from the #138 merge review:
+   `petfood` gated on raw `MainJobLevel`, making it the one picker in dlac that ignores
+   `/dl set level main` — and under LEVEL SYNC it would pick a tier above the cap, have the
+   equip refused, and end in a contained verify TIMEOUT instead of correctly falling a rung.
+   It now reads the override first and `MainJobSync` second, exactly as `dispatch`'s
+   `playerLevel`, `utils.determineLevels` and the Ammo panel's `gearLevel` do. PF7–PF12; the
+   house law is the AutoAmmo v134 lesson, stated a third time.
+
+**The one design call that is not in the issue text: the rule ships OFF.** The issue names a
+slider defaulting to 50 and no switch, but `jobhelpers/bst/config.lua` already carries the law
+that produced Fight's default — *"this module ISSUES COMMANDS, so a freshly installed helper
+must never start driving the pet on its own"* — and this rule additionally EATS a player's
+food. So the switch is new and defaults off, and 50 is the slider's resting position rather
+than an arming decision. Flagged for the maintainer in the PR: overruling it is one default.
+
+**Threading and cost.** `petvitals.pump()` rides `dlac.lua`'s `d3d_present` beside the
+sequencer's and the edge service's, throttles itself to `TICK_S` = 0.4s (the engine's own
+dispatch beat), and **does not read the world at all while nothing is subscribed** — so the
+service is free on every job that is not BST. `get()` has no cache and reads now, so no caller
+can be handed a record older than its own question. The service also joined the load array,
+not just the pcall'd pump: the #139 review lesson is that a module only ever required inside a
+per-frame pcall fails silently forever and is invisible to `/dl check`.
+
+Both suites green (**4572 + 798**, lua5.4). No seeded file changed, so `dispatch.M.VERSION` is
+untouched. Player-facing strings (**"Reward my pet when it drops low"**, *below N% pet HP*),
+the 30-second lockout, and the ships-off default await the maintainer's sign-off and a field
+round; pet TP is published but nothing consumes it yet, and its scale is unverified against
+the live server.

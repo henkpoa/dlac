@@ -197,21 +197,24 @@ function M.lastDecision() return _last; end
 
 M.reads = {};
 
--- Is a pet out RIGHT NOW? true / false / nil (unreadable). Jug and charmed pets
--- answer identically: the pet target index is the pet target index, whatever put
--- it there -- which is exactly why Fight needs no pet-type test anywhere.
--- (The nativedata.GetPet shape: index 0 = none, HP% 0 = not a live pet.)
+-- Is a pet out RIGHT NOW? Asked of the PET VITALS central service (issue #140),
+-- which owns the one pet read and the "dead pet = no pet" law -- this module
+-- carried its own GetPetTargetIndex/GetHPPercent pair until that service landed,
+-- and a second implementation of a centralized answer is exactly what the
+-- Central-services rule forbids. `present` is two-state there (no pet and an
+-- unreadable pet decide alike), which is what `decide` already wanted: only a
+-- POSITIVE true is permission to command a pet.
+--
+-- Jug and charmed pets answer identically: the pet target index is the pet
+-- target index, whatever put it there -- which is exactly why Fight needs no
+-- pet-type test anywhere.
 M.reads.pet = function()
     local has = nil;
     pcall(function()
-        local mm = AshitaCore:GetMemoryManager();
-        local myIdx = mm:GetParty():GetMemberTargetIndex(0);
-        local petIdx = mm:GetEntity():GetPetTargetIndex(myIdx);
-        if type(petIdx) ~= 'number' then return; end
-        if petIdx == 0 then has = false; return; end
-        local hpp = mm:GetEntity():GetHPPercent(petIdx);
-        if type(hpp) ~= 'number' then return; end
-        has = (hpp > 0);
+        local pv = require('dlac\\feature\\petvitals');
+        if type(pv) ~= 'table' or type(pv.get) ~= 'function' then return; end
+        local v = pv.get();
+        if type(v) == 'table' then has = (v.present == true); end
     end);
     return has;
 end;

@@ -3957,6 +3957,27 @@ end)();
         buttons[#buttons + 1] = tostring(label);
         return clickId ~= nil and type(label) == 'string' and label:find(clickId, 1, true) ~= nil;
     end
+    -- The Reward rule's two controls (issue #140) are recorded the same way: a
+    -- Checkbox (the rule switch) and a SliderFloat (the pet-HP% threshold), both
+    -- drivable by id so the click/drag is proven to reach the setter and not
+    -- just to draw.
+    local checks, sliders, tickId, dragId, dragTo = {}, {}, nil, nil, 0;
+    IM.Checkbox = function(label, t)
+        checks[#checks + 1] = tostring(label);
+        if tickId ~= nil and type(label) == 'string' and label:find(tickId, 1, true) ~= nil then
+            if type(t) == 'table' then t[1] = not t[1]; end
+            return true;
+        end
+        return false;
+    end
+    IM.SliderFloat = function(label, t)
+        sliders[#sliders + 1] = tostring(label);
+        if dragId ~= nil and type(label) == 'string' and label:find(dragId, 1, true) ~= nil then
+            if type(t) == 'table' then t[1] = dragTo; end
+            return true;
+        end
+        return false;
+    end
     IM.GetCursorScreenPos    = function() return 0, 0; end
     IM.GetContentRegionAvail = function() return 400, 400; end
     IM.GetWindowDrawList = function()
@@ -4032,6 +4053,32 @@ end)();
             clickId = nil;
             check('S339 clicking a way sets that mode', setLog[#setLog], 'follow');
             fight.setMode = realSet;
+        end
+
+        -- the Reward RULE's two controls actually reach the screen (issue #140),
+        -- and a tick / a drag reaches its setter. Same reasoning as S336-S339:
+        -- the Panel draws inside a render pcall, so a typo here would silently
+        -- blank the switch in-game and still pass every load test.
+        check('S340 the Reward rule switch draws',
+              table.concat(checks, '|'):find('bstrewardauto_bst', 1, true) ~= nil, true);
+        check('S341 the pet-HP threshold slider draws beside it',
+              table.concat(sliders, '|'):find('bstrewardthr_bst', 1, true) ~= nil, true);
+        local rwOk, reward = pcall(require, 'dlac\\jobhelpers\\bst\\reward');
+        check('S342 the Reward rule loads as a module-folder sibling', rwOk and type(reward), 'table');
+        if rwOk then
+            local realArm, realThr = reward.setArmed, reward.setThreshold;
+            local armLog, thrLog = {}, {};
+            reward.setArmed     = function(v) armLog[#armLog + 1] = v; return true; end
+            reward.setThreshold = function(v) thrLog[#thrLog + 1] = v; return true; end
+            tickId = 'bstrewardauto_bst';
+            pcall(jhui.renderTab, 'BST', 99);
+            tickId = nil;
+            check('S343 ticking the switch reaches the setter', armLog[#armLog], true);
+            dragId, dragTo = 'bstrewardthr_bst', 35;
+            pcall(jhui.renderTab, 'BST', 99);
+            dragId = nil;
+            check('S344 dragging the slider reaches the setter', thrLog[#thrLog], 35);
+            reward.setArmed, reward.setThreshold = realArm, realThr;
         end
 
         -- the optional row-status hook is actually invoked during a row render.

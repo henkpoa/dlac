@@ -30,17 +30,26 @@ local M = {};
 M.FILE = 'jobhelper-bst.lua';
 M.FMT  = 1;
 
--- The settings this module persists, and their types. Fight is the only one this
--- slice ships; Reward + resummon add rows here when those slices land.
+-- The settings this module persists, and their types. Fight came with #139;
+-- the three Reward rows with #140; resummon adds its own when that slice lands.
 M.KEYS = {
-    fight = 'string',        -- 'off' | 'attack' | 'follow' (see fight.lua)
+    fight           = 'string',     -- 'off' | 'attack' | 'follow' (see fight.lua)
+    rewardArmed     = 'boolean',    -- the automatic Reward rule switch (reward.lua)
+    rewardThreshold = 'number',     -- pet HP%; the rule fires strictly below it
+    rewardSet       = 'string',     -- the optional Reward set by name; '' = food only
 };
 
--- Defaults for an absent key. Fight defaults OFF: this module ISSUES COMMANDS,
--- so a freshly installed helper must never start driving the pet on its own --
--- the player arms it, unlike the row pill (default on, and it only un-silences).
+-- Defaults for an absent key. The two switches default OFF: this module ISSUES
+-- COMMANDS -- and the Reward rule additionally SPENDS AN ITEM -- so a freshly
+-- installed helper must never start driving the pet or eating a player's food on
+-- its own. The player arms them, unlike the row pill (default on, and it only
+-- un-silences). The threshold's default is the PRD's 50; it is the slider's
+-- resting position, not an arming decision.
 M.DEFAULTS = {
-    fight = 'off',
+    fight           = 'off',
+    rewardArmed     = false,
+    rewardThreshold = 50,
+    -- rewardSet has no default: absent means "food only" (see reward.setName).
 };
 
 -- The <char>\dlac\ dir resolver (lib\statefile -> profiles.dataDir). Injectable
