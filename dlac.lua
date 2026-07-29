@@ -18,7 +18,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.07.29b';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.07.29c';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
 addon.desc    = 'Gear sets, triggers and live stats with level scaling -- dlac equips your gear itself.';
 
@@ -215,7 +215,8 @@ for _, mod in ipairs({ 'gear', 'feature\\augments', 'gear\\gearoptim', 'gear\\ge
                        'feature\\meritwatch', 'feature\\integration',
                        'feature\\check', 'feature\\debug', 'feature\\lockstyle',
                        'feature\\lockstyleapply', 'feature\\equipengine',
-                       'feature\\engine', 'ui\\gearui' }) do
+                       'feature\\engine', 'ui\\gearui',
+                       'feature\\jobhelpers', 'ui\\jobhelpersui' }) do
     local ok, err = pcall(require, 'dlac\\' .. mod);
     ledger.total = ledger.total + 1;
     if not ok then
@@ -224,6 +225,22 @@ for _, mod in ipairs({ 'gear', 'feature\\augments', 'gear\\gearoptim', 'gear\\ge
         if _cfok then _cfmt.err(m); else print('[dlac] ' .. m); end
     end
 end
+
+-- Job helper modules (issue #137): now that the UI host and main GUI are up, scan
+-- addons\dlac\jobhelpers\ for drop-in module folders. The loader feeds the SAME
+-- ledger (so /dl check counts them and names any failures), contains a wrong-api /
+-- throwing / malformed folder to one loud line, then the Job Helpers tab registers
+-- to the right of Gear Helpers -- but ONLY when at least one module loaded.
+pcall(function()
+    local jh = require('dlac\\feature\\jobhelpers');
+    local host = require('dlac\\ui\\uihost');
+    -- shared services handed to each module's init(deps) hook.
+    local deps = { host = host, jobhelpers = jh };
+    jh.load(deps);
+    local jhui = require('dlac\\ui\\jobhelpersui');
+    if type(jhui.init) == 'function' then jhui.init(deps); end
+    if type(jhui.maybeRegister) == 'function' then jhui.maybeRegister(host); end
+end);
 
 -- The beacon's second half: the ledger, appended once the loop is done. A
 -- module failure is now readable OFF DISK (addons\dlac\debug\load-report.txt)
