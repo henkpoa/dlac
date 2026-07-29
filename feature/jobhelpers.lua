@@ -236,7 +236,7 @@ end
 --
 -- PURE core: given a module and injected live reads, decide whether the module
 -- is acting and, if not, WHY -- in the fixed precedence the row shows:
---   off  (pill)  ->  wrong main job  ->  town  ->  dead  ->  zoning  ->  active
+--   off  (pill)  ->  wrong main job  ->  zoning  ->  dead  ->  town  ->  active
 -- The pill (enabled) is checked FIRST because a silenced module has no reason
 -- beyond "you turned it off". Unknown reads (nil job, nil inTown) never
 -- manufacture a reason -- the module stays "active" on an unreadable world, the
