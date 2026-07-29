@@ -3949,6 +3949,14 @@ end)();
     for _, n in ipairs({ 'Button', 'IsItemHovered', 'IsItemClicked', 'IsItemActive' }) do
         IM[n] = function() return false; end
     end
+    -- Buttons are RECORDED (and one can be clicked by id): the BST Panel's Fight
+    -- switch (issue #139) is three of them, drawn inside jobhelpersui's render
+    -- pcall -- a typo there would blank the switch in-game and pass a load test.
+    local buttons, clickId = {}, nil;
+    IM.Button = function(label)
+        buttons[#buttons + 1] = tostring(label);
+        return clickId ~= nil and type(label) == 'string' and label:find(clickId, 1, true) ~= nil;
+    end
     IM.GetCursorScreenPos    = function() return 0, 0; end
     IM.GetContentRegionAvail = function() return 400, 400; end
     IM.GetWindowDrawList = function()
@@ -4004,6 +4012,27 @@ end)();
         check('S331 tab render runs against the stub', rok, true);
         if not rok then print('   jobhelpers render error: ' .. tostring(rerr)); end
         balanced('S332 tab + BST Panel');
+
+        -- the BST Panel's three-way Fight switch actually reaches the screen
+        -- (issue #139), and a click on one of its ways reaches the setter.
+        local drawn = table.concat(buttons, '|');
+        check('S336 the Fight switch draws its three ways',
+              drawn:find('Off##bstfight_off_bst', 1, true) ~= nil
+              and drawn:find('When I attack##bstfight_attack_bst', 1, true) ~= nil
+              and drawn:find('Follow my target##bstfight_follow_bst', 1, true) ~= nil, true);
+        check('S337 the Reward button is still there beside it',
+              drawn:find('Reward now##bstreward_bst', 1, true) ~= nil, true);
+        local fightOk, fight = pcall(require, 'dlac\\jobhelpers\\bst\\fight');
+        check('S338 the Fight core loads as a module-folder sibling', fightOk and type(fight), 'table');
+        if fightOk then
+            local realSet, setLog = fight.setMode, {};
+            fight.setMode = function(m) setLog[#setLog + 1] = m; return true; end
+            clickId = 'bstfight_follow_bst';
+            pcall(jhui.renderTab, 'BST', 99);
+            clickId = nil;
+            check('S339 clicking a way sets that mode', setLog[#setLog], 'follow');
+            fight.setMode = realSet;
+        end
 
         -- the optional row-status hook is actually invoked during a row render.
         local statusCalls = 0;

@@ -18,7 +18,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.07.29e';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.07.29f';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
 addon.desc    = 'Gear sets, triggers and live stats with level scaling -- dlac equips your gear itself.';
 
@@ -147,6 +147,15 @@ ashita.events.register('d3d_present', 'dlac-seed-watch', function()
         local aseq = require('dlac\\feature\\actionseq');
         if type(aseq) == 'table' and type(aseq.pump) == 'function' then aseq.pump(); end
     end);
+    -- The engage/target edge service's frame pump (issue #139): the packet_out
+    -- handler stashes decoded edges on the NETWORK thread and does nothing else;
+    -- this drains them HERE -- debounce, entity name, subscriber callbacks -- so
+    -- no chat/IO/entity read ever runs on the packet thread (the chocowatch
+    -- rule). A no-op when the queue is empty.
+    pcall(function()
+        local ew = require('dlac\\feature\\engagewatch');
+        if type(ew) == 'table' and type(ew.pump) == 'function' then ew.pump(); end
+    end);
     if os.clock() < _seedAt then return; end
     _seedAt = os.clock() + 5.0;
     maintainStorage();
@@ -220,6 +229,7 @@ for _, mod in ipairs({ 'gear', 'feature\\augments', 'gear\\gearoptim', 'gear\\ge
                        'ui\\craftbar', 'feature\\helmwatch', 'ui\\helmbar',
                        'feature\\fishwatch', 'ui\\fishbar', 'feature\\chocowatch',
                        'feature\\meritwatch', 'feature\\integration',
+                       'feature\\engagewatch',
                        'feature\\check', 'feature\\debug', 'feature\\lockstyle',
                        'feature\\lockstyleapply', 'feature\\equipengine',
                        'feature\\engine', 'ui\\gearui',

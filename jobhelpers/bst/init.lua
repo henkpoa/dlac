@@ -1,10 +1,18 @@
 --[[
-    dlac/jobhelpers/bst/init.lua -- the BST Helper module (issue #138 -- the
-    "Reward now" button rides the Action sequence machinery; #137 shipped the
-    skeleton this replaces).
+    dlac/jobhelpers/bst/init.lua -- the BST Helper module (issue #139 adds the
+    three-way Fight switch; #138 brought "Reward now" and the Action sequence
+    machinery; #137 shipped the skeleton both replace).
 
-    The FIRST real Job helper, and the proof of the drop-in path end to end. Its
-    Panel now carries ONE demoable behavior -- a "Reward now" button that:
+    The FIRST real Job helper, and the proof of the drop-in path end to end.
+
+    Its Panel carries TWO behaviors. The **Fight switch** (bst\fight.lua) is the
+    module's first standing one: Off / When I attack / Follow my target, driven
+    entirely by the engage/target edge service, storing its setting in the
+    module's OWN per-character config file (bst\config.lua). It is wired in the
+    `init` hook below, not by rendering -- a helper must act whether or not its
+    Panel is open.
+
+    And the "Reward now" button, which:
       * picks the best pet food the character both can wear AND is carrying (the
         eight-tier pet-food Ladder, feature\petfood -- no list UI, the bags are
         the control);
@@ -19,11 +27,11 @@
     IDENTITY is the folder name ('bst'), assigned by the loader -- this table does
     NOT declare its own id. `label`, `jobs` and `api` are the contract.
 
-    Player-facing names ("BST Helper", "Reward now") are PROPOSED, pending the
-    maintainer's sign-off (naming law -- helpers are named, never "Auto
-    <activity>"). Defensive throughout: every imgui + service touch is guarded so
-    the Panel renders headlessly (the smoke suite) and a missing service never
-    tears the tab (hard rules 6, 12).
+    Player-facing names ("BST Helper", "Reward now", "Fight" and its three ways)
+    are PROPOSED, pending the maintainer's sign-off (naming law -- helpers are
+    named, never "Auto <activity>"). Defensive throughout: every imgui + service
+    touch is guarded so the Panel renders headlessly (the smoke suite) and a
+    missing service never tears the tab (hard rules 6, 12).
 ]]--
 
 local COL_DIM  = { 0.70, 0.70, 0.70, 1.00 };
@@ -40,6 +48,11 @@ local REWARD_CMD = '/ja "Reward" <me>';
 -- The verify window: how long the sequencer waits for the food to land worn
 -- before it ABORTS (nothing fired). A handful of 0.4s dispatches.
 local VERIFY_TIMEOUT = 4;
+
+-- The module's own folder name. The LOADER is the identity authority (it reads
+-- the folder), so this is only the fallback for the paths that run without a
+-- render ctx -- the init hook, which receives deps but not an id.
+local MODULE_ID = 'bst';
 
 -- Panel state (file-scope locals, captured by the contract closures below): the
 -- optional Reward set the picker chose. 'None' = food only.
@@ -168,6 +181,55 @@ local function doReward(id)
 end
 
 -- ---------------------------------------------------------------------------
+-- the Fight switch (issue #139) -- three buttons, one of them lit
+-- ---------------------------------------------------------------------------
+
+local function fightMod() return req('dlac\\jobhelpers\\bst\\fight'); end
+
+-- The widest of the three labels, MEASURED (the craftbar "Last Synth" lesson --
+-- a hardcoded width clipped the trailing character). Falls back to a width that
+-- fits "Follow my target" at the themed font's ~9.5px/char. The three ways stack
+-- VERTICALLY: side by side they need ~520px, and the right-hand Panel child is
+-- whatever is left of a window whose minimum is 480 -- the same clipping trap the
+-- row STATUS column fell into on 2026-07-29.
+local function modeWidth(imgui, fight)
+    local w = 176;
+    pcall(function()
+        if type(imgui.CalcTextSize) ~= 'function' then return; end
+        local widest = 0;
+        for _, m in ipairs(fight.MODES) do
+            local tw = imgui.CalcTextSize(fight.MODE_LABEL[m]);
+            if type(tw) == 'number' and tw > widest then widest = tw; end
+        end
+        if widest > 0 then w = math.max(120, math.floor(widest) + 20); end
+    end);
+    return w;
+end
+
+-- One way of the three. Lit (green) when it is the live mode. Uses only widgets
+-- this Ashita install is known to carry -- Button + the style-color push, the
+-- craftbar fallback shape; RadioButton is not called anywhere in dlac and
+-- presence would prove nothing anyway (hard rule 2).
+local function modeButton(imgui, fight, id, m, current, w)
+    local lit = (current == m);
+    local pushed = false;
+    if lit and ImGuiCol_Button ~= nil and type(imgui.PushStyleColor) == 'function' then
+        imgui.PushStyleColor(ImGuiCol_Button, { 0.18, 0.55, 0.18, 1.00 });
+        pushed = true;
+    end
+    local clicked = false;
+    if type(imgui.Button) == 'function' then
+        clicked = imgui.Button(fight.MODE_LABEL[m] .. '##bstfight_' .. m .. '_' .. id, { w or 176, 24 });
+    end
+    if pushed then imgui.PopStyleColor(1); end
+    if type(imgui.IsItemHovered) == 'function' and imgui.IsItemHovered()
+       and type(imgui.SetTooltip) == 'function' then
+        imgui.SetTooltip(fight.MODE_HELP[m]);
+    end
+    return clicked;
+end
+
+-- ---------------------------------------------------------------------------
 -- the contract
 -- ---------------------------------------------------------------------------
 return {
@@ -175,15 +237,70 @@ return {
     label = 'BST Helper',      -- player-facing display label (PROPOSED)
     jobs  = { 'BST' },         -- declared main jobs
 
+    -- The init hook: arm the standing behaviors. Runs ONCE at addon load, from
+    -- the loader, and deliberately not from a render -- Fight must work with the
+    -- Job Helpers tab closed. `deps` is the shared-services table (unused here;
+    -- fight.lua consumes the central services by name). Contained by the loader:
+    -- a throw here refuses the whole module, so nothing in it may throw.
+    init = function(deps)
+        pcall(function()
+            local fight = req('dlac\\jobhelpers\\bst\\fight');
+            if fight ~= nil and type(fight.init) == 'function' then fight.init(MODULE_ID); end
+        end);
+    end,
+
     -- The Panel. ctx = { imgui, id, record, deps }.
     panel = function(ctx)
         local imgui = ctx and ctx.imgui;
         if imgui == nil then return; end
-        local id = (ctx and ctx.id) or 'bst';
+        local id = (ctx and ctx.id) or MODULE_ID;
 
         local function txt(col, s) if type(imgui.TextColored) == 'function' then imgui.TextColored(col, s); end end
         local function space() if type(imgui.Spacing) == 'function' then imgui.Spacing(); end end
+        local function rule() if type(imgui.Separator) == 'function' then imgui.Separator(); end end
 
+        -- ----- Fight (issue #139) -------------------------------------------
+        local fight = fightMod();
+        if fight ~= nil then
+            txt(COL_HEAD, 'Fight');
+            txt(COL_DIM, 'Send your pet in off your own attacks. Nothing here polls or repeats:'
+                .. ' every send follows one attack or target change, so Heel is respected until'
+                .. ' the next one. Jug and charmed pets behave identically.');
+            space();
+
+            local cur = fight.mode();
+            local w = modeWidth(imgui, fight);
+            for _, m in ipairs(fight.MODES) do
+                if modeButton(imgui, fight, id, m, cur, w) then fight.setMode(m); end
+            end
+            space();
+
+            -- Why it is or is not acting right now, plus what the last edge did.
+            -- Deliberately here and NOT in chat: Fight fires on every pull, and a
+            -- line per pull is noise (the standing "success is silent" law).
+            local act = nil;
+            pcall(function()
+                local jh = req('dlac\\feature\\jobhelpers');
+                if jh ~= nil and type(jh.activity) == 'function' then act = jh.activity(id); end
+            end);
+            if cur == 'off' then
+                txt(COL_DIM, 'Fight is off -- pet commands stay entirely yours.');
+            elseif type(act) == 'table' and act.active ~= true then
+                txt(COL_WARN, 'Not acting: ' .. tostring(act.label or 'inactive') .. '.');
+            else
+                txt(COL_OK, 'Armed: ' .. tostring(fight.MODE_LABEL[cur] or cur) .. '.');
+            end
+            local lastD = fight.lastDecision();
+            if lastD ~= nil then
+                txt(COL_DIM, 'Last edge: ' .. fight.decisionText(lastD) .. '.');
+            end
+            space();
+            rule();
+            space();
+        end
+
+        -- ----- Reward (issue #138) ------------------------------------------
+        txt(COL_HEAD, 'Reward');
         txt(COL_DIM, 'Reward tops up your pet with the best pet food you carry -- highest tier'
             .. ' your level allows and your bags hold. dlac equips the food, verifies it landed,'
             .. ' fires Reward, then restores your gear.');

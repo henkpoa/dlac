@@ -229,12 +229,14 @@ end)();
                    'groupsmodel','jobgate','modeslibrary','ownedcache','profileexport','profilesets','setimport',
                    'setmanager','syncflags','triggermodel','weaponfilter','weightimport' };
     local FEATURE = { 'actionseq','ammowatch','arbwatch','augments','check','chocowatch','craftwatch','debug','digcalc','digrank',
-                      'eboxclient','eboxtrace','fishcalc','fishwatch','gamehud','gamemode','helmwatch','idleexcl','jobhelpers','location','lockstyle','lookpreview',
+                      'eboxclient','eboxtrace','engagewatch','fishcalc','fishwatch','gamehud','gamemode','helmwatch','idleexcl','jobhelpers','location','lockstyle','lookpreview',
                       'macrobook','meritwatch','mpbands','petfood','pinwatch','recast','restockwatch','synthrun','useitem','vanamoon' };
     local LIB = { 'cmdqueue','entwatch','safewrite','statefile' };
     -- Job helper modules (issue #137): each is a drop-in FOLDER under jobhelpers\
-    -- with an init.lua. They ship inside dlac, so they join the ratchet too.
-    local JOBHELP = { 'bst' };
+    -- with an init.lua, plus whatever pure cores it splits out beside it (issue
+    -- #139: bst\config + bst\fight). They ship inside dlac, so they join the
+    -- ratchet too -- entries are folder-relative module paths, no extension.
+    local JOBHELP = { 'bst/init', 'bst/config', 'bst/fight' };
 
     local ALL = {};
     for _, f in ipairs(ROOT_FILES) do ALL[#ALL + 1] = f; end
@@ -242,7 +244,7 @@ end)();
     for _, n in ipairs(GEAR)    do ALL[#ALL + 1] = 'gear/' .. n .. '.lua'; end
     for _, n in ipairs(FEATURE) do ALL[#ALL + 1] = 'feature/' .. n .. '.lua'; end
     for _, n in ipairs(LIB)     do ALL[#ALL + 1] = 'lib/' .. n .. '.lua'; end
-    for _, n in ipairs(JOBHELP) do ALL[#ALL + 1] = 'jobhelpers/' .. n .. '/init.lua'; end
+    for _, n in ipairs(JOBHELP) do ALL[#ALL + 1] = 'jobhelpers/' .. n .. '.lua'; end
 
     -- Cache each scanned file's stripped source once.
     local STRIPPED = {};
@@ -16535,6 +16537,353 @@ end)();
     check('JHW2 /dl why names the Job helper claimant by LABEL', joined:find('Job helper', 1, true) ~= nil, true);
     check('JHW3 /dl why never leaks the internal identity', joined:find('JobHelper', 1, true), nil);
     check('JHW4 the line names the Ammo slot it won', joined:find('Ammo', 1, true) ~= nil, true);
+end)();
+
+-- ---------------------------------------------------------------------------
+-- EDG: the ENGAGE / TARGET EDGE service (issue #139). Recorded-byte replays of
+-- BOTH packet kinds through the pure decode, then the per-target debounce and
+-- the subscriber notification driven at the pump seam with an injected entity
+-- reader. The bytes below are laid out per the pinned GP_CLI_COMMAND_ACTION
+-- struct (u32 UniqueNo @0x04, u16 ActIndex @0x08, u16 Category @0x0A) -- the
+-- same layout feature\equipengine's parseAction reads for the timing engine, and
+-- the one accwatch's field-proven engage watch reads on feature/autoacc.
+-- AC1/AC2/AC3/AC6.
+-- ---------------------------------------------------------------------------
+;(function()
+    local ew = dofile('feature/engagewatch.lua');
+
+    local function u16(v) return string.char(v % 256, math.floor(v / 256) % 256); end
+    local function u32(v)
+        return string.char(v % 256, math.floor(v / 256) % 256,
+                           math.floor(v / 65536) % 256, math.floor(v / 16777216) % 256);
+    end
+    -- One outgoing 0x01A, 16 bytes: header, sync, UniqueNo, ActIndex, Category,
+    -- Param. The header word is the FFXI packing -- id in the low 9 bits, size in
+    -- 4-byte units above it: 0x1A + (16/4)*512 = 0x081A.
+    local function actionPkt(serverId, index, category)
+        return u16(0x081A) .. u16(0)          -- 0x00 id|size (16 bytes), 0x02 sync
+            .. u32(serverId)                   -- 0x04 UniqueNo (target server id)
+            .. u16(index)                      -- 0x08 ActIndex (target entity index)
+            .. u16(category)                   -- 0x0A Category
+            .. u16(0);                         -- 0x0C Param
+    end
+    -- Two real-shaped battle targets: dynamic-entity ids in the CatsEyeXI range.
+    local MOB_A = { id = 17797121, ix = 0x2E1 };
+    local MOB_B = { id = 17797122, ix = 0x2E2 };
+
+    -- --- the pure decode, both kinds ---
+    local e1 = ew.decode(actionPkt(MOB_A.id, MOB_A.ix, ew.CAT_ENGAGE));
+    check('EDG1 an ENGAGE packet decodes as an engage edge', e1 ~= nil and e1.kind, 'engage');
+    check('EDG2 it captures the exact entity index from the packet', e1.index, MOB_A.ix);
+    check('EDG3 ...and the target server id', e1.serverId, MOB_A.id);
+    local e2 = ew.decode(actionPkt(MOB_B.id, MOB_B.ix, ew.CAT_RETARGET));
+    check('EDG4 a CHANGE-TARGET packet decodes as a retarget edge', e2 ~= nil and e2.kind, 'retarget');
+    check('EDG5 ...with its own entity', e2.index, MOB_B.ix);
+    check('EDG6 a spell action (category 3) is not an edge', ew.decode(actionPkt(MOB_A.id, MOB_A.ix, 0x03)), nil);
+    check('EDG7 a weaponskill (category 7) is not an edge', ew.decode(actionPkt(MOB_A.id, MOB_A.ix, 0x07)), nil);
+    check('EDG8 a torn/short packet decodes to nothing', ew.decode(string.rep('\0', 6)), nil);
+    check('EDG9 a non-string decodes to nothing', ew.decode(nil), nil);
+    check('EDG10 the readers are little-endian', ew._u32at(u32(17797121), 0), 17797121);
+    check('EDG11 reading past the end is zeros, never an error', ew._u16at('ab', 40), 0);
+
+    -- The fixture is byte-accurate, proved against the ENGINE's own readers
+    -- rather than asserted: equipengine walks the header as a real chunk and its
+    -- parseAction (the twin that reads the same packet for the timing engine)
+    -- must see the same target and category. A fixture only this module can read
+    -- would prove nothing about the wire.
+    local eng = dofile('feature/equipengine.lua');
+    local raw = actionPkt(MOB_A.id, MOB_A.ix, ew.CAT_ENGAGE);
+    local walked = eng.parseChunk(raw);
+    check('EDG11a the fixture is a well-formed 16-byte 0x01A chunk',
+          #walked == 1 and walked[1].id == 0x1A and walked[1].size, 16);
+    local twin = eng.parseAction(raw);
+    check('EDG11b the engine twin decodes the same target index', twin.target, MOB_A.ix);
+    check('EDG11c ...and the same category', twin.category, ew.CAT_ENGAGE);
+
+    -- --- the target key: server id wins, index is the fallback, nothing is nil ---
+    check('EDG12 the debounce key prefers the server id',
+          ew.targetKey({ serverId = MOB_A.id, index = MOB_A.ix }), 'id:17797121');
+    check('EDG13 ...and falls back to the entity index',
+          ew.targetKey({ serverId = 0, index = MOB_A.ix }), 'ix:737');
+    check('EDG14 a packet naming NO entity is not an actionable edge',
+          ew.targetKey({ serverId = 0, index = 0 }), nil);
+
+    -- --- the pump: debounce + notify, with the entity read injected ---
+    local NAMES = { [MOB_A.ix] = 'Nursery Nazuna  ', [MOB_B.ix] = 'Wild Rabbit' };
+    local function nameOf(ix) local n = NAMES[ix]; if n == nil then return nil; end
+        return (n:gsub('%s+$', '')); end
+    local seen = {};
+    ew.reset(true);
+    ew.subscribe('test', function(edge) seen[#seen + 1] = edge; end);
+
+    ew.onPacket(actionPkt(MOB_A.id, MOB_A.ix, ew.CAT_ENGAGE), 100);
+    check('EDG15 the network-thread half notifies nobody by itself', #seen, 0);
+    check('EDG16 the main-thread pump accepts the edge', ew.pump(nil, nameOf), 1);
+    check('EDG17 the subscriber got the edge', #seen, 1);
+    check('EDG18 ...carrying the packet-captured entity', seen[1].serverId, MOB_A.id);
+    check('EDG19 ...and the trimmed entity name', seen[1].name, 'Nursery Nazuna');
+    check('EDG20 lastEdge answers the same record', (ew.lastEdge() or {}).serverId, MOB_A.id);
+
+    -- same target, 2s later: stutter, debounced (AC2 "same-target stutter")
+    ew.onPacket(actionPkt(MOB_A.id, MOB_A.ix, ew.CAT_ENGAGE), 102);
+    check('EDG21 the SAME target inside 5s is debounced', ew.pump(nil, nameOf), 0);
+    check('EDG22 ...so no subscriber heard it', #seen, 1);
+    -- a retarget onto the same mob is the same TARGET: still debounced
+    ew.onPacket(actionPkt(MOB_A.id, MOB_A.ix, ew.CAT_RETARGET), 103);
+    check('EDG23 the debounce is per TARGET, not per packet kind', ew.pump(nil, nameOf), 0);
+    -- a DIFFERENT target inside the window fires at once (AC2 "rolling to the next mob")
+    ew.onPacket(actionPkt(MOB_B.id, MOB_B.ix, ew.CAT_RETARGET), 103.2);
+    check('EDG24 a DIFFERENT target inside the window fires immediately', ew.pump(nil, nameOf), 1);
+    check('EDG25 ...as a retarget edge on the new entity',
+          seen[#seen].kind == 'retarget' and seen[#seen].serverId, MOB_B.id);
+    -- and the first mob again, after the window
+    ew.onPacket(actionPkt(MOB_A.id, MOB_A.ix, ew.CAT_ENGAGE), 106);
+    check('EDG26 the same target AFTER the window fires again', ew.pump(nil, nameOf), 1);
+
+    -- a target the packet did not name never reaches a subscriber
+    local before = #seen;
+    ew.onPacket(actionPkt(0, 0, ew.CAT_RETARGET), 120);
+    check('EDG27 clearing the target notifies nobody', ew.pump(nil, nameOf), 0);
+    check('EDG28 ...and does not disturb the last edge', #seen, before);
+
+    -- containment + housekeeping
+    local other = 0;
+    ew.subscribe('boom', function() error('subscriber boom'); end);
+    ew.subscribe('other', function() other = other + 1; end);
+    ew.onPacket(actionPkt(MOB_B.id, MOB_B.ix, ew.CAT_ENGAGE), 140);
+    ew.pump(nil, nameOf);
+    check('EDG29 a throwing subscriber never costs another its notification', other, 1);
+    ew.unsubscribe('boom'); ew.unsubscribe('other');
+    check('EDG30 unsubscribe drops it', ew.subscriberCount(), 1);
+
+    ew.reset(true);
+    for i = 1, ew.QUEUE_MAX + 4 do ew.onPacket(actionPkt(17800000 + i, 100 + i, ew.CAT_ENGAGE), 200 + i); end
+    check('EDG31 the network-thread queue is capped (oldest dropped)', ew.pump(nil, nameOf), ew.QUEUE_MAX);
+    check('EDG32 an empty queue is a cheap no-op', ew.pump(nil, nameOf), 0);
+    ew._prune(1e6);
+    ew.onPacket(actionPkt(17800005, 105, ew.CAT_ENGAGE), 1e6);
+    check('EDG33 a pruned debounce key fires again', ew.pump(nil, nameOf), 1);
+    ew.reset(true);
+    check('EDG34 reset clears the answer', ew.lastEdge(), nil);
+    check('EDG35 the debounce window is the PRD 5 seconds', ew.DEBOUNCE_S, 5.0);
+end)();
+
+-- ---------------------------------------------------------------------------
+-- BFT: the BST Helper's FIGHT switch (issue #139). The decision is a PURE
+-- function -- edge + state in, command decision out -- so every acceptance
+-- criterion is a headless check: engage-only vs follow, the module gates, the
+-- pet gate, the captured-target confirm, and "nothing re-fires without a new
+-- edge" (Heel). Plus the module's own per-character config file.
+-- AC1/AC2/AC3/AC4/AC5/AC6.
+-- ---------------------------------------------------------------------------
+;(function()
+    local cfgMod = dofile('jobhelpers/bst/config.lua');
+    package.loaded['dlac\\jobhelpers\\bst\\config'] = cfgMod;
+    local ft = dofile('jobhelpers/bst/fight.lua');
+    package.loaded['dlac\\jobhelpers\\bst\\fight'] = ft;
+
+    local ENGAGE   = { kind = 'engage',   index = 0x2E1, serverId = 17797121, name = 'Nursery Nazuna' };
+    local RETARGET = { kind = 'retarget', index = 0x2E2, serverId = 17797122, name = 'Wild Rabbit' };
+    -- The armed baseline: BST, out of town, alive, not zoning, pill on, pet out.
+    local function armed(t)
+        local st = { mode = 'follow', active = true, hasPet = true, targetOk = true };
+        for k, v in pairs(t or {}) do st[k] = v; end
+        return st;
+    end
+
+    -- --- "When I attack": one send per engage, target changes do nothing (AC1)
+    local d = ft.decide(ENGAGE, armed({ mode = 'attack' }));
+    check('BFT1 attack mode: engaging a mob sends the pet', d.act, true);
+    check('BFT2 ...at the packet-captured entity', d.target.serverId, ENGAGE.serverId);
+    check('BFT3 ...with the pet Fight command', d.command, ft.COMMAND);
+    check('BFT4 attack mode: a mid-fight target change does NOTHING',
+          ft.decide(RETARGET, armed({ mode = 'attack' })).act, false);
+    check('BFT5 ...and says why', ft.decide(RETARGET, armed({ mode = 'attack' })).reason, 'mode');
+
+    -- --- "Follow my target": the retarget edge re-sends too (AC2)
+    check('BFT6 follow mode: a target change re-sends the pet',
+          ft.decide(RETARGET, armed()).act, true);
+    check('BFT7 ...at the NEW entity', ft.decide(RETARGET, armed()).target.serverId, RETARGET.serverId);
+    check('BFT8 follow mode still sends on the engage edge', ft.decide(ENGAGE, armed()).act, true);
+
+    -- --- Off, and the module gates: no command is EVER issued (AC4)
+    check('BFT9 Off: an engage does nothing', ft.decide(ENGAGE, armed({ mode = 'off' })).act, false);
+    check('BFT10 ...for the obvious reason', ft.decide(ENGAGE, armed({ mode = 'off' })).reason, 'off');
+    check('BFT11 an unknown mode reads as Off', ft.decide(ENGAGE, armed({ mode = 'sometimes' })).reason, 'off');
+    for _, r in ipairs({ 'job', 'town', 'dead', 'zoning', 'off' }) do
+        local dd = ft.decide(ENGAGE, armed({ active = false, reason = r }));
+        check('BFT12 the module gate holds it (' .. r .. ')', dd.act == false and dd.reason, r);
+    end
+    check('BFT13 no pet: no command is issued',
+          ft.decide(ENGAGE, armed({ hasPet = false })).reason, 'no-pet');
+    -- nil means UNREADABLE, so these two states are built by hand: `armed`'s
+    -- pairs() copy cannot express "this key is absent".
+    check('BFT14 an UNREADABLE pet is not permission to command one',
+          ft.decide(ENGAGE, { mode = 'follow', active = true, targetOk = true }).reason, 'no-pet');
+    check('BFT15 an UNREADABLE world is not permission either',
+          ft.decide(ENGAGE, { mode = 'follow', hasPet = true, targetOk = true }).act, false);
+    check('BFT16 a non-edge decides nothing', ft.decide({ kind = 'zone' }, armed()).reason, 'no-edge');
+    check('BFT17 no edge at all decides nothing', ft.decide(nil, armed()).reason, 'no-edge');
+
+    -- --- a charmed pet behaves exactly like a jug pet (AC5): the decision has
+    -- NO pet-identity input -- only "is there one" -- so the two are the same
+    -- call by construction.
+    local jug   = ft.decide(ENGAGE, armed({ petName = 'Courier Carrie' }));
+    local charm = ft.decide(ENGAGE, armed({ petName = 'Wild Sheep' }));
+    check('BFT18 a charmed pet decides identically to a jug pet',
+          (jug.act == charm.act) and (jug.command == charm.command), true);
+
+    -- --- the captured target vs the live one (no target-word ambiguity)
+    check('BFT19 the target rolled on before the command could go -> no send',
+          ft.decide(ENGAGE, armed({ targetOk = false })).reason, 'target-moved');
+    check('BFT20 an UNREADABLE target still sends (the confirm is a second opinion)',
+          ft.decide(ENGAGE, armed({ targetOk = nil })).act, true);
+    check('BFT21 targetConfirms: same server id confirms',
+          ft.targetConfirms(ENGAGE, { index = 0, serverId = 17797121 }), true);
+    check('BFT22 targetConfirms: a different server id CONTRADICTS',
+          ft.targetConfirms(ENGAGE, { index = 0, serverId = 17797122 }), false);
+    check('BFT23 targetConfirms: the entity index is the fallback',
+          ft.targetConfirms({ serverId = 0, index = 0x2E1 }, { serverId = 0, index = 0x2E1 }), true);
+    check('BFT24 targetConfirms: nothing to compare is UNKNOWN, never false',
+          ft.targetConfirms(ENGAGE, nil), nil);
+
+    -- --- one edge -> at most one command, and nothing re-fires without a new
+    -- edge (AC3 -- Heel is respected because there is no other trigger).
+    local sent = {};
+    local realFire = ft._fire;
+    ft._fire = function(cmd) sent[#sent + 1] = cmd; return true; end
+    local READS = { pet = function() return true; end,
+                    target = function() return { index = ENGAGE.index, serverId = ENGAGE.serverId }; end };
+    local savedJH = package.loaded['dlac\\feature\\jobhelpers'];
+    package.loaded['dlac\\feature\\jobhelpers'] = { activity = function() return { active = true }; end };
+    cfgMod._charDir = function() return nil; end        -- pre-login: mode reads the default
+    check('BFT25 the default Fight mode is OFF (a helper never arms itself)', ft.mode(), 'off');
+    check('BFT26 ...so an edge issues no command', (ft.onEdge(ENGAGE, READS)).act, false);
+    check('BFT27 ...none at all', #sent, 0);
+
+    -- arm it through the module's own config file (scratch dir + stubbed io)
+    local FILES = {};
+    local realOpen, realLoadfile = io.open, loadfile;
+    cfgMod.forget();
+    cfgMod._charDir = function() return 'BFTDIR\\'; end
+    io.open = function(path, mode)
+        if type(path) == 'string' and path:find('BFTDIR', 1, true) then
+            if (mode or 'r'):find('w') then
+                return { write = function(_, s) FILES[path] = (FILES[path] or '') .. s; end, close = function() end };
+            end
+            return nil;
+        end
+        return realOpen(path, mode);
+    end
+    loadfile = function(path)
+        if type(path) == 'string' and path:find('BFTDIR', 1, true) then
+            local s = FILES[path]; if s == nil then return nil; end return (loadstring or load)(s);
+        end
+        return realLoadfile(path);
+    end
+
+    check('BFT28 an absent config file reads the default', ft.mode(), 'off');
+    check('BFT29 the file is not written until something changes', FILES['BFTDIR\\jobhelper-bst.lua'], nil);
+    check('BFT30 setting the mode persists it', ft.setMode('follow'), true);
+    check('BFT31 ...and it reads back', ft.mode(), 'follow');
+    check('BFT32 ...into the module\'s OWN per-character file',
+          FILES['BFTDIR\\jobhelper-bst.lua'] ~= nil, true);
+    check('BFT33 ...format-versioned',
+          (cfgMod._normalize((loadstring or load)(FILES['BFTDIR\\jobhelper-bst.lua'])()) or {}).fmt, 1);
+    check('BFT34 a mode that is not one of the three is refused', ft.setMode('berserk'), false);
+    check('BFT35 ...and the stored mode is untouched', ft.mode(), 'follow');
+    check('BFT36 an unknown key on disk is dropped, never carried',
+          cfgMod._normalize({ fight = 'follow', someNewKey = 7 }).someNewKey, nil);
+    check('BFT37 a wrong-typed value on disk falls back to the default',
+          cfgMod._normalize({ fight = 42 }).fight, nil);
+
+    -- armed: one edge, one command, once
+    sent = {};
+    check('BFT38 an armed helper sends on the engage edge', (ft.onEdge(ENGAGE, READS)).act, true);
+    check('BFT39 exactly one command went out', #sent, 1);
+    check('BFT40 ...the pet Fight command', sent[1], ft.COMMAND);
+    check('BFT41 nothing re-fires without a NEW edge (Heel stays respected)', #sent, 1);
+    check('BFT42 the last decision is readable for the Panel (never chat)',
+          (ft.lastDecision() or {}).act, true);
+    check('BFT43 ...and reads as a human line',
+          ft.decisionText(ft.lastDecision()):find('Nursery Nazuna', 1, true) ~= nil, true);
+
+    -- fire-and-forget: a send the command bus refuses is NOT retried
+    sent = {};
+    ft._fire = function() return false; end
+    ft.onEdge(ENGAGE, READS);
+    ft._fire = function(cmd) sent[#sent + 1] = cmd; return true; end
+    check('BFT44 a refused send is not retried (the next edge is the next try)', #sent, 0);
+
+    -- the live target contradicting the captured one cancels the send
+    sent = {};
+    ft.onEdge(ENGAGE, { pet = function() return true; end,
+                        target = function() return { index = 0x999, serverId = 17797999 }; end });
+    check('BFT45 a target that moved on cancels the send', #sent, 0);
+    check('BFT46 ...and says so', (ft.lastDecision() or {}).reason, 'target-moved');
+
+    -- no pet: no command is ever issued, whatever the mode
+    sent = {};
+    ft.onEdge(ENGAGE, { pet = function() return false; end, target = READS.target });
+    check('BFT47 no pet: still no command', #sent, 0);
+
+    -- the module gate: the activity predicate holding means no command
+    sent = {};
+    package.loaded['dlac\\feature\\jobhelpers'] = {
+        activity = function() return { active = false, reason = 'town' }; end };
+    ft.onEdge(ENGAGE, READS);
+    check('BFT48 in town: no command is issued', #sent, 0);
+    check('BFT49 ...naming the gate that held it', (ft.lastDecision() or {}).reason, 'town');
+
+    -- --- the two services wired together end to end: bytes in, one command out
+    local ew = dofile('feature/engagewatch.lua');
+    package.loaded['dlac\\feature\\engagewatch'] = ew;
+    package.loaded['dlac\\feature\\jobhelpers'] = { activity = function() return { active = true }; end };
+    sent = {};
+    ew.reset(true);
+    check('BFT50 the module subscribes to the edge service', ft.init('bst'), true);
+    local function u16(v) return string.char(v % 256, math.floor(v / 256) % 256); end
+    local function pkt(sid, ix, cat)
+        return u16(0x081A) .. u16(0)
+            .. string.char(sid % 256, math.floor(sid / 256) % 256,
+                           math.floor(sid / 65536) % 256, math.floor(sid / 16777216) % 256)
+            .. u16(ix) .. u16(cat) .. u16(0);
+    end
+    -- the live target read follows the packet (the client targets what it engaged)
+    local liveTarget = { index = ENGAGE.index, serverId = ENGAGE.serverId };
+    ft.reads.pet    = function() return true; end
+    ft.reads.target = function() return liveTarget; end
+    ew.onPacket(pkt(ENGAGE.serverId, ENGAGE.index, ew.CAT_ENGAGE), 500);
+    ew.pump(nil, function() return 'Nursery Nazuna'; end);
+    check('BFT51 an engage packet ends as ONE pet command', #sent, 1);
+    -- packet stutter on the same mob: the edge service swallows it
+    ew.onPacket(pkt(ENGAGE.serverId, ENGAGE.index, ew.CAT_ENGAGE), 501);
+    ew.pump(nil, function() return 'Nursery Nazuna'; end);
+    check('BFT52 same-target stutter never reaches the module', #sent, 1);
+    -- auto-target rolls to the next mob: follow mode re-sends
+    liveTarget = { index = RETARGET.index, serverId = RETARGET.serverId };
+    ew.onPacket(pkt(RETARGET.serverId, RETARGET.index, ew.CAT_RETARGET), 502);
+    ew.pump(nil, function() return 'Wild Rabbit'; end);
+    check('BFT53 rolling to the next mob re-sends the pet', #sent, 2);
+    -- Heel: no new edge, no send, however many frames go by
+    for i = 1, 10 do ew.pump(nil, function() return nil; end); end
+    check('BFT54 Heel: a pulled-back pet stays back with no new edge', #sent, 2);
+    -- and "When I attack" ignores the roll
+    ft.setMode('attack');
+    liveTarget = { index = 0x2E3, serverId = 17797123 };
+    ew.onPacket(pkt(17797123, 0x2E3, ew.CAT_RETARGET), 520);
+    ew.pump(nil, function() return 'Nursery Nazuna'; end);
+    check('BFT55 attack mode ignores the target roll end to end', #sent, 2);
+
+    io.open, loadfile = realOpen, realLoadfile;
+    ft._fire = realFire;
+    ew.reset(true);
+    cfgMod.forget();
+    package.loaded['dlac\\feature\\jobhelpers'] = savedJH;
+    package.loaded['dlac\\feature\\engagewatch'] = nil;
+    package.loaded['dlac\\jobhelpers\\bst\\fight'] = nil;
+    package.loaded['dlac\\jobhelpers\\bst\\config'] = nil;
+    package.loaded['dlac\\lib\\statefile'] = nil;
 end)();
 
 -- The warm-note artifact the dispatch-driving sections leave behind (dataDir
