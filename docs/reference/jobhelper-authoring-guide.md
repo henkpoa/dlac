@@ -284,7 +284,7 @@ Two files, and the split matters:
 | File | Owner | Holds |
 |---|---|---|
 | `<char>\dlac\jobhelpers.lua` | the **framework** (`feature/jobhelpers`) | every module's row pill (`enabled`), the per-job section order (`order`), the per-job `JobHelper` Claim Priority anchor (`rank`). **Never write this yourself.** |
-| `<char>\dlac\jobhelper-<name>.lua` | **you** | your behavior settings — switches, thresholds, picks. One file, named for your module; the shipped BST Helper's is `jobhelper-bst.lua`. |
+| `<char>\dlac\jobhelper-<something unique>.lua` | **you** | your behavior settings — switches, thresholds, picks. One file of your own; the name is a convention the framework does not enforce (the shipped BST Helper, module `bst-helper`, uses `jobhelper-bst.lua`). |
 
 One config file per module is part of what makes a module separable, and therefore part of what
 makes it approvable on its own.
