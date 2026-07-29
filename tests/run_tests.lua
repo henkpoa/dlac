@@ -6176,6 +6176,57 @@ end)();
         table.concat(dispatchM.arbOrder({ order = { 'Pins', 'Pins', 'AutoAmmo' } }), '>'),
         'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
 
+    -- ARP: arbOrderPersist -- the WRITE view (issue #136). arbOrder above drops
+    -- unknown rows (right for the walk + the Priority tab); arbOrderPersist keeps
+    -- them at their position so the file survives a rewrite and a claimant can
+    -- reclaim its saved spot when it later exists. The ceiling/floor stay pinned.
+    do
+        -- A file the player has dragged, carrying one row THIS build does not know
+        -- (an uninstalled module's claimant), anchored between MaxMP and Craft.
+        local fileWithGhost = { order = { 'Disabled', 'Naked', 'Pins', 'Locks',
+            'AutoAmmo', 'MaxMP', 'Ghost', 'Craft', 'HELM', 'Fishing', 'Chocobo', 'Triggers' } };
+        -- The live walk / Priority tab NEVER see Ghost.
+        check('ARP1 arbOrder (the live view) drops the unknown row',
+            table.concat(dispatchM.arbOrder(fileWithGhost), '>'),
+            'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
+        -- The drag produced a new KNOWN order (Craft moved below HELM); persisting
+        -- it weaves Ghost back in anchored to MaxMP -- position intact.
+        local dragged = { 'Disabled', 'Naked', 'Pins', 'Locks', 'AutoAmmo', 'MaxMP',
+            'HELM', 'Craft', 'Fishing', 'Chocobo', 'Triggers' };
+        local persisted = dispatchM.arbOrderPersist(dragged, fileWithGhost);
+        check('ARP2 persist keeps the unknown row anchored to its predecessor',
+            table.concat(persisted, '>'),
+            'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Ghost>HELM>Craft>Fishing>Chocobo>Triggers');
+        -- Preserve-through-rewrite: feed the persisted order back as the raw file
+        -- and drag again -- Ghost survives ANY number of rewrites, still anchored.
+        local persisted2 = dispatchM.arbOrderPersist(
+            dispatchM.arbOrder({ order = persisted }), { order = persisted });
+        check('ARP3 unknown row survives a second rewrite intact',
+            table.concat(persisted2, '>'),
+            'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Ghost>HELM>Craft>Fishing>Chocobo>Triggers');
+        -- No raw file / no unknowns -> persist == arbOrder (a fresh character).
+        check('ARP4 no raw file -> plain sanitized order (nothing to preserve)',
+            table.concat(dispatchM.arbOrderPersist(dispatchM.arbOrder(nil), nil), '>'),
+            'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
+        -- Reclaim-on-return: the file position of a LISTED row is honored by
+        -- arbOrder over the default -- so the instant Ghost's identity becomes a
+        -- known claimant, it takes its preserved spot, not its default one. Pinned
+        -- here with Chocobo listed OUT of its default place (which is last-before-
+        -- Triggers): arbOrder keeps it where the file puts it, exactly as it will
+        -- for a returning claimant.
+        check('ARP5 a listed row keeps its saved position (reclaim law)',
+            table.concat(dispatchM.arbOrder({ order = { 'Disabled', 'Naked', 'Pins',
+                'Locks', 'Chocobo', 'AutoAmmo', 'MaxMP', 'Craft', 'HELM', 'Fishing', 'Triggers' } }), '>'),
+            'Disabled>Naked>Pins>Locks>Chocobo>AutoAmmo>MaxMP>Craft>HELM>Fishing>Triggers');
+        -- Two unknowns in a row share an anchor and keep their relative order; the
+        -- ceiling/floor stay pinned even when an unknown sits at an extreme.
+        local twoGhosts = { order = { 'Zeta', 'Disabled', 'Naked', 'Pins', 'Locks',
+            'AutoAmmo', 'MaxMP', 'Craft', 'HELM', 'Fishing', 'Chocobo', 'Alpha', 'Beta', 'Triggers' } };
+        check('ARP6 multiple unknowns keep order; ceiling first / floor last hold',
+            table.concat(dispatchM.arbOrderPersist(dispatchM.arbOrder(twoGhosts), twoGhosts), '>'),
+            'Disabled>Zeta>Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Alpha>Beta>Triggers');
+    end
+
     -- AR3: the PURE resolve core -- claims + rank + floor -> winners + by.
     local order = dispatchM.arbOrder(nil);
     local floor = { Head = 'Idle Hat', Body = 'Idle Robe', Ammo = 'Iron Arrow' };
@@ -6849,6 +6900,17 @@ end)();
                                                'Craft', 'HELM', 'Fishing', 'Chocobo', 'Triggers' } }), '>'),
         table.concat(dispatchM.arbOrder({ order = { 'Pins', 'Locks', 'AutoAmmo', 'MaxMP',
                                                'Craft', 'HELM', 'Fishing', 'Chocobo', 'Triggers' } }), '>'));
+    -- NK25c: and on preserving unknown rows (issue #136). The no-dispatch mirror
+    -- of arbOrderPersist must weave an unknown row back exactly as the engine does.
+    do
+        local rawG = { order = { 'Disabled', 'Naked', 'Pins', 'Locks', 'AutoAmmo',
+            'MaxMP', 'Ghost', 'Craft', 'HELM', 'Fishing', 'Chocobo', 'Triggers' } };
+        local dragK = { 'Disabled', 'Naked', 'Pins', 'Locks', 'AutoAmmo', 'MaxMP',
+            'Craft', 'HELM', 'Fishing', 'Chocobo', 'Triggers' };
+        check('NK25c the no-dispatch fallback preserves unknown rows identically',
+            table.concat(awNo.persist(dragK, rawG), '>'),
+            table.concat(dispatchM.arbOrderPersist(dragK, rawG), '>'));
+    end
 
     -- NK26. END TO END through the REAL M.dispatch.
     --
@@ -8119,6 +8181,40 @@ end)();
     check('AB7 out-of-range / bad args are nil, never a throw',
         aw.moveClaimant(def, 1, -1) == nil and aw.moveClaimant(def, 0, 1) == nil
         and aw.moveClaimant(def, 3, 0) == nil and aw.moveClaimant(nil, 1, 1) == nil, true);
+
+    -- AB8. persist -- the WRITER's preserve-unknowns seam (issue #136). A drag
+    -- gives arbwatch a KNOWN-only order; the file it overwrites may hold rows
+    -- this build does not know, and those must not be dropped. persist weaves
+    -- them back (delegating to the engine's arbOrderPersist); the serialized
+    -- file keeps them, so setOrder no longer deletes a future/uninstalled/hand-
+    -- added claimant's saved position.
+    local rawGhost = { order = { 'Disabled', 'Naked', 'Pins', 'Locks', 'AutoAmmo',
+        'MaxMP', 'Ghost', 'Craft', 'HELM', 'Fishing', 'Chocobo', 'Triggers' } };
+    local dragKnown = { 'Disabled', 'Naked', 'Pins', 'Locks', 'AutoAmmo', 'MaxMP',
+        'Craft', 'HELM', 'Fishing', 'Chocobo', 'Triggers' };
+    check('AB8 persist weaves the unknown row back in at its position',
+        table.concat(aw.persist(dragKnown, rawGhost), '>'),
+        'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Ghost>Craft>HELM>Fishing>Chocobo>Triggers');
+    check('AB8b persist matches the engine seam exactly',
+        table.concat(aw.persist(dragKnown, rawGhost), '>'),
+        table.concat(dispatchM.arbOrderPersist(dragKnown, rawGhost), '>'));
+    -- The serialized file the writer emits carries the unknown row through, so it
+    -- reloads with the row intact (survives the round-trip on disk).
+    local ghostTxt = aw.serialize(aw.persist(dragKnown, rawGhost));
+    check('AB8c serialized file carries the unknown row',
+        ghostTxt:find('"Ghost"', 1, true) ~= nil, true);
+    local reGhost = (loadstring or load)(ghostTxt)();
+    check('AB8d reload -> live view still drops it, persist still keeps it',
+        (function()
+            local live = table.concat(dispatchM.arbOrder(reGhost), '>');
+            local kept = table.concat(aw.persist(dispatchM.arbOrder(reGhost), reGhost), '>');
+            return (live:find('Ghost') == nil)
+               and (kept:find('MaxMP>Ghost>Craft', 1, true) ~= nil);
+        end)(), true);
+    -- No raw file (fresh character) -> persist is just the sanitized order.
+    check('AB8e no raw file -> plain sanitized order',
+        table.concat(aw.persist(dragKnown, nil), '>'),
+        'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
 end)();
 
 -- ---------------------------------------------------------------------------

@@ -2774,6 +2774,7 @@ M._postPassOrder = POST_ORDER;
 M._arbDefaultOrder = ARB.ARB_ORDER_DEFAULT;
 M._arbPinnedRows   = ARB.ARB_PINNED;
 M.arbOrder     = ARB.arbOrder;
+M.arbOrderPersist = ARB.arbOrderPersist;   -- the WRITE view (issue #136): keeps unknown rows
 M.LOCK_HELD    = ARB.LOCK_HELD;
 M.arbLockClaim = ARB.arbLockClaim;
 

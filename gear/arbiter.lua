@@ -436,6 +436,93 @@ function M.arbOrder(st)
     return out;
 end
 
+-- ---------------------------------------------------------------------------
+-- PRESERVE UNKNOWN ROWS (issue #136). arbOrder above is the LIVE view: it
+-- DROPS any row it does not recognize, which is exactly right for the
+-- arbitration walk and the Priority tab -- no ghost rows, resolution unchanged.
+-- But that same drop, run at WRITE time, silently deletes an unrecognized row
+-- from the file forever: an uninstalled module's claimant, a future claimant, a
+-- hand-added one loses the player's drag position the next time the order is
+-- saved.
+--
+-- arbOrderPersist is the WRITE view -- the full order to serialize to disk. It
+-- keeps every unknown row at its position, so it survives any number of
+-- rewrites and takes effect again the moment a claimant with that identity
+-- exists: once the row is a KNOWN name, arbOrder finds it LISTED and honors its
+-- saved position instead of restoring it at the default one. The known rows are
+-- ordered by arbOrder (so a drag, restore-at-default and the ceiling/floor
+-- invariants all hold), and each unknown row is woven back in ANCHORED to the
+-- known row it followed in the raw file, so it keeps its place relative to the
+-- rows around it across reorders.
+--
+--   newOrder -- the (known-only) order a drag produced: a plain array, or an
+--               { order = ... } table. Ordered through arbOrder; any unknown in
+--               it is dropped there -- unknowns are preserved from rawSt, which
+--               is the file that actually holds them.
+--   rawSt    -- the raw on-disk { order = ... } table, UNSANITIZED, so its
+--               unknown rows are still visible. nil / no order field -> nothing
+--               to preserve, and this equals arbOrder(newOrder).
+-- Pure; the ceiling stays first and the floor last, exactly as arbOrder pins
+-- them.
+function M.arbOrderPersist(newOrder, rawSt)
+    local nlist = newOrder;
+    if type(newOrder) == 'table' and type(newOrder.order) == 'table' then
+        nlist = newOrder.order;
+    end
+    local known = M.arbOrder({ order = (type(nlist) == 'table') and nlist or nil });
+
+    local raw = (type(rawSt) == 'table' and type(rawSt.order) == 'table') and rawSt.order or nil;
+    if raw == nil then return known; end
+
+    local isKnown = {};
+    for _, n in ipairs(ARB_ORDER_DEFAULT) do isKnown[n] = true; end
+
+    -- Collect unknown rows in raw order, each ANCHORED to the known row that
+    -- most recently preceded it (FRONT = it sits before any known row). Dedupe
+    -- by first occurrence -- one row, one saved position.
+    local FRONT = {};
+    local byAnchor = {};             -- anchor-key -> { unknown names, in raw order }
+    local seen, lastKnown, any = {}, nil, false;
+    for _, n in ipairs(raw) do
+        if type(n) == 'string' and n ~= '' then
+            if isKnown[n] then
+                lastKnown = n;
+            elseif not seen[n] then
+                seen[n] = true; any = true;
+                local key = lastKnown or FRONT;
+                if byAnchor[key] == nil then byAnchor[key] = {}; end
+                byAnchor[key][#byAnchor[key] + 1] = n;
+            end
+        end
+    end
+    if not any then return known; end
+
+    -- Weave: front-anchored unknowns first, then each known row followed by the
+    -- unknowns anchored to it.
+    local out = {};
+    if byAnchor[FRONT] ~= nil then
+        for _, n in ipairs(byAnchor[FRONT]) do out[#out + 1] = n; end
+    end
+    for _, k in ipairs(known) do
+        out[#out + 1] = k;
+        if byAnchor[k] ~= nil then
+            for _, n in ipairs(byAnchor[k]) do out[#out + 1] = n; end
+        end
+    end
+
+    -- Re-pin the ceiling first and the floor last: an unknown anchored to
+    -- Triggers, or one that sat before Disabled in a hand-mangled file, must
+    -- never displace either invariant (the whole point of Disabled/Triggers --
+    -- arbOrder's law, held here too).
+    local final = {};
+    for _, n in ipairs(out) do
+        if n ~= 'Disabled' and n ~= 'Triggers' then final[#final + 1] = n; end
+    end
+    table.insert(final, 1, 'Disabled');
+    final[#final + 1] = 'Triggers';
+    return final;
+end
+
 -- The Locks VETO, modelled as a claim value (ADR 0012, step 3). A locked slot is
 -- a Locks "claim" whose winning value is this sentinel -- "keep what is worn". In
 -- the rank walk it behaves like any other claimant: a claim ranked ABOVE Locks
