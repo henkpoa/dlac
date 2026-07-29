@@ -18,7 +18,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.07.29d';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.07.29e';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
 addon.desc    = 'Gear sets, triggers and live stats with level scaling -- dlac equips your gear itself.';
 
@@ -139,6 +139,13 @@ ashita.events.register('d3d_present', 'dlac-seed-watch', function()
         -- Drain any dig-obtained item ids the 0x02D packet handler stashed on the
         -- network thread -- ratchet + save + announce here on the MAIN thread.
         if type(cw.pumpObtains) == 'function' then cw.pumpObtains(); end
+    end);
+    -- The Action sequencer's frame pump (issue #138): advance any live sequence
+    -- (verify worn -> fire -> release) against the live gear/command io. A no-op
+    -- when idle; contained, so a bad frame never breaks present.
+    pcall(function()
+        local aseq = require('dlac\\feature\\actionseq');
+        if type(aseq) == 'table' and type(aseq.pump) == 'function' then aseq.pump(); end
     end);
     if os.clock() < _seedAt then return; end
     _seedAt = os.clock() + 5.0;

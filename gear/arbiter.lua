@@ -370,7 +370,11 @@ local ARB_PINNED = M.ARB_PINNED;
 -- why lines ('Ammo: <claimant> (rank 5) over MaxMP'), and 'Ammo: Ammo' is not a
 -- sentence. AR12 caught exactly that. It also matches the ammo panel's own
 -- switch ("Ammo rule on RNG:"), so one wording covers claimant + switch.
-M.ARB_DISPLAY = { AutoAmmo = 'Ammo rule' };
+-- 'Job helper' for the JobHelper row (issue #138): the identity stays camel-case
+-- (it keys CLAIMANTS + the per-job anchor store), but a player reads the two
+-- words. Like AutoAmmo, it is named next to a slot in /dl why ('Ammo: Job helper
+-- (rank 5) ...'), so the label is a phrase, not a bare 'JobHelper'.
+M.ARB_DISPLAY = { AutoAmmo = 'Ammo rule', JobHelper = 'Job helper' };
 local ARB_DISPLAY = M.ARB_DISPLAY;
 
 function M.claimantLabel(name)
@@ -521,6 +525,47 @@ function M.arbOrderPersist(newOrder, rawSt)
     table.insert(final, 1, 'Disabled');
     final[#final + 1] = 'Triggers';
     return final;
+end
+
+-- ---------------------------------------------------------------------------
+-- THE JOBHELPER ROW (issue #138). Unlike every other claimant, its Claim
+-- Priority position is remembered PER JOB (dragging writes the current job's
+-- placement only; jobs never moved keep the default). So it is deliberately NOT
+-- in ARB_ORDER_DEFAULT / the persistent global arbstate: the live order is the
+-- global order with JobHelper woven in HERE, directly below its per-job anchor
+-- (default 'Locks' -- above every standing Gear helper, below Locks/Naked/Free
+-- equip, so a senior holder means a loud refusal and the action does not fire).
+-- Keeping it out of the global order is also why "preserved positions stay
+-- dormant" falls out for free -- the per-job store holds a placement whether or
+-- not any module is installed, exactly like the unknown-row preservation slice.
+--
+--   order  -- a sanitized global order (WITHOUT JobHelper), array of names.
+--   anchor -- the row JobHelper sits directly below; nil / '' / 'Triggers'
+--             falls back to 'Locks', then to just-before-Triggers.
+-- Returns a NEW array (the input is untouched); the Disabled ceiling stays first
+-- and the Triggers floor last. Pure.
+M.JOBHELPER = 'JobHelper';
+M.JOBHELPER_ANCHOR = 'Locks';
+function M.placeJobHelper(order, anchor)
+    local out = {};
+    for _, n in ipairs(order or {}) do
+        if n ~= M.JOBHELPER then out[#out + 1] = n; end   -- drop any stale copy
+    end
+    anchor = (type(anchor) == 'string' and anchor ~= '' and anchor ~= 'Triggers')
+             and anchor or M.JOBHELPER_ANCHOR;
+    local triggersIdx = nil;
+    for i, n in ipairs(out) do if n == 'Triggers' then triggersIdx = i; break; end end
+    local at = nil;
+    for i, n in ipairs(out) do if n == anchor then at = i + 1; break; end end
+    if at == nil then
+        for i, n in ipairs(out) do if n == M.JOBHELPER_ANCHOR then at = i + 1; break; end end
+    end
+    if at == nil then at = triggersIdx or (#out + 1); end
+    if at < 2 then at = 2; end                                   -- never before the ceiling
+    if triggersIdx ~= nil and at > triggersIdx then at = triggersIdx; end   -- never after the floor
+    if at > #out + 1 then at = #out + 1; end
+    table.insert(out, at, M.JOBHELPER);
+    return out;
 end
 
 -- The Locks VETO, modelled as a claim value (ADR 0012, step 3). A locked slot is

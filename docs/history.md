@@ -6979,3 +6979,48 @@ is called only by the addon-side writer, never in the equip/dispatch path, and t
 file format (`return { order = {...} }`) is untouched — it may just carry more names now,
 which the engine already drops on read. Tests ARP1–6 (engine seam), AB8–8e (writer seam +
 on-disk round-trip), NK25c (fallback mirror). Suites **4237 + 755**, lua5.4.
+
+## Session "Action sequencer + JobHelper row + Reward now" (issue #138, PRD #135)
+
+**Theme:** make the CONTEXT.md **Action sequence** real, demoable by the BST Panel's
+**"Reward now"** button. Builds on the #137 Job helper module system (both on `dev`).
+
+**Landed (four pure cores + live glue, all headless-tested at their seams):**
+- `feature/actionseq.lua` — the singleton Action sequencer. `request/tick/arbitrateRequests`
+  drive `claiming → firing → released` / `refused` / `aborted` against an injected io
+  (`worn/blocker/fire/release/emit`). Never-fire-bare (the command fires ONLY after every
+  needed slot verifies worn, and exactly once via the `_fired` latch); a definitive blocker
+  on a needed slot refuses loudly; the gear never landing inside the timeout aborts; success
+  is silent; one sequence live at a time (a started one is never preempted; simultaneous
+  contenders resolve by module order). Live `pump()` (wired in `dlac.lua` d3d_present) reads
+  worn via `dispatch.wornName`, blockers via `disabledOn`/`isLockedSlot`, fires the chat
+  command, releases via `dispatch.kickDefault` (the next arbitration restores gear). Tests AS*.
+- `feature/recast.lua` — the ability recast READINESS service (the Central-services gap).
+  `readyFor/rewardReady` — reader injected, UNKNOWN reads READY (the courtesy gate; the
+  sequencer's own verify is the real safety net). Reward = ability 103; the recast-timer slot
+  is ported from the Pup-Helper reference and FLAGGED for field verification. Tests RC*.
+- `feature/petfood.lua` — the eight-tier pet-food **Ladder** (`pick`): highest tier first,
+  gated by equip level and equippable-bag stock; carrying none is a loud refusal. Tier data
+  is local (the catalog ships only six of eight — Gamma/Epsilon absent). Tests PF*.
+- The `JobHelper` claimant row. `arbiter.placeJobHelper` weaves it into the live rank order
+  directly below its anchor (default Locks) — deliberately NOT in `ARB_ORDER_DEFAULT`,
+  because its Claim Priority position is per JOB (`jobhelpers.rankAnchorFor/setRankAnchor/
+  placedOrder/moveRankRow`, stored in a new `rank = {[JOB]=row}` config block). A CLAIMANTS
+  row reading `actionseq` rides the standing rank walk; `dispatch.jobHelperPlace` runs it
+  every Default and for `/dl prio`; the row hides with zero modules. Rendered "Job helper"
+  via `claimantLabel`. Tests JHR*/JHW* + the CR* registry pins updated (JobHelper is the one
+  per-job "extra" not in the global default order).
+- `jobhelpers/bst/init.lua` — the "Reward now" button: pick food, overlay an optional Reward
+  set, open the sequence, gray while Reward is down; main-job + module-activity gates apply.
+
+**Why the per-job placement is not in the global arbstate:** the row's position must be
+per job while every other claimant is global, so it is placed live (`placeJobHelper`) on top
+of the sanitized global order rather than persisted into it — which also makes "preserved
+positions stay dormant with zero modules" fall out of the config store for free, mirroring
+the #136 unknown-row preservation slice.
+
+**Engine behavior:** a new claimant row + a new sig leg (APPENDED, so the nine existing legs
+stay byte-identical and no live session retraces until a sequence claims). `dispatch.M.VERSION`
+is left as-is pending Henrik's call on whether the new claimant warrants a handshake bump —
+flagged in the PR. Both suites green (**4332 + 789**, lua5.4). Player-facing strings and the
+Reward command token await the maintainer's sign-off and a field round.

@@ -56,6 +56,7 @@ M.HINT = {
     HELM     = 'HELM row / HELM bar',
     Fishing  = 'Fishing row / fish bar',
     Chocobo  = 'Chocobo row',
+    JobHelper= 'Job Helpers tab (per job)',
     Triggers = 'Triggers tab',
 };
 
@@ -88,6 +89,11 @@ M.SOURCE = {
     HELM     = 'Set on the HELM row above, or the floating HELM bar.',
     Fishing  = 'Set on the Fishing row above, or the floating fish bar.',
     Chocobo  = 'Set on the Chocobo row above (click it for the riding-gear panel).',
+    JobHelper= 'The shared row every Job helper\'s Action sequence rides (Reward, ...).\n'
+            .. 'Its position here is remembered PER JOB -- dragging it moves it for the job you are on '
+            .. 'now, and other jobs keep their own placement. Default: directly below Locks, so a lock, '
+            .. 'Naked or Free equip on a needed slot makes the sequence refuse loudly instead of firing.\n'
+            .. 'The row hides while no Job helper modules are installed.',
     Triggers = 'Your Triggers tab. This is the FLOOR -- what is worn when no claim wins a slot.',
 };
 
@@ -128,6 +134,10 @@ function M.statusText(name, live)
         return live.fishing and 'claiming: armed (idle only)' or 'idle';
     elseif name == 'Chocobo' then
         return live.chocobo and 'claiming: armed (idle only)' or 'idle';
+    elseif name == 'JobHelper' then
+        -- names the LIVE module + act (issue #138), or idle. jh = { active, text }.
+        local jh = live.jobhelper or {};
+        return (type(jh.text) == 'string' and jh.text ~= '') and jh.text or 'idle';
     end
     return '?';
 end
@@ -146,6 +156,7 @@ local function rowActive(name, live)
     if name == 'HELM'     then return live.helm == true; end
     if name == 'Fishing'  then return live.fishing == true; end
     if name == 'Chocobo'  then return live.chocobo == true; end
+    if name == 'JobHelper' then return (live.jobhelper or {}).active == true; end
     return false;
 end
 
@@ -185,6 +196,12 @@ function M.gatherLive(deps)
         local aw = require('dlac\\feature\\ammowatch');
         aw.selectJob(job);
         live.ammo = { on = (aw.enabled == true), job = job };
+    end);
+    -- The JobHelper row's live status (issue #138): the running Action sequence
+    -- naming its module + act, or idle.
+    pcall(function()
+        local aseq = require('dlac\\feature\\actionseq');
+        live.jobhelper = { active = aseq.active() == true, text = aseq.statusText() };
     end);
     pcall(function() live.craft   = require('dlac\\feature\\craftwatch').isEnabled() == true; end);
     pcall(function() live.helm    = require('dlac\\feature\\helmwatch').isEnabled() == true; end);
@@ -249,6 +266,19 @@ function M.render(deps, opts)
     end
     local live = M.gatherLive(deps);
 
+    -- issue #138: weave the per-job JobHelper row into the rendered order (a
+    -- no-op with zero modules -- the row hides). `order` stays the GLOBAL order
+    -- (what a known-row drag commits to); `placed` is what the player sees.
+    local job = (deps ~= nil and type(deps.playerJob) == 'function') and deps.playerJob() or nil;
+    local placed = order;
+    pcall(function()
+        local jh = require('dlac\\feature\\jobhelpers');
+        if type(jh.placedOrder) == 'function' then
+            local p = jh.placedOrder(order, job);
+            if type(p) == 'table' and #p > 0 then placed = p; end
+        end
+    end);
+
     if not (type(opts) == 'table' and opts.embedded) then
         imgui.TextColored(COL_HEADER, 'Claim priority');
         imgui.SameLine(0, 10);
@@ -264,13 +294,29 @@ function M.render(deps, opts)
 
     local LMB = ImGuiMouseButton_Left or 0;
     local committed = false;                     -- one reorder per frame; re-read next frame
-    local function commit(newOrder)
-        if newOrder == nil or committed then return; end
-        arbwatch.setOrder(newOrder);
-        committed = true;
+    -- Route a move by row TYPE (issue #138): the JobHelper row writes the current
+    -- job's per-job anchor (never the global arbstate); every other row commits
+    -- to the global order. dir: -1 up / +1 down.
+    local function doMove(rowName, dir)
+        if committed then return; end
+        if rowName == 'JobHelper' then
+            local moved = nil;
+            pcall(function()
+                local jh = require('dlac\\feature\\jobhelpers');
+                if type(jh.moveRankRow) == 'function' then moved = jh.moveRankRow(placed, job, dir); end
+            end);
+            if moved ~= nil then committed = true; end
+            return;
+        end
+        -- a known claimant / the Locks veto: move it in the GLOBAL order.
+        local baseIdx = nil;
+        for bi, n in ipairs(order) do if n == rowName then baseIdx = bi; break; end end
+        if baseIdx == nil then return; end
+        local moved = arbwatch.moveClaimant(order, baseIdx, dir);
+        if moved ~= nil then arbwatch.setOrder(moved); committed = true; end
     end
 
-    local rows = M.buildRows(order, live);
+    local rows = M.buildRows(placed, live);
     for i, r in ipairs(rows) do
         if committed then break; end
         imgui.PushID('arbrow_' .. r.name);
@@ -278,10 +324,10 @@ function M.render(deps, opts)
         -- Reorder controls (guaranteed path: plain Buttons). Non-draggable rows
         -- get a matching-width spacer so the columns stay aligned.
         if r.draggable then
-            if imgui.Button('^##up', { 20, 18 }) then commit(arbwatch.moveClaimant(order, i, -1)); end
+            if imgui.Button('^##up', { 20, 18 }) then doMove(r.name, -1); end
             if imgui.IsItemHovered() then imgui.SetTooltip('Raise -- win contested slots over the row above.'); end
             imgui.SameLine(0, 2);
-            if imgui.Button('v##dn', { 20, 18 }) then commit(arbwatch.moveClaimant(order, i, 1)); end
+            if imgui.Button('v##dn', { 20, 18 }) then doMove(r.name, 1); end
             if imgui.IsItemHovered() then imgui.SetTooltip('Lower -- yield contested slots to the row above.'); end
         else
             imgui.Dummy({ 42, 18 });
@@ -289,7 +335,7 @@ function M.render(deps, opts)
 
         -- The drag handle: a full-width Selectable behind the row text. Dragging
         -- it off itself swaps toward the drag direction (the dear-imgui reorder
-        -- idiom), which arbwatch.moveClaimant gates to the legal moves.
+        -- idiom), gated to the legal moves by the mover.
         imgui.SameLine(0, 6);
         imgui.Selectable('##arbsel_' .. r.name, false, 0, { 0, 18 });
         if r.draggable and imgui.IsItemActive() and not imgui.IsItemHovered() then
@@ -297,11 +343,8 @@ function M.render(deps, opts)
                 local dx, dy = imgui.GetMouseDragDelta(LMB);
                 if type(dx) == 'table' then dy = (dx[2] or dx.y); end
                 if type(dy) == 'number' and dy ~= 0 then
-                    local moved = arbwatch.moveClaimant(order, i, dy < 0 and -1 or 1);
-                    if moved ~= nil then
-                        commit(moved);
-                        imgui.ResetMouseDragDelta(LMB);
-                    end
+                    doMove(r.name, dy < 0 and -1 or 1);
+                    if committed then imgui.ResetMouseDragDelta(LMB); end
                 end
             end);
         end
@@ -320,6 +363,18 @@ function M.render(deps, opts)
 
     imgui.Spacing();
     imgui.TextColored(COL_DIM, 'Free equip is pinned first and the Triggers floor last -- neither moves. The Locks veto drags like any row: a claimant above it punches through a locked slot, one below it stops.');
+
+    -- The current job's Job helper module order (read-only, issue #138): the
+    -- tie-break for two helpers requesting a sequence at once -- higher in this
+    -- order wins, the loser is refused loudly.
+    pcall(function()
+        local jh = require('dlac\\feature\\jobhelpers');
+        if type(jh.count) ~= 'function' or jh.count() < 1 or job == nil then return; end
+        local ids = jh.idsForJob(job);
+        if #ids > 0 then
+            imgui.TextColored(COL_DIM, string.format('Job helper order (%s): %s', tostring(job), table.concat(ids, ' > ')));
+        end
+    end);
 end
 
 return M;

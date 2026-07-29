@@ -522,15 +522,48 @@ the Pup-Helper precedent).
   Priority mechanism — no working `BeginPopupContextItem` in this install) persisting per job. Every call INTO
   a module's render hooks is pcall-wrapped — a throwing Panel loses its own Panel and prints once, never the
   tab or other rows (frame-level imgui stack recovery is uihost's `tabGuard`).
-- **`jobhelpers/bst/init.lua`** — the **BST Helper** skeleton, the first real module and the drop-in proof:
-  it loads, shows one row under BST, and renders an empty Panel. Its behaviors (Fight switch, Reward, resummon)
-  land in later PRD #135 slices; the central services + the Action sequencer are separate slices, not here.
+- **`jobhelpers/bst/init.lua`** — the **BST Helper**, first real module. Its Panel carries the demoable
+  **"Reward now"** button (issue #138): pick the best carried pet food (the eight-tier Ladder), overlay an
+  optional Reward set from the job entry's Sets, open an Action sequence, and gray the button while Reward is
+  down. The Fight switch and death-only resummon land in later PRD #135 slices.
 - **Load wiring:** `dlac.lua` adds `feature\jobhelpers` + `ui\jobhelpersui` to the module-load loop, then runs
   the loader + `maybeRegister` in one guarded block after the loop (so job-helper counts/failures ride the load
   beacon too). ADR 0028 records the module-system decision.
 - **Test rosters:** `feature/jobhelpers` → `FEATURE`, `ui/jobhelpersui` → `UI`, and a new `JOBHELP` roster
   (`jobhelpers/<id>/init.lua`) in `tests/run_tests.lua`'s GRD block; `'jobhelpers'` added to `tests/smoke_ui.lua`'s
   tab-name roster (smoke S10c absent / S320–S334 present + balanced Panel).
+
+### The Action sequence machinery (issue #138, PRD #135) — the "Reward now" slice
+The CONTEXT.md **Action sequence** made demoable. Four pure cores with injected seams (headless-tested)
+plus thin live glue:
+- **`feature/actionseq.lua`** — the singleton sequencer state machine. `request(req)` opens a sequence
+  (`req = { module, label, order, claim = {SlotKey=item}, need, command, timeout }`); `tick(now, io)` drives
+  the lifecycle `claiming → firing → released` / `refused` / `aborted` against an injected io
+  (`worn / blocker / fire / release / emit`). Success is SILENT; a definitive blocker on a needed slot refuses
+  loudly (never-fire-bare); the gear never landing inside the timeout aborts; the command fires exactly once
+  (`_fired` latch). `arbitrateRequests(reqs)` resolves simultaneous contenders by module order. `claim()` /
+  `active()` / `statusText()` are the CLAIMANTS-row seams. Live glue: `pump()` (wired in `dlac.lua`'s
+  `d3d_present`) reads worn via `dispatch.wornName`, blockers via `dispatch.disabledOn`/`isLockedSlot`, fires
+  via the chat command bus, and releases via `dispatch.kickDefault` (the next arbitration restores gear).
+- **`feature/recast.lua`** — the ability recast READINESS service (Central services: "is this ability off
+  cooldown?"). `readyFor(sig, reader)` / `rewardReady()` — pure, reader injected; UNKNOWN reads READY (the
+  courtesy gate). Reward = ability 103; the recast-timer-slot signature is ported from the Pup-Helper reference
+  and FLAGGED for field verification.
+- **`feature/petfood.lua`** — the eight-tier pet-food **Ladder** (`pick(reads)`): highest tier first, gated by
+  equip level and equippable-bag stock; carrying none is a loud refusal. Tier data is carried locally (the
+  catalog ships only six of the eight). Live reads via `ownedcache.counts` + the player level.
+- **The `JobHelper` claimant row.** `arbiter.placeJobHelper(order, anchor)` weaves the row into the live rank
+  order directly below its anchor (default `Locks`) — deliberately NOT in `ARB_ORDER_DEFAULT`, because its
+  Claim Priority position is remembered **per job** (`jobhelpers.rankAnchorFor` / `setRankAnchor` /
+  `placedOrder` / `moveRankRow`; anchor stored in the `rank = {[JOB]=row}` block of the jobhelpers config).
+  `dispatch.jobHelperPlace` runs it every Default (and for `/dl prio`); the row hides with zero modules. A
+  CLAIMANTS row (`active`/`claim`/`apply` reading `actionseq`) rides the standing rank walk, so a senior holder
+  wins its slot and the sequencer refuses. `arbiter.claimantLabel` renders the identity as **"Job helper"**.
+- **Test rosters:** `actionseq`, `petfood`, `recast` → `FEATURE`. Tests: RC*/PF*/AS*/JHR*/JHW* in
+  `run_tests.lua`; the CR* registry pins updated for the new row (JobHelper is the one per-job "extra").
+- **Deferred / flagged:** live blocker attribution names locks + free-equip today; naming a senior *claimant*
+  from the Arbiter trace is a follow-on. The Reward command target token and the recast-timer slot need field
+  confirmation. Player-facing strings ("BST Helper", "Reward now") await the maintainer's sign-off.
 
 ### gear/actionpicker.lua — searchable spell/ability browse-list core (pure)
 The Ashita/imgui/file-IO-free core behind the Groups tab's member browse-list (issue #26,

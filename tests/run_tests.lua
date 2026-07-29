@@ -228,9 +228,9 @@ end)();
                    'gearfmt','gearimport','gearoptim','gearoracle','gearrecord','groupimport','groupscan',
                    'groupsmodel','jobgate','modeslibrary','ownedcache','profileexport','profilesets','setimport',
                    'setmanager','syncflags','triggermodel','weaponfilter','weightimport' };
-    local FEATURE = { 'ammowatch','arbwatch','augments','check','chocowatch','craftwatch','debug','digcalc','digrank',
+    local FEATURE = { 'actionseq','ammowatch','arbwatch','augments','check','chocowatch','craftwatch','debug','digcalc','digrank',
                       'eboxclient','eboxtrace','fishcalc','fishwatch','gamehud','gamemode','helmwatch','idleexcl','jobhelpers','location','lockstyle','lookpreview',
-                      'macrobook','meritwatch','mpbands','pinwatch','restockwatch','synthrun','useitem','vanamoon' };
+                      'macrobook','meritwatch','mpbands','petfood','pinwatch','recast','restockwatch','synthrun','useitem','vanamoon' };
     local LIB = { 'cmdqueue','entwatch','safewrite','statefile' };
     -- Job helper modules (issue #137): each is a drop-in FOLDER under jobhelpers\
     -- with an init.lua. They ship inside dlac, so they join the ratchet too.
@@ -7105,15 +7105,24 @@ end)();
         if not inOrder[n] then extra[#extra + 1] = n; end
     end
     check('CR1 every rank row except Triggers has a registry row', table.concat(missing, ','), '');
-    check('CR1b and no registry row lacks a rank row', table.concat(extra, ','), '');
-    check('CR1c the row count is exact', #reg, #dispatchM._arbDefaultOrder - 1);
+    -- JobHelper (issue #138) is the ONE registry row deliberately NOT in the
+    -- GLOBAL ARB_ORDER_DEFAULT: its Claim Priority position is per job, woven into
+    -- the live order by jobHelperPlace, so it is an intentional "extra".
+    table.sort(extra);
+    check('CR1b the only registry row without a global rank row is the per-job JobHelper',
+        table.concat(extra, ','), 'JobHelper');
+    -- #reg = (#order - 1 for the floorless Triggers) + 1 for the per-job JobHelper.
+    check('CR1c the row count is exact', #reg, #dispatchM._arbDefaultOrder);
 
-    -- The signature-leg order is the pre-registry byte order -- craft | pins |
-    -- HELM | fishing | chocobo | ammo | mp | naked | disabled. Reordering
-    -- retraces every live session once: do it on purpose or not at all.
-    check('CR2 the signature legs keep the pre-registry byte order',
+    -- The signature-leg order keeps the pre-registry byte order for the nine
+    -- original legs -- craft | pins | HELM | fishing | chocobo | ammo | mp |
+    -- naked | disabled -- with JobHelper APPENDED (issue #138): a new trailing
+    -- leg leaves the nine byte-identical, so no live session retraces on upgrade
+    -- until a sequence claims. Reordering the nine still retraces: on purpose or
+    -- not at all.
+    check('CR2 the signature legs keep the pre-registry byte order, JobHelper appended',
         table.concat(dispatchM._claimantSigOrder, '|'),
-        'Craft|Pins|HELM|Fishing|Chocobo|AutoAmmo|MaxMP|Naked|Disabled');
+        'Craft|Pins|HELM|Fishing|Chocobo|AutoAmmo|MaxMP|Naked|Disabled|JobHelper');
 
     -- The documented exceptions are EXACTLY the documented exceptions. Since
     -- the FOLD (stage 6) EVERY row builds its claim and applies through the
@@ -7138,8 +7147,8 @@ end)();
         if row.bail2 == true then b2[#b2 + 1] = row.name; end
     end
     table.sort(b1); table.sort(b2);
-    check('CR4 the bail #1 set is exactly the eight dispatch reasons',
-        table.concat(b1, ','), 'AutoAmmo,Chocobo,Craft,Fishing,HELM,Locks,Naked,Pins');
+    check('CR4 the bail #1 set is exactly the dispatch reasons (JobHelper joined, #138)',
+        table.concat(b1, ','), 'AutoAmmo,Chocobo,Craft,Fishing,HELM,JobHelper,Locks,Naked,Pins');
     check('CR4b the bail #2 set is the same eight', table.concat(b2, ','), table.concat(b1, ','));
     check('CR4c every row carries a prioStatus (the /dl prio twin is dead)',
         (function()
@@ -16295,6 +16304,237 @@ end)();
     jh.modules = {};
     package.loaded['dlac\\feature\\jobhelpers'] = nil;
     package.loaded['dlac\\lib\\statefile'] = nil;
+end)();
+
+-- ---------------------------------------------------------------------------
+-- RC: the ability recast READINESS service (issue #138). One-question core,
+-- reader injected -- ready when off cooldown, down otherwise, and UNKNOWN reads
+-- READY (the courtesy gate, hard rule 11). AC7/AC8.
+-- ---------------------------------------------------------------------------
+;(function()
+    local rc = dofile('feature/recast.lua');
+    local sig = rc.REWARD;
+    check('RC1 ready when the reader says 0s', (rc.readyFor(sig, function() return 0; end)), true);
+    check('RC2 down when the reader says 12s', (rc.readyFor(sig, function() return 12; end)), false);
+    local ready2, rem2 = rc.readyFor(sig, function() return 12; end);
+    check('RC3 the remaining seconds come back too', rem2, 12);
+    check('RC4 unknown (nil) reads READY', (rc.readyFor(sig, function() return nil; end)), true);
+    check('RC5 a throwing reader is unknown -> ready', (rc.readyFor(sig, function() error('boom'); end)), true);
+    check('RC6 a negative recast clamps to 0 (ready)', (rc.readyFor(sig, function() return -3; end)), true);
+    check('RC7 remainingFor returns nil on a non-number', rc.remainingFor(sig, function() return 'x'; end), nil);
+    check('RC8 Reward is ability 103 (ported from Pup-Helper)', sig.id, 103);
+end)();
+
+-- ---------------------------------------------------------------------------
+-- PF: the pet-food LADDER (issue #138). Highest tier the level allows AND the
+-- bags hold; carrying none is a LOUD refusal. AC4/AC8.
+-- ---------------------------------------------------------------------------
+;(function()
+    local pf = dofile('feature/petfood.lua');
+    local stock = { [17016] = 2, [17019] = 1 };    -- carrying Alpha(12) + Delta(48)
+    local function of(t) return function(id) return t[id] or 0; end end
+    local p = pf.pick({ level = 50, stockOf = of(stock) });
+    check('PF1 picks the highest carried tier the level allows', p.ok and p.name, 'Pet Food Delta');
+    local p2 = pf.pick({ level = 40, stockOf = of(stock) });
+    check('PF2 falls to a lower tier when the top carried one is over-level', p2.ok and p2.name, 'Pet Food Alpha');
+    local p3 = pf.pick({ level = 30, stockOf = of({ [17023] = 1 }) });   -- only Theta(96)
+    check('PF3 carrying only over-level food -> level refusal', p3.ok == false and p3.reason, 'level');
+    local p4 = pf.pick({ level = 75, stockOf = of({}) });
+    check('PF4 carrying none -> none-carried refusal', p4.ok == false and p4.reason, 'none-carried');
+    check('PF4b and it is a loud honest line', pf.refusalLine(p4):find('not carrying', 1, true) ~= nil, true);
+    local p5 = pf.pick({ level = nil, stockOf = of({ [17023] = 1 }) });
+    check('PF5 unknown level treats the carried tier as wearable', p5.ok and p5.name, 'Pet Food Theta');
+    check('PF6 the ladder carries all eight tiers', #pf.TIERS, 8);
+end)();
+
+-- ---------------------------------------------------------------------------
+-- AS: the ACTION SEQUENCER (issue #138), driven at its SEAM with injected
+-- worn / blocker / fire / release fakes -- never-fire-bare, timeout abort,
+-- senior-claimant refusal, release, exactly one send, one-live-at-a-time, and
+-- the simultaneous-request module-order tiebreak. AC1/AC2/AC3/AC6/AC8.
+-- ---------------------------------------------------------------------------
+;(function()
+    local as = dofile('feature/actionseq.lua');
+    local function mkio(worn, blocker)
+        local rec = { fired = {}, released = 0, emits = {} };
+        rec.io = {
+            worn    = function(slot) return (worn or {})[slot]; end,
+            blocker = function(slot) return (blocker or {})[slot]; end,
+            fire    = function(cmd) rec.fired[#rec.fired + 1] = cmd; end,
+            release = function() rec.released = rec.released + 1; end,
+            emit    = function(line) rec.emits[#rec.emits + 1] = line; end,
+        };
+        return rec;
+    end
+
+    -- happy path: verified worn -> fire once -> hold -> release (AC1)
+    as.reset();
+    check('AS1 idle at rest', as.state(), 'idle');
+    local acc = as.request({ module = 'bst', label = 'Reward', order = 1,
+        claim = { Ammo = 'Pet Food Delta' }, need = { Ammo = 'Pet Food Delta' },
+        command = '/ja "Reward" <me>', timeout = 4 });
+    check('AS2 request accepted', acc.ok, true);
+    check('AS3 the claim is live while claiming', (as.claim() or {}).Ammo, 'Pet Food Delta');
+    check('AS4 active while claiming', as.active(), true);
+    local r = mkio({}, {});
+    as.tick(0, r.io);
+    check('AS5 not worn yet -> still claiming, no fire', #r.fired, 0);
+    local r2 = mkio({ Ammo = 'Pet Food Delta' }, {});
+    as.tick(0.5, r2.io);
+    check('AS6 verified worn -> fired once', #r2.fired, 1);
+    check('AS7 fired the right command', r2.fired[1], '/ja "Reward" <me>');
+    check('AS8 state is firing (gear held through the cast)', as.state(), 'firing');
+    as.tick(0.6, r2.io);
+    check('AS9 exactly ONE send across ticks', #r2.fired, 1);
+    as.tick(1.5, r2.io);
+    check('AS10 released after the hold', r2.released >= 1, true);
+    check('AS11 idle after release', as.state(), 'idle');
+    check('AS12 success is SILENT (no chat)', #r2.emits, 0);
+    check('AS13 last outcome is fired', (as.lastOutcome() or {}).outcome, 'fired');
+
+    -- never-fire-bare + timeout abort (AC3): the gear never matches
+    as.reset();
+    as.request({ module = 'bst', label = 'Reward', order = 1,
+        claim = { Ammo = 'Pet Food Delta' }, need = { Ammo = 'Pet Food Delta' },
+        command = 'FIRE', timeout = 4 });
+    local r3 = mkio({ Ammo = 'Something Else' }, {});
+    as.tick(0, r3.io);          -- startAt = 0
+    as.tick(2, r3.io);          -- within the window, wrong gear worn
+    check('AS14 never fires bare (wrong gear worn)', #r3.fired, 0);
+    as.tick(4, r3.io);          -- timeout
+    check('AS15 timeout -> aborted, nothing fired', #r3.fired, 0);
+    check('AS16 abort emits one line', #r3.emits, 1);
+    check('AS17 abort released the claim', r3.released >= 1, true);
+    check('AS18 idle after abort', as.state(), 'idle');
+    check('AS19 last outcome is aborted', (as.lastOutcome() or {}).outcome, 'aborted');
+
+    -- senior-claimant refusal (AC2): a definitive blocker on a needed slot
+    as.reset();
+    as.request({ module = 'bst', label = 'Reward', order = 1,
+        claim = { Ammo = 'Pet Food Delta' }, need = { Ammo = 'Pet Food Delta' },
+        command = 'FIRE', timeout = 4 });
+    local r4 = mkio({}, { Ammo = 'Free equip' });
+    as.tick(0, r4.io);
+    check('AS20 a blocker on a needed slot -> refused, no fire', #r4.fired, 0);
+    check('AS21 refusal NAMES the blocker', (r4.emits[1] or ''):find('Free equip', 1, true) ~= nil, true);
+    check('AS22 refusal released the claim', r4.released >= 1, true);
+    check('AS23 last outcome is refused', (as.lastOutcome() or {}).outcome, 'refused');
+
+    -- one live at a time: a started sequence is never preempted
+    as.reset();
+    as.request({ module = 'bst', label = 'Reward', order = 1, claim = { Ammo = 'X' }, command = 'FIRE', timeout = 4 });
+    local busy = as.request({ module = 'pup', label = 'Ready', order = 1, claim = { Ammo = 'Y' }, command = 'FIRE2', timeout = 4 });
+    check('AS24 a second request while one runs is refused', busy.ok, false);
+    check('AS25 the refusal names the holder', busy.holder, 'bst');
+
+    -- simultaneous contenders resolve by module order (AC6)
+    as.reset();
+    local win, losers = as.arbitrateRequests({
+        { module = 'bst', order = 1 }, { module = 'pup', order = 3 }, { module = 'dnc', order = 2 } });
+    check('AS26 the highest module order wins', win.module, 'pup');
+    check('AS27 the losers are the rest', #losers, 2);
+    check('AS28 a tie breaks deterministically by module id',
+          (as.arbitrateRequests({ { module = 'zeta', order = 5 }, { module = 'alpha', order = 5 } })).module, 'alpha');
+    as.reset();
+end)();
+
+-- ---------------------------------------------------------------------------
+-- JHR: the JobHelper CLAIM PRIORITY row (issue #138). arbiter.placeJobHelper
+-- (default below Locks), the per-job anchor store, moveRankRow, and placedOrder
+-- hiding the row with zero modules. AC5.
+-- ---------------------------------------------------------------------------
+;(function()
+    local ARB = dofile('gear/arbiter.lua');
+    local BASE = { 'Disabled', 'Naked', 'Pins', 'Locks', 'AutoAmmo', 'MaxMP',
+                   'Craft', 'HELM', 'Fishing', 'Chocobo', 'Triggers' };
+
+    local function idxOf(list, name)
+        for i, n in ipairs(list) do if n == name then return i; end end
+        return nil;
+    end
+
+    local p = ARB.placeJobHelper(BASE, nil);
+    check('JHR1 default places JobHelper directly below Locks', idxOf(p, 'JobHelper'), idxOf(p, 'Locks') + 1);
+    check('JHR2 the Disabled ceiling stays first', p[1], 'Disabled');
+    check('JHR3 the Triggers floor stays last', p[#p], 'Triggers');
+    local p2 = ARB.placeJobHelper(BASE, 'Chocobo');
+    check('JHR4 a chosen anchor places it directly below that row', idxOf(p2, 'JobHelper'), idxOf(p2, 'Chocobo') + 1);
+    local p3 = ARB.placeJobHelper(BASE, 'Triggers');
+    check('JHR5 anchor Triggers is refused -> falls back below Locks', p3[idxOf(p3, 'JobHelper') - 1], 'Locks');
+    local p4 = ARB.placeJobHelper(p, nil);   -- placing over an order that already has it
+    local cnt = 0; for _, n in ipairs(p4) do if n == 'JobHelper' then cnt = cnt + 1; end end
+    check('JHR6 placeJobHelper is idempotent (exactly one JobHelper)', cnt, 1);
+
+    -- the per-job store (jobhelpers) -- stub the config file layer
+    local savedArb = package.loaded['dlac\\gear\\arbiter'];
+    package.loaded['dlac\\gear\\arbiter'] = ARB;   -- jobhelpers lazily requires it
+    local jh = dofile('feature/jobhelpers.lua');
+    package.loaded['dlac\\feature\\jobhelpers'] = jh;
+    local FILES = {};
+    local realOpen, realLoadfile = io.open, loadfile;
+    jh._charDir = function() return 'JHRDIR\\'; end
+    io.open = function(path, mode)
+        if type(path) == 'string' and path:find('JHRDIR', 1, true) then
+            if (mode or 'r'):find('w') then
+                return { write = function(_, s) FILES[path] = (FILES[path] or '') .. s; end, close = function() end };
+            else
+                if FILES[path] == nil then return nil; end
+                local c = false;
+                return { read = function() if c then return nil; end c = true; return FILES[path]; end, close = function() end };
+            end
+        end
+        return realOpen(path, mode);
+    end
+    loadfile = function(path)
+        if type(path) == 'string' and path:find('JHRDIR', 1, true) then
+            local s = FILES[path]; if s == nil then return nil; end return (loadstring or load)(s);
+        end
+        return realLoadfile(path);
+    end
+
+    jh.modules = {};
+    check('JHR7 placedOrder hides JobHelper with zero modules', idxOf(jh.placedOrder(BASE, 'BST'), 'JobHelper'), nil);
+
+    jh.modules = { { id = 'bst', label = 'BST Helper', jobs = { 'BST' }, mod = {} } };
+    check('JHR8 default anchor is Locks', jh.rankAnchorFor('BST'), 'Locks');
+    local placed = jh.placedOrder(BASE, 'BST');
+    check('JHR9 with a module installed JobHelper sits below Locks',
+          placed[idxOf(placed, 'JobHelper') - 1], 'Locks');
+    local moved = jh.moveRankRow(placed, 'BST', -1);   -- up one, above Locks
+    check('JHR10 moveRankRow returns a new order', type(moved), 'table');
+    check('JHR11 the anchor for BST is remembered (now Pins)', jh.rankAnchorFor('BST'), 'Pins');
+    check('JHR12 a job never dragged keeps the default', jh.rankAnchorFor('PUP'), 'Locks');
+    check('JHR13 the per-job anchor was written to disk', FILES['JHRDIR\\jobhelpers.lua'] ~= nil, true);
+    check('JHR14 the anchor survives a re-read',
+          (jh._normalizeCfg((loadstring or load)(FILES['JHRDIR\\jobhelpers.lua'])()).rank or {})['BST'], 'Pins');
+    -- placedOrder now honors the remembered anchor for BST only
+    check('JHR15 placedOrder reflects the remembered BST anchor',
+          jh.placedOrder(BASE, 'BST')[idxOf(jh.placedOrder(BASE, 'BST'), 'JobHelper') - 1], 'Pins');
+    check('JHR16 a different job still places at the default',
+          jh.placedOrder(BASE, 'PUP')[idxOf(jh.placedOrder(BASE, 'PUP'), 'JobHelper') - 1], 'Locks');
+
+    io.open = realOpen; loadfile = realLoadfile;
+    jh.modules = {};
+    package.loaded['dlac\\gear\\arbiter'] = savedArb;
+    package.loaded['dlac\\feature\\jobhelpers'] = nil;
+    package.loaded['dlac\\lib\\statefile'] = nil;
+end)();
+
+-- ---------------------------------------------------------------------------
+-- JHW: the JobHelper claimant at the /dl why seam (issue #138). The row is
+-- named by its DISPLAY LABEL everywhere a player reads it, never the internal
+-- identity. AC8 ("claimant row tested at the registry seam including /dl why").
+-- ---------------------------------------------------------------------------
+;(function()
+    local ARB = dofile('gear/arbiter.lua');
+    check('JHW1 claimantLabel maps JobHelper -> "Job helper"', ARB.claimantLabel('JobHelper'), 'Job helper');
+    local order = ARB.placeJobHelper({ 'Disabled', 'Naked', 'Pins', 'Locks', 'AutoAmmo', 'MaxMP',
+                                       'Craft', 'HELM', 'Fishing', 'Chocobo', 'Triggers' }, nil);
+    local lines = ARB.arbWhyLines({ JobHelper = { Ammo = 'Pet Food Delta' } }, order, {});
+    local joined = table.concat(lines, '\n');
+    check('JHW2 /dl why names the Job helper claimant by LABEL', joined:find('Job helper', 1, true) ~= nil, true);
+    check('JHW3 /dl why never leaks the internal identity', joined:find('JobHelper', 1, true), nil);
+    check('JHW4 the line names the Ammo slot it won', joined:find('Ammo', 1, true) ~= nil, true);
 end)();
 
 -- The warm-note artifact the dispatch-driving sections leave behind (dataDir
