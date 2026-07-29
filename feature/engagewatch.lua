@@ -41,10 +41,11 @@
     NOTE on the reference implementation: the field-proven decode of these two
     edges is `accwatch.lua`'s `/dl acc` engage watch (history.md, "ACC calculator
     -> acc watch": *"Every engage (0x01A action 0x02) AND battle-target switch
-    (action 0x0F, auto-target)"*), which ships on the parked `feature/autoacc`
-    branch pending GM approval and is NOT present on this branch to extract from.
-    THIS module is that one shared implementation: when autoacc lands, accwatch
-    subscribes here rather than carrying a second copy.
+    (action 0x0F, auto-target)"*), which ships live on the parked
+    `feature/autoacc` branch pending GM approval; its inert, byte-identical dev
+    copy sits at `share/mob-stats/accwatch.lua` as REFERENCE ONLY (never loaded).
+    THIS module is the one live shared implementation: when autoacc lands,
+    accwatch subscribes here rather than carrying a second copy.
 ]]--
 
 local M = {};

@@ -7021,8 +7021,8 @@ the #136 unknown-row preservation slice.
 
 **Engine behavior:** a new claimant row + a new sig leg (APPENDED, so the nine existing legs
 stay byte-identical and no live session retraces until a sequence claims). `dispatch.M.VERSION`
-is left as-is pending Henrik's call on whether the new claimant warrants a handshake bump —
-flagged in the PR. Both suites green (**4332 + 789**, lua5.4). Player-facing strings and the
+was bumped 154 → **155** at the merge (the new claimant row IS a handshake change).
+Both suites green (**4332 + 789**, lua5.4). Player-facing strings and the
 Reward command token await the maintainer's sign-off and a field round.
 
 ## Session "BST Fight: the engage/target edge service + the three-way switch" (issue #139, PRD #135)
@@ -7076,10 +7076,11 @@ chocowatch rule, and the dlacprobe crash is why it exists.
 
 **On "extract the existing inert reference implementation":** the field-proven decode of these
 two edges is `accwatch.lua`'s `/dl acc` engage watch — *"Every engage (0x01A action 0x02) AND
-battle-target switch (action 0x0F, auto-target)"* — which ships on the parked `feature/autoacc`
-branch pending GM approval and is not on `dev` to extract from. `engagewatch` IS that one shared
-implementation; when autoacc lands it subscribes here instead of carrying a second copy, and the
-module header, the Central-services row and this entry all say so.
+battle-target switch (action 0x0F, auto-target)"* — live on the parked `feature/autoacc` branch
+pending GM approval, with an inert byte-identical dev copy at `share/mob-stats/accwatch.lua`
+(reference only, never loaded; the decode here was verified against it at review). `engagewatch`
+is the one LIVE shared implementation; when autoacc lands it subscribes here instead of carrying
+a second copy, and the module header, the Central-services row and this entry all say so.
 
 **Chat stays silent.** Fight fires on every pull, so a line per pull is noise, not news; the
 Panel reports the last decision instead ("sent your pet at Nursery Nazuna", "in town", "no pet

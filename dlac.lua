@@ -229,6 +229,7 @@ for _, mod in ipairs({ 'gear', 'feature\\augments', 'gear\\gearoptim', 'gear\\ge
                        'ui\\craftbar', 'feature\\helmwatch', 'ui\\helmbar',
                        'feature\\fishwatch', 'ui\\fishbar', 'feature\\chocowatch',
                        'feature\\meritwatch', 'feature\\integration',
+                       'feature\\engagewatch',
                        'feature\\check', 'feature\\debug', 'feature\\lockstyle',
                        'feature\\lockstyleapply', 'feature\\equipengine',
                        'feature\\engine', 'ui\\gearui',
