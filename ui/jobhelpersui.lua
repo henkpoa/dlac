@@ -72,7 +72,6 @@ local function moduleRow(job, ids, i)
     local rec = jh.record(id);
     if rec == nil then return; end
     local enabled = jh.isEnabled(id);
-    local act = jh.activity(id);
 
     imgui.PushID('jhrow_' .. job .. '_' .. id);
 
@@ -103,29 +102,14 @@ local function moduleRow(job, ids, i)
     imgui.SameLine(0, 8);
 
     -- the module label (a Selectable so clicking the row opens its Panel).
+    -- NAME + PILL ONLY (Henrik's field ruling 2026-07-29, screenshot round 2):
+    -- the live status and the module's own status hook render in the PANEL
+    -- header, not here -- the list answers "what is installed and armed",
+    -- the Panel answers "what is it doing".
     local selected = (_sel == id);
-    -- 150 wide, not more: the themed font runs ~9.5px/char, and the status
-    -- column after this must FIT inside the 380px left child -- at 190 the
-    -- status was pushed past the child edge and clipped invisible (field
-    -- screenshot, 2026-07-29: a SAM saw no "Wrong job" on the BST row).
     if imgui.Selectable(rec.label .. '##jhsel_' .. job .. '_' .. id, selected,
-                        ImGuiSelectableFlags_None or 0, { 150, 22 }) then
+                        ImGuiSelectableFlags_None or 0, { 250, 22 }) then
         _sel = id;
-    end
-
-    -- the live status: Active, or the inactivity reason.
-    imgui.SameLine(0, 8);
-    imgui.TextColored(statusColor(act), (act ~= nil and act.label) or '?');
-
-    -- the module's OWN row-status hook (optional), for detail the framework
-    -- cannot know (e.g. "Reward armed"). Contained: a throw never breaks the row.
-    if type(rec.mod.status) == 'function' then
-        imgui.SameLine(0, 8);
-        local sok = pcall(rec.mod.status, { imgui = imgui, id = id, record = rec, deps = deps, activity = act });
-        if not sok and not _blamed[id] then
-            _blamed[id] = true;
-            print('[dlac] Job helper ' .. tostring(id) .. ' status hook errored -- contained.');
-        end
     end
 
     imgui.PopID();
@@ -157,6 +141,19 @@ local function renderPanel()
         return;
     end
     imgui.TextColored(COL_HEADER, rec.label);
+    -- The live status + the module's own status hook live HERE, beside the
+    -- Panel title (Henrik's field ruling 2026-07-29): the row stays name+pill.
+    local act = jh.activity(rec.id);
+    imgui.SameLine(0, 10);
+    imgui.TextColored(statusColor(act), (act ~= nil and act.label) or '?');
+    if type(rec.mod.status) == 'function' then
+        imgui.SameLine(0, 10);
+        local sok = pcall(rec.mod.status, { imgui = imgui, id = rec.id, record = rec, deps = deps, activity = act });
+        if not sok and not _blamed[rec.id] then
+            _blamed[rec.id] = true;
+            print('[dlac] Job helper ' .. tostring(rec.id) .. ' status hook errored -- contained.');
+        end
+    end
     imgui.Separator();
     local ctx = { imgui = imgui, id = rec.id, record = rec, deps = deps };
     local ok, err = pcall(rec.mod.panel, ctx);

@@ -5219,6 +5219,72 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- dayMatch (engine v156): weatherMatch's sibling -- a spell-handler flag, true
+-- when TODAY's day element equals the action's element. The obi's DAY term with
+-- nothing else: no weather, no opposition -- for gear whose bonus keys on the day
+-- alone, which neither dayWeatherBonus (the signed net) nor weatherMatch tracks.
+-- ctx.del is the cached day-element seam (the ctx.wel pattern): set it to drive
+-- the matcher headlessly (nil -> a live gData read, '' in the harness = unknown).
+-- There is no "clear day" -- all eight weekdays carry an element -- so every
+-- readable day is a real match or a real non-match. Tier 30 (element band).
+-- ---------------------------------------------------------------------------
+(function()
+    local mm = dispatchM._matchers;
+    local fireOnFire  = { action = { Element = 'Fire' }, del = 'Fire'  };
+    local fireOnIce   = { action = { Element = 'Fire' }, del = 'Ice'   };
+    local fireOnWater = { action = { Element = 'Fire' }, del = 'Water' };   -- the OPPOSING day
+    check('DM1 match: dayMatch=true fires (Fire on Firesday)',    mm.daymatch(true,  fireOnFire), true);
+    check('DM2 mismatch: dayMatch=true quiet (Fire on Iceday)',   mm.daymatch(true,  fireOnIce),  false);
+    check('DM3 mismatch: dayMatch=false fires (Fire on Iceday)',  mm.daymatch(false, fireOnIce),  true);
+    check('DM4 match: dayMatch=false quiet (Fire on Firesday)',   mm.daymatch(false, fireOnFire), false);
+    check('DM5 element match is case-insensitive',                mm.daymatch(true,  { action = { Element = 'fire' }, del = 'FIRE' }), true);
+    -- The OPPOSING day is a plain non-match, not a minus: no opposition term here.
+    check('DM6 opposing day: dayMatch=true quiet',                mm.daymatch(true,  fireOnWater), false);
+    check('DM7 opposing day: dayMatch=false fires',               mm.daymatch(false, fireOnWater), true);
+    -- No action element (Default handler / Non-Elemental) -> matches NEITHER polarity.
+    check('DM8 no action element: =true quiet',                   mm.daymatch(true,  { del = 'Fire' }), false);
+    check('DM9 no action element: =false quiet',                  mm.daymatch(false, { del = 'Fire' }), false);
+    check('DM10 Non-Elemental action: =true quiet',               mm.daymatch(true,  { action = { Element = 'Non-Elemental' }, del = 'Fire' }), false);
+    check('DM11 Non-Elemental action: =false quiet',              mm.daymatch(false, { action = { Element = 'Non-Elemental' }, del = 'Fire' }), false);
+    -- Unreadable day ('' sentinel, e.g. a failed live read) -> matches NEITHER.
+    check('DM12 unreadable day: =true quiet',                     mm.daymatch(true,  { action = { Element = 'Fire' }, del = '' }), false);
+    check('DM13 unreadable day: =false quiet',                    mm.daymatch(false, { action = { Element = 'Fire' }, del = '' }), false);
+    -- INDEPENDENCE from its two neighbours -- the reason it is its own condition.
+    -- Fire on Firesday in Water (opposing) weather: the obi's net is 0 (quiet),
+    -- weatherMatch is a non-match (quiet), but a day-only item IS paying out.
+    local fireFiredayWaterWx = { action = { Element = 'Fire' }, del = 'Fire', wel = 'Water', dw = 0 };
+    check('DM14 day-only payout: dayMatch fires where the net does not',
+        mm.daymatch(true, fireFiredayWaterWx) == true and mm.dayweatherbonus(true, fireFiredayWaterWx) == false, true);
+    check('DM15 day-only payout: weatherMatch stays quiet on it',
+        mm.weathermatch(true, fireFiredayWaterWx), false);
+    -- ...and the mirror: Fire in Fire weather on Iceday -- weatherMatch fires, dayMatch does not.
+    local fireIcedayFireWx = { action = { Element = 'Fire' }, del = 'Ice', wel = 'Fire' };
+    check('DM16 weather-only payout: dayMatch stays quiet',       mm.daymatch(true, fireIcedayFireWx), false);
+    check('DM17 weather-only payout: weatherMatch fires',         mm.weathermatch(true, fireIcedayFireWx), true);
+    -- Tier ladder: dayMatch sits at 30 (element band), like weatherMatch/dayWeatherBonus.
+    check('DM18 dayMatch sits at 30', dispatchM.defaultPriority({ dayMatch = true }), 30);
+    -- Through matches(): the AND leg with a live day ctx (post-load lowercase key).
+    local mt = dispatchM._matches;
+    check('DM19 matches() fires on a day match',
+        mt({ when = { daymatch = true } }, { action = { Element = 'Fire' }, del = 'Fire' }), true);
+    check('DM20 matches() quiet on a mismatch',
+        mt({ when = { daymatch = true } }, { action = { Element = 'Fire' }, del = 'Ice' }), false);
+    -- First-class vocabulary: PRETTY-case dayMatch serializes + round-trips, and
+    -- _normalize accepts it (loader lowercases + TIER-validates) at prio 30.
+    local text = dispatchM.serializeTriggers({
+        Midcast = { { when = { dayMatch = true }, set = 'DayNuke' } },
+    });
+    check('DM21 dayMatch serializes PRETTY-case', text:find('dayMatch', 1, true) ~= nil, true);
+    local t2 = (loadstring or load)(text)();
+    check('DM22 round-trip byte-stable', dispatchM.serializeTriggers(t2) == text, true);
+    local norm = dispatchM._normalize({
+        Midcast = { { when = { dayMatch = true }, set = 'DayNuke' } },
+    });
+    check('DM23 normalize keeps dayMatch rule', norm.Midcast ~= nil and #norm.Midcast, 1);
+    check('DM24 normalized prio = 30',          norm.Midcast[1].prio, 30);
+end)();
+
+-- ---------------------------------------------------------------------------
 -- TGM. Trigger Groups model (G2, issue #25, ADR 0009): the pure GUI-side CRUD +
 --      name / member validation the Groups tab drives (groupsmodel.lua). Group
 --      names and member names compare case-insensitively (engine parity), an
@@ -16628,9 +16694,22 @@ end)();
     ew.onPacket(actionPkt(MOB_A.id, MOB_A.ix, ew.CAT_ENGAGE), 102);
     check('EDG21 the SAME target inside 5s is debounced', ew.pump(nil, nameOf), 0);
     check('EDG22 ...so no subscriber heard it', #seen, 1);
-    -- a retarget onto the same mob is the same TARGET: still debounced
+    -- a retarget onto the same mob is a DIFFERENT KIND: it fires. FIELD-RULED
+    -- 2026-07-29 (Henrik's BST, Fight round 1): a fresh attack sends 0x0F then
+    -- 0x02 milliseconds apart, so a target-only key let the refused retarget
+    -- swallow the engage as "stutter" and Fight never heard a single attack.
+    -- The key is (target, kind); same-kind stutter stays muted (EDG21).
     ew.onPacket(actionPkt(MOB_A.id, MOB_A.ix, ew.CAT_RETARGET), 103);
-    check('EDG23 the debounce is per TARGET, not per packet kind', ew.pump(nil, nameOf), 0);
+    check('EDG23 the debounce is per (TARGET, KIND): a retarget after an engage fires', ew.pump(nil, nameOf), 1);
+    -- ...and the field pair the ruling came from: retarget-then-engage on a
+    -- FRESH mob (the client's real attack order) -- BOTH notify.
+    ew.onPacket(actionPkt(77771, 0x341, ew.CAT_RETARGET), 103.4);
+    ew.onPacket(actionPkt(77771, 0x341, ew.CAT_ENGAGE), 103.5);
+    check('EDG23b the 0x0F-then-0x02 attack pair BOTH notify (the Fight field bug)', ew.pump(nil, nameOf), 2);
+    -- same-kind stutter on that mob stays muted, both kinds
+    ew.onPacket(actionPkt(77771, 0x341, ew.CAT_ENGAGE), 103.6);
+    ew.onPacket(actionPkt(77771, 0x341, ew.CAT_RETARGET), 103.7);
+    check('EDG23c same-kind repeats inside the window stay muted', ew.pump(nil, nameOf), 0);
     -- a DIFFERENT target inside the window fires at once (AC2 "rolling to the next mob")
     ew.onPacket(actionPkt(MOB_B.id, MOB_B.ix, ew.CAT_RETARGET), 103.2);
     check('EDG24 a DIFFERENT target inside the window fires immediately', ew.pump(nil, nameOf), 1);

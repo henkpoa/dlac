@@ -74,6 +74,20 @@ local function emit(line)
     if not done then pcall(function() print('[dlac] ' .. tostring(line)); end); end
 end
 
+-- A section header per the PANEL-TEXT STANDARD (uistyle.helpLabel): the label
+-- underlined, the explanation in its HOVER -- never an inline paragraph, which
+-- clips at the panel edge (Henrik's field ruling 2026-07-29, screenshot round
+-- 2: "do some word wrapping, I can't make the window wider"). Falls back to a
+-- plain colored label when uistyle is unreachable.
+local function head(imgui, label, tip)
+    local us = req('dlac\\ui\\uistyle');
+    if us ~= nil and type(us.helpLabel) == 'function' then
+        local ok = pcall(us.helpLabel, imgui, label, tip, COL_HEAD);
+        if ok then return; end
+    end
+    if type(imgui.TextColored) == 'function' then imgui.TextColored(COL_HEAD, label); end
+end
+
 -- The player's current main job, or nil.
 local function playerJob()
     local j = nil;
@@ -262,8 +276,8 @@ return {
         -- ----- Fight (issue #139) -------------------------------------------
         local fight = fightMod();
         if fight ~= nil then
-            txt(COL_HEAD, 'Fight');
-            txt(COL_DIM, 'Send your pet in off your own attacks. Nothing here polls or repeats:'
+            head(imgui, 'Fight',
+                'Send your pet in off your own attacks. Nothing here polls or repeats:'
                 .. ' every send follows one attack or target change, so Heel is respected until'
                 .. ' the next one. Jug and charmed pets behave identically.');
             space();
@@ -300,8 +314,8 @@ return {
         end
 
         -- ----- Reward (issue #138) ------------------------------------------
-        txt(COL_HEAD, 'Reward');
-        txt(COL_DIM, 'Reward tops up your pet with the best pet food you carry -- highest tier'
+        head(imgui, 'Reward',
+            'Reward tops up your pet with the best pet food you carry -- highest tier'
             .. ' your level allows and your bags hold. dlac equips the food, verifies it landed,'
             .. ' fires Reward, then restores your gear.');
         space();
