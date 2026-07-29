@@ -109,14 +109,26 @@ M._stockOf = function(id)
     return n;
 end
 
--- The player's current level, or nil (unknown). Main-job level.
+-- The level the ENGINE will gear at, or nil (unknown) -- the `/dl set level main`
+-- override first, then the SYNC-aware main level, exactly as dispatch's
+-- playerLevel, utils.determineLevels and the Ammo panel's gearLevel resolve it.
+--
+-- HOUSE LAW, and it cost the AutoAmmo v134 field round: every picker reads the
+-- override/sync-aware level, never raw MainJobLevel. Otherwise this ladder is
+-- the one picker that ignores `/dl set level main`, and under LEVEL SYNC it
+-- picks a food tier above the sync cap -- the equip is refused, the food never
+-- lands worn, and the sequence ends in a contained verify TIMEOUT instead of
+-- correctly falling a rung to the tier the player can actually wear.
 M._playerLevel = function()
+    local ovr = rawget(_G, 'staticMainLevel');
+    if type(ovr) == 'number' and ovr > 0 then return ovr; end
     local lv = nil;
     pcall(function()
         local p = gData and gData.GetPlayer and gData.GetPlayer() or nil;
-        if type(p) == 'table' then lv = tonumber(p.MainJobLevel); end
+        if type(p) == 'table' then lv = tonumber(p.MainJobSync); end
     end);
-    return lv;
+    if lv ~= nil and lv > 0 then return lv; end
+    return nil;
 end
 
 function M.liveReads()
