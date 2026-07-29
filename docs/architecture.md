@@ -91,6 +91,7 @@ engine cannot require them; it has its own minimal reads).
 | **Is the MaxMP mode on? / flip it** | `automationsui.maxmpMode()` / `.maxmpToggle()` | `ui/automationsui.lua` | THE shared reader/flipper for every surface (panel button, list row). Reads the LAC engine's modestate mirror (1s TTL — display can lag a beat); the toggle sends the EXPLICIT `/dl mode maxmp on\|off`, never a blind flip. Auto-disables on job change. |
 | **The max-MP band plan?** | `dispatch.M.mpBands(ctx)` → context; `mpbands.build/target/tick` (pure core) | `dispatch.lua` (LAC state) + `feature/mpbands.lua` | ONE context serves the engine AND `/dl plan` — the plan IS the behavior, never render a rival. Current MP is the only live read; `GetMPMax` is unreliable during gear churn and floored party MP% == 100 is the only exact fullness signal. Read docs/design/maxmp-mode.md (rulings ledger + failure museum) before touching. |
 
+| **Did I just engage / re-target something, and exactly what?** | `engagewatch.lastEdge()` → `{ kind, index, serverId, name, at }` \| nil; `.subscribe(who, cb)` / `.unsubscribe(who)`; `.decode(bytes)` (pure) | `feature/engagewatch.lua` | THE one decoder of the two battle EDGES — never register a second `0x01A` reader for them. `kind` is `'engage'` (category `0x02`) or `'retarget'` (category `0x0F`, which is what auto-target rolling to the next mob sends). The entity comes **from the packet** (UniqueNo u32 @0x04, ActIndex u16 @0x08), never re-read at consumption time — by then the target has moved on, and that is the whole point. A **per-TARGET debounce** (`DEBOUNCE_S = 5`) means the same entity notifies at most once a window while a different one notifies immediately, so client re-sends and target stutter never reach a subscriber. THREADING (the chocowatch rule): the `packet_out` handler decodes and stashes on the NETWORK thread and does nothing else; `pump()` — wired in dlac.lua's `d3d_present` — does the debounce, the entity-name read and the callbacks on the MAIN thread. Subscribers are pcall'd, so one throwing consumer never costs another its notification. Consumer: the BST Helper's Fight switch (`jobhelpers/bst/fight.lua`). The field-proven decode of both kinds is `accwatch.lua`'s engage watch on the parked `feature/autoacc` branch (history.md, "ACC calculator → acc watch"), which is not on this branch to extract from — THIS is the one shared implementation it subscribes to when it lands. |
 | **Is the game hiding its own interface?** (Scroll Lock) | `gamehud.hidden()` → `true` \| `false` | `feature\gamehud.lua` | FAILS OPEN — unmatched signature, null pointer or headless all answer `false`, because a UI that vanishes on a bad read is unexplainable to a player. The SCREENSHOT flag only: cutscenes and the fullscreen map have their own signatures and dlac deliberately does not fold them in (xivbar/HXUI do). One consumer, and there should only ever be one: the gate in gearui's `d3d_present`, above the first imgui call and below every per-frame pump. |
 
 Adding a new central service: generic plumbing goes in `lib/`, game-domain
@@ -522,16 +523,39 @@ the Pup-Helper precedent).
   Priority mechanism — no working `BeginPopupContextItem` in this install) persisting per job. Every call INTO
   a module's render hooks is pcall-wrapped — a throwing Panel loses its own Panel and prints once, never the
   tab or other rows (frame-level imgui stack recovery is uihost's `tabGuard`).
-- **`jobhelpers/bst/init.lua`** — the **BST Helper**, first real module. Its Panel carries the demoable
-  **"Reward now"** button (issue #138): pick the best carried pet food (the eight-tier Ladder), overlay an
-  optional Reward set from the job entry's Sets, open an Action sequence, and gray the button while Reward is
-  down. The Fight switch and death-only resummon land in later PRD #135 slices.
+- **`jobhelpers/bst/init.lua`** — the **BST Helper**, first real module, and a folder with more than one file in
+  it: `init.lua` is the contract + the Panel, and the behaviors live beside it. Its Panel carries the three-way
+  **Fight** switch (issue #139) and the demoable **"Reward now"** button (issue #138): pick the best carried pet
+  food (the eight-tier Ladder), overlay an optional Reward set from the job entry's Sets, open an Action
+  sequence, and gray the button while Reward is down. Death-only resummon lands in a later PRD #135 slice.
 - **Load wiring:** `dlac.lua` adds `feature\jobhelpers` + `ui\jobhelpersui` to the module-load loop, then runs
   the loader + `maybeRegister` in one guarded block after the loop (so job-helper counts/failures ride the load
   beacon too). ADR 0028 records the module-system decision.
-- **Test rosters:** `feature/jobhelpers` → `FEATURE`, `ui/jobhelpersui` → `UI`, and a new `JOBHELP` roster
-  (`jobhelpers/<id>/init.lua`) in `tests/run_tests.lua`'s GRD block; `'jobhelpers'` added to `tests/smoke_ui.lua`'s
-  tab-name roster (smoke S10c absent / S320–S334 present + balanced Panel).
+- **Test rosters:** `feature/jobhelpers` + `feature/engagewatch` → `FEATURE`, `ui/jobhelpersui` → `UI`, and the
+  `JOBHELP` roster (folder-relative module paths: `bst/init`, `bst/config`, `bst/fight`) in
+  `tests/run_tests.lua`'s GRD block; `'jobhelpers'` added to `tests/smoke_ui.lua`'s tab-name roster (smoke S10c
+  absent / S320–S339 present + balanced Panel + the Fight switch drawn and clickable).
+
+### The BST Fight switch (issue #139, PRD #135) — the first standing Job-helper behavior
+The first behavior a Job helper performs on its OWN signal rather than a button. Two new files beside the
+central service, all pure-core-plus-thin-glue:
+- **`feature/engagewatch.lua`** — the **engage/target edge** central service (its own row in the table above).
+  One `0x01A` decoder for both edges, the packet's own entity, a 5-second per-target debounce, subscribers.
+  Network thread decodes and stashes; `pump()` (dlac.lua's `d3d_present`) debounces, names and notifies.
+- **`jobhelpers/bst/fight.lua`** — the switch itself. `decide(edge, state)` is PURE — edge + state in, command
+  decision out — so every rule is a headless check (BFT*): `off` never acts; `attack` hears ENGAGE edges only
+  (a mid-fight target change does nothing); `follow` hears both. `active` and `hasPet` must be POSITIVELY true
+  (an unreadable world or pet read is not permission to command a pet — the one deliberate departure from the
+  buff-cache "unknown never flips behavior" rule, because here the unknown-reads-as-yes branch is the one that
+  ACTS), while `targetOk` blocks only on a positive contradiction. Heel needs no code: nothing polls, nothing
+  repeats, so a pulled-back pet stays back until the next real edge. Jug and charmed pets are identical
+  because the decision has no pet-identity input at all. The command goes through `lib/cmdqueue`, once,
+  fire-and-forget. Chat stays SILENT (a line per pull is noise); the Panel reports the last decision instead.
+- **`jobhelpers/bst/config.lua`** — the module's OWN per-character settings file,
+  `<char>\dlac\jobhelper-bst.lua` (`fmt`-versioned, declared keys only, written on mutation only). Deliberately
+  NOT the shared `jobhelpers.lua`, which holds the FRAMEWORK's state (pill, section order, rank anchor): one
+  config file per module is part of what makes a module separable — Fight defaults **off**, because a helper
+  that issues commands never arms itself.
 
 ### The Action sequence machinery (issue #138, PRD #135) — the "Reward now" slice
 The CONTEXT.md **Action sequence** made demoable. Four pure cores with injected seams (headless-tested)

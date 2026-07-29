@@ -7024,3 +7024,68 @@ stay byte-identical and no live session retraces until a sequence claims). `disp
 is left as-is pending Henrik's call on whether the new claimant warrants a handshake bump —
 flagged in the PR. Both suites green (**4332 + 789**, lua5.4). Player-facing strings and the
 Reward command token await the maintainer's sign-off and a field round.
+
+## Session "BST Fight: the engage/target edge service + the three-way switch" (issue #139, PRD #135)
+
+**Theme:** the first Job-helper behavior that acts on its OWN signal instead of a button —
+and the central service that supplies the signal. Builds on #137 (module system) and #138
+(Action sequencer + the `JobHelper` claimant row), both on `dev`.
+
+**Landed:**
+- `feature/engagewatch.lua` — the **engage/target edge** central service (new row in the
+  architecture doc's Central-services table). ONE decoder for both battle edges off the
+  outgoing action packet: `0x01A` category `0x02` = **engage**, category `0x0F` = **retarget**
+  (what auto-target rolling to the next mob sends). The entity comes from the PACKET
+  (UniqueNo u32 @0x04, ActIndex u16 @0x08) and travels with the edge; a **per-target**
+  5-second debounce means the same entity notifies at most once a window while a different
+  one notifies immediately. Subscribers are pcall'd. Tests EDG* replay both packet kinds byte
+  for byte through the pure decode and drive the debounce at the pump seam.
+- `jobhelpers/bst/fight.lua` — the three-way **Fight** switch: Off / When I attack (engage
+  edges only) / Follow my target (both). `decide(edge, state)` is pure — edge + state in,
+  command decision out — so every acceptance criterion is a headless check (BFT*).
+- `jobhelpers/bst/config.lua` — the BST Helper's OWN per-character settings file
+  (`<char>\dlac\jobhelper-bst.lua`, `fmt`-versioned, declared keys only, written on mutation
+  only), the PRD's "one config file per module". Fight defaults **off**.
+
+**The three things worth not re-deriving:**
+
+1. **Capture the entity, do not re-read it.** `/pet "Fight" <t>` is the only chat command that
+   can name an arbitrary monster, and `<t>` resolves at EXECUTION time — one more auto-target
+   roll and the pet goes at the wrong mob. So the packet's entity is confirmed against the live
+   target before the command is issued, and a positive mismatch cancels the send. An
+   *unreadable* target does not cancel it: a read we cannot make must not silently disable the
+   whole feature. The three states (confirmed / contradicted / unknown) are the point; collapsing
+   them to a boolean loses either the safety or the feature.
+2. **Two gates read UNKNOWN as no, one reads it as yes — deliberately.** `active` (the module
+   activity predicate) and `hasPet` must be positively true, which is the opposite of dlac's
+   standing buff-cache discipline ("an unknown read must not flip behavior"). That discipline is
+   about GEAR, where the unknown-reads-as-no branch is the one that changes what you wear; here
+   the unknown-reads-as-yes branch is the one that ISSUES A COMMAND, and AC4 is literal — no pet
+   means no command is ever issued, not "a command the client refuses". `targetOk` keeps the
+   original discipline, because there the unknown branch is the passive one.
+3. **Heel needed no code, and that is the design working.** Nothing polls pet status, nothing
+   repeats, nothing retries a refused send: every send traces to one packet the player's own
+   client sent. So a pulled-back pet stays back until the next real edge, and "fire-and-forget"
+   and "no pet-idle gate" (both PRD requirements) turn out to be the same property stated twice.
+   A "pet is idle, nudge it" beat would break all three at once.
+
+**Threading:** the `packet_out` handler decodes three integers and appends to a capped queue —
+nothing else. The debounce, the entity-name read and every subscriber callback run on the MAIN
+thread in `pump()`, wired into `dlac.lua`'s `d3d_present` beside the sequencer's. That is the
+chocowatch rule, and the dlacprobe crash is why it exists.
+
+**On "extract the existing inert reference implementation":** the field-proven decode of these
+two edges is `accwatch.lua`'s `/dl acc` engage watch — *"Every engage (0x01A action 0x02) AND
+battle-target switch (action 0x0F, auto-target)"* — which ships on the parked `feature/autoacc`
+branch pending GM approval and is not on `dev` to extract from. `engagewatch` IS that one shared
+implementation; when autoacc lands it subscribes here instead of carrying a second copy, and the
+module header, the Central-services row and this entry all say so.
+
+**Chat stays silent.** Fight fires on every pull, so a line per pull is noise, not news; the
+Panel reports the last decision instead ("sent your pet at Nursery Nazuna", "in town", "no pet
+out"). A refusal here costs nothing, unlike Reward's — which is why Reward is loud and this is
+not.
+
+Both suites green (**4429 + 793**, lua5.4). Player-facing strings (**Fight**, *Off* / *When I
+attack* / *Follow my target*) and the exact `/pet "Fight"` command spelling on CatsEyeXI await
+the maintainer's sign-off and a field round.
