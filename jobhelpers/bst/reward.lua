@@ -284,29 +284,16 @@ end
 -- the ACT -- one path, two requesters (the button and the rule)
 -- ---------------------------------------------------------------------------
 
--- The player's current main job, or nil.
-local function playerJob()
-    local j = nil;
-    pcall(function() j = gData.GetPlayer().MainJob; end);
-    if type(j) ~= 'string' or j == '' or j == '?' then return nil; end
-    return j;
-end
-
 -- This module's priority among the current job's section (the tab's section
--- order). Higher wins a simultaneous contention (actionseq.arbitrateRequests);
--- top-of-section is highest, so order = (count - index + 1). Defaults to 1.
+-- order). Higher wins a simultaneous contention (actionseq.arbitrateRequests).
+-- The rule is the FRAMEWORK's -- it is a fact about the module, not about which
+-- of its rules is asking -- so this delegates rather than carrying a second
+-- copy (#141 moved it to feature\jobhelpers.sectionOrder when Resummon needed
+-- the same answer). Defaults to 1 when the framework is unreachable.
 function M.sectionOrder(id)
-    local order = 1;
-    pcall(function()
-        local jh = req('dlac\\feature\\jobhelpers');
-        local job = playerJob();
-        if jh == nil or job == nil then return; end
-        local ids = jh.idsForJob(job);
-        for i, n in ipairs(ids) do
-            if n == id then order = (#ids - i + 1); return; end
-        end
-    end);
-    return order;
+    local jh = req('dlac\\feature\\jobhelpers');
+    if jh == nil or type(jh.sectionOrder) ~= 'function' then return 1; end
+    return jh.sectionOrder(id);
 end
 
 -- The named Reward sets available to pick from -- the job entry's static Sets

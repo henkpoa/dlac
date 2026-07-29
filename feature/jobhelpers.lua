@@ -598,6 +598,29 @@ function M.jobs()
     return out;
 end
 
+-- A module's ACTION-SEQUENCE priority: its position in the CURRENT job's
+-- section, as a number where higher wins a simultaneous contention
+-- (actionseq.arbitrateRequests). Top-of-section is highest, so the order is
+-- (count - index + 1); an unknown module, an unreadable job or a headless
+-- caller all answer 1.
+--
+-- It lives here, not in a module, because it is a fact about the MODULE and its
+-- section -- not about whichever of the module's rules happens to be asking.
+-- BST's Reward and Resummon share one answer by construction.
+function M.sectionOrder(id)
+    local order = 1;
+    pcall(function()
+        local job = nil;
+        pcall(function() job = gData.GetPlayer().MainJob; end);
+        if type(job) ~= 'string' or job == '' or job == '?' then return; end
+        local ids = M.idsForJob(job);
+        for i, n in ipairs(ids) do
+            if n == id then order = (#ids - i + 1); return; end
+        end
+    end);
+    return order;
+end
+
 -- The module ids declaring `job`, in this character's remembered section order.
 function M.idsForJob(job)
     local defaults = {};

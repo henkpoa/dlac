@@ -351,6 +351,37 @@ research already recorded. In rough priority order:
 
 ## Current state (as of 2026-07-26)
 
+- **2026-07-29: BST Resummon — the pet-loss edge gets CLASSIFIED, and only a proven jug
+  death spends a jug — ON `issue-141-bst-resummon`, awaiting review + field test**
+  (`2026.07.29k`, issue #141, PRD #135). The third standing BST Helper behavior, and the
+  one whose failure mode costs real money. Its whole design is one asymmetry: **a missed
+  resummon costs the player nothing, a wrongly-assumed one costs them a jug** — so
+  `petvitals.classifyLoss` proves a death or reports `unknown`, and never guesses.
+  **Two proofs**: the pet-falls chat line (read off `text_in`, the channel the client
+  already renders — history.md's dig-obtained lesson, where two packet guesses lost to one
+  hgather grep) and a present→absent transition after a **low last-seen HP%**
+  (`LOW_HP_PCT = 25`). **Three suppressors, checked first**: an observed outgoing Leave
+  (0x01A category 0x09, ability resolved BY NAME off the client's own resource — no
+  hardcoded ability id anywhere in this slice), zoning, and logging out. **Jug vs charm is
+  decided by NAME** through an injected authority, so the service owns the rule and the
+  BST module owns the list (`jobhelpers/bst/jugs.lua`) — charm loss and a charmed pet's
+  death trigger nothing at all.
+  The Panel gains the **Resummon** section: a jug picker over the CATALOG's own jugs (a jug
+  is exactly a BST-only Ammo item — the mapping module ships the jug→pet names and the
+  level *overrides*, never a second copy of the catalog), the binary Call Beast / Bestial
+  Loyalty choice, and the "use the other if mine is on cooldown" checkbox (default on) with
+  the trade in its hover. Out of jug is ONE loud line, and the Loyalty fallback does not
+  rescue an empty bag — both methods need the jug WORN, which is why this is an Action
+  sequence and not a bare command. Both recasts down **queues**, and the queue is cancelled
+  by zoning / Leave / logout / any pet appearing — and by disarming the rule, which is the
+  row pill's whole job. It deliberately has no expiry: Bestial Loyalty's recast is measured
+  in minutes.
+  Suites **4732 + 817**. **NOT field-tested** — and three things in it can only be settled
+  in the field: every jug→pet row (hand-transcribed, `cexi`-anchored rows first, unplaceable
+  rows shipped EMPTY rather than guessed), the exact pet-falls wording, and whether pet
+  commands really ride action category 0x09. All three fail SAFE: the worst case of each is
+  a resummon that does not happen. The maintainer's ruling for this slice is recorded in
+  `jugs.lua`'s header — live > wiki > repo, and repo SQL is inherited-base only.
 - **2026-07-28: the Ventures rings reach the Crafting Gear panel — ON MAIN, field round
   owed** (`2026.07.28o`; promoted the same hour on Henrik's *"push to main"*, deliberately
   un-field-confirmed — the second such call today. It is display + one coverage light with

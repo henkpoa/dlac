@@ -234,10 +234,11 @@ end)();
     local LIB = { 'cmdqueue','entwatch','safewrite','statefile' };
     -- Job helper modules (issue #137): each is a drop-in FOLDER under jobhelpers\
     -- with an init.lua, plus whatever pure cores it splits out beside it (issue
-    -- #139: bst\config + bst\fight; #140: bst\reward). They ship inside dlac, so
-    -- they join the ratchet too -- entries are folder-relative module paths, no
-    -- extension.
-    local JOBHELP = { 'bst/init', 'bst/config', 'bst/fight', 'bst/reward' };
+    -- #139: bst\config + bst\fight; #140: bst\reward; #141: bst\resummon +
+    -- bst\jugs). They ship inside dlac, so they join the ratchet too -- entries
+    -- are folder-relative module paths, no extension.
+    local JOBHELP = { 'bst/init', 'bst/config', 'bst/fight', 'bst/reward',
+                      'bst/resummon', 'bst/jugs' };
 
     local ALL = {};
     for _, f in ipairs(ROOT_FILES) do ALL[#ALL + 1] = f; end
@@ -16326,6 +16327,34 @@ end)();
     check('RC6 a negative recast clamps to 0 (ready)', (rc.readyFor(sig, function() return -3; end)), true);
     check('RC7 remainingFor returns nil on a non-number', rc.remainingFor(sig, function() return 'x'; end), nil);
     check('RC8 Reward is ability 103 (ported from Pup-Helper)', sig.id, 103);
+
+    -- The two SUMMON methods (issue #141). Neither hardcodes a recast slot: the
+    -- Pup-Helper reference only ever named Reward's, so these resolve theirs by
+    -- NAME through the client's own ability resource -- live memory over every
+    -- other source (hard rule 9) -- and an unresolvable one reads READY.
+    check('RC9 Call Beast is named, not numbered', rc.CALL_BEAST.name, 'Call Beast');
+    check('RC10 ...and so is Bestial Loyalty', rc.BESTIAL_LOYALTY.name, 'Bestial Loyalty');
+    check('RC11 a declared timer id still wins (Reward\'s port)', rc.timerIdFor(rc.REWARD), 103);
+    local asked = {};
+    rc._abilityRes = function(name) asked[#asked + 1] = name; return { RecastTimerId = 77 }; end;
+    check('RC12 an undeclared one resolves BY NAME off the resource',
+          rc.timerIdFor({ name = 'Call Beast' }), 77);
+    check('RC13 ...asking for exactly that ability', asked[1], 'Call Beast');
+    rc._abilityRes = function() return nil; end;
+    check('RC14 an unresolvable slot is UNKNOWN, never a guess',
+          rc.timerIdFor({ name = 'Nonesuch' }), nil);
+    check('RC15 ...which the live read turns into "ready" (the courtesy gate)',
+          (rc.readyFor({ name = 'Nonesuch' }, rc.liveRemaining)), true);
+    check('RC16 a resolution failure is NOT latched (hard rule 11)', (function()
+        local sig2 = { name = 'Call Beast' };
+        rc.timerIdFor(sig2);                                     -- fails: no resource yet
+        rc._abilityRes = function() return { RecastTimerId = 42 }; end;
+        return rc.timerIdFor(sig2);                              -- the resource is up now
+    end)(), 42);
+    check('RC17 Call Beast reads ready through its own one-liner',
+          (rc.callBeastReady(function() return 0; end)), true);
+    check('RC18 ...and down when measured down',
+          (rc.bestialLoyaltyReady(function() return 900; end)), false);
 end)();
 
 -- ---------------------------------------------------------------------------
@@ -16454,6 +16483,533 @@ end)();
     _G.gData = {};
     check('PV32 a gData without the provider is not permission to act', pv.get().present, false);
     _G.gData = realG;
+end)();
+
+-- ---------------------------------------------------------------------------
+-- PVL: the CLASSIFIED PET-LOSS EDGE the vitals service gained (issue #141).
+-- "My pet is gone -- why?", answered as a PURE function of the before/after
+-- vitals plus what the world was observed doing. DEATH IS CONFIRMED, NEVER
+-- ASSUMED: only the falls line or a low last-seen HP% prove one, and an
+-- observed Leave / zoning / logout each suppress ahead of both. AC2/AC6.
+-- ---------------------------------------------------------------------------
+;(function()
+    local pv = dofile('feature/petvitals.lua');
+
+    local OUT  = { present = true, hpp = 78, name = 'Hare Familiar' };
+    local HURT = { present = true, hpp = 9,  name = 'Hare Familiar' };
+    local GONE = { present = false };
+    -- The BST module's roster stands in as the injected name authority.
+    local function jugAuth(name)
+        if name == 'Hare Familiar' or name == 'Courier Carrie' then return true; end
+        return false;
+    end
+
+    -- --- the falls line: matched lowercased, subject sliced from the original
+    check('PVL1 a falls line names its subject', pv.fallsSubject('Hare Familiar falls to the ground.'),
+          'Hare Familiar');
+    check('PVL2 ...the message article is not part of the name',
+          pv.fallsSubject('The Forest Hare falls to the ground.'), 'Forest Hare');
+    check('PVL3 matched case-insensitively (the digrank lesson)',
+          pv.fallsSubject('Hare Familiar FALLS TO THE GROUND.'), 'Hare Familiar');
+    check('PVL4 an unrelated line is not a falls line',
+          pv.fallsSubject('Hare Familiar hits the Forest Hare for 12 points of damage.'), nil);
+    check('PVL4a the client\'s inline colour codes do not stick to the name',
+          pv.fallsSubject('\30\01Hare Familiar\30\02 falls to the ground.'), 'Hare Familiar');
+    check('PVL4b ...so such a line still matches MY pet',
+          pv.isPetFalls('\30\01Hare Familiar\30\02 falls to the ground.', 'Hare Familiar'), true);
+    check('PVL5 MY pet falling matches', pv.isPetFalls('Hare Familiar falls to the ground.', 'Hare Familiar'), true);
+    check('PVL6 the mob I just killed does NOT',
+          pv.isPetFalls('The Forest Hare falls to the ground.', 'Hare Familiar'), false);
+    check('PVL7 a server that writes "Your pet" is still understood',
+          pv.isPetFalls('Your pet falls to the ground.', 'Hare Familiar'), true);
+    check('PVL8 ...and without a known pet name, a named subject is not assumed to be mine',
+          pv.isPetFalls('The Forest Hare falls to the ground.', nil), false);
+
+    -- --- nothing to classify
+    check('PVL9 no pet was out -> no edge', pv.classifyLoss(nil, GONE, {}).lost, false);
+    check('PVL10 a pet still out -> no edge', pv.classifyLoss(OUT, OUT, {}).lost, false);
+
+    -- --- the three suppressors, checked BEFORE any death proof
+    check('PVL11 zoning suppresses', pv.classifyLoss(HURT, GONE, { zoning = true }).kind, 'zone');
+    check('PVL12 ...even with a falls line in the window',
+          pv.classifyLoss(HURT, GONE, { zoning = true, falls = true }).confirmed, false);
+    check('PVL13 logging out suppresses', pv.classifyLoss(HURT, GONE, { logout = true }).kind, 'logout');
+    check('PVL14 an observed Leave suppresses', pv.classifyLoss(HURT, GONE, { leave = true }).kind, 'leave');
+    check('PVL15 ...and a Leave on a DYING pet is still a Leave, never a death',
+          pv.classifyLoss(HURT, GONE, { leave = true, falls = true }).kind, 'leave');
+
+    -- --- the two proofs of death
+    local d1 = pv.classifyLoss(OUT, GONE, { falls = 'Hare Familiar', isJugPet = jugAuth });
+    check('PVL16 a falls line confirms a death at ANY last-seen HP', d1.kind, 'death');
+    check('PVL17 ...and says so', d1.confirmed, true);
+    check('PVL18 ...naming which proof', d1.how, 'falls');
+    local d2 = pv.classifyLoss(HURT, GONE, { isJugPet = jugAuth });
+    check('PVL19 a vanish after LOW HP confirms a death with no line at all', d2.kind, 'death');
+    check('PVL20 ...by the other proof', d2.how, 'low-hp');
+    check('PVL21 the low-HP ceiling is a threshold, not a guess',
+          pv.classifyLoss({ present = true, hpp = pv.LOW_HP_PCT + 1, name = 'Hare Familiar' },
+                          GONE, {}).kind, 'unknown');
+    check('PVL22 ...and sitting exactly on it still confirms',
+          pv.classifyLoss({ present = true, hpp = pv.LOW_HP_PCT, name = 'Hare Familiar' },
+                          GONE, {}).kind, 'death');
+    check('PVL23 an override moves the ceiling',
+          pv.classifyLoss(OUT, GONE, { lowHp = 90 }).kind, 'death');
+
+    -- --- gone with nothing to say why: confirms NOTHING (the whole law)
+    local d3 = pv.classifyLoss(OUT, GONE, { isJugPet = jugAuth });
+    check('PVL24 a healthy pet that vanished is UNKNOWN, never a death', d3.kind, 'unknown');
+    check('PVL25 ...and confirms nothing', d3.confirmed, false);
+    check('PVL26 ...but is still a loss', d3.lost, true);
+
+    -- --- jug vs charm, decided by NAME through the injected authority
+    check('PVL27 a jug pet is recognised by name', d1.pet, 'jug');
+    check('PVL28 a charmed pet keeps its mob name and reads as charm',
+          pv.classifyLoss({ present = true, hpp = 4, name = 'Forest Hare' }, GONE,
+                          { isJugPet = jugAuth }).pet, 'charm');
+    check('PVL29 ...and its death is still a DEATH, just not a jug one',
+          pv.classifyLoss({ present = true, hpp = 4, name = 'Forest Hare' }, GONE,
+                          { isJugPet = jugAuth }).kind, 'death');
+    check('PVL30 no authority at all -> unknown, which is not a jug',
+          pv.classifyLoss(HURT, GONE, {}).pet, 'unknown');
+    check('PVL31 a THROWING authority is not permission either',
+          pv.classifyLoss(HURT, GONE, { isJugPet = function() error('boom'); end }).pet, 'unknown');
+    check('PVL32 the edge carries the pet as last seen', d2.name .. '/' .. tostring(d2.hpp),
+          'Hare Familiar/9');
+
+    -- --- the signal inbox: what the world said, with a shelf life
+    pv.clearSignals();
+    pv.noteSignal('falls', 100, 'Hare Familiar');
+    check('PVL33 a noted signal is readable inside the window', pv.signals(101).falls, 'Hare Familiar');
+    check('PVL34 ...and expires after the TTL', pv.signals(100 + pv.SIGNAL_TTL_S + 1).falls, nil);
+    pv.noteSignal('leave', 200);
+    check('PVL35 a signal with no name reads as true', pv.signals(201).leave, true);
+    check('PVL36 a backwards clock keeps the signal rather than expiring it',
+          pv.signals(150).leave, true);
+    pv.clearSignals();
+    check('PVL37 clearing empties the inbox', pv.signals(201).leave, nil);
+
+    -- --- the edge on the BEAT: one loss, published once, to loss subscribers
+    pv.reset(true);
+    pv.lossCtx.isJugPet = jugAuth;
+    local edges = {};
+    local petNow = HURT;
+    local READS = { pet = function() return (petNow.present and { HPP = petNow.hpp, Name = petNow.name }) or nil; end,
+                    zoning = function() return false; end, loggingOut = function() return false; end };
+    check('PVL38 a LOSS subscriber alone keeps the beat alive',
+          pv.subscribeLoss('t', function(e) edges[#edges + 1] = e; end) and pv.lossSubscriberCount(), 1);
+    check('PVL39 ...so the pump reads the world with no vitals subscriber at all',
+          (pv.pump(100, READS) or {}).present, true);
+    check('PVL40 a pet that is OUT publishes no loss', #edges, 0);
+    check('PVL41 ...and is remembered as the edge\'s "before"', pv.lastPresent().hpp, 9);
+    petNow = GONE;
+    pv.pump(101, READS);
+    check('PVL42 the vanish publishes exactly one edge', #edges, 1);
+    check('PVL43 ...classified as a confirmed death', edges[1].kind .. '/' .. tostring(edges[1].confirmed),
+          'death/true');
+    check('PVL44 ...of a jug pet', edges[1].pet, 'jug');
+    check('PVL45 ...stamped with the beat', edges[1].at, 101);
+    pv.pump(102, READS);
+    pv.pump(103, READS);
+    check('PVL46 a pet that stays gone never re-fires the edge', #edges, 1);
+    check('PVL47 lastLoss() answers the same edge', pv.lastLoss().kind, 'death');
+    check('PVL48 ...and the "before" is spent', pv.lastPresent(), nil);
+
+    -- a Leave observed in the window suppresses the very same transition
+    pv.reset(false);
+    edges, petNow = {}, HURT;
+    pv.pump(200, READS);
+    pv.noteSignal('leave', 200);
+    petNow = GONE;
+    pv.pump(201, READS);
+    check('PVL49 the same vanish reads as a LEAVE once one was observed', edges[1].kind, 'leave');
+    check('PVL50 ...and the signal does not explain the NEXT loss too', pv.signals(201).leave, nil);
+
+    -- zoning wins over everything, read live through the injected reads
+    pv.reset(false);
+    edges, petNow = {}, HURT;
+    READS.zoning = function() return true; end;
+    pv.pump(300, READS);
+    petNow = GONE;
+    pv.pump(301, READS);
+    check('PVL51 the live zoning read suppresses at the beat too', edges[1].kind, 'zone');
+    READS.zoning = function() return false; end;
+
+    -- a text line only becomes a signal while a pet is actually out
+    pv.reset(false);
+    petNow = OUT;
+    pv.pump(400, READS);
+    check('PVL52 a falls line about MY pet becomes a signal',
+          pv.onTextLine('Hare Familiar falls to the ground.', 400) and pv.signals(400).falls,
+          'Hare Familiar');
+    pv.clearSignals();
+    check('PVL53 ...a line about the mob does not',
+          pv.onTextLine('The Forest Hare falls to the ground.', 400), false);
+
+    -- --- the LEAVE observation: decode on the packet thread, resolve on ours
+    pv.resetCommands();
+    pv.clearSignals();
+    -- an outgoing 0x01A: category 0x09 (Ability) at 0x0A, ability id at 0x0C
+    local function actionPkt(cat, abil)
+        local b = {};
+        for i = 1, 16 do b[i] = 0; end
+        b[0x0A + 1] = cat % 256;  b[0x0A + 2] = math.floor(cat / 256);
+        b[0x0C + 1] = abil % 256; b[0x0C + 2] = math.floor(abil / 256);
+        local s = '';
+        for i = 1, 16 do s = s .. string.char(b[i]); end
+        return s;
+    end
+    check('PVL54 an ability action packet decodes to its ability id',
+          pv.decodeCommand(actionPkt(0x09, 261)), 261);
+    check('PVL55 a battle EDGE is not this reader\'s packet (engagewatch owns those)',
+          pv.decodeCommand(actionPkt(0x02, 261)), nil);
+    check('PVL56 a torn packet decodes to nothing', pv.decodeCommand('\0\0'), nil);
+    pv.onCommandPacket(actionPkt(0x09, 261));
+    check('PVL57 the drain notes a Leave when the name resolves to one',
+          pv.drainCommands(500, function(id) if id == 261 then return 'leave'; end return 'sic'; end), 1);
+    check('PVL58 ...as a signal on THIS service\'s clock', pv.signals(500).leave, true);
+    pv.clearSignals();
+    pv.onCommandPacket(actionPkt(0x09, 262));
+    check('PVL59 any other ability is not a Leave',
+          pv.drainCommands(510, function() return 'reward'; end), 0);
+    check('PVL60 ...and notes nothing', pv.signals(510).leave, nil);
+    pv.onCommandPacket(actionPkt(0x09, 263));
+    check('PVL61 an unresolvable ability name is not a Leave either (fails SAFE)',
+          pv.drainCommands(520, function() return nil; end), 0);
+    check('PVL62 draining an empty stash is free', pv.drainCommands(530), 0);
+
+    -- --- the human line the Panel reports
+    check('PVL63 the loss text names the death', pv.lossText(d1):find('died', 1, true) ~= nil, true);
+    check('PVL64 ...and a charmed one says so',
+          pv.lossText(pv.classifyLoss({ present = true, hpp = 4, name = 'Forest Hare' }, GONE,
+                                      { isJugPet = jugAuth })):find('charmed', 1, true) ~= nil, true);
+    check('PVL65 ...and a Leave reads as a dismissal',
+          pv.lossText(pv.classifyLoss(HURT, GONE, { leave = true })):find('dismissed', 1, true) ~= nil, true);
+    check('PVL66 nothing lost has nothing to say', pv.lossText(nil), 'no pet loss yet');
+end)();
+
+-- ---------------------------------------------------------------------------
+-- JUG: the BST Helper's jug DATA (issue #141) -- the pet roster the death
+-- classifier judges names against, and the jug -> pet mapping the picker shows.
+-- The jug LIST itself is the catalog's, joined here, with the walk injected.
+-- ---------------------------------------------------------------------------
+;(function()
+    local jugs = dofile('jobhelpers/bst/jugs.lua');
+
+    -- --- the roster: the classifier's whole jug-vs-charm rule
+    check('JUG1 a jug pet is on the roster', jugs.isJugPet('Hare Familiar'), true);
+    check('JUG2 ...an HQ one too', jugs.isJugPet('Keeneared Steffi'), true);
+    check('JUG3 a charmed mob keeps its mob name and is NOT one', jugs.isJugPet('Forest Hare'), false);
+    check('JUG4 matched case-insensitively', jugs.isJugPet('hare familiar'), true);
+    check('JUG5 ...and padding-trimmed (the GetName idiom)', jugs.isJugPet('Hare Familiar  '), true);
+    check('JUG6 no name to judge answers "cannot tell"', jugs.isJugPet(nil), nil);
+    check('JUG7 an empty name too', jugs.isJugPet('   '), nil);
+    check('JUG8 the player\'s own configured pet counts even off-roster',
+          jugs.isJugPet('Wyvern Familiar', 'Wyvern Familiar'), true);
+    check('JUG9 ...and only that one', jugs.isJugPet('Other Familiar', 'Wyvern Familiar'), false);
+    check('JUG10 the roster is 14 families of NQ + HQ', #jugs.PETS, 28);
+
+    -- --- the mapping: display only, and honest about what it does not know
+    check('JUG11 a mapped jug names its pet', jugs.petFor('Carrot Broth'), 'Hare Familiar');
+    check('JUG12 ...and where the row came from', jugs.sourceFor('Carrot Broth'), 'cexi');
+    check('JUG13 an unmapped jug names nobody rather than guessing',
+          jugs.petFor('Shadowy Broth'), nil);
+    check('JUG14 a non-jug maps to nothing', jugs.petFor('Pet Food Alpha'), nil);
+    check('JUG15 no mapping row points at a pet the roster does not carry', (function()
+        local roster = {};
+        for _, n in ipairs(jugs.PETS) do roster[n] = true; end
+        for item, row in pairs(jugs.MAP) do
+            if roster[row.pet] ~= true then return item .. ' -> ' .. tostring(row.pet); end
+        end
+        return 'ok';
+    end)(), 'ok');
+    check('JUG16 ...and no two jugs claim the same pet', (function()
+        local seen = {};
+        for item, row in pairs(jugs.MAP) do
+            if seen[row.pet] ~= nil then return row.pet .. ' claimed twice'; end
+            seen[row.pet] = item;
+        end
+        return 'ok';
+    end)(), 'ok');
+
+    -- --- the list: a jug is a BST-ONLY Ammo item, joined with the mapping
+    local FIXTURE = {
+        [17860] = { Name = 'Carrot Broth', Level = 10, Type = 'Ammo', Jobs = { 'BST' } },
+        [17864] = { Name = 'Herbal Broth', Level = 15, Type = 'Ammo', Jobs = { 'BST' } },
+        [17903] = { Name = 'Shadowy Broth', Level = 96, Type = 'Ammo', Jobs = { 'BST' } },
+        [17016] = { Name = 'Pet Food Alpha', Level = 12, Type = 'Ammo',
+                    Jobs = { 'WAR', 'BST', 'DRG' } },                       -- not BST-only
+        [18761] = { Name = 'Acantha Shavers', Level = 69, Type = 'HandToHand', Jobs = { 'BST' } },
+    };
+    local READS = { index = function() return FIXTURE; end };
+    local list = jugs.list(READS);
+    check('JUG17 only BST-only Ammo is a jug', #list, 3);
+    check('JUG18 ...ordered lowest level first', list[1].name, 'Carrot Broth');
+    check('JUG19 ...then the rest', list[2].name .. '/' .. list[3].name, 'Herbal Broth/Shadowy Broth');
+    check('JUG20 a row carries its catalog id and level', list[1].id .. '/' .. list[1].level, '17860/10');
+    check('JUG21 ...and the pet it calls', list[1].pet, 'Hare Familiar');
+    check('JUG22 an unmapped jug rides the list with no pet name', list[3].pet, nil);
+    check('JUG23 find() is case-insensitive (a name travels through a config file)',
+          (jugs.find('carrot broth', READS) or {}).id, 17860);
+    check('JUG24 ...and a non-jug is not found', jugs.find('Pet Food Alpha', READS), nil);
+    check('JUG25 an unreadable catalog is an empty list, never a throw',
+          #jugs.list({ index = function() error('no catalog'); end }), 0);
+
+    -- a LIVE-observed level override wins over the catalog's inherited base
+    jugs.LEVEL['Carrot Broth'] = 8;
+    check('JUG26 a live-observed level beats the repo one', jugs.list(READS)[1].level, 8);
+    jugs.LEVEL['Carrot Broth'] = nil;
+    check('JUG27 the default LEVEL table ships empty (nothing observed live yet)',
+          next(jugs.LEVEL), nil);
+end)();
+
+-- ---------------------------------------------------------------------------
+-- BRS: the BST Helper's RESUMMON rule (issue #141), driven at its DECISION
+-- SEAM -- a classified loss edge + state in, "summon / queue / hold" out, and
+-- the queue tick's fire/cancel the same way. Death only, jug pets only, and
+-- never a summon on a Leave, a zone, a logout or a charmed pet. AC1-AC6.
+-- ---------------------------------------------------------------------------
+;(function()
+    local rs = dofile('jobhelpers/bst/resummon.lua');
+
+    local DEATH = { lost = true, kind = 'death', confirmed = true, pet = 'jug',
+                    name = 'Hare Familiar', hpp = 4 };
+    -- `nil` in a table literal cannot CLEAR a key (pairs never sees it), and
+    -- half these cases are exactly "this read came back unreadable" -- so the
+    -- overrides carry an explicit unset marker.
+    local UNSET = {};
+    local function armed(over)
+        local st = { armed = true, active = true, jug = 'Carrot Broth', method = 'call',
+                     fallback = true, stock = 3, busy = false, now = 100 };
+        for k, v in pairs(over or {}) do
+            if v == UNSET then st[k] = nil; else st[k] = v; end
+        end
+        return st;
+    end
+    local function edge(over)
+        local e = {};
+        for k, v in pairs(DEATH) do e[k] = v; end
+        for k, v in pairs(over or {}) do e[k] = v; end
+        return e;
+    end
+
+    -- --- the happy path (AC1)
+    local d = rs.decideLoss(DEATH, armed());
+    check('BRS1 a confirmed jug-pet death summons', d.act, true);
+    check('BRS2 ...with the chosen method', d.method, 'call');
+    check('BRS3 ...and the configured jug', d.jug, 'Carrot Broth');
+    check('BRS4 the request claims the jug into Ammo',
+          rs.buildRequest('bst', 'Carrot Broth', 'call').claim.Ammo, 'Carrot Broth');
+    check('BRS5 ...and that same slot must VERIFY WORN before anything fires',
+          rs.buildRequest('bst', 'Carrot Broth', 'call').need.Ammo, 'Carrot Broth');
+    check('BRS6 ...firing the chosen ability', rs.buildRequest('bst', 'Carrot Broth', 'call').command,
+          rs.METHOD_COMMAND.call);
+    check('BRS7 ...labelled with the act, not the rule',
+          rs.buildRequest('bst', 'Carrot Broth', 'loyalty').label, 'Bestial Loyalty');
+
+    -- --- the switches
+    check('BRS8 an unarmed rule never acts', rs.decideLoss(DEATH, armed({ armed = false })).reason, 'off');
+    check('BRS9 an inactive module never acts (reason carried)',
+          rs.decideLoss(DEATH, armed({ active = false, reason = 'town' })).reason, 'town');
+    check('BRS10 an unreadable world is not permission either',
+          rs.decideLoss(DEATH, armed({ active = UNSET })).act, false);
+
+    -- --- NEVER on anything but a proven jug-pet death (AC2)
+    check('BRS11 a Leave is never a summon', rs.decideLoss(edge({ kind = 'leave', confirmed = false }),
+          armed()).reason, 'leave');
+    check('BRS12 zoning is never a summon', rs.decideLoss(edge({ kind = 'zone', confirmed = false }),
+          armed()).reason, 'zone');
+    check('BRS13 logging out is never a summon', rs.decideLoss(edge({ kind = 'logout', confirmed = false }),
+          armed()).reason, 'logout');
+    check('BRS14 an UNEXPLAINED vanish is never a summon',
+          rs.decideLoss(edge({ kind = 'unknown', confirmed = false }), armed()).reason, 'unknown');
+    check('BRS15 a charmed pet\'s death triggers nothing',
+          rs.decideLoss(edge({ pet = 'charm' }), armed()).reason, 'charm');
+    check('BRS16 ...and neither does an unidentifiable pet',
+          rs.decideLoss(edge({ pet = 'unknown' }), armed()).reason, 'not-jug');
+    check('BRS17 a "death" that confirmed nothing is not a death',
+          rs.decideLoss(edge({ confirmed = false }), armed()).reason, 'unconfirmed');
+    check('BRS18 no loss at all -> nothing', rs.decideLoss({ lost = false }, armed()).reason, 'no-loss');
+    check('BRS19 none of them ever act', (function()
+        for _, e in ipairs({ edge({ kind = 'leave' }), edge({ kind = 'zone' }), edge({ kind = 'logout' }),
+                             edge({ kind = 'unknown' }), edge({ pet = 'charm' }),
+                             edge({ confirmed = false }) }) do
+            if rs.decideLoss(e, armed()).act == true then return 'one acted'; end
+        end
+        return 'none';
+    end)(), 'none');
+
+    -- --- out of jug: ONE loud line, and Loyalty still needs one (AC5)
+    local nj = rs.decideLoss(DEATH, armed({ jug = UNSET }));
+    check('BRS20 no jug picked refuses', nj.act, false);
+    check('BRS21 ...loudly', nj.loud, true);
+    check('BRS22 ...naming what to do',
+          rs.refusalLine(nj):find('choose one', 1, true) ~= nil, true);
+    local ns = rs.decideLoss(DEATH, armed({ stock = 0 }));
+    check('BRS23 zero of the configured jug refuses', ns.reason, 'no-stock');
+    check('BRS24 ...loudly, naming the jug', rs.refusalLine(ns):find('Carrot Broth', 1, true) ~= nil, true);
+    check('BRS25 ...and says BOTH methods need one equipped',
+          rs.refusalLine(ns):find('Bestial Loyalty', 1, true) ~= nil, true);
+    check('BRS26 the Loyalty fallback does NOT rescue an empty bag',
+          rs.decideLoss(DEATH, armed({ stock = 0, method = 'loyalty', callReady = false })).act, false);
+    check('BRS27 an unreadable stock refuses rather than firing bare',
+          rs.decideLoss(DEATH, armed({ stock = UNSET })).reason, 'no-stock');
+
+    -- --- the binary choice + the cooldown fallback (AC3)
+    check('BRS28 the chosen method wins while it is ready',
+          rs.pickMethod('loyalty', true, true, true), 'loyalty');
+    check('BRS29 chosen down + checkbox ON -> the other one',
+          rs.pickMethod('call', true, false, true), 'loyalty');
+    check('BRS30 ...and the other way round', rs.pickMethod('loyalty', true, true, false), 'call');
+    check('BRS31 chosen down + checkbox OFF -> nothing (it will queue)',
+          rs.pickMethod('call', false, false, true), nil);
+    check('BRS32 both down -> nothing, whatever the checkbox says',
+          rs.pickMethod('call', true, false, false), nil);
+    check('BRS33 an UNMEASURED recast reads READY (the courtesy gate)',
+          rs.pickMethod('call', true, nil, nil), 'call');
+    check('BRS34 the fallback reaches the other on the loss decision too',
+          rs.decideLoss(DEATH, armed({ callReady = false })).method, 'loyalty');
+    check('BRS35 ...and with the checkbox off it queues instead',
+          rs.decideLoss(DEATH, armed({ callReady = false, fallback = false })).queue, true);
+    check('BRS36 both down queues (AC4)',
+          rs.decideLoss(DEATH, armed({ callReady = false, loyaltyReady = false })).queue, true);
+    check('BRS37 ...naming why', rs.decideLoss(DEATH,
+          armed({ callReady = false, loyaltyReady = false })).reason, 'recast');
+    check('BRS38 a live sequence queues rather than being dropped',
+          rs.decideLoss(DEATH, armed({ busy = true })).queue, true);
+
+    -- --- the queue tick: cancels first, then holds, then fire (AC4)
+    local function q(over)
+        local st = armed(over);
+        st.queued = { jug = 'Carrot Broth', method = 'call', fallback = true };
+        st.callReady, st.loyaltyReady = false, false;   -- queued BECAUSE both are down
+        for k, v in pairs(over or {}) do
+            if v == UNSET then st[k] = nil; else st[k] = v; end
+        end
+        return st;
+    end
+    check('BRS39 nothing queued -> nothing to decide', rs.queueDecide(armed()).reason, 'none');
+    check('BRS40 a pet appearing ANY other way cancels', rs.queueDecide(q({ petPresent = true })).cancel,
+          'pet-appeared');
+    check('BRS41 zoning cancels', rs.queueDecide(q({ zoning = true })).cancel, 'zone');
+    check('BRS42 logging out cancels', rs.queueDecide(q({ logout = true })).cancel, 'logout');
+    check('BRS43 an observed Leave cancels', rs.queueDecide(q({ leave = true })).cancel, 'leave');
+    check('BRS44 disarming the rule cancels', rs.queueDecide(q({ armed = false })).cancel, 'off');
+    check('BRS45 running out of the jug while queued cancels, loudly',
+          rs.queueDecide(q({ stock = 0 })).cancel .. '/' .. tostring(rs.queueDecide(q({ stock = 0 })).loud),
+          'no-stock/true');
+    check('BRS46 an inactive module HOLDS, it does not cancel',
+          rs.queueDecide(q({ active = false, reason = 'town' })).cancel, nil);
+    check('BRS47 ...and says why it is waiting',
+          rs.queueDecide(q({ active = false, reason = 'town' })).reason, 'town');
+    check('BRS48 a busy sequencer holds too', rs.queueDecide(q({ busy = true })).reason, 'busy');
+    check('BRS49 still on recast holds', rs.queueDecide(q()).reason, 'recast');
+    check('BRS50 ...and fires the moment one comes up', rs.queueDecide(q({ callReady = true })).fire, true);
+    check('BRS51 ...with that method', rs.queueDecide(q({ callReady = true })).method, 'call');
+    check('BRS52 the queue re-decides which ability against what is ready NOW',
+          rs.queueDecide(q({ loyaltyReady = true })).method, 'loyalty');
+    check('BRS53 ...and honours the checkbox it was queued with', (function()
+        local st = q({ loyaltyReady = true });
+        st.queued = { jug = 'Carrot Broth', method = 'call', fallback = false };
+        return rs.queueDecide(st).fire;
+    end)(), false);
+    check('BRS53a the JUG is read live, not off the queue record',
+          rs.queueDecide(q({ callReady = true, jug = 'Herbal Broth' })).jug, 'Herbal Broth');
+    check('BRS53b ...and clearing the picker while queued cancels, loudly',
+          rs.queueDecide(q({ callReady = true, jug = UNSET })).cancel, 'no-jug');
+
+    -- --- the reported lines (Panel, never chat -- except the two loud ones)
+    check('BRS54 an act reports the ability it used',
+          rs.decisionText({ act = true, method = 'loyalty' }), 'summoned with Bestial Loyalty');
+    check('BRS55 a queue says it queued and why',
+          rs.decisionText({ queue = true, reason = 'recast' }):find('queued', 1, true) ~= nil, true);
+    check('BRS56 a cancel says it was cancelled and why',
+          rs.decisionText({ cancel = 'pet-appeared' }):find('cancelled', 1, true) ~= nil, true);
+    check('BRS57 a charmed pet\'s line does not blame the player',
+          rs.decisionText({ reason = 'charm' }):find('charm stays yours', 1, true) ~= nil, true);
+    check('BRS58 nothing yet reads as nothing yet', rs.decisionText(nil), 'nothing yet');
+
+    -- --- the methods themselves
+    check('BRS59 exactly two methods', #rs.METHODS, 2);
+    check('BRS60 an unknown method is not one', rs.isMethod('sic'), false);
+    check('BRS61 ...and a request built with one falls back to Call Beast',
+          rs.buildRequest('bst', 'Carrot Broth', 'sic').command, rs.METHOD_COMMAND.call);
+
+    -- --- the GLUE: edge -> decision -> at most one act or one queued resummon.
+    -- liveState and request are the two seams, so the whole lifecycle drives
+    -- with no world, no sequencer and no chat.
+    local acts, lines, WORLD = {}, {}, armed();
+    rs.liveState = function() local c = {}; for k, v in pairs(WORLD) do c[k] = v; end return c; end;
+    rs.request   = function(_, m) acts[#acts + 1] = m; return { ok = true }; end;
+    rs._emit     = function(l) lines[#lines + 1] = l; end;
+
+    rs.reset();
+    rs.onLoss(DEATH, 'bst');
+    check('BRS62 a confirmed jug death asks for the summon once', #acts, 1);
+    check('BRS63 ...with the chosen method', acts[1], 'call');
+    check('BRS64 ...and queues nothing', rs.queued(), nil);
+
+    acts = {};
+    rs.reset();
+    WORLD = armed({ callReady = false, loyaltyReady = false });
+    rs.onLoss(DEATH, 'bst');
+    check('BRS65 both recasts down asks for nothing', #acts, 0);
+    check('BRS66 ...and queues the resummon', (rs.queued() or {}).jug, 'Carrot Broth');
+    check('BRS67 ...remembering the PICK, not a resolved method', rs.queued().method, 'call');
+    check('BRS68 ...and the checkbox it was queued with', rs.queued().fallback, true);
+
+    -- the queue tick rides the ordinary vitals beat
+    rs.onVitals({ present = false, at = 101 }, 'bst');
+    check('BRS69 still down: the queue holds', (rs.queued() or {}).jug, 'Carrot Broth');
+    check('BRS70 ...and nothing was asked for', #acts, 0);
+    WORLD = armed({ callReady = false, loyaltyReady = true });
+    rs.onVitals({ present = false, at = 102 }, 'bst');
+    check('BRS71 one coming up fires the queued resummon', acts[#acts], 'loyalty');
+    check('BRS72 ...and spends the queue', rs.queued(), nil);
+    check('BRS73 a beat with nothing queued is a no-op',
+          rs.onVitals({ present = false, at = 103 }, 'bst'), nil);
+
+    -- a pet appearing ANY other way cancels it
+    acts = {};
+    rs.reset();
+    WORLD = armed({ callReady = false, loyaltyReady = false });
+    rs.onLoss(DEATH, 'bst');
+    rs.onVitals({ present = true, at = 110, name = 'Hare Familiar' }, 'bst');
+    check('BRS74 a pet coming out cancels the queue', rs.queued(), nil);
+    check('BRS75 ...without summoning anything', #acts, 0);
+
+    -- zoning cancels it, read through liveState's world
+    rs.reset();
+    rs.onLoss(DEATH, 'bst');
+    WORLD = armed({ callReady = false, loyaltyReady = false, zoning = true });
+    rs.onVitals({ present = false, at = 120 }, 'bst');
+    check('BRS76 zoning cancels the queue', rs.queued(), nil);
+
+    -- ...and so does disarming the rule, which is the row pill's whole job
+    rs.reset();
+    WORLD = armed({ callReady = false, loyaltyReady = false });
+    rs.onLoss(DEATH, 'bst');
+    check('BRS77 a queue is standing', rs.queued() ~= nil, true);
+    rs.setArmed(false);
+    check('BRS78 disarming drops it on the spot', rs.queued(), nil);
+
+    -- the loud refusals speak exactly once each
+    lines, acts = {}, {};
+    rs.reset();
+    WORLD = armed({ stock = 0 });
+    rs.onLoss(DEATH, 'bst');
+    check('BRS79 out of jug says so, once', #lines, 1);
+    check('BRS80 ...naming the jug', lines[1]:find('Carrot Broth', 1, true) ~= nil, true);
+    check('BRS81 ...and summons nothing', #acts, 0);
+    lines = {};
+    WORLD = armed({ jug = UNSET });
+    rs.onLoss(DEATH, 'bst');
+    check('BRS82 no jug picked says so, once', #lines, 1);
+    lines = {};
+    WORLD = armed();
+    rs.onLoss(edge({ kind = 'leave', confirmed = false }), 'bst');
+    check('BRS83 a Leave is silent -- it is the rule working, not a blocker', #lines, 0);
+    check('BRS84 ...and reported in the Panel line instead',
+          rs.lastDecision().reason, 'leave');
 end)();
 
 -- ---------------------------------------------------------------------------

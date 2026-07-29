@@ -3927,7 +3927,7 @@ end)();
         cb    = package.loaded['dlac\\ui\\craftbar'],
     };
 
-    local depth = { var = 0, col = 0, win = 0, child = 0 };
+    local depth = { var = 0, col = 0, win = 0, child = 0, combo = 0 };
     local function nop() end
     local IM = {};
     for _, n in ipairs({ 'SetNextWindowPos', 'SetNextWindowSize', 'Separator', 'Text',
@@ -3945,7 +3945,21 @@ end)();
     IM.BeginChild = function() depth.child = depth.child + 1; return true; end
     IM.EndChild   = function() depth.child = depth.child - 1; end
     IM.CollapsingHeader = function() return true; end        -- sections open so rows draw
-    IM.Selectable       = function() return true; end        -- click: selects the module -> its Panel draws
+    -- Selectables are RECORDED, and click either EVERYTHING (the default: the
+    -- module row selects, so its Panel draws) or exactly one id -- which is how
+    -- the Resummon jug picker's rows (issue #141) are driven precisely. By then
+    -- jobhelpersui already holds the selected module, so pinning the click to a
+    -- combo row does not un-select the Panel.
+    local selectables, selPick = {}, nil;
+    IM.Selectable = function(label)
+        selectables[#selectables + 1] = tostring(label);
+        if selPick == nil then return true; end
+        return type(label) == 'string' and label:find(selPick, 1, true) ~= nil;
+    end
+    -- The jug picker is a combo; its Begin/End pair joins the balance assertions
+    -- (an unbalanced combo corrupts ImGui exactly like an unbalanced child).
+    IM.BeginCombo = function() depth.combo = depth.combo + 1; return true; end
+    IM.EndCombo   = function() depth.combo = depth.combo - 1; end
     for _, n in ipairs({ 'Button', 'IsItemHovered', 'IsItemClicked', 'IsItemActive' }) do
         IM[n] = function() return false; end
     end
@@ -4028,6 +4042,7 @@ end)();
             check(tag .. ': style COLOR stack balanced', depth.col, 0);
             check(tag .. ': Begin/End balanced',         depth.win, 0);
             check(tag .. ': BeginChild/EndChild balanced', depth.child, 0);
+            check(tag .. ': BeginCombo/EndCombo balanced', depth.combo, 0);
         end
         local rok, rerr = pcall(jhui.renderTab, 'BST', 99);
         check('S331 tab render runs against the stub', rok, true);
@@ -4079,6 +4094,77 @@ end)();
             dragId = nil;
             check('S344 dragging the slider reaches the setter', thrLog[#thrLog], 35);
             reward.setArmed, reward.setThreshold = realArm, realThr;
+        end
+
+        -- the RESUMMON section's four controls (issue #141) reach the screen,
+        -- and each one's click/tick reaches its setter. Same reasoning as
+        -- S336-S344: the Panel draws inside a render pcall, so a typo here
+        -- would silently blank the section in-game and pass every load test.
+        buttons, checks, selectables = {}, {}, {};
+        pcall(jhui.renderTab, 'BST', 99);
+        local rdrawn, cdrawn = table.concat(buttons, '|'), table.concat(checks, '|');
+        check('S345 the Resummon rule switch draws',
+              cdrawn:find('bstresumauto_bst', 1, true) ~= nil, true);
+        check('S346 the binary method choice draws BOTH ways',
+              rdrawn:find('Call Beast##bstresum_call_bst', 1, true) ~= nil
+              and rdrawn:find('Bestial Loyalty##bstresum_loyalty_bst', 1, true) ~= nil, true);
+        check('S347 the cooldown-fallback checkbox draws beside them',
+              cdrawn:find('bstresumfb_bst', 1, true) ~= nil, true);
+        check('S348 the jug picker draws its combo',
+              table.concat(selectables, '|'):find('bstresumjug', 1, true) ~= nil
+              or table.concat(selectables, '|'):find('None', 1, true) ~= nil, true);
+        local rsOk, resummon = pcall(require, 'dlac\\jobhelpers\\bst\\resummon');
+        check('S349 the Resummon rule loads as a module-folder sibling', rsOk and type(resummon), 'table');
+        if rsOk then
+            local realA, realM, realF, realJ =
+                resummon.setArmed, resummon.setMethod, resummon.setFallback, resummon.setJug;
+            local aLog, mLog, fLog, jLog = {}, {}, {}, {};
+            resummon.setArmed    = function(v) aLog[#aLog + 1] = v; return true; end
+            resummon.setMethod   = function(v) mLog[#mLog + 1] = v; return true; end
+            resummon.setFallback = function(v) fLog[#fLog + 1] = v; return true; end
+            resummon.setJug      = function(v) jLog[#jLog + 1] = v; return true; end
+
+            tickId = 'bstresumauto_bst';
+            pcall(jhui.renderTab, 'BST', 99);
+            tickId = nil;
+            check('S350 ticking the Resummon switch reaches the setter', aLog[#aLog], true);
+
+            clickId = 'bstresum_loyalty_bst';
+            pcall(jhui.renderTab, 'BST', 99);
+            clickId = nil;
+            check('S351 clicking a method sets it', mLog[#mLog], 'loyalty');
+
+            tickId = 'bstresumfb_bst';
+            pcall(jhui.renderTab, 'BST', 99);
+            tickId = nil;
+            check('S352 ticking the fallback checkbox reaches the setter', #fLog >= 1, true);
+
+            -- one picker row, driven precisely: the label carries the jug, its
+            -- level and the pet it calls, and clicking it stores the JUG NAME
+            -- (never the label) -- that name is what the claim and the config
+            -- both carry.
+            jLog, selectables = {}, {};
+            local jugsOk, jugs = pcall(require, 'dlac\\jobhelpers\\bst\\jugs');
+            check('S353 the jug data loads as a module-folder sibling', jugsOk and type(jugs), 'table');
+            if jugsOk then
+                local rows = jugs.list();
+                check('S354 the catalog yields a real jug list', #rows > 0, true);
+                if #rows > 0 then
+                    selPick = 'bstresumjugrow_' .. tostring(rows[1].id);
+                    pcall(jhui.renderTab, 'BST', 99);
+                    selPick = nil;
+                    check('S355 clicking a jug row stores the JUG NAME', jLog[#jLog], rows[1].name);
+                    check('S356 ...and the row it drew names the pet it calls', (function()
+                        local all = table.concat(selectables, '|');
+                        if rows[1].pet == nil then return true; end       -- unmapped: nothing to claim
+                        return all:find(rows[1].pet, 1, true) ~= nil;
+                    end)(), true);
+                end
+            end
+            balanced('S357 tab + BST Panel with Resummon');
+
+            resummon.setArmed, resummon.setMethod = realA, realM;
+            resummon.setFallback, resummon.setJug = realF, realJ;
         end
 
         -- the optional row-status hook is actually invoked during a row render.
