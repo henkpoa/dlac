@@ -272,6 +272,14 @@ the keybind registry + ADR 0032, `/dl jh`, searchable dropdowns, the jug cap),
 userdata; the by-name recast resolution had never worked, and Reward's hardcoded `timerId = 103`
 masked it), `740dec0` (the field case pinned end to end). Suites **5128 + 842**, both interpreters.
 
+**A fifth commit adds THE PAUSE**, on the field verdict of the working resummon (*"it was
+soooo instant"*): a confirmed death now waits `resummonDelay` (default **1.0s**, slider 0-5) before
+summoning. Not a technical need -- it is what the act LOOKS like, and this project has already had a
+GM read an addon's behaviour as botting once. Implemented as the QUEUE rather than a private timer,
+which is the whole point: every cancel already there applies during the wait, so a player who summons
+by hand inside that second is never raced by their own helper. The button and its key are never
+delayed -- there, the player is the pause.
+
 **Field-confirmed by Henrik, 2026-07-30:**
 * the pet-death detection — *"the death detection was the hardest thing, which is solved now"*, and
   the `/probe pet` capture behind it (corpse readable at the same index+id for 15s, flip in +1ms,

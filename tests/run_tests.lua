@@ -18273,8 +18273,11 @@ end)();
         id    = 'bst-helper',
         stock = 3,
         ready = { ['Bestial Loyalty'] = false, ['Call Beast'] = true },
+        -- delay 0: this block is about WHICH ability goes out. The pause has its
+        -- own checks below.
         vals  = { resummonArmed = true, resummonJug = 'Carrot Broth',
-                  resummonMethod = 'loyalty', resummonFallback = true },
+                  resummonMethod = 'loyalty', resummonFallback = true,
+                  resummonDelay = 0 },
     });
     fieldS.act.request = function(r) fired[#fired + 1] = r; return { ok = true }; end;
     rsF.init(fieldS);
@@ -18295,13 +18298,75 @@ end)();
         stock = 3,
         ready = { ['Bestial Loyalty'] = false, ['Call Beast'] = true },
         vals  = { resummonArmed = true, resummonJug = 'Carrot Broth',
-                  resummonMethod = 'loyalty', resummonFallback = false },
+                  resummonMethod = 'loyalty', resummonFallback = false,
+                  resummonDelay = 0 },
     });
     fieldS2.act.request = function(r) fired2[#fired2 + 1] = r; return { ok = true }; end;
     rsG.init(fieldS2);
     local fd2 = rsG.onLoss(DEATH);
     check('BRS101k checkbox OFF: the pick is never swapped for it', #fired2, 0);
     check('BRS101l ...it queues and waits for the ability the player chose', fd2.queue, true);
+
+    -- --- THE PAUSE (Henrik, 2026-07-30, on the first working resummon: "it was
+    --     soooo instant"). Not a technical need -- it is what the act LOOKS
+    --     like, and this project has already had a GM read an addon's behaviour
+    --     as botting once. Implemented as the QUEUE rather than a private timer,
+    --     which is what makes the wait cancellable.
+    check('BRS101m the default is a pause, not instant', rsF.DEFAULT_DELAY_S, 1.0);
+    check('BRS101n an unreadable store reads the DEFAULT -- "instant" must never be\n'
+          .. '      what a missing setting falls back to', rsF.clampDelay(nil), 1.0);
+    check('BRS101o ...and it is clamped to the band', (function()
+        return rsF.clampDelay(-5) == 0 and rsF.clampDelay(99) == rsF.MAX_DELAY_S;
+    end)(), true);
+
+    local rsH = dofile('jobhelpers/bst/bst-helper/resummon.lua');
+    local fired3 = {};
+    rsH._emit = function() end;
+    local delayS = fakeApi({
+        id    = 'bst-helper',
+        stock = 3,
+        ready = { ['Call Beast'] = true, ['Bestial Loyalty'] = true },
+        clock = 500,
+        vals  = { resummonArmed = true, resummonJug = 'Carrot Broth',
+                  resummonMethod = 'call', resummonFallback = true,
+                  resummonDelay = 1.0 },
+    });
+    delayS.act.request = function(r) fired3[#fired3 + 1] = r; return { ok = true }; end;
+    rsH.init(delayS);
+    local dd = rsH.onLoss({ lost = true, kind = 'death', confirmed = true, pet = 'jug',
+                            name = 'Hare Familiar', hpp = 4, at = 500 });
+    check('BRS101p a confirmed death does NOT summon on the spot any more', #fired3, 0);
+    check('BRS101q ...it queues, and says what it is waiting for', dd.reason, 'delay');
+    check('BRS101r ...remembering the moment it may go',
+          (rsH.queued() or {}).notBefore, 501.0);
+    rsH.onVitals({ present = false, at = 500.6 });
+    check('BRS101s a beat inside the pause fires nothing', #fired3, 0);
+    check('BRS101t ...and still says why', (rsH.lastDecision() or {}).reason, 'delay');
+    rsH.onVitals({ present = false, at = 501.2 });
+    check('BRS101u the first beat past it summons', #fired3, 1);
+    check('BRS101v ...and the queue is spent', rsH.queued(), nil);
+
+    -- the wait is the PLAYER'S: summoning by hand inside it drops the pending one
+    local rsI = dofile('jobhelpers/bst/bst-helper/resummon.lua');
+    local fired4 = {};
+    rsI._emit = function() end;
+    local cancelS = fakeApi({
+        id    = 'bst-helper',
+        stock = 3,
+        clock = 700,
+        vals  = { resummonArmed = true, resummonJug = 'Carrot Broth',
+                  resummonMethod = 'call', resummonFallback = true,
+                  resummonDelay = 2.0 },
+    });
+    cancelS.act.request = function(r) fired4[#fired4 + 1] = r; return { ok = true }; end;
+    rsI.init(cancelS);
+    rsI.onLoss({ lost = true, kind = 'death', confirmed = true, pet = 'jug',
+                 name = 'Hare Familiar', hpp = 4, at = 700 });
+    check('BRS101w a pause is standing', rsI.queued() ~= nil, true);
+    rsI.onVitals({ present = true, at = 700.8, name = 'Hare Familiar' });
+    check('BRS101x a pet out inside the pause CANCELS it -- the helper never races\n'
+          .. '      a player who summoned by hand', rsI.queued(), nil);
+    check('BRS101y ...having summoned nothing', #fired4, 0);
 
     check('BRS102 no key is set by default', rs.key(), nil);
     rs.setKey('  ^F3  ');

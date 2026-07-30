@@ -88,6 +88,27 @@ M.RECAST = {
 
 M.VERIFY_TIMEOUT = 4;
 
+-- THE PAUSE before a resummon, seconds. Henrik, 2026-07-30, on the first working
+-- one: *"it was soooo instant"*.
+--
+-- It is not a technical need -- the summon works at zero. It is what the act
+-- LOOKS like: a pet falls over and a new one is called in the same instant is a
+-- shape no player produces, and this project already carries a GM reading an
+-- addon's behaviour as botting once (the naming law). A beat of hesitation costs
+-- nothing and looks like a person noticing.
+--
+-- It also buys something real: a second in which the player can summon by hand,
+-- Leave, or zone -- and every one of those cancels the pending resummon, because
+-- the wait is implemented as the QUEUE that already knows how to be cancelled,
+-- not as a private timer.
+--
+-- Resolution is the vitals beat (0.4s), so the wait lands on the first beat at or
+-- after it; a 1s setting fires around 1.0-1.4s. The DELIBERATE press (the button,
+-- the key) is never delayed -- the player is the pause.
+M.DEFAULT_DELAY_S = 1.0;
+M.MIN_DELAY_S     = 0.0;    -- 0 = the old instant behaviour, still reachable
+M.MAX_DELAY_S     = 5.0;
+
 -- How long the claim is HELD after the summon fires, seconds. Reward's default
 -- (0.4s) is sized for an ability that resolves on the spot; a summon does not --
 -- the pet spawns a beat later, and this server bakes the master's gear CHR into
@@ -247,6 +268,30 @@ function M.setFallback(on)
     local c = cfg();
     if c == nil then return false; end
     return c.set('resummonFallback', on == true);
+end
+
+-- How long to wait after a confirmed death before resummoning. An unreadable
+-- store reads the DEFAULT, not zero: "instant" is the thing being fixed, so it
+-- must never be what a missing setting falls back to.
+function M.clampDelay(v)
+    local n = tonumber(v);
+    if n == nil then return M.DEFAULT_DELAY_S; end
+    if n < M.MIN_DELAY_S then return M.MIN_DELAY_S; end
+    if n > M.MAX_DELAY_S then return M.MAX_DELAY_S; end
+    return n;
+end
+
+function M.delay()
+    local c = cfg();
+    local v = nil;
+    if c ~= nil then v = c.get('resummonDelay'); end
+    return M.clampDelay(v);
+end
+
+function M.setDelay(v)
+    local c = cfg();
+    if c == nil then return false; end
+    return c.set('resummonDelay', M.clampDelay(v));
 end
 
 -- The optional SUMMON SET, by name, or nil for "the jug alone". Persisted for
@@ -425,13 +470,25 @@ function M.decideLoss(edge, state)
         return { act = false, reason = 'no-stock', loud = true, jug = jug };
     end
 
-    -- 4. Is the sequencer free? A live sequence is never preempted, and this one
+    -- 4. THE PAUSE. Everything below this line is a FIRE-TIME question -- is the
+    --    sequencer free, which ability is up -- and none of it should be
+    --    answered a second early. So a configured delay queues here, and the
+    --    queue tick re-asks all of it when the wait is over: an ability that
+    --    comes up during the pause is used, and a player who summons by hand
+    --    inside it cancels the whole thing (the queue's own "a pet appeared").
+    local delay = tonumber(state.delay);
+    if delay ~= nil and delay > 0 then
+        return { act = false, queue = true, reason = 'delay', jug = jug,
+                 notBefore = (tonumber(state.now) or 0) + delay };
+    end
+
+    -- 5. Is the sequencer free? A live sequence is never preempted, and this one
     --    can wait -- so it QUEUES rather than being dropped.
     if state.busy == true then
         return { act = false, queue = true, reason = 'busy', jug = jug };
     end
 
-    -- 5. Which ability? Nothing allowed and ready means QUEUE, not refuse.
+    -- 6. Which ability? Nothing allowed and ready means QUEUE, not refuse.
     local m = M.pickMethod(state.method, state.fallback, state.callReady, state.loyaltyReady);
     if m == nil then
         return { act = false, queue = true, reason = 'recast', jug = jug };
@@ -484,6 +541,15 @@ function M.queueDecide(state)
         return { fire = false, cancel = 'no-stock', loud = true, jug = jug };
     end
 
+    -- THE PAUSE, held here and not by a private timer -- which is the whole
+    -- reason it is a queue: every cancel above (a pet appeared, zoning, logout,
+    -- Leave, the switch, the jug) applies DURING the wait, so a player who
+    -- summons by hand in that second is not raced by their own helper.
+    local nb = tonumber(q.notBefore);
+    if nb ~= nil and (tonumber(state.now) or 0) < nb then
+        return { fire = false, reason = 'delay', jug = jug };
+    end
+
     if state.active ~= true then
         return { fire = false, reason = state.reason or 'inactive', jug = jug };
     end
@@ -517,6 +583,7 @@ local DECISION_TEXT = {
     ['no-stock']    = 'you are out of that jug',
     ['busy']        = 'another sequence is running',
     ['recast']      = 'both summons are on cooldown',
+    ['delay']       = 'waiting a moment before resummoning',
     ['pet-appeared'] = 'a pet came out another way',
     ['none']        = 'nothing queued',
 };
@@ -702,6 +769,7 @@ function M.liveState(at)
         jug      = jug,
         method   = M.method(),
         fallback = M.fallback(),
+        delay    = M.delay(),
         now      = tonumber(at) or now(),
         queued   = _queued,
     };
@@ -757,7 +825,8 @@ function M.onLoss(edge)
         -- Remember the PICK and the checkbox, not the resolved method: which
         -- ability ends up firing is re-decided when the queue ticks, against
         -- whatever is ready then.
-        _queued = { jug = d.jug, method = st.method, fallback = st.fallback, at = st.now };
+        _queued = { jug = d.jug, method = st.method, fallback = st.fallback, at = st.now,
+                    notBefore = d.notBefore };
         return d;
     end
     if d.act ~= true then return d; end

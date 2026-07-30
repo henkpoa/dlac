@@ -96,6 +96,13 @@ local TIP_FALLBACK = 'On by default. Off, a resummon waits for YOUR method inste
     .. 'resummon queues and fires the moment one comes up -- and zoning,\n'
     .. 'Leave, logging out or any pet appearing cancels it.';
 
+local TIP_DELAY = 'How long dlac waits after your pet dies before summoning the next one.\n'
+    .. 'A pet falling over and another appearing in the same instant is a shape no\n'
+    .. 'player produces -- a beat of hesitation costs nothing and looks like you.\n'
+    .. 'The wait is also yours: summon by hand, Leave or zone inside it and the\n'
+    .. 'pending resummon is dropped. 0 restores the instant behaviour.\n'
+    .. 'The button and its key are never delayed -- there, you are the pause.';
+
 local TIP_SUMMON = 'Everything about HOW your pet is summoned -- which jug, which ability,'
     .. ' and what you are wearing when it lands. The Resummon rule below uses all of it,'
     .. ' and so does the button.';
@@ -186,6 +193,7 @@ return {
             resummonJug      = 'string',     -- the configured jug by item name; '' = none
             resummonMethod   = 'string',     -- 'call' | 'loyalty'  (resummon.METHODS)
             resummonFallback = 'boolean',    -- "use the other if mine is on cooldown"
+            resummonDelay    = 'number',     -- seconds to wait after a death before summoning
             summonSet        = 'string',     -- optional set worn while summoning; '' = jug only
             summonWeapons    = 'boolean',    -- may that set claim Main/Sub/Range?
             summonKey        = 'string',     -- the key bound to "Summon now"; '' = none
@@ -199,6 +207,7 @@ return {
             resummonArmed    = false,
             resummonMethod   = 'call',       -- the one that earns the raising bonuses
             resummonFallback = true,
+            resummonDelay    = 1.0,          -- a beat of hesitation; instant reads as a bot
             summonWeapons    = false,        -- swapping a weapon costs your TP
             -- summonSet / summonKey have no default: absent means "none", and
             -- nothing here picks a player's gear or takes a key uninvited.
@@ -488,6 +497,14 @@ return {
                     .. 'dismissal cannot cost you a jug.');
                 if flip ~= nil then resummon.setArmed(flip); armed = flip; end
 
+                -- The pause. Its own line because it is the one setting here
+                -- that is about how the act LOOKS rather than what it does.
+                ui.dim('Wait before summoning:');
+                local dly = ui.slider('bstresumdelay_' .. id, resummon.delay(),
+                    resummon.MIN_DELAY_S, resummon.MAX_DELAY_S, '%.1fs', TIP_DELAY);
+                if dly ~= nil then resummon.setDelay(dly); end
+                ui.space();
+
                 -- "No jug picked" is the module's OWN gate, and it is a real
                 -- blocker the player can fix -- so it takes the warn slot ahead of
                 -- the activity reasons.
@@ -503,8 +520,18 @@ return {
                     last      = lastLine(resummon),
                     lastLabel = 'Last edge',
                 });
-                if resummon.queued() ~= nil then
-                    ui.warn('Queued: waiting for a summon to come off cooldown.');
+                -- What the queue is actually waiting FOR: the pause and the
+                -- cooldown are both "queued", and telling a player "waiting for
+                -- a cooldown" during a one-second pause would be a small lie.
+                local q = resummon.queued();
+                if q ~= nil then
+                    local last = resummon.lastDecision();
+                    local why = (type(last) == 'table') and (last.reason or last.cancel) or nil;
+                    if why == 'delay' then
+                        ui.dim('Pausing a moment before summoning.');
+                    else
+                        ui.warn('Queued: waiting for a summon to come off cooldown.');
+                    end
                 end
             end);
         end
