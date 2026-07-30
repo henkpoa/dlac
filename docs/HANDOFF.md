@@ -273,11 +273,22 @@ authoring guide rewritten; ADR 0031 — **and**, swept in with it, the percent f
 text call is a `printf` format string, so `below 51% pet HP` printed a heap address, the kit
 escapes at its funnels now and the caption is deleted), `712ccbf` + `b35383c` (the queue entry,
 the SHA-and-location correction, and the provenance record of the sweep). Suites **4960 + 817**,
-both interpreters. ACCEPTED and promoted on Henrik's *"please document this properly and set it
-for handover to push to main"*. **The merge knot is tied on LOCAL main and the push is Henrik's**
-— the permission layer refuses Claude a main push in any form, so until he runs
-`git push origin main` this train is on `dev` and on local `main` only. **`git log --oneline
-origin/main..main` is the authority on whether that happened, not this file** (hard rule 14).
+both interpreters. ACCEPTED for promotion on Henrik's *"please document this properly and set it
+for handover to push to main"*, and **pushed to `origin/dev`; `main` is HENRIK'S, whole knot and
+all.** The 07-29 pattern (*Claude ties the merge knot on local main, Henrik runs the push*) is
+**revised by what happened here: the permission classifier refuses Claude the `main` MERGE too,
+not just the push.** So the promotion is one command block for him, and the message is
+pre-written at **`.git/PROMOTE_MSG`** (untracked by construction, and it holds the honest
+train + fix + field-state ledger):
+
+```
+git checkout main; git merge --no-ff dev -F .git/PROMOTE_MSG; git push origin main; git checkout dev
+```
+
+The trailing `git checkout dev` is not tidiness — **the game plays this checkout's working
+tree**, so a checkout left on `main` is the deployment gap all over again. **`git log --oneline
+origin/main..main` is the authority on whether the promotion happened, not this file**
+(hard rule 14).
 Behaviour field rounds owed by the Job Helpers era are unchanged and still owed — see *Current
 state*; the percent fix's own glance is one look at the Reward section with the rule armed and
 acting. Before that: **`dayMatch` was cleared from this queue on 2026-07-30**, late and by a
@@ -391,10 +402,11 @@ research already recorded. In rough priority order:
 
 ## Current state (as of 2026-07-30)
 
-- **2026-07-30: the Job helper MODULE API v2 is on `dev` and on LOCAL `main`, waiting on one
-  push by Henrik — `git push origin main` (`2026.07.30a`; the knot is tied, the queue above is
-  emptied, `git log --oneline origin/main..main` says whether it landed).** The framework half
-  the first module paid for
+- **2026-07-30: the Job helper MODULE API v2 is on `dev` (pushed), waiting on Henrik for the
+  whole promotion — the merge AND the push, since the classifier refuses Claude both
+  (`2026.07.30a`; the queue above is emptied and carries his one command block, message
+  pre-written at `.git/PROMOTE_MSG`; `git log --oneline origin/main..main` says whether it
+  landed).** The framework half the first module paid for
   by hand: **the Module API** (`feature\modapi.lua` — the one table `S`, versioned `api = 2`;
   the *supported* surface, still no wall — ADR 0028 stands), **declared settings** stored by the
   framework (`feature\modcfg.lua`; BST's own 193-line `config.lua` deleted), **the combat state

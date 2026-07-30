@@ -7344,6 +7344,19 @@ tests, its guide bullet, its architecture row and this history entry into its co
 with the `2026.07.30a` bump (the train had none of its own; there is no `29p`). The first sign
 was a `git add` that staged nothing and a `git status` down to one file.
 
+**THE PROMOTION PATTERN NARROWED, and this is an ops fact worth more than the fix.** Yesterday's
+pattern was *"tie the promotion merge knot ON local main, hand Henrik `! git push origin main`"*.
+Tried here, the permission classifier refused `git merge --no-ff dev` **while on main** -- so it
+is not only the push that is his: **`main` cannot be written by Claude at all, locally included.**
+What a handover session can do is everything up to the boundary -- commit, push `dev`, empty the
+queue, and pre-write the promotion message where his merge can read it (`.git/PROMOTE_MSG`,
+untracked by construction) -- and then hand over ONE command block:
+`git checkout main; git merge --no-ff dev -F .git/PROMOTE_MSG; git push origin main; git checkout dev`.
+The trailing `checkout dev` is load-bearing: the game plays this checkout's working tree, so a
+checkout left on `main` is yesterday's deployment gap wearing a different hat. (Learned the hard
+way in the same minute: the blocked merge had already switched the checkout to `main`, which
+silently made Henrik's client hold `56221c1`'s files until it was switched back.)
+
 **THIRD instance of the shared-checkout lesson in two days, and the first BENIGN one** -- worth
 recording precisely because it went well, since the rule is about verification, not blame. What
 made it benign was checking rather than assuming, in both directions: every edit was confirmed
