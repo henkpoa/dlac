@@ -57,8 +57,10 @@ maintainer IMO, I am just the one with the creative vision."*
     [reference/jobhelper-authoring-guide.md](reference/jobhelper-authoring-guide.md) is the
     author-facing contract, written as the sibling of the integration guide and to be
     buildable-from without reading dlac source — folder anatomy, the exported table and what
-    an `api` mismatch does, the lifecycle and containment guarantees, per-character config
-    storage, the central services a module may consume, and the five hard rules
+    an `api` mismatch does, **the module API table `S`** (`feature/modapi.lua` — the one surface
+    a module asks for everything, since `api = 2`), the lifecycle and containment guarantees,
+    declared settings stored by the framework (`feature/modcfg.lua`), the Panel widget kit
+    (`ui/panelkit.lua`), the central services a module may consume, and the five hard rules
     (claim-not-commit, one-line acks, consume central services, module independence, the
     sequencer's serialization). The decisions behind it: **ADR 0028** (a module is a folder;
     one folder = one unit of server approval) and **ADR 0030** (a module owns initiation —
@@ -260,39 +262,86 @@ merge carries it **without asking him again**. Only he can move an entry to ACCE
 this does not make an accepted entry mergeable *alone*: `dev` promotes
 **whole-or-not-at-all**, so an accepted entry rides the next promotion of the whole branch.
 
-### `dayMatch` — the day-only environment condition — `a2153ba` (2026-07-29)
+### The Job helper module API v2 + the percent that printed a pointer — `f8df96b` (2026-07-30)
 
-Addon `2026.07.29g` → **`2026.07.29h`**, engine **v155 → v156**. Suites **4455 + 793**,
-Windows lua 5.4. ADR 0029. Henrik's ask: *"there are items that give you bonus solely if the
-day match what you're casting."* The environment vocabulary becomes a TRIO — `dayWeatherBonus`
-(the obi's signed day+weather net, with opposition), `weatherMatch` (spell element == CURRENT
-weather element), `dayMatch` (spell element == TODAY's day element) — because the net cannot
-stand in for a day-only item in **either** direction: on Firesday in Water weather it reads
-+1 −1 = 0 and stays quiet while the item IS paying out, and on Earthsday in Fire weather it
-reads +1 and fires while the item is dark. Precast + Midcast, tier 30; reads the same
-`GetEnvironment().DayElement` that `netForElement` already scores, so the net's day half and
-this condition can never disagree; unknown day / no action element matches NEITHER polarity.
-Tests DM1–DM24 (DM14–DM17 pin the independence from both neighbours).
+**ACCEPTED** on Henrik's *"please document this properly and set it for handover to push to
+main"*. Addon `2026.07.29o` → **`2026.07.30a`**; **no engine change** (`dispatch.M.VERSION`
+untouched — nothing in the two-state contract moved). Suites **4960 + 817**, green on Windows
+Lua **and** WSL `lua5.4` (CI parity), re-run against the committed tree.
 
-**FIELD ROUND OWED — not yet field-confirmed**, so this entry does not meet the section's
-normal bar and is queued on Henrik's explicit *"add this as a candidate to be merged to main
-and pushed."* The field check is one cast: on a day matching the spell's element, a
-`dayMatch = true` Midcast rule must equip its set, and it must go quiet the next Vana'diel day
-— `/dl env` prints the live day and its element, and `/dl why` names the rule that decided.
+**Both items are in the ONE commit `f8df96b`, whose subject names only the first of them** —
+the api-2 session committed while this queue entry was being written and swept the percent fix
+in with its own work (the full story, and why that was verified rather than assumed, is in
+history.md's *"the percent sign that printed a pointer"*). `git log --grep` will not find the
+fix; this entry and that one are its pointers.
 
-**One thing a promoter should know:** unlike ADR 0018, this is **not** pinned to a named
-server mechanic — the CatsEyeXI source is not on this machine and no specific item was named,
-so it ships as a calendar primitive ("the day element equals the spell's element"), which is
-true regardless of the item. If a day-only item turns out to want *day-or-weather* (the way
-the retail obi tooltip reads), that changes which conditions a player **composes**, not this
-condition's meaning — an open follow-up, not a blocker.
+**⚠️ WHERE IT ACTUALLY IS: `f8df96b` on `feature/module-api-front-door`, one commit off `dev` —
+NOT on `dev` yet.** So this entry does not yet satisfy the section's own invariant ("committed on
+`dev`"): **PR the branch into `dev` first**, then it rides the next promotion with everything else.
+`git log --oneline dev..feature/module-api-front-door` is the authority, not this line (hard rule
+14). Written up by two sessions working the same checkout in parallel — the branch and this entry
+were made by different ones, which is exactly the seam where an "on `dev`" claim rots.
 
-**Provenance oddity, recorded so nobody hunts for it:** the DM1–DM24 test block is committed
-inside **`65ba01d`** (the BST Fight debounce fix), not inside `a2153ba` — that commit's
-`git commit -a` swept this work-in-progress file out of the shared working tree. The block is
-intact and green; `a2153ba` carries everything else.
+**Two things ride together, and the second is why the entry exists.**
 
-*(Last emptied by the FIRST 2026-07-29 promotion: `2026.07.28s`–`2026.07.28v`, the
+1. **The module API v2 train**, built 2026-07-29 late evening and left **uncommitted overnight**
+   in the shared checkout — now committed as one unit in **`f8df96b`**, together with the percent
+   fix below and this session's ADR/guide work. It is the framework half the first real
+   module paid for by hand: `feature\modapi.lua` (**the Module API** — the one table `S` a module
+   is handed, versioned by `api = 2`; the supported surface, not a wall — ADR 0028 stands),
+   `feature\modcfg.lua` (declared settings stored by the framework — BST's own 193-line
+   `config.lua` is **deleted**, ~40 lines of it were BST's), `feature\combat.lua` (the combat
+   state service: one record, `engaged`/`target`/`targetChanged`/`swung`, its own beat pumped
+   after engagewatch — Fight's private poll on the *pet* service's metronome is retired),
+   `ui\panelkit.lua` (the Panel widget kit), `docs\templates\example-helper\` (a working
+   copyable module, held to the real contract by the TPL tests), BST's four behaviour files
+   rewritten onto all of it, and the authoring guide rewritten for `api = 2`. Wired in
+   `dlac.lua`'s load list, the Central-services table, CONTEXT.md (*Module API*) and the test
+   rosters.
+2. **The percent fix** (this session, from Henrik's screenshot): the Reward caption read
+   `below 51F4A60263et HP`. **Every imgui text call is a `printf` format string**, so
+   `below 51% pet HP` had its `% p` read as the `%p` pointer conversion — heap address printed,
+   the `p` eaten. Ten other UI modules already carry a private `esc`; the new kit shipped
+   without one. It escapes at its funnels now (`text`/`disabled`/`header` + tooltips), `bind`
+   carries `esc` over **unwrapped** (a handle-first wrapper would escape a table address), and
+   the caption itself is **deleted** on Henrik's *"not really relevant text"* — the slider shows
+   `51%` and the status line states the meaning. Two latent siblings in the same Panel
+   (`Armed: below 51% pet HP.`, `Pet: … at 51% HP.`) are fixed by the same funnel. Tests
+   PK19b + PK21–24; the story is in history.md.
+
+**FIELD STATE — read this before promoting.** The api-2 train is **running on Henrik's client
+right now**: the screenshot that opened the 07-30 session is the api-2 Panel (the panelkit
+sections, the stacked Call Beast / Bestial Loyalty choice, the pill), and the only thing he
+reported wrong about it was the caption, now gone. That is field evidence for the *rendering
+and loading* of the rewrite, not for the behaviours underneath it — **the field rounds already
+owed by the Job Helpers era are still owed** (auto-Reward at its threshold, Resummon whole,
+the Heel latch, the first-swing gate), and they are unchanged by this train because the
+behaviour logic moved *file*, not *meaning*. Every one of them fails SAFE: the worst case is
+an act that does not happen. The percent fix itself needs one glance at the Reward section
+with the rule armed and acting (out of town, pet out) — the status line is where the escape
+now shows.
+
+**One thing a promoter should know:** the version bump `2026.07.30a` covers **both** items —
+the train never got its own bump, so there is no `2026.07.29p`. If someone hunts for the
+api-2 commit by version, this is it.
+
+**Its records:** ADR [0031](adr/0031-module-api-is-a-front-door.md) (why the module surface is a
+front door and not a wall, what `api = 2` changes, and the four alternatives rejected — including
+"leave it at raw requires and document harder", which was the status quo and is answered with what
+the guide had to *contain*); the rewritten authoring guide, whose new **§6.10** documents how `S` is
+declared and instantiated (a factory closed over the module's identity, built once per module, its
+service entries bound lazily); the `MC*`/`MA*`/`CBT*`/`PK*`/`TPL*` test blocks (+170 checks); and
+history.md for the percent story.
+
+*(**`dayMatch` was cleared from this queue on 2026-07-30**, late and by a reader rather than by
+its promoter: it went to main inside the SECOND 2026-07-29 promotion, `c07f7ae` (whose subject
+names it — *"the Job Helpers era … + dayMatch (2026.07.29a-o)"*), and
+`git merge-base --is-ancestor a2153ba main` confirms it. Nobody emptied the section in that
+merge, so the queue spent a day claiming a merged feature was pending — precisely the
+"is this on main?" unanswerability hard rule 14 exists to prevent. Its field round is
+**still owed** and is tracked where owed rounds belong, in *Current state* below, not here.
+Its records: ADR 0029, the DM1–DM24 tests, history.md. Before that, last emptied by the FIRST
+2026-07-29 promotion: `2026.07.28s`–`2026.07.28v`, the
 nine-commit train that closed the E-Box v2 record — the `/dl debug ebox` crash fix (`28s`,
 field-confirmed by the bare-snapshot pass: an 11-event ring spanning 1h24m formatted clean, and
 the header measured the design's whole promise on its way past — **1 packet sent, 0.0/min,
@@ -392,7 +441,25 @@ research already recorded. In rough priority order:
 5. **Icon polish, optional:** the four developer rows share one question mark on their
    section heading rather than each carrying one. Trivial to change if it reads wrong.
 
-## Current state (as of 2026-07-29, end of day)
+## Current state (as of 2026-07-30)
+
+- **2026-07-30: the Job helper MODULE API v2 is on `dev`, waiting on Henrik's push
+  (`2026.07.30a`, ACCEPTED in the queue above).** The framework half the first module paid for
+  by hand: **the Module API** (`feature\modapi.lua` — the one table `S`, versioned `api = 2`;
+  the *supported* surface, still no wall — ADR 0028 stands), **declared settings** stored by the
+  framework (`feature\modcfg.lua`; BST's own 193-line `config.lua` deleted), **the combat state
+  service** (`feature\combat.lua` — one record for engaged / target / targetChanged / swung, its
+  own beat after engagewatch's, so a combat feature stops borrowing the *pet* service's
+  metronome), **the Panel widget kit** (`ui\panelkit.lua`), and **a copyable working template**
+  (`docs\templates\example-helper\`, held to the real contract by its own tests). BST's four
+  behaviour files are rewritten onto all of it and the authoring guide is rewritten for `api = 2`.
+  **Built 07-29 late and left uncommitted overnight** — it was running unversioned on Henrik's
+  client, which is how the next item was found. Riding with it: **the percent fix** — every imgui
+  text call is a `printf` format string, so the Reward caption printed a heap address
+  (`below 51F4A60263et HP`); the kit escapes at its funnels now and the caption is deleted on
+  Henrik's *"not really relevant text"*. Suites **4960 + 817**, both interpreters. No engine
+  change. The behaviour field rounds below are unchanged by this train — the logic moved file,
+  not meaning.
 
 - **2026-07-29: THE JOB HELPERS ERA IS ON MAIN — the whole PRD #135 train, grill to guide
   in ONE day, promoted `56221c1` on Henrik's push (main content-identical to dev).**
