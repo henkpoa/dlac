@@ -1,119 +1,121 @@
-﻿--[[
-    dlac/jobhelpers/bst/resummon.lua -- the BST Helper's RESUMMON rule (issue
-    #141, PRD #135 user stories 25-30). The module's third standing behavior,
-    and the one that spends the most expensive item it will ever touch.
+--[[
+    dlac/jobhelpers/bst/bst-helper/resummon.lua -- the BST Helper's RESUMMON rule.
+    The module's third standing behavior, and the one that spends the most
+    expensive item it will ever touch.
 
-    DEATH ONLY, AND DEATH IS CONFIRMED. The rule reads ONE signal: the pet
-    vitals service's classified pet-loss edge (feature\petvitals -- the module
-    subscribes in its init hook, so it works with the Job Helpers tab closed).
-    Everything the classifier could not PROVE was a death is nothing to this
-    rule: a Leave, a zone line, a logout and an unexplained vanish all land in
-    the same place, which is silence. And of the deaths, only a JUG pet's counts
-    -- a charmed pet's death, like charm loss, triggers nothing at all, because
-    charm play stays fully manual (PRD user story 27). Jug-vs-charm is decided
-    by NAME, through the module's own jug roster (bst\jugs).
+    DEATH ONLY, AND DEATH IS CONFIRMED. The rule reads ONE signal: the pet vitals
+    service's classified pet-loss edge (S.pet.onLoss -- subscribed in the module's
+    init hook, so it works with the Job Helpers tab closed). Everything the
+    classifier could not PROVE was a death is nothing to this rule: a Leave, a zone
+    line, a logout and an unexplained vanish all land in the same place, which is
+    silence. And of the deaths, only a JUG pet's counts -- a charmed pet's death,
+    like charm loss, triggers nothing at all, because charm play stays fully manual.
+    Jug-vs-charm is decided by NAME, through the module's own jug roster (jugs.lua)
+    handed to the service as its name authority: the service owns the RULE, the
+    module owns the LIST.
 
-    THE ACT is an Action sequence, exactly like Reward's: claim the configured
-    jug into Ammo, verify it WORN, fire the summon, release. Both methods need
-    the jug worn -- the server reads the ammo slot for the species -- which is
-    the whole reason a sequence is involved and not a bare command.
+    THE ACT is an Action sequence, exactly like Reward's: claim the configured jug
+    into Ammo, verify it WORN, fire the summon, release. Both methods need the jug
+    worn -- the server reads the ammo slot for the species -- which is the whole
+    reason a sequence is involved and not a bare command.
 
-    THE BINARY CHOICE. Call Beast or Bestial Loyalty, plus "use the other if
-    mine is on cooldown" (default on). Only Call Beast earns Beast Raising
-    bonuses; it CONSUMES the jug, Loyalty does not. Nothing here reads a
-    "better" method: the player's pick is the intent, and the checkbox only
-    decides what happens when that pick is down.
+    THE BINARY CHOICE. Call Beast or Bestial Loyalty, plus "use the other if mine is
+    on cooldown" (default on). Only Call Beast earns Beast Raising bonuses; it
+    CONSUMES the jug, Loyalty does not. Nothing here reads a "better" method: the
+    player's pick is the intent, and the checkbox only decides what happens when
+    that pick is down.
 
     THE QUEUE. When the method(s) the checkbox allows are all on recast, the
     resummon does not die -- it QUEUES, and fires the moment one readies. It is
-    cancelled by zoning, an observed Leave, logging out, a pet appearing any
-    other way, and by disarming the rule. It is deliberately NOT cancelled by
-    time: Bestial Loyalty's recast is measured in minutes, and a queue that
-    expired before the ability it is waiting for would be a queue that never
-    worked.
+    cancelled by zoning, an observed Leave, logging out, a pet appearing any other
+    way, and by disarming the rule. It is deliberately NOT cancelled by time:
+    Bestial Loyalty's recast is measured in minutes, and a queue that expired before
+    the ability it is waiting for would be a queue that never worked.
 
-    House shape: `decideLoss(edge, state)` and `queueDecide(state)` are PURE --
-    edge + state in, decision out, no AshitaCore and no clock -- so every rule
-    above is a headless check (BRS*). `liveState` assembles that state from the
-    activity predicate, the config, the sequencer, the recast service and the
-    bags; `onLoss` / `onVitals` are the petvitals subscribers that join them.
+    House shape: `decideLoss(edge, state)` and `queueDecide(state)` are PURE -- edge
+    + state in, decision out, no services and no clock -- so every rule above is a
+    headless check (BRS*). `liveState` assembles that state from the module API;
+    `onLoss` / `onVitals` are the subscribers that join them.
 ]]--
 
 local M = {};
 
--- The two methods, in switch order. `call` first: it is the default, and it is
--- the one that earns the raising bonuses.
+-- The two methods, in switch order. `call` first: it is the default, and it is the
+-- one that earns the raising bonuses.
 M.METHODS = { 'call', 'loyalty' };
 
--- Player-facing labels: the ABILITY names, because that is what the player
--- reads on their own menu and what the refusal lines have to name (naming law
--- -- the helper names the rule, the act names the ability). PROPOSED, pending
--- the maintainer's sign-off.
+-- Player-facing labels: the ABILITY names, because that is what the player reads
+-- on their own menu and what the refusal lines have to name (naming law -- the
+-- helper names the rule, the act names the ability). PROPOSED.
 M.METHOD_LABEL = {
     call    = 'Call Beast',
     loyalty = 'Bestial Loyalty',
 };
 
 -- The action commands. FLAGGED for field verification alongside Reward's: the
--- exact target token on CatsEyeXI (<me> vs none) is confirmed in-game before
--- this ships. The sequencer's verify-worn gate protects the JUG either way --
--- a wrong token means the command no-ops, never that gear moves wrongly.
+-- exact target token on CatsEyeXI (<me> vs none) is confirmed in-game before this
+-- ships. The sequencer's verify-worn gate protects the JUG either way -- a wrong
+-- token means the command no-ops, never that gear moves wrongly.
 M.METHOD_COMMAND = {
     call    = '/ja "Call Beast" <me>',
     loyalty = '/ja "Bestial Loyalty" <me>',
 };
 
+-- The recast signatures, as MODULE data (facts about this job's abilities).
+-- Neither carries a hardcoded timer id, and that is deliberate: the Pup-Helper
+-- reference only ever named Reward's, and hard rule 9 puts LIVE GAME MEMORY above
+-- every other source -- so these resolve their recast slot by NAME through the
+-- client's own ability resource, and a resolution that fails answers UNKNOWN,
+-- which reads READY. The courtesy gate never manufactures a "down" it did not
+-- measure; the sequencer's verify-worn is the real safety net, and a command the
+-- client rejects costs nothing (Bestial Loyalty does not even consume the jug).
+M.RECAST = {
+    call    = { name = 'Call Beast',      label = 'Call Beast' },
+    loyalty = { name = 'Bestial Loyalty', label = 'Bestial Loyalty' },
+};
+
 M.VERIFY_TIMEOUT = 4;
 
--- The module's folder name -- the loader assigns identity FROM the folder, so
--- this is only the fallback for the paths that run without a render ctx.
-local DEFAULT_ID = 'bst-helper';
+-- The module API table, handed over by init.
+local _S = nil;
 
-local _id     = DEFAULT_ID;
 local _last   = nil;    -- the last decision (the Panel reports it)
 local _queued = nil;    -- { jug, method, fallback, at } while a resummon waits
 
--- ---------------------------------------------------------------------------
--- helpers (all contained -- a missing service degrades, never throws)
--- ---------------------------------------------------------------------------
+local function cfg()
+    if type(_S) ~= 'table' then return nil; end
+    return _S.cfg;
+end
 
-local function req(name)
-    local ok, m = pcall(require, name);
-    return (ok and type(m) == 'table') and m or nil;
+local function now()
+    if type(_S) == 'table' and type(_S.now) == 'function' then return _S.now(); end
+    return 0;
+end
+
+local function jugsMod()
+    if type(_S) ~= 'table' or type(_S.sibling) ~= 'function' then return nil; end
+    return _S.sibling('jugs');
 end
 
 -- One loud line. Refusals are LOUD (hard rule 12): a resummon that silently did
--- not happen is indistinguishable from a broken one, and this is the rule a
--- player is least able to check for themselves -- they are dead or busy.
+-- not happen is indistinguishable from a broken one, and this is the rule a player
+-- is least able to check for themselves -- they are dead or busy. Kept as an
+-- overridable seam so the suite can read the lines it produced.
 M._emit = function(line)
-    local done = false;
-    local cf = req('dlac\\chatfmt');
-    if cf ~= nil and type(cf.err) == 'function' then pcall(cf.err, line); done = true; end
-    if not done then pcall(function() print('[dlac] ' .. tostring(line)); end); end
+    if type(_S) == 'table' and type(_S.say) == 'table' and type(_S.say.err) == 'function' then
+        _S.say.err(line);
+        return;
+    end
+    pcall(function() print('[dlac] ' .. tostring(line)); end);
 end;
-
--- The same monotonic clock the sequencer / Reward use.
-M._now = function()
-    local t = nil;
-    pcall(function()
-        local cq = require('dlac\\lib\\cmdqueue');
-        if type(cq) == 'table' and type(cq.frame) == 'function' then t = cq.frame() / 60.0; end
-    end);
-    if type(t) ~= 'number' then pcall(function() t = os.clock(); end); end
-    return tonumber(t) or 0;
-end;
-
-local function cfg() return req('dlac\\jobhelpers\\bst\\bst-helper\\config'); end
-
-local function jugsMod() return req('dlac\\jobhelpers\\bst\\bst-helper\\jugs'); end
 
 -- ---------------------------------------------------------------------------
--- the settings (persisted in the module's OWN per-character config file)
+-- the settings
 -- ---------------------------------------------------------------------------
 
 -- Is the rule armed? Default OFF, for the reason Fight and Reward are: this act
--- issues a command AND (via Call Beast) consumes an item, so a freshly dropped
--- in helper never starts spending a player's jugs on its own.
+-- issues a command AND (via Call Beast) consumes an item, so a freshly dropped-in
+-- helper never starts spending a player's jugs on its own.
 function M.armed()
     local c = cfg();
     local v = nil;
@@ -122,10 +124,10 @@ function M.armed()
 end
 
 function M.setArmed(on)
-    -- Disarming drops a pending resummon on the spot: the switch that silences
-    -- a helper must silence the act it already decided to make. UNCONDITIONALLY
-    -- and FIRST -- a config that could not be reached (pre-login, a torn file)
-    -- must not be the reason a queued jug spend survives the off switch.
+    -- Disarming drops a pending resummon on the spot: the switch that silences a
+    -- helper must silence the act it already decided to make. UNCONDITIONALLY and
+    -- FIRST -- a store that could not be reached (pre-login, a torn file) must not
+    -- be the reason a queued jug spend survives the off switch.
     if on ~= true then M.clearQueue(); end
     local c = cfg();
     if c == nil then return false; end
@@ -156,8 +158,8 @@ function M.isMethod(m)
     return false;
 end
 
--- The chosen method. An unreadable / absent config reads 'call' -- the default
--- that earns the raising bonuses, and the one every BST has.
+-- The chosen method. An unreadable / absent store reads 'call' -- the default that
+-- earns the raising bonuses, and the one every BST has.
 function M.method()
     local c = cfg();
     local m = nil;
@@ -173,9 +175,9 @@ function M.setMethod(m)
     return c.set('resummonMethod', m);
 end
 
--- "Use the other if mine is on cooldown". Default ON (the PRD's own default);
--- an unreadable config reads ON, because this flag can only ever change WHICH
--- ready ability is used, never whether one is.
+-- "Use the other if mine is on cooldown". Default ON; an unreadable store reads
+-- ON, because this flag can only ever change WHICH ready ability is used, never
+-- whether one is.
 function M.fallback()
     local c = cfg();
     local v = nil;
@@ -194,10 +196,10 @@ end
 -- method resolution -- PURE, and shared by the loss decision and the queue tick
 -- ---------------------------------------------------------------------------
 --
--- Which method may fire right now? `chosen` is the player's pick, `fallback`
--- the checkbox, and readiness is TRUE / FALSE / nil where nil means "could not
--- measure" -- and unknown reads READY, matching the recast service's courtesy
--- gate exactly (it never manufactures a "down" it did not see).
+-- Which method may fire right now? `chosen` is the player's pick, `fallback` the
+-- checkbox, and readiness is TRUE / FALSE / nil where nil means "could not
+-- measure" -- and unknown reads READY, matching the recast service's courtesy gate
+-- exactly (it never manufactures a "down" it did not see).
 --
 -- Returns the method to use, or nil when everything allowed is down.
 function M.pickMethod(chosen, fallback, callReady, loyaltyReady)
@@ -214,7 +216,7 @@ end
 -- the PURE decision -- a loss edge + state in, "summon?" out
 -- ---------------------------------------------------------------------------
 --
--- edge  = the petvitals loss edge { lost, kind, confirmed, pet, name, hpp }
+-- edge  = the pet-loss edge { lost, kind, confirmed, pet, name, hpp }
 -- state = {
 --   armed        = <bool>,          -- the rule switch
 --   active       = <bool>,          -- the module-activity predicate said "acting"
@@ -230,10 +232,10 @@ end
 -- }
 -- returns { act, method, queue, reason, jug, loud }
 --
--- The gate order IS the reporting order, and it is a funnel from "should I care
--- at all" down to "can I do it". `loud` marks the two reasons that earn a chat
--- line -- no jug configured, and none in the bags -- because those are the only
--- ones where the player has to DO something.
+-- The gate order IS the reporting order, and it is a funnel from "should I care at
+-- all" down to "can I do it". `loud` marks the two reasons that earn a chat line --
+-- no jug configured, and none in the bags -- because those are the only ones where
+-- the player has to DO something.
 --
 -- Positive-true discipline throughout: `armed`, `active`, `edge.confirmed` and
 -- `pet == 'jug'` must all be affirmatively true. An unreadable world is never
@@ -255,8 +257,8 @@ function M.decideLoss(edge, state)
     end
     if e.confirmed ~= true then return { act = false, reason = 'unconfirmed' }; end
 
-    -- 2. Was it MY JUG PET? A charmed pet's death is charm play, and charm play
-    --    is entirely the player's (PRD user story 27).
+    -- 2. Was it MY JUG PET? A charmed pet's death is charm play, and charm play is
+    --    entirely the player's.
     if e.pet ~= 'jug' then
         return { act = false, reason = (e.pet == 'charm') and 'charm' or 'not-jug' };
     end
@@ -272,8 +274,8 @@ function M.decideLoss(edge, state)
         return { act = false, reason = 'no-stock', loud = true, jug = jug };
     end
 
-    -- 4. Is the sequencer free? A live sequence is never preempted, and this
-    --    one can wait -- so it QUEUES rather than being dropped.
+    -- 4. Is the sequencer free? A live sequence is never preempted, and this one
+    --    can wait -- so it QUEUES rather than being dropped.
     if state.busy == true then
         return { act = false, queue = true, reason = 'busy', jug = jug };
     end
@@ -314,14 +316,14 @@ function M.queueDecide(state)
 
     -- The JUG is read LIVE, not off the queue record: a player who changes the
     -- picker while a resummon waits has changed their mind, and the act itself
-    -- re-reads the config too -- so deciding on a remembered jug would be
-    -- deciding on one thing and spending another. The queue remembers the
-    -- INTENT (the method pick and its checkbox); the jug is a setting.
+    -- re-reads the setting too -- so deciding on a remembered jug would be deciding
+    -- on one thing and spending another. The queue remembers the INTENT (the method
+    -- pick and its checkbox); the jug is a setting.
     --
-    -- It can also go away entirely while the queue waits (traded, or spent by
-    -- the player's own macro). Out of jug at fire time is the same loud refusal
-    -- it is at death time -- and it CANCELS, because a queue waiting on stock is
-    -- waiting on nothing this rule can see change.
+    -- It can also go away entirely while the queue waits (traded, or spent by the
+    -- player's own macro). Out of jug at fire time is the same loud refusal it is
+    -- at death time -- and it CANCELS, because a queue waiting on stock is waiting
+    -- on nothing this rule can see change.
     local jug = state.jug;
     local stock = tonumber(state.stock);
     if type(jug) ~= 'string' or jug == '' then
@@ -383,8 +385,8 @@ function M.decisionText(d)
     return DECISION_TEXT[d.reason] or tostring(d.reason or 'held');
 end
 
--- The LOUD line for a refusal that names something the player must fix. Pure;
--- the caller emits it.
+-- The LOUD line for a refusal that names something the player must fix. Pure; the
+-- caller emits it.
 function M.refusalLine(d)
     if type(d) ~= 'table' then return 'Resummon refused.'; end
     local why = d.reason or d.cancel;
@@ -413,35 +415,18 @@ end
 -- the ACT -- one Action sequence, the jug worn before the ability fires
 -- ---------------------------------------------------------------------------
 
--- How many of a jug the character is CARRYING (equippable bags -- what can
--- actually be worn now, the ownedcache "counts" door). 0 when it cannot answer:
--- a jug it cannot see is a jug not carried, which refuses rather than firing
--- Call Beast bare. Injectable for tests.
-M._stockOf = function(itemName)
-    local n = 0;
-    pcall(function()
-        local jugs = require('dlac\\jobhelpers\\bst\\bst-helper\\jugs');
-        local row = jugs.find(itemName);
-        if type(row) ~= 'table' or row.id == nil then return; end
-        local oc = require('dlac\\gear\\ownedcache');
-        local counts = (type(oc.counts) == 'function') and oc.counts() or nil;
-        if type(counts) == 'table' then n = tonumber(counts[row.id]) or 0; end
-    end);
-    return n;
-end;
-
--- Build the Action sequence request. The claim is the jug ALONE, and the same
--- slot is what must verify WORN: both methods read the ammo slot for the
--- species, so the jug is the act's PRECONDITION, not its costume. No optional
--- set rides along -- a summon has no "summon+" gear to wear, and every extra
--- claimed slot is one more chance for a senior claimant to refuse the whole
--- sequence.
-function M.buildRequest(id, jugName, method)
+-- Build the Action sequence request. The claim is the jug ALONE, and the same slot
+-- is what must verify WORN: both methods read the ammo slot for the species, so
+-- the jug is the act's PRECONDITION, not its costume. No optional set rides along
+-- -- a summon has no "summon+" gear to wear, and every extra claimed slot is one
+-- more chance for a senior claimant to refuse the whole sequence.
+--
+-- `module` and `order` are filled in by the module API from the module's own
+-- identity.
+function M.buildRequest(jugName, method)
     if not M.isMethod(method) then method = 'call'; end
     return {
-        module  = id,
         label   = M.METHOD_LABEL[method],
-        order   = M.sectionOrder(id),
         claim   = { Ammo = jugName },
         need    = { Ammo = jugName },
         command = M.METHOD_COMMAND[method],
@@ -449,31 +434,19 @@ function M.buildRequest(id, jugName, method)
     };
 end
 
--- This module's priority within the current job's section -- the framework's
--- answer, never a second copy (feature\jobhelpers.sectionOrder).
-function M.sectionOrder(id)
-    local jh = req('dlac\\feature\\jobhelpers');
-    if jh == nil or type(jh.sectionOrder) ~= 'function' then return 1; end
-    return jh.sectionOrder(id);
-end
-
 -- THE ACT. Open the sequence for `method` with the configured jug. Returns
--- { ok = <bool>, reason = <slug|nil> }; never throws. Every refusal the
--- sequencer itself raises (a senior claimant on Ammo, a verify timeout) is its
--- own loud line -- this one only speaks for what it can see first.
-function M.request(id, method)
-    id = (type(id) == 'string' and id ~= '') and id or _id;
-    local actionseq = req('dlac\\feature\\actionseq');
-    if actionseq == nil then
-        M._emit('Resummon unavailable: a required service failed to load.');
-        return { ok = false, reason = 'service' };
-    end
+-- { ok = <bool>, reason = <slug|nil> }; never throws. Every refusal the sequencer
+-- itself raises (a senior claimant on Ammo, a verify timeout) is its own loud line
+-- -- this one only speaks for what it can see first.
+function M.request(method)
+    local S = _S;
+    if type(S) ~= 'table' then return { ok = false, reason = 'service' }; end
     local jug = M.jug();
     if jug == nil then
         M._emit(M.refusalLine({ reason = 'no-jug' }));
         return { ok = false, reason = 'no-jug' };
     end
-    local res = actionseq.request(M.buildRequest(id, jug, method));
+    local res = S.act.request(M.buildRequest(jug, method));
     if type(res) == 'table' and res.ok ~= true then
         if res.reason == 'busy' then
             M._emit(string.format('Resummon is busy -- %s is running a sequence.',
@@ -481,89 +454,65 @@ function M.request(id, method)
         end
         return { ok = false, reason = res.reason or 'refused' };
     end
-    -- Kick one Default so the claim applies now rather than on the next 0.4s
-    -- tick (the same explicit re-dispatch Reward does). The sequencer's pump
-    -- then reads the worn jug and fires. Contained: the tick is the fallback.
-    pcall(function()
-        local dsp = req('dlac\\dispatch');
-        if dsp ~= nil and type(dsp.kickDefault) == 'function' then dsp.kickDefault(); end
-    end);
     return { ok = true };
 end
 
 -- ---------------------------------------------------------------------------
--- live state + the petvitals subscriptions
+-- live state + the subscriptions
 -- ---------------------------------------------------------------------------
 
--- Assemble the decision state from the live world. Every read is contained; an
--- unreadable one leaves its key nil, and the two deciders know which way each
--- nil goes.
-function M.liveState(id, now)
+-- Assemble the decision state from the live world. Every read is contained by the
+-- module API; an unreadable one leaves its key nil, and the two deciders know which
+-- way each nil goes.
+function M.liveState(at)
+    local S = _S;
     local jug = M.jug();
     local st = {
         armed    = M.armed(),
         jug      = jug,
         method   = M.method(),
         fallback = M.fallback(),
-        now      = tonumber(now) or M._now(),
+        now      = tonumber(at) or now(),
         queued   = _queued,
     };
-    if jug ~= nil then st.stock = M._stockOf(jug); end
+    if type(S) ~= 'table' then return st; end
 
-    -- The module-activity predicate (pill, main job, town, dead, zoning) -- the
-    -- ONE gate every Job helper consults; never a second copy of those rules.
-    pcall(function()
-        local jh = require('dlac\\feature\\jobhelpers');
-        if type(jh) ~= 'table' or type(jh.activity) ~= 'function' then return; end
-        local act = jh.activity(id or _id);
-        if type(act) ~= 'table' then return; end
+    -- How many of the jug can be EQUIPPED right now. 0 when it cannot answer: a
+    -- jug it cannot see is a jug not carried, which refuses rather than firing
+    -- Call Beast bare.
+    if jug ~= nil then st.stock = S.item.own(jug); end
+
+    -- The module-activity predicate -- the ONE gate every Job helper consults.
+    local act = S.me.acting();
+    if type(act) == 'table' then
         st.active = (act.active == true);
         st.reason = act.reason;
-    end);
+    end
 
-    pcall(function()
-        local as = require('dlac\\feature\\actionseq');
-        if type(as) == 'table' and type(as.active) == 'function' then st.busy = as.active(); end
-    end);
+    st.busy = S.act.busy();
 
-    pcall(function()
-        local rc = require('dlac\\feature\\recast');
-        if type(rc) ~= 'table' then return; end
-        if type(rc.callBeastReady) == 'function' then st.callReady = rc.callBeastReady(); end
-        if type(rc.bestialLoyaltyReady) == 'function' then st.loyaltyReady = rc.bestialLoyaltyReady(); end
-    end);
+    -- Unknown reads READY (the courtesy gate).
+    st.callReady    = S.ability.ready(M.RECAST.call);
+    st.loyaltyReady = S.ability.ready(M.RECAST.loyalty);
 
-    -- The three OBSERVED cancels (the queue tick's, not the loss decision's)
-    -- come from the vitals service's own signal inbox and world reads -- the
-    -- same ones that classified the death, so the queue and the classifier can
-    -- never disagree about whether you zoned.
-    pcall(function()
-        local pv = require('dlac\\feature\\petvitals');
-        if type(pv) ~= 'table' then return; end
-        local sig = (type(pv.signals) == 'function') and pv.signals(st.now) or nil;
-        if type(sig) == 'table' and sig.leave ~= nil then st.leave = true; end
-        local r = pv.reads;
-        if type(r) ~= 'table' then return; end
-        if type(r.zoning) == 'function' then
-            local ok, z = pcall(r.zoning);
-            if ok then st.zoning = z; end
-        end
-        if type(r.loggingOut) == 'function' then
-            local ok, lo = pcall(r.loggingOut);
-            if ok then st.logout = lo; end
-        end
-    end);
+    -- The three OBSERVED cancels (the queue tick's, not the loss decision's) come
+    -- from the same signals and world reads that classified the death, so the queue
+    -- and the classifier can never disagree about whether you zoned.
+    local sig = S.pet.signals(st.now);
+    if type(sig) == 'table' and sig.leave ~= nil then st.leave = true; end
+    st.zoning = S.player.zoning();
+    st.logout = S.player.loggingOut();
 
     return st;
 end
 
--- One classified loss edge -> one decision -> at most one sequence request (or
--- one queued resummon). Returns the decision so the Panel (and the tests) can
--- see WHY nothing happened. Never throws.
-function M.onLoss(edge, id)
+-- One classified loss edge -> one decision -> at most one sequence request (or one
+-- queued resummon). Returns the decision so the Panel (and the tests) can see WHY
+-- nothing happened. Never throws.
+function M.onLoss(edge)
     local at = nil;
     if type(edge) == 'table' then at = tonumber(edge.at); end
-    local st = M.liveState(id, at);
+    local st = M.liveState(at);
     local d  = M.decideLoss(edge, st);
     d.at = st.now;
     _last = d;
@@ -579,26 +528,26 @@ function M.onLoss(edge, id)
     end
     if d.act ~= true then return d; end
 
-    -- A standing queue cannot survive an act: two resummons for one pet is the
-    -- one way this rule could spend a jug it was never asked to. (In practice
-    -- the queue is already gone -- a new loss edge needs a pet to have come
-    -- back, and that cancels it -- but "in practice" is not a guarantee.)
+    -- A standing queue cannot survive an act: two resummons for one pet is the one
+    -- way this rule could spend a jug it was never asked to. (In practice the queue
+    -- is already gone -- a new loss edge needs a pet to have come back, and that
+    -- cancels it -- but "in practice" is not a guarantee.)
     _queued = nil;
-    M.request(id or _id, d.method);
+    M.request(d.method);
     return d;
 end
 
--- One vitals beat -> the queue tick. Runs on the SAME beat the loss edge rides,
--- so a queued resummon is re-tested every 0.4s and fires within one beat of the
--- recast coming up. A no-op with nothing queued, which is almost always.
-function M.onVitals(vitals, id)
+-- One vitals beat -> the queue tick. Runs on the SAME beat the loss edge rides, so
+-- a queued resummon is re-tested every 0.4s and fires within one beat of the recast
+-- coming up. A no-op with nothing queued, which is almost always.
+function M.onVitals(vitals)
     if _queued == nil then return nil; end
     local at = nil;
     if type(vitals) == 'table' then at = tonumber(vitals.at); end
-    local st = M.liveState(id, at);
+    local st = M.liveState(at);
     st.queued = _queued;
-    -- "A pet appearing any other way" -- the beat's own answer, and the one
-    -- read liveState cannot make for itself.
+    -- "A pet appearing any other way" -- the beat's own answer, and the one read
+    -- liveState cannot make for itself.
     if type(vitals) == 'table' then st.petPresent = (vitals.present == true); end
 
     local d = M.queueDecide(st);
@@ -613,39 +562,37 @@ function M.onVitals(vitals, id)
     if d.fire ~= true then return d; end
 
     _queued = nil;                       -- the queue is spent whatever happens next
-    M.request(id or _id, d.method);
+    M.request(d.method);
     return d;
 end
 
--- Subscribe to BOTH halves of the pet vitals service: the classified loss edge
--- (the trigger) and the per-beat vitals (the queue tick + the "a pet appeared"
--- cancel). Called from the module's init hook; idempotent (petvitals keys
--- subscriptions by name, so a reload replaces rather than doubles).
+-- Subscribe to BOTH halves of the pet vitals service: the classified loss edge (the
+-- trigger) and the per-beat vitals (the queue tick + the "a pet appeared" cancel).
 --
--- It also hands the service the module's NAME AUTHORITY, which is what makes
--- the classifier able to tell a jug pet from a charmed one at all -- the list
--- is the module's data, the classification is the service's rule.
-function M.init(id)
-    if type(id) == 'string' and id ~= '' then _id = id; end
+-- It also hands the service the module's NAME AUTHORITY, which is what makes the
+-- classifier able to tell a jug pet from a charmed one at all -- the list is the
+-- module's data, the classification is the service's rule.
+function M.init(S)
+    if type(S) ~= 'table' then return false; end
+    _S = S;
     local ok = false;
     pcall(function()
-        local pv = require('dlac\\feature\\petvitals');
-        if type(pv) ~= 'table' or type(pv.subscribeLoss) ~= 'function' then return; end
-        if type(pv.lossCtx) == 'table' then
-            pv.lossCtx.isJugPet = function(name)
-                local jugs = jugsMod();
-                if jugs == nil then return nil; end
-                -- The player's own configured jug maps to a pet that counts too,
-                -- so a jug the roster has not caught up with still resummons.
-                return jugs.isJugPet(name, jugs.petFor(M.jug()));
-            end;
-        end
-        ok = pv.subscribeLoss('jobhelper:' .. _id .. ':resummon', function(e) M.onLoss(e); end);
-        pv.subscribe('jobhelper:' .. _id .. ':resummonq', function(v) M.onVitals(v); end);
+        S.pet.nameAuthority(function(name)
+            local jugs = jugsMod();
+            if jugs == nil then return nil; end
+            -- The player's own configured jug maps to a pet that counts too, so a
+            -- jug the roster has not caught up with still resummons.
+            return jugs.isJugPet(name, jugs.petFor(M.jug()));
+        end);
+        ok = S.pet.onLoss('resummon', function(e) M.onLoss(e); end);
+        S.pet.subscribe('resummonq', function(v) M.onVitals(v); end);
     end);
     return ok;
 end
 
-function M.id() return _id; end
+function M.id()
+    if type(_S) ~= 'table' then return nil; end
+    return _S.id;
+end
 
 return M;

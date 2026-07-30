@@ -7271,3 +7271,74 @@ origin/dev reach the field only when the checkout pulls, and a parallel session'
 block that pull. A whole Fight field round was voided testing stale code. The load beacon
 (debug\load-report.txt) is the one-line proof of what the game actually loaded; read it before
 any "reload and retest" ask.
+
+## Session "the percent sign that printed a pointer" (2026-07-30, `2026.07.30a`)
+
+One screenshot, one caption, one durable client fact. Henrik, on the BST Helper's Reward
+section: *"I don't know what value that is, seems like mumbo jumbo hex data."* The caption
+beside the threshold slider read **`below 51F4A60263et HP`**.
+
+**THE FACT, and it belongs on the same shelf as "a state never hears its own QueueCommand":
+every imgui TEXT call is a `printf` FORMAT string** --
+`Text`, `TextColored`, `TextDisabled`, `SetTooltip`, `LabelText`, `BulletText`. So a `%` in
+the *text* is a **conversion**, not a percent sign. `string.format('below %d%% pet HP', 51)`
+produced the perfectly correct Lua string `below 51% pet HP`, and ImGui then read its `% p`
+as the **`%p` pointer conversion**: it printed a heap address (`51F4A60263`) and ate the `p`,
+leaving `et HP`. Nothing was corrupt and no value was wrong -- the string was interpreted
+one layer further down than its author expected.
+
+**Why it was panelkit and only panelkit.** Ten UI modules already carry a private
+`local function esc(s) return (tostring(s):gsub('%%','%%%%')); end` -- ammoui, automationsui,
+arbmonui, chocoui, fishui, helmui, triggersui, restockui, jobhelpersui, gearfmt. The trap was
+known; the brand-new Panel kit (`ui\panelkit.lua`, written the night before) simply shipped
+without the copy, and it is the ONE module through which every Job helper's text now flows.
+The fix puts the escape at the kit's funnels rather than at the call sites: `M.text` (behind
+`dim`/`ok`/`warn`/`err`), `M.disabled`, `M.header` (label *and* hover -- `uistyle.helpLabel`
+draws and tooltips RAW), and `tipOn`. A module author writing "below 50%" in words cannot hit
+it now, which is the only version of this fix that survives the next author.
+
+**The `bind()` trap that came with it.** `panelkit.bind(im)` builds the bound kit by *walking
+`M`* and wrapping every function with the handle pre-applied -- deliberately, so a widget
+added later cannot be forgotten. `esc` takes **no handle**, so the wrapper would have made
+`ctx.ui.esc(s)` escape *a table address* and silently return garbage. `NOT_BOUND` (`bind`,
+`esc`) is now the list of things carried over as they are; PK19b pins it. Any future
+handle-less helper in that file needs the same row.
+
+**Henrik's ruling on the caption itself: delete it** (*"That is not really relevant text IMO
+can prolly be removed"*). The slider already renders `51%` inside itself, and `ui.ruleStatus`
+states the meaning a line below (`Armed: below 51% pet HP.`), so the caption was a third
+copy of one number. Deleted -- and this is the shape of most panel-text rulings on this
+project: the surface that already answers the question keeps the answer.
+
+**Two latent siblings died with it**, both in the same Panel and both invisible in the
+screenshot only because the character was in town: `Armed: below 51% pet HP.` (the status
+line, drawn the moment the rule *is* acting) and `Pet: <name> at 51% HP.`. They are fixed by
+the funnel, not by editing their strings.
+
+**What is NOT a format string, so nobody escapes twice:** `Button`, `Selectable`, `BeginCombo`
+and the other *label* parameters. `ui\fishbar.riskTag` builds `lose 30%, snap 12%` and feeds
+it to a `Selectable` -- correct as it stands.
+
+**The blind spot, stated plainly because it is structural:** `tests\smoke_ui.lua` renders
+every tab against a **stub** imgui that records strings and does not printf, so this whole
+class of bug is invisible to it -- exactly like the 300px width clipping the same kit paid for
+a day earlier. The escaping law is the guard; the field screenshot is the test. PK21-24 pin
+the escape at the four seams (status text, the last line, disabled text, tooltip).
+
+Recorded where authors will meet it: the `esc` block and the docblock lesson list in
+`ui\panelkit.lua`, the Central-services row in architecture.md, and §6.9 of the authoring
+guide (*"If you ever call `ctx.imgui.Text*` yourself, escaping is yours -- use
+`ctx.ui.esc(s)`"*).
+
+**Provenance of the commit this rode in, because the tree was not clean.** The session opened
+on a working tree carrying the whole **Job helper module API v2** train uncommitted from the
+previous evening (`feature\modapi.lua`, `feature\modcfg.lua`, `feature\combat.lua`,
+`ui\panelkit.lua`, `docs\templates\example-helper\`, BST's four files rewritten onto them,
+`bst-helper\config.lua` deleted, the authoring guide rewritten for `api = 2`, ~2.5k lines) --
+green on both interpreters, wired into `dlac.lua`'s load list and the Central-services table,
+and *running on Henrik's client* (the screenshot that opened this session is the api-2 Panel),
+but never committed and never version-bumped. It is committed here as one unit at
+`2026.07.30a` with this fix on top; the alternative -- reconstructing a pre-fix `panelkit.lua`
+to split the commit -- would have bought history cosmetics at the cost of touching that file
+twice more. The uncommitted `tests\fixtures\keepflow\...\lspreview.lua` line-ending change was
+left out, as before: provenance still unknown, content still identical.

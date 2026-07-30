@@ -18,7 +18,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.07.29o';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.07.30a';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
                                 -- (29k = the day-match train 29h merged with 29i/29j)
 addon.desc    = 'Gear sets, triggers and live stats with level scaling -- dlac equips your gear itself.';
@@ -157,6 +157,16 @@ ashita.events.register('d3d_present', 'dlac-seed-watch', function()
         local ew = require('dlac\\feature\\engagewatch');
         if type(ew) == 'table' and type(ew.pump) == 'function' then ew.pump(); end
     end);
+    -- The combat state service's beat (feature\combat): engaged / target /
+    -- targetChanged / first-swing, published to subscribers once per dispatch
+    -- beat. It runs AFTER engagewatch's pump on purpose -- the edges that pump
+    -- accepted are what answer `targetChanged` authoritatively this beat. Reads
+    -- nothing at all while nothing is subscribed, so it is free on every job that
+    -- has no combat helper installed.
+    pcall(function()
+        local cbt = require('dlac\\feature\\combat');
+        if type(cbt) == 'table' and type(cbt.pump) == 'function' then cbt.pump(); end
+    end);
     -- The pet vitals service's beat (issue #140): publish presence / HP% / TP /
     -- name to its subscribers once per dispatch beat, so a Job helper's rule
     -- (BST's Reward threshold) sees the same pet the engine does. The service
@@ -239,10 +249,11 @@ for _, mod in ipairs({ 'gear', 'feature\\augments', 'gear\\gearoptim', 'gear\\ge
                        'ui\\craftbar', 'feature\\helmwatch', 'ui\\helmbar',
                        'feature\\fishwatch', 'ui\\fishbar', 'feature\\chocowatch',
                        'feature\\meritwatch', 'feature\\integration',
-                       'feature\\engagewatch', 'feature\\petvitals',
+                       'feature\\engagewatch', 'feature\\petvitals', 'feature\\combat',
                        'feature\\check', 'feature\\debug', 'feature\\lockstyle',
                        'feature\\lockstyleapply', 'feature\\equipengine',
                        'feature\\engine', 'ui\\gearui',
+                       'ui\\panelkit', 'feature\\modcfg', 'feature\\modapi',
                        'feature\\jobhelpers', 'ui\\jobhelpersui' }) do
     local ok, err = pcall(require, 'dlac\\' .. mod);
     ledger.total = ledger.total + 1;

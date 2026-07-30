@@ -227,10 +227,12 @@ state, with a reading order. Then: [CONTEXT.md](CONTEXT.md) (glossary),
 spec), and [docs/history.md](docs/history.md) (session journal — including the
 dead-ends worth not retrying). dlac is CatsEyeXI-only by design (ADR 0001).
 
-**Writing a Job helper module?** Start at
-[docs/reference/jobhelper-authoring-guide.md](docs/reference/jobhelper-authoring-guide.md) —
-the module contract, the services a module may consume, and the hard rules, written so a
-module can be built without reading dlac's source.
+**Writing a Job helper module?** Copy
+[docs/templates/example-helper/](docs/templates/example-helper/) into
+`jobhelpers/<job>/<your-module>/` — it is a working helper, and the suite keeps it that way.
+Then read [docs/reference/jobhelper-authoring-guide.md](docs/reference/jobhelper-authoring-guide.md)
+— the module contract, the one API table (`S`) a module asks for everything, and the hard rules,
+written so a module can be built without reading dlac's source.
 
 **Repository layout** (full version: [docs/architecture.md](docs/architecture.md)):
 the addon root is what LuaAshitacast sees, folders are what only the addon sees.

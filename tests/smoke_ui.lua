@@ -3950,11 +3950,14 @@ end)();
     -- the Resummon jug picker's rows (issue #141) are driven precisely. By then
     -- jobhelpersui already holds the selected module, so pinning the click to a
     -- combo row does not un-select the Panel.
+    -- selPick matches from POSITION 1, not anywhere: the jug list holds both
+    -- 'Carrot Broth' and 'L. Carrot Broth', so an unanchored substring would click
+    -- the wrong row and quietly assert the wrong thing.
     local selectables, selPick = {}, nil;
     IM.Selectable = function(label)
         selectables[#selectables + 1] = tostring(label);
         if selPick == nil then return true; end
-        return type(label) == 'string' and label:find(selPick, 1, true) ~= nil;
+        return type(label) == 'string' and label:find(selPick, 1, true) == 1;
     end
     -- The jug picker is a combo; its Begin/End pair joins the balance assertions
     -- (an unbalanced combo corrupts ImGui exactly like an unbalanced child).
@@ -4055,10 +4058,13 @@ end)();
         -- the BST Panel's three-way Fight switch actually reaches the screen
         -- (issue #139), and a click on one of its ways reaches the setter.
         local drawn = table.concat(buttons, '|');
+        -- Widget ids are the PANEL KIT's now (`<group>_<value>`, ui\panelkit.choice)
+        -- rather than each Panel's own hand-rolled composition -- one scheme for
+        -- every module's exclusive choices.
         check('S336 the Fight switch draws its three ways',
-              drawn:find('Off##bstfight_off_bst', 1, true) ~= nil
-              and drawn:find('When I attack##bstfight_attack_bst', 1, true) ~= nil
-              and drawn:find('Follow my target##bstfight_follow_bst', 1, true) ~= nil, true);
+              drawn:find('Off##bstfight_bst-helper_off', 1, true) ~= nil
+              and drawn:find('When I attack##bstfight_bst-helper_attack', 1, true) ~= nil
+              and drawn:find('Follow my target##bstfight_bst-helper_follow', 1, true) ~= nil, true);
         check('S337 the Reward button is still there beside it',
               drawn:find('Reward now##bstreward_bst', 1, true) ~= nil, true);
         local fightOk, fight = pcall(require, 'dlac\\jobhelpers\\bst\\bst-helper\\fight');
@@ -4066,7 +4072,7 @@ end)();
         if fightOk then
             local realSet, setLog = fight.setMode, {};
             fight.setMode = function(m) setLog[#setLog + 1] = m; return true; end
-            clickId = 'bstfight_follow_bst';
+            clickId = 'bstfight_bst-helper_follow';
             pcall(jhui.renderTab, 'BST', 99);
             clickId = nil;
             check('S339 clicking a way sets that mode', setLog[#setLog], 'follow');
@@ -4109,8 +4115,8 @@ end)();
         check('S345 the Resummon rule switch draws',
               cdrawn:find('bstresumauto_bst', 1, true) ~= nil, true);
         check('S346 the binary method choice draws BOTH ways',
-              rdrawn:find('Call Beast##bstresum_call_bst', 1, true) ~= nil
-              and rdrawn:find('Bestial Loyalty##bstresum_loyalty_bst', 1, true) ~= nil, true);
+              rdrawn:find('Call Beast##bstresum_bst-helper_call', 1, true) ~= nil
+              and rdrawn:find('Bestial Loyalty##bstresum_bst-helper_loyalty', 1, true) ~= nil, true);
         check('S347 the cooldown-fallback checkbox draws beside them',
               cdrawn:find('bstresumfb_bst', 1, true) ~= nil, true);
         check('S348 the jug picker draws its combo',
@@ -4132,7 +4138,7 @@ end)();
             tickId = nil;
             check('S350 ticking the Resummon switch reaches the setter', aLog[#aLog], true);
 
-            clickId = 'bstresum_loyalty_bst';
+            clickId = 'bstresum_bst-helper_loyalty';
             pcall(jhui.renderTab, 'BST', 99);
             clickId = nil;
             check('S351 clicking a method sets it', mLog[#mLog], 'loyalty');
@@ -4153,7 +4159,11 @@ end)();
                 local rows = jugs.list();
                 check('S354 the catalog yields a real jug list', #rows > 0, true);
                 if #rows > 0 then
-                    selPick = 'bstresumjugrow_' .. tostring(rows[1].id);
+                    -- Pinned by the jug's NAME, not by the kit's row index: the
+                    -- harness matches ids as substrings, and '..._1' is also a
+                    -- substring of '..._1x' -- so an index would click the last
+                    -- row that happens to share the prefix.
+                    selPick = rows[1].name;
                     pcall(jhui.renderTab, 'BST', 99);
                     selPick = nil;
                     check('S355 clicking a jug row stores the JUG NAME', jLog[#jLog], rows[1].name);

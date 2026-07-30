@@ -1,6 +1,5 @@
-﻿--[[
-    dlac/jobhelpers/bst/fight.lua -- the BST Helper's FIGHT switch (issue #139;
-    POLL rewrite 2026-07-29 after two field rounds).
+--[[
+    dlac/jobhelpers/bst/bst-helper/fight.lua -- the BST Helper's FIGHT switch.
 
     THREE WAYS, and nothing between them:
         off     -- the helper never issues a pet command
@@ -9,46 +8,56 @@
         follow  -- `attack`, plus: a pet already fighting is re-sent when YOUR
                    battle target changes to a different mob.
 
-    WHY A POLL AND NOT PACKET EDGES (the field history, both on 2026-07-29): the
-    edge design failed two live rounds -- the client sends 0x0F-then-0x02 pairs
-    on a fresh attack (round 1; fixed with (target,kind) debounce keys) and the
-    captured-entity confirm still refused every send (round 2). The FIELD-PROVEN
-    shape on this server is Pup-Helper's: poll "am I engaged + is the pet idle +
-    do I have a target", then issue. The pet-idle gate is simultaneously the
-    spam brake AND the retry: a command the server refused leaves the pet idle,
-    so the next beat tries again; a command that took makes the pet non-idle,
-    which stops the issuing. The GearSwap BST convention is the same shape
-    (docs/reference/pet-handling-other-luas.md section 4.2: `pet.status ==
-    'Idle' and player.target.type == 'MONSTER'` -> `/pet Fight`). HEEL is the
-    player's OPTION (Henrik's ruling, same day): with Respect Heel ON (the
-    default) a send that TOOK is never repeated at that target -- pulling the
-    pet back sticks until you switch targets or disengage; OFF, an idle pet
-    keeps being re-sent while you are engaged, up to the cap.
+    WHY A POLL, AND WHERE THE EDGES WENT (the field history, both rounds on
+    2026-07-29). The edge-driven design failed two live rounds: the client sends
+    0x0F-then-0x02 pairs on a fresh attack (round 1; fixed with (target,kind)
+    debounce keys), and then the captured-entity confirm refused every send (round
+    2). The FIELD-PROVEN shape on this server is Pup-Helper's: poll "am I engaged
+    + is the pet idle + do I have a target", then issue. The pet-idle gate is
+    simultaneously the spam brake AND the retry -- a command the server refused
+    leaves the pet idle, so the next beat tries again; a command that took makes
+    the pet non-idle, which stops the issuing. The GearSwap BST convention is the
+    same shape (docs/reference/pet-handling-other-luas.md 4.2).
 
-    THE METRONOME is the pet vitals beat (feature\petvitals.subscribe, 0.4s --
-    the engine's own dispatch cadence): no new frame wiring, and the vitals
-    record (present + status) arrives with the tick. The DECISION is a pure
-    function (pollDecide) -- state in, act/reason out -- so every rule is a
-    headless test (BFT*).
+    What round 2 actually indicted was using the packet's captured entity as the
+    command's TARGET -- not the edge decode, which was correct. So the edges are
+    still here, and this rule still benefits from them: the combat state service
+    (feature\combat, via S.combat) answers `targetChanged` from the RETARGET EDGE
+    whenever one arrived, falling back to its own poll otherwise. That matters for
+    `follow`: a poll alone cannot see an A->B->A switch inside one 0.4s beat, and
+    cannot tell a real target change from an entity index the server recycled.
+    The command still fires `<t>`, which resolves at execution against the same
+    target the beat just read -- there is no captured entity for a confirm to
+    disagree with.
 
-    RESTRAINT (the approved-envelope discipline): at most one command per
-    RETRY_S at the same target, at most MAX_TRIES per (engagement, target) -- a
-    command that never takes goes QUIET with a visible 'capped' reason in the
-    Panel instead of machine-gunning. The counters reset when you disengage or
-    move to a different target. Commands leave through lib\cmdqueue.issue --
-    THE central auto-issue door -- and `<t>` resolves at execution against the
-    same target the poll just read (self-consistent; there is no captured
-    entity for a confirm to disagree with).
+    HEEL is the player's OPTION (Henrik's ruling, same day): with Respect Heel ON
+    (the default) a send that TOOK is never repeated at that target -- pulling the
+    pet back sticks until you switch targets or disengage; OFF, an idle pet keeps
+    being re-sent while you are engaged, up to the cap.
+
+    THE METRONOME is the combat beat (S.combat.subscribe -- 0.4s, the engine's own
+    dispatch cadence). The PET is read at decision time (S.pet.get(), which reads
+    the world now), so this rule is a combat rule that happens to check a pet,
+    rather than a pet subscriber that happens to read combat -- which is what it
+    had to be when the pet beat was the only per-beat publisher dlac shipped.
+
+    RESTRAINT (the approved-envelope discipline): at most one command per RETRY_S
+    at the same target, at most MAX_TRIES per (engagement, target) -- a command
+    that never takes goes QUIET with a visible 'capped' reason in the Panel instead
+    of machine-gunning. The counters reset when you disengage or move to a
+    different target. Commands leave through S.cmd -- THE central auto-issue door.
+
+    The DECISION is a pure function (pollDecide) -- state in, act/reason out -- so
+    every rule is a headless test (BFT*).
 ]]--
 
 local M = {};
 
 -- The three ways, in switch order. `off` first: a player scanning the row reads
--- the safe state first, and it is the default (see config.DEFAULTS.fight).
+-- the safe state first, and it is the default.
 M.MODES = { 'off', 'attack', 'follow' };
 
--- Player-facing labels (signed off 2026-07-29; naming law: helpers name the
--- RULE, never "Auto <activity>").
+-- Player-facing labels (naming law: helpers name the RULE, never "Auto <x>").
 M.MODE_LABEL = {
     off    = 'Off',
     attack = 'When I attack',
@@ -62,36 +71,46 @@ M.MODE_HELP = {
              .. ' so auto-target rolling to the next mob keeps your pet working.',
 };
 
--- The action command. `<t>` resolves at execution against the target the poll
--- just read. FLAGGED for field verification: the exact CatsEyeXI spelling of
--- the pet command is confirmed in-game before this ships to players.
+-- The action command. `<t>` resolves at execution against the target the beat
+-- just read. FLAGGED for field verification: the exact CatsEyeXI spelling of the
+-- pet command is confirmed in-game before this ships to players.
 M.COMMAND = '/pet "Fight" <t>';
 
--- Pacing: at most one command per RETRY_S at the same target, at most
--- MAX_TRIES per (engagement, target) before going quiet with a 'capped'
--- Panel reason (a command that is not taking is news, not a machine gun).
+-- Pacing: at most one command per RETRY_S at the same target, at most MAX_TRIES
+-- per (engagement, target) before going quiet with a 'capped' Panel reason (a
+-- command that is not taking is news, not a machine gun).
 M.RETRY_S   = 2.0;
 M.MAX_TRIES = 3;
 
--- This module's folder name -- the loader assigns identity FROM the folder;
--- `init(id)` overrides if the folder is ever renamed.
-local DEFAULT_ID = 'bst-helper';
+-- WHEN to start sending (Henrik's option 2026-07-29): 'drawn' = the moment you
+-- engage (weapon drawn -- the default, the Pup shape); 'swing' = only once your
+-- own auto-attack has actually swung this engagement (for early engages where you
+-- draw at range and close in).
+M.WHENS = { 'drawn', 'swing' };
+M.WHEN_LABEL = {
+    drawn = 'Weapon drawn',
+    swing = 'First swing',
+};
+M.WHEN_HELP = {
+    drawn = 'Your pet is sent as soon as you engage (draw your weapon) with a target.',
+    swing = 'Your pet waits until your first auto-attack actually swings this engagement --'
+            .. ' engage early and close in without sending it.',
+};
 
-local _id   = DEFAULT_ID;
-local _last = nil;        -- the last decision (what the Panel reports; no chat)
+-- The module API table, handed over by init. Every service, the clock, the config
+-- store and the issue door arrive through it -- see feature\modapi.
+local _S = nil;
 
--- Per-engagement issue bookkeeping (reset on disengage / mode off):
-local _issue = nil;       -- { target = <index>, at = <sec>, tries = <n> }
-local _prevTarget = nil;  -- last polled target index (the follow change signal)
+local _last  = nil;      -- the last decision (what the Panel reports; no chat)
+local _issue = nil;      -- per-engagement bookkeeping { target, at, tries, took }
 
 -- ---------------------------------------------------------------------------
--- the mode (persisted in the module's own config file)
+-- the mode (persisted in the module's own settings store)
 -- ---------------------------------------------------------------------------
 
 local function cfg()
-    local c = nil;
-    pcall(function() c = require('dlac\\jobhelpers\\bst\\bst-helper\\config'); end);
-    return (type(c) == 'table') and c or nil;
+    if type(_S) ~= 'table' then return nil; end
+    return _S.cfg;
 end
 
 function M.isMode(m)
@@ -101,8 +120,8 @@ function M.isMode(m)
     return false;
 end
 
--- The live Fight mode. An unreadable / absent config reads 'off' -- an
--- action-performing feature never defaults itself ON.
+-- The live Fight mode. An unreachable store reads 'off' -- an action-performing
+-- feature never defaults itself ON.
 function M.mode()
     local c = cfg();
     -- Plain if, not `(c ~= nil) and c.get(..) or nil` -- the documented ternary
@@ -119,21 +138,6 @@ function M.setMode(m)
     if c == nil then return false; end
     return c.set('fight', m);
 end
-
--- WHEN to start sending (Henrik's option 2026-07-29): 'drawn' = the moment you
--- engage (weapon drawn -- the default, the Pup shape); 'swing' = only once your
--- own auto-attack has actually swung this engagement (for early engages where
--- you draw at range and close in).
-M.WHENS = { 'drawn', 'swing' };
-M.WHEN_LABEL = {
-    drawn = 'Weapon drawn',
-    swing = 'First swing',
-};
-M.WHEN_HELP = {
-    drawn = 'Your pet is sent as soon as you engage (draw your weapon) with a target.',
-    swing = 'Your pet waits until your first auto-attack actually swings this engagement --'
-            .. ' engage early and close in without sending it.',
-};
 
 function M.isWhen(w)
     for _, v in ipairs(M.WHENS) do
@@ -157,10 +161,9 @@ function M.setWhen(w)
     return c.set('fightWhen', w);
 end
 
--- Respect Heel? (Henrik's option ruling 2026-07-29 -- the player decides.)
--- ON (default): once a send TAKES for this (engagement, target), the pet is
--- never re-sent at it -- pulling it back with Heel sticks until you switch
--- targets or disengage. OFF: an idle pet keeps being re-sent up to the cap.
+-- Respect Heel? ON (default): once a send TAKES for this (engagement, target),
+-- the pet is never re-sent at it -- pulling it back with Heel sticks until you
+-- switch targets or disengage. OFF: an idle pet keeps being re-sent, up to the cap.
 function M.heelRespect()
     local c = cfg();
     local v = nil;
@@ -187,8 +190,11 @@ end
 --   hasPet        = <true|false|nil>,   -- vitals.present
 --   petIdle       = <true|false|nil>,   -- vitals.status == 'Idle' (nil = unreadable)
 --   targetIndex   = <number|nil>,  -- the CURRENT battle target's entity index
---   targetChanged = <bool>,        -- the polled target differs from the last poll's
---   last          = { target, at, tries } | nil,   -- the issue bookkeeping
+--   targetChanged = <bool>,        -- edge-answered when an edge arrived, else polled
+--   needSwing     = <bool>,        -- the 'swing' option is selected
+--   swung         = <true|false|nil>,   -- my auto-attack has swung this engagement
+--   heelRespect   = <bool>,
+--   last          = { target, at, tries, took } | nil,   -- the issue bookkeeping
 --   now           = <seconds>,
 -- }
 -- returns { act = <bool>, reason = <slug|nil>, targetIndex, command }
@@ -250,7 +256,7 @@ function M.pollDecide(state)
 
     -- The pet is fighting. follow: re-send when MY target moved to a different
     -- mob (works for a pet the player sent by hand too -- the change signal is
-    -- the POLL's, not the issue history's).
+    -- the SERVICE's, not the issue history's).
     if mode == 'follow' and state.targetChanged == true then
         local p = paced();
         if p ~= nil then return { act = false, reason = p }; end
@@ -291,164 +297,68 @@ end
 
 function M.lastDecision() return _last; end
 
--- ---------------------------------------------------------------------------
--- live reads (injectable as a whole -- the location.reader precedent)
--- ---------------------------------------------------------------------------
-
-M.reads = {};
-
--- Is the player ENGAGED right now? true / false / nil (unreadable). The one
--- status read is dlac's own gData provider (nativedata resolves the string).
-M.reads.engaged = function()
-    local e = nil;
-    pcall(function()
-        local g = rawget(_G, 'gData');
-        if type(g) ~= 'table' or type(g.GetPlayer) ~= 'function' then return; end
-        local p = g.GetPlayer();
-        if type(p) ~= 'table' or type(p.Status) ~= 'string' then return; end
-        e = (p.Status == 'Engaged');
-    end);
-    return e;
-end;
-
--- The CURRENT battle target's entity index, or nil. The sibling-proven idiom
--- (distance/geocompass/LAC data.lua: GetTarget():GetTargetIndex(0)).
-M.reads.target = function()
-    local idx = nil;
-    pcall(function()
-        local tgt = AshitaCore:GetMemoryManager():GetTarget();
-        if tgt == nil then return; end
-        local i = tgt:GetTargetIndex(0);
-        if type(i) == 'number' and i > 0 then idx = i; end
-    end);
-    return idx;
-end;
-
--- The entity display name for an index, trimmed, or nil (the entwatch idiom).
-M.reads.nameOf = function(index)
-    local nm = nil;
-    pcall(function()
-        nm = AshitaCore:GetMemoryManager():GetEntity():GetName(index);
-    end);
-    if type(nm) ~= 'string' then return nil; end
-    nm = (nm:gsub('%z', ''):gsub('%s+$', ''));
-    if nm == '' then return nil; end
-    return nm;
-end;
-
--- Has my own auto-attack swung this engagement? (The 'swing' option's read;
--- the edge service owns the 0x028 watch.) nil when unreadable.
-M.reads.swung = function()
-    local s = nil;
-    pcall(function()
-        local ew = require('dlac\\feature\\engagewatch');
-        if type(ew) == 'table' and type(ew.swungThisEngagement) == 'function' then
-            s = (ew.swungThisEngagement() == true);
-        end
-    end);
-    return s;
-end;
-
--- The same monotonic clock the sequencer/reward use (cmdqueue frames ->
--- seconds; os.clock when the queue is unreachable -- headless).
-M._now = function()
-    local t = nil;
-    pcall(function()
-        local cq = require('dlac\\lib\\cmdqueue');
-        if type(cq) == 'table' and type(cq.frame) == 'function' then
-            t = cq.frame() / 60.0;
-        end
-    end);
-    if t == nil then pcall(function() t = os.clock(); end); end
-    return tonumber(t) or 0;
-end;
-
--- ---------------------------------------------------------------------------
--- firing + the vitals-beat glue
--- ---------------------------------------------------------------------------
-
--- THE central issue door (lib\cmdqueue.issue -- Henrik's ruling 2026-07-29:
--- every auto-issued command goes through the ONE reusable function). Falls
--- back to a direct QueueCommand only if the queue is unreachable.
-M._fire = function(command)
-    local queued = false;
-    pcall(function()
-        local cq = require('dlac\\lib\\cmdqueue');
-        if type(cq) == 'table' and type(cq.issue) == 'function' then
-            queued = (cq.issue(command) == true);
-        end
-    end);
-    if queued then return true; end
-    local sent = false;
-    pcall(function()
-        AshitaCore:GetChatManager():QueueCommand(1, command);
-        sent = true;
-    end);
-    return sent;
-end;
-
 -- Drop the per-engagement bookkeeping (disengage / mode off / test reset).
 function M.resetIssues()
-    _issue, _prevTarget = nil, nil;
+    _issue = nil;
 end
 
--- One vitals beat -> one poll -> at most one command. `vitals` is the petvitals
--- record; `reads`/`id` are injectable (tests). Returns the decision so the
--- Panel (and the tests) can see WHY nothing happened.
-function M.onBeat(vitals, reads, id)
-    reads = (type(reads) == 'table') and reads or M.reads;
-    local st = { mode = M.mode(), now = M._now() };
+-- ---------------------------------------------------------------------------
+-- one beat -> one poll -> at most one command
+-- ---------------------------------------------------------------------------
+--
+-- `c` is the combat beat record (feature\combat): { engaged, targetIndex,
+-- targetName, targetChanged, changedBy, swung, at }. `pet` is the vitals record;
+-- omitted, it is read now through S.pet.get(). Returns the decision so the Panel
+-- (and the tests) can see WHY nothing happened.
+function M.onBeat(c, pet, S)
+    S = (type(S) == 'table') and S or _S;
+    c = (type(c) == 'table') and c or {};
 
-    -- The module-activity predicate (pill, main job, town, dead, zoning) --
-    -- the ONE gate every Job helper consults; never a second copy of the rules.
-    pcall(function()
-        local jh = require('dlac\\feature\\jobhelpers');
-        if type(jh) ~= 'table' or type(jh.activity) ~= 'function' then return; end
-        local act = jh.activity(id or _id);
-        if type(act) ~= 'table' then return; end
-        st.active = (act.active == true);
-        st.reason = act.reason;
-    end);
+    local now = 0;
+    if type(S) == 'table' and type(S.now) == 'function' then now = S.now(); end
+    local st = { mode = M.mode(), now = now };
 
-    st.heelRespect = M.heelRespect();
-    st.needSwing = (M.when() == 'swing');
-    if st.needSwing and type(reads.swung) == 'function' then
-        local ok, s = pcall(reads.swung);
-        if ok then st.swung = s; end
+    -- The module-activity predicate (pill, main job, town, dead, zoning) -- the
+    -- ONE gate every Job helper consults; never a second copy of the rules.
+    if type(S) == 'table' and type(S.me) == 'table' and type(S.me.acting) == 'function' then
+        local act = S.me.acting();
+        if type(act) == 'table' then
+            st.active = (act.active == true);
+            st.reason = act.reason;
+        end
     end
 
-    if type(vitals) == 'table' then
-        st.hasPet = (vitals.present == true);
-        local s = vitals.status;
+    st.heelRespect = M.heelRespect();
+    st.needSwing   = (M.when() == 'swing');
+    st.swung       = c.swung;
+    st.engaged     = c.engaged;
+    st.targetIndex = c.targetIndex;
+
+    -- The pet, read at DECISION time. Two-state on purpose: "no pet" and "could
+    -- not read" answer identically, and neither is permission to command one.
+    if pet == nil and type(S) == 'table' and type(S.pet) == 'table'
+       and type(S.pet.get) == 'function' then
+        pet = S.pet.get();
+    end
+    if type(pet) == 'table' then
+        st.hasPet = (pet.present == true);
+        local s = pet.status;
         if type(s) == 'string' and s ~= '' then
             st.petIdle = (s == 'Idle');
         end
-    end
-
-    if type(reads.engaged) == 'function' then
-        local ok, e = pcall(reads.engaged);
-        if ok then st.engaged = e; end
-    end
-    if type(reads.target) == 'function' then
-        local ok, t = pcall(reads.target);
-        if ok then st.targetIndex = t; end
     end
 
     -- Disengaged (or switched off): the engagement bookkeeping dies with it.
     if st.engaged ~= true or st.mode == 'off' then
         M.resetIssues();
     else
+        st.targetChanged = (c.targetChanged == true);
         local tgt = tonumber(st.targetIndex) or 0;
-        if tgt > 0 then
-            st.targetChanged = (_prevTarget ~= nil and _prevTarget ~= tgt);
-            _prevTarget = tgt;
-            -- The TOOK latch (the Respect-Heel option's memory): our send is on
-            -- record for this target and the pet is now FIGHTING -- the command
-            -- took. From here an idle pet at the same target means the player
-            -- pulled it back.
-            if _issue ~= nil and _issue.target == tgt and st.petIdle == false then
-                _issue.took = true;
-            end
+        -- The TOOK latch (the Respect-Heel option's memory): our send is on record
+        -- for this target and the pet is now FIGHTING -- the command took. From
+        -- here an idle pet at the same target means the player pulled it back.
+        if tgt > 0 and _issue ~= nil and _issue.target == tgt and st.petIdle == false then
+            _issue.took = true;
         end
         st.last = _issue;
     end
@@ -464,31 +374,33 @@ function M.onBeat(vitals, reads, id)
         else
             _issue = { target = tgt, at = st.now, tries = 1 };
         end
-        if type(reads.nameOf) == 'function' then
-            local ok, nm = pcall(reads.nameOf, tgt);
-            if ok then d.targetName = nm; end
-        end
-        M._fire(d.command);
+        -- The name rides in WITH the beat -- captured from the packet when an edge
+        -- answered, read off the entity otherwise. Display only; the command is
+        -- `<t>`.
+        d.targetName = c.targetName;
+        if type(S) == 'table' and type(S.cmd) == 'function' then S.cmd(d.command); end
     end
 
     _last = d;
     return d;
 end
 
--- Subscribe to the pet vitals beat (feature\petvitals -- the 0.4s metronome).
--- Called from the module's init hook; idempotent (petvitals keys subscriptions
--- by name, so a reload replaces rather than doubles).
-function M.init(id)
-    if type(id) == 'string' and id ~= '' then _id = id; end
+-- Subscribe to the combat beat. Called from the module's init hook; the key is
+-- namespaced by the framework (jobhelper:<id>:fight), so a reload replaces rather
+-- than doubles and two modules can never collide on it.
+function M.init(S)
+    if type(S) ~= 'table' then return false; end
+    _S = S;
     local ok = false;
     pcall(function()
-        local pv = require('dlac\\feature\\petvitals');
-        if type(pv) ~= 'table' or type(pv.subscribe) ~= 'function' then return; end
-        ok = pv.subscribe('jobhelper:' .. _id .. ':fight', function(v) M.onBeat(v); end);
+        ok = S.combat.subscribe('fight', function(c) M.onBeat(c); end);
     end);
     return ok;
 end
 
-function M.id() return _id; end
+function M.id()
+    if type(_S) ~= 'table' then return nil; end
+    return _S.id;
+end
 
 return M;

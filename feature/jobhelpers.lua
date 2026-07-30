@@ -10,13 +10,20 @@
     a contract table:
 
         return {
-            api    = 1,                       -- must equal M.API or it is refused
+            api    = 2,                       -- must equal M.API or it is refused
             label  = 'BST Helper',            -- player-facing display label
             jobs   = { 'BST' },               -- declared main jobs (non-empty)
-            init   = function(deps) end,      -- optional; shared services in
+            config = { keys = {}, defaults = {} },  -- optional; the framework stores it
+            init   = function(S) end,         -- optional; the module API in
             panel  = function(ctx) end,       -- required; renders the Panel
             status = function(ctx) end,       -- optional; extra row-status draw
         }
+
+    `S` (feature\modapi) is the SUPPORTED surface -- identity, the one clock, the
+    services, the act door, the settings store, the widget kit -- built per module
+    by the loader. It is not a sandbox (ADR 0028 settled that: visibility and
+    contracts, not walls); a module can still require anything. It is the part
+    that is documented, versioned and will keep working.
 
     IDENTITY is the MODULE folder name, never a self-declared id: the folder is
     the unit of server approval (Pup-Helper precedent), so the name on disk is
@@ -48,11 +55,30 @@ local M = {};
 -- mismatch is a LOUD refusal (a module built for an older/newer dlac fails
 -- visibly instead of misbehaving quietly -- PRD user story 9). Bump on any
 -- breaking change to the contract.
-M.API = 1;
+--
+-- The version lives in feature\modapi now, because what a module actually
+-- depends on is the SERVICE SURFACE, not the shape of this one table -- api 1's
+-- gate could only say "your table has the right keys", which was never the thing
+-- that broke. It is re-exported here so the loader's own refusal line and the
+-- registry keep reading `jobhelpers.API`.
+--
+--   1 -> init(deps) with { host, jobhelpers }; every other service reached by
+--        hardcoded require path, and every module carrying its own copy of the
+--        clock, the loud-line emitter, the activity block and the config store.
+--   2 -> init(S): the curated module API (feature\modapi), an optional declared
+--        `config` block the framework stores for you (feature\modcfg), and the
+--        Panel widget kit on ctx.ui (ui\panelkit).
+local _maok, _mapi = pcall(require, 'dlac\\feature\\modapi');
+M.API = (_maok and type(_mapi) == 'table' and tonumber(_mapi.API)) or 2;
 
 -- Loaded modules, in registration order (= the order the loader saw them =
 -- alphabetical by folder, since the scan sorts). Each entry:
---   { id = <folder>, label, jobs = {..}, mod = <contract table> }
+--   { id    = <module folder -- the identity>,
+--     job   = <job folder it filed under>,
+--     label, jobs = {..},
+--     mod   = <the contract table it returned>,
+--     cfg   = <its settings store, or nil>,
+--     S     = <its module API table> }
 M.modules = {};
 
 -- ---------------------------------------------------------------------------
@@ -442,6 +468,19 @@ function M._validate(id, mod)
     if type(mod.panel) ~= 'function' then return nil, 'missing panel render hook'; end
     if mod.init ~= nil and type(mod.init) ~= 'function' then return nil, 'init is not a function'; end
     if mod.status ~= nil and type(mod.status) ~= 'function' then return nil, 'status is not a function'; end
+    -- The optional `config` block (api 2): the module declares its keys and their
+    -- types, the framework owns the file format. Refused LOUDLY on a bad shape
+    -- rather than silently dropping writes -- a settings declaration that does not
+    -- say what it stores is far cheaper to hear about at load than to discover in
+    -- the field when a value turns out never to have persisted.
+    if mod.config ~= nil then
+        local mc = nil;
+        pcall(function() mc = require('dlac\\feature\\modcfg'); end);
+        if type(mc) == 'table' and type(mc.validate) == 'function' then
+            local ok, reason = mc.validate(mod.config);
+            if ok ~= true then return nil, tostring(reason or 'bad config block'); end
+        end
+    end
     return { id = id, label = mod.label, jobs = jobs, mod = mod };
 end
 
@@ -458,10 +497,50 @@ local function fail(ledger, emit, id, reason)
     end
 end
 
+-- Build the module API table handed to a module's init hook, and exposed to its
+-- Panel as ctx.S. One per module, closed over that module's identity, so a module
+-- can neither declare its own id nor ask a question as somebody else. Injectable
+-- so the loader fixtures drive init with a stub surface.
+M._buildApi = function(rec)
+    local api = nil;
+    pcall(function()
+        local ma = require('dlac\\feature\\modapi');
+        if type(ma) == 'table' and type(ma.build) == 'function' then api = ma.build(rec); end
+    end);
+    return api;
+end
+
+-- Open a module's declared settings store (nil when it declared no `config`).
+-- The module owns the keys; feature\modcfg owns the format.
+M._openCfg = function(rec)
+    if type(rec) ~= 'table' or type(rec.mod) ~= 'table' or rec.mod.config == nil then return nil; end
+    local store = nil;
+    pcall(function()
+        local mc = require('dlac\\feature\\modcfg');
+        if type(mc) == 'table' and type(mc.open) == 'function' then
+            store = mc.open(rec.id, rec.mod.config);
+        end
+    end);
+    return store;
+end
+
+-- Drop every subscription a module opened through its API table. There is no
+-- hot-unplug today (an Ashita reload takes the whole Lua state with it), so this
+-- exists for the reload path, the tests, and the day a module can be turned off
+-- for real rather than only gated.
+function M.unload(id)
+    local n = 0;
+    pcall(function()
+        local ma = require('dlac\\feature\\modapi');
+        if type(ma) == 'table' and type(ma.dropAll) == 'function' then n = ma.dropAll(id); end
+    end);
+    return n;
+end
+
 -- The loader CORE. opts = {
 --   names      = { <folder>, .. }         -- candidate module folders (sorted)
 --   loadModule = function(id) -> ok, modOrErr   -- require the folder's init
---   deps       = <shared-services table handed to each module's init(deps)>
+--   host       = <ui\uihost>              -- carried on the module API table
 --   ledger     = <the load ledger table>
 --   emit       = function(line)           -- one loud line per failure
 -- }
@@ -490,10 +569,22 @@ function M.loadAll(opts)
                 if rec == nil then
                     fail(ledger, emit, id, reason);
                 else
+                    -- Everything the framework knows about this module and the
+                    -- module cannot know about itself: the job folder it filed
+                    -- under, the UI host, its settings store, and the API table
+                    -- built from all three. The ID especially -- api 1 had the
+                    -- record in hand right here and passed only `deps`, so every
+                    -- module hardcoded its own folder name as a fallback in every
+                    -- file that ran without a render ctx.
+                    rec.job  = M._jobOf[id];
+                    rec.host = (type(opts.deps) == 'table' and opts.deps.host) or opts.host;
+                    rec.cfg  = M._openCfg(rec);
+                    rec.S    = M._buildApi(rec);
+
                     -- init is the module's own code: contain a throw here too.
                     local iok, ierr = true, nil;
                     if type(rec.mod.init) == 'function' then
-                        iok, ierr = pcall(rec.mod.init, opts.deps);
+                        iok, ierr = pcall(rec.mod.init, rec.S);
                     end
                     if not iok then
                         fail(ledger, emit, id, 'init threw (' .. tostring(ierr):gsub('%s+', ' '):sub(1, 90) .. ')');
