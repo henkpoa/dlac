@@ -68,7 +68,7 @@ M.TICK_S = 0.4;
 -- the pure core -- reads + history in, the record out
 -- ---------------------------------------------------------------------------
 --
--- reads = {
+-- reads = {                       -- each read is the VALUE or a FUNCTION for it
 --   engaged = <true|false|nil>,   -- nil = unreadable, and it STAYS nil
 --   target  = <index|nil>,
 --   nameOf  = function(index) -> name|nil,
@@ -87,9 +87,20 @@ M.TICK_S = 0.4;
 function M.fromReads(reads, prevTarget, edges)
     reads = (type(reads) == 'table') and reads or {};
 
-    local out = { engaged = reads.engaged, swung = reads.swung };
+    -- A read is a FUNCTION or a value, and both are answered here. The live
+    -- table (M.reads) is functions; a test injects plain values. Called under
+    -- pcall, exactly as `nameOf` is below and as petvitals reads its own pet --
+    -- a read that throws is an unreadable one, which is nil, not a crash.
+    local function readOf(v)
+        if type(v) ~= 'function' then return v; end
+        local ok, r = pcall(v);
+        if not ok then return nil; end
+        return r;
+    end
 
-    local tgt = tonumber(reads.target);
+    local out = { engaged = readOf(reads.engaged), swung = readOf(reads.swung) };
+
+    local tgt = tonumber(readOf(reads.target));
     if tgt ~= nil and tgt > 0 then out.targetIndex = tgt; end
 
     if out.targetIndex ~= nil and type(reads.nameOf) == 'function' then

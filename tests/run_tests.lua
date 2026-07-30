@@ -17632,6 +17632,33 @@ end)();
     end)(), 'engage');
     cb.reset(true);
     check('CBT31 reset(true) drops the subscribers too', cb.subscriberCount(), 0);
+
+    -- THE LIVE SHAPE. Every check above feeds VALUES, and the live table
+    -- (M.reads) is FUNCTIONS -- so the whole service could answer a function
+    -- reference for `engaged` and stay green, which is exactly what it did
+    -- (2026-07-30: every helper on the beat read "not engaged" forever, because
+    -- a function is never == true). The reads are driven here the way the
+    -- addon drives them: through get() and pump(), off M.reads itself.
+    local live = { engaged = function() return true; end,
+                   target  = function() return 0x2E1; end,
+                   swung   = function() return true; end,
+                   nameOf  = function() return 'Nursery Nazuna'; end };
+    local fn = cb.fromReads(live);
+    check('CBT32 a read that is a FUNCTION is called, not stored', fn.engaged, true);
+    check('CBT33 ...the target too, so the beat has a target at all', fn.targetIndex, 0x2E1);
+    check('CBT34 ...and the swing', fn.swung, true);
+    check('CBT35 ...and the name still resolves off the called target', fn.targetName, 'Nursery Nazuna');
+
+    cb.reads = live;
+    check('CBT36 get() reads the LIVE table the addon actually passes', cb.get().engaged, true);
+    check('CBT37 ...and a gate can trust it (engaged ~= true must be FALSE here)',
+          cb.get().engaged ~= true, false);
+    cb.subscribe('live', function() end);
+    check('CBT38 the published beat carries values, never the readers',
+          cb.pump(900).targetIndex, 0x2E1);
+    check('CBT39 a read that THROWS is unreadable (nil), not a crash',
+          cb.fromReads({ engaged = function() error('no core'); end }).engaged, nil);
+    cb.reset(true);
 end)();
 
 -- ---------------------------------------------------------------------------

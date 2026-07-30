@@ -457,6 +457,32 @@ research already recorded. In rough priority order:
 
 ## Current state (as of 2026-07-30)
 
+- **2026-07-30 (latest — `2026.07.30f`): the combat service never CALLED its reads, and
+  BST Fight has been dead on `main` since the api-2 promotion.** Suites **5149 + 867**, both
+  interpreters. **`main` is currently carrying this bug** — it rode in with `f8df96b`
+  (`2026.07.30a`) and shipped in the `1551faa` promotion the same day.
+  - **The bug.** `feature/combat.lua`'s pure core `fromReads` *stored* `reads.engaged` /
+    `reads.target` / `reads.swung` instead of **calling** them. The live table (`M.reads.*`) is
+    **functions**, so `engaged` was a function reference — and a function is never `== true`, so
+    every consumer's positive-true gate failed forever. `tonumber(<function>)` is `nil`, so there
+    was never a `targetIndex` either. BST's Fight switch (`fight.lua` → `pollDecide`) therefore
+    answered **`not-engaged` on every beat**: the pet was never sent, in either Attack or Follow
+    mode, and the Panel said "you are not engaged" while you were swinging. Reward, Resummon and
+    the Summon set are **unaffected** — they ride `petvitals`, which reads correctly.
+  - **Why no round caught it.** Fight's 07-29 field confirmation was on its *private* pet-vitals
+    poll; `f8df96b` moved it onto the new service and onto this bug in the same commit, and the
+    api-2 train was promoted before a BST round ran against it.
+  - **Why the suite stayed green, and this is the lesson.** All 31 existing CBT checks injected a
+    stub of **values**; nothing ever drove the service off a **function**-valued table, which is
+    the only shape the addon actually passes. **A service with injected reads needs at least one
+    check that drives `get()`/`pump()` off `M.reads` itself** — new **CBT32–CBT39** do exactly
+    that (they fail on the pre-fix file; verified by reverting and re-running). `feature/petvitals`
+    is the correct idiom and never had the bug: `if type(r.pet) == 'function' then pcall(r.pet)`.
+  - **Credit + provenance:** found by Henrik's friend while building a **PUP** helper against the
+    same beat — the second module on `S.combat` is what exposed it. His patch was read as evidence
+    and **ported by hand** (the standing rule for field reports), not applied.
+  - **Not field-confirmed yet; not queued for merge until Henrik sees the pet go in.**
+
 - **2026-07-30 (later, UNCOMMITTED on `dev` at time of writing — `2026.07.30b`, engine v157):
   the BST field round — two bugs, one feature, one registry.** Suites **5073 + 817**, both
   interpreters. Not field-confirmed yet; **not queued for merge** until it is.
