@@ -262,7 +262,36 @@ merge carries it **without asking him again**. Only he can move an entry to ACCE
 this does not make an accepted entry mergeable *alone*: `dev` promotes
 **whole-or-not-at-all**, so an accepted entry rides the next promotion of the whole branch.
 
-**The queue is empty.**
+### The BST field-round train — `2026.07.30c`, engine v157, FIELD-CONFIRMED (not yet ACCEPTED)
+
+Four commits on `dev`, **unpushed** at time of writing (Henrik is checking the parallel E-Box
+Restock session first): `8945574` (the corpse witness, the space, the Dynamic sets, the Summon set,
+the keybind registry + ADR 0032, `/dl jh`, searchable dropdowns, the jug cap),
+`cafd7e7` (the jiffies unit, the name-index hedge, the pickMethod tri-state, once-per-zone food),
+`8f9e1b5` (**the real root cause** — `type(rec) == 'table'` on an Ashita resource object, which is
+userdata; the by-name recast resolution had never worked, and Reward's hardcoded `timerId = 103`
+masked it), `740dec0` (the field case pinned end to end). Suites **5128 + 842**, both interpreters.
+
+**Field-confirmed by Henrik, 2026-07-30:**
+* the pet-death detection — *"the death detection was the hardest thing, which is solved now"*, and
+  the `/probe pet` capture behind it (corpse readable at the same index+id for 15s, flip in +1ms,
+  no death message at all);
+* the recast read — *"it can read now"*;
+* the Resummon firing with the fallback choosing correctly — *"Now it works, perfection"*.
+
+**NOT exercised yet — do not let the confirmation above be read as covering these:** the Summon set
+actually landing on a summon (and the OPEN CHR question in
+[reference/catseyexi-jobs.md](reference/catseyexi-jobs.md) — summon-time vs Ready-time — is still
+open, so the feature may be aimed at the wrong moment entirely); the bindable **Summon now** key and
+`/dl jh`; the searchable dropdowns; the once-per-zone food line; the jug cap at 75; and **the friend's
+original report, the Dynamic sets picker**, which nobody has confirmed fixed.
+
+**Also riding along, and not Claude's work:** `ui/gearui.lua`'s E-Box Restock quick-window row and
+its SET checks, from a parallel session in the same checkout — its test hunks interleave with this
+train's in `tests/run_tests.lua`, so they could not be committed apart without leaving one half red
+(see `8945574`'s message). **Henrik verifies that half before the push.**
+
+Only Henrik moves this to ACCEPTED.
 
 *(Last emptied by the FIRST 2026-07-30 promotion: the **Job helper module API v2 + the percent
 that printed a pointer**, `2026.07.30a` — `f8df96b` (the api-2 train: `feature\modapi.lua`, the
