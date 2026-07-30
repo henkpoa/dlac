@@ -262,78 +262,26 @@ merge carries it **without asking him again**. Only he can move an entry to ACCE
 this does not make an accepted entry mergeable *alone*: `dev` promotes
 **whole-or-not-at-all**, so an accepted entry rides the next promotion of the whole branch.
 
-### The Job helper module API v2 + the percent that printed a pointer — `f8df96b` (2026-07-30)
+**The queue is empty.**
 
-**ACCEPTED** on Henrik's *"please document this properly and set it for handover to push to
-main"*. Addon `2026.07.29o` → **`2026.07.30a`**; **no engine change** (`dispatch.M.VERSION`
-untouched — nothing in the two-state contract moved). Suites **4960 + 817**, green on Windows
-Lua **and** WSL `lua5.4` (CI parity), re-run against the committed tree.
-
-**Both items are in the ONE commit `f8df96b`, whose subject names only the first of them** —
-the api-2 session committed while this queue entry was being written and swept the percent fix
-in with its own work (the full story, and why that was verified rather than assumed, is in
-history.md's *"the percent sign that printed a pointer"*). `git log --grep` will not find the
-fix; this entry and that one are its pointers.
-
-**⚠️ WHERE IT ACTUALLY IS: `f8df96b` on `feature/module-api-front-door`, one commit off `dev` —
-NOT on `dev` yet.** So this entry does not yet satisfy the section's own invariant ("committed on
-`dev`"): **PR the branch into `dev` first**, then it rides the next promotion with everything else.
-`git log --oneline dev..feature/module-api-front-door` is the authority, not this line (hard rule
-14). Written up by two sessions working the same checkout in parallel — the branch and this entry
-were made by different ones, which is exactly the seam where an "on `dev`" claim rots.
-
-**Two things ride together, and the second is why the entry exists.**
-
-1. **The module API v2 train**, built 2026-07-29 late evening and left **uncommitted overnight**
-   in the shared checkout — now committed as one unit in **`f8df96b`**, together with the percent
-   fix below and this session's ADR/guide work. It is the framework half the first real
-   module paid for by hand: `feature\modapi.lua` (**the Module API** — the one table `S` a module
-   is handed, versioned by `api = 2`; the supported surface, not a wall — ADR 0028 stands),
-   `feature\modcfg.lua` (declared settings stored by the framework — BST's own 193-line
-   `config.lua` is **deleted**, ~40 lines of it were BST's), `feature\combat.lua` (the combat
-   state service: one record, `engaged`/`target`/`targetChanged`/`swung`, its own beat pumped
-   after engagewatch — Fight's private poll on the *pet* service's metronome is retired),
-   `ui\panelkit.lua` (the Panel widget kit), `docs\templates\example-helper\` (a working
-   copyable module, held to the real contract by the TPL tests), BST's four behaviour files
-   rewritten onto all of it, and the authoring guide rewritten for `api = 2`. Wired in
-   `dlac.lua`'s load list, the Central-services table, CONTEXT.md (*Module API*) and the test
-   rosters.
-2. **The percent fix** (this session, from Henrik's screenshot): the Reward caption read
-   `below 51F4A60263et HP`. **Every imgui text call is a `printf` format string**, so
-   `below 51% pet HP` had its `% p` read as the `%p` pointer conversion — heap address printed,
-   the `p` eaten. Ten other UI modules already carry a private `esc`; the new kit shipped
-   without one. It escapes at its funnels now (`text`/`disabled`/`header` + tooltips), `bind`
-   carries `esc` over **unwrapped** (a handle-first wrapper would escape a table address), and
-   the caption itself is **deleted** on Henrik's *"not really relevant text"* — the slider shows
-   `51%` and the status line states the meaning. Two latent siblings in the same Panel
-   (`Armed: below 51% pet HP.`, `Pet: … at 51% HP.`) are fixed by the same funnel. Tests
-   PK19b + PK21–24; the story is in history.md.
-
-**FIELD STATE — read this before promoting.** The api-2 train is **running on Henrik's client
-right now**: the screenshot that opened the 07-30 session is the api-2 Panel (the panelkit
-sections, the stacked Call Beast / Bestial Loyalty choice, the pill), and the only thing he
-reported wrong about it was the caption, now gone. That is field evidence for the *rendering
-and loading* of the rewrite, not for the behaviours underneath it — **the field rounds already
-owed by the Job Helpers era are still owed** (auto-Reward at its threshold, Resummon whole,
-the Heel latch, the first-swing gate), and they are unchanged by this train because the
-behaviour logic moved *file*, not *meaning*. Every one of them fails SAFE: the worst case is
-an act that does not happen. The percent fix itself needs one glance at the Reward section
-with the rule armed and acting (out of town, pet out) — the status line is where the escape
-now shows.
-
-**One thing a promoter should know:** the version bump `2026.07.30a` covers **both** items —
-the train never got its own bump, so there is no `2026.07.29p`. If someone hunts for the
-api-2 commit by version, this is it.
-
-**Its records:** ADR [0031](adr/0031-module-api-is-a-front-door.md) (why the module surface is a
-front door and not a wall, what `api = 2` changes, and the four alternatives rejected — including
-"leave it at raw requires and document harder", which was the status quo and is answered with what
-the guide had to *contain*); the rewritten authoring guide, whose new **§6.10** documents how `S` is
-declared and instantiated (a factory closed over the module's identity, built once per module, its
-service entries bound lazily); the `MC*`/`MA*`/`CBT*`/`PK*`/`TPL*` test blocks (+170 checks); and
-history.md for the percent story.
-
-*(**`dayMatch` was cleared from this queue on 2026-07-30**, late and by a reader rather than by
+*(Last emptied by the FIRST 2026-07-30 promotion: the **Job helper module API v2 + the percent
+that printed a pointer**, `2026.07.30a` — `f8df96b` (the api-2 train: `feature\modapi.lua`, the
+Module API `S` at `api = 2`; `feature\modcfg.lua`, declared settings stored by the framework;
+`feature\combat.lua`, the combat state service; `ui\panelkit.lua`, the Panel kit;
+`docs\templates\example-helper\`; BST's four behaviour files rewritten onto all of it; the
+authoring guide rewritten; ADR 0031 — **and**, swept in with it, the percent fix: every imgui
+text call is a `printf` format string, so `below 51% pet HP` printed a heap address, the kit
+escapes at its funnels now and the caption is deleted), `712ccbf` + `b35383c` (the queue entry,
+the SHA-and-location correction, and the provenance record of the sweep). Suites **4960 + 817**,
+both interpreters. ACCEPTED and promoted on Henrik's *"please document this properly and set it
+for handover to push to main"*. **The merge knot is tied on LOCAL main and the push is Henrik's**
+— the permission layer refuses Claude a main push in any form, so until he runs
+`git push origin main` this train is on `dev` and on local `main` only. **`git log --oneline
+origin/main..main` is the authority on whether that happened, not this file** (hard rule 14).
+Behaviour field rounds owed by the Job Helpers era are unchanged and still owed — see *Current
+state*; the percent fix's own glance is one look at the Reward section with the rule armed and
+acting. Before that: **`dayMatch` was cleared from this queue on 2026-07-30**, late and by a
+reader rather than by
 its promoter: it went to main inside the SECOND 2026-07-29 promotion, `c07f7ae` (whose subject
 names it — *"the Job Helpers era … + dayMatch (2026.07.29a-o)"*), and
 `git merge-base --is-ancestor a2153ba main` confirms it. Nobody emptied the section in that
@@ -443,8 +391,10 @@ research already recorded. In rough priority order:
 
 ## Current state (as of 2026-07-30)
 
-- **2026-07-30: the Job helper MODULE API v2 is on `dev`, waiting on Henrik's push
-  (`2026.07.30a`, ACCEPTED in the queue above).** The framework half the first module paid for
+- **2026-07-30: the Job helper MODULE API v2 is on `dev` and on LOCAL `main`, waiting on one
+  push by Henrik — `git push origin main` (`2026.07.30a`; the knot is tied, the queue above is
+  emptied, `git log --oneline origin/main..main` says whether it landed).** The framework half
+  the first module paid for
   by hand: **the Module API** (`feature\modapi.lua` — the one table `S`, versioned `api = 2`;
   the *supported* surface, still no wall — ADR 0028 stands), **declared settings** stored by the
   framework (`feature\modcfg.lua`; BST's own 193-line `config.lua` deleted), **the combat state
