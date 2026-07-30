@@ -274,9 +274,20 @@ this does not make an accepted entry mergeable *alone*: `dev` promotes
 **The queue is empty.**
 
 
-*(Last emptied by the SECOND 2026-07-30 promotion: the **BST field-round train + the E-Box
-Restock shortcut and the tab jump that never worked**, `2026.07.30b`–`2026.07.30e`, engine v157
-— fourteen commits, `8471e2d..ae6f6a4`. The train: `8945574` (pet-death by corpse witness, the
+*(Last emptied by the 2026-07-30 promotion — `1551faa`, `main` at `56221c1` before it: the
+**Job helper module API v2 + the BST field-round train + the E-Box Restock shortcut and the tab
+jump that never worked**, `2026.07.30a`–`2026.07.30e`, engine v157 — **fifteen** commits,
+`8471e2d..c8e157c`.
+
+**A correction this promotion forced, and it is the exact failure hard rule 14 exists to
+prevent.** The note below claimed the api-2 train (`f8df96b`, `2026.07.30a`) had already gone to
+main earlier the same day. It had not: `main` sat at `56221c1` — the 07-29 state — until this
+merge, so the Module API, `modcfg`, `combat`, the Panel kit, ADR 0031 and the percent fix all
+rode **here**. Neither promotion route named down there was ever completed; PR #150 shows
+**MERGED** because these commits reached `main` by the command-block route instead, and GitHub
+closed it when they landed. Read the branch state from git, never from this file.
+
+The BST train: `8945574` (pet-death by corpse witness, the
 summon space, Dynamic sets, the Summon set, the **keybind registry + ADR 0032**, `/dl jh`,
 searchable dropdowns, the jug cap), `cafd7e7` (the jiffies unit, the name-index hedge, the
 pickMethod tri-state, once-per-zone food), `8f9e1b5` (**the real root cause** — `type(rec) ==
@@ -299,7 +310,7 @@ a summon (and the OPEN CHR question in [reference/catseyexi-jobs.md](reference/c
 — summon-time vs Ready-time — remains open, so it may be aimed at the wrong moment entirely); the
 bindable **Summon now** key and `/dl jh`; the searchable dropdowns; the once-per-zone food line;
 the jug cap at 75; and **the friend's original report, the Dynamic sets picker**, which nobody has
-confirmed fixed. Before that, the FIRST 2026-07-30 promotion: the **Job helper module API v2 + the percent
+confirmed fixed. The entry that was standing here for it, written when it was believed promoted: the **Job helper module API v2 + the percent
 that printed a pointer**, `2026.07.30a` — `f8df96b` (the api-2 train: `feature\modapi.lua`, the
 Module API `S` at `api = 2`; `feature\modcfg.lua`, declared settings stored by the framework;
 `feature\combat.lua`, the combat state service; `ui\panelkit.lua`, the Panel kit;
