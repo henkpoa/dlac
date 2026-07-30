@@ -16453,6 +16453,92 @@ end)();
           (rc.callBeastReady(function() return 0; end)), true);
     check('RC18 ...and down when measured down',
           (rc.bestialLoyaltyReady(function() return 900; end)), false);
+
+    -- --- THE UNIT (2026-07-30). The client stores ability recast in JIFFIES,
+    --     1/60s. This was /4 -- a quarter-second guess borrowed from
+    --     nativedata's RecastDelay, which is a RESOURCE field and a different
+    --     unit -- so every countdown dlac ever showed was 15x too big. Settled
+    --     by two independent addons on disk: timers\recasts.lua builds its
+    --     baseline as `60 * (90 + reduction)` ("the same format as timer is
+    --     stored in"), Rune-Actually-Helper divides by 60 ("jiffies -> seconds").
+    rc.forgetAbilities();
+    rc._abilityRes  = function() return { RecastTimerId = 55 }; end;
+    rc._recastMgr = function()
+        return {
+            GetAbilityTimerId = function(_, i) if i == 7 then return 55; end return 0; end,
+            GetAbilityTimer   = function(_, i) if i == 7 then return 60 * 1200; end return 0; end,
+        };
+    end;
+    check('RC19 a 20-minute recast reads as 1200 seconds, not 18000',
+          rc.liveRemaining({ name = 'Bestial Loyalty' }), 1200);
+    check('RC20 ...so the ability measures DOWN, and the fallback can see it',
+          (rc.readyFor({ name = 'Bestial Loyalty' }, rc.liveRemaining)), false);
+    -- READY and UNKNOWN are different answers. They were both nil until
+    -- 2026-07-30, which is precisely why the Resummon rule could not tell an
+    -- ability it knew was up from one it could not see at all.
+    rc._recastMgr = function()
+        return {
+            GetAbilityTimerId = function() return 0; end,
+            GetAbilityTimer   = function() return 0; end,
+        };
+    end;
+    check('RC20a resolved, on no slot -> 0 seconds: MEASURED ready',
+          rc.liveRemaining({ name = 'Call Beast' }), 0);
+    rc._abilityRes = function() return nil; end;
+    check('RC20b unresolvable -> nil: UNKNOWN, a different thing entirely',
+          rc.liveRemaining({ name = 'Nonesuch' }), nil);
+    check('RC20c ...and both still read READY to a button, which is right',
+          (rc.readyFor({ name = 'Nonesuch' }, rc.liveRemaining)), true);
+
+    -- --- THE RESOLUTION (2026-07-30). One name index was tried and abilities
+    --     got `0`; dlac already hedges TWO indexes for items in two places
+    --     because one did not answer. An unresolved slot is UNKNOWN, unknown
+    --     read READY, and the Resummon rule fired into its own cooldown.
+    -- A FRESH instance: the resolver is the thing under test here, and the
+    -- checks above have replaced it on `rc` several times over.
+    local rc2 = dofile('feature/recast.lua');
+    local probed = {};
+    AshitaCore = {
+        GetResourceManager = function()
+            return {
+                GetAbilityByName = function(_, name, idx)
+                    probed[#probed + 1] = tostring(name) .. '@' .. tostring(idx);
+                    if idx == 2 and name == 'Bestial Loyalty' then return { RecastTimerId = 94 }; end
+                    return nil;
+                end,
+            };
+        end,
+    };
+    check('RC21 an index that answers is found even when the first does not',
+          (rc2._abilityRes('Bestial Loyalty') or {}).RecastTimerId, 94);
+    check('RC22 ...having actually probed more than one', #probed > 1, true);
+
+    -- ...and when NO index answers, the whole table is walked once and indexed
+    -- by name -- the read an index convention cannot defeat.
+    local rc3 = dofile('feature/recast.lua');
+    local built = 0;
+    AshitaCore = {
+        GetResourceManager = function()
+            return {
+                GetAbilityByName = function() return nil; end,
+                GetAbilityById   = function(_, id)
+                    built = built + 1;
+                    if id == 387 then return { RecastTimerId = 94, Name = { 'Bestial Loyalty' } }; end
+                    if id == 85  then return { RecastTimerId = 104, Name = { 'Call Beast' } }; end
+                    return nil;
+                end,
+            };
+        end,
+    };
+    check('RC23 no index answers -> the scan finds it anyway',
+          (rc3._abilityRes('Bestial Loyalty') or {}).RecastTimerId, 94);
+    check('RC24 ...case-insensitively', (rc3._abilityRes('call beast') or {}).RecastTimerId, 104);
+    local after = built;
+    rc3._abilityRes('Call Beast');
+    check('RC25 ...and the scan is LATCHED, not repeated per frame', built, after);
+    local rc4 = dofile('feature/recast.lua');
+    AshitaCore = nil;
+    check('RC26 no client at all is UNKNOWN, never a throw', rc4._abilityRes('Call Beast'), nil);
 end)();
 
 -- ---------------------------------------------------------------------------
@@ -17055,15 +17141,19 @@ local function fakeApi(opts)
         end,
     };
 
-    -- Unknown reads READY, exactly like the real courtesy gate.
+    -- Mirrors the real contract, INCLUDING the part that separates "measured
+    -- ready" from "could not measure": both answer ready = true, and the
+    -- REMAINING beside it is the difference (0 = measured idle, nil = the recast
+    -- slot never resolved). Unlisted stays UNKNOWN, which is what an ability
+    -- whose slot dlac cannot resolve looks like.
     S.ability = {
         ready = function(sig)
             local nm = sig;
             if type(sig) == 'table' then nm = sig.name or sig.label; end
             local r = (opts.ready or {})[tostring(nm)];
-            if r == nil then return true, nil; end
-            if r == false then return false, opts.remaining or 42; end
-            return true, nil;
+            if r == nil then return true, nil; end                      -- unknown
+            if r == false then return false, opts.remaining or 42; end  -- measured down
+            return true, 0;                                             -- measured ready
         end,
     };
 
@@ -17856,8 +17946,25 @@ end)();
           rs.pickMethod('call', false, false, true), nil);
     check('BRS32 both down -> nothing, whatever the checkbox says',
           rs.pickMethod('call', true, false, false), nil);
-    check('BRS33 an UNMEASURED recast reads READY (the courtesy gate)',
+    check('BRS33 nothing measured at all -> the pick, and let the client judge it',
           rs.pickMethod('call', true, nil, nil), 'call');
+    -- THE FIELD BUG (2026-07-30, the maintainer's own resummon): "unknown reads
+    -- READY" is the recast service's courtesy gate, and it is right for greying
+    -- out a button -- a recast we cannot see must never stop a player pressing
+    -- one. Applied to a CHOICE it does not permit an action, it PREFERS one, and
+    -- an ability we merely failed to measure beat one we knew was up: the pick
+    -- (Bestial Loyalty) did not resolve, read ready, and won on the first line.
+    -- The command went into its own cooldown, the pet stayed dead, and a
+    -- correctly-configured fallback did nothing.
+    check('BRS33a an UNMEASURED pick does NOT beat a MEASURED-ready other',
+          rs.pickMethod('loyalty', true, true, nil), 'call');
+    check('BRS33b ...but only with the checkbox on -- that checkbox is the consent,\n'
+          .. '      and Call Beast spends a jug the player may be avoiding',
+          rs.pickMethod('loyalty', false, true, nil), 'loyalty');
+    check('BRS33c an unmeasured pick beside a measured-DOWN other is still the pick',
+          rs.pickMethod('loyalty', true, false, nil), 'loyalty');
+    check('BRS33d a measured-down pick falls to an UNMEASURED other -- it may well be up',
+          rs.pickMethod('loyalty', true, nil, false), 'call');
     check('BRS34 the fallback reaches the other on the loss decision too',
           rs.decideLoss(DEATH, armed({ callReady = false })).method, 'loyalty');
     check('BRS35 ...and with the checkbox off it queues instead',
@@ -18084,6 +18191,29 @@ end)();
     -- --- the keybind SETTING is the module's; the framework does the binding
     local keyS = fakeApi({ id = 'bst-helper', vals = {} });
     rs.init(keyS);
+    -- --- the TRI-STATE, built here because the API's `ready` alone cannot carry
+    --     it: an ability measured idle and one whose recast slot never resolved
+    --     both answer true, and the REMAINING beside it is the difference. This
+    --     is the plumbing the field bug needed and did not have.
+    local triS = fakeApi({
+        id    = 'bst-helper',
+        ready = { ['Call Beast'] = true, ['Bestial Loyalty'] = false },
+        remaining = 754,
+        vals  = { resummonJug = 'Carrot Broth' },
+    });
+    check('BRS101a a measured-idle ability measures TRUE',
+          rs.measure(triS, rs.RECAST.call), true);
+    check('BRS101b a measured-down one measures FALSE',
+          rs.measure(triS, rs.RECAST.loyalty), false);
+    check('BRS101c an ability whose slot never resolved measures NIL, not ready',
+          rs.measure(triS, { name = 'Nonesuch', label = 'Nonesuch' }), nil);
+    check('BRS101d ...and the Panel says so in words rather than lying',
+          rs.recastText(triS, { name = 'Nonesuch', label = 'Nonesuch' }),
+          'cannot read its cooldown');
+    check('BRS101e a ready ability reads ready', rs.recastText(triS, rs.RECAST.call), 'ready');
+    check('BRS101f ...and a cooldown reads as minutes and seconds',
+          rs.recastText(triS, rs.RECAST.loyalty), '12m 34s');
+
     check('BRS102 no key is set by default', rs.key(), nil);
     rs.setKey('  ^F3  ');
     check('BRS103 a typed key is stored trimmed', rs.key(), '^F3');

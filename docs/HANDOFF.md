@@ -476,6 +476,31 @@ research already recorded. In rough priority order:
     reads **3**. The entity name came back `SheepFamiliar` — the spaceless form, straight from the
     entity table. No code changed as a result; the flagged assumptions in `petvitals` were replaced
     with the measured numbers.
+  - **2026-07-30 (later still, `2026.07.30c`): the resummon FIRED, and picked wrong.** Field: the
+    pet died and was detected — the corpse witness works — but the rule fired **Bestial Loyalty into
+    its own cooldown** while "use the other if mine is on cooldown" was on and Call Beast sat
+    unused. Three defects, each real on its own:
+    1. **The recast unit was wrong by 15x.** The client stores ability recast in **jiffies (1/60s)**;
+       `feature/recast.lua` divided by **4** (a quarter-second guess borrowed from `nativedata`'s
+       `RecastDelay`, which is a RESOURCE field and a different unit). Settled by two independent
+       addons on this disk — `timers\recasts.lua` (`60 * (90 + reduction)`, "the same format as
+       timer is stored in") and Rune-Actually-Helper ("jiffies -> seconds"). It never flipped
+       ready/down, but every countdown dlac ever showed was fifteen times too big.
+    2. **The name→recast-slot resolution had one shot.** `GetAbilityByName(name, 0)` only — while
+       dlac already hedges *two* indexes for items in two places, because one did not answer. An
+       unresolved slot is UNKNOWN, unknown reads READY, and that is how a summon on a 20-minute
+       cooldown looked available. Now: several indexes, then a one-time walk of the whole ability
+       table indexed by name (latched only when it produced something, throttled — the caller is a
+       Panel).
+    3. **"Unknown reads READY" was applied to a CHOICE.** That courtesy gate is right for greying
+       out a button and wrong for picking between two abilities, where it does not permit an action
+       but PREFERS one. `pickMethod` is now a real tri-state, and — because `ready` alone answered
+       `true` for both "measured idle" and "could not measure" — `liveRemaining` now returns **0**
+       for the former and **nil** for the latter, so the difference exists at all. `resummon.measure`
+       is the one place the module reads it.
+    The Summon section now prints each method's measured state (`Call Beast: ready` /
+    `Bestial Loyalty: 12m 34s` / **`cannot read its cooldown`**) — so if defect 2 ever returns it is
+    visible before it costs a resummon. Tests RC19–RC26, BRS33a–d, BRS101a–f.
   - **Still owed:** the behaviour round — Resummon actually firing end to end, the Summon set
     landing, the key binding. **And read the OPEN box in
     [reference/catseyexi-jobs.md](reference/catseyexi-jobs.md) under Beastmaster → Ready Strength

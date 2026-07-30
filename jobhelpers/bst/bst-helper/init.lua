@@ -402,6 +402,25 @@ return {
                 local fb = ui.toggle('bstresumfb_' .. id,
                     'Use the other if mine is on cooldown', resummon.fallback(), TIP_FALLBACK);
                 if fb ~= nil then resummon.setFallback(fb); end
+
+                -- What each summon MEASURES right now. Here because the field
+                -- round that produced it (2026-07-30) could not have been
+                -- diagnosed from the game: a recast slot that fails to resolve
+                -- reads exactly like an ability that is up, and the rule chose
+                -- accordingly. If a line here says "cannot read its cooldown",
+                -- that is the bug back, visible before it costs a resummon.
+                for _, m in ipairs(resummon.METHODS) do
+                    local txt = resummon.recastText(S, resummon.RECAST[m]);
+                    local line = string.format('%s: %s',
+                                               tostring(resummon.METHOD_LABEL[m] or m), txt);
+                    if txt == 'ready' then
+                        ui.ok(line);
+                    elseif txt:find('cannot', 1, true) ~= nil then
+                        ui.warn(line);
+                    else
+                        ui.dim(line);
+                    end
+                end
                 ui.space();
 
                 -- The optional Summon set + its one exception. PERSISTED, like

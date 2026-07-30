@@ -183,6 +183,31 @@ function M.setJug(name)
     return c.set('resummonJug', name);
 end
 
+-- Is this ability up? true = measured ready, false = measured down, nil = the
+-- recast slot did not resolve, so we know nothing. The one place the module
+-- turns the API's (ready, remaining) pair into the three states pickMethod
+-- reasons about -- see its header for why the difference matters.
+function M.measure(S, sig)
+    if type(S) ~= 'table' or type(S.ability) ~= 'table'
+       or type(S.ability.ready) ~= 'function' then return nil; end
+    local ok, ready, remaining = pcall(S.ability.ready, sig);
+    if not ok then return nil; end
+    if remaining == nil then return nil; end      -- unresolved slot: no measurement
+    return ready ~= false;
+end
+
+-- The same measurement as a short human phrase, for the Panel: 'ready',
+-- '4m 12s', or the honest 'cannot read its cooldown'.
+function M.recastText(S, sig)
+    local ok, ready, remaining = pcall(S.ability.ready, sig);
+    if not ok then return 'cannot read its cooldown'; end
+    if remaining == nil then return 'cannot read its cooldown'; end
+    local n = math.max(0, math.floor(tonumber(remaining) or 0));
+    if ready ~= false and n <= 0 then return 'ready'; end
+    if n < 60 then return string.format('%ds', n); end
+    return string.format('%dm %02ds', math.floor(n / 60), n % 60);
+end
+
 function M.isMethod(m)
     for _, v in ipairs(M.METHODS) do
         if v == m then return true; end
@@ -289,19 +314,53 @@ end
 -- ---------------------------------------------------------------------------
 --
 -- Which method may fire right now? `chosen` is the player's pick, `fallback` the
--- checkbox, and readiness is TRUE / FALSE / nil where nil means "could not
--- measure" -- and unknown reads READY, matching the recast service's courtesy gate
--- exactly (it never manufactures a "down" it did not see).
+-- checkbox, and readiness is TRUE / FALSE / nil where nil means "COULD NOT
+-- MEASURE" -- three states, and the third is the whole subtlety.
 --
--- Returns the method to use, or nil when everything allowed is down.
+-- THE COURTESY GATE DOES NOT APPLY TO A CHOICE. "Unknown reads READY" is right
+-- where the recast service invented it -- greying out a button, where a recast
+-- we cannot see must never be the reason a player cannot press one. It is WRONG
+-- when picking between two abilities, because there it does not permit an
+-- action, it PREFERS one: and an ability we merely failed to measure has no
+-- business beating one we measured and know is up.
+--
+-- Field 2026-07-30, the maintainer's own: the pick was Bestial Loyalty, its
+-- recast slot did not resolve, so it read READY, so this function returned it on
+-- its first line and Call Beast was never considered. The command went out into
+-- its own cooldown, the pet stayed dead, and the fallback the player had
+-- switched on did nothing -- a feature failing silently while configured
+-- correctly, which is the worst shape available.
+--
+-- The order now, each line a different question:
+--   1. the pick is MEASURED ready         -> use it, no contest
+--   2. the pick is MEASURED down          -> the checkbox decides, and an
+--                                            UNMEASURED other is still worth a
+--                                            try (it may well be up)
+--   3. the pick is UNKNOWN, the other is
+--      MEASURED ready, checkbox on        -> use the other: a certainty beats a
+--                                            guess, and the checkbox is consent
+--   4. anything else                      -> the pick, and let the client judge
+--
+-- Rule 3 is the one that can spend a jug the player was avoiding (Call Beast
+-- consumes one, Bestial Loyalty does not), which is exactly why it is gated on
+-- the checkbox -- with it off the pick is never swapped, for any reason.
+--
+-- Returns the method to use, or nil when everything allowed is measured down.
 function M.pickMethod(chosen, fallback, callReady, loyaltyReady)
     if not M.isMethod(chosen) then chosen = 'call'; end
-    local ready = { call = (callReady ~= false), loyalty = (loyaltyReady ~= false) };
-    if ready[chosen] then return chosen; end
-    if fallback ~= true then return nil; end          -- checkbox off: the pick or nothing
     local other = (chosen == 'call') and 'loyalty' or 'call';
-    if ready[other] then return other; end
-    return nil;
+    local ready = { call = callReady, loyalty = loyaltyReady };
+
+    if ready[chosen] == true then return chosen; end                       -- 1
+
+    if ready[chosen] == false then                                         -- 2
+        if fallback ~= true then return nil; end       -- checkbox off: the pick or nothing
+        if ready[other] ~= false then return other; end
+        return nil;
+    end
+
+    if fallback == true and ready[other] == true then return other; end    -- 3
+    return chosen;                                                         -- 4
 end
 
 -- ---------------------------------------------------------------------------
@@ -611,9 +670,13 @@ function M.summonNow()
 
     -- The same pick the rule makes, against the same courtesy gate: unknown
     -- reads READY, so a recast we cannot measure never blocks a keypress.
+    -- The same tri-state the rule uses (M.measure), not the bare `ready` -- a
+    -- deliberate press deserves the same "measured up beats unmeasurable"
+    -- reasoning the automatic path gets, and taking `ready` here would also
+    -- quietly spill its second return into the argument list.
     local m = M.pickMethod(M.method(), M.fallback(),
-                           S.ability.ready(M.RECAST.call),
-                           S.ability.ready(M.RECAST.loyalty));
+                           M.measure(S, M.RECAST.call),
+                           M.measure(S, M.RECAST.loyalty));
     if m == nil then
         M._emit('Summon: ' .. tostring(M.METHOD_LABEL[M.method()] or 'your summon')
                 .. ' is on cooldown.');
@@ -658,9 +721,13 @@ function M.liveState(at)
 
     st.busy = S.act.busy();
 
-    -- Unknown reads READY (the courtesy gate).
-    st.callReady    = S.ability.ready(M.RECAST.call);
-    st.loyaltyReady = S.ability.ready(M.RECAST.loyalty);
+    -- THE TRI-STATE, and it has to be built here because `ready` alone cannot
+    -- carry it: the courtesy gate answers TRUE both for an ability measured idle
+    -- and for one we could not measure at all. The REMAINING beside it is what
+    -- separates them -- nil means the recast slot never resolved. pickMethod
+    -- needs the difference; a greyed-out button does not.
+    st.callReady    = M.measure(S, M.RECAST.call);
+    st.loyaltyReady = M.measure(S, M.RECAST.loyalty);
 
     -- The three OBSERVED cancels (the queue tick's, not the loss decision's) come
     -- from the same signals and world reads that classified the death, so the queue
