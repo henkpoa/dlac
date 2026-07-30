@@ -142,6 +142,35 @@ local function now()
     return tonumber(t) or 0;
 end
 
+-- READ A FIELD OFF A RESOURCE OBJECT. Guarded on `~= nil`, NEVER on
+-- `type(x) == 'table'`, and that distinction is this whole file's field bug.
+--
+-- Ashita's resource objects are not Lua tables -- they index with `.` and answer
+-- `userdata` to `type()`. Every working reader in dlac and in the proven sibling
+-- addons already knew it and checks nil: `nativedata` (`elseif action.Type ==
+-- 'Ability' and res ~= nil then ... res.RecastTimerId`), `dispatch`'s item
+-- lookup (`if r ~= nil then id = tonumber(r.Id)`), Rune-Actually-Helper
+-- (`if cand ~= nil and cand.RecastTimerId == id`). This file was the one place
+-- that type-checked, so the by-NAME resolution never once returned a slot --
+-- since the day it was written. Reward was unaffected and hid it: Reward
+-- declares `timerId = 103` and never takes the name path at all, which is why
+-- its countdown always worked while both summons read UNKNOWN, and UNKNOWN
+-- reads READY (field 2026-07-30: the Resummon rule firing into a cooldown).
+--
+-- pcall'd because indexing an unexpected object is the caller's problem to
+-- survive, not to crash on.
+-- A REAL seam (called as M._field, not as an upvalue): a test cannot fabricate
+-- userdata carrying fields in stock Lua, so proving "the guard admits a
+-- non-table" needs the read itself to be replaceable. Same idiom as
+-- M._abilityRes / M._recastMgr.
+M._field = function(obj, key)
+    if obj == nil then return nil; end
+    local v = nil;
+    pcall(function() v = obj[key]; end);
+    return v;
+end;
+local function field(obj, key) return M._field(obj, key); end
+
 local function scanAbilities()
     if _byName ~= nil then return _byName; end
     local at = now();
@@ -157,16 +186,20 @@ local function scanAbilities()
         local n = 0;
         for id = 0, M.SCAN_MAX_ID do
             local rec = resx:GetAbilityById(id);
-            if type(rec) == 'table' then
-                local nm = rec.Name;
-                if type(nm) == 'table' then
+            if rec ~= nil then
+                local nm = field(rec, 'Name');
+                if type(nm) == 'string' then
+                    if nm ~= '' then map[string.lower(nm)] = rec; n = n + 1; end
+                elseif nm ~= nil then
+                    -- The name is itself a resource-side list (Name[1] is the
+                    -- English one in every reader on this disk); read it the
+                    -- same guarded way rather than assuming it is a Lua table.
                     for i = 1, 4 do
-                        if type(nm[i]) == 'string' and nm[i] ~= '' then
-                            map[string.lower(nm[i])] = rec; n = n + 1;
+                        local s = field(nm, i);
+                        if type(s) == 'string' and s ~= '' then
+                            map[string.lower(s)] = rec; n = n + 1;
                         end
                     end
-                elseif type(nm) == 'string' and nm ~= '' then
-                    map[string.lower(nm)] = rec; n = n + 1;
                 end
             end
         end
@@ -184,7 +217,7 @@ M._abilityRes = function(name)
         if resx == nil or type(resx.GetAbilityByName) ~= 'function' then return; end
         for _, idx in ipairs(NAME_INDEXES) do
             local r = resx:GetAbilityByName(name, idx);
-            if type(r) == 'table' then rec = r; return; end
+            if r ~= nil then rec = r; return; end
         end
     end);
     if rec ~= nil then return rec; end
@@ -207,7 +240,11 @@ function M.timerIdFor(sig)
     local tid = nil;
     if type(sig.name) == 'string' and sig.name ~= '' then
         local rec = M._abilityRes(sig.name);
-        if type(rec) == 'table' then tid = tonumber(rec.RecastTimerId) or tonumber(rec.TimerId); end
+        -- `~= nil`, never a type check: see `field` above -- this ONE guard is
+        -- why no ability ever resolved its recast slot by name.
+        if rec ~= nil then
+            tid = tonumber(field(rec, 'RecastTimerId')) or tonumber(field(rec, 'TimerId'));
+        end
     end
     -- Cache the answer, INCLUDING the failure -- but only as `false`, so a
     -- pre-login miss is retried the next time something asks (never latch a

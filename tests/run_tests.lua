@@ -16539,6 +16539,52 @@ end)();
     local rc4 = dofile('feature/recast.lua');
     AshitaCore = nil;
     check('RC26 no client at all is UNKNOWN, never a throw', rc4._abilityRes('Call Beast'), nil);
+
+    -- --- THE GUARD (2026-07-30, and this is the one that mattered). Ashita's
+    --     resource objects are NOT Lua tables -- they index with `.` and answer
+    --     `userdata` to `type()`. Every working reader in dlac and in the proven
+    --     sibling addons checks `~= nil`: nativedata (`res ~= nil` then
+    --     `res.RecastTimerId`), dispatch's item lookup (`if r ~= nil`),
+    --     Rune-Actually-Helper (`if cand ~= nil and cand.RecastTimerId == id`).
+    --     recast.lua type-checked instead, so the by-NAME resolution never once
+    --     returned a slot, from the day it was written. Reward hid it: it
+    --     declares timerId = 103 and never takes the name path, so its countdown
+    --     always worked while both summons read UNKNOWN -- and unknown reads
+    --     READY, which is how the Resummon rule fired into a cooldown.
+    --
+    --     Driven with a REAL non-table object (a file handle is userdata in
+    --     stock Lua), because a table stand-in passes either way and would have
+    --     proven nothing -- which is exactly how this survived a test suite.
+    local rc5 = dofile('feature/recast.lua');
+    local UD = io.stdout;
+    check('RC27 the stand-in really is not a table', type(UD) ~= 'table', true);
+    AshitaCore = {
+        GetResourceManager = function()
+            return { GetAbilityByName = function() return UD; end };
+        end,
+    };
+    check('RC28 a non-table resource object is ACCEPTED, not silently dropped',
+          rc5._abilityRes('Call Beast'), UD);
+    check('RC29 ...and reading a field off one never throws',
+          rc5.timerIdFor({ name = 'Call Beast' }), nil);
+
+    -- The same NON-TABLE object, this time carrying the field the resolver
+    -- wants. The read is stubbed because stock Lua cannot fabricate userdata
+    -- with fields -- what is under test is the GUARD in timerIdFor, which used
+    -- to reject the object before ever reading it.
+    local rc6 = dofile('feature/recast.lua');
+    AshitaCore = {
+        GetResourceManager = function()
+            return { GetAbilityByName = function() return UD; end };
+        end,
+    };
+    rc6._field = function(obj, key)
+        if obj == UD and key == 'RecastTimerId' then return 94; end
+        return nil;
+    end;
+    check('RC30 ...and a NON-TABLE one carrying the field resolves its slot',
+          rc6.timerIdFor({ name = 'Bestial Loyalty' }), 94);
+    AshitaCore = nil;
 end)();
 
 -- ---------------------------------------------------------------------------

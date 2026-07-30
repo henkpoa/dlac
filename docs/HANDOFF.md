@@ -486,12 +486,19 @@ research already recorded. In rough priority order:
        addons on this disk — `timers\recasts.lua` (`60 * (90 + reduction)`, "the same format as
        timer is stored in") and Rune-Actually-Helper ("jiffies -> seconds"). It never flipped
        ready/down, but every countdown dlac ever showed was fifteen times too big.
-    2. **The name→recast-slot resolution had one shot.** `GetAbilityByName(name, 0)` only — while
-       dlac already hedges *two* indexes for items in two places, because one did not answer. An
-       unresolved slot is UNKNOWN, unknown reads READY, and that is how a summon on a 20-minute
-       cooldown looked available. Now: several indexes, then a one-time walk of the whole ability
-       table indexed by name (latched only when it produced something, throttled — the caller is a
-       Panel).
+    2. **The by-NAME recast-slot resolution NEVER worked, and it is one guard.** Ashita's resource
+       objects are **not Lua tables** — they index with `.` and answer `userdata` to `type()` — and
+       `recast.lua` tested `type(rec) == 'table'` where every working reader in dlac and in the
+       sibling addons tests `~= nil` (`nativedata`: `res ~= nil` then `res.RecastTimerId`;
+       `dispatch`'s item lookup; Rune-Actually-Helper). So every by-name resolution answered
+       UNKNOWN, unknown reads READY, and that is how a summon twenty minutes from usable looked
+       available. **Reward hid it since the file was written**: it declares `timerId = 103` and
+       never takes the name path, so its countdown always worked while both summons were blind.
+       Field reads go through `M._field` now (nil-guarded, pcall'd, a real seam). Belt and braces
+       beside it: several name indexes are probed, then a one-time walk of the ability table
+       indexed by name. **Caught by mutation-testing the new checks** — restoring either guard
+       fails RC28 / RC30, and the first draft of RC30 used a table stand-in that passed either
+       way, which is exactly how the original survived a test suite.
     3. **"Unknown reads READY" was applied to a CHOICE.** That courtesy gate is right for greying
        out a button and wrong for picking between two abilities, where it does not permit an action
        but PREFERS one. `pickMethod` is now a real tri-state, and — because `ready` alone answered
