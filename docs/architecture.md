@@ -1125,6 +1125,7 @@ like the command does not exist.
 | `/dl dw` | utils | Dual Wield trait-bit probe |
 | `/dl recalc` / `test` / `reload` (`r`) | utils | Rebuild sets / probe / reload LAC |
 | `/dl gearcheck` | gearcheck | Trigger-gear availability audit |
+| `/dl food [1\|2\|forget]` | foodwatch | Which food you are under and what you can re-eat; a number eats that row, `forget` clears the history. What counts as food is learned off the wire (an item use + the FOOD effect's expiry moving), never from a shipped list |
 | `/dl engine [native on\|off \| migrate]` | feature/engine | The Native-engine flip: status / flag + storage migration (see § The Native engine) |
 | `/dlmv` | gearmove | (branch-only) gate/version diagnostic |
 
@@ -1145,6 +1146,7 @@ Per-character, under `<install>\config\addons\luashitacast\<Char>_<ServerId>\`
 | `dlac\autogear.lua` | automationsui | automations manifest |
 | `dlac\blueprints.lua` | triggersui (Blueprints section) | per-character Blueprint library (reusable trigger rules; outside Profiles, addon-state only — the engine never reads it) |
 | `dlac\ammostate.lua` | ammowatch (Gear Helpers > Ammo) | AutoAmmo config (persisted `enabled`, jobs map, the priority list) — the engine reads it per second |
+| `dlac\foodhistory.lua` | foodwatch | what this character has eaten, most recent first (unique by item id, 10 deep) — the two most recent you are still carrying become the Menu's food rows |
 | `dlac\modestate.lua` | dispatch | mode/lock/VERSION mirror |
 | `dlac\uiflags.lua` | gearui | debug/autosync flags |
 | `dlac\gearweights.lua` | gearoptim | stat weights |

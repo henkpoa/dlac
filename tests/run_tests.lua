@@ -229,7 +229,7 @@ end)();
                    'groupsmodel','jobgate','modeslibrary','ownedcache','profileexport','profilesets','setimport',
                    'setmanager','syncflags','triggermodel','weaponfilter','weightimport' };
     local FEATURE = { 'actionseq','ammowatch','arbwatch','augments','check','chocowatch','combat','craftwatch','debug','digcalc','digrank',
-                      'eboxclient','eboxtrace','engagewatch','fishcalc','fishwatch','gamehud','gamemode','helmwatch','idleexcl','jobhelpers','location','lockstyle','lookpreview',
+                      'eboxclient','eboxtrace','engagewatch','fishcalc','fishwatch','foodwatch','gamehud','gamemode','helmwatch','idleexcl','jobhelpers','location','lockstyle','lookpreview',
                       'macrobook','meritwatch','modapi','modcfg','mpbands','petfood','petvitals','pinwatch','recast','restockwatch','synthrun','useitem','vanamoon' };
     local LIB = { 'cmdqueue','entwatch','safewrite','statefile' };
     -- Job helper modules (issue #137): each is a drop-in FOLDER under jobhelpers\
@@ -19607,6 +19607,224 @@ end)();
     kb.forget();
     package.loaded['dlac\\feature\\keybinds'] = nil;
     gData = nil;
+end)();
+
+-- ---------------------------------------------------------------------------
+-- FW: what you last ate (feature\foodwatch).
+--
+-- The module's whole claim is that it can tell FOOD from any other usable item
+-- without shipping a food list: an outgoing item use says WHICH item, and the
+-- FOOD effect moving right afterwards says it was food. Both halves of that are
+-- pinned here, including the one a presence-only reading would get wrong --
+-- eating over a live food, where the icon never flickers and only the EXPIRY
+-- moves.
+--
+-- charDir is stubbed to nil for the whole section, so path() is nil, load() is a
+-- no-op and save() writes nothing: these tests touch no disk. The live reads go
+-- in as a table pump CALLS, which is the same table shape the live path builds
+-- (the combat.lua lesson: a core that stops calling its reads must fail HERE,
+-- not ship green).
+-- ---------------------------------------------------------------------------
+(function()
+    local savedSF   = package.loaded['dlac\\lib\\statefile'];
+    local savedCF   = package.loaded['dlac\\chatfmt'];
+    local savedCore = AshitaCore;
+    local savedReg  = ashita.events.register;
+
+    local said = {};
+    package.loaded['dlac\\lib\\statefile'] = { charDir = function() return nil; end };
+    package.loaded['dlac\\chatfmt'] = { print = function(s) said[#said + 1] = tostring(s); end };
+
+    local handlers = {};
+    ashita.events.register = function(ev, nm, fn) handlers[ev .. '/' .. nm] = fn; end
+    local okLoad, fw = pcall(dofile, 'feature/foodwatch.lua');
+    ashita.events.register = savedReg;
+    package.loaded['dlac\\lib\\statefile'] = savedSF;
+
+    check('FW0 foodwatch loads headlessly', okLoad and type(fw), 'table');
+if okLoad and type(fw) == 'table' then
+
+    -- --- the outgoing item use: WHICH item (equipengine.parseItemUse's twin)
+    local pkt = string.rep('\0', 0x0E) .. string.char(7) .. '\0' .. string.char(3);
+    local u = fw._parseItemUse(pkt);
+    check('FW1 the item index is read off OUT 0x037', u and u.itemIndex, 7);
+    check('FW1b ...and the container beside it', u and u.container, 3);
+    check('FW2 a short packet names nothing', fw._parseItemUse('\0\0\0\0'), nil);
+
+    -- --- _step: the one decision
+    local S = function(food) return { food = food }; end
+    local PEND = { id = 4381, at = 100 };
+    check('FW3 food appears after a use -> that use was food',
+          fw._step(S(nil), 101, { present = true, expiry = 500 }, PEND), PEND);
+    check('FW4 no item use pending -> nothing was eaten',
+          fw._step(S(nil), 101, { present = true, expiry = 500 }, nil), nil);
+    check('FW5 a use older than the window is not attributable',
+          fw._step(S(nil), 100 + fw.WINDOW + 1, { present = true, expiry = 500 }, PEND), nil);
+    -- The potion case: food was already up and STAYS at the same expiry.
+    check('FW6 a use that leaves the expiry alone is not food',
+          fw._step(S({ present = true, expiry = 500 }), 101, { present = true, expiry = 500 }, PEND), nil);
+    -- The case presence alone gets wrong: eating over a live food.
+    check('FW7 eating over live food moves the expiry -> recorded',
+          fw._step(S({ present = true, expiry = 500 }), 101, { present = true, expiry = 900 }, PEND), PEND);
+    check('FW7b ...and with no timer array to read, a re-eat stays unknowable',
+          fw._step(S({ present = true, expiry = nil }), 101, { present = true, expiry = nil }, PEND), nil);
+    check('FW8 the effect being gone is never a meal',
+          fw._step(S(nil), 101, { present = false }, PEND), nil);
+    -- A dropped read must not blank the last known state, or the next good read
+    -- looks like an appearance and the next item used becomes "food".
+    local st = S({ present = true, expiry = 500 });
+    fw._step(st, 101, nil, PEND);
+    check('FW9 an unreadable poll keeps the last known effect', st.food.expiry, 500);
+    check('FW9b ...so the good read after it is not a fake appearance',
+          fw._step(st, 102, { present = true, expiry = 500 }, PEND), nil);
+
+    -- --- the history
+    local H = {};
+    fw._remember(H, { id = 1, name = 'Sole Sushi', at = 10 }, 10);
+    fw._remember(H, { id = 2, name = 'Meat Mithkabob', at = 20 }, 10);
+    check('FW10 the newest food is first', H[1].name, 'Meat Mithkabob');
+    check('FW10b ...and the one before it is kept', H[2].name, 'Sole Sushi');
+    fw._remember(H, { id = 1, name = 'Sole Sushi', at = 30 }, 10);
+    check('FW11 eating it again makes no second row', #H, 2);
+    check('FW11b ...it moves to the front', H[1].name, 'Sole Sushi');
+    check('FW11c ...and the meal is counted', H[1].n, 2);
+    for i = 3, 12 do fw._remember(H, { id = i, name = 'Food ' .. i, at = 40 + i }, 10); end
+    check('FW12 the history is capped', #H, 10);
+    check('FW12b ...dropping the oldest', H[10].name, 'Food 3');
+
+    -- --- the menu pick: the two most recent you are CARRYING
+    local stock = { [1] = 0, [2] = 5, [3] = 0, [4] = 2 };
+    local L = { { id = 1, name = 'A' }, { id = 2, name = 'B' }, { id = 3, name = 'C' }, { id = 4, name = 'D' } };
+    local picked = fw._pick(L, function(e) return stock[e.id] or 0; end, 2);
+    check('FW13 a food you have run out of is walked past', #picked, 2);
+    check('FW13b ...to the next one you still have', picked[1].name, 'B');
+    check('FW13c ...and the one after that', picked[2].name, 'D');
+    check('FW13d the row carries what /item needs', picked[1].cmd, '/item "B" <me>');
+    check('FW13e ...and how many are left', picked[1].count, 5);
+    check('FW14 carrying nothing lists nothing',
+          #fw._pick(L, function() return 0; end, 2), 0);
+
+    -- --- disk shape (round trip; nothing is written)
+    local round = fw._fromRaw((loadstring or load)(fw._serialize(H))());
+    check('FW15 the file round-trips', #round, #H);
+    check('FW15b ...in order', round[1].name, H[1].name);
+    check('FW15c ...with the meal count', round[1].n, H[1].n);
+    check('FW16 a row with no name is dropped rather than half-understood',
+          #fw._fromRaw({ fmt = 1, foods = { { id = 9 }, { id = 8, name = 'Ok' } } }), 1);
+
+    -- --- pump: the live path, driven with injected reads it must CALL
+    fw._reset();
+    fw._pending = { id = 4381, at = 100 };
+    local saves, asked = 0, { clock = 0, food = 0, name = 0 };
+    local reads = {
+        clock  = function() asked.clock = asked.clock + 1; return 101; end,
+        stamp  = function() return 1700000000; end,
+        food   = function() asked.food = asked.food + 1; return { present = true, expiry = 555 }; end,
+        nameOf = function(id) asked.name = asked.name + 1;
+                              return (id == 4381) and 'Meat Mithkabob' or nil; end,
+        save   = function() saves = saves + 1; return true; end,
+    };
+    local rec = fw.pump(reads);
+    check('FW17 the pump records the food that was just eaten', rec and rec.name, 'Meat Mithkabob');
+    check('FW17b ...stamping when', rec and rec.at, 1700000000);
+    check('FW17c ...and the expiry it landed on', rec and rec.expiry, 555);
+    check('FW17d ...saving once', saves, 1);
+    check('FW17e ...and consuming the pending use', fw._pending, nil);
+    check('FW17f the pump really asked its reads', asked.clock >= 1 and asked.food >= 1 and asked.name >= 1, true);
+    check('FW18 a second beat with nothing pending records nothing', fw.pump(reads), nil);
+    check('FW18b ...and does not save again', saves, 1);
+    -- An item we cannot name is an item we could never /item: not recorded.
+    fw._pending = { id = 99999, at = 100 };
+    reads.food = function() return { present = true, expiry = 777 }; end
+    check('FW19 an unnameable item is not remembered', fw.pump(reads), nil);
+    check('FW19b ...and the history is untouched', #fw.history, 1);
+
+    -- --- status: which food is up (Henrik's ruling, 2026-07-30 -- dlac is always
+    -- loaded, so the effect being up means it is the last thing we recorded)
+    local sres = fw.status();
+    check('FW20 the effect is up', sres.active, true);
+    check('FW20b ...and it is NAMED off the history', sres.current and sres.current.name, 'Meat Mithkabob');
+
+    -- --- the live surfaces, over a stubbed bag
+    local BAG0 = { [1] = { Id = 4381, Count = 12 }, [2] = { Id = 4271, Count = 3 } };
+    local queued = {};
+    AshitaCore = {
+        GetMemoryManager = function(self) return {
+            GetInventory = function(self2) return {
+                GetContainerCountMax = function(self3, bag) return (bag == 0) and 4 or 0; end,
+                GetContainerItem = function(self3, bag, i)
+                    if bag ~= 0 then return nil; end
+                    return BAG0[i];
+                end,
+            }; end,
+        }; end,
+        GetChatManager = function(self) return {
+            QueueCommand = function(self2, n, cmd) queued[#queued + 1] = cmd; end,
+        }; end,
+    };
+
+    fw._reset();
+    fw._remember(fw.history, { id = 4381, name = 'Meat Mithkabob', at = 1 }, 10);
+    fw._remember(fw.history, { id = 5555, name = 'Sole Sushi', at = 2 }, 10);   -- newest, NOT carried
+    local rows = fw.menu();
+    check('FW21 the menu shows only what is in Inventory', #rows, 1);
+    check('FW21b ...naming it', rows[1].name, 'Meat Mithkabob');
+    check('FW21c ...with the live count', rows[1].count, 12);
+
+    -- A meal eaten NOW must show up in the menu on this frame, not after the bag
+    -- cache times out -- the one second you would wait is exactly the second you
+    -- would spend looking for the row.
+    fw._pending = { id = 4271, at = 100 };
+    fw._state.food = { present = true, expiry = 1 };
+    local rec2 = fw.pump({
+        clock  = function() return 101; end,
+        stamp  = function() return 5; end,
+        food   = function() return { present = true, expiry = 2 }; end,
+        nameOf = function() return 'Rice Dumpling'; end,
+        save   = function() return true; end,
+    });
+    check('FW21d the food just eaten heads the history', rec2 and rec2.name, 'Rice Dumpling');
+    local rows2 = fw.menu();
+    check('FW21e ...and the menu shows it without waiting out its cache',
+          rows2[1] and rows2[1].name, 'Rice Dumpling');
+    check('FW21f ...with the one you ate before it underneath',
+          rows2[2] and rows2[2].name, 'Meat Mithkabob');
+
+    -- the packet handler: WHICH item, stashed and nothing else
+    local pout = handlers['packet_out/dlac-foodwatch-out'];
+    check('FW22 the item-use handler registered', type(pout), 'function');
+    if type(pout) == 'function' then
+        fw._pending = nil;
+        pout({ id = 0x37, data = string.rep('\0', 0x0E) .. string.char(1) .. '\0' .. string.char(0) });
+        check('FW22b it stashes the id the bag slot holds', fw._pending and fw._pending.id, 4381);
+        fw._pending = nil;
+        pout({ id = 0x1A, data = string.rep('\0', 0x20) });
+        check('FW22c ...and ignores every other packet', fw._pending, nil);
+    end
+
+    -- the command
+    local cmd = handlers['command/dlac-foodwatch'];
+    check('FW23 /dl food registered', type(cmd), 'function');
+    if type(cmd) == 'function' then
+        said, queued = {}, {};
+        local ev = { command = '/dl food 1', blocked = false };
+        cmd(ev);
+        check('FW23b it owns the command', ev.blocked, true);
+        check('FW23c ...and eats the row', queued[1], '/item "Rice Dumpling" <me>');
+        said, queued = {}, {};
+        cmd({ command = '/dl food 9', blocked = false });
+        check('FW24 asking for a row that is not there eats nothing', #queued, 0);
+        check('FW24b ...and says why', (said[1] or ''):find('no food 9', 1, true) ~= nil, true);
+        said = {};
+        local ev2 = { command = '/dl fishing', blocked = false };
+        cmd(ev2);
+        check('FW25 another /dl subcommand falls straight through', ev2.blocked, false);
+    end
+end
+
+    AshitaCore = savedCore;
+    package.loaded['dlac\\chatfmt'] = savedCF;
+    package.loaded['dlac\\feature\\foodwatch'] = nil;
 end)();
 
 -- The warm-note artifact the dispatch-driving sections leave behind (dataDir

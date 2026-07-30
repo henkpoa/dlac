@@ -1563,6 +1563,16 @@ local function renderTeleportsPopup()
         'Show/hide the hobby bar -- Craft, HELM, Fishing and Chocobo controls in\none window (one hobby active at a time).');
     renderQuickWindowRow('lockstyle', 'Lockstyle',
         'Open the Lockstyle window -- your 30 saved looks for this job: apply one,\nsave the marked box, set the town style.');
+    -- The two most recently eaten foods you still carry (2026-07-30). They belong
+    -- HERE more than anywhere: this popup is the floating quick menu, and "my food
+    -- just wore off" happens mid-fight with the main window shut. ONE definition,
+    -- shared with the Menu's own food section (ui\menuui.renderFoodSection) -- only
+    -- the row geometry differs, to match the quick rows above. Draws nothing when
+    -- there is nothing to eat, so the popup is unchanged for a player who never has.
+    pcall(function()
+        require('dlac\\ui\\menuui').renderFoodSection({
+            iconW = 18, labelX = 30, rowH = 0, col = COL.USABLE, dim = COL.DIM });
+    end);
     -- Footer: pin/unpin the PF-style floating button. The same menu renders from
     -- the floating button itself, so it is removable from EITHER place.
     imgui.Separator();

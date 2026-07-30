@@ -457,7 +457,50 @@ research already recorded. In rough priority order:
 
 ## Current state (as of 2026-07-30)
 
-- **2026-07-30 (latest — `2026.07.30f`): the combat service never CALLED its reads, and
+- **2026-07-30 (latest — `2026.07.30g`): what you last ate, and one click to eat it again
+  (`feature/foodwatch.lua`).** Suites **5203 + 877**, both interpreters. Not field-confirmed
+  yet; **not queued for merge** until it is.
+  - **The design problem was "what is food".** Nothing client-side answers it — the item
+    resource calls a Mithkabob and a Potion the same thing (usable items), and the Catalog is
+    gear-only. The server's answer is the only one: eating grants `xi.effect.FOOD` (251; 787
+    item scripts carry it on stable). So dlac ships **no food list**: an outgoing item use
+    (OUT `0x037`, `equipengine.parseItemUse`'s twin) says WHICH item, and the FOOD effect
+    moving right after says it WAS food. A food dlac has never seen is learned the first time
+    you eat it — custom server foods included — and a Potion can never be mistaken for one.
+  - **"Moving", precisely — and this is the part presence alone gets wrong.** Re-eating over a
+    live food never flickers the icon, so presence is not the signal; the **expiry** changing
+    is. Read from `player:GetStatusTimers()` alongside `GetBuffs()` (the two arrays pair by
+    index — the `timers` addon's read, field-proven on this client), compared for
+    **inequality only**: no epoch, no clock arithmetic, no wrap to get wrong. *How long is
+    left* is a question the buff-timer addons already answer and this module deliberately does
+    not re-answer. With no timer array readable, a re-eat is honestly unknowable and nothing
+    is recorded (the first food of a session still lands, on the absent → present edge).
+  - **Henrik's ruling (2026-07-30) is what makes the history trustworthy across a login:**
+    dlac is always loaded, so if the effect is still up at login it is — near-certainly — the
+    last food the file recorded. `status().current` therefore **names** the food that is up,
+    instead of reporting a bare "food active" that helps nobody.
+  - **The rows.** The **two most recent foods you are CARRYING** — it walks *past* a food you
+    have run out of to the next one you still have, rather than showing a dead row (the
+    history keeps 10 so it has somewhere to walk to). Inventory only: `/item` reads nowhere
+    else. They draw in the **Menu popup** under the roster (every row above is a door; these
+    are the only two that spend an item) **and** in the **Teleports popup**, which is the
+    floating quick menu — "my food just wore off" happens mid-fight with the main window shut.
+    One definition, `ui/menuui.renderFoodSection`, geometry passed in; the row art is the
+    item's **own** icon (`ui/itemicons`), so there is no PNG to ship and no food list to keep
+    art in step with. Nothing is drawn at all when you carry none.
+  - **`/dl food`** — what is up and what you can eat; `/dl food 1|2` eats that row;
+    `/dl food forget` clears the history. Per character, `<char>\dlac\foodhistory.lua`.
+  - **Threading:** the packet handler takes the one read it cannot defer (the item id — the
+    last item of a stack is gone by the next frame) and does **nothing** else; naming, the
+    history, the file write and every chat line happen on the frame tick (the
+    synthrun/chocowatch law).
+  - **Tests FW0–FW25** drive the pump off an injected **function**-valued read table, which is
+    the shape the live path passes — the `combat.lua` lesson below, applied at birth rather
+    than after a promotion. **MN18a–MN18j** render the section inside the menu popup and pin
+    the stacks balanced, the empty case drawing nothing, and a throwing foodwatch costing its
+    own rows and not the menu.
+
+- **2026-07-30 (`2026.07.30f`): the combat service never CALLED its reads, and
   BST Fight has been dead on `main` since the api-2 promotion.** Suites **5149 + 867**, both
   interpreters. **`main` is currently carrying this bug** — it rode in with `f8df96b`
   (`2026.07.30a`) and shipped in the `1551faa` promotion the same day.

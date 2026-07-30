@@ -2380,6 +2380,44 @@ end)();
         check('MN17 renders with an open-mode selected', pcall(mn.renderPopups), true);
         check('MN18 selected-mode tint balanced', depth.col, 0);
 
+        -- The FOOD section (2026-07-30): rows drawn INSIDE the menu popup from
+        -- feature\foodwatch -- a Selectable, the item's own texture and two coloured
+        -- labels each. Same crash class as everything else here, and the real module
+        -- draws nothing headlessly (no character, no bags), so it is driven with a
+        -- stub or it would never be rendered by this suite at all.
+        local savedFW = package.loaded['dlac\\feature\\foodwatch'];
+        local savedIC = package.loaded['dlac\\ui\\itemicons'];
+        local stubFW = {
+            _fmtAgo = function() return '5m ago'; end,
+            menu = function()
+                return { { id = 1, name = 'Sole Sushi',     count = 11, at = 0, cmd = '/item "Sole Sushi" <me>' },
+                         { id = 2, name = 'Meat Mithkabob', count = 3,  at = 0, cmd = '/item "Meat Mithkabob" <me>' } };
+            end,
+        };
+        package.loaded['dlac\\feature\\foodwatch'] = stubFW;
+        package.loaded['dlac\\ui\\itemicons'] = { handleOf = function() return 4242; end };
+        drew.selectable, drew.image = 0, 0;
+        check('MN18a renders with food to eat', pcall(mn.renderPopups), true);
+        check('MN18b food adds its two rows', drew.selectable, 9);
+        check('MN18c ...each with the item\'s own icon', drew.image, 2);
+        check('MN18d food: popup stack balanced', depth.popup, 0);
+        check('MN18e food: colour stack balanced', depth.col, 0);
+        -- Out of everything: the section must draw NOTHING -- an empty heading would
+        -- be a permanent reminder that you have no food.
+        stubFW.menu = function() return {}; end
+        drew.selectable = 0;
+        check('MN18f renders with nothing to eat', pcall(mn.renderPopups), true);
+        check('MN18g ...and the whole section vanishes', drew.selectable, 7);
+        -- A foodwatch that THROWS must cost its own rows, never the menu (guarded).
+        stubFW.menu = function() error('food boom'); end
+        drew.selectable = 0;
+        check('MN18h a throwing food section does not take the menu down',
+              pcall(mn.renderPopups), true);
+        check('MN18i ...the roster still drew', drew.selectable, 7);
+        check('MN18j ...and the popup stack survived it', depth.popup, 0);
+        package.loaded['dlac\\feature\\foodwatch'] = savedFW;
+        package.loaded['dlac\\ui\\itemicons'] = savedIC;
+
         -- activate() routes without imgui, and arms popups by flag (never nests)
         check('MN19 teleports row arms the existing popup',
             (function() mn.activate('teleports'); return ui._tpOpen; end)(), true);
