@@ -286,9 +286,18 @@ git checkout main; git merge --no-ff dev -F .git/PROMOTE_MSG; git push origin ma
 ```
 
 The trailing `git checkout dev` is not tidiness — **the game plays this checkout's working
-tree**, so a checkout left on `main` is the deployment gap all over again. **`git log --oneline
-origin/main..main` is the authority on whether the promotion happened, not this file**
-(hard rule 14).
+tree**, so a checkout left on `main` is the deployment gap all over again.
+
+**PREFER THE PR: [#150](https://github.com/henkpoa/dlac/pull/150) (`dev` → `main`)**, opened on
+Henrik's *"push and open the PR"* by the session that built the train — written up before this
+note existed, which is why the command block above does not mention it. Merging #150 does the
+same promotion and is strictly better here: **CI runs both suites on the exact tree first**
+(the command block merges unverified), the promotion stays reviewable, and it needs **no local
+merge and no checkout dance**, so the working tree never sits on `main` at all — the deployment
+gap cannot open. The command block stands as the offline fallback if the PR route is
+unavailable; **do not run both.** Either way the claim is identical: **`main` does not have this
+train until one of them completes.** **`git log --oneline origin/main..main` is the authority on
+whether the promotion happened, not this file** (hard rule 14).
 Behaviour field rounds owed by the Job Helpers era are unchanged and still owed — see *Current
 state*; the percent fix's own glance is one look at the Reward section with the rule armed and
 acting. Before that: **`dayMatch` was cleared from this queue on 2026-07-30**, late and by a
