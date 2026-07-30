@@ -7458,3 +7458,17 @@ another tab. Rung 3 is arithmetic on ImGui's own documented behaviour, but "a ba
 selected adopts the first tab" is read from the API's behaviour, not from source we have on
 disk (only `plugins\sdk\imgui.h`, the interface header, ships here). If it is wrong the
 symptom is specific and loud: an empty tab body until you click a tab, plus the chat line.
+
+### Postscript: where the api-2 train actually went (recorded 2026-07-30, at the promotion)
+
+The promotion that carried this work — `1551faa` — found `main` sitting at `56221c1`, the
+07-29 state. So the **Job helper module API v2 train (`f8df96b`, `2026.07.30a`) had never
+reached main at all**: not by PR #150, not by the command block. The HANDOFF queue had been
+emptied for it on the belief that one of the two routes would complete, and neither did, so
+for a day the record said *promoted* while git said otherwise — the precise unanswerability
+hard rule 14 exists to prevent, and the second time in three days it has bitten. The Module
+API, `modcfg`, `combat`, the Panel kit, ADR 0031 and the percent fix all went to main **here**,
+alongside the BST train and this session's work. PR #150 reads MERGED because its commits
+reached `main` by the other route and GitHub closed it behind them.
+
+**The rule that survives:** empty the queue *in the merge commit*, never in anticipation of one.
