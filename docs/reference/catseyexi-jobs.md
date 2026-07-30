@@ -261,6 +261,17 @@ check CHR in case of latency.
 >
 > Settle it in the field before building anything further: summon with and
 > without CHR gear, then Ready with and without, and compare the damage.
+>
+> **Field 2026-07-30, first data point (Henrik):** *"Summon with chr+ worked even
+> with beastial loyalty"* — the Summon set **lands on both summon methods**. That
+> confirms the mechanism, not the mechanic: it says the CHR gear is on at the
+> moment of the summon, not that the pet was measurably better for it, so the
+> summon-vs-Ready question above is still open. **And there is a specific reason
+> not to assume Bestial Loyalty behaves like Call Beast here:** Beast Raising's
+> bonuses are documented (below, under *Beast Raising*) as **Call Beast only**. If
+> the CHR bonus turns out to be gated the same way, wearing the Summon set for a
+> Bestial Loyalty summon buys nothing — worth one damage comparison before anyone
+> builds on it.
 
 **Stats** — ALL jug pets: DEF increased by a flat 10%.
 

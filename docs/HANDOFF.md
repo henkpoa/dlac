@@ -554,8 +554,14 @@ research already recorded. In rough priority order:
     The Summon section now prints each method's measured state (`Call Beast: ready` /
     `Bestial Loyalty: 12m 34s` / **`cannot read its cooldown`**) — so if defect 2 ever returns it is
     visible before it costs a resummon. Tests RC19–RC26, BRS33a–d, BRS101a–f.
-  - **Still owed:** the behaviour round — Resummon actually firing end to end, the Summon set
-    landing, the key binding. **And read the OPEN box in
+  - **FIELD 2026-07-30, the Summon set:** Henrik — *"Summon with chr+ worked even with beastial
+    loyalty"*. The set lands, on **both** methods, which is what the code shape predicts (the claim
+    rides `METHOD_COMMAND[method]`, so it dresses Call Beast and Bestial Loyalty alike) but had
+    never been seen. Note the asymmetry it does NOT settle: CatsEyeXI's **Beast Raising** bonuses
+    are documented as Call Beast only, so whether the CHR bonus is likewise Call-Beast-gated is a
+    separate question from whether the gear went on.
+  - **Still owed:** the behaviour round — Resummon actually firing end to end, the key binding.
+    **And read the OPEN box in
     [reference/catseyexi-jobs.md](reference/catseyexi-jobs.md) under Beastmaster → Ready Strength
     before extending the CHR work**: the wiki's own advice suggests the CHR is sampled at **Ready**,
     not at summon — in which case the same set belongs on an `Ability` trigger matching `Ready`,
