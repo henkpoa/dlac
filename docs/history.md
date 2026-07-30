@@ -7330,15 +7330,28 @@ Recorded where authors will meet it: the `esc` block and the docblock lesson lis
 guide (*"If you ever call `ctx.imgui.Text*` yourself, escaping is yours -- use
 `ctx.ui.esc(s)`"*).
 
-**Provenance of the commit this rode in, because the tree was not clean.** The session opened
+**Provenance, because the tree was not clean and then it moved under us.** This session opened
 on a working tree carrying the whole **Job helper module API v2** train uncommitted from the
 previous evening (`feature\modapi.lua`, `feature\modcfg.lua`, `feature\combat.lua`,
 `ui\panelkit.lua`, `docs\templates\example-helper\`, BST's four files rewritten onto them,
 `bst-helper\config.lua` deleted, the authoring guide rewritten for `api = 2`, ~2.5k lines) --
 green on both interpreters, wired into `dlac.lua`'s load list and the Central-services table,
 and *running on Henrik's client* (the screenshot that opened this session is the api-2 Panel),
-but never committed and never version-bumped. It is committed here as one unit at
-`2026.07.30a` with this fix on top; the alternative -- reconstructing a pre-fix `panelkit.lua`
-to split the commit -- would have bought history cosmetics at the cost of touching that file
-twice more. The uncommitted `tests\fixtures\keepflow\...\lspreview.lua` line-ending change was
-left out, as before: provenance still unknown, content still identical.
+but never committed and never version-bumped. So the fix was written into files that belonged
+to a train still in flight, and while this entry was being written **that train's own session
+committed** -- `f8df96b`, 03:42, `feat(jobhelpers)!: the module API` -- **sweeping this fix, its
+tests, its guide bullet, its architecture row and this history entry into its commit**, along
+with the `2026.07.30a` bump (the train had none of its own; there is no `29p`). The first sign
+was a `git add` that staged nothing and a `git status` down to one file.
+
+**THIRD instance of the shared-checkout lesson in two days, and the first BENIGN one** -- worth
+recording precisely because it went well, since the rule is about verification, not blame. What
+made it benign was checking rather than assuming, in both directions: every edit was confirmed
+present *in HEAD* (`git show HEAD:<file>` per file, not `git status`, which reads clean either
+way -- a wholesale re-Write of a shared file by the other session would ALSO read clean), and
+both suites were re-run against the committed tree (**4960 + 817**). Neither "it was swept, so
+it is lost" nor "it committed, so it is fine" is a safe default. **One real cost survives:** the
+commit SUBJECT names only the api-2 train, so `git log --grep` will never find the percent fix
+-- this entry and the HANDOFF queue entry are its only pointers, which is why both name the
+hash. The uncommitted `tests\fixtures\keepflow\...\lspreview.lua` line-ending change was left
+out of everything, as before: provenance still unknown, content still identical.
