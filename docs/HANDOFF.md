@@ -66,6 +66,15 @@ maintainer IMO, I am just the one with the creative vision."*
     one folder = one unit of server approval) and **ADR 0030** (a module owns initiation —
     and the "can't catch it in time" rationale that was falsified in the field).
 
+11. **Adding a "click here, land there" control** — a quick-menu row, a nudge click, a bar
+    button, a `/dl` subcommand that opens a panel:
+    [reference/shortcuts-and-jumps.md](reference/shortcuts-and-jumps.md). A jump is three
+    things (panel + tab + window), there is one door for all of them
+    (`gearui.openAutomation`), and the tab half is harder than it looks — **ADR 0033** records
+    why: this build's imgui binding drops `ImGuiTabItemFlags_SetSelected` on the floor, so the
+    host takes the selection by rebuilding the tab bar instead of asking for it. Read the
+    guide before writing the row, not after.
+
 There is also a cross-session memory dir (Claude-specific) at
 `~\.claude\projects\C--catseyexi-catseyexi-client-Ashita-addons-dlac\memory\` — it
 holds working-preference notes; the repo docs are the durable record.
@@ -297,7 +306,45 @@ original report, the Dynamic sets picker**, which nobody has confirmed fixed.
 **Also riding along, and not Claude's work:** `ui/gearui.lua`'s E-Box Restock quick-window row and
 its SET checks, from a parallel session in the same checkout — its test hunks interleave with this
 train's in `tests/run_tests.lua`, so they could not be committed apart without leaving one half red
-(see `8945574`'s message). **Henrik verifies that half before the push.**
+(see `8945574`'s message). **Henrik verifies that half before the push.** *(That half is now its own
+entry below, and Henrik has field-confirmed it — the `SET55`–`SET59` hunks swept into `8945574` are
+its tests, and `ui/gearui.lua` followed in the commit below.)*
+
+Only Henrik moves this to ACCEPTED.
+
+### The E-Box Restock shortcut + the tab jump that never worked — `2026.07.30e`, FIELD-CONFIRMED (not yet ACCEPTED)
+
+One commit on `dev`. Two things, and the second is the one that matters beyond this feature.
+
+**The row.** E-Box Restock joins the Teleports quick menu, **above the Hobby bar**, **Crystal
+Warriors only** (`gamemode.get() == 'CW'`, the same affirmative gate the Gear Helpers row uses —
+unknown hides it), wearing `assets\ebox.png`, the crate its own nudge wears, so the two surfaces
+read as one feature. It opens the panel through `gearui.openAutomation('restock')` — the door
+`/dl restock` and the nudge's right-click already use. `renderQuickWindowRow` grew two opt-out
+arguments (`icon`, `fn`) for exactly this shape; ordinary rows are unchanged.
+
+**The jump, which had NEVER worked.** Henrik, field: *"I click e-box restock in teleport menu, in
+the gear helper tab it directs me to the correct menu, but when I open the GUI, I am still on the
+job helpers tab… this goes for many other things as well."* It did: every cross-link in the addon
+goes through `host.selectTab`, and every one of them set the right panel behind the wrong tab.
+`selectTab` was a one-shot, and **ImGui applies a forced selection at the NEXT frame's tab-bar
+layout** — so the pass that carried `ImGuiTabItemFlags_SetSelected` always saw the tab still
+closed, and *honoured* and *ignored* were indistinguishable (hard rule 12). Holding the request
+until the tab opens made the failure visible; round two printed the give-up line, which proved the
+real problem: **this build's imgui binding never passes the flag through to ImGui at all.** So the
+host stops asking and takes the selection — three rungs, ending in a **tab-bar rebuild** (a bar
+ImGui has never seen has no selection and adopts the first tab submitted, so `host.tabBarId` hands
+gearui a new bar ID and the wanted tab goes first). **`gearui` must ask for that ID and never
+hardcode it** — smoke_ui `TAB25` pins the call.
+
+**Field-confirmed by Henrik, 2026-07-30:** *"Now it works"* — the row, and the jump landing on the
+tab. The cost he will see: ~5 frames, one of which shows the tabs reordered with an empty body.
+
+Records: **ADR 0033**, **`docs/reference/shortcuts-and-jumps.md`** (the how-to for the next one —
+also linked from Read-in-order 11), architecture.md → uihost, history.md *"the tab that never
+moved"*. Tests: smoke_ui `TAB1`–`TAB25` against four stub bindings, run_tests `SET55`–`SET59`
+(swept into `8945574`, above). Suites **5141 + 867**, both interpreters. Every rung was verified
+load-bearing by disabling it and watching the right checks go red.
 
 Only Henrik moves this to ACCEPTED.
 

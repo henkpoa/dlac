@@ -7368,3 +7368,93 @@ commit SUBJECT names only the api-2 train, so `git log --grep` will never find t
 -- this entry and the HANDOFF queue entry are its only pointers, which is why both name the
 hash. The uncommitted `tests\fixtures\keepflow\...\lspreview.lua` line-ending change was left
 out of everything, as before: provenance still unknown, content still identical.
+
+## Session "the tab that never moved" (2026-07-30, E-Box Restock in the quick menu)
+
+Two things landed: the **E-Box Restock row in the Teleports quick menu** (above the Hobby
+bar, Crystal Warriors only, wearing the nudge's own crate icon), and — because that row
+immediately demonstrated it — the fix for **`uihost.selectTab`, which had never worked**.
+
+**The field report.** Henrik: *"if I push a button that should take me to the correct page,
+but not on the correct tab… I click e-box restock in teleport menu, in the gear helper tab it
+directs me to the correct menu, but when I open the GUI, I am still on the job helpers tab.
+So I think there's a step missing here (this goes for many other things as well)."* The
+"many other things" is right: **every** cross-link went through the same seam —
+`gearui.openAutomation` (the Teleports row, the hobby bars' "open my panel", the restock
+nudge's right-click, `/dl restock`). All of them set the correct detail view and left the tab
+bar exactly where it was.
+
+**Why it failed, and why nobody noticed for weeks.** `host.selectTab(label)` armed a
+one-shot; the next `renderTabs` pass handed `ImGuiTabItemFlags_SetSelected` to that label's
+`BeginTabItem` and forgot. But **ImGui applies a forced selection at the NEXT frame's
+`TabBarLayout`** — on the pass that carries the flag, `BeginTabItem` still returns false
+because the tab is still closed. So the one-shot had nothing to observe: *honoured* and
+*ignored* produced byte-identical behaviour on the only pass it looked at (hard rule 12,
+again). A second defect hid inside the first: the flagged branch tested `o == true`, throwing
+away a truthy non-boolean return. When the forced tab IS the open one, that skips the content
+**and `EndTabItem`** — an unbalanced tab item, tearing the very bar it was steering. The
+headless drive reproduces it exactly: `unclosed: got 1, want 0`.
+
+**The fix: hold the request until it takes.** `selectTab` now records a request that rides
+every `renderTabs` pass until that tab is observed OPEN, then clears at once (holding it one
+pass longer would refuse the player's next click). The budget counts **passes, not frames**,
+so a jump asked for while the main window is shut waits for it to open instead of expiring
+unseen. `host.pendingTab()` reports what it is trying to reach.
+
+**What is still unproven, and what we did about it.** The SDK header on disk
+(`plugins\sdk\imgui.h`) settles the C++ side — `BeginTabItem(const char*, bool* p_open = nullptr,
+ImGuiTabItemFlags flags = 0)`, `ImGuiTabItemFlags_SetSelected = 1 << 1` — but **nothing on
+disk shows how Ashita's hand-written Lua binding maps `bool*`**. Every sibling addon calls the
+plain `(label, nil)` form; the one that passes flags (`ventures`) would look identical to a
+player whether its flag lands or is dropped, so it is not evidence. The host therefore tries
+the header's shape first and the fold-away `(label, flags)` shape after, and if neither has
+taken within ~30 passes it **says so in chat, naming the tab**. A binding that ignores the
+flag can no longer look like nothing happened.
+
+**Tests.** smoke_ui `TAB1`–`TAB17` drive a fresh uihost against three stub bindings — working,
+fold-away, and flag-blind — with a stub that models ImGui's real semantics (selection lands at
+the next layout; an opened tab item must be ended). Verified failing against the old code
+before the fix: `TAB5/6/7/11/12`. run_tests `SET55`–`SET59` were rewritten for the new quick
+row: the source parse now reads each `renderQuickWindowRow` call as its own segment, understands
+the `icon, fn` opt-out (art that is not key-named, an action menuui does not own), pins the
+order `restock,hobbybar,lockstyle`, and pins the CW gate on the row it guards. Suites
+**5141 + 859**, both interpreters.
+
+**Round two: the chat line appeared.** Henrik ran it and got exactly the give-up line —
+*"could not switch to the Gear Helpers tab -- this build's imgui ignored the tab-selection
+flag."* Both argument shapes, full budget, nothing. **So this install's Lua binding does not
+carry `ImGuiTabItemFlags_SetSelected` through to ImGui at all**, and the diagnostic did its
+one job: an invisible failure became a one-line answer in a single round.
+
+**The fix that does not ask.** Three rungs now, cheapest first. (1) `(label, {true}, flags)`
+— p_open as a **table**, which is the shape `imgui.Begin` demonstrably honours in this very
+addon (gearui's own window passes `isOpen` as a table and its X works), so it is the best
+remaining guess at how the binding wants a `bool*`. (2) `(label, nil, flags)`, the header's
+own signature — disproven here, kept because a correct binding lands the jump with no
+artifact. (3) **THE REBUILD**, which needs no binding cooperation: a tab bar ImGui has never
+seen has no selection and adopts the **first tab submitted to it**, so `host.tabBarId` hands
+gearui a new bar ID and the wanted tab is submitted first until it opens. `gearui` must ASK
+for that ID — hardcoding `'##ffxilac_tabs'` again would silently disable rung 3, so smoke_ui
+`TAB25` pins the call. Cost: one frame with the tabs reordered and the body empty, and one
+abandoned ImGuiTabBar per jump. That is the price of a jump that works.
+
+**One ordering detail worth keeping.** The rebuild is armed at the END of a pass, never at
+the start. Deciding it up front bumps the generation on the very pass a working flag lands —
+and the next pass would then hand gearui a bar ImGui has never seen, throwing the selection
+away again. Two of the four stub bindings (`TABLE`, `NILP`) exist to hold that line: they
+assert the bar ID is **unchanged** when a flag rung takes.
+
+**Tests.** smoke_ui `TAB1`–`TAB25`, four stub bindings — table-p_open, nil-p_open,
+flag-blind (this install), and flag-blind-*and*-adopt-blind (the paranoid case, where even
+the rebuild fails and the only honest move is the chat line). The stub models ImGui properly:
+a bar is identified by the ID passed to BeginTabBar, an unseen ID resets the selection, a
+flag lands at the NEXT layout, and a bar with nothing selected adopts index 0. Each rung was
+verified to be load-bearing by disabling it and watching the right checks fail
+(`TAB5/6/7/11/12` for the truthiness fix, `TAB15/16/17/20` for the rebuild). Suites
+**5141 + 867**, both interpreters.
+
+**Owed:** one click — open the Teleports menu on a CW character and click E-Box Restock from
+another tab. Rung 3 is arithmetic on ImGui's own documented behaviour, but "a bar with nothing
+selected adopts the first tab" is read from the API's behaviour, not from source we have on
+disk (only `plugins\sdk\imgui.h`, the interface header, ships here). If it is wrong the
+symptom is specific and loud: an empty tab body until you click a tab, plus the chat line.

@@ -4587,7 +4587,11 @@ local function drawWindow()
 
         imgui.Separator();
 
-        if imgui.BeginTabBar('##ffxilac_tabs', ImGuiTabBarFlags_None) then
+        -- The bar's ID comes from the host, and must NOT be cached: a forced tab
+        -- jump whose flag went nowhere lands by giving the bar a new identity (a
+        -- bar ImGui has never seen has no selection and adopts the first tab
+        -- submitted). uihost owns that generation; see host.tabBarId.
+        if imgui.BeginTabBar(host.tabBarId('##ffxilac_tabs'), ImGuiTabBarFlags_None) then
             -- A tab renderer that errors mid-frame leaves the imgui stack torn for
             -- the rest of the frame -- which presents as "buttons do nothing" with
             -- no trace. Surface every tab error LOUDLY: one chat line per distinct

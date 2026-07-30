@@ -467,6 +467,30 @@ what a player should read. Today the map holds exactly one: `AutoAmmo` → **"Am
 `host.selectTab` matches on the tab LABEL — `gearui.openAutomation` passes `'Gear Helpers'`
 and smoke_ui S10b pins it. Change one, change both.
 
+It is **held until it takes**, not a one-shot (2026-07-30, Henrik's field report: every
+cross-link set the right panel and left the tab bar alone). ImGui applies a forced selection
+at the *next* frame's tab-bar layout, so the pass carrying `ImGuiTabItemFlags_SetSelected`
+still sees the tab closed — a one-shot armed it, saw nothing, and forgot, which made an
+ignored flag indistinguishable from an honoured one. The request now rides every
+`renderTabs` pass until that tab is observed OPEN, then clears at once so it never fights
+the player's next click. `host.pendingTab()` reports what it is currently trying to reach.
+
+**This install's imgui binding ignores the flag** (field round two: the give-up line
+printed). The SDK header settles the C++ side — `BeginTabItem(label, bool* p_open,
+ImGuiTabItemFlags flags)`, `SetSelected = 1 << 1` — but nothing on disk shows how Ashita's
+hand-written Lua binding maps `bool*`, and no sibling addon proves it either. So the host
+escalates, cheapest first: `(label, {true}, flags)` (p_open as a **table** — the shape
+`imgui.Begin` demonstrably honours here), then `(label, nil, flags)` (the header's own
+signature), then **the rebuild**, which needs no binding cooperation at all: a tab bar ImGui
+has never seen has no selection and adopts the **first tab submitted**, so the bar's ID gets
+a new generation and the wanted tab is submitted first until it opens. That is why
+**`gearui` must call `host.tabBarId('##ffxilac_tabs')` and never hardcode the ID** — pinned
+by smoke_ui `TAB25`. It costs one frame with the tabs reordered and the body empty. Only if
+even that fails does it give up, after ~30 passes, with one chat line naming the tab.
+Tests: smoke_ui `TAB1`–`TAB25`, driving four stub bindings (table-p_open / nil-p_open /
+flag-blind / flag-blind-and-adopt-blind) against a stub that models ImGui's real tab-bar
+semantics.
+
 ### gear/groupsmodel.lua — Trigger-Groups model core (pure)
 The Ashita/imgui/file-IO-free CRUD + name/member validation the Groups tab drives (issue
 #25, ADR 0009): `fromRaw` (sanitize the file's `Groups` section into the model), `names`,
