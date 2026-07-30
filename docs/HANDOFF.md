@@ -271,84 +271,35 @@ merge carries it **without asking him again**. Only he can move an entry to ACCE
 this does not make an accepted entry mergeable *alone*: `dev` promotes
 **whole-or-not-at-all**, so an accepted entry rides the next promotion of the whole branch.
 
-### The BST field-round train — `2026.07.30c`, engine v157, FIELD-CONFIRMED (not yet ACCEPTED)
+**The queue is empty.**
 
-Four commits on `dev`, **unpushed** at time of writing (Henrik is checking the parallel E-Box
-Restock session first): `8945574` (the corpse witness, the space, the Dynamic sets, the Summon set,
-the keybind registry + ADR 0032, `/dl jh`, searchable dropdowns, the jug cap),
-`cafd7e7` (the jiffies unit, the name-index hedge, the pickMethod tri-state, once-per-zone food),
-`8f9e1b5` (**the real root cause** — `type(rec) == 'table'` on an Ashita resource object, which is
-userdata; the by-name recast resolution had never worked, and Reward's hardcoded `timerId = 103`
-masked it), `740dec0` (the field case pinned end to end). Suites **5128 + 842**, both interpreters.
 
-**A fifth commit adds THE PAUSE**, on the field verdict of the working resummon (*"it was
-soooo instant"*): a confirmed death now waits `resummonDelay` (default **1.0s**, slider 0-5) before
-summoning. Not a technical need -- it is what the act LOOKS like, and this project has already had a
-GM read an addon's behaviour as botting once. Implemented as the QUEUE rather than a private timer,
-which is the whole point: every cancel already there applies during the wait, so a player who summons
-by hand inside that second is never raced by their own helper. The button and its key are never
-delayed -- there, the player is the pause.
-
-**Field-confirmed by Henrik, 2026-07-30:**
-* the pet-death detection — *"the death detection was the hardest thing, which is solved now"*, and
-  the `/probe pet` capture behind it (corpse readable at the same index+id for 15s, flip in +1ms,
-  no death message at all);
-* the recast read — *"it can read now"*;
-* the Resummon firing with the fallback choosing correctly — *"Now it works, perfection"*.
-
-**NOT exercised yet — do not let the confirmation above be read as covering these:** the Summon set
-actually landing on a summon (and the OPEN CHR question in
-[reference/catseyexi-jobs.md](reference/catseyexi-jobs.md) — summon-time vs Ready-time — is still
-open, so the feature may be aimed at the wrong moment entirely); the bindable **Summon now** key and
-`/dl jh`; the searchable dropdowns; the once-per-zone food line; the jug cap at 75; and **the friend's
-original report, the Dynamic sets picker**, which nobody has confirmed fixed.
-
-**Also riding along, and not Claude's work:** `ui/gearui.lua`'s E-Box Restock quick-window row and
-its SET checks, from a parallel session in the same checkout — its test hunks interleave with this
-train's in `tests/run_tests.lua`, so they could not be committed apart without leaving one half red
-(see `8945574`'s message). **Henrik verifies that half before the push.** *(That half is now its own
-entry below, and Henrik has field-confirmed it — the `SET55`–`SET59` hunks swept into `8945574` are
-its tests, and `ui/gearui.lua` followed in the commit below.)*
-
-Only Henrik moves this to ACCEPTED.
-
-### The E-Box Restock shortcut + the tab jump that never worked — `2026.07.30e`, FIELD-CONFIRMED (not yet ACCEPTED)
-
-One commit on `dev`. Two things, and the second is the one that matters beyond this feature.
-
-**The row.** E-Box Restock joins the Teleports quick menu, **above the Hobby bar**, **Crystal
-Warriors only** (`gamemode.get() == 'CW'`, the same affirmative gate the Gear Helpers row uses —
-unknown hides it), wearing `assets\ebox.png`, the crate its own nudge wears, so the two surfaces
-read as one feature. It opens the panel through `gearui.openAutomation('restock')` — the door
-`/dl restock` and the nudge's right-click already use. `renderQuickWindowRow` grew two opt-out
-arguments (`icon`, `fn`) for exactly this shape; ordinary rows are unchanged.
-
-**The jump, which had NEVER worked.** Henrik, field: *"I click e-box restock in teleport menu, in
-the gear helper tab it directs me to the correct menu, but when I open the GUI, I am still on the
-job helpers tab… this goes for many other things as well."* It did: every cross-link in the addon
-goes through `host.selectTab`, and every one of them set the right panel behind the wrong tab.
-`selectTab` was a one-shot, and **ImGui applies a forced selection at the NEXT frame's tab-bar
-layout** — so the pass that carried `ImGuiTabItemFlags_SetSelected` always saw the tab still
-closed, and *honoured* and *ignored* were indistinguishable (hard rule 12). Holding the request
-until the tab opens made the failure visible; round two printed the give-up line, which proved the
-real problem: **this build's imgui binding never passes the flag through to ImGui at all.** So the
-host stops asking and takes the selection — three rungs, ending in a **tab-bar rebuild** (a bar
-ImGui has never seen has no selection and adopts the first tab submitted, so `host.tabBarId` hands
-gearui a new bar ID and the wanted tab goes first). **`gearui` must ask for that ID and never
-hardcode it** — smoke_ui `TAB25` pins the call.
-
-**Field-confirmed by Henrik, 2026-07-30:** *"Now it works"* — the row, and the jump landing on the
-tab. The cost he will see: ~5 frames, one of which shows the tabs reordered with an empty body.
-
-Records: **ADR 0033**, **`docs/reference/shortcuts-and-jumps.md`** (the how-to for the next one —
-also linked from Read-in-order 11), architecture.md → uihost, history.md *"the tab that never
-moved"*. Tests: smoke_ui `TAB1`–`TAB25` against four stub bindings, run_tests `SET55`–`SET59`
-(swept into `8945574`, above). Suites **5141 + 867**, both interpreters. Every rung was verified
-load-bearing by disabling it and watching the right checks go red.
-
-Only Henrik moves this to ACCEPTED.
-
-*(Last emptied by the FIRST 2026-07-30 promotion: the **Job helper module API v2 + the percent
+*(Last emptied by the SECOND 2026-07-30 promotion: the **BST field-round train + the E-Box
+Restock shortcut and the tab jump that never worked**, `2026.07.30b`–`2026.07.30e`, engine v157
+— fourteen commits, `8471e2d..ae6f6a4`. The train: `8945574` (pet-death by corpse witness, the
+summon space, Dynamic sets, the Summon set, the **keybind registry + ADR 0032**, `/dl jh`,
+searchable dropdowns, the jug cap), `cafd7e7` (the jiffies unit, the name-index hedge, the
+pickMethod tri-state, once-per-zone food), `8f9e1b5` (**the real root cause** — `type(rec) ==
+'table'` on an Ashita resource object, which is *userdata*: the by-name recast resolution had
+never worked, and Reward's hardcoded `timerId = 103` masked it), `740dec0` (the field case pinned
+end to end), `2761780` (**the pause** — a confirmed death waits `resummonDelay`, default 1.0s,
+because "soooo instant" reads as a bot; implemented as the queue, so every existing cancel applies
+during the wait). Then `ae6f6a4`: **E-Box Restock in the Teleports quick menu** (above the Hobby
+bar, CW-only, the nudge's own crate) and **`host.selectTab` fixed** — a jump had never moved the
+tab bar in any cross-link, because a one-shot cannot observe a selection ImGui applies on the
+following frame, and because **this build's imgui binding drops
+`ImGuiTabItemFlags_SetSelected` entirely**; the host now holds the request until it takes and, if
+the flag goes nowhere, rebuilds the tab bar under a new ID with the wanted tab first (**ADR
+0033**, `docs/reference/shortcuts-and-jumps.md`, smoke_ui `TAB1`–`TAB25`). Suites **5141 + 867**,
+both interpreters. Field-confirmed by Henrik across the day — *"the death detection … is solved
+now"*, *"it can read now"*, *"Now it works, perfection"*, and for the jump *"Now it works"* —
+and ACCEPTED whole on his *"I also want everything to be merged to main and pushed to origin"*.
+**Still owed, and not covered by any of those confirmations:** the Summon set actually landing on
+a summon (and the OPEN CHR question in [reference/catseyexi-jobs.md](reference/catseyexi-jobs.md)
+— summon-time vs Ready-time — remains open, so it may be aimed at the wrong moment entirely); the
+bindable **Summon now** key and `/dl jh`; the searchable dropdowns; the once-per-zone food line;
+the jug cap at 75; and **the friend's original report, the Dynamic sets picker**, which nobody has
+confirmed fixed. Before that, the FIRST 2026-07-30 promotion: the **Job helper module API v2 + the percent
 that printed a pointer**, `2026.07.30a` — `f8df96b` (the api-2 train: `feature\modapi.lua`, the
 Module API `S` at `api = 2`; `feature\modcfg.lua`, declared settings stored by the framework;
 `feature\combat.lua`, the combat state service; `ui\panelkit.lua`, the Panel kit;
