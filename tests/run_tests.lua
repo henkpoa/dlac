@@ -18260,6 +18260,49 @@ end)();
     check('BRS101f ...and a cooldown reads as minutes and seconds',
           rs.recastText(triS, rs.RECAST.loyalty), '12m 34s');
 
+    -- --- THE FIELD CASE, END TO END, through the REAL liveState (the glue block
+    --     above replaced it, so this drives a fresh instance): the pet dies, the
+    --     pick is Bestial Loyalty, the client says Loyalty is DOWN and Call Beast
+    --     is UP, the checkbox is on. 2026-07-30 it fired Loyalty into its own
+    --     cooldown, because an unresolvable recast read READY and won on the
+    --     first line of pickMethod. It must reach for Call Beast.
+    local rsF = dofile('jobhelpers/bst/bst-helper/resummon.lua');
+    local fired = {};
+    rsF._emit = function() end;
+    local fieldS = fakeApi({
+        id    = 'bst-helper',
+        stock = 3,
+        ready = { ['Bestial Loyalty'] = false, ['Call Beast'] = true },
+        vals  = { resummonArmed = true, resummonJug = 'Carrot Broth',
+                  resummonMethod = 'loyalty', resummonFallback = true },
+    });
+    fieldS.act.request = function(r) fired[#fired + 1] = r; return { ok = true }; end;
+    rsF.init(fieldS);
+    local fd = rsF.onLoss(DEATH);
+    check('BRS101g the pick being DOWN no longer wins the summon', fd.method, 'call');
+    check('BRS101h ...and the act that actually went out is Call Beast',
+          (fired[1] or {}).command, rsF.METHOD_COMMAND.call);
+    check('BRS101i ...carrying the configured jug, verified', (fired[1] or {}).need.Ammo,
+          'Carrot Broth');
+    check('BRS101j ...and nothing was queued -- it summoned', rsF.queued(), nil);
+
+    -- with the checkbox OFF the pick is never swapped: it queues instead
+    local rsG = dofile('jobhelpers/bst/bst-helper/resummon.lua');
+    local fired2 = {};
+    rsG._emit = function() end;
+    local fieldS2 = fakeApi({
+        id    = 'bst-helper',
+        stock = 3,
+        ready = { ['Bestial Loyalty'] = false, ['Call Beast'] = true },
+        vals  = { resummonArmed = true, resummonJug = 'Carrot Broth',
+                  resummonMethod = 'loyalty', resummonFallback = false },
+    });
+    fieldS2.act.request = function(r) fired2[#fired2 + 1] = r; return { ok = true }; end;
+    rsG.init(fieldS2);
+    local fd2 = rsG.onLoss(DEATH);
+    check('BRS101k checkbox OFF: the pick is never swapped for it', #fired2, 0);
+    check('BRS101l ...it queues and waits for the ability the player chose', fd2.queue, true);
+
     check('BRS102 no key is set by default', rs.key(), nil);
     rs.setKey('  ^F3  ');
     check('BRS103 a typed key is stored trimmed', rs.key(), '^F3');
