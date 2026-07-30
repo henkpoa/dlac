@@ -1,215 +1,140 @@
-﻿--[[
-    dlac/jobhelpers/bst/init.lua -- the BST Helper module (issue #141 adds the
-    death-only Resummon rule; #140 the automatic Reward rule; #139 the three-way
-    Fight switch; #138 brought "Reward now" and the Action sequence machinery;
-    #137 shipped the skeleton they replace).
+--[[
+    dlac/jobhelpers/bst/bst-helper/init.lua -- the BST Helper module.
 
-    The FIRST real Job helper, and the proof of the drop-in path end to end.
+    THE FIRST REAL Job helper, and now the proof of the api-2 module API end to
+    end. Its Panel carries THREE behaviors, all of them STANDING -- wired in the
+    `init` hook below rather than by rendering, because a helper must act whether
+    or not its Panel is open:
 
-    Its Panel carries THREE behaviors, all of them STANDING -- wired in the
-    `init` hook below rather than by rendering, because a helper must act
-    whether or not its Panel is open:
+      * the **Fight switch** (fight.lua) -- Off / When I attack / Follow my
+        target, driven by the combat state beat (S.combat);
+      * the **Reward rule** (reward.lua) -- while armed and the pet sits below the
+        player's pet-HP% threshold, it asks for the very sequence the "Reward now"
+        button asks for, once per lockout window. Driven by the pet vitals beat;
+      * the **Resummon rule** (resummon.lua) -- on a CONFIRMED jug-pet death it
+        claims the configured jug, verifies it worn and fires the chosen summon;
+        if both are on recast it queues. Driven by the same service's classified
+        pet-loss edge, which proves the death off the pet's own corpse and knows
+        the pet is a jug pet because it watched you summon it (the jug roster in
+        jugs.lua is the fallback for a pet that was already out).
 
-      * the **Fight switch** (bst\fight.lua) -- Off / When I attack / Follow my
-        target, driven entirely by the engage/target edge service;
-      * the **Reward rule** (bst\reward.lua) -- while it is armed and the pet
-        sits below the player's pet-HP% threshold, it asks for the very sequence
-        the "Reward now" button asks for, once per lockout window. It is driven
-        by the pet vitals service (feature\petvitals), which publishes presence /
-        HP% / TP / name once per dispatch beat.
-      * the **Resummon rule** (bst\resummon.lua) -- on a CONFIRMED jug-pet
-        death, it claims the configured jug, verifies it worn and fires the
-        chosen summon; if both are on recast it queues. It rides the same vitals
-        service's classified pet-loss edge, and the module's jug roster
-        (bst\jugs.lua) is what lets that edge tell a jug pet from a charmed one.
+    ...plus ONE named action, which is not a standing behavior at all: **Summon
+    now** (`commands.summon` -> resummon.summonNow) -- the Panel button and the
+    key a player binds to it. The framework installs that key while they are on
+    BST with this module on; nothing here touches the bind registry.
 
-    All three store their settings in the module's OWN per-character config file
-    (bst\config.lua), and all three default OFF.
+    THE SUMMON SET is the module's one piece of server-specific knowledge: on
+    CatsEyeXI the master's +CHR when a jug pet spawns raises that pet's Ready
+    strength for its whole life, and only GEAR CHR counts -- so the Summon
+    section offers an optional set, worn best-effort around the summon, leaving
+    the weapon slots alone unless the player opts in (a weapon swap costs TP).
 
-    The act itself -- button and rule alike -- lives in bst\reward.lua, so there
-    is exactly ONE implementation of it:
-      * pick the best pet food the character both can wear AND is carrying (the
-        eight-tier pet-food Ladder, feature\petfood -- no list UI, the bags are
-        the control);
-      * optionally overlay a chosen Reward set from the job entry's own Sets;
-      * open an Action sequence (feature\actionseq): ONE claim (set union food),
-        the CONSUMED slot verified WORN, then Reward FIRES, then the claim
-        releases and the next arbitration restores gear.
-    The button additionally GRAYS OUT while Reward is on cooldown (the ability
-    recast readiness service, feature\recast) rather than firing a command the
-    client rejects; the rule simply holds, silently, which is the same thing said
-    without a button.
+    All three default OFF, because all three issue commands and two of them SPEND
+    AN ITEM. The row pill is the opposite (default on, and it only ever silences).
 
-    IDENTITY is the folder name ('bst'), assigned by the loader -- this table does
-    NOT declare its own id. `label`, `jobs` and `api` are the contract.
+    The act itself -- button and rule alike -- lives in reward.lua, so there is
+    exactly ONE implementation of it: pick the best pet food the character can wear
+    AND is carrying (feature\petfood -- no list UI, the bags are the control),
+    optionally overlay a chosen Reward set, then open an Action sequence: ONE claim
+    (set union food), the CONSUMED slot verified WORN, then Reward FIRES, then the
+    claim releases and the next arbitration restores gear.
+
+    IDENTITY is the folder name, assigned by the loader and handed back as `S.id`.
+    This table declares no id, and -- since api 2 -- neither does any file in the
+    module: siblings load through `S.sibling('reward')`, so renaming this folder is
+    safe, which is what the framework always claimed and could not previously
+    deliver (api 1 hardcoded `dlac\jobhelpers\bst\bst-helper\config` in four
+    files).
 
     Player-facing names ("BST Helper", "Reward now", "Fight" and its three ways,
-    "Reward my pet when it drops below", and #141's "Resummon", "Resummon my pet
-    when it dies", "Jug", "Use the other if mine is on cooldown") are PROPOSED,
-    pending the maintainer's sign-off (naming law -- helpers are named, never
-    "Auto <activity>").
-    Defensive throughout: every imgui + service touch is guarded so the Panel
-    renders headlessly (the smoke suite) and a missing service never tears the
-    tab (hard rules 6, 12).
+    "Reward my pet when it drops low", "Resummon", "Jug", "Use the other if mine is
+    on cooldown") are PROPOSED, pending the maintainer's sign-off -- the naming law
+    binds authors: name the helper or the RULE, never "Auto <activity>".
+
+    Defensive throughout, but no longer by hand: the Panel is built on the widget
+    kit (ctx.ui), which carries the binding guards, the measured widths, the
+    vertical stacking and the panel-text standard, so this file says WHAT the
+    Panel is and the kit says how to draw it safely.
 ]]--
 
-local COL_DIM  = { 0.70, 0.70, 0.70, 1.00 };
-local COL_WARN = { 1.00, 0.72, 0.30, 1.00 };
-local COL_OK   = { 0.55, 0.90, 0.55, 1.00 };
-local COL_HEAD = { 0.60, 0.75, 1.00, 1.00 };
-
--- The module's own folder name. The LOADER is the identity authority (it reads
--- the folder), so this is only the fallback for the paths that run without a
--- render ctx -- the init hook, which receives deps but not an id.
-local MODULE_ID = 'bst-helper';
-
 -- ---------------------------------------------------------------------------
--- helpers (all contained -- a missing service degrades, never throws)
+-- the panel text (kept here, together, because it is what needs sign-off)
 -- ---------------------------------------------------------------------------
 
-local function req(name)
-    local ok, m = pcall(require, name);
-    return (ok and type(m) == 'table') and m or nil;
-end
+local TIP_FIGHT = 'While you are engaged with a target and your pet stands idle, it is sent in'
+    .. ' -- retried a few times if the command does not take, then it goes quiet.'
+    .. ' Follow my target also re-sends a fighting pet when your target changes.'
+    .. ' Jug and charmed pets behave identically.';
 
--- The Reward rule + the act itself. Both the button and the automatic rule go
--- through this ONE module, which is why "identical refusal behavior to the
--- button" needs no second implementation to agree with.
-local function rewardMod() return req('dlac\\jobhelpers\\bst\\bst-helper\\reward'); end
+local TIP_HEEL = 'On: once your pet takes a send, pulling it back with Heel sticks --\n'
+    .. 'nothing is re-sent at that mob for the rest of the fight.\n'
+    .. 'Off: an idle pet keeps being re-sent while you are engaged (a few tries).';
 
--- The Resummon rule (issue #141) -- the death-only jug summon and its queue.
-local function resummonMod() return req('dlac\\jobhelpers\\bst\\bst-helper\\resummon'); end
+local TIP_REWARD = 'Reward tops up your pet with the best pet food you carry -- highest tier'
+    .. ' your level allows and your bags hold. dlac equips the food, verifies it landed,'
+    .. ' fires Reward, then restores your gear.';
 
--- A section header per the PANEL-TEXT STANDARD (uistyle.helpLabel): the label
--- underlined, the explanation in its HOVER -- never an inline paragraph, which
--- clips at the panel edge (Henrik's field ruling 2026-07-29, screenshot round
--- 2: "do some word wrapping, I can't make the window wider"). Falls back to a
--- plain colored label when uistyle is unreachable.
-local function head(imgui, label, tip)
-    local us = req('dlac\\ui\\uistyle');
-    if us ~= nil and type(us.helpLabel) == 'function' then
-        local ok = pcall(us.helpLabel, imgui, label, tip, COL_HEAD);
-        if ok then return; end
-    end
-    if type(imgui.TextColored) == 'function' then imgui.TextColored(COL_HEAD, label); end
-end
+local TIP_THRESHOLD = 'Your pet has to be BELOW this to be fed -- a pet sitting exactly on it is not.\n'
+    .. 'Drag it, or double-click to type a number.';
 
+local TIP_RESUMMON = 'Death only, and only your JUG pet. dlac equips your jug, verifies it landed,'
+    .. ' fires your summon, then restores your gear. A Leave, zoning, logging out and'
+    .. ' a charmed pet are never a resummon -- charm play stays entirely yours.';
 
--- ---------------------------------------------------------------------------
--- the Fight switch (issue #139) -- three buttons, one of them lit
--- ---------------------------------------------------------------------------
+local TIP_JUG = 'Every jug you can use on this server, lowest level first, each naming the pet\n'
+    .. 'it calls -- the Lv76+ retail broths are left out, since nothing here can equip them.\n'
+    .. 'The pet names are dlac module data and are NOT field-verified yet -- tell the\n'
+    .. 'maintainer if one is wrong, and it is a one-line fix.';
 
-local function fightMod() return req('dlac\\jobhelpers\\bst\\bst-helper\\fight'); end
+local TIP_METHOD = 'Only Call Beast earns Beast Raising bonuses, and it CONSUMES the jug.\n'
+    .. 'Bestial Loyalty does not consume it -- but it earns no bonuses.\n'
+    .. 'Both need the jug EQUIPPED: the server reads your ammo slot for the\n'
+    .. 'species, which is why dlac equips it and checks before firing.';
 
--- The widest of the three labels, MEASURED (the craftbar "Last Synth" lesson --
--- a hardcoded width clipped the trailing character). Falls back to a width that
--- fits "Follow my target" at the themed font's ~9.5px/char. The three ways stack
--- VERTICALLY: side by side they need ~520px, and the right-hand Panel child is
--- whatever is left of a window whose minimum is 480 -- the same clipping trap the
--- row STATUS column fell into on 2026-07-29.
-local function modeWidth(imgui, fight)
-    local w = 176;
-    pcall(function()
-        if type(imgui.CalcTextSize) ~= 'function' then return; end
-        local widest = 0;
-        for _, m in ipairs(fight.MODES) do
-            local tw = imgui.CalcTextSize(fight.MODE_LABEL[m]);
-            if type(tw) == 'number' and tw > widest then widest = tw; end
-        end
-        if widest > 0 then w = math.max(120, math.floor(widest) + 20); end
-    end);
-    return w;
-end
+local TIP_FALLBACK = 'On by default. Off, a resummon waits for YOUR method instead of\n'
+    .. 'reaching for the other one. Either way, if nothing is ready the\n'
+    .. 'resummon queues and fires the moment one comes up -- and zoning,\n'
+    .. 'Leave, logging out or any pet appearing cancels it.';
 
--- One way of the three. Lit (green) when it is the live mode. Uses only widgets
--- this Ashita install is known to carry -- Button + the style-color push, the
--- craftbar fallback shape; RadioButton is not called anywhere in dlac and
--- presence would prove nothing anyway (hard rule 2).
-local function modeButton(imgui, fight, id, m, current, w)
-    local lit = (current == m);
-    local pushed = false;
-    if lit and ImGuiCol_Button ~= nil and type(imgui.PushStyleColor) == 'function' then
-        imgui.PushStyleColor(ImGuiCol_Button, { 0.18, 0.55, 0.18, 1.00 });
-        pushed = true;
-    end
-    local clicked = false;
-    if type(imgui.Button) == 'function' then
-        clicked = imgui.Button(fight.MODE_LABEL[m] .. '##bstfight_' .. m .. '_' .. id, { w or 176, 24 });
-    end
-    if pushed then imgui.PopStyleColor(1); end
-    if type(imgui.IsItemHovered) == 'function' and imgui.IsItemHovered()
-       and type(imgui.SetTooltip) == 'function' then
-        imgui.SetTooltip(fight.MODE_HELP[m]);
-    end
-    return clicked;
-end
+local TIP_DELAY = 'How long dlac waits after your pet dies before summoning the next one.\n'
+    .. 'A pet falling over and another appearing in the same instant is a shape no\n'
+    .. 'player produces -- a beat of hesitation costs nothing and looks like you.\n'
+    .. 'The wait is also yours: summon by hand, Leave or zone inside it and the\n'
+    .. 'pending resummon is dropped. 0 restores the instant behaviour.\n'
+    .. 'The button and its key are never delayed -- there, you are the pause.';
 
--- ---------------------------------------------------------------------------
--- the Reward rule's threshold widget (issue #140)
--- ---------------------------------------------------------------------------
+local TIP_SUMMON = 'Everything about HOW your pet is summoned -- which jug, which ability,'
+    .. ' and what you are wearing when it lands. The Resummon rule below uses all of it,'
+    .. ' and so does the button.';
 
--- The pet-HP% slider. Returns (newValue|nil, drew) -- `drew` so the caller only
--- SameLines a label onto a widget that actually reached the screen.
---
--- SliderFloat, not SliderInt: SliderInt is called nowhere in dlac and presence
--- would prove nothing about it (hard rule 2 -- BeginPopupContextItem was bound
--- and did not work), whereas SliderFloat is FIELD-PROVEN as the floating-gear
--- scale slider in equippedui. The '%.0f%%' format makes it read as whole
--- percent, and the value is clamped to whole numbers by reward.clampThreshold on
--- the way into the config. InputInt (also proven, three panels use it) is the
--- fallback for a binding without either.
-local function thresholdWidget(imgui, reward, id, cur)
-    local out, drew = nil, false;
-    local key = '##bstrewardthr_' .. id;
-    if type(imgui.PushItemWidth) == 'function' then imgui.PushItemWidth(150); end
-    if type(imgui.SliderFloat) == 'function' then
-        local buf = { cur };
-        drew = true;
-        if imgui.SliderFloat(key, buf, reward.MIN_THRESHOLD, reward.MAX_THRESHOLD, '%.0f%%') then
-            out = buf[1];
-        end
-    elseif type(imgui.InputInt) == 'function' then
-        local buf = { cur };
-        drew = true;
-        if imgui.InputInt(key, buf) then out = buf[1]; end
-    end
-    if type(imgui.PopItemWidth) == 'function' then imgui.PopItemWidth(); end
-    if drew and type(imgui.IsItemHovered) == 'function' and imgui.IsItemHovered()
-       and type(imgui.SetTooltip) == 'function' then
-        imgui.SetTooltip('Your pet has to be BELOW this to be fed -- a pet sitting exactly on it is not.\n'
-            .. 'Drag it, or double-click to type a number.');
-    end
-    return out, drew;
-end
+local TIP_SUMMONSET = 'Optional. dlac wears this set, equips your jug, fires the summon, then\n'
+    .. 'restores your gear.\n'
+    .. 'On this server the +CHR you are wearing when a jug pet spawns raises that\n'
+    .. 'pet\'s Ready damage for as long as it is out -- and only GEAR CHR counts,\n'
+    .. 'which is what makes a set the right tool. Build a CHR set in the Sets tab\n'
+    .. 'and pick it here.\n'
+    .. 'Best-effort: only the jug has to land. A slot another rule is holding costs\n'
+    .. 'you that slot, never the summon.';
 
--- ---------------------------------------------------------------------------
--- the Resummon section's widgets (issue #141)
--- ---------------------------------------------------------------------------
+local TIP_WEAPONS = 'Off by default, because changing a weapon costs you your TP and a BST\n'
+    .. 'usually summons mid-fight.\n'
+    .. 'On, the Summon set may also claim Main, Sub and Range. Your ammo slot is\n'
+    .. 'never up for it either way -- that is where the jug goes.';
 
--- One of the two summon methods, as a lit/unlit Button -- the Fight switch's
--- shape, for the same reason (RadioButton is called nowhere in dlac and its
--- presence would prove nothing -- hard rule 2).
-local function methodButton(imgui, id, key, label, tip, lit, w)
-    local pushed = false;
-    if lit and ImGuiCol_Button ~= nil and type(imgui.PushStyleColor) == 'function' then
-        imgui.PushStyleColor(ImGuiCol_Button, { 0.18, 0.55, 0.18, 1.00 });
-        pushed = true;
-    end
-    local clicked = false;
-    if type(imgui.Button) == 'function' then
-        clicked = imgui.Button(label .. '##bstresum_' .. key .. '_' .. id, { w or 176, 24 });
-    end
-    if pushed then imgui.PopStyleColor(1); end
-    if type(imgui.IsItemHovered) == 'function' and imgui.IsItemHovered()
-       and type(imgui.SetTooltip) == 'function' then
-        imgui.SetTooltip(tip);
-    end
-    return clicked;
-end
+local TIP_KEY = 'A key that summons on the spot, in Ashita\'s own bind syntax:\n'
+    .. '  ^ = Ctrl, ! = Alt, @ = Win  --  so ^F3 is Ctrl+F3.\n'
+    .. 'Type it and press Enter (or Set). It binds while you are on BST with this\n'
+    .. 'helper on, and comes back to you when you change job.\n'
+    .. 'A key another feature already holds is refused, and dlac says who has it --\n'
+    .. '/dl binds lists them all.';
+
+local TIP_SUMMONNOW = 'Summons right now with everything above -- the same gear, the same checks\n'
+    .. 'and the same refusals the automatic rule uses. It works whether or not the\n'
+    .. 'Resummon rule is armed: that switch only governs what happens without you.';
 
 -- One picker row's label: the jug, its equip level, and the pet it calls. An
--- unmapped jug says so rather than showing a guess (bst\jugs: rows that could
--- not be placed honestly are absent, not invented).
+-- unmapped jug says so rather than showing a guess (jugs.lua: rows that could not
+-- be placed honestly are absent, not invented).
 local function jugLabel(row)
     if type(row) ~= 'table' then return 'None'; end
     local pet = row.pet;
@@ -217,401 +142,429 @@ local function jugLabel(row)
     return string.format('%s (Lv %d) -- %s', tostring(row.name), tonumber(row.level) or 0, pet);
 end
 
+-- What a jug row can be SEARCHED by, beside its rendered label: the broth and
+-- the familiar it calls. Both are already in the label -- this exists so that
+-- stays true the day the label is shortened, and so "carrot hare" is documented
+-- as a supported thing to type rather than an accident of the format.
+local function jugSearch(row)
+    if type(row) ~= 'table' then return ''; end
+    return tostring(row.name or '') .. ' ' .. tostring(row.pet or '');
+end
+
+-- The dim "Last: ..." line, or nil when the rule has decided nothing yet.
+local function lastLine(rule)
+    if type(rule) ~= 'table' then return nil; end
+    local d = nil;
+    if type(rule.lastDecision) == 'function' then d = rule.lastDecision(); end
+    if d == nil then return nil; end
+    if type(rule.decisionText) ~= 'function' then return nil; end
+    return rule.decisionText(d);
+end
+
 -- ---------------------------------------------------------------------------
 -- the contract
 -- ---------------------------------------------------------------------------
+
 return {
-    api   = 1,                 -- the Job helper contract version (feature\jobhelpers.API)
+    api   = 2,                 -- the module API version (feature\modapi.API)
     label = 'BST Helper',      -- player-facing display label (PROPOSED)
     jobs  = { 'BST' },         -- declared main jobs
 
-    -- The init hook: arm the standing behaviors. Runs ONCE at addon load, from
-    -- the loader, and deliberately not from a render -- both behaviors must work
-    -- with the Job Helpers tab closed. `deps` is the shared-services table
-    -- (unused here; fight.lua and reward.lua consume the central services by
-    -- name). Contained by the loader: a throw here refuses the whole module, so
-    -- nothing in it may throw -- and the two subscriptions are contained
-    -- SEPARATELY, so a broken edge service cannot cost the Reward rule its beat.
-    init = function(deps)
-        pcall(function()
-            local fight = req('dlac\\jobhelpers\\bst\\bst-helper\\fight');
-            if fight ~= nil and type(fight.init) == 'function' then fight.init(MODULE_ID); end
-        end);
-        pcall(function()
-            local reward = rewardMod();
-            if reward ~= nil and type(reward.init) == 'function' then reward.init(MODULE_ID); end
-        end);
-        pcall(function()
-            local resummon = resummonMod();
-            if resummon ~= nil and type(resummon.init) == 'function' then resummon.init(MODULE_ID); end
-        end);
+    -- WHAT this module stores; feature\modcfg owns HOW (fmt-versioned, declared
+    -- keys only, written on mutation, tolerant reader, never caches the pre-login
+    -- nil). `file` is named explicitly to keep the name api 1 shipped, so an
+    -- existing character's settings survive the upgrade untouched.
+    --
+    -- The two arming switches and the Resummon rule default OFF -- this module
+    -- issues commands, and Reward and Call Beast SPEND AN ITEM, so a freshly
+    -- installed helper must never start driving the pet or eating a player's food.
+    -- `resummonFallback` is the one default that is ON: it is not an arming
+    -- decision, it can only ever change WHICH ready ability is used.
+    config = {
+        file = 'jobhelper-bst.lua',
+        keys = {
+            fight            = 'string',     -- 'off' | 'attack' | 'follow'   (fight.lua)
+            fightHeel        = 'boolean',    -- respect Heel: a send that TOOK is never re-sent
+            fightWhen        = 'string',     -- 'drawn' | 'swing' -- when sends may start
+            rewardArmed      = 'boolean',    -- the automatic Reward rule switch (reward.lua)
+            rewardThreshold  = 'number',     -- pet HP%; the rule fires strictly below it
+            rewardSet        = 'string',     -- optional Reward set by name; '' = food only
+            resummonArmed    = 'boolean',    -- the death-only Resummon rule switch
+            resummonJug      = 'string',     -- the configured jug by item name; '' = none
+            resummonMethod   = 'string',     -- 'call' | 'loyalty'  (resummon.METHODS)
+            resummonFallback = 'boolean',    -- "use the other if mine is on cooldown"
+            resummonDelay    = 'number',     -- seconds to wait after a death before summoning
+            summonSet        = 'string',     -- optional set worn while summoning; '' = jug only
+            summonWeapons    = 'boolean',    -- may that set claim Main/Sub/Range?
+            summonKey        = 'string',     -- the key bound to "Summon now"; '' = none
+        },
+        defaults = {
+            fight            = 'off',
+            fightHeel        = true,         -- respecting the player's own pet command is polite
+            fightWhen        = 'drawn',      -- send from the engage; 'swing' waits for the swing
+            rewardArmed      = false,
+            rewardThreshold  = 50,           -- the slider's resting position, not an arming choice
+            resummonArmed    = false,
+            resummonMethod   = 'call',       -- the one that earns the raising bonuses
+            resummonFallback = true,
+            resummonDelay    = 1.0,          -- a beat of hesitation; instant reads as a bot
+            summonWeapons    = false,        -- swapping a weapon costs your TP
+            -- summonSet / summonKey have no default: absent means "none", and
+            -- nothing here picks a player's gear or takes a key uninvited.
+            -- rewardSet has no default: absent means "food only".
+            -- resummonJug has none either: absent means "no jug picked", which the
+            -- rule refuses on, loudly -- never a guess at which jug to spend.
+        },
+    },
+
+    -- NAMED ACTIONS a player can fire by hand -- `/dl jh bst-helper summon` --
+    -- and therefore bind a key to. `key` names one of the config keys above, and
+    -- the FRAMEWORK does the binding from there: it installs the key while the
+    -- player is on BST with this module's pill on, releases it on a job change,
+    -- and refuses (loudly, naming the holder) a key another feature already has.
+    -- Nothing in this module touches the bind registry.
+    commands = {
+        summon = {
+            label = 'Summon now',
+            help  = 'summon your jug pet with the Summon set on',
+            key   = 'summonKey',
+            run   = function(S)
+                local r = S.sibling('resummon');
+                if r == nil or type(r.summonNow) ~= 'function' then return false; end
+                return r.summonNow();
+            end,
+        },
+    },
+
+    -- Arm the standing behaviors. Runs ONCE at addon load, from the loader, and
+    -- deliberately not from a render -- all three must work with the tab closed.
+    --
+    -- Contained SEPARATELY per rule, and that matters twice over: a throw here
+    -- refuses the whole module, and one unreachable service must not cost the
+    -- other two rules their beat.
+    init = function(S)
+        for _, name in ipairs({ 'fight', 'reward', 'resummon' }) do
+            pcall(function()
+                local rule = S.sibling(name);
+                if rule ~= nil and type(rule.init) == 'function' then rule.init(S); end
+            end);
+        end
     end,
 
-    -- The Panel. ctx = { imgui, id, record, deps }.
+    -- The Panel. ctx = { imgui, ui, id, record, S, activity }.
     panel = function(ctx)
-        local imgui = ctx and ctx.imgui;
-        if imgui == nil then return; end
-        local id = (ctx and ctx.id) or MODULE_ID;
+        local ui = ctx and ctx.ui;
+        local S  = ctx and ctx.S;
+        if ui == nil or S == nil then return; end
+        local id  = ctx.id or S.id;
+        local act = S.me.acting();
 
-        local function txt(col, s) if type(imgui.TextColored) == 'function' then imgui.TextColored(col, s); end end
-        local function space() if type(imgui.Spacing) == 'function' then imgui.Spacing(); end end
-        local function rule() if type(imgui.Separator) == 'function' then imgui.Separator(); end end
-
-        -- ----- Fight (issue #139) -------------------------------------------
-        local fight = fightMod();
+        -- ----- Fight -------------------------------------------------------
+        local fight = S.sibling('fight');
         if fight ~= nil then
-            head(imgui, 'Fight',
-                'While you are engaged with a target and your pet stands idle, it is sent in'
-                .. ' -- retried a few times if the command does not take, then it goes quiet.'
-                .. ' Follow my target also re-sends a fighting pet when your target changes.'
-                .. ' Jug and charmed pets behave identically.');
-            space();
+            ui.section('Fight', TIP_FIGHT, function()
+                local cur = fight.mode();
+                local picked = ui.choice('bstfight_' .. id, {
+                    values = fight.MODES, labels = fight.MODE_LABEL, helps = fight.MODE_HELP,
+                }, cur);
+                if picked ~= nil then fight.setMode(picked); end
+                ui.space();
 
-            local cur = fight.mode();
-            local w = modeWidth(imgui, fight);
-            for _, m in ipairs(fight.MODES) do
-                if modeButton(imgui, fight, id, m, cur, w) then fight.setMode(m); end
-            end
-            space();
+                -- "Send when": from the engage, or only after the first swing.
+                ui.dim('Send when:');
+                local when = ui.choice('bstwhen_' .. id, {
+                    values = fight.WHENS, labels = fight.WHEN_LABEL, helps = fight.WHEN_HELP,
+                    horizontal = true, w = 150, h = 22,
+                }, fight.when());
+                if when ~= nil then fight.setWhen(when); end
+                ui.space();
 
-            -- Send when -- the player's option (Henrik's 2026-07-29): from the
-            -- engage, or only after the first auto-attack swing.
-            if type(imgui.Button) == 'function' then
-                txt(COL_DIM, 'Send when:');
-                local curWhen = fight.when();
-                for _, wv in ipairs(fight.WHENS) do
-                    local lit = (curWhen == wv);
-                    local pushed = false;
-                    if lit and ImGuiCol_Button ~= nil and type(imgui.PushStyleColor) == 'function' then
-                        imgui.PushStyleColor(ImGuiCol_Button, { 0.18, 0.55, 0.18, 1.00 });
-                        pushed = true;
-                    end
-                    if imgui.Button(fight.WHEN_LABEL[wv] .. '##bstwhen_' .. wv .. '_' .. id, { 150, 22 }) then
-                        fight.setWhen(wv);
-                    end
-                    if pushed then imgui.PopStyleColor(1); end
-                    if type(imgui.IsItemHovered) == 'function' and imgui.IsItemHovered()
-                       and type(imgui.SetTooltip) == 'function' then
-                        imgui.SetTooltip(fight.WHEN_HELP[wv]);
-                    end
-                    if wv ~= fight.WHENS[#fight.WHENS] and type(imgui.SameLine) == 'function' then
-                        imgui.SameLine(0, 6);
-                    end
-                end
-                space();
-            end
+                local heel = ui.toggle('bstheel_' .. id, 'Respect Heel', fight.heelRespect(), TIP_HEEL);
+                if heel ~= nil then fight.setHeelRespect(heel); end
+                ui.space();
 
-            -- Respect Heel -- the player's option (Henrik's ruling 2026-07-29).
-            if type(imgui.Checkbox) == 'function' then
-                local heel = { fight.heelRespect() };
-                if imgui.Checkbox('Respect Heel##bstheel_' .. id, heel) then
-                    fight.setHeelRespect(heel[1]);
-                end
-                if type(imgui.IsItemHovered) == 'function' and imgui.IsItemHovered()
-                   and type(imgui.SetTooltip) == 'function' then
-                    imgui.SetTooltip('On: once your pet takes a send, pulling it back with Heel sticks --\n'
-                        .. 'nothing is re-sent at that mob for the rest of the fight.\n'
-                        .. 'Off: an idle pet keeps being re-sent while you are engaged (a few tries).');
-                end
-                space();
-            end
-
-            -- Why it is or is not acting right now, plus what the last edge did.
-            -- Deliberately here and NOT in chat: Fight fires on every pull, and a
-            -- line per pull is noise (the standing "success is silent" law).
-            local act = nil;
-            pcall(function()
-                local jh = req('dlac\\feature\\jobhelpers');
-                if jh ~= nil and type(jh.activity) == 'function' then act = jh.activity(id); end
+                -- Why it is or is not acting, and what the last beat did.
+                -- Deliberately here and NOT in chat: Fight evaluates every beat
+                -- and fires on every pull, and a line per pull is noise.
+                ui.ruleStatus({
+                    armed     = (cur ~= 'off'),
+                    activity  = act,
+                    offText   = 'Fight is off -- pet commands stay entirely yours.',
+                    armedText = 'Armed: ' .. tostring(fight.MODE_LABEL[cur] or cur) .. '.',
+                    last      = lastLine(fight),
+                });
             end);
-            if cur == 'off' then
-                txt(COL_DIM, 'Fight is off -- pet commands stay entirely yours.');
-            elseif type(act) == 'table' and act.active ~= true then
-                txt(COL_WARN, 'Not acting: ' .. tostring(act.label or 'inactive') .. '.');
-            else
-                txt(COL_OK, 'Armed: ' .. tostring(fight.MODE_LABEL[cur] or cur) .. '.');
-            end
-            local lastD = fight.lastDecision();
-            if lastD ~= nil then
-                txt(COL_DIM, 'Last: ' .. fight.decisionText(lastD) .. '.');
-            end
-            space();
-            rule();
-            space();
         end
 
-        -- ----- Reward (issues #138 + #140) ----------------------------------
-        local reward = rewardMod();
-        head(imgui, 'Reward',
-            'Reward tops up your pet with the best pet food you carry -- highest tier'
-            .. ' your level allows and your bags hold. dlac equips the food, verifies it landed,'
-            .. ' fires Reward, then restores your gear.');
-        space();
-
-        -- recast readiness -> gray the button while Reward is down (AC7)
-        local recast = req('dlac\\feature\\recast');
-        local ready, remaining = true, nil;
-        if recast ~= nil then ready, remaining = recast.rewardReady(); end
-
-        -- food preview (the ladder, read off the bags)
-        local petfood = req('dlac\\feature\\petfood');
-        local pick = petfood ~= nil and petfood.choose() or { ok = false, reason = 'none-carried' };
-
-        -- ----- the automatic rule (issue #140): switch + threshold ----------
-        -- The switch comes FIRST and the slider under it, because the slider is
-        -- meaningless until the rule is armed -- and the switch is what a player
-        -- scanning the Panel for "is this thing going to act on its own?" is
-        -- looking for.
+        -- ----- Reward ------------------------------------------------------
+        local reward = S.sibling('reward');
         if reward ~= nil then
-            local armed = reward.armed();
-            if type(imgui.Checkbox) == 'function' then
-                local buf = { armed };
-                if imgui.Checkbox('Reward my pet when it drops low##bstrewardauto_' .. id, buf) then
-                    reward.setArmed(buf[1]);
-                    armed = buf[1];
-                end
-                if type(imgui.IsItemHovered) == 'function' and imgui.IsItemHovered()
-                   and type(imgui.SetTooltip) == 'function' then
-                    imgui.SetTooltip('Off by default. Armed, dlac runs the same sequence the button below runs\n'
-                        .. 'whenever your pet is under the threshold -- once per '
-                        .. tostring(reward.LOCKOUT_S) .. ' seconds at most, so a hurt pet\n'
-                        .. 'never turns into a stream of commands or chat lines.');
-                end
-            end
+            ui.section('Reward', TIP_REWARD, function()
+                -- The switch comes FIRST and the slider under it: the slider is
+                -- meaningless until the rule is armed, and the switch is what a
+                -- player scanning for "is this going to act on its own?" wants.
+                local armed = reward.armed();
+                local flip = ui.toggle('bstrewardauto_' .. id,
+                    'Reward my pet when it drops low', armed,
+                    'Off by default. Armed, dlac runs the same sequence the button below runs\n'
+                    .. 'whenever your pet is under the threshold -- once per '
+                    .. tostring(reward.LOCKOUT_S) .. ' seconds at most, so a hurt pet\n'
+                    .. 'never turns into a stream of commands or chat lines.');
+                if flip ~= nil then reward.setArmed(flip); armed = flip; end
 
-            local th = reward.threshold();
-            local newTh, drewThr = thresholdWidget(imgui, reward, id, th);
-            if newTh ~= nil then reward.setThreshold(newTh); th = reward.clampThreshold(newTh); end
-            if drewThr and type(imgui.SameLine) == 'function' then imgui.SameLine(0, 8); end
-            txt(COL_DIM, string.format('below %d%% pet HP', th));
+                -- The slider carries its own unit ('51%'), and the status line
+                -- under it already says what the number MEANS ("Armed: below 51%
+                -- pet HP") -- so no caption beside it (Henrik's ruling
+                -- 2026-07-29: "not really relevant text, can prolly be removed").
+                local th = reward.threshold();
+                local newTh = ui.slider('bstrewardthr_' .. id, th,
+                    reward.MIN_THRESHOLD, reward.MAX_THRESHOLD, '%.0f%%', TIP_THRESHOLD);
+                if newTh ~= nil then reward.setThreshold(newTh); th = reward.clampThreshold(newTh); end
 
-            -- Why the rule is or is not acting right now, and what the last beat
-            -- decided. Deliberately here and NOT in chat: the rule evaluates
-            -- every dispatch beat, and only an ATTEMPT is news.
-            --
-            -- The WARN line is reserved for the module gates -- the same reads
-            -- the Fight section warns on. "No pet out", "above the threshold"
-            -- and "waiting out the lockout" are the rule working, not the rule
-            -- blocked, and colouring them orange would cry wolf all session;
-            -- they land in the dim "Last beat" line below instead.
-            local ract = nil;
-            pcall(function()
-                local jh = req('dlac\\feature\\jobhelpers');
-                if jh ~= nil and type(jh.activity) == 'function' then ract = jh.activity(id); end
+                -- The WARN colour is reserved for the module gates. "No pet out",
+                -- "above the threshold" and "waiting out the lockout" are the rule
+                -- WORKING, not blocked -- orange would cry wolf all session, so
+                -- they land in the dim line below.
+                ui.ruleStatus({
+                    armed     = armed,
+                    activity  = act,
+                    offText   = 'The rule is off -- the button below is the only thing that feeds your pet.',
+                    armedText = string.format('Armed: below %d%% pet HP.', th),
+                    last      = lastLine(reward),
+                    lastLabel = 'Last beat',
+                });
+                ui.space();
+
+                -- The optional Reward set. PERSISTED: the automatic path has no
+                -- Panel to read a session-only choice from.
+                ui.dim('Reward set (optional):');
+                local set = ui.combo('bstrewardset_' .. id, reward.setName(),
+                                     S.sets.names(), tostring, nil, 'None');
+                if set ~= nil then reward.setSetName(tostring(set)); end
+                ui.space();
+
+                -- The deliberate feed. A real Button when ready, a dim countdown
+                -- when down -- never a command the client will reject. It stays
+                -- whatever the rule is set to: it is the field-test lever.
+                local ready, remaining = S.ability.ready(reward.RECAST);
+                if ready then
+                    if ui.button('bstreward_' .. id, 'Reward now', nil, 130, 26) then
+                        reward.request();
+                    end
+                else
+                    ui.disabled(string.format('Reward now  (down %ss)', tostring(remaining or '?')));
+                end
+                ui.space();
+
+                -- The chosen tier, or the honest reason none was chosen. The same
+                -- service the act itself asks, so the preview can never disagree
+                -- with what gets equipped.
+                local pick = S.pet.food();
+                if pick.ok then
+                    ui.ok('Food: ' .. tostring(pick.name));
+                else
+                    ui.warn(S.pet.foodRefusal(pick));
+                end
             end);
-            local lastD = reward.lastDecision();
-            if not armed then
-                txt(COL_DIM, 'The rule is off -- the button below is the only thing that feeds your pet.');
-            elseif type(ract) == 'table' and ract.active ~= true then
-                txt(COL_WARN, 'Not acting: ' .. tostring(ract.label or 'inactive') .. '.');
-            else
-                txt(COL_OK, string.format('Armed: below %d%% pet HP.', th));
-            end
-            if lastD ~= nil then
-                txt(COL_DIM, 'Last beat: ' .. reward.decisionText(lastD) .. '.');
-            end
-            space();
         end
 
-        -- optional Reward set picker (guarded: the combo is not in every
-        -- binding). PERSISTED since #140: the automatic rule has no Panel to
-        -- read a session-only choice from.
-        if reward ~= nil and type(imgui.BeginCombo) == 'function' and type(imgui.EndCombo) == 'function' then
-            txt(COL_DIM, 'Reward set (optional):');
-            local cur = reward.setName() or 'None';
-            if imgui.BeginCombo('##bstrewardset_' .. id, cur) then
-                local names = { 'None' };
-                for _, n in ipairs(reward.setNames()) do names[#names + 1] = n; end
-                for _, n in ipairs(names) do
-                    local sel = (cur == n);
-                    if type(imgui.Selectable) == 'function' and imgui.Selectable(n, sel) then
-                        reward.setSetName(n);
-                    end
-                end
-                imgui.EndCombo();
-            end
-            space();
-        end
-
-        -- the button -- a real Button when ready, a dim countdown when down. It
-        -- stays whatever the rule is set to: it is the deliberate feed, and the
-        -- field-test lever for the whole sequence.
-        if ready then
-            local clicked = false;
-            if type(imgui.Button) == 'function' then
-                clicked = imgui.Button('Reward now##bstreward_' .. id, { 130, 26 });
-            end
-            if clicked and reward ~= nil then reward.request(id); end
-        else
-            if type(imgui.TextDisabled) == 'function' then
-                imgui.TextDisabled(string.format('Reward now  (down %ss)', tostring(remaining or '?')));
-            else
-                txt(COL_DIM, string.format('Reward now (down %ss)', tostring(remaining or '?')));
-            end
-        end
-        space();
-
-        -- food line: the chosen tier, or the loud reason none was chosen
-        if pick.ok then
-            txt(COL_OK, 'Food: ' .. tostring(pick.name));
-        else
-            txt(COL_WARN, petfood ~= nil and petfood.refusalLine(pick) or 'no pet food available.');
-        end
-
-        space();
-        rule();
-        space();
-
-        -- ----- Resummon (issue #141) ----------------------------------------
-        local resummon = resummonMod();
+        -- ----- Summon ------------------------------------------------------
+        -- HOW a pet is summoned, gathered in one place because all three
+        -- requesters share it: the Resummon rule below, its queue, and the
+        -- button/key here.
+        local resummon = S.sibling('resummon');
+        local curJug = nil;
         if resummon ~= nil then
-            head(imgui, 'Resummon',
-                'Death only, and only your JUG pet. dlac equips your jug, verifies it landed,'
-                .. ' fires your summon, then restores your gear. A Leave, zoning, logging out and'
-                .. ' a charmed pet are never a resummon -- charm play stays entirely yours.');
-            space();
-
-            local armed = resummon.armed();
-            if type(imgui.Checkbox) == 'function' then
-                local buf = { armed };
-                if imgui.Checkbox('Resummon my pet when it dies##bstresumauto_' .. id, buf) then
-                    resummon.setArmed(buf[1]);
-                    armed = buf[1];
-                end
-                if type(imgui.IsItemHovered) == 'function' and imgui.IsItemHovered()
-                   and type(imgui.SetTooltip) == 'function' then
-                    imgui.SetTooltip('Off by default. Armed, a CONFIRMED jug-pet death summons a new one --\n'
-                        .. 'the pet-falls message, or your pet vanishing with its HP already low.\n'
-                        .. 'Nothing else counts, so a deliberate dismissal never costs you a jug.');
-                end
-            end
-
-            -- the jug picker: every catalog jug, level-ordered, each naming the
-            -- pet it calls (guarded -- the combo is not in every binding).
-            local jugs = req('dlac\\jobhelpers\\bst\\bst-helper\\jugs');
-            local curJug = resummon.jug();
-            if jugs ~= nil and type(imgui.BeginCombo) == 'function' and type(imgui.EndCombo) == 'function' then
-                txt(COL_DIM, 'Jug:');
-                local rows = jugs.list();
-                local curRow = nil;
-                for _, r in ipairs(rows) do
-                    if curJug ~= nil and string.lower(r.name) == string.lower(curJug) then curRow = r; end
-                end
-                local preview = 'None';
-                if curRow ~= nil then preview = jugLabel(curRow);
-                elseif curJug ~= nil then preview = curJug; end
-                if imgui.BeginCombo('##bstresumjug_' .. id, preview) then
-                    if type(imgui.Selectable) == 'function' and imgui.Selectable('None', curJug == nil) then
-                        resummon.setJug('None');
-                    end
+            curJug = resummon.jug();
+            ui.section('Summon', TIP_SUMMON, function()
+                -- The jug picker: every catalog jug, level-ordered, each naming
+                -- the pet it calls.
+                local jugs = S.sibling('jugs');
+                if jugs ~= nil then
+                    ui.dim('Jug:');
+                    local rows = jugs.list();
+                    local preview = curJug;
                     for _, r in ipairs(rows) do
-                        local sel = (curRow == r);
-                        if type(imgui.Selectable) == 'function'
-                           and imgui.Selectable(jugLabel(r) .. '##bstresumjugrow_' .. tostring(r.id), sel) then
-                            resummon.setJug(r.name);
+                        if curJug ~= nil and string.lower(r.name) == string.lower(curJug) then
+                            preview = jugLabel(r);
                         end
                     end
-                    imgui.EndCombo();
+                    local picked = ui.combo('bstresumjug_' .. id, preview, rows, jugLabel,
+                                            TIP_JUG, 'None', jugSearch);
+                    if picked ~= nil then
+                        if picked == 'None' then
+                            resummon.setJug('None');
+                        else
+                            resummon.setJug(picked.name);
+                        end
+                        curJug = resummon.jug();
+                    end
+                    ui.space();
                 end
-                if type(imgui.IsItemHovered) == 'function' and imgui.IsItemHovered()
-                   and type(imgui.SetTooltip) == 'function' then
-                    imgui.SetTooltip('Every jug in the catalog, lowest level first, each naming the pet it calls.\n'
-                        .. 'The pet names are dlac module data and are NOT field-verified yet -- tell the\n'
-                        .. 'maintainer if one is wrong, and it is a one-line fix.');
-                end
-                space();
-            end
 
-            -- the binary method choice + the cooldown-fallback checkbox
-            local curM = resummon.method();
-            local mtip = 'Only Call Beast earns Beast Raising bonuses, and it CONSUMES the jug.\n'
-                .. 'Bestial Loyalty does not consume it -- but it earns no bonuses.\n'
-                .. 'Both need the jug EQUIPPED: the server reads your ammo slot for the\n'
-                .. 'species, which is why dlac equips it and checks before firing.';
-            for _, m in ipairs(resummon.METHODS) do
-                if methodButton(imgui, id, m, resummon.METHOD_LABEL[m], mtip, curM == m, 176) then
-                    resummon.setMethod(m);
-                end
-            end
+                local method = ui.choice('bstresum_' .. id, {
+                    values = resummon.METHODS, labels = resummon.METHOD_LABEL,
+                    helps  = { call = TIP_METHOD, loyalty = TIP_METHOD },
+                }, resummon.method());
+                if method ~= nil then resummon.setMethod(method); end
 
-            if type(imgui.Checkbox) == 'function' then
-                local fb = { resummon.fallback() };
-                if imgui.Checkbox('Use the other if mine is on cooldown##bstresumfb_' .. id, fb) then
-                    resummon.setFallback(fb[1]);
-                end
-                if type(imgui.IsItemHovered) == 'function' and imgui.IsItemHovered()
-                   and type(imgui.SetTooltip) == 'function' then
-                    imgui.SetTooltip('On by default. Off, a resummon waits for YOUR method instead of\n'
-                        .. 'reaching for the other one. Either way, if nothing is ready the\n'
-                        .. 'resummon queues and fires the moment one comes up -- and zoning,\n'
-                        .. 'Leave, logging out or any pet appearing cancels it.');
-                end
-            end
-            space();
+                local fb = ui.toggle('bstresumfb_' .. id,
+                    'Use the other if mine is on cooldown', resummon.fallback(), TIP_FALLBACK);
+                if fb ~= nil then resummon.setFallback(fb); end
 
-            -- Why the rule is or is not acting, and what the last edge decided.
-            -- Same split as Reward's: the WARN colour is for the module gates,
-            -- everything else is the rule working and lands in the dim line.
-            local sact = nil;
-            pcall(function()
-                local jh = req('dlac\\feature\\jobhelpers');
-                if jh ~= nil and type(jh.activity) == 'function' then sact = jh.activity(id); end
+                -- What each summon MEASURES right now. Here because the field
+                -- round that produced it (2026-07-30) could not have been
+                -- diagnosed from the game: a recast slot that fails to resolve
+                -- reads exactly like an ability that is up, and the rule chose
+                -- accordingly. If a line here says "cannot read its cooldown",
+                -- that is the bug back, visible before it costs a resummon.
+                for _, m in ipairs(resummon.METHODS) do
+                    local txt = resummon.recastText(S, resummon.RECAST[m]);
+                    local line = string.format('%s: %s',
+                                               tostring(resummon.METHOD_LABEL[m] or m), txt);
+                    if txt == 'ready' then
+                        ui.ok(line);
+                    elseif txt:find('cannot', 1, true) ~= nil then
+                        ui.warn(line);
+                    else
+                        ui.dim(line);
+                    end
+                end
+                ui.space();
+
+                -- The optional Summon set + its one exception. PERSISTED, like
+                -- the Reward set: the automatic path has no Panel to read from.
+                ui.dim('Summon set (optional):');
+                local sset = ui.combo('bstsummonset_' .. id, resummon.setName(),
+                                      S.sets.names(), tostring, TIP_SUMMONSET, 'None');
+                if sset ~= nil then resummon.setSetName(tostring(sset)); end
+
+                local wep = ui.toggle('bstsummonwep_' .. id,
+                    'Include weapon slots', resummon.weapons(), TIP_WEAPONS);
+                if wep ~= nil then resummon.setWeapons(wep); end
+                ui.space();
+
+                -- The key. The module STORES it; the framework installs it.
+                ui.dim('Summon key:');
+                local myKey = resummon.key();
+                local typed = ui.input('bstsummonkey_' .. id, myKey or '',
+                                       { w = 90, tip = TIP_KEY, button = 'Set' });
+                if typed ~= nil then resummon.setKey(typed); myKey = resummon.key(); end
+
+                -- What that key is actually doing right now -- asked of the
+                -- registry, never assumed from the setting: a key we stored and
+                -- a key we HOLD are two different facts, and the gap between
+                -- them (somebody else has it) is the one worth printing.
+                local keys = (type(S.keys) == 'table') and S.keys or nil;
+                if myKey == nil then
+                    ui.dim('No key bound -- the button below is the only way in.');
+                elseif keys == nil then
+                    ui.dim(string.format('%s is set.', myKey));
+                else
+                    local held = keys.boundTo('summon');
+                    if held ~= nil then
+                        ui.ok(string.format('%s is bound to Summon now.', tostring(held)));
+                    else
+                        local who = keys.holder(myKey);
+                        if who ~= nil then
+                            ui.warn(string.format('%s is held by %s -- pick another key.',
+                                                  myKey, tostring(who.label or who.owner)));
+                        else
+                            ui.dim(string.format('%s binds while you are on BST with this helper on.', myKey));
+                        end
+                    end
+                end
+                ui.space();
+
+                if ui.button('bstsummonnow_' .. id, 'Summon now', TIP_SUMMONNOW, 130, 26) then
+                    resummon.summonNow();
+                end
+                if curJug == nil then
+                    ui.warn('No jug picked -- nothing can be summoned.');
+                end
             end);
-            if not armed then
-                txt(COL_DIM, 'The rule is off -- a dead pet stays dead until you summon it.');
-            elseif curJug == nil then
-                txt(COL_WARN, 'No jug picked -- nothing can be summoned.');
-            elseif type(sact) == 'table' and sact.active ~= true then
-                txt(COL_WARN, 'Not acting: ' .. tostring(sact.label or 'inactive') .. '.');
-            else
-                txt(COL_OK, string.format('Armed: %s, %s.', tostring(curJug),
-                    tostring(resummon.METHOD_LABEL[curM] or curM)));
-            end
-            local q = resummon.queued();
-            if q ~= nil then
-                txt(COL_WARN, 'Queued: waiting for a summon to come off cooldown.');
-            end
-            local sD = resummon.lastDecision();
-            if sD ~= nil then
-                txt(COL_DIM, 'Last edge: ' .. resummon.decisionText(sD) .. '.');
-            end
-            space();
-            rule();
-            space();
         end
 
-        -- the live pet, when there is one -- the vitals service's own answer, so
-        -- the Panel and the rule can never disagree about the bar they read.
-        local pv = req('dlac\\feature\\petvitals');
-        if pv ~= nil then
-            local v = pv.get();
-            if type(v) == 'table' and v.present == true then
-                txt(COL_DIM, string.format('Pet: %s at %s%% HP.',
-                    tostring(v.name or 'your pet'), tostring(v.hpp or '?')));
-            else
-                txt(COL_DIM, 'Pet: none out.');
-            end
+        -- ----- Resummon ----------------------------------------------------
+        if resummon ~= nil then
+            ui.section('Resummon', TIP_RESUMMON, function()
+                local armed = resummon.armed();
+                local flip = ui.toggle('bstresumauto_' .. id,
+                    'Resummon my pet when it dies', armed,
+                    'Off by default. Armed, a CONFIRMED jug-pet death summons a new one --\n'
+                    .. 'your pet going down where it stood, which dlac reads off the pet itself.\n'
+                    .. 'A Leave, zoning and logging out never count, so a deliberate\n'
+                    .. 'dismissal cannot cost you a jug.');
+                if flip ~= nil then resummon.setArmed(flip); armed = flip; end
+
+                -- The pause. Its own line because it is the one setting here
+                -- that is about how the act LOOKS rather than what it does.
+                ui.dim('Wait before summoning:');
+                local dly = ui.slider('bstresumdelay_' .. id, resummon.delay(),
+                    resummon.MIN_DELAY_S, resummon.MAX_DELAY_S, '%.1fs', TIP_DELAY);
+                if dly ~= nil then resummon.setDelay(dly); end
+                ui.space();
+
+                -- "No jug picked" is the module's OWN gate, and it is a real
+                -- blocker the player can fix -- so it takes the warn slot ahead of
+                -- the activity reasons.
+                local blocked = nil;
+                if curJug == nil then blocked = 'No jug picked -- nothing can be summoned.'; end
+                ui.ruleStatus({
+                    armed     = armed,
+                    activity  = act,
+                    blocked   = blocked,
+                    offText   = 'The rule is off -- a dead pet stays dead until you summon it.',
+                    armedText = string.format('Armed: %s, %s.', tostring(curJug),
+                                  tostring(resummon.METHOD_LABEL[resummon.method()] or '?')),
+                    last      = lastLine(resummon),
+                    lastLabel = 'Last edge',
+                });
+                -- What the queue is actually waiting FOR: the pause and the
+                -- cooldown are both "queued", and telling a player "waiting for
+                -- a cooldown" during a one-second pause would be a small lie.
+                local q = resummon.queued();
+                if q ~= nil then
+                    local last = resummon.lastDecision();
+                    local why = (type(last) == 'table') and (last.reason or last.cancel) or nil;
+                    if why == 'delay' then
+                        ui.dim('Pausing a moment before summoning.');
+                    else
+                        ui.warn('Queued: waiting for a summon to come off cooldown.');
+                    end
+                end
+            end);
         end
 
-        -- the live sequence state, if one is running
-        local actionseq = req('dlac\\feature\\actionseq');
-        if actionseq ~= nil and actionseq.active() then
-            txt(COL_HEAD, 'Sequence: ' .. tostring(actionseq.statusText()));
+        -- ----- the live world ----------------------------------------------
+        -- The vitals service's own answer, so the Panel and the rules can never
+        -- disagree about the bar they read.
+        local v = S.pet.get();
+        if type(v) == 'table' and v.present == true then
+            ui.dim(string.format('Pet: %s at %s%% HP.',
+                tostring(v.name or 'your pet'), tostring(v.hpp or '?')));
+        else
+            ui.dim('Pet: none out.');
+        end
+
+        if S.act.busy() then
+            ui.text(ui.COL.head, 'Sequence: ' .. tostring(S.act.status()));
         end
     end,
 
-    -- The row-status hook (optional, #137): a short "Reward: ready / 12s" beside
-    -- the row. Contained by the tab; a throw never breaks the row.
+    -- The row-status hook: a short "Reward ready / Reward 12s" beside the Panel
+    -- title. Contained by the tab; a throw never breaks the row.
     status = function(ctx)
-        local imgui = ctx and ctx.imgui;
-        if imgui == nil or type(imgui.TextColored) ~= 'function' then return; end
-        local recast = req('dlac\\feature\\recast');
-        if recast == nil then return; end
-        local ready, remaining = recast.rewardReady();
+        local ui = ctx and ctx.ui;
+        local S  = ctx and ctx.S;
+        if ui == nil or S == nil then return; end
+        local reward = S.sibling('reward');
+        if reward == nil then return; end
+        local ready, remaining = S.ability.ready(reward.RECAST);
         if ready then
-            imgui.TextColored(COL_OK, 'Reward ready');
+            ui.ok('Reward ready');
         else
-            imgui.TextColored(COL_WARN, string.format('Reward %ss', tostring(remaining or '?')));
+            ui.warn(string.format('Reward %ss', tostring(remaining or '?')));
         end
     end,
 };

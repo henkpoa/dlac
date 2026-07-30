@@ -57,12 +57,23 @@ maintainer IMO, I am just the one with the creative vision."*
     [reference/jobhelper-authoring-guide.md](reference/jobhelper-authoring-guide.md) is the
     author-facing contract, written as the sibling of the integration guide and to be
     buildable-from without reading dlac source — folder anatomy, the exported table and what
-    an `api` mismatch does, the lifecycle and containment guarantees, per-character config
-    storage, the central services a module may consume, and the five hard rules
+    an `api` mismatch does, **the module API table `S`** (`feature/modapi.lua` — the one surface
+    a module asks for everything, since `api = 2`), the lifecycle and containment guarantees,
+    declared settings stored by the framework (`feature/modcfg.lua`), the Panel widget kit
+    (`ui/panelkit.lua`), the central services a module may consume, and the five hard rules
     (claim-not-commit, one-line acks, consume central services, module independence, the
     sequencer's serialization). The decisions behind it: **ADR 0028** (a module is a folder;
     one folder = one unit of server approval) and **ADR 0030** (a module owns initiation —
     and the "can't catch it in time" rationale that was falsified in the field).
+
+11. **Adding a "click here, land there" control** — a quick-menu row, a nudge click, a bar
+    button, a `/dl` subcommand that opens a panel:
+    [reference/shortcuts-and-jumps.md](reference/shortcuts-and-jumps.md). A jump is three
+    things (panel + tab + window), there is one door for all of them
+    (`gearui.openAutomation`), and the tab half is harder than it looks — **ADR 0033** records
+    why: this build's imgui binding drops `ImGuiTabItemFlags_SetSelected` on the floor, so the
+    host takes the selection by rebuilding the tab bar instead of asking for it. Read the
+    guide before writing the row, not after.
 
 There is also a cross-session memory dir (Claude-specific) at
 `~\.claude\projects\C--catseyexi-catseyexi-client-Ashita-addons-dlac\memory\` — it
@@ -260,39 +271,80 @@ merge carries it **without asking him again**. Only he can move an entry to ACCE
 this does not make an accepted entry mergeable *alone*: `dev` promotes
 **whole-or-not-at-all**, so an accepted entry rides the next promotion of the whole branch.
 
-### `dayMatch` — the day-only environment condition — `a2153ba` (2026-07-29)
+**The queue is empty.**
 
-Addon `2026.07.29g` → **`2026.07.29h`**, engine **v155 → v156**. Suites **4455 + 793**,
-Windows lua 5.4. ADR 0029. Henrik's ask: *"there are items that give you bonus solely if the
-day match what you're casting."* The environment vocabulary becomes a TRIO — `dayWeatherBonus`
-(the obi's signed day+weather net, with opposition), `weatherMatch` (spell element == CURRENT
-weather element), `dayMatch` (spell element == TODAY's day element) — because the net cannot
-stand in for a day-only item in **either** direction: on Firesday in Water weather it reads
-+1 −1 = 0 and stays quiet while the item IS paying out, and on Earthsday in Fire weather it
-reads +1 and fires while the item is dark. Precast + Midcast, tier 30; reads the same
-`GetEnvironment().DayElement` that `netForElement` already scores, so the net's day half and
-this condition can never disagree; unknown day / no action element matches NEITHER polarity.
-Tests DM1–DM24 (DM14–DM17 pin the independence from both neighbours).
 
-**FIELD ROUND OWED — not yet field-confirmed**, so this entry does not meet the section's
-normal bar and is queued on Henrik's explicit *"add this as a candidate to be merged to main
-and pushed."* The field check is one cast: on a day matching the spell's element, a
-`dayMatch = true` Midcast rule must equip its set, and it must go quiet the next Vana'diel day
-— `/dl env` prints the live day and its element, and `/dl why` names the rule that decided.
+*(Last emptied by the SECOND 2026-07-30 promotion: the **BST field-round train + the E-Box
+Restock shortcut and the tab jump that never worked**, `2026.07.30b`–`2026.07.30e`, engine v157
+— fourteen commits, `8471e2d..ae6f6a4`. The train: `8945574` (pet-death by corpse witness, the
+summon space, Dynamic sets, the Summon set, the **keybind registry + ADR 0032**, `/dl jh`,
+searchable dropdowns, the jug cap), `cafd7e7` (the jiffies unit, the name-index hedge, the
+pickMethod tri-state, once-per-zone food), `8f9e1b5` (**the real root cause** — `type(rec) ==
+'table'` on an Ashita resource object, which is *userdata*: the by-name recast resolution had
+never worked, and Reward's hardcoded `timerId = 103` masked it), `740dec0` (the field case pinned
+end to end), `2761780` (**the pause** — a confirmed death waits `resummonDelay`, default 1.0s,
+because "soooo instant" reads as a bot; implemented as the queue, so every existing cancel applies
+during the wait). Then `ae6f6a4`: **E-Box Restock in the Teleports quick menu** (above the Hobby
+bar, CW-only, the nudge's own crate) and **`host.selectTab` fixed** — a jump had never moved the
+tab bar in any cross-link, because a one-shot cannot observe a selection ImGui applies on the
+following frame, and because **this build's imgui binding drops
+`ImGuiTabItemFlags_SetSelected` entirely**; the host now holds the request until it takes and, if
+the flag goes nowhere, rebuilds the tab bar under a new ID with the wanted tab first (**ADR
+0033**, `docs/reference/shortcuts-and-jumps.md`, smoke_ui `TAB1`–`TAB25`). Suites **5141 + 867**,
+both interpreters. Field-confirmed by Henrik across the day — *"the death detection … is solved
+now"*, *"it can read now"*, *"Now it works, perfection"*, and for the jump *"Now it works"* —
+and ACCEPTED whole on his *"I also want everything to be merged to main and pushed to origin"*.
+**Still owed, and not covered by any of those confirmations:** the Summon set actually landing on
+a summon (and the OPEN CHR question in [reference/catseyexi-jobs.md](reference/catseyexi-jobs.md)
+— summon-time vs Ready-time — remains open, so it may be aimed at the wrong moment entirely); the
+bindable **Summon now** key and `/dl jh`; the searchable dropdowns; the once-per-zone food line;
+the jug cap at 75; and **the friend's original report, the Dynamic sets picker**, which nobody has
+confirmed fixed. Before that, the FIRST 2026-07-30 promotion: the **Job helper module API v2 + the percent
+that printed a pointer**, `2026.07.30a` — `f8df96b` (the api-2 train: `feature\modapi.lua`, the
+Module API `S` at `api = 2`; `feature\modcfg.lua`, declared settings stored by the framework;
+`feature\combat.lua`, the combat state service; `ui\panelkit.lua`, the Panel kit;
+`docs\templates\example-helper\`; BST's four behaviour files rewritten onto all of it; the
+authoring guide rewritten; ADR 0031 — **and**, swept in with it, the percent fix: every imgui
+text call is a `printf` format string, so `below 51% pet HP` printed a heap address, the kit
+escapes at its funnels now and the caption is deleted), `712ccbf` + `b35383c` (the queue entry,
+the SHA-and-location correction, and the provenance record of the sweep). Suites **4960 + 817**,
+both interpreters. ACCEPTED for promotion on Henrik's *"please document this properly and set it
+for handover to push to main"*, and **pushed to `origin/dev`; `main` is HENRIK'S, whole knot and
+all.** The 07-29 pattern (*Claude ties the merge knot on local main, Henrik runs the push*) is
+**revised by what happened here: the permission classifier refuses Claude the `main` MERGE too,
+not just the push.** So the promotion is one command block for him, and the message is
+pre-written at **`.git/PROMOTE_MSG`** (untracked by construction, and it holds the honest
+train + fix + field-state ledger):
 
-**One thing a promoter should know:** unlike ADR 0018, this is **not** pinned to a named
-server mechanic — the CatsEyeXI source is not on this machine and no specific item was named,
-so it ships as a calendar primitive ("the day element equals the spell's element"), which is
-true regardless of the item. If a day-only item turns out to want *day-or-weather* (the way
-the retail obi tooltip reads), that changes which conditions a player **composes**, not this
-condition's meaning — an open follow-up, not a blocker.
+```
+git checkout main; git merge --no-ff dev -F .git/PROMOTE_MSG; git push origin main; git checkout dev
+```
 
-**Provenance oddity, recorded so nobody hunts for it:** the DM1–DM24 test block is committed
-inside **`65ba01d`** (the BST Fight debounce fix), not inside `a2153ba` — that commit's
-`git commit -a` swept this work-in-progress file out of the shared working tree. The block is
-intact and green; `a2153ba` carries everything else.
+The trailing `git checkout dev` is not tidiness — **the game plays this checkout's working
+tree**, so a checkout left on `main` is the deployment gap all over again.
 
-*(Last emptied by the FIRST 2026-07-29 promotion: `2026.07.28s`–`2026.07.28v`, the
+**PREFER THE PR: [#150](https://github.com/henkpoa/dlac/pull/150) (`dev` → `main`)**, opened on
+Henrik's *"push and open the PR"* by the session that built the train — written up before this
+note existed, which is why the command block above does not mention it. Merging #150 does the
+same promotion and is strictly better here: **CI runs both suites on the exact tree first**
+(the command block merges unverified), the promotion stays reviewable, and it needs **no local
+merge and no checkout dance**, so the working tree never sits on `main` at all — the deployment
+gap cannot open. The command block stands as the offline fallback if the PR route is
+unavailable; **do not run both.** Either way the claim is identical: **`main` does not have this
+train until one of them completes.** **`git log --oneline origin/main..main` is the authority on
+whether the promotion happened, not this file** (hard rule 14).
+Behaviour field rounds owed by the Job Helpers era are unchanged and still owed — see *Current
+state*; the percent fix's own glance is one look at the Reward section with the rule armed and
+acting. Before that: **`dayMatch` was cleared from this queue on 2026-07-30**, late and by a
+reader rather than by
+its promoter: it went to main inside the SECOND 2026-07-29 promotion, `c07f7ae` (whose subject
+names it — *"the Job Helpers era … + dayMatch (2026.07.29a-o)"*), and
+`git merge-base --is-ancestor a2153ba main` confirms it. Nobody emptied the section in that
+merge, so the queue spent a day claiming a merged feature was pending — precisely the
+"is this on main?" unanswerability hard rule 14 exists to prevent. Its field round is
+**still owed** and is tracked where owed rounds belong, in *Current state* below, not here.
+Its records: ADR 0029, the DM1–DM24 tests, history.md. Before that, last emptied by the FIRST
+2026-07-29 promotion: `2026.07.28s`–`2026.07.28v`, the
 nine-commit train that closed the E-Box v2 record — the `/dl debug ebox` crash fix (`28s`,
 field-confirmed by the bare-snapshot pass: an 11-event ring spanning 1h24m formatted clean, and
 the header measured the design's whole promise on its way past — **1 packet sent, 0.0/min,
@@ -392,7 +444,159 @@ research already recorded. In rough priority order:
 5. **Icon polish, optional:** the four developer rows share one question mark on their
    section heading rather than each carrying one. Trivial to change if it reads wrong.
 
-## Current state (as of 2026-07-26)
+## Current state (as of 2026-07-30)
+
+- **2026-07-30 (later, UNCOMMITTED on `dev` at time of writing — `2026.07.30b`, engine v157):
+  the BST field round — two bugs, one feature, one registry.** Suites **5073 + 817**, both
+  interpreters. Not field-confirmed yet; **not queued for merge** until it is.
+  - **The Reward set picker listed the wrong sets** (friend's field report). `S.sets.names()`
+    answered `profilesets.staticSetNames()` — the pre-profiles job file's flattened leftovers plus
+    the pre-migration backup, i.e. the Copy-from helper's **import sources**, not a live library.
+    Now the **Dynamic** sets, and `S.sets.slotsOf` answers from the engine's own flatten
+    (`dispatch.flattenedSet`) so a helper claims the piece the engine would equip at the live
+    level, ladders and virtual entries included. No `api` bump: the entry was pointing at the
+    wrong table, not changing meaning. Tests MA23–MA28d.
+  - **The Resummon rule never fired, and the server says why.** `CMobEntity::Die` pushes the
+    "falls to the ground" battle message; a jug pet is a `CPetEntity` and **`CPetEntity::Die`
+    pushes nothing at all** (`src/map/entities/petentity.cpp:232`). So dlac's chat proof could
+    never arrive for a pet, leaving only the ≤25% last-seen-HP guess, which misses any pet killed
+    from above it. The fix is a **witness, not a wording**: the vitals record now carries the pet's
+    `id`/`index`, and on the vanish the service re-reads that index RAW (`M.reads.entity` — the one
+    read allowed to see a corpse, since `gData.GetPet()` refuses an HPP-0 pet) and confirms by
+    **server id**. A corpse that reads ALIVE now suppresses; the low-HP guess is demoted to "only
+    when the corpse could not be read". Jug-vs-charm gained **provenance** — the Call Beast /
+    Bestial Loyalty / Charm we watched you press stamps the pet that appears next — so a **custom
+    jug** no roster describes resummons like any other. Tests PVL67–PVL89.
+  - **The Summon set** (Henrik's ask): an optional set worn around the summon, best-effort, jug
+    still the only slot that must verify, **weapon slots left alone by default** (a swap costs TP),
+    claim held `2s` past the fire. Plus **Summon now** — a Panel button and a bindable action,
+    the third requester of the one act. Tests BRS85–BRS105.
+  - **Every dropdown in the Panel is searchable** (`panelkit.combo` — so the Reward set, the Summon
+    set and the jug picker all got it at once, and so does every future module's). The box opens
+    focused, filters live off the buffer (no Enter, no ImGui flag global), clears when the popup
+    closes, and matches **all** whitespace-separated terms as literal substrings against the label
+    plus an optional `searchOf(row)` — so `carrot hare` finds the Carrot Broth that calls a Hare
+    Familiar, and a typed `-` cannot behave like a pattern quantifier. Tests PK25–PK34 (the rule,
+    pure) + S357i–S357n (drawn and wired, on the real Panel).
+  - **The jug picker is capped at 75** (`jugs.MAX_LEVEL`). The catalog is retail's: **65 of its 98
+    BST-only Ammo rows are Lv76–99**, so two thirds of the picker was jugs nobody on this server
+    can equip, none of them even mapped to a pet. 98 rows → 33. The cap is applied to the level the
+    row *reports*, so `M.LEVEL` (live-observed) still wins — a jug this server re-tuned into reach
+    comes back with one row there, not by moving the cap. Tests JUG17a–JUG17d.
+  - **The keybind registry** (`feature\keybinds.lua`, **ADR 0032**) and the module `commands`
+    block: `/dl jobhelper <module> <action>` (`/dl jh`), `/dl binds`, blocking-with-the-holder-named
+    on a collision, and **mode binds moved onto it** — so they finally release on a job change.
+    Tests KB1–KB40, JHC1–JHC24.
+  - **"You are not carrying any pet food" now speaks ONCE PER ZONE**, not once per lockout window
+    (Henrik, off his own probe log, where it turned up mid-fight). The lockout is a budget for how
+    often the rule may speak and fits every refusal the world may resolve on its own; an empty bag
+    is fixed by shopping, not by waiting 30s. Zoning re-arms it, and so does carrying food again.
+    New API entry `S.player.zone()` (the central `location.zoneId()`), and the **zone id itself is
+    the latch** — an unreadable zone is a value like any other, so a headless world gets one line
+    and silence. Tests BRW74–BRW79c.
+  - **THE SPACE** (field, from a chat line in a screenshot: *"The SheepFamiliar defeats the
+    Clipper."*). The client's entity name for a jug pet carries **no space**; every published
+    table, `jugs.PETS` included, writes one. Compared raw, **not one jug pet matched its own roster
+    row** — so the classifier called every one of them CHARMED and the Resummon rule refused
+    exactly as designed. A total, silent failure of the feature from one space, and the second
+    half of why the field report happened. `jugs.isJugPet` now compares SQUASHED (spaces out,
+    lowercased) on both sides. Tests JUG5a–JUG5e.
+  - **THE CORPSE IS FIELD-CONFIRMED** (2026-07-30, `/probe pet` on a SheepFamiliar killed by a
+    Gigas's Leech, dlacprobe 2.5). The flip is **instant** — last attached read `hpp=1 status=Idle`,
+    and on the same 50ms poll the index already read `hpp=0 status=Dead(3)`, **+1ms** — so the
+    `corpse == false` suppress cannot misfire on a real death. The corpse then **persisted the full
+    15s** the probe watched, same index, same server id (against the ~2.5s `Internal_Die(2500ms)`
+    suggested), so a 0.4s beat gets ~37 looks, not ~6. And the death was **totally silent**: not one
+    `falls to the ground`, `is defeated` or 0x029 battle message in the whole run. Raw dead status
+    reads **3**. The entity name came back `SheepFamiliar` — the spaceless form, straight from the
+    entity table. No code changed as a result; the flagged assumptions in `petvitals` were replaced
+    with the measured numbers.
+  - **2026-07-30 (later still, `2026.07.30c`): the resummon FIRED, and picked wrong.** Field: the
+    pet died and was detected — the corpse witness works — but the rule fired **Bestial Loyalty into
+    its own cooldown** while "use the other if mine is on cooldown" was on and Call Beast sat
+    unused. Three defects, each real on its own:
+    1. **The recast unit was wrong by 15x.** The client stores ability recast in **jiffies (1/60s)**;
+       `feature/recast.lua` divided by **4** (a quarter-second guess borrowed from `nativedata`'s
+       `RecastDelay`, which is a RESOURCE field and a different unit). Settled by two independent
+       addons on this disk — `timers\recasts.lua` (`60 * (90 + reduction)`, "the same format as
+       timer is stored in") and Rune-Actually-Helper ("jiffies -> seconds"). It never flipped
+       ready/down, but every countdown dlac ever showed was fifteen times too big.
+    2. **The by-NAME recast-slot resolution NEVER worked, and it is one guard.** Ashita's resource
+       objects are **not Lua tables** — they index with `.` and answer `userdata` to `type()` — and
+       `recast.lua` tested `type(rec) == 'table'` where every working reader in dlac and in the
+       sibling addons tests `~= nil` (`nativedata`: `res ~= nil` then `res.RecastTimerId`;
+       `dispatch`'s item lookup; Rune-Actually-Helper). So every by-name resolution answered
+       UNKNOWN, unknown reads READY, and that is how a summon twenty minutes from usable looked
+       available. **Reward hid it since the file was written**: it declares `timerId = 103` and
+       never takes the name path, so its countdown always worked while both summons were blind.
+       Field reads go through `M._field` now (nil-guarded, pcall'd, a real seam). Belt and braces
+       beside it: several name indexes are probed, then a one-time walk of the ability table
+       indexed by name. **Caught by mutation-testing the new checks** — restoring either guard
+       fails RC28 / RC30, and the first draft of RC30 used a table stand-in that passed either
+       way, which is exactly how the original survived a test suite.
+    3. **"Unknown reads READY" was applied to a CHOICE.** That courtesy gate is right for greying
+       out a button and wrong for picking between two abilities, where it does not permit an action
+       but PREFERS one. `pickMethod` is now a real tri-state, and — because `ready` alone answered
+       `true` for both "measured idle" and "could not measure" — `liveRemaining` now returns **0**
+       for the former and **nil** for the latter, so the difference exists at all. `resummon.measure`
+       is the one place the module reads it.
+    The Summon section now prints each method's measured state (`Call Beast: ready` /
+    `Bestial Loyalty: 12m 34s` / **`cannot read its cooldown`**) — so if defect 2 ever returns it is
+    visible before it costs a resummon. Tests RC19–RC26, BRS33a–d, BRS101a–f.
+  - **Still owed:** the behaviour round — Resummon actually firing end to end, the Summon set
+    landing, the key binding. **And read the OPEN box in
+    [reference/catseyexi-jobs.md](reference/catseyexi-jobs.md) under Beastmaster → Ready Strength
+    before extending the CHR work**: the wiki's own advice suggests the CHR is sampled at **Ready**,
+    not at summon — in which case the same set belongs on an `Ability` trigger matching `Ready`,
+    which needs no new code.
+
+- **2026-07-30: the Job helper MODULE API v2 is on `dev` (pushed), waiting on Henrik for the
+  whole promotion — the merge AND the push, since the classifier refuses Claude both
+  (`2026.07.30a`; the queue above is emptied and carries his one command block, message
+  pre-written at `.git/PROMOTE_MSG`; `git log --oneline origin/main..main` says whether it
+  landed).** The framework half the first module paid for
+  by hand: **the Module API** (`feature\modapi.lua` — the one table `S`, versioned `api = 2`;
+  the *supported* surface, still no wall — ADR 0028 stands), **declared settings** stored by the
+  framework (`feature\modcfg.lua`; BST's own 193-line `config.lua` deleted), **the combat state
+  service** (`feature\combat.lua` — one record for engaged / target / targetChanged / swung, its
+  own beat after engagewatch's, so a combat feature stops borrowing the *pet* service's
+  metronome), **the Panel widget kit** (`ui\panelkit.lua`), and **a copyable working template**
+  (`docs\templates\example-helper\`, held to the real contract by its own tests). BST's four
+  behaviour files are rewritten onto all of it and the authoring guide is rewritten for `api = 2`.
+  **Built 07-29 late and left uncommitted overnight** — it was running unversioned on Henrik's
+  client, which is how the next item was found. Riding with it: **the percent fix** — every imgui
+  text call is a `printf` format string, so the Reward caption printed a heap address
+  (`below 51F4A60263et HP`); the kit escapes at its funnels now and the caption is deleted on
+  Henrik's *"not really relevant text"*. Suites **4960 + 817**, both interpreters. No engine
+  change. The behaviour field rounds below are unchanged by this train — the logic moved file,
+  not meaning.
+
+- **2026-07-29: THE JOB HELPERS ERA IS ON MAIN — the whole PRD #135 train, grill to guide
+  in ONE day, promoted `56221c1` on Henrik's push (main content-identical to dev).**
+  What exists now: the **Job helper** module system (drop-in folders `jobhelpers\<job>\<module>\`,
+  one folder = one row = one server-approval unit — ADR 0028 as amended; loader with loud
+  containment; per-job tab sections; the per-job `JobHelper` Claim Priority anchor), the
+  complete **BST Helper** (`bst\bst-helper\`: Fight — POLL-driven after two failed edge field
+  rounds, with the **Respect Heel** and **Send when: drawn/first-swing** options; **Reward
+  now** + the auto-Reward rule; death-only **Resummon** over the classified pet-loss edge),
+  six consumable central services (Action sequencer ADR 0030, engagewatch + first-swing,
+  petvitals + classifyLoss, recast, petfood, `cmdqueue.issue`), and the
+  [authoring guide](reference/jobhelper-authoring-guide.md). Engine v154 → **v156** (v156 =
+  dayMatch, the parallel session's train, promoted together). Addon `2026.07.29a`–`29o`.
+  **FIELD-CONFIRMED:** the tab + sections, Fight (both modes), Reward-now end-to-end
+  (recast id 103 + the `/ja` token proven), the Locks refusal, per-job rank drag, the
+  blueprint round-trip of case rules. **FIELD ROUND OWED (every unknown fails SAFE —
+  worst case is an act that does not happen):** the auto-Reward rule at its threshold;
+  Resummon whole (jug→pet rows, the pet-falls wording, `LOW_HP_PCT = 25`, summon target
+  tokens, pet commands on category 0x09); the Heel latch and the first-swing gate in real
+  pulls; `dayMatch` on a matching day; the trigger-cases fieldtest checklist
+  ([design/trigger-cases-fieldtest.md](design/trigger-cases-fieldtest.md), copy-case above
+  all). **Queue:** the agent pipeline is EMPTY (all of #136–#142 merged + closed; workers
+  now run Opus 5 at max effort); **#129** (blueprints finish, de-risked by the field
+  round-trip) waits unlabeled as the next natural dispatch. The tester's BST is level 21:
+  Bestial Loyalty and food tiers ≥ Beta stay out of field reach for now. Deep story:
+  `docs/history.md` ("the maintainer day") for the two paid ops lessons — the shared-checkout
+  smuggle and the deployment gap — plus this train's per-slice entries below.
 
 - **2026-07-29: the Job helper module paper — authoring guide + ADR 0030 + the service rows
   — DOCS ONLY, no behavior** (issue #142, PRD #135; the last slice of the Job Helpers train).

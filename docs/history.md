@@ -7232,3 +7232,229 @@ no second status read). engagewatch stays a central service (subscriber-less unt
 autoacc lands). Edge-driven `decide`/`targetConfirms`/`onEdge` died with their tests;
 BFT1-30 pin the poll core + the beat glue (nil-override trap: `{k=nil}` is an EMPTY
 constructor -- unreadable-state cases are literal states).
+
+## Session "the maintainer day: options, layout, the promotion" (2026-07-29 evening, 29l-29o -> main)
+
+The same day the agents built PRD #135, the maintainer session field-shepherded it. What the
+agents did not write down lands here.
+
+**Respect Heel became an option (29l, Henrik: "Make it an option so player gets to decide"):**
+the poll rewrite had softened Heel (an idle pet kept being re-sent up to the cap); the fix is a
+TOOK latch -- our send is observed to TAKE (the pet went non-idle after it), so idle-again at
+the same target can only mean the player pulled it back -- behind a checkbox, default ON.
+
+**The layout went job-first (29m, Henrik: "jobhelpers/bst/bst-helper/ since bst-helper is the
+module of bst"):** the loader scans two levels, identity = the MODULE folder name (unique
+addon-wide, duplicates refused loudly), the job folder only says where a module FILES. ADR 0028
+amended. Module settings survived (the module's own config file is name-keyed).
+
+**"Send when" became an option (29n):** drawn (engage) vs first swing -- engagewatch gained the
+0x028 melee-round watch (actor @0x05, type bits at byte 10 -- the parse0x28 twin), network
+thread stashes, pump compares against my id on the main thread, every engage edge resets.
+
+**The promotion (evening, Henrik's "Once done, push to main"):** first staged on a `promo-main`
+branch, which Henrik REJECTED as a third wheel ("I want a dev and a main") -- the pattern that
+stuck: tie the promotion merge knot ON local main and hand Henrik `! git push origin main` (the
+permission layer refuses Claude a main push in any form; the human presses the button). Landed
+as `56221c1`, main content-identical to dev, the honest FIELD-CONFIRMED vs HEADLESS-ONLY ledger
+in `c07f7ae`'s message.
+
+**Two paid lessons, recorded so they stay paid.** (1) THE SHARED CHECKOUT SMUGGLE: a parallel
+session's in-progress day-match tests rode a wholesale `git add tests/run_tests.lua` into 29g --
+tests without their engine half, so every fresh checkout crashed while the dirty tree ran green
+(the implementation sat uncommitted BESIDE the smuggled tests). Evicted (`47b7b20`); at the
+day-match merge the eviction then outvoted their tests from the merge BASE and silently deleted
+them again -- the suite TOTAL was the tell (restored verbatim, `54dc778`). Diff the staged copy
+of any shared file before committing; treat a totals shortfall as a lost hunk. (2) THE
+DEPLOYMENT GAP: the game plays the MAIN CHECKOUT's working tree -- worktree merges pushed to
+origin/dev reach the field only when the checkout pulls, and a parallel session's dirty files
+block that pull. A whole Fight field round was voided testing stale code. The load beacon
+(debug\load-report.txt) is the one-line proof of what the game actually loaded; read it before
+any "reload and retest" ask.
+
+## Session "the percent sign that printed a pointer" (2026-07-30, `2026.07.30a`)
+
+One screenshot, one caption, one durable client fact. Henrik, on the BST Helper's Reward
+section: *"I don't know what value that is, seems like mumbo jumbo hex data."* The caption
+beside the threshold slider read **`below 51F4A60263et HP`**.
+
+**THE FACT, and it belongs on the same shelf as "a state never hears its own QueueCommand":
+every imgui TEXT call is a `printf` FORMAT string** --
+`Text`, `TextColored`, `TextDisabled`, `SetTooltip`, `LabelText`, `BulletText`. So a `%` in
+the *text* is a **conversion**, not a percent sign. `string.format('below %d%% pet HP', 51)`
+produced the perfectly correct Lua string `below 51% pet HP`, and ImGui then read its `% p`
+as the **`%p` pointer conversion**: it printed a heap address (`51F4A60263`) and ate the `p`,
+leaving `et HP`. Nothing was corrupt and no value was wrong -- the string was interpreted
+one layer further down than its author expected.
+
+**Why it was panelkit and only panelkit.** Ten UI modules already carry a private
+`local function esc(s) return (tostring(s):gsub('%%','%%%%')); end` -- ammoui, automationsui,
+arbmonui, chocoui, fishui, helmui, triggersui, restockui, jobhelpersui, gearfmt. The trap was
+known; the brand-new Panel kit (`ui\panelkit.lua`, written the night before) simply shipped
+without the copy, and it is the ONE module through which every Job helper's text now flows.
+The fix puts the escape at the kit's funnels rather than at the call sites: `M.text` (behind
+`dim`/`ok`/`warn`/`err`), `M.disabled`, `M.header` (label *and* hover -- `uistyle.helpLabel`
+draws and tooltips RAW), and `tipOn`. A module author writing "below 50%" in words cannot hit
+it now, which is the only version of this fix that survives the next author.
+
+**The `bind()` trap that came with it.** `panelkit.bind(im)` builds the bound kit by *walking
+`M`* and wrapping every function with the handle pre-applied -- deliberately, so a widget
+added later cannot be forgotten. `esc` takes **no handle**, so the wrapper would have made
+`ctx.ui.esc(s)` escape *a table address* and silently return garbage. `NOT_BOUND` (`bind`,
+`esc`) is now the list of things carried over as they are; PK19b pins it. Any future
+handle-less helper in that file needs the same row.
+
+**Henrik's ruling on the caption itself: delete it** (*"That is not really relevant text IMO
+can prolly be removed"*). The slider already renders `51%` inside itself, and `ui.ruleStatus`
+states the meaning a line below (`Armed: below 51% pet HP.`), so the caption was a third
+copy of one number. Deleted -- and this is the shape of most panel-text rulings on this
+project: the surface that already answers the question keeps the answer.
+
+**Two latent siblings died with it**, both in the same Panel and both invisible in the
+screenshot only because the character was in town: `Armed: below 51% pet HP.` (the status
+line, drawn the moment the rule *is* acting) and `Pet: <name> at 51% HP.`. They are fixed by
+the funnel, not by editing their strings.
+
+**What is NOT a format string, so nobody escapes twice:** `Button`, `Selectable`, `BeginCombo`
+and the other *label* parameters. `ui\fishbar.riskTag` builds `lose 30%, snap 12%` and feeds
+it to a `Selectable` -- correct as it stands.
+
+**The blind spot, stated plainly because it is structural:** `tests\smoke_ui.lua` renders
+every tab against a **stub** imgui that records strings and does not printf, so this whole
+class of bug is invisible to it -- exactly like the 300px width clipping the same kit paid for
+a day earlier. The escaping law is the guard; the field screenshot is the test. PK21-24 pin
+the escape at the four seams (status text, the last line, disabled text, tooltip).
+
+Recorded where authors will meet it: the `esc` block and the docblock lesson list in
+`ui\panelkit.lua`, the Central-services row in architecture.md, and §6.9 of the authoring
+guide (*"If you ever call `ctx.imgui.Text*` yourself, escaping is yours -- use
+`ctx.ui.esc(s)`"*).
+
+**Provenance, because the tree was not clean and then it moved under us.** This session opened
+on a working tree carrying the whole **Job helper module API v2** train uncommitted from the
+previous evening (`feature\modapi.lua`, `feature\modcfg.lua`, `feature\combat.lua`,
+`ui\panelkit.lua`, `docs\templates\example-helper\`, BST's four files rewritten onto them,
+`bst-helper\config.lua` deleted, the authoring guide rewritten for `api = 2`, ~2.5k lines) --
+green on both interpreters, wired into `dlac.lua`'s load list and the Central-services table,
+and *running on Henrik's client* (the screenshot that opened this session is the api-2 Panel),
+but never committed and never version-bumped. So the fix was written into files that belonged
+to a train still in flight, and while this entry was being written **that train's own session
+committed** -- `f8df96b`, 03:42, `feat(jobhelpers)!: the module API` -- **sweeping this fix, its
+tests, its guide bullet, its architecture row and this history entry into its commit**, along
+with the `2026.07.30a` bump (the train had none of its own; there is no `29p`). The first sign
+was a `git add` that staged nothing and a `git status` down to one file.
+
+**THE PROMOTION PATTERN NARROWED, and this is an ops fact worth more than the fix.** Yesterday's
+pattern was *"tie the promotion merge knot ON local main, hand Henrik `! git push origin main`"*.
+Tried here, the permission classifier refused `git merge --no-ff dev` **while on main** -- so it
+is not only the push that is his: **`main` cannot be written by Claude at all, locally included.**
+What a handover session can do is everything up to the boundary -- commit, push `dev`, empty the
+queue, and pre-write the promotion message where his merge can read it (`.git/PROMOTE_MSG`,
+untracked by construction) -- and then hand over ONE command block:
+`git checkout main; git merge --no-ff dev -F .git/PROMOTE_MSG; git push origin main; git checkout dev`.
+The trailing `checkout dev` is load-bearing: the game plays this checkout's working tree, so a
+checkout left on `main` is yesterday's deployment gap wearing a different hat. (Learned the hard
+way in the same minute: the blocked merge had already switched the checkout to `main`, which
+silently made Henrik's client hold `56221c1`'s files until it was switched back.)
+
+**THIRD instance of the shared-checkout lesson in two days, and the first BENIGN one** -- worth
+recording precisely because it went well, since the rule is about verification, not blame. What
+made it benign was checking rather than assuming, in both directions: every edit was confirmed
+present *in HEAD* (`git show HEAD:<file>` per file, not `git status`, which reads clean either
+way -- a wholesale re-Write of a shared file by the other session would ALSO read clean), and
+both suites were re-run against the committed tree (**4960 + 817**). Neither "it was swept, so
+it is lost" nor "it committed, so it is fine" is a safe default. **One real cost survives:** the
+commit SUBJECT names only the api-2 train, so `git log --grep` will never find the percent fix
+-- this entry and the HANDOFF queue entry are its only pointers, which is why both name the
+hash. The uncommitted `tests\fixtures\keepflow\...\lspreview.lua` line-ending change was left
+out of everything, as before: provenance still unknown, content still identical.
+
+## Session "the tab that never moved" (2026-07-30, E-Box Restock in the quick menu)
+
+Two things landed: the **E-Box Restock row in the Teleports quick menu** (above the Hobby
+bar, Crystal Warriors only, wearing the nudge's own crate icon), and — because that row
+immediately demonstrated it — the fix for **`uihost.selectTab`, which had never worked**.
+
+**The field report.** Henrik: *"if I push a button that should take me to the correct page,
+but not on the correct tab… I click e-box restock in teleport menu, in the gear helper tab it
+directs me to the correct menu, but when I open the GUI, I am still on the job helpers tab.
+So I think there's a step missing here (this goes for many other things as well)."* The
+"many other things" is right: **every** cross-link went through the same seam —
+`gearui.openAutomation` (the Teleports row, the hobby bars' "open my panel", the restock
+nudge's right-click, `/dl restock`). All of them set the correct detail view and left the tab
+bar exactly where it was.
+
+**Why it failed, and why nobody noticed for weeks.** `host.selectTab(label)` armed a
+one-shot; the next `renderTabs` pass handed `ImGuiTabItemFlags_SetSelected` to that label's
+`BeginTabItem` and forgot. But **ImGui applies a forced selection at the NEXT frame's
+`TabBarLayout`** — on the pass that carries the flag, `BeginTabItem` still returns false
+because the tab is still closed. So the one-shot had nothing to observe: *honoured* and
+*ignored* produced byte-identical behaviour on the only pass it looked at (hard rule 12,
+again). A second defect hid inside the first: the flagged branch tested `o == true`, throwing
+away a truthy non-boolean return. When the forced tab IS the open one, that skips the content
+**and `EndTabItem`** — an unbalanced tab item, tearing the very bar it was steering. The
+headless drive reproduces it exactly: `unclosed: got 1, want 0`.
+
+**The fix: hold the request until it takes.** `selectTab` now records a request that rides
+every `renderTabs` pass until that tab is observed OPEN, then clears at once (holding it one
+pass longer would refuse the player's next click). The budget counts **passes, not frames**,
+so a jump asked for while the main window is shut waits for it to open instead of expiring
+unseen. `host.pendingTab()` reports what it is trying to reach.
+
+**What is still unproven, and what we did about it.** The SDK header on disk
+(`plugins\sdk\imgui.h`) settles the C++ side — `BeginTabItem(const char*, bool* p_open = nullptr,
+ImGuiTabItemFlags flags = 0)`, `ImGuiTabItemFlags_SetSelected = 1 << 1` — but **nothing on
+disk shows how Ashita's hand-written Lua binding maps `bool*`**. Every sibling addon calls the
+plain `(label, nil)` form; the one that passes flags (`ventures`) would look identical to a
+player whether its flag lands or is dropped, so it is not evidence. The host therefore tries
+the header's shape first and the fold-away `(label, flags)` shape after, and if neither has
+taken within ~30 passes it **says so in chat, naming the tab**. A binding that ignores the
+flag can no longer look like nothing happened.
+
+**Tests.** smoke_ui `TAB1`–`TAB17` drive a fresh uihost against three stub bindings — working,
+fold-away, and flag-blind — with a stub that models ImGui's real semantics (selection lands at
+the next layout; an opened tab item must be ended). Verified failing against the old code
+before the fix: `TAB5/6/7/11/12`. run_tests `SET55`–`SET59` were rewritten for the new quick
+row: the source parse now reads each `renderQuickWindowRow` call as its own segment, understands
+the `icon, fn` opt-out (art that is not key-named, an action menuui does not own), pins the
+order `restock,hobbybar,lockstyle`, and pins the CW gate on the row it guards. Suites
+**5141 + 859**, both interpreters.
+
+**Round two: the chat line appeared.** Henrik ran it and got exactly the give-up line —
+*"could not switch to the Gear Helpers tab -- this build's imgui ignored the tab-selection
+flag."* Both argument shapes, full budget, nothing. **So this install's Lua binding does not
+carry `ImGuiTabItemFlags_SetSelected` through to ImGui at all**, and the diagnostic did its
+one job: an invisible failure became a one-line answer in a single round.
+
+**The fix that does not ask.** Three rungs now, cheapest first. (1) `(label, {true}, flags)`
+— p_open as a **table**, which is the shape `imgui.Begin` demonstrably honours in this very
+addon (gearui's own window passes `isOpen` as a table and its X works), so it is the best
+remaining guess at how the binding wants a `bool*`. (2) `(label, nil, flags)`, the header's
+own signature — disproven here, kept because a correct binding lands the jump with no
+artifact. (3) **THE REBUILD**, which needs no binding cooperation: a tab bar ImGui has never
+seen has no selection and adopts the **first tab submitted to it**, so `host.tabBarId` hands
+gearui a new bar ID and the wanted tab is submitted first until it opens. `gearui` must ASK
+for that ID — hardcoding `'##ffxilac_tabs'` again would silently disable rung 3, so smoke_ui
+`TAB25` pins the call. Cost: one frame with the tabs reordered and the body empty, and one
+abandoned ImGuiTabBar per jump. That is the price of a jump that works.
+
+**One ordering detail worth keeping.** The rebuild is armed at the END of a pass, never at
+the start. Deciding it up front bumps the generation on the very pass a working flag lands —
+and the next pass would then hand gearui a bar ImGui has never seen, throwing the selection
+away again. Two of the four stub bindings (`TABLE`, `NILP`) exist to hold that line: they
+assert the bar ID is **unchanged** when a flag rung takes.
+
+**Tests.** smoke_ui `TAB1`–`TAB25`, four stub bindings — table-p_open, nil-p_open,
+flag-blind (this install), and flag-blind-*and*-adopt-blind (the paranoid case, where even
+the rebuild fails and the only honest move is the chat line). The stub models ImGui properly:
+a bar is identified by the ID passed to BeginTabBar, an unseen ID resets the selection, a
+flag lands at the NEXT layout, and a bar with nothing selected adopts index 0. Each rung was
+verified to be load-bearing by disabling it and watching the right checks fail
+(`TAB5/6/7/11/12` for the truthiness fix, `TAB15/16/17/20` for the rebuild). Suites
+**5141 + 867**, both interpreters.
+
+**Owed:** one click — open the Teleports menu on a CW character and click E-Box Restock from
+another tab. Rung 3 is arithmetic on ImGui's own documented behaviour, but "a bar with nothing
+selected adopts the first tab" is read from the API's behaviour, not from source we have on
+disk (only `plugins\sdk\imgui.h`, the interface header, ships here). If it is wrong the
+symptom is specific and loud: an empty tab body until you click a tab, plus the chat line.

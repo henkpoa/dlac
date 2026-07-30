@@ -10,13 +10,20 @@
     a contract table:
 
         return {
-            api    = 1,                       -- must equal M.API or it is refused
+            api    = 2,                       -- must equal M.API or it is refused
             label  = 'BST Helper',            -- player-facing display label
             jobs   = { 'BST' },               -- declared main jobs (non-empty)
-            init   = function(deps) end,      -- optional; shared services in
+            config = { keys = {}, defaults = {} },  -- optional; the framework stores it
+            init   = function(S) end,         -- optional; the module API in
             panel  = function(ctx) end,       -- required; renders the Panel
             status = function(ctx) end,       -- optional; extra row-status draw
         }
+
+    `S` (feature\modapi) is the SUPPORTED surface -- identity, the one clock, the
+    services, the act door, the settings store, the widget kit -- built per module
+    by the loader. It is not a sandbox (ADR 0028 settled that: visibility and
+    contracts, not walls); a module can still require anything. It is the part
+    that is documented, versioned and will keep working.
 
     IDENTITY is the MODULE folder name, never a self-declared id: the folder is
     the unit of server approval (Pup-Helper precedent), so the name on disk is
@@ -48,11 +55,30 @@ local M = {};
 -- mismatch is a LOUD refusal (a module built for an older/newer dlac fails
 -- visibly instead of misbehaving quietly -- PRD user story 9). Bump on any
 -- breaking change to the contract.
-M.API = 1;
+--
+-- The version lives in feature\modapi now, because what a module actually
+-- depends on is the SERVICE SURFACE, not the shape of this one table -- api 1's
+-- gate could only say "your table has the right keys", which was never the thing
+-- that broke. It is re-exported here so the loader's own refusal line and the
+-- registry keep reading `jobhelpers.API`.
+--
+--   1 -> init(deps) with { host, jobhelpers }; every other service reached by
+--        hardcoded require path, and every module carrying its own copy of the
+--        clock, the loud-line emitter, the activity block and the config store.
+--   2 -> init(S): the curated module API (feature\modapi), an optional declared
+--        `config` block the framework stores for you (feature\modcfg), and the
+--        Panel widget kit on ctx.ui (ui\panelkit).
+local _maok, _mapi = pcall(require, 'dlac\\feature\\modapi');
+M.API = (_maok and type(_mapi) == 'table' and tonumber(_mapi.API)) or 2;
 
 -- Loaded modules, in registration order (= the order the loader saw them =
 -- alphabetical by folder, since the scan sorts). Each entry:
---   { id = <folder>, label, jobs = {..}, mod = <contract table> }
+--   { id    = <module folder -- the identity>,
+--     job   = <job folder it filed under>,
+--     label, jobs = {..},
+--     mod   = <the contract table it returned>,
+--     cfg   = <its settings store, or nil>,
+--     S     = <its module API table> }
 M.modules = {};
 
 -- ---------------------------------------------------------------------------
@@ -442,6 +468,63 @@ function M._validate(id, mod)
     if type(mod.panel) ~= 'function' then return nil, 'missing panel render hook'; end
     if mod.init ~= nil and type(mod.init) ~= 'function' then return nil, 'init is not a function'; end
     if mod.status ~= nil and type(mod.status) ~= 'function' then return nil, 'status is not a function'; end
+    -- The optional `config` block (api 2): the module declares its keys and their
+    -- types, the framework owns the file format. Refused LOUDLY on a bad shape
+    -- rather than silently dropping writes -- a settings declaration that does not
+    -- say what it stores is far cheaper to hear about at load than to discover in
+    -- the field when a value turns out never to have persisted.
+    if mod.config ~= nil then
+        local mc = nil;
+        pcall(function() mc = require('dlac\\feature\\modcfg'); end);
+        if type(mc) == 'table' and type(mc.validate) == 'function' then
+            local ok, reason = mc.validate(mod.config);
+            if ok ~= true then return nil, tostring(reason or 'bad config block'); end
+        end
+    end
+    -- The optional `commands` block (api 2): named ACTIONS a player can fire by
+    -- hand -- `/dl jh <module> <action>` -- and therefore bind a key to. Same
+    -- law as `config`: declared, validated at load, refused loudly.
+    --
+    --   commands = {
+    --       summon = { label = 'Summon now',
+    --                  help  = 'one line, printed by /dl jh <module>',
+    --                  key   = 'summonKey',      -- a CONFIG key holding the bind
+    --                  run   = function(S, args) ... end },
+    --   }
+    --
+    -- `key` names one of the module's OWN declared config keys, so the framework
+    -- can read the player's chosen bind and install it without the module
+    -- touching the registry -- and a module cannot claim a key as somebody else.
+    if mod.commands ~= nil then
+        if type(mod.commands) ~= 'table' then return nil, 'commands is not a table'; end
+        local declared = {};
+        if type(mod.config) == 'table' and type(mod.config.keys) == 'table' then
+            declared = mod.config.keys;
+        end
+        for action, spec in pairs(mod.commands) do
+            if type(action) ~= 'string' or action == '' then
+                return nil, 'a command name is not a name';
+            end
+            if action:find('%s') ~= nil then
+                return nil, string.format('command "%s" has whitespace in its name', action);
+            end
+            if type(spec) ~= 'table' then
+                return nil, string.format('command "%s" is not a table', action);
+            end
+            if type(spec.run) ~= 'function' then
+                return nil, string.format('command "%s" has no run function', action);
+            end
+            if spec.key ~= nil then
+                if type(spec.key) ~= 'string' or spec.key == '' then
+                    return nil, string.format('command "%s" names no config key for its bind', action);
+                end
+                if declared[spec.key] ~= 'string' then
+                    return nil, string.format('command "%s" binds through "%s", which is not a declared string config key',
+                                              action, tostring(spec.key));
+                end
+            end
+        end
+    end
     return { id = id, label = mod.label, jobs = jobs, mod = mod };
 end
 
@@ -458,10 +541,50 @@ local function fail(ledger, emit, id, reason)
     end
 end
 
+-- Build the module API table handed to a module's init hook, and exposed to its
+-- Panel as ctx.S. One per module, closed over that module's identity, so a module
+-- can neither declare its own id nor ask a question as somebody else. Injectable
+-- so the loader fixtures drive init with a stub surface.
+M._buildApi = function(rec)
+    local api = nil;
+    pcall(function()
+        local ma = require('dlac\\feature\\modapi');
+        if type(ma) == 'table' and type(ma.build) == 'function' then api = ma.build(rec); end
+    end);
+    return api;
+end
+
+-- Open a module's declared settings store (nil when it declared no `config`).
+-- The module owns the keys; feature\modcfg owns the format.
+M._openCfg = function(rec)
+    if type(rec) ~= 'table' or type(rec.mod) ~= 'table' or rec.mod.config == nil then return nil; end
+    local store = nil;
+    pcall(function()
+        local mc = require('dlac\\feature\\modcfg');
+        if type(mc) == 'table' and type(mc.open) == 'function' then
+            store = mc.open(rec.id, rec.mod.config);
+        end
+    end);
+    return store;
+end
+
+-- Drop every subscription a module opened through its API table. There is no
+-- hot-unplug today (an Ashita reload takes the whole Lua state with it), so this
+-- exists for the reload path, the tests, and the day a module can be turned off
+-- for real rather than only gated.
+function M.unload(id)
+    local n = 0;
+    pcall(function()
+        local ma = require('dlac\\feature\\modapi');
+        if type(ma) == 'table' and type(ma.dropAll) == 'function' then n = ma.dropAll(id); end
+    end);
+    return n;
+end
+
 -- The loader CORE. opts = {
 --   names      = { <folder>, .. }         -- candidate module folders (sorted)
 --   loadModule = function(id) -> ok, modOrErr   -- require the folder's init
---   deps       = <shared-services table handed to each module's init(deps)>
+--   host       = <ui\uihost>              -- carried on the module API table
 --   ledger     = <the load ledger table>
 --   emit       = function(line)           -- one loud line per failure
 -- }
@@ -490,10 +613,22 @@ function M.loadAll(opts)
                 if rec == nil then
                     fail(ledger, emit, id, reason);
                 else
+                    -- Everything the framework knows about this module and the
+                    -- module cannot know about itself: the job folder it filed
+                    -- under, the UI host, its settings store, and the API table
+                    -- built from all three. The ID especially -- api 1 had the
+                    -- record in hand right here and passed only `deps`, so every
+                    -- module hardcoded its own folder name as a fallback in every
+                    -- file that ran without a render ctx.
+                    rec.job  = M._jobOf[id];
+                    rec.host = (type(opts.deps) == 'table' and opts.deps.host) or opts.host;
+                    rec.cfg  = M._openCfg(rec);
+                    rec.S    = M._buildApi(rec);
+
                     -- init is the module's own code: contain a throw here too.
                     local iok, ierr = true, nil;
                     if type(rec.mod.init) == 'function' then
-                        iok, ierr = pcall(rec.mod.init, opts.deps);
+                        iok, ierr = pcall(rec.mod.init, rec.S);
                     end
                     if not iok then
                         fail(ledger, emit, id, 'init threw (' .. tostring(ierr):gsub('%s+', ' '):sub(1, 90) .. ')');
@@ -677,5 +812,243 @@ function M.idsForJob(job)
     end
     return M.orderFor(job, defaults);
 end
+
+-- ---------------------------------------------------------------------------
+-- module COMMANDS -- `/dl jobhelper <module> <action>` (`/dl jh` for short)
+-- ---------------------------------------------------------------------------
+--
+-- One door for every module's named actions, and the thing a keybind is bound
+-- to. `<module>` is the folder name, which is already unique addon-wide: the
+-- loader refuses a second folder of the same name under another job (see
+-- M.load), so this cannot be ambiguous and needs no job level in the command.
+--
+-- Deliberately NOT a per-module command: a module that registered its own
+-- `/dl bst ...` would own a piece of dlac's command namespace, and the second
+-- module to want one would collide with the first exactly the way the keybinds
+-- used to.
+
+-- A module's declared commands, or an empty table.
+function M.commandsOf(id)
+    local mod = M.get(id);
+    if type(mod) ~= 'table' or type(mod.commands) ~= 'table' then return {}; end
+    return mod.commands;
+end
+
+-- Sorted action names (explicit order -- `pairs` has none, and this list is
+-- printed to a player).
+function M.actionNames(id)
+    local out = {};
+    for action in pairs(M.commandsOf(id)) do out[#out + 1] = action; end
+    table.sort(out);
+    return out;
+end
+
+-- Is this module's job the one I am on? Unknown job answers TRUE -- an
+-- unreadable world never manufactures a refusal for a deliberate keypress.
+function M.onItsJob(id, job)
+    local rec = M.record(id);
+    if rec == nil then return false; end
+    if job == nil then
+        pcall(function() job = gData.GetPlayer().MainJob; end);
+    end
+    if type(job) ~= 'string' or job == '' or job == '?' then return true; end
+    for _, j in ipairs(rec.jobs) do
+        if j == job then return true; end
+    end
+    return false;
+end
+
+M._say = function(line)
+    local said = false;
+    pcall(function()
+        local cf = require('dlac\\chatfmt');
+        if type(cf) == 'table' and type(cf.warn) == 'function' then cf.warn(line); said = true; end
+    end);
+    if not said then pcall(function() print('[dlac] ' .. tostring(line)); end); end
+end;
+
+-- Run one named action. Returns ok, reason. Every refusal is LOUD: a key that
+-- did nothing and said nothing is indistinguishable from a broken bind.
+function M.runCommand(id, action, args)
+    local rec = M.record(id);
+    if rec == nil then
+        M._say(string.format('no Job helper called "%s" is installed.', tostring(id)));
+        return false, 'no-module';
+    end
+    -- Matched case-insensitively: the command line arrives lowercased, and a
+    -- module that declared `Summon` must not be unreachable for it.
+    local cmds = M.commandsOf(id);
+    local spec = cmds[action];
+    if spec == nil and type(action) == 'string' then
+        for name, s in pairs(cmds) do
+            if string.lower(name) == string.lower(action) then spec = s; break; end
+        end
+    end
+    if type(spec) ~= 'table' or type(spec.run) ~= 'function' then
+        local names = table.concat(M.actionNames(id), ', ');
+        M._say(string.format('%s has no "%s" action%s', rec.label or id, tostring(action),
+                             (names ~= '') and (' -- it has: ' .. names .. '.') or '.'));
+        return false, 'no-action';
+    end
+    if not M.onItsJob(id) then
+        M._say(string.format('%s is a %s helper -- it does nothing on your current job.',
+                             rec.label or id, table.concat(rec.jobs, '/')));
+        return false, 'job';
+    end
+    local ok = false;
+    local err = nil;
+    local good, res = pcall(spec.run, rec.S, args);
+    if good then ok = (res ~= false); else err = res; end
+    if err ~= nil then
+        M._say(string.format('%s: "%s" failed -- %s', rec.label or id, tostring(action), tostring(err)));
+        return false, 'threw';
+    end
+    return ok, nil;
+end
+
+-- ---------------------------------------------------------------------------
+-- module KEYBINDS -- installed by the framework, released on a job change
+-- ---------------------------------------------------------------------------
+--
+-- A module never touches the registry: it declares which of its config keys
+-- holds the bind (see _validate) and the framework installs the whole group.
+-- So the owner id and the command string are the FRAMEWORK's -- a module can no
+-- more bind as somebody else than it can request a sequence as somebody else.
+--
+-- The group is job-scoped by Henrik's ruling (2026-07-30): a helper's key exists
+-- while you are on its job with its pill on, and the key comes back to you the
+-- moment you change job. Deliberately NOT the full activity predicate -- town,
+-- death and zoning would make a key appear and vanish under the player's
+-- fingers, and those are the ACT's gates, not the key's.
+
+-- What this character's modules want bound right now.
+function M.bindEntries()
+    local out = {};
+    local job = nil;
+    pcall(function() job = gData.GetPlayer().MainJob; end);
+    for _, rec in ipairs(M.modules) do
+        if M.isEnabled(rec.id) and M.onItsJob(rec.id, job) and rec.cfg ~= nil then
+            for _, action in ipairs(M.actionNames(rec.id)) do
+                local spec = M.commandsOf(rec.id)[action];
+                if type(spec) == 'table' and type(spec.key) == 'string' then
+                    local key = nil;
+                    pcall(function() key = rec.cfg.get(spec.key); end);
+                    if type(key) == 'string' and key ~= '' then
+                        out[#out + 1] = {
+                            owner   = string.format('jobhelper:%s:%s', rec.id, action),
+                            key     = key,
+                            command = string.format('/dl jh %s %s', rec.id, action),
+                            label   = string.format('%s: %s', rec.label or rec.id,
+                                                    spec.label or action),
+                        };
+                    end
+                end
+            end
+        end
+    end
+    table.sort(out, function(a, b) return a.owner < b.owner; end);
+    return out;
+end
+
+-- The bind beat. Cheap and throttled: one job read a second, and the registry
+-- leaves an unchanged bind entirely alone, so the steady state costs nothing.
+M.BIND_TICK_S = 1.0;
+local _bindAt = nil;
+
+function M.pumpBinds(now)
+    now = tonumber(now);
+    if now == nil then
+        pcall(function()
+            local cq = require('dlac\\lib\\cmdqueue');
+            if type(cq) == 'table' and type(cq.frame) == 'function' then now = cq.frame() / 60.0; end
+        end);
+        now = tonumber(now) or 0;
+    end
+    if _bindAt ~= nil then
+        local since = now - _bindAt;
+        if since >= 0 and since < M.BIND_TICK_S then return nil; end
+    end
+    _bindAt = now;
+    local res = nil;
+    pcall(function()
+        local kb = require('dlac\\feature\\keybinds');
+        if type(kb) ~= 'table' or type(kb.syncGroup) ~= 'function' then return; end
+        res = kb.syncGroup('jobhelper:', M.bindEntries());
+    end);
+    return res;
+end
+
+-- ---------------------------------------------------------------------------
+-- the command surface
+-- ---------------------------------------------------------------------------
+
+-- Print what a module can be asked to do (`/dl jh <module>` with no action).
+function M.reportCommands(id)
+    local rec = M.record(id);
+    if rec == nil then
+        M._say(string.format('no Job helper called "%s" is installed.', tostring(id)));
+        return;
+    end
+    local names = M.actionNames(id);
+    if #names == 0 then
+        M._say(string.format('%s has no commands.', rec.label or id));
+        return;
+    end
+    pcall(function()
+        local cf = require('dlac\\chatfmt');
+        local line = (type(cf) == 'table' and type(cf.msg) == 'function') and cf.msg
+                     or function(s) print('[dlac] ' .. s); end;
+        line(string.format('%s (%s):', rec.label or id, id));
+        for _, action in ipairs(names) do
+            local spec = M.commandsOf(id)[action];
+            local bound = '';
+            pcall(function()
+                local kb = require('dlac\\feature\\keybinds');
+                local held = kb.heldBy(string.format('jobhelper:%s:%s', id, action));
+                if held ~= nil then bound = ('   [%s]'):format(held.raw or held.key); end
+            end);
+            line(string.format('  /dl jh %s %s -- %s%s', id, action,
+                               tostring((type(spec) == 'table' and spec.help) or
+                                        (type(spec) == 'table' and spec.label) or action), bound));
+        end
+    end);
+end
+
+-- Every installed module, for a bare `/dl jh`.
+function M.reportModules()
+    if #M.modules == 0 then
+        M._say('no Job helpers are installed.');
+        return;
+    end
+    pcall(function()
+        local cf = require('dlac\\chatfmt');
+        local line = (type(cf) == 'table' and type(cf.msg) == 'function') and cf.msg
+                     or function(s) print('[dlac] ' .. s); end;
+        line('Job helpers installed:');
+        for _, rec in ipairs(M.modules) do
+            line(string.format('  %-16s %s (%s)', rec.id, rec.label or rec.id,
+                               table.concat(rec.jobs, '/')));
+        end
+        line('ask one for what it does:  /dl jh <module>');
+    end);
+end
+
+pcall(function()
+    ashita.events.register('command', 'dlac-jobhelper-cmd', function(e)
+        local args = e.command:args();
+        if #args < 2 or args[1]:lower() ~= '/dl' then return; end
+        local sub = args[2]:lower();
+        if sub ~= 'jobhelper' and sub ~= 'jh' then return; end
+        e.blocked = true;
+        pcall(function()
+            if #args == 2 then M.reportModules(); return; end
+            local id = args[3];
+            if #args == 3 then M.reportCommands(id); return; end
+            local extra = {};
+            for i = 5, #args do extra[#extra + 1] = args[i]; end
+            M.runCommand(id, args[4]:lower(), extra);
+        end);
+    end);
+end);
 
 return M;

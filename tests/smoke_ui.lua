@@ -3950,11 +3950,14 @@ end)();
     -- the Resummon jug picker's rows (issue #141) are driven precisely. By then
     -- jobhelpersui already holds the selected module, so pinning the click to a
     -- combo row does not un-select the Panel.
+    -- selPick matches from POSITION 1, not anywhere: the jug list holds both
+    -- 'Carrot Broth' and 'L. Carrot Broth', so an unanchored substring would click
+    -- the wrong row and quietly assert the wrong thing.
     local selectables, selPick = {}, nil;
     IM.Selectable = function(label)
         selectables[#selectables + 1] = tostring(label);
         if selPick == nil then return true; end
-        return type(label) == 'string' and label:find(selPick, 1, true) ~= nil;
+        return type(label) == 'string' and label:find(selPick, 1, true) == 1;
     end
     -- The jug picker is a combo; its Begin/End pair joins the balance assertions
     -- (an unbalanced combo corrupts ImGui exactly like an unbalanced child).
@@ -3989,6 +3992,24 @@ end)();
         if dragId ~= nil and type(label) == 'string' and label:find(dragId, 1, true) ~= nil then
             if type(t) == 'table' then t[1] = dragTo; end
             return true;
+        end
+        return false;
+    end
+    -- The kit's text field (panelkit.input -- the Summon key, 2026-07-30). It is
+    -- HERE and not merely guarded away because the whole point of this suite is
+    -- that a Panel's real render runs: a binding this stub does not carry is a
+    -- widget whose code path never executes, and an unknown Lua name is a silent
+    -- nil global that no load test can catch (ADR 0019's lesson). `typeId` types
+    -- into a field and commits it, the way Enter would.
+    -- `typeId` fills the field's buffer the way typing does; `typeEnter` is the
+    -- separate act of pressing Enter, so the Enter path and the Set-button path
+    -- can each be proven alone.
+    local inputs, typeId, typeText, typeEnter = {}, nil, '', false;
+    IM.InputText = function(label, t)
+        inputs[#inputs + 1] = tostring(label);
+        if typeId ~= nil and type(label) == 'string' and label:find(typeId, 1, true) ~= nil then
+            if type(t) == 'table' then t[1] = typeText; end
+            return typeEnter == true;
         end
         return false;
     end
@@ -4055,10 +4076,13 @@ end)();
         -- the BST Panel's three-way Fight switch actually reaches the screen
         -- (issue #139), and a click on one of its ways reaches the setter.
         local drawn = table.concat(buttons, '|');
+        -- Widget ids are the PANEL KIT's now (`<group>_<value>`, ui\panelkit.choice)
+        -- rather than each Panel's own hand-rolled composition -- one scheme for
+        -- every module's exclusive choices.
         check('S336 the Fight switch draws its three ways',
-              drawn:find('Off##bstfight_off_bst', 1, true) ~= nil
-              and drawn:find('When I attack##bstfight_attack_bst', 1, true) ~= nil
-              and drawn:find('Follow my target##bstfight_follow_bst', 1, true) ~= nil, true);
+              drawn:find('Off##bstfight_bst-helper_off', 1, true) ~= nil
+              and drawn:find('When I attack##bstfight_bst-helper_attack', 1, true) ~= nil
+              and drawn:find('Follow my target##bstfight_bst-helper_follow', 1, true) ~= nil, true);
         check('S337 the Reward button is still there beside it',
               drawn:find('Reward now##bstreward_bst', 1, true) ~= nil, true);
         local fightOk, fight = pcall(require, 'dlac\\jobhelpers\\bst\\bst-helper\\fight');
@@ -4066,7 +4090,7 @@ end)();
         if fightOk then
             local realSet, setLog = fight.setMode, {};
             fight.setMode = function(m) setLog[#setLog + 1] = m; return true; end
-            clickId = 'bstfight_follow_bst';
+            clickId = 'bstfight_bst-helper_follow';
             pcall(jhui.renderTab, 'BST', 99);
             clickId = nil;
             check('S339 clicking a way sets that mode', setLog[#setLog], 'follow');
@@ -4109,8 +4133,8 @@ end)();
         check('S345 the Resummon rule switch draws',
               cdrawn:find('bstresumauto_bst', 1, true) ~= nil, true);
         check('S346 the binary method choice draws BOTH ways',
-              rdrawn:find('Call Beast##bstresum_call_bst', 1, true) ~= nil
-              and rdrawn:find('Bestial Loyalty##bstresum_loyalty_bst', 1, true) ~= nil, true);
+              rdrawn:find('Call Beast##bstresum_bst-helper_call', 1, true) ~= nil
+              and rdrawn:find('Bestial Loyalty##bstresum_bst-helper_loyalty', 1, true) ~= nil, true);
         check('S347 the cooldown-fallback checkbox draws beside them',
               cdrawn:find('bstresumfb_bst', 1, true) ~= nil, true);
         check('S348 the jug picker draws its combo',
@@ -4132,7 +4156,7 @@ end)();
             tickId = nil;
             check('S350 ticking the Resummon switch reaches the setter', aLog[#aLog], true);
 
-            clickId = 'bstresum_loyalty_bst';
+            clickId = 'bstresum_bst-helper_loyalty';
             pcall(jhui.renderTab, 'BST', 99);
             clickId = nil;
             check('S351 clicking a method sets it', mLog[#mLog], 'loyalty');
@@ -4153,7 +4177,11 @@ end)();
                 local rows = jugs.list();
                 check('S354 the catalog yields a real jug list', #rows > 0, true);
                 if #rows > 0 then
-                    selPick = 'bstresumjugrow_' .. tostring(rows[1].id);
+                    -- Pinned by the jug's NAME, not by the kit's row index: the
+                    -- harness matches ids as substrings, and '..._1' is also a
+                    -- substring of '..._1x' -- so an index would click the last
+                    -- row that happens to share the prefix.
+                    selPick = rows[1].name;
                     pcall(jhui.renderTab, 'BST', 99);
                     selPick = nil;
                     check('S355 clicking a jug row stores the JUG NAME', jLog[#jLog], rows[1].name);
@@ -4165,6 +4193,90 @@ end)();
                 end
             end
             balanced('S357 tab + BST Panel with Resummon');
+
+            -- --- the Summon section (2026-07-30): the CHR set, its one
+            -- exception, the bindable key and the button. Rendered REAL, because
+            -- a nil global in a Panel is invisible to every other suite.
+            buttons, checks, selectables, inputs = {}, {}, {}, {};
+            pcall(jhui.renderTab, 'BST', 99);
+            check('S357a the Summon set picker draws',
+                  table.concat(selectables, '|'):find('None', 1, true) ~= nil, true);
+            check('S357b the weapon-slot exception draws',
+                  table.concat(checks, '|'):find('bstsummonwep_bst', 1, true) ~= nil, true);
+            check('S357c the key field draws',
+                  table.concat(inputs, '|'):find('bstsummonkey_bst', 1, true) ~= nil, true);
+            check('S357d the Summon now button draws beside it',
+                  table.concat(buttons, '|'):find('Summon now', 1, true) ~= nil, true);
+
+            local realW, realK, realN =
+                resummon.setWeapons, resummon.setKey, resummon.summonNow;
+            local wLog, kLog, nLog = {}, {}, 0;
+            resummon.setWeapons = function(v) wLog[#wLog + 1] = v; return true; end
+            resummon.setKey     = function(v) kLog[#kLog + 1] = v; return true; end
+            resummon.summonNow  = function() nLog = nLog + 1; return true; end
+
+            tickId = 'bstsummonwep_bst';
+            pcall(jhui.renderTab, 'BST', 99);
+            tickId = nil;
+            check('S357e ticking the weapon exception reaches the setter', wLog[#wLog], true);
+
+            -- Enter-to-commit needs the flag GLOBAL a real Ashita binding
+            -- carries; the kit nil-checks it and falls back to the Set button
+            -- alone (hard rule 2). Both paths are driven here, because "the
+            -- binding has no flags" is a live install, not a hypothetical.
+            -- Enter-to-commit needs the flag GLOBAL a real Ashita binding
+            -- carries; the kit nil-checks it and falls back to the Set button
+            -- alone (hard rule 2). Both paths are driven, because "the binding
+            -- has no flags" is a live install, not a hypothetical -- and typing
+            -- WITHOUT committing must write nothing, which is what keeps a key
+            -- field from claiming '^', then '^f', then '^f3'.
+            typeId, typeText, typeEnter = 'bstsummonkey_bst', '^F3', true;
+            pcall(jhui.renderTab, 'BST', 99);
+            check('S357f0 no flag global: even Enter cannot commit, only the button', #kLog, 0);
+            ImGuiInputTextFlags_EnterReturnsTrue = 32;
+            pcall(jhui.renderTab, 'BST', 99);
+            check('S357f committing with Enter reaches the setter', kLog[#kLog], '^F3');
+            ImGuiInputTextFlags_EnterReturnsTrue = nil;
+
+            kLog, typeEnter = {}, false;
+            pcall(jhui.renderTab, 'BST', 99);
+            check('S357f1 typing without committing writes NOTHING', #kLog, 0);
+            clickId = 'bstsummonkey_bst-helperset';
+            pcall(jhui.renderTab, 'BST', 99);
+            clickId, typeId = nil, nil;
+            check('S357f2 ...and the Set button commits what was typed',
+                  kLog[#kLog], '^F3');
+
+            clickId = 'bstsummonnow_bst';
+            pcall(jhui.renderTab, 'BST', 99);
+            clickId = nil;
+            check('S357g clicking Summon now reaches the act', nLog >= 1, true);
+            balanced('S357h tab + BST Panel with Summon');
+
+            -- --- the dropdown SEARCH: drawn inside the open popup, and it
+            -- narrows what the popup offers. Driven on the JUG picker because
+            -- that is the list with 33 rows and the one that has to be findable
+            -- by the familiar as well as by the broth.
+            selectables, inputs = {}, {};
+            pcall(jhui.renderTab, 'BST', 99);
+            check('S357i the jug popup carries a search box',
+                  table.concat(inputs, '|'):find('bstresumjug_bst-helper_search', 1, true) ~= nil, true);
+            local allRows = #selectables;
+            check('S357j ...and with it empty the whole list is offered', allRows > 5, true);
+
+            selectables = {};
+            typeId, typeText, typeEnter = 'bstresumjug_bst-helper_search', 'hare', false;
+            pcall(jhui.renderTab, 'BST', 99);
+            typeId = nil;
+            local hits = table.concat(selectables, '|');
+            check('S357k typing narrows the list', #selectables < allRows, true);
+            check('S357l ...and finds the jug by the FAMILIAR it calls, not just its own name',
+                  hits:find('Hare Familiar', 1, true) ~= nil, true);
+            check('S357m ...leaving the broths that call something else out',
+                  hits:find('Herbal Broth', 1, true), nil);
+            balanced('S357n tab + BST Panel with a filtered jug popup');
+
+            resummon.setWeapons, resummon.setKey, resummon.summonNow = realW, realK, realN;
 
             resummon.setArmed, resummon.setMethod = realA, realM;
             resummon.setFallback, resummon.setJug = realF, realJ;
@@ -4191,6 +4303,188 @@ end)();
     package.loaded['dlac\\feature\\jobhelpers'] = saved.jh;
     package.loaded['dlac\\ui\\jobhelpersui']    = saved.jhui;
     package.loaded['dlac\\ui\\craftbar']        = saved.cb;
+end)();
+
+-- ---------------------------------------------------------------------------
+-- TAB. uihost.selectTab -- the forced tab jump, driven against FOUR bindings.
+--
+-- Field 2026-07-30 (Henrik), round one: every cross-link that jumps to a tab --
+-- the Teleports quick menu's E-Box Restock row, the hobby bars' "open my panel",
+-- the restock nudge -- landed on the right PANEL and left the tab bar where it
+-- was: "in the gear helper tab it directs me to the correct menu, but when I open
+-- the GUI I am still on the job helpers tab". The old one-shot handed the
+-- selection flag to exactly ONE pass and forgot; ImGui applies a forced selection
+-- at the NEXT frame's TabBarLayout, so there was never anything to observe and an
+-- ignored flag looked exactly like an honoured one (hard rule 12).
+--
+-- Round two, with the hold in place, printed the give-up line: THIS BUILD'S IMGUI
+-- BINDING IGNORES THE FLAG, in both argument shapes. So the host stops asking and
+-- takes the selection -- rung 3, the REBUILD: a tab bar ImGui has never seen has
+-- no selection and adopts the FIRST tab submitted to it, so the bar's ID gets a
+-- new generation (`host.tabBarId`, which gearui must ask for) and the wanted tab
+-- is submitted first until it opens.
+--
+-- The stub models real ImGui, all of it: a bar is identified by the ID passed to
+-- BeginTabBar; an unseen ID resets the selection; a flag sets a pending selection
+-- that lands at the NEXT layout; and a bar with nothing selected adopts the tab
+-- submitted at index 0. Four bindings, since nothing on disk proves which one any
+-- given Ashita ships:
+--   TABLE   -- honours (label, {p_open}, flags); rejects a non-table p_open
+--   NILP    -- honours (label, nil, flags), the SDK header's own signature
+--   BLIND   -- takes anything, ignores flags entirely  <- THIS INSTALL
+--   DEADBAR -- flag-blind AND never adopts a first tab: the paranoid case, where
+--              even the rebuild fails and the only honest move is to say so
+-- Every binding returns a TRUTHY 1 rather than `true` for an open tab: the old
+-- code tested `== true`, which would have skipped the content AND EndTabItem on
+-- the one pass that mattered -- an unbalanced tab item tearing the very bar it
+-- was steering. `unclosed` pins that.
+-- ---------------------------------------------------------------------------
+;(function()
+    local saved = { imgui = package.loaded['imgui'],
+                    host  = package.loaded['dlac\\ui\\uihost'],
+                    fmt   = package.loaded['dlac\\chatfmt'] };
+    local SETSEL = 2;        -- ImGuiTabItemFlags_SetSelected (plugins\sdk\imgui.h)
+    local said   = {};       -- chat lines the host emitted
+
+    -- One fake ImGui + one fake tab bar. `mode` picks which binding it pretends
+    -- to be. S.layout() is what BeginTabBar does at the top of a frame.
+    local function fakeImgui(mode)
+        -- `unclosed` is ImGui's real invariant, not a counter of our own calls: a
+        -- tab item that OPENED must be ended, whatever the caller thought the
+        -- return value meant. This is what catches `o == true` dropping a truthy 1.
+        local S = { barId = false, selected = nil, pending = nil, order = {},
+                    unclosed = 0, adopts = (mode ~= 'DEADBAR') };
+        -- What BeginTabBar does at the top of a frame, given the ID gearui passes.
+        S.layout = function(id)
+            if id ~= S.barId then
+                S.barId, S.selected, S.pending = id, nil, nil;   -- a bar never seen
+            elseif S.pending ~= nil then
+                S.selected, S.pending = S.pending, nil;          -- a flag honoured
+            elseif S.selected == nil and S.adopts then
+                S.selected = S.order[1];                         -- nothing selected: tab 0
+            end
+            S.order = {};
+        end
+        S.imgui = {
+            EndTabItem = function() S.unclosed = S.unclosed - 1; end,
+            BeginTabItem = function(label, a, b)
+                local flags = 0;
+                if mode == 'TABLE' then
+                    if a ~= nil and type(a) ~= 'table' then error('p_open must be a table'); end
+                    if b ~= nil then flags = b; end
+                elseif mode == 'NILP' then
+                    if type(a) == 'table' then error('p_open must be a pointer'); end
+                    if b ~= nil then flags = b; end
+                end                       -- BLIND / DEADBAR: never look at a flag
+                S.order[#S.order + 1] = label;                   -- submitted
+                if flags == SETSEL and S.selected ~= label then S.pending = label; end
+                if S.selected == label then
+                    S.unclosed = S.unclosed + 1;
+                    return 1;                                    -- TRUTHY, not `true`
+                end
+                return false;
+            end,
+        };
+        return S;
+    end
+
+    -- A fresh uihost bound to that stub, with two tabs registered.
+    local function freshHost(S)
+        package.loaded['imgui'] = S.imgui;
+        package.loaded['dlac\\ui\\uihost'] = nil;
+        local h = require('dlac\\ui\\uihost');
+        h.register({ name = 'a', tabs = { { label = 'A', render = function() end } } });
+        h.register({ name = 'b', tabs = { { label = 'B', render = function() end } } });
+        return h;
+    end
+
+    package.loaded['dlac\\chatfmt'] = { print = function(s) said[#said + 1] = tostring(s); end };
+
+    local drawn, S, h = {}, nil, nil;
+    local guard = function(label) drawn[#drawn + 1] = label; end
+    local function pass() S.layout(h.tabBarId('##t')); h.renderTabs(guard); end
+    local function warm()      -- two passes = a fresh bar settling onto its first tab
+        pass(); pass();
+    end
+
+    -- --- TABLE: rung 1 (p_open as a table) lands it, and no rebuild is needed.
+    S = fakeImgui('TABLE'); h = freshHost(S);
+    warm();
+    check('TAB1 a fresh bar settles on its first tab', S.selected, 'A');
+    local id0 = h.tabBarId('##t');
+    h.selectTab('B');
+    check('TAB2 the request is pending',         h.pendingTab(), 'B');
+    pass();
+    check('TAB3 pass one still draws A',         drawn[#drawn], 'A');
+    check('TAB4 the request is HELD, not spent', h.pendingTab(), 'B');
+    pass();
+    check('TAB5 pass two draws B',               drawn[#drawn], 'B');
+    check('TAB6 and the request clears itself',  h.pendingTab(), nil);
+    -- Pass two FORCED a tab that was already selected -- the exact call that
+    -- returns truthy while the flag is still riding. Nothing may be left open.
+    check('TAB7 every opened tab was ended',     S.unclosed, 0);
+    check('TAB8 a working flag never rebuilds the bar', h.tabBarId('##t'), id0);
+    -- Held only until it takes: the next click must not be dragged back to B.
+    S.selected = 'A'; pass();
+    check('TAB9 a cleared request never forces again', S.selected, 'A');
+    -- A jump asked for while the main window is SHUT waits for it to open -- the
+    -- budget counts renderTabs PASSES, so nothing expires unseen.
+    h.selectTab('B');
+    check('TAB10 pending survives frames that never render', h.pendingTab(), 'B');
+
+    -- --- NILP: rung 1 throws, so the header's own shape (rung 2) must land it --
+    -- still with no rebuild, because rung 2 takes before the budget runs out.
+    S = fakeImgui('NILP'); h = freshHost(S); drawn = {};
+    warm();
+    id0 = h.tabBarId('##t');
+    h.selectTab('B');
+    for _ = 1, 4 do pass(); end
+    check('TAB11 the header shape lands it',      S.selected, 'B');
+    check('TAB12 and the request clears',         h.pendingTab(), nil);
+    check('TAB13 no rebuild was needed',          h.tabBarId('##t'), id0);
+    check('TAB14 balanced through the escalation', S.unclosed, 0);
+
+    -- --- BLIND (this install): no flag shape works, so the REBUILD has to do it.
+    S = fakeImgui('BLIND'); h = freshHost(S); drawn = {}; said = {};
+    warm();
+    id0 = h.tabBarId('##t');
+    h.selectTab('B');
+    for _ = 1, 6 do pass(); end
+    check('TAB15 a flag-blind binding still lands the jump', S.selected, 'B');
+    check('TAB16 by giving the bar a new identity', h.tabBarId('##t') ~= id0, true);
+    check('TAB17 the request clears once it takes', h.pendingTab(), nil);
+    check('TAB18 and it never had to say a word',   #said, 0);
+    check('TAB19 balanced across the rebuild',      S.unclosed, 0);
+    -- The reorder is for the rebuild only: once the jump has landed, the tabs are
+    -- back in registration order.
+    drawn = {}; pass();
+    check('TAB20 submission order restored', table.concat(S.order, ','), 'A,B');
+
+    -- --- DEADBAR: not even the rebuild takes. It must give up, say so ONCE, and
+    -- leave the frame balanced rather than fighting on forever.
+    S = fakeImgui('DEADBAR'); h = freshHost(S); drawn = {}; said = {};
+    h.selectTab('B');
+    for _ = 1, 40 do pass(); end
+    check('TAB21 a hopeless jump is given up on', h.pendingTab(), nil);
+    check('TAB22 it says so exactly once',        #said, 1);
+    check('TAB23 naming the tab it could not reach',
+        (said[1] or ''):find('"B"', 1, true) ~= nil, true);
+    check('TAB24 still balanced after giving up', S.unclosed, 0);
+
+    -- gearui must ASK for the bar ID. Hardcoding '##ffxilac_tabs' again would
+    -- silently disable rung 3 -- the tab bar would keep its old identity and its
+    -- old selection, which is exactly the bug this section exists for.
+    do
+        local f = io.open('ui/gearui.lua', 'r');
+        local src = (f ~= nil) and f:read('*a') or '';
+        if f ~= nil then f:close(); end
+        check('TAB25 gearui asks the host for its tab-bar id',
+            src:find('BeginTabBar(host.tabBarId(', 1, true) ~= nil, true);
+    end
+
+    package.loaded['imgui'] = saved.imgui;
+    package.loaded['dlac\\ui\\uihost'] = saved.host;
+    package.loaded['dlac\\chatfmt'] = saved.fmt;
 end)();
 
 -- ---------------------------------------------------------------------------

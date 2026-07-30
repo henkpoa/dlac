@@ -91,31 +91,27 @@ end
 -- isn't available. Returns true when toggled this frame. tipOn/tipOff let
 -- other surfaces (the HELM panel/bar) reuse the pill without inheriting the
 -- craft tooltips.
+-- THE implementation now lives in ui\panelkit.pill, which the Job helper Panel
+-- kit needed too -- one pill, drawn identically on a hobby bar, a HELM panel and
+-- a Job helper row, and fixed in one place. This stays as the bars' entry point:
+-- they call it without an imgui handle, so it passes craftbar's own through (the
+-- kit takes the caller's handle, the uistyle.helpLabel contract). Guarded, so an
+-- unreachable kit costs the pill its looks and not the bar.
 function M.onOffSwitch(on, id, tipOn, tipOff)
-    local W, H = 46, 22;
-    local toggled = false;
-    local ok = pcall(function()
-        local x, y = imgui.GetCursorScreenPos();
-        imgui.InvisibleButton('##onoff_' .. id, { W, H });
-        toggled = imgui.IsItemClicked();
-        local dl = imgui.GetWindowDrawList();
-        local track = on and 0xFF2E8B2E or 0xFF2E2E9E;   -- ARGB: green / red
-        local knob  = 0xFFEEEEEE;
-        dl:AddRectFilled({ x, y }, { x + W, y + H }, track, H / 2, ImDrawCornerFlags_All or 0);
-        local kx = on and (x + W - H / 2) or (x + H / 2);
-        dl:AddCircleFilled({ kx, y + H / 2 }, H / 2 - 3, knob, 16);
-    end);
-    if not ok then                                       -- no draw list: colored button
-        if ImGuiCol_Button ~= nil then
-            imgui.PushStyleColor(ImGuiCol_Button, on and { 0.18, 0.55, 0.18, 1 } or { 0.62, 0.18, 0.18, 1 });
-        end
-        if imgui.Button((on and 'ON' or 'OFF') .. '##onoff_' .. id, { W, H }) then toggled = true; end
-        if ImGuiCol_Button ~= nil then imgui.PopStyleColor(1); end
+    tipOn  = tipOn  or 'Crafting gear is ON -- click to turn off.';
+    tipOff = tipOff or 'Crafting gear is OFF -- click to turn on (equips your selected craft).';
+    local pk = nil;
+    pcall(function() pk = require('dlac\\ui\\panelkit'); end);
+    if type(pk) == 'table' and type(pk.pill) == 'function' then
+        return pk.pill(imgui, on, id, tipOn, tipOff);
     end
-    if imgui.IsItemHovered() then
-        imgui.SetTooltip(on and (tipOn or 'Crafting gear is ON -- click to turn off.')
-                           or  (tipOff or 'Crafting gear is OFF -- click to turn on (equips your selected craft).'));
+    local toggled = false;                               -- kit unreachable: plain button
+    if ImGuiCol_Button ~= nil then
+        imgui.PushStyleColor(ImGuiCol_Button, on and { 0.18, 0.55, 0.18, 1 } or { 0.62, 0.18, 0.18, 1 });
     end
+    if imgui.Button((on and 'ON' or 'OFF') .. '##onoff_' .. id, { 46, 22 }) then toggled = true; end
+    if ImGuiCol_Button ~= nil then imgui.PopStyleColor(1); end
+    if imgui.IsItemHovered() then imgui.SetTooltip(on and tipOn or tipOff); end
     return toggled;
 end
 

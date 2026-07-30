@@ -57,6 +57,12 @@ local _sel = nil;
 -- line ONCE, then just show the red placeholder (no per-frame chat spam).
 local _blamed = {};
 
+-- Imgui text calls are printf format strings, so a '%' in a MODULE-supplied
+-- label or status word is a conversion, not a percent sign (ui\panelkit's `esc`
+-- carries the field story). Everything author-supplied that reaches a Text or a
+-- tooltip on this tab goes through here.
+local function esc(s) return (tostring(s):gsub('%%', '%%%%')); end
+
 local function statusColor(act)
     if act == nil then return COL_DIM; end
     if act.active then return COL_ACTIVE; end
@@ -87,16 +93,18 @@ local function moduleRow(job, ids, i)
     end
     imgui.SameLine(0, 6);
 
-    -- the master-switch pill (green on / red off). craftbar owns the widget.
+    -- the master-switch pill (green on / red off). ui\panelkit owns the widget --
+    -- the same one a module's own Panel draws, and the same one the hobby bars
+    -- draw through craftbar.onOffSwitch, which delegates here.
     local tipOn  = rec.label .. ' is ON -- click to silence this helper.';
     local tipOff = rec.label .. ' is OFF -- click to turn it on.';
     local toggled = false;
-    local cbok, craftbar = pcall(require, 'dlac\\ui\\craftbar');
-    if cbok and type(craftbar) == 'table' and type(craftbar.onOffSwitch) == 'function' then
-        toggled = craftbar.onOffSwitch(enabled, 'jhpill_' .. job .. '_' .. id, tipOn, tipOff);
+    local pkok, panelkit = pcall(require, 'dlac\\ui\\panelkit');
+    if pkok and type(panelkit) == 'table' and type(panelkit.pill) == 'function' then
+        toggled = panelkit.pill(imgui, enabled, 'jhpill_' .. job .. '_' .. id, tipOn, tipOff);
     else
         toggled = imgui.Button((enabled and 'ON' or 'OFF') .. '##jhpill_' .. job .. '_' .. id, { 46, 22 });
-        if imgui.IsItemHovered() then imgui.SetTooltip(enabled and tipOn or tipOff); end
+        if imgui.IsItemHovered() then imgui.SetTooltip(esc(enabled and tipOn or tipOff)); end
     end
     if toggled then jh.setEnabled(id, not enabled); end
     imgui.SameLine(0, 8);
@@ -140,22 +148,35 @@ local function renderPanel()
         imgui.TextColored(COL_DIM, 'Select a helper on the left to configure it.');
         return;
     end
-    imgui.TextColored(COL_HEADER, rec.label);
+    imgui.TextColored(COL_HEADER, esc(rec.label));
     -- The live status + the module's own status hook live HERE, beside the
     -- Panel title (Henrik's field ruling 2026-07-29): the row stays name+pill.
     local act = jh.activity(rec.id);
     imgui.SameLine(0, 10);
-    imgui.TextColored(statusColor(act), (act ~= nil and act.label) or '?');
+    imgui.TextColored(statusColor(act), esc((act ~= nil and act.label) or '?'));
+
+    -- The render ctx (api 2). `ui` is the Panel widget kit already BOUND to the
+    -- host's imgui handle -- which is the handle a module must draw with, because
+    -- the smoke suite renders every tab against a stub binding and a module that
+    -- required its own would get the wrong instance. `S` is the module's own API
+    -- table, the same one its init hook received.
+    local kit = nil;
+    pcall(function()
+        local pk = require('dlac\\ui\\panelkit');
+        if type(pk) == 'table' and type(pk.bind) == 'function' then kit = pk.bind(imgui); end
+    end);
+    local ctx = { imgui = imgui, ui = kit, id = rec.id, record = rec,
+                  S = rec.S, deps = rec.S or deps, activity = act };
+
     if type(rec.mod.status) == 'function' then
         imgui.SameLine(0, 10);
-        local sok = pcall(rec.mod.status, { imgui = imgui, id = rec.id, record = rec, deps = deps, activity = act });
+        local sok = pcall(rec.mod.status, ctx);
         if not sok and not _blamed[rec.id] then
             _blamed[rec.id] = true;
             print('[dlac] Job helper ' .. tostring(rec.id) .. ' status hook errored -- contained.');
         end
     end
     imgui.Separator();
-    local ctx = { imgui = imgui, id = rec.id, record = rec, deps = deps };
     local ok, err = pcall(rec.mod.panel, ctx);
     if not ok then
         if not _blamed[rec.id] then

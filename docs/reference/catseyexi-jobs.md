@@ -240,6 +240,28 @@ Disclaimers (wiki): never a damage loss, only an increase; gear buffs still
 count, this is a bonus on top. Recommend a `<wait 2>` after the Ready ability;
 check CHR in case of latency.
 
+> **OPEN — WHEN is the CHR read?** (2026-07-30, flagged while building the BST
+> Helper's Summon set.) The wiki's own advice — *"`<wait 2>` after the Ready
+> ability; check CHR in case of latency"* — reads as **the CHR is sampled when
+> READY resolves**, i.e. per Ready ability, not once at summon. Henrik's
+> understanding when he asked for the feature was the opposite (*"bonus to your
+> summoned jug pet's stats depending on the charisma when you summon it"*), and
+> he has a field observation of a pet summoned at Lv10 in Incursion coming out
+> with CHR+. Both can be true — the pet's own stats at spawn AND a per-Ready
+> multiplier — and nothing in the server clone settles it: `CalculateJugPetStats`
+> (`src/map/utils/petutils.cpp`) has **no CHR term at all** on branch `stable`,
+> so this adjustment is live-only or newer than that checkout.
+>
+> It decides where the CHR gear belongs:
+> * **At summon** → the BST Helper's **Summon set** (shipped 2026-07-30; holds
+>   the claim `HOLD_S = 2s` past the fire so a spawn-time read still sees it).
+> * **At Ready** → an ordinary dlac **Trigger** on the `Ability` handler matching
+>   `Ready`, which needs **no new code at all** (Ready is a master job ability,
+>   action category `0x09` → `ACTION_ROUTES` → the `Ability` event).
+>
+> Settle it in the field before building anything further: summon with and
+> without CHR gear, then Ready with and without, and compare the damage.
+
 **Stats** — ALL jug pets: DEF increased by a flat 10%.
 
 Additional enmity for tanking:

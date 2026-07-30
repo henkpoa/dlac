@@ -76,6 +76,10 @@ local useit = (function()
     local m = try("dlac\\feature\\useitem");
     return (m ~= nil and type(m.menu) == 'function') and m or nil;
 end)();
+-- "Is this a Crystal Warrior?" -- the central service (architecture.md), used by
+-- the quick menu's CW-only row. nil means UNKNOWN, never a mode: an unreadable
+-- entity hides the row rather than guessing it in.
+local gmode = try("dlac\\feature\\gamemode");
 
 -- Capability flags in ONE table (each was its own local; the 200-cap again).
 -- has.statdefs is assigned where that module loads, further down.
@@ -1460,9 +1464,9 @@ function M.openAutomation(key)
 end
 
 -- Quick WINDOWS (Henrik, 2026-07-26). The popup doubles as the floating quick
--- menu, so under the travel tiers ride the two windows worth reaching for
--- mid-play: the Hobby bar and Lockstyle. One row each -- click opens the window
--- and closes the popup.
+-- menu, so under the travel tiers ride the surfaces worth reaching for mid-play:
+-- E-Box Restock (2026-07-30, Crystal Warriors only), the Hobby bar and
+-- Lockstyle. One row each -- click opens it and closes the popup.
 --
 -- WHAT WAS HERE (2026-07-20 -> 2026-07-26): "Automations", "HELM" and "Fishing"
 -- cascades -- the automations list with right-click toggles, the four gathering
@@ -1472,16 +1476,23 @@ end
 -- away, and the third belongs on the Automations tab it linked to.
 --
 -- Rows, not cascades: there is nothing to fold: the window is the content. The
--- ACTION goes through menuui.activate -- the same seam the Menu rows use -- so
--- "what the Lockstyle row does" has exactly one definition (menuui is configured
--- at gearui load, and the call is pcall'd, so a headless frame just no-ops).
-local function renderQuickWindowRow(key, label, tip)
+-- ACTION goes through menuui.activate by DEFAULT -- the same seam the Menu rows
+-- use -- so "what the Lockstyle row does" has exactly one definition (menuui is
+-- configured at gearui load, and the call is pcall'd, so a headless frame just
+-- no-ops).
+--
+-- `icon` and `fn` are the OPT-OUTS, both nil for a plain Menu row: a row whose
+-- art is not named after its key passes the asset basename, and a row that opens
+-- something menuui does not own (the Gear Helpers panels) passes its own action.
+-- Defaulting both to the key keeps the common case one argument long, and keeps
+-- "the Lockstyle row" a single definition.
+local function renderQuickWindowRow(key, label, tip, icon, fn)
     -- The Menu's own art, at teleport-row size, through filetex.handle (it
     -- retains the texture OBJECT -- storing a bare handle is the dangling-pointer
     -- crash). Missing PNG -> a Dummy of the same size, so the label column holds.
     local drew = false;
     pcall(function()
-        local h = require('dlac\\ui\\filetex').handle(key);
+        local h = require('dlac\\ui\\filetex').handle(icon or key);
         if h == nil then return; end
         imgui.Image(h, { 18, 18 });
         drew = true;
@@ -1489,7 +1500,8 @@ local function renderQuickWindowRow(key, label, tip)
     if not drew then imgui.Dummy({ 18, 18 }); end
     imgui.SameLine(0, 6);
     if imgui.Selectable('##tpqw' .. key) then
-        pcall(function() require('dlac\\ui\\menuui').activate(key); end);
+        if fn ~= nil then pcall(fn);
+        else pcall(function() require('dlac\\ui\\menuui').activate(key); end); end
         imgui.CloseCurrentPopup();
     end
     if imgui.IsItemHovered() then imgui.SetTooltip(tip); end
@@ -1530,10 +1542,23 @@ local function renderTeleportsPopup()
         for i, r in ipairs(xps) do renderTeleportRow(r, 'x' .. i); end
     end
     -- Quick windows (Henrik, 2026-07-26): the popup is the floating quick menu,
-    -- not just travel, so the Hobby bar and Lockstyle ride under the travel
-    -- tiers. No cascade and no BeginMenu fallback to think about -- these are
-    -- plain rows that open a window and close the popup.
+    -- not just travel, so E-Box Restock, the Hobby bar and Lockstyle ride under
+    -- the travel tiers. No cascade and no BeginMenu fallback to think about --
+    -- these are plain rows that open something and close the popup.
     imgui.Separator();
+    -- E-Box Restock rides ABOVE the Hobby bar (Henrik, 2026-07-30), and ONLY for
+    -- Crystal Warriors -- the same affirmative gate the Gear Helpers row uses
+    -- (automationsui: gamemode.get() == 'CW', nil is unknown and hides it), so a
+    -- non-CW character never sees a row for content it cannot have. It is not a
+    -- window like the two below it: the panel lives on the Gear Helpers tab, so
+    -- the row opens it through openAutomation -- the one door /dl restock and the
+    -- nudge's right-click already use. Art: the crate the nudge wears
+    -- (assets\ebox.png), not a key-named Menu icon, hence the explicit name.
+    if gmode ~= nil and gmode.get() == 'CW' then
+        renderQuickWindowRow('restock', 'E-Box Restock',
+            'Open the E-Box Restock panel -- what you keep topped up from the Ephemeral\nBox, how many of each, and the floating nudge\'s settings.',
+            'ebox', function() M.openAutomation('restock'); end);
+    end
     renderQuickWindowRow('hobbybar', 'Hobby bar',
         'Show/hide the hobby bar -- Craft, HELM, Fishing and Chocobo controls in\none window (one hobby active at a time).');
     renderQuickWindowRow('lockstyle', 'Lockstyle',
@@ -4562,7 +4587,11 @@ local function drawWindow()
 
         imgui.Separator();
 
-        if imgui.BeginTabBar('##ffxilac_tabs', ImGuiTabBarFlags_None) then
+        -- The bar's ID comes from the host, and must NOT be cached: a forced tab
+        -- jump whose flag went nowhere lands by giving the bar a new identity (a
+        -- bar ImGui has never seen has no selection and adopts the first tab
+        -- submitted). uihost owns that generation; see host.tabBarId.
+        if imgui.BeginTabBar(host.tabBarId('##ffxilac_tabs'), ImGuiTabBarFlags_None) then
             -- A tab renderer that errors mid-frame leaves the imgui stack torn for
             -- the rest of the frame -- which presents as "buttons do nothing" with
             -- no trace. Surface every tab error LOUDLY: one chat line per distinct
