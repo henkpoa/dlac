@@ -481,6 +481,50 @@ function M._validate(id, mod)
             if ok ~= true then return nil, tostring(reason or 'bad config block'); end
         end
     end
+    -- The optional `commands` block (api 2): named ACTIONS a player can fire by
+    -- hand -- `/dl jh <module> <action>` -- and therefore bind a key to. Same
+    -- law as `config`: declared, validated at load, refused loudly.
+    --
+    --   commands = {
+    --       summon = { label = 'Summon now',
+    --                  help  = 'one line, printed by /dl jh <module>',
+    --                  key   = 'summonKey',      -- a CONFIG key holding the bind
+    --                  run   = function(S, args) ... end },
+    --   }
+    --
+    -- `key` names one of the module's OWN declared config keys, so the framework
+    -- can read the player's chosen bind and install it without the module
+    -- touching the registry -- and a module cannot claim a key as somebody else.
+    if mod.commands ~= nil then
+        if type(mod.commands) ~= 'table' then return nil, 'commands is not a table'; end
+        local declared = {};
+        if type(mod.config) == 'table' and type(mod.config.keys) == 'table' then
+            declared = mod.config.keys;
+        end
+        for action, spec in pairs(mod.commands) do
+            if type(action) ~= 'string' or action == '' then
+                return nil, 'a command name is not a name';
+            end
+            if action:find('%s') ~= nil then
+                return nil, string.format('command "%s" has whitespace in its name', action);
+            end
+            if type(spec) ~= 'table' then
+                return nil, string.format('command "%s" is not a table', action);
+            end
+            if type(spec.run) ~= 'function' then
+                return nil, string.format('command "%s" has no run function', action);
+            end
+            if spec.key ~= nil then
+                if type(spec.key) ~= 'string' or spec.key == '' then
+                    return nil, string.format('command "%s" names no config key for its bind', action);
+                end
+                if declared[spec.key] ~= 'string' then
+                    return nil, string.format('command "%s" binds through "%s", which is not a declared string config key',
+                                              action, tostring(spec.key));
+                end
+            end
+        end
+    end
     return { id = id, label = mod.label, jobs = jobs, mod = mod };
 end
 
@@ -768,5 +812,243 @@ function M.idsForJob(job)
     end
     return M.orderFor(job, defaults);
 end
+
+-- ---------------------------------------------------------------------------
+-- module COMMANDS -- `/dl jobhelper <module> <action>` (`/dl jh` for short)
+-- ---------------------------------------------------------------------------
+--
+-- One door for every module's named actions, and the thing a keybind is bound
+-- to. `<module>` is the folder name, which is already unique addon-wide: the
+-- loader refuses a second folder of the same name under another job (see
+-- M.load), so this cannot be ambiguous and needs no job level in the command.
+--
+-- Deliberately NOT a per-module command: a module that registered its own
+-- `/dl bst ...` would own a piece of dlac's command namespace, and the second
+-- module to want one would collide with the first exactly the way the keybinds
+-- used to.
+
+-- A module's declared commands, or an empty table.
+function M.commandsOf(id)
+    local mod = M.get(id);
+    if type(mod) ~= 'table' or type(mod.commands) ~= 'table' then return {}; end
+    return mod.commands;
+end
+
+-- Sorted action names (explicit order -- `pairs` has none, and this list is
+-- printed to a player).
+function M.actionNames(id)
+    local out = {};
+    for action in pairs(M.commandsOf(id)) do out[#out + 1] = action; end
+    table.sort(out);
+    return out;
+end
+
+-- Is this module's job the one I am on? Unknown job answers TRUE -- an
+-- unreadable world never manufactures a refusal for a deliberate keypress.
+function M.onItsJob(id, job)
+    local rec = M.record(id);
+    if rec == nil then return false; end
+    if job == nil then
+        pcall(function() job = gData.GetPlayer().MainJob; end);
+    end
+    if type(job) ~= 'string' or job == '' or job == '?' then return true; end
+    for _, j in ipairs(rec.jobs) do
+        if j == job then return true; end
+    end
+    return false;
+end
+
+M._say = function(line)
+    local said = false;
+    pcall(function()
+        local cf = require('dlac\\chatfmt');
+        if type(cf) == 'table' and type(cf.warn) == 'function' then cf.warn(line); said = true; end
+    end);
+    if not said then pcall(function() print('[dlac] ' .. tostring(line)); end); end
+end;
+
+-- Run one named action. Returns ok, reason. Every refusal is LOUD: a key that
+-- did nothing and said nothing is indistinguishable from a broken bind.
+function M.runCommand(id, action, args)
+    local rec = M.record(id);
+    if rec == nil then
+        M._say(string.format('no Job helper called "%s" is installed.', tostring(id)));
+        return false, 'no-module';
+    end
+    -- Matched case-insensitively: the command line arrives lowercased, and a
+    -- module that declared `Summon` must not be unreachable for it.
+    local cmds = M.commandsOf(id);
+    local spec = cmds[action];
+    if spec == nil and type(action) == 'string' then
+        for name, s in pairs(cmds) do
+            if string.lower(name) == string.lower(action) then spec = s; break; end
+        end
+    end
+    if type(spec) ~= 'table' or type(spec.run) ~= 'function' then
+        local names = table.concat(M.actionNames(id), ', ');
+        M._say(string.format('%s has no "%s" action%s', rec.label or id, tostring(action),
+                             (names ~= '') and (' -- it has: ' .. names .. '.') or '.'));
+        return false, 'no-action';
+    end
+    if not M.onItsJob(id) then
+        M._say(string.format('%s is a %s helper -- it does nothing on your current job.',
+                             rec.label or id, table.concat(rec.jobs, '/')));
+        return false, 'job';
+    end
+    local ok = false;
+    local err = nil;
+    local good, res = pcall(spec.run, rec.S, args);
+    if good then ok = (res ~= false); else err = res; end
+    if err ~= nil then
+        M._say(string.format('%s: "%s" failed -- %s', rec.label or id, tostring(action), tostring(err)));
+        return false, 'threw';
+    end
+    return ok, nil;
+end
+
+-- ---------------------------------------------------------------------------
+-- module KEYBINDS -- installed by the framework, released on a job change
+-- ---------------------------------------------------------------------------
+--
+-- A module never touches the registry: it declares which of its config keys
+-- holds the bind (see _validate) and the framework installs the whole group.
+-- So the owner id and the command string are the FRAMEWORK's -- a module can no
+-- more bind as somebody else than it can request a sequence as somebody else.
+--
+-- The group is job-scoped by Henrik's ruling (2026-07-30): a helper's key exists
+-- while you are on its job with its pill on, and the key comes back to you the
+-- moment you change job. Deliberately NOT the full activity predicate -- town,
+-- death and zoning would make a key appear and vanish under the player's
+-- fingers, and those are the ACT's gates, not the key's.
+
+-- What this character's modules want bound right now.
+function M.bindEntries()
+    local out = {};
+    local job = nil;
+    pcall(function() job = gData.GetPlayer().MainJob; end);
+    for _, rec in ipairs(M.modules) do
+        if M.isEnabled(rec.id) and M.onItsJob(rec.id, job) and rec.cfg ~= nil then
+            for _, action in ipairs(M.actionNames(rec.id)) do
+                local spec = M.commandsOf(rec.id)[action];
+                if type(spec) == 'table' and type(spec.key) == 'string' then
+                    local key = nil;
+                    pcall(function() key = rec.cfg.get(spec.key); end);
+                    if type(key) == 'string' and key ~= '' then
+                        out[#out + 1] = {
+                            owner   = string.format('jobhelper:%s:%s', rec.id, action),
+                            key     = key,
+                            command = string.format('/dl jh %s %s', rec.id, action),
+                            label   = string.format('%s: %s', rec.label or rec.id,
+                                                    spec.label or action),
+                        };
+                    end
+                end
+            end
+        end
+    end
+    table.sort(out, function(a, b) return a.owner < b.owner; end);
+    return out;
+end
+
+-- The bind beat. Cheap and throttled: one job read a second, and the registry
+-- leaves an unchanged bind entirely alone, so the steady state costs nothing.
+M.BIND_TICK_S = 1.0;
+local _bindAt = nil;
+
+function M.pumpBinds(now)
+    now = tonumber(now);
+    if now == nil then
+        pcall(function()
+            local cq = require('dlac\\lib\\cmdqueue');
+            if type(cq) == 'table' and type(cq.frame) == 'function' then now = cq.frame() / 60.0; end
+        end);
+        now = tonumber(now) or 0;
+    end
+    if _bindAt ~= nil then
+        local since = now - _bindAt;
+        if since >= 0 and since < M.BIND_TICK_S then return nil; end
+    end
+    _bindAt = now;
+    local res = nil;
+    pcall(function()
+        local kb = require('dlac\\feature\\keybinds');
+        if type(kb) ~= 'table' or type(kb.syncGroup) ~= 'function' then return; end
+        res = kb.syncGroup('jobhelper:', M.bindEntries());
+    end);
+    return res;
+end
+
+-- ---------------------------------------------------------------------------
+-- the command surface
+-- ---------------------------------------------------------------------------
+
+-- Print what a module can be asked to do (`/dl jh <module>` with no action).
+function M.reportCommands(id)
+    local rec = M.record(id);
+    if rec == nil then
+        M._say(string.format('no Job helper called "%s" is installed.', tostring(id)));
+        return;
+    end
+    local names = M.actionNames(id);
+    if #names == 0 then
+        M._say(string.format('%s has no commands.', rec.label or id));
+        return;
+    end
+    pcall(function()
+        local cf = require('dlac\\chatfmt');
+        local line = (type(cf) == 'table' and type(cf.msg) == 'function') and cf.msg
+                     or function(s) print('[dlac] ' .. s); end;
+        line(string.format('%s (%s):', rec.label or id, id));
+        for _, action in ipairs(names) do
+            local spec = M.commandsOf(id)[action];
+            local bound = '';
+            pcall(function()
+                local kb = require('dlac\\feature\\keybinds');
+                local held = kb.heldBy(string.format('jobhelper:%s:%s', id, action));
+                if held ~= nil then bound = ('   [%s]'):format(held.raw or held.key); end
+            end);
+            line(string.format('  /dl jh %s %s -- %s%s', id, action,
+                               tostring((type(spec) == 'table' and spec.help) or
+                                        (type(spec) == 'table' and spec.label) or action), bound));
+        end
+    end);
+end
+
+-- Every installed module, for a bare `/dl jh`.
+function M.reportModules()
+    if #M.modules == 0 then
+        M._say('no Job helpers are installed.');
+        return;
+    end
+    pcall(function()
+        local cf = require('dlac\\chatfmt');
+        local line = (type(cf) == 'table' and type(cf.msg) == 'function') and cf.msg
+                     or function(s) print('[dlac] ' .. s); end;
+        line('Job helpers installed:');
+        for _, rec in ipairs(M.modules) do
+            line(string.format('  %-16s %s (%s)', rec.id, rec.label or rec.id,
+                               table.concat(rec.jobs, '/')));
+        end
+        line('ask one for what it does:  /dl jh <module>');
+    end);
+end
+
+pcall(function()
+    ashita.events.register('command', 'dlac-jobhelper-cmd', function(e)
+        local args = e.command:args();
+        if #args < 2 or args[1]:lower() ~= '/dl' then return; end
+        local sub = args[2]:lower();
+        if sub ~= 'jobhelper' and sub ~= 'jh' then return; end
+        e.blocked = true;
+        pcall(function()
+            if #args == 2 then M.reportModules(); return; end
+            local id = args[3];
+            if #args == 3 then M.reportCommands(id); return; end
+            local extra = {};
+            for i = 5, #args do extra[#extra + 1] = args[i]; end
+            M.runCommand(id, args[4]:lower(), extra);
+        end);
+    end);
+end);
 
 return M;

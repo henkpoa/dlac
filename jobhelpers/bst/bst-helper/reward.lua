@@ -25,6 +25,14 @@
     also SILENT, which is exactly what the button does -- it greys out and says
     nothing.
 
+    ONE REFUSAL IS QUIETER STILL: "you are not carrying any pet food" speaks ONCE
+    PER ZONE. The lockout is a budget for how often the rule may speak, and it
+    suits every refusal the world might resolve on its own -- but an empty bag is
+    fixed by shopping, not by waiting thirty seconds, so a per-window line is
+    thirty reminders of one thing the player already knows. Zoning re-arms it
+    (you may have shopped), and so does carrying food again (running out later is
+    real news).
+
     House shape: `decide(vitals, state)` is PURE -- vitals + state in, decision
     out, no services and no clock -- so the threshold, the lockout and every gate
     are headless checks (BRW*). `liveState` assembles that state from the module
@@ -71,6 +79,8 @@ local _S = nil;
 
 local _last          = nil;    -- the last automatic decision (the Panel reports it)
 local _lastAttemptAt = nil;    -- the lockout clock: when the rule last ATTEMPTED
+local _saidFoodIn    = nil;    -- the zone we last said "no pet food" in (see below)
+local _saidFood      = false;
 
 local function cfg()
     if type(_S) ~= 'table' then return nil; end
@@ -265,8 +275,13 @@ end
 
 function M.lastDecision() return _last; end
 
--- Forget the lockout (job change / logout / test reset).
-function M.resetLockout() _lastAttemptAt = nil; _last = nil; end
+-- Forget the lockout (job change / logout / test reset). The once-per-zone
+-- food line resets with it: a job change is at least as good a reason to hear
+-- it again as a zone change.
+function M.resetLockout()
+    _lastAttemptAt, _last = nil, nil;
+    _saidFood, _saidFoodIn = false, nil;
+end
 
 function M.lockedUntil()
     if _lastAttemptAt == nil then return nil; end
@@ -292,9 +307,14 @@ end
 -- module's own identity, so this cannot request as somebody else or get its own
 -- section priority wrong.
 function M.buildRequest(foodName, setName)
+    -- COPIED, never used in place: Ammo is forced below and the sequencer keeps
+    -- this table for the life of the sequence, so it must be ours alone.
     local claim = {};
     if type(_S) == 'table' and type(_S.sets) == 'table' and type(_S.sets.slotsOf) == 'function' then
-        claim = _S.sets.slotsOf(setName);
+        local ok, slots = pcall(_S.sets.slotsOf, setName);
+        if ok and type(slots) == 'table' then
+            for slot, item in pairs(slots) do claim[slot] = item; end
+        end
     end
     claim.Ammo = foodName;                  -- food union set; food owns Ammo
     return {
@@ -320,9 +340,34 @@ function M.request()
 
     local pick = S.pet.food();
     if type(pick) ~= 'table' or pick.ok ~= true then
-        M._emit('Reward: ' .. tostring(S.pet.foodRefusal(pick)));      -- loud refusal
+        -- ONCE PER ZONE (Henrik, 2026-07-30, off his own probe log: the line
+        -- appeared mid-fight while he was busy proving something else).
+        --
+        -- The lockout is the wrong budget for THIS refusal. It is sized for "how
+        -- often may this rule speak", and every other refusal it covers is
+        -- something the world might fix on its own -- a cooldown ends, a pet
+        -- heals. Carrying no pet food does not: it is fixed by opening your bags,
+        -- which you cannot do usefully in the middle of the fight that is
+        -- printing it, so a line every 30 seconds is thirty reminders of one
+        -- thing you already know. A zone change is the natural moment it might
+        -- have become false -- you stopped, you shopped, you came back.
+        --
+        -- The ZONE ITSELF is the latch, not a timer: an unreadable zone is a
+        -- value like any other, so a headless or pre-login world gets one line
+        -- and then silence, rather than one per window forever.
+        local zone = nil;
+        if type(S.player) == 'table' and type(S.player.zone) == 'function' then
+            zone = S.player.zone();
+        end
+        if (not _saidFood) or _saidFoodIn ~= zone then
+            _saidFood, _saidFoodIn = true, zone;
+            M._emit('Reward: ' .. tostring(S.pet.foodRefusal(pick)));   -- loud refusal
+        end
         return { ok = false, reason = 'food' };
     end
+    -- Carrying food again re-arms the line, so the next time you run out you
+    -- hear about it wherever you are standing.
+    _saidFood, _saidFoodIn = false, nil;
 
     local res = S.act.request(M.buildRequest(pick.name, M.setName()));
     if type(res) == 'table' and res.ok ~= true then

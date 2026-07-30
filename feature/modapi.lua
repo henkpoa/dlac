@@ -319,6 +319,20 @@ function M.build(rec)
         return p.Status;
     end
 
+    -- WHERE am I -- the zone id, or nil when it cannot be read (headless,
+    -- pre-login, mid-zone). The central location service's answer, which is also
+    -- the one the `inTown` condition and the activity predicate are built on, so
+    -- a module and the gate that governs it can never disagree about where the
+    -- player is.
+    --
+    -- The reason it exists is quieting: "once per zone" is the natural budget
+    -- for a refusal a player cannot fix where they are standing, and comparing
+    -- zone ids is how you spend it. Nil is a VALUE for that purpose -- latch on
+    -- it like any other, or an unreadable world becomes a repeating line.
+    function S.player.zone()
+        return ask('dlac\\feature\\location', 'zoneId', nil);
+    end
+
     -- Am I ZONING / LOGGING OUT? true / false / nil, where nil means "could not
     -- tell" and must never be treated as either -- an unreadable world does not
     -- manufacture a reason (the buff-cache discipline).
@@ -534,35 +548,82 @@ function M.build(rec)
 
     S.sets = {};
 
-    -- The static set names available to this character (Idle, Reward, ...) --
-    -- never the Dynamic build sets.
+    -- THE sets a player can pick: the DYNAMIC sets -- the ones the Sets tab
+    -- builds and commits, and the only ones this character's engine gears from.
+    --
+    -- This used to answer `staticSetNames`, and that was a bug with a field
+    -- report attached (2026-07-30, the BST Helper's Reward picker): the statics
+    -- are the pre-profiles job file's flattened leftovers plus whatever the
+    -- pre-migration backup still holds -- the Copy-from helper's IMPORT SOURCES,
+    -- not a live library. A migrated character saw a list of sets they had not
+    -- edited in months and none of the ones they use. One namespace, and it is
+    -- the one the Sets tab shows (maintainer's ruling: Dynamic only -- a flat
+    -- picker holding both cannot say WHICH `Reward` you meant).
     function S.sets.names()
-        return ask('dlac\\gear\\profilesets', 'staticSetNames', {});
+        return ask('dlac\\gear\\profilesets', 'dynamicSetNames', {});
     end
 
     -- A named set as a flat { SlotKey = itemName } map, ready to hand to
     -- S.act.request as a claim. Empty when the set is missing or unreadable.
     --
-    -- The wrapper-shape tolerance lives HERE and not in your module: a set entry
-    -- may be a plain string or a table carrying Name / name / item, and which one
-    -- it is depends on how the set was authored or imported. That is the sets
-    -- format's business, and a module that hand-parsed it would break the day the
-    -- format grew a fourth shape.
+    -- THE ENGINE'S OWN FLATTEN ANSWERS FIRST, and that is the whole point: a
+    -- Dynamic set is a LADDER per slot (level rungs, mode gates, Sub pairing,
+    -- virtual entries), and `sets[Name]` in the store is the head rung the
+    -- engine picked at the live level -- utils.BuildDynamicSets writes it there.
+    -- So a helper claims exactly the pieces the engine would have equipped,
+    -- rather than a second reading of the same ladder that drifts the first time
+    -- a rung is level-gated. Virtual entries ride through untouched: the claim
+    -- resolves them at equip time like any set (dispatch.equipResolved), which
+    -- is also why they must never appear in `need`.
+    --
+    -- The raw walk stays as the degraded path -- pre-login, headless, or a set
+    -- authored but not yet flattened. The wrapper-shape tolerance lives HERE and
+    -- not in your module: an entry may be a plain string or a table carrying
+    -- Name / name / item depending on how it was authored or imported, and a
+    -- module that hand-parsed it would break the day the format grew a fourth
+    -- shape.
     function S.sets.slotsOf(name)
         local slots = {};
         if type(name) ~= 'string' or name == '' or name == 'None' then return slots; end
+
+        local flat = ask('dlac\\dispatch', 'flattenedSet', nil, name);
+        if type(flat) == 'table' then
+            for slot, v in pairs(flat) do
+                if type(v) == 'string' and v ~= '' then slots[slot] = v; end
+            end
+            if next(slots) ~= nil then return slots; end
+        end
+
         pcall(function()
             local ps = require('dlac\\gear\\profilesets');
             if type(ps) ~= 'table' or type(ps.getSetsRoot) ~= 'function' then return; end
             local root = ps.getSetsRoot();
-            local set = (type(root) == 'table') and root[name] or nil;
-            if type(set) ~= 'table' then return; end
+            if type(root) ~= 'table' then return; end
+            -- The authored Dynamic set first, then a same-named top-level entry
+            -- (a static, or a flatten this state can still see).
+            local set = nil;
+            if type(root.Dynamic) == 'table' and type(root.Dynamic[name]) == 'table' then
+                set = root.Dynamic[name];
+            elseif type(root[name]) == 'table' then
+                set = root[name];
+            end
+            if set == nil then return; end
             for slot, v in pairs(set) do
                 local item = nil;
                 if type(v) == 'string' then
                     item = v;
                 elseif type(v) == 'table' then
-                    item = v.Name or v.name or v.item;
+                    -- An authored LADDER is an array of candidates; its head is
+                    -- what the flatten would have chosen, minus the level gates
+                    -- this degraded path cannot apply.
+                    local head = v[1];
+                    if type(head) == 'string' then
+                        item = head;
+                    elseif type(head) == 'table' then
+                        item = head.Name or head.name or head.item;
+                    else
+                        item = v.Name or v.name or v.item;
+                    end
                 end
                 if type(item) == 'string' and item ~= '' then slots[slot] = item; end
             end
@@ -653,6 +714,42 @@ function M.build(rec)
     -- mutation, tolerant reader, never caches the pre-login nil); you own the
     -- keys. See feature\modcfg.
     S.cfg = rec.cfg;
+
+    -- ----- keys -----------------------------------------------------------
+    --
+    -- YOU DO NOT BIND KEYS. Declare a `commands` block whose entry names one of
+    -- your own config keys (`key = 'summonKey'`) and the framework installs the
+    -- whole group through the one registry (feature\keybinds) -- job-scoped, so
+    -- your key exists while the player is on your job with your pill on and
+    -- comes back to them the moment they switch. The owner id and the command
+    -- string are the framework's, for the reason S.act.request fills in your
+    -- module id: so a module cannot claim a key as somebody else.
+    --
+    -- These are the two READS a Panel needs to render a key field honestly.
+    S.keys = {};
+
+    -- The key this module's action holds right now, as the player typed it, or
+    -- nil when it holds none (not configured, wrong job, pill off).
+    function S.keys.boundTo(action)
+        local kb = svc('dlac\\feature\\keybinds');
+        if kb == nil or type(kb.heldBy) ~= 'function' then return nil; end
+        local held = nil;
+        pcall(function() held = kb.heldBy(string.format('jobhelper:%s:%s', id, tostring(action))); end);
+        if type(held) ~= 'table' then return nil; end
+        return held.raw or held.key;
+    end
+
+    -- Who holds a key -- { owner, label, command } or nil for "free". Ask before
+    -- you save a key the player typed: the registry REFUSES a second claim, so
+    -- a Panel that does not ask lets them save a key that will never fire.
+    function S.keys.holder(key)
+        local kb = svc('dlac\\feature\\keybinds');
+        if kb == nil or type(kb.holder) ~= 'function' then return nil; end
+        local held = nil;
+        pcall(function() held = kb.holder(key); end);
+        if type(held) ~= 'table' then return nil; end
+        return held;
+    end
 
     -- The Panel widget kit, UNBOUND (every function takes an imgui handle first).
     -- Your `panel(ctx)` is handed `ctx.ui`, the same kit already bound to the

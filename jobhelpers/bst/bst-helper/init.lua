@@ -14,8 +14,20 @@
       * the **Resummon rule** (resummon.lua) -- on a CONFIRMED jug-pet death it
         claims the configured jug, verifies it worn and fires the chosen summon;
         if both are on recast it queues. Driven by the same service's classified
-        pet-loss edge, and the module's jug roster (jugs.lua) is what lets that
-        edge tell a jug pet from a charmed one.
+        pet-loss edge, which proves the death off the pet's own corpse and knows
+        the pet is a jug pet because it watched you summon it (the jug roster in
+        jugs.lua is the fallback for a pet that was already out).
+
+    ...plus ONE named action, which is not a standing behavior at all: **Summon
+    now** (`commands.summon` -> resummon.summonNow) -- the Panel button and the
+    key a player binds to it. The framework installs that key while they are on
+    BST with this module on; nothing here touches the bind registry.
+
+    THE SUMMON SET is the module's one piece of server-specific knowledge: on
+    CatsEyeXI the master's +CHR when a jug pet spawns raises that pet's Ready
+    strength for its whole life, and only GEAR CHR counts -- so the Summon
+    section offers an optional set, worn best-effort around the summon, leaving
+    the weapon slots alone unless the player opts in (a weapon swap costs TP).
 
     All three default OFF, because all three issue commands and two of them SPEND
     AN ITEM. The row pill is the opposite (default on, and it only ever silences).
@@ -69,7 +81,8 @@ local TIP_RESUMMON = 'Death only, and only your JUG pet. dlac equips your jug, v
     .. ' fires your summon, then restores your gear. A Leave, zoning, logging out and'
     .. ' a charmed pet are never a resummon -- charm play stays entirely yours.';
 
-local TIP_JUG = 'Every jug in the catalog, lowest level first, each naming the pet it calls.\n'
+local TIP_JUG = 'Every jug you can use on this server, lowest level first, each naming the pet\n'
+    .. 'it calls -- the Lv76+ retail broths are left out, since nothing here can equip them.\n'
     .. 'The pet names are dlac module data and are NOT field-verified yet -- tell the\n'
     .. 'maintainer if one is wrong, and it is a one-line fix.';
 
@@ -83,6 +96,35 @@ local TIP_FALLBACK = 'On by default. Off, a resummon waits for YOUR method inste
     .. 'resummon queues and fires the moment one comes up -- and zoning,\n'
     .. 'Leave, logging out or any pet appearing cancels it.';
 
+local TIP_SUMMON = 'Everything about HOW your pet is summoned -- which jug, which ability,'
+    .. ' and what you are wearing when it lands. The Resummon rule below uses all of it,'
+    .. ' and so does the button.';
+
+local TIP_SUMMONSET = 'Optional. dlac wears this set, equips your jug, fires the summon, then\n'
+    .. 'restores your gear.\n'
+    .. 'On this server the +CHR you are wearing when a jug pet spawns raises that\n'
+    .. 'pet\'s Ready damage for as long as it is out -- and only GEAR CHR counts,\n'
+    .. 'which is what makes a set the right tool. Build a CHR set in the Sets tab\n'
+    .. 'and pick it here.\n'
+    .. 'Best-effort: only the jug has to land. A slot another rule is holding costs\n'
+    .. 'you that slot, never the summon.';
+
+local TIP_WEAPONS = 'Off by default, because changing a weapon costs you your TP and a BST\n'
+    .. 'usually summons mid-fight.\n'
+    .. 'On, the Summon set may also claim Main, Sub and Range. Your ammo slot is\n'
+    .. 'never up for it either way -- that is where the jug goes.';
+
+local TIP_KEY = 'A key that summons on the spot, in Ashita\'s own bind syntax:\n'
+    .. '  ^ = Ctrl, ! = Alt, @ = Win  --  so ^F3 is Ctrl+F3.\n'
+    .. 'Type it and press Enter (or Set). It binds while you are on BST with this\n'
+    .. 'helper on, and comes back to you when you change job.\n'
+    .. 'A key another feature already holds is refused, and dlac says who has it --\n'
+    .. '/dl binds lists them all.';
+
+local TIP_SUMMONNOW = 'Summons right now with everything above -- the same gear, the same checks\n'
+    .. 'and the same refusals the automatic rule uses. It works whether or not the\n'
+    .. 'Resummon rule is armed: that switch only governs what happens without you.';
+
 -- One picker row's label: the jug, its equip level, and the pet it calls. An
 -- unmapped jug says so rather than showing a guess (jugs.lua: rows that could not
 -- be placed honestly are absent, not invented).
@@ -91,6 +133,15 @@ local function jugLabel(row)
     local pet = row.pet;
     if type(pet) ~= 'string' or pet == '' then pet = 'pet not mapped yet'; end
     return string.format('%s (Lv %d) -- %s', tostring(row.name), tonumber(row.level) or 0, pet);
+end
+
+-- What a jug row can be SEARCHED by, beside its rendered label: the broth and
+-- the familiar it calls. Both are already in the label -- this exists so that
+-- stays true the day the label is shortened, and so "carrot hare" is documented
+-- as a supported thing to type rather than an accident of the format.
+local function jugSearch(row)
+    if type(row) ~= 'table' then return ''; end
+    return tostring(row.name or '') .. ' ' .. tostring(row.pet or '');
 end
 
 -- The dim "Last: ..." line, or nil when the rule has decided nothing yet.
@@ -135,6 +186,9 @@ return {
             resummonJug      = 'string',     -- the configured jug by item name; '' = none
             resummonMethod   = 'string',     -- 'call' | 'loyalty'  (resummon.METHODS)
             resummonFallback = 'boolean',    -- "use the other if mine is on cooldown"
+            summonSet        = 'string',     -- optional set worn while summoning; '' = jug only
+            summonWeapons    = 'boolean',    -- may that set claim Main/Sub/Range?
+            summonKey        = 'string',     -- the key bound to "Summon now"; '' = none
         },
         defaults = {
             fight            = 'off',
@@ -145,9 +199,31 @@ return {
             resummonArmed    = false,
             resummonMethod   = 'call',       -- the one that earns the raising bonuses
             resummonFallback = true,
+            summonWeapons    = false,        -- swapping a weapon costs your TP
+            -- summonSet / summonKey have no default: absent means "none", and
+            -- nothing here picks a player's gear or takes a key uninvited.
             -- rewardSet has no default: absent means "food only".
             -- resummonJug has none either: absent means "no jug picked", which the
             -- rule refuses on, loudly -- never a guess at which jug to spend.
+        },
+    },
+
+    -- NAMED ACTIONS a player can fire by hand -- `/dl jh bst-helper summon` --
+    -- and therefore bind a key to. `key` names one of the config keys above, and
+    -- the FRAMEWORK does the binding from there: it installs the key while the
+    -- player is on BST with this module's pill on, releases it on a job change,
+    -- and refuses (loudly, naming the holder) a key another feature already has.
+    -- Nothing in this module touches the bind registry.
+    commands = {
+        summon = {
+            label = 'Summon now',
+            help  = 'summon your jug pet with the Summon set on',
+            key   = 'summonKey',
+            run   = function(S)
+                local r = S.sibling('resummon');
+                if r == nil or type(r.summonNow) ~= 'function' then return false; end
+                return r.summonNow();
+            end,
         },
     },
 
@@ -283,22 +359,18 @@ return {
             end);
         end
 
-        -- ----- Resummon ----------------------------------------------------
+        -- ----- Summon ------------------------------------------------------
+        -- HOW a pet is summoned, gathered in one place because all three
+        -- requesters share it: the Resummon rule below, its queue, and the
+        -- button/key here.
         local resummon = S.sibling('resummon');
+        local curJug = nil;
         if resummon ~= nil then
-            ui.section('Resummon', TIP_RESUMMON, function()
-                local armed = resummon.armed();
-                local flip = ui.toggle('bstresumauto_' .. id,
-                    'Resummon my pet when it dies', armed,
-                    'Off by default. Armed, a CONFIRMED jug-pet death summons a new one --\n'
-                    .. 'the pet-falls message, or your pet vanishing with its HP already low.\n'
-                    .. 'Nothing else counts, so a deliberate dismissal never costs you a jug.');
-                if flip ~= nil then resummon.setArmed(flip); armed = flip; end
-
+            curJug = resummon.jug();
+            ui.section('Summon', TIP_SUMMON, function()
                 -- The jug picker: every catalog jug, level-ordered, each naming
                 -- the pet it calls.
                 local jugs = S.sibling('jugs');
-                local curJug = resummon.jug();
                 if jugs ~= nil then
                     ui.dim('Jug:');
                     local rows = jugs.list();
@@ -308,7 +380,8 @@ return {
                             preview = jugLabel(r);
                         end
                     end
-                    local picked = ui.combo('bstresumjug_' .. id, preview, rows, jugLabel, TIP_JUG, 'None');
+                    local picked = ui.combo('bstresumjug_' .. id, preview, rows, jugLabel,
+                                            TIP_JUG, 'None', jugSearch);
                     if picked ~= nil then
                         if picked == 'None' then
                             resummon.setJug('None');
@@ -330,6 +403,71 @@ return {
                     'Use the other if mine is on cooldown', resummon.fallback(), TIP_FALLBACK);
                 if fb ~= nil then resummon.setFallback(fb); end
                 ui.space();
+
+                -- The optional Summon set + its one exception. PERSISTED, like
+                -- the Reward set: the automatic path has no Panel to read from.
+                ui.dim('Summon set (optional):');
+                local sset = ui.combo('bstsummonset_' .. id, resummon.setName(),
+                                      S.sets.names(), tostring, TIP_SUMMONSET, 'None');
+                if sset ~= nil then resummon.setSetName(tostring(sset)); end
+
+                local wep = ui.toggle('bstsummonwep_' .. id,
+                    'Include weapon slots', resummon.weapons(), TIP_WEAPONS);
+                if wep ~= nil then resummon.setWeapons(wep); end
+                ui.space();
+
+                -- The key. The module STORES it; the framework installs it.
+                ui.dim('Summon key:');
+                local myKey = resummon.key();
+                local typed = ui.input('bstsummonkey_' .. id, myKey or '',
+                                       { w = 90, tip = TIP_KEY, button = 'Set' });
+                if typed ~= nil then resummon.setKey(typed); myKey = resummon.key(); end
+
+                -- What that key is actually doing right now -- asked of the
+                -- registry, never assumed from the setting: a key we stored and
+                -- a key we HOLD are two different facts, and the gap between
+                -- them (somebody else has it) is the one worth printing.
+                local keys = (type(S.keys) == 'table') and S.keys or nil;
+                if myKey == nil then
+                    ui.dim('No key bound -- the button below is the only way in.');
+                elseif keys == nil then
+                    ui.dim(string.format('%s is set.', myKey));
+                else
+                    local held = keys.boundTo('summon');
+                    if held ~= nil then
+                        ui.ok(string.format('%s is bound to Summon now.', tostring(held)));
+                    else
+                        local who = keys.holder(myKey);
+                        if who ~= nil then
+                            ui.warn(string.format('%s is held by %s -- pick another key.',
+                                                  myKey, tostring(who.label or who.owner)));
+                        else
+                            ui.dim(string.format('%s binds while you are on BST with this helper on.', myKey));
+                        end
+                    end
+                end
+                ui.space();
+
+                if ui.button('bstsummonnow_' .. id, 'Summon now', TIP_SUMMONNOW, 130, 26) then
+                    resummon.summonNow();
+                end
+                if curJug == nil then
+                    ui.warn('No jug picked -- nothing can be summoned.');
+                end
+            end);
+        end
+
+        -- ----- Resummon ----------------------------------------------------
+        if resummon ~= nil then
+            ui.section('Resummon', TIP_RESUMMON, function()
+                local armed = resummon.armed();
+                local flip = ui.toggle('bstresumauto_' .. id,
+                    'Resummon my pet when it dies', armed,
+                    'Off by default. Armed, a CONFIRMED jug-pet death summons a new one --\n'
+                    .. 'your pet going down where it stood, which dlac reads off the pet itself.\n'
+                    .. 'A Leave, zoning and logging out never count, so a deliberate\n'
+                    .. 'dismissal cannot cost you a jug.');
+                if flip ~= nil then resummon.setArmed(flip); armed = flip; end
 
                 -- "No jug picked" is the module's OWN gate, and it is a real
                 -- blocker the player can fix -- so it takes the warn slot ahead of

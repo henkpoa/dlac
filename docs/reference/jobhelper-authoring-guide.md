@@ -174,6 +174,7 @@ return {
     label  = 'BST Helper',             -- REQUIRED. the one string players see
     jobs   = { 'BST' },                -- REQUIRED. declared MAIN jobs, non-empty
     config = { keys = {}, defaults = {} },  -- optional. what you store (§5)
+    commands = { summon = { run = function(S) end } },  -- optional. named actions (§2.7)
     init   = function(S) end,          -- optional. arm standing behaviors, once, at load
     panel  = function(ctx) end,        -- REQUIRED. render your Panel
     status = function(ctx) end,        -- optional. one short line beside the Panel title
@@ -272,6 +273,40 @@ open a window, do not register a tab.
 Optional. Same `ctx`. Draw **one** short item: `Reward ready`, `Reward 12s`. It renders on the
 Panel header line, not in the row — the list answers *what is installed and armed*, the Panel
 answers *what is it doing*.
+
+### 2.7 `commands` — named actions, and the keys that fire them
+
+Optional. A **named action a player can fire by hand** — and therefore bind a key to.
+
+```lua
+commands = {
+    summon = {
+        label = 'Summon now',                     -- what a button/bind is called
+        help  = 'summon your jug pet with the Summon set on',
+        key   = 'summonKey',                      -- one of YOUR config keys, holding the bind
+        run   = function(S, args) return doIt(); end,
+    },
+},
+```
+
+Every action is reachable as **`/dl jobhelper <module> <action>`**, or `/dl jh` for short.
+`/dl jh` alone lists the installed modules; `/dl jh <module>` lists its actions and shows which key
+each holds. The module name is the folder name, which is already unique addon-wide — the loader
+refuses a second folder of that name under another job — so the command needs no job level.
+
+**You do not bind keys.** Name one of your own declared `config` keys in `key` and the framework
+does the rest: it installs the bind while the player is on your job with your row pill on, releases
+it when they change job, and refuses (loudly, naming the holder) a key another feature already
+has. The owner id and the command string are the framework's, for the same reason `S.act.request`
+fills in your module id — so a module cannot claim a key as somebody else. See ADR 0032.
+
+`key` must name a **declared `string`** config key or the module is refused at load, like any other
+bad declaration. `run` returns falsey to mean "I refused"; say why yourself, in one line — a key
+that did nothing and said nothing is indistinguishable from a broken bind.
+
+**A named action is a DELIBERATE press.** It is not gated on your rule switches, and it should not
+be: the switch governs what happens *without* the player. The framework checks only that they are
+on your job.
 
 ---
 
@@ -439,6 +474,8 @@ S.sibling('reward')          -- one of YOUR files, by bare name
 S.now()                      -- the one monotonic clock
 S.say.good/warn/err(line)    -- the only route to chat
 S.cfg                        -- your settings store (§5), or nil if you declared none
+S.keys.boundTo('summon')     -- the key one of your actions holds right now, or nil
+S.keys.holder('^F3')         -- who has that key: { owner, label, command } or nil
 S.ui                         -- the widget kit, unbound (ctx.ui is the bound one, §6.9)
 S.service(path)              -- the escape hatch (§6.8)
 
@@ -695,7 +732,7 @@ S.item.own('Carrot Broth')     -- how many can I EQUIP right now  (0 when it can
 S.item.stored('Carrot Broth')  -- owned anywhere, including storage
 S.item.worn('Ammo')            -- what is in that slot now, by name, or nil
 S.item.info('Carrot Broth')    -- { Id, Name, Level, Jobs, Slot, Stats, ... } or nil
-S.sets.names()                 -- { 'Idle', 'Reward', ... }  -- static sets, never Dynamic ones
+S.sets.names()                 -- { 'Idle', 'Reward', ... }  -- the player's DYNAMIC sets
 S.sets.slotsOf('Reward')       -- { Head = 'Beast Helm', Body = 'Beast Jackcoat' }
 ```
 
@@ -707,12 +744,38 @@ module that asked this question carried its own name-to-id table.
 is an item not carried, which refuses rather than firing an act bare. That is the safe direction,
 chosen on purpose.
 
-**`slotsOf` exists so you never parse the sets format.** A set entry may be a plain string or a
-table carrying `Name` / `name` / `item`, depending on how the set was authored or imported. That is
-the sets format's business; a module that hand-parsed it would break the day the format grows a
-fourth shape — which is exactly what the shipped BST Helper was doing before this entry existed.
+**`names` is the Dynamic library — the sets the player builds in the Sets tab**, which are the only
+ones this character's engine gears from. It answered the *static* sets until 2026-07-30, and that
+was a bug with a field report attached: the statics are the pre-profiles job file's flattened
+leftovers plus whatever a pre-migration backup still holds — the Copy-from helper's **import
+sources**, not a live library — so a migrated character's Reward picker listed sets they had not
+edited in months and none of the ones they use. One namespace, and it is the one they can see.
 
-The result of `slotsOf` is already the right shape to hand to `S.act.request` as a `claim`.
+**`slotsOf` exists so you never parse the sets format**, and it answers with the piece the ENGINE
+would equip: a Dynamic set is a *ladder* per slot (level rungs, mode gates, Sub pairing, virtual
+entries), and `slotsOf` hands back the head rung the last flatten chose at the live level. A module
+that walked the ladder itself would drift from the engine the first time a rung was level-gated.
+The raw walk survives underneath as the degraded path (pre-login, headless), where an entry may be
+a plain string or a table carrying `Name` / `name` / `item` depending on how the set was authored or
+imported — the sets format's business, not yours.
+
+The result of `slotsOf` is already the right shape to hand to `S.act.request` as a `claim` — but
+**copy it before you edit it**. It is yours to read, not to mutate: the sequencer keeps a claim for
+the life of the sequence, and whether `slotsOf` allocated that table fresh is not a promise you
+should be leaning on. (The BST Helper leaned on it for exactly one afternoon; a test caught it.)
+
+### 6.7b Keys — two reads, and no writes
+
+```lua
+S.keys.boundTo('summon')   -- the key that action holds NOW, as the player typed it, or nil
+S.keys.holder('^F3')       -- { owner, label, command } | nil  -- who has this key
+```
+
+You never register or release a key: declare `commands[action].key` (§2.7) and the framework
+installs the group. These two exist so a Panel can render a key field **honestly** — a key you
+STORED and a key you HOLD are different facts, and the gap between them (somebody else has it) is
+the one worth printing. Ask `holder` before you save a key the player typed: the registry refuses a
+second claim, so a Panel that does not ask lets them save a key that will never fire.
 
 ### 6.8 The escape hatch
 

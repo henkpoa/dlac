@@ -18,7 +18,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.07.30a';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.07.30b';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
                                 -- (29k = the day-match train 29h merged with 29i/29j)
 addon.desc    = 'Gear sets, triggers and live stats with level scaling -- dlac equips your gear itself.';
@@ -176,6 +176,15 @@ ashita.events.register('d3d_present', 'dlac-seed-watch', function()
         local pv = require('dlac\\feature\\petvitals');
         if type(pv) == 'table' and type(pv.pump) == 'function' then pv.pump(); end
     end);
+    -- Job-helper keybinds (2026-07-30): a helper's key exists while you are on
+    -- its job with its pill on, so the group is re-synced on a beat rather than
+    -- installed once -- there is no job-change event to hang it on, and the
+    -- registry leaves an unchanged bind completely alone. Throttled to 1s
+    -- inside, and free on a character with no module declaring a key.
+    pcall(function()
+        local jh = require('dlac\\feature\\jobhelpers');
+        if type(jh) == 'table' and type(jh.pumpBinds) == 'function' then jh.pumpBinds(); end
+    end);
     if os.clock() < _seedAt then return; end
     _seedAt = os.clock() + 5.0;
     maintainStorage();
@@ -253,7 +262,7 @@ for _, mod in ipairs({ 'gear', 'feature\\augments', 'gear\\gearoptim', 'gear\\ge
                        'feature\\check', 'feature\\debug', 'feature\\lockstyle',
                        'feature\\lockstyleapply', 'feature\\equipengine',
                        'feature\\engine', 'ui\\gearui',
-                       'ui\\panelkit', 'feature\\modcfg', 'feature\\modapi',
+                       'ui\\panelkit', 'feature\\keybinds', 'feature\\modcfg', 'feature\\modapi',
                        'feature\\jobhelpers', 'ui\\jobhelpersui' }) do
     local ok, err = pcall(require, 'dlac\\' .. mod);
     ledger.total = ledger.total + 1;
@@ -295,13 +304,18 @@ pcall(function()
     end
 end);
 
--- GUI keybind: CTRL+K toggles the window (same mechanism as the modes' GUI-managed
--- binds). Bound on load, released on unload so no bind outlives the addon.
+-- GUI keybind: CTRL+K toggles the window. Claimed through the ONE registry
+-- (feature\keybinds) like every other bind dlac issues, so it shows up in
+-- '/dl binds' and a mode or a Job helper reaching for ^k is refused and told
+-- who has it, rather than silently stealing the window's own key. Released on
+-- unload -- together with everything else the registry holds -- so no bind
+-- outlives the addon.
 pcall(function()
-    AshitaCore:GetChatManager():QueueCommand(-1, '/bind ^k /dl ui');
+    local kb = require('dlac\\feature\\keybinds');
+    kb.register('dlac:ui', '^k', '/dl ui', 'dlac window');
 end);
 ashita.events.register('unload', 'dlac-unbind', function()
-    pcall(function() AshitaCore:GetChatManager():QueueCommand(-1, '/unbind ^k'); end);
+    pcall(function() require('dlac\\feature\\keybinds').releaseAll(); end);
 end);
 
 -- No load banner (inform by printing as little as possible): Ashita itself

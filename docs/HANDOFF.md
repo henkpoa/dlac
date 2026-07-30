@@ -411,6 +411,78 @@ research already recorded. In rough priority order:
 
 ## Current state (as of 2026-07-30)
 
+- **2026-07-30 (later, UNCOMMITTED on `dev` at time of writing — `2026.07.30b`, engine v157):
+  the BST field round — two bugs, one feature, one registry.** Suites **5073 + 817**, both
+  interpreters. Not field-confirmed yet; **not queued for merge** until it is.
+  - **The Reward set picker listed the wrong sets** (friend's field report). `S.sets.names()`
+    answered `profilesets.staticSetNames()` — the pre-profiles job file's flattened leftovers plus
+    the pre-migration backup, i.e. the Copy-from helper's **import sources**, not a live library.
+    Now the **Dynamic** sets, and `S.sets.slotsOf` answers from the engine's own flatten
+    (`dispatch.flattenedSet`) so a helper claims the piece the engine would equip at the live
+    level, ladders and virtual entries included. No `api` bump: the entry was pointing at the
+    wrong table, not changing meaning. Tests MA23–MA28d.
+  - **The Resummon rule never fired, and the server says why.** `CMobEntity::Die` pushes the
+    "falls to the ground" battle message; a jug pet is a `CPetEntity` and **`CPetEntity::Die`
+    pushes nothing at all** (`src/map/entities/petentity.cpp:232`). So dlac's chat proof could
+    never arrive for a pet, leaving only the ≤25% last-seen-HP guess, which misses any pet killed
+    from above it. The fix is a **witness, not a wording**: the vitals record now carries the pet's
+    `id`/`index`, and on the vanish the service re-reads that index RAW (`M.reads.entity` — the one
+    read allowed to see a corpse, since `gData.GetPet()` refuses an HPP-0 pet) and confirms by
+    **server id**. A corpse that reads ALIVE now suppresses; the low-HP guess is demoted to "only
+    when the corpse could not be read". Jug-vs-charm gained **provenance** — the Call Beast /
+    Bestial Loyalty / Charm we watched you press stamps the pet that appears next — so a **custom
+    jug** no roster describes resummons like any other. Tests PVL67–PVL89.
+  - **The Summon set** (Henrik's ask): an optional set worn around the summon, best-effort, jug
+    still the only slot that must verify, **weapon slots left alone by default** (a swap costs TP),
+    claim held `2s` past the fire. Plus **Summon now** — a Panel button and a bindable action,
+    the third requester of the one act. Tests BRS85–BRS105.
+  - **Every dropdown in the Panel is searchable** (`panelkit.combo` — so the Reward set, the Summon
+    set and the jug picker all got it at once, and so does every future module's). The box opens
+    focused, filters live off the buffer (no Enter, no ImGui flag global), clears when the popup
+    closes, and matches **all** whitespace-separated terms as literal substrings against the label
+    plus an optional `searchOf(row)` — so `carrot hare` finds the Carrot Broth that calls a Hare
+    Familiar, and a typed `-` cannot behave like a pattern quantifier. Tests PK25–PK34 (the rule,
+    pure) + S357i–S357n (drawn and wired, on the real Panel).
+  - **The jug picker is capped at 75** (`jugs.MAX_LEVEL`). The catalog is retail's: **65 of its 98
+    BST-only Ammo rows are Lv76–99**, so two thirds of the picker was jugs nobody on this server
+    can equip, none of them even mapped to a pet. 98 rows → 33. The cap is applied to the level the
+    row *reports*, so `M.LEVEL` (live-observed) still wins — a jug this server re-tuned into reach
+    comes back with one row there, not by moving the cap. Tests JUG17a–JUG17d.
+  - **The keybind registry** (`feature\keybinds.lua`, **ADR 0032**) and the module `commands`
+    block: `/dl jobhelper <module> <action>` (`/dl jh`), `/dl binds`, blocking-with-the-holder-named
+    on a collision, and **mode binds moved onto it** — so they finally release on a job change.
+    Tests KB1–KB40, JHC1–JHC24.
+  - **"You are not carrying any pet food" now speaks ONCE PER ZONE**, not once per lockout window
+    (Henrik, off his own probe log, where it turned up mid-fight). The lockout is a budget for how
+    often the rule may speak and fits every refusal the world may resolve on its own; an empty bag
+    is fixed by shopping, not by waiting 30s. Zoning re-arms it, and so does carrying food again.
+    New API entry `S.player.zone()` (the central `location.zoneId()`), and the **zone id itself is
+    the latch** — an unreadable zone is a value like any other, so a headless world gets one line
+    and silence. Tests BRW74–BRW79c.
+  - **THE SPACE** (field, from a chat line in a screenshot: *"The SheepFamiliar defeats the
+    Clipper."*). The client's entity name for a jug pet carries **no space**; every published
+    table, `jugs.PETS` included, writes one. Compared raw, **not one jug pet matched its own roster
+    row** — so the classifier called every one of them CHARMED and the Resummon rule refused
+    exactly as designed. A total, silent failure of the feature from one space, and the second
+    half of why the field report happened. `jugs.isJugPet` now compares SQUASHED (spaces out,
+    lowercased) on both sides. Tests JUG5a–JUG5e.
+  - **THE CORPSE IS FIELD-CONFIRMED** (2026-07-30, `/probe pet` on a SheepFamiliar killed by a
+    Gigas's Leech, dlacprobe 2.5). The flip is **instant** — last attached read `hpp=1 status=Idle`,
+    and on the same 50ms poll the index already read `hpp=0 status=Dead(3)`, **+1ms** — so the
+    `corpse == false` suppress cannot misfire on a real death. The corpse then **persisted the full
+    15s** the probe watched, same index, same server id (against the ~2.5s `Internal_Die(2500ms)`
+    suggested), so a 0.4s beat gets ~37 looks, not ~6. And the death was **totally silent**: not one
+    `falls to the ground`, `is defeated` or 0x029 battle message in the whole run. Raw dead status
+    reads **3**. The entity name came back `SheepFamiliar` — the spaceless form, straight from the
+    entity table. No code changed as a result; the flagged assumptions in `petvitals` were replaced
+    with the measured numbers.
+  - **Still owed:** the behaviour round — Resummon actually firing end to end, the Summon set
+    landing, the key binding. **And read the OPEN box in
+    [reference/catseyexi-jobs.md](reference/catseyexi-jobs.md) under Beastmaster → Ready Strength
+    before extending the CHR work**: the wiki's own advice suggests the CHR is sampled at **Ready**,
+    not at summon — in which case the same set belongs on an `Ability` trigger matching `Ready`,
+    which needs no new code.
+
 - **2026-07-30: the Job helper MODULE API v2 is on `dev` (pushed), waiting on Henrik for the
   whole promotion — the merge AND the push, since the classifier refuses Claude both
   (`2026.07.30a`; the queue above is emptied and carries his one command block, message

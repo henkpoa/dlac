@@ -14865,32 +14865,63 @@ end)();
     check('SET49 no art -> declarative (no render fn)', hb.render, nil);
     check('SET50 fallback still carries the tooltip', type(hb.tip), 'string');
 
-    -- SET55-58: the Teleports popup's QUICK WINDOW rows (Henrik, 2026-07-26 --
-    -- Hobby bar + Lockstyle, replacing the Automations/HELM/Fishing cascades).
-    -- Each row hands its key to menuui.activate and asks filetex for assets\<key>.png,
-    -- and BOTH lookups fail SILENTLY: a renamed row key makes the row a no-op, a
-    -- renamed asset makes it a blank cell. Neither is visible from a load test, so
-    -- the source is parsed and both halves pinned here.
+    -- SET55-59: the Teleports popup's QUICK WINDOW rows (Henrik, 2026-07-26 --
+    -- Hobby bar + Lockstyle, replacing the Automations/HELM/Fishing cascades;
+    -- E-Box Restock joined them ON TOP 2026-07-30, Crystal Warriors only).
+    -- By default a row hands its key to menuui.activate and asks filetex for
+    -- assets\<key>.png. A row may OPT OUT of both together -- the trailing
+    -- `icon, function()...` pair -- when its art is not key-named and its target
+    -- is not a menuui row (restock opens a Gear Helpers panel menuui does not
+    -- own). BOTH lookups fail SILENTLY: a renamed key makes a menu-routed row a
+    -- no-op, a renamed asset makes any row a blank cell. Neither is visible from
+    -- a load test, so the source is parsed and both halves pinned here. Each call
+    -- is read as its OWN segment (its start -> the `);` that closes it) so the
+    -- opt-out probe can never wander into the next row or into the rest of the
+    -- file -- there are `function`s everywhere below.
     local gsrc = nil;
     do
         local f = io.open('ui/gearui.lua', 'r');
         if f ~= nil then gsrc = f:read('*a'); f:close(); end
     end
     check('SET55 gearui is readable', gsrc ~= nil, true);
-    local qkeys = {};
-    for k in tostring(gsrc or ''):gmatch("renderQuickWindowRow%('([%w_]+)'") do
-        qkeys[#qkeys + 1] = k;
+    local qrows, qkeys = {}, {};
+    do
+        local src, pos = tostring(gsrc or ''), 1;
+        while true do
+            local s = src:find('renderQuickWindowRow(', pos, true);
+            if s == nil then break; end
+            pos = s + 1;
+            local seg = src:sub(s, math.min(src:find('renderQuickWindowRow(', pos, true) or (#src + 1),
+                                            (src:find('%);', s) or #src) + 2) - 1);
+            -- The DEFINITION line reaches here too; it has no quoted key, so it
+            -- simply does not match and drops out.
+            local key = seg:match("^renderQuickWindowRow%('([%w_]+)'");
+            if key ~= nil then
+                local icon = seg:match(",%s*'([%w_%-]+)',%s*function");
+                qkeys[#qkeys + 1] = key;
+                qrows[#qrows + 1] = { key = key, icon = icon or key, own = (icon ~= nil) };
+            end
+        end
     end
-    check('SET56 two quick-window rows', table.concat(qkeys, ','), 'hobbybar,lockstyle');
+    check('SET56 three quick rows, restock above the Hobby bar',
+        table.concat(qkeys, ','), 'restock,hobbybar,lockstyle');
     local known, badKey, badArt = {}, {}, {};
     for _, k in ipairs(mn._menuRows(true)) do known[k] = true; end
-    for _, k in ipairs(qkeys) do
-        if not known[k] then badKey[#badKey + 1] = k; end
-        local f = io.open('assets/' .. k .. '.png', 'rb');
-        if f == nil then badArt[#badArt + 1] = k; else f:close(); end
+    for _, r in ipairs(qrows) do
+        -- A row carrying its own action is free of the Menu roster. One WITHOUT
+        -- it must name a real Menu row or the click does nothing at all.
+        if not r.own and not known[r.key] then badKey[#badKey + 1] = r.key; end
+        local f = io.open('assets/' .. r.icon .. '.png', 'rb');
+        if f == nil then badArt[#badArt + 1] = r.icon; else f:close(); end
     end
-    check('SET57 every quick row is a real Menu row key', table.concat(badKey, ','), '');
+    check('SET57 every menu-routed quick row is a real Menu row key', table.concat(badKey, ','), '');
     check('SET58 every quick row has its art on disk',    table.concat(badArt, ','), '');
+    -- The CW gate is that row's whole safety -- a non-Crystal-Warrior must never
+    -- see a row for content they cannot have (the same affirmative gate the Gear
+    -- Helpers row uses). It lives inside an imgui-only draw path this suite
+    -- cannot enter, so it is pinned on the source, anchored to the row it guards.
+    check('SET59 the restock row sits behind the CW gate',
+        tostring(gsrc or ''):match("gmode%.get%(%) == 'CW'.-renderQuickWindowRow%('restock'") ~= nil, true);
 end)();
 
 -- ---------------------------------------------------------------------------
@@ -16744,6 +16775,95 @@ end)();
           pv.drainCommands(520, function() return nil; end), 0);
     check('PVL62 draining an empty stash is free', pv.drainCommands(530), 0);
 
+    -- --- THE CORPSE: the death witness that actually fires on this server
+    --     (2026-07-30 -- CPetEntity::Die pushes no battle message at all, so
+    --     the falls line can never come for a jug pet and the low-HP guess
+    --     misses every pet killed from above the ceiling).
+    check('PVL67 same entity at zero HP is a death', pv.corpseVerdict(4242, { id = 4242, hpp = 0 }), true);
+    check('PVL68 ...and a dead STATUS says it too, whatever the HP read did',
+          pv.corpseVerdict(4242, { id = 4242, status = 2 }), true);
+    check('PVL69 the same entity still standing is NOT a death',
+          pv.corpseVerdict(4242, { id = 4242, hpp = 61 }), false);
+    check('PVL70 a different id at that index cannot tell (the corpse despawned)',
+          pv.corpseVerdict(4242, { id = 99, hpp = 0 }), nil);
+    check('PVL71 no read at all cannot tell', pv.corpseVerdict(4242, nil), nil);
+    check('PVL72 no remembered id cannot tell', pv.corpseVerdict(nil, { id = 4242, hpp = 0 }), nil);
+
+    local dc = pv.classifyLoss(OUT, GONE, { corpse = true, isJugPet = jugAuth });
+    check('PVL73 a healthy-looking pet that left a CORPSE is a confirmed death',
+          dc.kind .. '/' .. tostring(dc.confirmed) .. '/' .. tostring(dc.how), 'death/true/corpse');
+    check('PVL74 the corpse outranks the falls line as the reported proof',
+          pv.classifyLoss(OUT, GONE, { corpse = true, falls = true }).how, 'corpse');
+    check('PVL75 a corpse that is ALIVE suppresses -- live memory outranks a guess',
+          pv.classifyLoss(HURT, GONE, { corpse = false }).kind, 'unknown');
+    check('PVL76 ...and outranks a falls line too',
+          pv.classifyLoss(HURT, GONE, { corpse = false, falls = true }).confirmed, false);
+    check('PVL77 the low-HP guess still speaks when the corpse could not be read',
+          pv.classifyLoss(HURT, GONE, {}).how, 'low-hp');
+    check('PVL78 a Leave still suppresses ahead of the corpse',
+          pv.classifyLoss(HURT, GONE, { corpse = true, leave = true }).kind, 'leave');
+
+    -- --- PROVENANCE: what we watched you press beats any roster
+    check('PVL79 a pet we saw you Call Beast is a jug pet, roster or not',
+          pv.classifyLoss({ present = true, hpp = 4, name = 'Custom Whatsit' }, GONE,
+                          { origin = 'jug', isJugPet = jugAuth }).pet, 'jug');
+    check('PVL80 ...and one we saw you charm is charm, whatever it is called',
+          pv.classifyLoss(OUT, GONE, { origin = 'charm', isJugPet = jugAuth }).pet, 'charm');
+    check('PVL81 with no origin the name authority still answers',
+          pv.classifyLoss(OUT, GONE, { isJugPet = jugAuth }).pet, 'jug');
+
+    -- the summon signal, from the same packet drain the Leave rides
+    pv.resetCommands();
+    pv.clearSignals();
+    pv.onCommandPacket(actionPkt(0x09, 272));
+    pv.drainCommands(600, function() return 'call beast'; end);
+    check('PVL82 Call Beast is noted as a jug summon', pv.signals(600).summon, 'jug');
+    pv.clearSignals();
+    pv.onCommandPacket(actionPkt(0x09, 273));
+    pv.drainCommands(610, function() return 'charm'; end);
+    check('PVL83 ...and Charm as a charm', pv.signals(610).summon, 'charm');
+    pv.clearSignals();
+
+    -- --- the whole chain on the BEAT: summon, die, resummon-worthy edge
+    pv.reset(true);
+    pv.lossCtx.isJugPet = function() return false; end   -- the roster does NOT know it
+    local edges2 = {};
+    local live = { present = true, hpp = 55, name = 'Custom Whatsit', id = 4242, index = 0x123 };
+    local ent  = { id = 4242, hpp = 55, status = 1 };
+    local READS2 = {
+        pet        = function() return live and { HPP = live.hpp, Name = live.name,
+                                                  Id = live.id, Index = live.index } or nil; end,
+        entity     = function(idx) if idx == 0x123 then return ent; end return nil; end,
+        zoning     = function() return false; end,
+        loggingOut = function() return false; end,
+    };
+    pv.subscribeLoss('t2', function(e) edges2[#edges2 + 1] = e; end);
+    pv.onCommandPacket(actionPkt(0x09, 272));
+    pv.drainCommands(700, function() return 'call beast'; end);
+    pv.pump(700, READS2);
+    check('PVL84 the pet is remembered with its identity', pv.lastPresent().id, 4242);
+    check('PVL85 ...and with the provenance we watched', pv.origin(), 'jug');
+    live = nil; ent = { id = 4242, hpp = 0, status = 2 };     -- it died where it stood
+    pv.pump(701, READS2);
+    check('PVL86 the corpse confirms the death with no chat line in sight',
+          edges2[1].kind .. '/' .. tostring(edges2[1].how), 'death/corpse');
+    check('PVL87 ...and it is a JUG pet on provenance alone (the roster said no)',
+          edges2[1].pet, 'jug');
+    check('PVL88 which is exactly what the Resummon rule needs',
+          (edges2[1].confirmed == true and edges2[1].pet == 'jug'), true);
+
+    -- the same vanish with the entity still standing is NOT a death
+    pv.reset(false);
+    edges2 = {};
+    live = { present = true, hpp = 55, name = 'Forest Hare', id = 77, index = 0x200 };
+    READS2.entity = function(idx) if idx == 0x200 then return { id = 77, hpp = 55, status = 1 }; end return nil; end
+    pv.pump(800, READS2);
+    live = nil;
+    pv.pump(801, READS2);
+    check('PVL89 a pet that stopped being ours while still standing is not a death',
+          edges2[1].kind, 'unknown');
+    pv.reset(true);
+
     -- --- the human line the Panel reports
     check('PVL63 the loss text names the death', pv.lossText(d1):find('died', 1, true) ~= nil, true);
     check('PVL64 ...and a charmed one says so',
@@ -16768,6 +16888,18 @@ end)();
     check('JUG3 a charmed mob keeps its mob name and is NOT one', jugs.isJugPet('Forest Hare'), false);
     check('JUG4 matched case-insensitively', jugs.isJugPet('hare familiar'), true);
     check('JUG5 ...and padding-trimmed (the GetName idiom)', jugs.isJugPet('Hare Familiar  '), true);
+    -- THE SPACE (field 2026-07-30, from a chat line: "The SheepFamiliar defeats
+    -- the Clipper."): the client's entity name for a jug pet has NO space, every
+    -- published table writes one, and compared raw not a single jug pet matched
+    -- its own roster row -- so every one of them classified as CHARMED and the
+    -- Resummon rule refused, silently and completely.
+    check('JUG5a the client\'s SPACELESS pet name matches the spaced roster row',
+          jugs.isJugPet('SheepFamiliar'), true);
+    check('JUG5b ...in either direction', jugs.isJugPet('Sheep Familiar'), true);
+    check('JUG5c ...and an HQ two-word name too', jugs.isJugPet('KeenearedSteffi'), true);
+    check('JUG5d ...while a mob is still not a jug pet', jugs.isJugPet('ForestHare'), false);
+    check('JUG5e the player\'s own configured pet squashes the same way',
+          jugs.isJugPet('WyvernFamiliar', 'Wyvern Familiar'), true);
     check('JUG6 no name to judge answers "cannot tell"', jugs.isJugPet(nil), nil);
     check('JUG7 an empty name too', jugs.isJugPet('   '), nil);
     check('JUG8 the player\'s own configured pet counts even off-roster',
@@ -16802,6 +16934,7 @@ end)();
     local FIXTURE = {
         [17860] = { Name = 'Carrot Broth', Level = 10, Type = 'Ammo', Jobs = { 'BST' } },
         [17864] = { Name = 'Herbal Broth', Level = 15, Type = 'Ammo', Jobs = { 'BST' } },
+        [17905] = { Name = 'Lucky Broth', Level = 75, Type = 'Ammo', Jobs = { 'BST' } },
         [17903] = { Name = 'Shadowy Broth', Level = 96, Type = 'Ammo', Jobs = { 'BST' } },
         [17016] = { Name = 'Pet Food Alpha', Level = 12, Type = 'Ammo',
                     Jobs = { 'WAR', 'BST', 'DRG' } },                       -- not BST-only
@@ -16811,7 +16944,7 @@ end)();
     local list = jugs.list(READS);
     check('JUG17 only BST-only Ammo is a jug', #list, 3);
     check('JUG18 ...ordered lowest level first', list[1].name, 'Carrot Broth');
-    check('JUG19 ...then the rest', list[2].name .. '/' .. list[3].name, 'Herbal Broth/Shadowy Broth');
+    check('JUG19 ...then the rest', list[2].name .. '/' .. list[3].name, 'Herbal Broth/Lucky Broth');
     check('JUG20 a row carries its catalog id and level', list[1].id .. '/' .. list[1].level, '17860/10');
     check('JUG21 ...and the pet it calls', list[1].pet, 'Hare Familiar');
     check('JUG22 an unmapped jug rides the list with no pet name', list[3].pet, nil);
@@ -16821,10 +16954,26 @@ end)();
     check('JUG25 an unreadable catalog is an empty list, never a throw',
           #jugs.list({ index = function() error('no catalog'); end }), 0);
 
+    -- --- the CAP: this server stops at 75, the catalog does not (2026-07-30 --
+    --     65 of the live catalog's 98 BST-only Ammo rows are Lv76-99, so two
+    --     thirds of the picker was jugs nobody here can equip, none of them
+    --     even mapped to a pet).
+    check('JUG17a a jug above the cap is not in the list at all',
+          jugs.find('Shadowy Broth', READS), nil);
+    check('JUG17b a jug EXACTLY at the cap is (75 is usable)',
+          (jugs.find('Lucky Broth', READS) or {}).level, 75);
+    check('JUG17c the cap is one named number, not a literal', jugs.MAX_LEVEL, 75);
+
     -- a LIVE-observed level override wins over the catalog's inherited base
     jugs.LEVEL['Carrot Broth'] = 8;
     check('JUG26 a live-observed level beats the repo one', jugs.list(READS)[1].level, 8);
     jugs.LEVEL['Carrot Broth'] = nil;
+    -- ...and it is what the cap is applied TO, so a jug this server re-tuned
+    -- down into reach comes back with ONE row here rather than by moving the cap.
+    jugs.LEVEL['Shadowy Broth'] = 70;
+    check('JUG17d a live-observed level can bring an above-cap jug back',
+          (jugs.find('Shadowy Broth', READS) or {}).level, 70);
+    jugs.LEVEL['Shadowy Broth'] = nil;
     check('JUG27 the default LEVEL table ships empty (nothing observed live yet)',
           next(jugs.LEVEL), nil);
 end)();
@@ -16879,6 +17028,7 @@ local function fakeApi(opts)
         status      = function() return opts.status; end,
         zoning      = function() return opts.zoning; end,
         loggingOut  = function() return opts.logout; end,
+        zone        = function() return opts.zone; end,
     };
 
     S.subs = {};                       -- what the module subscribed to, by key
@@ -17140,15 +17290,28 @@ end)();
     check('MA22 an UNREACHABLE recast service still reads READY (the courtesy gate)',
           S.ability.ready('Whatever'), true);
 
-    -- --- sets: the wrapper-shape tolerance lives in the API, not in the module
+    -- --- sets: the DYNAMIC library is what a module is offered, the engine's
+    --     flatten is what it claims, and the wrapper-shape tolerance lives in
+    --     the API rather than in the module (2026-07-30: this answered the
+    --     STATICS -- the pre-profiles import sources -- and a migrated
+    --     character's Reward picker listed sets they no longer edit).
     package.loaded['dlac\\gear\\profilesets'] = {
-        staticSetNames = function() return { 'Idle', 'Reward' }; end,
-        getSetsRoot    = function()
-            return { Reward = { Head = 'Plain String', Body = { Name = 'Wrapped Name' },
-                                Hands = { name = 'lower name' }, Legs = { item = 'item key' },
-                                Feet = 12345 } };
+        dynamicSetNames = function() return { 'Melee', 'Reward' }; end,
+        staticSetNames  = function() return { 'OldIdle' }; end,
+        getSetsRoot     = function()
+            return {
+                Dynamic = {
+                    Reward = { Head = 'Plain String', Body = { Name = 'Wrapped Name' },
+                               Hands = { name = 'lower name' }, Legs = { item = 'item key' },
+                               Feet = 12345,
+                               Neck = { { Name = 'Ladder Head' }, { Name = 'Lower Rung' } } },
+                },
+                OldIdle = { Head = 'Static Head' },
+            };
         end,
     };
+    local savedNative = dispatchM._nativeSets;
+    dispatchM._nativeSets = nil;                 -- nothing flattened: the degraded walk
     local slots = S.sets.slotsOf('Reward');
     check('MA23 a plain string set entry resolves', slots.Head, 'Plain String');
     check('MA24 ...and each wrapper shape the sets format allows', (function()
@@ -17158,7 +17321,17 @@ end)();
     check('MA25 a shape that names no item is skipped, not guessed at', slots.Feet, nil);
     check('MA26 "None" is an empty claim, not a set named None', next(S.sets.slotsOf('None')), nil);
     check('MA27 an unknown set is empty rather than an error', next(S.sets.slotsOf('Nope')), nil);
-    check('MA28 the static names come through', table.concat(S.sets.names(), ','), 'Idle,Reward');
+    check('MA28 the DYNAMIC names are the library, never the statics',
+          table.concat(S.sets.names(), ','), 'Melee,Reward');
+    check('MA28b an authored LADDER claims its head rung', slots.Neck, 'Ladder Head');
+    check('MA28c a set that is only a static still resolves (a saved pick never breaks)',
+          S.sets.slotsOf('OldIdle').Head, 'Static Head');
+    -- The engine's flatten is the level/mode-aware answer, so it WINS: a helper
+    -- claims the piece the engine would have equipped, not a second reading.
+    dispatchM._nativeSets = { Reward = { Head = 'Flattened Head' } };
+    check('MA28d the engine flatten outranks the authored ladder',
+          S.sets.slotsOf('Reward').Head, 'Flattened Head');
+    dispatchM._nativeSets = savedNative;
 
     -- --- items are asked for BY NAME; the id-keyed map is the API's problem
     package.loaded['dlac\\gear\\catalogindex'] = {
@@ -17447,6 +17620,27 @@ end)();
                     SetTooltip = function(x) got = x; end }, 'i', 'l', 'below 50% HP');
         return got;
     end)(), 'below 50%% HP');
+
+    -- --- the dropdown SEARCH rule (2026-07-30 -- "can be many sets and jugs, so
+    --     might be good to find em"). Pure, so the whole rule is checked here and
+    --     the smoke suite only has to prove the box is drawn and wired.
+    check('PK25 an empty filter matches everything', pk.matchesFilter('Carrot Broth', ''), true);
+    check('PK26 ...and so does a filter of pure whitespace', pk.matchesFilter('Carrot Broth', '   '), true);
+    check('PK27 ...and a nil one (a binding with no InputText)', pk.matchesFilter('x', nil), true);
+    check('PK28 a substring matches, case-insensitively', pk.matchesFilter('Carrot Broth', 'CARR'), true);
+    check('PK29 ...and a miss is a miss', pk.matchesFilter('Carrot Broth', 'humus'), false);
+    -- the compound case this exists for: the jug row carries the broth AND the
+    -- familiar, and they are nowhere near each other in the string.
+    local JUGROW = 'Carrot Broth (Lv 10) -- Hare Familiar';
+    check('PK30 a jug is findable by the FAMILIAR it calls', pk.matchesFilter(JUGROW, 'hare'), true);
+    check('PK31 several words must ALL match, in any order',
+          pk.matchesFilter(JUGROW, 'hare carrot'), true);
+    check('PK32 ...so one wrong word rejects the row',
+          pk.matchesFilter(JUGROW, 'hare humus'), false);
+    check('PK33 punctuation in the filter is LITERAL, never a pattern',
+          pk.matchesFilter(JUGROW, '--') and pk.matchesFilter(JUGROW, '(lv 10)'), true);
+    check('PK34 ...and a pattern quantifier cannot match what is not there',
+          pk.matchesFilter('Carrot Broth', 'c+'), false);
 
     -- bind(): the kit with the handle applied, which is what a Panel actually gets
     local b = pk.bind(s.im);
@@ -17808,6 +18002,94 @@ end)();
     check('BRS83 a Leave is silent -- it is the rule working, not a blocker', #lines, 0);
     check('BRS84 ...and reported in the Panel line instead',
           rs.lastDecision().reason, 'leave');
+
+    -- --- THE SUMMON SET (2026-07-30): the master's +CHR at spawn buys the jug
+    --     pet Ready strength for its whole life on this server, so a summon now
+    --     dresses -- best-effort, jug still the only slot that must land, and
+    --     hands off the weapons unless the player says otherwise.
+    local SUMMONSET = { Head = 'Chr Hat', Body = 'Chr Body', Main = 'Chr Sword',
+                        Sub = 'Chr Shield', Range = 'Chr Bow', Ammo = 'Not The Jug' };
+    local sumS = fakeApi({
+        id       = 'bst-helper',
+        setSlots = { ['CHR'] = SUMMONSET },
+        stock    = 3,
+        vals     = { resummonJug = 'Carrot Broth', resummonMethod = 'call',
+                     resummonFallback = true, summonSet = 'CHR' },
+    });
+    rs.init(sumS);
+
+    local req = rs.buildRequest('Carrot Broth', 'call');
+    check('BRS85 the summon set dresses the ordinary slots',
+          tostring(req.claim.Head) .. '/' .. tostring(req.claim.Body), 'Chr Hat/Chr Body');
+    check('BRS86 the WEAPON slots are left alone by default (they cost your TP)',
+          (req.claim.Main == nil and req.claim.Sub == nil and req.claim.Range == nil), true);
+    check('BRS87 the JUG owns Ammo, whatever the set wanted there', req.claim.Ammo, 'Carrot Broth');
+    check('BRS88 ...and is still the ONLY slot that must verify worn',
+          (req.need.Ammo == 'Carrot Broth' and req.need.Head == nil), true);
+    check('BRS89 the claim is held past the fire, for the spawn-time read',
+          req.hold, rs.HOLD_S);
+
+    sumS.vals.summonWeapons = true;
+    local req2 = rs.buildRequest('Carrot Broth', 'call');
+    check('BRS90 opting in lets the set claim the weapons too',
+          tostring(req2.claim.Main) .. '/' .. tostring(req2.claim.Range), 'Chr Sword/Chr Bow');
+    check('BRS91 ...and Ammo is STILL the jug, never the set\'s', req2.claim.Ammo, 'Carrot Broth');
+    check('BRS91b the set the API handed over is never edited in place -- the claim is a COPY',
+          tostring(SUMMONSET.Main) .. '/' .. tostring(SUMMONSET.Ammo), 'Chr Sword/Not The Jug');
+    sumS.vals.summonWeapons = false;
+
+    sumS.vals.summonSet = '';
+    check('BRS92 no set picked claims the jug alone, exactly as before',
+          (function()
+              local r = rs.buildRequest('Carrot Broth', 'call');
+              local n = 0;
+              for _ in pairs(r.claim) do n = n + 1; end
+              return n == 1 and r.claim.Ammo == 'Carrot Broth';
+          end)(), true);
+    sumS.vals.summonSet = 'CHR';
+
+    -- --- SUMMON NOW: the third requester of the same act
+    acts, lines = {}, {};
+    check('BRS93 the button summons with the chosen method', rs.summonNow(), true);
+    check('BRS94 ...through the one act, not a second implementation', acts[#acts], 'call');
+    check('BRS95 ...and says nothing when it works', #lines, 0);
+
+    sumS.vals.resummonJug = '';
+    check('BRS96 no jug picked refuses', rs.summonNow(), false);
+    check('BRS97 ...loudly, because the player can fix it', #lines, 1);
+    sumS.vals.resummonJug = 'Carrot Broth';
+
+    lines = {};
+    local sumS2 = fakeApi({
+        id    = 'bst-helper',
+        stock = 0,
+        vals  = { resummonJug = 'Carrot Broth', resummonMethod = 'call' },
+    });
+    rs.init(sumS2);
+    check('BRS98 out of jug refuses', rs.summonNow(), false);
+    check('BRS99 ...naming it', lines[#lines]:find('Carrot Broth', 1, true) ~= nil, true);
+
+    lines = {};
+    local sumS3 = fakeApi({
+        id    = 'bst-helper',
+        stock = 2,
+        ready = { ['Call Beast'] = false, ['Bestial Loyalty'] = false },
+        vals  = { resummonJug = 'Carrot Broth', resummonMethod = 'call', resummonFallback = true },
+    });
+    rs.init(sumS3);
+    check('BRS100 both abilities down refuses', rs.summonNow(), false);
+    check('BRS101 ...and says which, rather than doing nothing quietly',
+          lines[#lines]:find('cooldown', 1, true) ~= nil, true);
+
+    -- --- the keybind SETTING is the module's; the framework does the binding
+    local keyS = fakeApi({ id = 'bst-helper', vals = {} });
+    rs.init(keyS);
+    check('BRS102 no key is set by default', rs.key(), nil);
+    rs.setKey('  ^F3  ');
+    check('BRS103 a typed key is stored trimmed', rs.key(), '^F3');
+    check('BRS104 ...under the config key the commands block names', keyS.vals.summonKey, '^F3');
+    rs.setKey('');
+    check('BRS105 clearing it is an ordinary write', rs.key(), nil);
 end)();
 
 -- ---------------------------------------------------------------------------
@@ -18634,22 +18916,63 @@ end)();
     check('BRW72 a healthy pet is never Rewarded', #requests, 0);
     check('BRW73 ...and the rule says so', rw.lastDecision().reason, 'above');
 
-    -- AC3: no food carried -- the button's own line, at most one per window
+    -- AC3: no food carried -- the button's own line, and then ONCE PER ZONE.
+    --
+    -- (Henrik, 2026-07-30, off his own probe log, where the line turned up
+    -- mid-fight while he was proving something else.) The LOCKOUT is the wrong
+    -- budget for this one refusal: it is sized for "how often may this rule
+    -- speak", and every other refusal it covers is something the world may fix
+    -- on its own -- a cooldown ends, a pet heals. An empty bag does not. It is
+    -- fixed by shopping, which you cannot usefully do in the middle of the fight
+    -- that is printing it, so one line per window is thirty reminders of one
+    -- thing you already know. A zone change is the moment it might have become
+    -- false.
     requests, lines = {}, {};
     rw.resetLockout();
+    local zoneNow = 100;
+    S.player.zone = function() return zoneNow; end
     foodPick = { ok = false, reason = 'none-carried' };
     rw.request();
     local buttonLine = lines[1];
     check('BRW74 the button refuses loudly when the bags are empty',
           (buttonLine or ''):find('not carrying', 1, true) ~= nil, true);
     check('BRW75 ...and opens no sequence', #requests, 0);
+
     lines = {};
+    rw.resetLockout();                      -- a job change re-arms it too
     for i = 1, 20 do rw.onVitals({ present = true, hpp = 10, at = 4000 + i }); end
     check('BRW76 the rule refuses with the IDENTICAL line', lines[1], buttonLine);
-    check('BRW77 ...exactly once per lockout window, not once per beat', #lines, 1);
+    check('BRW77 ...exactly once, however many beats go by', #lines, 1);
     check('BRW78 ...and still opens no sequence', #requests, 0);
-    rw.onVitals({ present = true, hpp = 10, at = 4001 + rw.LOCKOUT_S });
-    check('BRW79 the next window is allowed to say it again', #lines, 2);
+    rw.onVitals({ present = true, hpp = 10, at = 4000 + rw.LOCKOUT_S });
+    check('BRW78a the NEXT lockout window does not repeat it -- thirty seconds is not\n'
+          .. '      long enough for the answer to have changed', #lines, 1);
+    zoneNow = 200;
+    rw.onVitals({ present = true, hpp = 10, at = 4000 + 2 * rw.LOCKOUT_S });
+    check('BRW79 ZONING re-arms it -- you might have shopped', #lines, 2);
+    rw.onVitals({ present = true, hpp = 10, at = 4000 + 3 * rw.LOCKOUT_S });
+    check('BRW79a ...and then it is quiet in the new zone too', #lines, 2);
+
+    -- Carrying food again re-arms the line where you stand: the next time you run
+    -- out is genuinely new news.
+    foodPick = { ok = true, name = 'Pet Food Delta', key = 'Delta' };
+    rw.request();
+    foodPick = { ok = false, reason = 'none-carried' };
+    rw.onVitals({ present = true, hpp = 10, at = 4000 + 4 * rw.LOCKOUT_S });
+    check('BRW79b running OUT again says so, in the same zone', #lines, 3);
+
+    -- An unreadable zone is a value like any other, so a headless / pre-login
+    -- world gets one line and silence -- never one per window forever.
+    lines = {};
+    rw.resetLockout();
+    zoneNow = nil;
+    rw.onVitals({ present = true, hpp = 10, at = 6000 });
+    rw.onVitals({ present = true, hpp = 10, at = 6000 + rw.LOCKOUT_S });
+    check('BRW79c an unknown zone still speaks exactly once', #lines, 1);
+    zoneNow = 100;
+
+    requests, lines = {}, {};
+    rw.resetLockout();
     foodPick = { ok = true, name = 'Pet Food Delta', key = 'Delta' };
 
     -- AC3: Reward on cooldown -- the button GRAYS OUT and says nothing, so the
@@ -18751,6 +19074,228 @@ end)();
     package.loaded['dlac\\jobhelpers\\bst\\bst-helper\\reward'] = nil;
     package.loaded['dlac\\feature\\modcfg'] = nil;
     package.loaded['dlac\\lib\\statefile'] = nil;
+end)();
+
+-- ---------------------------------------------------------------------------
+-- KB: THE KEYBIND REGISTRY (2026-07-30). "Who holds this key, and with what?"
+-- Before it existed dlac issued binds from two places that could not see each
+-- other, and nothing ever RELEASED one -- so a mode from the job you left kept
+-- its key for the session. Henrik's ruling: name the holder and block the
+-- second claim. The io seam is injected, so every bind and unbind is counted
+-- without a client.
+-- ---------------------------------------------------------------------------
+;(function()
+    local kb = dofile('feature/keybinds.lua');
+    local bound, unbound, said = {}, {}, {};
+    kb.io.bind   = function(k, c) bound[#bound + 1] = k .. ' ' .. c; end;
+    kb.io.unbind = function(k) unbound[#unbound + 1] = k; end;
+    kb.say       = function(l) said[#said + 1] = l; end;
+    kb.forget();
+
+    check('KB1 a key is normalised for comparison, not for issuing', kb.normalize('  ^F3 '), '^f3');
+    check('KB2 nothing holds a free key', kb.holder('^f3'), nil);
+
+    check('KB3 a free key is claimed', (kb.register('mode:weapon', '^F3', '/dl mode Weapon', 'Mode: Weapon')), true);
+    check('KB4 ...and issued exactly as the player typed it', bound[1], '^F3 /dl mode Weapon');
+    check('KB5 ...and the registry can name the holder', kb.holder('^f3').label, 'Mode: Weapon');
+    check('KB6 ...case-insensitively, because it is one physical key',
+          kb.holder('^F3').owner, 'mode:weapon');
+
+    bound = {};
+    check('KB7 re-registering the SAME key and command changes nothing',
+          select(2, kb.register('mode:weapon', '^F3', '/dl mode Weapon', 'Mode: Weapon')).unchanged, true);
+    check('KB8 ...and issues no /bind (the field-reported bind storm)', #bound, 0);
+
+    local ok2, info2 = kb.register('jobhelper:bst-helper:summon', '^f3', '/dl jh bst-helper summon', 'BST: Summon');
+    check('KB9 a SECOND owner is refused, never silently given the key', ok2, false);
+    check('KB10 ...and told who has it', info2.taken.label, 'Mode: Weapon');
+    check('KB11 ...loudly, once', #said, 1);
+    check('KB12 ...and the holder keeps it', kb.holder('^f3').owner, 'mode:weapon');
+    check('KB13 ...and nothing was issued', #bound, 0);
+    kb.register('jobhelper:bst-helper:summon', '^f3', '/dl jh bst-helper summon', 'BST: Summon');
+    check('KB14 a repeated refusal does not repeat the line', #said, 1);
+
+    bound, unbound = {}, {};
+    check('KB15 an owner MOVING its key releases the old one',
+          kb.register('mode:weapon', '!q', '/dl mode Weapon', 'Mode: Weapon') and unbound[1], '^F3');
+    check('KB16 ...and binds the new', bound[1], '!q /dl mode Weapon');
+    check('KB17 ...leaving the old key free for somebody else', kb.holder('^f3'), nil);
+
+    check('KB18 an owner holds at most one key', kb.heldBy('mode:weapon').raw, '!q');
+    check('KB19 releasing unbinds it', kb.release('mode:weapon') and kb.holder('!q'), nil);
+    check('KB20 ...and releasing nothing is not an error', kb.release('mode:weapon'), false);
+
+    -- --- syncGroup: the whole per-job group, diffed
+    kb.forget(); bound, unbound, said = {}, {}, {};
+    local GROUP = {
+        { owner = 'mode:dt',     key = 'F9',  command = '/dl mode DT',     label = 'Mode: DT' },
+        { owner = 'mode:weapon', key = '^F3', command = '/dl mode Weapon', label = 'Mode: Weapon' },
+    };
+    local r1 = kb.syncGroup('mode:', GROUP);
+    check('KB21 a fresh group binds every member', r1.bound, 2);
+    check('KB22 ...and releases nothing', r1.released, 0);
+    bound, unbound = {}, {};
+    local r2 = kb.syncGroup('mode:', GROUP);
+    check('KB23 the same group again is entirely unchanged', r2.unchanged, 2);
+    check('KB24 ...issuing nothing at all', #bound + #unbound, 0);
+
+    -- the job change: a different file, a different set of modes
+    local NEXTJOB = { { owner = 'mode:sic', key = 'F9', command = '/dl mode Sic', label = 'Mode: Sic' } };
+    local r3 = kb.syncGroup('mode:', NEXTJOB);
+    check('KB25 a job change releases the modes that are gone', r3.released, 2);
+    check('KB26 ...and binds the ones that arrived', r3.bound, 1);
+    check('KB27 ...so a key the last job held is free again', kb.holder('^f3'), nil);
+    check('KB28 ...and one it kept can be re-taken by the new job\'s mode',
+          kb.holder('f9').owner, 'mode:sic');
+
+    -- a group never touches another group's keys
+    kb.register('dlac:ui', '^k', '/dl ui', 'dlac window');
+    kb.syncGroup('jobhelper:', {
+        { owner = 'jobhelper:bst-helper:summon', key = '^s', command = '/dl jh bst-helper summon',
+          label = 'BST Helper: Summon now' },
+    });
+    check('KB29 syncing one group leaves the others alone',
+          kb.holder('^k').owner .. '/' .. kb.holder('f9').owner, 'dlac:ui/mode:sic');
+    check('KB30 ...and its own member is in', kb.holder('^s').label, 'BST Helper: Summon now');
+    check('KB31 the whole board is readable, sorted', (function()
+        local rows, keys = kb.list(), {};
+        for _, r in ipairs(rows) do keys[#keys + 1] = r.key; end
+        return table.concat(keys, ',');
+    end)(), '^k,^s,f9');
+
+    -- a refused member of a group does not take the group down
+    said = {};
+    local r4 = kb.syncGroup('jobhelper:', {
+        { owner = 'jobhelper:bst-helper:summon', key = '^k', command = '/dl jh bst-helper summon',
+          label = 'BST Helper: Summon now' },
+    });
+    check('KB32 a member reaching for a taken key is refused', #r4.refused, 1);
+    check('KB33 ...named in the result', r4.refused[1].owner, 'jobhelper:bst-helper:summon');
+    check('KB34 ...and the real holder still has it', kb.holder('^k').owner, 'dlac:ui');
+    check('KB34b ...and the refused owner KEEPS the key it already had -- a move that\n'
+          .. '       cannot land must not cost you the bind you were using',
+          kb.holder('^s').owner, 'jobhelper:bst-helper:summon');
+
+    unbound = {};
+    kb.releaseAll();
+    check('KB35 releasing everything unbinds every key', #unbound, 3);
+    check('KB36 ...and empties the board', kb.count(), 0);
+
+    -- --- bad shapes never throw
+    check('KB37 a nameless owner is refused', kb.register(nil, '^k', '/dl ui'), false);
+    check('KB38 an empty key is refused', kb.register('x', '   ', '/dl ui'), false);
+    check('KB39 a commandless bind is refused', kb.register('x', '^k', ''), false);
+    check('KB40 ...and none of them bound anything', kb.count(), 0);
+end)();
+
+-- ---------------------------------------------------------------------------
+-- JHC: JOB-HELPER COMMANDS + their framework-installed keybinds (2026-07-30).
+-- `/dl jh <module> <action>` is the one door for a module's named actions, and
+-- the thing a key is bound to. The module never touches the registry: it
+-- declares which of its OWN config keys holds the bind and the framework
+-- installs the group, job-scoped.
+-- ---------------------------------------------------------------------------
+;(function()
+    local jh = dofile('feature/jobhelpers.lua');
+    local kb = dofile('feature/keybinds.lua');
+    package.loaded['dlac\\feature\\keybinds'] = kb;
+    kb.forget();
+    kb.io.bind, kb.io.unbind, kb.say = function() end, function() end, function() end;
+
+    local ran, lines = {}, {};
+    jh._say = function(l) lines[#lines + 1] = l; end;
+
+    local MOD = {
+        api = jh.API, label = 'BST Helper', jobs = { 'BST' },
+        panel = function() end,
+        config = { file = 'x.lua', keys = { summonKey = 'string', n = 'number' } },
+        commands = {
+            summon = { label = 'Summon now', key = 'summonKey',
+                       run = function(S, args) ran[#ran + 1] = args or true; return true; end },
+        },
+    };
+    check('JHC1 a commands block is accepted', (jh._validate('bst-helper', MOD) ~= nil), true);
+
+    local function bad(mut)
+        local m = {};
+        for k, v in pairs(MOD) do m[k] = v; end
+        mut(m);
+        return select(2, jh._validate('bst-helper', m));
+    end
+    check('JHC2 a command with no run function is refused',
+          bad(function(m) m.commands = { go = { label = 'Go' } }; end):find('no run function', 1, true) ~= nil, true);
+    check('JHC3 a command binding through an UNDECLARED config key is refused',
+          bad(function(m) m.commands = { go = { run = function() end, key = 'nope' } }; end)
+              :find('not a declared string config key', 1, true) ~= nil, true);
+    check('JHC4 ...or through one that is not a string key',
+          bad(function(m) m.commands = { go = { run = function() end, key = 'n' } }; end)
+              :find('not a declared string config key', 1, true) ~= nil, true);
+    check('JHC5 a command name with whitespace is refused',
+          bad(function(m) m.commands = { ['a b'] = { run = function() end } }; end)
+              :find('whitespace', 1, true) ~= nil, true);
+
+    -- a loaded registry, hand-built the way the loader leaves it
+    local vals = {};
+    local rec = { id = 'bst-helper', job = 'bst', label = 'BST Helper', jobs = { 'BST' },
+                  mod = MOD, S = { fake = true },
+                  cfg = { get = function(k) return vals[k]; end,
+                          set = function(k, v) vals[k] = v; return true; end } };
+    jh.modules = { rec };
+    gData = { GetPlayer = function() return { MainJob = 'BST' }; end };
+
+    check('JHC6 the module\'s actions are listed, sorted', table.concat(jh.actionNames('bst-helper'), ','), 'summon');
+    check('JHC7 running one calls it with the module\'s OWN api table',
+          jh.runCommand('bst-helper', 'summon') and #ran, 1);
+    lines = {};
+    check('JHC8 an unknown action refuses', jh.runCommand('bst-helper', 'nope'), false);
+    check('JHC9 ...and says what the module DOES have', lines[1]:find('summon', 1, true) ~= nil, true);
+    lines = {};
+    check('JHC10 an unknown module refuses', jh.runCommand('nope', 'summon'), false);
+    check('JHC11 ...loudly', #lines, 1);
+
+    lines = {};
+    gData = { GetPlayer = function() return { MainJob = 'WAR' }; end };
+    check('JHC12 the wrong job refuses -- a BST helper does nothing on WAR',
+          jh.runCommand('bst-helper', 'summon'), false);
+    check('JHC13 ...naming the job it is for', lines[1]:find('BST', 1, true) ~= nil, true);
+
+    -- --- the binds the framework installs for it
+    check('JHC14 no key configured, nothing to bind', #jh.bindEntries(), 0);
+    vals.summonKey = '^F3';
+    check('JHC15 the wrong job wants no bind either', #jh.bindEntries(), 0);
+    gData = { GetPlayer = function() return { MainJob = 'BST' }; end };
+    local ents = jh.bindEntries();
+    check('JHC16 on its job, the key is wanted', #ents, 1);
+    check('JHC17 ...owned by the FRAMEWORK\'s id, not one the module chose',
+          ents[1].owner, 'jobhelper:bst-helper:summon');
+    check('JHC18 ...bound to the one command door', ents[1].command, '/dl jh bst-helper summon');
+    check('JHC19 ...and labelled for a human', ents[1].label, 'BST Helper: Summon now');
+
+    jh.pumpBinds(1000);
+    check('JHC20 the beat installs it', kb.holder('^f3').owner, 'jobhelper:bst-helper:summon');
+    jh.pumpBinds(1000.2);
+    check('JHC21 ...and is throttled between beats', kb.holder('^f3') ~= nil, true);
+    gData = { GetPlayer = function() return { MainJob = 'WAR' }; end };
+    jh.pumpBinds(1002);
+    check('JHC22 changing job hands the key back', kb.holder('^f3'), nil);
+    gData = { GetPlayer = function() return { MainJob = 'BST' }; end };
+    jh.pumpBinds(1004);
+    check('JHC23 ...and changing back takes it again', kb.holder('^f3').owner,
+          'jobhelper:bst-helper:summon');
+
+    -- The pill, without a character on disk: the store is what setEnabled writes
+    -- to and there is none here, so the PREDICATE is stubbed instead -- what this
+    -- check is about is bindEntries consulting it at all.
+    local realEnabled = jh.isEnabled;
+    jh.isEnabled = function() return false; end;
+    jh.pumpBinds(1006);
+    check('JHC24 the row pill silences the key too', kb.holder('^f3'), nil);
+    jh.isEnabled = realEnabled;
+
+    jh.modules = {};
+    kb.forget();
+    package.loaded['dlac\\feature\\keybinds'] = nil;
+    gData = nil;
 end)();
 
 -- The warm-note artifact the dispatch-driving sections leave behind (dataDir

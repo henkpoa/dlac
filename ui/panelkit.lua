@@ -183,6 +183,73 @@ function M.toggle(im, id, label, value, tip)
     return out;
 end
 
+-- A SHORT TEXT FIELD with a commit button beside it (a keybind, a name).
+--
+-- Returns the NEW text when the player COMMITTED it -- Enter, or the button --
+-- and nil otherwise, so the toggle idiom holds: typing writes nothing, and a
+-- store is only touched when the player says so. That matters more here than
+-- anywhere else in the kit: this field's consumer claims a KEYBIND, and
+-- committing per keystroke would claim (and refuse) '^', '^f', '^f3' in turn.
+--
+--   opts = { w = 90, tip = '...', button = 'Set', maxlen = 32 }
+--
+-- THE BUFFER IS THE ONE PIECE OF STATE THIS KIT KEEPS, and it has to be: ImGui
+-- writes into the table as the player types, so a fresh one per frame would
+-- erase every character. It is re-seeded only when the CALLER's value changes
+-- (a store edited elsewhere), never while typing.
+local _inputBufs = {};
+
+M.INPUT_MAXLEN = 32;
+
+function M.input(im, id, value, opts)
+    if not isFn(im, 'InputText') then return nil; end
+    opts = (type(opts) == 'table') and opts or {};
+    local key = tostring(id);
+    local cur = (value ~= nil) and tostring(value) or '';
+    local buf = _inputBufs[key];
+    if buf == nil then buf = { cur, seen = cur }; _inputBufs[key] = buf; end
+    if buf.seen ~= cur then buf[1] = cur; buf.seen = cur; end
+
+    -- Flag GLOBALS are nil-checked, never the function (hard rule 2): a binding
+    -- without them loses Enter-to-commit and keeps the button.
+    local entered = false;
+    if isFn(im, 'PushItemWidth') then im.PushItemWidth(opts.w or 90); end
+    local flags = 0;
+    if rawget(_G, 'ImGuiInputTextFlags_EnterReturnsTrue') ~= nil then
+        flags = flags + ImGuiInputTextFlags_EnterReturnsTrue;
+    end
+    local maxlen = tonumber(opts.maxlen) or M.INPUT_MAXLEN;
+    if flags ~= 0 then
+        pcall(function() entered = im.InputText('##' .. key, buf, maxlen, flags) == true; end);
+    else
+        pcall(function() im.InputText('##' .. key, buf, maxlen); end);
+    end
+    if isFn(im, 'PopItemWidth') then im.PopItemWidth(); end
+    tipOn(im, opts.tip);
+
+    local clicked = false;
+    if isFn(im, 'SameLine') then im.SameLine(0, 6); end
+    if isFn(im, 'Button') then
+        pcall(function()
+            clicked = im.Button(tostring(opts.button or 'Set') .. '##' .. key .. 'set', { 0, 22 }) == true;
+        end);
+    end
+    if entered or clicked then
+        local out = tostring(buf[1] or '');
+        buf.seen = out;
+        return out;
+    end
+    return nil;
+end
+
+-- Forget a field's buffer (a test reset). Takes the handle it never uses, so
+-- the auto-bind walk below stays the law -- a kit function that needed an
+-- exception would be one more thing an author has to know.
+function M.forgetInput(im, id)
+    if id == nil then _inputBufs = {}; return; end
+    _inputBufs[tostring(id)] = nil;
+end
+
 -- The widest of a list of labels, MEASURED, plus padding -- never hardcoded.
 -- Falls back to a width that fits ~16 characters at the themed font when the
 -- binding has no CalcTextSize.
@@ -274,35 +341,110 @@ function M.slider(im, id, value, min, max, fmt, tip, width)
     return out, drew;
 end
 
--- A DROPDOWN over a list of rows. `rows` is any array; `labelOf(row)` renders
--- one (defaults to tostring). `current` is the selected row's label text, or nil.
--- `noneLabel`, when given, prepends a "nothing selected" entry that returns the
--- string it is labelled with.
+-- The open dropdowns' filter text, by combo id. Persistent for the same reason
+-- M.input's buffer is: ImGui writes into the table as the player types.
+local _comboFilter = {};
+
+-- Split a filter into TERMS and match them ALL, case-insensitively, as plain
+-- substrings. Pure; the whole search rule, so it is a headless check.
+--
+-- All-of-the-terms rather than one substring because the useful haystack here is
+-- a compound: a jug row reads `Carrot Broth (Lv 10) -- Hare Familiar`, so a
+-- player who remembers the pet and the broth ("carrot hare") is typing two
+-- things that are nowhere adjacent. Plain `find`, never a pattern -- the labels
+-- carry `--`, `(` and `.`, and a typed `-` would otherwise be a quantifier.
+function M.matchesFilter(haystack, filter)
+    if type(filter) ~= 'string' then return true; end
+    local f = (filter:gsub('^%s+', ''):gsub('%s+$', ''));
+    if f == '' then return true; end
+    local hay = string.lower(tostring(haystack or ''));
+    for term in f:gmatch('%S+') do
+        if hay:find(string.lower(term), 1, true) == nil then return false; end
+    end
+    return true;
+end
+
+-- A DROPDOWN over a list of rows, WITH A SEARCH BOX. `rows` is any array;
+-- `labelOf(row)` renders one (defaults to tostring). `current` is the selected
+-- row's label text, or nil. `noneLabel`, when given, prepends a "nothing
+-- selected" entry that returns the string it is labelled with. `searchOf(row)`
+-- is optional EXTRA text to match against, beside the label.
+--
+-- THE SEARCH IS ALWAYS THERE, on Henrik's ask (2026-07-30: "can be many sets and
+-- jugs, so might be good to find em") -- a jug list is 33 rows on this server and
+-- a Sets library grows without bound. It opens focused, so the popup can simply
+-- be typed into; it filters on every frame off the buffer, so nothing has to be
+-- committed and no ImGui flag global is involved; and it CLEARS when the popup
+-- closes, because a filter left standing from last time is indistinguishable
+-- from a list that lost its rows.
+--
+-- What is matched is the LABEL plus `searchOf`, which is why the jug picker
+-- finds a jug by the familiar it calls: the pet name is in both. Passing
+-- `searchOf` is still worth it there -- it keeps the search working the day
+-- somebody shortens the label.
 --
 -- Returns the picked row (or the noneLabel string) when the player chose, else
--- nil. Guarded: BeginCombo is not in every binding, and EndCombo runs only when
--- BeginCombo returned true.
-function M.combo(im, id, current, rows, labelOf, tip, noneLabel)
+-- nil. Guarded throughout: BeginCombo is not in every binding, EndCombo runs
+-- only when BeginCombo returned true, and a binding with no InputText simply
+-- gets the old unfiltered list.
+function M.combo(im, id, current, rows, labelOf, tip, noneLabel, searchOf)
     if not isFn(im, 'BeginCombo') or not isFn(im, 'EndCombo') then return nil; end
     local render = (type(labelOf) == 'function') and labelOf or tostring;
+    local extra  = (type(searchOf) == 'function') and searchOf or nil;
+    local key    = tostring(id);
     local picked = nil;
-    if im.BeginCombo('##' .. tostring(id), tostring(current or noneLabel or '')) then
-        if noneLabel ~= nil and isFn(im, 'Selectable') then
-            if im.Selectable(tostring(noneLabel) .. '##' .. tostring(id) .. '_none',
-                             current == nil) then
+
+    if im.BeginCombo('##' .. key, tostring(current or noneLabel or '')) then
+        local st = _comboFilter[key];
+        if st == nil then st = { '' }; _comboFilter[key] = st; end
+
+        if isFn(im, 'InputText') then
+            -- Focused on the frame the popup OPENS, so the player types instead
+            -- of clicking first. Only that frame: stealing focus every frame
+            -- would make the list unclickable.
+            if st.open ~= true and isFn(im, 'SetKeyboardFocusHere') then
+                pcall(function() im.SetKeyboardFocusHere(); end);
+            end
+            st.open = true;
+            if isFn(im, 'PushItemWidth') then im.PushItemWidth(180); end
+            pcall(function() im.InputText('##' .. key .. '_search', st, M.INPUT_MAXLEN); end);
+            if isFn(im, 'PopItemWidth') then im.PopItemWidth(); end
+            tipOn(im, 'Type to narrow the list. Several words all have to match --\n'
+                   .. 'so "carrot hare" finds the Carrot Broth that calls a Hare Familiar.');
+            M.rule(im);
+        end
+
+        local filter = tostring(st[1] or '');
+        local shown = 0;
+
+        if noneLabel ~= nil and isFn(im, 'Selectable')
+           and M.matchesFilter(noneLabel, filter) then
+            shown = shown + 1;
+            if im.Selectable(tostring(noneLabel) .. '##' .. key .. '_none', current == nil) then
                 picked = noneLabel;
             end
         end
         for i, row in ipairs((type(rows) == 'table') and rows or {}) do
             local label = tostring(render(row));
-            if isFn(im, 'Selectable') then
-                if im.Selectable(label .. '##' .. tostring(id) .. '_' .. tostring(i),
-                                 label == current) then
+            local hay = label;
+            if extra ~= nil then
+                local ok, more = pcall(extra, row);
+                if ok and more ~= nil then hay = label .. ' ' .. tostring(more); end
+            end
+            if isFn(im, 'Selectable') and M.matchesFilter(hay, filter) then
+                shown = shown + 1;
+                if im.Selectable(label .. '##' .. key .. '_' .. tostring(i), label == current) then
                     picked = row;
                 end
             end
         end
+        if shown == 0 then M.dim(im, 'nothing matches "' .. filter .. '"'); end
+
         im.EndCombo();
+    else
+        -- Closed: forget the filter, so the next open shows the whole list.
+        local st = _comboFilter[key];
+        if st ~= nil then st[1] = ''; st.open = false; end
     end
     tipOn(im, tip);
     return picked;

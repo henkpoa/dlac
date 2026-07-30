@@ -110,15 +110,54 @@ M.MAP = {
 -- everywhere -- picker, gate and hover.
 M.LEVEL = {};
 
+-- THE LEVEL CEILING. CatsEyeXI is a 75-cap server, and the catalog is not: it
+-- carries the full retail broth list, so 65 of its 98 BST-only Ammo rows are
+-- Lv76-99 jugs nobody here can equip -- two thirds of the picker, none of them
+-- mapped to a pet, all of them between the player and the jug they wanted
+-- (maintainer's ruling 2026-07-30: "remove any jugs from the list that is above
+-- level 75").
+--
+-- Applied against the level the row REPORTS, which is M.LEVEL's live-observed
+-- value when there is one -- so a jug this server re-tuned down into reach is
+-- kept by adding its one row above, not by moving this number. If the cap ever
+-- rises, this is the single line to change.
+M.MAX_LEVEL = 75;
+
 -- ---------------------------------------------------------------------------
 -- the roster question -- "is this pet a jug pet?"
 -- ---------------------------------------------------------------------------
+
+-- SQUASH a display name for COMPARISON ONLY: NULs out, every space removed,
+-- lowercased.
+--
+-- THE SPACE IS THE WHOLE REASON THIS EXISTS (field, 2026-07-30, from a chat
+-- line in a screenshot: *"The SheepFamiliar defeats the Clipper."*). The
+-- client's entity name for a jug pet carries **no space** -- `SheepFamiliar` --
+-- while every published table, this roster included, writes `Sheep Familiar`.
+-- Compared raw, not one jug pet on this server matched its own roster entry, so
+-- the loss classifier called every one of them a CHARMED pet and the Resummon
+-- rule refused exactly as it is designed to for charm. A silent, total failure
+-- of the feature, from one space.
+--
+-- Squashing rather than "inserting the spaces back" because the direction of the
+-- difference is not ours to guess: whether a name is written apart or together
+-- is a rendering choice on either side, and the letters are what identify a pet.
+local function squash(s)
+    if type(s) ~= 'string' then return nil; end
+    local t = s:gsub('%z', ''):gsub('%s+', '');
+    if t == '' then return nil; end
+    return string.lower(t);
+end
+M._squash = squash;   -- test seam
 
 local _roster = nil;
 local function roster()
     if _roster == nil then
         _roster = {};
-        for _, n in ipairs(M.PETS) do _roster[string.lower(n)] = true; end
+        for _, n in ipairs(M.PETS) do
+            local k = squash(n);
+            if k ~= nil then _roster[k] = true; end
+        end
     end
     return _roster;
 end
@@ -128,12 +167,11 @@ end
 -- player's own configured jug maps to it, so a jug this roster has not caught
 -- up with is still recognised when the player named it themselves.
 function M.isJugPet(name, alsoPet)
-    if type(name) ~= 'string' then return nil; end
-    local n = (name:gsub('%z', ''):gsub('^%s+', ''):gsub('%s+$', ''));
-    if n == '' then return nil; end
-    local low = string.lower(n);
-    if roster()[low] == true then return true; end
-    if type(alsoPet) == 'string' and alsoPet ~= '' and string.lower(alsoPet) == low then return true; end
+    local n = squash(name);
+    if n == nil then return nil; end
+    if roster()[n] == true then return true; end
+    local also = squash(alsoPet);
+    if also ~= nil and also == n then return true; end
     return false;
 end
 
@@ -157,9 +195,11 @@ end
 -- the jug LIST -- the catalog joined with the mapping (the picker's rows)
 -- ---------------------------------------------------------------------------
 --
--- A jug is a BST-only Ammo item: that is exactly the set of broths, humus,
--- saps, soils and waters Call Beast reads, and nothing else in the catalog
--- matches it (pet food is "All" jobs). Reads are injected as a whole:
+-- A jug is a BST-only Ammo item AT OR UNDER THIS SERVER'S CAP (M.MAX_LEVEL):
+-- BST-only Ammo is exactly the set of broths, humus, saps, soils and waters
+-- Call Beast reads, and nothing else in the catalog matches it (pet food is
+-- "All" jobs) -- but the catalog is retail's, so two thirds of that set is
+-- Lv76-99 and unusable here. Reads are injected as a whole:
 --   reads = { index = function() -> { [id] = raw catalog record }, .. }
 -- so the whole list builds headlessly off a fixture.
 --
@@ -186,8 +226,13 @@ function M.list(reads)
         if type(rec) == 'table' and rec.Type == 'Ammo' and type(rec.Name) == 'string'
            and type(rec.Jobs) == 'table' and #rec.Jobs == 1 and rec.Jobs[1] == 'BST' then
             local lvl = tonumber(M.LEVEL[rec.Name]) or tonumber(rec.Level) or 0;
-            out[#out + 1] = { id = tonumber(id) or rec.Id, name = rec.Name, level = lvl,
-                              pet = M.petFor(rec.Name), src = M.sourceFor(rec.Name) };
+            -- Above this server's cap = not a jug anyone here can equip (see
+            -- M.MAX_LEVEL). Dropped from the LIST, not hidden in the picker, so
+            -- every consumer of the roster agrees about what exists.
+            if lvl <= M.MAX_LEVEL then
+                out[#out + 1] = { id = tonumber(id) or rec.Id, name = rec.Name, level = lvl,
+                                  pet = M.petFor(rec.Name), src = M.sourceFor(rec.Name) };
+            end
         end
     end
     -- Explicit ordering, never pairs() order (hard rule 8): level, then name,

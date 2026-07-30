@@ -3995,6 +3995,24 @@ end)();
         end
         return false;
     end
+    -- The kit's text field (panelkit.input -- the Summon key, 2026-07-30). It is
+    -- HERE and not merely guarded away because the whole point of this suite is
+    -- that a Panel's real render runs: a binding this stub does not carry is a
+    -- widget whose code path never executes, and an unknown Lua name is a silent
+    -- nil global that no load test can catch (ADR 0019's lesson). `typeId` types
+    -- into a field and commits it, the way Enter would.
+    -- `typeId` fills the field's buffer the way typing does; `typeEnter` is the
+    -- separate act of pressing Enter, so the Enter path and the Set-button path
+    -- can each be proven alone.
+    local inputs, typeId, typeText, typeEnter = {}, nil, '', false;
+    IM.InputText = function(label, t)
+        inputs[#inputs + 1] = tostring(label);
+        if typeId ~= nil and type(label) == 'string' and label:find(typeId, 1, true) ~= nil then
+            if type(t) == 'table' then t[1] = typeText; end
+            return typeEnter == true;
+        end
+        return false;
+    end
     IM.GetCursorScreenPos    = function() return 0, 0; end
     IM.GetContentRegionAvail = function() return 400, 400; end
     IM.GetWindowDrawList = function()
@@ -4175,6 +4193,90 @@ end)();
                 end
             end
             balanced('S357 tab + BST Panel with Resummon');
+
+            -- --- the Summon section (2026-07-30): the CHR set, its one
+            -- exception, the bindable key and the button. Rendered REAL, because
+            -- a nil global in a Panel is invisible to every other suite.
+            buttons, checks, selectables, inputs = {}, {}, {}, {};
+            pcall(jhui.renderTab, 'BST', 99);
+            check('S357a the Summon set picker draws',
+                  table.concat(selectables, '|'):find('None', 1, true) ~= nil, true);
+            check('S357b the weapon-slot exception draws',
+                  table.concat(checks, '|'):find('bstsummonwep_bst', 1, true) ~= nil, true);
+            check('S357c the key field draws',
+                  table.concat(inputs, '|'):find('bstsummonkey_bst', 1, true) ~= nil, true);
+            check('S357d the Summon now button draws beside it',
+                  table.concat(buttons, '|'):find('Summon now', 1, true) ~= nil, true);
+
+            local realW, realK, realN =
+                resummon.setWeapons, resummon.setKey, resummon.summonNow;
+            local wLog, kLog, nLog = {}, {}, 0;
+            resummon.setWeapons = function(v) wLog[#wLog + 1] = v; return true; end
+            resummon.setKey     = function(v) kLog[#kLog + 1] = v; return true; end
+            resummon.summonNow  = function() nLog = nLog + 1; return true; end
+
+            tickId = 'bstsummonwep_bst';
+            pcall(jhui.renderTab, 'BST', 99);
+            tickId = nil;
+            check('S357e ticking the weapon exception reaches the setter', wLog[#wLog], true);
+
+            -- Enter-to-commit needs the flag GLOBAL a real Ashita binding
+            -- carries; the kit nil-checks it and falls back to the Set button
+            -- alone (hard rule 2). Both paths are driven here, because "the
+            -- binding has no flags" is a live install, not a hypothetical.
+            -- Enter-to-commit needs the flag GLOBAL a real Ashita binding
+            -- carries; the kit nil-checks it and falls back to the Set button
+            -- alone (hard rule 2). Both paths are driven, because "the binding
+            -- has no flags" is a live install, not a hypothetical -- and typing
+            -- WITHOUT committing must write nothing, which is what keeps a key
+            -- field from claiming '^', then '^f', then '^f3'.
+            typeId, typeText, typeEnter = 'bstsummonkey_bst', '^F3', true;
+            pcall(jhui.renderTab, 'BST', 99);
+            check('S357f0 no flag global: even Enter cannot commit, only the button', #kLog, 0);
+            ImGuiInputTextFlags_EnterReturnsTrue = 32;
+            pcall(jhui.renderTab, 'BST', 99);
+            check('S357f committing with Enter reaches the setter', kLog[#kLog], '^F3');
+            ImGuiInputTextFlags_EnterReturnsTrue = nil;
+
+            kLog, typeEnter = {}, false;
+            pcall(jhui.renderTab, 'BST', 99);
+            check('S357f1 typing without committing writes NOTHING', #kLog, 0);
+            clickId = 'bstsummonkey_bst-helperset';
+            pcall(jhui.renderTab, 'BST', 99);
+            clickId, typeId = nil, nil;
+            check('S357f2 ...and the Set button commits what was typed',
+                  kLog[#kLog], '^F3');
+
+            clickId = 'bstsummonnow_bst';
+            pcall(jhui.renderTab, 'BST', 99);
+            clickId = nil;
+            check('S357g clicking Summon now reaches the act', nLog >= 1, true);
+            balanced('S357h tab + BST Panel with Summon');
+
+            -- --- the dropdown SEARCH: drawn inside the open popup, and it
+            -- narrows what the popup offers. Driven on the JUG picker because
+            -- that is the list with 33 rows and the one that has to be findable
+            -- by the familiar as well as by the broth.
+            selectables, inputs = {}, {};
+            pcall(jhui.renderTab, 'BST', 99);
+            check('S357i the jug popup carries a search box',
+                  table.concat(inputs, '|'):find('bstresumjug_bst-helper_search', 1, true) ~= nil, true);
+            local allRows = #selectables;
+            check('S357j ...and with it empty the whole list is offered', allRows > 5, true);
+
+            selectables = {};
+            typeId, typeText, typeEnter = 'bstresumjug_bst-helper_search', 'hare', false;
+            pcall(jhui.renderTab, 'BST', 99);
+            typeId = nil;
+            local hits = table.concat(selectables, '|');
+            check('S357k typing narrows the list', #selectables < allRows, true);
+            check('S357l ...and finds the jug by the FAMILIAR it calls, not just its own name',
+                  hits:find('Hare Familiar', 1, true) ~= nil, true);
+            check('S357m ...leaving the broths that call something else out',
+                  hits:find('Herbal Broth', 1, true), nil);
+            balanced('S357n tab + BST Panel with a filtered jug popup');
+
+            resummon.setWeapons, resummon.setKey, resummon.summonNow = realW, realK, realN;
 
             resummon.setArmed, resummon.setMethod = realA, realM;
             resummon.setFallback, resummon.setJug = realF, realJ;

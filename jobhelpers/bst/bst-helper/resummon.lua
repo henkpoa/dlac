@@ -19,6 +19,18 @@
     worn -- the server reads the ammo slot for the species -- which is the whole
     reason a sequence is involved and not a bare command.
 
+    ONE ACT, THREE REQUESTERS (reward.lua's shape, one requester further): the
+    death rule below, the queue tick, and `M.summonNow()` -- the Panel's "Summon
+    now" button and the key bound to it. There is one implementation, so the
+    refusals a keypress shows ARE the refusals the rule shows.
+
+    THE SUMMON SET rides along with it (2026-07-30). On CatsEyeXI the master's
+    +CHR at summon time raises the jug pet's Ready strength for that pet's whole
+    life -- and only GEAR CHR counts, which makes it exactly a set's job. It is
+    optional, empty by default, dressed BEST-EFFORT (only the jug must verify),
+    and it leaves the weapon slots alone unless the player opts in, because
+    swapping a weapon costs the TP a BST summoning mid-fight is holding.
+
     THE BINARY CHOICE. Call Beast or Bestial Loyalty, plus "use the other if mine is
     on cooldown" (default on). Only Call Beast earns Beast Raising bonuses; it
     CONSUMES the jug, Loyalty does not. Nothing here reads a "better" method: the
@@ -75,6 +87,26 @@ M.RECAST = {
 };
 
 M.VERIFY_TIMEOUT = 4;
+
+-- How long the claim is HELD after the summon fires, seconds. Reward's default
+-- (0.4s) is sized for an ability that resolves on the spot; a summon does not --
+-- the pet spawns a beat later, and this server bakes the master's gear CHR into
+-- the pet's Ready strength AT THAT MOMENT (CatsEyeXI Systems/Jobs, Beastmaster:
+-- "(% of max player level) + (% of CHR stat)", CHR / 43, and explicitly "this
+-- does NOT include base CHR, only the +CHR" -- so it is gear, and only gear,
+-- that this number is protecting). Held long enough that a spawn-time read
+-- still sees the set; short enough that nothing is worn into a fight.
+-- FLAGGED for the field round: whether the read happens at the ability or at
+-- the spawn is not knowable from the client, and 2s covers both.
+M.HOLD_S = 2.0;
+
+-- The slots a summon must NOT touch by default. Changing your main weapon costs
+-- you your TP, and a BST summoning mid-fight is the normal case -- so the Summon
+-- set dresses everything EXCEPT these unless the player says otherwise
+-- (maintainer's ruling 2026-07-30: "by default it should be disabled so they
+-- don't lose TP"). Ammo is deliberately absent: it carries the JUG, which is the
+-- act's precondition and is never the set's to give.
+M.WEAPON_SLOTS = { Main = true, Sub = true, Range = true };
 
 -- The module API table, handed over by init.
 local _S = nil;
@@ -190,6 +222,66 @@ function M.setFallback(on)
     local c = cfg();
     if c == nil then return false; end
     return c.set('resummonFallback', on == true);
+end
+
+-- The optional SUMMON SET, by name, or nil for "the jug alone". Persisted for
+-- the reason the Reward set is: the automatic path has no Panel to read a
+-- session choice from, and a set picked once must still be worn by a resummon
+-- that happens an hour later with the tab closed.
+--
+-- What it is FOR, on this server: your +CHR at the moment the pet spawns raises
+-- its Ready strength for that pet's whole life. Nothing here knows or checks
+-- that -- it is an ordinary set overlay, and a player who wants something else
+-- on their summons gets it for free.
+function M.setName()
+    local c = cfg();
+    local v = nil;
+    if c ~= nil then v = c.get('summonSet'); end
+    if type(v) ~= 'string' or v == '' or v == 'None' then return nil; end
+    return v;
+end
+
+function M.setSetName(name)
+    local c = cfg();
+    if c == nil then return false; end
+    if type(name) ~= 'string' or name == 'None' then name = ''; end
+    return c.set('summonSet', name);
+end
+
+-- May the Summon set claim the weapon slots? Default NO, and an unreadable
+-- store reads NO: the cost of the wrong answer is asymmetric -- keeping your
+-- weapons costs a little CHR, swapping them costs your TP.
+function M.weapons()
+    local c = cfg();
+    local v = nil;
+    if c ~= nil then v = c.get('summonWeapons'); end
+    return v == true;
+end
+
+function M.setWeapons(on)
+    local c = cfg();
+    if c == nil then return false; end
+    return c.set('summonWeapons', on == true);
+end
+
+-- The key bound to "Summon now", as the player typed it ('' = none). The module
+-- stores it; the FRAMEWORK installs it (feature\jobhelpers.bindEntries reads
+-- this key because the `commands` block names it), so nothing here ever touches
+-- the bind registry.
+function M.key()
+    local c = cfg();
+    local v = nil;
+    if c ~= nil then v = c.get('summonKey'); end
+    if type(v) ~= 'string' or v == '' then return nil; end
+    return v;
+end
+
+function M.setKey(k)
+    local c = cfg();
+    if c == nil then return false; end
+    if type(k) ~= 'string' then k = ''; end
+    k = (k:gsub('^%s+', ''):gsub('%s+$', ''));
+    return c.set('summonKey', k);
 end
 
 -- ---------------------------------------------------------------------------
@@ -415,22 +507,52 @@ end
 -- the ACT -- one Action sequence, the jug worn before the ability fires
 -- ---------------------------------------------------------------------------
 
--- Build the Action sequence request. The claim is the jug ALONE, and the same slot
--- is what must verify WORN: both methods read the ammo slot for the species, so
--- the jug is the act's PRECONDITION, not its costume. No optional set rides along
--- -- a summon has no "summon+" gear to wear, and every extra claimed slot is one
--- more chance for a senior claimant to refuse the whole sequence.
+-- Build the Action sequence request: the optional Summon set overlaid, then the
+-- jug forced into Ammo.
+--
+-- THE JUG IS THE ONLY SLOT THAT MUST VERIFY, and that asymmetry is the same
+-- ruling Reward ships under: both methods read the ammo slot for the species, so
+-- the jug is the act's PRECONDITION and has to land or nothing fires; the Summon
+-- set is COSTUME, so a senior claimant holding one of its slots costs that slot
+-- and refuses nothing. It also composes with a player's own summon-gear
+-- Trigger -- leave the picker empty and the trigger dresses whatever it likes.
+--
+-- The weapon slots are dropped from the claim unless the player opted in: see
+-- M.WEAPON_SLOTS. Ammo is never theirs to drop -- it is the jug.
+--
+-- (Until 2026-07-30 this claimed the jug alone, on the reasoning that "a summon
+-- has no summon+ gear to wear". That is true on retail and false here: this
+-- server pays the pet for the master's +CHR at summon time. The set is optional
+-- and empty by default, so a player who wants the old behaviour already has it.)
 --
 -- `module` and `order` are filled in by the module API from the module's own
 -- identity.
 function M.buildRequest(jugName, method)
     if not M.isMethod(method) then method = 'call'; end
+    -- COPIED, never used in place: the claim is edited below (weapons dropped,
+    -- Ammo forced) and then handed to the sequencer, which keeps it for the life
+    -- of the sequence. Whether `slotsOf` allocates a fresh table or hands back
+    -- one it also gave somebody else is its business, not ours to depend on.
+    local claim = {};
+    local setName = M.setName();
+    if setName ~= nil and type(_S) == 'table' and type(_S.sets) == 'table'
+       and type(_S.sets.slotsOf) == 'function' then
+        local ok, slots = pcall(_S.sets.slotsOf, setName);
+        if ok and type(slots) == 'table' then
+            for slot, item in pairs(slots) do claim[slot] = item; end
+        end
+    end
+    if not M.weapons() then
+        for slot in pairs(M.WEAPON_SLOTS) do claim[slot] = nil; end
+    end
+    claim.Ammo = jugName;                   -- the jug always owns Ammo
     return {
         label   = M.METHOD_LABEL[method],
-        claim   = { Ammo = jugName },
+        claim   = claim,
         need    = { Ammo = jugName },
         command = M.METHOD_COMMAND[method],
         timeout = M.VERIFY_TIMEOUT,
+        hold    = M.HOLD_S,
     };
 end
 
@@ -455,6 +577,51 @@ function M.request(method)
         return { ok = false, reason = res.reason or 'refused' };
     end
     return { ok = true };
+end
+
+-- THE DELIBERATE SUMMON -- the Panel's button, and the key bound to it.
+--
+-- The THIRD requester of the same act (the rule and the queue are the other
+-- two), so the gear, the verify and every refusal are identical by construction
+-- rather than by a second implementation agreeing with the first.
+--
+-- Deliberately NOT gated on the Resummon switch or on the activity predicate:
+-- this is the player pressing a button, exactly like "Reward now", and the
+-- switch governs only what happens WITHOUT them. What it does check is what it
+-- can see first -- no jug picked, none carried, both abilities down -- because
+-- each of those is loud and fixable, and a key that did nothing and said
+-- nothing is indistinguishable from a broken bind.
+--
+-- Returns true when a sequence was opened.
+function M.summonNow()
+    local S = _S;
+    if type(S) ~= 'table' then return false; end
+
+    local jug = M.jug();
+    if jug == nil then
+        M._emit(M.refusalLine({ reason = 'no-jug' }));
+        return false;
+    end
+    local stock = 0;
+    pcall(function() stock = tonumber(S.item.own(jug)) or 0; end);
+    if stock <= 0 then
+        M._emit(M.refusalLine({ reason = 'no-stock', jug = jug }));
+        return false;
+    end
+
+    -- The same pick the rule makes, against the same courtesy gate: unknown
+    -- reads READY, so a recast we cannot measure never blocks a keypress.
+    local m = M.pickMethod(M.method(), M.fallback(),
+                           S.ability.ready(M.RECAST.call),
+                           S.ability.ready(M.RECAST.loyalty));
+    if m == nil then
+        M._emit('Summon: ' .. tostring(M.METHOD_LABEL[M.method()] or 'your summon')
+                .. ' is on cooldown.');
+        return false;
+    end
+
+    local res = M.request(m);
+    return type(res) == 'table' and res.ok == true;
 end
 
 -- ---------------------------------------------------------------------------

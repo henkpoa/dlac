@@ -14,13 +14,23 @@
         petvitals.subscribeLoss(who, cb)        -> pushed the moment a pet is lost
 
     DEATH IS CONFIRMED, NEVER ASSUMED. That is the whole law of the edge, and it
-    exists because its one consumer SPENDS A JUG. Two confirmations count: the
-    pet-falls chat line (matched on `text_in`, the established text channel --
-    history.md's dig-obtained lesson: read the line the client already renders
-    instead of hunting a packet for it), and a present -> absent transition after
-    a LOW last-seen HP%. An observed outgoing Leave, zoning and logging out each
-    SUPPRESS -- they are checked first, so a deliberate dismissal never reads as
-    a death. Everything else is `unknown`, which confirms nothing.
+    exists because its one consumer SPENDS A JUG. Three confirmations count, in
+    strength order: the CORPSE (the pet's own index re-read by server id, at
+    zero HP or a dead status -- see corpseVerdict, and note that on CatsEyeXI
+    this is the ONLY one that fires for a jug pet), the pet-falls chat line
+    (matched on `text_in`, the established text channel -- history.md's
+    dig-obtained lesson: read the line the client already renders instead of
+    hunting a packet for it), and, only when the corpse could not be read at
+    all, a present -> absent transition after a LOW last-seen HP%. An observed
+    outgoing Leave, zoning and logging out each SUPPRESS -- they are checked
+    first, so a deliberate dismissal never reads as a death -- and so does a
+    corpse read that finds the entity ALIVE. Everything else is `unknown`, which
+    confirms nothing.
+
+    JUG OR CHARM is answered by PROVENANCE first (what we watched you press:
+    Call Beast / Bestial Loyalty / Charm, observed the same way as Leave) and by
+    the consumer's injected name authority second. A custom jug this server
+    ships and no roster describes is still yours by the first test.
 
     THE LAW IT CARRIES: **dead pet = no pet.** A pet at 0 HP% is not a pet any
     consumer may act on -- the same rule `gData.GetPet()` has always encoded
@@ -118,7 +128,77 @@ function M.fromPet(pet)
     -- must not open a second status read beside this service.
     local status = nil;
     if type(pet.Status) == 'string' and pet.Status ~= '' then status = pet.Status; end
-    return { present = true, hpp = hpp, tp = tonumber(pet.TP), name = name, status = status };
+    -- IDENTITY (2026-07-30). The server id and the target index of the pet while
+    -- it is alive -- which is what makes the death witness below possible: when
+    -- the pet vanishes we go back and read THAT index, and the id says whether
+    -- what we find is still the same entity. Both nil-able like every other
+    -- vital: a pet whose identity could not be read is reported honestly.
+    return { present = true, hpp = hpp, tp = tonumber(pet.TP), name = name, status = status,
+             id = tonumber(pet.Id), index = tonumber(pet.Index) };
+end
+
+-- ---------------------------------------------------------------------------
+-- the DEATH WITNESS -- the corpse at the remembered index (issue: the Resummon
+-- rule never fired in the field, 2026-07-30)
+-- ---------------------------------------------------------------------------
+--
+-- WHY THIS EXISTS, from the server's own source: a jug pet's death is SILENT.
+-- CMobEntity::Die pushes the falls message (src/map/entities/mobentity.cpp),
+-- but a jug pet is a CPetEntity and CPetEntity::Die (petentity.cpp) pushes NO
+-- battle message at all -- it clears the AI stack, holds the death state 2500ms
+-- and detaches. So FALLS_TEXT below can never match for a pet on this server,
+-- and the low-HP fallback misses every pet killed from above 25%: between them
+-- that is a death proof that proves nothing, which is exactly what the field
+-- reported.
+--
+-- What DOES witness it is the corpse. `gData.GetPet()` refuses an HPP-0 pet (the
+-- dead-pet-is-no-pet law, and right for consumers), so the service goes around
+-- it: the last present beat remembers the pet's index and server id, and when
+-- presence drops we read that index RAW. Same id, zero HP or a dead status =
+-- this pet died, by identity, with no name and no chat line involved -- so a
+-- custom jug the roster has never heard of resummons like any other.
+--
+-- FIELD-CONFIRMED 2026-07-30 (dlacprobe 2.5 `/probe pet`, a SheepFamiliar killed
+-- by a Gigas's Leech, entity polled 20x/s). Three numbers, all of them better
+-- than this was designed against:
+--   * the flip is INSTANT. The last attached read was `hpp=1 status=Idle`; on the
+--     same 50ms poll, reading the index directly already gave `hpp=0
+--     status=Dead(3)` -- +1ms. There is no window in which the corpse still
+--     reads alive, so the `false` verdict cannot misfire on a death.
+--   * the corpse PERSISTS. Same index, same server id, 0 HP, for the full 15s
+--     the probe watched -- it never despawned inside the window, against the
+--     ~2.5s the server's own `Internal_Die(2500ms)` suggested. A 0.4s beat gets
+--     ~37 looks at it, not the ~6 budgeted.
+--   * the death is TOTALLY SILENT. Not one `falls to the ground`, `is defeated`
+--     or 0x029 battle message in the whole run -- exactly what CPetEntity::Die
+--     predicts. The only line after the death is the mob still swinging at the
+--     corpse.
+--
+-- RAW status values. nativedata resolves its table at index+1, so its two 'Dead'
+-- entries ([3] and [4]) are raw 2 and 3 here. Read raw on purpose: this is the
+-- one place in dlac that must not depend on a display string. The field read is
+-- **3**; 2 is kept because the resolver names both, and the HP test catches it
+-- either way.
+M.DEAD_STATUS = { [2] = true, [3] = true };
+
+-- The verdict, PURE: the remembered id and whatever the entity read answered.
+--   true  = the same entity is still there and it is dead
+--   false = the same entity is there and POSITIVELY ALIVE (an unattached pet --
+--           a charm break, a dismissal we did not observe -- never a death)
+--   nil   = cannot tell (no read, or the corpse already despawned and the index
+--           reads as somebody else), which confirms nothing and lets the other
+--           proofs speak
+function M.corpseVerdict(prevId, ent)
+    if type(ent) ~= 'table' then return nil; end
+    local want = tonumber(prevId);
+    local id   = tonumber(ent.id);
+    if want == nil or want == 0 or id == nil or id == 0 then return nil; end
+    if id ~= want then return nil; end            -- despawned / index recycled
+    local hpp = tonumber(ent.hpp);
+    if hpp ~= nil and hpp <= 0 then return true; end
+    if M.DEAD_STATUS[tonumber(ent.status)] == true then return true; end
+    if hpp ~= nil and hpp > 0 then return false; end
+    return nil;
 end
 
 -- ---------------------------------------------------------------------------
@@ -182,10 +262,13 @@ end
 -- every rule below is a headless check (PVL*).
 --
 -- ctx = {
+--   corpse   = <true|false|nil>,   -- the DEATH WITNESS (M.corpseVerdict): the
+--                                  -- remembered index re-read by id
 --   falls    = <true | <subject string> | nil>,  -- a pet-falls line inside the window
 --   leave    = <true|false|nil>,   -- an outgoing Leave was OBSERVED
 --   zoning   = <true|false|nil>,   -- the authoritative zoning probe
 --   logout   = <true|false|nil>,   -- logging out
+--   origin   = 'jug'|'charm'|nil,  -- what we watched you SUMMON it with
 --   isJugPet = function(name) -> true|false|nil,  -- the caller's NAME authority
 --   lowHp    = <number|nil>,       -- override M.LOW_HP_PCT
 -- }
@@ -193,7 +276,7 @@ end
 --   lost      = <bool>,            -- a pet that WAS out is not out now
 --   kind      = 'death' | 'leave' | 'zone' | 'logout' | 'unknown' | 'none',
 --   confirmed = <bool>,            -- death, and PROVEN so (never inferred)
---   how       = 'falls' | 'low-hp' | nil,   -- which proof confirmed it
+--   how       = 'corpse' | 'falls' | 'low-hp' | nil,   -- which proof confirmed it
 --   pet       = 'jug' | 'charm' | 'unknown',
 --   name, hpp                      -- the pet as last seen
 -- }
@@ -220,10 +303,23 @@ function M.classifyLoss(prev, cur, ctx)
     local name = normName(p.name);
     local hpp  = tonumber(p.hpp);
 
-    -- Which kind of pet was it? Positive answers only -- an authority that
-    -- cannot tell leaves this 'unknown', and an unknown pet is not a jug pet.
+    -- Which kind of pet was it?
+    --
+    -- PROVENANCE FIRST (2026-07-30): if we watched you press Call Beast or
+    -- Bestial Loyalty and a pet appeared, that pet is a jug pet -- no list can
+    -- be more authoritative about it than the summon itself, and this is what
+    -- makes a CUSTOM jug (which this server advertises and no roster here
+    -- describes) resummon like any other. Charm is the same statement in
+    -- reverse. The NAME authority is the fallback, for the pet that was already
+    -- out before dlac loaded.
+    --
+    -- Positive answers only, either way: an origin we did not see and an
+    -- authority that cannot tell both leave this 'unknown', and an unknown pet
+    -- is not a jug pet.
     local pet = 'unknown';
-    if type(ctx.isJugPet) == 'function' and name ~= nil then
+    if ctx.origin == 'jug' or ctx.origin == 'charm' then
+        pet = ctx.origin;
+    elseif type(ctx.isJugPet) == 'function' and name ~= nil then
         local ok, isJug = pcall(ctx.isJugPet, name);
         if ok then
             if isJug == true then pet = 'jug';
@@ -238,14 +334,30 @@ function M.classifyLoss(prev, cur, ctx)
     if ctx.logout == true then out.kind = 'logout'; return out; end
     if ctx.leave  == true then out.kind = 'leave';  return out; end
 
-    -- 2. The two proofs of death. The falls line is the loud one; the low
-    --    last-seen HP% is the quiet one that catches a death whose message the
-    --    client never rendered (or whose wording we do not know yet).
+    -- 1b. The corpse says it is ALIVE. That is not a death and no other proof
+    --     may override it: live memory outranks a chat line and a guess alike
+    --     (hard rule 9). A pet still standing at its own index simply stopped
+    --     being ours -- a charm break, a dismissal nobody observed.
+    if ctx.corpse == false then out.kind = 'unknown'; return out; end
+
+    -- 2. The proofs of death, strongest first.
+    --
+    --    THE CORPSE is the witness that actually works here: same entity, zero
+    --    HP or a dead status, matched by ID. The falls line is kept because it
+    --    costs nothing and is right wherever a server does send one -- but on
+    --    CatsEyeXI a pet death is silent (see corpseVerdict's header), so it is
+    --    no longer what this rule rests on. The low last-seen HP% is now a
+    --    LAST resort, and only when the corpse could not be read at all: it is
+    --    a guess, and a guess must never outvote a witness that is available.
+    if ctx.corpse == true then
+        out.kind, out.confirmed, out.how = 'death', true, 'corpse';
+        return out;
+    end
     if ctx.falls ~= nil and ctx.falls ~= false then
         out.kind, out.confirmed, out.how = 'death', true, 'falls';
         return out;
     end
-    if hpp ~= nil and hpp <= (tonumber(ctx.lowHp) or M.LOW_HP_PCT) then
+    if ctx.corpse == nil and hpp ~= nil and hpp <= (tonumber(ctx.lowHp) or M.LOW_HP_PCT) then
         out.kind, out.confirmed, out.how = 'death', true, 'low-hp';
         return out;
     end
@@ -269,6 +381,7 @@ function M.lossText(edge)
     local who = edge.name or 'your pet';
     if edge.kind == 'death' then
         local how = 'it fell';
+        if edge.how == 'corpse' then how = 'it went down where it stood'; end
         if edge.how == 'low-hp' then how = 'it vanished at ' .. tostring(edge.hpp or '?') .. '% HP'; end
         if edge.pet == 'charm' then return who .. ' (charmed) died -- ' .. how; end
         return who .. ' died -- ' .. how;
@@ -348,6 +461,22 @@ M.reads.pet = function()
     return pet;
 end;
 
+-- ONE entity, by target index, read RAW -- no dead-pet law, no pet attachment.
+-- This is the death witness's read and the only one in the service that is
+-- allowed to see a corpse: { id, hpp, status } or nil when it cannot read.
+-- Status comes back as the raw number (see M.DEAD_STATUS).
+M.reads.entity = function(index)
+    local idx = tonumber(index);
+    if idx == nil then return nil; end
+    local t = nil;
+    pcall(function()
+        local em = AshitaCore:GetMemoryManager():GetEntity();
+        if em == nil then return; end
+        t = { id = em:GetServerId(idx), hpp = em:GetHPPercent(idx), status = em:GetStatus(idx) };
+    end);
+    return t;
+end;
+
 -- Am I ZONING right now? The authoritative probe is the dispatch / helmwatch /
 -- jobhelpers one (GetIsZoning may answer bool OR number), with the gData Status
 -- string as the second witness. nil = could not tell, which never suppresses --
@@ -421,6 +550,7 @@ local _lastAt = nil;   -- when it was published (the throttle's clock)
 local _lossSubs = {};    -- who -> cb
 local _prev     = nil;   -- the last PRESENT vitals record (the loss edge's "before")
 local _lastLoss = nil;   -- the last classified loss (what lastLoss() answers)
+local _origin   = nil;   -- 'jug' | 'charm' | nil -- how the CURRENT pet got here
 
 -- Subscribe to the per-beat vitals. `who` names the consumer so a module can
 -- drop its own subscription wholesale (the entwatch / engagewatch contract).
@@ -479,11 +609,15 @@ function M.lastPresent() return _prev; end
 -- it twice (the edge is pushed once, when it happens).
 function M.lastLoss() return _lastLoss; end
 
+-- How the pet that is out RIGHT NOW got here ('jug' / 'charm'), or nil when we
+-- did not see it summoned. Read-only; the classifier consumes it directly.
+function M.origin() return _origin; end
+
 -- Drop the published record (job change / logout / test reset). Subscribers
 -- survive a reset(false); reset(true) drops them too.
 function M.reset(dropSubs)
     _last, _lastAt = nil, nil;
-    _prev, _lastLoss = nil, nil;
+    _prev, _lastLoss, _origin = nil, nil, nil;
     M.clearSignals();
     if dropSubs == true then _subs = {}; _lossSubs = {}; end
 end
@@ -509,6 +643,16 @@ end;
 function M._advance(v, now, reads)
     if type(v) ~= 'table' then return nil; end
     if v.present == true then
+        -- A pet that JUST appeared takes its provenance from what we watched
+        -- you press. Keyed on the identity, not on presence: a pet swapped for
+        -- another inside one beat is a new pet and must not inherit the old
+        -- one's origin.
+        local fresh = (_prev == nil);
+        if not fresh and _prev.id ~= nil and v.id ~= nil and _prev.id ~= v.id then fresh = true; end
+        if fresh then
+            local sig = M.signals(now);
+            if type(sig.summon) == 'string' then _origin = sig.summon; else _origin = nil; end
+        end
         _prev = v;
         return nil;
     end
@@ -517,6 +661,17 @@ function M._advance(v, now, reads)
     local r = (type(reads) == 'table') and reads or M.reads;
     local ctx = M.signals(now);
     ctx.isJugPet = M.lossCtx.isJugPet;
+    ctx.origin   = _origin;
+
+    -- THE DEATH WITNESS: go back and read the index the pet was at. Done HERE,
+    -- on the same beat that saw the vanish, so the answer describes the same
+    -- moment the loss does -- and it is READY by then: the field capture shows
+    -- the entity reading 0 HP / Dead within a millisecond of the pet detaching,
+    -- and still reading it 15 seconds later.
+    if type(r.entity) == 'function' and _prev.index ~= nil then
+        local ok, ent = pcall(r.entity, _prev.index);
+        if ok then ctx.corpse = M.corpseVerdict(_prev.id, ent); end
+    end
     if type(r.zoning) == 'function' then
         local ok, z = pcall(r.zoning);
         if ok then ctx.zoning = z; end
@@ -528,7 +683,7 @@ function M._advance(v, now, reads)
 
     local edge = M.classifyLoss(_prev, v, ctx);
     edge.at = tonumber(now) or M._now();
-    _prev, _lastLoss = nil, edge;
+    _prev, _lastLoss, _origin = nil, edge, nil;
     -- The signals explained THIS loss; they must not explain the next one too.
     M.clearSignals();
     for _, cb in pairs(_lossSubs) do pcall(cb, edge); end
@@ -592,6 +747,18 @@ M.CAT_ABILITY = 0x09;
 -- NAME through the client's own resource tables -- live memory is the top data
 -- authority (hard rule 9), and it means no recast/ability id is hardcoded here.
 M.LEAVE_NAME = 'leave';
+
+-- The abilities that give a pet its PROVENANCE. Watched the same way and for
+-- the same reason as Leave: what you pressed is the most authoritative
+-- statement available about what the pet that just appeared IS, and it is the
+-- only one that holds for a custom jug no roster describes. Matched
+-- case-insensitively by name through the client's own resources, so nothing
+-- here hardcodes an ability id.
+M.SUMMON_NAMES = {
+    ['call beast']      = 'jug',
+    ['bestial loyalty'] = 'jug',
+    ['charm']           = 'charm',
+};
 
 local _cmdQueue = {};    -- { { id = <ability id>, at = <sec> }, .. } from the packet thread
 local _nameMemo = {};    -- ability id -> lowercased name (or false when unresolvable)
@@ -670,6 +837,11 @@ function M.drainCommands(now, resolver)
         if nm == M.LEAVE_NAME then
             M.noteSignal('leave', at);
             seen = seen + 1;
+        elseif nm ~= nil and nm ~= false and M.SUMMON_NAMES[nm] ~= nil then
+            -- The pet that appears next is one you asked for, and we know which
+            -- kind. Rides the same TTL as every other signal: a summon that
+            -- produced no pet inside the window explains nothing later.
+            M.noteSignal('summon', at, M.SUMMON_NAMES[nm]);
         end
     end
     return seen;
