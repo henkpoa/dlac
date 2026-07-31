@@ -955,6 +955,19 @@ sees "no weights", every mutator refuses with 'no set selected' — and older fi
 `shared`/`slotsShared`/`prioShared`/`mode` sections (plus pre-per-set flat files,
 which were only a shared table) are dropped on load.
 
+**Reserved slots are part of the score (2026-07-31).** A piece that takes another slot
+away — Royal/Vermillion Cloak eats Head, a boomerang eats Ammo, a suit eats
+Hands+Legs+Feet — is worth that slot too, so `optimizePicks` takes `opts.reserves(ref)
+-> RSlot mask` (injected like `conflict`/`effects`; the bit vocabulary stays
+`arbiter.RSLOT_ORDER`, never copied). A reserved label contributes nothing and comes back
+`nil` in `picks`, named in `res.reserved`. The climb can *enter* a reservation on its own
+but never *leave* one, so the solve is run once per reservation **regime** and the best
+total kept — the ADR 0011 seeded-restart shape, one level up. Downstream: `levelLadder`'s
+`opts.emptyFrom` cuts a reserved slot's dynamic ladder at the reserver's level and appends
+nothing, and gearui's `workingComposition` drops what `arbiter.reservedDrops` will drop, so
+Set totals and the grid's red RESERVED box agree. `buildMaxStatSet` stays reservation-blind
+on purpose (a per-slot question, same reasoning that leaves it set-blind).
+
 ### gear/gearmove.lua — storage move engine (EXPERIMENTAL, feature/storage-move only)
 "[mv]" button + popup to move items between containers via the 0x029 packet, gated to
 Mog House / Provenance via the 0x00A LoginState gate (see

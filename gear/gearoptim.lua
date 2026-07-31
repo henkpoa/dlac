@@ -50,6 +50,20 @@ local hasLScale = _lsok and type(lscale) == 'table';
 local _gfxok, gfx = pcall(require, "dlac\\gear\\geareffects");
 local hasGfx = _gfxok and type(gfx) == 'table' and type(gfx.setsOf) == 'function';
 
+-- Reserved slots (RSlot) -- "this Body takes your Head away". The bit -> slot
+-- vocabulary is the ARBITER's and is never copied here: gear\arbiter.lua owns it
+-- because the engine owns the behaviour, and the twin that drifts is the one
+-- nobody re-reads. ONE chunk local, guarded exactly like geareffects above:
+-- absent module = a reservation-blind optimizer, its pre-2026-07-31 behavior.
+local rslot = nil;   -- { order = RSLOT_ORDER, bit = hasBit } or nil
+do
+    local ok, arb = pcall(require, "dlac\\gear\\arbiter");
+    if ok and type(arb) == 'table' and type(arb.RSLOT_ORDER) == 'table'
+       and type(arb.hasBit) == 'function' then
+        rslot = { order = arb.RSLOT_ORDER, bit = arb.hasBit };
+    end
+end
+
 -- Colored [dlac] chat output (chatfmt): the shadowed `print` re-heads
 -- "[dlac] ..."-prefixed lines with the colored header; plain when unavailable.
 local _cfmtok, _cfmt = pcall(require, 'dlac\\chatfmt');
@@ -1341,6 +1355,17 @@ end
 --       membership pre-loads the counts (they are counted, never searched) }.
 --     nil (or no set-carrying candidate) is structurally zero: no bonus term,
 --     no restarts -- the H1-H8 exact totals are bit-identical.
+--   opts.reserves(ref) -> RSlot mask (number) or nil/0: the slots this piece
+--     TAKES AWAY while worn (Royal Cloak reserves Head, a boomerang reserves
+--     Ammo). A reserved slot contributes NOTHING to the set, so the optimizer
+--     must weigh the reserver against "the other piece PLUS the slot it lets you
+--     keep" -- the field bug this exists for: Royal Cloak (MP+20, Refresh+1) beat
+--     Dalmatica under MP/Refresh weights because the head it eats was still being
+--     counted alongside it. nil (or no reserving candidate in any pool) is
+--     structurally zero, exactly like opts.effects.
+--
+-- Returns { picks = {label->index|nil}, total, reserved = {label->ref}|nil },
+-- where `reserved` names the piece that took each emptied slot away.
 -- ---------------------------------------------------------------------------
 function M.optimizePicks(pools, weights, opts)
     opts = opts or {};
@@ -1458,9 +1483,74 @@ function M.optimizePicks(pools, weights, opts)
         if #relList == 0 then eff = nil; candSets = nil; end   -- nothing weightable
     end
 
+    -- ---- reserved slots: which candidate takes which OTHER label away -------
+    -- Only labels actually being filled matter: a Cloak costs nothing when Head
+    -- is not part of this solve. Masks are resolved ONCE, into label lists.
+    -- `regime` groups reservers by (label, mask) -- the restart driver below
+    -- needs to compare whole reservation regimes, not individual pieces.
+    local rsvOf, regList, regOf = nil, nil, nil;
+    if type(opts.reserves) == 'function' and rslot ~= nil then
+        local inPool = {};
+        for _, l in ipairs(labels) do inPool[l] = true; end
+        local t, seenReg, any = {}, {}, false;
+        regList, regOf = {}, {};
+        for _, label in ipairs(labels) do
+            local m, r = {}, {};
+            for ci, cand in ipairs(pools[label]) do
+                local okm, mask = pcall(opts.reserves, cand.ref);
+                mask = (okm and tonumber(mask)) or 0;
+                if mask > 0 then
+                    local list = nil;
+                    for _, e in ipairs(rslot.order) do
+                        if e[2] ~= label and inPool[e[2]] and rslot.bit(mask, e[1]) then
+                            list = list or {};
+                            list[#list + 1] = e[2];
+                        end
+                    end
+                    if list ~= nil then
+                        m[ci] = list;
+                        any = true;
+                        local key = label .. '#' .. tostring(mask);
+                        r[ci] = key;
+                        if not seenReg[key] then
+                            seenReg[key] = true;
+                            regList[#regList + 1] = key;
+                        end
+                    end
+                end
+            end
+            t[label], regOf[label] = m, r;
+        end
+        if any then table.sort(regList); rsvOf = t; else regList, regOf = nil, nil; end
+    end
+    -- Ban sets: nil = everything on the table; banAll = no reserving piece at
+    -- all; banOnly[key] = only that regime's reservers may be used.
+    local banned, banAll, banOnly = nil, nil, nil;
+    if rsvOf ~= nil then
+        banAll, banOnly = {}, {};
+        for _, key in ipairs(regList) do banOnly[key] = {}; end
+        for label, m in pairs(rsvOf) do
+            for ci in pairs(m) do
+                banAll[label] = banAll[label] or {};
+                banAll[label][ci] = true;
+                for _, key in ipairs(regList) do
+                    if regOf[label][ci] ~= key then
+                        banOnly[key][label] = banOnly[key][label] or {};
+                        banOnly[key][label][ci] = true;
+                    end
+                end
+            end
+        end
+    end
+    local function allowed(label, ci)
+        return banned == nil or banned[label] == nil or banned[label][ci] ~= true;
+    end
+
     local picks = {};                                  -- label -> candidate index (nil = empty)
     local cnt = {};                                    -- setId -> pieces among picks + baseComposition
+    local blk = {};                                    -- label -> how many current picks reserve it
     for sid, n in pairs(baseCnt) do cnt[sid] = n; end
+    local function isBlocked(label) return (blk[label] or 0) > 0; end
     -- Assignment wrapper: keeps the per-set piece counts incremental, O(1) per
     -- probe (a candidate's setIds list is almost always length 0 or 1). Counting
     -- is per LABEL with no uniqueness check -- two owned copies in Ring1/Ring2
@@ -1479,7 +1569,57 @@ function M.optimizePicks(pools, weights, opts)
                 for _, sid in ipairs(newIds) do cnt[sid] = (cnt[sid] or 0) + 1; end
             end
         end
+        -- Reservation counters ride the same wrapper, for the same reason: the
+        -- climb probes thousands of assignments and must never re-scan the set
+        -- to learn which slots are currently taken away.
+        if rsvOf ~= nil then
+            local rs = rsvOf[label];
+            local oldR = (old ~= nil) and rs[old] or nil;
+            if oldR ~= nil then
+                for _, l in ipairs(oldR) do blk[l] = blk[l] - 1; end
+            end
+            local newR = (ci ~= nil) and rs[ci] or nil;
+            if newR ~= nil then
+                for _, l in ipairs(newR) do blk[l] = (blk[l] or 0) + 1; end
+            end
+        end
         picks[label] = ci;
+    end
+    -- Reservation-aware placement: a piece that takes another slot away EMPTIES
+    -- it (the server does exactly this the moment it goes on), and the probe puts
+    -- the evicted picks back. With no reserving candidate in any pool both of
+    -- these are setPick and nothing else.
+    local function placeEv(label, ci)
+        setPick(label, ci);
+        local r = (rsvOf ~= nil and ci ~= nil) and rsvOf[label][ci] or nil;
+        if r == nil then return nil; end
+        local ev = nil;
+        for _, l in ipairs(r) do
+            if picks[l] ~= nil then
+                ev = ev or {};
+                ev[l] = picks[l];
+                setPick(l, nil);
+            end
+        end
+        return ev;
+    end
+    local function unplaceEv(label, ev)
+        setPick(label, nil);
+        if ev ~= nil then
+            for l, ci in pairs(ev) do setPick(l, ci); end
+        end
+    end
+    local function snapshot()
+        local s = {};
+        for _, l in ipairs(labels) do s[l] = picks[l]; end
+        return s;
+    end
+    -- Clear FIRST, then place: a snapshot taken with a reserver in it cannot be
+    -- restored slot-by-slot over a different assignment without a transient
+    -- double-claim, and blk must never be read mid-restore.
+    local function restore(s)
+        for _, l in ipairs(labels) do setPick(l, nil); end
+        for _, l in ipairs(labels) do setPick(l, s[l]); end
     end
 
     local function totalScore()
@@ -1518,23 +1658,27 @@ function M.optimizePicks(pools, weights, opts)
         for _ = 1, 8 do
             local improved = false;
             for _, label in ipairs(labels) do
-                local saved = picks[label];
-                setPick(label, nil);
-                local bestIdx, bestSc = nil, totalScore();  -- EMPTY is the tie-winning baseline
-                for ci = 1, #pools[label] do
-                    if not conflicts(label, ci) then
-                        setPick(label, ci);
-                        local sc = totalScore();
-                        if sc > bestSc + EPS then bestSc = sc; bestIdx = ci; end
+                -- A slot RESERVED by another pick has no choice to make: it is
+                -- kept empty for as long as the reserver is worn.
+                if not isBlocked(label) then
+                    local saved = picks[label];
+                    setPick(label, nil);
+                    local bestIdx, bestSc = nil, totalScore();  -- EMPTY is the tie-winning baseline
+                    for ci = 1, #pools[label] do
+                        if allowed(label, ci) and not conflicts(label, ci) then
+                            local ev = placeEv(label, ci);
+                            local sc = totalScore();
+                            if sc > bestSc + EPS then bestSc = sc; bestIdx = ci; end
+                            unplaceEv(label, ev);
+                        end
                     end
+                    if bestIdx ~= nil then placeEv(label, bestIdx); end
+                    if bestIdx ~= saved then improved = true; end
                 end
-                setPick(label, bestIdx);
-                if bestIdx ~= saved then improved = true; end
             end
             if not improved then break; end
         end
     end
-    climb();
 
     -- ---- set-seeded restarts (design #7.3, ADR 0011) ------------------------
     -- Single-slot hill climbing provably cannot ENTER a k-piece bonus whose
@@ -1544,15 +1688,7 @@ function M.optimizePicks(pools, weights, opts)
     -- acceptance: the answer is never worse than the plain climb. Seeded pieces
     -- are not pinned; a seed that doesn't pay for itself is evicted by the climb
     -- and the restart dissolves back to the baseline answer.
-    if eff ~= nil then
-        local function snapshot()
-            local s = {};
-            for _, l in ipairs(labels) do s[l] = picks[l]; end
-            return s;
-        end
-        local function restore(s)
-            for _, l in ipairs(labels) do setPick(l, s[l]); end
-        end
+    local function seedRestarts()
         -- Solo projected value, uncapped -- ordering / least-loss heuristics only
         -- (the true objective is always totalScore).
         local function soloVal(label, ci)
@@ -1569,7 +1705,7 @@ function M.optimizePicks(pools, weights, opts)
             for _, label in ipairs(labels) do
                 for ci, sids in pairs(candSets[label]) do
                     for _, s in ipairs(sids) do
-                        if s == sid then
+                        if s == sid and allowed(label, ci) then
                             local inc = refPicks[label];
                             options[#options + 1] = {
                                 label = label, ci = ci,
@@ -1656,18 +1792,23 @@ function M.optimizePicks(pools, weights, opts)
             restore(B0);
             for _, sid in ipairs(seed) do
                 for _, o in ipairs(plans[sid].plan) do
-                    local ref = pools[o.label][o.ci].ref;
-                    if type(opts.conflict) == 'function' then
-                        -- one physical copy: a conflicting pick elsewhere yields
-                        -- its slot (the climb refills it)
-                        for _, other in ipairs(labels) do
-                            if other ~= o.label and picks[other] ~= nil
-                               and opts.conflict(ref, pools[other][picks[other]].ref) == true then
-                                setPick(other, nil);
+                    -- A slot RESERVED away by something already placed cannot
+                    -- hold a seed piece; the set just goes a piece short here
+                    -- and the feasibility check below decides what that costs.
+                    if not isBlocked(o.label) then
+                        local ref = pools[o.label][o.ci].ref;
+                        if type(opts.conflict) == 'function' then
+                            -- one physical copy: a conflicting pick elsewhere yields
+                            -- its slot (the climb refills it)
+                            for _, other in ipairs(labels) do
+                                if other ~= o.label and picks[other] ~= nil
+                                   and opts.conflict(ref, pools[other][picks[other]].ref) == true then
+                                    setPick(other, nil);
+                                end
                             end
                         end
+                        placeEv(o.label, o.ci);
                     end
-                    setPick(o.label, o.ci);
                 end
             end
             local feasible = true;
@@ -1683,7 +1824,57 @@ function M.optimizePicks(pools, weights, opts)
         restore(bestPicks);
     end
 
-    return { picks = picks, total = totalScore() };
+    -- ---- one whole solve, from empty ---------------------------------------
+    local function solveOnce()
+        for _, l in ipairs(labels) do setPick(l, nil); end
+        climb();
+        if eff ~= nil then seedRestarts(); end
+        return totalScore();
+    end
+
+    -- ---- reservation regimes (2026-07-31) ----------------------------------
+    -- Hill climbing can ENTER a reservation freely -- placing a Cloak evicts the
+    -- head and the loss lands in the total -- but it can never LEAVE one: the
+    -- head slot is empty precisely BECAUSE the Cloak is worn, so swapping the
+    -- Cloak out looks like a pure loss and Dalmatica-plus-a-hat is never seen.
+    -- Same shape as the set-seeded restarts above, one level up: solve the whole
+    -- thing once per reservation REGIME and keep the best. The no-reserver
+    -- regime runs first, so an exact tie fills the extra slot instead of eating
+    -- it. With no reserving candidate anywhere this is one solve -- structurally
+    -- the pre-2026-07-31 path.
+    local bestT, bestS = nil, nil;
+    local function tryRegime(ban)
+        banned = ban;
+        local t = solveOnce();
+        if bestT == nil or t > bestT + EPS then bestT, bestS = t, snapshot(); end
+    end
+    if rsvOf == nil then
+        tryRegime(nil);
+    else
+        tryRegime(banAll);                                 -- nothing reserves anything
+        tryRegime(nil);                                    -- every reservation on the table
+        if #regList > 1 then                               -- ... and each regime alone
+            for _, key in ipairs(regList) do tryRegime(banOnly[key]); end
+        end
+        banned = nil;
+    end
+    restore(bestS);
+
+    -- Which slots the winning assignment takes away, and who took them.
+    local reserved = nil;
+    if rsvOf ~= nil then
+        for _, label in ipairs(labels) do
+            local ci = picks[label];
+            local r = (ci ~= nil) and rsvOf[label][ci] or nil;
+            if r ~= nil then
+                for _, l in ipairs(r) do
+                    reserved = reserved or {};
+                    reserved[l] = pools[label][ci].ref;
+                end
+            end
+        end
+    end
+    return { picks = picks, total = totalScore(), reserved = reserved };
 end
 
 -- ---------------------------------------------------------------------------
@@ -1854,11 +2045,16 @@ end
 -- segment winners, it is emitted instead, so monotone slots keep today's output.
 --
 --   items: { { ref = <record>, level = N, breaks = { L1, L2, ... } or nil }, ... }
---   opts:  { cap = N, scoreAt = function(ref, L) -> number, joint = <ref> or nil }
+--   opts:  { cap = N, scoreAt = function(ref, L) -> number, joint = <ref> or nil,
+--            emptyFrom = N or nil }
 --
 -- Returns an ordered array of { ref, minLevel?, maxLevel? } ({} = nothing scores).
 -- Joint rule mirrors the classic chain: segments at/above the joint pick's level
 -- give way to it, lower ones stay as leveling fallbacks.
+-- emptyFrom is the joint rule with nothing to hand over TO: from that level the
+-- slot is RESERVED by another of the set's picks (a Cloak eating the Head), so
+-- every segment at/above it is dropped and nothing is appended -- the lower rungs
+-- stay, because below the reserver's own level the slot is yours again.
 function M.levelLadder(items, opts)
     opts = opts or {};
     local cap = tonumber(opts.cap) or M.MAX_LEVEL or 75;
@@ -1915,6 +2111,32 @@ function M.levelLadder(items, opts)
             -- for something, and the classic chain never bared the slot either.
             segs[#segs].to = bandEnd;
         end
+    end
+
+    -- Reserved trim: from emptyFrom up the slot is not yours -- cut, append
+    -- nothing. Runs before the joint trim and is exclusive with it: a reserved
+    -- slot has no joint pick to hand over to (the optimizer left it empty).
+    local ef = tonumber(opts.emptyFrom);
+    if ef ~= nil and ef <= cap then
+        local kept = {};
+        for _, sg in ipairs(segs) do
+            if sg.from < ef then
+                if sg.to >= ef then sg.to = ef - 1; end
+                kept[#kept + 1] = sg;
+            end
+        end
+        if #kept == 0 then return {}; end
+        -- Emitted with EXPLICIT windows, never through emitLadder's classic
+        -- shortcut: a window-less chain's top rung is open-ended by definition,
+        -- and this ladder's whole point is that it DIES at ef.
+        local out = {};
+        for i, sg in ipairs(kept) do
+            local e = { ref = sg.ref };
+            if i > 1 then e.minLevel = sg.from; end
+            e.maxLevel = sg.to;
+            out[#out + 1] = e;
+        end
+        return out;
     end
 
     -- Joint trim: everything at/above the joint pick's adoption level yields.
@@ -2125,6 +2347,28 @@ function M.pairLevelLadders(cands, opts)
            convert(#segsB > 0 and emitLadder(segsB, cap, lvOf) or {});
 end
 
+-- Reserved-slot mask for a gear.lua record ("this Body takes your Head away").
+-- The record's own stamp when it has one -- gear.lua carries RSlot since v43 --
+-- else the catalog resolver that stamps it, so a file written before v43 (or
+-- never re-scanned) still can't make the builder forget a Cloak eats your head.
+-- Resolved lazily and guarded: no resolver = no reservations, and the builders
+-- answer exactly as they did before 2026-07-31.
+local _rsFn = nil;   -- nil = not looked up yet, false = there is none
+local function recordRSlot(rec)
+    if type(rec) ~= 'table' then return 0; end
+    local m = tonumber(rec.RSlot);
+    if m ~= nil then return m; end
+    if rec.Id == nil then return 0; end
+    if _rsFn == nil then
+        local ok, mod = pcall(require, "dlac\\gear\\gearimport");
+        _rsFn = (ok and type(mod) == 'table' and type(mod.rslotFor) == 'function') and mod.rslotFor or false;
+    end
+    if _rsFn == false then return 0; end
+    local ok, v = pcall(_rsFn, rec.Id);
+    return (ok and tonumber(v)) or 0;
+end
+M.recordRSlot = recordRSlot;
+
 -- Resolve job/level from opts, falling back to the live player.
 local function jobLevelFromOpts(opts)
     local job, level = opts.job, opts.level;
@@ -2213,9 +2457,17 @@ function M.buildBestSet(opts)
                 or string.lower(tostring(a.Name or '?')) == string.lower(tostring(b.Name or '??'));
         end,
         effects = effects,
+        -- Reserved slots: a Cloak that eats your Head is worth the Head too.
+        reserves = recordRSlot,
     });
     local out = { slots = {}, order = {}, perSlot = {}, total = res.total,
                   job = job, level = level, mode = 'weights' };
+    -- Slot -> the piece that took it away, so the printout can say WHY a slot
+    -- came back empty instead of just leaving a hole.
+    if type(res.reserved) == 'table' then
+        out.reserved = {};
+        for label, ref in pairs(res.reserved) do out.reserved[label] = ref.Name; end
+    end
     local ORDER = { 'Main', 'Sub', 'Range', 'Ammo', 'Head', 'Neck', 'Ear1', 'Ear2',
                     'Body', 'Hands', 'Ring1', 'Ring2', 'Back', 'Waist', 'Legs', 'Feet' };
     for _, label in ipairs(ORDER) do
@@ -2238,6 +2490,10 @@ end
 -- design and owns the Range/Ammo legality rule; gear-set bonuses are credited
 -- only in the optimizePicks paths. A set bonus can therefore never change
 -- (and in particular never legalize) a Range/Ammo pairing here.
+-- RESERVATION-BLIND for the same reason (2026-07-31): "the most Accuracy in this
+-- one slot" is a per-slot question, so a Cloak that eats the Head still shows
+-- both picks here. The weighted builders -- the ones that answer a SET question
+-- -- count it (optimizePicks opts.reserves).
 -- ---------------------------------------------------------------------------
 function M.buildMaxStatSet(statKey, opts)
     opts = opts or {};
@@ -2742,6 +2998,16 @@ local function printSet(set, label)
     for _, slot in ipairs(set.order) do
         local ps = set.perSlot[slot];
         print(string.format('  %-6s %-28s (score %s)', slot, tostring(ps.item), tostring(ps.score)));
+    end
+    -- A slot left empty because another pick takes it away reads as a hole
+    -- otherwise -- say who ate it, in the same column shape.
+    if type(set.reserved) == 'table' then
+        local rs = {};
+        for slot in pairs(set.reserved) do rs[#rs + 1] = slot; end
+        table.sort(rs);
+        for _, slot in ipairs(rs) do
+            print(string.format('  %-6s %-28s (reserved)', slot, '-- taken by ' .. tostring(set.reserved[slot])));
+        end
     end
     print(string.format('[dlac] total score: %s', tostring(set.total)));
     print('[dlac] recommendation only -- paste picks into your sets.Dynamic lists to equip.');

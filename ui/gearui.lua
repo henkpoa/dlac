@@ -2382,6 +2382,17 @@ local function workingComposition(mainLevel)
         local pick = bestByLevel(M.working[sl.label], mainLevel, sl.label);
         if pick ~= nil and pick.rec ~= nil then comp[sl.label] = pick.rec; end
     end
+    -- Drop exactly what the engine drops: a piece standing in a slot another
+    -- pick RESERVES is never worn, so it must not weigh into Set totals or into
+    -- the weighted score Auto-build is judged against. The red RESERVED box on
+    -- the grid and this share one law (arbiter.reservedDrops) -- what the panel
+    -- warns about is what the numbers now say.
+    local drops = rsv.dropsIn(function(label)
+        return (comp[label] ~= nil) and comp[label].Name or nil;
+    end);
+    if type(drops) == 'table' then
+        for label in pairs(drops) do comp[label] = nil; end
+    end
     return comp;
 end
 
@@ -2581,6 +2592,10 @@ local function autoBuild(job, level)
     -- whose candidates only duplicate already-capped stats stays empty. Paired
     -- slots may reuse an Id only when you own two copies.
     local jointPick = nil;
+    -- label -> the joint pick that RESERVES it (a Royal Cloak eating the Head).
+    -- The optimizer leaves those slots empty; the dynamic ladders below have to
+    -- be told, or they would keep laddering a slot the set can never wear.
+    local jointResv = nil;
     -- Gear-set crediting for the joint pick + the Sub marginal call (P3): the
     -- optimizer counts set pieces across its assignment and folds active tier
     -- bonuses into the capped objective, with seeded restarts so a pair whose
@@ -2611,10 +2626,20 @@ local function autoBuild(job, level)
                 return false;
             end,
             effects = fx,
+            -- Reserved slots (RSlot): a piece that takes another slot away is
+            -- worth that slot too. Without this the set-level pick double-counts
+            -- -- Henrik's field case, a Royal Cloak (MP+20, Refresh+1) beating
+            -- Dalmatica because the Refresh head it eats was still being added
+            -- on top of it. Same resolver the builder's red "RESERVED" box uses.
+            reserves = rsv.maskOf,
         });
         if ok and type(res) == 'table' and type(res.picks) == 'table' then
             jointPick = {};
             for label, ci in pairs(res.picks) do jointPick[label] = op[label][ci].ref; end
+            if type(res.reserved) == 'table' then
+                jointResv = {};
+                for label, ref in pairs(res.reserved) do jointResv[label] = ref; end
+            end
         end
     end
 
@@ -2739,6 +2764,14 @@ local function autoBuild(job, level)
         end
         if cands ~= nil and #cands > 0 then
             local jp = (jointPick ~= nil) and jointPick[sl.label] or nil;
+            -- Reserved away by another of the set's picks: this slot is yours
+            -- only BELOW the reserver's own level, so the ladder is cut there and
+            -- nothing takes over above it. Same law the engine applies at equip
+            -- time (arbiter.reservedDrops) -- the set just stops lying about it.
+            local resvFrom = nil;
+            if jointResv ~= nil and jointResv[sl.label] ~= nil then
+                resvFrom = math.max(tonumber(jointResv[sl.label].Level) or 1, 1);
+            end
             -- The pair's chain may have claimed the joint pick (it sat as one of
             -- the pair's fallback rungs): the filtered pool is authoritative, so
             -- the pick yields and this slot keeps its own untrimmed ladder.
@@ -2766,6 +2799,7 @@ local function autoBuild(job, level)
                         cap = useLevel,
                         scoreAt = function(ref, L) return scoreOfItem(ref, L); end,
                         joint = jp,
+                        emptyFrom = resvFrom,
                     });
                     if okl and type(lad) == 'table' then
                         ladder = {};
@@ -2791,11 +2825,23 @@ local function autoBuild(job, level)
                         local sc = scoreOfItem(r, useLevel);
                         if sc > bestScore then kept[#kept + 1] = { rec = r }; bestScore = sc; end
                     end
+                    -- Reserved away: every surviving rung is closed BELOW the
+                    -- reserver's level (each one, not just the top -- the flatten
+                    -- takes the highest live rung, so a single window would just
+                    -- hand the slot to the rung underneath).
+                    if resvFrom ~= nil then
+                        local trimmed = {};
+                        for _, it in ipairs(kept) do
+                            if (it.rec.Level or 0) < resvFrom then
+                                trimmed[#trimmed + 1] = { rec = it.rec, maxLevel = resvFrom - 1 };
+                            end
+                        end
+                        kept = trimmed;
                     -- The JOINT pick caps the ladder: rungs at/above its level give way
                     -- (they would win the level flatten and undo the set-level choice);
                     -- lower rungs stay as leveling fallbacks. A joint EMPTY leaves the
                     -- ladder alone -- it still earns its keep below the build level.
-                    if jp ~= nil then
+                    elseif jp ~= nil then
                         local trimmed = {};
                         for _, it in ipairs(kept) do
                             if (it.rec.Level or 0) < (jp.Level or 0) and it.rec ~= jp then trimmed[#trimmed + 1] = it; end

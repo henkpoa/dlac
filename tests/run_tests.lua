@@ -8876,6 +8876,32 @@ end)();
         { A = function(L) return (L < 51) and 10 or 4; end, B = function() return 6; end },
         nil, 40);
     check('LL7 breaks beyond the cap are ignored', fmt(lad), 'A[-]');
+
+    -- emptyFrom: from that level up the slot is RESERVED by another of the set's
+    -- picks (a Royal Cloak eating the Head). Rungs below it stay -- the slot is
+    -- yours until the Cloak is wearable -- and NOTHING takes over above it, so
+    -- every surviving rung must close (an open top rung would keep the slot).
+    local function ladderE(items, scores, ef, cap)
+        return optim.levelLadder(items, {
+            cap = cap or 75,
+            scoreAt = function(ref, L) return scores[ref](L); end,
+            emptyFrom = ef,
+        });
+    end
+    lad = ladderE(
+        { { ref = 'A', level = 1 }, { ref = 'B', level = 20 } },
+        { A = function() return 5; end, B = function() return 9; end }, 59);
+    check('LL8 reserved slot dies at the reserver level', fmt(lad), 'A[-19],B[20-58]');
+
+    -- a reserver wearable before anything in the slot leaves it empty outright
+    lad = ladderE({ { ref = 'A', level = 30 } }, { A = function() return 5; end }, 20);
+    check('LL9 reserved below every rung: nothing at all', fmt(lad), '');
+
+    -- a reserver above the build cap never bites (the trim is a no-op)
+    lad = ladderE(
+        { { ref = 'A', level = 1 }, { ref = 'B', level = 20 } },
+        { A = function() return 5; end, B = function() return 9; end }, 80, 75);
+    check('LL10 reserver beyond the cap changes nothing', fmt(lad), 'A[-],B[-]');
 end)();
 
 -- ---------------------------------------------------------------------------
@@ -9499,6 +9525,118 @@ end)();
                       baseComposition = { { Id = 102, Name = 'SetRing B' } } } });
     check('HB9 baseComposition partner credits the bonus',
         tostring(hb9.picks.Ring1) .. '/' .. hb9.total, '1/' .. (3 * 12));
+end)();
+
+-- ---------------------------------------------------------------------------
+-- HR. optimizePicks RESERVED SLOTS (RSlot, 2026-07-31). Henrik's field case:
+--     under MP + Refresh weights the builder chose Royal Cloak (MP+20,
+--     Refresh+1) over Dalmatica -- because the Head the Cloak EATS was still
+--     being counted alongside it. A reserving piece must be weighed against the
+--     rival PLUS the slot the rival lets you keep.
+--
+--     Bits are the server's rslot mask (arbiter.RSLOT_ORDER): Head = 0x10,
+--     Ammo = 0x08, Hands|Legs|Feet = 0x1C0.
+-- ---------------------------------------------------------------------------
+(function()
+    local reserves = function(ref) return ref.RSlot; end
+    -- Refresh is what you are really buying; MP is the tiebreak trickle.
+    local WR = { Refresh = { perUnit = 100 }, MP = { perUnit = 1 } };
+    local royal = { stats = { MP = 20, Refresh = 1 }, ref = { Id = 13749, Name = 'Royal Cloak', RSlot = 16 } };
+    local dalma = { stats = { Refresh = 1 },          ref = { Id = 13787, Name = 'Dalmatica' } };
+    local rHat  = { stats = { Refresh = 1 },          ref = { Id = 1,     Name = 'Refresh Hat' } };
+
+    -- HR1: THE field case. Cloak alone = 120; Dalmatica + hat = 200.
+    local hr1 = optim.optimizePicks({ Body = { royal, dalma }, Head = { rHat } }, WR,
+        { reserves = reserves });
+    check('HR1 the head it eats is counted against it', hr1.total, 200);
+    check('HR1b Dalmatica takes Body', hr1.picks.Body, 2);
+    check('HR1c the head is worn', hr1.picks.Head, 1);
+    check('HR1d nothing reserved', hr1.reserved, nil);
+
+    -- HR2: the same solve WITHOUT opts.reserves -- the pre-fix answer, pinned so
+    -- the feature stays opt-in and structurally zero (the opts.effects rule).
+    local hr2 = optim.optimizePicks({ Body = { royal, dalma }, Head = { rHat } }, WR);
+    check('HR2 reservation-blind without the lookup', hr2.total, 220);
+
+    -- HR3: when the Cloak really is better, it wins and the slot goes EMPTY --
+    -- and names its reserver back to the caller.
+    local weakHat = { stats = { MP = 5 }, ref = { Id = 2, Name = 'Weak Hat' } };
+    local hr3 = optim.optimizePicks({ Body = { royal, dalma }, Head = { weakHat } }, WR,
+        { reserves = reserves });
+    check('HR3 the Cloak wins on its own merit', hr3.total, 120);
+    check('HR3b Royal Cloak takes Body', hr3.picks.Body, 1);
+    check('HR3c the reserved slot stays empty', hr3.picks.Head, nil);
+    check('HR3d ...and names who took it', hr3.reserved and hr3.reserved.Head and hr3.reserved.Head.Name,
+          'Royal Cloak');
+
+    -- HR4: a mask naming a slot this solve is not filling costs NOTHING (the
+    -- build-slot grid unchecked Head: the Cloak is free again).
+    local hr4 = optim.optimizePicks({ Body = { royal, dalma } }, WR, { reserves = reserves });
+    check('HR4 unbuilt slot is not a loss', hr4.total .. '/' .. tostring(hr4.picks.Body), '120/1');
+
+    -- HR5: EXACT tie -- the no-reserver regime runs first, so a tie keeps the
+    -- fuller set instead of eating a slot for nothing.
+    local WM = { MP = { perUnit = 1 } };
+    local tRoyal = { stats = { MP = 100 }, ref = { Id = 3, Name = 'Tie Cloak', RSlot = 16 } };
+    local tBody  = { stats = { MP = 60 },  ref = { Id = 4, Name = 'Tie Body' } };
+    local tHat   = { stats = { MP = 40 },  ref = { Id = 5, Name = 'Tie Hat' } };
+    local hr5 = optim.optimizePicks({ Body = { tRoyal, tBody }, Head = { tHat } }, WM,
+        { reserves = reserves });
+    check('HR5 a tie fills the slot rather than eating it',
+          hr5.total .. '/' .. tostring(hr5.picks.Body) .. '/' .. tostring(hr5.picks.Head), '100/2/1');
+
+    -- HR6: the OTHER direction -- 'Ammo' sorts before 'Range', so the reserved
+    -- slot is already filled when the reserver is first probed. A boomerang
+    -- reserves Ammo (0x08); bow + arrow = 35 beats the boomerang's 30.
+    local WA = { Accuracy = { perUnit = 1 } };
+    local boom  = { stats = { Accuracy = 30 }, ref = { Id = 6, Name = 'Boomerang', RSlot = 8 } };
+    local bow   = { stats = { Accuracy = 10 }, ref = { Id = 7, Name = 'Bow' } };
+    local arrow = { stats = { Accuracy = 25 }, ref = { Id = 8, Name = 'Arrow' } };
+    local hr6 = optim.optimizePicks({ Range = { boom, bow }, Ammo = { arrow } }, WA,
+        { reserves = reserves });
+    check('HR6 Range reserving Ammo pays for it', hr6.total, 35);
+    check('HR6b the bow takes Range', hr6.picks.Range, 2);
+    -- ...and with a worthless arrow the boomerang wins and Ammo goes empty
+    local pebble = { stats = { Accuracy = 5 }, ref = { Id = 9, Name = 'Pebble' } };
+    local hr6c = optim.optimizePicks({ Range = { boom, bow }, Ammo = { pebble } }, WA,
+        { reserves = reserves });
+    check('HR6c boomerang wins, Ammo emptied',
+          hr6c.total .. '/' .. tostring(hr6c.picks.Ammo) .. '/'
+          .. tostring(hr6c.reserved and hr6c.reserved.Ammo and hr6c.reserved.Ammo.Name), '30/nil/Boomerang');
+
+    -- HR7: a multi-bit mask (a suit: Hands|Legs|Feet = 0x1C0) empties all three.
+    local suit = { stats = { Accuracy = 50 }, ref = { Id = 10, Name = 'Kupo Suit', RSlot = 448 } };
+    local plain = { stats = { Accuracy = 1 }, ref = { Id = 11, Name = 'Plain Body' } };
+    local bit   = function(a) return { stats = { Accuracy = a }, ref = { Id = 12 + a, Name = 'P' .. a } }; end
+    local hr7 = optim.optimizePicks(
+        { Body = { suit, plain }, Hands = { bit(2) }, Legs = { bit(3) }, Feet = { bit(4) } }, WA,
+        { reserves = reserves });
+    check('HR7 the suit beats body+hands+legs+feet', hr7.total, 50);
+    check('HR7b all three slots emptied',
+          tostring(hr7.picks.Hands) .. tostring(hr7.picks.Legs) .. tostring(hr7.picks.Feet), 'nilnilnil');
+    check('HR7c all three named', (hr7.reserved.Hands.Name == 'Kupo Suit')
+          and (hr7.reserved.Legs.Name == 'Kupo Suit') and (hr7.reserved.Feet.Name == 'Kupo Suit'), true);
+    -- ...and one point more spread across them and the suit stays home
+    local hr7d = optim.optimizePicks(
+        { Body = { suit, plain }, Hands = { bit(20) }, Legs = { bit(20) }, Feet = { bit(20) } }, WA,
+        { reserves = reserves });
+    check('HR7d the three slots out-earn the suit', hr7d.total .. '/' .. tostring(hr7d.picks.Body), '61/2');
+
+    -- HR8: a set bonus can never be completed THROUGH a slot the set's own piece
+    -- reserves away -- the seeded restarts must not fake the pair into existence.
+    local fx7 = {
+        setsOf  = function(id) return (id == 701 or id == 702) and { 7 } or nil; end,
+        setTier = function(sid, c) return (sid == 7 and c >= 2) and { Accuracy = 100 } or nil; end,
+    };
+    local setCloak = { stats = { Accuracy = 0 }, ref = { Id = 701, Name = 'Set Cloak', RSlot = 16 } };
+    local setHat   = { stats = { Accuracy = 0 }, ref = { Id = 702, Name = 'Set Hat' } };
+    local hr8 = optim.optimizePicks(
+        { Body = { setCloak, { stats = { Accuracy = 5 }, ref = { Id = 703, Name = 'Plain Body' } } },
+          Head = { setHat,   { stats = { Accuracy = 6 }, ref = { Id = 704, Name = 'Plain Hat' } } } },
+        WA, { reserves = reserves, effects = fx7 });
+    check('HR8 a reserved-away slot cannot complete a set', hr8.total, 11);
+    check('HR8b ...so both plain pieces are worn',
+          tostring(hr8.picks.Body) .. ',' .. tostring(hr8.picks.Head), '2,2');
 end)();
 
 -- ---------------------------------------------------------------------------

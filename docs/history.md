@@ -7472,3 +7472,70 @@ alongside the BST train and this session's work. PR #150 reads MERGED because it
 reached `main` by the other route and GitHub closed it behind them.
 
 **The rule that survives:** empty the queue *in the merge commit*, never in anticipation of one.
+
+## Session "the Cloak that was worth two slots" (2026-07-31, `2026.07.31e`)
+
+**The field report.** Henrik, building a set with MP and Refresh weighted: *"it doesn't take
+into consideration that Royal Cloak / Vermillion cloak, that takes up more than one slot,
+should count as removing the head slot if so. So when I built a set earlier where I
+prioritized MP and refresh, it actually prefered royal cloak over dalmatica. Even though
+dalmatica + bard head would give more refresh."*
+
+**What was actually wrong.** Nothing was missing from the DATA and nothing was wrong in the
+ENGINE. `catalog.lua` carries `RSlot = 16` on both Cloaks, `gearimport` stamps it into
+`gear.lua`, `arbiter.reservedDrops` drops the reserved slot at equip time, and the Sets
+builder even draws a red **RESERVED** box on the head tile with the reserver named in the
+hover. Everything downstream of the decision knew. The **decision** did not:
+`gearoptim.optimizePicks` — the joint, set-level pick both Auto-build and `/dl best` run
+through — had no notion of reservation at all. It scored the Cloak in Body and a hat in
+Head and added them together, so the Cloak was credited a slot it eats. Royal Cloak
+(MP+20, Refresh+1) beat Dalmatica (Refresh+1) on the Body line, and the Refresh head rode
+along on top of it *for free*. Dalmatica + hat never got compared against it, because the
+comparison never existed.
+
+**The shape of the fix.** `optimizePicks` takes an injected `opts.reserves(ref) -> mask`,
+exactly like `opts.conflict` and `opts.effects` — no reservation lookup in the optimizer, no
+second copy of the bit vocabulary (that stays `arbiter.RSLOT_ORDER`, required guarded; absent
+module = a reservation-blind optimizer, its old behaviour byte for byte). Only labels the
+solve is actually filling can be reserved: a Cloak costs nothing when Head is not in the
+build-slot grid.
+
+**Why a hill climb needed a second mechanism.** Placing a reserver is easy — `placeEv` evicts
+the picks it eats, and the loss lands in `totalScore` — but the climb can never *leave* one.
+The head slot is empty precisely BECAUSE the Cloak is worn, so swapping the Cloak out reads
+as a pure loss and Dalmatica-plus-a-hat is never seen. That is the same trap the ADR 0011
+set-seeded restarts exist for, one level up, and it gets the same answer: solve the whole
+thing once per **reservation regime** (nothing reserving; everything on the table; each
+`(label, mask)` regime alone when there is more than one) and keep the best total. The
+no-reserver regime runs FIRST, so an exact tie fills the slot instead of eating it.
+
+**Three consequences, all of them the same law arriving somewhere it hadn't.**
+- **The dynamic ladder.** `levelLadder` learned `opts.emptyFrom`: the joint rule with nothing
+  to hand over TO. Below the reserver's own level the slot is yours and the rungs stay; from
+  it up every rung closes and *nothing* is appended. Emitted with explicit windows, never
+  through `emitLadder`'s classic shortcut — a window-less chain's top rung is open-ended by
+  definition, which is the one thing this ladder must not be.
+- **Set totals.** `workingComposition` now drops what `arbiter.reservedDrops` will drop, so
+  the numbers and the red box on the grid finally say the same thing. It also feeds
+  `workingWeightedScore` — the objective Auto-build is judged against — so the panel's score
+  and the optimizer's are one number again (design #6).
+- **`/dl best`** prints the emptied slot with `-- taken by <piece>` instead of leaving a hole.
+
+**Deliberately NOT changed.** `buildMaxStatSet` (`/dl best <stat>`) stays reservation-blind
+for the same reason ADR 0011 left it set-blind: "the most Accuracy in this one slot" is a
+per-slot question. And a slot **unchecked in the build-slot grid** is invisible to the solve,
+so a preserved head row can still be eaten by a newly chosen Cloak — the red box says so, and
+the alternative is the optimizer reaching into slots the mask told it not to touch.
+
+**Tests.** run_tests `HR1`–`HR8` (the field case at 200 vs the blind 220, the reserver
+winning on merit and naming itself, an unbuilt slot costing nothing, the tie rule, the
+`Ammo`-sorts-before-`Range` direction through a boomerang, a 3-bit suit mask, and a gear-set
+bonus that can never be completed THROUGH the slot its own piece reserves) and `LL8`–`LL10`
+for `emptyFrom`. smoke_ui `S16q`–`S16u` drives the whole live chain — real catalog → real
+`gearimport.rslotFor` → `rsv.maskOf` → `optimizePicks` — and pins blind-picks-the-Cloak
+against wired-picks-Dalmatica side by side, so the wiring cannot rot into a no-op. Suites
+**5343 + 913**.
+
+**Owed:** one field round. Build the MP/Refresh set again and confirm Dalmatica + the head
+now wins, and that a genuinely-better Cloak still shows an empty Head rather than a hat the
+engine throws away.
