@@ -271,22 +271,28 @@ merge carries it **without asking him again**. Only he can move an entry to ACCE
 this does not make an accepted entry mergeable *alone*: `dev` promotes
 **whole-or-not-at-all**, so an accepted entry rides the next promotion of the whole branch.
 
-- **ACCEPTED — reserved slots count against the piece that eats them** (`2026.07.31e`).
-  Auto-build and `/dl best` scored a Royal/Vermillion Cloak in Body *and* a hat in the Head
-  it eats, so the Cloak was credited a slot it takes away — Henrik's field report: it beat
-  Dalmatica under MP/Refresh weights even though Dalmatica + a Refresh head is worth more.
-  `optimizePicks` now takes `opts.reserves`, solves once per reservation regime (a hill
-  climb can enter a reservation but never leave one), and reports the emptied slots;
-  `levelLadder opts.emptyFrom` cuts the reserved slot's dynamic ladder at the reserver's
-  level, and Set totals drop what `arbiter.reservedDrops` will drop. Suites 5343 + 913 on
-  both interpreters.
-  **NOT field-confirmed** — accepted on Henrik's explicit call (*"push to origin main, you
-  have my approval"*, 2026-07-31), exactly as the 07-31a–d train was. The owed round: rebuild
-  the MP/Refresh set and confirm Dalmatica + head now wins, and that a genuinely-better Cloak
-  shows an EMPTY Head rather than a hat the engine throws away.
+**The queue is empty.**
 
 
-*(Last emptied by the 2026-07-31 promotion — `605045f`, `main` at `b056ff6` before it: the
+*(Last emptied by the 2026-07-31 promotion — `4afec20`, `main` at `5d46bcb` before it: one
+commit, `12531f1` — **reserved slots count against the piece that eats them**,
+`2026.07.31e`. Auto-build and `/dl best` scored a Royal/Vermillion Cloak in Body *and* a hat
+in the Head it eats; `optimizePicks` now takes `opts.reserves` and solves once per
+reservation regime (a hill climb can enter a reservation but never leave one),
+`levelLadder opts.emptyFrom` cuts the reserved slot's dynamic ladder at the reserver's
+level, and Set totals drop what `arbiter.reservedDrops` will drop. Suites **5343 + 913** on
+both interpreters, re-run **on the merged main** before the push.
+
+**Promoted NOT field-confirmed, on Henrik's explicit call** (*"push to origin main, you have
+my approval"*, 2026-07-31) — the second promotion in one day under that override. Verified
+headlessly and through the live resolver chain against the real catalog, but it has had no
+in-game look. **Still owed:** rebuild the MP/Refresh set, confirm Dalmatica + the head now
+wins, and confirm a genuinely-better Cloak shows an EMPTY Head rather than a hat the engine
+throws away.
+
+The entry before it:*
+
+*(The 2026-07-31 promotion — `605045f`, `main` at `b056ff6` before it: the
 **Ashitacast/LegacyAC import + "missing gear is never a refusal"**, `2026.07.31a`–`2026.07.31d`
 (`910e673`), carrying with it the two commits that were already sitting on `dev` —
 `7667a9e` (`2026.07.30f`, the combat FUNCTION-reads fix) and `121af5b` (`2026.07.30g`,
