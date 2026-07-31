@@ -607,7 +607,13 @@ end
 local _nudgeOpen = { true };
 local _redArmAt = 0;     -- arm-then-confirm clock for the deposit icon
 local RED_ARM   = 3;     -- seconds an armed deposit stays armed
-local NUDGE_SZ  = 40;
+-- Sized to MATCH the floating Teleports button (gearui's TPF_ICON / TPF_PAD):
+-- 30px of art in a 3px frame = a 36x36 button. Henrik 2026-07-31: the two floats
+-- live on the same screen and have to read as the same kind of control. At 40px
+-- art on the style's DEFAULT frame padding this one drew 48x46 -- visibly the
+-- bigger of the two. Change these two together with gearui's, or they drift.
+local NUDGE_SZ  = 30;
+local NUDGE_PAD = 3;
 local TIP_MAX   = 12;    -- rows before a tooltip starts saying "+N more"
 
 local function openPanel()
@@ -621,9 +627,21 @@ local function iconButton(tex, fallback, id)
     imgui.PushID(id);
     local h = _ftok and filetex.handle(tex) or nil;
     if h ~= nil then
-        pcall(function() clicked = imgui.ImageButton(h, { NUDGE_SZ, NUDGE_SZ }); end);
+        -- The 5th argument is the frame padding, and it is the whole point of the
+        -- long form: left off, ImageButton falls back to the style's FramePadding
+        -- (4,3), which is both bigger AND non-square -- the button came out 46 tall
+        -- and 48 wide. Passing it explicitly is what makes 30+3+3 land on exactly
+        -- the Teleports float's 36x36. uv0/uv1 are the full texture; the
+        -- transparent bg keeps the themed button colour showing through, as before.
+        pcall(function()
+            clicked = imgui.ImageButton(h, { NUDGE_SZ, NUDGE_SZ }, { 0, 0 }, { 1, 1 },
+                NUDGE_PAD, { 0, 0, 0, 0 }, { 1, 1, 1, 1 });
+        end);
     else
-        clicked = imgui.Button(fallback, { NUDGE_SZ + 8, NUDGE_SZ });
+        -- Text fallback (the PNG failed to load). Same 36 tall as the icon so a
+        -- missing asset never changes the layout; width per the themed-font law
+        -- (~9.5px/char + 16 padding), or 'At home' clips.
+        clicked = imgui.Button(fallback, { math.floor(#fallback * 9.5) + 16, NUDGE_SZ + NUDGE_PAD * 2 });
     end
     local right   = imgui.IsItemClicked(1);
     local hovered = imgui.IsItemHovered();

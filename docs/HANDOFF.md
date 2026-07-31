@@ -271,22 +271,28 @@ merge carries it **without asking him again**. Only he can move an entry to ACCE
 this does not make an accepted entry mergeable *alone*: `dev` promotes
 **whole-or-not-at-all**, so an accepted entry rides the next promotion of the whole branch.
 
-- **ACCEPTED — reserved slots count against the piece that eats them** (`2026.07.31e`).
-  Auto-build and `/dl best` scored a Royal/Vermillion Cloak in Body *and* a hat in the Head
-  it eats, so the Cloak was credited a slot it takes away — Henrik's field report: it beat
-  Dalmatica under MP/Refresh weights even though Dalmatica + a Refresh head is worth more.
-  `optimizePicks` now takes `opts.reserves`, solves once per reservation regime (a hill
-  climb can enter a reservation but never leave one), and reports the emptied slots;
-  `levelLadder opts.emptyFrom` cuts the reserved slot's dynamic ladder at the reserver's
-  level, and Set totals drop what `arbiter.reservedDrops` will drop. Suites 5343 + 913 on
-  both interpreters.
-  **NOT field-confirmed** — accepted on Henrik's explicit call (*"push to origin main, you
-  have my approval"*, 2026-07-31), exactly as the 07-31a–d train was. The owed round: rebuild
-  the MP/Refresh set and confirm Dalmatica + head now wins, and that a genuinely-better Cloak
-  shows an EMPTY Head rather than a hat the engine throws away.
+**The queue is empty.**
 
 
-*(Last emptied by the 2026-07-31 promotion — `605045f`, `main` at `b056ff6` before it: the
+*(Last emptied by the 2026-07-31 promotion — `4afec20`, `main` at `5d46bcb` before it: one
+commit, `12531f1` — **reserved slots count against the piece that eats them**,
+`2026.07.31e`. Auto-build and `/dl best` scored a Royal/Vermillion Cloak in Body *and* a hat
+in the Head it eats; `optimizePicks` now takes `opts.reserves` and solves once per
+reservation regime (a hill climb can enter a reservation but never leave one),
+`levelLadder opts.emptyFrom` cuts the reserved slot's dynamic ladder at the reserver's
+level, and Set totals drop what `arbiter.reservedDrops` will drop. Suites **5343 + 913** on
+both interpreters, re-run **on the merged main** before the push.
+
+**Promoted NOT field-confirmed, on Henrik's explicit call** (*"push to origin main, you have
+my approval"*, 2026-07-31) — the second promotion in one day under that override. Verified
+headlessly and through the live resolver chain against the real catalog, but it has had no
+in-game look. **Still owed:** rebuild the MP/Refresh set, confirm Dalmatica + the head now
+wins, and confirm a genuinely-better Cloak shows an EMPTY Head rather than a hat the engine
+throws away.
+
+The entry before it:*
+
+*(The 2026-07-31 promotion — `605045f`, `main` at `b056ff6` before it: the
 **Ashitacast/LegacyAC import + "missing gear is never a refusal"**, `2026.07.31a`–`2026.07.31d`
 (`910e673`), carrying with it the two commits that were already sitting on `dev` —
 `7667a9e` (`2026.07.30f`, the combat FUNCTION-reads fix) and `121af5b` (`2026.07.30g`,
@@ -485,7 +491,20 @@ research already recorded. In rough priority order:
 
 ## Current state (as of 2026-07-31)
 
-- **2026-07-31 (latest — `2026.07.31d`): "Copy from" learns the OTHER legacy engine —
+- **2026-07-31 (`2026.07.31f`): the E-Box nudge and the Teleports float are now the same
+  36x36 button** (`ui\restockui.lua`). Henrik's second tester finally noticed the crate — and
+  was annoyed by it, which is the feature working — but the two floats sit on the same screen
+  at different sizes. The nudge asked for 40px of art and passed **no frame padding**, so
+  ImageButton fell back to the style's `FramePadding` (4,3) and drew **48 wide by 46 tall** —
+  bigger than the Teleports float *and* not square. It now passes the long form
+  (`uv0`/`uv1`/padding/bg/tint) with `NUDGE_SZ = 30` + `NUDGE_PAD = 3`, matching gearui's
+  `TPF_ICON`/`TPF_PAD` exactly; the bg stays transparent so the themed button colour still
+  shows through and only the size changed. The text fallback (PNG failed to load) is the same
+  36 tall and takes its width from the label per the themed-font law, so a missing asset can
+  no longer resize the stack or clip `At home`. **The two constants are duplicated across two
+  files — change them together or they drift.** Suites **5343 + 913**. On `dev`; not
+  field-confirmed, and eyes on a screen is the only way to confirm it.
+- **2026-07-31 (`2026.07.31d`): "Copy from" learns the OTHER legacy engine —
   Ashitacast XML (`gear/acimport.lua`).** Suites **5320 + 908**, both interpreters.
   **ON MAIN** (`605045f`) — promoted on Henrik's explicit call while still **NOT
   field-confirmed**: three field rounds shaped it and it is verified against his real XML +
