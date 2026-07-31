@@ -843,22 +843,94 @@ the repair pair stays as the tested text engine behind any future manual wiring.
 edits are backup + parse-checked, abort untouched on failure. Writes rotated backups
 in `<char>\backups\`.
 
-### gear/setimport.lua — the "Copy from static" transform (pure)
-The addon-state, Ashita-free core of the Sets tab's "Copy from static" (issue #15, ADR
+### gear/setimport.lua — THE import transform (pure)
+The addon-state, Ashita-free core of the Sets tab's "Copy from" (issue #15, ADR
 0008). `importStaticSet(staticSet, slotLabels, resolve)` walks the source set in slot
 order and returns `{ working = slotLabel→ordered candidate list, notBestFirst = slots
-whose order is not highest-item-Level first, slotCount }`. The resolver (name→owned
-record) is **injected** — gearui passes its `resolveSetItem`, the headless suite a stub
-over owned records — so the transform is pure and testable (tests AO0–AO23). Candidate
-order is carried verbatim; gearui does the full-replace into the selected set, the
-overwrite confirmation, and the per-slot divergence warning. Never seeded into LAC.
+whose order is not highest-item-Level first, slotCount, missing, missingCount }`. The
+resolver (name→owned record) is **injected** — gearui passes its `resolveSetItem`, the
+headless suite a stub over owned records — so the transform is pure and testable (tests
+AO0–AO48). Candidate order is carried verbatim; gearui does the full-replace into the
+selected set, the overwrite confirmation, and the per-slot divergence warning. Never
+seeded into LAC.
 
-`mergeLegacySources(staticNames, lacNames)` (2026-07-28) builds the picker's legacy
-column: one name-sorted, case-insensitively deduped list of both kinds an old FFXI-LAC
-job file holds, where a name in both is kept as the **dynamic** one (Henrik's ruling).
-The same transform serves the old dynamics themselves — minus the not-best-first warning,
-which is a LuaAshitacast-static fact: those lists were always read by dlac's
-highest-item-Level rule, so importing one changes nothing (tests AQ0–AQ14).
+**All FOUR source kinds run this one walk** (2026-07-31): dynamic, static, FFXI-LAC and
+Ashitacast, via gearui's `importVia`. The dynamic path used to hand-roll the same slot
+loop — two implementations that had to agree, which is precisely the shape that produced
+the vanished-mark bug the same day.
+
+**MISSING GEAR IS NEVER A REFUSAL** (Henrik 2026-07-31: *"if the gear wasn't found, just
+ignore it, inform (temporarily) and move on instead of not importing it at all"*).
+Skipping an unresolvable candidate was always the per-candidate behaviour, but it was
+**silent**, and a set where *nothing* resolved was refused outright — `doCopyFrom` left
+the target "unchanged", `copyAsNewSets` skipped the set. Importing someone else's job
+file then reported *"Created 0 new sets"* and read as a broken importer, when the honest
+answer was "you don't own this gear yet". Now: the import always lands (an empty set is
+a legitimate placeholder — see `commitCurrentSet`), and the drops are counted and named.
+`missing` is the distinct item names in first-seen order, `missingCount` every dropped
+candidate including the unnameable ones (a MISSING sentinel answers every key with
+itself, so `elem.Name` on one is a *table* — `elemName` reads TYPED for that reason).
+`missingNote(missing, count, cap)` renders the one capped player-facing clause.
+Reporting shape differs by path on purpose: a single copy names what *that* set lost;
+the migrate-many pools the whole batch into ONE deduped line, because 23 sets would
+otherwise print 23 lines of chat.
+
+`mergeLegacySources(staticNames, lacNames, acNames)` (2026-07-28; third arg 2026-07-31)
+builds the picker's legacy column: one name-sorted, case-insensitively deduped list of
+both kinds an old FFXI-LAC job file holds, where a name in both is kept as the
+**dynamic** one (Henrik's ruling). The same transform serves the old dynamics
+themselves — minus the not-best-first warning, which is a LuaAshitacast-static fact:
+those lists were always read by dlac's highest-item-Level rule, so importing one
+changes nothing. `acNames` (Ashitacast) is a THIRD kind with its **own name space** —
+it comes from a different engine's file, so a shared name is a different set and
+deduping it away would lose one (tests AQ0–AQ20).
+
+### gear/acimport.lua — the Ashitacast (LegacyAC) XML → sets transform (pure)
+The third "Copy from" source (2026-07-31). **Ashitacast** is the legacy XML gear-swap
+format; on Ashita v4 it is served by the **LegacyAC plugin** (`plugins\LegacyAC.dll`),
+one swap file per character AND job, named `<Char>_<JOB>.xml`. Schema authority ships
+with the install: `Ashita\docs\LegacyAC\XML Structure.xml` + `readme.txt`.
+
+**Where it lives is a SEARCH, not a path** (`profiles.legacyacRoots` / `legacyacPaths`,
+first file that reads wins): `config\legacyac\` (the readme's home), then
+`config\addons\legacyac\`, then `config\plugins\legacyac\`. All three conventions are
+live on this install, and the first field test went straight into the second one —
+a player dropping a file in by hand reasonably guesses the *addons* convention,
+because that is where `luashitacast\` and `dlac\` live. Guessing wrong read as "dlac
+cannot see Ashitacast files", so the picker also **names the file it read**
+(`profilesets.acSource`) rather than leaving the folder a guess.
+
+`parse(xmlText)` → `sets` (name → `slotLabel` → item-name string), `info` (name →
+`{ base, slots, augments, locks }`), `notes`. Only `<sets>` is in scope — every rule
+section (`premagic`, `midmagic`, `idlegear`, `inputcommands`, `init`, `variables`) is
+read past. Output is deliberately the shape `importStaticSet` already eats, and
+gearui's `resolveSetItem` already resolves a bare NAME string against owned gear
+case-insensitively, so **nothing downstream changed to accept these**. The rules that
+matter, each one a real-file fact (tests AC0–AC57):
+
+* **Both slot dialects, at once** — `lear`/`rear` + `lring`/`rring` AND
+  `ear1`/`ear2` + `ring1`/`ring2`; one real file uses both.
+* **`none` is a keyword, not an item** (`<range>none</range>` unequips), and an empty
+  element says the same. Tracked as an explicit CLEAR, not an absent key — with a
+  `baseset`, "not mentioned" inherits and "explicitly empty" must not.
+* **`baseset` is a second pass** — a base may be declared later in the file, chains are
+  legal, names are case-insensitive (`baseset="idle"` → `Idle`), whitespace around `=`
+  is legal, and a loop or a missing base still imports the set's own slots plus a note.
+* **Comments are stripped first** — these files are densely commented and the comments
+  contain tag-shaped text (whole `<set>` blocks commented out).
+* **Mis-nesting is tolerated** — the spec sample SHIPPED with the plugin contains
+  `<statusupdate>true</statuspdate>`; a strict parser would reject files LegacyAC loads.
+* **`<setvar>` is not a `<set>`** — a plain find for `'<set'` also hits it and `<sets>`.
+* **`augment=` and `lock=` cannot come across.** The augment string is LegacyAC's own
+  fingerprint (`/la print augs`), not decodable against dlac's augment table; a dlac
+  lock is an Arbiter claim, not part of a set. Both are dropped and `dropNote` turns
+  the counts into the sentence the copy prints (hard rule 12) — a set that exists only
+  to pin an augment would otherwise arrive looking like a pointless one-piece set.
+
+Known limitation: an XML that spells items by their **log name** ("Cleric's Pantaloons
++1") rather than the game's short name ("Clr. Pantaln. +1") will not resolve —
+`resolveSetItem` indexes owned gear by `Name` only. Short-form is what the format and
+the game's own equip matching use; widen the shared resolver only if the field says so.
 
 ### gear/gearoptim.lua — stat-weight optimizer
 Two read-only tools: MP-spent→potency swap advice, and a stat-weight scorer/best-set
@@ -1125,6 +1197,7 @@ like the command does not exist.
 | `/dl dw` | utils | Dual Wield trait-bit probe |
 | `/dl recalc` / `test` / `reload` (`r`) | utils | Rebuild sets / probe / reload LAC |
 | `/dl gearcheck` | gearcheck | Trigger-gear availability audit |
+| `/dl food [1\|2\|forget]` | foodwatch | Which food you are under and what you can re-eat; a number eats that row, `forget` clears the history. What counts as food is learned off the wire (an item use + the FOOD effect's expiry moving), never from a shipped list |
 | `/dl engine [native on\|off \| migrate]` | feature/engine | The Native-engine flip: status / flag + storage migration (see § The Native engine) |
 | `/dlmv` | gearmove | (branch-only) gate/version diagnostic |
 
@@ -1145,6 +1218,7 @@ Per-character, under `<install>\config\addons\luashitacast\<Char>_<ServerId>\`
 | `dlac\autogear.lua` | automationsui | automations manifest |
 | `dlac\blueprints.lua` | triggersui (Blueprints section) | per-character Blueprint library (reusable trigger rules; outside Profiles, addon-state only — the engine never reads it) |
 | `dlac\ammostate.lua` | ammowatch (Gear Helpers > Ammo) | AutoAmmo config (persisted `enabled`, jobs map, the priority list) — the engine reads it per second |
+| `dlac\foodhistory.lua` | foodwatch | what this character has eaten, most recent first (unique by item id, 10 deep) — the two most recent you are still carrying become the Menu's food rows |
 | `dlac\modestate.lua` | dispatch | mode/lock/VERSION mirror |
 | `dlac\uiflags.lua` | gearui | debug/autosync flags |
 | `dlac\gearweights.lua` | gearoptim | stat weights |
@@ -1256,7 +1330,10 @@ migration nudge. The legacy clean-shim / ffxilac Setup plans are **unreachable f
 the UI**; the underlying writers (`migrateToCleanProfiles`, `migrateCurrentJob`,
 `setupNative`) stay in the code for Phase D and as the auto-setup content source.
 Job-file imports (Sets "Copy from", Groups "Scan my Lua", the `backups\pre-profiles\`
-corpus) keep reading the LAC tree READ-ONLY in both modes. Headless: tests NO1–NO42.
+corpus) keep reading the LAC tree READ-ONLY in both modes. The same law covers the
+OTHER legacy engine's tree (Ashitacast/LegacyAC XML, 2026-07-31): `legacyacRoots` /
+`legacyacPaths` are READERS — dlac never writes to any of the three homes they search.
+Headless: tests NO1–NO42.
 
 ### The flip, and coexistence
 

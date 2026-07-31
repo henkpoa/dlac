@@ -24,6 +24,11 @@
     back from the dead after you deleted it). The one exception is the
     unmigrated character whose job file IS the live Dynamic source -- there the
     same block is already the live list, so it is not offered a second time.
+
+    THIRD SOURCE (2026-07-31): ASHITACAST, via the LegacyAC plugin -- a whole
+    different engine's file, config\legacyac\<Char>_<JOB>.xml, parsed by
+    gear\acimport into the same name -> slot-table shape. Same law as the two
+    above: read-only, import-source only, never merged into root.
 ]]--
 
 local M = {};
@@ -34,6 +39,12 @@ function M.configure(d) deps = d; end
 
 local _pok, _prof = pcall(require, 'dlac\\profiles');
 _pok = _pok and type(_prof) == 'table';
+
+-- The Ashitacast/LegacyAC XML reader (pure). Guarded like every optional
+-- dependency here: without it the Ashitacast column is simply empty and every
+-- other import source behaves exactly as before.
+local _acok, _ac = pcall(require, 'dlac\\gear\\acimport');
+_acok = _acok and type(_ac) == 'table' and type(_ac.parse) == 'function';
 
 local function readAll(p)
     if p == nil then return nil; end
@@ -197,6 +208,9 @@ local _cache, _cacheKey, _setsDiag = nil, nil, nil;
 local _liveNames = nil;   -- set names that exist in the LIVE profile (see liveSetNames)
 local _lacDyn = nil;      -- old FFXI-LAC Dynamic sets, name -> set (import sources only)
 local _lacDiag = {};      -- legacy files that EXIST and could not be read (see legacyDiag)
+local _acSets, _acInfo = nil, nil;   -- Ashitacast/LegacyAC sets + per-set import info
+local _acNotes = {};      -- what the XML said that dlac could not carry (see acNotes)
+local _acFile = nil;      -- WHICH candidate path the sets came from (see acSource)
 local _watch = { at = -1, path = nil, raw = nil };   -- the Dynamic source the cache mirrors
 
 -- The Dynamic source RIGHT NOW: the active profile's sets file when readable,
@@ -246,6 +260,8 @@ local function loadRoot()
     _cacheKey = key;
     _setsDiag = nil;
     _lacDiag = {};
+    _acNotes = {};
+    _acFile = nil;
     _watch.path, _watch.raw = dynSourceNow(jf, abbr);
 
     local root = {};
@@ -319,6 +335,55 @@ local function loadRoot()
         end
     end
     _lacDyn = lac;
+
+    -- ASHITACAST (LegacyAC): a whole different engine's swap file for this same
+    -- character + job. Parsed into the same import-source shape as everything
+    -- above and kept out of `root` for the same reason -- dlac's engine never
+    -- loads it, so one of its sets must never look live. An ABSENT file says
+    -- nothing (most characters have never used the plugin); a file that IS
+    -- there and yields no sets is named in red, because "you have no Ashitacast
+    -- sets" and "your XML did not parse" were the same silence for the FFXI-LAC
+    -- importer until a tester lost an evening to it (hard rule 12).
+    local ac, acInfo = {}, {};
+    if _acok and abbr ~= nil then
+        -- SEARCH, not one path: LegacyAC's documented home and the two folder
+        -- conventions a player reasonably guesses instead (see
+        -- profiles.legacyacRoots). First file that reads wins. legacyacPath is
+        -- the fallback for an older profiles.lua / a test stub.
+        local xp, xml = nil, nil;
+        local cands = nil;
+        pcall(function()
+            if type(_prof.legacyacPaths) == 'function' then cands = _prof.legacyacPaths(abbr); end
+        end);
+        if type(cands) ~= 'table' or #cands == 0 then
+            cands = {};
+            pcall(function()
+                local one = _prof.legacyacPath(abbr);
+                if one ~= nil then cands[1] = one; end
+            end);
+        end
+        for _, p in ipairs(cands) do
+            local t = readAll(p);
+            if t ~= nil then xp, xml = p, t; break; end
+        end
+        if xml ~= nil then
+            local ok, s, i, notes = pcall(_ac.parse, xml);
+            if ok and type(s) == 'table' then
+                ac = s;
+                _acFile = xp;   -- WHICH of the candidate homes answered
+                acInfo = (type(i) == 'table') and i or {};
+                local n = 0;
+                for _ in pairs(ac) do n = n + 1; end
+                if n == 0 then noteBad(xp, 'has no sets dlac could read.'); end
+                if type(notes) == 'table' then
+                    for _, msg in ipairs(notes) do _acNotes[#_acNotes + 1] = tostring(msg); end
+                end
+            else
+                noteBad(xp, 'will not parse -- ' .. tostring(s));
+            end
+        end
+    end
+    _acSets, _acInfo = ac, acInfo;
 
     if root.Dynamic == nil and _setsDiag == nil then
         _setsDiag = 'ran ' .. jf .. ' but it has no sets.Dynamic';
@@ -421,6 +486,66 @@ local function lacSetNames()
     return names;
 end
 
+-- The ASHITACAST (LegacyAC) sets for this character + job: name -> slot table
+-- (one item name per slot). Import sources only, exactly like getLacSets --
+-- absent from getSetsRoot / dynamicSetNames / liveSetNames. Empty until load,
+-- and empty forever for a character who never used the plugin.
+local function getAcSets()
+    local out = {};
+    pcall(function()
+        loadRoot();
+        if type(_acSets) == 'table' then out = _acSets; end
+    end);
+    return out;
+end
+
+-- Sorted array of those set names (the picker's Ashitacast column).
+local function acSetNames()
+    local names = {};
+    pcall(function()
+        if _acok then names = _ac.setNames(getAcSets()); end
+    end);
+    return names;
+end
+
+-- Per-set import info: name -> { base, slots, augments, locks }. What the copy
+-- reports about the things the XML carried and a dlac set cannot (augment
+-- fingerprints, lock attributes -- acimport.dropNote turns one into a sentence).
+local function acSetInfo()
+    local out = {};
+    pcall(function()
+        loadRoot();
+        if type(_acInfo) == 'table' then out = _acInfo; end
+    end);
+    return out;
+end
+
+-- WHICH file the Ashitacast sets were read from, or nil. Shown under the column
+-- because the home is a SEARCH across three conventions: a player who dropped
+-- the file in by hand needs to see that dlac found the one they meant, not
+-- guess whether the folder was right (field 2026-07-31).
+local function acSource()
+    local p = nil;
+    pcall(function()
+        loadRoot();
+        p = _acFile;
+    end);
+    return p;
+end
+
+-- What the XML said that dlac read past: a baseset naming a set that isn't in
+-- the file, a duplicate set name, a baseset loop. Informational (the popup
+-- prints them dim, under the columns), never errors -- an unreadable FILE is
+-- legacyDiag's job and prints red.
+local function acNotes()
+    local out = {};
+    pcall(function()
+        loadRoot();
+        for _, n in ipairs(_acNotes) do out[#out + 1] = n; end
+    end);
+    return out;
+end
+
 -- Legacy files that are ON DISK and could not be read: { { file, path, why }, ... },
 -- empty when everything readable (an ABSENT file is never listed -- most characters
 -- have two of the three import paths missing by design). The Copy-from popup prints
@@ -439,7 +564,7 @@ end
 function M.diag() return _setsDiag; end
 
 -- Drop the cached sets so the next read re-parses the files (post commit/delete).
-function M.invalidate() _cache = nil; _cacheKey = nil; _liveNames = nil; _lacDyn = nil; _lacDiag = {}; _watch.at, _watch.path, _watch.raw = -1, nil, nil; end
+function M.invalidate() _cache = nil; _cacheKey = nil; _liveNames = nil; _lacDyn = nil; _lacDiag = {}; _acSets = nil; _acInfo = nil; _acNotes = {}; _acFile = nil; _watch.at, _watch.path, _watch.raw = -1, nil, nil; end
 
 -- Arm the content-follow to run on the NEXT read regardless of the 1s throttle
 -- (tests; callers that just watched a file land and want the refresh this frame).
@@ -452,6 +577,11 @@ M.staticSetNames  = staticSetNames;
 M.liveSetNames    = liveSetNames;
 M.getLacSets      = getLacSets;
 M.lacSetNames     = lacSetNames;
+M.getAcSets       = getAcSets;
+M.acSetNames      = acSetNames;
+M.acSetInfo       = acSetInfo;
+M.acNotes         = acNotes;
+M.acSource        = acSource;
 M.legacyDiag      = legacyDiag;
 
 return M;

@@ -90,6 +90,70 @@ end
 M.charBase = charBase;
 
 -- ---------------------------------------------------------------------------
+-- LegacyAC -- the OTHER legacy engine's tree. READ-ONLY, like charBase.
+--
+-- LegacyAC.dll serves the Ashitacast (XML) format on Ashita v4, one swap file
+-- per character AND job, named `<CharacterName>_<JOB>.xml`. Note the name: the
+-- plugin keys on the BARE character name, so this is the one dlac path that
+-- does not compose off charFolder()'s <Name>_<Id>. Nothing in dlac ever writes
+-- here -- it is an import door, exactly like the pre-profiles backups the Sets
+-- tab reads statics out of.
+--
+-- WHERE it lives is not one answer, which is why this is a SEARCH and not a
+-- path. `Ashita\docs\LegacyAC\readme.txt` says `Ashita\Config\LegacyAC\`, and
+-- that folder does exist on this install -- but a player dropping a file in by
+-- hand reasonably guesses the ADDONS convention instead, because that is where
+-- luashitacast\ and dlac\ live (Henrik did exactly that, 2026-07-31, and the
+-- column stayed empty with nothing said). This install also shows the third
+-- convention in use for another plugin (config\plugins\FindAll\). Guessing
+-- wrong must not read as "you have no Ashitacast sets", so we look in all
+-- three and take the first file that is actually there.
+-- ---------------------------------------------------------------------------
+
+-- The bare character name (no server id) -- LegacyAC's file-naming axis.
+function M.charName()
+    local name = charIdentity();
+    return name;
+end
+
+-- Candidate homes, most-canonical first. The plugin's documented home wins a
+-- tie, so a player who keeps files in both places gets the one LegacyAC itself
+-- would load.
+function M.legacyacRoots()
+    local base = nil;
+    pcall(function() base = AshitaCore:GetInstallPath(); end);
+    if base == nil then return {}; end
+    return {
+        base .. 'config\\legacyac\\',            -- the readme's home
+        base .. 'config\\addons\\legacyac\\',    -- the addons convention
+        base .. 'config\\plugins\\legacyac\\',   -- the other plugin convention
+    };
+end
+
+-- Kept as the CANONICAL single path (diagnostics, docs, "where should I put
+-- it?"). Readers want legacyacPaths.
+function M.legacyacRoot()
+    return M.legacyacRoots()[1];
+end
+
+function M.legacyacPath(job)
+    local r, n = M.legacyacRoot(), M.charName();
+    if r == nil or n == nil or job == nil then return nil; end
+    return r .. n .. '_' .. job .. '.xml';
+end
+
+-- Every place this character's swap file for `job` could be, in search order.
+-- The caller opens them in turn and takes the first that reads -- existence is
+-- not decided here (this module has no business stat-ing files for a reader).
+function M.legacyacPaths(job)
+    local n, out = M.charName(), {};
+    if n == nil or job == nil then return out; end
+    local leaf = n .. '_' .. job .. '.xml';
+    for _, r in ipairs(M.legacyacRoots()) do out[#out + 1] = r .. leaf; end
+    return out;
+end
+
+-- ---------------------------------------------------------------------------
 -- the native-engine storage home (feature/native-engine)
 --
 -- dlac's OWN config root -- config\addons\dlac\ -- replaces the piggyback on

@@ -1563,6 +1563,16 @@ local function renderTeleportsPopup()
         'Show/hide the hobby bar -- Craft, HELM, Fishing and Chocobo controls in\none window (one hobby active at a time).');
     renderQuickWindowRow('lockstyle', 'Lockstyle',
         'Open the Lockstyle window -- your 30 saved looks for this job: apply one,\nsave the marked box, set the town style.');
+    -- The two most recently eaten foods you still carry (2026-07-30). They belong
+    -- HERE more than anywhere: this popup is the floating quick menu, and "my food
+    -- just wore off" happens mid-fight with the main window shut. ONE definition,
+    -- shared with the Menu's own food section (ui\menuui.renderFoodSection) -- only
+    -- the row geometry differs, to match the quick rows above. Draws nothing when
+    -- there is nothing to eat, so the popup is unchanged for a player who never has.
+    pcall(function()
+        require('dlac\\ui\\menuui').renderFoodSection({
+            iconW = 18, labelX = 30, rowH = 0, col = COL.USABLE, dim = COL.DIM });
+    end);
     -- Footer: pin/unpin the PF-style floating button. The same menu renders from
     -- the floating button itself, so it is removable from EITHER place.
     imgui.Separator();
@@ -2840,39 +2850,43 @@ end
 -- headless suite covers its ordering / best-first rules); notBestFirst names the slots
 -- whose candidate order diverges from LAC's first-in-list (ADR 0008), for the caller's
 -- per-slot chat warning.
+-- ALL FOUR source kinds run the ONE transform (dlac\gear\setimport) now. The
+-- dynamic path used to hand-roll the same slot walk, which meant the drop
+-- accounting Henrik asked for (2026-07-31: skip what you don't own, SAY so, never
+-- refuse the set) would have had to exist in two places that must agree -- the
+-- exact shape that produced the vanished-mark bug hours earlier. One walk, one
+-- set of counts, every kind.
+local function importVia(setT, wantBestFirst)
+    local simport = require('dlac\\gear\\setimport');   -- function-scoped: gearui is near the 200-local cap
+    local r = simport.importStaticSet(setT, EQUIP_SLOTS, resolveSetItem);
+    return r.working, (wantBestFirst and r.notBestFirst or {}),
+           { names = r.missing, count = r.missingCount };
+end
+
+local NO_MISS = { names = {}, count = 0 };
+
 local function workingFromDynamic(srcName)
-    local built = {};
+    local built, miss = {}, NO_MISS;
     pcall(function()
         local dyn = profsets.getDynamicSets();
         local setT = (type(dyn) == 'table') and dyn[srcName] or nil;
         if type(setT) ~= 'table' then return; end
-        for _, sl in ipairs(EQUIP_SLOTS) do
-            local slotList = setT[sl.label];
-            if type(slotList) == 'table' then
-                local items = {};
-                for _, elem in ipairs(slotList) do
-                    local it = resolveSetItem(elem);
-                    if it ~= nil then items[#items + 1] = it; end
-                end
-                if #items > 0 then built[sl.label] = items; end
-            end
-        end
+        local w, _nb, m = importVia(setT, false);   -- locals: a bare `_` here writes a GLOBAL
+        built, miss = w, m;
     end);
-    return built;
+    return built, {}, miss;
 end
 
 local function workingFromStatic(srcName)
-    local working, notBest = {}, {};
+    local working, notBest, miss = {}, {}, NO_MISS;
     pcall(function()
-        local simport = require('dlac\\gear\\setimport');   -- function-scoped: gearui is near the 200-local cap
         local S = profsets.getSetsRoot();
         if type(S) ~= 'table' then return; end
         local setT = S[srcName];
         if type(setT) ~= 'table' then return; end
-        local r = simport.importStaticSet(setT, EQUIP_SLOTS, resolveSetItem);
-        working, notBest = r.working, r.notBestFirst;
+        working, notBest, miss = importVia(setT, true);
     end);
-    return working, notBest;
+    return working, notBest, miss;
 end
 
 -- An old FFXI-LAC Dynamic set: the `sets.Dynamic` block inside a legacy <JOB>.lua
@@ -2882,15 +2896,48 @@ end
 -- read by dlac's highest-item-Level rule, so importing one reproduces exactly
 -- what it did. The ADR 0008 divergence is a LuaAshitacast-static fact only.
 local function workingFromLac(srcName)
-    local working = {};
+    local working, miss = {}, NO_MISS;
     pcall(function()
-        local simport = require('dlac\\gear\\setimport');
         local sets = profsets.getLacSets();
         local setT = (type(sets) == 'table') and sets[srcName] or nil;
         if type(setT) ~= 'table' then return; end
-        working = simport.importStaticSet(setT, EQUIP_SLOTS, resolveSetItem).working;
+        local w, _nb, m = importVia(setT, false);
+        working, miss = w, m;
     end);
-    return working;
+    return working, {}, miss;
+end
+
+-- An ASHITACAST (LegacyAC) set, out of config\legacyac\<Char>_<JOB>.xml. Rides
+-- the SAME transform as the other two: gear\acimport hands back a plain
+-- `label -> "Item Name"` table, importStaticSet wraps each single item as a
+-- one-candidate list, and resolveSetItem's string path matches it against this
+-- character's owned gear (case-insensitively -- the format says names are not
+-- case sensitive, and real files write `hlr. cap +1`). One candidate per slot,
+-- so the ADR 0008 best-first warning cannot apply: there is no order to diverge
+-- from.
+local function workingFromAc(srcName)
+    local working, miss = {}, NO_MISS;
+    pcall(function()
+        local sets = profsets.getAcSets();
+        local setT = (type(sets) == 'table') and sets[srcName] or nil;
+        if type(setT) ~= 'table' then return; end
+        local w, _nb, m = importVia(setT, false);
+        working, miss = w, m;
+    end);
+    return working, {}, miss;
+end
+
+-- What an Ashitacast source could NOT carry into dlac (augment fingerprints,
+-- lock attributes), as one sentence -- or nil. Printed, never swallowed: two
+-- sets in the file that drove this exist ONLY to pin an augment, and would
+-- otherwise arrive looking like pointless one-piece sets (hard rule 12).
+local function acDropNote(srcName)
+    local note = nil;
+    pcall(function()
+        local acimp = require('dlac\\gear\\acimport');
+        note = acimp.dropNote(profsets.acSetInfo()[srcName]);
+    end);
+    return note;
 end
 
 -- #(a working table): count filled slots (working is keyed by label, not an array).
@@ -2905,13 +2952,47 @@ end
 -- What each source kind is CALLED, everywhere the player is told about it (status
 -- lines, the replace confirmation, the chat warning). One table, so a fourth kind
 -- can never end up named two different things in two places.
-local KIND_WORD = { dynamic = 'dynamic', static = 'static', lac = 'FFXI-LAC' };
+local KIND_WORD = { dynamic = 'dynamic', static = 'static', lac = 'FFXI-LAC', ac = 'Ashitacast' };
 
--- The one resolver seam: kind -> working, notBestFirst.
+-- The legacy column's groups, in display order -- and THE one list, because the
+-- Copy-from popup walks these kinds TWICE: once to draw the rows, once to gather
+-- what was marked. Those were two separate literals until 2026-07-31, when the
+-- Ashitacast group was added to the render and not to the gather: marking one
+-- stored the mark, the gather never looked for that kind, and Create answered
+-- "Mark at least one set on the left first" over a set the player could see
+-- ticked (field, Henrik). A kind that exists in one loop and not the other is
+-- unfalsifiable by eye -- so there is one list now, and both loops read it.
+local LEGACY_GROUPS = {
+    { kind = 'lac',    title = 'Old FFXI-LAC sets' },
+    { kind = 'static', title = 'Old Static Sets' },
+    { kind = 'ac',     title = 'Ashitacast sets' },
+};
+
+-- The one resolver seam: kind -> working, notBestFirst, missing { names, count }.
 local function workingForSource(kind, name)
-    if kind == 'dynamic' then return workingFromDynamic(name), {}; end
-    if kind == 'lac'     then return workingFromLac(name), {}; end
+    if kind == 'dynamic' then return workingFromDynamic(name); end
+    if kind == 'lac'     then return workingFromLac(name); end
+    if kind == 'ac'      then return workingFromAc(name); end
     return workingFromStatic(name);
+end
+
+-- Say what an import left behind, in chat, once. Returns the short clause for
+-- the (auto-expiring) status line, or nil when nothing was dropped. Henrik
+-- 2026-07-31: "if the gear wasn't found, just ignore it, inform (temporarily)
+-- and move on instead of not importing it at all" -- so the NAMES go to chat
+-- (a 15-piece list does not belong on a status line) and the status line gets
+-- the count and a pointer.
+local function reportMissing(what, srcName, miss)
+    if type(miss) ~= 'table' or (miss.count or 0) <= 0 then return nil; end
+    local note = nil;
+    pcall(function()
+        local simport = require('dlac\\gear\\setimport');
+        note = simport.missingNote(miss.names, miss.count, 10);
+    end);
+    if note == nil then return nil; end
+    pcall(print, string.format('[dlac] %s "%s": %s.', what, srcName, note));
+    return string.format('  %d piece%s you do not own were skipped -- see chat.',
+        miss.count, (miss.count == 1) and '' or 's');
 end
 
 -- Copy a source set's slots INTO the currently-selected dynamic set, keeping that
@@ -2924,30 +3005,50 @@ end
 -- lives in dlac\gear\setimport so the headless suite can pin it.
 local function doCopyFrom(kind, srcName)
     local target = M.workingSetName;
-    local working, notBest = workingForSource(kind, srcName);
+    local working, notBest, miss = workingForSource(kind, srcName);
     local word = KIND_WORD[kind] or 'static';
-    local Word = word:sub(1, 1):upper() .. word:sub(2);
     local nSlots = countFilledSlots(working);
+
+    -- THE IMPORT ALWAYS HAPPENS (Henrik 2026-07-31). Gear you do not own is
+    -- skipped, named and moved past -- never a reason to refuse the set. This
+    -- used to bail out entirely when nothing resolved, and that reads as "the
+    -- import is broken" when the honest answer is "you don't own this gear yet"
+    -- (it cost a field round on the Ashitacast column). Nothing is written to
+    -- disk here either way: doCopyFrom fills the WORKING buffer, so an
+    -- unwelcome result is undone by re-selecting the set, and the overwrite
+    -- confirmation already gated a non-empty target.
+    M.working = working;   -- FULL-REPLACE: undefined slots are gone
+    ui.setSelected = nil;
+    _setDirty = true;      -- copied into the set -> unsaved changes to commit
+
+    -- Per-slot warning for any slot NOT ordered best-first (highest item-Level
+    -- first) -- the one case dlac's highest-Level pick diverges from LAC's
+    -- first-in-list (ADR 0008). Loud, per hard rule 12: a silent behaviour change
+    -- is the failure mode, not the divergence itself.
+    for _, label in ipairs(notBest) do
+        pcall(print, string.format('[dlac] Copy from %s "%s": slot %s is not ordered best-first (highest item-Level first) -- dlac equips the highest-Level candidate, so its pick may differ from the first in your list. Reorder the slot if you meant strict priority.', word, srcName, label));
+    end
+    local warnNote = (#notBest > 0)
+        and string.format('  %d slot(s) not best-first -- see chat.', #notBest) or '';
+    local missNote = reportMissing('Copy from ' .. word, srcName, miss) or '';
+    -- Ashitacast carries two things a dlac set cannot (per-piece augment
+    -- fingerprints, lock attributes). Say what was dropped rather than let
+    -- the set arrive quietly diminished.
+    local dropped = (kind == 'ac') and acDropNote(srcName) or nil;
+    if dropped ~= nil then
+        pcall(print, string.format('[dlac] Copy from Ashitacast "%s": %s', srcName, dropped));
+    end
+    local augNote = (dropped ~= nil) and '  Some attributes could not be carried -- see chat.' or '';
+
     if nSlots > 0 then
-        M.working = working;   -- FULL-REPLACE: undefined slots are gone
-        ui.setSelected = nil;
-        _setDirty = true;      -- copied into the set -> unsaved changes to commit
-        -- Per-slot warning for any slot NOT ordered best-first (highest item-Level
-        -- first) -- the one case dlac's highest-Level pick diverges from LAC's
-        -- first-in-list (ADR 0008). Loud, per hard rule 12: a silent behaviour change
-        -- is the failure mode, not the divergence itself.
-        for _, label in ipairs(notBest) do
-            pcall(print, string.format('[dlac] Copy from %s "%s": slot %s is not ordered best-first (highest item-Level first) -- dlac equips the highest-Level candidate, so its pick may differ from the first in your list. Reorder the slot if you meant strict priority.', word, srcName, label));
-        end
-        local warnNote = (#notBest > 0)
-            and string.format('  %d slot(s) not best-first -- see chat.', #notBest) or '';
-        setStatus(string.format('Copied %s "%s" into "%s" (%d slots -- whole set replaced). Edit, then Commit.%s',
-            word, srcName, target, nSlots, warnNote), false);
+        setStatus(string.format('Copied %s "%s" into "%s" (%d slots -- whole set replaced). Edit, then Commit.%s%s%s',
+            word, srcName, target, nSlots, missNote, warnNote, augNote), false);
     else
-        -- Nothing resolved to owned/known gear: leave the target untouched rather than
-        -- silently wipe the player's work on a copy that produced nothing (hard rule 12).
-        setStatus(string.format('%s set "%s" has nothing to copy (empty, or its items are not in your gear.lua). "%s" left unchanged.',
-            Word, srcName, target), true);
+        -- Empty is a legitimate outcome, not a failure: an empty set commits on
+        -- purpose (a trigger can point at it today and gear can come later --
+        -- see commitCurrentSet). Flagged, not refused.
+        setStatus(string.format('Copied %s "%s" into "%s" -- but NONE of its gear is in your gear.lua, so "%s" is now EMPTY.%s Add gear (or /dl sync if you just got some), then Commit.',
+            word, srcName, target, target, missNote), true);
     end
 end
 
@@ -2982,7 +3083,8 @@ end
 -- Each source is resolved with YOUR owned gear and committed straight into <JOB>.lua
 -- (a backup per commit, like Auto-Build All), then ONE '/dl sets reload'. The panel's
 -- in-progress working set is borrowed for the build and restored, so an uncommitted edit
--- survives untouched. `sources` = ordered array of { name, kind = 'static'|'dynamic'|'lac' }.
+-- survives untouched. `sources` = ordered array of { name, kind } -- every kind
+-- workingForSource resolves ('dynamic', 'static', 'lac', 'ac').
 local function copyAsNewSets(job, sources)
     if not has.setmgr then setStatus('setmanager unavailable.', true); return; end
     if job == nil or job == '' then setStatus('Unknown job (are you logged in?).', true); return; end
@@ -2994,36 +3096,73 @@ local function copyAsNewSets(job, sources)
     -- Borrow the panel's working state (mirror autoBuildAll / modeSetRefs) so a commit
     -- loop that overwrites M.working leaves the user's in-progress edit intact.
     local keepW, keepN, keepSel, keepDirty = M.working, M.workingSetName, ui.setSelected, _setDirty;
-    local made, blank, failed, renamed = 0, 0, 0, 0;
+    local made, blank, failed, renamed, dropped, skipped = 0, 0, 0, 0, 0, 0;
+    -- Missing pieces are pooled across the WHOLE batch and reported ONCE. A line
+    -- per set is right for a single copy (you want to know what THAT set lost) and
+    -- wrong here: migrating a 23-set job file would print 23 lines of chat. The
+    -- question a batch actually asks is "what do I still need to acquire", which
+    -- is one distinct list.
+    local missAll, missSeen = {}, {};
     for _, p in ipairs(plan) do
-        local built = workingForSource(p.kind, p.name);
+        local built, _, miss = workingForSource(p.kind, p.name);
         M.working = built;
         local slots = buildCommitSlots();
-        if #slots > 0 then
-            local ok = nil;
-            pcall(function() ok = setmgr.commitSet(job, p.finalName, slots); end);
-            if ok == true then
-                made = made + 1;
-                if p.renamed then renamed = renamed + 1; end
-            else
-                failed = failed + 1;
+        -- CREATE IT EITHER WAY (Henrik 2026-07-31). A set whose gear this
+        -- character does not own used to be silently skipped, so a migrate of
+        -- someone else's job file could report "Created 0 new sets" and look
+        -- broken. An empty set is a legitimate placeholder here -- the structure
+        -- is what you asked to migrate, and the gear can arrive later -- so it
+        -- is created and COUNTED, never dropped on the floor.
+        local ok = nil;
+        pcall(function() ok = setmgr.commitSet(job, p.finalName, slots); end);
+        if ok == true then
+            made = made + 1;
+            if p.renamed then renamed = renamed + 1; end
+            if #slots == 0 then blank = blank + 1; end
+            if type(miss) == 'table' and (miss.count or 0) > 0 then
+                skipped = skipped + miss.count;
+                for _, nm in ipairs(miss.names or {}) do
+                    local k = string.lower(tostring(nm));
+                    if not missSeen[k] then
+                        missSeen[k] = true;
+                        missAll[#missAll + 1] = nm;
+                    end
+                end
+            end
+            -- Per set in chat (each one names a different piece), counted
+            -- once for the status line: a migrate-many is exactly where a
+            -- silently-dropped augment filter would never be noticed.
+            local note = (p.kind == 'ac') and acDropNote(p.name) or nil;
+            if note ~= nil then
+                dropped = dropped + 1;
+                pcall(print, string.format('[dlac] Imported Ashitacast "%s": %s', p.name, note));
             end
         else
-            -- Nothing resolved to owned/known gear with a path: skip rather than create an
-            -- empty set (hard rule 12 -- don't silently manufacture blanks on a migrate).
-            blank = blank + 1;
+            failed = failed + 1;
         end
     end
     M.working, M.workingSetName, ui.setSelected, _setDirty = keepW, keepN, keepSel, keepDirty;
+    -- ONE line for the whole batch: the distinct gear this character is short of.
+    if skipped > 0 then
+        pcall(function()
+            local note = simport.missingNote(missAll, skipped, 20);
+            if note ~= nil then
+                pcall(print, string.format('[dlac] Imported %d set%s. %s.',
+                    made, (made == 1) and '' or 's', note));
+            end
+        end);
+    end
     if made > 0 then
         profsets.invalidate();
         pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '/dl sets reload'); end);
     end
-    setStatus(string.format('Created %d new set%s%s%s%s%s',
+    setStatus(string.format('Created %d new set%s%s%s%s%s%s%s',
         made, (made == 1) and '' or 's',
         (made > 0) and ' -- committed and live (hot-swapped).' or ' -- nothing created.',
         (renamed > 0) and string.format('  %d renamed _Copy (name already existed).', renamed) or '',
-        (blank > 0) and string.format('  %d skipped: no owned/known gear.', blank) or '',
+        (blank > 0) and string.format('  %d came out EMPTY (none of their gear is yours yet) -- kept as placeholders.', blank) or '',
+        (skipped > 0) and string.format('  %d piece%s skipped: not in your gear.lua -- see chat.', skipped, (skipped == 1) and '' or 's') or '',
+        (dropped > 0) and string.format('  %d had augment/lock attributes dlac cannot carry -- see chat.', dropped) or '',
         (failed > 0) and string.format('  %d FAILED to commit -- try one by hand for the reason.', failed) or ''),
         (made == 0));
 end
@@ -3994,7 +4133,7 @@ local function renderSetsTab(job, level)
     end
     imgui.PopItemWidth();
     if imgui.IsItemHovered() then
-        imgui.SetTooltip('Everything that manages the selected set: New, Rename (propagates\neverywhere), Delete, Copy from another set or an old FFXI-LAC one\n(Dynamic and static alike) -- and Delete static when legacy static\nsets are present.');
+        imgui.SetTooltip('Everything that manages the selected set: New, Rename (propagates\neverywhere), Delete, Copy from another set or a legacy one -- old\nFFXI-LAC (Dynamic and static alike) and Ashitacast/LegacyAC XML\n-- and Delete static when legacy static sets are present.');
     end
 
     imgui.SameLine();
@@ -4248,7 +4387,8 @@ local function renderSetsTab(job, level)
         -- The legacy column: old FFXI-LAC Dynamic sets and LuaAshitacast statics in
         -- ONE deduped list (dynamic wins a shared name), split by kind for the eye.
         local simport = require('dlac\\gear\\setimport');
-        local legacy = simport.mergeLegacySources(profsets.staticSetNames(), profsets.lacSetNames());
+        local legacy = simport.mergeLegacySources(profsets.staticSetNames(), profsets.lacSetNames(),
+                                                  profsets.acSetNames());
         local pick = nil;   -- 'current' mode: single immediate pick
 
         imgui.BeginChild('##setcf_dyn', { 210, 240 }, true);
@@ -4272,22 +4412,24 @@ local function renderSetsTab(job, level)
         imgui.EndChild();
         imgui.SameLine(0, 8);
         imgui.BeginChild('##setcf_stat', { 240, 240 }, true);
-        -- TWO headings, both in the list-header blue (Henrik 2026-07-28: a dim
+        -- THREE headings, all in the list-header blue (Henrik 2026-07-28: a dim
         -- sub-header under a blue one reads as one list with noise in it -- "even I
-        -- got confused"). Old dynamic sets first, then the statics, each group named
-        -- by what it IS; a group with nothing in it draws no heading at all.
+        -- got confused"). Old dynamic sets first, then the statics, then a whole
+        -- different engine's file (Ashitacast/LegacyAC), each group named by what
+        -- it IS; a group with nothing in it draws no heading at all.
         if #legacy == 0 then
             imgui.TextColored(COL.HEADER, 'Old FFXI-LAC sets');
             imgui.TextColored(COL.DIM, '(none found for this job)');
         end
-        for _, grp in ipairs({ { kind = 'lac', title = 'Old FFXI-LAC sets' },
-                               { kind = 'static', title = 'Old Static Sets' } }) do
+        local firstGroup = true;
+        for _, grp in ipairs(LEGACY_GROUPS) do
             local shown = false;
             for _, s in ipairs(legacy) do
                 if s.kind == grp.kind then
                     if not shown then
                         shown = true;
-                        if #legacy > 0 and grp.kind == 'static' then imgui.Spacing(); end
+                        if not firstGroup then imgui.Spacing(); end
+                        firstGroup = false;
                         imgui.TextColored(COL.HEADER, grp.title);
                     end
                     local key = s.kind .. '\0' .. s.name;
@@ -4310,9 +4452,34 @@ local function renderSetsTab(job, level)
         end
         -- The explainer only when there IS something to explain: a player with no
         -- legacy files at all gets the empty column and no paragraph about files
-        -- they have never had.
+        -- they have never had. The Ashitacast sentence is likewise conditional --
+        -- most characters have never had that plugin, and naming a file they do
+        -- not own is noise.
+        local anyAc = false;
+        for _, s in ipairs(legacy) do if s.kind == 'ac' then anyAc = true; break; end end
         if #legacy > 0 then
-            fmt.textWrapped(COL.DIM, 'Both lists are read (never written) from this job\'s old files: FFXI-LAC sets are dlac\'s own from before profiles, Static sets are LuaAshitacast\'s. A name in both is listed once, as the FFXI-LAC one.');
+            fmt.textWrapped(COL.DIM, 'Every list here is read (never written) from this job\'s old files: FFXI-LAC sets are dlac\'s own from before profiles, Static sets are LuaAshitacast\'s. A name in both is listed once, as the FFXI-LAC one.');
+        end
+        if anyAc then
+            fmt.textWrapped(COL.DIM, 'Ashitacast sets come from the LegacyAC plugin\'s own file -- a different engine, so a name it shares with the lists above is a DIFFERENT set and is listed separately. Augment filters and lock attributes cannot come across; the copy says so in chat.');
+            -- NAME THE FILE. Its home is a search across three folder conventions,
+            -- and a player who dropped one in by hand must be able to SEE that dlac
+            -- read the one they meant instead of guessing at the folder (field
+            -- 2026-07-31: the file went to config\addons\legacyac\, dlac looked only
+            -- in config\legacyac\, and the column was empty with nothing said).
+            local acSrc = profsets.acSource();
+            if acSrc ~= nil then
+                fmt.textWrapped(COL.DIM, 'Read from: ' .. fmt.esc(acSrc));
+            end
+            -- What the XML said that dlac read past (a baseset naming a set that
+            -- isn't in the file, a duplicate name, a loop). Dim, not red: the
+            -- file was readable -- an unreadable one is named above, in red.
+            -- fmt.esc is NOT optional here: these notes quote SET NAMES out of a
+            -- foreign file, imgui text is printf, and one bare '%' prints a heap
+            -- address instead (field round, 2026-07-30).
+            for _, n in ipairs(profsets.acNotes()) do
+                fmt.textWrapped(COL.DIM, 'Ashitacast: ' .. fmt.esc(n));
+            end
         end
 
         if newMode then
@@ -4323,9 +4490,11 @@ local function renderSetsTab(job, level)
             for _, nm in ipairs(profsets.dynamicSetNames()) do
                 if ui._copyMarks['dynamic\0' .. nm] then sources[#sources + 1] = { name = nm, kind = 'dynamic' }; end
             end
-            for _, want in ipairs({ 'lac', 'static' }) do
+            -- SAME list the rows were drawn from (LEGACY_GROUPS) -- see its comment:
+            -- a kind drawn here and missing there is a mark that vanishes on Create.
+            for _, grp in ipairs(LEGACY_GROUPS) do
                 for _, s in ipairs(legacy) do
-                    if s.kind == want and ui._copyMarks[s.kind .. '\0' .. s.name] then
+                    if s.kind == grp.kind and ui._copyMarks[s.kind .. '\0' .. s.name] then
                         sources[#sources + 1] = { name = s.name, kind = s.kind };
                     end
                 end

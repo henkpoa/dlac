@@ -224,12 +224,12 @@ end)();
     local UI = { 'ammoui','automationsui','craftbar','equippedui','filetex','fishbar','fishui',
                  'floatgear','gearui','helmbar','helmui','hobbybar','idlefloat','itemicons','jobhelpersui','menuui','panelkit','priorityui','profilesmenu',
                  'restockui','setupui','triggersui','uihost','uistyle','weightsui' };
-    local GEAR = { 'actionpicker','arbiter','blueprintsmodel','catalogindex','gearcheck','geareffects','gearexport',
+    local GEAR = { 'acimport','actionpicker','arbiter','blueprintsmodel','catalogindex','gearcheck','geareffects','gearexport',
                    'gearfmt','gearimport','gearoptim','gearoracle','gearrecord','groupimport','groupscan',
                    'groupsmodel','jobgate','modeslibrary','ownedcache','profileexport','profilesets','setimport',
                    'setmanager','syncflags','triggermodel','weaponfilter','weightimport' };
     local FEATURE = { 'actionseq','ammowatch','arbwatch','augments','check','chocowatch','combat','craftwatch','debug','digcalc','digrank',
-                      'eboxclient','eboxtrace','engagewatch','fishcalc','fishwatch','gamehud','gamemode','helmwatch','idleexcl','jobhelpers','location','lockstyle','lookpreview',
+                      'eboxclient','eboxtrace','engagewatch','fishcalc','fishwatch','foodwatch','gamehud','gamemode','helmwatch','idleexcl','jobhelpers','location','lockstyle','lookpreview',
                       'macrobook','meritwatch','modapi','modcfg','mpbands','petfood','petvitals','pinwatch','recast','restockwatch','synthrun','useitem','vanamoon' };
     local LIB = { 'cmdqueue','entwatch','safewrite','statefile' };
     -- Job helper modules (issue #137): each is a drop-in FOLDER under jobhelpers\
@@ -4128,6 +4128,63 @@ end)();
     check('AO21 nil static set -> 0 slots', simport.importStaticSet(nil, SLOTS, resolve).slotCount, 0);
     check('AO22 nil resolver -> 0 slots', simport.importStaticSet(plain, SLOTS, nil).slotCount, 0);
     check('AO23 isBestFirst on empty list', simport.isBestFirst({}), true);
+
+    -- 8. DROP ACCOUNTING (Henrik 2026-07-31: "if the gear wasn't found, just ignore
+    --    it, inform (temporarily) and move on instead of not importing it at all").
+    --    Skipping was always the behaviour; being SILENT about it was the defect --
+    --    a set where nothing resolved was refused outright, which reads as a broken
+    --    importer when the honest answer is "you don't own this gear yet". So the
+    --    transform now NAMES what it dropped and the caller imports regardless.
+    check('AO24 missing exported',      type(r5.missing),      'table');
+    check('AO25 missingCount counts every dropped candidate', r5.missingCount, 2);
+    check('AO26 ...and names them',     table.concat(r5.missing, ','), 'Unowned Club,Nothing Owned Here');
+    check('AO27 a fully-resolving set drops nothing', r1.missingCount, 0);
+    check('AO28 ...with an empty list, never nil',    #r1.missing, 0);
+
+    -- Distinct, in FIRST-SEEN order: the same unowned piece in three slots is one
+    -- name in the list but three drops in the count (what actually went missing).
+    local dupes = { Main = { 'Ghost Blade' }, Sub = { 'Ghost Blade' },
+                    Head = { 'Ghost Blade', 'Austere Hat' } };
+    local r8 = simport.importStaticSet(dupes, SLOTS, resolve);
+    check('AO29 repeats collapse in the NAME list', #r8.missing, 1);
+    check('AO30 ...but every drop is counted',      r8.missingCount, 3);
+    check('AO31 ...and the one resolvable slot still imports', r8.working.Head[1].rec.Name, 'Austere Hat');
+
+    -- A candidate too broken to name (profilesets' MISSING sentinel answers EVERY
+    -- key with itself, so elem.Name is a TABLE) is COUNTED but not listed -- reading
+    -- it as a name is what used to take a whole set down.
+    local SENT; SENT = setmetatable({}, { __index = function() return SENT; end });
+    local r9 = simport.importStaticSet({ Main = { SENT }, Head = { 'Austere Hat' } }, SLOTS, resolve);
+    check('AO32 an unnameable drop is counted', r9.missingCount, 1);
+    check('AO33 ...and NOT listed as a name',   #r9.missing, 0);
+    check('AO34 ...and never derails the set',  r9.working.Head[1].rec.Name, 'Austere Hat');
+
+    -- An EMPTY slot list is "no candidates", not a candidate that failed -- it must
+    -- not inflate the count with a piece nobody ever named.
+    local r10 = simport.importStaticSet({ Main = {}, Head = 'Austere Hat' }, SLOTS, resolve);
+    check('AO35 an empty slot list is not a missing piece', r10.missingCount, 0);
+    check('AO36 ...and the real slot still imports',        r10.slotCount, 1);
+
+    -- 9. missingNote: the one player-facing clause, capped.
+    check('AO37 missingNote nil when nothing dropped', simport.missingNote({}, 0), nil);
+    check('AO38 missingNote names the pieces',
+          simport.missingNote({ 'A', 'B' }, 2), '2 pieces skipped -- you do not own: A, B');
+    check('AO39 singular reads right',
+          simport.missingNote({ 'A' }, 1), '1 piece skipped -- you do not own: A');
+    check('AO40 counted-but-unnameable still says something',
+          simport.missingNote({}, 3), '3 pieces skipped -- not in your gear.lua');
+    local many = {}; for i = 1, 14 do many[i] = 'P' .. i; end
+    check('AO41 the list is CAPPED (a 15-piece set is not a paragraph)',
+          simport.missingNote(many, 14, 3), '14 pieces skipped -- you do not own: P1, P2, P3 (+11 more)');
+    check('AO42 missingNote tolerates junk', simport.missingNote(nil, nil), nil);
+
+    -- elemName: every source shape the four import kinds actually carry.
+    check('AO43 elemName: a bare name string (Ashitacast)', simport.elemName('Bunzi\'s Hat'), "Bunzi's Hat");
+    check('AO44 elemName: a gear record',       simport.elemName({ Name = 'Yagrush' }), 'Yagrush');
+    check('AO45 elemName: a gated wrapper',     simport.elemName({ gear = { Name = 'Yagrush' } }), 'Yagrush');
+    check('AO46 elemName: a virtual wrapper',   simport.elemName({ gear = 'dlac:AutoStaff' }), 'dlac:AutoStaff');
+    check('AO47 elemName: the MISSING sentinel has no name', simport.elemName(SENT), nil);
+    check('AO48 elemName: junk', simport.elemName(42), nil);
 end)();
 
 -- ---------------------------------------------------------------------------
@@ -4208,6 +4265,189 @@ end)();
     check('AQ12 dynamics only kind', simport.mergeLegacySources({}, { 'A' })[1].kind, 'lac');
     check('AQ13 nil inputs -> empty', #simport.mergeLegacySources(nil, nil), 0);
     check('AQ14 nil statics tolerated', simport.mergeLegacySources(nil, { 'A' })[1].name, 'A');
+
+    -- ASHITACAST is a THIRD kind out of a DIFFERENT engine's file, so it gets its
+    -- own name space: hiding an Ashitacast "Idle" behind the job file's "Idle"
+    -- would lose a set the player can still see in their XML.
+    local three = simport.mergeLegacySources({ 'Idle' }, { 'Idle' }, { 'Idle', 'Nuke' });
+    check('AQ15 ac names do NOT dedupe against the job file', #three, 3);
+    check('AQ16 ...both Idles survive, ac first by kind order', three[1].kind, 'ac');
+    check('AQ17 ...and the job file\'s Idle is still the dynamic one', three[2].kind, 'lac');
+    check('AQ18 ac-only name kept', three[3].name, 'Nuke');
+    check('AQ19 ac names dedupe against EACH OTHER',
+          #simport.mergeLegacySources({}, {}, { 'Idle', 'idle' }), 1);
+    check('AQ20 omitting acNames is the old 2-arg behaviour',
+          #simport.mergeLegacySources({ 'Idle', 'Precast' }, { 'Idle' }), 2);
+end)();
+
+-- ---------------------------------------------------------------------------
+-- AC. acimport -- the pure Ashitacast (LegacyAC) XML -> sets transform.
+--
+--   The third "Copy from" source: config\legacyac\<Char>_<JOB>.xml, a whole
+--   different engine's swap file. Schema authority = Ashita\docs\LegacyAC\
+--   XML Structure.xml. The fixture is a trimmed real file and carries every rule
+--   that bit during the read: both slot dialects at once, `none` as a KEYWORD,
+--   forward + chained + broken + looping basesets, a commented-out set, an
+--   augment fingerprint, a mis-nested close tag, and <setvar> (which a plain
+--   find for '<set' would happily import as a set).
+-- ---------------------------------------------------------------------------
+(function()
+    local ac = dofile('gear/acimport.lua');   -- forward slash: also loads on Linux CI
+    check('AC0 module loads',        type(ac),          'table');
+    check('AC0a parse exported',     type(ac.parse),    'function');
+    check('AC0b setNames exported',  type(ac.setNames), 'function');
+    check('AC0c dropNote exported',  type(ac.dropNote), 'function');
+
+    local XML = [==[
+<?xml version="1.0" encoding="UTF-8"?>
+<ashitacast>
+   <settings><buffupdate>true</buffupdate></settings>
+   <init>
+      <command delay="1500">/echo &lt;Ready&gt;</command>
+      <setvar name="macrobook" value="3" />
+   </init>
+   <sets>
+      <set name="Idle">
+         <main>Tamaxchi</main>
+         <sub>Genmei Shield</sub>
+         <range>none</range>
+         <ammo>Hedgehog Bomb</ammo>
+         <head>Bunzi&apos;s Hat</head>
+         <ear1>Outlaw&#39;s Earring</ear1>
+         <ear2>Loquac. Earring</ear2>
+         <lring>Tamas Ring</lring>
+         <rring>Serket Ring</rring>
+         <back>Umbra Cape</back>
+      </set>
+      <!-- never import a commented set: <set name="Ghost"><main>Excalibur</main></set> -->
+      <set name="DT" baseset="idle"/>
+      <set name="PrecastStoneskin" baseset = "PrecastGeneral" />
+      <set name="PrecastGeneral">
+         <main></main>
+         <head>Hlr. Cap +1</head>
+         <legs augment="S539169091">Hlr. Pantaln. +1</legs>
+         <feet lock="true">Cleric&apos;s Duckbills</feet>
+      </set>
+      <set name="Barspell" baseset="PrecastGeneral">
+         <head>Blessed Bliaut</head>
+         <legs>none</legs>
+      </set>
+      <set name="Orphan" baseset="NoSuchSet"><hands>Hlr. Mitts +1</hands></set>
+      <set name="LoopA" baseset="LoopB"><neck>Fylgja Torque +1</neck></set>
+      <set name="LoopB" baseset="LoopA"><waist>Cleric&apos;s Belt</waist></set>
+      <set name="Twice"><body>Dalmatica</body></set>
+      <set name="Twice"><body>Errant Hpl.</body></set>
+      <set name="Mis"><lear>Roundel Earring</rear></set>
+      <set name="Blank"><!-- Conserve MP --></set>
+      <include><item quantity="12">Echo Drops</item></include>
+   </sets>
+   <midmagic>
+      <if ad_name="Cure*|Cura*"><equip set="Idle" /></if>
+   </midmagic>
+</ashitacast>
+]==];
+
+    local sets, info, notes = ac.parse(XML);
+    local function nslots(t)
+        local n = 0; for _ in pairs(t or {}) do n = n + 1; end; return n;
+    end
+
+    -- --- only <sets> is in scope, and only real <set> elements in it.
+    check('AC1 set count', (function() local n=0; for _ in pairs(sets) do n=n+1 end return n; end)(), 11);
+    check('AC2 a commented-out set never imports',   sets.Ghost, nil);
+    check('AC3 <setvar> is not a set',               sets.macrobook, nil);
+    check('AC4 <include>/<item> is not a set',       sets.Echo, nil);
+    check('AC5 rule sections are read past',         sets['Cure*|Cura*'], nil);
+
+    -- --- slots: both dialects, at once, in one file.
+    check('AC6 main',                sets.Idle.Main,  'Tamaxchi');
+    check('AC7 ear1 -> Ear1',        sets.Idle.Ear1,  "Outlaw's Earring");
+    check('AC8 ear2 -> Ear2',        sets.Idle.Ear2,  'Loquac. Earring');
+    check('AC9 lring -> Ring1',      sets.Idle.Ring1, 'Tamas Ring');
+    check('AC10 rring -> Ring2',     sets.Idle.Ring2, 'Serket Ring');
+    check('AC11 lear -> Ear1',       sets.Mis.Ear1,   'Roundel Earring');
+
+    -- --- entities. gear.lua stores the apostrophe ("Genbu's Shield"), so a name
+    --     that arrives escaped must be un-escaped or it matches nothing owned.
+    check('AC12 &apos; decoded',     sets.Idle.Head,  "Bunzi's Hat");
+    check('AC13 &#39; decoded',      sets.Idle.Ear1,  "Outlaw's Earring");
+
+    -- --- `none` is a KEYWORD (spec: <range>none</range> unequips), and an empty
+    --     element says the same -- neither is an item to go looking for.
+    check('AC14 none -> no slot',        sets.Idle.Range,        nil);
+    check('AC15 empty element -> no slot', sets.PrecastGeneral.Main, nil);
+    check('AC16 Idle slot count',        nslots(sets.Idle),      9);
+    check('AC17 comment-only set is empty', nslots(sets.Blank),  0);
+
+    -- --- baseset: forward reference, whitespace around '=', case-insensitive.
+    check('AC18 self-closing set inherits whole', nslots(sets.DT), 9);
+    check('AC19 ...by VALUE',                     sets.DT.Main,    'Tamaxchi');
+    check('AC20 baseset="idle" finds "Idle"',     sets.DT.Ammo,    'Hedgehog Bomb');
+    check('AC21 forward reference resolves',      nslots(sets.PrecastStoneskin), 3);
+    check('AC22 ...with spaces around =',         sets.PrecastStoneskin.Head, 'Hlr. Cap +1');
+
+    -- --- baseset + own slots: override, and CLEAR (the reason `clear` cannot be
+    --     an absent key -- "not mentioned" inherits, "explicitly none" must not).
+    check('AC23 child overrides base',    sets.Barspell.Head, 'Blessed Bliaut');
+    check('AC24 child keeps base slot',   sets.Barspell.Feet, "Cleric's Duckbills");
+    check('AC25 child CLEARS a base slot', sets.Barspell.Legs, nil);
+    check('AC26 Barspell slot count',     nslots(sets.Barspell), 2);
+
+    -- --- a baseset that is not in the file / a loop: the set still imports, and
+    --     the reason is reported rather than swallowed.
+    check('AC27 missing baseset still imports own slots', sets.Orphan.Hands, 'Hlr. Mitts +1');
+    check('AC28 looping baseset still imports own slots', sets.LoopA.Neck, 'Fylgja Torque +1');
+    check('AC29 ...and the loop half it COULD reach',     sets.LoopA.Waist, "Cleric's Belt");
+    check('AC30 a duplicate name: LAST wins',             sets.Twice.Body, 'Errant Hpl.');
+    local noteText = table.concat(notes, ' | ');
+    check('AC31 missing baseset noted', noteText:find('NoSuchSet', 1, true) ~= nil, true);
+    check('AC32 loop noted',            noteText:find('loops back', 1, true) ~= nil, true);
+    check('AC33 duplicate noted',       noteText:find('more than once', 1, true) ~= nil, true);
+
+    -- --- info: augment/lock counts follow INHERITANCE, so the number reported is
+    --     the resolved set's, not the tag soup's.
+    check('AC34 augment counted on the set that declares it', info.PrecastGeneral.augments, 1);
+    check('AC35 lock counted',                                info.PrecastGeneral.locks,    1);
+    check('AC36 an inherited augment counts for the child',    info.PrecastStoneskin.augments, 1);
+    check('AC37 ...but not once the child clears that slot',   info.Barspell.augments, 0);
+    check('AC38 ...while the inherited lock survives',         info.Barspell.locks, 1);
+    check('AC39 base recorded',                                info.Barspell.base, 'PrecastGeneral');
+    check('AC40 slot count recorded',                          info.Idle.slots, 9);
+
+    -- --- dropNote: the one sentence the copy prints.
+    check('AC41 dropNote nil when nothing was dropped', ac.dropNote(info.Idle), nil);
+    check('AC42 dropNote names the augment',
+          (ac.dropNote(info.PrecastGeneral) or ''):find('augment filter', 1, true) ~= nil, true);
+    check('AC43 dropNote names the lock',
+          (ac.dropNote(info.PrecastGeneral) or ''):find('lock attribute', 1, true) ~= nil, true);
+    check('AC44 dropNote on junk is nil', ac.dropNote('nope'), nil);
+
+    -- --- setNames: sorted, case-insensitive.
+    local names = ac.setNames(sets);
+    check('AC45 setNames count', #names, 11);
+    check('AC46 setNames sorted', names[1], 'Barspell');
+    check('AC47 setNames on junk -> empty', #ac.setNames(nil), 0);
+
+    -- --- No <sets> wrapper: fall back to the whole document. This is where the
+    --     '<set' guard earns its keep -- <setvar> is one character from a match.
+    local bare, _, bnotes = ac.parse('<setvar name="x" value="1" />\n<set name="Solo"><head>Zenith Crown</head></set>');
+    check('AC48 wrapper-less document still yields the set', bare.Solo.Head, 'Zenith Crown');
+    check('AC49 ...and <setvar> is still not one',           bare.x, nil);
+    check('AC50 ...exactly one set',
+          (function() local n=0; for _ in pairs(bare) do n=n+1 end return n; end)(), 1);
+    check('AC51 a clean parse reports no notes', #bnotes, 0);
+
+    -- --- degenerate input never throws and never returns nil (callers do not
+    --     branch on nil -- hard rule 12's shape).
+    local e1, e2, e3 = ac.parse('');
+    check('AC52 empty text -> empty sets', type(e1), 'table');
+    check('AC53 ...with an info table',    type(e2), 'table');
+    check('AC54 ...and a note saying so',  #e3 > 0, true);
+    check('AC55 nil text tolerated',       type((ac.parse(nil))), 'table');
+    check('AC56 non-XML text tolerated',   type((ac.parse('hello world'))), 'table');
+    local _, _, n56 = ac.parse('hello world');
+    check('AC57 ...and says it found no sets',
+          (table.concat(n56, ' ')):find('No <set> entries', 1, true) ~= nil, true);
 end)();
 
 -- ---------------------------------------------------------------------------
@@ -12743,8 +12983,120 @@ end)();
     check('PSL10 old-home statics are reachable', names(ps3.staticSetNames()), 'Idle,OldHomeStatic,Tp');
     check('PSL11 old-home Dynamic sets are reachable', names(ps3.lacSetNames()), 'JobDyn,OldHomeDyn');
 
+    -- 4. ASHITACAST (LegacyAC, 2026-07-31): the THIRD source, read end to end --
+    --    profiles.legacyacPath -> the file on disk -> acimport -> the picker's
+    --    column. This is the tier that opens a real file, so it is pinned here
+    --    rather than only against acimport's pure parse.
+    local ACXML = 'tests/_tmp_psl_ac.xml';
+    local fx = assert(io.open(ACXML, 'w'));
+    fx:write('<ashitacast><sets>\n'
+        .. '  <set name="Idle"><main>Tamaxchi</main><lring>Tamas Ring</lring></set>\n'
+        .. '  <set name="AcOnly" baseset="Idle"><head augment="S1">Zenith Crown</head></set>\n'
+        .. '</sets></ashitacast>\n');
+    fx:close();
+    package.loaded['dlac\\gear\\acimport'] = dofile('gear/acimport.lua');
+    local ps4 = freshWith({ hasSetsFile = function() return true; end,
+                            readSetsFile = function() return { Live = {} }; end,
+                            backupPath = function() return nil; end,
+                            legacyBackupPath = function() return nil; end,
+                            legacyacPath = function() return ACXML; end });
+    check('PSL12 Ashitacast sets are read off disk', names(ps4.acSetNames()), 'AcOnly,Idle');
+    check('PSL13 ...as slot tables the import transform eats', ps4.getAcSets().Idle.Main, 'Tamaxchi');
+    check('PSL14 ...with baseset resolved',        ps4.getAcSets().AcOnly.Ring1, 'Tamas Ring');
+    check('PSL15 ...and per-set info for the drop note', ps4.acSetInfo().AcOnly.augments, 1);
+    check('PSL16 a clean file leaves no notes',    #ps4.acNotes(), 0);
+    check('PSL16a ...and NAMES the file it read',  ps4.acSource(), ACXML);
+    -- THE LAW: an Ashitacast set is an import source and nothing else. It must not
+    -- reach the sets root, the live list (trigger targets -- a trigger pointing at
+    -- one would match and equip NOTHING), or the FFXI-LAC column. Asserted by
+    -- ABSENCE of the XML-only name, not by list equality: the job file fixture
+    -- above contributes its own Idle/Tp/JobDyn to every one of these lists.
+    check('PSL17 never live', names(ps4.liveSetNames()):find('AcOnly', 1, true) == nil, true);
+    check('PSL18 never in the root', ps4.getSetsRoot().AcOnly, nil);
+    check('PSL19 not an FFXI-LAC source either',
+          names(ps4.lacSetNames()):find('AcOnly', 1, true) == nil, true);
+    -- ...and the picker's column, on real reader output: "Idle" exists in BOTH the
+    -- job file and the XML, and both must survive -- they are different sets.
+    local merged4 = simport.mergeLegacySources(ps4.staticSetNames(), ps4.lacSetNames(), ps4.acSetNames());
+    check('PSL20 merged column keeps both Idles', (function()
+        local acc = {};
+        for _, s in ipairs(merged4) do acc[#acc + 1] = s.name .. ':' .. s.kind; end
+        return table.concat(acc, ',');
+    end)(), 'AcOnly:ac,Idle:ac,Idle:static,JobDyn:lac,Tp:static');
+
+    -- No file (the normal case -- almost nobody has ever run the plugin): empty,
+    -- never nil, and nothing said about a file the player has never had.
+    local ps5 = freshWith({ hasSetsFile = function() return false; end,
+                            backupPath = function() return nil; end,
+                            legacyBackupPath = function() return nil; end,
+                            legacyacPath = function() return 'tests/_tmp_psl_absent.xml'; end });
+    check('PSL21 absent XML -> empty column', #ps5.acSetNames(), 0);
+    check('PSL22 ...and getAcSets is a table, not nil', type(ps5.getAcSets()), 'table');
+    check('PSL23 ...and says nothing about it', #ps5.legacyDiag(), 0);
+
+    -- A file that IS there and yields nothing NAMES ITSELF (hard rule 12: "you have
+    -- no Ashitacast sets" and "your XML did not parse" must not be one silence).
+    local JUNK = 'tests/_tmp_psl_junk.xml';
+    local fj = assert(io.open(JUNK, 'w')); fj:write('<ashitacast><sets></sets></ashitacast>\n'); fj:close();
+    local ps6 = freshWith({ hasSetsFile = function() return false; end,
+                            backupPath = function() return nil; end,
+                            legacyBackupPath = function() return nil; end,
+                            legacyacPath = function() return JUNK; end });
+    check('PSL24 an empty XML is reported', (function()
+        for _, d in ipairs(ps6.legacyDiag()) do
+            if tostring(d.file):find('junk', 1, true) then return true; end
+        end
+        return false;
+    end)(), true);
+
+    -- The HOME IS A SEARCH (field 2026-07-31). Henrik dropped his file in
+    -- config\addons\legacyac\ -- the addons convention, because that is where
+    -- luashitacast\ and dlac\ live -- while dlac looked only in the readme's
+    -- config\legacyac\. The column was empty and said nothing, which reads as
+    -- "dlac cannot see Ashitacast files". Every realistic home is tried now, and
+    -- these pin the two halves that matter: a LATER candidate is still found,
+    -- and an EARLIER one still wins when both exist.
+    local ALT = 'tests/_tmp_psl_ac_alt.xml';
+    local fa = assert(io.open(ALT, 'w'));
+    fa:write('<ashitacast><sets><set name="FromAlt"><feet>Zenith Pumps</feet></set></sets></ashitacast>\n');
+    fa:close();
+    local ps4b = freshWith({ hasSetsFile = function() return false; end,
+                             backupPath = function() return nil; end,
+                             legacyBackupPath = function() return nil; end,
+                             -- first candidate absent, second present: the exact field shape
+                             legacyacPaths = function() return { 'tests/_tmp_psl_absent.xml', ALT }; end });
+    check('PSL16b a file in a LATER candidate home is still found', names(ps4b.acSetNames()), 'FromAlt');
+    check('PSL16c ...and the source names that home', ps4b.acSource(), ALT);
+
+    local ps4c = freshWith({ hasSetsFile = function() return false; end,
+                             backupPath = function() return nil; end,
+                             legacyBackupPath = function() return nil; end,
+                             legacyacPaths = function() return { ACXML, ALT }; end });
+    check('PSL16d both present -> the FIRST (canonical) home wins', names(ps4c.acSetNames()), 'AcOnly,Idle');
+    check('PSL16e ...and says so',  ps4c.acSource(), ACXML);
+
+    -- No candidate reads: nothing found, nothing claimed, no source.
+    local ps4d = freshWith({ hasSetsFile = function() return false; end,
+                             backupPath = function() return nil; end,
+                             legacyBackupPath = function() return nil; end,
+                             legacyacPaths = function() return { 'tests/_tmp_a.xml', 'tests/_tmp_b.xml' }; end });
+    check('PSL16f no candidate reads -> empty', #ps4d.acSetNames(), 0);
+    check('PSL16g ...and no source claimed',    ps4d.acSource(), nil);
+    os.remove(ALT);
+
+    -- Without the reader module the column degrades to empty -- it never takes the
+    -- rest of the Copy-from picker down with it.
+    package.loaded['dlac\\gear\\acimport'] = nil;
+    local ps7 = freshWith({ hasSetsFile = function() return false; end,
+                            backupPath = function() return nil; end,
+                            legacyBackupPath = function() return nil; end,
+                            legacyacPath = function() return ACXML; end });
+    check('PSL25 no acimport -> empty column, not an error', #ps7.acSetNames(), 0);
+    check('PSL26 ...and the other sources still work', names(ps7.staticSetNames()), 'Idle,Tp');
+    package.loaded['dlac\\gear\\acimport'] = dofile('gear/acimport.lua');
+
     package.loaded['dlac\\profiles'] = savedProf;
-    os.remove(JOB); os.remove(BACKUP); os.remove(LEGACY);
+    os.remove(JOB); os.remove(BACKUP); os.remove(LEGACY); os.remove(ACXML); os.remove(JUNK);
 end)();
 
 -- PSM. Legacy files that fight back (field 2026-07-28, a second tester's SCH.lua:
@@ -17632,6 +17984,33 @@ end)();
     end)(), 'engage');
     cb.reset(true);
     check('CBT31 reset(true) drops the subscribers too', cb.subscriberCount(), 0);
+
+    -- THE LIVE SHAPE. Every check above feeds VALUES, and the live table
+    -- (M.reads) is FUNCTIONS -- so the whole service could answer a function
+    -- reference for `engaged` and stay green, which is exactly what it did
+    -- (2026-07-30: every helper on the beat read "not engaged" forever, because
+    -- a function is never == true). The reads are driven here the way the
+    -- addon drives them: through get() and pump(), off M.reads itself.
+    local live = { engaged = function() return true; end,
+                   target  = function() return 0x2E1; end,
+                   swung   = function() return true; end,
+                   nameOf  = function() return 'Nursery Nazuna'; end };
+    local fn = cb.fromReads(live);
+    check('CBT32 a read that is a FUNCTION is called, not stored', fn.engaged, true);
+    check('CBT33 ...the target too, so the beat has a target at all', fn.targetIndex, 0x2E1);
+    check('CBT34 ...and the swing', fn.swung, true);
+    check('CBT35 ...and the name still resolves off the called target', fn.targetName, 'Nursery Nazuna');
+
+    cb.reads = live;
+    check('CBT36 get() reads the LIVE table the addon actually passes', cb.get().engaged, true);
+    check('CBT37 ...and a gate can trust it (engaged ~= true must be FALSE here)',
+          cb.get().engaged ~= true, false);
+    cb.subscribe('live', function() end);
+    check('CBT38 the published beat carries values, never the readers',
+          cb.pump(900).targetIndex, 0x2E1);
+    check('CBT39 a read that THROWS is unreadable (nil), not a crash',
+          cb.fromReads({ engaged = function() error('no core'); end }).engaged, nil);
+    cb.reset(true);
 end)();
 
 -- ---------------------------------------------------------------------------
@@ -19580,6 +19959,224 @@ end)();
     kb.forget();
     package.loaded['dlac\\feature\\keybinds'] = nil;
     gData = nil;
+end)();
+
+-- ---------------------------------------------------------------------------
+-- FW: what you last ate (feature\foodwatch).
+--
+-- The module's whole claim is that it can tell FOOD from any other usable item
+-- without shipping a food list: an outgoing item use says WHICH item, and the
+-- FOOD effect moving right afterwards says it was food. Both halves of that are
+-- pinned here, including the one a presence-only reading would get wrong --
+-- eating over a live food, where the icon never flickers and only the EXPIRY
+-- moves.
+--
+-- charDir is stubbed to nil for the whole section, so path() is nil, load() is a
+-- no-op and save() writes nothing: these tests touch no disk. The live reads go
+-- in as a table pump CALLS, which is the same table shape the live path builds
+-- (the combat.lua lesson: a core that stops calling its reads must fail HERE,
+-- not ship green).
+-- ---------------------------------------------------------------------------
+(function()
+    local savedSF   = package.loaded['dlac\\lib\\statefile'];
+    local savedCF   = package.loaded['dlac\\chatfmt'];
+    local savedCore = AshitaCore;
+    local savedReg  = ashita.events.register;
+
+    local said = {};
+    package.loaded['dlac\\lib\\statefile'] = { charDir = function() return nil; end };
+    package.loaded['dlac\\chatfmt'] = { print = function(s) said[#said + 1] = tostring(s); end };
+
+    local handlers = {};
+    ashita.events.register = function(ev, nm, fn) handlers[ev .. '/' .. nm] = fn; end
+    local okLoad, fw = pcall(dofile, 'feature/foodwatch.lua');
+    ashita.events.register = savedReg;
+    package.loaded['dlac\\lib\\statefile'] = savedSF;
+
+    check('FW0 foodwatch loads headlessly', okLoad and type(fw), 'table');
+if okLoad and type(fw) == 'table' then
+
+    -- --- the outgoing item use: WHICH item (equipengine.parseItemUse's twin)
+    local pkt = string.rep('\0', 0x0E) .. string.char(7) .. '\0' .. string.char(3);
+    local u = fw._parseItemUse(pkt);
+    check('FW1 the item index is read off OUT 0x037', u and u.itemIndex, 7);
+    check('FW1b ...and the container beside it', u and u.container, 3);
+    check('FW2 a short packet names nothing', fw._parseItemUse('\0\0\0\0'), nil);
+
+    -- --- _step: the one decision
+    local S = function(food) return { food = food }; end
+    local PEND = { id = 4381, at = 100 };
+    check('FW3 food appears after a use -> that use was food',
+          fw._step(S(nil), 101, { present = true, expiry = 500 }, PEND), PEND);
+    check('FW4 no item use pending -> nothing was eaten',
+          fw._step(S(nil), 101, { present = true, expiry = 500 }, nil), nil);
+    check('FW5 a use older than the window is not attributable',
+          fw._step(S(nil), 100 + fw.WINDOW + 1, { present = true, expiry = 500 }, PEND), nil);
+    -- The potion case: food was already up and STAYS at the same expiry.
+    check('FW6 a use that leaves the expiry alone is not food',
+          fw._step(S({ present = true, expiry = 500 }), 101, { present = true, expiry = 500 }, PEND), nil);
+    -- The case presence alone gets wrong: eating over a live food.
+    check('FW7 eating over live food moves the expiry -> recorded',
+          fw._step(S({ present = true, expiry = 500 }), 101, { present = true, expiry = 900 }, PEND), PEND);
+    check('FW7b ...and with no timer array to read, a re-eat stays unknowable',
+          fw._step(S({ present = true, expiry = nil }), 101, { present = true, expiry = nil }, PEND), nil);
+    check('FW8 the effect being gone is never a meal',
+          fw._step(S(nil), 101, { present = false }, PEND), nil);
+    -- A dropped read must not blank the last known state, or the next good read
+    -- looks like an appearance and the next item used becomes "food".
+    local st = S({ present = true, expiry = 500 });
+    fw._step(st, 101, nil, PEND);
+    check('FW9 an unreadable poll keeps the last known effect', st.food.expiry, 500);
+    check('FW9b ...so the good read after it is not a fake appearance',
+          fw._step(st, 102, { present = true, expiry = 500 }, PEND), nil);
+
+    -- --- the history
+    local H = {};
+    fw._remember(H, { id = 1, name = 'Sole Sushi', at = 10 }, 10);
+    fw._remember(H, { id = 2, name = 'Meat Mithkabob', at = 20 }, 10);
+    check('FW10 the newest food is first', H[1].name, 'Meat Mithkabob');
+    check('FW10b ...and the one before it is kept', H[2].name, 'Sole Sushi');
+    fw._remember(H, { id = 1, name = 'Sole Sushi', at = 30 }, 10);
+    check('FW11 eating it again makes no second row', #H, 2);
+    check('FW11b ...it moves to the front', H[1].name, 'Sole Sushi');
+    check('FW11c ...and the meal is counted', H[1].n, 2);
+    for i = 3, 12 do fw._remember(H, { id = i, name = 'Food ' .. i, at = 40 + i }, 10); end
+    check('FW12 the history is capped', #H, 10);
+    check('FW12b ...dropping the oldest', H[10].name, 'Food 3');
+
+    -- --- the menu pick: the two most recent you are CARRYING
+    local stock = { [1] = 0, [2] = 5, [3] = 0, [4] = 2 };
+    local L = { { id = 1, name = 'A' }, { id = 2, name = 'B' }, { id = 3, name = 'C' }, { id = 4, name = 'D' } };
+    local picked = fw._pick(L, function(e) return stock[e.id] or 0; end, 2);
+    check('FW13 a food you have run out of is walked past', #picked, 2);
+    check('FW13b ...to the next one you still have', picked[1].name, 'B');
+    check('FW13c ...and the one after that', picked[2].name, 'D');
+    check('FW13d the row carries what /item needs', picked[1].cmd, '/item "B" <me>');
+    check('FW13e ...and how many are left', picked[1].count, 5);
+    check('FW14 carrying nothing lists nothing',
+          #fw._pick(L, function() return 0; end, 2), 0);
+
+    -- --- disk shape (round trip; nothing is written)
+    local round = fw._fromRaw((loadstring or load)(fw._serialize(H))());
+    check('FW15 the file round-trips', #round, #H);
+    check('FW15b ...in order', round[1].name, H[1].name);
+    check('FW15c ...with the meal count', round[1].n, H[1].n);
+    check('FW16 a row with no name is dropped rather than half-understood',
+          #fw._fromRaw({ fmt = 1, foods = { { id = 9 }, { id = 8, name = 'Ok' } } }), 1);
+
+    -- --- pump: the live path, driven with injected reads it must CALL
+    fw._reset();
+    fw._pending = { id = 4381, at = 100 };
+    local saves, asked = 0, { clock = 0, food = 0, name = 0 };
+    local reads = {
+        clock  = function() asked.clock = asked.clock + 1; return 101; end,
+        stamp  = function() return 1700000000; end,
+        food   = function() asked.food = asked.food + 1; return { present = true, expiry = 555 }; end,
+        nameOf = function(id) asked.name = asked.name + 1;
+                              return (id == 4381) and 'Meat Mithkabob' or nil; end,
+        save   = function() saves = saves + 1; return true; end,
+    };
+    local rec = fw.pump(reads);
+    check('FW17 the pump records the food that was just eaten', rec and rec.name, 'Meat Mithkabob');
+    check('FW17b ...stamping when', rec and rec.at, 1700000000);
+    check('FW17c ...and the expiry it landed on', rec and rec.expiry, 555);
+    check('FW17d ...saving once', saves, 1);
+    check('FW17e ...and consuming the pending use', fw._pending, nil);
+    check('FW17f the pump really asked its reads', asked.clock >= 1 and asked.food >= 1 and asked.name >= 1, true);
+    check('FW18 a second beat with nothing pending records nothing', fw.pump(reads), nil);
+    check('FW18b ...and does not save again', saves, 1);
+    -- An item we cannot name is an item we could never /item: not recorded.
+    fw._pending = { id = 99999, at = 100 };
+    reads.food = function() return { present = true, expiry = 777 }; end
+    check('FW19 an unnameable item is not remembered', fw.pump(reads), nil);
+    check('FW19b ...and the history is untouched', #fw.history, 1);
+
+    -- --- status: which food is up (Henrik's ruling, 2026-07-30 -- dlac is always
+    -- loaded, so the effect being up means it is the last thing we recorded)
+    local sres = fw.status();
+    check('FW20 the effect is up', sres.active, true);
+    check('FW20b ...and it is NAMED off the history', sres.current and sres.current.name, 'Meat Mithkabob');
+
+    -- --- the live surfaces, over a stubbed bag
+    local BAG0 = { [1] = { Id = 4381, Count = 12 }, [2] = { Id = 4271, Count = 3 } };
+    local queued = {};
+    AshitaCore = {
+        GetMemoryManager = function(self) return {
+            GetInventory = function(self2) return {
+                GetContainerCountMax = function(self3, bag) return (bag == 0) and 4 or 0; end,
+                GetContainerItem = function(self3, bag, i)
+                    if bag ~= 0 then return nil; end
+                    return BAG0[i];
+                end,
+            }; end,
+        }; end,
+        GetChatManager = function(self) return {
+            QueueCommand = function(self2, n, cmd) queued[#queued + 1] = cmd; end,
+        }; end,
+    };
+
+    fw._reset();
+    fw._remember(fw.history, { id = 4381, name = 'Meat Mithkabob', at = 1 }, 10);
+    fw._remember(fw.history, { id = 5555, name = 'Sole Sushi', at = 2 }, 10);   -- newest, NOT carried
+    local rows = fw.menu();
+    check('FW21 the menu shows only what is in Inventory', #rows, 1);
+    check('FW21b ...naming it', rows[1].name, 'Meat Mithkabob');
+    check('FW21c ...with the live count', rows[1].count, 12);
+
+    -- A meal eaten NOW must show up in the menu on this frame, not after the bag
+    -- cache times out -- the one second you would wait is exactly the second you
+    -- would spend looking for the row.
+    fw._pending = { id = 4271, at = 100 };
+    fw._state.food = { present = true, expiry = 1 };
+    local rec2 = fw.pump({
+        clock  = function() return 101; end,
+        stamp  = function() return 5; end,
+        food   = function() return { present = true, expiry = 2 }; end,
+        nameOf = function() return 'Rice Dumpling'; end,
+        save   = function() return true; end,
+    });
+    check('FW21d the food just eaten heads the history', rec2 and rec2.name, 'Rice Dumpling');
+    local rows2 = fw.menu();
+    check('FW21e ...and the menu shows it without waiting out its cache',
+          rows2[1] and rows2[1].name, 'Rice Dumpling');
+    check('FW21f ...with the one you ate before it underneath',
+          rows2[2] and rows2[2].name, 'Meat Mithkabob');
+
+    -- the packet handler: WHICH item, stashed and nothing else
+    local pout = handlers['packet_out/dlac-foodwatch-out'];
+    check('FW22 the item-use handler registered', type(pout), 'function');
+    if type(pout) == 'function' then
+        fw._pending = nil;
+        pout({ id = 0x37, data = string.rep('\0', 0x0E) .. string.char(1) .. '\0' .. string.char(0) });
+        check('FW22b it stashes the id the bag slot holds', fw._pending and fw._pending.id, 4381);
+        fw._pending = nil;
+        pout({ id = 0x1A, data = string.rep('\0', 0x20) });
+        check('FW22c ...and ignores every other packet', fw._pending, nil);
+    end
+
+    -- the command
+    local cmd = handlers['command/dlac-foodwatch'];
+    check('FW23 /dl food registered', type(cmd), 'function');
+    if type(cmd) == 'function' then
+        said, queued = {}, {};
+        local ev = { command = '/dl food 1', blocked = false };
+        cmd(ev);
+        check('FW23b it owns the command', ev.blocked, true);
+        check('FW23c ...and eats the row', queued[1], '/item "Rice Dumpling" <me>');
+        said, queued = {}, {};
+        cmd({ command = '/dl food 9', blocked = false });
+        check('FW24 asking for a row that is not there eats nothing', #queued, 0);
+        check('FW24b ...and says why', (said[1] or ''):find('no food 9', 1, true) ~= nil, true);
+        said = {};
+        local ev2 = { command = '/dl fishing', blocked = false };
+        cmd(ev2);
+        check('FW25 another /dl subcommand falls straight through', ev2.blocked, false);
+    end
+end
+
+    AshitaCore = savedCore;
+    package.loaded['dlac\\chatfmt'] = savedCF;
+    package.loaded['dlac\\feature\\foodwatch'] = nil;
 end)();
 
 -- The warm-note artifact the dispatch-driving sections leave behind (dataDir

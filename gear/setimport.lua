@@ -8,7 +8,18 @@
 
       importStaticSet(staticSet, slotLabels, resolve) ->
         { working = { slotLabel -> { entry, ... } }, notBestFirst = { slotLabel, ... },
-          slotCount = <#slots with >=1 resolved candidate> }
+          slotCount = <#slots with >=1 resolved candidate>,
+          missing = { 'Item Name', ... }, missingCount = <#candidates dropped> }
+
+    MISSING GEAR IS NEVER A REFUSAL (Henrik 2026-07-31). A candidate the resolver
+    cannot place is skipped and the set imports without it -- that was always true
+    per-candidate, but it was SILENT, and a set where nothing resolved used to be
+    refused outright ("nothing to copy"), which reads as "the import is broken"
+    when the honest answer is "you don't own this gear yet". So the drops are now
+    COUNTED and NAMED: `missing` is the distinct item names in first-seen order
+    (nil for a candidate too broken to name -- a MISSING sentinel has no readable
+    Name), `missingCount` is every dropped candidate including those. The caller
+    imports regardless and says what was left out.
 
     FULL-REPLACE: only slots the static defines (and that resolve to >=1 owned/known
     candidate) appear in `working`; every other slot is absent, so the caller drops the
@@ -43,20 +54,52 @@ function M.isBestFirst(items)
     return true;
 end
 
+-- The player-facing NAME of a set element, or nil when it has none. Every source
+-- shape is read TYPED, never merely non-nil: profilesets' MISSING sentinel and
+-- its require STUB answer EVERY key with themselves by construction, so
+-- `elem.Name` on one is a TABLE, not a string -- the same lesson resolveSetItem
+-- learned when string.lower() on a sentinel took a whole set down.
+local function elemName(elem)
+    if type(elem) == 'string' then return elem; end
+    if type(elem) ~= 'table' then return nil; end
+    if type(elem.Name) == 'string' then return elem.Name; end
+    local g = elem.gear;                    -- { gear = ref, minLevel, ... } wrapper
+    if type(g) == 'string' then return g; end
+    if type(g) == 'table' and type(g.Name) == 'string' then return g.Name; end
+    return nil;
+end
+M.elemName = elemName;
+
 -- staticSet  : the source set table (slotLabel -> element | ordered list of elements)
 -- slotLabels : ordered array of slot descriptors -- either { label = 'Main', ... } (the
 --              Sets tab's EQUIP_SLOTS) or plain label strings
 -- resolve    : function(elem) -> working entry ({ rec = { Level = N, ... }, ... }) or nil
---              (nil = unowned/unknown -> the candidate is dropped)
+--              (nil = unowned/unknown -> the candidate is dropped, counted and named)
 function M.importStaticSet(staticSet, slotLabels, resolve)
     local working, notBestFirst, slotCount = {}, {}, 0;
+    local missing, missingSeen, missingCount = {}, {}, 0;
+    local function dropped(elem)
+        missingCount = missingCount + 1;
+        local nm = elemName(elem);
+        if nm == nil then return; end               -- unnameable: counted, not listed
+        local k = string.lower(nm);
+        if missingSeen[k] then return; end          -- distinct names, first-seen order
+        missingSeen[k] = true;
+        missing[#missing + 1] = nm;
+    end
     if type(staticSet) ~= 'table' or type(slotLabels) ~= 'table'
        or type(resolve) ~= 'function' then
-        return { working = working, notBestFirst = notBestFirst, slotCount = 0 };
+        return { working = working, notBestFirst = notBestFirst, slotCount = 0,
+                 missing = missing, missingCount = 0 };
     end
     for _, sl in ipairs(slotLabels) do
         local label = (type(sl) == 'table') and sl.label or sl;
         local slotVal = (label ~= nil) and staticSet[label] or nil;
+        -- An EMPTY list is "this slot has no candidates", not a candidate that
+        -- failed -- wrapping it as { {} } below would resolve to nil and inflate
+        -- the missing count with a piece nobody ever named. A gear record always
+        -- has keys, so `next` separates the two safely.
+        if type(slotVal) == 'table' and next(slotVal) == nil then slotVal = nil; end
         if slotVal ~= nil then
             -- List (_Priority / Dynamic) vs single element (a plain static slot): a
             -- gear.lua record is a table with no [1], so { slotVal } wraps it as a
@@ -68,9 +111,10 @@ function M.importStaticSet(staticSet, slotLabels, resolve)
                 -- validated in years, and one entry the resolver chokes on used to
                 -- take the whole set with it -- reported as "no owned/known gear",
                 -- indistinguishable from an empty set (hard rule 12). A candidate
-                -- that cannot be resolved is simply skipped.
+                -- that cannot be resolved is skipped, counted and named.
                 local ok, it = pcall(resolve, elem);
-                if ok and it ~= nil then items[#items + 1] = it; end
+                if ok and it ~= nil then items[#items + 1] = it;
+                else dropped(elem); end
             end
             if #items > 0 then
                 working[label] = items;
@@ -79,7 +123,27 @@ function M.importStaticSet(staticSet, slotLabels, resolve)
             end
         end
     end
-    return { working = working, notBestFirst = notBestFirst, slotCount = slotCount };
+    return { working = working, notBestFirst = notBestFirst, slotCount = slotCount,
+             missing = missing, missingCount = missingCount };
+end
+
+-- The missing list as ONE player-facing clause, capped so a set of 15 unowned
+-- pieces does not print a paragraph. nil when nothing was dropped.
+--   missing      : distinct names (importStaticSet's `missing`)
+--   missingCount : total dropped candidates, names or not
+function M.missingNote(missing, missingCount, cap)
+    local n = tonumber(missingCount) or 0;
+    if n <= 0 then return nil; end
+    cap = tonumber(cap) or 10;
+    local names = (type(missing) == 'table') and missing or {};
+    if #names == 0 then
+        return string.format('%d piece%s skipped -- not in your gear.lua', n, (n == 1) and '' or 's');
+    end
+    local shown = {};
+    for i = 1, math.min(#names, cap) do shown[i] = names[i]; end
+    local tail = (#names > cap) and string.format(' (+%d more)', #names - cap) or '';
+    return string.format('%d piece%s skipped -- you do not own: %s%s',
+        n, (n == 1) and '' or 's', table.concat(shown, ', '), tail);
 end
 
 -- The "Copy from" picker's LEGACY column. One old FFXI-LAC job file holds BOTH
@@ -91,11 +155,18 @@ end
 -- Case-insensitive, like every other set-name rule here (the Sets tab compares
 -- via string.lower), and sorted by name so the picker reads alphabetically.
 --
---   staticNames / lacNames : arrays of set-name strings
---   -> ordered array of { name = 'Idle', kind = 'lac'|'static' }
-function M.mergeLegacySources(staticNames, lacNames)
-    local out, taken = {}, {};
-    local function add(names, kind)
+-- ASHITACAST (acNames, 2026-07-31) is a THIRD kind and gets its OWN name space:
+-- it comes from a different engine's file entirely (config\legacyac\<Char>_<JOB>
+-- .xml), so an "Idle" there and an "Idle" in the old FFXI-LAC job file are two
+-- unrelated sets that merely share a name -- deduping them would silently hide
+-- one. The dedupe that DOES apply above exists because those two sources are the
+-- same file. Ashitacast names dedupe only against each other.
+--
+--   staticNames / lacNames / acNames : arrays of set-name strings
+--   -> ordered array of { name = 'Idle', kind = 'lac'|'static'|'ac' }
+function M.mergeLegacySources(staticNames, lacNames, acNames)
+    local out = {};
+    local function add(names, kind, taken)
         if type(names) ~= 'table' then return; end
         for _, nm in ipairs(names) do
             local s = tostring(nm);
@@ -106,12 +177,15 @@ function M.mergeLegacySources(staticNames, lacNames)
             end
         end
     end
-    add(lacNames, 'lac');          -- dynamics claim their names first...
-    add(staticNames, 'static');    -- ...statics only fill what is left
+    local jobFileNames = {};       -- the ONE old job file's name space
+    add(lacNames, 'lac', jobFileNames);          -- dynamics claim their names first...
+    add(staticNames, 'static', jobFileNames);    -- ...statics only fill what is left
+    add(acNames, 'ac', {});                      -- a different file: its own name space
     table.sort(out, function(a, b)
         local la, lb = string.lower(a.name), string.lower(b.name);
         if la ~= lb then return la < lb; end
-        return a.name < b.name;
+        if a.name ~= b.name then return a.name < b.name; end
+        return a.kind < b.kind;    -- one spelling, two files: still a total order
     end);
     return out;
 end

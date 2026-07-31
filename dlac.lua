@@ -18,7 +18,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.07.30e';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.07.31d';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
                                 -- (29k = the day-match train 29h merged with 29i/29j)
 addon.desc    = 'Gear sets, triggers and live stats with level scaling -- dlac equips your gear itself.';
@@ -257,7 +257,7 @@ for _, mod in ipairs({ 'gear', 'feature\\augments', 'gear\\gearoptim', 'gear\\ge
                        'feature\\synthrun',
                        'ui\\craftbar', 'feature\\helmwatch', 'ui\\helmbar',
                        'feature\\fishwatch', 'ui\\fishbar', 'feature\\chocowatch',
-                       'feature\\meritwatch', 'feature\\integration',
+                       'feature\\meritwatch', 'feature\\integration', 'feature\\foodwatch',
                        'feature\\engagewatch', 'feature\\petvitals', 'feature\\combat',
                        'feature\\check', 'feature\\debug', 'feature\\lockstyle',
                        'feature\\lockstyleapply', 'feature\\equipengine',

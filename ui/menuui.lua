@@ -256,6 +256,87 @@ local function menuRow(r, col)
     return hit == true;
 end
 
+-- imgui text is printf: an unescaped '%' in a name prints a heap address (the
+-- panelkit law, 2026-07-30). Item names carry none today, but they come from the
+-- game rather than from this file, so nothing reaches imgui unescaped.
+local function esc(s) return (tostring(s):gsub('%%', '%%%%')); end
+
+local function queue(cmd)
+    pcall(function() AshitaCore:GetChatManager():QueueCommand(1, cmd); end);
+end
+
+-- ---------------------------------------------------------------------------
+-- THE FOOD SECTION -- the two most recently eaten foods you are actually
+-- CARRYING, one click each (feature\foodwatch owns which two and why).
+--
+-- ONE definition, two call sites: this menu and the Teleports popup, which is
+-- also the floating quick menu -- the surface you can reach mid-fight without
+-- opening the main window, which is exactly when a food wears off. Same reason
+-- the Hobby bar and Lockstyle rows appear in both (gearui.renderQuickWindowRow).
+--
+-- Geometry is passed in because those two places size their rows differently;
+-- everything else -- what a row IS, what clicking one does -- lives here so it
+-- cannot drift between them.
+--
+-- Draws NOTHING when you have eaten nothing, or have none of it left: an empty
+-- section would be a permanent reminder that you are out of food. Returns the
+-- number of rows drawn so a caller can react to that.
+-- ---------------------------------------------------------------------------
+function M.renderFoodSection(opts)
+    if not hasImgui then return 0; end
+    opts = (type(opts) == 'table') and opts or {};
+    local rows = nil;
+    pcall(function() rows = require('dlac\\feature\\foodwatch').menu(); end);
+    if type(rows) ~= 'table' or #rows == 0 then return 0; end
+
+    local iconW  = tonumber(opts.iconW) or M._ICON_W;
+    local labelX = tonumber(opts.labelX) or M._LABEL_X;
+    local rowH   = tonumber(opts.rowH) or M._ROW_H;
+    local col    = opts.col or (D ~= nil and D.COL ~= nil and D.COL.USABLE) or { 1, 1, 1, 1 };
+    local dim    = opts.dim or (D ~= nil and D.COL ~= nil and D.COL.DIM) or { 0.6, 0.6, 0.6, 1 };
+
+    imgui.Separator();
+    imgui.TextColored(dim, 'Recently eaten');
+    local drewN = 0;
+    for i, r in ipairs(rows) do
+        local hit, sized = false, false;
+        pcall(function()
+            hit = imgui.Selectable('##dlacfood_' .. i, false,
+                                   (ImGuiSelectableFlags_None or 0), { 0, rowH });
+            sized = true;
+        end);
+        if not sized then hit = imgui.Selectable('##dlacfood_' .. i); end
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip(esc(string.format(
+                'Eat %s -- one of the %d in your Inventory.\nLast eaten %s.',
+                r.name, r.count,
+                require('dlac\\feature\\foodwatch')._fmtAgo(os.time() - (r.at or 0)))));
+        end
+        imgui.SameLine(M._ICON_GAP);
+        -- The item's OWN icon, from the game's resource (ui\itemicons retains the
+        -- texture object -- a bare handle is the dangling-pointer crash). No PNG
+        -- to ship and nothing to keep in step with the food list.
+        local drew = false;
+        pcall(function()
+            local h = require('dlac\\ui\\itemicons').handleOf(r.id);
+            if h == nil then return; end
+            imgui.Image(h, { iconW, iconW });
+            drew = true;
+        end);
+        if not drew then imgui.Dummy({ iconW, iconW }); end
+        imgui.SameLine(labelX);
+        imgui.TextColored(col, esc(r.name));
+        imgui.SameLine(0, 6);
+        imgui.TextColored(dim, esc('x' .. tostring(r.count)));
+        drewN = drewN + 1;
+        if hit then
+            queue(r.cmd);
+            if opts.closeOnPick ~= false then imgui.CloseCurrentPopup(); end
+        end
+    end
+    return drewN;
+end
+
 -- A Settings checkbox: the box, then the panel-text standard label (underlined key
 -- phrase + the explanation in a HOVER, never an inline paragraph). get() reads the
 -- live source EVERY frame, so this and the contextual checkbox elsewhere cannot drift.
@@ -539,6 +620,11 @@ function M.renderPopups()
                 imgui.CloseCurrentPopup();
             end
         end
+        -- Food rides UNDER the roster, not in it: every row above is a DOOR that
+        -- opens something, and these two are the only rows in this menu that spend
+        -- an item. Guarded like the popup bodies -- a food section that threw would
+        -- otherwise tear the imgui stack and blank the whole menu.
+        guarded('food rows', function() M.renderFoodSection({ col = COL.USABLE, dim = COL.DIM }); end);
         if debugOn then
             imgui.Separator();
             -- The section heading carries the debug icon once, in the same reserved

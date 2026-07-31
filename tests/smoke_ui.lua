@@ -2380,6 +2380,44 @@ end)();
         check('MN17 renders with an open-mode selected', pcall(mn.renderPopups), true);
         check('MN18 selected-mode tint balanced', depth.col, 0);
 
+        -- The FOOD section (2026-07-30): rows drawn INSIDE the menu popup from
+        -- feature\foodwatch -- a Selectable, the item's own texture and two coloured
+        -- labels each. Same crash class as everything else here, and the real module
+        -- draws nothing headlessly (no character, no bags), so it is driven with a
+        -- stub or it would never be rendered by this suite at all.
+        local savedFW = package.loaded['dlac\\feature\\foodwatch'];
+        local savedIC = package.loaded['dlac\\ui\\itemicons'];
+        local stubFW = {
+            _fmtAgo = function() return '5m ago'; end,
+            menu = function()
+                return { { id = 1, name = 'Sole Sushi',     count = 11, at = 0, cmd = '/item "Sole Sushi" <me>' },
+                         { id = 2, name = 'Meat Mithkabob', count = 3,  at = 0, cmd = '/item "Meat Mithkabob" <me>' } };
+            end,
+        };
+        package.loaded['dlac\\feature\\foodwatch'] = stubFW;
+        package.loaded['dlac\\ui\\itemicons'] = { handleOf = function() return 4242; end };
+        drew.selectable, drew.image = 0, 0;
+        check('MN18a renders with food to eat', pcall(mn.renderPopups), true);
+        check('MN18b food adds its two rows', drew.selectable, 9);
+        check('MN18c ...each with the item\'s own icon', drew.image, 2);
+        check('MN18d food: popup stack balanced', depth.popup, 0);
+        check('MN18e food: colour stack balanced', depth.col, 0);
+        -- Out of everything: the section must draw NOTHING -- an empty heading would
+        -- be a permanent reminder that you have no food.
+        stubFW.menu = function() return {}; end
+        drew.selectable = 0;
+        check('MN18f renders with nothing to eat', pcall(mn.renderPopups), true);
+        check('MN18g ...and the whole section vanishes', drew.selectable, 7);
+        -- A foodwatch that THROWS must cost its own rows, never the menu (guarded).
+        stubFW.menu = function() error('food boom'); end
+        drew.selectable = 0;
+        check('MN18h a throwing food section does not take the menu down',
+              pcall(mn.renderPopups), true);
+        check('MN18i ...the roster still drew', drew.selectable, 7);
+        check('MN18j ...and the popup stack survived it', depth.popup, 0);
+        package.loaded['dlac\\feature\\foodwatch'] = savedFW;
+        package.loaded['dlac\\ui\\itemicons'] = savedIC;
+
         -- activate() routes without imgui, and arms popups by flag (never nests)
         check('MN19 teleports row arms the existing popup',
             (function() mn.activate('teleports'); return ui._tpOpen; end)(), true);
@@ -2752,6 +2790,113 @@ end)();
     -- is TOOOOO much text... this is minimalistic and every word matters").
     local tip = src:match("SetTooltip%('(Locks current set[^\n]-)'%s*%.%.");
     check('LSP10 the hover opens with the one-line what-it-does', tip ~= nil, true);
+
+    -- The Copy from picker's ASHITACAST column (2026-07-31). Same reasoning as
+    -- above -- the Sets tab render has no smoke drive, so these are the pins
+    -- standing between a rename and a column that lists nothing, silently.
+    check('LSP11 the picker asks for the Ashitacast names',
+          src:find('profsets.acSetNames()', 1, true) ~= nil, true);
+    check('LSP12 ...and passes them as mergeLegacySources\' THIRD argument',
+          src:find('profsets%.lacSetNames%(%),%s*profsets%.acSetNames%(%)') ~= nil, true);
+    check('LSP13 the group is drawn under its own heading',
+          src:find("{ kind = 'ac',     title = 'Ashitacast sets' }", 1, true) ~= nil, true);
+
+    -- LSP13a-e: ONE list of legacy kinds, and every kind on it survives the whole
+    -- round trip. FIELD BUG (Henrik, 2026-07-31): the popup walks the kinds TWICE
+    -- -- once to draw rows, once to gather what was marked -- and those were two
+    -- separate literals. 'ac' went into the render only, so an Ashitacast set
+    -- ticked on screen gathered as nothing and Create answered "Mark at least one
+    -- set on the left first" over a visibly-marked set. Unfalsifiable by eye, so
+    -- it is pinned by construction: the kinds are read OUT of LEGACY_GROUPS and
+    -- each is required to be resolvable and nameable.
+    local groupsSrc = src:match('local LEGACY_GROUPS = {(.-)\n};');
+    check('LSP13a LEGACY_GROUPS exists', groupsSrc ~= nil, true);
+    local kinds = {};
+    if groupsSrc ~= nil then
+        for k in groupsSrc:gmatch("kind%s*=%s*'([%w_]+)'") do kinds[#kinds + 1] = k; end
+    end
+    check('LSP13b ...and lists all three legacy kinds', table.concat(kinds, ','), 'lac,static,ac');
+    -- The gather loop must read that same list -- not a literal of its own. This
+    -- exact line is what was missing.
+    check('LSP13c the mark GATHER iterates LEGACY_GROUPS',
+          src:find('for _, grp in ipairs(LEGACY_GROUPS) do', 1, true) ~= nil, true);
+    check('LSP13d ...and no second hardcoded kind list survives',
+          src:find("ipairs({ 'lac', 'static' })", 1, true), nil);
+    -- A kind you can MARK must be a kind that can be RESOLVED and NAMED, or the
+    -- mark turns into a silent no-op somewhere downstream instead.
+    check('LSP13e every markable kind resolves and has a player-facing word', (function()
+        if #kinds == 0 then return 'no kinds parsed'; end
+        local bad = {};
+        for _, k in ipairs(kinds) do
+            local resolvable = (k == 'static')          -- the fallthrough in workingForSource
+                or src:find("if kind == '" .. k .. "'", 1, true) ~= nil;
+            local nameable = src:find('KIND_WORD = {', 1, true) ~= nil
+                and src:match('KIND_WORD = {(.-)}'):find(k .. ' =', 1, true) ~= nil;
+            if not (resolvable and nameable) then bad[#bad + 1] = k; end
+        end
+        return table.concat(bad, ',');
+    end)(), '');
+    check('LSP14 the resolver seam knows the kind',
+          src:find("if kind == 'ac'      then return workingFromAc(name); end", 1, true) ~= nil, true);
+    check('LSP15 ...and the kind has a player-facing word',
+          src:find("ac = 'Ashitacast'", 1, true) ~= nil, true);
+    -- The drop note is the one thing that must never go quiet: without it an
+    -- augment-only set arrives looking like a pointless one-piece set.
+    check('LSP16 both copy paths report what could not be carried',
+          select(2, src:gsub('acDropNote%(', '')), 3);   -- 1 definition + 2 call sites
+    check('LSP17 the notes readers are wired',
+          src:find('profsets.acNotes()', 1, true) ~= nil
+          and src:find('profsets.acSetInfo()', 1, true) ~= nil, true);
+    -- Every profilesets accessor the render path names must actually exist on the
+    -- module -- a typo here is a nil call inside a render pass.
+    local ps = require('dlac\\gear\\profilesets');
+    check('LSP18 acSetNames exists', type(ps.acSetNames), 'function');
+    check('LSP19 acSetInfo exists',  type(ps.acSetInfo),  'function');
+    check('LSP20 acNotes exists',    type(ps.acNotes),    'function');
+    check('LSP21 getAcSets exists',  type(ps.getAcSets),  'function');
+    check('LSP21a acSource exists',  type(ps.acSource),   'function');
+
+    -- LSP25-29: MISSING GEAR IS NEVER A REFUSAL (Henrik 2026-07-31). Both copy
+    -- paths used to bail when nothing resolved -- doCopyFrom left the target
+    -- "unchanged", copyAsNewSets skipped the set -- so importing someone else's
+    -- job file reported "Created 0 new sets" and read as a broken importer when
+    -- the honest answer was "you don't own this gear yet". Source pins, because
+    -- the Sets tab render has no smoke drive (see LSP0).
+    check('LSP25 the "left unchanged" refusal is GONE',
+          src:find('left unchanged', 1, true), nil);
+    check('LSP26 ...and so is the skip-instead-of-create',
+          src:find('skipped: no owned/known gear', 1, true), nil);
+    check('LSP27 the batch commits regardless of slot count',
+          src:find('-- CREATE IT EITHER WAY', 1, true) ~= nil, true);
+    check('LSP28 an all-unowned copy still lands, flagged as EMPTY',
+          src:find('is now EMPTY', 1, true) ~= nil, true);
+    -- ...and the drops are actually REPORTED on both paths, not just counted --
+    -- each in the shape that path needs. A single copy names what THAT set lost
+    -- (reportMissing, per set); the migrate-many pools the batch into ONE line,
+    -- because 23 sets would otherwise print 23 lines of chat.
+    check('LSP29 the single-copy path names what the set lost',
+          select(2, src:gsub('reportMissing%(', '')), 2);   -- 1 definition + 1 call site
+    check('LSP29a the batch pools its drops into one line',
+          src:find('simport.missingNote(missAll, skipped', 1, true) ~= nil, true);
+    check('LSP29b ...deduped across the whole batch',
+          src:find('missSeen[k] = true;', 1, true) ~= nil, true);
+    -- Every kind routes through the ONE transform, so the accounting cannot
+    -- exist for three kinds and quietly not for the fourth.
+    check('LSP30 all four source kinds share one import walk',
+          select(2, src:gsub('importVia%(', '')), 5);       -- 1 definition + 4 kinds
+    local simp = require('dlac\\gear\\setimport');
+    check('LSP31 the transform reports what it dropped', type(simp.missingNote), 'function');
+    check('LSP32 ...and can name a bare-string candidate', type(simp.elemName), 'function');
+    -- The picker must NAME the file it read: the home is a search across three
+    -- folder conventions, and silence about which one answered is what cost a
+    -- field round (2026-07-31).
+    check('LSP21b the picker names the file it read',
+          src:find('profsets.acSource()', 1, true) ~= nil, true);
+    -- ...and unconfigured (no Ashita, no character) every one answers empty rather
+    -- than nil: the popup iterates these directly with ipairs.
+    check('LSP22 acSetNames is empty, not nil, unconfigured', #ps.acSetNames(), 0);
+    check('LSP23 acNotes is empty, not nil, unconfigured',    #ps.acNotes(), 0);
+    check('LSP24 acSetInfo is a table, not nil, unconfigured', type(ps.acSetInfo()), 'table');
 end)();
 
 -- ---------------------------------------------------------------------------
