@@ -274,7 +274,23 @@ this does not make an accepted entry mergeable *alone*: `dev` promotes
 **The queue is empty.**
 
 
-*(Last emptied by the 2026-07-30 promotion — `1551faa`, `main` at `56221c1` before it: the
+*(Last emptied by the 2026-07-31 promotion — `605045f`, `main` at `b056ff6` before it: the
+**Ashitacast/LegacyAC import + "missing gear is never a refusal"**, `2026.07.31a`–`2026.07.31d`
+(`910e673`), carrying with it the two commits that were already sitting on `dev` —
+`7667a9e` (`2026.07.30f`, the combat FUNCTION-reads fix) and `121af5b` (`2026.07.30g`,
+foodwatch). Suites 5320 + 908 on both interpreters, re-run **on the merged main** before
+the push.
+
+**Promoted NOT field-confirmed, on Henrik's explicit call** ("push it to main", then "I
+allow you to do it", 2026-07-31). The Ashitacast work is verified headlessly and against
+his real XML + `gear.lua` — three field rounds went into it — but none of it has had an
+in-game look, and foodwatch rode along in the same state after its own bullet below had
+said "not queued for merge until it is". Recorded here rather than quietly reclassified:
+the queue's field-confirmed rule was **overridden by the maintainer**, not met.
+
+The previous entry, kept because its lesson is the one this section exists for:*
+
+*(The 2026-07-30 promotion — `1551faa`, `main` at `56221c1` before it: the
 **Job helper module API v2 + the BST field-round train + the E-Box Restock shortcut and the tab
 jump that never worked**, `2026.07.30a`–`2026.07.30e`, engine v157 — **fifteen** commits,
 `8471e2d..c8e157c`.
@@ -457,10 +473,12 @@ research already recorded. In rough priority order:
 
 ## Current state (as of 2026-07-31)
 
-- **2026-07-31 (latest — `2026.07.31a`): "Copy from" learns the OTHER legacy engine —
-  Ashitacast XML (`gear/acimport.lua`).** Suites **5273 + 877**, both interpreters. Not
-  field-confirmed yet; **not queued for merge** until it is — and it cannot be confirmed on
-  Henrik's own machine, because `config\legacyac\` is empty there (see the last bullet).
+- **2026-07-31 (latest — `2026.07.31d`): "Copy from" learns the OTHER legacy engine —
+  Ashitacast XML (`gear/acimport.lua`).** Suites **5320 + 908**, both interpreters.
+  **ON MAIN** (`605045f`) — promoted on Henrik's explicit call while still **NOT
+  field-confirmed**: three field rounds shaped it and it is verified against his real XML +
+  `gear.lua`, but nothing here has had an in-game look. **An in-game pass is still owed**;
+  if it turns up a fault, the fix goes to `dev` like anything else.
   - **What it is.** *Ashitacast* is the legacy XML gear-swap format — LuAshitacast's
     ancestor. On Ashita v4 it is served by the **LegacyAC plugin**, which is already
     installed here (`plugins\LegacyAC.dll`) and keeps one swap file per character AND job
@@ -554,7 +572,9 @@ research already recorded. In rough priority order:
   - **All four kinds now run ONE walk** (`importVia` → `setimport`). The dynamic path
     hand-rolled its own copy of the same loop, so the accounting would have had to exist in
     two places that must agree — the exact shape of the bug from round 2, hours earlier.
-  - **Still needs an in-game look** — everything so far is headless.
+  - **Still needs an in-game look** — everything above is headless plus a run against the
+    real XML and `gear.lua`. It went to main anyway on Henrik's call (`605045f`); that is a
+    deliberate override of the queue's field-confirmed rule, not evidence it was met.
   - **A thing worth telling the friend:** that file is half-migrated. Its `<sets>` defines 23
     sets, but its rules reference **17 that do not exist** in it (`Precast`, `EnhPre`,
     `SelfRefresh`, `Enfeebles`, `Helix`, `MB`, `Nukes`, `DarkMagic`, `Death`, `SS`,
@@ -570,8 +590,9 @@ research already recorded. In rough priority order:
     silently change meaning; `<include>` is a DressMe item fetch list. Don't re-derive this.
 
 - **2026-07-30 (`2026.07.30g`): what you last ate, and one click to eat it again
-  (`feature/foodwatch.lua`).** Suites **5203 + 877**, both interpreters. Not field-confirmed
-  yet; **not queued for merge** until it is.
+  (`feature/foodwatch.lua`).** Suites **5203 + 877**, both interpreters. **ON MAIN**
+  (`605045f`, 2026-07-31) — it rode the Ashitacast promotion, because `dev` promotes
+  whole-or-not. Still **NOT field-confirmed**: an in-game pass is owed on this too.
   - **The design problem was "what is food".** Nothing client-side answers it — the item
     resource calls a Mithkabob and a Potion the same thing (usable items), and the Catalog is
     gear-only. The server's answer is the only one: eating grants `xi.effect.FOOD` (251; 787
