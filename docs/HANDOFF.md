@@ -271,7 +271,19 @@ merge carries it **without asking him again**. Only he can move an entry to ACCE
 this does not make an accepted entry mergeable *alone*: `dev` promotes
 **whole-or-not-at-all**, so an accepted entry rides the next promotion of the whole branch.
 
-**The queue is empty.**
+- **ACCEPTED — reserved slots count against the piece that eats them** (`2026.07.31e`).
+  Auto-build and `/dl best` scored a Royal/Vermillion Cloak in Body *and* a hat in the Head
+  it eats, so the Cloak was credited a slot it takes away — Henrik's field report: it beat
+  Dalmatica under MP/Refresh weights even though Dalmatica + a Refresh head is worth more.
+  `optimizePicks` now takes `opts.reserves`, solves once per reservation regime (a hill
+  climb can enter a reservation but never leave one), and reports the emptied slots;
+  `levelLadder opts.emptyFrom` cuts the reserved slot's dynamic ladder at the reserver's
+  level, and Set totals drop what `arbiter.reservedDrops` will drop. Suites 5343 + 913 on
+  both interpreters.
+  **NOT field-confirmed** — accepted on Henrik's explicit call (*"push to origin main, you
+  have my approval"*, 2026-07-31), exactly as the 07-31a–d train was. The owed round: rebuild
+  the MP/Refresh set and confirm Dalmatica + head now wins, and that a genuinely-better Cloak
+  shows an EMPTY Head rather than a hat the engine throws away.
 
 
 *(Last emptied by the 2026-07-31 promotion — `605045f`, `main` at `b056ff6` before it: the

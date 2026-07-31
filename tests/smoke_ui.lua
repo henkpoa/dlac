@@ -411,6 +411,35 @@ check('S16o Cloak with no hat -> nothing to report',
 check('S16p an ordinary set -> nothing to report',
     next(drives({ Head = 'Silver Hairpin', Hands = 'Cotton Gloves' })), nil);
 
+-- ...and the SAME resolver wired into the optimizer, the way autoBuild wires it
+-- (opts.reserves = rsv.maskOf). Henrik's field bug, end to end on real catalog
+-- records: under MP + Refresh weights Royal Cloak out-scores Dalmatica alone,
+-- and only counting the Head it eats can put Dalmatica back in the set. This
+-- runs through gearui's OWN service, so a broken maskOf is a red test here
+-- rather than a silently over-scored Cloak in a built set.
+(function()
+    local optim = require('dlac\\gear\\gearoptim');
+    local function rec(nm) return S.lookupByName(nm); end
+    local royal, dalma, hat = rec('Royal Cloak'), rec('Dalmatica'), rec('Errant Hat');
+    check('S16q the field pieces resolve',
+        (royal ~= nil and dalma ~= nil and hat ~= nil), true);
+    check('S16r Royal Cloak reserves Head through maskOf', S.rsv.maskOf(royal), 16);
+    if royal ~= nil and dalma ~= nil and hat ~= nil then
+        -- Weights that reproduce the report: Refresh is the goal, MP the trickle.
+        local W = { Refresh = { perUnit = 100 }, MP = { perUnit = 1 } };
+        local pools = {
+            Body = { { stats = { MP = 20, Refresh = 1 }, ref = royal },
+                     { stats = { Refresh = 1 },          ref = dalma } },
+            Head = { { stats = { Refresh = 1 },          ref = hat   } },
+        };
+        local blind = optim.optimizePicks(pools, W);
+        local aware = optim.optimizePicks(pools, W, { reserves = S.rsv.maskOf });
+        check('S16s reservation-blind picks the Cloak AND a hat', blind.picks.Body, 1);
+        check('S16t the wired optimizer picks Dalmatica', aware.picks.Body, 2);
+        check('S16u ... and keeps the head it paid for', aware.picks.Head, 1);
+    end
+end)();
+
 -- ---------------------------------------------------------------------------
 -- 5. lockstyle "Show gear I don't own" -- the two wires, through the REAL
 --    gearui + REAL catalog. Same reason as S14-16: gearui hands these over
