@@ -506,8 +506,55 @@ research already recorded. In rough priority order:
 5. **Icon polish, optional:** the four developer rows share one question mark on their
    section heading rather than each carrying one. Trivial to change if it reads wrong.
 
-## Current state (as of 2026-07-31)
+## Current state (as of 2026-08-01)
 
+- **2026-08-01: FIELD ROUND OWED — foodwatch, and it is the whole task.** No code is in
+  flight and nothing is queued: `feature/foodwatch.lua` (`121af5b`, `2026.07.30g`) has been
+  **on `main` since `605045f`** and has **never once run in game**. It rode the Ashitacast
+  promotion because `dev` promotes whole-or-not, so the queue's field-confirmed bar was
+  *overridden*, not met — see the 2026-07-30g bullet below for the design and why each piece
+  is shaped the way it is. **This entry is the round itself**: what to do, what each step
+  proves, and which seam to suspect when one fails. Delete it when the round is done and
+  record the result in its place.
+  - **Artifacts before theory** (hard rule): the round's evidence is
+    `foodhistory.lua` in the character's live dir — `storagefile.charDir()`, which is the
+    **native** home and **changes with the active Profile as well as the character** (that is
+    deliberate: a profile switch must pick up *that* profile's history, not keep the old one
+    in memory). Find it by filename and trust the mtime. If a step below looks wrong, read
+    that file before forming a theory about the code.
+  - **The seven checks, in this order** — each one is the cheapest test of a distinct seam,
+    and later checks assume the earlier ones passed:
+    1. **Eat anything.** A row appears under the roster in the Menu popup, right name, right
+       icon. *Proves the whole spine at once* — OUT `0x037` → pending id → the FOOD effect
+       moving → `nameOf` → `_remember` → disk. Nothing appears? The packet handler and the
+       tick are separate registrations (`dlac-foodwatch-out`, `dlac-foodwatch-tick`); check
+       `foodhistory.lua` exists at all before suspecting either.
+    2. **Re-eat the same food while it is still up.** It must still register. *This is the
+       check the whole module is built around* — re-eating never flickers the icon, so
+       presence is not the signal and only the **expiry changing** can carry it. A failure
+       here means `GetStatusTimers()` is not pairing by index with `GetBuffs()` on this
+       client, and the module degrades honestly (records nothing) rather than lying — so the
+       symptom is a *missing* row, not a wrong one.
+    3. **Eat a second, different food.** Two rows, most recent first.
+    4. **Burn one stack to zero.** The row walks *past* the food you no longer carry to the
+       next one you still have, rather than sitting there dead. Inventory only — `/item`
+       reads nowhere else, so a food in the Mog Satchel is correctly invisible here.
+    5. **`/dl food 1`.** It actually eats. The row queues `r.cmd` through the chat manager,
+       so this is also the check that the `/item` string built from the client's own name is
+       the string `/item` accepts.
+    6. **Log out and back in, still under food.** `/dl food` must **name** what you are under
+       ("under Mithkabob (eaten 12m ago)"), not report a bare "food active". This is
+       Henrik's 2026-07-30 ruling working: dlac is always loaded, so an effect still up at
+       login is near-certainly the last food the file recorded.
+    7. **Both draw sites.** The Menu popup **and** the Teleports float — one definition
+       (`ui/menuui.renderFoodSection`) with geometry passed in, and the float is the one that
+       matters most, because "my food just wore off" happens mid-fight with the main window
+       shut.
+  - **Also worth one glance while you are in there:** `/dl food` with an empty history and
+    with food you have never eaten (nothing should draw at all, and the no-op must say
+    *which* of the two things went wrong — hard rule 12), and `/dl food forget`.
+  - **If the round turns up a fault**, the fix goes to `dev` like anything else — `main`
+    already carries this code, so a fault here is a bug on `main`, not an unreleased one.
 - **2026-07-31 (`2026.07.31f`): the E-Box nudge and the Teleports float are now the same
   36x36 button** (`ui\restockui.lua`). Henrik's second tester finally noticed the crate — and
   was annoyed by it, which is the feature working — but the two floats sit on the same screen
@@ -642,7 +689,9 @@ research already recorded. In rough priority order:
 - **2026-07-30 (`2026.07.30g`): what you last ate, and one click to eat it again
   (`feature/foodwatch.lua`).** Suites **5203 + 877**, both interpreters. **ON MAIN**
   (`605045f`, 2026-07-31) — it rode the Ashitacast promotion, because `dev` promotes
-  whole-or-not. Still **NOT field-confirmed**: an in-game pass is owed on this too.
+  whole-or-not. Still **NOT field-confirmed**: an in-game pass is owed on this too — and it
+  is now written up as a round to actually run, in the **2026-08-01 entry at the top of this
+  section**. This bullet is the design; that one is the checklist.
   - **The design problem was "what is food".** Nothing client-side answers it — the item
     resource calls a Mithkabob and a Potion the same thing (usable items), and the Catalog is
     gear-only. The server's answer is the only one: eating grants `xi.effect.FOOD` (251; 787
