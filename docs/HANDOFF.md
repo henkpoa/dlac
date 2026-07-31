@@ -455,9 +455,121 @@ research already recorded. In rough priority order:
 5. **Icon polish, optional:** the four developer rows share one question mark on their
    section heading rather than each carrying one. Trivial to change if it reads wrong.
 
-## Current state (as of 2026-07-30)
+## Current state (as of 2026-07-31)
 
-- **2026-07-30 (latest — `2026.07.30g`): what you last ate, and one click to eat it again
+- **2026-07-31 (latest — `2026.07.31a`): "Copy from" learns the OTHER legacy engine —
+  Ashitacast XML (`gear/acimport.lua`).** Suites **5273 + 877**, both interpreters. Not
+  field-confirmed yet; **not queued for merge** until it is — and it cannot be confirmed on
+  Henrik's own machine, because `config\legacyac\` is empty there (see the last bullet).
+  - **What it is.** *Ashitacast* is the legacy XML gear-swap format — LuAshitacast's
+    ancestor. On Ashita v4 it is served by the **LegacyAC plugin**, which is already
+    installed here (`plugins\LegacyAC.dll`) and keeps one swap file per character AND job
+    at `<install>\config\legacyac\<Char>_<JOB>.xml`. **The schema authority was already on
+    disk** — `Ashita\docs\LegacyAC\XML Structure.xml` + `readme.txt` + `Variables.txt`.
+    Read those before touching the parser; nothing in this was guessed.
+  - **Almost nothing downstream changed, and that was the point.** `importStaticSet` already
+    eats a plain `label → value` table, and `resolveSetItem`'s string path already resolves a
+    bare item NAME against owned gear case-insensitively — which is exactly what the format
+    stores and exactly what it needs (set and equipment names are explicitly *not* case
+    sensitive there, and real files write `hlr. cap +1`). So the new code is a parser, a slot
+    map, and `baseset` resolution. One candidate per slot means the ADR 0008 best-first
+    warning cannot apply — there is no order to diverge from.
+  - **Apostrophes: checked, and NOT a problem — but know which index is which.** `catalog.lua`
+    drops apostrophes ("Bunzis Hat"); a scanned `gear.lua` keeps them ("Genbu's Shield",
+    because `gearimport` takes `res.Name` from the resource manager). Measured on the real WHM
+    file: 18 of its 63 distinct names miss the catalog on punctuation alone, **0** miss for
+    that reason against owned gear. The string path never consults the catalog, so the import
+    is unaffected. Do not "fix" this by normalising the catalog — you would be fixing the
+    wrong index.
+  - **The rules that bit, each one a real-file fact** (tests AC0–AC57): both slot dialects
+    ship in one file (`ear1`/`ear2` in `<sets>`, `lring`/`rring` in `<idlegear>`); `none` is a
+    KEYWORD that empties a slot, tracked as an explicit CLEAR because with a `baseset`
+    "not mentioned" inherits and "explicitly empty" must not; `baseset` needs a SECOND pass
+    (a base is declared later in the file, chains are legal, `baseset="idle"` finds `Idle`,
+    `baseset = "X"` with spaces is legal); comments must be stripped FIRST because they
+    contain whole commented-out `<set>` blocks; `<setvar>` is one character from matching a
+    plain find for `'<set'` and lives in the same files.
+  - **Mis-nesting is tolerated ON PURPOSE.** The spec sample **shipped with the plugin**
+    contains `<statusupdate>true</statuspdate>` and `</petsspell>`. A strict parser would
+    reject files LegacyAC itself loads happily, so slot content reads "up to the next `<`"
+    and never checks that the close tag matches.
+  - **Two things cannot come across, and the copy says so** (hard rule 12): `augment="S…"` is
+    LegacyAC's own fingerprint from `/la print augs` — opaque, not decodable against dlac's
+    augment table, so the BASE item is imported; and `lock=` has no meaning in a dlac set (a
+    lock is an Arbiter claim). `acimport.dropNote` turns the counts into the chat sentence.
+    Without it the WHM file's `39q04` and `4950` — sets that exist ONLY to pin an augment —
+    arrive looking like pointless one-piece sets.
+  - **Ashitacast names get their OWN name space in the picker.** The existing lac/static
+    dedupe exists because those two sources are the SAME file; this is a different engine's
+    file, so a shared "Idle" is a different set and hiding one behind the other would lose it.
+  - **FIELD ROUND 1 (`2026.07.31b`) — the home is a SEARCH, and it must name what it read.**
+    Henrik dropped the file in and the column stayed empty. Nothing was wrong with the file
+    (it parses to 23 sets, zero notes): he put it in **`config\addons\legacyac\`** and dlac
+    looked only in `config\legacyac\`. His guess was the reasonable one — `luashitacast\` and
+    `dlac\` both live under `config\addons\`, and this install *also* shows the third
+    convention in use for another plugin (`config\plugins\FindAll\`). Fixed by looking in all
+    three (`profiles.legacyacRoots` / `legacyacPaths`, first file that reads wins, readme home
+    first on a tie) **and** by printing `Read from: <path>` under the column
+    (`profilesets.acSource`) — the silence was the actual defect, not the folder.
+  - Verified end to end against the real install afterwards: found at candidate 2, **23 sets,
+    zero notes**, `baseset` chains resolving (DT←Idle 15 slots,
+    MidcastBarspell←MidcastEnhancing 13, MidcastCursna←MidcastHeal 15), `TP`/`MidcastRaise`
+    correctly empty, drop notes firing on `MidcastDivine` (2 augments), `39q04` and `4950`.
+  - **FIELD ROUND 2 (`2026.07.31c`) — a marked set gathered as nothing.** The column listed
+    the sets, but marking one and pressing Create answered *"Mark at least one set on the left
+    first"* over a set visibly ticked. Cause: **the popup walks the legacy kinds TWICE** —
+    once to draw the rows, once to gather what was marked — and those were **two separate
+    literals**. `'ac'` went into the render list only, so the mark was stored under a kind the
+    gather never asked about. Nothing was wrong with the parse, the file, or the resolver.
+  - **The lesson is the shape, not the typo.** A kind present in one loop and absent from the
+    other is invisible to review and to every headless test — the UI looks right and the
+    button lies. Fixed by hoisting **`LEGACY_GROUPS`** (module-level, next to `KIND_WORD`) as
+    the ONE list both loops read. Pinned by construction in smoke (LSP13a–e): the kinds are
+    parsed OUT of that table, the gather is required to iterate it, a second hardcoded kind
+    list is required NOT to exist, and every kind on it must be resolvable by
+    `workingForSource` AND nameable via `KIND_WORD` — so the next kind added cannot repeat
+    this. The guard was verified by reintroducing the bug and watching LSP13d fail.
+  - **FIELD ROUND 3 (`2026.07.31d`) — missing gear is never a refusal, on ANY import.**
+    Henrik's call, and it applies to all four source kinds, not just Ashitacast:
+    *"if the gear wasn't found, just ignore it, inform (temporarily) and move on instead of
+    not importing it at all."* Skipping an unresolvable candidate was already the
+    per-candidate behaviour — but **silent**, and a set where *nothing* resolved was refused
+    outright (`doCopyFrom` left the target "unchanged"; `copyAsNewSets` skipped the set).
+    Migrating someone else's job file therefore reported *"Created 0 new sets"* and read as
+    a broken importer, when the honest answer was "you don't own this gear yet".
+  - **Measured on the real pair** (Mindie's `gear.lua` × the WHM XML) — worth knowing the
+    old behaviour was not as broken as it looked, and exactly how it looked wrong:
+    **19 of 23 sets already imported** (partially filled, no word about what was missing);
+    4 were silently skipped. Now: **23 created, 4 as empty placeholders, 37 distinct pieces
+    named**. That is the whole difference — nothing about the parse or the resolver changed.
+  - **Where the accounting lives.** `importStaticSet` returns `missing` (distinct names,
+    first-seen order) + `missingCount` (every drop, including candidates too broken to
+    name — a MISSING sentinel answers every key with itself, so `elem.Name` is a *table*;
+    `elemName` reads TYPED for that reason). An EMPTY slot list is "no candidates", not a
+    failed one, or it would inflate the count with a piece nobody named.
+  - **Reporting shape differs by path ON PURPOSE.** A single copy names what *that* set
+    lost (per set). The migrate-many pools the batch into ONE deduped line — 23 sets would
+    otherwise print 23 lines of chat. The status line (which auto-expires after 5s) carries
+    the counts; chat carries the names.
+  - **All four kinds now run ONE walk** (`importVia` → `setimport`). The dynamic path
+    hand-rolled its own copy of the same loop, so the accounting would have had to exist in
+    two places that must agree — the exact shape of the bug from round 2, hours earlier.
+  - **Still needs an in-game look** — everything so far is headless.
+  - **A thing worth telling the friend:** that file is half-migrated. Its `<sets>` defines 23
+    sets, but its rules reference **17 that do not exist** in it (`Precast`, `EnhPre`,
+    `SelfRefresh`, `Enfeebles`, `Helix`, `MB`, `Nukes`, `DarkMagic`, `Death`, `SS`,
+    `Enhancing`, `Impact`, `MDT`, `PDT`, `Myrkr`, `MultiWS`, `TP-$Set`), while
+    `MidcastEnfeebling` and `MidcastStoneskin` are defined and never used — a BLM/generic
+    template with a WHM `<sets>` block pasted in. The import is unaffected (it reads `<sets>`
+    only), but he is not running the config he thinks he is.
+  - **Group import: there is nothing to import.** Asked and answered — the format has no Lua
+    at all, so `groupimport`/`groupscan` have nothing to eat. The three table-ish things and
+    why none qualifies: `<variables>` are scalar MODE flags (they map to the Modes library,
+    not Groups); `ad_name="Cure*|Cura*"` is a pipe-separated GLOB list inside a rule, and dlac
+    Groups hold literal action names — expanding globs is a different feature that would
+    silently change meaning; `<include>` is a DressMe item fetch list. Don't re-derive this.
+
+- **2026-07-30 (`2026.07.30g`): what you last ate, and one click to eat it again
   (`feature/foodwatch.lua`).** Suites **5203 + 877**, both interpreters. Not field-confirmed
   yet; **not queued for merge** until it is.
   - **The design problem was "what is food".** Nothing client-side answers it — the item

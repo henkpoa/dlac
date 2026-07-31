@@ -224,7 +224,7 @@ end)();
     local UI = { 'ammoui','automationsui','craftbar','equippedui','filetex','fishbar','fishui',
                  'floatgear','gearui','helmbar','helmui','hobbybar','idlefloat','itemicons','jobhelpersui','menuui','panelkit','priorityui','profilesmenu',
                  'restockui','setupui','triggersui','uihost','uistyle','weightsui' };
-    local GEAR = { 'actionpicker','arbiter','blueprintsmodel','catalogindex','gearcheck','geareffects','gearexport',
+    local GEAR = { 'acimport','actionpicker','arbiter','blueprintsmodel','catalogindex','gearcheck','geareffects','gearexport',
                    'gearfmt','gearimport','gearoptim','gearoracle','gearrecord','groupimport','groupscan',
                    'groupsmodel','jobgate','modeslibrary','ownedcache','profileexport','profilesets','setimport',
                    'setmanager','syncflags','triggermodel','weaponfilter','weightimport' };
@@ -4128,6 +4128,63 @@ end)();
     check('AO21 nil static set -> 0 slots', simport.importStaticSet(nil, SLOTS, resolve).slotCount, 0);
     check('AO22 nil resolver -> 0 slots', simport.importStaticSet(plain, SLOTS, nil).slotCount, 0);
     check('AO23 isBestFirst on empty list', simport.isBestFirst({}), true);
+
+    -- 8. DROP ACCOUNTING (Henrik 2026-07-31: "if the gear wasn't found, just ignore
+    --    it, inform (temporarily) and move on instead of not importing it at all").
+    --    Skipping was always the behaviour; being SILENT about it was the defect --
+    --    a set where nothing resolved was refused outright, which reads as a broken
+    --    importer when the honest answer is "you don't own this gear yet". So the
+    --    transform now NAMES what it dropped and the caller imports regardless.
+    check('AO24 missing exported',      type(r5.missing),      'table');
+    check('AO25 missingCount counts every dropped candidate', r5.missingCount, 2);
+    check('AO26 ...and names them',     table.concat(r5.missing, ','), 'Unowned Club,Nothing Owned Here');
+    check('AO27 a fully-resolving set drops nothing', r1.missingCount, 0);
+    check('AO28 ...with an empty list, never nil',    #r1.missing, 0);
+
+    -- Distinct, in FIRST-SEEN order: the same unowned piece in three slots is one
+    -- name in the list but three drops in the count (what actually went missing).
+    local dupes = { Main = { 'Ghost Blade' }, Sub = { 'Ghost Blade' },
+                    Head = { 'Ghost Blade', 'Austere Hat' } };
+    local r8 = simport.importStaticSet(dupes, SLOTS, resolve);
+    check('AO29 repeats collapse in the NAME list', #r8.missing, 1);
+    check('AO30 ...but every drop is counted',      r8.missingCount, 3);
+    check('AO31 ...and the one resolvable slot still imports', r8.working.Head[1].rec.Name, 'Austere Hat');
+
+    -- A candidate too broken to name (profilesets' MISSING sentinel answers EVERY
+    -- key with itself, so elem.Name is a TABLE) is COUNTED but not listed -- reading
+    -- it as a name is what used to take a whole set down.
+    local SENT; SENT = setmetatable({}, { __index = function() return SENT; end });
+    local r9 = simport.importStaticSet({ Main = { SENT }, Head = { 'Austere Hat' } }, SLOTS, resolve);
+    check('AO32 an unnameable drop is counted', r9.missingCount, 1);
+    check('AO33 ...and NOT listed as a name',   #r9.missing, 0);
+    check('AO34 ...and never derails the set',  r9.working.Head[1].rec.Name, 'Austere Hat');
+
+    -- An EMPTY slot list is "no candidates", not a candidate that failed -- it must
+    -- not inflate the count with a piece nobody ever named.
+    local r10 = simport.importStaticSet({ Main = {}, Head = 'Austere Hat' }, SLOTS, resolve);
+    check('AO35 an empty slot list is not a missing piece', r10.missingCount, 0);
+    check('AO36 ...and the real slot still imports',        r10.slotCount, 1);
+
+    -- 9. missingNote: the one player-facing clause, capped.
+    check('AO37 missingNote nil when nothing dropped', simport.missingNote({}, 0), nil);
+    check('AO38 missingNote names the pieces',
+          simport.missingNote({ 'A', 'B' }, 2), '2 pieces skipped -- you do not own: A, B');
+    check('AO39 singular reads right',
+          simport.missingNote({ 'A' }, 1), '1 piece skipped -- you do not own: A');
+    check('AO40 counted-but-unnameable still says something',
+          simport.missingNote({}, 3), '3 pieces skipped -- not in your gear.lua');
+    local many = {}; for i = 1, 14 do many[i] = 'P' .. i; end
+    check('AO41 the list is CAPPED (a 15-piece set is not a paragraph)',
+          simport.missingNote(many, 14, 3), '14 pieces skipped -- you do not own: P1, P2, P3 (+11 more)');
+    check('AO42 missingNote tolerates junk', simport.missingNote(nil, nil), nil);
+
+    -- elemName: every source shape the four import kinds actually carry.
+    check('AO43 elemName: a bare name string (Ashitacast)', simport.elemName('Bunzi\'s Hat'), "Bunzi's Hat");
+    check('AO44 elemName: a gear record',       simport.elemName({ Name = 'Yagrush' }), 'Yagrush');
+    check('AO45 elemName: a gated wrapper',     simport.elemName({ gear = { Name = 'Yagrush' } }), 'Yagrush');
+    check('AO46 elemName: a virtual wrapper',   simport.elemName({ gear = 'dlac:AutoStaff' }), 'dlac:AutoStaff');
+    check('AO47 elemName: the MISSING sentinel has no name', simport.elemName(SENT), nil);
+    check('AO48 elemName: junk', simport.elemName(42), nil);
 end)();
 
 -- ---------------------------------------------------------------------------
@@ -4208,6 +4265,189 @@ end)();
     check('AQ12 dynamics only kind', simport.mergeLegacySources({}, { 'A' })[1].kind, 'lac');
     check('AQ13 nil inputs -> empty', #simport.mergeLegacySources(nil, nil), 0);
     check('AQ14 nil statics tolerated', simport.mergeLegacySources(nil, { 'A' })[1].name, 'A');
+
+    -- ASHITACAST is a THIRD kind out of a DIFFERENT engine's file, so it gets its
+    -- own name space: hiding an Ashitacast "Idle" behind the job file's "Idle"
+    -- would lose a set the player can still see in their XML.
+    local three = simport.mergeLegacySources({ 'Idle' }, { 'Idle' }, { 'Idle', 'Nuke' });
+    check('AQ15 ac names do NOT dedupe against the job file', #three, 3);
+    check('AQ16 ...both Idles survive, ac first by kind order', three[1].kind, 'ac');
+    check('AQ17 ...and the job file\'s Idle is still the dynamic one', three[2].kind, 'lac');
+    check('AQ18 ac-only name kept', three[3].name, 'Nuke');
+    check('AQ19 ac names dedupe against EACH OTHER',
+          #simport.mergeLegacySources({}, {}, { 'Idle', 'idle' }), 1);
+    check('AQ20 omitting acNames is the old 2-arg behaviour',
+          #simport.mergeLegacySources({ 'Idle', 'Precast' }, { 'Idle' }), 2);
+end)();
+
+-- ---------------------------------------------------------------------------
+-- AC. acimport -- the pure Ashitacast (LegacyAC) XML -> sets transform.
+--
+--   The third "Copy from" source: config\legacyac\<Char>_<JOB>.xml, a whole
+--   different engine's swap file. Schema authority = Ashita\docs\LegacyAC\
+--   XML Structure.xml. The fixture is a trimmed real file and carries every rule
+--   that bit during the read: both slot dialects at once, `none` as a KEYWORD,
+--   forward + chained + broken + looping basesets, a commented-out set, an
+--   augment fingerprint, a mis-nested close tag, and <setvar> (which a plain
+--   find for '<set' would happily import as a set).
+-- ---------------------------------------------------------------------------
+(function()
+    local ac = dofile('gear/acimport.lua');   -- forward slash: also loads on Linux CI
+    check('AC0 module loads',        type(ac),          'table');
+    check('AC0a parse exported',     type(ac.parse),    'function');
+    check('AC0b setNames exported',  type(ac.setNames), 'function');
+    check('AC0c dropNote exported',  type(ac.dropNote), 'function');
+
+    local XML = [==[
+<?xml version="1.0" encoding="UTF-8"?>
+<ashitacast>
+   <settings><buffupdate>true</buffupdate></settings>
+   <init>
+      <command delay="1500">/echo &lt;Ready&gt;</command>
+      <setvar name="macrobook" value="3" />
+   </init>
+   <sets>
+      <set name="Idle">
+         <main>Tamaxchi</main>
+         <sub>Genmei Shield</sub>
+         <range>none</range>
+         <ammo>Hedgehog Bomb</ammo>
+         <head>Bunzi&apos;s Hat</head>
+         <ear1>Outlaw&#39;s Earring</ear1>
+         <ear2>Loquac. Earring</ear2>
+         <lring>Tamas Ring</lring>
+         <rring>Serket Ring</rring>
+         <back>Umbra Cape</back>
+      </set>
+      <!-- never import a commented set: <set name="Ghost"><main>Excalibur</main></set> -->
+      <set name="DT" baseset="idle"/>
+      <set name="PrecastStoneskin" baseset = "PrecastGeneral" />
+      <set name="PrecastGeneral">
+         <main></main>
+         <head>Hlr. Cap +1</head>
+         <legs augment="S539169091">Hlr. Pantaln. +1</legs>
+         <feet lock="true">Cleric&apos;s Duckbills</feet>
+      </set>
+      <set name="Barspell" baseset="PrecastGeneral">
+         <head>Blessed Bliaut</head>
+         <legs>none</legs>
+      </set>
+      <set name="Orphan" baseset="NoSuchSet"><hands>Hlr. Mitts +1</hands></set>
+      <set name="LoopA" baseset="LoopB"><neck>Fylgja Torque +1</neck></set>
+      <set name="LoopB" baseset="LoopA"><waist>Cleric&apos;s Belt</waist></set>
+      <set name="Twice"><body>Dalmatica</body></set>
+      <set name="Twice"><body>Errant Hpl.</body></set>
+      <set name="Mis"><lear>Roundel Earring</rear></set>
+      <set name="Blank"><!-- Conserve MP --></set>
+      <include><item quantity="12">Echo Drops</item></include>
+   </sets>
+   <midmagic>
+      <if ad_name="Cure*|Cura*"><equip set="Idle" /></if>
+   </midmagic>
+</ashitacast>
+]==];
+
+    local sets, info, notes = ac.parse(XML);
+    local function nslots(t)
+        local n = 0; for _ in pairs(t or {}) do n = n + 1; end; return n;
+    end
+
+    -- --- only <sets> is in scope, and only real <set> elements in it.
+    check('AC1 set count', (function() local n=0; for _ in pairs(sets) do n=n+1 end return n; end)(), 11);
+    check('AC2 a commented-out set never imports',   sets.Ghost, nil);
+    check('AC3 <setvar> is not a set',               sets.macrobook, nil);
+    check('AC4 <include>/<item> is not a set',       sets.Echo, nil);
+    check('AC5 rule sections are read past',         sets['Cure*|Cura*'], nil);
+
+    -- --- slots: both dialects, at once, in one file.
+    check('AC6 main',                sets.Idle.Main,  'Tamaxchi');
+    check('AC7 ear1 -> Ear1',        sets.Idle.Ear1,  "Outlaw's Earring");
+    check('AC8 ear2 -> Ear2',        sets.Idle.Ear2,  'Loquac. Earring');
+    check('AC9 lring -> Ring1',      sets.Idle.Ring1, 'Tamas Ring');
+    check('AC10 rring -> Ring2',     sets.Idle.Ring2, 'Serket Ring');
+    check('AC11 lear -> Ear1',       sets.Mis.Ear1,   'Roundel Earring');
+
+    -- --- entities. gear.lua stores the apostrophe ("Genbu's Shield"), so a name
+    --     that arrives escaped must be un-escaped or it matches nothing owned.
+    check('AC12 &apos; decoded',     sets.Idle.Head,  "Bunzi's Hat");
+    check('AC13 &#39; decoded',      sets.Idle.Ear1,  "Outlaw's Earring");
+
+    -- --- `none` is a KEYWORD (spec: <range>none</range> unequips), and an empty
+    --     element says the same -- neither is an item to go looking for.
+    check('AC14 none -> no slot',        sets.Idle.Range,        nil);
+    check('AC15 empty element -> no slot', sets.PrecastGeneral.Main, nil);
+    check('AC16 Idle slot count',        nslots(sets.Idle),      9);
+    check('AC17 comment-only set is empty', nslots(sets.Blank),  0);
+
+    -- --- baseset: forward reference, whitespace around '=', case-insensitive.
+    check('AC18 self-closing set inherits whole', nslots(sets.DT), 9);
+    check('AC19 ...by VALUE',                     sets.DT.Main,    'Tamaxchi');
+    check('AC20 baseset="idle" finds "Idle"',     sets.DT.Ammo,    'Hedgehog Bomb');
+    check('AC21 forward reference resolves',      nslots(sets.PrecastStoneskin), 3);
+    check('AC22 ...with spaces around =',         sets.PrecastStoneskin.Head, 'Hlr. Cap +1');
+
+    -- --- baseset + own slots: override, and CLEAR (the reason `clear` cannot be
+    --     an absent key -- "not mentioned" inherits, "explicitly none" must not).
+    check('AC23 child overrides base',    sets.Barspell.Head, 'Blessed Bliaut');
+    check('AC24 child keeps base slot',   sets.Barspell.Feet, "Cleric's Duckbills");
+    check('AC25 child CLEARS a base slot', sets.Barspell.Legs, nil);
+    check('AC26 Barspell slot count',     nslots(sets.Barspell), 2);
+
+    -- --- a baseset that is not in the file / a loop: the set still imports, and
+    --     the reason is reported rather than swallowed.
+    check('AC27 missing baseset still imports own slots', sets.Orphan.Hands, 'Hlr. Mitts +1');
+    check('AC28 looping baseset still imports own slots', sets.LoopA.Neck, 'Fylgja Torque +1');
+    check('AC29 ...and the loop half it COULD reach',     sets.LoopA.Waist, "Cleric's Belt");
+    check('AC30 a duplicate name: LAST wins',             sets.Twice.Body, 'Errant Hpl.');
+    local noteText = table.concat(notes, ' | ');
+    check('AC31 missing baseset noted', noteText:find('NoSuchSet', 1, true) ~= nil, true);
+    check('AC32 loop noted',            noteText:find('loops back', 1, true) ~= nil, true);
+    check('AC33 duplicate noted',       noteText:find('more than once', 1, true) ~= nil, true);
+
+    -- --- info: augment/lock counts follow INHERITANCE, so the number reported is
+    --     the resolved set's, not the tag soup's.
+    check('AC34 augment counted on the set that declares it', info.PrecastGeneral.augments, 1);
+    check('AC35 lock counted',                                info.PrecastGeneral.locks,    1);
+    check('AC36 an inherited augment counts for the child',    info.PrecastStoneskin.augments, 1);
+    check('AC37 ...but not once the child clears that slot',   info.Barspell.augments, 0);
+    check('AC38 ...while the inherited lock survives',         info.Barspell.locks, 1);
+    check('AC39 base recorded',                                info.Barspell.base, 'PrecastGeneral');
+    check('AC40 slot count recorded',                          info.Idle.slots, 9);
+
+    -- --- dropNote: the one sentence the copy prints.
+    check('AC41 dropNote nil when nothing was dropped', ac.dropNote(info.Idle), nil);
+    check('AC42 dropNote names the augment',
+          (ac.dropNote(info.PrecastGeneral) or ''):find('augment filter', 1, true) ~= nil, true);
+    check('AC43 dropNote names the lock',
+          (ac.dropNote(info.PrecastGeneral) or ''):find('lock attribute', 1, true) ~= nil, true);
+    check('AC44 dropNote on junk is nil', ac.dropNote('nope'), nil);
+
+    -- --- setNames: sorted, case-insensitive.
+    local names = ac.setNames(sets);
+    check('AC45 setNames count', #names, 11);
+    check('AC46 setNames sorted', names[1], 'Barspell');
+    check('AC47 setNames on junk -> empty', #ac.setNames(nil), 0);
+
+    -- --- No <sets> wrapper: fall back to the whole document. This is where the
+    --     '<set' guard earns its keep -- <setvar> is one character from a match.
+    local bare, _, bnotes = ac.parse('<setvar name="x" value="1" />\n<set name="Solo"><head>Zenith Crown</head></set>');
+    check('AC48 wrapper-less document still yields the set', bare.Solo.Head, 'Zenith Crown');
+    check('AC49 ...and <setvar> is still not one',           bare.x, nil);
+    check('AC50 ...exactly one set',
+          (function() local n=0; for _ in pairs(bare) do n=n+1 end return n; end)(), 1);
+    check('AC51 a clean parse reports no notes', #bnotes, 0);
+
+    -- --- degenerate input never throws and never returns nil (callers do not
+    --     branch on nil -- hard rule 12's shape).
+    local e1, e2, e3 = ac.parse('');
+    check('AC52 empty text -> empty sets', type(e1), 'table');
+    check('AC53 ...with an info table',    type(e2), 'table');
+    check('AC54 ...and a note saying so',  #e3 > 0, true);
+    check('AC55 nil text tolerated',       type((ac.parse(nil))), 'table');
+    check('AC56 non-XML text tolerated',   type((ac.parse('hello world'))), 'table');
+    local _, _, n56 = ac.parse('hello world');
+    check('AC57 ...and says it found no sets',
+          (table.concat(n56, ' ')):find('No <set> entries', 1, true) ~= nil, true);
 end)();
 
 -- ---------------------------------------------------------------------------
@@ -12743,8 +12983,120 @@ end)();
     check('PSL10 old-home statics are reachable', names(ps3.staticSetNames()), 'Idle,OldHomeStatic,Tp');
     check('PSL11 old-home Dynamic sets are reachable', names(ps3.lacSetNames()), 'JobDyn,OldHomeDyn');
 
+    -- 4. ASHITACAST (LegacyAC, 2026-07-31): the THIRD source, read end to end --
+    --    profiles.legacyacPath -> the file on disk -> acimport -> the picker's
+    --    column. This is the tier that opens a real file, so it is pinned here
+    --    rather than only against acimport's pure parse.
+    local ACXML = 'tests/_tmp_psl_ac.xml';
+    local fx = assert(io.open(ACXML, 'w'));
+    fx:write('<ashitacast><sets>\n'
+        .. '  <set name="Idle"><main>Tamaxchi</main><lring>Tamas Ring</lring></set>\n'
+        .. '  <set name="AcOnly" baseset="Idle"><head augment="S1">Zenith Crown</head></set>\n'
+        .. '</sets></ashitacast>\n');
+    fx:close();
+    package.loaded['dlac\\gear\\acimport'] = dofile('gear/acimport.lua');
+    local ps4 = freshWith({ hasSetsFile = function() return true; end,
+                            readSetsFile = function() return { Live = {} }; end,
+                            backupPath = function() return nil; end,
+                            legacyBackupPath = function() return nil; end,
+                            legacyacPath = function() return ACXML; end });
+    check('PSL12 Ashitacast sets are read off disk', names(ps4.acSetNames()), 'AcOnly,Idle');
+    check('PSL13 ...as slot tables the import transform eats', ps4.getAcSets().Idle.Main, 'Tamaxchi');
+    check('PSL14 ...with baseset resolved',        ps4.getAcSets().AcOnly.Ring1, 'Tamas Ring');
+    check('PSL15 ...and per-set info for the drop note', ps4.acSetInfo().AcOnly.augments, 1);
+    check('PSL16 a clean file leaves no notes',    #ps4.acNotes(), 0);
+    check('PSL16a ...and NAMES the file it read',  ps4.acSource(), ACXML);
+    -- THE LAW: an Ashitacast set is an import source and nothing else. It must not
+    -- reach the sets root, the live list (trigger targets -- a trigger pointing at
+    -- one would match and equip NOTHING), or the FFXI-LAC column. Asserted by
+    -- ABSENCE of the XML-only name, not by list equality: the job file fixture
+    -- above contributes its own Idle/Tp/JobDyn to every one of these lists.
+    check('PSL17 never live', names(ps4.liveSetNames()):find('AcOnly', 1, true) == nil, true);
+    check('PSL18 never in the root', ps4.getSetsRoot().AcOnly, nil);
+    check('PSL19 not an FFXI-LAC source either',
+          names(ps4.lacSetNames()):find('AcOnly', 1, true) == nil, true);
+    -- ...and the picker's column, on real reader output: "Idle" exists in BOTH the
+    -- job file and the XML, and both must survive -- they are different sets.
+    local merged4 = simport.mergeLegacySources(ps4.staticSetNames(), ps4.lacSetNames(), ps4.acSetNames());
+    check('PSL20 merged column keeps both Idles', (function()
+        local acc = {};
+        for _, s in ipairs(merged4) do acc[#acc + 1] = s.name .. ':' .. s.kind; end
+        return table.concat(acc, ',');
+    end)(), 'AcOnly:ac,Idle:ac,Idle:static,JobDyn:lac,Tp:static');
+
+    -- No file (the normal case -- almost nobody has ever run the plugin): empty,
+    -- never nil, and nothing said about a file the player has never had.
+    local ps5 = freshWith({ hasSetsFile = function() return false; end,
+                            backupPath = function() return nil; end,
+                            legacyBackupPath = function() return nil; end,
+                            legacyacPath = function() return 'tests/_tmp_psl_absent.xml'; end });
+    check('PSL21 absent XML -> empty column', #ps5.acSetNames(), 0);
+    check('PSL22 ...and getAcSets is a table, not nil', type(ps5.getAcSets()), 'table');
+    check('PSL23 ...and says nothing about it', #ps5.legacyDiag(), 0);
+
+    -- A file that IS there and yields nothing NAMES ITSELF (hard rule 12: "you have
+    -- no Ashitacast sets" and "your XML did not parse" must not be one silence).
+    local JUNK = 'tests/_tmp_psl_junk.xml';
+    local fj = assert(io.open(JUNK, 'w')); fj:write('<ashitacast><sets></sets></ashitacast>\n'); fj:close();
+    local ps6 = freshWith({ hasSetsFile = function() return false; end,
+                            backupPath = function() return nil; end,
+                            legacyBackupPath = function() return nil; end,
+                            legacyacPath = function() return JUNK; end });
+    check('PSL24 an empty XML is reported', (function()
+        for _, d in ipairs(ps6.legacyDiag()) do
+            if tostring(d.file):find('junk', 1, true) then return true; end
+        end
+        return false;
+    end)(), true);
+
+    -- The HOME IS A SEARCH (field 2026-07-31). Henrik dropped his file in
+    -- config\addons\legacyac\ -- the addons convention, because that is where
+    -- luashitacast\ and dlac\ live -- while dlac looked only in the readme's
+    -- config\legacyac\. The column was empty and said nothing, which reads as
+    -- "dlac cannot see Ashitacast files". Every realistic home is tried now, and
+    -- these pin the two halves that matter: a LATER candidate is still found,
+    -- and an EARLIER one still wins when both exist.
+    local ALT = 'tests/_tmp_psl_ac_alt.xml';
+    local fa = assert(io.open(ALT, 'w'));
+    fa:write('<ashitacast><sets><set name="FromAlt"><feet>Zenith Pumps</feet></set></sets></ashitacast>\n');
+    fa:close();
+    local ps4b = freshWith({ hasSetsFile = function() return false; end,
+                             backupPath = function() return nil; end,
+                             legacyBackupPath = function() return nil; end,
+                             -- first candidate absent, second present: the exact field shape
+                             legacyacPaths = function() return { 'tests/_tmp_psl_absent.xml', ALT }; end });
+    check('PSL16b a file in a LATER candidate home is still found', names(ps4b.acSetNames()), 'FromAlt');
+    check('PSL16c ...and the source names that home', ps4b.acSource(), ALT);
+
+    local ps4c = freshWith({ hasSetsFile = function() return false; end,
+                             backupPath = function() return nil; end,
+                             legacyBackupPath = function() return nil; end,
+                             legacyacPaths = function() return { ACXML, ALT }; end });
+    check('PSL16d both present -> the FIRST (canonical) home wins', names(ps4c.acSetNames()), 'AcOnly,Idle');
+    check('PSL16e ...and says so',  ps4c.acSource(), ACXML);
+
+    -- No candidate reads: nothing found, nothing claimed, no source.
+    local ps4d = freshWith({ hasSetsFile = function() return false; end,
+                             backupPath = function() return nil; end,
+                             legacyBackupPath = function() return nil; end,
+                             legacyacPaths = function() return { 'tests/_tmp_a.xml', 'tests/_tmp_b.xml' }; end });
+    check('PSL16f no candidate reads -> empty', #ps4d.acSetNames(), 0);
+    check('PSL16g ...and no source claimed',    ps4d.acSource(), nil);
+    os.remove(ALT);
+
+    -- Without the reader module the column degrades to empty -- it never takes the
+    -- rest of the Copy-from picker down with it.
+    package.loaded['dlac\\gear\\acimport'] = nil;
+    local ps7 = freshWith({ hasSetsFile = function() return false; end,
+                            backupPath = function() return nil; end,
+                            legacyBackupPath = function() return nil; end,
+                            legacyacPath = function() return ACXML; end });
+    check('PSL25 no acimport -> empty column, not an error', #ps7.acSetNames(), 0);
+    check('PSL26 ...and the other sources still work', names(ps7.staticSetNames()), 'Idle,Tp');
+    package.loaded['dlac\\gear\\acimport'] = dofile('gear/acimport.lua');
+
     package.loaded['dlac\\profiles'] = savedProf;
-    os.remove(JOB); os.remove(BACKUP); os.remove(LEGACY);
+    os.remove(JOB); os.remove(BACKUP); os.remove(LEGACY); os.remove(ACXML); os.remove(JUNK);
 end)();
 
 -- PSM. Legacy files that fight back (field 2026-07-28, a second tester's SCH.lua:
