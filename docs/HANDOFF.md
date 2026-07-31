@@ -491,7 +491,20 @@ research already recorded. In rough priority order:
 
 ## Current state (as of 2026-07-31)
 
-- **2026-07-31 (latest — `2026.07.31d`): "Copy from" learns the OTHER legacy engine —
+- **2026-07-31 (`2026.07.31f`): the E-Box nudge and the Teleports float are now the same
+  36x36 button** (`ui\restockui.lua`). Henrik's second tester finally noticed the crate — and
+  was annoyed by it, which is the feature working — but the two floats sit on the same screen
+  at different sizes. The nudge asked for 40px of art and passed **no frame padding**, so
+  ImageButton fell back to the style's `FramePadding` (4,3) and drew **48 wide by 46 tall** —
+  bigger than the Teleports float *and* not square. It now passes the long form
+  (`uv0`/`uv1`/padding/bg/tint) with `NUDGE_SZ = 30` + `NUDGE_PAD = 3`, matching gearui's
+  `TPF_ICON`/`TPF_PAD` exactly; the bg stays transparent so the themed button colour still
+  shows through and only the size changed. The text fallback (PNG failed to load) is the same
+  36 tall and takes its width from the label per the themed-font law, so a missing asset can
+  no longer resize the stack or clip `At home`. **The two constants are duplicated across two
+  files — change them together or they drift.** Suites **5343 + 913**. On `dev`; not
+  field-confirmed, and eyes on a screen is the only way to confirm it.
+- **2026-07-31 (`2026.07.31d`): "Copy from" learns the OTHER legacy engine —
   Ashitacast XML (`gear/acimport.lua`).** Suites **5320 + 908**, both interpreters.
   **ON MAIN** (`605045f`) — promoted on Henrik's explicit call while still **NOT
   field-confirmed**: three field rounds shaped it and it is verified against his real XML +
