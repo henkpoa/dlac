@@ -274,7 +274,24 @@ this does not make an accepted entry mergeable *alone*: `dev` promotes
 **The queue is empty.**
 
 
-*(Last emptied by the 2026-07-31 promotion — `4afec20`, `main` at `5d46bcb` before it: one
+*(Last emptied by the 2026-07-31 promotion — `bc581d1`, `main` at `4afec20` before it: two
+commits, `d982f91..dcc4eb1` — **the E-Box nudge and the Teleports float are one 36x36
+button**, `2026.07.31f` (the other commit is the `2026.07.31e` promotion record, written
+after that merge). The nudge asked for 40px of art and passed **no frame padding**, so
+ImageButton fell back to the style's `FramePadding` (4,3) and drew 48x46 — bigger than the
+Teleports float and not square; it now passes the long form with `NUDGE_SZ = 30` +
+`NUDGE_PAD = 3`, matching gearui's `TPF_ICON`/`TPF_PAD`. Suites **5343 + 913** on both
+interpreters, re-run **on the merged main** before the push.
+
+**Promoted NOT field-confirmed, on Henrik's explicit call** (*"push to origin main"*,
+2026-07-31) — the **third** promotion in one day under that override. Unlike the other two
+this one has no headless substitute: it is a pixel size, and eyes on a screen are the only
+test. **Still owed:** one look at a box with the crate and the Teleports float both on
+screen.
+
+The entry before it:*
+
+*(The 2026-07-31 promotion — `4afec20`, `main` at `5d46bcb` before it: one
 commit, `12531f1` — **reserved slots count against the piece that eats them**,
 `2026.07.31e`. Auto-build and `/dl best` scored a Royal/Vermillion Cloak in Body *and* a hat
 in the Head it eats; `optimizePicks` now takes `opts.reserves` and solves once per
@@ -502,8 +519,10 @@ research already recorded. In rough priority order:
   shows through and only the size changed. The text fallback (PNG failed to load) is the same
   36 tall and takes its width from the label per the themed-font law, so a missing asset can
   no longer resize the stack or clip `At home`. **The two constants are duplicated across two
-  files — change them together or they drift.** Suites **5343 + 913**. On `dev`; not
-  field-confirmed, and eyes on a screen is the only way to confirm it.
+  files — change them together or they drift.** Suites **5343 + 913**. **ON MAIN**
+  (`bc581d1`) — promoted on Henrik's explicit call while **NOT field-confirmed**, and unlike
+  the two promotions before it there is no headless substitute here: it is a pixel size, and
+  eyes on a screen are the only test. **One look at a box is still owed.**
 - **2026-07-31 (`2026.07.31d`): "Copy from" learns the OTHER legacy engine —
   Ashitacast XML (`gear/acimport.lua`).** Suites **5320 + 908**, both interpreters.
   **ON MAIN** (`605045f`) — promoted on Henrik's explicit call while still **NOT
