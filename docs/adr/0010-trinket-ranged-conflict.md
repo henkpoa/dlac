@@ -63,6 +63,61 @@ outside the plan.
 Tests: TR11–TR15 / MS9–MS10 (pure rules), TB1–TB7 (wired through `equipResolved`).
 `dispatch.M.VERSION` → 78.
 
+## The law moves to the Arbiter (2026-08-01, engine v159)
+
+Field case, DRK72 Mindie: *"it is trying to both equip Arcane Arbalest in Range, and
+Cinderstone in Ammo back and forth."* The Level rule above was working. What was wrong is
+that **this law ran per resolved table while the plan is merged across tables.** His DRK
+triggers fire two rules on one condition:
+
+```lua
+{ when = { status = "Idle" }, set = "Idle"    },   -- Range ladder + Ammo = Cinderstone
+{ when = { status = "Idle" }, set = "Weapons" },   -- Range ladder, NO Ammo
+```
+
+`Idle` judged the pair correctly (Cinderstone Lv60 beats Arcane Arbalest Lv50 → Range
+dropped). `Weapons` names Range and no Ammo, so it asked the *other* question —
+`trinketWornDisplace` — and wrote `Ammo = 'remove'` for a crossbow the same dispatch had
+already decided not to equip. Merged last-writer-wins, the stick came off; next dispatch,
+Ammo empty, nothing to displace, Idle's Cinderstone survived the merge and went back on.
+Off, on, off, on, one server round trip per second, forever.
+
+No per-table fix exists: **"is a ranged piece coming in?" is a question about the FINAL
+PLAN, and one table is not the final plan.** Henrik: *"Maybe it's better to move this rule
+into the arbiter, since it gets the full picture from all the sets?"*
+
+- **`arbiter.pairVerdict(floor, rslotFn, levelFn, pairFn, wornAmmo)`** judges the **merged
+  floor** — every matching set AND every built claim at its rank row — **once** per
+  dispatch. `dispatch`'s `trinket-vs-ranged` pass stops deciding and starts **applying**.
+  Consequence worth naming: with the Ammo rule enabled this arbitrates the **bolt that will
+  actually be worn** against the ranged weapon, not whatever the trigger floor named
+  underneath the claim.
+- **It runs FIRST inside `reserveResolve`** — before availability, before dominance, before
+  the fall — and **deletes the loser from the floor**. Two reasons, both load-bearing: it
+  makes this ADR's adjacency law literal (the loser never gets to reserve anything), and it
+  stops the two verdicts contradicting each other — a Lv75 crossbow **wins** the Level
+  contest above while `reserveVerdict`'s ties-favour-the-reserver rule would suppress Range
+  for a Lv60 stick, leaving the plan holding neither piece.
+- **The loser is SUPPRESSED, never INELIGIBLE.** An ineligible piece falls to its ladder's
+  next rung — and the next crossbow down conflicts with the same stat stick, so a fall here
+  would walk the whole Range ladder and re-derive the flap. (ADR 0027's asymmetry: a
+  reserved slot never falls.)
+- **One implementation.** `pairVerdict` shapes the floor into a plan and calls
+  `trinketRangeDrop` / `trinketWornDisplace` — which stay put as the **direct-caller
+  fallback** (immediate equips, headless suites), exactly as `reservedDrops` does.
+- **Its own verdict, everywhere it is reported**: `/dl why <slot>` and the Arbiter Monitor
+  print the pair verdict separately and name which of the three laws answered (Level
+  contest / pairing mismatch / worn stick displaced). It is never folded into "reserved" —
+  a bolt and a bow are two ordinary pieces with no reservation between them, and
+  "RESERVED by" sends the reader hunting a reserving piece that does not exist.
+- **Set totals read the same law** (`dispatch.pairVerdict`, via `gearui`'s `rsv.dropsIn`).
+  The old preview called `reservedDrops` alone, which drops Range whenever *any* stat stick
+  sits in Ammo — ignoring the Level contest this ADR is built on. A Lv75 crossbow beside a
+  Lv60 Cinderstone therefore read as "no weapon" in Set totals while the engine equipped
+  the weapon and dropped the stick.
+
+Tests PV1–PV12. `dispatch.M.VERSION` → 159.
+
 ## Consequences
 
 - No coexistence (the server forbids it) — but a clean, stable result and no flap for the whole

@@ -152,11 +152,21 @@ local function cellInfo(rec, slot)
     if rv ~= nil then fell = (rv.why == 'unavail') and 'unavail' or 'reserve';
     elseif fall ~= nil and findCI(fall.dead, ls) ~= nil then fell = 'dead'; end
 
+    -- The Range/Ammo PAIR verdict (v159): its own answer, never folded into
+    -- "reserved". The half of it that drops a bolt beside a bow has no
+    -- reservation in it at all -- two ordinary pieces the server will not let
+    -- coexist -- and a cell reading "(empty: reserved)" would send you looking
+    -- for a reserving piece that does not exist.
+    local pv = (con ~= nil) and con.pair or nil;
+    if pv ~= nil and string.lower(tostring(pv.slot)) ~= ls then pv = nil; end
+
     local color = COL_KEPT;
     if win ~= nil then color = CLAIM_COL[win.name] or COL_OTHER; end
 
     local text, isItem = '(kept)', false;
-    if sup ~= nil then
+    if pv ~= nil and pv.remove ~= true then
+        text = '(empty: pair)';
+    elseif sup ~= nil then
         text = '(empty: reserved)';
     elseif win ~= nil and LOCK_HELD ~= nil and win.item == LOCK_HELD then
         text = '(lock: keep worn)';
@@ -173,7 +183,8 @@ local function cellInfo(rec, slot)
     -- removed, lock-held, reserved-empty, a defending sentinel, or an item
     -- whose icon cannot resolve. Two glyphs, dim; the hover is the authority.
     local mark = '--';
-    if sup ~= nil then mark = 'rs';
+    if pv ~= nil and pv.remove ~= true then mark = 'pr';
+    elseif sup ~= nil then mark = 'rs';
     elseif win ~= nil and LOCK_HELD ~= nil and win.item == LOCK_HELD then mark = 'lk';
     elseif item == 'remove' then mark = 'rm';
     elseif isItem then mark = '[?]';
@@ -227,6 +238,23 @@ local function tooltipText(rec, slot, d)
             out[#out + 1] = string.format('INELIGIBLE: it reserves %s, which a higher claim owns.', tostring(iv));
         elseif sv ~= nil then
             out[#out + 1] = string.format('held EMPTY: reserved by %s (the server clears it).', tostring(sv));
+        end
+        -- The pair verdict's own sentence, and it says WHICH of the three laws
+        -- answered: the Level contest, the pairing mismatch, or the worn stick
+        -- that had to come off. "The server would strip a slot" is the shared
+        -- consequence and the reason any of it exists.
+        local pvv = con.pair;
+        if pvv ~= nil and string.lower(tostring(pvv.slot)) == ls then
+            if pvv.remove == true then
+                out[#out + 1] = string.format('REMOVED: worn %s cannot sit beside %s --', tostring(pvv.loser), tostring(pvv.keep));
+                out[#out + 1] = '  the server would strip the Range slot, so the stick comes off.';
+            elseif pvv.why == 'mismatch' then
+                out[#out + 1] = string.format('held EMPTY: %s cannot be fired by %s.', tostring(pvv.loser), tostring(pvv.keep));
+                out[#out + 1] = '  The ammo yields -- the Range slot is never forced off.';
+            else
+                out[#out + 1] = string.format('held EMPTY: %s and %s cannot coexist,', tostring(pvv.loser), tostring(pvv.keep));
+                out[#out + 1] = string.format('  and %s is the higher Level, so it is kept.', tostring(pvv.keep));
+            end
         end
         local ref = (fall ~= nil) and findCI(fall.refused, ls) or nil;
         if type(ref) == 'table' then

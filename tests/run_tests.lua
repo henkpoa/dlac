@@ -5905,6 +5905,93 @@ end)();
     check('TR14 no Range in plan -> no displace',            disp({ Body = 'Gaudy Harness' }, 'Cinderstone'), nil);
     check('TR15 Range=remove is not incoming',               disp({ Range = 'remove' }, 'Cinderstone'), nil);
 
+    -- ---------------------------------------------------------------------
+    -- PV. THE PAIR VERDICT (v159) -- the same two laws, asked ONCE of the
+    -- MERGED floor instead of once per resolved table.
+    --
+    -- PV5-PV7 are the DRK72 field case that forced the move, and they are the
+    -- reason this block exists: two Default rules fire on one condition, 'Idle'
+    -- names Range + Ammo=Cinderstone and 'Weapons' names Range and no Ammo.
+    -- Per table, 'Weapons' saw no Ammo, asked trinketWornDisplace, and removed
+    -- a worn stick for a crossbow the same dispatch had already dropped --
+    -- which is a two-frame on/off flap forever. Merged, the answer is one
+    -- sentence: the dispatch DOES speak for Ammo, so nothing is displaced.
+    -- ---------------------------------------------------------------------
+    local pairOf = function(n) return ({ Cinderstone = '0:0', Morion = '0:0',
+        ['Power Bow'] = '25:0', ['Toy Bow'] = '25:0', ['Iron Arrow'] = '25:0',
+        ['Arcane Arbalest'] = '26:0', ['Venom Bolt'] = '26:0' })[n]; end
+    local function fl(t)
+        local o = {};
+        for k2, v2 in pairs(t) do o[k2] = { name = v2, prio = 20, row = 11 }; end
+        return o;
+    end
+    local function pv(t, worn) return dispatchM.pairVerdict(fl(t), rslot, level, pairOf, worn); end
+
+    check('PV1 no Range/Ammo pair -> nil', pv({ Body = 'Gaudy Harness' }), nil);
+    local p1 = pv({ Range = 'Toy Bow', Ammo = 'Cinderstone' });   -- stick 60 > bow 10
+    check('PV2 trinket beats the weapon on Level', p1.slot, 'Range');
+    check('PV2b ... naming the kept piece',        p1.keep, 'Cinderstone');
+    check('PV2c ... and the loser',                p1.loser, 'Toy Bow');
+    check('PV2d ... under the trinket law',        p1.why, 'trinket');
+    check('PV2e a drop is never a remove',         p1.remove, nil);
+    local p2 = pv({ Range = 'Power Bow', Ammo = 'Cinderstone' }); -- bow 75 > stick 60
+    check('PV3 weapon beats the stick on Level',   p2.slot, 'Ammo');
+    check('PV3b ... keeping the bow',              p2.keep, 'Power Bow');
+    -- The mismatch leg: two ordinary pieces, no RSlot on either side, so only
+    -- the pair keys can see it -- and the ammo ALWAYS yields (Range is never
+    -- forced off, whatever the Levels say).
+    local p3 = pv({ Range = 'Power Bow', Ammo = 'Venom Bolt' });
+    check('PV4 a bolt in a bow set yields',        p3.slot, 'Ammo');
+    check('PV4b ... named as a mismatch',          p3.why, 'mismatch');
+    check('PV4c bow + its own arrow is fine',      pv({ Range = 'Power Bow', Ammo = 'Iron Arrow' }), nil);
+
+    -- THE FIELD CASE. Merged floor = Idle's Range + Ammo and Weapons' Range.
+    local merged = { Range = 'Arcane Arbalest', Ammo = 'Cinderstone', Main = 'Foreshadow' };
+    local p5 = pv(merged, 'Cinderstone');
+    check('PV5 the merged floor drops Range', p5.slot, 'Range');
+    check('PV5b ... keeping the stat stick',  p5.keep, 'Cinderstone');
+    check('PV5c ... and never removes Ammo',  p5.remove, nil);
+    -- The per-table view is what used to answer, and this is the flap it made:
+    -- the 'Weapons' table alone still says "take the stick off".
+    check('PV6 the OLD per-table view still displaces (why it flapped)',
+        dispatchM.trinketWornDisplace({ Range = 'Arcane Arbalest', Main = 'Foreshadow' },
+            'Cinderstone', rslot, pairOf), 'Ammo');
+    -- ...and the merged view refuses to, because the dispatch speaks for Ammo.
+    check('PV7 merged: nothing displaces a stick the plan itself names',
+        (function() local r = pv(merged, 'Cinderstone'); return r.remove; end)(), nil);
+    -- The displace leg SURVIVES where it is still right: nothing in the whole
+    -- dispatch speaks for Ammo, so the worn stick yields to the incoming piece.
+    local p8 = pv({ Range = 'Toy Bow', Main = 'Foreshadow' }, 'Cinderstone');
+    check('PV8 no Ammo anywhere -> the worn stick is removed', p8.slot, 'Ammo');
+    check('PV8b ... as a remove, not a drop',                  p8.remove, true);
+    check('PV8c ... naming the incoming piece',                p8.keep, 'Toy Bow');
+    check('PV8d ... under the worn law',                       p8.why, 'worn');
+    check('PV9 a locked Ammo passes no worn name -> no verdict',
+        pv({ Range = 'Toy Bow', Main = 'Foreshadow' }, nil), nil);
+    check('PV10 missing levelFn never errors',
+        dispatchM.pairVerdict(fl({ Range = 'Toy Bow', Ammo = 'Cinderstone' }), rslot).slot, 'Range');
+
+    -- PV11. THE LOSER MUST NOT REACH THE DOMINANCE VERDICT. reserveResolve
+    -- deletes it from the floor before availability/dominance/the fall, so the
+    -- two verdicts cannot contradict each other: with the bow winning on Level,
+    -- Range must NOT also come off as "reserved by Cinderstone" -- which is
+    -- exactly what happens if the pair law is asked afterwards.
+    do
+        local ents = { { prio = 20, row = 11, set = { Range = 'Power Bow', Ammo = 'Cinderstone' } } };
+        local s11, i11, r11, f11, pv11 = dispatchM.reserveResolve(ents, rslot, nil, nil,
+            { level = level, pair = pairOf });
+        check('PV11 the verdict rides reserveResolve', pv11.slot, 'Ammo');
+        check('PV11b the winner keeps its slot',       s11, nil);
+        check('PV11c nothing is ineligible',           i11, nil);
+        check('PV11d the loser never falls',           r11, nil);
+        check('PV11e no fall record',                  f11, nil);
+        -- ...and with popt omitted, byte-identical to before: the stick still
+        -- reserves Range the old way, so every direct caller is untouched.
+        local s12, _, _, _, pv12 = dispatchM.reserveResolve(ents, rslot);
+        check('PV12 no popt -> no pair verdict', pv12, nil);
+        check('PV12b ... and the old reservation stands', s12.Range, 'Cinderstone');
+    end
+
     -- Engine-side stale-stamp guard (v101): gear.lua files written before
     -- 2026.07.22g carry a wrongly-completed RSlot=4 on the Animator-fed oils;
     -- the engine ignores it at the manifest reader, so the addon update alone

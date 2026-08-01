@@ -271,7 +271,59 @@ merge carries it **without asking him again**. Only he can move an entry to ACCE
 this does not make an accepted entry mergeable *alone*: `dev` promotes
 **whole-or-not-at-all**, so an accepted entry rides the next promotion of the whole branch.
 
-**The queue is empty.**
+### The Range/Ammo pair is an Arbiter verdict — `2026.08.01d`, engine v159
+
+*(NOT field-confirmed — a field round on Mindie DRK is owed before this can be ACCEPTED.)*
+
+**The bug, reported by Henrik on DRK72 Mindie:** *"it is trying to both equip Arcane
+Arbalest in Range, and Cinderstone in Ammo back and forth, I thought we had that rule set
+in place so higher level in non interoperable range ↔ ammo combos would win."* The Level
+rule was fine. What was broken is that the ADR 0010 pair law ran **per resolved table**
+while the plan is **merged across tables**. His DRK triggers fire two rules on one
+condition — `{ status = 'Idle' } → 'Idle'` (Range ladder + `Ammo = Cinderstone`) and
+`{ status = 'Idle' } → 'Weapons'` (Range ladder, **no Ammo**). `Idle` judged the pair
+correctly (Cinderstone Lv60 beats Arcane Arbalest Lv50 → Range dropped). `Weapons`, naming
+Range and no Ammo, asked the *other* question — `trinketWornDisplace` — and wrote
+`Ammo='remove'` for a crossbow the same dispatch had already decided not to equip. Merged
+last-writer-wins, the stick came off; next dispatch, Ammo empty, nothing to displace,
+Idle's Cinderstone survived the merge and went back on. **Off, on, off, on, one server
+round trip per second, forever.** Reproduced headlessly against his live `gear.lua` before
+a line was changed, and re-run against the fix.
+
+**Henrik's call on the fix:** *"Maybe it's better to move this rule into the arbiter, since
+it gets the full picture from all the sets?"* — and it is right, because no amount of
+per-table cleverness helps: *"is a ranged piece coming in?"* is a question about the FINAL
+PLAN, and one table is not the final plan.
+
+- **`arbiter.pairVerdict`** judges the **merged floor** (every matching set *and* every
+  built claim at its rank row) **once** per dispatch; `trinket-vs-ranged` stops deciding
+  and starts applying. With the Ammo rule enabled, this now arbitrates the **bolt that
+  will actually be worn** against the crossbow, not the Cinderstone the trigger floor
+  named underneath it.
+- It runs **first** inside `reserveResolve` — before availability, dominance and the fall —
+  and **deletes the loser from the floor**. That makes ADR 0010's adjacency law literal
+  (the loser never gets to reserve anything) and stops the two verdicts contradicting each
+  other: a Lv75 crossbow **wins** the Level contest while `reserveVerdict`'s
+  tie-favours-the-reserver rule would suppress Range for a Lv60 stick, leaving the plan
+  holding neither.
+- The loser is **suppressed, never ineligible**: an ineligible piece falls to its ladder's
+  next rung, the next crossbow down conflicts with the same stick, and a fall would walk
+  the whole Range ladder and re-derive the flap (ADR 0027's asymmetry).
+- **One implementation, not a second copy.** `pairVerdict` shapes the floor into a plan and
+  calls `trinketRangeDrop` / `trinketWornDisplace`, which stay put as the **direct-caller
+  fallback** (immediate equips, headless suites) exactly as `reservedDrops` does.
+- **Reported as its own verdict** in `/dl why <slot>` and the Arbiter Monitor — never
+  folded into "reserved", because a bolt and a bow are two ordinary pieces with no
+  reservation between them.
+- **Set totals count what will be WORN** (Henrik: *"consider so that the total stats are
+  reflected correctly"*): the Sets tab reads the same law through `dispatch.pairVerdict`.
+  The old preview dropped Range whenever **any** stat stick sat in Ammo, ignoring the very
+  Level contest it claimed to mirror — so a Lv75 crossbow beside a Lv60 Cinderstone read as
+  "no weapon" in the numbers while the engine equipped the weapon.
+
+Tests **PV1–PV12** (pure law + the field case + the reserveResolve wiring + the
+popt-omitted byte-identical path). Both suites green (5439 / 925). `dispatch.M.VERSION` →
+159 (**needs a Reload LAC**).
 
 
 *(Last emptied by the 2026-08-01 promotion — `4810f94`, `main` at `bc581d1` before it: six

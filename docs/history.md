@@ -7539,3 +7539,69 @@ against wired-picks-Dalmatica side by side, so the wiring cannot rot into a no-o
 **Owed:** one field round. Build the MP/Refresh set again and confirm Dalmatica + the head
 now wins, and that a genuinely-better Cloak still shows an empty Head rather than a hat the
 engine throws away.
+
+## Session "the pair law moves to the Arbiter" (2026-08-01, engine v159, `2026.08.01d`)
+
+**Theme:** a Range/Ammo flap Henrik hit on DRK72 Mindie -- *"it is trying to both equip
+Arcane Arbalest in Range, and Cinderstone in Ammo back and forth, I thought we had that
+rule set in place so higher level in non interoperable range <-> ammo combos would win.
+In this case cinderstone"*.
+
+**The Level rule was fine.** The diagnosis, from the live files before a line was changed:
+ADR 0010's pair law ran on ONE RESOLVED TABLE while a dispatch's plan is MERGED ACROSS
+TABLES. His DRK triggers fire two rules on one condition -- `{ status='Idle' } -> 'Idle'`
+(Range ladder + `Ammo = Cinderstone`) and `{ status='Idle' } -> 'Weapons'` (Range ladder,
+NO Ammo). `Idle` judged the pair correctly (Cinderstone Lv60 beats Arcane Arbalest Lv50 ->
+Range dropped). `Weapons`, naming Range and no Ammo, asked the OTHER question --
+`trinketWornDisplace` -- and wrote `Ammo='remove'` for a crossbow the same dispatch had
+already decided not to equip. Merged last-writer-wins, the stick came off; next dispatch,
+Ammo empty, nothing to displace, Idle's Cinderstone survived the merge and went back ON.
+Off, on, off, on, one server round trip per second, forever.
+
+**Method note worth keeping:** the whole thing was settled headlessly in minutes by
+driving the REAL pure functions (`reserveFloor` / `reserveVerdict` / `trinketRangeDrop` /
+`trinketWornDisplace`) with values read straight out of `Mindie_29909/gear.lua` and
+`profiles/Default/{sets,triggers}/DRK.lua` -- artifacts first, then theory. The same script
+re-run after the fix is the proof it settles on frame 1. Two hypotheses died on contact
+with it: a `/dl fix` Pair backfill (his gear.lua carries `Pair` on only 8 of ~1400 records)
+changes NOTHING here, and swapping the two trigger lines only masks it.
+
+**Henrik's call:** *"Maybe it's better to move this rule into the arbiter, since it gets
+the full picture from all the sets?"* Right, and for a reason no per-table patch reaches:
+*"is a ranged piece coming in?"* is a question about the FINAL PLAN, and one table is not
+the final plan.
+
+**Landed:**
+- **`arbiter.pairVerdict`** judges the MERGED FLOOR -- every matching set AND every built
+  claim at its rank row -- ONCE per dispatch; `trinket-vs-ranged` stops deciding and starts
+  applying. Free consequence: with the Ammo rule enabled it now arbitrates the BOLT that
+  will actually be worn against the crossbow, not the Cinderstone the floor named under it.
+- **It runs FIRST inside `reserveResolve`** (before availability, dominance, the fall) and
+  DELETES the loser from the floor -- which makes ADR 0010's adjacency law literal and stops
+  the two verdicts contradicting each other: a Lv75 crossbow WINS the Level contest while
+  `reserveVerdict`'s tie-favours-the-reserver rule would suppress Range for a Lv60 stick,
+  leaving the plan holding neither.
+- **Suppressed, never ineligible.** An ineligible piece falls; the next crossbow down
+  conflicts with the same stick, so a fall would walk the whole ladder and re-derive the
+  flap (ADR 0027's asymmetry).
+- **One implementation** -- `pairVerdict` shapes the floor into a plan and calls the two
+  existing functions, which stay as the DIRECT-caller fallback exactly as `reservedDrops`
+  does. `popt` omitted = byte-identical to before (test PV12).
+- **Its own verdict in both renderers** (`/dl why <slot>`, Arbiter Monitor cell + hover),
+  naming which of the three laws answered. Never folded into "reserved": a bolt and a bow
+  are two ordinary pieces, and "RESERVED by" sends the reader hunting a piece that is not
+  there.
+- **Set totals count what will be WORN** (*"consider so that the total stats are reflected
+  correctly"*). The Sets tab reads the same law through `dispatch.pairVerdict`; the old
+  preview called `reservedDrops` alone, which drops Range whenever ANY stat stick sits in
+  Ammo -- so a Lv75 crossbow beside a Lv60 Cinderstone read as "no weapon" in the numbers
+  while the engine equipped the weapon. `gearimport.pairFor` is exported for it, the twin
+  of `rslotFor` and for the same reason (a pre-v128 gear.lua carries no `Pair`, and reading
+  the owned record would show a bolt and a bow as a fine couple).
+
+Tests PV1-PV12. Suites **5439 + 925**.
+
+**Owed:** one field round on Mindie DRK. Stand idle with Cinderstone worn and confirm the
+Ammo slot stops blinking, that `/dl why ammo` and `/dl why range` name the pair verdict,
+and that the Sets tab's DRK Idle set shows the Range tile red with the pair sentence rather
+than the reservation one.

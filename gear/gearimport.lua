@@ -721,6 +721,12 @@ M.effectiveRSlot = effectiveRSlot;   -- exported for the trinket-RSlot tests
 -- written before v43 carries no RSlot at all, and reading that would show a
 -- Vermillion Cloak as harmless right up until the engine drops the Head anyway.
 M.rslotFor = rslotFor;
+-- The Range/Ammo pair key BY ID, catalog-sourced -- rslotFor's twin, exported
+-- for the same reason (v159): the GUI must judge a pair the way the engine
+-- does, and a gear.lua written before v128 carries no Pair at all. Reading the
+-- owned record would show a bolt and a bow as a fine couple right up until the
+-- server strips one of them.
+M.pairFor = pairFor;
 
 -- Preview: scan, then print the generated entry for each NEW item. Read-only.
 function M.preview(containers)
