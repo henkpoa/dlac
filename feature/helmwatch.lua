@@ -376,12 +376,15 @@ local _vpReqAt = -10;
 function M.requestPoints(force)
     if os.clock() - _vpReqAt < (force and 1 or 5) then return; end
     _vpReqAt = os.clock();
-    pcall(function()
+    local ok = pcall(function()
         local p = {};
         for i = 1, 64 do p[i] = 0; end
         p[5] = ACT_GET_POINTS;
         AshitaCore:GetPacketManager():AddOutgoingPacket(PKT_1A4, p);
     end);
+    if ok then   -- counted for /dl sends (feature\sendlog)
+        pcall(function() require('dlac\\feature\\sendlog').note(PKT_1A4, 'HELM points poll'); end);
+    end
 end
 
 -- The points entry for a HELM category. CONFIRMED live 2026-07-17 (Mindie):

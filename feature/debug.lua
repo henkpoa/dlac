@@ -112,6 +112,13 @@ local WATCH_FRESH_S = 15;
 -- command runs -- field 2026-07-23, "no txt file": the final write waits out
 -- the capture window, so an early look found nothing) and its pending note
 -- doubles as the tick's own tripwire.
+-- "This report has NO engine half" -- passed by deliver() when the caller
+-- named no handoff file. It cannot be nil: nil already means "a half was
+-- expected and never came", which is a DIAGNOSIS, and a single-state topic
+-- (the purge left one state) must not wear it. Identity-compared, so no
+-- string a real handoff could contain can impersonate it.
+M.NO_ENGINE_HALF = {};
+
 function M._mergeSections(label, addonLines, engineRaw, nowEpoch, addonVer)
     local out = {
         string.format('dlac %s -- written %s -- addon %s', tostring(label),
@@ -120,6 +127,10 @@ function M._mergeSections(label, addonLines, engineRaw, nowEpoch, addonVer)
         '== addon half ==',
     };
     for _, l in ipairs(addonLines or {}) do out[#out + 1] = l; end
+    if engineRaw == M.NO_ENGINE_HALF then
+        out[#out + 1] = '';
+        return table.concat(out, '\n');   -- no second section: nothing is missing
+    end
     out[#out + 1] = '';
     out[#out + 1] = '== engine half ==';
     local stamp, rest = nil, nil;
@@ -284,7 +295,11 @@ function M.deliver(label, fileBase, addonLines, handoffName, opts)
     local ver = nil;
     pcall(function() ver = addon ~= nil and addon.version or nil; end);
     opts = opts or {};
-    writeOut(fileBase, M._mergeSections(label, addonLines, false, os.time(), ver), label,
+    -- No handoff named = a single-state report (nothing to wait for, nothing
+    -- to accuse of being absent). It skips the PENDING note too: the
+    -- provisional and the final differ only by opts.append.
+    local half = (handoffName == nil) and M.NO_ENGINE_HALF or false;
+    writeOut(fileBase, M._mergeSections(label, addonLines, half, os.time(), ver), label,
         string.format('report file created (finalizes in ~%ds)', math.ceil(tonumber(opts.delay) or 1.2)));
     _pend = { label = label, base = fileBase, lines = addonLines, handoff = handoffName,
               ver = ver, append = opts.append, dueAt = os.clock() + (tonumber(opts.delay) or 1.2) };
@@ -335,8 +350,9 @@ ashita.events.register('d3d_present', 'dlac-debug-deliver', function()
             for _, l in ipairs(extra) do p.lines[#p.lines + 1] = l; end
         end
     end
-    local engineRaw = nil;
+    local engineRaw = M.NO_ENGINE_HALF;
     if p.handoff ~= nil then
+        engineRaw = nil;   -- a half WAS expected: nil now means it never came
         pcall(function()
             local base = handoffDir();
             if base ~= nil then engineRaw = readAll(base .. 'dlac\\' .. p.handoff); end

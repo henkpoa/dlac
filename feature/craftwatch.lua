@@ -245,10 +245,13 @@ local _gpReqAt = -10;
 function M.requestGuildPoints(force)
     if os.clock() - _gpReqAt < (force and 1 or 5) then return; end
     _gpReqAt = os.clock();
-    pcall(function()
+    local ok = pcall(function()
         -- header id:9|size:7 -> id 0x10F, size 2 (4-byte packet) = 0x050F LE; sync filled by Ashita.
         AshitaCore:GetPacketManager():AddOutgoingPacket(0x10F, { 0x0F, 0x05, 0x00, 0x00 });
     end);
+    if ok then   -- counted for /dl sends (feature\sendlog)
+        pcall(function() require('dlac\\feature\\sendlog').note(0x10F, 'craft guild-point poll'); end);
+    end
 end
 
 -- ---------------------------------------------------------------------------

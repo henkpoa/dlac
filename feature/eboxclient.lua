@@ -249,8 +249,16 @@ local function wStr(p, off, s, maxLen)
     local n = math.min(#s, maxLen);
     for i = 1, n do p[off + i] = string.byte(s, i); end
 end
-local function sendRaw(p)
-    pcall(function() AshitaCore:GetPacketManager():AddOutgoingPacket(PKT_1A4, p); end);
+-- The one 0x1A4 door. `why` names the protocol action for /dl sends -- the
+-- same word M._trace already logs, so the counter and the protocol trace
+-- read the same.
+local function sendRaw(p, why)
+    local ok = pcall(function() AshitaCore:GetPacketManager():AddOutgoingPacket(PKT_1A4, p); end);
+    if ok then
+        pcall(function()
+            require('dlac\\feature\\sendlog').note(PKT_1A4, 'e-box ' .. tostring(why or '?'));
+        end);
+    end
 end
 
 -- ---------------------------------------------------------------------------
@@ -405,7 +413,7 @@ function M.ensureCategory(ahCat, maxAge)
     _lastReqAt = M._now();
     local p = makePkt(ACT_GET_CATEGORY);
     p[11] = ahCat;   -- u8 @0x0A
-    sendRaw(p);
+    sendRaw(p, 'GET_CATEGORY');
     M._trace('>', string.format('GET_CATEGORY cat=%d (%s)', ahCat,
         (maxAge == math.huge) and 'verify' or ('maxAge ' .. tostring(maxAge or M.STALE))));
     return true;
@@ -469,7 +477,7 @@ function M.search(query)
     _lastReqAt = M._now();
     local p = makePkt(ACT_SEARCH);
     wStr(p, 0x10, query, 31);
-    sendRaw(p);
+    sendRaw(p, 'SEARCH');
     M._trace('>', string.format('SEARCH %q', query));
     return true;
 end
@@ -494,7 +502,7 @@ function M.getSummary()
     if not canQuery() then return false; end
     M._beginRequest('summary');
     _lastReqAt = M._now();
-    sendRaw(makePkt(ACT_GET_SUMMARY));
+    sendRaw(makePkt(ACT_GET_SUMMARY), 'GET_SUMMARY');
     M._trace('>', 'GET_SUMMARY');
     return true;
 end
@@ -518,7 +526,7 @@ local function sendWithdraw(itemId, qty)
     local p = makePkt(ACT_WITHDRAW);
     wU16(p, 0x08, itemId);
     wU32(p, 0x0C, qty);
-    sendRaw(p);
+    sendRaw(p, 'WITHDRAW');
     M._trace('>', string.format('WITHDRAW id=%d x%d', itemId, qty));
 end
 

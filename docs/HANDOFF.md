@@ -644,7 +644,45 @@ research already recorded. In rough priority order:
 5. **Icon polish, optional:** the four developer rows share one question mark on their
    section heading rather than each carrying one. Trivial to change if it reads wrong.
 
-## Current state (as of 2026-08-01)
+## Current state (as of 2026-08-02)
+
+- **2026-08-02 (`2026.08.02`): `/dl sends` — WHAT DLAC PUT ON THE WIRE. BUILT, suites
+  green both platforms, **UNCOMMITTED**, **NOT field-confirmed — a field round is owed**
+  (it is a readout, so the round is one glance: `/dl sends` after an Incursion run).
+  - **Where it came from.** Henrik, mid-Incursion, level-synced, sets only: *"Does this
+    addon send or receive many packets... does it send constant packets to have things
+    equipped or only once?"* The code answer is **only on a real difference** —
+    `bufferFlush` bails at `plan.satisfied`, so the 0.4 s Default tick resolves a plan
+    ~2.5×/s and sends **nothing** while what you want is what you wear. But a code answer
+    is a claim. This makes it readable off disk, which is the whole point of the debug-file
+    rule.
+  - **What it is:** `feature\sendlog.lua` — total / per-packet-id / **per-cause** counters
+    plus a 24-deep ring of recent sends with ages. `/dl sends` prints and writes
+    `debug\dlac-sends-<Char>.txt`; `/dl sends reset` restarts the clock. Zero sends prints
+    as `NOTHING sent in <dur>` **and says why that is the expected state** — the silence
+    has an author.
+  - **Self-check, not a probe**, so it belongs in dlac (the 07-23 ruling that put
+    `/dl check` here and left forensics in dlacprobe). It never reads the wire. The
+    argument that settles it: a dlacprobe `packet_out` observer sees anonymous injected
+    bytes and cannot tell ours from another addon's, let alone name the dispatch point
+    behind them — **only the send site knows why it sent**, and the why is the diagnosis.
+    A re-dress is one burst named for its dispatch point; a **flap** is the same cause
+    repeating at 0.4 s.
+  - **The invariant, pinned as source (SND12):** every `AddOutgoingPacket` in the shipped
+    tree sits beside a `sendlog.note()`. Five chokepoints carry all of them —
+    `equipengine.injectPacket` (0x050/0x051 + the 0x01A/0x037 re-injects; cause = the
+    dispatch point, stashed by `fireEvent` in `_curEvent`), `lockstyleapply.liveInject`,
+    `craftwatch.requestGuildPoints`, `eboxclient.sendRaw`, `helmwatch.requestPoints`. A new
+    send site without a note **fails the suite**, because an uncounted send is the one way
+    this readout could lie — and it would lie in the direction that matters. A new *file*
+    that sends must be added to `SEND_FILES` in the test; the test says so.
+  - **Answered along the way** (worth not re-deriving): under level sync there is no
+    strip/re-equip loop, because both sides use the **real** job level —
+    `AllowSyncEquip = true` reads `GetJobLevel(mainJob)`, and CatsEyeXI's equip check is
+    `getReqLvl() > (DISABLE_GEAR_SCALING ? GetMLevel() : jobs.job[MJob])` with
+    `DISABLE_GEAR_SCALING = false` (`charutils.cpp:2306`, `settings/default/map.lua:100`).
+    Client and server agree, so no equip is refused and nothing retries. The sync landing
+    itself arms the 1 s settle hold (`M.SYNC_SETTLE_S`) and then one re-dress.
 
 - **2026-08-01 (`2026.08.01k`, engine v162): OTHER ADDONS CAN CLAIM GEAR — BUILT and
   **FIELD-CONFIRMED — all four checks, plus the re-check on the last fix** (Henrik: *"This

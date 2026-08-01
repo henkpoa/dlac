@@ -1001,6 +1001,32 @@ CatsEyeXI's own `enum_augment_name` (private server repo — never commit it) > 
 `augments.sql` > wiki. Six ids (136, 163, 205, 214, 219, 256) are undefined no-op gaps —
 do not chase them. Writes `<char>\dlac\augdump.txt`.
 
+### feature/sendlog.lua — `/dl sends`: what dlac put on the wire
+The **send counter**, born from a field question (Henrik, 2026-08-01, mid-Incursion:
+"does it send constant packets to have things equipped or only once?"). Counts dlac's own
+outgoing packets — total, per packet id, **per cause** — plus a 24-deep ring of the most
+recent sends with their ages. `/dl sends` prints it and drops one transferable
+`debug\dlac-sends-<Char>.txt` (via `feature/debug.lua`'s `deliver`); `/dl sends reset`
+restarts the clock.
+
+This is a **self-check, not a probe** (Henrik's 07-23 ruling — the same one that put
+`/dl check` in dlac and left packet forensics in dlacprobe). Nothing here reads the wire.
+A dlacprobe `packet_out` observer would see anonymous injected bytes and could not tell
+ours from another addon's, let alone name the dispatch point behind them — **only the send
+site knows why it sent, and the why is the diagnostic value**. A steady state reads
+`NOTHING sent`; a re-dress reads as one burst named for its dispatch point; a **flap**
+reads as the same cause repeating at the 0.4 s Default tick.
+
+**The invariant**: every `AddOutgoingPacket` call in the shipped tree is accompanied by a
+`sendlog.note()`. Five chokepoints carry all of them — `equipengine.injectPacket`
+(0x050/0x051 equips + 0x01A/0x037 re-injects, cause = the dispatch point via `_curEvent`),
+`lockstyleapply.liveInject` (0x053), `craftwatch.requestGuildPoints` (0x10F),
+`eboxclient.sendRaw` (0x1A4, cause = the protocol action `M._trace` already logs) and
+`helmwatch.requestPoints` (0x1A4). **Test SND12 pins it as source** — a new send site added
+without a note fails the suite, because an uncounted send is the one way this readout could
+lie, and it lies in the direction that matters ("dlac sent nothing" when it did). A new
+file that sends packets must be added to `SEND_FILES` there.
+
 ### data/statdefs.lua — stat metadata registry
 Single source of truth for stat presentation/weighting: key, label, section, percent,
 lowerBetter, aliases (~178 entries, 7 sections). Presentation only — **no server mod-ids**
@@ -1226,6 +1252,7 @@ like the command does not exist.
 | `/dl dw` | utils | Dual Wield trait-bit probe |
 | `/dl recalc` / `test` / `reload` (`r`) | utils | Rebuild sets / probe / reload LAC |
 | `/dl gearcheck` | gearcheck | Trigger-gear availability audit |
+| `/dl sends [reset]` | sendlog | **What dlac has put on the wire this session** — total / per packet id / **per cause**, plus the last 24 sends with their ages; also lands as `debug\dlac-sends-<Char>.txt`. Zero sends says so *and* says why that is expected (equips are edge-driven). A **flap** shows as one cause repeating at the 0.4 s Default tick. Self-check, not a probe — it counts dlac's own sends at the sites that make them, and never reads the wire |
 | `/dl food [1\|2\|forget]` | foodwatch | Which food you are under and what you can re-eat; a number eats that row, `forget` clears the history. What counts as food is learned off the wire (an item use + the FOOD effect's expiry moving), never from a shipped list |
 | `/dl engine [native on\|off \| migrate]` | feature/engine | The Native-engine flip: status / flag + storage migration (see § The Native engine) |
 | `/dlmv` | gearmove | (branch-only) gate/version diagnostic |

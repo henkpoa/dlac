@@ -14366,6 +14366,17 @@ end)();
     local txt4 = dbg._mergeSections('check', A, false, now, 'v');
     check('DBF8 provisional write = PENDING + the tick tripwire', txt4:find('PENDING', 1, true) ~= nil
           and txt4:find('never', 1, true) ~= nil and txt4:find('line two', 1, true) ~= nil, true);
+    -- A single-state report (deliver called with no handoff name -- /dl sends)
+    -- has no engine half to be absent. nil must keep meaning "expected and
+    -- MISSING", so the no-half case gets its own sentinel and prints NEITHER
+    -- the section nor the accusation.
+    local txt5 = dbg._mergeSections('sends', A, dbg.NO_ENGINE_HALF, now, 'v');
+    check('DBF9 no-engine-half report drops the section entirely',
+          txt5:find('== engine half ==', 1, true) == nil
+          and txt5:find('MISSING', 1, true) == nil
+          and txt5:find('line two', 1, true) ~= nil, true);
+    check('DBF9b ...and the sentinel is not nil (nil stays the diagnosis)',
+          dbg.NO_ENGINE_HALF ~= nil and txt2:find('ENGINE HALF MISSING', 1, true) ~= nil, true);
 
     -- the capture-window length (v106): 30-120 clamp, default 45 -- the
     -- engine's debug branch clamps identically (twin constants).
@@ -21401,6 +21412,129 @@ end
     AshitaCore = savedCore;
     package.loaded['dlac\\chatfmt'] = savedCF;
     package.loaded['dlac\\feature\\foodwatch'] = nil;
+end)();
+
+-- ---------------------------------------------------------------------------
+-- SND. /dl sends -- the send counter (feature\sendlog, 2026-08-02).
+--
+-- Henrik asked mid-Incursion whether dlac sends "constant packets to have
+-- things equipped or only once". The code says only-on-a-difference; this
+-- readout is how the field proves it. The pure core is driven here; SND12 is
+-- the one that matters most -- it pins the INVARIANT the whole readout rests
+-- on (every AddOutgoingPacket site notes), because an uncounted send is the
+-- only way a "dlac sent nothing" line could ever be a lie.
+-- ---------------------------------------------------------------------------
+(function()
+    local SL = dofile('feature/sendlog.lua');
+    check('SND0 sendlog loads', type(SL), 'table');
+    if type(SL) ~= 'table' then return; end
+
+    -- a fresh state
+    local st = SL.newState(100);
+    check('SND1 fresh state is empty', st.total == 0 and next(st.byId) == nil, true);
+
+    SL._note(st, 0x51, 'Default (set, 4 slots)', 101);
+    SL._note(st, 0x50, 'Default (single slot)',  101);
+    SL._note(st, 0x50, 'Default (single slot)',  102);
+    check('SND2 total counts every send',   st.total, 3);
+    check('SND3 by-packet tallies per id',  st.byId[0x50] == 2 and st.byId[0x51] == 1, true);
+    check('SND4 by-cause tallies per cause', st.byWhy['Default (single slot)'], 2);
+    check('SND5 lastAt is the newest send', st.lastAt, 102);
+
+    -- garbage in still COUNTS: a dropped send is the only real failure mode
+    local sg = SL.newState(0);
+    SL._note(sg, nil, nil, nil);
+    check('SND6 malformed send still counted', sg.total == 1 and sg.byWhy['unknown'] == 1, true);
+
+    -- the ring wraps and reads newest-first
+    local sr = SL.newState(0);
+    for i = 1, SL.RING + 3 do SL._note(sr, 0x50, 'n' .. i, i); end
+    local rec = SL._recent(sr);
+    check('SND7 ring caps at RING',        #rec, SL.RING);
+    check('SND8 newest first',             rec[1].why, 'n' .. (SL.RING + 3));
+    check('SND9 oldest surviving entry',   rec[SL.RING].why, 'n4');
+
+    check('SND10a dur seconds', SL._dur(8),    '8s');
+    check('SND10b dur minutes', SL._dur(862),  '14m22s');
+    check('SND10c dur hours',   SL._dur(7380), '2h03m');
+
+    -- the zero case: the answer to the question that begat the command
+    local zl = SL._lines(SL.newState(0), 300);
+    check('SND11a silence is stated as silence',
+          zl[1]:match('NOTHING sent in 5m00s') ~= nil, true);
+    check('SND11b ...and explained as the expected steady state',
+          (zl[2] or ''):match('edge%-driven') ~= nil, true);
+
+    local ll = SL._lines(st, 160);
+    check('SND11c count + elapsed lead the readout',
+          ll[1]:match('^sends: 3 packet%(s%) in 1m00s') ~= nil, true);
+    check('SND11d by-packet is ranked, most-sent first',
+          ll[2]:match('^sends: by packet %-%- 0x050 x2, 0x051 x1$') ~= nil, true);
+    check('SND11e by-cause names the dispatch point',
+          ll[3]:match('Default %(single slot%) x2') ~= nil, true);
+    check('SND11f the ring is rendered with ages',
+          (ll[5] or ''):match('%-58s%s+0x050') ~= nil, true);
+
+    -- chat is a summary, the file is the record: a flap must not scroll the
+    -- counters off the top of chat, but nothing may be lost from the report.
+    local fl = SL.newState(0);
+    for i = 1, SL.RING do SL._note(fl, 0x50, 'Default (single slot)', i); end
+    local chat = SL._lines(fl, 100, 8);
+    local file = SL._lines(fl, 100, nil);
+    check('SND11g chat caps the ring',    #chat - 4, 8);
+    check('SND11h ...and says what it withheld',
+          chat[4]:match('%-%- %d+ more in the report file') ~= nil, true);
+    check('SND11i the file keeps them all', #file - 4, SL.RING);
+    check('SND11j ...with no withheld note', file[4]:match('more in the report file'), nil);
+
+    -- THE INVARIANT PIN. Every AddOutgoingPacket in the shipped tree sits
+    -- within reach of a sendlog note. A send site added WITHOUT one would
+    -- make /dl sends under-report -- silently, and in the one direction that
+    -- matters ("dlac sent nothing" when it did). Files are listed rather than
+    -- globbed (no io.popen: `dir` vs `ls` would split Windows from the WSL CI
+    -- run); A NEW FILE THAT SENDS PACKETS MUST BE ADDED HERE.
+    local SEND_FILES = { 'feature/equipengine.lua', 'feature/lockstyleapply.lua',
+                         'feature/craftwatch.lua', 'feature/eboxclient.lua',
+                         'feature/helmwatch.lua' };
+    local sites, bare = 0, {};
+    for _, path in ipairs(SEND_FILES) do
+        local f = io.open(path, 'r');
+        local src = f and f:read('*a') or nil;
+        if f then f:close(); end
+        if src == nil then
+            bare[#bare + 1] = path .. ' (UNREADABLE)';
+        else
+            local at = 1;
+            while true do
+                local s = string.find(src, 'AddOutgoingPacket', at, true);
+                if s == nil then break; end
+                sites = sites + 1;
+                local window = string.sub(src, s, s + 500);
+                if string.find(window, 'sendlog', 1, true) == nil
+                   and string.find(window, 'noteSend', 1, true) == nil then
+                    bare[#bare + 1] = string.format('%s@%d', path, s);
+                end
+                at = s + 1;
+            end
+        end
+    end
+    check('SND12a every send site is instrumented', table.concat(bare, ', '), '');
+    check('SND12b ...and all five chokepoints are still there', sites, 5);
+
+    check('SND13a bare command',            SL._parse('/dl sends'),        '');
+    check('SND13b trailing space',          SL._parse('/dl sends   '),     '');
+    check('SND13c /dlac alias',             SL._parse('/dlac sends'),      '');
+    check('SND13d argument',                SL._parse('/dl sends reset'),  'reset');
+    check('SND13e a neighbour is NOT ours', SL._parse('/dl sendsfoo'),     nil);
+    check('SND13f another command entirely', SL._parse('/dl why'),         nil);
+
+    -- the live path (M.note -> M.state), not just the injected pure core
+    SL.reset();
+    SL.note(0x51, 'Precast (set, 2 slots)');
+    check('SND14a note() reaches the live state', SL.state.total, 1);
+    check('SND14b ...with the cause intact', SL.state.byWhy['Precast (set, 2 slots)'], 1);
+    SL.reset();
+    check('SND14c reset empties it', SL.state.total, 0);
 end)();
 
 -- The warm-note artifact the dispatch-driving sections leave behind (dataDir
