@@ -6059,6 +6059,50 @@ end)();
     -- before rather than misfiring on a half-answer.
     check('CF6 rslotOf headless -> nil', dispatchM._rslotOf('Cinderstone'), nil);
     check('CF6b pairOf headless -> nil', dispatchM._pairOf('Arcane Arbalest'), nil);
+
+    -- ---------------------------------------------------------------------
+    -- RV. THE RENDERING CONTRACT -- ONE ANSWER PER SLOT
+    -- (docs/design/two-way-arbiter.md §11, written 2026-08-01 after Henrik's
+    -- screenshot showed /dl why range printing BOTH "nobody claimed it (kept
+    -- as worn)" and "held EMPTY: Arcane Arbalest and Cinderstone cannot
+    -- coexist". The no-contest line is not a verdict -- it is what a renderer
+    -- says when the contest was EMPTY -- and a REFUSED slot has an empty
+    -- contest by construction, because the refused piece never reaches the
+    -- explain model. arbiter.slotVerdict is the one walk all three renderers
+    -- ask before falling back to that line.)
+    -- ---------------------------------------------------------------------
+    check('RV1 slotVerdict exported', type(dispatchM.slotVerdict), 'function');
+    check('RV2 nothing speaks -> nil', dispatchM.slotVerdict({}, 'Range'), nil);
+    check('RV2b no contest at all -> nil', dispatchM.slotVerdict(nil, 'Range'), nil);
+    check('RV2c no slot -> nil', dispatchM.slotVerdict({ sup = { Range = 'X' } }, nil), nil);
+    -- Each channel earns its own kind...
+    check('RV3 rep -> fell',        dispatchM.slotVerdict({ rep = { Body = { from='A', to='B' } } }, 'Body'), 'fell');
+    check('RV4 fall.dead -> dead',  dispatchM.slotVerdict({ fall = { dead = { Body = 'A' } } }, 'Body'), 'dead');
+    check('RV5 inel -> ineligible', dispatchM.slotVerdict({ inel = { Head = 'Body' } }, 'Head'), 'ineligible');
+    check('RV6 sup -> reserved',    dispatchM.slotVerdict({ sup = { Head = 'Cloak' } }, 'Head'), 'reserved');
+    check('RV7 pair -> pair',       dispatchM.slotVerdict({ pair = { slot = 'Range', why = 'trinket' } }, 'Range'), 'pair');
+    -- ...and the pair verdict answers for ITS slot only: the other half of the
+    -- pair is a perfectly ordinary winner and must not be marked refused.
+    check('RV7b the pair verdict speaks for one slot',
+        dispatchM.slotVerdict({ pair = { slot = 'Range', why = 'trinket' } }, 'Ammo'), nil);
+    -- Slot keys arrive in whatever case the producer used -- every read is
+    -- case-insensitive or the whole contract is luck.
+    check('RV8 case-insensitive channel', dispatchM.slotVerdict({ sup = { ['range'] = 'Cinderstone' } }, 'Range'), 'reserved');
+    check('RV8b ...and the pair slot',    dispatchM.slotVerdict({ pair = { slot = 'range' } }, 'Range'), 'pair');
+    -- The ORDER is the contract: the more specific refusal speaks first, so a
+    -- slot that fell says so rather than reporting the reservation that beat it.
+    local ALL = { rep = { Body = { from='A', to='B' } }, fall = { dead = { Body='A' } },
+                  inel = { Body = 'Head' }, sup = { Body = 'Cloak' },
+                  pair = { slot = 'Body' } };
+    check('RV9 rep wins the order',        dispatchM.slotVerdict(ALL, 'Body'), 'fell');
+    ALL.rep = nil;
+    check('RV9b then dead',                dispatchM.slotVerdict(ALL, 'Body'), 'dead');
+    ALL.fall = nil;
+    check('RV9c then ineligible',          dispatchM.slotVerdict(ALL, 'Body'), 'ineligible');
+    ALL.inel = nil;
+    check('RV9d then reserved',            dispatchM.slotVerdict(ALL, 'Body'), 'reserved');
+    ALL.sup = nil;
+    check('RV9e and the pair law is last', dispatchM.slotVerdict(ALL, 'Body'), 'pair');
     -- Twin parity: the engine's id-pin and gearrecord's must never drift apart.
     local grecTR = dofile('gear/gearrecord.lua');
     for _, oid in ipairs({ 18731, 18732, 18733, 19185 }) do

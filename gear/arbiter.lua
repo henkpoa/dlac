@@ -1219,6 +1219,56 @@ function M.pairVerdict(floor, rslotFn, levelFn, pairFn, wornAmmo)
 end
 
 -- ---------------------------------------------------------------------------
+-- THE RENDERING CONTRACT (2026-08-01) -- see docs/design/two-way-arbiter.md §11.
+-- ---------------------------------------------------------------------------
+-- One record, three renderers (`/dl why <slot>`, the Arbiter Monitor's cell and
+-- its hover). Each of them walks the same verdict channels in the same order and
+-- prints ONE answer per slot -- and that invariant is the thing that needs a
+-- function rather than three copies of an if-chain, because it broke the day the
+-- fifth channel arrived. Henrik's screenshot of the v159 pair verdict:
+--
+--     range -- the Default contest (13:09:22):
+--         nobody claimed it (kept as worn).
+--         held EMPTY: Arcane Arbalest and Cinderstone cannot coexist -- kept ...
+--
+-- Two sentences disagreeing about one slot. The no-contest line ("nobody claimed
+-- it") is not a verdict at all -- it is what a renderer says when the contest was
+-- EMPTY -- and a slot the arbitration refused has an empty contest BY
+-- CONSTRUCTION, because the refused piece never reaches the explain model. So
+-- every renderer must ask this before falling back to the no-contest line.
+--
+-- The order is the order the renderers already print in, and it is not arbitrary:
+-- the more specific the refusal, the earlier it speaks. A slot that FELL says so
+-- (the player asked for something and got something else); failing that, a slot
+-- whose whole ladder was unavailable; then the two reservation verdicts; then the
+-- pair law, which is last because it is the only one that can also fire on a slot
+-- nothing claimed.
+--
+-- contest -- a decision record's `contest` table (rep / fall / inel / sup / pair).
+-- Returns the KIND ('fell' | 'dead' | 'ineligible' | 'reserved' | 'pair'), or nil
+-- when nothing speaks for the slot. Pure (tests RV*).
+local function findSlotCI(map, slotLower)
+    if type(map) ~= 'table' then return nil; end
+    for slot, v in pairs(map) do
+        if string.lower(tostring(slot)) == slotLower then return v; end
+    end
+    return nil;
+end
+
+function M.slotVerdict(contest, slot)
+    if type(contest) ~= 'table' or slot == nil then return nil; end
+    local ls = string.lower(tostring(slot));
+    if findSlotCI(contest.rep, ls) ~= nil then return 'fell'; end
+    local fall = contest.fall;
+    if type(fall) == 'table' and findSlotCI(fall.dead, ls) ~= nil then return 'dead'; end
+    if findSlotCI(contest.inel, ls) ~= nil then return 'ineligible'; end
+    if findSlotCI(contest.sup, ls) ~= nil then return 'reserved'; end
+    local pv = contest.pair;
+    if type(pv) == 'table' and string.lower(tostring(pv.slot)) == ls then return 'pair'; end
+    return nil;
+end
+
+-- ---------------------------------------------------------------------------
 -- ONE ARBITRATION PER DISPATCH (ADR 0027, stage 3 -- the first slice). The
 -- session so far carries the rank order and the built claims; the plan so far
 -- carries the APPLY ORDER -- the reverse rank walk that used to live inline

@@ -351,8 +351,33 @@ Verified against the shipped catalog with an **entirely unstamped** manifest: Ci
 → `effectiveRSlot 4` + `Pair 0:0`, Arcane Arbalest → `Pair 26:0`, and all four pair cases
 (Level contest both directions, bolt-vs-bow mismatch, worn displace) resolve correctly.
 
-Tests **CF1–CF6**. Both suites green (5455 / 925). `dispatch.M.VERSION` → 160 (**needs a
-Reload LAC**). ADR 0010's *"players must run `/dl fix`"* consequence is struck out.
+Tests **CF1–CF6**. ADR 0010's *"players must run `/dl fix`"* consequence is struck out.
+
+### …and one answer per slot — the rendering contract, stated — engine v161
+
+Henrik's screenshot of the working v159 verdict caught the one blemish in it: `/dl why
+range` printed **both** *"nobody claimed it (kept as worn)."* **and** *"held EMPTY: Arcane
+Arbalest and Cinderstone cannot coexist…"* — two sentences disagreeing about one slot, and
+"kept as worn" is the weaker truth besides (when a stat stick holds Range, the **server**
+empties it).
+
+The no-contest line is **not a verdict** — it is what a renderer says when the contest was
+*empty* — and a slot the arbitration **refused** has an empty contest **by construction**:
+the refused piece never reaches `floorTbl`/`arbExplain`, so `ops` comes back `nil`. The
+first four channels (`rep` / `fall.dead` / `inel` / `sup`) never exposed this because each
+only ever fires on a slot that *had* a contest; the pair verdict is the first that can fire
+on a slot nothing claimed.
+
+`arbiter.slotVerdict` is now the **one walk** — `fell → dead → ineligible → reserved →
+pair`, most specific refusal first — that all three renderers ask before falling back.
+**[docs/design/two-way-arbiter.md §11](design/two-way-arbiter.md)** writes the contract down
+for the sixth channel: add it to `slotVerdict` in order; give it its **own** sentence (never
+fold a new verdict into an existing one because the consequence matches — the pair law is
+not "reserved"); name which leg answered when it has several; update all three renderers;
+and make sure a suppressing pass cannot double-report.
+
+Tests **RV1–RV9**. Both suites green (5472 / 925). `dispatch.M.VERSION` → 161 (**needs a
+Reload LAC**).
 
 
 *(Last emptied by the 2026-08-01 promotion — `4810f94`, `main` at `bc581d1` before it: six

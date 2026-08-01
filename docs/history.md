@@ -7643,3 +7643,31 @@ any code changed is what made that safe, and re-running it after the fix is what
 it. Two secondary surfaces are still unobserved and are render-only paths over the same
 record: the `/dl why ammo` / `/dl why range` verdict lines, and the Sets tab showing the
 Range tile with the PAIR sentence rather than the reservation one.
+
+**Then the screenshot caught the blemish** (engine v161, `2026.08.01f`). `/dl why range`
+printed BOTH `nobody claimed it (kept as worn).` AND `held EMPTY: Arcane Arbalest and
+Cinderstone cannot coexist -- kept Cinderstone, the higher Level.` -- two sentences
+disagreeing about one slot, and "kept as worn" is the weaker truth besides: when a stat
+stick holds Range the SERVER empties it, so the slot is not merely unwritten.
+
+The no-contest line is NOT a verdict -- it is what a renderer says when the contest was
+EMPTY -- and a slot the arbitration REFUSED has an empty contest BY CONSTRUCTION, because
+the refused piece never reaches `floorTbl`/`arbExplain` and `ops` comes back nil. The first
+four verdict channels (`rep` / `fall.dead` / `inel` / `sup`) never exposed this because each
+only ever fires on a slot that HAD a contest. The pair verdict is the first that can fire on
+a slot NOTHING CLAIMED -- which is how a five-week-old invariant broke the week a fifth
+channel arrived.
+
+`arbiter.slotVerdict` is now the ONE walk (`fell -> dead -> ineligible -> reserved ->
+pair`, most specific refusal first) that all three renderers ask before falling back to the
+no-contest line. Henrik: *"document this properly since we'll probably be touching it
+again"* -- so **docs/design/two-way-arbiter.md gains §11, THE RENDERING CONTRACT**: the
+three renderers and what each shows, the channel table with the sentence each earns, the
+ONE-ANSWER-PER-SLOT invariant with the screenshot that proved it needed stating, five rules
+for the sixth channel, and a where-the-pieces-live table. Tests RV1-RV9. Suites **5472 +
+925**.
+
+The generalizable bit, and the reason it is written down rather than fixed quietly: **an
+invariant that three renderers keep by coincidence is not an invariant.** Four channels had
+held it for five weeks without anyone stating it, because all four happened to fire only on
+slots that had a contest. The fifth did not, and nothing in the code said what the rule was.

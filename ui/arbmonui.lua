@@ -203,9 +203,20 @@ local function tooltipText(rec, slot, d)
     local ls = string.lower(slot);
     local out = {};
     out[#out + 1] = string.format('%s -- the contest (%s, %s)', slot, tostring(rec.event), tostring(rec.time));
-    if d.ops == nil then
+    -- ONE ANSWER PER SLOT (two-way-arbiter.md §11). The no-contest line is not a
+    -- verdict -- it is what a renderer says when the contest was EMPTY -- and a
+    -- refused slot has an empty contest by construction, so printing it above the
+    -- verdict below gives the same slot two disagreeing answers. Asked through
+    -- arbiter.slotVerdict, the ONE walk, so this hover and /dl why can never
+    -- drift apart about which channel speaks.
+    local hasVerdict = false;
+    if arb ~= nil and type(arb.slotVerdict) == 'function' then
+        local vok, vk = pcall(arb.slotVerdict, rec.contest, slot);
+        hasVerdict = vok and vk ~= nil;
+    end
+    if d.ops == nil and not hasVerdict then
         out[#out + 1] = '  nobody claimed it (kept as worn).';
-    else
+    elseif d.ops ~= nil then
         for i, op in ipairs(d.ops) do
             local item = (LOCK_HELD ~= nil and op.item == LOCK_HELD) and 'LOCK-HELD (keep worn)' or tostring(op.item);
             out[#out + 1] = string.format('  %d. %s (rank %d): %s%s',
