@@ -1207,6 +1207,7 @@ like the command does not exist.
 | `/dl debug [on\|off]` | gearui | Reveal dev header buttons |
 | `/dl view_ids [on\|off]` | gearui | Add item id + model id to every equipment tooltip |
 | `/dl autobuildimport [on\|off]` | gearui | Whether importing a weights-bearing job re-solves its sets from YOUR gear (default on) or lands verbatim |
+| `/dl buildstored [on\|off]` | gearui | May **Auto-build** plan around gear that is Owned but not Available — parked in the Mog Safe, a Locker, a Satchel (default on)? Off narrows its candidate pools to Inventory + the 8 Mog Wardrobes, for building in the field. Pools only: no set is rewritten, and the `+ Add` picker still offers everything you own |
 | `/dl gearwarn [on\|off]` | gearui | The trigger-gear audit's automatic chat report (default on) — once per main job. Off silences it; `/dl gearcheck` and the Triggers tab still answer on demand. Turning it on re-arms the gate for the job you are standing on |
 | `/dl mode <name> [on\|off\|toggle\|<value>]` | dispatch | Flip a mode (no arg: list) |
 | `/dl lock <slot\|all> [on\|off\|toggle]` | dispatch | Engine-owned slot locks |

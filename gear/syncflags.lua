@@ -8,11 +8,12 @@
       change (the LAC profile reload) and ~5s after the LAST inventory-changing
       packet (debounced, so zone-in floods run one scan). Toggle: /dl autosync.
     * ui-flags -- debug / autosync / view_ids / auto-build-on-import / gear
-      warnings / "Build as lv.75" / teleport-button state survive reloads via
-      <char>\dlac\uiflags.lua.
+      warnings / auto-build-with-stored-gear / "Build as lv.75" / teleport-button
+      state survive reloads via <char>\dlac\uiflags.lua.
 
     The module OWNS the flag state (sf.flags.debug / sf.flags.autosync /
-    sf.flags.viewids / sf.flags.autobuildimport / sf.flags.gearwarn);
+    sf.flags.viewids / sf.flags.autobuildimport / sf.flags.gearwarn /
+    sf.flags.buildstored);
     gearui's /dl handler and header buttons read/write those fields directly.
     gearui keeps the actual Ashita event hooks and calls sf.loadUiFlags /
     sf.tick / sf.invDirty from them -- hook ORDER is load-bearing (loadUiFlags
@@ -55,8 +56,17 @@ end)();
 -- the auto-sync cadence, so it is the one Setting that can speak on its own;
 -- off silences the automatic report only (the Triggers tab's Gear warnings
 -- section and /dl gearcheck still answer when asked). Default true.
+-- buildstored (/dl buildstored, 2026-08-01): may Auto-build PLAN around gear that
+-- is Owned but not Available -- parked in the Mog Safe, a Locker, a Satchel
+-- (CONTEXT.md "Owned vs Available")? Default true: that is the long-standing
+-- behavior and the right one for building a set you mean to wear later, because a
+-- set is a plan (ADR 0006) and a stored piece can be retrieved. Off narrows
+-- Auto-build's candidate pools to what you could equip right now (Inventory + the
+-- 8 Mog Wardrobes) -- for the player who builds in the field and wants an answer
+-- that is wearable on the spot. It narrows the POOL and nothing else: no set is
+-- rewritten, and the manual + Add picker still offers everything you own.
 sf.flags = { debug = false, autosync = true, viewids = false, autobuildimport = true,
-             gearwarn = true };
+             gearwarn = true, buildstored = true };
 
 local D = nil;   -- deps from gearui; sync/persistence no-op until configured
 sf.configure = function(deps)
@@ -109,7 +119,7 @@ sf.saveUiFlags = function()
         -- "Show all" became a Setting when it moved out of the header, so it is
         -- remembered now like every other one.
         local showall = (type(ui.showAll) == 'table' and ui.showAll[1] == true);
-        D.writeFileText(p, string.format('return { debug = %s, autosync = %s, viewids = %s, buildmax = %s, tgmon = %s, arbmon = %s, tpfloat = %s, tpx = %d, tpy = %d, gearfloat = %s, gfx = %d, gfy = %d, gfscale = %.2f, ifx = %d, ify = %d, openui = %q, showall = %s, autobuildimport = %s, gearwarn = %s }\n',
+        D.writeFileText(p, string.format('return { debug = %s, autosync = %s, viewids = %s, buildmax = %s, tgmon = %s, arbmon = %s, tpfloat = %s, tpx = %d, tpy = %d, gearfloat = %s, gfx = %d, gfy = %d, gfscale = %.2f, ifx = %d, ify = %d, openui = %q, showall = %s, autobuildimport = %s, gearwarn = %s, buildstored = %s }\n',
             tostring(sf.flags.debug), tostring(sf.flags.autosync), tostring(sf.flags.viewids), tostring(bm),
             tostring(ui._tgMon == true),
             tostring(ui._arbMon == true),
@@ -117,7 +127,8 @@ sf.saveUiFlags = function()
             tostring(ui._gearFloat == true), gfx, gfy,
             tonumber(ui._gfScale) or 1.0, ifx, ify,
             openui, tostring(showall), tostring(sf.flags.autobuildimport ~= false),
-            tostring(sf.flags.gearwarn ~= false)));
+            tostring(sf.flags.gearwarn ~= false),
+            tostring(sf.flags.buildstored ~= false)));
     end);
 end
 
@@ -151,6 +162,10 @@ sf.loadUiFlags = function()
             -- explicit false was saved (every uiflags.lua written before
             -- 2026-08-01 lacks the key and must keep the behavior it has).
             if type(t.gearwarn) == 'boolean' then sf.flags.gearwarn = t.gearwarn; end
+            -- "Auto-build with gear in storage": same absent-key rule again --
+            -- ON unless an explicit false was saved, so every uiflags.lua
+            -- written before 2026-08-01 keeps building from everything owned.
+            if type(t.buildstored) == 'boolean' then sf.flags.buildstored = t.buildstored; end
             -- "Build as lv.75": absent key = the ON default; a saved false is an
             -- explicit untick and is honored (remembered across reloads).
             if type(t.buildmax) == 'boolean' and optim ~= nil then optim.buildAtMaxLevel = t.buildmax; end

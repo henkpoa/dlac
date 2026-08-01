@@ -617,6 +617,31 @@ research already recorded. In rough priority order:
 
 ## Current state (as of 2026-08-01)
 
+- **2026-08-01 (`2026.08.01h`): Auto-build can be told to stay in the field, and
+  Auto-Build All asks first — ON `dev`, awaiting field test.** Two small Sets-tab
+  requests from Henrik, both about giving the player leeway.
+  - **New Setting "Auto-build with gear in storage"** (Menu > Settings) / `/dl buildstored
+    [on|off]`, persisted in `uiflags.lua`, **default on** — absent key reads as on, so no
+    install changes behavior. On, Auto-build picks from everything you own wherever it sits
+    (a set is a plan, ADR 0006, and a stored piece can be retrieved). Off, its candidate
+    pools narrow to the **Available** half — Inventory + the 8 Mog Wardrobes (CONTEXT.md
+    "Owned vs Available") — so a build made in the field is wearable on the spot.
+  - Three scope lines that are easy to get wrong later. It narrows **pools only**: sets
+    already built are never rewritten, slots outside the build mask keep what they have,
+    and the `+ Add` picker still offers everything you own (the Sub HARD RULE is untouched
+    — the filter sits in `autoBuild`, not in the shared `candidatesForSlot`). It reads
+    `ownedcache.isStored`, the same fact that paints those names red, so colour and pool
+    can never disagree. And it is the one place set *building* consults a live bag fact —
+    hard rule 6 still holds by default; this is opt-in and asked for. `UIF22/22a/22b` pin
+    all three at the source.
+  - **Auto-Build All now takes two clicks.** Henrik: *"it can be highly impacting
+    accidentally pressing it, so let's give some leeway just in case."* The first click
+    arms (the button turns red and reads **"Sure?"**), the second re-solves and commits
+    every weighted set of the job; the arm expires by itself after ~5s so a stray click
+    leaves nothing live under the cursor. Not a popup — there is nothing to name in a
+    dialog for a whole-job action. `UIF23/23a` pin that only an armed click builds.
+  - Suites **5480 + 925**, Windows and WSL lua5.4. Nothing here touches the engine.
+
 - **2026-08-01 (`2026.08.01b`, engine v158): gear availability is an ARBITER refusal —
   FIELD-CONFIRMED and ON MAIN (`4810f94`).**
   Henrik's report: at Lv75 all is well; park a Minstrel's Coat in the Mog Safe, lower your

@@ -7691,3 +7691,61 @@ push now"*), `ff92f4e` was the first promotion Claude ran end to end, and the ol
 handover block is now the fallback for a refusal rather than the standing procedure. The
 `git checkout dev` at the end of it stays load-bearing either way -- the game plays this
 checkout's working tree.
+
+## Auto-build stays in the field on request; Auto-Build All asks first (2026-08-01)
+
+Two Sets-tab requests from Henrik in one breath, both about leeway rather than mechanics
+(`2026.08.01h`). No engine change: this is entirely GUI + one Setting.
+
+**"Only use available gear out in the field, or all containers."** Auto-build's candidate
+pools come from `candidatesForSlot`, which filters `buildOwned()` by slot, job/level
+usability and `owned.haveInBags` -- *owned anywhere*, which is right for a curated gear
+library and right for a set you mean to wear later. It is wrong for the player standing in
+a zone who wants the answer to be wearable now: ADR 0005's split means a Mog Safe piece is
+Owned and not Available, the panel paints it red, and the engine falls past it at equip
+time (the `2026.08.01b` arbiter refusal). So the pool is now a Setting.
+
+**"Auto-build with gear in storage"** (Menu > Settings) / `/dl buildstored [on|off]`,
+`sf.flags.buildstored`, persisted in `uiflags.lua`, **default on** -- absent key reads as
+on, the fourth time that rule has earned its keep (`UIF21a3`). Off narrows every pool
+`autoBuild` builds to pieces `ownedcache.isStored` says are not parked: Inventory + the 8
+Mog Wardrobes.
+
+Three placement decisions are the whole content of the change:
+
+- **The filter sits in `autoBuild`, not in `candidatesForSlot`.** That function is shared
+  with the `+ Add` picker, which must keep offering everything you own (ADR 0026, and the
+  Sub HARD RULE that has been reverted three times). Narrowing there would have narrowed
+  the picker too, silently. `UIF22b` pins that `candidatesForSlot` never learns the flag.
+- **It reads `ownedcache.isStored`** -- the same fact that paints those rows red and the
+  same one the arbiter's availability refusal rides -- so the colour, the pool and the
+  engine's fall can never disagree about what "in storage" means. It fails to *nothing
+  stored* on an empty scan, so char select and headless are a no-op rather than a set that
+  suddenly builds empty.
+- **It narrows the POOL and nothing else.** No set is rewritten, slots outside the build
+  mask keep exactly what they have, and a slot whose whole pool went to storage is simply
+  left unfilled -- which is the honest answer to "build me something I can wear".
+
+Worth stating because a future session will read hard rule 6 and reach for the revert:
+this IS set building consulting a live bag fact, deliberately, at the player's request,
+opt-in, and default-off. The rule ("sets are plans; the engine decides at equip time")
+still describes the default behavior exactly. Both the code comment and the Setting's
+hover say so.
+
+**Auto-Build All takes two clicks now.** *"It can be highly impacting accidentally
+pressing it, so let's give some leeway just in case."* -- and he is right: the button
+re-solves AND commits every weighted set of the current job, backing each one up, in one
+gesture, sitting one row below Commit. The first click arms it (red, label flips to
+**"Sure?"**, status line says what it will do); the second builds; the arm expires after
+~5 seconds so a stray click never leaves a live trigger under the cursor. Deliberately not
+the copy-confirm POPUP pattern: a whole-job action has nothing to name in a dialog, and
+click-twice keeps the deliberate path one gesture longer instead of two windows deep. The
+button width is fixed at 150 because the two labels differ in length and an auto-width
+button would shuffle the controls row as it flipped.
+
+Both live inside imgui-only draw paths the suites cannot enter, so both are pinned at the
+source in the UIF section (`UIF22`-`UIF23a`), the technique the `autobuildimport` gate
+established. One CRLF lesson came with it: a source pin ending in `.-\nend\n` passes under
+Windows Lua (which strips the `\r` on a text-mode read) and fails under WSL's (which does
+not) -- pin to the first column-0 `end` and take no trailing newline. Suites **5480 +
+925**, both interpreters.
