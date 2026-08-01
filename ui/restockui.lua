@@ -34,8 +34,9 @@
                   the other copies are. (Moving them out of the Mog Case would
                   be better and costs no box stock, but dlac may not move items
                   between containers yet -- deferred, see the v2 grill C2.)
-      * RED    -- `!box store`, always present near a box, arm-then-confirm
-                  because it instantly deposits every storable item you carry.
+      * RED    -- `!box store`, always present near a box, ONE click. Dumping
+                  what you carry on arriving in town is the ordinary move, so
+                  it does not ask (Henrik 2026-08-01).
 ]]--
 
 local M = {};
@@ -605,8 +606,6 @@ end
 -- floatgear pattern) -- deps is gearui's table, for the current job.
 -- ---------------------------------------------------------------------------
 local _nudgeOpen = { true };
-local _redArmAt = 0;     -- arm-then-confirm clock for the deposit icon
-local RED_ARM   = 3;     -- seconds an armed deposit stays armed
 -- Sized to MATCH the floating Teleports button (gearui's TPF_ICON / TPF_PAD):
 -- 30px of art in a 3px frame = a 36x36 button. Henrik 2026-07-31: the two floats
 -- live on the same screen and have to read as the same kind of control. At 40px
@@ -650,17 +649,12 @@ local function iconButton(tex, fallback, id)
 end
 
 function M.nudge(deps)
-    -- Every early return DISARMS the deposit icon. The arm is a 3s timer that is
-    -- otherwise only cleared by a not-hovered frame inside the drawing block --
-    -- so arming it, then stepping out of range (or toggling the nudge off) and
-    -- back within 3s, would leave a single click firing `!box store`. That guard
-    -- is the only thing between a stray click and depositing everything you carry.
-    if not _rwok or not _ecok then _redArmAt = 0; return; end
+    if not _rwok or not _ecok then return; end
     rw.loadState();
-    if not (rw.master and rw.showNudge) then _redArmAt = 0; return; end
-    if not cwOK() then _redArmAt = 0; return; end
+    if not (rw.master and rw.showNudge) then return; end
+    if not cwOK() then return; end
     local dist = ec.boxDistance();
-    if dist == nil or dist > ec.BOX_RANGE then _redArmAt = 0; return; end   -- only near a box
+    if dist == nil or dist > ec.BOX_RANGE then return; end   -- only near a box
     local job = (deps ~= nil and type(deps.playerJob) == 'function') and deps.playerJob() or nil;
     local entries = rw.effectiveList(job);
     ec.verifyCategories(rw.categoriesOf(entries));
@@ -794,19 +788,12 @@ function M.nudge(deps)
         do
             -- DEPOSIT (always near a box). `!box store` is instant and stores
             -- EVERY storable item in Inventory -- including what Restock just
-            -- fetched -- so it arms on the first click and fires on the second.
-            local armed = (_redArmAt > 0) and ((os.clock() - _redArmAt) < RED_ARM);
+            -- fetched. It used to arm-then-confirm; Henrik 2026-08-01 took the
+            -- guard off: dumping your haul once you have reached town is the
+            -- ordinary thing to do here, and it is not a call worth being sure
+            -- of. ONE click fires.
             local clicked, _rc, hovered = iconButton('ebox_red_icon-64', 'Store', 'rsnudge_red');
-            if clicked then
-                if armed then ec.boxStore(); _redArmAt = 0; armed = false;
-                else _redArmAt = os.clock(); armed = true; end
-            elseif not hovered then
-                _redArmAt = 0; armed = false;    -- moving away disarms it
-            end
-            if armed then
-                imgui.SameLine(0, 6);
-                imgui.TextColored(COL_ERR, 'sure?');
-            end
+            if clicked then ec.boxStore(); end
             if hovered then
                 imgui.BeginTooltip();
                 imgui.TextColored(COL_HEADER, 'Store All   (!box store)');
@@ -814,8 +801,7 @@ function M.nudge(deps)
                 imgui.TextColored(COL_TEXT, 'crafting materials, food, ninjutsu tools, ammo, oils.');
                 imgui.TextColored(COL_DIM,  'That includes anything Restock just fetched.');
                 imgui.Separator();
-                imgui.TextColored(armed and COL_ERR or COL_DIM,
-                    armed and 'Armed -- click again to store.' or 'Click once to arm, again to store.');
+                imgui.TextColored(COL_DIM, 'Left-click: store everything (no confirm).');
                 imgui.EndTooltip();
             end
         end

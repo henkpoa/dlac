@@ -7671,3 +7671,23 @@ The generalizable bit, and the reason it is written down rather than fixed quiet
 invariant that three renderers keep by coincidence is not an invariant.** Four channels had
 held it for five weeks without anyone stating it, because all four happened to fire only on
 slots that had a contest. The fifth did not, and nothing in the code said what the rule was.
+
+**Field-confirmed the same evening** -- Henrik, after a Reload LAC: *"when issuing /dl why on
+range, it does no longer in fact, say 'nobody claimed it (kept as worn)'"*. Both chat
+surfaces of the pair verdict are now confirmed on the character rather than only headlessly;
+the Sets tab's red Range tile is the one surface still unseen.
+
+**And a standing rule was set in the same breath:** *"When I say merge, treat it as an
+accept. But you are right not to assume otherwise since I haven't told you."* An instruction
+to merge CARRIES the acceptance of everything riding that promotion -- `dev` promotes
+whole-or-not, so there is nothing left to ask about -- and asking a second time is the
+mistake. The other half of the rule is unchanged and is why the exchange happened at all:
+only Henrik grants acceptance, so it is never inferred from a field confirmation, from
+"works", or from a session's own read that something looks ready. Recorded in hard rule 14
+and in the "Ready to merge" preamble, both of which a future session reads before promoting.
+This also closes the 2026-07-30 note that the permission classifier refused Claude the main
+merge AND the push: the gate opened 2026-08-01 (*"I should've added the rights to let you
+push now"*), `ff92f4e` was the first promotion Claude ran end to end, and the old one-command
+handover block is now the fallback for a refusal rather than the standing procedure. The
+`git checkout dev` at the end of it stays load-bearing either way -- the game plays this
+checkout's working tree.

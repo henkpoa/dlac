@@ -238,7 +238,11 @@ agent; the per-repo setup lives in `docs/agents/`.
     only in a per-day "Current state" bullet. **Merging:** empty that section in the same
     commit as the merge, and fix any "on `dev`" claim the merge just falsified. An entry
     marked **ACCEPTED** there already has Henrik's go-ahead — carry it and don't re-ask;
-    only he may add that marker.
+    only he may add that marker, **and his saying "merge" is itself the marker** for
+    everything riding that promotion (2026-08-01; `dev` promotes whole-or-not, so there is
+    nothing left to ask about once he has said it). Claude may run the merge and the push
+    since 2026-08-01 (`ff92f4e` was the first); older notes below saying the classifier
+    refuses both are **historical records of how it was then**, not live procedure.
 
 ## Working with Henrik
 
@@ -271,116 +275,77 @@ merge carries it **without asking him again**. Only he can move an entry to ACCE
 this does not make an accepted entry mergeable *alone*: `dev` promotes
 **whole-or-not-at-all**, so an accepted entry rides the next promotion of the whole branch.
 
-### The Range/Ammo pair is an Arbiter verdict — `2026.08.01d`, engine v159
+**"Merge" IS an accept** (Henrik's ruling, 2026-08-01: *"When I say merge, treat it as an
+accept."*). When he says merge / promote / push to main, that instruction **carries the
+acceptance of everything riding the promotion** — `dev` promotes whole-or-not, so there is
+nothing left to ask about. Do not go back and ask him to confirm the queue entries first.
+The rest of the rule is unchanged and still sharp: **only he grants acceptance**, so never
+infer it from a field confirmation, from *"works"*, or from your own read that something is
+ready — his own note on the exchange was *"you are right not to assume otherwise since I
+haven't told you."* Ask when he has **not** said merge; never ask twice when he has.
 
-**FIELD-CONFIRMED** 2026-08-01 on Mindie DRK72, the reported case exactly: *"it is not
-flapping between arcane arbalest and cinderstone now, so seems to work!"* Not yet ACCEPTED —
-only Henrik moves it there. Two secondary surfaces of the same change are still unobserved
-(the `/dl why ammo` / `/dl why range` verdict lines, and the Sets tab showing the Range tile
-with the **pair** sentence rather than the reservation one); both are render-only paths over
-the same record, and both are covered headlessly.
-
-**The bug, reported by Henrik on DRK72 Mindie:** *"it is trying to both equip Arcane
-Arbalest in Range, and Cinderstone in Ammo back and forth, I thought we had that rule set
-in place so higher level in non interoperable range ↔ ammo combos would win."* The Level
-rule was fine. What was broken is that the ADR 0010 pair law ran **per resolved table**
-while the plan is **merged across tables**. His DRK triggers fire two rules on one
-condition — `{ status = 'Idle' } → 'Idle'` (Range ladder + `Ammo = Cinderstone`) and
-`{ status = 'Idle' } → 'Weapons'` (Range ladder, **no Ammo**). `Idle` judged the pair
-correctly (Cinderstone Lv60 beats Arcane Arbalest Lv50 → Range dropped). `Weapons`, naming
-Range and no Ammo, asked the *other* question — `trinketWornDisplace` — and wrote
-`Ammo='remove'` for a crossbow the same dispatch had already decided not to equip. Merged
-last-writer-wins, the stick came off; next dispatch, Ammo empty, nothing to displace,
-Idle's Cinderstone survived the merge and went back on. **Off, on, off, on, one server
-round trip per second, forever.** Reproduced headlessly against his live `gear.lua` before
-a line was changed, and re-run against the fix.
-
-**Henrik's call on the fix:** *"Maybe it's better to move this rule into the arbiter, since
-it gets the full picture from all the sets?"* — and it is right, because no amount of
-per-table cleverness helps: *"is a ranged piece coming in?"* is a question about the FINAL
-PLAN, and one table is not the final plan.
-
-- **`arbiter.pairVerdict`** judges the **merged floor** (every matching set *and* every
-  built claim at its rank row) **once** per dispatch; `trinket-vs-ranged` stops deciding
-  and starts applying. With the Ammo rule enabled, this now arbitrates the **bolt that
-  will actually be worn** against the crossbow, not the Cinderstone the trigger floor
-  named underneath it.
-- It runs **first** inside `reserveResolve` — before availability, dominance and the fall —
-  and **deletes the loser from the floor**. That makes ADR 0010's adjacency law literal
-  (the loser never gets to reserve anything) and stops the two verdicts contradicting each
-  other: a Lv75 crossbow **wins** the Level contest while `reserveVerdict`'s
-  tie-favours-the-reserver rule would suppress Range for a Lv60 stick, leaving the plan
-  holding neither.
-- The loser is **suppressed, never ineligible**: an ineligible piece falls to its ladder's
-  next rung, the next crossbow down conflicts with the same stick, and a fall would walk
-  the whole Range ladder and re-derive the flap (ADR 0027's asymmetry).
-- **One implementation, not a second copy.** `pairVerdict` shapes the floor into a plan and
-  calls `trinketRangeDrop` / `trinketWornDisplace`, which stay put as the **direct-caller
-  fallback** (immediate equips, headless suites) exactly as `reservedDrops` does.
-- **Reported as its own verdict** in `/dl why <slot>` and the Arbiter Monitor — never
-  folded into "reserved", because a bolt and a bow are two ordinary pieces with no
-  reservation between them.
-- **Set totals count what will be WORN** (Henrik: *"consider so that the total stats are
-  reflected correctly"*): the Sets tab reads the same law through `dispatch.pairVerdict`.
-  The old preview dropped Range whenever **any** stat stick sat in Ammo, ignoring the very
-  Level contest it claimed to mirror — so a Lv75 crossbow beside a Lv60 Cinderstone read as
-  "no weapon" in the numbers while the engine equipped the weapon.
-
-Tests **PV1–PV12** (pure law + the field case + the reserveResolve wiring + the
-popt-omitted byte-identical path).
-
-### …and the item facts come from the catalog, not from your gear.lua — engine v160
-
-Asked what everyone *else* has to do about the missing `Pair` stamps, Henrik cut the
-question off at the root: *"I feel like this information should be documented in the catalog
-maybe? Instead of personal gear... It's not like my personal Arcane arbalest can behave
-differently in this aspect as anyone else's."*
-
-`RSlot` and `Pair` are facts about the **item**, identical for every copy in the world. They
-lived in each player's `gear.lua` only because the engine ran in LAC's own Lua state and
-could not reach a 5 MB catalog. **The purge ended that** — one state, and `dlac.lua`
-preloads `gearimport` + `gearui`, so the catalog is already resident where `dispatch` runs.
-`recordRSlot` / `recordPair` now read the stamp as a **cache** and fall back to the catalog
-by id. **No file is rewritten and no command is run.** What it fixes for everyone on the
-update alone: a `gear.lua` older than `Pair` (v128) was running the pair law on the RSlot
-bit alone (a gun and a crossbow both just "Marksmanship"), and one older than `RSlot` (v43)
-had ADR 0010 **fully blind** and flapped exactly as it did on 2026-07-19. The stamp still
-wins when present; `ANIMATOR_FED` vetoes both sources; unknown never constrains.
-
-Verified against the shipped catalog with an **entirely unstamped** manifest: Cinderstone
-→ `effectiveRSlot 4` + `Pair 0:0`, Arcane Arbalest → `Pair 26:0`, and all four pair cases
-(Level contest both directions, bolt-vs-bow mismatch, worn displace) resolve correctly.
-
-Tests **CF1–CF6**. ADR 0010's *"players must run `/dl fix`"* consequence is struck out.
-
-### …and one answer per slot — the rendering contract, stated — engine v161
-
-Henrik's screenshot of the working v159 verdict caught the one blemish in it: `/dl why
-range` printed **both** *"nobody claimed it (kept as worn)."* **and** *"held EMPTY: Arcane
-Arbalest and Cinderstone cannot coexist…"* — two sentences disagreeing about one slot, and
-"kept as worn" is the weaker truth besides (when a stat stick holds Range, the **server**
-empties it).
-
-The no-contest line is **not a verdict** — it is what a renderer says when the contest was
-*empty* — and a slot the arbitration **refused** has an empty contest **by construction**:
-the refused piece never reaches `floorTbl`/`arbExplain`, so `ops` comes back `nil`. The
-first four channels (`rep` / `fall.dead` / `inel` / `sup`) never exposed this because each
-only ever fires on a slot that *had* a contest; the pair verdict is the first that can fire
-on a slot nothing claimed.
-
-`arbiter.slotVerdict` is now the **one walk** — `fell → dead → ineligible → reserved →
-pair`, most specific refusal first — that all three renderers ask before falling back.
-**[docs/design/two-way-arbiter.md §11](design/two-way-arbiter.md)** writes the contract down
-for the sixth channel: add it to `slotVerdict` in order; give it its **own** sentence (never
-fold a new verdict into an existing one because the consequence matches — the pair law is
-not "reserved"); name which leg answered when it has several; update all three renderers;
-and make sure a suppressing pass cannot double-report.
-
-Tests **RV1–RV9**. Both suites green (5472 / 925). `dispatch.M.VERSION` → 161 (**needs a
-Reload LAC**).
+**The queue is empty.**
 
 
-*(Last emptied by the 2026-08-01 promotion — `4810f94`, `main` at `bc581d1` before it: six
+*(Last emptied by the 2026-08-01 promotion — `ff92f4e`, `main` at `4810f94` before it: four
+commits, `b64a702..6da40a4` — **the Range/Ammo pair is an Arbiter verdict, and item facts
+come from the catalog**, `2026.08.01d`–`2026.08.01f`, engine v159→v161. One field bug and
+the two things it exposed underneath.
+
+**The report** (DRK72 Mindie): *"it is trying to both equip Arcane Arbalest in Range, and
+Cinderstone in Ammo back and forth, I thought we had that rule set in place so higher level
+in non interoperable range ↔ ammo combos would win."*
+
+**`b64a702` — the pair law moves to the Arbiter (v159).** The Level rule was fine. ADR
+0010's pair law ran on ONE RESOLVED TABLE while a dispatch's plan is MERGED ACROSS TABLES:
+his DRK triggers fire two rules on one condition — `Idle` (Range ladder + `Ammo =
+Cinderstone`) and `Weapons` (Range ladder, **no Ammo**). Idle judged the pair correctly;
+Weapons, being Ammo-less, asked `trinketWornDisplace` instead and wrote `Ammo='remove'` for
+a crossbow the same dispatch had already dropped. Merged, the stick came off; next dispatch,
+Ammo empty, nothing to displace, Idle's Cinderstone went back on. Off, on, off, on, forever.
+No per-table fix exists — *"is a ranged piece coming in?"* is a question about the FINAL
+PLAN. Henrik: *"Maybe it's better to move this rule into the arbiter, since it gets the full
+picture from all the sets?"* `arbiter.pairVerdict` judges the merged floor once per
+dispatch. **Three laws worth not re-deriving:** it runs FIRST inside `reserveResolve` and
+deletes the loser from the floor (adjacency made literal, and the two verdicts can no longer
+contradict each other — a Lv75 crossbow *wins* the Level contest while
+tie-favours-the-reserver would suppress Range for a Lv60 stick, leaving the plan holding
+neither); the loser is **suppressed, never ineligible** (an ineligible piece falls, the next
+crossbow down conflicts with the same stick, and the fall re-derives the flap); and it is
+one implementation, with the two old functions kept as the direct-caller fallback exactly as
+`reservedDrops` is. **FIELD-CONFIRMED** the same day.
+
+**`d052f58` — item facts come from the catalog (v160).** Told the law needed a `/dl fix` to
+reach existing files, Henrik cut the migration off at the root: *"It's not like my personal
+Arcane arbalest can behave differently in this aspect as anyone else's."* `RSlot` and `Pair`
+lived in personal `gear.lua` only because the engine ran in LAC's own Lua state and could
+not reach a 5 MB catalog — **the purge ended that**, and `catalogindex`'s header claiming
+otherwise was corrected. The stamp is now a **cache**; the catalog answers by id. This
+turned out bigger than the missing `Pair`: a `gear.lua` older than `RSlot` (v43) had ADR
+0010 **fully blind** and flapping, and never said so. ADR 0010's *"run `/dl fix`"*
+consequence is struck out.
+
+**`6da40a4` — one answer per slot (v161).** His screenshot of the working verdict caught the
+blemish: `/dl why range` printed both *"nobody claimed it (kept as worn)."* and *"held
+EMPTY: …"*. The no-contest line is not a verdict, and a refused slot has an empty contest by
+construction. `arbiter.slotVerdict` is the one walk all three renderers ask first, and
+**[two-way-arbiter.md §11](design/two-way-arbiter.md)** now states the whole rendering
+contract — *"document this properly since we'll probably be touching it again"*.
+
+**Method note.** The whole train was diagnosed and verified headlessly by driving the real
+pure functions with values read straight out of `Mindie_29909/gear.lua` and
+`profiles/Default/{sets,triggers}/DRK.lua` **before any code changed** — artifacts first,
+then theory — and re-running the same script after is what predicted the field result.
+
+**FIELD-CONFIRMED, all three engine versions.** v159/v160 the same day (*"it is not flapping
+between arcane arbalest and cinderstone now, so seems to work!"*), and v161 right after
+(*"when issuing /dl why on range, it does no longer in fact, say 'nobody claimed it (kept as
+worn)'"*) — so both chat surfaces of the verdict are confirmed on the character, not just
+headlessly.
+
+**Owed:** one look at the Sets tab's DRK `Idle` set — the Range tile should carry the PAIR
+sentence rather than the reservation one, and Set totals should no longer count the
+Arbalest. Everything else in this train has been seen working in game.)
 commits, `be7250f..a1c6758` — **the arbiter refuses gear you cannot equip, and the Sets tab
 stops lying about it**, `2026.08.01`–`2026.08.01c`, engine v158. One bug seen from two
 sides: Henrik parked a Minstrel's Coat in a bag he cannot equip out of and lowered his level
@@ -1819,7 +1784,8 @@ research already recorded. In rough priority order:
   approach, **debited locally** on our own withdraws, and re-counted only on the few
   events arithmetic cannot see. **Crafting at an E-Box now costs zero packets** (it used
   to cost 200-300 a session). Also: an explicit **Search** button in the add-picker, a
-  three-icon nudge (fetch / other-bags / `!box store` with arm-then-confirm), quiver and
+  three-icon nudge (fetch / other-bags / `!box store` — **one click, no confirm since
+  `2026.08.01g`**: dumping your haul on reaching town is the ordinary move), quiver and
   pouch contents counted toward tracked ammo, and **`/dl debug ebox`** — a live readout of
   every packet sent, when, and what caused it.
   - **Start here: [design/ebox-v2-handoff-2026-07-25.md](design/ebox-v2-handoff-2026-07-25.md)**
