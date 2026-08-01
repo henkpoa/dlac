@@ -271,77 +271,46 @@ merge carries it **without asking him again**. Only he can move an entry to ACCE
 this does not make an accepted entry mergeable *alone*: `dev` promotes
 **whole-or-not-at-all**, so an accepted entry rides the next promotion of the whole branch.
 
-- **The Sets tab previews what will be WORN, not merely what was authored** (`2026.08.01c`,
-  `gear/arbiter.lua` + `ui/gearui.lua`). The sibling of the entry below, and Henrik's
-  follow-up field report on it: with the Coat in his Mog Locker the panel still highlighted
-  it as the chosen piece while the engine equipped the Royal Cloak beneath it, which carried
-  no marking at all. Two causes stacked — the pick-highlight colour is tested BEFORE the
-  stored-red branch (`gearui.lua:3952`), so the highlight painted over the very warning that
-  explained it; and the preview had no availability notion at all, so it was on the wrong row
-  to begin with. Both fall out of one move: **the highlight follows the piece that will
-  actually be worn**, which frees the parked piece to read red with its existing *"IN
-  STORAGE: … (move to Inventory/Wardrobe to equip)"* tooltip — Henrik: *"it being red should
-  be fine."* Not a second copy of the rule: `arbiter.availPick` is the SINGLE-LADDER form of
-  the same refusal, same three-valued `have`, and the panel calls the same module the engine
-  does. **Deliberately narrow** — the panel answers the *availability* question only, because
-  that is the part that depends on the item alone; whether a rung loses to a reservation, a
-  rank or another claimant depends on the other fifteen slots and stays the Monitor's story.
-  **Set totals now score what you would actually wear** (Henrik: *"It is VERY important that
-  set totals are correct"*) — `workingComposition` uses the worn pick, one refusal further
-  along from the reserved-slot drop already there; the consequence is that the numbers move
-  as you shuffle bags and a set with parked pieces scores lower. The slot GRID and the
-  reserved-slot preview moved too, so grid and list cannot disagree and a Body in the Safe no
-  longer reserves your Head in the preview — it is not going on, so it takes nothing. Suites
-  **5410 + 925** on both interpreters (`UA9*`, `S16q–S16z3`); the Sets tab has no smoke drive
-  and this runs inside a pcall on the render path, so `avail`/`wornByLevel` are published to
-  `host.services` exactly as `rsv` is and the coverage is **mutation-verified** (stubbing the
-  refusal out turns S16w/S16x red).
-- **Gear availability is an ARBITER refusal** (`2026.08.01b`, engine v158 — `gear/arbiter.lua`
-  + `dispatch.lua` + `ui/arbmonui.lua`). Henrik's report: at Lv75 all is well; park a
-  Minstrel's Coat in the Mog Safe, lower your level until the Coat is the set's
-  best-by-level Body, and dlac picks a piece it cannot equip. The whole selection chain
-  asked **level** and never asked the **bag**, and availability was only discovered at the
-  end in `equipcore.planSet`, where the ladder is already gone — so nothing was sent, the
-  slot kept what was worn, and the rung below was never asked. His ruling, stated twice: the
-  check goes in the **arbiter, centrally**, and nowhere else — *"It is FINE if claimants file
-  ladders where some of the pieces are ineligible… which also saves us the trouble of adding
-  yet another field they need to populate."* `availVerdict(floor, have)` is a **second
-  refusal reason** riding the fall loop the v135 dominance verdict already rides, so no
-  claimant changed and every row with an `rladder` inherits it. Three laws not to re-derive:
-  an unavailable piece is **hidden from the dominance view** (not on your body → it neither
-  defends its slot nor reserves another); `have` is **three-valued** and an unreadable *or
-  empty* bag map answers `nil`, because a two-valued read would say "you own nothing" at char
-  select / mid-zone / mid-load and strip all sixteen slots; and a slot whose whole ladder is
-  refused is **not killed** — `planSet` cannot locate those names either, so it keeps what is
-  worn. The **receipt** rides along: `vLadderOf` is the one door every ladder passes through,
-  so it notes each down and `recordDecision` keeps that instead of rebuilding the rung list
-  from `contest.src` (floor-only, and re-asked later so it could disagree with the list that
-  decided). Monitor hover shows the **whole ladder with each refused rung struck through and
-  its reason**, the cell is marked without a hover (`*` second choice, `!` whole ladder
-  refused), and `/dl why <slot>` prints the same lines off the same record. Suites **5395 +
-  913** on both interpreters (`UA1–UA8`, `DR9–DR12`).
-- **The storage warning speaks once per main job, and it is a Setting** (`2026.08.01`,
-  `gear/gearcheck.lua` + `gear/syncflags.lua` + the Settings panel). Henrik's report: *"only
-  inform me once, and only once, until I change main job."* The **"…please retrieve if
-  needed"** line rides `automationsui.rescanAutogear`, which fires on job change **and ~5s
-  after every inventory settle**, and the signature dedup it relied on could not hold that
-  back — moving a piece moves the availability counts the signature is built from. Now:
-  one automatic report per **main job id** (a sub job change is deliberately *not* a re-arm
-  — the audit is main-job scoped, so the answer would be identical), `/dl gearcheck` always
-  answers and stamps the job so a manual check is not echoed seconds later by the next
-  auto-sync, and `M.audit()` returns `(warnings, ran)` so an audit that could not RUN
-  (no model, no bags — i.e. login) says nothing and **arms nothing**; a gate spent on
-  login's empty answer would silence the real one for the whole job. The Setting is
-  `gearwarn` — Menu > Settings > **"Warn about gear in storage"** or `/dl gearwarn
-  [on|off]`, default ON with the absent-key rule, silencing the *automatic* report only
-  (the Triggers tab section and `/dl gearcheck` still answer on demand); turning it back on
-  calls `gearcheck.rearm()` so the answer lands on the job you are standing on. Suites
-  **5360 + 913** on both interpreters (`GCJ1–GCJ7b` + the uiflags round-trip pins).
-  **NOT field-confirmed** — Henrik queued it on 2026-08-01 before the round; unlike the
-  usual queue bar this one still owes an in-game look, and it is a one-liner: change to a
-  job whose triggers name something parked in the Mog Safe, read the warning once, move
-  gear around, and confirm it stays quiet until the next main job change.
+**The queue is empty.**
 
+
+*(Last emptied by the 2026-08-01 promotion — `4810f94`, `main` at `bc581d1` before it: six
+commits, `be7250f..a1c6758` — **the arbiter refuses gear you cannot equip, and the Sets tab
+stops lying about it**, `2026.08.01`–`2026.08.01c`, engine v158. One bug seen from two
+sides: Henrik parked a Minstrel's Coat in a bag he cannot equip out of and lowered his level
+until the Coat was his set's best-by-level Body.
+
+**The engine side** (`46c4829`): the whole selection chain asked LEVEL and never asked the
+BAG, and availability was only discovered at the end in `equipcore.planSet`, by which time
+the ladder was gone — nothing was sent, the slot kept what was worn, and the rung below the
+Coat was never asked. Availability is now a **second refusal reason** in `gear/arbiter`,
+riding the same fall loop the v135 dominance verdict rides. Henrik's ruling on where it must
+NOT go, stated twice: *"It is FINE if claimants file ladders where some of the pieces are
+ineligible… which also saves us the trouble of adding yet another field they need to
+populate."* No claimant changed. The Monitor reports it (whole ladder, each refused rung
+struck through with its reason) and the **receipt** — `vLadderOf` notes each ladder as it
+hands it over — means what you read is the ladder that decided, for claimants as well as
+sets. **Field-confirmed** the same day (*"Works, thanks"*).
+
+**The panel side** (`a16e3ed`): the engine fell correctly but the Sets tab still highlighted
+the parked Coat as the chosen piece while the Royal Cloak beneath it carried no marking. The
+highlight now follows the piece that will be **worn**, which also frees the Coat to read red
+— the picked-row colour had been painting over the very warning that explained it. Set
+totals score what you would actually wear, so **they now move as you shuffle bags**. The
+panel calls `arbiter.availPick` — the same module, not a copy — and answers the availability
+question ONLY; rank, claims and reservations stay the Monitor's to explain.
+
+Also carried: `4691915` the storage warning once per main job (`2026.08.01` — queued before
+its round and **still owing an in-game look**: change to a job whose triggers name something
+in the Mog Safe, read the warning once, move gear, confirm it stays quiet until the next main
+job change), `4d0d364` the foodwatch round written out, `be7250f` the `2026.07.31f`
+promotion record, and `a1c6758` Provenance flagged as a town in `data/zones.lua` — that one
+was in the working tree unattributed and was checked rather than assumed (`town` there is
+hand-curated, and Celennia Memorial Library and Feretory already carry it with Provenance's
+identical misc 4096). Suites **5410 + 925** on both interpreters, re-run **on the merged
+main** before the push.
+
+The entry before it:*
 
 *(Last emptied by the 2026-07-31 promotion — `bc581d1`, `main` at `4afec20` before it: two
 commits, `d982f91..dcc4eb1` — **the E-Box nudge and the Teleports float are one 36x36
@@ -578,7 +547,7 @@ research already recorded. In rough priority order:
 ## Current state (as of 2026-08-01)
 
 - **2026-08-01 (`2026.08.01b`, engine v158): gear availability is an ARBITER refusal —
-  FIELD-CONFIRMED, in the merge queue.**
+  FIELD-CONFIRMED and ON MAIN (`4810f94`).**
   Henrik's report: at Lv75 all is well; park a Minstrel's Coat in the Mog Safe, lower your
   level until the Coat is the set's best-by-level Body, and dlac picks it — a piece it
   cannot equip. Diagnosis: the whole selection chain asks **level** and never asks the
@@ -612,14 +581,16 @@ research already recorded. In rough priority order:
     wearing its second choice, `!` = whole ladder refused), and `/dl why <slot>` prints the
     same lines off the same record.
   - Suites **5395 + 913**, both interpreters (`UA1–UA8`, `DR9–DR12`). **Field round run and
-    passed the same day** (Henrik: *"Works, thanks"*) — on `dev` and in the Ready-to-merge
-    queue above.
+    passed the same day** (Henrik: *"Works, thanks"*) — **ON MAIN** (`4810f94`), promoted
+    2026-08-01 with the panel half below.
   - **Follow-up the same day (`2026.08.01c`): the Sets tab was still lying about it.** The
     engine fell correctly, but the panel highlighted the parked Coat as the chosen piece
     while wearing the Royal Cloak below it. The preview now previews the WORN pick — see the
-    Ready-to-merge entry above for the shape and for the one behavioural consequence (Set
-    totals move as you shuffle bags). Henrik's scope line for it, worth keeping: the GUI
-    answers availability only; rank, claims and reservations stay the Monitor's to explain.
+    promotion record at the top of this file for the shape and for the one behavioural
+    consequence (Set totals move as you shuffle bags). Henrik's scope line for it, worth
+    keeping: the GUI answers availability only; rank, claims and reservations stay the
+    Monitor's to explain. Suites **5410 + 925**; **ON MAIN** (`4810f94`), and the panel half
+    has NOT had its own in-game look yet — the engine half is what he confirmed.
 
 - **2026-08-01 (`2026.08.01`): the storage warning speaks once per main job, and it is a
   Setting.** Field report from Henrik: *"only inform me once, and only once, until I change
@@ -645,9 +616,9 @@ research already recorded. In rough priority order:
     `/dl gearcheck` still answer whenever asked. Turning it back on calls `gearcheck.rearm()`
     so the answer lands on the job you are standing on, not the next one.
   - Suites **5360 + 913**, both interpreters (new `GCJ1–GCJ7b`, plus the uiflags round-trip
-    pins). **On `dev` and in the Ready-to-merge queue above** (Henrik put it there on
-    2026-08-01, ahead of the round the queue normally requires) — **NOT field-confirmed**.
-    The round is one line long: change to a job whose triggers name something parked in the
+    pins). **ON MAIN** (`4810f94`) — promoted 2026-08-01 riding the arbiter train, and it
+    went into the queue ahead of the round the queue normally requires, so it reached main
+    **NOT field-confirmed**. Its round is still owed and is one line long: change to a job whose triggers name something parked in the
     Mog Safe, read the warning once, move some gear around, and confirm it stays quiet until
     the next main job change.
 - **2026-08-01: FIELD ROUND OWED — foodwatch, and it is the whole task.** No code is in
