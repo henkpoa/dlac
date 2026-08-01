@@ -295,6 +295,42 @@ function M.availVerdict(floor, have)
     return out;
 end
 
+-- The SINGLE-LADDER form of the same question (2026-08-01, for the Sets tab).
+-- The fall below judges a MERGED FLOOR -- every slot at once, reservations and
+-- rank included -- which a preview cannot have: it is looking at one slot of a
+-- set that may not even be the set in play. But the availability rule it needs
+-- is the same rule, and the point of putting this in the arbiter was that the
+-- rule exists ONCE. So the preview asks here rather than growing its own copy.
+--
+-- Deliberately answers the AVAILABILITY question only. Whether a rung loses to
+-- a reservation, a rank or another claimant depends on the other fifteen slots
+-- and on what is active right now; the Sets tab cannot know that and must not
+-- guess at it. That half is the Arbiter Monitor's to report.
+--
+-- items -- a ladder's rungs: { {name=...}, ... } or plain name strings.
+-- have  -- availVerdict's read, same three-valued contract (only an explicit
+--          false refuses; unknown and unreadable both pass).
+-- Returns (index, refused): the first rung that can actually be equipped, and
+-- the ordered { {name, why}, ... } list of the ones above it that cannot. A nil
+-- index means nothing on the ladder is available -- the caller shows no pick,
+-- which is exactly what the engine will do with that slot (it keeps what is
+-- worn). Pure (tests UA9*).
+function M.availPick(items, have)
+    if type(items) ~= 'table' then return nil, nil; end
+    local refused = nil;
+    for i, r in ipairs(items) do
+        local nm = (type(r) == 'table') and r.name or r;
+        if type(nm) == 'string' then
+            local ok, v = true, nil;
+            if type(have) == 'function' then ok, v = pcall(have, nm); end
+            if not (ok and v == false) then return i, refused; end   -- only an explicit false refuses
+            refused = refused or {};
+            refused[#refused + 1] = { name = nm, why = 'unavail' };
+        end
+    end
+    return nil, refused;
+end
+
 -- THE FALL (ADR 0027, stage 2 -- the deferred half of the v135 ruling: "go
 -- for the next available piece"). A REFUSED piece no longer strands its
 -- slot: its source set's LADDER is asked for the next rung, the verdict

@@ -8116,6 +8116,38 @@ end)();
         { reserveReplace = { Body = { from = 'Royal Cloak', to = 'Gold Harness', by = 'Head' } } });
     check('UA8c a reserve fall keeps its own wording',
         rn:find('reserves Head -- owned above', 1, true) ~= nil, true);
+
+    -- UA9: availPick -- the SINGLE-LADDER form, for the Sets tab preview
+    -- (Henrik, 2026-08-01: the panel highlighted a Coat in his Mog Locker as
+    -- the chosen piece while the engine wore the Royal Cloak below it). Same
+    -- rule, same three-valued read, one copy of it.
+    local rungs = { { name = 'Minstrel\'s Coat' }, { name = 'Royal Cloak' }, { name = 'Gold Harness' } };
+    local i, ref = ARB.availPick(rungs, bag({}));
+    check('UA9 nothing stored -> the authored pick stands', i, 1);
+    check('UA9b and nothing is refused', ref, nil);
+    i, ref = ARB.availPick(rungs, bag({ ['Minstrel\'s Coat'] = true }));
+    check('UA9c a stored head falls to the rung below it', i, 2);
+    check('UA9d the refusal is recorded', ref[1].name, 'Minstrel\'s Coat');
+    check('UA9e with its reason', ref[1].why, 'unavail');
+    i, ref = ARB.availPick(rungs, bag({ ['Minstrel\'s Coat'] = true, ['Royal Cloak'] = true }));
+    check('UA9f it keeps walking down', i, 3);
+    check('UA9g refusing each rung on the way', #ref, 2);
+    i, ref = ARB.availPick(rungs, bag({ ['Minstrel\'s Coat'] = true, ['Royal Cloak'] = true,
+                                        ['Gold Harness'] = true }));
+    check('UA9h a fully stored ladder picks NOTHING', i, nil);
+    check('UA9i and says so for every rung', #ref, 3);
+    -- The fail-open legs, which matter more here than in the engine: this runs
+    -- on the render path, so a not-ready read must never blank the panel.
+    check('UA9j no read at all -> the authored pick', (ARB.availPick(rungs, nil)), 1);
+    check('UA9k an UNKNOWN answer never refuses',
+        (ARB.availPick(rungs, bag({}, { ['Minstrel\'s Coat'] = true }))), 1);
+    check('UA9l a thrown read never refuses',
+        (ARB.availPick(rungs, function() error('boom'); end)), 1);
+    -- Shape tolerance: plain strings are a ladder too, and garbage is not a crash.
+    check('UA9m plain-string rungs work',
+        (ARB.availPick({ 'Minstrel\'s Coat', 'Royal Cloak' }, bag({ ['Minstrel\'s Coat'] = true }))), 2);
+    check('UA9n a non-table ladder answers nothing', (ARB.availPick(nil, bag({}))), nil);
+    check('UA9o an empty ladder answers nothing', (ARB.availPick({}, bag({}))), nil);
 end)();
 
 -- ---------------------------------------------------------------------------

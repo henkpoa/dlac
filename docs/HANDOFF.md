@@ -271,6 +271,31 @@ merge carries it **without asking him again**. Only he can move an entry to ACCE
 this does not make an accepted entry mergeable *alone*: `dev` promotes
 **whole-or-not-at-all**, so an accepted entry rides the next promotion of the whole branch.
 
+- **The Sets tab previews what will be WORN, not merely what was authored** (`2026.08.01c`,
+  `gear/arbiter.lua` + `ui/gearui.lua`). The sibling of the entry below, and Henrik's
+  follow-up field report on it: with the Coat in his Mog Locker the panel still highlighted
+  it as the chosen piece while the engine equipped the Royal Cloak beneath it, which carried
+  no marking at all. Two causes stacked — the pick-highlight colour is tested BEFORE the
+  stored-red branch (`gearui.lua:3952`), so the highlight painted over the very warning that
+  explained it; and the preview had no availability notion at all, so it was on the wrong row
+  to begin with. Both fall out of one move: **the highlight follows the piece that will
+  actually be worn**, which frees the parked piece to read red with its existing *"IN
+  STORAGE: … (move to Inventory/Wardrobe to equip)"* tooltip — Henrik: *"it being red should
+  be fine."* Not a second copy of the rule: `arbiter.availPick` is the SINGLE-LADDER form of
+  the same refusal, same three-valued `have`, and the panel calls the same module the engine
+  does. **Deliberately narrow** — the panel answers the *availability* question only, because
+  that is the part that depends on the item alone; whether a rung loses to a reservation, a
+  rank or another claimant depends on the other fifteen slots and stays the Monitor's story.
+  **Set totals now score what you would actually wear** (Henrik: *"It is VERY important that
+  set totals are correct"*) — `workingComposition` uses the worn pick, one refusal further
+  along from the reserved-slot drop already there; the consequence is that the numbers move
+  as you shuffle bags and a set with parked pieces scores lower. The slot GRID and the
+  reserved-slot preview moved too, so grid and list cannot disagree and a Body in the Safe no
+  longer reserves your Head in the preview — it is not going on, so it takes nothing. Suites
+  **5410 + 925** on both interpreters (`UA9*`, `S16q–S16z3`); the Sets tab has no smoke drive
+  and this runs inside a pcall on the render path, so `avail`/`wornByLevel` are published to
+  `host.services` exactly as `rsv` is and the coverage is **mutation-verified** (stubbing the
+  refusal out turns S16w/S16x red).
 - **Gear availability is an ARBITER refusal** (`2026.08.01b`, engine v158 — `gear/arbiter.lua`
   + `dispatch.lua` + `ui/arbmonui.lua`). Henrik's report: at Lv75 all is well; park a
   Minstrel's Coat in the Mog Safe, lower your level until the Coat is the set's
@@ -589,6 +614,12 @@ research already recorded. In rough priority order:
   - Suites **5395 + 913**, both interpreters (`UA1–UA8`, `DR9–DR12`). **Field round run and
     passed the same day** (Henrik: *"Works, thanks"*) — on `dev` and in the Ready-to-merge
     queue above.
+  - **Follow-up the same day (`2026.08.01c`): the Sets tab was still lying about it.** The
+    engine fell correctly, but the panel highlighted the parked Coat as the chosen piece
+    while wearing the Royal Cloak below it. The preview now previews the WORN pick — see the
+    Ready-to-merge entry above for the shape and for the one behavioural consequence (Set
+    totals move as you shuffle bags). Henrik's scope line for it, worth keeping: the GUI
+    answers availability only; rank, claims and reservations stay the Monitor's to explain.
 
 - **2026-08-01 (`2026.08.01`): the storage warning speaks once per main job, and it is a
   Setting.** Field report from Henrik: *"only inform me once, and only once, until I change
