@@ -7756,3 +7756,77 @@ thank you, both settings and the auto build."* Promoted to main in the same mess
 written for: the field confirmation and the instruction arrived together, so there was
 nothing left to ask. The Setting's own hover and the "Sure?" flip are the two surfaces that
 had never been seen outside a source pin, and both read right in game.
+
+## Session "does it send constant packets?" (2026-08-02, `2026.08.02` + `2026.08.02a`)
+
+**Theme:** a field question that had a code answer, turned into a readout — and then the
+readout turned out to be billing dlac for the player's own traffic.
+
+Henrik asked from inside an Incursion, level-synced, using only sets: *"Does this addon
+send or receive many packets to and from the server? ... does it send constant packets to
+have things equipped or only once?"*
+
+**The answer, traced rather than recalled.** Only on a real difference. `bufferFlush` bails
+at `plan.satisfied` (`feature/equipengine.lua`), so the 0.4 s Default tick resolves a plan
+~2.5×/s and sends **nothing** while what you want is what you wear. Equips are edge-driven,
+not a heartbeat. Two things fell out of the same trace and are recorded so they are not
+re-derived:
+
+- **Level sync cannot produce a strip/re-equip loop**, because both sides use the *real*
+  job level. `AllowSyncEquip = true` reads `GetJobLevel(mainJob)`; the server's check is
+  `getReqLvl() > (DISABLE_GEAR_SCALING ? GetMLevel() : jobs.job[MJob])` with
+  `DISABLE_GEAR_SCALING = false` on CatsEyeXI (`charutils.cpp:2306`,
+  `settings/default/map.lua:100`). Client and server agree, so no equip is refused and
+  nothing retries. The sync landing itself arms the 1 s settle hold, then one re-dress.
+- **The `share/mob-stats/accwatch.lua` `/check` spammer (0x0DD) is reference-only** and
+  never loaded — worth knowing before someone greps for send sites and panics.
+
+**But a code answer is a claim.** So `/dl sends` (`feature/sendlog.lua`): total, per packet
+id, per **cause**, plus a ring of recent sends with ages; chat shows the last 8, the file
+(`debug\dlac-sends-<Char>.txt`) all 24. Zero sends prints as `NOTHING sent` *and says why
+that is expected* — absence-is-the-diagnosis, the property every debug artifact here
+carries.
+
+**Why it lives in dlac and not dlacprobe**, which was the one call worth making
+deliberately (the standing rule sends probes to dlacprobe): a dlacprobe `packet_out`
+observer sees anonymous injected bytes and cannot tell ours from another addon's, let alone
+name the dispatch point behind them. **Only the send site knows why it sent, and the why is
+the entire diagnostic value.** That is the sentence to reuse the next time a diagnostic sits
+on the boundary. `fireEvent` now stashes the dispatch point so `bufferFlush` can stamp it —
+which is what makes a flap legible: one burst named `Default` is a re-dress, `Default`
+repeating at 0.4 s is a fight.
+
+**The invariant, pinned as source (SND12):** every `AddOutgoingPacket` in the shipped tree
+sits beside a `sendlog.note()`. Five chokepoints carry all of them. A new send site without
+a note fails the suite, because an uncounted send is the only way this readout could lie —
+and it would lie in the direction that matters ("dlac sent nothing" when it did).
+
+**A single-state report wore a false accusation.** `debug.lua`'s `_mergeSections` read a nil
+engine half as `ENGINE HALF MISSING -- LuaAshitacast is not running the dlac engine. That IS
+the diagnosis.` True when a half was expected; a libel when there was never one to expect.
+`NO_ENGINE_HALF` now separates "never expected" from "expected and absent", nil keeping its
+old meaning (DBF9). The purge left one state, so more reports will want this.
+
+**Then the follow-up that mattered more than the feature.** Henrik: *"What does 'reinject
+(your own action, passed through)' mean?"* — and explaining it exposed the readout billing
+him wrong. A re-injected `0x01A`/`0x037` is **his** packet: the engine blocks it so gear can
+land ahead of it, then returns it byte-identical. One in, one out. It is dlac's
+`AddOutgoingPacket` call, so the invariant counts it — but it is not traffic dlac *added*,
+and one lumped total made a busy caster read as a chatty addon. The counter now splits own
+from passed-through, **quotes the rate on dlac's own count only**, marks the affected ids
+(wholly or partially), and prints the same "dlac itself sent NOTHING" verdict whenever
+`own == 0` — which is the shape a real casting session actually takes, and the honest answer
+to the question that started all this. The flag rides in the **data** (`note(id, why,
+pass)`), not in the wording of the cause: identity in the data, label at the render seam,
+the same shape the GM-naming fix established.
+
+**The lesson with the longest legs is about the guard, not the feature.** SND12 failed on
+its own documentation — a plain `AddOutgoingPacket` substring matched the comment explaining
+the send sites. It matches an *invocation* now (`AddOutgoingPacket%s*%(`), and the test says
+why in its own comment. A pin that trips on the prose describing it teaches the next person
+to weaken it, and a weakened pin is worse than none: it still reads like a guarantee.
+
+Suites **5652** then **5662**, both interpreters. Promoted the same session (`5cf4455`),
+**never field-confirmed** — the round it owes is one glance, `/dl sends` after an Incursion
+stretch, and because it is a readout a wrong answer costs a re-read rather than gear.
+
