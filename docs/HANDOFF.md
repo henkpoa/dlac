@@ -43,7 +43,10 @@ maintainer IMO, I am just the one with the creative vision."*
    the gearmove branch), [design/picker-database.md](design/picker-database.md),
    [design/sync-settle-hold.md](design/sync-settle-hold.md) (the level-sync TP fix,
    v56/v57 — and the WRAP_GEN rule for anything that must survive an engine hot-swap).
-9. **How other addons read dlac** (designed 2026-07-28, NOT built):
+9. **How other addons read dlac — and, since 2026-08-01, CLAIM GEAR through it** (both
+   halves BUILT and field-confirmed). **Writing an integration? Start at
+   [examples/claim-example/README.md](../examples/claim-example/README.md)** — a complete
+   runnable addon plus the model, written to be enough on its own:
    [design/integration-surface.md](design/integration-surface.md) — the push/pull
    `plugin_event` surface, its two timing contracts, and the **parked plugin-folder**
    design with its rulings (section 10), so neither gets re-derived.
@@ -287,7 +290,16 @@ haven't told you."* Ask when he has **not** said merge; never ask twice when he 
 **The queue is empty.**
 
 
-*(Emptied again by the 2026-08-01 promotion of `36da078` — **Auto-build can stay in the
+*(Emptied again by the 2026-08-01 promotion of `508d410` — **other addons can claim gear
+through dlac**, `2026.08.01k`, engine v162. It never sat in this queue: the field round and
+the merge instruction arrived together (*"Make it a permanent setting, then commit,
+document, merge and push to origin main"*), which is the "merge IS an accept" rule doing
+what it is for. Staged **hunk by hunk** out of a shared checkout — a parallel session's food
+work was live in the same tree and is deliberately NOT in this promotion; it is still
+uncommitted on disk. Suites were run on the committed tree in an isolated worktree, not
+just alongside that work: 5594 + 936, Windows and WSL.)*
+
+*(Emptied before that by the 2026-08-01 promotion of `36da078` — **Auto-build can stay in the
 field, and Auto-Build All asks first**, `2026.08.01h`, no engine change. It never sat in
 this queue: Henrik's field confirmation and his merge instruction arrived in one message
 (*"Works in field, thank you, both settings and the auto build. Document, commit, merge and
@@ -625,6 +637,129 @@ research already recorded. In rough priority order:
    section heading rather than each carrying one. Trivial to change if it reads wrong.
 
 ## Current state (as of 2026-08-01)
+
+- **2026-08-01 (`2026.08.01k`, engine v162): OTHER ADDONS CAN CLAIM GEAR — BUILT and
+  **FIELD-CONFIRMED — all four checks, plus the re-check on the last fix** (Henrik: *"This
+  works, real nice ... Says verdict lost, that MaxMP won it"*; *"The lease works"*; *"I have
+  dragged it around, moved it over MaxMP when it was winning and then it won"*; *"B gets the
+  verdict line now, works"*). **UNCOMMITTED** — see the working-tree note at the end of this
+  entry before staging anything.** The write half of the
+  Integration surface. A separate addon — its own Lua state, its own folder, **not** a dlac
+  module — files a Claim over `plugin_event` and the Arbiter settles it like any other
+  claimant. Henrik asked whether it was possible without a module; the answer turned out to
+  be small, because a Claim is already just `{ [SlotKey] = itemName }`.
+  - **What was built:** `feature\extclaim.lua` (the mailbox + the protocol, pure core),
+    one rank row **`External`** shipped directly above the Triggers floor (the rank the
+    plugin design already ruled for a third party — `integration-surface.md` §10), one
+    `CLAIMANTS` row in `dispatch.lua`, one signature leg, the `/dl claims on|off|list`
+    switch + a Menu > Settings row, a Claim Priority row that **names the addons holding
+    slots**, and `lib\dlacclaim.lua` — the published client shim third parties load so
+    nobody hand-rolls the wire format. Consumer spec: **integration-guide §7**.
+  - **The three laws that are new** (everything else is inherited from ADR 0012/0027):
+    **push, never pull** — dlac asks nobody anything mid-decision, so no third-party Lua is
+    ever on the equip path (cost, stated: a *reactive* external claim is one action late);
+    **every claim is a lease** — TTL 10s default / 300 max, renewed by heartbeat, because a
+    foreign holder can *vanish* and gear stuck with nobody to blame is the worst outcome;
+    **claim, never commit** — session-only, no writer for sets/triggers/modes/lockstyle.
+  - **The switch is deliberately NOT `/dl stream`.** Reading your gear and dressing you are
+    different consents, and a misbehaving claimant has to be killable without also killing
+    a parser's feed. `hello` is answered even while claims are off, so a consumer can tell
+    "dlac is not installed" from "the player has not turned this on".
+  - **IT IS PERSISTED** (Henrik's call after the perf answer below), and the SPLIT is the
+    whole design: the **permission** is a saved preference (`syncflags.flags.extclaim`, the
+    uiflags store every other Setting rides, absent = off so no install changes behavior),
+    while the **claims** stay session state and die with the world exactly as before.
+    Nothing an addon holds crosses a logout; only your answer to the question does. Read
+    ONCE per session, on the frame beat, and written on every `setOn` — read-once is
+    load-bearing: a re-read each frame would undo `/dl claims off` the moment it was typed
+    (EX26*). And because a logout now clears claims WITHOUT revoking permission, every
+    `expired` push carries **`data.on`** — the switch state, explicit, so a consumer never
+    infers permission from a reason string (the shim reads that field; it used to sniff the
+    reason, which would have read a logout as a revocation).
+  - **The trap for whoever adds the next claimant of any kind:** the `CLAIMANT_SIG_ORDER`
+    leg. A claim that changes without moving the retrace signature never re-dispatches — it
+    sits in the mailbox looking accepted, reaches no slot, and the failure is invisible from
+    both sides of the wire. `EX16f` exists to fail loudly instead.
+  - **Evidence so far:** suites **5616 + 944**, Windows and WSL lua5.4. `EX1–EX16` pin the
+    receiver (validator refusals, deterministic merge, lease, gated-but-never-silent door,
+    the wire format, the registry wiring); **`EX17–EX23` wire the SHIPPED SHIM to the real
+    receiver and run the whole conversation** — hello, refusal-while-off, claim,
+    canonicalisation, verdict, heartbeat, lease lapse, kill switch, logout. The shim's
+    serializer is a second implementation by necessity (it runs where dlac's own is
+    unreachable), so it is tested against the first rather than trusted. That proves the two
+    halves agree; it proves **nothing** about Ashita's real broadcast or about gear moving.
+  - **FIELD ROUND 1 — ALL FOUR CHECKS PASSED.** (1) a claim lands; (2) it LOSES to a senior
+    claimant and the verdict names who won — *and* wins after the row is dragged above the
+    winner (Henrik moved it over MaxMP); (3) the lease works; (4) two identities contend.
+  - **THE RIG BECAME A SHIPPED EXAMPLE** (Henrik, same day: *"I also want you to have the
+    claimtest addon (rename it claim-example) in DLAC as an example how to integrate with
+    DLAC over this, as well as properly document it so humans and claude / AI can understand
+    how it works properly"*). It now lives at **`examples\claim-example\`** — the addon plus
+    a README written for whoever does the integration, human or AI, holding the model, the
+    five things that bite, and a table of what each command proves. Copy the folder to
+    `<Ashita>\addons\` to run it; Ashita only loads addons from its own directory, so the
+    repo copy is canonical and the deployed one is a copy (the README says so, because that
+    is exactly the pair that drifts). `addons\claimtest\` is deleted — one example, not two.
+  - **Three bugs the field round produced, all fixed:**
+    - **The module installed a `d3d_present` handler from inside one.** The engine requires
+      it lazily, on the first dispatch, which itself runs in a frame callback. Now pumped
+      from `dlac.lua`'s beat like actionseq/engagewatch. It also fixed a bug nobody had hit
+      yet: the inbound listener did not exist until dlac's first gear decision, so an addon
+      that claimed before that was answered **by nobody**.
+    - **The verdict join was CASE-SENSITIVE** (`M.externalLost`, now a pure exported seam
+      with tests EX24*). `arbExplain` says it outright and this is the same join: the
+      producers disagree on case — overlay tables are proper-case, the Locks veto rides
+      lowercased `M.locks`, a pin table or locked set carries whatever its source wrote. A
+      case-sensitive compare does not name the *wrong* winner, it names **no** winner — so
+      the addon is told it still holds a slot something else took, silently, and only for
+      the claimants that spell slots the other way. The report also moved to BEFORE the
+      equip: downstream of `equipResolved`, a bad frame would have cost the explanation as
+      well as the gear.
+    - **A claim shadowed by ANOTHER EXTERNAL ADDON was never reported** (`merge` now returns
+      `shadow`, tests EX4d–g / EX13d–e). Henrik's check 4: B claimed A's slot, got `ok`,
+      and heard nothing more. The *outcome* was right — a shadowed claim is accepted on
+      purpose, so it takes the slot the instant the winner releases or lapses, with no
+      round trip — but the reporting was the same silence the verdict push exists to end,
+      arriving from the one direction the ARBITER CANNOT SEE: this contest is settled in
+      the merge, before the Arbiter is handed anything. Now it rides the same `verdict`
+      notice, so the addon learns "something else has that slot" ONE way rather than two.
+      Note for the next reader: the two losses want **opposite** advice — a dlac claimant
+      is the player's Claim Priority drag, a peer addon is `prio` and never appears in that
+      list at all. `claim-example` prints the right one for each.
+  - **Not built, on purpose:** a synchronous pull (dlac asking claimants mid-dispatch), a
+    per-addon rank row (they share the one `External` row; between themselves `prio` then id
+    ascending decides), and any writer at all. The parked plugin-folder design
+    (`integration-surface.md` §10) stays parked — this needed none of it.
+  - **COST OF LEAVING IT ON (measured 2026-08-01, 200k iterations, whole per-frame path =
+    dlac.lua's pump + the registry's `active` + `claim`):** switch **off 0.41 µs/frame**;
+    **on with nobody claiming 0.44 µs** (0.0026% of a 60 fps frame); on with one addon
+    holding two slots **2.1 µs**; two addons contending **3.6 µs** (0.02%). So leaving it
+    on permanently is free in any sense a player could perceive — the answer to *"can I
+    just leave it on"* is yes, and the number is written down so nobody has to re-derive
+    it. (Those two idle figures are conservative: the harness has no `syncflags`, so the
+    once-per-second flag restore never settles and keeps retrying a failing `require`. In
+    the addon it succeeds once and stops.) Three cheap changes got the idle path there and
+    are worth keeping: `merge` and
+    `claim` early-out on an empty store and hand back a **shared** `EMPTY` map instead of a
+    fresh `{}` per dispatch (`EX25*` pins that by identity); `active()` no longer merges at
+    all, it answers the question it was asked; the pump's world check is throttled to 1/sec
+    (`M.WORLD_S`) because "did you log out" is not a per-frame question; and
+    `extclaimMod()` uses `pcall(require, …)` rather than `pcall(function() … end)`, which
+    was allocating a closure twice per dispatch for nothing.
+  - **THE ONE PATTERN TO CARRY FORWARD.** All three bugs were the same failure wearing
+    different clothes: **the addon is told it holds a slot it does not.** No frame handler
+    yet / no winner named / a whole category of loss invisible. None of them is findable by
+    asking "is the gear right" — the gear was right every time. They are findable only by
+    asking, at every point where something takes a slot, **"how would the losing addon find
+    out?"** Ask that of any new claimant, any new refusal reason, any new verdict channel.
+  - **COMMITTED OUT OF A SHARED TREE (2026-08-01).** A parallel session's in-flight food
+    work was live in the same checkout, so this commit was staged **hunk by hunk**, not
+    with `git add`: `feature/foodwatch.lua` was left entirely alone, and the four files
+    carrying both sets of changes (`ui/menuui.lua`, `tests/run_tests.lua`,
+    `tests/smoke_ui.lua`, this file) had the other session's hunks filtered out of the
+    index — `git apply --cached`, which never touches the working tree, so their copy
+    survived intact. Anyone continuing from here: that work is still uncommitted on disk
+    and is **not** in this commit or on `main`. See [[shared-checkout-contamination]].
 
 - **2026-08-01 (`2026.08.01h`): Auto-build can be told to stay in the field, and
   Auto-Build All asks first — FIELD-CONFIRMED and ON MAIN (`36da078`).** Two small

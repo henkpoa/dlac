@@ -57,6 +57,7 @@ M.HINT = {
     Fishing  = 'Fishing row / fish bar',
     Chocobo  = 'Chocobo row',
     JobHelper= 'Job Helpers tab (per job)',
+    External = '/dl claims | Menu > Settings',
     Triggers = 'Triggers tab',
 };
 
@@ -94,6 +95,14 @@ M.SOURCE = {
             .. 'now, and other jobs keep their own placement. Default: directly below Locks, so a lock, '
             .. 'Naked or Free equip on a needed slot makes the sequence refuse loudly instead of firing.\n'
             .. 'The row hides while no Job helper modules are installed.',
+    External = 'The shared row every OTHER ADDON\'s gear claim rides. Switched on with /dl claims on, or the '
+            .. '"Let other addons claim gear" row in Menu > Settings -- session only, never saved, and turning '
+            .. 'it off releases every held claim at once.\n'
+            .. 'A claim is temporary and is never written to any of your files: no addon can edit a set, a '
+            .. 'trigger or a mode through it. Default rank is HERE, just above your Triggers -- so a foreign '
+            .. 'addon dresses over your trigger sets and under everything you configured yourself, until you '
+            .. 'drag it higher.\n'
+            .. '/dl claims list names who is holding what, and for how much longer.',
     Triggers = 'Your Triggers tab. This is the FLOOR -- what is worn when no claim wins a slot.',
 };
 
@@ -138,6 +147,11 @@ function M.statusText(name, live)
         -- names the LIVE module + act (issue #138), or idle. jh = { active, text }.
         local jh = live.jobhelper or {};
         return (type(jh.text) == 'string' and jh.text ~= '') and jh.text or 'idle';
+    elseif name == 'External' then
+        -- extclaim.statusText already names the addons; it is the same string
+        -- /dl prio prints, so the chat and the panel cannot drift.
+        local ex = live.external or {};
+        return (type(ex.text) == 'string' and ex.text ~= '') and ex.text or 'off';
     end
     return '?';
 end
@@ -157,6 +171,7 @@ local function rowActive(name, live)
     if name == 'Fishing'  then return live.fishing == true; end
     if name == 'Chocobo'  then return live.chocobo == true; end
     if name == 'JobHelper' then return (live.jobhelper or {}).active == true; end
+    if name == 'External'  then return (live.external or {}).active == true; end
     return false;
 end
 
@@ -202,6 +217,13 @@ function M.gatherLive(deps)
     pcall(function()
         local aseq = require('dlac\\feature\\actionseq');
         live.jobhelper = { active = aseq.active() == true, text = aseq.statusText() };
+    end);
+    -- The External row (2026-08-01): the live mailbox of claims filed by OTHER
+    -- addons. Reads the module directly -- the same require the menu's switch
+    -- makes -- so the row can NAME the addons rather than say "something".
+    pcall(function()
+        local ex = require('dlac\\feature\\extclaim');
+        live.external = { on = ex.on == true, active = ex.active() == true, text = ex.statusText() };
     end);
     pcall(function() live.craft   = require('dlac\\feature\\craftwatch').isEnabled() == true; end);
     pcall(function() live.helm    = require('dlac\\feature\\helmwatch').isEnabled() == true; end);

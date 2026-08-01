@@ -6645,7 +6645,7 @@ end)();
     local def = dispatchM._arbDefaultOrder;
     check('AR1 default order exported', type(def), 'table');
     check('AR1b exact default rank', table.concat(def, '>'),
-        'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
+        'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>External>Triggers');
     -- AR1c: the ADR 0012 laws the order encodes, checked as adjacency (not prose)
     local rank = {}; for i, n in ipairs(def) do rank[n] = i; end
     -- Naked (ADR 0021) is the ONE row above Pins: "naked" must mean naked, and a
@@ -6664,21 +6664,21 @@ end)();
     -- law appended them, which is right only for a row that belongs last); a valid
     -- reorder is preserved.
     check('AR2 nil -> default', table.concat(dispatchM.arbOrder(nil), '>'),
-        'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
+        'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>External>Triggers');
     check('AR2b no order field -> default', table.concat(dispatchM.arbOrder({ foo = 1 }), '>'),
-        'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
+        'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>External>Triggers');
     check('AR2c a valid reorder is preserved',
         table.concat(dispatchM.arbOrder({ order = { 'MaxMP', 'AutoAmmo', 'Pins', 'Locks', 'Craft', 'HELM', 'Fishing', 'Triggers' } }), '>'),
-        'Disabled>Naked>MaxMP>AutoAmmo>Pins>Locks>Craft>HELM>Fishing>Chocobo>Triggers');
+        'Disabled>Naked>MaxMP>AutoAmmo>Pins>Locks>Craft>HELM>Fishing>Chocobo>External>Triggers');
     -- Listed rows keep the user's order absolutely (Fishing still above Pins);
     -- every unlisted row lands where it sits by default RELATIVE to them --
     -- Naked before Fishing, Chocobo after Pins because nothing outranks it.
     check('AR2d unknown rows dropped, missing known rows restored at their default position',
         table.concat(dispatchM.arbOrder({ order = { 'Fishing', 'Nonsense', 'Pins' } }), '>'),
-        'Disabled>Naked>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Pins>Chocobo>Triggers');
+        'Disabled>Naked>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Pins>Chocobo>External>Triggers');
     check('AR2e duplicates collapse',
         table.concat(dispatchM.arbOrder({ order = { 'Pins', 'Pins', 'AutoAmmo' } }), '>'),
-        'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
+        'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>External>Triggers');
 
     -- ARP: arbOrderPersist -- the WRITE view (issue #136). arbOrder above drops
     -- unknown rows (right for the walk + the Priority tab); arbOrderPersist keeps
@@ -6692,7 +6692,7 @@ end)();
         -- The live walk / Priority tab NEVER see Ghost.
         check('ARP1 arbOrder (the live view) drops the unknown row',
             table.concat(dispatchM.arbOrder(fileWithGhost), '>'),
-            'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
+            'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>External>Triggers');
         -- The drag produced a new KNOWN order (Craft moved below HELM); persisting
         -- it weaves Ghost back in anchored to MaxMP -- position intact.
         local dragged = { 'Disabled', 'Naked', 'Pins', 'Locks', 'AutoAmmo', 'MaxMP',
@@ -6700,18 +6700,18 @@ end)();
         local persisted = dispatchM.arbOrderPersist(dragged, fileWithGhost);
         check('ARP2 persist keeps the unknown row anchored to its predecessor',
             table.concat(persisted, '>'),
-            'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Ghost>HELM>Craft>Fishing>Chocobo>Triggers');
+            'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Ghost>HELM>Craft>Fishing>Chocobo>External>Triggers');
         -- Preserve-through-rewrite: feed the persisted order back as the raw file
         -- and drag again -- Ghost survives ANY number of rewrites, still anchored.
         local persisted2 = dispatchM.arbOrderPersist(
             dispatchM.arbOrder({ order = persisted }), { order = persisted });
         check('ARP3 unknown row survives a second rewrite intact',
             table.concat(persisted2, '>'),
-            'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Ghost>HELM>Craft>Fishing>Chocobo>Triggers');
+            'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Ghost>HELM>Craft>Fishing>Chocobo>External>Triggers');
         -- No raw file / no unknowns -> persist == arbOrder (a fresh character).
         check('ARP4 no raw file -> plain sanitized order (nothing to preserve)',
             table.concat(dispatchM.arbOrderPersist(dispatchM.arbOrder(nil), nil), '>'),
-            'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
+            'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>External>Triggers');
         -- Reclaim-on-return: the file position of a LISTED row is honored by
         -- arbOrder over the default -- so the instant Ghost's identity becomes a
         -- known claimant, it takes its preserved spot, not its default one. Pinned
@@ -6721,14 +6721,14 @@ end)();
         check('ARP5 a listed row keeps its saved position (reclaim law)',
             table.concat(dispatchM.arbOrder({ order = { 'Disabled', 'Naked', 'Pins',
                 'Locks', 'Chocobo', 'AutoAmmo', 'MaxMP', 'Craft', 'HELM', 'Fishing', 'Triggers' } }), '>'),
-            'Disabled>Naked>Pins>Locks>Chocobo>AutoAmmo>MaxMP>Craft>HELM>Fishing>Triggers');
+            'Disabled>Naked>Pins>Locks>Chocobo>AutoAmmo>MaxMP>Craft>HELM>Fishing>External>Triggers');
         -- Two unknowns in a row share an anchor and keep their relative order; the
         -- ceiling/floor stay pinned even when an unknown sits at an extreme.
         local twoGhosts = { order = { 'Zeta', 'Disabled', 'Naked', 'Pins', 'Locks',
             'AutoAmmo', 'MaxMP', 'Craft', 'HELM', 'Fishing', 'Chocobo', 'Alpha', 'Beta', 'Triggers' } };
         check('ARP6 multiple unknowns keep order; ceiling first / floor last hold',
             table.concat(dispatchM.arbOrderPersist(dispatchM.arbOrder(twoGhosts), twoGhosts), '>'),
-            'Disabled>Zeta>Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Alpha>Beta>Triggers');
+            'Disabled>Zeta>Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Alpha>Beta>External>Triggers');
     end
 
     -- AR3: the PURE resolve core -- claims + rank + floor -> winners + by.
@@ -6787,12 +6787,12 @@ end)();
     put('tests\\arbstate.lua', 'return { order = { "MaxMP", "AutoAmmo", "Pins", "Locks", "Craft", "HELM", "Fishing", "Triggers" } }');
     check('AR7 hand-edited reorder is read + sanitized',
         table.concat(dispatchM.arbOrder(esf(cache, 'arbstate.lua')), '>'),
-        'Disabled>Naked>MaxMP>AutoAmmo>Pins>Locks>Craft>HELM>Fishing>Chocobo>Triggers');
+        'Disabled>Naked>MaxMP>AutoAmmo>Pins>Locks>Craft>HELM>Fishing>Chocobo>External>Triggers');
     cache.lastCheck = -1;
     put('tests\\arbstate.lua', 'return { order = {');   -- torn write
     check('AR7b torn write drops to default',
         table.concat(dispatchM.arbOrder(esf(cache, 'arbstate.lua')), '>'),
-        'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
+        'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>External>Triggers');
     os.remove('tests\\arbstate.lua');
     dispatchM._charDirOverride = nil;
 
@@ -6933,11 +6933,11 @@ end)();
     check('AR12 the Ammo contest line names winner over runner-up (the issue example)',
         joined:find('Ammo: Ammo rule (rank 5)  over MaxMP (rank 6)', 1, true) ~= nil, true);
     check('AR12b a MaxMP-only slot reads MaxMP over the floor',
-        joined:find('Ring1: MaxMP (rank 6)  over Triggers (rank 11)', 1, true) ~= nil, true);
+        joined:find('Ring1: MaxMP (rank 6)  over Triggers (rank 12)', 1, true) ~= nil, true);
     check('AR12c a veto slot reads stopped by Locks (even from a lowercase key)',
         joined:find('Legs: stopped by Locks (rank 4)', 1, true) ~= nil, true);
     check('AR12d floor-only slots collapse into one named Triggers-floor summary',
-        joined:find('Triggers floor (rank 11, uncontested):', 1, true) ~= nil
+        joined:find('Triggers floor (rank 12, uncontested):', 1, true) ~= nil
         and joined:find('Body', 1, true) ~= nil, true);
     -- Contested slots emit individually in canonical LAC order (ammo 4 < hands 10
     -- < ring1 11), BEFORE the trailing floor summary.
@@ -7268,7 +7268,7 @@ end)();
     local def = dispatchM._arbDefaultOrder;
     local rank = {}; for i, nm in ipairs(def) do rank[nm] = i; end
     check('NK6 exact default rank', table.concat(def, '>'),
-        'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
+        'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>External>Triggers');
     check('NK7 Naked outranks Pins, which outranks Locks',
         rank['Naked'] < rank['Pins'] and rank['Pins'] < rank['Locks'], true);
 
@@ -7280,7 +7280,7 @@ end)();
                                        'Craft', 'HELM', 'Fishing', 'Chocobo', 'Triggers' } })[2], 'Naked');
     check('NK9 a file that places Naked LOW keeps it there (the user has spoken)',
         table.concat(dispatchM.arbOrder({ order = { 'Pins', 'Locks', 'Naked', 'Triggers' } }), '>'),
-        'Disabled>Pins>Locks>Naked>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
+        'Disabled>Pins>Locks>Naked>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>External>Triggers');
     check('NK10 the restore never duplicates a row', (function()
         local seen = 0;
         for _, nm in ipairs(dispatchM.arbOrder(nil)) do if nm == 'Naked' then seen = seen + 1; end end
@@ -7291,7 +7291,7 @@ end)();
     check('NK10b a missing bottom row still lands just above the floor',
         table.concat(dispatchM.arbOrder({ order = { 'Naked', 'Pins', 'Locks', 'AutoAmmo',
                                                     'MaxMP', 'Craft', 'HELM', 'Fishing', 'Triggers' } }), '>'),
-        'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
+        'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>External>Triggers');
 
     -- The pure resolve: Naked beats everything, and the rank list is the ONLY
     -- exception mechanism (this is the "naked except my pins" contract).
@@ -7622,7 +7622,7 @@ end)();
     -- not at all.
     check('CR2 the signature legs keep the pre-registry byte order, JobHelper appended',
         table.concat(dispatchM._claimantSigOrder, '|'),
-        'Craft|Pins|HELM|Fishing|Chocobo|AutoAmmo|MaxMP|Naked|Disabled|JobHelper');
+        'Craft|Pins|HELM|Fishing|Chocobo|AutoAmmo|MaxMP|Naked|Disabled|JobHelper|External');
 
     -- The documented exceptions are EXACTLY the documented exceptions. Since
     -- the FOLD (stage 6) EVERY row builds its claim and applies through the
@@ -7648,7 +7648,7 @@ end)();
     end
     table.sort(b1); table.sort(b2);
     check('CR4 the bail #1 set is exactly the dispatch reasons (JobHelper joined, #138)',
-        table.concat(b1, ','), 'AutoAmmo,Chocobo,Craft,Fishing,HELM,JobHelper,Locks,Naked,Pins');
+        table.concat(b1, ','), 'AutoAmmo,Chocobo,Craft,External,Fishing,HELM,JobHelper,Locks,Naked,Pins');
     check('CR4b the bail #2 set is the same eight', table.concat(b2, ','), table.concat(b1, ','));
     check('CR4c every row carries a prioStatus (the /dl prio twin is dead)',
         (function()
@@ -8898,6 +8898,417 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- EX. EXTERNAL CLAIMS -- the WRITE half of the Integration surface
+--     (feature\extclaim). A separate ADDON, in its own Lua state, files a Claim
+--     over plugin_event and the Arbiter settles it like any other claimant.
+--
+--     What these pin, in the order the design leans on them:
+--       * the VALIDATOR names its refusals (a claim that vanishes silently is
+--         indistinguishable from dlac being broken -- hard rule 12);
+--       * the MERGE is deterministic between external addons (prio, then id
+--         ascending -- never pairs() order, hard rule 8);
+--       * the LEASE actually expires, and expiry TELLS the holder;
+--       * the DOOR is gated but never silent, and `hello` answers even while
+--         the switch is off (a consumer must be able to tell "dlac is not here"
+--         from "the player has not turned this on");
+--       * the SEND is a byte table carrying Lua source -- decoded here exactly
+--         as a foreign addon would, which is what pins the wire format;
+--       * the ROW is wired into the registry, the rank order and the retrace
+--         signature. That last one is the silent killer: a claim that changes
+--         without moving the signature never re-dispatches.
+-- ---------------------------------------------------------------------------
+(function()
+    -- extclaim borrows the read half's serializer (one truth, no drifting twin),
+    -- so seed it the way the live require would resolve it.
+    package.loaded['dlac\\feature\\integration'] =
+        package.loaded['dlac\\feature\\integration'] or dofile('feature/integration.lua');
+    local _exok, EX = pcall(dofile, 'feature/extclaim.lua');
+    check('EX1 extclaim loads headless', _exok and type(EX) == 'table', true);
+    if not (_exok and type(EX) == 'table') then return; end
+
+    -- ---- the validator (pure) --------------------------------------------
+    local ok1, err1 = EX.normSlots({ head = 'Walahra Turban', RING1 = 'Rajas Ring' });
+    check('EX2 slot keys canonicalise, whatever case arrived',
+        ok1 ~= nil and ok1.Head == 'Walahra Turban' and ok1.Ring1 == 'Rajas Ring', true);
+    check('EX2b and nothing else survives the rename', ok1 ~= nil and ok1.head, nil);
+    local ok2, err2 = EX.normSlots({ Elbow = 'Walahra Turban' });
+    check('EX3 an unknown slot is REFUSED BY NAME, never dropped in silence',
+        ok2 == nil and type(err2) == 'string' and err2:find('Elbow') ~= nil, true);
+    local ok3, err3 = EX.normSlots({ Head = 42 });
+    check('EX3b a non-string item is refused by name', ok3 == nil and err3:find('Head') ~= nil, true);
+    check('EX3c an empty claim is refused (release is the verb for that)',
+        (function() local a, b = EX.normSlots({}); return a == nil and b ~= nil; end)(), true);
+    check('EX3d "remove" passes through -- an external addon may claim a slot EMPTY',
+        (function() local a = EX.normSlots({ Ammo = 'remove' }); return a and a.Ammo; end)(), 'remove');
+
+    -- ---- the merge (pure) ------------------------------------------------
+    -- Two addons, same slot. Higher prio wins; the loser keeps the slots nobody
+    -- contested. Then equal prio -> the id ASCENDING decides, deterministically.
+    local store = {
+        zeta  = { id = 'zeta',  prio = 0, slots = { Head = 'Zeta Hat', Body = 'Zeta Robe' }, expires = 100 },
+        alpha = { id = 'alpha', prio = 5, slots = { Head = 'Alpha Hat' }, expires = 100 },
+    };
+    local m, by = EX.merge(store, 50);
+    check('EX4 higher prio wins the contested slot', m.Head, 'Alpha Hat');
+    check('EX4b the loser keeps its uncontested slots', m.Body, 'Zeta Robe');
+    check('EX4c the merge records WHO owns each slot', by.Head, 'alpha');
+    -- WHO LOST TO WHOM among the externals. The Arbiter never sees this contest
+    -- -- the merge settles it first -- so without `shadow` the loser is acked
+    -- 'ok', holds a live lease, and is never told anything took its slot.
+    -- Field-found 2026-08-01 (B claimed over A, got ok, and silence).
+    local _, _, sh = EX.merge(store, 50);
+    check('EX4d the loser is recorded, naming who took it', sh and sh.zeta and sh.zeta.Head, 'alpha');
+    check('EX4e and only for the slot it actually lost', sh and sh.zeta and sh.zeta.Body, nil);
+    check('EX4f the winner is not shadowed by anyone', sh and sh.alpha, nil);
+    check('EX4g a three-way handover names the FINAL winner, never the middle one',
+        (function()
+            local s3 = {
+                a = { id = 'a', prio = 0, slots = { Head = 'A Hat' }, expires = 100 },
+                b = { id = 'b', prio = 1, slots = { Head = 'B Hat' }, expires = 100 },
+                c = { id = 'c', prio = 2, slots = { Head = 'C Hat' }, expires = 100 },
+            };
+            local _, _, s = EX.merge(s3, 50);
+            return s and s.a and s.a.Head;
+        end)(), 'c');
+    store.alpha.prio = 0;
+    local m2 = EX.merge(store, 50);
+    check('EX5 equal prio breaks on the id, ascending (never pairs order)', m2.Head, 'Alpha Hat');
+    check('EX5b an expired record is invisible to the merge',
+        (function()
+            local s = { a = { id = 'a', prio = 0, slots = { Head = 'Gone' }, expires = 10 } };
+            return EX.merge(s, 50);
+        end)(), nil);
+
+    -- ---- the lease -------------------------------------------------------
+    local st = {};
+    local a1 = EX.handle(st, { id = 'x', what = 'claim', slots = { Head = 'Hat' }, ttl = 5 }, 1000);
+    check('EX6 a claim is accepted', a1.ok, true);
+    check('EX6b and carries its lease back', a1.data.expiresIn, 5);
+    check('EX6c the store holds it', st.x ~= nil and st.x.expires, 1005);
+    local a2 = EX.handle(st, { id = 'x', what = 'claim', slots = { Head = 'Hat' }, ttl = 99999 }, 1000);
+    check('EX6d an absurd ttl is CLAMPED and said so, not refused',
+        a2.ok == true and a2.data.ttl == EX.TTL_MAX and a2.data.ttlClamped == true, true);
+    EX.handle(st, { id = 'x', what = 'claim', slots = { Head = 'Hat' }, ttl = 5 }, 1000);
+    local hb = EX.handle(st, { id = 'x', what = 'heartbeat' }, 1003);
+    check('EX7 a heartbeat renews the lease', hb.ok == true and st.x.expires, 1008);
+    local lapsed = EX.expire(st, 1007);
+    check('EX7b the lease has not lapsed yet', lapsed, nil);
+    lapsed = EX.expire(st, 1100);
+    check('EX7c it lapses, and expire NAMES who lapsed',
+        lapsed ~= nil and #lapsed == 1 and lapsed[1].id, 'x');
+    check('EX7d and the store is empty again', st.x, nil);
+    local hb2 = EX.handle(st, { id = 'x', what = 'heartbeat' }, 1200);
+    check('EX7e a heartbeat with no claim refuses with a sentence, not a code',
+        hb2.ok == false and type(hb2.err) == 'string' and hb2.err:find('claim') ~= nil, true);
+
+    -- release + the claimant cap
+    EX.handle(st, { id = 'y', what = 'claim', slots = { Head = 'Hat' } }, 1);
+    local rel = EX.handle(st, { id = 'y', what = 'release' }, 1);
+    check('EX8 release drops the claim and says whether there was one',
+        rel.ok == true and rel.data.released == true and st.y == nil, true);
+    local capStore = {};
+    for i = 1, EX.MAX_CLAIMANTS do
+        EX.handle(capStore, { id = 'c' .. i, what = 'claim', slots = { Head = 'H' } }, 1);
+    end
+    local over = EX.handle(capStore, { id = 'one-too-many', what = 'claim', slots = { Head = 'H' } }, 1);
+    check('EX9 the claimant cap refuses and names itself',
+        over.ok == false and over.err:find(tostring(EX.MAX_CLAIMANTS)) ~= nil, true);
+
+    -- an unknown verb answers; a request with no id answers
+    check('EX9b an unknown verb answers with err, never silence',
+        (function() local a = EX.handle({}, { id = 'q', what = 'nosuch' }, 1); return a.ok == false and a.err ~= nil; end)(), true);
+    check('EX9c a request with no id is told what it is missing',
+        (function() local a = EX.handle({}, { what = 'claim' }, 1); return a.ok == false and a.err:find('id') ~= nil; end)(), true);
+
+    -- ---- the live door: bytes in, bytes out -------------------------------
+    -- The collector decodes exactly as a foreign addon would (bytes -> string ->
+    -- load), which pins the byte-table SEND convention the probe verified.
+    local sent = {};
+    EX._raise = function(name, bytes)
+        local b = {};
+        for i = 1, #bytes do b[i] = string.char(bytes[i]); end
+        local t = nil;
+        pcall(function() t = (loadstring or load)(table.concat(b))(); end);
+        sent[#sent + 1] = { name = name, env = t };
+    end;
+    local NOW = 500;
+    EX._clock = function() return NOW; end
+    EX._store, EX._by, EX._lastLost = {}, {}, {};
+
+    EX.setOn(false);
+    sent = {};
+    EX._onEvent({ name = 'dlac_claim',
+                  data = 'return { id = "p", reply = "p", what = "claim", slots = { Head = "Hat" } }' });
+    check('EX10 with the switch off a claim is REFUSED, on the caller channel',
+        #sent == 1 and sent[1].name == 'p_r' and sent[1].env ~= nil
+        and sent[1].env.ok == false and sent[1].env.err ~= nil, true);
+    check('EX10b and nothing was stored', EX._store.p, nil);
+    sent = {};
+    EX._onEvent({ name = 'dlac_claim', data = 'return { id = "p", reply = "p", what = "hello" }' });
+    check('EX11 hello answers even while the switch is OFF (presence != permission)',
+        #sent == 1 and sent[1].env ~= nil and sent[1].env.ok == true
+        and sent[1].env.data.on == false, true);
+
+    EX.setOn(true);
+    sent = {};
+    EX._onEvent({ name = 'dlac_claim',
+                  data = 'return { id = "p", reply = "p", what = "claim", slots = { head = "Walahra Turban" }, ttl = 20 }' });
+    check('EX12 with the switch on the claim lands and is acked',
+        #sent == 1 and sent[1].env ~= nil and sent[1].env.ok == true
+        and sent[1].env.data.slots.Head, 'Walahra Turban');
+    check('EX12b and the row now has an opinion', EX.claim() ~= nil and EX.claim().Head, 'Walahra Turban');
+    check('EX12c active() agrees', EX.active(), true);
+    check('EX12d the status line NAMES the addon', EX.statusText():find('p') ~= nil, true);
+
+    -- the verdict push: told once per CHANGE, then the all-clear. A notice on
+    -- every Default tick would be a flood, and a flood gets filtered out.
+    sent = {};
+    EX.noteVerdict({ Head = 'Pins' });
+    check('EX13 losing a slot pushes ONE verdict naming the winner',
+        #sent == 1 and sent[1].env ~= nil and sent[1].env.what == 'verdict'
+        and sent[1].env.data.lost.Head, 'Pins');
+    EX.noteVerdict({ Head = 'Pins' });
+    check('EX13b the same verdict does not push again', #sent, 1);
+    EX.noteVerdict({});
+    check('EX13c recovering the slot pushes the all-clear',
+        #sent == 2 and sent[2].env.data.held == true, true);
+
+    -- Losing to ANOTHER EXTERNAL ADDON must reach the loser too. Same notice,
+    -- same dedupe: from the addon's side "something else is wearing that slot"
+    -- is ONE fact and it should not have to learn it two different ways.
+    EX._store['q'] = { id = 'q', label = 'Q', prio = 0, ttl = 60, reply = 'q',
+                       slots = { Head = 'Q Hat' }, expires = NOW + 60 };
+    EX._store['p'].prio = 5;                       -- p outranks q for the slot
+    sent = {};
+    EX.claim();                                    -- the merge decides + records
+    EX.noteVerdict({});
+    local qNote = nil;
+    for _, s in ipairs(sent) do if s.name == 'q_r' then qNote = s.env; end end
+    check('EX13d the shadowed addon is told it lost, and to whom',
+        qNote ~= nil and qNote.what == 'verdict' and qNote.data.lost.Head, 'p');
+    check('EX13e the winner is not told it lost anything',
+        (function()
+            for _, s in ipairs(sent) do
+                if s.name == 'p_r' and s.env.data and s.env.data.held ~= true then return false; end
+            end
+            return true;
+        end)(), true);
+    EX._store['q'] = nil;
+    EX._store['p'].prio = 0;
+    EX.claim();
+    EX._lastLost = {};
+
+    -- the switch is a kill switch: OFF releases everything and TELLS the holder
+    sent = {};
+    EX.setOn(false);
+    check('EX14 switching off releases every claim and notifies the holder',
+        #sent == 1 and sent[1].env ~= nil and sent[1].env.what == 'expired', true);
+    check('EX14b nothing is held afterwards', EX.claim(), nil);
+    check('EX14c and a nil claim is how the row says "no opinion"', EX.active(), false);
+    EX._store, EX._by, EX._lastLost = {}, {}, {};
+
+    -- ---- the wiring ------------------------------------------------------
+    -- The rank row, at the rank the plugin design ruled for a third party:
+    -- directly above the Triggers floor.
+    local def = dispatchM._arbDefaultOrder;
+    local exIdx, trIdx = nil, nil;
+    for i, n in ipairs(def) do
+        if n == 'External' then exIdx = i; end
+        if n == 'Triggers' then trIdx = i; end
+    end
+    check('EX15 the External rank row exists', exIdx ~= nil, true);
+    check('EX15b and ships directly above the Triggers floor', exIdx, trIdx and (trIdx - 1));
+    check('EX15c a player reads a phrase, not the identity',
+        package.loaded['dlac\\gear\\arbiter'].claimantLabel('External'), 'Other addons');
+
+    -- The CLAIMANTS row, with the two things that are silent when missing: the
+    -- claim builder and the retrace signature leg.
+    local row = nil;
+    for _, r in ipairs(dispatchM._claimants or {}) do
+        if r.name == 'External' then row = r; end
+    end
+    check('EX16 the External claimant row is registered', row ~= nil, true);
+    check('EX16b it builds a claim', row ~= nil and type(row.claim), 'function');
+    check('EX16c it applies', row ~= nil and type(row.apply), 'function');
+    check('EX16d it reports itself to /dl prio', row ~= nil and type(row.prioStatus), 'function');
+    check('EX16e it can dispatch alone (bail1/bail2 -- the Naked precedent)',
+        row ~= nil and row.bail1 == true and row.bail2 == true, true);
+    local hasSigLeg = false;
+    for _, n in ipairs(dispatchM._claimantSigOrder or {}) do
+        if n == 'External' then hasSigLeg = true; end
+    end
+    check('EX16f IT HAS A SIGNATURE LEG -- without one a changed claim never re-dispatches',
+        hasSigLeg, true);
+
+    -- The VERDICT JOIN, across a claimant that spells slots the other way.
+    -- arbExplain says it outright: the producers disagree on case (overlay
+    -- tables are proper-case, the Locks veto rides lowercased M.locks, a pin
+    -- table or locked set carries whatever its source wrote). A case-sensitive
+    -- join here does not name the WRONG winner -- it names NO winner, so the
+    -- addon is told it still holds a slot something else took. Silent, and only
+    -- for half the claimants. Field-prompted (Henrik, 2026-08-01: a pin held a
+    -- slot and the verdict named MaxMP).
+    local RANKS = { Disabled = 1, Naked = 2, Pins = 3, MaxMP = 6, External = 11 };
+    local mineTbl = { Head = 'Claimed Hat', Ammo = 'Claimed Shot', Body = 'Claimed Robe' };
+    local lost = dispatchM.externalLost(mineTbl, {
+        External = mineTbl,
+        Pins     = { head = 'Pinned Hat' },        -- LOWERCASE, as a pin file may be
+        MaxMP    = { Ammo = 'MP Bullet' },         -- proper-case
+        Triggers = { Body = 'Idle Robe' },         -- BELOW me: not a loss
+    }, RANKS);
+    check('EX24 a lowercase-keyed senior claimant is still reported as the winner', lost.Head, 'Pins');
+    check('EX24b a proper-case one still is too', lost.Ammo, 'MaxMP');
+    check('EX24c the slot comes back in MY casing, whatever the winner used', lost.head, nil);
+    check('EX24d a claimant ranked BELOW me took nothing from me', lost.Body, nil);
+    local lost2 = dispatchM.externalLost(mineTbl, {
+        External = mineTbl,
+        Pins     = { Head = 'Pinned Hat' },
+        Naked    = { head = 'remove' },            -- stronger, and spelled the other way
+    }, RANKS);
+    check('EX24e when several beat one slot, the STRONGEST is named', lost2.Head, 'Naked');
+    check('EX24f no rank row for me -> nothing is claimed to be lost',
+        next(dispatchM.externalLost(mineTbl, { Pins = { Head = 'X' } }, { Pins = 3 })), nil);
+    check('EX24g junk arguments answer empty, never throw',
+        next(dispatchM.externalLost(nil, nil, nil)), nil);
+
+    -- ZERO WHEN IDLE. active() and claim() run on EVERY dispatch, and Default
+    -- dispatches constantly -- so leaving the switch on must cost nothing while
+    -- nobody is claiming, or "just leave it on" becomes something the player has
+    -- to think about. Identity on the shared EMPTY table is the cheap proxy for
+    -- "allocated nothing": a fresh {} each dispatch is exactly the per-frame
+    -- garbage this exists to prevent, and it would never show up as a failure
+    -- anywhere else.
+    EX._store, EX.on = {}, true;
+    check('EX25 an idle claim() answers nil', EX.claim(), nil);
+    check('EX25b and hands back the SHARED empty owner map, not a fresh one',
+        EX._by, EX._EMPTY);
+    check('EX25c an idle active() is false', EX.active(), false);
+    check('EX25d merge answers the shared empty map too', (function()
+        local _, by = EX.merge({}, 0); return by; end)(), EX._EMPTY);
+    EX.on = false;
+
+    -- THE PERSISTED PERMISSION (2026-08-01). The saved answer is the PERMISSION
+    -- only; claims stay session state (EX23 above). Read ONCE per session: a
+    -- re-read every frame would undo `/dl claims off` the moment it was typed,
+    -- which is the failure this guards.
+    do
+        local sfm = package.loaded['dlac\\gear\\syncflags'];
+        if sfm == nil then
+            local okf, m = pcall(dofile, 'gear/syncflags.lua');
+            if okf and type(m) == 'table' then
+                sfm = m;
+                package.loaded['dlac\\gear\\syncflags'] = m;   -- the name extclaim requires
+            end
+        end
+        check('EX26z the persisted-flag store is reachable', type(sfm) == 'table', true);
+        if type(sfm) == 'table' and type(sfm.flags) == 'table' then
+            local savedSave, saved = sfm.saveUiFlags, sfm.flags[EX.FLAG];
+            local wrote = 0;
+            sfm.saveUiFlags = function() wrote = wrote + 1; end
+            EX.on, EX._flagRead = false, false;
+            sfm.flags[EX.FLAG] = nil;
+            check('EX26 no saved answer -> nothing to restore, and keep asking',
+                EX._readFlag(), false);
+            check('EX26b and the switch stays off', EX.on, false);
+            sfm.flags[EX.FLAG] = true;
+            check('EX26c a saved YES is restored', EX._readFlag() == true and EX.on, true);
+            check('EX26d and it is settled -- never read again this session', EX._flagRead, true);
+            EX.setOn(false);
+            check('EX26e turning it off WRITES the answer through', sfm.flags[EX.FLAG], false);
+            check('EX26f and saves it', wrote > 0, true);
+            EX.setOn(true);
+            check('EX26g turning it on writes too', sfm.flags[EX.FLAG], true);
+            EX.setOn(false);
+            sfm.saveUiFlags, sfm.flags[EX.FLAG] = savedSave, saved;
+            EX._flagRead = true;      -- leave it settled for anything after this
+        end
+    end
+
+    -- ---- the published shim, driven against the real receiver ------------
+    -- lib\dlacclaim.lua is the one file in dlac written to be loaded from a
+    -- FOREIGN Lua state, which makes it the one file whose bugs land in someone
+    -- else's addon. Its serializer is a SECOND implementation by necessity (it
+    -- runs where dlac's own is unreachable), so the two are wired together here
+    -- and the whole conversation is run end to end: a drift in either half is a
+    -- failure, not a field report from a third party.
+    local shim = dofile('lib/dlacclaim.lua');
+    check('EX17 the client shim loads', type(shim) == 'table' and type(shim.new), 'function');
+    do
+        local savedCore = AshitaCore;
+        local c = shim.new({ id = 'shimtest', label = 'Shim Test', ttl = 6, autoRegister = false });
+        -- SEND side: the shim raises -> hand the bytes straight to the receiver,
+        -- exactly as the broadcast would.
+        AshitaCore = { GetPluginManager = function()
+            return { RaiseEvent = function(_, name, bytes)
+                local b = {};
+                for i = 1, #bytes do b[i] = string.char(bytes[i]); end
+                EX._onEvent({ name = name, data = table.concat(b), size = #bytes });
+            end };
+        end };
+        -- RECEIVE side: dlac's replies -> back into the shim's own funnel.
+        EX._raise = function(name, bytes)
+            local b = {};
+            for i = 1, #bytes do b[i] = string.char(bytes[i]); end
+            if name == 'shimtest_r' then
+                c:onEnvelope((loadstring or load)(table.concat(b))());
+            end
+        end;
+        EX._store, EX._by, EX._lastLost = {}, {}, {};
+        NOW = 900;
+
+        EX.setOn(false);
+        c:hello();
+        check('EX18 hello crosses both halves and reports the switch off',
+            c.present == true and c.enabled == false, true);
+        c:claim({ Head = 'Walahra Turban' });
+        check('EX18b a claim while off is refused, and the shim knows why',
+            c.held == false and c.lastErr == 'external claims are off', true);
+
+        EX.setOn(true);
+        c:claim({ head = 'Walahra Turban', Ammo = 'remove' });
+        check('EX19 the shim files a claim dlac accepts', c.held, true);
+        check('EX19b the slot key came back canonicalised', c.slots and c.slots.Head, 'Walahra Turban');
+        check('EX19c and dlac holds it for the arbiter', EX.claim() and EX.claim().Ammo, 'remove');
+
+        EX.noteVerdict({ Head = 'Pins' });
+        check('EX20 a lost slot reaches the shim, naming the winner', c.lost.Head, 'Pins');
+        EX.noteVerdict({});
+        check('EX20b and the all-clear clears it', c.lost.Head, nil);
+
+        NOW = 903; c:heartbeat();
+        check('EX21 a heartbeat renews across the wire', EX.claim() ~= nil, true);
+        NOW = 910; EX._worldAt = 0; EX._pump();
+        check('EX21b silence lapses the lease', EX.claim(), nil);
+        check('EX21c and the shim is told, not left believing it holds gear', c.held, false);
+
+        c:claim({ Head = 'Walahra Turban' });
+        EX.setOn(false);
+        check('EX22 the player switch is a kill switch the holder hears about',
+            c.held == false and c.enabled == false, true);
+
+        -- LOGOUT kills every CLAIM but NOT the switch (2026-08-01: the
+        -- permission is a saved preference, the claims are session state). The
+        -- holder is told, and `on` rides the notice so it knows the door is
+        -- still open rather than assuming the player revoked it.
+        EX.setOn(true);
+        c:claim({ Head = 'Walahra Turban' });
+        local savedWA2 = dispatchM.worldAbsentOutlasted;
+        dispatchM.worldAbsentOutlasted = function() return true; end
+        EX._worldAt = 0;              -- the world check is throttled to 1/sec (perf); force it due
+        EX._pump();
+        check('EX23 outlasted world absence drops every claim', EX.claim(), nil);
+        check('EX23b but the SWITCH survives -- it is a saved preference, not a session consent',
+            EX.on, true);
+        check('EX23c the holder is told it no longer holds gear', c.held, false);
+        check('EX23d and told the door is still open, without parsing a reason string',
+            c.enabled, true);
+        dispatchM.worldAbsentOutlasted = savedWA2;
+        EX._store, EX._by, EX._lastLost = {}, {}, {};
+        AshitaCore = savedCore;
+    end
+end)();
+
+-- ---------------------------------------------------------------------------
 -- AB. arbwatch -- the ADDON-SIDE writer of the arbstate rank Statefile (ADR
 --     0012, step 2 / issue #49). The engine's read side is AR* above; these pin
 --     the WRITER's pure seams: the default/sanitize reuse the engine's one
@@ -8911,14 +9322,14 @@ end)();
 
     -- Default + sanitize delegate to the engine (one vocabulary, no drift).
     check('AB1 default order matches the engine default',
-        table.concat(aw.defaultOrder(), '>'), 'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
+        table.concat(aw.defaultOrder(), '>'), 'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>External>Triggers');
     check('AB1b defaultOrder is a fresh copy (mutating it does not stick)',
         (function() local d = aw.defaultOrder(); d[1] = 'X'; return aw.defaultOrder()[1]; end)(), 'Disabled');
     check('AB2 sanitize nil -> default',
-        table.concat(aw.sanitize(nil), '>'), 'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
+        table.concat(aw.sanitize(nil), '>'), 'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>External>Triggers');
     check('AB2b sanitize drops unknown, restores missing at its default position',
         table.concat(aw.sanitize({ order = { 'Fishing', 'Nonsense', 'Pins' } }), '>'),
-        'Disabled>Naked>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Pins>Chocobo>Triggers');
+        'Disabled>Naked>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Pins>Chocobo>External>Triggers');
 
     -- serialize -> the engine's file shape; round-trips through arbOrder.
     local txt = aw.serialize({ 'MaxMP', 'AutoAmmo', 'Pins', 'Locks', 'Craft', 'HELM', 'Fishing', 'Triggers' });
@@ -8929,7 +9340,7 @@ end)();
     local roundtrip = dispatchM.arbOrder(chunk());
     check('AB3c serialize -> arbOrder round-trips a valid reorder',
         table.concat(roundtrip, '>'),
-        'Disabled>Naked>MaxMP>AutoAmmo>Pins>Locks>Craft>HELM>Fishing>Chocobo>Triggers');
+        'Disabled>Naked>MaxMP>AutoAmmo>Pins>Locks>Craft>HELM>Fishing>Chocobo>External>Triggers');
     check('AB3d serialize skips non-string / empty entries',
         aw.serialize({ 'Pins', '', 42, 'Triggers' }), 'return { order = { "Pins", "Triggers" } }\n');
 
@@ -8940,29 +9351,35 @@ end)();
     local def = aw.defaultOrder();
     check('AB4 a claimant moves up one (AutoAmmo #5 -> #4, crossing the Locks veto)',
         table.concat(aw.moveClaimant(def, 5, -1), '>'),
-        'Disabled>Naked>Pins>AutoAmmo>Locks>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
+        'Disabled>Naked>Pins>AutoAmmo>Locks>MaxMP>Craft>HELM>Fishing>Chocobo>External>Triggers');
     check('AB4b a claimant moves down one (AutoAmmo #5 -> #6)',
         table.concat(aw.moveClaimant(def, 5, 1), '>'),
-        'Disabled>Naked>Pins>Locks>MaxMP>AutoAmmo>Craft>HELM>Fishing>Chocobo>Triggers');
-    check('AB4c the input order is not mutated', table.concat(def, '>'), 'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
+        'Disabled>Naked>Pins>Locks>MaxMP>AutoAmmo>Craft>HELM>Fishing>Chocobo>External>Triggers');
+    check('AB4c the input order is not mutated', table.concat(def, '>'), 'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>External>Triggers');
     -- Step 3: the Locks veto row now DRAGS (only the Triggers floor is fixed).
     check('AB5 Locks drags down one (#4 -> #5, under AutoAmmo)',
         table.concat(aw.moveClaimant(def, 4, 1), '>'),
-        'Disabled>Naked>Pins>AutoAmmo>Locks>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
+        'Disabled>Naked>Pins>AutoAmmo>Locks>MaxMP>Craft>HELM>Fishing>Chocobo>External>Triggers');
     check('AB5a Locks drags up one, over Pins (Naked still above it)',
         table.concat(aw.moveClaimant(def, 4, -1), '>'),
-        'Disabled>Naked>Locks>Pins>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
-    check('AB5b Triggers refuses the drag (the floor)', aw.moveClaimant(def, 11, -1), nil);
-    check('AB6 the floor-adjacent claimant (Chocobo #10) cannot move down into the Triggers floor (stays last)',
-        aw.moveClaimant(def, 10, 1), nil);
+        'Disabled>Naked>Locks>Pins>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>External>Triggers');
+    check('AB5b Triggers refuses the drag (the floor)', aw.moveClaimant(def, 12, -1), nil);
+    -- The floor-adjacent row is External (#11) since 2026-08-01 -- other addons
+    -- ship directly above your triggers. It is the row that now cannot sink any
+    -- further, and Chocobo above it drags normally.
+    check('AB6 the floor-adjacent claimant (External #11) cannot move down into the Triggers floor (stays last)',
+        aw.moveClaimant(def, 11, 1), nil);
+    check('AB6a Chocobo #10 CAN move down now -- it swaps with External, not the floor',
+        table.concat(aw.moveClaimant(def, 10, 1), '>'),
+        'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>External>Chocobo>Triggers');
     check('AB6b Fishing CAN move up (HELM #8 <-> Fishing #9)',
         table.concat(aw.moveClaimant(def, 9, -1), '>'),
-        'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>Fishing>HELM>Chocobo>Triggers');
+        'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>Fishing>HELM>Chocobo>External>Triggers');
     -- Naked is an ORDINARY draggable row: "naked except my pins" is a drag, not
     -- a code path, so the day it becomes fixed the feature loses its escape hatch.
     check('AB6c Naked drags down (Pins takes the top -- naked except pins)',
         table.concat(aw.moveClaimant(def, 2, 1), '>'),
-        'Disabled>Pins>Naked>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
+        'Disabled>Pins>Naked>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>External>Triggers');
     check('AB6d Naked is not a FIXED row', aw.FIXED['Naked'], nil);
     check('AB7 out-of-range / bad args are nil, never a throw',
         aw.moveClaimant(def, 1, -1) == nil and aw.moveClaimant(def, 0, 1) == nil
@@ -8980,7 +9397,7 @@ end)();
         'Craft', 'HELM', 'Fishing', 'Chocobo', 'Triggers' };
     check('AB8 persist weaves the unknown row back in at its position',
         table.concat(aw.persist(dragKnown, rawGhost), '>'),
-        'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Ghost>Craft>HELM>Fishing>Chocobo>Triggers');
+        'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Ghost>Craft>HELM>Fishing>Chocobo>External>Triggers');
     check('AB8b persist matches the engine seam exactly',
         table.concat(aw.persist(dragKnown, rawGhost), '>'),
         table.concat(dispatchM.arbOrderPersist(dragKnown, rawGhost), '>'));
@@ -9000,7 +9417,7 @@ end)();
     -- No raw file (fresh character) -> persist is just the sanitized order.
     check('AB8e no raw file -> plain sanitized order',
         table.concat(aw.persist(dragKnown, nil), '>'),
-        'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Triggers');
+        'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>External>Triggers');
 end)();
 
 -- ---------------------------------------------------------------------------
@@ -16251,8 +16668,8 @@ end)();
         end
         return 'Locks row missing';
     end)(), true);
-    check('LS15d no new CLAIMANT row was added (11 = the 10 ranked rows + the ADR 0024 ceiling)',
-        #def, 11);
+    check('LS15d no new CLAIMANT row was added (12 = the 11 ranked rows + the ADR 0024 ceiling)',
+        #def, 12);
 
     -- LS16. END TO END through the REAL M.dispatch (the NK26 pattern). A locked
     -- set with NOTHING else armed -- no triggers, no pins, no hobby, no ammo --

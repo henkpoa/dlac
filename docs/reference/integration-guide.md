@@ -10,6 +10,7 @@ your own packet stream.
 |---|---|
 | **Part 1 — static data files** | ✅ **Available now.** Nothing to enable, no dlac cooperation needed. |
 | **The live stream — all four kinds (`worn` / `dispatch` / `invalidate` / `confirm`) — and the five queries** | ✅ **BUILT 2026-07-28** (dlac `2026.07.28l`+). Transport verified by probe (§2.2). The player must type `/dl stream on` — off means dlac is silent on the channel, **queries included**. `dispatch` anchors carry no rule-match trace yet (additive later, on a named use); `gear`/`item`/`stats` replies carry `rev = 0` in v1 (only `sets` has a real revision so far). |
+| **§7 — EXTERNAL CLAIMS, the write half: your addon claims gear slots** | ✅ **BUILT + FIELD-CONFIRMED 2026-08-01** (dlac `2026.08.01k`+, engine 162). Separate switch, `/dl claims on` — **saved**, so the player answers once; the claims themselves stay session-only. Use the shipped client shim (`addons\dlac\lib\dlacclaim.lua`) rather than hand-rolling the protocol. |
 
 If you build the Part 1 half first you can make real progress before dlac's side exists.
 Design docs behind this: `docs/design/integration-surface.md` in the dlac repo.
@@ -592,9 +593,9 @@ Everything else is your own packet handling joined against `ring` by §2.4.
 10. **Stat key spelling comes from `statdefs`** (§1), not from your intuition.
 11. **`at` is a decision-time stamp from dlac's clock**, not your receive time. Use it for
     ordering dlac's own events; use your own clock for your packets.
-12. **You are read-only.** There is deliberately no way to make dlac equip, write a set, or
-   change a trigger through this channel. If you need that, it is a different conversation
-   with a different design (a dlac *plugin*, currently designed and parked).
+12. **Everything above is read-only.** Sections 1–4 cannot make dlac do anything. If you
+   want to *dress* the player, that is §7 — a different channel, a different switch, and
+   still no writer for sets, triggers or modes.
 
 ---
 
@@ -611,3 +612,141 @@ model is yours.
 If you need a field that is not here, say which one and why: this surface deliberately sends
 **complete records rather than curated fields**, precisely so that most new needs turn out
 to be something you were already being sent.
+
+---
+
+## 7. External claims — making dlac wear something (2026-08-01)
+
+Everything above is dlac *telling you* things. This section is the other direction: your
+addon asks dlac to **wear specific gear in specific slots**, and dlac's Arbiter settles that
+against everything else contending for the same slots.
+
+**The mental model, and it is the whole section:** a Claim in dlac is just
+`{ [SlotKey] = itemName }`. Your addon becomes one more claimant on a list the player
+controls, alongside their pins, slot locks, ammo rule, MP batteries and craft/fishing gear.
+You are not driving dlac's equip path; you are *filing an opinion* and the player's rank
+order decides what happens to it.
+
+### 7.1 Do not hand-roll this — load the shim
+
+```lua
+local ok, mk = pcall(loadfile,
+    AshitaCore:GetInstallPath() .. 'addons\\dlac\\lib\\dlacclaim.lua');
+local dlac = (ok and mk ~= nil) and mk().new({ id = 'myaddon', label = 'My Addon', ttl = 10 }) or nil;
+
+dlac.onAck     = function(t) end        -- every reply to something you sent
+dlac.onVerdict = function(d) end        -- d.lost = { Slot = 'WhoBeatYou' }
+dlac.onExpired = function(d) end        -- your claim is gone; d.reason says why
+
+dlac:hello();                                            -- is dlac there, is the switch on
+dlac:claim({ Head = 'Walahra Turban', Ammo = 'remove' });  -- 'remove' = hold the slot EMPTY
+dlac:release();
+
+ashita.events.register('d3d_present', 'myaddon_dlac', function() dlac:pump(); end);  -- REQUIRED
+```
+
+`lib\dlacclaim.lua` ships with dlac and is the one file in it written to be loaded from a
+foreign Lua state. It owns the wire format, the byte-table send, the reply channel and the
+lease renewal. The raw protocol is documented in 7.4 for the curious, but the shim is the
+supported door — if the wire changes, the shim absorbs it.
+
+### 7.2 The four things that will surprise you
+
+**1. The player owns a switch, and it is not the stream's.** Nothing works until they type
+`/dl claims on` (or tick *"Let other addons claim gear"* in Menu → Settings). Reading gear
+and dressing the player are separate consents on purpose, so `/dl stream on` does **not**
+enable this. `hello` is answered even while the switch is off — precisely so your UI can
+say *"dlac is here, claims are off"* instead of failing silently. Never nag, and never
+re-file a claim the player just turned off.
+
+The switch is **saved** and survives logout; the **claims are not**. A logout clears every
+claim and leaves the permission standing, so plan to re-file when your own conditions are
+met again — not blindly at character select. You never have to guess which happened:
+`data.on` on the `expired` push is the switch state, sent explicitly.
+
+**2. Your claim is a LEASE.** Every one of dlac's own claimants dies when dlac dies; yours
+does not. So a claim carries a TTL (default 10 s, max 300) and must be renewed — `pump()`
+does it for you at a third of the lease. Stop pumping — crash, unload, forget — and dlac
+drops your claim on its own and restores the player's gear. This is not a permission wall;
+it exists because a foreign holder can *vanish*, and gear stuck with nobody to blame is the
+worst outcome for the player.
+
+**3. Being accepted is not being worn.** You ship at the **`External` rank, directly above
+the player's Triggers floor** — you dress over their trigger sets and under everything they
+configured themselves, until *they* drag you higher in Gear Helpers → Claim Priority. When
+a senior claimant takes one of your slots you get a `verdict` push naming who beat you
+(`onVerdict`), once per change rather than once per dispatch. Slots withheld by the Locks
+veto or the Disabled ceiling do not appear there — they show up as *claimed but not worn*
+on the `worn` stream (§2), which is the fact-check for everything in this section.
+
+**4. Claim, never Commit.** There is no writer here for sets, triggers, modes or lockstyle
+boxes, and there will not be one. A claim is session-only and touches none of the player's
+files.
+
+Two smaller ones worth knowing. **A claim REPLACES your previous one** — one claimant, one
+table; send the whole thing every time.
+
+And **several external addons can claim at once.** They share the one `External` row, so
+between themselves the higher `prio` wins a contested slot, ties broken by id ascending
+(deterministic, never table order). Two consequences:
+
+- **Being shadowed by a peer is not a refusal.** Your claim is accepted and your lease is
+  live; the moment the winner releases or its lease lapses you take the slot, with no round
+  trip. That is why the ack says `ok`.
+- **You are still told.** A slot taken by a peer arrives on the same `verdict` push as a
+  slot taken by one of dlac's claimants — the value is whichever *won*, so it is either a
+  dlac claimant identity (`Pins`, `MaxMP`, …) or another addon's `id`. Do not assume it is
+  one or the other: they want opposite responses. Losing to a dlac claimant is the
+  player's Claim Priority drag to settle; losing to a peer is `prio`, and never appears in
+  that list at all.
+
+### 7.3 What dlac deliberately does not do
+
+**It never asks you anything.** dlac decides gear inside a blocked outgoing packet, and it
+will not call out to another addon's Lua from there — your crash or your slow frame must
+never become the player's gear bug. Your claim is a *standing* table read from cache on
+every decision, exactly like the ammo rule's.
+
+The consequence, stated plainly: **a reactive claim is one action late.** You learn an
+action happened from the `dispatch`/`worn` anchor (§2.4), which arrives *after* the gear for
+that action was already chosen. If you want gear on for an action, claim it *before* the
+action — or use the claim → verify → act shape, which is what dlac's own Job helpers do.
+
+### 7.4 The raw protocol (v1)
+
+Inbound event `dlac_claim`, payload `return { ... }` as a byte table, replies on
+`<reply>_r` — the same encoding, decoding and reply-channel convention as §2/§3.
+
+| `what` | Fields | Answer |
+|---|---|---|
+| `hello` | — | `{ protocol, on, dlac, ttlDefault, ttlMax, claimant, maxClaimants }`. Answered even while the switch is off. |
+| `claim` | `slots` (required), `prio`, `ttl`, `label` | `ok` + the canonicalised `slots`, the granted `ttl` and `ttlClamped` if it was clamped |
+| `release` | — | `ok`, `released` |
+| `heartbeat` | — | `ok`, `expiresIn` — refuses if the lease already lapsed, so re-claim |
+| `status` | — | your claim + every other holder (`id`, `label`, `prio`, slot count) |
+
+Every request needs `id` (your identity *and* your lease key) and `reply` (your channel).
+Unsolicited pushes arrive on the same channel: `verdict` — `data.lost = { Slot = <winner> }`
+where the winner is a dlac claimant identity **or another addon's id**, or
+`data.held = true` for the all-clear — and `expired`, carrying `data.reason` (`lease
+lapsed` / `logout` / the player switching claims off) and **`data.on`, the switch state**,
+so permission is never something you infer from a reason string. Verdicts are pushed once
+per *change*, not per decision.
+
+Slot keys are the sixteen in §2.3 and are matched **case-insensitively** — send `head`, get
+`Head`. Every refusal is a named sentence, never silence: an unknown slot names the slot,
+a bad item names the slot, the claimant cap names the cap. If you get nothing back at all,
+dlac is not loaded — that is the only silent case.
+
+### 7.5 Testing yours against it
+
+**`addons\dlac\examples\claim-example\`** ships with dlac: a complete, runnable addon built
+on this exact shim, with a README written for whoever is doing the integration — human or
+AI — and commands for the four things worth checking. A claim landing; a claim *losing* to
+a senior claimant (and winning once the player drags the row up); the lease expiring after
+`/claimex die` simulates a crash; and two external identities contending for one slot.
+
+Copy the folder to `<Ashita>\addons\claim-example\` to run it (Ashita only loads addons
+from its own `addons\` directory). Read `README.md` for the model, then the .lua top to
+bottom — steps 1–4 are marked in the source. Between them they are enough to build a
+correct integration without reading dlac's source at all.

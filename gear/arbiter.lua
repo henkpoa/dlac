@@ -550,8 +550,15 @@ end
 -- rankings: the claims dress OVER Triggers, and NOTHING dresses THROUGH Disabled.
 -- It is listed here so the Priority panel can show it (a player has to be able to
 -- see why a slot is inert), never so it can be dragged.
+-- 'External' (2026-08-01) is the ONE row every OTHER ADDON's claim rides -- the
+-- write half of the Integration surface (feature\extclaim.lua). It ships
+-- DIRECTLY ABOVE the Triggers floor, which is the rank the plugin design already
+-- ruled for a third-party claimant: a foreign addon dresses over your triggers
+-- and under every feature you configured yourself, until YOU drag it higher.
+-- Restore-at-default-position (arbOrder below) puts it there for every existing
+-- arbstate file, so nobody's saved order has to be touched.
 M.ARB_ORDER_DEFAULT = { 'Disabled', 'Naked', 'Pins', 'Locks', 'AutoAmmo', 'MaxMP',
-                        'Craft', 'HELM', 'Fishing', 'Chocobo', 'Triggers' };
+                        'Craft', 'HELM', 'Fishing', 'Chocobo', 'External', 'Triggers' };
 local ARB_ORDER_DEFAULT = M.ARB_ORDER_DEFAULT;
 
 -- The rows a player can never pick up, and that arbOrder places itself: the
@@ -582,7 +589,11 @@ local ARB_PINNED = M.ARB_PINNED;
 -- (it keys CLAIMANTS + the per-job anchor store), but a player reads the two
 -- words. Like AutoAmmo, it is named next to a slot in /dl why ('Ammo: Job helper
 -- (rank 5) ...'), so the label is a phrase, not a bare 'JobHelper'.
-M.ARB_DISPLAY = { AutoAmmo = 'Ammo rule', JobHelper = 'Job helper' };
+-- 'Other addons' for the External row: the identity is what the wire and the
+-- saved order key on, but a player reads a sentence -- and 'Ammo: External
+-- (rank 10)' names a mechanism, while 'Ammo: Other addons (rank 10)' names the
+-- thing they can actually go and turn off.
+M.ARB_DISPLAY = { AutoAmmo = 'Ammo rule', JobHelper = 'Job helper', External = 'Other addons' };
 local ARB_DISPLAY = M.ARB_DISPLAY;
 
 function M.claimantLabel(name)
