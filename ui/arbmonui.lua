@@ -77,6 +77,7 @@ local COL_TEXT   = { 0.72, 0.76, 0.80, 1.0 };
 local COL_BRIGHT = { 0.95, 0.97, 1.00, 1.0 };   -- changed THIS decision
 local COL_DIM    = { 0.55, 0.58, 0.63, 1.0 };
 local COL_WARN   = { 0.95, 0.70, 0.30, 1.0 };
+local COL_ERR    = { 0.95, 0.45, 0.40, 1.0 };   -- a slot whose whole ladder was refused
 
 -- Responsive grid (Henrik, field round 1: "only show icons until you move it
 -- to become wide enough... make every slot have double the space and print the
@@ -140,6 +141,17 @@ local function cellInfo(rec, slot)
     local item = findCI(rec.plan, ls);
     local sup = con ~= nil and findCI(con.sup, ls) or nil;
 
+    -- Did the arbiter have to walk past somebody's pick to land here?
+    -- (2026-08-01) 'unavail'/'reserve' = it fell and something else is worn;
+    -- 'dead' = nothing on the ladder could be equipped, so the slot was left
+    -- alone. The grid says WHICH without a hover -- a slot quietly wearing its
+    -- second choice is exactly the thing you would never think to hover over.
+    local fall = (con ~= nil) and con.fall or nil;
+    local rv   = (con ~= nil) and findCI(con.rep, ls) or nil;
+    local fell = nil;
+    if rv ~= nil then fell = (rv.why == 'unavail') and 'unavail' or 'reserve';
+    elseif fall ~= nil and findCI(fall.dead, ls) ~= nil then fell = 'dead'; end
+
     local color = COL_KEPT;
     if win ~= nil then color = CLAIM_COL[win.name] or COL_OTHER; end
 
@@ -170,7 +182,7 @@ local function cellInfo(rec, slot)
     return {
         text = text, color = color, changed = changed,
         iconId = isItem and idOf(text) or nil,
-        winner = win, ops = ops, mark = mark,
+        winner = win, ops = ops, mark = mark, fell = fell,
     };
 end
 
@@ -190,24 +202,68 @@ local function tooltipText(rec, slot, d)
         end
     end
     local con = rec.contest;
+    local whyOf = nil;                  -- rung name -> refusal reason, this slot
     if con ~= nil then
         local rv = findCI(con.rep, ls);
         local iv = findCI(con.inel, ls);
         local sv = findCI(con.sup, ls);
+        local fall = con.fall;
+        local dv = (fall ~= nil) and findCI(fall.dead, ls) or nil;
         if rv ~= nil then
-            out[#out + 1] = string.format('fell: %s -> %s (it reserves %s -- owned above)',
-                tostring(rv.from), tostring(rv.to), tostring(rv.by));
+            -- Two refusals reach one line, so it has to say which one: telling
+            -- someone their Mog Safe piece "reserves Head" sends them hunting
+            -- an imaginary bug.
+            if rv.why == 'unavail' then
+                out[#out + 1] = string.format('fell: %s -> %s (%s is not in a bag you can equip from)',
+                    tostring(rv.from), tostring(rv.to), tostring(rv.from));
+            else
+                out[#out + 1] = string.format('fell: %s -> %s (it reserves %s -- owned above)',
+                    tostring(rv.from), tostring(rv.to), tostring(rv.by));
+            end
+        elseif dv ~= nil then
+            out[#out + 1] = string.format('UNAVAILABLE: %s is not in a bag you can equip from,', tostring(dv));
+            out[#out + 1] = '  and nothing below it on the ladder is either -- kept as worn.';
         elseif iv ~= nil then
             out[#out + 1] = string.format('INELIGIBLE: it reserves %s, which a higher claim owns.', tostring(iv));
         elseif sv ~= nil then
             out[#out + 1] = string.format('held EMPTY: reserved by %s (the server clears it).', tostring(sv));
         end
+        local ref = (fall ~= nil) and findCI(fall.refused, ls) or nil;
+        if type(ref) == 'table' then
+            whyOf = {};
+            for _, r in ipairs(ref) do whyOf[r.name] = r.why; end
+        end
         local src = findCI(con.src, ls);
-        if src ~= nil then out[#out + 1] = 'set: ' .. tostring(src); end
+        if src ~= nil then
+            -- Suppressed when the ladder below names a DIFFERENT source. The
+            -- floor writes contest.src for every slot it touches, winner or
+            -- not, so a slot a CLAIMANT won still carries a trigger set name --
+            -- and printing it above a fall that happened inside the claimant's
+            -- own ladder reads as if the set were involved. The ladder line
+            -- names its own source, so nothing is lost by staying quiet.
+            local l = findCI(rec.ladders, ls);
+            if l == nil or tostring(l.set) == tostring(src) then
+                out[#out + 1] = 'set: ' .. tostring(src);
+            end
+        end
     end
     local lad = findCI(rec.ladders, ls);
     if lad ~= nil and type(lad.items) == 'table' and #lad.items > 0 then
-        out[#out + 1] = string.format('ladder (%s): %s', tostring(lad.set), table.concat(lad.items, ' > '));
+        -- The WHOLE ladder, each refused rung struck through with its reason
+        -- (Henrik's ruling, 2026-08-01). The survivor on its own does not
+        -- answer "why am I not wearing the piece I asked for" -- the rungs the
+        -- arbiter walked past, and what stopped each one, is the answer. Free:
+        -- the record already carried the ladder, it just never said which rungs
+        -- lost.
+        local names = {};
+        for _, nm in ipairs(lad.items) do
+            local w = whyOf ~= nil and whyOf[nm] or nil;
+            if w == 'unavail' then names[#names + 1] = nm .. '  [x not in your bags]';
+            elseif w == 'reserve' then names[#names + 1] = nm .. '  [x reserves a slot owned above]';
+            else names[#names + 1] = nm; end
+        end
+        out[#out + 1] = string.format('ladder (%s):', tostring(lad.set));
+        for i, n in ipairs(names) do out[#out + 1] = string.format('  %d. %s', i, n); end
     end
     return table.concat(out, '\n');
 end
@@ -306,6 +362,14 @@ function M.renderRecord(rec, ui)
                 else
                     imgui.TextColored(COL_DIM, d.mark);
                 end
+            end
+            -- The fall marker, drawn in BOTH modes: '*' the slot is wearing its
+            -- second choice, '!' nothing on its ladder could be equipped. The
+            -- hover carries the reason and the struck-through ladder.
+            if d.fell ~= nil then
+                imgui.SameLine(0, 3);
+                imgui.TextColored((d.fell == 'dead') and COL_ERR or COL_WARN,
+                                  (d.fell == 'dead') and '!' or '*');
             end
             imgui.EndGroup();
             if imgui.IsItemHovered() then

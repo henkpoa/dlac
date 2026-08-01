@@ -271,6 +271,30 @@ merge carries it **without asking him again**. Only he can move an entry to ACCE
 this does not make an accepted entry mergeable *alone*: `dev` promotes
 **whole-or-not-at-all**, so an accepted entry rides the next promotion of the whole branch.
 
+- **Gear availability is an ARBITER refusal** (`2026.08.01b`, engine v158 — `gear/arbiter.lua`
+  + `dispatch.lua` + `ui/arbmonui.lua`). Henrik's report: at Lv75 all is well; park a
+  Minstrel's Coat in the Mog Safe, lower your level until the Coat is the set's
+  best-by-level Body, and dlac picks a piece it cannot equip. The whole selection chain
+  asked **level** and never asked the **bag**, and availability was only discovered at the
+  end in `equipcore.planSet`, where the ladder is already gone — so nothing was sent, the
+  slot kept what was worn, and the rung below was never asked. His ruling, stated twice: the
+  check goes in the **arbiter, centrally**, and nowhere else — *"It is FINE if claimants file
+  ladders where some of the pieces are ineligible… which also saves us the trouble of adding
+  yet another field they need to populate."* `availVerdict(floor, have)` is a **second
+  refusal reason** riding the fall loop the v135 dominance verdict already rides, so no
+  claimant changed and every row with an `rladder` inherits it. Three laws not to re-derive:
+  an unavailable piece is **hidden from the dominance view** (not on your body → it neither
+  defends its slot nor reserves another); `have` is **three-valued** and an unreadable *or
+  empty* bag map answers `nil`, because a two-valued read would say "you own nothing" at char
+  select / mid-zone / mid-load and strip all sixteen slots; and a slot whose whole ladder is
+  refused is **not killed** — `planSet` cannot locate those names either, so it keeps what is
+  worn. The **receipt** rides along: `vLadderOf` is the one door every ladder passes through,
+  so it notes each down and `recordDecision` keeps that instead of rebuilding the rung list
+  from `contest.src` (floor-only, and re-asked later so it could disagree with the list that
+  decided). Monitor hover shows the **whole ladder with each refused rung struck through and
+  its reason**, the cell is marked without a hover (`*` second choice, `!` whole ladder
+  refused), and `/dl why <slot>` prints the same lines off the same record. Suites **5395 +
+  913** on both interpreters (`UA1–UA8`, `DR9–DR12`).
 - **The storage warning speaks once per main job, and it is a Setting** (`2026.08.01`,
   `gear/gearcheck.lua` + `gear/syncflags.lua` + the Settings panel). Henrik's report: *"only
   inform me once, and only once, until I change main job."* The **"…please retrieve if
@@ -527,6 +551,44 @@ research already recorded. In rough priority order:
    section heading rather than each carrying one. Trivial to change if it reads wrong.
 
 ## Current state (as of 2026-08-01)
+
+- **2026-08-01 (`2026.08.01b`, engine v158): gear availability is an ARBITER refusal —
+  FIELD-CONFIRMED, in the merge queue.**
+  Henrik's report: at Lv75 all is well; park a Minstrel's Coat in the Mog Safe, lower your
+  level until the Coat is the set's best-by-level Body, and dlac picks it — a piece it
+  cannot equip. Diagnosis: the whole selection chain asks **level** and never asks the
+  **bag** (`utils.slotLadder`, `resolveVirtual`'s chain walks, `mpRungs`), and availability
+  is only discovered at the very end in `equipcore.planSet`, whose locate pass first-fits
+  over the equip-eligible bags only. A stored piece simply is not there, so nothing is sent,
+  the slot keeps what was worn, and **the rung below it is never asked** — by then the
+  ladder is gone.
+  - **The ruling (Henrik, and he had to state it twice):** the check goes in the **arbiter,
+    centrally**, and nowhere else. *"It is FINE if claimants file ladders where some of the
+    pieces are ineligible… which also saves us the trouble of adding yet another field they
+    need to populate."* Do **not** put availability in the ladder builders, and do **not**
+    generalise this into an eligibility framework — *"everything is working fine as it is,
+    we just want to give it more intelligence… let's add arbiter's intelligence as we go and
+    need."*
+  - `gear/arbiter.availVerdict(floor, have)` is a **second refusal reason** riding the fall
+    loop the v135 dominance verdict already rides: refuse a rung → ask `ladderOf` for the
+    next → re-judge → fixed point. No claimant changed. Every row with an `rladder`
+    (Craft/HELM/Fishing/Chocobo) and the floor's `candidatesFor` inherit it.
+  - Three laws worth not re-deriving: an unavailable piece is **hidden from the dominance
+    view** (it is not on your body, so it neither defends its slot nor reserves another);
+    `have` is **three-valued** and an unreadable **or empty** bag map answers `nil`, because
+    a two-valued read would say "you own nothing" at char select / mid-zone / mid-load and
+    strip all sixteen slots; and a slot whose whole ladder is refused is **not killed** —
+    `planSet` cannot locate those names either, so it keeps what is worn.
+  - **The receipt:** `vLadderOf` is the one door every ladder passes through, so it now
+    notes each one down and `recordDecision` keeps *that* instead of rebuilding the rung
+    list afterwards from `contest.src` (floor-only, and re-asked later so it could answer
+    differently than the list that decided). The Monitor hover shows the **whole ladder with
+    each refused rung struck through and its reason**, marks the cell without a hover (`*` =
+    wearing its second choice, `!` = whole ladder refused), and `/dl why <slot>` prints the
+    same lines off the same record.
+  - Suites **5395 + 913**, both interpreters (`UA1–UA8`, `DR9–DR12`). **Field round run and
+    passed the same day** (Henrik: *"Works, thanks"*) — on `dev` and in the Ready-to-merge
+    queue above.
 
 - **2026-08-01 (`2026.08.01`): the storage warning speaks once per main job, and it is a
   Setting.** Field report from Henrik: *"only inform me once, and only once, until I change

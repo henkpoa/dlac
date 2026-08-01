@@ -7998,6 +7998,127 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- UA. AVAILABILITY, THE ARBITER'S SECOND REFUSAL REASON (Henrik, 2026-08-01:
+--     "It is FINE if claimants file ladders where some of the pieces are
+--     ineligible. Therefore it is more important to have this intelligence in
+--     arbiter"). Field case: a Lv75 BRD parks a Minstrel's Coat in the Mog Safe
+--     and lowers his level until the Coat is the set's best Body -- it won the
+--     ladder and then died silently in planSet's bag scan, with the rung below
+--     it never asked. Same fall machinery, second reason.
+-- ---------------------------------------------------------------------------
+(function()
+    local ARB = require('dlac\\gear\\arbiter');
+    local HEAD = 0x0010;
+    local function look(masks) return function(n) return masks[n] or 0; end end
+    local function ladders(map)
+        return function(src, slot)
+            local names = map[src] and map[src][slot] or nil;
+            if names == nil then return nil; end
+            local items = {};
+            for _, n in ipairs(names) do items[#items + 1] = { name = n }; end
+            return { items = items };
+        end
+    end
+    -- `stored` names the pieces sitting in a bag you cannot equip out of.
+    local function bag(stored, unknown)
+        return function(n)
+            if unknown ~= nil and unknown[n] then return nil; end
+            return not stored[n];
+        end
+    end
+    local NOMASK = look({});
+    local idle   = { { prio = 20, set = { Body = 'Minstrel\'s Coat' }, src = 'IdleSet' } };
+    local lad    = ladders({ IdleSet = { Body = { 'Minstrel\'s Coat', 'Gold Harness' } } });
+
+    -- UA1: availVerdict refuses ONLY on an explicit false.
+    local fl = dispatchM.reserveFloor(idle);
+    check('UA1 a stored piece is refused',
+        ARB.availVerdict(fl, bag({ ['Minstrel\'s Coat'] = true })).Body, 'Minstrel\'s Coat');
+    check('UA1b a held piece is not', ARB.availVerdict(fl, bag({})), nil);
+    check('UA1c an UNKNOWN answer never refuses -- the char-select/zoning leg',
+        ARB.availVerdict(fl, bag({}, { ['Minstrel\'s Coat'] = true })), nil);
+    check('UA1d no read at all never refuses', ARB.availVerdict(fl, nil), nil);
+
+    -- UA2: THE FIELD CASE -- the stored Coat falls to the rung he can wear.
+    local sup, inel, rep, fall = dispatchM.reserveResolve(idle, NOMASK, lad,
+        bag({ ['Minstrel\'s Coat'] = true }));
+    check('UA2 the stored pick falls to the next rung', rep.Body.to, 'Gold Harness');
+    check('UA2b the trace names the piece he authored', rep.Body.from, 'Minstrel\'s Coat');
+    check('UA2c and says WHY it fell', rep.Body.why, 'unavail');
+    check('UA2d no slot beat it -- nothing did', rep.Body.by, nil);
+    check('UA2e nothing is ineligible', inel, nil);
+    check('UA2f nothing is suppressed', sup, nil);
+    check('UA2g the slot is not dead', fall.dead, nil);
+
+    -- UA3: the Monitor's third depth -- EVERY refused rung, with its reason.
+    check('UA3 the refused rung is recorded', fall.refused.Body[1].name, 'Minstrel\'s Coat');
+    check('UA3b with its reason', fall.refused.Body[1].why, 'unavail');
+
+    -- UA4: the whole ladder is stored -> nothing to fall to. No replacement,
+    -- the slot reads dead, and NOTHING is killed: planSet cannot locate the
+    -- name either, so the slot keeps what is worn (Henrik's ruling 3).
+    sup, inel, rep, fall = dispatchM.reserveResolve(idle, NOMASK, lad,
+        bag({ ['Minstrel\'s Coat'] = true, ['Gold Harness'] = true }));
+    check('UA4 a fully stored ladder invents no replacement', rep, nil);
+    check('UA4b the slot reads dead', fall.dead.Body, 'Minstrel\'s Coat');
+    check('UA4c and is NOT ineligible (nothing reserved anything)', inel, nil);
+    check('UA4d both refused rungs are on the record', #fall.refused.Body, 2);
+
+    -- UA5: an unavailable RESERVER suppresses nothing. A Coat rotting in the
+    -- Mog Safe is not on your body, so it must not hold Head empty from a slot
+    -- it can never occupy -- the same law reserveVerdict states for a refused
+    -- piece, applied to the other reason.
+    local pair = {
+        { prio = 10, set = { Head = 'Silver Hairpin' }, src = 'LowSet' },
+        { prio = 20, set = { Body = 'Royal Cloak' },    src = 'IdleSet' },
+    };
+    local cloak = look({ ['Royal Cloak'] = HEAD });
+    sup, inel, rep, fall = dispatchM.reserveResolve(pair, cloak,
+        ladders({ IdleSet = { Body = { 'Royal Cloak' } } }), bag({ ['Royal Cloak'] = true }));
+    check('UA5 a stored reserver holds nothing empty', sup, nil);
+    check('UA5b and the hairpin keeps its slot', rep, nil);
+    check('UA5c while the reserver itself reads dead', fall.dead.Body, 'Royal Cloak');
+    -- ...and the control: held, it suppresses exactly as it always did.
+    sup = dispatchM.reserveResolve(pair, cloak,
+        ladders({ IdleSet = { Body = { 'Royal Cloak' } } }), bag({}));
+    check('UA5d the SAME reserver in your bags still claims Head empty', sup.Head, 'Royal Cloak');
+
+    -- UA6: both reasons at once -- 'unavail' wins the label, because "it
+    -- reserves a slot owned above" is a misleading thing to print about a piece
+    -- sitting in the Mog Safe.
+    sup, inel, rep, fall = dispatchM.reserveResolve({
+        { prio = 20, set = { Body = 'Royal Cloak' },  src = 'IdleSet' },
+        { prio = 25, set = { Head = 'Genbu Kabuto' }, src = 'MoveSet' },
+    }, cloak, ladders({ IdleSet = { Body = { 'Royal Cloak', 'Gold Harness' } } }),
+       bag({ ['Royal Cloak'] = true }));
+    check('UA6 it still falls', rep.Body.to, 'Gold Harness');
+    check('UA6b and the harder fact is the one reported', rep.Body.why, 'unavail');
+
+    -- UA7: OMITTING the read is byte-identical to life before availability --
+    -- the guarantee every direct caller (immediate equips, headless suites)
+    -- rides on.
+    local s1, i1, r1, f1 = dispatchM.reserveResolve(idle, NOMASK, lad);
+    check('UA7 no read -> nothing refused', i1, nil);
+    check('UA7b no fall record either', f1, nil);
+    check('UA7c and no replacement', r1, nil);
+    check('UA7d nothing suppressed', s1, nil);
+
+    -- UA8: the FELL branch in the real equipResolved says which reason it was.
+    dispatchM.setLock('all', false);
+    local fn = dispatchM._equipResolved({ Body = 'Minstrel\'s Coat' },
+        { reserveReplace = { Body = { from = 'Minstrel\'s Coat', to = 'Gold Harness',
+                                      why = 'unavail' } } });
+    check('UA8 the note names the availability fall',
+        fn:find('not in an equippable bag', 1, true) ~= nil, true);
+    check('UA8b and never claims a reservation that did not happen',
+        fn:find('reserves', 1, true), nil);
+    local rn = dispatchM._equipResolved({ Body = 'Royal Cloak' },
+        { reserveReplace = { Body = { from = 'Royal Cloak', to = 'Gold Harness', by = 'Head' } } });
+    check('UA8c a reserve fall keeps its own wording',
+        rn:find('reserves Head -- owned above', 1, true) ~= nil, true);
+end)();
+
+-- ---------------------------------------------------------------------------
 -- ARM. THE ARBITER MODULE (ADR 0027, stage 3 -- gear/arbiter.lua). The pure
 --      decision core, extracted: the slot + rank vocabulary, the reservation
 --      family, resolve/explain, and arbitrate() (the apply order M.dispatch
@@ -8329,6 +8450,38 @@ end)();
         dispatchM._recordDecision('Default', {}, { Body = 'It' .. i }, nil);
     end
     check('DR8 the ring caps at DECISION_CAP', #dispatchM.getDecisions(), dispatchM.DECISION_CAP);
+
+    -- DR9-DR12: THE RECEIPT (2026-08-01). recordDecision used to REBUILD the
+    -- rung list from contest.src, which only the trigger floor writes -- so a
+    -- claimant's fall had no rungs to show at all. contest.asked is the ladder
+    -- the arbitration was actually handed; it wins, and the derivation is left
+    -- to fill in the slots nothing was refused in.
+    local kept = { Head = { set = 'HELM', items = { 'Wynav\'s Hat', 'Federation Tiara' } } };
+    dispatchM._recordDecision('Default', {}, { Head = 'Federation Tiara' },
+        { asked = kept });
+    local drr = dispatchM.getDecisions();
+    local dlast = drr[#drr];
+    check('DR9 a claimant ladder reaches the record at all',
+        dlast.ladders.Head.items[1], 'Wynav\'s Hat');
+    check('DR9b named by its claimant, not by a set', dlast.ladders.Head.set, 'HELM');
+    -- DR10: contest.src alone (no receipt) keeps the derivation path -- the
+    -- uncontested slots that never asked anyone for a ladder.
+    dispatchM._recordDecision('Default', {}, { Head = 'Derived Only' },
+        { src = { Head = 'NoSuchSet' } });
+    drr = dispatchM.getDecisions();
+    check('DR10 no receipt and no derivable set -> no ladder, never a crash',
+        drr[#drr].ladders, nil);
+    -- DR11: both present -> the receipt wins. The derivation re-asks LATER and
+    -- can answer differently (a bag moved, the level changed) than the list the
+    -- decision was actually made from.
+    dispatchM._recordDecision('Default', {}, { Head = 'Federation Tiara' },
+        { src = { Head = 'NoSuchSet' }, asked = kept });
+    drr = dispatchM.getDecisions();
+    check('DR11 the receipt beats the re-derivation', drr[#drr].ladders.Head.set, 'HELM');
+    -- DR12: a torn/absent receipt is simply not there.
+    dispatchM._recordDecision('Default', {}, { Head = 'Bare' }, { asked = 'nonsense' });
+    drr = dispatchM.getDecisions();
+    check('DR12 a malformed receipt records no ladder', drr[#drr].ladders, nil);
 
     -- WW: the worldAbsentOutlasted seam (v153) -- the stream's lifetime gate.
     -- Bookkeeping must run UNARMED (nothing is armed here), and the boolean
