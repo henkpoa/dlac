@@ -290,7 +290,15 @@ haven't told you."* Ask when he has **not** said merge; never ask twice when he 
 **The queue is empty.**
 
 
-*(Emptied again by the 2026-08-01 promotion of `508d410` — **other addons can claim gear
+*(Emptied again by the 2026-08-01 promotion of `a9f1033` — **the clock stops when you log
+out**, `2026.08.01l`. Henrik: *"Please push everything locally, even food."* It was written
+in a parallel session and had been deliberately left out of the promotion an hour earlier;
+his instruction overrode that. **NOT field-confirmed — suites only**, and the Active-food
+round it owes is now four checks long. Relabelled `j` → `l` on the way out, because the
+external-claims train reached the version line first and took `k`; the card says so, so the
+gap in the letters is not a mystery later.)*
+
+*(Emptied before that by the 2026-08-01 promotion of `508d410` — **other addons can claim gear
 through dlac**, `2026.08.01k`, engine v162. It never sat in this queue: the field round and
 the merge instruction arrived together (*"Make it a permanent setting, then commit,
 document, merge and push to origin main"*), which is the "merge IS an accept" rule doing
