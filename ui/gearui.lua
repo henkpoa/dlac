@@ -2267,6 +2267,10 @@ do
         renderIcon = icons.renderIcon,                            -- automation detail views (item icons)
         itemTooltip = renderItemTooltip,                          -- hover cards on automation gear lines
         setsRoot = profsets.getSetsRoot,                          -- gearcheck: set contents for the audit
+        -- gearcheck's chat half is a Setting ("Warn about gear in storage",
+        -- /dl gearwarn). It travels as a READER, not a value: the flag can flip
+        -- from the command or the Settings panel long after this table is built.
+        gearWarnEnabled = function() return sf.flags.gearwarn ~= false; end,
     };
     M._deps = d;   -- exposed for the restock nudge (the d3d_present hook is outside this do-block)
     local ok, m = pcall(require, "dlac\\ui\\triggersui");
@@ -5209,7 +5213,8 @@ ashita.events.register('command', 'dlac-ui', function(e)
     -- claims only its own three forms and lets topics pass untouched.
     if sub == 'debug' and args[2] ~= nil and args[2] ~= 'on' and args[2] ~= 'off' then return; end
     if sub ~= 'ui' and sub ~= 'sync' and sub ~= 'autosync' and sub ~= 'debug'
-       and sub ~= 'metrics' and sub ~= 'view_ids' and sub ~= 'autobuildimport' then return; end
+       and sub ~= 'metrics' and sub ~= 'view_ids' and sub ~= 'autobuildimport'
+       and sub ~= 'gearwarn' then return; end
     e.blocked = true;
 
     if sub == 'metrics' then        -- imgui metrics window: names the window under the
@@ -5252,6 +5257,19 @@ ashita.events.register('command', 'dlac-ui', function(e)
         print('[dlac] auto-build on import ' .. ((sf.flags.autobuildimport ~= false)
             and 'ON -- importing a job with stat weights rebuilds its sets from YOUR gear straight away.'
             or  'OFF -- an import lands exactly as exported; use Auto-Build All on the Sets tab when you want the re-solve.  (/dl autobuildimport on)'));
+        return;
+    end
+    if sub == 'gearwarn' then       -- the trigger-gear audit's automatic chat report
+        if     args[2] == 'off' then sf.flags.gearwarn = false;
+        elseif args[2] == 'on'  then sf.flags.gearwarn = true;
+        else                         sf.flags.gearwarn = (sf.flags.gearwarn == false); end
+        sf.saveUiFlags();              -- persist; command wins over the on-disk value
+        -- Turning it back ON re-arms the once-per-job gate, so you hear it on
+        -- THIS job instead of waiting for the next job change to prove it works.
+        if sf.flags.gearwarn then pcall(function() require("dlac\\gear\\gearcheck").rearm(); end); end
+        print('[dlac] gear warnings ' .. (sf.flags.gearwarn
+            and 'ON -- once per main job, dlac names any trigger-referenced gear that is not in an equippable bag.'
+            or  'OFF -- no automatic warnings; /dl gearcheck and the Triggers tab still answer on demand.  (/dl gearwarn on)'));
         return;
     end
     if sub == 'debug' then          -- reveal/hide the dev-only Scan/Stage/Commit/Augs buttons

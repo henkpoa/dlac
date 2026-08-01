@@ -7,11 +7,12 @@
     * auto-sync -- keep gear.lua current: a quiet add-only scan ~2s after a job
       change (the LAC profile reload) and ~5s after the LAST inventory-changing
       packet (debounced, so zone-in floods run one scan). Toggle: /dl autosync.
-    * ui-flags -- debug / autosync / view_ids / auto-build-on-import / "Build as
-      lv.75" / teleport-button state survive reloads via <char>\dlac\uiflags.lua.
+    * ui-flags -- debug / autosync / view_ids / auto-build-on-import / gear
+      warnings / "Build as lv.75" / teleport-button state survive reloads via
+      <char>\dlac\uiflags.lua.
 
     The module OWNS the flag state (sf.flags.debug / sf.flags.autosync /
-    sf.flags.viewids / sf.flags.autobuildimport);
+    sf.flags.viewids / sf.flags.autobuildimport / sf.flags.gearwarn);
     gearui's /dl handler and header buttons read/write those fields directly.
     gearui keeps the actual Ashita event hooks and calls sf.loadUiFlags /
     sf.tick / sf.invDirty from them -- hook ORDER is load-bearing (loadUiFlags
@@ -49,7 +50,13 @@ end)();
 -- "I'm importing dlac how I want them, and it's just changing it every time."
 -- Default true = the long-standing behavior; false makes an import land
 -- verbatim and leaves the re-solve to Auto-Build All on the Sets tab.
-sf.flags = { debug = false, autosync = true, viewids = false, autobuildimport = true };
+-- gearwarn (/dl gearwarn, 2026-08-01): the chat half of the trigger-gear audit
+-- -- "set X uses Y -- it is in Mog Safe, please retrieve if needed". It rides
+-- the auto-sync cadence, so it is the one Setting that can speak on its own;
+-- off silences the automatic report only (the Triggers tab's Gear warnings
+-- section and /dl gearcheck still answer when asked). Default true.
+sf.flags = { debug = false, autosync = true, viewids = false, autobuildimport = true,
+             gearwarn = true };
 
 local D = nil;   -- deps from gearui; sync/persistence no-op until configured
 sf.configure = function(deps)
@@ -102,14 +109,15 @@ sf.saveUiFlags = function()
         -- "Show all" became a Setting when it moved out of the header, so it is
         -- remembered now like every other one.
         local showall = (type(ui.showAll) == 'table' and ui.showAll[1] == true);
-        D.writeFileText(p, string.format('return { debug = %s, autosync = %s, viewids = %s, buildmax = %s, tgmon = %s, arbmon = %s, tpfloat = %s, tpx = %d, tpy = %d, gearfloat = %s, gfx = %d, gfy = %d, gfscale = %.2f, ifx = %d, ify = %d, openui = %q, showall = %s, autobuildimport = %s }\n',
+        D.writeFileText(p, string.format('return { debug = %s, autosync = %s, viewids = %s, buildmax = %s, tgmon = %s, arbmon = %s, tpfloat = %s, tpx = %d, tpy = %d, gearfloat = %s, gfx = %d, gfy = %d, gfscale = %.2f, ifx = %d, ify = %d, openui = %q, showall = %s, autobuildimport = %s, gearwarn = %s }\n',
             tostring(sf.flags.debug), tostring(sf.flags.autosync), tostring(sf.flags.viewids), tostring(bm),
             tostring(ui._tgMon == true),
             tostring(ui._arbMon == true),
             tostring(ui._tpFloat == true), tpx, tpy,
             tostring(ui._gearFloat == true), gfx, gfy,
             tonumber(ui._gfScale) or 1.0, ifx, ify,
-            openui, tostring(showall), tostring(sf.flags.autobuildimport ~= false)));
+            openui, tostring(showall), tostring(sf.flags.autobuildimport ~= false),
+            tostring(sf.flags.gearwarn ~= false)));
     end);
 end
 
@@ -139,6 +147,10 @@ sf.loadUiFlags = function()
             -- uiflags.lua written before 2026-07-27 lacks it, and those installs
             -- must keep the behavior they have); a saved false is the opt-out.
             if type(t.autobuildimport) == 'boolean' then sf.flags.autobuildimport = t.autobuildimport; end
+            -- "Warn about gear in storage": same absent-key rule -- ON unless an
+            -- explicit false was saved (every uiflags.lua written before
+            -- 2026-08-01 lacks the key and must keep the behavior it has).
+            if type(t.gearwarn) == 'boolean' then sf.flags.gearwarn = t.gearwarn; end
             -- "Build as lv.75": absent key = the ON default; a saved false is an
             -- explicit untick and is honored (remembered across reloads).
             if type(t.buildmax) == 'boolean' and optim ~= nil then optim.buildAtMaxLevel = t.buildmax; end

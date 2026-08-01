@@ -271,7 +271,27 @@ merge carries it **without asking him again**. Only he can move an entry to ACCE
 this does not make an accepted entry mergeable *alone*: `dev` promotes
 **whole-or-not-at-all**, so an accepted entry rides the next promotion of the whole branch.
 
-**The queue is empty.**
+- **The storage warning speaks once per main job, and it is a Setting** (`2026.08.01`,
+  `gear/gearcheck.lua` + `gear/syncflags.lua` + the Settings panel). Henrik's report: *"only
+  inform me once, and only once, until I change main job."* The **"…please retrieve if
+  needed"** line rides `automationsui.rescanAutogear`, which fires on job change **and ~5s
+  after every inventory settle**, and the signature dedup it relied on could not hold that
+  back — moving a piece moves the availability counts the signature is built from. Now:
+  one automatic report per **main job id** (a sub job change is deliberately *not* a re-arm
+  — the audit is main-job scoped, so the answer would be identical), `/dl gearcheck` always
+  answers and stamps the job so a manual check is not echoed seconds later by the next
+  auto-sync, and `M.audit()` returns `(warnings, ran)` so an audit that could not RUN
+  (no model, no bags — i.e. login) says nothing and **arms nothing**; a gate spent on
+  login's empty answer would silence the real one for the whole job. The Setting is
+  `gearwarn` — Menu > Settings > **"Warn about gear in storage"** or `/dl gearwarn
+  [on|off]`, default ON with the absent-key rule, silencing the *automatic* report only
+  (the Triggers tab section and `/dl gearcheck` still answer on demand); turning it back on
+  calls `gearcheck.rearm()` so the answer lands on the job you are standing on. Suites
+  **5360 + 913** on both interpreters (`GCJ1–GCJ7b` + the uiflags round-trip pins).
+  **NOT field-confirmed** — Henrik queued it on 2026-08-01 before the round; unlike the
+  usual queue bar this one still owes an in-game look, and it is a one-liner: change to a
+  job whose triggers name something parked in the Mog Safe, read the warning once, move
+  gear around, and confirm it stays quiet until the next main job change.
 
 
 *(Last emptied by the 2026-07-31 promotion — `bc581d1`, `main` at `4afec20` before it: two
@@ -508,6 +528,35 @@ research already recorded. In rough priority order:
 
 ## Current state (as of 2026-08-01)
 
+- **2026-08-01 (`2026.08.01`): the storage warning speaks once per main job, and it is a
+  Setting.** Field report from Henrik: *"only inform me once, and only once, until I change
+  main job."* The **"…please retrieve if needed"** line (`gear/gearcheck.lua`) rides
+  `automationsui.rescanAutogear`, which fires on job change **and ~5s after every inventory
+  settle** — and the signature dedup it relied on could not hold that back, because moving a
+  piece moves the availability counts the signature is built from. So the same advice came
+  back all session, which is the fastest way to teach someone to read past a warning.
+  - **The gate is the main job id, and only that.** A sub job change is deliberately *not* a
+    re-arm: the audit walks the main job's triggers and sets, so `/NIN` under a new sub is
+    the same audit with the same answer. `/dl gearcheck` (force) always answers, and stamps
+    the job as told so a manual check is not echoed by the next auto-sync a few seconds
+    later.
+  - **The one law worth keeping.** `M.audit()` now returns `(warnings, ran)`, because
+    "nothing to warn about" and "no trigger model / no bags yet" both came back as an empty
+    list — and login hands you the second one. A gate spent on that empty answer would
+    silence the real one for the whole job (hard rule 11's shape, on a new surface), so an
+    audit that could not RUN says nothing and arms nothing.
+  - **The Setting** is `gearwarn` in `gear/syncflags.lua` — Menu > Settings > **"Warn about
+    gear in storage"**, or `/dl gearwarn [on|off]`, defaulting ON with the usual absent-key
+    rule (every `uiflags.lua` written before today lacks it and keeps the behavior it has).
+    Off silences the automatic report only: the Triggers tab's **Gear warnings** section and
+    `/dl gearcheck` still answer whenever asked. Turning it back on calls `gearcheck.rearm()`
+    so the answer lands on the job you are standing on, not the next one.
+  - Suites **5360 + 913**, both interpreters (new `GCJ1–GCJ7b`, plus the uiflags round-trip
+    pins). **On `dev` and in the Ready-to-merge queue above** (Henrik put it there on
+    2026-08-01, ahead of the round the queue normally requires) — **NOT field-confirmed**.
+    The round is one line long: change to a job whose triggers name something parked in the
+    Mog Safe, read the warning once, move some gear around, and confirm it stays quiet until
+    the next main job change.
 - **2026-08-01: FIELD ROUND OWED — foodwatch, and it is the whole task.** No code is in
   flight and nothing is queued: `feature/foodwatch.lua` (`121af5b`, `2026.07.30g`) has been
   **on `main` since `605045f`** and has **never once run in game**. It rode the Ashitacast

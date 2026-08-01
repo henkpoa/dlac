@@ -7803,6 +7803,94 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- GCJ. THE ONCE-PER-MAIN-JOB CHAT GATE (2026-08-01). chatWarn rides the
+--      auto-sync cadence, which fires on job change AND ~5s after every
+--      inventory settle -- and the signature dedup could not hold that back,
+--      because moving a piece moves the availability counts the signature is
+--      built from. Henrik, in the field: "only inform me once, and only once,
+--      until I change main job." So: one automatic report per MAIN job (a sub
+--      job change is not a re-arm -- the audit is main-job scoped), gated by
+--      the "Warn about gear in storage" Setting, with /dl gearcheck (force)
+--      always answering. The other law here is that an audit which could not
+--      RUN never spends the gate: login hands us an empty model, and a gate
+--      spent on that would silence the real answer for the whole job.
+-- ---------------------------------------------------------------------------
+(function()
+    -- chatfmt is captured at LOAD time, so the stub goes in first.
+    local lines = {};
+    local savedCF = package.loaded['dlac\\chatfmt'];
+    package.loaded['dlac\\chatfmt'] = {
+        warn  = function(s) lines[#lines + 1] = tostring(s); end,
+        msg   = function(s) lines[#lines + 1] = tostring(s); end,
+        print = function() end,
+    };
+    local gcm = dofile('gear/gearcheck.lua');
+    package.loaded['dlac\\chatfmt'] = savedCF;
+
+    local savedGI = package.loaded['dlac\\gear\\gearimport'];
+    package.loaded['dlac\\gear\\gearimport'] = {
+        ownedSplit = function()
+            return { avail = { [77] = 0 }, total = { [77] = 1 }, where = { [77] = { [5] = 1 } } };
+        end,
+        containerName = function() return 'Mog Safe'; end,
+    };
+
+    local job, on, modelReady = 5, true, true;
+    gcm.configure({
+        setsRoot = function() return { Dynamic = { WarnSet = { Body = 'Stored Robe' } } }; end,
+        lookupByName = function(nm) return (nm == 'Stored Robe') and { Id = 77 } or nil; end,
+        model = function()
+            return modelReady and { HandleDefault = { { set = 'WarnSet' } } } or nil;
+        end,
+        warnEnabled = function() return on; end,
+        mainJob = function() return job; end,
+    });
+
+    -- One call, and what it said (empty string = it stayed silent).
+    local function say(force)
+        lines = {};
+        gcm.chatWarn(force);
+        return table.concat(lines, '\n');
+    end
+
+    local first = say(false);
+    check('GCJ1 the first automatic report on a main job speaks', first ~= '', true);
+    check('GCJ1b ...and it is the retrieve advice',
+        first:find('please retrieve if needed', 1, true) ~= nil, true);
+    check('GCJ2 the next inventory settle stays silent', say(false), '');
+    check('GCJ2b ...and the one after that too', say(false), '');
+
+    job = 9;   -- a MAIN job change re-arms it
+    check('GCJ3 a new main job speaks again', say(false) ~= '', true);
+    check('GCJ3b ...once', say(false), '');
+
+    -- /dl gearcheck is an explicit question: it always answers, same job or not.
+    check('GCJ4 force answers on the same job', say(true) ~= '', true);
+    check('GCJ4b ...and does not re-open the automatic gate', say(false), '');
+
+    -- The Setting silences the automatic report only.
+    job, on = 12, false;
+    check('GCJ5 the Setting off silences a fresh job', say(false), '');
+    check('GCJ5b ...while /dl gearcheck still answers', say(true) ~= '', true);
+
+    -- Pre-login / mid-zone: the model is not there yet. Silent, and the gate is
+    -- NOT spent -- the first real audit for this job must still get through.
+    job, on, modelReady = 13, true, false;
+    check('GCJ6 an audit that cannot run says nothing', say(false), '');
+    modelReady = true;
+    check('GCJ6b ...and never spent the gate', say(false) ~= '', true);
+
+    -- rearm() is what /dl gearwarn on and the Settings tick call, so the answer
+    -- lands on the job you are standing on instead of the next one.
+    check('GCJ7 armed again after the report', say(false), '');
+    gcm.rearm();
+    check('GCJ7b rearm re-opens it on the SAME job', say(false) ~= '', true);
+
+    gcm.configure(nil);
+    package.loaded['dlac\\gear\\gearimport'] = savedGI;
+end)();
+
+-- ---------------------------------------------------------------------------
 -- AKF. THE FALL (ADR 0027, stage 2 -- M.reserveResolve + the FELL branch in
 --      equipResolved). The deferred half of the v135 ruling: an ineligible
 --      piece falls down its source ladder, each rung re-judged; a reserved
@@ -15434,6 +15522,7 @@ end)();
     });
     sf.flags.debug, sf.flags.autosync, sf.flags.viewids = true, false, true;
     sf.flags.autobuildimport = false;      -- the 2026-07-27 opt-out
+    sf.flags.gearwarn = false;             -- the 2026-08-01 opt-out
     sf.saveUiFlags();
     check('UIF2 wrote to the mode-aware home', wrote.path, 'X:\\char\\dlac\\uiflags.lua');
     check('UIF3 emitted text parses', (function()
@@ -15445,6 +15534,7 @@ end)();
     check('UIF5 autosync round-trips', t.autosync, false);
     check('UIF6 viewids round-trips',  t.viewids,  true);
     check('UIF6a autobuildimport round-trips', t.autobuildimport, false);
+    check('UIF6b gearwarn round-trips', t.gearwarn, false);
     check('UIF7 openui round-trips',   t.openui,   'job');
     check('UIF8 openui is a STRING',   type(t.openui), 'string');
     check('UIF9 showall round-trips',  t.showall,  false);
@@ -15470,7 +15560,7 @@ end)();
     _G.loadfile = function() return function()
         return { debug = false, autosync = true, viewids = false,
                  openui = 'login', showall = true, gfscale = 2.0,
-                 autobuildimport = false };
+                 autobuildimport = false, gearwarn = false };
     end; end
     sf2.configure({
         dataDir = function() return 'X:\\char\\dlac\\'; end,
@@ -15486,6 +15576,7 @@ end)();
     check('UIF17 autosync loads', sf2.flags.autosync, true);
     check('UIF18 viewids loads',  sf2.flags.viewids,  false);
     check('UIF18a autobuildimport loads', sf2.flags.autobuildimport, false);
+    check('UIF18b gearwarn loads', sf2.flags.gearwarn, false);
 
     -- Absent keys keep their defaults -- an old uiflags.lua written before this
     -- slice must not start opening windows or flipping Show all.
@@ -15509,6 +15600,9 @@ end)();
     -- must keep auto-building on import, or a dlac update would silently change
     -- what an import does to everybody who never asked for the opt-out.
     check('UIF21a absent autobuildimport stays ON', sf3.flags.autobuildimport, true);
+    -- Same rule for the 2026-08-01 key: an install that never opted out keeps
+    -- being warned about trigger gear parked in storage.
+    check('UIF21a2 absent gearwarn stays ON', sf3.flags.gearwarn, true);
 
     -- The gate itself lives in gearui's afterImport hook, which needs imgui and a
     -- logged-in character to reach. Pin it at the source instead of not at all:

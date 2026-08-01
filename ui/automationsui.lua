@@ -884,9 +884,11 @@ end
 function M.rescanAutogear()
     if deps == nil then return; end
     pcall(autoCommit);
-    -- Same cadence as the manifest rescan (login / job change): warn about
-    -- trigger-referenced gear that is parked in storage. Signature-deduped in
-    -- gearcheck, so an unchanged situation stays silent.
+    -- Same cadence as the manifest rescan (login / job change / inventory
+    -- settle): warn about trigger-referenced gear that is parked in storage.
+    -- gearcheck decides whether that actually speaks -- once per MAIN JOB, and
+    -- only while the "Warn about gear in storage" Setting is on -- so this hook
+    -- can keep calling on every settle without turning into a stream.
     pcall(function() require("dlac\\gear\\gearcheck").chatWarn(false); end);
 end
 
