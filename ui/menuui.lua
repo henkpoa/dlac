@@ -315,10 +315,10 @@ function M.renderFoodSection(opts)
     -- the case where you have run out and have nothing left to list. It draws
     -- only when the food can be NAMED -- an "under something" row would say no
     -- more than the game's own icon already does.
-    local cur = nil;
+    local cur, cst = nil, nil;
     pcall(function()
         local st = FW.status();
-        if type(st) == 'table' and st.active == true then cur = st.current; end
+        if type(st) == 'table' and st.active == true then cur, cst = st.current, st; end
     end);
     if type(cur) ~= 'table' or type(cur.name) ~= 'string' or cur.name == '' then cur = nil; end
 
@@ -352,8 +352,24 @@ function M.renderFoodSection(opts)
             local T = { cur.name };
             local s = nil;
             pcall(function() s = FW.statsFor(cur.id); end);
-            local dur = (type(s) == 'table') and FW._fmtDur(s.dur) or nil;
-            T[#T + 1] = (dur ~= nil) and (dur .. ' food.') or 'Food.';
+            -- The MEASURED length of the meal you are actually under beats the
+            -- food's book value: xi.mod.FOOD_DURATION (Sigil, Sanction) grants
+            -- +100%, so the same Pork Cutlet runs 3 hours or 6 depending on what
+            -- you were under when you ate it. fooddb's number is the fallback.
+            local dur = FW._fmtDur((type(cst) == 'table') and cst.dur or nil)
+                     or ((type(s) == 'table') and FW._fmtDur(s.dur) or nil);
+            -- The countdown. It is the buff bar's job to show A timer; what only
+            -- dlac can add is whose timer it is, so it rides the line that names
+            -- the meal's length. `left` survives a row with no measured duration,
+            -- so an old row still gets one.
+            local left = FW._fmtLeft((type(cst) == 'table') and cst.left or nil);
+            if dur ~= nil and left ~= nil then
+                T[#T + 1] = dur .. ' food -- ' .. left .. '.';
+            elseif left ~= nil then
+                T[#T + 1] = left:sub(1, 1):upper() .. left:sub(2) .. '.';
+            else
+                T[#T + 1] = (dur ~= nil) and (dur .. ' food.') or 'Food.';
+            end
             if type(s) == 'table' and #s.lines > 0 then
                 T[#T + 1] = '';
                 for _, line in ipairs(s.lines) do T[#T + 1] = line; end
@@ -362,7 +378,13 @@ function M.renderFoodSection(opts)
                 T[#T + 1] = 'No effect data for this food.';
             end
             T[#T + 1] = '';
-            T[#T + 1] = 'Eaten ' .. FW._fmtAgo(os.time() - (cur.at or 0)) .. '.';
+            -- Time spent UNDER the food, not wall clock: the effect is paused
+            -- while you are logged out, so os.time() - at overstates it by every
+            -- logout you have taken. Wall clock only for rows recorded before
+            -- the duration was measured.
+            T[#T + 1] = 'Eaten ' .. FW._fmtAgo(
+                ((type(cst) == 'table') and cst.used ~= nil) and cst.used
+                or (os.time() - (cur.at or 0))) .. '.';
             -- esc LAST and over the whole blob: these lines are the server's own
             -- text and are full of literal '%' ("Attack +20% (cap 120)"), which
             -- imgui would otherwise read as a printf spec.

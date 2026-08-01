@@ -864,6 +864,54 @@ research already recorded. In rough priority order:
     **NOT field-confirmed**. Its round is still owed and is one line long: change to a job whose triggers name something parked in the
     Mog Safe, read the warning once, move some gear around, and confirm it stays quiet until
     the next main job change.
+- **2026-08-01 (`2026.08.01l` — written as `j`, relabelled on the way out: the external-claims
+  train reached the version line first and took `k`, so this landed after it):
+  the clock stops when you log out — the meal's length is
+  MEASURED, never looked up.** Henrik, after field-testing the row above: *"Is it possible to
+  stop the clock when you log out? ... the food duration doesn't go down when you're logged
+  out."* Correct, and the wall-clock "eaten X ago" was overstating by the length of every
+  logout. His suggested fix was an accumulator ticking every 5s; **it was not built, because
+  the client already knows.** **NOT field-confirmed** — suites only.
+  - **The status timer decodes.** A raw `GetStatusTimers()` value is the expiry in
+    **sixtieths of a second since the Vana'diel epoch** (`0x3C307D70`), in a uint32 that wraps
+    ~every 2.3 years — hence the re-add loop, undoing ~10 wraps in 2026. Ported by hand from
+    the two sibling addons that already carry it (`timers\helpers.lua`,
+    `statustimers\party.lua`, which agree line for line — [[sibling-addons-signature-authority]]
+    again). Those read the **client's** UTC stamp behind a signature scan; dlac uses
+    `os.time()` instead, so there is no sig to break on a client patch. It was checked against
+    Henrik's own recorded meals and lands within the poll interval — **`FW32` is that golden**,
+    built from real `foodhistory.lua` values rather than a hand-made fixture.
+  - **Why an accumulator would have been worse.** The server sends the true remaining time at
+    login — that is why the buff addons are right after a relog. Counting seconds ourselves
+    would re-derive, with drift, a number the game hands over for free, and would be wrong
+    after any crash, `/addon reload`, or missed tick. Reading it needs no bookkeeping, no
+    periodic disk write, and nothing to resync.
+  - **The duration is MEASURED at the moment the meal lands, not read from `fooddb`.** This is
+    the load-bearing part: `xi.mod.FOOD_DURATION` grants **+100%** from `sanction.lua` and
+    `sigil.lua`, so the same Pork Cutlet runs 3 hours or 6 depending on what you were under
+    when you ate it. That is not theory — Henrik's recorded Pork Cutlet decoded to **exactly
+    2.00×** its 10800s script duration, which is how the mod was found. What is left the
+    instant the effect lands IS the meal's real length, so it is stored (`dur` in
+    `foodhistory.lua`) and `used = dur - left` is read live thereafter. **This also fixes a
+    bug shipped in `i`**: the tooltip's duration line was reading `fooddb`'s book value and
+    said "3 hr food." for a six-hour meal.
+  - Rows written before this carry no `dur`; those fall back to wall-clock until re-eaten, and
+    an out-of-band decode is dropped rather than stored — a missing number beats a wrong one.
+  - **The countdown is ON after all** — Henrik reversed the earlier "timers are fine not
+    including" once the number existed: *"if we have the number, just let it show an estimated
+    countdown."* It rides the tooltip line that names the meal's length
+    (`6 hr food -- ~4 hr 51 min left.`) rather than the row label, because showing *a* timer is
+    the buff bar's job and the only thing dlac adds is **whose** timer it is. `/dl food` says
+    it too. The `~` is honest, not decoration: the decode leans on `os.time()` against the
+    client's own clock and the poll runs at 250ms. `_fmtLeft` is deliberately not `_fmtDur` —
+    a length may round to the nearest minute, a countdown may not round 20 seconds up to
+    "1 min" and must say *expiring now* rather than going blank at zero.
+  - **`left` never depended on the measurement**, so a row recorded before this still counts
+    down; it just cannot report how much is spent (`FW39`, `MN18q4`).
+  - **Bonus, from the same dig:** "you can never eat over food" is now confirmed in the server
+    source, not just the field — `xi.itemUtils.foodOnItemCheck` returns `xi.msg.basic.IS_FULL`
+    when `hasStatusEffect(xi.effect.FOOD)`.
+  - Suites **5527 + 944**, both interpreters. Tests FW32–FW39, MN18o2–MN18q6.
 - **2026-08-01 (`2026.08.01i`): the Active food row — dlac now answers a question FFXI
   refuses to.** Henrik's framing, and it is the whole rationale: *"The problem with FFXI is
   that the status icon does NOT show what food you ate. So if you eat a food, then log out,
@@ -914,8 +962,11 @@ research already recorded. In rough priority order:
     because nothing pointed at it; the whole round is three checks: **(1)** under food, the
     `Active food` row names it and hovers with sane effects — in the Menu popup **and** the
     Teleports float; **(2)** a food with a race branch (Galkan Sausage, Royal Omelette) reads
-    understandably with both blocks shown; **(3)** the eat list now offers **three** rows.
-    Delete this line when it is done.
+    understandably with both blocks shown; **(3)** the eat list now offers **three** rows;
+    **(4)** *(added by `l`)* eat something, note the "eaten X ago", **log out for a good
+    while**, log back in — the elapsed must be roughly where you left it, not the wall-clock
+    gap, and the duration line must match what the meal really ran (double under Sigil or
+    Sanction). Delete this line when it is done.
 - **2026-08-01: foodwatch is FIELD-CONFIRMED — the owed round ran and found no fault.**
   `feature/foodwatch.lua` (`121af5b`, `2026.07.30g`) had been **on `main` since `605045f`**
   and had never once run in game: it rode the Ashitacast promotion because `dev` promotes
