@@ -20684,7 +20684,7 @@ if okLoad and type(fw) == 'table' then
     check('FW12 the history is capped', #H, 10);
     check('FW12b ...dropping the oldest', H[10].name, 'Food 3');
 
-    -- --- the menu pick: the two most recent you are CARRYING
+    -- --- the menu pick: the most recent ones you are CARRYING
     local stock = { [1] = 0, [2] = 5, [3] = 0, [4] = 2 };
     local L = { { id = 1, name = 'A' }, { id = 2, name = 'B' }, { id = 3, name = 'C' }, { id = 4, name = 'D' } };
     local picked = fw._pick(L, function(e) return stock[e.id] or 0; end, 2);
@@ -20695,6 +20695,17 @@ if okLoad and type(fw) == 'table' then
     check('FW13e ...and how many are left', picked[1].count, 5);
     check('FW14 carrying nothing lists nothing',
           #fw._pick(L, function() return 0; end, 2), 0);
+    -- How many rows the menu offers. THREE since 2026-08-01 (Henrik: "add the
+    -- number of foods up to 3 in the list"); pinned because _pick defaults to it
+    -- and nothing else would notice it quietly going back to two. It must stay
+    -- well under CAP, which is what gives the walk-past something to walk to.
+    check('FW14a the menu offers three foods', fw.MENU_N, 3);
+    check('FW14b ...and the history stays deeper than that', fw.CAP > fw.MENU_N, true);
+    local three = fw._pick({ { id = 1, name = 'A' }, { id = 2, name = 'B' },
+                             { id = 3, name = 'C' }, { id = 4, name = 'D' } },
+                           function() return 1; end);
+    check('FW14c _pick defaults to that many', #three, 3);
+    check('FW14d ...most recent first', three[3].name, 'C');
 
     -- --- disk shape (round trip; nothing is written)
     local round = fw._fromRaw((loadstring or load)(fw._serialize(H))());
@@ -20812,6 +20823,79 @@ if okLoad and type(fw) == 'table' then
         cmd(ev2);
         check('FW25 another /dl subcommand falls straight through', ev2.blocked, false);
     end
+
+-- --- WHAT A FOOD DOES (2026-08-01). The game's food icon never says WHICH food
+-- is up, so after a relog dlac is the only thing that can answer. statsFor pairs
+-- the history with data\fooddb.lua (the server's own item scripts, shipped).
+do
+    check('FW26 a whole-hour duration reads as hours', fw._fmtDur(10800), '3 hr');
+    check('FW26b ...and a part-hour one as minutes', fw._fmtDur(1800), '30 min');
+    check('FW26c an absent duration is nil, never "0"', fw._fmtDur(nil), nil);
+    check('FW26d ...and so is a zero one', fw._fmtDur(0), nil);
+
+    -- The client Description blob: one string, embedded newlines, the odd
+    -- control byte where the game meant a line break.
+    local dl = fw._descLines('HP +40\n\nSTR +7\1Attack +20%\r\n   INT -7   \n');
+    check('FW27 the description splits into lines', #dl, 4);
+    check('FW27b ...dropping the empties', dl[2], 'STR +7');
+    check('FW27c ...breaking on a control byte too', dl[3], 'Attack +20%');
+    check('FW27d ...and trimming', dl[4], 'INT -7');
+    check('FW27e a description that is not there is no lines, not a crash', #fw._descLines(nil), 0);
+
+    -- The shipped table is the AUTHORITY: it is the server's own script text.
+    package.loaded['dlac\\data\\fooddb'] = {
+        fmt = 1,
+        foods = {
+            [6394] = { d = 10800, s = { 'HP +40', 'Attack +20% (cap 120)' } },
+            [4325] = { d = 3600,  s = {} },   -- known food, header-less script
+        },
+    };
+    fw._reset();
+    local descs = { [4325] = 'Defense +12%\nAGI +4', [777] = nil };
+    local reads = { describe = function(id) return descs[id]; end };
+
+    local s = fw.statsFor(6394, reads);
+    check('FW28 the shipped table answers first', s and s.src, 'server');
+    check('FW28b ...with the effect lines', s and s.lines[2], 'Attack +20% (cap 120)');
+    check('FW28c ...and the duration', s and s.dur, 10800);
+    -- The lines come off a require'd table shared by every later read: handing
+    -- out the original would let one caller's trim corrupt all of them.
+    s.lines[1] = 'MANGLED';
+    local s2 = fw.statsFor(6394, reads);
+    check('FW28d the lines are a copy, not the shipped table', s2 and s2.lines[1], 'HP +40');
+
+    local c = fw.statsFor(4325, reads);
+    check('FW29 a food with no server header falls back to the client', c and c.src, 'client');
+    check('FW29b ...reading its description', c and c.lines[1], 'Defense +12%');
+    check('FW29c ...and still reports the duration the table knows', c and c.dur, 3600);
+
+    check('FW30 a food neither source knows draws no stats at all', fw.statsFor(777, reads), nil);
+    check('FW30b ...and so does a nil id', fw.statsFor(nil, reads), nil);
+
+    -- THE LOAD-BEARING SPLIT. fooddb is DISPLAY ONLY: it must never become the
+    -- answer to "is this item food". Detection stays learned from the effect
+    -- moving, so a food the shipped table has never heard of is still recorded
+    -- and still eatable -- it just has no stats to hover. If this ever fails,
+    -- someone has wired the table into M._step / M.pump and the "dlac ships no
+    -- food list" guarantee is gone.
+    fw._reset();
+    fw._pending = { id = 31337, at = 100 };
+    local rec = fw.pump({
+        clock = function() return 100; end,
+        stamp = function() return 500; end,
+        food  = function() return { present = true, expiry = 42 }; end,
+        nameOf = function() return 'Server Custom Stew'; end,
+        save  = function() return true; end,
+    });
+    check('FW31 a food the shipped table never heard of is still learned',
+          rec and rec.name, 'Server Custom Stew');
+    check('FW31b ...and still eatable', (fw._pick(fw.history, function() return 1; end, 2)[1] or {}).cmd,
+          '/item "Server Custom Stew" <me>');
+    check('FW31c ...it simply has no stats to show', fw.statsFor(31337, { describe = function() return nil; end }), nil);
+
+    package.loaded['dlac\\data\\fooddb'] = nil;
+    fw._reset();
+end
 end
 
     AshitaCore = savedCore;
