@@ -238,7 +238,11 @@ agent; the per-repo setup lives in `docs/agents/`.
     only in a per-day "Current state" bullet. **Merging:** empty that section in the same
     commit as the merge, and fix any "on `dev`" claim the merge just falsified. An entry
     marked **ACCEPTED** there already has Henrik's go-ahead — carry it and don't re-ask;
-    only he may add that marker.
+    only he may add that marker, **and his saying "merge" is itself the marker** for
+    everything riding that promotion (2026-08-01; `dev` promotes whole-or-not, so there is
+    nothing left to ask about once he has said it). Claude may run the merge and the push
+    since 2026-08-01 (`ff92f4e` was the first); older notes below saying the classifier
+    refuses both are **historical records of how it was then**, not live procedure.
 
 ## Working with Henrik
 
@@ -270,6 +274,15 @@ machine; **ACCEPTED** means he has additionally said *promote it* — so the nex
 merge carries it **without asking him again**. Only he can move an entry to ACCEPTED. Note
 this does not make an accepted entry mergeable *alone*: `dev` promotes
 **whole-or-not-at-all**, so an accepted entry rides the next promotion of the whole branch.
+
+**"Merge" IS an accept** (Henrik's ruling, 2026-08-01: *"When I say merge, treat it as an
+accept."*). When he says merge / promote / push to main, that instruction **carries the
+acceptance of everything riding the promotion** — `dev` promotes whole-or-not, so there is
+nothing left to ask about. Do not go back and ask him to confirm the queue entries first.
+The rest of the rule is unchanged and still sharp: **only he grants acceptance**, so never
+infer it from a field confirmation, from *"works"*, or from your own read that something is
+ready — his own note on the exchange was *"you are right not to assume otherwise since I
+haven't told you."* Ask when he has **not** said merge; never ask twice when he has.
 
 **The queue is empty.**
 
@@ -324,9 +337,15 @@ pure functions with values read straight out of `Mindie_29909/gear.lua` and
 `profiles/Default/{sets,triggers}/DRK.lua` **before any code changed** — artifacts first,
 then theory — and re-running the same script after is what predicted the field result.
 
+**FIELD-CONFIRMED, all three engine versions.** v159/v160 the same day (*"it is not flapping
+between arcane arbalest and cinderstone now, so seems to work!"*), and v161 right after
+(*"when issuing /dl why on range, it does no longer in fact, say 'nobody claimed it (kept as
+worn)'"*) — so both chat surfaces of the verdict are confirmed on the character, not just
+headlessly.
+
 **Owed:** one look at the Sets tab's DRK `Idle` set — the Range tile should carry the PAIR
 sentence rather than the reservation one, and Set totals should no longer count the
-Arbalest.)
+Arbalest. Everything else in this train has been seen working in game.)
 commits, `be7250f..a1c6758` — **the arbiter refuses gear you cannot equip, and the Sets tab
 stops lying about it**, `2026.08.01`–`2026.08.01c`, engine v158. One bug seen from two
 sides: Henrik parked a Minstrel's Coat in a bag he cannot equip out of and lowered his level
