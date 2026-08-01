@@ -46,6 +46,14 @@ local M = {};
 local _eqok, eqc = pcall(require, 'dlac\\gear\\equipcore');
 _eqok = _eqok and type(eqc) == 'table';
 
+-- The send counter (/dl sends). Guarded like every other peer require: an
+-- absent counter must never cost an equip.
+local _slok, slog = pcall(require, 'dlac\\feature\\sendlog');
+_slok = _slok and type(slog) == 'table';
+local function noteSend(id, why)
+    if _slok then slog.note(id, why); end
+end
+
 -- ---------------------------------------------------------------------------
 -- settings (LuaAshitacast timing defaults, verbatim)
 -- ---------------------------------------------------------------------------
@@ -256,6 +264,7 @@ local _trust = {};        -- [slot] = { Item = {..}|nil, Timer = clock }  (0.2s 
 local _buffer = {};       -- per-event equip buffer: [slot] = raw entry
 local _injectedFP = {};   -- fingerprints of packets WE injected: fp -> clock
 local _lastActionFP = nil;-- resend dedup (the client re-sends 0x01A on lag)
+local _curEvent = nil;    -- the dispatch point being flushed, for /dl sends' cause column
 
 M.onEvent = nil;          -- the dispatch seam: function(handlerName, ctx)
 M.say = nil;              -- chat printer (wired by the command surface)
@@ -385,10 +394,17 @@ local function fingerprint(id, str)
     return tostring(id) .. ':' .. str;
 end
 
-local function injectPacket(id, bytes)
-    pcall(function()
+-- EVERY packet this engine sends leaves through here, which is why the
+-- /dl sends counter hangs off this one function instead of the four call
+-- sites. `why` is the cause the CALLER knows (the dispatch point, 'reinject')
+-- -- a count alone says how much, the cause says whether it is a flap.
+-- Counted on success only: this answers "what went on the wire".
+local function injectPacket(id, bytes, why)
+    local ok = pcall(function()
         AshitaCore:GetPacketManager():AddOutgoingPacket(id, bytes);
     end);
+    if ok then noteSend(id, why); end
+    return ok;
 end
 
 -- Re-inject a BLOCKED action/item packet (string form -> byte table), leaving
@@ -397,7 +413,7 @@ local function reinject(id, str)
     local bytes = {};
     for i = 1, #str do bytes[i] = string.byte(str, i); end
     _injectedFP[fingerprint(id, str)] = os.clock();
-    injectPacket(id, bytes);
+    injectPacket(id, bytes, 'reinject (your own action, passed through)');
 end
 
 local function stampTrust(stamps, invMgr)
@@ -481,18 +497,28 @@ function M.bufferFlush(style)
     local invMgr;
     pcall(function() invMgr = AshitaCore:GetMemoryManager():GetInventory(); end);
 
+    -- The cause every send in this flush is stamped with (/dl sends). The
+    -- dispatch point alone answers the field question a raw count cannot:
+    -- one burst named 'Default' is a re-dress, 'Default' repeating at the
+    -- 0.4s tick is a flap.
+    local ev = tostring(_curEvent or 'Default');
+
     for _, c in ipairs(plan.conflicts) do
-        injectPacket(0x50, eqc.buildUnequip0x50(c.Slot, c.Container));
+        injectPacket(0x50, eqc.buildUnequip0x50(c.Slot, c.Container),
+            ev .. ' (conflict-strip)');
         _trust[c.Slot + 1] = { Timer = os.clock() + 0.2, Item = nil };
     end
 
     local chosen = eqc.chooseStyle(#plan.equips, style);
     if #plan.equips > 0 then
         if chosen == 'set' then
-            injectPacket(0x51, eqc.build0x51(plan.equips));
+            injectPacket(0x51, eqc.build0x51(plan.equips),
+                string.format('%s (set, %d slot%s)', ev, #plan.equips,
+                    (#plan.equips == 1) and '' or 's'));
         else
             for _, eq in ipairs(plan.equips) do
-                injectPacket(0x50, eqc.build0x50(eq.Index, eq.Slot, eq.Container));
+                injectPacket(0x50, eqc.build0x50(eq.Index, eq.Slot, eq.Container),
+                    ev .. ' (single slot)');
             end
         end
     end
@@ -507,9 +533,11 @@ end
 function M.fireEvent(name, style, ctx)
     if type(M.onEvent) ~= 'function' then return; end
     M.bufferClear();
+    _curEvent = name;   -- the cause bufferFlush stamps on whatever it sends
     local ok, err = pcall(M.onEvent, name, ctx);
     if not ok then say('native engine: ' .. tostring(name) .. ' handler error: ' .. tostring(err)); end
     M.bufferFlush(style);
+    _curEvent = nil;
 end
 
 -- ---------------------------------------------------------------------------

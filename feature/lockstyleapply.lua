@@ -173,7 +173,11 @@ end
 
 -- The 0x053 injection -- the process-wide SDK, from THIS state. Returns ok.
 local function liveInject(pkt)
-    return pcall(function() AshitaCore:GetPacketManager():AddOutgoingPacket(0x053, pkt); end);
+    local ok = pcall(function() AshitaCore:GetPacketManager():AddOutgoingPacket(0x053, pkt); end);
+    if ok then   -- counted for /dl sends (feature\sendlog); guarded, never costs the apply
+        pcall(function() require('dlac\\feature\\sendlog').note(0x053, 'lockstyle apply'); end);
+    end
+    return ok;
 end
 
 -- ---------------------------------------------------------------------------
