@@ -125,9 +125,14 @@ end
 -- shape and same reason as rslotFor above: the CLIENT resource carries Skill but has
 -- NO subskill field (Ashita's IItem stops at Skill), and subskill is exactly what
 -- separates a gun (26:1) from a crossbow (26:0). So it can only come from the API
--- crawl, and it has to be stamped to disk for the engine, which reads gear.lua raw
--- with no catalog. Built once, lazily, guarded -- no catalog (headless tests) means
+-- crawl. Built once, lazily, guarded -- no catalog (headless tests) means
 -- every lookup is nil, and every consumer treats nil as "unknown, don't constrain".
+--
+-- v160: the stamp written into gear.lua is now a CACHE, not the only road. The
+-- engine calls THIS (via dispatch.recordPair) whenever a record carries no Pair,
+-- so an old file no longer switches the pair law off until its owner runs
+-- `/dl fix`. The stamp is kept because it costs nothing and survives a missing
+-- catalog; it is no longer load-bearing.
 local _pairById = nil;
 local function pairFor(id)
     if _pairById == nil then

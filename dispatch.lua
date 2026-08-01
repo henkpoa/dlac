@@ -47,7 +47,7 @@ M._loadStamp = M._loadStamp or string.format('%d:%.3f', os.time(), os.clock());
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code. From v32 the engine self-swaps when the seeded file's version moves, so
 -- the banner should only persist when a swap FAILED (or pre-v32 code is live).
-M.VERSION = 159;  -- 159: THE RANGE/AMMO PAIR IS AN ARBITER VERDICT (Henrik 2026-08-01: "Maybe it's better to move this rule into the arbiter, since it gets the full picture from all the sets?"). Field case, DRK72: two Default rules fire on ONE condition -- { status='Idle' } -> set 'Idle' (Range ladder + Ammo = Cinderstone) and { status='Idle' } -> set 'Weapons' (Range ladder, NO Ammo). Every matching rule is RESOLVED SEPARATELY and merged last-writer-wins, so the ADR 0010 pair law ran on one table at a time and could not see the sibling: 'Idle' judged the pair correctly (Cinderstone Lv60 beats Arcane Arbalest Lv50 -> Range dropped) while 'Weapons', naming Range and no Ammo, asked the OTHER question -- trinketWornDisplace -- and wrote Ammo='remove' for a crossbow the same dispatch had already decided not to equip. Merged: the stick came off; next dispatch, Ammo empty, nothing to displace, Idle's Cinderstone survived the merge and went back ON. Off, on, off, on, one server round trip per second, forever -- and no per-table cleverness can fix it, because "is a ranged piece coming in?" is a question about the FINAL PLAN and a single table is not the final plan. So the law moves to where the whole picture already is: arbiter.pairVerdict judges the MERGED FLOOR (every matching set AND every built claim at its rank row) ONCE per dispatch, and trinket-vs-ranged stops deciding and starts APPLYING. It runs FIRST inside reserveResolve -- before availability, before dominance, before the fall -- and DELETES the loser from the floor, which makes ADR 0010's adjacency law literal (the loser never gets to reserve anything) and stops the two verdicts contradicting each other (a Lv75 crossbow WINS the Level contest while reserveVerdict's tie-favours-the-reserver rule would suppress Range for a Lv60 stick, leaving the plan holding neither). The loser is SUPPRESSED, never INELIGIBLE: an ineligible piece falls to its ladder's next rung, and the next crossbow down conflicts with the same stick, so a fall would walk the whole Range ladder and re-derive the flap (ADR 0027's asymmetry -- a reserved slot never falls). ONE implementation, not a second copy: pairVerdict shapes the floor into a plan and calls trinketRangeDrop / trinketWornDisplace, which stay put as the DIRECT-caller fallback (immediate equips, headless suites) exactly as reservedDrops does. Reported as its own verdict in /dl why <slot> and the Arbiter Monitor (never folded into "reserved" -- a bolt and a bow are two ordinary pieces with no reservation between them), and read by the Sets tab through dispatch.pairVerdict so Set totals count what will be WORN: the old preview dropped Range whenever ANY stat stick sat in Ammo, ignoring the Level contest it claims to mirror.
+M.VERSION = 160;  -- 160: THE ITEM FACTS COME FROM THE CATALOG, NOT FROM YOUR gear.lua (Henrik 2026-08-01, on being told v159's pair law needed a `/dl fix` to reach existing files: "I feel like this information should be documented in the catalog maybe? Instead of personal gear... It's not like my personal Arcane arbalest can behave differently in this aspect as anyone else's"). RSlot (item_equipment.rslot) and Pair (item_weapon skill:subskill) are facts about the ITEM -- identical for every copy in the world -- and were stamped into each player's gear.lua only because the equip-time engine ran in LAC's OWN Lua state and could not reach a 5MB table. THE PURGE ENDED THAT: one state, and dlac.lua preloads gearimport + gearui at addon load, so the catalog is already resident in the state dispatch runs in (catalogindex's "the engine never loads the catalog" header was a two-state artifact and is corrected). So recordRSlot / recordPair now read the manifest stamp as a CACHE and fall back to the catalog by id, through gearimport.rslotFor / pairFor -- the readers that already exist, already lazy, already cached, and already applying effectiveRSlot (which is why Cinderstone gets its Range bit here despite being one of the crawl's gaps). What that fixes for EVERY player, on the addon update alone, with no file rewritten and no command to run: a gear.lua written before Pair existed (v128) was running the pair law on the RSlot bit alone, so a gun and a crossbow were both just "Marksmanship"; a gear.lua written before RSlot existed (v43) had ADR 0010 fully BLIND -- no bit, no pair key, so a stat stick and a ranged weapon were never in conflict and flapped exactly as they did on 2026-07-19; and a catalog correction now reaches everyone with the next update instead of waiting for each of them to run `/dl fix`. The stamp still WINS when present, so a stamped file behaves identically and a hand edit is still honoured; the ANIMATOR_FED stale-stamp guard sits ABOVE the fallback because it is a statement about the item and must veto BOTH sources. Three-valued throughout -- no manifest, no catalog, no Id, an uncrawled custom or a reader that throws all answer nil, which pairsWith reads as "do not constrain": a missing data field must never read as "dlac stopped working". Tests CF1-CF6.
                   -- 128: 128: AutoAmmo asks what is in RANGE before it picks (field, Henrik 2026-07-26: "AutoAmmo does NOT dictate if it's bolt, arrows or what not that gets equipped. That is 100% decided on what gets put in ranged"). resolveAmmoPlan was type-BLIND -- it took the first `ranged`-flagged entry with stock, so a bolt above your arrows won with a bow equipped -- and the panel's Bullets/Bolts/Arrows selector never constrained it (categoryOf is a VIEW, stored nowhere). The cost was not a wasted swap: charutils.cpp EquipItem STRIPS THE OTHER SLOT on an incompatible Range/Ammo pair, so the bolt took the bow off, the trigger re-equipped it, and the two flapped forever -- ADR 0010's failure through the skill/subskill door instead of the rslot one. New pure M.pairsWith over a "<skill>:<subskill>" key (26:1 gun/bullet, 26:0 crossbow/bolt, 26:2 culverin/shell, 27:0 boomerang/pebble, 27:3 shuriken, 0:10 Animator/oil), three-valued so an unknown pair degrades to today's behaviour instead of switching AutoAmmo off; ARCHERY is exempt from the subskill half exactly as the server writes it (Shortbow 25:0 and Longbow 25:4 share arrows). Range is never written -- AutoAmmo only ever READS it. Two rulings, both Henrik's: no ranged weapon worn = do nothing at all (safe -- with Range empty the server refuses the shot, so nothing can be consumed), and a weapon worn with nothing in the list able to pair = hold, never force a mismatch in. THROWING with an empty Range (a NIN's shuriken, CanUseRangedAttack's `|| PAmmo->isThrowing()`) is the ONE known exception and stays parked behind the §8 NIN field tests. The key rides the manifest like RSlot (gearimport stamps Pair from the catalog's new field); worn Range falls back to the client resource's Skill when the manifest predates it, so the update alone separates bow/gun/throwing for everyone and a manifest refresh upgrades it to gun-vs-crossbow. Tests PW1-PW14, AM40-AM58.
                   -- 127: trigger CASES, the schema backbone (issue #126, slice 2/5; ADR 0023) -- rules gain an optional `cases` list (a second `&`/`|` tier: op + the same two legs a body has), evaluated by matches()/matchedCase() over a factored legMatches so both tiers share one code path; normalize validates + drops empty cases + strips the always-true `hasCases` version guard; auto-priority + ruleLabel span every leg of every case (case-LESS rules match/label/serialize byte-for-byte as before -- pinned). serializeTriggers is oldest-form-first (a `| case` of only `&` rows -> a whenAny multi-entry; only `&` cases and `| cases` with internal OR use the new list) and stamps the guard so OLDER engines drop the rule with the standard warn instead of misreading it. Seeded-file bump: normalize + matches run engine-side (hard rule 4). Tests CX1-CX35, MC19-23. (PR #132 shipped as v126/2026.07.26c off a pre-97f1edc dev; renumbered at merge.)
                   -- 126: the /dl why trace can no longer outlive the sets store it described (field, Mindie 2026-07-26 01:31): the retrace sig now carries the store REVISION (M.modesRev -- bumped by every install and re-flatten, 5668/5714), so lines built against the empty boot-window store ("[NOT FOUND in profile Sets]", true for ~2s of designed install refusals) die the moment the install lands, instead of printing with a fresh timestamp for the rest of the session while equips worked fine. The v118 law applied to the trace: THE INSTALL INVALIDATES THE BELIEF. Display only, no equip change. Tests TRC0-TRC3 (the trace-vs-store contract, driven through the real command handler + dispatch like CMD).
@@ -2734,16 +2734,87 @@ end
 local ANIMATOR_FED = { [18731] = true, [18732] = true, [18733] = true, [19185] = true };
 
 -- The RSlot a manifest record is TRUSTED for -- the stale-stamp guard lives here,
--- the one place record RSlot enters the engine. Pure (tests TR16*).
-function M.recordRSlot(rec)
+-- the one place record RSlot enters the engine. `cat(rec, which)` is the OPTIONAL
+-- catalog reader (see catalogFact below): with no stamp on the record, the item's
+-- own fact answers. Injected rather than reached for, so this stays pure and the
+-- suite can drive both halves with no catalog on disk. Omitted = the pre-v160
+-- behaviour exactly. The ANIMATOR_FED exemption is deliberately ABOVE the
+-- fallback: it is a statement about the ITEM, so it must veto both sources.
+-- Pure (tests TR16*, CF*).
+function M.recordRSlot(rec, cat)
     if type(rec) ~= 'table' then return nil; end
     if ANIMATOR_FED[rec.Id] == true then return nil; end
-    return tonumber(rec.RSlot);
+    local m = tonumber(rec.RSlot);
+    if m ~= nil then return m; end
+    if type(cat) ~= 'function' then return nil; end
+    local ok, v = pcall(cat, rec, 'rslot');
+    return ok and tonumber(v) or nil;
 end
 
--- RSlot by item name, from the gear manifest. Resolved lazily: in LAC's state the
--- require finds the character's real gear.lua. Guarded -- a missing/old manifest
--- means every lookup is nil, and the engine behaves exactly as it did before.
+-- The Range/Ammo pair key a record is trusted for -- recordRSlot's twin, same
+-- precedence (stamp, then the item's own fact) and the same injected reader.
+-- Pure (tests CF*).
+function M.recordPair(rec, cat)
+    if type(rec) ~= 'table' then return nil; end
+    if type(rec.Pair) == 'string' and rec.Pair ~= '' then return rec.Pair; end
+    if type(cat) ~= 'function' then return nil; end
+    local ok, v = pcall(cat, rec, 'pair');
+    if not ok or type(v) ~= 'string' or v == '' then return nil; end
+    return v;
+end
+
+-- ---------------------------------------------------------------------------
+-- THE ITEM FACTS COME FROM THE CATALOG (Henrik, 2026-08-01, on being told the
+-- Pair stamp needed a `/dl fix` to reach existing files): "I feel like this
+-- information should be documented in the catalog maybe? Instead of personal
+-- gear... It's not like my personal Arcane arbalest can behave differently in
+-- this aspect as anyone else's."
+--
+-- Exactly right, and it retires a whole class of bug. RSlot and Pair are facts
+-- about the ITEM -- item_equipment.rslot and item_weapon skill/subskill, the
+-- same for every copy in the world -- not facts about your copy. They were
+-- stamped into each player's gear.lua only because the equip-time engine used
+-- to run in LAC's OWN Lua state, which could not reach the 5MB catalog. THE
+-- PURGE ENDED THAT: there is one state now, and dlac.lua preloads gearimport
+-- and gearui at addon load, so the catalog is already resident in the very
+-- state this runs in. (catalogindex's header still says "the equip-time engine
+-- never loads the catalog" -- that sentence is a two-state-era artifact.)
+--
+-- So the manifest stamp becomes a CACHE, not the source of truth: read the
+-- stamp, fall back to the catalog by id. What that fixes, for everybody, on the
+-- addon update alone and with no file rewritten and no command to run:
+--   * every gear.lua written before Pair existed (v128) was silently running
+--     the pair law on the RSlot bit alone -- a gun and a crossbow were both
+--     just "Marksmanship";
+--   * every gear.lua written before RSlot existed (v43) had ADR 0010 fully
+--     BLIND -- no bit, no pair key, so a stat stick and a ranged weapon were
+--     never in conflict at all and flapped exactly as they did in 2026-07-19;
+--   * a catalog correction now reaches every player with the next addon
+--     update, instead of waiting for each of them to run `/dl fix`.
+-- The stamp still WINS when present, so a stamped file behaves identically and
+-- a hand-edited stamp is still honoured. gearimport owns both catalog readers
+-- already (lazy, cached, guarded) and rslotFor applies effectiveRSlot -- which
+-- is why Cinderstone gets its Range bit here even though the catalog row is one
+-- of the crawl's gaps.
+-- ---------------------------------------------------------------------------
+local _gimpMod = nil;
+local function catalogFact(rec, which)
+    if type(rec) ~= 'table' or rec.Id == nil then return nil; end
+    if _gimpMod == nil then
+        _gimpMod = false;
+        pcall(function() _gimpMod = require('dlac\\gear\\gearimport') or false; end);
+    end
+    if _gimpMod == false then return nil; end
+    local fn = (which == 'pair') and _gimpMod.pairFor or _gimpMod.rslotFor;
+    if type(fn) ~= 'function' then return nil; end
+    local ok, v = pcall(fn, rec.Id);
+    return ok and v or nil;
+end
+
+-- RSlot by item name: the manifest stamp, else the catalog. Resolved lazily and
+-- guarded at every step -- no manifest, no catalog, no Id, or an item the crawl
+-- never saw all answer nil, which every consumer reads as "no reservation", so
+-- the engine degrades to exactly what it did before rather than misfiring.
 local _gearMod = nil;
 local function rslotOf(name)
     if _gearMod == nil then
@@ -2753,14 +2824,16 @@ local function rslotOf(name)
     local m = nil;
     pcall(function()
         local rec = _gearMod and _gearMod.NameToObject and _gearMod.NameToObject[name] or nil;
-        if rec ~= nil then m = M.recordRSlot(rec); end
+        if rec ~= nil then m = M.recordRSlot(rec, catalogFact); end
     end);
     return m;
 end
+M._rslotOf = rslotOf;   -- test seam
 
--- Range/Ammo pair key by item name, from the same gear manifest. Guarded like rslotOf.
--- nil means "this manifest cannot answer" -- an old file written before Pair existed,
--- an uncrawled custom, or a slot that has no pairing at all. Never "pairs with nothing".
+-- Range/Ammo pair key by item name: the manifest stamp, else the catalog.
+-- nil means "nothing can answer" -- an item the crawl never saw, an uncrawled
+-- custom, or a slot that has no pairing at all. NEVER "pairs with nothing":
+-- pairsWith is three-valued precisely so an unknown constrains nothing.
 local function pairOf(name)
     if _gearMod == nil then
         _gearMod = false;
@@ -2769,7 +2842,7 @@ local function pairOf(name)
     local p = nil;
     pcall(function()
         local rec = _gearMod and _gearMod.NameToObject and _gearMod.NameToObject[name] or nil;
-        if rec ~= nil and type(rec.Pair) == 'string' and rec.Pair ~= '' then p = rec.Pair; end
+        if rec ~= nil then p = M.recordPair(rec, catalogFact); end
     end);
     return p;
 end

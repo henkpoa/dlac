@@ -7601,6 +7601,40 @@ the final plan.
 
 Tests PV1-PV12. Suites **5439 + 925**.
 
+**Then Henrik cut the migration question off at the root.** Asked what everyone ELSE does
+about the missing `Pair` stamps -- run `/dl fix`? -- his answer was *"I feel like this
+information should be documented in the catalog maybe? Instead of personal gear"* and *"It's
+not like my personal Arcane arbalest can behave differently in this aspect as anyone
+else's."*
+
+Right, and it retires the migration entirely (engine v160, `2026.08.01e`). `RSlot`
+(`item_equipment.rslot`) and `Pair` (`item_weapon` skill:subskill) are facts about the ITEM.
+They lived in each player's gear.lua only because the equip-time engine ran in LAC's OWN Lua
+state and could not reach a 5MB table -- **the purge ended that**: one state, and dlac.lua
+preloads gearimport + gearui at addon load, so the catalog is already resident in the state
+dispatch runs in. (catalogindex's "the equip-time engine never loads the catalog" header was
+a two-state-era artifact; corrected in place. Worth remembering as a class: a design
+boundary can outlive the constraint that created it, and the comment defending it is the
+last thing to notice.)
+
+- **`dispatch.recordRSlot(rec, cat)` / `recordPair(rec, cat)`** read the stamp as a CACHE and
+  fall back to the catalog by id, through `gearimport.rslotFor` / `pairFor` -- readers that
+  already existed, already lazy, already cached, already applying `effectiveRSlot`.
+- The stamp still WINS when present (a hand edit is honoured); `ANIMATOR_FED` sits ABOVE the
+  fallback because it is a statement about the item and must veto BOTH sources; unknown
+  never constrains, on any of the five ways a lookup can come back empty.
+- **What it fixes for everyone, on the addon update alone, no file rewritten and no command
+  run:** a gear.lua older than `Pair` (v128) was running the pair law on the RSlot bit alone
+  -- a gun and a crossbow both just "Marksmanship" -- and one older than `RSlot` (v43) had
+  ADR 0010 FULLY BLIND: no bit, no pair key, so a stat stick and a ranged weapon were never
+  in conflict at all and flapped exactly as they did on 2026-07-19. A catalog correction now
+  reaches every player with the next update.
+
+Verified against the shipped catalog (14,705 items indexed) with an ENTIRELY unstamped
+manifest: Cinderstone -> effectiveRSlot 4 + Pair 0:0, Arcane Arbalest -> Pair 26:0, and all
+four pair cases (Level contest both directions, bolt-vs-bow mismatch, worn displace) resolve
+correctly. Tests CF1-CF6. Suites **5455 + 925**.
+
 **Owed:** one field round on Mindie DRK. Stand idle with Cinderstone worn and confirm the
 Ammo slot stops blinking, that `/dl why ammo` and `/dl why range` name the pair verdict,
 and that the Sets tab's DRK Idle set shows the Range tile red with the pair sentence rather

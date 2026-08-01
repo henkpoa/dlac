@@ -118,12 +118,53 @@ into the arbiter, since it gets the full picture from all the sets?"*
 
 Tests PV1–PV12. `dispatch.M.VERSION` → 159.
 
+## The item facts move to the catalog (2026-08-01, engine v160)
+
+The consequence below — *"players must re-commit their sets or run `/dl fix`"* — was always
+the weakest part of this ADR, and v159 made it load-bearing: without a `Pair` stamp the pair
+law runs on the RSlot bit alone. Henrik, told that: *"I feel like this information should be
+documented in the catalog maybe? Instead of personal gear... It's not like my personal
+Arcane arbalest can behave differently in this aspect as anyone else's."*
+
+He is right, and it retires the migration entirely. `RSlot` (`item_equipment.rslot`) and
+`Pair` (`item_weapon` skill:subskill) are facts about the **item**, identical for every copy
+in the world. They were stamped into each player's `gear.lua` only because the equip-time
+engine ran in LuaAshitacast's **own Lua state**, which could not reach a 5 MB catalog. **The
+purge ended that**: one state, and `dlac.lua` preloads `gearimport` + `gearui` at addon
+load, so the catalog is already resident in the state `dispatch` runs in.
+(`catalogindex`'s "the engine never loads the catalog" header was a two-state artifact and
+is corrected.)
+
+- **`dispatch.recordRSlot(rec, cat)` / `recordPair(rec, cat)`** read the manifest stamp as a
+  **cache** and fall back to the catalog by id, through `gearimport.rslotFor` / `pairFor` —
+  the readers that already existed, already lazy, already cached, and already applying
+  `effectiveRSlot`, which is why Cinderstone gets its Range bit despite being one of the
+  crawl's gaps.
+- **The stamp still wins when present**, so a stamped file behaves identically and a hand
+  edit is still honoured. The `ANIMATOR_FED` stale-stamp guard sits **above** the fallback:
+  it is a statement about the item, so it vetoes both sources.
+- **Three-valued throughout** — no manifest, no catalog, no `Id`, an uncrawled custom, or a
+  reader that throws all answer `nil`, which `pairsWith` reads as "do not constrain". A
+  missing data field must never read as "dlac stopped working".
+
+**What this fixes for every player, on the addon update alone, with no file rewritten and no
+command to run:**
+
+| gear.lua written before | was silently running | now |
+|---|---|---|
+| `Pair` (v128) | the pair law on the RSlot bit alone — a gun and a crossbow both just "Marksmanship" | correct |
+| `RSlot` (v43) | ADR 0010 **fully blind** — no bit, no pair key, so a stat stick and a ranged weapon were never in conflict at all, and flapped exactly as they did on 2026-07-19 | correct |
+
+A catalog correction now reaches everyone with the next addon update, instead of waiting for
+each of them to run `/dl fix`. Tests CF1–CF6. `dispatch.M.VERSION` → 160.
+
 ## Consequences
 
 - No coexistence (the server forbids it) — but a clean, stable result and no flap for the whole
   trinket category, keeping whichever piece is higher Level.
-- Players must **re-commit their sets or run `/dl fix`** once, so the gap trinkets pick up the
-  completed RSlot in their `gear.lua`.
+- ~~Players must **re-commit their sets or run `/dl fix`** once, so the gap trinkets pick up
+  the completed RSlot in their `gear.lua`.~~ **Retired 2026-08-01 (v160)** — the engine reads
+  the item's fact from the catalog when the stamp is absent, so nobody migrates anything.
 - The catalog gaps (Cinderstone / Coiste Bodhar / Talon Tathlum missing `RSlot=4`) are worth a
   crawler cleanup, but `effectiveRSlot` makes dlac correct regardless.
 - Tests: `run_tests.lua` TR0–TR10. `dispatch.M.VERSION` → 52 (needs a Reload LAC).

@@ -322,8 +322,32 @@ PLAN, and one table is not the final plan.
   "no weapon" in the numbers while the engine equipped the weapon.
 
 Tests **PV1–PV12** (pure law + the field case + the reserveResolve wiring + the
-popt-omitted byte-identical path). Both suites green (5439 / 925). `dispatch.M.VERSION` →
-159 (**needs a Reload LAC**).
+popt-omitted byte-identical path).
+
+### …and the item facts come from the catalog, not from your gear.lua — engine v160
+
+Asked what everyone *else* has to do about the missing `Pair` stamps, Henrik cut the
+question off at the root: *"I feel like this information should be documented in the catalog
+maybe? Instead of personal gear... It's not like my personal Arcane arbalest can behave
+differently in this aspect as anyone else's."*
+
+`RSlot` and `Pair` are facts about the **item**, identical for every copy in the world. They
+lived in each player's `gear.lua` only because the engine ran in LAC's own Lua state and
+could not reach a 5 MB catalog. **The purge ended that** — one state, and `dlac.lua`
+preloads `gearimport` + `gearui`, so the catalog is already resident where `dispatch` runs.
+`recordRSlot` / `recordPair` now read the stamp as a **cache** and fall back to the catalog
+by id. **No file is rewritten and no command is run.** What it fixes for everyone on the
+update alone: a `gear.lua` older than `Pair` (v128) was running the pair law on the RSlot
+bit alone (a gun and a crossbow both just "Marksmanship"), and one older than `RSlot` (v43)
+had ADR 0010 **fully blind** and flapped exactly as it did on 2026-07-19. The stamp still
+wins when present; `ANIMATOR_FED` vetoes both sources; unknown never constrains.
+
+Verified against the shipped catalog with an **entirely unstamped** manifest: Cinderstone
+→ `effectiveRSlot 4` + `Pair 0:0`, Arcane Arbalest → `Pair 26:0`, and all four pair cases
+(Level contest both directions, bolt-vs-bow mismatch, worn displace) resolve correctly.
+
+Tests **CF1–CF6**. Both suites green (5455 / 925). `dispatch.M.VERSION` → 160 (**needs a
+Reload LAC**). ADR 0010's *"players must run `/dl fix`"* consequence is struck out.
 
 
 *(Last emptied by the 2026-08-01 promotion — `4810f94`, `main` at `bc581d1` before it: six

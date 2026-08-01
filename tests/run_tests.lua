@@ -6001,6 +6001,64 @@ end)();
     check('TR16c genuine reservation trusted',  dispatchM.recordRSlot({ Id = 21384, RSlot = 4 }), 4);
     check('TR16d no stamp -> nil',              dispatchM.recordRSlot({ Id = 21384 }), nil);
     check('TR16e no record -> nil',             dispatchM.recordRSlot(nil), nil);
+
+    -- ---------------------------------------------------------------------
+    -- CF. THE ITEM FACTS COME FROM THE CATALOG (v160 -- Henrik: "I feel like
+    -- this information should be documented in the catalog maybe? Instead of
+    -- personal gear... It's not like my personal Arcane arbalest can behave
+    -- differently in this aspect as anyone else's").
+    --
+    -- RSlot and Pair are facts about the ITEM, so the manifest stamp is a
+    -- CACHE: read it, else ask the catalog by id. Which means an old gear.lua
+    -- stops silently switching the pair law off, and nobody has to run
+    -- `/dl fix`. `cat` is injected here exactly as it is in the engine.
+    -- ---------------------------------------------------------------------
+    local catCalls = 0;
+    local FACT = {
+        [21385] = { rslot = 4,   pair = '0:0'  },   -- Cinderstone: crawl gap, effectiveRSlot completes it
+        [21479] = { rslot = nil, pair = '26:0' },   -- Arcane Arbalest
+        [18733] = { rslot = 4,   pair = '0:10' },   -- an Automaton Oil, wrongly stamped at the source
+    };
+    local function fakeCat(rec, which)
+        catCalls = catCalls + 1;
+        local f = FACT[rec.Id];
+        return (f ~= nil) and f[which] or nil;
+    end
+
+    check('CF1 recordPair exported', type(dispatchM.recordPair), 'function');
+    -- The stamp WINS: a stamped file behaves exactly as it did, and a hand
+    -- edit is still honoured -- the catalog is never even asked.
+    catCalls = 0;
+    check('CF2 a stamped RSlot wins',  dispatchM.recordRSlot({ Id = 21385, RSlot = 8 }, fakeCat), 8);
+    check('CF2b a stamped Pair wins',  dispatchM.recordPair({ Id = 21479, Pair = '26:1' }, fakeCat), '26:1');
+    check('CF2c ...without asking the catalog', catCalls, 0);
+    -- No stamp -> the item's own fact answers. This is the whole point: a
+    -- gear.lua written before v43/v128 carries neither, and used to run the
+    -- pair law blind.
+    check('CF3 unstamped RSlot falls to the catalog', dispatchM.recordRSlot({ Id = 21385 }, fakeCat), 4);
+    check('CF3b unstamped Pair falls to the catalog', dispatchM.recordPair({ Id = 21479 }, fakeCat), '26:0');
+    -- The stale-stamp guard is a statement about the ITEM, so it must veto
+    -- BOTH sources -- an oil the catalog itself gets wrong must still not
+    -- reserve Range (the 2026-07-22 field bug, from the other direction).
+    check('CF4 ANIMATOR_FED vetoes the catalog too', dispatchM.recordRSlot({ Id = 18733 }, fakeCat), nil);
+    check('CF4b ...stamp or no stamp', dispatchM.recordRSlot({ Id = 18733, RSlot = 4 }, fakeCat), nil);
+    -- Three-valued discipline: an item the crawl never saw, a record with no
+    -- Id, a reader that throws, or no reader at all all answer "unknown" --
+    -- which pairsWith reads as "do not constrain", never as "pairs with
+    -- nothing". A missing data field must not read as "dlac stopped working".
+    check('CF5 uncrawled item -> nil',   dispatchM.recordPair({ Id = 999999 }, fakeCat), nil);
+    check('CF5b no Id -> nil',           dispatchM.recordPair({ Name = 'Custom' }, fakeCat), nil);
+    check('CF5c a throwing reader -> nil',
+        dispatchM.recordPair({ Id = 21479 }, function() error('boom'); end), nil);
+    check('CF5d no reader -> nil (pre-v160 behaviour)', dispatchM.recordPair({ Id = 21479 }), nil);
+    check('CF5e ...and for RSlot',       dispatchM.recordRSlot({ Id = 21385 }), nil);
+    check('CF5f empty string is not a pair', dispatchM.recordPair({ Id = 1, Pair = '' },
+        function() return ''; end), nil);
+    -- CF6. The live readers stay safe headless: no manifest, no catalog, so
+    -- every lookup answers nil and the engine degrades to exactly what it did
+    -- before rather than misfiring on a half-answer.
+    check('CF6 rslotOf headless -> nil', dispatchM._rslotOf('Cinderstone'), nil);
+    check('CF6b pairOf headless -> nil', dispatchM._pairOf('Arcane Arbalest'), nil);
     -- Twin parity: the engine's id-pin and gearrecord's must never drift apart.
     local grecTR = dofile('gear/gearrecord.lua');
     for _, oid in ipairs({ 18731, 18732, 18733, 19185 }) do
