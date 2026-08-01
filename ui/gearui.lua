@@ -579,6 +579,56 @@ local function invalidateCandidates() candCache.key = nil; end
 -- (inventory manager unavailable / char select), nothing is hidden.
 local owned = require("dlac\\gear\\ownedcache");
 
+-- AVAILABILITY, THE PREVIEW SIDE (Henrik, 2026-08-01: the Sets tab highlighted a
+-- Minstrel's Coat sitting in his Mog Locker as the chosen piece while the engine
+-- was actually wearing the Royal Cloak below it -- and the highlight colour hid
+-- the red that would have explained it). The engine refuses an unequippable rung
+-- in gear\arbiter and falls to the next; this is the same rule, asked by the
+-- panel, through the SAME function -- rsv's pattern exactly: the LAW is the
+-- engine's, this only previews what it will do.
+--
+-- The read is ownedcache.counts (the avail map: Inventory + Wardrobes), which is
+-- already what paints these rows red, so the colour and the highlight can never
+-- disagree. Three-valued like the engine's twin, and for the same reasons: a
+-- dlac: marker resolves at equip time and cannot be judged here, and an EMPTY
+-- count map means the scan beat the inventory rather than "you own nothing" --
+-- refusing on either would blank a set the moment the panel opened at the wrong
+-- moment. A name with no record is unknown, never absent.
+local avail = {};
+function avail.have(nm)
+    if type(nm) ~= 'string' or nm == '' then return nil; end
+    local low = string.lower(nm);
+    if low == 'remove' or low == 'ignore' then return nil; end
+    if string.sub(low, 1, 5) == 'dlac:' then return nil; end
+    local rec = lookupByName(nm);
+    if type(rec) ~= 'table' or rec.Id == nil then return nil; end
+    local oc = owned.counts();
+    if type(oc) ~= 'table' or next(oc) == nil then return nil; end
+    return (oc[rec.Id] or 0) >= 1;
+end
+
+-- The working entry a ladder actually lands on once unequippable rungs are
+-- refused: arbiter.availPick over the ladder, mapped back through each rung's
+-- `ord` to the editor's own list entry (the same index alignment workingPick
+-- returns its pick by). nil when nothing on the ladder can be worn -- which is
+-- the honest answer, and the one the engine acts on too: it leaves the slot
+-- alone. Degrades to the authored pick if the arbiter module is unreachable, so
+-- a headless or partial load renders exactly as it did before.
+function avail.pickIn(list, lad, authored)
+    if type(lad) ~= 'table' or type(lad.items) ~= 'table' or lad.items[1] == nil then
+        return authored;
+    end
+    local ok, arb = pcall(require, 'dlac\\gear\\arbiter');
+    if not ok or type(arb) ~= 'table' or type(arb.availPick) ~= 'function' then return authored; end
+    local iok, idx = pcall(arb.availPick, lad.items, avail.have);
+    if not iok then return authored; end
+    if idx == nil then return nil; end
+    local rung = lad.items[idx];
+    local ord = (type(rung) == 'table') and tonumber(rung.ord) or nil;
+    if ord == nil or type(list) ~= 'table' then return authored; end
+    return list[ord];
+end
+
 local function weightsActive()
     if not has.optim or optim.getWeights == nil then return false; end
     local ok, ws = pcall(optim.getWeights);
@@ -2267,6 +2317,10 @@ do
         renderIcon = icons.renderIcon,                            -- automation detail views (item icons)
         itemTooltip = renderItemTooltip,                          -- hover cards on automation gear lines
         setsRoot = profsets.getSetsRoot,                          -- gearcheck: set contents for the audit
+        -- gearcheck's chat half is a Setting ("Warn about gear in storage",
+        -- /dl gearwarn). It travels as a READER, not a value: the flag can flip
+        -- from the command or the Settings panel long after this table is built.
+        gearWarnEnabled = function() return sf.flags.gearwarn ~= false; end,
     };
     M._deps = d;   -- exposed for the restock nudge (the d3d_present hook is outside this do-block)
     local ok, m = pcall(require, "dlac\\ui\\triggersui");
@@ -2371,7 +2425,18 @@ local function bestByLevel(list, mainLevel, slotName)
             currentMain = mo;
         end
     end
-    return (utils.workingPick(list, slotName or 'Body', currentMain, cctx));
+    -- The LADDER rides out too (second return): the availability refusal needs
+    -- the rungs below the pick, and re-deriving them at each call site would be
+    -- the same "ask twice, get two answers" the receipt exists to stop.
+    return utils.workingPick(list, slotName or 'Body', currentMain, cctx);
+end
+
+-- What the slot will ACTUALLY wear: the authored pick unless it cannot be
+-- equipped, in which case the first rung below it that can. One call, so the
+-- row highlight and the Set totals can never tell different stories.
+local function wornByLevel(list, mainLevel, slotName)
+    local pick, lad = bestByLevel(list, mainLevel, slotName);
+    return avail.pickIn(list, lad, pick), pick, lad;
 end
 
 -- The PLANNED composition: best-by-level pick per slot (plan data only, nothing
@@ -2379,7 +2444,13 @@ end
 local function workingComposition(mainLevel)
     local comp = {};
     for _, sl in ipairs(EQUIP_SLOTS) do
-        local pick = bestByLevel(M.working[sl.label], mainLevel, sl.label);
+        -- The piece that will actually be WORN, not merely the one authored
+        -- (Henrik, 2026-08-01: "It is VERY important that set totals are
+        -- correct"). A rung in the Mog Safe cannot contribute stats to a set
+        -- you are standing in, so it must not contribute them to the numbers
+        -- either -- the same reason the reserved-slot drop below exists, one
+        -- refusal further along.
+        local pick = wornByLevel(M.working[sl.label], mainLevel, sl.label);
         if pick ~= nil and pick.rec ~= nil then comp[sl.label] = pick.rec; end
     end
     -- Drop exactly what the engine drops: a piece standing in a slot another
@@ -3851,25 +3922,29 @@ local function renderSetBuilder(job, level)
     -- picks the engine will drop because another pick takes that slot away. Not a
     -- warning the builder invents -- it is dispatch.reservedDrops, the same pass
     -- that runs at equip time, so what the grid marks is exactly what happens.
+    -- Every preview below reads the WORN pick (wornByLevel), never the merely
+    -- authored one: the grid and the slot list must not tell different stories
+    -- about the same slot, and a reservation is judged on the piece that will
+    -- actually be there -- a Body rotting in the Mog Safe reserves nothing.
     local resvDrops = rsv.dropsIn(function(label)
-        local pick = bestByLevel(M.working[label], level, label);
+        local pick = wornByLevel(M.working[label], level, label);
         return pick and pick.rec and pick.rec.Name or nil;
     end) or {};
 
     renderSlotGrid('set', 182, ui.setSelected,
         function(sl)
-            local pick = bestByLevel(M.working[sl.label], level, sl.label);
+            local pick = wornByLevel(M.working[sl.label], level, sl.label);
             return pick and pick.rec and pick.rec.Id or nil;
         end,
         function(sl)
             local list = M.working[sl.label];
-            local pick = bestByLevel(list, level, sl.label);
+            local pick = wornByLevel(list, level, sl.label);
             local nm = (pick and pick.rec and pick.rec.Name) or '(empty)';
             return string.format('%s (%d)', fmt.truncate(nm, 12), (list and #list) or 0);
         end,
         function(labelKey) ui.setSelected = labelKey; end,
         function(sl)
-            local pick = bestByLevel(M.working[sl.label], level, sl.label);
+            local pick = wornByLevel(M.working[sl.label], level, sl.label);
             return pick and pick.rec or nil;
         end,
         nil,
@@ -3915,7 +3990,13 @@ local function renderSetBuilder(job, level)
     imgui.SameLine(); if imgui.Button('+ Add##setadd', { 60, 0 }) then ui._openAddPopup = true; ui.addSearch = { '' }; ui.addTypeFilter = {}; ui._addGate = nil; end   -- weapon-type filter resets to "All" each open (F2a/F2b); no mode gate (that's the sections' Add more)
     imgui.SameLine(0, 8); renderSortCombo('setlist');
 
-    local pick = bestByLevel(list, level, ui.setSelected);
+    -- The highlight follows what will actually be WORN, not what was authored
+    -- (Henrik's report, 2026-08-01: the Coat in his Mog Locker lit up as the
+    -- chosen piece while the Royal Cloak below it -- the one being equipped --
+    -- carried no marking at all). Losing the highlight is also what lets the
+    -- Coat go back to reading RED: the picked-row colour is checked first
+    -- below, so it was painting over the very warning that explained it.
+    local pick = wornByLevel(list, level, ui.setSelected);
     local pickRec = pick and pick.rec or nil;
     local disp = sortItemsForDisplay(list);
 
@@ -4667,6 +4748,14 @@ host.provide({
     -- warning that never fires is invisible by definition. Exported, smoke drives
     -- it directly and a dead resolver is a red test instead of a quiet nothing.
     rsv = rsv,
+    -- Availability (2026-08-01), exported for exactly the reason rsv is: the
+    -- preview refusal runs on the render path, so getting it wrong does not
+    -- crash a frame -- the panel just goes on highlighting a piece that is
+    -- sitting in a Mog Locker, which is the bug this exists to fix and is
+    -- invisible unless you happen to be looking for it. Exported, smoke drives
+    -- the real chain and a dead resolver is a red test instead of a quiet
+    -- return to the old behaviour.
+    avail = avail, wornByLevel = wornByLevel,
     -- gear data + candidate machinery
     effStats = effStats, isUsable = isUsable,
     lookupById = lookupById, lookupByName = lookupByName, displayName = displayName,
@@ -5209,7 +5298,8 @@ ashita.events.register('command', 'dlac-ui', function(e)
     -- claims only its own three forms and lets topics pass untouched.
     if sub == 'debug' and args[2] ~= nil and args[2] ~= 'on' and args[2] ~= 'off' then return; end
     if sub ~= 'ui' and sub ~= 'sync' and sub ~= 'autosync' and sub ~= 'debug'
-       and sub ~= 'metrics' and sub ~= 'view_ids' and sub ~= 'autobuildimport' then return; end
+       and sub ~= 'metrics' and sub ~= 'view_ids' and sub ~= 'autobuildimport'
+       and sub ~= 'gearwarn' then return; end
     e.blocked = true;
 
     if sub == 'metrics' then        -- imgui metrics window: names the window under the
@@ -5252,6 +5342,19 @@ ashita.events.register('command', 'dlac-ui', function(e)
         print('[dlac] auto-build on import ' .. ((sf.flags.autobuildimport ~= false)
             and 'ON -- importing a job with stat weights rebuilds its sets from YOUR gear straight away.'
             or  'OFF -- an import lands exactly as exported; use Auto-Build All on the Sets tab when you want the re-solve.  (/dl autobuildimport on)'));
+        return;
+    end
+    if sub == 'gearwarn' then       -- the trigger-gear audit's automatic chat report
+        if     args[2] == 'off' then sf.flags.gearwarn = false;
+        elseif args[2] == 'on'  then sf.flags.gearwarn = true;
+        else                         sf.flags.gearwarn = (sf.flags.gearwarn == false); end
+        sf.saveUiFlags();              -- persist; command wins over the on-disk value
+        -- Turning it back ON re-arms the once-per-job gate, so you hear it on
+        -- THIS job instead of waiting for the next job change to prove it works.
+        if sf.flags.gearwarn then pcall(function() require("dlac\\gear\\gearcheck").rearm(); end); end
+        print('[dlac] gear warnings ' .. (sf.flags.gearwarn
+            and 'ON -- once per main job, dlac names any trigger-referenced gear that is not in an equippable bag.'
+            or  'OFF -- no automatic warnings; /dl gearcheck and the Triggers tab still answer on demand.  (/dl gearwarn on)'));
         return;
     end
     if sub == 'debug' then          -- reveal/hide the dev-only Scan/Stage/Commit/Augs buttons

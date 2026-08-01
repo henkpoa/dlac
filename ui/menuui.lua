@@ -49,7 +49,7 @@ local hasImgui = (imgui ~= nil);
 -- Deps from gearui (M.configure). Everything the rows act on arrives here, so this
 -- module never reaches into gearui's chunk and never requires anything GRD5 bans.
 --   ui, COL            -- the shared UI state table + the palette
---   sf                 -- gear\syncflags (flags.debug / .autosync / .viewids)
+--   sf                 -- gear\syncflags (flags.debug / .autosync / .viewids / .gearwarn)
 --   optim              -- gear\gearoptim (buildAtMaxLevel), optional
 --   callImport(kind)   -- the debug Scan/Stage/Commit path
 --   dumpAugs()         -- the debug Augs dump (NEVER require feature\augments: GRD5)
@@ -411,6 +411,16 @@ local function renderSettingsBody()
             'On (default): importing a job that carries stat weights rebuilds its sets\nfrom YOUR gear the moment it lands -- the point of the empty shells an\nexport ships by default.\nOff: the import lands exactly as exported, gear and all. Auto-Build All on\nthe Sets tab still does the re-solve on demand. (Same switch as\n/dl autobuildimport.)',
             function() return sf.flags.autobuildimport ~= false; end,
             function(v) sf.flags.autobuildimport = v; end);
+
+        settingCheck('gearwarn', 'Warn about gear in storage',
+            'Warns you if any gear assigned to sets that are assigned to trigger rules\nare not available in the field.\nWill warn you once per main job change.\n(Same switch as /dl gearwarn.)',
+            function() return sf.flags.gearwarn ~= false; end,
+            function(v)
+                sf.flags.gearwarn = v;
+                -- Ticking it back on re-arms the once-per-job gate: the answer
+                -- should come on the job you are standing on, not the next one.
+                if v then pcall(function() require("dlac\\gear\\gearcheck").rearm(); end); end
+            end);
 
         settingCheck('debug', 'Debug mode',
             'Reveal the developer tools: the Scan / Stage / Commit / Augs rows in this\nmenu, plus extra chat output. (Same switch as /dl debug.)',

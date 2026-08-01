@@ -7803,6 +7803,94 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- GCJ. THE ONCE-PER-MAIN-JOB CHAT GATE (2026-08-01). chatWarn rides the
+--      auto-sync cadence, which fires on job change AND ~5s after every
+--      inventory settle -- and the signature dedup could not hold that back,
+--      because moving a piece moves the availability counts the signature is
+--      built from. Henrik, in the field: "only inform me once, and only once,
+--      until I change main job." So: one automatic report per MAIN job (a sub
+--      job change is not a re-arm -- the audit is main-job scoped), gated by
+--      the "Warn about gear in storage" Setting, with /dl gearcheck (force)
+--      always answering. The other law here is that an audit which could not
+--      RUN never spends the gate: login hands us an empty model, and a gate
+--      spent on that would silence the real answer for the whole job.
+-- ---------------------------------------------------------------------------
+(function()
+    -- chatfmt is captured at LOAD time, so the stub goes in first.
+    local lines = {};
+    local savedCF = package.loaded['dlac\\chatfmt'];
+    package.loaded['dlac\\chatfmt'] = {
+        warn  = function(s) lines[#lines + 1] = tostring(s); end,
+        msg   = function(s) lines[#lines + 1] = tostring(s); end,
+        print = function() end,
+    };
+    local gcm = dofile('gear/gearcheck.lua');
+    package.loaded['dlac\\chatfmt'] = savedCF;
+
+    local savedGI = package.loaded['dlac\\gear\\gearimport'];
+    package.loaded['dlac\\gear\\gearimport'] = {
+        ownedSplit = function()
+            return { avail = { [77] = 0 }, total = { [77] = 1 }, where = { [77] = { [5] = 1 } } };
+        end,
+        containerName = function() return 'Mog Safe'; end,
+    };
+
+    local job, on, modelReady = 5, true, true;
+    gcm.configure({
+        setsRoot = function() return { Dynamic = { WarnSet = { Body = 'Stored Robe' } } }; end,
+        lookupByName = function(nm) return (nm == 'Stored Robe') and { Id = 77 } or nil; end,
+        model = function()
+            return modelReady and { HandleDefault = { { set = 'WarnSet' } } } or nil;
+        end,
+        warnEnabled = function() return on; end,
+        mainJob = function() return job; end,
+    });
+
+    -- One call, and what it said (empty string = it stayed silent).
+    local function say(force)
+        lines = {};
+        gcm.chatWarn(force);
+        return table.concat(lines, '\n');
+    end
+
+    local first = say(false);
+    check('GCJ1 the first automatic report on a main job speaks', first ~= '', true);
+    check('GCJ1b ...and it is the retrieve advice',
+        first:find('please retrieve if needed', 1, true) ~= nil, true);
+    check('GCJ2 the next inventory settle stays silent', say(false), '');
+    check('GCJ2b ...and the one after that too', say(false), '');
+
+    job = 9;   -- a MAIN job change re-arms it
+    check('GCJ3 a new main job speaks again', say(false) ~= '', true);
+    check('GCJ3b ...once', say(false), '');
+
+    -- /dl gearcheck is an explicit question: it always answers, same job or not.
+    check('GCJ4 force answers on the same job', say(true) ~= '', true);
+    check('GCJ4b ...and does not re-open the automatic gate', say(false), '');
+
+    -- The Setting silences the automatic report only.
+    job, on = 12, false;
+    check('GCJ5 the Setting off silences a fresh job', say(false), '');
+    check('GCJ5b ...while /dl gearcheck still answers', say(true) ~= '', true);
+
+    -- Pre-login / mid-zone: the model is not there yet. Silent, and the gate is
+    -- NOT spent -- the first real audit for this job must still get through.
+    job, on, modelReady = 13, true, false;
+    check('GCJ6 an audit that cannot run says nothing', say(false), '');
+    modelReady = true;
+    check('GCJ6b ...and never spent the gate', say(false) ~= '', true);
+
+    -- rearm() is what /dl gearwarn on and the Settings tick call, so the answer
+    -- lands on the job you are standing on instead of the next one.
+    check('GCJ7 armed again after the report', say(false), '');
+    gcm.rearm();
+    check('GCJ7b rearm re-opens it on the SAME job', say(false) ~= '', true);
+
+    gcm.configure(nil);
+    package.loaded['dlac\\gear\\gearimport'] = savedGI;
+end)();
+
+-- ---------------------------------------------------------------------------
 -- AKF. THE FALL (ADR 0027, stage 2 -- M.reserveResolve + the FELL branch in
 --      equipResolved). The deferred half of the v135 ruling: an ineligible
 --      piece falls down its source ladder, each rung re-judged; a reserved
@@ -7907,6 +7995,159 @@ end)();
     local _, bt = dispatchM._equipResolved({ Body = 'Bronze Harness' },
         { reserveReplace = { Body = { from = 'Royal Cloak', to = 'Scorpion Harness +1', by = 'Head' } } });
     check('AKF10 a different writer in the slot flows through untouched', bt.Body, 'Bronze Harness');
+end)();
+
+-- ---------------------------------------------------------------------------
+-- UA. AVAILABILITY, THE ARBITER'S SECOND REFUSAL REASON (Henrik, 2026-08-01:
+--     "It is FINE if claimants file ladders where some of the pieces are
+--     ineligible. Therefore it is more important to have this intelligence in
+--     arbiter"). Field case: a Lv75 BRD parks a Minstrel's Coat in the Mog Safe
+--     and lowers his level until the Coat is the set's best Body -- it won the
+--     ladder and then died silently in planSet's bag scan, with the rung below
+--     it never asked. Same fall machinery, second reason.
+-- ---------------------------------------------------------------------------
+(function()
+    local ARB = require('dlac\\gear\\arbiter');
+    local HEAD = 0x0010;
+    local function look(masks) return function(n) return masks[n] or 0; end end
+    local function ladders(map)
+        return function(src, slot)
+            local names = map[src] and map[src][slot] or nil;
+            if names == nil then return nil; end
+            local items = {};
+            for _, n in ipairs(names) do items[#items + 1] = { name = n }; end
+            return { items = items };
+        end
+    end
+    -- `stored` names the pieces sitting in a bag you cannot equip out of.
+    local function bag(stored, unknown)
+        return function(n)
+            if unknown ~= nil and unknown[n] then return nil; end
+            return not stored[n];
+        end
+    end
+    local NOMASK = look({});
+    local idle   = { { prio = 20, set = { Body = 'Minstrel\'s Coat' }, src = 'IdleSet' } };
+    local lad    = ladders({ IdleSet = { Body = { 'Minstrel\'s Coat', 'Gold Harness' } } });
+
+    -- UA1: availVerdict refuses ONLY on an explicit false.
+    local fl = dispatchM.reserveFloor(idle);
+    check('UA1 a stored piece is refused',
+        ARB.availVerdict(fl, bag({ ['Minstrel\'s Coat'] = true })).Body, 'Minstrel\'s Coat');
+    check('UA1b a held piece is not', ARB.availVerdict(fl, bag({})), nil);
+    check('UA1c an UNKNOWN answer never refuses -- the char-select/zoning leg',
+        ARB.availVerdict(fl, bag({}, { ['Minstrel\'s Coat'] = true })), nil);
+    check('UA1d no read at all never refuses', ARB.availVerdict(fl, nil), nil);
+
+    -- UA2: THE FIELD CASE -- the stored Coat falls to the rung he can wear.
+    local sup, inel, rep, fall = dispatchM.reserveResolve(idle, NOMASK, lad,
+        bag({ ['Minstrel\'s Coat'] = true }));
+    check('UA2 the stored pick falls to the next rung', rep.Body.to, 'Gold Harness');
+    check('UA2b the trace names the piece he authored', rep.Body.from, 'Minstrel\'s Coat');
+    check('UA2c and says WHY it fell', rep.Body.why, 'unavail');
+    check('UA2d no slot beat it -- nothing did', rep.Body.by, nil);
+    check('UA2e nothing is ineligible', inel, nil);
+    check('UA2f nothing is suppressed', sup, nil);
+    check('UA2g the slot is not dead', fall.dead, nil);
+
+    -- UA3: the Monitor's third depth -- EVERY refused rung, with its reason.
+    check('UA3 the refused rung is recorded', fall.refused.Body[1].name, 'Minstrel\'s Coat');
+    check('UA3b with its reason', fall.refused.Body[1].why, 'unavail');
+
+    -- UA4: the whole ladder is stored -> nothing to fall to. No replacement,
+    -- the slot reads dead, and NOTHING is killed: planSet cannot locate the
+    -- name either, so the slot keeps what is worn (Henrik's ruling 3).
+    sup, inel, rep, fall = dispatchM.reserveResolve(idle, NOMASK, lad,
+        bag({ ['Minstrel\'s Coat'] = true, ['Gold Harness'] = true }));
+    check('UA4 a fully stored ladder invents no replacement', rep, nil);
+    check('UA4b the slot reads dead', fall.dead.Body, 'Minstrel\'s Coat');
+    check('UA4c and is NOT ineligible (nothing reserved anything)', inel, nil);
+    check('UA4d both refused rungs are on the record', #fall.refused.Body, 2);
+
+    -- UA5: an unavailable RESERVER suppresses nothing. A Coat rotting in the
+    -- Mog Safe is not on your body, so it must not hold Head empty from a slot
+    -- it can never occupy -- the same law reserveVerdict states for a refused
+    -- piece, applied to the other reason.
+    local pair = {
+        { prio = 10, set = { Head = 'Silver Hairpin' }, src = 'LowSet' },
+        { prio = 20, set = { Body = 'Royal Cloak' },    src = 'IdleSet' },
+    };
+    local cloak = look({ ['Royal Cloak'] = HEAD });
+    sup, inel, rep, fall = dispatchM.reserveResolve(pair, cloak,
+        ladders({ IdleSet = { Body = { 'Royal Cloak' } } }), bag({ ['Royal Cloak'] = true }));
+    check('UA5 a stored reserver holds nothing empty', sup, nil);
+    check('UA5b and the hairpin keeps its slot', rep, nil);
+    check('UA5c while the reserver itself reads dead', fall.dead.Body, 'Royal Cloak');
+    -- ...and the control: held, it suppresses exactly as it always did.
+    sup = dispatchM.reserveResolve(pair, cloak,
+        ladders({ IdleSet = { Body = { 'Royal Cloak' } } }), bag({}));
+    check('UA5d the SAME reserver in your bags still claims Head empty', sup.Head, 'Royal Cloak');
+
+    -- UA6: both reasons at once -- 'unavail' wins the label, because "it
+    -- reserves a slot owned above" is a misleading thing to print about a piece
+    -- sitting in the Mog Safe.
+    sup, inel, rep, fall = dispatchM.reserveResolve({
+        { prio = 20, set = { Body = 'Royal Cloak' },  src = 'IdleSet' },
+        { prio = 25, set = { Head = 'Genbu Kabuto' }, src = 'MoveSet' },
+    }, cloak, ladders({ IdleSet = { Body = { 'Royal Cloak', 'Gold Harness' } } }),
+       bag({ ['Royal Cloak'] = true }));
+    check('UA6 it still falls', rep.Body.to, 'Gold Harness');
+    check('UA6b and the harder fact is the one reported', rep.Body.why, 'unavail');
+
+    -- UA7: OMITTING the read is byte-identical to life before availability --
+    -- the guarantee every direct caller (immediate equips, headless suites)
+    -- rides on.
+    local s1, i1, r1, f1 = dispatchM.reserveResolve(idle, NOMASK, lad);
+    check('UA7 no read -> nothing refused', i1, nil);
+    check('UA7b no fall record either', f1, nil);
+    check('UA7c and no replacement', r1, nil);
+    check('UA7d nothing suppressed', s1, nil);
+
+    -- UA8: the FELL branch in the real equipResolved says which reason it was.
+    dispatchM.setLock('all', false);
+    local fn = dispatchM._equipResolved({ Body = 'Minstrel\'s Coat' },
+        { reserveReplace = { Body = { from = 'Minstrel\'s Coat', to = 'Gold Harness',
+                                      why = 'unavail' } } });
+    check('UA8 the note names the availability fall',
+        fn:find('not in an equippable bag', 1, true) ~= nil, true);
+    check('UA8b and never claims a reservation that did not happen',
+        fn:find('reserves', 1, true), nil);
+    local rn = dispatchM._equipResolved({ Body = 'Royal Cloak' },
+        { reserveReplace = { Body = { from = 'Royal Cloak', to = 'Gold Harness', by = 'Head' } } });
+    check('UA8c a reserve fall keeps its own wording',
+        rn:find('reserves Head -- owned above', 1, true) ~= nil, true);
+
+    -- UA9: availPick -- the SINGLE-LADDER form, for the Sets tab preview
+    -- (Henrik, 2026-08-01: the panel highlighted a Coat in his Mog Locker as
+    -- the chosen piece while the engine wore the Royal Cloak below it). Same
+    -- rule, same three-valued read, one copy of it.
+    local rungs = { { name = 'Minstrel\'s Coat' }, { name = 'Royal Cloak' }, { name = 'Gold Harness' } };
+    local i, ref = ARB.availPick(rungs, bag({}));
+    check('UA9 nothing stored -> the authored pick stands', i, 1);
+    check('UA9b and nothing is refused', ref, nil);
+    i, ref = ARB.availPick(rungs, bag({ ['Minstrel\'s Coat'] = true }));
+    check('UA9c a stored head falls to the rung below it', i, 2);
+    check('UA9d the refusal is recorded', ref[1].name, 'Minstrel\'s Coat');
+    check('UA9e with its reason', ref[1].why, 'unavail');
+    i, ref = ARB.availPick(rungs, bag({ ['Minstrel\'s Coat'] = true, ['Royal Cloak'] = true }));
+    check('UA9f it keeps walking down', i, 3);
+    check('UA9g refusing each rung on the way', #ref, 2);
+    i, ref = ARB.availPick(rungs, bag({ ['Minstrel\'s Coat'] = true, ['Royal Cloak'] = true,
+                                        ['Gold Harness'] = true }));
+    check('UA9h a fully stored ladder picks NOTHING', i, nil);
+    check('UA9i and says so for every rung', #ref, 3);
+    -- The fail-open legs, which matter more here than in the engine: this runs
+    -- on the render path, so a not-ready read must never blank the panel.
+    check('UA9j no read at all -> the authored pick', (ARB.availPick(rungs, nil)), 1);
+    check('UA9k an UNKNOWN answer never refuses',
+        (ARB.availPick(rungs, bag({}, { ['Minstrel\'s Coat'] = true }))), 1);
+    check('UA9l a thrown read never refuses',
+        (ARB.availPick(rungs, function() error('boom'); end)), 1);
+    -- Shape tolerance: plain strings are a ladder too, and garbage is not a crash.
+    check('UA9m plain-string rungs work',
+        (ARB.availPick({ 'Minstrel\'s Coat', 'Royal Cloak' }, bag({ ['Minstrel\'s Coat'] = true }))), 2);
+    check('UA9n a non-table ladder answers nothing', (ARB.availPick(nil, bag({}))), nil);
+    check('UA9o an empty ladder answers nothing', (ARB.availPick({}, bag({}))), nil);
 end)();
 
 -- ---------------------------------------------------------------------------
@@ -8241,6 +8482,38 @@ end)();
         dispatchM._recordDecision('Default', {}, { Body = 'It' .. i }, nil);
     end
     check('DR8 the ring caps at DECISION_CAP', #dispatchM.getDecisions(), dispatchM.DECISION_CAP);
+
+    -- DR9-DR12: THE RECEIPT (2026-08-01). recordDecision used to REBUILD the
+    -- rung list from contest.src, which only the trigger floor writes -- so a
+    -- claimant's fall had no rungs to show at all. contest.asked is the ladder
+    -- the arbitration was actually handed; it wins, and the derivation is left
+    -- to fill in the slots nothing was refused in.
+    local kept = { Head = { set = 'HELM', items = { 'Wynav\'s Hat', 'Federation Tiara' } } };
+    dispatchM._recordDecision('Default', {}, { Head = 'Federation Tiara' },
+        { asked = kept });
+    local drr = dispatchM.getDecisions();
+    local dlast = drr[#drr];
+    check('DR9 a claimant ladder reaches the record at all',
+        dlast.ladders.Head.items[1], 'Wynav\'s Hat');
+    check('DR9b named by its claimant, not by a set', dlast.ladders.Head.set, 'HELM');
+    -- DR10: contest.src alone (no receipt) keeps the derivation path -- the
+    -- uncontested slots that never asked anyone for a ladder.
+    dispatchM._recordDecision('Default', {}, { Head = 'Derived Only' },
+        { src = { Head = 'NoSuchSet' } });
+    drr = dispatchM.getDecisions();
+    check('DR10 no receipt and no derivable set -> no ladder, never a crash',
+        drr[#drr].ladders, nil);
+    -- DR11: both present -> the receipt wins. The derivation re-asks LATER and
+    -- can answer differently (a bag moved, the level changed) than the list the
+    -- decision was actually made from.
+    dispatchM._recordDecision('Default', {}, { Head = 'Federation Tiara' },
+        { src = { Head = 'NoSuchSet' }, asked = kept });
+    drr = dispatchM.getDecisions();
+    check('DR11 the receipt beats the re-derivation', drr[#drr].ladders.Head.set, 'HELM');
+    -- DR12: a torn/absent receipt is simply not there.
+    dispatchM._recordDecision('Default', {}, { Head = 'Bare' }, { asked = 'nonsense' });
+    drr = dispatchM.getDecisions();
+    check('DR12 a malformed receipt records no ladder', drr[#drr].ladders, nil);
 
     -- WW: the worldAbsentOutlasted seam (v153) -- the stream's lifetime gate.
     -- Bookkeeping must run UNARMED (nothing is armed here), and the boolean
@@ -15434,6 +15707,7 @@ end)();
     });
     sf.flags.debug, sf.flags.autosync, sf.flags.viewids = true, false, true;
     sf.flags.autobuildimport = false;      -- the 2026-07-27 opt-out
+    sf.flags.gearwarn = false;             -- the 2026-08-01 opt-out
     sf.saveUiFlags();
     check('UIF2 wrote to the mode-aware home', wrote.path, 'X:\\char\\dlac\\uiflags.lua');
     check('UIF3 emitted text parses', (function()
@@ -15445,6 +15719,7 @@ end)();
     check('UIF5 autosync round-trips', t.autosync, false);
     check('UIF6 viewids round-trips',  t.viewids,  true);
     check('UIF6a autobuildimport round-trips', t.autobuildimport, false);
+    check('UIF6b gearwarn round-trips', t.gearwarn, false);
     check('UIF7 openui round-trips',   t.openui,   'job');
     check('UIF8 openui is a STRING',   type(t.openui), 'string');
     check('UIF9 showall round-trips',  t.showall,  false);
@@ -15470,7 +15745,7 @@ end)();
     _G.loadfile = function() return function()
         return { debug = false, autosync = true, viewids = false,
                  openui = 'login', showall = true, gfscale = 2.0,
-                 autobuildimport = false };
+                 autobuildimport = false, gearwarn = false };
     end; end
     sf2.configure({
         dataDir = function() return 'X:\\char\\dlac\\'; end,
@@ -15486,6 +15761,7 @@ end)();
     check('UIF17 autosync loads', sf2.flags.autosync, true);
     check('UIF18 viewids loads',  sf2.flags.viewids,  false);
     check('UIF18a autobuildimport loads', sf2.flags.autobuildimport, false);
+    check('UIF18b gearwarn loads', sf2.flags.gearwarn, false);
 
     -- Absent keys keep their defaults -- an old uiflags.lua written before this
     -- slice must not start opening windows or flipping Show all.
@@ -15509,6 +15785,9 @@ end)();
     -- must keep auto-building on import, or a dlac update would silently change
     -- what an import does to everybody who never asked for the opt-out.
     check('UIF21a absent autobuildimport stays ON', sf3.flags.autobuildimport, true);
+    -- Same rule for the 2026-08-01 key: an install that never opted out keeps
+    -- being warned about trigger gear parked in storage.
+    check('UIF21a2 absent gearwarn stays ON', sf3.flags.gearwarn, true);
 
     -- The gate itself lives in gearui's afterImport hook, which needs imgui and a
     -- logged-in character to reach. Pin it at the source instead of not at all:

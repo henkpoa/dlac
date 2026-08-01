@@ -243,8 +243,96 @@ function M.reserveVerdict(floor, lookup)
     return suppressed, ineligible;
 end
 
+-- ---------------------------------------------------------------------------
+-- AVAILABILITY (Henrik's ruling, 2026-08-01) -- the SECOND refusal reason.
+-- ---------------------------------------------------------------------------
+-- "It is FINE if claimants file ladders where some of the pieces are
+-- ineligible. Therefore it is more important to have this intelligence in
+-- arbiter."
+--
+-- THE FIELD CASE. A Lv75 character parks a Minstrel's Coat in the Mog Safe and
+-- lowers his level until the Coat is his set's best-by-level Body. It wins the
+-- ladder, is written into the plan -- and then dies silently in
+-- equipcore.planSet, which first-fits the name over a snapshot of the
+-- EQUIP-ELIGIBLE bags only (gearoracle.equipBags: Inventory + the 8 Wardrobes).
+-- A stored piece is not in that snapshot, so the entry resolves to no index and
+-- nothing is sent; the slot keeps whatever was worn. The rung BELOW the Coat --
+-- the piece he can actually wear -- is never asked, because by then the ladder
+-- is gone.
+--
+-- The whole selection chain asks LEVEL and never asks the BAG (utils.slotLadder
+-- gates on item level / mode / sub-pairing; resolveVirtual's chain walks on
+-- usableAt(level); mpRungs on level + pair). This is that missing question,
+-- asked ONCE, where the ladders already are -- so a claimant never has to
+-- populate another field, and a claimant added tomorrow inherits the fall
+-- without meeting it. The design ratified exactly this
+-- (docs/design/two-way-arbiter.md 4.3): "Usability is a constraint, not a
+-- location failure... refused not-owned DURING the arbitration, where rung 2
+-- is still alive -- today it silently dies in planSet's bag scan."
+--
+-- have(name) -> true / false / nil. THREE-VALUED, and the nil leg carries the
+-- safety: the bag scan is unreadable at character select, mid-zone and during a
+-- load, and a two-valued read would answer "you own nothing" at precisely those
+-- moments and strip every slot of every set. ONLY an explicit false refuses;
+-- unknown never does (ownedcache's law -- a failed lookup must never take a
+-- feature away). The caller owns its own sentinels: the merged floor also
+-- carries '(free equip)' and lock-held worn names, and a `have` that cannot
+-- recognise a name must answer nil for it.
+-- Returns { [slot] = name } for floor slots whose piece cannot be equipped, or
+-- nil. Pure (tests UA*).
+function M.availVerdict(floor, have)
+    if type(floor) ~= 'table' or type(have) ~= 'function' then return nil; end
+    local out = nil;
+    for slot, e in pairs(floor) do
+        if type(e) == 'table' and type(e.name) == 'string' then
+            local ok, v = pcall(have, e.name);
+            if ok and v == false then
+                out = out or {};
+                out[slot] = e.name;
+            end
+        end
+    end
+    return out;
+end
+
+-- The SINGLE-LADDER form of the same question (2026-08-01, for the Sets tab).
+-- The fall below judges a MERGED FLOOR -- every slot at once, reservations and
+-- rank included -- which a preview cannot have: it is looking at one slot of a
+-- set that may not even be the set in play. But the availability rule it needs
+-- is the same rule, and the point of putting this in the arbiter was that the
+-- rule exists ONCE. So the preview asks here rather than growing its own copy.
+--
+-- Deliberately answers the AVAILABILITY question only. Whether a rung loses to
+-- a reservation, a rank or another claimant depends on the other fifteen slots
+-- and on what is active right now; the Sets tab cannot know that and must not
+-- guess at it. That half is the Arbiter Monitor's to report.
+--
+-- items -- a ladder's rungs: { {name=...}, ... } or plain name strings.
+-- have  -- availVerdict's read, same three-valued contract (only an explicit
+--          false refuses; unknown and unreadable both pass).
+-- Returns (index, refused): the first rung that can actually be equipped, and
+-- the ordered { {name, why}, ... } list of the ones above it that cannot. A nil
+-- index means nothing on the ladder is available -- the caller shows no pick,
+-- which is exactly what the engine will do with that slot (it keeps what is
+-- worn). Pure (tests UA9*).
+function M.availPick(items, have)
+    if type(items) ~= 'table' then return nil, nil; end
+    local refused = nil;
+    for i, r in ipairs(items) do
+        local nm = (type(r) == 'table') and r.name or r;
+        if type(nm) == 'string' then
+            local ok, v = true, nil;
+            if type(have) == 'function' then ok, v = pcall(have, nm); end
+            if not (ok and v == false) then return i, refused; end   -- only an explicit false refuses
+            refused = refused or {};
+            refused[#refused + 1] = { name = nm, why = 'unavail' };
+        end
+    end
+    return nil, refused;
+end
+
 -- THE FALL (ADR 0027, stage 2 -- the deferred half of the v135 ruling: "go
--- for the next available piece"). An INELIGIBLE piece no longer strands its
+-- for the next available piece"). A REFUSED piece no longer strands its
 -- slot: its source set's LADDER is asked for the next rung, the verdict
 -- re-judges the amended floor, and the loop runs to a fixed point. The two
 -- directions of the multi-slot law, now both built:
@@ -262,31 +350,111 @@ end
 -- ladderOf(src, slot) -> the slot's ladder ({ items = { {name=...},... } })
 --            -- dispatch.candidatesFor in the live wiring; injected so tests
 --            AKF* drive it with plain tables.
--- Returns (suppressed, ineligible, replaced):
---   replaced[slot] = { from, to, by } -- the ORIGINAL pick, the rung that
---   passed, and the slot that beat the original (for the trace). A slot
---   whose every offered rung failed keeps its ineligible entry and gets NO
---   replaced record -- the equip path kills it exactly as v135 did.
+-- have    -- the availability read (M.availVerdict above). OPTIONAL: omitted,
+--            every line below behaves exactly as it did before availability
+--            existed, which is what keeps the direct callers (immediate
+--            equips, headless suites) byte-identical.
+-- Returns (suppressed, ineligible, replaced, fall):
+--   replaced[slot] = { from, to, by, why } -- the ORIGINAL pick, the rung that
+--   passed, the slot that beat the original (reserve refusals only; nil for an
+--   availability refusal, which no slot won) and WHY the original was refused
+--   ('reserve' | 'unavail'). A slot whose every offered rung failed keeps its
+--   refusal and gets NO replaced record.
+--   fall = { refused = { [slot] = { {name, why}, ... } }, dead = { [slot]=name } }
+--   -- the DISPLAY record (Henrik: "represent the reasons in the arbiter
+--   monitor properly"): every rung refused for that slot in the order they were
+--   refused, so the Monitor can strike each one through with its reason instead
+--   of showing only the survivor; `dead` names the slots left with nothing to
+--   fall to. Purely informational -- an availability-dead slot needs no
+--   enforcement, because planSet cannot locate that name either and leaves the
+--   slot alone by itself (Henrik's ruling 3: keep what is worn).
 -- Cap: three verdict re-runs. Refusals only accumulate (each slot's tried
 -- set grows monotonically), so the loop terminates on its own; the cap is
 -- the backstop against a pathological reserver chain, and a slot still
 -- ineligible when it trips reads INELIGIBLE in /dl why -- visible, never
 -- silent.
-function M.reserveResolve(entries, lookup, ladderOf)
+function M.reserveResolve(entries, lookup, ladderOf, have)
     local floor = M.reserveFloor(entries);
-    local sup, inel = M.reserveVerdict(floor, lookup);
-    if inel == nil or type(ladderOf) ~= 'function' then return sup, inel, nil; end
+
+    local fall = nil;
+    local function noteRefusal(slot, why)
+        local e = floor[slot];
+        if type(e) ~= 'table' or type(e.name) ~= 'string' then return; end
+        fall = fall or { refused = {} };
+        local list = fall.refused[slot];
+        if list == nil then list = {}; fall.refused[slot] = list; end
+        for _, r in ipairs(list) do if r.name == e.name then return; end end
+        list[#list + 1] = { name = e.name, why = why };
+    end
+
+    -- A slot with nothing left to fall to, named by the piece the PLAYER
+    -- AUTHORED rather than by the last rung the fall happened to reach. After
+    -- a two-rung walk the floor holds rung 3, but "Gold Harness is not in your
+    -- bags" is not the sentence anyone needs -- the question being asked is
+    -- always about the piece that was put in the set. refused[slot][1] is that
+    -- piece by construction (the list is append-ordered from the first
+    -- refusal); the floor name is the fallback for a slot refused on round one.
+    local function markDead(unav)
+        fall = fall or { refused = {} };
+        local dead = {};
+        for slot, name in pairs(unav) do
+            local first = fall.refused[slot];
+            dead[slot] = (first ~= nil and first[1] ~= nil) and first[1].name or name;
+        end
+        fall.dead = dead;
+    end
+
+    -- ONE judgement, run before the loop and again after every fall.
+    -- Availability is decided FIRST and the unavailable slots are hidden from
+    -- the dominance view: a piece that cannot be equipped is not on your body,
+    -- so it must neither DEFEND its slot nor RESERVE another one. That is the
+    -- same law reserveVerdict already states for a refused piece ("an
+    -- ineligible piece is not being worn; it reserves nothing") -- applied to
+    -- the other refusal reason. Without it a Minstrel's Coat rotting in the Mog
+    -- Safe would still hold Head empty from a slot it can never occupy.
+    local function judge()
+        local un = M.availVerdict(floor, have);
+        local view = floor;
+        if un ~= nil then
+            view = {};
+            for slot, e in pairs(floor) do
+                if un[slot] == nil then view[slot] = e; end
+            end
+        end
+        local s, i = M.reserveVerdict(view, lookup);
+        return s, i, un;
+    end
+
+    local sup, inel, unav = judge();
+    if unav ~= nil then for slot in pairs(unav) do noteRefusal(slot, 'unavail'); end end
+    if inel ~= nil then for slot in pairs(inel) do noteRefusal(slot, 'reserve'); end end
+    if (inel == nil and unav == nil) or type(ladderOf) ~= 'function' then
+        if unav ~= nil then markDead(unav); end
+        return sup, inel, nil, fall;
+    end
+
     local replaced, tried = nil, {};
     for _ = 1, 3 do
         local changed = false;
-        for slot, beatenBy in pairs(inel) do
+        -- The two refusals share ONE worklist and ONE fall. `unavail` is
+        -- written last so it wins the reason when a rung is refused both ways:
+        -- a piece you do not have is the harder fact, and "it reserves a slot
+        -- owned above" would be a misleading thing to print about a piece
+        -- sitting in your Mog Safe.
+        local todo = {};
+        if inel ~= nil then for slot, by in pairs(inel) do todo[slot] = { why = 'reserve', by = by }; end end
+        if unav ~= nil then for slot in pairs(unav) do todo[slot] = { why = 'unavail' }; end end
+        for slot, ref in pairs(todo) do
             local e = floor[slot];
             if type(e) == 'table' and e.src ~= nil then
                 if tried[slot] == nil then tried[slot] = { [e.name] = true }; end
-                local from = (replaced ~= nil and replaced[slot] ~= nil)
-                             and replaced[slot].from or e.name;
-                local by = (replaced ~= nil and replaced[slot] ~= nil)
-                             and replaced[slot].by or beatenBy;
+                local prev = (replaced ~= nil) and replaced[slot] or nil;
+                -- from / by / why all describe the ORIGINAL refusal: the rung
+                -- the player authored is the one worth naming, however many
+                -- times the slot fell after it.
+                local from = (prev ~= nil) and prev.from or e.name;
+                local by   = (prev ~= nil) and prev.by   or ref.by;
+                local why  = (prev ~= nil) and prev.why  or ref.why;
                 local lad = nil;
                 local lok, got = pcall(ladderOf, e.src, slot);
                 if lok then lad = got; end
@@ -305,23 +473,30 @@ function M.reserveResolve(entries, lookup, ladderOf)
                     tried[slot][nxt] = true;
                     floor[slot] = { name = nxt, prio = e.prio, src = e.src, row = e.row };
                     replaced = replaced or {};
-                    replaced[slot] = { from = from, to = nxt, by = by };
+                    replaced[slot] = { from = from, to = nxt, by = by, why = why };
                     changed = true;
                 end
             end
         end
         if not changed then break; end
-        sup, inel = M.reserveVerdict(floor, lookup);
-        if inel == nil then break; end
+        sup, inel, unav = judge();
+        if unav ~= nil then for slot in pairs(unav) do noteRefusal(slot, 'unavail'); end end
+        if inel ~= nil then for slot in pairs(inel) do noteRefusal(slot, 'reserve'); end end
+        if inel == nil and unav == nil then break; end
     end
-    -- A slot still ineligible after the loop must not read as replaced: its
-    -- last offered rung failed too, so the equip path kills it (v135's
-    -- behavior, INELIGIBLE note included).
-    if inel ~= nil and replaced ~= nil then
-        for slot in pairs(inel) do replaced[slot] = nil; end
+
+    -- A slot still refused after the loop must not read as replaced: its last
+    -- offered rung failed too. For a reserve refusal the equip path kills the
+    -- slot (v135's behavior, INELIGIBLE note included); for an availability
+    -- refusal it needs no kill -- planSet cannot locate the name either, so the
+    -- slot keeps what is worn on its own.
+    if replaced ~= nil then
+        if inel ~= nil then for slot in pairs(inel) do replaced[slot] = nil; end end
+        if unav ~= nil then for slot in pairs(unav) do replaced[slot] = nil; end end
         if next(replaced) == nil then replaced = nil; end
     end
-    return sup, inel, replaced;
+    if unav ~= nil then markDead(unav); end
+    return sup, inel, replaced, fall;
 end
 
 -- ---------------------------------------------------------------------------

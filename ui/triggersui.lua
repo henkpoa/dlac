@@ -74,7 +74,10 @@ function M.init(d)
                        -- the engine's ladder door (stage 5): the audit reads
                        -- each slot's head rung instead of raw store entries
                        candidatesFor = (hasDispatch and type(dsp.candidatesFor) == 'function')
-                           and function(s, sl) return dsp.candidatesFor(s, sl); end or nil });
+                           and function(s, sl) return dsp.candidatesFor(s, sl); end or nil,
+                       -- the "Warn about gear in storage" Setting (/dl gearwarn),
+                       -- read live: it gates the automatic chat report only
+                       warnEnabled = d.gearWarnEnabled });
     end);
 end
 

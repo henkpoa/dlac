@@ -228,7 +228,7 @@ return {
     [219] = { n = "Residential Area", t = 1, m = 4128, town = true },
     [220] = { n = "Ship bound for Selbina", t = 0, m = 2200 },
     [221] = { n = "Ship bound for Mhaura", t = 0, m = 2200 },
-    [222] = { n = "Provenance", t = 0, m = 4096 },
+    [222] = { n = "Provenance", t = 0, m = 4096, town = true },
     [223] = { n = "San dOria-Jeuno Airship", t = 2, m = 8 },
     [224] = { n = "Bastok-Jeuno Airship", t = 2, m = 8 },
     [225] = { n = "Windurst-Jeuno Airship", t = 2, m = 8 },

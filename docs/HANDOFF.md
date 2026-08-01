@@ -271,10 +271,96 @@ merge carries it **without asking him again**. Only he can move an entry to ACCE
 this does not make an accepted entry mergeable *alone*: `dev` promotes
 **whole-or-not-at-all**, so an accepted entry rides the next promotion of the whole branch.
 
-**The queue is empty.**
+- **The Sets tab previews what will be WORN, not merely what was authored** (`2026.08.01c`,
+  `gear/arbiter.lua` + `ui/gearui.lua`). The sibling of the entry below, and Henrik's
+  follow-up field report on it: with the Coat in his Mog Locker the panel still highlighted
+  it as the chosen piece while the engine equipped the Royal Cloak beneath it, which carried
+  no marking at all. Two causes stacked — the pick-highlight colour is tested BEFORE the
+  stored-red branch (`gearui.lua:3952`), so the highlight painted over the very warning that
+  explained it; and the preview had no availability notion at all, so it was on the wrong row
+  to begin with. Both fall out of one move: **the highlight follows the piece that will
+  actually be worn**, which frees the parked piece to read red with its existing *"IN
+  STORAGE: … (move to Inventory/Wardrobe to equip)"* tooltip — Henrik: *"it being red should
+  be fine."* Not a second copy of the rule: `arbiter.availPick` is the SINGLE-LADDER form of
+  the same refusal, same three-valued `have`, and the panel calls the same module the engine
+  does. **Deliberately narrow** — the panel answers the *availability* question only, because
+  that is the part that depends on the item alone; whether a rung loses to a reservation, a
+  rank or another claimant depends on the other fifteen slots and stays the Monitor's story.
+  **Set totals now score what you would actually wear** (Henrik: *"It is VERY important that
+  set totals are correct"*) — `workingComposition` uses the worn pick, one refusal further
+  along from the reserved-slot drop already there; the consequence is that the numbers move
+  as you shuffle bags and a set with parked pieces scores lower. The slot GRID and the
+  reserved-slot preview moved too, so grid and list cannot disagree and a Body in the Safe no
+  longer reserves your Head in the preview — it is not going on, so it takes nothing. Suites
+  **5410 + 925** on both interpreters (`UA9*`, `S16q–S16z3`); the Sets tab has no smoke drive
+  and this runs inside a pcall on the render path, so `avail`/`wornByLevel` are published to
+  `host.services` exactly as `rsv` is and the coverage is **mutation-verified** (stubbing the
+  refusal out turns S16w/S16x red).
+- **Gear availability is an ARBITER refusal** (`2026.08.01b`, engine v158 — `gear/arbiter.lua`
+  + `dispatch.lua` + `ui/arbmonui.lua`). Henrik's report: at Lv75 all is well; park a
+  Minstrel's Coat in the Mog Safe, lower your level until the Coat is the set's
+  best-by-level Body, and dlac picks a piece it cannot equip. The whole selection chain
+  asked **level** and never asked the **bag**, and availability was only discovered at the
+  end in `equipcore.planSet`, where the ladder is already gone — so nothing was sent, the
+  slot kept what was worn, and the rung below was never asked. His ruling, stated twice: the
+  check goes in the **arbiter, centrally**, and nowhere else — *"It is FINE if claimants file
+  ladders where some of the pieces are ineligible… which also saves us the trouble of adding
+  yet another field they need to populate."* `availVerdict(floor, have)` is a **second
+  refusal reason** riding the fall loop the v135 dominance verdict already rides, so no
+  claimant changed and every row with an `rladder` inherits it. Three laws not to re-derive:
+  an unavailable piece is **hidden from the dominance view** (not on your body → it neither
+  defends its slot nor reserves another); `have` is **three-valued** and an unreadable *or
+  empty* bag map answers `nil`, because a two-valued read would say "you own nothing" at char
+  select / mid-zone / mid-load and strip all sixteen slots; and a slot whose whole ladder is
+  refused is **not killed** — `planSet` cannot locate those names either, so it keeps what is
+  worn. The **receipt** rides along: `vLadderOf` is the one door every ladder passes through,
+  so it notes each down and `recordDecision` keeps that instead of rebuilding the rung list
+  from `contest.src` (floor-only, and re-asked later so it could disagree with the list that
+  decided). Monitor hover shows the **whole ladder with each refused rung struck through and
+  its reason**, the cell is marked without a hover (`*` second choice, `!` whole ladder
+  refused), and `/dl why <slot>` prints the same lines off the same record. Suites **5395 +
+  913** on both interpreters (`UA1–UA8`, `DR9–DR12`).
+- **The storage warning speaks once per main job, and it is a Setting** (`2026.08.01`,
+  `gear/gearcheck.lua` + `gear/syncflags.lua` + the Settings panel). Henrik's report: *"only
+  inform me once, and only once, until I change main job."* The **"…please retrieve if
+  needed"** line rides `automationsui.rescanAutogear`, which fires on job change **and ~5s
+  after every inventory settle**, and the signature dedup it relied on could not hold that
+  back — moving a piece moves the availability counts the signature is built from. Now:
+  one automatic report per **main job id** (a sub job change is deliberately *not* a re-arm
+  — the audit is main-job scoped, so the answer would be identical), `/dl gearcheck` always
+  answers and stamps the job so a manual check is not echoed seconds later by the next
+  auto-sync, and `M.audit()` returns `(warnings, ran)` so an audit that could not RUN
+  (no model, no bags — i.e. login) says nothing and **arms nothing**; a gate spent on
+  login's empty answer would silence the real one for the whole job. The Setting is
+  `gearwarn` — Menu > Settings > **"Warn about gear in storage"** or `/dl gearwarn
+  [on|off]`, default ON with the absent-key rule, silencing the *automatic* report only
+  (the Triggers tab section and `/dl gearcheck` still answer on demand); turning it back on
+  calls `gearcheck.rearm()` so the answer lands on the job you are standing on. Suites
+  **5360 + 913** on both interpreters (`GCJ1–GCJ7b` + the uiflags round-trip pins).
+  **NOT field-confirmed** — Henrik queued it on 2026-08-01 before the round; unlike the
+  usual queue bar this one still owes an in-game look, and it is a one-liner: change to a
+  job whose triggers name something parked in the Mog Safe, read the warning once, move
+  gear around, and confirm it stays quiet until the next main job change.
 
 
-*(Last emptied by the 2026-07-31 promotion — `4afec20`, `main` at `5d46bcb` before it: one
+*(Last emptied by the 2026-07-31 promotion — `bc581d1`, `main` at `4afec20` before it: two
+commits, `d982f91..dcc4eb1` — **the E-Box nudge and the Teleports float are one 36x36
+button**, `2026.07.31f` (the other commit is the `2026.07.31e` promotion record, written
+after that merge). The nudge asked for 40px of art and passed **no frame padding**, so
+ImageButton fell back to the style's `FramePadding` (4,3) and drew 48x46 — bigger than the
+Teleports float and not square; it now passes the long form with `NUDGE_SZ = 30` +
+`NUDGE_PAD = 3`, matching gearui's `TPF_ICON`/`TPF_PAD`. Suites **5343 + 913** on both
+interpreters, re-run **on the merged main** before the push.
+
+**Promoted NOT field-confirmed, on Henrik's explicit call** (*"push to origin main"*,
+2026-07-31) — the **third** promotion in one day under that override. Unlike the other two
+this one has no headless substitute: it is a pixel size, and eyes on a screen are the only
+test. **Still owed:** one look at a box with the crate and the Teleports float both on
+screen.
+
+The entry before it:*
+
+*(The 2026-07-31 promotion — `4afec20`, `main` at `5d46bcb` before it: one
 commit, `12531f1` — **reserved slots count against the piece that eats them**,
 `2026.07.31e`. Auto-build and `/dl best` scored a Royal/Vermillion Cloak in Body *and* a hat
 in the Head it eats; `optimizePicks` now takes `opts.reserves` and solves once per
@@ -489,8 +575,128 @@ research already recorded. In rough priority order:
 5. **Icon polish, optional:** the four developer rows share one question mark on their
    section heading rather than each carrying one. Trivial to change if it reads wrong.
 
-## Current state (as of 2026-07-31)
+## Current state (as of 2026-08-01)
 
+- **2026-08-01 (`2026.08.01b`, engine v158): gear availability is an ARBITER refusal —
+  FIELD-CONFIRMED, in the merge queue.**
+  Henrik's report: at Lv75 all is well; park a Minstrel's Coat in the Mog Safe, lower your
+  level until the Coat is the set's best-by-level Body, and dlac picks it — a piece it
+  cannot equip. Diagnosis: the whole selection chain asks **level** and never asks the
+  **bag** (`utils.slotLadder`, `resolveVirtual`'s chain walks, `mpRungs`), and availability
+  is only discovered at the very end in `equipcore.planSet`, whose locate pass first-fits
+  over the equip-eligible bags only. A stored piece simply is not there, so nothing is sent,
+  the slot keeps what was worn, and **the rung below it is never asked** — by then the
+  ladder is gone.
+  - **The ruling (Henrik, and he had to state it twice):** the check goes in the **arbiter,
+    centrally**, and nowhere else. *"It is FINE if claimants file ladders where some of the
+    pieces are ineligible… which also saves us the trouble of adding yet another field they
+    need to populate."* Do **not** put availability in the ladder builders, and do **not**
+    generalise this into an eligibility framework — *"everything is working fine as it is,
+    we just want to give it more intelligence… let's add arbiter's intelligence as we go and
+    need."*
+  - `gear/arbiter.availVerdict(floor, have)` is a **second refusal reason** riding the fall
+    loop the v135 dominance verdict already rides: refuse a rung → ask `ladderOf` for the
+    next → re-judge → fixed point. No claimant changed. Every row with an `rladder`
+    (Craft/HELM/Fishing/Chocobo) and the floor's `candidatesFor` inherit it.
+  - Three laws worth not re-deriving: an unavailable piece is **hidden from the dominance
+    view** (it is not on your body, so it neither defends its slot nor reserves another);
+    `have` is **three-valued** and an unreadable **or empty** bag map answers `nil`, because
+    a two-valued read would say "you own nothing" at char select / mid-zone / mid-load and
+    strip all sixteen slots; and a slot whose whole ladder is refused is **not killed** —
+    `planSet` cannot locate those names either, so it keeps what is worn.
+  - **The receipt:** `vLadderOf` is the one door every ladder passes through, so it now
+    notes each one down and `recordDecision` keeps *that* instead of rebuilding the rung
+    list afterwards from `contest.src` (floor-only, and re-asked later so it could answer
+    differently than the list that decided). The Monitor hover shows the **whole ladder with
+    each refused rung struck through and its reason**, marks the cell without a hover (`*` =
+    wearing its second choice, `!` = whole ladder refused), and `/dl why <slot>` prints the
+    same lines off the same record.
+  - Suites **5395 + 913**, both interpreters (`UA1–UA8`, `DR9–DR12`). **Field round run and
+    passed the same day** (Henrik: *"Works, thanks"*) — on `dev` and in the Ready-to-merge
+    queue above.
+  - **Follow-up the same day (`2026.08.01c`): the Sets tab was still lying about it.** The
+    engine fell correctly, but the panel highlighted the parked Coat as the chosen piece
+    while wearing the Royal Cloak below it. The preview now previews the WORN pick — see the
+    Ready-to-merge entry above for the shape and for the one behavioural consequence (Set
+    totals move as you shuffle bags). Henrik's scope line for it, worth keeping: the GUI
+    answers availability only; rank, claims and reservations stay the Monitor's to explain.
+
+- **2026-08-01 (`2026.08.01`): the storage warning speaks once per main job, and it is a
+  Setting.** Field report from Henrik: *"only inform me once, and only once, until I change
+  main job."* The **"…please retrieve if needed"** line (`gear/gearcheck.lua`) rides
+  `automationsui.rescanAutogear`, which fires on job change **and ~5s after every inventory
+  settle** — and the signature dedup it relied on could not hold that back, because moving a
+  piece moves the availability counts the signature is built from. So the same advice came
+  back all session, which is the fastest way to teach someone to read past a warning.
+  - **The gate is the main job id, and only that.** A sub job change is deliberately *not* a
+    re-arm: the audit walks the main job's triggers and sets, so `/NIN` under a new sub is
+    the same audit with the same answer. `/dl gearcheck` (force) always answers, and stamps
+    the job as told so a manual check is not echoed by the next auto-sync a few seconds
+    later.
+  - **The one law worth keeping.** `M.audit()` now returns `(warnings, ran)`, because
+    "nothing to warn about" and "no trigger model / no bags yet" both came back as an empty
+    list — and login hands you the second one. A gate spent on that empty answer would
+    silence the real one for the whole job (hard rule 11's shape, on a new surface), so an
+    audit that could not RUN says nothing and arms nothing.
+  - **The Setting** is `gearwarn` in `gear/syncflags.lua` — Menu > Settings > **"Warn about
+    gear in storage"**, or `/dl gearwarn [on|off]`, defaulting ON with the usual absent-key
+    rule (every `uiflags.lua` written before today lacks it and keeps the behavior it has).
+    Off silences the automatic report only: the Triggers tab's **Gear warnings** section and
+    `/dl gearcheck` still answer whenever asked. Turning it back on calls `gearcheck.rearm()`
+    so the answer lands on the job you are standing on, not the next one.
+  - Suites **5360 + 913**, both interpreters (new `GCJ1–GCJ7b`, plus the uiflags round-trip
+    pins). **On `dev` and in the Ready-to-merge queue above** (Henrik put it there on
+    2026-08-01, ahead of the round the queue normally requires) — **NOT field-confirmed**.
+    The round is one line long: change to a job whose triggers name something parked in the
+    Mog Safe, read the warning once, move some gear around, and confirm it stays quiet until
+    the next main job change.
+- **2026-08-01: FIELD ROUND OWED — foodwatch, and it is the whole task.** No code is in
+  flight and nothing is queued: `feature/foodwatch.lua` (`121af5b`, `2026.07.30g`) has been
+  **on `main` since `605045f`** and has **never once run in game**. It rode the Ashitacast
+  promotion because `dev` promotes whole-or-not, so the queue's field-confirmed bar was
+  *overridden*, not met — see the 2026-07-30g bullet below for the design and why each piece
+  is shaped the way it is. **This entry is the round itself**: what to do, what each step
+  proves, and which seam to suspect when one fails. Delete it when the round is done and
+  record the result in its place.
+  - **Artifacts before theory** (hard rule): the round's evidence is
+    `foodhistory.lua` in the character's live dir — `storagefile.charDir()`, which is the
+    **native** home and **changes with the active Profile as well as the character** (that is
+    deliberate: a profile switch must pick up *that* profile's history, not keep the old one
+    in memory). Find it by filename and trust the mtime. If a step below looks wrong, read
+    that file before forming a theory about the code.
+  - **The seven checks, in this order** — each one is the cheapest test of a distinct seam,
+    and later checks assume the earlier ones passed:
+    1. **Eat anything.** A row appears under the roster in the Menu popup, right name, right
+       icon. *Proves the whole spine at once* — OUT `0x037` → pending id → the FOOD effect
+       moving → `nameOf` → `_remember` → disk. Nothing appears? The packet handler and the
+       tick are separate registrations (`dlac-foodwatch-out`, `dlac-foodwatch-tick`); check
+       `foodhistory.lua` exists at all before suspecting either.
+    2. **Re-eat the same food while it is still up.** It must still register. *This is the
+       check the whole module is built around* — re-eating never flickers the icon, so
+       presence is not the signal and only the **expiry changing** can carry it. A failure
+       here means `GetStatusTimers()` is not pairing by index with `GetBuffs()` on this
+       client, and the module degrades honestly (records nothing) rather than lying — so the
+       symptom is a *missing* row, not a wrong one.
+    3. **Eat a second, different food.** Two rows, most recent first.
+    4. **Burn one stack to zero.** The row walks *past* the food you no longer carry to the
+       next one you still have, rather than sitting there dead. Inventory only — `/item`
+       reads nowhere else, so a food in the Mog Satchel is correctly invisible here.
+    5. **`/dl food 1`.** It actually eats. The row queues `r.cmd` through the chat manager,
+       so this is also the check that the `/item` string built from the client's own name is
+       the string `/item` accepts.
+    6. **Log out and back in, still under food.** `/dl food` must **name** what you are under
+       ("under Mithkabob (eaten 12m ago)"), not report a bare "food active". This is
+       Henrik's 2026-07-30 ruling working: dlac is always loaded, so an effect still up at
+       login is near-certainly the last food the file recorded.
+    7. **Both draw sites.** The Menu popup **and** the Teleports float — one definition
+       (`ui/menuui.renderFoodSection`) with geometry passed in, and the float is the one that
+       matters most, because "my food just wore off" happens mid-fight with the main window
+       shut.
+  - **Also worth one glance while you are in there:** `/dl food` with an empty history and
+    with food you have never eaten (nothing should draw at all, and the no-op must say
+    *which* of the two things went wrong — hard rule 12), and `/dl food forget`.
+  - **If the round turns up a fault**, the fix goes to `dev` like anything else — `main`
+    already carries this code, so a fault here is a bug on `main`, not an unreleased one.
 - **2026-07-31 (`2026.07.31f`): the E-Box nudge and the Teleports float are now the same
   36x36 button** (`ui\restockui.lua`). Henrik's second tester finally noticed the crate — and
   was annoyed by it, which is the feature working — but the two floats sit on the same screen
@@ -502,8 +708,10 @@ research already recorded. In rough priority order:
   shows through and only the size changed. The text fallback (PNG failed to load) is the same
   36 tall and takes its width from the label per the themed-font law, so a missing asset can
   no longer resize the stack or clip `At home`. **The two constants are duplicated across two
-  files — change them together or they drift.** Suites **5343 + 913**. On `dev`; not
-  field-confirmed, and eyes on a screen is the only way to confirm it.
+  files — change them together or they drift.** Suites **5343 + 913**. **ON MAIN**
+  (`bc581d1`) — promoted on Henrik's explicit call while **NOT field-confirmed**, and unlike
+  the two promotions before it there is no headless substitute here: it is a pixel size, and
+  eyes on a screen are the only test. **One look at a box is still owed.**
 - **2026-07-31 (`2026.07.31d`): "Copy from" learns the OTHER legacy engine —
   Ashitacast XML (`gear/acimport.lua`).** Suites **5320 + 908**, both interpreters.
   **ON MAIN** (`605045f`) — promoted on Henrik's explicit call while still **NOT
@@ -623,7 +831,9 @@ research already recorded. In rough priority order:
 - **2026-07-30 (`2026.07.30g`): what you last ate, and one click to eat it again
   (`feature/foodwatch.lua`).** Suites **5203 + 877**, both interpreters. **ON MAIN**
   (`605045f`, 2026-07-31) — it rode the Ashitacast promotion, because `dev` promotes
-  whole-or-not. Still **NOT field-confirmed**: an in-game pass is owed on this too.
+  whole-or-not. Still **NOT field-confirmed**: an in-game pass is owed on this too — and it
+  is now written up as a round to actually run, in the **2026-08-01 entry at the top of this
+  section**. This bullet is the design; that one is the checklist.
   - **The design problem was "what is food".** Nothing client-side answers it — the item
     resource calls a Mithkabob and a Potion the same thing (usable items), and the Catalog is
     gear-only. The server's answer is the only one: eating grants `xi.effect.FOOD` (251; 787

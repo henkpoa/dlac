@@ -981,6 +981,18 @@ Tp_Default uses Kraken Club in Main — it is in Mog Safe"). Fires on job change
 moves, `/dl gearcheck`, and renders a Triggers-tab warnings section. Deliberately
 self-contained so it can be cherry-picked to main independently of gearmove.
 
+The chat half speaks **once per main job** (2026-08-01) and only while the
+`gearwarn` Setting is on ("Warn about gear in storage" / `/dl gearwarn`). It rides the
+auto-sync cadence, which also fires ~5s after every inventory settle, and the older
+signature dedup could not hold that back — moving a piece moves the availability counts
+the signature is built from, so the same advice came back all session. A sub job change
+is deliberately not a re-arm (the audit is main-job scoped); `/dl gearcheck` (force)
+always answers and stamps the job so a manual check isn't echoed by the next auto-sync;
+`gearcheck.rearm()` re-opens the gate (what `/dl gearwarn on` and the Settings tick
+call). `M.audit()` returns `(warnings, ran)` — a `ran = false` audit (no deps, no trigger
+model, no bag read: login, character select, mid-zone) never spends the gate, because a
+gate spent on login's empty answer would silence the real one for the whole job.
+
 ### feature/augments.lua — CatsEyeXI augment decoder
 Decodes private augments from an item's `Extra` bytes (`id = word & 0x7FF; magnitude =
 (word>>11)+1`) into stat deltas and readable labels. `AUG_STATS` (summable) vs `AUG_NAME`
@@ -1153,8 +1165,10 @@ typed use — the deafness bugs came from BOTH states claiming `/dl`.
   `dlac\triggers\<JOB>.lua`) — written by the Triggers tab via
   `dispatch.serializeTriggers`; hot-reloaded on content change. A broken hand-edit keeps
   the last good rules and reports.
-- **Auto-sync chain** (addon state, on login/job change): `gearimport.sync` →
-  `refreshGear` → automations manifest rescan (`autogear.lua`) → `gearcheck.chatWarn`.
+- **Auto-sync chain** (addon state, on login/job change **and ~5s after every inventory
+  settle**): `gearimport.sync` → `refreshGear` → automations manifest rescan
+  (`autogear.lua`) → `gearcheck.chatWarn` (which speaks once per main job — see
+  gear/gearcheck.lua).
 
 ## Trigger dispatch path (end to end)
 
@@ -1193,6 +1207,7 @@ like the command does not exist.
 | `/dl debug [on\|off]` | gearui | Reveal dev header buttons |
 | `/dl view_ids [on\|off]` | gearui | Add item id + model id to every equipment tooltip |
 | `/dl autobuildimport [on\|off]` | gearui | Whether importing a weights-bearing job re-solves its sets from YOUR gear (default on) or lands verbatim |
+| `/dl gearwarn [on\|off]` | gearui | The trigger-gear audit's automatic chat report (default on) — once per main job. Off silences it; `/dl gearcheck` and the Triggers tab still answer on demand. Turning it on re-arms the gate for the job you are standing on |
 | `/dl mode <name> [on\|off\|toggle\|<value>]` | dispatch | Flip a mode (no arg: list) |
 | `/dl lock <slot\|all> [on\|off\|toggle]` | dispatch | Engine-owned slot locks |
 | `/dl naked [on\|off\|toggle]` / `/dl dress` | dispatch | Strip every slot and hold it empty -- an Arbiter Claim ranked first, **not** a lock (ADR 0021). Bare `/dl naked` always arms; `/dl dress` releases. Dies on a Reload LAC, survives an engine self-swap |

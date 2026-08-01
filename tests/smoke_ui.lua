@@ -411,6 +411,80 @@ check('S16o Cloak with no hat -> nothing to report',
 check('S16p an ordinary set -> nothing to report',
     next(drives({ Head = 'Silver Hairpin', Hands = 'Cotton Gloves' })), nil);
 
+-- ---------------------------------------------------------------------------
+-- 4c. AVAILABILITY in the preview (2026-08-01, Henrik's report: the Sets tab
+--     highlighted a Minstrel's Coat sitting in his Mog Locker as the chosen
+--     piece while the engine was wearing the Royal Cloak below it -- and the
+--     highlight colour hid the red that would have explained it).
+--
+--     Here for exactly the reason 4b is: this refusal runs on the RENDER path
+--     inside a pcall, so getting it wrong does not crash a frame -- the panel
+--     simply goes back to highlighting the unwearable piece, which is invisible
+--     unless you already suspect it. The whole live chain is driven:
+--     ownedcache's split seam -> gearui avail.have -> arbiter.availPick -> the
+--     editor's own working entry.
+-- ---------------------------------------------------------------------------
+(function()
+    local oc = package.loaded['dlac\\gear\\ownedcache'];
+    check('S16q availability service provided', type(S.avail) == 'table' and type(S.avail.have), 'function');
+    check('S16r worn-pick service provided', type(S.wornByLevel), 'function');
+    if type(oc) ~= 'table' or type(oc.resetCache) ~= 'function' or type(S.wornByLevel) ~= 'function' then
+        return;
+    end
+    local function setBags(availMap, totalMap)
+        oc._splitOverride = { avail = availMap, total = totalMap or availMap, where = {} };
+        oc.resetCache();
+    end
+
+    local A = S.lookupByName('Vermillion Cloak');
+    local B = S.lookupByName('Kupo Suit');
+    check('S16s the fixture records resolve',
+        type(A) == 'table' and A.Id ~= nil and type(B) == 'table' and B.Id ~= nil, true);
+    if type(A) ~= 'table' or type(B) ~= 'table' then oc._splitOverride = nil; oc.resetCache(); return; end
+
+    -- The editor's working-model shape: one entry per row, rec + its rules.
+    local list = { { rec = A }, { rec = B } };
+
+    -- Everything held: the ladder head wins, exactly as before this existed.
+    setBags({ [A.Id] = 1, [B.Id] = 1 });
+    local head = S.wornByLevel(list, 75, 'Body');
+    check('S16t with everything in your bags the ladder head is the pick', head ~= nil, true);
+
+    -- Self-calibrating: whichever entry the comparator chose is the one we park,
+    -- so this pins the BEHAVIOUR and never a level fact that could drift with
+    -- the catalog.
+    local parked = (head == list[1]) and A or B;
+    local kept   = (head == list[1]) and B or A;
+    local other  = (head == list[1]) and list[2] or list[1];
+    setBags({ [kept.Id] = 1 }, { [A.Id] = 1, [B.Id] = 1 });
+    check('S16u a piece owned but not in an equippable bag is refused',
+        S.avail.have(parked.Name), false);
+    check('S16v ...and the one still in your bags is not', S.avail.have(kept.Name), true);
+    check('S16w THE BUG: the pick moves off the parked piece to the rung below it',
+        S.wornByLevel(list, 75, 'Body'), other);
+
+    -- Every rung parked -> no pick at all. The honest answer, and what the
+    -- engine does with that slot too: it leaves it alone and keeps what is worn.
+    -- (A bag map holding something UNRELATED, not an empty one -- empty is the
+    -- not-ready leg below, which must never refuse.)
+    setBags({ [999999] = 1 }, { [A.Id] = 1, [B.Id] = 1 });
+    check('S16x a fully parked ladder picks nothing', S.wornByLevel(list, 75, 'Body'), nil);
+
+    -- The fail-open legs. These are the ones that would blank a whole panel at
+    -- char select / mid-zone if they ever flipped.
+    setBags({}, {});
+    check('S16y an EMPTY bag map never refuses (the scan beat the inventory)',
+        S.avail.have(A.Name), nil);
+    setBags({ [A.Id] = 1 });
+    check('S16z a dlac: marker is never refused -- it resolves at equip time',
+        S.avail.have('dlac:AutoStaff'), nil);
+    check('S16z2 nor is a name with no record', S.avail.have('No Such Thing At All'), nil);
+    check('S16z3 nor the remove literal', S.avail.have('remove'), nil);
+
+    oc._splitOverride = nil;
+    oc.resetCache();
+end)();
+
 -- ...and the SAME resolver wired into the optimizer, the way autoBuild wires it
 -- (opts.reserves = rsv.maskOf). Henrik's field bug, end to end on real catalog
 -- records: under MP + Refresh weights Royal Cloak out-scores Dalmatica alone,
@@ -2362,7 +2436,8 @@ end)();
     check('MN1 menuui re-requires against a stub imgui', ok and type(mn.renderPopups), 'function');
     if ok then
         local ui = { showAll = { false } };
-        local flags = { debug = false, autosync = true, viewids = false, autobuildimport = true };
+        local flags = { debug = false, autosync = true, viewids = false, autobuildimport = true,
+                        gearwarn = true };
         mn.configure({
             ui = ui, COL = host.services.COL, sf = { flags = flags },
             optim = { buildAtMaxLevel = true },
@@ -2392,7 +2467,7 @@ end)();
         -- draws LAST-ish and assert it: the Settings panel owns 8 checkboxes, the
         -- level panel owns the typed-number InputText. If either body dies early,
         -- these drop and the section fails instead of lying.
-        check('MN12a Settings body ran to completion (11 checkboxes)', drew.checkbox, 11);
+        check('MN12a Settings body ran to completion (12 checkboxes)', drew.checkbox, 12);
         check('MN12b level body drew its typed-number box', drew.input, 1);
 
         -- debug on: the developer quartet appears

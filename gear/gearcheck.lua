@@ -10,12 +10,21 @@
 -- and renders the "Gear warnings" section; chat warnings fire on job change
 -- (automationsui.rescanAutogear -- the manifest-rescan cadence) and after a
 -- gearmove move; /dl gearcheck runs it on demand.
+--
+-- The automatic report speaks ONCE PER MAIN JOB (2026-08-01): the cadence that
+-- calls it is the auto-sync one, which also fires ~5s after every inventory
+-- change, so the signature dedup alone let the same advice come back all
+-- session -- every time a piece moved, the availability counts moved with it.
+-- One main job = one report; a sub job change is deliberately not a re-arm, and
+-- /dl gearcheck (force) always answers. The whole thing is a Setting:
+-- "Warn about gear in storage" / /dl gearwarn, reaching us through deps.
 -- Pure data module: no imgui here, headless-testable.
 
 local M = {};
 
 local deps = nil;   -- { setsRoot = fn, lookupByName = fn, model = fn -> (model, job),
-                    --   candidatesFor = fn|nil (the engine's ladder door, stage 5) }
+                    --   candidatesFor = fn|nil (the engine's ladder door, stage 5),
+                    --   warnEnabled = fn|nil (the Setting), mainJob = fn|nil (test seam) }
 function M.configure(d) deps = d; end
 
 -- chat output through chatfmt when present (addon-side), plain print otherwise
@@ -135,15 +144,19 @@ local function auditSlotMap(contents, ctx, split, gi, out)
     end
 end
 
--- Full audit -> array of warning records (empty = all good / nothing to check).
+-- Full audit -> array of warning records (empty = all good / nothing to check),
+-- plus whether the audit could actually RUN. The second value exists because
+-- "nothing to warn about" and "no trigger model / no bags yet" both come back as
+-- an empty list, and the once-per-job gate below must not be armed by the second
+-- (pre-login and mid-zone are exactly when the cadence fires first).
 function M.audit()
     local out = {};
-    if deps == nil then return out; end
+    if deps == nil then return out, false; end
     local model = nil;
     pcall(function() model = deps.model(); end);
-    if type(model) ~= 'table' then return out; end
+    if type(model) ~= 'table' then return out, false; end
     local split, gi = ownedInfo();
-    if split == nil then return out; end
+    if split == nil then return out, false; end
 
     -- Collect every set reference (dedup across rules, remembering the handlers)
     -- and every inline equip table.
@@ -191,7 +204,7 @@ function M.audit()
         auditSlotMap(iv.equip, { set = '(inline rule #' .. iv.idx .. ')',
                                  handlers = iv.handler }, split, gi, out);
     end
-    return out;
+    return out, true;
 end
 
 -- Cached audit for per-frame UI use (ownedSplit is a full bag walk).
@@ -231,19 +244,60 @@ function M.describe(w)
     end
 end
 
--- Chat report. force=false is signature-deduped: repeat states stay silent
--- (job-change and post-move hooks can call freely without spam).
-local _lastSig = nil;
+-- The Setting: "Warn about gear in storage" (/dl gearwarn), owned by syncflags
+-- and handed down through deps -- gearcheck never reaches into the ui tree.
+-- Unwired reads as ON, which is both the long-standing behavior and what the
+-- headless tests exercise. Gates the AUTOMATIC report only: /dl gearcheck is an
+-- explicit question and always gets an answer.
+local function warnEnabled()
+    if deps == nil or type(deps.warnEnabled) ~= 'function' then return true; end
+    local on = true;
+    pcall(function() on = (deps.warnEnabled() ~= false); end);
+    return on;
+end
+
+-- The current MAIN job id, or nil when it cannot be read (pre-login, character
+-- select, mid-zone -- all of which read 0). Sub job is deliberately not part of
+-- this: the audit is main-job scoped, so /BLU under a new sub is the same audit.
+local function mainJobId()
+    local j = nil;
+    if deps ~= nil and type(deps.mainJob) == 'function' then
+        pcall(function() j = deps.mainJob(); end);
+    else
+        pcall(function() j = AshitaCore:GetMemoryManager():GetPlayer():GetMainJob(); end);
+    end
+    if type(j) ~= 'number' or j == 0 then return nil; end
+    return j;
+end
+
+-- Chat report. force=false speaks at most ONCE per main job (the cadence that
+-- calls it also fires on every inventory settle); when the job cannot be read it
+-- falls back to the older signature dedup, so headless and pre-login callers
+-- still can't spam. force=true always answers.
+local _lastSig, _warnedJob = nil, nil;
 function M.chatWarn(force)
-    local warns = M.audit();
+    force = (force == true);
+    if not force and not warnEnabled() then return; end
+    local job = mainJobId();
+    if not force and job ~= nil and job == _warnedJob then return; end
+
+    local warns, ran = M.audit();
     _cache, _cacheAt = warns, os.clock();       -- keep the UI cache in step
     local keys = {};
     for _, w in ipairs(warns) do
         keys[#keys + 1] = (w.kind or '?') .. '|' .. tostring(w.set) .. '|' .. tostring(w.item);
     end
     local sig = table.concat(keys, ';');
-    if not force and sig == _lastSig then return; end
+    if not force then
+        -- An audit that could not run says nothing and arms nothing: the gate
+        -- must not be spent on the empty answer login hands us.
+        if not ran then return; end
+        if job == nil and sig == _lastSig then return; end
+    end
     _lastSig = sig;
+    -- Told for this main job -- including on a forced run, so a manual check is
+    -- not followed by the same lines from the next auto-sync.
+    if ran and job ~= nil then _warnedJob = job; end
     if #warns == 0 then
         if force then sayInfo('trigger gear check: everything your triggers reference is equippable.'); end
         return;
@@ -251,6 +305,11 @@ function M.chatWarn(force)
     sayWarn(('trigger gear check: %d warning(s):'):format(#warns));
     for _, w in ipairs(warns) do sayWarn('  ' .. M.describe(w)); end
 end
+
+-- Re-arm the once-per-main-job gate (the next automatic report speaks again).
+-- Used by /dl gearwarn on -- turning the warnings back on should not leave you
+-- waiting for a job change to hear them -- and by the tests.
+function M.rearm() _warnedJob = nil; _lastSig = nil; end
 
 ashita.events.register('command', 'dlac-gearcheck-cmd', function(e)
     pcall(function()
