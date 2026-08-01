@@ -2682,6 +2682,29 @@ local function autoBuild(job, level)
     local oc = owned.counts();
     local built = {};
 
+    -- "Auto-build with gear in storage" (Setting, /dl buildstored, default ON).
+    -- OFF narrows every candidate pool below to gear you could equip RIGHT NOW --
+    -- Inventory + the 8 Mog Wardrobes, CONTEXT.md's AVAILABLE half -- so a build
+    -- made in the field never plans around a piece sitting in the Mog Safe.
+    --
+    -- This is deliberately the one place set BUILDING consults a live bag fact
+    -- (hard rule 6 says building is never gated on game state, and it still is
+    -- not by default): the player asked for it, it is opt-in, and it narrows the
+    -- POOL only -- slots outside the build mask keep exactly what they have, and
+    -- the + Add picker still offers everything you own. Do not "fix" it back.
+    -- owned.isStored fails CLOSED-to-nothing (an empty scan reports nothing
+    -- stored), so at char select / headless this is a no-op rather than a set
+    -- that suddenly builds empty.
+    local storedOK = (sf.flags.buildstored ~= false);
+    local function inField(cands)
+        if storedOK or type(cands) ~= 'table' then return cands; end
+        local out = {};
+        for _, r in ipairs(cands) do
+            if not owned.isStored(r) then out[#out + 1] = r; end
+        end
+        return out;
+    end
+
     -- Which slots to FILL: the per-set build-slot mask (the weights window's 4x4
     -- grid). Unmarked slots are left exactly as the working set has them --
     -- weapons default unmarked, so Auto-build never resets TP unless asked to.
@@ -2705,7 +2728,7 @@ local function autoBuild(job, level)
     local pools = {};
     for _, sl in ipairs(EQUIP_SLOTS) do
         if mask[sl.label] == true and sl.gear ~= 'Sub' then
-            pools[sl.label] = candidatesForSlot(sl.gear, job, useLevel);   -- job+level filtered
+            pools[sl.label] = inField(candidatesForSlot(sl.gear, job, useLevel));   -- job+level filtered
         end
     end
 
@@ -2835,7 +2858,7 @@ local function autoBuild(job, level)
         -- auto-build answers "best usable now", so the DW gate applies.
         if sl.gear == 'Sub' then
             local mp = bestByLevel(built['Main'], useLevel, 'Main');
-            cands = subFilter(subCandidatePool(job, useLevel), mp and mp.rec or nil, job, useLevel);
+            cands = subFilter(inField(subCandidatePool(job, useLevel)), mp and mp.rec or nil, job, useLevel);
             -- Joint marginal pick for Sub: everything already chosen is the fixed
             -- background, so a Sub that only re-adds capped stats stays home --
             -- while baseComposition pre-loads the chosen pieces' SET counts, so a
@@ -4368,11 +4391,34 @@ local function renderSetsTab(job, level)
     if imgui.Button((ui.showWeights and 'Weights v' or 'Weights >') .. '##setwtoggle', { 84, 22 }) then ui.showWeights = not ui.showWeights; end
     if imgui.IsItemHovered() then imgui.SetTooltip('Toggle the Stat Weights editor -- opens in its own resizable, movable window.'); end
     imgui.SameLine();
-    if imgui.Button('Auto-Build All##setbuildall', { 0, 22 }) then
-        autoBuildAll(job, level);
+    -- TWO clicks, on purpose (Henrik 2026-08-01: "it can be highly impacting
+    -- accidentally pressing it, so let's give some leeway just in case"). The
+    -- first click only ARMS -- the button turns red and reads "Sure?" -- and the
+    -- second one rebuilds and COMMITS every weighted set of this job. The arm
+    -- expires by itself after a few seconds, so a stray click never leaves a live
+    -- trigger sitting under the cursor for the next one. Not the copy-confirm
+    -- POPUP: this is a whole-job action with nothing to name in a dialog, and
+    -- click-twice keeps the deliberate path one gesture longer, not two windows.
+    -- The width is FIXED because the two labels differ in length and an
+    -- auto-width button would shuffle the rest of the controls row as it flips.
+    local abArmed = (ui._buildAllArm ~= nil) and (os.clock() < ui._buildAllArm);
+    if ui._buildAllArm ~= nil and not abArmed then ui._buildAllArm = nil; end   -- expired
+    local abRed = abArmed and (ImGuiCol_Button ~= nil);
+    if abRed then imgui.PushStyleColor(ImGuiCol_Button, { 0.72, 0.18, 0.18, 1.0 }); end
+    if imgui.Button((abArmed and 'Sure?' or 'Auto-Build All') .. '##setbuildall', { 150, 22 }) then
+        if abArmed then
+            ui._buildAllArm = nil;
+            autoBuildAll(job, level);
+        else
+            ui._buildAllArm = os.clock() + 5;
+            setStatus('Auto-Build All re-solves and COMMITS every set of this job that has stat weights. Click "Sure?" to confirm.', true);
+        end
     end
+    if abRed then imgui.PopStyleColor(1); end
     if imgui.IsItemHovered() then
-        imgui.SetTooltip('Will auto-build all gear-sets with stat weights set.');
+        imgui.SetTooltip(abArmed
+            and 'Click again to re-solve and commit every set of this job that has stat weights.\nIt un-arms itself after a few seconds.'
+            or  'Will auto-build all gear-sets with stat weights set.\nAsks once first -- the opening click only arms the button.');
     end
 
     -- Equip & Lock (Henrik, 07-20: Incursion T3 locks your equipment server-side
@@ -5373,7 +5419,7 @@ ashita.events.register('command', 'dlac-ui', function(e)
     if sub == 'debug' and args[2] ~= nil and args[2] ~= 'on' and args[2] ~= 'off' then return; end
     if sub ~= 'ui' and sub ~= 'sync' and sub ~= 'autosync' and sub ~= 'debug'
        and sub ~= 'metrics' and sub ~= 'view_ids' and sub ~= 'autobuildimport'
-       and sub ~= 'gearwarn' then return; end
+       and sub ~= 'gearwarn' and sub ~= 'buildstored' then return; end
     e.blocked = true;
 
     if sub == 'metrics' then        -- imgui metrics window: names the window under the
@@ -5429,6 +5475,16 @@ ashita.events.register('command', 'dlac-ui', function(e)
         print('[dlac] gear warnings ' .. (sf.flags.gearwarn
             and 'ON -- once per main job, dlac names any trigger-referenced gear that is not in an equippable bag.'
             or  'OFF -- no automatic warnings; /dl gearcheck and the Triggers tab still answer on demand.  (/dl gearwarn on)'));
+        return;
+    end
+    if sub == 'buildstored' then    -- may Auto-build plan around gear parked in storage?
+        if     args[2] == 'off' then sf.flags.buildstored = false;
+        elseif args[2] == 'on'  then sf.flags.buildstored = true;
+        else                         sf.flags.buildstored = (sf.flags.buildstored == false); end
+        sf.saveUiFlags();              -- persist; command wins over the on-disk value
+        print('[dlac] auto-build with stored gear ' .. ((sf.flags.buildstored ~= false)
+            and 'ON -- Auto-build picks from everything you own, wherever it sits; a piece still in storage shows red until you retrieve it.'
+            or  'OFF -- Auto-build only offers gear you could equip now: Inventory and your Mog Wardrobes.  (/dl buildstored on)'));
         return;
     end
     if sub == 'debug' then          -- reveal/hide the dev-only Scan/Stage/Commit/Augs buttons

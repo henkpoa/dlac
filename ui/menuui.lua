@@ -49,7 +49,8 @@ local hasImgui = (imgui ~= nil);
 -- Deps from gearui (M.configure). Everything the rows act on arrives here, so this
 -- module never reaches into gearui's chunk and never requires anything GRD5 bans.
 --   ui, COL            -- the shared UI state table + the palette
---   sf                 -- gear\syncflags (flags.debug / .autosync / .viewids / .gearwarn)
+--   sf                 -- gear\syncflags (flags.debug / .autosync / .viewids / .gearwarn /
+--                         .autobuildimport / .buildstored)
 --   optim              -- gear\gearoptim (buildAtMaxLevel), optional
 --   callImport(kind)   -- the debug Scan/Stage/Commit path
 --   dumpAugs()         -- the debug Augs dump (NEVER require feature\augments: GRD5)
@@ -411,6 +412,11 @@ local function renderSettingsBody()
             'On (default): importing a job that carries stat weights rebuilds its sets\nfrom YOUR gear the moment it lands -- the point of the empty shells an\nexport ships by default.\nOff: the import lands exactly as exported, gear and all. Auto-Build All on\nthe Sets tab still does the re-solve on demand. (Same switch as\n/dl autobuildimport.)',
             function() return sf.flags.autobuildimport ~= false; end,
             function(v) sf.flags.autobuildimport = v; end);
+
+        settingCheck('buildstored', 'Auto-build with gear in storage',
+            'On (default): Auto-build picks from everything you own, wherever it sits --\nMog Safe, Locker and Satchel included. A set is a plan, so it may name a piece\nyou will retrieve later; it shows red until you do.\nOff: Auto-build only considers gear you could equip right now -- your Inventory\nand your Mog Wardrobes. Sets you have already built are never changed by this.\n(Same switch as /dl buildstored.)',
+            function() return sf.flags.buildstored ~= false; end,
+            function(v) sf.flags.buildstored = v; end);
 
         settingCheck('gearwarn', 'Warn about gear in storage',
             'Warns you if any gear assigned to sets that are assigned to trigger rules\nare not available in the field.\nWill warn you once per main job change.\n(Same switch as /dl gearwarn.)',

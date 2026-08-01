@@ -15897,6 +15897,7 @@ end)();
     sf.flags.debug, sf.flags.autosync, sf.flags.viewids = true, false, true;
     sf.flags.autobuildimport = false;      -- the 2026-07-27 opt-out
     sf.flags.gearwarn = false;             -- the 2026-08-01 opt-out
+    sf.flags.buildstored = false;          -- the 2026-08-01 field-only build
     sf.saveUiFlags();
     check('UIF2 wrote to the mode-aware home', wrote.path, 'X:\\char\\dlac\\uiflags.lua');
     check('UIF3 emitted text parses', (function()
@@ -15909,6 +15910,7 @@ end)();
     check('UIF6 viewids round-trips',  t.viewids,  true);
     check('UIF6a autobuildimport round-trips', t.autobuildimport, false);
     check('UIF6b gearwarn round-trips', t.gearwarn, false);
+    check('UIF6c buildstored round-trips', t.buildstored, false);
     check('UIF7 openui round-trips',   t.openui,   'job');
     check('UIF8 openui is a STRING',   type(t.openui), 'string');
     check('UIF9 showall round-trips',  t.showall,  false);
@@ -15934,7 +15936,7 @@ end)();
     _G.loadfile = function() return function()
         return { debug = false, autosync = true, viewids = false,
                  openui = 'login', showall = true, gfscale = 2.0,
-                 autobuildimport = false, gearwarn = false };
+                 autobuildimport = false, gearwarn = false, buildstored = false };
     end; end
     sf2.configure({
         dataDir = function() return 'X:\\char\\dlac\\'; end,
@@ -15951,6 +15953,7 @@ end)();
     check('UIF18 viewids loads',  sf2.flags.viewids,  false);
     check('UIF18a autobuildimport loads', sf2.flags.autobuildimport, false);
     check('UIF18b gearwarn loads', sf2.flags.gearwarn, false);
+    check('UIF18c buildstored loads', sf2.flags.buildstored, false);
 
     -- Absent keys keep their defaults -- an old uiflags.lua written before this
     -- slice must not start opening windows or flipping Show all.
@@ -15977,6 +15980,9 @@ end)();
     -- Same rule for the 2026-08-01 key: an install that never opted out keeps
     -- being warned about trigger gear parked in storage.
     check('UIF21a2 absent gearwarn stays ON', sf3.flags.gearwarn, true);
+    -- And for the other 2026-08-01 key: an install that never opted out keeps
+    -- auto-building from everything it owns, storage included.
+    check('UIF21a3 absent buildstored stays ON', sf3.flags.buildstored, true);
 
     -- The gate itself lives in gearui's afterImport hook, which needs imgui and a
     -- logged-in character to reach. Pin it at the source instead of not at all:
@@ -15991,6 +15997,34 @@ end)();
             hook:find('sf%.flags%.autobuildimport') ~= nil, true);
         check('UIF21c ...and only then auto-builds',
             (hook:find('sf%.flags%.autobuildimport') or 0) < (hook:find('autoBuildAll') or 0), true);
+
+        -- Same treatment for the two 2026-08-01 Sets-tab rulings, both of which
+        -- live inside imgui-only draw paths this suite cannot enter.
+        --
+        -- (1) "Auto-build with gear in storage": OFF must narrow the candidate
+        -- pools by the AVAILABLE half (ownedcache.isStored), and it must do it
+        -- inside autoBuild -- not in candidatesForSlot, which the + Add picker
+        -- shares and which must keep offering everything you own.
+        -- Patterns stop at the first column-0 `end` and take NO trailing newline:
+        -- this file is CRLF on disk, and Windows Lua strips the \r while WSL's
+        -- does not -- a trailing \n in the pattern passes on one and fails on the
+        -- other (it did, first run).
+        local ab = tostring(src or ''):match('local function autoBuild%(job, level%).-\nend') or '';
+        check('UIF22 autoBuild reads the storage Setting',
+            ab:find('sf%.flags%.buildstored') ~= nil, true);
+        check('UIF22a ...and narrows by the AVAILABLE half',
+            ab:find('owned%.isStored') ~= nil, true);
+        local cf = tostring(src or ''):match('local function candidatesForSlot.-\nend') or '';
+        check('UIF22b ...leaving the shared candidate pool untouched',
+            #cf > 0 and cf:find('buildstored') == nil, true);
+
+        -- (2) Auto-Build All re-solves and commits EVERY weighted set of the job,
+        -- so the first click may only arm the button; only an armed click builds.
+        local btn = tostring(src or ''):match("abArmed and 'Sure%?'.-\n    end") or '';
+        check('UIF23 Auto-Build All arms on the first click',
+            btn:find('ui%._buildAllArm = os%.clock%(%)') ~= nil, true);
+        check('UIF23a ...and only an armed click builds',
+            (btn:find('if abArmed then') or 0) < (btn:find('autoBuildAll%(job, level%)') or 0), true);
     end
 
     package.loaded['dlac\\lib\\cmdqueue'] = nil;
