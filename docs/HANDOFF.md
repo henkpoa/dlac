@@ -290,6 +290,15 @@ haven't told you."* Ask when he has **not** said merge; never ask twice when he 
 **The queue is empty.**
 
 
+*(Still empty after the 2026-08-02 promotion of `28ab08d` — **`/dl sends`**, `2026.08.02`.
+Henrik: *"Merge and push this to origin main"* — an accept under the 08-01 ruling, so nothing
+was asked twice. It never entered the queue: it was built and promoted inside one session,
+and `main..dev` was empty when it started, so the promotion carried this train alone.
+**NOT field-confirmed — suites only** (5652 green both platforms); the round it owes is one
+glance, `/dl sends` after an Incursion stretch, and it is a readout, so a wrong answer costs
+a re-read rather than gear. Worth remembering for the next borderline diagnostic: the thing
+that decided dlac-over-dlacprobe was that **only the send site knows why it sent**.)*
+
 *(Emptied again by the 2026-08-01 promotion of `a9f1033` — **the clock stops when you log
 out**, `2026.08.01l`. Henrik: *"Please push everything locally, even food."* It was written
 in a parallel session and had been deliberately left out of the promotion an hour earlier;
@@ -646,9 +655,10 @@ research already recorded. In rough priority order:
 
 ## Current state (as of 2026-08-02)
 
-- **2026-08-02 (`2026.08.02`): `/dl sends` — WHAT DLAC PUT ON THE WIRE. BUILT, suites
-  green both platforms, **UNCOMMITTED**, **NOT field-confirmed — a field round is owed**
-  (it is a readout, so the round is one glance: `/dl sends` after an Incursion run).
+- **2026-08-02 (`2026.08.02`): `/dl sends` — WHAT DLAC PUT ON THE WIRE. BUILT and **ON MAIN**
+  (`28ab08d`, promoted same session), suites green both platforms, **NOT field-confirmed — a
+  field round is owed** (it is a readout, so the round is one glance: `/dl sends` after an
+  Incursion run).
   - **Where it came from.** Henrik, mid-Incursion, level-synced, sets only: *"Does this
     addon send or receive many packets... does it send constant packets to have things
     equipped or only once?"* The code answer is **only on a real difference** —
