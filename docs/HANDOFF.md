@@ -774,6 +774,13 @@ research already recorded. In rough priority order:
     gives the walk-past somewhere to walk to — `_pick` defaults to it, so nothing else would
     have noticed it quietly going back to two.
   - Suites **5505 + 936**, both interpreters. Tests FW14a–FW14d, FW26–FW31, MN18k–MN18u.
+  - **FIELD ROUND OWED — and it is short.** On `main` (`c405a59`) on Henrik's go, suites only.
+    This is the *same shape* as the round directly below, which sat unconfirmed for days
+    because nothing pointed at it; the whole round is three checks: **(1)** under food, the
+    `Active food` row names it and hovers with sane effects — in the Menu popup **and** the
+    Teleports float; **(2)** a food with a race branch (Galkan Sausage, Royal Omelette) reads
+    understandably with both blocks shown; **(3)** the eat list now offers **three** rows.
+    Delete this line when it is done.
 - **2026-08-01: foodwatch is FIELD-CONFIRMED — the owed round ran and found no fault.**
   `feature/foodwatch.lua` (`121af5b`, `2026.07.30g`) had been **on `main` since `605045f`**
   and had never once run in game: it rode the Ashitacast promotion because `dev` promotes
