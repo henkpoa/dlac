@@ -290,7 +290,16 @@ haven't told you."* Ask when he has **not** said merge; never ask twice when he 
 **The queue is empty.**
 
 
-*(Emptied again by the 2026-08-01 promotion of `36da078` — **Auto-build can stay in the
+*(Emptied again by the 2026-08-01 promotion of `508d410` — **other addons can claim gear
+through dlac**, `2026.08.01k`, engine v162. It never sat in this queue: the field round and
+the merge instruction arrived together (*"Make it a permanent setting, then commit,
+document, merge and push to origin main"*), which is the "merge IS an accept" rule doing
+what it is for. Staged **hunk by hunk** out of a shared checkout — a parallel session's food
+work was live in the same tree and is deliberately NOT in this promotion; it is still
+uncommitted on disk. Suites were run on the committed tree in an isolated worktree, not
+just alongside that work: 5594 + 936, Windows and WSL.)*
+
+*(Emptied before that by the 2026-08-01 promotion of `36da078` — **Auto-build can stay in the
 field, and Auto-Build All asks first**, `2026.08.01h`, no engine change. It never sat in
 this queue: Henrik's field confirmation and his merge instruction arrived in one message
 (*"Works in field, thank you, both settings and the auto build. Document, commit, merge and
