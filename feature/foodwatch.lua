@@ -23,9 +23,11 @@
     hits most. The signal is the effect's EXPIRY changing, read from
     GetStatusTimers() alongside GetBuffs() -- the two arrays pair by index (the
     `timers` addon's read, field-proven on this client). Raw values, compared for
-    INEQUALITY only: no clock arithmetic to get wrong, no epoch, no wrap. How
-    long is left is a question the buff-timer addons already answer, and this
-    module deliberately does not re-answer it.
+    INEQUALITY only: no clock arithmetic to get wrong, no epoch, no wrap.
+
+    -- 2026-08-01: the raw value IS decoded now (M._remaining), but only to
+    answer "how much of this meal have you spent", never to draw a countdown --
+    how long is left stays the buff-timer addons' display. See M.status.
 
     -- 2026-08-01, from the field: that premise is a RETAIL one and does not hold
     here. CatsEyeXI REFUSES an item use while the FOOD effect is up (Henrik: "You
@@ -97,6 +99,25 @@ M.WINDOW  = 8.0;
 -- Inventory. /item refuses every other container, so a food in the satchel is
 -- not a food you can eat (useitem's scroll path draws the same line).
 M.BAG     = 0;
+
+-- THE STATUS-TIMER DECODE (2026-08-01). A raw GetStatusTimers value is the
+-- effect's expiry in SIXTIETHS OF A SECOND since the Vana'diel epoch, in a
+-- uint32 that wraps roughly every 2.3 years -- hence the re-add loop, which is
+-- undoing ~10 wraps in 2026. Ported by hand from the two sibling addons that
+-- already carry it (`timers\helpers.lua`, `statustimers\party.lua`), which agree
+-- line for line.
+--
+-- Those two read the CLIENT's own UTC stamp out of memory behind a signature
+-- scan. dlac uses os.time() instead: no sig to break on a client patch, and it
+-- verified against Henrik's own recorded meals to within the poll interval
+-- (Hobgoblin Pie decoded to 3598s against its 3600s server script). The cost is
+-- that a machine clock badly out of step with the client's would skew this --
+-- which is why every consumer treats an out-of-range answer as UNKNOWN.
+M.VANA_EPOCH = 0x3C307D70;
+M.INFINITE   = 0x7FFFFFFF;   -- the client's "permanent effect" marker
+-- No food in the game lasts a day. A decode that says otherwise is a decode that
+-- went wrong, and an unknown is always better than a confident wrong number.
+M.MAX_FOOD   = 86400;
 
 M.history = {};          -- most recent first: { id, name, at, n, expiry }
 M._pending = nil;        -- the last outgoing item use: { id, at } (packet thread)
@@ -175,7 +196,12 @@ function M._remember(list, entry, cap)
     end
     table.insert(list, 1, { id = entry.id, name = entry.name,
                             at = tonumber(entry.at) or 0, n = n,
-                            expiry = tonumber(entry.expiry) or nil });
+                            expiry = tonumber(entry.expiry) or nil,
+                            -- The MEASURED full duration of this meal, not the
+                            -- food's book value: xi.mod.FOOD_DURATION (Sigil,
+                            -- Sanction) doubles it, so the only honest number is
+                            -- the one read off the effect at the moment it landed.
+                            dur = tonumber(entry.dur) or nil });
     for i = #list, cap + 1, -1 do table.remove(list, i); end
     return list;
 end
@@ -212,9 +238,9 @@ function M._serialize(list)
     for _, e in ipairs((type(list) == 'table') and list or {}) do
         if type(e) == 'table' and tonumber(e.id) and type(e.name) == 'string' then
             L[#L + 1] = string.format(
-                '        { id = %d, name = %q, at = %d, n = %d, expiry = %d },',
+                '        { id = %d, name = %q, at = %d, n = %d, expiry = %d, dur = %d },',
                 tonumber(e.id), e.name, tonumber(e.at) or 0, tonumber(e.n) or 1,
-                tonumber(e.expiry) or 0);
+                tonumber(e.expiry) or 0, tonumber(e.dur) or 0);
         end
     end
     L[#L + 1] = '    },';
@@ -232,7 +258,10 @@ function M._fromRaw(t)
         if type(e) == 'table' and tonumber(e.id) and type(e.name) == 'string' and e.name ~= '' then
             out[#out + 1] = { id = tonumber(e.id), name = e.name,
                               at = tonumber(e.at) or 0, n = tonumber(e.n) or 1,
-                              expiry = (tonumber(e.expiry) or 0) > 0 and tonumber(e.expiry) or nil };
+                              expiry = (tonumber(e.expiry) or 0) > 0 and tonumber(e.expiry) or nil,
+                              -- Absent in rows written before 2026-08-01: those
+                              -- fall back to wall-clock until re-eaten.
+                              dur = (tonumber(e.dur) or 0) > 0 and tonumber(e.dur) or nil };
         end
     end
     for i = #out, M.CAP + 1, -1 do table.remove(out, i); end
@@ -248,17 +277,48 @@ function M._fmtAgo(sec)
     return string.format('%dd ago', math.floor(sec / 86400 + 0.5));
 end
 
--- A food's FULL duration -- a property of the food, not a countdown. How long is
--- left stays the buff-timer addons' question (Henrik, 2026-08-01: "Timers are
--- fine not including, we usually see those just fine").
+-- A food's FULL duration. Rounded to the minute BEFORE it is split, because a
+-- MEASURED duration lands a second or two under the round number (the poll runs
+-- every 250ms and the read costs what it costs) and "360 min" is not an answer.
 function M._fmtDur(sec)
     sec = tonumber(sec) or 0;
     if sec <= 0 then return nil; end
-    if sec % 3600 == 0 then
-        local h = sec / 3600;
-        return string.format('%d hr', h);
+    local mins = math.floor(sec / 60 + 0.5);
+    if mins < 60 then return string.format('%d min', mins); end
+    local h, m = math.floor(mins / 60), mins % 60;
+    if m == 0 then return string.format('%d hr', h); end
+    return string.format('%d hr %d min', h, m);
+end
+
+-- Time REMAINING, phrased for the panel. Deliberately not _fmtDur: a length
+-- rounds to the nearest minute happily, a countdown must not round 20 seconds up
+-- to "1 min" and needs something to say at zero. The "~" is honest rather than
+-- decorative -- the decode leans on os.time() against the client's own clock,
+-- and the poll runs every 250ms, so this is an estimate and says so.
+function M._fmtLeft(sec)
+    sec = tonumber(sec);
+    if sec == nil then return nil; end
+    if sec <= 0 then return 'expiring now'; end
+    if sec < 60 then return 'under a minute left'; end
+    return '~' .. M._fmtDur(sec) .. ' left';
+end
+
+-- Raw status timer -> SECONDS REMAINING, or nil when it cannot be believed.
+--   raw -- the value paired with this effect in GetStatusTimers()
+--   utc -- real-world epoch seconds (os.time())
+-- The re-add loop undoes the uint32 wraps between the Vana'diel epoch and now;
+-- it is bounded so a garbage input cannot spin (the sibling addons' is not).
+function M._remaining(raw, utc)
+    raw = tonumber(raw); utc = tonumber(utc);
+    if raw == nil or utc == nil or raw == M.INFINITE then return nil; end
+    local real = raw - (utc - M.VANA_EPOCH) * 60;
+    local guard = 0;
+    while real < -2147483648 and guard < 64 do
+        real = real + 0xFFFFFFFF;
+        guard = guard + 1;
     end
-    return string.format('%d min', math.floor(sec / 60 + 0.5));
+    if real < 1 then return 0; end
+    return math.ceil(real / 60);
 end
 
 -- The client's own item Description -> effect lines. The FALLBACK source, for
@@ -395,6 +455,14 @@ function M.pump(reads)
     if type(name) ~= 'string' or name == '' then return nil; end
     local e = { id = hit.id, name = name, at = reads.stamp(),
                 expiry = (type(M._state.food) == 'table') and M._state.food.expiry or nil };
+    -- MEASURE the meal's real duration, here and nowhere else: what is left the
+    -- instant it lands IS its full length. The food's book value cannot be used
+    -- for this -- xi.mod.FOOD_DURATION (Sigil, Sanction) grants +100%, so the
+    -- same Pork Cutlet runs 3 hours or 6 depending on what you were under when
+    -- you ate it. An answer outside the sane band is dropped rather than stored:
+    -- a missing duration falls back to wall-clock, a wrong one would lie forever.
+    e.dur = M._remaining(e.expiry, e.at);
+    if e.dur ~= nil and (e.dur <= 0 or e.dur > M.MAX_FOOD) then e.dur = nil; end
     M._remember(M.history, e, M.CAP);
     _menuRows = nil;                               -- the row you just earned, this frame
     reads.save();
@@ -486,14 +554,43 @@ end
 --            running when it was eaten (Henrik's ruling). nil = the effect is
 --            up but this character has never eaten anything on dlac's watch.
 -- recent  -- the whole history, most recent first
-function M.status()
+-- dur     -- the MEASURED full length of the meal that is up
+-- left    -- seconds still on it, decoded from the live timer
+-- used    -- seconds of it you have actually spent = dur - left
+--
+-- WHY `used` IS NOT `os.time() - at` (Henrik, 2026-08-01: "the food duration
+-- doesn't go down when you're logged out"). Food is paused while you are
+-- offline, so wall-clock elapsed drifts from the truth by the whole length of
+-- every logout -- eat, play ten minutes, sleep, and dlac would have called it
+-- "eaten 8h ago" on a food with most of its time left. The server sends the real
+-- remaining time at login, so reading it back is exact and needs no bookkeeping:
+-- no accumulator to tick, nothing written every few seconds, and nothing to
+-- drift when the addon reloads or the game crashes. dur/left/used are all nil
+-- when they cannot be known, and every caller falls back to wall-clock there.
+function M.status(reads)
+    reads = (type(reads) == 'table') and reads or M.reads;
     M.load();
     local f = M._state.food;
     local active = (type(f) == 'table' and f.present == true);
+    local cur = (active and M.history[1] ~= nil) and M.history[1] or nil;
+    local dur, left, used = nil, nil, nil;
+    if active then
+        left = M._remaining(f.expiry, reads.stamp());
+        dur  = (cur ~= nil) and tonumber(cur.dur) or nil;
+        if left ~= nil and dur ~= nil then
+            used = dur - left;
+            -- Longer than the meal, or negative: the pairing or the clock is off,
+            -- so say nothing rather than something wrong.
+            if used < 0 or used > dur then used = nil; end
+        end
+    end
     return {
         active  = active,
-        current = (active and M.history[1] ~= nil) and M.history[1] or nil,
+        current = cur,
         recent  = M.history,
+        dur     = dur,
+        left    = left,
+        used    = used,
     };
 end
 
@@ -582,9 +679,18 @@ ashita.events.register('command', 'dlac-foodwatch', function(e)
 
     local st = M.status();
     if st.active and st.current ~= nil then
-        local when = (tonumber(st.current.at) or 0) > 0
-            and (' (eaten ' .. M._fmtAgo(os.time() - st.current.at) .. ')') or '';
-        say('under ' .. st.current.name .. when .. '.');
+        -- `used` is time spent UNDER the food; the wall-clock fallback is only
+        -- for rows recorded before the duration was measured. They differ by
+        -- every logout you have taken since.
+        local when = '';
+        if st.used ~= nil then
+            when = ' (eaten ' .. M._fmtAgo(st.used) .. ')';
+        elseif (tonumber(st.current.at) or 0) > 0 then
+            when = ' (eaten ' .. M._fmtAgo(os.time() - st.current.at) .. ')';
+        end
+        local left = M._fmtLeft(st.left);
+        say('under ' .. st.current.name .. when
+            .. ((left ~= nil) and (' -- ' .. left) or '') .. '.');
     elseif st.active then
         say('a food effect is up, but nothing was eaten while dlac was watching.');
     else

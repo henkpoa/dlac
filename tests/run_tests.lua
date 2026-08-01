@@ -21313,6 +21313,89 @@ do
     package.loaded['dlac\\data\\fooddb'] = nil;
     fw._reset();
 end
+
+-- --- THE CLOCK STOPS WHEN YOU LOG OUT (2026-08-01). Henrik: "the food duration
+-- doesn't go down when you're logged out." Food is PAUSED offline, so wall-clock
+-- elapsed overstates by the length of every logout. The fix reads the client's
+-- own status timer instead of counting seconds ourselves.
+do
+    -- The two numbers below are FIELD DATA, straight out of Henrik's
+    -- foodhistory.lua: the raw expiry recorded beside each meal and the os.time()
+    -- of the row. That makes this a golden, not a hand-built fixture -- if the
+    -- decode ever drifts, it drifts against a real client's real output.
+    local T0, RAW0 = 1785515840, 3592845320;   -- Hobgoblin Pie, a 3600s food
+    check('FW32 the status timer decodes to what the server script says',
+          fw._remaining(RAW0, T0), 3598);      -- 3600 less the 250ms poll's lag
+    -- The same read on Pork Cutlet came back at exactly TWICE its 10800s script
+    -- duration. Not a bug: xi.mod.FOOD_DURATION (Sigil, Sanction) grants +100%,
+    -- which is the whole reason the duration must be MEASURED and never looked up.
+    check('FW32a a doubled meal decodes as doubled', fw._remaining(3597700040, 1785578753), 21597);
+    check('FW32b a permanent effect has no remaining time', fw._remaining(fw.INFINITE, T0), nil);
+    check('FW32c ...and neither has an unreadable one', fw._remaining(nil, T0), nil);
+    check('FW32d an expired timer is zero, not negative', fw._remaining(RAW0, T0 + 99999), 0);
+
+    fw._reset();
+    fw._pending = { id = 4325, at = 100 };
+    local rec = fw.pump({
+        clock  = function() return 100; end,
+        stamp  = function() return T0; end,
+        food   = function() return { present = true, expiry = RAW0 }; end,
+        nameOf = function() return 'Hobgoblin Pie'; end,
+        save   = function() return true; end,
+    });
+    check('FW33 the meal records its MEASURED duration', rec and rec.dur, 3598);
+
+    local playing = fw.status({ stamp = function() return T0 + 600; end });
+    check('FW34 ten minutes under it, ten minutes spent', playing.used, 600);
+    check('FW34b ...and the rest still on it', playing.left, 2998);
+
+    -- Now log out for eight hours. The server pauses food, so at login the client
+    -- reports the SAME remaining time -- the raw expiry has slid forward by the
+    -- whole offline stretch. Wall clock has not, which is exactly the bug.
+    local OUT = 28800;
+    fw._state.food = { present = true, expiry = RAW0 + OUT * 60 };
+    local back = fw.status({ stamp = function() return T0 + 600 + OUT; end });
+    check('FW35 an eight-hour logout costs the food nothing', back.used, 600);
+    check('FW35b ...the timer still agrees', back.left, 2998);
+    check('FW35c ...where wall clock would have claimed this much',
+          (T0 + 600 + OUT) - rec.at, 29400);
+
+    -- A row written before the duration was measured (or a decode that came back
+    -- outside the sane band) has no `dur`: `used` must be nil so the caller falls
+    -- back to wall-clock, rather than inventing a number.
+    fw.history[1].dur = nil;
+    local old = fw.status({ stamp = function() return T0 + 600; end });
+    check('FW36 a row with no measured duration reports no spend', old.used, nil);
+    check('FW36b ...but the effect is still up and still named', old.current.name, 'Hobgoblin Pie');
+
+    -- The countdown (2026-08-01, Henrik: "if we have the number, just let it show
+    -- an estimated countdown"). Not _fmtDur: a length may round to the nearest
+    -- minute, a countdown may not round 20 seconds up to "1 min", and it needs
+    -- something to say at zero rather than going blank as the food runs out.
+    check('FW38 a countdown reads as an estimate', fw._fmtLeft(17460), '~4 hr 51 min left');
+    check('FW38b ...a whole hour keeps it short', fw._fmtLeft(3600), '~1 hr left');
+    check('FW38c ...seconds do not become a minute', fw._fmtLeft(20), 'under a minute left');
+    check('FW38d ...and zero says so instead of going blank', fw._fmtLeft(0), 'expiring now');
+    check('FW38e an unknown remaining draws nothing at all', fw._fmtLeft(nil), nil);
+    -- `left` does NOT depend on the measured duration, so a row recorded before
+    -- 2026-08-01 still gets a countdown even though it can report no spend.
+    -- (Back to the pre-logout expiry: FW35 left the shifted one in place.)
+    fw._state.food = { present = true, expiry = RAW0 };
+    fw.history[1].dur = nil;
+    local noDur = fw.status({ stamp = function() return T0 + 600; end });
+    check('FW39 an unmeasured row still counts down', noDur.left, 2998);
+    check('FW39b ...it just cannot say how much is spent', noDur.used, nil);
+    fw.history[1].dur = 3598;
+
+    -- ...and the measurement survives the disk round trip.
+    fw.history[1].dur = 3598;
+    local rt = fw._fromRaw((loadstring or load)(fw._serialize(fw.history))());
+    check('FW37 the measured duration round-trips through the file', rt[1].dur, 3598);
+    fw.history[1].dur = nil;
+    local rt2 = fw._fromRaw((loadstring or load)(fw._serialize(fw.history))());
+    check('FW37b ...and an absent one stays absent', rt2[1].dur, nil);
+    fw._reset();
+end
 end
 
     AshitaCore = savedCore;

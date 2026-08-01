@@ -2532,7 +2532,12 @@ end)();
         stubFW.statsFor = function()
             return { lines = { 'HP +40', 'Attack +20% (cap 120)' }, dur = 10800, src = 'server' };
         end
-        stubFW._fmtDur  = function() return '3 hr'; end
+        -- These two ECHO their argument instead of returning a fixed string: the
+        -- tooltip now chooses between two durations and two elapsed times, and a
+        -- stub that ignored its input would let either choice pass.
+        stubFW._fmtDur  = function(s) return (tonumber(s) ~= nil) and ('DUR' .. tostring(s)) or nil; end
+        stubFW._fmtAgo  = function(s) return 'AGO' .. tostring(math.floor(tonumber(s) or -1)); end
+        stubFW._fmtLeft = function(s) return (tonumber(s) ~= nil) and ('LEFT' .. tostring(s)) or nil; end
         drew.selectable, drew.image = 0, 0;
         check('MN18k the active food draws with nothing left to eat', pcall(mn.renderPopups), true);
         check('MN18l ...as one row on top of the roster', drew.selectable, 8);
@@ -2542,21 +2547,69 @@ end)();
         -- it does. Those lines are the server's own text and are full of literal
         -- '%' -- unescaped, imgui's printf would print a heap address instead
         -- (the panelkit law, 2026-07-30).
-        local tips = {};
-        IM.IsItemHovered = function() return true; end
-        IM.SetTooltip    = function(t) tips[#tips + 1] = tostring(t); end
-        pcall(mn.renderPopups);
-        IM.IsItemHovered = function() return false; end
-        IM.SetTooltip    = nil;
-        local foodTip = nil;
-        for _, t in ipairs(tips) do
-            if t:find('Pork Cutlet', 1, true) then foodTip = t; end
+        local function hoverTip()
+            local tips = {};
+            IM.IsItemHovered = function() return true; end
+            IM.SetTooltip    = function(t) tips[#tips + 1] = tostring(t); end
+            pcall(mn.renderPopups);
+            IM.IsItemHovered = function() return false; end
+            IM.SetTooltip    = nil;
+            for _, t in ipairs(tips) do
+                if t:find('Pork Cutlet', 1, true) then return t; end
+            end
+            return nil;
         end
+
+        -- The MEASURED meal wins over the food's book value, and time SPENT UNDER
+        -- the food wins over wall clock. Both matter for the same reason: the book
+        -- says 3 hr for a Pork Cutlet that ran 6 under Sigil, and wall clock counts
+        -- the hours you were logged out, when the food was paused.
+        stubFW.status = function()
+            return { active = true, current = { id = 7, name = 'Pork Cutlet', at = 0 },
+                     recent = {}, dur = 21597, left = 20997, used = 600 };
+        end
+        local foodTip = hoverTip();
         check('MN18n the hover names the food', foodTip ~= nil, true);
-        check('MN18o ...says how long it lasts', (foodTip or ''):find('3 hr food.', 1, true) ~= nil, true);
+        check('MN18o ...says how long the MEASURED meal lasts',
+              (foodTip or ''):find('DUR21597', 1, true) ~= nil, true);
+        check('MN18o2 ...not the food\'s book value',
+              (foodTip or ''):find('DUR10800', 1, true), nil);
+        check('MN18o3 ...and counts only time spent UNDER it',
+              (foodTip or ''):find('AGO600', 1, true) ~= nil, true);
         check('MN18p ...and lists what it gives', (foodTip or ''):find('HP +40', 1, true) ~= nil, true);
         check('MN18q ...with every percent sign escaped',
               (foodTip or ''):find('+20%% (cap 120)', 1, true) ~= nil, true);
+        check('MN18q1 ...and counts down beside the length',
+              (foodTip or ''):find('DUR21597 food -- LEFT20997.', 1, true) ~= nil, true);
+
+        -- A meal recorded before the duration was measured: the length and the
+        -- elapsed both fall back, and neither falls over. The countdown does NOT
+        -- fall back -- `left` never depended on the measurement -- so an old row
+        -- still counts down even though it cannot say how much is spent.
+        stubFW.status = function()
+            return { active = true, current = { id = 7, name = 'Pork Cutlet', at = 0 },
+                     recent = {}, dur = nil, left = 20997, used = nil };
+        end
+        local oldTip = hoverTip();
+        check('MN18q2 an unmeasured meal falls back to the book duration',
+              (oldTip or ''):find('DUR10800', 1, true) ~= nil, true);
+        check('MN18q3 ...and to wall clock for the elapsed',
+              (oldTip or ''):find('AGO600', 1, true), nil);
+        check('MN18q4 ...but still counts down', (oldTip or ''):find('LEFT20997', 1, true) ~= nil, true);
+
+        -- Nothing decodable at all: no countdown, and the line does not go blank.
+        stubFW.status = function()
+            return { active = true, current = { id = 7, name = 'Pork Cutlet', at = 0 },
+                     recent = {}, dur = nil, left = nil, used = nil };
+        end
+        local bareTip = hoverTip();
+        check('MN18q5 an undecodable timer drops the countdown, keeps the length',
+              (bareTip or ''):find('DUR10800 food.', 1, true) ~= nil, true);
+        check('MN18q6 ...and says nothing about time left',
+              (bareTip or ''):find('LEFT', 1, true), nil);
+        stubFW.status = function()
+            return { active = true, current = { id = 7, name = 'Pork Cutlet', at = 0 }, recent = {} };
+        end
 
         -- Effect up but NOT nameable (nothing eaten on dlac's watch): the row says
         -- no more than the game's own icon already does, so it draws nothing.
