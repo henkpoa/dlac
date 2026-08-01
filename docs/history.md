@@ -7830,3 +7830,59 @@ Suites **5652** then **5662**, both interpreters. Promoted the same session (`5c
 **never field-confirmed** — the round it owes is one glance, `/dl sends` after an Incursion
 stretch, and because it is a readout a wrong answer costs a re-read rather than gear.
 
+
+## Session "the same rule, in the profiles you tick" (2026-08-02, `2026.08.02b`)
+
+**Theme:** Henrik asked for a small button; the interesting part was deciding what it must
+NOT become.
+
+*"Can you make a copy to... button by all the trigger rules? I know we have blue prints, but
+would be nice if that would open up a window where you can mark all or any of the dlac
+profiles you want to copy that trigger rule to."*
+
+**The design ruling is in his own sentence.** He named Blueprints and then asked for
+something else anyway, which is the whole specification: a Blueprint is the LIBRARY you keep
+— job-independent, saved forever, stamped when you want it — and a Blueprint's axis is the
+JOB. What he was missing is the other axis: the same rule, in his other **profiles**, now.
+So "copy to…" is a one-shot **spread** and deliberately not a second library: no name, no
+entry, nothing to maintain afterwards. The copied rule is an ordinary Trigger the moment it
+lands, exactly as a stamped Blueprint is.
+
+**It travels AS a Blueprint entry, and that is the load-bearing decision.** Capture, deep-copy
+detachment, identical-rule detection and the stamp transform already exist in
+`blueprintsmodel` and are pinned by TGB\*. Writing a second copy of any of them would have
+put a THIRD emitter beside `dispatch.serializeTriggers` and `blueprintsmodel.emitRule` — and
+that pair is already documented as a parity hazard that has to be kept in step by hand. So
+`gear/rulecopy.lua` (RC1–36) adds only what did not exist: the **answer per target**. Each
+profile is classified `source` / `create` / `dup` / `add` / `unreadable` before anything is
+written, and the window says so on the row.
+
+**Two rules the write side owes the player**, both of them the sort of thing that is invisible
+when it works:
+
+- **A torn target file is refused, never overwritten.** The copy re-reads each target at write
+  time (the rows are a snapshot; the other Lua state and a parallel session share this disk),
+  and a file that does not parse means that profile is skipped and named. Serializing over a
+  file we could not read is how a profile loses its whole trigger set to a helpful feature.
+- **Every outcome is NAMED in the receipt** — copied, duplicated, failed, with the reason. A
+  multi-target write that silently skips one target reads as one that worked everywhere, and
+  the player would not find out until they switched profiles, hours later, in a fight.
+
+**What is deliberately absent.** The active profile is listed but never a target (the rule
+lives there — that is what makes the button meaningful), so nothing hot-reloads and nothing
+about the current setup moves. Sets, Modes and Groups a target profile lacks travel verbatim
+and read `[missing]` there — the Blueprint stamp precedent, unchanged: the missing-reference
+surfacing that already exists is better than a pre-flight check that has to re-derive it.
+Cross-CHARACTER copying is not offered; the Profiles menu owns that axis, and a per-rule
+button was not the place to grow a second one.
+
+**Testing shape, and the reason for it.** The pure core is headless (RC1–36), but the part
+that actually breaks in this codebase is a popup BODY — it only runs while the window is
+open, so an undefined name in there stays a silent nil global until a player clicks. smoke_ui
+CP1–21 forces the popup open against a stub imgui and a stub profiles module and drives the
+whole thing: the unconfigured error path, every row shape, the All tick, the button count,
+and the write click — aimed at a directory that does not exist ON PURPOSE, so the suite
+proves the failure is reported by name rather than thrown, and litters nothing.
+
+Suites **5698** and **965**, both interpreters. On `dev`, **not field-confirmed**; the round
+it owes is one pass — copy a rule into a second profile, switch, see it there.

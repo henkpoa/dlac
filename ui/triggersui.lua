@@ -36,6 +36,10 @@ local _abok, abilityDB = pcall(require, "dlac\\data\\abilities");
 -- Pure core (CRUD / stamp transform / serialize) here; the file IO + section render below.
 -- Guarded like the others: a missing module only loses the Blueprints section.
 local _bpok, bp   = pcall(require, "dlac\\gear\\blueprintsmodel");
+-- "copy this rule to..." (Henrik 2026-08-02): one rule spread across this character's
+-- other Profiles, same job entry. Pure core (rows / selection / receipt) here, the file
+-- ladder below. Guarded: a missing module only loses the per-rule copy button.
+local _rcok, rc   = pcall(require, "dlac\\gear\\rulecopy");
 local hasImgui    = _iok and imgui ~= nil;
 local hasDispatch = _dpok and type(dsp) == 'table';
 local hasGroups   = _gmok and type(gm) == 'table';
@@ -52,6 +56,7 @@ local hasClipboard = hasImgui and type(imgui.SetClipboardText) == 'function';
 local hasBrowse   = _apok and type(ap) == 'table'
     and _spok and type(spellDB) == 'table' and _abok and type(abilityDB) == 'table';
 local hasBlueprints = _bpok and type(bp) == 'table';
+local hasRuleCopy = _rcok and type(rc) == 'table' and rc.usable ~= nil and rc.usable();
 
 local function mainLevel()
     local lv = nil;
@@ -1803,6 +1808,13 @@ local function renderTrigRuleBox(h, i, r, setNames, colX)
         if imgui.SmallButton('bp##trgbp' .. id) then act = 'blueprint'; end
         if imgui.IsItemHovered() then
             imgui.SetTooltip('Save as Blueprint: capture this rule into your per-character library,\nready to stamp onto any job (Blueprints section).');
+        end
+    end
+    if hasRuleCopy then
+        imgui.SameLine(0, 4);
+        if imgui.SmallButton('copy to...##trgcp' .. id) then act = 'copyto'; end
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('Copy this rule into your OTHER profiles -- same job, same handler.\nTick the profiles in the window that opens; a Blueprint is the\nkeep-it-forever library, this is a one-shot spread.');
         end
     end
     imgui.SameLine(0, 4);
@@ -4183,6 +4195,267 @@ function M.renderBlueprints(job, level)
     renderBpImportPopup();
 end
 
+-- ---------------------------------------------------------------------------
+-- "copy this rule to..." (Henrik 2026-08-02) -- one Trigger, spread across this
+-- character's OTHER Profiles in one window. The Blueprint's one-shot sibling: a
+-- Blueprint is the keep-it-forever library you stamp when you want it, this is
+-- "put that rule in these profiles too, now". Same job entry in every target --
+-- the cross-JOB move is what a Blueprint is for.
+--
+-- gear\rulecopy is the pure core (capture, per-target verdict, receipt); the file
+-- ladder is here: re-read at write time (the rows are a snapshot and both Lua
+-- states plus a parallel session share this disk), timestamped backup, then
+-- safewrite's replace-with-restore, then a read-back verify. TWO refusals guard
+-- the destructive half -- a target whose trigger file does not PARSE, and one
+-- whose safety backup could not be written -- and both are named in the receipt
+-- rather than worked around.
+--
+-- Nothing here touches the active profile, so nothing needs a hot-reload: the
+-- copies are already there when the player switches.
+-- ---------------------------------------------------------------------------
+local cpUI = {
+    entry = nil, handler = nil, job = nil, ruleText = '',
+    rows = nil, err = nil, marks = {},          -- marks: name -> { bool } (imgui buffer)
+    status = '', statusErr = false, statusAt = 0,
+    _open = false,
+};
+
+-- Per-state note, shown beside each profile row. Every row says what WOULD happen.
+local CP_NOTE = {
+    create     = 'no trigger file for this job yet -- one is created',
+    dup        = 'already has an identical rule -- copying adds a second',
+    source     = 'this profile -- the rule lives here',
+    unreadable = 'its trigger file does not parse -- skipped, never overwritten',
+};
+
+local function cpSetStatus(msg, isErr)
+    cpUI.status = msg or ''; cpUI.statusErr = (isErr == true); cpUI.statusAt = os.clock();
+end
+
+local function cpProfiles()
+    local ok, prof = pcall(require, 'dlac\\profiles');
+    return (ok and type(prof) == 'table') and prof or nil;
+end
+
+-- One profile's <JOB> trigger file -> the edit model. data, err: BOTH nil means
+-- "no file yet" (a copy creates it); err set means the file is there and torn.
+local function cpReadProfile(prof, profName, job)
+    local path = prof.triggersPath(job, profName);
+    if path == nil then return nil, 'no path'; end
+    local raw, rerr = dsp.readTriggersRaw(path);
+    if raw == nil then
+        if rerr == 'no file' then return nil, nil; end
+        return nil, rerr or 'unreadable';
+    end
+    return tmodel.fromRaw(raw, dsp.canonEvent), nil;
+end
+
+-- Ask every profile of this character what a copy would do there. rows | nil, err.
+local function cpScan(entry)
+    local _, abbr = trigFilePath();
+    if abbr == nil then return nil, 'not logged in (or the job is unknown)'; end
+    cpUI.job = abbr;
+    local prof = cpProfiles();
+    if prof == nil then return nil, 'profiles module unavailable'; end
+    local names = prof.listProfiles();
+    if names == nil then return nil, 'could not list this character\'s profiles'; end
+    local active = prof.activeName();
+    local targets = {};
+    for _, nm in ipairs(names) do
+        -- get_dir mixes files into a listing: only sanitize-clean names are folders
+        if prof.sanitizeName(nm) ~= nil then
+            local t = { name = nm, source = (nm == active) };
+            if not t.source then t.data, t.err = cpReadProfile(prof, nm, abbr); end
+            targets[#targets + 1] = t;
+        end
+    end
+    return rc.rows(entry, targets), nil;
+end
+
+-- Open the window for one rule: capture it (detached the moment it is captured),
+-- render its canonical text, scan the profiles. Only the write is deferred.
+local function cpOpen(handler, rule)
+    cpUI.entry, cpUI.handler, cpUI.rows, cpUI.err = nil, handler, nil, nil;
+    cpUI.marks, cpUI.ruleText = {}, '';
+    cpUI.status, cpUI.statusErr = '', false;
+    cpUI._open = true;
+    if not hasRuleCopy then cpUI.err = 'rulecopy module unavailable -- the copy is disabled.'; return; end
+    if not hasDispatch or not hasTrigModel then cpUI.err = 'the trigger modules are unavailable.'; return; end
+    local entry, eerr = rc.entryFor(handler, rule);
+    if entry == nil then cpUI.err = 'this rule cannot be copied: ' .. tostring(eerr); return; end
+    cpUI.entry, cpUI.ruleText = entry, rc.ruleText(entry, dsp.PRETTY_KEY);
+    cpUI.rows, cpUI.err = cpScan(entry);
+end
+
+-- Write ONE target profile's <JOB> trigger file with the rule appended. ok, dup, err.
+local function cpCopyOne(prof, entry, job, profName)
+    local path = prof.triggersPath(job, profName);
+    if path == nil then return false, false, 'no path'; end
+    local data, derr = cpReadProfile(prof, profName, job);
+    if derr ~= nil then return false, false, derr; end   -- torn file: refused, not overwritten
+    local dup = rc.holdsIdentical(entry, data);
+    local text;
+    local sok = pcall(function() text = dsp.serializeTriggers(rc.applyTo(entry, data)); end);
+    if not sok or type(text) ~= 'string' then return false, dup, 'serialize failed'; end
+    -- The profile may have no triggers\ folder yet. ensureStorage would ADOPT the
+    -- named profile as ACTIVE if the pointer file were missing -- a copy must never
+    -- switch profiles -- so it is only called where a pointer already exists.
+    pcall(function()
+        if prof.storageExists() then prof.ensureStorage(profName); end
+    end);
+    local prev = readFileText(path);
+    if prev == nil then
+        if not writeFileText(path, text) then return false, dup, 'could not write ' .. path; end
+    else
+        local sw = nil;
+        pcall(function() sw = require('dlac\\lib\\safewrite'); end);
+        if type(sw) ~= 'table' then return false, dup, 'safewrite unavailable -- refused to overwrite'; end
+        -- The house rule (profiles' deleters): nothing overwrites a player's file
+        -- without a safety copy landing FIRST. A backup we could not write means the
+        -- profile is skipped and NAMED, never written to. Each level of the backup
+        -- path is created in turn (the ensureDirChain convention).
+        local backed = false;
+        pcall(function()
+            local root = prof.charRoot();
+            if root == nil then return; end
+            if ashita and ashita.fs and ashita.fs.create_directory then
+                ashita.fs.create_directory(root .. 'backups\\');
+                ashita.fs.create_directory(root .. 'backups\\rule-copy\\');
+            end
+            backed = sw.timestampBackup(root .. 'backups\\rule-copy\\', profName .. '-' .. job .. '-', prev) ~= nil;
+        end);
+        if not backed then return false, dup, 'could not write the safety backup -- refused to overwrite'; end
+        local wok, werr = sw.replaceLua(path, text, { origText = prev });
+        if not wok then return false, dup, tostring(werr); end
+    end
+    if readFileText(path) ~= text then return false, dup, 'write verify failed'; end
+    return true, dup, nil;
+end
+
+-- Copy into every ticked profile, then re-scan so the rows show the NEW truth (a
+-- profile just written now reads 'dup' -- which is what stops a second click from
+-- doubling the rule unnoticed).
+local function cpApply()
+    local entry, job = cpUI.entry, cpUI.job;
+    if entry == nil or job == nil then cpSetStatus('Nothing to copy.', true); return; end
+    local prof = cpProfiles();
+    if prof == nil then cpSetStatus('profiles module unavailable.', true); return; end
+    local results = {};
+    for _, row in ipairs(cpUI.rows or {}) do
+        local b = cpUI.marks[row.name];
+        if b ~= nil and b[1] == true and rc.copyable(row.state) then
+            local ok, dup, err = cpCopyOne(prof, entry, job, row.name);
+            results[#results + 1] = { name = row.name, ok = ok, dup = dup, err = err };
+        end
+    end
+    local text, isErr = rc.receipt(results, job, entry.handler);
+    cpSetStatus(text, isErr);
+    local rows, serr = cpScan(entry);
+    if rows ~= nil then cpUI.rows, cpUI.err = rows, nil; else cpUI.err = serr; end
+    cpUI.marks = {};
+end
+
+-- The tick buffer for one row, created on demand.
+local function cpMark(name)
+    local b = cpUI.marks[name];
+    if b == nil then b = { false }; cpUI.marks[name] = b; end
+    return b;
+end
+
+local function renderTrigCopyPopup()
+    imgui.SetNextWindowSizeConstraints({ 460, 0 }, { 660, 520 });
+    if not imgui.BeginPopup('##dlac_trigcopy') then return; end
+    imgui.TextColored(COL_HEADER, 'Copy this rule to other profiles');
+    imgui.TextColored(COL_DIM, string.format('%s %s -- it lands in the same job entry of every profile you tick.',
+        tostring(cpUI.job or '?'), tostring(cpUI.handler or '?')));
+    if cpUI.ruleText ~= '' then
+        imgui.PushTextWrapPos(0.0);
+        imgui.TextColored(COL_SCORE, esc(cpUI.ruleText));
+        imgui.PopTextWrapPos();
+    end
+    if trig.dirty then
+        imgui.TextColored(COL_SCORE, 'This profile has uncommitted edits -- the copy carries the rule AS SHOWN, not the one on disk.');
+    end
+    imgui.Separator();
+
+    if cpUI.err ~= nil then imgui.TextColored(COL_ERR, esc(tostring(cpUI.err))); end
+
+    local rows = cpUI.rows or {};
+    local others, picked = 0, {};
+    for _, r in ipairs(rows) do if r.state ~= 'source' then others = others + 1; end end
+    if cpUI.err == nil and others == 0 then
+        imgui.TextColored(COL_DIM, 'This character has no other profile yet -- create one in the Profiles menu,');
+        imgui.TextColored(COL_DIM, 'and it will be listed here.');
+    end
+    -- A long profile list scrolls in a capped child (the Blueprints-list pattern)
+    -- rather than pushing the Copy button off the bottom of a size-capped popup.
+    local scroll = (#rows > 12);
+    if scroll then imgui.BeginChild('##trgcplist', { -1, 12 * (lineH() + 4) + 8 }, false); end
+    for _, r in ipairs(rows) do
+        if rc.copyable(r.state) then
+            local b = cpMark(r.name);
+            imgui.Checkbox(esc(r.name) .. '##trgcpm_' .. r.name, b);
+            if b[1] == true then picked[r.name] = true; end
+        else
+            imgui.TextColored(COL_DIM, esc('    ' .. r.name));
+        end
+        local note = CP_NOTE[r.state];
+        if note ~= nil then
+            imgui.SameLine(0, 8);
+            imgui.TextColored((r.state == 'unreadable') and COL_ERR
+                or ((r.state == 'dup') and COL_SCORE or COL_DIM), esc('(' .. note .. ')'));
+        end
+    end
+    if scroll then imgui.EndChild(); end
+
+    if others > 0 then
+        imgui.Spacing();
+        if imgui.SmallButton('All##trgcpall') then
+            for _, r in ipairs(rows) do
+                if rc.copyable(r.state) then cpMark(r.name)[1] = true; end
+            end
+        end
+        imgui.SameLine(0, 6);
+        if imgui.SmallButton('None##trgcpnone') then
+            for _, b in pairs(cpUI.marks) do b[1] = false; end
+        end
+    end
+
+    imgui.Separator();
+    local n, dups = rc.selection(rows, picked);
+    if dups > 0 then
+        imgui.TextColored(COL_SCORE, string.format('%d ticked profile%s already hold%s an identical rule -- copying adds a second.',
+            dups, (dups == 1) and '' or 's', (dups == 1) and 's' or ''));
+    end
+    if n > 0 then
+        if imgui.Button(string.format('Copy to %d profile%s##trgcpgo', n, (n == 1) and '' or 's'), { 0, 24 }) then
+            cpApply();
+        end
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('Writes each profile\'s ' .. tostring(cpUI.job or '?') .. ' trigger file (timestamped backup first).\nThis profile is untouched and nothing needs reloading -- the rule\nis simply there when you switch to that profile.');
+        end
+        imgui.SameLine(0, 8);
+    elseif others > 0 then
+        imgui.TextColored(COL_DIM, 'Tick the profiles to copy into.');
+        imgui.SameLine(0, 8);
+    end
+    if imgui.Button('Close##trgcpclose', { 90, 24 }) then imgui.CloseCurrentPopup(); end
+
+    if cpUI.status ~= '' then
+        imgui.PushTextWrapPos(0.0);
+        imgui.TextColored(cpUI.statusErr and COL_ERR or COL_SCORE, esc(cpUI.status));
+        imgui.PopTextWrapPos();
+    end
+    imgui.TextColored(COL_DIM, 'Sets / Modes / Groups a target profile lacks travel verbatim -- they read [missing] there.');
+    imgui.EndPopup();
+end
+-- Headless render seams (the renderTrigRuleBox / captureModeToLibrary precedent): the
+-- popup BODY only runs while the window is open, so a load test proves nothing about
+-- it -- an undefined name in there stays a silent nil global until a player clicks.
+-- smoke_ui CP* drives both against a stub imgui, unconfigured (no login, no profiles).
+M.renderTrigCopyPopup = renderTrigCopyPopup;
+M._cpOpen = cpOpen;
+
 function M.render(job, level)
     if not hasImgui then return; end
     if deps == nil then
@@ -4435,7 +4708,8 @@ function M.render(job, level)
             local act = renderTrigRuleBox(h, i, r, setNames, colX);
             if act == 'remove' then removeAt = i;
             elseif act == 'edit' then editAt = i;
-            elseif act == 'blueprint' then bpCapture(h, r); end   -- Save as Blueprint (one click)
+            elseif act == 'blueprint' then bpCapture(h, r);       -- Save as Blueprint (one click)
+            elseif act == 'copyto' then cpOpen(h, r); end         -- Copy to other profiles (a window)
         end
         if removeAt ~= nil then
             table.remove(list, removeAt);
@@ -4473,6 +4747,8 @@ function M.render(job, level)
 
     if trig._openAdd then imgui.OpenPopup('##dlac_trigadd'); trig._openAdd = false; end
     renderTrigAddPopup();
+    if cpUI._open then imgui.OpenPopup('##dlac_trigcopy'); cpUI._open = false; end
+    renderTrigCopyPopup();
     if trig._openModePopup then imgui.OpenPopup('##dlac_modeadd'); trig._openModePopup = false; end
     renderModePopup();
 end

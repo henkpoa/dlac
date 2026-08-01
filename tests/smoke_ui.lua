@@ -2813,6 +2813,147 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- CP. "copy this rule to..." -- the per-rule multi-profile copy window (Henrik
+--     2026-08-02). Its pure core is pinned headless (run_tests RC*); what only a
+--     RENDER can catch is what the craftbar lesson is about -- the popup BODY
+--     runs only while the window is open, so an undefined name in there stays a
+--     silent nil global until a player clicks the button.
+--
+--     Driven against a stub imgui with the popup FORCED OPEN and a stub profiles
+--     module, so every row shape renders (source / create / unreadable), the
+--     All tick marks them, and the Copy click runs the whole write path. The
+--     write is aimed at a directory that does not exist ON PURPOSE: the copy
+--     must report a failed profile by NAME rather than throw or lie, and the
+--     suite must not litter the tree with files.
+-- ---------------------------------------------------------------------------
+;(function()
+    local depth = { popup = 0, col = 0, win = 0, child = 0 };
+    local CLICK, REC = nil, {};
+    local function nop() end
+    local function saw(text)
+        for _, t in ipairs(REC) do if t:find(text, 1, true) ~= nil then return true; end end
+        return false;
+    end
+    local IM = setmetatable({}, { __index = function() return nop; end });
+    IM.BeginPopup = function(id)
+        if tostring(id) == '##dlac_trigcopy' then depth.popup = depth.popup + 1; return true; end
+        return false;
+    end
+    IM.EndPopup       = function() depth.popup = depth.popup - 1; end
+    IM.PushStyleColor = function() depth.col = depth.col + 1; end
+    IM.PopStyleColor  = function(n) depth.col = depth.col - (tonumber(n) or 1); end
+    IM.Begin          = function() depth.win = depth.win + 1; return true; end
+    IM['End']         = function() depth.win = depth.win - 1; end
+    IM.BeginChild     = function() depth.child = depth.child + 1; return true; end
+    IM.EndChild       = function() depth.child = depth.child - 1; end
+    IM.Button      = function(l) REC[#REC + 1] = tostring(l); return tostring(l) == CLICK; end
+    IM.SmallButton = function(l) REC[#REC + 1] = tostring(l); return tostring(l) == CLICK; end
+    IM.Checkbox    = function(l, b)
+        REC[#REC + 1] = tostring(l);
+        if tostring(l) == CLICK then b[1] = not b[1]; return true; end
+        return false;
+    end
+    IM.Text          = function(t) REC[#REC + 1] = tostring(t); end
+    IM.TextColored   = function(_, t) REC[#REC + 1] = tostring(t); end
+    IM.IsItemHovered = function() return false; end
+    IM.InputText     = function() return false; end
+    IM.GetContentRegionAvail = function() return 700, 400; end
+    IM.CalcTextSize  = function() return 60, 14; end
+
+    -- A real, parseable trigger file standing in for a profile that already HAS one --
+    -- the destructive case. It lives in the OS temp dir (never the repo tree) and is
+    -- removed at the end; charRoot is nil below, so no safety backup can be written and
+    -- the copy must refuse BEFORE touching it. Its bytes are compared afterwards.
+    local HELD = ((os.getenv('TEMP') or os.getenv('TMPDIR') or '/tmp'):gsub('\\', '/'))
+        .. '/dlac-cp-smoke-held.lua';
+    local HELDTEXT = 'return { Midcast = { { when = { name = "Cure III" }, set = "OldSet" } } };\n';
+    do
+        local fh = io.open(HELD, 'w');
+        if fh ~= nil then fh:write(HELDTEXT); fh:close(); end
+    end
+
+    -- A character with four profiles: the active one (the rule's home), one with no
+    -- trigger file for this job yet, one whose path cannot be resolved at all, and one
+    -- holding a real file that must survive a refused copy untouched.
+    local FAKEPROF = {
+        sanitizeName  = function(n) return n; end,
+        listProfiles  = function() return { 'Default', 'Fresh', 'Broken', 'Held' }; end,
+        activeName    = function() return 'Default'; end,
+        storageExists = function() return false; end,
+        charRoot      = function() return nil; end,        -- -> no backup is possible
+        triggersPath  = function(job, name)
+            if name == 'Broken' then return nil; end       -- unresolvable -> a refused row
+            if name == 'Held' then return HELD; end
+            return 'tests/no-such-dir/' .. tostring(name) .. '-' .. tostring(job) .. '.lua';
+        end,
+    };
+
+    local NAMES = { 'dlac\\ui\\triggersui', 'dlac\\profiles', 'imgui' };
+    local saved = {};
+    for _, k in ipairs(NAMES) do saved[k] = package.loaded[k]; end
+    package.loaded['imgui'] = IM;
+    package.loaded['dlac\\profiles'] = FAKEPROF;
+    package.loaded['dlac\\ui\\triggersui'] = nil;
+    local ok, tg = pcall(require, 'dlac\\ui\\triggersui');
+    check('CP1 triggersui re-requires against a stub imgui', ok and type(tg), 'table');
+    if ok then
+        check('CP2 the copy window is exposed',  type(tg.renderTrigCopyPopup), 'function');
+        check('CP3 the capture entry point is exposed', type(tg._cpOpen), 'function');
+
+        -- Unconfigured (no deps -> no job): it must REPORT, never throw, and the
+        -- window must still render its own error rather than an empty box.
+        check('CP4 capture never throws unconfigured', pcall(tg._cpOpen, 'Midcast', { when = { name = 'Cure IV' }, set = 'CureSet' }), true);
+        REC = {};
+        check('CP5 the window renders the unconfigured error', pcall(tg.renderTrigCopyPopup), true);
+        check('CP6 ...and says why', saw('not logged in'), true);
+
+        -- Configured: deps give it a job, the stub profiles module gives it targets.
+        tg.init({ dataDir = function() return 'tests/no-such-dir/'; end,
+                  jobFile = function() return 'tests/no-such-dir/WHM.lua', 'WHM'; end });
+        check('CP7 capture with a job and profiles', pcall(tg._cpOpen, 'Midcast', { when = { name = 'Cure IV' }, set = 'CureSet' }), true);
+        REC = {};
+        check('CP8 the window renders the profile rows', pcall(tg.renderTrigCopyPopup), true);
+        check('CP9 the rule travels in its canonical form', saw('when = { name = "Cure IV" }, set = "CureSet"'), true);
+        check('CP10 the active profile is shown, not offered', saw('this profile -- the rule lives here'), true);
+        check('CP11 a profile with no file yet is a tickable target', saw('Fresh##trgcpm_Fresh'), true);
+        check('CP12 ...and says a file will be created', saw('no trigger file for this job yet'), true);
+        check('CP13 an unresolvable profile is refused, never overwritten', saw('never overwritten'), true);
+        check('CP14 nothing ticked -> no Copy button, a nudge instead', saw('Tick the profiles to copy into.'), true);
+
+        -- All ticks every copyable row; the button then counts them.
+        CLICK = 'All##trgcpall';
+        check('CP15 the All tick renders', pcall(tg.renderTrigCopyPopup), true);
+        CLICK = nil; REC = {};
+        check('CP16 renders with ticked rows', pcall(tg.renderTrigCopyPopup), true);
+        check('CP17 the Copy button counts the ticks', saw('Copy to 2 profiles##trgcpgo'), true);
+
+        -- The write path, end to end. Both targets must FAIL for different reasons and
+        -- both must be NAMED (the receipt law) instead of thrown, hidden, or worked
+        -- around: Fresh's directory does not exist, and Held cannot be backed up.
+        CLICK = 'Copy to 2 profiles##trgcpgo'; REC = {};
+        check('CP18 the copy click runs the write path', pcall(tg.renderTrigCopyPopup), true);
+        CLICK = nil; REC = {};
+        check('CP19 renders the receipt', pcall(tg.renderTrigCopyPopup), true);
+        check('CP20 a profile that could not be written is named', saw('FAILED: Fresh'), true);
+        check('CP21 ...and so is the one that could not be backed up',
+            saw('Held (could not write the safety backup'), true);
+        -- THE destructive-half guarantee: the refusal happens BEFORE the file is touched.
+        local after = nil;
+        do
+            local fh = io.open(HELD, 'r');
+            if fh ~= nil then after = fh:read('*a'); fh:close(); end
+        end
+        check('CP22 a target with no safety backup is left byte-identical', after, HELDTEXT);
+        check('CP23 stacks stay balanced through the whole window',
+            depth.popup + depth.col + depth.win + depth.child, 0);
+    end
+    os.remove(HELD);
+
+    for _, k in ipairs(NAMES) do package.loaded[k] = saved[k]; end
+    package.loaded['imgui'] = nil;
+end)();
+
+-- ---------------------------------------------------------------------------
 -- Trigger rule builder: the & leg never eats a value in silence.
 --
 -- Field case (Henrik, 2026-07-25): Item rule -> name = test [+ &] -> name =

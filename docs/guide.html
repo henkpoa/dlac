@@ -291,6 +291,21 @@ section, further down the Triggers tab). From there:</p>
 a set the target job doesn't have simply warns until you create (or import) a set with
 that name — nothing breaks.</div>
 
+<h3>copy to… — the same rule in your other profiles</h3>
+<p>A Blueprint is the library you keep; <b>copy to…</b> is the one-shot spread. The button
+sits on every rule's row and opens a window listing your <i>other</i> profiles with a tick
+box each — tick any of them (or <b>All</b>) and the rule lands in the same job and the same
+event over there. Every row tells you what will happen before you click: a profile with no
+trigger file for that job yet says one will be created, a profile that already holds an
+identical rule is flagged in gold (copying adds a second), and a profile whose trigger file
+is damaged is refused rather than overwritten.</p>
+<p>The profile you're on is never a target — the rule already lives there — so nothing about
+your current setup changes and nothing needs reloading: the copies are simply there the next
+time you switch. Each file you overwrite is backed up first, timestamped, under
+<code>backups\rule-copy\</code>. Sets, modes and groups the target profile doesn't have
+travel verbatim and read <span class="mode">[missing]</span> there, exactly as a stamped
+Blueprint does.</p>
+
 <h2 id="modes">5. Modes — one set, several behaviours</h2>
 <p>Modes are named switches <i>you</i> flip; sets and rules can react to them. They come in
 two kinds:</p>

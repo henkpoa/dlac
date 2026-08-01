@@ -287,7 +287,17 @@ infer it from a field confirmation, from *"works"*, or from your own read that s
 ready — his own note on the exchange was *"you are right not to assume otherwise since I
 haven't told you."* Ask when he has **not** said merge; never ask twice when he has.
 
-**The queue is empty.**
+- **"copy to…" — one Trigger, spread across your other profiles** (`2026.08.02b`). Henrik
+  asked for it directly: *"Can you make a copy to... button by all the trigger rules? I know
+  we have blue prints, but would be nice if that would open up a window where you can mark
+  all or any of the dlac profiles you want to copy that trigger rule to."* A per-rule button
+  opens a window listing this character's OTHER profiles with a tick box each; the rule lands
+  in the same job entry of everything ticked. Pure core `gear/rulecopy.lua` (RC1–36), the
+  window driven end to end against a stub imgui (smoke_ui CP1–21). **NOT field-confirmed —
+  suites only** (5698 / 965, both interpreters). The round it owes is one pass in-game: open
+  a rule's *copy to…*, tick a second profile, copy, then switch to that profile and see the
+  rule sitting in the same handler. Cheap to check, and the failure modes are all loud
+  (every target row says what will happen, every outcome is named in the receipt).
 
 
 *(Still empty after the second 2026-08-02 promotion, `850e6d5` — **`/dl sends` bills dlac
@@ -662,6 +672,33 @@ research already recorded. In rough priority order:
    section heading rather than each carrying one. Trivial to change if it reads wrong.
 
 ## Current state (as of 2026-08-02)
+
+- **2026-08-02 (`2026.08.02b`): "copy to…" — ONE TRIGGER, SPREAD ACROSS YOUR OTHER PROFILES.
+  BUILT, on `dev`, suites green both interpreters, **NOT field-confirmed** (see the merge
+  queue for the one-pass round it owes).
+  - **Where it came from.** Henrik: *"Can you make a copy to... button by all the trigger
+    rules? I know we have blue prints, but would be nice if that would open up a window where
+    you can mark all or any of the dlac profiles you want to copy that trigger rule to."*
+  - **What it is:** a `copy to...` button on every trigger row, opening a window that lists
+    this character's OTHER profiles with a tick box each (plus All / None). The rule lands in
+    the **same job entry** of everything ticked — the cross-JOB move is what a Blueprint is
+    for; this is the cross-PROFILE one. A Blueprint is the library you keep, this is a
+    one-shot **spread**.
+  - **It travels as a Blueprint entry on purpose.** Capture, detach, identical-rule detection
+    and the stamp transform are `blueprintsmodel`'s and already pinned (TGB\*) — reusing them
+    is what guarantees a copied rule is byte-identical to a stamped one, instead of a third
+    hand-rolled emitter drifting from `dispatch.serializeTriggers`.
+  - **Every row says what will happen before the click**, and every outcome is named after
+    it: `create` (no trigger file for that job yet), `dup` (identical rule already there —
+    warn-but-allow, gold), `add`, and a torn target file **refused, never overwritten**. The
+    active profile is shown but never a target.
+  - **The write ladder** (triggersui, not the pure core): re-read each target at write time
+    (the rows are a snapshot and both Lua states plus a parallel session share the disk),
+    timestamped backup into `<char>\backups\rule-copy\`, `lib/safewrite.replaceLua`, read-back
+    verify. Nothing hot-reloads because nothing about the active profile changes — the copies
+    are simply there on the next switch.
+  - `gear/rulecopy.lua` (RC1–36 pure), `M.renderTrigCopyPopup` / `M._cpOpen` exposed as
+    render seams so smoke_ui CP1–21 drives the whole window, including the failed-write path.
 
 - **2026-08-02 (`2026.08.02`): `/dl sends` — WHAT DLAC PUT ON THE WIRE. BUILT and **ON MAIN**
   (`28ab08d`, promoted same session), suites green both platforms, **NOT field-confirmed — a

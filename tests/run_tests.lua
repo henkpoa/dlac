@@ -226,7 +226,7 @@ end)();
                  'restockui','setupui','triggersui','uihost','uistyle','weightsui' };
     local GEAR = { 'acimport','actionpicker','arbiter','blueprintsmodel','catalogindex','gearcheck','geareffects','gearexport',
                    'gearfmt','gearimport','gearoptim','gearoracle','gearrecord','groupimport','groupscan',
-                   'groupsmodel','jobgate','modeslibrary','ownedcache','profileexport','profilesets','setimport',
+                   'groupsmodel','jobgate','modeslibrary','ownedcache','profileexport','profilesets','rulecopy','setimport',
                    'setmanager','syncflags','triggermodel','weaponfilter','weightimport' };
     local FEATURE = { 'actionseq','ammowatch','arbwatch','augments','check','chocowatch','combat','craftwatch','debug','digcalc','digrank',
                       'eboxclient','eboxtrace','engagewatch','fishcalc','fishwatch','foodwatch','gamehud','gamemode','helmwatch','idleexcl','jobhelpers','location','lockstyle','lookpreview',
@@ -4903,6 +4903,101 @@ end)();
     -- previewImport surfaces the same parse error (nil + message), never a crash.
     local nilPrev, nilErr = bp.previewImport('return function() end', emptyLib);
     check('TGB57 preview surfaces a bad blob as an error', nilPrev == nil and type(nilErr), 'string');
+end)();
+
+-- ---------------------------------------------------------------------------
+-- RC. rulecopy -- "copy this rule to..." (Henrik 2026-08-02): one Trigger spread
+--     across this character's OTHER Profiles, same job entry. The Blueprint's
+--     one-shot sibling, and it travels AS a Blueprint entry on purpose (capture /
+--     detach / identical-rule / stamp are blueprintsmodel's, pinned by TGB*).
+--     What is pinned here is the part that is new: the ANSWER PER TARGET --
+--     source vs create vs dup vs add vs unreadable -- the ticked-selection count,
+--     and the receipt, which must NAME every outcome (a copy that silently
+--     skipped a profile reads as one that worked everywhere, and the player
+--     would not find out until they switched to it).
+-- ---------------------------------------------------------------------------
+(function()
+    package.loaded['dlac\\gear\\blueprintsmodel'] =
+        package.loaded['dlac\\gear\\blueprintsmodel'] or dofile('gear/blueprintsmodel.lua');
+    local rc = dofile('gear/rulecopy.lua');
+
+    check('RC1 usable with the Blueprint core present', rc.usable(), true);
+
+    -- Capture: the SAME entry shape a Blueprint carries, detached at capture.
+    local live = { when = { name = 'Cure IV' }, set = 'CureSet', priority = 40 };
+    local entry, eerr = rc.entryFor('Midcast', live);
+    check('RC2 capture returns an entry', eerr == nil and type(entry), 'table');
+    check('RC3 capture carries the handler', entry.handler, 'Midcast');
+    live.set = 'Mutated';   -- mutate the SOURCE after capture
+    check('RC4 the captured rule is detached', entry.rule.set, 'CureSet');
+    check('RC5 a rule with no action is refused', (rc.entryFor('Midcast', { when = { name = 'X' } })), nil);
+    check('RC6 an unknown handler is refused',   (rc.entryFor('Nope', { when = { name = 'X' }, set = 'S' })), nil);
+
+    -- The canonical rule text (what the window shows) is the serializer's ONE form.
+    check('RC7 rule text is the canonical form', rc.ruleText(entry), 'when = { name = "Cure IV" }, set = "CureSet", priority = 40');
+
+    -- Per-target verdicts. `data = nil` + no err = no trigger file for this job yet.
+    local hasIt  = { Midcast = { { when = { name = 'Cure IV' }, set = 'CureSet', priority = 40 } } };
+    local hasOther = { Midcast = { { when = { name = 'Cure III' }, set = 'CureSet' } } };
+    local rows = rc.rows(entry, {
+        { name = 'Solo',    data = hasOther },
+        { name = 'Default', source = true },
+        { name = 'Zephyr',  data = nil },
+        { name = 'Torn',    err = 'does not parse: unexpected symbol' },
+        { name = 'Party',   data = hasIt },
+    });
+    check('RC8 every target gets a row', #rows, 5);
+    check('RC9 rows are sorted by name', rows[1].name .. ',' .. rows[5].name, 'Default,Zephyr');
+    local st, byName = {}, {};
+    for _, r in ipairs(rows) do st[r.name] = r.state; byName[r.name] = r; end
+    check('RC10 the source profile is never a target', st.Default, 'source');
+    check('RC11 an ordinary target adds',              st.Solo,    'add');
+    check('RC12 no file yet -> create',                st.Zephyr,  'create');
+    check('RC13 an identical rule -> dup',             st.Party,   'dup');
+    check('RC14 a torn file -> unreadable',            st.Torn,    'unreadable');
+    check('RC15 the torn file keeps its reason', type(byName.Torn.err), 'string');
+
+    -- Only the three copyable states may ever be written to.
+    check('RC16 add/create/dup are copyable',
+        rc.copyable('add') and rc.copyable('create') and rc.copyable('dup'), true);
+    check('RC17 source is not copyable',     rc.copyable('source'), false);
+    check('RC18 unreadable is not copyable', rc.copyable('unreadable'), false);
+
+    -- The ticked selection: how many will be written, and how many of those double up.
+    local n0 = rc.selection(rows, {});
+    check('RC19 nothing ticked -> nothing to write', n0, 0);
+    local n1, d1 = rc.selection(rows, { Solo = true, Zephyr = true });
+    check('RC20 two ordinary targets ticked', n1, 2);
+    check('RC21 ...none of them a duplicate', d1, 0);
+    local n2, d2 = rc.selection(rows, { Solo = true, Party = true, Default = true, Torn = true });
+    check('RC22 un-copyable ticks are ignored', n2, 2);
+    check('RC23 the duplicate is counted and shown', d2, 1);
+
+    -- The transform: non-mutating, and a nil target (no file) starts a job entry.
+    local before = { Default = { { when = { status = 'Idle' }, set = 'Idle' } } };
+    local after = rc.applyTo(entry, before);
+    check('RC24 the rule lands in its handler',      #after.Midcast, 1);
+    check('RC25 other handlers survive',              after.Default[1].set, 'Idle');
+    check('RC26 the target data is not mutated',      before.Midcast, nil);
+    check('RC27 a missing file becomes a job entry',  #(rc.applyTo(entry, nil).Midcast), 1);
+    check('RC28 the copy is identical afterwards',    rc.holdsIdentical(entry, after), true);
+    check('RC29 ...and was not before',               rc.holdsIdentical(entry, before), false);
+
+    -- The receipt names EVERY outcome.
+    local okText, okErr = rc.receipt({ { name = 'Solo', ok = true }, { name = 'Zephyr', ok = true } }, 'WHM', 'Midcast');
+    check('RC30 plain copy names the profiles', okText, 'Copied to Solo, Zephyr (WHM Midcast).');
+    check('RC31 ...and is not an error', okErr, false);
+    local mixText, mixErr = rc.receipt({
+        { name = 'Solo',  ok = true },
+        { name = 'Party', ok = true, dup = true },
+        { name = 'Alt',   ok = false, err = 'could not write' },
+    }, 'WHM', 'Midcast');
+    check('RC32 duplicates are called out', mixText:find('1 already had an identical rule -- copied anyway: Party.', 1, true) ~= nil, true);
+    check('RC33 failures are named with their reason', mixText:find('FAILED: Alt (could not write).', 1, true) ~= nil, true);
+    check('RC34 a failure makes the receipt an error', mixErr, true);
+    local noneText, noneErr = rc.receipt({}, 'WHM', 'Midcast');
+    check('RC35 an empty copy says so', noneText:find('Nothing copied', 1, true) ~= nil, true);
+    check('RC36 ...as an error', noneErr, true);
 end)();
 
 -- ---------------------------------------------------------------------------
