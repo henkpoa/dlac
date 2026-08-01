@@ -47,7 +47,8 @@ M._loadStamp = M._loadStamp or string.format('%d:%.3f', os.time(), os.clock());
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code. From v32 the engine self-swaps when the seeded file's version moves, so
 -- the banner should only persist when a swap FAILED (or pre-v32 code is live).
-M.VERSION = 161;  -- 161: ONE ANSWER PER SLOT -- the rendering contract, stated (docs/design/two-way-arbiter.md §11). Henrik's screenshot of the v159 pair verdict: `/dl why range` printed BOTH "nobody claimed it (kept as worn)." AND "held EMPTY: Arcane Arbalest and Cinderstone cannot coexist -- kept Cinderstone, the higher Level." -- two sentences disagreeing about one slot, and "kept as worn" is the weaker truth besides (when a stat stick holds Range the SERVER empties it; the slot is not merely unwritten). The no-contest line is NOT a verdict -- it is what a renderer says when the contest was EMPTY -- and a slot the arbitration REFUSED has an empty contest BY CONSTRUCTION, because the refused piece never reaches floorTbl/arbExplain, so `ops` comes back nil. The first four verdict channels (rep / fall.dead / inel / sup) never exposed this because each only ever fires on a slot that HAD a contest; the pair verdict is the first that can fire on a slot nothing claimed. arbiter.slotVerdict is now the ONE walk -- rep -> dead -> ineligible -> reserved -> pair, most specific refusal first -- that every renderer asks before falling back to the no-contest line, so /dl why, the Monitor cell and the Monitor hover cannot drift apart about which channel speaks. §11 writes down the whole contract for the sixth channel: add it to slotVerdict in order, give it its OWN sentence (never fold a new verdict into an existing one because the consequence matches -- the pair law is not "reserved"), name which leg answered when it has several, update all three renderers, and make sure a suppressing pass cannot double-report. Tests RV1-RV9.
+M.VERSION = 162;  -- 162: EXTERNAL CLAIMS -- the write half of the Integration surface (feature\extclaim, docs\reference\integration-guide.md section 7). A SEPARATE ADDON, in its own Lua state and not a dlac module, files a Claim over Ashita's plugin_event bus and the Arbiter settles it like any other claimant. The whole feature is one sentence -- an external claim is an ordinary Claim that happened to arrive over the wire -- and the size of the change is the evidence: one rank row ('External', shipped directly above the Triggers floor, which is the rank the plugin design already ruled for a third party), one CLAIMANTS row, one signature leg, one mailbox module. Everything a player expects (contested slots, the Locks veto, the Disabled ceiling, /dl why attribution, the Arbiter Monitor, the Claim Priority drag) falls out of the registry for free -- ADR 0012's promise, collected. THE THREE LAWS THAT ARE NEW, because everything else is inherited: (1) PUSH, NEVER PULL -- dlac asks nobody anything mid-decision and waits for nobody; a claim is a standing table read from cache like AutoAmmo's, so a third party's Lua is never on the equip path and its crash cannot become dlac's gear bug (the one-directional dependency ruling, kept literal). The cost, stated: a REACTIVE external claim is one action late. (2) EVERY CLAIM IS A LEASE -- every in-state claimant dies when dlac dies and an external one does not, so a claim carries a TTL (10s default, 300 max) and must be renewed; an addon that crashes or forgets must not leave gear stuck with nobody to blame. Not a permission wall -- the holder can VANISH, which is a different problem from the holder misbehaving. (3) CLAIM, NEVER COMMIT -- session-only, no writer for sets/triggers/modes/lockstyle, unchanged from the existing ruling. The switch is /dl claims (+ a Menu > Settings row), a SIBLING of /dl stream and deliberately not the same one: reading your gear and dressing you are different consents, and a misbehaving claimant has to be killable without also killing a parser's feed. The trap worth naming for whoever adds the next claimant of any kind: the CLAIMANT_SIG_ORDER leg. A claim that changes without moving the retrace signature never re-dispatches -- it sits in the mailbox looking accepted, reaches no slot, and the failure is invisible from both sides of the wire (test EX16f exists to fail loudly instead). Tests EX1-EX16.
+                  -- 161: ONE ANSWER PER SLOT -- the rendering contract, stated (docs/design/two-way-arbiter.md §11). Henrik's screenshot of the v159 pair verdict: `/dl why range` printed BOTH "nobody claimed it (kept as worn)." AND "held EMPTY: Arcane Arbalest and Cinderstone cannot coexist -- kept Cinderstone, the higher Level." -- two sentences disagreeing about one slot, and "kept as worn" is the weaker truth besides (when a stat stick holds Range the SERVER empties it; the slot is not merely unwritten). The no-contest line is NOT a verdict -- it is what a renderer says when the contest was EMPTY -- and a slot the arbitration REFUSED has an empty contest BY CONSTRUCTION, because the refused piece never reaches floorTbl/arbExplain, so `ops` comes back nil. The first four verdict channels (rep / fall.dead / inel / sup) never exposed this because each only ever fires on a slot that HAD a contest; the pair verdict is the first that can fire on a slot nothing claimed. arbiter.slotVerdict is now the ONE walk -- rep -> dead -> ineligible -> reserved -> pair, most specific refusal first -- that every renderer asks before falling back to the no-contest line, so /dl why, the Monitor cell and the Monitor hover cannot drift apart about which channel speaks. §11 writes down the whole contract for the sixth channel: add it to slotVerdict in order, give it its OWN sentence (never fold a new verdict into an existing one because the consequence matches -- the pair law is not "reserved"), name which leg answered when it has several, update all three renderers, and make sure a suppressing pass cannot double-report. Tests RV1-RV9.
                   -- 128: 128: AutoAmmo asks what is in RANGE before it picks (field, Henrik 2026-07-26: "AutoAmmo does NOT dictate if it's bolt, arrows or what not that gets equipped. That is 100% decided on what gets put in ranged"). resolveAmmoPlan was type-BLIND -- it took the first `ranged`-flagged entry with stock, so a bolt above your arrows won with a bow equipped -- and the panel's Bullets/Bolts/Arrows selector never constrained it (categoryOf is a VIEW, stored nowhere). The cost was not a wasted swap: charutils.cpp EquipItem STRIPS THE OTHER SLOT on an incompatible Range/Ammo pair, so the bolt took the bow off, the trigger re-equipped it, and the two flapped forever -- ADR 0010's failure through the skill/subskill door instead of the rslot one. New pure M.pairsWith over a "<skill>:<subskill>" key (26:1 gun/bullet, 26:0 crossbow/bolt, 26:2 culverin/shell, 27:0 boomerang/pebble, 27:3 shuriken, 0:10 Animator/oil), three-valued so an unknown pair degrades to today's behaviour instead of switching AutoAmmo off; ARCHERY is exempt from the subskill half exactly as the server writes it (Shortbow 25:0 and Longbow 25:4 share arrows). Range is never written -- AutoAmmo only ever READS it. Two rulings, both Henrik's: no ranged weapon worn = do nothing at all (safe -- with Range empty the server refuses the shot, so nothing can be consumed), and a weapon worn with nothing in the list able to pair = hold, never force a mismatch in. THROWING with an empty Range (a NIN's shuriken, CanUseRangedAttack's `|| PAmmo->isThrowing()`) is the ONE known exception and stays parked behind the §8 NIN field tests. The key rides the manifest like RSlot (gearimport stamps Pair from the catalog's new field); worn Range falls back to the client resource's Skill when the manifest predates it, so the update alone separates bow/gun/throwing for everyone and a manifest refresh upgrades it to gun-vs-crossbow. Tests PW1-PW14, AM40-AM58.
                   -- 127: trigger CASES, the schema backbone (issue #126, slice 2/5; ADR 0023) -- rules gain an optional `cases` list (a second `&`/`|` tier: op + the same two legs a body has), evaluated by matches()/matchedCase() over a factored legMatches so both tiers share one code path; normalize validates + drops empty cases + strips the always-true `hasCases` version guard; auto-priority + ruleLabel span every leg of every case (case-LESS rules match/label/serialize byte-for-byte as before -- pinned). serializeTriggers is oldest-form-first (a `| case` of only `&` rows -> a whenAny multi-entry; only `&` cases and `| cases` with internal OR use the new list) and stamps the guard so OLDER engines drop the rule with the standard warn instead of misreading it. Seeded-file bump: normalize + matches run engine-side (hard rule 4). Tests CX1-CX35, MC19-23. (PR #132 shipped as v126/2026.07.26c off a pre-97f1edc dev; renumbered at merge.)
                   -- 126: the /dl why trace can no longer outlive the sets store it described (field, Mindie 2026-07-26 01:31): the retrace sig now carries the store REVISION (M.modesRev -- bumped by every install and re-flatten, 5668/5714), so lines built against the empty boot-window store ("[NOT FOUND in profile Sets]", true for ~2s of designed install refusals) die the moment the install lands, instead of printing with a fresh timestamp for the rest of the session while equips worked fine. The v118 law applied to the trace: THE INSTALL INVALIDATES THE BELIEF. Display only, no equip change. Tests TRC0-TRC3 (the trace-vs-store contract, driven through the real command handler + dispatch like CMD).
@@ -5650,6 +5651,66 @@ local function actionseqMod()
     return (type(m) == 'table') and m or nil;
 end
 
+-- The EXTERNAL CLAIMS mailbox (2026-08-01), lazily and for the same reason: it
+-- lives in feature/ and must never be required at load. It holds standing claims
+-- filed by OTHER ADDONS over plugin_event; this row reads them exactly like the
+-- Craft row reads a statefile -- no waiting, no round trip, no third-party code
+-- anywhere near the equip path.
+-- pcall(require, ...) rather than pcall(function() ... end): this is asked TWICE
+-- on every dispatch (the ensure pass and the build pass) and Default dispatches
+-- constantly, so the closure the wrapper form allocates is pure per-frame
+-- garbage for no gain. Same guarantees, same nil-on-failure.
+local function extclaimMod()
+    local ok, m = pcall(require, 'dlac\\feature\\extclaim');
+    return (ok and type(m) == 'table') and m or nil;
+end
+
+-- WHO BEAT THE EXTERNAL CLAIM, per slot. Pure, and separate from the apply for
+-- two reasons: it is the only thing on this feature an external addon cannot
+-- work out for itself, and buried inside the apply it sat downstream of
+-- equipResolved -- so a bad frame in the equip path would silently cost the
+-- report as well as the gear.
+--
+-- MATCHES SLOT KEYS CASE-INSENSITIVELY, which is the whole subtlety. arbExplain
+-- states the reason and this is the same join: THE PRODUCERS DISAGREE ON CASE --
+-- overlay tables use proper-case LAC keys, the Locks veto rides M.locks
+-- (lowercased), and a pin table or a locked set carries whatever case its source
+-- wrote. A case-SENSITIVE compare does not report a wrong winner, it reports NO
+-- winner -- so the addon is told it still holds a slot something else took,
+-- silently, and only for the claimants that spell slots the other way.
+--
+--   mine    -- the External claim table (its casing is what comes back)
+--   builtAll-- every claimant's built claim table, by claimant name
+--   rankOf  -- claimant -> rank index (SMALLER is stronger)
+-- Returns { [MySlotKey] = <winning claimant identity> }; empty when nothing
+-- above touched a claimed slot. The STRONGEST claimant above wins the report
+-- when several name one slot -- the same "first opinion top-down" the rank walk
+-- itself uses, so the sentence the addon reads matches what actually dressed the
+-- slot. Tests EX24*.
+function M.externalLost(mine, builtAll, rankOf)
+    local lost = {};
+    if type(mine) ~= 'table' or type(builtAll) ~= 'table' or type(rankOf) ~= 'table' then
+        return lost;
+    end
+    local myRank = rankOf['External'];
+    if myRank == nil then return lost; end
+    local key = {};                                  -- lowercase slot -> my display key
+    for sl in pairs(mine) do key[string.lower(tostring(sl))] = sl; end
+    local lostRank = {};
+    for nm, eqt in pairs(builtAll) do
+        local r = rankOf[nm];
+        if r ~= nil and r < myRank and type(eqt) == 'table' then
+            for sl in pairs(eqt) do
+                local k = key[string.lower(tostring(sl))];
+                if k ~= nil and (lostRank[k] == nil or r < lostRank[k]) then
+                    lost[k], lostRank[k] = nm, r;
+                end
+            end
+        end
+    end
+    return lost;
+end
+
 -- Weave the per-job JobHelper row into the live rank order (issue #138). A no-op
 -- with zero modules installed (the row hides), and otherwise inserts JobHelper
 -- at the current job's remembered position -- default directly below Locks. Pure
@@ -5908,6 +5969,58 @@ local CLAIMANTS = {
           local m = actionseqMod();
           return (m ~= nil) and m.statusText() or 'idle';
       end },
+    -- EXTERNAL (2026-08-01) -- the ONE shared row every OTHER ADDON's claim
+    -- rides, and an ordinary claimant in every other respect. Its table arrived
+    -- over plugin_event and was merged by feature\extclaim; from here down
+    -- nothing knows or cares that it came from another Lua state. Claims on
+    -- EVERY event, like Pins and Naked: a claim that let go mid-cast would not
+    -- be a claim, and an external addon holding gear through a weaponskill is
+    -- the whole use case. bail1/bail2 so an external claim with no triggers and
+    -- nothing else armed still dispatches -- the Naked precedent.
+    { name = 'External',
+      active = function() local m = extclaimMod(); return m ~= nil and m.active() == true; end,
+      bail1 = true, bail2 = true,
+      claim = function(st, on)
+          if not on then return nil; end
+          local m = extclaimMod();
+          return m and m.claim() or nil;
+      end,
+      sig = claimantSigLeg,
+      apply = function(env)
+          local built = env.built['External'];
+          if built == nil then return; end
+          -- THE VERDICT REPORT, taken BEFORE the equip. An external addon can
+          -- see what it was GIVEN (the worn stream) but never why a slot it
+          -- asked for did not arrive, and guessing produces exactly the
+          -- confidently-wrong behavior the read half's correlation rule exists
+          -- to prevent -- so this must not sit downstream of the equip path,
+          -- where a bad frame would cost the explanation as well as the gear.
+          -- Rows ranked ABOVE this one have BUILT their claims (the build pass
+          -- completes before any apply) and have not applied yet, so this is the
+          -- same same-dispatch view MaxMP's gates use: the plan is the only
+          -- lag-free claim signal.
+          local ctx2 = env.ctx;
+          local lost = M.externalLost(built, env.built,
+              (type(ctx2) == 'table') and ctx2.rankOf or nil);
+          pcall(function()
+              local m = extclaimMod();
+              if m ~= nil then m.noteVerdict(lost); end
+          end);
+          equipResolved(built, env.ctx, env.respect('External'), 'External');
+          if env.retrace then
+              local ks = {};
+              for slot, item in pairs(built) do
+                  ks[#ks + 1] = tostring(slot) .. '=' .. tostring(item)
+                      .. ((lost[slot] ~= nil) and (' [lost to ' .. tostring(lost[slot]) .. ']') or '');
+              end
+              table.sort(ks);
+              env.lines[#env.lines + 1] = 'OTHER ADDONS  ->  ' .. table.concat(ks, ', ');
+          end
+      end,
+      prioStatus = function()
+          local m = extclaimMod();
+          return (m ~= nil) and m.statusText() or 'off';
+      end },
     -- MaxMP, FOLDED (ADR 0027 stage 6, Henrik's item-3 ruling: "the Arbiter
     -- is the aware one"). The bands still decide WHEN (mpBands, pure) and
     -- the resolvers WHAT (mpRungs/mpBestPick, pure); this row is the
@@ -6012,8 +6125,15 @@ local CLAIMANTS = {
 -- JobHelper APPENDED (issue #138): a new leg at the end leaves the nine existing
 -- legs byte-identical, so an install with no sequence live never retraces on
 -- upgrade -- its leg is '' until a sequence claims.
+-- External APPENDED for the same reason JobHelper was: a new leg at the end
+-- leaves every existing leg byte-identical, so nobody retraces on upgrade -- and
+-- the leg matters more here than anywhere. An external claim that changes
+-- without moving the signature is a claim dlac never re-dispatches: it would sit
+-- in the mailbox looking accepted and never reach a slot, and the failure is
+-- completely silent from both sides of the wire.
 local CLAIMANT_SIG_ORDER = { 'Craft', 'Pins', 'HELM', 'Fishing', 'Chocobo',
-                             'AutoAmmo', 'MaxMP', 'Naked', 'Disabled', 'JobHelper' };
+                             'AutoAmmo', 'MaxMP', 'Naked', 'Disabled', 'JobHelper',
+                             'External' };
 local CLAIMANT_BY = {};
 for _, row in ipairs(CLAIMANTS) do CLAIMANT_BY[row.name] = row; end
 M._claimants = CLAIMANTS;                    -- test seams (CR*)
@@ -7396,8 +7516,18 @@ if engineActive() then
         -- WHITELIST FIRST, branch second: a new subcommand needs adding HERE as well as
         -- below, or it returns in silence and looks like the command does not exist
         -- (v46's /dl instdiag, an hour lost to exactly this).
-        if sub ~= 'mode' and sub ~= 'why' and sub ~= 'triggers' and sub ~= 'env' and sub ~= 'lock' and sub ~= 'sets' and sub ~= 'profile' and sub ~= 'ls' and sub ~= 'plan' and sub ~= 'prio' and sub ~= 'check' and sub ~= 'debug' and sub ~= 'naked' and sub ~= 'dress' and sub ~= 'disable' and sub ~= 'enable' and sub ~= 'stream' then return; end
+        if sub ~= 'mode' and sub ~= 'why' and sub ~= 'triggers' and sub ~= 'env' and sub ~= 'lock' and sub ~= 'sets' and sub ~= 'profile' and sub ~= 'ls' and sub ~= 'plan' and sub ~= 'prio' and sub ~= 'check' and sub ~= 'debug' and sub ~= 'naked' and sub ~= 'dress' and sub ~= 'disable' and sub ~= 'enable' and sub ~= 'stream' and sub ~= 'claims' then return; end
         e.blocked = true;
+
+        if sub == 'claims' then
+            -- The Integration surface's WRITE switch (feature\extclaim) -- the
+            -- sibling of /dl stream, deliberately NOT the same switch: reading
+            -- your gear and dressing you are different consents, and a
+            -- misbehaving claimant has to be killable without also killing a
+            -- parser's feed. ROUTING only, exactly like stream.
+            pcall(function() require('dlac\\feature\\extclaim').command(args); end);
+            return;
+        end
 
         if sub == 'stream' then
             -- The Integration surface's Session switch (docs/design/

@@ -18,7 +18,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.08.01i';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.08.01k';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
                                 -- (29k = the day-match train 29h merged with 29i/29j)
 addon.desc    = 'Gear sets, triggers and live stats with level scaling -- dlac equips your gear itself.';
@@ -147,6 +147,17 @@ ashita.events.register('d3d_present', 'dlac-seed-watch', function()
     pcall(function()
         local aseq = require('dlac\\feature\\actionseq');
         if type(aseq) == 'table' and type(aseq.pump) == 'function' then aseq.pump(); end
+    end);
+    -- The external-claim mailbox's frame pump (2026-08-01): expire lapsed leases,
+    -- tell their holders, die with the world. Pumped from HERE, not from a
+    -- d3d_present handler of its own, for the actionseq reason AND one of its
+    -- own: the engine requires this module lazily, on the first dispatch, so a
+    -- self-registered listener would not exist until dlac had already equipped
+    -- something -- and an addon that claimed before that would be answered by
+    -- nobody. Required here, it is listening from the first frame.
+    pcall(function()
+        local ex = require('dlac\\feature\\extclaim');
+        if type(ex) == 'table' and type(ex._pump) == 'function' then ex._pump(); end
     end);
     -- The engage/target edge service's frame pump (issue #139): the packet_out
     -- handler stashes decoded edges on the NETWORK thread and does nothing else;

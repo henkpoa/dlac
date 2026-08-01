@@ -561,6 +561,27 @@ local function renderSettingsBody()
         function(v)
             pcall(function() require('dlac\\feature\\integration').setOn(v == true); end);
         end);
+
+    -- The WRITE half, and a separate switch on purpose: reading your gear and
+    -- dressing you are different consents, and a misbehaving claimant has to be
+    -- killable without also killing a parser's feed.
+    settingCheck('extclaim', 'Let other addons claim gear',
+        'Allow other addons on this machine to claim equipment slots through dlac. A claim is\n'
+        .. 'temporary and is never written to your files -- no addon can edit a set, a trigger or a\n'
+        .. 'mode this way. Claims rank on the "Other addons" row under Gear Helpers > Claim\n'
+        .. 'Priority (default: just above your Triggers), so you decide what they may override.\n'
+        .. 'This answer is SAVED and stays on until you turn it off. What is not saved is the\n'
+        .. 'claims: they die on logout, each one expires by itself if the addon holding it stops\n'
+        .. 'asking, and switching this off releases every held claim at once.\n'
+        .. 'Same switch as /dl claims; /dl claims list names who is holding what.',
+        function()
+            local on = false;
+            pcall(function() on = require('dlac\\feature\\extclaim').on == true; end);
+            return on;
+        end,
+        function(v)
+            pcall(function() require('dlac\\feature\\extclaim').setOn(v == true); end);
+        end);
 end
 
 -- ---------------------------------------------------------------------------
