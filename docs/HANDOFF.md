@@ -686,6 +686,18 @@ research already recorded. In rough priority order:
     send site without a note **fails the suite**, because an uncounted send is the one way
     this readout could lie — and it would lie in the direction that matters. A new *file*
     that sends must be added to `SEND_FILES` in the test; the test says so.
+  - **The follow-up, same day (`2026.08.02a`, ON DEV, awaiting a go):** Henrik asked what
+    `reinject (your own action, passed through)` meant, and the answer exposed a readout bug
+    — a re-injected `0x01A`/`0x037` is **his** packet handed back to the wire, so billing
+    dlac for it made the headline read higher than dlac's real contribution. The counter now
+    splits **own** from **passed-through**, quotes the rate on dlac's own count only, marks
+    the affected ids, and prints the "dlac itself sent NOTHING" verdict whenever `own == 0`
+    (the shape a real casting session takes). The flag rides in the **data** (`note(id, why,
+    pass)`), not in the wording of the cause. Tests SND15a–j. Side lesson worth keeping: the
+    SND12 invariant pin fired on its **own documentation** — a plain `AddOutgoingPacket`
+    substring matched prose about the send sites. It matches an *invocation* now
+    (`AddOutgoingPacket%s*%(`), because a pin that fails on its own comments teaches people
+    to weaken it.
   - **Answered along the way** (worth not re-deriving): under level sync there is no
     strip/re-equip loop, because both sides use the **real** job level —
     `AllowSyncEquip = true` reads `GetJobLevel(mainJob)`, and CatsEyeXI's equip check is

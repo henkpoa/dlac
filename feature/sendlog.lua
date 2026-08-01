@@ -43,27 +43,44 @@ M.RING = 24;
 -- ---------------------------------------------------------------------------
 
 function M.newState(now)
-    return { total = 0, byId = {}, byWhy = {}, ring = {}, ringN = 0,
-             since = tonumber(now) or 0, lastAt = nil };
+    return { total = 0, passed = 0, byId = {}, passedById = {}, byWhy = {},
+             ring = {}, ringN = 0, since = tonumber(now) or 0, lastAt = nil };
 end
 
 -- Record one send. `id` is the packet id, `why` the cause the SEND SITE knows
--- (a dispatch point, 'reinject', 'lockstyle apply'...). Pure: mutates and
--- keeps `st`. Unknown/absent arguments still count -- an uncounted send is
--- the only real failure mode here, so nothing is ever dropped for being
--- malformed.
-function M._note(st, id, why, now)
+-- (a dispatch point, 'lockstyle apply'...). Pure: mutates and keeps `st`.
+-- Unknown/absent arguments still count -- an uncounted send is the only real
+-- failure mode here, so nothing is ever dropped for being malformed.
+--
+-- `pass` marks a PASS-THROUGH: a packet that is YOURS, which dlac blocked,
+-- held while it dressed you, and put back on the wire byte-identical (the
+-- 0x01A/0x037 re-injects). It is counted -- every AddOutgoingPacket is, that
+-- is the invariant -- but it is not traffic dlac ADDED, and lumping it into
+-- one total made the headline read higher than dlac's real contribution
+-- (Henrik, 2026-08-02, reading the first version). The flag lives in the
+-- DATA, not in the wording of `why`: the render seam decides how to say it.
+function M._note(st, id, why, now, pass)
     if type(st) ~= 'table' then return; end
     id  = tonumber(id) or -1;
     why = (type(why) == 'string' and why ~= '') and why or 'unknown';
     now = tonumber(now) or 0;
+    pass = (pass == true);
     st.total = (st.total or 0) + 1;
     st.byId[id]   = (st.byId[id] or 0) + 1;
     st.byWhy[why] = (st.byWhy[why] or 0) + 1;
+    if pass then
+        st.passed = (st.passed or 0) + 1;
+        st.passedById[id] = (st.passedById[id] or 0) + 1;
+    end
     st.lastAt = now;
     local n = (st.ringN or 0) + 1;
     st.ringN = n;
-    st.ring[((n - 1) % M.RING) + 1] = { at = now, id = id, why = why };
+    st.ring[((n - 1) % M.RING) + 1] = { at = now, id = id, why = why, pass = pass };
+end
+
+-- What dlac itself put on the wire: everything that is not a pass-through.
+function M._own(st)
+    return math.max(0, (st.total or 0) - (st.passed or 0));
 end
 
 -- The ring newest-first (at most RING entries, oldest dropped by the wrap).
@@ -88,8 +105,10 @@ function M._dur(s)
 end
 
 -- Descending count, name-tiebroken (a stable order: the same session prints
--- the same way twice, so two reports can be diffed).
-local function ranked(map, fmtKey)
+-- the same way twice, so two reports can be diffed). `passMap` optionally
+-- annotates how much of each row was passed through -- silent when none was,
+-- because most rows never are.
+local function ranked(map, fmtKey, passMap)
     local rows = {};
     for k, v in pairs(map or {}) do rows[#rows + 1] = { k = k, n = v }; end
     table.sort(rows, function(a, b)
@@ -98,7 +117,11 @@ local function ranked(map, fmtKey)
     end);
     local parts = {};
     for _, r in ipairs(rows) do
-        parts[#parts + 1] = string.format('%s x%d', fmtKey(r.k), r.n);
+        local p = (passMap ~= nil) and (passMap[r.k] or 0) or 0;
+        local tag = '';
+        if p >= r.n then tag = ' (passed through)';
+        elseif p > 0 then tag = string.format(' (%d passed through)', p); end
+        parts[#parts + 1] = string.format('%s x%d%s', fmtKey(r.k), r.n, tag);
     end
     return parts;
 end
@@ -131,11 +154,30 @@ function M._lines(st, now, ringMax)
         return L;
     end
 
-    local perMin = (elapsed > 1) and (total / (elapsed / 60)) or 0;
-    L[#L + 1] = string.format('sends: %d packet(s) in %s (%.1f/min) -- last one %s ago.',
-        total, M._dur(elapsed), perMin,
-        (st.lastAt ~= nil) and M._dur(now - st.lastAt) or '?');
-    L[#L + 1] = 'sends: by packet -- ' .. table.concat(ranked(st.byId, idName), ', ');
+    -- THE HEADLINE, split (Henrik, 2026-08-02). The rate is quoted on dlac's
+    -- OWN sends, never the total: a busy caster would otherwise read as a
+    -- chatty addon, when the only thing that grew was how much you acted.
+    local own, passed = M._own(st), (st.passed or 0);
+    local perMin = (elapsed > 1) and (own / (elapsed / 60)) or 0;
+    local lastWord = (st.lastAt ~= nil) and M._dur(now - st.lastAt) or '?';
+    if passed > 0 then
+        L[#L + 1] = string.format(
+            'sends: %d from dlac (%.1f/min) + %d of your own actions passed through = %d in %s'
+            .. ' -- last one %s ago.',
+            own, perMin, passed, total, M._dur(elapsed), lastWord);
+    else
+        L[#L + 1] = string.format('sends: %d from dlac (%.1f/min) in %s -- last one %s ago.',
+            own, perMin, M._dur(elapsed), lastWord);
+    end
+    -- dlac added NOTHING and only your own actions went by: the same answer
+    -- the zero case gives, and the shape a real session actually takes.
+    if own == 0 then
+        L[#L + 1] = 'sends: dlac itself sent NOTHING -- equips are edge-driven (the Default tick'
+                 .. ' resolves a plan every 0.4s but sends only when a slot actually differs);'
+                 .. ' a pass-through is your own packet, blocked while dlac dressed you and put'
+                 .. ' back on the wire byte-identical.';
+    end
+    L[#L + 1] = 'sends: by packet -- ' .. table.concat(ranked(st.byId, idName, st.passedById), ', ');
     L[#L + 1] = 'sends: by cause -- ' .. table.concat(ranked(st.byWhy, tostring), ', ');
 
     local recent = M._recent(st);
@@ -170,8 +212,9 @@ M.state = M.newState(clock());
 -- THE call every send site makes. Never throws (a counter must not be able to
 -- break the thing it counts) and does no io -- a send is rare, but under a
 -- flap this runs at the 0.4s tick, so it stays arithmetic.
-function M.note(id, why)
-    local ok = pcall(M._note, M.state, id, why, clock());
+-- `pass` = this is YOUR packet passing back through, not traffic dlac added.
+function M.note(id, why, pass)
+    local ok = pcall(M._note, M.state, id, why, clock(), pass);
     return ok;
 end
 

@@ -50,8 +50,8 @@ _eqok = _eqok and type(eqc) == 'table';
 -- absent counter must never cost an equip.
 local _slok, slog = pcall(require, 'dlac\\feature\\sendlog');
 _slok = _slok and type(slog) == 'table';
-local function noteSend(id, why)
-    if _slok then slog.note(id, why); end
+local function noteSend(id, why, pass)
+    if _slok then slog.note(id, why, pass); end
 end
 
 -- ---------------------------------------------------------------------------
@@ -398,22 +398,27 @@ end
 -- /dl sends counter hangs off this one function instead of the four call
 -- sites. `why` is the cause the CALLER knows (the dispatch point, 'reinject')
 -- -- a count alone says how much, the cause says whether it is a flap.
+-- `pass` marks a packet that is the PLAYER'S, merely handed back to the wire.
 -- Counted on success only: this answers "what went on the wire".
-local function injectPacket(id, bytes, why)
+local function injectPacket(id, bytes, why, pass)
     local ok = pcall(function()
         AshitaCore:GetPacketManager():AddOutgoingPacket(id, bytes);
     end);
-    if ok then noteSend(id, why); end
+    if ok then noteSend(id, why, pass); end
     return ok;
 end
 
 -- Re-inject a BLOCKED action/item packet (string form -> byte table), leaving
 -- a fingerprint so the tripwire can recognize an echo from another engine.
+-- Counted as a PASS-THROUGH: the packet is the player's own, blocked only so
+-- the gear could land ahead of it, and returned byte-identical -- one in, one
+-- out. It is dlac's AddOutgoingPacket call, so the invariant counts it; it is
+-- not traffic dlac added, so the readout must not bill dlac for it.
 local function reinject(id, str)
     local bytes = {};
     for i = 1, #str do bytes[i] = string.byte(str, i); end
     _injectedFP[fingerprint(id, str)] = os.clock();
-    injectPacket(id, bytes, 'reinject (your own action, passed through)');
+    injectPacket(id, bytes, 'passed through (your own action)', true);
 end
 
 local function stampTrust(stamps, invMgr)

@@ -1009,6 +1009,17 @@ recent sends with their ages. `/dl sends` prints it and drops one transferable
 `debug\dlac-sends-<Char>.txt` (via `feature/debug.lua`'s `deliver`); `/dl sends reset`
 restarts the clock.
 
+**Own sends vs pass-throughs** (`2026.08.02a`). A re-injected `0x01A`/`0x037` is the
+*player's* packet: blocked so the gear could land ahead of it, then returned byte-identical
+— one in, one out. It is dlac's `AddOutgoingPacket` call, so the invariant counts it, but it
+is not traffic dlac **added**, and one lumped total billed dlac for how much the player
+acted. `note(id, why, pass)` carries the fact in the **data**, not in the wording of `why`
+(the [[gm-naming-constraint]] shape: identity in the data, label at the render seam);
+`M._own(st)` is the difference. The headline reads `N from dlac (r/min) + M of your own
+actions passed through = T`, **and the rate is quoted on dlac's own count only** — a busy
+caster must not read as a chatty addon. `own == 0` prints the same "dlac itself sent
+NOTHING" verdict the zero case gives, which is the shape a real session actually takes.
+
 This is a **self-check, not a probe** (Henrik's 07-23 ruling — the same one that put
 `/dl check` in dlac and left packet forensics in dlacprobe). Nothing here reads the wire.
 A dlacprobe `packet_out` observer would see anonymous injected bytes and could not tell
@@ -1252,7 +1263,7 @@ like the command does not exist.
 | `/dl dw` | utils | Dual Wield trait-bit probe |
 | `/dl recalc` / `test` / `reload` (`r`) | utils | Rebuild sets / probe / reload LAC |
 | `/dl gearcheck` | gearcheck | Trigger-gear availability audit |
-| `/dl sends [reset]` | sendlog | **What dlac has put on the wire this session** — total / per packet id / **per cause**, plus the last 24 sends with their ages; also lands as `debug\dlac-sends-<Char>.txt`. Zero sends says so *and* says why that is expected (equips are edge-driven). A **flap** shows as one cause repeating at the 0.4 s Default tick. Self-check, not a probe — it counts dlac's own sends at the sites that make them, and never reads the wire |
+| `/dl sends [reset]` | sendlog | **What dlac has put on the wire this session** — dlac's **own** sends split from your **passed-through** actions, per packet id, **per cause**, plus the last 24 sends with their ages; also lands as `debug\dlac-sends-<Char>.txt`. Zero sends says so *and* says why that is expected (equips are edge-driven). A **flap** shows as one cause repeating at the 0.4 s Default tick. Self-check, not a probe — it counts dlac's own sends at the sites that make them, and never reads the wire |
 | `/dl food [1\|2\|forget]` | foodwatch | Which food you are under and what you can re-eat; a number eats that row, `forget` clears the history. What counts as food is learned off the wire (an item use + the FOOD effect's expiry moving), never from a shipped list |
 | `/dl engine [native on\|off \| migrate]` | feature/engine | The Native-engine flip: status / flag + storage migration (see § The Native engine) |
 | `/dlmv` | gearmove | (branch-only) gate/version diagnostic |

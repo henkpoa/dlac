@@ -21467,13 +21467,51 @@ end)();
 
     local ll = SL._lines(st, 160);
     check('SND11c count + elapsed lead the readout',
-          ll[1]:match('^sends: 3 packet%(s%) in 1m00s') ~= nil, true);
+          ll[1]:match('^sends: 3 from dlac %(3%.0/min%) in 1m00s') ~= nil, true);
     check('SND11d by-packet is ranked, most-sent first',
           ll[2]:match('^sends: by packet %-%- 0x050 x2, 0x051 x1$') ~= nil, true);
     check('SND11e by-cause names the dispatch point',
           ll[3]:match('Default %(single slot%) x2') ~= nil, true);
     check('SND11f the ring is rendered with ages',
           (ll[5] or ''):match('%-58s%s+0x050') ~= nil, true);
+
+    -- THE SPLIT (Henrik, 08-02): a re-injected 0x01A is YOUR packet handed
+    -- back to the wire, not traffic dlac added. Billing dlac for it made the
+    -- headline read higher than its real contribution.
+    local sp = SL.newState(0);
+    SL._note(sp, 0x51, 'Precast (set, 4 slots)', 10);
+    SL._note(sp, 0x1A, 'passed through (your own action)', 10, true);
+    SL._note(sp, 0x1A, 'passed through (your own action)', 20, true);
+    check('SND15a passed sends are tallied apart', sp.passed, 2);
+    check('SND15b ...and still counted in the total', sp.total, 3);
+    check('SND15c _own is the difference', SL._own(sp), 1);
+    local pl = SL._lines(sp, 70);
+    check('SND15d the headline splits the two',
+          pl[1]:match('^sends: 1 from dlac %(0%.9/min%) %+ 2 of your own actions passed through = 3 in 1m10s') ~= nil,
+          true);
+    check('SND15e the rate is dlac\'s own, not the total',
+          pl[1]:match('3%.0/min') == nil and pl[1]:match('2%.6/min') == nil, true);
+    check('SND15f by-packet marks a wholly passed-through id',
+          pl[2]:match('0x01A x2 %(passed through%)') ~= nil, true);
+    check('SND15g ...and does not mark dlac\'s own',
+          pl[2]:match('0x051 x1,') ~= nil or pl[2]:match('0x051 x1$') ~= nil, true);
+
+    -- dlac added nothing and only your own actions went by: the SAME answer
+    -- the zero case gives, and the shape a real casting session takes.
+    local op = SL.newState(0);
+    SL._note(op, 0x1A, 'passed through (your own action)', 10, true);
+    local ol = SL._lines(op, 70);
+    check('SND15h all-passed-through says dlac sent NOTHING',
+          ol[2]:match('dlac itself sent NOTHING') ~= nil, true);
+    check('SND15i ...and explains what a pass-through is',
+          ol[2]:match('back on the wire byte%-identical') ~= nil, true);
+    check('SND15j a partial pass is quantified, not rounded away',
+          (function()
+              local mx = SL.newState(0);
+              SL._note(mx, 0x37, 'passed through (your own action)', 1, true);
+              SL._note(mx, 0x37, 'Midcast (single slot)', 2);
+              return SL._lines(mx, 60)[2]:match('0x037 x2 %(1 passed through%)') ~= nil;
+          end)(), true);
 
     -- chat is a summary, the file is the record: a flap must not scroll the
     -- counters off the top of chat, but nothing may be lost from the report.
@@ -21504,9 +21542,13 @@ end)();
         if src == nil then
             bare[#bare + 1] = path .. ' (UNREADABLE)';
         else
+            -- An INVOCATION, not a mention: `AddOutgoingPacket%s*%(`. A plain
+            -- substring search also matched prose about the send sites, and a
+            -- pin that fails on its own documentation trains people to weaken
+            -- it. (It fired on exactly that the first time -- 08-02.)
             local at = 1;
             while true do
-                local s = string.find(src, 'AddOutgoingPacket', at, true);
+                local s = string.find(src, 'AddOutgoingPacket%s*%(', at);
                 if s == nil then break; end
                 sites = sites + 1;
                 local window = string.sub(src, s, s + 500);
