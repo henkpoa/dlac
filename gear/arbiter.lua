@@ -373,8 +373,41 @@ end
 -- the backstop against a pathological reserver chain, and a slot still
 -- ineligible when it trips reads INELIGIBLE in /dl why -- visible, never
 -- silent.
-function M.reserveResolve(entries, lookup, ladderOf, have)
+function M.reserveResolve(entries, lookup, ladderOf, have, popt)
     local floor = M.reserveFloor(entries);
+
+    -- THE RANGE/AMMO PAIR VERDICT (v159), FIRST -- before availability, before
+    -- dominance, before the fall. Two reasons it has to be here and not after:
+    --
+    --  * ADR 0010's adjacency law, lifted from the post-passes to the verdict:
+    --    the loser must never get to reserve anything. Deleting it from the
+    --    floor now is what makes that literal -- a Range piece that lost to a
+    --    stat stick is not on your body, so it neither defends its slot nor
+    --    reserves another, and the dominance walk below never meets the pair
+    --    at all. Judged afterwards instead, the two verdicts can contradict
+    --    each other: a Lv75 crossbow WINS the ADR 0010 Level contest while
+    --    reserveVerdict's tie-favours-the-reserver rule suppresses Range for a
+    --    Lv60 trinket, and the plan ends up holding neither.
+    --  * The loser is SUPPRESSED, never INELIGIBLE. An ineligible piece falls
+    --    to its ladder's next rung -- and the next crossbow down conflicts with
+    --    the same stat stick, so a fall here would walk the whole Range ladder
+    --    and re-derive the very flap the server law exists to kill (ADR 0027's
+    --    asymmetry: a reserved slot never falls).
+    --
+    -- Unavailable pieces are hidden from it for the same reason availVerdict
+    -- hides them from dominance: a stick in the Mog Safe cannot beat a weapon
+    -- you are actually holding. popt omitted = every line below behaves exactly
+    -- as it did before this existed, which keeps the direct callers byte-identical.
+    local pairV = nil;
+    if type(popt) == 'table' then
+        local view, un0 = floor, M.availVerdict(floor, have);
+        if un0 ~= nil then
+            view = {};
+            for slot, e in pairs(floor) do if un0[slot] == nil then view[slot] = e; end end
+        end
+        pairV = M.pairVerdict(view, lookup, popt.level, popt.pair, popt.wornAmmo);
+        if pairV ~= nil and pairV.remove ~= true then floor[pairV.slot] = nil; end
+    end
 
     local fall = nil;
     local function noteRefusal(slot, why)
@@ -430,7 +463,7 @@ function M.reserveResolve(entries, lookup, ladderOf, have)
     if inel ~= nil then for slot in pairs(inel) do noteRefusal(slot, 'reserve'); end end
     if (inel == nil and unav == nil) or type(ladderOf) ~= 'function' then
         if unav ~= nil then markDead(unav); end
-        return sup, inel, nil, fall;
+        return sup, inel, nil, fall, pairV;
     end
 
     local replaced, tried = nil, {};
@@ -496,7 +529,7 @@ function M.reserveResolve(entries, lookup, ladderOf, have)
         if next(replaced) == nil then replaced = nil; end
     end
     if unav ~= nil then markDead(unav); end
-    return sup, inel, replaced, fall;
+    return sup, inel, replaced, fall, pairV;
 end
 
 -- ---------------------------------------------------------------------------
@@ -1122,6 +1155,117 @@ function M.trinketWornDisplace(plan, wornAmmo, rslotFn, pairFn)
     if compat == true then return nil; end
     if compat ~= false and not reserves then return nil; end
     return 'Ammo', rangeName;
+end
+
+-- THE PAIR LAW, ASKED ONCE, OF THE WHOLE PICTURE (v159 -- Henrik, 2026-08-01:
+-- "Maybe it's better to move this rule into the arbiter, since it gets the full
+-- picture from all the sets?").
+--
+-- THE FIELD CASE it was born of. DRK72 fires two rules on one condition:
+--   { when = { status = "Idle" }, set = "Idle"    },   -- Range ladder + Ammo = Cinderstone
+--   { when = { status = "Idle" }, set = "Weapons" },   -- Range ladder, NO Ammo
+-- Each matching rule is resolved SEPARATELY and merges last-writer-wins, so the
+-- two functions above ran on one table at a time and could not see each other.
+-- `Idle` judged the pair correctly (Cinderstone Lv60 beats Arcane Arbalest
+-- Lv50, Range dropped). `Weapons` names Range and no Ammo, so it asked the
+-- OTHER question -- trinketWornDisplace -- and wrote Ammo='remove' for a
+-- crossbow the same dispatch had already decided not to equip. Merged: the
+-- stick came off. Next dispatch, Ammo empty, nothing to displace, `Idle`'s
+-- Cinderstone survived the merge and went back on. Off, on, off, on, one
+-- server round trip per second, forever.
+--
+-- No amount of per-table cleverness fixes that, because the question
+-- trinketWornDisplace asks -- "is a ranged piece coming in?" -- is a question
+-- about the FINAL PLAN, and a single table is not the final plan. Here it is.
+-- The merged floor already carries every matching set AND every built claim at
+-- its rank row, so the pair being judged is the pair that will actually be
+-- worn: with the Ammo rule enabled and a bolt claimed above the floor, this
+-- arbitrates the BOLT against the crossbow, not the Cinderstone the trigger
+-- floor happened to name underneath it.
+--
+-- Both legs of the law, unchanged in substance -- ONE implementation, asked of
+-- a merged view instead of a partial one:
+--   * both slots spoken for -> trinketRangeDrop (Level contest for a stat
+--     stick; the ammo always yields on a plain pairing mismatch);
+--   * Range spoken for and Ammo not -> trinketWornDisplace against what is
+--     WORN there. On the merged floor the "no Ammo entry" premise finally
+--     means what it says: NOTHING in this dispatch speaks for Ammo.
+--
+-- floor    -- reserveFloor's merged { [slot] = { name, prio, src, row } }
+-- wornAmmo -- the name worn in Ammo, or nil. The caller passes nil for a LOCKED
+--             Ammo slot: a lock is the user's explicit word and never displaces.
+-- Returns nil, or the VERDICT:
+--   { slot, loser, keep, why }                -- kill `slot` (claimed empty)
+--   { slot = 'Ammo', remove = true, loser, keep, why = 'worn' }  -- unequip it
+-- why = 'trinket' | 'mismatch' | 'worn'. Pure (tests PV*).
+function M.pairVerdict(floor, rslotFn, levelFn, pairFn, wornAmmo)
+    if type(floor) ~= 'table' or type(rslotFn) ~= 'function' then return nil; end
+    -- The floor as a plain slot->name plan: the two laws above take a resolved
+    -- set, and a merged floor IS one -- that equivalence is the whole move.
+    local plan = {};
+    for slot, e in pairs(floor) do
+        if type(e) == 'table' and type(e.name) == 'string' then plan[slot] = e.name; end
+    end
+    local lv = (type(levelFn) == 'function') and levelFn or function() return nil; end
+    local dropKey, keep, why = M.trinketRangeDrop(plan, rslotFn, lv, pairFn);
+    if dropKey ~= nil then
+        return { slot = dropKey, loser = plan[dropKey], keep = keep, why = why };
+    end
+    local rk, incoming = M.trinketWornDisplace(plan, wornAmmo, rslotFn, pairFn);
+    if rk ~= nil then
+        return { slot = rk, remove = true, loser = wornAmmo, keep = incoming, why = 'worn' };
+    end
+    return nil;
+end
+
+-- ---------------------------------------------------------------------------
+-- THE RENDERING CONTRACT (2026-08-01) -- see docs/design/two-way-arbiter.md §11.
+-- ---------------------------------------------------------------------------
+-- One record, three renderers (`/dl why <slot>`, the Arbiter Monitor's cell and
+-- its hover). Each of them walks the same verdict channels in the same order and
+-- prints ONE answer per slot -- and that invariant is the thing that needs a
+-- function rather than three copies of an if-chain, because it broke the day the
+-- fifth channel arrived. Henrik's screenshot of the v159 pair verdict:
+--
+--     range -- the Default contest (13:09:22):
+--         nobody claimed it (kept as worn).
+--         held EMPTY: Arcane Arbalest and Cinderstone cannot coexist -- kept ...
+--
+-- Two sentences disagreeing about one slot. The no-contest line ("nobody claimed
+-- it") is not a verdict at all -- it is what a renderer says when the contest was
+-- EMPTY -- and a slot the arbitration refused has an empty contest BY
+-- CONSTRUCTION, because the refused piece never reaches the explain model. So
+-- every renderer must ask this before falling back to the no-contest line.
+--
+-- The order is the order the renderers already print in, and it is not arbitrary:
+-- the more specific the refusal, the earlier it speaks. A slot that FELL says so
+-- (the player asked for something and got something else); failing that, a slot
+-- whose whole ladder was unavailable; then the two reservation verdicts; then the
+-- pair law, which is last because it is the only one that can also fire on a slot
+-- nothing claimed.
+--
+-- contest -- a decision record's `contest` table (rep / fall / inel / sup / pair).
+-- Returns the KIND ('fell' | 'dead' | 'ineligible' | 'reserved' | 'pair'), or nil
+-- when nothing speaks for the slot. Pure (tests RV*).
+local function findSlotCI(map, slotLower)
+    if type(map) ~= 'table' then return nil; end
+    for slot, v in pairs(map) do
+        if string.lower(tostring(slot)) == slotLower then return v; end
+    end
+    return nil;
+end
+
+function M.slotVerdict(contest, slot)
+    if type(contest) ~= 'table' or slot == nil then return nil; end
+    local ls = string.lower(tostring(slot));
+    if findSlotCI(contest.rep, ls) ~= nil then return 'fell'; end
+    local fall = contest.fall;
+    if type(fall) == 'table' and findSlotCI(fall.dead, ls) ~= nil then return 'dead'; end
+    if findSlotCI(contest.inel, ls) ~= nil then return 'ineligible'; end
+    if findSlotCI(contest.sup, ls) ~= nil then return 'reserved'; end
+    local pv = contest.pair;
+    if type(pv) == 'table' and string.lower(tostring(pv.slot)) == ls then return 'pair'; end
+    return nil;
 end
 
 -- ---------------------------------------------------------------------------

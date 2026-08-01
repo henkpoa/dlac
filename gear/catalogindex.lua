@@ -18,8 +18,19 @@
                        (gear.lua and catalog.lua share the structure) -- kept
                        generic so the owned table flattens through the same code
 
-    The equip-time ENGINE still never loads the catalog (by design: gear.lua
-    stamps carry what it needs -- ADR 0006/0010); this module is addon-state.
+    THE ENGINE READS ITEM FACTS FROM HERE NOW (v160). This header used to say
+    "the equip-time engine never loads the catalog (gear.lua stamps carry what
+    it needs)" -- true only while dispatch ran in LAC's OWN Lua state, which
+    could not reach a 5MB table. The purge ended that: one state, and dlac.lua
+    preloads gearimport + gearui at addon load, so the catalog is already
+    resident in the state the engine runs in. RSlot and Pair are facts about the
+    ITEM (Henrik: "It's not like my personal Arcane arbalest can behave
+    differently in this aspect as anyone else's"), so dispatch.recordRSlot /
+    recordPair read the manifest stamp as a CACHE and fall back to the catalog
+    by id -- which is what stops an old gear.lua silently switching ADR 0010's
+    pair law off until its owner runs `/dl fix`. Everything here stays lazy and
+    guarded, so a catalog-less load answers nil and the engine degrades to
+    exactly what it did before.
     gearexport's private catalog walk is RETIRED (issue #71): its production
     export routes the id-index through rawIndex() here, so exactly one catalog
     nested walk remains in the codebase (its Z-tests inject a pre-built byId map

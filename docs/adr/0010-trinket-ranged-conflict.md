@@ -63,12 +63,108 @@ outside the plan.
 Tests: TR11–TR15 / MS9–MS10 (pure rules), TB1–TB7 (wired through `equipResolved`).
 `dispatch.M.VERSION` → 78.
 
+## The law moves to the Arbiter (2026-08-01, engine v159)
+
+Field case, DRK72 Mindie: *"it is trying to both equip Arcane Arbalest in Range, and
+Cinderstone in Ammo back and forth."* The Level rule above was working. What was wrong is
+that **this law ran per resolved table while the plan is merged across tables.** His DRK
+triggers fire two rules on one condition:
+
+```lua
+{ when = { status = "Idle" }, set = "Idle"    },   -- Range ladder + Ammo = Cinderstone
+{ when = { status = "Idle" }, set = "Weapons" },   -- Range ladder, NO Ammo
+```
+
+`Idle` judged the pair correctly (Cinderstone Lv60 beats Arcane Arbalest Lv50 → Range
+dropped). `Weapons` names Range and no Ammo, so it asked the *other* question —
+`trinketWornDisplace` — and wrote `Ammo = 'remove'` for a crossbow the same dispatch had
+already decided not to equip. Merged last-writer-wins, the stick came off; next dispatch,
+Ammo empty, nothing to displace, Idle's Cinderstone survived the merge and went back on.
+Off, on, off, on, one server round trip per second, forever.
+
+No per-table fix exists: **"is a ranged piece coming in?" is a question about the FINAL
+PLAN, and one table is not the final plan.** Henrik: *"Maybe it's better to move this rule
+into the arbiter, since it gets the full picture from all the sets?"*
+
+- **`arbiter.pairVerdict(floor, rslotFn, levelFn, pairFn, wornAmmo)`** judges the **merged
+  floor** — every matching set AND every built claim at its rank row — **once** per
+  dispatch. `dispatch`'s `trinket-vs-ranged` pass stops deciding and starts **applying**.
+  Consequence worth naming: with the Ammo rule enabled this arbitrates the **bolt that will
+  actually be worn** against the ranged weapon, not whatever the trigger floor named
+  underneath the claim.
+- **It runs FIRST inside `reserveResolve`** — before availability, before dominance, before
+  the fall — and **deletes the loser from the floor**. Two reasons, both load-bearing: it
+  makes this ADR's adjacency law literal (the loser never gets to reserve anything), and it
+  stops the two verdicts contradicting each other — a Lv75 crossbow **wins** the Level
+  contest above while `reserveVerdict`'s ties-favour-the-reserver rule would suppress Range
+  for a Lv60 stick, leaving the plan holding neither piece.
+- **The loser is SUPPRESSED, never INELIGIBLE.** An ineligible piece falls to its ladder's
+  next rung — and the next crossbow down conflicts with the same stat stick, so a fall here
+  would walk the whole Range ladder and re-derive the flap. (ADR 0027's asymmetry: a
+  reserved slot never falls.)
+- **One implementation.** `pairVerdict` shapes the floor into a plan and calls
+  `trinketRangeDrop` / `trinketWornDisplace` — which stay put as the **direct-caller
+  fallback** (immediate equips, headless suites), exactly as `reservedDrops` does.
+- **Its own verdict, everywhere it is reported**: `/dl why <slot>` and the Arbiter Monitor
+  print the pair verdict separately and name which of the three laws answered (Level
+  contest / pairing mismatch / worn stick displaced). It is never folded into "reserved" —
+  a bolt and a bow are two ordinary pieces with no reservation between them, and
+  "RESERVED by" sends the reader hunting a reserving piece that does not exist.
+- **Set totals read the same law** (`dispatch.pairVerdict`, via `gearui`'s `rsv.dropsIn`).
+  The old preview called `reservedDrops` alone, which drops Range whenever *any* stat stick
+  sits in Ammo — ignoring the Level contest this ADR is built on. A Lv75 crossbow beside a
+  Lv60 Cinderstone therefore read as "no weapon" in Set totals while the engine equipped
+  the weapon and dropped the stick.
+
+Tests PV1–PV12. `dispatch.M.VERSION` → 159.
+
+## The item facts move to the catalog (2026-08-01, engine v160)
+
+The consequence below — *"players must re-commit their sets or run `/dl fix`"* — was always
+the weakest part of this ADR, and v159 made it load-bearing: without a `Pair` stamp the pair
+law runs on the RSlot bit alone. Henrik, told that: *"I feel like this information should be
+documented in the catalog maybe? Instead of personal gear... It's not like my personal
+Arcane arbalest can behave differently in this aspect as anyone else's."*
+
+He is right, and it retires the migration entirely. `RSlot` (`item_equipment.rslot`) and
+`Pair` (`item_weapon` skill:subskill) are facts about the **item**, identical for every copy
+in the world. They were stamped into each player's `gear.lua` only because the equip-time
+engine ran in LuaAshitacast's **own Lua state**, which could not reach a 5 MB catalog. **The
+purge ended that**: one state, and `dlac.lua` preloads `gearimport` + `gearui` at addon
+load, so the catalog is already resident in the state `dispatch` runs in.
+(`catalogindex`'s "the engine never loads the catalog" header was a two-state artifact and
+is corrected.)
+
+- **`dispatch.recordRSlot(rec, cat)` / `recordPair(rec, cat)`** read the manifest stamp as a
+  **cache** and fall back to the catalog by id, through `gearimport.rslotFor` / `pairFor` —
+  the readers that already existed, already lazy, already cached, and already applying
+  `effectiveRSlot`, which is why Cinderstone gets its Range bit despite being one of the
+  crawl's gaps.
+- **The stamp still wins when present**, so a stamped file behaves identically and a hand
+  edit is still honoured. The `ANIMATOR_FED` stale-stamp guard sits **above** the fallback:
+  it is a statement about the item, so it vetoes both sources.
+- **Three-valued throughout** — no manifest, no catalog, no `Id`, an uncrawled custom, or a
+  reader that throws all answer `nil`, which `pairsWith` reads as "do not constrain". A
+  missing data field must never read as "dlac stopped working".
+
+**What this fixes for every player, on the addon update alone, with no file rewritten and no
+command to run:**
+
+| gear.lua written before | was silently running | now |
+|---|---|---|
+| `Pair` (v128) | the pair law on the RSlot bit alone — a gun and a crossbow both just "Marksmanship" | correct |
+| `RSlot` (v43) | ADR 0010 **fully blind** — no bit, no pair key, so a stat stick and a ranged weapon were never in conflict at all, and flapped exactly as they did on 2026-07-19 | correct |
+
+A catalog correction now reaches everyone with the next addon update, instead of waiting for
+each of them to run `/dl fix`. Tests CF1–CF6. `dispatch.M.VERSION` → 160.
+
 ## Consequences
 
 - No coexistence (the server forbids it) — but a clean, stable result and no flap for the whole
   trinket category, keeping whichever piece is higher Level.
-- Players must **re-commit their sets or run `/dl fix`** once, so the gap trinkets pick up the
-  completed RSlot in their `gear.lua`.
+- ~~Players must **re-commit their sets or run `/dl fix`** once, so the gap trinkets pick up
+  the completed RSlot in their `gear.lua`.~~ **Retired 2026-08-01 (v160)** — the engine reads
+  the item's fact from the catalog when the stamp is absent, so nobody migrates anything.
 - The catalog gaps (Cinderstone / Coiste Bodhar / Talon Tathlum missing `RSlot=4`) are worth a
   crawler cleanup, but `effectiveRSlot` makes dlac correct regardless.
 - Tests: `run_tests.lua` TR0–TR10. `dispatch.M.VERSION` → 52 (needs a Reload LAC).

@@ -385,6 +385,32 @@ function rsv.byName(nm)
     return rsv.maskOf(lookupByName(nm));
 end
 
+-- Level and pair key by NAME -- the other two readers the Range/Ammo pair law
+-- takes (v159). Level rides the owned record (it is what the ladder already
+-- sorted on); the pair key rides the CATALOG by id, exactly as the mask does,
+-- because a gear.lua written before v128 carries no Pair and reading that would
+-- show a bolt and a bow as a fine couple. Both degrade to nil = "unknown", which
+-- the law reads as "do not constrain" -- so a catalog-less load previews exactly
+-- as it did before.
+function rsv.levelByName(nm)
+    if type(nm) ~= 'string' then return nil; end
+    local rec = lookupByName(nm);
+    return (type(rec) == 'table') and tonumber(rec.Level) or nil;
+end
+
+function rsv.pairByName(nm)
+    if type(nm) ~= 'string' then return nil; end
+    local rec = lookupByName(nm);
+    if type(rec) ~= 'table' or rec.Id == nil then return nil; end
+    if rsv.pfn == nil then
+        local ok, mod = pcall(require, "dlac\\gear\\gearimport");
+        rsv.pfn = (ok and type(mod) == 'table' and type(mod.pairFor) == 'function') and mod.pairFor or false;
+    end
+    if rsv.pfn == false then return nil; end
+    local ok, p = pcall(rsv.pfn, rec.Id);
+    return (ok and type(p) == 'string' and p ~= '') and p or nil;
+end
+
 function rsv.text(mask)
     if _dsp == nil or type(_dsp.rslotText) ~= 'function' then return nil; end
     local ok, t = pcall(_dsp.rslotText, mask);
@@ -395,6 +421,8 @@ end
 -- this only previews what dispatch will do. `pick(label) -> item name or nil` is
 -- injected because bestByLevel is defined further down the chunk.
 -- Deliberately NO `worn` argument: the builder shows the SET, not the character.
+-- Returns (drops, pair): the reserved-slot map as ever, plus the Range/Ammo
+-- PAIR verdict when one fired -- { slot, loser, keep, why } (v159).
 function rsv.dropsIn(pick)
     if _dsp == nil or type(_dsp.reservedDrops) ~= 'function' then return nil; end
     local named = {};
@@ -402,8 +430,28 @@ function rsv.dropsIn(pick)
         local nm = pick(sl.label);
         if type(nm) == 'string' then named[sl.label] = nm; end
     end
+    -- The Range/Ammo pair law runs FIRST and in the engine's own order (v159):
+    -- the loser leaves the composition before the reserved-slot pass, so it
+    -- cannot reserve anything and the preview can never drop BOTH halves of a
+    -- pair. This is also what makes the numbers honest about the Level contest
+    -- ADR 0010 actually runs: reservedDrops alone dropped Range whenever ANY
+    -- stat stick sat in Ammo, so a Lv75 crossbow beside a Lv60 Cinderstone read
+    -- as "no weapon" in Set totals when the engine equips the weapon and drops
+    -- the stick. Deliberately NO worn ammo -- the builder shows the SET, not the
+    -- character (dropsIn has never taken a `worn`) -- so only the
+    -- both-slots-named leg can fire here.
+    local pv = nil;
+    if type(_dsp.pairVerdict) == 'function' then
+        local floor = {};
+        for slot, nm in pairs(named) do floor[slot] = { name = nm }; end
+        local pok, got = pcall(_dsp.pairVerdict, floor, rsv.byName, rsv.levelByName, rsv.pairByName);
+        if pok and type(got) == 'table' and got.remove ~= true and got.slot ~= nil then
+            pv = got;
+            named[pv.slot] = nil;
+        end
+    end
     local ok, drops = pcall(_dsp.reservedDrops, named, rsv.byName);
-    return ok and drops or nil;
+    return (ok and drops or nil), pv;
 end
 
 -- ---------------------------------------------------------------------------
@@ -2458,12 +2506,16 @@ local function workingComposition(mainLevel)
     -- the weighted score Auto-build is judged against. The red RESERVED box on
     -- the grid and this share one law (arbiter.reservedDrops) -- what the panel
     -- warns about is what the numbers now say.
-    local drops = rsv.dropsIn(function(label)
+    local drops, pairDrop = rsv.dropsIn(function(label)
         return (comp[label] ~= nil) and comp[label].Name or nil;
     end);
     if type(drops) == 'table' then
         for label in pairs(drops) do comp[label] = nil; end
     end
+    -- ...and exactly what the pair law drops (v159): a bolt the set's bow
+    -- cannot fire is never worn beside it -- the server strips one of the two --
+    -- so it must not add its stats to a set you are standing in either.
+    if pairDrop ~= nil then comp[pairDrop.slot] = nil; end
     return comp;
 end
 
@@ -3926,10 +3978,25 @@ local function renderSetBuilder(job, level)
     -- authored one: the grid and the slot list must not tell different stories
     -- about the same slot, and a reservation is judged on the piece that will
     -- actually be there -- a Body rotting in the Mog Safe reserves nothing.
-    local resvDrops = rsv.dropsIn(function(label)
+    -- The Range/Ammo pair verdict rides the same call (v159) and gets its OWN
+    -- sentence: "RESERVED by" is the wrong thing to print over a bolt beside a
+    -- bow -- neither piece reserves anything, they simply cannot be fired
+    -- together, and the server answers by stripping one of the two.
+    local resvDrops, pairDrop = rsv.dropsIn(function(label)
         local pick = wornByLevel(M.working[label], level, label);
         return pick and pick.rec and pick.rec.Name or nil;
-    end) or {};
+    end);
+    resvDrops = resvDrops or {};
+    local pairNote = nil;
+    if pairDrop ~= nil then
+        if pairDrop.why == 'mismatch' then
+            pairNote = string.format('%s cannot be fired by %s -- this piece will NOT be equipped.',
+                tostring(pairDrop.loser), tostring(pairDrop.keep));
+        else
+            pairNote = string.format('%s cannot sit beside %s -- %s is the higher Level, so this piece will NOT be equipped.',
+                tostring(pairDrop.loser), tostring(pairDrop.keep), tostring(pairDrop.keep));
+        end
+    end
 
     renderSlotGrid('set', 182, ui.setSelected,
         function(sl)
@@ -3953,10 +4020,13 @@ local function renderSetBuilder(job, level)
             -- edited so the gold selection box still wins -- selection is the
             -- affordance you are steering with, the warning keeps on hovering.
             boxColorOf = function(sl)
-                if resvDrops[sl.label] == nil or ui.setSelected == sl.label then return nil; end
+                if ui.setSelected == sl.label then return nil; end
+                if resvDrops[sl.label] == nil
+                   and not (pairDrop ~= nil and pairDrop.slot == sl.label) then return nil; end
                 return { 0.38, 0.14, 0.14, 1.0 };
             end,
             noteOf = function(sl)
+                if pairDrop ~= nil and pairDrop.slot == sl.label then return pairNote; end
                 local by = resvDrops[sl.label];
                 if by == nil then return nil; end
                 return string.format('%s is RESERVED by %s -- this piece will NOT be equipped.',
@@ -3976,6 +4046,10 @@ local function renderSetBuilder(job, level)
         if #names > 0 then
             imgui.TextColored(COL.ERR, string.format('%s reserved by another piece -- hover for which.',
                 table.concat(names, ', ')));
+        end
+        if pairDrop ~= nil then
+            imgui.TextColored(COL.ERR, string.format('%s and %s cannot be worn together -- hover %s.',
+                tostring(pairDrop.loser), tostring(pairDrop.keep), tostring(pairDrop.slot)));
         end
     end
 

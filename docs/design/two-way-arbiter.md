@@ -594,3 +594,91 @@ code is deleted only after its replacement is field-confirmed.
    rank 4)`). "Inform by printing as little as possible" holds for the bare command;
    the arbitration's full conversation prints only when asked, about the slot being
    stared at.
+
+---
+
+## 11. The rendering contract — ONE ANSWER PER SLOT
+
+*Written 2026-08-01, after the fifth verdict channel broke the invariant the first
+four had kept by luck. Read this before adding a sixth.*
+
+### 11.1 The shape
+
+The arbitration produces **one record**; **three renderers** display it:
+
+| renderer | where | shows |
+|---|---|---|
+| `/dl why <slot>` | `dispatch.lua`, the chat command | the full contest for one slot |
+| the Monitor **cell** | `ui/arbmonui.lua`, `cellInfo` | one short string in the 4×4 grid |
+| the Monitor **hover** | `ui/arbmonui.lua`, `tooltipText` | the same answer as `/dl why`, composed |
+
+They **render**; they never re-decide. Everything was captured at decision time
+(`contest`, `plan`, `ladders`, `ctx`) — mpBands' law: *the record is the behavior, never
+render a rival.*
+
+### 11.2 The channels, in the order a renderer must ask
+
+`contest` carries the verdicts as separate maps because they are separate answers. The
+order below is not arbitrary — **the more specific the refusal, the earlier it speaks** —
+and it is the order `arbiter.slotVerdict` walks:
+
+| # | channel | kind | the sentence it earns |
+|---|---|---|---|
+| 1 | `contest.rep[slot]` | `fell` | *fell: X → Y* (the player asked for X and is wearing Y — the most specific thing that can be said) |
+| 2 | `contest.fall.dead[slot]` | `dead` | *UNAVAILABLE: X is not in a bag you can equip from, and nothing below it either* |
+| 3 | `contest.inel[slot]` | `ineligible` | *INELIGIBLE: it reserves S, which a higher claim owns* |
+| 4 | `contest.sup[slot]` | `reserved` | *held EMPTY: reserved by X* |
+| 5 | `contest.pair` (when `pair.slot` is this slot) | `pair` | the Range↔Ammo pair law — Level contest, pairing mismatch, or worn displace |
+
+The pair verdict is **last** because it is the only channel that can fire on a slot
+**nothing claimed** — which is exactly how it broke the invariant.
+
+### 11.3 The invariant, and the bug that proved it needed stating
+
+> **A slot gets ONE answer.** The "nobody claimed it (kept as worn)" line is **not a
+> verdict** — it is what a renderer says when the contest was *empty*. A slot the
+> arbitration **refused** has an empty contest **by construction**: the refused piece
+> never reaches `floorTbl`/`explain`, so `ops` comes back `nil`. Therefore every renderer
+> must ask `arbiter.slotVerdict` **before** falling back to the no-contest line.
+
+What it looked like when it was missed (Henrik's screenshot, `/dl why range`, v159):
+
+```
+range -- the Default contest (13:09:22):
+    nobody claimed it (kept as worn).
+    held EMPTY: Arcane Arbalest and Cinderstone cannot coexist -- kept Cinderstone, the higher Level.
+```
+
+Two sentences, disagreeing about one slot. **"kept as worn" was also the weaker truth**:
+when a stat stick holds Range the *server* empties it — the slot is not merely unwritten.
+The first four channels never exposed this because each of them only ever fires on a slot
+that **had** a contest, so `ops` was never `nil` when they spoke.
+
+### 11.4 The rules for the sixth channel
+
+1. **Add it to `arbiter.slotVerdict`**, in its correct place in the order. That function is
+   the one walk; a renderer that grows its own if-chain is how the three drift apart.
+2. **Give it its own sentence.** Do not fold a new verdict into an existing one because the
+   consequence happens to match. The pair law is not "reserved": a bolt and a bow are two
+   ordinary pieces with no reservation between them, and *"RESERVED by"* sends the reader
+   hunting a reserving piece that does not exist. Name the actual law.
+3. **Say which law answered when a channel has several legs.** The pair verdict carries
+   `why = 'trinket' | 'mismatch' | 'worn'` and prints three different sentences, because
+   *"stat stick vs ranged weapon"* over a bolt-vs-bow drop sends the next reader looking for
+   a trinket that is not there (the v128 lesson, re-learned).
+4. **Update all three renderers.** The cell needs a short form (`(empty: pair)`) and a
+   two-glyph icon-mode mark (`pr`); the hover and `/dl why` need the full sentence.
+5. **Suppression must not double-report.** If your verdict removes a piece before another
+   pass would have judged it, make sure that pass no longer sees it — `pairVerdict` deletes
+   the loser from the floor precisely so `sup` does not *also* name the slot.
+
+### 11.5 Where the pieces live
+
+| thing | home |
+|---|---|
+| the channel order + `slotVerdict` | `gear/arbiter.lua` |
+| the record assembly (`contest = { … }`) | `dispatch.lua`, `M.dispatch`, next to the verdict retirement |
+| the verdict retirement (`ctx.reserve*` → locals) | `dispatch.lua`, immediately before `recordDecision` |
+| `/dl why <slot>` | `dispatch.lua`, the `why` command arm |
+| cell + hover | `ui/arbmonui.lua` (`cellInfo`, `tooltipText`) |
+| tests | `tests/run_tests.lua` — `RV*` (the walk), `PV*` (the pair law), `AKF*` (the fall) |
