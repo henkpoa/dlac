@@ -2519,6 +2519,58 @@ end)();
               pcall(mn.renderPopups), true);
         check('MN18i ...the roster still drew', drew.selectable, 7);
         check('MN18j ...and the popup stack survived it', depth.popup, 0);
+
+        -- THE ACTIVE-FOOD ROW (2026-08-01). Its empty case is the OPPOSITE of the
+        -- eat rows': the moment you most need to be told what you are under is
+        -- after a relog with nothing left to eat, so it MUST draw when menu() is
+        -- empty. MN18g proves the eat rows vanish there; this proves the naming
+        -- row does not vanish with them.
+        stubFW.menu     = function() return {}; end
+        stubFW.status   = function()
+            return { active = true, current = { id = 7, name = 'Pork Cutlet', at = 0 }, recent = {} };
+        end
+        stubFW.statsFor = function()
+            return { lines = { 'HP +40', 'Attack +20% (cap 120)' }, dur = 10800, src = 'server' };
+        end
+        stubFW._fmtDur  = function() return '3 hr'; end
+        drew.selectable, drew.image = 0, 0;
+        check('MN18k the active food draws with nothing left to eat', pcall(mn.renderPopups), true);
+        check('MN18l ...as one row on top of the roster', drew.selectable, 8);
+        check('MN18m ...carrying the food\'s own icon', drew.image, 1);
+
+        -- The hover IS the feature: the row names the food, the tooltip says what
+        -- it does. Those lines are the server's own text and are full of literal
+        -- '%' -- unescaped, imgui's printf would print a heap address instead
+        -- (the panelkit law, 2026-07-30).
+        local tips = {};
+        IM.IsItemHovered = function() return true; end
+        IM.SetTooltip    = function(t) tips[#tips + 1] = tostring(t); end
+        pcall(mn.renderPopups);
+        IM.IsItemHovered = function() return false; end
+        IM.SetTooltip    = nil;
+        local foodTip = nil;
+        for _, t in ipairs(tips) do
+            if t:find('Pork Cutlet', 1, true) then foodTip = t; end
+        end
+        check('MN18n the hover names the food', foodTip ~= nil, true);
+        check('MN18o ...says how long it lasts', (foodTip or ''):find('3 hr food.', 1, true) ~= nil, true);
+        check('MN18p ...and lists what it gives', (foodTip or ''):find('HP +40', 1, true) ~= nil, true);
+        check('MN18q ...with every percent sign escaped',
+              (foodTip or ''):find('+20%% (cap 120)', 1, true) ~= nil, true);
+
+        -- Effect up but NOT nameable (nothing eaten on dlac's watch): the row says
+        -- no more than the game's own icon already does, so it draws nothing.
+        stubFW.status = function() return { active = true, current = nil, recent = {} }; end
+        drew.selectable = 0;
+        check('MN18r an unnameable food draws no row at all', pcall(mn.renderPopups), true);
+        check('MN18s ...leaving just the roster', drew.selectable, 7);
+        -- A throwing status() costs the row, never the menu.
+        stubFW.status = function() error('status boom'); end
+        drew.selectable = 0;
+        check('MN18t a throwing status does not take the menu down',
+              pcall(mn.renderPopups), true);
+        check('MN18u ...and the roster still drew', drew.selectable, 7);
+
         package.loaded['dlac\\feature\\foodwatch'] = savedFW;
         package.loaded['dlac\\ui\\itemicons'] = savedIC;
 

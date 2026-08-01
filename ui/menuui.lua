@@ -259,7 +259,9 @@ end
 
 -- imgui text is printf: an unescaped '%' in a name prints a heap address (the
 -- panelkit law, 2026-07-30). Item names carry none today, but they come from the
--- game rather than from this file, so nothing reaches imgui unescaped.
+-- game rather than from this file, so nothing reaches imgui unescaped. The food
+-- stat lines (data\fooddb.lua, 2026-08-01) are not a hypothetical: they are FULL
+-- of literal '%' -- "Attack +20% (cap 120)" -- so that path is escaped too.
 local function esc(s) return (tostring(s):gsub('%%', '%%%%')); end
 
 local function queue(cmd)
@@ -267,8 +269,18 @@ local function queue(cmd)
 end
 
 -- ---------------------------------------------------------------------------
--- THE FOOD SECTION -- the two most recently eaten foods you are actually
--- CARRYING, one click each (feature\foodwatch owns which two and why).
+-- THE FOOD SECTION -- two halves that answer two different questions
+-- (feature\foodwatch owns both):
+--
+--   Active food     WHAT AM I UNDER? The game will not say: FFXI's food status
+--                   icon is generic, so after a relog you cannot find out what
+--                   you are getting. One row, not clickable, hover for the
+--                   effects. Added 2026-08-01 at Henrik's call.
+--   Recently eaten  the three most recently eaten foods you are actually
+--                   CARRYING, one click each -- the handy shortcut.
+--
+-- The two are drawn INDEPENDENTLY, because their empty cases are opposite: you
+-- are most likely to want naming when you have run out and have nothing to list.
 --
 -- ONE definition, two call sites: this menu and the Teleports popup, which is
 -- also the floating quick menu -- the surface you can reach mid-fight without
@@ -279,16 +291,38 @@ end
 -- everything else -- what a row IS, what clicking one does -- lives here so it
 -- cannot drift between them.
 --
--- Draws NOTHING when you have eaten nothing, or have none of it left: an empty
--- section would be a permanent reminder that you are out of food. Returns the
--- number of rows drawn so a caller can react to that.
+-- Draws NOTHING when there is neither a nameable active food nor anything to
+-- eat: an empty section would be a permanent reminder that you are out of food.
+-- Returns the number of rows drawn so a caller can react to that.
 -- ---------------------------------------------------------------------------
 function M.renderFoodSection(opts)
     if not hasImgui then return 0; end
     opts = (type(opts) == 'table') and opts or {};
+    local FW = nil;
+    pcall(function() FW = require('dlac\\feature\\foodwatch'); end);
+    if FW == nil then return 0; end
     local rows = nil;
-    pcall(function() rows = require('dlac\\feature\\foodwatch').menu(); end);
-    if type(rows) ~= 'table' or #rows == 0 then return 0; end
+    pcall(function() rows = FW.menu(); end);
+    rows = (type(rows) == 'table') and rows or {};
+
+    -- WHAT YOU ARE UNDER RIGHT NOW, and the reason this row exists at all: FFXI's
+    -- food status icon is GENERIC. It tells you food is up and never which food,
+    -- so "eat, log out, forget, log back in" leaves you with no way to find out
+    -- what you are getting. dlac knows (feature\foodwatch names it off the
+    -- history), so this is the one place on screen that can say.
+    --
+    -- Drawn INDEPENDENTLY of the eat rows below: the case it is for is exactly
+    -- the case where you have run out and have nothing left to list. It draws
+    -- only when the food can be NAMED -- an "under something" row would say no
+    -- more than the game's own icon already does.
+    local cur = nil;
+    pcall(function()
+        local st = FW.status();
+        if type(st) == 'table' and st.active == true then cur = st.current; end
+    end);
+    if type(cur) ~= 'table' or type(cur.name) ~= 'string' or cur.name == '' then cur = nil; end
+
+    if cur == nil and #rows == 0 then return 0; end
 
     local iconW  = tonumber(opts.iconW) or M._ICON_W;
     local labelX = tonumber(opts.labelX) or M._LABEL_X;
@@ -297,8 +331,59 @@ function M.renderFoodSection(opts)
     local dim    = opts.dim or (D ~= nil and D.COL ~= nil and D.COL.DIM) or { 0.6, 0.6, 0.6, 1 };
 
     imgui.Separator();
-    imgui.TextColored(dim, 'Recently eaten');
     local drewN = 0;
+
+    if cur ~= nil then
+        imgui.TextColored(dim, 'Active food');
+        -- Same Selectable-then-SameLine geometry as the eat rows, so the icon
+        -- column lines up -- but the CLICK IS DISCARDED. CatsEyeXI refuses an
+        -- item use while the FOOD effect is up (Henrik, 2026-08-01: "You can
+        -- never eat over something in this game"), so a re-eat from here could
+        -- only ever fail. The Selectable is here for the hit area: one hover
+        -- region covering the whole row, rather than the name alone.
+        local sized = false;
+        pcall(function()
+            imgui.Selectable('##dlacfoodcur', false,
+                             (ImGuiSelectableFlags_None or 0), { 0, rowH });
+            sized = true;
+        end);
+        if not sized then imgui.Selectable('##dlacfoodcur'); end
+        if imgui.IsItemHovered() then
+            local T = { cur.name };
+            local s = nil;
+            pcall(function() s = FW.statsFor(cur.id); end);
+            local dur = (type(s) == 'table') and FW._fmtDur(s.dur) or nil;
+            T[#T + 1] = (dur ~= nil) and (dur .. ' food.') or 'Food.';
+            if type(s) == 'table' and #s.lines > 0 then
+                T[#T + 1] = '';
+                for _, line in ipairs(s.lines) do T[#T + 1] = line; end
+            else
+                T[#T + 1] = '';
+                T[#T + 1] = 'No effect data for this food.';
+            end
+            T[#T + 1] = '';
+            T[#T + 1] = 'Eaten ' .. FW._fmtAgo(os.time() - (cur.at or 0)) .. '.';
+            -- esc LAST and over the whole blob: these lines are the server's own
+            -- text and are full of literal '%' ("Attack +20% (cap 120)"), which
+            -- imgui would otherwise read as a printf spec.
+            imgui.SetTooltip(esc(table.concat(T, '\n')));
+        end
+        imgui.SameLine(M._ICON_GAP);
+        local drewCur = false;
+        pcall(function()
+            local h = require('dlac\\ui\\itemicons').handleOf(cur.id);
+            if h == nil then return; end
+            imgui.Image(h, { iconW, iconW });
+            drewCur = true;
+        end);
+        if not drewCur then imgui.Dummy({ iconW, iconW }); end
+        imgui.SameLine(labelX);
+        imgui.TextColored(col, esc(cur.name));
+        drewN = drewN + 1;
+    end
+
+    if #rows == 0 then return drewN; end
+    imgui.TextColored(dim, 'Recently eaten');
     for i, r in ipairs(rows) do
         local hit, sized = false, false;
         pcall(function()
@@ -310,8 +395,7 @@ function M.renderFoodSection(opts)
         if imgui.IsItemHovered() then
             imgui.SetTooltip(esc(string.format(
                 'Eat %s -- one of the %d in your Inventory.\nLast eaten %s.',
-                r.name, r.count,
-                require('dlac\\feature\\foodwatch')._fmtAgo(os.time() - (r.at or 0)))));
+                r.name, r.count, FW._fmtAgo(os.time() - (r.at or 0)))));
         end
         imgui.SameLine(M._ICON_GAP);
         -- The item's OWN icon, from the game's resource (ui\itemicons retains the

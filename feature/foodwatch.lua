@@ -27,6 +27,14 @@
     long is left is a question the buff-timer addons already answer, and this
     module deliberately does not re-answer it.
 
+    -- 2026-08-01, from the field: that premise is a RETAIL one and does not hold
+    here. CatsEyeXI REFUSES an item use while the FOOD effect is up (Henrik: "You
+    can never eat over something in this game, server prevents you to"), so the
+    absent -> present edge is the primary path and the expiry comparison is
+    insurance for the one case still reachable -- a food wearing off and being
+    re-eaten inside the same 250ms poll gap, where the absent state is never
+    sampled. It costs one comparison and cannot fire wrongly, so it stays.
+
     THE HISTORY is per character and persists (<char>\dlac\foodhistory.lua), most
     recent first, unique by item id. Henrik's ruling (2026-07-30): dlac is always
     loaded, so if the FOOD effect is still up when you log in it is -- to a near
@@ -34,7 +42,7 @@
     food off the history whenever the effect is up, instead of reporting a bare
     "food active" that helps nobody.
 
-    THE MENU rows are "the two most recent foods you are CARRYING" -- it walks
+    THE MENU rows are "the three most recent foods you are CARRYING" -- it walks
     past a food you have run out of to the next one you still have, rather than
     showing a dead row (M.MENU_N / M._pick). Inventory only, because /item reads
     nowhere else.
@@ -45,11 +53,20 @@
     law). Naming the item, the history, the file write and every chat line
     happen on the frame tick.
 
+    WHAT THE FOOD DOES (2026-08-01) is the second question, and the game refuses
+    to answer it: the FOOD status icon is GENERIC. Eat, log out, forget, log back
+    in, and nothing on screen says which food you are under. dlac knows -- so
+    M.statsFor pairs the history with data\fooddb.lua (the server's own item
+    scripts, shipped). That table is DISPLAY ONLY and must never be asked whether
+    an item IS food; see the block above M.statsFor for why that split is
+    load-bearing.
+
     Pure seams for the headless suite (tests FW*): _parseItemUse, _step,
-    _remember, _pick, _serialize, _fromRaw, _fmtAgo. They take plain values and
-    return plain values -- no imgui, no Ashita, no disk. M.pump takes its live
-    reads as a table it CALLS, and the suite drives that same pump with its own,
-    so the live path cannot rot green underneath a passing test.
+    _remember, _pick, _serialize, _fromRaw, _fmtAgo, _fmtDur, _descLines. They
+    take plain values and return plain values -- no imgui, no Ashita, no disk.
+    M.pump and M.statsFor take their live reads as a table they CALL, and the
+    suite drives them with its own, so the live path cannot rot green underneath
+    a passing test.
 ]]--
 
 local M = {};
@@ -68,11 +85,11 @@ local _safe  = try('dlac\\lib\\safewrite');
 
 -- xi.effect.FOOD. The one server fact this module stands on.
 M.FOOD_EFFECT = 251;
--- How many foods the history keeps. Deeper than the two the menu shows on
+-- How many foods the history keeps. Deeper than the three the menu shows on
 -- purpose: the menu walks PAST foods you have run out of, and can only do that
 -- while there is something behind them.
 M.CAP     = 10;
-M.MENU_N  = 2;
+M.MENU_N  = 3;
 -- Seconds an item use stays attributable to a FOOD change. Eating lands well
 -- inside a second; the window only has to outlast a stutter, and nothing else
 -- can move that effect, so it is generous rather than tight.
@@ -231,6 +248,36 @@ function M._fmtAgo(sec)
     return string.format('%dd ago', math.floor(sec / 86400 + 0.5));
 end
 
+-- A food's FULL duration -- a property of the food, not a countdown. How long is
+-- left stays the buff-timer addons' question (Henrik, 2026-08-01: "Timers are
+-- fine not including, we usually see those just fine").
+function M._fmtDur(sec)
+    sec = tonumber(sec) or 0;
+    if sec <= 0 then return nil; end
+    if sec % 3600 == 0 then
+        local h = sec / 3600;
+        return string.format('%d hr', h);
+    end
+    return string.format('%d min', math.floor(sec / 60 + 0.5));
+end
+
+-- The client's own item Description -> effect lines. The FALLBACK source, for
+-- the handful of foods whose server script carries no English header. Retail DAT
+-- text: it cannot know a CatsEyeXI rebalance, which is exactly why it is second
+-- and not first. Descriptions are one blob with embedded newlines and the odd
+-- control byte; the first line is usually the effect-duration banner and is kept
+-- (it says the same thing the header's duration does).
+function M._descLines(text)
+    local out = {};
+    if type(text) ~= 'string' then return out; end
+    text = text:gsub('[%z\1-\8\11\12\14-\31]', '\n');
+    for line in (text .. '\n'):gmatch('([^\r\n]*)[\r\n]') do
+        line = line:gsub('^%s+', ''):gsub('%s+$', '');
+        if line ~= '' then out[#out + 1] = line; end
+    end
+    return out;
+end
+
 -- ---------------------------------------------------------------------------
 -- Disk
 -- ---------------------------------------------------------------------------
@@ -322,6 +369,17 @@ M.reads = {
         return nm;
     end,
 
+    -- The client's own description blob for an item. Only consulted when the
+    -- shipped table has nothing (M.statsFor).
+    describe = function(id)
+        local d = nil;
+        pcall(function()
+            local r = AshitaCore:GetResourceManager():GetItemById(id);
+            if r ~= nil and r.Description ~= nil then d = r.Description[1]; end
+        end);
+        return d;
+    end,
+
     save = function() return M.save(); end,
 };
 
@@ -366,6 +424,61 @@ function M.menu()
     end);
     _menuRows = M._pick(M.history, function(e) return counts[e.id] or 0; end, M.MENU_N);
     return _menuRows;
+end
+
+-- ---------------------------------------------------------------------------
+-- WHAT A FOOD DOES (2026-08-01)
+--
+-- The problem is the game's, not dlac's: FFXI's food status icon is GENERIC. It
+-- says you are under food and never which one, so after "eat, log out, forget,
+-- log back in" there is no way to find out what you are getting. dlac already
+-- knows what you ate; this is what lets it say what that food does.
+--
+-- data\fooddb.lua is DISPLAY ONLY, and the split is load-bearing: it must never
+-- be asked whether an item IS food. That answer stays learned from the effect
+-- moving (M._step), so a food the server adds tomorrow is still remembered and
+-- still eatable -- it just has no stats to show. Wire this table into detection
+-- and the "dlac ships no food list" guarantee is gone, and a shipped copy that
+-- goes stale starts deciding what counts as food.
+--
+-- Two sources, in this order: the server's own item script (authority -- it is
+-- where the mods actually live) then the client's item Description (retail DAT
+-- text, so it cannot know a CatsEyeXI rebalance; it exists to cover the ~13
+-- foods whose script carries no English header). Neither answering is a nil,
+-- and the caller simply draws no stats.
+-- ---------------------------------------------------------------------------
+local _db, _dbTried = nil, false;
+local function fooddb()
+    if not _dbTried then
+        _dbTried = true;
+        local ok, t = pcall(require, 'dlac\\data\\fooddb');
+        if ok and type(t) == 'table' and type(t.foods) == 'table' then _db = t.foods; end
+    end
+    return _db;
+end
+
+-- { lines = { 'HP +40', ... }, dur = 10800, src = 'server'|'client' } or nil.
+-- Lines are COPIED: the table behind them is the shared require'd one, and a
+-- caller that trimmed it in place would corrupt every later read.
+function M.statsFor(id, reads)
+    reads = (type(reads) == 'table') and reads or M.reads;
+    id = tonumber(id);
+    if id == nil then return nil; end
+
+    local e = nil;
+    local db = fooddb();
+    if type(db) == 'table' then e = db[id]; end
+    local dur = (type(e) == 'table') and tonumber(e.d) or nil;
+
+    if type(e) == 'table' and type(e.s) == 'table' and #e.s > 0 then
+        local out = {};
+        for i = 1, #e.s do out[i] = e.s[i]; end
+        return { lines = out, dur = dur, src = 'server' };
+    end
+
+    local lines = M._descLines(reads.describe(id));
+    if #lines > 0 then return { lines = lines, dur = dur, src = 'client' }; end
+    return nil;
 end
 
 -- active  -- is the FOOD effect up at all
@@ -497,6 +610,10 @@ end);
 function M._reset()
     M.history, M._pending, M._state = {}, nil, { food = nil };
     _loadedFrom, _menuRows, _menuAt = nil, nil, 0;
+    -- The stats table too: it is required ONCE and cached, so a suite that
+    -- injects its own package.loaded['dlac\\data\\fooddb'] after the first
+    -- statsFor call would otherwise keep reading the real shipped one.
+    _db, _dbTried = nil, false;
 end
 
 return M;

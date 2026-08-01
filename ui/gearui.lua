@@ -1661,7 +1661,7 @@ local function renderTeleportsPopup()
         'Show/hide the hobby bar -- Craft, HELM, Fishing and Chocobo controls in\none window (one hobby active at a time).');
     renderQuickWindowRow('lockstyle', 'Lockstyle',
         'Open the Lockstyle window -- your 30 saved looks for this job: apply one,\nsave the marked box, set the town style.');
-    -- The two most recently eaten foods you still carry (2026-07-30). They belong
+    -- The most recently eaten foods you still carry (2026-07-30). They belong
     -- HERE more than anywhere: this popup is the floating quick menu, and "my food
     -- just wore off" happens mid-fight with the main window shut. ONE definition,
     -- shared with the Menu's own food section (ui\menuui.renderFoodSection) -- only
