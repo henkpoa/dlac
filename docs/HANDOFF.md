@@ -273,7 +273,12 @@ this does not make an accepted entry mergeable *alone*: `dev` promotes
 
 ### The Range/Ammo pair is an Arbiter verdict — `2026.08.01d`, engine v159
 
-*(NOT field-confirmed — a field round on Mindie DRK is owed before this can be ACCEPTED.)*
+**FIELD-CONFIRMED** 2026-08-01 on Mindie DRK72, the reported case exactly: *"it is not
+flapping between arcane arbalest and cinderstone now, so seems to work!"* Not yet ACCEPTED —
+only Henrik moves it there. Two secondary surfaces of the same change are still unobserved
+(the `/dl why ammo` / `/dl why range` verdict lines, and the Sets tab showing the Range tile
+with the **pair** sentence rather than the reservation one); both are render-only paths over
+the same record, and both are covered headlessly.
 
 **The bug, reported by Henrik on DRK72 Mindie:** *"it is trying to both equip Arcane
 Arbalest in Range, and Cinderstone in Ammo back and forth, I thought we had that rule set

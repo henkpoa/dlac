@@ -7635,7 +7635,11 @@ manifest: Cinderstone -> effectiveRSlot 4 + Pair 0:0, Arcane Arbalest -> Pair 26
 four pair cases (Level contest both directions, bolt-vs-bow mismatch, worn displace) resolve
 correctly. Tests CF1-CF6. Suites **5455 + 925**.
 
-**Owed:** one field round on Mindie DRK. Stand idle with Cinderstone worn and confirm the
-Ammo slot stops blinking, that `/dl why ammo` and `/dl why range` name the pair verdict,
-and that the Sets tab's DRK Idle set shows the Range tile red with the pair sentence rather
-than the reservation one.
+**FIELD-CONFIRMED** the same day, on the reported case exactly -- Henrik, on Mindie DRK72:
+*"it is not flapping between arcane arbalest and cinderstone now, so seems to work!"* The
+whole train (v159's merged-floor verdict + v160's catalog-sourced item facts) went in
+untested-in-game and landed first time; the headless repro built from his live files before
+any code changed is what made that safe, and re-running it after the fix is what predicted
+it. Two secondary surfaces are still unobserved and are render-only paths over the same
+record: the `/dl why ammo` / `/dl why range` verdict lines, and the Sets tab showing the
+Range tile with the PAIR sentence rather than the reservation one.
