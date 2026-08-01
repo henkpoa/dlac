@@ -1784,7 +1784,8 @@ research already recorded. In rough priority order:
   approach, **debited locally** on our own withdraws, and re-counted only on the few
   events arithmetic cannot see. **Crafting at an E-Box now costs zero packets** (it used
   to cost 200-300 a session). Also: an explicit **Search** button in the add-picker, a
-  three-icon nudge (fetch / other-bags / `!box store` with arm-then-confirm), quiver and
+  three-icon nudge (fetch / other-bags / `!box store` — **one click, no confirm since
+  `2026.08.01g`**: dumping your haul on reaching town is the ordinary move), quiver and
   pouch contents counted toward tracked ammo, and **`/dl debug ebox`** — a live readout of
   every packet sent, when, and what caused it.
   - **Start here: [design/ebox-v2-handoff-2026-07-25.md](design/ebox-v2-handoff-2026-07-25.md)**
