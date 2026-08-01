@@ -7749,3 +7749,10 @@ established. One CRLF lesson came with it: a source pin ending in `.-\nend\n` pa
 Windows Lua (which strips the `\r` on a text-mode read) and fails under WSL's (which does
 not) -- pin to the first column-0 `end` and take no trailing newline. Suites **5480 +
 925**, both interpreters.
+
+**Field-confirmed the same day**, both halves in one look -- Henrik: *"Works in field,
+thank you, both settings and the auto build."* Promoted to main in the same message
+(`36da078`), the "merge IS an accept" rule from earlier the same day doing what it was
+written for: the field confirmation and the instruction arrived together, so there was
+nothing left to ask. The Setting's own hover and the "Sure?" flip are the two surfaces that
+had never been seen outside a source pin, and both read right in game.

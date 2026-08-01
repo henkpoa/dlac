@@ -287,7 +287,16 @@ haven't told you."* Ask when he has **not** said merge; never ask twice when he 
 **The queue is empty.**
 
 
-*(Last emptied by the 2026-08-01 promotion — `ff92f4e`, `main` at `4810f94` before it: four
+*(Emptied again by the 2026-08-01 promotion of `36da078` — **Auto-build can stay in the
+field, and Auto-Build All asks first**, `2026.08.01h`, no engine change. It never sat in
+this queue: Henrik's field confirmation and his merge instruction arrived in one message
+(*"Works in field, thank you, both settings and the auto build. Document, commit, merge and
+push to origin"*), which is the "merge IS an accept" rule doing exactly what it is for. One
+Setting — **"Auto-build with gear in storage"** / `/dl buildstored`, default on — plus a
+two-click arm on **Auto-Build All**; the scope lines and the three placement decisions are
+in the Current-state entry below and in history.md.)*
+
+*(Last emptied before that by the 2026-08-01 promotion — `ff92f4e`, `main` at `4810f94` before it: four
 commits, `b64a702..6da40a4` — **the Range/Ammo pair is an Arbiter verdict, and item facts
 come from the catalog**, `2026.08.01d`–`2026.08.01f`, engine v159→v161. One field bug and
 the two things it exposed underneath.
@@ -618,8 +627,10 @@ research already recorded. In rough priority order:
 ## Current state (as of 2026-08-01)
 
 - **2026-08-01 (`2026.08.01h`): Auto-build can be told to stay in the field, and
-  Auto-Build All asks first — ON `dev`, awaiting field test.** Two small Sets-tab
-  requests from Henrik, both about giving the player leeway.
+  Auto-Build All asks first — FIELD-CONFIRMED and ON MAIN (`36da078`).** Two small
+  Sets-tab requests from Henrik, both about giving the player leeway. Confirmed in game
+  the same day — *"Works in field, thank you, both settings and the auto build"* — and
+  promoted in the same breath.
   - **New Setting "Auto-build with gear in storage"** (Menu > Settings) / `/dl buildstored
     [on|off]`, persisted in `uiflags.lua`, **default on** — absent key reads as on, so no
     install changes behavior. On, Auto-build picks from everything you own wherever it sits
@@ -640,7 +651,8 @@ research already recorded. In rough priority order:
     every weighted set of the job; the arm expires by itself after ~5s so a stray click
     leaves nothing live under the cursor. Not a popup — there is nothing to name in a
     dialog for a whole-job action. `UIF23/23a` pin that only an armed click builds.
-  - Suites **5480 + 925**, Windows and WSL lua5.4. Nothing here touches the engine.
+  - Suites **5480 + 925**, Windows and WSL lua5.4. Nothing here touches the engine, so
+    the reload was `/addon reload dlac` alone.
 
 - **2026-08-01 (`2026.08.01b`, engine v158): gear availability is an ARBITER refusal —
   FIELD-CONFIRMED and ON MAIN (`4810f94`).**
