@@ -8489,3 +8489,58 @@ and the popup's own measured cap is untouched by any of it. Suites **5990** and 
 
 **Owed in the field:** that a size-constrained submenu actually scrolls in this ImGui build,
 and that the popup still survives moving the mouse across items with the constraint armed.
+
+## Session "inside the window, not beside it" (2026-08-03, `2026.08.03m`)
+
+Henrik, after the two failed placements: *"Have the status window integrated in the right
+click window. Look at the biggest height from a piece, and widest width (can be different
+pieces), adapt the main right click window after that (so it doesn't move around every time
+you scroll around on gear). That way, it doesn't have to adapt as an outside window to other
+two windows."*
+
+That dissolves the problem rather than solving it. **Nothing inside a window can be covered
+by that window's own menus** — no side to choose, no rect to dodge, no z-order to lose. The
+two earlier shapes both failed for reasons that are now written into the file header so
+nobody re-tries them: a tooltip follows the cursor and the cursor is on the menu; a window
+of our own is *always* drawn under an open popup in ImGui, whatever order it is created in.
+
+**The reservation forced a rewrite of the card, and this is the real lesson.** You cannot
+measure a card without drawing it. `gearui.renderItemTooltip` renders straight to ImGui, so
+asking "how tall is the tallest piece in this pool" is not a question it can answer — and
+that question is the whole feature. So the block builds its lines as **data first**
+(`factsLines` returns `{col, text}`), and the same builder that draws one piece can be asked
+how many lines thirty of them would take. The one-round-old `bare` argument on
+`renderItemTooltip` went back out with it rather than sit there unused.
+
+It is also deliberately **bounded**: every open-ended part of the full card (the set-bonus
+ladder, the partner-piece list, every owned copy's augments) is absent, because a card that
+can run twenty lines cannot have space reserved for it without eating the popup. Wrapping is
+**character-based, not pixel-based** — the count has to be identical in the measuring pass
+and the drawing pass, and a proportional font measured per-fragment is not.
+
+Height is reserved for the pool's tallest piece and padded with a `Dummy`; the **width needs
+no equivalent** because the lines wrap to the width the item rows already settled, so the
+block cannot widen the popup at all. Two of Henrik's asks, one mechanism each.
+
+**One consequence had to be paid for.** Adding ~8 lines to the popup pushes a full slot's
+gear past the 460px height cap, the popup grows a scrollbar, and the first thing to scroll
+out of sight is the block — which would make integrating it pointless. So the item list now
+gets what is *left* of the cap: `rowCap` from the measured line height, the pinned rows and
+the reserved block. The overflow was always counted rather than hidden ("+N more — type to
+narrow"); this only makes the counting start sooner. It depends on the pool's tallest card,
+never the hovered one, so the row count does not shift while you read.
+
+The block shows **last frame's** hover — it is drawn above the list, and the hover is
+discovered while drawing the list below it. Same trade the Equipped tab's compare panel has
+always made, and invisible at 60fps.
+
+**A test-only bug worth recording**, because it is the kind that hides: deleting the old
+panel's checks left `Sx.renderItemTooltip = keptTip` behind with `keptTip` no longer
+declared. In Lua that reads as a nil global, so the line *nulled the service* for every
+later section — and the suite stayed green, because nothing downstream happened to call it.
+Found by grepping the removed names rather than by a red test.
+
+**Tests:** smoke `FGP23`–`FGP29` — no second window is opened at all, every window that is
+gets closed, the line builder yields data, it wraps to a width, the reserved height is the
+pool's tallest piece and not the hovered one, the answer does not depend on pool order, and
+an empty pool still reserves its prompt line. Suites **5990** and **1068**.

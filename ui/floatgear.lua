@@ -55,13 +55,18 @@
         between them per dispatch; this file shows them, adds to them, and
         removes them one at a time or all at once.
 
-    ...and two follow-ups from the same round:
+    ...and the follow-ups from the same round:
       * the popup's width is MEASURED, not a constant (popupMaxW). A flat cap let
         the item list grow freely while clipping every pinned row.
-      * hovering a row shows that item's FACTS in a panel beside the menu
-        (renderFactsPanel) -- the same card the hover tooltip draws everywhere
-        else, placed where the menu chain cannot reach it. A tooltip could not do
-        this job: it follows the cursor, and the cursor is on the menu.
+      * the cascade names the SET rather than the conditions, and is height-capped
+        -- it was ~750px wide and full height, which is what left the item facts
+        nowhere to stand.
+      * the hovered piece's FACTS are drawn INSIDE this popup (renderFactsBlock),
+        at a size reserved for the tallest piece in the pool. Two earlier shapes
+        failed and both are worth remembering: a tooltip follows the cursor, and
+        the cursor is on the menu; a window of our own is ALWAYS drawn under an
+        open popup in ImGui, whatever order it is created in, so the cascade
+        simply painted over it. Inside the popup neither problem exists.
 ]]--
 
 local host = require("dlac\\ui\\uihost");
@@ -78,6 +83,9 @@ local dsp   = try("dlac\\dispatch");
 -- or not d3d came up, and itemicons itself already no-ops without it -- a nil
 -- here just means text rows, never a dead window.
 local icons = try("dlac\\ui\\itemicons");
+-- Bag locations for the facts block ("Held: Wardrobe 8"). Same try(): a nil here
+-- costs that one line, never the block.
+local owned = try("dlac\\gear\\ownedcache");
 
 local M = {};
 
@@ -223,12 +231,14 @@ local _search = { '' };
 -- building while the menu is up, and this is the only honest way to know: ImGui
 -- owns the popup's open state and BeginPopup is the one thing that reports it.
 local _popupUp = false;
--- The item whose facts the side panel shows this frame, and the popup's screen
--- rect to place that panel against. Both are filled DURING the popup and read
--- after it closes, in the same frame -- so neither can go stale.
+-- The piece the facts block describes, in TWO halves. The block is drawn at the
+-- TOP of the popup and the hover is discovered while drawing the list BELOW it,
+-- so the block necessarily shows LAST frame's hover -- `_hoverNext` collects
+-- this frame's, and they swap at the end of the render. One frame of lag, which
+-- is the same trade the Equipped tab's compare panel already makes ("drawn above
+-- the list; it reads last frame's hover") and is invisible at 60fps.
 local _hoverRec  = nil;
-local _popupRect = nil;
-local _panelOpenT = { true };
+local _hoverNext = nil;
 
 -- --------------------------------------------------------------------------
 -- Trigger choices for the scope submenu.
@@ -429,64 +439,152 @@ local function popupMaxW(slot, byKey, pool)
     return widest;
 end
 
--- The item facts panel: the SAME card the hover tooltip draws everywhere else in
--- dlac (gearui.renderItemTooltip with `bare` -- stats, DMG/Delay, set-bonus
--- ladder, where the copies live, your augments, jobs), in a window of our own
--- placed BESIDE the menu.
+-- --------------------------------------------------------------------------
+-- THE FACTS BLOCK -- the hovered piece's stats, INSIDE the popup.
 --
--- Henrik, 2026-08-03: "show the stats of the item as well -- somewhere where it
--- doesn't clip into the right click menu or cover it." A tooltip cannot satisfy
--- that: it follows the cursor, and the cursor is on the menu. So the panel is
--- pinned to the popup's own rect instead, and goes on the LEFT -- the scope
--- cascade opens to the RIGHT, so the left is the one side the menu chain can
--- never grow into. If the popup is hard against the left edge of the screen
--- there is no left, and it drops UNDERNEATH the popup instead: a submenu is
--- drawn beside its parent ROW, never below the whole popup.
+-- Henrik, 2026-08-03, after seeing the free-floating version sliced by the
+-- cascade in two of four screen corners: "have the status window integrated in
+-- the right click window ... that way it doesn't have to adapt as an outside
+-- window to other two windows." Exactly right, and it dissolves the whole
+-- geometry problem: nothing inside a window can be covered by that window's own
+-- menus, so there is no side to choose, no rect to dodge, no z-order to lose.
 --
--- NoInputs is not decoration. This window is drawn under the cursor's path while
--- you read a menu, and any mouse it caught would be a mouse the menu did not --
--- which is how an info panel turns into "the menu randomly stops responding".
--- NoFocusOnAppearing keeps it from stealing focus the frame it shows up.
-local PANEL_W = 360;
--- REAL bit values as fallbacks, never `or 0` -- the HOVER_FLAGS lesson at the top
--- of this file, and it bites harder here. `or 0` on the input flags does not
--- degrade the panel: it hands the panel the mouse the MENU needed, and the
--- failure reads as "the right-click menu randomly stops responding", which is
--- nobody's idea of a missing constant. Spelled as the three individual bits
--- rather than NoInputs (which is just their union) so each one has a fallback.
-local PANEL_FLAGS = (ImGuiWindowFlags_NoTitleBar or 1)                 -- bit 0
-                  + (ImGuiWindowFlags_NoResize or 2)                   -- bit 1
-                  + (ImGuiWindowFlags_NoCollapse or 32)                -- bit 5
-                  + (ImGuiWindowFlags_AlwaysAutoResize or 64)          -- bit 6
-                  + (ImGuiWindowFlags_NoSavedSettings or 256)          -- bit 8
-                  + (ImGuiWindowFlags_NoMouseInputs or 512)            -- bit 9
-                  + (ImGuiWindowFlags_NoFocusOnAppearing or 4096)      -- bit 12
-                  + (ImGuiWindowFlags_NoNavInputs or 262144)           -- bit 18
-                  + (ImGuiWindowFlags_NoNavFocus or 524288);           -- bit 19
-M._PANEL_FLAGS = PANEL_FLAGS;   -- test seam
+-- It is NOT gearui's card. That card is deliberately open-ended (a set-bonus
+-- ladder plus its partner pieces can run twenty lines), and more decisively: you
+-- cannot MEASURE a card without drawing it, so reserving space for the tallest
+-- piece in the pool is impossible with an opaque renderer. These lines are built
+-- as data first and drawn second, so the same builder that renders one piece can
+-- be asked how tall thirty of them would be. The full card still lives on the
+-- grid's own hover, which has a whole screen to use.
+-- --------------------------------------------------------------------------
 
-local function renderFactsPanel(rec)
-    if imgui == nil or type(rec) ~= 'table' or _popupRect == nil then return; end
-    if type(S.renderItemTooltip) ~= 'function' then return; end
-    local px, py, pw, ph = _popupRect[1], _popupRect[2], _popupRect[3], _popupRect[4];
-    local x, y = px - PANEL_W - 8, py;
-    if x < 4 then x, y = px, py + (ph or 0) + 8; end
-    imgui.SetNextWindowPos({ x, y }, (ImGuiCond_Always or 1));
-    -- min.x == max.x pins the WIDTH while the height still auto-sizes to the
-    -- card. (Not SetNextWindowSize({0,0}) + AlwaysAutoResize -- that pair is the
-    -- collapsed-window trap this codebase has a law about.)
-    imgui.SetNextWindowSizeConstraints({ PANEL_W, 0 }, { PANEL_W, 620 });
-    _panelOpenT[1] = true;
-    local shown = imgui.Begin('##dlac_pinfacts', _panelOpenT, PANEL_FLAGS);
-    if shown then
-        -- `bare` = the card without its tooltip frame. pcall'd because this runs
-        -- on the render path and a card that throws must cost the panel, never
-        -- the frame -- and End() below still runs either way.
-        pcall(S.renderItemTooltip, rec, nil, true);
+-- Wrap to a character budget at SPACES. Character-based rather than pixel-based
+-- on purpose: the count has to be identical in the measuring pass and the
+-- drawing pass, and a proportional font measured per-fragment is not.
+local function wrapTo(s, n)
+    local out = {};
+    for _, word in ipairs((function()
+        local w = {};
+        for tok in string.gmatch(tostring(s or ''), '%S+') do w[#w + 1] = tok; end
+        return w;
+    end)()) do
+        local cur = out[#out];
+        if cur == nil or (#cur + 1 + #word) > n then out[#out + 1] = word;
+        else out[#out] = cur .. ' ' .. word; end
     end
-    imgui.End();
+    return out;
 end
-M._renderFactsPanel = renderFactsPanel;   -- test seam
+
+-- One piece as { {col, text}, ... }. Bounded by construction: every unbounded
+-- part of the full card (the set ladder, the partner list, every owned copy's
+-- augments) is deliberately absent, so the line count is a function of the item
+-- and nothing else.
+local function factsLines(rec, level, wrapN)
+    local out = {};
+    if type(rec) ~= 'table' then return out; end
+    local function add(col, s) out[#out + 1] = { col = col, text = tostring(s) }; end
+    add(COL.HEADER, tostring(rec.Name or '?'));
+    local jt = 'All Jobs';
+    pcall(function()
+        local t = fmt.jobsText(rec.Jobs);
+        if type(t) == 'string' and t ~= '' then jt = (t == 'All') and 'All Jobs' or t; end
+    end);
+    add(COL.JOBS, string.format('%s   Lv.%s   %s',
+        tostring(rec.Slot or '?'), tostring(rec.Level or 0), jt));
+    -- What the piece takes AWAY. A fact about the item, and the reason half a set
+    -- goes missing -- it belongs above the stats, not buried under them.
+    pcall(function()
+        if type(S.rsv) ~= 'table' then return; end
+        local t = S.rsv.text(S.rsv.maskOf(rec));
+        if t ~= nil then add(COL.SCORE, 'Takes ' .. tostring(t) .. ' (stays empty)'); end
+    end);
+    local stats = nil;
+    pcall(function() stats = S.effStats(rec, level); end);
+    if type(stats) == 'table' then
+        if type(stats.DMG) == 'number' and type(stats.Delay) == 'number' then
+            add(COL.DMG, string.format('DMG:%s Delay:%s', tostring(stats.DMG), tostring(stats.Delay)));
+        end
+        local sl = '';
+        pcall(function() sl = fmt.fullStatList(stats) or ''; end);
+        if sl ~= '' then
+            for _, ln in ipairs(wrapTo(sl, wrapN)) do add(COL.STATS, ln); end
+        end
+    end
+    pcall(function()
+        for _, pl in ipairs(fmt.petLines(rec) or {}) do
+            for _, ln in ipairs(wrapTo(pl, wrapN)) do add(COL.STATS, ln); end
+        end
+    end);
+    pcall(function()
+        if rec.Id == nil or type(S.ownedAugMap) ~= 'function' then return; end
+        local al = S.ownedAugMap()[rec.Id];
+        if type(al) == 'table' and al[1] ~= nil then
+            add(COL.SCORE, fmt.truncate('Aug: ' .. tostring(al[1]), wrapN)
+                .. ((#al > 1) and string.format('  (+%d)', #al - 1) or ''));
+        end
+    end);
+    pcall(function()
+        if owned == nil or rec.Id == nil then return; end
+        local locs = owned.whereText(rec);
+        if locs ~= nil and locs ~= '' then
+            add(COL.DIM, fmt.truncate('Held: ' .. tostring(locs), wrapN));
+        end
+    end);
+    return out;
+end
+M._factsLines = factsLines;   -- test seam
+
+-- THE RESERVED HEIGHT: the tallest piece in the pool, so the popup stops
+-- changing size as the cursor moves down the list ("so it doesn't move around
+-- every time you scroll around on gear"). Cached on the pool's identity, because
+-- the answer only changes when the pool or the wrap width does -- recomputing
+-- thirty items' stat lines every frame to get the same number back would be a
+-- waste the popup pays for continuously.
+--
+-- The WIDTH needs no equivalent: the block wraps to whatever width the item rows
+-- already settled (popupMaxW, measured unfiltered), so the facts can never widen
+-- the popup and there is nothing to stabilise.
+local _factsBox = { key = nil, lines = 0 };
+local function factsMaxLines(pool, level, wrapN)
+    local key = string.format('%s|%s|%s', tostring(#(pool or {})), tostring(level), tostring(wrapN));
+    if type(pool) == 'table' and pool[1] ~= nil then
+        key = key .. '|' .. tostring(pool[1].Id) .. '|' .. tostring(pool[#pool].Id);
+    end
+    if _factsBox.key == key then return _factsBox.lines; end
+    local most = 1;                       -- never zero: the "hover a piece" line
+    for _, rec in ipairs(pool or {}) do
+        local n = #factsLines(rec, level, wrapN);
+        if n > most then most = n; end
+    end
+    _factsBox.key, _factsBox.lines = key, most;
+    return most;
+end
+M._factsMaxLines = factsMaxLines;   -- test seam
+
+-- Draw the block and PAD it to the reserved height. The padding is the whole
+-- point: without it the popup is a different size for a plain ring than for a
+-- weapon, and every hover shuffles the rows under the cursor.
+local function renderFactsBlock(rec, level, wrapN, maxLines)
+    local drawn = 0;
+    if type(rec) == 'table' then
+        for _, ln in ipairs(factsLines(rec, level, wrapN)) do
+            imgui.TextColored(ln.col, fmt.esc(ln.text));
+            drawn = drawn + 1;
+        end
+    end
+    if drawn == 0 then
+        imgui.TextColored(COL.DIM, 'Hover a piece for its stats.');
+        drawn = 1;
+    end
+    if drawn < maxLines then
+        local lh = 14;
+        pcall(function()
+            local h = imgui.GetTextLineHeightWithSpacing();
+            if type(h) == 'number' and h > 0 then lh = h; end
+        end);
+        imgui.Dummy({ 0, (maxLines - drawn) * lh });
+    end
+end
 
 -- The catalog record behind a NAME -- a pin stores a name, so the facts panel and
 -- the pinned rows' icons both have to get back to a record. nil when the name has
@@ -601,10 +699,10 @@ local function candidatesFor(slot, job, level)
     return out;
 end
 
--- `choices` and `pool` are computed by M.render (the width measurement needs
--- them BEFORE BeginPopup, and building them twice a frame would be waste), but
--- both are optional: the fallbacks keep this function drivable on its own.
-local function renderPinMenu(job, level, choices, pool)
+-- `choices`, `pool` and `maxW` are computed by M.render (the width measurement
+-- needs them BEFORE BeginPopup, and building them twice a frame would be waste),
+-- but all three are optional: the fallbacks keep this function drivable on its own.
+local function renderPinMenu(job, level, choices, pool, maxW)
     local slot = _menuSlot;
     if slot == nil then return; end
 
@@ -668,7 +766,7 @@ local function renderPinMenu(job, level, choices, pool)
                 -- ...and the side panel gets the piece itself. By NAME, because a
                 -- pin is stored as a name: the record is the catalog's answer to
                 -- it, and nil (a pinned name with no record) simply shows nothing.
-                _hoverRec = lookupName(e.item);
+                _hoverNext = lookupName(e.item);
             end
         end
         if #held > 1 then
@@ -685,7 +783,7 @@ local function renderPinMenu(job, level, choices, pool)
     -- follows the CHOSEN item here rather than the hover -- on this screen there
     -- is nothing else it could usefully be about.
     if not hasMenu and _drillItem ~= nil then
-        _hoverRec = lookupName(_drillItem);
+        _hoverNext = lookupName(_drillItem);
         imgui.TextColored(COL.HEADER, fmt.esc(_drillItem));
         imgui.TextColored(COL.DIM, 'Apply to which triggers?');
         imgui.Separator();
@@ -701,6 +799,38 @@ local function renderPinMenu(job, level, choices, pool)
 
     local q = string.lower(tostring(_search[1] or ''));
     local list = pool or candidatesFor(slot, job, level);
+
+    -- THE FACTS BLOCK, above the list and below the search. Above, because the
+    -- list is what the cursor is in and a block under it would sit off the bottom
+    -- of a long popup; below the search, so typing never moves it.
+    --
+    -- Height is reserved for the TALLEST piece in the pool, not for the piece
+    -- being hovered -- the popup then keeps one size while you move down the list
+    -- instead of resizing under the cursor on every row. Width needs no such
+    -- reservation: the lines WRAP to the width the item rows already settled, so
+    -- the block cannot widen the popup at all.
+    local wrapN = math.max(24, math.floor(((maxW or MAX_W) - ICON - 40) / 7));
+    local maxLines = factsMaxLines(list, level, wrapN);
+    renderFactsBlock(_hoverRec, level, wrapN, maxLines);
+    imgui.Separator();
+
+    -- ...and the list gets what is LEFT of the height cap. Without this the block
+    -- simply pushes a full slot's worth of gear past the cap, the popup grows a
+    -- scrollbar, and the first thing to scroll out of sight is the block itself --
+    -- which would make integrating it pointless. The overflow was always counted
+    -- rather than hidden ("+N more -- type to narrow"); this just makes the
+    -- counting start sooner. Depends on the pool's tallest card, never on the
+    -- hovered one, so the row count does not move while you read.
+    local lineH = 17;
+    pcall(function()
+        local h = imgui.GetTextLineHeightWithSpacing();
+        if type(h) == 'number' and h > 0 then lineH = h; end
+    end);
+    local rowH   = ICON + 4;                              -- an icon row, not a text row
+    local chrome = (5 + maxLines) * lineH + (#held * rowH);
+    local rowCap = math.floor((CAP_W - chrome) / rowH);
+    if rowCap < 4 then rowCap = 4; end                    -- never absurd
+    if rowCap > CAP then rowCap = CAP; end
     -- NO BeginChild around this list, deliberately. A submenu is drawn OUTSIDE the
     -- rect of the window it is declared in; inside a child, moving the mouse from
     -- one item toward its submenu leaves the child, ImGui decides the menu
@@ -714,7 +844,7 @@ local function renderPinMenu(job, level, choices, pool)
         local nm = tostring(rec.Name or '?');
         if q == '' or string.find(string.lower(nm), q, 1, true) ~= nil then
             matched = matched + 1;
-            if shown < CAP then                -- a popup is not a browser
+            if shown < rowCap then             -- a popup is not a browser
                 shown = shown + 1;
                 -- The icon, then the row on the same line (itemicons ends with
                 -- its own SameLine). Drawn from the RECORD's id rather than by
@@ -746,7 +876,7 @@ local function renderPinMenu(job, level, choices, pool)
                     -- a hover test on the parent row would drop the moment the
                     -- cursor left it.
                     if imgui.BeginMenu(nm .. '##pin' .. tostring(rec.Id)) then
-                        _hoverRec = rec;
+                        _hoverNext = rec;
                         renderScopeRows(slot, nm, choices, true);
                         imgui.EndMenu();
                     end
@@ -754,7 +884,7 @@ local function renderPinMenu(job, level, choices, pool)
                     if imgui.Selectable(nm .. '##pin' .. tostring(rec.Id)) then
                         _drillItem = nm;
                     end
-                    if imgui.IsItemHovered() then _hoverRec = rec; end
+                    if imgui.IsItemHovered() then _hoverNext = rec; end
                 end
             end
         end
@@ -990,24 +1120,14 @@ function M.render()
         -- anywhere in the frame -- including another addon's.
         imgui.SetNextWindowSizeConstraints({ MIN_W, 0 }, { maxW, CAP_W });
         _popupUp = false;
-        -- Cleared every frame, filled only by a menu that actually drew: the
-        -- facts panel then cannot outlive the menu it belongs to, and there is
-        -- no "close the panel" case to get wrong.
-        _hoverRec, _popupRect = nil, nil;
+        -- The hover swap. `_hoverNext` is what the list reported LAST frame and
+        -- becomes what the block draws THIS frame; a menu that did not draw
+        -- reports nothing, so the block empties itself with no "close" case to
+        -- get wrong.
+        _hoverRec, _hoverNext = _hoverNext, nil;
         if imgui.BeginPopup(POPUP) then
             _popupUp = true;
-            renderPinMenu(job, level, choices, pool);
-            -- The popup's own rect, read from INSIDE it -- the only place ImGui
-            -- will tell you. It is what the facts panel is placed against.
-            pcall(function()
-                local x, y = imgui.GetWindowPos();
-                if type(x) == 'table' then y = (x[2] or x.y); x = (x[1] or x.x); end
-                local w, h = imgui.GetWindowSize();
-                if type(w) == 'table' then h = (w[2] or w.y); w = (w[1] or w.x); end
-                if type(x) == 'number' and type(y) == 'number' and type(w) == 'number' then
-                    _popupRect = { x, y, w, tonumber(h) or 0 };
-                end
-            end);
+            renderPinMenu(job, level, choices, pool, maxW);
             imgui.EndPopup();
         end
 
@@ -1033,11 +1153,6 @@ function M.render()
     -- takes the whole client down. Shipped exactly that in e85cc43 by adding the
     -- second push without removing this round's older pop. Count the pushes.
     imgui.End();
-    -- The facts panel, AFTER this window closes rather than nested inside it.
-    -- Nesting Begin/End is legal, but this window's End is the one guarded by
-    -- the style-stack comment above and there is no reason to put another
-    -- window's balance inside its scope.
-    if _hoverRec ~= nil then renderFactsPanel(_hoverRec); end
     if ui._gfMovedAt ~= nil and os.clock() >= ui._gfMovedAt then
         ui._gfMovedAt = nil;
         ui._flagsDirty = true;

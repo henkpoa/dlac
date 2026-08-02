@@ -1138,16 +1138,13 @@ end
 -- facts down; the item's own reservation rides right under the type, because it
 -- is the reason half the slot is missing and belongs where the eye lands first.
 --
--- `bare` (2026-08-03) draws the SAME card with no tooltip frame around it, so a
--- caller that has its own window can host these facts. floatgear's pin menu is
--- the first: a tooltip there would land on top of the very menu you are reading,
--- so the panel is placed beside it instead -- but the CONTENT must not fork, or
--- the day someone adds a line to one card the other quietly stops mentioning it.
--- A third argument rather than a split-out helper on purpose: this chunk is at
--- the 200-local ceiling (hard rule 1) and one more `local function` will not
--- compile.
-local function renderItemTooltip(rec, note, bare)
-    if not bare then imgui.BeginTooltip(); end
+-- (A `bare` argument lived here for one round on 2026-08-03, so floatgear's pin
+-- menu could host this card in a window of its own. That panel is gone -- the
+-- facts moved INSIDE the pin popup, where they must be reserved to a fixed size
+-- and therefore have to be built as data before they are drawn, which an opaque
+-- card cannot be. The argument went with it rather than sit here unused.)
+local function renderItemTooltip(rec, note)
+    imgui.BeginTooltip();
     pcall(function()
         imgui.TextColored(COL.HEADER, fmt.esc(rec.Name or '?'));
         local typeStr = rec.Type or rec.Category or rec.Slot;
@@ -1267,7 +1264,7 @@ local function renderItemTooltip(rec, note, bare)
             imgui.TextColored(COL.ERR, fmt.esc(note));
         end
     end);
-    if not bare then imgui.EndTooltip(); end
+    imgui.EndTooltip();
 end
 
 -- ---------------------------------------------------------------------------

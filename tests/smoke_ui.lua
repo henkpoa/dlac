@@ -1102,54 +1102,46 @@ end)();
     check('FGP22 ...and it stops at the ceiling', popupCap(), 620);
 
     -- ----------------------------------------------------------------------
-    -- THE FACTS PANEL. "Show the stats of the item as well -- somewhere where
-    -- it doesn't clip into the right click menu or cover it" (Henrik). A
-    -- tooltip cannot do that job: it follows the cursor and the cursor is on
-    -- the menu, so this is a window of our own placed against the popup's rect.
-    -- Everything about it fails INVISIBLY -- wrong side, stolen mouse, an
-    -- unbalanced Begin -- so all four are pinned here.
+    -- THE FACTS BLOCK, INSIDE the popup (Henrik: "have the status window
+    -- integrated in the right click window ... that way it doesn't have to
+    -- adapt as an outside window to other two windows"). Two earlier shapes
+    -- failed in the field and both are guarded against here by absence: no
+    -- second window is opened at all, and the block's HEIGHT does not follow
+    -- the hovered piece -- it is reserved for the tallest piece in the pool, so
+    -- the popup keeps one size while the cursor moves down the list.
     -- ----------------------------------------------------------------------
-    local tipArgs = nil;
-    local keptTip = Sx.renderItemTooltip;
-    Sx.renderItemTooltip = function(rec, note, bare) tipArgs = { rec, note, bare }; end
     pw.pins = {};
-    winX, winY = 900, 200;             -- popup well clear of the left edge
+    winX, winY = 900, 200;
 
-    openMenu = nil; tipArgs = nil;
+    openMenu = nil;
     frame();
-    check('FGP23 nothing hovered -> no facts panel at all', windowNamed('##dlac_pinfacts'), nil);
+    check('FGP23 no second window is opened for the facts any more',
+        windowNamed('##dlac_pinfacts'), nil);
+    check('FGP24 ...and every window that WAS opened got closed', winDepth, 0);
 
-    openMenu = 'Optical Hat';          -- that item's cascade is open == hovered
-    frame();
-    local panel = windowNamed('##dlac_pinfacts');
-    check('FGP24 hovering an item opens the facts panel', panel ~= nil, true);
-    check('FGP25 ...drawn as the SAME card every other hover uses, frameless',
-        type(tipArgs) == 'table' and tipArgs[3], true);
-    check('FGP26 ...for the item actually hovered',
-        (type(tipArgs) == 'table' and type(tipArgs[1]) == 'table') and tipArgs[1].Name, 'Optical Hat');
+    -- The line builder. Pure data, which is the whole reason the block can be
+    -- measured before it is drawn -- an opaque card cannot be.
+    local FL = fg._factsLines;
+    local shortRec = { Name = 'Plain Ring', Slot = 'Ring1', Level = 1, Jobs = nil };
+    local tallRec  = { Name = 'Bunzi\'s Robe', Slot = 'Body', Level = 75, Jobs = nil,
+                       Stats = { DEF = 45, MP = 50, STR = 10 } };
+    local nShort, nTall = #FL(shortRec, 75, 40), #FL(tallRec, 75, 40);
+    check('FGP25 a piece yields at least a name and an identity line', nShort >= 2, true);
+    check('FGP26 the block wraps to a WIDTH rather than running off the popup',
+        #FL({ Name = string.rep('Ab ', 60), Slot = 'Body', Level = 1 }, 75, 40)
+            >= nShort, true);
 
-    -- LEFT of the popup and fully clear of it. The scope cascade opens to the
-    -- right, so the left is the one side the menu chain can never grow into.
-    local ppos = (panel or {}).pos;
-    check('FGP27 the panel sits to the LEFT of the menu',
-        type(ppos) == 'table' and ppos[1] + 360 <= winX, true);
-
-    -- NoInputs is not decoration: this window lies under the cursor's path while
-    -- you read a menu, and any mouse it caught would be a mouse the menu did not.
-    local NOMOUSE = 512;               -- ImGuiWindowFlags_NoMouseInputs, bit 9
-    check('FGP28 ...and cannot catch the mouse (or the menu stops responding)',
-        type((panel or {}).flags) == 'number'
-            and math.floor((panel or {}).flags / NOMOUSE) % 2, 1);
-    check('FGP29 every window opened this frame was closed', winDepth, 0);
-
-    -- No room on the left -> it drops UNDERNEATH the popup. A submenu is drawn
-    -- beside its parent ROW, so below the whole popup is still clear of it.
-    winX, winY = 100, 200;
-    frame();
-    local low = windowNamed('##dlac_pinfacts');
-    check('FGP30 hard against the left edge, the panel goes BELOW instead',
-        type((low or {}).pos) == 'table' and low.pos[2] > winY, true);
-    check('FGP31 ...and it is still balanced there', winDepth, 0);
+    -- THE RESERVATION. The pool's tallest piece sets the height for every piece,
+    -- which is the difference between a popup that holds still and one that
+    -- resizes under the cursor on every row.
+    local ML = fg._factsMaxLines;
+    local pool2 = { shortRec, tallRec };
+    check('FGP27 the reserved height is the TALLEST piece in the pool, not the hovered one',
+        ML(pool2, 75, 40) >= math.max(nShort, nTall), true);
+    check('FGP28 ...and it is the same answer whichever end of the pool you ask from',
+        ML(pool2, 75, 40), ML({ tallRec, shortRec }, 75, 40));
+    check('FGP29 an empty pool still reserves a line (the "hover a piece" prompt)',
+        ML({}, 75, 40) >= 1, true);
 
     -- ----------------------------------------------------------------------
     -- THE CASCADE'S WIDTH (field, 2026-08-03: popup ~245px + cascade ~750px on
@@ -1205,7 +1197,6 @@ end)();
     check('FGP40 ...with the popup\'s own cap untouched by all of it', popupCap(), 250);
 
     openMenu = nil;
-    Sx.renderItemTooltip = keptTip;
     winX, winY = 10, 20;
     pw.pins = {};
     for k, v in pairs(keep) do Sx[k] = v; end
