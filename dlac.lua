@@ -18,9 +18,21 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.08.03c';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.08.03q';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
-                                -- (03c = the first field report read back: four fixes)
+                                -- (03f = engine v163: the contest explains its own plan;
+                                --  03g = one floating tray: Teleports + the E-Box crates;
+                                --  03h = the pin menu: wearable-now only, icons, and
+                                --  several pins on one slot;
+                                --  03i = the tray is a COLUMN, top to bottom;
+                                --  03j = the pin popup's width is MEASURED;
+                                --  03k = item facts beside the pin menu;
+                                --  03l = the pin cascade is compact + scrolls;
+                                --  03m = item facts INSIDE the pin popup;
+                                --  03n = the facts get a vote on the WIDTH;
+                                --  03o = that width is PINNED, so the popup is static;
+                                --  03p = the facts pad with LINES, not a Dummy;
+                                --  03q = the pin popup's row budget is MEASURED)
 addon.desc    = 'Gear sets, triggers and live stats with level scaling -- dlac equips your gear itself.';
 
 -- Load BEACON ('/dl check' field round, 2026-07-23): written by PLAIN io at

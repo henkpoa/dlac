@@ -867,6 +867,497 @@ check('S20 gear you really do not own stays unowned',
 end)();
 
 -- ---------------------------------------------------------------------------
+-- 6a2. WHAT THE PIN MENU ACTUALLY CONTAINS (FGP*, 2026-08-03) -- section 6
+--      proves the window cannot corrupt ImGui's stacks; it stubs the rows away
+--      and never looks at one. These three asks are all ABOUT the rows:
+--
+--        1. only gear you can put on right now (job, level AND bags)
+--        2. an icon on every row
+--        3. several pins on one slot, removable one at a time
+--
+--      So this section renders with the popup OPEN and a real candidate pool,
+--      and reads back the labels the menu emitted. Same stub-imgui + re-require
+--      trick as section 6 (the S50 lesson: floatgear captures imgui at LOAD).
+-- ---------------------------------------------------------------------------
+;(function()
+    local function nop() end
+    local menuLabels, selLabels, iconCalls = {}, {}, 0;
+    local selectPrefix = nil;      -- the label prefix a "click" lands on
+    -- Declared HERE, not down at the width checks: `frame()` below resets it, and
+    -- a local declared after that closure would leave `caps` a global inside it.
+    local caps = {};
+    local IM = {};
+    for _, n in ipairs({ 'SetNextWindowPos', 'SetNextWindowSize', 'SetNextWindowSizeConstraints',
+        'Separator', 'Text', 'TextColored', 'TextWrapped', 'SameLine', 'Dummy', 'Image',
+        'PushItemWidth', 'PopItemWidth', 'OpenPopup', 'CloseCurrentPopup', 'SetTooltip',
+        'PushID', 'PopID', 'ResetMouseDragDelta', 'SetWindowPos', 'SetCursorScreenPos',
+        'Spacing', 'InputText', 'SetScrollHereY', 'PushTextWrapPos', 'PopTextWrapPos',
+        'PushStyleVar', 'PopStyleVar', 'PushStyleColor', 'PopStyleColor', 'EndPopup',
+        'EndMenu', 'EndChild' }) do
+        IM[n] = nop;
+    end
+    -- Windows are RECORDED, name + flags + the position asked for just before
+    -- them: the facts panel is a second window this module opens, and where it
+    -- lands (and whether it can eat the mouse) is the whole point of it.
+    local begun, winDepth, nextPos = {}, 0, nil;
+    local openMenu = nil;      -- the item whose cascade is "hovered open"
+    IM.SetNextWindowPos = function(p) nextPos = p; end
+    IM.Begin      = function(name, _, flags)
+        begun[#begun + 1] = { name = name, flags = flags, pos = nextPos };
+        nextPos = nil; winDepth = winDepth + 1;
+        return true;
+    end
+    IM['End']     = function() winDepth = winDepth - 1; end
+    IM.BeginChild = function() return true; end
+    IM.BeginPopup = function() return true; end          -- the menu is OPEN all section
+    IM.BeginMenu  = function(l)
+        menuLabels[#menuLabels + 1] = l;
+        return openMenu ~= nil and string.sub(tostring(l), 1, #openMenu) == openMenu;
+    end
+    IM.MenuItem   = function() return false; end
+    IM.Selectable = function(l)
+        selLabels[#selLabels + 1] = l;
+        return selectPrefix ~= nil and string.sub(tostring(l), 1, #selectPrefix) == selectPrefix;
+    end
+    for _, n in ipairs({ 'Button', 'ImageButton', 'SmallButton', 'Checkbox', 'SliderFloat',
+        'IsItemHovered', 'IsWindowHovered', 'IsMouseDragging', 'IsMouseClicked',
+        'IsItemClicked', 'IsItemActive', 'IsMouseDown', 'IsMouseReleased' }) do
+        IM[n] = function() return false; end
+    end
+    IM.GetIO              = function() return { KeyShift = false }; end
+    -- Movable, because WHERE the popup sits is what decides which side the facts
+    -- panel can go on.
+    local winX, winY = 10, 20;
+    IM.GetWindowPos       = function() return winX, winY; end
+    IM.GetWindowSize      = function() return 300, 400; end
+    IM.GetCursorScreenPos = function() return 0, 0; end
+    IM.GetMouseDragDelta  = function() return 0, 0; end
+    IM.GetColorU32        = function() return 0; end
+    IM.CalcTextSize       = function() return 10, 10; end
+    IM.GetContentRegionAvail        = function() return 400, 400; end
+    IM.GetTextLineHeightWithSpacing = function() return 14; end
+    IM.GetWindowDrawList  = function()
+        return { AddCircleFilled = nop, AddRectFilled = nop, AddRect = nop, AddLine = nop };
+    end
+
+    -- The icon service, counted rather than drawn. The real module captured a nil
+    -- imgui at ITS load and would silently draw nothing here -- which is exactly
+    -- the shape of "the icons quietly stopped happening", so it gets a stub that
+    -- can be seen instead.
+    local savedIcons = package.loaded['dlac\\ui\\itemicons'];
+    package.loaded['dlac\\ui\\itemicons'] = {
+        renderIcon = function() iconCalls = iconCalls + 1; end,
+        handleOf   = function() return nil; end,
+    };
+    package.loaded['imgui'] = IM;
+    package.loaded['dlac\\ui\\floatgear'] = nil;
+    local ok, fg = pcall(require, 'dlac\\ui\\floatgear');
+    check('FGP1 floatgear re-requires for the pin-menu drive', ok and type(fg.render), 'function');
+    if not ok then
+        package.loaded['dlac\\ui\\itemicons'] = savedIcons;
+        package.loaded['imgui'] = nil;
+        return;
+    end
+
+    local Sx   = host.services;
+    local keep = { getPlayerInfo = Sx.getPlayerInfo, buildAllEquip = Sx.buildAllEquip,
+                   getEquippedId = Sx.getEquippedId, lookupById = Sx.lookupById,
+                   lookupByName = Sx.lookupByName, displayName = Sx.displayName,
+                   renderSlotGrid = Sx.renderSlotGrid, candidatesForSlot = Sx.candidatesForSlot,
+                   avail = Sx.avail };
+    -- Three pieces for the Head. Two are in your bags; the third is only in a
+    -- Mog Locker, which is the one the menu must not offer -- a pin on it would
+    -- never land, and a pin that never lands reads as a broken feature.
+    local POOL = { { Name = 'Optical Hat',    Id = 1, Slot = 'Head', Level = 70 },
+                   { Name = 'Walahra Turban', Id = 2, Slot = 'Head', Level = 71 },
+                   { Name = 'Locker Hat',     Id = 3, Slot = 'Head', Level = 60 } };
+    Sx.getPlayerInfo     = function() return 'WHM', 75; end
+    Sx.buildAllEquip     = nop;
+    Sx.getEquippedId     = function() return nil; end
+    Sx.lookupById        = function() return nil; end
+    Sx.lookupByName      = function(nm) return { Name = nm, Id = 7 }; end
+    Sx.displayName       = function() return 'X'; end
+    Sx.candidatesForSlot = function() return POOL; end
+    -- The engine's own preview law, stubbed to its two real answers: false for a
+    -- piece with no equippable copy, true otherwise.
+    Sx.avail             = { have = function(nm) return nm ~= 'Locker Hat'; end };
+    Sx.renderSlotGrid    = function(_, _, _, _, _, _, _, _, opts)
+        if opts ~= nil and opts.onRightClick ~= nil then opts.onRightClick('Head'); end
+    end
+    Sx.ui._gearFloat = true;
+
+    local pw = require('dlac\\feature\\pinwatch');
+    pw.pins = {};
+
+    local function seen(list, needle)
+        for _, l in ipairs(list) do
+            if string.find(tostring(l), needle, 1, true) ~= nil then return true; end
+        end
+        return false;
+    end
+    local function frame()
+        menuLabels, selLabels, iconCalls, begun, caps = {}, {}, 0, {}, {};
+        return pcall(fg.render);
+    end
+    local function windowNamed(n)
+        for _, w in ipairs(begun) do
+            if tostring(w.name or '') == n then return w; end
+        end
+        return nil;
+    end
+
+    check('FGP2 the pin menu renders with a real pool', frame(), true);
+    check('FGP3 a piece in your bags is offered',       seen(menuLabels, 'Optical Hat'), true);
+    check('FGP4 ...and so is the second one',           seen(menuLabels, 'Walahra Turban'), true);
+    check('FGP5 a piece only in storage is NOT offered (it could never equip)',
+        seen(menuLabels, 'Locker Hat'), false);
+    check('FGP6 every offered row drew an icon', iconCalls, 2);
+
+    -- The unknown answer must never hide a row: an empty bag scan (the panel
+    -- opened before the scan landed) would otherwise empty the whole menu.
+    Sx.avail = { have = function() return nil; end };
+    frame();
+    check('FGP7 "don\'t know yet" hides nothing', seen(menuLabels, 'Locker Hat'), true);
+    Sx.avail = { have = function(nm) return nm ~= 'Locker Hat'; end };
+
+    -- SEVERAL PINS ON ONE SLOT.
+    local kTP, kMov = 'Default|mode=TP_Default', 'Default|moving=true';
+    pw.setPin('Head', 'Optical Hat',    { kTP });
+    pw.setPin('Head', 'Walahra Turban', { kMov });
+    frame();
+    check('FGP8 both pins on the slot are listed',
+        seen(selLabels, 'Optical Hat   --') and seen(selLabels, 'Walahra Turban   --'), true);
+    check('FGP9 ...each naming the trigger it belongs to', seen(selLabels, kMov), true);
+    check('FGP10 ...with a per-SLOT remove row',
+        seen(selLabels, 'Remove all 2 pins on Head'), true);
+    check('FGP11 ...and a global one that counts pins AND slots',
+        seen(selLabels, 'Remove all 2 pins (1 slot)'), true);
+    check('FGP12 the pinned rows carry icons too (2 pins + 2 candidates)', iconCalls, 4);
+
+    -- Clicking ONE pinned row removes THAT pin and leaves the rest -- "you should
+    -- be able to choose all, or specific trigger pin mapping" (Henrik).
+    selectPrefix = 'Walahra Turban';
+    frame();
+    selectPrefix = nil;
+    check('FGP13 clicking a pinned row removes that pin only', #pw.pinsOf('Head'), 1);
+    check('FGP14 ...and the one you did not click survives',
+        pw.pinsOf('Head')[1].item, 'Optical Hat');
+
+    -- The grid's cue. A scoped pin is NOT "this piece is stuck on", so it must
+    -- not paint the same red as an All pin -- the colour is the only thing the
+    -- chrome-less window can say without being opened.
+    local gridOpts = nil;
+    Sx.renderSlotGrid = function(_, _, _, _, _, _, _, _, opts) gridOpts = opts; end
+    frame();
+    local condCol = (type(gridOpts) == 'table' and type(gridOpts.boxColorOf) == 'function')
+        and gridOpts.boxColorOf({ label = 'Head' }) or nil;
+    pw.setPin('Head', 'Optical Hat', 'All');
+    frame();
+    local allCol = (type(gridOpts) == 'table' and type(gridOpts.boxColorOf) == 'function')
+        and gridOpts.boxColorOf({ label = 'Head' }) or nil;
+    check('FGP15 a scoped-only pin colours its box', type(condCol), 'table');
+    check('FGP16 an All pin colours it too',         type(allCol), 'table');
+    check('FGP17 ...and the two are different colours',
+        (condCol or {})[1] ~= (allCol or {})[1], true);
+    check('FGP18 pinning All replaced the scoped pin (one pin left)', #pw.pinsOf('Head'), 1);
+
+    -- THE POPUP'S WIDTH. Henrik: "it grows with the equip names but not the pin
+    -- list." Both lists were always inside ONE auto-sizing popup -- the
+    -- difference was the ceiling, a flat 380 that an item name never reaches and
+    -- a pinned row (a name AND a trigger) sails straight past, where the only
+    -- thing a clamped popup can do is clip. The cap is measured now, so these
+    -- drive CalcTextSize per-character and read the constraint back.
+    IM.CalcTextSize = function(s) return #tostring(s or '') * 7, 14; end
+    -- EVERY constraint of the frame, in order. The POPUP's is the first (it is
+    -- set before BeginPopup); the cascade sets its own per row inside, and the
+    -- facts panel sets one too -- so "the last one" is the wrong question.
+    IM.SetNextWindowSizeConstraints = function(mn, mx) caps[#caps + 1] = { mn, mx }; end
+    local function popupCap() return ((caps[1] or {})[2] or {})[1]; end
+    local function popupMinW() return ((caps[1] or {})[1] or {})[1]; end
+
+    pw.pins = {};
+    frame();
+    local bare = popupCap();
+    check('FGP19 nothing pinned + short item names -> the floor', bare, 250);
+
+    pw.setPin('Head', 'Optical Hat',    { 'Default|mode=TP_Default' });
+    pw.setPin('Head', 'Walahra Turban', { 'Default|moving=true' });
+    frame();
+    local pinned = popupCap();
+    check('FGP20 a pinned row WIDENS the popup (the bug: it used to clip)',
+        type(pinned) == 'number' and pinned > bare, true);
+
+    -- the cap TRACKS the text -- it is not a second constant one notch up
+    pw.pins = {};
+    pw.setPin('Head', 'Optical Hat', { 'Default|mode=' .. string.rep('x', 40) });
+    frame();
+    local longer = popupCap();
+    check('FGP21 a longer trigger line widens it further',
+        type(longer) == 'number' and longer > pinned, true);
+
+    -- ...but not without limit: past the ceiling the honest answer is a
+    -- scrollbar, not a window you cannot see around
+    pw.pins = {};
+    pw.setPin('Head', 'Optical Hat', { 'Default|mode=' .. string.rep('x', 400) });
+    frame();
+    check('FGP22 ...and it stops at the ceiling', popupCap(), 720);
+
+    -- ----------------------------------------------------------------------
+    -- THE FACTS BLOCK, INSIDE the popup (Henrik: "have the status window
+    -- integrated in the right click window ... that way it doesn't have to
+    -- adapt as an outside window to other two windows"). Two earlier shapes
+    -- failed in the field and both are guarded against here by absence: no
+    -- second window is opened at all, and the block's HEIGHT does not follow
+    -- the hovered piece -- it is reserved for the tallest piece in the pool, so
+    -- the popup keeps one size while the cursor moves down the list.
+    -- ----------------------------------------------------------------------
+    pw.pins = {};
+    winX, winY = 900, 200;
+
+    openMenu = nil;
+    frame();
+    check('FGP23 no second window is opened for the facts any more',
+        windowNamed('##dlac_pinfacts'), nil);
+    check('FGP24 ...and every window that WAS opened got closed', winDepth, 0);
+
+    -- The line builder. Pure data, which is the whole reason the block can be
+    -- measured before it is drawn -- an opaque card cannot be.
+    local FL = fg._factsLines;
+    local shortRec = { Name = 'Plain Ring', Slot = 'Ring1', Level = 1, Jobs = nil };
+    local tallRec  = { Name = 'Bunzi\'s Robe', Slot = 'Body', Level = 75, Jobs = nil,
+                       Stats = { DEF = 45, MP = 50, STR = 10 } };
+    local nShort, nTall = #FL(shortRec, 75, 40), #FL(tallRec, 75, 40);
+    check('FGP25 a piece yields at least a name and an identity line', nShort >= 2, true);
+    check('FGP26 the block wraps to a WIDTH rather than running off the popup',
+        #FL({ Name = string.rep('Ab ', 60), Slot = 'Body', Level = 1 }, 75, 40)
+            >= nShort, true);
+
+    -- THE RESERVATION. The pool's tallest piece sets the height for every piece,
+    -- which is the difference between a popup that holds still and one that
+    -- resizes under the cursor on every row.
+    local ML = fg._factsMaxLines;
+    local pool2 = { shortRec, tallRec };
+    check('FGP27 the reserved height is the TALLEST piece in the pool, not the hovered one',
+        ML(pool2, 75, 40) >= math.max(nShort, nTall), true);
+    check('FGP28 ...and it is the same answer whichever end of the pool you ask from',
+        ML(pool2, 75, 40), ML({ tallRec, shortRec }, 75, 40));
+    check('FGP29 an empty pool still reserves a line (the "hover a piece" prompt)',
+        ML({}, 75, 40) >= 1, true);
+
+    -- THE PADDING IS LINES, NOT A DUMMY -- a field bug (Henrik: "Bunzi's hat has
+    -- 5 rows, Windfall hat has 4, and the height INCREASES with Windfall").
+    -- ImGui advances by `item height + ItemSpacing.y` after EVERY item, so four
+    -- lines plus a one-line Dummy is SIX gaps where five lines is five: the
+    -- shorter piece came out taller, by exactly one spacing, and only for pieces
+    -- that needed padding at all. Padding with the same widget the content uses
+    -- deletes the arithmetic -- so what this checks is that every piece emits the
+    -- SAME NUMBER OF LINE ITEMS, and that no Dummy is involved.
+    local RB = fg._renderFactsBlock;
+    local lineItems, dummies = 0, 0;
+    local keptTC, keptT, keptD = IM.TextColored, IM.Text, IM.Dummy;
+    IM.TextColored = function() lineItems = lineItems + 1; end
+    IM.Text        = function() lineItems = lineItems + 1; end
+    IM.Dummy       = function() dummies = dummies + 1; end
+    local tall = { Name = 'Bunzi\'s Hat', Id = 81, Slot = 'Head', Level = 75,
+                   Stats = { DEF = 27, MP = 25, MND = 10, ACC = 20, ATT = 15 } };
+    local short = { Name = 'Windfall Hat', Id = 82, Slot = 'Head', Level = 70 };
+    local reserve = ML({ tall, short }, 75, 40);
+    -- Guard against a vacuous test: if these two happened to build the same
+    -- number of lines, nothing below would ever exercise the padding at all.
+    check('FGP40b the two pieces really do differ in natural height',
+        #FL(tall, 75, 40) > #FL(short, 75, 40), true);
+    lineItems, dummies = 0, 0; RB(tall,  75, 40, reserve);
+    local tallN = lineItems;
+    lineItems, dummies = 0, 0; RB(short, 75, 40, reserve);
+    local shortN = lineItems;
+    check('FGP41 the tallest piece fills the reservation exactly', tallN, reserve);
+    check('FGP42 ...and a SHORTER piece emits the same number of lines', shortN, reserve);
+    check('FGP43 ...with no Dummy anywhere (its extra ItemSpacing was the bug)',
+        dummies, 0);
+    lineItems, dummies = 0, 0; RB(nil, 75, 40, reserve);
+    check('FGP44 ...and so does an empty hover', lineItems, reserve);
+    IM.TextColored, IM.Text, IM.Dummy = keptTC, keptT, keptD;
+
+    -- THE ROW BUDGET. Field symptom (Henrik, with an arrow drawn on it): "scroll,
+    -- but barely any, it is just outside the main window" -- the list came out
+    -- ONE row over the cap, ImGui grew a scrollbar for that row, and the
+    -- "+N more" footer sat half-clipped under it. The chrome above the list is
+    -- measured now rather than estimated, and this is the arithmetic that turns
+    -- the measurement into rows.
+    local RBUD = fg._rowBudget;
+    check('FGP45 a taller chrome leaves fewer rows',
+        RBUD(560, 300, 51, 24) < RBUD(560, 200, 51, 24), true);
+    check('FGP46 the footer is subtracted too, or its line clips under a scrollbar',
+        RBUD(560, 200, 51, 24) < RBUD(560, 200, 0, 24), true);
+    check('FGP47 a taller cap buys rows back',
+        RBUD(640, 200, 51, 24) > RBUD(460, 200, 51, 24), true);
+    check('FGP48 ...and a cramped popup still offers a floor of rows',
+        RBUD(200, 400, 51, 24), 4);
+    check('FGP49 a nonsense row height is refused rather than dividing by zero',
+        RBUD(560, 200, 51, 0), 4);
+    -- The exact arithmetic, pinned: cap 560 - chrome 200 - footer 51 = 309, and
+    -- 309 / 24 = 12 rows with 21px to spare. A row more would overflow, which is
+    -- the whole bug.
+    check('FGP50 the budget floors rather than rounds (a rounded-up row overflows)',
+        RBUD(560, 200, 51, 24), 12);
+
+    -- The height cap takes what the screen offers instead of a constant.
+    local MH = fg._maxPopupH;
+    IM.GetIO = function() return { KeyShift = false, DisplaySize = { x = 1920, y = 1080 } }; end
+    local bigScreen = MH();
+    IM.GetIO = function() return { KeyShift = false, DisplaySize = { x = 800, y = 480 } }; end
+    local smallScreen = MH();
+    IM.GetIO = function() return { KeyShift = false }; end
+    check('FGP51 a short display lowers the height cap', smallScreen < bigScreen, true);
+    check('FGP52 ...to a share of the screen, not past its bottom edge',
+        smallScreen <= 480, true);
+
+    -- WIDTH BUYS HEIGHT (Henrik: "make it WIDER to adapt as well, so we get more
+    -- space for gear"). The block wraps to whatever width the popup settles on,
+    -- so a wider popup turns a four-line stat wrap into two and hands those two
+    -- lines back to the gear list under the height cap. That is why the facts get
+    -- a vote on the width at all -- and why it is a wish, not a demand.
+    local rec93 = { Name = 'X', Id = 93, Slot = 'Head', Level = 1,
+                    Stats = { DEF = 45, MP = 50, STR = 10, VIT = 10,
+                              ACC = 20, ATT = 30, MND = 12, INT = 9 } };
+    check('FGP30 a wider wrap needs FEWER reserved lines',
+        ML({ rec93 }, 1, 240) < ML({ rec93 }, 1, 20), true);
+
+    -- A piece whose FACTS line is long widens the popup even though its NAME is
+    -- three characters -- the name alone would leave it at the floor.
+    local LONGJOBS = { 'WAR','MNK','WHM','BLM','RDM','THF','PLD','DRK',
+                       'BST','BRD','RNG','SAM','NIN','DRG','SMN','BLU' };
+    -- (distinct Ids per pool: the width and height caches key on the pool's ends,
+    -- so reusing an Id would serve the previous pool's answer)
+    Sx.candidatesForSlot = function()
+        return { { Name = 'Cap', Id = 92, Slot = 'Head', Level = 1, Jobs = { 'WHM' } } };
+    end
+    frame();
+    local narrowCap = popupCap();
+    check('FGP31 a short name and short facts leave the popup at the floor', narrowCap, 250);
+
+    Sx.candidatesForSlot = function()
+        return { { Name = 'Cap', Id = 91, Slot = 'Head', Level = 1, Jobs = LONGJOBS } };
+    end
+    frame();
+    local wideCap = popupCap();
+    check('FGP32 ...and a long FACTS line widens it, with the same short name',
+        type(wideCap) == 'number' and wideCap > narrowCap, true);
+
+    -- ...but the SCREEN outranks the wish: a popup wider than about half the
+    -- display leaves its own cascade nowhere to open.
+    IM.GetIO = function() return { KeyShift = false, DisplaySize = { x = 800, y = 600 } }; end
+    frame();
+    local clamped = popupCap();
+    check('FGP33 a small display clamps the ceiling below what the facts asked for',
+        type(clamped) == 'number' and clamped < wideCap, true);
+    check('FGP34 ...to about half the screen, so the cascade still has room',
+        type(clamped) == 'number' and clamped <= 440, true);
+    IM.GetIO = function() return { KeyShift = false }; end
+
+    -- THE WIDTH IS PINNED, not merely capped -- min.x == max.x. This is the half
+    -- that was missing and the reason Henrik saw the window still moving: a popup
+    -- is AlwaysAutoResize, so a MAX alone is not a width. The window shrinks to
+    -- whatever it happens to be drawing, and the facts block draws a different
+    -- piece every time the cursor moves -- so it breathed in and out under the
+    -- mouse while every measurement here was already correct.
+    check('FGP35 the popup width is PINNED (min.x == max.x), not just capped',
+        popupMinW(), popupCap());
+    -- ...and the HEIGHT deliberately stays a range: the block is padded to its
+    -- reservation, so the content is identical every frame and a cap is the
+    -- useful thing to say about it.
+    check('FGP36 ...while the height stays a range', ((caps[1] or {})[1] or {})[2], 0);
+
+    -- A PINNED piece is measured even when it is not a candidate. Pin something,
+    -- then take it out of the pool the way a Mog Safe would: the reservation must
+    -- still cover it, or hovering its row jumps the window for exactly the people
+    -- who have moved gear since pinning it.
+    Sx.candidatesForSlot = function()
+        return { { Name = 'Cap', Id = 92, Slot = 'Head', Level = 1, Jobs = { 'WHM' } } };
+    end
+    pw.pins = {};
+    frame();
+    local noPin = popupCap();
+    pw.setPin('Head', 'Storage Hat', { 'Default|moving=true' });
+    Sx.lookupByName = function(nm)
+        if nm == 'Storage Hat' then
+            return { Name = nm, Id = 77, Slot = 'Head', Level = 75,
+                     Jobs = { 'WAR','MNK','WHM','BLM','RDM','THF','PLD','DRK',
+                              'BST','BRD','RNG','SAM','NIN','DRG','SMN','BLU' } };
+        end
+        return { Name = nm, Id = 7 };
+    end
+    frame();
+    check('FGP37 a pinned piece that is NOT in the pool still gets measured',
+        type(popupCap()) == 'number' and popupCap() > noPin, true);
+    Sx.lookupByName = function(nm) return { Name = nm, Id = 7 }; end
+    pw.pins = {};
+    Sx.candidatesForSlot = function() return POOL; end
+
+    -- ----------------------------------------------------------------------
+    -- THE CASCADE'S WIDTH (field, 2026-08-03: popup ~245px + cascade ~750px on
+    -- a ~1130px client left the facts panel nowhere to go). Rows spell the set
+    -- instead of the conditions -- but only where that stays unambiguous, and
+    -- the field screenshot is why: that job has TWO Default rules reading
+    -- `status = Idle`, one feeding Idle and one feeding Weapon. Drop the set and
+    -- they are the same row twice.
+    -- ----------------------------------------------------------------------
+    local D = fg.disambiguate;
+    local uniq = D({
+        { menu = 'Default  -> Tp_Default', text = 'Default  status = Engaged  -> Tp_Default' },
+        { menu = 'Default  -> Movement',   text = 'Default  moving  -> Movement' },
+    });
+    check('FGP32 unique compact rows keep the SHORT spelling',
+        uniq[1].menu, 'Default  -> Tp_Default');
+    check('FGP33 ...and it is much shorter than the full line',
+        #uniq[1].menu < #uniq[1].text, true);
+
+    local dup = D({
+        { menu = 'Default  -> Idle', text = 'Default  status = Idle  -> Idle' },
+        { menu = 'Default  -> Idle', text = 'Default  status = Idle  -> Weapon' },
+        { menu = 'Default  -> Toxin', text = 'Default  any  -> Toxin' },
+    });
+    -- (the SAME compact label twice is the case the screenshot caught -- both
+    -- fall back, because falling back only the second would still read as a pair
+    -- of rows where one is explained and one is not)
+    check('FGP34 a compact label that would appear twice falls back to the full line',
+        dup[1].menu, 'Default  status = Idle  -> Idle');
+    check('FGP35 ...both of them, not just the second', dup[2].menu,
+        'Default  status = Idle  -> Weapon');
+    check('FGP36 ...and an unaffected row beside them stays short',
+        dup[3].menu, 'Default  -> Toxin');
+    check('FGP37 no two rows read alike afterwards',
+        (dup[1].menu ~= dup[2].menu) and (dup[2].menu ~= dup[3].menu), true);
+
+    -- The cascade is HEIGHT-capped so a job with thirty triggers scrolls rather
+    -- than running off the screen. Set through a constraint, never a BeginChild:
+    -- a child in the menu chain is what tore the whole popup down before.
+    pw.pins = {};
+    openMenu = nil;
+    frame();
+    local sawSubCap, sawClear = false, false;
+    for i, c in ipairs(caps) do
+        local mx = c[2];                                -- each entry is { min, max }
+        if i > 1 then                                   -- caps[1] is the popup's
+            if type(mx) == 'table' and mx[2] == 340 then sawSubCap = true; end
+            if type(mx) == 'table' and mx[2] == 100000 then sawClear = true; end
+        end
+    end
+    check('FGP38 every cascade is height-capped before it opens', sawSubCap, true);
+    check('FGP39 ...and the last unconsumed one is neutralised, not left armed',
+        sawClear, true);
+    check('FGP40 ...with the popup\'s own cap untouched by all of it', popupCap(), 250);
+
+    openMenu = nil;
+    winX, winY = 10, 20;
+    pw.pins = {};
+    for k, v in pairs(keep) do Sx[k] = v; end
+    package.loaded['dlac\\ui\\itemicons'] = savedIcons;
+    package.loaded['imgui'] = nil;
+    package.loaded['dlac\\ui\\floatgear'] = nil;
+end)();
+
+-- ---------------------------------------------------------------------------
 -- 6b. IMGUI STACK BALANCE for the All Equipment tab + the Wishlist window
 --     (S150+) -- the same RENDER test as section 6, for the surfaces the
 --     wishlist added to (ADR 0026).
@@ -2250,6 +2741,198 @@ end)();
         check('HB13 toggle re-opens onto craft while HELM is armed', ui._hobbyBar and ui._hobbySel, 'craft');
 
         ui._hobbyBar = false;
+    end
+
+    for _, k in ipairs(NAMES) do package.loaded[k] = saved[k]; end
+end)();
+
+-- ---------------------------------------------------------------------------
+-- 7c2. THE FLOATING ICON TRAY (ui\tray.lua, 2026-08-03). The Teleports button
+--      and the E-Box crates were two separate always-on-screen windows; they are
+--      now slots in ONE. Two things have to hold, and neither is visible from
+--      reading a single module:
+--
+--      (a) NOTHING WANTED -> NO WINDOW. The tray must ask every member BEFORE it
+--          begins anything. Begin an AlwaysAutoResize window with an empty body
+--          and you do not get nothing -- you get a little grey box parked on the
+--          player's screen that eats clicks. This is the invariant that replaced
+--          "the E-Box float self-gates", and it is the whole reason the contract
+--          is two functions instead of one.
+--      (b) ORDER IS THE RULING (Henrik). The tray is a COLUMN -- it expands top
+--          to bottom, so NOTHING in it may call SameLine except a badge sitting
+--          beside its own icon. Constant members first, volatile last, because a
+--          crate that comes and goes shifts everything BELOW it. Store is one
+--          click, no confirm, and deposits your whole Inventory -- so it may
+--          never drift under a cursor aimed at a fetch.
+--
+--      Both are asserted against a stub imgui, plus the stack balance that the
+--      floatgear S50 lesson demands of every render path (a Begin without its
+--      End is native UB inside ImGui: no Lua error, whole client down).
+-- ---------------------------------------------------------------------------
+;(function()
+    local depth = { win = 0, id = 0, tip = 0 };
+    local function nop() end
+    local IM = {};
+    for _, n in ipairs({ 'Separator', 'Text', 'TextColored',
+        'SetTooltip', 'Spacing', 'Image' }) do IM[n] = nop; end
+    -- `ops` is the interleaved draw log: it is the only way to prove that no icon
+    -- is preceded by a SameLine (a badge beside its own icon is legal, an icon
+    -- glued to the previous icon is not) -- a bare SameLine count cannot tell the
+    -- two apart.
+    local sameLines, sizes, dummies, ops = 0, {}, {}, {};
+    IM.Begin             = function() depth.win = depth.win + 1; return true; end
+    IM['End']            = function() depth.win = depth.win - 1; end
+    IM.SameLine          = function() sameLines = sameLines + 1; ops[#ops + 1] = 'sameline'; end
+    IM.Dummy             = function(sz) dummies[#dummies + 1] = sz; end
+    IM.SetNextWindowSize = function(sz) sizes[#sizes + 1] = sz; end
+    IM.SetNextWindowPos  = nop;
+    IM.GetWindowPos      = function() return 120, 340; end
+    IM.PushID            = function() depth.id = depth.id + 1; end
+    IM.PopID             = function() depth.id = depth.id - 1; end
+    IM.BeginTooltip      = function() depth.tip = depth.tip + 1; end
+    IM.EndTooltip        = function() depth.tip = depth.tip - 1; end
+    IM.Button            = function() return false; end
+    IM.SmallButton       = function() return false; end
+    IM.ImageButton       = function() return false; end
+    IM.IsItemHovered     = function() return true; end     -- exercise every tooltip
+    IM.IsItemClicked     = function() return false; end
+
+    local NAMES = { 'dlac\\ui\\tray', 'dlac\\ui\\gearui', 'dlac\\ui\\restockui',
+                    'dlac\\feature\\restockwatch', 'dlac\\feature\\eboxclient',
+                    'dlac\\feature\\gamemode', 'dlac\\ui\\filetex', 'imgui' };
+    local saved = {};
+    for _, k in ipairs(NAMES) do saved[k] = package.loaded[k]; end
+
+    package.loaded['imgui'] = IM;
+
+    -- ---- (a) the host window, against two stub members --------------------
+    local drew = {};
+    local wantsA, wantsB, blowUp = false, false, false;
+    package.loaded['dlac\\ui\\gearui'] = {
+        trayTeleportsWants = function()
+            if blowUp then error('gate exploded'); end
+            return wantsA;
+        end,
+        trayTeleportsDraw  = function() drew[#drew + 1] = 'tp'; end,
+    };
+    package.loaded['dlac\\ui\\restockui'] = {
+        trayWants = function() return wantsB; end,
+        trayDraw  = function() drew[#drew + 1] = 'ebox'; end,
+    };
+
+    package.loaded['dlac\\ui\\tray'] = nil;
+    local ok, tr = pcall(require, 'dlac\\ui\\tray');
+    check('TR1 tray re-requires against a stub imgui', ok and type(tr.render), 'function');
+    if ok then
+        -- THE invariant. Both members quiet -> the tray must not Begin at all.
+        wantsA, wantsB, drew = false, false, {};
+        pcall(tr.render, {});
+        check('TR2 nothing wanted opens NO window', depth.win, 0);
+        check('TR3 nothing wanted draws no member', #drew, 0);
+
+        -- One member.
+        wantsA, wantsB, drew, sameLines = true, false, {}, 0;
+        check('TR4 one member renders', pcall(tr.render, {}), true);
+        check('TR5 one member: Begin/End balanced', depth.win, 0);
+        check('TR6 one member draws alone', table.concat(drew, ','), 'tp');
+        check('TR7 one member opens no SameLine', sameLines, 0);
+
+        -- Both. ORDER IS THE RULING: Teleports (pinned, constant) ABOVE the
+        -- crates, and the tray is a COLUMN -- the gap between slots is vertical
+        -- (a Dummy), never a SameLine, or the tray creeps sideways across the
+        -- screen as icons appear instead of hanging off the corner you dragged.
+        wantsA, wantsB, drew, sameLines, dummies = true, true, {}, 0, {};
+        check('TR8 both members render', pcall(tr.render, {}), true);
+        check('TR9 both: Begin/End balanced', depth.win, 0);
+        check('TR10 Teleports draws ABOVE the E-Box crates', table.concat(drew, ','), 'tp,ebox');
+        check('TR11 the tray never calls SameLine between slots', sameLines, 0);
+        check('TR11b the slot gap is VERTICAL (one zero-width Dummy)',
+            (#dummies == 1) and (dummies[1][1] == 0) and (dummies[1][2] > 0), true);
+        check('TR12 SLOTS is ordered Teleports-then-restock',
+            tr.SLOTS[1].mod .. '|' .. tr.SLOTS[2].mod,
+            'dlac\\ui\\gearui|dlac\\ui\\restockui');
+
+        -- A member whose GATE throws is absent for a frame; it must not cost the
+        -- other member its window (nor take down d3d_present with it).
+        blowUp, wantsB, drew = true, true, {};
+        check('TR13 a throwing gate does not break the tray', pcall(tr.render, {}), true);
+        check('TR14 the surviving member still draws', table.concat(drew, ','), 'ebox');
+        check('TR15 throwing gate: Begin/End balanced', depth.win, 0);
+        blowUp = false;
+
+        -- The drag position is the TP float's own saved slot (tpx/tpy), inherited
+        -- so the button you pinned stays where you put it.
+        check('TR16 the tray remembers where it was dragged',
+            type(host.services.ui._tpPos) == 'table'
+            and host.services.ui._tpPos[1] == 120 and host.services.ui._tpPos[2] == 340, true);
+
+        -- The collapse law (hobbybar's HB21): AlwaysAutoResize does the sizing,
+        -- and a zero-component request re-arms AutoFitFrames every frame.
+        check('TR17 the tray never requests a window size at all', #sizes, 0);
+    end
+
+    -- ---- (b) the E-Box slot's own icon order ------------------------------
+    -- Drives the REAL restockui.trayDraw: the ruling lives in that function, not
+    -- in the tray, so asserting it here is the only place it is actually proven.
+    local pushed = {};
+    IM.PushID = function(id)
+        depth.id = depth.id + 1;
+        pushed[#pushed + 1] = tostring(id);
+        ops[#ops + 1] = 'icon:' .. tostring(id);
+    end
+    local PLAN = { pulls = {}, fetches = {}, remainder = {}, badge = 0 };
+    package.loaded['dlac\\feature\\restockwatch'] = {
+        loadState = nop, master = true, showNudge = true, onlyWhenNeeded = false,
+        character = {}, jobs = {},
+        effectiveList  = function() return {}; end,
+        categoriesOf   = function() return {}; end,
+        plan           = function() return PLAN; end,
+        -- non-empty -> the YELLOW crate exists this frame
+        homeStockNeed  = function()
+            return { { id = 1, name = 'Blind Bolt', held = 0, target = 99, want = 99 } };
+        end,
+    };
+    package.loaded['dlac\\feature\\eboxclient'] = {
+        BOX_RANGE = 6,
+        boxDistance = function() return 2.0; end,
+        verifyCategories = nop, boxCount = function() return 0; end,
+        isBusy = function() return false; end,
+        categoryCounts = function() return nil; end,
+        withdrawBatch = nop, boxStore = nop,
+        searchBusy = function() return false; end,
+        canQuery = function() return true; end,
+        clearSearch = nop,
+    };
+    package.loaded['dlac\\feature\\gamemode'] = { get = function() return 'CW'; end };
+    package.loaded['dlac\\ui\\filetex'] = { handle = function() return nil; end };
+
+    package.loaded['dlac\\ui\\restockui'] = nil;
+    local rok, rs = pcall(require, 'dlac\\ui\\restockui');
+    check('TR18 restockui re-requires against a stub imgui', rok and type(rs.trayDraw), 'function');
+    if rok then
+        check('TR19 the E-Box slot answers the cheap gate near a box', rs.trayWants(), true);
+        pushed, sameLines, ops = {}, 0, {};
+        check('TR20 the E-Box slot draws', pcall(rs.trayDraw, {}), true);
+        -- THE ORDER RULING: Store first (always present once in range, one click,
+        -- no confirm), then the two that come and go.
+        check('TR21 Store is the anchored crate, drawn FIRST',
+            table.concat(pushed, ','), 'rsnudge_red,rsnudge_green,rsnudge_yellow');
+        -- THE AXIS: the crates STACK. A badge may sit beside its own icon, so a
+        -- bare SameLine count proves nothing -- what must hold is that no icon is
+        -- ever glued to the previous one, i.e. no 'sameline' immediately precedes
+        -- an 'icon:'. Get this wrong and the column silently becomes a row again.
+        local glued = nil;
+        for i = 2, #ops do
+            if ops[i]:sub(1, 5) == 'icon:' and ops[i - 1] == 'sameline' then glued = ops[i]; end
+        end
+        check('TR21b the crates stack -- no icon opens with a SameLine', glued, nil);
+        check('TR22 the E-Box slot balances PushID/PopID', depth.id, 0);
+        check('TR23 the E-Box slot balances its tooltips', depth.tip, 0);
+        check('TR24 the E-Box slot begins NO window of its own', depth.win, 0);
+        -- Away from a box the gate says no, and the tray asks nothing further --
+        -- which is what keeps the feature free when you are not standing at one.
+        package.loaded['dlac\\feature\\eboxclient'].boxDistance = function() return 40.0; end
+        check('TR25 out of range the E-Box slot wants nothing', rs.trayWants(), false);
     end
 
     for _, k in ipairs(NAMES) do package.loaded[k] = saved[k]; end

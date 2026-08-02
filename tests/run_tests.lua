@@ -223,7 +223,7 @@ end)();
     local ROOT_FILES = { 'utils.lua', 'dispatch.lua', 'chatfmt.lua', 'profiles.lua', 'gear.lua', 'dlac.lua' };
     local UI = { 'ammoui','automationsui','craftbar','equippedui','filetex','fishbar','fishui',
                  'floatgear','gearui','helmbar','helmui','hobbybar','idlefloat','itemicons','jobhelpersui','menuui','panelkit','priorityui','profilesmenu',
-                 'restockui','setupui','triggersui','uihost','uistyle','weightsui' };
+                 'restockui','setupui','tray','triggersui','uihost','uistyle','weightsui' };
     local GEAR = { 'acimport','actionpicker','arbiter','blueprintsmodel','catalogindex','gearcheck','geareffects','gearexport',
                    'gearfmt','gearimport','gearoptim','gearoracle','gearrecord','groupimport','groupscan',
                    'groupsmodel','jobgate','modeslibrary','ownedcache','profileexport','profilesets','rulecopy','setimport',
@@ -3800,6 +3800,72 @@ end)();
             check('AL40 a direct pass equips Head normally', fr.Head, 'Silver Hairpin');
         end
     end
+
+    -- SEVERAL PINS ON ONE SLOT (2026-08-03, Henrik: "I want Optical Hat on
+    -- Tp_Default, but Walahra Turban on Movement"). The slot's value becomes a
+    -- LIST and the engine settles it per dispatch. One name still comes out --
+    -- an overlay is an equip table and a slot wears one thing.
+    local kTP  = dispatchM.pinScopeKey('Default', 'mode=TP_Default');
+    local kMov = dispatchM.pinScopeKey('Default', 'moving=true');
+    local twoPins = { Head = { { item = 'Optical Hat',    scope = { kTP } },
+                               { item = 'Walahra Turban', scope = { kMov } } } };
+    local hTP  = { { label = 'mode=TP_Default' } };
+    local hMov = { { label = 'moving=true' } };
+    check('AL42 two pins on one slot: the matched trigger picks its own item',
+        (PF(twoPins, hTP, 'Default') or {}).Head, 'Optical Hat');
+    check('AL43 ...and the other trigger picks the other item',
+        (PF(twoPins, hMov, 'Default') or {}).Head, 'Walahra Turban');
+    check('AL44 ...and neither matching leaves the slot alone',
+        PF(twoPins, { { label = 'name=cure' } }, 'Default'), nil);
+
+    -- BOTH triggers matched in one dispatch. `hits` is sorted ascending by
+    -- priority and applied last-writer-wins (ADR 0003), so the pin belonging to
+    -- the trigger that would have won the slot anyway is the pin that wins it --
+    -- the alternative (first match wins) would have the pins disagree with every
+    -- other layer of the engine about which rule is in charge.
+    local hBoth = { { label = 'mode=TP_Default' }, { label = 'moving=true' } };
+    check('AL45 both triggers matched -> the LATER hit wins the slot',
+        (PF(twoPins, hBoth, 'Default') or {}).Head, 'Walahra Turban');
+    local hBothRev = { { label = 'moving=true' }, { label = 'mode=TP_Default' } };
+    check('AL46 ...and reversing the hit order reverses the winner',
+        (PF(twoPins, hBothRev, 'Default') or {}).Head, 'Optical Hat');
+
+    -- An All pin UNDER scoped pins is the fallback, not a competitor: it covers
+    -- every dispatch its siblings do not. (Rank 0 -- the weakest claim there is,
+    -- because "always" is the least specific thing a pin can say.)
+    local mixed = { Head = { { item = 'Empress Hairpin', scope = 'All' },
+                             { item = 'Optical Hat',     scope = { kTP } } } };
+    check('AL47 All under a scoped pin covers the dispatches it does not',
+        (PF(mixed, hMov, 'Default') or {}).Head, 'Empress Hairpin');
+    check('AL48 ...and the scoped pin still beats it on its own trigger',
+        (PF(mixed, hTP, 'Default') or {}).Head, 'Optical Hat');
+
+    -- An exact tie -- two pins on the SAME trigger, which the GUI will not write
+    -- but a hand-edited file can. Last one written wins, matching the file's own
+    -- set order and the engine's last-writer-wins rule everywhere else.
+    local tied = { Head = { { item = 'First', scope = { kTP } },
+                            { item = 'Last',  scope = { kTP } } } };
+    check('AL49 a tie on one trigger goes to the pin written LAST',
+        (PF(tied, hTP, 'Default') or {}).Head, 'Last');
+
+    -- The shapes. Every one the contract has ever produced still reads, because
+    -- pinstate.lua is a plain Lua file a player can hand-edit and the single-pin
+    -- form is what an older addon copy writes.
+    local EO = dispatchM._pinEntriesOf;
+    check('AL50 entries: a bare name is one All pin', #EO('Cape'), 1);
+    check('AL51 entries: the single { item, scope } shape is one pin',
+        #EO({ item = 'Cape', scope = 'All' }), 1);
+    check('AL52 entries: a list is every entry in it', #EO(twoPins.Head), 2);
+    check('AL53 entries: a list of bare names works too', #EO({ 'A', 'B', 'C' }), 3);
+    check('AL54 entries: junk yields nothing', #EO(42), 0);
+
+    -- pinRank, the ordering itself. Guarded directly because the whole multi-pin
+    -- outcome above rests on 0-vs-index and there is no other way to see it.
+    local PR = dispatchM._pinRank;
+    check('AL55 rank: All is 0 -- the weakest claim', PR('All', hTP, 'Default'), 0);
+    check('AL56 rank: a missing scope is All',        PR(nil, {}, 'Default'), 0);
+    check('AL57 rank: a matched trigger is its hit INDEX', PR({ kMov }, hBoth, 'Default'), 2);
+    check('AL58 rank: an unmatched trigger is nil',   PR({ kMov }, hTP, 'Default'), nil);
 end)();
 
 -- ---------------------------------------------------------------------------
@@ -3884,6 +3950,111 @@ end)();
     pw.pins = { Head = { item = 'CharA Cap', scope = 'All' } };
     pw.loadPinState();          -- still pre-login: must NOT clear or write
     check('AM16 pre-login load leaves the table alone', (pw.pins.Head or {}).item, 'CharA Cap');
+
+    -- ----------------------------------------------------------------------
+    -- SEVERAL PINS ON ONE SLOT (2026-08-03). The writer half: setPin's replace
+    -- rules, the two file shapes, and removing one pin without the others.
+    --
+    -- charDir() is nil headless, so save() and loadPinState are both no-ops and
+    -- every mutator below runs purely in memory. That is the whole point --
+    -- these are the rules, not the disk.
+    -- ----------------------------------------------------------------------
+    local kTP  = 'Default|mode=TP_Default';
+    local kMov = 'Default|moving=true';
+
+    pw.pins = {};
+    pw.setPin('Head', 'Optical Hat',    { kTP });
+    pw.setPin('Head', 'Walahra Turban', { kMov });
+    check('AM17 two triggers on one slot keep BOTH pins', #pw.pinsOf('Head'), 2);
+    check('AM18 ...the first is still the first', pw.pinsOf('Head')[1].item, 'Optical Hat');
+    check('AM19 ...and the second is beside it',  pw.pinsOf('Head')[2].item, 'Walahra Turban');
+
+    -- one item per trigger per slot: re-pinning a trigger REPLACES that pin only
+    pw.setPin('Head', 'Empress Hairpin', { kTP });
+    check('AM20 re-pinning a trigger replaces only that pin', #pw.pinsOf('Head'), 2);
+    check('AM21 ...the replaced trigger carries the new item',
+        pw.pinsOf('Head')[2].item, 'Empress Hairpin');       -- removed + appended
+    check('AM22 ...and the untouched trigger is unchanged',
+        pw.pinsOf('Head')[1].item, 'Walahra Turban');
+
+    -- All is exclusive on the way in (Henrik: "if ALL is selected, just
+    -- overwrite all of them and only have all")
+    pw.setPin('Head', 'Federation Aketon', 'All');
+    check('AM23 pinning All replaces every pin on the slot', #pw.pinsOf('Head'), 1);
+    check('AM24 ...with the All pin itself', pw.pinsOf('Head')[1].item, 'Federation Aketon');
+    check('AM25 hasAllPin sees it (the grid paints this slot red)', pw.hasAllPin('Head'), true);
+
+    -- a scoped pin added underneath an All pin does NOT wipe it: the All pin is
+    -- the fallback for every dispatch the scoped one does not cover, and that is
+    -- exactly what the engine does with the pair (AL47/AL48)
+    pw.setPin('Head', 'Optical Hat', { kTP });
+    check('AM26 a scoped pin joins an All pin rather than replacing it', #pw.pinsOf('Head'), 2);
+    check('AM27 ...and the All pin is still there', pw.hasAllPin('Head'), true);
+
+    -- removing ONE pin, by index -- "you should be able to choose all, or
+    -- specific trigger pin mapping"
+    check('AM28 clearPinAt removes one pin', pw.clearPinAt('Head', 1), true);
+    check('AM29 ...and leaves the rest', #pw.pinsOf('Head'), 1);
+    check('AM30 ...specifically the one you did not remove',
+        pw.pinsOf('Head')[1].item, 'Optical Hat');
+    check('AM31 hasAllPin is false once the All pin is gone', pw.hasAllPin('Head'), false);
+    check('AM32 an out-of-range index removes nothing', pw.clearPinAt('Head', 9), false);
+
+    -- the last pin taking the SLOT with it. An empty list left behind would read
+    -- as an armed slot to pinStateOn (any non-empty table) and to the GUI's
+    -- isPinned, so the slot has to go, not just its contents.
+    check('AM33 removing the last pin clears the slot', pw.clearPinAt('Head', 1), true);
+    check('AM34 ...the slot key is gone, not an empty list', pw.pins['Head'], nil);
+    check('AM35 ...and nothing is pinned there', pw.isPinned('Head'), false);
+
+    -- counts: pins vs slots
+    pw.pins = {};
+    pw.setPin('Head',  'Optical Hat',    { kTP });
+    pw.setPin('Head',  'Walahra Turban', { kMov });
+    pw.setPin('Ring1', 'Rajas Ring',     'All');
+    check('AM36 count() counts PINS across every slot', pw.count(), 3);
+    check('AM37 slotCount() counts SLOTS',              pw.slotCount(), 2);
+
+    -- THE FILE. One pin per slot is written exactly as it always was -- same
+    -- bytes, so an older engine copy reads it unchanged and the common case
+    -- never touched the new path at all.
+    local one = pw.serialize({ Ring1 = { item = 'Rajas Ring', scope = 'All' } });
+    check('AM38 a one-pin slot still serializes in the ORIGINAL shape', one,
+        'return {\n  ["Ring1"] = { item = "Rajas Ring", scope = "All" },\n}\n');
+    check('AM39 ...and a one-pin LIST writes the same bytes as the bare entry',
+        pw.serialize({ Ring1 = { { item = 'Rajas Ring', scope = 'All' } } }), one);
+
+    -- ...and a slot that really does carry two takes the list shape, which the
+    -- engine's own reader has to accept (round-tripped through it below).
+    local multi = pw.serialize(pw.pins);
+    local mChunk = (loadstring or load)(multi, '@pinstate.lua');
+    check('AM40 a multi-pin file is loadable', type(mChunk), 'function');
+    local mTbl = mChunk and select(2, pcall(mChunk)) or nil;
+    check('AM41 ...the two-pin slot came back as a list', #(mTbl and mTbl.Head or {}), 2);
+    check('AM42 ...and the one-pin slot as a single entry',
+        (mTbl and mTbl.Ring1 or {}).item, 'Rajas Ring');
+    check('AM43 the ENGINE reads a multi-pin file: TP_Default picks its pin',
+        (dispatchM._pinOverlayFor(mTbl, { { label = 'mode=TP_Default' } }, 'Default') or {}).Head,
+        'Optical Hat');
+    check('AM44 ...and Movement picks the other one',
+        (dispatchM._pinOverlayFor(mTbl, { { label = 'moving=true' } }, 'Default') or {}).Head,
+        'Walahra Turban');
+    check('AM45 ...while the All pin beside them is unconditional',
+        (dispatchM._pinOverlayFor(mTbl, {}, 'Default') or {}).Ring1, 'Rajas Ring');
+
+    -- a multi-pin file is order-stable too (the raw-text compare again)
+    check('AM46 multi-pin serialization is order-stable', pw.serialize(pw.pins), multi);
+
+    -- entriesOf is the shared reader: pinwatch's copy must answer exactly as the
+    -- engine's does, or the two states disagree about what is pinned.
+    check('AM47 entriesOf: bare name', #pw.entriesOf('Cape'), 1);
+    check('AM48 entriesOf: single entry', #pw.entriesOf({ item = 'Cape', scope = 'All' }), 1);
+    check('AM49 entriesOf: list', #pw.entriesOf(mTbl and mTbl.Head), 2);
+    check('AM50 entriesOf: nil is empty, never nil', #pw.entriesOf(nil), 0);
+    check('AM51 entriesOf: an entry with no item is dropped',
+        #pw.entriesOf({ { item = 'A' }, { scope = 'All' } }), 1);
+
+    pw.pins = {};
 end)();
 
 -- ---------------------------------------------------------------------------
@@ -8781,6 +8952,71 @@ end)();
     check('DR1b the record carries fp + time + event', newest ~= nil
         and type(newest.fp) == 'string' and type(newest.time) == 'string'
         and newest.event == 'Default', true);
+
+    -- PO: A RECORD'S CONTEST MUST EXPLAIN THAT RECORD'S PLAN (field report 3,
+    -- 2026-08-02). The contest was rebuilt only on a retrace and reused
+    -- otherwise, so a Default whose PLAN moved while the trace signature held
+    -- attached the PREVIOUS plan's explanation to a NEW record. Henrik's
+    -- report showed both halves: Ear1 in the plan with the contest naming
+    -- nobody (a piece that became eligible on a level-up), then the claimant
+    -- arriving two dispatches later as a zero-change record.
+    local PO = dispatchM._planOutrunsContest;
+    check('PO1 a planned slot the contest cannot account for outruns it',
+        PO({ Ear1 = 'Optical Earring' },
+           { explain = { main = { { name = 'Triggers', item = 'Harpoon' } } } }), true);
+    check('PO2 a plan the contest fully covers does NOT',
+        PO({ Main = 'Harpoon' },
+           { explain = { main = { { name = 'Triggers', item = 'Harpoon' } } } }), false);
+    -- THE ONE-WAY TEST, and the reason it is one-way: a lock or the level-sync
+    -- weapon hold takes a slot OUT of the plan while the claim on it stands.
+    -- That is two questions answered correctly, not a stale explanation, and
+    -- rebuilding on it would re-explain on every held beat.
+    check('PO3 a contest naming MORE than the plan is ordinary, not stale',
+        PO({ Head = 'Circlet' },
+           { explain = { head = { { name = 'Triggers', item = 'Circlet' } },
+                         main = { { name = 'Triggers', item = 'Harpoon' } } } }), false);
+    check('PO4 slot case never decides it (the findCI law)',
+        PO({ MAIN = 'Harpoon' },
+           { explain = { main = { { name = 'Triggers', item = 'Harpoon' } } } }), false);
+    check('PO5 an absent contest under a real plan outruns by definition',
+        PO({ Main = 'Harpoon' }, nil), true);
+    check('PO6 ...but an empty plan never does (nothing to explain)',
+        PO({}, nil), false);
+    check('PO7 an explain entry with no winner does not count as coverage',
+        PO({ Main = 'Harpoon' }, { explain = { main = {} } }), true);
+    -- THE ITEM, not just the slot. The retrace signature does not cover the
+    -- player's LEVEL, so levelling can swap the piece inside a slot the
+    -- contest already covers -- a coverage-only test would keep an
+    -- explanation naming the older piece (Henrik's Head went Lth. Bandana +1
+    -- -> Faceguard +1 across 9 -> 10).
+    check('PO9 a covered slot whose ITEM moved still outruns',
+        PO({ Head = 'Faceguard +1' },
+           { explain = { head = { { name = 'Triggers', item = 'Lth. Bandana +1' } } } }), true);
+    check('PO10 ...and an agreeing item does not',
+        PO({ Head = 'Faceguard +1' },
+           { explain = { head = { { name = 'Triggers', item = 'Faceguard +1' } } } }), false);
+    -- a claim that DEFENDS a slot or empties it never claimed to name the worn
+    -- item, so it must not force a rebuild every beat it holds
+    check('PO11 a defending sentinel is exempt',
+        PO({ Main = 'Harpoon' },
+           { explain = { main = { { name = 'Disabled', item = '(free equip)' } } } }), false);
+    check('PO12 a planned "remove" is exempt',
+        PO({ Head = 'remove' },
+           { explain = { head = { { name = 'Naked', item = 'Circlet' } } } }), false);
+    check('PO13 a non-string winner (the LOCK_HELD sentinel) is exempt',
+        PO({ Head = 'Circlet' },
+           { explain = { head = { { name = 'Locks', item = dispatchM.LOCK_HELD } } } }), false);
+
+    -- THE INVARIANT ITSELF, over every record the suite's real dispatches
+    -- built: a record whose plan outruns its contest is a record whose two
+    -- halves disagree about who decided a slot, and that is what shipped for
+    -- four days. Asserted on the ring rather than on one fixture, so any
+    -- future dispatch path that reintroduces it fails here.
+    local outran = nil;
+    for _, r in ipairs(ring) do
+        if PO(r.plan, r.contest) then outran = r.seq; break; end
+    end
+    check('PO8 every recorded decision is explained by its own contest', outran, nil);
 
     -- DR2: a byte-identical re-dispatch appends NOTHING; an empty plan is not
     -- a decision at all.
@@ -22015,6 +22251,173 @@ end)();
         joined(RP._decLines(REC, tostring)):match('left as worn'), nil);
 
     -- ---------------------------------------------------------------------
+    -- THE EMPTY BLOCK (field report 2, 2026-08-02). Six of 37 blocks in
+    -- Henrik's full report were a header, a ctx line and nothing -- records
+    -- the ring appended because the fingerprint MOVED, rendered as if nothing
+    -- had. The fingerprint is items + winners, so a zero-change record is one
+    -- where the WINNER moved, and the block was hiding exactly that.
+    -- ---------------------------------------------------------------------
+    local function recWith(seq, plan, explain, changed, nCh)
+        return { seq = seq, time = '17:22:56', event = 'Default', action = 'idle',
+                 plan = plan, changed = changed or {}, nChanged = nCh or 0,
+                 contest = { explain = explain } };
+    end
+    local A = recWith(26, { Main = 'Harpoon' },
+                      { main = { { name = 'Triggers', rank = 13, item = 'Harpoon' } } });
+    local B = recWith(27, { Main = 'Harpoon' }, {});          -- same item, nobody owns it now
+
+    local sh = RP._claimantShifts(A, B);
+    check('RPT40a a slot that lost its owner is a shift', #sh, 1);
+    check('RPT40b ...naming the slot',        sh[1].slot, 'main');
+    check('RPT40c ...who had it',             sh[1].from, 'Triggers');
+    check('RPT40d ...and that nobody does now', sh[1].to, nil);
+    check('RPT40e the reverse direction is seen too',
+        RP._claimantShifts(B, A)[1].to, 'Triggers');
+    check('RPT40f a slot that did not change hands is NOT a shift',
+        #RP._claimantShifts(A, A), 0);
+    check('RPT40g a handover between two claimants is one shift, both named',
+        (function()
+            local C = recWith(28, { Main = 'Harpoon' },
+                              { main = { { name = 'Locks', rank = 4, item = 'Harpoon' } } });
+            local s2 = RP._claimantShifts(A, C);
+            return #s2 .. ':' .. tostring(s2[1].from) .. '->' .. tostring(s2[1].to);
+        end)(), '1:Triggers->Locks');
+    -- NOTHING TO COMPARE AGAINST is not "everything changed hands": the first
+    -- record of a capture has no predecessor, and calling every winner in it a
+    -- shift printed sixteen redundant lines over rows that already said it
+    check('RPT40h no previous record yields NO shifts',
+        #RP._claimantShifts(nil, A), 0);
+    check('RPT40i ...and neither does a predecessor with no contest',
+        #RP._claimantShifts({ plan = {} }, A), 0);
+
+    local blk0 = joined(RP._decLines(B, tostring, nil, A));
+    check('RPT41a the zero-change block is NO LONGER empty',
+        blk0:match('claim moved') ~= nil, true);
+    check('RPT41b ...it names who lost the slot and that the item held',
+        blk0:match('Main%s+Harpoon%s+claim moved: Triggers %-> %(nobody%)') ~= nil
+        and blk0:match('the item did not change') ~= nil, true);
+    -- a slot whose ITEM moved already tells its story; repeating it as a shift
+    -- would count one event twice
+    check('RPT41c a slot printed as changed is not ALSO printed as a shift',
+        (function()
+            local D = recWith(29, { Main = 'Lance' },
+                              { main = { { name = 'Locks', rank = 4, item = 'Lance' } } },
+                              { Main = true }, 1);
+            return select(2, joined(RP._decLines(D, tostring, nil, A)):gsub('    Main ', ''));
+        end)(), 1);
+    -- "the item did not change" is CHECKED, never asserted. The first cut
+    -- printed that sentence over a slot that had gone from nothing to Emperor
+    -- Hairpin, because it trusted the record's `changed` map to be complete.
+    local E = recWith(30, { Head = 'Emperor Hairpin' },
+                      { head = { { name = 'Triggers', rank = 13, item = 'Emperor Hairpin' } } });
+    local Eprev = recWith(29, {}, {});
+    local blkE = joined(RP._decLines(E, tostring, nil, Eprev));
+    check('RPT41e a shift whose ITEM also moved never claims it did not',
+        blkE:match('the item did not change'), nil);
+    check('RPT41f ...it shows the item transition instead',
+        blkE:match('the item went %(nothing%) %-> Emperor Hairpin') ~= nil, true);
+    check('RPT41g ...and reports that the record failed to list the slot as changed',
+        blkE:match('did not list this slot as changed') ~= nil, true);
+    check('RPT41h a genuine pure-claim shift still says the item held',
+        joined(RP._decLines(B, tostring, nil, A)):match('the item did not change') ~= nil, true);
+
+    -- and the last-resort line: a record that can show neither is a finding
+    check('RPT41d a block that can show nothing SAYS so, rather than a bare header',
+        joined(RP._decLines(recWith(30, { Main = 'Harpoon' }, {}), tostring, nil,
+                            recWith(29, { Main = 'Harpoon' }, {})))
+            :match('it should not be possible') ~= nil, true);
+
+    -- ---------------------------------------------------------------------
+    -- Field report 3 (2026-08-02): two engine oddities the report rendered as
+    -- ordinary rows, so neither could be diagnosed from the artifact.
+    -- ---------------------------------------------------------------------
+
+    -- (i) AN ITEM WITH NO OWNER. The plan carries the piece and the contest
+    -- names nobody -- the two halves of one record disagreeing about who
+    -- decided the slot, which is the invariant ADR 0027 holds. Ear1 landed
+    -- Optical Earring this way on a level-up and picked up its claimant two
+    -- dispatches later.
+    local ORPHAN = recWith(40, { Ear1 = 'Optical Earring' }, {}, { Ear1 = true }, 1);
+    local orow = joined(RP._slotLines(ORPHAN, 'Ear1', tostring));
+    check('RPT44a a planned item with no claimant is CALLED OUT',
+        orow:match('NO CLAIMANT RECORDED') ~= nil, true);
+    check('RPT44b ...saying which half says what',
+        orow:match('the plan has it, the contest names nobody') ~= nil, true);
+    check('RPT44c a slot with a winner is untouched by it',
+        joined(RP._slotLines(A, 'Main', tostring)):match('NO CLAIMANT'), nil);
+
+    -- A CLAIMANT'S OFFER IS NOT A PLANNED ITEM. The row used to print the
+    -- winner's item when the plan did not name the slot, formatted exactly
+    -- like a piece that went on -- which is why a level-sync weapon hold read
+    -- as a normal equip for two rounds of field reports.
+    local HELD = { seq = 43, time = '17:53:53', event = 'Default', plan = {},
+                   changed = {}, nChanged = 0,
+                   contest = { explain = { main = { { name = 'Triggers', rank = 13,
+                                                      item = 'Bronze Spear +1' } } } } };
+    local hrow = joined(RP._slotLines(HELD, 'Main', tostring));
+    check('RPT46a an unplanned slot does not wear the claimant\'s item as if equipped',
+        hrow:match('Bronze Spear %+1%s+<%-'), nil);
+    check('RPT46b ...it reads as not placed',   hrow:match('%(not placed%)') ~= nil, true);
+    check('RPT46c ...and says who wanted what', hrow:match('Triggers claimed this slot with Bronze Spear %+1') ~= nil, true);
+    check('RPT46d ...and names the cause a reader can act on',
+        hrow:match('level%-sync weapon hold') ~= nil, true);
+    -- a defending SENTINEL is not gear and never was: it keeps reading as itself
+    local SENT = { seq = 44, plan = {}, changed = {}, nChanged = 0,
+                   contest = { explain = { main = { { name = 'Disabled', rank = 1,
+                                                      item = '(free equip)' } } } } };
+    check('RPT46e a claim sentinel still prints as itself',
+        joined(RP._slotLines(SENT, 'Main', tostring)):match('%(free equip%)') ~= nil, true);
+    check('RPT44d ...and so is a slot with no item at all',
+        joined(RP._slotLines(recWith(41, {}, {}), 'Main', tostring)):match('NO CLAIMANT'), nil);
+
+    -- (ii) WHAT IT CHANGED FROM. A record claiming a slot changed to the piece
+    -- it already had read exactly like a real change, because the row showed
+    -- only the new item -- so #3 of his log said Main and Sub changed while
+    -- both carried the same items as #2, and the artifact could not show it.
+    local WAS = recWith(42, { Main = 'Bronze Spear +1' },
+                        { main = { { name = 'Triggers', rank = 13, item = 'Bronze Spear +1' } } },
+                        { Main = true }, 1);
+    local PREV_DIFF = recWith(41, { Main = 'Harpoon' },
+                              { main = { { name = 'Triggers', rank = 13, item = 'Harpoon' } } });
+    check('RPT45a a changed slot says what it changed FROM',
+        joined(RP._slotLines(WAS, 'Main', tostring, PREV_DIFF)):match('was: Harpoon') ~= nil, true);
+    check('RPT45b a slot that came from nothing says so',
+        joined(RP._slotLines(WAS, 'Main', tostring, recWith(41, {}, {})))
+            :match('was: %(nothing worn from a set%)') ~= nil, true);
+    -- THE ANOMALY: same item, and the record still lists the slot as changed
+    check('RPT45c an unchanged item under a "changed" flag is called out',
+        joined(RP._slotLines(WAS, 'Main', tostring, WAS)):match('SAME ITEM, yet the record lists') ~= nil, true);
+    check('RPT45d no previous record = no claim about what it was',
+        joined(RP._slotLines(WAS, 'Main', tostring)):match('was:'), nil);
+    -- a slot the record does NOT call changed must never get a "was:" line --
+    -- that would invent an event out of a slot that simply held
+    check('RPT45e an unchanged slot is never given a was: line',
+        joined(RP._slotLines(A, 'Main', tostring, PREV_DIFF)):match('was:'), nil);
+
+    -- the sets that produced the decision -- on every record already, and the
+    -- report threw it away unless a ladder happened to print
+    local SRC = recWith(31, { Main = 'Harpoon' },
+                        { main = { { name = 'Triggers', rank = 13, item = 'Harpoon' } } },
+                        { Main = true }, 1);
+    SRC.contest.src = { main = 'Weapons', head = 'Idle', neck = 'Idle' };
+    check('RPT42a the block names the sets it came from',
+        joined(RP._decLines(SRC, tostring)):match('sets: Idle, Weapons') ~= nil, true);
+    check('RPT42b ...deduplicated and sorted, so two reports diff',
+        select(2, joined(RP._decLines(SRC, tostring)):gsub('Idle', '')), 1);
+    check('RPT42c a record with no src says nothing about sets',
+        joined(RP._decLines(A, tostring)):match('sets:'), nil);
+
+    -- the action counter's LABEL (it only ever counted the anchors)
+    local sma = joined(RP._summaryLines({ recorded = 60, nDec = 3, nAct = 0, nSend = 1,
+                                          nChat = 0, marks = {} }));
+    check('RPT43a the headline no longer says a bare "0 actions"',
+        sma:match('0 action[s]?,') , nil);
+    check('RPT43b ...it says what the count MEANS',
+        sma:match('0 actions dispatched and moved NO gear') ~= nil, true);
+    check('RPT43c ...and that the other kind is not counted twice',
+        sma:match('never counted twice') ~= nil, true);
+
+    -- ---------------------------------------------------------------------
     -- The SETS-FILE scope (the blind spot behind the same report): gear that
     -- never reached a plan or a ladder left no trace, and that is exactly the
     -- gear that failed to qualify.
@@ -22167,7 +22570,9 @@ end)();
     -- the summary: the numbers and the marks, above the log
     local sm = joined(RP._summaryLines({ recorded = 300, nDec = 41, nAct = 12, nSend = 6,
         nChat = 9, nErr = 2, nPre = 7, marks = { { at = 134, note = 'gear did not swap' } } }));
-    check('RPT16a the window is counted',   sm:match('41 decisions, 12 actions, 6 sends') ~= nil, true);
+    check('RPT16a the window is counted',   sm:match('41 decisions, 6 sends') ~= nil, true);
+    check('RPT16a2 ...and the anchors are counted APART, with what they mean',
+        sm:match('12 actions dispatched and moved NO gear') ~= nil, true);
     -- The pre-roll is counted APART. A summary reading "0 decisions" over a log
     -- that visibly contains one teaches the reader to distrust the numbers.
     check('RPT16b pre-roll decisions are counted, and separately',
@@ -22183,7 +22588,9 @@ end)();
     local one = joined(RP._summaryLines({ recorded = 60, nDec = 1, nAct = 1, nSend = 1,
         nChat = 1, nErr = 1, marks = { { at = 0 } } }));
     check('RPT16f one of each reads as one',
-        one:match('1 decision, 1 action, 1 send, 1 dlac chat line, 1 mark') ~= nil, true);
+        one:match('1 decision, 1 send, 1 dlac chat line, 1 mark') ~= nil, true);
+    check('RPT16f2 ...including the anchor line',
+        one:match('1 action dispatched and moved NO gear') ~= nil, true);
     check('RPT16g ...including the failure sentence',
         one:match('1 of those chat lines looks like a FAILURE') ~= nil, true);
     check('RPT16h a zero pre-roll says nothing at all',

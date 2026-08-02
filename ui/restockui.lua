@@ -26,17 +26,31 @@
     rows already on the list are hidden, and adding keeps the picker open
     because you usually add several things from one search.
 
-    The floating nudge (M.nudge, hooked from gearui's d3d_present) is a stack of
-    up to three icons near a box:
+    The floating nudge is up to three icons near a box. It used to be its own
+    window (M.nudge); since 2026-08-03 it is a SLOT in the shared icon tray
+    (ui\tray.lua -- trayWants is the cheap gate, trayDraw draws inline), sharing
+    one window and one remembered position with the Teleports button. Which icons
+    appear, and when, is unchanged -- that is still decided right here.
+
+      * RED    -- `!box store`, always present near a box, ONE click. Dumping
+                  what you carry on arriving in town is the ordinary move, so
+                  it does not ask (Henrik 2026-08-01).
       * GREEN  -- fetch the shortfall, counting every field bag as on-hand;
       * YELLOW -- only when Inventory alone is short while another field bag
                   holds some: tops INVENTORY up from the box, reporting where
                   the other copies are. (Moving them out of the Mog Case would
                   be better and costs no box stock, but dlac may not move items
                   between containers yet -- deferred, see the v2 grill C2.)
-      * RED    -- `!box store`, always present near a box, ONE click. Dumping
-                  what you carry on arriving in town is the ordinary move, so
-                  it does not ask (Henrik 2026-08-01).
+
+    THAT ORDER IS THE RULING, not the old one (Henrik 2026-08-03). The stack is
+    the same shape it always was -- a COLUMN, one icon per line -- but RED moved
+    from the bottom of it to the TOP. RED is the icon that must not move: it is
+    one click, no confirm, and it deposits your whole Inventory. It is also the
+    only one of the three that is ALWAYS there once you are in range, so putting
+    it first means the two that come and go (GREEN with "Only when needed",
+    YELLOW with what is sitting at your Mog House) can only ever shift each other
+    -- whereas with RED last, every appearance of GREEN pushed it down a row.
+    Same reason the tray puts the pinned Teleports button above all three.
 ]]--
 
 local M = {};
@@ -597,20 +611,20 @@ function M.render(deps, availW)
 end
 
 -- ---------------------------------------------------------------------------
--- The floating Restock nudge (gearui d3d_present hook, beside floatgear). A
--- small crate icon (assets/ebox.png -- Henrik's art) that pops up near an
+-- The floating Restock crates -- a SLOT in the shared icon tray (ui\tray.lua).
+-- Small crate icons (assets/ebox*.png -- Henrik's art) that pop up near an
 -- Ephemeral Box while you play: hover = the fetch plan, LEFT-click = Fetch all
 -- (pre-clamped, cannot over-draw), RIGHT-click = open the panel, badge = # items
 -- below target the box can fill. Self-gates so it costs nothing away from a box.
--- INDEPENDENT of the main window (rendered directly from d3d_present, the
--- floatgear pattern) -- deps is gearui's table, for the current job.
+-- Nothing here begins a window: the tray owns the chrome and the position, and
+-- deps is gearui's table, for the current job.
 -- ---------------------------------------------------------------------------
-local _nudgeOpen = { true };
--- Sized to MATCH the floating Teleports button (gearui's TPF_ICON / TPF_PAD):
--- 30px of art in a 3px frame = a 36x36 button. Henrik 2026-07-31: the two floats
--- live on the same screen and have to read as the same kind of control. At 40px
--- art on the style's DEFAULT frame padding this one drew 48x46 -- visibly the
--- bigger of the two. Change these two together with gearui's, or they drift.
+-- Sized to MATCH the Teleports button (gearui's TPF_ICON / TPF_PAD): 30px of art
+-- in a 3px frame = a 36x36 button. Henrik 2026-07-31: the two floats live on the
+-- same screen and have to read as the same kind of control. At 40px art on the
+-- style's DEFAULT frame padding this one drew 48x46 -- visibly the bigger of the
+-- two. They now share a COLUMN, so a mismatch is no longer a comparison across
+-- the screen but two buttons stacked -- change these together with gearui's.
 local NUDGE_SZ  = 30;
 local NUDGE_PAD = 3;
 local TIP_MAX   = 12;    -- rows before a tooltip starts saying "+N more"
@@ -648,13 +662,25 @@ local function iconButton(tex, fallback, id)
     return clicked, right, hovered;
 end
 
-function M.nudge(deps)
+-- THE CHEAP GATE (tray slot contract). Runs every frame, before the tray opens
+-- anything, so it may only read flags and the box distance -- no bag scan, no
+-- planning. Everything expensive lives in trayDraw, which only runs once this
+-- has said yes.
+--
+-- "Yes" here means AT LEAST ONE icon: past the proximity gate the RED Store
+-- crate is unconditional, so this needs no look at stock to be sure.
+function M.trayWants()
+    if not _rwok or not _ecok then return false; end
+    rw.loadState();
+    if not (rw.master and rw.showNudge) then return false; end
+    if not cwOK() then return false; end
+    local dist = ec.boxDistance();
+    return (dist ~= nil and dist <= ec.BOX_RANGE);   -- only near a box
+end
+
+function M.trayDraw(deps)
     if not _rwok or not _ecok then return; end
     rw.loadState();
-    if not (rw.master and rw.showNudge) then return; end
-    if not cwOK() then return; end
-    local dist = ec.boxDistance();
-    if dist == nil or dist > ec.BOX_RANGE then return; end   -- only near a box
     local job = (deps ~= nil and type(deps.playerJob) == 'function') and deps.playerJob() or nil;
     local entries = rw.effectiveList(job);
     ec.verifyCategories(rw.categoriesOf(entries));
@@ -691,15 +717,36 @@ function M.nudge(deps)
     -- to detect -- we never track whether you have anything worth storing.
     local showGreen = not (rw.onlyWhenNeeded and plan.badge == 0);
 
-    local FL = (ImGuiWindowFlags_NoTitleBar or 0) + (ImGuiWindowFlags_NoResize or 0)
-             + (ImGuiWindowFlags_NoScrollbar or 0) + (ImGuiWindowFlags_NoCollapse or 0)
-             + (ImGuiWindowFlags_AlwaysAutoResize or 0) + (ImGuiWindowFlags_NoFocusOnAppearing or 0)
-             + (ImGuiWindowFlags_NoNav or 0);
-    imgui.SetNextWindowPos({ 300, 300 }, (ImGuiCond_FirstUseEver or 0));
-    _nudgeOpen[1] = true;   -- forced-true table (floatgear's shape); no title bar = no close
-    if imgui.Begin('##dlac_restock_nudge', _nudgeOpen, FL) then
-        local busy = ec.isBusy();
+    local busy = ec.isBusy();
 
+    do
+        -- DEPOSIT, and it goes FIRST -- see the ORDER ruling in the header.
+        -- `!box store` is instant and stores EVERY storable item in Inventory --
+        -- including what Restock just fetched. It used to arm-then-confirm;
+        -- Henrik 2026-08-01 took the guard off: dumping your haul once you have
+        -- reached town is the ordinary thing to do here, and it is not a call
+        -- worth being sure of. ONE click fires -- which is exactly why it is the
+        -- crate that must never move under a cursor aimed at something else.
+        local clicked, _rc, hovered = iconButton('ebox_red_icon-64', 'Store', 'rsnudge_red');
+        if clicked then ec.boxStore(); end
+        if hovered then
+            imgui.BeginTooltip();
+            imgui.TextColored(COL_HEADER, 'Store All   (!box store)');
+            imgui.TextColored(COL_TEXT, 'Instantly deposits EVERY storable item in your Inventory:');
+            imgui.TextColored(COL_TEXT, 'crafting materials, food, ninjutsu tools, ammo, oils.');
+            imgui.TextColored(COL_DIM,  'That includes anything Restock just fetched.');
+            imgui.Separator();
+            imgui.TextColored(COL_DIM, 'Left-click: store everything (no confirm).');
+            imgui.EndTooltip();
+        end
+    end
+
+    -- ...then the two crates that come and go, each on its own line (the tray is
+    -- a COLUMN -- no SameLine between icons; the only SameLine below puts a
+    -- badge beside its own icon). Grouped in a block so it stays obvious that
+    -- everything in here draws BELOW the anchored Store icon and may therefore
+    -- shift; nothing above this line may.
+    do
         if showGreen then
             local canFetch = (#plan.pulls > 0) and not busy;
             local clicked, rightClicked, hovered = iconButton('ebox', 'E-Box', 'rsnudge_green');
@@ -785,28 +832,7 @@ function M.nudge(deps)
             end
         end
 
-        do
-            -- DEPOSIT (always near a box). `!box store` is instant and stores
-            -- EVERY storable item in Inventory -- including what Restock just
-            -- fetched. It used to arm-then-confirm; Henrik 2026-08-01 took the
-            -- guard off: dumping your haul once you have reached town is the
-            -- ordinary thing to do here, and it is not a call worth being sure
-            -- of. ONE click fires.
-            local clicked, _rc, hovered = iconButton('ebox_red_icon-64', 'Store', 'rsnudge_red');
-            if clicked then ec.boxStore(); end
-            if hovered then
-                imgui.BeginTooltip();
-                imgui.TextColored(COL_HEADER, 'Store All   (!box store)');
-                imgui.TextColored(COL_TEXT, 'Instantly deposits EVERY storable item in your Inventory:');
-                imgui.TextColored(COL_TEXT, 'crafting materials, food, ninjutsu tools, ammo, oils.');
-                imgui.TextColored(COL_DIM,  'That includes anything Restock just fetched.');
-                imgui.Separator();
-                imgui.TextColored(COL_DIM, 'Left-click: store everything (no confirm).');
-                imgui.EndTooltip();
-            end
-        end
     end
-    imgui.End();
 end
 
 -- /dl restock -- open the panel (also the nudge's right-click target). Own

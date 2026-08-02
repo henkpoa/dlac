@@ -1137,6 +1137,12 @@ end
 -- record alone cannot know). Rendered last, so it never pushes the item's own
 -- facts down; the item's own reservation rides right under the type, because it
 -- is the reason half the slot is missing and belongs where the eye lands first.
+--
+-- (A `bare` argument lived here for one round on 2026-08-03, so floatgear's pin
+-- menu could host this card in a window of its own. That panel is gone -- the
+-- facts moved INSIDE the pin popup, where they must be reserved to a fixed size
+-- and therefore have to be built as data before they are drawn, which an opaque
+-- card cannot be. The argument went with it rather than sit here unused.)
 local function renderItemTooltip(rec, note)
     imgui.BeginTooltip();
     pcall(function()
@@ -1681,7 +1687,7 @@ local function renderTeleportsPopup()
         ui._flagsDirty = true;
     end
     if imgui.IsItemHovered() then
-        imgui.SetTooltip('Pin a small always-on-screen Teleports button (PartyFinder-style).\nDrag its edge to move it. Untick -- here or in the floating menu\nitself -- to remove it. Remembered across sessions.');
+        imgui.SetTooltip('Pin a small always-on-screen Teleports button (PartyFinder-style).\nIt shares one draggable tray with the E-Box crates -- drag the tray\'s\nedge to move them together. Untick -- here or in the floating menu\nitself -- to remove it. Remembered across sessions.');
     end
     imgui.EndPopup();
 end
@@ -5136,6 +5142,93 @@ ashita.events.register('packet_in', 'dlac-gearui-invdirty', function(e)
     end
 end);
 
+-- ---------------------------------------------------------------------------
+-- THE TELEPORTS TRAY SLOT (2026-08-03). This used to be its own floating window
+-- begun inside d3d_present; it is now the leftmost member of the ONE icon tray
+-- (ui\tray.lua -- read its header for the slot contract). The button, the abort
+-- state and the popup are unchanged; what left is the Begin/End, the window
+-- flags and the drag-position bookkeeping, which the tray now owns for every
+-- member at once.
+--
+-- These are M. functions rather than chunk locals on purpose: this chunk sits at
+-- the 200-local cap (hard rule 1), and the tray has to be able to reach them by
+-- name anyway.
+--
+-- CHEAP GATE. trayWants runs every frame for every slot before anything is
+-- drawn, so it may only read flags -- never scan bags or build a plan.
+-- ---------------------------------------------------------------------------
+function M.trayTeleportsWants()
+    return ui._tpFloat == true and useit ~= nil and has.imgui == true;
+end
+
+function M.trayTeleportsDraw()
+    -- ONE size drives BOTH states. The tray is AlwaysAutoResize, so if the
+    -- abort button and the icon button differed the tray would visibly jump
+    -- size the moment a use went in flight. The abort's hand-drawn circle and
+    -- bar therefore DERIVE from it instead of carrying magic numbers -- the
+    -- ratios below reproduce the original 26px artwork exactly (radius 10,
+    -- a 10x4 bar), so this stays correct at any size.
+    -- Henrik 2026-07-24: 20px art was too small out on the screen -> 30.
+    -- These 30/3 are also the crates' size (restockui's NUDGE_SZ / NUDGE_PAD):
+    -- the icons share a row now, so a mismatch is visible side by side.
+    local TPF_ICON = 30;
+    local TPF_PAD  = 3;
+    local TPF_BTN  = TPF_ICON + TPF_PAD * 2;
+    local pend = nil;
+    pcall(function() pend = (type(useit.pending) == 'function') and useit.pending() or nil; end);
+    local clicked = false;
+    if pend ~= nil then
+        -- a use is in flight: the button IS the abort now
+        clicked = imgui.Button('##tpflstop', { TPF_BTN, TPF_BTN });
+        pcall(function()
+            local x, y = imgui.GetItemRectMin();
+            if type(x) == 'table' then y = (x[2] or x.y); x = (x[1] or x.x); end
+            local dl = imgui.GetWindowDrawList();
+            local cx, cy = x + TPF_BTN / 2, y + TPF_BTN / 2;
+            local bw, bh = TPF_BTN * 0.192, TPF_BTN * 0.077;
+            dl:AddCircleFilled({ cx, cy }, TPF_BTN * 0.385, imgui.GetColorU32({ 0.85, 0.20, 0.20, 1.0 }), 12);
+            dl:AddRectFilled({ cx - bw, cy - bh }, { cx + bw, cy + bh }, imgui.GetColorU32({ 1, 1, 1, 0.95 }));
+        end);
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip(string.format('ABORT %s  (%s)', tostring(pend.name), tostring(pend.cancel)));
+        end
+        if clicked and pend.cancel ~= nil then
+            pcall(function() AshitaCore:GetChatManager():QueueCommand(1, pend.cancel); end);
+            clicked = false;
+        end
+    else
+        -- The Teleports ICON, on an explicit OPAQUE dark backing (same one
+        -- the slot grid uses). The earlier "always red" was never the art:
+        -- the window rendered unthemed, and its semi-transparent button let
+        -- the game world bleed through the icon.
+        -- 2026-07-24: this used to borrow the in-game Warp Ring ITEM icon,
+        -- which was a different visual language from the hand-drawn set.
+        -- It now uses the same assets\teleports.png the Menu row does, and
+        -- falls back to the old item icon if the PNG ever fails to load.
+        local h = nil;
+        pcall(function() h = require('dlac\\ui\\filetex').handle('teleports'); end);
+        if h == nil then
+            local rec = lookupByName('Warp Ring');
+            h = icons.handleOf(rec and rec.Id or nil);
+        end
+        if h ~= nil then
+            pcall(function()
+                clicked = imgui.ImageButton(h, { TPF_ICON, TPF_ICON },
+                    { 0, 0 }, { 1, 1 }, TPF_PAD, { 0.10, 0.10, 0.13, 1.0 }, { 1, 1, 1, 1 });
+            end);
+        else
+            -- Text fallback (both the PNG and the item icon failed). Width per
+            -- the themed-font law: ~9.5px/char + 16 padding, or 'Tele' clips.
+            clicked = imgui.Button('Tele##tpfl', { 54, TPF_BTN });
+        end
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('Teleports  --  drag the tray edge to move; unpin from the menu.');
+        end
+    end
+    if clicked then imgui.OpenPopup('##dlac_teleports'); end
+    pcall(renderTeleportsPopup);
+end
+
 ashita.events.register('d3d_present', 'dlac-gearui-render', function()
     cmdq.tick();   -- advance the frame clock, flush due commands
     if (cmdq.frame() % 240) == 0 then owned.resetCache(); end   -- availability heartbeat (~4s):
@@ -5184,102 +5277,23 @@ ashita.events.register('d3d_present', 'dlac-gearui-render', function()
         pcall(function() imgui.ShowMetricsWindow(ui.metricsOpen); end);
         if ui.metricsOpen ~= nil and ui.metricsOpen[1] == false then ui.showMetrics = false; end
     end
-    -- PF-style floating Teleports button: lives on screen INDEPENDENT of the main
-    -- window (pinned/unpinned from the Teleports menu footer; position remembered).
-    -- THEMED like the main window -- unthemed, the semi-transparent defaults let
-    -- the game world bleed through and recolor the icon.
-    if ui._tpFloat == true and useit ~= nil and has.imgui then
-        local tpThemed = style ~= nil and style.push();
-        pcall(function()
-            if ui._tpPos ~= nil then
-                imgui.SetNextWindowPos({ ui._tpPos[1], ui._tpPos[2] }, ImGuiCond_Once or 0);
-            end
-            local fl = (ImGuiWindowFlags_NoTitleBar or 0) + (ImGuiWindowFlags_AlwaysAutoResize or 0)
-                     + (ImGuiWindowFlags_NoScrollbar or 0) + (ImGuiWindowFlags_NoCollapse or 0);
-            ui._tpOpenT = ui._tpOpenT or { true };
-            ui._tpOpenT[1] = true;
-            if imgui.Begin('##dlac_tpfloat', ui._tpOpenT, fl) then
-                -- ONE size drives BOTH states. The window is AlwaysAutoResize, so if the
-                -- abort button and the icon button differed the float would visibly jump
-                -- size the moment a use went in flight. The abort's hand-drawn circle and
-                -- bar therefore DERIVE from it instead of carrying magic numbers -- the
-                -- ratios below reproduce the original 26px artwork exactly (radius 10,
-                -- a 10x4 bar), so this stays correct at any size.
-                -- Henrik 2026-07-24: 20px art was too small out on the screen -> 30.
-                local TPF_ICON = 30;
-                local TPF_PAD  = 3;
-                local TPF_BTN  = TPF_ICON + TPF_PAD * 2;
-                local pend = nil;
-                pcall(function() pend = (type(useit.pending) == 'function') and useit.pending() or nil; end);
-                local clicked = false;
-                if pend ~= nil then
-                    -- a use is in flight: the button IS the abort now
-                    clicked = imgui.Button('##tpflstop', { TPF_BTN, TPF_BTN });
-                    pcall(function()
-                        local x, y = imgui.GetItemRectMin();
-                        if type(x) == 'table' then y = (x[2] or x.y); x = (x[1] or x.x); end
-                        local dl = imgui.GetWindowDrawList();
-                        local cx, cy = x + TPF_BTN / 2, y + TPF_BTN / 2;
-                        local bw, bh = TPF_BTN * 0.192, TPF_BTN * 0.077;
-                        dl:AddCircleFilled({ cx, cy }, TPF_BTN * 0.385, imgui.GetColorU32({ 0.85, 0.20, 0.20, 1.0 }), 12);
-                        dl:AddRectFilled({ cx - bw, cy - bh }, { cx + bw, cy + bh }, imgui.GetColorU32({ 1, 1, 1, 0.95 }));
-                    end);
-                    if imgui.IsItemHovered() then
-                        imgui.SetTooltip(string.format('ABORT %s  (%s)', tostring(pend.name), tostring(pend.cancel)));
-                    end
-                    if clicked and pend.cancel ~= nil then
-                        pcall(function() AshitaCore:GetChatManager():QueueCommand(1, pend.cancel); end);
-                        clicked = false;
-                    end
-                else
-                    -- The Teleports ICON, on an explicit OPAQUE dark backing (same one
-                    -- the slot grid uses). The earlier "always red" was never the art:
-                    -- the window rendered unthemed, and its semi-transparent button let
-                    -- the game world bleed through the icon.
-                    -- 2026-07-24: this used to borrow the in-game Warp Ring ITEM icon,
-                    -- which was a different visual language from the hand-drawn set.
-                    -- It now uses the same assets\teleports.png the Menu row does, and
-                    -- falls back to the old item icon if the PNG ever fails to load.
-                    local h = nil;
-                    pcall(function() h = require('dlac\\ui\\filetex').handle('teleports'); end);
-                    if h == nil then
-                        local rec = lookupByName('Warp Ring');
-                        h = icons.handleOf(rec and rec.Id or nil);
-                    end
-                    if h ~= nil then
-                        pcall(function()
-                            clicked = imgui.ImageButton(h, { TPF_ICON, TPF_ICON },
-                                { 0, 0 }, { 1, 1 }, TPF_PAD, { 0.10, 0.10, 0.13, 1.0 }, { 1, 1, 1, 1 });
-                        end);
-                    else
-                        -- Text fallback (both the PNG and the item icon failed). Width per
-                        -- the themed-font law: ~9.5px/char + 16 padding, or 'Tele' clips.
-                        clicked = imgui.Button('Tele##tpfl', { 54, TPF_BTN });
-                    end
-                    if imgui.IsItemHovered() then
-                        imgui.SetTooltip('Teleports  --  drag the edge to move; unpin from the menu.');
-                    end
-                end
-                if clicked then imgui.OpenPopup('##dlac_teleports'); end
-                pcall(renderTeleportsPopup);
-                -- remember where it was dragged; save once the drag settles
-                local px, py = imgui.GetWindowPos();
-                if type(px) == 'table' then py = (px[2] or px.y); px = (px[1] or px.x); end
-                if type(px) == 'number' and type(py) == 'number' then
-                    px, py = math.floor(px), math.floor(py);
-                    if ui._tpPos == nil or ui._tpPos[1] ~= px or ui._tpPos[2] ~= py then
-                        ui._tpPos = { px, py };
-                        ui._tpMovedAt = os.clock() + 1;
-                    end
-                end
-            end
-            imgui.End();
-            if ui._tpMovedAt ~= nil and os.clock() >= ui._tpMovedAt then
-                ui._tpMovedAt = nil;
-                ui._flagsDirty = true;
-            end
-        end);
-        if tpThemed then style.pop(); end
+    -- THE FLOATING ICON TRAY (2026-08-03): the Teleports button and the E-Box
+    -- Restock crates, ONE window, drawn left to right with the constant members
+    -- first (ui\tray.lua). Both used to Begin their own window here -- two little
+    -- boxes on the same screen, each remembering its own position. The tray
+    -- self-gates: it asks each member whether it has anything to show and does
+    -- not open a window at all when none does, so an unpinned Teleports button
+    -- away from a box still costs exactly nothing. THEMED like the main window --
+    -- unthemed, the semi-transparent defaults let the game world bleed through
+    -- and recolor the icons. Function-scoped require (hard rule 1).
+    if has.imgui then
+        local trMod = nil;
+        pcall(function() trMod = require('dlac\\ui\\tray'); end);
+        if trMod ~= nil and type(trMod.render) == 'function' then
+            local trThemed = style ~= nil and style.push();
+            pcall(trMod.render, M._deps);
+            if trThemed then style.pop(); end
+        end
     end
     -- Floating Trigger Monitor: INDEPENDENT of the main box, like the lockstyle
     -- and floating-equipment windows (Henrik: it must survive closing dlac's
@@ -5339,19 +5353,10 @@ ashita.events.register('d3d_present', 'dlac-gearui-render', function()
             if wlThemed then style.pop(); end
         end
     end
-    -- The E-Box Restock nudge: also INDEPENDENT of the main box (it pops up near
-    -- an Ephemeral Box while you play, so it cannot go through the window
-    -- contract). Self-gates on CW + master + Show-nudge + proximity, so it costs
-    -- nothing away from a box; passed gearui's deps for the current job.
-    if has.imgui then
-        local rnMod = nil;
-        pcall(function() rnMod = require('dlac\\ui\\restockui'); end);
-        if rnMod ~= nil and type(rnMod.nudge) == 'function' then
-            local rnThemed = style ~= nil and style.push();
-            pcall(rnMod.nudge, M._deps);
-            if rnThemed then style.pop(); end
-        end
-    end
+    -- (The E-Box Restock crates used to Begin their own window here. They are now
+    -- a tray slot -- restockui.trayWants / trayDraw -- drawn above with the
+    -- Teleports button. Same self-gating on CW + master + Show-nudge + proximity;
+    -- it is the tray that asks.)
     -- The Chocobo dig-search windows: also INDEPENDENT of the main box (the Area /
     -- Item buttons in the Chocobo panel open floating windows so item search is
     -- never buried at the bottom). Self-gates -- renderSearch draws nothing unless

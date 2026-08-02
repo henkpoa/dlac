@@ -8140,3 +8140,545 @@ Suites **5886** and **1003**. The lesson worth keeping is about #2: the artifact
 *what happened*, and the answer lived in *what was asked for and never happened*. A digest built
 from observed events cannot explain an absence of events — and an absence of events is what a
 support report is usually about.
+
+### Field round 3 — the full report, and the block that said nothing (`2026.08.03d`)
+
+He ran `/dl report full` on a fresh DRG2. First finding was about the *build*, not the code: the
+header read `dlac 2026.08.03a`, so the addon state in game was the one loaded before the fixes —
+`/addon reload dlac` is now part of asking for a report, because a player testing the old build
+looks exactly like a fix that did not work.
+
+**`full` itself is confirmed:** 93 files, **zero dropped**, raw `gear.lua` (264,111 bytes) whole,
+736 KB / 22k lines. The per-file cap lifts as designed.
+
+**Six of 37 decision blocks were EMPTY** — a header, a `under:` line, nothing else. The ring
+appends only when the fingerprint moves, and the fingerprint is *items plus winners*, so a
+zero-change record is one where a slot changed **hands**. The renderer had no notion of that and
+printed the bare header, which teaches a reader to skim past records that by definition are
+saying something happened. You could see the symptom in the same log: `Main Harpoon` appeared
+four times with `<- Triggers (rank 13)` and three times completely bare, seconds apart.
+
+Blocks now carry `claim moved: Triggers -> (nobody)`, derived by comparing consecutive records
+(the ring does not store it, and consecutive is the only comparison that means anything — the
+ring appends on change, so record N-1 IS the state N moved away from). **A decision block can no
+longer be empty**: failing both tests prints "this should not be possible", which is a finding
+rather than a shrug.
+
+Two things the build got wrong on the way, both caught by replaying his actual records:
+
+- **No predecessor is not "everything changed hands."** The first cut treated every winner in
+  the first record as a fresh shift and printed sixteen redundant lines over rows that already
+  said the same thing. The first block of a capture has nothing to compare against, so it shows
+  no shifts.
+- **`(the item did not change)` was ASSERTED, not checked** — and printed over a slot that had
+  gone from nothing to Emperor Hairpin, because it trusted the record's `changed` map to be
+  complete. Verified now; when the item moved too, the block shows the transition and adds
+  `NOTE: the record did not list this slot as changed`. That note should never fire in the
+  field, which makes it a tripwire on the ring.
+
+**Also fixed.** `contest.src` is on every record and the report was throwing it away — it only
+ever surfaced inside a `ladder (Name):` line, so a decision that resolved no ladder never named
+the set it came from, which is exactly the decision you want the set for. Blocks carry `sets:`
+now. And the summary's `0 actions` read as "you did nothing" over a log plainly containing a
+weaponskill: the counter only ever tallied the ANCHORS (actions that moved no gear, because one
+that moved gear is already a decision block), so the label says which.
+
+**One latent bug, found while checking the mechanism rather than by symptom.**
+`dispatch.decisionFp` lowercases every slot key; the `changed` computation twelve lines below
+compared **raw** keys — two computations of "did this move?" disagreeing about what a slot IS,
+the exact class `findCI` exists to prevent. It is not what caused the empty blocks. But on the
+day one producer emits `Main` where the last pass emitted `main`, the fingerprint would
+correctly say nothing moved while `changed` counted TWO phantom changes, and every renderer of
+that record would have shown both. Both sides are case-insensitive now.
+
+Suites **5911** and **1003**. The habit worth keeping from this round: *replay the real records
+through the new code*. Both build mistakes above were invisible to the unit tests, which used
+fixtures shaped the way I expected records to look; his actual sequence had a slot with no
+predecessor and a `changed` map that did not cover a moving slot, and both fell out immediately.
+
+### Field round 4 — the report is good, and it found two engine oddities (`2026.08.03e`)
+
+First normal report off the current build (`2026.08.03d`), 47.7 KB. Everything built over the
+last three rounds is confirmed working in the field: `sets:` on every block, the engine-version
+note in health, the relabelled action counter, the digest's two lists with `ABOVE YOUR LEVEL
+(10)` against a DRG that levelled 9 → 10 mid-window, and — the one that mattered — the
+zero-change block, which now reads:
+
+```
+[17:53:58] #4 Default -- status=Idle moving=true   (0 slots changed)
+    Ear1    Optical Earring    claim moved: (nobody) -> Triggers   (the item did not change)
+```
+
+So the tool stopped being the thing under investigation. **What it then surfaced is about the
+engine, and neither could be diagnosed from the artifact, so this round is two more renderer
+fixes aimed squarely at them.**
+
+**(i) An item with no owner.** `Ear1` carried Optical Earring in the plan while
+`contest.explain` named nobody for the slot — the two halves of one record disagreeing about
+who decided it, which is the invariant ADR 0027 holds. It rendered as an ordinary row, because
+a missing winner simply printed nothing. Now `<- NO CLAIMANT RECORDED (the plan has it, the
+contest names nobody)`. The shape is suggestive: the slot became newly eligible on the level-up
+(Optical Earring is Lv10, he crossed 9 → 10), landed in the plan that beat, and acquired its
+claimant **two dispatches later** — which is what generated the zero-change record at #4. The
+same shape explains the six empty blocks of the previous round.
+
+**(ii) A slot reported changed that did not change.** `#3` said `2 slots changed` and showed
+Main and Sub carrying exactly what `#2` had. The row printed only the NEW item, so a record
+claiming a slot moved to the piece it already had was indistinguishable from a real change.
+Blocks now carry `was:` for slots the record calls changed — the core question of a decision
+log, and the report could not answer it — and when the previous item is identical the line says
+`SAME ITEM, yet the record lists this slot as changed`. Replaying his real `#1`–`#4` shows Main
+and Sub flagged in **both** `#2` and `#3`, so it is a pattern rather than an incident, and both
+slots come from the `Weapons` set.
+
+`changed` is display-only (arbmonui's bright cells, this report), so neither oddity moves gear
+— but they inflate every count a reader trusts, and they are now labelled instead of invisible.
+**Not chased into dispatch this round**: that is an engine investigation with its own field
+cost, and the tooling had to be able to state the problem first.
+
+Suites **5920** and **1003**. The rule that keeps paying: `was:` prints ONLY for slots the
+record calls changed. Printing it everywhere would invent an event out of a slot that merely
+held, which is the same class of lie the `(kept)` row told two rounds ago.
+
+### The engine half — a record's contest now explains that record's plan (engine v163, `2026.08.03f`)
+
+Henrik: *"Go ahead and implement that."* So the two oddities the report surfaced were traced into
+`dispatch` rather than described. **One was a real bug with a single root cause. The other was
+not a bug at all, and my previous entry overstated it — corrected below.**
+
+**THE BUG.** `contest` was built only on a **retrace** and otherwise reused from the previous
+trace (`old.contest`). And the retrace signature covers matched rules + cases, locks, claimant
+legs, the sets-store revision and the rank order — **not the player's LEVEL**. So levelling
+changes which candidates a set resolves to while the signature holds: the plan moves, the
+explanation does not, and the ring appends a record whose two halves disagree about who decided
+a slot. Both symptoms fall out of that one fact — `Ear1` carrying Optical Earring (Lv10) in the
+plan with the contest naming nobody, and the claimant arriving two dispatches later as a
+zero-change record. It also explains the six empty blocks of the round before.
+
+Fixed in two places. `slotSrc`/`floorTbl` are now collected on **every** pass: they were gated
+`retrace and {} or nil`, sharing one `if retrace` with the `/dl why` **line formatting** — and
+the formatting is the half that costs (a `string.format` per rule), while filling two small
+tables is nothing beside the `equipSetByName` that already ran. With the attribution always
+present the contest became rebuildable at all, so it is re-explained whenever
+`M._planOutrunsContest` says the plan named a slot the explanation cannot account for, or
+swapped the item inside one it covers (the item half matters precisely because the *level* is
+not in the signature).
+
+**The test is deliberately ONE-WAY**, and that is the ruling worth keeping: a contest naming
+**more** than the plan is ordinary and must not rebuild. A lock, or the level-sync weapon hold,
+takes a slot out of the plan while the claim on it stands — two questions answered correctly.
+Rebuilding on that would re-explain on every held beat.
+
+**THE CORRECTION.** The previous entry called "Main and Sub reported changed while carrying the
+same items" a pattern *confirmed from his artifact*. It was not: that output came from my own
+**replay fixture**, which had assumed both plans carried Main. The real cause is the level-sync
+weapon hold (v56) doing exactly its job — `ctx.syncHold` nils Main/Sub/Range, so they leave the
+plan and return, and the ring correctly records both moves. What made it look wrong was a
+**renderer** ambiguity: when the plan did not name a slot, the row printed the *winner's* item,
+formatted identically to a piece that had actually gone on. That single ambiguity is why two
+unrelated things were both undiagnosable. A slot the plan skipped now reads `(not placed)` with
+the claim and the likely hold named underneath.
+
+Suites **5938** and **1003**. `PO8` asserts the invariant over every record the suite's real
+dispatches build — though it is honest to record that it does **not** prove the fix: disabling
+the rebuild leaves it green, because the suite never produces a non-retrace pass whose plan
+moved. It is a guard against regression, and the proof stays the field round.
+
+Two lessons. **A signature that gates an explanation must cover everything the explanation
+depends on** — the level was missing, and nothing said so for four days because the explanation
+was only ever read by a hover nobody was staring at. And: *reading the artifact is the test*.
+Every defect in this train came from reading a report end to end, never from the suites.
+
+## Session "several pins on one hat slot" (2026-08-03, `2026.08.03h` — the floating armory menu)
+
+**Theme:** three field asks against the floating equipment window, all of them about the
+right-click PIN menu rather than the window.
+
+**1. Only what you can wear at that moment.** The list was gated on job and level already
+(the Gear Oracle's `canWear`, through `candidatesForSlot`) — the missing half was the
+BAGS. `candidatesForSlot` gates ownership on *owned anywhere*, which is right for a set
+builder and wrong here: a pin equips, so a piece in a Mog Locker was offered, pinned, and
+then did nothing. It reads as a broken pin, not as a misplaced item. Fixed by asking
+`gearui`'s `avail.have` — the same function the Sets tab previews the engine's own refusal
+with, so the menu and the engine cannot drift. Three-valued for the reason it is
+three-valued there: only a definite `false` hides a row, because an empty bag scan means
+"the scan has not answered yet", and hiding on *don't know* would empty the menu at exactly
+the moment you opened it.
+
+**2. Icons.** `ui\itemicons.renderIcon` per row, on the candidate rows and on the pinned
+ones. Nothing new: the same call `equippedui` has made since July, drawn from the record's
+own `Id`.
+
+**3. Several pins on one slot.** The ask: *"I want Optical Hat on Tp_Default, but Walahra
+Turban on Movement."* A slot's value becomes a LIST of `{ item, scope }` entries.
+
+The part worth keeping is that **the tie-break was borrowed, not invented**. An overlay is
+an equip table and a slot wears one thing, so a dispatch where two pinned triggers both
+matched has to pick. `dispatch._pinRank` scores an entry by the index of the **last hit it
+names** — and `hits` is already sorted ascending by priority and applied last-writer-wins
+(ADR 0003). So the pin belonging to the trigger that would have won the slot anyway is the
+pin that wins it, and nothing new had to be decided about rule precedence. `'All'` scores
+0, the weakest claim there is, which falls out of the same idea: "always" is the least
+specific thing a pin can say. That single number is why an All pin sitting under scoped
+siblings behaves as a *fallback* rather than a competitor, with no special case anywhere.
+
+On the way in the rules are Henrik's, verbatim: `'All'` replaces the slot whole; a scoped
+pin replaces only the pins already holding one of the SAME triggers (one item per trigger
+per slot). Clearing now has all three scopes and each has its own row — this pin, this
+slot, everything.
+
+**A one-pin slot still serializes byte for byte as it always did.** The list shape appears
+only where a second pin actually exists. That was not politeness toward the file format: an
+older seeded engine copy reads a single-entry slot unchanged, so the common case never
+touches the new path in either state. Both states read the shape through the same walk
+(`pinwatch.entriesOf` / `dispatch._pinEntriesOf`), spelled twice on purpose — the engine
+runs in the other Lua state and must never depend on an addon-state module being loaded.
+
+**The 200-local ceiling bit again, immediately.** Two new chunk locals in `dispatch.lua`'s
+main chunk and it stopped compiling — `too many local variables` at line 7510, nowhere near
+the edit. Both helpers went onto `M` instead, where they wanted to be anyway (test seams).
+Worth restating because the error points at the *end* of the chunk, not at the addition.
+
+Also: the grid paints a scoped-only pin a different colour from an All pin. Red used to
+mean "this piece is stuck on"; with conditional pins it stopped being true, and the colour
+is the only thing a chrome-less window can say without being opened.
+
+**Tests:** `AL42`–`AL58` (engine: the list shape, rank ordering, All-as-fallback, ties,
+every tolerated shape), `AM17`–`AM51` (pinwatch: the replace rules, per-pin removal, the
+two file shapes round-tripped through the engine's own reader, counts), and a new smoke
+section `FGP1`–`FGP18` that renders the popup OPEN against a real candidate pool and reads
+back the labels — section 6 proves the window cannot corrupt ImGui's stacks but stubs every
+row away, and all three asks are about the rows. Suites **5990** and **1046**.
+
+**Note for the record:** the `dispatch.lua` half of this landed inside commit `df77475`,
+which belongs to a parallel session — a shared-checkout sweep, not a decision. The change
+itself is unaffected.
+
+## Session "grow with the text" (2026-08-03, `2026.08.03j` — the pin popup's width)
+
+Henrik, on the round above: *"Can you make the right click menu automatically grow in size
+with the text? I think it's doing that, but only based on equip names and not the pin
+list."*
+
+The read was exactly right and the cause is one line. Both lists live inside the *same*
+auto-sizing popup — `BeginPopup` forces `AlwaysAutoResize`, so the only thing that can stop
+it growing is the constraint, and the constraint was a flat `{380, 460}`. An item name is
+~20 characters and never comes near 380, so the candidate list looked like it grew freely.
+A pinned row is a name **and** a trigger, sails past it, and a clamped auto-resize window
+has exactly one move left: clip. Same window, same mechanism, two very different-looking
+behaviours, from one number that was fine until the rows got longer.
+
+So the ceiling became a measurement (`popupMaxW`): the widest pinned row, and — because
+only the longest *name* can be the widest candidate row — one `CalcTextSize` for the whole
+item list however long it is. Measured **unfiltered**, deliberately: a width that holds
+still while you type is worth more than one that shaves pixels per keystroke.
+
+Three details worth keeping. The measurement runs in `M.render` **before** `BeginPopup`,
+not from last frame's content, because a constraint is consumed by the next window and a
+width one frame behind resizes visibly every time the list changes — so the rows are built
+once, measured, and handed down to `renderPinMenu` rather than built twice. It only runs
+while the menu is up (`_openFor` covers the opening frame, `_popupUp` every frame after),
+so a shut menu costs nothing. And `MAX_W` stays a real limit: a rule with six conditions
+can produce a scope line wide enough to cross the screen, and past that point the honest
+answer is a scrollbar, not a window you cannot see around.
+
+The pinned rows also lost their 34-character truncation — the popup is now sized to that
+exact string, and cutting the line *and* widening the window for it would be two answers to
+one question. The half being cut was the trigger, which is the only thing telling one
+pinned row from the next. Trigger choices gained a `short` spelling (event + conditions, no
+` -> SetName`) for the rows; the tooltip keeps the long one, where there is no width to
+fight over.
+
+**Tests:** smoke `FGP19`–`FGP22` drive `CalcTextSize` per-character and read the constraint
+back — floor with nothing pinned, wider with pins, wider still with a longer trigger,
+clamped at the ceiling. Suites **5990** and **1052**.
+
+## Session "beside the menu, not on top of it" (2026-08-03, `2026.08.03k` — item facts in the pin menu)
+
+Henrik: *"Can you also make it so it shows the stats of the item as well? Have it be
+somewhere where it doesn't clip into the right click menu or cover it."*
+
+The constraint is the whole design. **A tooltip cannot do this job** — it follows the
+cursor, and the cursor is on the menu, so every stat line would land on the rows you are
+trying to read. So it is a window of dlac's own, placed against the popup's rect.
+
+**Which side is not a preference, it is a deduction.** The scope cascade opens to the
+RIGHT, so the left is the one side the menu chain can never grow into. When the popup is
+hard against the left edge of the screen there is no left, and the panel drops UNDERNEATH
+it instead — a submenu is drawn beside its parent *row*, so below the whole popup is still
+clear of it. The rect comes from `GetWindowPos`/`GetWindowSize` read from *inside* the
+popup, the only place ImGui will tell you, and both it and the hovered record are filled
+during the popup and read after it closes in the same frame, so neither can go stale.
+
+**The card is not a second card.** `gearui.renderItemTooltip` grew a third argument,
+`bare`, that skips its `BeginTooltip`/`EndTooltip` — same stats, DMG/Delay, set-bonus
+ladder, where every copy is stored, your augments, jobs. A third argument rather than a
+split-out helper because that chunk is at the 200-local ceiling and one more
+`local function` will not compile. The point is that the day someone adds a line to the
+hover card, this panel gets it too instead of quietly falling behind.
+
+**The hover signal is `BeginMenu`'s return, not `IsItemHovered`.** A submenu in a popup
+opens on hover and stays open while you are inside it, so "this cascade is open" *is* "this
+is the item I am looking at" — and it keeps the facts up while you travel across to pick a
+trigger, which a hover test on the parent row drops the moment the cursor leaves it.
+
+**The `or 0` law bit again, and the test is why it was caught.** `FGP28` asks whether the
+panel carries `NoMouseInputs`, and it failed: the ImGui flag globals do not exist headless,
+so `(ImGuiWindowFlags_NoInputs or 0)` was plain `0`. In the game the constant exists and it
+would have worked — but that is exactly the trap `HOVER_FLAGS` has a comment about at the
+top of the same file, and it bites harder here: `or 0` does not *degrade* this panel, it
+hands the panel the mouse the MENU needed, and the failure reads as "the right-click menu
+randomly stops responding", which is nobody's idea of a missing constant. Real bit values
+now, spelled as the three individual input bits rather than their union so each has one.
+
+**Tests:** smoke `FGP23`–`FGP31` — nothing hovered draws nothing, hovering opens the panel
+for the item actually hovered, the card is asked for frameless, it lands clear to the left,
+it drops below when there is no left, it cannot catch the mouse, and every window opened in
+the frame is closed. Suites **5990** and **1061**.
+
+## Session "the cascade was eating the screen" (2026-08-03, `2026.08.03l`)
+
+Four field screenshots of the pin menu in each screen corner, and they answered more than
+the question asked of them. The item-facts panel was being *sliced* — three rows of Bunzi's
+Robe's six visible, the rest painted over by the scope cascade.
+
+**The first finding is a hard ImGui rule, not a placement bug.** A plain `Begin()` window is
+always drawn under any open popup or menu, whatever order it is created in. So no amount of
+moving the panel fixes it: anywhere the cascade reaches, the panel loses. (Two ways above
+it exist and are written down for when they are needed: `SetNextWindowPos` +
+`BeginTooltip`, because tooltips are the one window class that renders over popups and
+setting the position first suppresses the mouse-follow; or `GetForegroundDrawList`, which
+draws over everything but is raw shapes and would fork the card. Neither is used yet.)
+
+**The second finding is that no placement rule could have worked anyway.** Measured off the
+screenshots: popup ~245px, cascade ~750px, on a ~1130px client. The menu chain was ~1000 of
+1130 pixels wide and full height. There was no 360px gap anywhere — not beside it, not above
+it, not below it. Henrik's own arithmetic (panel rows + 1, and "this would only fit if my
+mouse were on the FIFTH equipment") arrives at the same wall from the other direction.
+
+So the fix is the cause, not the symptom: **the cascade got smaller.**
+
+Rows now spell the SET instead of the conditions — `Midcast  -> Enfeebling_White` in place
+of `Midcast  magicType = White Magic, skill = Enfeebling Magic  -> Enfeebling_White`. A
+third of the width for the same identification.
+
+**But the conditions could not simply be dropped, and the screenshot is what proved it.**
+That job carries two Default rules both reading `status = Idle`, one feeding the Idle set
+and one feeding Weapon: drop the *set* and they are the same row twice, drop the
+*conditions* and they stay distinct. The set name is the half that identifies a rule to a
+person. So the rule is: compact by default, and any label that would appear **twice** falls
+back to the full line — the only case that needed the width to begin with. Both duplicates
+fall back, not just the second; one explained row beside one unexplained row reads worse
+than two long ones. `floatgear.disambiguate` is pure and exported, because the point of it
+is a guarantee (no two rows read alike) and a guarantee wants a test.
+
+**And the cascade is height-capped now**, so a job with thirty triggers scrolls instead of
+running off the bottom of the screen. Through `SetNextWindowSizeConstraints` before
+`BeginMenu`, never a `BeginChild` — a child window inside the menu chain is exactly what
+tore the whole popup down back in July, and the constraint is the mechanism the parent popup
+already uses. Height only: capping the width would re-clip the rows the compact spelling
+just fixed. The catch is that a constraint no submenu consumed stays armed and lands on the
+next `Begin` **anywhere** — including another addon's window — so the loop ends by setting
+a 100000x100000 constraint, which constrains nothing. ImGui offers no other way to take one
+back.
+
+**Tests:** smoke `FGP32`–`FGP40` — unique rows stay short, a duplicated compact label sends
+*both* rows back to the full line, an unaffected row beside them stays short, no two rows
+read alike afterwards, every cascade is capped before it opens, the leftover is neutralised,
+and the popup's own measured cap is untouched by any of it. Suites **5990** and **1070**.
+
+**Owed in the field:** that a size-constrained submenu actually scrolls in this ImGui build,
+and that the popup still survives moving the mouse across items with the constraint armed.
+
+## Session "inside the window, not beside it" (2026-08-03, `2026.08.03m`)
+
+Henrik, after the two failed placements: *"Have the status window integrated in the right
+click window. Look at the biggest height from a piece, and widest width (can be different
+pieces), adapt the main right click window after that (so it doesn't move around every time
+you scroll around on gear). That way, it doesn't have to adapt as an outside window to other
+two windows."*
+
+That dissolves the problem rather than solving it. **Nothing inside a window can be covered
+by that window's own menus** — no side to choose, no rect to dodge, no z-order to lose. The
+two earlier shapes both failed for reasons that are now written into the file header so
+nobody re-tries them: a tooltip follows the cursor and the cursor is on the menu; a window
+of our own is *always* drawn under an open popup in ImGui, whatever order it is created in.
+
+**The reservation forced a rewrite of the card, and this is the real lesson.** You cannot
+measure a card without drawing it. `gearui.renderItemTooltip` renders straight to ImGui, so
+asking "how tall is the tallest piece in this pool" is not a question it can answer — and
+that question is the whole feature. So the block builds its lines as **data first**
+(`factsLines` returns `{col, text}`), and the same builder that draws one piece can be asked
+how many lines thirty of them would take. The one-round-old `bare` argument on
+`renderItemTooltip` went back out with it rather than sit there unused.
+
+It is also deliberately **bounded**: every open-ended part of the full card (the set-bonus
+ladder, the partner-piece list, every owned copy's augments) is absent, because a card that
+can run twenty lines cannot have space reserved for it without eating the popup. Wrapping is
+**character-based, not pixel-based** — the count has to be identical in the measuring pass
+and the drawing pass, and a proportional font measured per-fragment is not.
+
+Height is reserved for the pool's tallest piece and padded with a `Dummy`; the **width needs
+no equivalent** because the lines wrap to the width the item rows already settled, so the
+block cannot widen the popup at all. Two of Henrik's asks, one mechanism each.
+
+**One consequence had to be paid for.** Adding ~8 lines to the popup pushes a full slot's
+gear past the 460px height cap, the popup grows a scrollbar, and the first thing to scroll
+out of sight is the block — which would make integrating it pointless. So the item list now
+gets what is *left* of the cap: `rowCap` from the measured line height, the pinned rows and
+the reserved block. The overflow was always counted rather than hidden ("+N more — type to
+narrow"); this only makes the counting start sooner. It depends on the pool's tallest card,
+never the hovered one, so the row count does not shift while you read.
+
+The block shows **last frame's** hover — it is drawn above the list, and the hover is
+discovered while drawing the list below it. Same trade the Equipped tab's compare panel has
+always made, and invisible at 60fps.
+
+**A test-only bug worth recording**, because it is the kind that hides: deleting the old
+panel's checks left `Sx.renderItemTooltip = keptTip` behind with `keptTip` no longer
+declared. In Lua that reads as a nil global, so the line *nulled the service* for every
+later section — and the suite stayed green, because nothing downstream happened to call it.
+Found by grepping the removed names rather than by a red test.
+
+**Tests:** smoke `FGP23`–`FGP29` — no second window is opened at all, every window that is
+gets closed, the line builder yields data, it wraps to a width, the reserved height is the
+pool's tallest piece and not the hovered one, the answer does not depend on pool order, and
+an empty pool still reserves its prompt line. Suites **5990** and **1068**.
+
+## Session "width buys height" (2026-08-03, `2026.08.03n`)
+
+Henrik, on the integrated facts block: *"make it WIDER to adapt as well, so we get more
+space for gear."*
+
+The block wrapped to whatever width the item ROWS had already settled — so a slot full of
+short names left it at the 250px floor, a long stat line wrapped into four, and the
+reservation ate four lines of the height cap that the gear list wanted. **Width buys
+height**, and that is the whole reason it is worth spending: a popup 200px wider turns that
+four-line wrap into two, the reservation shrinks by two, and those two lines go straight
+back to the list under the cap.
+
+So the facts get a **vote** on the width, cast as *"the widest line any piece in this pool
+would draw unwrapped"* — the width at which the block needs no wrapping at all. A vote and
+not a demand: it is one input beside the item rows and the pinned rows, and the result is
+clamped like all of them. A block that only needed 80 more pixels gets them and gets a line
+of gear back for them; a stat line longer than the screen asks and is told no.
+
+**The ceiling is now the screen, not a constant.** 720 as the base, but never more than
+about 55% of `GetIO().DisplaySize.x` — a popup wider than half the display leaves its own
+cascade nowhere to open, and on Henrik's ~1130px client that is a real limit rather than a
+theoretical one. `DisplaySize` is the single screen fact the binding exposes and this is
+what it is for.
+
+**One thing had to change in the block to make the vote honest.** The job list is
+slash-joined with no spaces, so it is a single token: `wrapTo` could never break it, and it
+sat there widening the popup with no fallback if the width was refused. It is truncated to
+the wrap budget now — it still *asks* for its full width (the measurement runs unwrapped),
+this only bounds what happens when the answer is no. Same shape as the augment and Held
+lines, which had it from the start.
+
+**Tests:** smoke `FGP30`–`FGP34` — a wider wrap needs fewer reserved lines, a short name
+with short facts leaves the popup at the floor, a long facts line widens it with that same
+short name, and a small display clamps the ceiling below what the facts asked for. Suites
+**5990** and **1073**.
+
+## Session "a max is not a width" (2026-08-03, `2026.08.03o`)
+
+Henrik restated the requirement plainly: *"Go through all the pieces one by one. Have a
+variable for max seen height. One variable for max seen width. Then set the window width
+according to max width we saw on a gear piece, as well as reserve the max height seen above
+the item list. This way, the window will remain static and not adapt its size for every
+item."*
+
+Checking that against the code found the measurements all present and correct — and the last
+step missing, which is the only step that shows. **A popup is `AlwaysAutoResize`, so a MAX
+constraint is not a width.** The window still shrank to whatever it happened to be drawing,
+and since the facts block draws a different piece every time the cursor moves, it breathed
+in and out under the mouse. Every number was right; nothing was being *told* to hold.
+
+`min.x == max.x` pins it. The height deliberately stays a range: the block is padded to its
+reservation, so the content there is identical every frame and a cap is the useful thing to
+say about it.
+
+Worth writing down as a rule, because it is not obvious and it cost a round: **with
+`AlwaysAutoResize`, a size constraint whose min and max differ is a permission, not an
+instruction.** If a window must not move, the two have to meet.
+
+**And "all the pieces" turned out to be more pieces than the pool holds.** A pinned piece is
+not necessarily a candidate — the bag gate drops a piece you pinned this morning once it
+moves to a Mog Safe, while its pinned ROW stays in the menu. Hovering that row drew a card
+nobody had measured, so the window jumped for exactly the people who have moved gear since
+pinning it: rare, invisible in testing, and precisely the failure the reservation exists to
+prevent. The measurement pool is candidates **plus** pinned pieces now.
+
+**Tests:** smoke `FGP35`–`FGP37` — the width is pinned rather than capped, the height stays
+a range, and a pinned piece that is not in the pool still widens the popup. Suites **5990**
+and **1076**.
+
+## Session "the shorter hat was taller" (2026-08-03, `2026.08.03p`)
+
+Henrik: *"When I compare hovering Bunzi's Hat (5 rows) and Windfall Hat (4 rows), the height
+changes. The height INCREASES with Windfall Hat, even though it has fewer rows. Can this be
+explained?"*
+
+It can, and it is one line of ImGui semantics. **The cursor advances by `item height +
+ItemSpacing.y` after EVERY item.** The block drew its real lines as text and then padded the
+remainder with a single `Dummy` of the leftover height — so:
+
+* a piece at the maximum drew 5 text items and paid 5 gaps;
+* a piece one line short drew 4 text items **plus a Dummy**, which is 6 items and 6 gaps.
+
+The shorter piece was taller by exactly one `ItemSpacing.y`, and only pieces that needed
+padding paid it — which is why it read as "the height increases with the smaller hat"
+instead of as a constant offset. Every measurement upstream was correct; the reservation
+arithmetic was right; the padding widget was the whole bug.
+
+Padding with the **same widget the content uses** deletes the arithmetic rather than fixing
+it: N lines is N lines whichever of them carry text. (An empty string still advances a full
+line — ImGui gives zero-length text the font's line height.)
+
+The general form, worth keeping: **when you reserve space by padding, pad with the same
+item type you are padding around.** Any other filler brings its own box model, and the
+difference shows up as a drift proportional to how much padding was needed — which looks
+like anything except a spacing bug.
+
+**Tests:** smoke `FGP41`–`FGP44` count line ITEMS rather than pixels (the stub has no
+layout): the tallest piece fills the reservation exactly, a shorter piece emits the same
+number of lines, an empty hover does too, and no `Dummy` is emitted at all. Plus `FGP40b`,
+which asserts the two sample pieces differ in natural height — without it the whole group
+would pass while never exercising the padding. Suites **5990** and **1081**.
+
+## Session "a scrollbar for one row" (2026-08-03, `2026.08.03q`)
+
+Henrik, with arrows drawn on the screenshot: the cascade scrolls (fine, sixteen triggers),
+but the main popup had a scrollbar too — *"barely any, it is just outside the main window.
+If it was just a little bit higher the scroll would not be needed."* The `+5 more — type to
+narrow` footer sat half-clipped under it.
+
+**The list came out about one row over the cap.** The row budget subtracted an *estimate* of
+the chrome above it — `(5 + maxLines) * lineH + #held * rowH` — and that estimate was around
+two lines short. A search box is a framed widget and taller than a text line, separators
+carry their own spacing, and the guessed constant covered neither. Two lines short of the
+cap is not a layout problem, it is a scrollbar for a sliver.
+
+**It is measured now.** By the time the list starts, everything above it has already been
+submitted, so *the cursor's own travel is the chrome* — one `GetCursorScreenPos` at the top
+of the popup, one where the list begins, and the difference is exact for the header, the
+move row, the search box, every pinned row, the reserved facts block and every separator
+between them, with nothing to keep in step when any of those change. The only allowance left
+is the footer, which has not been drawn yet: three lines covers its separator, its line and
+the window's bottom padding.
+
+The rule this is the second instance of: **when the thing you need is already on screen,
+read it — do not model it.** The width stopped being a constant two rounds ago for the same
+reason.
+
+**And the cap takes what the screen offers.** 460 was a constant that looked reasonable on
+one machine; it is 560 now, clamped to 85% of `GetIO().DisplaySize.y`. Height is the axis a
+player has most of, and the popup was leaving it on the table.
+
+**Tests:** `_rowBudget` is pure, so smoke `FGP45`–`FGP50` drive the arithmetic directly —
+taller chrome leaves fewer rows, the footer is subtracted, a taller cap buys rows back, a
+cramped popup keeps a floor of four, a zero row height is refused rather than dividing, and
+the exact floor case is pinned (560 − 200 − 51 = 309, 309/24 = **12** rows, not 13 — a
+rounded-up row is the whole bug). `FGP51`–`FGP52` cover the screen-aware cap. Suites **5990**
+and **1089**.

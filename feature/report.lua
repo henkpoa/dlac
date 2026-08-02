@@ -267,7 +267,7 @@ end
 -- equip from" -- because a player quoting one and support reading the other
 -- must be looking at the same sentence. `label` maps a claimant identity to
 -- its player-facing name (arbiter.claimantLabel); absent, the identity shows.
-function M._slotLines(rec, slot, label)
+function M._slotLines(rec, slot, label, prev)
     label = label or tostring;
     local ls = string.lower(slot);
     local con = rec.contest;
@@ -276,18 +276,59 @@ function M._slotLines(rec, slot, label)
     local win = (ops ~= nil) and ops[1] or nil;
     local out = {};
 
+    -- A CLAIMANT'S OFFER IS NOT A PLANNED ITEM (field, 2026-08-02). When the
+    -- plan did not name the slot, the row used to print the winner's item --
+    -- formatted identically to a piece that actually went on. That single
+    -- ambiguity is why two separate oddities were undiagnosable from the
+    -- artifact: a level-sync weapon hold removes Main from the plan while
+    -- Triggers still claims it, and the row said "Main  Bronze Spear +1 <-
+    -- Triggers" exactly as if it had been equipped. Sentinels ('(free equip)')
+    -- keep reading as themselves -- they are not gear and never were.
     local dropped = M._isDropped(rec, slot);
+    local offered = false;
     local shown = '(kept)';
     if item ~= nil and item ~= 'remove' then shown = tostring(item);
     elseif item == 'remove' then shown = '(removed)';
-    elseif win ~= nil then shown = tostring(win.item);
+    elseif win ~= nil and string.sub(tostring(win.item), 1, 1) == '(' then
+        shown = tostring(win.item);
+    elseif win ~= nil then shown = '(not placed)'; offered = true;
     elseif dropped then shown = '(left as worn)'; end
 
     local head = string.format('    %-7s %-30s', slot, shown);
     if win ~= nil then
         head = head .. string.format(' <- %s (rank %s)', tostring(label(win.name)), tostring(win.rank or 0));
+    elseif item ~= nil and item ~= 'remove' then
+        -- AN ITEM WITH NO OWNER (field, 2026-08-02). The plan carries the
+        -- piece and contest.explain has nobody for the slot -- so the two
+        -- halves of one record disagree about who decided it, which is the
+        -- invariant ADR 0027 exists to hold. Rendered bare it was
+        -- indistinguishable from an ordinary row, and it is not ordinary:
+        -- Ear1 landed Optical Earring this way on a level-up and only
+        -- acquired its claimant two dispatches later.
+        head = head .. ' <- NO CLAIMANT RECORDED (the plan has it, the contest names nobody)';
     end
     out[#out + 1] = (head:gsub('%s+$', ''));
+
+    if offered then
+        out[#out + 1] = string.format('            %s claimed this slot with %s, but the plan did not carry'
+            .. ' it -- a hold (lock, or the level-sync weapon hold) keeps the slot as worn.',
+            tostring(label(win.name)), tostring(win.item));
+    end
+
+    -- WHAT IT CHANGED FROM. The core question of a decision log, and the
+    -- report could not answer it: a changed slot showed only its new item, so
+    -- a record claiming a slot changed to the piece it already had read
+    -- exactly like a real change. Only for slots the record CALLS changed --
+    -- everything else did not, and saying "was:" there would invent an event.
+    if type(prev) == 'table' and findCI(rec.changed, ls) == true then
+        local was = findCI(prev.plan, ls);
+        if was == item then
+            out[#out + 1] = string.format('            was: %s -- SAME ITEM, yet the record lists this'
+                .. ' slot as changed.', tostring(was or '(nothing)'));
+        else
+            out[#out + 1] = '            was: ' .. tostring(was or '(nothing worn from a set)');
+        end
+    end
 
     -- the losers, so "why did MY claim not win" is answerable
     if ops ~= nil and #ops > 1 then
@@ -365,9 +406,60 @@ end
 M.SLOT_ORDER = { 'Main','Sub','Range','Ammo','Head','Neck','Ear1','Ear2',
                  'Body','Hands','Ring1','Ring2','Back','Waist','Legs','Feet' };
 
+-- lowered slot -> the canonical spelling, so a shift line reads 'Main' whatever
+-- case the producer used.
+local CANON = {};
+for _, s in ipairs(M.SLOT_ORDER) do CANON[string.lower(s)] = s; end
+
+-- The winning claimant for one slot of one record, or nil.
+local function winnerOf(rec, slotLower)
+    local con = (type(rec) == 'table') and rec.contest or nil;
+    local ops = (type(con) == 'table') and findCI(con.explain, slotLower) or nil;
+    return (ops ~= nil and ops[1] ~= nil) and tostring(ops[1].name) or nil;
+end
+
+-- SLOTS THAT CHANGED HANDS while their item stayed put (field, 2026-08-02).
+--
+-- A record only lands on the ring when the FINGERPRINT moved, and the
+-- fingerprint is items + winners. So a record with zero changed slots is one
+-- where a WINNER moved -- and the block that printed nothing was hiding
+-- exactly that. Six of 37 blocks in Henrik's full report were empty: a header,
+-- a ctx line, and nothing, which teaches a reader to skim past records that by
+-- definition are saying something happened.
+--
+-- Derived by comparing consecutive records rather than stored, because the ring
+-- does not record it -- and consecutive is the only comparison that means
+-- anything here: the ring appends on change, so record N-1 IS the state record
+-- N moved away from.
+function M._claimantShifts(prev, rec)
+    -- NOTHING TO COMPARE AGAINST is not "everything changed hands". The first
+    -- record of a capture has no predecessor, and treating every winner in it
+    -- as a fresh shift printed a shift line for all sixteen slots on top of
+    -- the rows that already said the same thing.
+    if type(prev) ~= 'table' or type(prev.contest) ~= 'table' then return {}; end
+    local slots, out = {}, {};
+    for _, r in ipairs({ prev, rec or {} }) do
+        local con = (type(r) == 'table') and r.contest or nil;
+        for slot in pairs((type(con) == 'table') and con.explain or {}) do
+            slots[string.lower(tostring(slot))] = true;
+        end
+    end
+    local ordered = {};
+    for s in pairs(slots) do ordered[#ordered + 1] = s; end
+    table.sort(ordered);
+    for _, ls in ipairs(ordered) do
+        local a, b = winnerOf(prev, ls), winnerOf(rec, ls);
+        if a ~= b then out[#out + 1] = { slot = ls, from = a, to = b }; end
+    end
+    return out;
+end
+
 -- One decision record -> its block. `slots` decides how much: 'changed' (the
 -- default) prints only the slots that moved, 'all' prints the whole plan.
-function M._decLines(rec, label, slots)
+-- `prev` is the record before it on the ring, which is what makes a claimant
+-- shift visible at all -- absent, the block degrades to the old behaviour
+-- rather than lying.
+function M._decLines(rec, label, slots, prev)
     if type(rec) ~= 'table' then return {}; end
     local out = {};
     -- How many of the changed slots were actually FILLED. The ring's own count
@@ -397,6 +489,23 @@ function M._decLines(rec, label, slots)
     if type(buffs) == 'table' and #buffs > 0 then
         out[#out + 1] = '      buffs: ' .. table.concat(buffs, ', ');
     end
+    -- WHICH SETS PRODUCED THIS. contest.src is on every record already and the
+    -- report was throwing it away -- it only ever surfaced inside a `ladder
+    -- (Name):` line, so a decision that resolved no ladder never named the set
+    -- it came from, which is precisely the decision you most want the set for.
+    local srcs, nsrc = {}, 0;
+    if type(rec.contest) == 'table' and type(rec.contest.src) == 'table' then
+        for _, sn in pairs(rec.contest.src) do
+            local s = tostring(sn);
+            if not srcs[s] then srcs[s] = true; nsrc = nsrc + 1; end
+        end
+    end
+    if nsrc > 0 then
+        local names = {};
+        for s in pairs(srcs) do names[#names + 1] = s; end
+        table.sort(names);
+        out[#out + 1] = '      sets: ' .. table.concat(names, ', ');
+    end
     -- Said ONCE per block, not once per slot. The first cut repeated three
     -- lines of prose on every dropped slot: a seven-slot weaponskill spent
     -- twenty-one lines saying the same sentence, in a file whose whole
@@ -410,6 +519,7 @@ function M._decLines(rec, label, slots)
         out[#out + 1] = '      its set does not name them, or nothing it names qualified (level, job, or you';
         out[#out + 1] = '      do not own it). What you had on stayed on. See the gear digest.';
     end
+    local printed, rows = {}, 0;
     for _, slot in ipairs(M.SLOT_ORDER) do
         local ls = string.lower(slot);
         local touched = (slots == 'all')
@@ -418,8 +528,54 @@ function M._decLines(rec, label, slots)
             or (type(rec.contest) == 'table' and type(rec.contest.fall) == 'table'
                 and findCI(rec.contest.fall.dead, ls) ~= nil);
         if touched then
-            for _, l in ipairs(M._slotLines(rec, slot, label)) do out[#out + 1] = l; end
+            printed[ls] = true;
+            for _, l in ipairs(M._slotLines(rec, slot, label, prev)) do out[#out + 1] = l; end
+            rows = rows + 1;
         end
+    end
+
+    -- Slots whose OWNER moved while the item stayed -- the reason a
+    -- zero-change record exists at all. Only those not already printed above:
+    -- a slot whose item moved has its story told, and repeating it as a
+    -- shift would double-count one event.
+    for _, sh in ipairs(M._claimantShifts(prev, rec)) do
+        if not printed[sh.slot] then
+            local was, now = findCI(prev.plan, sh.slot), findCI(rec.plan, sh.slot);
+            if was == now then
+                out[#out + 1] = string.format('    %-7s %-30s claim moved: %s -> %s   (the item did not change)',
+                    CANON[sh.slot] or sh.slot, tostring(now or '(kept)'),
+                    (sh.from ~= nil) and tostring(label(sh.from)) or '(nobody)',
+                    (sh.to ~= nil) and tostring(label(sh.to)) or '(nobody)');
+            else
+                -- The item moved too, and the record's own `changed` map did
+                -- not say so. Never assert "the item did not change" without
+                -- checking it -- the first cut did, and printed that sentence
+                -- over a slot that had gone from nothing to Emperor Hairpin.
+                -- Printed as the full slot story instead, and the disagreement
+                -- is called out: a `changed` map that misses a real change is
+                -- a finding about the ring, not a detail to smooth over.
+                for _, l in ipairs(M._slotLines(rec, CANON[sh.slot] or sh.slot, label, prev)) do
+                    out[#out + 1] = l;
+                end
+                out[#out + 1] = string.format('            claim moved: %s -> %s, and the item went %s -> %s',
+                    (sh.from ~= nil) and tostring(label(sh.from)) or '(nobody)',
+                    (sh.to ~= nil) and tostring(label(sh.to)) or '(nobody)',
+                    tostring(was or '(nothing)'), tostring(now or '(nothing)'));
+                out[#out + 1] = '            NOTE: the record did not list this slot as changed.';
+            end
+            rows = rows + 1;
+        end
+    end
+
+    -- A DECISION BLOCK IS NEVER EMPTY. The ring appends only when the
+    -- fingerprint moved, so a record that can show neither a changed slot nor
+    -- a claimant shift is a record whose reason this renderer cannot see --
+    -- and saying so is a finding, where printing a bare header taught the
+    -- reader to skim.
+    if rows == 0 then
+        out[#out + 1] = '      recorded, but nothing here differs from the decision before it: no slot';
+        out[#out + 1] = '      changed and no claimant changed hands. The ring appends only on a real';
+        out[#out + 1] = '      difference, so this is worth reporting -- it should not be possible.';
     end
     return out;
 end
@@ -641,10 +797,17 @@ function M._summaryLines(st)
     st = st or {};
     local nm = #(st.marks or {});
     local function s(n) return (n == 1) and '' or 's'; end
+    -- "0 actions" read as "you did nothing" over a log plainly containing a
+    -- weaponskill (field, 2026-08-02). The counter only ever tallied the
+    -- ANCHORS -- actions that moved no gear -- because an action that did move
+    -- gear is already a decision block, and counting it twice would inflate
+    -- the window. Correct by design, wrong by label; the label now says which.
     local out = {
-        string.format('window %ds -- %d decision%s, %d action%s, %d send%s, %d dlac chat line%s, %d mark%s',
-            tonumber(st.recorded) or 0, st.nDec or 0, s(st.nDec or 0), st.nAct or 0, s(st.nAct or 0),
+        string.format('window %ds -- %d decision%s, %d send%s, %d dlac chat line%s, %d mark%s',
+            tonumber(st.recorded) or 0, st.nDec or 0, s(st.nDec or 0),
             st.nSend or 0, s(st.nSend or 0), st.nChat or 0, s(st.nChat or 0), nm, s(nm)),
+        string.format('%d action%s dispatched and moved NO gear (an action that moved gear is a'
+            .. ' decision above, never counted twice).', st.nAct or 0, s(st.nAct or 0)),
     };
     if (st.nPre or 0) > 0 then
         out[#out + 1] = string.format('plus %d decision%s already in memory when recording started'
@@ -809,11 +972,12 @@ local function preroll(st)
         local ok, ring = pcall(dsp.getDecisions);
         if ok and type(ring) == 'table' then
             for _, rec in ipairs(ring) do
-                for _, l in ipairs(M._decLines(rec, claimLabel)) do out[#out + 1] = l; end
+                for _, l in ipairs(M._decLines(rec, claimLabel, nil, st.prevRec)) do out[#out + 1] = l; end
                 out[#out + 1] = '';
                 M._itemNames(rec, st.names);
                 M._noteLevel(st, rec);
                 st.lastSeq = math.max(st.lastSeq, tonumber(rec.seq) or 0);
+                st.prevRec = rec;      -- the state THIS record moved away from
                 n = n + 1;
             end
         end
@@ -866,7 +1030,8 @@ local function pump()
                     st.nDec = st.nDec + 1;
                     M._itemNames(rec, st.names);
                     M._noteLevel(st, rec);
-                    for _, l in ipairs(M._decLines(rec, claimLabel)) do q(l); end
+                    for _, l in ipairs(M._decLines(rec, claimLabel, nil, st.prevRec)) do q(l); end
+                    st.prevRec = rec;
                     q('');
                 end
             end

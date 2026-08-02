@@ -84,6 +84,61 @@ and `changed` differ, so ordinary decisions keep a one-line header.
 `(kept)` means something different and still exists: nobody claimed the slot at
 all. `(left as worn)` means this decision tried and placed nothing.
 
+### `claim moved:` — and why a block is never empty
+
+The ring appends only when the **fingerprint** moves, and the fingerprint is
+*items plus winners*. So a record can land with **zero changed slots** because a
+slot changed **hands** while its item stayed put:
+
+```
+[17:22:56] #27 Default -- status=Idle moving=true   (0 slots changed)
+    Main    Harpoon    claim moved: Triggers -> (nobody)   (the item did not change)
+```
+
+Shifts are derived by comparing consecutive records — the ring does not store
+them — so the first block of a report has no predecessor and shows none. A slot
+whose *item* moved is printed as an ordinary row instead; it is never counted
+twice.
+
+`(the item did not change)` is **verified**, not assumed. When a shift's item
+moved too, the block prints the transition and adds
+`NOTE: the record did not list this slot as changed` — that note should never
+appear in a real report, so treat it as a finding about the decision ring.
+
+A decision block is **never empty**. If one can show neither a changed slot nor
+a shift, it says so in those words, and that too is a finding: the ring should
+not have appended it.
+
+### `was:` — what the slot changed from
+
+Printed only for slots the record **calls changed**, and only when a previous
+record exists. Saying it elsewhere would invent an event out of a slot that simply
+held.
+
+```
+    Head    Faceguard +1     <- Triggers (rank 13)
+            was: Lth. Bandana +1
+```
+
+If the previous item is **identical**, the line reads
+`was: X -- SAME ITEM, yet the record lists this slot as changed.` That is a
+finding about the decision ring, not a formatting quirk: the record claimed a
+slot moved and it did not.
+
+### `NO CLAIMANT RECORDED`
+
+The plan carries an item and `contest.explain` names nobody for that slot — the
+two halves of one record disagreeing about who decided it, which is the invariant
+ADR 0027 exists to hold. Observed on a level-up: a newly eligible piece landed in
+the plan and only acquired its claimant two dispatches later. Rendered bare it was
+indistinguishable from an ordinary row, so it is labelled.
+
+### `sets:`
+
+Every block names the sets that produced it, from `contest.src`. Previously this
+only surfaced inside a `ladder (Name):` line, so a decision that resolved no
+ladder never named its set — precisely the decision you most want it for.
+
 The vocabulary — *fell*, *reserves*, *not in a bag you can equip from*, *held
 EMPTY* — is deliberately identical to `/dl why` and the Arbiter Monitor's hover.
 A player quoting one and you reading the other are looking at the same sentence.

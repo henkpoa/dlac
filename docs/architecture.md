@@ -248,8 +248,48 @@ A **Floating window** (CONTEXT.md) is *not* a `host.register` window: those rend
 `drawWindow`, which returns early when the main box is shut. A floating window is drawn
 from gearui's `d3d_present` **above** its `if not M.visible then return`, so it survives
 the main window closing — which is the entire point of every one of them (lockstyle,
-floatgear, the Trigger Monitor, the restock nudge, the two Chocobo dig searches, the
+floatgear, the Trigger Monitor, the icon tray, the two Chocobo dig searches, the
 Hobby bar, idlefloat, the fishing target window).
+
+#### The icon tray — ui/tray.lua (2026-08-03)
+The always-on **icon chips** are one window, not several. The Teleports button and the
+E-Box Restock crates each used to `Begin` their own float, which put two little boxes on
+the same screen doing the same kind of job — and made them enforce a shared 36×36 button
+size by *comment* (`NUDGE_SZ`/`NUDGE_PAD` "change these together with gearui's, or they
+drift"). This is ADR 0017's hobby-bar move applied to the floats: **one window supplies
+the chrome and the position, each member draws its icons inline.**
+
+A tray **slot** answers two questions:
+
+| | |
+|---|---|
+| `trayWants(deps) → boolean` | a **cheap** gate — flags and proximity only, no bag scans |
+| `trayDraw(deps)` | draws inline: no `Begin`, no position, and never opens with `SameLine` |
+
+Two phases, and the split is the point: **every member is asked before anything is
+drawn**, because an `AlwaysAutoResize` window begun with an empty body is not nothing —
+it is a grey box parked on the player's screen that eats clicks. Nothing in the tray
+decides *when* an icon shows; that stays with each member (Teleports because you pinned
+it, the crates because you are near a box). The tray only stops asking for a window once
+every member has gone quiet.
+
+**The axis is top-to-bottom** (Henrik, 2026-08-03): one column, one icon per line, and
+**nothing in the tray calls `SameLine`** except a badge sitting beside its own icon.
+`AlwaysAutoResize` pins the window's top-left and grows it down and right, so a column
+keeps the tray hanging off the corner you dragged it to instead of creeping sideways
+across the screen as icons appear.
+
+**Order is a ruling, not a layout detail** (Henrik). `SLOTS` reads top-to-bottom with the
+**constant members first**, and each member orders its own icons the same way, because a
+member that comes and goes shifts everything *below* it. Store is one click, no confirm,
+and deposits your whole Inventory, so it is anchored at the top of the crates (it used to
+be drawn last, so every appearance of the green crate pushed it down a row) and only the
+two volatile ones — green with "Only when needed", yellow with your Mog House stock — can
+shift each other.
+
+Position is `ui._tpPos` (`tpx`/`tpy` in uiflags) — the Teleports float's own saved spot,
+inherited deliberately: the tray takes **one** position, so this way the button you
+pinned stays where you put it and the crates come to *it*.
 
 The invariant, and the only thing that makes them safe to open from several places:
 
@@ -308,6 +348,68 @@ matches. Pins are session-only and the clear must reach DISK (`pinwatch.loadPinS
 pumped from gearui's d3d_present whether or not the window is open): the engine reads
 the file from LAC's state, so a stale file would dress you at login. "Lock" still means
 the old, near-opposite thing (`M.locks` = engine ignores the slot).
+
+**A slot holds SEVERAL pins** (2026-08-03) — Optical Hat on `TP_Default`, Walahra Turban
+on `Movement`, both live. The slot's value becomes a *list* of `{ item, scope }` entries
+and the engine settles it per dispatch, because an overlay is an equip table and a slot
+wears one thing. The settling rule is not new, it is borrowed: `dispatch._pinRank` scores
+each entry by **the index of the last hit it names** — `hits` is already sorted ascending
+by priority and applied last-writer-wins (ADR 0003), so *the pin belonging to the trigger
+that would have won the slot anyway is the pin that wins it*. `'All'` scores 0, the
+weakest claim there is: "always" is the least specific thing a pin can say, which makes an
+All pin the natural fallback underneath its scoped siblings rather than a competitor.
+
+On the way IN the rules are pinwatch's: `'All'` replaces the slot whole (Henrik), a scoped
+pin replaces only the pins already holding one of the same triggers (one item per trigger
+per slot). A one-pin slot still serializes in the *original* single-entry shape, byte for
+byte — the list shape appears only where a second pin actually exists, so the common case
+never touches the new path and an older engine copy reads the file unchanged. Both states
+read the shape through the same walk (`pinwatch.entriesOf` / `dispatch._pinEntriesOf`),
+spelled twice on purpose: the engine runs in the other Lua state and must never depend on
+an addon-state module being loaded.
+
+The floating window's pin menu offers **only what you can put on at that moment** — the
+job/level half was always the Gear Oracle's `canWear` (via `candidatesForSlot`), the bag
+half is `gearui`'s `avail.have`, the same function the Sets tab previews the engine's own
+refusal with. Three-valued there and here: only a definite `false` hides a row, because an
+empty bag scan means "not answered yet", not "you own nothing".
+
+#### The pin menu's geometry — one static popup (2026-08-03, field-confirmed)
+
+The menu carries item icons, and the hovered piece's **facts** (stats, DMG/Delay, what the
+piece takes away, augments, which bag it is in) as a block **inside the popup**, above the
+list. Inside is the whole design: nothing in a window can be covered by that window's own
+menus, so there is no side to choose and no z-order to lose. Two outside placements were
+built and both failed in the field — a tooltip follows the cursor and the cursor is on the
+menu, and **a plain `Begin()` window is always drawn under an open popup**, whatever order
+it is created in.
+
+The popup is **static per slot**: one width, one height, unchanged as the cursor moves.
+That needs four separate things, each of which was a round:
+
+| | how |
+|---|---|
+| Width | `popupWidth` — max over pinned rows, longest candidate NAME, and the widest line any piece would draw unwrapped. Then **pinned**: `min.x == max.x`, because a popup is `AlwaysAutoResize` and a max alone is a permission, not a width. |
+| Facts height | reserved for the pool's **tallest** piece, padded to it with empty text lines — *not* a `Dummy`, whose extra `ItemSpacing.y` made shorter pieces render taller. |
+| List rows | `_rowBudget` over the **measured** chrome (`GetCursorScreenPos` at the popup top and at the list start), not an estimate. Overflow is counted, never hidden: `+N more — type to narrow`. |
+| Ceilings | screen-aware — `GetIO().DisplaySize` × 0.55 wide, × 0.85 tall. |
+
+`factsLines` builds the block as **data before it is drawn** ( `{col, text}` ), which is
+forced rather than stylistic: you cannot measure a card without drawing it, so an opaque
+renderer like `renderItemTooltip` can never answer "how tall is the tallest of these
+thirty". Wrapping is **character-based**, because the count must be identical in the
+measuring pass and the drawing pass. The block is deliberately bounded — no set-bonus
+ladder, no partner list — since a card that can run twenty lines cannot have space reserved
+for it. The full card still lives on the 4×4 grid's own hover.
+
+The **cascade** names the set (`Midcast  -> Enfeebling_White`) rather than the conditions,
+and is height-capped so long trigger lists scroll. Compact only where it stays unambiguous:
+`floatgear.disambiguate` sends *both* rows back to the full spelling when two would read
+alike — a field job had two Default rules both reading `status = Idle`, differing only by
+the set they feed. The cap is a `SetNextWindowSizeConstraints` before `BeginMenu`, never a
+`BeginChild` (a child in the menu chain is what tore the popup down in July); an unconsumed
+constraint is neutralised after the loop, since next-window data otherwise lands on the next
+`Begin` anywhere — including another addon's.
 
 ### The Arbiter — claim registry (dispatch.lua + feature/arbwatch.lua, ADR 0012)
 The **single precedence authority** for gear that dresses over the Trigger overlay floor.
