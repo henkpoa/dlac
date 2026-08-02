@@ -7970,5 +7970,14 @@ BETWEEN the files -- `deps.createEmptySets` named on both ends, plus the button 
 absence of the old paragraph -- because a renamed deps key is not an error in Lua, it is a
 button that does nothing, silently.
 
-**Not field-tested.** The banner, the Create click and the created-set commit are all suite
-and source coverage only until it runs on the DRG that started this.
+**Field round, same session.** *"Field tested, works perfect, merge, push to origin main"* --
+so it went to main **field-confirmed**, built and promoted inside one session. His pass covered
+the banner, the Create click and the created sets on the DRG that started it. The one thing it
+could not cover is the commit-failure path (`N FAILED`): `setmanager.commitSet` refuses only on
+a torn or unwritable sets file, which cannot be produced in a normal session -- suite and source
+only, and recorded rather than quietly counted as confirmed.
+
+The lesson to carry, since the ask was phrased as a text problem: what actually shortened the
+message was **giving the player the fix instead of describing it**. Every clause that came out
+of the line was explaining a repair the button now performs. When a warning is long, the first
+question is whether it is long because it is doing the user's work in prose.
