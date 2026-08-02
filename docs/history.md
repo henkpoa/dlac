@@ -8705,10 +8705,21 @@ place (GRD3).
    idle variants, a `Ws_Default` on a job whose Weaponskill handler has no rules. Their
    pieces get a section of their own and are never called unused.
 2. **A lockstyle piece does not need a wardrobe.** Henrik: *"you can lockstyle to pieces
-   that are on mog house etc."* Confirmed in the server source before it was built —
-   `src/map/packets/c2s/0x053_lockstyle.cpp`, `Set` mode, validates that the id is a real
-   equipment item that fits the slot and **never looks at ownership or container**. So
-   lockstyle-only pieces are reported as MOVEABLE, which on his character is 61 items.
+   that are on mog house etc."* Confirmed in the server source — but in **two halves, and
+   collapsing them into one is exactly the mistake this entry exists to prevent.**
+   `c2s/0x053_lockstyle.cpp` (`Set`) stores the id after checking only that it is real
+   equipment that fits the slot: no ownership, no container. That is the half I read first,
+   and I wrote *"never reads ownership or container"* into four files off it. The gate is
+   one call further on: `charutils.cpp UpdateArmorStyle` renders only when
+   `HasItem(PChar, id)` **and** `canEquipItemOnAnyJob`, and `HasItem` walks **every**
+   container (`0..MAX_CONTAINER_ID`). So the container is genuinely irrelevant — Mog Safe,
+   Locker, Storage all keep the look — while **still owning the piece is not**: sell it and
+   the slot renders empty. Caught by an 18-day-old memory note ([[lockstyle-server-rules]])
+   that already had the right sentence in it; the wording was corrected in the same session,
+   one commit after the promotion. **A handler that accepts a value is not the code that
+   uses it — read to the consumer before claiming what is not checked.**
+   Lockstyle-only pieces are reported as MOVEABLE (61 of them on his character), with the
+   window saying *move them anywhere, but keep them*.
 3. **Helper picks count as use, named by helper** — the MaxMP ladder, auto-staff/obi/grip,
    craft, HELM, fishing, chocobo, the per-job ammo lists, the rod and bait, and a job
    helper's pinned item (BST's `resummonJug`). dlac equips these with no set naming them.
