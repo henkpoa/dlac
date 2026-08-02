@@ -8435,3 +8435,57 @@ now, spelled as the three individual input bits rather than their union so each 
 for the item actually hovered, the card is asked for frameless, it lands clear to the left,
 it drops below when there is no left, it cannot catch the mouse, and every window opened in
 the frame is closed. Suites **5990** and **1061**.
+
+## Session "the cascade was eating the screen" (2026-08-03, `2026.08.03l`)
+
+Four field screenshots of the pin menu in each screen corner, and they answered more than
+the question asked of them. The item-facts panel was being *sliced* — three rows of Bunzi's
+Robe's six visible, the rest painted over by the scope cascade.
+
+**The first finding is a hard ImGui rule, not a placement bug.** A plain `Begin()` window is
+always drawn under any open popup or menu, whatever order it is created in. So no amount of
+moving the panel fixes it: anywhere the cascade reaches, the panel loses. (Two ways above
+it exist and are written down for when they are needed: `SetNextWindowPos` +
+`BeginTooltip`, because tooltips are the one window class that renders over popups and
+setting the position first suppresses the mouse-follow; or `GetForegroundDrawList`, which
+draws over everything but is raw shapes and would fork the card. Neither is used yet.)
+
+**The second finding is that no placement rule could have worked anyway.** Measured off the
+screenshots: popup ~245px, cascade ~750px, on a ~1130px client. The menu chain was ~1000 of
+1130 pixels wide and full height. There was no 360px gap anywhere — not beside it, not above
+it, not below it. Henrik's own arithmetic (panel rows + 1, and "this would only fit if my
+mouse were on the FIFTH equipment") arrives at the same wall from the other direction.
+
+So the fix is the cause, not the symptom: **the cascade got smaller.**
+
+Rows now spell the SET instead of the conditions — `Midcast  -> Enfeebling_White` in place
+of `Midcast  magicType = White Magic, skill = Enfeebling Magic  -> Enfeebling_White`. A
+third of the width for the same identification.
+
+**But the conditions could not simply be dropped, and the screenshot is what proved it.**
+That job carries two Default rules both reading `status = Idle`, one feeding the Idle set
+and one feeding Weapon: drop the *set* and they are the same row twice, drop the
+*conditions* and they stay distinct. The set name is the half that identifies a rule to a
+person. So the rule is: compact by default, and any label that would appear **twice** falls
+back to the full line — the only case that needed the width to begin with. Both duplicates
+fall back, not just the second; one explained row beside one unexplained row reads worse
+than two long ones. `floatgear.disambiguate` is pure and exported, because the point of it
+is a guarantee (no two rows read alike) and a guarantee wants a test.
+
+**And the cascade is height-capped now**, so a job with thirty triggers scrolls instead of
+running off the bottom of the screen. Through `SetNextWindowSizeConstraints` before
+`BeginMenu`, never a `BeginChild` — a child window inside the menu chain is exactly what
+tore the whole popup down back in July, and the constraint is the mechanism the parent popup
+already uses. Height only: capping the width would re-clip the rows the compact spelling
+just fixed. The catch is that a constraint no submenu consumed stays armed and lands on the
+next `Begin` **anywhere** — including another addon's window — so the loop ends by setting
+a 100000x100000 constraint, which constrains nothing. ImGui offers no other way to take one
+back.
+
+**Tests:** smoke `FGP32`–`FGP40` — unique rows stay short, a duplicated compact label sends
+*both* rows back to the full line, an unaffected row beside them stays short, no two rows
+read alike afterwards, every cascade is capped before it opens, the leftover is neutralised,
+and the popup's own measured cap is untouched by any of it. Suites **5990** and **1070**.
+
+**Owed in the field:** that a size-constrained submenu actually scrolls in this ImGui build,
+and that the popup still survives moving the mouse across items with the constraint armed.

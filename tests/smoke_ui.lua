@@ -883,6 +883,9 @@ end)();
     local function nop() end
     local menuLabels, selLabels, iconCalls = {}, {}, 0;
     local selectPrefix = nil;      -- the label prefix a "click" lands on
+    -- Declared HERE, not down at the width checks: `frame()` below resets it, and
+    -- a local declared after that closure would leave `caps` a global inside it.
+    local caps = {};
     local IM = {};
     for _, n in ipairs({ 'SetNextWindowPos', 'SetNextWindowSize', 'SetNextWindowSizeConstraints',
         'Separator', 'Text', 'TextColored', 'TextWrapped', 'SameLine', 'Dummy', 'Image',
@@ -993,7 +996,7 @@ end)();
         return false;
     end
     local function frame()
-        menuLabels, selLabels, iconCalls, begun = {}, {}, 0, {};
+        menuLabels, selLabels, iconCalls, begun, caps = {}, {}, 0, {}, {};
         return pcall(fg.render);
     end
     local function windowNamed(n)
@@ -1065,18 +1068,21 @@ end)();
     -- thing a clamped popup can do is clip. The cap is measured now, so these
     -- drive CalcTextSize per-character and read the constraint back.
     IM.CalcTextSize = function(s) return #tostring(s or '') * 7, 14; end
-    local lastMax = nil;
-    IM.SetNextWindowSizeConstraints = function(_, mx) lastMax = mx; end
+    -- EVERY constraint of the frame, in order. The POPUP's is the first (it is
+    -- set before BeginPopup); the cascade sets its own per row inside, and the
+    -- facts panel sets one too -- so "the last one" is the wrong question.
+    IM.SetNextWindowSizeConstraints = function(_, mx) caps[#caps + 1] = mx; end
+    local function popupCap() return (caps[1] or {})[1]; end
 
     pw.pins = {};
     frame();
-    local bare = (lastMax or {})[1];
+    local bare = popupCap();
     check('FGP19 nothing pinned + short item names -> the floor', bare, 250);
 
     pw.setPin('Head', 'Optical Hat',    { 'Default|mode=TP_Default' });
     pw.setPin('Head', 'Walahra Turban', { 'Default|moving=true' });
     frame();
-    local pinned = (lastMax or {})[1];
+    local pinned = popupCap();
     check('FGP20 a pinned row WIDENS the popup (the bug: it used to clip)',
         type(pinned) == 'number' and pinned > bare, true);
 
@@ -1084,7 +1090,7 @@ end)();
     pw.pins = {};
     pw.setPin('Head', 'Optical Hat', { 'Default|mode=' .. string.rep('x', 40) });
     frame();
-    local longer = (lastMax or {})[1];
+    local longer = popupCap();
     check('FGP21 a longer trigger line widens it further',
         type(longer) == 'number' and longer > pinned, true);
 
@@ -1093,7 +1099,7 @@ end)();
     pw.pins = {};
     pw.setPin('Head', 'Optical Hat', { 'Default|mode=' .. string.rep('x', 400) });
     frame();
-    check('FGP22 ...and it stops at the ceiling', (lastMax or {})[1], 620);
+    check('FGP22 ...and it stops at the ceiling', popupCap(), 620);
 
     -- ----------------------------------------------------------------------
     -- THE FACTS PANEL. "Show the stats of the item as well -- somewhere where
@@ -1144,6 +1150,59 @@ end)();
     check('FGP30 hard against the left edge, the panel goes BELOW instead',
         type((low or {}).pos) == 'table' and low.pos[2] > winY, true);
     check('FGP31 ...and it is still balanced there', winDepth, 0);
+
+    -- ----------------------------------------------------------------------
+    -- THE CASCADE'S WIDTH (field, 2026-08-03: popup ~245px + cascade ~750px on
+    -- a ~1130px client left the facts panel nowhere to go). Rows spell the set
+    -- instead of the conditions -- but only where that stays unambiguous, and
+    -- the field screenshot is why: that job has TWO Default rules reading
+    -- `status = Idle`, one feeding Idle and one feeding Weapon. Drop the set and
+    -- they are the same row twice.
+    -- ----------------------------------------------------------------------
+    local D = fg.disambiguate;
+    local uniq = D({
+        { menu = 'Default  -> Tp_Default', text = 'Default  status = Engaged  -> Tp_Default' },
+        { menu = 'Default  -> Movement',   text = 'Default  moving  -> Movement' },
+    });
+    check('FGP32 unique compact rows keep the SHORT spelling',
+        uniq[1].menu, 'Default  -> Tp_Default');
+    check('FGP33 ...and it is much shorter than the full line',
+        #uniq[1].menu < #uniq[1].text, true);
+
+    local dup = D({
+        { menu = 'Default  -> Idle', text = 'Default  status = Idle  -> Idle' },
+        { menu = 'Default  -> Idle', text = 'Default  status = Idle  -> Weapon' },
+        { menu = 'Default  -> Toxin', text = 'Default  any  -> Toxin' },
+    });
+    -- (the SAME compact label twice is the case the screenshot caught -- both
+    -- fall back, because falling back only the second would still read as a pair
+    -- of rows where one is explained and one is not)
+    check('FGP34 a compact label that would appear twice falls back to the full line',
+        dup[1].menu, 'Default  status = Idle  -> Idle');
+    check('FGP35 ...both of them, not just the second', dup[2].menu,
+        'Default  status = Idle  -> Weapon');
+    check('FGP36 ...and an unaffected row beside them stays short',
+        dup[3].menu, 'Default  -> Toxin');
+    check('FGP37 no two rows read alike afterwards',
+        (dup[1].menu ~= dup[2].menu) and (dup[2].menu ~= dup[3].menu), true);
+
+    -- The cascade is HEIGHT-capped so a job with thirty triggers scrolls rather
+    -- than running off the screen. Set through a constraint, never a BeginChild:
+    -- a child in the menu chain is what tore the whole popup down before.
+    pw.pins = {};
+    openMenu = nil;
+    frame();
+    local sawSubCap, sawClear = false, false;
+    for i, mx in ipairs(caps) do
+        if i > 1 then                                   -- caps[1] is the popup's
+            if type(mx) == 'table' and mx[2] == 340 then sawSubCap = true; end
+            if type(mx) == 'table' and mx[2] == 100000 then sawClear = true; end
+        end
+    end
+    check('FGP38 every cascade is height-capped before it opens', sawSubCap, true);
+    check('FGP39 ...and the last unconsumed one is neutralised, not left armed',
+        sawClear, true);
+    check('FGP40 ...with the popup\'s own cap untouched by all of it', popupCap(), 250);
 
     openMenu = nil;
     Sx.renderItemTooltip = keptTip;

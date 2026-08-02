@@ -274,14 +274,45 @@ local function triggerChoices()
                     local setn = (type(r.set) == 'string') and r.set
                               or ((type(r.set) == 'table') and r.set[1] or nil);
                     out[#out + 1] = {
-                        key   = dsp.pinScopeKey(ev, label),
-                        text  = string.format('%s  %s%s', ev, shown,
+                        key  = dsp.pinScopeKey(ev, label),
+                        text = string.format('%s  %s%s', ev, shown,
                             setn and ('  -> ' .. tostring(setn)) or ''),
-                        short = string.format('%s  %s', ev, shown),
+                        -- The compact spelling every ROW uses -- see disambiguate.
+                        menu = setn and string.format('%s  -> %s', ev, tostring(setn))
+                                     or string.format('%s  %s', ev, shown),
                     };
                 end
             end
         end
+    end
+    return M.disambiguate(out);
+end
+
+-- THE ROW SPELLING, and why it is not simply the short one.
+--
+-- The cascade was ~750px wide in the field (2026-08-03) because every row spelled
+-- out its conditions: "Midcast  magicType = White Magic, skill = Enfeebling Magic
+-- -> Enfeebling_White". Popup plus cascade came to ~1000px of a ~1130px client,
+-- which is what left the item-facts panel nowhere to go. "Midcast -> Enfeebling_
+-- White" says the same thing in a third of the width.
+--
+-- But the conditions cannot just be DROPPED, and the field screenshots are why:
+-- that job has two Default rules reading `status = Idle`, one feeding the Idle
+-- set and one feeding Weapon. Drop the set and they are the same row twice; drop
+-- the conditions and they are still distinct. The set name is the half that
+-- identifies a rule to a person.
+--
+-- So: compact by default, and any label that would appear TWICE falls back to the
+-- full line -- which is the only case that needed the width in the first place.
+-- Pure and exported: the whole point is a guarantee (no two rows read alike) and
+-- a guarantee wants a test, not a render to squint at.
+function M.disambiguate(out)
+    local seen = {};
+    for _, c in ipairs(out or {}) do
+        seen[c.menu] = (seen[c.menu] or 0) + 1;
+    end
+    for _, c in ipairs(out or {}) do
+        if (seen[c.menu] or 0) > 1 then c.menu = c.text; end
     end
     return out;
 end
@@ -304,7 +335,7 @@ local function scopeTextOf(e, byKey, field)
     local parts = {};
     for _, k in ipairs(e.scope) do
         local c = (type(byKey) == 'table') and byKey[k] or nil;
-        parts[#parts + 1] = tostring((type(c) == 'table' and c[field or 'short']) or k);
+        parts[#parts + 1] = tostring((type(c) == 'table' and c[field or 'menu']) or k);
     end
     if #parts == 0 then return 'All -- every dispatch'; end
     return table.concat(parts, ' / ');
@@ -314,7 +345,7 @@ end
 -- a popup told to fit a row it did not actually measure is the bug this exists
 -- to prevent.
 local function pinRowText(e, byKey)
-    return string.format('%s   --   %s', tostring(e.item), scopeTextOf(e, byKey, 'short'));
+    return string.format('%s   --   %s', tostring(e.item), scopeTextOf(e, byKey, 'menu'));
 end
 
 -- The scope keys this slot's pins already hold -> the item holding each ('All'
@@ -368,6 +399,11 @@ end
 -- around. Measured UNFILTERED on purpose -- the width holding still while you
 -- type is worth more than shaving pixels off it per keystroke.
 local MIN_W, MAX_W, CAP_W = 250, 620, 460;   -- floor, ceiling, height cap
+-- The CASCADE's height cap (its width is left free -- see the note at BeginMenu).
+-- Deliberately shorter than the parent popup's: the cascade opens level with the
+-- row you are hovering, which can be most of the way down the list, so a submenu
+-- as tall as the popup would start below the screen's bottom edge as often as not.
+local SUB_MAX_H = 340;
 local function popupMaxW(slot, byKey, pool)
     local widest = 0;
     for _, e in ipairs(pins.pinsOf(slot)) do
@@ -506,7 +542,10 @@ local function renderScopeRows(slot, name, choices, inMenu)
     imgui.Separator();
     if #choices > 0 then
         for _, c in ipairs(choices) do
-            if row(c.text, c.key) then applyPin(slot, name, { c.key }); hit = true; end
+            if row(c.menu or c.text, c.key) then applyPin(slot, name, { c.key }); hit = true; end
+            -- The conditions the compact label leaves out, on hover. They are the
+            -- reason the row is short, so they have to be one movement away.
+            if imgui.IsItemHovered() then imgui.SetTooltip(fmt.esc(tostring(c.text))); end
         end
         imgui.Separator();
         imgui.TextColored(COL.DIM, 'One pin per trigger. Pinning a trigger leaves\nthis slot\'s other trigger pins alone.');
@@ -688,6 +727,17 @@ local function renderPinMenu(job, level, choices, pool)
                 -- raw nm, not fmt.esc: menu/selectable labels are not format
                 -- strings (see renderScopeRows)
                 if hasMenu then
+                    -- BOUND THE CASCADE, so a job with thirty triggers gets a
+                    -- scrollbar instead of a submenu taller than the screen.
+                    --
+                    -- The constraint, NOT a BeginChild around the scope rows: a
+                    -- child window inside the menu chain is the thing that tore
+                    -- the whole popup down (see the header), and a constraint is
+                    -- the mechanism already used on the parent popup. It has to
+                    -- be set before BeginMenu because BeginMenu is what Begins
+                    -- the submenu window. Height only -- capping the width would
+                    -- re-clip the very rows the compact spelling just fixed.
+                    imgui.SetNextWindowSizeConstraints({ 0, 0 }, { 100000, SUB_MAX_H });
                     -- BeginMenu's RETURN is the hover signal, not IsItemHovered:
                     -- a submenu in a popup opens on hover and stays open while
                     -- you are inside it, so "this cascade is open" is exactly
@@ -709,6 +759,12 @@ local function renderPinMenu(job, level, choices, pool)
             end
         end
     end
+    -- NEUTRALISE the constraint no submenu consumed. Every closed BeginMenu above
+    -- left one armed, and next-window data survives until the next Begin ANYWHERE
+    -- -- including another addon's window (the note before BeginPopup says so).
+    -- A max of 100000 x 100000 constrains nothing, so this is a clear, not a
+    -- setting; ImGui offers no other way to take one back.
+    if hasMenu then imgui.SetNextWindowSizeConstraints({ 0, 0 }, { 100000, 100000 }); end
     if #list == 0 then
         -- Distinct from "nothing MATCHES": the pool itself is empty, and after
         -- the bag gate above the likeliest reason is that the piece you have in
