@@ -645,6 +645,22 @@ M._factsMaxLines = factsMaxLines;   -- test seam
 -- Draw the block and PAD it to the reserved height. The padding is the whole
 -- point: without it the popup is a different size for a plain ring than for a
 -- weapon, and every hover shuffles the rows under the cursor.
+-- ...and it pads with EMPTY TEXT LINES, not with one Dummy of the leftover
+-- height. That distinction is not cosmetic; it was a field bug (Henrik: "Bunzi's
+-- hat has 5 rows, Windfall hat has 4, and the height INCREASES with Windfall --
+-- can this be explained?").
+--
+-- It can. ImGui advances the cursor by `item height + ItemSpacing.y` after EVERY
+-- item. So five text lines cost 5*(font + spacing). Four text lines plus a Dummy
+-- of one line's height cost 4*(font + spacing) + (font + spacing) + spacing --
+-- one extra ItemSpacing.y, because the Dummy is a sixth item and gets its own
+-- gap. The piece with FEWER rows came out TALLER, by exactly one spacing, and
+-- only for pieces that needed padding at all: a piece at the maximum draws no
+-- Dummy and pays nothing.
+--
+-- Padding with the same widget the content uses removes the arithmetic entirely.
+-- N lines is N lines whichever of them carry text. (An empty string still
+-- advances a full line: ImGui gives zero-length text the font's line height.)
 local function renderFactsBlock(rec, level, wrapN, maxLines)
     local drawn = 0;
     if type(rec) == 'table' then
@@ -657,15 +673,13 @@ local function renderFactsBlock(rec, level, wrapN, maxLines)
         imgui.TextColored(COL.DIM, 'Hover a piece for its stats.');
         drawn = 1;
     end
-    if drawn < maxLines then
-        local lh = 14;
-        pcall(function()
-            local h = imgui.GetTextLineHeightWithSpacing();
-            if type(h) == 'number' and h > 0 then lh = h; end
-        end);
-        imgui.Dummy({ 0, (maxLines - drawn) * lh });
+    while drawn < maxLines do
+        imgui.Text('');          -- no '%' in it: Text is printf (the imgui law)
+        drawn = drawn + 1;
     end
+    return drawn;                -- what the tests count
 end
+M._renderFactsBlock = renderFactsBlock;   -- test seam
 
 -- The catalog record behind a NAME -- a pin stores a name, so the facts panel and
 -- the pinned rows' icons both have to get back to a record. nil when the name has

@@ -1144,6 +1144,40 @@ end)();
     check('FGP29 an empty pool still reserves a line (the "hover a piece" prompt)',
         ML({}, 75, 40) >= 1, true);
 
+    -- THE PADDING IS LINES, NOT A DUMMY -- a field bug (Henrik: "Bunzi's hat has
+    -- 5 rows, Windfall hat has 4, and the height INCREASES with Windfall").
+    -- ImGui advances by `item height + ItemSpacing.y` after EVERY item, so four
+    -- lines plus a one-line Dummy is SIX gaps where five lines is five: the
+    -- shorter piece came out taller, by exactly one spacing, and only for pieces
+    -- that needed padding at all. Padding with the same widget the content uses
+    -- deletes the arithmetic -- so what this checks is that every piece emits the
+    -- SAME NUMBER OF LINE ITEMS, and that no Dummy is involved.
+    local RB = fg._renderFactsBlock;
+    local lineItems, dummies = 0, 0;
+    local keptTC, keptT, keptD = IM.TextColored, IM.Text, IM.Dummy;
+    IM.TextColored = function() lineItems = lineItems + 1; end
+    IM.Text        = function() lineItems = lineItems + 1; end
+    IM.Dummy       = function() dummies = dummies + 1; end
+    local tall = { Name = 'Bunzi\'s Hat', Id = 81, Slot = 'Head', Level = 75,
+                   Stats = { DEF = 27, MP = 25, MND = 10, ACC = 20, ATT = 15 } };
+    local short = { Name = 'Windfall Hat', Id = 82, Slot = 'Head', Level = 70 };
+    local reserve = ML({ tall, short }, 75, 40);
+    -- Guard against a vacuous test: if these two happened to build the same
+    -- number of lines, nothing below would ever exercise the padding at all.
+    check('FGP40b the two pieces really do differ in natural height',
+        #FL(tall, 75, 40) > #FL(short, 75, 40), true);
+    lineItems, dummies = 0, 0; RB(tall,  75, 40, reserve);
+    local tallN = lineItems;
+    lineItems, dummies = 0, 0; RB(short, 75, 40, reserve);
+    local shortN = lineItems;
+    check('FGP41 the tallest piece fills the reservation exactly', tallN, reserve);
+    check('FGP42 ...and a SHORTER piece emits the same number of lines', shortN, reserve);
+    check('FGP43 ...with no Dummy anywhere (its extra ItemSpacing was the bug)',
+        dummies, 0);
+    lineItems, dummies = 0, 0; RB(nil, 75, 40, reserve);
+    check('FGP44 ...and so does an empty hover', lineItems, reserve);
+    IM.TextColored, IM.Text, IM.Dummy = keptTC, keptT, keptD;
+
     -- WIDTH BUYS HEIGHT (Henrik: "make it WIDER to adapt as well, so we get more
     -- space for gear"). The block wraps to whatever width the popup settles on,
     -- so a wider popup turns a four-line stat wrap into two and hands those two

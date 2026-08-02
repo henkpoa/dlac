@@ -8613,3 +8613,36 @@ prevent. The measurement pool is candidates **plus** pinned pieces now.
 **Tests:** smoke `FGP35`–`FGP37` — the width is pinned rather than capped, the height stays
 a range, and a pinned piece that is not in the pool still widens the popup. Suites **5990**
 and **1076**.
+
+## Session "the shorter hat was taller" (2026-08-03, `2026.08.03p`)
+
+Henrik: *"When I compare hovering Bunzi's Hat (5 rows) and Windfall Hat (4 rows), the height
+changes. The height INCREASES with Windfall Hat, even though it has fewer rows. Can this be
+explained?"*
+
+It can, and it is one line of ImGui semantics. **The cursor advances by `item height +
+ItemSpacing.y` after EVERY item.** The block drew its real lines as text and then padded the
+remainder with a single `Dummy` of the leftover height — so:
+
+* a piece at the maximum drew 5 text items and paid 5 gaps;
+* a piece one line short drew 4 text items **plus a Dummy**, which is 6 items and 6 gaps.
+
+The shorter piece was taller by exactly one `ItemSpacing.y`, and only pieces that needed
+padding paid it — which is why it read as "the height increases with the smaller hat"
+instead of as a constant offset. Every measurement upstream was correct; the reservation
+arithmetic was right; the padding widget was the whole bug.
+
+Padding with the **same widget the content uses** deletes the arithmetic rather than fixing
+it: N lines is N lines whichever of them carry text. (An empty string still advances a full
+line — ImGui gives zero-length text the font's line height.)
+
+The general form, worth keeping: **when you reserve space by padding, pad with the same
+item type you are padding around.** Any other filler brings its own box model, and the
+difference shows up as a drift proportional to how much padding was needed — which looks
+like anything except a spacing bug.
+
+**Tests:** smoke `FGP41`–`FGP44` count line ITEMS rather than pixels (the stub has no
+layout): the tallest piece fills the reservation exactly, a shorter piece emits the same
+number of lines, an empty hover does too, and no `Dummy` is emitted at all. Plus `FGP40b`,
+which asserts the two sample pieces differ in natural height — without it the whole group
+would pass while never exercising the padding. Suites **5990** and **1081**.
