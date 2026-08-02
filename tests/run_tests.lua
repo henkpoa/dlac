@@ -22203,6 +22203,82 @@ end)();
     RP._fs = savedFs;
     gData = savedGD;
 
+    -- ---------------------------------------------------------------------
+    -- MARKS: one moment, one mark (field round 1, 2026-08-02 -- Henrik could
+    -- mark the same event several times, and a mark list is a reader's INDEX,
+    -- so a doubled entry costs exactly what marks are for).
+    -- ---------------------------------------------------------------------
+    local savedDsp = package.loaded['dlac\\dispatch'];
+    package.loaded['dlac\\dispatch'] = { getDecisions = function() return {}; end,
+                                         getActions = function() return {}; end };
+    -- The live log is drained by pump(), so the timeline is captured off the
+    -- append seam rather than off the pending queue.
+    local savedAppend, LOGGED = RP._fs.append, {};
+    RP._fs.append = function(_, text) LOGGED[#LOGGED + 1] = text; end
+    local function freshCapture()
+        LOGGED = {};
+        RP.st = { startedClk = os.clock(), endsClk = os.clock() + 300, path = 'LOG',
+                  lastSeq = 7, lastASeq = 0, q = {}, marks = {}, names = {},
+                  nDec = 0, nAct = 0, nSend = 0, nChat = 0, nErr = 0, full = false };
+        return RP.st;
+    end
+
+    local cap = freshCapture();
+    local ok1, what1 = RP.mark('gear did not swap');
+    check('RPT26a the first mark on a moment is added', ok1 and what1, 'added');
+    check('RPT26b ...and binds to the decision it was placed at', cap.marks[1].seq, 7);
+    check('RPT26c the button now knows the moment is marked', RP.markState() ~= nil, true);
+    check('RPT26d ...and status says so, for the label',        RP.status().marked, true);
+
+    -- pressing again does NOT double it
+    local ok2, what2 = RP.mark('still did not swap');
+    check('RPT27a a second mark on the SAME moment replaces', ok2 and what2, 'replaced');
+    check('RPT27b ...so the index still holds one',           #cap.marks, 1);
+    check('RPT27c ...with the latest words',                  cap.marks[1].note, 'still did not swap');
+
+    -- un-mark clears it
+    check('RPT28a un-mark removes the current mark', RP.unmark(), true);
+    check('RPT28b ...so the index is empty',         #cap.marks, 0);
+    check('RPT28c ...and the button goes back to Mark', RP.markState(), nil);
+    check('RPT28d un-marking nothing is a no-op, not an error', RP.unmark(), false);
+
+    -- a NEW decision is a new moment: the next mark appends beside the old one
+    cap = freshCapture();
+    RP.mark('first');
+    cap.lastSeq = 8;                       -- the ring moved on
+    check('RPT29a the old mark is no longer "current"', RP.markState(), nil);
+    local ok3, what3 = RP.mark('second');
+    check('RPT29b ...so a new moment APPENDS rather than replacing', ok3 and what3, 'added');
+    check('RPT29c ...and both marks survive', #cap.marks, 2);
+    check('RPT29d ...in order',               cap.marks[1].note .. '/' .. cap.marks[2].note, 'first/second');
+
+    -- THE EVIDENCE RULE: un-mark must never reach back past the current
+    -- moment and delete a mark the player set against a DIFFERENT event
+    cap.lastSeq = 9;
+    check('RPT30a un-mark refuses once the moment has moved on', RP.unmark(), false);
+    check('RPT30b ...leaving both marks intact',                 #cap.marks, 2);
+
+    -- the log is append-only: a replace and a removal each add their own line
+    -- rather than rewriting history
+    cap = freshCapture();
+    RP.mark('one'); RP.mark('two'); RP.unmark();
+    local logged = table.concat(LOGGED, '');
+    check('RPT31a the placement is in the timeline',  logged:match('%*%*%*%*%* MARK %+') ~= nil, true);
+    check('RPT31b so is the replacement, with the words it replaced',
+        logged:match('MARK REPLACED.*%(was: one%)') ~= nil, true);
+    check('RPT31c so is the removal',
+        logged:match('MARK REMOVED %(was %+.*two%)') ~= nil, true);
+
+    -- the summary links a mark to the decision block it points at
+    check('RPT32a a mark carries its decision number into the summary',
+        joined(RP._summaryLines({ marks = { { at = 5, note = 'x', seq = 42 } } })):match('at decision #42') ~= nil, true);
+    check('RPT32b ...and says so plainly when there is no decision to point at',
+        joined(RP._summaryLines({ marks = { { at = 5, note = 'x', seq = 0 } } })):match('%(no decision yet%)') ~= nil, true);
+
+    RP.st = nil;
+    RP._fs.append = savedAppend;
+    package.loaded['dlac\\dispatch'] = savedDsp;
+
     -- the observer seam sendlog grew for this (an uncounted send is the only
     -- way "dlac sent nothing" could lie -- an unobserved one is the only way
     -- the report's timeline could)

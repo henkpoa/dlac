@@ -31,7 +31,7 @@ are fenced `===== FILE: <label> (<n> bytes) =====` … `===== END FILE =====`.
 |---|---|---|
 | *(header)* | char, dlac + engine version, window stamps, scope, stop reason, the privacy paragraph | which build this is; whether the window covers the incident |
 | `health` | the `/dl check` readout verbatim (`check.gather` → `check._lines`) | module load failures, a truncated catalog, an engine/file version split. **Read this first** — a broken install explains most "bugs" |
-| `summary` | six counters + the mark list with offsets | where to look. Marks are the player pointing at the moment |
+| `summary` | six counters + the mark list with offsets and decision numbers | where to look. Marks are the player pointing at the moment |
 | `config` | the active job's sets / triggers / lockstyles, plus every small settings file in the character data home | what dlac was *asked* to do |
 | `gear digest` | every item named by the window, with id / level / jobs and **whether it is in an equippable bag right now** | why a ladder fell to `unavail` |
 | `log` | pre-roll + the timeline | what dlac actually did |
@@ -66,6 +66,22 @@ gear did not move"), `***** MARK +2:14 -- <note> *****`, and dlac's own chat lin
 The vocabulary — *fell*, *reserves*, *not in a bag you can equip from*, *held
 EMPTY* — is deliberately identical to `/dl why` and the Arbiter Monitor's hover.
 A player quoting one and you reading the other are looking at the same sentence.
+
+## Marks: one moment, one mark
+
+A mark belongs to a **moment**, and the moment is the decision the ring was newest
+on when it was placed — this addon's own word for an event. Each summary entry
+therefore carries `at decision #N`, which is a jump: the log block headed `#N` is
+what the player was looking at when they said those words. `(no decision yet)`
+means gear had not moved at all, which is often itself the report.
+
+Marking the same moment again **replaces** the note rather than adding a twin, and
+the Monitor's button becomes **[Un-mark]** once the moment is flagged. The log is
+append-only and never rewritten, so a replacement or a removal appends its own line
+(`MARK REPLACED … (was: …)`, `MARK REMOVED (was …)`) — the timeline records that the
+player changed their mind; only the summary index is deduplicated. If the mark list
+and the timeline seem to disagree about how many marks there were, that is why, and
+the timeline is the literal record.
 
 ## What is deliberately **not** in it
 

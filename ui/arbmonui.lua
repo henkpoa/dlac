@@ -528,20 +528,42 @@ function M.renderRecorder(ui)
     imgui.TextColored(COL_DIM, string.format('%d decision%s, %d mark%s',
         st.decisions, (st.decisions == 1) and '' or 's', st.marks, (st.marks == 1) and '' or 's'));
     imgui.SameLine(0, 10);
-    imgui.PushItemWidth(180);
-    imgui.InputText('##arbmon_marknote', _markBuf, 96);
-    imgui.PopItemWidth();
-    if imgui.IsItemHovered() then
-        imgui.SetTooltip('What went wrong, in your words. It lands in the file at this moment.');
-    end
-    imgui.SameLine(0, 6);
-    if imgui.SmallButton('Mark##arbmon_mark') then
-        pcall(R.mark, tostring(_markBuf[1] or ''));
-        _markBuf[1] = '';
-    end
-    if imgui.IsItemHovered() then
-        imgui.SetTooltip('Flag THIS moment. In a five-minute log, finding the moment is the hard part.\n'
-            .. 'Works from a macro too: /dl mark <note>');
+    -- MARKED or NOT is the whole state of this control (Henrik, field round 1:
+    -- "if I have marked an event, the button should change to de-mark and
+    -- remove it"). Marked: the note becomes text and the button undoes it.
+    -- Unmarked: the field is live and the button places one.
+    if st.marked then
+        imgui.TextColored(COL_OK, esc('marked: ' .. trunc((st.markNote ~= nil and st.markNote ~= '')
+            and st.markNote or '(no note)', 30)));
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('This moment is flagged in the report.\n'
+                .. 'It stays one mark however many times you press it -- pressing again would only\n'
+                .. 'replace these words. A new decision starts a new moment you can mark separately.');
+        end
+        imgui.SameLine(0, 6);
+        if imgui.SmallButton('Un-mark##arbmon_unmark') then
+            pcall(R.unmark);
+        end
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('Remove this mark. The log still records that you placed and removed it --\n'
+                .. 'the timeline is never rewritten, only the index is.');
+        end
+    else
+        imgui.PushItemWidth(180);
+        imgui.InputText('##arbmon_marknote', _markBuf, 96);
+        imgui.PopItemWidth();
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('What went wrong, in your words. It lands in the file at this moment.');
+        end
+        imgui.SameLine(0, 6);
+        if imgui.SmallButton('Mark##arbmon_mark') then
+            pcall(R.mark, tostring(_markBuf[1] or ''));
+            _markBuf[1] = '';
+        end
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('Flag THIS moment. In a five-minute log, finding the moment is the hard part.\n'
+                .. 'Works from a macro too: /dl mark <note>');
+        end
     end
     imgui.SameLine(0, 6);
     if imgui.SmallButton('Stop & write##arbmon_recstop') then

@@ -213,7 +213,7 @@ nothing is ever deleted for you — clearing an entry is always your call.
 | Command | Does |
 |---|---|
 | `/dl check` | Health readout — versions, module loads, catalog, profile — and a verdict that names any issue it can prove |
-| `/dl report` | **Record what dlac does for 5 minutes, then write one sendable file.** While it runs, `/dl mark <note>` flags the moment it went wrong (put it on a macro). `/dl report stop` finishes early; `/dl report full` bundles every job |
+| `/dl report` | **Record what dlac does for 5 minutes, then write one sendable file.** While it runs, `/dl mark <note>` flags the moment it went wrong (put it on a macro) — marking the same moment again just rewords it, and the Monitor's button becomes **[Un-mark]**. `/dl report stop` finishes early; `/dl report full` bundles every job |
 | `/dl sends` | What dlac has actually put on the wire this session, by packet and by cause |
 | `/dl debug ls` | Lockstyle capture window — click Apply during it and the report shows every hop |
 

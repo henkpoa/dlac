@@ -8052,3 +8052,41 @@ one failure mode that costs an entire support round.
 
 Format pinned in `docs/reference/report-format.md` — written for whoever reads a report next,
 model or human, so nobody re-derives the layout from the bytes.
+
+### Field round 1, same day — "I can mark the same event several times" (`2026.08.03b`)
+
+Henrik ran a report and came back with the one thing a build session cannot see: *"what I can
+see is that I can mark the same event several times. So if I have marked an event, the button
+should change to de-mark and remove it."*
+
+He is right, and the cost is precisely aimed: the mark list is the **reader's index** into a
+five-minute log, so a doubled entry spends the one thing marks exist to buy. Two clicks — or one
+macro pressed twice, which is the ordinary case — produced two rows pointing at the same instant.
+
+**The fix needed a definition of "event", and the addon already had one:** the decision the ring
+is newest on. One record per dispatch whose outcome moved — that IS a moment. So a mark now
+binds to `st.lastSeq`. Mark again before a new decision lands and it REPLACES (latest words
+win); mark after one and it is a new moment, so it appends. The Monitor's control follows: the
+note field becomes the mark's text and the button becomes **[Un-mark]**. A report with no
+decisions at all is one long moment, which is correct — the gear never moved, and that is the
+thing being reported.
+
+Two rulings inside the small change:
+
+- **The log is append-only and is never rewritten.** A replace appends `MARK REPLACED … (was: …)`
+  and a removal appends `MARK REMOVED (was …)`. The player changing their mind is itself part of
+  the timeline; only the summary INDEX is deduplicated. Nothing the player typed is ever lost,
+  including the note a replace superseded.
+- **Un-mark refuses once the moment has moved on** (RPT30). It may only take back the current
+  moment's mark — reaching backwards would let one button delete evidence the player set against
+  a different event, which is the only way this control could destroy something.
+
+Free ride, and the reason the seq was worth storing: every summary row now reads `at decision
+#N`, which turns a mark into a **jump** to the log block headed `#N` — the decision the player
+was looking at when they said those words.
+
+Suites **5858** and **1003**. The mark semantics are driven against a stubbed ring (RPT26-32:
+add, replace, un-mark, the new-moment append, the evidence rule, the append-only timeline, and
+the summary link), and the smoke half renders BOTH button states, checking that a marked moment
+offers `Un-mark` and does not also offer a second `Mark`. `flush` moved onto the `M._fs` seam so
+the timeline is assertable at all — the first attempt tested `st.q`, which `pump()` drains.

@@ -519,8 +519,13 @@ function M._summaryLines(st)
         out[#out + 1] = '';
         out[#out + 1] = 'marks (the player said something happened here):';
         for _, m in ipairs(st.marks) do
-            out[#out + 1] = string.format('  +%-6s %s', M._clock(m.at),
-                (m.note ~= '' and m.note ~= nil) and m.note or '(no note)');
+            -- The decision seq turns a mark into a JUMP: the log block headed
+            -- #<seq> is the decision the player was looking at when they said
+            -- this. Omitted when the ring was empty -- there is nothing to
+            -- jump to, and printing "#0" would invite a search for it.
+            out[#out + 1] = string.format('  +%-6s %-40s %s', M._clock(m.at),
+                (m.note ~= '' and m.note ~= nil) and m.note or '(no note)',
+                ((tonumber(m.seq) or 0) > 0) and ('at decision #' .. tostring(m.seq)) or '(no decision yet)');
         end
     else
         out[#out + 1] = 'no marks -- the player did not flag a moment (/dl mark <note> does that).';
@@ -624,21 +629,21 @@ function M._fs.write(path, text)
     f:write(text); f:close();
 end
 
--- Append a batch to the live log. Opened/closed per batch on purpose (call 2):
--- a held handle loses its tail when the client dies, and batches are rare.
---
 -- BINARY append, not 'a'. Windows text mode rewrites every \n as \r\n, and the
 -- log is truncated in 'wb' and read back in 'rb' -- so plain 'a' produced a
 -- report with MIXED line endings, 17 stray CRs in a file whose whole job is to
 -- be read by someone else's tools.
+function M._fs.append(path, text)
+    local f = io.open(path, 'ab');
+    if f == nil then return; end
+    f:write(text); f:close();
+end
+
+-- Append a batch to the live log. Opened/closed per batch on purpose (call 2):
+-- a held handle loses its tail when the client dies, and batches are rare.
 local function flush(st, lines)
     if st == nil or st.path == nil or #lines == 0 then return; end
-    pcall(function()
-        local f = io.open(st.path, 'ab');
-        if f == nil then return; end
-        f:write(table.concat(lines, '\n') .. '\n');
-        f:close();
-    end);
+    pcall(M._fs.append, st.path, table.concat(lines, '\n') .. '\n');
 end
 
 -- Queue a line into the pending batch (no IO on the calling thread).
@@ -810,15 +815,73 @@ function M.stop(reason)
     return M._write(st);
 end
 
+-- ---------------------------------------------------------------------------
+-- MARKS. A mark belongs to a MOMENT, and one moment gets one mark.
+--
+-- Field, 2026-08-02 (Henrik, running the first report): "I can mark the same
+-- event several times. So if I have marked an event, the button should change
+-- to de-mark and remove it." Two clicks on one moment produced two marks --
+-- and a mark list is a reader's index into the log, so a doubled entry costs
+-- exactly the thing marks exist to buy.
+--
+-- The moment is the DECISION the ring is newest on (`st.lastSeq`), which is
+-- this addon's own word for "an event": one record per dispatch whose outcome
+-- moved. Mark again on the same moment and it REPLACES -- latest words win.
+-- Mark after a new decision landed and it is a new moment, so it appends. A
+-- report with no decisions at all is one long moment, which is correct: the
+-- gear never moved, and that IS the event being reported.
+--
+-- The LOG is append-only and never rewritten: an un-mark or a replace appends
+-- its own line rather than erasing the first. The timeline records what the
+-- player did, including changing their mind; only the mark LIST (the index)
+-- is deduplicated.
+-- ---------------------------------------------------------------------------
+
+-- The mark on the CURRENT moment, or nil. The button reads this to decide
+-- whether it offers Mark or Un-mark.
+function M.markState()
+    local st = M.st;
+    if st == nil then return nil; end
+    local last = st.marks[#st.marks];
+    if last ~= nil and last.seq == st.lastSeq then return last; end
+    return nil;
+end
+
+-- Returns ok, what -- 'added' | 'replaced' | 'cap'.
 function M.mark(note)
     local st = M.st;
-    if st == nil then return false; end
-    if #st.marks >= M.MARK_CAP then return false; end
+    if st == nil then return false, 'idle'; end
     local at = math.floor(clock() - st.startedClk);
-    st.marks[#st.marks + 1] = { at = at, note = tostring(note or '') };
-    q(string.format('[%s] ***** MARK +%s -- %s *****', os.date('%H:%M:%S'), M._clock(at),
-        (note ~= nil and note ~= '') and tostring(note) or '(no note)'));
+    local text = tostring(note or '');
+    local shown = (text ~= '') and text or '(no note)';
+    local cur = M.markState();
+    if cur ~= nil then
+        local was = (cur.note ~= '') and cur.note or '(no note)';
+        cur.note, cur.at = text, at;
+        q(string.format('[%s] ***** MARK REPLACED +%s -- %s   (was: %s) *****',
+            os.date('%H:%M:%S'), M._clock(at), shown, was));
+        pump();
+        return true, 'replaced';
+    end
+    if #st.marks >= M.MARK_CAP then return false, 'cap'; end
+    st.marks[#st.marks + 1] = { at = at, note = text, seq = st.lastSeq };
+    q(string.format('[%s] ***** MARK +%s -- %s *****', os.date('%H:%M:%S'), M._clock(at), shown));
     pump();                            -- a mark reaches disk immediately
+    return true, 'added';
+end
+
+-- Remove the current moment's mark. Refuses when the moment has moved on --
+-- an un-mark must never reach back and delete a mark the player set against a
+-- DIFFERENT event, which is the one way this button could destroy evidence.
+function M.unmark()
+    local st = M.st;
+    if st == nil then return false; end
+    local cur = M.markState();
+    if cur == nil then return false; end
+    table.remove(st.marks);
+    q(string.format('[%s] ***** MARK REMOVED (was +%s -- %s) *****', os.date('%H:%M:%S'),
+        M._clock(cur.at), (cur.note ~= '') and cur.note or '(no note)'));
+    pump();
     return true;
 end
 
@@ -826,10 +889,12 @@ end
 function M.status()
     local st = M.st;
     if st == nil then return nil; end
+    local cur = M.markState();
     return {
         left = math.max(0, math.floor(st.endsClk - clock())),
         recorded = math.floor(clock() - st.startedClk),
         marks = #st.marks, decisions = st.nDec, full = st.full,
+        marked = cur ~= nil, markNote = (cur ~= nil) and cur.note or nil,
     };
 end
 
@@ -1175,8 +1240,15 @@ ashita.events.register('command', 'dlac-report-mark', function(e)
         print('[dlac] mark: nothing is recording -- /dl report starts a capture first.');
         return;
     end
-    if M.mark(note) then
-        print('[dlac] mark: noted at +' .. M._clock(math.floor(clock() - M.st.startedClk)) .. '.');
+    local at = M._clock(math.floor(clock() - M.st.startedClk));
+    local ok, what = M.mark(note);
+    if ok and what == 'replaced' then
+        -- Said out loud rather than silently doubled: a macro pressed twice is
+        -- the ordinary case, and the player must know which of the two sets of
+        -- words is the one in the file.
+        print('[dlac] mark: this moment was already marked -- replaced its note (+' .. at .. ').');
+    elseif ok then
+        print('[dlac] mark: noted at +' .. at .. '.');
     else
         print('[dlac] mark: this capture already holds ' .. tostring(M.MARK_CAP) .. ' marks.');
     end

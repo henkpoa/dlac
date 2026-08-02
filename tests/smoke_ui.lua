@@ -4254,18 +4254,36 @@ end)();
             check('AM9c item-width stack balanced idle', depth.item, 0);
 
             -- the RECORDING branch: inject the state the live start() would
-            -- build (start() itself needs a real install path)
+            -- build (start() itself needs a real install path). lastSeq vs the
+            -- mark's seq is what decides Mark / Un-mark, so both are driven.
             RP.st = { startedClk = os.clock(), endsClk = os.clock() + 120,
                       nDec = 3, nAct = 0, nSend = 0, nChat = 0, nErr = 0,
-                      marks = { { at = 5, note = 'here' } }, q = {}, names = {},
+                      lastSeq = 7, lastASeq = 0,
+                      marks = { { at = 5, note = 'here', seq = 6 } }, q = {}, names = {},
                       full = false, path = nil };
             smalls = {};
             local rrok = pcall(am.renderRecorder, ui);
             check('AM10 the recording bar renders', rrok, true);
             local sj = table.concat(smalls, ' ');
-            check('AM10a ...with Mark',       sj:find('Mark##arbmon_mark', 1, true) ~= nil, true);
+            check('AM10a an UNMARKED moment offers Mark',
+                sj:find('Mark##arbmon_mark', 1, true) ~= nil, true);
             check('AM10b ...and Stop & write', sj:find('Stop & write##arbmon_recstop', 1, true) ~= nil, true);
             check('AM10c item-width stack balanced recording', depth.item, 0);
+
+            -- the MARKED branch (field round 1): the same moment already has a
+            -- mark, so the control must offer to take it away, not add a twin
+            RP.st.marks[1].seq = RP.st.lastSeq;
+            smalls = {};
+            depth.item = 0;
+            local mok = pcall(am.renderRecorder, ui);
+            check('AM10d the marked bar renders', mok, true);
+            local sj2 = table.concat(smalls, ' ');
+            check('AM10e a marked moment offers Un-mark',
+                sj2:find('Un-mark##arbmon_unmark', 1, true) ~= nil, true);
+            check('AM10f ...and NOT a second Mark',
+                sj2:find('Mark##arbmon_mark', 1, true) == nil, true);
+            check('AM10g the note field is gone with it, so the stack still balances',
+                depth.item, 0);
             RP.st = nil;
 
             -- the "wrote:" line after a finished run
