@@ -8090,3 +8090,53 @@ add, replace, un-mark, the new-moment append, the evidence rule, the append-only
 the summary link), and the smoke half renders BOTH button states, checking that a marked moment
 offers `Un-mark` and does not also offer a second `Mark`. `flush` moved onto the `M._fs` seam so
 the timeline is assertable at all — the first attempt tested `st.q`, which `pump()` drains.
+
+### Field round 2 — reading the first real report back (`2026.08.03c`)
+
+*"Check the report."* He sent the actual artifact from his DRG session. It worked — 46 KB,
+every section intact, and the **pre-roll caught decision `#1` twenty-six seconds before he
+pressed record**, which was the design's central bet paying off on the first real run. Reading
+it back found four things, and the two that matter were not cosmetic.
+
+**1. `(kept)` was telling a lie that only shows up in this renderer.** Each weaponskill block
+read `(7 slots changed)` over seven rows saying `(kept)` — two statements that cannot both be
+true. The ring counts a slot as changed when it *left* the plan, and the renderer, finding no
+item and no winner, fell through to the Monitor's word for "nobody claimed it". In the Monitor's
+4x4 grid, where all sixteen slots are drawn, `(kept)` reads fine; here, where only changed slots
+print, it was actively misleading. Now `(left as worn)`, with the header carrying `0 placed, 7
+left as worn` — and the breakdown appears only when the two numbers differ, so ordinary blocks
+stay one line. The first cut of the fix repeated three lines of prose per dropped slot and spent
+**21 lines** on one weaponskill; it says it once per block now. Counted through the same
+`_isDropped` the rows use, so header and rows cannot disagree.
+
+**2. The digest's scope had a blind spot, and it hid the actual answer.** He was **DRG26** under
+level sync, and every piece in his `Ws_Default` is level 33-75 (Peacock Charm 33, Virtuoso Belt
+54, Jaridah Khud 55, Fotia Gorget 72, Brutal Earring 75). So every weaponskill silently wore TP
+gear — correct engine behaviour, and *exactly* the thing a player files as "my WS set doesn't
+work". The report could not say it: the level filter runs at **flatten time**, before any ladder
+exists, so there is no refusal to record and no rung to strike through, and a digest scoped to
+"what the window named" cannot see gear that never got that far.
+
+Fixed by scoping a SECOND list off the bundled sets file — which is in the report anyway — and
+flagging anything above the level dlac was *deciding under* (read off the records, so a lapsed
+sync cannot rewrite the answer). Set files reference gear as Lua paths, and the identifier is
+not the name (`gear.Head.Faceguard_1` is "Faceguard +1"), so each path is walked against the
+real gear table, exactly as the file itself does at load — depth-agnostic, so Main/Range's extra
+weapon-category level needs no special case. Re-run against his real 777-entry `gear.lua`, the
+report now names all **38** pieces his DRG sets ask for that DRG26 cannot wear.
+
+**3. The health section accused a healthy engine.** `check._lines` line 5 tells the reader a
+`[dlac] check (engine): alive` line must accompany the readout and that its absence IS the
+diagnosis. True in chat, where dispatch prints it from its own branch — and impossible in the
+file, which carries the addon half only. Every report ever written would have failed that test.
+The file now states its own equivalent from the engine file version and the modestate stamp,
+which is a stronger check than a printed line: agreement proves an armed engine of the right
+version, disagreement names which side is behind.
+
+**4.** `SEND 0x01A  passed through (your own action)  (your own packet, passed through)` — the
+same fact twice, which makes a reader look for the difference between them.
+
+Suites **5886** and **1003**. The lesson worth keeping is about #2: the artifact was scoped to
+*what happened*, and the answer lived in *what was asked for and never happened*. A digest built
+from observed events cannot explain an absence of events — and an absence of events is what a
+support report is usually about.

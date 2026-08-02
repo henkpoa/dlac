@@ -204,6 +204,17 @@ function M._ctxLine(ctx)
     return table.concat(bits, '  ');
 end
 
+-- The job + level a record was decided under, remembered on the capture so the
+-- digest can flag gear above it. Taken from the RECORD rather than read live:
+-- the question is what your level was while the thing went wrong, and a level
+-- sync that lapsed before the report was written must not rewrite the answer.
+function M._noteLevel(st, rec)
+    local c = (type(rec) == 'table') and rec.ctx or nil;
+    if type(c) ~= 'table' then return; end
+    if c.job ~= nil then st.job = tostring(c.job); end
+    if tonumber(c.jobLevel) ~= nil then st.level = tonumber(c.jobLevel); end
+end
+
 -- Every item NAME a decision record mentions -- the plan, the ladders it
 -- walked, and every claimant's offer. This is the digest's scope: precisely
 -- the items whose gear facts can explain what the record did.
@@ -232,6 +243,25 @@ function M._itemNames(rec, into)
     return out;
 end
 
+-- THE DROPPED SLOT (field, 2026-08-02). The ring counts a slot as CHANGED
+-- when it was in the previous plan and is absent from this one -- so a
+-- weaponskill whose set placed nothing produced seven rows reading "(kept)"
+-- under a header saying seven slots changed, which is two statements that
+-- cannot both be true. `(kept)` is the Monitor's word for "nobody claimed it",
+-- and in a 4x4 grid showing all sixteen slots it reads fine; here, where only
+-- the changed slots print, it was actively misleading. A slot that is changed,
+-- has no plan entry and has no winner was not kept by consensus -- this
+-- decision simply put nothing in it.
+function M._isDropped(rec, slot)
+    if type(rec) ~= 'table' then return false; end
+    local ls = string.lower(tostring(slot));
+    if findCI(rec.changed, ls) ~= true then return false; end
+    if findCI(rec.plan, ls) ~= nil then return false; end
+    local con = rec.contest;
+    local ops = (type(con) == 'table') and findCI(con.explain, ls) or nil;
+    return (ops == nil or ops[1] == nil);
+end
+
 -- One slot's story, as the report tells it. THE SAME VOCABULARY as the
 -- Monitor's hover and /dl why -- "fell", "reserves", "not in a bag you can
 -- equip from" -- because a player quoting one and support reading the other
@@ -246,10 +276,12 @@ function M._slotLines(rec, slot, label)
     local win = (ops ~= nil) and ops[1] or nil;
     local out = {};
 
+    local dropped = M._isDropped(rec, slot);
     local shown = '(kept)';
     if item ~= nil and item ~= 'remove' then shown = tostring(item);
     elseif item == 'remove' then shown = '(removed)';
-    elseif win ~= nil then shown = tostring(win.item); end
+    elseif win ~= nil then shown = tostring(win.item);
+    elseif dropped then shown = '(left as worn)'; end
 
     local head = string.format('    %-7s %-30s', slot, shown);
     if win ~= nil then
@@ -338,14 +370,45 @@ M.SLOT_ORDER = { 'Main','Sub','Range','Ammo','Head','Neck','Ear1','Ear2',
 function M._decLines(rec, label, slots)
     if type(rec) ~= 'table' then return {}; end
     local out = {};
-    out[#out + 1] = string.format('[%s] #%s %s -- %s   (%d slot%s changed)',
+    -- How many of the changed slots were actually FILLED. The ring's own count
+    -- includes slots that merely left the plan, so a decision that placed
+    -- nothing still announces "7 slots changed" -- true by the ring's
+    -- definition, and read by a human as "seven pieces moved". The breakdown
+    -- appears only when they differ, so the ordinary line stays short.
+    -- Counted through _isDropped, the SAME test the rows use, so the header's
+    -- breakdown and the note can never disagree with what is printed below.
+    local droppedN = 0;
+    for slot in pairs(rec.changed or {}) do
+        if M._isDropped(rec, slot) then droppedN = droppedN + 1; end
+    end
+    local n = rec.nChanged or 0;
+    local placed = n - droppedN;
+    local tail = string.format('(%d slot%s changed)', n, (n == 1) and '' or 's');
+    if placed < n then
+        tail = string.format('(%d slot%s changed -- %d placed, %d left as worn)',
+            n, (n == 1) and '' or 's', placed, n - placed);
+    end
+    out[#out + 1] = string.format('[%s] #%s %s -- %s   %s',
         tostring(rec.time), tostring(rec.seq), tostring(rec.event),
-        tostring(rec.action or ''), rec.nChanged or 0, ((rec.nChanged or 0) == 1) and '' or 's');
+        tostring(rec.action or ''), tail);
     local cl = M._ctxLine(rec.ctx);
     if cl ~= nil then out[#out + 1] = '      under: ' .. cl; end
     local buffs = (type(rec.ctx) == 'table') and rec.ctx.buffs or nil;
     if type(buffs) == 'table' and #buffs > 0 then
         out[#out + 1] = '      buffs: ' .. table.concat(buffs, ', ');
+    end
+    -- Said ONCE per block, not once per slot. The first cut repeated three
+    -- lines of prose on every dropped slot: a seven-slot weaponskill spent
+    -- twenty-one lines saying the same sentence, in a file whose whole
+    -- premise is that it gets read start to finish. The engine filters a set
+    -- entry at FLATTEN time -- before any ladder exists -- so a piece above
+    -- your level leaves no refusal and no rung to strike through; naming both
+    -- causes is the honest answer, and the digest's "sets ask for" list is
+    -- where the reader confirms which one it was.
+    if placed < n then
+        out[#out + 1] = '      note: the (left as worn) slots below got nothing from this decision -- either';
+        out[#out + 1] = '      its set does not name them, or nothing it names qualified (level, job, or you';
+        out[#out + 1] = '      do not own it). What you had on stayed on. See the gear digest.';
     end
     for _, slot in ipairs(M.SLOT_ORDER) do
         local ls = string.lower(slot);
@@ -361,6 +424,18 @@ function M._decLines(rec, label, slots)
     return out;
 end
 
+-- The pass-through annotation on a send line, or ''. Suppressed when the send
+-- site's own cause already says it: the field log read "SEND 0x01A  passed
+-- through (your own action)  (your own packet, passed through)", the same fact
+-- twice, which makes a reader look for the difference between them.
+function M._passTag(why, pass)
+    if pass ~= true then return ''; end
+    if string.find(string.lower(tostring(why or '')), 'passed through', 1, true) ~= nil then
+        return '';
+    end
+    return '  (your own packet, passed through)';
+end
+
 -- One action-feed stub -> one line. The anchor for "I did a thing and gear
 -- did NOT move" -- the case with no decision to point at.
 function M._actLine(stub)
@@ -374,11 +449,43 @@ function M._actLine(stub)
         os.date('%H:%M:%S', stub.at), tostring(stub.event), table.concat(bits, '  '));
 end
 
+-- Every item a SETS FILE references, resolved to display names.
+--
+-- The digest used to be scoped to what the window NAMED, and that has a blind
+-- spot which cost a whole reading (field, 2026-08-02): gear that never reaches
+-- a plan or a ladder leaves no trace -- and that is precisely the gear that
+-- failed to qualify. A DRG26's whole Ws_Default was levels 33-75, so every
+-- weaponskill silently wore TP gear, and nothing in the report could say so.
+--
+-- Set files reference gear as Lua paths (`gear.Head.JaridahKhud`), not names,
+-- and the identifier is not the name (`gear.Head.Faceguard_1` is "Faceguard
+-- +1"), so the reference is walked against the real gear table -- which is
+-- exactly what the file itself does at load. Depth-agnostic: Main/Range nest
+-- one level deeper by weapon category and need no special case. `gearTbl` is
+-- injected, so this is pure.
+function M._setItemNames(src, gearTbl, into)
+    local out = into or {};
+    if type(src) ~= 'string' or type(gearTbl) ~= 'table' then return out; end
+    for ref in src:gmatch('gear%.[%w_%.]+') do
+        local parts = {};
+        for key in ref:gmatch('[%w_]+') do parts[#parts + 1] = key; end
+        local node = gearTbl;
+        for i = 2, #parts do                      -- parts[1] is the literal 'gear'
+            if type(node) ~= 'table' then node = nil; break; end
+            node = node[parts[i]];
+        end
+        if type(node) == 'table' and type(node.Name) == 'string' then out[node.Name] = true; end
+    end
+    return out;
+end
+
 -- The gear digest (call 3). `byName` is gear.lua's NameToObject; `haveFn`
 -- answers "is it in a bag you can equip out of?" (dispatch's availability
 -- read) and may be nil -- pre-login or headless, availability is simply not
--- claimed rather than guessed wrong.
-function M._digestLines(names, byName, haveFn)
+-- claimed rather than guessed wrong. `level` is the job level OBSERVED during
+-- the window: an entry above it is flagged, because that is the one refusal
+-- the decision record can never carry (the filter runs at flatten time).
+function M._digestLines(names, byName, haveFn, level)
     local sorted = {};
     for n in pairs(names or {}) do sorted[#sorted + 1] = n; end
     table.sort(sorted);
@@ -400,6 +507,13 @@ function M._digestLines(names, byName, haveFn)
             local extra = '';
             if rec.Augment ~= nil then extra = extra .. '  aug'; end
             if rec.RSlot ~= nil then extra = extra .. '  RSlot=' .. tostring(rec.RSlot); end
+            -- THE FLATTEN-TIME REFUSAL, finally visible. Nothing in a decision
+            -- record can say "this piece is above your level" -- the entry is
+            -- gone before the contest starts -- so the digest says it instead.
+            local lv, plv = tonumber(rec.Level), tonumber(level);
+            if lv ~= nil and plv ~= nil and lv > plv then
+                extra = extra .. string.format('  ABOVE YOUR LEVEL (%d)', plv);
+            end
             out[#out + 1] = string.format('  %-32s id %-6s lv %-3s %s%s  jobs %s',
                 n, tostring(rec.Id or '?'), tostring(rec.Level or '?'), have, extra, jobs);
         end
@@ -482,6 +596,37 @@ function M._header(info)
     out[#out + 1] = 'own [dlac] output -- no tells, no party chat, nothing anyone else said.';
     out[#out + 1] = 'Send it to the addon author. Nothing here is sent anywhere on its own.';
     out[#out + 1] = bar;
+    return out;
+end
+
+-- The engine-liveness verdict, FOR THE FILE. `info` is check.gather()'s table:
+-- fileV is the engine file this tree ships, stampV the version the engine
+-- wrote into modestate the last time it loaded. Agreement proves an armed
+-- engine of the right version far better than a chat line the report cannot
+-- contain -- and disagreement names which side is behind, the same way
+-- check._issues does.
+function M._engineLines(info)
+    info = info or {};
+    local fv, sv = tonumber(info.fileV), tonumber(info.stampV);
+    local out = { '' };
+    out[#out + 1] = 'report note: the "[dlac] check (engine): alive" line named above is a CHAT-only';
+    out[#out + 1] = 'line and can NEVER appear in this file -- do not read its absence as a dead';
+    out[#out + 1] = 'engine. The file-based equivalent is the version pair:';
+    if fv == nil or sv == nil then
+        out[#out + 1] = string.format('  engine file v%s, modestate stamp %s -- INCONCLUSIVE.'
+            .. ' A missing stamp means the engine has not loaded since this character last logged in.',
+            tostring(info.fileV or '?'),
+            (sv == nil) and 'NEVER WRITTEN' or ('v' .. tostring(info.stampV)));
+    elseif fv == sv then
+        out[#out + 1] = string.format('  engine file v%d, modestate stamp v%d -- AGREED, so the engine'
+            .. ' is armed and current.', fv, sv);
+    elseif sv < fv then
+        out[#out + 1] = string.format('  engine file v%d, modestate stamp v%d -- the STAMP IS BEHIND:'
+            .. ' the engine running is older than the tree on disk (/dl reload).', fv, sv);
+    else
+        out[#out + 1] = string.format('  engine file v%d, modestate stamp v%d -- the stamp is AHEAD:'
+            .. ' this addon tree is stale (update dlac, then /addon reload dlac).', fv, sv);
+    end
     return out;
 end
 
@@ -667,6 +812,7 @@ local function preroll(st)
                 for _, l in ipairs(M._decLines(rec, claimLabel)) do out[#out + 1] = l; end
                 out[#out + 1] = '';
                 M._itemNames(rec, st.names);
+                M._noteLevel(st, rec);
                 st.lastSeq = math.max(st.lastSeq, tonumber(rec.seq) or 0);
                 n = n + 1;
             end
@@ -695,7 +841,7 @@ local function preroll(st)
             out[#out + 1] = 'recent sends before recording (newest first):';
             for _, r in ipairs(recent) do
                 out[#out + 1] = string.format('  0x%03X  %s%s', tonumber(r.id) or 0,
-                    tostring(r.why), r.pass and '  (your own packet, passed through)' or '');
+                    tostring(r.why), M._passTag(r.why, r.pass));
             end
         end
     end
@@ -719,6 +865,7 @@ local function pump()
                     st.lastSeq = sq;
                     st.nDec = st.nDec + 1;
                     M._itemNames(rec, st.names);
+                    M._noteLevel(st, rec);
                     for _, l in ipairs(M._decLines(rec, claimLabel)) do q(l); end
                     q('');
                 end
@@ -792,7 +939,7 @@ function M.start(seconds, full)
             if s == nil then return; end
             s.nSend = s.nSend + 1;
             q(string.format('[%s] SEND 0x%03X  %s%s', os.date('%H:%M:%S'), tonumber(id) or 0,
-                tostring(why), pass and '  (your own packet, passed through)' or ''));
+                tostring(why), M._passTag(why, pass)));
         end;
     end);
     return true;
@@ -1032,10 +1179,11 @@ function M._write(st)
     -- (one implementation, two doors). Guarded: a health probe that throws
     -- must not cost the whole report -- and its absence is itself a finding.
     local chk = try('dlac\\feature\\check');
-    local got = false;
+    local got, hinfo = false, nil;
     if chk ~= nil and type(chk.gather) == 'function' and type(chk._lines) == 'function' then
         pcall(function()
-            local lines = chk._lines(chk.gather());
+            hinfo = chk.gather();
+            local lines = chk._lines(hinfo);
             if type(lines) == 'table' and #lines > 0 then
                 add(lines);
                 got = true;
@@ -1045,6 +1193,16 @@ function M._write(st)
     if not got then
         L[#L + 1] = 'THE HEALTH READOUT COULD NOT BE GATHERED -- feature/check did not answer.';
         L[#L + 1] = 'That is itself a finding: this install\'s check module is missing or throwing.';
+    else
+        -- THE INSTRUCTION THAT CANNOT BE FOLLOWED HERE (field, 2026-08-02).
+        -- The readout above tells the reader that a "[dlac] check (engine):
+        -- alive" line must accompany it, and that its absence is the
+        -- diagnosis. In chat that is true -- dispatch prints it from its own
+        -- branch. In this FILE it can never appear: check._lines returns the
+        -- addon half only. Left alone, every report accuses a healthy engine
+        -- of being dead. So the file states its own equivalent, off the two
+        -- version numbers, which is a stronger check than a printed line.
+        add(M._engineLines(hinfo));
     end
 
     section('summary');
@@ -1054,6 +1212,8 @@ function M._write(st)
     if pname ~= nil then L[#L + 1] = 'active profile: ' .. tostring(pname); end
     if job ~= nil then L[#L + 1] = 'current job: ' .. tostring(job); end
     L[#L + 1] = '';
+    local gearMod = try('dlac\\gear');
+    local setNames = {};
     for _, f in ipairs(taken) do
         L[#L + 1] = string.format('===== FILE: %s (%d bytes) =====', f.label, f.size);
         local body = readAll(f.path);
@@ -1061,6 +1221,11 @@ function M._write(st)
             L[#L + 1] = '(could not be read)';
         else
             addBody(body);
+            -- Every piece the bundled SETS ask for, whether or not the window
+            -- ever got as far as considering it -- the digest's second list.
+            if f.label:match('\\sets\\') ~= nil then
+                pcall(M._setItemNames, body, gearMod, setNames);
+            end
         end
         L[#L + 1] = '===== END FILE =====';
         L[#L + 1] = '';
@@ -1083,15 +1248,38 @@ function M._write(st)
     end
 
     section('gear digest');
-    if st.full then
-        L[#L + 1] = 'scope FULL: raw gear.lua is bundled above; this digest is the window\'s own items.';
-        L[#L + 1] = '';
-    end
-    local gearMod = try('dlac\\gear');
     local byName = (gearMod ~= nil) and gearMod.NameToObject or nil;
     local haveFn = nil;
     if dsp ~= nil and type(dsp._haveEquippable) == 'function' then haveFn = dsp._haveEquippable; end
-    add(M._digestLines(st.names, byName, haveFn));
+    local lvl = tonumber(st.level);
+    if lvl ~= nil then
+        L[#L + 1] = string.format('levels below are checked against %s%d -- the job and level dlac was'
+            .. ' DECIDING UNDER during the window (a level sync counts).', tostring(st.job or ''), lvl);
+        L[#L + 1] = '';
+    end
+    L[#L + 1] = 'items this window actually involved:';
+    add(M._digestLines(st.names, byName, haveFn, lvl));
+
+    -- THE SECOND LIST is the one the first field report needed and could not
+    -- have (2026-08-02). A DRG26 whose whole Ws_Default was levels 33-75 got
+    -- weaponskills that silently wore TP gear: those pieces never reached a
+    -- plan or a ladder, so the window named none of them and the digest --
+    -- scoped to what the window named -- could not see them either. The gear a
+    -- set ASKS for is exactly what has to be checked when a set does nothing.
+    local rest = {};
+    for n in pairs(setNames) do
+        if st.names[n] ~= true then rest[n] = true; end
+    end
+    if next(rest) ~= nil then
+        L[#L + 1] = '';
+        L[#L + 1] = 'other gear your active job\'s sets ask for (never used this window) -- when a set';
+        L[#L + 1] = 'appeared to do nothing, the reason is usually here:';
+        add(M._digestLines(rest, byName, haveFn, lvl));
+    end
+    if st.full then
+        L[#L + 1] = '';
+        L[#L + 1] = 'scope FULL: raw gear.lua is bundled above -- everything you own is in it.';
+    end
 
     section('log');
     local raw = readAll(st.path);

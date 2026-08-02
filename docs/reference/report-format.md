@@ -30,10 +30,10 @@ are fenced `===== FILE: <label> (<n> bytes) =====` … `===== END FILE =====`.
 | Section | What it holds | What it proves |
 |---|---|---|
 | *(header)* | char, dlac + engine version, window stamps, scope, stop reason, the privacy paragraph | which build this is; whether the window covers the incident |
-| `health` | the `/dl check` readout verbatim (`check.gather` → `check._lines`) | module load failures, a truncated catalog, an engine/file version split. **Read this first** — a broken install explains most "bugs" |
+| `health` | the `/dl check` readout verbatim (`check.gather` → `check._lines`) + the report's own engine verdict | module load failures, a truncated catalog, an engine/file version split. **Read this first** — a broken install explains most "bugs" |
 | `summary` | six counters + the mark list with offsets and decision numbers | where to look. Marks are the player pointing at the moment |
 | `config` | the active job's sets / triggers / lockstyles, plus every small settings file in the character data home | what dlac was *asked* to do |
-| `gear digest` | every item named by the window, with id / level / jobs and **whether it is in an equippable bag right now** | why a ladder fell to `unavail` |
+| `gear digest` | two lists — what the window involved, and what the job's sets *ask for* but never used — with id / level / jobs, live bag availability, and an **`ABOVE YOUR LEVEL`** flag | why a ladder fell to `unavail`, and why a set that looks fine did nothing |
 | `log` | pre-roll + the timeline | what dlac actually did |
 | `manifest` | every dlac data file on the character with its size, bundled or not | what else exists to ask for |
 
@@ -63,6 +63,27 @@ unanswerable without it. Other line kinds: `[hh:mm:ss] SEND 0x050 <cause>`,
 `[hh:mm:ss] action <event> -- NO gear change` (the anchor for "I did a thing and
 gear did not move"), `***** MARK +2:14 -- <note> *****`, and dlac's own chat lines.
 
+### `(left as worn)` and the header breakdown
+
+The ring counts a slot as *changed* when it was in the previous plan and is
+absent from this one. So a decision that placed **nothing** still reports a
+count, and its rows read `(left as worn)`:
+
+```
+[16:33:35] #2 Weaponskill -- "Double Thrust"   (7 slots changed -- 0 placed, 7 left as worn)
+      note: the (left as worn) slots below got nothing from this decision -- either
+      its set does not name them, or nothing it names qualified (level, job, or you
+      do not own it). What you had on stayed on. See the gear digest.
+```
+
+`0 placed` is the tell: the set produced nothing and the previous gear stayed on.
+**Go straight to the digest's second list** — the usual cause is that every piece
+in that set is above the player's level. The breakdown appears only when `placed`
+and `changed` differ, so ordinary decisions keep a one-line header.
+
+`(kept)` means something different and still exists: nobody claimed the slot at
+all. `(left as worn)` means this decision tried and placed nothing.
+
 The vocabulary — *fell*, *reserves*, *not in a bag you can equip from*, *held
 EMPTY* — is deliberately identical to `/dl why` and the Arbiter Monitor's hover.
 A player quoting one and you reading the other are looking at the same sentence.
@@ -82,6 +103,42 @@ append-only and never rewritten, so a replacement or a removal appends its own l
 player changed their mind; only the summary index is deduplicated. If the mark list
 and the timeline seem to disagree about how many marks there were, that is why, and
 the timeline is the literal record.
+
+## The gear digest's two lists
+
+**`items this window actually involved`** — everything the decisions named:
+plans, ladders, and every claimant's offer.
+
+**`other gear your active job's sets ask for`** — everything referenced by the
+bundled sets file that the window never touched. This list exists because the
+first one has a blind spot that cost a whole reading: gear filtered out at
+**flatten time** — wrong level, wrong job, not owned — never reaches a plan or a
+ladder, so the window cannot name it and no decision record can carry a refusal
+for it. That is precisely the gear you need when a set appears to do nothing.
+
+Both lists flag entries above the job level dlac was **deciding under** during the
+window (a level sync counts; the level is read off the decision records, not live,
+so a sync that lapsed before the report was written cannot rewrite the answer):
+
+```
+  Jaridah Khud     id 16063  lv 55   NOT in an equippable bag  ABOVE YOUR LEVEL (26)  jobs ...
+```
+
+Set files reference gear as Lua paths (`gear.Head.Faceguard_1`), so the report
+resolves each path against the real gear table to get the display name —
+`"Faceguard +1"`. A path that resolves to nothing is silently skipped: it is not
+an item, and gear the player never indexed shows up in the first list's
+"not in gear.lua at all" note instead.
+
+## The engine verdict
+
+The health readout tells the reader that a `[dlac] check (engine): alive` line
+must accompany it. **In this file it never can** — `check._lines` returns the
+addon half only, and the engine prints its line from its own branch, to chat. The
+report therefore states its own equivalent underneath, off the engine file version
+and the `modestate` stamp: agreement proves an armed engine of the right version,
+and disagreement names which side is behind. Do not read the missing chat line as
+a dead engine.
 
 ## What is deliberately **not** in it
 

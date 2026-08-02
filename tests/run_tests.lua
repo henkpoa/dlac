@@ -21974,6 +21974,121 @@ end)();
     check('RPT10g "all" prints the untouched slots too',
         joined(RP._decLines(REC, tostring, 'all')):match('Body') ~= nil, true);
 
+    -- ---------------------------------------------------------------------
+    -- THE DROPPED SLOT (field report 1, 2026-08-02). A DRG26's weaponskill
+    -- blocks read "(7 slots changed)" over seven rows saying "(kept)" -- two
+    -- statements that cannot both be true. The ring counts a slot as changed
+    -- when it LEFT the plan; the renderer then had no item and no winner and
+    -- fell through to the Monitor's word for "nobody claimed it".
+    -- ---------------------------------------------------------------------
+    local WS = {
+        seq = 2, time = '16:33:35', event = 'Weaponskill', action = '"Double Thrust"',
+        plan = { Head = 'Emperor Hairpin' },
+        changed = { Neck = true, Ear1 = true, Head = true },
+        nChanged = 3,
+        contest = { explain = { head = { { name = 'Triggers', rank = 13, item = 'Emperor Hairpin' } } } },
+    };
+    local neck = joined(RP._slotLines(WS, 'Neck'));
+    check('RPT33a a slot that left the plan is not "(kept)"',
+        neck:match('%(kept%)'), nil);
+    check('RPT33b ...it was left as worn',      neck:match('%(left as worn%)') ~= nil, true);
+    -- the ROW stays one line: the prose belongs to the block (below), because
+    -- repeating it per slot cost 21 lines on a seven-slot weaponskill
+    check('RPT33c the row itself carries no prose',  select(2, neck:gsub('\n', '')), 0);
+    check('RPT33d a slot that WAS filled is untouched by this',
+        joined(RP._slotLines(WS, 'Head')):match('Emperor Hairpin') ~= nil, true);
+    -- a genuinely unclaimed slot -- not in `changed` -- keeps the old word
+    check('RPT33e an unchanged, unclaimed slot is still "(kept)"',
+        joined(RP._slotLines(WS, 'Body')):match('%(kept%)') ~= nil, true);
+
+    local wsb = joined(RP._decLines(WS, tostring));
+    check('RPT34a the header breaks the count down when they differ',
+        wsb:match('%(3 slots changed %-%- 1 placed, 2 left as worn%)') ~= nil, true);
+    check('RPT34b ...and stays short when everything was placed',
+        joined(RP._decLines(REC, tostring)):match('%(2 slots changed%)') ~= nil, true);
+    check('RPT34c the block explains "left as worn" ONCE, naming both causes',
+        wsb:match('its set does not name them') ~= nil
+        and wsb:match('level, job, or you') ~= nil, true);
+    check('RPT34d ...exactly once, however many slots dropped',
+        select(2, wsb:gsub('its set does not name them', '')), 1);
+    check('RPT34e a block with nothing dropped says nothing about it',
+        joined(RP._decLines(REC, tostring)):match('left as worn'), nil);
+
+    -- ---------------------------------------------------------------------
+    -- The SETS-FILE scope (the blind spot behind the same report): gear that
+    -- never reached a plan or a ladder left no trace, and that is exactly the
+    -- gear that failed to qualify.
+    -- ---------------------------------------------------------------------
+    local GEARTBL = {
+        Head = { JaridahKhud = { Name = 'Jaridah Khud', Level = 55, Id = 1 },
+                 Faceguard_1 = { Name = 'Faceguard +1', Level = 10, Id = 2 } },
+        Main = { Polearm = { Harpoon = { Name = 'Harpoon', Level = 20, Id = 3 } } },
+    };
+    local SRC = [[
+        Ws_Default = { Head = { gear.Head.JaridahKhud, gear.Head.Faceguard_1 } },
+        Weapons = { Main = { gear.Main.Polearm.Harpoon } },
+        Bogus = { Head = { gear.Head.NoSuchThing } },
+    ]];
+    local sn = RP._setItemNames(SRC, GEARTBL);
+    check('RPT35a a set reference resolves to the DISPLAY name, not the identifier',
+        sn['Faceguard +1'], true);
+    check('RPT35b ...at any depth (Main/Range nest by weapon category)',
+        sn['Harpoon'], true);
+    check('RPT35c a reference to gear you have never indexed resolves to nothing',
+        sn['NoSuchThing'], nil);
+    check('RPT35d exactly the three real names came back',
+        (sn['Jaridah Khud'] and sn['Faceguard +1'] and sn['Harpoon']) == true, true);
+
+    -- THE FLATTEN-TIME REFUSAL, which no decision record can ever carry: the
+    -- entry is filtered before the contest starts, so there is no ladder to
+    -- strike through and no rung to explain. The digest says it instead.
+    local BYLV = { ['Jaridah Khud'] = { Name = 'Jaridah Khud', Level = 55, Id = 1, Jobs = { 'DRG' } },
+                   ['Faceguard +1'] = { Name = 'Faceguard +1', Level = 10, Id = 2, Jobs = { 'DRG' } } };
+    local dlv = joined(RP._digestLines({ ['Jaridah Khud'] = true, ['Faceguard +1'] = true },
+                                       BYLV, nil, 26));
+    -- matched WITHIN a line: Lua's '.' spans newlines, and the rows are
+    -- alphabetical, so a greedy match would happily run from one row to a flag
+    -- on another and pass for the wrong reason
+    check('RPT36a gear above the observed level is FLAGGED',
+        dlv:match('Jaridah Khud[^\n]*ABOVE YOUR LEVEL %(26%)') ~= nil, true);
+    check('RPT36b ...and gear at or under it is not',
+        dlv:match('Faceguard %+1[^\n]*ABOVE') == nil, true);
+    check('RPT36c no level known = no claim either way',
+        joined(RP._digestLines({ ['Jaridah Khud'] = true }, BYLV, nil, nil)):match('ABOVE') == nil, true);
+
+    -- the level comes from the RECORD, so a sync that lapsed before the report
+    -- was written cannot rewrite what you were deciding under
+    local lst = {};
+    RP._noteLevel(lst, { ctx = { job = 'DRG', jobLevel = 26 } });
+    check('RPT37a the job and level are taken off the record', lst.job .. lst.level, 'DRG26');
+    RP._noteLevel(lst, { ctx = {} });
+    check('RPT37b a record without them leaves the last known alone', lst.level, 26);
+    RP._noteLevel(lst, nil);
+    check('RPT37c ...and so does no record at all', lst.level, 26);
+
+    -- ---------------------------------------------------------------------
+    -- The engine verdict FOR THE FILE. check._lines tells the reader that a
+    -- "[dlac] check (engine): alive" line must appear -- true in chat, and
+    -- impossible in this file, so every report accused a healthy engine.
+    -- ---------------------------------------------------------------------
+    check('RPT38a agreement is stated as an armed engine',
+        joined(RP._engineLines({ fileV = 162, stampV = 162 })):match('AGREED, so the engine is armed') ~= nil, true);
+    check('RPT38b ...and the reader is told not to hunt for the chat line',
+        joined(RP._engineLines({ fileV = 162, stampV = 162 })):match('CHAT%-only') ~= nil, true);
+    check('RPT38c a behind stamp names WHICH side is behind',
+        joined(RP._engineLines({ fileV = 162, stampV = 160 })):match('STAMP IS BEHIND') ~= nil, true);
+    check('RPT38d an ahead stamp says the tree is stale',
+        joined(RP._engineLines({ fileV = 160, stampV = 162 })):match('addon tree is stale') ~= nil, true);
+    check('RPT38e a missing stamp is inconclusive, not a verdict',
+        joined(RP._engineLines({ fileV = 162 })):match('INCONCLUSIVE') ~= nil, true);
+
+    -- the send line said the same thing twice
+    check('RPT39a a cause that already says it is not annotated again',
+        RP._passTag('passed through (your own action)', true), '');
+    check('RPT39b a cause that does not IS annotated',
+        RP._passTag('Precast (set)', true):match('passed through') ~= nil, true);
+    check('RPT39c dlac\'s own sends are never annotated', RP._passTag('Precast (set)', false), '');
+
     -- the digest's SCOPE is the whole point: exactly the items whose gear
     -- facts can explain what the record did
     local names = RP._itemNames(REC);
