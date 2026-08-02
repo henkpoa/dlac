@@ -106,6 +106,13 @@ hosting the engine — is history; see `docs/design/lac-purge-plan.md` and histo
   gate — run it on every touched Lua file. The pure-logic modules
   (utils/gearimport/setmanager cores) are testable without Ashita; add checks when you
   fix behavior there.
+- **A player's report is the best evidence you will get.** `/dl report` (or the
+  Arbiter Monitor's **[Record a report]**) records up to 5 minutes and writes ONE
+  sendable file, `addons\dlac\debug\dlac-report-<Char>.txt`: health verdict, config,
+  a gear digest with live bag availability, and the decision timeline — starting with
+  the decisions **already in memory** when they pressed record. Layout and what it
+  deliberately omits: `docs/reference/report-format.md`. Ask for one before theorising;
+  `/dl mark <note>` is how the player points at the moment.
 - **In-game loop:** Henrik drives; you cannot run the game. Ship small, ask him to
   `/addon reload dlac` (+ **Reload LAC** when seeded files changed — always that order),
   read his chat output/screenshots. `/dl debug on` reveals dev buttons; `/dl why`,
@@ -289,6 +296,37 @@ haven't told you."* Ask when he has **not** said merge; never ask twice when he 
 
 **The queue is empty.**
 
+
+*(Emptied by the fifth 2026-08-02 promotion — **`/dl report`, the support recorder**,
+`2026.08.03a`–`2026.08.03c`, the dev train `d95371a` + `0c9d113` + `b06e361`. Henrik:
+*"document, merge, push"* — an accept under the 08-01 ruling, so nothing was asked twice.
+Built, field-run, twice corrected on what the field run showed, and promoted inside one
+session, so it never sat here.*
+
+***PARTLY FIELD-CONFIRMED, and the split matters.*** *`03a` was **run in the field**: Henrik
+recorded a live DRG session and sent the artifact back — 46 KB, every section intact, and the
+PRE-ROLL caught a decision **26 seconds before he pressed record**, which was the whole bet of
+the design. So the recorder, the bundler, the streamed log and the file write are field-proven.
+`03b` and `03c` are **NOT**: they are the fixes that came OUT of reading that artifact, and
+nothing has re-run since. `03c` was verified offline against his real 777-entry `gear.lua` and a
+reconstructed record, which is stronger than a suite and weaker than a session.*
+
+***The round owed is one fresh `/dl report` on that same DRG***, checking the three things the
+first run could not: the button reading **Un-mark** once a moment is flagged (and one mark in
+the summary where he got four), the weaponskill blocks reading `0 placed, 7 left as worn`
+instead of seven contradictory `(kept)` rows, and the digest's **second list** naming the 38
+pieces his DRG sets ask for that DRG26 cannot wear. Never exercised in the field at all, by
+anyone: **`/dl report full`**, and the crash path — the premise that a client which dies
+mid-capture still leaves `dlac-capture-<Char>.log` behind.*
+
+*Two things worth carrying forward. The first field report was **read back rather than filed**,
+and that is what found three of the four fixes — an artifact nobody reads is an artifact nobody
+has tested. The second is the shape of the bug that mattered: the digest was scoped to what
+HAPPENED, and the answer lived in what was asked for and never happened. A DRG26 whose entire
+`Ws_Default` is level 33-75 gets weaponskills that silently wear TP gear, and no decision record
+can say so — the level filter runs at flatten time, before any ladder exists. **A diagnostic
+built from observed events cannot explain an absence of events, and an absence of events is what
+a support report is usually about.**)*
 
 *(Emptied by the fourth 2026-08-02 promotion — **the missing-set banner is short and ends in a
 button**, `2026.08.02e`, `55faca3`. Henrik: *"Field tested, works perfect, merge, push to origin
@@ -684,6 +722,44 @@ research already recorded. In rough priority order:
    section heading rather than each carrying one. Trivial to change if it reads wrong.
 
 ## Current state (as of 2026-08-02)
+
+- **2026-08-02 (`2026.08.03a`–`2026.08.03c`): `/dl report` — THE SUPPORT RECORDER. BUILT,
+  **PARTLY FIELD-CONFIRMED**, and **ON MAIN** (promoted the same session), suites green both
+  interpreters (**5886** + **1003**).
+  - **The ask:** *"once the user base grows, I want people to enable the debug… their whole
+    dlac profile that is active + gear, sets, triggers, everything… max 5 minutes. Then he
+    should be able to send those files to me so I can feed you the data."* The consumer is
+    known and unusual — Henrik reads it, then feeds it to a model — and that decided the design.
+  - **What it is:** `/dl report [seconds|full|stop]` (60–300s, default 300), `/dl mark <note>`
+    (macro-able), and a **[Record a report]** button in the Arbiter Monitor. Writes ONE file,
+    `addons\dlac\debug\dlac-report-<Char>.txt`: health + config + gear digest + timeline.
+    Format pinned in [reference/report-format.md](reference/report-format.md) — **read that
+    before reading a player's report**; it says what the file deliberately omits.
+  - **The five design calls**, each with a field reason: **pre-roll** (dump the rings that were
+    already in memory — nobody records before the bug); **stream, don't buffer** (a crash is
+    exactly when the log matters); **scope for the reader** (the budget is CONTEXT — raw
+    `gear.lua` is 264 KB of bag index, so gear ships as a digest); **the mark** (finding the
+    moment is the expensive step); **overwrite** (support wants THE latest).
+  - **FIELD-PROVEN:** the recorder, bundler, streamed log and file write. His live DRG run
+    produced a clean 46 KB artifact whose **pre-roll caught a decision 26 seconds before he
+    pressed record** — the design's central bet, landing on the first real run.
+  - **ROUND OWED — one fresh `/dl report` on that DRG.** `03b` (one moment, one mark; the
+    **Un-mark** button) and `03c` (four fixes from reading the artifact back) have **not** run
+    in the field. Check: one mark where he got four; weaponskill blocks reading
+    `0 placed, 7 left as worn` rather than seven contradictory `(kept)` rows; and the digest's
+    **second list**. Never exercised at all: **`/dl report full`**, and the crash path (a dead
+    client still leaving `dlac-capture-<Char>.log`).
+  - **The finding worth carrying, and it is not about tooling.** He was **DRG26** under level
+    sync and every piece in his `Ws_Default` is level 33–75, so every weaponskill silently wore
+    TP gear — correct engine behaviour, and exactly what a player files as *"my WS set doesn't
+    work"*. **No decision record can say so:** the level filter runs at **flatten time**, before
+    any ladder exists, so there is no refusal to record and no rung to strike through. The
+    digest now carries a second list off the bundled sets file flagging `ABOVE YOUR LEVEL`.
+    Generalise it: **a diagnostic built from observed events cannot explain an absence of
+    events — and an absence of events is what a support report is usually about.**
+  - **The deeper fix is NOT built:** having the engine record *"this entry was dropped at
+    flatten, and why"* would answer it at the decision instead of by inference. It touches the
+    trigger floor; the digest buys most of the answer for a fraction of the risk.
 
 - **2026-08-02 (`2026.08.02e`): THE MISSING-SET BANNER IS SHORT AND ENDS IN A BUTTON. BUILT,
   **FIELD-CONFIRMED** (Henrik, *"Field tested, works perfect"*) and **ON MAIN** (promoted the

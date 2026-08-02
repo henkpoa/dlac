@@ -18,9 +18,9 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.08.02e';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.08.03c';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
-                                -- (29k = the day-match train 29h merged with 29i/29j)
+                                -- (03c = the first field report read back: four fixes)
 addon.desc    = 'Gear sets, triggers and live stats with level scaling -- dlac equips your gear itself.';
 
 -- Load BEACON ('/dl check' field round, 2026-07-23): written by PLAIN io at
@@ -270,7 +270,8 @@ for _, mod in ipairs({ 'gear', 'feature\\augments', 'gear\\gearoptim', 'gear\\ge
                        'feature\\fishwatch', 'ui\\fishbar', 'feature\\chocowatch',
                        'feature\\meritwatch', 'feature\\integration', 'feature\\foodwatch',
                        'feature\\engagewatch', 'feature\\petvitals', 'feature\\combat',
-                       'feature\\sendlog', 'feature\\check', 'feature\\debug', 'feature\\lockstyle',
+                       'feature\\sendlog', 'feature\\check', 'feature\\debug', 'feature\\report',
+                       'feature\\lockstyle',
                        'feature\\lockstyleapply', 'feature\\equipengine',
                        'feature\\engine', 'ui\\gearui',
                        'ui\\panelkit', 'feature\\keybinds', 'feature\\modcfg', 'feature\\modapi',

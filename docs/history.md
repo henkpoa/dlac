@@ -7981,3 +7981,162 @@ The lesson to carry, since the ask was phrased as a text problem: what actually 
 message was **giving the player the fix instead of describing it**. Every clause that came out
 of the line was explaining a repair the button now performs. When a warning is long, the first
 question is whether it is long because it is doing the user's work in prose.
+
+## Session "one file to send" (2026-08-02, `2026.08.03a` — `/dl report`, the support recorder)
+
+**The ask, looking forward rather than at a bug:** *"We have the Arbiter Monitor now, I also
+believe this addon will be approved. So was thinking, what if we add a debug tool in the
+arbiter monitor? Once the user base grows, I want people to enable the debug, where we get as
+much information as possible that is generated into a log file... their whole dlac profile that
+is active + gear, sets, triggers, everything. Then generate a debug log for as long as it is
+active (max 5 minutes). Then he should be able to send those files to me so I can feed you the
+data so you can help troubleshoot."*
+
+So the consumer of this artifact is **known and unusual**: Henrik reads it, then feeds it to a
+model. That single fact decided most of the design, and it is the part worth keeping.
+
+**Five calls, each with a field reason.**
+
+1. **Pre-roll.** Nobody starts recording before the bug; they start after they saw it. dispatch
+   already holds 50 decisions and 32 actions, sendlog 24 sends, always. So a capture's first act
+   is to dump those rings as `PRE-ROLL`. Free — no new standing cost — and it is the single
+   thing that makes the tool work the way players actually behave.
+2. **Stream, don't buffer.** `feature/debug.lua`'s own header records the failure mode: `/dl
+   debug ebox` threw and Ashita unloaded dlac mid-session. If the thing being chased is a crash,
+   a write-at-the-end design loses exactly the run that mattered. Batches append to
+   `dlac-capture-<Char>.log` as they happen; a dead client still leaves the log.
+3. **Scoped for the reader.** The budget is CONTEXT, not disk. Mindie's real `gear.lua` is
+   **264 KB** (~70k tokens) of bag index, and almost none of it bears on any given bug — so gear
+   ships as a **digest** of the items the window actually named, each with live "is it in an
+   equippable bag" beside it, which is precisely the fact an `unavail` fall turns on. The active
+   job's sets + triggers ride verbatim (~44 KB). Everything else is in a **manifest** with its
+   size, so a wrongly-scoped digest costs one follow-up instead of a lost session. `/dl report
+   full` widens to the whole tree.
+4. **The mark.** In a five-minute log the expensive step is finding the moment. `/dl mark <note>`
+   goes on a macro palette and works mid-fight; the Monitor's `[Mark]` button is the alt-tab
+   version. Marks land in the timeline *and* in a list above the log.
+5. **Overwrite**, per the 07-23 file rule: support wants THE latest, and a player who ran it
+   twice meant the second one.
+
+**Where it lives.** `feature/report.lua` owns the recorder; the Arbiter Monitor holds *a* button.
+The capture spans far more than the arbiter (sends, health, config, chat), and a second
+implementation living inside a renderer is how two surfaces drift apart. Same shape as the
+integration-surface ruling: one record, several renderers — this is the fourth renderer of the
+decision ring, beside `/dl why`, the Monitor hover and the stream, and it says the same
+sentences on purpose (`fell:`, `it reserves X -- owned above`, `not in a bag you can equip
+from`). RPT6c pins that wording as a test, because a player quoting one channel and support
+reading another must be looking at the same words.
+
+**Privacy is stated, not enforced** (the no-gating rule). The only chat captured is dlac's own
+`[dlac] ` output, filtered at the `text_in` seam — no tells, no party chat — and the header
+paragraph says what the file holds and that nothing leaves the machine on its own.
+
+**Two small seams grew elsewhere.** `sendlog.observer` (one line, pcall'd — an observer must not
+break the thing it observes) so the log carries every send *with the cause the send site knew*;
+and `check.gather()` split out of `check.report()` so the report can put the same health readout
+at the top without capturing `print`.
+
+**Three bugs the build found, all in what the file SAYS rather than what it does.** The summary
+counted 0 decisions over a log visibly containing one (pre-roll was uncounted — a reader who
+catches that stops trusting every other number, correctly). It said "1 decisions" and "1 chat
+lines look". And text-mode append against a binary read left **17 stray CRs** in a file whose
+whole job is to be read by someone else's tools.
+
+Suites **5836** and **999**, both interpreters. The pure seams carry the clamp, the parse pair,
+the decision renderer's vocabulary, the digest scope and the budget walk; RPT20-25 drive the
+**whole assembly** against an in-memory tree through the new `M._fs` seam, because the
+interesting failures here are about which files were chosen and what the report says about the
+ones it left out — not about `io.open`. The no-silent-caps law is four of those checks: every
+exclusion is a named line with a reason, since a truncated bundle that reads as complete is the
+one failure mode that costs an entire support round.
+
+Format pinned in `docs/reference/report-format.md` — written for whoever reads a report next,
+model or human, so nobody re-derives the layout from the bytes.
+
+### Field round 1, same day — "I can mark the same event several times" (`2026.08.03b`)
+
+Henrik ran a report and came back with the one thing a build session cannot see: *"what I can
+see is that I can mark the same event several times. So if I have marked an event, the button
+should change to de-mark and remove it."*
+
+He is right, and the cost is precisely aimed: the mark list is the **reader's index** into a
+five-minute log, so a doubled entry spends the one thing marks exist to buy. Two clicks — or one
+macro pressed twice, which is the ordinary case — produced two rows pointing at the same instant.
+
+**The fix needed a definition of "event", and the addon already had one:** the decision the ring
+is newest on. One record per dispatch whose outcome moved — that IS a moment. So a mark now
+binds to `st.lastSeq`. Mark again before a new decision lands and it REPLACES (latest words
+win); mark after one and it is a new moment, so it appends. The Monitor's control follows: the
+note field becomes the mark's text and the button becomes **[Un-mark]**. A report with no
+decisions at all is one long moment, which is correct — the gear never moved, and that is the
+thing being reported.
+
+Two rulings inside the small change:
+
+- **The log is append-only and is never rewritten.** A replace appends `MARK REPLACED … (was: …)`
+  and a removal appends `MARK REMOVED (was …)`. The player changing their mind is itself part of
+  the timeline; only the summary INDEX is deduplicated. Nothing the player typed is ever lost,
+  including the note a replace superseded.
+- **Un-mark refuses once the moment has moved on** (RPT30). It may only take back the current
+  moment's mark — reaching backwards would let one button delete evidence the player set against
+  a different event, which is the only way this control could destroy something.
+
+Free ride, and the reason the seq was worth storing: every summary row now reads `at decision
+#N`, which turns a mark into a **jump** to the log block headed `#N` — the decision the player
+was looking at when they said those words.
+
+Suites **5858** and **1003**. The mark semantics are driven against a stubbed ring (RPT26-32:
+add, replace, un-mark, the new-moment append, the evidence rule, the append-only timeline, and
+the summary link), and the smoke half renders BOTH button states, checking that a marked moment
+offers `Un-mark` and does not also offer a second `Mark`. `flush` moved onto the `M._fs` seam so
+the timeline is assertable at all — the first attempt tested `st.q`, which `pump()` drains.
+
+### Field round 2 — reading the first real report back (`2026.08.03c`)
+
+*"Check the report."* He sent the actual artifact from his DRG session. It worked — 46 KB,
+every section intact, and the **pre-roll caught decision `#1` twenty-six seconds before he
+pressed record**, which was the design's central bet paying off on the first real run. Reading
+it back found four things, and the two that matter were not cosmetic.
+
+**1. `(kept)` was telling a lie that only shows up in this renderer.** Each weaponskill block
+read `(7 slots changed)` over seven rows saying `(kept)` — two statements that cannot both be
+true. The ring counts a slot as changed when it *left* the plan, and the renderer, finding no
+item and no winner, fell through to the Monitor's word for "nobody claimed it". In the Monitor's
+4x4 grid, where all sixteen slots are drawn, `(kept)` reads fine; here, where only changed slots
+print, it was actively misleading. Now `(left as worn)`, with the header carrying `0 placed, 7
+left as worn` — and the breakdown appears only when the two numbers differ, so ordinary blocks
+stay one line. The first cut of the fix repeated three lines of prose per dropped slot and spent
+**21 lines** on one weaponskill; it says it once per block now. Counted through the same
+`_isDropped` the rows use, so header and rows cannot disagree.
+
+**2. The digest's scope had a blind spot, and it hid the actual answer.** He was **DRG26** under
+level sync, and every piece in his `Ws_Default` is level 33-75 (Peacock Charm 33, Virtuoso Belt
+54, Jaridah Khud 55, Fotia Gorget 72, Brutal Earring 75). So every weaponskill silently wore TP
+gear — correct engine behaviour, and *exactly* the thing a player files as "my WS set doesn't
+work". The report could not say it: the level filter runs at **flatten time**, before any ladder
+exists, so there is no refusal to record and no rung to strike through, and a digest scoped to
+"what the window named" cannot see gear that never got that far.
+
+Fixed by scoping a SECOND list off the bundled sets file — which is in the report anyway — and
+flagging anything above the level dlac was *deciding under* (read off the records, so a lapsed
+sync cannot rewrite the answer). Set files reference gear as Lua paths, and the identifier is
+not the name (`gear.Head.Faceguard_1` is "Faceguard +1"), so each path is walked against the
+real gear table, exactly as the file itself does at load — depth-agnostic, so Main/Range's extra
+weapon-category level needs no special case. Re-run against his real 777-entry `gear.lua`, the
+report now names all **38** pieces his DRG sets ask for that DRG26 cannot wear.
+
+**3. The health section accused a healthy engine.** `check._lines` line 5 tells the reader a
+`[dlac] check (engine): alive` line must accompany the readout and that its absence IS the
+diagnosis. True in chat, where dispatch prints it from its own branch — and impossible in the
+file, which carries the addon half only. Every report ever written would have failed that test.
+The file now states its own equivalent from the engine file version and the modestate stamp,
+which is a stronger check than a printed line: agreement proves an armed engine of the right
+version, disagreement names which side is behind.
+
+**4.** `SEND 0x01A  passed through (your own action)  (your own packet, passed through)` — the
+same fact twice, which makes a reader look for the difference between them.
+
+Suites **5886** and **1003**. The lesson worth keeping is about #2: the artifact was scoped to
+*what happened*, and the answer lived in *what was asked for and never happened*. A digest built
+from observed events cannot explain an absence of events — and an absence of events is what a
+support report is usually about.

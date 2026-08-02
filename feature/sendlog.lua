@@ -209,12 +209,21 @@ end
 
 M.state = M.newState(clock());
 
+-- An OPTIONAL second reader of the same notes (2026-08-03): /dl report's
+-- recorder sets this while a capture is running, so the support log carries
+-- every send WITH ITS CAUSE. It hangs off M.note rather than M._note because
+-- the pure core is the tested one and must stay side-effect free; and it is
+-- pcall'd for the same reason the counter is -- an observer must not be able
+-- to break the thing it observes, still less the equip that caused the send.
+M.observer = nil;
+
 -- THE call every send site makes. Never throws (a counter must not be able to
 -- break the thing it counts) and does no io -- a send is rare, but under a
 -- flap this runs at the 0.4s tick, so it stays arithmetic.
 -- `pass` = this is YOUR packet passing back through, not traffic dlac added.
 function M.note(id, why, pass)
     local ok = pcall(M._note, M.state, id, why, clock(), pass);
+    if M.observer ~= nil then pcall(M.observer, id, why, pass); end
     return ok;
 end
 

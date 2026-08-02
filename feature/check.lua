@@ -139,7 +139,10 @@ end
 -- live glue (Ashita only)
 -- ---------------------------------------------------------------------------
 
-function M.report()
+-- The live gather, split out of report() (2026-08-03) so /dl report can put
+-- the SAME health readout at the top of its bundle without capturing print.
+-- One implementation, two doors -- the check/ls precedent.
+function M.gather()
     local info = {};
     pcall(function() info.addonVer = addon ~= nil and addon.version or nil; end);
     local dsp = try('dlac\\dispatch');
@@ -197,7 +200,11 @@ function M.report()
         local prof = try('dlac\\profiles');
         if prof ~= nil and type(prof.activeName) == 'function' then info.profName = prof.activeName(); end
     end);
-    local lines = M._lines(info);
+    return info;
+end
+
+function M.report()
+    local lines = M._lines(M.gather());
     for _, l in ipairs(lines) do print('[dlac] ' .. l); end
     -- The file rule (Henrik 07-23): every check/debug run lands as ONE
     -- transferable .txt. feature/debug.lua owns the writer + the engine-half
