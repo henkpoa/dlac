@@ -4987,6 +4987,130 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- 7h. WARDROBE CLEANUP window (/dl unused, 2026-08-03). Same lesson as the
+--     Arbiter Monitor: a window body must be EXECUTED headless, not just
+--     loaded. Three frames matter and all three are driven -- no report yet
+--     (the Generate pitch), a report with rows in all three sections, and the
+--     filtered frame (a search that matches nothing). Hover is ON so every
+--     tooltip builder runs.
+-- ---------------------------------------------------------------------------
+;(function()
+    local depth = { win = 0, child = 0, item = 0, combo = 0 };
+    local drawn = {};
+    local function nop() end
+    local IM = {};
+    for _, n in ipairs({ 'SetNextWindowSize', 'Separator', 'Spacing', 'Text',
+        'SameLine', 'NewLine', 'Dummy', 'SetTooltip', 'BeginGroup', 'EndGroup', 'Image',
+        'PushTextWrapPos', 'PopTextWrapPos' }) do
+        IM[n] = nop;
+    end
+    -- Every drawn string is recorded: the window catches its own throws now (so
+    -- the stacks always balance), which means a real render bug would otherwise
+    -- pass as a green frame. The recorded text is what proves it did not.
+    IM.TextColored = function(_, t) drawn[#drawn + 1] = tostring(t); end
+    IM.Begin      = function() depth.win = depth.win + 1; return true; end
+    IM['End']     = function() depth.win = depth.win - 1; end
+    IM.BeginChild = function() depth.child = depth.child + 1; return true; end
+    IM.EndChild   = function() depth.child = depth.child - 1; end
+    IM.PushItemWidth = function() depth.item = depth.item + 1; end
+    IM.PopItemWidth  = function() depth.item = depth.item - 1; end
+    IM.BeginCombo = function() depth.combo = depth.combo + 1; return true; end
+    IM.EndCombo   = function() depth.combo = depth.combo - 1; end
+    IM.CollapsingHeader = function() return true; end     -- OPEN, so the rows really render
+    IM.IsItemHovered    = function() return true; end     -- exercise EVERY tooltip builder
+    IM.Selectable = function() return false; end
+    IM.InputText  = function() return false; end
+    local smalls = {};
+    IM.SmallButton = function(l) smalls[#smalls + 1] = tostring(l); return false; end
+    IM.CalcTextSize = function(s) return #tostring(s or '') * 10, 14; end
+    IM.GetItemRectMin = function() return 0, 0; end
+    IM.GetItemRectMax = function() return 100, 14; end
+    IM.GetColorU32 = function() return 0; end
+    IM.GetWindowDrawList = function() return { AddLine = nop, AddRectFilled = nop }; end
+
+    local saved = { imgui = package.loaded['imgui'],
+                    icons = package.loaded['dlac\\ui\\itemicons'],
+                    fmt   = package.loaded['dlac\\gear\\gearfmt'],
+                    ug    = package.loaded['dlac\\gear\\unusedgear'],
+                    uu    = package.loaded['dlac\\ui\\unusedui'] };
+    package.loaded['imgui'] = IM;
+    package.loaded['dlac\\ui\\itemicons'] = { renderIcon = nop };
+    package.loaded['dlac\\gear\\gearfmt'] = nil;          -- re-bind it to THIS stub (section-9 precedent)
+    -- The audit core, stubbed at the one seam the window uses.
+    local REPORT = nil;
+    package.loaded['dlac\\gear\\unusedgear'] = {
+        load = function() return REPORT; end,
+        refresh = function() return REPORT, nil; end,
+        MAX_WHY = 6,
+    };
+    package.loaded['dlac\\ui\\unusedui'] = nil;
+    local ok, uu = pcall(require, 'dlac\\ui\\unusedui');
+    check('UW1 unusedui re-requires against a stub imgui', ok and type(uu.render), 'function');
+    if ok then
+        uu.visible = false;
+        pcall(uu.render);
+        check('UW2 a closed window opens nothing', depth.win, 0);
+
+        check('UW3 toggle opens it', uu.toggle(), true);
+        smalls, drawn = {}, {};
+        local eok, eerr = pcall(uu.render);
+        check('UW4 the no-report frame renders', eok, true);
+        if not eok then print('   unusedui empty error: ' .. tostring(eerr)); end
+        check('UW4b ...offering Generate', table.concat(smalls, ' '):find('Generate##unuref', 1, true) ~= nil, true);
+        check('UW4c Begin/End balanced', depth.win, 0);
+        check('UW4d ...and nothing threw inside the body',
+              table.concat(drawn, ' '):find('error', 1, true), nil);
+
+        REPORT = {
+            v = 1, at = 1, stamp = '2026-08-03 12:00:00', char = 'Mindie',
+            stats = { profiles = 1, entries = 3, sets = 12, usedSets = 9, orphanSets = 3 },
+            counts = { total = 6, used = 3, unused = 1, orphan = 1, style = 1 },
+            wardrobes = { { cid = 8, name = 'Wardrobe', items = 4, flagged = 2 },
+                          { cid = 10, name = 'Wardrobe 2', items = 2, flagged = 1 } },
+            rows = {
+                { id = 1, name = 'Bronze Harness', cls = 'unused', lv = 1, jobs = 'WAR,MNK',
+                  where = { { cid = 8, n = 1 } }, why = {} },
+                { id = 2, name = 'Peacock Charm', cls = 'orphan', lv = 30, jobs = 'ALL',
+                  where = { { cid = 8, n = 1 } }, why = { 'Default/BLU set Spare' } },
+                { id = 3, name = "Agwu's Cap", cls = 'style', lv = 99,
+                  where = { { cid = 10, n = 2 } }, why = { 'Default/BLU lockstyle box 2' } },
+            },
+        };
+        smalls, drawn = {}, {};
+        local rok, rerr = pcall(uu.render);
+        check('UW5 the populated frame renders (all three sections)', rok, true);
+        if not rok then print('   unusedui populated error: ' .. tostring(rerr)); end
+        check('UW5b ...offering Refresh', table.concat(smalls, ' '):find('Refresh##unuref', 1, true) ~= nil, true);
+        check('UW5c Begin/End balanced',   depth.win, 0);
+        check('UW5d BeginChild balanced',  depth.child, 0);
+        check('UW5e item-width balanced',  depth.item, 0);
+        check('UW5f combo balanced',       depth.combo, 0);
+        local text = table.concat(drawn, ' | ');
+        check('UW5g nothing threw inside the body', text:find('error', 1, true), nil);
+        check('UW5h the rows reached the screen', text:find('Bronze Harness', 1, true) ~= nil, true);
+        check('UW5i ...with where they sit',      text:find('Wardrobe 2 x2', 1, true) ~= nil, true);
+        check('UW5j ...and the lockstyle reassurance',
+              text:find('works from any container', 1, true) ~= nil, true);
+
+        -- a filter that matches nothing: the other branch of the empty line
+        drawn = {};
+        uu._setSearch('zzzz');
+        pcall(uu.render);
+        uu._setSearch('');
+        check('UW5k a no-match filter says so',
+              table.concat(drawn, ' | '):find('Nothing matches the filters', 1, true) ~= nil, true);
+
+        uu.close();
+        check('UW6 close hides it', uu.visible, false);
+    end
+    package.loaded['imgui'] = saved.imgui;
+    package.loaded['dlac\\ui\\itemicons'] = saved.icons;
+    package.loaded['dlac\\gear\\gearfmt'] = saved.fmt;
+    package.loaded['dlac\\gear\\unusedgear'] = saved.ug;
+    package.loaded['dlac\\ui\\unusedui'] = saved.uu;
+end)();
+
+-- ---------------------------------------------------------------------------
 -- Crafting Gear panel: the Ventures block (2026-07-28). The craft DETAIL view
 -- had no render coverage at all -- section 8 only exercises the manifest
 -- ladders -- and renderTab wraps renderAutomations in a pcall, so a fresh

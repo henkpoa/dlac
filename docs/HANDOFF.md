@@ -738,6 +738,38 @@ research already recorded. In rough priority order:
 
 ## Current state (as of 2026-08-02)
 
+- **2026-08-03 (`2026.08.03r`): `/dl unused` — THE WARDROBE AUDIT.** *"which pieces you have
+  in mog wardrobes that are actively not being used at all"* (Henrik). `gear/unusedgear.lua`
+  is `gearcheck` read backwards: start from the BAG, ask whether anything references the
+  piece, across **every profile and job entry** (dormant archives included) — triggers → the
+  sets they point at, lockstyle boxes, the gear-helper manifests, ammo rules, rod+bait, job
+  helper pins, and what you are wearing. `ui/unusedui.lua` shows the **last saved** report
+  (`<char>\unusedreport.lua`) with a Refresh button; `/dl unused scan` answers in chat.
+  **ON MAIN** (promoted 2026-08-03 on Henrik's *"commit to dev, merge and push"*), and
+  **NOT field-confirmed** — one round is owed: `/dl unused`, Refresh, and a look at whether
+  the three sections say true things about his own wardrobes. Suites **6035** + **1108**.
+  - **ITERATION 1, and he said so while accepting it**: *"this is just a first iteration, we
+    will most likely work on this more and combine features, especially when / if storage
+    move is accepted."* The join he means is `docs/design/storage-move.md` — the right-click
+    **Move To →** research (feasible, server-validated, never built): with it, a flagged row
+    could move itself to the Mog Safe instead of just naming itself. The rows already carry
+    id + container + copy count, which is what a move needs. New "what asks for an item"
+    sources belong in `M.collect`'s buckets / `M.HELPER_PINS`, never a second walk.
+  - **A lockstyle-only piece is MOVEABLE, and that is a server fact, not a guess.**
+    `src/map/packets/c2s/0x053_lockstyle.cpp` (`Set` mode) validates that the id is real
+    equipment that fits the slot and **never reads ownership or container** — checked in the
+    stable clone before the section was built. Henrik had already said so from play; the
+    source is why the window states it as fact.
+  - **Three sections, because there are three answers**: nothing references it / only a
+    lockstyle box does / only a set no rule triggers (his character: 63 untriggered sets out
+    of 257 — never call those pieces junk). Helper picks COUNT as use and name their helper;
+    the manifest's `mp`/`rf`/`mv` tables do NOT — they are stat caches, not pick lists, and
+    counting them would mark every refresh piece owned as used.
+  - **Set names claimed by config, not by a rule**, are promoted with the reason attached:
+    `autogear.mpPairIdle` and a job helper's `summonSet` (BST's `Chr_Swap`). New pins go in
+    `M.HELPER_PINS` — declared, never sniffed.
+  - Full reasoning: `docs/history.md` → *"what is in the wardrobe that nothing asks for"*.
+
 - **2026-08-03 (`2026.08.03h`–`2026.08.03q`): THE PIN MENU — several pins per slot, and a
   right-click window that holds still. **FIELD-CONFIRMED** by Henrik across ~six rounds of
   screenshots and a final play test (*"I field verified it now, it works also"*). Suites

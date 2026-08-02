@@ -197,6 +197,7 @@ nothing is ever deleted for you — clearing an entry is always your call.
 | `/dl fix` | Re-stamp gear.lua entries with fields the scan has since learned (reserved slots etc.) |
 | `/dl ls apply [box]` | Apply a saved lockstyle box (GUI: the armor header button) |
 | `/dl wish` | Open the Wishlist window (also **Menu → Wishlist**) |
+| `/dl unused` | **Wardrobe cleanup** — what is sitting in a Mog Wardrobe that nothing asks for. Reads every profile and job entry on the character (triggers → the sets they point at), plus your lockstyle boxes, gear helpers, ammo rules and fishing pick, then lists the wardrobe pieces none of it names. Opens a window on the last report with a Refresh button; `/dl unused scan` rebuilds and answers in chat |
 | `/dl weight` / `best` | Stat-weight helpers for set auto-building |
 | `/dl set level main <n>` | Preview as another level |
 | `/dl p` / `/dl w` | Panic escape: lock Ring2, equip the Provenance/Warp Ring, wait out its equip delay, use it (`off` cancels) |

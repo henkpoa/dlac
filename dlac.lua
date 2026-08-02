@@ -18,7 +18,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.08.03q';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.08.03r';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
                                 -- (03f = engine v163: the contest explains its own plan;
                                 --  03g = one floating tray: Teleports + the E-Box crates;
@@ -32,7 +32,9 @@ addon.version = '2026.08.03q';  -- date of the last shipped change (Ashita print
                                 --  03n = the facts get a vote on the WIDTH;
                                 --  03o = that width is PINNED, so the popup is static;
                                 --  03p = the facts pad with LINES, not a Dummy;
-                                --  03q = the pin popup's row budget is MEASURED)
+                                --  03q = the pin popup's row budget is MEASURED;
+                                --  03r = /dl unused: the wardrobe audit -- what is
+                                --  in a Mog Wardrobe that nothing asks for)
 addon.desc    = 'Gear sets, triggers and live stats with level scaling -- dlac equips your gear itself.';
 
 -- Load BEACON ('/dl check' field round, 2026-07-23): written by PLAIN io at
@@ -276,7 +278,8 @@ _cfok = _cfok and type(_cfmt) == 'table';
 ledger.total = ledger.total + 1;
 if not _cfok then ledger.failed[#ledger.failed + 1] = { mod = 'chatfmt', err = tostring(_cfmt) }; end
 for _, mod in ipairs({ 'gear', 'feature\\augments', 'gear\\gearoptim', 'gear\\gearimport',
-                       'gear\\gearexport', 'feature\\useitem', 'feature\\craftwatch',
+                       'gear\\gearexport', 'gear\\unusedgear',
+                       'feature\\useitem', 'feature\\craftwatch',
                        'feature\\synthrun',
                        'ui\\craftbar', 'feature\\helmwatch', 'ui\\helmbar',
                        'feature\\fishwatch', 'ui\\fishbar', 'feature\\chocowatch',

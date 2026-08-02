@@ -4946,6 +4946,13 @@ do
     if not wok then
         pcall(function() print('[dlac] wishlistui failed to load: ' .. tostring(werr)); end);
     end
+    -- The Wardrobe cleanup window (/dl unused): loaded here for the same reason
+    -- the Wishlist is -- it needs the shared services this file provides, and a
+    -- load failure should print once, here.
+    local uok, uerr = pcall(require, "dlac\\ui\\unusedui");
+    if not uok then
+        pcall(function() print('[dlac] unusedui failed to load: ' .. tostring(uerr)); end);
+    end
     local ok, err = pcall(require, "dlac\\ui\\equippedui");   -- self-registers its two tabs
     if not ok then
         pcall(function() print('[dlac] equippedui failed to load: ' .. tostring(err)); end);
@@ -5351,6 +5358,18 @@ ashita.events.register('d3d_present', 'dlac-gearui-render', function()
             local wlThemed = style ~= nil and style.push();
             pcall(wlMod.render);
             if wlThemed then style.pop(); end
+        end
+    end
+    -- Wardrobe cleanup window (/dl unused): INDEPENDENT of the main box, same
+    -- reason as the three above. Own theme bracket, function-scoped require --
+    -- no new chunk local (hard rule 1).
+    if has.imgui then
+        local unMod = nil;
+        pcall(function() unMod = require('dlac\\ui\\unusedui'); end);
+        if unMod ~= nil and unMod.visible == true then
+            local unThemed = style ~= nil and style.push();
+            pcall(unMod.render);
+            if unThemed then style.pop(); end
         end
     end
     -- (The E-Box Restock crates used to Begin their own window here. They are now
