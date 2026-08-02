@@ -294,7 +294,14 @@ infer it from a field confirmation, from *"works"*, or from your own read that s
 ready — his own note on the exchange was *"you are right not to assume otherwise since I
 haven't told you."* Ask when he has **not** said merge; never ask twice when he has.
 
-**The queue is empty.**
+**IN THE QUEUE — NOT accepted.** `/dl report`'s three follow-up commits, `2026.08.03d`–`f`
+(`a64d1f4`, `ead3afa`, `df77475` — the last carries **engine v163**). Henrik has not said merge
+for these; the v1 promotion `ecb7f3a` covered `03a`–`03c` only. **PAUSED ON ONE THING: a
+`/dl report` captured across a LEVEL-UP**, which is the only condition that exercises the v163
+fix, and he is not levelling for a while (in-game events). Full resume instructions, the exact
+recipe, what should be gone vs what is correct-and-must-not-be-"fixed", and the proven/assumed
+split: **[design/report-handoff-2026-08-02.md](design/report-handoff-2026-08-02.md)**. Suites
+5938 + 1003 green both interpreters; the round is owed, not the work.
 
 
 *(Emptied by the fifth 2026-08-02 promotion — **`/dl report`, the support recorder**,
