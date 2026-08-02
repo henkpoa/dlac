@@ -1178,6 +1178,40 @@ end)();
     check('FGP44 ...and so does an empty hover', lineItems, reserve);
     IM.TextColored, IM.Text, IM.Dummy = keptTC, keptT, keptD;
 
+    -- THE ROW BUDGET. Field symptom (Henrik, with an arrow drawn on it): "scroll,
+    -- but barely any, it is just outside the main window" -- the list came out
+    -- ONE row over the cap, ImGui grew a scrollbar for that row, and the
+    -- "+N more" footer sat half-clipped under it. The chrome above the list is
+    -- measured now rather than estimated, and this is the arithmetic that turns
+    -- the measurement into rows.
+    local RBUD = fg._rowBudget;
+    check('FGP45 a taller chrome leaves fewer rows',
+        RBUD(560, 300, 51, 24) < RBUD(560, 200, 51, 24), true);
+    check('FGP46 the footer is subtracted too, or its line clips under a scrollbar',
+        RBUD(560, 200, 51, 24) < RBUD(560, 200, 0, 24), true);
+    check('FGP47 a taller cap buys rows back',
+        RBUD(640, 200, 51, 24) > RBUD(460, 200, 51, 24), true);
+    check('FGP48 ...and a cramped popup still offers a floor of rows',
+        RBUD(200, 400, 51, 24), 4);
+    check('FGP49 a nonsense row height is refused rather than dividing by zero',
+        RBUD(560, 200, 51, 0), 4);
+    -- The exact arithmetic, pinned: cap 560 - chrome 200 - footer 51 = 309, and
+    -- 309 / 24 = 12 rows with 21px to spare. A row more would overflow, which is
+    -- the whole bug.
+    check('FGP50 the budget floors rather than rounds (a rounded-up row overflows)',
+        RBUD(560, 200, 51, 24), 12);
+
+    -- The height cap takes what the screen offers instead of a constant.
+    local MH = fg._maxPopupH;
+    IM.GetIO = function() return { KeyShift = false, DisplaySize = { x = 1920, y = 1080 } }; end
+    local bigScreen = MH();
+    IM.GetIO = function() return { KeyShift = false, DisplaySize = { x = 800, y = 480 } }; end
+    local smallScreen = MH();
+    IM.GetIO = function() return { KeyShift = false }; end
+    check('FGP51 a short display lowers the height cap', smallScreen < bigScreen, true);
+    check('FGP52 ...to a share of the screen, not past its bottom edge',
+        smallScreen <= 480, true);
+
     -- WIDTH BUYS HEIGHT (Henrik: "make it WIDER to adapt as well, so we get more
     -- space for gear"). The block wraps to whatever width the popup settles on,
     -- so a wider popup turns a four-line stat wrap into two and hands those two

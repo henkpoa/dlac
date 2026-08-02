@@ -8646,3 +8646,39 @@ layout): the tallest piece fills the reservation exactly, a shorter piece emits 
 number of lines, an empty hover does too, and no `Dummy` is emitted at all. Plus `FGP40b`,
 which asserts the two sample pieces differ in natural height — without it the whole group
 would pass while never exercising the padding. Suites **5990** and **1081**.
+
+## Session "a scrollbar for one row" (2026-08-03, `2026.08.03q`)
+
+Henrik, with arrows drawn on the screenshot: the cascade scrolls (fine, sixteen triggers),
+but the main popup had a scrollbar too — *"barely any, it is just outside the main window.
+If it was just a little bit higher the scroll would not be needed."* The `+5 more — type to
+narrow` footer sat half-clipped under it.
+
+**The list came out about one row over the cap.** The row budget subtracted an *estimate* of
+the chrome above it — `(5 + maxLines) * lineH + #held * rowH` — and that estimate was around
+two lines short. A search box is a framed widget and taller than a text line, separators
+carry their own spacing, and the guessed constant covered neither. Two lines short of the
+cap is not a layout problem, it is a scrollbar for a sliver.
+
+**It is measured now.** By the time the list starts, everything above it has already been
+submitted, so *the cursor's own travel is the chrome* — one `GetCursorScreenPos` at the top
+of the popup, one where the list begins, and the difference is exact for the header, the
+move row, the search box, every pinned row, the reserved facts block and every separator
+between them, with nothing to keep in step when any of those change. The only allowance left
+is the footer, which has not been drawn yet: three lines covers its separator, its line and
+the window's bottom padding.
+
+The rule this is the second instance of: **when the thing you need is already on screen,
+read it — do not model it.** The width stopped being a constant two rounds ago for the same
+reason.
+
+**And the cap takes what the screen offers.** 460 was a constant that looked reasonable on
+one machine; it is 560 now, clamped to 85% of `GetIO().DisplaySize.y`. Height is the axis a
+player has most of, and the popup was leaving it on the table.
+
+**Tests:** `_rowBudget` is pure, so smoke `FGP45`–`FGP50` drive the arithmetic directly —
+taller chrome leaves fewer rows, the footer is subtracted, a taller cap buys rows back, a
+cramped popup keeps a floor of four, a zero row height is refused rather than dividing, and
+the exact floor case is pinned (560 − 200 − 51 = 309, 309/24 = **12** rows, not 13 — a
+rounded-up row is the whole bug). `FGP51`–`FGP52` cover the screen-aware cap. Suites **5990**
+and **1089**.

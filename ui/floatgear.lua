@@ -408,7 +408,7 @@ end
 -- past that point the honest answer is a scrollbar, not a window you cannot see
 -- around. Measured UNFILTERED on purpose -- the width holding still while you
 -- type is worth more than shaving pixels off it per keystroke.
-local MIN_W, MAX_W, CAP_W = 250, 720, 460;   -- floor, ceiling, height cap
+local MIN_W, MAX_W, CAP_H = 250, 720, 560;   -- width floor, width ceiling, height cap
 -- The CASCADE's height cap (its width is left free -- see the note at BeginMenu).
 -- Deliberately shorter than the parent popup's: the cascade opens level with the
 -- row you are hovering, which can be most of the way down the list, so a submenu
@@ -434,6 +434,45 @@ local function maxPopupW()
     return cap;
 end
 M._maxPopupW = maxPopupW;   -- test seam
+
+-- The HEIGHT cap, same shape and for the same reason. 460 was a constant and it
+-- was a hair too low: the list came out one row over it, ImGui grew a scrollbar
+-- for that one row, and the "+N more" footer sat half-clipped under it (Henrik:
+-- "scroll, but barely any, it is just outside the main window"). Height is the
+-- axis a player has the most of, so the cap should take what the screen offers
+-- rather than what looked reasonable on one machine.
+local function maxPopupH()
+    local cap = CAP_H;
+    pcall(function()
+        local io = imgui.GetIO();
+        local ds = (io ~= nil) and io.DisplaySize or nil;
+        local sh = (type(ds) == 'table') and tonumber(ds.y or ds[2]) or nil;
+        if sh ~= nil and sh > 0 then
+            local most = math.floor(sh * 0.85);
+            if most < cap then cap = most; end
+        end
+    end);
+    if cap < 300 then cap = 300; end
+    return cap;
+end
+M._maxPopupH = maxPopupH;   -- test seam
+
+-- HOW MANY GEAR ROWS FIT under that cap. Pure, because the interesting part is
+-- arithmetic and the interesting failure is off-by-a-row.
+--
+-- `chromeH` is MEASURED by the caller, not estimated. Everything above the list
+-- -- header, move row, search box, pinned rows, the reserved facts block, the
+-- separators between them -- has already been submitted by the time the list
+-- starts, so the cursor's own travel IS the chrome. The estimate this replaces
+-- was about two lines short, and two lines short of the cap is a scrollbar for a
+-- sliver: the exact field symptom.
+function M._rowBudget(capH, chromeH, footerH, rowH)
+    if type(rowH) ~= 'number' or rowH <= 0 then return 4; end
+    local n = math.floor(((tonumber(capH) or CAP_H) - (tonumber(chromeH) or 0)
+                          - (tonumber(footerH) or 0)) / rowH);
+    if n < 4 then return 4; end     -- never absurd, however cramped it gets
+    return n;
+end
 
 -- THE POPUP'S WIDTH -- one number, walked out of every piece the menu can show,
 -- and then FIXED (see the SetNextWindowSizeConstraints before BeginPopup: min.x
@@ -825,6 +864,11 @@ local function renderPinMenu(job, level, choices, pool, maxW, fpool)
     local slot = _menuSlot;
     if slot == nil then return; end
 
+    -- The popup's content origin, for the row budget further down: the chrome
+    -- above the list is measured as this cursor's travel, never estimated.
+    local topY = nil;
+    pcall(function() local _; _, topY = imgui.GetCursorScreenPos(); end);
+
     imgui.TextColored(COL.HEADER, slot);
     imgui.Separator();
 
@@ -945,10 +989,18 @@ local function renderPinMenu(job, level, choices, pool, maxW, fpool)
         local h = imgui.GetTextLineHeightWithSpacing();
         if type(h) == 'number' and h > 0 then lineH = h; end
     end);
-    local rowH   = ICON + 4;                              -- an icon row, not a text row
-    local chrome = (5 + maxLines) * lineH + (#held * rowH);
-    local rowCap = math.floor((CAP_W - chrome) / rowH);
-    if rowCap < 4 then rowCap = 4; end                    -- never absurd
+    local rowH = ICON + 4;                                -- an icon row, not a text row
+    -- MEASURED chrome: the cursor has walked past everything above the list by
+    -- now, so the distance it travelled is exactly what the list cannot have.
+    local chromeH = 0;
+    pcall(function()
+        local _, y = imgui.GetCursorScreenPos();
+        if type(y) == 'number' and type(topY) == 'number' and y > topY then chromeH = y - topY; end
+    end);
+    -- The footer is the one thing still unsubmitted: its separator, the "+N more"
+    -- line, and the window's own bottom padding. Three lines covers all three and
+    -- keeps that line fully visible instead of half-clipped under a scrollbar.
+    local rowCap = M._rowBudget(maxPopupH(), chromeH, 3 * lineH, rowH);
     if rowCap > CAP then rowCap = CAP; end
     -- NO BeginChild around this list, deliberately. A submenu is drawn OUTSIDE the
     -- rect of the window it is declared in; inside a child, moving the mouse from
@@ -1245,7 +1297,7 @@ function M.render()
         -- BeginPopup's early-out consumes the next-window data exactly as Begin
         -- would. Otherwise the constraint would leak onto the next window opened
         -- anywhere in the frame -- including another addon's.
-        imgui.SetNextWindowSizeConstraints({ maxW, 0 }, { maxW, CAP_W });
+        imgui.SetNextWindowSizeConstraints({ maxW, 0 }, { maxW, maxPopupH() });
         _popupUp = false;
         -- The hover swap. `_hoverNext` is what the list reported LAST frame and
         -- becomes what the block draws THIS frame; a menu that did not draw
