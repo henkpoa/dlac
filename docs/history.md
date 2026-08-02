@@ -7981,3 +7981,74 @@ The lesson to carry, since the ask was phrased as a text problem: what actually 
 message was **giving the player the fix instead of describing it**. Every clause that came out
 of the line was explaining a repair the button now performs. When a warning is long, the first
 question is whether it is long because it is doing the user's work in prose.
+
+## Session "one file to send" (2026-08-02, `2026.08.03a` — `/dl report`, the support recorder)
+
+**The ask, looking forward rather than at a bug:** *"We have the Arbiter Monitor now, I also
+believe this addon will be approved. So was thinking, what if we add a debug tool in the
+arbiter monitor? Once the user base grows, I want people to enable the debug, where we get as
+much information as possible that is generated into a log file... their whole dlac profile that
+is active + gear, sets, triggers, everything. Then generate a debug log for as long as it is
+active (max 5 minutes). Then he should be able to send those files to me so I can feed you the
+data so you can help troubleshoot."*
+
+So the consumer of this artifact is **known and unusual**: Henrik reads it, then feeds it to a
+model. That single fact decided most of the design, and it is the part worth keeping.
+
+**Five calls, each with a field reason.**
+
+1. **Pre-roll.** Nobody starts recording before the bug; they start after they saw it. dispatch
+   already holds 50 decisions and 32 actions, sendlog 24 sends, always. So a capture's first act
+   is to dump those rings as `PRE-ROLL`. Free — no new standing cost — and it is the single
+   thing that makes the tool work the way players actually behave.
+2. **Stream, don't buffer.** `feature/debug.lua`'s own header records the failure mode: `/dl
+   debug ebox` threw and Ashita unloaded dlac mid-session. If the thing being chased is a crash,
+   a write-at-the-end design loses exactly the run that mattered. Batches append to
+   `dlac-capture-<Char>.log` as they happen; a dead client still leaves the log.
+3. **Scoped for the reader.** The budget is CONTEXT, not disk. Mindie's real `gear.lua` is
+   **264 KB** (~70k tokens) of bag index, and almost none of it bears on any given bug — so gear
+   ships as a **digest** of the items the window actually named, each with live "is it in an
+   equippable bag" beside it, which is precisely the fact an `unavail` fall turns on. The active
+   job's sets + triggers ride verbatim (~44 KB). Everything else is in a **manifest** with its
+   size, so a wrongly-scoped digest costs one follow-up instead of a lost session. `/dl report
+   full` widens to the whole tree.
+4. **The mark.** In a five-minute log the expensive step is finding the moment. `/dl mark <note>`
+   goes on a macro palette and works mid-fight; the Monitor's `[Mark]` button is the alt-tab
+   version. Marks land in the timeline *and* in a list above the log.
+5. **Overwrite**, per the 07-23 file rule: support wants THE latest, and a player who ran it
+   twice meant the second one.
+
+**Where it lives.** `feature/report.lua` owns the recorder; the Arbiter Monitor holds *a* button.
+The capture spans far more than the arbiter (sends, health, config, chat), and a second
+implementation living inside a renderer is how two surfaces drift apart. Same shape as the
+integration-surface ruling: one record, several renderers — this is the fourth renderer of the
+decision ring, beside `/dl why`, the Monitor hover and the stream, and it says the same
+sentences on purpose (`fell:`, `it reserves X -- owned above`, `not in a bag you can equip
+from`). RPT6c pins that wording as a test, because a player quoting one channel and support
+reading another must be looking at the same words.
+
+**Privacy is stated, not enforced** (the no-gating rule). The only chat captured is dlac's own
+`[dlac] ` output, filtered at the `text_in` seam — no tells, no party chat — and the header
+paragraph says what the file holds and that nothing leaves the machine on its own.
+
+**Two small seams grew elsewhere.** `sendlog.observer` (one line, pcall'd — an observer must not
+break the thing it observes) so the log carries every send *with the cause the send site knew*;
+and `check.gather()` split out of `check.report()` so the report can put the same health readout
+at the top without capturing `print`.
+
+**Three bugs the build found, all in what the file SAYS rather than what it does.** The summary
+counted 0 decisions over a log visibly containing one (pre-roll was uncounted — a reader who
+catches that stops trusting every other number, correctly). It said "1 decisions" and "1 chat
+lines look". And text-mode append against a binary read left **17 stray CRs** in a file whose
+whole job is to be read by someone else's tools.
+
+Suites **5836** and **999**, both interpreters. The pure seams carry the clamp, the parse pair,
+the decision renderer's vocabulary, the digest scope and the budget walk; RPT20-25 drive the
+**whole assembly** against an in-memory tree through the new `M._fs` seam, because the
+interesting failures here are about which files were chosen and what the report says about the
+ones it left out — not about `io.open`. The no-silent-caps law is four of those checks: every
+exclusion is a named line with a reason, since a truncated bundle that reads as complete is the
+one failure mode that costs an entire support round.
+
+Format pinned in `docs/reference/report-format.md` — written for whoever reads a report next,
+model or human, so nobody re-derives the layout from the bytes.

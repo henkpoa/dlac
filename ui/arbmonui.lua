@@ -31,6 +31,14 @@ local dsp   = try('dlac\\dispatch');
 local icons = try('dlac\\ui\\itemicons');
 local arb   = try('dlac\\gear\\arbiter');
 
+-- The support recorder (feature/report). Required LAZILY at call time, not
+-- captured here: this window loads early and the recorder is a late module in
+-- the load loop, so a captured nil would leave the button permanently dead.
+local function rep()
+    local ok, m = pcall(require, 'dlac\\feature\\report');
+    return (ok and type(m) == 'table') and m or nil;
+end
+
 -- Claimant identity -> what a player reads (gear/arbiter owns the map; the
 -- Priority list and /dl prio + /dl why go through the same one). CLAIM_COL and
 -- every lookup below stay keyed by the IDENTITY -- only the drawn string moves.
@@ -459,6 +467,92 @@ local function renderLog(ring, viewed, ui)
     imgui.EndChild();
 end
 
+-- ---------------------------------------------------------------------------
+-- THE SUPPORT RECORDER BAR (2026-08-03). Henrik: "add a debug tool in the
+-- arbiter monitor... enable the debug, get as much information as possible
+-- into a log file, then send those files to me."
+--
+-- The bar is a DOOR, not the owner: feature/report holds the recorder, and
+-- '/dl report' + '/dl mark' open the same one. This window is where a player
+-- already is when they notice gear did the wrong thing, so the button belongs
+-- here -- but the capture spans far more than the arbiter, and a second
+-- implementation of it living in a renderer is how the two drift apart.
+-- ---------------------------------------------------------------------------
+local COL_REC  = { 0.95, 0.35, 0.35, 1.0 };
+local COL_OK   = { 0.45, 0.85, 0.45, 1.0 };
+local _markBuf = { '' };
+
+function M.renderRecorder(ui)
+    if not hasImgui then return; end
+    local R = rep();
+    if R == nil then
+        imgui.TextColored(COL_DIM, 'support recorder unavailable (feature/report did not load)');
+        return;
+    end
+    local st = nil;
+    pcall(function() st = R.status(); end);
+
+    if st == nil then
+        if imgui.SmallButton('Record a report##arbmon_rec') then
+            local pok, started, why = pcall(R.start, R.DEF_S, false);
+            if pok and started == true then
+                if ui ~= nil then ui._arbRepPath = nil; end
+                print(string.format('[dlac] report: RECORDING for %ds. Do the thing that goes wrong,'
+                    .. ' and mark the moment when it does.', R.DEF_S));
+            else
+                -- A button that refuses in silence is the failure this whole
+                -- feature exists to stop happening to somebody else.
+                print('[dlac] report: could not start -- ' .. tostring(pok and why or started));
+            end
+        end
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('Record what dlac does for ' .. tostring(R.DEF_S) .. ' seconds, then write ONE'
+                .. ' sendable file into addons\\dlac\\debug\\.\n'
+                .. 'It starts with the decisions ALREADY in memory, so a bug you just saw is in it too.\n'
+                .. 'The file holds your character name, dlac settings, sets, triggers and gear facts,\n'
+                .. 'plus dlac\'s own chat lines -- no tells, no party chat. Send it to the addon author.\n'
+                .. 'Same thing from chat: /dl report   (/dl report full bundles every job)');
+        end
+        if ui ~= nil and ui._arbRepPath ~= nil then
+            imgui.SameLine(0, 10);
+            imgui.TextColored(COL_OK, 'wrote: ' .. esc(tostring(ui._arbRepPath)));
+            if imgui.IsItemHovered() then
+                imgui.SetTooltip('Send this ONE file. It is the whole picture.');
+            end
+        end
+        return;
+    end
+
+    imgui.TextColored(COL_REC, string.format('RECORDING  %d:%02d left', math.floor(st.left / 60), st.left % 60));
+    imgui.SameLine(0, 8);
+    imgui.TextColored(COL_DIM, string.format('%d decision%s, %d mark%s',
+        st.decisions, (st.decisions == 1) and '' or 's', st.marks, (st.marks == 1) and '' or 's'));
+    imgui.SameLine(0, 10);
+    imgui.PushItemWidth(180);
+    imgui.InputText('##arbmon_marknote', _markBuf, 96);
+    imgui.PopItemWidth();
+    if imgui.IsItemHovered() then
+        imgui.SetTooltip('What went wrong, in your words. It lands in the file at this moment.');
+    end
+    imgui.SameLine(0, 6);
+    if imgui.SmallButton('Mark##arbmon_mark') then
+        pcall(R.mark, tostring(_markBuf[1] or ''));
+        _markBuf[1] = '';
+    end
+    if imgui.IsItemHovered() then
+        imgui.SetTooltip('Flag THIS moment. In a five-minute log, finding the moment is the hard part.\n'
+            .. 'Works from a macro too: /dl mark <note>');
+    end
+    imgui.SameLine(0, 6);
+    if imgui.SmallButton('Stop & write##arbmon_recstop') then
+        local ok, p = pcall(R.stop, 'the player stopped it from the Monitor');
+        if ok and type(p) == 'string' and ui ~= nil then ui._arbRepPath = p; end
+    end
+    if imgui.IsItemHovered() then
+        imgui.SetTooltip('Finish now and write the file. It writes itself when the window closes anyway.');
+    end
+end
+
 -- The floating window. Titled (imgui.ini remembers where you drag it); the [X]
 -- clears the toggle, exactly like the Trigger Monitor.
 function M.renderMonitor(ui)
@@ -469,6 +563,10 @@ function M.renderMonitor(ui)
     imgui.SetNextWindowSize({ 4 * NAME_CELL_W + 26, 480 }, ImGuiCond_FirstUseEver);
     local open = { true };
     if imgui.Begin('dlac Arbiter Monitor##dlac_arbmon', open) then
+        -- The recorder bar sits ABOVE the ring check on purpose: "nothing has
+        -- happened yet" is exactly when a player wants to start recording.
+        M.renderRecorder(ui);
+        imgui.Separator();
         local ring = hasDispatch and dsp.getDecisions() or nil;
         if type(ring) ~= 'table' or #ring == 0 then
             imgui.TextColored(COL_DIM, 'no decisions yet -- do something and watch.');

@@ -21845,6 +21845,379 @@ end)();
     check('SND14c reset empties it', SL.state.total, 0);
 end)();
 
+-- ---------------------------------------------------------------------------
+-- RPT. /dl report -- the support recorder (feature\report, 2026-08-03).
+--
+-- Henrik: "once the user base grows, I want people to enable the debug...
+-- their whole dlac profile + gear, sets, triggers, everything... max 5
+-- minutes... then send those files to me." The artifact is read by a human
+-- and by an LLM, so the pure seams pinned here are the ones that decide what
+-- LANDS IN IT: the window clamp, the decision renderer's vocabulary (it must
+-- say the same words as /dl why and the Monitor hover), the digest's scope,
+-- and the budget walk -- whose whole job is that nothing is ever dropped
+-- SILENTLY.
+-- ---------------------------------------------------------------------------
+(function()
+    local RP = dofile('feature/report.lua');
+    check('RPT0 report loads', type(RP), 'table');
+    if type(RP) ~= 'table' then return; end
+
+    -- the window clamp: Henrik's five-minute ceiling, and a floor under it
+    check('RPT1a bare window is the default', RP._dur(nil),  RP.DEF_S);
+    check('RPT1b under the floor clamps up',  RP._dur(5),    RP.MIN_S);
+    check('RPT1c over the ceiling clamps',    RP._dur(9000), RP.MAX_S);
+    check('RPT1d the ceiling IS five minutes', RP.MAX_S,     300);
+    check('RPT1e a real number rides',        RP._dur(120),  120);
+    check('RPT1f garbage is the default',     RP._dur('x'),  RP.DEF_S);
+
+    -- the command parse (sendlog's law: a command that eats its neighbours is
+    -- worse than one that misses)
+    check('RPT2a bare form',           RP._parse('/dl report'),      '');
+    check('RPT2b /dlac alias',         RP._parse('/dlac report'),    '');
+    check('RPT2c an argument',         RP._parse('/dl report stop'), 'stop');
+    check('RPT2d seconds',             RP._parse('/dl report 90'),   '90');
+    check('RPT2e a neighbour is NOT ours', RP._parse('/dl reportfoo'), nil);
+    check('RPT2f another command',     RP._parse('/dl why'),         nil);
+
+    -- the mark parse. CASE IS PRESERVED: the note is the player's own words
+    -- and goes in the file as typed, so this reads the raw command.
+    check('RPT3a bare mark',        RP._markParse('/dl mark'),                '');
+    check('RPT3b a note',           RP._markParse('/dl mark Gear DID NOT swap'), 'Gear DID NOT swap');
+    check('RPT3c /dlac alias',      RP._markParse('/dlac mark hi'),           'hi');
+    check('RPT3d typed uppercase',  RP._markParse('/DL MARK Here'),           'Here');
+    check('RPT3e a neighbour',      RP._markParse('/dl marker'),              nil);
+
+    check('RPT4a clock minutes', RP._clock(250), '4:10');
+    check('RPT4b clock seconds', RP._clock(38),  '0:38');
+
+    -- the privacy filter: dlac's own lines only, control bytes stripped
+    check('RPT5a our line is ours',  RP._isOurs(RP._clean('\007[dlac] report: recording')), true);
+    check('RPT5b a tell is not',     RP._isOurs('Someone >> where are you'),                false);
+    check('RPT5c control bytes go',  RP._clean('\001[dlac]\002 hi'),                        '[dlac] hi');
+
+    -- ---------------------------------------------------------------------
+    -- a decision record, shaped exactly as dispatch.recordDecision builds one
+    -- ---------------------------------------------------------------------
+    local REC = {
+        seq = 42, time = '12:34:56', at = 1000, event = 'Precast', action = 'Cure IV',
+        plan = { Head = 'Nahtirah Hat', Body = 'Vanya Robe', Ammo = 'remove' },
+        changed = { Head = true, Ammo = true },
+        nChanged = 2,
+        ladders = { head = { set = 'Precast', items = { 'Chapeau', 'Nahtirah Hat' } } },
+        ctx = { job = 'WHM', jobLevel = 75, sub = 'RDM', subLevel = 37, status = 'Idle',
+                mpp = 62, tp = 0, day = 'Fire', weather = 'clear',
+                modes = { 'Town' }, buffs = { 'Refresh' } },
+        contest = {
+            explain = {
+                head = { { name = 'Triggers', rank = 11, item = 'Nahtirah Hat' },
+                         { name = 'MaxMP',    rank = 6,  item = 'Zenith Crown' } },
+                body = { { name = 'Triggers', rank = 11, item = 'Vanya Robe' } },
+            },
+            rep  = { head = { from = 'Chapeau', to = 'Nahtirah Hat', why = 'unavail' } },
+            src  = { head = 'Precast', body = 'Precast' },
+            fall = { refused = { head = { { name = 'Chapeau', why = 'unavail' } } }, dead = {} },
+            pair = { slot = 'Ammo', loser = 'Bolt', keep = 'Sword', why = 'mismatch', remove = false },
+        },
+    };
+    local function joined(t) return table.concat(t, '\n'); end
+
+    local head = joined(RP._slotLines(REC, 'Head'));
+    check('RPT6a the winner is named with its rank',
+        head:match('<%- Triggers %(rank 11%)') ~= nil, true);
+    check('RPT6b the losers are named too ("why did MY claim not win")',
+        head:match('also asked: MaxMP:Zenith Crown') ~= nil, true);
+    -- THE VOCABULARY PIN: the same sentence the Monitor hover and /dl why use.
+    -- A player quoting one and support reading the other must be looking at
+    -- the same words.
+    check('RPT6c an unavailable fall says WHY in the shared wording',
+        head:match('fell: Chapeau %-> Nahtirah Hat %(Chapeau is not in a bag you can equip from%)') ~= nil, true);
+    check('RPT6d the whole ladder rides, refused rungs struck',
+        head:match('ladder %(Precast%): 1%.Chapeau %[x not in your bags%]') ~= nil, true);
+    check('RPT6e ...and the surviving rung is NOT struck',
+        head:match('2%.Nahtirah Hat$') ~= nil, true);
+
+    local ammo = joined(RP._slotLines(REC, 'Ammo'));
+    check('RPT7a the pair verdict gets its OWN sentence, not "reserved"',
+        ammo:match('cannot be fired by Sword') ~= nil, true);
+    check('RPT7b ...and never claims a reserving piece that does not exist',
+        ammo:match('reserved') == nil, true);
+
+    -- a reserve fall reads differently from an unavailable one (two refusals,
+    -- one line -- telling someone their Mog Safe piece "reserves Head" sends
+    -- them hunting an imaginary bug)
+    local RES = { plan = { Head = 'X' }, contest = {
+        explain = { head = { { name = 'Triggers', rank = 11, item = 'X' } } },
+        rep = { head = { from = 'Y', to = 'X', why = 'reserve', by = 'Main' } } } };
+    check('RPT8 a reserve fall names the reserved slot',
+        joined(RP._slotLines(RES, 'Head')):match('it reserves Main %-%- owned above') ~= nil, true);
+
+    -- a slot whose whole ladder died
+    local DEAD = { plan = {}, contest = { explain = {},
+        fall = { dead = { feet = 'Herald\'s Gaiters' }, refused = {} } } };
+    check('RPT9 a dead ladder says nothing below it was equippable either',
+        joined(RP._slotLines(DEAD, 'Feet')):match('nothing below it on the ladder is either') ~= nil, true);
+
+    -- the decision block
+    local blk = joined(RP._decLines(REC, tostring));
+    check('RPT10a the header carries seq, event and action',
+        blk:match('^%[12:34:56%] #42 Precast %-%- Cure IV   %(2 slots changed%)') ~= nil, true);
+    check('RPT10b the world it was decided under rides with it',
+        blk:match('under: WHM75/RDM37  Idle  MP 62%%') ~= nil, true);
+    check('RPT10c buffs ride too (a weatherMatch why is incomplete without them)',
+        blk:match('buffs: Refresh') ~= nil, true);
+    check('RPT10d a slot that did NOT change stays out of the block',
+        blk:match('Body') == nil, true);
+    check('RPT10e ...but a slot that FELL is in it even if the outcome held',
+        blk:match('Head') ~= nil, true);
+    check('RPT10f slots print in equip-screen order, so two reports diff',
+        blk:find('Ammo', 1, true) < blk:find('Head', 1, true), true);
+    check('RPT10g "all" prints the untouched slots too',
+        joined(RP._decLines(REC, tostring, 'all')):match('Body') ~= nil, true);
+
+    -- the digest's SCOPE is the whole point: exactly the items whose gear
+    -- facts can explain what the record did
+    local names = RP._itemNames(REC);
+    check('RPT11a the plan is in scope',        names['Nahtirah Hat'], true);
+    check('RPT11b the ladder rungs are too',    names['Chapeau'],      true);
+    check('RPT11c a losing claimant\'s offer is in scope',
+        names['Zenith Crown'], true);
+    check('RPT11d the "remove" literal is NOT an item', names['remove'], nil);
+    local names2 = RP._itemNames({ plan = { Head = '(free equip)' } });
+    check('RPT11e a claim sentinel is NOT an item', next(names2), nil);
+
+    -- the digest itself
+    local BY = { ['Nahtirah Hat'] = { Name = 'Nahtirah Hat', Id = 18863, Level = 75,
+                                      Jobs = { 'WHM', 'BLM' } } };
+    local dg = joined(RP._digestLines({ ['Nahtirah Hat'] = true, ['Chapeau'] = true }, BY,
+        function(n) return n == 'Nahtirah Hat'; end));
+    check('RPT12a a known item carries id, level and jobs',
+        dg:match('Nahtirah Hat%s+id 18863%s+lv 75') ~= nil, true);
+    check('RPT12b availability is the answer "unavail" needs',
+        dg:match('IN BAGS') ~= nil, true);
+    check('RPT12c an item nobody indexed is CALLED OUT, not omitted',
+        dg:match('is not in gear%.lua at all') ~= nil and dg:match('Chapeau') ~= nil, true);
+    check('RPT12d no availability source = no claim (never a wrong guess)',
+        joined(RP._digestLines({ ['Nahtirah Hat'] = true }, BY, nil)):match('BAGS') == nil, true);
+
+    -- the budget walk. NO SILENT CAPS: every exclusion comes back with a
+    -- reason, because a truncated bundle that reads as complete is the one
+    -- failure mode that costs a whole support round.
+    local FILES = {
+        { label = 'sets\\BLU.lua',  size = 38000, always = true },
+        { label = 'gearweights.lua', size = 46000 },
+        { label = 'modes.lua',      size = 400 },
+        -- always=true bypasses the PER-FILE cap but never the budget: the
+        -- ceiling is the one thing nothing gets to walk past.
+        { label = 'huge.lua',       size = 900000, always = true },
+    };
+    local taken, skipped, used = RP._pick(FILES, 100000, 32768);
+    local tl = {};
+    for _, f in ipairs(taken) do tl[f.label] = true; end
+    check('RPT13a the active job\'s sets file bypasses the per-file cap',
+        tl['sets\\BLU.lua'], true);
+    check('RPT13b a big optional file is skipped', tl['gearweights.lua'], nil);
+    check('RPT13c a small one rides',              tl['modes.lua'],      true);
+    check('RPT13d everything skipped is REPORTED', #skipped,             2);
+    check('RPT13e ...with a reason a reader can act on',
+        skipped[1].why:match('per%-file cap') ~= nil, true);
+    check('RPT13f the budget is a hard ceiling',
+        skipped[2].why:match('budget was full') ~= nil, true);
+    check('RPT13g used is the bundled total',      used,                 38400);
+
+    -- the manifest: what EXISTS, bundled or not, so a wrongly-scoped digest
+    -- costs one follow-up instead of a lost session
+    local mf = joined(RP._manifestLines({
+        { label = 'gear.lua', size = 264111 },
+        { label = 'modes.lua', size = 400, bundled = true } }));
+    check('RPT14a an unbundled file is still listed',  mf:match('264111  gear%.lua') ~= nil, true);
+    check('RPT14b a bundled one says so',              mf:match('%[bundled above%]') ~= nil, true);
+    check('RPT14c an unlistable folder says that, rather than looking empty',
+        joined(RP._manifestLines({})):match('could not be listed') ~= nil, true);
+
+    -- the header's privacy paragraph is not optional furniture: it is what
+    -- makes "send this file" an informed act
+    local hdr = joined(RP._header({ char = 'Mindie', addonVer = '2026.08.03a', full = false,
+                                    job = 'BLU', startedAt = 100, endedAt = 400,
+                                    requested = 300, recorded = 300 }));
+    check('RPT15a the character is named',       hdr:match('dlac support report %-%- Mindie') ~= nil, true);
+    check('RPT15b the scope is stated',          hdr:match('scope: active job %(BLU%)') ~= nil, true);
+    check('RPT15c what is in the file is stated', hdr:match('WHAT IS IN THIS FILE') ~= nil, true);
+    check('RPT15d ...including that chat is dlac\'s own only',
+        hdr:match('no tells, no party chat') ~= nil, true);
+    check('RPT15e ...and that nothing leaves the machine by itself',
+        hdr:match('Nothing here is sent anywhere on its own') ~= nil, true);
+    check('RPT15f a full run says so',
+        joined(RP._header({ full = true })):match('scope: FULL') ~= nil, true);
+
+    -- the summary: the numbers and the marks, above the log
+    local sm = joined(RP._summaryLines({ recorded = 300, nDec = 41, nAct = 12, nSend = 6,
+        nChat = 9, nErr = 2, nPre = 7, marks = { { at = 134, note = 'gear did not swap' } } }));
+    check('RPT16a the window is counted',   sm:match('41 decisions, 12 actions, 6 sends') ~= nil, true);
+    -- The pre-roll is counted APART. A summary reading "0 decisions" over a log
+    -- that visibly contains one teaches the reader to distrust the numbers.
+    check('RPT16b pre-roll decisions are counted, and separately',
+        sm:match('plus 7 decisions already in memory') ~= nil, true);
+    check('RPT16c failure lines are flagged for the reader',
+        sm:match('2 of those chat lines look like FAILURES') ~= nil, true);
+    check('RPT16d a mark carries its offset and the player\'s words',
+        sm:match('%+2:14   gear did not swap') ~= nil, true);
+    check('RPT16e no marks says so, and says how to leave one',
+        joined(RP._summaryLines({ marks = {} })):match('/dl mark <note>') ~= nil, true);
+    -- singulars, because a support file that says "1 decisions" reads as a
+    -- machine that is not paying attention
+    local one = joined(RP._summaryLines({ recorded = 60, nDec = 1, nAct = 1, nSend = 1,
+        nChat = 1, nErr = 1, marks = { { at = 0 } } }));
+    check('RPT16f one of each reads as one',
+        one:match('1 decision, 1 action, 1 send, 1 dlac chat line, 1 mark') ~= nil, true);
+    check('RPT16g ...including the failure sentence',
+        one:match('1 of those chat lines looks like a FAILURE') ~= nil, true);
+    check('RPT16h a zero pre-roll says nothing at all',
+        one:match('already in memory') == nil, true);
+
+    -- the action anchor: "I did a thing and gear did NOT move" has no
+    -- decision to point at, which is exactly why the feed exists
+    check('RPT17 an action that moved nothing says so',
+        RP._actLine({ at = 0, event = 'Precast', ctx = { action = 'Cure IV' } }):match('NO gear change') ~= nil, true);
+
+    -- the seeded engine copies in the data home are CODE, not settings
+    check('RPT18a gear.lua is never bundled raw by default', RP.CODE_FILES['gear.lua'],  true);
+    check('RPT18b nor is the seeded engine',                 RP.CODE_FILES['dispatch.lua'], true);
+    check('RPT18c but a settings file is not code',          RP.CODE_FILES['modes.lua'], nil);
+
+    -- ---------------------------------------------------------------------
+    -- THE ASSEMBLY, end to end, against an in-memory tree (M._fs). The pure
+    -- seams above pin the parts; this pins the thing a player actually sends
+    -- -- which files were chosen, what the file SAYS about the ones it left
+    -- out, and the promise in the header being true of the bytes.
+    -- ---------------------------------------------------------------------
+    local TREE = {
+        ['D\\gear.lua']        = string.rep('x', 264000),   -- the elephant
+        ['D\\dispatch.lua']    = string.rep('x', 355000),   -- seeded CODE
+        ['D\\gearweights.lua'] = string.rep('x', 46000),    -- over the per-file cap
+        ['D\\modes.lua']       = 'return { Town = true }',
+        ['D\\profile.lua']     = 'return { active = "Default" }',
+        ['D\\P\\Default\\sets\\BLU.lua']     = string.rep('s', 38000),  -- over the cap, but ALWAYS
+        ['D\\P\\Default\\sets\\WHM.lua']     = string.rep('w', 26000),  -- another job
+        ['D\\P\\Default\\triggers\\BLU.lua'] = 'return { rules = {} }',
+    };
+    local savedFs = RP._fs;
+    local written = nil;
+    RP._fs = {
+        read = function(p) return TREE[p]; end,
+        size = function(p) return TREE[p] ~= nil and #TREE[p] or nil; end,
+        list = function(path)
+            local seen, out = {}, {};
+            for k in pairs(TREE) do
+                local rest = k:match('^' .. path:gsub('%p', '%%%0') .. '(.+)$');
+                if rest ~= nil then
+                    local first = rest:match('^([^\\]+)');
+                    if first ~= nil and not seen[first] then seen[first] = true; out[#out + 1] = first; end
+                end
+            end
+            table.sort(out);
+            return out;
+        end,
+        profiles = function()
+            return {
+                KINDS = { 'sets', 'triggers', 'lockstyles' },
+                dataDir      = function() return 'D\\'; end,
+                profilesRoot = function() return 'D\\P\\'; end,
+                activeName   = function() return 'Default'; end,
+                setsPath     = function(j) return 'D\\P\\Default\\sets\\' .. j .. '.lua'; end,
+                triggersPath = function(j) return 'D\\P\\Default\\triggers\\' .. j .. '.lua'; end,
+                lockstylesPath = function(j) return 'D\\P\\Default\\lockstyles\\' .. j .. '.lua'; end,
+            };
+        end,
+        out   = function() return 'OUT.txt'; end,
+        write = function(_, text) written = text; end,
+    };
+    local savedGD = gData;
+    gData = { GetPlayer = function() return { MainJob = 'BLU' }; end };
+
+    local ST = { char = 'Testchar', full = false, startedAt = 100, endedAt = 400,
+                 requested = 300, recorded = 300, path = 'LOG',
+                 nDec = 2, nAct = 1, nSend = 4, nChat = 3, nErr = 1, nPre = 5,
+                 marks = { { at = 61, note = 'head did not swap' } },
+                 names = { ['Nahtirah Hat'] = true } };
+    TREE['LOG'] = '[12:00:00] #1 Default -- idle   (1 slot changed)\n';
+    local wpath = RP._write(ST);
+    check('RPT20 the report writes', wpath, 'OUT.txt');
+    local W = tostring(written or '');
+
+    check('RPT21a every section is present',
+        W:match('SECTION: health') ~= nil and W:match('SECTION: summary') ~= nil
+        and W:match('SECTION: config') ~= nil and W:match('SECTION: gear digest') ~= nil
+        and W:match('SECTION: log') ~= nil and W:match('SECTION: manifest') ~= nil, true);
+    check('RPT21b it terminates, so a truncated send is visible',
+        W:match('===== END REPORT =====$') ~= nil, true);
+
+    -- the scope decisions, which are the whole design
+    check('RPT22a the active job\'s sets ride whole despite the per-file cap',
+        W:match('FILE: profiles\\Default\\sets\\BLU%.lua %(38000 bytes%)') ~= nil, true);
+    check('RPT22b ...and its triggers',
+        W:match('FILE: profiles\\Default\\triggers\\BLU%.lua') ~= nil, true);
+    check('RPT22c a small settings file rides',  W:match('FILE: modes%.lua') ~= nil, true);
+    check('RPT22d ANOTHER job is not bundled by default',
+        W:match('FILE: profiles\\Default\\sets\\WHM%.lua') == nil, true);
+    check('RPT22e raw gear.lua is not bundled by default',
+        W:match('FILE: gear%.lua') == nil, true);
+    check('RPT22f seeded ENGINE CODE is never bundled',
+        W:match('FILE: dispatch%.lua') == nil, true);
+
+    -- and nothing is dropped silently -- the one failure mode that costs a
+    -- whole support round, because a truncated bundle reads as a complete one
+    check('RPT23a an over-cap file is named with its reason',
+        W:match('gearweights%.lua %(46000 bytes%) %-%- over the') ~= nil, true);
+    check('RPT23b gear.lua\'s absence is EXPLAINED, not just true',
+        W:match('gear%.lua %-%- the bag index') ~= nil, true);
+    check('RPT23c ...and so is the code files\'',
+        W:match('seeded ENGINE CODE, not settings') ~= nil, true);
+    check('RPT23d ...and the other jobs\', with the way to get them',
+        W:match('"/dl report full" bundles every job') ~= nil, true);
+    check('RPT23e everything unbundled is still in the manifest',
+        W:match('264000  gear%.lua') ~= nil and W:match('26000  profiles\\Default\\sets\\WHM%.lua') ~= nil, true);
+
+    -- the log is folded in, pre-roll and all
+    check('RPT24 the live log is inlined', W:match('#1 Default %-%- idle') ~= nil, true);
+
+    -- FULL widens exactly the three things it promises, and nothing else
+    ST.full = true;
+    RP._write(ST);
+    local F = tostring(written or '');
+    check('RPT25a full bundles the other job',
+        F:match('FILE: profiles\\Default\\sets\\WHM%.lua') ~= nil, true);
+    check('RPT25b full bundles raw gear.lua',  F:match('FILE: gear%.lua') ~= nil, true);
+    check('RPT25c full still refuses engine CODE',
+        F:match('FILE: dispatch%.lua') == nil, true);
+    -- "full" has to be a word that is true: the per-file cap is a scoping
+    -- device for the DEFAULT run, not a second ceiling inside an explicit ask
+    check('RPT25f full bundles a file the default run capped out',
+        F:match('FILE: gearweights%.lua') ~= nil, true);
+    check('RPT25g ...so nothing is left to report as skipped',
+        F:match('NOT BUNDLED') == nil, true);
+    check('RPT25d full drops the "left out on purpose" note (nothing was)',
+        F:match('left out ON PURPOSE') == nil, true);
+    check('RPT25e the header says which scope produced the file',
+        F:match('scope: FULL') ~= nil, true);
+
+    RP._fs = savedFs;
+    gData = savedGD;
+
+    -- the observer seam sendlog grew for this (an uncounted send is the only
+    -- way "dlac sent nothing" could lie -- an unobserved one is the only way
+    -- the report's timeline could)
+    local SL2 = dofile('feature/sendlog.lua');
+    local seen = {};
+    SL2.observer = function(id, why, pass) seen[#seen + 1] = { id = id, why = why, pass = pass }; end
+    SL2.note(0x50, 'Precast (set, 2 slots)');
+    check('RPT19a the observer hears the send',     #seen, 1);
+    check('RPT19b ...with the cause the site knew', seen[1].why, 'Precast (set, 2 slots)');
+    SL2.observer = function() error('an observer must not break the send'); end
+    check('RPT19c a throwing observer cannot break the counter it rides',
+        SL2.note(0x51, 'x'), true);
+    SL2.observer = nil;
+end)();
+
 -- The warm-note artifact the dispatch-driving sections leave behind (dataDir
 -- stubbed 'tests\'): on Windows a real tests\debug\mpwarm.txt (gitignored via
 -- debug/), under WSL ONE backslash-bearing filename that drvfs PUA-mangles on

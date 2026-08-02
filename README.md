@@ -208,6 +208,23 @@ nothing is ever deleted for you — clearing an entry is always your call.
 | `/dl t <where>` | Teleport gear: lock the item's slot (earrings Ear2, rings Ring2, caps Head, stables gear Neck, suits Body), equip it, wait, use it (norg, jeuno, maat, ducal, purgonorgo...) — shared destinations resolve to the item you own; no arg lists destinations |
 | `/dl xp <ring>` | Exp/VP rings (Empress, Chariot, Kupofried, Venture...): same equip-wait-use dance on Ring2 — no arg lists what you own |
 
+## Something went wrong?
+
+| Command | Does |
+|---|---|
+| `/dl check` | Health readout — versions, module loads, catalog, profile — and a verdict that names any issue it can prove |
+| `/dl report` | **Record what dlac does for 5 minutes, then write one sendable file.** While it runs, `/dl mark <note>` flags the moment it went wrong (put it on a macro). `/dl report stop` finishes early; `/dl report full` bundles every job |
+| `/dl sends` | What dlac has actually put on the wire this session, by packet and by cause |
+| `/dl debug ls` | Lockstyle capture window — click Apply during it and the report shows every hop |
+
+Everything lands in `addons\dlac\debug\` as plain text you can attach. `/dl report`
+is the one to send: it starts with the decisions **already in memory**, so a bug you
+just watched happen is in the file even though you pressed record afterwards. It
+carries your character name, your dlac settings, sets and triggers, the gear facts
+behind each decision, and dlac's own chat lines — no tells, no party chat, and
+nothing is sent anywhere on its own. You can also start it from the **[Record a
+report]** button in the Arbiter Monitor.
+
 ## Safety
 
 - Setup never deletes your code — your original file is copied to

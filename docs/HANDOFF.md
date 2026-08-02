@@ -106,6 +106,13 @@ hosting the engine — is history; see `docs/design/lac-purge-plan.md` and histo
   gate — run it on every touched Lua file. The pure-logic modules
   (utils/gearimport/setmanager cores) are testable without Ashita; add checks when you
   fix behavior there.
+- **A player's report is the best evidence you will get.** `/dl report` (or the
+  Arbiter Monitor's **[Record a report]**) records up to 5 minutes and writes ONE
+  sendable file, `addons\dlac\debug\dlac-report-<Char>.txt`: health verdict, config,
+  a gear digest with live bag availability, and the decision timeline — starting with
+  the decisions **already in memory** when they pressed record. Layout and what it
+  deliberately omits: `docs/reference/report-format.md`. Ask for one before theorising;
+  `/dl mark <note>` is how the player points at the moment.
 - **In-game loop:** Henrik drives; you cannot run the game. Ship small, ask him to
   `/addon reload dlac` (+ **Reload LAC** when seeded files changed — always that order),
   read his chat output/screenshots. `/dl debug on` reveals dev buttons; `/dl why`,
