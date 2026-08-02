@@ -978,6 +978,96 @@ local function condSummary(when)
     return (#parts > 0) and table.concat(parts, ' + ') or 'any';
 end
 
+-- A rule's CONDITION identity -- WHAT IT FIRES ON, with no regard to what it
+-- equips. `when` (sorted), the whenAny legs (each sorted, then the legs sorted
+-- so authoring order can never matter) and the `cases` legs the same way. Two
+-- rules with the same signature in the same handler are interchangeable
+-- triggers: whatever one covers, the other covers.
+-- Raw keys on purpose -- a signature must not move when a PRETTY_KEY label does.
+local function ruleCondSig(r)
+    local function legSig(w)
+        local parts = {};
+        for k, v in pairs((type(w) == 'table') and w or {}) do
+            local val = v;
+            if type(v) == 'table' then                    -- a list-valued matcher (mode)
+                local ms = {};
+                for _, m in ipairs(v) do ms[#ms + 1] = tostring(m); end
+                table.sort(ms);
+                val = table.concat(ms, '|');
+            end
+            parts[#parts + 1] = string.lower(tostring(k)) .. '=' .. tostring(val);
+        end
+        table.sort(parts);
+        return table.concat(parts, '&');
+    end
+    local function anySig(list)
+        local legs = {};
+        for _, e in ipairs((type(list) == 'table') and list or {}) do legs[#legs + 1] = legSig(e); end
+        table.sort(legs);
+        return table.concat(legs, '/');
+    end
+    local cases = {};
+    for _, c in ipairs((type(r.cases) == 'table') and r.cases or {}) do
+        cases[#cases + 1] = tostring(c.op) .. ':' .. legSig(c.when) .. ':' .. anySig(c.whenAny);
+    end
+    table.sort(cases);
+    return legSig(r.when) .. '||' .. anySig(r.whenAny) .. '||' .. table.concat(cases, ',');
+end
+
+-- The trigger target sets this profile does NOT define: the banner's list, and
+-- the exact list its Create button writes. `have` = the live set names.
+--
+-- COVERED conditions are left out (Henrik 2026-08-02). When ANOTHER rule with
+-- the same conditions in the same handler already lands on real gear -- a set
+-- that exists, or a direct `equip` -- this profile plainly does that job under
+-- a different name, and telling the player to create the seeded name would only
+-- add a second, empty set that does nothing. The classic starter rules are
+-- exactly where this bites: keep `moving = true -> Speed`, and nothing should
+-- still be nagging about a `Movement` set.
+--
+-- The per-row [missing] marker is NOT suppressed -- that is a fact about one
+-- rule and stays true. This banner is the "you must act" signal, and here there
+-- is nothing to act on.
+function M._missingSetNames(data, have)
+    local known = {};
+    for _, n in ipairs(have or {}) do known[tostring(n)] = true; end
+    local function targets(r)
+        if type(r.set) == 'table' then return r.set; end
+        return (r.set ~= nil) and { r.set } or {};
+    end
+    local miss, seen = {}, {};
+    for _, ev in ipairs(TRIG_HANDLERS) do
+        -- Bucket this handler's rules by condition signature, and mark the
+        -- bucket ANCHORED when any rule in it lands on something real.
+        local bucket, anchored = {}, {};
+        for _, r in ipairs((data or {})[ev] or {}) do
+            local sig = ruleCondSig(r);
+            bucket[sig] = bucket[sig] or {};
+            table.insert(bucket[sig], r);
+            local slist = targets(r);
+            if #slist == 0 then
+                if type(r.equip) == 'table' then anchored[sig] = true; end
+            else
+                local all = true;
+                for _, sn in ipairs(slist) do if not known[tostring(sn)] then all = false; break; end end
+                if all then anchored[sig] = true; end
+            end
+        end
+        for sig, rules in pairs(bucket) do
+            if not anchored[sig] then
+                for _, r in ipairs(rules) do
+                    for _, sn in ipairs(targets(r)) do
+                        sn = tostring(sn);
+                        if not known[sn] and not seen[sn] then seen[sn] = true; miss[#miss + 1] = sn; end
+                    end
+                end
+            end
+        end
+    end
+    table.sort(miss);
+    return miss;
+end
+
 -- Every set name a trigger may TARGET: the LIVE profile's names (Dynamic +
 -- the job file's own statics). Backup-only statics are excluded on purpose --
 -- they exist for "Copy from" in the Sets tab, but the engine's gProfile never
@@ -4695,24 +4785,54 @@ function M.render(job, level)
     -- Missing-set banner: rules that would MATCH and then equip NOTHING. The
     -- engine no longer chat-warns about these (inform by printing as little as
     -- possible) -- this red line + the per-row [missing] markers ARE the signal.
+    --
+    -- SHORT, and it ends in the fix (Henrik 2026-08-02: "the message is way too
+    -- long and isn't word wrapped"). The old sentence explained the consequence,
+    -- the marker AND the cure, unwrapped, and ran off the panel edge. Now: the
+    -- names, then the button that creates them. The why lives in the hover --
+    -- panel-text standard, and nobody reads a paragraph they can act on instead.
     do
-        local have = {};
-        for _, n in ipairs(allSetNames()) do have[n] = true; end
-        local miss, seen = {}, {};
-        for _, ev in ipairs(TRIG_HANDLERS) do
-            for _, r in ipairs(trig.data[ev] or {}) do
-                local slist = (type(r.set) == 'table') and r.set or ((r.set ~= nil) and { r.set } or {});
-                for _, sn in ipairs(slist) do
-                    sn = tostring(sn);
-                    if not have[sn] and not seen[sn] then seen[sn] = true; miss[#miss + 1] = sn; end
+        local miss = M._missingSetNames(trig.data, allSetNames());
+        if #miss > 0 then
+            -- Long lists still have to fit one line: name a few, count the rest.
+            -- Create takes ALL of them either way -- it is the list, not the label.
+            local shown = miss;
+            if #miss > 6 then
+                shown = {};
+                for i = 1, 6 do shown[i] = miss[i]; end
+                shown[7] = string.format('+%d more', #miss - 6);
+            end
+            imgui.TextColored(COL_ERR, string.format('[!] %d set(s) missing: %s',
+                #miss, esc(table.concat(shown, ', '))));
+            if imgui.IsItemHovered() then
+                imgui.SetTooltip('Rules below name these sets, and this profile has none of them --\n'
+                    .. 'they match and then equip NOTHING (each one is marked [missing]).\n'
+                    .. 'A rule whose conditions are ALREADY covered by another rule pointing\n'
+                    .. 'at a set you DO have is not listed: that job is done under another name.');
+            end
+            imgui.SameLine(0, 10);
+            if imgui.SmallButton('Create##trgmkmiss') then
+                local made, failed = 0, 0;
+                if deps.createEmptySets ~= nil then
+                    pcall(function() made, failed = deps.createEmptySets(job, miss); end);
+                end
+                -- The receipt is short too: which names is answered by the
+                -- banner vanishing and the [missing] markers below going out.
+                if made > 0 then
+                    trigSetStatus(string.format('Created %d empty set%s -- fill them in the Sets tab.%s',
+                        made, (made == 1) and '' or 's',
+                        (failed > 0) and string.format('  %d FAILED.', failed) or ''), false);
+                else
+                    trigSetStatus('Could not create the missing set(s) -- make them in the Sets tab.', true);
                 end
             end
-        end
-        if #miss > 0 then
-            table.sort(miss);
-            imgui.TextColored(COL_ERR, string.format(
-                '[!] %d trigger target set(s) missing from this profile: %s -- those rules equip NOTHING (red [missing] below). Create them in the Sets tab.',
-                #miss, esc(table.concat(miss, ', '))));
+            if imgui.IsItemHovered() then
+                imgui.SetTooltip('Creates EVERY missing set your rules name (all of them, not just the\n'
+                    .. 'ones listed) as an empty set in this profile, and commits -- one backup\n'
+                    .. 'per set, the same rails as any Sets-tab commit. An empty set is a real\n'
+                    .. 'target that changes no gear, so the rules stop being dead ends right\n'
+                    .. 'away; fill them in the Sets tab whenever you like.');
+            end
         end
     end
 

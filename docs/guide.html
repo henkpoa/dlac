@@ -247,6 +247,15 @@ and the starter rules Setup writes give you the Default row of it for free.</p>
 <i>status = Idle → Weapon</i> — layered on top (both Idle rules fire; the later one
 overlays the slots its set fills).</figcaption></figure>
 
+<p>A rule can name a set you haven't built yet — it then matches and equips nothing, which
+is the one trigger failure that looks like nothing at all. So the top of the tab says
+<span class="mode">[!] 2 set(s) missing: Movement, Resting</span>, each such rule is marked
+<span class="mode">[missing]</span>, and the <b>Create</b> button beside the line makes them
+all as empty sets and commits. An empty set is a real target that changes no gear, so the
+rules stop being dead ends immediately and you can fill them in the Sets tab whenever you
+like. If another rule with the <i>same conditions</i> already points at a set you do have,
+nothing is said: that job is plainly being done under a different name.</p>
+
 <h3>Adding a rule</h3>
 <p>In the Triggers tab, each event section has an <b>+ Add rule</b> flow: pick the
 condition (status, spell skill, element, exact name, ...), pick the target set, done.

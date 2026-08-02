@@ -3178,6 +3178,46 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- TGM. The Triggers tab's missing-set banner and its Create button.
+--
+-- The banner lives inside M.render, which has no smoke drive, so the risk here
+-- is the seam BETWEEN two files: triggersui calls deps.createEmptySets and
+-- gearui puts it in the deps table. A rename on either side is a nil field --
+-- which in Lua is not an error, it is a button that does nothing, silently
+-- (the whole reason S149-151 exist). Pin both ends and the name they share.
+-- ---------------------------------------------------------------------------
+(function()
+    local tg = require('dlac\\ui\\triggersui');
+    check('TGM-S1 the missing-set list is a pure exported seam',
+        type(tg._missingSetNames), 'function');
+
+    local f = io.open('ui/triggersui.lua', 'r');
+    check('TGM-S2 triggersui is readable', f ~= nil, true);
+    if f == nil then return; end
+    local src = f:read('*a'); f:close();
+    check('TGM-S3 the banner ends in a Create button',
+        src:find("SmallButton('Create##trgmkmiss')", 1, true) ~= nil, true);
+    check('TGM-S4 ...which calls the deps seam by name',
+        src:find('deps.createEmptySets(job, miss)', 1, true) ~= nil, true);
+    -- The old paragraph is GONE: it ran off the panel edge unwrapped, and the
+    -- consequence now lives in the hover instead (Henrik 2026-08-02).
+    check('TGM-S5 the banner no longer explains itself inline',
+        src:find('those rules equip NOTHING (red [missing] below). Create them in the Sets tab.', 1, true), nil);
+
+    -- gearui's end of the same wire. _deps is the LIVE table triggersui was
+    -- handed at init, so a missing key here IS the dead button.
+    if type(gearui) == 'table' and type(gearui._deps) == 'table' then
+        check('TGM-S6 gearui hands over createEmptySets',
+            type(gearui._deps.createEmptySets), 'function');
+        -- No job, no setmanager, nothing to do: it must report the failure,
+        -- never throw inside a render frame.
+        local ok2, made, failed = pcall(gearui._deps.createEmptySets, nil, { 'A', 'B' });
+        check('TGM-S7 ...refusing a job-less call without throwing', ok2, true);
+        check('TGM-S8 ...and saying nothing was made', (made == 0) and failed, 2);
+    end
+end)();
+
+-- ---------------------------------------------------------------------------
 -- LSP. The Sets tab's Equip & Lock popup (Strict / Loose), pinned as SOURCE.
 --
 -- The Sets tab render has no smoke drive -- only its tab LABEL is checked (S9) --
