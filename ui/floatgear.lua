@@ -408,13 +408,34 @@ end
 -- past that point the honest answer is a scrollbar, not a window you cannot see
 -- around. Measured UNFILTERED on purpose -- the width holding still while you
 -- type is worth more than shaving pixels off it per keystroke.
-local MIN_W, MAX_W, CAP_W = 250, 620, 460;   -- floor, ceiling, height cap
+local MIN_W, MAX_W, CAP_W = 250, 720, 460;   -- floor, ceiling, height cap
 -- The CASCADE's height cap (its width is left free -- see the note at BeginMenu).
 -- Deliberately shorter than the parent popup's: the cascade opens level with the
 -- row you are hovering, which can be most of the way down the list, so a submenu
 -- as tall as the popup would start below the screen's bottom edge as often as not.
 local SUB_MAX_H = 340;
-local function popupMaxW(slot, byKey, pool)
+
+-- The ceiling, clamped to the SCREEN. 720 is generous enough that a full stat
+-- line rarely wraps past two rows -- but a popup wider than about half the
+-- display leaves its own cascade nowhere to open, so on a small client the
+-- display wins. DisplaySize is the one screen fact this binding exposes.
+local function maxPopupW()
+    local cap = MAX_W;
+    pcall(function()
+        local io = imgui.GetIO();
+        local ds = (io ~= nil) and io.DisplaySize or nil;
+        local sw = (type(ds) == 'table') and tonumber(ds.x or ds[1]) or nil;
+        if sw ~= nil and sw > 0 then
+            local half = math.floor(sw * 0.55);
+            if half < cap then cap = half; end
+        end
+    end);
+    if cap < MIN_W then cap = MIN_W; end
+    return cap;
+end
+M._maxPopupW = maxPopupW;   -- test seam
+
+local function popupMaxW(slot, byKey, pool, level)
     local widest = 0;
     for _, e in ipairs(pins.pinsOf(slot)) do
         local w = calcTextW(pinRowText(e, byKey));
@@ -432,10 +453,26 @@ local function popupMaxW(slot, byKey, pool)
         local w = calcTextW(longest) + 26;
         if w > widest then widest = w; end
     end
+    -- ...and the FACTS BLOCK joins the vote (Henrik: "make it WIDER to adapt as
+    -- well, so we get more space for gear"). Width buys HEIGHT here, which is
+    -- the whole reason it is worth spending: the block wraps to whatever width
+    -- this returns, so a popup 200px wider turns a four-line stat wrap into two,
+    -- the reservation shrinks by two lines, and those two lines go back to the
+    -- gear list under the height cap. Asked as "the widest line any piece in the
+    -- pool would draw UNWRAPPED" -- the width at which the block needs no
+    -- wrapping at all -- and then clamped, so it is a wish, not a demand.
+    --
+    -- Resolved through M at CALL time because the builder is defined further
+    -- down (it needs COL and fmt, which this measurement does not).
+    pcall(function()
+        local fw = M._factsWantW(pool, level);
+        if type(fw) == 'number' and fw > widest then widest = fw; end
+    end);
     -- + the icon column and the window's own padding/scrollbar allowance.
+    local ceiling = maxPopupW();
     widest = math.floor(widest + ICON + 6 + 34);   -- floored: a fractional cap
     if widest < MIN_W then return MIN_W; end       -- jitters the popup by a pixel
-    if widest > MAX_W then return MAX_W; end       -- as the text changes
+    if widest > ceiling then return ceiling; end   -- as the text changes
     return widest;
 end
 
@@ -489,8 +526,12 @@ local function factsLines(rec, level, wrapN)
         local t = fmt.jobsText(rec.Jobs);
         if type(t) == 'string' and t ~= '' then jt = (t == 'All') and 'All Jobs' or t; end
     end);
-    add(COL.JOBS, string.format('%s   Lv.%s   %s',
-        tostring(rec.Slot or '?'), tostring(rec.Level or 0), jt));
+    -- Truncated, not wrapped: a job list is slash-joined with no spaces, so it is
+    -- ONE token and wrapTo could never break it. It still asks for its full width
+    -- (factsWantW measures unwrapped), so a popup wide enough shows all of it --
+    -- this only bounds what happens when the answer is no.
+    add(COL.JOBS, fmt.truncate(string.format('%s   Lv.%s   %s',
+        tostring(rec.Slot or '?'), tostring(rec.Level or 0), jt), wrapN));
     -- What the piece takes AWAY. A fact about the item, and the reason half a set
     -- goes missing -- it belongs above the stats, not buried under them.
     pcall(function()
@@ -544,12 +585,37 @@ M._factsLines = factsLines;   -- test seam
 -- The WIDTH needs no equivalent: the block wraps to whatever width the item rows
 -- already settled (popupMaxW, measured unfiltered), so the facts can never widen
 -- the popup and there is nothing to stabilise.
-local _factsBox = { key = nil, lines = 0 };
-local function factsMaxLines(pool, level, wrapN)
-    local key = string.format('%s|%s|%s', tostring(#(pool or {})), tostring(level), tostring(wrapN));
+local function poolKey(pool, level, extra)
+    local key = string.format('%s|%s|%s', tostring(#(pool or {})), tostring(level), tostring(extra));
     if type(pool) == 'table' and pool[1] ~= nil then
         key = key .. '|' .. tostring(pool[1].Id) .. '|' .. tostring(pool[#pool].Id);
     end
+    return key;
+end
+
+-- THE WIDTH THE BLOCK WOULD LIKE: the widest line any piece in the pool draws
+-- with no wrapping at all. popupMaxW takes it as one vote among the rows' and
+-- then clamps, so a stat line longer than the screen asks for what it wants and
+-- is told no -- but a block that only needed 80 more pixels gets them, and gets
+-- a line of gear back for them. Cached beside the height for the same reason.
+local _factsW = { key = nil, w = 0 };
+function M._factsWantW(pool, level)
+    local key = poolKey(pool, level, 'w');
+    if _factsW.key == key then return _factsW.w; end
+    local w = 0;
+    for _, rec in ipairs(pool or {}) do
+        for _, ln in ipairs(factsLines(rec, level, 100000)) do   -- 100000 = never wrap
+            local t = calcTextW(ln.text);
+            if t > w then w = t; end
+        end
+    end
+    _factsW.key, _factsW.w = key, w;
+    return w;
+end
+
+local _factsBox = { key = nil, lines = 0 };
+local function factsMaxLines(pool, level, wrapN)
+    local key = poolKey(pool, level, wrapN);
     if _factsBox.key == key then return _factsBox.lines; end
     local most = 1;                       -- never zero: the "hover a piece" line
     for _, rec in ipairs(pool or {}) do
@@ -1109,7 +1175,7 @@ function M.render()
             local okw = pcall(function()
                 choices = triggerChoices();
                 pool    = candidatesFor(_menuSlot, job, level);
-                maxW    = popupMaxW(_menuSlot, choiceByKey(choices), pool);
+                maxW    = popupMaxW(_menuSlot, choiceByKey(choices), pool, level);
             end);
             if not okw then choices, pool, maxW = nil, nil, MAX_W; end
         end

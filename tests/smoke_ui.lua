@@ -1099,7 +1099,7 @@ end)();
     pw.pins = {};
     pw.setPin('Head', 'Optical Hat', { 'Default|mode=' .. string.rep('x', 400) });
     frame();
-    check('FGP22 ...and it stops at the ceiling', popupCap(), 620);
+    check('FGP22 ...and it stops at the ceiling', popupCap(), 720);
 
     -- ----------------------------------------------------------------------
     -- THE FACTS BLOCK, INSIDE the popup (Henrik: "have the status window
@@ -1142,6 +1142,50 @@ end)();
         ML(pool2, 75, 40), ML({ tallRec, shortRec }, 75, 40));
     check('FGP29 an empty pool still reserves a line (the "hover a piece" prompt)',
         ML({}, 75, 40) >= 1, true);
+
+    -- WIDTH BUYS HEIGHT (Henrik: "make it WIDER to adapt as well, so we get more
+    -- space for gear"). The block wraps to whatever width the popup settles on,
+    -- so a wider popup turns a four-line stat wrap into two and hands those two
+    -- lines back to the gear list under the height cap. That is why the facts get
+    -- a vote on the width at all -- and why it is a wish, not a demand.
+    local rec93 = { Name = 'X', Id = 93, Slot = 'Head', Level = 1,
+                    Stats = { DEF = 45, MP = 50, STR = 10, VIT = 10,
+                              ACC = 20, ATT = 30, MND = 12, INT = 9 } };
+    check('FGP30 a wider wrap needs FEWER reserved lines',
+        ML({ rec93 }, 1, 240) < ML({ rec93 }, 1, 20), true);
+
+    -- A piece whose FACTS line is long widens the popup even though its NAME is
+    -- three characters -- the name alone would leave it at the floor.
+    local LONGJOBS = { 'WAR','MNK','WHM','BLM','RDM','THF','PLD','DRK',
+                       'BST','BRD','RNG','SAM','NIN','DRG','SMN','BLU' };
+    -- (distinct Ids per pool: the width and height caches key on the pool's ends,
+    -- so reusing an Id would serve the previous pool's answer)
+    Sx.candidatesForSlot = function()
+        return { { Name = 'Cap', Id = 92, Slot = 'Head', Level = 1, Jobs = { 'WHM' } } };
+    end
+    frame();
+    local narrowCap = popupCap();
+    check('FGP31 a short name and short facts leave the popup at the floor', narrowCap, 250);
+
+    Sx.candidatesForSlot = function()
+        return { { Name = 'Cap', Id = 91, Slot = 'Head', Level = 1, Jobs = LONGJOBS } };
+    end
+    frame();
+    local wideCap = popupCap();
+    check('FGP32 ...and a long FACTS line widens it, with the same short name',
+        type(wideCap) == 'number' and wideCap > narrowCap, true);
+
+    -- ...but the SCREEN outranks the wish: a popup wider than about half the
+    -- display leaves its own cascade nowhere to open.
+    IM.GetIO = function() return { KeyShift = false, DisplaySize = { x = 800, y = 600 } }; end
+    frame();
+    local clamped = popupCap();
+    check('FGP33 a small display clamps the ceiling below what the facts asked for',
+        type(clamped) == 'number' and clamped < wideCap, true);
+    check('FGP34 ...to about half the screen, so the cascade still has room',
+        type(clamped) == 'number' and clamped <= 440, true);
+    IM.GetIO = function() return { KeyShift = false }; end
+    Sx.candidatesForSlot = function() return POOL; end
 
     -- ----------------------------------------------------------------------
     -- THE CASCADE'S WIDTH (field, 2026-08-03: popup ~245px + cascade ~750px on

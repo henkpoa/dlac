@@ -8544,3 +8544,39 @@ Found by grepping the removed names rather than by a red test.
 gets closed, the line builder yields data, it wraps to a width, the reserved height is the
 pool's tallest piece and not the hovered one, the answer does not depend on pool order, and
 an empty pool still reserves its prompt line. Suites **5990** and **1068**.
+
+## Session "width buys height" (2026-08-03, `2026.08.03n`)
+
+Henrik, on the integrated facts block: *"make it WIDER to adapt as well, so we get more
+space for gear."*
+
+The block wrapped to whatever width the item ROWS had already settled — so a slot full of
+short names left it at the 250px floor, a long stat line wrapped into four, and the
+reservation ate four lines of the height cap that the gear list wanted. **Width buys
+height**, and that is the whole reason it is worth spending: a popup 200px wider turns that
+four-line wrap into two, the reservation shrinks by two, and those two lines go straight
+back to the list under the cap.
+
+So the facts get a **vote** on the width, cast as *"the widest line any piece in this pool
+would draw unwrapped"* — the width at which the block needs no wrapping at all. A vote and
+not a demand: it is one input beside the item rows and the pinned rows, and the result is
+clamped like all of them. A block that only needed 80 more pixels gets them and gets a line
+of gear back for them; a stat line longer than the screen asks and is told no.
+
+**The ceiling is now the screen, not a constant.** 720 as the base, but never more than
+about 55% of `GetIO().DisplaySize.x` — a popup wider than half the display leaves its own
+cascade nowhere to open, and on Henrik's ~1130px client that is a real limit rather than a
+theoretical one. `DisplaySize` is the single screen fact the binding exposes and this is
+what it is for.
+
+**One thing had to change in the block to make the vote honest.** The job list is
+slash-joined with no spaces, so it is a single token: `wrapTo` could never break it, and it
+sat there widening the popup with no fallback if the width was refused. It is truncated to
+the wrap budget now — it still *asks* for its full width (the measurement runs unwrapped),
+this only bounds what happens when the answer is no. Same shape as the augment and Held
+lines, which had it from the start.
+
+**Tests:** smoke `FGP30`–`FGP34` — a wider wrap needs fewer reserved lines, a short name
+with short facts leaves the popup at the floor, a long facts line widens it with that same
+short name, and a small display clamps the ceiling below what the facts asked for. Suites
+**5990** and **1073**.
