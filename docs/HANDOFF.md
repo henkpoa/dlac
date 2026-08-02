@@ -290,6 +290,15 @@ haven't told you."* Ask when he has **not** said merge; never ask twice when he 
 **The queue is empty.**
 
 
+*(Emptied by the fourth 2026-08-02 promotion — **the missing-set banner is short and ends in a
+button**, `2026.08.02e`, `55faca3`. Henrik: *"Field tested, works perfect, merge, push to origin
+main"* — an accept under the 08-01 ruling, so nothing was asked twice. Built, field-tested and
+promoted inside one session, so it never entered the queue; **FIELD-CONFIRMED**, the second
+08-02 promotion that is. The pass covered the banner, the Create click and the created sets on
+the DRG that started it; the only thing it could not is the commit-failure path, which needs a
+torn or unwritable sets file. Worth carrying forward: the ask was "shorten the message", and
+the thing that actually shortened it was giving the player the fix instead of describing it.)*
+
 *(Emptied by the third 2026-08-02 promotion — **"copy to…", the per-rule copy across job
 entries**, `2026.08.02b`–`2026.08.02d`, the dev train `13dbf16` + `7f82d57` + `a55049b`.
 Henrik: *"Tested it out, document, commit, merge, push to origin main"* — an accept under the
@@ -675,6 +684,42 @@ research already recorded. In rough priority order:
    section heading rather than each carrying one. Trivial to change if it reads wrong.
 
 ## Current state (as of 2026-08-02)
+
+- **2026-08-02 (`2026.08.02e`): THE MISSING-SET BANNER IS SHORT AND ENDS IN A BUTTON. BUILT,
+  **FIELD-CONFIRMED** (Henrik, *"Field tested, works perfect"*) and **ON MAIN** (promoted the
+  same session), suites green both interpreters.
+  - **The ask:** *"On my Mindie DRG, I have two sets missing. Resting and Movement. The
+    message is way too long and isn't word wrapped… maybe shorten it up"* — with his own mock
+    ending in `-- [Create?]`, *"and it will create two empty profiles with those sets and
+    commit. Easily guide the player to do the right thing."*
+  - **What it says now:** `[!] 2 set(s) missing: Movement, Resting` + a **Create** button. The
+    consequence ("those rules equip NOTHING") moved into the hover — the **panel-text
+    standard**, applied where it is cheapest to obey: the paragraph was replaced by the action
+    it described. Over six names it lists six and counts the rest; Create still takes them all.
+  - **Create** writes each name as an EMPTY set through the ordinary `setmanager.commitSet`
+    rails (parse-check + one backup per set), then one `/dl sets reload` — as
+    `deps.createEmptySets` on the table gearui already hands triggersui. An empty set is a
+    legitimate target that changes no gear, so the rule stops being a dead end today.
+  - **The ruling worth keeping** (his second message): *"if we have trigger rules that match
+    the base rules but point to other sets, don't tell them to create them, since there are
+    obviously sets with other names doing the base thing we're after."* The banner now hides a
+    missing name whose **conditions are already covered** — another rule, same handler, same
+    condition signature, landing on a set that exists (or a direct `equip`). Keep
+    `moving = true -> Speed` and nothing nags about `Movement`.
+  - **Identity, not resemblance.** The signature is `when` + the `whenAny` legs + the `cases`
+    legs, each sorted (authoring order and `pairs()` must not decide it), raw keys (a
+    PRETTY_KEY label must not either). A rule with one extra condition is a different rule and
+    still reports. The per-row `[missing]` marker is **not** suppressed — that is a fact about
+    one rule; the banner is the "you must act" signal. A multi-set rule's own absent member
+    still reports: it is not covering itself.
+  - **Pinned:** `triggersui._missingSetNames` is pure (TGM0-11); the smoke half pins the seam
+    BETWEEN the files — `deps.createEmptySets` named on both ends, the button id, and the
+    absence of the old paragraph — because a renamed deps key is a button that does nothing,
+    silently, not an error.
+  - **What his pass covered:** the banner, the Create click, and the created sets landing on
+    the DRG that started it. **What it could not:** the commit-failure path (`N FAILED`) —
+    `setmanager.commitSet` only refuses on a torn or unwritable sets file, which cannot be
+    produced in a normal session, so it stays suite-and-source only.
 
 - **2026-08-02 (`2026.08.02b`–`2026.08.02d`): "copy to…" — ONE TRIGGER, LANDED IN THE JOB
   ENTRIES YOU TICK. BUILT, **FIELD-CONFIRMED** (Henrik, *"Tested it out"*) and **ON MAIN**

@@ -7923,3 +7923,61 @@ remain suite-only -- and they are precisely what makes the destructive half safe
 PROFILE axis, which he never asked for and which survives only because it was already built and
 costs one separated list. If it is still unused a week from now, delete it: an axis nobody uses
 is a second thing to keep correct.
+
+## Session "the banner that ran off the edge" (2026-08-02, `2026.08.02e`)
+
+**Theme:** *"On my Mindie DRG, I have two sets missing. Resting and Movement. The message is
+way too long and isn't word wrapped... So I was thinking, maybe shorten it up."* Then his own
+mock: `[!] 2 trigger target set(s) missing from this profile: Movement, Resting -- [Create?]`
+*"and it will create two empty profiles with those sets and commit. Easily guide the player to
+do the right thing."*
+
+**The message got short and gained a button.** It used to say the count, the names, the
+consequence, the marker AND the cure -- unwrapped, off the panel edge. Now it is
+`[!] 2 set(s) missing: Movement, Resting` with a **Create** beside it, and the consequence
+lives in the hover. Long lists name six and count the rest; Create still takes all of them,
+because it operates on the list, not the label. This is the **panel-text standard** applied at
+the moment it is cheapest to obey -- when the paragraph can be replaced by the action it was
+describing. The honest reading of the old line is that it explained the fix at length instead
+of offering it.
+
+Create writes each name as an **empty set** through the ordinary `setmanager.commitSet` rails
+(parse-check, one backup per set) and then one `/dl sets reload` for the batch, as
+`deps.createEmptySets` on the table gearui already hands triggersui. An empty set is a
+legitimate set here and always has been -- the Sets tab commits one on purpose -- so the rule
+stops being a dead end today and the gear can arrive later.
+
+**The design ruling is his second message**, and it is the part worth keeping: *"if we have
+trigger rules that match the base rules but point to other sets, don't tell them to create
+them, since there are obviously sets with other names doing the base thing we're after."* So
+the banner now hides a missing name whose **conditions are already covered** -- another rule,
+same handler, same condition signature, landing on a set that exists (or on a direct `equip`).
+Keep `moving = true -> Speed` and nothing nags about `Movement` any more. The signature is
+condition IDENTITY, not resemblance: `when` + the `whenAny` legs + the `cases` legs, each
+sorted so authoring order and `pairs()` cannot decide it, raw keys so a PRETTY_KEY label
+cannot either. A rule with an extra condition is a different rule and still reports.
+
+Two things it deliberately does NOT do. The per-row `[missing]` marker is **not** suppressed --
+that is a fact about one rule and stays true; the banner is the "you must act" signal, and a
+covered condition has nothing to act on. And a multi-set rule's own absent member (`-> Tp_Default
++ Haste`, no Haste) still reports: the rule is not covering itself, and the overlay it asked
+for cannot happen.
+
+Suites **5735** and **989**, both interpreters. `_missingSetNames` is a pure exported seam
+(TGM0-11: the starter four, coverage, per-handler scoping, an `equip` anchor, the
+narrower-rule case, order-independence, the multi-set member). The smoke half pins the seam
+BETWEEN the files -- `deps.createEmptySets` named on both ends, plus the button id and the
+absence of the old paragraph -- because a renamed deps key is not an error in Lua, it is a
+button that does nothing, silently.
+
+**Field round, same session.** *"Field tested, works perfect, merge, push to origin main"* --
+so it went to main **field-confirmed**, built and promoted inside one session. His pass covered
+the banner, the Create click and the created sets on the DRG that started it. The one thing it
+could not cover is the commit-failure path (`N FAILED`): `setmanager.commitSet` refuses only on
+a torn or unwritable sets file, which cannot be produced in a normal session -- suite and source
+only, and recorded rather than quietly counted as confirmed.
+
+The lesson to carry, since the ask was phrased as a text problem: what actually shortened the
+message was **giving the player the fix instead of describing it**. Every clause that came out
+of the line was explaining a repair the button now performs. When a warning is long, the first
+question is whether it is long because it is doing the user's work in prose.

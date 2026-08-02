@@ -14091,6 +14091,81 @@ end)();
     check('TGW8 file appeared under an empty tab reloads', f('A', nil, false), 'reload');
 end)();
 
+-- TGM. Missing target sets, the banner list (ui/triggersui.lua :
+--      M._missingSetNames). Rules that match and then equip NOTHING -- MINUS
+--      the ones whose conditions another rule already covers with a set that
+--      exists (Henrik 2026-08-02: "there are obviously sets with other names
+--      doing the base thing we're after"). The Create button writes exactly
+--      this list, so a name that lands here becomes a file on disk.
+(function()
+    local tri = dofile('ui/triggersui.lua');
+    local f = tri._missingSetNames;
+    check('TGM0 pure list exported', type(f), 'function');
+
+    -- The classic starter rules against a profile that has none of them.
+    local starter = { Default = {
+        { when = { status = 'Engaged' }, set = 'Tp_Default' },
+        { when = { status = 'Resting' }, set = 'Resting' },
+        { when = { moving = true },      set = 'Movement' },
+        { when = { status = 'Idle' },    set = 'Idle' },
+    } };
+    local m = f(starter, { 'Tp_Default', 'Idle' });
+    check('TGM1 only the absent names', table.concat(m, ','), 'Movement,Resting');
+    check('TGM2 sorted', m[1], 'Movement');
+    check('TGM3 nothing missing -> empty', #f(starter,
+        { 'Tp_Default', 'Idle', 'Resting', 'Movement' }), 0);
+
+    -- COVERED: same handler, same conditions, a set that exists -> silent.
+    local covered = { Default = {
+        { when = { moving = true }, set = 'Movement' },   -- absent
+        { when = { moving = true }, set = 'Speed' },      -- present: does the job
+        { when = { status = 'Resting' }, set = 'Resting' },
+    } };
+    check('TGM4 covered condition is not nagged about',
+        table.concat(f(covered, { 'Speed' }), ','), 'Resting');
+
+    -- Coverage is per HANDLER: the same conditions elsewhere prove nothing.
+    local crossH = {
+        Default = { { when = { status = 'Idle' }, set = 'Idle' } },       -- present
+        Precast = { { when = { status = 'Idle' }, set = 'FastCast' } },   -- absent
+    };
+    check('TGM5 another handler does not cover',
+        table.concat(f(crossH, { 'Idle' }), ','), 'FastCast');
+
+    -- A direct `equip` rule lands real gear, so it anchors its conditions too.
+    local eq = { Default = {
+        { when = { moving = true }, set = 'Movement' },
+        { when = { moving = true }, equip = { Feet = 'Bounding Boots' } },
+    } };
+    check('TGM6 an equip rule with the same conditions covers', #f(eq, {}), 0);
+
+    -- Condition IDENTITY, not resemblance: a narrower rule is its own gap.
+    local narrower = { Default = {
+        { when = { status = 'Resting' }, set = 'Resting' },                    -- present
+        { when = { status = 'Resting', mode = 'Refresh' }, set = 'RestMP' },   -- absent
+    } };
+    check('TGM7 extra conditions are a DIFFERENT rule, still reported',
+        table.concat(f(narrower, { 'Resting' }), ','), 'RestMP');
+
+    -- Key order and mode-list order must not decide it (pairs() is unordered).
+    local sigOrder = { Default = {
+        { when = { status = 'Engaged', mode = { 'B', 'A' } }, set = 'Nope' },
+        { when = { mode = { 'A', 'B' }, status = 'Engaged' }, set = 'Tp_Default' },
+    } };
+    check('TGM8 signature is order-independent', #f(sigOrder, { 'Tp_Default' }), 0);
+
+    -- A multi-set rule's own absent member is a genuine gap: the overlay it
+    -- asked for cannot happen, and the rule is not covering itself.
+    local multi = { Default = {
+        { when = { status = 'Engaged' }, set = { 'Tp_Default', 'Haste' } },
+    } };
+    check('TGM9 an absent overlay in a multi-set rule reports',
+        table.concat(f(multi, { 'Tp_Default' }), ','), 'Haste');
+
+    check('TGM10 no data -> empty', #f(nil, { 'Idle' }), 0);
+    check('TGM11 no sets at all -> every name', #f(starter, {}), 4);
+end)();
+
 -- PSW. profilesets content-follow: changed Dynamic-source bytes rebuild the
 --      cached root WITHOUT an explicit invalidate() call (the import path
 --      never had one). Headless there is no char dir, so the profile-storage

@@ -2369,6 +2369,29 @@ do
         -- /dl gearwarn). It travels as a READER, not a value: the flag can flip
         -- from the command or the Settings panel long after this table is built.
         gearWarnEnabled = function() return sf.flags.gearwarn ~= false; end,
+        -- Create named sets EMPTY and commit them -- the Triggers tab's
+        -- missing-set banner turning "those rules equip NOTHING" into real,
+        -- fillable targets in one click. Empty is a legitimate set (Sets-tab
+        -- Commit ships one on purpose): dispatching it changes no gear, so the
+        -- rule stops being a dead end today and the gear arrives later. Rides
+        -- setmanager's ordinary rails -- parse-check, a backup per commit --
+        -- then ONE '/dl sets reload' for the batch. Returns made, failed.
+        createEmptySets = function(job, names)
+            if not has.setmgr or job == nil or job == '' or type(names) ~= 'table' then
+                return 0, (type(names) == 'table') and #names or 0;
+            end
+            local made, failed = 0, 0;
+            for _, nm in ipairs(names) do
+                local ok = nil;
+                pcall(function() ok = setmgr.commitSet(job, tostring(nm), {}); end);
+                if ok == true then made = made + 1; else failed = failed + 1; end
+            end
+            if made > 0 then
+                profsets.invalidate();
+                pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '/dl sets reload'); end);
+            end
+            return made, failed;
+        end,
     };
     M._deps = d;   -- exposed for the restock nudge (the d3d_present hook is outside this do-block)
     local ok, m = pcall(require, "dlac\\ui\\triggersui");
