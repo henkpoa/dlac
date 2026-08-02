@@ -287,19 +287,23 @@ infer it from a field confirmation, from *"works"*, or from your own read that s
 ready — his own note on the exchange was *"you are right not to assume otherwise since I
 haven't told you."* Ask when he has **not** said merge; never ask twice when he has.
 
-- **"copy to…" — one Trigger, landed in the job entries you tick** (`2026.08.02c`). Henrik
+- **"copy to…" — one Trigger, landed in the job entries you tick** (`2026.08.02d`). Henrik
   asked for a copy button on trigger rules, first said *profiles*, then corrected himself:
   *"I meant the job. I want to be able to copy the rule between the jobs. Have a list of jobs
   that we can mark to copy to (where it also checks if it has a similar rule already), also
   can't copy to itself... one button to select all jobs."* A per-rule button opens a window
   with a tick box per JOB (plus **All jobs**); the profile axis built first is still there as
   a second list below, with its own All and Copy. **All** ticks only what does not already
-  hold the rule — the duplicate check is the ask, so the bulk button must not spend it. Pure
-  core `gear/rulecopy.lua` (RC1–36), the window driven end to end on BOTH axes against a stub
-  imgui (smoke_ui CP1–33). **NOT field-confirmed — suites only** (5707 / 977, both
-  interpreters). The round it owes is one pass in-game: open a rule's *copy to…*, tick another
-  job, copy, change to that job and see the rule in the same handler. Cheap to check, and the
-  failure modes are all loud (every row says what will happen, every outcome is named).
+  hold the rule — the duplicate check is the ask, so the bulk button must not spend it. The
+  window carries a tick, **"Include the set if it isn't there"** (default on), that brings the
+  rule's set across when the destination lacks it — verbatim, never overwriting; and it opens
+  straight onto the job list, all the header text removed on his word (*"it's bloating"*).
+  Pure core `gear/rulecopy.lua` (RC*) + `setmanager.copySetText` (SN20–29), the window driven
+  end to end on BOTH axes against a stub imgui (smoke_ui CP*). **NOT field-confirmed — suites
+  only** (5723 / 981, both interpreters). The round it owes is one pass in-game: open a rule's
+  *copy to…*, tick another job, copy, change to that job and see both the rule and its set
+  sitting there. Cheap to check, and the failure modes are all loud (every row says what will
+  happen, every outcome is named — sets that could not follow included).
 
 
 *(Still empty after the second 2026-08-02 promotion, `850e6d5` — **`/dl sends` bills dlac
@@ -675,7 +679,7 @@ research already recorded. In rough priority order:
 
 ## Current state (as of 2026-08-02)
 
-- **2026-08-02 (`2026.08.02c`): "copy to…" — ONE TRIGGER, LANDED IN THE JOB ENTRIES YOU TICK.
+- **2026-08-02 (`2026.08.02d`): "copy to…" — ONE TRIGGER, LANDED IN THE JOB ENTRIES YOU TICK.
   BUILT, on `dev`, suites green both interpreters, **NOT field-confirmed** (see the merge
   queue for the one-pass round it owes).
   - **Where it came from, including the correction.** Henrik asked for *"a copy to... button
@@ -703,6 +707,18 @@ research already recorded. In rough priority order:
   - **All ticks only the non-duplicates** (`rulecopy.allNames`). He asked for the duplicate
     check by name, so the bulk button must not spend it: one click across 21 jobs is exactly
     where a silent double would go unnoticed. A duplicate stays reachable by hand.
+  - **"Include the set if it isn't there"** (a tick in the window, default on — *"not a
+    setting under the settings menu"*: it belongs to the copy you are making, not to the
+    character). Any set the rule NAMES that the destination lacks is carried across by
+    `setmanager.copySetText` — **verbatim** (re-rendering would round-trip every entry through
+    the writer's vocabulary and quietly rewrite a shape it does not know, or a comment the
+    player wrote inside the block) and **never over an existing name**. Sets follow only a rule
+    that actually LANDED, and a set that could not follow is named in the receipt: a rule
+    reported as copied while its set stayed behind is the exact dud this prevents.
+  - **The window opens straight onto the job list.** Title, subtitle, rule text and the
+    uncommitted-edits banner are gone — Henrik: *"Please remove all the text above the job
+    list, it's bloating."* Only the error line can appear above the list, and it only exists
+    when something is wrong; the explaining lives in hovers (the panel-text standard).
   - **The write ladder** (triggersui, not the pure core): re-read each target at write time
     (the rows are a snapshot and both Lua states plus a parallel session share the disk),
     timestamped backup into `<char>\backups\rule-copy\` — **and a backup that cannot be

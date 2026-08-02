@@ -2838,6 +2838,10 @@ end)();
         for _, t in ipairs(REC) do if t:find(text, 1, true) ~= nil then return true; end end
         return false;
     end
+    local function idxOf(text)
+        for i, t in ipairs(REC) do if t:find(text, 1, true) ~= nil then return i; end end
+        return math.huge;
+    end
     local IM = setmetatable({}, { __index = function() return nop; end });
     IM.BeginPopup = function(id)
         if tostring(id) == '##dlac_trigcopy' then depth.popup = depth.popup + 1; return true; end
@@ -2877,6 +2881,25 @@ end)();
         if fh ~= nil then fh:write(HELDTEXT); fh:close(); end
     end
 
+    -- The one destination that really lands (a trigger file dlac may create), so the
+    -- set half runs at all -- sets only follow a rule that actually arrived.
+    local TRIG = ((os.getenv('TEMP') or os.getenv('TMPDIR') or '/tmp'):gsub('\\', '/'))
+        .. '/dlac-cp-smoke-rdm.lua';
+    os.remove(TRIG);
+
+    -- The source job's sets file, holding the set the copied rule names -- the
+    -- "Include the set if it isn't there" half reads it and carries the block along.
+    local SETS = ((os.getenv('TEMP') or os.getenv('TMPDIR') or '/tmp'):gsub('\\', '/'))
+        .. '/dlac-cp-smoke-sets.lua';
+    do
+        local fh = io.open(SETS, 'w');
+        if fh ~= nil then
+            fh:write('local sets = {\n    Dynamic = {\n        CureSet = {\n'
+                .. '            Head = {\n                gear.Head.X,\n            },\n        },\n    },\n};\nreturn sets;\n');
+            fh:close();
+        end
+    end
+
     -- Four jobs (WHM is the one being played) and four profiles (Default is active):
     -- between them every row shape appears on both axes.
     local FAKEPROF = {
@@ -2886,10 +2909,21 @@ end)();
         activeName    = function() return 'Default'; end,
         storageExists = function() return false; end,
         charRoot      = function() return nil; end,        -- -> no backup is possible
+        frameSetsText = function() return 'local sets = {\n    Dynamic = {\n    },\n};\nreturn sets;\n'; end,
         triggersPath  = function(job, name)
             if name == 'Broken' then return nil; end                 -- unresolvable -> refused row
             if name == 'Held' or (name == 'Default' and job == 'BLM') then return HELD; end
+            -- ONE destination that really lands, so the set half runs at all: sets
+            -- only follow a rule that actually arrived.
+            if name == 'Default' and job == 'RDM' then return TRIG; end
             return 'tests/no-such-dir/' .. tostring(name) .. '-' .. tostring(job) .. '.lua';
+        end,
+        -- The job being played reads its real sets file; every destination's is
+        -- aimed at a directory that does not exist, so the set copy REPORTS rather
+        -- than writes (and the suite litters nothing).
+        setsPath      = function(job, name)
+            if name == 'Default' and job == 'WHM' then return SETS; end
+            return 'tests/no-such-dir/sets-' .. tostring(name) .. '-' .. tostring(job) .. '.lua';
         end,
     };
 
@@ -2918,9 +2952,11 @@ end)();
         check('CP7 capture with a job, jobs and profiles', pcall(tg._cpOpen, 'Midcast', { when = { name = 'Cure IV' }, set = 'CureSet' }), true);
         REC = {};
         check('CP8 the window renders both lists', pcall(tg.renderTrigCopyPopup), true);
-        check('CP9 the rule travels in its canonical form', saw('when = { name = "Cure IV" }, set = "CureSet"'), true);
-        -- The JOB axis (the ask).
-        check('CP10 the jobs list is the first section', saw('Jobs (this profile)'), true);
+        -- The JOB axis (the ask). The FIRST thing drawn is a job row -- there is no
+        -- title, subtitle or rule text above the list any more.
+        check('CP9 the window opens straight onto the job list', REC[1], 'WAR##trgcpm_jobs_WAR');
+        check('CP10 jobs are listed in the game\'s job order, not alphabetically',
+            (idxOf('WAR##') < idxOf('BLM##')) and (idxOf('BLM##') < idxOf('RDM##')), true);
         check('CP11 the job you are on is shown, not offered', saw('the job you are on -- the rule lives here'), true);
         check('CP12 another job is a tickable target', saw('RDM##trgcpm_jobs_RDM'), true);
         check('CP13 a job with no rules yet says a file is created', saw('no rules for this job yet'), true);
@@ -2932,6 +2968,13 @@ end)();
         check('CP18 an unresolvable destination is refused, never overwritten', saw('never overwritten'), true);
         check('CP19 nothing ticked -> a nudge per list, no Copy button',
             saw('Tick the jobs to copy into.') and saw('Tick the profiles to copy into.'), true);
+        -- The window opens STRAIGHT onto the list: no title, no subtitle, no rule
+        -- text above it ("Please remove all the text above the job list").
+        check('CP19a no header text above the job list',
+            saw('Copy this rule to...') or saw('it lands in the same job entry')
+            or saw('when = { name = "Cure IV" }'), false);
+        check('CP19b the include-the-set tick is in the window itself',
+            saw('Include the set if it isn\'t there##trgcpsets'), true);
 
         -- All jobs ticks the job rows ONLY -- the two lists never cross.
         CLICK = 'All jobs##trgcpall_jobs';
@@ -2948,10 +2991,15 @@ end)();
         check('CP24 the copy click runs the write path', pcall(tg.renderTrigCopyPopup), true);
         CLICK = nil; REC = {};
         check('CP25 renders the receipt', pcall(tg.renderTrigCopyPopup), true);
-        check('CP26 a job that could not be written is named', saw('RDM (could not write'), true);
+        check('CP26 a job that could not be written is named', saw('WAR (could not write'), true);
         check('CP27 ...and so is the one that could not be backed up',
             saw('BLM (could not write the safety backup'), true);
         check('CP28 the receipt names the axis it varied', saw('Midcast rules, profile Default'), true);
+        check('CP28a the job that landed is named as copied', saw('Copied to RDM.'), true);
+        -- The set half ran BECAUSE that one landed, and could not write its own
+        -- destination -- which the receipt must say, or the rule reads as fully
+        -- copied while pointing at a set that never followed it.
+        check('CP28b a set that could not follow is named', saw('Sets NOT brought: CureSet -> RDM'), true);
         -- THE destructive-half guarantee: the refusal happens BEFORE the file is touched.
         local after = nil;
         do
@@ -2973,7 +3021,7 @@ end)();
         check('CP33 stacks stay balanced through the whole window',
             depth.popup + depth.col + depth.win + depth.child, 0);
     end
-    os.remove(HELD);
+    os.remove(HELD); os.remove(SETS); os.remove(TRIG);
 
     for _, k in ipairs(NAMES) do package.loaded[k] = saved[k]; end
     package.loaded['imgui'] = nil;

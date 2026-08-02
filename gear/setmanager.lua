@@ -210,6 +210,61 @@ M.spliceSet = function(fileText, setName, slots)
     end
 end
 
+-- Copy one set's block from one sets file's text into another's -- the "include
+-- the set if it isn't there" half of the Triggers tab's rule copy (2026-08-02).
+--
+-- VERBATIM, and that is the design: re-rendering through renderSetLines would
+-- round-trip every entry through the WRITER's vocabulary, so an entry shape it
+-- does not know (or a comment the player wrote inside the block) would be quietly
+-- rewritten on the way. A copy must move what is actually there.
+--
+-- Refuses when the destination already holds that name -- "if not present" is the
+-- whole contract and this never overwrites -- and refuses a name the source does
+-- not hold. Returns newText, 'copied' | nil, errmsg ('already there' for the
+-- collision, which the caller reads as "nothing to do", not as a failure).
+M.copySetText = function(srcText, dstText, setName)
+    if type(srcText) ~= 'string' or type(dstText) ~= 'string'
+       or type(setName) ~= 'string' or setName == '' then return nil, 'bad args'; end
+    local sds, sde = srcText:find('Dynamic%s*=%s*{');
+    if not sds then return nil, 'the source file has no sets.Dynamic block'; end
+    local srcDynClose = matchBrace(srcText, sde);
+    if not srcDynClose then return nil, 'the source sets.Dynamic block is not closed'; end
+    local ss, se = findSetKey(srcText, setName, sds);
+    if not ss or ss > srcDynClose then return nil, 'this job has no set named ' .. setName; end
+    local setClose = matchBrace(srcText, se);
+    if not setClose then return nil, 'source set block not closed: ' .. setName; end
+
+    local dds, dde = dstText:find('Dynamic%s*=%s*{');
+    if not dds then return nil, 'the destination file has no sets.Dynamic block'; end
+    local dstDynClose = matchBrace(dstText, dde);
+    if not dstDynClose then return nil, 'the destination sets.Dynamic block is not closed'; end
+    local dss = findSetKey(dstText, setName, dds);
+    if dss ~= nil and dss < dstDynClose then return nil, 'already there'; end
+
+    -- The block, whole lines, exactly as written. A set sharing its line with the
+    -- Dynamic opener would take that line with it -- refuse instead of mangling
+    -- (the canonical writer always gives a set its own lines).
+    local sLines = splitLines(srcText);
+    local openLine, closeLine = byteToLine(srcText, se), byteToLine(srcText, setClose);
+    if openLine <= byteToLine(srcText, sde) then
+        return nil, setName .. ' shares a line with the Dynamic block -- copy it by hand';
+    end
+    local block = {};
+    for i = openLine, closeLine do block[#block + 1] = sLines[i]; end
+    -- ...and it must end in a comma, or the key after it runs straight into it.
+    if block[#block]:match(',%s*$') == nil then block[#block] = block[#block] .. ','; end
+
+    -- Insert as the FIRST set, spliceSet's rule: appending at the end could follow
+    -- a final `}` that carries no comma -> parse error.
+    local dLines, nl = splitLines(dstText);
+    local dynOpenLine = byteToLine(dstText, dde);
+    local out = {};
+    for i = 1, dynOpenLine do out[#out + 1] = dLines[i]; end
+    for _, b in ipairs(block) do out[#out + 1] = b; end
+    for i = dynOpenLine + 1, #dLines do out[#out + 1] = dLines[i]; end
+    return table.concat(out, nl), 'copied';
+end
+
 -- Rename a set IN TEXT: re-key its block (bare or bracket-quoted, whichever
 -- the file holds), content and indentation untouched -- the new key renders
 -- through renderKey so a dashed/keyword name bracket-quotes itself. Refuses

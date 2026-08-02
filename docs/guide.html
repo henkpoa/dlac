@@ -309,13 +309,17 @@ and its own Copy button; the two lists never mix.</p>
       whole reason you're copying;</li>
   <li>a destination whose trigger file is damaged is refused rather than overwritten.</li>
 </ul>
+<p><b>Include the set if it isn't there</b> (ticked by default, at the bottom of the window)
+brings the rule's set along: any set the rule names that the destination job doesn't have is
+copied across exactly as you wrote it — otherwise the rule arrives and equips nothing. A set of
+that name already on the target job is never touched. Modes and groups don't travel either way;
+a rule that names one you lack reads <span class="mode">[missing]</span> there, exactly as a
+stamped Blueprint does.</p>
 <p>Nothing about the job you're playing changes and nothing needs reloading: the copies are
 simply there the next time you change job. Each file that gets overwritten is backed up first,
 timestamped, under <code>backups\rule-copy\</code> — and if that backup can't be written, the
 copy refuses rather than risk the file. Afterwards you get one line naming every destination:
-copied, already-had-it, or failed and why. Sets, modes and groups the destination doesn't have
-travel verbatim and read <span class="mode">[missing]</span> there, exactly as a stamped
-Blueprint does.</p>
+copied, already-had-it, or failed and why — including any set that couldn't follow.</p>
 
 <h2 id="modes">5. Modes — one set, several behaviours</h2>
 <p>Modes are named switches <i>you</i> flip; sets and rules can react to them. They come in

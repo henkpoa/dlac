@@ -60,12 +60,22 @@ function M.entryFor(handler, rule)
     return bp.makeEntry(handler, rule);
 end
 
--- The rule in its ONE canonical spelling (the serializer's form) -- what the popup
--- shows so the player can see exactly what is about to travel. '' when unavailable.
-function M.ruleText(entry, prettyKey)
-    if not hasBp or type(entry) ~= 'table' then return ''; end
-    local out = '';
-    pcall(function() out = bp.emitRule(entry.rule, prettyKey); end);
+-- The set names this rule targets, in order, deduped -- what "include the set if it
+-- isn't there" has to carry along. A rule with an inline `equip` payload names none,
+-- which is why the tick can be a no-op rather than an error.
+function M.setNames(entry)
+    local out, seen = {}, {};
+    local r = (type(entry) == 'table') and entry.rule or nil;
+    local s = (type(r) == 'table') and r.set or nil;
+    if type(s) == 'table' then
+        for _, n in ipairs(s) do
+            if type(n) == 'string' and n ~= '' and not seen[n] then
+                seen[n] = true; out[#out + 1] = n;
+            end
+        end
+    elseif type(s) == 'string' and s ~= '' then
+        out[1] = s;
+    end
     return out;
 end
 
@@ -156,11 +166,20 @@ local function join(list) table.sort(list); return table.concat(list, ', '); end
 -- worked everywhere, and the player would not find out until they switched to it.
 function M.receipt(results, where)
     local done, dups, failed = {}, {}, {};
+    -- Sets brought along ("include the set if it isn't there"): counted, and any
+    -- that could not be brought named -- a rule that landed pointing at a set that
+    -- did not follow it is the exact dud this option exists to prevent, so the
+    -- receipt must not report the rule as copied and stay quiet about the set.
+    local setsOk, setsBad = 0, {};
     for _, r in ipairs((type(results) == 'table') and results or {}) do
         if type(r) == 'table' and type(r.name) == 'string' then
             if r.ok ~= true then failed[#failed + 1] = r.name .. ' (' .. tostring(r.err or 'unknown error') .. ')';
             elseif r.dup == true then dups[#dups + 1] = r.name;
             else done[#done + 1] = r.name; end
+            setsOk = setsOk + (tonumber(r.setsOk) or 0);
+            for _, s in ipairs((type(r.setsBad) == 'table') and r.setsBad or {}) do
+                setsBad[#setsBad + 1] = tostring(s);
+            end
         end
     end
     if #done == 0 and #dups == 0 and #failed == 0 then
@@ -175,7 +194,11 @@ function M.receipt(results, where)
         parts[#parts + 1] = string.format('%d already had an identical rule -- copied anyway: %s.', #dups, join(dups));
     end
     if #failed > 0 then parts[#parts + 1] = 'FAILED: ' .. join(failed) .. '.'; end
-    return tostring(where or '?') .. ': ' .. table.concat(parts, ' '), (#failed > 0);
+    if setsOk > 0 then
+        parts[#parts + 1] = string.format('Brought %d missing set%s along.', setsOk, (setsOk == 1) and '' or 's');
+    end
+    if #setsBad > 0 then parts[#parts + 1] = 'Sets NOT brought: ' .. join(setsBad) .. '.'; end
+    return tostring(where or '?') .. ': ' .. table.concat(parts, ' '), (#failed > 0 or #setsBad > 0);
 end
 
 return M;

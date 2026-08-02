@@ -4220,9 +4220,15 @@ end
 -- copies are already there when the player changes job (or profile).
 -- ---------------------------------------------------------------------------
 local cpUI = {
-    entry = nil, handler = nil, job = nil, profile = nil, ruleText = '',
+    entry = nil, handler = nil, job = nil, profile = nil,
     jobRows = nil, profRows = nil, err = nil,
     marks = { jobs = {}, profiles = {} },       -- kind -> name -> { bool } (imgui buffer)
+    -- "Include the set if it isn't there" (Henrik 2026-08-02): a tick in THIS
+    -- window, not a Setting -- it belongs to the copy you are about to make, not
+    -- to the character. On by default: a rule that lands pointing at a set the
+    -- job does not have is a dud, and bringing it is the completion of the intent.
+    -- It only ever ADDS a set that is absent; an existing name is never touched.
+    withSets = { true },
     status = '', statusErr = false, statusAt = 0,
     _open = false,
 };
@@ -4314,7 +4320,7 @@ end
 -- render its canonical text, scan the profiles. Only the write is deferred.
 local function cpOpen(handler, rule)
     cpUI.entry, cpUI.handler, cpUI.err = nil, handler, nil;
-    cpUI.jobRows, cpUI.profRows, cpUI.ruleText = nil, nil, '';
+    cpUI.jobRows, cpUI.profRows = nil, nil;
     cpUI.marks = { jobs = {}, profiles = {} };
     cpUI.status, cpUI.statusErr = '', false;
     cpUI._open = true;
@@ -4322,9 +4328,84 @@ local function cpOpen(handler, rule)
     if not hasDispatch or not hasTrigModel then cpUI.err = 'the trigger modules are unavailable.'; return; end
     local entry, eerr = rc.entryFor(handler, rule);
     if entry == nil then cpUI.err = 'this rule cannot be copied: ' .. tostring(eerr); return; end
-    cpUI.entry, cpUI.ruleText = entry, rc.ruleText(entry, dsp.PRETTY_KEY);
+    cpUI.entry = entry;
     local _, serr = cpScan(entry);
     cpUI.err = serr;
+end
+
+-- Bring the sets the rule NAMES into one destination job entry, when they are not
+-- already there ("Include the set if it isn't there"). Never overwrites an existing
+-- name -- copySetText refuses that outright -- and copies the block VERBATIM, so a
+-- hand-written entry shape or comment survives the trip. Returns okCount, failures
+-- (each a "SetName -> WHERE (why)" string, so the receipt can name it).
+local function cpBringSets(prof, entry, tJob, tProf, srcText, label)
+    local names = rc.setNames(entry);
+    if #names == 0 then return 0, {}; end
+    local sm = nil;
+    pcall(function() sm = require('dlac\\gear\\setmanager'); end);
+    if type(sm) ~= 'table' or type(sm.copySetText) ~= 'function' then
+        return 0, { 'setmanager unavailable -> ' .. label };
+    end
+    if srcText == nil then
+        return 0, { table.concat(names, '/') .. ' -> ' .. label .. ' (this job\'s own sets file could not be read)' };
+    end
+    local dstPath, frame = nil, nil;
+    pcall(function() dstPath = prof.setsPath(tJob, tProf); end);
+    pcall(function() frame = prof.frameSetsText(nil); end);   -- the empty sets skeleton
+    if dstPath == nil or type(frame) ~= 'string' then
+        return 0, { table.concat(names, '/') .. ' -> ' .. label .. ' (no sets path)' };
+    end
+    local okN, bad = 0, {};
+    for _, nm in ipairs(names) do
+        local text = readFileText(dstPath);
+        local fresh = (text == nil);
+        if fresh then text = frame; end                      -- no sets file there yet: start one
+        local newText, err = sm.copySetText(srcText, text, nm);
+        if newText == nil then
+            -- 'already there' is the no-op this option is named for, never a failure.
+            if err ~= 'already there' then
+                bad[#bad + 1] = nm .. ' -> ' .. label .. ' (' .. tostring(err) .. ')';
+            end
+        elseif (loadstring or load)(newText) == nil then
+            bad[#bad + 1] = nm .. ' -> ' .. label .. ' (the result would not parse -- file untouched)';
+        else
+            local wrote = false;
+            if fresh then
+                pcall(function()
+                    if prof.storageExists() then prof.ensureStorage(tProf); end
+                end);
+                wrote = writeFileText(dstPath, newText);
+            else
+                -- same house rule as the trigger half: a safety copy lands first or
+                -- the file is not touched at all.
+                local sw = nil;
+                pcall(function() sw = require('dlac\\lib\\safewrite'); end);
+                local backed = false;
+                if type(sw) == 'table' then
+                    pcall(function()
+                        local root = prof.charRoot();
+                        if root == nil then return; end
+                        if ashita and ashita.fs and ashita.fs.create_directory then
+                            ashita.fs.create_directory(root .. 'backups\\');
+                            ashita.fs.create_directory(root .. 'backups\\rule-copy\\');
+                        end
+                        backed = sw.timestampBackup(root .. 'backups\\rule-copy\\',
+                            tProf .. '-' .. tJob .. '-sets-', text) ~= nil;
+                    end);
+                    if backed then wrote = (sw.replaceLua(dstPath, newText, { origText = text }) == true); end
+                end
+                if not backed then
+                    bad[#bad + 1] = nm .. ' -> ' .. label .. ' (could not write the safety backup -- refused)';
+                    wrote = nil;   -- already reported
+                end
+            end
+            if wrote == true and readFileText(dstPath) == newText then okN = okN + 1;
+            elseif wrote == false then
+                bad[#bad + 1] = nm .. ' -> ' .. label .. ' (could not write ' .. dstPath .. ')';
+            end
+        end
+    end
+    return okN, bad;
 end
 
 -- Write ONE target profile's <JOB> trigger file with the rule appended. ok, dup, err.
@@ -4382,6 +4463,13 @@ local function cpApply(kind)
     if prof == nil then cpSetStatus('profiles module unavailable.', true); return; end
     local rows = (kind == 'jobs') and cpUI.jobRows or cpUI.profRows;
     local marks = cpUI.marks[kind] or {};
+    -- The source sets file, read ONCE: every destination copies out of the same
+    -- job entry the rule came from.
+    local wantSets = (cpUI.withSets[1] == true) and (#rc.setNames(entry) > 0);
+    local srcSets = nil;
+    if wantSets then
+        pcall(function() srcSets = readFileText(prof.setsPath(job, cpUI.profile)); end);
+    end
     local results = {};
     for _, row in ipairs(rows or {}) do
         local b = marks[row.name];
@@ -4391,7 +4479,14 @@ local function cpApply(kind)
             local tJob  = (kind == 'jobs') and row.name or job;
             local tProf = (kind == 'jobs') and cpUI.profile or row.name;
             local ok, dup, err = cpCopyOne(prof, entry, tJob, tProf);
-            results[#results + 1] = { name = row.name, ok = ok, dup = dup, err = err };
+            local res = { name = row.name, ok = ok, dup = dup, err = err };
+            -- Sets follow only a rule that actually LANDED: bringing a set to a job
+            -- whose trigger file we just refused to touch would leave the profile
+            -- carrying gear for a rule that is not there.
+            if ok and wantSets then
+                res.setsOk, res.setsBad = cpBringSets(prof, entry, tJob, tProf, srcSets, row.name);
+            end
+            results[#results + 1] = res;
         end
     end
     local where = (kind == 'jobs')
@@ -4419,7 +4514,7 @@ end
 -- say when the axis offers nothing.
 local function cpSection(kind, title, unit, empty)
     local rows = (kind == 'jobs') and cpUI.jobRows or cpUI.profRows;
-    imgui.TextColored(COL_HEADER, title);
+    if title ~= nil then imgui.TextColored(COL_HEADER, title); end
     if rows == nil then
         imgui.TextColored(COL_DIM, esc(empty));
         return;
@@ -4479,39 +4574,41 @@ local function cpSection(kind, title, unit, empty)
     end
 end
 
+-- The window opens STRAIGHT onto the job ticks. There was a title, a subtitle, the
+-- rule's canonical text and an uncommitted-edits banner above them; Henrik, seeing
+-- it: "Please remove all the text above the job list, it's bloating." He clicked
+-- the button on the rule -- he knows which rule it is and what a job list is for.
+-- What survives above the list is the error line, which only exists when something
+-- is actually wrong, and what explaining remains lives in HOVERS (the panel-text
+-- standard: label the control, explain on hover, never paragraph at the player).
 local function renderTrigCopyPopup()
-    imgui.SetNextWindowSizeConstraints({ 480, 0 }, { 680, 560 });
+    imgui.SetNextWindowSizeConstraints({ 440, 0 }, { 660, 560 });
     if not imgui.BeginPopup('##dlac_trigcopy') then return; end
-    imgui.TextColored(COL_HEADER, 'Copy this rule to...');
-    imgui.TextColored(COL_DIM, string.format('the %s handler, in every job entry you tick (profile %s).',
-        tostring(cpUI.handler or '?'), tostring(cpUI.profile or '?')));
-    if cpUI.ruleText ~= '' then
-        imgui.PushTextWrapPos(0.0);
-        imgui.TextColored(COL_SCORE, esc(cpUI.ruleText));
-        imgui.PopTextWrapPos();
-    end
-    if trig.dirty then
-        imgui.TextColored(COL_SCORE, 'This job has uncommitted edits -- the copy carries the rule AS SHOWN, not the one on disk.');
-    end
-    imgui.Separator();
 
     if cpUI.err ~= nil then imgui.TextColored(COL_ERR, esc(tostring(cpUI.err))); end
 
-    cpSection('jobs', 'Jobs (this profile)', 'job',
-        'No other job to copy to.');
+    cpSection('jobs', nil, 'job', 'No other job to copy to.');
     imgui.Spacing();
     imgui.Separator();
     cpSection('profiles', 'Other profiles (same job)', 'profile',
         'This character has no other profile yet -- create one in the Profiles menu.');
 
     imgui.Separator();
+    imgui.Checkbox('Include the set if it isn\'t there##trgcpsets', cpUI.withSets);
+    if imgui.IsItemHovered() then
+        imgui.SetTooltip('On: any set this rule names that the destination does not have is copied\n'
+            .. 'across with it, exactly as written here -- otherwise the rule lands and\n'
+            .. 'equips nothing, reading [missing] there.\n'
+            .. 'A set of that name already there is NEVER touched, and the rule\'s Modes\n'
+            .. 'and Groups do not travel either way.');
+    end
+    imgui.SameLine(0, 12);
     if imgui.Button('Close##trgcpclose', { 90, 24 }) then imgui.CloseCurrentPopup(); end
     if cpUI.status ~= '' then
         imgui.PushTextWrapPos(0.0);
         imgui.TextColored(cpUI.statusErr and COL_ERR or COL_SCORE, esc(cpUI.status));
         imgui.PopTextWrapPos();
     end
-    imgui.TextColored(COL_DIM, 'Sets / Modes / Groups the destination lacks travel verbatim -- they read [missing] there.');
     imgui.EndPopup();
 end
 -- Headless render seams (the renderTrigRuleBox / captureModeToLibrary precedent): the

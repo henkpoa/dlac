@@ -7832,7 +7832,7 @@ stretch, and because it is a readout a wrong answer costs a re-read rather than 
 
 
 
-## Session "I meant the job" (2026-08-02, `2026.08.02c`)
+## Session "I meant the job" (2026-08-02, `2026.08.02c` + `2026.08.02d`)
 
 **Theme:** the ask named the wrong axis, and building it is what revealed which one he meant.
 
@@ -7881,3 +7881,35 @@ Suites **5707** and **977**, both interpreters, plus a scratch end-to-end agains
 on the job axis: a job entry with existing rules kept them (and its Modes and Groups) and
 gained the copy, an empty job got a file, the job being played was never written, and a second
 pass ticked only the two jobs that did not already have it.
+
+**Same session, two more passes.** He asked for a *setting* called "Include set if not
+present", then immediately narrowed it: *"This should be a mark in the actual copy window, not
+a setting under the settings menu."* That is the right line and worth having in writing --
+dlac's **Setting** is a preference about the CHARACTER (uiflags.lua, remembered, listed in
+Menu > Settings). This one is a property of the copy you are making right now, so it is a tick
+in the window and nothing is remembered. The distinction is not pedantry: a remembered switch
+would silently apply to a copy made a week later.
+
+It brings the rule's SET along when the destination job lacks it, through a new
+`setmanager.copySetText` -- a **verbatim block move**, which is the one design decision in it.
+Re-rendering the set through `renderSetLines` would round-trip every entry through the WRITER's
+vocabulary, so an entry shape it does not know (or a comment the player wrote inside the block)
+would be quietly rewritten on the way. A copy must move what is actually there. It refuses a
+name the destination already holds -- "if not present" is the whole contract -- and sets follow
+only a rule that actually LANDED, because bringing gear to a job whose trigger file we just
+refused to touch would leave a set for a rule that is not there. A set that could not follow is
+named in the receipt: a rule reported as copied while the set it points at stayed behind is the
+exact dud the tick exists to prevent.
+
+And: *"Please remove all the text above the job list, it's bloating."* Gone -- title, subtitle,
+the rule's canonical text, the uncommitted-edits banner. The window now opens straight onto the
+job ticks. He clicked a button on a specific rule; he knows which rule it is and what a job
+list is for. What survives above the list is the error line, which only exists when something
+is actually wrong. This is the **panel-text standard** applied late rather than early: label
+the control, explain on hover, never paragraph at the player -- and the honest lesson is that
+the paragraphs went in because writing them felt like being thorough.
+
+Suites **5723** and **981**, both interpreters, and the scratch end-to-end re-run with sets: a
+destination job that had its own sets file gained the set beside its existing ones (comment and
+`{ gear = ..., minLevel = 30 }` shape intact, backup taken), a job with no sets file at all got
+one, and the source job was never touched.

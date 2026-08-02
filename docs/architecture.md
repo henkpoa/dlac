@@ -394,7 +394,12 @@ every writable row that does NOT already hold an identical rule (`rulecopy.allNa
 duplicate check is the feature, and a bulk button that spent it would silently double a rule
 across 21 jobs on one click — a duplicate stays reachable by ticking that row by hand.
 Whichever coordinate the rule already lives at (the job you are on / the active profile) is
-shown dim and untickable.
+shown dim and untickable. **"Include the set if it isn't there"** is a tick in the window (not
+a Setting — it belongs to the copy, not the character; default on): any set the rule NAMES that
+the destination lacks is carried across with it via `setmanager.copySetText`, **verbatim** and
+**never overwriting** an existing name, so the rule does not land equipping nothing. The window
+opens straight onto the job list — no title, no subtitle, no rule text (Henrik: *"remove all
+the text above the job list, it's bloating"*); what explaining remains lives in hovers.
 
 Pure core `gear/rulecopy.lua` (below); the file ladder is triggersui's — each target is
 **re-read at write time** (the rows are a snapshot; both Lua states and a parallel session
@@ -788,9 +793,13 @@ file there yet) / `dup` (an identical rule already there — warn-but-allow, the
 law) / `add` / `unreadable` (a torn file — refused), in `order`'s ranking (jobs read in the
 game's order, not alphabetically) with anything unranked after, by name. `allNames` is what the
 **All** button ticks — writable and NOT already holding the rule. `selection` counts the
-ticked-and-writable rows plus the duplicates among them. `applyTo` is the stamp. `receipt`
-**names every outcome** and leads with the coordinate that was varied, so an all-failed copy
-still says which list it came from — a copy that silently skipped a job reads as one that
+ticked-and-writable rows plus the duplicates among them. `setNames` is what "include the set"
+has to carry (an inline-`equip` rule names none, so the tick is a no-op rather than an error).
+`applyTo` is the stamp. `receipt`
+**names every outcome** — including sets brought along and, crucially, sets that could NOT be
+(a rule reported as copied while the set it points at stayed behind is the exact dud the tick
+exists to prevent) — and leads with the coordinate that was varied, so an all-failed copy still
+says which list it came from. A copy that silently skipped a job reads as one that
 worked everywhere, and the player would not find out until they changed job. Pure: no ImGui, no
 Ashita, no file IO, no clock — the caller reads the target files and writes the results
 (tests RC\*). Never seeded into LAC.

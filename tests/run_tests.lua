@@ -4935,8 +4935,14 @@ end)();
     check('RC5 a rule with no action is refused', (rc.entryFor('Midcast', { when = { name = 'X' } })), nil);
     check('RC6 an unknown handler is refused',   (rc.entryFor('Nope', { when = { name = 'X' }, set = 'S' })), nil);
 
-    -- The canonical rule text (what the window shows) is the serializer's ONE form.
-    check('RC7 rule text is the canonical form', rc.ruleText(entry), 'when = { name = "Cure IV" }, set = "CureSet", priority = 40');
+    -- The sets a rule names -- what "Include the set if it isn't there" carries along.
+    check('RC7a a single-set rule names one', table.concat(rc.setNames(entry), ','), 'CureSet');
+    local multi = rc.entryFor('Midcast', { when = { name = 'X' }, set = { 'Base', 'Overlay', 'Base' } });
+    check('RC7b a multi-set rule names them in order, deduped',
+        table.concat(rc.setNames(multi), ','), 'Base,Overlay');
+    local inline = rc.entryFor('Midcast', { when = { name = 'X' }, equip = { Ear1 = 'Toxic Earring' } });
+    check('RC7c an inline-equip rule names none -- the tick is a no-op, not an error',
+        #rc.setNames(inline), 0);
 
     -- Per-target verdicts. `data = nil` + no err = no trigger file there yet.
     local hasIt  = { Midcast = { { when = { name = 'Cure IV' }, set = 'CureSet', priority = 40 } } };
@@ -5039,6 +5045,22 @@ end)();
     local noneText, noneErr = rc.receipt({}, 'WHM Midcast');
     check('RC35 an empty copy says so', noneText:find('Nothing copied', 1, true) ~= nil, true);
     check('RC36 ...as an error', noneErr, true);
+
+    -- Sets brought along are counted, and any that could NOT be are named: a rule
+    -- reported as copied while the set it points at silently stayed behind is the
+    -- exact dud the option exists to prevent.
+    local setText, setErr = rc.receipt({
+        { name = 'BLM', ok = true, setsOk = 1 },
+        { name = 'RDM', ok = true, setsOk = 1 },
+    }, 'Midcast rules, profile Default');
+    check('RC37 sets brought are counted', setText:find('Brought 2 missing sets along.', 1, true) ~= nil, true);
+    check('RC38 ...and that alone is not an error', setErr, false);
+    local badSet, badSetErr = rc.receipt({
+        { name = 'BLM', ok = true, setsOk = 0, setsBad = { 'CureSet -> BLM (no sets path)' } },
+    }, 'Midcast rules, profile Default');
+    check('RC39 a set that did not follow is named',
+        badSet:find('Sets NOT brought: CureSet -> BLM (no sets path).', 1, true) ~= nil, true);
+    check('RC40 ...and the copy reads as an error even though the rule landed', badSetErr, true);
 end)();
 
 -- ---------------------------------------------------------------------------
@@ -12096,6 +12118,39 @@ end)();
     check('SN18 unknown set refuses', tostring(rerr1):find('set not found', 1, true) ~= nil, true);
     local _, rerr2 = sm.renameSetText(rn, 'Field', 'Tp');
     check('SN19 collision refuses', tostring(rerr2):find('already exists', 1, true) ~= nil, true);
+
+    -- copySetText (2026-08-02): the "Include the set if it isn't there" half of the
+    -- Triggers tab's rule copy. VERBATIM block move -- re-rendering would round-trip
+    -- every entry through the writer's vocabulary, so an entry shape it does not know
+    -- (or a comment the player wrote inside the block) would be quietly rewritten.
+    local srcSets = 'local sets = {\n    Dynamic = {\n        CureSet = {\n'
+        .. '            Head = {\n                -- the hand-written note must survive\n'
+        .. '                { gear = gear.Head.X, minLevel = 30, mode = "DT" },\n'
+        .. '            },\n        },\n        Idle = {\n        },\n    },\n};\nreturn sets;\n';
+    local dstSets = 'local sets = {\n    Dynamic = {\n        Tp_Default = {\n        },\n    },\n};\nreturn sets;\n';
+    local cp1, ca1 = sm.copySetText(srcSets, dstSets, 'CureSet');
+    check('SN20 the set copies across', ca1, 'copied');
+    check('SN21 the result parses', (loadstring or load)(cp1 or '') ~= nil, true);
+    check('SN22 the block is VERBATIM, comment and entry shape included',
+        cp1:find('-- the hand-written note must survive', 1, true) ~= nil
+        and cp1:find('{ gear = gear.Head.X, minLevel = 30, mode = "DT" },', 1, true) ~= nil, true);
+    check('SN23 what was already there is untouched', cp1:find('Tp_Default', 1, true) ~= nil, true);
+    check('SN24 only the named set travelled', cp1:find('Idle', 1, true), nil);
+    -- "if not present" is the WHOLE contract: an existing name is never overwritten.
+    local cp2, ce2 = sm.copySetText(srcSets, cp1, 'CureSet');
+    check('SN25 a name already there refuses', cp2 == nil and ce2, 'already there');
+    local cp3, ce3 = sm.copySetText(srcSets, dstSets, 'NoSuchSet');
+    check('SN26 a set the source lacks refuses',
+        cp3 == nil and tostring(ce3):find('no set named NoSuchSet', 1, true) ~= nil, true);
+    -- A dashed/bracket-quoted key travels too (the SN2 family's shape).
+    local dashSrc = sm.spliceSet(base, 'Midcast_STR-VIT', { { name = 'Head', items = { { path = 'gear.Head.X' } } } });
+    local cp4, ca4 = sm.copySetText(dashSrc, dstSets, 'Midcast_STR-VIT');
+    check('SN27 a bracket-quoted name copies', ca4, 'copied');
+    check('SN28 ...and still parses', (loadstring or load)(cp4 or '') ~= nil, true);
+    -- A destination that is not a sets file at all is refused, never written over.
+    local cp5, ce5 = sm.copySetText(srcSets, 'return {};\n', 'CureSet');
+    check('SN29 a destination with no Dynamic block refuses',
+        cp5 == nil and tostring(ce5):find('destination file has no sets.Dynamic', 1, true) ~= nil, true);
 
     -- priority-list twin: ordered parse, entry forms, order preserved
     local plists, perr = wimpT.parsePrio([[
