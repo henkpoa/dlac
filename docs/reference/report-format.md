@@ -109,6 +109,30 @@ A decision block is **never empty**. If one can show neither a changed slot nor
 a shift, it says so in those words, and that too is a finding: the ring should
 not have appended it.
 
+### `was:` — what the slot changed from
+
+Printed only for slots the record **calls changed**, and only when a previous
+record exists. Saying it elsewhere would invent an event out of a slot that simply
+held.
+
+```
+    Head    Faceguard +1     <- Triggers (rank 13)
+            was: Lth. Bandana +1
+```
+
+If the previous item is **identical**, the line reads
+`was: X -- SAME ITEM, yet the record lists this slot as changed.` That is a
+finding about the decision ring, not a formatting quirk: the record claimed a
+slot moved and it did not.
+
+### `NO CLAIMANT RECORDED`
+
+The plan carries an item and `contest.explain` names nobody for that slot — the
+two halves of one record disagreeing about who decided it, which is the invariant
+ADR 0027 exists to hold. Observed on a level-up: a newly eligible piece landed in
+the plan and only acquired its claimant two dispatches later. Rendered bare it was
+indistinguishable from an ordinary row, so it is labelled.
+
 ### `sets:`
 
 Every block names the sets that produced it, from `contest.src`. Previously this

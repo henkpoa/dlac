@@ -8195,3 +8195,47 @@ Suites **5911** and **1003**. The habit worth keeping from this round: *replay t
 through the new code*. Both build mistakes above were invisible to the unit tests, which used
 fixtures shaped the way I expected records to look; his actual sequence had a slot with no
 predecessor and a `changed` map that did not cover a moving slot, and both fell out immediately.
+
+### Field round 4 — the report is good, and it found two engine oddities (`2026.08.03e`)
+
+First normal report off the current build (`2026.08.03d`), 47.7 KB. Everything built over the
+last three rounds is confirmed working in the field: `sets:` on every block, the engine-version
+note in health, the relabelled action counter, the digest's two lists with `ABOVE YOUR LEVEL
+(10)` against a DRG that levelled 9 → 10 mid-window, and — the one that mattered — the
+zero-change block, which now reads:
+
+```
+[17:53:58] #4 Default -- status=Idle moving=true   (0 slots changed)
+    Ear1    Optical Earring    claim moved: (nobody) -> Triggers   (the item did not change)
+```
+
+So the tool stopped being the thing under investigation. **What it then surfaced is about the
+engine, and neither could be diagnosed from the artifact, so this round is two more renderer
+fixes aimed squarely at them.**
+
+**(i) An item with no owner.** `Ear1` carried Optical Earring in the plan while
+`contest.explain` named nobody for the slot — the two halves of one record disagreeing about
+who decided it, which is the invariant ADR 0027 holds. It rendered as an ordinary row, because
+a missing winner simply printed nothing. Now `<- NO CLAIMANT RECORDED (the plan has it, the
+contest names nobody)`. The shape is suggestive: the slot became newly eligible on the level-up
+(Optical Earring is Lv10, he crossed 9 → 10), landed in the plan that beat, and acquired its
+claimant **two dispatches later** — which is what generated the zero-change record at #4. The
+same shape explains the six empty blocks of the previous round.
+
+**(ii) A slot reported changed that did not change.** `#3` said `2 slots changed` and showed
+Main and Sub carrying exactly what `#2` had. The row printed only the NEW item, so a record
+claiming a slot moved to the piece it already had was indistinguishable from a real change.
+Blocks now carry `was:` for slots the record calls changed — the core question of a decision
+log, and the report could not answer it — and when the previous item is identical the line says
+`SAME ITEM, yet the record lists this slot as changed`. Replaying his real `#1`–`#4` shows Main
+and Sub flagged in **both** `#2` and `#3`, so it is a pattern rather than an incident, and both
+slots come from the `Weapons` set.
+
+`changed` is display-only (arbmonui's bright cells, this report), so neither oddity moves gear
+— but they inflate every count a reader trusts, and they are now labelled instead of invisible.
+**Not chased into dispatch this round**: that is an engine investigation with its own field
+cost, and the tooling had to be able to state the problem first.
+
+Suites **5920** and **1003**. The rule that keeps paying: `was:` prints ONLY for slots the
+record calls changed. Printing it everywhere would invent an event out of a slot that merely
+held, which is the same class of lie the `(kept)` row told two rounds ago.

@@ -267,7 +267,7 @@ end
 -- equip from" -- because a player quoting one and support reading the other
 -- must be looking at the same sentence. `label` maps a claimant identity to
 -- its player-facing name (arbiter.claimantLabel); absent, the identity shows.
-function M._slotLines(rec, slot, label)
+function M._slotLines(rec, slot, label, prev)
     label = label or tostring;
     local ls = string.lower(slot);
     local con = rec.contest;
@@ -286,8 +286,32 @@ function M._slotLines(rec, slot, label)
     local head = string.format('    %-7s %-30s', slot, shown);
     if win ~= nil then
         head = head .. string.format(' <- %s (rank %s)', tostring(label(win.name)), tostring(win.rank or 0));
+    elseif item ~= nil and item ~= 'remove' then
+        -- AN ITEM WITH NO OWNER (field, 2026-08-02). The plan carries the
+        -- piece and contest.explain has nobody for the slot -- so the two
+        -- halves of one record disagree about who decided it, which is the
+        -- invariant ADR 0027 exists to hold. Rendered bare it was
+        -- indistinguishable from an ordinary row, and it is not ordinary:
+        -- Ear1 landed Optical Earring this way on a level-up and only
+        -- acquired its claimant two dispatches later.
+        head = head .. ' <- NO CLAIMANT RECORDED (the plan has it, the contest names nobody)';
     end
     out[#out + 1] = (head:gsub('%s+$', ''));
+
+    -- WHAT IT CHANGED FROM. The core question of a decision log, and the
+    -- report could not answer it: a changed slot showed only its new item, so
+    -- a record claiming a slot changed to the piece it already had read
+    -- exactly like a real change. Only for slots the record CALLS changed --
+    -- everything else did not, and saying "was:" there would invent an event.
+    if type(prev) == 'table' and findCI(rec.changed, ls) == true then
+        local was = findCI(prev.plan, ls);
+        if was == item then
+            out[#out + 1] = string.format('            was: %s -- SAME ITEM, yet the record lists this'
+                .. ' slot as changed.', tostring(was or '(nothing)'));
+        else
+            out[#out + 1] = '            was: ' .. tostring(was or '(nothing worn from a set)');
+        end
+    end
 
     -- the losers, so "why did MY claim not win" is answerable
     if ops ~= nil and #ops > 1 then
@@ -488,7 +512,7 @@ function M._decLines(rec, label, slots, prev)
                 and findCI(rec.contest.fall.dead, ls) ~= nil);
         if touched then
             printed[ls] = true;
-            for _, l in ipairs(M._slotLines(rec, slot, label)) do out[#out + 1] = l; end
+            for _, l in ipairs(M._slotLines(rec, slot, label, prev)) do out[#out + 1] = l; end
             rows = rows + 1;
         end
     end
@@ -513,7 +537,7 @@ function M._decLines(rec, label, slots, prev)
                 -- Printed as the full slot story instead, and the disagreement
                 -- is called out: a `changed` map that misses a real change is
                 -- a finding about the ring, not a detail to smooth over.
-                for _, l in ipairs(M._slotLines(rec, CANON[sh.slot] or sh.slot, label)) do
+                for _, l in ipairs(M._slotLines(rec, CANON[sh.slot] or sh.slot, label, prev)) do
                     out[#out + 1] = l;
                 end
                 out[#out + 1] = string.format('            claim moved: %s -> %s, and the item went %s -> %s',

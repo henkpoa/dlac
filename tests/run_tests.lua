@@ -22091,6 +22091,51 @@ end)();
                             recWith(29, { Main = 'Harpoon' }, {})))
             :match('it should not be possible') ~= nil, true);
 
+    -- ---------------------------------------------------------------------
+    -- Field report 3 (2026-08-02): two engine oddities the report rendered as
+    -- ordinary rows, so neither could be diagnosed from the artifact.
+    -- ---------------------------------------------------------------------
+
+    -- (i) AN ITEM WITH NO OWNER. The plan carries the piece and the contest
+    -- names nobody -- the two halves of one record disagreeing about who
+    -- decided the slot, which is the invariant ADR 0027 holds. Ear1 landed
+    -- Optical Earring this way on a level-up and picked up its claimant two
+    -- dispatches later.
+    local ORPHAN = recWith(40, { Ear1 = 'Optical Earring' }, {}, { Ear1 = true }, 1);
+    local orow = joined(RP._slotLines(ORPHAN, 'Ear1', tostring));
+    check('RPT44a a planned item with no claimant is CALLED OUT',
+        orow:match('NO CLAIMANT RECORDED') ~= nil, true);
+    check('RPT44b ...saying which half says what',
+        orow:match('the plan has it, the contest names nobody') ~= nil, true);
+    check('RPT44c a slot with a winner is untouched by it',
+        joined(RP._slotLines(A, 'Main', tostring)):match('NO CLAIMANT'), nil);
+    check('RPT44d ...and so is a slot with no item at all',
+        joined(RP._slotLines(recWith(41, {}, {}), 'Main', tostring)):match('NO CLAIMANT'), nil);
+
+    -- (ii) WHAT IT CHANGED FROM. A record claiming a slot changed to the piece
+    -- it already had read exactly like a real change, because the row showed
+    -- only the new item -- so #3 of his log said Main and Sub changed while
+    -- both carried the same items as #2, and the artifact could not show it.
+    local WAS = recWith(42, { Main = 'Bronze Spear +1' },
+                        { main = { { name = 'Triggers', rank = 13, item = 'Bronze Spear +1' } } },
+                        { Main = true }, 1);
+    local PREV_DIFF = recWith(41, { Main = 'Harpoon' },
+                              { main = { { name = 'Triggers', rank = 13, item = 'Harpoon' } } });
+    check('RPT45a a changed slot says what it changed FROM',
+        joined(RP._slotLines(WAS, 'Main', tostring, PREV_DIFF)):match('was: Harpoon') ~= nil, true);
+    check('RPT45b a slot that came from nothing says so',
+        joined(RP._slotLines(WAS, 'Main', tostring, recWith(41, {}, {})))
+            :match('was: %(nothing worn from a set%)') ~= nil, true);
+    -- THE ANOMALY: same item, and the record still lists the slot as changed
+    check('RPT45c an unchanged item under a "changed" flag is called out',
+        joined(RP._slotLines(WAS, 'Main', tostring, WAS)):match('SAME ITEM, yet the record lists') ~= nil, true);
+    check('RPT45d no previous record = no claim about what it was',
+        joined(RP._slotLines(WAS, 'Main', tostring)):match('was:'), nil);
+    -- a slot the record does NOT call changed must never get a "was:" line --
+    -- that would invent an event out of a slot that simply held
+    check('RPT45e an unchanged slot is never given a was: line',
+        joined(RP._slotLines(A, 'Main', tostring, PREV_DIFF)):match('was:'), nil);
+
     -- the sets that produced the decision -- on every record already, and the
     -- report threw it away unless a ladder happened to print
     local SRC = recWith(31, { Main = 'Harpoon' },
