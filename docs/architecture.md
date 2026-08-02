@@ -273,12 +273,19 @@ decides *when* an icon shows; that stays with each member (Teleports because you
 it, the crates because you are near a box). The tray only stops asking for a window once
 every member has gone quiet.
 
-**Order is a ruling, not a layout detail** (Henrik). `SLOTS` reads left-to-right with the
-**constant members first**, and each member orders its own icons the same way. The icons
-share a *row* now, so a missing one no longer closes a gap in a stack — it slides
-everything to its right. Store is one click, no confirm, and deposits your whole
-Inventory, so it is anchored leftmost among the crates and only the two volatile ones
-(green with "Only when needed", yellow with your Mog House stock) can shift each other.
+**The axis is top-to-bottom** (Henrik, 2026-08-03): one column, one icon per line, and
+**nothing in the tray calls `SameLine`** except a badge sitting beside its own icon.
+`AlwaysAutoResize` pins the window's top-left and grows it down and right, so a column
+keeps the tray hanging off the corner you dragged it to instead of creeping sideways
+across the screen as icons appear.
+
+**Order is a ruling, not a layout detail** (Henrik). `SLOTS` reads top-to-bottom with the
+**constant members first**, and each member orders its own icons the same way, because a
+member that comes and goes shifts everything *below* it. Store is one click, no confirm,
+and deposits your whole Inventory, so it is anchored at the top of the crates (it used to
+be drawn last, so every appearance of the green crate pushed it down a row) and only the
+two volatile ones — green with "Only when needed", yellow with your Mog House stock — can
+shift each other.
 
 Position is `ui._tpPos` (`tpx`/`tpy` in uiflags) — the Teleports float's own saved spot,
 inherited deliberately: the tray takes **one** position, so this way the button you

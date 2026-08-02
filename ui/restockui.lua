@@ -42,15 +42,15 @@
                   be better and costs no box stock, but dlac may not move items
                   between containers yet -- deferred, see the v2 grill C2.)
 
-    THAT ORDER IS THE RULING, not the old one (Henrik 2026-08-03). The icons sit
-    in a ROW now, so a missing one no longer just closes a gap in a stack -- it
-    slides everything to its right. RED is the icon that must not move: it is one
-    click, no confirm, and it deposits your whole Inventory. It is also the only
-    one of the three that is ALWAYS there once you are in range, so anchoring it
-    leftmost means the two that come and go (GREEN with "Only when needed",
-    YELLOW with what is sitting at your Mog House) can only ever shift each
-    other. Same reason the tray puts the pinned Teleports button left of all
-    three.
+    THAT ORDER IS THE RULING, not the old one (Henrik 2026-08-03). The stack is
+    the same shape it always was -- a COLUMN, one icon per line -- but RED moved
+    from the bottom of it to the TOP. RED is the icon that must not move: it is
+    one click, no confirm, and it deposits your whole Inventory. It is also the
+    only one of the three that is ALWAYS there once you are in range, so putting
+    it first means the two that come and go (GREEN with "Only when needed",
+    YELLOW with what is sitting at your Mog House) can only ever shift each other
+    -- whereas with RED last, every appearance of GREEN pushed it down a row.
+    Same reason the tray puts the pinned Teleports button above all three.
 ]]--
 
 local M = {};
@@ -623,11 +623,10 @@ end
 -- in a 3px frame = a 36x36 button. Henrik 2026-07-31: the two floats live on the
 -- same screen and have to read as the same kind of control. At 40px art on the
 -- style's DEFAULT frame padding this one drew 48x46 -- visibly the bigger of the
--- two. They now share a ROW, so a mismatch is no longer a comparison across the
--- screen but two buttons touching -- change these together with gearui's.
+-- two. They now share a COLUMN, so a mismatch is no longer a comparison across
+-- the screen but two buttons stacked -- change these together with gearui's.
 local NUDGE_SZ  = 30;
 local NUDGE_PAD = 3;
-local ICONGAP   = 6;     -- between crates; the tray uses the same 6 between slots
 local TIP_MAX   = 12;    -- rows before a tooltip starts saying "+N more"
 
 local function openPanel()
@@ -742,13 +741,13 @@ function M.trayDraw(deps)
         end
     end
 
-    -- ...then the two crates that come and go, each opening with the SameLine
-    -- that keeps the row a row. Grouped in a block so it stays obvious that
-    -- everything in here draws to the RIGHT of the anchored Store icon and may
-    -- therefore shift; nothing above this line may.
+    -- ...then the two crates that come and go, each on its own line (the tray is
+    -- a COLUMN -- no SameLine between icons; the only SameLine below puts a
+    -- badge beside its own icon). Grouped in a block so it stays obvious that
+    -- everything in here draws BELOW the anchored Store icon and may therefore
+    -- shift; nothing above this line may.
     do
         if showGreen then
-            imgui.SameLine(0, ICONGAP);
             local canFetch = (#plan.pulls > 0) and not busy;
             local clicked, rightClicked, hovered = iconButton('ebox', 'E-Box', 'rsnudge_green');
             if plan.badge > 0 then
@@ -785,7 +784,6 @@ function M.trayDraw(deps)
         end
 
         if yplan ~= nil then
-            imgui.SameLine(0, ICONGAP);
             local canY = (#yplan.pulls > 0) and not busy;
             local clicked, rightClicked, hovered = iconButton('ebox_yellow', 'At home', 'rsnudge_yellow');
             imgui.SameLine(0, 6);

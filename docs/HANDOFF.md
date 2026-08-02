@@ -730,9 +730,10 @@ research already recorded. In rough priority order:
 
 ## Current state (as of 2026-08-02)
 
-- **2026-08-03 (`2026.08.03g`): THE FLOATING ICON TRAY — the Teleports button and the E-Box
-  crates are ONE window (`ui/tray.lua`). BUILT, suites green both interpreters
-  (**5990** + **1028**), **NOT field-confirmed — never run in game.** On `dev`.
+- **2026-08-03 (`2026.08.03g` + `2026.08.03i`): THE FLOATING ICON TRAY — the Teleports button
+  and the E-Box crates are ONE window (`ui/tray.lua`), stacked top to bottom. BUILT, suites
+  green both interpreters (**5990** + **1048**), **NOT field-confirmed — never run in
+  game.** On `dev`.
   - **The ask** (Henrik): *"Isn't it weird that we have two separate floating menus… could we
     integrate E-box restock and teleport button into the same box instead of having two
     separate?"* The 4×4 armor float stays on its own — explicitly fine as it is.
@@ -748,25 +749,33 @@ research already recorded. In rough priority order:
     before anything is drawn**, because an `AlwaysAutoResize` window begun with an empty
     body is a grey box parked on the player's screen that eats clicks. Visibility is an
     **OR**: unpinning Teleports must not silently kill the restock nudge.
-  - **Order is Henrik's ruling, not a layout detail:** constant members left, volatile
-    right — `Teleports | Store | green | yellow`. The icons share a *row* now, so a missing
-    one no longer closes a gap in a stack, it slides everything to its right. **Store is one
+  - **The axis is top-to-bottom** (Henrik, same session, right after the first cut landed):
+    one **column**, `Teleports / Store / green / yellow`, and nothing in the tray calls
+    `SameLine` except a badge beside its own icon. `AlwaysAutoResize` pins the top-left and
+    grows down and right, so a column hangs off the corner you dragged it to instead of
+    creeping sideways as icons appear.
+  - **Order is Henrik's ruling, not a layout detail:** constant members first, volatile
+    last, because a member that comes and goes shifts everything *below* it. **Store is one
     click, no confirm, and deposits your whole Inventory**, so it moved to the FRONT of the
-    crates (it used to be drawn last) and only the two that come and go can shift each other.
+    crates — it used to be drawn last, so every appearance of the green crate pushed it
+    down a row — and now only the two that come and go can shift each other.
   - **Position:** one tray, one spot — `ui._tpPos` (`tpx`/`tpy`), inherited from the
     Teleports float, so the button you pinned stays where you put it and the crates come to
     *it*. The old `##dlac_restock_nudge` imgui.ini entry is orphaned and harmless.
-  - **Tests:** `smoke_ui` **7c2 / TR1–TR25** — nothing-wanted opens no window, one member
-    opens no `SameLine`, two members draw `tp,ebox` with exactly one gap, a **throwing gate
-    does not cost the other member its window**, no window size is ever requested (the
+  - **Tests:** `smoke_ui` **7c2 / TR1–TR25** — nothing-wanted opens no window, two members
+    draw `tp,ebox` separated by a **vertical** `Dummy` and never a `SameLine`, a **throwing
+    gate does not cost the other member its window**, no window size is ever requested (the
     hobbybar collapse law), and the real `restockui.trayDraw` pushes
     `rsnudge_red,rsnudge_green,rsnudge_yellow` **in that order** — the ruling asserted where
-    it actually lives.
+    it actually lives. **TR21b** is the axis guard: it reads an interleaved draw log and
+    fails if any icon is preceded by a `SameLine` (a badge beside its own icon is legal, an
+    icon glued to the previous icon is not) — a bare `SameLine` *count* cannot tell those
+    apart, and this was verified to fail when a `SameLine` was reintroduced.
   - **ROUND OWED, and it is one glance:** stand at an Ephemeral Box with Teleports pinned —
-    four icons, one row, one draggable box, Store leftmost of the crates; walk away and the
-    crates vanish while Teleports stays; unpin Teleports at a box and the crates survive
-    alone. Also worth one look: the Teleports popup still opens from inside the tray, and the
-    abort button still replaces the icon mid-teleport.
+    four icons in ONE COLUMN, one draggable box, Store directly under Teleports; walk away
+    and the crates vanish while Teleports stays; unpin Teleports at a box and the crates
+    survive alone. Also worth one look: the Teleports popup still opens from inside the tray,
+    and the abort button still replaces the icon mid-teleport.
 - **2026-08-02 (`2026.08.03a`–`2026.08.03c`): `/dl report` — THE SUPPORT RECORDER. BUILT,
   **PARTLY FIELD-CONFIRMED**, and **ON MAIN** (promoted the same session), suites green both
   interpreters (**5886** + **1003**).

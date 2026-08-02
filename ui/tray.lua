@@ -19,20 +19,26 @@
         trayWants(deps) -> boolean   a CHEAP gate: "have I anything on screen
                                      right now?" -- no bag scans, no planning.
         trayDraw(deps)               draws its icon(s) inline. No Begin, no End,
-                                     no SetNextWindowPos, and it must NOT open
-                                     with SameLine -- the tray puts the gaps in.
+                                     no SetNextWindowPos, and NO SameLine between
+                                     icons -- see the axis note below.
 
     Two phases, and the order matters: EVERY member is asked before ANYTHING is
     drawn, because if none of them wants the screen we must not Begin at all. An
     empty AlwaysAutoResize window is not nothing -- it is a little grey box that
     sits there and takes clicks.
 
+    THE AXIS: TOP TO BOTTOM (Henrik, 2026-08-03). The tray grows DOWNWARD -- one
+    column, one icon per line, nothing here calls SameLine. AlwaysAutoResize keeps
+    the window's top-left pinned and grows it down and right, so a column keeps
+    the whole tray hanging off the spot you dragged it to instead of creeping
+    sideways across the screen as icons appear.
+
     ORDER = CONSTANT MEMBERS FIRST (Henrik's ruling). SLOTS below reads
-    left-to-right, and the volatile icons go on the RIGHT so that the ones you
+    top-to-bottom, and the volatile icons go at the BOTTOM so that the ones you
     click by muscle memory never move under your cursor. This matters concretely:
     Store is one click, no confirm, and deposits your whole Inventory, while the
     green crate comes and goes with "Only when needed" -- so any order that put
-    green before Store would slide Store under a cursor aimed at a fetch.
+    green above Store would slide Store under a cursor aimed at a fetch.
 
     APPEARANCE IS STILL EACH MEMBER'S OWN BUSINESS. Nothing here decides when an
     icon shows: Teleports appears because you pinned it, the crates appear
@@ -60,7 +66,7 @@ local imgui = try('imgui');
 
 local M = {};
 
--- LEFT TO RIGHT. The Teleports button first (it is pinned, so it is there or it
+-- TOP TO BOTTOM. The Teleports button first (it is pinned, so it is there or it
 -- is not -- it never flickers with what you are standing next to), then the
 -- E-Box crates, whose own first icon is the anchored Store.
 --
@@ -73,7 +79,10 @@ local SLOTS = {
 };
 M.SLOTS = SLOTS;   -- test seam: the ORDER is the ruling, so it is assertable
 
-local GAP = 6;     -- between slots; the same 6 the crates use between themselves
+-- Vertical breathing room between two SLOTS -- the pinned button and the crates
+-- are different kinds of thing and should not read as one block. Within a slot,
+-- consecutive icons take ImGui's default ItemSpacing, as the crates always did.
+local SLOTGAP = 4;
 
 -- NoFocusOnAppearing comes from the E-Box nudge: this window can appear on its
 -- own while you are playing (walk up to a box) and must not steal the keyboard
@@ -114,7 +123,7 @@ function M.render(deps)
     _open[1] = true;
     if imgui.Begin('##dlac_tray', _open, FL) then
         for i, draw in ipairs(live) do
-            if i > 1 then imgui.SameLine(0, GAP); end
+            if i > 1 then imgui.Dummy({ 0, SLOTGAP }); end   -- a COLUMN: never SameLine
             pcall(draw, deps);
         end
 

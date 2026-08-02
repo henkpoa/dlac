@@ -2443,11 +2443,12 @@ end)();
 --          player's screen that eats clicks. This is the invariant that replaced
 --          "the E-Box float self-gates", and it is the whole reason the contract
 --          is two functions instead of one.
---      (b) ORDER IS THE RULING (Henrik). Constant members left, volatile right,
---          because the icons share a ROW now: a missing crate no longer closes a
---          gap in a stack, it slides everything to its right. Store is one click,
---          no confirm, and deposits your whole Inventory -- so it may never drift
---          under a cursor aimed at a fetch.
+--      (b) ORDER IS THE RULING (Henrik). The tray is a COLUMN -- it expands top
+--          to bottom, so NOTHING in it may call SameLine except a badge sitting
+--          beside its own icon. Constant members first, volatile last, because a
+--          crate that comes and goes shifts everything BELOW it. Store is one
+--          click, no confirm, and deposits your whole Inventory -- so it may
+--          never drift under a cursor aimed at a fetch.
 --
 --      Both are asserted against a stub imgui, plus the stack balance that the
 --      floatgear S50 lesson demands of every render path (a Begin without its
@@ -2457,12 +2458,17 @@ end)();
     local depth = { win = 0, id = 0, tip = 0 };
     local function nop() end
     local IM = {};
-    for _, n in ipairs({ 'Separator', 'Text', 'TextColored', 'Dummy',
+    for _, n in ipairs({ 'Separator', 'Text', 'TextColored',
         'SetTooltip', 'Spacing', 'Image' }) do IM[n] = nop; end
-    local sameLines, sizes = 0, {};
+    -- `ops` is the interleaved draw log: it is the only way to prove that no icon
+    -- is preceded by a SameLine (a badge beside its own icon is legal, an icon
+    -- glued to the previous icon is not) -- a bare SameLine count cannot tell the
+    -- two apart.
+    local sameLines, sizes, dummies, ops = 0, {}, {}, {};
     IM.Begin             = function() depth.win = depth.win + 1; return true; end
     IM['End']            = function() depth.win = depth.win - 1; end
-    IM.SameLine          = function() sameLines = sameLines + 1; end
+    IM.SameLine          = function() sameLines = sameLines + 1; ops[#ops + 1] = 'sameline'; end
+    IM.Dummy             = function(sz) dummies[#dummies + 1] = sz; end
     IM.SetNextWindowSize = function(sz) sizes[#sizes + 1] = sz; end
     IM.SetNextWindowPos  = nop;
     IM.GetWindowPos      = function() return 120, 340; end
@@ -2509,21 +2515,24 @@ end)();
         check('TR2 nothing wanted opens NO window', depth.win, 0);
         check('TR3 nothing wanted draws no member', #drew, 0);
 
-        -- One member. No SameLine before the first slot, or the row starts
-        -- glued to whatever the previous window left on the line.
+        -- One member.
         wantsA, wantsB, drew, sameLines = true, false, {}, 0;
         check('TR4 one member renders', pcall(tr.render, {}), true);
         check('TR5 one member: Begin/End balanced', depth.win, 0);
         check('TR6 one member draws alone', table.concat(drew, ','), 'tp');
-        check('TR7 the first slot opens no SameLine', sameLines, 0);
+        check('TR7 one member opens no SameLine', sameLines, 0);
 
-        -- Both. ORDER IS THE RULING: Teleports (pinned, constant) left of the
-        -- crates, with exactly one gap between the slots.
-        wantsA, wantsB, drew, sameLines = true, true, {}, 0;
+        -- Both. ORDER IS THE RULING: Teleports (pinned, constant) ABOVE the
+        -- crates, and the tray is a COLUMN -- the gap between slots is vertical
+        -- (a Dummy), never a SameLine, or the tray creeps sideways across the
+        -- screen as icons appear instead of hanging off the corner you dragged.
+        wantsA, wantsB, drew, sameLines, dummies = true, true, {}, 0, {};
         check('TR8 both members render', pcall(tr.render, {}), true);
         check('TR9 both: Begin/End balanced', depth.win, 0);
-        check('TR10 Teleports draws LEFT of the E-Box crates', table.concat(drew, ','), 'tp,ebox');
-        check('TR11 exactly one gap between two slots', sameLines, 1);
+        check('TR10 Teleports draws ABOVE the E-Box crates', table.concat(drew, ','), 'tp,ebox');
+        check('TR11 the tray never calls SameLine between slots', sameLines, 0);
+        check('TR11b the slot gap is VERTICAL (one zero-width Dummy)',
+            (#dummies == 1) and (dummies[1][1] == 0) and (dummies[1][2] > 0), true);
         check('TR12 SLOTS is ordered Teleports-then-restock',
             tr.SLOTS[1].mod .. '|' .. tr.SLOTS[2].mod,
             'dlac\\ui\\gearui|dlac\\ui\\restockui');
@@ -2551,7 +2560,11 @@ end)();
     -- Drives the REAL restockui.trayDraw: the ruling lives in that function, not
     -- in the tray, so asserting it here is the only place it is actually proven.
     local pushed = {};
-    IM.PushID = function(id) depth.id = depth.id + 1; pushed[#pushed + 1] = tostring(id); end
+    IM.PushID = function(id)
+        depth.id = depth.id + 1;
+        pushed[#pushed + 1] = tostring(id);
+        ops[#ops + 1] = 'icon:' .. tostring(id);
+    end
     local PLAN = { pulls = {}, fetches = {}, remainder = {}, badge = 0 };
     package.loaded['dlac\\feature\\restockwatch'] = {
         loadState = nop, master = true, showNudge = true, onlyWhenNeeded = false,
@@ -2583,12 +2596,21 @@ end)();
     check('TR18 restockui re-requires against a stub imgui', rok and type(rs.trayDraw), 'function');
     if rok then
         check('TR19 the E-Box slot answers the cheap gate near a box', rs.trayWants(), true);
-        pushed, sameLines = {}, 0;
+        pushed, sameLines, ops = {}, 0, {};
         check('TR20 the E-Box slot draws', pcall(rs.trayDraw, {}), true);
         -- THE ORDER RULING: Store first (always present once in range, one click,
         -- no confirm), then the two that come and go.
         check('TR21 Store is the anchored crate, drawn FIRST',
             table.concat(pushed, ','), 'rsnudge_red,rsnudge_green,rsnudge_yellow');
+        -- THE AXIS: the crates STACK. A badge may sit beside its own icon, so a
+        -- bare SameLine count proves nothing -- what must hold is that no icon is
+        -- ever glued to the previous one, i.e. no 'sameline' immediately precedes
+        -- an 'icon:'. Get this wrong and the column silently becomes a row again.
+        local glued = nil;
+        for i = 2, #ops do
+            if ops[i]:sub(1, 5) == 'icon:' and ops[i - 1] == 'sameline' then glued = ops[i]; end
+        end
+        check('TR21b the crates stack -- no icon opens with a SameLine', glued, nil);
         check('TR22 the E-Box slot balances PushID/PopID', depth.id, 0);
         check('TR23 the E-Box slot balances its tooltips', depth.tip, 0);
         check('TR24 the E-Box slot begins NO window of its own', depth.win, 0);

@@ -18,11 +18,13 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.08.03h';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.08.03i';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
                                 -- (03f = engine v163: the contest explains its own plan;
+                                --  03g = one floating tray: Teleports + the E-Box crates;
                                 --  03h = the pin menu: wearable-now only, icons, and
-                                --  several pins on one slot)
+                                --  several pins on one slot;
+                                --  03i = the tray is a COLUMN, top to bottom)
 addon.desc    = 'Gear sets, triggers and live stats with level scaling -- dlac equips your gear itself.';
 
 -- Load BEACON ('/dl check' field round, 2026-07-23): written by PLAIN io at
