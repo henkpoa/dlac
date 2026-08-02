@@ -435,14 +435,40 @@ local function maxPopupW()
 end
 M._maxPopupW = maxPopupW;   -- test seam
 
-local function popupMaxW(slot, byKey, pool, level)
+-- THE POPUP'S WIDTH -- one number, walked out of every piece the menu can show,
+-- and then FIXED (see the SetNextWindowSizeConstraints before BeginPopup: min.x
+-- and max.x are both this).
+--
+-- Henrik, 2026-08-03: "go through all the pieces one by one, have a variable for
+-- max seen height, one for max seen width ... this way the window will remain
+-- static and not adapt its size for every item."
+--
+-- Fixing it is the half that was missing. A popup is AlwaysAutoResize, so a MAX
+-- alone is not a width: the window still shrinks to whatever it happens to be
+-- drawing, and since the facts block draws a different piece every time the
+-- cursor moves, the window breathed in and out under the mouse. A max says "no
+-- wider than"; this says "this wide", and nothing the block draws can change it.
+--
+-- Three voters, all maxima over the WHOLE pool so none of them depends on what
+-- is hovered:
+--   * the pinned rows (name + trigger),
+--   * the longest candidate NAME (only the longest can be the widest row, so one
+--     measurement does for a list of any length),
+--   * the widest line any piece would draw UNWRAPPED -- the width at which the
+--     facts need no wrapping at all. Width buys HEIGHT here and that is why it
+--     is worth spending: the block wraps to whatever this returns, so 200px more
+--     turns a four-line stat wrap into two, and those two lines go back to the
+--     gear list under the height cap.
+-- Then clamped, so every one of them is a wish rather than a demand.
+--
+-- _factsWantW resolves through M at CALL time because the builder is defined
+-- further down (it needs COL and fmt, which this measurement does not).
+local function popupWidth(slot, byKey, pool, level)
     local widest = 0;
     for _, e in ipairs(pins.pinsOf(slot)) do
         local w = calcTextW(pinRowText(e, byKey));
         if w > widest then widest = w; end
     end
-    -- The candidate rows: only the longest NAME can be the widest row, so one
-    -- measurement does for the whole list however long it is.
     local longest = '';
     for _, rec in ipairs(pool or {}) do
         local nm = tostring(rec.Name or '');
@@ -453,24 +479,13 @@ local function popupMaxW(slot, byKey, pool, level)
         local w = calcTextW(longest) + 26;
         if w > widest then widest = w; end
     end
-    -- ...and the FACTS BLOCK joins the vote (Henrik: "make it WIDER to adapt as
-    -- well, so we get more space for gear"). Width buys HEIGHT here, which is
-    -- the whole reason it is worth spending: the block wraps to whatever width
-    -- this returns, so a popup 200px wider turns a four-line stat wrap into two,
-    -- the reservation shrinks by two lines, and those two lines go back to the
-    -- gear list under the height cap. Asked as "the widest line any piece in the
-    -- pool would draw UNWRAPPED" -- the width at which the block needs no
-    -- wrapping at all -- and then clamped, so it is a wish, not a demand.
-    --
-    -- Resolved through M at CALL time because the builder is defined further
-    -- down (it needs COL and fmt, which this measurement does not).
     pcall(function()
         local fw = M._factsWantW(pool, level);
         if type(fw) == 'number' and fw > widest then widest = fw; end
     end);
     -- + the icon column and the window's own padding/scrollbar allowance.
     local ceiling = maxPopupW();
-    widest = math.floor(widest + ICON + 6 + 34);   -- floored: a fractional cap
+    widest = math.floor(widest + ICON + 6 + 34);   -- floored: a fractional width
     if widest < MIN_W then return MIN_W; end       -- jitters the popup by a pixel
     if widest > ceiling then return ceiling; end   -- as the text changes
     return widest;
@@ -668,6 +683,29 @@ local function rowIcon(name)
     pcall(icons.renderIcon, (rec ~= nil) and rec.Id or nil, ICON, rec);
 end
 
+-- EVERY piece the block can be asked to draw: the candidates PLUS whatever is
+-- pinned on this slot. The pinned ones matter because they are not necessarily
+-- candidates -- a piece you pinned this morning may be in a Mog Safe by now, and
+-- the bag gate drops it from the pool while its pinned ROW stays. Hovering that
+-- row would then draw a card nobody measured, and the window would jump: exactly
+-- the thing the reservation exists to stop, showing up only for people who have
+-- moved gear since pinning it.
+local function factsPoolFor(slot, pool)
+    local out, seen = {}, {};
+    for _, rec in ipairs(pool or {}) do
+        out[#out + 1] = rec;
+        if rec.Id ~= nil then seen[rec.Id] = true; end
+    end
+    for _, e in ipairs(pins.pinsOf(slot)) do
+        local rec = lookupName(e.item);
+        if type(rec) == 'table' and (rec.Id == nil or not seen[rec.Id]) then
+            out[#out + 1] = rec;
+            if rec.Id ~= nil then seen[rec.Id] = true; end
+        end
+    end
+    return out;
+end
+
 local function applyPin(slot, itemName, scope)
     pins.setPin(slot, itemName, scope);
     _drillItem = nil;
@@ -765,10 +803,11 @@ local function candidatesFor(slot, job, level)
     return out;
 end
 
--- `choices`, `pool` and `maxW` are computed by M.render (the width measurement
--- needs them BEFORE BeginPopup, and building them twice a frame would be waste),
--- but all three are optional: the fallbacks keep this function drivable on its own.
-local function renderPinMenu(job, level, choices, pool, maxW)
+-- `choices`, `pool`, `maxW` and `fpool` are computed by M.render (the width
+-- measurement needs them BEFORE BeginPopup, and building them twice a frame would
+-- be waste), but all four are optional: the fallbacks keep this function drivable
+-- on its own. `fpool` is the MEASUREMENT pool -- candidates plus pinned pieces.
+local function renderPinMenu(job, level, choices, pool, maxW, fpool)
     local slot = _menuSlot;
     if slot == nil then return; end
 
@@ -876,7 +915,7 @@ local function renderPinMenu(job, level, choices, pool, maxW)
     -- reservation: the lines WRAP to the width the item rows already settled, so
     -- the block cannot widen the popup at all.
     local wrapN = math.max(24, math.floor(((maxW or MAX_W) - ICON - 40) / 7));
-    local maxLines = factsMaxLines(list, level, wrapN);
+    local maxLines = factsMaxLines(fpool or factsPoolFor(slot, list), level, wrapN);
     renderFactsBlock(_hoverRec, level, wrapN, maxLines);
     imgui.Separator();
 
@@ -1170,21 +1209,29 @@ function M.render()
         -- Only built when the menu is actually up. `_openFor` covers the opening
         -- frame (it becomes _menuSlot just above) and `_popupUp` covers every
         -- frame after, so a shut menu costs nothing.
-        local choices, pool, maxW = nil, nil, MAX_W;
+        local choices, pool, fpool, maxW = nil, nil, nil, MAX_W;
         if _menuSlot ~= nil and (_openFor ~= nil or _popupUp) then
             local okw = pcall(function()
                 choices = triggerChoices();
                 pool    = candidatesFor(_menuSlot, job, level);
-                maxW    = popupMaxW(_menuSlot, choiceByKey(choices), pool, level);
+                fpool   = factsPoolFor(_menuSlot, pool);   -- + the pinned pieces
+                maxW    = popupWidth(_menuSlot, choiceByKey(choices), fpool, level);
             end);
-            if not okw then choices, pool, maxW = nil, nil, MAX_W; end
+            if not okw then choices, pool, fpool, maxW = nil, nil, nil, MAX_W; end
         end
+        -- min.x == max.x PINS the width. A popup is AlwaysAutoResize, so a max
+        -- alone is not a width -- the window shrinks to whatever it is drawing,
+        -- and the facts block draws a different piece every time the cursor
+        -- moves, so it breathed in and out under the mouse. Height stays a range:
+        -- the content there is the same every frame (the block is padded to its
+        -- reservation), so there is nothing to pin and a cap is the useful thing.
+        --
         -- Safe to call unconditionally even on the frames the popup is shut: this
         -- binding is ImGui >= 1.77 (the header declares ImGuiPopupFlags), and
         -- BeginPopup's early-out consumes the next-window data exactly as Begin
         -- would. Otherwise the constraint would leak onto the next window opened
         -- anywhere in the frame -- including another addon's.
-        imgui.SetNextWindowSizeConstraints({ MIN_W, 0 }, { maxW, CAP_W });
+        imgui.SetNextWindowSizeConstraints({ maxW, 0 }, { maxW, CAP_W });
         _popupUp = false;
         -- The hover swap. `_hoverNext` is what the list reported LAST frame and
         -- becomes what the block draws THIS frame; a menu that did not draw
@@ -1193,7 +1240,7 @@ function M.render()
         _hoverRec, _hoverNext = _hoverNext, nil;
         if imgui.BeginPopup(POPUP) then
             _popupUp = true;
-            renderPinMenu(job, level, choices, pool, maxW);
+            renderPinMenu(job, level, choices, pool, maxW, fpool);
             imgui.EndPopup();
         end
 

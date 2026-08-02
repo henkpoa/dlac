@@ -1071,8 +1071,9 @@ end)();
     -- EVERY constraint of the frame, in order. The POPUP's is the first (it is
     -- set before BeginPopup); the cascade sets its own per row inside, and the
     -- facts panel sets one too -- so "the last one" is the wrong question.
-    IM.SetNextWindowSizeConstraints = function(_, mx) caps[#caps + 1] = mx; end
-    local function popupCap() return (caps[1] or {})[1]; end
+    IM.SetNextWindowSizeConstraints = function(mn, mx) caps[#caps + 1] = { mn, mx }; end
+    local function popupCap() return ((caps[1] or {})[2] or {})[1]; end
+    local function popupMinW() return ((caps[1] or {})[1] or {})[1]; end
 
     pw.pins = {};
     frame();
@@ -1185,6 +1186,44 @@ end)();
     check('FGP34 ...to about half the screen, so the cascade still has room',
         type(clamped) == 'number' and clamped <= 440, true);
     IM.GetIO = function() return { KeyShift = false }; end
+
+    -- THE WIDTH IS PINNED, not merely capped -- min.x == max.x. This is the half
+    -- that was missing and the reason Henrik saw the window still moving: a popup
+    -- is AlwaysAutoResize, so a MAX alone is not a width. The window shrinks to
+    -- whatever it happens to be drawing, and the facts block draws a different
+    -- piece every time the cursor moves -- so it breathed in and out under the
+    -- mouse while every measurement here was already correct.
+    check('FGP35 the popup width is PINNED (min.x == max.x), not just capped',
+        popupMinW(), popupCap());
+    -- ...and the HEIGHT deliberately stays a range: the block is padded to its
+    -- reservation, so the content is identical every frame and a cap is the
+    -- useful thing to say about it.
+    check('FGP36 ...while the height stays a range', ((caps[1] or {})[1] or {})[2], 0);
+
+    -- A PINNED piece is measured even when it is not a candidate. Pin something,
+    -- then take it out of the pool the way a Mog Safe would: the reservation must
+    -- still cover it, or hovering its row jumps the window for exactly the people
+    -- who have moved gear since pinning it.
+    Sx.candidatesForSlot = function()
+        return { { Name = 'Cap', Id = 92, Slot = 'Head', Level = 1, Jobs = { 'WHM' } } };
+    end
+    pw.pins = {};
+    frame();
+    local noPin = popupCap();
+    pw.setPin('Head', 'Storage Hat', { 'Default|moving=true' });
+    Sx.lookupByName = function(nm)
+        if nm == 'Storage Hat' then
+            return { Name = nm, Id = 77, Slot = 'Head', Level = 75,
+                     Jobs = { 'WAR','MNK','WHM','BLM','RDM','THF','PLD','DRK',
+                              'BST','BRD','RNG','SAM','NIN','DRG','SMN','BLU' } };
+        end
+        return { Name = nm, Id = 7 };
+    end
+    frame();
+    check('FGP37 a pinned piece that is NOT in the pool still gets measured',
+        type(popupCap()) == 'number' and popupCap() > noPin, true);
+    Sx.lookupByName = function(nm) return { Name = nm, Id = 7 }; end
+    pw.pins = {};
     Sx.candidatesForSlot = function() return POOL; end
 
     -- ----------------------------------------------------------------------
@@ -1229,7 +1268,8 @@ end)();
     openMenu = nil;
     frame();
     local sawSubCap, sawClear = false, false;
-    for i, mx in ipairs(caps) do
+    for i, c in ipairs(caps) do
+        local mx = c[2];                                -- each entry is { min, max }
         if i > 1 then                                   -- caps[1] is the popup's
             if type(mx) == 'table' and mx[2] == 340 then sawSubCap = true; end
             if type(mx) == 'table' and mx[2] == 100000 then sawClear = true; end

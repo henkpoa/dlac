@@ -8580,3 +8580,36 @@ lines, which had it from the start.
 with short facts leaves the popup at the floor, a long facts line widens it with that same
 short name, and a small display clamps the ceiling below what the facts asked for. Suites
 **5990** and **1073**.
+
+## Session "a max is not a width" (2026-08-03, `2026.08.03o`)
+
+Henrik restated the requirement plainly: *"Go through all the pieces one by one. Have a
+variable for max seen height. One variable for max seen width. Then set the window width
+according to max width we saw on a gear piece, as well as reserve the max height seen above
+the item list. This way, the window will remain static and not adapt its size for every
+item."*
+
+Checking that against the code found the measurements all present and correct — and the last
+step missing, which is the only step that shows. **A popup is `AlwaysAutoResize`, so a MAX
+constraint is not a width.** The window still shrank to whatever it happened to be drawing,
+and since the facts block draws a different piece every time the cursor moves, it breathed
+in and out under the mouse. Every number was right; nothing was being *told* to hold.
+
+`min.x == max.x` pins it. The height deliberately stays a range: the block is padded to its
+reservation, so the content there is identical every frame and a cap is the useful thing to
+say about it.
+
+Worth writing down as a rule, because it is not obvious and it cost a round: **with
+`AlwaysAutoResize`, a size constraint whose min and max differ is a permission, not an
+instruction.** If a window must not move, the two have to meet.
+
+**And "all the pieces" turned out to be more pieces than the pool holds.** A pinned piece is
+not necessarily a candidate — the bag gate drops a piece you pinned this morning once it
+moves to a Mog Safe, while its pinned ROW stays in the menu. Hovering that row drew a card
+nobody had measured, so the window jumped for exactly the people who have moved gear since
+pinning it: rare, invisible in testing, and precisely the failure the reservation exists to
+prevent. The measurement pool is candidates **plus** pinned pieces now.
+
+**Tests:** smoke `FGP35`–`FGP37` — the width is pinned rather than capped, the height stays
+a range, and a pinned piece that is not in the pool still widens the popup. Suites **5990**
+and **1076**.
