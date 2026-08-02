@@ -54,6 +54,14 @@
         Walahra Turban on Movement. pinwatch owns that list and the engine picks
         between them per dispatch; this file shows them, adds to them, and
         removes them one at a time or all at once.
+
+    ...and two follow-ups from the same round:
+      * the popup's width is MEASURED, not a constant (popupMaxW). A flat cap let
+        the item list grow freely while clipping every pinned row.
+      * hovering a row shows that item's FACTS in a panel beside the menu
+        (renderFactsPanel) -- the same card the hover tooltip draws everywhere
+        else, placed where the menu chain cannot reach it. A tooltip could not do
+        this job: it follows the cursor, and the cursor is on the menu.
 ]]--
 
 local host = require("dlac\\ui\\uihost");
@@ -215,6 +223,12 @@ local _search = { '' };
 -- building while the menu is up, and this is the only honest way to know: ImGui
 -- owns the popup's open state and BeginPopup is the one thing that reports it.
 local _popupUp = false;
+-- The item whose facts the side panel shows this frame, and the popup's screen
+-- rect to place that panel against. Both are filled DURING the popup and read
+-- after it closes, in the same frame -- so neither can go stale.
+local _hoverRec  = nil;
+local _popupRect = nil;
+local _panelOpenT = { true };
 
 -- --------------------------------------------------------------------------
 -- Trigger choices for the scope submenu.
@@ -379,16 +393,79 @@ local function popupMaxW(slot, byKey, pool)
     return widest;
 end
 
+-- The item facts panel: the SAME card the hover tooltip draws everywhere else in
+-- dlac (gearui.renderItemTooltip with `bare` -- stats, DMG/Delay, set-bonus
+-- ladder, where the copies live, your augments, jobs), in a window of our own
+-- placed BESIDE the menu.
+--
+-- Henrik, 2026-08-03: "show the stats of the item as well -- somewhere where it
+-- doesn't clip into the right click menu or cover it." A tooltip cannot satisfy
+-- that: it follows the cursor, and the cursor is on the menu. So the panel is
+-- pinned to the popup's own rect instead, and goes on the LEFT -- the scope
+-- cascade opens to the RIGHT, so the left is the one side the menu chain can
+-- never grow into. If the popup is hard against the left edge of the screen
+-- there is no left, and it drops UNDERNEATH the popup instead: a submenu is
+-- drawn beside its parent ROW, never below the whole popup.
+--
+-- NoInputs is not decoration. This window is drawn under the cursor's path while
+-- you read a menu, and any mouse it caught would be a mouse the menu did not --
+-- which is how an info panel turns into "the menu randomly stops responding".
+-- NoFocusOnAppearing keeps it from stealing focus the frame it shows up.
+local PANEL_W = 360;
+-- REAL bit values as fallbacks, never `or 0` -- the HOVER_FLAGS lesson at the top
+-- of this file, and it bites harder here. `or 0` on the input flags does not
+-- degrade the panel: it hands the panel the mouse the MENU needed, and the
+-- failure reads as "the right-click menu randomly stops responding", which is
+-- nobody's idea of a missing constant. Spelled as the three individual bits
+-- rather than NoInputs (which is just their union) so each one has a fallback.
+local PANEL_FLAGS = (ImGuiWindowFlags_NoTitleBar or 1)                 -- bit 0
+                  + (ImGuiWindowFlags_NoResize or 2)                   -- bit 1
+                  + (ImGuiWindowFlags_NoCollapse or 32)                -- bit 5
+                  + (ImGuiWindowFlags_AlwaysAutoResize or 64)          -- bit 6
+                  + (ImGuiWindowFlags_NoSavedSettings or 256)          -- bit 8
+                  + (ImGuiWindowFlags_NoMouseInputs or 512)            -- bit 9
+                  + (ImGuiWindowFlags_NoFocusOnAppearing or 4096)      -- bit 12
+                  + (ImGuiWindowFlags_NoNavInputs or 262144)           -- bit 18
+                  + (ImGuiWindowFlags_NoNavFocus or 524288);           -- bit 19
+M._PANEL_FLAGS = PANEL_FLAGS;   -- test seam
+
+local function renderFactsPanel(rec)
+    if imgui == nil or type(rec) ~= 'table' or _popupRect == nil then return; end
+    if type(S.renderItemTooltip) ~= 'function' then return; end
+    local px, py, pw, ph = _popupRect[1], _popupRect[2], _popupRect[3], _popupRect[4];
+    local x, y = px - PANEL_W - 8, py;
+    if x < 4 then x, y = px, py + (ph or 0) + 8; end
+    imgui.SetNextWindowPos({ x, y }, (ImGuiCond_Always or 1));
+    -- min.x == max.x pins the WIDTH while the height still auto-sizes to the
+    -- card. (Not SetNextWindowSize({0,0}) + AlwaysAutoResize -- that pair is the
+    -- collapsed-window trap this codebase has a law about.)
+    imgui.SetNextWindowSizeConstraints({ PANEL_W, 0 }, { PANEL_W, 620 });
+    _panelOpenT[1] = true;
+    local shown = imgui.Begin('##dlac_pinfacts', _panelOpenT, PANEL_FLAGS);
+    if shown then
+        -- `bare` = the card without its tooltip frame. pcall'd because this runs
+        -- on the render path and a card that throws must cost the panel, never
+        -- the frame -- and End() below still runs either way.
+        pcall(S.renderItemTooltip, rec, nil, true);
+    end
+    imgui.End();
+end
+M._renderFactsPanel = renderFactsPanel;   -- test seam
+
+-- The catalog record behind a NAME -- a pin stores a name, so the facts panel and
+-- the pinned rows' icons both have to get back to a record. nil when the name has
+-- no record, which callers read as "nothing to show", never as an error.
+local function lookupName(nm)
+    if type(S.lookupByName) ~= 'function' then return nil; end
+    local rec = nil;
+    pcall(function() rec = S.lookupByName(nm); end);
+    return (type(rec) == 'table') and rec or nil;
+end
+
 local function rowIcon(name)
     if icons == nil or type(icons.renderIcon) ~= 'function' then return; end
-    local id = nil;
-    if type(S.lookupByName) == 'function' then
-        pcall(function()
-            local rec = S.lookupByName(name);
-            id = (type(rec) == 'table') and rec.Id or nil;
-        end);
-    end
-    pcall(icons.renderIcon, id, ICON, nil);
+    local rec = lookupName(name);
+    pcall(icons.renderIcon, (rec ~= nil) and rec.Id or nil, ICON, rec);
 end
 
 local function applyPin(slot, itemName, scope)
@@ -549,6 +626,10 @@ local function renderPinMenu(job, level, choices, pool)
                 imgui.SetTooltip(fmt.esc(string.format(
                     'Remove THIS pin.\n\n%s\nApplies to: %s',
                     tostring(e.item), scopeTextOf(e, byKey, 'text'))));
+                -- ...and the side panel gets the piece itself. By NAME, because a
+                -- pin is stored as a name: the record is the catalog's answer to
+                -- it, and nil (a pinned name with no record) simply shows nothing.
+                _hoverRec = lookupName(e.item);
             end
         end
         if #held > 1 then
@@ -561,8 +642,11 @@ local function renderPinMenu(job, level, choices, pool)
         imgui.Separator();
     end
 
-    -- Fallback drill-down: item chosen, now pick the scope in place.
+    -- Fallback drill-down: item chosen, now pick the scope in place. The panel
+    -- follows the CHOSEN item here rather than the hover -- on this screen there
+    -- is nothing else it could usefully be about.
     if not hasMenu and _drillItem ~= nil then
+        _hoverRec = lookupName(_drillItem);
         imgui.TextColored(COL.HEADER, fmt.esc(_drillItem));
         imgui.TextColored(COL.DIM, 'Apply to which triggers?');
         imgui.Separator();
@@ -604,7 +688,15 @@ local function renderPinMenu(job, level, choices, pool)
                 -- raw nm, not fmt.esc: menu/selectable labels are not format
                 -- strings (see renderScopeRows)
                 if hasMenu then
+                    -- BeginMenu's RETURN is the hover signal, not IsItemHovered:
+                    -- a submenu in a popup opens on hover and stays open while
+                    -- you are inside it, so "this cascade is open" is exactly
+                    -- "this is the item I am looking at" -- and it keeps the
+                    -- facts up while you travel across to pick a trigger, which
+                    -- a hover test on the parent row would drop the moment the
+                    -- cursor left it.
                     if imgui.BeginMenu(nm .. '##pin' .. tostring(rec.Id)) then
+                        _hoverRec = rec;
                         renderScopeRows(slot, nm, choices, true);
                         imgui.EndMenu();
                     end
@@ -612,6 +704,7 @@ local function renderPinMenu(job, level, choices, pool)
                     if imgui.Selectable(nm .. '##pin' .. tostring(rec.Id)) then
                         _drillItem = nm;
                     end
+                    if imgui.IsItemHovered() then _hoverRec = rec; end
                 end
             end
         end
@@ -841,9 +934,24 @@ function M.render()
         -- anywhere in the frame -- including another addon's.
         imgui.SetNextWindowSizeConstraints({ MIN_W, 0 }, { maxW, CAP_W });
         _popupUp = false;
+        -- Cleared every frame, filled only by a menu that actually drew: the
+        -- facts panel then cannot outlive the menu it belongs to, and there is
+        -- no "close the panel" case to get wrong.
+        _hoverRec, _popupRect = nil, nil;
         if imgui.BeginPopup(POPUP) then
             _popupUp = true;
             renderPinMenu(job, level, choices, pool);
+            -- The popup's own rect, read from INSIDE it -- the only place ImGui
+            -- will tell you. It is what the facts panel is placed against.
+            pcall(function()
+                local x, y = imgui.GetWindowPos();
+                if type(x) == 'table' then y = (x[2] or x.y); x = (x[1] or x.x); end
+                local w, h = imgui.GetWindowSize();
+                if type(w) == 'table' then h = (w[2] or w.y); w = (w[1] or w.x); end
+                if type(x) == 'number' and type(y) == 'number' and type(w) == 'number' then
+                    _popupRect = { x, y, w, tonumber(h) or 0 };
+                end
+            end);
             imgui.EndPopup();
         end
 
@@ -869,6 +977,11 @@ function M.render()
     -- takes the whole client down. Shipped exactly that in e85cc43 by adding the
     -- second push without removing this round's older pop. Count the pushes.
     imgui.End();
+    -- The facts panel, AFTER this window closes rather than nested inside it.
+    -- Nesting Begin/End is legal, but this window's End is the one guarded by
+    -- the style-stack comment above and there is no reason to put another
+    -- window's balance inside its scope.
+    if _hoverRec ~= nil then renderFactsPanel(_hoverRec); end
     if ui._gfMovedAt ~= nil and os.clock() >= ui._gfMovedAt then
         ui._gfMovedAt = nil;
         ui._flagsDirty = true;

@@ -8392,3 +8392,46 @@ fight over.
 **Tests:** smoke `FGP19`–`FGP22` drive `CalcTextSize` per-character and read the constraint
 back — floor with nothing pinned, wider with pins, wider still with a longer trigger,
 clamped at the ceiling. Suites **5990** and **1052**.
+
+## Session "beside the menu, not on top of it" (2026-08-03, `2026.08.03k` — item facts in the pin menu)
+
+Henrik: *"Can you also make it so it shows the stats of the item as well? Have it be
+somewhere where it doesn't clip into the right click menu or cover it."*
+
+The constraint is the whole design. **A tooltip cannot do this job** — it follows the
+cursor, and the cursor is on the menu, so every stat line would land on the rows you are
+trying to read. So it is a window of dlac's own, placed against the popup's rect.
+
+**Which side is not a preference, it is a deduction.** The scope cascade opens to the
+RIGHT, so the left is the one side the menu chain can never grow into. When the popup is
+hard against the left edge of the screen there is no left, and the panel drops UNDERNEATH
+it instead — a submenu is drawn beside its parent *row*, so below the whole popup is still
+clear of it. The rect comes from `GetWindowPos`/`GetWindowSize` read from *inside* the
+popup, the only place ImGui will tell you, and both it and the hovered record are filled
+during the popup and read after it closes in the same frame, so neither can go stale.
+
+**The card is not a second card.** `gearui.renderItemTooltip` grew a third argument,
+`bare`, that skips its `BeginTooltip`/`EndTooltip` — same stats, DMG/Delay, set-bonus
+ladder, where every copy is stored, your augments, jobs. A third argument rather than a
+split-out helper because that chunk is at the 200-local ceiling and one more
+`local function` will not compile. The point is that the day someone adds a line to the
+hover card, this panel gets it too instead of quietly falling behind.
+
+**The hover signal is `BeginMenu`'s return, not `IsItemHovered`.** A submenu in a popup
+opens on hover and stays open while you are inside it, so "this cascade is open" *is* "this
+is the item I am looking at" — and it keeps the facts up while you travel across to pick a
+trigger, which a hover test on the parent row drops the moment the cursor leaves it.
+
+**The `or 0` law bit again, and the test is why it was caught.** `FGP28` asks whether the
+panel carries `NoMouseInputs`, and it failed: the ImGui flag globals do not exist headless,
+so `(ImGuiWindowFlags_NoInputs or 0)` was plain `0`. In the game the constant exists and it
+would have worked — but that is exactly the trap `HOVER_FLAGS` has a comment about at the
+top of the same file, and it bites harder here: `or 0` does not *degrade* this panel, it
+hands the panel the mouse the MENU needed, and the failure reads as "the right-click menu
+randomly stops responding", which is nobody's idea of a missing constant. Real bit values
+now, spelled as the three individual input bits rather than their union so each has one.
+
+**Tests:** smoke `FGP23`–`FGP31` — nothing hovered draws nothing, hovering opens the panel
+for the item actually hovered, the card is asked for frameless, it lands clear to the left,
+it drops below when there is no left, it cannot catch the mouse, and every window opened in
+the frame is closed. Suites **5990** and **1061**.

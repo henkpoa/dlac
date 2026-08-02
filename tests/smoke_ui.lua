@@ -893,11 +893,24 @@ end)();
         'EndMenu', 'EndChild' }) do
         IM[n] = nop;
     end
-    IM['End']     = nop;
-    IM.Begin      = function() return true; end
+    -- Windows are RECORDED, name + flags + the position asked for just before
+    -- them: the facts panel is a second window this module opens, and where it
+    -- lands (and whether it can eat the mouse) is the whole point of it.
+    local begun, winDepth, nextPos = {}, 0, nil;
+    local openMenu = nil;      -- the item whose cascade is "hovered open"
+    IM.SetNextWindowPos = function(p) nextPos = p; end
+    IM.Begin      = function(name, _, flags)
+        begun[#begun + 1] = { name = name, flags = flags, pos = nextPos };
+        nextPos = nil; winDepth = winDepth + 1;
+        return true;
+    end
+    IM['End']     = function() winDepth = winDepth - 1; end
     IM.BeginChild = function() return true; end
     IM.BeginPopup = function() return true; end          -- the menu is OPEN all section
-    IM.BeginMenu  = function(l) menuLabels[#menuLabels + 1] = l; return false; end
+    IM.BeginMenu  = function(l)
+        menuLabels[#menuLabels + 1] = l;
+        return openMenu ~= nil and string.sub(tostring(l), 1, #openMenu) == openMenu;
+    end
     IM.MenuItem   = function() return false; end
     IM.Selectable = function(l)
         selLabels[#selLabels + 1] = l;
@@ -909,7 +922,11 @@ end)();
         IM[n] = function() return false; end
     end
     IM.GetIO              = function() return { KeyShift = false }; end
-    IM.GetWindowPos       = function() return 10, 20; end
+    -- Movable, because WHERE the popup sits is what decides which side the facts
+    -- panel can go on.
+    local winX, winY = 10, 20;
+    IM.GetWindowPos       = function() return winX, winY; end
+    IM.GetWindowSize      = function() return 300, 400; end
     IM.GetCursorScreenPos = function() return 0, 0; end
     IM.GetMouseDragDelta  = function() return 0, 0; end
     IM.GetColorU32        = function() return 0; end
@@ -976,8 +993,14 @@ end)();
         return false;
     end
     local function frame()
-        menuLabels, selLabels, iconCalls = {}, {}, 0;
+        menuLabels, selLabels, iconCalls, begun = {}, {}, 0, {};
         return pcall(fg.render);
+    end
+    local function windowNamed(n)
+        for _, w in ipairs(begun) do
+            if tostring(w.name or '') == n then return w; end
+        end
+        return nil;
     end
 
     check('FGP2 the pin menu renders with a real pool', frame(), true);
@@ -1072,6 +1095,59 @@ end)();
     frame();
     check('FGP22 ...and it stops at the ceiling', (lastMax or {})[1], 620);
 
+    -- ----------------------------------------------------------------------
+    -- THE FACTS PANEL. "Show the stats of the item as well -- somewhere where
+    -- it doesn't clip into the right click menu or cover it" (Henrik). A
+    -- tooltip cannot do that job: it follows the cursor and the cursor is on
+    -- the menu, so this is a window of our own placed against the popup's rect.
+    -- Everything about it fails INVISIBLY -- wrong side, stolen mouse, an
+    -- unbalanced Begin -- so all four are pinned here.
+    -- ----------------------------------------------------------------------
+    local tipArgs = nil;
+    local keptTip = Sx.renderItemTooltip;
+    Sx.renderItemTooltip = function(rec, note, bare) tipArgs = { rec, note, bare }; end
+    pw.pins = {};
+    winX, winY = 900, 200;             -- popup well clear of the left edge
+
+    openMenu = nil; tipArgs = nil;
+    frame();
+    check('FGP23 nothing hovered -> no facts panel at all', windowNamed('##dlac_pinfacts'), nil);
+
+    openMenu = 'Optical Hat';          -- that item's cascade is open == hovered
+    frame();
+    local panel = windowNamed('##dlac_pinfacts');
+    check('FGP24 hovering an item opens the facts panel', panel ~= nil, true);
+    check('FGP25 ...drawn as the SAME card every other hover uses, frameless',
+        type(tipArgs) == 'table' and tipArgs[3], true);
+    check('FGP26 ...for the item actually hovered',
+        (type(tipArgs) == 'table' and type(tipArgs[1]) == 'table') and tipArgs[1].Name, 'Optical Hat');
+
+    -- LEFT of the popup and fully clear of it. The scope cascade opens to the
+    -- right, so the left is the one side the menu chain can never grow into.
+    local ppos = (panel or {}).pos;
+    check('FGP27 the panel sits to the LEFT of the menu',
+        type(ppos) == 'table' and ppos[1] + 360 <= winX, true);
+
+    -- NoInputs is not decoration: this window lies under the cursor's path while
+    -- you read a menu, and any mouse it caught would be a mouse the menu did not.
+    local NOMOUSE = 512;               -- ImGuiWindowFlags_NoMouseInputs, bit 9
+    check('FGP28 ...and cannot catch the mouse (or the menu stops responding)',
+        type((panel or {}).flags) == 'number'
+            and math.floor((panel or {}).flags / NOMOUSE) % 2, 1);
+    check('FGP29 every window opened this frame was closed', winDepth, 0);
+
+    -- No room on the left -> it drops UNDERNEATH the popup. A submenu is drawn
+    -- beside its parent ROW, so below the whole popup is still clear of it.
+    winX, winY = 100, 200;
+    frame();
+    local low = windowNamed('##dlac_pinfacts');
+    check('FGP30 hard against the left edge, the panel goes BELOW instead',
+        type((low or {}).pos) == 'table' and low.pos[2] > winY, true);
+    check('FGP31 ...and it is still balanced there', winDepth, 0);
+
+    openMenu = nil;
+    Sx.renderItemTooltip = keptTip;
+    winX, winY = 10, 20;
     pw.pins = {};
     for k, v in pairs(keep) do Sx[k] = v; end
     package.loaded['dlac\\ui\\itemicons'] = savedIcons;
