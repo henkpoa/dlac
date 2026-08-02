@@ -8682,3 +8682,68 @@ cramped popup keeps a floor of four, a zero row height is refused rather than di
 the exact floor case is pinned (560 − 200 − 51 = 309, 309/24 = **12** rows, not 13 — a
 rounded-up row is the whole bug). `FGP51`–`FGP52` cover the screen-aware cap. Suites **5990**
 and **1089**.
+
+## Session "what is in the wardrobe that nothing asks for" (2026-08-03, `2026.08.03r`)
+
+Henrik: *"Mog Wardrobe space is limited and very important, it would be nice to know which
+pieces you have in mog wardrobes that are actively not being used at all, so you can maybe
+put them in another container with less value, like mog safe, locker etc."*
+
+**It is `gear/gearcheck.lua` read backwards.** Gearcheck starts from the sets your triggers
+use and asks whether every piece is equippable right now; `/dl unused` starts from the BAG
+and asks whether anything references the piece at all — across every profile and every job
+entry, dormant archives included. Every step was existing machinery: `listProfileFilesAt`
+for the entries, `profiles.readSetsFile` to sandbox-load a set file against the real gear
+table (so `gear.Head.Faceguard_1` arrives as the record with its Id — no text parsing), and
+`gearimport.ownedSplit().where` for the live per-container counts. The wardrobes are
+`gearoracle.equipBags()` minus Inventory, so the bag list is still stated in exactly one
+place (GRD3).
+
+**The interesting half was deciding what "used" means**, and all four calls are Henrik's:
+
+1. **A set no rule points at is its own answer.** He has 63 of them across 257 sets — spare
+   idle variants, a `Ws_Default` on a job whose Weaponskill handler has no rules. Their
+   pieces get a section of their own and are never called unused.
+2. **A lockstyle piece does not need a wardrobe.** Henrik: *"you can lockstyle to pieces
+   that are on mog house etc."* Confirmed in the server source before it was built —
+   `src/map/packets/c2s/0x053_lockstyle.cpp`, `Set` mode, validates that the id is a real
+   equipment item that fits the slot and **never looks at ownership or container**. So
+   lockstyle-only pieces are reported as MOVEABLE, which on his character is 61 items.
+3. **Helper picks count as use, named by helper** — the MaxMP ladder, auto-staff/obi/grip,
+   craft, HELM, fishing, chocobo, the per-job ammo lists, the rod and bait, and a job
+   helper's pinned item (BST's `resummonJug`). dlac equips these with no set naming them.
+4. **...but the manifest's `mp` / `rf` / `mv` tables do NOT.** They are name→value stat
+   caches the ladders score with, not pick lists; `mpBest` is the pick list. Counting a
+   cache as use would mark every refresh piece you own as used and quietly gut the report.
+
+**Two set names are claimed by CONFIG rather than by a rule**, and both would otherwise
+read as orphans: `autogear.mpPairIdle` (the set the MaxMP ladder pairs into) and a job
+helper's `summonSet` (BST's `Chr_Swap`). They are promoted to live with the reason saying
+who asked. `M.HELPER_PINS` is the declared list — a new helper with pins adds a row.
+
+**Every exclusion is a line in the file**, per the no-silent-caps law: the stat caches, the
+consumable surfaces (restock staples, food) a wardrobe cannot hold anyway, session-only
+pins, and other characters' profiles.
+
+The window (`ui/unusedui.lua`) shows the LAST SAVED report with a Refresh button — Henrik's
+shape, because a walk over every profile plus a bag pass is not a per-frame read — so the
+report is written to `<char>\unusedreport.lua` and survives a reload. Its `Begin`/`End` and
+`BeginChild`/`EndChild` are paired **around a pcall**: a throw in the body costs one frame of
+content and says so, instead of unbalancing the ImGui stack for every surface drawn after it.
+
+**Tests:** `UNU1`–`UNU10d` drive the pure walkers (all four authored entry shapes, list-form
+`set` refs, the three buckets and their precedence, the helper reasons, the stat-cache
+exclusion, the capped why-list) and `build()` end to end over the injected seam, including
+that a Mog Safe item never reaches the report. Smoke `UW1`–`UW6` execute the window in all
+three states and assert the rows actually reached the screen. Verified additionally against
+Henrik's real on-disk tree headlessly: 25 job entries, 257 sets, 194 triggered / 63 not,
+84 lockstyle pieces, 426 referenced ids. Suites **6035** and **1108**.
+
+**Iteration 1 by agreement.** Henrik, accepting it for main the same day: *"this is just a
+first iteration, we will most likely work on this more and combine features, especially when
+/ if storage move is accepted."* The pairing he means is `docs/design/storage-move.md` — the
+right-click **Move To →** research from 07-10 (feasible, fully server-validated, never
+built). Today the audit only tells you; with that, a flagged row could move itself out of the
+wardrobe. The row shape was left ready for it (id + container + copy count), and the rule for
+whoever extends this is: a new "what asks for an item" source joins `M.collect`'s three
+buckets or `M.HELPER_PINS` — never a second walk over the profiles.

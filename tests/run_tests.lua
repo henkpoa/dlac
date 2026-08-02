@@ -223,11 +223,11 @@ end)();
     local ROOT_FILES = { 'utils.lua', 'dispatch.lua', 'chatfmt.lua', 'profiles.lua', 'gear.lua', 'dlac.lua' };
     local UI = { 'ammoui','automationsui','craftbar','equippedui','filetex','fishbar','fishui',
                  'floatgear','gearui','helmbar','helmui','hobbybar','idlefloat','itemicons','jobhelpersui','menuui','panelkit','priorityui','profilesmenu',
-                 'restockui','setupui','tray','triggersui','uihost','uistyle','weightsui' };
+                 'restockui','setupui','tray','triggersui','uihost','uistyle','unusedui','weightsui' };
     local GEAR = { 'acimport','actionpicker','arbiter','blueprintsmodel','catalogindex','gearcheck','geareffects','gearexport',
                    'gearfmt','gearimport','gearoptim','gearoracle','gearrecord','groupimport','groupscan',
                    'groupsmodel','jobgate','modeslibrary','ownedcache','profileexport','profilesets','rulecopy','setimport',
-                   'setmanager','syncflags','triggermodel','weaponfilter','weightimport' };
+                   'setmanager','syncflags','triggermodel','unusedgear','weaponfilter','weightimport' };
     local FEATURE = { 'actionseq','ammowatch','arbwatch','augments','check','chocowatch','combat','craftwatch','debug','digcalc','digrank',
                       'eboxclient','eboxtrace','engagewatch','fishcalc','fishwatch','foodwatch','gamehud','gamemode','helmwatch','idleexcl','jobhelpers','location','lockstyle','lookpreview',
                       'macrobook','meritwatch','modapi','modcfg','mpbands','petfood','petvitals','pinwatch','recast','restockwatch','synthrun','useitem','vanamoon' };
@@ -8406,6 +8406,217 @@ end)();
 
     gcm.configure(nil);
     package.loaded['dlac\\gear\\gearimport'] = savedGI;
+end)();
+
+-- ---------------------------------------------------------------------------
+-- UNU. THE WARDROBE AUDIT (gear/unusedgear, 2026-08-03). Gearcheck read
+--      backwards: start from the BAG and ask whether anything in dlac
+--      references the piece -- across every profile and job entry.
+--
+--      The four rulings the sections pin (Henrik, 2026-08-03):
+--        1. a set NO rule points at is its own answer, never "unused"
+--        2. a lockstyle-only piece is MOVEABLE (the server validates the item,
+--           not the container -- 0x053_lockstyle.cpp, Set mode)
+--        3. helper picks (MaxMP ladder, auto-staff, craft/HELM/fishing/chocobo,
+--           ammo lists, rod+bait, a job helper's pin) COUNT as use
+--        4. the name->value stat caches (autogear mp/rf/mv) do NOT
+-- ---------------------------------------------------------------------------
+(function()
+    local ug = dofile('gear/unusedgear.lua');   -- fresh instance (the harness idiom)
+
+    -- A tiny gear world: name -> id, both ways.
+    local NAMES = {
+        ['Kraken Club']    = 100, ['Peacock Charm'] = 101, ['Astral Ring'] = 102,
+        ['Agwu\'s Cap']    = 103, ['Bronze Harness'] = 104, ['Terra\'s Staff'] = 105,
+        ['Corsair Bullet'] = 106, ['Lu Shang\'s F. Rod'] = 107, ['Herbal Broth'] = 108,
+        ['Chr. Roundlet']  = 109, ['Field Torque'] = 110,
+    };
+    local IDS = {};
+    for n, i in pairs(NAMES) do IDS[i] = { Id = i, Name = n, Level = 30, Jobs = { 'WAR', 'MNK' } }; end
+    local function idOf(n) local r = NAMES[n]; if r ~= nil then return r; end
+        local lc = string.lower(tostring(n));
+        for k, v in pairs(NAMES) do if string.lower(k) == lc then return v; end end
+        return nil; end
+    local function nameOf(id) return (IDS[id] ~= nil) and IDS[id].Name or ('item ' .. id); end
+    local function recOf(id) return IDS[id]; end
+
+    -- --- the entry grammar (utils.slotLadder's four shapes + lists)
+    local got = {};
+    local function emit(id) got[#got + 1] = id; end
+    ug.setIds({
+        Main  = { { gear = { Id = 100, Name = 'Kraken Club' }, mode = 'Weapons:SoloKC' } },  -- wrapper
+        Neck  = { { Id = 101, Name = 'Peacock Charm' } },                                   -- record
+        Ring1 = { 'Astral Ring' },                                                          -- name string
+        Head  = { 'dlac:AutoStaff|Terra\'s Staff' },                                        -- composed virtual
+        Waist = { 'dlac:AutoObi' },                                                         -- bare marker: names nothing
+        Body  = { { gear = 'Agwu\'s Cap' } },                                               -- wrapper over a NAME
+    }, idOf, emit);
+    table.sort(got);
+    check('UNU1 every authored entry shape resolves to its item',
+          table.concat(got, ','), '100,101,102,103,105');
+
+    -- --- which sets a trigger file points at
+    local refs, inline = ug.triggerRefs({
+        Default    = { { when = { status = 'Engaged' }, set = 'Tp' },
+                       { when = {}, equip = { Neck = { 'Peacock Charm' } } } },
+        Midcast    = { { when = { group = 'X' }, set = { 'Nuke', 'Skill' } } },
+        Modes      = { DT = {} },
+        Groups     = { X = { 'Fire', 'Blizzard' } },
+    });
+    local rn = {};
+    for n in pairs(refs) do rn[#rn + 1] = n; end
+    table.sort(rn);
+    check('UNU2 rule set names, string AND ordered list', table.concat(rn, ','), 'Nuke,Skill,Tp');
+    check('UNU2b an inline equip is carried too', #inline, 1);
+    check('UNU2c Modes/Groups name no sets', refs['DT'] == nil and refs['X'] == nil, true);
+
+    -- --- the collector: triggered set vs orphan set vs lockstyle box
+    local entries = { {
+        profile = 'Default', name = 'BLU',
+        triggers = { Default = { { when = {}, set = 'Tp' } } },
+        sets = {
+            Tp    = { Main = { { Id = 100, Name = 'Kraken Club' } } },
+            Spare = { Neck = { { Id = 101, Name = 'Peacock Charm' } } },   -- no rule points here
+        },
+        lockstyles = { slots = { [2] = { name = 'Agwu', set = { Head = 'Agwu\'s Cap' } } } },
+    } };
+    local col = ug.collect({ entries = entries, idOf = idOf });
+    check('UNU3 a triggered set makes its pieces LIVE',  col.live[100] ~= nil, true);
+    check('UNU3b an untriggered set is its own bucket',  col.orphan[101] ~= nil, true);
+    check('UNU3c ...and never live',                     col.live[101], nil);
+    check('UNU3d a lockstyle box is its own bucket',     col.style[103] ~= nil, true);
+    check('UNU3e ...and never live',                     col.live[103], nil);
+    check('UNU3f the reason names profile/job and set',  col.live[100][1], 'Default/BLU set Tp');
+    check('UNU3g sets counted, triggered and not',
+          tostring(col.stats.sets) .. '/' .. tostring(col.stats.usedSets) .. '/' .. tostring(col.stats.orphanSets),
+          '2/1/1');
+
+    -- --- ruling 3: the helpers are use, and they say which helper
+    local col2 = ug.collect({
+        entries = {},
+        idOf = idOf,
+        autogear = {
+            staff  = { Earth = { name = 'Terra\'s Staff' } },
+            mpBest = { ring1 = { { name = 'Astral Ring' } } },
+            helm   = { neck = { { name = 'Field Torque' } } },
+            -- ruling 4: name->value STAT CACHES, not picks
+            mp = { ["chr. roundlet"] = 20 }, rf = { ["chr. roundlet"] = 1 }, mv = { ["chr. roundlet"] = 12 },
+        },
+        ammo    = { jobs = { COR = { ammo = { { name = 'Corsair Bullet', id = 106 } } } } },
+        fish    = { rodId = 107, rod = 'Lu Shang\'s F. Rod' },
+        helpers = { { label = 'BST helper', items = { 'Herbal Broth' }, sets = {} } },
+        worn    = { 104 },
+    });
+    check('UNU4 an auto-staff pick is use',      col2.live[105] ~= nil, true);
+    check('UNU4b the MaxMP ladder is use',       col2.live[102] ~= nil and col2.live[102][1], 'MaxMP ladder');
+    check('UNU4c HELM gear is use',              col2.live[110] ~= nil, true);
+    check('UNU4d the ammo list names its job',   col2.live[106] ~= nil and col2.live[106][1], 'ammo list (COR)');
+    check('UNU4e the fishing rod is use',        col2.live[107] ~= nil, true);
+    check('UNU4f a job-helper pin is use',       col2.live[108] ~= nil and col2.live[108][1], 'BST helper pin');
+    check('UNU4g what you are WEARING is use',   col2.live[104] ~= nil and col2.live[104][1], 'worn right now');
+    check('UNU5 the mp/rf/mv stat caches are NOT use (ruling 4)', col2.live[109], nil);
+
+    -- --- a set named by CONFIG, not by a rule, is still live (the MaxMP pair
+    --     home and a job helper's summon set -- otherwise they read as orphans)
+    local col3 = ug.collect({
+        entries = { { profile = 'Default', name = 'BST', triggers = {},
+                      sets = { Chr_Swap = { Head = { { Id = 109, Name = 'Chr. Roundlet' } } } } } },
+        idOf = idOf,
+        helpers = { { label = 'BST helper', items = {}, sets = { 'Chr_Swap' } } },
+    });
+    check('UNU6 a set a HELPER equips is live, not an orphan', col3.live[109] ~= nil, true);
+    check('UNU6b ...and the reason says who asked for it',
+          (col3.live[109][1]):find('BST helper equips it', 1, true) ~= nil, true);
+    local col4 = ug.collect({
+        entries = { { profile = 'Default', name = 'WHM', triggers = {},
+                      sets = { Idle = { Ring1 = { { Id = 102, Name = 'Astral Ring' } } } } } },
+        idOf = idOf, pairSets = { 'Idle' },
+    });
+    check('UNU6c the MaxMP pair set is live too', col4.live[102] ~= nil, true);
+
+    -- --- classification precedence + the wardrobe-only scope
+    local bags = { [100] = { [8] = 1 }, [101] = { [10] = 1 }, [103] = { [10] = 2 }, [104] = { [8] = 1 } };
+    local rows, counts = ug.classify(col, bags, nameOf, recOf);
+    local byName = {};
+    for _, r in ipairs(rows) do byName[r.name] = r; end
+    check('UNU7 a used piece is counted, not listed', counts.used, 1);
+    check('UNU7b nothing-references-it is the unused class', byName['Bronze Harness'].cls, 'unused');
+    check('UNU7c an untriggered-set piece is orphan',        byName['Peacock Charm'].cls, 'orphan');
+    check('UNU7d a lockstyle-only piece is style',           byName['Agwu\'s Cap'].cls, 'style');
+    check('UNU7e the used piece is absent from the rows',    byName['Kraken Club'], nil);
+    check('UNU7f counts add up', string.format('%d/%d/%d/%d', counts.total, counts.unused, counts.orphan, counts.style),
+          '4/1/1/1');
+    check('UNU7g the row carries WHERE it sits', byName['Agwu\'s Cap'].where[1].cid, 10);
+    check('UNU7h ...with the copy count',        byName['Agwu\'s Cap'].where[1].n, 2);
+    check('UNU7i and the record facts for judging', byName['Bronze Harness'].lv, 30);
+
+    -- an item that is ONLY in the Mog Safe never reaches classify at all: the
+    -- bag map handed in is the wardrobe slice (build() does that split).
+    check('UNU7j only wardrobe ids are classified', #rows, 3);
+
+    -- --- the why list is capped (an item can be in forty sets)
+    local many = { live = {}, orphan = {}, style = {} };
+    many.orphan[101] = {};
+    for i = 1, 20 do many.orphan[101][i] = 'set number ' .. i; end
+    local mrows = ug.classify(many, { [101] = { [8] = 1 } }, nameOf, recOf);
+    check('UNU8 the reason list is capped', #mrows[1].why, ug.MAX_WHY + 1);
+    check('UNU8b ...and says how many it dropped',
+          mrows[1].why[#mrows[1].why], '...and 14 more');
+
+    -- --- build() end to end, every live read on the seam
+    local savedSrc, savedRead = ug._src, ug.readEntries;
+    ug._src = {
+        profiles = function() return nil; end,
+        gearTable = function() return { NameToObject = { ['Kraken Club'] = IDS[100],
+                                                         ['Peacock Charm'] = IDS[101],
+                                                         ['Agwu\'s Cap'] = IDS[103],
+                                                         ['Bronze Harness'] = IDS[104] } }; end,
+        split = function() return { total = {}, avail = {},
+            where = { [100] = { [8] = 1 }, [101] = { [10] = 1 }, [103] = { [10] = 1 },
+                      [104] = { [8] = 1 }, [999] = { [1] = 1 } } }; end,   -- 999 = Mog Safe only
+        containerName = function(cid) return 'Wardrobe ' .. tostring(cid); end,
+        wardrobeIds = function() return { 8, 10 }; end,
+        stateTable = function() return nil; end,
+        wornIds = function() return {}; end,
+        resourceId = function() return nil; end,
+        resourceName = function() return nil; end,
+        write = function() return true; end,
+        now = function() return 1700000000; end,
+        stamp = function() return '2026-08-03 12:00:00'; end,
+        charName = function() return 'Mindie'; end,
+    };
+    ug.readEntries = function() return entries, nil; end;
+    local rep, why = ug.build();
+    check('UNU9 build() answers', rep ~= nil and why, nil);
+
+    -- The one wrong answer this command must never give: "everything you own is
+    -- in use" because the bag list could not be read. It refuses instead.
+    local keepW = ug._src.wardrobeIds;
+    ug._src.wardrobeIds = function() return {}; end;
+    local nope, nwhy = ug.build();
+    check('UNU9a a missing wardrobe list REFUSES, never reports all-clean', nope, nil);
+    check('UNU9a2 ...and says why', (tostring(nwhy)):find('wardrobe list', 1, true) ~= nil, true);
+    ug._src.wardrobeIds = keepW;
+    rep = ug.build();
+    check('UNU9b the Mog Safe item is not in the report', (function()
+        for _, r in ipairs(rep.rows) do if r.id == 999 then return true; end end
+        return false;
+    end)(), false);
+    check('UNU9c the wardrobe load is counted', rep.wardrobes[1].items, 2);
+    check('UNU9d ...and how much of it is flagged', rep.wardrobes[1].flagged, 1);
+    check('UNU9e the report says which character + when', rep.char .. '|' .. rep.stamp,
+          'Mindie|2026-08-03 12:00:00');
+
+    -- --- the saved file round-trips (the window reads it back next session)
+    local text = ug.serialize(rep);
+    local chunk = (loadstring or load)(text);
+    check('UNU10 the saved report parses', type(chunk), 'function');
+    local rok, back = pcall(chunk);
+    check('UNU10b ...and reloads',        rok and type(back), 'table');
+    check('UNU10c with its rows intact',  #back.rows, #rep.rows);
+    check('UNU10d and their reasons',     back.rows[1].why ~= nil, true);
+
+    ug._src, ug.readEntries = savedSrc, savedRead;
 end)();
 
 -- ---------------------------------------------------------------------------
