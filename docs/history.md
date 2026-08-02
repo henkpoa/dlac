@@ -8140,3 +8140,58 @@ Suites **5886** and **1003**. The lesson worth keeping is about #2: the artifact
 *what happened*, and the answer lived in *what was asked for and never happened*. A digest built
 from observed events cannot explain an absence of events — and an absence of events is what a
 support report is usually about.
+
+### Field round 3 — the full report, and the block that said nothing (`2026.08.03d`)
+
+He ran `/dl report full` on a fresh DRG2. First finding was about the *build*, not the code: the
+header read `dlac 2026.08.03a`, so the addon state in game was the one loaded before the fixes —
+`/addon reload dlac` is now part of asking for a report, because a player testing the old build
+looks exactly like a fix that did not work.
+
+**`full` itself is confirmed:** 93 files, **zero dropped**, raw `gear.lua` (264,111 bytes) whole,
+736 KB / 22k lines. The per-file cap lifts as designed.
+
+**Six of 37 decision blocks were EMPTY** — a header, a `under:` line, nothing else. The ring
+appends only when the fingerprint moves, and the fingerprint is *items plus winners*, so a
+zero-change record is one where a slot changed **hands**. The renderer had no notion of that and
+printed the bare header, which teaches a reader to skim past records that by definition are
+saying something happened. You could see the symptom in the same log: `Main Harpoon` appeared
+four times with `<- Triggers (rank 13)` and three times completely bare, seconds apart.
+
+Blocks now carry `claim moved: Triggers -> (nobody)`, derived by comparing consecutive records
+(the ring does not store it, and consecutive is the only comparison that means anything — the
+ring appends on change, so record N-1 IS the state N moved away from). **A decision block can no
+longer be empty**: failing both tests prints "this should not be possible", which is a finding
+rather than a shrug.
+
+Two things the build got wrong on the way, both caught by replaying his actual records:
+
+- **No predecessor is not "everything changed hands."** The first cut treated every winner in
+  the first record as a fresh shift and printed sixteen redundant lines over rows that already
+  said the same thing. The first block of a capture has nothing to compare against, so it shows
+  no shifts.
+- **`(the item did not change)` was ASSERTED, not checked** — and printed over a slot that had
+  gone from nothing to Emperor Hairpin, because it trusted the record's `changed` map to be
+  complete. Verified now; when the item moved too, the block shows the transition and adds
+  `NOTE: the record did not list this slot as changed`. That note should never fire in the
+  field, which makes it a tripwire on the ring.
+
+**Also fixed.** `contest.src` is on every record and the report was throwing it away — it only
+ever surfaced inside a `ladder (Name):` line, so a decision that resolved no ladder never named
+the set it came from, which is exactly the decision you want the set for. Blocks carry `sets:`
+now. And the summary's `0 actions` read as "you did nothing" over a log plainly containing a
+weaponskill: the counter only ever tallied the ANCHORS (actions that moved no gear, because one
+that moved gear is already a decision block), so the label says which.
+
+**One latent bug, found while checking the mechanism rather than by symptom.**
+`dispatch.decisionFp` lowercases every slot key; the `changed` computation twelve lines below
+compared **raw** keys — two computations of "did this move?" disagreeing about what a slot IS,
+the exact class `findCI` exists to prevent. It is not what caused the empty blocks. But on the
+day one producer emits `Main` where the last pass emitted `main`, the fingerprint would
+correctly say nothing moved while `changed` counted TWO phantom changes, and every renderer of
+that record would have shown both. Both sides are case-insensitive now.
+
+Suites **5911** and **1003**. The habit worth keeping from this round: *replay the real records
+through the new code*. Both build mistakes above were invisible to the unit tests, which used
+fixtures shaped the way I expected records to look; his actual sequence had a slot with no
+predecessor and a `changed` map that did not cover a moving slot, and both fell out immediately.

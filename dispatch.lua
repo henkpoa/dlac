@@ -4115,13 +4115,29 @@ local function recordDecision(event, ctx, planSnap, contest)
     local fp = M.decisionFp(planSnap, contest ~= nil and contest.explain or nil);
     local last = _decisions[#_decisions];
     if last ~= nil and last.fp == fp then return; end    -- same outcome: push nothing
+    -- CASE-INSENSITIVE, like the fingerprint above (2026-08-02). decisionFp
+    -- lowercases every slot key; this comparison used the RAW ones -- two
+    -- computations of "did this move?" disagreeing about what a slot IS, which
+    -- is the exact class findCI exists to prevent. Producers do disagree on
+    -- slot-key case, and on the day one emitted 'Main' where the last pass
+    -- emitted 'main', the fingerprint would correctly say nothing moved while
+    -- this counted TWO phantom changes -- one added, one dropped -- and every
+    -- renderer of the record would have shown both.
+    local lastLow = {};
+    if last ~= nil then
+        for slot, item in pairs(last.plan) do lastLow[string.lower(tostring(slot))] = item; end
+    end
+    local nowLow = {};
+    for slot, item in pairs(planSnap) do nowLow[string.lower(tostring(slot))] = item; end
     local changed, n = {}, 0;
     for slot, item in pairs(planSnap) do
-        if last == nil or last.plan[slot] ~= item then changed[slot] = true; n = n + 1; end
+        if last == nil or lastLow[string.lower(tostring(slot))] ~= item then
+            changed[slot] = true; n = n + 1;
+        end
     end
     if last ~= nil then
         for slot in pairs(last.plan) do
-            if planSnap[slot] == nil then changed[slot] = true; n = n + 1; end
+            if nowLow[string.lower(tostring(slot))] == nil then changed[slot] = true; n = n + 1; end
         end
     end
     local ladders = nil;

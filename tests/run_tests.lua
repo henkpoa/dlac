@@ -22015,6 +22015,106 @@ end)();
         joined(RP._decLines(REC, tostring)):match('left as worn'), nil);
 
     -- ---------------------------------------------------------------------
+    -- THE EMPTY BLOCK (field report 2, 2026-08-02). Six of 37 blocks in
+    -- Henrik's full report were a header, a ctx line and nothing -- records
+    -- the ring appended because the fingerprint MOVED, rendered as if nothing
+    -- had. The fingerprint is items + winners, so a zero-change record is one
+    -- where the WINNER moved, and the block was hiding exactly that.
+    -- ---------------------------------------------------------------------
+    local function recWith(seq, plan, explain, changed, nCh)
+        return { seq = seq, time = '17:22:56', event = 'Default', action = 'idle',
+                 plan = plan, changed = changed or {}, nChanged = nCh or 0,
+                 contest = { explain = explain } };
+    end
+    local A = recWith(26, { Main = 'Harpoon' },
+                      { main = { { name = 'Triggers', rank = 13, item = 'Harpoon' } } });
+    local B = recWith(27, { Main = 'Harpoon' }, {});          -- same item, nobody owns it now
+
+    local sh = RP._claimantShifts(A, B);
+    check('RPT40a a slot that lost its owner is a shift', #sh, 1);
+    check('RPT40b ...naming the slot',        sh[1].slot, 'main');
+    check('RPT40c ...who had it',             sh[1].from, 'Triggers');
+    check('RPT40d ...and that nobody does now', sh[1].to, nil);
+    check('RPT40e the reverse direction is seen too',
+        RP._claimantShifts(B, A)[1].to, 'Triggers');
+    check('RPT40f a slot that did not change hands is NOT a shift',
+        #RP._claimantShifts(A, A), 0);
+    check('RPT40g a handover between two claimants is one shift, both named',
+        (function()
+            local C = recWith(28, { Main = 'Harpoon' },
+                              { main = { { name = 'Locks', rank = 4, item = 'Harpoon' } } });
+            local s2 = RP._claimantShifts(A, C);
+            return #s2 .. ':' .. tostring(s2[1].from) .. '->' .. tostring(s2[1].to);
+        end)(), '1:Triggers->Locks');
+    -- NOTHING TO COMPARE AGAINST is not "everything changed hands": the first
+    -- record of a capture has no predecessor, and calling every winner in it a
+    -- shift printed sixteen redundant lines over rows that already said it
+    check('RPT40h no previous record yields NO shifts',
+        #RP._claimantShifts(nil, A), 0);
+    check('RPT40i ...and neither does a predecessor with no contest',
+        #RP._claimantShifts({ plan = {} }, A), 0);
+
+    local blk0 = joined(RP._decLines(B, tostring, nil, A));
+    check('RPT41a the zero-change block is NO LONGER empty',
+        blk0:match('claim moved') ~= nil, true);
+    check('RPT41b ...it names who lost the slot and that the item held',
+        blk0:match('Main%s+Harpoon%s+claim moved: Triggers %-> %(nobody%)') ~= nil
+        and blk0:match('the item did not change') ~= nil, true);
+    -- a slot whose ITEM moved already tells its story; repeating it as a shift
+    -- would count one event twice
+    check('RPT41c a slot printed as changed is not ALSO printed as a shift',
+        (function()
+            local D = recWith(29, { Main = 'Lance' },
+                              { main = { { name = 'Locks', rank = 4, item = 'Lance' } } },
+                              { Main = true }, 1);
+            return select(2, joined(RP._decLines(D, tostring, nil, A)):gsub('    Main ', ''));
+        end)(), 1);
+    -- "the item did not change" is CHECKED, never asserted. The first cut
+    -- printed that sentence over a slot that had gone from nothing to Emperor
+    -- Hairpin, because it trusted the record's `changed` map to be complete.
+    local E = recWith(30, { Head = 'Emperor Hairpin' },
+                      { head = { { name = 'Triggers', rank = 13, item = 'Emperor Hairpin' } } });
+    local Eprev = recWith(29, {}, {});
+    local blkE = joined(RP._decLines(E, tostring, nil, Eprev));
+    check('RPT41e a shift whose ITEM also moved never claims it did not',
+        blkE:match('the item did not change'), nil);
+    check('RPT41f ...it shows the item transition instead',
+        blkE:match('the item went %(nothing%) %-> Emperor Hairpin') ~= nil, true);
+    check('RPT41g ...and reports that the record failed to list the slot as changed',
+        blkE:match('did not list this slot as changed') ~= nil, true);
+    check('RPT41h a genuine pure-claim shift still says the item held',
+        joined(RP._decLines(B, tostring, nil, A)):match('the item did not change') ~= nil, true);
+
+    -- and the last-resort line: a record that can show neither is a finding
+    check('RPT41d a block that can show nothing SAYS so, rather than a bare header',
+        joined(RP._decLines(recWith(30, { Main = 'Harpoon' }, {}), tostring, nil,
+                            recWith(29, { Main = 'Harpoon' }, {})))
+            :match('it should not be possible') ~= nil, true);
+
+    -- the sets that produced the decision -- on every record already, and the
+    -- report threw it away unless a ladder happened to print
+    local SRC = recWith(31, { Main = 'Harpoon' },
+                        { main = { { name = 'Triggers', rank = 13, item = 'Harpoon' } } },
+                        { Main = true }, 1);
+    SRC.contest.src = { main = 'Weapons', head = 'Idle', neck = 'Idle' };
+    check('RPT42a the block names the sets it came from',
+        joined(RP._decLines(SRC, tostring)):match('sets: Idle, Weapons') ~= nil, true);
+    check('RPT42b ...deduplicated and sorted, so two reports diff',
+        select(2, joined(RP._decLines(SRC, tostring)):gsub('Idle', '')), 1);
+    check('RPT42c a record with no src says nothing about sets',
+        joined(RP._decLines(A, tostring)):match('sets:'), nil);
+
+    -- the action counter's LABEL (it only ever counted the anchors)
+    local sma = joined(RP._summaryLines({ recorded = 60, nDec = 3, nAct = 0, nSend = 1,
+                                          nChat = 0, marks = {} }));
+    check('RPT43a the headline no longer says a bare "0 actions"',
+        sma:match('0 action[s]?,') , nil);
+    check('RPT43b ...it says what the count MEANS',
+        sma:match('0 actions dispatched and moved NO gear') ~= nil, true);
+    check('RPT43c ...and that the other kind is not counted twice',
+        sma:match('never counted twice') ~= nil, true);
+
+    -- ---------------------------------------------------------------------
     -- The SETS-FILE scope (the blind spot behind the same report): gear that
     -- never reached a plan or a ladder left no trace, and that is exactly the
     -- gear that failed to qualify.
@@ -22167,7 +22267,9 @@ end)();
     -- the summary: the numbers and the marks, above the log
     local sm = joined(RP._summaryLines({ recorded = 300, nDec = 41, nAct = 12, nSend = 6,
         nChat = 9, nErr = 2, nPre = 7, marks = { { at = 134, note = 'gear did not swap' } } }));
-    check('RPT16a the window is counted',   sm:match('41 decisions, 12 actions, 6 sends') ~= nil, true);
+    check('RPT16a the window is counted',   sm:match('41 decisions, 6 sends') ~= nil, true);
+    check('RPT16a2 ...and the anchors are counted APART, with what they mean',
+        sm:match('12 actions dispatched and moved NO gear') ~= nil, true);
     -- The pre-roll is counted APART. A summary reading "0 decisions" over a log
     -- that visibly contains one teaches the reader to distrust the numbers.
     check('RPT16b pre-roll decisions are counted, and separately',
@@ -22183,7 +22285,9 @@ end)();
     local one = joined(RP._summaryLines({ recorded = 60, nDec = 1, nAct = 1, nSend = 1,
         nChat = 1, nErr = 1, marks = { { at = 0 } } }));
     check('RPT16f one of each reads as one',
-        one:match('1 decision, 1 action, 1 send, 1 dlac chat line, 1 mark') ~= nil, true);
+        one:match('1 decision, 1 send, 1 dlac chat line, 1 mark') ~= nil, true);
+    check('RPT16f2 ...including the anchor line',
+        one:match('1 action dispatched and moved NO gear') ~= nil, true);
     check('RPT16g ...including the failure sentence',
         one:match('1 of those chat lines looks like a FAILURE') ~= nil, true);
     check('RPT16h a zero pre-roll says nothing at all',
