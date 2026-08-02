@@ -287,26 +287,23 @@ infer it from a field confirmation, from *"works"*, or from your own read that s
 ready — his own note on the exchange was *"you are right not to assume otherwise since I
 haven't told you."* Ask when he has **not** said merge; never ask twice when he has.
 
-- **"copy to…" — one Trigger, landed in the job entries you tick** (`2026.08.02d`). Henrik
-  asked for a copy button on trigger rules, first said *profiles*, then corrected himself:
-  *"I meant the job. I want to be able to copy the rule between the jobs. Have a list of jobs
-  that we can mark to copy to (where it also checks if it has a similar rule already), also
-  can't copy to itself... one button to select all jobs."* A per-rule button opens a window
-  with a tick box per JOB (plus **All jobs**); the profile axis built first is still there as
-  a second list below, with its own All and Copy. **All** ticks only what does not already
-  hold the rule — the duplicate check is the ask, so the bulk button must not spend it. The
-  window carries a tick, **"Include the set if it isn't there"** (default on), that brings the
-  rule's set across when the destination lacks it — verbatim, never overwriting; and it opens
-  straight onto the job list, all the header text removed on his word (*"it's bloating"*).
-  Pure core `gear/rulecopy.lua` (RC*) + `setmanager.copySetText` (SN20–29), the window driven
-  end to end on BOTH axes against a stub imgui (smoke_ui CP*). **NOT field-confirmed — suites
-  only** (5723 / 981, both interpreters). The round it owes is one pass in-game: open a rule's
-  *copy to…*, tick another job, copy, change to that job and see both the rule and its set
-  sitting there. Cheap to check, and the failure modes are all loud (every row says what will
-  happen, every outcome is named — sets that could not follow included).
+**The queue is empty.**
 
 
-*(Still empty after the second 2026-08-02 promotion, `850e6d5` — **`/dl sends` bills dlac
+*(Emptied by the third 2026-08-02 promotion — **"copy to…", the per-rule copy across job
+entries**, `2026.08.02b`–`2026.08.02d`, the dev train `13dbf16` + `7f82d57` + `a55049b`.
+Henrik: *"Tested it out, document, commit, merge, push to origin main"* — an accept under the
+08-01 ruling, so nothing was asked twice, and the first of the three 08-02 promotions that is
+**FIELD-CONFIRMED** rather than suites-only. It never sat in this queue for long: built,
+corrected twice on his word and promoted inside one session. The correction is the part worth
+carrying forward — he asked for the copy across **profiles**, then came back with *"I am in the
+wrong here… I meant the job"*, and the job axis cost one round only because the core was written
+against the (profile, job) COORDINATE rather than against either surface. What his pass does NOT
+cover, and nothing pretends otherwise: the two refusal paths (a torn destination file, a safety
+backup that cannot be written) are suite-only by nature — you cannot exercise them in a normal
+session — and the profile axis, which he did not ask for and may yet want gone.)*
+
+*(Emptied before that by the second 2026-08-02 promotion, `850e6d5` — **`/dl sends` bills dlac
 only for what dlac added**, `2026.08.02a`. Henrik: *"document, merge and push"*. It corrects
 the readout promoted hours earlier the same day: a re-injected `0x01A`/`0x037` is the
 player's own packet, and lumping it into one total billed dlac for how much he acted. Worth
@@ -679,9 +676,13 @@ research already recorded. In rough priority order:
 
 ## Current state (as of 2026-08-02)
 
-- **2026-08-02 (`2026.08.02d`): "copy to…" — ONE TRIGGER, LANDED IN THE JOB ENTRIES YOU TICK.
-  BUILT, on `dev`, suites green both interpreters, **NOT field-confirmed** (see the merge
-  queue for the one-pass round it owes).
+- **2026-08-02 (`2026.08.02b`–`2026.08.02d`): "copy to…" — ONE TRIGGER, LANDED IN THE JOB
+  ENTRIES YOU TICK. BUILT, **FIELD-CONFIRMED** (Henrik, *"Tested it out"*) and **ON MAIN**
+  (promoted the same session), suites green both interpreters. **What the pass could not
+  cover:** the two refusal paths — a destination trigger file that does not parse, and a
+  safety backup that cannot be written — are suite-only by nature; neither can be produced in
+  a normal session, and both are the reason the destructive half is safe, so they are named
+  here rather than counted as confirmed.
   - **Where it came from, including the correction.** Henrik asked for *"a copy to... button
     by all the trigger rules"* and named **profiles**; the profile version shipped, and he
     came straight back: *"I am in the wrong here. What did we call the job profiles again? I

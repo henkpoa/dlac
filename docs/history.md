@@ -7913,3 +7913,13 @@ Suites **5723** and **981**, both interpreters, and the scratch end-to-end re-ru
 destination job that had its own sets file gained the set beside its existing ones (comment and
 `{ gear = ..., minLevel = 30 }` shape intact, backup taken), a job with no sets file at all got
 one, and the source job was never touched.
+
+**Field round, same session.** *"Tested it out, document, commit, merge, push to origin main"*
+-- so the whole train (`2026.08.02b`–`d`) went to main **field-confirmed**, which the two 08-02
+promotions before it were not. Two things stay honestly uncovered by that pass and are recorded
+rather than quietly folded in: the refusal paths (a destination trigger file that will not
+parse; a safety backup that cannot be written) cannot be produced in a normal session, so they
+remain suite-only -- and they are precisely what makes the destructive half safe; and the
+PROFILE axis, which he never asked for and which survives only because it was already built and
+costs one separated list. If it is still unused a week from now, delete it: an axis nobody uses
+is a second thing to keep correct.
