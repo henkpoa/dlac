@@ -8353,3 +8353,42 @@ row away, and all three asks are about the rows. Suites **5990** and **1046**.
 **Note for the record:** the `dispatch.lua` half of this landed inside commit `df77475`,
 which belongs to a parallel session — a shared-checkout sweep, not a decision. The change
 itself is unaffected.
+
+## Session "grow with the text" (2026-08-03, `2026.08.03j` — the pin popup's width)
+
+Henrik, on the round above: *"Can you make the right click menu automatically grow in size
+with the text? I think it's doing that, but only based on equip names and not the pin
+list."*
+
+The read was exactly right and the cause is one line. Both lists live inside the *same*
+auto-sizing popup — `BeginPopup` forces `AlwaysAutoResize`, so the only thing that can stop
+it growing is the constraint, and the constraint was a flat `{380, 460}`. An item name is
+~20 characters and never comes near 380, so the candidate list looked like it grew freely.
+A pinned row is a name **and** a trigger, sails past it, and a clamped auto-resize window
+has exactly one move left: clip. Same window, same mechanism, two very different-looking
+behaviours, from one number that was fine until the rows got longer.
+
+So the ceiling became a measurement (`popupMaxW`): the widest pinned row, and — because
+only the longest *name* can be the widest candidate row — one `CalcTextSize` for the whole
+item list however long it is. Measured **unfiltered**, deliberately: a width that holds
+still while you type is worth more than one that shaves pixels per keystroke.
+
+Three details worth keeping. The measurement runs in `M.render` **before** `BeginPopup`,
+not from last frame's content, because a constraint is consumed by the next window and a
+width one frame behind resizes visibly every time the list changes — so the rows are built
+once, measured, and handed down to `renderPinMenu` rather than built twice. It only runs
+while the menu is up (`_openFor` covers the opening frame, `_popupUp` every frame after),
+so a shut menu costs nothing. And `MAX_W` stays a real limit: a rule with six conditions
+can produce a scope line wide enough to cross the screen, and past that point the honest
+answer is a scrollbar, not a window you cannot see around.
+
+The pinned rows also lost their 34-character truncation — the popup is now sized to that
+exact string, and cutting the line *and* widening the window for it would be two answers to
+one question. The half being cut was the trigger, which is the only thing telling one
+pinned row from the next. Trigger choices gained a `short` spelling (event + conditions, no
+` -> SetName`) for the rows; the tooltip keeps the long one, where there is no width to
+fight over.
+
+**Tests:** smoke `FGP19`–`FGP22` drive `CalcTextSize` per-character and read the constraint
+back — floor with nothing pinned, wider with pins, wider still with a longer trigger,
+clamped at the ceiling. Suites **5990** and **1052**.

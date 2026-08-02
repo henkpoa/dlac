@@ -211,15 +211,21 @@ local _dragging = false;  -- shift+drag latch: set on press, cleared on release
 local _moveMode = false;
 local _drillItem = nil;   -- fallback mode: item picked, now choosing scope
 local _search = { '' };
+-- Was the pin popup drawn LAST frame? The width measurement is only worth
+-- building while the menu is up, and this is the only honest way to know: ImGui
+-- owns the popup's open state and BeginPopup is the one thing that reports it.
+local _popupUp = false;
 
 -- --------------------------------------------------------------------------
 -- Trigger choices for the scope submenu.
 -- --------------------------------------------------------------------------
 
--- Every trigger of the CURRENT job entry as { key, text }. `key` is the engine's
--- scope key (dispatch.pinScopeKey over dispatch.ruleLabel) -- built from the
--- engine's own functions so the addon and LAC states cannot spell it
--- differently; `text` is the human line for the menu.
+-- Every trigger of the CURRENT job entry as { key, text, short }. `key` is the
+-- engine's scope key (dispatch.pinScopeKey over dispatch.ruleLabel) -- built from
+-- the engine's own functions so the addon and LAC states cannot spell it
+-- differently; `text` is the human line for the menu; `short` is the same line
+-- WITHOUT the set name, for the pinned rows, where the piece is already named on
+-- the left and " -> Movement" is the longest and least useful third of the row.
 local function triggerChoices()
     local out = {};
     if dsp == nil or type(dsp.pinScopeKey) ~= 'function' then return out; end
@@ -254,9 +260,10 @@ local function triggerChoices()
                     local setn = (type(r.set) == 'string') and r.set
                               or ((type(r.set) == 'table') and r.set[1] or nil);
                     out[#out + 1] = {
-                        key  = dsp.pinScopeKey(ev, label),
-                        text = string.format('%s  %s%s', ev, shown,
+                        key   = dsp.pinScopeKey(ev, label),
+                        text  = string.format('%s  %s%s', ev, shown,
                             setn and ('  -> ' .. tostring(setn)) or ''),
+                        short = string.format('%s  %s', ev, shown),
                     };
                 end
             end
@@ -265,24 +272,35 @@ local function triggerChoices()
     return out;
 end
 
--- scope key -> the same human line the menu shows, so a PIN can be described
--- with the words you picked it by instead of the raw "Default|mode=TP_Default".
-local function textByKey(choices)
+-- scope key -> the choice it came from, so a PIN can be described with the words
+-- you picked it by instead of the raw "Default|mode=TP_Default".
+local function choiceByKey(choices)
     local m = {};
-    for _, c in ipairs(choices or {}) do m[c.key] = c.text; end
+    for _, c in ipairs(choices or {}) do m[c.key] = c; end
     return m;
 end
 
--- One pin's scope, in words. A key the current job no longer has (you edited or
--- deleted that trigger) falls back to the raw key rather than vanishing: the pin
--- is real, it is simply quiet, and hiding the reason would make it unremovable
--- by anything but "remove all".
-local function scopeTextOf(e, byKey)
+-- One pin's scope, in words. `field` picks which of the choice's two spellings
+-- to use ('short' for a row, 'text' for a tooltip). A key the current job no
+-- longer has (you edited or deleted that trigger) falls back to the raw key
+-- rather than vanishing: the pin is real, it is simply quiet, and hiding the
+-- reason would make it unremovable by anything but "remove all".
+local function scopeTextOf(e, byKey, field)
     if type(e) ~= 'table' or type(e.scope) ~= 'table' then return 'All -- every dispatch'; end
     local parts = {};
-    for _, k in ipairs(e.scope) do parts[#parts + 1] = tostring(byKey[k] or k); end
+    for _, k in ipairs(e.scope) do
+        local c = (type(byKey) == 'table') and byKey[k] or nil;
+        parts[#parts + 1] = tostring((type(c) == 'table' and c[field or 'short']) or k);
+    end
     if #parts == 0 then return 'All -- every dispatch'; end
     return table.concat(parts, ' / ');
+end
+
+-- The visible text of one pinned row. Shared with the width measurement below --
+-- a popup told to fit a row it did not actually measure is the bug this exists
+-- to prevent.
+local function pinRowText(e, byKey)
+    return string.format('%s   --   %s', tostring(e.item), scopeTextOf(e, byKey, 'short'));
 end
 
 -- The scope keys this slot's pins already hold -> the item holding each ('All'
@@ -309,6 +327,58 @@ end
 -- to keep a COLUMN aligned, and a menu with no icons at all should just be the
 -- text menu it used to be.
 local ICON = 20;
+
+-- Text width, the equippedui pattern: this binding's CalcTextSize returns a
+-- NUMBER, and the character fallback keeps the measurement honest headless and
+-- on a binding that lacks it.
+local function calcTextW(s)
+    if imgui == nil or type(imgui.CalcTextSize) ~= 'function' then return #tostring(s or '') * 7; end
+    local ok, w = pcall(imgui.CalcTextSize, tostring(s or ''));
+    if ok and type(w) == 'number' and w > 0 then return w; end
+    return #tostring(s or '') * 7;
+end
+
+-- HOW WIDE THE POPUP IS ALLOWED TO GET, measured from the rows it is about to
+-- draw rather than picked in advance.
+--
+-- Henrik, 2026-08-03: "make the right click menu grow with the text -- I think
+-- it's doing that, but only based on equip names and not the pin list." Both
+-- were already inside ONE auto-sizing popup; the difference was the ceiling. An
+-- item name is ~20 characters and never came near the old flat 380, so the list
+-- looked like it grew freely -- while a pinned row is a name AND a trigger and
+-- sailed straight past it, where the only thing a clamped popup can do is clip.
+--
+-- So the cap becomes a measurement. MAX is a real limit and stays: a rule with
+-- six conditions can produce a scope line wide enough to cover the screen, and
+-- past that point the honest answer is a scrollbar, not a window you cannot see
+-- around. Measured UNFILTERED on purpose -- the width holding still while you
+-- type is worth more than shaving pixels off it per keystroke.
+local MIN_W, MAX_W, CAP_W = 250, 620, 460;   -- floor, ceiling, height cap
+local function popupMaxW(slot, byKey, pool)
+    local widest = 0;
+    for _, e in ipairs(pins.pinsOf(slot)) do
+        local w = calcTextW(pinRowText(e, byKey));
+        if w > widest then widest = w; end
+    end
+    -- The candidate rows: only the longest NAME can be the widest row, so one
+    -- measurement does for the whole list however long it is.
+    local longest = '';
+    for _, rec in ipairs(pool or {}) do
+        local nm = tostring(rec.Name or '');
+        if #nm > #longest then longest = nm; end
+    end
+    if longest ~= '' then
+        -- +26: BeginMenu draws a submenu arrow past the label.
+        local w = calcTextW(longest) + 26;
+        if w > widest then widest = w; end
+    end
+    -- + the icon column and the window's own padding/scrollbar allowance.
+    widest = math.floor(widest + ICON + 6 + 34);   -- floored: a fractional cap
+    if widest < MIN_W then return MIN_W; end       -- jitters the popup by a pixel
+    if widest > MAX_W then return MAX_W; end       -- as the text changes
+    return widest;
+end
+
 local function rowIcon(name)
     if icons == nil or type(icons.renderIcon) ~= 'function' then return; end
     local id = nil;
@@ -415,7 +485,10 @@ local function candidatesFor(slot, job, level)
     return out;
 end
 
-local function renderPinMenu(job, level)
+-- `choices` and `pool` are computed by M.render (the width measurement needs
+-- them BEFORE BeginPopup, and building them twice a frame would be waste), but
+-- both are optional: the fallbacks keep this function drivable on its own.
+local function renderPinMenu(job, level, choices, pool)
     local slot = _menuSlot;
     if slot == nil then return; end
 
@@ -444,8 +517,8 @@ local function renderPinMenu(job, level)
     end
     imgui.Separator();
 
-    local choices = triggerChoices();
-    local byKey   = textByKey(choices);
+    if choices == nil then choices = triggerChoices(); end
+    local byKey = choiceByKey(choices);
 
     -- Unpin first: it is the one row you want instantly when the frame is red.
     -- A slot can hold SEVERAL pins now, so this is a list and each row removes
@@ -459,19 +532,23 @@ local function renderPinMenu(job, level)
                                       or string.format('Pinned here (%d):', #held));
         for i, e in ipairs(held) do
             rowIcon(e.item);
-            -- No fmt.esc: a Selectable label is not a format string (see
-            -- renderScopeRows). truncate keeps a long trigger line inside the
-            -- popup's width constraint instead of widening it to the cap.
-            if imgui.Selectable(string.format('%s   --   %s##unpin%d',
-                    tostring(e.item), fmt.truncate(scopeTextOf(e, byKey), 34), i)) then
+            -- No fmt.esc, and NO truncation: a Selectable label is not a format
+            -- string (see renderScopeRows), and the popup is now sized to this
+            -- exact text (popupMaxW measures pinRowText). Cutting the line here
+            -- and widening the window for it would be two answers to one
+            -- question -- and the truncated half was the trigger, which is the
+            -- only thing distinguishing one pinned row from the next.
+            if imgui.Selectable(pinRowText(e, byKey) .. '##unpin' .. i) then
                 pins.clearPinAt(slot, i);
                 pcall(function() imgui.CloseCurrentPopup(); end);
                 return;
             end
             if imgui.IsItemHovered() then
+                -- The tooltip gets the LONG spelling -- set name included --
+                -- because there is no width to fight over in a tooltip.
                 imgui.SetTooltip(fmt.esc(string.format(
                     'Remove THIS pin.\n\n%s\nApplies to: %s',
-                    tostring(e.item), scopeTextOf(e, byKey))));
+                    tostring(e.item), scopeTextOf(e, byKey, 'text'))));
             end
         end
         if #held > 1 then
@@ -500,7 +577,7 @@ local function renderPinMenu(job, level)
     if imgui.IsItemHovered() then imgui.SetTooltip('Filter by name.'); end
 
     local q = string.lower(tostring(_search[1] or ''));
-    local list = candidatesFor(slot, job, level);
+    local list = pool or candidatesFor(slot, job, level);
     -- NO BeginChild around this list, deliberately. A submenu is drawn OUTSIDE the
     -- rect of the window it is declared in; inside a child, moving the mouse from
     -- one item toward its submenu leaves the child, ImGui decides the menu
@@ -738,14 +815,35 @@ function M.render()
         -- BeginPopup forces AlwaysAutoResize on popups, so a constraint is the way
         -- to bound one -- clamped, it grows a scrollbar by itself.
         --
+        -- The upper bound is MEASURED, not a constant (popupMaxW): a flat 380 let
+        -- the item list grow freely -- names never reach it -- while clipping every
+        -- pinned row, which is a name AND a trigger. Same frame, no lag: the rows
+        -- are built here and handed to renderPinMenu, because the constraint has
+        -- to be set BEFORE BeginPopup and a width taken from last frame's content
+        -- would resize a frame late every time the list changed.
+        --
+        -- Only built when the menu is actually up. `_openFor` covers the opening
+        -- frame (it becomes _menuSlot just above) and `_popupUp` covers every
+        -- frame after, so a shut menu costs nothing.
+        local choices, pool, maxW = nil, nil, MAX_W;
+        if _menuSlot ~= nil and (_openFor ~= nil or _popupUp) then
+            local okw = pcall(function()
+                choices = triggerChoices();
+                pool    = candidatesFor(_menuSlot, job, level);
+                maxW    = popupMaxW(_menuSlot, choiceByKey(choices), pool);
+            end);
+            if not okw then choices, pool, maxW = nil, nil, MAX_W; end
+        end
         -- Safe to call unconditionally even on the frames the popup is shut: this
         -- binding is ImGui >= 1.77 (the header declares ImGuiPopupFlags), and
         -- BeginPopup's early-out consumes the next-window data exactly as Begin
         -- would. Otherwise the constraint would leak onto the next window opened
         -- anywhere in the frame -- including another addon's.
-        imgui.SetNextWindowSizeConstraints({ 250, 0 }, { 380, 460 });
+        imgui.SetNextWindowSizeConstraints({ MIN_W, 0 }, { maxW, CAP_W });
+        _popupUp = false;
         if imgui.BeginPopup(POPUP) then
-            renderPinMenu(job, level);
+            _popupUp = true;
+            renderPinMenu(job, level, choices, pool);
             imgui.EndPopup();
         end
 

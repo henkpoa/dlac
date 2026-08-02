@@ -1035,6 +1035,43 @@ end)();
         (condCol or {})[1] ~= (allCol or {})[1], true);
     check('FGP18 pinning All replaced the scoped pin (one pin left)', #pw.pinsOf('Head'), 1);
 
+    -- THE POPUP'S WIDTH. Henrik: "it grows with the equip names but not the pin
+    -- list." Both lists were always inside ONE auto-sizing popup -- the
+    -- difference was the ceiling, a flat 380 that an item name never reaches and
+    -- a pinned row (a name AND a trigger) sails straight past, where the only
+    -- thing a clamped popup can do is clip. The cap is measured now, so these
+    -- drive CalcTextSize per-character and read the constraint back.
+    IM.CalcTextSize = function(s) return #tostring(s or '') * 7, 14; end
+    local lastMax = nil;
+    IM.SetNextWindowSizeConstraints = function(_, mx) lastMax = mx; end
+
+    pw.pins = {};
+    frame();
+    local bare = (lastMax or {})[1];
+    check('FGP19 nothing pinned + short item names -> the floor', bare, 250);
+
+    pw.setPin('Head', 'Optical Hat',    { 'Default|mode=TP_Default' });
+    pw.setPin('Head', 'Walahra Turban', { 'Default|moving=true' });
+    frame();
+    local pinned = (lastMax or {})[1];
+    check('FGP20 a pinned row WIDENS the popup (the bug: it used to clip)',
+        type(pinned) == 'number' and pinned > bare, true);
+
+    -- the cap TRACKS the text -- it is not a second constant one notch up
+    pw.pins = {};
+    pw.setPin('Head', 'Optical Hat', { 'Default|mode=' .. string.rep('x', 40) });
+    frame();
+    local longer = (lastMax or {})[1];
+    check('FGP21 a longer trigger line widens it further',
+        type(longer) == 'number' and longer > pinned, true);
+
+    -- ...but not without limit: past the ceiling the honest answer is a
+    -- scrollbar, not a window you cannot see around
+    pw.pins = {};
+    pw.setPin('Head', 'Optical Hat', { 'Default|mode=' .. string.rep('x', 400) });
+    frame();
+    check('FGP22 ...and it stops at the ceiling', (lastMax or {})[1], 620);
+
     pw.pins = {};
     for k, v in pairs(keep) do Sx[k] = v; end
     package.loaded['dlac\\ui\\itemicons'] = savedIcons;
