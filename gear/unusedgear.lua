@@ -31,11 +31,16 @@
        ("only in a set nothing triggers"), never the unused list.
 
     2. LOCKSTYLE PIECES DO NOT NEED A WARDROBE. Henrik: "you can lockstyle to
-       pieces that are in the mog house etc." Confirmed in the server source --
-       src/map/packets/c2s/0x053_lockstyle.cpp, Set mode, validates only that
-       the id is a real equipment item that fits the slot; it never looks at
-       ownership or container. So a piece whose only job is a lockstyle box gets
-       its own section and is REPORTED AS MOVEABLE, not as used.
+       pieces that are in the mog house etc." Confirmed in the server source, in
+       TWO halves that must not be collapsed into one:
+         * c2s/0x053_lockstyle.cpp (Set) stores the id after checking only that
+           it is real equipment that fits the slot -- no ownership, no container.
+         * charutils.cpp UpdateArmorStyle gates the RENDER on HasItem(PChar, id)
+           + canEquipItemOnAnyJob -- and HasItem walks EVERY container
+           (0..MAX_CONTAINER_ID), so where the piece sits is irrelevant while
+           still OWNING it is not. Sell it and the slot renders empty.
+       So a piece whose only job is a lockstyle box gets its own section and is
+       REPORTED AS MOVEABLE -- move it anywhere, just keep it.
 
     3. Helper picks COUNT AS USE, named by helper: the MaxMP ladder, auto-staff /
        obi / grip, craft, HELM, fishing, chocobo, the per-job ammo lists, the
@@ -775,8 +780,8 @@ end
 function M.serialize(rep)
     local L = {};
     L[#L + 1] = '-- dlac wardrobe audit -- written by /dl unused. Regenerated on every Refresh.';
-    L[#L + 1] = '-- Lockstyle-only pieces are listed as MOVEABLE: the server never checks which';
-    L[#L + 1] = '-- container a lockstyle piece is in (0x053 Set validates the item, not the bag).';
+    L[#L + 1] = '-- Lockstyle-only pieces are listed as MOVEABLE: the server checks that you still';
+    L[#L + 1] = '-- OWN the piece (any container at all), never which container it is in.';
     L[#L + 1] = 'return {';
     L[#L + 1] = string.format('    v = %d, at = %d, stamp = %q, char = %q,',
         tonumber(rep.v) or M.VERSION, tonumber(rep.at) or 0, tostring(rep.stamp or ''), tostring(rep.char or ''));
@@ -875,7 +880,7 @@ function M.summaryLines(rep)
     out[#out + 1] = string.format('  read %d profile(s), %d job entr(ies), %d set(s) -- %d triggered, %d untriggered.',
         s.profiles or 0, s.entries or 0, s.sets or 0, s.usedSets or 0, s.orphanSets or 0);
     if (c.style or 0) > 0 then
-        out[#out + 1] = '  lockstyle-only pieces are safe to move: the server never checks which bag a style piece is in.';
+        out[#out + 1] = '  lockstyle-only pieces are safe to MOVE (any container works) -- but keep them: the style needs you to own it.';
     end
     return out;
 end

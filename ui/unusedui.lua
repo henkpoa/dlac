@@ -73,9 +73,9 @@ local SECTIONS = {
          .. 'names this piece -- across EVERY profile and job entry on this character.\n'
          .. 'These are the ones to move out of a wardrobe.' },
     { cls = 'style',  title = 'Only a lockstyle box uses these',
-      tip = 'A lockstyle piece does not need to be in a wardrobe -- or even in your bags.\n'
-         .. 'The server validates the item, never the container it sits in, so moving\n'
-         .. 'these to the Mog Safe keeps the look.' },
+      tip = 'A lockstyle piece does not need to be in a wardrobe: the server checks that you\n'
+         .. 'still OWN it, never which container it is in, so the Mog Safe keeps the look.\n'
+         .. 'Move them anywhere -- but do not sell them, or the slot renders empty.' },
     { cls = 'orphan', title = 'Only in a set no rule triggers',
       tip = 'The piece IS in one of your sets -- but no trigger rule points at that set,\n'
          .. 'so nothing equips it today. Wire the set up, or move the piece out.' },
@@ -272,7 +272,7 @@ local function drawBody()
                 if imgui.IsItemHovered() then imgui.SetTooltip(sec.tip); end
                 if open then
                     if sec.cls == 'style' then
-                        imgui.TextColored(COL.HAVE, 'Safe to move: a lockstyle piece works from any container.');
+                        imgui.TextColored(COL.HAVE, 'Safe to move -- a style works from any container. Keep them, though: it checks that you own it.');
                     end
                     renderRows(rows, rep, nameW);
                     imgui.Spacing();

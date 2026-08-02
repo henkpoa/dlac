@@ -755,11 +755,14 @@ research already recorded. In rough priority order:
     could move itself to the Mog Safe instead of just naming itself. The rows already carry
     id + container + copy count, which is what a move needs. New "what asks for an item"
     sources belong in `M.collect`'s buckets / `M.HELPER_PINS`, never a second walk.
-  - **A lockstyle-only piece is MOVEABLE, and that is a server fact, not a guess.**
-    `src/map/packets/c2s/0x053_lockstyle.cpp` (`Set` mode) validates that the id is real
-    equipment that fits the slot and **never reads ownership or container** — checked in the
-    stable clone before the section was built. Henrik had already said so from play; the
-    source is why the window states it as fact.
+  - **A lockstyle-only piece is MOVEABLE, and that is a server fact — in two halves.**
+    `c2s/0x053_lockstyle.cpp` (`Set`) stores the id checking only that it is real equipment
+    that fits the slot; the RENDER gate is `charutils.cpp UpdateArmorStyle`, which needs
+    `HasItem(PChar, id)` + `canEquipItemOnAnyJob`, and `HasItem` walks **every** container.
+    So: **container irrelevant, ownership still required** — move it anywhere, do not sell
+    it. (I first wrote "never reads ownership or container" off the packet handler alone and
+    shipped that wording; corrected one commit later. A handler that accepts a value is not
+    the code that uses it.)
   - **Three sections, because there are three answers**: nothing references it / only a
     lockstyle box does / only a set no rule triggers (his character: 63 untriggered sets out
     of 257 — never call those pieces junk). Helper picks COUNT as use and name their helper;

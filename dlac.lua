@@ -18,7 +18,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.08.03r';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.08.03s';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
                                 -- (03f = engine v163: the contest explains its own plan;
                                 --  03g = one floating tray: Teleports + the E-Box crates;
@@ -34,7 +34,9 @@ addon.version = '2026.08.03r';  -- date of the last shipped change (Ashita print
                                 --  03p = the facts pad with LINES, not a Dummy;
                                 --  03q = the pin popup's row budget is MEASURED;
                                 --  03r = /dl unused: the wardrobe audit -- what is
-                                --  in a Mog Wardrobe that nothing asks for)
+                                --  in a Mog Wardrobe that nothing asks for;
+                                --  03s = ...and the lockstyle advice says the whole
+                                --  truth: move it anywhere, but keep owning it)
 addon.desc    = 'Gear sets, triggers and live stats with level scaling -- dlac equips your gear itself.';
 
 -- Load BEACON ('/dl check' field round, 2026-07-23): written by PLAIN io at

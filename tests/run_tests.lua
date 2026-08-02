@@ -8415,8 +8415,9 @@ end)();
 --
 --      The four rulings the sections pin (Henrik, 2026-08-03):
 --        1. a set NO rule points at is its own answer, never "unused"
---        2. a lockstyle-only piece is MOVEABLE (the server validates the item,
---           not the container -- 0x053_lockstyle.cpp, Set mode)
+--        2. a lockstyle-only piece is MOVEABLE: the render gate (charutils
+--           UpdateArmorStyle) needs HasItem -- which walks EVERY container --
+--           so where it sits is irrelevant, but owning it is not
 --        3. helper picks (MaxMP ladder, auto-staff, craft/HELM/fishing/chocobo,
 --           ammo lists, rod+bait, a job helper's pin) COUNT as use
 --        4. the name->value stat caches (autogear mp/rf/mv) do NOT
