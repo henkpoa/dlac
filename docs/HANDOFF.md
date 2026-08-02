@@ -294,15 +294,23 @@ infer it from a field confirmation, from *"works"*, or from your own read that s
 ready — his own note on the exchange was *"you are right not to assume otherwise since I
 haven't told you."* Ask when he has **not** said merge; never ask twice when he has.
 
-**IN THE QUEUE — NOT accepted.** `/dl report`'s three follow-up commits, `2026.08.03d`–`f`
-(`a64d1f4`, `ead3afa`, `df77475` — the last carries **engine v163**). Henrik has not said merge
-for these; the v1 promotion `ecb7f3a` covered `03a`–`03c` only. **PAUSED ON ONE THING: a
-`/dl report` captured across a LEVEL-UP**, which is the only condition that exercises the v163
-fix, and he is not levelling for a while (in-game events). Full resume instructions, the exact
-recipe, what should be gone vs what is correct-and-must-not-be-"fixed", and the proven/assumed
-split: **[design/report-handoff-2026-08-02.md](design/report-handoff-2026-08-02.md)**. Suites
-5938 + 1003 green both interpreters; the round is owed, not the work.
+**THE QUEUE IS EMPTY.**
 
+*(Emptied by the sixth 2026-08-02 promotion — **the pin menu**, `2026.08.03h`–`2026.08.03q`,
+plus everything else standing on `dev`. Henrik: *"can you properly document all this, merge and
+push to origin. Do note that other things will come with, which is 100 % known by me and OK"* —
+an accept under the 08-01 ruling, explicitly extended to the riders, so nothing was asked
+twice.*
+
+***What rode along, and its state, because "100% known and OK" is not the same as "verified".***
+*The **floating icon tray** (`03g` + `03i`, `ui/tray.lua`) is **built and green but was never
+run in game** — its owed check is one look at a box with Teleports and the crates both on
+screen. **`/dl report`'s three follow-ups** (`03d`–`03f`, carrying **engine v163**) were in this
+queue as NOT accepted, paused on a `/dl report` captured across a **LEVEL-UP** — the only
+condition that exercises the v163 fix. The promotion does not close that round: the work is on
+main, the verification is still owed, and the recipe survives in
+**[design/report-handoff-2026-08-02.md](design/report-handoff-2026-08-02.md)**. Do not read
+these onto main as field-proven.)*
 
 *(Emptied by the fifth 2026-08-02 promotion — **`/dl report`, the support recorder**,
 `2026.08.03a`–`2026.08.03c`, the dev train `d95371a` + `0c9d113` + `b06e361`. Henrik:
@@ -729,6 +737,45 @@ research already recorded. In rough priority order:
    section heading rather than each carrying one. Trivial to change if it reads wrong.
 
 ## Current state (as of 2026-08-02)
+
+- **2026-08-03 (`2026.08.03h`–`2026.08.03q`): THE PIN MENU — several pins per slot, and a
+  right-click window that holds still. **FIELD-CONFIRMED** by Henrik across ~six rounds of
+  screenshots and a final play test (*"I field verified it now, it works also"*). Suites
+  **5990** + **1089**. See `docs/architecture.md` → *Pins* for the design; this entry is the
+  reasoning that is not recoverable from the code.
+  - **Three asks** (Henrik, one message): offer only gear wearable *at that moment*; show
+    **icons**; allow **several pins on one slot** (Optical Hat on `TP_Default`, Walahra
+    Turban on `Movement`), with clearing by *this pin / this slot / everything*.
+  - **The engine tie-break was BORROWED, not invented.** An overlay is an equip table and a
+    slot wears one thing, so a dispatch where two pinned triggers both matched must pick.
+    `dispatch._pinRank` scores an entry by **the index of the last hit it names** — and
+    `hits` is already sorted ascending by priority and applied last-writer-wins (ADR 0003).
+    So the pin belonging to the trigger that would have won the slot anyway wins it, and
+    nothing new had to be decided about precedence. `'All'` scores 0, which is what makes an
+    All pin a *fallback* under its scoped siblings with no special case anywhere.
+  - **A one-pin slot still serializes byte-for-byte as before.** The list shape appears only
+    where a second pin exists, so the common case never touches the new path and an older
+    seeded engine copy reads the file unchanged.
+  - **Two outside placements for the stats panel were built and BOTH failed in the field**,
+    for reasons now in the file header so nobody re-tries them: a tooltip follows the cursor
+    and the cursor is on the menu; and **a plain `Begin()` window is always drawn under an
+    open popup**, whatever order it is created in. Henrik's call — *"have it integrated in
+    the right click window … that way it doesn't have to adapt as an outside window"* —
+    dissolved the problem instead of solving it.
+  - **That forced a rewrite, and it is the transferable lesson: you cannot MEASURE a card
+    without drawing it.** Reserving space for the tallest piece in a pool is impossible with
+    an opaque renderer, so the block builds its lines as **data first**. `renderItemTooltip`
+    briefly grew a `bare` flag for the outside panel and lost it again.
+  - **Four rounds of "the window still moves", each a different cause**, all worth knowing:
+    a size constraint whose min ≠ max is a *permission*, not a width (popups are
+    `AlwaysAutoResize`); padding with a `Dummy` adds one extra `ItemSpacing.y`, so the piece
+    with **fewer** rows rendered **taller**; a pinned piece is not necessarily a candidate,
+    so "all the pieces" is the pool **plus** the pins; and an estimated chrome height was two
+    lines short, which is a scrollbar for one row. Every one of them was found by Henrik
+    looking at it, not by a suite — see [[field-debug-artifacts-first]]'s cousin: **when the
+    thing you need is already on screen, read it, do not model it.**
+  - **Owed:** nothing known. The cascade's compact spelling, the scroll, the static sizing
+    and the multi-pin swap in play are all confirmed.
 
 - **2026-08-03 (`2026.08.03g` + `2026.08.03i`): THE FLOATING ICON TRAY — the Teleports button
   and the E-Box crates are ONE window (`ui/tray.lua`), stacked top to bottom. BUILT, suites

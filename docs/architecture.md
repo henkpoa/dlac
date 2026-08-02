@@ -374,6 +374,43 @@ half is `gearui`'s `avail.have`, the same function the Sets tab previews the eng
 refusal with. Three-valued there and here: only a definite `false` hides a row, because an
 empty bag scan means "not answered yet", not "you own nothing".
 
+#### The pin menu's geometry — one static popup (2026-08-03, field-confirmed)
+
+The menu carries item icons, and the hovered piece's **facts** (stats, DMG/Delay, what the
+piece takes away, augments, which bag it is in) as a block **inside the popup**, above the
+list. Inside is the whole design: nothing in a window can be covered by that window's own
+menus, so there is no side to choose and no z-order to lose. Two outside placements were
+built and both failed in the field — a tooltip follows the cursor and the cursor is on the
+menu, and **a plain `Begin()` window is always drawn under an open popup**, whatever order
+it is created in.
+
+The popup is **static per slot**: one width, one height, unchanged as the cursor moves.
+That needs four separate things, each of which was a round:
+
+| | how |
+|---|---|
+| Width | `popupWidth` — max over pinned rows, longest candidate NAME, and the widest line any piece would draw unwrapped. Then **pinned**: `min.x == max.x`, because a popup is `AlwaysAutoResize` and a max alone is a permission, not a width. |
+| Facts height | reserved for the pool's **tallest** piece, padded to it with empty text lines — *not* a `Dummy`, whose extra `ItemSpacing.y` made shorter pieces render taller. |
+| List rows | `_rowBudget` over the **measured** chrome (`GetCursorScreenPos` at the popup top and at the list start), not an estimate. Overflow is counted, never hidden: `+N more — type to narrow`. |
+| Ceilings | screen-aware — `GetIO().DisplaySize` × 0.55 wide, × 0.85 tall. |
+
+`factsLines` builds the block as **data before it is drawn** ( `{col, text}` ), which is
+forced rather than stylistic: you cannot measure a card without drawing it, so an opaque
+renderer like `renderItemTooltip` can never answer "how tall is the tallest of these
+thirty". Wrapping is **character-based**, because the count must be identical in the
+measuring pass and the drawing pass. The block is deliberately bounded — no set-bonus
+ladder, no partner list — since a card that can run twenty lines cannot have space reserved
+for it. The full card still lives on the 4×4 grid's own hover.
+
+The **cascade** names the set (`Midcast  -> Enfeebling_White`) rather than the conditions,
+and is height-capped so long trigger lists scroll. Compact only where it stays unambiguous:
+`floatgear.disambiguate` sends *both* rows back to the full spelling when two would read
+alike — a field job had two Default rules both reading `status = Idle`, differing only by
+the set they feed. The cap is a `SetNextWindowSizeConstraints` before `BeginMenu`, never a
+`BeginChild` (a child in the menu chain is what tore the popup down in July); an unconsumed
+constraint is neutralised after the loop, since next-window data otherwise lands on the next
+`Begin` anywhere — including another addon's.
+
 ### The Arbiter — claim registry (dispatch.lua + feature/arbwatch.lua, ADR 0012)
 The **single precedence authority** for gear that dresses over the Trigger overlay floor.
 Every feature that wants a slot registers a **Claim** with the Arbiter instead of equipping
