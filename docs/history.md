@@ -7830,3 +7830,96 @@ Suites **5652** then **5662**, both interpreters. Promoted the same session (`5c
 **never field-confirmed** — the round it owes is one glance, `/dl sends` after an Incursion
 stretch, and because it is a readout a wrong answer costs a re-read rather than gear.
 
+
+
+## Session "I meant the job" (2026-08-02, `2026.08.02c` + `2026.08.02d`)
+
+**Theme:** the ask named the wrong axis, and building it is what revealed which one he meant.
+
+*"Can you make a copy to... button by all the trigger rules? I know we have blue prints, but
+would be nice if that would open up a window where you can mark all or any of the dlac
+profiles you want to copy that trigger rule to."* Built exactly that. Then: *"All right, I am
+in the wrong here. What did we call the job profiles again? I don't mean the actual character
+profiles, I meant the job. I want to be able to copy the rule between the jobs."*
+
+The word he was reaching for is **Job entry** — one job's slice inside a Profile, the term
+CONTEXT.md coined precisely because "job profile" collides with both Profile and
+LuaAshitacast's own "profile". The vocabulary earned its keep here: with the term named, the
+misunderstanding closed in one sentence.
+
+**The correction cost one round, and the reason is worth keeping.** A trigger file is
+addressed by TWO coordinates -- `profiles\<Prof>\triggers\<JOB>.lua` -- and a copy varies one
+of them. The classifier ("what would landing this rule THERE do?"), the writer, the backup
+ladder and the receipt never cared WHICH: they take a (profile, job) pair. So the job axis was
+a second call site and an `order` argument, not a rewrite. **When a feature's core is written
+against the coordinate rather than against the surface, a wrong-axis ask is cheap to correct.**
+The window now carries both lists -- Jobs first (the ask), profiles below -- each with its own
+All, None and Copy, deliberately never sharing a button: one "copy everything ticked" control
+across two axes is a crossed-receipt bug waiting to be written.
+
+**Why this is not a Blueprint, stated properly this time.** A Blueprint stamps onto the ONE
+job you are standing in. Putting a rule on five jobs means five job changes. That is the gap,
+and it is structural rather than cosmetic -- which is also why the copy still travels AS a
+Blueprint entry internally (capture, detach, identical-rule, stamp, all pinned by TGB\*): the
+shared road is what guarantees a copied rule is byte-identical to a stamped one.
+
+**The one design ruling of the round is about the All button.** He asked for "one button to
+select all jobs" AND for "where it also checks if it has a similar rule already" -- and those
+two pull against each other, because All across 21 jobs is exactly where a silent duplicate
+would go unnoticed. So **All ticks only what does not already hold the rule**; a duplicate row
+stays tickable by hand, in gold, saying it adds a second. Warn-but-allow (the Blueprint
+double-stamp law) survives; warn-but-do-it-for-you does not.
+
+**Two guards on the destructive half**, both loud: a target whose trigger file does not parse
+is refused rather than serialized over, and a target whose timestamped safety backup cannot be
+written is refused too -- the profiles-deleter house rule, applied where it was newly earned.
+The receipt leads with the coordinate it varied, which a first draft got wrong: it hung the
+"(WHM Midcast)" tail off the *Copied to* clause, so a copy where EVERY destination failed
+named no axis at all -- exactly the moment "which list did I just fire?" matters (RC34b).
+
+Suites **5707** and **977**, both interpreters, plus a scratch end-to-end against real files
+on the job axis: a job entry with existing rules kept them (and its Modes and Groups) and
+gained the copy, an empty job got a file, the job being played was never written, and a second
+pass ticked only the two jobs that did not already have it.
+
+**Same session, two more passes.** He asked for a *setting* called "Include set if not
+present", then immediately narrowed it: *"This should be a mark in the actual copy window, not
+a setting under the settings menu."* That is the right line and worth having in writing --
+dlac's **Setting** is a preference about the CHARACTER (uiflags.lua, remembered, listed in
+Menu > Settings). This one is a property of the copy you are making right now, so it is a tick
+in the window and nothing is remembered. The distinction is not pedantry: a remembered switch
+would silently apply to a copy made a week later.
+
+It brings the rule's SET along when the destination job lacks it, through a new
+`setmanager.copySetText` -- a **verbatim block move**, which is the one design decision in it.
+Re-rendering the set through `renderSetLines` would round-trip every entry through the WRITER's
+vocabulary, so an entry shape it does not know (or a comment the player wrote inside the block)
+would be quietly rewritten on the way. A copy must move what is actually there. It refuses a
+name the destination already holds -- "if not present" is the whole contract -- and sets follow
+only a rule that actually LANDED, because bringing gear to a job whose trigger file we just
+refused to touch would leave a set for a rule that is not there. A set that could not follow is
+named in the receipt: a rule reported as copied while the set it points at stayed behind is the
+exact dud the tick exists to prevent.
+
+And: *"Please remove all the text above the job list, it's bloating."* Gone -- title, subtitle,
+the rule's canonical text, the uncommitted-edits banner. The window now opens straight onto the
+job ticks. He clicked a button on a specific rule; he knows which rule it is and what a job
+list is for. What survives above the list is the error line, which only exists when something
+is actually wrong. This is the **panel-text standard** applied late rather than early: label
+the control, explain on hover, never paragraph at the player -- and the honest lesson is that
+the paragraphs went in because writing them felt like being thorough.
+
+Suites **5723** and **981**, both interpreters, and the scratch end-to-end re-run with sets: a
+destination job that had its own sets file gained the set beside its existing ones (comment and
+`{ gear = ..., minLevel = 30 }` shape intact, backup taken), a job with no sets file at all got
+one, and the source job was never touched.
+
+**Field round, same session.** *"Tested it out, document, commit, merge, push to origin main"*
+-- so the whole train (`2026.08.02b`–`d`) went to main **field-confirmed**, which the two 08-02
+promotions before it were not. Two things stay honestly uncovered by that pass and are recorded
+rather than quietly folded in: the refusal paths (a destination trigger file that will not
+parse; a safety backup that cannot be written) cannot be produced in a normal session, so they
+remain suite-only -- and they are precisely what makes the destructive half safe; and the
+PROFILE axis, which he never asked for and which survives only because it was already built and
+costs one separated list. If it is still unused a week from now, delete it: an axis nobody uses
+is a second thing to keep correct.

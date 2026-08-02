@@ -290,7 +290,20 @@ haven't told you."* Ask when he has **not** said merge; never ask twice when he 
 **The queue is empty.**
 
 
-*(Still empty after the second 2026-08-02 promotion, `850e6d5` — **`/dl sends` bills dlac
+*(Emptied by the third 2026-08-02 promotion — **"copy to…", the per-rule copy across job
+entries**, `2026.08.02b`–`2026.08.02d`, the dev train `13dbf16` + `7f82d57` + `a55049b`.
+Henrik: *"Tested it out, document, commit, merge, push to origin main"* — an accept under the
+08-01 ruling, so nothing was asked twice, and the first of the three 08-02 promotions that is
+**FIELD-CONFIRMED** rather than suites-only. It never sat in this queue for long: built,
+corrected twice on his word and promoted inside one session. The correction is the part worth
+carrying forward — he asked for the copy across **profiles**, then came back with *"I am in the
+wrong here… I meant the job"*, and the job axis cost one round only because the core was written
+against the (profile, job) COORDINATE rather than against either surface. What his pass does NOT
+cover, and nothing pretends otherwise: the two refusal paths (a torn destination file, a safety
+backup that cannot be written) are suite-only by nature — you cannot exercise them in a normal
+session — and the profile axis, which he did not ask for and may yet want gone.)*
+
+*(Emptied before that by the second 2026-08-02 promotion, `850e6d5` — **`/dl sends` bills dlac
 only for what dlac added**, `2026.08.02a`. Henrik: *"document, merge and push"*. It corrects
 the readout promoted hours earlier the same day: a re-injected `0x01A`/`0x037` is the
 player's own packet, and lumping it into one total billed dlac for how much he acted. Worth
@@ -662,6 +675,60 @@ research already recorded. In rough priority order:
    section heading rather than each carrying one. Trivial to change if it reads wrong.
 
 ## Current state (as of 2026-08-02)
+
+- **2026-08-02 (`2026.08.02b`–`2026.08.02d`): "copy to…" — ONE TRIGGER, LANDED IN THE JOB
+  ENTRIES YOU TICK. BUILT, **FIELD-CONFIRMED** (Henrik, *"Tested it out"*) and **ON MAIN**
+  (promoted the same session), suites green both interpreters. **What the pass could not
+  cover:** the two refusal paths — a destination trigger file that does not parse, and a
+  safety backup that cannot be written — are suite-only by nature; neither can be produced in
+  a normal session, and both are the reason the destructive half is safe, so they are named
+  here rather than counted as confirmed.
+  - **Where it came from, including the correction.** Henrik asked for *"a copy to... button
+    by all the trigger rules"* and named **profiles**; the profile version shipped, and he
+    came straight back: *"I am in the wrong here. What did we call the job profiles again? I
+    don't mean the actual character profiles, I meant the job."* The vocabulary he was
+    reaching for is **Job entry** (CONTEXT.md). Worth keeping as a pattern: the ask named the
+    wrong axis, and building it revealed which one he meant — the correction cost one round
+    because the machinery was axis-agnostic underneath.
+  - **What it is:** a `copy to...` button on every trigger row, opening a window with **two**
+    tick-lists — **Jobs (this profile)** first, the ask, and **Other profiles (same job)**
+    below, each with its own All, None and Copy button. A trigger file is addressed by
+    (profile, job); a copy varies one coordinate, so both lists are the same question and
+    share one classifier and one writer.
+  - **Why it is not a Blueprint.** A Blueprint stamps onto the ONE job you are standing in.
+    Reaching five jobs with it costs five job changes; here you tick them. It still travels
+    **as a Blueprint entry** internally — capture, detach, identical-rule detection and the
+    stamp transform are `blueprintsmodel`'s and already pinned (TGB\*) — which is what
+    guarantees a copied rule is byte-identical to a stamped one, instead of a third
+    hand-rolled emitter drifting from `dispatch.serializeTriggers`.
+  - **Every row says what will happen before the click**, and every outcome is named after
+    it: `create` (no rules for that job yet — the job worth seeding), `dup` (identical rule
+    already there — warn-but-allow, gold), `add`, and a torn target file **refused, never
+    overwritten**. Where the rule already lives is shown dim and untickable.
+  - **All ticks only the non-duplicates** (`rulecopy.allNames`). He asked for the duplicate
+    check by name, so the bulk button must not spend it: one click across 21 jobs is exactly
+    where a silent double would go unnoticed. A duplicate stays reachable by hand.
+  - **"Include the set if it isn't there"** (a tick in the window, default on — *"not a
+    setting under the settings menu"*: it belongs to the copy you are making, not to the
+    character). Any set the rule NAMES that the destination lacks is carried across by
+    `setmanager.copySetText` — **verbatim** (re-rendering would round-trip every entry through
+    the writer's vocabulary and quietly rewrite a shape it does not know, or a comment the
+    player wrote inside the block) and **never over an existing name**. Sets follow only a rule
+    that actually LANDED, and a set that could not follow is named in the receipt: a rule
+    reported as copied while its set stayed behind is the exact dud this prevents.
+  - **The window opens straight onto the job list.** Title, subtitle, rule text and the
+    uncommitted-edits banner are gone — Henrik: *"Please remove all the text above the job
+    list, it's bloating."* Only the error line can appear above the list, and it only exists
+    when something is wrong; the explaining lives in hovers (the panel-text standard).
+  - **The write ladder** (triggersui, not the pure core): re-read each target at write time
+    (the rows are a snapshot and both Lua states plus a parallel session share the disk),
+    timestamped backup into `<char>\backups\rule-copy\` — **and a backup that cannot be
+    written refuses the overwrite**, the profiles-deleter house rule — then
+    `lib/safewrite.replaceLua` and a read-back verify. Nothing hot-reloads because the live
+    job entry is never a target; the copies are there on the next job change.
+  - `gear/rulecopy.lua` (RC1–36 pure), `M.renderTrigCopyPopup` / `M._cpOpen` exposed as
+    render seams so smoke_ui CP1–33 drives the whole window on both axes, including both
+    failed-write paths and the pin that a refused target is left byte-identical.
 
 - **2026-08-02 (`2026.08.02`): `/dl sends` — WHAT DLAC PUT ON THE WIRE. BUILT and **ON MAIN**
   (`28ab08d`, promoted same session), suites green both platforms, **NOT field-confirmed — a

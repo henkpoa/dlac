@@ -2813,6 +2813,221 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- CP. "copy this rule to..." -- the per-rule copy window (Henrik 2026-08-02). Its
+--     pure core is pinned headless (run_tests RC*); what only a RENDER can catch
+--     is what the craftbar lesson is about -- the popup BODY runs only while the
+--     window is open, so an undefined name in there stays a silent nil global
+--     until a player clicks the button.
+--
+--     BOTH axes are driven, because they share one classifier and one writer and
+--     the crossing of them is the bug worth pinning: the JOBS list (other jobs of
+--     this profile -- the ask) and the PROFILES list (the same job elsewhere).
+--     Every row shape renders (source / create / add / unreadable), All ticks each
+--     list separately, and the two Copy buttons run the whole write path.
+--
+--     The writes are aimed at a directory that does not exist and at a file that
+--     cannot be backed up, ON PURPOSE: each destination must be reported by NAME
+--     rather than throw or lie, the refused one must be left byte-identical, and
+--     the suite must not litter the tree with files.
+-- ---------------------------------------------------------------------------
+;(function()
+    local depth = { popup = 0, col = 0, win = 0, child = 0 };
+    local CLICK, REC = nil, {};
+    local function nop() end
+    local function saw(text)
+        for _, t in ipairs(REC) do if t:find(text, 1, true) ~= nil then return true; end end
+        return false;
+    end
+    local function idxOf(text)
+        for i, t in ipairs(REC) do if t:find(text, 1, true) ~= nil then return i; end end
+        return math.huge;
+    end
+    local IM = setmetatable({}, { __index = function() return nop; end });
+    IM.BeginPopup = function(id)
+        if tostring(id) == '##dlac_trigcopy' then depth.popup = depth.popup + 1; return true; end
+        return false;
+    end
+    IM.EndPopup       = function() depth.popup = depth.popup - 1; end
+    IM.PushStyleColor = function() depth.col = depth.col + 1; end
+    IM.PopStyleColor  = function(n) depth.col = depth.col - (tonumber(n) or 1); end
+    IM.Begin          = function() depth.win = depth.win + 1; return true; end
+    IM['End']         = function() depth.win = depth.win - 1; end
+    IM.BeginChild     = function() depth.child = depth.child + 1; return true; end
+    IM.EndChild       = function() depth.child = depth.child - 1; end
+    IM.Button      = function(l) REC[#REC + 1] = tostring(l); return tostring(l) == CLICK; end
+    IM.SmallButton = function(l) REC[#REC + 1] = tostring(l); return tostring(l) == CLICK; end
+    IM.Checkbox    = function(l, b)
+        REC[#REC + 1] = tostring(l);
+        if tostring(l) == CLICK then b[1] = not b[1]; return true; end
+        return false;
+    end
+    IM.Text          = function(t) REC[#REC + 1] = tostring(t); end
+    IM.TextColored   = function(_, t) REC[#REC + 1] = tostring(t); end
+    IM.IsItemHovered = function() return false; end
+    IM.InputText     = function() return false; end
+    IM.GetContentRegionAvail = function() return 700, 400; end
+    IM.CalcTextSize  = function() return 60, 14; end
+
+    -- A real, parseable trigger file standing in for a destination that already HAS one
+    -- -- the destructive case, reached on BOTH axes (job BLM of this profile, and the
+    -- 'Held' profile at this job). It lives in the OS temp dir (never the repo tree) and
+    -- is removed at the end; charRoot is nil below, so no safety backup can be written
+    -- and the copy must refuse BEFORE touching it. Its bytes are compared afterwards.
+    local HELD = ((os.getenv('TEMP') or os.getenv('TMPDIR') or '/tmp'):gsub('\\', '/'))
+        .. '/dlac-cp-smoke-held.lua';
+    local HELDTEXT = 'return { Midcast = { { when = { name = "Cure III" }, set = "OldSet" } } };\n';
+    do
+        local fh = io.open(HELD, 'w');
+        if fh ~= nil then fh:write(HELDTEXT); fh:close(); end
+    end
+
+    -- The one destination that really lands (a trigger file dlac may create), so the
+    -- set half runs at all -- sets only follow a rule that actually arrived.
+    local TRIG = ((os.getenv('TEMP') or os.getenv('TMPDIR') or '/tmp'):gsub('\\', '/'))
+        .. '/dlac-cp-smoke-rdm.lua';
+    os.remove(TRIG);
+
+    -- The source job's sets file, holding the set the copied rule names -- the
+    -- "Include the set if it isn't there" half reads it and carries the block along.
+    local SETS = ((os.getenv('TEMP') or os.getenv('TMPDIR') or '/tmp'):gsub('\\', '/'))
+        .. '/dlac-cp-smoke-sets.lua';
+    do
+        local fh = io.open(SETS, 'w');
+        if fh ~= nil then
+            fh:write('local sets = {\n    Dynamic = {\n        CureSet = {\n'
+                .. '            Head = {\n                gear.Head.X,\n            },\n        },\n    },\n};\nreturn sets;\n');
+            fh:close();
+        end
+    end
+
+    -- Four jobs (WHM is the one being played) and four profiles (Default is active):
+    -- between them every row shape appears on both axes.
+    local FAKEPROF = {
+        JOBS          = { 'WAR', 'WHM', 'BLM', 'RDM' },
+        sanitizeName  = function(n) return n; end,
+        listProfiles  = function() return { 'Default', 'Fresh', 'Broken', 'Held' }; end,
+        activeName    = function() return 'Default'; end,
+        storageExists = function() return false; end,
+        charRoot      = function() return nil; end,        -- -> no backup is possible
+        frameSetsText = function() return 'local sets = {\n    Dynamic = {\n    },\n};\nreturn sets;\n'; end,
+        triggersPath  = function(job, name)
+            if name == 'Broken' then return nil; end                 -- unresolvable -> refused row
+            if name == 'Held' or (name == 'Default' and job == 'BLM') then return HELD; end
+            -- ONE destination that really lands, so the set half runs at all: sets
+            -- only follow a rule that actually arrived.
+            if name == 'Default' and job == 'RDM' then return TRIG; end
+            return 'tests/no-such-dir/' .. tostring(name) .. '-' .. tostring(job) .. '.lua';
+        end,
+        -- The job being played reads its real sets file; every destination's is
+        -- aimed at a directory that does not exist, so the set copy REPORTS rather
+        -- than writes (and the suite litters nothing).
+        setsPath      = function(job, name)
+            if name == 'Default' and job == 'WHM' then return SETS; end
+            return 'tests/no-such-dir/sets-' .. tostring(name) .. '-' .. tostring(job) .. '.lua';
+        end,
+    };
+
+    local NAMES = { 'dlac\\ui\\triggersui', 'dlac\\profiles', 'imgui' };
+    local saved = {};
+    for _, k in ipairs(NAMES) do saved[k] = package.loaded[k]; end
+    package.loaded['imgui'] = IM;
+    package.loaded['dlac\\profiles'] = FAKEPROF;
+    package.loaded['dlac\\ui\\triggersui'] = nil;
+    local ok, tg = pcall(require, 'dlac\\ui\\triggersui');
+    check('CP1 triggersui re-requires against a stub imgui', ok and type(tg), 'table');
+    if ok then
+        check('CP2 the copy window is exposed',  type(tg.renderTrigCopyPopup), 'function');
+        check('CP3 the capture entry point is exposed', type(tg._cpOpen), 'function');
+
+        -- Unconfigured (no deps -> no job): it must REPORT, never throw, and the
+        -- window must still render its own error rather than an empty box.
+        check('CP4 capture never throws unconfigured', pcall(tg._cpOpen, 'Midcast', { when = { name = 'Cure IV' }, set = 'CureSet' }), true);
+        REC = {};
+        check('CP5 the window renders the unconfigured error', pcall(tg.renderTrigCopyPopup), true);
+        check('CP6 ...and says why', saw('not logged in'), true);
+
+        -- Configured: deps give it a job, the stub profiles module gives it both axes.
+        tg.init({ dataDir = function() return 'tests/no-such-dir/'; end,
+                  jobFile = function() return 'tests/no-such-dir/WHM.lua', 'WHM'; end });
+        check('CP7 capture with a job, jobs and profiles', pcall(tg._cpOpen, 'Midcast', { when = { name = 'Cure IV' }, set = 'CureSet' }), true);
+        REC = {};
+        check('CP8 the window renders both lists', pcall(tg.renderTrigCopyPopup), true);
+        -- The JOB axis (the ask). The FIRST thing drawn is a job row -- there is no
+        -- title, subtitle or rule text above the list any more.
+        check('CP9 the window opens straight onto the job list', REC[1], 'WAR##trgcpm_jobs_WAR');
+        check('CP10 jobs are listed in the game\'s job order, not alphabetically',
+            (idxOf('WAR##') < idxOf('BLM##')) and (idxOf('BLM##') < idxOf('RDM##')), true);
+        check('CP11 the job you are on is shown, not offered', saw('the job you are on -- the rule lives here'), true);
+        check('CP12 another job is a tickable target', saw('RDM##trgcpm_jobs_RDM'), true);
+        check('CP13 a job with no rules yet says a file is created', saw('no rules for this job yet'), true);
+        check('CP14 one button ticks every job', saw('All jobs##trgcpall_jobs'), true);
+        -- The PROFILE axis, still there, its own everything.
+        check('CP15 the profiles list is its own section', saw('Other profiles (same job)'), true);
+        check('CP16 the active profile is shown, not offered', saw('this profile -- the rule lives here'), true);
+        check('CP17 a profile is a tickable target', saw('Fresh##trgcpm_profiles_Fresh'), true);
+        check('CP18 an unresolvable destination is refused, never overwritten', saw('never overwritten'), true);
+        check('CP19 nothing ticked -> a nudge per list, no Copy button',
+            saw('Tick the jobs to copy into.') and saw('Tick the profiles to copy into.'), true);
+        -- The window opens STRAIGHT onto the list: no title, no subtitle, no rule
+        -- text above it ("Please remove all the text above the job list").
+        check('CP19a no header text above the job list',
+            saw('Copy this rule to...') or saw('it lands in the same job entry')
+            or saw('when = { name = "Cure IV" }'), false);
+        check('CP19b the include-the-set tick is in the window itself',
+            saw('Include the set if it isn\'t there##trgcpsets'), true);
+
+        -- All jobs ticks the job rows ONLY -- the two lists never cross.
+        CLICK = 'All jobs##trgcpall_jobs';
+        check('CP20 the All-jobs tick renders', pcall(tg.renderTrigCopyPopup), true);
+        CLICK = nil; REC = {};
+        check('CP21 renders with ticked jobs', pcall(tg.renderTrigCopyPopup), true);
+        check('CP22 the jobs button counts its own ticks', saw('Copy to 3 jobs##trgcpgo_jobs'), true);
+        check('CP23 ...and the profiles list stayed untouched', saw('Tick the profiles to copy into.'), true);
+
+        -- The write path, end to end, on the job axis. Every destination must FAIL for
+        -- its own reason and be NAMED (the receipt law) instead of thrown or hidden:
+        -- WAR/RDM have no directory, BLM has a file that cannot be backed up.
+        CLICK = 'Copy to 3 jobs##trgcpgo_jobs'; REC = {};
+        check('CP24 the copy click runs the write path', pcall(tg.renderTrigCopyPopup), true);
+        CLICK = nil; REC = {};
+        check('CP25 renders the receipt', pcall(tg.renderTrigCopyPopup), true);
+        check('CP26 a job that could not be written is named', saw('WAR (could not write'), true);
+        check('CP27 ...and so is the one that could not be backed up',
+            saw('BLM (could not write the safety backup'), true);
+        check('CP28 the receipt names the axis it varied', saw('Midcast rules, profile Default'), true);
+        check('CP28a the job that landed is named as copied', saw('Copied to RDM.'), true);
+        -- The set half ran BECAUSE that one landed, and could not write its own
+        -- destination -- which the receipt must say, or the rule reads as fully
+        -- copied while pointing at a set that never followed it.
+        check('CP28b a set that could not follow is named', saw('Sets NOT brought: CureSet -> RDM'), true);
+        -- THE destructive-half guarantee: the refusal happens BEFORE the file is touched.
+        local after = nil;
+        do
+            local fh = io.open(HELD, 'r');
+            if fh ~= nil then after = fh:read('*a'); fh:close(); end
+        end
+        check('CP29 a target with no safety backup is left byte-identical', after, HELDTEXT);
+
+        -- The other axis writes through the same door: tick and fire the profile list.
+        CLICK = 'All profiles##trgcpall_profiles'; tg.renderTrigCopyPopup();
+        CLICK = nil; REC = {};
+        tg.renderTrigCopyPopup();
+        check('CP30 the profiles button counts its own ticks', saw('Copy to 2 profiles##trgcpgo_profiles'), true);
+        CLICK = 'Copy to 2 profiles##trgcpgo_profiles'; REC = {};
+        check('CP31 the profile copy runs too', pcall(tg.renderTrigCopyPopup), true);
+        CLICK = nil; REC = {};
+        tg.renderTrigCopyPopup();
+        check('CP32 its receipt names the other axis', saw('WHM Midcast'), true);
+        check('CP33 stacks stay balanced through the whole window',
+            depth.popup + depth.col + depth.win + depth.child, 0);
+    end
+    os.remove(HELD); os.remove(SETS); os.remove(TRIG);
+
+    for _, k in ipairs(NAMES) do package.loaded[k] = saved[k]; end
+    package.loaded['imgui'] = nil;
+end)();
+
+-- ---------------------------------------------------------------------------
 -- Trigger rule builder: the & leg never eats a value in silence.
 --
 -- Field case (Henrik, 2026-07-25): Item rule -> name = test [+ &] -> name =

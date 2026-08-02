@@ -291,6 +291,36 @@ section, further down the Triggers tab). From there:</p>
 a set the target job doesn't have simply warns until you create (or import) a set with
 that name — nothing breaks.</div>
 
+<h3>copy to… — the same rule on your other jobs</h3>
+<p>A Blueprint stamps onto the <i>one</i> job you happen to be standing in, so putting a rule
+on five jobs means five job changes. <b>copy to…</b> is the button that skips all of that: it
+sits on every rule's row and opens a window with a tick box per <b>job</b> — tick the ones you
+want (or <b>All jobs</b>, one click) and the rule lands in the same event of each. Below the
+jobs, the same window offers your other <b>profiles</b> at the current job, with its own All
+and its own Copy button; the two lists never mix.</p>
+<p>Every row tells you what will happen before you click:</p>
+<ul>
+  <li>a job with no rules yet says a trigger file will be created — that's the job worth
+      seeding, not a warning;</li>
+  <li>a job that already holds an identical rule is flagged in gold. <b>All jobs</b> leaves
+      those unticked on purpose, so one click can never quietly double a rule across your
+      whole roster; tick it by hand if you really do want a second copy;</li>
+  <li>the job you're on is listed but can't be ticked — it already has the rule, which is the
+      whole reason you're copying;</li>
+  <li>a destination whose trigger file is damaged is refused rather than overwritten.</li>
+</ul>
+<p><b>Include the set if it isn't there</b> (ticked by default, at the bottom of the window)
+brings the rule's set along: any set the rule names that the destination job doesn't have is
+copied across exactly as you wrote it — otherwise the rule arrives and equips nothing. A set of
+that name already on the target job is never touched. Modes and groups don't travel either way;
+a rule that names one you lack reads <span class="mode">[missing]</span> there, exactly as a
+stamped Blueprint does.</p>
+<p>Nothing about the job you're playing changes and nothing needs reloading: the copies are
+simply there the next time you change job. Each file that gets overwritten is backed up first,
+timestamped, under <code>backups\rule-copy\</code> — and if that backup can't be written, the
+copy refuses rather than risk the file. Afterwards you get one line naming every destination:
+copied, already-had-it, or failed and why — including any set that couldn't follow.</p>
+
 <h2 id="modes">5. Modes — one set, several behaviours</h2>
 <p>Modes are named switches <i>you</i> flip; sets and rules can react to them. They come in
 two kinds:</p>

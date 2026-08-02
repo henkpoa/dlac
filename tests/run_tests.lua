@@ -226,7 +226,7 @@ end)();
                  'restockui','setupui','triggersui','uihost','uistyle','weightsui' };
     local GEAR = { 'acimport','actionpicker','arbiter','blueprintsmodel','catalogindex','gearcheck','geareffects','gearexport',
                    'gearfmt','gearimport','gearoptim','gearoracle','gearrecord','groupimport','groupscan',
-                   'groupsmodel','jobgate','modeslibrary','ownedcache','profileexport','profilesets','setimport',
+                   'groupsmodel','jobgate','modeslibrary','ownedcache','profileexport','profilesets','rulecopy','setimport',
                    'setmanager','syncflags','triggermodel','weaponfilter','weightimport' };
     local FEATURE = { 'actionseq','ammowatch','arbwatch','augments','check','chocowatch','combat','craftwatch','debug','digcalc','digrank',
                       'eboxclient','eboxtrace','engagewatch','fishcalc','fishwatch','foodwatch','gamehud','gamemode','helmwatch','idleexcl','jobhelpers','location','lockstyle','lookpreview',
@@ -4903,6 +4903,164 @@ end)();
     -- previewImport surfaces the same parse error (nil + message), never a crash.
     local nilPrev, nilErr = bp.previewImport('return function() end', emptyLib);
     check('TGB57 preview surfaces a bad blob as an error', nilPrev == nil and type(nilErr), 'string');
+end)();
+
+-- ---------------------------------------------------------------------------
+-- RC. rulecopy -- "copy this rule to..." (Henrik 2026-08-02): one Trigger landed
+--     in the JOB ENTRIES you tick. A trigger file is addressed by (profile, job),
+--     so a copy varies one coordinate -- other JOBS of this profile (the ask), or
+--     the same job in other PROFILES -- and ONE classifier answers both, which is
+--     what these checks drive on both axes. It travels AS a Blueprint entry on
+--     purpose (capture / detach / identical-rule / stamp are blueprintsmodel's,
+--     pinned by TGB*). What is pinned here is the part that is new: the ANSWER
+--     PER TARGET -- source vs create vs dup vs add vs unreadable -- the display
+--     order, the ticked-selection count, and the receipt, which must NAME every
+--     outcome (a copy that silently skipped a job reads as one that worked
+--     everywhere, and the player would not find out until they changed job).
+-- ---------------------------------------------------------------------------
+(function()
+    package.loaded['dlac\\gear\\blueprintsmodel'] =
+        package.loaded['dlac\\gear\\blueprintsmodel'] or dofile('gear/blueprintsmodel.lua');
+    local rc = dofile('gear/rulecopy.lua');
+
+    check('RC1 usable with the Blueprint core present', rc.usable(), true);
+
+    -- Capture: the SAME entry shape a Blueprint carries, detached at capture.
+    local live = { when = { name = 'Cure IV' }, set = 'CureSet', priority = 40 };
+    local entry, eerr = rc.entryFor('Midcast', live);
+    check('RC2 capture returns an entry', eerr == nil and type(entry), 'table');
+    check('RC3 capture carries the handler', entry.handler, 'Midcast');
+    live.set = 'Mutated';   -- mutate the SOURCE after capture
+    check('RC4 the captured rule is detached', entry.rule.set, 'CureSet');
+    check('RC5 a rule with no action is refused', (rc.entryFor('Midcast', { when = { name = 'X' } })), nil);
+    check('RC6 an unknown handler is refused',   (rc.entryFor('Nope', { when = { name = 'X' }, set = 'S' })), nil);
+
+    -- The sets a rule names -- what "Include the set if it isn't there" carries along.
+    check('RC7a a single-set rule names one', table.concat(rc.setNames(entry), ','), 'CureSet');
+    local multi = rc.entryFor('Midcast', { when = { name = 'X' }, set = { 'Base', 'Overlay', 'Base' } });
+    check('RC7b a multi-set rule names them in order, deduped',
+        table.concat(rc.setNames(multi), ','), 'Base,Overlay');
+    local inline = rc.entryFor('Midcast', { when = { name = 'X' }, equip = { Ear1 = 'Toxic Earring' } });
+    check('RC7c an inline-equip rule names none -- the tick is a no-op, not an error',
+        #rc.setNames(inline), 0);
+
+    -- Per-target verdicts. `data = nil` + no err = no trigger file there yet.
+    local hasIt  = { Midcast = { { when = { name = 'Cure IV' }, set = 'CureSet', priority = 40 } } };
+    local hasOther = { Midcast = { { when = { name = 'Cure III' }, set = 'CureSet' } } };
+    local rows = rc.rows(entry, {
+        { name = 'Solo',    data = hasOther },
+        { name = 'Default', source = true },
+        { name = 'Zephyr',  data = nil },
+        { name = 'Torn',    err = 'does not parse: unexpected symbol' },
+        { name = 'Party',   data = hasIt },
+    });
+    check('RC8 every target gets a row', #rows, 5);
+    check('RC9 rows are sorted by name', rows[1].name .. ',' .. rows[5].name, 'Default,Zephyr');
+    local st, byName = {}, {};
+    for _, r in ipairs(rows) do st[r.name] = r.state; byName[r.name] = r; end
+    check('RC10 where the rule lives is never a target', st.Default, 'source');
+    check('RC11 an ordinary target adds',              st.Solo,    'add');
+    check('RC12 no file yet -> create',                st.Zephyr,  'create');
+    check('RC13 an identical rule -> dup',             st.Party,   'dup');
+    check('RC14 a torn file -> unreadable',            st.Torn,    'unreadable');
+    check('RC15 the torn file keeps its reason', type(byName.Torn.err), 'string');
+
+    -- The SAME classifier serves the job axis (the ask): the job you are on is the
+    -- source, a job with no rules yet is a create, and the rows come back in the
+    -- GAME's job order rather than alphabetically.
+    local ORDER = { WAR = 1, MNK = 2, WHM = 3, BLM = 4, RDM = 5 };
+    local jrows = rc.rows(entry, {
+        { name = 'RDM', data = hasOther },
+        { name = 'WHM', source = true },
+        { name = 'BLM', data = hasIt },
+        { name = 'WAR', data = nil },
+    }, ORDER);
+    local jseq, jst = {}, {};
+    for _, r in ipairs(jrows) do jseq[#jseq + 1] = r.name; jst[r.name] = r.state; end
+    check('RC15a jobs come back in job order, not alphabetical', table.concat(jseq, ','), 'WAR,WHM,BLM,RDM');
+    check('RC15b the job you are on is the source',   jst.WHM, 'source');
+    check('RC15c a job with no rules yet is a create', jst.WAR, 'create');
+    check('RC15d a job already holding it is a dup',   jst.BLM, 'dup');
+    -- Anything the order does not name still sorts, after the known ones, by name.
+    local mixed = rc.rows(entry, { { name = 'Zed', data = hasOther }, { name = 'Abe', data = hasOther },
+                                   { name = 'WAR', data = hasOther } }, ORDER);
+    check('RC15e unranked names sort after the ranked ones, by name',
+        mixed[1].name .. ',' .. mixed[2].name .. ',' .. mixed[3].name, 'WAR,Abe,Zed');
+
+    -- Only the three copyable states may ever be written to.
+    check('RC16 add/create/dup are copyable',
+        rc.copyable('add') and rc.copyable('create') and rc.copyable('dup'), true);
+    check('RC17 source is not copyable',     rc.copyable('source'), false);
+    check('RC18 unreadable is not copyable', rc.copyable('unreadable'), false);
+
+    -- What "All" ticks: everything writable EXCEPT what already holds the rule. The
+    -- duplicate check is the point of the feature; a bulk button that spends it would
+    -- silently double a rule across 21 jobs on one click.
+    local all = rc.allNames(rows);
+    table.sort(all);
+    check('RC18a All ticks the writable non-duplicates only', table.concat(all, ','), 'Solo,Zephyr');
+    check('RC18b All ticks nothing when every row is a duplicate or refused',
+        #rc.allNames({ { name = 'A', state = 'dup' }, { name = 'B', state = 'source' },
+                       { name = 'C', state = 'unreadable' } }), 0);
+
+    -- The ticked selection: how many will be written, and how many of those double up.
+    local n0 = rc.selection(rows, {});
+    check('RC19 nothing ticked -> nothing to write', n0, 0);
+    local n1, d1 = rc.selection(rows, { Solo = true, Zephyr = true });
+    check('RC20 two ordinary targets ticked', n1, 2);
+    check('RC21 ...none of them a duplicate', d1, 0);
+    local n2, d2 = rc.selection(rows, { Solo = true, Party = true, Default = true, Torn = true });
+    check('RC22 un-copyable ticks are ignored', n2, 2);
+    check('RC23 the duplicate is counted and shown', d2, 1);
+
+    -- The transform: non-mutating, and a nil target (no file) starts a job entry.
+    local before = { Default = { { when = { status = 'Idle' }, set = 'Idle' } } };
+    local after = rc.applyTo(entry, before);
+    check('RC24 the rule lands in its handler',      #after.Midcast, 1);
+    check('RC25 other handlers survive',              after.Default[1].set, 'Idle');
+    check('RC26 the target data is not mutated',      before.Midcast, nil);
+    check('RC27 a missing file becomes a job entry',  #(rc.applyTo(entry, nil).Midcast), 1);
+    check('RC28 the copy is identical afterwards',    rc.holdsIdentical(entry, after), true);
+    check('RC29 ...and was not before',               rc.holdsIdentical(entry, before), false);
+
+    -- The receipt names EVERY outcome, and carries whichever coordinate was varied.
+    local okText, okErr = rc.receipt({ { name = 'BLM', ok = true }, { name = 'RDM', ok = true } },
+        'Midcast rules, profile Default');
+    check('RC30 plain copy names the destinations', okText, 'Midcast rules, profile Default: Copied to BLM, RDM.');
+    check('RC31 ...and is not an error', okErr, false);
+    local mixText, mixErr = rc.receipt({
+        { name = 'Solo',  ok = true },
+        { name = 'Party', ok = true, dup = true },
+        { name = 'Alt',   ok = false, err = 'could not write' },
+    }, 'WHM Midcast');
+    check('RC32 duplicates are called out', mixText:find('1 already had an identical rule -- copied anyway: Party.', 1, true) ~= nil, true);
+    check('RC33 failures are named with their reason', mixText:find('FAILED: Alt (could not write).', 1, true) ~= nil, true);
+    check('RC34 a failure makes the receipt an error', mixErr, true);
+    check('RC34a the receipt says which axis it varied', mixText:find('WHM Midcast: ', 1, true) ~= nil, true);
+    -- ...even when NOTHING landed: an all-failed copy is exactly when "which list did
+    -- I just fire?" matters, and the coordinate used to ride the Copied-to clause only.
+    local allBad = rc.receipt({ { name = 'WAR', ok = false, err = 'no dir' } }, 'Midcast rules, profile Default');
+    check('RC34b an all-failed copy still names the axis',
+        allBad:find('Midcast rules, profile Default: FAILED: WAR (no dir).', 1, true) ~= nil, true);
+    local noneText, noneErr = rc.receipt({}, 'WHM Midcast');
+    check('RC35 an empty copy says so', noneText:find('Nothing copied', 1, true) ~= nil, true);
+    check('RC36 ...as an error', noneErr, true);
+
+    -- Sets brought along are counted, and any that could NOT be are named: a rule
+    -- reported as copied while the set it points at silently stayed behind is the
+    -- exact dud the option exists to prevent.
+    local setText, setErr = rc.receipt({
+        { name = 'BLM', ok = true, setsOk = 1 },
+        { name = 'RDM', ok = true, setsOk = 1 },
+    }, 'Midcast rules, profile Default');
+    check('RC37 sets brought are counted', setText:find('Brought 2 missing sets along.', 1, true) ~= nil, true);
+    check('RC38 ...and that alone is not an error', setErr, false);
+    local badSet, badSetErr = rc.receipt({
+        { name = 'BLM', ok = true, setsOk = 0, setsBad = { 'CureSet -> BLM (no sets path)' } },
+    }, 'Midcast rules, profile Default');
+    check('RC39 a set that did not follow is named',
+        badSet:find('Sets NOT brought: CureSet -> BLM (no sets path).', 1, true) ~= nil, true);
+    check('RC40 ...and the copy reads as an error even though the rule landed', badSetErr, true);
 end)();
 
 -- ---------------------------------------------------------------------------
@@ -11960,6 +12118,39 @@ end)();
     check('SN18 unknown set refuses', tostring(rerr1):find('set not found', 1, true) ~= nil, true);
     local _, rerr2 = sm.renameSetText(rn, 'Field', 'Tp');
     check('SN19 collision refuses', tostring(rerr2):find('already exists', 1, true) ~= nil, true);
+
+    -- copySetText (2026-08-02): the "Include the set if it isn't there" half of the
+    -- Triggers tab's rule copy. VERBATIM block move -- re-rendering would round-trip
+    -- every entry through the writer's vocabulary, so an entry shape it does not know
+    -- (or a comment the player wrote inside the block) would be quietly rewritten.
+    local srcSets = 'local sets = {\n    Dynamic = {\n        CureSet = {\n'
+        .. '            Head = {\n                -- the hand-written note must survive\n'
+        .. '                { gear = gear.Head.X, minLevel = 30, mode = "DT" },\n'
+        .. '            },\n        },\n        Idle = {\n        },\n    },\n};\nreturn sets;\n';
+    local dstSets = 'local sets = {\n    Dynamic = {\n        Tp_Default = {\n        },\n    },\n};\nreturn sets;\n';
+    local cp1, ca1 = sm.copySetText(srcSets, dstSets, 'CureSet');
+    check('SN20 the set copies across', ca1, 'copied');
+    check('SN21 the result parses', (loadstring or load)(cp1 or '') ~= nil, true);
+    check('SN22 the block is VERBATIM, comment and entry shape included',
+        cp1:find('-- the hand-written note must survive', 1, true) ~= nil
+        and cp1:find('{ gear = gear.Head.X, minLevel = 30, mode = "DT" },', 1, true) ~= nil, true);
+    check('SN23 what was already there is untouched', cp1:find('Tp_Default', 1, true) ~= nil, true);
+    check('SN24 only the named set travelled', cp1:find('Idle', 1, true), nil);
+    -- "if not present" is the WHOLE contract: an existing name is never overwritten.
+    local cp2, ce2 = sm.copySetText(srcSets, cp1, 'CureSet');
+    check('SN25 a name already there refuses', cp2 == nil and ce2, 'already there');
+    local cp3, ce3 = sm.copySetText(srcSets, dstSets, 'NoSuchSet');
+    check('SN26 a set the source lacks refuses',
+        cp3 == nil and tostring(ce3):find('no set named NoSuchSet', 1, true) ~= nil, true);
+    -- A dashed/bracket-quoted key travels too (the SN2 family's shape).
+    local dashSrc = sm.spliceSet(base, 'Midcast_STR-VIT', { { name = 'Head', items = { { path = 'gear.Head.X' } } } });
+    local cp4, ca4 = sm.copySetText(dashSrc, dstSets, 'Midcast_STR-VIT');
+    check('SN27 a bracket-quoted name copies', ca4, 'copied');
+    check('SN28 ...and still parses', (loadstring or load)(cp4 or '') ~= nil, true);
+    -- A destination that is not a sets file at all is refused, never written over.
+    local cp5, ce5 = sm.copySetText(srcSets, 'return {};\n', 'CureSet');
+    check('SN29 a destination with no Dynamic block refuses',
+        cp5 == nil and tostring(ce5):find('destination file has no sets.Dynamic', 1, true) ~= nil, true);
 
     -- priority-list twin: ordered parse, entry forms, order preserved
     local plists, perr = wimpT.parsePrio([[
