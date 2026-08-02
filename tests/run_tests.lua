@@ -3800,6 +3800,72 @@ end)();
             check('AL40 a direct pass equips Head normally', fr.Head, 'Silver Hairpin');
         end
     end
+
+    -- SEVERAL PINS ON ONE SLOT (2026-08-03, Henrik: "I want Optical Hat on
+    -- Tp_Default, but Walahra Turban on Movement"). The slot's value becomes a
+    -- LIST and the engine settles it per dispatch. One name still comes out --
+    -- an overlay is an equip table and a slot wears one thing.
+    local kTP  = dispatchM.pinScopeKey('Default', 'mode=TP_Default');
+    local kMov = dispatchM.pinScopeKey('Default', 'moving=true');
+    local twoPins = { Head = { { item = 'Optical Hat',    scope = { kTP } },
+                               { item = 'Walahra Turban', scope = { kMov } } } };
+    local hTP  = { { label = 'mode=TP_Default' } };
+    local hMov = { { label = 'moving=true' } };
+    check('AL42 two pins on one slot: the matched trigger picks its own item',
+        (PF(twoPins, hTP, 'Default') or {}).Head, 'Optical Hat');
+    check('AL43 ...and the other trigger picks the other item',
+        (PF(twoPins, hMov, 'Default') or {}).Head, 'Walahra Turban');
+    check('AL44 ...and neither matching leaves the slot alone',
+        PF(twoPins, { { label = 'name=cure' } }, 'Default'), nil);
+
+    -- BOTH triggers matched in one dispatch. `hits` is sorted ascending by
+    -- priority and applied last-writer-wins (ADR 0003), so the pin belonging to
+    -- the trigger that would have won the slot anyway is the pin that wins it --
+    -- the alternative (first match wins) would have the pins disagree with every
+    -- other layer of the engine about which rule is in charge.
+    local hBoth = { { label = 'mode=TP_Default' }, { label = 'moving=true' } };
+    check('AL45 both triggers matched -> the LATER hit wins the slot',
+        (PF(twoPins, hBoth, 'Default') or {}).Head, 'Walahra Turban');
+    local hBothRev = { { label = 'moving=true' }, { label = 'mode=TP_Default' } };
+    check('AL46 ...and reversing the hit order reverses the winner',
+        (PF(twoPins, hBothRev, 'Default') or {}).Head, 'Optical Hat');
+
+    -- An All pin UNDER scoped pins is the fallback, not a competitor: it covers
+    -- every dispatch its siblings do not. (Rank 0 -- the weakest claim there is,
+    -- because "always" is the least specific thing a pin can say.)
+    local mixed = { Head = { { item = 'Empress Hairpin', scope = 'All' },
+                             { item = 'Optical Hat',     scope = { kTP } } } };
+    check('AL47 All under a scoped pin covers the dispatches it does not',
+        (PF(mixed, hMov, 'Default') or {}).Head, 'Empress Hairpin');
+    check('AL48 ...and the scoped pin still beats it on its own trigger',
+        (PF(mixed, hTP, 'Default') or {}).Head, 'Optical Hat');
+
+    -- An exact tie -- two pins on the SAME trigger, which the GUI will not write
+    -- but a hand-edited file can. Last one written wins, matching the file's own
+    -- set order and the engine's last-writer-wins rule everywhere else.
+    local tied = { Head = { { item = 'First', scope = { kTP } },
+                            { item = 'Last',  scope = { kTP } } } };
+    check('AL49 a tie on one trigger goes to the pin written LAST',
+        (PF(tied, hTP, 'Default') or {}).Head, 'Last');
+
+    -- The shapes. Every one the contract has ever produced still reads, because
+    -- pinstate.lua is a plain Lua file a player can hand-edit and the single-pin
+    -- form is what an older addon copy writes.
+    local EO = dispatchM._pinEntriesOf;
+    check('AL50 entries: a bare name is one All pin', #EO('Cape'), 1);
+    check('AL51 entries: the single { item, scope } shape is one pin',
+        #EO({ item = 'Cape', scope = 'All' }), 1);
+    check('AL52 entries: a list is every entry in it', #EO(twoPins.Head), 2);
+    check('AL53 entries: a list of bare names works too', #EO({ 'A', 'B', 'C' }), 3);
+    check('AL54 entries: junk yields nothing', #EO(42), 0);
+
+    -- pinRank, the ordering itself. Guarded directly because the whole multi-pin
+    -- outcome above rests on 0-vs-index and there is no other way to see it.
+    local PR = dispatchM._pinRank;
+    check('AL55 rank: All is 0 -- the weakest claim', PR('All', hTP, 'Default'), 0);
+    check('AL56 rank: a missing scope is All',        PR(nil, {}, 'Default'), 0);
+    check('AL57 rank: a matched trigger is its hit INDEX', PR({ kMov }, hBoth, 'Default'), 2);
+    check('AL58 rank: an unmatched trigger is nil',   PR({ kMov }, hTP, 'Default'), nil);
 end)();
 
 -- ---------------------------------------------------------------------------
@@ -3884,6 +3950,111 @@ end)();
     pw.pins = { Head = { item = 'CharA Cap', scope = 'All' } };
     pw.loadPinState();          -- still pre-login: must NOT clear or write
     check('AM16 pre-login load leaves the table alone', (pw.pins.Head or {}).item, 'CharA Cap');
+
+    -- ----------------------------------------------------------------------
+    -- SEVERAL PINS ON ONE SLOT (2026-08-03). The writer half: setPin's replace
+    -- rules, the two file shapes, and removing one pin without the others.
+    --
+    -- charDir() is nil headless, so save() and loadPinState are both no-ops and
+    -- every mutator below runs purely in memory. That is the whole point --
+    -- these are the rules, not the disk.
+    -- ----------------------------------------------------------------------
+    local kTP  = 'Default|mode=TP_Default';
+    local kMov = 'Default|moving=true';
+
+    pw.pins = {};
+    pw.setPin('Head', 'Optical Hat',    { kTP });
+    pw.setPin('Head', 'Walahra Turban', { kMov });
+    check('AM17 two triggers on one slot keep BOTH pins', #pw.pinsOf('Head'), 2);
+    check('AM18 ...the first is still the first', pw.pinsOf('Head')[1].item, 'Optical Hat');
+    check('AM19 ...and the second is beside it',  pw.pinsOf('Head')[2].item, 'Walahra Turban');
+
+    -- one item per trigger per slot: re-pinning a trigger REPLACES that pin only
+    pw.setPin('Head', 'Empress Hairpin', { kTP });
+    check('AM20 re-pinning a trigger replaces only that pin', #pw.pinsOf('Head'), 2);
+    check('AM21 ...the replaced trigger carries the new item',
+        pw.pinsOf('Head')[2].item, 'Empress Hairpin');       -- removed + appended
+    check('AM22 ...and the untouched trigger is unchanged',
+        pw.pinsOf('Head')[1].item, 'Walahra Turban');
+
+    -- All is exclusive on the way in (Henrik: "if ALL is selected, just
+    -- overwrite all of them and only have all")
+    pw.setPin('Head', 'Federation Aketon', 'All');
+    check('AM23 pinning All replaces every pin on the slot', #pw.pinsOf('Head'), 1);
+    check('AM24 ...with the All pin itself', pw.pinsOf('Head')[1].item, 'Federation Aketon');
+    check('AM25 hasAllPin sees it (the grid paints this slot red)', pw.hasAllPin('Head'), true);
+
+    -- a scoped pin added underneath an All pin does NOT wipe it: the All pin is
+    -- the fallback for every dispatch the scoped one does not cover, and that is
+    -- exactly what the engine does with the pair (AL47/AL48)
+    pw.setPin('Head', 'Optical Hat', { kTP });
+    check('AM26 a scoped pin joins an All pin rather than replacing it', #pw.pinsOf('Head'), 2);
+    check('AM27 ...and the All pin is still there', pw.hasAllPin('Head'), true);
+
+    -- removing ONE pin, by index -- "you should be able to choose all, or
+    -- specific trigger pin mapping"
+    check('AM28 clearPinAt removes one pin', pw.clearPinAt('Head', 1), true);
+    check('AM29 ...and leaves the rest', #pw.pinsOf('Head'), 1);
+    check('AM30 ...specifically the one you did not remove',
+        pw.pinsOf('Head')[1].item, 'Optical Hat');
+    check('AM31 hasAllPin is false once the All pin is gone', pw.hasAllPin('Head'), false);
+    check('AM32 an out-of-range index removes nothing', pw.clearPinAt('Head', 9), false);
+
+    -- the last pin taking the SLOT with it. An empty list left behind would read
+    -- as an armed slot to pinStateOn (any non-empty table) and to the GUI's
+    -- isPinned, so the slot has to go, not just its contents.
+    check('AM33 removing the last pin clears the slot', pw.clearPinAt('Head', 1), true);
+    check('AM34 ...the slot key is gone, not an empty list', pw.pins['Head'], nil);
+    check('AM35 ...and nothing is pinned there', pw.isPinned('Head'), false);
+
+    -- counts: pins vs slots
+    pw.pins = {};
+    pw.setPin('Head',  'Optical Hat',    { kTP });
+    pw.setPin('Head',  'Walahra Turban', { kMov });
+    pw.setPin('Ring1', 'Rajas Ring',     'All');
+    check('AM36 count() counts PINS across every slot', pw.count(), 3);
+    check('AM37 slotCount() counts SLOTS',              pw.slotCount(), 2);
+
+    -- THE FILE. One pin per slot is written exactly as it always was -- same
+    -- bytes, so an older engine copy reads it unchanged and the common case
+    -- never touched the new path at all.
+    local one = pw.serialize({ Ring1 = { item = 'Rajas Ring', scope = 'All' } });
+    check('AM38 a one-pin slot still serializes in the ORIGINAL shape', one,
+        'return {\n  ["Ring1"] = { item = "Rajas Ring", scope = "All" },\n}\n');
+    check('AM39 ...and a one-pin LIST writes the same bytes as the bare entry',
+        pw.serialize({ Ring1 = { { item = 'Rajas Ring', scope = 'All' } } }), one);
+
+    -- ...and a slot that really does carry two takes the list shape, which the
+    -- engine's own reader has to accept (round-tripped through it below).
+    local multi = pw.serialize(pw.pins);
+    local mChunk = (loadstring or load)(multi, '@pinstate.lua');
+    check('AM40 a multi-pin file is loadable', type(mChunk), 'function');
+    local mTbl = mChunk and select(2, pcall(mChunk)) or nil;
+    check('AM41 ...the two-pin slot came back as a list', #(mTbl and mTbl.Head or {}), 2);
+    check('AM42 ...and the one-pin slot as a single entry',
+        (mTbl and mTbl.Ring1 or {}).item, 'Rajas Ring');
+    check('AM43 the ENGINE reads a multi-pin file: TP_Default picks its pin',
+        (dispatchM._pinOverlayFor(mTbl, { { label = 'mode=TP_Default' } }, 'Default') or {}).Head,
+        'Optical Hat');
+    check('AM44 ...and Movement picks the other one',
+        (dispatchM._pinOverlayFor(mTbl, { { label = 'moving=true' } }, 'Default') or {}).Head,
+        'Walahra Turban');
+    check('AM45 ...while the All pin beside them is unconditional',
+        (dispatchM._pinOverlayFor(mTbl, {}, 'Default') or {}).Ring1, 'Rajas Ring');
+
+    -- a multi-pin file is order-stable too (the raw-text compare again)
+    check('AM46 multi-pin serialization is order-stable', pw.serialize(pw.pins), multi);
+
+    -- entriesOf is the shared reader: pinwatch's copy must answer exactly as the
+    -- engine's does, or the two states disagree about what is pinned.
+    check('AM47 entriesOf: bare name', #pw.entriesOf('Cape'), 1);
+    check('AM48 entriesOf: single entry', #pw.entriesOf({ item = 'Cape', scope = 'All' }), 1);
+    check('AM49 entriesOf: list', #pw.entriesOf(mTbl and mTbl.Head), 2);
+    check('AM50 entriesOf: nil is empty, never nil', #pw.entriesOf(nil), 0);
+    check('AM51 entriesOf: an entry with no item is dropped',
+        #pw.entriesOf({ { item = 'A' }, { scope = 'All' } }), 1);
+
+    pw.pins = {};
 end)();
 
 -- ---------------------------------------------------------------------------

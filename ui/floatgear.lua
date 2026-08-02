@@ -40,6 +40,20 @@
     Pins are the engine's, not this window's: pinwatch writes
     <char>\dlac\pinstate.lua and dispatch (v44) wears the pinned names at top
     priority every dispatch. This module only edits that table.
+
+    2026-08-03, three field asks (Henrik):
+      * the list offers only what you can put on RIGHT NOW -- job, level AND
+        bags. The job/level gate was always there (the Gear Oracle's canWear,
+        via candidatesForSlot); what was missing is the bag half, so a piece in
+        a Mog Locker was offered and the pin then sat there doing nothing. Asked
+        through gearui's `avail.have` -- the same function the Sets tab previews
+        the engine's refusal with, so the menu and the engine cannot disagree.
+      * every row carries the item's ICON (ui\itemicons, the equippedui call),
+        because a wall of names is not how you find a hat.
+      * a slot holds SEVERAL pins, one per trigger -- Optical Hat on TP_Default,
+        Walahra Turban on Movement. pinwatch owns that list and the engine picks
+        between them per dispatch; this file shows them, adds to them, and
+        removes them one at a time or all at once.
 ]]--
 
 local host = require("dlac\\ui\\uihost");
@@ -52,6 +66,10 @@ local function try(name)
 end
 local imgui = try('imgui');
 local dsp   = try("dlac\\dispatch");
+-- Icons for the pin list. try(), not a bare require: this window renders whether
+-- or not d3d came up, and itemicons itself already no-ops without it -- a nil
+-- here just means text rows, never a dead window.
+local icons = try("dlac\\ui\\itemicons");
 
 local M = {};
 
@@ -247,9 +265,61 @@ local function triggerChoices()
     return out;
 end
 
+-- scope key -> the same human line the menu shows, so a PIN can be described
+-- with the words you picked it by instead of the raw "Default|mode=TP_Default".
+local function textByKey(choices)
+    local m = {};
+    for _, c in ipairs(choices or {}) do m[c.key] = c.text; end
+    return m;
+end
+
+-- One pin's scope, in words. A key the current job no longer has (you edited or
+-- deleted that trigger) falls back to the raw key rather than vanishing: the pin
+-- is real, it is simply quiet, and hiding the reason would make it unremovable
+-- by anything but "remove all".
+local function scopeTextOf(e, byKey)
+    if type(e) ~= 'table' or type(e.scope) ~= 'table' then return 'All -- every dispatch'; end
+    local parts = {};
+    for _, k in ipairs(e.scope) do parts[#parts + 1] = tostring(byKey[k] or k); end
+    if #parts == 0 then return 'All -- every dispatch'; end
+    return table.concat(parts, ' / ');
+end
+
+-- The scope keys this slot's pins already hold -> the item holding each ('All'
+-- is its own key). Lets the scope menu say WHICH piece owns a trigger before
+-- you overwrite it.
+local function heldByKey(slot)
+    local m = {};
+    for _, e in ipairs(pins.pinsOf(slot)) do
+        if type(e.scope) == 'table' then
+            for _, k in ipairs(e.scope) do m[tostring(k)] = e.item; end
+        else
+            m['All'] = e.item;
+        end
+    end
+    return m;
+end
+
 -- --------------------------------------------------------------------------
 -- The pin menu.
 -- --------------------------------------------------------------------------
+
+-- Draw an item's icon and leave the cursor on the same line, or nothing at all
+-- when icons are unavailable. Never a Dummy in that case: itemicons draws one
+-- to keep a COLUMN aligned, and a menu with no icons at all should just be the
+-- text menu it used to be.
+local ICON = 20;
+local function rowIcon(name)
+    if icons == nil or type(icons.renderIcon) ~= 'function' then return; end
+    local id = nil;
+    if type(S.lookupByName) == 'function' then
+        pcall(function()
+            local rec = S.lookupByName(name);
+            id = (type(rec) == 'table') and rec.Id or nil;
+        end);
+    end
+    pcall(icons.renderIcon, id, ICON, nil);
+end
 
 local function applyPin(slot, itemName, scope)
     pins.setPin(slot, itemName, scope);
@@ -271,20 +341,28 @@ end
 -- escaping would render a literal '%%' -- which is why nothing else in dlac
 -- escapes a Selectable label either.
 local function renderScopeRows(slot, name, choices, inMenu)
-    local function row(label)
+    local held = heldByKey(slot);
+    -- What already owns this scope, appended to the row. Overwriting a trigger's
+    -- pin is normal and silent -- but you should be able to SEE that it is what
+    -- the click is about to do before you make it.
+    local function row(label, key)
+        local cur = held[key];
+        if cur ~= nil then label = label .. '   [' .. tostring(cur) .. ']'; end
         if inMenu then return imgui.MenuItem(label); end
         return imgui.Selectable(label);
     end
     local hit = false;
-    if row('All') then applyPin(slot, name, 'All'); hit = true; end
+    if row('All', 'All') then applyPin(slot, name, 'All'); hit = true; end
     if imgui.IsItemHovered() then
-        imgui.SetTooltip('Pin for EVERYTHING -- the engine wears this piece on\nevery dispatch and nothing can take it back off.');
+        imgui.SetTooltip('Pin for EVERYTHING -- the engine wears this piece on\nevery dispatch and nothing can take it back off.\n\nAll REPLACES every other pin on this slot.');
     end
     imgui.Separator();
     if #choices > 0 then
         for _, c in ipairs(choices) do
-            if row(c.text) then applyPin(slot, name, { c.key }); hit = true; end
+            if row(c.text, c.key) then applyPin(slot, name, { c.key }); hit = true; end
         end
+        imgui.Separator();
+        imgui.TextColored(COL.DIM, 'One pin per trigger. Pinning a trigger leaves\nthis slot\'s other trigger pins alone.');
     else
         imgui.TextColored(COL.DIM, '(this job has no triggers yet)');
     end
@@ -298,15 +376,43 @@ end
 -- BUILDER's Sub picker; the immediately-equipping Alternatives list gates, and
 -- so does this. Offering a shield you cannot hold next to your 2H would just
 -- pin a piece that never lands.
+--
+-- The BAG half of "right now" (Henrik, 2026-08-03: "only show gear that is
+-- wearable at that very moment -- nothing in mog locker etc"). candidatesForSlot
+-- gates ownership on owned-ANYWHERE, which is right for a set BUILDER and wrong
+-- here: a pin equips, and a piece in a Mog Safe or Locker cannot be equipped, so
+-- offering it just pins something that never lands and looks like a broken pin.
+--
+-- Asked through gearui's avail.have -- the same function the Sets tab previews
+-- the engine's own refusal with, so the two can never drift. Three-valued for
+-- the reason it is three-valued there: nil means the bag scan has not answered
+-- yet (or the name has no record), and hiding on "don't know" would empty the
+-- menu at exactly the wrong moment. Only a definite false hides a row.
+local function equippableNow(rec)
+    if type(S.avail) ~= 'table' or type(S.avail.have) ~= 'function' then return true; end
+    local ok, v = pcall(S.avail.have, (type(rec) == 'table') and rec.Name or nil);
+    if not ok then return true; end
+    return v ~= false;
+end
+M._equippableNow = equippableNow;   -- test seam
+
 local function candidatesFor(slot, job, level)
     local gearKey = GEAR_OF[slot] or slot;
+    local list = nil;
     if slot == 'Sub' and S.subFilter ~= nil and S.subCandidatePool ~= nil then
         local mainRec = S.lookupById(S.getEquippedId(0x00));   -- the WORN Main
         local ok, res = pcall(S.subFilter, S.subCandidatePool(job, level),
             mainRec, job, level, false);                       -- building = false
-        if ok and type(res) == 'table' then return res; end
+        if ok and type(res) == 'table' then list = res; end
     end
-    return S.candidatesForSlot(gearKey, job, level) or {};
+    if list == nil then list = S.candidatesForSlot(gearKey, job, level) or {}; end
+    -- A NEW table, never a filter in place: candidatesForSlot hands back its own
+    -- cached array and every other surface reads that same one.
+    local out = {};
+    for _, rec in ipairs(list) do
+        if equippableNow(rec) then out[#out + 1] = rec; end
+    end
+    return out;
 end
 
 local function renderPinMenu(job, level)
@@ -338,20 +444,45 @@ local function renderPinMenu(job, level)
     end
     imgui.Separator();
 
+    local choices = triggerChoices();
+    local byKey   = textByKey(choices);
+
     -- Unpin first: it is the one row you want instantly when the frame is red.
-    if pins.isPinned(slot) then
-        local p = pins.pinOf(slot);
-        imgui.TextColored(COL.SCORE, fmt.esc('Pinned: ' .. tostring(p.item)));
-        imgui.TextColored(COL.DIM, fmt.esc('Applies to: ' .. tostring(pins.scopeLabel(slot))));
-        if imgui.Selectable('Remove pin') then
-            pins.clearPin(slot);
-            pcall(function() imgui.CloseCurrentPopup(); end);
-            return;
+    -- A slot can hold SEVERAL pins now, so this is a list and each row removes
+    -- its OWN pin -- "you should be able to choose all, or specific trigger pin
+    -- mapping" (Henrik). Removing one and returning immediately is deliberate:
+    -- the indices shift under clearPinAt, and re-reading them next frame is
+    -- cheaper than reasoning about it here.
+    local held = pins.pinsOf(slot);
+    if #held > 0 then
+        imgui.TextColored(COL.SCORE, (#held == 1) and 'Pinned here:'
+                                      or string.format('Pinned here (%d):', #held));
+        for i, e in ipairs(held) do
+            rowIcon(e.item);
+            -- No fmt.esc: a Selectable label is not a format string (see
+            -- renderScopeRows). truncate keeps a long trigger line inside the
+            -- popup's width constraint instead of widening it to the cap.
+            if imgui.Selectable(string.format('%s   --   %s##unpin%d',
+                    tostring(e.item), fmt.truncate(scopeTextOf(e, byKey), 34), i)) then
+                pins.clearPinAt(slot, i);
+                pcall(function() imgui.CloseCurrentPopup(); end);
+                return;
+            end
+            if imgui.IsItemHovered() then
+                imgui.SetTooltip(fmt.esc(string.format(
+                    'Remove THIS pin.\n\n%s\nApplies to: %s',
+                    tostring(e.item), scopeTextOf(e, byKey))));
+            end
+        end
+        if #held > 1 then
+            if imgui.Selectable(string.format('Remove all %d pins on %s', #held, slot)) then
+                pins.clearPin(slot);
+                pcall(function() imgui.CloseCurrentPopup(); end);
+                return;
+            end
         end
         imgui.Separator();
     end
-
-    local choices = triggerChoices();
 
     -- Fallback drill-down: item chosen, now pick the scope in place.
     if not hasMenu and _drillItem ~= nil then
@@ -385,6 +516,14 @@ local function renderPinMenu(job, level)
             matched = matched + 1;
             if shown < CAP then                -- a popup is not a browser
                 shown = shown + 1;
+                -- The icon, then the row on the same line (itemicons ends with
+                -- its own SameLine). Drawn from the RECORD's id rather than by
+                -- name -- no lookup, and it is the id the grid's own tooltip
+                -- already uses. A menu row whose icon failed to load just starts
+                -- where a text row would.
+                if icons ~= nil and type(icons.renderIcon) == 'function' then
+                    pcall(icons.renderIcon, rec.Id, ICON, rec);
+                end
                 -- raw nm, not fmt.esc: menu/selectable labels are not format
                 -- strings (see renderScopeRows)
                 if hasMenu then
@@ -400,7 +539,12 @@ local function renderPinMenu(job, level)
             end
         end
     end
-    if matched == 0 then
+    if #list == 0 then
+        -- Distinct from "nothing MATCHES": the pool itself is empty, and after
+        -- the bag gate above the likeliest reason is that the piece you have in
+        -- mind is sitting somewhere the game cannot equip it from.
+        imgui.TextColored(COL.DIM, 'Nothing in your bags fits this slot at this\njob and level. Gear in a Mog Safe, Locker or\nStorage is not offered -- move it first.');
+    elseif matched == 0 then
         imgui.TextColored(COL.DIM, 'Nothing you can equip here matches.');
     elseif matched > shown then
         -- Say what was dropped. A silent truncation reads as "that's everything
@@ -410,10 +554,15 @@ local function renderPinMenu(job, level)
     end
 
     -- Unpin-all lives here rather than under the grid: the window is chrome-less
-    -- now, and a stray line of text below it would put the box back.
-    if pins.count() > 0 then
+    -- now, and a stray line of text below it would put the box back. It clears
+    -- EVERY slot -- the per-slot and per-trigger removals are up in the pinned
+    -- list, so the three scopes of "clear" all have a home and none of them is
+    -- reachable by accident from another one's row.
+    local total, slots = pins.count(), pins.slotCount();
+    if total > 0 then
         imgui.Separator();
-        if imgui.Selectable(string.format('Remove all %d pins', pins.count())) then
+        if imgui.Selectable(string.format('Remove all %d pins (%d slot%s)',
+                total, slots, (slots == 1) and '' or 's')) then
             pins.clearAll();
             pcall(function() imgui.CloseCurrentPopup(); end);
         end
@@ -424,7 +573,12 @@ end
 -- The window.
 -- --------------------------------------------------------------------------
 
-local PIN_BOX  = { 0.55, 0.13, 0.13, 1.0 };   -- red:  this slot is pinned
+local PIN_BOX  = { 0.55, 0.13, 0.13, 1.0 };   -- red:    pinned for ALL dispatches
+-- Violet: pinned, but only on named triggers -- the slot dispatches normally the
+-- rest of the time. Worth its own colour now that a slot can hold several pins:
+-- red used to mean "this piece is stuck on", and a purely scoped pin does not
+-- mean that. Deliberately far from the gold below, which is a MODE, not a state.
+local PIN_COND = { 0.32, 0.20, 0.55, 1.0 };
 local MOVE_BOX = { 0.62, 0.50, 0.16, 1.0 };   -- gold: Shift is down, drag to move
 
 -- Rendered INDEPENDENTLY of the main dlac box (gearui's d3d_present calls this
@@ -523,7 +677,9 @@ function M.render()
                 -- made a working key read look broken for three rounds.)
                 boxColorOf = function(sl)
                     if grab then return MOVE_BOX; end
-                    if pins.isPinned(sl.label) then return PIN_BOX; end
+                    if pins.isPinned(sl.label) then
+                        return pins.hasAllPin(sl.label) and PIN_BOX or PIN_COND;
+                    end
                     return nil;
                 end,
                 -- RIGHT-click is never suppressed: the drag is a LEFT-button

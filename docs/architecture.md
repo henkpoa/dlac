@@ -342,6 +342,31 @@ pumped from gearui's d3d_present whether or not the window is open): the engine 
 the file from LAC's state, so a stale file would dress you at login. "Lock" still means
 the old, near-opposite thing (`M.locks` = engine ignores the slot).
 
+**A slot holds SEVERAL pins** (2026-08-03) — Optical Hat on `TP_Default`, Walahra Turban
+on `Movement`, both live. The slot's value becomes a *list* of `{ item, scope }` entries
+and the engine settles it per dispatch, because an overlay is an equip table and a slot
+wears one thing. The settling rule is not new, it is borrowed: `dispatch._pinRank` scores
+each entry by **the index of the last hit it names** — `hits` is already sorted ascending
+by priority and applied last-writer-wins (ADR 0003), so *the pin belonging to the trigger
+that would have won the slot anyway is the pin that wins it*. `'All'` scores 0, the
+weakest claim there is: "always" is the least specific thing a pin can say, which makes an
+All pin the natural fallback underneath its scoped siblings rather than a competitor.
+
+On the way IN the rules are pinwatch's: `'All'` replaces the slot whole (Henrik), a scoped
+pin replaces only the pins already holding one of the same triggers (one item per trigger
+per slot). A one-pin slot still serializes in the *original* single-entry shape, byte for
+byte — the list shape appears only where a second pin actually exists, so the common case
+never touches the new path and an older engine copy reads the file unchanged. Both states
+read the shape through the same walk (`pinwatch.entriesOf` / `dispatch._pinEntriesOf`),
+spelled twice on purpose: the engine runs in the other Lua state and must never depend on
+an addon-state module being loaded.
+
+The floating window's pin menu offers **only what you can put on at that moment** — the
+job/level half was always the Gear Oracle's `canWear` (via `candidatesForSlot`), the bag
+half is `gearui`'s `avail.have`, the same function the Sets tab previews the engine's own
+refusal with. Three-valued there and here: only a definite `false` hides a row, because an
+empty bag scan means "not answered yet", not "you own nothing".
+
 ### The Arbiter — claim registry (dispatch.lua + feature/arbwatch.lua, ADR 0012)
 The **single precedence authority** for gear that dresses over the Trigger overlay floor.
 Every feature that wants a slot registers a **Claim** with the Arbiter instead of equipping

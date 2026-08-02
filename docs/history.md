@@ -8288,3 +8288,68 @@ Two lessons. **A signature that gates an explanation must cover everything the e
 depends on** — the level was missing, and nothing said so for four days because the explanation
 was only ever read by a hover nobody was staring at. And: *reading the artifact is the test*.
 Every defect in this train came from reading a report end to end, never from the suites.
+
+## Session "several pins on one hat slot" (2026-08-03, `2026.08.03h` — the floating armory menu)
+
+**Theme:** three field asks against the floating equipment window, all of them about the
+right-click PIN menu rather than the window.
+
+**1. Only what you can wear at that moment.** The list was gated on job and level already
+(the Gear Oracle's `canWear`, through `candidatesForSlot`) — the missing half was the
+BAGS. `candidatesForSlot` gates ownership on *owned anywhere*, which is right for a set
+builder and wrong here: a pin equips, so a piece in a Mog Locker was offered, pinned, and
+then did nothing. It reads as a broken pin, not as a misplaced item. Fixed by asking
+`gearui`'s `avail.have` — the same function the Sets tab previews the engine's own refusal
+with, so the menu and the engine cannot drift. Three-valued for the reason it is
+three-valued there: only a definite `false` hides a row, because an empty bag scan means
+"the scan has not answered yet", and hiding on *don't know* would empty the menu at exactly
+the moment you opened it.
+
+**2. Icons.** `ui\itemicons.renderIcon` per row, on the candidate rows and on the pinned
+ones. Nothing new: the same call `equippedui` has made since July, drawn from the record's
+own `Id`.
+
+**3. Several pins on one slot.** The ask: *"I want Optical Hat on Tp_Default, but Walahra
+Turban on Movement."* A slot's value becomes a LIST of `{ item, scope }` entries.
+
+The part worth keeping is that **the tie-break was borrowed, not invented**. An overlay is
+an equip table and a slot wears one thing, so a dispatch where two pinned triggers both
+matched has to pick. `dispatch._pinRank` scores an entry by the index of the **last hit it
+names** — and `hits` is already sorted ascending by priority and applied last-writer-wins
+(ADR 0003). So the pin belonging to the trigger that would have won the slot anyway is the
+pin that wins it, and nothing new had to be decided about rule precedence. `'All'` scores
+0, the weakest claim there is, which falls out of the same idea: "always" is the least
+specific thing a pin can say. That single number is why an All pin sitting under scoped
+siblings behaves as a *fallback* rather than a competitor, with no special case anywhere.
+
+On the way in the rules are Henrik's, verbatim: `'All'` replaces the slot whole; a scoped
+pin replaces only the pins already holding one of the SAME triggers (one item per trigger
+per slot). Clearing now has all three scopes and each has its own row — this pin, this
+slot, everything.
+
+**A one-pin slot still serializes byte for byte as it always did.** The list shape appears
+only where a second pin actually exists. That was not politeness toward the file format: an
+older seeded engine copy reads a single-entry slot unchanged, so the common case never
+touches the new path in either state. Both states read the shape through the same walk
+(`pinwatch.entriesOf` / `dispatch._pinEntriesOf`), spelled twice on purpose — the engine
+runs in the other Lua state and must never depend on an addon-state module being loaded.
+
+**The 200-local ceiling bit again, immediately.** Two new chunk locals in `dispatch.lua`'s
+main chunk and it stopped compiling — `too many local variables` at line 7510, nowhere near
+the edit. Both helpers went onto `M` instead, where they wanted to be anyway (test seams).
+Worth restating because the error points at the *end* of the chunk, not at the addition.
+
+Also: the grid paints a scoped-only pin a different colour from an All pin. Red used to
+mean "this piece is stuck on"; with conditional pins it stopped being true, and the colour
+is the only thing a chrome-less window can say without being opened.
+
+**Tests:** `AL42`–`AL58` (engine: the list shape, rank ordering, All-as-fallback, ties,
+every tolerated shape), `AM17`–`AM51` (pinwatch: the replace rules, per-pin removal, the
+two file shapes round-tripped through the engine's own reader, counts), and a new smoke
+section `FGP1`–`FGP18` that renders the popup OPEN against a real candidate pool and reads
+back the labels — section 6 proves the window cannot corrupt ImGui's stacks but stubs every
+row away, and all three asks are about the rows. Suites **5990** and **1046**.
+
+**Note for the record:** the `dispatch.lua` half of this landed inside commit `df77475`,
+which belongs to a parallel session — a shared-checkout sweep, not a decision. The change
+itself is unaffected.

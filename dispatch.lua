@@ -5375,7 +5375,11 @@ function M.pinScopeKey(event, label) return tostring(event) .. '|' .. tostring(l
 -- way the rest of the engine already settles a slot: `hits` is sorted ascending
 -- by priority and applied last-writer-wins (ADR 0003), so the pin belonging to
 -- the trigger that would have won the slot anyway is the pin that wins it.
-local function pinRank(scope, hits, event)
+--
+-- On M and not a chunk local, like the two helpers below it: this main chunk is
+-- AT the 200-local ceiling (hard rule 1) and three more would not compile. They
+-- want to be test seams anyway.
+function M._pinRank(scope, hits, event)
     if scope == nil or scope == 'All' then return 0; end
     if type(scope) ~= 'table' then return nil; end
     local best = nil;
@@ -5386,12 +5390,11 @@ local function pinRank(scope, hits, event)
     end
     return best;
 end
-M._pinRank = pinRank;   -- test seam
 
--- Does this pin's scope cover this dispatch at all? (pinRank's yes/no face --
+-- Does this pin's scope cover this dispatch at all? (_pinRank's yes/no face --
 -- the question every caller but the multi-pin walk below is actually asking.)
 local function pinInScope(scope, hits, event)
-    return pinRank(scope, hits, event) ~= nil;
+    return M._pinRank(scope, hits, event) ~= nil;
 end
 M._pinInScope = pinInScope;   -- test seam
 
@@ -5401,7 +5404,7 @@ M._pinInScope = pinInScope;   -- test seam
 -- the writer half and its entriesOf is the same reader; this one is spelled out
 -- here rather than required because the engine runs in the OTHER Lua state and
 -- must never depend on an addon-state module being loaded.
-local function pinEntriesOf(p)
+function M._pinEntriesOf(p)
     if type(p) == 'string' then return { { item = p, scope = 'All' } }; end
     if type(p) ~= 'table' then return {}; end
     if type(p.item) == 'string' then return { p }; end
@@ -5412,7 +5415,6 @@ local function pinEntriesOf(p)
     end
     return out;
 end
-M._pinEntriesOf = pinEntriesOf;   -- test seam
 
 -- The pin equip table for a given pin-state, or nil when nothing is in scope.
 -- Split out so tests can pass an explicit state instead of the on-disk file.
@@ -5428,10 +5430,10 @@ local function pinOverlayFor(ps, hits, event)
     local equip = nil;
     for slot, p in pairs(ps) do
         local bestName, bestRank = nil, nil;
-        for _, e in ipairs(pinEntriesOf(p)) do
+        for _, e in ipairs(M._pinEntriesOf(p)) do
             local name = e.item;
             if type(name) == 'string' and name ~= '' then
-                local rank = pinRank(e.scope, hits, event);
+                local rank = M._pinRank(e.scope, hits, event);
                 if rank ~= nil and (bestRank == nil or rank >= bestRank) then
                     bestRank, bestName = rank, name;
                 end

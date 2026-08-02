@@ -867,6 +867,182 @@ check('S20 gear you really do not own stays unowned',
 end)();
 
 -- ---------------------------------------------------------------------------
+-- 6a2. WHAT THE PIN MENU ACTUALLY CONTAINS (FGP*, 2026-08-03) -- section 6
+--      proves the window cannot corrupt ImGui's stacks; it stubs the rows away
+--      and never looks at one. These three asks are all ABOUT the rows:
+--
+--        1. only gear you can put on right now (job, level AND bags)
+--        2. an icon on every row
+--        3. several pins on one slot, removable one at a time
+--
+--      So this section renders with the popup OPEN and a real candidate pool,
+--      and reads back the labels the menu emitted. Same stub-imgui + re-require
+--      trick as section 6 (the S50 lesson: floatgear captures imgui at LOAD).
+-- ---------------------------------------------------------------------------
+;(function()
+    local function nop() end
+    local menuLabels, selLabels, iconCalls = {}, {}, 0;
+    local selectPrefix = nil;      -- the label prefix a "click" lands on
+    local IM = {};
+    for _, n in ipairs({ 'SetNextWindowPos', 'SetNextWindowSize', 'SetNextWindowSizeConstraints',
+        'Separator', 'Text', 'TextColored', 'TextWrapped', 'SameLine', 'Dummy', 'Image',
+        'PushItemWidth', 'PopItemWidth', 'OpenPopup', 'CloseCurrentPopup', 'SetTooltip',
+        'PushID', 'PopID', 'ResetMouseDragDelta', 'SetWindowPos', 'SetCursorScreenPos',
+        'Spacing', 'InputText', 'SetScrollHereY', 'PushTextWrapPos', 'PopTextWrapPos',
+        'PushStyleVar', 'PopStyleVar', 'PushStyleColor', 'PopStyleColor', 'EndPopup',
+        'EndMenu', 'EndChild' }) do
+        IM[n] = nop;
+    end
+    IM['End']     = nop;
+    IM.Begin      = function() return true; end
+    IM.BeginChild = function() return true; end
+    IM.BeginPopup = function() return true; end          -- the menu is OPEN all section
+    IM.BeginMenu  = function(l) menuLabels[#menuLabels + 1] = l; return false; end
+    IM.MenuItem   = function() return false; end
+    IM.Selectable = function(l)
+        selLabels[#selLabels + 1] = l;
+        return selectPrefix ~= nil and string.sub(tostring(l), 1, #selectPrefix) == selectPrefix;
+    end
+    for _, n in ipairs({ 'Button', 'ImageButton', 'SmallButton', 'Checkbox', 'SliderFloat',
+        'IsItemHovered', 'IsWindowHovered', 'IsMouseDragging', 'IsMouseClicked',
+        'IsItemClicked', 'IsItemActive', 'IsMouseDown', 'IsMouseReleased' }) do
+        IM[n] = function() return false; end
+    end
+    IM.GetIO              = function() return { KeyShift = false }; end
+    IM.GetWindowPos       = function() return 10, 20; end
+    IM.GetCursorScreenPos = function() return 0, 0; end
+    IM.GetMouseDragDelta  = function() return 0, 0; end
+    IM.GetColorU32        = function() return 0; end
+    IM.CalcTextSize       = function() return 10, 10; end
+    IM.GetContentRegionAvail        = function() return 400, 400; end
+    IM.GetTextLineHeightWithSpacing = function() return 14; end
+    IM.GetWindowDrawList  = function()
+        return { AddCircleFilled = nop, AddRectFilled = nop, AddRect = nop, AddLine = nop };
+    end
+
+    -- The icon service, counted rather than drawn. The real module captured a nil
+    -- imgui at ITS load and would silently draw nothing here -- which is exactly
+    -- the shape of "the icons quietly stopped happening", so it gets a stub that
+    -- can be seen instead.
+    local savedIcons = package.loaded['dlac\\ui\\itemicons'];
+    package.loaded['dlac\\ui\\itemicons'] = {
+        renderIcon = function() iconCalls = iconCalls + 1; end,
+        handleOf   = function() return nil; end,
+    };
+    package.loaded['imgui'] = IM;
+    package.loaded['dlac\\ui\\floatgear'] = nil;
+    local ok, fg = pcall(require, 'dlac\\ui\\floatgear');
+    check('FGP1 floatgear re-requires for the pin-menu drive', ok and type(fg.render), 'function');
+    if not ok then
+        package.loaded['dlac\\ui\\itemicons'] = savedIcons;
+        package.loaded['imgui'] = nil;
+        return;
+    end
+
+    local Sx   = host.services;
+    local keep = { getPlayerInfo = Sx.getPlayerInfo, buildAllEquip = Sx.buildAllEquip,
+                   getEquippedId = Sx.getEquippedId, lookupById = Sx.lookupById,
+                   lookupByName = Sx.lookupByName, displayName = Sx.displayName,
+                   renderSlotGrid = Sx.renderSlotGrid, candidatesForSlot = Sx.candidatesForSlot,
+                   avail = Sx.avail };
+    -- Three pieces for the Head. Two are in your bags; the third is only in a
+    -- Mog Locker, which is the one the menu must not offer -- a pin on it would
+    -- never land, and a pin that never lands reads as a broken feature.
+    local POOL = { { Name = 'Optical Hat',    Id = 1, Slot = 'Head', Level = 70 },
+                   { Name = 'Walahra Turban', Id = 2, Slot = 'Head', Level = 71 },
+                   { Name = 'Locker Hat',     Id = 3, Slot = 'Head', Level = 60 } };
+    Sx.getPlayerInfo     = function() return 'WHM', 75; end
+    Sx.buildAllEquip     = nop;
+    Sx.getEquippedId     = function() return nil; end
+    Sx.lookupById        = function() return nil; end
+    Sx.lookupByName      = function(nm) return { Name = nm, Id = 7 }; end
+    Sx.displayName       = function() return 'X'; end
+    Sx.candidatesForSlot = function() return POOL; end
+    -- The engine's own preview law, stubbed to its two real answers: false for a
+    -- piece with no equippable copy, true otherwise.
+    Sx.avail             = { have = function(nm) return nm ~= 'Locker Hat'; end };
+    Sx.renderSlotGrid    = function(_, _, _, _, _, _, _, _, opts)
+        if opts ~= nil and opts.onRightClick ~= nil then opts.onRightClick('Head'); end
+    end
+    Sx.ui._gearFloat = true;
+
+    local pw = require('dlac\\feature\\pinwatch');
+    pw.pins = {};
+
+    local function seen(list, needle)
+        for _, l in ipairs(list) do
+            if string.find(tostring(l), needle, 1, true) ~= nil then return true; end
+        end
+        return false;
+    end
+    local function frame()
+        menuLabels, selLabels, iconCalls = {}, {}, 0;
+        return pcall(fg.render);
+    end
+
+    check('FGP2 the pin menu renders with a real pool', frame(), true);
+    check('FGP3 a piece in your bags is offered',       seen(menuLabels, 'Optical Hat'), true);
+    check('FGP4 ...and so is the second one',           seen(menuLabels, 'Walahra Turban'), true);
+    check('FGP5 a piece only in storage is NOT offered (it could never equip)',
+        seen(menuLabels, 'Locker Hat'), false);
+    check('FGP6 every offered row drew an icon', iconCalls, 2);
+
+    -- The unknown answer must never hide a row: an empty bag scan (the panel
+    -- opened before the scan landed) would otherwise empty the whole menu.
+    Sx.avail = { have = function() return nil; end };
+    frame();
+    check('FGP7 "don\'t know yet" hides nothing', seen(menuLabels, 'Locker Hat'), true);
+    Sx.avail = { have = function(nm) return nm ~= 'Locker Hat'; end };
+
+    -- SEVERAL PINS ON ONE SLOT.
+    local kTP, kMov = 'Default|mode=TP_Default', 'Default|moving=true';
+    pw.setPin('Head', 'Optical Hat',    { kTP });
+    pw.setPin('Head', 'Walahra Turban', { kMov });
+    frame();
+    check('FGP8 both pins on the slot are listed',
+        seen(selLabels, 'Optical Hat   --') and seen(selLabels, 'Walahra Turban   --'), true);
+    check('FGP9 ...each naming the trigger it belongs to', seen(selLabels, kMov), true);
+    check('FGP10 ...with a per-SLOT remove row',
+        seen(selLabels, 'Remove all 2 pins on Head'), true);
+    check('FGP11 ...and a global one that counts pins AND slots',
+        seen(selLabels, 'Remove all 2 pins (1 slot)'), true);
+    check('FGP12 the pinned rows carry icons too (2 pins + 2 candidates)', iconCalls, 4);
+
+    -- Clicking ONE pinned row removes THAT pin and leaves the rest -- "you should
+    -- be able to choose all, or specific trigger pin mapping" (Henrik).
+    selectPrefix = 'Walahra Turban';
+    frame();
+    selectPrefix = nil;
+    check('FGP13 clicking a pinned row removes that pin only', #pw.pinsOf('Head'), 1);
+    check('FGP14 ...and the one you did not click survives',
+        pw.pinsOf('Head')[1].item, 'Optical Hat');
+
+    -- The grid's cue. A scoped pin is NOT "this piece is stuck on", so it must
+    -- not paint the same red as an All pin -- the colour is the only thing the
+    -- chrome-less window can say without being opened.
+    local gridOpts = nil;
+    Sx.renderSlotGrid = function(_, _, _, _, _, _, _, _, opts) gridOpts = opts; end
+    frame();
+    local condCol = (type(gridOpts) == 'table' and type(gridOpts.boxColorOf) == 'function')
+        and gridOpts.boxColorOf({ label = 'Head' }) or nil;
+    pw.setPin('Head', 'Optical Hat', 'All');
+    frame();
+    local allCol = (type(gridOpts) == 'table' and type(gridOpts.boxColorOf) == 'function')
+        and gridOpts.boxColorOf({ label = 'Head' }) or nil;
+    check('FGP15 a scoped-only pin colours its box', type(condCol), 'table');
+    check('FGP16 an All pin colours it too',         type(allCol), 'table');
+    check('FGP17 ...and the two are different colours',
+        (condCol or {})[1] ~= (allCol or {})[1], true);
+    check('FGP18 pinning All replaced the scoped pin (one pin left)', #pw.pinsOf('Head'), 1);
+
+    pw.pins = {};
+    for k, v in pairs(keep) do Sx[k] = v; end
+    package.loaded['dlac\\ui\\itemicons'] = savedIcons;
+    package.loaded['imgui'] = nil;
+    package.loaded['dlac\\ui\\floatgear'] = nil;
+end)();
+
+-- ---------------------------------------------------------------------------
 -- 6b. IMGUI STACK BALANCE for the All Equipment tab + the Wishlist window
 --     (S150+) -- the same RENDER test as section 6, for the surfaces the
 --     wishlist added to (ADR 0026).
