@@ -1814,7 +1814,7 @@ local function renderTrigRuleBox(h, i, r, setNames, colX)
         imgui.SameLine(0, 4);
         if imgui.SmallButton('copy to...##trgcp' .. id) then act = 'copyto'; end
         if imgui.IsItemHovered() then
-            imgui.SetTooltip('Copy this rule into your OTHER profiles -- same job, same handler.\nTick the profiles in the window that opens; a Blueprint is the\nkeep-it-forever library, this is a one-shot spread.');
+            imgui.SetTooltip('Copy this rule into OTHER JOBS -- tick them in the window that opens\n(All jobs is one click), and the rule lands in the same handler there.\nYour other profiles are offered too. A Blueprint stamps onto the one\njob you are standing in; this reaches all of them at once.');
         end
     end
     imgui.SameLine(0, 4);
@@ -4196,11 +4196,17 @@ function M.renderBlueprints(job, level)
 end
 
 -- ---------------------------------------------------------------------------
--- "copy this rule to..." (Henrik 2026-08-02) -- one Trigger, spread across this
--- character's OTHER Profiles in one window. The Blueprint's one-shot sibling: a
--- Blueprint is the keep-it-forever library you stamp when you want it, this is
--- "put that rule in these profiles too, now". Same job entry in every target --
--- the cross-JOB move is what a Blueprint is for.
+-- "copy this rule to..." (Henrik 2026-08-02) -- one Trigger, landed in the JOB
+-- ENTRIES you tick. The Blueprint's one-shot sibling and the thing a Blueprint
+-- structurally cannot do: a Blueprint stamps onto the ONE job you are standing
+-- in, so reaching five jobs with it costs five job changes. Here you tick them.
+--
+-- A trigger file is addressed by TWO coordinates -- profiles\<Prof>\triggers\
+-- <JOB>.lua -- so the window has two lists and each varies one of them:
+--   * Jobs (the main event): other jobs of the profile you are in.
+--   * Profiles: the same job entry in this character's other profiles.
+-- Neither list can target where the rule already lives; that row is shown, dim
+-- and untickable, because "it already has this rule" is the reason.
 --
 -- gear\rulecopy is the pure core (capture, per-target verdict, receipt); the file
 -- ladder is here: re-read at write time (the rows are a snapshot and both Lua
@@ -4210,22 +4216,33 @@ end
 -- whose safety backup could not be written -- and both are named in the receipt
 -- rather than worked around.
 --
--- Nothing here touches the active profile, so nothing needs a hot-reload: the
--- copies are already there when the player switches.
+-- Nothing here touches the live job entry, so nothing needs a hot-reload: the
+-- copies are already there when the player changes job (or profile).
 -- ---------------------------------------------------------------------------
 local cpUI = {
-    entry = nil, handler = nil, job = nil, ruleText = '',
-    rows = nil, err = nil, marks = {},          -- marks: name -> { bool } (imgui buffer)
+    entry = nil, handler = nil, job = nil, profile = nil, ruleText = '',
+    jobRows = nil, profRows = nil, err = nil,
+    marks = { jobs = {}, profiles = {} },       -- kind -> name -> { bool } (imgui buffer)
     status = '', statusErr = false, statusAt = 0,
     _open = false,
 };
 
--- Per-state note, shown beside each profile row. Every row says what WOULD happen.
+-- Per-state note, shown beside each row. Every row says what WOULD happen, in the
+-- words of the axis it belongs to (a job list and a profile list disagree about
+-- what "this one" means, and a wrong-axis note is how a player copies blind).
 local CP_NOTE = {
-    create     = 'no trigger file for this job yet -- one is created',
-    dup        = 'already has an identical rule -- copying adds a second',
-    source     = 'this profile -- the rule lives here',
-    unreadable = 'its trigger file does not parse -- skipped, never overwritten',
+    jobs = {
+        create     = 'no rules for this job yet -- a trigger file is created',
+        dup        = 'already has an identical rule -- copying adds a second',
+        source     = 'the job you are on -- the rule lives here',
+        unreadable = 'its trigger file does not parse -- skipped, never overwritten',
+    },
+    profiles = {
+        create     = 'no trigger file for this job there yet -- one is created',
+        dup        = 'already has an identical rule -- copying adds a second',
+        source     = 'this profile -- the rule lives here',
+        unreadable = 'its trigger file does not parse -- skipped, never overwritten',
+    },
 };
 
 local function cpSetStatus(msg, isErr)
@@ -4250,33 +4267,55 @@ local function cpReadProfile(prof, profName, job)
     return tmodel.fromRaw(raw, dsp.canonEvent), nil;
 end
 
--- Ask every profile of this character what a copy would do there. rows | nil, err.
+-- Ask every destination on BOTH axes what a copy would do there, filling
+-- cpUI.jobRows / cpUI.profRows. true | nil, err (the profile list alone failing
+-- is not an error: the job list is the feature, and a listing API that returns
+-- nothing must not cost him the window).
 local function cpScan(entry)
     local _, abbr = trigFilePath();
     if abbr == nil then return nil, 'not logged in (or the job is unknown)'; end
     cpUI.job = abbr;
     local prof = cpProfiles();
     if prof == nil then return nil, 'profiles module unavailable'; end
-    local names = prof.listProfiles();
-    if names == nil then return nil, 'could not list this character\'s profiles'; end
     local active = prof.activeName();
-    local targets = {};
-    for _, nm in ipairs(names) do
-        -- get_dir mixes files into a listing: only sanitize-clean names are folders
-        if prof.sanitizeName(nm) ~= nil then
-            local t = { name = nm, source = (nm == active) };
-            if not t.source then t.data, t.err = cpReadProfile(prof, nm, abbr); end
-            targets[#targets + 1] = t;
-        end
+    cpUI.profile = active;
+
+    -- Jobs: every job entry of THIS profile, in the game's job order. All 22 are
+    -- offered -- a job with no rules yet is exactly the one worth seeding, and its
+    -- row says a file will be created.
+    local jobs, order = {}, {};
+    for i, j in ipairs(prof.JOBS or {}) do
+        order[j] = i;
+        local t = { name = j, source = (j == abbr) };
+        if not t.source then t.data, t.err = cpReadProfile(prof, active, j); end
+        jobs[#jobs + 1] = t;
     end
-    return rc.rows(entry, targets), nil;
+    cpUI.jobRows = rc.rows(entry, jobs, order);
+
+    -- Profiles: the same job entry in this character's other profiles.
+    cpUI.profRows = nil;
+    local names = prof.listProfiles();
+    if names ~= nil then
+        local targets = {};
+        for _, nm in ipairs(names) do
+            -- get_dir mixes files into a listing: only sanitize-clean names are folders
+            if prof.sanitizeName(nm) ~= nil then
+                local t = { name = nm, source = (nm == active) };
+                if not t.source then t.data, t.err = cpReadProfile(prof, nm, abbr); end
+                targets[#targets + 1] = t;
+            end
+        end
+        cpUI.profRows = rc.rows(entry, targets);
+    end
+    return true, nil;
 end
 
 -- Open the window for one rule: capture it (detached the moment it is captured),
 -- render its canonical text, scan the profiles. Only the write is deferred.
 local function cpOpen(handler, rule)
-    cpUI.entry, cpUI.handler, cpUI.rows, cpUI.err = nil, handler, nil, nil;
-    cpUI.marks, cpUI.ruleText = {}, '';
+    cpUI.entry, cpUI.handler, cpUI.err = nil, handler, nil;
+    cpUI.jobRows, cpUI.profRows, cpUI.ruleText = nil, nil, '';
+    cpUI.marks = { jobs = {}, profiles = {} };
     cpUI.status, cpUI.statusErr = '', false;
     cpUI._open = true;
     if not hasRuleCopy then cpUI.err = 'rulecopy module unavailable -- the copy is disabled.'; return; end
@@ -4284,7 +4323,8 @@ local function cpOpen(handler, rule)
     local entry, eerr = rc.entryFor(handler, rule);
     if entry == nil then cpUI.err = 'this rule cannot be copied: ' .. tostring(eerr); return; end
     cpUI.entry, cpUI.ruleText = entry, rc.ruleText(entry, dsp.PRETTY_KEY);
-    cpUI.rows, cpUI.err = cpScan(entry);
+    local _, serr = cpScan(entry);
+    cpUI.err = serr;
 end
 
 -- Write ONE target profile's <JOB> trigger file with the rule appended. ok, dup, err.
@@ -4332,74 +4372,76 @@ local function cpCopyOne(prof, entry, job, profName)
     return true, dup, nil;
 end
 
--- Copy into every ticked profile, then re-scan so the rows show the NEW truth (a
--- profile just written now reads 'dup' -- which is what stops a second click from
--- doubling the rule unnoticed).
-local function cpApply()
+-- Copy into every ticked destination of ONE axis ('jobs' | 'profiles'), then
+-- re-scan so the rows show the NEW truth (a destination just written now reads
+-- 'dup' -- which is what stops a second click from doubling the rule unnoticed).
+local function cpApply(kind)
     local entry, job = cpUI.entry, cpUI.job;
     if entry == nil or job == nil then cpSetStatus('Nothing to copy.', true); return; end
     local prof = cpProfiles();
     if prof == nil then cpSetStatus('profiles module unavailable.', true); return; end
+    local rows = (kind == 'jobs') and cpUI.jobRows or cpUI.profRows;
+    local marks = cpUI.marks[kind] or {};
     local results = {};
-    for _, row in ipairs(cpUI.rows or {}) do
-        local b = cpUI.marks[row.name];
+    for _, row in ipairs(rows or {}) do
+        local b = marks[row.name];
         if b ~= nil and b[1] == true and rc.copyable(row.state) then
-            local ok, dup, err = cpCopyOne(prof, entry, job, row.name);
+            -- The axis decides which coordinate the row NAMES; the other is where
+            -- we already are. One writer, two axes.
+            local tJob  = (kind == 'jobs') and row.name or job;
+            local tProf = (kind == 'jobs') and cpUI.profile or row.name;
+            local ok, dup, err = cpCopyOne(prof, entry, tJob, tProf);
             results[#results + 1] = { name = row.name, ok = ok, dup = dup, err = err };
         end
     end
-    local text, isErr = rc.receipt(results, job, entry.handler);
-    cpSetStatus(text, isErr);
-    local rows, serr = cpScan(entry);
-    if rows ~= nil then cpUI.rows, cpUI.err = rows, nil; else cpUI.err = serr; end
-    cpUI.marks = {};
+    local where = (kind == 'jobs')
+        and string.format('%s rules, profile %s', entry.handler, tostring(cpUI.profile or '?'))
+        or  string.format('%s %s', tostring(job), entry.handler);
+    cpSetStatus(rc.receipt(results, where));
+    local _, serr = cpScan(entry);
+    cpUI.err = serr;
+    cpUI.marks[kind] = {};
 end
 
 -- The tick buffer for one row, created on demand.
-local function cpMark(name)
-    local b = cpUI.marks[name];
-    if b == nil then b = { false }; cpUI.marks[name] = b; end
+local function cpMark(kind, name)
+    local m = cpUI.marks[kind];
+    if m == nil then m = {}; cpUI.marks[kind] = m; end
+    local b = m[name];
+    if b == nil then b = { false }; m[name] = b; end
     return b;
 end
 
-local function renderTrigCopyPopup()
-    imgui.SetNextWindowSizeConstraints({ 460, 0 }, { 660, 520 });
-    if not imgui.BeginPopup('##dlac_trigcopy') then return; end
-    imgui.TextColored(COL_HEADER, 'Copy this rule to other profiles');
-    imgui.TextColored(COL_DIM, string.format('%s %s -- it lands in the same job entry of every profile you tick.',
-        tostring(cpUI.job or '?'), tostring(cpUI.handler or '?')));
-    if cpUI.ruleText ~= '' then
-        imgui.PushTextWrapPos(0.0);
-        imgui.TextColored(COL_SCORE, esc(cpUI.ruleText));
-        imgui.PopTextWrapPos();
+-- One destination axis: its rows, All / None, and its own Copy button. Self-
+-- contained so the two lists cannot get their ticks, counts or receipts crossed --
+-- the one bug a shared "copy everything ticked" button would invite.
+-- `unit` = the singular noun for this axis ('job' / 'profile'), `empty` = what to
+-- say when the axis offers nothing.
+local function cpSection(kind, title, unit, empty)
+    local rows = (kind == 'jobs') and cpUI.jobRows or cpUI.profRows;
+    imgui.TextColored(COL_HEADER, title);
+    if rows == nil then
+        imgui.TextColored(COL_DIM, esc(empty));
+        return;
     end
-    if trig.dirty then
-        imgui.TextColored(COL_SCORE, 'This profile has uncommitted edits -- the copy carries the rule AS SHOWN, not the one on disk.');
-    end
-    imgui.Separator();
-
-    if cpUI.err ~= nil then imgui.TextColored(COL_ERR, esc(tostring(cpUI.err))); end
-
-    local rows = cpUI.rows or {};
     local others, picked = 0, {};
     for _, r in ipairs(rows) do if r.state ~= 'source' then others = others + 1; end end
-    if cpUI.err == nil and others == 0 then
-        imgui.TextColored(COL_DIM, 'This character has no other profile yet -- create one in the Profiles menu,');
-        imgui.TextColored(COL_DIM, 'and it will be listed here.');
-    end
-    -- A long profile list scrolls in a capped child (the Blueprints-list pattern)
-    -- rather than pushing the Copy button off the bottom of a size-capped popup.
+    if others == 0 then imgui.TextColored(COL_DIM, esc(empty)); return; end
+
+    -- A long list scrolls in a capped child (the Blueprints-list pattern) rather
+    -- than pushing the Copy button off the bottom of a size-capped popup.
+    local notes = CP_NOTE[kind] or {};
     local scroll = (#rows > 12);
-    if scroll then imgui.BeginChild('##trgcplist', { -1, 12 * (lineH() + 4) + 8 }, false); end
+    if scroll then imgui.BeginChild('##trgcplist_' .. kind, { -1, 12 * (lineH() + 4) + 8 }, false); end
     for _, r in ipairs(rows) do
         if rc.copyable(r.state) then
-            local b = cpMark(r.name);
-            imgui.Checkbox(esc(r.name) .. '##trgcpm_' .. r.name, b);
+            local b = cpMark(kind, r.name);
+            imgui.Checkbox(esc(r.name) .. '##trgcpm_' .. kind .. '_' .. r.name, b);
             if b[1] == true then picked[r.name] = true; end
         else
             imgui.TextColored(COL_DIM, esc('    ' .. r.name));
         end
-        local note = CP_NOTE[r.state];
+        local note = notes[r.state];
         if note ~= nil then
             imgui.SameLine(0, 8);
             imgui.TextColored((r.state == 'unreadable') and COL_ERR
@@ -4408,45 +4450,68 @@ local function renderTrigCopyPopup()
     end
     if scroll then imgui.EndChild(); end
 
-    if others > 0 then
-        imgui.Spacing();
-        if imgui.SmallButton('All##trgcpall') then
-            for _, r in ipairs(rows) do
-                if rc.copyable(r.state) then cpMark(r.name)[1] = true; end
-            end
-        end
-        imgui.SameLine(0, 6);
-        if imgui.SmallButton('None##trgcpnone') then
-            for _, b in pairs(cpUI.marks) do b[1] = false; end
-        end
+    if imgui.SmallButton('All ' .. unit .. 's##trgcpall_' .. kind) then
+        for _, nm in ipairs(rc.allNames(rows)) do cpMark(kind, nm)[1] = true; end
     end
+    if imgui.IsItemHovered() then
+        imgui.SetTooltip('Tick every ' .. unit .. ' that does not already have this rule.\nOne already holding it stays unticked -- tick it by hand if you\nreally want a second copy.');
+    end
+    imgui.SameLine(0, 6);
+    if imgui.SmallButton('None##trgcpnone_' .. kind) then
+        for _, b in pairs(cpUI.marks[kind] or {}) do b[1] = false; end
+    end
+    imgui.SameLine(0, 12);
 
-    imgui.Separator();
     local n, dups = rc.selection(rows, picked);
-    if dups > 0 then
-        imgui.TextColored(COL_SCORE, string.format('%d ticked profile%s already hold%s an identical rule -- copying adds a second.',
-            dups, (dups == 1) and '' or 's', (dups == 1) and 's' or ''));
-    end
     if n > 0 then
-        if imgui.Button(string.format('Copy to %d profile%s##trgcpgo', n, (n == 1) and '' or 's'), { 0, 24 }) then
-            cpApply();
+        if imgui.Button(string.format('Copy to %d %s%s##trgcpgo_%s', n, unit, (n == 1) and '' or 's', kind), { 0, 24 }) then
+            cpApply(kind);
         end
         if imgui.IsItemHovered() then
-            imgui.SetTooltip('Writes each profile\'s ' .. tostring(cpUI.job or '?') .. ' trigger file (timestamped backup first).\nThis profile is untouched and nothing needs reloading -- the rule\nis simply there when you switch to that profile.');
+            imgui.SetTooltip('Writes each ticked ' .. unit .. '\'s trigger file (timestamped backup first).\nWhat you are on now is untouched and nothing needs reloading --\nthe rule is simply there when you get there.');
         end
-        imgui.SameLine(0, 8);
-    elseif others > 0 then
-        imgui.TextColored(COL_DIM, 'Tick the profiles to copy into.');
-        imgui.SameLine(0, 8);
+    else
+        imgui.TextColored(COL_DIM, 'Tick the ' .. unit .. 's to copy into.');
     end
-    if imgui.Button('Close##trgcpclose', { 90, 24 }) then imgui.CloseCurrentPopup(); end
+    if dups > 0 then
+        imgui.TextColored(COL_SCORE, string.format('%d ticked %s%s already hold%s an identical rule -- copying adds a second.',
+            dups, unit, (dups == 1) and '' or 's', (dups == 1) and 's' or ''));
+    end
+end
 
+local function renderTrigCopyPopup()
+    imgui.SetNextWindowSizeConstraints({ 480, 0 }, { 680, 560 });
+    if not imgui.BeginPopup('##dlac_trigcopy') then return; end
+    imgui.TextColored(COL_HEADER, 'Copy this rule to...');
+    imgui.TextColored(COL_DIM, string.format('the %s handler, in every job entry you tick (profile %s).',
+        tostring(cpUI.handler or '?'), tostring(cpUI.profile or '?')));
+    if cpUI.ruleText ~= '' then
+        imgui.PushTextWrapPos(0.0);
+        imgui.TextColored(COL_SCORE, esc(cpUI.ruleText));
+        imgui.PopTextWrapPos();
+    end
+    if trig.dirty then
+        imgui.TextColored(COL_SCORE, 'This job has uncommitted edits -- the copy carries the rule AS SHOWN, not the one on disk.');
+    end
+    imgui.Separator();
+
+    if cpUI.err ~= nil then imgui.TextColored(COL_ERR, esc(tostring(cpUI.err))); end
+
+    cpSection('jobs', 'Jobs (this profile)', 'job',
+        'No other job to copy to.');
+    imgui.Spacing();
+    imgui.Separator();
+    cpSection('profiles', 'Other profiles (same job)', 'profile',
+        'This character has no other profile yet -- create one in the Profiles menu.');
+
+    imgui.Separator();
+    if imgui.Button('Close##trgcpclose', { 90, 24 }) then imgui.CloseCurrentPopup(); end
     if cpUI.status ~= '' then
         imgui.PushTextWrapPos(0.0);
         imgui.TextColored(cpUI.statusErr and COL_ERR or COL_SCORE, esc(cpUI.status));
         imgui.PopTextWrapPos();
     end
-    imgui.TextColored(COL_DIM, 'Sets / Modes / Groups a target profile lacks travel verbatim -- they read [missing] there.');
+    imgui.TextColored(COL_DIM, 'Sets / Modes / Groups the destination lacks travel verbatim -- they read [missing] there.');
     imgui.EndPopup();
 end
 -- Headless render seams (the renderTrigRuleBox / captureModeToLibrary precedent): the

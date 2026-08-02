@@ -4906,15 +4906,17 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
--- RC. rulecopy -- "copy this rule to..." (Henrik 2026-08-02): one Trigger spread
---     across this character's OTHER Profiles, same job entry. The Blueprint's
---     one-shot sibling, and it travels AS a Blueprint entry on purpose (capture /
---     detach / identical-rule / stamp are blueprintsmodel's, pinned by TGB*).
---     What is pinned here is the part that is new: the ANSWER PER TARGET --
---     source vs create vs dup vs add vs unreadable -- the ticked-selection count,
---     and the receipt, which must NAME every outcome (a copy that silently
---     skipped a profile reads as one that worked everywhere, and the player
---     would not find out until they switched to it).
+-- RC. rulecopy -- "copy this rule to..." (Henrik 2026-08-02): one Trigger landed
+--     in the JOB ENTRIES you tick. A trigger file is addressed by (profile, job),
+--     so a copy varies one coordinate -- other JOBS of this profile (the ask), or
+--     the same job in other PROFILES -- and ONE classifier answers both, which is
+--     what these checks drive on both axes. It travels AS a Blueprint entry on
+--     purpose (capture / detach / identical-rule / stamp are blueprintsmodel's,
+--     pinned by TGB*). What is pinned here is the part that is new: the ANSWER
+--     PER TARGET -- source vs create vs dup vs add vs unreadable -- the display
+--     order, the ticked-selection count, and the receipt, which must NAME every
+--     outcome (a copy that silently skipped a job reads as one that worked
+--     everywhere, and the player would not find out until they changed job).
 -- ---------------------------------------------------------------------------
 (function()
     package.loaded['dlac\\gear\\blueprintsmodel'] =
@@ -4936,7 +4938,7 @@ end)();
     -- The canonical rule text (what the window shows) is the serializer's ONE form.
     check('RC7 rule text is the canonical form', rc.ruleText(entry), 'when = { name = "Cure IV" }, set = "CureSet", priority = 40');
 
-    -- Per-target verdicts. `data = nil` + no err = no trigger file for this job yet.
+    -- Per-target verdicts. `data = nil` + no err = no trigger file there yet.
     local hasIt  = { Midcast = { { when = { name = 'Cure IV' }, set = 'CureSet', priority = 40 } } };
     local hasOther = { Midcast = { { when = { name = 'Cure III' }, set = 'CureSet' } } };
     local rows = rc.rows(entry, {
@@ -4950,18 +4952,50 @@ end)();
     check('RC9 rows are sorted by name', rows[1].name .. ',' .. rows[5].name, 'Default,Zephyr');
     local st, byName = {}, {};
     for _, r in ipairs(rows) do st[r.name] = r.state; byName[r.name] = r; end
-    check('RC10 the source profile is never a target', st.Default, 'source');
+    check('RC10 where the rule lives is never a target', st.Default, 'source');
     check('RC11 an ordinary target adds',              st.Solo,    'add');
     check('RC12 no file yet -> create',                st.Zephyr,  'create');
     check('RC13 an identical rule -> dup',             st.Party,   'dup');
     check('RC14 a torn file -> unreadable',            st.Torn,    'unreadable');
     check('RC15 the torn file keeps its reason', type(byName.Torn.err), 'string');
 
+    -- The SAME classifier serves the job axis (the ask): the job you are on is the
+    -- source, a job with no rules yet is a create, and the rows come back in the
+    -- GAME's job order rather than alphabetically.
+    local ORDER = { WAR = 1, MNK = 2, WHM = 3, BLM = 4, RDM = 5 };
+    local jrows = rc.rows(entry, {
+        { name = 'RDM', data = hasOther },
+        { name = 'WHM', source = true },
+        { name = 'BLM', data = hasIt },
+        { name = 'WAR', data = nil },
+    }, ORDER);
+    local jseq, jst = {}, {};
+    for _, r in ipairs(jrows) do jseq[#jseq + 1] = r.name; jst[r.name] = r.state; end
+    check('RC15a jobs come back in job order, not alphabetical', table.concat(jseq, ','), 'WAR,WHM,BLM,RDM');
+    check('RC15b the job you are on is the source',   jst.WHM, 'source');
+    check('RC15c a job with no rules yet is a create', jst.WAR, 'create');
+    check('RC15d a job already holding it is a dup',   jst.BLM, 'dup');
+    -- Anything the order does not name still sorts, after the known ones, by name.
+    local mixed = rc.rows(entry, { { name = 'Zed', data = hasOther }, { name = 'Abe', data = hasOther },
+                                   { name = 'WAR', data = hasOther } }, ORDER);
+    check('RC15e unranked names sort after the ranked ones, by name',
+        mixed[1].name .. ',' .. mixed[2].name .. ',' .. mixed[3].name, 'WAR,Abe,Zed');
+
     -- Only the three copyable states may ever be written to.
     check('RC16 add/create/dup are copyable',
         rc.copyable('add') and rc.copyable('create') and rc.copyable('dup'), true);
     check('RC17 source is not copyable',     rc.copyable('source'), false);
     check('RC18 unreadable is not copyable', rc.copyable('unreadable'), false);
+
+    -- What "All" ticks: everything writable EXCEPT what already holds the rule. The
+    -- duplicate check is the point of the feature; a bulk button that spends it would
+    -- silently double a rule across 21 jobs on one click.
+    local all = rc.allNames(rows);
+    table.sort(all);
+    check('RC18a All ticks the writable non-duplicates only', table.concat(all, ','), 'Solo,Zephyr');
+    check('RC18b All ticks nothing when every row is a duplicate or refused',
+        #rc.allNames({ { name = 'A', state = 'dup' }, { name = 'B', state = 'source' },
+                       { name = 'C', state = 'unreadable' } }), 0);
 
     -- The ticked selection: how many will be written, and how many of those double up.
     local n0 = rc.selection(rows, {});
@@ -4983,19 +5017,26 @@ end)();
     check('RC28 the copy is identical afterwards',    rc.holdsIdentical(entry, after), true);
     check('RC29 ...and was not before',               rc.holdsIdentical(entry, before), false);
 
-    -- The receipt names EVERY outcome.
-    local okText, okErr = rc.receipt({ { name = 'Solo', ok = true }, { name = 'Zephyr', ok = true } }, 'WHM', 'Midcast');
-    check('RC30 plain copy names the profiles', okText, 'Copied to Solo, Zephyr (WHM Midcast).');
+    -- The receipt names EVERY outcome, and carries whichever coordinate was varied.
+    local okText, okErr = rc.receipt({ { name = 'BLM', ok = true }, { name = 'RDM', ok = true } },
+        'Midcast rules, profile Default');
+    check('RC30 plain copy names the destinations', okText, 'Midcast rules, profile Default: Copied to BLM, RDM.');
     check('RC31 ...and is not an error', okErr, false);
     local mixText, mixErr = rc.receipt({
         { name = 'Solo',  ok = true },
         { name = 'Party', ok = true, dup = true },
         { name = 'Alt',   ok = false, err = 'could not write' },
-    }, 'WHM', 'Midcast');
+    }, 'WHM Midcast');
     check('RC32 duplicates are called out', mixText:find('1 already had an identical rule -- copied anyway: Party.', 1, true) ~= nil, true);
     check('RC33 failures are named with their reason', mixText:find('FAILED: Alt (could not write).', 1, true) ~= nil, true);
     check('RC34 a failure makes the receipt an error', mixErr, true);
-    local noneText, noneErr = rc.receipt({}, 'WHM', 'Midcast');
+    check('RC34a the receipt says which axis it varied', mixText:find('WHM Midcast: ', 1, true) ~= nil, true);
+    -- ...even when NOTHING landed: an all-failed copy is exactly when "which list did
+    -- I just fire?" matters, and the coordinate used to ride the Copied-to clause only.
+    local allBad = rc.receipt({ { name = 'WAR', ok = false, err = 'no dir' } }, 'Midcast rules, profile Default');
+    check('RC34b an all-failed copy still names the axis',
+        allBad:find('Midcast rules, profile Default: FAILED: WAR (no dir).', 1, true) ~= nil, true);
+    local noneText, noneErr = rc.receipt({}, 'WHM Midcast');
     check('RC35 an empty copy says so', noneText:find('Nothing copied', 1, true) ~= nil, true);
     check('RC36 ...as an error', noneErr, true);
 end)();

@@ -287,17 +287,19 @@ infer it from a field confirmation, from *"works"*, or from your own read that s
 ready — his own note on the exchange was *"you are right not to assume otherwise since I
 haven't told you."* Ask when he has **not** said merge; never ask twice when he has.
 
-- **"copy to…" — one Trigger, spread across your other profiles** (`2026.08.02b`). Henrik
-  asked for it directly: *"Can you make a copy to... button by all the trigger rules? I know
-  we have blue prints, but would be nice if that would open up a window where you can mark
-  all or any of the dlac profiles you want to copy that trigger rule to."* A per-rule button
-  opens a window listing this character's OTHER profiles with a tick box each; the rule lands
-  in the same job entry of everything ticked. Pure core `gear/rulecopy.lua` (RC1–36), the
-  window driven end to end against a stub imgui (smoke_ui CP1–21). **NOT field-confirmed —
-  suites only** (5698 / 965, both interpreters). The round it owes is one pass in-game: open
-  a rule's *copy to…*, tick a second profile, copy, then switch to that profile and see the
-  rule sitting in the same handler. Cheap to check, and the failure modes are all loud
-  (every target row says what will happen, every outcome is named in the receipt).
+- **"copy to…" — one Trigger, landed in the job entries you tick** (`2026.08.02c`). Henrik
+  asked for a copy button on trigger rules, first said *profiles*, then corrected himself:
+  *"I meant the job. I want to be able to copy the rule between the jobs. Have a list of jobs
+  that we can mark to copy to (where it also checks if it has a similar rule already), also
+  can't copy to itself... one button to select all jobs."* A per-rule button opens a window
+  with a tick box per JOB (plus **All jobs**); the profile axis built first is still there as
+  a second list below, with its own All and Copy. **All** ticks only what does not already
+  hold the rule — the duplicate check is the ask, so the bulk button must not spend it. Pure
+  core `gear/rulecopy.lua` (RC1–36), the window driven end to end on BOTH axes against a stub
+  imgui (smoke_ui CP1–33). **NOT field-confirmed — suites only** (5707 / 977, both
+  interpreters). The round it owes is one pass in-game: open a rule's *copy to…*, tick another
+  job, copy, change to that job and see the rule in the same handler. Cheap to check, and the
+  failure modes are all loud (every row says what will happen, every outcome is named).
 
 
 *(Still empty after the second 2026-08-02 promotion, `850e6d5` — **`/dl sends` bills dlac
@@ -673,32 +675,43 @@ research already recorded. In rough priority order:
 
 ## Current state (as of 2026-08-02)
 
-- **2026-08-02 (`2026.08.02b`): "copy to…" — ONE TRIGGER, SPREAD ACROSS YOUR OTHER PROFILES.
+- **2026-08-02 (`2026.08.02c`): "copy to…" — ONE TRIGGER, LANDED IN THE JOB ENTRIES YOU TICK.
   BUILT, on `dev`, suites green both interpreters, **NOT field-confirmed** (see the merge
   queue for the one-pass round it owes).
-  - **Where it came from.** Henrik: *"Can you make a copy to... button by all the trigger
-    rules? I know we have blue prints, but would be nice if that would open up a window where
-    you can mark all or any of the dlac profiles you want to copy that trigger rule to."*
-  - **What it is:** a `copy to...` button on every trigger row, opening a window that lists
-    this character's OTHER profiles with a tick box each (plus All / None). The rule lands in
-    the **same job entry** of everything ticked — the cross-JOB move is what a Blueprint is
-    for; this is the cross-PROFILE one. A Blueprint is the library you keep, this is a
-    one-shot **spread**.
-  - **It travels as a Blueprint entry on purpose.** Capture, detach, identical-rule detection
-    and the stamp transform are `blueprintsmodel`'s and already pinned (TGB\*) — reusing them
-    is what guarantees a copied rule is byte-identical to a stamped one, instead of a third
+  - **Where it came from, including the correction.** Henrik asked for *"a copy to... button
+    by all the trigger rules"* and named **profiles**; the profile version shipped, and he
+    came straight back: *"I am in the wrong here. What did we call the job profiles again? I
+    don't mean the actual character profiles, I meant the job."* The vocabulary he was
+    reaching for is **Job entry** (CONTEXT.md). Worth keeping as a pattern: the ask named the
+    wrong axis, and building it revealed which one he meant — the correction cost one round
+    because the machinery was axis-agnostic underneath.
+  - **What it is:** a `copy to...` button on every trigger row, opening a window with **two**
+    tick-lists — **Jobs (this profile)** first, the ask, and **Other profiles (same job)**
+    below, each with its own All, None and Copy button. A trigger file is addressed by
+    (profile, job); a copy varies one coordinate, so both lists are the same question and
+    share one classifier and one writer.
+  - **Why it is not a Blueprint.** A Blueprint stamps onto the ONE job you are standing in.
+    Reaching five jobs with it costs five job changes; here you tick them. It still travels
+    **as a Blueprint entry** internally — capture, detach, identical-rule detection and the
+    stamp transform are `blueprintsmodel`'s and already pinned (TGB\*) — which is what
+    guarantees a copied rule is byte-identical to a stamped one, instead of a third
     hand-rolled emitter drifting from `dispatch.serializeTriggers`.
   - **Every row says what will happen before the click**, and every outcome is named after
-    it: `create` (no trigger file for that job yet), `dup` (identical rule already there —
-    warn-but-allow, gold), `add`, and a torn target file **refused, never overwritten**. The
-    active profile is shown but never a target.
+    it: `create` (no rules for that job yet — the job worth seeding), `dup` (identical rule
+    already there — warn-but-allow, gold), `add`, and a torn target file **refused, never
+    overwritten**. Where the rule already lives is shown dim and untickable.
+  - **All ticks only the non-duplicates** (`rulecopy.allNames`). He asked for the duplicate
+    check by name, so the bulk button must not spend it: one click across 21 jobs is exactly
+    where a silent double would go unnoticed. A duplicate stays reachable by hand.
   - **The write ladder** (triggersui, not the pure core): re-read each target at write time
     (the rows are a snapshot and both Lua states plus a parallel session share the disk),
-    timestamped backup into `<char>\backups\rule-copy\`, `lib/safewrite.replaceLua`, read-back
-    verify. Nothing hot-reloads because nothing about the active profile changes — the copies
-    are simply there on the next switch.
+    timestamped backup into `<char>\backups\rule-copy\` — **and a backup that cannot be
+    written refuses the overwrite**, the profiles-deleter house rule — then
+    `lib/safewrite.replaceLua` and a read-back verify. Nothing hot-reloads because the live
+    job entry is never a target; the copies are there on the next job change.
   - `gear/rulecopy.lua` (RC1–36 pure), `M.renderTrigCopyPopup` / `M._cpOpen` exposed as
-    render seams so smoke_ui CP1–21 drives the whole window, including the failed-write path.
+    render seams so smoke_ui CP1–33 drives the whole window on both axes, including both
+    failed-write paths and the pin that a refused target is left byte-identical.
 
 - **2026-08-02 (`2026.08.02`): `/dl sends` — WHAT DLAC PUT ON THE WIRE. BUILT and **ON MAIN**
   (`28ab08d`, promoted same session), suites green both platforms, **NOT field-confirmed — a

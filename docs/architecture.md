@@ -386,15 +386,25 @@ editor bound to the library entry via `trig._bpEdit` — no second editor, never
 stamped Triggers), rename and Delete. Library writes go through the `lib/safewrite` ladder.
 
 And the Blueprint's one-shot sibling, **"copy to…"** (2026-08-02): a per-rule button opening a
-window that lists this character's OTHER profiles with a tick box each, and copies the rule
-into the same job entry of every profile ticked. Pure core `gear/rulecopy.lua` (below); the
-file ladder is triggersui's — each target is **re-read at write time** (the rows are a
-snapshot; both Lua states and a parallel session share the disk), a torn target file is
-**refused, never overwritten**, an existing file is backed up timestamped into
-`<char>\backups\rule-copy\` and replaced through `lib/safewrite`, and the result is read back.
-The ACTIVE profile is never a target, so nothing hot-reloads — the copies are simply there on
-the next profile switch. `M.renderTrigCopyPopup` / `M._cpOpen` are exposed as headless render
-seams (smoke_ui CP*, the `renderTrigRuleBox` precedent: a popup body only runs while open).
+window with **two tick-lists**, because a trigger file is addressed by two coordinates
+(`profiles\<Prof>\triggers\<JOB>.lua`) and a copy varies one of them — **Jobs (this profile)**,
+the main event, and **Other profiles (same job)**. Each list owns its rows, its **All** button
+and its own Copy button, so the two can never cross ticks, counts or receipts. **All** ticks
+every writable row that does NOT already hold an identical rule (`rulecopy.allNames`): the
+duplicate check is the feature, and a bulk button that spent it would silently double a rule
+across 21 jobs on one click — a duplicate stays reachable by ticking that row by hand.
+Whichever coordinate the rule already lives at (the job you are on / the active profile) is
+shown dim and untickable.
+
+Pure core `gear/rulecopy.lua` (below); the file ladder is triggersui's — each target is
+**re-read at write time** (the rows are a snapshot; both Lua states and a parallel session
+share the disk), a torn target file is **refused, never overwritten**, an existing file is
+backed up timestamped into `<char>\backups\rule-copy\` and replaced through `lib/safewrite`,
+and the result is read back; a backup that cannot be written **refuses the overwrite** (the
+profiles-deleter house rule). The live job entry is never a target, so nothing hot-reloads —
+the copies are simply there on the next job (or profile) change.
+`M.renderTrigCopyPopup` / `M._cpOpen` are exposed as headless render seams (smoke_ui CP*, the
+`renderTrigRuleBox` precedent: a popup body only runs while open).
 
 ### ui/automationsui.lua — the Gear Helpers tab + the manifest machinery
 (Tab label renamed Automations → **Gear Helpers** 2026-07-28; module/file/key names are
@@ -762,21 +772,28 @@ mirror of `dispatch.serializeTriggers`' per-rule form (issue #65 forbids any eng
 the file, the identical-rule canonical form, and (slice 2) the shareable text render a rule ONE
 way. triggersui owns the file IO (the safewrite ladder) + the section render. Never seeded into LAC.
 
-### gear/rulecopy.lua — "copy this rule to…" across Profiles (pure)
-The core behind the per-rule multi-profile copy (2026-08-02). Deliberately NOT a second
-Blueprint: a Blueprint is the library you keep, this is a one-shot **spread** — the rule you
-are looking at, landed in the profiles you tick, in the same job entry (the cross-JOB move is
-what a Blueprint is for). It travels **as a Blueprint entry** on purpose — capture, detach,
-identical-rule detection and the stamp transform are `blueprintsmodel`'s and already pinned
-(TGB\*), and reusing them is what guarantees a copied rule is byte-identical to a stamped one.
-What this module adds is the **answer per target**: `rows(entry, targets)` classifies each
-profile as `source` (the rule's home — never a target) / `create` (no trigger file for that job
-yet) / `dup` (an identical rule already there — warn-but-allow, the double-stamp law) / `add` /
-`unreadable` (a torn file — refused), `selection` counts the ticked-and-writable rows plus the
-duplicates among them, `applyTo` is the stamp, and `receipt` **names every outcome**, because a
-copy that silently skipped a profile reads as one that worked everywhere and the player would
-not find out until they switched to it. Pure: no ImGui, no Ashita, no file IO, no clock — the
-caller reads the target files and writes the results (tests RC\*). Never seeded into LAC.
+### gear/rulecopy.lua — "copy this rule to…" (pure)
+The core behind the per-rule copy (2026-08-02): one Trigger landed in the **job entries** you
+tick. Deliberately NOT a second Blueprint, and it exists because of what a Blueprint
+structurally cannot do — a Blueprint stamps onto the ONE job you are standing in, so reaching
+five jobs costs five job changes. It travels **as a Blueprint entry** on purpose — capture,
+detach, identical-rule detection and the stamp transform are `blueprintsmodel`'s and already
+pinned (TGB\*), and reusing them is what guarantees a copied rule is byte-identical to a
+stamped one.
+
+**One classifier, both axes**, because a trigger file is addressed by (profile, job) and the
+question is the same whichever one a copy varies: `rows(entry, targets, order)` classifies each
+destination as `source` (where the rule already lives — never a target) / `create` (no trigger
+file there yet) / `dup` (an identical rule already there — warn-but-allow, the double-stamp
+law) / `add` / `unreadable` (a torn file — refused), in `order`'s ranking (jobs read in the
+game's order, not alphabetically) with anything unranked after, by name. `allNames` is what the
+**All** button ticks — writable and NOT already holding the rule. `selection` counts the
+ticked-and-writable rows plus the duplicates among them. `applyTo` is the stamp. `receipt`
+**names every outcome** and leads with the coordinate that was varied, so an all-failed copy
+still says which list it came from — a copy that silently skipped a job reads as one that
+worked everywhere, and the player would not find out until they changed job. Pure: no ImGui, no
+Ashita, no file IO, no clock — the caller reads the target files and writes the results
+(tests RC\*). Never seeded into LAC.
 
 ### gear/gearoracle.lua — THE Gear Oracle: one door for gear questions (issues #70/#71/#74, PRD #69)
 The single addon-state answer for every gear question. A **facade, not an absorb**: it

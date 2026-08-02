@@ -291,18 +291,29 @@ section, further down the Triggers tab). From there:</p>
 a set the target job doesn't have simply warns until you create (or import) a set with
 that name — nothing breaks.</div>
 
-<h3>copy to… — the same rule in your other profiles</h3>
-<p>A Blueprint is the library you keep; <b>copy to…</b> is the one-shot spread. The button
-sits on every rule's row and opens a window listing your <i>other</i> profiles with a tick
-box each — tick any of them (or <b>All</b>) and the rule lands in the same job and the same
-event over there. Every row tells you what will happen before you click: a profile with no
-trigger file for that job yet says one will be created, a profile that already holds an
-identical rule is flagged in gold (copying adds a second), and a profile whose trigger file
-is damaged is refused rather than overwritten.</p>
-<p>The profile you're on is never a target — the rule already lives there — so nothing about
-your current setup changes and nothing needs reloading: the copies are simply there the next
-time you switch. Each file you overwrite is backed up first, timestamped, under
-<code>backups\rule-copy\</code>. Sets, modes and groups the target profile doesn't have
+<h3>copy to… — the same rule on your other jobs</h3>
+<p>A Blueprint stamps onto the <i>one</i> job you happen to be standing in, so putting a rule
+on five jobs means five job changes. <b>copy to…</b> is the button that skips all of that: it
+sits on every rule's row and opens a window with a tick box per <b>job</b> — tick the ones you
+want (or <b>All jobs</b>, one click) and the rule lands in the same event of each. Below the
+jobs, the same window offers your other <b>profiles</b> at the current job, with its own All
+and its own Copy button; the two lists never mix.</p>
+<p>Every row tells you what will happen before you click:</p>
+<ul>
+  <li>a job with no rules yet says a trigger file will be created — that's the job worth
+      seeding, not a warning;</li>
+  <li>a job that already holds an identical rule is flagged in gold. <b>All jobs</b> leaves
+      those unticked on purpose, so one click can never quietly double a rule across your
+      whole roster; tick it by hand if you really do want a second copy;</li>
+  <li>the job you're on is listed but can't be ticked — it already has the rule, which is the
+      whole reason you're copying;</li>
+  <li>a destination whose trigger file is damaged is refused rather than overwritten.</li>
+</ul>
+<p>Nothing about the job you're playing changes and nothing needs reloading: the copies are
+simply there the next time you change job. Each file that gets overwritten is backed up first,
+timestamped, under <code>backups\rule-copy\</code> — and if that backup can't be written, the
+copy refuses rather than risk the file. Afterwards you get one line naming every destination:
+copied, already-had-it, or failed and why. Sets, modes and groups the destination doesn't have
 travel verbatim and read <span class="mode">[missing]</span> there, exactly as a stamped
 Blueprint does.</p>
 

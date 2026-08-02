@@ -7831,58 +7831,53 @@ Suites **5652** then **5662**, both interpreters. Promoted the same session (`5c
 stretch, and because it is a readout a wrong answer costs a re-read rather than gear.
 
 
-## Session "the same rule, in the profiles you tick" (2026-08-02, `2026.08.02b`)
 
-**Theme:** Henrik asked for a small button; the interesting part was deciding what it must
-NOT become.
+## Session "I meant the job" (2026-08-02, `2026.08.02c`)
+
+**Theme:** the ask named the wrong axis, and building it is what revealed which one he meant.
 
 *"Can you make a copy to... button by all the trigger rules? I know we have blue prints, but
 would be nice if that would open up a window where you can mark all or any of the dlac
-profiles you want to copy that trigger rule to."*
+profiles you want to copy that trigger rule to."* Built exactly that. Then: *"All right, I am
+in the wrong here. What did we call the job profiles again? I don't mean the actual character
+profiles, I meant the job. I want to be able to copy the rule between the jobs."*
 
-**The design ruling is in his own sentence.** He named Blueprints and then asked for
-something else anyway, which is the whole specification: a Blueprint is the LIBRARY you keep
-— job-independent, saved forever, stamped when you want it — and a Blueprint's axis is the
-JOB. What he was missing is the other axis: the same rule, in his other **profiles**, now.
-So "copy to…" is a one-shot **spread** and deliberately not a second library: no name, no
-entry, nothing to maintain afterwards. The copied rule is an ordinary Trigger the moment it
-lands, exactly as a stamped Blueprint is.
+The word he was reaching for is **Job entry** — one job's slice inside a Profile, the term
+CONTEXT.md coined precisely because "job profile" collides with both Profile and
+LuaAshitacast's own "profile". The vocabulary earned its keep here: with the term named, the
+misunderstanding closed in one sentence.
 
-**It travels AS a Blueprint entry, and that is the load-bearing decision.** Capture, deep-copy
-detachment, identical-rule detection and the stamp transform already exist in
-`blueprintsmodel` and are pinned by TGB\*. Writing a second copy of any of them would have
-put a THIRD emitter beside `dispatch.serializeTriggers` and `blueprintsmodel.emitRule` — and
-that pair is already documented as a parity hazard that has to be kept in step by hand. So
-`gear/rulecopy.lua` (RC1–36) adds only what did not exist: the **answer per target**. Each
-profile is classified `source` / `create` / `dup` / `add` / `unreadable` before anything is
-written, and the window says so on the row.
+**The correction cost one round, and the reason is worth keeping.** A trigger file is
+addressed by TWO coordinates -- `profiles\<Prof>\triggers\<JOB>.lua` -- and a copy varies one
+of them. The classifier ("what would landing this rule THERE do?"), the writer, the backup
+ladder and the receipt never cared WHICH: they take a (profile, job) pair. So the job axis was
+a second call site and an `order` argument, not a rewrite. **When a feature's core is written
+against the coordinate rather than against the surface, a wrong-axis ask is cheap to correct.**
+The window now carries both lists -- Jobs first (the ask), profiles below -- each with its own
+All, None and Copy, deliberately never sharing a button: one "copy everything ticked" control
+across two axes is a crossed-receipt bug waiting to be written.
 
-**Two rules the write side owes the player**, both of them the sort of thing that is invisible
-when it works:
+**Why this is not a Blueprint, stated properly this time.** A Blueprint stamps onto the ONE
+job you are standing in. Putting a rule on five jobs means five job changes. That is the gap,
+and it is structural rather than cosmetic -- which is also why the copy still travels AS a
+Blueprint entry internally (capture, detach, identical-rule, stamp, all pinned by TGB\*): the
+shared road is what guarantees a copied rule is byte-identical to a stamped one.
 
-- **A torn target file is refused, never overwritten.** The copy re-reads each target at write
-  time (the rows are a snapshot; the other Lua state and a parallel session share this disk),
-  and a file that does not parse means that profile is skipped and named. Serializing over a
-  file we could not read is how a profile loses its whole trigger set to a helpful feature.
-- **Every outcome is NAMED in the receipt** — copied, duplicated, failed, with the reason. A
-  multi-target write that silently skips one target reads as one that worked everywhere, and
-  the player would not find out until they switched profiles, hours later, in a fight.
+**The one design ruling of the round is about the All button.** He asked for "one button to
+select all jobs" AND for "where it also checks if it has a similar rule already" -- and those
+two pull against each other, because All across 21 jobs is exactly where a silent duplicate
+would go unnoticed. So **All ticks only what does not already hold the rule**; a duplicate row
+stays tickable by hand, in gold, saying it adds a second. Warn-but-allow (the Blueprint
+double-stamp law) survives; warn-but-do-it-for-you does not.
 
-**What is deliberately absent.** The active profile is listed but never a target (the rule
-lives there — that is what makes the button meaningful), so nothing hot-reloads and nothing
-about the current setup moves. Sets, Modes and Groups a target profile lacks travel verbatim
-and read `[missing]` there — the Blueprint stamp precedent, unchanged: the missing-reference
-surfacing that already exists is better than a pre-flight check that has to re-derive it.
-Cross-CHARACTER copying is not offered; the Profiles menu owns that axis, and a per-rule
-button was not the place to grow a second one.
+**Two guards on the destructive half**, both loud: a target whose trigger file does not parse
+is refused rather than serialized over, and a target whose timestamped safety backup cannot be
+written is refused too -- the profiles-deleter house rule, applied where it was newly earned.
+The receipt leads with the coordinate it varied, which a first draft got wrong: it hung the
+"(WHM Midcast)" tail off the *Copied to* clause, so a copy where EVERY destination failed
+named no axis at all -- exactly the moment "which list did I just fire?" matters (RC34b).
 
-**Testing shape, and the reason for it.** The pure core is headless (RC1–36), but the part
-that actually breaks in this codebase is a popup BODY — it only runs while the window is
-open, so an undefined name in there stays a silent nil global until a player clicks. smoke_ui
-CP1–21 forces the popup open against a stub imgui and a stub profiles module and drives the
-whole thing: the unconfigured error path, every row shape, the All tick, the button count,
-and the write click — aimed at a directory that does not exist ON PURPOSE, so the suite
-proves the failure is reported by name rather than thrown, and litters nothing.
-
-Suites **5698** and **965**, both interpreters. On `dev`, **not field-confirmed**; the round
-it owes is one pass — copy a rule into a second profile, switch, see it there.
+Suites **5707** and **977**, both interpreters, plus a scratch end-to-end against real files
+on the job axis: a job entry with existing rules kept them (and its Modes and Groups) and
+gained the copy, an empty job got a file, the job being played was never written, and a second
+pass ticked only the two jobs that did not already have it.
