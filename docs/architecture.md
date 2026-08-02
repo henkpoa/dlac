@@ -248,8 +248,41 @@ A **Floating window** (CONTEXT.md) is *not* a `host.register` window: those rend
 `drawWindow`, which returns early when the main box is shut. A floating window is drawn
 from gearui's `d3d_present` **above** its `if not M.visible then return`, so it survives
 the main window closing — which is the entire point of every one of them (lockstyle,
-floatgear, the Trigger Monitor, the restock nudge, the two Chocobo dig searches, the
+floatgear, the Trigger Monitor, the icon tray, the two Chocobo dig searches, the
 Hobby bar, idlefloat, the fishing target window).
+
+#### The icon tray — ui/tray.lua (2026-08-03)
+The always-on **icon chips** are one window, not several. The Teleports button and the
+E-Box Restock crates each used to `Begin` their own float, which put two little boxes on
+the same screen doing the same kind of job — and made them enforce a shared 36×36 button
+size by *comment* (`NUDGE_SZ`/`NUDGE_PAD` "change these together with gearui's, or they
+drift"). This is ADR 0017's hobby-bar move applied to the floats: **one window supplies
+the chrome and the position, each member draws its icons inline.**
+
+A tray **slot** answers two questions:
+
+| | |
+|---|---|
+| `trayWants(deps) → boolean` | a **cheap** gate — flags and proximity only, no bag scans |
+| `trayDraw(deps)` | draws inline: no `Begin`, no position, and never opens with `SameLine` |
+
+Two phases, and the split is the point: **every member is asked before anything is
+drawn**, because an `AlwaysAutoResize` window begun with an empty body is not nothing —
+it is a grey box parked on the player's screen that eats clicks. Nothing in the tray
+decides *when* an icon shows; that stays with each member (Teleports because you pinned
+it, the crates because you are near a box). The tray only stops asking for a window once
+every member has gone quiet.
+
+**Order is a ruling, not a layout detail** (Henrik). `SLOTS` reads left-to-right with the
+**constant members first**, and each member orders its own icons the same way. The icons
+share a *row* now, so a missing one no longer closes a gap in a stack — it slides
+everything to its right. Store is one click, no confirm, and deposits your whole
+Inventory, so it is anchored leftmost among the crates and only the two volatile ones
+(green with "Only when needed", yellow with your Mog House stock) can shift each other.
+
+Position is `ui._tpPos` (`tpx`/`tpy` in uiflags) — the Teleports float's own saved spot,
+inherited deliberately: the tray takes **one** position, so this way the button you
+pinned stays where you put it and the crates come to *it*.
 
 The invariant, and the only thing that makes them safe to open from several places:
 

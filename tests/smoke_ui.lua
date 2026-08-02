@@ -2256,6 +2256,176 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- 7c2. THE FLOATING ICON TRAY (ui\tray.lua, 2026-08-03). The Teleports button
+--      and the E-Box crates were two separate always-on-screen windows; they are
+--      now slots in ONE. Two things have to hold, and neither is visible from
+--      reading a single module:
+--
+--      (a) NOTHING WANTED -> NO WINDOW. The tray must ask every member BEFORE it
+--          begins anything. Begin an AlwaysAutoResize window with an empty body
+--          and you do not get nothing -- you get a little grey box parked on the
+--          player's screen that eats clicks. This is the invariant that replaced
+--          "the E-Box float self-gates", and it is the whole reason the contract
+--          is two functions instead of one.
+--      (b) ORDER IS THE RULING (Henrik). Constant members left, volatile right,
+--          because the icons share a ROW now: a missing crate no longer closes a
+--          gap in a stack, it slides everything to its right. Store is one click,
+--          no confirm, and deposits your whole Inventory -- so it may never drift
+--          under a cursor aimed at a fetch.
+--
+--      Both are asserted against a stub imgui, plus the stack balance that the
+--      floatgear S50 lesson demands of every render path (a Begin without its
+--      End is native UB inside ImGui: no Lua error, whole client down).
+-- ---------------------------------------------------------------------------
+;(function()
+    local depth = { win = 0, id = 0, tip = 0 };
+    local function nop() end
+    local IM = {};
+    for _, n in ipairs({ 'Separator', 'Text', 'TextColored', 'Dummy',
+        'SetTooltip', 'Spacing', 'Image' }) do IM[n] = nop; end
+    local sameLines, sizes = 0, {};
+    IM.Begin             = function() depth.win = depth.win + 1; return true; end
+    IM['End']            = function() depth.win = depth.win - 1; end
+    IM.SameLine          = function() sameLines = sameLines + 1; end
+    IM.SetNextWindowSize = function(sz) sizes[#sizes + 1] = sz; end
+    IM.SetNextWindowPos  = nop;
+    IM.GetWindowPos      = function() return 120, 340; end
+    IM.PushID            = function() depth.id = depth.id + 1; end
+    IM.PopID             = function() depth.id = depth.id - 1; end
+    IM.BeginTooltip      = function() depth.tip = depth.tip + 1; end
+    IM.EndTooltip        = function() depth.tip = depth.tip - 1; end
+    IM.Button            = function() return false; end
+    IM.SmallButton       = function() return false; end
+    IM.ImageButton       = function() return false; end
+    IM.IsItemHovered     = function() return true; end     -- exercise every tooltip
+    IM.IsItemClicked     = function() return false; end
+
+    local NAMES = { 'dlac\\ui\\tray', 'dlac\\ui\\gearui', 'dlac\\ui\\restockui',
+                    'dlac\\feature\\restockwatch', 'dlac\\feature\\eboxclient',
+                    'dlac\\feature\\gamemode', 'dlac\\ui\\filetex', 'imgui' };
+    local saved = {};
+    for _, k in ipairs(NAMES) do saved[k] = package.loaded[k]; end
+
+    package.loaded['imgui'] = IM;
+
+    -- ---- (a) the host window, against two stub members --------------------
+    local drew = {};
+    local wantsA, wantsB, blowUp = false, false, false;
+    package.loaded['dlac\\ui\\gearui'] = {
+        trayTeleportsWants = function()
+            if blowUp then error('gate exploded'); end
+            return wantsA;
+        end,
+        trayTeleportsDraw  = function() drew[#drew + 1] = 'tp'; end,
+    };
+    package.loaded['dlac\\ui\\restockui'] = {
+        trayWants = function() return wantsB; end,
+        trayDraw  = function() drew[#drew + 1] = 'ebox'; end,
+    };
+
+    package.loaded['dlac\\ui\\tray'] = nil;
+    local ok, tr = pcall(require, 'dlac\\ui\\tray');
+    check('TR1 tray re-requires against a stub imgui', ok and type(tr.render), 'function');
+    if ok then
+        -- THE invariant. Both members quiet -> the tray must not Begin at all.
+        wantsA, wantsB, drew = false, false, {};
+        pcall(tr.render, {});
+        check('TR2 nothing wanted opens NO window', depth.win, 0);
+        check('TR3 nothing wanted draws no member', #drew, 0);
+
+        -- One member. No SameLine before the first slot, or the row starts
+        -- glued to whatever the previous window left on the line.
+        wantsA, wantsB, drew, sameLines = true, false, {}, 0;
+        check('TR4 one member renders', pcall(tr.render, {}), true);
+        check('TR5 one member: Begin/End balanced', depth.win, 0);
+        check('TR6 one member draws alone', table.concat(drew, ','), 'tp');
+        check('TR7 the first slot opens no SameLine', sameLines, 0);
+
+        -- Both. ORDER IS THE RULING: Teleports (pinned, constant) left of the
+        -- crates, with exactly one gap between the slots.
+        wantsA, wantsB, drew, sameLines = true, true, {}, 0;
+        check('TR8 both members render', pcall(tr.render, {}), true);
+        check('TR9 both: Begin/End balanced', depth.win, 0);
+        check('TR10 Teleports draws LEFT of the E-Box crates', table.concat(drew, ','), 'tp,ebox');
+        check('TR11 exactly one gap between two slots', sameLines, 1);
+        check('TR12 SLOTS is ordered Teleports-then-restock',
+            tr.SLOTS[1].mod .. '|' .. tr.SLOTS[2].mod,
+            'dlac\\ui\\gearui|dlac\\ui\\restockui');
+
+        -- A member whose GATE throws is absent for a frame; it must not cost the
+        -- other member its window (nor take down d3d_present with it).
+        blowUp, wantsB, drew = true, true, {};
+        check('TR13 a throwing gate does not break the tray', pcall(tr.render, {}), true);
+        check('TR14 the surviving member still draws', table.concat(drew, ','), 'ebox');
+        check('TR15 throwing gate: Begin/End balanced', depth.win, 0);
+        blowUp = false;
+
+        -- The drag position is the TP float's own saved slot (tpx/tpy), inherited
+        -- so the button you pinned stays where you put it.
+        check('TR16 the tray remembers where it was dragged',
+            type(host.services.ui._tpPos) == 'table'
+            and host.services.ui._tpPos[1] == 120 and host.services.ui._tpPos[2] == 340, true);
+
+        -- The collapse law (hobbybar's HB21): AlwaysAutoResize does the sizing,
+        -- and a zero-component request re-arms AutoFitFrames every frame.
+        check('TR17 the tray never requests a window size at all', #sizes, 0);
+    end
+
+    -- ---- (b) the E-Box slot's own icon order ------------------------------
+    -- Drives the REAL restockui.trayDraw: the ruling lives in that function, not
+    -- in the tray, so asserting it here is the only place it is actually proven.
+    local pushed = {};
+    IM.PushID = function(id) depth.id = depth.id + 1; pushed[#pushed + 1] = tostring(id); end
+    local PLAN = { pulls = {}, fetches = {}, remainder = {}, badge = 0 };
+    package.loaded['dlac\\feature\\restockwatch'] = {
+        loadState = nop, master = true, showNudge = true, onlyWhenNeeded = false,
+        character = {}, jobs = {},
+        effectiveList  = function() return {}; end,
+        categoriesOf   = function() return {}; end,
+        plan           = function() return PLAN; end,
+        -- non-empty -> the YELLOW crate exists this frame
+        homeStockNeed  = function()
+            return { { id = 1, name = 'Blind Bolt', held = 0, target = 99, want = 99 } };
+        end,
+    };
+    package.loaded['dlac\\feature\\eboxclient'] = {
+        BOX_RANGE = 6,
+        boxDistance = function() return 2.0; end,
+        verifyCategories = nop, boxCount = function() return 0; end,
+        isBusy = function() return false; end,
+        categoryCounts = function() return nil; end,
+        withdrawBatch = nop, boxStore = nop,
+        searchBusy = function() return false; end,
+        canQuery = function() return true; end,
+        clearSearch = nop,
+    };
+    package.loaded['dlac\\feature\\gamemode'] = { get = function() return 'CW'; end };
+    package.loaded['dlac\\ui\\filetex'] = { handle = function() return nil; end };
+
+    package.loaded['dlac\\ui\\restockui'] = nil;
+    local rok, rs = pcall(require, 'dlac\\ui\\restockui');
+    check('TR18 restockui re-requires against a stub imgui', rok and type(rs.trayDraw), 'function');
+    if rok then
+        check('TR19 the E-Box slot answers the cheap gate near a box', rs.trayWants(), true);
+        pushed, sameLines = {}, 0;
+        check('TR20 the E-Box slot draws', pcall(rs.trayDraw, {}), true);
+        -- THE ORDER RULING: Store first (always present once in range, one click,
+        -- no confirm), then the two that come and go.
+        check('TR21 Store is the anchored crate, drawn FIRST',
+            table.concat(pushed, ','), 'rsnudge_red,rsnudge_green,rsnudge_yellow');
+        check('TR22 the E-Box slot balances PushID/PopID', depth.id, 0);
+        check('TR23 the E-Box slot balances its tooltips', depth.tip, 0);
+        check('TR24 the E-Box slot begins NO window of its own', depth.win, 0);
+        -- Away from a box the gate says no, and the tray asks nothing further --
+        -- which is what keeps the feature free when you are not standing at one.
+        package.loaded['dlac\\feature\\eboxclient'].boxDistance = function() return 40.0; end
+        check('TR25 out of range the E-Box slot wants nothing', rs.trayWants(), false);
+    end
+
+    for _, k in ipairs(NAMES) do package.loaded[k] = saved[k]; end
+end)();
+
+-- ---------------------------------------------------------------------------
 -- 7d. craftbar RENDER for real (the repeat-synth row, 2026-07-25). Every other
 --     suite STUBS craftbar.renderContent with a no-op -- including 7c above --
 --     so nothing has ever executed this file's body. That is the bit-three

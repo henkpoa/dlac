@@ -730,6 +730,43 @@ research already recorded. In rough priority order:
 
 ## Current state (as of 2026-08-02)
 
+- **2026-08-03 (`2026.08.03g`): THE FLOATING ICON TRAY — the Teleports button and the E-Box
+  crates are ONE window (`ui/tray.lua`). BUILT, suites green both interpreters
+  (**5990** + **1028**), **NOT field-confirmed — never run in game.** On `dev`.
+  - **The ask** (Henrik): *"Isn't it weird that we have two separate floating menus… could we
+    integrate E-box restock and teleport button into the same box instead of having two
+    separate?"* The 4×4 armor float stays on its own — explicitly fine as it is.
+  - **It was already half-decided.** `restockui` sized its crate to 30+3 *specifically* to
+    match gearui's `TPF_ICON`/`TPF_PAD`, with a comment warning the two files must change
+    together "or they drift" (the 07-31 promotion above). Two windows enforcing a shared
+    size by comment is exactly what merging removes — and it **closes that entry's owed
+    check**: *"one look at a box with the crate and the Teleports float both on screen"* is
+    now a look at one tray.
+  - **The slot contract** (ADR 0017's hobby-bar move applied to the floats): a member
+    exposes `trayWants(deps)` — a **cheap** gate, flags and proximity only — and
+    `trayDraw(deps)`, which draws inline and never begins a window. **Every member is asked
+    before anything is drawn**, because an `AlwaysAutoResize` window begun with an empty
+    body is a grey box parked on the player's screen that eats clicks. Visibility is an
+    **OR**: unpinning Teleports must not silently kill the restock nudge.
+  - **Order is Henrik's ruling, not a layout detail:** constant members left, volatile
+    right — `Teleports | Store | green | yellow`. The icons share a *row* now, so a missing
+    one no longer closes a gap in a stack, it slides everything to its right. **Store is one
+    click, no confirm, and deposits your whole Inventory**, so it moved to the FRONT of the
+    crates (it used to be drawn last) and only the two that come and go can shift each other.
+  - **Position:** one tray, one spot — `ui._tpPos` (`tpx`/`tpy`), inherited from the
+    Teleports float, so the button you pinned stays where you put it and the crates come to
+    *it*. The old `##dlac_restock_nudge` imgui.ini entry is orphaned and harmless.
+  - **Tests:** `smoke_ui` **7c2 / TR1–TR25** — nothing-wanted opens no window, one member
+    opens no `SameLine`, two members draw `tp,ebox` with exactly one gap, a **throwing gate
+    does not cost the other member its window**, no window size is ever requested (the
+    hobbybar collapse law), and the real `restockui.trayDraw` pushes
+    `rsnudge_red,rsnudge_green,rsnudge_yellow` **in that order** — the ruling asserted where
+    it actually lives.
+  - **ROUND OWED, and it is one glance:** stand at an Ephemeral Box with Teleports pinned —
+    four icons, one row, one draggable box, Store leftmost of the crates; walk away and the
+    crates vanish while Teleports stays; unpin Teleports at a box and the crates survive
+    alone. Also worth one look: the Teleports popup still opens from inside the tray, and the
+    abort button still replaces the icon mid-teleport.
 - **2026-08-02 (`2026.08.03a`–`2026.08.03c`): `/dl report` — THE SUPPORT RECORDER. BUILT,
   **PARTLY FIELD-CONFIRMED**, and **ON MAIN** (promoted the same session), suites green both
   interpreters (**5886** + **1003**).

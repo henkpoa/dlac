@@ -223,7 +223,7 @@ end)();
     local ROOT_FILES = { 'utils.lua', 'dispatch.lua', 'chatfmt.lua', 'profiles.lua', 'gear.lua', 'dlac.lua' };
     local UI = { 'ammoui','automationsui','craftbar','equippedui','filetex','fishbar','fishui',
                  'floatgear','gearui','helmbar','helmui','hobbybar','idlefloat','itemicons','jobhelpersui','menuui','panelkit','priorityui','profilesmenu',
-                 'restockui','setupui','triggersui','uihost','uistyle','weightsui' };
+                 'restockui','setupui','tray','triggersui','uihost','uistyle','weightsui' };
     local GEAR = { 'acimport','actionpicker','arbiter','blueprintsmodel','catalogindex','gearcheck','geareffects','gearexport',
                    'gearfmt','gearimport','gearoptim','gearoracle','gearrecord','groupimport','groupscan',
                    'groupsmodel','jobgate','modeslibrary','ownedcache','profileexport','profilesets','rulecopy','setimport',
