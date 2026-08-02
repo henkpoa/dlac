@@ -8239,3 +8239,52 @@ cost, and the tooling had to be able to state the problem first.
 Suites **5920** and **1003**. The rule that keeps paying: `was:` prints ONLY for slots the
 record calls changed. Printing it everywhere would invent an event out of a slot that merely
 held, which is the same class of lie the `(kept)` row told two rounds ago.
+
+### The engine half — a record's contest now explains that record's plan (engine v163, `2026.08.03f`)
+
+Henrik: *"Go ahead and implement that."* So the two oddities the report surfaced were traced into
+`dispatch` rather than described. **One was a real bug with a single root cause. The other was
+not a bug at all, and my previous entry overstated it — corrected below.**
+
+**THE BUG.** `contest` was built only on a **retrace** and otherwise reused from the previous
+trace (`old.contest`). And the retrace signature covers matched rules + cases, locks, claimant
+legs, the sets-store revision and the rank order — **not the player's LEVEL**. So levelling
+changes which candidates a set resolves to while the signature holds: the plan moves, the
+explanation does not, and the ring appends a record whose two halves disagree about who decided
+a slot. Both symptoms fall out of that one fact — `Ear1` carrying Optical Earring (Lv10) in the
+plan with the contest naming nobody, and the claimant arriving two dispatches later as a
+zero-change record. It also explains the six empty blocks of the round before.
+
+Fixed in two places. `slotSrc`/`floorTbl` are now collected on **every** pass: they were gated
+`retrace and {} or nil`, sharing one `if retrace` with the `/dl why` **line formatting** — and
+the formatting is the half that costs (a `string.format` per rule), while filling two small
+tables is nothing beside the `equipSetByName` that already ran. With the attribution always
+present the contest became rebuildable at all, so it is re-explained whenever
+`M._planOutrunsContest` says the plan named a slot the explanation cannot account for, or
+swapped the item inside one it covers (the item half matters precisely because the *level* is
+not in the signature).
+
+**The test is deliberately ONE-WAY**, and that is the ruling worth keeping: a contest naming
+**more** than the plan is ordinary and must not rebuild. A lock, or the level-sync weapon hold,
+takes a slot out of the plan while the claim on it stands — two questions answered correctly.
+Rebuilding on that would re-explain on every held beat.
+
+**THE CORRECTION.** The previous entry called "Main and Sub reported changed while carrying the
+same items" a pattern *confirmed from his artifact*. It was not: that output came from my own
+**replay fixture**, which had assumed both plans carried Main. The real cause is the level-sync
+weapon hold (v56) doing exactly its job — `ctx.syncHold` nils Main/Sub/Range, so they leave the
+plan and return, and the ring correctly records both moves. What made it look wrong was a
+**renderer** ambiguity: when the plan did not name a slot, the row printed the *winner's* item,
+formatted identically to a piece that had actually gone on. That single ambiguity is why two
+unrelated things were both undiagnosable. A slot the plan skipped now reads `(not placed)` with
+the claim and the likely hold named underneath.
+
+Suites **5938** and **1003**. `PO8` asserts the invariant over every record the suite's real
+dispatches build — though it is honest to record that it does **not** prove the fix: disabling
+the rebuild leaves it green, because the suite never produces a non-retrace pass whose plan
+moved. It is a guard against regression, and the proof stays the field round.
+
+Two lessons. **A signature that gates an explanation must cover everything the explanation
+depends on** — the level was missing, and nothing said so for four days because the explanation
+was only ever read by a hover nobody was staring at. And: *reading the artifact is the test*.
+Every defect in this train came from reading a report end to end, never from the suites.

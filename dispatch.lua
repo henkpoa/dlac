@@ -47,7 +47,8 @@ M._loadStamp = M._loadStamp or string.format('%d:%.3f', os.time(), os.clock());
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code. From v32 the engine self-swaps when the seeded file's version moves, so
 -- the banner should only persist when a swap FAILED (or pre-v32 code is live).
-M.VERSION = 162;  -- 162: EXTERNAL CLAIMS -- the write half of the Integration surface (feature\extclaim, docs\reference\integration-guide.md section 7). A SEPARATE ADDON, in its own Lua state and not a dlac module, files a Claim over Ashita's plugin_event bus and the Arbiter settles it like any other claimant. The whole feature is one sentence -- an external claim is an ordinary Claim that happened to arrive over the wire -- and the size of the change is the evidence: one rank row ('External', shipped directly above the Triggers floor, which is the rank the plugin design already ruled for a third party), one CLAIMANTS row, one signature leg, one mailbox module. Everything a player expects (contested slots, the Locks veto, the Disabled ceiling, /dl why attribution, the Arbiter Monitor, the Claim Priority drag) falls out of the registry for free -- ADR 0012's promise, collected. THE THREE LAWS THAT ARE NEW, because everything else is inherited: (1) PUSH, NEVER PULL -- dlac asks nobody anything mid-decision and waits for nobody; a claim is a standing table read from cache like AutoAmmo's, so a third party's Lua is never on the equip path and its crash cannot become dlac's gear bug (the one-directional dependency ruling, kept literal). The cost, stated: a REACTIVE external claim is one action late. (2) EVERY CLAIM IS A LEASE -- every in-state claimant dies when dlac dies and an external one does not, so a claim carries a TTL (10s default, 300 max) and must be renewed; an addon that crashes or forgets must not leave gear stuck with nobody to blame. Not a permission wall -- the holder can VANISH, which is a different problem from the holder misbehaving. (3) CLAIM, NEVER COMMIT -- session-only, no writer for sets/triggers/modes/lockstyle, unchanged from the existing ruling. The switch is /dl claims (+ a Menu > Settings row), a SIBLING of /dl stream and deliberately not the same one: reading your gear and dressing you are different consents, and a misbehaving claimant has to be killable without also killing a parser's feed. The trap worth naming for whoever adds the next claimant of any kind: the CLAIMANT_SIG_ORDER leg. A claim that changes without moving the retrace signature never re-dispatches -- it sits in the mailbox looking accepted, reaches no slot, and the failure is invisible from both sides of the wire (test EX16f exists to fail loudly instead). Tests EX1-EX16.
+M.VERSION = 163;  -- 163: A RECORD'S CONTEST EXPLAINS THAT RECORD'S PLAN (field report 3, 2026-08-02). The structured contest was built ONLY on a retrace and reused from the previous trace otherwise -- and the retrace signature covers matched rules, locks, claim legs, the sets revision and the rank order, but NOT the player's LEVEL. So levelling changes which candidates a set resolves to while the signature holds: the plan moves, the explanation does not, and the decision ring appends a record whose two halves disagree about who decided a slot. Henrik's report showed both symptoms at once -- Ear1 carrying Optical Earring in the plan with the contest naming nobody for the slot (Lv10 gear, crossed 9 -> 10 mid-window), and the claimant then arriving TWO DISPATCHES LATER as a record with zero changed slots, which is what produced six empty blocks in the previous report. Fixed in two places: slotSrc/floorTbl are collected on EVERY pass (they shared one `if retrace` with the /dl why LINE FORMATTING, which is the half that actually costs a string.format per rule; filling two small tables is nothing beside the equipSetByName that already ran), and the contest is re-explained when M._planOutrunsContest says the plan named a slot the explanation cannot account for, or swapped the item inside one it covers. The test is deliberately ONE-WAY: a contest naming MORE than the plan is ordinary and must not rebuild -- a lock or the level-sync weapon hold takes a slot out of the plan while the claim on it stands, which is two questions answered correctly, not staleness (field: Main/Sub leaving the plan across the same level-up while Triggers still claimed them). Sentinels, 'remove' and the LOCK_HELD sentinel are exempt from the item half: a claim that defends or empties a slot never claimed to name the worn item. Tests PO1-PO13, and PO8 asserts the invariant over every record the suite's real dispatches build. Reading a report is what found this -- an artifact nobody reads is an artifact nobody has tested.
+                  -- 162: EXTERNAL CLAIMS -- the write half of the Integration surface (feature\extclaim, docs\reference\integration-guide.md section 7). A SEPARATE ADDON, in its own Lua state and not a dlac module, files a Claim over Ashita's plugin_event bus and the Arbiter settles it like any other claimant. The whole feature is one sentence -- an external claim is an ordinary Claim that happened to arrive over the wire -- and the size of the change is the evidence: one rank row ('External', shipped directly above the Triggers floor, which is the rank the plugin design already ruled for a third party), one CLAIMANTS row, one signature leg, one mailbox module. Everything a player expects (contested slots, the Locks veto, the Disabled ceiling, /dl why attribution, the Arbiter Monitor, the Claim Priority drag) falls out of the registry for free -- ADR 0012's promise, collected. THE THREE LAWS THAT ARE NEW, because everything else is inherited: (1) PUSH, NEVER PULL -- dlac asks nobody anything mid-decision and waits for nobody; a claim is a standing table read from cache like AutoAmmo's, so a third party's Lua is never on the equip path and its crash cannot become dlac's gear bug (the one-directional dependency ruling, kept literal). The cost, stated: a REACTIVE external claim is one action late. (2) EVERY CLAIM IS A LEASE -- every in-state claimant dies when dlac dies and an external one does not, so a claim carries a TTL (10s default, 300 max) and must be renewed; an addon that crashes or forgets must not leave gear stuck with nobody to blame. Not a permission wall -- the holder can VANISH, which is a different problem from the holder misbehaving. (3) CLAIM, NEVER COMMIT -- session-only, no writer for sets/triggers/modes/lockstyle, unchanged from the existing ruling. The switch is /dl claims (+ a Menu > Settings row), a SIBLING of /dl stream and deliberately not the same one: reading your gear and dressing you are different consents, and a misbehaving claimant has to be killable without also killing a parser's feed. The trap worth naming for whoever adds the next claimant of any kind: the CLAIMANT_SIG_ORDER leg. A claim that changes without moving the retrace signature never re-dispatches -- it sits in the mailbox looking accepted, reaches no slot, and the failure is invisible from both sides of the wire (test EX16f exists to fail loudly instead). Tests EX1-EX16.
                   -- 161: ONE ANSWER PER SLOT -- the rendering contract, stated (docs/design/two-way-arbiter.md §11). Henrik's screenshot of the v159 pair verdict: `/dl why range` printed BOTH "nobody claimed it (kept as worn)." AND "held EMPTY: Arcane Arbalest and Cinderstone cannot coexist -- kept Cinderstone, the higher Level." -- two sentences disagreeing about one slot, and "kept as worn" is the weaker truth besides (when a stat stick holds Range the SERVER empties it; the slot is not merely unwritten). The no-contest line is NOT a verdict -- it is what a renderer says when the contest was EMPTY -- and a slot the arbitration REFUSED has an empty contest BY CONSTRUCTION, because the refused piece never reaches floorTbl/arbExplain, so `ops` comes back nil. The first four verdict channels (rep / fall.dead / inel / sup) never exposed this because each only ever fires on a slot that HAD a contest; the pair verdict is the first that can fire on a slot nothing claimed. arbiter.slotVerdict is now the ONE walk -- rep -> dead -> ineligible -> reserved -> pair, most specific refusal first -- that every renderer asks before falling back to the no-contest line, so /dl why, the Monitor cell and the Monitor hover cannot drift apart about which channel speaks. §11 writes down the whole contract for the sixth channel: add it to slotVerdict in order, give it its OWN sentence (never fold a new verdict into an existing one because the consequence matches -- the pair law is not "reserved"), name which leg answered when it has several, update all three renderers, and make sure a suppressing pass cannot double-report. Tests RV1-RV9.
                   -- 128: 128: AutoAmmo asks what is in RANGE before it picks (field, Henrik 2026-07-26: "AutoAmmo does NOT dictate if it's bolt, arrows or what not that gets equipped. That is 100% decided on what gets put in ranged"). resolveAmmoPlan was type-BLIND -- it took the first `ranged`-flagged entry with stock, so a bolt above your arrows won with a bow equipped -- and the panel's Bullets/Bolts/Arrows selector never constrained it (categoryOf is a VIEW, stored nowhere). The cost was not a wasted swap: charutils.cpp EquipItem STRIPS THE OTHER SLOT on an incompatible Range/Ammo pair, so the bolt took the bow off, the trigger re-equipped it, and the two flapped forever -- ADR 0010's failure through the skill/subskill door instead of the rslot one. New pure M.pairsWith over a "<skill>:<subskill>" key (26:1 gun/bullet, 26:0 crossbow/bolt, 26:2 culverin/shell, 27:0 boomerang/pebble, 27:3 shuriken, 0:10 Animator/oil), three-valued so an unknown pair degrades to today's behaviour instead of switching AutoAmmo off; ARCHERY is exempt from the subskill half exactly as the server writes it (Shortbow 25:0 and Longbow 25:4 share arrows). Range is never written -- AutoAmmo only ever READS it. Two rulings, both Henrik's: no ranged weapon worn = do nothing at all (safe -- with Range empty the server refuses the shot, so nothing can be consumed), and a weapon worn with nothing in the list able to pair = hold, never force a mismatch in. THROWING with an empty Range (a NIN's shuriken, CanUseRangedAttack's `|| PAmmo->isThrowing()`) is the ONE known exception and stays parked behind the §8 NIN field tests. The key rides the manifest like RSlot (gearimport stamps Pair from the catalog's new field); worn Range falls back to the client resource's Skill when the manifest predates it, so the update alone separates bow/gun/throwing for everyone and a manifest refresh upgrades it to gun-vs-crossbow. Tests PW1-PW14, AM40-AM58.
                   -- 127: trigger CASES, the schema backbone (issue #126, slice 2/5; ADR 0023) -- rules gain an optional `cases` list (a second `&`/`|` tier: op + the same two legs a body has), evaluated by matches()/matchedCase() over a factored legMatches so both tiers share one code path; normalize validates + drops empty cases + strips the always-true `hasCases` version guard; auto-priority + ruleLabel span every leg of every case (case-LESS rules match/label/serialize byte-for-byte as before -- pinned). serializeTriggers is oldest-form-first (a `| case` of only `&` rows -> a whenAny multi-entry; only `&` cases and `| cases` with internal OR use the new list) and stamps the guard so OLDER engines drop the rule with the standard warn instead of misreading it. Seeded-file bump: normalize + matches run engine-side (hard rule 4). Tests CX1-CX35, MC19-23. (PR #132 shipped as v126/2026.07.26c off a pre-97f1edc dev; renumbered at merge.)
@@ -4055,6 +4056,48 @@ function M.decisionFp(plan, explain)
     return table.concat(rows, '|') .. '||' .. table.concat(wins, '|');
 end
 
+-- Does the plan name a slot this contest cannot account for? Pure (tests DR*).
+--
+-- The one-way test is deliberate. Plan-without-explanation is the fault: the
+-- record would claim a piece went on with nobody having decided it. The
+-- REVERSE -- a contest naming a slot the plan does not carry -- is ordinary
+-- and must not trigger a rebuild: a lock or the level-sync weapon hold removes
+-- a slot from the plan while the claim on it stands, which is two different
+-- questions answered correctly (field, 2026-08-02: Main/Sub leaving the plan
+-- across a 9 -> 10 level-up while Triggers still claimed them).
+--
+-- A missing contest with a non-empty plan outruns by definition; two empties
+-- do not.
+--
+-- WHY THE ITEM IS CHECKED TOO. The retrace signature covers matched rules,
+-- locks, claim legs, the sets revision and the rank order -- it does NOT cover
+-- the player's LEVEL. So levelling changes which candidates a set resolves to
+-- while the signature holds: the plan gains a slot (caught by the coverage
+-- test) or simply swaps the item in one it already had, and a coverage-only
+-- test would keep the older explanation naming the older piece. Sentinels and
+-- 'remove' are exempt -- a claim that defends a slot or empties it was never
+-- claiming to name the worn item.
+function M._planOutrunsContest(planSnap, contest)
+    if type(planSnap) ~= 'table' or next(planSnap) == nil then return false; end
+    local exp = (type(contest) == 'table') and contest.explain or nil;
+    if type(exp) ~= 'table' then return true; end
+    local won = {};
+    for slot, ops in pairs(exp) do
+        if type(ops) == 'table' and ops[1] ~= nil then
+            won[string.lower(tostring(slot))] = ops[1].item;
+        end
+    end
+    for slot, item in pairs(planSnap) do
+        local w = won[string.lower(tostring(slot))];
+        if w == nil then return true; end
+        if type(w) == 'string' and string.sub(w, 1, 1) ~= '('
+           and item ~= 'remove' and w ~= item then
+            return true;
+        end
+    end
+    return false;
+end
+
 -- The world at decision time, defensively read -- a pinned old record must
 -- still say what it was decided UNDER (a weatherMatch why is incomplete
 -- without the weather). Headless/pre-login reads just omit fields.
@@ -5319,35 +5362,84 @@ local function ensureArbState() return ensureStateFile(_arb, 'arbstate.lua'); en
 -- drift on the format.
 function M.pinScopeKey(event, label) return tostring(event) .. '|' .. tostring(label); end
 
--- Does this pin's scope cover this dispatch? "All" (or a missing scope -- a
--- hand-written file) covers everything; a list covers only the dispatches where
--- one of the named triggers actually matched. An unknown key simply never
--- matches: a pin scoped to a trigger you later edited or deleted goes QUIET
--- rather than falling back to forcing gear on every dispatch.
-local function pinInScope(scope, hits, event)
-    if scope == nil or scope == 'All' then return true; end
-    if type(scope) ~= 'table' then return false; end
-    for _, want in ipairs(scope) do
-        for _, r in ipairs(hits or {}) do
-            if M.pinScopeKey(event, r.label) == want then return true; end
+-- How strongly does this pin's scope cover THIS dispatch? nil = not at all;
+-- 0 = "All" (or a missing scope -- a hand-written file), which covers every
+-- dispatch and is therefore the weakest claim there is; n > 0 = the index of
+-- the LAST hit in this dispatch's hit list that the pin names.
+--
+-- An unknown key simply never matches: a pin scoped to a trigger you later
+-- edited or deleted goes QUIET rather than falling back to forcing gear on
+-- every dispatch.
+--
+-- The index is what settles a slot carrying several pins, and it settles it the
+-- way the rest of the engine already settles a slot: `hits` is sorted ascending
+-- by priority and applied last-writer-wins (ADR 0003), so the pin belonging to
+-- the trigger that would have won the slot anyway is the pin that wins it.
+local function pinRank(scope, hits, event)
+    if scope == nil or scope == 'All' then return 0; end
+    if type(scope) ~= 'table' then return nil; end
+    local best = nil;
+    for i, r in ipairs(hits or {}) do
+        for _, want in ipairs(scope) do
+            if M.pinScopeKey(event, r.label) == want then best = i; end
         end
     end
-    return false;
+    return best;
+end
+M._pinRank = pinRank;   -- test seam
+
+-- Does this pin's scope cover this dispatch at all? (pinRank's yes/no face --
+-- the question every caller but the multi-pin walk below is actually asking.)
+local function pinInScope(scope, hits, event)
+    return pinRank(scope, hits, event) ~= nil;
 end
 M._pinInScope = pinInScope;   -- test seam
 
+-- The pins on ONE slot, whatever shape the file wrote them in: a bare name, one
+-- { item, scope } entry, or a LIST of entries (2026-08-03: several pins on one
+-- slot -- Optical Hat on TP_Default, Walahra Turban on Movement). pinwatch owns
+-- the writer half and its entriesOf is the same reader; this one is spelled out
+-- here rather than required because the engine runs in the OTHER Lua state and
+-- must never depend on an addon-state module being loaded.
+local function pinEntriesOf(p)
+    if type(p) == 'string' then return { { item = p, scope = 'All' } }; end
+    if type(p) ~= 'table' then return {}; end
+    if type(p.item) == 'string' then return { p }; end
+    local out = {};
+    for _, e in ipairs(p) do
+        if type(e) == 'string' then out[#out + 1] = { item = e, scope = 'All' };
+        elseif type(e) == 'table' and type(e.item) == 'string' then out[#out + 1] = e; end
+    end
+    return out;
+end
+M._pinEntriesOf = pinEntriesOf;   -- test seam
+
 -- The pin equip table for a given pin-state, or nil when nothing is in scope.
 -- Split out so tests can pass an explicit state instead of the on-disk file.
+--
+-- ONE name per slot comes out of here, always: the overlay is an equip table
+-- and a slot wears one thing. When a slot carries several pins the highest
+-- rank wins (see pinRank), and an exact tie -- two pins on the SAME trigger,
+-- which the GUI will not create but a hand-edited file can -- goes to the one
+-- written LAST, matching both the file's own set order and the engine's
+-- last-writer-wins rule everywhere else.
 local function pinOverlayFor(ps, hits, event)
     if type(ps) ~= 'table' then return nil; end
     local equip = nil;
     for slot, p in pairs(ps) do
-        -- Tolerate both shapes: { item = "X", scope = ... } and a bare "X".
-        local name  = (type(p) == 'table') and p.item or p;
-        local scope = (type(p) == 'table') and p.scope or 'All';
-        if type(name) == 'string' and name ~= '' and pinInScope(scope, hits, event) then
+        local bestName, bestRank = nil, nil;
+        for _, e in ipairs(pinEntriesOf(p)) do
+            local name = e.item;
+            if type(name) == 'string' and name ~= '' then
+                local rank = pinRank(e.scope, hits, event);
+                if rank ~= nil and (bestRank == nil or rank >= bestRank) then
+                    bestRank, bestName = rank, name;
+                end
+            end
+        end
+        if bestName ~= nil then
             equip = equip or {};
-            equip[slot] = name;
+            equip[slot] = bestName;
         end
     end
     return equip;
@@ -6418,8 +6510,16 @@ function M.dispatch(event)
         -- collects the merged trigger-overlay result (last-writer-wins, the same
         -- order): it is the FLOOR the claims dress over, fed to the Arbiter's
         -- attribution below (ADR 0012, step 4).
-        local slotSrc = retrace and {} or nil;
-        local floorTbl = retrace and {} or nil;
+        -- ALWAYS COLLECTED (2026-08-02, field report 3). These were gathered
+        -- only on a retrace, which made the contest un-rebuildable on any
+        -- other pass -- and a dispatch whose PLAN moved without the trace
+        -- signature moving then attached the PREVIOUS plan's explanation to a
+        -- new ring record. The gate was sharing one `if retrace` with the
+        -- /dl why LINE FORMATTING, which is the part that actually costs
+        -- (a string.format per rule); filling these two is a handful of table
+        -- writes next to the equipSetByName that already ran. Split, so the
+        -- expensive half stays gated and the attribution is always there.
+        local slotSrc, floorTbl = {}, {};
 
         -- THE OVERLYING EYE (v135, Henrik's word for it) -- since stage 4 the
         -- CROSS-RANK verdict (ADR 0027 item 2, ratified). Merge every matching
@@ -6648,11 +6748,12 @@ function M.dispatch(event)
                         lines[#lines + 1] = string.format('%s%s  ->  set %s%s  (prio %d)%s%s',
                             r.label, via, sn, (#r.sets > 1) and string.format(' [%d/%d]', si, #r.sets) or '',
                             r.prio, found and '' or '  [NOT FOUND in profile Sets]', note or '');
-                        if type(tbl) == 'table' then
-                            for slot, item in pairs(tbl) do
-                                if string.sub(tostring(slot), 1, 2) ~= '__' then
-                                    slotSrc[slot] = sn; floorTbl[slot] = item;
-                                end
+                    end
+                    -- attribution: every pass (see the slotSrc/floorTbl note)
+                    if type(tbl) == 'table' then
+                        for slot, item in pairs(tbl) do
+                            if string.sub(tostring(slot), 1, 2) ~= '__' then
+                                slotSrc[slot] = sn; floorTbl[slot] = item;
                             end
                         end
                     end
@@ -6662,11 +6763,11 @@ function M.dispatch(event)
                 if retrace then
                     lines[#lines + 1] = string.format('%s%s  ->  equip { %s }  (prio %d)%s',
                         r.label, via, inlineSummary(r.equip), r.prio, note or '');
-                    if type(tbl) == 'table' then
-                        for slot, item in pairs(tbl) do
-                            if string.sub(tostring(slot), 1, 2) ~= '__' then
-                                slotSrc[slot] = r.label; floorTbl[slot] = item;
-                            end
+                end
+                if type(tbl) == 'table' then
+                    for slot, item in pairs(tbl) do
+                        if string.sub(tostring(slot), 1, 2) ~= '__' then
+                            slotSrc[slot] = r.label; floorTbl[slot] = item;
                         end
                     end
                 end
@@ -6734,9 +6835,19 @@ function M.dispatch(event)
         -- also explains; the order-pinning tests (AR*/LV*) drive the same seam.
         -- Locks join here as the veto claim (M.locks -> arbLockClaim); the live
         -- equip already honoured them via layerRespectsLocks.
-        local contest = (not retrace and old ~= nil) and old.contest or nil;
-        if retrace then
-            local whyClaims = {};
+        -- A RECORD'S CONTEST MUST EXPLAIN THAT RECORD'S PLAN (field report 3,
+        -- 2026-08-02). The contest was rebuilt only on a retrace and reused
+        -- from the previous trace otherwise -- so a Default dispatch whose
+        -- PLAN moved while the trace signature held carried the OLDER plan's
+        -- explanation into a new ring record. Henrik's report showed both
+        -- halves of that: Ear1 sat in the plan with the contest naming nobody
+        -- for the slot (a piece that became eligible on a level-up), and the
+        -- claimant then appeared two dispatches later as a record with zero
+        -- changed slots. Re-explained below when the plan outruns it.
+        local whyClaims = nil;
+        local function claimsView()
+            if whyClaims ~= nil then return whyClaims; end
+            whyClaims = {};
             for k, v in pairs(claims) do whyClaims[k] = v; end
             -- The Locks ROW carries two kinds of opinion since ADR 0022: real
             -- item names from a locked set, and the LOCK_HELD veto sentinel for
@@ -6757,20 +6868,34 @@ function M.dispatch(event)
                 end
                 whyClaims['Locks'] = merged;
             end
-            local why = M.arbWhyLines(whyClaims, arbOrder, floorTbl or {});
+            return whyClaims;
+        end
+        -- The STRUCTURED contest, stashed for /dl why <slot> (ADR 0027 item 4,
+        -- ratified): the same explain that attributed, the verdict's word on
+        -- each slot (fell / ineligible / held empty) and each slot's source
+        -- set -- depth on demand, rendered later from what actually decided,
+        -- never re-decided.
+        local function buildContest()
+            return { explain = M.arbExplain(claimsView(), arbOrder, floorTbl),
+                     order = arbOrder, sup = vSup, inel = vInel, rep = vRep,
+                     fall = vFall, asked = vAsked, pair = vPair,
+                     src = slotSrc };
+        end
+
+        local contest = (not retrace and old ~= nil) and old.contest or nil;
+        if retrace then
+            local why = M.arbWhyLines(claimsView(), arbOrder, floorTbl);
             if #why > 0 then
                 lines[#lines + 1] = 'claimants (rank order, highest wins):';
                 for _, wl in ipairs(why) do lines[#lines + 1] = '  ' .. wl; end
             end
-            -- The STRUCTURED contest, stashed for /dl why <slot> (ADR 0027
-            -- item 4, ratified): the same explain that attributed, the
-            -- verdict's word on each slot (fell / ineligible / held empty)
-            -- and each slot's source set -- depth on demand, rendered later
-            -- from what actually decided, never re-decided.
-            contest = { explain = M.arbExplain(whyClaims, arbOrder, floorTbl or {}),
-                        order = arbOrder, sup = vSup, inel = vInel, rep = vRep,
-                        fall = vFall, asked = vAsked, pair = vPair,
-                        src = slotSrc };
+            contest = buildContest();
+        elseif M._planOutrunsContest(planSnap, contest) then
+            -- The plan named a slot this explanation cannot account for, so
+            -- the explanation is out of date rather than merely terse.
+            -- Re-explaining costs one arbExplain on the rare pass where it
+            -- happens, and buys a record whose two halves agree.
+            contest = buildContest();
         end
 
         _trace[event] = { time = os.date('%H:%M:%S'), action = actionLabel(ctx), sig = sig,

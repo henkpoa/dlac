@@ -276,11 +276,22 @@ function M._slotLines(rec, slot, label, prev)
     local win = (ops ~= nil) and ops[1] or nil;
     local out = {};
 
+    -- A CLAIMANT'S OFFER IS NOT A PLANNED ITEM (field, 2026-08-02). When the
+    -- plan did not name the slot, the row used to print the winner's item --
+    -- formatted identically to a piece that actually went on. That single
+    -- ambiguity is why two separate oddities were undiagnosable from the
+    -- artifact: a level-sync weapon hold removes Main from the plan while
+    -- Triggers still claims it, and the row said "Main  Bronze Spear +1 <-
+    -- Triggers" exactly as if it had been equipped. Sentinels ('(free equip)')
+    -- keep reading as themselves -- they are not gear and never were.
     local dropped = M._isDropped(rec, slot);
+    local offered = false;
     local shown = '(kept)';
     if item ~= nil and item ~= 'remove' then shown = tostring(item);
     elseif item == 'remove' then shown = '(removed)';
-    elseif win ~= nil then shown = tostring(win.item);
+    elseif win ~= nil and string.sub(tostring(win.item), 1, 1) == '(' then
+        shown = tostring(win.item);
+    elseif win ~= nil then shown = '(not placed)'; offered = true;
     elseif dropped then shown = '(left as worn)'; end
 
     local head = string.format('    %-7s %-30s', slot, shown);
@@ -297,6 +308,12 @@ function M._slotLines(rec, slot, label, prev)
         head = head .. ' <- NO CLAIMANT RECORDED (the plan has it, the contest names nobody)';
     end
     out[#out + 1] = (head:gsub('%s+$', ''));
+
+    if offered then
+        out[#out + 1] = string.format('            %s claimed this slot with %s, but the plan did not carry'
+            .. ' it -- a hold (lock, or the level-sync weapon hold) keeps the slot as worn.',
+            tostring(label(win.name)), tostring(win.item));
+    end
 
     -- WHAT IT CHANGED FROM. The core question of a decision log, and the
     -- report could not answer it: a changed slot showed only its new item, so

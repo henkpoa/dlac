@@ -8782,6 +8782,71 @@ end)();
         and type(newest.fp) == 'string' and type(newest.time) == 'string'
         and newest.event == 'Default', true);
 
+    -- PO: A RECORD'S CONTEST MUST EXPLAIN THAT RECORD'S PLAN (field report 3,
+    -- 2026-08-02). The contest was rebuilt only on a retrace and reused
+    -- otherwise, so a Default whose PLAN moved while the trace signature held
+    -- attached the PREVIOUS plan's explanation to a NEW record. Henrik's
+    -- report showed both halves: Ear1 in the plan with the contest naming
+    -- nobody (a piece that became eligible on a level-up), then the claimant
+    -- arriving two dispatches later as a zero-change record.
+    local PO = dispatchM._planOutrunsContest;
+    check('PO1 a planned slot the contest cannot account for outruns it',
+        PO({ Ear1 = 'Optical Earring' },
+           { explain = { main = { { name = 'Triggers', item = 'Harpoon' } } } }), true);
+    check('PO2 a plan the contest fully covers does NOT',
+        PO({ Main = 'Harpoon' },
+           { explain = { main = { { name = 'Triggers', item = 'Harpoon' } } } }), false);
+    -- THE ONE-WAY TEST, and the reason it is one-way: a lock or the level-sync
+    -- weapon hold takes a slot OUT of the plan while the claim on it stands.
+    -- That is two questions answered correctly, not a stale explanation, and
+    -- rebuilding on it would re-explain on every held beat.
+    check('PO3 a contest naming MORE than the plan is ordinary, not stale',
+        PO({ Head = 'Circlet' },
+           { explain = { head = { { name = 'Triggers', item = 'Circlet' } },
+                         main = { { name = 'Triggers', item = 'Harpoon' } } } }), false);
+    check('PO4 slot case never decides it (the findCI law)',
+        PO({ MAIN = 'Harpoon' },
+           { explain = { main = { { name = 'Triggers', item = 'Harpoon' } } } }), false);
+    check('PO5 an absent contest under a real plan outruns by definition',
+        PO({ Main = 'Harpoon' }, nil), true);
+    check('PO6 ...but an empty plan never does (nothing to explain)',
+        PO({}, nil), false);
+    check('PO7 an explain entry with no winner does not count as coverage',
+        PO({ Main = 'Harpoon' }, { explain = { main = {} } }), true);
+    -- THE ITEM, not just the slot. The retrace signature does not cover the
+    -- player's LEVEL, so levelling can swap the piece inside a slot the
+    -- contest already covers -- a coverage-only test would keep an
+    -- explanation naming the older piece (Henrik's Head went Lth. Bandana +1
+    -- -> Faceguard +1 across 9 -> 10).
+    check('PO9 a covered slot whose ITEM moved still outruns',
+        PO({ Head = 'Faceguard +1' },
+           { explain = { head = { { name = 'Triggers', item = 'Lth. Bandana +1' } } } }), true);
+    check('PO10 ...and an agreeing item does not',
+        PO({ Head = 'Faceguard +1' },
+           { explain = { head = { { name = 'Triggers', item = 'Faceguard +1' } } } }), false);
+    -- a claim that DEFENDS a slot or empties it never claimed to name the worn
+    -- item, so it must not force a rebuild every beat it holds
+    check('PO11 a defending sentinel is exempt',
+        PO({ Main = 'Harpoon' },
+           { explain = { main = { { name = 'Disabled', item = '(free equip)' } } } }), false);
+    check('PO12 a planned "remove" is exempt',
+        PO({ Head = 'remove' },
+           { explain = { head = { { name = 'Naked', item = 'Circlet' } } } }), false);
+    check('PO13 a non-string winner (the LOCK_HELD sentinel) is exempt',
+        PO({ Head = 'Circlet' },
+           { explain = { head = { { name = 'Locks', item = dispatchM.LOCK_HELD } } } }), false);
+
+    -- THE INVARIANT ITSELF, over every record the suite's real dispatches
+    -- built: a record whose plan outruns its contest is a record whose two
+    -- halves disagree about who decided a slot, and that is what shipped for
+    -- four days. Asserted on the ring rather than on one fixture, so any
+    -- future dispatch path that reintroduces it fails here.
+    local outran = nil;
+    for _, r in ipairs(ring) do
+        if PO(r.plan, r.contest) then outran = r.seq; break; end
+    end
+    check('PO8 every recorded decision is explained by its own contest', outran, nil);
+
     -- DR2: a byte-identical re-dispatch appends NOTHING; an empty plan is not
     -- a decision at all.
     local savedPlayerDR, savedStateDR = TEST_PLAYER, rawget(_G, 'gState');
@@ -22109,6 +22174,28 @@ end)();
         orow:match('the plan has it, the contest names nobody') ~= nil, true);
     check('RPT44c a slot with a winner is untouched by it',
         joined(RP._slotLines(A, 'Main', tostring)):match('NO CLAIMANT'), nil);
+
+    -- A CLAIMANT'S OFFER IS NOT A PLANNED ITEM. The row used to print the
+    -- winner's item when the plan did not name the slot, formatted exactly
+    -- like a piece that went on -- which is why a level-sync weapon hold read
+    -- as a normal equip for two rounds of field reports.
+    local HELD = { seq = 43, time = '17:53:53', event = 'Default', plan = {},
+                   changed = {}, nChanged = 0,
+                   contest = { explain = { main = { { name = 'Triggers', rank = 13,
+                                                      item = 'Bronze Spear +1' } } } } };
+    local hrow = joined(RP._slotLines(HELD, 'Main', tostring));
+    check('RPT46a an unplanned slot does not wear the claimant\'s item as if equipped',
+        hrow:match('Bronze Spear %+1%s+<%-'), nil);
+    check('RPT46b ...it reads as not placed',   hrow:match('%(not placed%)') ~= nil, true);
+    check('RPT46c ...and says who wanted what', hrow:match('Triggers claimed this slot with Bronze Spear %+1') ~= nil, true);
+    check('RPT46d ...and names the cause a reader can act on',
+        hrow:match('level%-sync weapon hold') ~= nil, true);
+    -- a defending SENTINEL is not gear and never was: it keeps reading as itself
+    local SENT = { seq = 44, plan = {}, changed = {}, nChanged = 0,
+                   contest = { explain = { main = { { name = 'Disabled', rank = 1,
+                                                      item = '(free equip)' } } } } };
+    check('RPT46e a claim sentinel still prints as itself',
+        joined(RP._slotLines(SENT, 'Main', tostring)):match('%(free equip%)') ~= nil, true);
     check('RPT44d ...and so is a slot with no item at all',
         joined(RP._slotLines(recWith(41, {}, {}), 'Main', tostring)):match('NO CLAIMANT'), nil);
 
