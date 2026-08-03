@@ -327,10 +327,10 @@ the food commit staged itself out of the shared tree without touching the Mode L
 and this promotion carries both. Full reasoning for each in [history.md](history.md) —
 *"the slot that stops listening"* and *"the food register stops believing a zone"*.*
 
-***NEITHER IS FIELD-RUN. Do not read either onto main as field-proven*** — the suites are
-green on both interpreters (**6157 + 1121**) and every new rule is mutation-checked, but no
-mode lock has held a weapon in game and no warp scroll has been used after a zone since the
-fix. **Two rounds are owed, and they are both short.**
+***THE FOOD HALF IS NOW FIELD-CONFIRMED, BOTH PATHS*** *(2026-08-03, see the note below).*
+***MODE LOCKS IS NOT — do not read it onto main as field-proven.*** *The suites are green on
+both interpreters (**6157 + 1121**) and every new rule is mutation-checked, but no mode lock
+has held a weapon in game.* **One round is owed, and it is the Mode Locks one.**
 
 ***Mode Locks*** *(Triggers → Modes → the* `locks` *button; ADR 0034). On the job with your
 Weapon cycle, lock* `Main` *and* `Sub` *to a melee set under the melee value, then pull
@@ -351,11 +351,11 @@ before assuming the claim path is broken.*
 does not register as eaten food if using warp scroll directly after scrolling"*). The bug the
 fix exists for is **gone in game**, on the exact reproduction that found it.*
 
-***One half of that round is still unobserved***, *and it is a five-second look rather than a
-run:* `/dl food` *should show **no Instant Warp and no Flask of Echo Drops** at all — the
-`fmt` 1 → 2 self-heal drops them on first load, so if either is still listed the sweep did
-not run and the dry-run's 7-in / 5-kept result did not reproduce. Everything he did confirm
-is about **new** registrations, which is a different code path from the sweep.*
+***The sweep half is confirmed too*** *(Henrik, same day:* "Food watch self heal works, I have
+confirmed"*). So **both code paths are proven in game**: the `fmt` 1 → 2 self-heal actually
+rewrote his real `foodhistory.lua` and dropped the two impostors, and new registrations no
+longer credit a warp scroll with a meal. The dry-run's 7-in / 5-kept result reproduced on the
+live file. **NOTHING IS OWED ON FOODWATCH.***
 
 ---
 

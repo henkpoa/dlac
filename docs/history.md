@@ -9171,3 +9171,17 @@ lost, and the next frame the tray draws will save it — but an `/addon reload` 
 takes it. Reachable only by dragging and then, within one second, having Teleports unpinned
 *and* walking out of box range. Recorded rather than fixed on the spot: the round passed, and
 the fix (flush before the early return) is a change nobody asked for yet.
+
+**Foodwatch: the SWEEP half is confirmed too** (2026-08-03, Henrik: *"Food watch self heal
+works, I have confirmed"*). Both code paths are now proven in game, and they were genuinely
+two different things: **new registration** (a warp scroll used seconds after a zone is no
+longer credited with a meal) and the **`fmt` 1 → 2 self-heal**, which rewrote his real
+`foodhistory.lua` on load and dropped the two impostors. The dry-run's 7-in / 5-kept result
+reproduced on the live file. **Nothing is owed on foodwatch.**
+
+Worth keeping from the way this round was reported: the two halves were confirmed
+*separately*, an hour apart, because they were asked for separately. Rounding the first
+answer up to "foodwatch works" would have retired a check that had not been run — the sweep
+touches the player's own artifact and is the half that could quietly do nothing, or do too
+much. `/dl food forget` was rejected during the build for exactly that reason: it would have
+taken the Pork Cutlet with the junk.
