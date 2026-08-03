@@ -23769,7 +23769,8 @@ end)();
     check('NM10c ...six placeholders',         #bon.ph, 6);
     check('NM10d ...contiguous 354-359',       NM.runs(bon.ph), '354-359');
     check('NM10e ...which are Buffalo',        bon.p, 'Buffalo');
-    check('NM10f ...5% per kill',              bon.c, 5);
+    -- 5% is the BASE, not the rate: disfavour lifts it every round (NM40*/NM41*).
+    check('NM10f ...a 5% base chance',         bon.c, 5);
     check('NM10g ...1h-24h window',            string.format('%d-%d', bon.w[1], bon.w[2]), '3600-86400');
     -- Shadow Eye, Xarcabard (112): one Evil Eye at NM-6.
     local se = select(1, NM.matchInZone(112, 'Shadow Eye'));
@@ -23900,6 +23901,195 @@ end)();
         t13:match('nothing to apply') ~= nil, true);
     check('NM39c ...and does not hunt for an NM called "apply"',
         t13:match('closest match') == nil, true);
+
+    -- ---- the disfavour curve (issue #152) ---------------------------------
+    --
+    --   THESE TESTS ARE THE SOURCE. CatsEyeXI's disfavour system (bad-luck
+    --   protection on lottery pops) exists in NO branch of the public server
+    --   repository -- it lives in the private `catseyexi` overlay, which is
+    --   empty publicly -- so the formula is HAND-CARRIED in nmlookup.lua and
+    --   these checks stand in for the source it cannot be derived from.
+    --
+    --       rounds = phKills / phCount
+    --       chance = 100 / max( (100/base) - rounds * (1 - base/100) / 2, 1 )
+    --
+    --   Four anchors were published with the mechanic and all four are pinned
+    --   below. Anchors ALONE are not enough: they only fix the point where the
+    --   curve reaches 100%, and several wrong formulas hit that point too. So
+    --   the MIDDLE is pinned as well -- a dropped `/2`, a flipped sign or a
+    --   base/100 read as base all move the mid-curve values while some of them
+    --   leave an endpoint intact.
+    -- -----------------------------------------------------------------------
+
+    -- Compared to 4 decimals: fine enough that any of those slips fails, coarse
+    -- enough to be immune to last-bit differences between interpreters.
+    local function pct4(x) return string.format('%.4f', x); end
+
+    -- The published anchors, written out here rather than read from the module,
+    -- so the constant and the code are pinned to the SAME external fact.
+    local PUBLISHED = { { 5, 40 }, { 10, 20 }, { 15, 14 }, { 20, 10 } };
+    for _, a in ipairs(PUBLISHED) do
+        local base, rounds = a[1], a[2];
+        check(string.format('NM40 base %d%% is guaranteed after %d rounds', base, rounds),
+            NM.roundsToGuaranteed(base), rounds);
+        check(string.format('NM40 ...and %d rounds reads exactly 100%%', rounds),
+            pct4(NM.chanceAfter(base, rounds)), '100.0000');
+        -- The anchor is the FIRST guaranteed round, not merely a late one.
+        check(string.format('NM40 ...while %d rounds is not there yet', rounds - 1),
+            NM.chanceAfter(base, rounds - 1) < 100, true);
+    end
+    check('NM40e the constant records all four anchors', #NM.DISFAVOUR.anchors, 4);
+    for i, a in ipairs(PUBLISHED) do
+        check(string.format('NM40f anchor %d base', i),   NM.DISFAVOUR.anchors[i].base, a[1]);
+        check(string.format('NM40g anchor %d rounds', i), NM.DISFAVOUR.anchors[i].rounds, a[2]);
+    end
+
+    -- Mid-curve. NM41d is the figure the PRD quotes back at the player ("30
+    -- rounds in they are at 17%") and NM41e is the near-vertical end that made
+    -- printing the base alone misleading in the first place.
+    check('NM41a base 5% at 0 rounds is the base itself',  pct4(NM.chanceAfter(5, 0)),   '5.0000');
+    check('NM41b base 5% at 10 rounds has already moved',  pct4(NM.chanceAfter(5, 10)),  '6.5574');
+    check('NM41c base 5% at 20 rounds (halfway)',          pct4(NM.chanceAfter(5, 20)),  '9.5238');
+    check('NM41d base 5% at 30 rounds -- the published ~17%',
+        pct4(NM.chanceAfter(5, 30)),  '17.3913');
+    check('NM41e base 5% at 39 rounds -- near-vertical',   pct4(NM.chanceAfter(5, 39)),  '67.7966');
+    check('NM41f base 10% at 10 rounds',                   pct4(NM.chanceAfter(10, 10)), '18.1818');
+    check('NM41g base 15% at 7 rounds',                    pct4(NM.chanceAfter(15, 7)),  '27.0880');
+    check('NM41h base 20% at 5 rounds',                    pct4(NM.chanceAfter(20, 5)),  '33.3333');
+
+    local rose, fell = true, false;
+    local prevChance = NM.chanceAfter(5, 0);
+    for r = 1, 40 do
+        local c = NM.chanceAfter(5, r);
+        if c <= prevChance then rose = false; end
+        if c < prevChance then fell = true; end
+        prevChance = c;
+    end
+    check('NM41i the curve rises on every single round',   rose, true);
+    check('NM41j ...and never falls back',                 fell, false);
+
+    -- Clamps and the guards around a base the table does not carry.
+    check('NM42a past the guarantee it stays at 100%',     pct4(NM.chanceAfter(5, 41)), '100.0000');
+    check('NM42b a negative round count reads as none',
+        pct4(NM.chanceAfter(5, -3)), pct4(NM.chanceAfter(5, 0)));
+    check('NM42c no rounds given reads as none',
+        pct4(NM.chanceAfter(5, nil)), pct4(NM.chanceAfter(5, 0)));
+    check('NM42d no base chance -> no number, never a guess', NM.chanceAfter(nil, 10), nil);
+    check('NM42e a zero base is not a curve',                NM.chanceAfter(0, 10), nil);
+    check('NM42f ...nor a round count',                      NM.roundsToGuaranteed(nil), nil);
+    check('NM42g a 100% base is guaranteed on the first kill', NM.roundsToGuaranteed(100), 0);
+    check('NM42h ...and reads 100% there',                   pct4(NM.chanceAfter(100, 0)), '100.0000');
+    -- Quarter-way sample points, and never one that is already the guarantee.
+    local pts = NM.curvePoints(5);
+    check('NM42i three sample points on the way up',         #pts, 3);
+    check('NM42j ...the first at a quarter of the distance', pts[1].rounds, 10);
+    check('NM42k ...the last still short of guaranteed',     pts[3].rounds < 40, true);
+
+    -- Provenance travels WITH the constant: an unscrapable fact with no source
+    -- and no date is folklore, and the next maintainer cannot re-verify it.
+    check('NM43a the source is recorded', type(NM.DISFAVOUR.source) == 'string'
+        and #NM.DISFAVOUR.source > 20, true);
+    check('NM43b ...and says it is not in the public repo',
+        NM.DISFAVOUR.source:lower():match('overlay') ~= nil, true);
+    check('NM43c a verification date is recorded',
+        NM.DISFAVOUR.verified:match('^%d%d%d%d%-%d%d%-%d%d$') ~= nil, true);
+    check('NM43d the formula is recorded next to it',
+        NM.DISFAVOUR.formula:match('rounds') ~= nil, true);
+
+    -- ---- the readout stops presenting the base as flat --------------------
+    local _, t40 = run('/dl nm bonnacon');
+    check('NM44a the old flat claim is gone',      t40:match('%% per kill') == nil, true);
+    check('NM44b the base is named as a base',     t40:match('5%% base') ~= nil, true);
+    check('NM44c ...and explicitly not flat',      t40:match('not flat') ~= nil, true);
+    check('NM44d the mechanic is named',           t40:match('disfavour') ~= nil, true);
+    check('NM44e rounds to a guaranteed pop are stated',
+        t40:match('40 rounds is a guaranteed pop') ~= nil, true);
+    check('NM44f the pop kind is stated',          t40:match('lottery pop') ~= nil, true);
+    check('NM44g a round is defined in kills',     t40:match('a round = all 6 placeholders') ~= nil, true);
+    -- The climb is SHOWN, not just asserted: a mid-curve figure that is neither
+    -- the base nor 100 is the only thing that reads as a curve.
+    check('NM44h the curve is shown at quarter marks',
+        t40:match('10 rounds 6%.6%%, 20 rounds 9%.5%%, 30 rounds 17%%') ~= nil, true);
+    check('NM44i the placeholders survive the rewrite',
+        t40:match('Buffalo x6') ~= nil and t40:match('PH indexes 354%-359') ~= nil, true);
+    check('NM44j ...and so does the filter',
+        t40:match('/filterscan 354,355,356,357,358,359,360') ~= nil, true);
+
+    -- ---- a non-lottery NM gets its OWN words, and no curve -----------------
+    -- Reading a placeholder curve for an NM whose placeholders roll nothing is
+    -- exactly the wasted camp this command exists to prevent.
+    NM.zoneReader = function() return 2; end;
+    local _, t45 = run('/dl nm Tempest Tigon');
+    check('NM45a a timed NM says timed',            t45:match('timed pop') ~= nil, true);
+    check('NM45b ...in plain words',                t45:match('its own timer') ~= nil, true);
+    check('NM45c ...with the respawn it has',       t45:match('respawn 1h') ~= nil, true);
+    check('NM45d ...and NO disfavour curve',        t45:match('disfavour') == nil, true);
+    check('NM45e ...and no guaranteed-pop claim',   t45:match('guaranteed') == nil, true);
+    check('NM45f ...and no borrowed lottery word',  t45:match('lottery') == nil, true);
+
+    NM.zoneReader = function() return 1; end;
+    local _, t46 = run('/dl nm Aipaloovik');
+    check('NM46a a scripted NM says scripted',      t46:match('scripted pop') ~= nil, true);
+    check('NM46b ...and what that means',           t46:match('a pop item, a quest, or a forced spawn') ~= nil, true);
+    check('NM46c ...with no curve',                 t46:match('disfavour') == nil, true);
+    local _, t46b = run('/dl nm Vodyanoi');
+    check('NM46d a night spawn says night',         t46b:match('night pop') ~= nil, true);
+    check('NM46e ...and still hands over its filter', t46b:match('/filterscan 14') ~= nil, true);
+
+    -- Charybdis is the hard case and the reason `kind` is consulted at all: it
+    -- CARRIES placeholders and a pop chance, but the server's spawn kind says
+    -- scripted. The indexes stay (they are still where it comes from, and the
+    -- filter needs them); the lottery language does not.
+    NM.zoneReader = function() return 176; end;
+    local _, t47 = run('/dl nm Charybdis');
+    check('NM47a a scripted NM with placeholders says scripted',
+        t47:match('scripted pop') ~= nil, true);
+    check('NM47b ...and says why there is no curve',
+        t47:match('not a lottery, so no disfavour curve') ~= nil, true);
+    check('NM47c ...shows NO percentage at all',    t47:match('%d+%% base') == nil, true);
+    check('NM47d ...and no rounds figure',          t47:match('rounds') == nil, true);
+    check('NM47e ...but keeps the placeholders',    t47:match('Devil Manta x2') ~= nil, true);
+    check('NM47f ...and keeps the filter',          t47:match('/filterscan 406,408,410') ~= nil, true);
+    -- ...and the table itself still says so, so a regeneration that lost `kind`
+    -- fails here rather than silently restoring the lottery language.
+    local chary = select(1, NM.matchInZone(176, 'Charybdis'));
+    check('NM47g the shipped table reads scripted for it', NM.kindLabel(chary), 'scripted');
+    check('NM47h ...while carrying a pop chance',          chary.c, 10);
+    check('NM47i ...and placeholders',                     #chary.ph, 2);
+    check('NM47j so isLottery refuses it',                 NM.isLottery(chary), false);
+    local bonk = select(1, NM.matchInZone(5, 'Bonnacon'));
+    check('NM47k ...where Bonnacon reads lottery',         NM.kindLabel(bonk), 'lottery');
+    check('NM47l ...and isLottery accepts it',             NM.isLottery(bonk), true);
+
+    -- ---- honest degradations ----------------------------------------------
+    -- A lottery whose base chance the table does not carry: the mechanic is
+    -- still named, the number is not invented.
+    NM.zoneReader = function() return 12; end;
+    local _, t48 = run('/dl nm Swashstox');
+    check('NM48a it is still a lottery',            t48:match('lottery pop') ~= nil, true);
+    check('NM48b ...but the missing base is admitted',
+        t48:match('base chance is not in the table') ~= nil, true);
+    check('NM48c ...and no percentage is guessed',  t48:match('%d+%% base') == nil, true);
+    -- A lottery the table has no placeholders for says exactly that.
+    NM.zoneReader = function() return 15; end;
+    local _, t49 = run('/dl nm Tonberry Lieje');
+    check('NM49a it says the kind',                 t49:match('lottery pop') ~= nil, true);
+    check('NM49b ...and that it has no placeholders here',
+        t49:match('no placeholders for it') ~= nil, true);
+    check('NM49c ...with no curve',                 t49:match('guaranteed') == nil, true);
+    -- A pre-2026-08-03 table has no `kind` at all. That is not the server
+    -- saying "not a lottery", so placeholders + a base chance still get the
+    -- curve rather than silently losing it on a stale install.
+    local old = { n = 'Old Table', nm = { 9 }, ph = { 7, 8 }, p = 'Thing', c = 10 };
+    check('NM49d a kindless entry with placeholders is still a lottery',
+        NM.isLottery(old), true);
+    local oldLines = table.concat(NM.describe(old, 5, false), '\n');
+    check('NM49e ...and still gets its curve',
+        oldLines:match('20 rounds is a guaranteed pop') ~= nil, true);
+    check('NM49f a kindless entry with no placeholders admits it does not know',
+        table.concat(NM.describe({ n = 'x', nm = { 3 } }, 5, false), '\n')
+            :match('the table does not say how') ~= nil, true);
+    NM.zoneReader = function() return 5; end;
 
     -- ---- a missing table degrades OFF, never errors -----------------------
     local savedData = NM.data;

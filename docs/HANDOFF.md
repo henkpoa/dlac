@@ -903,6 +903,35 @@ research already recorded. In rough priority order:
 
 ## Current state (as of 2026-08-02)
 
+- **2026-08-03: `/dl nm` STOPS PRESENTING THE BASE CHANCE AS FLAT — the disfavour curve is
+  hand-carried — ON A PR BRANCH off `dev` (`issue-152-nm-disfavour`), NOT field-run**
+  (issue #152, PRD #151). `/dl nm <name>` printed *"5% per kill"*. That is only the **base**:
+  CatsEyeXI applies **disfavour** (bad-luck protection) to lottery pops, so every completed
+  placeholder **round** lifts the chance until a pop is guaranteed, and a camper reading 5%
+  had no idea that 30 rounds in he is at 17% and that the last quarter is near-vertical. The
+  readout now states the base, that it is **not flat**, three quarter-way sample points and
+  the rounds to a guaranteed pop.
+  - **The curve is a hand-carried constant** (`nmlookup.M.DISFAVOUR`) with its **source and
+    verification date beside it** — it exists in **no branch** of the public server repo,
+    because the loader activates a `catseyexi` overlay that is empty there, and scraping a
+    wiki for it was rejected as a way to silently poison the odds. **The tests are its
+    source**: `NM40*` pins all four published anchors (5→40, 10→20, 15→14, 20→10) and `NM41*`
+    pins the **middle** of the curve — anchors alone only fix where it reaches 100%, and six
+    plausible wrong formulas were checked to confirm the mid-curve values are what actually
+    discriminate them.
+  - **Only `kind == "lottery"` gets a curve.** `scripted` / `timed` / `weather` / `night` NMs
+    get their own plain words and their respawn. **Five shipped entries carry placeholders
+    AND a scripted kind** (Charybdis, Crypt Ghost, Magicked Bones, Sea Horror ×2) — their
+    indexes stay in the filter, the lottery language does not. Charybdis is pinned as the
+    tripwire for exactly that, so a regeneration that lost `kind` fails the suite instead of
+    quietly restoring the wrong words.
+  - Everything else is untouched and still pinned: fuzzy matching, guess labelling, gibberish
+    refusal, the FilterScan filter, `apply`, and the missing-data warning. No engine bump —
+    `nmlookup` is addon-state only, and no seeded file moved. Suites **6337 + 1138** green.
+  - **NOT FIELD-RUN, and it inherits the round still owed on `/dl nm` itself** (the entry
+    under the fourth 2026-08-03 promotion above): nothing has ever filtered a live widescan
+    with a generated line. Two things this slice adds to that round — does the `kind` word
+    match what the zone actually does, and does the curve read right to someone who camps?
 - **2026-08-03 (`2026.08.03w`): THE FOOD REGISTER STOPS BELIEVING A ZONE.** Henrik's first
   field round on foodwatch found it: *"it is showing my instant warp scroll as recently
   eaten... I tried to use a warp scroll almost immediately after zoning after everything

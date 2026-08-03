@@ -1210,8 +1210,11 @@ file that sends packets must be added to `SEND_FILES` there.
 Answers "what pops this NM, and which spawn points do I watch?" without any live scanning.
 **`data/nmdata.lua` is generated** (`tools/gen_nmdata.py`, from a **local server clone** —
 memory: `catseyexi-local-clone`) and holds, per zone id, every notorious monster with its
-**target indexes**, its placeholders' indexes, the placeholder's name, the pop chance per PH
-death and the repop window.
+**target indexes**, its placeholders' indexes, the placeholder's name, the **base** pop chance
+per PH death, the repop window, the server **pool id** (the join key for live drop data), the
+decoded **spawn kind** and the group respawn. It is scoped to **field zones** — the zone type
+mask, minus dynamis and instanced, plus a curated ferry add-list — derived on every run, so
+newly released content classifies itself instead of needing the generator edited.
 
 Four server facts it stands on, each verified in the clone rather than assumed:
 * **Index = `mobid & 0xFFF`.** The server scopes its own name lookups by
@@ -1227,6 +1230,36 @@ Four server facts it stands on, each verified in the clone rather than assumed:
 * **NM-ness is `mob_pools.mobType & 0x02`** (`MOBTYPE_NOTORIOUS`), reached via
   `mob_spawn_points.groupid → mob_groups → poolid`. NMs with **no** placeholders are listed
   too, so "absent" means "not an NM here" rather than "we kept only the easy ones".
+
+**The base chance is not the chance** (issue #152). CatsEyeXI applies **disfavour** — bad-luck
+protection — to lottery pops: `c` is only the *floor*, and every completed placeholder **round**
+(every placeholder killed once) lifts it until a pop is guaranteed. Printing `c` alone read as a
+flat rate, which is the one way this command could mislead a camper in the expensive direction,
+so the readout states the curve instead: the base, that it is **not flat**, three quarter-way
+sample points, and the round count that guarantees a pop.
+
+The curve is **hand-carried** in `M.DISFAVOUR`, with its source and verification date beside it:
+
+    rounds = phKills / phCount
+    chance = 100 / max( (100/base) - rounds * (1 - base/100) / 2 , 1 )
+
+It exists in **no branch** of the public server repository — the module loader activates a
+`catseyexi` overlay directory that is **empty** there, so absence from the clone is not evidence
+of absence on live — and it is deliberately **not scraped** from a wiki, whose layout could
+change and silently poison the odds. **The tests are its source**: `NM40*` pins all four
+published anchors (5% → 40 rounds, 10% → 20, 15% → 14, 20% → 10) and `NM41*` pins the *middle*
+of the curve, because anchors alone only fix where it reaches 100% and several wrong formulas
+reach it too. The per-NM base keeps coming from the generated table; only the curve lives in
+code.
+
+**Only `kind == "lottery"` is the placeholder system.** A `scripted` / `timed` / `weather` /
+`night` NM gets its own plain-words line — and, when the table gives one, its respawn — and
+**no curve**. Five shipped entries carry placeholders *and* a scripted spawn kind: their
+indexes stay in the filter (they are still where the NM comes from) but the lottery language
+does not, because reading a placeholder curve for an NM whose placeholders roll nothing is the
+wasted camp this command exists to prevent. A pre-`kind` data file is not a server statement of
+"not a lottery": placeholders plus a base chance still get the curve, so a stale install
+degrades rather than going quiet.
 
 Matching is deliberately forgiving (exact → prefix → substring → all-words → edit distance);
 a weak match is still shown but **labelled as a guess**, and gibberish is refused rather than
@@ -1465,7 +1498,7 @@ like the command does not exist.
 | `/dl sends [reset]` | sendlog | **What dlac has put on the wire this session** — dlac's **own** sends split from your **passed-through** actions, per packet id, **per cause**, plus the last 24 sends with their ages; also lands as `debug\dlac-sends-<Char>.txt`. Zero sends says so *and* says why that is expected (equips are edge-driven). A **flap** shows as one cause repeating at the 0.4 s Default tick. Self-check, not a probe — it counts dlac's own sends at the sites that make them, and never reads the wire |
 | `/dl food [1\|2\|forget]` | foodwatch | Which food you are under and what you can re-eat; a number eats that row, `forget` clears the history. What counts as food is learned off the wire (an item use + the FOOD effect's expiry moving), never from a shipped list |
 | `/dl engine [native on\|off \| migrate]` | feature/engine | The Native-engine flip: status / flag + storage migration (see § The Native engine) |
-| `/dl nm [name] [apply]` (`ph`) | nmlookup | **Which NMs are in this zone, and what pops them.** Bare lists the zone's notorious monsters, placeholders first; a name gives that NM's target indexes, its placeholders (name, count, pop chance, repop window) and a ready `/filterscan` line over those spawn points. Names match loosely; a weak match is shown *labelled as a guess*. A name that lives elsewhere answers about that zone rather than dead-ending. `apply` queues the `/filterscan` for you. Reads only `data/nmdata.lua` + your zone id — no live scanning |
+| `/dl nm [name] [apply]` (`ph`) | nmlookup | **Which NMs are in this zone, and what pops them.** Bare lists the zone's notorious monsters, placeholders first; a name gives the **pop kind**, that NM's target indexes, its placeholders (name, count, repop window) and a ready `/filterscan` line over those spawn points. For a **lottery** it states the **base** chance, that the chance is **not flat**, the **disfavour** curve at quarter marks and the rounds to a guaranteed pop; a non-lottery NM gets its own words and **no curve**. Names match loosely; a weak match is shown *labelled as a guess*. A name that lives elsewhere answers about that zone rather than dead-ending. `apply` queues the `/filterscan` for you. Reads only `data/nmdata.lua` + your zone id — no live scanning |
 | `/dlmv` | gearmove | (branch-only) gate/version diagnostic |
 
 ## Per-character state vs repo
