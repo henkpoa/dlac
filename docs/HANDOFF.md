@@ -296,6 +296,42 @@ haven't told you."* Ask when he has **not** said merge; never ask twice when he 
 
 **THE QUEUE IS EMPTY.**
 
+*(Emptied by the 2026-08-03 promotion — **two field bugs from one support report**,
+`2026.08.03t`, **engine v164**. Henrik: *"commit, merge push to main"* — an accept under the
+08-01 ruling, so nothing was asked twice. Both bugs came out of reading Coffeepoo's
+`/dl report` (a **second** field tester, not Henrik), and both were the same mistake twice:
+**a fact that changes, cached in a file nothing rewrites.** Full reasoning in
+[history.md](history.md) — *"two knives and an invisible animator"*.*
+
+***PROMOTED BUT NOT FIELD-RUN — do not read this onto main as field-proven.*** *The suites
+are green on both interpreters (**6054**) and the second bug was additionally confirmed
+against Henrik's real on-disk `Mindie_29909\gear.lua` and the shipped catalog, but neither
+fix has equipped a single item in game.*
+
+***The round owed is small and specific***, on Coffeepoo's character: a plain `/dl sync`
+should make the base Animator appear with no hand edit, and the DNC Idle set's `Sub` should
+take the second Bone Knife +1 with **no `Count = 2`** in his file. If either still fails,
+the diagnosis was wrong, not the plumbing — start from the `/dl report` again.
+
+***What landed, for whoever picks this up:***
+- ***Two of one weapon pair from your BAGS, not from a stamp.*** *`subSlotAllowed`'s
+  same-name off-hand rule had only the `Count` stamp to go on at equip time, and no command
+  can refresh it (`/dl sync` is add-only, `/dl fix` is catalog-only by design) — so a twin
+  acquired after the first was indexed could never sit in the Sub. `dispatch.M.bagCopies`
+  → `utils.slotLadder`. **Best-of**, so a stamped file behaves identically and an unreadable
+  bag scan falls back to the stamp rather than demoting gear. `LD6c`–`LD6h`.*
+- ***The skill-0 Range families get indexed at all.*** *`gearimport.rangeCategory` replaces
+  an exact `Jobs == PUP_ONLY_MASK` test that dropped the ALL-JOBS Animator (17859) and the
+  whole soultrapper family out of `gear.lua` entirely. **It can never return nil** — nil is
+  what made them invisible. `E29`–`E29i`, `SH10c`–`SH10f`.*
+- ***The reason neither was ever reported:*** *`M.stage` printed its skipped items only when
+  `not quiet`, and `M.sync` stages **quiet**. Now printed regardless, once per name per Lua
+  state. **If you touch the sync path, keep that property** — an item dlac cannot index has
+  to say so on the path players are actually on.*
+- *Henrik's own `Mindie_29909\gear.lua` carries a **hand-written** Animator entry (a
+  `Stats = {}` block no writer in the tree emits). Leave it: it is harmless, the new bucket
+  agrees with where he put it, and it is the evidence of what the bug was.*
+
 *(Emptied by the sixth 2026-08-02 promotion — **the pin menu**, `2026.08.03h`–`2026.08.03q`,
 plus everything else standing on `dev`. Henrik: *"can you properly document all this, merge and
 push to origin. Do note that other things will come with, which is 100 % known by me and OK"* —
