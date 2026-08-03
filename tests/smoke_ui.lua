@@ -3530,13 +3530,34 @@ end)();
             check('MLK11 ...with a table', pok and type(plan), 'table');
         end
 
-        -- The Trigger Monitor itself now carries a locks line. It is a floating
-        -- window rendered from the present hook, so nothing else in the suite
-        -- would ever run it.
+        -- The Trigger Monitor itself now carries a locks line + the queue count.
+        -- It is a floating window rendered from the present hook, so nothing
+        -- else in the suite would ever run it.
         check('MLK12 renders the Trigger Monitor with the locks line',
             pcall(tg.renderMonitor, { _tgMon = true }), true);
         check('MLK13 monitor leaves the stacks balanced',
             depth.col + depth.win + depth.child, 0);
+        -- MLK14-MLK16. THE QUEUE COUNT ON THE FACE. The hover carries the
+        -- detail, but the count is the prompt -- nobody hovers a line that looks
+        -- correct, which is the whole reason the queue was invisible until
+        -- Henrik asked where to find it. Driven through the real planner with
+        -- two modes contesting one slot.
+        local dspQ = package.loaded['dlac\\dispatch'];
+        if dspQ ~= nil and type(dspQ.modeLockPlan) == 'function' then
+            local qDefs = {
+                weapon = { name = 'Weapon', values = { 'Melee' },
+                           locks = { ['Weapon:Melee'] = { Main = 'MeleeWpn' } } },
+                dt     = { name = 'DT', locks = { ['DT'] = { Main = 'DTWpn' } } },
+            };
+            local qPlan, qConf = dspQ.modeLockPlan(qDefs, { weapon = 'Melee', dt = true },
+                                                   { dt = 1, weapon = 2 });
+            check('MLK14 the planner produces a queue for the monitor to show',
+                (qConf ~= nil) and #qConf, 1);
+            check('MLK15 ...with the first arrival holding the slot',
+                (qPlan.Main or {}).by, 'DT');
+            check('MLK16 ...and the later one named as waiting',
+                (qConf ~= nil) and qConf[1].lost.by or nil, 'Weapon:Melee');
+        end
     end
 
     for _, k in ipairs(NAMES) do package.loaded[k] = saved[k]; end
@@ -4871,7 +4892,12 @@ end)();
     local function nop() end
     local IM = {};
     for _, n in ipairs({ 'SetNextWindowSize', 'Separator', 'Spacing', 'Text', 'TextColored',
-        'SameLine', 'Dummy', 'SetTooltip', 'BeginGroup', 'EndGroup' }) do IM[n] = nop; end
+        'SameLine', 'Dummy', 'BeginGroup', 'EndGroup' }) do IM[n] = nop; end
+    -- Tooltips are CAPTURED, not discarded: this window's whole job is the
+    -- explanation, so "it rendered without throwing" is a weak assertion --
+    -- what a cell actually SAYS is the thing worth pinning (AM8e).
+    local tips = {};
+    IM.SetTooltip = function(t) tips[#tips + 1] = tostring(t); end
     IM.Begin      = function() depth.win = depth.win + 1; return true; end
     IM['End']     = function() depth.win = depth.win - 1; end
     IM.BeginChild = function() depth.child = depth.child + 1; return true; end
@@ -4965,6 +4991,36 @@ end)();
             ui._arbPin = -999;
             pcall(am.renderMonitor, ui);
             check('AM8 a pruned pin self-heals to Live', ui._arbPin, nil);
+
+            -- AM8a-AM8e. THE MODE LOCK QUEUE in the grid (2026-08-03). A record
+            -- carrying `mlq` must draw the 'q' marker and name the waiting mode
+            -- in the hover -- and it renders from the RECORD, so a pinned
+            -- decision shows the queue that was in force THEN. Neither branch
+            -- runs on a record without a queue, which is every other record in
+            -- this suite.
+            dspS._recordDecision('Default', {}, { Main = 'DT Sword' }, {
+                explain = { Main = { { name = 'ModeLock', rank = 11, item = 'DT Sword' } } },
+                order = { 'ModeLock', 'Triggers' },
+                mlq = { { slot = 'Main', kept = { by = 'DT', set = 'DTWpn' },
+                          lost = { by = 'Weapon:Melee', set = 'MeleeWpn' } } },
+            });
+            local qok, qerr = pcall(am.renderMonitor, ui);
+            check('AM8a a record with a queue renders (name mode)', qok, true);
+            if not qok then print('   arbmonui queue error: ' .. tostring(qerr)); end
+            check('AM8b stacks balanced with the queue marker', depth.win + depth.child, 0);
+            availStub = 300;                      -- icon mode: the marker draws in BOTH
+            local qok2 = pcall(am.renderMonitor, ui);
+            check('AM8c ...and in icon mode too', qok2, true);
+            check('AM8d stacks still balanced', depth.win + depth.child, 0);
+            availStub = 990;
+            -- The hover text itself: renderRecord is the public seam, but the
+            -- tooltip is what carries the answer, so assert on what was set.
+            check('AM8e the hover names the holder and the waiter',
+                (function()
+                    local seen = table.concat(tips or {}, '\n');
+                    return seen:find('mode lock QUEUE', 1, true) ~= nil
+                       and seen:find('waiting: Weapon:Melee', 1, true) ~= nil;
+                end)(), true);
         end
 
         -- THE SUPPORT RECORDER BAR (2026-08-03). Both states executed, not

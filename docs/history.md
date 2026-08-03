@@ -9079,3 +9079,54 @@ wrong reason. Suites **6087 + 1108**, Windows and WSL, run on the **committed tr
 isolated worktree** — this train was staged out of a checkout a parallel session was working
 in, so those are its own numbers; with the Mode Locks work still on disk the same tree reads
 6157 + 1121.
+
+## Session "where do I see the queue" (2026-08-03, `2026.08.03y`, engine v167)
+
+Henrik, one question, straight after the promotion: *"Where do I see the queue for the mode
+lock?"*
+
+The honest answer was **one place** — the Mode Locks window, at the bottom, under the
+`live now:` line. Which is the surface a player is *least* likely to be looking at while
+playing. Both monitors named only the winner, so a slot doing something surprising gave no
+hint that another active mode was waiting behind it. That is the same invisibility the
+loser list was written to prevent, moved one level up: I had surfaced the queue in the
+editor and left it dark everywhere the problem is actually noticed.
+
+**The queue now rides the DECISION RECORD** (`contest.mlq`). That was the part worth
+thinking about rather than typing: the Arbiter Monitor renders *stashed* records — pinned
+historical ones included — and it derives nothing, deliberately (its own header: *the record
+is the behavior, never render a rival*). Computing the queue live in the renderer would have
+shown **today's** answer under a decision from ten minutes ago. Same law as the ladders and
+the reserve verdict: the queue that decided is the queue you read. It is captured at ensure
+time through the one door `modeLockLive`, which now stashes it beside the plan — a stash
+only `ensure` refreshed was a trap, because any other reader got a queue from an older
+dispatch and could not tell.
+
+**It is also a signature leg**, and finding out why is the interesting part. The first cut
+put the queue in the record and the test still failed: turning on a mode that queues behind
+the winner moves no gear and no claim, so the retrace signature never moved, so the contest
+was never rebuilt. That is exactly the rank-order leg's case (v152 — a dragged row flips
+winners with nothing else moving). Added to the leg, `/dl why` tells the truth immediately.
+
+**It deliberately does NOT enter the decision fingerprint**, and that is the ruling. The
+ring appends on a moved *outcome*; a queue-only record with zero changed slots is the v163
+symptom, not a feature. So a queue that forms while nothing moves reaches `/dl why` at once
+and reaches the ring on the next real decision — which is also why the end-to-end test had
+to be rebuilt around a mode whose arrival queues on one slot *and* moves an uncontested
+one. The first version of that test asserted something the design should not do.
+
+**The renderers.** The Arbiter Monitor draws a `q` on the cell in BOTH grid modes (the
+fall-marker precedent: a slot with someone waiting is precisely what you would never think
+to hover over) and names holder + waiter in the hover. The Trigger Monitor's `locks` line
+grows an `(n queued)` count with the detail on hover — the count is the prompt, because
+nobody hovers a line that looks correct. One bug caught while writing it: `IsItemHovered`
+answers about the LAST item drawn, so asking after the suffix would have silently moved the
+whole tooltip off the held list onto the count. Taken before, OR'd with the suffix's own.
+
+Also here: the arbmonui smoke stub now CAPTURES tooltips instead of discarding them. This
+window's entire job is the explanation, so "it rendered without throwing" is a weak
+assertion — what a cell actually says is the thing worth pinning (`AM8e`, mutation-checked).
+
+**Tests:** `MDL23`–`MDL26b` (the record carries the queue, the first arrival keeps the slot,
+the holder going off hands it on with nothing re-armed, the leg carries and drops it),
+smoke `AM8a`–`AM8e` and `MLK14`–`MLK16`. Suites **6168 + 1129**, both interpreters.

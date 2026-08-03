@@ -18435,6 +18435,83 @@ return {
             named ~= nil and named.claim ~= nil and named.apply ~= nil and named.rladder ~= nil, true);
         check('MDL22c ...and a live prioStatus naming the held slot',
             (named ~= nil) and (named.prioStatus():find('Main=LockedWpn', 1, true) ~= nil) or false, true);
+
+        -- MDL23-MDL25. THE QUEUE MUST REACH THE DECISION RECORD (2026-08-03).
+        -- The Arbiter Monitor renders STASHED records -- including pinned
+        -- historical ones -- and derives nothing, so a queue computed live in the
+        -- renderer would show TODAY's answer under a decision from ten minutes
+        -- ago. Same law as the ladders and the reserve verdict: the queue that
+        -- decided is the queue you read. Without this the monitor can only ever
+        -- name the winner, which is the gap Henrik found by asking where the
+        -- queue was visible.
+        --
+        -- A second mode locking the SAME slot. DT is armed FIRST (while Weapon
+        -- holds Caster, which locks nothing), so DT takes Main; flipping Weapon
+        -- to Melee afterwards makes Weapon:Melee the LATER arrival -- it queues,
+        -- and the gear MOVES at the same time. That combination is deliberate:
+        -- the ring appends on a moved OUTCOME, so a queue that forms while
+        -- nothing moves reaches /dl why (the sig leg) but correctly does not
+        -- mint a ring record with zero changed slots -- the v163 symptom.
+        -- Weapon:Melee also locks an UNCONTESTED slot (Body), so its later
+        -- arrival moves gear while it queues on Main. That is what lets the ring
+        -- record it: the queue rides a decision that actually happened, rather
+        -- than minting a record with nothing changed in it.
+        local raw2 = D.readTriggersRaw(trigPath);
+        raw2.Modes['DT'] = { locks = { ['DT'] = { Main = 'DTWpn' } } };
+        raw2.Modes['Weapon'].locks['Weapon:Melee'].Body = 'LockedWpn';
+        local tf2 = io.open(trigPath, 'w');
+        if tf2 ~= nil then tf2:write(D.serializeTriggers(raw2)); tf2:close(); end
+        E._nativeSets.DTWpn = { Main = 'DT Sword' };
+        E._nativeSets.Dynamic.DTWpn = { Main = 'DT Sword' };
+        E._nativeSets.LockedWpn.Body = 'Locked Robe';
+        E._nativeSets.Dynamic.LockedWpn.Body = 'Locked Robe';
+        E.reloadTriggers();
+        E.setMode('Weapon', 'Caster');     -- locks nothing
+        E.setMode('DT', true);             -- DT takes Main first
+        wrote = {};
+        pcall(E.dispatch, 'Default');
+        check('MDL23 the first arrival takes the slot', wrote.Main, 'DT Sword');
+        E.setMode('Weapon', 'Melee');      -- arrives LATER: queues behind DT
+        wrote = {};
+        pcall(E.dispatch, 'Default');
+        check('MDL23b the later arrival does NOT take the contested slot', wrote.Main, 'DT Sword');
+        check('MDL23c ...but DOES take the one nobody contests', wrote.Body, 'Locked Robe');
+        local ring = E.getDecisions();
+        local recQ = nil;
+        for i = #ring, 1, -1 do
+            if (ring[i].contest or {}).mlq ~= nil then recQ = ring[i]; break; end
+        end
+        check('MDL24 the decision record carries the queue', recQ ~= nil, true);
+        if recQ ~= nil then
+            local q = recQ.contest.mlq[1];
+            check('MDL24b ...naming the contested slot', q.slot, 'Main');
+            check('MDL24c ...who holds it',              q.kept.by, 'DT');
+            check('MDL24d ...and who is waiting',        q.lost.by, 'Weapon:Melee');
+        end
+        -- Drop the holder: the queue empties and the waiter takes the slot, with
+        -- nothing re-armed -- the "queue needs no state" claim, end to end.
+        E.setMode('DT', false);
+        wrote = {};
+        pcall(E.dispatch, 'Default');
+        check('MDL25 the holder going off hands Main to the one that waited', wrote.Main, 'Locked Sword');
+        local ring2 = E.getDecisions();
+        check('MDL25b ...and nothing is queued any more',
+            (ring2[#ring2].contest or {}).mlq, nil);
+        -- The QUEUE IS A RETRACE LEG (the rank-order precedent, v152): a mode
+        -- that queues moves no gear and no claim, so without it in the leg the
+        -- trace would keep saying nobody waits until something unrelated moved.
+        local sigRow = nil;
+        for _, row in ipairs(E._claimants) do
+            if row.name == 'ModeLock' then sigRow = row; break; end
+        end
+        E.setMode('DT', true);             -- queues behind Weapon:Melee now
+        E.modeLockLive();                  -- refresh M._modeLockQ the way ensure does
+        local legQ = (sigRow ~= nil) and sigRow.sig(nil, true, E.modeLockLive()) or '';
+        check('MDL26 the signature leg carries the queue', legQ:find('|q:Main<DT', 1, true) ~= nil, true);
+        E.setMode('DT', false);
+        E.modeLockLive();
+        local legN = (sigRow ~= nil) and sigRow.sig(nil, true, E.modeLockLive()) or '';
+        check('MDL26b ...and drops it when nobody waits', legN:find('|q:', 1, true), nil);
     end
 
     prof.nativeMode, prof.dataDir = saved.nativeMode, saved.dataDir;
