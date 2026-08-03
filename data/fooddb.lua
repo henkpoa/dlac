@@ -8,12 +8,16 @@
 -- feature/foodwatch knows what you ate; this table is what lets it say what
 -- that food does.
 --
--- DISPLAY ONLY, and the split is load-bearing: this table must NEVER be used
--- to decide whether an item IS food. That answer stays learned from the FOOD
--- effect moving (feature/foodwatch), so a food the server adds tomorrow is
--- still remembered and still eatable -- it just has no stats to hover. Wire
--- this into detection and the "dlac ships no food list" guarantee is gone and
--- a stale copy starts deciding what counts as food.
+-- IT ALSO VETOES DETECTION (2026-08-03). This table used to be display-only,
+-- on the reasoning that the FOOD effect moving was proof enough on its own.
+-- The field disproved that: a zone reload moves the effect too (food is
+-- PAUSED while the zone loads, so the server hands back an expiry pushed
+-- forward by the length of the load), and a Scroll of Instant Warp used
+-- seconds after zoning was recorded as a meal. An item this table denies is
+-- now refused outright. An item it has never HEARD of is still learned from
+-- a clean effect edge, so a food the server adds tomorrow still works with no
+-- shipped update -- keep that path, or a stale copy starts deciding what
+-- counts as food.
 --
 -- Text is the server script's OWN English header, verbatim -- not a
 -- translation of its addMod calls (86 mod names, every one a chance to
@@ -27,7 +31,7 @@
 -- Description, never errors.
 return {
     fmt = 1,
-    meta = { generated = "2026-08-01", source = "CatsAndBoats/catseyexi@stable 9bb0ec8c67", foods = 783 },
+    meta = { generated = "2026-08-03", source = "CatsAndBoats/catseyexi@stable 9bb0ec8c67", foods = 783 },
     foods = {
         [4235] = { d = 14400, s = { "Strength -7", "Dexterity -7", "Agility -7", "Vitality -7", "Intelligence -7", "Mind -7", "Charisma -7" } },
         [4266] = { d = 3600, s = { "DEX +2", "VIT +1", "AGI +1", "INT +2", "MND -2", "Ranged Accuracy +3" } },

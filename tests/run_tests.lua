@@ -21890,11 +21890,32 @@ if okLoad and type(fw) == 'table' then
     -- The potion case: food was already up and STAYS at the same expiry.
     check('FW6 a use that leaves the expiry alone is not food',
           fw._step(S({ present = true, expiry = 500 }), 101, { present = true, expiry = 500 }, PEND), nil);
-    -- The case presence alone gets wrong: eating over a live food.
-    check('FW7 eating over live food moves the expiry -> recorded',
-          fw._step(S({ present = true, expiry = 500 }), 101, { present = true, expiry = 900 }, PEND), PEND);
+    -- The case presence alone gets wrong: a food wearing off and being re-eaten
+    -- inside one poll gap, which never flickers the icon. Expiries are in
+    -- SIXTIETHS of a second, so a 30-minute meal is 30*60*60.
+    -- The catalogue has to vouch for a re-eat: it is the ambiguous edge, so an
+    -- item nothing else speaks for is not believed on it (FW9e/FW9f).
+    check('FW7 a re-eat pushes the expiry out by a whole meal -> recorded',
+          fw._step(S({ present = true, expiry = 500 }), 101,
+                   { present = true, expiry = 500 + 30 * 60 * 60 }, PEND, { known = true }), PEND);
     check('FW7b ...and with no timer array to read, a re-eat stays unknowable',
           fw._step(S({ present = true, expiry = nil }), 101, { present = true, expiry = nil }, PEND), nil);
+    -- FIELD DATA, 2026-08-03, and this is the Instant Warp bug in one line. Food
+    -- is PAUSED while a zone loads, so the server hands back an expiry pushed
+    -- forward by the length of the load -- +2s here, straight out of Henrik's
+    -- foodhistory.lua -- and the bare `~=` that used to live here read that as a
+    -- second meal and blamed the scroll he used on the far side of the screen.
+    check('FW7c a zone re-basing the clock by 2s is NOT a meal',
+          fw._step(S({ present = true, expiry = 3605674160 }), 101,
+                   { present = true, expiry = 3605674280 }, PEND), nil);
+    check('FW7d ...nor the 6s drift that cost the Flask of Echo Drops',
+          fw._step(S({ present = true, expiry = 3603904400 }), 101,
+                   { present = true, expiry = 3603904760 }, PEND), nil);
+    -- The raw value is a uint32 that wraps every ~2.3 years. A wrap lands outside
+    -- the sane band and answers "not movement" with no wrap math at all.
+    check('FW7e a wrapped expiry is not a meal either',
+          fw._step(S({ present = true, expiry = 0xFFFFFF00 }), 101,
+                   { present = true, expiry = 200 }, PEND), nil);
     check('FW8 the effect being gone is never a meal',
           fw._step(S(nil), 101, { present = false }, PEND), nil);
     -- A dropped read must not blank the last known state, or the next good read
@@ -21904,6 +21925,73 @@ if okLoad and type(fw) == 'table' then
     check('FW9 an unreadable poll keeps the last known effect', st.food.expiry, 500);
     check('FW9b ...so the good read after it is not a fake appearance',
           fw._step(st, 102, { present = true, expiry = 500 }, PEND), nil);
+
+    -- --- THE CATALOGUE (2026-08-03). What the effect alone could never settle.
+    local UP = { present = true, expiry = 500 };
+    check('FW9c an item the server calls food is believed',
+          fw._step(S(nil), 101, UP, PEND, { known = true }), PEND);
+    check('FW9d an item the table has never heard of is still learned',
+          fw._step(S(nil), 101, UP, PEND, { known = false }), PEND);
+    check('FW9e ...but only from an effect that APPEARED, never from a re-eat',
+          fw._step(S({ present = true, expiry = 500 }), 101,
+                   { present = true, expiry = 500 + 30 * 60 * 60 }, PEND, { known = false }), nil);
+    check('FW9f ...where a catalogued food IS believed on that same re-eat',
+          fw._step(S({ present = true, expiry = 500 }), 101,
+                   { present = true, expiry = 500 + 30 * 60 * 60 }, PEND, { known = true }), PEND);
+
+    -- THE ZONE. An unvouched item cannot be believed while the status array is
+    -- still replaying; a catalogued one can, or "zone in and eat" would break.
+    local ZP = { id = 4381, at = 100 };
+    check('FW9g an unknown item inside the zone-settle window is not a meal',
+          fw._step(S(nil), 101, UP, ZP, { known = false, zonedAt = 100 }), nil);
+    check('FW9h ...but a catalogued food eaten right after a zone still is',
+          fw._step(S(nil), 101, UP, ZP, { known = true, zonedAt = 100 }), ZP);
+    local LATE = { id = 4381, at = 118 };
+    check('FW9i ...and once the array has settled the unknown one counts again',
+          fw._step(S(nil), 120, UP, LATE, { known = false, zonedAt = 100 }), LATE);
+
+    -- THE REFUSED USE. You cannot eat over food on CatsEyeXI, so an effect with
+    -- more time left than this item could ever grant is an EARLIER meal that has
+    -- merely reappeared -- a zone reload landing beside a use the server threw
+    -- away. Sole Sushi runs 30 min; five hours left is not Sole Sushi.
+    check('FW9j a meal longer than the food that bought it is refused',
+          fw._step(S(nil), 101, UP, PEND, { known = true, book = 1800, left = 18000 }), nil);
+    check('FW9k ...with room for FOOD_DURATION doubling it under Sigil',
+          fw._step(S(nil), 101, UP, PEND, { known = true, book = 1800, left = 3500 }), PEND);
+    check('FW9l ...and no opinion at all when the timer cannot be decoded',
+          fw._step(S(nil), 101, UP, PEND, { known = true, book = 1800, left = nil }), PEND);
+    -- A wild decode (a machine clock out of step with the client's) is an
+    -- UNKNOWN, not a veto -- otherwise it would refuse every real meal forever.
+    check('FW9l2 an out-of-band decode does not veto anything',
+          fw._step(S(nil), 101, UP, PEND, { known = true, book = 1800, left = 25828132 }), PEND);
+
+    -- --- WHICH use the edge belongs to. Eat a Cutlet, quaff a potion two
+    -- seconds later, and the potion is the newest thing you used when the FOOD
+    -- effect finally lands. One slot would hand it the credit.
+    local CUTLET, POTION = { id = 6394, at = 100 }, { id = 4148, at = 102 };
+    check('FW9m the catalogued food outranks the newer non-food use',
+          fw._choose(POTION, CUTLET, 103), CUTLET);
+    check('FW9n ...but not once it has aged out of the window',
+          fw._choose(POTION, CUTLET, 100 + fw.WINDOW + 1), POTION);
+    check('FW9o with no food use to prefer, the newest use stands',
+          fw._choose(POTION, nil, 103), POTION);
+    check('FW9p and a window with nothing live in it chooses nothing',
+          fw._choose(POTION, CUTLET, 200), nil);
+
+    -- --- THE ONE-TIME SWEEP. This fixture IS Henrik's foodhistory.lua.
+    local isFood = function(id) return id == 6394 or id == 6343; end
+    local FILE = { { id = 4181, name = 'Instant Warp' },  { id = 6394, name = 'Pork Cutlet' },
+                   { id = 4151, name = 'Echo Drops' },    { id = 6343, name = 'Grape Daifuku' } };
+    local swept, dropped = fw._sweep(FILE, 1, isFood);
+    check('FW9q the sweep drops the two rows that were never food', dropped, 2);
+    check('FW9r ...keeping the real meals', #swept, 2);
+    check('FW9s ...in order, untouched', swept[1].name, 'Pork Cutlet');
+    check('FW9t a file already at the new format is never re-judged',
+          select(2, fw._sweep({ { id = 4181, name = 'Instant Warp' } }, fw.FMT, isFood)), 0);
+    check('FW9u a row learned without the table is never swept',
+          select(2, fw._sweep({ { id = 31337, name = 'Stew', learned = true } }, 1, isFood)), 0);
+    check('FW9v an unreadable table sweeps nothing at all',
+          select(2, fw._sweep({ { id = 4181, name = 'Instant Warp' } }, 1, function() return nil; end)), 0);
 
     -- --- the history
     local H = {};
@@ -21971,8 +22059,11 @@ if okLoad and type(fw) == 'table' then
     check('FW17f the pump really asked its reads', asked.clock >= 1 and asked.food >= 1 and asked.name >= 1, true);
     check('FW18 a second beat with nothing pending records nothing', fw.pump(reads), nil);
     check('FW18b ...and does not save again', saves, 1);
-    -- An item we cannot name is an item we could never /item: not recorded.
+    -- An item we cannot name is an item we could never /item: not recorded. The
+    -- effect has to APPEAR for the decision to reach the naming step at all --
+    -- an unvouched item is not believed on any other edge (FW9e).
     fw._pending = { id = 99999, at = 100 };
+    fw._state.food = { present = false };
     reads.food = function() return { present = true, expiry = 777 }; end
     check('FW19 an unnameable item is not remembered', fw.pump(reads), nil);
     check('FW19b ...and the history is untouched', #fw.history, 1);
@@ -22013,7 +22104,7 @@ if okLoad and type(fw) == 'table' then
     -- cache times out -- the one second you would wait is exactly the second you
     -- would spend looking for the row.
     fw._pending = { id = 4271, at = 100 };
-    fw._state.food = { present = true, expiry = 1 };
+    fw._state.food = { present = false };
     local rec2 = fw.pump({
         clock  = function() return 101; end,
         stamp  = function() return 5; end,
@@ -22038,6 +22129,25 @@ if okLoad and type(fw) == 'table' then
         fw._pending = nil;
         pout({ id = 0x1A, data = string.rep('\0', 0x20) });
         check('FW22c ...and ignores every other packet', fw._pending, nil);
+    end
+
+    -- The zone stamp (2026-08-03). Two bare writes on the network thread: the
+    -- clock STEP 4 of _step waits out, and the pending item use that has no
+    -- business surviving a loading screen -- Henrik's Instant Warp is BOTH, since
+    -- a warp scroll's own arrival fires this handler.
+    local pin = handlers['packet_in/dlac-foodwatch-zonein'];
+    check('FW22d the zone-in handler registered', type(pin), 'function');
+    if type(pin) == 'function' then
+        fw._pending     = { id = 4381, at = 1 };
+        fw._pendingFood = { id = 4381, at = 1 };
+        fw._zonedAt     = nil;
+        pin({ id = 0x00A, data = '' });
+        check('FW22e a zone drops the use waiting on the far side', fw._pending, nil);
+        check('FW22f ...and the food use with it', fw._pendingFood, nil);
+        check('FW22g ...and stamps when the array started replaying', type(fw._zonedAt), 'number');
+        fw._zonedAt = nil;
+        pin({ id = 0x00B, data = '' });
+        check('FW22h ...ignoring every other packet', fw._zonedAt, nil);
     end
 
     -- the command
@@ -22127,6 +22237,23 @@ do
     check('FW31b ...and still eatable', (fw._pick(fw.history, function() return 1; end, 2)[1] or {}).cmd,
           '/item "Server Custom Stew" <me>');
     check('FW31c ...it simply has no stats to show', fw.statsFor(31337, { describe = function() return nil; end }), nil);
+    -- ...and it is MARKED, which is what stops the one-time sweep from deciding
+    -- later that a food the shipped table never listed was never food.
+    check('FW31d a learned food carries the marker', fw.history[1] and fw.history[1].learned, true);
+    check('FW31e ...and keeps it through the file',
+          (fw._fromRaw((loadstring or load)(fw._serialize(fw.history))())[1] or {}).learned, true);
+
+    -- The other side of the same coin: a food the table DOES vouch for needs no
+    -- marker, because the catalogue can answer for it every time.
+    fw._reset();
+    fw._pending = { id = 6394, at = 100 };
+    fw.pump({ clock  = function() return 100; end,
+              stamp  = function() return 500; end,
+              food   = function() return { present = true, expiry = 42 }; end,
+              nameOf = function() return 'Pork Cutlet'; end,
+              save   = function() return true; end });
+    check('FW31f a catalogued food is recorded', fw.history[1] and fw.history[1].name, 'Pork Cutlet');
+    check('FW31g ...and needs no learned marker', fw.history[1] and fw.history[1].learned, nil);
 
     package.loaded['dlac\\data\\fooddb'] = nil;
     fw._reset();

@@ -294,7 +294,59 @@ infer it from a field confirmation, from *"works"*, or from your own read that s
 ready — his own note on the exchange was *"you are right not to assume otherwise since I
 haven't told you."* Ask when he has **not** said merge; never ask twice when he has.
 
-**THE QUEUE IS EMPTY.**
+### The food register stops believing a zone — `2026.08.03w`, no engine change — **NOT field-run**
+
+**A bug on `main`, found by the first field round foodwatch ever got.** Henrik: *"Seems like
+our food register isn't working properly, it is showing my instant warp scroll as recently
+eaten… I tried to use a warp scroll almost immediately after zoning after everything hadn't
+loaded in properly."* His `foodhistory.lua` held **two** impostors, not one — an **Instant
+Warp** and a **Flask of Echo Drops** — and each carried, as its own duration, *the remaining
+time of the real meal still running underneath it*. That arithmetic is the whole diagnosis:
+the FOOD effect never lapsed, so nothing was eaten.
+
+**Food is PAUSED while a zone loads.** The server returns the effect with its expiry pushed
+forward by the length of the load — **+2s** and **+6s**, still readable in the file. `_step`
+compared expiries for **inequality**, read that drift as a second meal, and blamed whatever
+item had been used in the previous 8 seconds. A warp scroll is used exactly then, and a warp
+scroll *is* a zone.
+
+*The comment over that branch had read **"cannot fire wrongly"** for two days. It reasoned
+that nothing else could move the value; the loading screen could.*
+
+**`data\fooddb.lua` now VOUCHES — the DISPLAY-ONLY law is retired**, in the module, the
+generator and the regenerated file (header only; **zero data rows changed**). It is built
+from the server's own predicate (`xi.itemUtils.foodOnItemCheck`, 783 scripts on `stable
+9bb0ec8c67`), so it is the same authority the effect is, only readable *before* the fact.
+Neither impostor is in it. **Absence is still not a veto** — a food the server adds tomorrow
+is indistinguishable from a non-food in there, so an unlisted item is *unvouched* rather than
+refused and is still learned from a clean edge (`FW31` guards that path).
+
+Four gates, each paid for by something in the file: a re-eat must clear **`REEAT_JUMP` 15s**
+(the drifts were 2s and 6s; the shortest food on the server runs 30s); a meal cannot have
+more time left than the item could grant, **doubled** for `FOOD_DURATION` (the *refused use*
+— you cannot eat over food here); an unvouched item needs an **appeared** edge; and never
+within **`ZONE_SETTLE` 15s** of an `IN 0x00A`. A catalogued food skips that wait, so "zone
+in, eat" still works.
+
+**One hole nobody had reported, closed in passing:** eat a Cutlet, quaff a potion two
+seconds later, and the potion is the newest use when the effect lands — one pending slot
+hands it the credit. `M._choose` keeps a second slot for the newest use the catalogue calls
+food and prefers it.
+
+**The history heals itself on load** (`fmt` 1 → 2). Dry-run against Henrik's real file:
+7 rows in, exactly the 2 impostors dropped, 5 real meals kept in order. `/dl food forget` was
+the wrong tool — it would have taken the Pork Cutlet with them.
+
+Suites **6087** + **1108**, Windows and WSL, run on the **committed tree in an isolated
+worktree** — this train was staged out of a shared checkout and those are its own numbers;
+alongside the parallel session's uncommitted Mode Locks work the same tree reads 6157 + 1121.
+`FW7c`/`FW7d` use his two drift values as goldens; `FW19` and `FW21d` had fixtures corrected,
+one of which would otherwise have gone green for the wrong reason. Full reasoning:
+[history.md](history.md) — *"the food register stops believing a zone"*.
+
+***THE ROUND OWED, and it is short:*** *zone, use a warp scroll immediately, then `/dl food`
+— nothing new should be recorded; and the two junk rows should already be gone after the
+first load.*
 
 *(Emptied by the 2026-08-03 promotion — **two field bugs from one support report**,
 `2026.08.03t`, **engine v164**. Henrik: *"commit, merge push to main"* — an accept under the
@@ -773,6 +825,52 @@ research already recorded. In rough priority order:
    section heading rather than each carrying one. Trivial to change if it reads wrong.
 
 ## Current state (as of 2026-08-02)
+
+- **2026-08-03 (`2026.08.03w`): THE FOOD REGISTER STOPS BELIEVING A ZONE.** Henrik's first
+  field round on foodwatch found it: *"it is showing my instant warp scroll as recently
+  eaten... I tried to use a warp scroll almost immediately after zoning after everything
+  hadn't loaded in properly."* His own `foodhistory.lua` carried **two** bad rows, not one —
+  an **Instant Warp** and a **Flask of Echo Drops** — and each was wearing the *remaining
+  time of the real meal still running underneath it* (`dur 19381` against the Pork Cutlet's
+  `21598` eaten 2219s earlier; the Echo Drops the same against a Grape Daifuku). That
+  arithmetic is the diagnosis: the food effect never dropped, so nothing was eaten.
+  - **THE MECHANISM: food is PAUSED while a zone loads.** The server hands the effect back
+    with its expiry pushed forward by however long the load took — **+2s** and **+6s** in
+    those two rows, and the raw values are in the file if you want to check the subtraction.
+    `_step` compared expiries for **inequality**, so it read that drift as a second meal and
+    blamed whatever item you had used in the last 8 seconds. A warp scroll is used at exactly
+    that moment, and a warp scroll IS a zone, so it triggers the very thing that frames it.
+  - **The comment above that branch said it "cannot fire wrongly."** It had been there two
+    days. It is the reason to distrust a claim that a comparison is safe *because nothing
+    else can move the value* — something else could, and the field found it first.
+  - **`data\fooddb.lua` now VOUCHES, and the display-only law is retired.** It is generated
+    from the server's own predicate (`xi.itemUtils.foodOnItemCheck`, 783 scripts on `stable`
+    `9bb0ec8c67`), so it is the same authority the effect is, only readable *before* the
+    fact. Neither impostor is in it. **Absence is still not a veto** — a food the server adds
+    tomorrow looks exactly like a non-food from in here, so an unlisted item is *unvouched*,
+    not refused, and is still learned from a clean edge (FW31 guards that; it is the reason
+    the escape hatch exists at all).
+  - **Four gates, and each one earns its place**: a re-eat must clear `REEAT_JUMP` (15s — a
+    zone drifted 2s and 6s, the shortest food on the server runs 30s, so the band is real
+    and not a fudge); a meal cannot have more time left than the item could grant, doubled
+    for `FOOD_DURATION` (this is the *refused use* — you cannot eat over food here, so an
+    over-long effect is an older meal reappearing); an unvouched item is believed only on an
+    **appeared** edge, never a re-eat; and never within `ZONE_SETTLE` (15s) of an `IN 0x00A`.
+    A **catalogued** food skips the zone wait, so "zone in, eat" still works.
+  - **The catalogue also PICKS, which the effect never could.** Eat a Cutlet, quaff a potion
+    two seconds later, and the potion is the newest use when the effect lands — one pending
+    slot hands it the credit. `M._choose` keeps a second slot for the newest use the table
+    calls food and prefers it. That hole predates this bug and was never reported.
+  - **The history file heals itself on load** (`fmt` 1 → 2, `M._sweep`). Verified against
+    Henrik's real file: drops exactly the two impostors, keeps all five real meals in order.
+    `/dl food forget` was the wrong tool — it would have taken the Pork Cutlet with them.
+    Rows learned without the table carry `learned = true` and are never swept.
+  - **NOT field-confirmed — suites only** (**6087** + **1108** on the committed tree in an
+    isolated worktree; 6157 + 1121 alongside the parallel Mode Locks work in the shared
+    checkout). The round it owes is short and specific: zone, use a warp scroll immediately,
+    then `/dl food` and check nothing new was recorded; and confirm the two junk rows are
+    gone after one load.
+  - Full reasoning: `docs/history.md` → *"the food register stops believing a zone"*.
 
 - **2026-08-03 (`2026.08.03r`): `/dl unused` — THE WARDROBE AUDIT.** *"which pieces you have
   in mog wardrobes that are actively not being used at all"* (Henrik). `gear/unusedgear.lua`

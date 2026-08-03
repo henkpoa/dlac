@@ -18,7 +18,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.08.03t';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.08.03w';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
                                 -- (03f = engine v163: the contest explains its own plan;
                                 --  03g = one floating tray: Teleports + the E-Box crates;
@@ -41,7 +41,13 @@ addon.version = '2026.08.03t';  -- date of the last shipped change (Ashita print
                                 --  what is in your BAGS, not by a stamp written
                                 --  once -- and the skill-0 Range families
                                 --  (animators, soultrappers) get indexed at all,
-                                --  loudly when they cannot be)
+                                --  loudly when they cannot be;
+                                --  03w = the food register stops believing a
+                                --  zone: an Instant Warp used seconds after a
+                                --  loading screen was being recorded as a meal,
+                                --  so the shipped food table now vouches for
+                                --  what you ate and a pre-catalogue history
+                                --  file heals itself on load)
 addon.desc    = 'Gear sets, triggers and live stats with level scaling -- dlac equips your gear itself.';
 
 -- Load BEACON ('/dl check' field round, 2026-07-23): written by PLAIN io at

@@ -8820,3 +8820,94 @@ skipped item is never `Known` and so returns on every scan, and turning the warn
 spam loop would be the same silence by another route.
 
 **Tests:** `LD6c`–`LD6h`, `E29`–`E29i`, `SH10c`–`SH10f`. Suite **6054**.
+
+## Session "the food register stops believing a zone" (2026-08-03, `2026.08.03w`)
+
+**Theme:** foodwatch's first real field round, and it failed in the one way the design had
+argued it could not.
+
+Henrik: *"Seems like our food register isn't working properly, it is showing my instant warp
+scroll as recently eaten."* Then the detail that turned out to be the whole mechanism:
+*"I tried to use a warp scroll almost immediately after zoning after everything hadn't
+loaded in properly."*
+
+**The artifact answered before any theory did**, which is the field-debug law working:
+`config\addons\dlac\Mindie_29909\foodhistory.lua` was readable from here, and it held **two**
+impostors rather than the one reported — an **Instant Warp** (4181) and a **Flask of Echo
+Drops** (4151). What indicted them was not their names but their durations. The Instant Warp
+claimed `dur = 19381`. The Pork Cutlet above it claimed `21598` and had been eaten `2219`
+seconds earlier. `21598 - 2219 = 19379`. The Echo Drops did the same thing against a Grape
+Daifuku. Each impostor was wearing *the remaining time of a real meal that was still
+running underneath it* — so the food effect had never lapsed, and nothing had been eaten.
+
+**THE MECHANISM: food is PAUSED while a zone loads.** foodwatch already knew this about
+logouts — `M.status` exists because Henrik pointed out that *"the food duration doesn't go
+down when you're logged out"* — and nobody carried the thought across to zoning. The server
+hands the effect back with its expiry recomputed, pushed forward by however long the load
+took: **+120 sixtieths (2s)** for the Instant Warp row, **+360 (6s)** for the Echo Drops
+one, both still in the file. `M._step` compared expiries for **inequality**, so it read that
+drift as a second meal and attributed it to whatever item had been used in the previous 8
+seconds. A warp scroll is used at exactly that moment — and a warp scroll *is* a zone, so it
+manufactures the evidence that convicts it.
+
+**The comment above that branch read "It costs one comparison and cannot fire wrongly, so it
+stays."** It had been there two days. It was reasoning from *nothing else can move this
+value*, which is the class of claim to distrust: the reasoning was about food, and the thing
+that moved the value was the loading screen.
+
+**The fix Henrik asked for was the catalogue** — *"Can we properly catalog all the foods (I
+think we have... right?) then detect ONLY when the food is used?"* — and we did have it.
+`data\fooddb.lua` had shipped since 08-01 stamped **DISPLAY ONLY**, on the reasoning that
+wiring it into detection would end the "dlac ships no food list" guarantee and let a stale
+copy start deciding what counts as food. That reasoning was half right, and the half that
+was wrong is worth stating: the table is generated from the server's **own predicate**
+(`xi.itemUtils.foodOnItemCheck`, 783 scripts on `stable 9bb0ec8c67`), which makes it the
+same authority the FOOD effect is, only readable *before* the fact instead of after. Neither
+impostor is in it.
+
+**But absence still is not a veto**, and that is the line that keeps the old guarantee alive.
+From inside `_step`, a food the server adds tomorrow and a thing that was never food look
+identical — both are simply missing from the table. So an unlisted item is **unvouched**,
+not refused: still learned, but only from an effect that *appeared* out of nothing, well
+clear of a zone. `FW31` guards that path and is the reason the escape hatch exists at all.
+
+**Four gates, each paid for by something in the file:**
+
+- A re-eat must clear `REEAT_JUMP` (**15s**). The zone drifted 2s and 6s; the shortest food
+  on the server (id 5165) runs 30s. The band is measured at both ends, not chosen.
+- A meal cannot have more time left than the item could grant, **doubled** for
+  `xi.mod.FOOD_DURATION` (Sigil, Sanction). This is the *refused use*: you cannot eat over
+  food on CatsEyeXI, so an over-long effect is an older meal reappearing beside a use the
+  server threw away. An out-of-band decode is an unknown here, never a veto — otherwise a
+  machine clock out of step with the client's would refuse every real meal forever.
+- An unvouched item is believed only on an **appeared** edge, never a re-eat.
+- ...and never within `ZONE_SETTLE` (**15s**) of an `IN 0x00A`. A catalogued food skips this
+  wait, so "zone in, eat" keeps working — which is why the veto and the wait had to be
+  separate gates rather than one.
+
+**The catalogue also PICKS, which the effect never could, and this closed a hole nobody had
+reported.** Eat a Pork Cutlet, quaff a potion two seconds later, and the potion is the newest
+item use when the FOOD effect finally lands — a single `_pending` slot hands it the credit.
+`M._choose` keeps a second slot for the newest use the table calls food and prefers it while
+it is live. The classification runs on the **frame tick, not the packet handler**: `M._known`
+can `require()` the shipped table on its first call, and disk I/O on the network thread is
+the one thing that handler is forbidden to do.
+
+**The history heals itself on load** (`fmt` 1 → 2, `M._sweep`) — nobody should have to run a
+migration to remove a row dlac itself wrote wrongly, and `/dl food forget` was the wrong tool
+because it would have taken the Pork Cutlet with the junk. The sweep is deliberately
+**stricter than detection**: those rows are already known to have come from the version that
+got this wrong, so absence from the table is evidence rather than silence, and the cost of
+being wrong is one re-eat. Rows learned without the table carry `learned = true` and are
+never swept. Dry-run against Henrik's real file: 7 rows in, exactly the 2 impostors dropped,
+5 real meals kept in order.
+
+**Tests:** `FW7`–`FW7e` (the two field drifts as goldens, plus the uint32 wrap),
+`FW9c`–`FW9v` (the vouch, the zone wait, the refused use, `_choose`, and the sweep against
+Henrik's actual four rows), `FW22d`–`FW22h` (the zone stamp), `FW31d`–`FW31g` (the learned
+marker, both ways). `FW19` and `FW21d` had their fixtures corrected: both had been passing
+through edges the new rules no longer accept, and one of them would have gone green for the
+wrong reason. Suites **6087 + 1108**, Windows and WSL, run on the **committed tree in an
+isolated worktree** — this train was staged out of a checkout a parallel session was working
+in, so those are its own numbers; with the Mode Locks work still on disk the same tree reads
+6157 + 1121.
