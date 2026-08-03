@@ -308,21 +308,16 @@ the game's own skills menu paints. `craftwatch.craftSkillInfo` reads it back thr
 (`skill >= (rank + 1) * 10`, the server's own `getCraftSkillCap`) is there only for a binding
 that does not expose the bit — it is the same rule, so the two can never diverge.
 
-***NOT FIELD-RUN.*** *Suites **6249 + 1138** on both interpreters, and the smoke section drives
-the real `craftbar.renderContent` and reads the COLOUR back (a capped number must come out blue,
-an uncapped one grey) — but no number here has been drawn on Henrik's screen, and every skill
-value in the tests is a stub. In particular **nothing has confirmed what the live client returns
-for a craft the player never joined**, which is the one input the code guesses at (it assumes
-skill 0, and dims it).*
+***FIELD-CONFIRMED, BOTH SURFACES*** *(Henrik, 2026-08-03: *"It works, I checked both. Confirmed
+x2"*). Suites **6249 + 1138** on both interpreters — and now the part the suites could never
+answer, because every skill value in them is a stub and the exact blue was a sample off a JPEG.
+It has been on his screen, on the bar and on the Gear Helpers → Crafting Gear panel. **NOTHING IS
+OWED HERE.** Waiting only on his go-ahead to promote.*
 
-***The round owed*** *is one look and one hover, on **both** surfaces: open* `/dl craft bar` *and
-Gear Helpers → Crafting Gear, and (1) is there a number under all eight glyphs, (2) does each match
-the game's own Skills menu, (3) is a CAPPED craft blue and an uncapped one grey — same verdict as
-the menu, side by side, (4) does the hover on the number name the right rank and the right "N to
-go", (5) does each row still sit centered, with the bar's on/off pill where it was. If the blue
-reads wrong against the menu, the colour is one constant: `COL_SKILL_CAPPED` in `ui/craftbar.lua`
-(sampled off the screenshot at `#659EC9` and nudged up for the antialiasing the JPEG flattened — a
-guess about the true value, not a measurement of it).*
+*The colour, for anyone who has to touch it later: `COL_SKILL_CAPPED` in `ui/craftbar.lua`, one
+constant, sampled at `#659EC9` off the screenshot he sent and nudged up for the antialiasing the
+JPEG flattened. It read right against the game's own menu in the field, so it is now a MEASURED
+value in the only sense that matters — do not "correct" it back toward the raw sample.*
 
 ***What landed:*** *`feature/craftwatch.lua` gains the guild-rank half it never had —
 `craftRankCap`, `craftRankName`, `craftIsCapped` (all pure, headless-tested T24h..T24v) over
