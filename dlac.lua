@@ -18,7 +18,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.08.03y';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.08.03z';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
                                 -- (03f = engine v163: the contest explains its own plan;
                                 --  03g = one floating tray: Teleports + the E-Box crates;
@@ -58,7 +58,12 @@ addon.version = '2026.08.03y';  -- date of the last shipped change (Ashita print
                                 --  visible where you actually are -- a 'q' on
                                 --  the Arbiter Monitor cell and an
                                 --  '(n queued)' count on the Trigger Monitor,
-                                --  both carrying who waits in the hover)
+                                --  both carrying who waits in the hover;
+                                --  03z = /dl nm: which NMs are in this zone,
+                                --  what pops them, and a ready-to-paste
+                                --  FilterScan filter over the placeholder
+                                --  spawn points -- straight from the server's
+                                --  own phList, no camping notes required)
 addon.desc    = 'Gear sets, triggers and live stats with level scaling -- dlac equips your gear itself.';
 
 -- Load BEACON ('/dl check' field round, 2026-07-23): written by PLAIN io at
@@ -310,6 +315,7 @@ for _, mod in ipairs({ 'gear', 'feature\\augments', 'gear\\gearoptim', 'gear\\ge
                        'feature\\meritwatch', 'feature\\integration', 'feature\\foodwatch',
                        'feature\\engagewatch', 'feature\\petvitals', 'feature\\combat',
                        'feature\\sendlog', 'feature\\check', 'feature\\debug', 'feature\\report',
+                       'feature\\nmlookup',
                        'feature\\lockstyle',
                        'feature\\lockstyleapply', 'feature\\equipengine',
                        'feature\\engine', 'ui\\gearui',

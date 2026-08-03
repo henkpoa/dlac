@@ -296,6 +296,35 @@ haven't told you."* Ask when he has **not** said merge; never ask twice when he 
 
 **THE QUEUE IS EMPTY.**
 
+*(Emptied by the fourth 2026-08-03 promotion — **`/dl nm`, the placeholders and a FilterScan
+filter** (`2026.08.03z`). Henrik: *"merge, and push to origin main"* — an accept under the
+08-01 ruling, so nothing was asked twice. It never sat in this queue: asked for, built, and
+promoted inside one session. Three already-merged **docs** commits rode along (foodwatch
+field-confirmed ×2, the floating icon tray 7-of-7) — records of field rounds already closed,
+not new code.*
+
+***NOT FIELD-RUN.*** *Suites **6234** on both interpreters, and the two camps it is pinned
+against (**Bonnacon** — Uleguerand, six Buffalo at 354-359, NM 360; **Shadow Eye** —
+Xarcabard, one Evil Eye at 206, NM 212) were read out of the server clone **by hand** before
+any code existed, then frozen as data tripwires. But **nothing here has been run in game**:
+no widescan has been filtered with a generated line. Do not read `/dl nm` onto main as
+field-proven.*
+
+***The round owed*** *is small and specific: stand in a zone with a known camp, run `/dl nm`
+(does the zone list match what is actually around you?), then `/dl nm <that NM>` and compare
+the PH indexes against a live widescan — **the one thing no test can check is whether the
+index dlac prints is the index FilterScan shows**, because the two derive it from different
+sources (the server's `mob_spawn_points` vs. the client's zone NPC DAT). They agree in the
+code (`mobid & 0xFFF` both sides); the field decides whether they agree in fact. Then
+`/dl nm <name> apply` with FilterScan loaded, to confirm the queued command actually bites.*
+
+***What landed:*** *`feature/nmlookup.lua` + generated `data/nmdata.lua` (221 zones, 3128
+NMs, **371 with placeholders**), built by `tools/gen_nmdata.py` from the **local server
+clone** — the generator is gitignored with the rest of `tools/`, so re-running it after a
+patch is a maintainer step (`refresh_all.py` step 5), never a player one. The mechanism is
+the NM's own `entity.phList`, **not** the scattered `ID.mob.*_PH` tables, and `GetFirstID`
+is **zone-scoped** — full reasoning in [architecture.md](architecture.md).*
+
 *(Emptied by the third 2026-08-03 promotion — **the mode lock queue reaches both monitors**
 (`2026.08.03y`, **engine v167**). Henrik: *"merge and push"* — an accept under the 08-01
 ruling, so nothing was asked twice. One train, and it exists because he asked one question
@@ -327,10 +356,10 @@ the food commit staged itself out of the shared tree without touching the Mode L
 and this promotion carries both. Full reasoning for each in [history.md](history.md) —
 *"the slot that stops listening"* and *"the food register stops believing a zone"*.*
 
-***NEITHER IS FIELD-RUN. Do not read either onto main as field-proven*** — the suites are
-green on both interpreters (**6157 + 1121**) and every new rule is mutation-checked, but no
-mode lock has held a weapon in game and no warp scroll has been used after a zone since the
-fix. **Two rounds are owed, and they are both short.**
+***THE FOOD HALF IS NOW FIELD-CONFIRMED, BOTH PATHS*** *(2026-08-03, see the note below).*
+***MODE LOCKS IS NOT — do not read it onto main as field-proven.*** *The suites are green on
+both interpreters (**6157 + 1121**) and every new rule is mutation-checked, but no mode lock
+has held a weapon in game.* **One round is owed, and it is the Mode Locks one.**
 
 ***Mode Locks*** *(Triggers → Modes → the* `locks` *button; ADR 0034). On the job with your
 Weapon cycle, lock* `Main` *and* `Sub` *to a melee set under the melee value, then pull
@@ -347,8 +376,15 @@ no entry for that slot claims **nothing** — the trigger keeps the slot. The wi
 in red (`[!] no Main in this set`), so if a lock ever "does nothing" in the field, check that
 before assuming the claim path is broken.*
 
-***The food register*** *: zone, use a warp scroll immediately, then* `/dl food` *— nothing
-new should be recorded, and the two junk rows should already be gone after the first load.*
+***The food register*** — ***FIELD-CONFIRMED 2026-08-03*** *(Henrik, on Mindie BRD:* "Tested,
+does not register as eaten food if using warp scroll directly after scrolling"*). The bug the
+fix exists for is **gone in game**, on the exact reproduction that found it.*
+
+***The sweep half is confirmed too*** *(Henrik, same day:* "Food watch self heal works, I have
+confirmed"*). So **both code paths are proven in game**: the `fmt` 1 → 2 self-heal actually
+rewrote his real `foodhistory.lua` and dropped the two impostors, and new registrations no
+longer credit a warp scroll with a meal. The dry-run's 7-in / 5-kept result reproduced on the
+live file. **NOTHING IS OWED ON FOODWATCH.***
 
 ---
 
@@ -391,9 +427,9 @@ an accept under the 08-01 ruling, explicitly extended to the riders, so nothing 
 twice.*
 
 ***What rode along, and its state, because "100% known and OK" is not the same as "verified".***
-*The **floating icon tray** (`03g` + `03i`, `ui/tray.lua`) is **built and green but was never
-run in game** — its owed check is one look at a box with Teleports and the crates both on
-screen. **`/dl report`'s three follow-ups** (`03d`–`03f`, carrying **engine v163**) were in this
+*The **floating icon tray** (`03g` + `03i`, `ui/tray.lua`) rode along unverified and is now
+**FIELD-CONFIRMED, 7 of 7 (2026-08-03)** — see its entry below; the drag-persistence half was
+answered last and it stays put. **`/dl report`'s three follow-ups** (`03d`–`03f`, carrying **engine v163**) were in this
 queue as NOT accepted, paused on a `/dl report` captured across a **LEVEL-UP** — the only
 condition that exercises the v163 fix. The promotion does not close that round: the work is on
 main, the verification is still owed, and the recipe survives in
@@ -987,11 +1023,22 @@ research already recorded. In rough priority order:
     fails if any icon is preceded by a `SameLine` (a badge beside its own icon is legal, an
     icon glued to the previous icon is not) — a bare `SameLine` *count* cannot tell those
     apart, and this was verified to fail when a `SameLine` was reintroduced.
-  - **ROUND OWED, and it is one glance:** stand at an Ephemeral Box with Teleports pinned —
-    four icons in ONE COLUMN, one draggable box, Store directly under Teleports; walk away
-    and the crates vanish while Teleports stays; unpin Teleports at a box and the crates
-    survive alone. Also worth one look: the Teleports popup still opens from inside the tray,
-    and the abort button still replaces the icon mid-teleport.
+  - **FIELD-CONFIRMED 2026-08-03 — 7 of 7, the round is CLOSED.** Henrik ran it in two
+    sittings. Confirmed: Teleports alone draws one icon; **nothing at all on screen when
+    every member is quiet** (the grey-box-that-eats-clicks case, the one that mattered);
+    crates appear below Teleports near a box; Store sits above green; the crates survive
+    unpinning Teleports (the OR); walking away drops the crates and leaves Teleports. The
+    last one, answered separately: **drag it somewhere new, leave it ~2s, `/addon reload
+    dlac` — it stays put.** So the whole position chain works end to end —
+    `GetWindowPos` → `ui._tpPos` → the 1s settle → `_flagsDirty` → `saveUiFlags` →
+    `tpx`/`tpy` → `loadUiFlags` → `SetNextWindowPos(..., ImGuiCond_Once)`.
+  - **One narrow fragility is still there and is NOT what he hit.** The settle flush lives
+    *below* `M.render`'s `if #live == 0 then return; end`, so a drag whose 1-second settle
+    expires on a frame where **no member wants to draw** is never flushed — it stays pending
+    until the tray shows again, and a `/addon reload` in that gap loses the position.
+    Reachable only by dragging and then having Teleports unpinned *and* walking out of box
+    range within the second. Not observed; the fix is to flush the pending save before the
+    early return.
 - **2026-08-02 (`2026.08.03a`–`2026.08.03c`): `/dl report` — THE SUPPORT RECORDER. BUILT,
   **PARTLY FIELD-CONFIRMED**, and **ON MAIN** (promoted the same session), suites green both
   interpreters (**5886** + **1003**).

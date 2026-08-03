@@ -1206,6 +1206,35 @@ without a note fails the suite, because an uncounted send is the one way this re
 lie, and it lies in the direction that matters ("dlac sent nothing" when it did). A new
 file that sends packets must be added to `SEND_FILES` there.
 
+### feature/nmlookup.lua + data/nmdata.lua — `/dl nm`: NMs, placeholders, and a FilterScan filter
+Answers "what pops this NM, and which spawn points do I watch?" without any live scanning.
+**`data/nmdata.lua` is generated** (`tools/gen_nmdata.py`, from a **local server clone** —
+memory: `catseyexi-local-clone`) and holds, per zone id, every notorious monster with its
+**target indexes**, its placeholders' indexes, the placeholder's name, the pop chance per PH
+death and the repop window.
+
+Four server facts it stands on, each verified in the clone rather than assumed:
+* **Index = `mobid & 0xFFF`.** The server scopes its own name lookups by
+  `((mobid >> 12) & 0xFFF)` (`luautils.cpp PopulateIDLookups`) and FilterScan derives the
+  same index client-side with `bit.band(id, 0x0FFF)` off the zone NPC DAT — both halves
+  agree, so the shipped number is the number FilterScan matches on.
+* **Placeholders live on the NM's own script**, as `entity.phList = { [phMobId] = nmMobId }`
+  (read by `xi.mob.phOnDespawn`). The PH script only *names* the NM. The scattered
+  `ID.mob.*_PH` tables are unrelated legacy, **not** the mechanism.
+* **`GetFirstID('X')` is zone-scoped and ascending** (`ORDER BY mobid ASC`), so every
+  reference is resolved against its own zone — resolving cross-zone silently yields
+  another zone's NM.
+* **NM-ness is `mob_pools.mobType & 0x02`** (`MOBTYPE_NOTORIOUS`), reached via
+  `mob_spawn_points.groupid → mob_groups → poolid`. NMs with **no** placeholders are listed
+  too, so "absent" means "not an NM here" rather than "we kept only the easy ones".
+
+Matching is deliberately forgiving (exact → prefix → substring → all-words → edit distance);
+a weak match is still shown but **labelled as a guess**, and gibberish is refused rather than
+answered. On a score tie the entry **with placeholders wins** — Nyzul Isle and the Dynamis
+zones carry same-named instanced copies, and the open-world camp is the one a filter helps
+with. The generator fails loudly if any `phList` shape stops parsing, so a server patch
+cannot quietly thin the table.
+
 ### data/statdefs.lua — stat metadata registry
 Single source of truth for stat presentation/weighting: key, label, section, percent,
 lowerBetter, aliases (~178 entries, 7 sections). Presentation only — **no server mod-ids**
@@ -1265,6 +1294,8 @@ never disagree. `apicrawl.py` builds catalog.lua (live API); `gen_petmods.py` bu
 petmods.lua (item_mods_pet SQL — the pet channel the API never serializes);
 `gen_levelscaling.py` builds levelscaling.lua + latentstats.lua;
 `gen_gearsets.py` builds gearsets.lua; `gen_pickerdb.py` builds spells/abilities;
+`gen_nmdata.py` builds nmdata.lua (the NM/placeholder table — reads the **local server
+clone**, not the API, so it takes no `--refresh`: `git pull` the clone and re-run);
 `modifier_map.lua` = modid→stat map; `api_cache/` holds the crawl cache + the
 stat-naming decision log (`stats_decisions.txt` — the agreed mod→key bridge).
 Gitignored so scraping details and the mod enum aren't published; only generated
@@ -1434,6 +1465,7 @@ like the command does not exist.
 | `/dl sends [reset]` | sendlog | **What dlac has put on the wire this session** — dlac's **own** sends split from your **passed-through** actions, per packet id, **per cause**, plus the last 24 sends with their ages; also lands as `debug\dlac-sends-<Char>.txt`. Zero sends says so *and* says why that is expected (equips are edge-driven). A **flap** shows as one cause repeating at the 0.4 s Default tick. Self-check, not a probe — it counts dlac's own sends at the sites that make them, and never reads the wire |
 | `/dl food [1\|2\|forget]` | foodwatch | Which food you are under and what you can re-eat; a number eats that row, `forget` clears the history. What counts as food is learned off the wire (an item use + the FOOD effect's expiry moving), never from a shipped list |
 | `/dl engine [native on\|off \| migrate]` | feature/engine | The Native-engine flip: status / flag + storage migration (see § The Native engine) |
+| `/dl nm [name] [apply]` (`ph`) | nmlookup | **Which NMs are in this zone, and what pops them.** Bare lists the zone's notorious monsters, placeholders first; a name gives that NM's target indexes, its placeholders (name, count, pop chance, repop window) and a ready `/filterscan` line over those spawn points. Names match loosely; a weak match is shown *labelled as a guess*. A name that lives elsewhere answers about that zone rather than dead-ending. `apply` queues the `/filterscan` for you. Reads only `data/nmdata.lua` + your zone id — no live scanning |
 | `/dlmv` | gearmove | (branch-only) gate/version diagnostic |
 
 ## Per-character state vs repo

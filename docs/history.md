@@ -9130,3 +9130,58 @@ assertion — what a cell actually says is the thing worth pinning (`AM8e`, muta
 **Tests:** `MDL23`–`MDL26b` (the record carries the queue, the first arrival keeps the slot,
 the holder going off hands it on with nothing re-armed, the leg carries and drops it),
 smoke `AM8a`–`AM8e` and `MLK14`–`MLK16`. Suites **6168 + 1129**, both interpreters.
+
+**Foodwatch: FIELD-CONFIRMED 2026-08-03**, on Mindie BRD, on the exact reproduction that
+found the bug — Henrik: *"Tested, does not register as eaten food if using warp scroll
+directly after scrolling."* The zone-drift branch no longer credits a warp scroll with a
+meal, which is what the whole train was for.
+
+Worth writing down because it is the second time this week the same shape held: the
+diagnosis came entirely out of **reading an artifact** — his `foodhistory.lua`, where each
+impostor carried, as its own duration, the remaining time of the real meal still running
+underneath it. That arithmetic named the cause before any code was read. Artifacts before
+theory, again.
+
+**One half of the round is still unobserved**, and it is a look rather than a run: `/dl food`
+should list **no Instant Warp and no Flask of Echo Drops** at all, because the `fmt` 1 → 2
+self-heal drops them on first load. What was confirmed is the **new-registration** path; the
+sweep is different code, and a dry-run against the real file is not the same as the file
+having actually been rewritten on his disk.
+
+**The floating icon tray: FIELD-CONFIRMED 2026-08-03, 7 of 7.** The last open check was drag
+persistence — everything else had passed the night before, including the one that actually
+mattered (nothing on screen at all when every member is quiet; an `AlwaysAutoResize` window
+begun with an empty body is a grey box that eats clicks).
+
+Henrik: *"it stays put."* So the whole position chain works end to end: `GetWindowPos` →
+`ui._tpPos` → the 1s settle → `_flagsDirty` → `saveUiFlags` → `tpx`/`tpy` in `uiflags.lua` →
+`loadUiFlags` → `SetNextWindowPos(..., ImGuiCond_Once)`.
+
+Two hypotheses died on the way, and both are worth not re-deriving. `ImGuiCond_Once or 0`
+would silently become `Always` if the constant were undefined, re-pinning the window every
+frame so it could not be dragged at all — but `floatgear` and `idlefloat` use the identical
+idiom for their saved positions and are field-proven, so the constant is real. And the save
+does **not** need the main dlac window open: `_flagsDirty` is consumed inside gearui's
+`d3d_present` handler, which runs every frame regardless.
+
+**One narrow fragility survived the investigation and is NOT what he hit.** The settle flush
+sits *below* `M.render`'s `if #live == 0 then return; end`, so a drag whose second expires on
+a frame where no member wants to draw is never flushed. It stays pending rather than being
+lost, and the next frame the tray draws will save it — but an `/addon reload` in that gap
+takes it. Reachable only by dragging and then, within one second, having Teleports unpinned
+*and* walking out of box range. Recorded rather than fixed on the spot: the round passed, and
+the fix (flush before the early return) is a change nobody asked for yet.
+
+**Foodwatch: the SWEEP half is confirmed too** (2026-08-03, Henrik: *"Food watch self heal
+works, I have confirmed"*). Both code paths are now proven in game, and they were genuinely
+two different things: **new registration** (a warp scroll used seconds after a zone is no
+longer credited with a meal) and the **`fmt` 1 → 2 self-heal**, which rewrote his real
+`foodhistory.lua` on load and dropped the two impostors. The dry-run's 7-in / 5-kept result
+reproduced on the live file. **Nothing is owed on foodwatch.**
+
+Worth keeping from the way this round was reported: the two halves were confirmed
+*separately*, an hour apart, because they were asked for separately. Rounding the first
+answer up to "foodwatch works" would have retired a check that had not been run — the sweep
+touches the player's own artifact and is the half that could quietly do nothing, or do too
+much. `/dl food forget` was rejected during the build for exactly that reason: it would have
+taken the Pork Cutlet with the junk.
