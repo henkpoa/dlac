@@ -1458,6 +1458,57 @@ figure on every line of every lookup is noise for the four jobs in five that can
 Steal and Despoil carry **no** TH figures and say why: the lookup ported here is the *kill's*
 drop roll, which is not where those come from.
 
+### ui/nmui.lua — the NM Compendium window: one list, several filter modes
+The GUI half of `/dl nm` (issue #156, PRD #151). One **Floating window**, master-detail: the
+filter and the result list on the left, the detail card on the right. This slice is the shell —
+the list and the **by-name** and **by-area** filter modes; the card itself and the by-drop mode
+land in #157, and the right pane holds their place until they do.
+
+**One list, several filter modes — not several windows.** Every search here returns NMs, so one
+list serves all of them. That is the whole difference from the Chocobo dig search, which needs
+*two* windows because its two searches return different kinds of thing (items and zones) and
+cross-linking them needs a second window to land in. Here, clicking a zone only re-filters the
+list already on screen, so the cross-link problem does not exist in this shape at all.
+
+**It owns no answers.** Every question it asks is answered by `feature/nmlookup` — the same
+module the chat command asks. That module grew the pure list side (`nameRows`, `areaRows`,
+`zoneChoices`, `rowNote`, `zoneIds`) rather than the window growing a second matcher, and the
+reason is behavioural, not tidiness: **a weak match is labelled a guess and gibberish is refused
+on both surfaces**, because there is one implementation of "does this name match" and one
+`M.GUESS_FLOOR` deciding when an answer stops being one. On a score tie the entry **with
+placeholders wins** — the same rule the chat command has always used, now expressed as a total
+sort order (score → placeholders → zone → name) so a 2000-row list cannot reshuffle between
+frames.
+
+**The load-time edge runs one way**, exactly as `nmtrack` and `nmloot` do: the window requires
+`nmlookup`; `nmlookup` reaches back for the window only at call time, inside the `window` verb.
+A build where the GUI failed to load therefore loses `/dl nm window` (which says so) and nothing
+else.
+
+**One draw site.** `gearui`'s `d3d_present` calls `M.render()` inside its own theme bracket
+while `M.visible` is set — the same contract every other floating window here follows: any
+surface may *open* one, exactly one site may *draw* it, because two `Begin()` calls on one
+window name in a frame merge both bodies into it. `M.open` / `M.openName` / `M.openArea` /
+`M.showArea` only set state. Opened today from `/dl nm window [name]`; bare, it opens on the
+zone you are standing in, so the common case takes no input.
+
+**The list scrolls, and that is not a formality.** Most zones hold a handful of NMs; Escha
+Ru'Aun holds **61**. The rows sit in their own `BeginChild` inside the left pane, and a name
+search is capped at `M.CAP` rows with the remainder **counted out loud** — a silent truncation
+reads as "that is all there is".
+
+**The result list is cached on the filter that produced it.** A name search scores every shipped
+entry, Levenshtein included; doing that sixty times a second for a string that has not changed
+is the difference between a window and a stutter. The cache key is the mode, the query and the
+zone, so a change no imgui binding bothered to report still rebuilds the list.
+
+Covered by the UI smoke harness through the exported state seam (`nmui._state`, the dig-search
+precedent) — `NW1`-`NW13`: the window opens, each filter mode renders with its rows actually on
+screen, a weak match is labelled, gibberish is refused, the tie-break holds *in the rendered
+order*, a zone click re-filters while exactly one window is begun, and the one-draw-site rule is
+pinned as **source** (`imgui.Begin` appears once in the module, `nmMod.render` once in gearui),
+because a render check can only see the window this module draws.
+
 ### data/statdefs.lua — stat metadata registry
 Single source of truth for stat presentation/weighting: key, label, section, percent,
 lowerBetter, aliases (~178 entries, 7 sections). Presentation only — **no server mod-ids**
@@ -1693,6 +1744,7 @@ like the command does not exist.
 | `/dl engine [native on\|off \| migrate]` | feature/engine | The Native-engine flip: status / flag + storage migration (see § The Native engine) |
 | `/dl nm [name] [apply\|reset]` (`ph`) | nmlookup + nmtrack + nmloot | **Which NMs are in this zone, what pops them, and what they give.** Bare lists the zone's notorious monsters, placeholders first; a name gives the **pop kind**, that NM's target indexes, its placeholders (name, count, repop window) and a ready `/filterscan` line over those spawn points. For a **lottery** it states the **base** chance, that the chance is **not flat**, the **disfavour** curve at quarter marks and the rounds to a guaranteed pop; a non-lottery NM gets its own words and **no curve**. It also states **your own count** — the placeholder kills you personally witnessed, as rounds, with the *current* chance and the rounds left to a guaranteed pop, labelled a **floor**; a **stale** count (you zoned, relogged, or left it too long) shows the raw number and **no percentage at all**, and a **cooldown**/**primed** camp says kills cannot roll right now. Names match loosely; a weak match is shown *labelled as a guess*. A name that lives elsewhere answers about that zone rather than dead-ending. `apply` queues the `/filterscan` for you; `reset` clears that camp's count. It closes with the **drop table**: one line per **roll**, the server's own tier name beside each percentage, a **group** rendered as a group with each item's share inside it, **Steal/Despoil in their own section** because a kill never gives them, and duplicate rows kept as the two independent rolls they are — or a plain line saying the table has nothing for this one. Reads only `data/nmdata.lua`, `data/nmdrops.lua`, your zone id, your own count file and the client's item names — no live scanning |
 | `/dl nm counts` (`count`) | nmtrack | **Which camps am I part-way through?** Every NM holding a Pop count, newest first, with its zone, kills, rounds and current chance — or why one is showing none (stale, cooldown, primed). The chat surface for resuming a camp started earlier |
+| `/dl nm window [name]` (`win`, `gui`) | nmlookup → nmui | **The same answers as a window.** Opens the **NM Compendium** (one list, filter modes by name and by area) on that name, or — bare — on the zone you are standing in, so the common case takes no input. An OPEN only: the window is drawn from gearui's one draw site. `apply` / `reset` / `th` are chat-only and say so rather than being dropped; a build without the GUI says the window is unavailable and points back at the chat readout |
 | `/dlmv` | gearmove | (branch-only) gate/version diagnostic |
 
 ## Per-character state vs repo

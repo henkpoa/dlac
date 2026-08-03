@@ -5256,6 +5256,269 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- 7i. NM COMPENDIUM window (issue #156, PRD #151). The shell, the list, and the
+--     two filter modes -- by name and by area -- driven headlessly through the
+--     exported state seam (nmui._state), the way the dig search is.
+--
+--     WHY A RENDER TEST AT ALL, when the answers are pinned in run_tests: an
+--     unknown Lua name is a silent nil GLOBAL, not an error, so a typo'd
+--     function fails at render time and only at render time. The pure core can
+--     be perfect and the window still blank. So the body is EXECUTED, every
+--     drawn string is recorded, and the recorded text is what proves the rows
+--     reached the screen rather than a caught throw quietly balancing the stack.
+--
+--     Against a FIXTURE, not the shipped table: this is the UI suite, and the
+--     shipped rows already have their tripwires in run_tests (NM6*). The fixture
+--     is built to hold the three cases that must show on screen -- an exact hit,
+--     a weak match that has to be LABELLED a guess, and a same-name tie the
+--     placeholder copy has to win.
+-- ---------------------------------------------------------------------------
+;(function()
+    local depth = { win = 0, child = 0, item = 0, combo = 0, style = 0 };
+    local drawn, buttons, selects, begun = {}, {}, {}, 0;
+    local hitButton = nil;      -- a label the stub reports a CLICK on, once
+    local function nop() end
+    local IM = {};
+    for _, n in ipairs({ 'SetNextWindowSize', 'Separator', 'Spacing', 'Text',
+        'SameLine', 'NewLine', 'Dummy', 'SetTooltip', 'BeginGroup', 'EndGroup',
+        'PushTextWrapPos', 'PopTextWrapPos' }) do
+        IM[n] = nop;
+    end
+    IM.TextColored = function(_, t) drawn[#drawn + 1] = tostring(t); end
+    IM.Begin      = function() depth.win = depth.win + 1; begun = begun + 1; return true; end
+    IM['End']     = function() depth.win = depth.win - 1; end
+    IM.BeginChild = function() depth.child = depth.child + 1; return true; end
+    IM.EndChild   = function() depth.child = depth.child - 1; end
+    IM.PushItemWidth = function() depth.item = depth.item + 1; end
+    IM.PopItemWidth  = function() depth.item = depth.item - 1; end
+    IM.PushStyleColor = function() depth.style = depth.style + 1; end
+    IM.PopStyleColor  = function(n) depth.style = depth.style - (n or 1); end
+    IM.BeginCombo = function() depth.combo = depth.combo + 1; return true; end
+    IM.EndCombo   = function() depth.combo = depth.combo - 1; end
+    IM.IsItemHovered = function() return true; end     -- exercise EVERY tooltip builder
+    IM.InputText  = function() return false; end
+    IM.CalcTextSize = function(s) return #tostring(s or '') * 10, 14; end
+    IM.GetContentRegionAvail = function() return 700, 400; end
+    local function btn(l)
+        buttons[#buttons + 1] = tostring(l);
+        if hitButton ~= nil and tostring(l) == hitButton then hitButton = nil; return true; end
+        return false;
+    end
+    IM.Button      = btn;
+    IM.SmallButton = btn;
+    IM.Selectable  = function(l) selects[#selects + 1] = tostring(l); return false; end
+
+    -- The fixture. Zone ids are real (5 = Uleguerand Range, 112 = Xarcabard) so
+    -- the zone NAMES resolve through the same table the window uses.
+    local FIX = {
+        [5] = {
+            { n = 'Bonnacon', nm = { 360 }, ph = { 354, 355, 356 }, p = 'Buffalo',
+              c = 5, w = { 3600, 86400 }, kind = { 'lottery' } },
+            { n = 'Jormungand', nm = { 361 }, ph = {}, kind = { 'scripted' } },
+            -- the LOSING half of the tie: same name, no placeholders, LOWER zone
+            -- id, so a missing tie-break would sort it first
+            { n = 'Twinned Opo-opo', nm = { 900 }, ph = {}, kind = { 'scripted' } },
+        },
+        [112] = {
+            { n = 'Shadow Eye', nm = { 212 }, ph = { 206 }, p = 'Evil Eye',
+              c = 5, kind = { 'lottery' } },
+            { n = 'Twinned Opo-opo', nm = { 901 }, ph = { 899 }, p = 'Opo-opo',
+              c = 5, kind = { 'lottery' } },
+        },
+    };
+
+    local saved = { imgui = package.loaded['imgui'],
+                    fmt   = package.loaded['dlac\\gear\\gearfmt'],
+                    data  = package.loaded['dlac\\data\\nmdata'],
+                    nml   = package.loaded['dlac\\feature\\nmlookup'],
+                    nu    = package.loaded['dlac\\ui\\nmui'] };
+    package.loaded['imgui'] = IM;
+    package.loaded['dlac\\gear\\gearfmt'] = nil;         -- re-bind it to THIS stub
+    package.loaded['dlac\\data\\nmdata'] = FIX;
+    package.loaded['dlac\\feature\\nmlookup'] = nil;     -- re-read the fixture at load
+    package.loaded['dlac\\ui\\nmui'] = nil;
+    local ok, nu = pcall(require, 'dlac\\ui\\nmui');
+    check('NW1 nmui re-requires against a stub imgui', ok and type(nu.render), 'function');
+    check('NW1b ...and is not degraded (the shared palette reached it)',
+        ok and nu.degraded, nil);
+    if ok then
+        local st = nu._state;
+        check('NW1c the state seam is exported', type(st), 'table');
+
+        nu.visible = false;
+        pcall(nu.render);
+        check('NW2 a closed window opens nothing', begun, 0);
+
+        -- ---- the window opens, and on the zone you are standing in ---------
+        nu.openArea(5);
+        check('NW3 openArea opens the window',   nu.visible, true);
+        check('NW3b ...in the area mode',        st.mode, 'area');
+        check('NW3c ...on that zone',            st.zid, 5);
+        drawn, buttons, selects, begun = {}, {}, {}, 0;
+        local aok, aerr = pcall(nu.render);
+        check('NW4 the by-area frame renders', aok, true);
+        if not aok then print('   nmui area error: ' .. tostring(aerr)); end
+        check('NW4b exactly ONE window is begun', begun, 1);
+        check('NW4c Begin/End balanced',    depth.win, 0);
+        check('NW4d BeginChild balanced',   depth.child, 0);
+        check('NW4e item-width balanced',   depth.item, 0);
+        check('NW4f style-colour balanced', depth.style, 0);
+        check('NW4g combo balanced',        depth.combo, 0);
+        local text = table.concat(drawn, ' | ');
+        check('NW4h nothing threw inside the body', text:find('error', 1, true), nil);
+        check('NW4i the zone\'s NMs reached the screen', text:find('Bonnacon', 1, true) ~= nil, true);
+        check('NW4j ...with what pops them',             text:find('Buffalo x3', 1, true) ~= nil, true);
+        check('NW4k ...including the ones with no placeholders',
+            text:find('Jormungand', 1, true) ~= nil, true);
+        -- The campable ones first, so a camper reads the list top-down.
+        check('NW4l the placeholder NM is listed before the scripted one',
+            text:find('Bonnacon', 1, true) < text:find('Jormungand', 1, true), true);
+        -- The list is a CHILD, so a 61-NM zone scrolls instead of running off
+        -- the bottom of the window: two panes plus the list = three children.
+        check('NW4m the list sits in its own scrolling child', depth.child, 0);
+        check('NW4n the detail pane says it is waiting for a pick',
+            text:find('Pick one on the left', 1, true) ~= nil, true);
+
+        -- ---- the right pane, with a row picked --------------------------
+        -- A PLACEHOLDER this slice, but a rendered one: it must name the NM,
+        -- offer the zone as a pivot, and SAY the card is still coming rather
+        -- than sitting empty and looking broken.
+        st.sel = '5/Bonnacon/360';               -- zone / name / first NM index
+        drawn, buttons = {}, {};
+        local sok = pcall(nu.render);
+        check('NW4o the picked-row frame renders', sok, true);
+        local dtext = table.concat(drawn, ' | ');
+        check('NW4p the detail pane names the NM', dtext:find('Bonnacon', 1, true) ~= nil, true);
+        check('NW4q ...and what pops it',          dtext:find('Buffalo x3', 1, true) ~= nil, true);
+        check('NW4r ...and says the card is still coming',
+            dtext:find('next slice', 1, true) ~= nil, true);
+        check('NW4s ...offering the zone as a pivot there too',
+            table.concat(buttons, ' | '):find('##dlacnmdetzone', 1, true) ~= nil, true);
+        check('NW4t ...and Begin/End still balanced', depth.win, 0);
+        st.sel = nil;
+
+        -- ---- filter mode: by name -----------------------------------------
+        nu.openName('bonnacon');
+        check('NW5 openName switches the mode', st.mode, 'name');
+        drawn, buttons, selects, begun = {}, {}, {}, 0;
+        local nok2, nerr2 = pcall(nu.render);
+        check('NW5a the by-name frame renders', nok2, true);
+        if not nok2 then print('   nmui name error: ' .. tostring(nerr2)); end
+        check('NW5b still exactly one window',  begun, 1);
+        check('NW5c Begin/End balanced',        depth.win, 0);
+        check('NW5d BeginChild balanced',       depth.child, 0);
+        local ntext = table.concat(drawn, ' | ');
+        check('NW5e nothing threw inside the body', ntext:find('error', 1, true), nil);
+        check('NW5f the match reached the screen',  ntext:find('Bonnacon', 1, true) ~= nil, true);
+        check('NW5g an exact hit is not hedged',    ntext:find('(guess)', 1, true), nil);
+        -- In name mode a row's zone is news, and it is a BUTTON -- the pivot.
+        check('NW5h ...and its zone is offered as a jump',
+            table.concat(buttons, ' | '):find('Uleguerand Range##dlacnmzj', 1, true) ~= nil, true);
+
+        -- ---- a weak match is SHOWN, and labelled ---------------------------
+        nu.openName('bonacon');
+        drawn = {};
+        pcall(nu.render);
+        local gtext = table.concat(drawn, ' | ');
+        check('NW6a a typo still finds the NM',   gtext:find('Bonnacon', 1, true) ~= nil, true);
+        check('NW6b ...and the row says it is a guess',
+            gtext:find('(guess)', 1, true) ~= nil, true);
+        check('NW6c ...with the list saying so above it',
+            gtext:find('none of them is an exact name', 1, true) ~= nil, true);
+
+        -- ---- gibberish is REFUSED, not answered ---------------------------
+        nu.openName('zzzznothing');
+        drawn, selects = {}, {};
+        pcall(nu.render);
+        local xtext = table.concat(drawn, ' | ');
+        check('NW7a gibberish is refused in words',
+            xtext:find('Nothing resembling', 1, true) ~= nil, true);
+        check('NW7b ...and no row is offered',    #selects, 0);
+        check('NW7c ...naming what was typed',    xtext:find('zzzznothing', 1, true) ~= nil, true);
+
+        -- ---- the tie-break, ON SCREEN -------------------------------------
+        nu.openName('Twinned Opo-opo');
+        drawn = {};
+        pcall(nu.render);
+        local ttext = table.concat(drawn, ' | ');
+        check('NW8a both copies are listed',
+            select(2, ttext:gsub('Twinned Opo%-opo', '')), 2);
+        check('NW8b the one WITH placeholders is listed first',
+            ttext:find('Opo%-opo x1') ~= nil
+                and ttext:find('Opo%-opo x1') < (ttext:find('no placeholders') or math.huge), true);
+
+        -- ---- clicking a zone RE-FILTERS, it never opens a second window ----
+        nu.openName('Shadow Eye');
+        drawn, buttons, begun = {}, {}, 0;
+        hitButton = 'Xarcabard##dlacnmzj1';
+        local cok = pcall(nu.render);
+        check('NW9a the frame with the zone click renders', cok, true);
+        check('NW9b the click re-filtered to that area',    st.mode, 'area');
+        check('NW9c ...on the clicked zone',                st.zid, 112);
+        check('NW9d ...and only ever ONE window was begun', begun, 1);
+        drawn, begun = {}, 0;
+        pcall(nu.render);
+        local ztext = table.concat(drawn, ' | ');
+        check('NW9e the list now holds that zone',  ztext:find('Shadow Eye', 1, true) ~= nil, true);
+        check('NW9f ...and not the other one\'s',   ztext:find('Bonnacon', 1, true), nil);
+        check('NW9g still one window',              begun, 1);
+
+        -- ---- the truncation notice is never silent ------------------------
+        local savedCap = nu.CAP;
+        nu.CAP = 1;
+        nu.openName('o');                        -- matches several fixture names
+        drawn = {};
+        pcall(nu.render);
+        check('NW10 a capped list SAYS what it cut',
+            table.concat(drawn, ' | '):find('more %-%- narrow the search') ~= nil, true);
+        nu.CAP = savedCap;
+
+        -- ---- a missing table degrades to words, never an error ------------
+        local realData = require('dlac\\feature\\nmlookup').data;
+        require('dlac\\feature\\nmlookup').data = {};
+        nu.openArea(5);
+        drawn = {};
+        local dok = pcall(nu.render);
+        check('NW11a an empty table still renders', dok, true);
+        check('NW11b ...as a plain warning',
+            table.concat(drawn, ' | '):find('missing or empty', 1, true) ~= nil, true);
+        require('dlac\\feature\\nmlookup').data = realData;
+
+        -- ---- and it closes cleanly ----------------------------------------
+        nu.close();
+        check('NW12 close hides it', nu.visible, false);
+        begun = 0;
+        pcall(nu.render);
+        check('NW12b ...and a closed window draws nothing', begun, 0);
+    end
+
+    -- EXACTLY ONE DRAW SITE. Two Begin() calls on one window name in a frame
+    -- merge both bodies into it -- content twice, ids colliding -- so this is
+    -- pinned as SOURCE, not as behaviour: the check above can only see the
+    -- window this module draws, never a second site somewhere else calling it.
+    do
+        local src = io.open('ui/nmui.lua', 'r');
+        local body = (src ~= nil) and src:read('*a') or '';
+        if src ~= nil then src:close(); end
+        check('NW13 nmui begins its window exactly once',
+            select(2, body:gsub('imgui%.Begin%(', '')), 1);
+        local g = io.open('ui/gearui.lua', 'r');
+        local gbody = (g ~= nil) and g:read('*a') or '';
+        if g ~= nil then g:close(); end
+        check('NW13b ...and gearui renders it from exactly one site',
+            select(2, gbody:gsub('nmMod%.render', '')), 1);
+        check('NW13c ...which is the only place that requires it for drawing',
+            select(2, gbody:gsub("require%('dlac\\\\ui\\\\nmui'%)", '')), 1);
+    end
+
+    package.loaded['imgui'] = saved.imgui;
+    package.loaded['dlac\\gear\\gearfmt'] = saved.fmt;
+    package.loaded['dlac\\data\\nmdata'] = saved.data;
+    package.loaded['dlac\\feature\\nmlookup'] = saved.nml;
+    package.loaded['dlac\\ui\\nmui'] = saved.nu;
+end)();
+
+-- ---------------------------------------------------------------------------
 -- Crafting Gear panel: the Ventures block (2026-07-28). The craft DETAIL view
 -- had no render coverage at all -- section 8 only exercises the manifest
 -- ladders -- and renderTab wraps renderAutomations in a pcall, so a fresh
