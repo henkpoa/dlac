@@ -24103,6 +24103,343 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- ND. What an NM drops (feature\nmloot, issue #153, PRD #151).
+--
+--   Three properties of data\nmdrops.lua are load-bearing, and each is a
+--   different way this readout could lie to a camper:
+--     * a GROUPED row's `r` is a WEIGHT, not a percentage. The group rolls
+--       ONCE at `gr` and then one item inside it wins by weight; 2009 of the
+--       5372 rows are grouped, so flattening them misstates more than a third
+--       of the shipped table.
+--     * DUPLICATE rows are two independent rolls, not one row written twice.
+--     * STEAL and DESPOIL are not kill loot, and listing them as drops tells a
+--       player to expect something a kill will never give.
+--
+--   THE GROUP PIN IS CHOSEN, NOT CONVENIENT. Mee Deggi -- the worked example
+--   in the issue -- cannot pin the first property: its group weights sum to
+--   exactly 1000, so the share (10%) and the flattened reading (r/10 = 10%)
+--   are the same number and a flattening bug passes. Ouryu's pool 3070 carries
+--   a group of two at 425 each under `gr = 750`: the share is 50% and the
+--   flattened reading is 42.5%, so only a correct implementation can print it.
+--   The synthetic pool below is built on the same principle -- every rate in it
+--   is chosen so that a wrong reading produces a DIFFERENT string.
+-- ---------------------------------------------------------------------------
+(function()
+    package.loaded['dlac\\data\\nmdrops'] = dofile('data/nmdrops.lua');
+    local NMDATA = package.loaded['dlac\\data\\nmdata'] or dofile('data/nmdata.lua');
+
+    -- The client's item resources, with every ask COUNTED. The resolve has to
+    -- be lazy -- a name table built at load runs before the player is logged in
+    -- and the client answers with nothing -- and "how many times was the client
+    -- asked, and when" is the only honest way to test that.
+    local savedAC = AshitaCore;
+    local asked = 0;
+    local RES = {
+        [16703] = 'Impact Knuckles', [13952] = 'Ochiudo\'s Kote', [656] = 'Beastcoin',
+        [101] = 'Widget A', [102] = 'Widget C', [103] = 'Widget D', [104] = 'Widget E',
+        [105] = 'Widget F', [106] = 'Widget G', [107] = 'Widget H', [108] = 'Widget I',
+    };
+    AshitaCore = { GetResourceManager = function()
+        return { GetItemById = function(_, id)
+            asked = asked + 1;
+            if RES[id] == nil then return nil; end
+            return { Name = { RES[id] } };
+        end };
+    end };
+
+    local LT = dofile('feature/nmloot.lua');
+
+    local function entryFor(zid, name)
+        for _, e in ipairs(NMDATA[zid] or {}) do
+            if e.n == name then return e; end
+        end
+        return nil;
+    end
+    local function rendered(entry) return table.concat(LT.lines(entry), '\n'); end
+
+    -- ---- names resolve LAZILY, and a miss never latches ------------------
+    check('ND00a loading the module asks the client for nothing', asked, 0);
+    check('ND00b the shipped table is there all the same', #LT.rowsFor({ pool = { 2607 } }), 3);
+    check('ND00c ...and that still asked the client for nothing', asked, 0);
+    check('ND00d the first name resolves through the client', LT.itemName(16703), 'Impact Knuckles');
+    check('ND00e ...which is one ask', asked, 1);
+    check('ND00f asking again is remembered, not re-asked', LT.itemName(16703), 'Impact Knuckles');
+    check('ND00g ...still one ask', asked, 1);
+    -- An id the client cannot answer for renders AS AN ID: a row that vanished
+    -- would be indistinguishable from a table that never carried it.
+    check('ND00h an unresolvable id renders as an id', LT.itemName(4242), 'item #4242');
+    -- ...and is NOT cached. A pre-login read is "cannot tell yet", not "no such
+    -- item", and latching it would make one early ask permanent (ADR 0007).
+    local before = asked;
+    check('ND00i ...and asking again really asks again', LT.itemName(4242), 'item #4242');
+    check('ND00j ...so the miss was never cached', asked > before, true);
+    RES[4242] = 'Late Arrival';                       -- the player finishes logging in
+    check('ND00k ...and the name arrives once the client can answer',
+        LT.itemName(4242), 'Late Arrival');
+    check('ND00l a nonsense id is still never nil', LT.itemName('x'), 'item #?');
+
+    -- ---- the server's eight named tiers -----------------------------------
+    check('ND01a 1000 is always',          LT.tierName(1000), 'always');
+    check('ND01b 240 is very common',      LT.tierName(240), 'very common');
+    check('ND01c 150 is common',           LT.tierName(150), 'common');
+    check('ND01d 100 is uncommon',         LT.tierName(100), 'uncommon');
+    check('ND01e 50 is rare',              LT.tierName(50), 'rare');
+    check('ND01f 10 is very rare',         LT.tierName(10), 'very rare');
+    check('ND01g 5 is super rare',         LT.tierName(5), 'super rare');
+    check('ND01h 1 is ultra rare',         LT.tierName(1), 'ultra rare');
+    check('ND01i the tier list is exactly those eight', (function()
+        local n = 0; for _ in pairs(LT.TIERS) do n = n + 1; end; return n;
+    end)(), 8);
+    check('ND01j a tier renders its name beside the percentage',
+        LT.rateText(150), 'common (15%)');
+    check('ND01k rare reads 5%, the way the game says it, not 5.0%',
+        LT.rateText(50), 'rare (5%)');
+    check('ND01l the half-percent tier keeps its decimal',
+        LT.rateText(5), 'super rare (0.5%)');
+    check('ND01m ...and so does the tenth',  LT.rateText(1), 'ultra rare (0.1%)');
+    check('ND01n always is 100%',            LT.rateText(1000), 'always (100%)');
+    -- 1215 shipped rows carry a rate outside the eight. It is a valid weight,
+    -- and snapping it to the nearest tier would be inventing a fact.
+    check('ND01o a rate outside the eight has NO tier name', LT.tierName(250), nil);
+    check('ND01p ...and renders as a bare percentage',       LT.rateText(250), '25%');
+    check('ND01q ...even next door to a tier',               LT.rateText(230), '23%');
+    check('ND01r a rate of zero is no rate at all',          LT.rateText(0), nil);
+
+    -- ---- percentages for reading ------------------------------------------
+    check('ND02a 100',            LT.pctText(100), '100%');
+    check('ND02b 24',             LT.pctText(24), '24%');
+    check('ND02c 10',             LT.pctText(10), '10%');
+    check('ND02d 5 loses the dead decimal',   LT.pctText(5), '5%');
+    check('ND02e 1 too',                      LT.pctText(1), '1%');
+    check('ND02f a half percent keeps it',    LT.pctText(0.5), '0.5%');
+    check('ND02g a tenth keeps it',           LT.pctText(0.1), '0.1%');
+    check('ND02h a real share never prints as 0%', LT.pctText(0.0001), '<0.01%');
+    check('ND02i nothing to say is said as nothing', LT.pctText(nil), '?');
+
+    -- ---- the join, through the NM's pool id -------------------------------
+    local mee = entryFor(151, 'Mee Deggi the Punisher');
+    check('ND03a the shipped NM carries a pool id', (mee.pool or {})[1], 2607);
+    check('ND03b ...and the join reaches its rows', #LT.rowsFor(mee), 3);
+    check('ND03c an entry with no pool joins to nothing', #LT.rowsFor({ n = 'x' }), 0);
+    check('ND03d ...and "cannot look it up" is not "has none"', LT.hasPool({ n = 'x' }), false);
+    check('ND03e the same pool listed twice is ONE droplist',
+        #LT.rowsFor({ pool = { 2607, 2607 } }), 3);
+    check('ND03f several pools concatenate', #LT.rowsFor({ pool = { 2607, 2384 } }), 9);
+
+    -- ---- rolls: what rolls together and what rolls apart -------------------
+    local killM, takeM = LT.rolls(LT.rowsFor(mee));
+    check('ND04a Mee Deggi is one roll',        #killM, 1);
+    check('ND04b ...a group',                   killM[1].kind, 'group');
+    check('ND04c ...of two',                    #killM[1].rows, 2);
+    check('ND04d ...that always drops',         killM[1].gr, 1000);
+    check('ND04e the Kote is its SHARE of the group', LT.shareOf(killM[1], killM[1].rows[2]), 10);
+    check('ND04f ...and the Knuckles the rest',       LT.shareOf(killM[1], killM[1].rows[1]), 90);
+    check('ND04g the steal row never reaches kill loot', #takeM, 1);
+    check('ND04h ...and is named as Steal',             takeM[1].how, 'Steal');
+
+    -- Leaping Lizzy lists item 926 at 240 and AGAIN at 150. Two rolls.
+    local liz = entryFor(107, 'Leaping Lizzy');
+    local killL = select(1, LT.rolls(LT.rowsFor(liz)));
+    check('ND04i Leaping Lizzy rolls five times',   #killL, 5);
+    check('ND04j the repeated item is TWO rolls',   killL[1].row.i, killL[2].row.i);
+    check('ND04k ...at two different rates',
+        string.format('%d/%d', killL[1].row.r, killL[2].row.r), '240/150');
+    check('ND04l ...and the second pair repeats too',
+        string.format('%d/%d', killL[4].row.i, killL[5].row.i), '852/852');
+
+    -- Pool 245 lists group 1 at gr=1000 and then the SAME four items as group 1
+    -- again at gr=100. Keyed on the group id alone one of those rates -- and the
+    -- roll it belongs to -- would have to be thrown away.
+    local kill245 = select(1, LT.rolls(LT.rowsFor({ pool = { 245 } })));
+    check('ND04m a group id whose group rate changes under it is two rolls', #kill245, 3);
+    check('ND04n ...the first always drops',            kill245[2].gr, 1000);
+    check('ND04o ...the second is a tenth of that',     kill245[3].gr, 100);
+    check('ND04p ...and neither lost a member',
+        string.format('%d/%d', #kill245[2].rows, #kill245[3].rows), '4/4');
+
+    -- ---- the readout, on a pool built so a wrong reading reads DIFFERENTLY --
+    LT.data[999001] = {
+        { i = 101, r = 240 },                          -- one of the eight tiers
+        { i = 101, r = 150 },                          -- the SAME item again: a second roll
+        { i = 102, r = 250 },                          -- not one of the eight
+        { i = 103, r = 300, t = 1, g = 1, gr = 150 },  -- share 75%; flattened it would read 30%
+        { i = 105, r = 0,   t = 2 },                   -- a steal row INSIDE the run
+        { i = 104, r = 100, t = 1, g = 1, gr = 150 },  -- share 25%; flattened it would read 10%
+        { i = 106, r = 500, t = 1, g = 1, gr = 1000 }, -- same group id, new group rate: a new roll
+        { i = 107, r = 500, t = 1, g = 1, gr = 1000 },
+        { i = 108, r = 150, t = 4 },                   -- despoil, and this one HAS a rate
+        { i = 888888, r = 50 },                        -- an id the client cannot name
+    };
+    local syn = rendered({ n = 'Synthetic', pool = { 999001 } });
+    check('ND05a ten rows are six independent ROLLS',
+        syn:match('drops %-%- 6 rolls') ~= nil, true);
+    check('ND05b a tier is named beside its percentage',
+        syn:match('Widget A %-%- very common %(24%%%)') ~= nil, true);
+    check('ND05c the repeated item appears a second time, at its own rate',
+        syn:match('Widget A %-%- common %(15%%%)') ~= nil, true);
+    check('ND05d a rate outside the eight shows a percentage and no tier name',
+        syn:match('Widget C %-%- 25%%') ~= nil, true);
+    check('ND05e ...and is not snapped to the nearest tier',
+        syn:match('Widget C %-%- %a') == nil, true);
+    check('ND05f a group renders AS a group, at the group\'s own rate, with shares',
+        syn:match('one of these, common %(15%%%): Widget D 75%%, Widget E 25%%') ~= nil, true);
+    check('ND05g ...never flattened into per-item percentages',
+        syn:match('Widget D %-%-') == nil and syn:match('30%%') == nil, true);
+    check('ND05h a steal row inside a group run does not split the group',
+        syn:match('Widget D 75%%, Widget E 25%%') ~= nil, true);
+    check('ND05i the same group id at a new group rate is a SECOND roll',
+        syn:match('one of these, always %(100%%%): Widget G 50%%, Widget H 50%%') ~= nil, true);
+    check('ND05j what the % beside a member means is said, once',
+        select(2, syn:gsub('share of the group', '')), 1);
+    check('ND05k steal and despoil get their own section, named',
+        syn:match('not kill loot %-%- Steal / Despoil only') ~= nil, true);
+    check('ND05l ...and are kept out of the drops list',
+        syn:match('Widget F %-%-') == nil, true);
+    check('ND05m a steal row the API gives no rate for states none',
+        syn:match('Widget F %(Steal%)\n') ~= nil, true);
+    check('ND05n ...and one that has a rate keeps it',
+        syn:match('Widget I %(Despoil%) %-%- common %(15%%%)') ~= nil, true);
+    check('ND05o an unresolvable id renders as an id rather than vanishing',
+        syn:match('item #888888 %-%- rare %(5%%%)') ~= nil, true);
+
+    -- A group of ONE is not a group to a player: its chance IS the group rate,
+    -- and 22 shipped groups are that shape.
+    LT.data[999002] = { { i = 101, r = 250, t = 1, g = 1, gr = 150 } };
+    check('ND05p a group of one renders at the GROUP rate, not its weight',
+        rendered({ pool = { 999002 } }):match('Widget A %-%- common %(15%%%)') ~= nil, true);
+    check('ND05q ...and is not called "one of these"',
+        rendered({ pool = { 999002 } }):match('one of these') == nil, true);
+
+    -- ---- the same properties, against the SHIPPED table --------------------
+    -- Ouryu's pool 3070: two items at 425 under a group rate of 750. Share 50%,
+    -- flattened 42.5% -- the two readings cannot be confused here.
+    local ouryu = rendered({ pool = { 3070 } });
+    check('ND06a a shipped group states each member\'s share',
+        ouryu:match('one of these, 75%%: item #1769 50%%, item #1764 50%%') ~= nil, true);
+    check('ND06b ...and never the weight read as a percentage',
+        ouryu:match('item #1769 4[23]') == nil, true);
+    check('ND06c a group rate outside the eight is a bare percentage too',
+        ouryu:match('one of these, 75%%:') ~= nil, true);
+    check('ND06d the shipped NM table still joins Ouryu to that pool',
+        (entryFor(29, 'Ouryu').pool or {})[1], 3070);
+    check('ND06e the shipped group is still two items at 425 under gr 750', (function()
+        for _, b in ipairs((select(1, LT.rolls(LT.rowsFor({ pool = { 3070 } }))))) do
+            if b.kind == 'group' and b.gr == 750 and #b.rows == 2 then
+                return string.format('%d+%d', b.rows[1].r, b.rows[2].r);
+            end
+        end
+        return 'gone';
+    end)(), '425+425');
+
+    -- ---- absences, and they must not look alike ----------------------------
+    check('ND07a an NM the drop table has nothing for says so',
+        rendered(entryFor(112, 'Boreal Coeurl')),
+        '  drops: nothing in the drop table for this one.');
+    check('ND07b an NM table with no pool id says something else entirely',
+        rendered({ n = 'x' }):match('carries no pool id') ~= nil, true);
+    -- Five shipped pools hold Steal and Despoil rows and nothing else. Printing
+    -- only that section would leave "what does it drop" unanswered.
+    check('ND07e a pool with no kill loot at all says so, not nothing',
+        rendered({ pool = { 4290 } }):match('nothing a kill gives') ~= nil, true);
+    check('ND07f ...and still lists what is not kill loot',
+        rendered({ pool = { 4290 } }):match('not kill loot %-%-') ~= nil, true);
+    local savedDrops = LT.data;
+    LT.data = {};
+    check('ND07c a missing drop table names the file, and does not crash',
+        rendered(mee):match('nmdrops%.lua') ~= nil, true);
+    check('ND07d ...and does not read as "this NM drops nothing"',
+        rendered(mee):match('nothing in the drop table') == nil, true);
+    LT.data = savedDrops;
+
+    -- ---- the caps say what they left out -----------------------------------
+    -- A silent cap reads as "that is all of it", which is the one thing a drop
+    -- readout must never imply.
+    local big = {};
+    for k = 1, 20 do big[k] = { i = 100 + k, r = 50, t = 1, g = 1, gr = 1000 }; end
+    LT.data[999003] = big;
+    local bigTxt = rendered({ pool = { 999003 } });
+    check('ND08a a group past the cap shows exactly the cap\'s worth of members',
+        select(2, bigTxt:gsub(' 5%%', '')), 12);
+    check('ND08b ...says how many it did not show',
+        bigTxt:match('%+8 more') ~= nil, true);
+    check('ND08c ...and what they are worth together',
+        bigTxt:match('%+8 more sharing 40%%') ~= nil, true);
+    local many = {};
+    for k = 1, 40 do many[k] = { i = 100 + k, r = 150 }; end
+    LT.data[999004] = many;
+    local manyTxt = rendered({ pool = { 999004 } });
+    check('ND08d the roll cap is stated, never silent',
+        manyTxt:match('and 8 more rolls not shown') ~= nil, true);
+    check('ND08e ...and the head still counts them all',
+        manyTxt:match('drops %-%- 40 rolls') ~= nil, true);
+    check('ND08f nothing in the shipped table reaches that cap', (function()
+        for _, list in pairs(NMDATA) do
+            for _, e in ipairs(list) do
+                if #(select(1, LT.rolls(LT.rowsFor(e)))) > LT.MAX_ROLLS then return e.n; end
+            end
+        end
+        return 'none';
+    end)(), 'none');
+    LT.data[999001], LT.data[999002], LT.data[999003], LT.data[999004] = nil, nil, nil, nil;
+
+    -- ---- and it all reaches chat under /dl nm ------------------------------
+    local savedChat = package.loaded['dlac\\chatfmt'];
+    local savedLoot = package.loaded['dlac\\feature\\nmloot'];
+    local out = {};
+    local function sink(s) out[#out + 1] = tostring(s); end
+    package.loaded['dlac\\chatfmt'] = { msg = sink, good = sink, warn = sink, err = sink };
+    package.loaded['dlac\\data\\nmdata'] = NMDATA;
+    package.loaded['dlac\\feature\\nmloot'] = LT;
+    local handler = nil;
+    local savedReg = ashita.events.register;
+    ashita.events.register = function(evt, name, fn)
+        if name == 'dlac-nmlookup-cmd' then handler = fn; end
+    end;
+    local NM2 = dofile('feature/nmlookup.lua');
+    ashita.events.register = savedReg;
+    local function run(zid, cmd)
+        NM2.zoneReader = function() return zid; end;
+        out = {};
+        local e = { command = cmd, blocked = false };
+        handler(e);
+        return table.concat(out, '\n');
+    end
+
+    local t1 = run(151, '/dl nm mee deggi');
+    check('ND09a the drops reach chat',        t1:match('drops %-%- 1 roll') ~= nil, true);
+    check('ND09b ...as a group, with shares',
+        t1:match('one of these, always %(100%%%): Impact Knuckles 90%%, Ochiudo\'s Kote 10%%') ~= nil, true);
+    check('ND09c ...with steal in its own section',
+        t1:match('not kill loot %-%- Steal only') ~= nil, true);
+    check('ND09d ...and Beastcoin never listed as a drop',
+        t1:match('Beastcoin %-%-') == nil, true);
+    -- Nothing that was already there may move.
+    check('ND09e the pop kind survives',       t1:match('lottery pop') ~= nil, true);
+    check('ND09f the placeholders survive',    t1:match('Yagudo Interrogator x8') ~= nil, true);
+    check('ND09g the disfavour lines survive',
+        t1:match('5%% base') ~= nil and t1:match('not flat') ~= nil, true);
+    check('ND09h the indexes survive',         t1:match('NM index 88') ~= nil, true);
+    check('ND09i the FilterScan filter survives',
+        t1:match('/filterscan 49,54,57,63,71,72,86,87,88') ~= nil, true);
+    check('ND09j ...and the filter still comes before the drops',
+        t1:find('/filterscan') < t1:find('drops %-%-'), true);
+    local t2 = run(112, '/dl nm Boreal Coeurl');
+    check('ND09k an NM with no drop data says so inside the command',
+        t2:match('nothing in the drop table') ~= nil, true);
+    check('ND09l ...and still answers everything else',
+        t2:match('Boreal Coeurl') ~= nil, true);
+    -- A guess is still labelled a guess, with drops attached.
+    local t3 = run(5, '/dl nm bonacon');
+    check('ND09m guess labelling survives the new section',
+        t3:match('closest match') ~= nil and t3:match('drops %-%- 7 rolls') ~= nil, true);
+
+    package.loaded['dlac\\chatfmt'] = savedChat;
+    package.loaded['dlac\\feature\\nmloot'] = savedLoot;
+    package.loaded['dlac\\data\\nmdrops'] = nil;
+    AshitaCore = savedAC;
+end)();
+
+-- ---------------------------------------------------------------------------
 -- NT. Passive pop tracking (feature\nmtrack, issue #155, PRD #151).
 --
 --   The tracker counts the placeholder kills this character personally

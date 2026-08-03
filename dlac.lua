@@ -325,8 +325,11 @@ for _, mod in ipairs({ 'gear', 'feature\\augments', 'gear\\gearoptim', 'gear\\ge
                        -- nmtrack AFTER nmlookup: it requires the lookup module at
                        -- load for the disfavour curve, the shipped table and the
                        -- pop kind (the reverse edge is call-time only, so there
-                       -- is no cycle -- see the header of either file).
-                       'feature\\nmlookup', 'feature\\nmtrack',
+                       -- is no cycle -- see the header of either file). nmloot
+                       -- (the drop readout) has no load-time edge in either
+                       -- direction -- nmlookup reaches it at call time -- so its
+                       -- place in this list is only where it reads best.
+                       'feature\\nmlookup', 'feature\\nmtrack', 'feature\\nmloot',
                        'feature\\lockstyle',
                        'feature\\lockstyleapply', 'feature\\equipengine',
                        'feature\\engine', 'ui\\gearui',

@@ -1350,6 +1350,71 @@ per character through the addon-side state-file facility the other passive watch
 camp holding a count (which is how you resume one you started elsewhere); `/dl nm <name> reset`
 clears one.
 
+### feature/nmloot.lua + data/nmdrops.lua — what an NM drops
+Answers the other half of "is this NM worth camping". **`data/nmdrops.lua` is generated**
+(`tools/gen_nmdrops.py`) from the **CatsEyeXI LIVE API** (`/api/mob/<poolid>`) — 973 pools,
+5372 rows, keyed by **server pool id**, joined to an NM through its `pool` field. Per row:
+`i` item id, `r` rate, `t` drop type (absent/0 normal, `1` grouped, `2` steal, `4` despoil),
+`g` group id and `gr` group rate on grouped rows only. Issue #153, PRD #151.
+
+**The clone is not the source and must never be read for this.** Its `mob_droplist` is a base
+layer: the module loader mounts a `catseyexi` overlay that is EMPTY in the public repository,
+so live differs in both item and rate — verified on Mee Deggi, which gives Ochiudo's Kote at
+10% where the clone says an Ochimusha variant at 5%. Anything reading the clone's drop tables
+ships wrong data (hard rule 9; PRD #151 "Provenance").
+
+**Three properties of the table are load-bearing, and each is a way the readout could lie:**
+* **A grouped row's `r` is a WEIGHT, not a percentage.** The group rolls **once** at `gr`, and
+  then exactly one item inside it wins by weight. 2009 of the 5372 rows are grouped, so
+  flattening them into per-item percentages misstates more than a third of the table. Groups
+  render **as groups** — "one of these, always (100%): A 90%, B 10%" — and the figure beside a
+  member is its **share of the group**, never a chance per kill. Mee Deggi is the example
+  everyone reaches for and the one that cannot pin this: its weights sum to exactly 1000, so
+  the share and the flattened reading are the same number. **Ouryu's pool 3070** is the pin —
+  two items at 425 under `gr = 750`, share 50% against a flattened 42.5%.
+* **Duplicate rows are real.** Leaping Lizzy (pool 2384) lists item 926 at `r = 240` and again
+  at `r = 150`: two independent rolls, both shown. That is why the section head counts **rolls**
+  and not items.
+* **Steal (`t=2`) and Despoil (`t=4`) are not kill loot** and get their own section — listing
+  them as drops tells a player to expect something a kill will never give. Most carry `r = 0`
+  (the API states no rate), and a zero is left **unsaid** rather than printed as "0%", which
+  reads as impossible instead of unstated.
+
+**Where one group ends and the next begins is a RUN**, in one sentence: a grouped row continues
+the current group while its `g` **and** `gr` both match the last grouped row, and opens a new
+one otherwise; ungrouped rows are passed over rather than closing it. The data forces the `gr`
+half — **pool 245** lists group 1 four times at `gr = 1000` and then the same four items as
+group 1 again at `gr = 100`, and 86 rows across a handful of pools carry a group id whose rate
+changes under it. Keying on `g` alone would have to discard one of the two rates and the roll
+with it. Rows of one run are contiguous in all 973 pools, so the rule never splits a group the
+table meant as one.
+
+**Rates use the server's own eight tiers** (1000 always, 240 very common, 150 common,
+100 uncommon, 50 rare, 10 very rare, 5 super rare, 1 ultra rare), which is the vocabulary shown
+beside the percentage rather than one invented here. 1215 rows carry a rate outside the eight;
+those show a percentage with **no tier name**, because snapping 250 to "very common" would be
+inventing a fact.
+
+**Item names are not shipped, on purpose** — they come from the client's own item resources so
+they always match what the client calls them, resolved **lazily, one id at a time, never at
+load** (a name table built at load runs before login and the client answers with nothing). Only
+a **hit** is remembered: a miss is "cannot tell yet", not "no such item", and caching it would
+latch one early read forever (ADR 0007). An id that will not resolve renders **as an id** —
+never vanishes, because a missing row is indistinguishable from a table that never had it.
+
+**Three absences, and they must not look alike** (hard rule 12): no drop table at all names the
+file; an NM whose pool has no rows says the table has nothing for it; a pre-`pool` `nmdata.lua`
+says the drops **cannot be looked up**. Chat is not a window, so group members are packed onto
+shared lines and two caps back the readout up — twelve members per group and 32 rolls — and
+both say out loud what they left out, because a silent cap reads as "that is all of it". Sized
+against the shipped table: the deepest NM in it (Jormungand) rolls 28 times, so only the group
+cap fires today.
+
+**The module is `nmloot`, the data is `nmdrops`, and the difference is deliberate** — hard rule
+13 is a list of hours lost to a module whose name near-missed a data file's. `nmlookup` reaches
+it at **call time**, exactly like the tracker, so a build where it fails to load loses the drops
+section and nothing else; there is no load-time edge in either direction. Tests `ND00*`-`ND09*`.
+
 ### data/statdefs.lua — stat metadata registry
 Single source of truth for stat presentation/weighting: key, label, section, percent,
 lowerBetter, aliases (~178 entries, 7 sections). Presentation only — **no server mod-ids**
@@ -1411,6 +1476,9 @@ petmods.lua (item_mods_pet SQL — the pet channel the API never serializes);
 `gen_gearsets.py` builds gearsets.lua; `gen_pickerdb.py` builds spells/abilities;
 `gen_nmdata.py` builds nmdata.lua (the NM/placeholder table — reads the **local server
 clone**, not the API, so it takes no `--refresh`: `git pull` the clone and re-run);
+`gen_nmdrops.py` builds nmdrops.lua (the NM drop table — the other way round: the **live
+API** only, `/api/mob/<poolid>`, because the clone's `mob_droplist` is the pre-overlay base
+layer and disagrees with live on item *and* rate);
 `modifier_map.lua` = modid→stat map; `api_cache/` holds the crawl cache + the
 stat-naming decision log (`stats_decisions.txt` — the agreed mod→key bridge).
 Gitignored so scraping details and the mod enum aren't published; only generated
@@ -1580,7 +1648,7 @@ like the command does not exist.
 | `/dl sends [reset]` | sendlog | **What dlac has put on the wire this session** — dlac's **own** sends split from your **passed-through** actions, per packet id, **per cause**, plus the last 24 sends with their ages; also lands as `debug\dlac-sends-<Char>.txt`. Zero sends says so *and* says why that is expected (equips are edge-driven). A **flap** shows as one cause repeating at the 0.4 s Default tick. Self-check, not a probe — it counts dlac's own sends at the sites that make them, and never reads the wire |
 | `/dl food [1\|2\|forget]` | foodwatch | Which food you are under and what you can re-eat; a number eats that row, `forget` clears the history. What counts as food is learned off the wire (an item use + the FOOD effect's expiry moving), never from a shipped list |
 | `/dl engine [native on\|off \| migrate]` | feature/engine | The Native-engine flip: status / flag + storage migration (see § The Native engine) |
-| `/dl nm [name] [apply\|reset]` (`ph`) | nmlookup + nmtrack | **Which NMs are in this zone, and what pops them.** Bare lists the zone's notorious monsters, placeholders first; a name gives the **pop kind**, that NM's target indexes, its placeholders (name, count, repop window) and a ready `/filterscan` line over those spawn points. For a **lottery** it states the **base** chance, that the chance is **not flat**, the **disfavour** curve at quarter marks and the rounds to a guaranteed pop; a non-lottery NM gets its own words and **no curve**. It also states **your own count** — the placeholder kills you personally witnessed, as rounds, with the *current* chance and the rounds left to a guaranteed pop, labelled a **floor**; a **stale** count (you zoned, relogged, or left it too long) shows the raw number and **no percentage at all**, and a **cooldown**/**primed** camp says kills cannot roll right now. Names match loosely; a weak match is shown *labelled as a guess*. A name that lives elsewhere answers about that zone rather than dead-ending. `apply` queues the `/filterscan` for you; `reset` clears that camp's count. Reads only `data/nmdata.lua`, your zone id and your own count file — no live scanning |
+| `/dl nm [name] [apply\|reset]` (`ph`) | nmlookup + nmtrack + nmloot | **Which NMs are in this zone, what pops them, and what they give.** Bare lists the zone's notorious monsters, placeholders first; a name gives the **pop kind**, that NM's target indexes, its placeholders (name, count, repop window) and a ready `/filterscan` line over those spawn points. For a **lottery** it states the **base** chance, that the chance is **not flat**, the **disfavour** curve at quarter marks and the rounds to a guaranteed pop; a non-lottery NM gets its own words and **no curve**. It also states **your own count** — the placeholder kills you personally witnessed, as rounds, with the *current* chance and the rounds left to a guaranteed pop, labelled a **floor**; a **stale** count (you zoned, relogged, or left it too long) shows the raw number and **no percentage at all**, and a **cooldown**/**primed** camp says kills cannot roll right now. Names match loosely; a weak match is shown *labelled as a guess*. A name that lives elsewhere answers about that zone rather than dead-ending. `apply` queues the `/filterscan` for you; `reset` clears that camp's count. It closes with the **drop table**: one line per **roll**, the server's own tier name beside each percentage, a **group** rendered as a group with each item's share inside it, **Steal/Despoil in their own section** because a kill never gives them, and duplicate rows kept as the two independent rolls they are — or a plain line saying the table has nothing for this one. Reads only `data/nmdata.lua`, `data/nmdrops.lua`, your zone id, your own count file and the client's item names — no live scanning |
 | `/dl nm counts` (`count`) | nmtrack | **Which camps am I part-way through?** Every NM holding a Pop count, newest first, with its zone, kills, rounds and current chance — or why one is showing none (stale, cooldown, primed). The chat surface for resuming a camp started earlier |
 | `/dlmv` | gearmove | (branch-only) gate/version diagnostic |
 

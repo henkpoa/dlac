@@ -903,6 +903,49 @@ research already recorded. In rough priority order:
 
 ## Current state (as of 2026-08-02)
 
+- **2026-08-03: `/dl nm` NOW SAYS WHAT AN NM DROPS — grouped as groups, Steal and Despoil kept
+  out of it — ON A PR BRANCH off `dev` (`feat/153-nm-drops`), NOT field-run** (issue #153,
+  PRD #151). The command could tell you how an NM pops and where you stood on the curve, but
+  not whether it was worth camping. `feature/nmloot.lua` joins the NM to the committed
+  `data/nmdrops.lua` (973 pools, 5372 rows, crawled from the **live API**) through its `pool`
+  field and closes the card with the drop table. **Addon side only** — the crawler half was
+  already committed by the maintainer, `tools/` is gitignored and nothing under it or under
+  `data/` was touched.
+  - **A GROUPED ROW'S `r` IS A WEIGHT, NOT A PERCENTAGE.** The group rolls once at `gr` and
+    then ONE item inside it wins by weight, so 2009 of the 5372 rows — more than a third of the
+    table — would be misstated by a flat percentage. Groups render **as groups** ("one of
+    these, always (100%): Impact Knuckles 90%, Ochiudo's Kote 10%") with each member's **share**
+    of the group. **Mee Deggi cannot pin this and must not be used to**: its weights sum to
+    exactly 1000, so the share and the flattened reading are both 10% and a flattening bug
+    passes. The pin is **Ouryu's pool 3070** — two items at 425 under `gr = 750`, share 50%
+    against a flattened 42.5%.
+  - **Duplicate rows are two rolls, and stay two.** Leaping Lizzy lists item 926 at 240 *and*
+    at 150; the section head counts **rolls**, not items, so the repetition reads as the
+    mechanic it is rather than a bug.
+  - **Steal and Despoil are not kill loot** and get their own section — listing them as drops
+    tells a player to expect something a kill will never give. Most carry `r = 0` (the API
+    states no rate) and that is left **unsaid**, never printed as "0%".
+  - **Where one group ends is a RUN over `(g, gr)`, and the data forced it.** Pool 245 lists
+    group 1 four times at `gr = 1000` and then the same four items as group 1 again at
+    `gr = 100`; 86 rows carry a group id whose rate changes under it. Keying on the group id
+    alone would discard one of the two rates and the roll with it. **This is the one place the
+    issue is silent** — flagged in the PR for a ruling.
+  - **Item names resolve from the client's own resources, lazily and one id at a time**, never
+    at load (a name table built at load runs before login and gets nothing back). Only a HIT is
+    cached — a miss is "cannot tell yet", not "no such item", and latching it would make one
+    early read permanent (ADR 0007). An id that will not resolve renders **as an id**.
+  - Three absences are told apart (hard rule 12): no drop table names the file; an NM whose
+    pool has no rows says so plainly; a pre-`pool` `nmdata.lua` says the drops cannot be looked
+    up. Two caps keep chat sane (12 members per group, 32 rolls) and **both say what they left
+    out**. Suites **6596 + 1138** green. No engine bump — addon-state only, no seeded file
+    moved, and no UI (no gearui locals, nothing new in the UI chunk).
+  - **NOT FIELD-RUN, and one thing can only be settled in game: THE ITEM NAMES.** Everything
+    else is arithmetic over a committed table, but `AshitaCore:GetResourceManager():GetItemById`
+    is stubbed in the suite. **First field check: `/dl nm Leaping Lizzy` — five rolls with real
+    item names (Rock Salt twice, Leaping Boots) and Beastcoin under Steal proves the whole chain
+    (join → rolls → tiers → names) in one command.** Second: `/dl nm Mee Deggi` for the group
+    line. Third: any `item #<number>` still showing after a full login means the resource read
+    is wrong, not the table. It inherits the round still owed on `/dl nm` itself.
 - **2026-08-03: PASSIVE POP TRACKING — the placeholder rounds you personally witnessed, and a
   count that refuses to lie — ON A PR BRANCH off `dev` (`issue-155-pop-tracking`), NOT
   field-run** (issue #155, PRD #151). `/dl nm <name>` could state the disfavour curve but not
