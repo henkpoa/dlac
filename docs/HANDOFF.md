@@ -347,8 +347,15 @@ no entry for that slot claims **nothing** — the trigger keeps the slot. The wi
 in red (`[!] no Main in this set`), so if a lock ever "does nothing" in the field, check that
 before assuming the claim path is broken.*
 
-***The food register*** *: zone, use a warp scroll immediately, then* `/dl food` *— nothing
-new should be recorded, and the two junk rows should already be gone after the first load.*
+***The food register*** — ***FIELD-CONFIRMED 2026-08-03*** *(Henrik, on Mindie BRD:* "Tested,
+does not register as eaten food if using warp scroll directly after scrolling"*). The bug the
+fix exists for is **gone in game**, on the exact reproduction that found it.*
+
+***One half of that round is still unobserved***, *and it is a five-second look rather than a
+run:* `/dl food` *should show **no Instant Warp and no Flask of Echo Drops** at all — the
+`fmt` 1 → 2 self-heal drops them on first load, so if either is still listed the sweep did
+not run and the dry-run's 7-in / 5-kept result did not reproduce. Everything he did confirm
+is about **new** registrations, which is a different code path from the sweep.*
 
 ---
 

@@ -9130,3 +9130,20 @@ assertion — what a cell actually says is the thing worth pinning (`AM8e`, muta
 **Tests:** `MDL23`–`MDL26b` (the record carries the queue, the first arrival keeps the slot,
 the holder going off hands it on with nothing re-armed, the leg carries and drops it),
 smoke `AM8a`–`AM8e` and `MLK14`–`MLK16`. Suites **6168 + 1129**, both interpreters.
+
+**Foodwatch: FIELD-CONFIRMED 2026-08-03**, on Mindie BRD, on the exact reproduction that
+found the bug — Henrik: *"Tested, does not register as eaten food if using warp scroll
+directly after scrolling."* The zone-drift branch no longer credits a warp scroll with a
+meal, which is what the whole train was for.
+
+Worth writing down because it is the second time this week the same shape held: the
+diagnosis came entirely out of **reading an artifact** — his `foodhistory.lua`, where each
+impostor carried, as its own duration, the remaining time of the real meal still running
+underneath it. That arithmetic named the cause before any code was read. Artifacts before
+theory, again.
+
+**One half of the round is still unobserved**, and it is a look rather than a run: `/dl food`
+should list **no Instant Warp and no Flask of Echo Drops** at all, because the `fmt` 1 → 2
+self-heal drops them on first load. What was confirmed is the **new-registration** path; the
+sweep is different code, and a dry-run against the real file is not the same as the file
+having actually been rewritten on his disk.
