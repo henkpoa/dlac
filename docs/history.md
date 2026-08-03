@@ -9147,3 +9147,27 @@ should list **no Instant Warp and no Flask of Echo Drops** at all, because the `
 self-heal drops them on first load. What was confirmed is the **new-registration** path; the
 sweep is different code, and a dry-run against the real file is not the same as the file
 having actually been rewritten on his disk.
+
+**The floating icon tray: FIELD-CONFIRMED 2026-08-03, 7 of 7.** The last open check was drag
+persistence — everything else had passed the night before, including the one that actually
+mattered (nothing on screen at all when every member is quiet; an `AlwaysAutoResize` window
+begun with an empty body is a grey box that eats clicks).
+
+Henrik: *"it stays put."* So the whole position chain works end to end: `GetWindowPos` →
+`ui._tpPos` → the 1s settle → `_flagsDirty` → `saveUiFlags` → `tpx`/`tpy` in `uiflags.lua` →
+`loadUiFlags` → `SetNextWindowPos(..., ImGuiCond_Once)`.
+
+Two hypotheses died on the way, and both are worth not re-deriving. `ImGuiCond_Once or 0`
+would silently become `Always` if the constant were undefined, re-pinning the window every
+frame so it could not be dragged at all — but `floatgear` and `idlefloat` use the identical
+idiom for their saved positions and are field-proven, so the constant is real. And the save
+does **not** need the main dlac window open: `_flagsDirty` is consumed inside gearui's
+`d3d_present` handler, which runs every frame regardless.
+
+**One narrow fragility survived the investigation and is NOT what he hit.** The settle flush
+sits *below* `M.render`'s `if #live == 0 then return; end`, so a drag whose second expires on
+a frame where no member wants to draw is never flushed. It stays pending rather than being
+lost, and the next frame the tray draws will save it — but an `/addon reload` in that gap
+takes it. Reachable only by dragging and then, within one second, having Teleports unpinned
+*and* walking out of box range. Recorded rather than fixed on the spot: the round passed, and
+the fix (flush before the early return) is a change nobody asked for yet.

@@ -398,9 +398,9 @@ an accept under the 08-01 ruling, explicitly extended to the riders, so nothing 
 twice.*
 
 ***What rode along, and its state, because "100% known and OK" is not the same as "verified".***
-*The **floating icon tray** (`03g` + `03i`, `ui/tray.lua`) is **built and green but was never
-run in game** — its owed check is one look at a box with Teleports and the crates both on
-screen. **`/dl report`'s three follow-ups** (`03d`–`03f`, carrying **engine v163**) were in this
+*The **floating icon tray** (`03g` + `03i`, `ui/tray.lua`) rode along unverified and is now
+**FIELD-CONFIRMED, 7 of 7 (2026-08-03)** — see its entry below; the drag-persistence half was
+answered last and it stays put. **`/dl report`'s three follow-ups** (`03d`–`03f`, carrying **engine v163**) were in this
 queue as NOT accepted, paused on a `/dl report` captured across a **LEVEL-UP** — the only
 condition that exercises the v163 fix. The promotion does not close that round: the work is on
 main, the verification is still owed, and the recipe survives in
@@ -994,11 +994,22 @@ research already recorded. In rough priority order:
     fails if any icon is preceded by a `SameLine` (a badge beside its own icon is legal, an
     icon glued to the previous icon is not) — a bare `SameLine` *count* cannot tell those
     apart, and this was verified to fail when a `SameLine` was reintroduced.
-  - **ROUND OWED, and it is one glance:** stand at an Ephemeral Box with Teleports pinned —
-    four icons in ONE COLUMN, one draggable box, Store directly under Teleports; walk away
-    and the crates vanish while Teleports stays; unpin Teleports at a box and the crates
-    survive alone. Also worth one look: the Teleports popup still opens from inside the tray,
-    and the abort button still replaces the icon mid-teleport.
+  - **FIELD-CONFIRMED 2026-08-03 — 7 of 7, the round is CLOSED.** Henrik ran it in two
+    sittings. Confirmed: Teleports alone draws one icon; **nothing at all on screen when
+    every member is quiet** (the grey-box-that-eats-clicks case, the one that mattered);
+    crates appear below Teleports near a box; Store sits above green; the crates survive
+    unpinning Teleports (the OR); walking away drops the crates and leaves Teleports. The
+    last one, answered separately: **drag it somewhere new, leave it ~2s, `/addon reload
+    dlac` — it stays put.** So the whole position chain works end to end —
+    `GetWindowPos` → `ui._tpPos` → the 1s settle → `_flagsDirty` → `saveUiFlags` →
+    `tpx`/`tpy` → `loadUiFlags` → `SetNextWindowPos(..., ImGuiCond_Once)`.
+  - **One narrow fragility is still there and is NOT what he hit.** The settle flush lives
+    *below* `M.render`'s `if #live == 0 then return; end`, so a drag whose 1-second settle
+    expires on a frame where **no member wants to draw** is never flushed — it stays pending
+    until the tray shows again, and a `/addon reload` in that gap loses the position.
+    Reachable only by dragging and then having Teleports unpinned *and* walking out of box
+    range within the second. Not observed; the fix is to flush the pending save before the
+    early return.
 - **2026-08-02 (`2026.08.03a`–`2026.08.03c`): `/dl report` — THE SUPPORT RECORDER. BUILT,
   **PARTLY FIELD-CONFIRMED**, and **ON MAIN** (promoted the same session), suites green both
   interpreters (**5886** + **1003**).
