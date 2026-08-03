@@ -322,7 +322,11 @@ for _, mod in ipairs({ 'gear', 'feature\\augments', 'gear\\gearoptim', 'gear\\ge
                        'feature\\meritwatch', 'feature\\integration', 'feature\\foodwatch',
                        'feature\\engagewatch', 'feature\\petvitals', 'feature\\combat',
                        'feature\\sendlog', 'feature\\check', 'feature\\debug', 'feature\\report',
-                       'feature\\nmlookup',
+                       -- nmtrack AFTER nmlookup: it requires the lookup module at
+                       -- load for the disfavour curve, the shipped table and the
+                       -- pop kind (the reverse edge is call-time only, so there
+                       -- is no cycle -- see the header of either file).
+                       'feature\\nmlookup', 'feature\\nmtrack',
                        'feature\\lockstyle',
                        'feature\\lockstyleapply', 'feature\\equipengine',
                        'feature\\engine', 'ui\\gearui',

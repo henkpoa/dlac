@@ -47,6 +47,13 @@
     "night" pop gets its own words and NO curve -- borrowing lottery language
     for an NM whose placeholders roll nothing is exactly the wasted camp this
     command exists to prevent.
+
+    WHERE YOU ARE ON THE CURVE (issue #155) is feature\nmtrack's answer, not
+    this module's: it counts the placeholder kills you personally witnessed --
+    passively, by TARGET INDEX, never by name -- and this command renders what
+    it has under the curve it already prints. The dependency runs ONE way at
+    load (nmtrack requires this module for the curve, the table and the pop
+    kind) and is reached back for at CALL time here, so there is no cycle.
 ]]--
 
 local M = {};
@@ -486,6 +493,14 @@ function M.popLines(entry)
     return out;
 end
 
+-- The pop tracker (feature\nmtrack), reached at CALL time. It requires THIS
+-- module at load for the curve and the table, so the load-time edge runs one
+-- way only and this side must never capture it in an upvalue.
+local function tracker()
+    return try('dlac\\feature\\nmtrack');
+end
+M._tracker = tracker;   -- test seam
+
 -- Lines describing one NM. `guess` marks a weak match.
 function M.describe(entry, zid, guess)
     local out = {};
@@ -496,6 +511,16 @@ function M.describe(entry, zid, guess)
         out[#out + 1] = '  (closest match to what you typed -- not an exact name)';
     end
     for _, line in ipairs(M.popLines(entry)) do out[#out + 1] = line; end
+    -- Where YOU are on that curve, directly under what the curve does. Silent
+    -- for anything the tracker has nothing to say about (a non-lottery pop, or
+    -- a build where the module could not load).
+    local trk = tracker();
+    if trk ~= nil and type(trk.entryLines) == 'function' then
+        local ok, lines = pcall(trk.entryLines, entry, zid);
+        if ok and type(lines) == 'table' then
+            for _, line in ipairs(lines) do out[#out + 1] = line; end
+        end
+    end
     local phcount = (type(entry.ph) == 'table') and #entry.ph or 0;
     if phcount > 0 then
         out[#out + 1] = string.format('  NM index %s  |  PH indexes %s',
@@ -552,8 +577,35 @@ function M.command(rest)
     local apply = false;
     local stripped = rest:gsub('%s*apply%s*$', '');
     if stripped ~= rest then apply = true; rest = stripped; end
+    -- Trailing `reset`: drop the count for the NM named in front of it. The one
+    -- manual door into the tracker -- staleness is sticky by design, so without
+    -- it a camp resumed after a zone could never show a chance again. No NM in
+    -- the shipped table is called "reset" or "counts", so both read as verbs.
+    local reset = false;
+    stripped = rest:gsub('%s*[Rr][Ee][Ss][Ee][Tt]%s*$', '');
+    if stripped ~= rest then reset = true; rest = stripped; end
 
     local zid = M.zoneReader();
+
+    -- Every camp you hold a count for. Deliberately zone-independent: the point
+    -- of it is resuming a camp you started somewhere else.
+    local verb = rest:lower();
+    if verb == 'counts' or verb == 'count' then
+        local trk = tracker();
+        local lines = nil;
+        if trk ~= nil and type(trk.countLines) == 'function' then
+            local ok, l = pcall(trk.countLines);
+            if ok then lines = l; end
+        end
+        if type(lines) ~= 'table' then
+            sayWarn('nm: the pop tracker is not loaded.');
+            return;
+        end
+        for i, line in ipairs(lines) do
+            if i == 1 then sayGood(line); else sayMsg(line); end
+        end
+        return;
+    end
 
     -- bare: list this zone
     if rest == '' then
@@ -569,6 +621,9 @@ function M.command(rest)
         -- than dropping the word on the floor.
         if apply then
             sayWarn('  nothing to apply -- name one NM: /dl nm <name> apply');
+        end
+        if reset then
+            sayWarn('  nothing to reset -- name one NM: /dl nm <name> reset');
         end
         return;
     end
@@ -595,6 +650,23 @@ function M.command(rest)
     end
 
     if elsewhereNote ~= nil then sayWarn('nm: ' .. elsewhereNote); end
+
+    -- Reset BEFORE the description, so what prints is the camp as it now
+    -- stands rather than the count that was just dropped.
+    if reset then
+        local trk = tracker();
+        local cleared = false;
+        if trk ~= nil and type(trk.forget) == 'function' then
+            local ok, done = pcall(trk.forget, foundZone, entry);
+            cleared = (ok and done == true);
+        end
+        if cleared then
+            sayGood(string.format('nm: %s count cleared -- counting starts over from your next placeholder kill.', entry.n));
+        else
+            sayWarn(string.format('nm: no count to clear for %s.', entry.n));
+        end
+    end
+
     local lines = M.describe(entry, foundZone, score < 800);
     for i, line in ipairs(lines) do
         if i == 1 then sayGood(line); else sayMsg(line); end

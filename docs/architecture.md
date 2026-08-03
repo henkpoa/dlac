@@ -1268,6 +1268,88 @@ zones carry same-named instanced copies, and the open-world camp is the one a fi
 with. The generator fails loudly if any `phList` shape stops parsing, so a server patch
 cannot quietly thin the table.
 
+### feature/nmtrack.lua — passive pop tracking: the rounds you personally witnessed
+Answers the half `/dl nm` could not: **where on the disfavour curve am I?** It counts
+placeholder kills as they happen, converts them to rounds (`rounds = kills / phCount` — six
+Buffalo make **one** Bonnacon round), and hands `nmlookup` the *current* chance to render
+under the curve it already prints. **Automatic, with nothing to arm**: there is no such thing
+as an accidental placeholder kill, and the failure mode of an opt-in tracker is losing the
+data the player sat down to collect. Issue #155, PRD #151.
+
+**The dependency runs one way at load.** `nmtrack` requires `nmlookup` for the curve
+(`chanceAfter` / `roundsToGuaranteed` — **consumed, never re-derived**; a second copy of the
+formula is how the anchors and the readout drift apart), for the shipped table and for
+`isLottery`. `nmlookup` reaches back for the rendered lines at **call time** only, so there is
+no cycle — and `NT00d` greps the tracker's own source to pin that the formula was not copied.
+
+**Counted by target index, never by name.** Uleguerand Range holds ten Buffalo; only six
+(354-359) are Bonnacon's placeholders. A name-based counter would credit the other four —
+kills that never rolled — and read HIGH, which is the one direction this feature must never be
+wrong in. `classify` therefore answers for a placeholder **by index alone**; a NAME is allowed
+to answer only for the **NM itself**, where a false positive can only RESET a count and never
+inflate one. That asymmetry is the whole rule, and `NT01*`/`NT03*` pin both halves.
+
+**Two observations already in the addon, joined** — neither answers alone. `feature/engagewatch`
+(the Engage/target edge, issue #139) knows the **index** of everything you attacked, taken from
+the packet; `text_in` — the channel petvitals reads for the pet-falls line — knows **what**
+died and nothing else. A death line is matched against an engaged target carrying that name,
+which is then **consumed**, so one engagement can credit at most one kill and a second
+same-named mob dying nearby cannot borrow yours.
+
+**Oldest-first, and that is not a detail.** Auto-target rolls onto the next mob the moment the
+last one dies, so by the time the death line renders the ring holds **both** — the one that
+died and the one you are now facing. Newest-first would credit the kill to the mob still
+standing, which at a camp of ten same-named Buffalo means crediting a spawn point that never
+died (an **over**-count, the forbidden direction). Oldest-first is also just the order things
+die in. `NT12g`/`NT12h` pin both directions of that case.
+
+The error this leaves is an **under-count** (a placeholder someone else killed, or one pulled
+with magic and never engaged, is never seen) — the safe direction for a number presented as a
+floor.
+
+**When nothing counts, it says which half is missing.** A kill needs both observations, so
+`/dl nm counts` with an empty tracker prints what the feed has seen — the last engaged target
+*with its index* and the last death line it recognised — because "you have not killed anything
+yet" and "this server words a mob death differently" are otherwise the same silence (hard rule
+12). If the death line ever stops matching, that one line is the whole diagnosis:
+`M.DEATH_FALLS` / `M.DEATH_DEFEATS` are the two shapes it knows.
+
+**The honesty rules, which are the point of the feature:**
+* **It is a floor.** The server's counter is zone-wide and shared, so other players' kills
+  raise it invisibly. The caveat is printed beside every number, not once in a help line.
+* **Any break in observation makes it stale** — zoning, a relog or a reload (everything read
+  back off disk is stale by definition: dlac was not watching between the write and the read),
+  or an age past the NM's **own** repop ceiling (`w[2]`). A stale record keeps its raw count
+  and when it was last vouched for and **renders no percentage** — not a hedged one, nil. The
+  error a break makes runs **optimistic**: someone else popping and killing the NM while you
+  were away leaves your count high, so the window would say "nearly guaranteed" while you
+  stand at the base rate. Two independent guards enforce it (`status` withholds the number,
+  `lines` takes the stale branch) and the mutation check confirms **both** must break before a
+  percentage can leak.
+* **Staleness is sticky.** Later kills still raise the raw count — they were witnessed — but
+  nothing re-vouches for the break. Only pop evidence (which zeroes the count) or
+  `/dl nm <name> reset` starts a clean one; without that manual door a camp resumed after one
+  zone could never show a chance again.
+* **Evidence of a pop resets it** — seeing the NM alive (you engaged it) or seeing it die.
+* **Kills that cannot roll are not counted.** Inside the post-kill **cooldown** (measured from
+  a death you witnessed, against the NM's own shortest window) or while the NM is **primed**
+  (seen alive, not seen dead), the server rolls nothing — so those kills are tallied
+  separately as wasted effort. Between the shortest and longest cooldown **nothing is
+  claimed**: the readout says the kills since may not have rolled rather than quietly counting
+  as if it knew.
+
+**Shape:** pure core (`reduce` / `status` / `lines` / `classify` / `rollState` / `deathName` —
+plain values in, plain values out, and `reduce` never mutates the state it is handed), thin
+live feed (one engagewatch subscription, one `text_in` handler that parses and stashes, one
+throttled frame pump that attributes and writes). `M.pump` takes its live reads as a table it
+CALLS, so the headless suite drives the same code the game does (`NT12*`/`NT13*`). Persisted
+per character through the addon-side state-file facility the other passive watchers use
+(`lib/statefile.charDir` + `lib/safewrite`) at `<char>\dlac\nmcounts.lua`.
+
+**Chat surface:** the tracking lines land inside `/dl nm <name>`; `/dl nm counts` lists every
+camp holding a count (which is how you resume one you started elsewhere); `/dl nm <name> reset`
+clears one.
+
 ### data/statdefs.lua — stat metadata registry
 Single source of truth for stat presentation/weighting: key, label, section, percent,
 lowerBetter, aliases (~178 entries, 7 sections). Presentation only — **no server mod-ids**
@@ -1498,7 +1580,8 @@ like the command does not exist.
 | `/dl sends [reset]` | sendlog | **What dlac has put on the wire this session** — dlac's **own** sends split from your **passed-through** actions, per packet id, **per cause**, plus the last 24 sends with their ages; also lands as `debug\dlac-sends-<Char>.txt`. Zero sends says so *and* says why that is expected (equips are edge-driven). A **flap** shows as one cause repeating at the 0.4 s Default tick. Self-check, not a probe — it counts dlac's own sends at the sites that make them, and never reads the wire |
 | `/dl food [1\|2\|forget]` | foodwatch | Which food you are under and what you can re-eat; a number eats that row, `forget` clears the history. What counts as food is learned off the wire (an item use + the FOOD effect's expiry moving), never from a shipped list |
 | `/dl engine [native on\|off \| migrate]` | feature/engine | The Native-engine flip: status / flag + storage migration (see § The Native engine) |
-| `/dl nm [name] [apply]` (`ph`) | nmlookup | **Which NMs are in this zone, and what pops them.** Bare lists the zone's notorious monsters, placeholders first; a name gives the **pop kind**, that NM's target indexes, its placeholders (name, count, repop window) and a ready `/filterscan` line over those spawn points. For a **lottery** it states the **base** chance, that the chance is **not flat**, the **disfavour** curve at quarter marks and the rounds to a guaranteed pop; a non-lottery NM gets its own words and **no curve**. Names match loosely; a weak match is shown *labelled as a guess*. A name that lives elsewhere answers about that zone rather than dead-ending. `apply` queues the `/filterscan` for you. Reads only `data/nmdata.lua` + your zone id — no live scanning |
+| `/dl nm [name] [apply\|reset]` (`ph`) | nmlookup + nmtrack | **Which NMs are in this zone, and what pops them.** Bare lists the zone's notorious monsters, placeholders first; a name gives the **pop kind**, that NM's target indexes, its placeholders (name, count, repop window) and a ready `/filterscan` line over those spawn points. For a **lottery** it states the **base** chance, that the chance is **not flat**, the **disfavour** curve at quarter marks and the rounds to a guaranteed pop; a non-lottery NM gets its own words and **no curve**. It also states **your own count** — the placeholder kills you personally witnessed, as rounds, with the *current* chance and the rounds left to a guaranteed pop, labelled a **floor**; a **stale** count (you zoned, relogged, or left it too long) shows the raw number and **no percentage at all**, and a **cooldown**/**primed** camp says kills cannot roll right now. Names match loosely; a weak match is shown *labelled as a guess*. A name that lives elsewhere answers about that zone rather than dead-ending. `apply` queues the `/filterscan` for you; `reset` clears that camp's count. Reads only `data/nmdata.lua`, your zone id and your own count file — no live scanning |
+| `/dl nm counts` (`count`) | nmtrack | **Which camps am I part-way through?** Every NM holding a Pop count, newest first, with its zone, kills, rounds and current chance — or why one is showing none (stale, cooldown, primed). The chat surface for resuming a camp started earlier |
 | `/dlmv` | gearmove | (branch-only) gate/version diagnostic |
 
 ## Per-character state vs repo
@@ -1519,6 +1602,7 @@ Per-character, under `<install>\config\addons\luashitacast\<Char>_<ServerId>\`
 | `dlac\blueprints.lua` | triggersui (Blueprints section) | per-character Blueprint library (reusable trigger rules; outside Profiles, addon-state only — the engine never reads it) |
 | `dlac\ammostate.lua` | ammowatch (Gear Helpers > Ammo) | AutoAmmo config (persisted `enabled`, jobs map, the priority list) — the engine reads it per second |
 | `dlac\foodhistory.lua` | foodwatch | what this character has eaten, most recent first (unique by item id, 10 deep) — the three most recent you are still carrying become the Menu's food rows |
+| `dlac\nmcounts.lua` | nmtrack | the **Pop count** per camp: placeholder kills personally witnessed, when the count was last vouched for, and the last NM sighting. Read back = stale by definition (dlac was not watching in between), so the count survives a reload while the percentage does not |
 | `dlac\modestate.lua` | dispatch | mode/lock/VERSION mirror |
 | `dlac\uiflags.lua` | gearui | debug/autosync flags |
 | `dlac\gearweights.lua` | gearoptim | stat weights |
