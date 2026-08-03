@@ -515,8 +515,9 @@ local function loot()
 end
 M._loot = loot;         -- test seam
 
--- Lines describing one NM. `guess` marks a weak match.
-function M.describe(entry, zid, guess)
+-- Lines describing one NM. `guess` marks a weak match; `th` is the Treasure
+-- Hunter level the player asked to see drop rates at (nil = none asked for).
+function M.describe(entry, zid, guess, th)
     local out = {};
     if type(entry) ~= 'table' then return out; end
     local where = M.zoneName(zid);
@@ -550,7 +551,7 @@ function M.describe(entry, zid, guess)
     -- silence that reads as "drops nothing".
     local lt = loot();
     if lt ~= nil and type(lt.lines) == 'function' then
-        local ok, lines = pcall(lt.lines, entry);
+        local ok, lines = pcall(lt.lines, entry, th);
         if ok and type(lines) == 'table' then
             for _, line in ipairs(lines) do out[#out + 1] = line; end
         end
@@ -597,18 +598,59 @@ function M.command(rest)
         return;
     end
 
-    -- Trailing `apply`. `%s*` not `%s+` so a bare `/dl nm apply` is understood
-    -- as the verb too, instead of being hunted for as an NM called "apply".
-    local apply = false;
-    local stripped = rest:gsub('%s*apply%s*$', '');
-    if stripped ~= rest then apply = true; rest = stripped; end
-    -- Trailing `reset`: drop the count for the NM named in front of it. The one
-    -- manual door into the tracker -- staleness is sticky by design, so without
-    -- it a camp resumed after a zone could never show a chance again. No NM in
-    -- the shipped table is called "reset" or "counts", so both read as verbs.
-    local reset = false;
-    stripped = rest:gsub('%s*[Rr][Ee][Ss][Ee][Tt]%s*$', '');
-    if stripped ~= rest then reset = true; rest = stripped; end
+    -- The trailing verbs, stripped in a LOOP so their order is the player's
+    -- business and not this parser's: each pattern is anchored at the end, so
+    -- one pass would only ever understand whichever verb was typed last.
+    -- No NM in the shipped table is called "apply", "reset" or "counts", and
+    -- none ends in "th <number>", so all of them read as verbs.
+    local apply, reset, th, thAsked = false, false, nil, false;
+    local moved = true;
+    while moved do
+        moved = false;
+        -- `%s*` not `%s+` so a bare `/dl nm apply` is understood as the verb
+        -- too, instead of being hunted for as an NM called "apply".
+        local s = rest:gsub('%s*apply%s*$', '');
+        if s ~= rest then apply = true; rest = s; moved = true; end
+        -- `reset` drops the count for the NM named in front of it. The one
+        -- manual door into the tracker -- staleness is sticky by design, so
+        -- without it a camp resumed after a zone could never show a chance
+        -- again.
+        s = rest:gsub('%s*[Rr][Ee][Ss][Ee][Tt]%s*$', '');
+        if s ~= rest then reset = true; rest = s; moved = true; end
+        -- `th4` (issue #154): show every drop's rate at that Treasure Hunter
+        -- level. The number is required -- a bare `th` is answered with the
+        -- syntax rather than a level we picked for the player, because the
+        -- whole readout would then be about gear they may not own.
+        local lvl = rest:match('%s[Tt][Hh]%s*(%d+)%s*$') or rest:match('^[Tt][Hh]%s*(%d+)%s*$');
+        if lvl ~= nil then
+            th = tonumber(lvl);
+            thAsked = true;
+            rest = rest:gsub('%s*[Tt][Hh]%s*%d+%s*$', '');
+            moved = true;
+        elseif rest:match('%s[Tt][Hh]%s*$') ~= nil or rest:match('^[Tt][Hh]%s*$') ~= nil then
+            thAsked = true;
+            rest = rest:gsub('%s*[Tt][Hh]%s*$', '');
+            moved = true;
+        end
+        rest = rest:gsub('%s+$', '');
+    end
+    if thAsked and th == nil then
+        sayWarn('nm: say which TH level -- "/dl nm <name> th4" shows every drop at TH4 (0-14).');
+    end
+    -- Held to what the server's own table can answer for, and a clamp is said
+    -- out loud: answering TH14 to someone who typed TH20 without saying so is
+    -- answering a different question than the one asked.
+    if th ~= nil then
+        local lt = loot();
+        if lt ~= nil and type(lt.clampTH) == 'function' then
+            local lvl, clamped = lt.clampTH(th);
+            if clamped then
+                sayWarn(string.format('nm: TH runs 0-%d in the server\'s own table -- showing TH%d.',
+                    lt.TH_MAX or 14, lvl));
+            end
+            th = lvl;
+        end
+    end
 
     local zid = M.zoneReader();
 
@@ -649,6 +691,9 @@ function M.command(rest)
         end
         if reset then
             sayWarn('  nothing to reset -- name one NM: /dl nm <name> reset');
+        end
+        if th ~= nil then
+            sayWarn('  nothing to show a TH rate for -- name one NM: /dl nm <name> th' .. tostring(th));
         end
         return;
     end
@@ -692,7 +737,7 @@ function M.command(rest)
         end
     end
 
-    local lines = M.describe(entry, foundZone, score < 800);
+    local lines = M.describe(entry, foundZone, score < 800, th);
     for i, line in ipairs(lines) do
         if i == 1 then sayGood(line); else sayMsg(line); end
     end
