@@ -34,6 +34,19 @@
     Zone scope: the current zone first. If the name is not an NM here we say
     so and name the zone it IS in rather than dead-ending on "not found" --
     the indexes travel with you.
+
+    THE BASE CHANCE IS NOT THE CHANCE (issue #152). CatsEyeXI runs DISFAVOUR
+    -- bad-luck protection -- on lottery pops: the table's `c` is only the
+    FLOOR, and every completed placeholder ROUND lifts it until a pop is
+    guaranteed. Printing `c` alone read as a flat rate, which is the one way
+    this command could mislead a camper in the direction that costs him hours.
+    So the curve is stated instead of the floor -- see M.DISFAVOUR below.
+
+    AND NOT EVERY NM IS A LOTTERY. `kind` is the server's own SPAWNTYPE: only
+    "lottery" is the placeholder system. A "scripted" / "timed" / "weather" /
+    "night" pop gets its own words and NO curve -- borrowing lottery language
+    for an NM whose placeholders roll nothing is exactly the wasted camp this
+    command exists to prevent.
 ]]--
 
 local M = {};
@@ -103,6 +116,179 @@ local function fmtDur(sec)
     return string.format('%ds', sec);
 end
 M.fmtDur = fmtDur;
+
+-- The placeholder respawn window as one string ("1h-24h", or "1h" when the
+-- table gives a single figure). nil when the table does not carry one.
+local function windowText(entry)
+    if type(entry) ~= 'table' or type(entry.w) ~= 'table' or entry.w[1] == nil then return nil; end
+    if entry.w[2] ~= nil and entry.w[2] ~= entry.w[1] then
+        return fmtDur(entry.w[1]) .. '-' .. fmtDur(entry.w[2]);
+    end
+    return fmtDur(entry.w[1]);
+end
+M.windowText = windowText;
+
+-- Percent for READING, not for arithmetic: one decimal below 10%, whole
+-- percents above. Whole percents everywhere would round 6.6 and 9.5 into the
+-- same "10%" and hide exactly the climb this readout exists to show.
+local function pctText(p)
+    p = tonumber(p);
+    if p == nil then return '?'; end
+    if p >= 99.95 then return '100%'; end
+    if p < 10 then return string.format('%.1f%%', p); end
+    return string.format('%d%%', math.floor(p + 0.5));
+end
+M.pctText = pctText;
+
+-- ---------------------------------------------------------------------------
+-- the disfavour curve -- HAND-CARRIED, and the tests are its source
+-- ---------------------------------------------------------------------------
+-- CatsEyeXI applies DISFAVOUR (bad-luck protection) to lottery pops. The base
+-- chance is the floor; each completed placeholder ROUND -- every placeholder
+-- killed once -- lifts it, and the climb goes near-vertical at the end:
+--
+--     rounds = phKills / phCount
+--     chance = 100 / max( (100/base) - rounds * (1 - base/100) / 2 , 1 )
+--
+-- WHY THIS IS A CONSTANT AND NOT A LOOKUP. The mechanic exists in NO branch of
+-- the public server repository -- verified across every branch, Lua and C++ --
+-- because the module loader activates a `catseyexi` overlay directory that is
+-- EMPTY there, so every server-specific change is invisible to a clone.
+-- Absence from the clone is not evidence of absence on live (PRD #151,
+-- "Provenance"). Scraping it was rejected for the same reason the drop tables
+-- are not scraped from a wiki: a layout change would silently poison the odds.
+-- So it is carried by hand, and the ANCHOR TESTS STAND IN FOR THE MISSING
+-- SOURCE -- NM40* pins all four published anchors and NM41* pins the middle of
+-- the curve, so a sign flip or a lost divisor cannot pass review.
+--
+-- The per-NM BASE (`c` in data/nmdata.lua) is the part that genuinely varies
+-- and keeps coming from the generated table. Only the curve lives here.
+M.DISFAVOUR = {
+    source   = 'CatsEyeXI published disfavour documentation (bad-luck protection); ' ..
+               'the mechanic lives in the private catseyexi overlay and is absent from every public branch',
+    verified = '2026-08-03',
+    formula  = 'chance = 100 / max((100/base) - rounds * (1 - base/100) / 2, 1)',
+    -- Published with the mechanic; every one reproduced exactly by the formula.
+    anchors  = {
+        { base = 5,  rounds = 40 },
+        { base = 10, rounds = 20 },
+        { base = 15, rounds = 14 },
+        { base = 20, rounds = 10 },
+    },
+};
+
+-- The pop chance after `rounds` completed placeholder rounds, in percent.
+-- nil when there is no base to build on -- the table has entries with
+-- placeholders and no `c`, and a missing number is never guessed at.
+function M.chanceAfter(base, rounds)
+    base = tonumber(base);
+    if base == nil or base <= 0 then return nil; end
+    if base >= 100 then return 100; end
+    rounds = tonumber(rounds) or 0;
+    if rounds < 0 then rounds = 0; end
+    local d = (100 / base) - rounds * (1 - base / 100) / 2;
+    if d < 1 then d = 1; end                  -- the clamp: the curve stops at 100%
+    return 100 / d;
+end
+
+-- How many completed rounds reach a guaranteed pop: the clamp above solved for
+-- rounds, then rounded UP, because a fractional round is not something you can
+-- kill. That rounding is why 15% publishes as 14 and not 13.33.
+-- 0 means "already guaranteed on the first kill"; nil means "no base chance".
+function M.roundsToGuaranteed(base)
+    base = tonumber(base);
+    if base == nil or base <= 0 then return nil; end
+    if base >= 100 then return 0; end
+    local raw = ((100 / base) - 1) / ((1 - base / 100) / 2);
+    -- All four anchors divide EXACTLY in doubles; the epsilon only stops a base
+    -- whose division lands on 40.000000000000007 from being reported as 41.
+    return math.ceil(raw - 1e-9);
+end
+
+-- Three sample points on the way up, at quarters of the distance. This is the
+-- part that shows the climb is real AND that it goes near-vertical at the end:
+-- a 5% base reads 6.6% / 9.5% / 17% before the last quarter takes it to 100%.
+-- -> { { rounds = n, chance = pct }, ... }; empty when the run is too short to
+-- have a middle worth showing.
+function M.curvePoints(base)
+    local g = M.roundsToGuaranteed(base);
+    if g == nil or g < 4 then return {}; end
+    local out, seen = {}, {};
+    for k = 1, 3 do
+        local r = math.floor(g * k / 4 + 0.5);
+        if r > 0 and r < g and not seen[r] then
+            seen[r] = true;
+            out[#out + 1] = { rounds = r, chance = M.chanceAfter(base, r) };
+        end
+    end
+    return out;
+end
+
+-- ---------------------------------------------------------------------------
+-- pop kind
+-- ---------------------------------------------------------------------------
+-- `kind` is the server's own SPAWNTYPE, decoded by the generator. Only
+-- "lottery" is the placeholder system; the rest pop another way entirely and
+-- must never borrow its language.
+M.KIND_NOTE = {
+    lottery  = 'placeholder kills roll for it',
+    scripted = 'a pop item, a quest, or a forced spawn',
+    timed    = 'it comes back on its own timer',
+    weather  = 'it needs the right weather',
+    night    = 'it only comes out at night',
+};
+
+-- The kinds an entry carries, as plain strings. An entry may carry more than
+-- one; a table with no `kind` at all yields none.
+function M.kinds(entry)
+    local out = {};
+    if type(entry) ~= 'table' or type(entry.kind) ~= 'table' then return out; end
+    for _, k in ipairs(entry.kind) do
+        if type(k) == 'string' and k ~= '' then out[#out + 1] = k; end
+    end
+    return out;
+end
+
+-- Does the disfavour curve apply at all?
+-- A table with NO `kind` field is a pre-2026-08-03 data file, not a server
+-- statement that this is not a lottery -- so an old table with placeholders
+-- still gets the curve rather than silently losing it.
+function M.isLottery(entry)
+    if type(entry) ~= 'table' then return false; end
+    local ks = M.kinds(entry);
+    if #ks == 0 then
+        return (type(entry.ph) == 'table' and #entry.ph > 0);
+    end
+    for _, k in ipairs(ks) do
+        if k == 'lottery' then return true; end
+    end
+    return false;
+end
+
+-- "lottery", or "scripted + timed" for the entries carrying two. nil when the
+-- table does not say.
+function M.kindLabel(entry)
+    local ks = M.kinds(entry);
+    if #ks == 0 then return nil; end
+    return table.concat(ks, ' + ');
+end
+
+-- The same thing in plain words, one clause per kind, with the group respawn
+-- appended when the table carries one (only the timed-ish kinds do).
+function M.kindNote(entry)
+    local ks = M.kinds(entry);
+    if #ks == 0 then return nil; end
+    local parts = {};
+    for _, k in ipairs(ks) do
+        local note = M.KIND_NOTE[k];
+        if note ~= nil then parts[#parts + 1] = note; end
+    end
+    if #parts == 0 then return nil; end
+    local s = table.concat(parts, '; ');
+    local rs = tonumber(entry.rs);
+    if rs ~= nil then s = s .. ', respawn ' .. fmtDur(rs); end
+    return s;
+end
 
 -- ---------------------------------------------------------------------------
 -- fuzzy match
@@ -227,6 +413,79 @@ function M.filterFor(entry)
     return table.concat(parts, ',');
 end
 
+-- What pops this NM, in the player's words -- and, for a lottery, what the
+-- chance actually DOES. At most three lines, and the extra two over the old
+-- flat "5% per kill" are the whole point of the readout.
+function M.popLines(entry)
+    local out = {};
+    if type(entry) ~= 'table' then return out; end
+    local phcount = (type(entry.ph) == 'table') and #entry.ph or 0;
+    local lottery = M.isLottery(entry);
+    local label   = M.kindLabel(entry);
+
+    -- The head line: the pop kind, plus the placeholders when there are any.
+    local head;
+    if phcount > 0 then
+        head = string.format('  %s pop: %s x%d', label or 'placeholder',
+            tostring(entry.p or '?'), phcount);
+        local w = windowText(entry);
+        if w ~= nil then head = head .. ', repop ' .. w; end
+        -- Five entries in the shipped table carry placeholders AND a scripted
+        -- spawn kind. The indexes are still where it comes from -- they stay in
+        -- the filter -- but the server does not run the lottery on them, so
+        -- saying so is the difference between a camp and a wasted evening.
+        if not lottery then head = head .. ' -- not a lottery, so no disfavour curve'; end
+    else
+        head = string.format('  %s pop', label or 'unknown');
+        if lottery then
+            head = head .. ' -- placeholder-driven, but this table lists no placeholders for it';
+        else
+            local note = M.kindNote(entry);
+            if note ~= nil then
+                head = head .. ' -- ' .. note;
+            else
+                head = head .. ' -- the table does not say how, and lists no placeholders for it';
+            end
+        end
+    end
+    out[#out + 1] = head;
+
+    if not lottery or phcount == 0 then return out; end
+
+    -- The curve. A base we do not have is admitted, never invented.
+    local base = tonumber(entry.c);
+    local guaranteed = M.roundsToGuaranteed(base);
+    if guaranteed == nil then
+        out[#out + 1] = '  base chance is not in the table -- disfavour still climbs, but the numbers cannot be shown';
+        return out;
+    end
+    if guaranteed <= 0 then
+        out[#out + 1] = string.format('  %g%% base -- already a guaranteed pop on the first placeholder kill', base);
+        return out;
+    end
+    local roundIs;
+    if phcount == 1 then
+        roundIs = 'a round = the one placeholder';
+    elseif phcount == 2 then
+        roundIs = 'a round = both placeholders';
+    else
+        roundIs = string.format('a round = all %d placeholders', phcount);
+    end
+    out[#out + 1] = string.format('  %g%% base, and not flat -- disfavour lifts it every round (%s)',
+        base, roundIs);
+    local parts = {};
+    for _, p in ipairs(M.curvePoints(base)) do
+        parts[#parts + 1] = string.format('%d rounds %s', p.rounds, pctText(p.chance));
+    end
+    local tail = string.format('%d rounds is a guaranteed pop', guaranteed);
+    if #parts > 0 then
+        out[#out + 1] = '  ' .. table.concat(parts, ', ') .. ' -- ' .. tail;
+    else
+        out[#out + 1] = '  ' .. tail;
+    end
+    return out;
+end
+
 -- Lines describing one NM. `guess` marks a weak match.
 function M.describe(entry, zid, guess)
     local out = {};
@@ -236,26 +495,16 @@ function M.describe(entry, zid, guess)
     if guess then
         out[#out + 1] = '  (closest match to what you typed -- not an exact name)';
     end
-    if entry.ph == nil or #entry.ph == 0 then
-        out[#out + 1] = string.format('  NM index %s -- no placeholders: the server pops this one another way (pop item, timed, or forced).', runs(entry.nm or {}));
-        local f = M.filterFor(entry);
-        if f ~= nil then out[#out + 1] = '  /filterscan ' .. f; end
-        return out;
+    for _, line in ipairs(M.popLines(entry)) do out[#out + 1] = line; end
+    local phcount = (type(entry.ph) == 'table') and #entry.ph or 0;
+    if phcount > 0 then
+        out[#out + 1] = string.format('  NM index %s  |  PH indexes %s',
+            runs(entry.nm or {}), runs(entry.ph));
+    else
+        out[#out + 1] = string.format('  NM index %s', runs(entry.nm or {}));
     end
-    local phcount = #entry.ph;
-    local bits = string.format('  placeholder: %s x%d', entry.p or '?', phcount);
-    if entry.c ~= nil then bits = bits .. string.format(', %d%% per kill', entry.c); end
-    if type(entry.w) == 'table' and entry.w[1] ~= nil then
-        if entry.w[2] ~= nil and entry.w[2] ~= entry.w[1] then
-            bits = bits .. string.format(', repop %s-%s', fmtDur(entry.w[1]), fmtDur(entry.w[2]));
-        else
-            bits = bits .. string.format(', repop %s', fmtDur(entry.w[1]));
-        end
-    end
-    out[#out + 1] = bits;
-    out[#out + 1] = string.format('  NM index %s  |  PH indexes %s',
-        runs(entry.nm or {}), runs(entry.ph));
-    out[#out + 1] = '  /filterscan ' .. (M.filterFor(entry) or '');
+    local f = M.filterFor(entry);
+    if f ~= nil then out[#out + 1] = '  /filterscan ' .. f; end
     return out;
 end
 
