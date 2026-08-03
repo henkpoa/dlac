@@ -3,27 +3,54 @@
 
     Two halves, and the first one is the whole design problem:
 
-    WHAT MAKES AN ITEM FOOD. Nothing the client can read. The item resource calls
-    a Mithkabob and a Potion the same thing (a usable item), and the Catalog is
-    gear-only. The server's definition is the one that exists: eating grants the
-    FOOD status effect (`xi.effect.FOOD`, 251 -- 787 item scripts carry it on
-    CatsEyeXI stable), and that effect IS observable from here. So dlac ships no
-    food list and guesses nothing:
+    WHAT MAKES AN ITEM FOOD. Two answers, and it takes BOTH:
 
         an outgoing item use (OUT 0x037) is the INTENT -- which item,
-        the FOOD effect moving right after is the PROOF -- that it was food.
+        the FOOD effect moving right after is the PROOF -- that it was food,
+        data\fooddb.lua is the SERVER'S OWN ANSWER -- whether it can be.
 
-    A food dlac has never seen is learned the first time you eat it (custom
-    server foods included), and a Potion can never be mistaken for one because
-    a Potion does not move that effect.
+    The third line arrived on 2026-08-03 and it is new. dlac used to stand on
+    the first two alone, on the reasoning that nothing client-side can tell a
+    Mithkabob from a Potion (both "usable items"; the Catalog is gear-only) and
+    that a Potion cannot move the FOOD effect, so the effect moving was proof
+    enough. The field disproved it: a zone reload moves that effect too, and
+    Henrik's history came back carrying an Instant Warp and a Flask of Echo
+    Drops, both used seconds after a zone, both wearing the remaining time of a
+    real meal that was still running underneath them (see M._known).
+
+    So the catalog now VOUCHES. It is generated from the server's own predicate
+    (scripts\items\*.lua calling xi.itemUtils.foodOnItemCheck -- 783 of them on
+    stable), which makes it the same authority the effect is, only readable
+    BEFORE the fact instead of after. Two things it does that the effect cannot:
+
+        IT PICKS. Eat a Pork Cutlet, quaff a potion two seconds later, and the
+        FOOD effect lands while the potion is the newest thing you used. One
+        pending slot hands the credit to the potion; the table lets dlac keep
+        the Cutlet and reach past it (M._choose).
+        IT WAITS. An item the table has never heard of is still learned -- that
+        is how a food the server adds tomorrow works with no shipped update --
+        but only from an effect that APPEARED out of nothing, well clear of a
+        zone. Nothing is vouching for it but the effect, so the effect has to be
+        unambiguous.
+
+    What the table must never become is the ONLY answer. The day it goes stale
+    is the day it starts calling a real food a potion, and the learned path is
+    what makes that a delay rather than a wall.
 
     "MOVING", precisely -- the part that eating over a live food breaks. The
     effect being PRESENT is not the signal: re-eating while food is up never
     flickers the icon, so presence alone would miss exactly the case a player
     hits most. The signal is the effect's EXPIRY changing, read from
     GetStatusTimers() alongside GetBuffs() -- the two arrays pair by index (the
-    `timers` addon's read, field-proven on this client). Raw values, compared for
-    INEQUALITY only: no clock arithmetic to get wrong, no epoch, no wrap.
+    `timers` addon's read, field-proven on this client).
+
+    -- 2026-08-03: compared for inequality NO LONGER. That was the second half
+    of the bug above. Food is PAUSED while a zone loads, so the server hands
+    back an expiry pushed forward by however long the load took -- +2s and +6s
+    in Henrik's two bad rows -- and a bare `~=` reads that drift as a meal. A
+    real re-eat cannot be subtle: the shortest food in the game runs 30 seconds,
+    so the jump has to clear M.REEAT_JUMP to count. Still no epoch and no wrap
+    math; a delta outside the sane band simply answers no.
 
     -- 2026-08-01: the raw value IS decoded now (M._remaining), but only to
     answer "how much of this meal have you spent", never to draw a countdown --
@@ -35,7 +62,16 @@
     absent -> present edge is the primary path and the expiry comparison is
     insurance for the one case still reachable -- a food wearing off and being
     re-eaten inside the same 250ms poll gap, where the absent state is never
-    sampled. It costs one comparison and cannot fire wrongly, so it stays.
+    sampled.
+
+    -- 2026-08-03: "cannot fire wrongly" stood here for two days and was wrong.
+    It fired twice in the field, and the refusal above is what turns the wreck
+    into a rule: an item use the server ACCEPTED while food was up is impossible,
+    so an effect that has more time left than the item you just used could ever
+    grant belongs to an EARLIER meal. That is one comparison against the
+    catalogue's book duration (doubled, because xi.mod.FOOD_DURATION exists) and
+    it closes the last hole -- a use the server refused mid-zone, landing beside
+    the old meal reappearing.
 
     THE HISTORY is per character and persists (<char>\dlac\foodhistory.lua), most
     recent first, unique by item id. Henrik's ruling (2026-07-30): dlac is always
@@ -59,12 +95,11 @@
     to answer it: the FOOD status icon is GENERIC. Eat, log out, forget, log back
     in, and nothing on screen says which food you are under. dlac knows -- so
     M.statsFor pairs the history with data\fooddb.lua (the server's own item
-    scripts, shipped). That table is DISPLAY ONLY and must never be asked whether
-    an item IS food; see the block above M.statsFor for why that split is
-    load-bearing.
+    scripts, shipped).
 
-    Pure seams for the headless suite (tests FW*): _parseItemUse, _step,
-    _remember, _pick, _serialize, _fromRaw, _fmtAgo, _fmtDur, _descLines. They
+    Pure seams for the headless suite (tests FW*): _parseItemUse, _step, _choose,
+    _known, _bookDur, _sweep, _remember, _pick, _serialize, _fromRaw, _fmtAgo,
+    _fmtDur, _descLines. They
     take plain values and return plain values -- no imgui, no Ashita, no disk.
     M.pump and M.statsFor take their live reads as a table they CALL, and the
     suite drives them with its own, so the live path cannot rot green underneath
@@ -96,6 +131,18 @@ M.MENU_N  = 3;
 -- inside a second; the window only has to outlast a stutter, and nothing else
 -- can move that effect, so it is generous rather than tight.
 M.WINDOW  = 8.0;
+-- How far the expiry has to jump FORWARD before it counts as a second meal
+-- rather than the clock being re-based under us. A zone reload drifted Henrik's
+-- by +2s and +6s; the shortest food on the server (id 5165) runs 30. Anything in
+-- between is a coin toss dlac declines to call, and calling it wrong writes a
+-- wrong row to disk while calling it "no" merely misses a re-eat that the
+-- server will not let you perform anyway.
+M.REEAT_JUMP = 15;
+-- Seconds after a zone-in during which an UNCATALOGUED item cannot be believed.
+-- Only the unknown path waits this out: a zone replays the whole status array
+-- and there is no second opinion to weigh it against. A catalogued food skips
+-- this entirely, so "zone in, eat" keeps working the way it always has.
+M.ZONE_SETTLE = 15.0;
 -- Inventory. /item refuses every other container, so a food in the satchel is
 -- not a food you can eat (useitem's scroll path draws the same line).
 M.BAG     = 0;
@@ -119,9 +166,15 @@ M.INFINITE   = 0x7FFFFFFF;   -- the client's "permanent effect" marker
 -- went wrong, and an unknown is always better than a confident wrong number.
 M.MAX_FOOD   = 86400;
 
+-- The on-disk format. 2 since 2026-08-03: rows written before it predate the
+-- catalogue veto, so a fmt-1 file gets swept once on load (M._sweep).
+M.FMT = 2;
+
 M.history = {};          -- most recent first: { id, name, at, n, expiry }
 M._pending = nil;        -- the last outgoing item use: { id, at } (packet thread)
+M._pendingFood = nil;    -- ...and the last one the CATALOGUE calls food (tick)
 M._state  = { food = nil };   -- what the last poll saw: { present, expiry }
+M._zonedAt = nil;        -- os.clock() of the last zone-in (packet thread)
 
 -- The menu's one-second bag cache. Declared HERE, above every function that
 -- touches it: a local declared below its reader is a silent nil GLOBAL, and the
@@ -129,9 +182,49 @@ M._state  = { food = nil };   -- what the last poll saw: { present, expiry }
 -- without a stale second) sits above M.menu.
 local _menuAt, _menuRows = 0, nil;
 
+-- The shipped food table, required ONCE. Declared HERE, above M._known and
+-- M.statsFor both, for the same reason as the cache above it: a local declared
+-- below its reader is a silent nil GLOBAL, and _known is read from M.pump near
+-- the top of the file while statsFor sits near the bottom.
+local _db, _dbTried = nil, false;
+local function fooddb()
+    if not _dbTried then
+        _dbTried = true;
+        local ok, t = pcall(require, 'dlac\\data\\fooddb');
+        if ok and type(t) == 'table' and type(t.foods) == 'table' then _db = t.foods; end
+    end
+    return _db;
+end
+
 -- ---------------------------------------------------------------------------
 -- Pure seams
 -- ---------------------------------------------------------------------------
+
+-- Is this item one of the server's foods?  true / false / NIL, and the nil is
+-- the important one: it means the table could not be read at all, and a missing
+-- shipped file must not silently turn every food in the game into a non-food.
+--
+-- The table is generated from scripts\items\*.lua calling
+-- xi.itemUtils.foodOnItemCheck -- the server's own predicate, not a guess about
+-- what looks edible -- so a `false` here is the same authority that would have
+-- refused to grant the effect. A `true` is not proof you ATE it (the server can
+-- still refuse the use); it only means the item is capable of being a meal, and
+-- the effect edge is what says one happened.
+function M._known(id)
+    local db = fooddb();
+    if type(db) ~= 'table' then return nil; end
+    return db[tonumber(id) or -1] ~= nil;
+end
+
+-- The catalogue's BOOK duration for a food, in seconds, or nil. Book value, so
+-- it is only ever used as a CEILING (M._step doubles it for xi.mod.FOOD_DURATION
+-- before comparing) -- never as the length of a meal, which is measured.
+function M._bookDur(id)
+    local db = fooddb();
+    if type(db) ~= 'table' then return nil; end
+    local e = db[tonumber(id) or -1];
+    return (type(e) == 'table') and tonumber(e.d) or nil;
+end
 
 -- OUT 0x037 (item use) -> the two fields that name the item: its index within a
 -- container, and the container. TWIN of feature\equipengine.parseItemUse (the
@@ -150,12 +243,22 @@ end
 --   now     -- monotonic seconds (the caller's clock)
 --   food    -- this poll: { present = bool, expiry = number|nil }, nil = unreadable
 --   pending -- the outgoing use: { id, at } | nil
+--   env     -- what is known about the pending item, from outside this seam:
+--                known   = the catalogue vouches for it (M._known). Only `true`
+--                          is load-bearing: `false` and `nil` both mean "no
+--                          vouch" and take the same conservative path, because
+--                          a food added after the table was generated and a
+--                          thing that is not food are indistinguishable here.
+--                book    = catalogued duration in seconds | nil  (M._bookDur)
+--                left    = seconds still on the effect this poll | nil
+--                zonedAt = clock of the last zone-in | nil
+--              absent entirely = "nothing is known", the pre-2026-08-03 path.
 -- Returns the pending use to record, or nil.
 --
 -- An UNREADABLE poll changes nothing at all -- it must not blank the last known
 -- state, because "was absent, now present" is one of the two things that count
 -- as movement and a dropped read would manufacture it.
-function M._step(state, now, food, pending)
+function M._step(state, now, food, pending, env)
     if type(state) ~= 'table' then return nil; end
     if type(food) ~= 'table' then return nil; end
     local prev = state.food;
@@ -163,16 +266,107 @@ function M._step(state, now, food, pending)
     if food.present ~= true then return nil; end
     if type(pending) ~= 'table' or pending.id == nil then return nil; end
     if (tonumber(now) or 0) - (tonumber(pending.at) or 0) > M.WINDOW then return nil; end
-    -- Movement is either edge: the effect was not up a moment ago, or its expiry
-    -- has been pushed out (re-eating over a live food, which never flickers).
-    -- Expiries we cannot read answer "no" rather than "maybe": without the timer
-    -- array a re-eat is genuinely unknowable, and inventing it would put the
-    -- wrong item in the history.
-    if type(prev) ~= 'table' or prev.present ~= true then return pending; end
-    if food.expiry ~= nil and prev.expiry ~= nil and food.expiry ~= prev.expiry then
-        return pending;
+
+    -- STEP 1 -- did the effect move at all? Either edge counts: it was not up a
+    -- moment ago, or its expiry jumped FAR enough forward to be a second meal
+    -- rather than a zone re-basing the clock. Expiries we cannot read answer
+    -- "no" rather than "maybe": without the timer array a re-eat is genuinely
+    -- unknowable, and inventing it would put the wrong item in the history. The
+    -- upper bound makes the uint32 wrap harmless -- a wrapped delta lands
+    -- outside the band and is simply not movement.
+    local appeared = (type(prev) ~= 'table' or prev.present ~= true);
+    local moved = appeared;
+    if not moved and food.expiry ~= nil and prev.expiry ~= nil then
+        local d = food.expiry - prev.expiry;
+        moved = (d > M.REEAT_JUMP * 60) and (d <= M.MAX_FOOD * 60);
     end
-    return nil;
+    if not moved then return nil; end
+
+    env = (type(env) == 'table') and env or {};
+
+    -- STEP 2 -- a meal cannot be longer than the food that bought it. More time
+    -- left than this item can grant (doubled, for xi.mod.FOOD_DURATION under
+    -- Sigil or Sanction) means the effect on screen belongs to an EARLIER meal
+    -- that has merely reappeared -- which is exactly what a use the server
+    -- REFUSED looks like from here, since food was already up when you tried.
+    -- The slack absorbs the poll interval and the os.time() decode.
+    local book, left = tonumber(env.book), tonumber(env.left);
+    -- A decode outside the sane band is an UNKNOWN, never a veto. M._remaining
+    -- leans on os.time() against the client's own clock, and a machine clock out
+    -- of step produces a wild number rather than a wrong-looking small one --
+    -- which would otherwise refuse a perfectly real meal every single time.
+    if left ~= nil and (left <= 0 or left > M.MAX_FOOD) then left = nil; end
+    if book ~= nil and left ~= nil and left > book * 2 + 60 then return nil; end
+
+    -- STEP 3 -- an item the catalogue vouches for is done here. Everything below
+    -- applies only to an item it has never heard of, which is either a food the
+    -- server added after the table was generated or something that is not food
+    -- at all -- and from inside this function those two look identical.
+    if env.known == true then return pending; end
+
+    -- The effect has to be CLEAN, then, because nothing but the effect is
+    -- speaking for this item.
+    --
+    -- Not a re-eat: pushing an expiry out is the ambiguous edge, and reading it
+    -- as a brand-new food dlac has never seen is a guess on top of a guess.
+    if not appeared then return nil; end
+    -- And not during a zone. The status array replays on the far side of a
+    -- loading screen with its expiries pushed forward by however long the load
+    -- took, so the effect "appearing" there means nothing. A food the table does
+    -- know skips this (step 3), so "zone in, eat" keeps working; an unknown one
+    -- eaten in the window is simply learned the next time it is eaten.
+    local z = tonumber(env.zonedAt);
+    if z ~= nil and (tonumber(now) or 0) - z < M.ZONE_SETTLE then return nil; end
+
+    return pending;
+end
+
+-- WHICH item use the effect edge belongs to. Two candidates, because the newest
+-- use is not always the right one: eat a Pork Cutlet and quaff a potion two
+-- seconds later and the potion is what a single `_pending` slot would be holding
+-- when the FOOD effect lands a moment after that. A use the CATALOGUE calls food
+-- outranks a bare newest-use, which is the whole point of having the table --
+-- it can pick the right item out of a burst, not just refuse the wrong one.
+-- Either candidate still has to be inside the window to count at all.
+function M._choose(pending, pendingFood, now)
+    now = tonumber(now) or 0;
+    local function live(u)
+        if type(u) ~= 'table' or u.id == nil then return nil; end
+        if now - (tonumber(u.at) or 0) > M.WINDOW then return nil; end
+        return u;
+    end
+    return live(pendingFood) or live(pending);
+end
+
+-- The one-time sweep of a pre-catalogue history file (fmt 1). Those rows were
+-- recorded when the effect moving was the ONLY test, so they can contain things
+-- that were never food -- Henrik's carried an Instant Warp and a Flask of Echo
+-- Drops. A row the table does not list is dropped; a row it cannot answer for at
+-- all (isFood returning nil -- the shipped file unreadable) is KEPT.
+--
+-- Note this is STRICTER than detection, deliberately. M._step treats "not in the
+-- table" as merely unvouched, because a food added tomorrow looks exactly like
+-- that. Here the row is already known to have come from the version that got
+-- this wrong, so absence is evidence rather than silence -- and the cost of
+-- being wrong is one re-eat to learn it back, against a permanent wrong row.
+--
+-- Rows written at fmt 2 are never swept: they either passed the veto or carry
+-- `learned`, and re-judging them every load would delete a genuine custom food
+-- the day the shipped table goes stale.
+-- Returns the list and how many rows it dropped.
+function M._sweep(list, fmt, isFood)
+    list = (type(list) == 'table') and list or {};
+    if (tonumber(fmt) or 1) >= M.FMT then return list, 0; end
+    if type(isFood) ~= 'function' then return list, 0; end
+    local dropped = 0;
+    for i = #list, 1, -1 do
+        local e = list[i];
+        if type(e) == 'table' and e.learned ~= true and isFood(e.id) == false then
+            table.remove(list, i);
+            dropped = dropped + 1;
+        end
+    end
+    return list, dropped;
 end
 
 -- MRU insert, unique by item id: eating something you already have a row for
@@ -201,7 +395,11 @@ function M._remember(list, entry, cap)
                             -- food's book value: xi.mod.FOOD_DURATION (Sigil,
                             -- Sanction) doubles it, so the only honest number is
                             -- the one read off the effect at the moment it landed.
-                            dur = tonumber(entry.dur) or nil });
+                            dur = tonumber(entry.dur) or nil,
+                            -- Recorded WITHOUT the catalogue vouching for it --
+                            -- a food the shipped table has never heard of. The
+                            -- flag is what stops a later sweep from deleting it.
+                            learned = (entry.learned == true) or nil });
     for i = #list, cap + 1, -1 do table.remove(list, i); end
     return list;
 end
@@ -232,15 +430,16 @@ function M._serialize(list)
         '-- dlac food history -- what this character ate, most recent first.',
         '-- Written by dlac (feature\\foodwatch); safe to delete, never hand-edited.',
         'return {',
-        '    fmt = 1,',
+        string.format('    fmt = %d,', M.FMT),
         '    foods = {',
     };
     for _, e in ipairs((type(list) == 'table') and list or {}) do
         if type(e) == 'table' and tonumber(e.id) and type(e.name) == 'string' then
             L[#L + 1] = string.format(
-                '        { id = %d, name = %q, at = %d, n = %d, expiry = %d, dur = %d },',
+                '        { id = %d, name = %q, at = %d, n = %d, expiry = %d, dur = %d%s },',
                 tonumber(e.id), e.name, tonumber(e.at) or 0, tonumber(e.n) or 1,
-                tonumber(e.expiry) or 0, tonumber(e.dur) or 0);
+                tonumber(e.expiry) or 0, tonumber(e.dur) or 0,
+                (e.learned == true) and ', learned = true' or '');
         end
     end
     L[#L + 1] = '    },';
@@ -261,7 +460,8 @@ function M._fromRaw(t)
                               expiry = (tonumber(e.expiry) or 0) > 0 and tonumber(e.expiry) or nil,
                               -- Absent in rows written before 2026-08-01: those
                               -- fall back to wall-clock until re-eaten.
-                              dur = (tonumber(e.dur) or 0) > 0 and tonumber(e.dur) or nil };
+                              dur = (tonumber(e.dur) or 0) > 0 and tonumber(e.dur) or nil,
+                              learned = (e.learned == true) or nil };
         end
     end
     for i = #out, M.CAP + 1, -1 do table.remove(out, i); end
@@ -358,12 +558,22 @@ function M.load()
     if _loadedFrom == p then return M.history; end
     _loadedFrom = p;
     M.history = {};
+    local fmt = M.FMT;
     pcall(function()
         local chunk = loadfile(p);
         if chunk == nil then return; end
         local ok, t = pcall(chunk);
-        if ok and type(t) == 'table' then M.history = M._fromRaw(t); end
+        if ok and type(t) == 'table' then
+            M.history = M._fromRaw(t);
+            fmt = tonumber(t.fmt) or 1;
+        end
     end);
+    -- Heal a pre-catalogue file in place, once. Nobody should have to run a
+    -- migration to get rid of a row dlac itself wrote wrongly, and
+    -- `/dl food forget` is the wrong tool for it -- clearing the junk that way
+    -- takes every real meal with it.
+    local _, dropped = M._sweep(M.history, fmt, M._known);
+    if dropped > 0 or fmt < M.FMT then M.save(); end
     return M.history;
 end
 
@@ -448,13 +658,41 @@ M.reads = {
 function M.pump(reads)
     reads = (type(reads) == 'table') and reads or M.reads;
     M.load();
-    local hit = M._step(M._state, reads.clock(), reads.food(), M._pending);
+    local now  = reads.clock();
+    local f    = reads.food();
+    -- Classify the newest use HERE rather than in the packet handler: M._known
+    -- can require() the shipped table on its first call, and disk I/O on the
+    -- network thread is the one thing that handler is not allowed to do. A use
+    -- the catalogue calls food is remembered in its own slot so a later
+    -- non-food use cannot displace it (M._choose).
+    if type(M._pending) == 'table' and M._pending.id ~= nil
+       and M._known(M._pending.id) == true then
+        M._pendingFood = M._pending;
+    end
+    local pend = M._choose(M._pending, M._pendingFood, now);
+    -- Everything _step needs to weigh this item, gathered HERE so that seam
+    -- stays pure and the suite can put it in any state it likes. Only built when
+    -- there is something to weigh -- no pending use, no catalogue lookup and no
+    -- os.time() call on a beat that cannot record anything anyway.
+    local env = nil;
+    if type(pend) == 'table' and pend.id ~= nil then
+        env = {
+            known   = M._known(pend.id),
+            book    = M._bookDur(pend.id),
+            left    = (type(f) == 'table') and M._remaining(f.expiry, reads.stamp()) or nil,
+            zonedAt = M._zonedAt,
+        };
+    end
+    local hit = M._step(M._state, now, f, pend, env);
     if hit == nil then return nil; end
-    M._pending = nil;                              -- consumed either way below
+    M._pending, M._pendingFood = nil, nil;         -- consumed either way below
     local name = reads.nameOf(hit.id);
     if type(name) ~= 'string' or name == '' then return nil; end
     local e = { id = hit.id, name = name, at = reads.stamp(),
-                expiry = (type(M._state.food) == 'table') and M._state.food.expiry or nil };
+                expiry = (type(M._state.food) == 'table') and M._state.food.expiry or nil,
+                -- Learned the old way: the catalogue could not vouch for it, the
+                -- effect edge did. Marked so the sweep never second-guesses it.
+                learned = (env ~= nil and env.known ~= true) or nil };
     -- MEASURE the meal's real duration, here and nowhere else: what is left the
     -- instant it lands IS its full length. The food's book value cannot be used
     -- for this -- xi.mod.FOOD_DURATION (Sigil, Sanction) grants +100%, so the
@@ -502,28 +740,15 @@ end
 -- log back in" there is no way to find out what you are getting. dlac already
 -- knows what you ate; this is what lets it say what that food does.
 --
--- data\fooddb.lua is DISPLAY ONLY, and the split is load-bearing: it must never
--- be asked whether an item IS food. That answer stays learned from the effect
--- moving (M._step), so a food the server adds tomorrow is still remembered and
--- still eatable -- it just has no stats to show. Wire this table into detection
--- and the "dlac ships no food list" guarantee is gone, and a shipped copy that
--- goes stale starts deciding what counts as food.
---
 -- Two sources, in this order: the server's own item script (authority -- it is
 -- where the mods actually live) then the client's item Description (retail DAT
 -- text, so it cannot know a CatsEyeXI rebalance; it exists to cover the ~13
 -- foods whose script carries no English header). Neither answering is a nil,
 -- and the caller simply draws no stats.
+--
+-- The same table also VETOES detection (M._known) -- it is read here for what a
+-- food does and there for whether it is one at all.
 -- ---------------------------------------------------------------------------
-local _db, _dbTried = nil, false;
-local function fooddb()
-    if not _dbTried then
-        _dbTried = true;
-        local ok, t = pcall(require, 'dlac\\data\\fooddb');
-        if ok and type(t) == 'table' and type(t.foods) == 'table' then _db = t.foods; end
-    end
-    return _db;
-end
 
 -- { lines = { 'HP +40', ... }, dur = 10800, src = 'server'|'client' } or nil.
 -- Lines are COPIED: the table behind them is the shared require'd one, and a
@@ -626,6 +851,22 @@ ashita.events.register('packet_out', 'dlac-foodwatch-out', function(e)
     if id ~= nil then M._pending = { id = id, at = os.clock() }; end
 end);
 
+-- IN 0x00A: zone-in. Two bare writes, no chat and no disk -- this is the network
+-- thread (the same law the handler above obeys, and chocowatch's zone stamp).
+--
+-- The stamp is what STEP 4 of M._step waits out. The clear is the other half and
+-- matters just as much: an item use fired before the loading screen has no
+-- business being attributed to an effect that reappears after it. Henrik used a
+-- Scroll of Instant Warp seconds after zoning, which is precisely the sequence
+-- both lines exist to break -- and a warp scroll is a zone, so this fires for
+-- the scroll's OWN arrival as well.
+ashita.events.register('packet_in', 'dlac-foodwatch-zonein', function(e)
+    if e.id == 0x00A then
+        M._zonedAt = os.clock();
+        M._pending, M._pendingFood = nil, nil;
+    end
+end);
+
 local _nextPoll = 0;
 ashita.events.register('d3d_present', 'dlac-foodwatch-tick', function()
     local now = os.clock();
@@ -715,6 +956,7 @@ end);
 -- fixture without a process restart.
 function M._reset()
     M.history, M._pending, M._state = {}, nil, { food = nil };
+    M._pendingFood, M._zonedAt = nil, nil;
     _loadedFrom, _menuRows, _menuAt = nil, nil, 0;
     -- The stats table too: it is required ONCE and cached, so a suite that
     -- injects its own package.loaded['dlac\\data\\fooddb'] after the first

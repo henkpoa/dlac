@@ -342,6 +342,41 @@ function M.applyStamp(entry, modesMap, how)
     local def = {};
     if plan.after ~= nil then def.values = deepcopy(plan.after); end
     if plan.bindTo ~= nil then def.bind = plan.bindTo; end
+    -- MODE LOCKS BELONG TO THE JOB, NOT TO THE LIBRARY ENTRY (2026-08-03, ADR
+    -- 0034). A library entry is job-INDEPENDENT and locks name that job's SETS,
+    -- so they never travel in an entry -- which means this rebuild would silently
+    -- DELETE them, and on APPEND too, the branch whose whole promise is "no value
+    -- disappears, so no reference can break". Carry the existing definition's
+    -- locks across the stamp: a stamp changes values and binds, and has no
+    -- opinion whatsoever about which slots this job freezes.
+    local existing = nil;
+    for k, v in pairs(out) do
+        if type(k) == 'string' and ci(k, plan.name) and type(v) == 'table' then existing = v; break; end
+    end
+    if existing == nil and type(modesMap) == 'table' then
+        for k, v in pairs(modesMap) do
+            if type(k) == 'string' and ci(k, plan.name) and type(v) == 'table' then existing = v; break; end
+        end
+    end
+    if type(existing) == 'table' and type(existing.locks) == 'table' then
+        -- ...but an OVERWRITE that kills a cycle VALUE must take that value's
+        -- locks with it -- the ADR 0019 cascade. Everywhere else that cascade is
+        -- free (the locks live inside the definition being deleted); here the
+        -- definition SURVIVES with a shorter value list, so it is the one path
+        -- that has to strip explicitly. `plan.dead` is exactly that list.
+        local dead = {};
+        for _, v in ipairs(plan.dead or {}) do
+            dead[string.lower(plan.name .. ':' .. tostring(v))] = true;
+        end
+        local kept = nil;
+        for cond, slots in pairs(existing.locks) do
+            if not dead[string.lower(tostring(cond))] then
+                kept = kept or {};
+                kept[cond] = deepcopy(slots);
+            end
+        end
+        def.locks = kept;
+    end
     out[plan.name] = def;    -- `{}` for a bare toggle: an empty def is load-bearing
     return out, plan;
 end

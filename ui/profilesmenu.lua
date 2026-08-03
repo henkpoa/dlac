@@ -214,6 +214,18 @@ pm.render = function()
                 local modesOn, groupsOn = f.xModes[1] == true, f.xGroups[1] == true;
                 imgui.Checkbox('Sets##pmx_sets', f.xSets);
                 local setsOn = f.xSets[1] == true;
+                -- MODE LOCKS ARE SET REFERENCES (ADR 0034). A lock names a set
+                -- from inside the Modes section, so it travels whenever Modes is
+                -- ticked -- Triggers need not be selected at all, which is why
+                -- this gates the MODES row and not the Triggers one. A dead lock
+                -- is worse than a dead rule: it holds nothing, which reads as the
+                -- feature being broken rather than as a rule that did not fire.
+                -- Same strength as a rule's `set =`: disabled, not warned.
+                -- Computed HERE so every downstream test (mode-gated gear, the
+                -- Triggers needs-list, _eff) sees the EFFECTIVE value.
+                local modeBlock = (deps.modeSets and not setsOn)
+                    and '(this job\'s mode locks point at sets -- include Sets to export them)' or nil;
+                if modeBlock ~= nil then modesOn = false; end
                 local equipBlock = nil;
                 if not setsOn then equipBlock = '(needs Sets)';
                 elseif deps.setModes and not modesOn then
@@ -236,7 +248,14 @@ pm.render = function()
                 -- just warned. Sets first: it's the reference even an
                 -- empty-condition rule carries.
                 local trigNeeds = {};
-                if deps.trigSets and not setsOn then trigNeeds[#trigNeeds + 1] = 'Sets'; end
+                if (deps.trigSets and not setsOn)
+                   -- Modes blocked by a mode lock makes Sets the ROOT fix: without
+                   -- this the two rows point at each other ("include Modes" over a
+                   -- Modes row reading "include Sets") and the player chases the
+                   -- dependency instead of being told what to tick.
+                   or (modeBlock ~= nil and deps.trigModes) then
+                    trigNeeds[#trigNeeds + 1] = 'Sets';
+                end
                 if deps.trigModes and not modesOn then trigNeeds[#trigNeeds + 1] = 'Modes'; end
                 if deps.trigGroups and not groupsOn then trigNeeds[#trigNeeds + 1] = 'Groups'; end
                 if #trigNeeds > 0 then
@@ -246,7 +265,11 @@ pm.render = function()
                     imgui.Checkbox('Triggers##pmx_trig', f.xTrig);
                 end
                 imgui.Checkbox('Groups##pmx_groups', f.xGroups);
-                imgui.Checkbox('Modes##pmx_modes', f.xModes);
+                if modeBlock ~= nil then
+                    imgui.TextColored(COL.DIM, '[ ] Modes  ' .. modeBlock);
+                else
+                    imgui.Checkbox('Modes##pmx_modes', f.xModes);
+                end
                 if setsOn then
                     imgui.Checkbox('Stat weights##pmx_wts', f.xWts);
                     if imgui.IsItemHovered() then

@@ -42,7 +42,8 @@ local M = {};
 local _dpok, dsp = pcall(require, 'dlac\\dispatch');
 local hasDispatch = _dpok and type(dsp) == 'table';
 local FALLBACK_DEFAULT = { 'Disabled', 'Naked', 'Pins', 'Locks', 'AutoAmmo', 'MaxMP',
-                           'Craft', 'HELM', 'Fishing', 'Chocobo', 'External', 'Triggers' };
+                           'Craft', 'HELM', 'Fishing', 'Chocobo', 'ModeLock', 'External',
+                           'Triggers' };
 
 -- Rows a player CANNOT pick up -- the two ENDS of the list, both invariants
 -- rather than rankings: the Triggers floor (always last -- the claims dress over

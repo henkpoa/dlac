@@ -296,6 +296,39 @@ haven't told you."* Ask when he has **not** said merge; never ask twice when he 
 
 **THE QUEUE IS EMPTY.**
 
+*(Emptied by the second 2026-08-03 promotion — **Mode Locks** (`2026.08.03x`, **engine
+v166**, ADR 0034) and **the food register stops believing a zone** (`2026.08.03w`). Henrik:
+*"document this, have it ready for merge, merge it and push"* — an accept under the 08-01
+ruling, so nothing was asked twice. Two trains built in parallel sessions on one checkout;
+the food commit staged itself out of the shared tree without touching the Mode Locks work,
+and this promotion carries both. Full reasoning for each in [history.md](history.md) —
+*"the slot that stops listening"* and *"the food register stops believing a zone"*.*
+
+***NEITHER IS FIELD-RUN. Do not read either onto main as field-proven*** — the suites are
+green on both interpreters (**6157 + 1121**) and every new rule is mutation-checked, but no
+mode lock has held a weapon in game and no warp scroll has been used after a zone since the
+fix. **Two rounds are owed, and they are both short.**
+
+***Mode Locks*** *(Triggers → Modes → the* `locks` *button; ADR 0034). On the job with your
+Weapon cycle, lock* `Main` *and* `Sub` *to a melee set under the melee value, then pull
+something and cast through it — five checks:* **(1)** *the weapons do not move on
+Precast/Midcast/WS;* **(2)** *flipping the cycle to the caster value hands them straight back
+with no reload;* **(3)** *the Trigger Monitor's* `locks` *line names the held slots while the
+rules below it still show their sets;* **(4)** *the Arbiter Monitor's Main cell is gold and
+its hover reads* `Mode lock (rank 11)` *over* `Triggers`*;* **(5)** *turn on a second mode
+that locks the same slot and confirm the one flipped FIRST keeps it, with the other listed
+as queued.*
+
+***One thing to watch, because it degrades quietly by design:*** *a lock naming a set with
+no entry for that slot claims **nothing** — the trigger keeps the slot. The window flags it
+in red (`[!] no Main in this set`), so if a lock ever "does nothing" in the field, check that
+before assuming the claim path is broken.*
+
+***The food register*** *: zone, use a warp scroll immediately, then* `/dl food` *— nothing
+new should be recorded, and the two junk rows should already be gone after the first load.*
+
+---
+
 *(Emptied by the 2026-08-03 promotion — **two field bugs from one support report**,
 `2026.08.03t`, **engine v164**. Henrik: *"commit, merge push to main"* — an accept under the
 08-01 ruling, so nothing was asked twice. Both bugs came out of reading Coffeepoo's
@@ -303,15 +336,11 @@ haven't told you."* Ask when he has **not** said merge; never ask twice when he 
 **a fact that changes, cached in a file nothing rewrites.** Full reasoning in
 [history.md](history.md) — *"two knives and an invisible animator"*.*
 
-***PROMOTED BUT NOT FIELD-RUN — do not read this onto main as field-proven.*** *The suites
-are green on both interpreters (**6054**) and the second bug was additionally confirmed
-against Henrik's real on-disk `Mindie_29909\gear.lua` and the shipped catalog, but neither
-fix has equipped a single item in game.*
-
-***The round owed is small and specific***, on Coffeepoo's character: a plain `/dl sync`
-should make the base Animator appear with no hand edit, and the DNC Idle set's `Sub` should
-take the second Bone Knife +1 with **no `Count = 2`** in his file. If either still fails,
-the diagnosis was wrong, not the plumbing — start from the `/dl report` again.
+***ON MAIN AND FIELD-CONFIRMED*** *(2026-08-03, same day, on Coffeepoo's character —
+Henrik: *"Field tested, both fixes worked"*). The base Animator indexed itself with no hand
+edit, and the DNC Idle set's `Sub` took the second Bone Knife +1 with no `Count = 2`
+anywhere in his `gear.lua`. Suites green on both interpreters (**6054**). **No round is
+owed on this one** — both halves are proven in game, not just offline.*
 
 ***What landed, for whoever picks this up:***
 - ***Two of one weapon pair from your BAGS, not from a stamp.*** *`subSlotAllowed`'s
@@ -773,6 +802,52 @@ research already recorded. In rough priority order:
    section heading rather than each carrying one. Trivial to change if it reads wrong.
 
 ## Current state (as of 2026-08-02)
+
+- **2026-08-03 (`2026.08.03w`): THE FOOD REGISTER STOPS BELIEVING A ZONE.** Henrik's first
+  field round on foodwatch found it: *"it is showing my instant warp scroll as recently
+  eaten... I tried to use a warp scroll almost immediately after zoning after everything
+  hadn't loaded in properly."* His own `foodhistory.lua` carried **two** bad rows, not one —
+  an **Instant Warp** and a **Flask of Echo Drops** — and each was wearing the *remaining
+  time of the real meal still running underneath it* (`dur 19381` against the Pork Cutlet's
+  `21598` eaten 2219s earlier; the Echo Drops the same against a Grape Daifuku). That
+  arithmetic is the diagnosis: the food effect never dropped, so nothing was eaten.
+  - **THE MECHANISM: food is PAUSED while a zone loads.** The server hands the effect back
+    with its expiry pushed forward by however long the load took — **+2s** and **+6s** in
+    those two rows, and the raw values are in the file if you want to check the subtraction.
+    `_step` compared expiries for **inequality**, so it read that drift as a second meal and
+    blamed whatever item you had used in the last 8 seconds. A warp scroll is used at exactly
+    that moment, and a warp scroll IS a zone, so it triggers the very thing that frames it.
+  - **The comment above that branch said it "cannot fire wrongly."** It had been there two
+    days. It is the reason to distrust a claim that a comparison is safe *because nothing
+    else can move the value* — something else could, and the field found it first.
+  - **`data\fooddb.lua` now VOUCHES, and the display-only law is retired.** It is generated
+    from the server's own predicate (`xi.itemUtils.foodOnItemCheck`, 783 scripts on `stable`
+    `9bb0ec8c67`), so it is the same authority the effect is, only readable *before* the
+    fact. Neither impostor is in it. **Absence is still not a veto** — a food the server adds
+    tomorrow looks exactly like a non-food from in here, so an unlisted item is *unvouched*,
+    not refused, and is still learned from a clean edge (FW31 guards that; it is the reason
+    the escape hatch exists at all).
+  - **Four gates, and each one earns its place**: a re-eat must clear `REEAT_JUMP` (15s — a
+    zone drifted 2s and 6s, the shortest food on the server runs 30s, so the band is real
+    and not a fudge); a meal cannot have more time left than the item could grant, doubled
+    for `FOOD_DURATION` (this is the *refused use* — you cannot eat over food here, so an
+    over-long effect is an older meal reappearing); an unvouched item is believed only on an
+    **appeared** edge, never a re-eat; and never within `ZONE_SETTLE` (15s) of an `IN 0x00A`.
+    A **catalogued** food skips the zone wait, so "zone in, eat" still works.
+  - **The catalogue also PICKS, which the effect never could.** Eat a Cutlet, quaff a potion
+    two seconds later, and the potion is the newest use when the effect lands — one pending
+    slot hands it the credit. `M._choose` keeps a second slot for the newest use the table
+    calls food and prefers it. That hole predates this bug and was never reported.
+  - **The history file heals itself on load** (`fmt` 1 → 2, `M._sweep`). Verified against
+    Henrik's real file: drops exactly the two impostors, keeps all five real meals in order.
+    `/dl food forget` was the wrong tool — it would have taken the Pork Cutlet with them.
+    Rows learned without the table carry `learned = true` and are never swept.
+  - **NOT field-confirmed — suites only** (**6087** + **1108** on the committed tree in an
+    isolated worktree; 6157 + 1121 alongside the parallel Mode Locks work in the shared
+    checkout). The round it owes is short and specific: zone, use a warp scroll immediately,
+    then `/dl food` and check nothing new was recorded; and confirm the two junk rows are
+    gone after one load.
+  - Full reasoning: `docs/history.md` → *"the food register stops believing a zone"*.
 
 - **2026-08-03 (`2026.08.03r`): `/dl unused` — THE WARDROBE AUDIT.** *"which pieces you have
   in mog wardrobes that are actively not being used at all"* (Henrik). `gear/unusedgear.lua`

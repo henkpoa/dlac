@@ -336,7 +336,17 @@ local trig = {
 local modeUI = {
     name = { '' }, kind = 'toggle', values = {}, valInput = { '' },
     bind = { '' }, set = nil, editing = nil,
+    -- Mode Locks window (2026-08-03): { mode = '<name>', cond = '<Name>'|'<Name:Value>' }
+    -- while open. Its own movable window, independent of the editor popup.
+    locks = nil,
 };
+
+-- The 16 slots in LAC display order, for the Mode Locks window and the Trigger
+-- Monitor's locks line. Declared HERE, above every reader: a local declared
+-- below the function that uses it is not an upvalue at all -- it silently reads
+-- a nil GLOBAL instead, and the row just never draws.
+local LOCK_SLOTS = { 'Main', 'Sub', 'Range', 'Ammo', 'Head', 'Neck', 'Ear1', 'Ear2',
+                     'Body', 'Hands', 'Ring1', 'Ring2', 'Back', 'Waist', 'Legs', 'Feet' };
 
 -- Groups section state (issue #25, ADR 0009). newName = the create-popup buffer;
 -- memberInput = a per-group typed-member buffer (keyed by group name); renaming =
@@ -810,6 +820,36 @@ local function trigModeState()
     return st;
 end
 
+-- THE ADDON-STATE DOOR to the live mode-lock plan (2026-08-03): which slots an
+-- active mode has frozen to a named set, right now. Three surfaces ask -- the
+-- Mode Locks window, the Trigger Monitor and the Priority row -- and all three
+-- come here, which comes to the ENGINE's planner (dispatch.modeLockPlan) with
+-- this state's two reads: the trigger edit model (so an uncommitted edit shows)
+-- and the modestate mirror. One planner, one answer; a second copy of "who holds
+-- this slot" is exactly how two windows start disagreeing.
+-- Returns plan = { [Slot] = { set, by } }, conflicts | nil.
+function M.modeLockLive()
+    if not hasDispatch or type(dsp.modeLockPlan) ~= 'function' then return {}, nil; end
+    local plan, conflicts = {}, nil;
+    pcall(function()
+        local model = select(1, M.currentModel());
+        if type(model) ~= 'table' or type(model.Modes) ~= 'table' then return; end
+        local defs = {};
+        for nm, d2 in pairs(model.Modes) do
+            if type(d2) == 'table' then
+                defs[string.lower(nm)] = { name = nm, values = d2.values, locks = d2.locks };
+            end
+        end
+        -- The ACTIVATION CLOCK rides the mirror as `__seq` (Henrik's
+        -- first-come-first-serve ruling): without it this state would order a
+        -- contested slot alphabetically while the engine ordered it by who took
+        -- it first, and the window would name the wrong winner.
+        local st = trigModeState();
+        plan, conflicts = dsp.modeLockPlan(defs, st, (type(st) == 'table') and st.__seq or nil);
+    end);
+    return plan, conflicts;
+end
+
 -- The monitor's LIVE event feed (engine v55): the engine queues
 -- '/dlacmonev <line>' on every CHANGE of what fired; this ADDON-state handler
 -- pushes it straight into the ring the frame it arrives -- streaming, not
@@ -879,6 +919,35 @@ function M.renderMonitor(ui)
         imgui.SameLine(0, 8);
         if #ms > 0 then imgui.TextColored(COL_USABLE, esc(table.concat(ms, '   ')));
         else imgui.TextColored(COL_DIM, '(none active)'); end
+        -- MODE LOCKS (2026-08-03). This monitor's altitude is what the TRIGGER
+        -- layer proposed -- and a locked slot is precisely a proposal that will
+        -- not be honoured, so it belongs here rather than only in the Arbiter
+        -- Monitor. Answered by the engine's own planner (dispatch.modeLockPlan)
+        -- against the same two reads it uses, so the two windows cannot disagree
+        -- about who holds a slot. Silent when nothing is locked.
+        local mlPlan = M.modeLockLive();
+        if type(mlPlan) == 'table' and next(mlPlan) ~= nil then
+            local held = {};
+            for _, slot in ipairs(LOCK_SLOTS) do
+                local e = mlPlan[slot];
+                if e ~= nil then held[#held + 1] = slot .. '=' .. tostring(e.set); end
+            end
+            imgui.TextColored(COL_HEADER, 'locks');
+            imgui.SameLine(0, 8);
+            imgui.TextColored({ 0.95, 0.78, 0.35, 1.0 }, esc(table.concat(held, '   ')));
+            if imgui.IsItemHovered() then
+                local lines = { 'These slots are held by an active mode lock.',
+                                'No trigger rule can move them while the mode is on.', '' };
+                for _, slot in ipairs(LOCK_SLOTS) do
+                    local e = mlPlan[slot];
+                    if e ~= nil then
+                        lines[#lines + 1] = string.format('  %-6s <- set %s   (mode = %s)',
+                            slot, tostring(e.set), tostring(e.by));
+                    end
+                end
+                imgui.SetTooltip(esc(table.concat(lines, '\n')));
+            end
+        end
         imgui.Separator();
         local fired = trigFiredState();
         if #fired == 0 then
@@ -1436,6 +1505,247 @@ local function renderModeDeleteWindow()
     end
     imgui.End();
     if not open[1] then modeUI.del = nil; end
+end
+
+-- ---------------------------------------------------------------------------
+-- MODE LOCKS (2026-08-03, Henrik). One movable window per mode: the 16 slots,
+-- each with a set picker. Pick a set for a slot and -- while that mode is active
+-- -- that slot is answered by THAT set, and no trigger rule can move it.
+--
+-- "I have a caster mode where I switch weapons all the time... but when I am in
+-- melee mode, I NEVER want the weapons to be touched." Today the only way to say
+-- that is to teach every rule in the file to keep its hands off Main/Sub.
+--
+-- A window, not a popup: 16 rows with pickers is not popup-shaped, and the
+-- player needs to drag it aside and look at the Sets tab while deciding -- the
+-- same reasoning that made the delete-with-references window movable. Locks are
+-- stored per MODE CONDITION, so a cycle picks its value at the top: Weapon:Melee
+-- and Weapon:Caster hold different slots from different sets.
+-- ---------------------------------------------------------------------------
+
+-- The conditions one mode definition can lock on: each cycle value as
+-- 'Name:Value', or the bare toggle name. Same vocabulary as the rule condition
+-- and as the engine's stored keys -- one dialect, everywhere.
+local function modeLockConds(m, def)
+    local out = {};
+    if type(def) == 'table' and type(def.values) == 'table' and #def.values > 0 then
+        for _, v in ipairs(def.values) do out[#out + 1] = m .. ':' .. v; end
+    else
+        out[1] = m;
+    end
+    return out;
+end
+
+local function openModeLocks(m, def)
+    modeUI.locks = { mode = m, cond = modeLockConds(m, def)[1] };
+end
+
+-- Which slots a named set actually FILLS, from the authored set table (the
+-- gearcheck door). A lock naming a set with no entry for its slot claims
+-- NOTHING -- the engine has no answer to give, so the trigger keeps the slot --
+-- and that is a lock which silently does nothing, this feature's whole failure
+-- mode. So the picker says so in red, here, where it can still be fixed.
+local function setFillsSlots(name)
+    local S = nil;
+    pcall(function() if deps ~= nil and type(deps.setsRoot) == 'function' then S = deps.setsRoot(); end end);
+    if type(S) ~= 'table' then return nil; end          -- no answer != "empty"
+    local t = (type(S.Dynamic) == 'table') and S.Dynamic[name] or nil;
+    if type(t) ~= 'table' then t = (type(S[name]) == 'table') and S[name] or nil; end
+    if type(t) ~= 'table' then return {}; end           -- the set itself is gone
+    local out = {};
+    for slot in pairs(t) do out[string.lower(tostring(slot))] = true; end
+    return out;
+end
+
+-- The window's CONTENTS, with the mode definition passed IN (the
+-- renderTrigRuleBox seam, and for the same reason): none of this runs until a
+-- player opens the window on a real job, so a load test proves nothing about it
+-- and an undefined helper stays invisible until the click. Driven headless by
+-- smoke_ui ML*. Returns the (possibly re-picked) condition; `close` true when
+-- the Close button was pressed.
+-- ---------------------------------------------------------------------------
+local function renderModeLocksBody(mode, def, cond)
+    local close = false;
+    do
+        local L = { mode = mode, cond = cond };
+        imgui.TextColored(COL_HEADER, 'Locked slots');
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('While this mode is active, each slot you give a set here is answered by\n'
+                .. 'THAT set and nothing else -- every trigger rule, on every event, is\n'
+                .. 'overruled for that slot. Leave a slot empty and it behaves normally.\n\n'
+                .. 'Use it for the pieces that must never move: DT gear, and the weapons a\n'
+                .. 'melee mode should keep while a caster mode swaps them every pull.\n\n'
+                .. 'It is a rank ROW (Priority list: "Mode lock"), shipping just above your\n'
+                .. 'triggers -- so an armed craft/HELM/fishing overlay still wins its slots.\n'
+                .. 'Drag the row higher to beat those too.');
+        end
+
+        -- A cycle locks PER VALUE: Weapon:Melee and Weapon:Caster are different
+        -- locks. One button per value, the selected one highlighted.
+        local conds = modeLockConds(L.mode, def);
+        if #conds > 1 then
+            imgui.TextColored(COL_DIM, 'Value');
+            local styled = (ImGuiCol_Button ~= nil);
+            for i, c in ipairs(conds) do
+                if i > 1 then imgui.SameLine(0, 6); end
+                local on = (L.cond == c);
+                if styled then
+                    imgui.PushStyleColor(ImGuiCol_Button, on and { 0.20, 0.42, 0.58, 1.0 }
+                                                              or { 0.28, 0.28, 0.32, 1.0 });
+                end
+                if imgui.Button(esc(def.values[i]) .. '##mlval' .. i, { 0, 0 }) then L.cond = c; end
+                if styled then imgui.PopStyleColor(1); end
+            end
+            imgui.TextColored(COL_DIM, 'Editing:  mode = ' .. esc(tostring(L.cond)));
+        end
+        imgui.Separator();
+
+        local cur = (type(def.locks) == 'table') and def.locks[L.cond] or nil;
+        -- One setFillsSlots read per set named on screen, not per row.
+        local fills, nLocked = {}, 0;
+        for _, slot in ipairs(LOCK_SLOTS) do
+            local sn = (cur ~= nil) and cur[slot] or nil;
+            if sn ~= nil then
+                nLocked = nLocked + 1;
+                if fills[sn] == nil then fills[sn] = setFillsSlots(sn) or false; end
+            end
+        end
+
+        imgui.BeginChild('##dlac_mlrows', { 0, -58 }, false);
+        for _, slot in ipairs(LOCK_SLOTS) do
+            local sn = (cur ~= nil) and cur[slot] or nil;
+            imgui.TextColored(sn and COL_SCORE or COL_DIM, string.format('%-6s', slot));
+            imgui.SameLine(64);
+            local picked = setPickCombo('##mlset_' .. slot, sn or '(not locked)', nil, true);
+            if picked ~= nil then
+                def.locks = def.locks or {};
+                def.locks[L.cond] = def.locks[L.cond] or {};
+                if picked == '(none)' then
+                    def.locks[L.cond][slot] = nil;
+                    if next(def.locks[L.cond]) == nil then def.locks[L.cond] = nil; end
+                    if next(def.locks) == nil then def.locks = nil; end
+                else
+                    def.locks[L.cond][slot] = picked;
+                end
+                trig.dirty = true;
+            end
+            if sn ~= nil then
+                local f = fills[sn];
+                if type(f) == 'table' and not f[string.lower(slot)] then
+                    imgui.SameLine(0, 8);
+                    imgui.TextColored(COL_ERR, '[!] no ' .. slot .. ' in this set');
+                    if imgui.IsItemHovered() then
+                        -- esc: imgui text is printf -- an unescaped '%' in a set
+                        -- name prints a heap address.
+                        imgui.SetTooltip(esc(string.format('"%s" has no %s entry, so this lock holds nothing:\n'
+                            .. 'the slot keeps following your trigger rules. Give the set a %s piece,\n'
+                            .. 'or lock the slot to a set that has one.', sn, slot, slot)));
+                    end
+                end
+            end
+        end
+        imgui.EndChild();
+
+        imgui.Separator();
+        -- What is live RIGHT NOW, across every mode -- computed by the ENGINE's
+        -- own planner (dispatch.modeLockPlan) against the modestate mirror, so
+        -- this window and the arbiter can never disagree about who holds a slot.
+        local plan, conflicts = M.modeLockLive();
+        if type(plan) == 'table' then
+            local live = {};
+            for _, slot in ipairs(LOCK_SLOTS) do
+                if plan[slot] ~= nil then
+                    live[#live + 1] = slot .. '=' .. tostring(plan[slot].set);
+                end
+            end
+            imgui.TextColored(COL_DIM, 'live now:');
+            imgui.SameLine(0, 6);
+            if #live > 0 then imgui.TextColored(COL_USABLE, esc(table.concat(live, '  ')));
+            else imgui.TextColored(COL_DIM, '(no active mode locks a slot)'); end
+        end
+        -- Two active modes CAN name one slot. FIRST COME, FIRST SERVE (Henrik):
+        -- whoever took it first holds it and the rest queue -- so this is a
+        -- QUEUE, not an error, and it says so. A lock that silently lost would
+        -- look exactly like a lock that does not work, which is why the losers
+        -- are named at all.
+        if conflicts ~= nil and #conflicts > 0 then
+            imgui.TextColored(COL_SCORE, 'queued (first come, first serve):');
+            for _, c in ipairs(conflicts) do
+                imgui.TextColored(COL_DIM, string.format('   %s is held by "%s" (%s) -- "%s" (%s) waits',
+                    c.slot, esc(tostring(c.kept.set)), esc(tostring(c.kept.by)),
+                    esc(tostring(c.lost.set)), esc(tostring(c.lost.by))));
+                if imgui.IsItemHovered() then
+                    imgui.SetTooltip(esc(string.format(
+                        'Both modes are active and both lock %s. The one that became active FIRST\n'
+                        .. 'keeps it; turn "%s" off and "%s" takes the slot on the next dispatch --\n'
+                        .. 'nothing to re-arm, the queue is worked out fresh every time.',
+                        c.slot, tostring(c.kept.by), tostring(c.lost.set))));
+                end
+            end
+        end
+
+        if imgui.Button('Save & apply##mlsave', { 0, 22 }) then
+            trigCommit();
+            trigSetStatus(string.format('Mode locks saved for %s (%d slot%s).',
+                tostring(L.cond), nLocked, (nLocked == 1) and '' or 's'), false);
+        end
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('Writes the trigger file and reloads it -- live immediately.');
+        end
+        imgui.SameLine(0, 8);
+        if imgui.Button('Clear this value##mlclear', { 0, 22 }) then
+            if type(def.locks) == 'table' then
+                def.locks[L.cond] = nil;
+                if next(def.locks) == nil then def.locks = nil; end
+            end
+            trig.dirty = true;
+        end
+        if imgui.IsItemHovered() then imgui.SetTooltip(esc('Remove every lock for  mode = ' .. tostring(L.cond))); end
+        imgui.SameLine(0, 8);
+        if imgui.Button('Close##mlclose', { 0, 22 }) then close = true; end
+        if trig.dirty then
+            imgui.SameLine(0, 10);
+            imgui.TextColored(COL_ERR, 'uncommitted');
+        end
+        cond = L.cond;
+    end
+    return cond, close;
+end
+M.renderModeLocksBody = renderModeLocksBody;   -- headless render seam (smoke_ui ML*)
+
+local function renderModeLocksWindow()
+    if modeUI.locks == nil then return; end
+    if trig.data == nil then modeUI.locks = nil; return; end
+    local L = modeUI.locks;
+    -- The Modes list also shows modes that exist ONLY as a rule reference (see
+    -- the `modes` walk in the tab render) -- those have no entry in
+    -- `trig.data.Modes` at all, and looking one up here and bailing made the
+    -- button open a window that shut itself in the same frame. So an undefined
+    -- mode gets a SCRATCH definition to edit, materialized into the file only
+    -- when a lock is actually picked: opening a window must not write anything,
+    -- and a mode that now carries locks genuinely does need a definition (the
+    -- bare `{}` shape the mode editor already stores for a plain toggle).
+    local defined = (type(trig.data.Modes) == 'table') and trig.data.Modes[L.mode] or nil;
+    local def = defined or L.scratch;
+    if def == nil then def = {}; L.scratch = def; end
+    local open = { true };
+    imgui.SetNextWindowSize({ 470, 520 }, ImGuiCond_FirstUseEver);
+    if imgui.Begin('Mode locks: ' .. L.mode .. '###dlacmodelocks', open) then
+        if defined == nil then
+            imgui.TextColored(COL_DIM, 'This mode has no definition yet (your rules just refer to it).');
+            imgui.TextColored(COL_DIM, 'Locking a slot here creates one.');
+        end
+        local cond, close = renderModeLocksBody(L.mode, def, L.cond);
+        L.cond = cond;
+        if defined == nil and type(def.locks) == 'table' and next(def.locks) ~= nil then
+            trig.data.Modes = trig.data.Modes or {};
+            trig.data.Modes[L.mode] = def;
+            L.scratch = nil;
+        end
+        if close then modeUI.locks = nil; end
+    end
+    imgui.End();
+    if modeUI.locks ~= nil and not open[1] then modeUI.locks = nil; end
 end
 
 -- ---------------------------------------------------------------------------
@@ -2002,6 +2312,28 @@ local function renderModeBox(m, def, cur, colX)
     imgui.SameLine(0, 12);
     if imgui.SmallButton('edit##trgmedit_' .. m) then openModeEditor(m, def); end
     if imgui.IsItemHovered() then imgui.SetTooltip('Edit this mode (values / keybind / delete).'); end
+    -- MODE LOCKS (2026-08-03): the slots this mode freezes to one named set.
+    -- The count sits ON the button, because a mode that overrules every trigger
+    -- rule for four slots must not look identical to one that does nothing.
+    imgui.SameLine(0, 6);
+    local nLk = 0;
+    for _, slots in pairs((def ~= nil and type(def.locks) == 'table') and def.locks or {}) do
+        for _ in pairs(slots) do nLk = nLk + 1; end
+    end
+    if nLk > 0 then
+        local gold = (ImGuiCol_Button ~= nil);
+        if gold then imgui.PushStyleColor(ImGuiCol_Button, { 0.42, 0.34, 0.12, 1.0 }); end
+        if imgui.SmallButton(string.format('locks (%d)##trgmlk_%s', nLk, m)) then openModeLocks(m, def); end
+        if gold then imgui.PopStyleColor(1); end
+    else
+        if imgui.SmallButton('locks##trgmlk_' .. m) then openModeLocks(m, def); end
+    end
+    if imgui.IsItemHovered() then
+        imgui.SetTooltip('Mode locks: pin slots to ONE set while this mode is active.\n'
+            .. 'Those slots stop following your trigger rules entirely -- for weapons a\n'
+            .. 'melee mode must never swap, or DT pieces that have to stay on no matter\n'
+            .. 'what fires. Opens a window with all 16 slots.');
+    end
     -- Save THIS ONE mode to the Mode library (Henrik 2026-07-25). The section-level
     -- "Save this job's modes..." takes all of them; this is the per-mode twin, and the
     -- sibling of the Blueprints "save this rule" button. A name already in the library
@@ -4725,6 +5057,7 @@ function M.render(job, level)
     end
     trigLoad(false);
     renderModeDeleteWindow();   -- its own movable window; independent of any section state
+    pcall(renderModeLocksWindow);   -- same: the Mode Locks window must survive navigating away
     -- The stamp pre-commit list, same shape and same independence: it must survive the
     -- player navigating away from the Mode library section while deciding.
     pcall(renderModeStampWindow);

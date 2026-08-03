@@ -7008,7 +7008,7 @@ end)();
     local def = dispatchM._arbDefaultOrder;
     check('AR1 default order exported', type(def), 'table');
     check('AR1b exact default rank', table.concat(def, '>'),
-        'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>External>Triggers');
+        'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>ModeLock>External>Triggers');
     -- AR1c: the ADR 0012 laws the order encodes, checked as adjacency (not prose)
     local rank = {}; for i, n in ipairs(def) do rank[n] = i; end
     -- Naked (ADR 0021) is the ONE row above Pins: "naked" must mean naked, and a
@@ -7027,21 +7027,21 @@ end)();
     -- law appended them, which is right only for a row that belongs last); a valid
     -- reorder is preserved.
     check('AR2 nil -> default', table.concat(dispatchM.arbOrder(nil), '>'),
-        'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>External>Triggers');
+        'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>ModeLock>External>Triggers');
     check('AR2b no order field -> default', table.concat(dispatchM.arbOrder({ foo = 1 }), '>'),
-        'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>External>Triggers');
+        'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>ModeLock>External>Triggers');
     check('AR2c a valid reorder is preserved',
         table.concat(dispatchM.arbOrder({ order = { 'MaxMP', 'AutoAmmo', 'Pins', 'Locks', 'Craft', 'HELM', 'Fishing', 'Triggers' } }), '>'),
-        'Disabled>Naked>MaxMP>AutoAmmo>Pins>Locks>Craft>HELM>Fishing>Chocobo>External>Triggers');
+        'Disabled>Naked>MaxMP>AutoAmmo>Pins>Locks>Craft>HELM>Fishing>Chocobo>ModeLock>External>Triggers');
     -- Listed rows keep the user's order absolutely (Fishing still above Pins);
     -- every unlisted row lands where it sits by default RELATIVE to them --
     -- Naked before Fishing, Chocobo after Pins because nothing outranks it.
     check('AR2d unknown rows dropped, missing known rows restored at their default position',
         table.concat(dispatchM.arbOrder({ order = { 'Fishing', 'Nonsense', 'Pins' } }), '>'),
-        'Disabled>Naked>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Pins>Chocobo>External>Triggers');
+        'Disabled>Naked>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Pins>Chocobo>ModeLock>External>Triggers');
     check('AR2e duplicates collapse',
         table.concat(dispatchM.arbOrder({ order = { 'Pins', 'Pins', 'AutoAmmo' } }), '>'),
-        'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>External>Triggers');
+        'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>ModeLock>External>Triggers');
 
     -- ARP: arbOrderPersist -- the WRITE view (issue #136). arbOrder above drops
     -- unknown rows (right for the walk + the Priority tab); arbOrderPersist keeps
@@ -7055,7 +7055,7 @@ end)();
         -- The live walk / Priority tab NEVER see Ghost.
         check('ARP1 arbOrder (the live view) drops the unknown row',
             table.concat(dispatchM.arbOrder(fileWithGhost), '>'),
-            'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>External>Triggers');
+            'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>ModeLock>External>Triggers');
         -- The drag produced a new KNOWN order (Craft moved below HELM); persisting
         -- it weaves Ghost back in anchored to MaxMP -- position intact.
         local dragged = { 'Disabled', 'Naked', 'Pins', 'Locks', 'AutoAmmo', 'MaxMP',
@@ -7063,18 +7063,18 @@ end)();
         local persisted = dispatchM.arbOrderPersist(dragged, fileWithGhost);
         check('ARP2 persist keeps the unknown row anchored to its predecessor',
             table.concat(persisted, '>'),
-            'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Ghost>HELM>Craft>Fishing>Chocobo>External>Triggers');
+            'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Ghost>HELM>Craft>Fishing>Chocobo>ModeLock>External>Triggers');
         -- Preserve-through-rewrite: feed the persisted order back as the raw file
         -- and drag again -- Ghost survives ANY number of rewrites, still anchored.
         local persisted2 = dispatchM.arbOrderPersist(
             dispatchM.arbOrder({ order = persisted }), { order = persisted });
         check('ARP3 unknown row survives a second rewrite intact',
             table.concat(persisted2, '>'),
-            'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Ghost>HELM>Craft>Fishing>Chocobo>External>Triggers');
+            'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Ghost>HELM>Craft>Fishing>Chocobo>ModeLock>External>Triggers');
         -- No raw file / no unknowns -> persist == arbOrder (a fresh character).
         check('ARP4 no raw file -> plain sanitized order (nothing to preserve)',
             table.concat(dispatchM.arbOrderPersist(dispatchM.arbOrder(nil), nil), '>'),
-            'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>External>Triggers');
+            'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>ModeLock>External>Triggers');
         -- Reclaim-on-return: the file position of a LISTED row is honored by
         -- arbOrder over the default -- so the instant Ghost's identity becomes a
         -- known claimant, it takes its preserved spot, not its default one. Pinned
@@ -7084,14 +7084,14 @@ end)();
         check('ARP5 a listed row keeps its saved position (reclaim law)',
             table.concat(dispatchM.arbOrder({ order = { 'Disabled', 'Naked', 'Pins',
                 'Locks', 'Chocobo', 'AutoAmmo', 'MaxMP', 'Craft', 'HELM', 'Fishing', 'Triggers' } }), '>'),
-            'Disabled>Naked>Pins>Locks>Chocobo>AutoAmmo>MaxMP>Craft>HELM>Fishing>External>Triggers');
+            'Disabled>Naked>Pins>Locks>Chocobo>AutoAmmo>MaxMP>Craft>HELM>Fishing>ModeLock>External>Triggers');
         -- Two unknowns in a row share an anchor and keep their relative order; the
         -- ceiling/floor stay pinned even when an unknown sits at an extreme.
         local twoGhosts = { order = { 'Zeta', 'Disabled', 'Naked', 'Pins', 'Locks',
             'AutoAmmo', 'MaxMP', 'Craft', 'HELM', 'Fishing', 'Chocobo', 'Alpha', 'Beta', 'Triggers' } };
         check('ARP6 multiple unknowns keep order; ceiling first / floor last hold',
             table.concat(dispatchM.arbOrderPersist(dispatchM.arbOrder(twoGhosts), twoGhosts), '>'),
-            'Disabled>Zeta>Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Alpha>Beta>External>Triggers');
+            'Disabled>Zeta>Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>Alpha>Beta>ModeLock>External>Triggers');
     end
 
     -- AR3: the PURE resolve core -- claims + rank + floor -> winners + by.
@@ -7150,12 +7150,12 @@ end)();
     put('tests\\arbstate.lua', 'return { order = { "MaxMP", "AutoAmmo", "Pins", "Locks", "Craft", "HELM", "Fishing", "Triggers" } }');
     check('AR7 hand-edited reorder is read + sanitized',
         table.concat(dispatchM.arbOrder(esf(cache, 'arbstate.lua')), '>'),
-        'Disabled>Naked>MaxMP>AutoAmmo>Pins>Locks>Craft>HELM>Fishing>Chocobo>External>Triggers');
+        'Disabled>Naked>MaxMP>AutoAmmo>Pins>Locks>Craft>HELM>Fishing>Chocobo>ModeLock>External>Triggers');
     cache.lastCheck = -1;
     put('tests\\arbstate.lua', 'return { order = {');   -- torn write
     check('AR7b torn write drops to default',
         table.concat(dispatchM.arbOrder(esf(cache, 'arbstate.lua')), '>'),
-        'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>External>Triggers');
+        'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>ModeLock>External>Triggers');
     os.remove('tests\\arbstate.lua');
     dispatchM._charDirOverride = nil;
 
@@ -7296,11 +7296,11 @@ end)();
     check('AR12 the Ammo contest line names winner over runner-up (the issue example)',
         joined:find('Ammo: Ammo rule (rank 5)  over MaxMP (rank 6)', 1, true) ~= nil, true);
     check('AR12b a MaxMP-only slot reads MaxMP over the floor',
-        joined:find('Ring1: MaxMP (rank 6)  over Triggers (rank 12)', 1, true) ~= nil, true);
+        joined:find('Ring1: MaxMP (rank 6)  over Triggers (rank 13)', 1, true) ~= nil, true);
     check('AR12c a veto slot reads stopped by Locks (even from a lowercase key)',
         joined:find('Legs: stopped by Locks (rank 4)', 1, true) ~= nil, true);
     check('AR12d floor-only slots collapse into one named Triggers-floor summary',
-        joined:find('Triggers floor (rank 12, uncontested):', 1, true) ~= nil
+        joined:find('Triggers floor (rank 13, uncontested):', 1, true) ~= nil
         and joined:find('Body', 1, true) ~= nil, true);
     -- Contested slots emit individually in canonical LAC order (ammo 4 < hands 10
     -- < ring1 11), BEFORE the trailing floor summary.
@@ -7631,7 +7631,7 @@ end)();
     local def = dispatchM._arbDefaultOrder;
     local rank = {}; for i, nm in ipairs(def) do rank[nm] = i; end
     check('NK6 exact default rank', table.concat(def, '>'),
-        'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>External>Triggers');
+        'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>ModeLock>External>Triggers');
     check('NK7 Naked outranks Pins, which outranks Locks',
         rank['Naked'] < rank['Pins'] and rank['Pins'] < rank['Locks'], true);
 
@@ -7643,7 +7643,7 @@ end)();
                                        'Craft', 'HELM', 'Fishing', 'Chocobo', 'Triggers' } })[2], 'Naked');
     check('NK9 a file that places Naked LOW keeps it there (the user has spoken)',
         table.concat(dispatchM.arbOrder({ order = { 'Pins', 'Locks', 'Naked', 'Triggers' } }), '>'),
-        'Disabled>Pins>Locks>Naked>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>External>Triggers');
+        'Disabled>Pins>Locks>Naked>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>ModeLock>External>Triggers');
     check('NK10 the restore never duplicates a row', (function()
         local seen = 0;
         for _, nm in ipairs(dispatchM.arbOrder(nil)) do if nm == 'Naked' then seen = seen + 1; end end
@@ -7654,7 +7654,7 @@ end)();
     check('NK10b a missing bottom row still lands just above the floor',
         table.concat(dispatchM.arbOrder({ order = { 'Naked', 'Pins', 'Locks', 'AutoAmmo',
                                                     'MaxMP', 'Craft', 'HELM', 'Fishing', 'Triggers' } }), '>'),
-        'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>External>Triggers');
+        'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>ModeLock>External>Triggers');
 
     -- The pure resolve: Naked beats everything, and the rank list is the ONLY
     -- exception mechanism (this is the "naked except my pins" contract).
@@ -7979,13 +7979,14 @@ end)();
 
     -- The signature-leg order keeps the pre-registry byte order for the nine
     -- original legs -- craft | pins | HELM | fishing | chocobo | ammo | mp |
-    -- naked | disabled -- with JobHelper APPENDED (issue #138): a new trailing
-    -- leg leaves the nine byte-identical, so no live session retraces on upgrade
-    -- until a sequence claims. Reordering the nine still retraces: on purpose or
+    -- naked | disabled -- with every later row APPENDED (JobHelper #138,
+    -- External 2026-08-01, ModeLock 2026-08-03): a new trailing leg leaves the
+    -- earlier ones byte-identical, so no live session retraces on upgrade until
+    -- that row actually claims. Reordering them still retraces: on purpose or
     -- not at all.
-    check('CR2 the signature legs keep the pre-registry byte order, JobHelper appended',
+    check('CR2 the signature legs keep the pre-registry byte order, later rows appended',
         table.concat(dispatchM._claimantSigOrder, '|'),
-        'Craft|Pins|HELM|Fishing|Chocobo|AutoAmmo|MaxMP|Naked|Disabled|JobHelper|External');
+        'Craft|Pins|HELM|Fishing|Chocobo|AutoAmmo|MaxMP|Naked|Disabled|JobHelper|External|ModeLock');
 
     -- The documented exceptions are EXACTLY the documented exceptions. Since
     -- the FOLD (stage 6) EVERY row builds its claim and applies through the
@@ -8010,9 +8011,10 @@ end)();
         if row.bail2 == true then b2[#b2 + 1] = row.name; end
     end
     table.sort(b1); table.sort(b2);
-    check('CR4 the bail #1 set is exactly the dispatch reasons (JobHelper joined, #138)',
-        table.concat(b1, ','), 'AutoAmmo,Chocobo,Craft,External,Fishing,HELM,JobHelper,Locks,Naked,Pins');
-    check('CR4b the bail #2 set is the same eight', table.concat(b2, ','), table.concat(b1, ','));
+    check('CR4 the bail #1 set is exactly the dispatch reasons (JobHelper #138, ModeLock 2026-08-03)',
+        table.concat(b1, ','),
+        'AutoAmmo,Chocobo,Craft,External,Fishing,HELM,JobHelper,Locks,ModeLock,Naked,Pins');
+    check('CR4b the bail #2 set is the same rows', table.concat(b2, ','), table.concat(b1, ','));
     check('CR4c every row carries a prioStatus (the /dl prio twin is dead)',
         (function()
             for _, row in ipairs(reg) do if type(row.prioStatus) ~= 'function' then return row.name; end end
@@ -9994,14 +9996,14 @@ end)();
 
     -- Default + sanitize delegate to the engine (one vocabulary, no drift).
     check('AB1 default order matches the engine default',
-        table.concat(aw.defaultOrder(), '>'), 'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>External>Triggers');
+        table.concat(aw.defaultOrder(), '>'), 'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>ModeLock>External>Triggers');
     check('AB1b defaultOrder is a fresh copy (mutating it does not stick)',
         (function() local d = aw.defaultOrder(); d[1] = 'X'; return aw.defaultOrder()[1]; end)(), 'Disabled');
     check('AB2 sanitize nil -> default',
-        table.concat(aw.sanitize(nil), '>'), 'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>External>Triggers');
+        table.concat(aw.sanitize(nil), '>'), 'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>ModeLock>External>Triggers');
     check('AB2b sanitize drops unknown, restores missing at its default position',
         table.concat(aw.sanitize({ order = { 'Fishing', 'Nonsense', 'Pins' } }), '>'),
-        'Disabled>Naked>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Pins>Chocobo>External>Triggers');
+        'Disabled>Naked>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Pins>Chocobo>ModeLock>External>Triggers');
 
     -- serialize -> the engine's file shape; round-trips through arbOrder.
     local txt = aw.serialize({ 'MaxMP', 'AutoAmmo', 'Pins', 'Locks', 'Craft', 'HELM', 'Fishing', 'Triggers' });
@@ -10012,7 +10014,7 @@ end)();
     local roundtrip = dispatchM.arbOrder(chunk());
     check('AB3c serialize -> arbOrder round-trips a valid reorder',
         table.concat(roundtrip, '>'),
-        'Disabled>Naked>MaxMP>AutoAmmo>Pins>Locks>Craft>HELM>Fishing>Chocobo>External>Triggers');
+        'Disabled>Naked>MaxMP>AutoAmmo>Pins>Locks>Craft>HELM>Fishing>Chocobo>ModeLock>External>Triggers');
     check('AB3d serialize skips non-string / empty entries',
         aw.serialize({ 'Pins', '', 42, 'Triggers' }), 'return { order = { "Pins", "Triggers" } }\n');
 
@@ -10023,35 +10025,36 @@ end)();
     local def = aw.defaultOrder();
     check('AB4 a claimant moves up one (AutoAmmo #5 -> #4, crossing the Locks veto)',
         table.concat(aw.moveClaimant(def, 5, -1), '>'),
-        'Disabled>Naked>Pins>AutoAmmo>Locks>MaxMP>Craft>HELM>Fishing>Chocobo>External>Triggers');
+        'Disabled>Naked>Pins>AutoAmmo>Locks>MaxMP>Craft>HELM>Fishing>Chocobo>ModeLock>External>Triggers');
     check('AB4b a claimant moves down one (AutoAmmo #5 -> #6)',
         table.concat(aw.moveClaimant(def, 5, 1), '>'),
-        'Disabled>Naked>Pins>Locks>MaxMP>AutoAmmo>Craft>HELM>Fishing>Chocobo>External>Triggers');
-    check('AB4c the input order is not mutated', table.concat(def, '>'), 'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>External>Triggers');
+        'Disabled>Naked>Pins>Locks>MaxMP>AutoAmmo>Craft>HELM>Fishing>Chocobo>ModeLock>External>Triggers');
+    check('AB4c the input order is not mutated', table.concat(def, '>'), 'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>ModeLock>External>Triggers');
     -- Step 3: the Locks veto row now DRAGS (only the Triggers floor is fixed).
     check('AB5 Locks drags down one (#4 -> #5, under AutoAmmo)',
         table.concat(aw.moveClaimant(def, 4, 1), '>'),
-        'Disabled>Naked>Pins>AutoAmmo>Locks>MaxMP>Craft>HELM>Fishing>Chocobo>External>Triggers');
+        'Disabled>Naked>Pins>AutoAmmo>Locks>MaxMP>Craft>HELM>Fishing>Chocobo>ModeLock>External>Triggers');
     check('AB5a Locks drags up one, over Pins (Naked still above it)',
         table.concat(aw.moveClaimant(def, 4, -1), '>'),
-        'Disabled>Naked>Locks>Pins>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>External>Triggers');
-    check('AB5b Triggers refuses the drag (the floor)', aw.moveClaimant(def, 12, -1), nil);
-    -- The floor-adjacent row is External (#11) since 2026-08-01 -- other addons
-    -- ship directly above your triggers. It is the row that now cannot sink any
-    -- further, and Chocobo above it drags normally.
-    check('AB6 the floor-adjacent claimant (External #11) cannot move down into the Triggers floor (stays last)',
-        aw.moveClaimant(def, 11, 1), nil);
-    check('AB6a Chocobo #10 CAN move down now -- it swaps with External, not the floor',
+        'Disabled>Naked>Locks>Pins>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>ModeLock>External>Triggers');
+    check('AB5b Triggers refuses the drag (the floor)', aw.moveClaimant(def, 13, -1), nil);
+    -- The floor-adjacent row is External (#12) -- other addons ship directly
+    -- above your triggers, with ModeLock (2026-08-03) landing directly above
+    -- THEM. External is the row that cannot sink any further; Chocobo and
+    -- ModeLock above it drag normally.
+    check('AB6 the floor-adjacent claimant (External #12) cannot move down into the Triggers floor (stays last)',
+        aw.moveClaimant(def, 12, 1), nil);
+    check('AB6a Chocobo #10 CAN move down now -- it swaps with ModeLock, not the floor',
         table.concat(aw.moveClaimant(def, 10, 1), '>'),
-        'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>External>Chocobo>Triggers');
+        'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>ModeLock>Chocobo>External>Triggers');
     check('AB6b Fishing CAN move up (HELM #8 <-> Fishing #9)',
         table.concat(aw.moveClaimant(def, 9, -1), '>'),
-        'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>Fishing>HELM>Chocobo>External>Triggers');
+        'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>Fishing>HELM>Chocobo>ModeLock>External>Triggers');
     -- Naked is an ORDINARY draggable row: "naked except my pins" is a drag, not
     -- a code path, so the day it becomes fixed the feature loses its escape hatch.
     check('AB6c Naked drags down (Pins takes the top -- naked except pins)',
         table.concat(aw.moveClaimant(def, 2, 1), '>'),
-        'Disabled>Pins>Naked>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>External>Triggers');
+        'Disabled>Pins>Naked>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>ModeLock>External>Triggers');
     check('AB6d Naked is not a FIXED row', aw.FIXED['Naked'], nil);
     check('AB7 out-of-range / bad args are nil, never a throw',
         aw.moveClaimant(def, 1, -1) == nil and aw.moveClaimant(def, 0, 1) == nil
@@ -10069,7 +10072,7 @@ end)();
         'Craft', 'HELM', 'Fishing', 'Chocobo', 'Triggers' };
     check('AB8 persist weaves the unknown row back in at its position',
         table.concat(aw.persist(dragKnown, rawGhost), '>'),
-        'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Ghost>Craft>HELM>Fishing>Chocobo>External>Triggers');
+        'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Ghost>Craft>HELM>Fishing>Chocobo>ModeLock>External>Triggers');
     check('AB8b persist matches the engine seam exactly',
         table.concat(aw.persist(dragKnown, rawGhost), '>'),
         table.concat(dispatchM.arbOrderPersist(dragKnown, rawGhost), '>'));
@@ -10089,7 +10092,7 @@ end)();
     -- No raw file (fresh character) -> persist is just the sanitized order.
     check('AB8e no raw file -> plain sanitized order',
         table.concat(aw.persist(dragKnown, nil), '>'),
-        'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>External>Triggers');
+        'Disabled>Naked>Pins>Locks>AutoAmmo>MaxMP>Craft>HELM>Fishing>Chocobo>ModeLock>External>Triggers');
 end)();
 
 -- ---------------------------------------------------------------------------
@@ -12813,6 +12816,38 @@ end)();
     check('PX9 filtered file: groups+modes, no rules', tok and tres.Midcast == nil
         and type(tres.Groups) == 'table' and tres.Groups.Debuff[1] == 'Sheep Song'
         and type(tres.Modes) == 'table' and tres.Modes.DT ~= nil, true);
+
+    -- PX9a-PX9g. A MODE LOCK IS A SET REFERENCE (2026-08-03, ADR 0034). Locks
+    -- live in the Modes section, so they travel whenever Modes is ticked -- with
+    -- Triggers unselected entirely. Nothing scanned them, so exporting Modes
+    -- without Sets shipped locks pointing at sets the receiver does not have:
+    -- no warning, no disabled row, silent dead data -- the exact class this
+    -- dependency analysis exists to prevent.
+    local rawLk = {
+        Midcast = { { when = { any = true }, equip = { Head = 'A Hat' } } },   -- inline: NO set dep
+        Modes = { Weapon = { values = { 'Melee', 'Caster' },
+                             locks = { ['Weapon:Melee'] = { Main = 'MeleeWpn' } } } },
+    };
+    local rLk = pexp.triggerRefs(rawLk, dispatchM.canonEvent);
+    check('PX9a a mode lock is seen as a set reference', rLk.modeSets, true);
+    -- ...and it is its OWN answer: `sets` gates the TRIGGERS row, and these rules
+    -- carry an inline equip, which has never been a set dependency. Folding the
+    -- two would have disabled Triggers while leaving the real hole open.
+    check('PX9b ...without falsely claiming the RULES need sets', rLk.sets, false);
+    check('PX9c a Modes section with no locks claims nothing',
+        pexp.triggerRefs({ Modes = { DT = { values = { 'On', 'Off' } } } }, dispatchM.canonEvent).modeSets, false);
+    check('PX9d an empty lock table claims nothing',
+        pexp.triggerRefs({ Modes = { W = { locks = {} } } }, dispatchM.canonEvent).modeSets, false);
+    check('PX9e a lock with no usable set name claims nothing',
+        pexp.triggerRefs({ Modes = { W = { locks = { ['W'] = { Main = '' } } } } },
+            dispatchM.canonEvent).modeSets, false);
+    check('PX9f no Modes section at all is safe',
+        pexp.triggerRefs({ Midcast = {} }, dispatchM.canonEvent).modeSets, false);
+    -- The filter still SHIPS them (this is a gate on the form, not on the data):
+    -- with Sets ticked the export is correct and must not be trimmed.
+    local outLk = pexp.filterTriggersRaw(rawLk, { modes = true }, dispatchM.canonEvent);
+    check('PX9g locks ride the Modes section verbatim',
+        ((outLk.Modes.Weapon.locks or {})['Weapon:Melee'] or {}).Main, 'MeleeWpn');
 
     -- export format: the weights key rides job-export v1 and round-trips
     local ex = profilesM.buildExportText('BLU', 'Default', 'Mindie', 'return {};', nil, nil, '-- w\nreturn { perSet = {} };\n');
@@ -16756,6 +16791,33 @@ end)();
     check('ML43 no duplicate-cased key', (dup['weapon'] == nil), true);
     check('ML44 canonical key kept',     type(dup['Weapon']), 'table');
 
+    -- ML44a-ML44f. A STAMP MUST NOT EAT THE JOB'S MODE LOCKS (2026-08-03, ADR
+    -- 0034). Locks name THIS job's sets, so they never travel in a library entry
+    -- -- which made applyStamp's fresh-def rebuild delete them, on APPEND too:
+    -- the branch whose whole promise is "no value disappears, so no reference can
+    -- break". A stamp changes values and binds and has no opinion about which
+    -- slots a job freezes.
+    local locked = {
+        Weapon = { values = { 'Melee', 'Caster' }, bind = '^F3',
+                   locks = { ['Weapon:Melee']  = { Main = 'MeleeWpn' },
+                             ['Weapon:Caster'] = { Main = 'Staff' } } },
+    };
+    local app = ml.applyStamp(ml.makeEntry('Weapon', { 'Melee', 'Caster', 'Ranged' }), locked, 'append');
+    check('ML44a append keeps the job\'s locks',
+        ((app.Weapon.locks or {})['Weapon:Melee'] or {}).Main, 'MeleeWpn');
+    check('ML44b ...all of them',
+        ((app.Weapon.locks or {})['Weapon:Caster'] or {}).Main, 'Staff');
+    check('ML44c ...and still adds the value', join(app.Weapon.values), 'Melee,Caster,Ranged');
+    -- OVERWRITE is the one path that must strip: the definition SURVIVES with a
+    -- shorter value list, so the ADR 0019 cascade is not free here.
+    local ow = ml.applyStamp(ml.makeEntry('Weapon', { 'Melee', 'Tank' }), locked, 'overwrite');
+    check('ML44d overwrite keeps a lock whose value survived',
+        ((ow.Weapon.locks or {})['Weapon:Melee'] or {}).Main, 'MeleeWpn');
+    check('ML44e ...and strips the lock whose value died',
+        (ow.Weapon.locks or {})['Weapon:Caster'], nil);
+    check('ML44f the caller\'s map is still untouched',
+        (locked.Weapon.locks['Weapon:Caster'] or {}).Main, 'Staff');
+
     -- ---- capture from a job ----
     local caps, refused = ml.captureAll({ Weapon = { values = { 'A', 'B' } }, DT = {}, maxmp = {} });
     check('ML45 captures both real modes', #caps, 2);
@@ -17459,8 +17521,8 @@ end)();
         end
         return 'Locks row missing';
     end)(), true);
-    check('LS15d no new CLAIMANT row was added (12 = the 11 ranked rows + the ADR 0024 ceiling)',
-        #def, 12);
+    check('LS15d no new CLAIMANT row was added (13 = the 12 ranked rows + the ADR 0024 ceiling)',
+        #def, 13);
 
     -- LS16. END TO END through the REAL M.dispatch (the NK26 pattern). A locked
     -- set with NOTHING else armed -- no triggers, no pins, no hobby, no ammo --
@@ -18081,6 +18143,305 @@ end)();
     _G.gProfile                      = saved.gProfile;
     eng.onEvent, eng.state.tripped   = saved.onEvent, saved.tripped;
     TEST_PLAYER                      = saved.player;
+    os.remove(trigPath);
+    os.remove('tests' .. SEP .. 'modestate.lua');
+    os.remove('tests' .. SEP .. 'arbstate.lua');
+end)();
+
+-- ---------------------------------------------------------------------------
+-- MDL. MODE LOCKS (2026-08-03, Henrik). "Once that mode is active, this slot
+--     comes from THIS set and nothing in the trigger layer may move it."
+--
+--     Three tiers, because the feature has three failure modes and they are
+--     nothing like each other:
+--       MDL1-MDL9   the PURE planner -- who holds which slot, and the tie rule.
+--                 A pairs()-ordered winner would land differently on two
+--                 dispatches with nothing changed, which is a bug you can only
+--                 catch by asking twice.
+--       MDL10-MDL15 the WIPE CONTRACT -- locks live in the trigger file's Modes
+--                 section, so a Commit that does not round-trip them silently
+--                 unlocks every slot while the Modes list looks untouched.
+--       MDL16-MDL22 END TO END through the REAL M.dispatch (the TRC/LS16 harness):
+--                 the only tier that can prove a trigger rule actually loses
+--                 the slot, on Default and on an action event alike.
+-- ---------------------------------------------------------------------------
+(function()
+    local D = dispatchM;
+
+    -- MDL1-MDL3. modeLocksOf: the ONE sanitizer, run on the way in AND out.
+    local raw = { values = { 'Melee', 'Caster' },
+                  locks = { ['Weapon:Melee'] = { main = 'MeleeWpn', Sub = 'MeleeWpn',
+                                                 Nose = 'Nope', Head = 42 },
+                            ['Weapon:Caster'] = {},
+                            [''] = { Main = 'X' } } };
+    local lk = D.modeLocksOf(raw);
+    check('MDL1 a lac-case slot canonicalizes',        lk['Weapon:Melee'].Main, 'MeleeWpn');
+    check('MDL1b a canonical slot passes through',     lk['Weapon:Melee'].Sub,  'MeleeWpn');
+    check('MDL1c an unknown slot is dropped',          lk['Weapon:Melee'].Nose, nil);
+    check('MDL1d a non-string set name is dropped',    lk['Weapon:Melee'].Head, nil);
+    check('MDL2 a condition with no usable slot is dropped', lk['Weapon:Caster'], nil);
+    check('MDL2b an empty condition key is dropped',   lk[''], nil);
+    check('MDL3 a def with no locks answers nil',      D.modeLocksOf({ values = { 'A', 'B' } }), nil);
+    check('MDL3b a non-table def answers nil',         D.modeLocksOf('nope'), nil);
+
+    -- MDL4-MDL7. modeLockPlan: pure, both reads injected (the modeActive twin).
+    local defs = {
+        weapon = { name = 'Weapon', values = { 'Melee', 'Caster' },
+                   locks = { ['Weapon:Melee'] = { Main = 'MeleeWpn', Sub = 'MeleeWpn' } } },
+        dt     = { name = 'DT', locks = { ['DT'] = { Body = 'DTSet' } } },
+    };
+    check('MDL4 nothing active locks nothing', next(D.modeLockPlan(defs, {})), nil);
+    local plan = D.modeLockPlan(defs, { weapon = 'Melee' });
+    check('MDL5 the active cycle VALUE locks its slots',   plan.Main.set, 'MeleeWpn');
+    check('MDL5b ...and names the mode that holds it',     plan.Main.by, 'Weapon:Melee');
+    check('MDL5c ...for every slot it named',              plan.Sub.set, 'MeleeWpn');
+    check('MDL5d ...and nothing it did not',               plan.Body, nil);
+    check('MDL6 a DIFFERENT value of the same cycle does not fire',
+        next(D.modeLockPlan(defs, { weapon = 'Caster' })), nil);
+    local both = D.modeLockPlan(defs, { weapon = 'Melee', dt = true });
+    check('MDL7 a toggle locks alongside a cycle', both.Body.set, 'DTSet');
+    check('MDL7b ...and the cycle keeps its own',  both.Main.set, 'MeleeWpn');
+
+    -- MDL8-MDL9. THE TIE: FIRST COME, FIRST SERVE (Henrik's ruling, 2026-08-03 --
+    -- "the one who took the slot lock first should get it, the rest stand in
+    -- queue"). Two active modes CAN name one slot; the ACTIVATION CLOCK decides,
+    -- not the alphabet.
+    local clash = {
+        weapon = { name = 'Weapon', values = { 'Melee' },
+                   locks = { ['Weapon:Melee'] = { Main = 'FromWeapon' } } },
+        dt     = { name = 'DT', locks = { ['DT'] = { Main = 'FromDT' } } },
+    };
+    local live = { weapon = 'Melee', dt = true };
+    -- Weapon took it FIRST (lower stamp) even though 'DT' sorts earlier: the
+    -- alphabet must not be able to overrule the clock, which is the whole point.
+    local p1, c1 = D.modeLockPlan(clash, live, { weapon = 1, dt = 2 });
+    check('MDL8 the mode that took the slot FIRST holds it', p1.Main.by, 'Weapon:Melee');
+    check('MDL8b ...even though the loser sorts alphabetically first', p1.Main.set, 'FromWeapon');
+    -- Flip only the clock: the winner flips with it.
+    local p2, c2 = D.modeLockPlan(clash, live, { weapon = 2, dt = 1 });
+    check('MDL8c taking it first the other way round flips the winner', p2.Main.by, 'DT');
+    check('MDL8d ...and the same inputs answer the same way twice',
+        (D.modeLockPlan(clash, live, { weapon = 2, dt = 1 })).Main.by, p2.Main.by);
+    -- No clock at all (an older mirror, or a headless caller): still deterministic.
+    check('MDL8e with no clock it falls back to a STABLE order, never pairs() luck',
+        (D.modeLockPlan(clash, live)).Main.by, 'DT');
+    check('MDL8f ...and an equal-stamp tie breaks the same stable way',
+        (D.modeLockPlan(clash, live, { weapon = 5, dt = 5 })).Main.by, 'DT');
+    check('MDL9 the loser is queued, not swallowed', (c1 ~= nil) and c1[1].lost.set or nil, 'FromDT');
+    check('MDL9b ...naming the slot and who holds it',
+        (c1 ~= nil) and (c1[1].slot .. '/' .. c1[1].kept.set) or nil, 'Main/FromWeapon');
+    check('MDL9c the queue flips with the clock', (c2 ~= nil) and c2[1].lost.set or nil, 'FromWeapon');
+    -- THE QUEUE NEEDS NO STATE: drop the holder and the next in line simply wins
+    -- the next walk -- which is what makes "the rest stand in queue" true without
+    -- anything having to remember a queue.
+    local p3, c3 = D.modeLockPlan(clash, { dt = true }, { weapon = 1, dt = 2 });
+    check('MDL9d the holder going off hands the slot to the next in line', p3.Main.by, 'DT');
+    check('MDL9e ...and nothing is left queued', c3, nil);
+
+    -- MDL9f-MDL9i. THE CLOCK ITSELF: stamped on CHANGE, never on re-assertion --
+    -- a macro that re-asserts a mode every pull must not send it to the back of
+    -- the queue, and turning a mode off must release its place.
+    local savedSeq, savedSeqN, savedModes = D.modeSeq, D.modeSeqN, D.modes;
+    D.modeSeq, D.modeSeqN, D.modes = {}, 0, {};
+    D.modeSet('dt', true);
+    local first = D.modeSeq['dt'];
+    D.modeSet('weapon', 'Melee');
+    check('MDL9f the second mode stamps later', D.modeSeq['weapon'] > first, true);
+    D.modeSet('dt', true);                      -- re-assert: nothing changed
+    check('MDL9g re-asserting a mode does NOT move it down the queue', D.modeSeq['dt'], first);
+    D.modeSet('weapon', 'Caster');              -- a real value change
+    check('MDL9h changing a cycle VALUE is taking the slot again',
+        D.modeSeq['weapon'] > D.modeSeq['dt'], true);
+    D.modeSet('dt', nil);
+    check('MDL9i turning a mode off releases its place', D.modeSeq['dt'], nil);
+    D.modeSeq, D.modeSeqN, D.modes = savedSeq, savedSeqN, savedModes;
+
+    -- MDL10-MDL15. THE WIPE CONTRACT. A Commit serializes the WHOLE model, so
+    -- locks must survive serialize -> load -> fromRaw -> serialize byte for byte.
+    -- If they do not, the Modes list looks identical and every slot is quietly
+    -- unlocked -- the exact shape of the SetOptions/Modes bug that shipped once.
+    local tmodel = dofile('gear/triggermodel.lua');
+    local text = D.serializeTriggers({
+        Default = { { when = { status = 'Idle' }, set = 'Idle' } },
+        Modes = {
+            Weapon = { values = { 'Melee', 'Caster' }, bind = '^F3',
+                       locks = { ['Weapon:Melee'] = { Sub = 'MeleeWpn', Main = 'MeleeWpn' } } },
+            DT     = { locks = { ['DT'] = { Body = 'DTSet' } } },
+        },
+    });
+    check('MDL10 locks serialize into the Modes section',
+        text:find('locks = { ["Weapon:Melee"] = { Main = "MeleeWpn", Sub = "MeleeWpn" } }', 1, true) ~= nil, true);
+    check('MDL10b slots emit in vocabulary order, not pairs() order',
+        text:find('{ Main = "MeleeWpn", Sub = "MeleeWpn" }', 1, true) ~= nil, true);
+    check('MDL11 a bare toggle carries locks too',
+        text:find('["DT"] = { locks = { ["DT"] = { Body = "DTSet" } } }', 1, true) ~= nil, true);
+    local rawT = (loadstring or load)(text)();
+    check('MDL12 the emitted file reloads', type(rawT), 'table');
+    check('MDL13 serialize is byte-stable', D.serializeTriggers(rawT) == text, true);
+    local model = tmodel.fromRaw(rawT, D.canonEvent);
+    check('MDL14 WIPE CONTRACT: locks survive the edit model',
+        (((model.Modes or {}).Weapon or {}).locks or {})['Weapon:Melee'].Main, 'MeleeWpn');
+    check('MDL14b ...and the model re-serializes byte-identical', D.serializeTriggers(model) == text, true);
+    -- Junk a hand-editor typed is dropped ONCE, on the way out, and never re-emitted.
+    local junk = D.serializeTriggers({
+        Modes = { X = { locks = { ['X'] = { Nose = 'Set', Feet = 'Set' } } } },
+    });
+    check('MDL15 an unknown slot never survives a Commit', junk:find('Nose', 1, true), nil);
+    check('MDL15b ...while the good slot beside it does',  junk:find('Feet = "Set"', 1, true) ~= nil, true);
+
+    -- MDL16-MDL22. END TO END. The TRC harness: a real trigger file, a real
+    -- dispatch, a stubbed native equip door. This is the tier that can show a
+    -- trigger rule LOSING a slot -- everything above is arithmetic.
+    local SEP  = string.char(92);
+    local prof = package.loaded['dlac\\profiles'];
+    local eng  = package.loaded['dlac\\feature\\equipengine'];
+    if type(prof) ~= 'table' or type(eng) ~= 'table' then return; end
+    local saved = {
+        nativeMode = prof.nativeMode,        dataDir = prof.dataDir,
+        dispatch   = package.loaded['dlac\\dispatch'],
+        engine     = package.loaded['dlac\\feature\\equipengine'],
+        gFunc      = rawget(_G, 'gFunc'),    gState  = rawget(_G, 'gState'),
+        gProfile   = rawget(_G, 'gProfile'),
+        reg        = ashita.events.register, unreg   = ashita.events.unregister,
+        player     = TEST_PLAYER,
+    };
+    prof.nativeMode = function() return true; end
+    prof.dataDir    = function() return 'tests' .. SEP; end
+    _G.gFunc, _G.gProfile = nil, nil;
+    _G.gState = { CurrentCall = 'N/A', Disabled = {} };
+    TEST_PLAYER = { MainJob = 'WHM', MainJobLevel = 75, SubJob = 'BLM', SubJobLevel = 37,
+                    MainJobSync = 75, SubJobSync = 37, Status = 'Idle', IsMoving = false };
+
+    local wrote = {};
+    package.loaded['dlac\\feature\\equipengine'] = {
+        nativeOn = function() return true; end,
+        equipSet = function(t) for k, v in pairs(t or {}) do wrote[k] = v; end end,
+        state    = { tripped = false },
+    };
+
+    local trigDir  = 'tests' .. SEP .. 'triggers';
+    local trigPath = trigDir .. SEP .. 'WHM.lua';
+    if package.config:sub(1, 1) == '\\' then
+        pcall(function() os.execute('mkdir "' .. trigDir .. '" >nul 2>&1'); end);
+    end
+    local tf = io.open(trigPath, 'w');
+    if tf ~= nil then
+        -- Henrik's own case: a Weapon cycle whose Caster value swaps weapons on
+        -- every event, and whose Melee value must never see one move.
+        tf:write([[
+return {
+    Default  = { { when = { status = 'Idle' }, set = 'Idle' } },
+    Midcast  = { { when = { any = true },      set = 'Nuke' } },
+    Modes = {
+        ["Weapon"] = { values = { "Melee", "Caster" },
+                       locks = { ["Weapon:Melee"] = { Main = "LockedWpn", Head = "NoSuchSlot" } } },
+    },
+};
+]]);
+        tf:close();
+    end
+
+    local handlers = {};
+    ashita.events.register   = function(ev, nm, fn) handlers[ev] = fn; end
+    ashita.events.unregister = function() end
+    local okLoad, E = pcall(dofile, 'dispatch.lua');
+    ashita.events.register, ashita.events.unregister = saved.reg, saved.unreg;
+    check('MDL16 dispatch loads with a locks-bearing trigger file', okLoad, true);
+
+    if okLoad then
+        -- Idle fills Main+Body; the lock's set fills Main only; NoSuchSlot fills
+        -- nothing at all (the "lock that holds nothing" case, MDL21).
+        E._nativeSets = {
+            Dynamic     = { Idle = { Main = 'Rule Sword', Body = 'Rule Robe' },
+                            Nuke = { Main = 'Rule Staff' },
+                            LockedWpn  = { Main = 'Locked Sword' },
+                            NoSuchSlot = { Body = 'Wrong Slot Piece' } },
+            Idle        = { Main = 'Rule Sword', Body = 'Rule Robe' },
+            Nuke        = { Main = 'Rule Staff' },
+            LockedWpn   = { Main = 'Locked Sword' },
+            NoSuchSlot  = { Body = 'Wrong Slot Piece' },
+        };
+
+        -- The cycle seats itself at values[1] = Melee on load, so start by
+        -- jumping to Caster: the mode OFF baseline has to be a real baseline.
+        E.setMode('Weapon', 'Caster');
+        wrote = {};
+        pcall(E.dispatch, 'Default');
+        check('MDL17 with the lock inactive, the trigger rule owns Main', wrote.Main, 'Rule Sword');
+        check('MDL17b ...and its other slots as always',                 wrote.Body, 'Rule Robe');
+
+        E.setMode('Weapon', 'Melee');
+        wrote = {};
+        pcall(E.dispatch, 'Default');
+        check('MDL18 the lock takes Main away from the rule',  wrote.Main, 'Locked Sword');
+        check('MDL18b ...and leaves every other slot to it',   wrote.Body, 'Rule Robe');
+
+        -- The whole point: the hold survives the events that swap weapons.
+        wrote = {};
+        pcall(E.dispatch, 'Midcast');
+        check('MDL19 the lock holds on an ACTION event too', wrote.Main, 'Locked Sword');
+
+        -- THE CLOCK MUST REACH THE OTHER LUA STATE. The GUI computes the same
+        -- plan from the modestate mirror, so if `__seq` does not ride the file
+        -- the window orders a contested slot alphabetically while the engine
+        -- orders it by who took it first -- and names the wrong winner. Pins the
+        -- wire format, which is the half a pure test cannot see.
+        local mf = io.open('tests' .. SEP .. 'modestate.lua', 'r');
+        local mtext = mf and mf:read('*a') or '';
+        if mf then mf:close(); end
+        check('MDL19b the mirror carries the activation clock',
+            mtext:find('["__seq"]', 1, true) ~= nil, true);
+        check('MDL19c ...stamping the mode that is actually active',
+            mtext:find('["weapon"]', 1, true) ~= nil, true);
+        local mchunk = (loadstring or load)(mtext);
+        local mok, mstate = pcall(mchunk or function() end);
+        check('MDL19d the mirror still parses with the clock in it', mok and type(mstate), 'table');
+        -- The GUI's own call, with the defs it builds from its edit model and the
+        -- two reads it has: the mirror's flags and the mirror's clock. It must
+        -- reach the SAME answer the engine just equipped.
+        local guiDefs = { weapon = { name = 'Weapon', values = { 'Melee', 'Caster' },
+            locks = { ['Weapon:Melee'] = { Main = 'LockedWpn', Head = 'NoSuchSlot' } } } };
+        local guiPlan = (mok and type(mstate) == 'table')
+            and E.modeLockPlan(guiDefs, mstate, mstate.__seq) or {};
+        check('MDL19e the GUI plans from the mirror and lands on the engine\'s answer',
+            (guiPlan.Main or {}).set, 'LockedWpn');
+        check('MDL19f ...naming the same holding mode', (guiPlan.Main or {}).by, 'Weapon:Melee');
+
+        -- ...and lets go the moment the mode does. A lock that needed a reload
+        -- to release would be worse than no lock.
+        E.setMode('Weapon', 'Caster');
+        wrote = {};
+        pcall(E.dispatch, 'Default');
+        check('MDL20 flipping the mode hands the slot straight back', wrote.Main, 'Rule Sword');
+
+        -- A lock naming a set with no entry for its slot claims NOTHING: there
+        -- is no answer to give, so the floor keeps the slot. The Mode Locks
+        -- window flags this in red at edit time -- here we pin that it degrades
+        -- quietly rather than blanking the slot.
+        E.setMode('Weapon', 'Melee');
+        wrote = {};
+        pcall(E.dispatch, 'Default');
+        check('MDL21 a lock whose set lacks the slot holds nothing', wrote.Head, nil);
+        check('MDL21b ...and does not drag the wrong piece in',      wrote.Body, 'Rule Robe');
+
+        -- The claimant is a REGISTERED row: /dl why must be able to name it, or
+        -- a slot that stopped responding has no explanation anywhere.
+        local named = nil;
+        for _, row in ipairs(E._claimants) do
+            if row.name == 'ModeLock' then named = row; break; end
+        end
+        check('MDL22 ModeLock is a registered claimant row', named ~= nil, true);
+        check('MDL22b ...with a claim, an apply and a ladder',
+            named ~= nil and named.claim ~= nil and named.apply ~= nil and named.rladder ~= nil, true);
+        check('MDL22c ...and a live prioStatus naming the held slot',
+            (named ~= nil) and (named.prioStatus():find('Main=LockedWpn', 1, true) ~= nil) or false, true);
+    end
+
+    prof.nativeMode, prof.dataDir = saved.nativeMode, saved.dataDir;
+    package.loaded['dlac\\dispatch'] = saved.dispatch;
+    package.loaded['dlac\\feature\\equipengine'] = saved.engine;
+    _G.gFunc, _G.gState, _G.gProfile = saved.gFunc, saved.gState, saved.gProfile;
+    TEST_PLAYER = saved.player;
     os.remove(trigPath);
     os.remove('tests' .. SEP .. 'modestate.lua');
     os.remove('tests' .. SEP .. 'arbstate.lua');
@@ -21890,11 +22251,32 @@ if okLoad and type(fw) == 'table' then
     -- The potion case: food was already up and STAYS at the same expiry.
     check('FW6 a use that leaves the expiry alone is not food',
           fw._step(S({ present = true, expiry = 500 }), 101, { present = true, expiry = 500 }, PEND), nil);
-    -- The case presence alone gets wrong: eating over a live food.
-    check('FW7 eating over live food moves the expiry -> recorded',
-          fw._step(S({ present = true, expiry = 500 }), 101, { present = true, expiry = 900 }, PEND), PEND);
+    -- The case presence alone gets wrong: a food wearing off and being re-eaten
+    -- inside one poll gap, which never flickers the icon. Expiries are in
+    -- SIXTIETHS of a second, so a 30-minute meal is 30*60*60.
+    -- The catalogue has to vouch for a re-eat: it is the ambiguous edge, so an
+    -- item nothing else speaks for is not believed on it (FW9e/FW9f).
+    check('FW7 a re-eat pushes the expiry out by a whole meal -> recorded',
+          fw._step(S({ present = true, expiry = 500 }), 101,
+                   { present = true, expiry = 500 + 30 * 60 * 60 }, PEND, { known = true }), PEND);
     check('FW7b ...and with no timer array to read, a re-eat stays unknowable',
           fw._step(S({ present = true, expiry = nil }), 101, { present = true, expiry = nil }, PEND), nil);
+    -- FIELD DATA, 2026-08-03, and this is the Instant Warp bug in one line. Food
+    -- is PAUSED while a zone loads, so the server hands back an expiry pushed
+    -- forward by the length of the load -- +2s here, straight out of Henrik's
+    -- foodhistory.lua -- and the bare `~=` that used to live here read that as a
+    -- second meal and blamed the scroll he used on the far side of the screen.
+    check('FW7c a zone re-basing the clock by 2s is NOT a meal',
+          fw._step(S({ present = true, expiry = 3605674160 }), 101,
+                   { present = true, expiry = 3605674280 }, PEND), nil);
+    check('FW7d ...nor the 6s drift that cost the Flask of Echo Drops',
+          fw._step(S({ present = true, expiry = 3603904400 }), 101,
+                   { present = true, expiry = 3603904760 }, PEND), nil);
+    -- The raw value is a uint32 that wraps every ~2.3 years. A wrap lands outside
+    -- the sane band and answers "not movement" with no wrap math at all.
+    check('FW7e a wrapped expiry is not a meal either',
+          fw._step(S({ present = true, expiry = 0xFFFFFF00 }), 101,
+                   { present = true, expiry = 200 }, PEND), nil);
     check('FW8 the effect being gone is never a meal',
           fw._step(S(nil), 101, { present = false }, PEND), nil);
     -- A dropped read must not blank the last known state, or the next good read
@@ -21904,6 +22286,73 @@ if okLoad and type(fw) == 'table' then
     check('FW9 an unreadable poll keeps the last known effect', st.food.expiry, 500);
     check('FW9b ...so the good read after it is not a fake appearance',
           fw._step(st, 102, { present = true, expiry = 500 }, PEND), nil);
+
+    -- --- THE CATALOGUE (2026-08-03). What the effect alone could never settle.
+    local UP = { present = true, expiry = 500 };
+    check('FW9c an item the server calls food is believed',
+          fw._step(S(nil), 101, UP, PEND, { known = true }), PEND);
+    check('FW9d an item the table has never heard of is still learned',
+          fw._step(S(nil), 101, UP, PEND, { known = false }), PEND);
+    check('FW9e ...but only from an effect that APPEARED, never from a re-eat',
+          fw._step(S({ present = true, expiry = 500 }), 101,
+                   { present = true, expiry = 500 + 30 * 60 * 60 }, PEND, { known = false }), nil);
+    check('FW9f ...where a catalogued food IS believed on that same re-eat',
+          fw._step(S({ present = true, expiry = 500 }), 101,
+                   { present = true, expiry = 500 + 30 * 60 * 60 }, PEND, { known = true }), PEND);
+
+    -- THE ZONE. An unvouched item cannot be believed while the status array is
+    -- still replaying; a catalogued one can, or "zone in and eat" would break.
+    local ZP = { id = 4381, at = 100 };
+    check('FW9g an unknown item inside the zone-settle window is not a meal',
+          fw._step(S(nil), 101, UP, ZP, { known = false, zonedAt = 100 }), nil);
+    check('FW9h ...but a catalogued food eaten right after a zone still is',
+          fw._step(S(nil), 101, UP, ZP, { known = true, zonedAt = 100 }), ZP);
+    local LATE = { id = 4381, at = 118 };
+    check('FW9i ...and once the array has settled the unknown one counts again',
+          fw._step(S(nil), 120, UP, LATE, { known = false, zonedAt = 100 }), LATE);
+
+    -- THE REFUSED USE. You cannot eat over food on CatsEyeXI, so an effect with
+    -- more time left than this item could ever grant is an EARLIER meal that has
+    -- merely reappeared -- a zone reload landing beside a use the server threw
+    -- away. Sole Sushi runs 30 min; five hours left is not Sole Sushi.
+    check('FW9j a meal longer than the food that bought it is refused',
+          fw._step(S(nil), 101, UP, PEND, { known = true, book = 1800, left = 18000 }), nil);
+    check('FW9k ...with room for FOOD_DURATION doubling it under Sigil',
+          fw._step(S(nil), 101, UP, PEND, { known = true, book = 1800, left = 3500 }), PEND);
+    check('FW9l ...and no opinion at all when the timer cannot be decoded',
+          fw._step(S(nil), 101, UP, PEND, { known = true, book = 1800, left = nil }), PEND);
+    -- A wild decode (a machine clock out of step with the client's) is an
+    -- UNKNOWN, not a veto -- otherwise it would refuse every real meal forever.
+    check('FW9l2 an out-of-band decode does not veto anything',
+          fw._step(S(nil), 101, UP, PEND, { known = true, book = 1800, left = 25828132 }), PEND);
+
+    -- --- WHICH use the edge belongs to. Eat a Cutlet, quaff a potion two
+    -- seconds later, and the potion is the newest thing you used when the FOOD
+    -- effect finally lands. One slot would hand it the credit.
+    local CUTLET, POTION = { id = 6394, at = 100 }, { id = 4148, at = 102 };
+    check('FW9m the catalogued food outranks the newer non-food use',
+          fw._choose(POTION, CUTLET, 103), CUTLET);
+    check('FW9n ...but not once it has aged out of the window',
+          fw._choose(POTION, CUTLET, 100 + fw.WINDOW + 1), POTION);
+    check('FW9o with no food use to prefer, the newest use stands',
+          fw._choose(POTION, nil, 103), POTION);
+    check('FW9p and a window with nothing live in it chooses nothing',
+          fw._choose(POTION, CUTLET, 200), nil);
+
+    -- --- THE ONE-TIME SWEEP. This fixture IS Henrik's foodhistory.lua.
+    local isFood = function(id) return id == 6394 or id == 6343; end
+    local FILE = { { id = 4181, name = 'Instant Warp' },  { id = 6394, name = 'Pork Cutlet' },
+                   { id = 4151, name = 'Echo Drops' },    { id = 6343, name = 'Grape Daifuku' } };
+    local swept, dropped = fw._sweep(FILE, 1, isFood);
+    check('FW9q the sweep drops the two rows that were never food', dropped, 2);
+    check('FW9r ...keeping the real meals', #swept, 2);
+    check('FW9s ...in order, untouched', swept[1].name, 'Pork Cutlet');
+    check('FW9t a file already at the new format is never re-judged',
+          select(2, fw._sweep({ { id = 4181, name = 'Instant Warp' } }, fw.FMT, isFood)), 0);
+    check('FW9u a row learned without the table is never swept',
+          select(2, fw._sweep({ { id = 31337, name = 'Stew', learned = true } }, 1, isFood)), 0);
+    check('FW9v an unreadable table sweeps nothing at all',
+          select(2, fw._sweep({ { id = 4181, name = 'Instant Warp' } }, 1, function() return nil; end)), 0);
 
     -- --- the history
     local H = {};
@@ -21971,8 +22420,11 @@ if okLoad and type(fw) == 'table' then
     check('FW17f the pump really asked its reads', asked.clock >= 1 and asked.food >= 1 and asked.name >= 1, true);
     check('FW18 a second beat with nothing pending records nothing', fw.pump(reads), nil);
     check('FW18b ...and does not save again', saves, 1);
-    -- An item we cannot name is an item we could never /item: not recorded.
+    -- An item we cannot name is an item we could never /item: not recorded. The
+    -- effect has to APPEAR for the decision to reach the naming step at all --
+    -- an unvouched item is not believed on any other edge (FW9e).
     fw._pending = { id = 99999, at = 100 };
+    fw._state.food = { present = false };
     reads.food = function() return { present = true, expiry = 777 }; end
     check('FW19 an unnameable item is not remembered', fw.pump(reads), nil);
     check('FW19b ...and the history is untouched', #fw.history, 1);
@@ -22013,7 +22465,7 @@ if okLoad and type(fw) == 'table' then
     -- cache times out -- the one second you would wait is exactly the second you
     -- would spend looking for the row.
     fw._pending = { id = 4271, at = 100 };
-    fw._state.food = { present = true, expiry = 1 };
+    fw._state.food = { present = false };
     local rec2 = fw.pump({
         clock  = function() return 101; end,
         stamp  = function() return 5; end,
@@ -22038,6 +22490,25 @@ if okLoad and type(fw) == 'table' then
         fw._pending = nil;
         pout({ id = 0x1A, data = string.rep('\0', 0x20) });
         check('FW22c ...and ignores every other packet', fw._pending, nil);
+    end
+
+    -- The zone stamp (2026-08-03). Two bare writes on the network thread: the
+    -- clock STEP 4 of _step waits out, and the pending item use that has no
+    -- business surviving a loading screen -- Henrik's Instant Warp is BOTH, since
+    -- a warp scroll's own arrival fires this handler.
+    local pin = handlers['packet_in/dlac-foodwatch-zonein'];
+    check('FW22d the zone-in handler registered', type(pin), 'function');
+    if type(pin) == 'function' then
+        fw._pending     = { id = 4381, at = 1 };
+        fw._pendingFood = { id = 4381, at = 1 };
+        fw._zonedAt     = nil;
+        pin({ id = 0x00A, data = '' });
+        check('FW22e a zone drops the use waiting on the far side', fw._pending, nil);
+        check('FW22f ...and the food use with it', fw._pendingFood, nil);
+        check('FW22g ...and stamps when the array started replaying', type(fw._zonedAt), 'number');
+        fw._zonedAt = nil;
+        pin({ id = 0x00B, data = '' });
+        check('FW22h ...ignoring every other packet', fw._zonedAt, nil);
     end
 
     -- the command
@@ -22127,6 +22598,23 @@ do
     check('FW31b ...and still eatable', (fw._pick(fw.history, function() return 1; end, 2)[1] or {}).cmd,
           '/item "Server Custom Stew" <me>');
     check('FW31c ...it simply has no stats to show', fw.statsFor(31337, { describe = function() return nil; end }), nil);
+    -- ...and it is MARKED, which is what stops the one-time sweep from deciding
+    -- later that a food the shipped table never listed was never food.
+    check('FW31d a learned food carries the marker', fw.history[1] and fw.history[1].learned, true);
+    check('FW31e ...and keeps it through the file',
+          (fw._fromRaw((loadstring or load)(fw._serialize(fw.history))())[1] or {}).learned, true);
+
+    -- The other side of the same coin: a food the table DOES vouch for needs no
+    -- marker, because the catalogue can answer for it every time.
+    fw._reset();
+    fw._pending = { id = 6394, at = 100 };
+    fw.pump({ clock  = function() return 100; end,
+              stamp  = function() return 500; end,
+              food   = function() return { present = true, expiry = 42 }; end,
+              nameOf = function() return 'Pork Cutlet'; end,
+              save   = function() return true; end });
+    check('FW31f a catalogued food is recorded', fw.history[1] and fw.history[1].name, 'Pork Cutlet');
+    check('FW31g ...and needs no learned marker', fw.history[1] and fw.history[1].learned, nil);
 
     package.loaded['dlac\\data\\fooddb'] = nil;
     fw._reset();
