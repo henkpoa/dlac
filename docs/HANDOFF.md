@@ -294,125 +294,38 @@ infer it from a field confirmation, from *"works"*, or from your own read that s
 ready — his own note on the exchange was *"you are right not to assume otherwise since I
 haven't told you."* Ask when he has **not** said merge; never ask twice when he has.
 
-### Mode Locks — `2026.08.03x`, engine v166 (ADR 0034) — **NOT field-run**
+**THE QUEUE IS EMPTY.**
 
-Henrik, 2026-08-03: *"It is a very common problem when building sets that you want to 100%
-lock a piece over every set once a mode is active. REGARDLESS what happens, this piece MUST
-ALWAYS stay on… I have a caster mode where I switch weapons all the time. But when I am in
-melee mode, I NEVER want the weapons to be touched."*
+*(Emptied by the second 2026-08-03 promotion — **Mode Locks** (`2026.08.03x`, **engine
+v166**, ADR 0034) and **the food register stops believing a zone** (`2026.08.03w`). Henrik:
+*"document this, have it ready for merge, merge it and push"* — an accept under the 08-01
+ruling, so nothing was asked twice. Two trains built in parallel sessions on one checkout;
+the food commit staged itself out of the shared tree without touching the Mode Locks work,
+and this promotion carries both. Full reasoning for each in [history.md](history.md) —
+*"the slot that stops listening"* and *"the food register stops believing a zone"*.*
 
-A mode definition now carries **locks**: per mode CONDITION (`Weapon:Melee` for a cycle
-value, `DT` for a toggle), a set per slot. While that mode is active, those slots come from
-that set and **no trigger rule can move them, on any event**. Stored inside the mode
-definition in the job's trigger file, so ADR 0019's value-delete cascade takes them with it
-for free.
+***NEITHER IS FIELD-RUN. Do not read either onto main as field-proven*** — the suites are
+green on both interpreters (**6157 + 1121**) and every new rule is mutation-checked, but no
+mode lock has held a weapon in game and no warp scroll has been used after a zone since the
+fix. **Two rounds are owed, and they are both short.**
 
-It ships as an **ordinary claimant row** (`ModeLock`, displayed *"Mode lock"*), directly
-above `External` — above every trigger rule and above a foreign addon, below every activity
-you armed this session. That is one drag from anything else, which is why it is a row and
-not a floor special case; the Arbiter Monitor grid, `/dl why`, the Priority list and the
-fall-down-its-own-ladder behaviour all came for free. Full reasoning:
-**[adr/0034](adr/0034-mode-locks-are-a-claimant-row.md)**.
-
-Where it shows: **Triggers > Modes**, a `locks` button on each mode box (carrying the count
-when non-zero) opens a movable 16-slot window; the **Trigger Monitor** gained a `locks` line
-plus a `MODE LOCK holds Main,Sub` suffix on a fired rule whose set names a held slot; the
-**Arbiter Monitor** and **Priority** list carry the row.
-
-**Conflicting modes are FIRST COME, FIRST SERVE** (Henrik's ruling, same session: *"the one
-who took the slot lock first should get it, the rest stand in queue basically"*). Modes carry
-an **activation clock** (`M.modeSeq`, stamped when a flag *changes*, never on re-assertion,
-cleared when it goes off, mirrored as `__seq` so the GUI orders the queue identically). The
-queue needs no state: the plan is rebuilt every dispatch, so when the holder's mode goes off
-the next in line wins the next walk. Every flag write goes through one seam, `M.modeSet`.
-
-Suites **6157 + 1121** on the combined tree (Mode Locks + the food train), tests `MDL1`–`MDL22` (planner, the clock, the mirror wire format, the
-wipe contract, and end-to-end through the real `M.dispatch`) + `ML44a`–`ML44f`, `PX9a`–`PX9g`,
-smoke `MLK1`–`MLK13`. (`ML*` was already taken by the modeslibrary section — two sections
-sharing IDs makes a failure report ambiguous.)
-
-**Travel, asked and answered (Henrik, same session).** *Profile export/import carries mode
-locks already* — `filterTriggersRaw` takes the whole `Modes` table and locks live inside it.
-*The Mode library deliberately does not*, because a library entry is job-independent and set
-names are not — **but the first cut let a stamp silently EAT the receiving job's locks**, on
-Append too, the branch that promises nothing disappears. Fixed: locks belong to the job and
-ride across a stamp untouched; only an Overwrite that kills a cycle value takes that value's
-locks with it (`ML44a`–`ML44f`).
-
-*CLOSED — Henrik's call: hard dependency, same strength as a rule's `set =`.*
-`profileexport.triggerRefs` now reports `modeSets`, and the export form **disables the Modes
-row** when Sets is unticked — not Triggers, since a lock travels with the Modes section and
-Triggers need not be selected at all, so gating Triggers would have disabled something
-unrelated while leaving the real hole open. When the triggers ALSO need the blocked Modes,
-the Triggers row names **Sets** — the root fix — instead of pointing at a row that is
-pointing back at it (`PX9a`–`PX9g`).
-
-***THE ROUND OWED — nothing here has equipped an item in game.*** *Henrik's own case is the
-test: on the job where he has a Weapon cycle, lock `Main`/`Sub` to a melee set under the
-melee value, then pull something and cast through it. Four things to look at —* **(1)** *the
-weapons do not move on Precast/Midcast/WS;* **(2)** *flipping the cycle to the caster value
-hands them straight back with no reload;* **(3)** *the Trigger Monitor's `locks` line names
-the held slots while the rules below it still show their sets;* **(4)** *the Arbiter
-Monitor's Main cell is gold and its hover reads `Mode lock (rank 11)` over `Triggers`.*
+***Mode Locks*** *(Triggers → Modes → the* `locks` *button; ADR 0034). On the job with your
+Weapon cycle, lock* `Main` *and* `Sub` *to a melee set under the melee value, then pull
+something and cast through it — five checks:* **(1)** *the weapons do not move on
+Precast/Midcast/WS;* **(2)** *flipping the cycle to the caster value hands them straight back
+with no reload;* **(3)** *the Trigger Monitor's* `locks` *line names the held slots while the
+rules below it still show their sets;* **(4)** *the Arbiter Monitor's Main cell is gold and
+its hover reads* `Mode lock (rank 11)` *over* `Triggers`*;* **(5)** *turn on a second mode
+that locks the same slot and confirm the one flipped FIRST keeps it, with the other listed
+as queued.*
 
 ***One thing to watch, because it degrades quietly by design:*** *a lock naming a set with
 no entry for that slot claims **nothing** — the trigger keeps the slot. The window flags it
-in red (`[!] no Main in this set`), but if a lock ever "does nothing" in the field, check
-that first before assuming the claim path is broken.*
+in red (`[!] no Main in this set`), so if a lock ever "does nothing" in the field, check that
+before assuming the claim path is broken.*
 
-### The food register stops believing a zone — `2026.08.03w`, no engine change — **NOT field-run**
-
-**A bug on `main`, found by the first field round foodwatch ever got.** Henrik: *"Seems like
-our food register isn't working properly, it is showing my instant warp scroll as recently
-eaten… I tried to use a warp scroll almost immediately after zoning after everything hadn't
-loaded in properly."* His `foodhistory.lua` held **two** impostors, not one — an **Instant
-Warp** and a **Flask of Echo Drops** — and each carried, as its own duration, *the remaining
-time of the real meal still running underneath it*. That arithmetic is the whole diagnosis:
-the FOOD effect never lapsed, so nothing was eaten.
-
-**Food is PAUSED while a zone loads.** The server returns the effect with its expiry pushed
-forward by the length of the load — **+2s** and **+6s**, still readable in the file. `_step`
-compared expiries for **inequality**, read that drift as a second meal, and blamed whatever
-item had been used in the previous 8 seconds. A warp scroll is used exactly then, and a warp
-scroll *is* a zone.
-
-*The comment over that branch had read **"cannot fire wrongly"** for two days. It reasoned
-that nothing else could move the value; the loading screen could.*
-
-**`data\fooddb.lua` now VOUCHES — the DISPLAY-ONLY law is retired**, in the module, the
-generator and the regenerated file (header only; **zero data rows changed**). It is built
-from the server's own predicate (`xi.itemUtils.foodOnItemCheck`, 783 scripts on `stable
-9bb0ec8c67`), so it is the same authority the effect is, only readable *before* the fact.
-Neither impostor is in it. **Absence is still not a veto** — a food the server adds tomorrow
-is indistinguishable from a non-food in there, so an unlisted item is *unvouched* rather than
-refused and is still learned from a clean edge (`FW31` guards that path).
-
-Four gates, each paid for by something in the file: a re-eat must clear **`REEAT_JUMP` 15s**
-(the drifts were 2s and 6s; the shortest food on the server runs 30s); a meal cannot have
-more time left than the item could grant, **doubled** for `FOOD_DURATION` (the *refused use*
-— you cannot eat over food here); an unvouched item needs an **appeared** edge; and never
-within **`ZONE_SETTLE` 15s** of an `IN 0x00A`. A catalogued food skips that wait, so "zone
-in, eat" still works.
-
-**One hole nobody had reported, closed in passing:** eat a Cutlet, quaff a potion two
-seconds later, and the potion is the newest use when the effect lands — one pending slot
-hands it the credit. `M._choose` keeps a second slot for the newest use the catalogue calls
-food and prefers it.
-
-**The history heals itself on load** (`fmt` 1 → 2). Dry-run against Henrik's real file:
-7 rows in, exactly the 2 impostors dropped, 5 real meals kept in order. `/dl food forget` was
-the wrong tool — it would have taken the Pork Cutlet with them.
-
-Suites **6087** + **1108**, Windows and WSL, run on the **committed tree in an isolated
-worktree** — this train was staged out of a shared checkout and those are its own numbers;
-alongside the parallel session's uncommitted Mode Locks work the same tree reads 6157 + 1121.
-`FW7c`/`FW7d` use his two drift values as goldens; `FW19` and `FW21d` had fixtures corrected,
-one of which would otherwise have gone green for the wrong reason. Full reasoning:
-[history.md](history.md) — *"the food register stops believing a zone"*.
-
-***THE ROUND OWED, and it is short:*** *zone, use a warp scroll immediately, then `/dl food`
-— nothing new should be recorded; and the two junk rows should already be gone after the
-first load.*
+***The food register*** *: zone, use a warp scroll immediately, then* `/dl food` *— nothing
+new should be recorded, and the two junk rows should already be gone after the first load.*
 
 ---
 
