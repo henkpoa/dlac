@@ -294,35 +294,30 @@ infer it from a field confirmation, from *"works"*, or from your own read that s
 ready — his own note on the exchange was *"you are right not to assume otherwise since I
 haven't told you."* Ask when he has **not** said merge; never ask twice when he has.
 
-### The mode lock queue reaches both monitors — `2026.08.03y`, engine v167 — **NOT field-run**
+**THE QUEUE IS EMPTY.**
 
-Henrik, straight after the promotion: *"Where do I see the queue for the mode lock?"* The
-honest answer was **one place** — the Mode Locks window — which is the surface you are least
-likely to be looking at while playing. Both monitors named only the winner, so a slot doing
-something surprising gave no hint that another active mode was waiting behind it.
+*(Emptied by the third 2026-08-03 promotion — **the mode lock queue reaches both monitors**
+(`2026.08.03y`, **engine v167**). Henrik: *"merge and push"* — an accept under the 08-01
+ruling, so nothing was asked twice. One train, and it exists because he asked one question
+about the train promoted an hour earlier: *"Where do I see the queue for the mode lock?"*
+The answer was one place, and it was the wrong place. Full reasoning in
+[history.md](history.md) — *"where do I see the queue"*.*
 
-The queue now rides the **decision record** (`contest.mlq`), because the Arbiter Monitor
-renders stashed records — pinned ones included — and deriving it live would show *today's*
-answer under an older decision. It is a **signature leg** too (the v152 rank-order case: a
-queuing mode moves no gear and no claim, so nothing would otherwise retrace), and
-deliberately **not** part of the decision fingerprint — the ring appends on a moved outcome,
-and a queue-only record with zero changed slots is the v163 symptom.
+***NOT FIELD-RUN.*** *Suites **6168 + 1129** on both interpreters, every new rule
+mutation-checked, but nothing here has been looked at in game.*
 
-**Arbiter Monitor:** a `q` on the cell in both grid modes, holder + waiter in the hover.
-**Trigger Monitor:** an `(n queued)` count on the `locks` line, detail on hover.
+***What landed:*** *the mode lock QUEUE now rides the **decision record** (`contest.mlq`) —
+the Arbiter Monitor renders stashed and pinned records and derives nothing, so a live
+lookup there would have shown today's answer under an older decision. It is a **signature
+leg** as well (the v152 rank-order case: a queuing mode moves no gear and no claim, so
+nothing would otherwise retrace), and deliberately **not** part of the decision fingerprint
+— the ring appends on a moved outcome, and a queue-only record with zero changed slots is
+the v163 symptom. **Arbiter Monitor:** a* `q` *on the cell in both grid modes, holder +
+waiter in the hover. **Trigger Monitor:** an* `(n queued)` *count on the* `locks` *line.*
 
-Suites **6168 + 1129**, both interpreters. Tests `MDL23`–`MDL26b`, smoke `AM8a`–`AM8e`,
-`MLK14`–`MLK16`; the arbmonui stub now captures tooltips, so `AM8e` asserts what a cell
-actually *says*. Full reasoning: [history.md](history.md) — *"where do I see the queue"*.
-
-***THE ROUND OWED*** *rides the Mode Locks round in the note below — check (5) now has
-somewhere to look: with two modes locking one slot, the Trigger Monitor should read*
-`(1 queued)` *and the Arbiter Monitor's Main cell should carry a* `q` *whose hover names
-both.*
-
----
-
-**THE QUEUE WAS EMPTIED BY THE LAST PROMOTION; THE ENTRY ABOVE IS NEW.**
+***THE ROUND OWED does not grow*** *— it gives check (5) of the Mode Locks round below
+somewhere to look: two modes locking one slot should read* `(1 queued)` *on the Trigger
+Monitor and put a* `q` *on the Arbiter Monitor's Main cell, whose hover names both.*
 
 *(Emptied by the second 2026-08-03 promotion — **Mode Locks** (`2026.08.03x`, **engine
 v166**, ADR 0034) and **the food register stops believing a zone** (`2026.08.03w`). Henrik:
