@@ -903,6 +903,52 @@ research already recorded. In rough priority order:
 
 ## Current state (as of 2026-08-02)
 
+- **2026-08-03: THE NM COMPENDIUM HAS A WINDOW — one list, two filter modes — ON A PR BRANCH off
+  `dev` (`issue-156-nm-compendium-window`), NOT field-run** (issue #156, PRD #151). Everything
+  `/dl nm` knows was chat-only. `ui/nmui.lua` is the **Floating window** half: master-detail, the
+  filter and the result list on the left, the detail card's place held on the right. This slice
+  is the **shell** — the list and the **by-name** and **by-area** modes. The card and the by-drop
+  mode are #157 and were deliberately not built here.
+  - **ONE LIST, SEVERAL FILTER MODES — not several windows.** Every search here returns NMs, so
+    one list serves all of them and **clicking a zone re-filters the list already on screen**.
+    That is the whole difference from the Chocobo dig search, which needs two windows because its
+    two searches return different *kinds* of thing (items and zones) and the cross-link needs a
+    second window to land in. Pinned in the smoke suite: a zone click flips the mode and **exactly
+    one window is ever begun**.
+  - **THE WINDOW OWNS NO ANSWERS.** `feature/nmlookup` grew the pure list side (`nameRows`,
+    `areaRows`, `zoneChoices`, `rowNote`, `zoneIds`) rather than the window growing a second
+    matcher, and the reason is behavioural: **a weak match is labelled a guess and gibberish is
+    refused on both surfaces**, out of one implementation and one `M.GUESS_FLOOR` (800 — the
+    threshold chat was already hedging on, now named). On a score tie the entry **with
+    placeholders wins**, expressed as a total sort order (score → placeholders → zone → name) so
+    a 2000-row list cannot reshuffle between frames. Pinned twice: against `Poisonhand Gnadgad`
+    (Davoi, 8 placeholders, beats two Campaign copies with none — and Davoi's zone id is the
+    *higher* one, so the tie-break is doing real work) **and** against a synthetic pair, so the
+    rule stays pinned on a day the shipped table holds no tie.
+  - **ONE DRAW SITE**, gearui's `d3d_present`, self-gated on `M.visible` — any surface may open a
+    floating window, exactly one may draw it, or two `Begin()` calls on one name merge both
+    bodies into it. Pinned as **source** (`imgui.Begin` once in the module, `nmMod.render` once
+    in gearui), because a render check can only see the window the module itself draws.
+  - **The list scrolls and the cap speaks.** Escha Ru'Aun holds **61** NMs; the rows sit in their
+    own child, and a name search is capped at 200 rows with the remainder counted out loud. The
+    result list is cached on (mode, query, zone) — a name search scores every shipped entry,
+    Levenshtein included, and doing that per frame is the difference between a window and a
+    stutter.
+  - Opened from `/dl nm window [name]`; **bare it opens on the zone you are standing in**, so the
+    common case takes no input. `apply` / `reset` / `th` beside it are answered, not eaten. A
+    build where the GUI failed to load loses the verb *and says so*. Tests `NM60*`-`NM68*`
+    (pure) and `NW1`-`NW13` (render, through the exported `nmui._state` seam). Suites
+    **6742 + 1197** green. No engine bump — addon-state only, no seeded file moved; the UI chunk
+    still loads headless (no new gearui chunk locals, hard rule 1).
+  - **NOT FIELD-RUN, and the round it owes is specific.** `/dl nm window` while standing in a
+    zone with a known camp: the list must hold what is actually around you, campable ones first.
+    Then **`/dl nm window bonnacon`** (an exact hit, no "(guess)" anywhere) and
+    **`/dl nm window bonacon`** (the same NM, and the list must *say* these are closest matches).
+    Then click a row's zone button — the list must pivot to that area **in the same window**.
+    Finally a busy zone (Escha Ru'Aun) to confirm the list scrolls rather than running off the
+    bottom. It inherits the round already owed on `/dl nm` itself. **The small labels are
+    unapproved** — "By name", "By area" and the pane wording are flagged in the PR for a naming
+    call; only "NM Compendium" is settled, from the PRD.
 - **2026-08-03: `/dl nm` NOW ANSWERS "IS A THF WORTH BRINGING FOR THIS?" — a per-drop Treasure
   Hunter verdict — ON A PR BRANCH off `dev` (`issue-154-th-verdict`), NOT field-run** (issue
   #154, PRD #151). The drops section could say what an NM gives but not whether TH would move

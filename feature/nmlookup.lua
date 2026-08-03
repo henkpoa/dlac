@@ -55,6 +55,14 @@
     load (nmtrack requires this module for the curve, the table and the pop
     kind) and is reached back for at CALL time here, so there is no cycle.
 
+    THE SAME ANSWERS IN A WINDOW (issue #156) are ui\nmui's job. This module
+    grew the pure list side of it -- nameRows / areaRows / zoneChoices / rowNote
+    -- rather than the window growing a second matcher: one forgiving-match
+    implementation means a weak match is a guess on both surfaces and gibberish
+    is refused on both. The load-time edge runs ONE way (the window requires
+    this module) and `/dl nm window` reaches back for it at CALL time, so a
+    build where the GUI failed to load loses the verb and nothing else.
+
     WHAT IT DROPS (issue #153) is feature\nmloot's answer, for the same reason:
     "how does it pop" and "is it worth popping" are two questions joined by one
     field -- the NM's `pool`, the server pool id that keys the generated drop
@@ -363,6 +371,13 @@ end
 -- accepts a real name hit -- exact, prefix, substring, or every word present.
 M.ANYWHERE_FLOOR = 700;
 
+-- Below this the name did not match, it merely RESEMBLED -- so the answer is
+-- shown and labelled a guess rather than presented as the monster you asked
+-- for. Named because chat and the Compendium window must hedge on the same
+-- score: two thresholds is how one surface starts calling an answer exact
+-- while the other calls it a guess, about the same NM, in the same session.
+M.GUESS_FLOOR = 800;
+
 -- Ties are common: Nyzul Isle and the Dynamis zones carry their own copies of
 -- many NM names, and those copies are instanced pops with no placeholders.
 -- When the score ties, prefer the entry that HAS placeholders -- that is the
@@ -388,14 +403,23 @@ function M.matchInZone(zid, query)
     return best, bestScore;
 end
 
--- Best entry anywhere. -> entry, score, zoneId
--- Zone ids are walked in order so the answer never depends on hash order.
-function M.matchAnywhere(query)
+-- Every zone the table can answer for, ascending. `pairs()` order is undefined
+-- (hard rule 8), and both the whole-game match and the window's area picker
+-- walk this table -- so the order is fixed HERE, once, instead of in each
+-- caller where one of them would eventually forget.
+function M.zoneIds()
     local zids = {};
     for zid, list in pairs(M.data) do
         if type(list) == 'table' then zids[#zids + 1] = zid; end
     end
     table.sort(zids);
+    return zids;
+end
+
+-- Best entry anywhere. -> entry, score, zoneId
+-- Zone ids are walked in order so the answer never depends on hash order.
+function M.matchAnywhere(query)
+    local zids = M.zoneIds();
     local best, bestScore, bestZone = nil, 0, nil;
     for _, zid in ipairs(zids) do
         for _, e in ipairs(M.data[zid]) do
@@ -404,6 +428,129 @@ function M.matchAnywhere(query)
         end
     end
     return best, bestScore, bestZone;
+end
+
+-- ---------------------------------------------------------------------------
+-- the compendium list -- ONE list, several filter modes (issue #156, PRD #151)
+-- ---------------------------------------------------------------------------
+-- Every search here returns NMs, so one list serves all of them. That is the
+-- whole reason the Compendium is one master-detail window where the dig search
+-- needed two: its two searches return different KINDS of thing (items, zones),
+-- and the cross-link between them needed a second window. Clicking a zone here
+-- only re-filters the list you are already looking at.
+--
+-- These are PURE -- data in, plain rows out, no imgui. `ui\nmui` is a thin
+-- renderer over them, and the chat command scores names through the same
+-- M.score, so a matching rule can never mean two things on two surfaces.
+
+-- One row: the entry, the zone it lives in, and (for a name search) how well it
+-- answered. `guess` is the weak-match verdict the chat readout hedges on,
+-- decided in ONE place so the window cannot hedge differently.
+local function makeRow(entry, zid, score)
+    return {
+        e     = entry,
+        zid   = zid,
+        n     = tostring(entry.n or '?'),
+        score = score,
+        guess = (score ~= nil) and (score < M.GUESS_FLOOR) or false,
+        ph    = (type(entry.ph) == 'table') and #entry.ph or 0,
+    };
+end
+
+-- Best first, and TOTALLY ordered: table.sort refuses a comparator that cannot
+-- decide, and "score then placeholders" alone leaves whole blocks undecided at
+-- 2000+ entries. Zone id then name finish the order, so the list a player sees
+-- is the same list every time rather than one that reshuffles as they type.
+local function rowOrder(a, b)
+    if a.score ~= b.score then return (a.score or 0) > (b.score or 0); end
+    -- The tie-break that matters: same score, and one of them HAS placeholders.
+    -- Nyzul Isle and the Dynamis zones carry same-named instanced copies with
+    -- none, and the open-world camp is the one the player means.
+    local ah, bh = (a.ph > 0), (b.ph > 0);
+    if ah ~= bh then return ah; end
+    if a.zid ~= b.zid then return a.zid < b.zid; end
+    return a.n < b.n;
+end
+
+-- Filter mode BY NAME: every NM whose name resembles `query`, best first.
+-- Gibberish yields NOTHING rather than a list of things it is not -- M.score
+-- answers 0 for a name with no resemblance, and a zero never becomes a row.
+-- Weak rows are kept and flagged, never dropped: a typo must still find the
+-- monster, it just may not claim to be sure.
+-- -> rows, total  (rows is capped at `limit`; total is what matched)
+function M.nameRows(query, limit)
+    local out = {};
+    query = tostring(query or '');
+    if query:gsub('%s', '') == '' then return out, 0; end
+    for _, zid in ipairs(M.zoneIds()) do
+        for _, e in ipairs(M.data[zid]) do
+            local s = M.score(query, e.n);
+            if s > 0 then out[#out + 1] = makeRow(e, zid, s); end
+        end
+    end
+    table.sort(out, rowOrder);
+    local total = #out;
+    limit = tonumber(limit);
+    if limit ~= nil and limit > 0 then
+        for i = total, limit + 1, -1 do out[i] = nil; end
+    end
+    return out, total;
+end
+
+-- Filter mode BY AREA: everything in one zone, the campable ones first. Same
+-- grouping the chat list uses -- placeholders, then the rest, each block by
+-- name -- because it is the same answer in a different shape.
+function M.areaRows(zid)
+    local out = {};
+    local list = M.data[zid];
+    if type(list) ~= 'table' then return out; end
+    for _, e in ipairs(list) do out[#out + 1] = makeRow(e, zid, nil); end
+    table.sort(out, function(a, b)
+        local ah, bh = (a.ph > 0), (b.ph > 0);
+        if ah ~= bh then return ah; end
+        if a.n ~= b.n then return a.n < b.n; end
+        -- A zone can list the same name twice (two spawn points, two entries).
+        -- Their first NM index separates them, so the pair has an order instead
+        -- of swapping places between frames.
+        local ai = (type(a.e.nm) == 'table') and a.e.nm[1] or 0;
+        local bi = (type(b.e.nm) == 'table') and b.e.nm[1] or 0;
+        return (ai or 0) < (bi or 0);
+    end);
+    return out;
+end
+
+-- The zones the table can answer for, named and counted: the area picker's
+-- whole source. Sorted by NAME, which is what the player reads -- zone id order
+-- is the server's business, and it scatters neighbouring zones.
+function M.zoneChoices()
+    local out = {};
+    for _, zid in ipairs(M.zoneIds()) do
+        out[#out + 1] = { zid = zid, name = M.zoneName(zid), n = #M.data[zid] };
+    end
+    table.sort(out, function(a, b)
+        if a.name ~= b.name then return a.name < b.name; end
+        return a.zid < b.zid;
+    end);
+    return out;
+end
+
+-- The one line a list row carries beside the name: the placeholders you watch
+-- when there are any, the pop kind when there are not. Deliberately carries NO
+-- percentage -- the numbers belong on the detail card (#157), and every one of
+-- them is a `%` that has to survive an ImGui format string.
+function M.rowNote(entry)
+    if type(entry) ~= 'table' then return ''; end
+    local phcount = (type(entry.ph) == 'table') and #entry.ph or 0;
+    if phcount > 0 then
+        local s = string.format('%s x%d', tostring(entry.p or '?'), phcount);
+        -- Placeholders the server does not roll a lottery on. Saying so on the
+        -- row is the difference between a camp and a wasted evening.
+        if not M.isLottery(entry) then s = s .. '  (not a lottery)'; end
+        return s;
+    end
+    local k = M.kindLabel(entry);
+    if k ~= nil then return k .. ' pop, no placeholders'; end
+    return 'no placeholders';
 end
 
 -- ---------------------------------------------------------------------------
@@ -514,6 +661,38 @@ local function loot()
     return try('dlac\\feature\\nmloot');
 end
 M._loot = loot;         -- test seam
+
+-- The Compendium window (ui\nmui), reached at CALL time for the third time and
+-- the same reason: the window requires THIS module at load for the table and
+-- the matching, so the load-time edge runs one way only and a build where the
+-- GUI failed to load must cost the `window` verb and nothing else.
+local function windowUI()
+    return try('dlac\\ui\\nmui');
+end
+M._windowUI = windowUI;   -- test seam
+
+-- Open the NM Compendium on a search. Any surface may open a floating window;
+-- exactly one site may draw it (gearui's d3d_present) -- this is an OPEN.
+-- A name lands the window on that search; with nothing to search for it opens
+-- on the zone you are standing in, because that is the case that should take no
+-- input at all.
+function M.openWindow(query, zid)
+    local ui = windowUI();
+    if ui == nil or type(ui.openName) ~= 'function' or ui.degraded == true then
+        sayWarn('nm: the Compendium window is not available in this build -- '
+            .. '"/dl nm <name>" answers the same questions in chat.');
+        return false;
+    end
+    query = tostring(query or ''):gsub('^%s+', ''):gsub('%s+$', '');
+    local ok = pcall(function()
+        if query ~= '' then ui.openName(query); else ui.openArea(zid); end
+    end);
+    if not ok then
+        sayWarn('nm: the Compendium window could not be opened.');
+        return false;
+    end
+    return true;
+end
 
 -- Lines describing one NM. `guess` marks a weak match; `th` is the Treasure
 -- Hunter level the player asked to see drop rates at (nil = none asked for).
@@ -654,6 +833,26 @@ function M.command(rest)
 
     local zid = M.zoneReader();
 
+    -- `window` opens the Compendium instead of answering in chat, optionally
+    -- on a name: `/dl nm window bonnacon`. A LEADING verb rather than a trailing
+    -- one because everything after it is the search, and no NM in the shipped
+    -- table is called "window" or "gui".
+    local lead, tail = rest:match('^(%S+)%s*(.*)$');
+    if lead ~= nil then
+        local lv = lead:lower();
+        if lv == 'window' or lv == 'win' or lv == 'gui' then
+            -- The chat-only verbs do not travel into the window. Say so rather
+            -- than eating the word (hard rule 12: a dropped instruction and an
+            -- honoured one must not look the same).
+            if apply or reset or th ~= nil then
+                sayWarn('nm: "apply", "reset" and "th" answer in chat -- '
+                    .. 'the window is opening without them.');
+            end
+            M.openWindow(tail, zid);
+            return;
+        end
+    end
+
     -- Every camp you hold a count for. Deliberately zone-independent: the point
     -- of it is resuming a camp you started somewhere else.
     local verb = rest:lower();
@@ -737,7 +936,7 @@ function M.command(rest)
         end
     end
 
-    local lines = M.describe(entry, foundZone, score < 800, th);
+    local lines = M.describe(entry, foundZone, score < M.GUESS_FLOOR, th);
     for i, line in ipairs(lines) do
         if i == 1 then sayGood(line); else sayMsg(line); end
     end

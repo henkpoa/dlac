@@ -4953,6 +4953,13 @@ do
     if not uok then
         pcall(function() print('[dlac] unusedui failed to load: ' .. tostring(uerr)); end);
     end
+    -- The NM Compendium window (/dl nm window): same reason again -- it reads
+    -- the shared palette this file provides, and a load failure prints once,
+    -- here, rather than costing the `window` verb silently.
+    local nok, nerr = pcall(require, "dlac\\ui\\nmui");
+    if not nok then
+        pcall(function() print('[dlac] nmui failed to load: ' .. tostring(nerr)); end);
+    end
     local ok, err = pcall(require, "dlac\\ui\\equippedui");   -- self-registers its two tabs
     if not ok then
         pcall(function() print('[dlac] equippedui failed to load: ' .. tostring(err)); end);
@@ -5370,6 +5377,20 @@ ashita.events.register('d3d_present', 'dlac-gearui-render', function()
             local unThemed = style ~= nil and style.push();
             pcall(unMod.render);
             if unThemed then style.pop(); end
+        end
+    end
+    -- NM Compendium window (/dl nm window): INDEPENDENT of the main box, same
+    -- reason as the four above -- a camper keeps it up while they play. THIS IS
+    -- ITS ONE DRAW SITE: any surface may open the window, exactly one may draw
+    -- it, or two Begin() calls on the name merge both bodies into it. Own theme
+    -- bracket, function-scoped require -- no new chunk local (hard rule 1).
+    if has.imgui then
+        local nmMod = nil;
+        pcall(function() nmMod = require('dlac\\ui\\nmui'); end);
+        if nmMod ~= nil and nmMod.visible == true then
+            local nmThemed = style ~= nil and style.push();
+            pcall(nmMod.render);
+            if nmThemed then style.pop(); end
         end
     end
     -- (The E-Box Restock crates used to Begin their own window here. They are now

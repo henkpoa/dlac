@@ -24091,6 +24091,155 @@ end)();
             :match('the table does not say how') ~= nil, true);
     NM.zoneReader = function() return 5; end;
 
+    -- ---- the compendium list (issue #156) ---------------------------------
+    --
+    --   The window is a thin renderer over THESE. They are pinned here rather
+    --   than in the UI suite for the reason every pure core is: an imgui-less
+    --   check can assert the ANSWER, where a render check can only assert that
+    --   something was drawn. Two behaviours carry over from the chat command
+    --   and are the whole reason the window does not grow its own matcher --
+    --   a weak match is labelled a guess, and gibberish is refused.
+    -- -----------------------------------------------------------------------
+    local nrows, ntotal = NM.nameRows('bonnacon');
+    check('NM60a a name search answers with rows',      #nrows > 0, true);
+    check('NM60b ...best first',                        nrows[1].n, 'Bonnacon');
+    check('NM60c ...carrying the zone it is in',        nrows[1].zid, 5);
+    check('NM60d ...and the entry itself',              nrows[1].e.p, 'Buffalo');
+    check('NM60e an exact hit is NOT a guess',          nrows[1].guess, false);
+    check('NM60f ...and the total is what matched',     ntotal, #nrows);
+
+    -- Gibberish is refused, exactly as chat refuses it: M.score answers 0 for a
+    -- name with no resemblance, and a zero never becomes a row. Offering the
+    -- closest thing in the game to nonsense is how a player ends up reading
+    -- about a monster they never asked for.
+    check('NM61a gibberish yields no rows at all',      #NM.nameRows('zzzznothing'), 0);
+    check('NM61b an empty query is not a search',       #NM.nameRows(''), 0);
+    check('NM61c ...nor is whitespace',                 #NM.nameRows('   '), 0);
+    check('NM61d ...nor is nil',                        #NM.nameRows(nil), 0);
+
+    -- A typo still finds it, and still says it is a guess. The threshold is
+    -- ONE named constant, so the window and the chat readout cannot hedge
+    -- differently about the same score.
+    local trows = NM.nameRows('bonacon');
+    check('NM62a a typo still finds the NM',            trows[1].n, 'Bonnacon');
+    check('NM62b ...but the row is flagged a guess',    trows[1].guess, true);
+    check('NM62c ...below the one shared floor',        trows[1].score < NM.GUESS_FLOOR, true);
+    check('NM62d ...which is the floor chat hedges on', NM.GUESS_FLOOR, 800);
+
+    -- THE TIE-BREAK. Same score, and one entry HAS placeholders: that is the
+    -- open-world camp, and it wins. Pinned twice on purpose --
+    --   * against a HAND-VERIFIED shipped row, so a regeneration that loses
+    --     placeholders is caught here (Poisonhand Gnadgad is in Davoi with 8
+    --     placeholders, and in two Campaign zones with none; Davoi's zone id is
+    --     the HIGHER one, so without the tie-break it sorts last), and
+    --   * against a synthetic pair, so the RULE stays pinned even on a day the
+    --     shipped table happens to hold no tie at all.
+    local tie = NM.nameRows('Poisonhand Gnadgad');
+    check('NM63a the shipped table still holds this tie', #tie >= 2, true);
+    check('NM63b every copy scores the same',           tie[1].score, tie[2].score);
+    check('NM63c the one with placeholders wins',       tie[1].zid, 149);
+    check('NM63d ...and it is the one with placeholders', tie[1].ph > 0, true);
+    check('NM63e ...while the loser has none',          tie[2].ph, 0);
+    local savedForTie = NM.data;
+    NM.data = {
+        [1] = { { n = 'Twinned Opo-opo', nm = { 900 }, ph = {}, kind = { 'scripted' } } },
+        [2] = { { n = 'Twinned Opo-opo', nm = { 901 }, ph = { 899 }, p = 'Opo-opo',
+                  c = 5, kind = { 'lottery' } } },
+    };
+    local syn = NM.nameRows('Twinned Opo-opo');
+    check('NM63f a synthetic tie ranks placeholders first', syn[1].zid, 2);
+    check('NM63g ...even though the other zone sorts lower', syn[2].zid, 1);
+    NM.data = savedForTie;
+
+    -- The cap is a READING limit, not a search limit: what was cut is counted
+    -- and reported, because a silent truncation reads as "that is all there is".
+    local crows, ctotal = NM.nameRows('a', 5);
+    check('NM64a the cap holds the list down',          #crows, 5);
+    check('NM64b ...and the total still says what matched', ctotal > 5, true);
+    check('NM64c an uncapped search returns everything',
+        select(2, NM.nameRows('a')), ctotal);
+
+    -- ---- filter mode: by area ---------------------------------------------
+    local arows = NM.areaRows(5);
+    check('NM65a an area answers with every NM in it',  #arows, 14);
+    check('NM65b ...the campable ones first',           arows[1].ph > 0, true);
+    check('NM65c ...and none of them is a guess',       arows[1].guess, false);
+    check('NM65d the last one has no placeholders',     arows[#arows].ph, 0);
+    check('NM65e an unknown zone is empty, not an error', #NM.areaRows(99999), 0);
+    check('NM65f ...and so is no zone at all',          #NM.areaRows(nil), 0);
+    -- "Most zones hold a handful, the busiest field zone holds dozens" -- the
+    -- reason the window's list must scroll rather than assume it is short.
+    check('NM65g the busiest field zone really is dozens', #NM.areaRows(289) > 40, true);
+
+    -- ---- the area picker's source -----------------------------------------
+    local zc = NM.zoneChoices();
+    check('NM66a every zone in the table is offered',   #zc, #NM.zoneIds());
+    check('NM66b ...sorted by NAME, which is what is read',
+        zc[1].name <= zc[2].name, true);
+    check('NM66c ...each carrying how many it holds',   zc[1].n > 0, true);
+    local zc5 = nil;
+    for _, z in ipairs(zc) do if z.zid == 5 then zc5 = z; end end
+    check('NM66d Uleguerand Range is in the picker',    zc5 ~= nil and zc5.name, 'Uleguerand Range');
+    check('NM66e ...with its 14 NMs counted',           zc5 ~= nil and zc5.n, 14);
+
+    -- ---- the row note (what a list row says beside the name) --------------
+    check('NM67a a lottery row names its placeholders',
+        NM.rowNote(select(1, NM.matchInZone(5, 'Bonnacon'))), 'Buffalo x6');
+    check('NM67b a scripted NM with placeholders says so on the row',
+        NM.rowNote(select(1, NM.matchInZone(176, 'Charybdis'))):match('not a lottery') ~= nil, true);
+    check('NM67c one with no placeholders says how it pops instead',
+        NM.rowNote({ n = 'x', nm = { 1 }, ph = {}, kind = { 'scripted' } }),
+        'scripted pop, no placeholders');
+    check('NM67d ...and admits it when the table does not say',
+        NM.rowNote({ n = 'x', nm = { 1 }, ph = {} }), 'no placeholders');
+    -- No percentage anywhere on a row: the numbers belong on the detail card,
+    -- and every one of them is a `%` that has to survive an ImGui format string.
+    check('NM67e a row note carries no percent sign',
+        NM.rowNote(select(1, NM.matchInZone(5, 'Bonnacon'))):find('%%') == nil, true);
+
+    -- ---- /dl nm window: the opener ----------------------------------------
+    --
+    --   Any surface may OPEN a floating window; exactly one site may DRAW it.
+    --   This is the open, so all it may do is set state on ui\nmui -- and with
+    --   no window module present it must SAY it cannot rather than no-op.
+    -- -----------------------------------------------------------------------
+    local savedUI = package.loaded['dlac\\ui\\nmui'];
+    local opened = { name = nil, zid = nil, n = 0 };
+    package.loaded['dlac\\ui\\nmui'] = {
+        openName = function(q) opened.name = q; opened.n = opened.n + 1; end,
+        openArea = function(z) opened.zid = z;  opened.n = opened.n + 1; end,
+    };
+    local ew, tw = run('/dl nm window bonnacon');
+    check('NM68a the window verb is claimed',           ew.blocked, true);
+    check('NM68b ...and opens on the name typed',       opened.name, 'bonnacon');
+    check('NM68c ...without also answering in chat',    tw:match('Buffalo x6'), nil);
+    opened = { name = nil, zid = nil, n = 0 };
+    run('/dl nm window');
+    check('NM68d bare, it opens on the zone you are in', opened.zid, 5);
+    check('NM68e ...and does not also run a name search', opened.name, nil);
+    opened = { name = nil, zid = nil, n = 0 };
+    run('/dl nm win');
+    check('NM68f the short alias works',                opened.zid, 5);
+    -- The chat-only verbs do not travel into the window, and a dropped word
+    -- must not look like an honoured one (hard rule 12).
+    opened = { name = nil, zid = nil, n = 0 };
+    local _, tw2 = run('/dl nm window bonnacon apply');
+    check('NM68g apply beside window is answered, not eaten',
+        tw2:match('answer in chat') ~= nil, true);
+    check('NM68h ...and the window still opens',        opened.name, 'bonnacon');
+    -- A build where the GUI failed to load loses the verb and NOTHING else.
+    package.loaded['dlac\\ui\\nmui'] = { degraded = true, openName = function() end,
+                                         openArea = function() end };
+    local _, tw3 = run('/dl nm window');
+    check('NM68i a degraded window says so',
+        tw3:match('not available in this build') ~= nil, true);
+    check('NM68j ...and points at the chat answer',     tw3:match('/dl nm <name>') ~= nil, true);
+    package.loaded['dlac\\ui\\nmui'] = nil;
+    local _, tw4 = run('/dl nm window');
+    check('NM68k no window module at all is the same honest refusal',
+        tw4:match('not available in this build') ~= nil, true);
+    package.loaded['dlac\\ui\\nmui'] = savedUI;
+
     -- ---- a missing table degrades OFF, never errors -----------------------
     local savedData = NM.data;
     NM.data = {};
