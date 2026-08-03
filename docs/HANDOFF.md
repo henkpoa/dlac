@@ -296,6 +296,35 @@ haven't told you."* Ask when he has **not** said merge; never ask twice when he 
 
 **THE QUEUE IS EMPTY.**
 
+*(Emptied by the fourth 2026-08-03 promotion — **`/dl nm`, the placeholders and a FilterScan
+filter** (`2026.08.03z`). Henrik: *"merge, and push to origin main"* — an accept under the
+08-01 ruling, so nothing was asked twice. It never sat in this queue: asked for, built, and
+promoted inside one session. Three already-merged **docs** commits rode along (foodwatch
+field-confirmed ×2, the floating icon tray 7-of-7) — records of field rounds already closed,
+not new code.*
+
+***NOT FIELD-RUN.*** *Suites **6234** on both interpreters, and the two camps it is pinned
+against (**Bonnacon** — Uleguerand, six Buffalo at 354-359, NM 360; **Shadow Eye** —
+Xarcabard, one Evil Eye at 206, NM 212) were read out of the server clone **by hand** before
+any code existed, then frozen as data tripwires. But **nothing here has been run in game**:
+no widescan has been filtered with a generated line. Do not read `/dl nm` onto main as
+field-proven.*
+
+***The round owed*** *is small and specific: stand in a zone with a known camp, run `/dl nm`
+(does the zone list match what is actually around you?), then `/dl nm <that NM>` and compare
+the PH indexes against a live widescan — **the one thing no test can check is whether the
+index dlac prints is the index FilterScan shows**, because the two derive it from different
+sources (the server's `mob_spawn_points` vs. the client's zone NPC DAT). They agree in the
+code (`mobid & 0xFFF` both sides); the field decides whether they agree in fact. Then
+`/dl nm <name> apply` with FilterScan loaded, to confirm the queued command actually bites.*
+
+***What landed:*** *`feature/nmlookup.lua` + generated `data/nmdata.lua` (221 zones, 3128
+NMs, **371 with placeholders**), built by `tools/gen_nmdata.py` from the **local server
+clone** — the generator is gitignored with the rest of `tools/`, so re-running it after a
+patch is a maintainer step (`refresh_all.py` step 5), never a player one. The mechanism is
+the NM's own `entity.phList`, **not** the scattered `ID.mob.*_PH` tables, and `GetFirstID`
+is **zone-scoped** — full reasoning in [architecture.md](architecture.md).*
+
 *(Emptied by the third 2026-08-03 promotion — **the mode lock queue reaches both monitors**
 (`2026.08.03y`, **engine v167**). Henrik: *"merge and push"* — an accept under the 08-01
 ruling, so nothing was asked twice. One train, and it exists because he asked one question
