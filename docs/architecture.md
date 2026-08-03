@@ -1415,6 +1415,49 @@ cap fires today.
 it at **call time**, exactly like the tracker, so a build where it fails to load loses the drops
 section and nothing else; there is no load-time edge in either direction. Tests `ND00*`-`ND09*`.
 
+#### The Treasure Hunter verdict (issue #154)
+**TH is a bracket LOOKUP, not a multiplier**, and that is the only reason this can be answered
+at all: the rate selects a **rarity bracket** and the TH level selects the value **inside** it,
+so the exact rate at any level is arithmetic rather than folklore. `M.TH_TABLE` is the server's
+own table ported verbatim — rows TH 0-14, columns the seven brackets — and `M.thRate` is its
+`getDropRate`, both short-circuits included. Tests `ND10*`-`ND19*`.
+
+**The units are the trap.** The lookup works out of **10000** and its caller hands it
+`DropRate * 10`, so a stored `r = 150` enters as 1500 and returns 4500 at TH4 — 45%. Every
+entry point here (`thPct`, `thHelps`, `thVerdict`) takes the **stored** rate, in the units the
+rest of the module speaks, and does the times-ten itself; a missing one reads a common drop as
+ultra rare and still looks like a percentage.
+
+**Four rules, each a way a TH readout could lie:**
+* An **ungrouped** row: TH applies to that row's own rate.
+* A **grouped** row: TH applies to the **group's** rate (`gr`) only — `M.rollRate` is the one
+  place that choice is made, and it never returns a member's weight.
+* TH **never** touches which member of a group wins; that is a pure weighted roll, so the shares
+  already printed are untouched and still sum the same after TH lifts the group rate.
+* A rate already at 10000 **short-circuits unchanged**, so TH is worth exactly nothing on a
+  group that always drops. Ochiudo's Kote sits at a 10% share inside a `gr = 1000` group and no
+  amount of TH moves it — and the line **says so in words**, because an unchanged number is
+  indistinguishable from a number nobody applied TH to. That verdict is the feature.
+
+**Every column of the table rises with the level**, which is what makes "TH cannot help" have
+exactly two causes (the two short-circuits) rather than a third hiding in a flat column —
+pinned by `ND10f`, because the whole-NM verdict line makes that claim to the player.
+
+**A consequence worth knowing before it surprises you:** because the rate only *selects* a
+bracket, an **off-tier rate does not read back as itself**. The bracket floors are the eight
+tiers times ten (`2400, 1500, 1000, 500, 100, 50, 0`), so a tier rate is its own value at TH0 —
+150 in, 15% out — while the 68 shipped rows at `gr = 750` sit in the top bracket and read **24%
+at TH0, 64% at TH4**. That is the lookup as specified, not a bug in the port; the line says the
+stated rate only picks the bracket rather than letting it read as "TH lowered my rate".
+**Flagged for a maintainer ruling** in the PR for #154.
+
+**Figures are opt-in, the verdict is not.** `/dl nm <name> th4` (0-14, clamped out loud)
+renders every roll's rate at that level; without a level the section carries **one** line —
+whether TH can lift anything here at all, and the command that shows the numbers — because a TH
+figure on every line of every lookup is noise for the four jobs in five that cannot bring any.
+Steal and Despoil carry **no** TH figures and say why: the lookup ported here is the *kill's*
+drop roll, which is not where those come from.
+
 ### data/statdefs.lua — stat metadata registry
 Single source of truth for stat presentation/weighting: key, label, section, percent,
 lowerBetter, aliases (~178 entries, 7 sections). Presentation only — **no server mod-ids**

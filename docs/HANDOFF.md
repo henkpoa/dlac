@@ -903,6 +903,46 @@ research already recorded. In rough priority order:
 
 ## Current state (as of 2026-08-02)
 
+- **2026-08-03: `/dl nm` NOW ANSWERS "IS A THF WORTH BRINGING FOR THIS?" — a per-drop Treasure
+  Hunter verdict — ON A PR BRANCH off `dev` (`issue-154-th-verdict`), NOT field-run** (issue
+  #154, PRD #151). The drops section could say what an NM gives but not whether TH would move
+  any of it. `feature/nmloot.lua` now carries the server's own TH table (rows 0-14, seven
+  rarity brackets) and its `getDropRate`, ported verbatim, and `/dl nm <name> th4` renders every
+  roll's rate at that level.
+  - **TH IS A BRACKET LOOKUP, NOT A MULTIPLIER**, which is the only reason this is answerable:
+    the rate selects a bracket, the TH level selects the value inside it. A common ungrouped
+    drop reads **15% at TH0, 45% at TH4, 70% at TH14** — Leaping Boots, pinned against the
+    live-verified figures.
+  - **THE UNITS ARE THE TRAP.** The lookup works out of 10000 and its caller hands it
+    `DropRate * 10`; every entry point takes the STORED rate and does the times-ten itself, so
+    no caller holds two scales. A missing times-ten reads a common drop as ultra rare and still
+    looks like a percentage.
+  - **THE VERDICT IS THE FEATURE, NOT THE NUMBER.** A rate already at 100% short-circuits
+    unchanged, so **Ochiudo's Kote — a 10% share inside a `gr = 1000` group — gains nothing from
+    any amount of TH**, and the line says so *in words*: an unchanged number is indistinguishable
+    from a number nobody applied TH to. Asserted at every level 0-14, in both directions (the
+    group rate and the share).
+  - **TH applies to the GROUP rate only**, never to a member's weight, and never to which member
+    wins. The Kote's weight of 100 would read 18% at TH4 if the wrong rate were looked up; that
+    number is pinned absent. Shares still sum to 100 after the group rate is lifted.
+  - **One consequence needs a ruling and is flagged in the PR:** because the rate only *selects*
+    a bracket, an off-tier rate does not read back as itself — the 68 shipped rows at `gr = 750`
+    sit in the top bracket and read **24% at TH0, 64% at TH4**, i.e. *below* the rate the table
+    states. That is the lookup as the issue specifies it; the line says the stated rate only
+    picks the bracket so it cannot read as "TH lowered my rate". If the live server does not run
+    the lookup on off-tier rates, this is the line to revisit.
+  - Figures are opt-in (`th4`, `th 4`, clamped to 0-14 out loud, composing with `apply` and
+    `reset` in any order); without a level the section gains **one** line — whether TH can lift
+    anything here — because a TH figure on every line is noise for the four jobs in five that
+    cannot bring any. Steal and Despoil carry no TH figures and say why. Tests `ND10*`-`ND19*`;
+    suites **6688 + 1138** green. No engine bump — addon-state only, no seeded file moved, and
+    no UI (no gearui locals, nothing new in the UI chunk).
+  - **NOT FIELD-RUN.** Everything here is arithmetic over a committed table, so the round it
+    owes is short: **`/dl nm Leaping Lizzy th4` — Leaping Boots must read `common (15%) | TH4
+    45%`**, which proves the units, the bracket and the render in one command. Second:
+    **`/dl nm Mee Deggi th14`**, which must still say *no gain* and still show the Kote at a 10%
+    share. Third: `/dl nm <anything> th20` clamps to TH14 and says it did. It inherits the round
+    already owed on `/dl nm` itself and on the drops readout below.
 - **2026-08-03: `/dl nm` NOW SAYS WHAT AN NM DROPS — grouped as groups, Steal and Despoil kept
   out of it — ON A PR BRANCH off `dev` (`feat/153-nm-drops`), NOT field-run** (issue #153,
   PRD #151). The command could tell you how an NM pops and where you stood on the curve, but

@@ -24136,16 +24136,25 @@ end)();
     local asked = 0;
     local RES = {
         [16703] = 'Impact Knuckles', [13952] = 'Ochiudo\'s Kote', [656] = 'Beastcoin',
+        [13014] = 'Leaping Boots',
         [101] = 'Widget A', [102] = 'Widget C', [103] = 'Widget D', [104] = 'Widget E',
         [105] = 'Widget F', [106] = 'Widget G', [107] = 'Widget H', [108] = 'Widget I',
     };
-    AshitaCore = { GetResourceManager = function()
-        return { GetItemById = function(_, id)
-            asked = asked + 1;
-            if RES[id] == nil then return nil; end
-            return { Name = { RES[id] } };
-        end };
-    end };
+    -- The chat manager is here for `apply` alone (the TH verb has to compose
+    -- with it); every other check in this section is arithmetic over a table.
+    local sent = nil;
+    AshitaCore = {
+        GetResourceManager = function()
+            return { GetItemById = function(_, id)
+                asked = asked + 1;
+                if RES[id] == nil then return nil; end
+                return { Name = { RES[id] } };
+            end };
+        end,
+        GetChatManager = function()
+            return { QueueCommand = function(_, _, cmd) sent = cmd; end };
+        end,
+    };
 
     local LT = dofile('feature/nmloot.lua');
 
@@ -24155,7 +24164,9 @@ end)();
         end
         return nil;
     end
-    local function rendered(entry) return table.concat(LT.lines(entry), '\n'); end
+    -- `th` is the Treasure Hunter level to render the rates at (issue #154);
+    -- omitted means the player asked for no level, which is the default readout.
+    local function rendered(entry, th) return table.concat(LT.lines(entry, th), '\n'); end
 
     -- ---- names resolve LAZILY, and a miss never latches ------------------
     check('ND00a loading the module asks the client for nothing', asked, 0);
@@ -24382,6 +24393,263 @@ end)();
     end)(), 'none');
     LT.data[999001], LT.data[999002], LT.data[999003], LT.data[999004] = nil, nil, nil, nil;
 
+    -- ---- Treasure Hunter: a bracket LOOKUP, not a multiplier (issue #154) ---
+    --
+    --   The whole feature rests on TH being computable: the rate selects a
+    --   RARITY BRACKET and the TH level selects the value inside it, so the
+    --   exact rate at any level is arithmetic rather than folklore. The table
+    --   below is the server's own, and these checks are what stand between a
+    --   transcription slip and a readout that confidently lies about odds.
+    --
+    --   THE UNITS ARE THE TRAP, and they are pinned first: the lookup works out
+    --   of 10000 and the caller hands it `DropRate * 10`, so a stored 150 enters
+    --   as 1500 and comes back 4500 at TH4. A missing times-ten reads a common
+    --   drop as ultra rare and would still "look like a percentage".
+    check('ND10a the table carries all fifteen TH levels', (function()
+        local n = 0;
+        for lvl = 0, 14 do if type(LT.TH_TABLE[lvl]) == 'table' then n = n + 1; end end
+        return n;
+    end)(), 15);
+    check('ND10b ...and nothing above the last one', LT.TH_TABLE[15], nil);
+    check('ND10c every row is the seven rarity brackets', (function()
+        for lvl = 0, 14 do if #LT.TH_TABLE[lvl] ~= 7 then return 'row ' .. lvl; end end
+        return 'all 7';
+    end)(), 'all 7');
+    check('ND10d the row ends are the shipped ones (0 and 14)',
+        string.format('%d/%d/%d/%d', LT.TH_TABLE[0][1], LT.TH_TABLE[0][7],
+            LT.TH_TABLE[14][1], LT.TH_TABLE[14][7]), '2400/10/8000/150');
+    -- Row 5 opens 6666. It is left exactly as the server has it: this table is
+    -- a copy, and tidying it to 6650 would be designing.
+    check('ND10e the 6666 quirk on row 5 survives transcription', LT.TH_TABLE[5][1], 6666);
+    -- Every column rises with the level. This is WHY "TH cannot help" has only
+    -- two causes (the two short-circuits) rather than a third hiding in a flat
+    -- column, which is the claim the verdict line makes to the player.
+    check('ND10f no column ever falls as the TH level rises', (function()
+        for col = 1, 7 do
+            for lvl = 1, 14 do
+                if LT.TH_TABLE[lvl][col] < LT.TH_TABLE[lvl - 1][col] then
+                    return string.format('col %d fell at %d', col, lvl);
+                end
+            end
+        end
+        return 'rises';
+    end)(), 'rises');
+    check('ND10g ...and every one of them ends higher than it started', (function()
+        for col = 1, 7 do
+            if LT.TH_TABLE[14][col] <= LT.TH_TABLE[0][col] then return 'col ' .. col; end
+        end
+        return 'all climb';
+    end)(), 'all climb');
+
+    -- The bracket floors ARE the eight named tiers times ten, `always` dropped
+    -- off the top -- which is why the bracket a drop sits in is the tier name
+    -- this readout already prints beside it, and why no second vocabulary had
+    -- to be invented for the columns.
+    check('ND11a the bracket floors are the tiers x10',
+        table.concat(LT.TH_BRACKETS, '/'), '2400/1500/1000/500/100/50/0');
+    check('ND11b ...and each floor is a tier this module already names', (function()
+        for i = 1, 6 do
+            if LT.tierName(LT.TH_BRACKETS[i] / 10) ~= LT.TH_BRACKET_TIER[i] then
+                return 'bracket ' .. i;
+            end
+        end
+        return 'all named';
+    end)(), 'all named');
+    check('ND11c a rate lands in the FIRST floor it reaches',
+        string.format('%d%d%d%d%d%d%d', LT.thBracket(2400), LT.thBracket(1500),
+            LT.thBracket(1000), LT.thBracket(500), LT.thBracket(100),
+            LT.thBracket(50), LT.thBracket(10)), '1234567');
+    check('ND11d ...one under a floor drops to the next bracket',
+        string.format('%d/%d', LT.thBracket(2399), LT.thBracket(1499)), '2/3');
+    check('ND11e a rate above every floor is still the top bracket', LT.thBracket(9999), 1);
+
+    -- The lookup itself, at several levels and in every bracket.
+    check('ND12a common at TH0 is itself',        LT.thRate(0, 1500), 1500);
+    check('ND12b common at TH4',                  LT.thRate(4, 1500), 4500);
+    check('ND12c common at TH14',                 LT.thRate(14, 1500), 7000);
+    check('ND12d very common at TH2',             LT.thRate(2, 2400), 5600);
+    check('ND12e uncommon at TH7',                LT.thRate(7, 1000), 2100);
+    check('ND12f rare at TH9',                    LT.thRate(9, 500), 1150);
+    check('ND12g very rare at TH11',              LT.thRate(11, 100), 750);
+    check('ND12h super rare at TH12',             LT.thRate(12, 50), 400);
+    check('ND12i ultra rare at TH13',             LT.thRate(13, 10), 130);
+    check('ND12j ...and ultra rare at TH0 is the one floor that is not a tier',
+        LT.thRate(0, 10), 10);
+    -- Both short-circuits, at every level -- these are the two ways TH cannot
+    -- help, and the verdict line depends on there being no third.
+    check('ND12k a rate already at 100% is unmoved at EVERY level', (function()
+        for lvl = 0, 14 do if LT.thRate(lvl, 10000) ~= 10000 then return 'moved at ' .. lvl; end end
+        return 'unmoved';
+    end)(), 'unmoved');
+    check('ND12l ...and a rate of nothing stays nothing', (function()
+        for lvl = 0, 14 do if LT.thRate(lvl, 0) ~= 0 then return 'moved at ' .. lvl; end end
+        return 'unmoved';
+    end)(), 'unmoved');
+    -- The clamps, both ends, both arguments.
+    check('ND12m a level below the table clamps to TH0',   LT.thRate(-3, 1500), 1500);
+    check('ND12n a level above it clamps to TH14',         LT.thRate(99, 1500), 7000);
+    check('ND12o a rate above 10000 clamps to guaranteed', LT.thRate(4, 99999), 10000);
+    check('ND12p a negative rate is nothing',              LT.thRate(4, -5), 0);
+    check('ND12q the clamp says when it moved',
+        string.format('%d/%s', select(1, LT.clampTH(20)), tostring(select(2, LT.clampTH(20)))), '14/true');
+    check('ND12r ...and when it did not',
+        string.format('%d/%s', select(1, LT.clampTH(4)), tostring(select(2, LT.clampTH(4)))), '4/false');
+
+    -- The stored-rate door: out of 1000 in, a percentage out, with the server's
+    -- times-ten done here so no caller holds two scales at once.
+    check('ND13a a stored common rate reads 15% at TH0',  LT.thPct(0, 150), 15);
+    check('ND13b ...and 45% at TH4',                      LT.thPct(4, 150), 45);
+    check('ND13c ...and 70% at TH14',                     LT.thPct(14, 150), 70);
+    check('ND13d a rate the table does not state is not guessed at', LT.thPct(4, 0), nil);
+    check('ND13e TH can lift a rate below 100%',          LT.thHelps(150), true);
+    check('ND13f ...and nothing lifts one already at it', LT.thHelps(1000), false);
+    check('ND13g ...nor one the table does not state',    LT.thHelps(0), false);
+
+    -- ---- the two cases verified against the live server --------------------
+    -- 1. LEAPING BOOTS, pool 2384, ungrouped at r = 150: 15% at TH0, 45% at TH4.
+    local boots = nil;
+    for _, r in ipairs(LT.data[2384] or {}) do if r.i == 13014 then boots = r; end end
+    check('ND14a the shipped table still carries Leaping Boots at 150',
+        string.format('%s/%s', tostring(boots and boots.r), tostring(boots and boots.t)), '150/nil');
+    check('ND14b ...which is 15% at TH0',  LT.thPct(0, boots.r), 15);
+    check('ND14c ...45% at TH4',           LT.thPct(4, boots.r), 45);
+    check('ND14d ...and 70% at TH14',      LT.thPct(14, boots.r), 70);
+    local lizzy0 = rendered(entryFor(107, 'Leaping Lizzy'), 0);
+    local lizzy4 = rendered(entryFor(107, 'Leaping Lizzy'), 4);
+    check('ND14e the drop line itself reads 15% at TH0',
+        lizzy0:match('Leaping Boots %-%- common %(15%%%)  |  TH0 15%%') ~= nil, true);
+    check('ND14f ...and 45% at TH4',
+        lizzy4:match('Leaping Boots %-%- common %(15%%%)  |  TH4 45%%') ~= nil, true);
+    check('ND14g every roll on it carries its own TH figure',
+        select(2, lizzy4:gsub('|  TH4 ', '')), 5);
+
+    -- 2. OCHIUDO'S KOTE, pool 2607, a 10% share inside a group that ALWAYS
+    --    drops. The group rate short-circuits, so no amount of TH moves it --
+    --    the case that tells a player not to bother bringing TH at all.
+    local meeKill = select(1, LT.rolls(LT.rowsFor(mee)));
+    local meeGroup = meeKill[1];
+    check('ND15a the Kote still sits in a group that always drops', meeGroup.gr, 1000);
+    check('ND15b a 100% group is unchanged at EVERY TH level', (function()
+        for lvl = 0, 14 do
+            if LT.thPct(lvl, meeGroup.gr) ~= 100 then return 'moved at TH' .. lvl; end
+        end
+        return 'unchanged';
+    end)(), 'unchanged');
+    check('ND15c ...and so is the Kote\'s share of it, at every level', (function()
+        for lvl = 0, 14 do
+            local txt = rendered(mee, lvl);
+            if txt:match('Ochiudo\'s Kote 10%%') == nil then return 'share moved at TH' .. lvl; end
+        end
+        return 'unchanged';
+    end)(), 'unchanged');
+    check('ND15d ...which the line says in WORDS, not by an unchanged number', (function()
+        for lvl = 0, 14 do
+            if rendered(mee, lvl):match('TH%d+: no gain %-%- the group already drops every time') == nil then
+                return 'silent at TH' .. lvl;
+            end
+        end
+        return 'said';
+    end)(), 'said');
+    check('ND15e ...and says TH never picks the winner inside the group either',
+        rendered(mee, 4):match('TH never picks which item in it wins') ~= nil, true);
+    -- The verdict a player gets WITHOUT asking for a level: the one that saves
+    -- a gear set.
+    check('ND15f the no-level verdict says there is nothing to gain',
+        rendered(mee):match('TH: nothing to gain here') ~= nil, true);
+    check('ND15g ...and why',
+        rendered(mee):match('already drops every time') ~= nil, true);
+    check('ND15h ...without printing a TH figure nobody asked for',
+        rendered(mee):match('|  TH') == nil, true);
+
+    -- ---- TH applies to the GROUP rate, never to the share inside it --------
+    check('ND16a an ungrouped roll offers its own rate to the lookup',
+        LT.rollRate({ kind = 'item', row = { i = 1, r = 150 } }), 150);
+    check('ND16b a grouped roll offers the GROUP rate, not a member weight',
+        LT.rollRate(meeGroup), 1000);
+    -- The discriminating case: the Kote's own weight is 100, which the lookup
+    -- would turn into 18% at TH4. That number must appear nowhere, because the
+    -- weight is not a rate and TH never touches it.
+    check('ND16c the member weight is never what gets looked up',
+        LT.thPct(4, meeGroup.rows[2].r), 18);          -- what the wrong reading would say
+    check('ND16d ...and that wrong reading reaches no line',
+        rendered(mee, 4):match('18%%') == nil, true);
+    -- Shares still sum once TH is applied to the group rate: the group's rate
+    -- moved, the weights did not, so the shares are the same numbers as before.
+    LT.data[999005] = {
+        { i = 101, r = 300, t = 1, g = 1, gr = 150 },   -- share 75%
+        { i = 102, r = 100, t = 1, g = 1, gr = 150 },   -- share 25%
+    };
+    local g5 = select(1, LT.rolls(LT.rowsFor({ pool = { 999005 } })))[1];
+    check('ND16e the shares of a TH-lifted group still sum to 100', (function()
+        local sum = 0;
+        for _, row in ipairs(g5.rows) do sum = sum + LT.shareOf(g5, row); end
+        return sum;
+    end)(), 100);
+    check('ND16f ...and the group rate itself is what TH lifted',
+        string.format('%g -> %g', LT.pctOf(g5.gr), LT.thPct(4, g5.gr)), '15 -> 45');
+    local sh0 = rendered({ pool = { 999005 } });
+    local sh4 = rendered({ pool = { 999005 } }, 4);
+    check('ND16g the printed shares do not move when TH is applied',
+        sh4:match('Widget A 75%%, Widget C 25%%') ~= nil
+            and sh0:match('Widget A 75%%, Widget C 25%%') ~= nil, true);
+    check('ND16h ...and the group\'s own rate is the thing that did',
+        sh4:match('TH4: the group rolls at 45%%; the shares above are unchanged') ~= nil, true);
+    -- The members' line ENDS at the shares: no member is handed a TH figure of
+    -- its own, because a share is not a chance and TH never touched it.
+    check('ND16i ...which is stated as the group\'s roll, not an item\'s chance',
+        sh4:match('one of these, common %(15%%%): Widget A 75%%, Widget C 25%%\n') ~= nil, true);
+
+    -- ---- an off-tier rate reads at its BRACKET's value ---------------------
+    -- 1215 shipped rows carry a rate outside the eight tiers, and the rate only
+    -- SELECTS a bracket -- so 75% (the top bracket) reads 24% at TH0 and 64% at
+    -- TH4. Left unexplained that reads as "TH lowered my drop rate", which is
+    -- the one thing this line must never be taken for.
+    check('ND17a an off-tier group rate reads at its bracket',
+        string.format('%g/%g', LT.thPct(0, 750), LT.thPct(4, 750)), '24/64');
+    local our4 = rendered({ pool = { 3070 } }, 4);
+    check('ND17b ...and the line says why it is not the stated rate',
+        our4:match('the group rolls at 64%% %-%- the stated rate only picks the bracket') ~= nil, true);
+    check('ND17c a tier rate never carries that caveat',
+        lizzy4:match('TH4 45%% %-%- the stated') == nil, true);
+    check('ND17d the mental model is stated once, and only with figures on screen',
+        string.format('%d/%d',
+            select(2, our4:gsub('TH is a lookup, not a multiplier', '')),
+            select(2, rendered({ pool = { 3070 } }):gsub('TH is a lookup, not a multiplier', ''))), '1/0');
+
+    -- ---- the whole-NM verdict ---------------------------------------------
+    check('ND18a an NM TH helps says how many rolls climb',
+        rendered(entryFor(107, 'Leaping Lizzy')):match('TH: every roll here climbs with it') ~= nil, true);
+    check('ND18b ...and names the command that shows the rates',
+        rendered(entryFor(107, 'Leaping Lizzy')):match('"/dl nm Leaping Lizzy th4"') ~= nil, true);
+    -- Mixed: Ouryu's pool rolls 24 times, six of them at a rate no TH can lift.
+    check('ND18c a mixed NM counts both halves',
+        rendered({ n = 'Ouryu', pool = { 3070 } }):match('TH: 18 of 24 rolls climb with it') ~= nil, true);
+    check('ND18d ...and with a level asked for, only the stuck ones are called out',
+        our4:match('TH: 6 of the 24 rolls above cannot be lifted by any TH level') ~= nil, true);
+    check('ND18e ...while an NM where everything climbs adds nothing to repeat',
+        lizzy4:match('cannot be lifted') == nil, true);
+    -- Steal and Despoil are not the kill's drop roll, and the ABSENCE of TH
+    -- figures there is stated rather than left to read as "TH does nothing".
+    check('ND18f the not-kill-loot section says why it carries no TH figures',
+        lizzy4:match('no TH figures here %-%- the lookup above is the kill\'s drop roll') ~= nil, true);
+    check('ND18g ...and says nothing of the sort when no level was asked for',
+        rendered(entryFor(107, 'Leaping Lizzy')):match('no TH figures here') == nil, true);
+    -- A group of ONE renders as a plain drop, but at the GROUP's rate -- the
+    -- presentation shortcut must never become an arithmetic one.
+    LT.data[999006] = { { i = 101, r = 250, t = 1, g = 1, gr = 150 } };
+    check('ND18h a group of one takes TH on the group rate, not its weight',
+        rendered({ pool = { 999006 } }, 4):match('Widget A %-%- common %(15%%%)  |  TH4 45%%') ~= nil, true);
+    -- The second short-circuit. No shipped kill row carries `r = 0` today, but
+    -- "the table states no rate" and "TH cannot raise it" are different facts
+    -- and must not be told in the same words (hard rule 12).
+    LT.data[999007] = { { i = 101, r = 0 }, { i = 102, r = 150 } };
+    local nor4 = rendered({ pool = { 999007 } }, 4);
+    check('ND18i a roll with no stated rate says that, not "no gain"',
+        nor4:match('Widget A  |  TH4 nothing to raise %-%- the table states no rate') ~= nil, true);
+    check('ND18j ...and is counted among the ones TH cannot lift',
+        nor4:match('TH: 1 of the 2 rolls above cannot be lifted by any TH level %-%- the table states no rate for it') ~= nil, true);
+    LT.data[999005], LT.data[999006], LT.data[999007] = nil, nil, nil;
+
     -- ---- and it all reaches chat under /dl nm ------------------------------
     local savedChat = package.loaded['dlac\\chatfmt'];
     local savedLoot = package.loaded['dlac\\feature\\nmloot'];
@@ -24432,6 +24700,59 @@ end)();
     local t3 = run(5, '/dl nm bonacon');
     check('ND09m guess labelling survives the new section',
         t3:match('closest match') ~= nil and t3:match('drops %-%- 7 rolls') ~= nil, true);
+
+    -- ---- ...and so does the TH level, under `/dl nm <name> th4` (#154) -----
+    local t4 = run(107, '/dl nm leaping lizzy th4');
+    check('ND19a a TH level reaches the drop lines -- 15% becomes 45% at TH4',
+        t4:match('Leaping Boots %-%- common %(15%%%)  |  TH4 45%%') ~= nil, true);
+    check('ND19b ...on every roll',            select(2, t4:gsub('|  TH4 ', '')), 5);
+    check('ND19c ...without eating the NM name',
+        t4:match('Leaping Lizzy %-%-') ~= nil, true);
+    check('ND19d ...or anything else the card already answered',
+        t4:match('/filterscan 379,380,399,400') ~= nil and t4:match('9%% base') ~= nil, true);
+    check('ND19e a spaced "th 4" is the same verb',
+        run(107, '/dl nm leaping lizzy th 4'):match('|  TH4 45%%') ~= nil, true);
+    check('ND19f TH0 is a real level, not a missing one',
+        run(107, '/dl nm leaping lizzy th0'):match('Leaping Boots %-%- common %(15%%%)  |  TH0 15%%') ~= nil, true);
+    -- Above the table: clamped, and SAID -- answering TH14 to someone who typed
+    -- TH20 without saying so answers a different question than the one asked.
+    local t5 = run(107, '/dl nm leaping lizzy th20');
+    check('ND19g a level past the table is clamped',
+        t5:match('|  TH14 70%%') ~= nil, true);
+    check('ND19h ...and the clamp is said out loud',
+        t5:match('TH runs 0%-14 in the server\'s own table %-%- showing TH14') ~= nil, true);
+    -- A bare `th` is answered with the syntax, never with a level we picked:
+    -- the whole readout would then be about gear the player may not own.
+    local t6 = run(107, '/dl nm leaping lizzy th');
+    check('ND19i a bare th asks which level',
+        t6:match('say which TH level') ~= nil, true);
+    check('ND19j ...shows no figures it was not given a level for',
+        t6:match('|  TH') == nil, true);
+    check('ND19k ...and still answers the NM',
+        t6:match('Leaping Lizzy %-%-') ~= nil, true);
+    -- The verb is stripped whatever order it is typed in, and never swallows
+    -- the ones that were already there.
+    check('ND19l th composes with apply, either way round',
+        string.format('%s/%s',
+            tostring(run(107, '/dl nm leaping lizzy th4 apply'):match('|  TH4 45%%') ~= nil),
+            tostring(run(107, '/dl nm leaping lizzy apply th4'):match('|  TH4 45%%') ~= nil)),
+        'true/true');
+    sent = nil;
+    check('ND19m ...and apply still applies',
+        run(107, '/dl nm leaping lizzy th4 apply'):match('applied') ~= nil, true);
+    check('ND19m2 ...queuing the filter the NM was always going to get',
+        sent, '/filterscan 379,380,399,400');
+    check('ND19n a zone list has nothing to show a TH rate for, and says so',
+        run(107, '/dl nm th4'):match('nothing to show a TH rate for') ~= nil, true);
+    -- The verdict that saves a gear set, in chat, without asking for a level.
+    check('ND19o the no-level verdict reaches chat',
+        t1:match('TH: nothing to gain here') ~= nil, true);
+    check('ND19p ...and names the group as the reason',
+        t1:match('TH never picks which item inside a group wins') ~= nil, true);
+    check('ND19q the same NM at TH14 still gains nothing, in words',
+        run(151, '/dl nm mee deggi th14'):match('TH14: no gain %-%- the group already drops every time') ~= nil, true);
+    check('ND19r ...and its share is the same 10% it always was',
+        run(151, '/dl nm mee deggi th14'):match('Ochiudo\'s Kote 10%%') ~= nil, true);
 
     package.loaded['dlac\\chatfmt'] = savedChat;
     package.loaded['dlac\\feature\\nmloot'] = savedLoot;

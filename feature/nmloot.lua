@@ -84,6 +84,43 @@
     one invented here. 1215 rows carry a rate that is NOT one of the eight;
     those are still valid weights and show a percentage with NO tier name,
     because snapping 250 to "very common" would be inventing a fact.
+
+    TREASURE HUNTER (issue #154) IS A BRACKET LOOKUP, NOT A MULTIPLIER, and
+    that is the whole reason this can be answered at all: the rate selects a
+    RARITY BRACKET and the TH level selects the value INSIDE that bracket, so
+    the exact rate at any TH level is computable rather than folklore. The
+    table and the lookup are ported verbatim from the server's own drop roll --
+    see M.TH_TABLE below, whose rows are TH 0-14 and whose columns are the
+    seven brackets.
+
+    THE UNITS ARE THE TRAP. The lookup works out of 10000 and the caller hands
+    it `DropRate * 10`, so a stored `r = 150` enters as 1500 and comes back
+    4500 at TH4 -- 45%. Every entry point here takes the STORED rate (out of
+    1000, the units the rest of this file speaks) and does the times-ten
+    itself, so no caller has to remember which scale it is holding.
+
+    FOUR RULES, EACH ONE A WAY A TH READOUT COULD LIE:
+
+    1. For an UNGROUPED row, TH applies to that row's own rate.
+    2. For a GROUPED row, TH applies to the GROUP's rate (`gr`) only.
+    3. TH NEVER touches which member of a group wins -- that is a pure weighted
+       roll on `r`, so the shares this file already prints are untouched by it
+       and still sum the same after TH is applied to the group rate.
+    4. A rate already at 10000 SHORT-CIRCUITS unchanged, so TH is worth exactly
+       nothing on a group that always drops. That is the verdict the feature
+       exists for: Ochiudo's Kote sits at a 10% share inside a `gr = 1000`
+       group, and no amount of TH moves it -- saying so in WORDS is what saves
+       a player a gear set, which an unchanged number never would.
+
+    A CONSEQUENCE WORTH KNOWING BEFORE IT SURPRISES YOU: because the rate only
+    SELECTS a bracket, a rate that is not one of the eight tiers does not read
+    back as itself. The bracket floors are the tiers times ten (2400, 1500,
+    1000, 500, 100, 50, 0), so at TH0 a tier rate is its own value -- 150 in,
+    15% out -- while an off-tier rate reads at its bracket's value instead:
+    the 68 shipped rows at `gr = 750` sit in the top (very common) bracket, so
+    they read 24% at TH0 and 64% at TH4. That is the lookup, not a bug here,
+    and the line says so rather than letting it read as "TH lowered my rate".
+    Flagged for a ruling in the PR for #154.
 ]]--
 
 local M = {};
@@ -175,6 +212,139 @@ function M.rateText(rate)
     local t = M.tierName(r);
     if t ~= nil then return string.format('%s (%s)', t, pctText(M.pctOf(r))); end
     return pctText(M.pctOf(r));
+end
+
+-- ---------------------------------------------------------------------------
+-- Treasure Hunter -- the server's own bracket lookup, ported
+-- ---------------------------------------------------------------------------
+-- Rows are TH level 0-14; columns are the seven rarity brackets in order
+-- (very common, common, uncommon, rare, very rare, super rare, ultra rare).
+-- Verbatim from the server -- including the 6666 on row 5, which is left as it
+-- is found rather than tidied into 6650: this table is a copy, not a design.
+M.TH_TABLE = {
+    [0]  = { 2400, 1500, 1000,  500,  100,  50,  10 },
+    [1]  = { 4800, 3000, 1200,  600,  150,  75,  20 },
+    [2]  = { 5600, 4000, 1500,  700,  200, 100,  30 },
+    [3]  = { 6000, 4250, 1650,  750,  225, 120,  35 },
+    [4]  = { 6400, 4500, 1800,  800,  250, 140,  40 },
+    [5]  = { 6666, 4750, 1900,  850,  300, 160,  45 },
+    [6]  = { 6800, 5000, 2000,  900,  350, 180,  50 },
+    [7]  = { 6900, 5250, 2100,  950,  400, 200,  60 },
+    [8]  = { 7050, 5500, 2250, 1050,  475, 230,  70 },
+    [9]  = { 7200, 5750, 2400, 1150,  550, 260,  80 },
+    [10] = { 7350, 6000, 2650, 1250,  650, 300,  90 },
+    [11] = { 7400, 6250, 2800, 1350,  750, 350, 100 },
+    [12] = { 7600, 6500, 2950, 1550,  825, 400, 115 },
+    [13] = { 7800, 6750, 3100, 1750,  900, 450, 130 },
+    [14] = { 8000, 7000, 3250, 2000, 1000, 500, 150 },
+};
+
+M.TH_MAX  = 14;      -- the last row; the server clamps to it
+M.TH_FULL = 10000;   -- the units the lookup works in (a stored rate times ten)
+
+-- The bracket a rate falls in is the FIRST of these it is >=. They are the
+-- eight named tiers times ten with `always` dropped off the top, which is why
+-- the bracket a drop sits in is the tier name this file already prints beside
+-- it -- no second vocabulary had to be invented for the columns.
+M.TH_BRACKETS = { 2400, 1500, 1000, 500, 100, 50, 0 };
+M.TH_BRACKET_TIER = {
+    'very common', 'common', 'uncommon', 'rare', 'very rare', 'super rare', 'ultra rare',
+};
+
+-- The TH level, held to what the table can answer for. Returns the clamped
+-- level AND whether it had to move, so a caller can say what it did rather
+-- than silently answering a different question than it was asked.
+function M.clampTH(level)
+    local n = tonumber(level);
+    if n == nil then return 0, false; end
+    n = math.floor(n);
+    if n < 0 then return 0, true; end
+    if n > M.TH_MAX then return M.TH_MAX, true; end
+    return n, false;
+end
+
+-- Which bracket a rate (out of 10000) sits in: the first threshold it reaches.
+function M.thBracket(rate)
+    local r = tonumber(rate) or 0;
+    for i = 1, #M.TH_BRACKETS do
+        if r >= M.TH_BRACKETS[i] then return i; end
+    end
+    return #M.TH_BRACKETS;
+end
+
+-- The server's getDropRate, out of 10000 in and out of 10000 back. The two
+-- short-circuits are the whole reason the verdict is worth printing: a rate
+-- already at 10000 comes back unchanged whatever the TH level, and so does a
+-- rate of nothing.
+function M.thRate(level, rate)
+    local lvl = M.clampTH(level);
+    local r = math.floor(tonumber(rate) or 0);
+    if r < 0 then r = 0; end
+    if r > M.TH_FULL then r = M.TH_FULL; end
+    if r == M.TH_FULL then return M.TH_FULL; end
+    if r == 0 then return 0; end
+    local row = M.TH_TABLE[lvl];
+    if type(row) ~= 'table' then return r; end
+    return row[M.thBracket(r)] or r;
+end
+
+-- The same thing for the units the rest of this file speaks: a STORED rate
+-- (out of 1000) in, a percentage out. The times-ten the server's caller does
+-- lives here so no caller of this module has to hold two scales at once.
+-- nil when there is no rate to raise at all.
+function M.thPct(level, stored)
+    local r = tonumber(stored);
+    if r == nil or r <= 0 then return nil; end
+    return M.thRate(level, r * 10) / 100;
+end
+
+-- Can ANY amount of TH move this rate? Only the two short-circuits say no --
+-- every column of the table rises with the level, so a rate that is neither
+-- already 100% nor absent always has somewhere to go.
+function M.thHelps(stored)
+    local r = tonumber(stored);
+    if r == nil or r <= 0 then return false; end
+    return (r * 10) < M.TH_FULL;
+end
+
+-- The rate TH is applied to for one roll (see M.rolls): an ungrouped row's OWN
+-- rate, and a group's GROUP rate. NEVER a member's weight -- rule 3 in the
+-- header: TH does not touch the roll that picks the winner inside a group.
+function M.rollRate(block)
+    if type(block) ~= 'table' then return nil; end
+    if block.kind == 'group' then return tonumber(block.gr); end
+    if type(block.row) == 'table' then return tonumber(block.row.r); end
+    return nil;
+end
+
+-- What TH does to one roll, in the words its line will carry.
+-- -> helps (boolean), text (string)
+-- The `no gain` half is the point of the feature: a number that did not move
+-- is indistinguishable from a number nobody applied TH to, so the reason is
+-- said out loud instead.
+function M.thVerdict(stored, level, isGroup)
+    local lvl = M.clampTH(level);
+    local r = tonumber(stored);
+    if r == nil or r <= 0 then
+        return false, 'nothing to raise -- the table states no rate for this roll';
+    end
+    if not M.thHelps(r) then
+        if isGroup then
+            return false, 'no gain -- the group already drops every time, and TH never picks which item in it wins';
+        end
+        return false, 'no gain -- it already drops every time';
+    end
+    local at  = M.thPct(lvl, r);
+    local txt = pctText(at);
+    -- An off-tier rate reads at its BRACKET's value, which can be below the
+    -- rate the table states (75% sits in the top bracket: 24% at TH0, 64% at
+    -- TH4). Left unsaid it reads as "TH lowered my drop rate", which is the
+    -- one thing this line must never be taken for.
+    local stated = M.pctOf(r);
+    if stated ~= nil and at + 1e-9 < stated then
+        return true, txt .. ' -- the stated rate only picks the bracket';
+    end
+    return true, txt;
 end
 
 -- ---------------------------------------------------------------------------
@@ -328,23 +498,36 @@ local function pack(head, parts, cont, width)
 end
 M._pack = pack;
 
+-- What a chosen TH level does to one roll, hung off the end of its line.
+-- Empty when no level was asked for: TH figures are opt-in, so the default
+-- readout is the one #153 shipped plus a single verdict line.
+local function thTail(stored, th, isGroup)
+    if th == nil then return ''; end
+    local _, txt = M.thVerdict(stored, th, isGroup);
+    return string.format('  |  TH%d %s', M.clampTH(th), txt);
+end
+
 -- One ungrouped roll: the item and what the server calls its rate.
-local function itemLine(row, indent)
+local function itemLine(row, indent, th)
     local txt = M.rateText(row.r);
-    if txt == nil then return indent .. M.itemName(row.i); end
-    return string.format('%s%s -- %s', indent, M.itemName(row.i), txt);
+    if txt == nil then return indent .. M.itemName(row.i) .. thTail(row.r, th, false); end
+    return string.format('%s%s -- %s%s', indent, M.itemName(row.i), txt, thTail(row.r, th, false));
 end
 
 -- One grouped roll. A group of ONE is rendered as a plain drop at the GROUP's
 -- rate, because that is exactly its chance -- there is nothing for it to be
 -- "one of", and 22 shipped groups are that shape.
-local function groupLines(block, indent, cont)
+local function groupLines(block, indent, cont, th)
     local n = #block.rows;
     if n == 1 then
         local only = block.rows[1];
         local txt = M.rateText(block.gr);
-        if txt == nil then return { indent .. M.itemName(only.i) }; end
-        return { string.format('%s%s -- %s', indent, M.itemName(only.i), txt) };
+        -- TH still applies to the GROUP's rate here, not the member's weight:
+        -- rendering a group of one as a plain drop is a presentation choice and
+        -- must not become an arithmetic one.
+        local tail = thTail(block.gr, th, false);
+        if txt == nil then return { indent .. M.itemName(only.i) .. tail }; end
+        return { string.format('%s%s -- %s%s', indent, M.itemName(only.i), txt, tail) };
     end
     local shown = (n > M.MAX_GROUP) and M.MAX_GROUP or n;
     local parts = {};
@@ -368,14 +551,101 @@ local function groupLines(block, indent, cont)
         end
     end
     local rate = M.rateText(block.gr) or 'rate not stated';
-    return pack(string.format('%sone of these, %s:', indent, rate), parts, cont);
+    local lines = pack(string.format('%sone of these, %s:', indent, rate), parts, cont);
+    -- A real group gets its TH verdict on its OWN line rather than hung off the
+    -- head, because the head is where the members are packed and the verdict is
+    -- the half of this that a player acts on. It talks about the GROUP's roll
+    -- and says the shares are untouched, so the two numbers on screen -- the
+    -- group's rate and each member's share -- cannot be read as one.
+    if th ~= nil then
+        local helps, txt = M.thVerdict(block.gr, th, true);
+        if helps then
+            -- A semicolon, not a second dash: the verdict text may already
+            -- carry a `-- ...` clause of its own.
+            lines[#lines + 1] = string.format('%sTH%d: the group rolls at %s; the shares above are unchanged',
+                cont, M.clampTH(th), txt);
+        else
+            lines[#lines + 1] = string.format('%sTH%d: %s', cont, M.clampTH(th), txt);
+        end
+    end
+    return lines;
+end
+
+-- The whole NM's TH verdict, as one line. It is printed WITHOUT a level being
+-- asked for, because "do not bother bringing TH here" is the answer a player
+-- needs before they know to ask -- and withheld once a level IS asked and every
+-- roll climbs, where the per-line figures already say it better.
+-- -> a line, or nil
+local function thSummaryLine(kill, th, name)
+    local rolls, helped, capped, unrated, grouped = 0, 0, 0, 0, false;
+    for _, b in ipairs(kill or {}) do
+        rolls = rolls + 1;
+        if b.kind == 'group' and #b.rows > 1 then grouped = true; end
+        local rate = M.rollRate(b);
+        if M.thHelps(rate) then
+            helped = helped + 1;
+        elseif (tonumber(rate) or 0) > 0 then
+            capped = capped + 1;
+        else
+            unrated = unrated + 1;
+        end
+    end
+    if rolls == 0 then return nil; end
+
+    if helped == 0 then
+        local why;
+        if unrated == 0 then
+            why = (rolls == 1) and 'that roll already drops every time'
+                                or 'every roll here already drops every time';
+        elseif capped == 0 then
+            why = 'the table states no rate for any of these rolls';
+        else
+            why = 'no roll here can be lifted at any TH level';
+        end
+        if grouped then
+            why = why .. ', and TH never picks which item inside a group wins';
+        end
+        return '  TH: nothing to gain here -- ' .. why .. '.';
+    end
+
+    local how;
+    if helped == rolls then
+        how = (rolls == 1) and 'that roll climbs with it' or 'every roll here climbs with it';
+    else
+        how = string.format('%d of %d rolls climb with it', helped, rolls);
+    end
+
+    if th == nil then
+        return string.format('  TH: %s -- "/dl nm %s th4" for the rate at any TH level (0-%d).',
+            how, name or '<name>', M.TH_MAX);
+    end
+    -- A level was asked for: every roll now carries its own number, so the only
+    -- thing left to say is which of them no TH level will ever move -- and that
+    -- claim is about TH itself, not about the level asked for, so it does not
+    -- wear one.
+    if helped == rolls then return nil; end
+    local stuck = rolls - helped;
+    local why;
+    if unrated == 0 then
+        why = (stuck == 1) and 'it already drops every time' or 'they already drop every time';
+    elseif capped == 0 then
+        why = 'the table states no rate for ' .. ((stuck == 1) and 'it' or 'them');
+    else
+        why = 'either they already drop every time or the table states no rate for them';
+    end
+    return string.format('  TH: %d of the %d rolls above cannot be lifted by any TH level -- %s.',
+        stuck, rolls, why);
 end
 
 -- The whole drops readout for one NM, ready for nmlookup to print. Pure apart
--- from the item-name resolve.
-function M.lines(entry)
+-- from the item-name resolve. `th` is the TH level the player asked to see the
+-- rates at; nil means they asked for none, and then only the one-line verdict
+-- is added -- a TH figure on every line of every lookup is noise for the four
+-- jobs in five that cannot bring any.
+function M.lines(entry, th)
     local out = {};
     if type(entry) ~= 'table' then return out; end
+    if th ~= nil then th = M.clampTH(th); end
 
     -- Three absences, and they must not look alike.
     if type(M.data) ~= 'table' or next(M.data) == nil then
@@ -410,19 +680,27 @@ function M.lines(entry)
         if grouped then
             out[#out + 1] = '  (a group rolls once, then ONE item in it wins by weight -- the % is that item\'s share of the group)';
         end
+        -- The mental model, said once, and only when TH figures are on screen
+        -- to need it: without it a rate that reads lower than the table's own
+        -- (an off-tier rate at its bracket's value) looks like a bug.
+        if th ~= nil then
+            out[#out + 1] = '  (TH is a lookup, not a multiplier -- the rate picks a rarity bracket, the TH level picks the value in it)';
+        end
         local shown = (#kill > M.MAX_ROLLS) and M.MAX_ROLLS or #kill;
         for k = 1, shown do
             local b = kill[k];
             if b.kind == 'group' then
-                for _, line in ipairs(groupLines(b, indent, cont)) do out[#out + 1] = line; end
+                for _, line in ipairs(groupLines(b, indent, cont, th)) do out[#out + 1] = line; end
             else
-                out[#out + 1] = itemLine(b.row, indent);
+                out[#out + 1] = itemLine(b.row, indent, th);
             end
         end
         if shown < #kill then
             out[#out + 1] = string.format('%s... and %d more %s not shown -- the chat readout stops at %d.',
                 indent, #kill - shown, (#kill - shown == 1) and 'roll' or 'rolls', M.MAX_ROLLS);
         end
+        local verdict = thSummaryLine(kill, th, entry.n);
+        if verdict ~= nil then out[#out + 1] = verdict; end
     else
         -- Five shipped pools are Steal and Despoil and nothing else. Printing
         -- only the section below would leave the drops question unanswered,
@@ -437,6 +715,13 @@ function M.lines(entry)
         end
         out[#out + 1] = string.format('  not kill loot -- %s only, a kill never gives these:',
             table.concat(hows, ' / '));
+        -- No TH figures down here, and that absence is stated rather than left
+        -- to be read as "TH does nothing for these" (hard rule 12). The bracket
+        -- lookup ported above is the KILL's drop roll; what Steal and Despoil
+        -- roll is a different question this module has no server data for.
+        if th ~= nil then
+            out[#out + 1] = '  (no TH figures here -- the lookup above is the kill\'s drop roll, which is not where these come from)';
+        end
         for _, tk in ipairs(take) do
             local txt = M.rateText(tk.row.r);
             if txt == nil then
