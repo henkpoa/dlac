@@ -76,6 +76,11 @@ local CLAIM_COL = {
     HELM     = { 0.45, 0.80, 0.35, 1.0 },
     Fishing  = { 0.25, 0.75, 0.65, 1.0 },
     Chocobo  = { 0.75, 0.85, 0.30, 1.0 },
+    -- Mode lock: a warm gold, deliberately close to the Trigger Monitor's own
+    -- locks line and deliberately NOT the Locks orange -- it sits next to the
+    -- Triggers purple in the grid, and the two rows it must never be confused
+    -- with are Locks (a /dl lock veto) and Triggers (the rule it overruled).
+    ModeLock = { 0.95, 0.78, 0.35, 1.0 },
     Triggers = { 0.70, 0.50, 0.95, 1.0 },
 };
 local COL_OTHER  = { 0.60, 0.60, 0.60, 1.0 };   -- a claimant not in the table

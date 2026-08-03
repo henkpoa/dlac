@@ -417,8 +417,21 @@ Every feature that wants a slot registers a **Claim** with the Arbiter instead o
 directly; per slot the Arbiter walks a strict, draggable rank list top-down and the first
 claimant with an opinion wins. The rank is one per character, persisted as the `arbstate`
 Statefile (writer: `feature/arbwatch.lua`; reader/default/sanitize: `dispatch.arbOrder`,
-one vocabulary). Default order **Naked > Pins > Locks (veto) > AutoAmmo > MaxMP > Craft >
-HELM > Fishing > Chocobo > Triggers (floor)**.
+one vocabulary). Default order **Disabled (ceiling) > Naked > Pins > Locks (veto) >
+AutoAmmo > MaxMP > Craft > HELM > Fishing > Chocobo > ModeLock > External > Triggers
+(floor)**.
+
+**ModeLock** (2026-08-03, ADR [0034](adr/0034-mode-locks-are-a-claimant-row.md)) is the
+newest row and the current worked example of "a new claimant is one registry entry + one
+rank row". While a mode is active, the slots it locks come from ONE named set and no
+trigger rule can move them — Henrik's melee mode that must never see a weapon swap while
+his caster mode swaps on every pull. The locks live **inside the mode definition** in the
+job's trigger file (`Modes.<name>.locks["Weapon:Melee"] = { Main = "MeleeWpn" }`, keyed by
+the `mode` CONDITION string, so the activity test is `modeActive` itself and the ADR 0019
+value-delete cascade is free), and the whole feature adds no arm, no state file and no code
+to any monitor. `dispatch.modeLockPlan(defs, modes)` is the pure planner — injected reads
+like `modeActive`, because the Trigger Monitor and the Priority row live in the other Lua
+state and reach it through `triggersui.modeLockLive()`.
 
 A rank row the character's `arbstate` file does **not** list is restored at its *default
 position*, not appended (v122) -- every existing file predates every new claimant, and

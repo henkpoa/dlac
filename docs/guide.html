@@ -342,11 +342,19 @@ two kinds:</p>
       login</b>. Create them in Triggers → Modes, with an optional <b>keybind</b> that dlac
       binds for you (e.g. <kbd>CTRL+F4</kbd>) — no macro needed.</li>
 </ul>
-<p>Two ways to let modes change your gear:</p>
+<p>Three ways to let modes change your gear:</p>
 <ol>
   <li><b>Mode rules</b> — a trigger rule with a mode condition:
       <i>mode <code>DT</code> → set <code>DT</code></i>. Mode rules run at the highest
       priority, so they overlay everything else. Good for toggles.</li>
+  <li><b>Mode locks</b> — the <b>locks</b> button on a mode box. Pick a set for a slot and,
+      while that mode is active, <b>that slot stops following your trigger rules
+      altogether</b> — on every event, whatever fires. This is the answer to
+      <i>"my caster mode swaps weapons all the time, but in melee mode I never want them
+      touched"</i>: make a melee weapon set, lock <code>Main</code> and <code>Sub</code> to
+      it under <span class="mode">Weapon:Melee</span>, and stop teaching every rule in the
+      file to keep its hands off. A cycle locks <b>per value</b>, so each value can hold
+      different slots from different sets. Also the tidy way to nail DT pieces on.</li>
   <li><b>Mode-gated set entries</b> — inside ONE set, give different rows a
       <span class="mode">mode gate</span> (the <b>B</b> button): the Main slot of your
       weapon set can hold <i>Kraken Club when <code>Weapon:SoloKC</code></i>,
@@ -366,6 +374,16 @@ polearm mode) without touching Behaviour once. The <b>x</b> on a row inside a se
 removes only that mode gate — other gates keep the row in their sections, and with no gate
 left it moves to the main list as unconditional; only the main list's <b>x</b> deletes the
 row itself.</div>
+<div class="box tip"><b>A mode lock beats your rules, not your armed gear.</b> Mode locks sit
+in the claim priority list (Gear&nbsp;Helpers&nbsp;→&nbsp;Priority) as <b>Mode lock</b>,
+shipping just above <b>Triggers</b> — so they overrule every rule you wrote, and still yield
+to the things you switched on yourself this session (crafting, HELM, fishing, pins, a
+<code>/dl lock</code>). Want a locked weapon to survive even the craft bench? Drag the row
+higher. Two places tell you what is held right now: the <b>Trigger monitor</b> grows a
+<code>locks</code> line, and the <b>Arbiter monitor</b> paints those cells gold with the
+holding mode in the hover. One catch worth knowing: if the set you point a slot at has no
+piece for that slot, the lock holds nothing and the slot goes back to following your rules —
+the window says so in red.</div>
 <div class="box tip"><b>Modes follow you.</b> Mode values survive reloads and are shared
 across your session — define the cycle on the job where you flip it, and sets on any job
 can gate on its values. Flipping a mode re-dresses you immediately; you don't have to act

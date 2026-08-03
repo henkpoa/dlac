@@ -58,6 +58,7 @@ M.HINT = {
     Chocobo  = 'Chocobo row',
     JobHelper= 'Job Helpers tab (per job)',
     External = '/dl claims | Menu > Settings',
+    ModeLock = 'Triggers tab > Modes > locks',
     Triggers = 'Triggers tab',
 };
 
@@ -103,6 +104,13 @@ M.SOURCE = {
             .. 'addon dresses over your trigger sets and under everything you configured yourself, until you '
             .. 'drag it higher.\n'
             .. '/dl claims list names who is holding what, and for how much longer.',
+    ModeLock = 'Set per mode in Triggers > Modes: the "locks" button on a mode box opens all 16 slots, '
+            .. 'and each slot you give a set is answered by THAT set while the mode is active -- no trigger '
+            .. 'rule can move it, on any event. A cycle locks per VALUE, so Weapon:Melee and Weapon:Caster '
+            .. 'can hold different slots.\n'
+            .. 'Default rank is HERE, just above Other addons and your Triggers: it beats every rule you '
+            .. 'wrote, and yields to the activities you armed this session (crafting, HELM, fishing, pins). '
+            .. 'Drag it higher to make a locked slot beat those too.',
     Triggers = 'Your Triggers tab. This is the FLOOR -- what is worn when no claim wins a slot.',
 };
 
@@ -152,6 +160,11 @@ function M.statusText(name, live)
         -- /dl prio prints, so the chat and the panel cannot drift.
         local ex = live.external or {};
         return (type(ex.text) == 'string' and ex.text ~= '') and ex.text or 'off';
+    elseif name == 'ModeLock' then
+        -- Names the SLOTS and the SETS, not a count: "3 slots" would send them
+        -- back to the Modes list to find out which three.
+        local ml = live.modelock or {};
+        return (type(ml.text) == 'string' and ml.text ~= '') and ml.text or 'off';
     end
     return '?';
 end
@@ -172,6 +185,7 @@ local function rowActive(name, live)
     if name == 'Chocobo'  then return live.chocobo == true; end
     if name == 'JobHelper' then return (live.jobhelper or {}).active == true; end
     if name == 'External'  then return (live.external or {}).active == true; end
+    if name == 'ModeLock'  then return (live.modelock or {}).active == true; end
     return false;
 end
 
@@ -224,6 +238,23 @@ function M.gatherLive(deps)
     pcall(function()
         local ex = require('dlac\\feature\\extclaim');
         live.external = { on = ex.on == true, active = ex.active() == true, text = ex.statusText() };
+    end);
+    -- The ModeLock row (2026-08-03): the live plan through triggersui's one
+    -- addon-state door, which asks the ENGINE's planner -- so this row, the
+    -- Trigger Monitor and the Mode Locks window all read one answer.
+    pcall(function()
+        local t = require('dlac\\ui\\triggersui');
+        if type(t.modeLockLive) ~= 'function' then return; end
+        local plan = t.modeLockLive();
+        local parts = {};
+        for _, slot in ipairs({ 'Main', 'Sub', 'Range', 'Ammo', 'Head', 'Neck', 'Ear1', 'Ear2',
+                                'Body', 'Hands', 'Ring1', 'Ring2', 'Back', 'Waist', 'Legs', 'Feet' }) do
+            if type(plan) == 'table' and plan[slot] ~= nil then
+                parts[#parts + 1] = slot .. '=' .. tostring(plan[slot].set);
+            end
+        end
+        live.modelock = { active = (#parts > 0),
+                          text = (#parts > 0) and ('holding ' .. table.concat(parts, ', ')) or 'off' };
     end);
     pcall(function() live.craft   = require('dlac\\feature\\craftwatch').isEnabled() == true; end);
     pcall(function() live.helm    = require('dlac\\feature\\helmwatch').isEnabled() == true; end);

@@ -8821,6 +8821,174 @@ spam loop would be the same silence by another route.
 
 **Tests:** `LD6c`–`LD6h`, `E29`–`E29i`, `SH10c`–`SH10f`. Suite **6054**.
 
+**FIELD-CONFIRMED the same day** (2026-08-03, Coffeepoo's character — Henrik: *"Field tested,
+both fixes worked"*). The base Animator indexed itself with no hand edit, and the Sub took the
+second Bone Knife +1 with no `Count = 2` anywhere in his `gear.lua`. Both halves are proven in
+game; nothing on this pair is owed.
+
+Worth keeping from it, because it is the shape of the bug rather than the bug: **a fact that
+changes must not be cached in a file nothing rewrites.** The `Count` stamp and the job-mask
+bucket were both written once, at first index, by code that had no way to revisit its own
+answer — and the sync path printed nothing when it declined to index something, so neither
+could ever announce itself. When a rule reads an on-disk stamp, ask what happens the day the
+underlying fact moves; if the answer is "nothing, ever", read the live source and keep the
+stamp as a cache that can only ever *add* evidence.
+
+## Session "the slot that stops listening" (2026-08-03, `2026.08.03x`, engine v166)
+
+**Theme:** Henrik opened with a problem, not a bug. *"It is a very common problem when
+building sets, that you want to 100% lock a piece over every set once a mode is active.
+You know, REGARDLESS what happens, this piece MUST ALWAYS (on a trigger level) stay on.
+Examples can be DT gear, weapons etc… I have a caster mode where I switch weapons all the
+time to adapt to elemental damages, refresh as well as resting. But when I am in melee
+mode, I NEVER want the weapons to be touched."*
+
+The workaround that exists today is to put a `mode = Weapon:Melee` gate on **every rule
+that touches a weapon** — and to remember it again for every rule added afterwards. The
+thing being expressed is a property of the *mode*, so the fix was to move it there.
+
+**What landed.** A mode definition carries `locks`, keyed by the exact `mode` CONDITION
+string the rules already use:
+
+```lua
+Modes = {
+    ["Weapon"] = { values = { "Melee", "Caster" },
+                   locks = { ["Weapon:Melee"] = { Main = "MeleeWpn", Sub = "MeleeWpn" } } },
+}
+```
+
+Repeating the mode's own name in the key is redundant and bought two things worth more than
+the redundancy: the activity test is `M.modeActive(key)` — the same primitive the rules run
+on, not a second dialect of *"is this mode on"* — and a hand-editor can read a key without
+knowing which table they are in. Keeping the locks **inside the definition** is what makes
+the ADR 0019 cascade free: delete the mode, or drop a cycle value, and the locks go with it,
+because they are the same table. A separate store would have been a third reference home for
+that cascade to remember, and ADR 0019 exists precisely because the second one was forgotten
+once.
+
+**The decision worth recording is that it is an ordinary claimant, not a floor override.**
+Henrik's phrasing was *"on a trigger level"*, and a floor-internal override would have
+matched it literally. A rank row is behaviourally identical for everything except the other
+claimants — and it cost *less* code, because the Arbiter Monitor grid, the `/dl why`
+contest, the Priority list, the decision ring and the fall-down-its-own-ladder behaviour are
+all registry-driven and needed no new code at all. It also turned the one genuine open
+question — *should a mode lock beat an armed craft bench?* — from a ruling into a drag. It
+ships directly above `External`: above every trigger rule and above a foreign addon, below
+every activity you armed yourself this session, because arming the craft bench is a
+deliberate act too and it is the one that happened later.
+
+**Two rulings that are quiet by design, and both are visible on purpose.** A lock naming a
+set with **no entry for that slot** claims nothing and the floor keeps the slot — blanking
+it instead would strip a piece to honour an instruction the player never gave — so the Mode
+Locks window flags it in red at edit time, the only place it can still be fixed. And two
+active modes *can* name one slot (a `DT` toggle and a `Weapon` cycle are independent flags):
+resolved by sorted condition, first keeps it, **loser named in the window**. Sorted-first is
+arbitrary but *stable*, and stability is the whole property — a `pairs()` winner would land
+differently on two dispatches with nothing changed, which is a bug you can only catch by
+asking twice (tests `ML8`–`ML9c` do exactly that).
+
+**Three small things fell out of it.** Claimant `sig` legs now take the ensure STATE as a
+third argument — *which mode holds a slot* has to move the retrace signature even when the
+item name does not, and the claim table alone cannot say that. Rows may supply an `rlabel`,
+so a fall names the **set** (`ladder (mode lock: MeleeWpn)`) instead of the row, since
+"Mode lock" would hide the one fact needed to go and fix it. And `dispatch` hit LuaJIT's
+200-local ceiling in the main chunk on the first new file-level local, which turned out to
+be a good thing: the slot-canon map moved to its vocabulary owner (`arbiter.CANON_OF`) and
+replaced a third inline copy of the same loop.
+
+**Tests:** `ML1`–`ML22` — the pure planner, the wipe contract (locks live in the trigger
+file, so a Commit that does not round-trip them silently unlocks every slot while the Modes
+list looks untouched — the SetOptions/Modes bug shape), and end-to-end through the **real**
+`M.dispatch` on the TRC harness, which is the only tier that can prove a trigger rule
+actually *loses* the slot. Smoke `MLK1`–`MLK13` drives the window body against a stub imgui
+(the `renderTrigRuleBox` seam — none of it runs until a player clicks, so a load test proves
+nothing). Both mutation-checked: disabling the claim fails `ML18`/`ML19`, breaking the slot
+list fails `MLK2`–`MLK7`. Suites **6096 + 1121**.
+
+**Not field-run.** The owed round is in HANDOFF: Henrik's own Weapon cycle, `Main`/`Sub`
+locked under the melee value, then pull and cast through it.
+
+**Follow-up, same session — "is this exportable / importable as well?"** Henrik's check
+question, and it found a bug I had just shipped.
+
+*Profile export/import already carried them*, with no change: `filterTriggersRaw` takes the
+whole `Modes` table and locks live inside it, so ticking Modes ships them and an
+everything-ticked export copies the file verbatim.
+
+*The Mode library deliberately does not carry them* (ADR 0034: an entry is job-independent,
+set names are not) — **but "does not travel" is not the same as "gets eaten", and the first
+cut ate them.** `applyStamp` rebuilds the target definition from the plan (`local def = {}`),
+so stamping a library entry onto a job that already had that mode deleted its locks — on
+**Append**, the branch documented as *"non-destructive… No value ever disappears, so no
+reference can break"*. Exactly the ADR 0019 hazard class in reverse: a silent deletion
+through the path advertised as the safe one. Locks belong to the JOB, not to the entry, so
+they now ride across a stamp untouched; the single exception is an **Overwrite that kills a
+cycle value**, which takes that value's locks with it — the one place the "cascade is free
+because they live in the same table" argument does *not* hold, because there the definition
+survives with a shorter value list instead of being deleted (`ML44a`–`ML44f`, mutation-checked).
+
+*Left open, deliberately, because it is a product call and not a defect:* the export form's
+dependency analysis does not know a lock is a **set reference**. `triggerRefs` only walks
+handler rules, so ticking Modes without Sets ships locks pointing at sets the receiver does
+not have — no warning, no disabled selection. The fix is small; what it needs first is a
+ruling on whether a lock makes Sets a hard dependency (like a rule's `set =`) or only a
+warning.
+
+Also renamed this feature's test IDs `ML*` → `MDL*`: the modeslibrary section already owned
+`ML1`–`ML48`, and two sections sharing IDs makes a failure report ambiguous.
+
+**Second follow-up, same session — "first come, first serve."** Henrik, on conflicting
+mode locks: *"we will come into situations where we maybe have conflicting modes active,
+so for now, let's handle that as first come, first serve. If it ever comes to that, the one
+who took the slot lock first should get it, the rest stand in queue basically."*
+
+The first cut resolved a contested slot by sorted condition. That was deterministic, which
+was the property I had argued for — but the alphabet is not fairness, and `DT` beating a
+Weapon cycle that had held the slot for an hour is exactly the arbitrary answer the ruling
+rejects. Determinism was necessary and I had mistaken it for sufficient.
+
+So modes now carry an **activation clock**: `M.modeSeq`, one counter per mode NAME, stamped
+when its flag last CHANGED, and `modeLockPlan` walks conditions in that order. Three things
+about it that are decisions rather than mechanics:
+
+- **Stamped on change, never on re-assertion.** A macro that re-asserts a mode every pull
+  must not send it to the back of the queue. Cleared when the mode goes off — turning it
+  back on genuinely *is* taking the slot again, and should queue behind whoever holds it.
+- **A cycle VALUE change re-stamps.** The lock is keyed by condition, so `Weapon:Melee` →
+  `Weapon:Caster` really is a different lock taking the slots.
+- **The queue needs no state.** The plan is rebuilt every dispatch, so when the holder's
+  mode goes off the next in line simply wins the next walk. Nothing remembers a queue and
+  nothing has to be re-armed — which is the only reason "the rest stand in queue" is true
+  without a queue existing anywhere in the code.
+
+Equal stamps still break alphabetically (two flags restored from one mirror, or seated by
+one trigger load). Deterministic first, fair second: a `pairs()` coin flip landing
+differently on two dispatches with nothing changed is a worse bug than an
+arbitrary-but-repeatable winner.
+
+Two implementation notes worth keeping. The clock rides the modestate mirror as `__seq`,
+because the Mode Locks window computes the same plan in the **other Lua state** — without
+it the window would order a contested slot alphabetically while the engine ordered it by the
+clock, and confidently name the wrong winner. And every flag write now goes through one seam,
+`M.modeSet`: six sites assigned `M.modes[ln]` directly, and a clock that six callers have to
+remember to wind is a clock that will be wrong. Same twin-that-drifts law, applied to state
+instead of to data.
+
+**And the export gap from the previous follow-up closed**, Henrik's call being the hard
+dependency. `profileexport.triggerRefs` reports `modeSets` as its own answer — not folded
+into `sets`, because `sets` gates the TRIGGERS row while a lock travels with the **Modes**
+section and Triggers need not be ticked at all. Gating the wrong row would have disabled
+something unrelated while leaving the real hole open. One nicety that came out of building
+it: when the triggers also need the now-blocked Modes, the Triggers row names **Sets** — the
+root fix — instead of the two rows pointing at each other while the player chases the
+dependency.
+
+**Tests:** `MDL8`–`MDL9i` (the clock decides, flips with the clock, survives re-assertion,
+releases on off, and falls back stably with no clock at all), `MDL19b`–`MDL19f` (the mirror
+wire format, and the GUI planning from it to the engine's own answer), `PX9a`–`PX9g`,
+`ML44a`–`ML44f`. All mutation-checked. Suites **6157 + 1121** on the combined tree, engine **v166**.
+
+
 ## Session "the food register stops believing a zone" (2026-08-03, `2026.08.03w`)
 
 **Theme:** foodwatch's first real field round, and it failed in the one way the design had

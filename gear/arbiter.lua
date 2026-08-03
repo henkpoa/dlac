@@ -42,6 +42,13 @@ M.LAC_SLOTS_CANON = { 'Main', 'Sub', 'Range', 'Ammo', 'Head', 'Neck', 'Ear1', 'E
                       'Body', 'Hands', 'Ring1', 'Ring2', 'Back', 'Waist', 'Legs', 'Feet' };
 local LAC_SLOTS = M.LAC_SLOTS;
 
+-- lac-case (or any case) slot name -> the canonical key every claim table emits.
+-- The vocabulary owner keeps the map: three separate consumers had built their
+-- own inline copy of this loop, and a raw 'head' sitting next to a canonical
+-- 'Head' splits one slot into two everywhere the two meet.
+M.CANON_OF = {};
+for i, s in ipairs(LAC_SLOTS) do M.CANON_OF[s] = M.LAC_SLOTS_CANON[i]; end
+
 -- ---------------------------------------------------------------------------
 -- Reserved slots (RSlot). Some pieces take another slot away while worn: the
 -- Ryl.Ftm. Tunic is a Body that reserves Head; robes reserve Hands; a boomerang
@@ -557,8 +564,17 @@ end
 -- and under every feature you configured yourself, until YOU drag it higher.
 -- Restore-at-default-position (arbOrder below) puts it there for every existing
 -- arbstate file, so nobody's saved order has to be touched.
+-- 'ModeLock' (2026-08-03) is the MODE LOCK row: while a mode is active, the slots
+-- it locks come from ONE named set and no trigger rule can move them. It ships
+-- DIRECTLY ABOVE 'External' -- above every trigger rule and above a foreign
+-- addon's claim (it is the player's own explicit "never touch this"), and BELOW
+-- every activity they armed themselves this session (Craft/HELM/Fishing/Chocobo/
+-- Pins/Locks/AutoAmmo): arming the craft bench is a deliberate act too, and the
+-- one that happened later. A player who wants the lock absolute drags it to the
+-- top -- which is the whole reason this is a ROW and not a floor special case.
 M.ARB_ORDER_DEFAULT = { 'Disabled', 'Naked', 'Pins', 'Locks', 'AutoAmmo', 'MaxMP',
-                        'Craft', 'HELM', 'Fishing', 'Chocobo', 'External', 'Triggers' };
+                        'Craft', 'HELM', 'Fishing', 'Chocobo', 'ModeLock', 'External',
+                        'Triggers' };
 local ARB_ORDER_DEFAULT = M.ARB_ORDER_DEFAULT;
 
 -- The rows a player can never pick up, and that arbOrder places itself: the
@@ -593,7 +609,11 @@ local ARB_PINNED = M.ARB_PINNED;
 -- saved order key on, but a player reads a sentence -- and 'Ammo: External
 -- (rank 10)' names a mechanism, while 'Ammo: Other addons (rank 10)' names the
 -- thing they can actually go and turn off.
-M.ARB_DISPLAY = { AutoAmmo = 'Ammo rule', JobHelper = 'Job helper', External = 'Other addons' };
+-- 'Mode lock' for the ModeLock row: the identity is one word (it keys CLAIMANTS
+-- and the saved order), the player reads two -- and next to a slot the sentence
+-- has to work: 'Main: Mode lock (rank 11) over Triggers'.
+M.ARB_DISPLAY = { AutoAmmo = 'Ammo rule', JobHelper = 'Job helper', External = 'Other addons',
+                  ModeLock = 'Mode lock' };
 local ARB_DISPLAY = M.ARB_DISPLAY;
 
 function M.claimantLabel(name)

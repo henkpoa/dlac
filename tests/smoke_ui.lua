@@ -3489,6 +3489,54 @@ end)();
             check('TC14 stacks stay balanced through the cases-list boxes',
                 depth.col + depth.win + depth.child, 0);
         end
+
+        -- MLK. MODE LOCKS (2026-08-03). The window body only RUNS when a player
+        -- opens it on a real job, so a load test proves nothing about it -- the
+        -- same reason renderTrigRuleBox is exposed. Driven here with a real mode
+        -- definition against the stub imgui: an undefined helper or an
+        -- unbalanced child would otherwise stay invisible until the first click.
+        check('MLK1 the Mode Locks body is exposed', type(tg.renderModeLocksBody), 'function');
+        if type(tg.renderModeLocksBody) == 'function' then
+            -- A CYCLE with locks on one of its values: the value strip, the 16
+            -- rows, the live line and the buttons all render.
+            local cyc = { values = { 'Melee', 'Caster' },
+                          locks = { ['Weapon:Melee'] = { Main = 'MeleeWpn', Sub = 'MeleeWpn' } } };
+            local rok, rcond = pcall(tg.renderModeLocksBody, 'Weapon', cyc, 'Weapon:Melee');
+            check('MLK2 renders a cycle mode with locks', rok, true);
+            check('MLK3 the edited condition survives the pass', rok and rcond, 'Weapon:Melee');
+            check('MLK4 stacks balanced through the locks window',
+                depth.col + depth.win + depth.child, 0);
+            -- A value with NO locks yet -- the empty case, which is what every
+            -- player sees first.
+            check('MLK5 renders a value with no locks at all',
+                pcall(tg.renderModeLocksBody, 'Weapon', cyc, 'Weapon:Caster'), true);
+            -- A bare TOGGLE: no values, so no value strip -- the branch the
+            -- cycle path never touches.
+            check('MLK6 renders a bare toggle (no value strip)',
+                pcall(tg.renderModeLocksBody, 'DT', { locks = { ['DT'] = { Body = 'DTSet' } } }, 'DT'), true);
+            -- A definition with NOTHING on it: a toggle created a minute ago.
+            check('MLK7 renders an empty definition', pcall(tg.renderModeLocksBody, 'New', {}, 'New'), true);
+            check('MLK8 still balanced after every shape',
+                depth.col + depth.win + depth.child, 0);
+        end
+
+        -- The addon-state door to the live plan. Unconfigured (no character, no
+        -- modestate) it must answer an EMPTY plan rather than throw: the Priority
+        -- row and the Trigger Monitor both call it every frame.
+        check('MLK9 modeLockLive is exposed', type(tg.modeLockLive), 'function');
+        if type(tg.modeLockLive) == 'function' then
+            local pok, plan = pcall(tg.modeLockLive);
+            check('MLK10 it answers unconfigured instead of throwing', pok, true);
+            check('MLK11 ...with a table', pok and type(plan), 'table');
+        end
+
+        -- The Trigger Monitor itself now carries a locks line. It is a floating
+        -- window rendered from the present hook, so nothing else in the suite
+        -- would ever run it.
+        check('MLK12 renders the Trigger Monitor with the locks line',
+            pcall(tg.renderMonitor, { _tgMon = true }), true);
+        check('MLK13 monitor leaves the stacks balanced',
+            depth.col + depth.win + depth.child, 0);
     end
 
     for _, k in ipairs(NAMES) do package.loaded[k] = saved[k]; end

@@ -294,6 +294,72 @@ infer it from a field confirmation, from *"works"*, or from your own read that s
 ready — his own note on the exchange was *"you are right not to assume otherwise since I
 haven't told you."* Ask when he has **not** said merge; never ask twice when he has.
 
+### Mode Locks — `2026.08.03x`, engine v166 (ADR 0034) — **NOT field-run**
+
+Henrik, 2026-08-03: *"It is a very common problem when building sets that you want to 100%
+lock a piece over every set once a mode is active. REGARDLESS what happens, this piece MUST
+ALWAYS stay on… I have a caster mode where I switch weapons all the time. But when I am in
+melee mode, I NEVER want the weapons to be touched."*
+
+A mode definition now carries **locks**: per mode CONDITION (`Weapon:Melee` for a cycle
+value, `DT` for a toggle), a set per slot. While that mode is active, those slots come from
+that set and **no trigger rule can move them, on any event**. Stored inside the mode
+definition in the job's trigger file, so ADR 0019's value-delete cascade takes them with it
+for free.
+
+It ships as an **ordinary claimant row** (`ModeLock`, displayed *"Mode lock"*), directly
+above `External` — above every trigger rule and above a foreign addon, below every activity
+you armed this session. That is one drag from anything else, which is why it is a row and
+not a floor special case; the Arbiter Monitor grid, `/dl why`, the Priority list and the
+fall-down-its-own-ladder behaviour all came for free. Full reasoning:
+**[adr/0034](adr/0034-mode-locks-are-a-claimant-row.md)**.
+
+Where it shows: **Triggers > Modes**, a `locks` button on each mode box (carrying the count
+when non-zero) opens a movable 16-slot window; the **Trigger Monitor** gained a `locks` line
+plus a `MODE LOCK holds Main,Sub` suffix on a fired rule whose set names a held slot; the
+**Arbiter Monitor** and **Priority** list carry the row.
+
+**Conflicting modes are FIRST COME, FIRST SERVE** (Henrik's ruling, same session: *"the one
+who took the slot lock first should get it, the rest stand in queue basically"*). Modes carry
+an **activation clock** (`M.modeSeq`, stamped when a flag *changes*, never on re-assertion,
+cleared when it goes off, mirrored as `__seq` so the GUI orders the queue identically). The
+queue needs no state: the plan is rebuilt every dispatch, so when the holder's mode goes off
+the next in line wins the next walk. Every flag write goes through one seam, `M.modeSet`.
+
+Suites **6157 + 1121** on the combined tree (Mode Locks + the food train), tests `MDL1`–`MDL22` (planner, the clock, the mirror wire format, the
+wipe contract, and end-to-end through the real `M.dispatch`) + `ML44a`–`ML44f`, `PX9a`–`PX9g`,
+smoke `MLK1`–`MLK13`. (`ML*` was already taken by the modeslibrary section — two sections
+sharing IDs makes a failure report ambiguous.)
+
+**Travel, asked and answered (Henrik, same session).** *Profile export/import carries mode
+locks already* — `filterTriggersRaw` takes the whole `Modes` table and locks live inside it.
+*The Mode library deliberately does not*, because a library entry is job-independent and set
+names are not — **but the first cut let a stamp silently EAT the receiving job's locks**, on
+Append too, the branch that promises nothing disappears. Fixed: locks belong to the job and
+ride across a stamp untouched; only an Overwrite that kills a cycle value takes that value's
+locks with it (`ML44a`–`ML44f`).
+
+*CLOSED — Henrik's call: hard dependency, same strength as a rule's `set =`.*
+`profileexport.triggerRefs` now reports `modeSets`, and the export form **disables the Modes
+row** when Sets is unticked — not Triggers, since a lock travels with the Modes section and
+Triggers need not be selected at all, so gating Triggers would have disabled something
+unrelated while leaving the real hole open. When the triggers ALSO need the blocked Modes,
+the Triggers row names **Sets** — the root fix — instead of pointing at a row that is
+pointing back at it (`PX9a`–`PX9g`).
+
+***THE ROUND OWED — nothing here has equipped an item in game.*** *Henrik's own case is the
+test: on the job where he has a Weapon cycle, lock `Main`/`Sub` to a melee set under the
+melee value, then pull something and cast through it. Four things to look at —* **(1)** *the
+weapons do not move on Precast/Midcast/WS;* **(2)** *flipping the cycle to the caster value
+hands them straight back with no reload;* **(3)** *the Trigger Monitor's `locks` line names
+the held slots while the rules below it still show their sets;* **(4)** *the Arbiter
+Monitor's Main cell is gold and its hover reads `Mode lock (rank 11)` over `Triggers`.*
+
+***One thing to watch, because it degrades quietly by design:*** *a lock naming a set with
+no entry for that slot claims **nothing** — the trigger keeps the slot. The window flags it
+in red (`[!] no Main in this set`), but if a lock ever "does nothing" in the field, check
+that first before assuming the claim path is broken.*
+
 ### The food register stops believing a zone — `2026.08.03w`, no engine change — **NOT field-run**
 
 **A bug on `main`, found by the first field round foodwatch ever got.** Henrik: *"Seems like
@@ -348,6 +414,8 @@ one of which would otherwise have gone green for the wrong reason. Full reasonin
 — nothing new should be recorded; and the two junk rows should already be gone after the
 first load.*
 
+---
+
 *(Emptied by the 2026-08-03 promotion — **two field bugs from one support report**,
 `2026.08.03t`, **engine v164**. Henrik: *"commit, merge push to main"* — an accept under the
 08-01 ruling, so nothing was asked twice. Both bugs came out of reading Coffeepoo's
@@ -355,15 +423,11 @@ first load.*
 **a fact that changes, cached in a file nothing rewrites.** Full reasoning in
 [history.md](history.md) — *"two knives and an invisible animator"*.*
 
-***PROMOTED BUT NOT FIELD-RUN — do not read this onto main as field-proven.*** *The suites
-are green on both interpreters (**6054**) and the second bug was additionally confirmed
-against Henrik's real on-disk `Mindie_29909\gear.lua` and the shipped catalog, but neither
-fix has equipped a single item in game.*
-
-***The round owed is small and specific***, on Coffeepoo's character: a plain `/dl sync`
-should make the base Animator appear with no hand edit, and the DNC Idle set's `Sub` should
-take the second Bone Knife +1 with **no `Count = 2`** in his file. If either still fails,
-the diagnosis was wrong, not the plumbing — start from the `/dl report` again.
+***ON MAIN AND FIELD-CONFIRMED*** *(2026-08-03, same day, on Coffeepoo's character —
+Henrik: *"Field tested, both fixes worked"*). The base Animator indexed itself with no hand
+edit, and the DNC Idle set's `Sub` took the second Bone Knife +1 with no `Count = 2`
+anywhere in his `gear.lua`. Suites green on both interpreters (**6054**). **No round is
+owed on this one** — both halves are proven in game, not just offline.*
 
 ***What landed, for whoever picks this up:***
 - ***Two of one weapon pair from your BAGS, not from a stamp.*** *`subSlotAllowed`'s

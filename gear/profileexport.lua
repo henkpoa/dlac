@@ -158,16 +158,43 @@ local function ruleRefs(r, refs)
     if r.set ~= nil then refs.sets = true; end   -- a named-set action (inline equip carries no set dep)
 end
 
--- Pure: what a raw trigger table's handler rules reference.
--- Returns { modes = bool, groups = bool, sets = bool }.
+-- Pure: what a raw trigger table's handler rules reference, plus what its MODES
+-- section references. Returns { modes, groups, sets, modeSets } (all bool).
+--
+-- `modeSets` is its own answer and NOT folded into `sets` on purpose (2026-08-03,
+-- ADR 0034): a rule's `set =` gates the TRIGGERS row, while a MODE LOCK's set
+-- reference lives in the Modes section and travels whenever Modes is ticked --
+-- Triggers need not be selected at all. Gating the wrong row would have left the
+-- real hole open while disabling something unrelated.
 function M.triggerRefs(raw, canonEvent)
-    local refs = { modes = false, groups = false, sets = false };
+    local refs = { modes = false, groups = false, sets = false, modeSets = false };
     if type(raw) ~= 'table' then return refs; end
     for k, v in pairs(raw) do
         local ev = (type(canonEvent) == 'function') and canonEvent(k) or nil;
         if ev ~= nil and type(v) == 'table' then
             for _, r in ipairs(v) do
                 if type(r) == 'table' then ruleRefs(r, refs); end
+            end
+        end
+    end
+    -- Mode locks (ADR 0034): `Modes.<name>.locks["Weapon:Melee"] = { Main = "Set" }`.
+    -- A lock is a SET REFERENCE exactly as a rule's action is -- and a dead one is
+    -- worse than a dead rule, because a lock that holds nothing looks like the
+    -- feature is broken rather than like a rule that did not fire.
+    local md = raw.Modes or raw.modes;
+    if type(md) == 'table' then
+        for _, def in pairs(md) do
+            if type(def) == 'table' and type(def.locks) == 'table' then
+                for _, slots in pairs(def.locks) do
+                    if type(slots) == 'table' then
+                        for _, setName in pairs(slots) do
+                            if type(setName) == 'string' and setName ~= '' then
+                                refs.modeSets = true;
+                                return refs;              -- one is enough
+                            end
+                        end
+                    end
+                end
             end
         end
     end
@@ -197,7 +224,8 @@ end
 -- File-reading wrapper for the export form: what this job's data references.
 -- All-false when unreadable (no file = no dependency).
 function M.analyzeJob(charFolder, profName, job, dirOverride)
-    local deps = { trigModes = false, trigGroups = false, trigSets = false, setModes = false };
+    local deps = { trigModes = false, trigGroups = false, trigSets = false, setModes = false,
+                   modeSets = false };
     if prof == nil then return deps; end
     local dir = dirOverride or prof.profileDirAt(charFolder, profName);
     if dir == nil then return deps; end
@@ -206,6 +234,7 @@ function M.analyzeJob(charFolder, profName, job, dirOverride)
         if raw ~= nil then
             local r = M.triggerRefs(raw, dispatch.canonEvent);
             deps.trigModes, deps.trigGroups, deps.trigSets = r.modes, r.groups, r.sets;
+            deps.modeSets = r.modeSets;   -- a mode LOCK names a set (ADR 0034)
         end
     end
     local t = readFile(dir .. 'sets\\' .. job .. '.lua');

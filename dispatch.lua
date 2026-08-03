@@ -47,7 +47,9 @@ M._loadStamp = M._loadStamp or string.format('%d:%.3f', os.time(), os.clock());
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code. From v32 the engine self-swaps when the seeded file's version moves, so
 -- the banner should only persist when a swap FAILED (or pre-v32 code is live).
-M.VERSION = 164;  -- 164: THE SECOND COPY IS A LIVE FACT, NOT A STAMP (Coffeepoo's field report, 2026-08-03: two Bone Knives +1, the Main took one and the Sub stayed as worn, while equipping the off-hand BY HAND worked). Dual Wield was up and the set was right; the refusal was ours. utils.subSlotAllowed's same-name off-hand case wants proof of a second copy, and the flatten offered it nothing but the record's `Count` -- a stamp renderEntry writes ONCE, at first index, and that no command can refresh: /dl sync is add-only (an already-known item is skipped) and /dl fix backfills CATALOG facts only, as it must, because "how many do you own" is not one. Acquire the twin AFTER the first was indexed and dlac could never learn about it -- there was no supported path back, only a hand edit. So the flatten reads the bags instead (M.bagCopies over the existing per-second cache, equip-eligible containers, worn pieces included), which is the 2026-08-01 Pair/RSlot ruling applied to the one fact that is genuinely per-player: read it, do not make them run a migration for it. The read only ever ADDS evidence -- subSlotAllowed takes the best of ctx.copies and Count -- so a stamped file behaves identically, an unreadable scan falls back to the stamp rather than demoting gear, and nothing that pairs today can stop pairing. Only asked when the two names actually match, so the ordinary off-hand costs no lookup. Tests LD6c-LD6h. (Shipped with the gearimport half of the same report: the base Animator is an ALL-JOBS item on this server, so the Range bucket's exact PUP-mask test dropped it from gear.lua entirely -- see gearimport.rangeCategory, tests E29*.)
+M.VERSION = 166;  -- 166: MODE LOCKS, FIRST COME FIRST SERVE (Henrik, 2026-08-03): "we will come into situations where we maybe have conflicting modes active... the one who took the slot lock first should get it, the rest stand in queue basically." v165 resolved a contested slot by sorted condition -- deterministic, but the alphabet is not fairness, and 'DT' beating a Weapon cycle that had held the slot for an hour is exactly the arbitrary answer that ruling rejects. So modes now carry an ACTIVATION CLOCK: M.modeSeq, one counter per mode NAME, stamped when its flag last CHANGED, and modeLockPlan walks conditions in that order. Stamped on CHANGE and never on re-assertion -- a macro re-asserting a mode every pull must not send it to the back of the queue -- and cleared when the mode goes off, because turning it back on is genuinely taking the slot again. A cycle VALUE change re-stamps: the lock is keyed by condition, so Weapon:Melee -> Weapon:Caster really is a different lock taking the slots. THE QUEUE NEEDS NO STATE: the plan is rebuilt every dispatch, so when the holder's mode goes off the next in line simply wins the next walk -- nothing remembers a queue, and nothing has to be re-armed. The clock rides the modestate mirror as `__seq` (loadModeState restores it, advances the counter past the highest, and sweeps any unstamped flag) because the GUI computes the same plan in the other Lua state: without it the Mode Locks window would order a contested slot alphabetically while the engine ordered it by the clock, and name the wrong winner. Every flag write now goes through the ONE seam M.modeSet so the clock cannot be forgotten at one of the six assignment sites. Ties (two flags restored from one mirror) still break alphabetically -- deterministic first, fair second. Also: gear\modeslibrary.applyStamp no longer EATS a job's mode locks (it rebuilt the definition from the plan, deleting them on Append too -- the branch that promises nothing disappears); locks belong to the job and ride a stamp untouched, and only an Overwrite killing a cycle value strips that value's. And profileexport.triggerRefs now reports `modeSets`, so the export form disables MODES (not Triggers -- a lock travels with the Modes section, Triggers need not be selected at all) when Sets is unticked. Tests MDL1-MDL22, ML44a-ML44f, PX9a-PX9g, smoke MLK1-MLK13.
+                  -- 165: MODE LOCKS -- "once that mode is active, this piece MUST ALWAYS stay on" (Henrik, 2026-08-03). A very common problem when building sets: some slots must be immune to every trigger rule while a mode holds -- his caster mode swaps weapons on every pull, his melee mode must never see one move, and the only way to express that today is to teach every rule in the file to keep its hands off Main/Sub. So a mode definition now carries `locks = { ["Weapon:Melee"] = { Main = "MeleeWpn" } }`, keyed by the exact `mode` CONDITION string the rules already use -- which makes the activity test M.modeActive itself (one primitive, not a second dialect of "is this mode on") and makes the ADR 0019 cascade free, because deleting the mode or dropping a cycle value takes its locks with it: they are the same table. It arrives as an ORDINARY CLAIMANT (`ModeLock`), not a floor special case: one rank row shipping directly above External, one claim table, no new arm and no new state file. That buys the Arbiter Monitor grid, the /dl why contest, the Priority list and the fall-down-its-own-ladder behaviour with no new code in any of them -- and it means a player who wants the lock to beat their armed craft bench drags the row up instead of asking for a setting. Claims on EVERY event (Pins' and Naked's reason: a lock that let go mid-cast would not be a lock). A lock naming a set with no entry for its slot claims nothing and the floor keeps it -- the Mode Locks window flags that in red at edit time, which is the only place it can still be fixed. Two active modes naming one slot resolve by sorted condition, first keeps it, loser reported: arbitrary but STABLE, where pairs() order would land differently on two dispatches with nothing changed. Also here: the claimant sig legs take the ensure STATE as a third argument (which mode holds a slot has to retrace even when the item name does not), rows may supply an `rlabel` so a fall names the SET rather than the row, and the slot-canon map moved to its vocabulary owner (arbiter.CANON_OF) instead of a third inline copy. Tests ML1-ML22, smoke MLK1-MLK13.
+                  -- 164: THE SECOND COPY IS A LIVE FACT, NOT A STAMP (Coffeepoo's field report, 2026-08-03: two Bone Knives +1, the Main took one and the Sub stayed as worn, while equipping the off-hand BY HAND worked). Dual Wield was up and the set was right; the refusal was ours. utils.subSlotAllowed's same-name off-hand case wants proof of a second copy, and the flatten offered it nothing but the record's `Count` -- a stamp renderEntry writes ONCE, at first index, and that no command can refresh: /dl sync is add-only (an already-known item is skipped) and /dl fix backfills CATALOG facts only, as it must, because "how many do you own" is not one. Acquire the twin AFTER the first was indexed and dlac could never learn about it -- there was no supported path back, only a hand edit. So the flatten reads the bags instead (M.bagCopies over the existing per-second cache, equip-eligible containers, worn pieces included), which is the 2026-08-01 Pair/RSlot ruling applied to the one fact that is genuinely per-player: read it, do not make them run a migration for it. The read only ever ADDS evidence -- subSlotAllowed takes the best of ctx.copies and Count -- so a stamped file behaves identically, an unreadable scan falls back to the stamp rather than demoting gear, and nothing that pairs today can stop pairing. Only asked when the two names actually match, so the ordinary off-hand costs no lookup. Tests LD6c-LD6h. (Shipped with the gearimport half of the same report: the base Animator is an ALL-JOBS item on this server, so the Range bucket's exact PUP-mask test dropped it from gear.lua entirely -- see gearimport.rangeCategory, tests E29*.)
                   -- 163: A RECORD'S CONTEST EXPLAINS THAT RECORD'S PLAN (field report 3, 2026-08-02). The structured contest was built ONLY on a retrace and reused from the previous trace otherwise -- and the retrace signature covers matched rules, locks, claim legs, the sets revision and the rank order, but NOT the player's LEVEL. So levelling changes which candidates a set resolves to while the signature holds: the plan moves, the explanation does not, and the decision ring appends a record whose two halves disagree about who decided a slot. Henrik's report showed both symptoms at once -- Ear1 carrying Optical Earring in the plan with the contest naming nobody for the slot (Lv10 gear, crossed 9 -> 10 mid-window), and the claimant then arriving TWO DISPATCHES LATER as a record with zero changed slots, which is what produced six empty blocks in the previous report. Fixed in two places: slotSrc/floorTbl are collected on EVERY pass (they shared one `if retrace` with the /dl why LINE FORMATTING, which is the half that actually costs a string.format per rule; filling two small tables is nothing beside the equipSetByName that already ran), and the contest is re-explained when M._planOutrunsContest says the plan named a slot the explanation cannot account for, or swapped the item inside one it covers. The test is deliberately ONE-WAY: a contest naming MORE than the plan is ordinary and must not rebuild -- a lock or the level-sync weapon hold takes a slot out of the plan while the claim on it stands, which is two questions answered correctly, not staleness (field: Main/Sub leaving the plan across the same level-up while Triggers still claimed them). Sentinels, 'remove' and the LOCK_HELD sentinel are exempt from the item half: a claim that defends or empties a slot never claimed to name the worn item. Tests PO1-PO13, and PO8 asserts the invariant over every record the suite's real dispatches build. Reading a report is what found this -- an artifact nobody reads is an artifact nobody has tested.
                   -- 162: EXTERNAL CLAIMS -- the write half of the Integration surface (feature\extclaim, docs\reference\integration-guide.md section 7). A SEPARATE ADDON, in its own Lua state and not a dlac module, files a Claim over Ashita's plugin_event bus and the Arbiter settles it like any other claimant. The whole feature is one sentence -- an external claim is an ordinary Claim that happened to arrive over the wire -- and the size of the change is the evidence: one rank row ('External', shipped directly above the Triggers floor, which is the rank the plugin design already ruled for a third party), one CLAIMANTS row, one signature leg, one mailbox module. Everything a player expects (contested slots, the Locks veto, the Disabled ceiling, /dl why attribution, the Arbiter Monitor, the Claim Priority drag) falls out of the registry for free -- ADR 0012's promise, collected. THE THREE LAWS THAT ARE NEW, because everything else is inherited: (1) PUSH, NEVER PULL -- dlac asks nobody anything mid-decision and waits for nobody; a claim is a standing table read from cache like AutoAmmo's, so a third party's Lua is never on the equip path and its crash cannot become dlac's gear bug (the one-directional dependency ruling, kept literal). The cost, stated: a REACTIVE external claim is one action late. (2) EVERY CLAIM IS A LEASE -- every in-state claimant dies when dlac dies and an external one does not, so a claim carries a TTL (10s default, 300 max) and must be renewed; an addon that crashes or forgets must not leave gear stuck with nobody to blame. Not a permission wall -- the holder can VANISH, which is a different problem from the holder misbehaving. (3) CLAIM, NEVER COMMIT -- session-only, no writer for sets/triggers/modes/lockstyle, unchanged from the existing ruling. The switch is /dl claims (+ a Menu > Settings row), a SIBLING of /dl stream and deliberately not the same one: reading your gear and dressing you are different consents, and a misbehaving claimant has to be killable without also killing a parser's feed. The trap worth naming for whoever adds the next claimant of any kind: the CLAIMANT_SIG_ORDER leg. A claim that changes without moving the retrace signature never re-dispatches -- it sits in the mailbox looking accepted, reaches no slot, and the failure is invisible from both sides of the wire (test EX16f exists to fail loudly instead). Tests EX1-EX16.
                   -- 161: ONE ANSWER PER SLOT -- the rendering contract, stated (docs/design/two-way-arbiter.md §11). Henrik's screenshot of the v159 pair verdict: `/dl why range` printed BOTH "nobody claimed it (kept as worn)." AND "held EMPTY: Arcane Arbalest and Cinderstone cannot coexist -- kept Cinderstone, the higher Level." -- two sentences disagreeing about one slot, and "kept as worn" is the weaker truth besides (when a stat stick holds Range the SERVER empties it; the slot is not merely unwritten). The no-contest line is NOT a verdict -- it is what a renderer says when the contest was EMPTY -- and a slot the arbitration REFUSED has an empty contest BY CONSTRUCTION, because the refused piece never reaches floorTbl/arbExplain, so `ops` comes back nil. The first four verdict channels (rep / fall.dead / inel / sup) never exposed this because each only ever fires on a slot that HAD a contest; the pair verdict is the first that can fire on a slot nothing claimed. arbiter.slotVerdict is now the ONE walk -- rep -> dead -> ineligible -> reserved -> pair, most specific refusal first -- that every renderer asks before falling back to the no-contest line, so /dl why, the Monitor cell and the Monitor hover cannot drift apart about which channel speaks. §11 writes down the whole contract for the sixth channel: add it to slotVerdict in order, give it its OWN sentence (never fold a new verdict into an existing one because the consequence matches -- the pair law is not "reserved"), name which leg answered when it has several, update all three renderers, and make sure a suppressing pass cannot double-report. Tests RV1-RV9.
@@ -180,6 +182,35 @@ end
 -- ---------------------------------------------------------------------------
 -- State
 -- ---------------------------------------------------------------------------
+-- THE ACTIVATION CLOCK (2026-08-03, Henrik: conflicting mode locks are "first
+-- come, first serve -- the one who took the slot lock first should get it, the
+-- rest stand in queue"). lower(name) -> the counter value at the moment that
+-- mode's flag last CHANGED. Only mode LOCKS read it today, and only to order a
+-- contested slot; the flags themselves are unaffected.
+--
+-- Stamped on CHANGE, never on re-assertion: pressing `/dl mode DT on` while DT
+-- is already on must not send it to the back of the queue, and a macro that
+-- re-asserts a mode every pull would otherwise reshuffle the winner constantly.
+-- Cleared when the mode goes off -- turning it back on is genuinely taking the
+-- slot again, and should queue behind whoever holds it now.
+M.modeSeq  = {};
+M.modeSeqN = 0;
+
+-- THE ONE WRITE SEAM for a mode flag. Every assignment goes through here so the
+-- clock cannot be forgotten at one of the six sites that set a flag -- the
+-- twin-that-drifts law applied to state instead of to data.
+function M.modeSet(ln, v)
+    local was = M.modes[ln];
+    M.modes[ln] = v;
+    if v == nil then
+        M.modeSeq[ln] = nil;
+    elseif was ~= v or M.modeSeq[ln] == nil then
+        M.modeSeqN = M.modeSeqN + 1;
+        M.modeSeq[ln] = M.modeSeqN;
+    end
+    return v;
+end
+
 M.modes = {};   -- mode state: lower(name) -> true (toggle) or 'Value' (cycle).
                 -- DLAC-OWNED: written to modestate.lua on every change and read BACK
                 -- when the engine loads, so flags survive a Reload LAC exactly like
@@ -705,6 +736,138 @@ function M.modeActive(cond, modes)
         return type(cur) == 'string' and ci(cur, string.sub(s, p + 1));
     end
     return modes[string.lower(s)] ~= nil;
+end
+
+-- ---------------------------------------------------------------------------
+-- MODE LOCKS (2026-08-03, Henrik). "It is a very common problem when building
+-- sets that you want to 100% lock a piece over every set once a mode is active.
+-- REGARDLESS what happens, this piece MUST ALWAYS stay on."
+--
+-- A mode lock names ONE set per slot. While the mode is active, that slot is
+-- answered by THAT set and nothing in the trigger layer can move it -- his
+-- caster mode swaps weapons every pull, his melee mode must never see a weapon
+-- swap at all, and today the only way to express that is to teach every rule in
+-- the file to keep its hands off Main/Sub.
+--
+-- Stored INSIDE the mode definition in the job's trigger file, keyed by the
+-- exact `mode` CONDITION string the rules already use -- 'Weapon:Melee' for a
+-- cycle value, 'DT' for a toggle:
+--
+--   Modes = {
+--       ["Weapon"] = { values = { "Melee", "Caster" },
+--                      locks = { ["Weapon:Melee"] = { Main = "MeleeWeapons",
+--                                                     Sub  = "MeleeWeapons" } } },
+--   }
+--
+-- Keying by the condition rather than by the bare value costs one repeated word
+-- and buys two things: the activity test is M.modeActive itself (one tested
+-- primitive, no second dialect of "is this mode on"), and a hand-editor reads
+-- the key without having to know which mode's table they are looking at.
+-- Storing it in the DEFINITION is what makes the ADR 0019 cascade free -- delete
+-- the mode or drop a cycle value and its locks go with it, because they are the
+-- same table.
+-- ---------------------------------------------------------------------------
+
+-- One raw mode definition -> its sanitized locks map, or nil. Unknown slots and
+-- non-string set names are dropped rather than carried: this table is read on
+-- every dispatch, and a junk key would otherwise be re-serialized forever.
+function M.modeLocksOf(def)
+    if type(def) ~= 'table' or type(def.locks) ~= 'table' then return nil; end
+    local out = nil;
+    for cond, slots in pairs(def.locks) do
+        if type(cond) == 'string' and cond ~= '' and type(slots) == 'table' then
+            local one = nil;
+            for slot, setName in pairs(slots) do
+                local canon = ARB.CANON_OF[string.lower(tostring(slot))];
+                if canon ~= nil and type(setName) == 'string' and setName ~= '' then
+                    one = one or {};
+                    one[canon] = setName;
+                end
+            end
+            if one ~= nil then out = out or {}; out[cond] = one; end
+        end
+    end
+    return out;
+end
+
+-- The live lock plan: every slot an ACTIVE mode locks, and which set answers it.
+--   defs  -- the modeDefs map (engine: _trig.modeDefs; GUI: built from its model)
+--   modes -- the live mode flags (engine: M.modes; GUI: the modestate mirror)
+--   seq   -- the activation clock (engine: M.modeSeq; GUI: the mirror's __seq)
+-- Returns  plan = { [CanonSlot] = { set = 'Name', by = 'Weapon:Melee' } },
+--          conflicts = { { slot, kept = {...}, lost = {...} }, ... } or nil
+--
+-- FIRST COME, FIRST SERVE (Henrik's ruling, 2026-08-03: "the one who took the
+-- slot lock first should get it, the rest stand in queue"). Two active modes CAN
+-- name the same slot -- a DT toggle and a Weapon cycle are independent flags --
+-- so conditions are walked in ACTIVATION order and the first writer keeps the
+-- slot. The queue is implicit and needs no state: the plan is rebuilt every
+-- dispatch, so the moment the holder's mode goes off the next in line simply
+-- wins the next walk.
+--
+-- The name is tie-broken alphabetically, which matters more than it looks: two
+-- modes CAN carry the same stamp (both restored from one mirror, or both seated
+-- by the same trigger load), and without the tiebreak that pair would fall back
+-- to pairs() order -- a coin flip landing differently on two dispatches with
+-- nothing changed. Deterministic first, fair second.
+--
+-- Losers are RETURNED, in queue order, rather than dropped in silence -- the
+-- Mode Locks window names them, because a lock that quietly loses looks exactly
+-- like a lock that does not work.
+--
+-- Pure and injected, exactly like M.modeActive above -- the Trigger Monitor
+-- lives in the other Lua state and must be able to answer this same question
+-- without a second implementation of it.
+function M.modeLockPlan(defs, modes, seq)
+    local plan, conflicts = {}, nil;
+    if type(defs) ~= 'table' then return plan, nil; end
+    seq = (type(seq) == 'table') and seq or {};
+    local conds, seen, owner = {}, {}, {};
+    for _, def in pairs(defs) do
+        if type(def) == 'table' and type(def.locks) == 'table' then
+            for cond in pairs(def.locks) do
+                if not seen[cond] then
+                    seen[cond] = def;
+                    -- A lock's stamp is its MODE's stamp: the condition
+                    -- 'Weapon:Melee' is held by whenever `Weapon` last became
+                    -- Melee, which is exactly when that lock took its slots.
+                    owner[cond] = string.lower(string.match(cond, '^([^:]+)') or cond);
+                    conds[#conds + 1] = cond;
+                end
+            end
+        end
+    end
+    table.sort(conds, function(a, b)
+        local sa, sb = tonumber(seq[owner[a]]) or math.huge, tonumber(seq[owner[b]]) or math.huge;
+        if sa ~= sb then return sa < sb; end
+        return string.lower(a) < string.lower(b);
+    end);
+    for _, cond in ipairs(conds) do
+        if M.modeActive(cond, modes) then
+            local slots = seen[cond].locks[cond];
+            -- Slots walked in the fixed vocabulary order, not pairs() order, so
+            -- the conflict list reads the same way twice.
+            for _, canon in ipairs(LAC_SLOTS_CANON) do
+                local setName = slots[canon];
+                if setName ~= nil then
+                    if plan[canon] == nil then
+                        plan[canon] = { set = setName, by = cond };
+                    else
+                        conflicts = conflicts or {};
+                        conflicts[#conflicts + 1] = { slot = canon, kept = plan[canon],
+                                                      lost = { set = setName, by = cond } };
+                    end
+                end
+            end
+        end
+    end
+    return plan, conflicts;
+end
+
+-- The live plan for THIS job's loaded triggers + THIS session's modes. The
+-- engine's door; the GUI calls modeLockPlan directly with its own two reads.
+function M.modeLockLive()
+    return M.modeLockPlan(_trig.modeDefs, M.modes, M.modeSeq);
 end
 
 -- Public group-condition check (ADR 0009), the group analogue of M.modeActive.
@@ -1306,6 +1469,7 @@ local function ensureLoaded()
                 _trig.modeDefs[string.lower(nm)] = {
                     name = nm, values = values,
                     bind = (type(def.bind) == 'string') and def.bind or nil,
+                    locks = M.modeLocksOf(def),
                 };
             end
         end
@@ -1338,7 +1502,7 @@ local function ensureLoaded()
                     if ci(v, cur) then valid = true; break; end
                 end
             end
-            if not valid then M.modes[ln] = def.values[1]; end
+            if not valid then M.modeSet(ln, def.values[1]); end
         end
         -- GUI-managed keybind: collected here so profiles need no OnLoad bind
         -- code, and INSTALLED as a whole group below.
@@ -6106,6 +6270,85 @@ local CLAIMANTS = {
           local m = actionseqMod();
           return (m ~= nil) and m.statusText() or 'idle';
       end },
+    -- MODE LOCK (2026-08-03) -- "once that mode is active, this slot comes from
+    -- THIS set and nothing in the trigger layer may move it". An ordinary
+    -- claimant: one rank row, one claim table, no new arm and no new state file
+    -- (the locks live in the trigger file's Modes section, the modes in the
+    -- session flags -- both already loaded). Claims on EVERY event, for Pins'
+    -- and Naked's reason: a lock that let go during a cast would not be a lock,
+    -- and a weapon surviving the Midcast rule is the exact case it exists for.
+    -- bail1/bail2 so a mode lock with no matching rule still holds its slots.
+    { name = 'ModeLock',
+      ensure = function() return (M.modeLockPlan(_trig.modeDefs, M.modes, M.modeSeq)); end,
+      active = function(st) return type(st) == 'table' and next(st) ~= nil; end,
+      bail1 = true, bail2 = true,
+      claim = function(st, on)
+          if not on then return nil; end
+          local out = nil;
+          for slot, e in pairs(st) do
+              -- The set's own entry for that slot, taken from the FLATTENED
+              -- store -- the same table equipSetByName hands the floor, so the
+              -- lock resolves through the identical ladder/level/virtual path a
+              -- trigger rule would have used. A set that does not FILL the slot
+              -- claims nothing: there is no answer to give, so the floor keeps
+              -- it. That is a real trap (a lock that silently does nothing), so
+              -- the Mode Locks window flags it in red at edit time, where it can
+              -- still be fixed.
+              local st2 = M.flattenedSet(e.set);
+              local v = (st2 ~= nil) and st2[slot] or nil;
+              if v ~= nil then out = out or {}; out[slot] = v; end
+          end
+          return out;
+      end,
+      -- Claim-side ladder (ADR 0027 stage 4): a beaten or ineligible mode-locked
+      -- piece falls down ITS OWN set's ladder, exactly as a floor piece does.
+      rladder = function(slot, st)
+          local e = (type(st) == 'table') and st[slot] or nil;
+          if e == nil then return nil; end
+          return M.candidatesFor(e.set, slot);
+      end,
+      -- ...and the fall is named by the SET, not by the row: 'ladder (Mode lock)'
+      -- would hide the one fact the player needs to go and fix it.
+      rlabel = function(slot, st)
+          local e = (type(st) == 'table') and st[slot] or nil;
+          return (e ~= nil) and ('mode lock: ' .. tostring(e.set)) or nil;
+      end,
+      sig = function(equip, on, st)
+          if not on or type(st) ~= 'table' then return ''; end
+          local ks = {};
+          for slot, e in pairs(st) do
+              ks[#ks + 1] = tostring(slot) .. '<' .. tostring(e.by) .. ':' .. tostring(e.set);
+          end
+          table.sort(ks);
+          return 'ml:' .. table.concat(ks, ',');
+      end,
+      apply = function(env)
+          local built = env.built['ModeLock'];
+          if built == nil then return; end
+          equipResolved(built, env.ctx, env.respect('ModeLock'), 'ModeLock');
+          if env.retrace then
+              local st = env.cState['ModeLock'] or {};
+              local ks = {};
+              for slot in pairs(built) do
+                  local e = st[slot];
+                  ks[#ks + 1] = string.format('%s=%s [%s]', slot,
+                      tostring(e and e.set or '?'), tostring(e and e.by or '?'));
+              end
+              table.sort(ks);
+              env.lines[#env.lines + 1] = 'MODE LOCK  ->  ' .. table.concat(ks, ', ');
+          end
+      end,
+      prioStatus = function()
+          local plan = M.modeLockPlan(_trig.modeDefs, M.modes, M.modeSeq);
+          local ks = {};
+          for _, canon in ipairs(LAC_SLOTS_CANON) do
+              if plan[canon] ~= nil then
+                  ks[#ks + 1] = canon .. '=' .. tostring(plan[canon].set);
+              end
+          end
+          if #ks == 0 then return 'off (no active mode locks a slot)'; end
+          return 'ON (' .. table.concat(ks, ', ') .. ')';
+      end },
     -- EXTERNAL (2026-08-01) -- the ONE shared row every OTHER ADDON's claim
     -- rides, and an ordinary claimant in every other respect. Its table arrived
     -- over plugin_event and was merged by feature\extclaim; from here down
@@ -6268,9 +6511,14 @@ local CLAIMANTS = {
 -- without moving the signature is a claim dlac never re-dispatches: it would sit
 -- in the mailbox looking accepted and never reach a slot, and the failure is
 -- completely silent from both sides of the wire.
+-- ModeLock APPENDED for the same reason again (2026-08-03): a new leg at the end
+-- leaves every existing leg byte-identical, so no live session retraces on
+-- upgrade. Its leg is '' until a mode actually locks something -- and once one
+-- does, flipping the mode has to retrace or the trace and the decision ring keep
+-- attributing the slot to the rule that no longer owns it.
 local CLAIMANT_SIG_ORDER = { 'Craft', 'Pins', 'HELM', 'Fishing', 'Chocobo',
                              'AutoAmmo', 'MaxMP', 'Naked', 'Disabled', 'JobHelper',
-                             'External' };
+                             'External', 'ModeLock' };
 local CLAIMANT_BY = {};
 for _, row in ipairs(CLAIMANTS) do CLAIMANT_BY[row.name] = row; end
 M._claimants = CLAIMANTS;                    -- test seams (CR*)
@@ -6484,7 +6732,14 @@ function M.dispatch(event)
         local legs = {};
         for _, lnm in ipairs(CLAIMANT_SIG_ORDER) do
             local lrow = CLAIMANT_BY[lnm];
-            legs[#legs + 1] = (lrow ~= nil and lrow.sig ~= nil) and lrow.sig(built[lnm], cOn[lnm]) or '';
+            -- The ensure STATE rides along as the third argument (2026-08-03):
+            -- ModeLock's claim table is item names, but what has to move the
+            -- signature is WHICH MODE holds each slot -- flip Weapon:Melee to a
+            -- different lock naming the same piece and the claim bytes never
+            -- move. Existing rows ignore the extra argument, so every other leg
+            -- is byte-identical.
+            legs[#legs + 1] = (lrow ~= nil and lrow.sig ~= nil)
+                              and lrow.sig(built[lnm], cOn[lnm], cState[lnm]) or '';
         end
         -- The SETS-STORE REVISION must retrace too (field, 2026-07-26): every
         -- install and re-flatten bumps M.modesRev, and trace lines resolve set
@@ -6514,6 +6769,33 @@ function M.dispatch(event)
                 elseif r.equip ~= nil then dst = 'inline equip';
                 else dst = '?'; end
                 mp[#mp + 1] = r.label .. ' -> ' .. dst;
+            end
+            -- WHAT THE RULE ASKED FOR AND DID NOT GET (2026-08-03). The Trigger
+            -- Monitor's altitude is what the trigger layer PROPOSED -- so a rule
+            -- pointing at a set whose Main is held by a mode lock has to say so
+            -- HERE, or the monitor shows "Melee -> TP_Set" while the weapon
+            -- never moves and there is nothing on the line to explain it. Only
+            -- slots these hits actually name are listed: a lock nobody contested
+            -- is not news. Retrace-only, like the line it decorates.
+            local mlPlan = cState['ModeLock'];
+            if type(mlPlan) == 'table' and next(mlPlan) ~= nil then
+                local want = {};
+                for _, r in ipairs(hits) do
+                    for _, sn in ipairs(r.sets or {}) do
+                        local st = (type(M._nativeSets) == 'table') and M._nativeSets[sn] or nil;
+                        if type(st) == 'table' then
+                            for slot in pairs(st) do want[ARB.CANON_OF[string.lower(tostring(slot))] or slot] = true; end
+                        end
+                    end
+                    for slot in pairs(r.equip or {}) do want[ARB.CANON_OF[string.lower(tostring(slot))] or slot] = true; end
+                end
+                local held = {};
+                for _, canon in ipairs(LAC_SLOTS_CANON) do
+                    if mlPlan[canon] ~= nil and want[canon] then held[#held + 1] = canon; end
+                end
+                if #held > 0 then
+                    mp[#mp + 1] = 'MODE LOCK holds ' .. table.concat(held, ',');
+                end
             end
             table.insert(_fired, 1, os.date('%H:%M:%S') .. '  ' .. event .. '   ' .. table.concat(mp, '   ||   '));
             while #_fired > 5 do table.remove(_fired); end
@@ -6620,8 +6902,7 @@ function M.dispatch(event)
             -- killed exactly as v135 killed floor pieces; claim-side ladders
             -- (AutoAmmo's rungs, the hobby manifest chains) are stage 4's
             -- second slice.
-            local CANON_OF = {};
-            for ci, cs in ipairs(LAC_SLOTS) do CANON_OF[cs] = LAC_SLOTS_CANON[ci]; end
+            local CANON_OF = ARB.CANON_OF;   -- the vocabulary owner's one map
             for i = #arbOrder, 1, -1 do
                 local cn = arbOrder[i];
                 if claims[cn] ~= nil and cn ~= 'Triggers' then
@@ -6725,6 +7006,15 @@ function M.dispatch(event)
                         local ok2, got = pcall(r2.rladder, slot, cState[cn2], ctx);
                         if ok2 then lad = got; end
                     end
+                    -- A row whose ladder came from somewhere a player can go and
+                    -- EDIT says so instead (2026-08-03): a mode lock's rungs are
+                    -- a named set's rungs, and 'ladder (Mode lock)' would hide
+                    -- the one fact needed to fix it. Optional -- rows without an
+                    -- rlabel keep the claimant label exactly as before.
+                    if r2 ~= nil and r2.rlabel ~= nil then
+                        local ok3, lbl = pcall(r2.rlabel, slot, cState[cn2], ctx);
+                        if ok3 and type(lbl) == 'string' and lbl ~= '' then label = lbl; end
+                    end
                 else
                     lad = M.candidatesFor(src, slot);
                 end
@@ -6819,7 +7109,8 @@ function M.dispatch(event)
         -- (ADR 0027 stage 0: the apply bodies live on the CLAIMANTS rows; this
         -- walk just calls them in rank order.)
         local aenv = { built = built, bx = bx, ctx = ctx, retrace = retrace,
-                       lines = lines, respect = layerRespectsLocks, rankOf = rankOf };
+                       lines = lines, respect = layerRespectsLocks, rankOf = rankOf,
+                       cState = cState };   -- ModeLock's trace line names the holding mode
         -- THE ARBITRATION (ADR 0027, stage 3, first slice): the apply order is
         -- the arbiter's answer, not an inline walk -- M.dispatch executes the
         -- plan. Later slices grow the plan into per-slot contests + the trace;
@@ -7113,6 +7404,34 @@ function M.serializeTriggers(data)
                 end
                 if #vals > 0 then bits[#bits + 1] = 'values = { ' .. table.concat(vals, ', ') .. ' }'; end
                 if type(def.bind) == 'string' then bits[#bits + 1] = string.format('bind = %q', def.bind); end
+                -- Mode locks (2026-08-03) ride INSIDE the definition, so deleting
+                -- the mode or dropping a cycle value takes its locks with it --
+                -- the ADR 0019 cascade for free. Sanitized through the one
+                -- reader (modeLocksOf) on the way out as well as in, so a
+                -- hand-typed junk slot is dropped once and never re-emitted.
+                -- Conditions sorted and slots in vocabulary order: a Commit that
+                -- changed nothing must produce identical bytes.
+                local lk = M.modeLocksOf(def);
+                if lk ~= nil then
+                    local conds = {};
+                    for cond in pairs(lk) do conds[#conds + 1] = cond; end
+                    table.sort(conds);
+                    local lparts = {};
+                    for _, cond in ipairs(conds) do
+                        local sparts = {};
+                        for _, canon in ipairs(LAC_SLOTS_CANON) do
+                            if lk[cond][canon] ~= nil then
+                                sparts[#sparts + 1] = string.format('%s = %q', canon, lk[cond][canon]);
+                            end
+                        end
+                        if #sparts > 0 then
+                            lparts[#lparts + 1] = string.format('[%q] = { %s }', cond, table.concat(sparts, ', '));
+                        end
+                    end
+                    if #lparts > 0 then
+                        bits[#bits + 1] = 'locks = { ' .. table.concat(lparts, ', ') .. ' }';
+                    end
+                end
                 if #bits > 0 then
                     L[#L + 1] = string.format('        [%q] = { %s },', nm, table.concat(bits, ', '));
                 else
@@ -7197,6 +7516,19 @@ saveModeState = function()
             if v == true then parts[#parts + 1] = string.format('[%q] = true,', m);
             elseif type(v) == 'string' then parts[#parts + 1] = string.format('[%q] = %q,', m, v); end
         end
+        -- THE ACTIVATION CLOCK (2026-08-03, Henrik's first-come-first-serve
+        -- ruling on conflicting mode locks). One counter per mode NAME, stamped
+        -- when its value last CHANGED -- so "who took the slot first" is a fact
+        -- the plan can read rather than a guess. It rides the mirror because the
+        -- GUI computes the same plan in the other Lua state and must queue the
+        -- losers in the same order; `__`-namespaced, so loadModeState's own
+        -- filter keeps it out of the flags map.
+        local sq = {};
+        for m, n in pairs(M.modeSeq or {}) do
+            if M.modes[m] ~= nil then sq[#sq + 1] = string.format('[%q] = %d,', m, n); end
+        end
+        table.sort(sq);
+        parts[#parts + 1] = '["__seq"] = { ' .. table.concat(sq, ' ') .. ' },';
         table.sort(parts);
         writeFile(dir .. 'modestate.lua',
             '-- dlac mode state (dlac-owned; read back on engine load, GUI reads for display)\nreturn { '
@@ -7238,8 +7570,40 @@ local function loadModeState()
         for k, v in pairs(t) do
             local ks = tostring(k);
             if string.sub(ks, 1, 2) ~= '__' and (v == true or type(v) == 'string') then
+                -- RAW on purpose: the __seq block below restores this flag's
+                -- real stamp, and stamping here would burn a counter value only
+                -- to overwrite it. Flags with no saved stamp are caught by the
+                -- unstamped sweep after it.
                 M.modes[string.lower(ks)] = v;   -- cycle values re-validate on trigger load
             end
+        end
+        -- The activation clock survives the restore, or a Reload LAC would
+        -- silently re-queue every conflicting mode lock in a different order
+        -- than the one the player is looking at. Restored FIRST, then the
+        -- counter is advanced past the highest, so the next flip still sorts
+        -- after everything already held.
+        local hi = 0;
+        if type(t.__seq) == 'table' then
+            for k, n in pairs(t.__seq) do
+                local ks = string.lower(tostring(k));
+                if type(n) == 'number' and M.modes[ks] ~= nil then
+                    M.modeSeq[ks] = n;
+                    if n > hi then hi = n; end
+                end
+            end
+        end
+        if hi > M.modeSeqN then M.modeSeqN = hi; end
+        -- A restored flag with NO stamp (an older mirror) still needs an order,
+        -- or it would sort ahead of everything forever. Stamp them now, sorted
+        -- by name so the fallback is at least stable.
+        local unstamped = {};
+        for m in pairs(M.modes) do
+            if M.modeSeq[m] == nil then unstamped[#unstamped + 1] = m; end
+        end
+        table.sort(unstamped);
+        for _, m in ipairs(unstamped) do
+            M.modeSeqN = M.modeSeqN + 1;
+            M.modeSeq[m] = M.modeSeqN;
         end
     end);
 end
@@ -7258,12 +7622,12 @@ function M.setMode(name, state)
         end
         if type(state) == 'string' then                -- jump to a named value
             for _, v in ipairs(def.values) do
-                if ci(v, state) then M.modes[ln] = v; saveModeState(); return v; end
+                if ci(v, state) then M.modeSet(ln, v); saveModeState(); return v; end
             end
             return M.modes[ln];                        -- unknown value: unchanged
         end
         local nxt = def.values[(curIdx % #def.values) + 1];
-        M.modes[ln] = nxt;
+        M.modeSet(ln, nxt);
         saveModeState();
         return nxt;
     end
@@ -7272,7 +7636,7 @@ function M.setMode(name, state)
     -- the command layer already peeled off on/off/toggle, so a string is
     -- always an intended cycle value: trust it.
     if type(state) == 'string' then
-        M.modes[ln] = state;
+        M.modeSet(ln, state);
         saveModeState();
         return state;
     end
@@ -7285,7 +7649,7 @@ function M.setMode(name, state)
         return M.modes[ln];
     end
     if state == nil then state = not (M.modes[ln] == true); end   -- toggle
-    M.modes[ln] = (state == true) or nil;
+    M.modeSet(ln, (state == true) or nil);
     saveModeState();
     return M.modes[ln] == true;
 end

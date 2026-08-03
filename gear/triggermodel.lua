@@ -134,6 +134,28 @@ function M.fromRaw(raw, canonEvent)
                     if type(v) == 'string' then e.values = e.values or {}; e.values[#e.values + 1] = v; end
                 end
                 if type(def.bind) == 'string' then e.bind = def.bind; end
+                -- Mode locks (2026-08-03): { ['Weapon:Melee'] = { Main = 'Set' } }
+                -- carried through or Commit WIPES them -- the same lesson, and
+                -- worse here than for a keybind: a wiped lock leaves the mode
+                -- looking identical in the list while the slots it froze quietly
+                -- go back to whatever the triggers say. Mirrored, not validated
+                -- (the `cases` precedent): dispatch's modeLocksOf is the one
+                -- validator, on the way in AND on the way back out.
+                if type(def.locks) == 'table' then
+                    local lk = nil;
+                    for cond, slots in pairs(def.locks) do
+                        if type(cond) == 'string' and type(slots) == 'table' then
+                            local one = nil;
+                            for slot, setName in pairs(slots) do
+                                if type(slot) == 'string' and type(setName) == 'string' and setName ~= '' then
+                                    one = one or {}; one[slot] = setName;
+                                end
+                            end
+                            if one ~= nil then lk = lk or {}; lk[cond] = one; end
+                        end
+                    end
+                    e.locks = lk;
+                end
                 -- an EMPTY e is a bare toggle -- a real definition (dropping
                 -- it un-listed plain UI-created toggles, 2026-07-20)
                 copy[nm] = e;

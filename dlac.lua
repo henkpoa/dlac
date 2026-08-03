@@ -18,7 +18,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.08.03w';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.08.03x';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
                                 -- (03f = engine v163: the contest explains its own plan;
                                 --  03g = one floating tray: Teleports + the E-Box crates;
@@ -47,7 +47,13 @@ addon.version = '2026.08.03w';  -- date of the last shipped change (Ashita print
                                 --  loading screen was being recorded as a meal,
                                 --  so the shipped food table now vouches for
                                 --  what you ate and a pre-catalogue history
-                                --  file heals itself on load)
+                                --  file heals itself on load;
+                                --  03x = engine v166: MODE LOCKS -- while a mode
+                                --  is active, the slots it locks come from ONE
+                                --  named set and no trigger rule can move them,
+                                --  and two modes locking one slot are FIRST
+                                --  COME, FIRST SERVE -- the one that took it
+                                --  holds it, the rest queue)
 addon.desc    = 'Gear sets, triggers and live stats with level scaling -- dlac equips your gear itself.';
 
 -- Load BEACON ('/dl check' field round, 2026-07-23): written by PLAIN io at
