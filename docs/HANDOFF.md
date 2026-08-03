@@ -296,6 +296,29 @@ haven't told you."* Ask when he has **not** said merge; never ask twice when he 
 
 **THE QUEUE IS EMPTY.**
 
+*(Emptied by the third 2026-08-03 promotion — **the mode lock queue reaches both monitors**
+(`2026.08.03y`, **engine v167**). Henrik: *"merge and push"* — an accept under the 08-01
+ruling, so nothing was asked twice. One train, and it exists because he asked one question
+about the train promoted an hour earlier: *"Where do I see the queue for the mode lock?"*
+The answer was one place, and it was the wrong place. Full reasoning in
+[history.md](history.md) — *"where do I see the queue"*.*
+
+***NOT FIELD-RUN.*** *Suites **6168 + 1129** on both interpreters, every new rule
+mutation-checked, but nothing here has been looked at in game.*
+
+***What landed:*** *the mode lock QUEUE now rides the **decision record** (`contest.mlq`) —
+the Arbiter Monitor renders stashed and pinned records and derives nothing, so a live
+lookup there would have shown today's answer under an older decision. It is a **signature
+leg** as well (the v152 rank-order case: a queuing mode moves no gear and no claim, so
+nothing would otherwise retrace), and deliberately **not** part of the decision fingerprint
+— the ring appends on a moved outcome, and a queue-only record with zero changed slots is
+the v163 symptom. **Arbiter Monitor:** a* `q` *on the cell in both grid modes, holder +
+waiter in the hover. **Trigger Monitor:** an* `(n queued)` *count on the* `locks` *line.*
+
+***THE ROUND OWED does not grow*** *— it gives check (5) of the Mode Locks round below
+somewhere to look: two modes locking one slot should read* `(1 queued)` *on the Trigger
+Monitor and put a* `q` *on the Arbiter Monitor's Main cell, whose hover names both.*
+
 *(Emptied by the second 2026-08-03 promotion — **Mode Locks** (`2026.08.03x`, **engine
 v166**, ADR 0034) and **the food register stops believing a zone** (`2026.08.03w`). Henrik:
 *"document this, have it ready for merge, merge it and push"* — an accept under the 08-01

@@ -925,7 +925,7 @@ function M.renderMonitor(ui)
         -- Monitor. Answered by the engine's own planner (dispatch.modeLockPlan)
         -- against the same two reads it uses, so the two windows cannot disagree
         -- about who holds a slot. Silent when nothing is locked.
-        local mlPlan = M.modeLockLive();
+        local mlPlan, mlQ = M.modeLockLive();
         if type(mlPlan) == 'table' and next(mlPlan) ~= nil then
             local held = {};
             for _, slot in ipairs(LOCK_SLOTS) do
@@ -935,7 +935,22 @@ function M.renderMonitor(ui)
             imgui.TextColored(COL_HEADER, 'locks');
             imgui.SameLine(0, 8);
             imgui.TextColored({ 0.95, 0.78, 0.35, 1.0 }, esc(table.concat(held, '   ')));
-            if imgui.IsItemHovered() then
+            -- Taken BEFORE the suffix is drawn: IsItemHovered answers about the
+            -- LAST item, so asking after the '(n queued)' text would have moved
+            -- the whole tooltip onto the suffix and silently taken it off the
+            -- held list -- the one people actually point at.
+            local hov = imgui.IsItemHovered();
+            -- THE QUEUE ON THE FACE, not only in the hover (2026-08-03): a mode
+            -- waiting behind the winner is the reason turning a mode off changes
+            -- gear, and nobody hovers a line that looks correct. The count is the
+            -- prompt; the hover is the detail.
+            local nq = (type(mlQ) == 'table') and #mlQ or 0;
+            if nq > 0 then
+                imgui.SameLine(0, 8);
+                imgui.TextColored(COL_SCORE, string.format('(%d queued)', nq));
+                hov = hov or imgui.IsItemHovered();
+            end
+            if hov then
                 local lines = { 'These slots are held by an active mode lock.',
                                 'No trigger rule can move them while the mode is on.', '' };
                 for _, slot in ipairs(LOCK_SLOTS) do
@@ -944,6 +959,15 @@ function M.renderMonitor(ui)
                         lines[#lines + 1] = string.format('  %-6s <- set %s   (mode = %s)',
                             slot, tostring(e.set), tostring(e.by));
                     end
+                end
+                if nq > 0 then
+                    lines[#lines + 1] = '';
+                    lines[#lines + 1] = 'QUEUED -- first come, first serve:';
+                    for _, c in ipairs(mlQ) do
+                        lines[#lines + 1] = string.format('  %-6s %s (%s) waits behind %s',
+                            c.slot, tostring(c.lost.set), tostring(c.lost.by), tostring(c.kept.by));
+                    end
+                    lines[#lines + 1] = 'Turn the holder off and the next one takes the slot.';
                 end
                 imgui.SetTooltip(esc(table.concat(lines, '\n')));
             end

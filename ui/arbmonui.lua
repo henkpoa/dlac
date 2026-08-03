@@ -191,6 +191,17 @@ local function cellInfo(rec, slot)
         text = tostring(win.item);        -- a defending sentinel ('(free equip)')
     end
 
+    -- The MODE LOCK QUEUE for this slot (2026-08-03): other active modes that
+    -- also lock it and are waiting behind the winner. Read from the RECORD, like
+    -- everything else here -- a pinned decision must not borrow the present.
+    local queued = nil;
+    for _, q in ipairs((con ~= nil and con.mlq) or {}) do
+        if type(q) == 'table' and string.lower(tostring(q.slot)) == ls then
+            queued = queued or {};
+            queued[#queued + 1] = q;
+        end
+    end
+
     local changed = findCI(rec.changed, ls) == true;
     -- The icon-mode fallback marker for cells with nothing to draw: kept,
     -- removed, lock-held, reserved-empty, a defending sentinel, or an item
@@ -206,7 +217,7 @@ local function cellInfo(rec, slot)
     return {
         text = text, color = color, changed = changed,
         iconId = isItem and idOf(text) or nil,
-        winner = win, ops = ops, mark = mark, fell = fell,
+        winner = win, ops = ops, mark = mark, fell = fell, queued = queued,
     };
 end
 
@@ -284,6 +295,18 @@ local function tooltipText(rec, slot, d)
         if type(ref) == 'table' then
             whyOf = {};
             for _, r in ipairs(ref) do whyOf[r.name] = r.why; end
+        end
+        -- THE MODE LOCK QUEUE (2026-08-03, Henrik: first come, first serve).
+        -- Named right after the verdict, because "Mode lock won this slot" and
+        -- "another mode you have on is waiting for it" are two different facts
+        -- and only the second one explains why turning a mode off changes gear.
+        if d.queued ~= nil then
+            out[#out + 1] = 'mode lock QUEUE (first come, first serve):';
+            for _, q in ipairs(d.queued) do
+                out[#out + 1] = string.format('  held by %s (%s)', tostring(q.kept.by), tostring(q.kept.set));
+                out[#out + 1] = string.format('  waiting: %s (%s)', tostring(q.lost.by), tostring(q.lost.set));
+            end
+            out[#out + 1] = '  turn the holder off and the next one takes the slot.';
         end
         local src = findCI(con.src, ls);
         if src ~= nil then
@@ -422,6 +445,14 @@ function M.renderRecord(rec, ui)
                 imgui.SameLine(0, 3);
                 imgui.TextColored((d.fell == 'dead') and COL_ERR or COL_WARN,
                                   (d.fell == 'dead') and '!' or '*');
+            end
+            -- The mode-lock QUEUE marker, drawn in BOTH modes like the fall
+            -- marker and for the same reason (2026-08-03): a slot where another
+            -- active mode is waiting behind the winner is exactly the thing you
+            -- would never think to hover over. The hover carries who waits.
+            if d.queued ~= nil then
+                imgui.SameLine(0, 3);
+                imgui.TextColored(CLAIM_COL.ModeLock, 'q');
             end
             imgui.EndGroup();
             if imgui.IsItemHovered() then

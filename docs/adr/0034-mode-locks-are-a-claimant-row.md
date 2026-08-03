@@ -104,6 +104,28 @@ fired rule whose set names a held slot. That monitor's altitude is what the trig
 layer **proposed**, and a locked slot is precisely a proposal that will not be
 honoured — so it belongs there, not only in the Arbiter Monitor.
 
+**The queue has to be visible where the player already is** (Henrik: *"where do I see the
+queue for the mode lock?"*). It shipped in exactly one place — the Mode Locks window,
+which is the surface you are *least* likely to be looking at while playing. Both monitors
+named only the winner, so a slot doing something surprising gave no hint that another
+active mode was waiting behind it: the same invisibility the loser list existed to
+prevent, moved one level up.
+
+So the queue **rides the decision record** (`contest.mlq`, captured at ensure time through
+the one door `modeLockLive`, which stashes it beside the plan). The Arbiter Monitor renders
+stashed records — pinned historical ones included — and deriving the queue live there would
+show *today's* answer under a decision from ten minutes ago. Same law as the ladders and
+the reserve verdict: the queue that decided is the queue you read.
+
+It is also a **signature leg**, for the rank-order leg's reason (v152): a mode that queues
+moves no gear and no claim, so without it the trace and `/dl why` would keep saying nobody
+waits until something unrelated happened to move.
+
+It deliberately does **not** enter the decision fingerprint. The ring appends on a moved
+*outcome*, and a queue-only record with zero changed slots is the v163 symptom, not a
+feature — so a queue that forms while nothing moves reaches `/dl why` immediately and
+reaches the ring on the next real decision.
+
 Mode locks deliberately do **not** ride the Mode library (`gear/modeslibrary.lua`).
 A library entry is job-independent; set names are not. Stamping `Weapon` onto another
 job would carry set names that job has never heard of — the cross-job breakage ADR
