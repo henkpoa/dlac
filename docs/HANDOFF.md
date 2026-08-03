@@ -294,10 +294,11 @@ infer it from a field confirmation, from *"works"*, or from your own read that s
 ready — his own note on the exchange was *"you are right not to assume otherwise since I
 haven't told you."* Ask when he has **not** said merge; never ask twice when he has.
 
-**Craft skills under the glyphs, blue when capped** — `2026.08.03za`. Asked for by Henrik's
+**Craft skills under the glyphs, blue when capped** — `2026.08.03zb`. Asked for by Henrik's
 friend, in his words: *"he'd love to see his skill levels under the craft icons in hobby bar
 for crafting"*, and *"when skill is capped, can we use the same blue"* — with a screenshot of
-the in-game skills menu attached.
+the in-game skills menu attached. **Both glyph rows carry it** — the hobby bar first, then
+the Automations panel's craft row when Henrik said *"Sure, go ahead"* to the offer.
 
 **The blue is the SERVER'S, not a colour dlac invents.** CatsEye sets bit `0x8000` on a craft's
 skill word the moment it reaches the guild cap — `charutils.cpp` comments it *"Blue text."* and
@@ -307,29 +308,37 @@ the game's own skills menu paints. `craftwatch.craftSkillInfo` reads it back thr
 (`skill >= (rank + 1) * 10`, the server's own `getCraftSkillCap`) is there only for a binding
 that does not expose the bit — it is the same rule, so the two can never diverge.
 
-***NOT FIELD-RUN.*** *Suites **6249 + 1136** on both interpreters, and the smoke section drives
+***NOT FIELD-RUN.*** *Suites **6249 + 1138** on both interpreters, and the smoke section drives
 the real `craftbar.renderContent` and reads the COLOUR back (a capped number must come out blue,
 an uncapped one grey) — but no number here has been drawn on Henrik's screen, and every skill
 value in the tests is a stub. In particular **nothing has confirmed what the live client returns
 for a craft the player never joined**, which is the one input the code guesses at (it assumes
 skill 0, and dims it).*
 
-***The round owed*** *is one look and one hover: open* `/dl craft bar`*, and (1) is there a number
-under all eight glyphs, (2) does each match the game's own Skills menu, (3) is a CAPPED craft blue
-and an uncapped one grey — same verdict as the menu, side by side, (4) does the hover on the number
-name the right rank and the right "N to go", (5) does the row still sit centered with the on/off
-pill where it was. If the blue reads wrong against the menu, the colour is one constant:
-`COL_SKILL_CAPPED` in `ui/craftbar.lua` (sampled off the screenshot at `#659EC9` and nudged up for
-the antialiasing the JPEG flattened — a guess about the true value, not a measurement of it).*
+***The round owed*** *is one look and one hover, on **both** surfaces: open* `/dl craft bar` *and
+Gear Helpers → Crafting Gear, and (1) is there a number under all eight glyphs, (2) does each match
+the game's own Skills menu, (3) is a CAPPED craft blue and an uncapped one grey — same verdict as
+the menu, side by side, (4) does the hover on the number name the right rank and the right "N to
+go", (5) does each row still sit centered, with the bar's on/off pill where it was. If the blue
+reads wrong against the menu, the colour is one constant: `COL_SKILL_CAPPED` in `ui/craftbar.lua`
+(sampled off the screenshot at `#659EC9` and nudged up for the antialiasing the JPEG flattened — a
+guess about the true value, not a measurement of it).*
 
 ***What landed:*** *`feature/craftwatch.lua` gains the guild-rank half it never had —
 `craftRankCap`, `craftRankName`, `craftIsCapped` (all pure, headless-tested T24h..T24v) over
 `M.CRAFT_RANKS` taken from the server's* `scripts/enum/craft_rank.lua` *(to **Legend**, 15; the
 enum's own comment ends "16+ invalid", which is why rank 31 — the masked-word rank — is refused
 rather than priced at 320). `craftSkillInfo` is the Ashita glue, cached a second because the bar
-asks for all eight every frame. `ui/craftbar.lua` row 1 becomes eight GROUPS (glyph over number),
-measured before it is drawn so `centerNext` still centers the row. **The Automations panel's craft
-row was deliberately left alone** — Henrik asked for the bar.*
+asks for all eight every frame.*
+
+***The two rows share the CELL, not the row*** *(`craftbar.craftSkillCell` measures,
+`craftbar.craftSkillUnder` draws). The bar's glyphs are 30px and equip on click; the panel's are
+32px, have their own texture cache, and only switch which craft's items are listed — so the rows
+stay separate, but the number, its blue and its hover come from one place and cannot drift. Both
+now wrap each glyph in a GROUP and measure the row before drawing it, since a 3-digit skill is
+wider than the icon above it and both rows center themselves. **While here:** the comment on
+`craftButton` claiming it was shared with the Automations panel was stale — it has no second
+caller — and now says what actually is shared.*
 
 **THE QUEUE WAS EMPTIED BY THE LAST PROMOTION; THE ENTRY ABOVE IS NEW.**
 

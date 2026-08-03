@@ -5265,16 +5265,32 @@ end)();
 -- actually reached the screen.
 -- ---------------------------------------------------------------------------
 ;(function()
-    local saved = { imgui = package.loaded['imgui'], aui = package.loaded['dlac\\ui\\automationsui'] };
+    -- craftbar rides along in the save set: the craft view lazily requires it
+    -- (the on/off pill, and since 2026-08-03 the skill cell under each glyph),
+    -- and earlier sections leave a partial STUB of it in package.loaded. Left
+    -- there, the panel's guards would quietly find no craftSkillCell and this
+    -- section would prove nothing while passing.
+    local saved = { imgui = package.loaded['imgui'], aui = package.loaded['dlac\\ui\\automationsui'],
+                    cbar = package.loaded['dlac\\ui\\craftbar'] };
     local log = {};
     local function nop() end
     local IM = {};
     for _, n in ipairs({ 'Text', 'TextWrapped', 'SameLine', 'Spacing', 'Separator', 'Dummy',
-        'Image', 'PushItemWidth', 'PopItemWidth', 'BeginGroup', 'EndGroup', 'NewLine',
+        'Image', 'PushItemWidth', 'PopItemWidth', 'NewLine',
         'PushID', 'PopID', 'PushStyleColor', 'PopStyleColor', 'PushStyleVar', 'PopStyleVar',
         'InputText', 'EndCombo', 'Indent', 'Unindent' }) do
         IM[n] = nop;
     end
+    -- The craft glyph row wraps each icon in a GROUP so the skill can sit under
+    -- it (2026-08-03), and it moves the cursor to center that number. Both are
+    -- REAL here rather than no-ops: craftbar guards the cursor calls in a pcall,
+    -- so a stub missing them would silently skip the very code this drives.
+    local gdepth, curX = 0, 0;
+    IM.BeginGroup    = function() gdepth = gdepth + 1; end
+    IM.EndGroup      = function() gdepth = gdepth - 1; end
+    IM.GetCursorPosX = function() return curX; end
+    IM.SetCursorPosX = function(x) curX = x; end
+    IM.CalcTextSize  = function(s) return #tostring(s) * 8; end
     IM.TextColored   = function(_, t) log[#log + 1] = tostring(t); end
     IM.SetTooltip    = function(t) log[#log + 1] = tostring(t); end
     IM.Button        = function() return false; end
@@ -5339,6 +5355,7 @@ end)();
 
     package.loaded['imgui'] = IM;
     package.loaded['dlac\\ui\\automationsui'] = nil;
+    package.loaded['dlac\\ui\\craftbar'] = nil;        -- rebuilt against IM by the view's own require
     local ok, aui = pcall(require, 'dlac\\ui\\automationsui');
     check('CV0 automationsui re-requires against a stub imgui', ok and type(aui) == 'table', true);
     if ok and type(aui) == 'table' then
@@ -5383,10 +5400,21 @@ end)();
         ownedIds = {};
         check('CV14 ...and an empty bag still reads nothing applicable',
             craftTxt(), 'nothing applicable');
+
+        -- The skill under each glyph (2026-08-03) reached THIS surface too, and
+        -- through craftbar's shared cell -- the wording below is written in
+        -- craftbar and nowhere else, so seeing it here proves the wiring rather
+        -- than a second copy of the feature. (Headless there is no AshitaCore to
+        -- read a skill from, so every craft takes the unreadable branch; the
+        -- COLOUR rule itself is asserted where it lives, section 7d.)
+        check('CV15 the craft glyphs carry a skill label',
+              said('Skill not readable yet'), true);
+        check('CV16 ...and the glyph row closed every group it opened', gdepth, 0);
     end
     io.open = realOpen;
     package.loaded['imgui'] = saved.imgui;
     package.loaded['dlac\\ui\\automationsui'] = saved.aui;
+    package.loaded['dlac\\ui\\craftbar'] = saved.cbar;
 end)();
 
 -- ---------------------------------------------------------------------------

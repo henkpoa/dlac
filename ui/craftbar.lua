@@ -60,8 +60,12 @@ local function texture(cr)
 end
 M.texture = texture;
 
--- One clickable craft glyph (bright when selected, dim otherwise). Shared with
--- the Automations panel. Returns true on click.
+-- One clickable craft glyph (bright when selected, dim otherwise). Returns true
+-- on click. NOT shared with the Automations panel, whatever the comment here
+-- used to say: that panel keeps its own 32px row with its own texture cache,
+-- because its glyphs only switch which craft's items are listed -- they do not
+-- equip. What the two surfaces DO share is the on/off pill and the skill cell
+-- below (M.onOffSwitch / M.craftSkillCell + M.craftSkillUnder).
 function M.craftButton(cr, selected, size)
     local drew, tex = false, texture(cr);
     if tex ~= nil then
@@ -168,6 +172,45 @@ local function textW(s)
     return w;
 end
 
+-- ---- the shared cell (both surfaces that draw craft glyphs use these) -------
+-- The bar and the Automations panel draw their glyph rows differently -- 30px
+-- and equip-on-click here, 32px and switch-the-section there -- but the NUMBER
+-- under a glyph must be the same number in the same colour with the same hover,
+-- or the two surfaces start arguing about whether you are capped. So the cell is
+-- shared and the rows are not.
+--
+-- MEASURE, then DRAW, in two calls: both callers center their own row and so
+-- need the width before the first glyph goes down, and a 3-digit skill is wider
+-- than the glyph above it. `glyphW` is the caller's icon size; `w` comes back as
+-- the column width, the wider of the two.
+function M.craftSkillCell(craft, glyphW)
+    local info = (type(cw.craftSkillInfo) == 'function') and cw.craftSkillInfo(craft) or nil;
+    local txt  = (info ~= nil) and tostring(info.skill) or '--';
+    return { craft = craft, info = info, txt = txt, tw = textW(txt),
+             w = math.max(tonumber(glyphW) or GLYPH_W, textW(txt)) };
+end
+
+-- Draw a measured cell's number. Call it INSIDE the glyph's group, immediately
+-- after the glyph -- it centers itself against the group's left edge, which is
+-- the glyph's own left edge, so it lands under its own icon and not the window.
+function M.craftSkillUnder(cell)
+    if type(cell) ~= 'table' then return; end
+    pcall(function()
+        local x = imgui.GetCursorPosX();
+        if type(x) == 'number' then
+            imgui.SetCursorPosX(x + math.max(0, math.floor((cell.w - cell.tw) / 2)));
+        end
+    end);
+    local col = COL_SKILL;
+    if cell.info == nil or cell.info.skill == 0 then
+        col = COL_SKILL_UNKNOWN;      -- unreadable, or a guild you never joined
+    elseif cell.info.capped then
+        col = COL_SKILL_CAPPED;
+    end
+    imgui.TextColored(col, cell.txt);
+    if imgui.IsItemHovered() then imgui.SetTooltip(skillTip(cell.craft, cell.info)); end
+end
+
 -- Center the next row of known width within the bar: Dummy + SameLine(indent)
 -- (the automationsui craft-glyph pattern).
 local function centerNext(availW, rowW)
@@ -203,33 +246,14 @@ function M.renderContent(availW)
     local cols = {};
     local rowW = 0;
     for i, cr in ipairs(ORDER) do
-        local info = (type(cw.craftSkillInfo) == 'function') and cw.craftSkillInfo(cr) or nil;
-        local txt  = (info ~= nil) and tostring(info.skill) or '--';
-        local tw   = textW(txt);
-        cols[i] = { cr = cr, info = info, txt = txt, tw = tw, w = math.max(GLYPH_W, tw) };
+        cols[i] = M.craftSkillCell(cr, GLYPH_W);
         rowW = rowW + cols[i].w;
     end
     centerNext(availW, rowW + 7 * 6 + 6 + 46);
     for _, c in ipairs(cols) do
         imgui.BeginGroup();
-        if M.craftButton(c.cr, sel == c.cr, GLYPH_W) then cw.selectCraft(c.cr); end
-        -- Inside a group the cursor returns to the GROUP'S left edge on each new
-        -- line, so this offset centers the number under its own glyph rather
-        -- than against the window.
-        pcall(function()
-            local x = imgui.GetCursorPosX();
-            if type(x) == 'number' then
-                imgui.SetCursorPosX(x + math.max(0, math.floor((c.w - c.tw) / 2)));
-            end
-        end);
-        local col = COL_SKILL;
-        if c.info == nil or c.info.skill == 0 then
-            col = COL_SKILL_UNKNOWN;      -- unreadable, or a guild you never joined
-        elseif c.info.capped then
-            col = COL_SKILL_CAPPED;
-        end
-        imgui.TextColored(col, c.txt);
-        if imgui.IsItemHovered() then imgui.SetTooltip(skillTip(c.cr, c.info)); end
+        if M.craftButton(c.craft, sel == c.craft, GLYPH_W) then cw.selectCraft(c.craft); end
+        M.craftSkillUnder(c);
         imgui.EndGroup();
         imgui.SameLine(0, 6);
     end

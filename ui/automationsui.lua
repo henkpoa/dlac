@@ -1652,13 +1652,31 @@ local function renderAutomations()
             -- Panel icons are ONLY a section switch (Henrik): clicking one just
             -- changes which craft's items are shown below. No label -- centered,
             -- self-explanatory (8 icons * 32 + 7 gaps * 14 = 354 wide).
-            local rowW = 8 * 32 + 7 * 14;
+            --
+            -- Each glyph carries its SKILL underneath (2026-08-03), blue at the
+            -- guild cap. The number is craftbar's cell, not a copy of it: the
+            -- bar and this panel draw their rows differently (30px + equip on
+            -- click there, 32px + section switch here) but they must never
+            -- disagree about your skill or about what blue means. Guarded --
+            -- an unreachable craftbar costs the numbers, not the row.
+            --
+            -- Measured before anything is drawn, because this row is
+            -- hand-centered and a 3-digit skill is wider than the icon above it.
+            local cbok2, cbar = pcall(require, 'dlac\\ui\\craftbar');
+            cbok2 = cbok2 and type(cbar) == 'table' and type(cbar.craftSkillCell) == 'function'
+                    and type(cbar.craftSkillUnder) == 'function';
+            local cells, rowW = {}, 7 * 14;
+            for i, cr in ipairs(CRAFT_UI.order) do
+                cells[i] = cbok2 and cbar.craftSkillCell(cr, 32) or nil;
+                rowW = rowW + ((cells[i] ~= nil) and cells[i].w or 32);
+            end
             local indent = math.max(0, math.floor((availW - rowW) / 2));
             if indent > 0 then imgui.Dummy({ 0, 0 }); imgui.SameLine(indent); end
             for i, cr in ipairs(CRAFT_UI.order) do
                 local sel = (CRAFT_UI.selected == cr);
                 local tex = CRAFT_UI.texture(cr);
                 local drew = false;
+                imgui.BeginGroup();
                 if tex ~= nil then
                     local okT = pcall(function()
                         local ffi = require('ffi');
@@ -1679,6 +1697,11 @@ local function renderAutomations()
                 end
                 if imgui.IsItemClicked() then CRAFT_UI.selected = cr; end   -- view only
                 if imgui.IsItemHovered() then imgui.SetTooltip(cr .. '  -- show this craft\'s items (set the active craft on the craft bar)'); end
+                -- ...and the skill under it. AFTER the two item queries above:
+                -- they ask about the LAST item drawn, and the number is about to
+                -- become that.
+                if cells[i] ~= nil then cbar.craftSkillUnder(cells[i]); end
+                imgui.EndGroup();
                 if i < #CRAFT_UI.order then imgui.SameLine(0, 14); end
             end
             imgui.Spacing();
