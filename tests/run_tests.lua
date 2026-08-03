@@ -1746,6 +1746,29 @@ check('T24f a sane value is kept',         craftwatch.setSynthWait(45), 45);
 check('T24g setSynthWait clamps too',      craftwatch.setSynthWait(1), 20);
 craftwatch.setSynthWait(30);
 
+-- Guild rank + cap (2026-08-03) -- the numbers under the bar's craft glyphs and
+-- the BLUE that says "capped". Server rules, not retail lore:
+--   cap    = (rank + 1) * 10   (crafting/utils.lua getCraftSkillCap)
+--   capped = (rank + 1) * 100 <= RealSkill, i.e. skill >= cap (charutils.cpp,
+--            the same test that sets the 0x8000 "Blue text." bit)
+--   ranks  = scripts/enum/craft_rank.lua, whose own comment ends "16+ invalid"
+check('T24h Amateur caps at 10',           craftwatch.craftRankCap(0), 10);
+check('T24i Journeyman caps at 60',        craftwatch.craftRankCap(5), 60);
+check('T24j Veteran caps at 100',          craftwatch.craftRankCap(9), 100);
+check('T24k Legend (15) is the last rank', craftwatch.craftRankCap(15), 160);
+check('T24l rank 16+ is invalid',          craftwatch.craftRankCap(16), nil);
+check('T24m the mask rank (31) is too',    craftwatch.craftRankCap(31), nil);
+check('T24n a nil rank has no cap',        craftwatch.craftRankCap(nil), nil);
+check('T24o rank names come off the enum', craftwatch.craftRankName(9), 'Veteran');
+check('T24p ...all the way to Legend',     craftwatch.craftRankName(15), 'Legend');
+check('T24q an off-ladder rank has none',  craftwatch.craftRankName(31), nil);
+-- The blue only lights AT the cap: 59/60 is still grey, 60/60 and above are blue.
+check('T24r under the cap is not capped',  craftwatch.craftIsCapped(59, 5), false);
+check('T24s exactly at the cap IS capped', craftwatch.craftIsCapped(60, 5), true);
+check('T24t over the cap stays capped',    craftwatch.craftIsCapped(61, 5), true);
+check('T24u a fresh guild joiner (0/10)',  craftwatch.craftIsCapped(0, 0), false);
+check('T24v an unreadable rank is never capped', craftwatch.craftIsCapped(60, nil), false);
+
 -- ---------------------------------------------------------------------------
 -- U. synthrun -- the 2..6 repeat-synth batch runner (feature/synthrun.lua).
 -- Drives the whole state machine headless on an injected clock, a recording

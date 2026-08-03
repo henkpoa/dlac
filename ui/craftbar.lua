@@ -119,6 +119,55 @@ local isOpen = { true };
 local BAR_MIN_W = 430;   -- min CONTENT width (Henrik: wider bar, centered rows;
                          -- fits the goal row + Last Synth with air to spare)
 
+-- ---------------------------------------------------------------------------
+-- Skill numbers under the glyphs (2026-08-03). BLUE IS NOT DECORATION. CatsEye
+-- sets bit 0x8000 on a craft's skill word the moment it reaches the guild cap
+-- -- the comment in charutils.cpp is literally "Blue text." -- and that is the
+-- bit the game's own skills menu paints. dlac reads the same bit (see
+-- craftwatch.craftSkillInfo), so a blue number here says exactly what a blue
+-- number says in the menu: you are at this rank's ceiling, and the next point
+-- needs a rank-up test at the guild, not another synth.
+--
+-- The colour was sampled off the in-game capture Henrik sent (brightest text
+-- pixel #659EC9) and nudged up for the antialiasing the sample flattened.
+-- ---------------------------------------------------------------------------
+local GLYPH_W          = 30;
+local COL_SKILL_CAPPED = { 0.42, 0.65, 0.86, 1.00 };   -- at the guild cap
+local COL_SKILL        = { 0.70, 0.70, 0.70, 1.00 };   -- room to skill up
+local COL_SKILL_UNKNOWN = { 0.42, 0.42, 0.42, 1.00 };  -- unread / never joined
+
+-- The hover behind the number. The icon keeps its own "click to equip" tooltip
+-- (craftButton, shared with the Automations panel); this one answers the
+-- question the colour raises, which is the panel-text rule -- the surface shows
+-- the short thing, the hover explains it.
+local function skillTip(craft, info)
+    if info == nil then
+        return craft .. '\nSkill not readable yet (still logging in?).';
+    end
+    local s = string.format('%s: skill %d', craft, info.skill);
+    if info.cap ~= nil then s = s .. string.format(' / %d', info.cap); end
+    local rn = (type(cw.craftRankName) == 'function') and cw.craftRankName(info.rank) or nil;
+    if rn ~= nil then s = s .. '  (' .. rn .. ')'; end
+    if info.capped then
+        s = s .. '\nCAPPED -- blue means you are at this rank\'s ceiling.'
+              .. '\nTake the rank-up test at the guild; synthing will not move it.';
+    elseif info.cap ~= nil then
+        s = s .. string.format('\n%d to go before the cap for this rank.', info.cap - info.skill);
+    end
+    return s;
+end
+
+-- Text width, falling back to the codebase's ~8px/char estimate when the
+-- binding's CalcTextSize is unavailable or answers something odd.
+local function textW(s)
+    local w = #tostring(s) * 8;
+    pcall(function()
+        local m = imgui.CalcTextSize(s);
+        if type(m) == 'number' then w = m; end
+    end);
+    return w;
+end
+
 -- Center the next row of known width within the bar: Dummy + SameLine(indent)
 -- (the automationsui craft-glyph pattern).
 local function centerNext(availW, rowW)
@@ -144,10 +193,44 @@ function M.renderContent(availW)
     local waitMax  = tonumber(cw.WAIT_MAX) or 120;
     if _waitBuf == nil or (_waitSeen ~= nil and _waitSeen ~= waitSecs) then _waitBuf = { waitSecs }; end
     _waitSeen = waitSecs;
-    -- Row 1, centered: the 8 craft glyphs + the on/off switch.
-    centerNext(availW, 8 * 30 + 7 * 6 + 6 + 46);
+    -- Row 1, centered: the 8 craft glyphs, each with its skill under it, + the
+    -- on/off switch.
+    --
+    -- MEASURE FIRST, then draw. Each craft is a GROUP (glyph over number), so a
+    -- column is as wide as the wider of the two -- and centerNext needs the row
+    -- width BEFORE the first group is begun. Reading the eight skills up front
+    -- also means the row cannot change width halfway through itself.
+    local cols = {};
+    local rowW = 0;
     for i, cr in ipairs(ORDER) do
-        if M.craftButton(cr, sel == cr, 30) then cw.selectCraft(cr); end
+        local info = (type(cw.craftSkillInfo) == 'function') and cw.craftSkillInfo(cr) or nil;
+        local txt  = (info ~= nil) and tostring(info.skill) or '--';
+        local tw   = textW(txt);
+        cols[i] = { cr = cr, info = info, txt = txt, tw = tw, w = math.max(GLYPH_W, tw) };
+        rowW = rowW + cols[i].w;
+    end
+    centerNext(availW, rowW + 7 * 6 + 6 + 46);
+    for _, c in ipairs(cols) do
+        imgui.BeginGroup();
+        if M.craftButton(c.cr, sel == c.cr, GLYPH_W) then cw.selectCraft(c.cr); end
+        -- Inside a group the cursor returns to the GROUP'S left edge on each new
+        -- line, so this offset centers the number under its own glyph rather
+        -- than against the window.
+        pcall(function()
+            local x = imgui.GetCursorPosX();
+            if type(x) == 'number' then
+                imgui.SetCursorPosX(x + math.max(0, math.floor((c.w - c.tw) / 2)));
+            end
+        end);
+        local col = COL_SKILL;
+        if c.info == nil or c.info.skill == 0 then
+            col = COL_SKILL_UNKNOWN;      -- unreadable, or a guild you never joined
+        elseif c.info.capped then
+            col = COL_SKILL_CAPPED;
+        end
+        imgui.TextColored(col, c.txt);
+        if imgui.IsItemHovered() then imgui.SetTooltip(skillTip(c.cr, c.info)); end
+        imgui.EndGroup();
         imgui.SameLine(0, 6);
     end
     if M.onOffSwitch(on, 'bar') then cw.setEnabled(not on); end

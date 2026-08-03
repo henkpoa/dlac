@@ -2948,21 +2948,34 @@ end)();
 --     the stack balance and that the buttons reach synthrun.
 -- ---------------------------------------------------------------------------
 ;(function()
-    local depth = { col = 0, item = 0 };
+    local depth = { col = 0, item = 0, group = 0 };
     local function nop() end
     local IM = {};
-    for _, n in ipairs({ 'Separator', 'Text', 'TextColored', 'SameLine', 'Dummy',
+    for _, n in ipairs({ 'Separator', 'Text', 'SameLine', 'Dummy',
         'SetTooltip', 'Spacing', 'Image', 'InvisibleButton' }) do IM[n] = nop; end
     IM.PushStyleColor = function() depth.col = depth.col + 1; end
     IM.PopStyleColor  = function(n) depth.col = depth.col - (tonumber(n) or 1); end
     IM.PushItemWidth  = function() depth.item = depth.item + 1; end
     IM.PopItemWidth   = function() depth.item = depth.item - 1; end
+    IM.BeginGroup     = function() depth.group = depth.group + 1; end
+    IM.EndGroup       = function() depth.group = depth.group - 1; end
     IM.CalcTextSize   = function(s) return #tostring(s) * 8; end
     IM.IsItemHovered  = function() return true; end        -- exercise every tooltip
     IM.IsItemClicked  = function() return false; end
     IM.GetCursorScreenPos  = function() return 0, 0; end
     IM.GetWindowDrawList   = function()
         return { AddRectFilled = nop, AddCircleFilled = nop };
+    end
+    -- Cursor + coloured text are RECORDED, not no-op'd: the craft-skill row
+    -- (2026-08-03) is the first thing in this file whose whole point is a
+    -- COLOUR, so the test has to be able to read the colour back.
+    local curX, drawn = 0, {};
+    IM.GetCursorPosX = function() return curX; end
+    IM.SetCursorPosX = function(x) curX = x; end
+    IM.TextColored   = function(c, s) drawn[#drawn + 1] = { col = c, txt = tostring(s) }; end
+    local function drawnColor(txt)
+        for _, d in ipairs(drawn) do if d.txt == txt then return d.col; end end
+        return nil;
     end
 
     local clickId, editId, editVal, itemActive = nil, nil, nil, false;
@@ -2986,6 +2999,18 @@ end)();
         getSynthWait = function() return waitVal; end,
         setSynthWait = function(n) waitVal = n; wrote.wait = n; return n; end,
         lastSynth = function() return { name = 'Bronze Ingot', skill = 'Smithing', lv = 8 }; end,
+        -- The skill row: one capped craft, one with room, one never joined and
+        -- one unreadable, so all four colour branches are drawn in a single
+        -- render. The real reader is craftwatch.craftSkillInfo (headless-tested
+        -- in run_tests T24h..T24v); this stub only has to feed the bar.
+        craftRankName  = function(r) return ({ [5] = 'Journeyman', [9] = 'Veteran' })[r]; end,
+        craftSkillInfo = function(cr)
+            if cr == 'Woodworking'  then return { skill = 100, rank = 9, cap = 100, capped = true  }; end
+            if cr == 'Smithing'     then return { skill = 58,  rank = 5, cap = 60,  capped = false }; end
+            if cr == 'Goldsmithing' then return { skill = 0,   rank = 0, cap = 10,  capped = false }; end
+            if cr == 'Clothcraft'   then return nil; end
+            return { skill = 12, rank = 1, cap = 20, capped = false };
+        end,
     };
     -- synthrun stand-in: status drives the branch, start/stop record the click.
     local runStatus, calls = nil, {};
@@ -3014,6 +3039,22 @@ end)();
         if not ran then print('  CB2 error: ' .. tostring(err)); end
         check('CB3 idle: colour stack balanced', depth.col, 0);
         check('CB4 idle: item-width stack balanced', depth.item, 0);
+        check('CB4a idle: group stack balanced', depth.group, 0);
+
+        -- The skill row (2026-08-03). BLUE is the whole feature, so assert the
+        -- colour and not just that the number was drawn: capped reads blue
+        -- (B > R), uncapped reads the neutral grey, and an unreadable craft
+        -- prints '--' rather than a made-up number.
+        drawn = {}; curX = 0;
+        pcall(cb.renderContent, 460);
+        local capped, plain = drawnColor('100'), drawnColor('58');
+        check('CB4b a capped skill is drawn', type(capped), 'table');
+        check('CB4c ...in blue, not grey',    (capped ~= nil) and (capped[3] > capped[1] + 0.2), true);
+        check('CB4d an uncapped skill is grey', (plain ~= nil) and (plain[1] == plain[3]), true);
+        check('CB4e a never-joined guild shows 0', type(drawnColor('0')), 'table');
+        check('CB4f an unreadable craft shows --', type(drawnColor('--')), 'table');
+        check('CB4g ...and 0 is dimmed, not blue',
+              (function() local c = drawnColor('0'); return c ~= nil and c[3] < 0.5; end)(), true);
 
         -- The repeat buttons reach synthrun with the right count.
         calls = {}; clickId = '##cbrep3';

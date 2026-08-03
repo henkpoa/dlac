@@ -18,7 +18,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.08.03z';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.08.03za'; -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
                                 -- (03f = engine v163: the contest explains its own plan;
                                 --  03g = one floating tray: Teleports + the E-Box crates;
@@ -63,7 +63,12 @@ addon.version = '2026.08.03z';  -- date of the last shipped change (Ashita print
                                 --  what pops them, and a ready-to-paste
                                 --  FilterScan filter over the placeholder
                                 --  spawn points -- straight from the server's
-                                --  own phList, no camping notes required)
+                                --  own phList, no camping notes required;
+                                --  03za = your craft skills, under the glyphs
+                                --  on the hobby bar -- and BLUE when they are
+                                --  capped, read off the server's own blue-text
+                                --  bit, so the bar says what the skills menu
+                                --  says)
 addon.desc    = 'Gear sets, triggers and live stats with level scaling -- dlac equips your gear itself.';
 
 -- Load BEACON ('/dl check' field round, 2026-07-23): written by PLAIN io at
