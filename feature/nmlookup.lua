@@ -54,6 +54,12 @@
     it has under the curve it already prints. The dependency runs ONE way at
     load (nmtrack requires this module for the curve, the table and the pop
     kind) and is reached back for at CALL time here, so there is no cycle.
+
+    WHAT IT DROPS (issue #153) is feature\nmloot's answer, for the same reason:
+    "how does it pop" and "is it worth popping" are two questions joined by one
+    field -- the NM's `pool`, the server pool id that keys the generated drop
+    table. It is reached at CALL time too, so a build where that module fails
+    to load prints no drops section instead of taking this command down.
 ]]--
 
 local M = {};
@@ -501,6 +507,14 @@ local function tracker()
 end
 M._tracker = tracker;   -- test seam
 
+-- The drop readout (feature\nmloot), reached at CALL time for the same reason:
+-- an absent or broken module must cost this command its drops section and
+-- nothing else.
+local function loot()
+    return try('dlac\\feature\\nmloot');
+end
+M._loot = loot;         -- test seam
+
 -- Lines describing one NM. `guess` marks a weak match.
 function M.describe(entry, zid, guess)
     local out = {};
@@ -530,6 +544,17 @@ function M.describe(entry, zid, guess)
     end
     local f = M.filterFor(entry);
     if f ~= nil then out[#out + 1] = '  /filterscan ' .. f; end
+    -- What it gives, last: the indexes and the filter are what a camper acts on
+    -- straight away, and the drop table is what decides whether to bother at
+    -- all. An NM the table has nothing for says so there rather than leaving a
+    -- silence that reads as "drops nothing".
+    local lt = loot();
+    if lt ~= nil and type(lt.lines) == 'function' then
+        local ok, lines = pcall(lt.lines, entry);
+        if ok and type(lines) == 'table' then
+            for _, line in ipairs(lines) do out[#out + 1] = line; end
+        end
+    end
     return out;
 end
 

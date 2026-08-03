@@ -1,0 +1,453 @@
+--[[
+    dlac/feature/nmloot.lua -- what an NM drops, read out under `/dl nm <name>`.
+
+    Issue #153, PRD #151: "It shows nothing about drops, so the question 'is
+    this NM even worth camping' cannot be answered inside the game."
+
+    WHY A SEPARATE MODULE FROM nmlookup. Placeholders answer "how does it pop";
+    drops answer "is it worth popping". They join on ONE field and share no
+    arithmetic, and the drop maths (group shares, tier names, the item-name
+    resolve) is worth its own test surface. nmlookup reaches this module at
+    CALL time, exactly like the tracker, so a build where this file fails to
+    load prints no drops section instead of taking `/dl nm` down with it.
+    The file is called `nmloot` and NOT `nmdrops` on purpose: `dlac\data\nmdrops`
+    is the generated TABLE, and hard rule 13 is a list of hours lost to a module
+    whose name near-missed a data file's (lockstyle/lockstyles, macrobook/
+    macrobooks). One name, one thing.
+
+    THE TABLE. data/nmdrops.lua is GENERATED from the CatsEyeXI LIVE API
+    (/api/mob/<poolid>) -- 973 pools, 5372 rows, keyed by SERVER POOL ID, and
+    joined to an NM through its `pool` field. The clone is NOT the source and
+    must never be read for this: its module loader mounts a `catseyexi` overlay
+    that is EMPTY in the public repo, so live differs in both item and rate
+    (Mee Deggi gives Ochiudo's Kote at 10%; the clone says Ochimusha Kote at
+    5%). Per row: `i` item id, `r` rate, `t` drop type (absent/0 normal,
+    1 grouped, 2 steal, 4 despoil), `g` group id and `gr` group rate on
+    grouped rows only.
+
+    THREE PROPERTIES OF THE DATA ARE LOAD-BEARING, and every one of them is a
+    way this readout could lie:
+
+    1. A GROUPED ROW'S `r` IS A WEIGHT, NOT A PERCENTAGE. The group rolls ONCE
+       at `gr`, then exactly ONE item inside it wins by weight. 2009 of the
+       5372 rows are grouped, so rendering `r` as a percent would misstate more
+       than a third of the table -- and would tell a camper Ochiudo's Kote is a
+       10% drop because `r = 100` happens to look like a percent. Those two
+       readings coincide there BY ACCIDENT (its group is `gr = 1000`, so the
+       group always drops and 100/(900+100) really is 10%); they do not
+       coincide in general. Groups are therefore rendered AS groups -- "one of
+       these: A 90%, B 10%" -- and the percentage beside a member is its share
+       of the group, never a chance per kill.
+
+    2. DUPLICATE ROWS ARE REAL. Leaping Lizzy (pool 2384) lists item 926 at
+       r = 240 and AGAIN at r = 150. Two independent rolls, and both are shown.
+       Deduping them would quietly halve what the player is told to expect,
+       which is why the section head says "rolls" and not "items".
+
+    3. STEAL (t=2) AND DESPOIL (t=4) ARE NOT KILL LOOT. They get their own
+       section, because listing them as drops tells a player to expect
+       something a kill will never give. Most carry `r = 0` -- the API states
+       no rate for them -- and a zero is left unsaid rather than printed as
+       "0%", which would read as "impossible" instead of "not stated".
+
+    WHERE ONE GROUP ENDS AND THE NEXT BEGINS is decided by a RUN over the rows
+    in table order, in one sentence: a grouped row continues the current group
+    while its `g` AND `gr` both match the last GROUPED row, and opens a new one
+    otherwise. Rows that are not grouped are passed over rather than closing
+    the run, so the rule needs no special case for the steal rows that trail
+    most pools -- and the shipped table has no ungrouped row sitting inside a
+    group run for that choice to matter to.
+
+    The data forces the `gr` half of it. Pool 245 lists group 1 four times at
+    `gr = 1000` and then the SAME four items as group 1 again at `gr = 100`;
+    86 rows across a handful of pools carry a group id whose group rate changes
+    under it. Keying on `g` alone would have to throw one of the two rates away
+    -- a silent loss, and the second roll with it -- while the run rule keeps
+    both and reads them as what they plainly are: two rolls of the same set at
+    two different rates, the group-level form of property 2 above. Rows of one
+    run are contiguous in all 973 pools, so this never splits a group the table
+    meant as one.
+
+    ITEM NAMES ARE NOT IN THE TABLE, ON PURPOSE. They come from the client's
+    own item resources so they always match what the client calls them --
+    resolved LAZILY, one id at a time, never at load: a name table built at
+    load would run before the player is logged in, and the client would answer
+    with nothing. Only a SUCCESSFUL resolve is remembered (ADR 0007: a
+    not-ready read is not an answer, and a latch makes one bad read permanent),
+    so an id asked for too early answers properly the next time it is asked.
+    An id that will not resolve renders AS AN ID -- it never vanishes, because
+    a missing row is indistinguishable from a table that never had it.
+
+    RATES ARE THE SERVER'S OWN EIGHT NAMED TIERS (1000 always, 240 very common,
+    150 common, 100 uncommon, 50 rare, 10 very rare, 5 super rare, 1 ultra
+    rare), so that is the vocabulary shown beside the percentage rather than
+    one invented here. 1215 rows carry a rate that is NOT one of the eight;
+    those are still valid weights and show a percentage with NO tier name,
+    because snapping 250 to "very common" would be inventing a fact.
+]]--
+
+local M = {};
+
+local function try(name)
+    local ok, m = pcall(require, name);
+    return (ok and type(m) == 'table') and m or nil;
+end
+
+-- The generated table. A missing or old file degrades the section OFF rather
+-- than erroring (the nativemp rule) -- and says so, rather than reading as
+-- "this NM drops nothing" (hard rule 12: a total failure and a real absence
+-- must not look identical).
+M.data = try('dlac\\data\\nmdrops') or {};
+
+-- ---------------------------------------------------------------------------
+-- the server's drop types
+-- ---------------------------------------------------------------------------
+M.T_NORMAL  = 0;
+M.T_GROUP   = 1;
+M.T_STEAL   = 2;
+M.T_DESPOIL = 4;
+
+-- How a row that a kill will never give you is reached. Anything the table
+-- starts carrying that this build does not know is named by its raw type and
+-- kept OUT of the kill-loot list: promising a drop we cannot vouch for is the
+-- expensive direction to be wrong in.
+function M.takeLabel(t)
+    t = tonumber(t) or 0;
+    if t == M.T_STEAL   then return 'Steal';   end
+    if t == M.T_DESPOIL then return 'Despoil'; end
+    return 'drop type ' .. tostring(t);
+end
+
+-- ---------------------------------------------------------------------------
+-- rates and tiers
+-- ---------------------------------------------------------------------------
+-- The server's own eight, out of 1000. This table is the whole vocabulary:
+-- a rate that is not a key here has no tier name and must not be given one.
+M.TIERS = {
+    [1000] = 'always',
+    [240]  = 'very common',
+    [150]  = 'common',
+    [100]  = 'uncommon',
+    [50]   = 'rare',
+    [10]   = 'very rare',
+    [5]    = 'super rare',
+    [1]    = 'ultra rare',
+};
+
+-- The tier name for a rate, or nil when the rate is not one of the eight.
+function M.tierName(rate)
+    return M.TIERS[tonumber(rate) or -1];
+end
+
+-- Rates are out of 1000.
+function M.pctOf(rate)
+    local r = tonumber(rate);
+    if r == nil then return nil; end
+    return r / 10;
+end
+
+-- Percent for READING. Whole percents at 10% and up; below that the decimals
+-- are the whole point (0.5% and 0.1% are two different tiers), and a trailing
+-- ".0" is noise, so "rare (5%)" reads the way the game says it rather than
+-- "rare (5.0%)".
+local function pctText(p)
+    p = tonumber(p);
+    if p == nil then return '?'; end
+    if p >= 99.95 then return '100%'; end
+    if p >= 10 then return string.format('%d%%', math.floor(p + 0.5)); end
+    local s = string.format((p >= 1) and '%.1f' or '%.2f', p);
+    if s:find('%.') ~= nil then
+        s = s:gsub('0+$', '');
+        s = s:gsub('%.$', '');
+    end
+    -- A real share that rounds to nothing is said as "smaller than we print",
+    -- never as "0%" -- which reads as "impossible".
+    if p > 0 and (tonumber(s) or 0) == 0 then return '<0.01%'; end
+    return s .. '%';
+end
+M.pctText = pctText;
+
+-- "common (15%)" for one of the eight, "25%" for anything else. nil when
+-- there is no rate to state at all (the r = 0 steal rows).
+function M.rateText(rate)
+    local r = tonumber(rate);
+    if r == nil or r <= 0 then return nil; end
+    local t = M.tierName(r);
+    if t ~= nil then return string.format('%s (%s)', t, pctText(M.pctOf(r))); end
+    return pctText(M.pctOf(r));
+end
+
+-- ---------------------------------------------------------------------------
+-- item names -- lazily, from the client's own resources
+-- ---------------------------------------------------------------------------
+M._names = {};
+
+-- The one live read in this module. Called through M so the headless tests can
+-- override it (the helmwatch seam rule).
+function M._clientName(id)
+    local n = nil;
+    pcall(function()
+        local res = AshitaCore:GetResourceManager():GetItemById(id);
+        if res ~= nil and res.Name ~= nil then n = res.Name[1]; end
+    end);
+    if type(n) ~= 'string' or n == '' then return nil; end
+    return n;
+end
+
+-- The client's name for an item id, or the id itself. Only a HIT is cached:
+-- a miss is "the client could not answer yet", not "there is no such item",
+-- and caching it would latch a pre-login read forever (ADR 0007).
+function M.itemName(id)
+    local n = tonumber(id);
+    if n == nil then return 'item #?'; end
+    local hit = M._names[n];
+    if hit ~= nil then return hit; end
+    local name = M._clientName(n);
+    if name == nil then return 'item #' .. tostring(n); end
+    M._names[n] = name;
+    return name;
+end
+
+-- ---------------------------------------------------------------------------
+-- the join
+-- ---------------------------------------------------------------------------
+
+-- Every drop row for an NM, in table order, with duplicates intact. An NM may
+-- carry several pools (16 shipped entries do, up to nine); each is a mob
+-- template with its own droplist, so their rows CONCATENATE. The same pool id
+-- listed twice is one droplist, not two, so pool ids -- and only pool ids --
+-- are de-duplicated.
+function M.rowsFor(entry)
+    local out = {};
+    if type(entry) ~= 'table' then return out; end
+    local pools = entry.pool;
+    if type(pools) == 'number' then pools = { pools }; end
+    if type(pools) ~= 'table' then return out; end
+    if type(M.data) ~= 'table' then return out; end
+    local seen = {};
+    for _, p in ipairs(pools) do
+        local id = tonumber(p);
+        if id ~= nil and not seen[id] then
+            seen[id] = true;
+            local list = M.data[id];
+            if type(list) == 'table' then
+                for _, r in ipairs(list) do
+                    if type(r) == 'table' then out[#out + 1] = r; end
+                end
+            end
+        end
+    end
+    return out;
+end
+
+-- Does this entry carry a pool id at all? A pre-2026-08-03 data file does not,
+-- and that is "cannot look it up", never "it drops nothing".
+function M.hasPool(entry)
+    if type(entry) ~= 'table' then return false; end
+    if type(entry.pool) == 'number' then return true; end
+    return type(entry.pool) == 'table' and #entry.pool > 0;
+end
+
+-- ---------------------------------------------------------------------------
+-- rolls
+-- ---------------------------------------------------------------------------
+-- Rows in, ROLLS out: kill loot as a list of blocks, each one an independent
+-- roll, plus the rows a kill will never give. See the header for why a group
+-- is a RUN over (g, gr) and not a lookup by group id.
+--   kill = { { kind = 'item', row = r },
+--            { kind = 'group', g = n, gr = n, weight = n, rows = { ... } }, ... }
+--   take = { { row = r, how = 'Steal' }, ... }
+function M.rolls(rows)
+    local kill, take = {}, {};
+    local cur = nil;      -- the last group block opened; ungrouped rows pass it by
+    for _, r in ipairs(rows or {}) do
+        local t = tonumber(r.t) or M.T_NORMAL;
+        if t == M.T_GROUP then
+            if cur ~= nil and cur.g == r.g and cur.gr == r.gr then
+                cur.rows[#cur.rows + 1] = r;
+                cur.weight = cur.weight + (tonumber(r.r) or 0);
+            else
+                cur = { kind = 'group', g = r.g, gr = tonumber(r.gr),
+                        weight = tonumber(r.r) or 0, rows = { r } };
+                kill[#kill + 1] = cur;
+            end
+        elseif t == M.T_NORMAL then
+            kill[#kill + 1] = { kind = 'item', row = r };
+        else
+            -- Steal, Despoil, or a type this build has never seen. None of them
+            -- are kill loot, so none of them may reach the drops list.
+            take[#take + 1] = { row = r, how = M.takeLabel(t) };
+        end
+    end
+    return kill, take;
+end
+
+-- One item's share of its group, in percent. nil when the group carries no
+-- weight at all -- a share of nothing is not a number, and is not guessed at.
+function M.shareOf(block, row)
+    if type(block) ~= 'table' or type(row) ~= 'table' then return nil; end
+    local w = tonumber(block.weight);
+    if w == nil or w <= 0 then return nil; end
+    return (tonumber(row.r) or 0) / w * 100;
+end
+
+-- ---------------------------------------------------------------------------
+-- rendering
+-- ---------------------------------------------------------------------------
+-- Chat is not a window: the biggest shipped pool holds 100 rows and one group
+-- of 36, which nobody wants a hundred lines of. Members are PACKED onto shared
+-- lines under a width budget, and the two caps below are the backstop. Both
+-- say out loud what they left out -- a silent cap reads as "that is all of it",
+-- which is the one thing a drop readout must never imply.
+-- Sized against the shipped table rather than guessed: the deepest NM in it
+-- (Jormungand) rolls 28 times, so MAX_ROLLS never fires today and is purely a
+-- backstop against a future table; MAX_GROUP does fire, on the 26 groups with
+-- more than twelve members, where the alternative was three 36-item groups
+-- costing twenty-four lines on one Abyssea NM.
+M.WRAP      = 108;   -- characters before a packed line wraps
+M.MAX_GROUP = 12;    -- members shown inside one group
+M.MAX_ROLLS = 32;    -- rolls shown in the kill-loot section
+
+local function pack(head, parts, cont, width)
+    width = width or M.WRAP;
+    if #parts == 0 then return { head }; end
+    local out, cur, first = {}, head, true;
+    for _, p in ipairs(parts) do
+        if first then
+            cur = cur .. ' ' .. p;
+            first = false;
+        elseif (#cur + #p + 2) > width then
+            out[#out + 1] = cur .. ',';
+            cur = cont .. p;
+        else
+            cur = cur .. ', ' .. p;
+        end
+    end
+    out[#out + 1] = cur;
+    return out;
+end
+M._pack = pack;
+
+-- One ungrouped roll: the item and what the server calls its rate.
+local function itemLine(row, indent)
+    local txt = M.rateText(row.r);
+    if txt == nil then return indent .. M.itemName(row.i); end
+    return string.format('%s%s -- %s', indent, M.itemName(row.i), txt);
+end
+
+-- One grouped roll. A group of ONE is rendered as a plain drop at the GROUP's
+-- rate, because that is exactly its chance -- there is nothing for it to be
+-- "one of", and 22 shipped groups are that shape.
+local function groupLines(block, indent, cont)
+    local n = #block.rows;
+    if n == 1 then
+        local only = block.rows[1];
+        local txt = M.rateText(block.gr);
+        if txt == nil then return { indent .. M.itemName(only.i) }; end
+        return { string.format('%s%s -- %s', indent, M.itemName(only.i), txt) };
+    end
+    local shown = (n > M.MAX_GROUP) and M.MAX_GROUP or n;
+    local parts = {};
+    for k = 1, shown do
+        local row = block.rows[k];
+        local share = M.shareOf(block, row);
+        if share == nil then
+            parts[#parts + 1] = M.itemName(row.i);
+        else
+            parts[#parts + 1] = string.format('%s %s', M.itemName(row.i), pctText(share));
+        end
+    end
+    if shown < n then
+        local rest = 0;
+        for k = shown + 1, n do rest = rest + (tonumber(block.rows[k].r) or 0); end
+        local restShare = M.shareOf(block, { r = rest });
+        if restShare == nil then
+            parts[#parts + 1] = string.format('+%d more', n - shown);
+        else
+            parts[#parts + 1] = string.format('+%d more sharing %s', n - shown, pctText(restShare));
+        end
+    end
+    local rate = M.rateText(block.gr) or 'rate not stated';
+    return pack(string.format('%sone of these, %s:', indent, rate), parts, cont);
+end
+
+-- The whole drops readout for one NM, ready for nmlookup to print. Pure apart
+-- from the item-name resolve.
+function M.lines(entry)
+    local out = {};
+    if type(entry) ~= 'table' then return out; end
+
+    -- Three absences, and they must not look alike.
+    if type(M.data) ~= 'table' or next(M.data) == nil then
+        out[#out + 1] = '  drops: the drop table (data/nmdrops.lua) is missing or empty.';
+        return out;
+    end
+    if not M.hasPool(entry) then
+        out[#out + 1] = '  drops: this NM table carries no pool id, so its drops cannot be looked up -- the data file predates them.';
+        return out;
+    end
+    local rows = M.rowsFor(entry);
+    if #rows == 0 then
+        out[#out + 1] = '  drops: nothing in the drop table for this one.';
+        return out;
+    end
+
+    local kill, take = M.rolls(rows);
+    local indent, cont = '    ', '      ';
+
+    if #kill > 0 then
+        local grouped = false;
+        for _, b in ipairs(kill) do
+            if b.kind == 'group' and #b.rows > 1 then grouped = true; end
+        end
+        -- "rolls, each rolled on its own" is what tells a reader why the same
+        -- item can appear twice. With one roll there is nothing to separate.
+        if #kill == 1 then
+            out[#out + 1] = '  drops -- 1 roll:';
+        else
+            out[#out + 1] = string.format('  drops -- %d rolls, each rolled on its own:', #kill);
+        end
+        if grouped then
+            out[#out + 1] = '  (a group rolls once, then ONE item in it wins by weight -- the % is that item\'s share of the group)';
+        end
+        local shown = (#kill > M.MAX_ROLLS) and M.MAX_ROLLS or #kill;
+        for k = 1, shown do
+            local b = kill[k];
+            if b.kind == 'group' then
+                for _, line in ipairs(groupLines(b, indent, cont)) do out[#out + 1] = line; end
+            else
+                out[#out + 1] = itemLine(b.row, indent);
+            end
+        end
+        if shown < #kill then
+            out[#out + 1] = string.format('%s... and %d more %s not shown -- the chat readout stops at %d.',
+                indent, #kill - shown, (#kill - shown == 1) and 'roll' or 'rolls', M.MAX_ROLLS);
+        end
+    else
+        -- Five shipped pools are Steal and Despoil and nothing else. Printing
+        -- only the section below would leave the drops question unanswered,
+        -- and a silence reads as "we did not look" (hard rule 12).
+        out[#out + 1] = '  drops: nothing a kill gives -- this one only has what is below.';
+    end
+
+    if #take > 0 then
+        local hows, seen = {}, {};
+        for _, tk in ipairs(take) do
+            if not seen[tk.how] then seen[tk.how] = true; hows[#hows + 1] = tk.how; end
+        end
+        out[#out + 1] = string.format('  not kill loot -- %s only, a kill never gives these:',
+            table.concat(hows, ' / '));
+        for _, tk in ipairs(take) do
+            local txt = M.rateText(tk.row.r);
+            if txt == nil then
+                out[#out + 1] = string.format('%s%s (%s)', indent, M.itemName(tk.row.i), tk.how);
+            else
+                out[#out + 1] = string.format('%s%s (%s) -- %s', indent, M.itemName(tk.row.i), tk.how, txt);
+            end
+        end
+    end
+
+    return out;
+end
+
+return M;
