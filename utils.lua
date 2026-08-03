@@ -343,6 +343,22 @@ local function warnMissingGear(name)
     print('[dlac] set entry "' .. tostring(name) .. '" is not in the gear table -- typo, or not yet indexed (/dl sync).');
 end
 
+-- Live copies of a candidate, for subSlotAllowed's same-name off-hand rule.
+-- The rule takes the BEST of ctx.copies and the record's Count, so a live read
+-- can only ever ADD evidence: a stamped Count = 2 still wins when the bags
+-- cannot be read, and nothing that equips today can stop equipping.
+-- Through M.dispatchModule (the engine's per-second bag cache) rather than a
+-- second scanner here -- utils cannot require addon modules, and one bag
+-- reader is the point. nil = unknown; the file stamp answers alone.
+local function liveCopies(rec)
+    if type(rec) ~= 'table' or rec.Id == nil then return nil; end
+    local dsp = M.dispatchModule;
+    if dsp == nil or type(dsp.bagCopies) ~= 'function' then return nil; end
+    local ok, n = pcall(dsp.bagCopies, rec.Id);
+    if ok and type(n) == 'number' then return n; end
+    return nil;
+end
+
 -- ---------------------------------------------------------------------------
 -- THE SLOT LADDER (ADR 0027, stage 1 -- docs/design/two-way-arbiter.md). ONE
 -- evaluator produces each slot's ORDERED candidate list, and BuildDynamicSets
@@ -504,9 +520,17 @@ function M.slotLadder(slotTable, slotName, currentMain, cctx)
             -- Sub-slot pairing (shared rule, applied per CANDIDATE): DW
             -- decides whether a 1H off-hand is legal; the list's shield/grip
             -- is the fallback. H2H mains pair with NOTHING (ADR 0006).
-            if slotName == "Sub"
-               and not M.subSlotAllowed(gearObject, currentMain, dwCtx) then
-                break;
+            -- The same-name case (two of one weapon) additionally needs proof
+            -- of a second copy -- read LIVE, and only when the names actually
+            -- match, so the ordinary candidate costs no bag lookup at all.
+            if slotName == "Sub" then
+                dwCtx.copies = nil;
+                if type(currentMain) == 'table' and gearObject.Name == currentMain.Name then
+                    dwCtx.copies = liveCopies(gearObject);
+                end
+                if not M.subSlotAllowed(gearObject, currentMain, dwCtx) then
+                    break;
+                end
             end
 
             -- RANKING (see the comparator note above): a live explicit range

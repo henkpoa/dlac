@@ -790,6 +790,40 @@ do
               dispatchM.pairsWith('0:10', '0:10'), true);
         check('E28b Animator P II refuses the same oil (0:11 vs 0:10)',
               dispatchM.pairsWith('0:11', '0:10'), false);
+
+        -- E29. THE RANGE BUCKET ALWAYS ANSWERS (field 2026-08-03: a PUP's base
+        -- Animator never appeared anywhere). renderEntry DROPS a Main/Range
+        -- item with no category, so a nil bucket means the piece is never
+        -- written to gear.lua at all -- invisible to the picker, the ladders
+        -- and the engine, and silent, because auto-sync stages quiet.
+        local rc = gearimport.rangeCategory;
+        local PUP_ONLY, ALL_JOBS = 262144, 8388606;
+        check('E29 a skill category still wins',        rc(26, ALL_JOBS, '26:1'), 'Marksmanship');
+        check('E29b instruments keep nesting by skill', rc(42, 262146, '42:0'),   'WindInstrument');
+        -- The regression itself: 17859 is an ALL-JOBS item on this server
+        -- (item_equipment jobs 4194303), so the old exact PUP-mask test
+        -- dropped it while every PUP-only animator indexed fine.
+        check('E29c the ALL-JOBS Animator buckets by its 0:10 pair, not its mask',
+              rc(0, ALL_JOBS, '0:10'), 'PUP');
+        check('E29d a PUP-only animator still lands in PUP', rc(0, PUP_ONLY, '0:10'), 'PUP');
+        check('E29e Animator P II (0:11) too',              rc(0, PUP_ONLY, '0:11'), 'PUP');
+        check('E29f the PUP mask answers when no catalog supplies a Pair',
+              rc(0, PUP_ONLY, nil), 'PUP');
+        -- The other family the same hole swallowed: soultrappers/trappers are
+        -- skill-0, all-jobs, and pair with nothing. Bucketed, not dropped.
+        check('E29g a Soultrapper is bucketed rather than dropped',
+              rc(0, ALL_JOBS, '0:0'), 'Misc');
+        check('E29h ...and so is a skill-0 Range item with no metadata at all',
+              rc(nil, nil, nil), 'Misc');
+        -- The invariant that matters more than any bucket NAME: never nil, so
+        -- renderEntry can always place a Range item.
+        local everNil = false;
+        for _, sk in ipairs({ 0, 25, 26, 27, 41, 42, 45, 48, 99 }) do
+            for _, jb in ipairs({ 0, PUP_ONLY, ALL_JOBS, 2473969 }) do
+                if rc(sk, jb, nil) == nil then everNil = true; end
+            end
+        end
+        check('E29i no skill/job combination leaves a Range item unplaceable', everNil, false);
     end
 end
 end
@@ -8126,6 +8160,38 @@ end)();
               { Name = 'Dark Grip', Type = 'Sub', Level = 1 } }, 'Sub', twoH, cctx);
     check('LD6 a 2H main gates the Sub ladder to grips', #lad.items, 1);
     check('LD6b and the grip is the rung', lad.items[1].name, 'Dark Grip');
+
+    -- LD6c-LD6h. THE SECOND COPY IS READ LIVE (Coffeepoo, 2026-08-03: two Bone
+    -- Knives +1, the Main took one and the Sub was left as worn). The same-name
+    -- off-hand rule wants proof of a second copy; the flatten used to offer
+    -- subSlotAllowed nothing but the record's `Count`, a stamp written once at
+    -- first index that no command can refresh -- so a weapon bought AFTER its
+    -- twin was indexed could never pair. The engine's bag reader answers now.
+    local dwctx = { mjLevel = 50, isDW = true };
+    local knife = { Name = 'Bone Knife +1', Type = 'Dagger', OneHanded = true, Level = 46, Id = 17611 };
+    utils.dispatchModule = { bagCopies = function() return 2; end };
+    check('LD6c live bags prove the second copy -- the twin pairs',
+        #L({ knife }, 'Sub', knife, dwctx).items, 1);
+    utils.dispatchModule = { bagCopies = function() return 1; end };
+    check('LD6d one copy live -> the same-name off-hand is still refused',
+        #L({ knife }, 'Sub', knife, dwctx).items, 0);
+    -- The live read ADDS evidence, never subtracts it: a stamped Count still
+    -- wins, so nothing that pairs today can stop pairing.
+    local stamped = { Name = 'Bone Knife +1', Type = 'Dagger', OneHanded = true,
+                      Level = 46, Id = 17611, Count = 2 };
+    check('LD6e a stamped Count survives a live count of one',
+        #L({ stamped }, 'Sub', stamped, dwctx).items, 1);
+    utils.dispatchModule = { bagCopies = function() error('bags unreadable'); end };
+    check('LD6f an unreadable bag read falls back to the stamp',
+        #L({ stamped }, 'Sub', stamped, dwctx).items, 1);
+    check('LD6g ...and refuses on no stamp rather than guessing',
+        #L({ knife }, 'Sub', knife, dwctx).items, 0);
+    -- A DIFFERENT off-hand never asks the bags at all (the rule only counts
+    -- copies when the names match) -- pinned by an exploding reader.
+    local other = { Name = 'Mercenary\'s Knife', Type = 'Dagger', OneHanded = true, Level = 20, Id = 16746 };
+    check('LD6h a different-named off-hand pairs without a bag lookup',
+        #L({ other }, 'Sub', knife, dwctx).items, 1);
+    utils.dispatchModule = savedDM;
 
     -- The AutoAcc pool: its own winner, composed only under no virtual.
     lad = L({ { Name = 'Plain Ring', Level = 40 },
@@ -18292,6 +18358,33 @@ local okSplice = select(2, gi.spliceStaging(legacy, table.concat({
 }, '\n') .. '\n'));
 check('SH10 matching shape still inserts', okSplice.inserted, 1);
 check('SH11 matching shape has no conflict', #okSplice.shapeConflict, 0);
+
+-- SH10c-f. THE NEW BUCKET LANDS IN A FILE THAT HAS NEVER SEEN IT. The skill-0
+-- Range families (animators, soultrappers) now index into Range.PUP / Range.Misc
+-- (gearimport.rangeCategory, E29*) -- but a player whose gear.lua predates that
+-- has no such category, and a fix that stages an entry with nowhere to put it
+-- would heal nothing. The category is CREATED under its existing parent.
+do
+    local ranged = table.concat({
+        'gear = {',
+        '    Range = {',
+        '        Throwing = {',
+        '            Boomerang = {',
+        '                Name = "Boomerang",',
+        '            },',
+        '        },',
+        '    },',
+        '};',
+    }, '\n');
+    local _, aRep = gi.spliceStaging(ranged, table.concat({
+        'return {', '    Range = {', '        PUP = {', '            Animator = {',
+        '                Name = "Animator",', '            },', '        },', '    },', '}',
+    }, '\n') .. '\n');
+    check('SH10c a missing Range bucket is created, not "notfound"', aRep.inserted, 1);
+    check('SH10d ...and reported as created',   aRep.created[1], 'Range.PUP');
+    check('SH10e nothing went missing',         #aRep.notfound, 0);
+    check('SH10f no shape conflict with a category-nested Range', #aRep.shapeConflict, 0);
+end
 
 -- gearProblems: names the culprit, and stays quiet on a consistent legacy file
 local function built(text)

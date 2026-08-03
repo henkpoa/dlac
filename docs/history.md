@@ -8758,3 +8758,65 @@ built). Today the audit only tells you; with that, a flagged row could move itse
 wardrobe. The row shape was left ready for it (id + container + copy count), and the rule for
 whoever extends this is: a new "what asks for an item" source joins `M.collect`'s three
 buckets or `M.HELPER_PINS` — never a second walk over the profiles.
+
+## Session "two knives and an invisible animator" (2026-08-03, `2026.08.03t`, engine v164)
+
+Two bugs out of one support report (`/dl report`, Coffeepoo — a second field tester, not
+Henrik). Both had the same shape underneath: **a fact that changes was cached in a file
+that never gets rewritten.** Neither was findable from the symptom; both fell out of
+reading the artifact.
+
+**One: two Bone Knives +1, and only the Main hand got one.** The report's decision #25
+named `Main  Bone Knife +1` with a ladder, and `Sub  (left as worn)` with no ladder line at
+all — zero candidates survived. Dual Wield was up (he could equip the off-hand *by hand*),
+the set was right, and the level gates were right; the refusal was ours.
+`utils.subSlotAllowed`'s same-name case wants proof of a second copy (`twoCopies`, the flag
+that replaced the legacy `InBothHands` on 07-13), and it takes the best of `ctx.copies` and
+the record's `Count`. The flatten passed **no `copies`** — only `ui\gearui` ever did — so at
+equip time the sole evidence was the `Count` stamp, which `renderEntry` writes once, at
+first index, when the scan happened to see two. And nothing can refresh it: `M.sync`/
+`M.stage` are add-only (an already-`Known` item is skipped) and `/dl fix` backfills catalog
+facts, which ownership correctly is not. **Buy the twin after the first was indexed and
+dlac could never learn about it** — the only route back was a hand edit, and Henrik's own
+file had exactly that.
+
+Fixed by reading the bags, which is the 2026-08-01 Pair/RSlot ruling applied to the one
+fact that really is per-player: `dispatch.M.bagCopies` over the existing per-second cache
+(equip-eligible containers, worn pieces included — they still sit in their wardrobe slot),
+consumed by `utils.slotLadder` through `M.dispatchModule`. Three properties kept
+deliberately: the read only ever **adds** evidence (best-of, so a stamped `Count` still
+wins and nothing that pairs today stops pairing), an unreadable scan **falls back to the
+stamp** rather than demoting gear, and the lookup happens **only when the two names match**,
+so the ordinary off-hand costs nothing. Tests `LD6c`–`LD6h`.
+
+**Two: the base Animator never appeared anywhere** — not in the picker, not in a ladder.
+Henrik had hit this himself and half-remembered fixing it; he had, in `Mindie_29909\gear.lua`,
+**by hand** (the entry carries a `Stats = {}` block no writer in the tree emits). The code
+hole was untouched and identical for everyone. `resolveItem` bucketed skill-0 Range items
+with `res.Jobs == PUP_ONLY_MASK` — an **exact mask test** — and Animator 17859 is an
+ALL-JOBS item on this server (`sql/item_equipment.sql`: jobs 4194303; catalog: `Jobs =
+{"All"}`). No bucket meant `renderEntry` returned nil, which meant the piece was never
+written to gear.lua at all. Every *other* animator is PUP-only and indexed fine, which is
+precisely why it read as one broken item instead of a broken rule; the same hole swallowed
+Soultrapper, Soultrapper 2000, Fiendtrapper, Soulgauger SGR-1 and Marvelous Cheer.
+
+`gearimport.rangeCategory` now buckets by **what the piece is**: `0:10`/`0:11` is the
+animator subskill (an item fact — the same key the server pairs oils on) → `PUP`, the
+PUP-only mask still answers when no catalog supplies a Pair, and anything else skill-0
+lands in `Misc` rather than nowhere. It can never return nil (`E29i` asserts that over the
+whole skill × job grid), because nil means invisible. A bucket at all — rather than the
+catalog's flat-at-the-slot shape that `E27c` pins — because gear.lua's own `NameToObject`
+trailer walks Main/Range as *strictly* two levels and a flat entry there dies on
+`NameToObject[nil]`: **the user file cannot hold what the catalog can.** `SH10c`–`SH10f`
+pin that a file with no such bucket gets one created rather than a silent `notfound`, so
+the fix actually lands on the next sync with no migration and no `/dl` command to run.
+
+**And the reason nobody reported either for months.** `M.stage` printed its `! skipped`
+lines only when `not quiet` — and `M.sync` stages *quiet*, so on the one path every player
+is actually on, an item dlac could not index disappeared with no error anywhere. `/dl scan`
+even **lists** it (the skip happens later, at serialize time), so it read as found and then
+never landed. Those lines now print regardless of quiet, once per name per Lua state — a
+skipped item is never `Known` and so returns on every scan, and turning the warning into a
+spam loop would be the same silence by another route.
+
+**Tests:** `LD6c`–`LD6h`, `E29`–`E29i`, `SH10c`–`SH10f`. Suite **6054**.

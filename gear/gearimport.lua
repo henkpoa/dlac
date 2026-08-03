@@ -171,6 +171,38 @@ local RANGE_CATEGORY = {
 };
 local PUP_ONLY_MASK = 262144;   -- Jobs == PUP only (bit 18) -> animators go under Range.PUP
 
+-- THE RANGE BUCKET, for the skill-0 families that have no skill to nest under
+-- (animators, soultrappers). It must return SOMETHING: renderEntry drops a
+-- Main/Range item with no category, so a nil here means the piece is never
+-- written to gear.lua and therefore does not exist for the picker, the
+-- ladders, or the engine.
+--
+-- The 2026-08-03 field case (Coffeepoo, PUP): the base Animator (17859) never
+-- showed up anywhere. This bucket used to be gated on `Jobs == PUP_ONLY_MASK`,
+-- an EXACT mask test -- but that animator is an ALL-JOBS item on this server
+-- (sql/item_equipment.sql: jobs 4194303; catalog: Jobs = {"All"}), so it fell
+-- through and was dropped. Every OTHER animator is PUP-only and indexed fine,
+-- which is exactly why it read as one broken item rather than a broken rule.
+-- The same hole swallowed Soultrapper / Soultrapper 2000 / Fiendtrapper /
+-- Soulgauger SGR-1 / Marvelous Cheer.
+--
+-- So: bucket by WHAT THE PIECE IS, not by who may wear it. `0:10` / `0:11` is
+-- the animator subskill (an item fact, the same key the server pairs oils on),
+-- with the PUP-only mask kept as the answer when no catalog is loaded to
+-- supply a Pair. Anything else skill-0 lands in Misc rather than nowhere.
+--
+-- A bucket at all, rather than the catalog's flat-at-the-slot shape (E27c):
+-- gear.lua's own NameToObject loader walks Main/Range as STRICTLY two levels,
+-- so a flat entry there would iterate the record's own fields and die on a nil
+-- key. The user file cannot hold what the catalog can.
+local function rangeCategory(skill, jobs, pair)
+    local cat = RANGE_CATEGORY[skill or 0];
+    if cat ~= nil then return cat; end
+    if pair == '0:10' or pair == '0:11' or jobs == PUP_ONLY_MASK then return 'PUP'; end
+    return 'Misc';
+end
+M.rangeCategory = rangeCategory;   -- pure seam (tests E29*)
+
 -- Job bitmask -> abbreviations (bit i set = job i can equip; from fancychat).
 local EQUIP_JOBS = {
     [1]="WAR",[2]="MNK",[3]="WHM",[4]="BLM",[5]="RDM",[6]="THF",[7]="PLD",[8]="DRK",
@@ -236,13 +268,13 @@ local function resolveItem(entry)
     end
 
     -- Category for the nested slots. Main: by weapon skill. Range: by ranged /
-    -- instrument / fishing skill even when Damage=0; animators (PUP-only) -> PUP.
+    -- instrument / fishing skill even when Damage=0, and never nil -- see
+    -- rangeCategory for why the skill-0 families still get a bucket.
     if rec.Slot == 'Main' then
         rec.Category = WEAPON_CATEGORY[res.Skill or 0];
         if rec.Category ~= nil then rec.OneHanded = (TWO_HANDED[res.Skill] ~= true); end
     elseif rec.Slot == 'Range' then
-        rec.Category = RANGE_CATEGORY[res.Skill or 0];
-        if rec.Category == nil and res.Jobs == PUP_ONLY_MASK then rec.Category = 'PUP'; end
+        rec.Category = rangeCategory(res.Skill, res.Jobs, rec.Pair);
     end
 
     if res.Description ~= nil then
@@ -861,8 +893,13 @@ function M.serializeStaging(items)
 end
 
 -- Scan, generate, write the staging file, and load-check it.
+-- One "could not index" line per item name per Lua state (see M.stage).
+local _skipWarned = {};
+function M._resetSkipWarned() _skipWarned = {}; end   -- test seam
+
 -- quiet: suppress the informational narration (the AUTO-sync path uses this --
--- it is release behavior, not a debugging pipeline). Errors always print.
+-- it is release behavior, not a debugging pipeline). Errors always print, and
+-- so does anything the scan could not index.
 function M.stage(containers, quiet)
     local items = M.scan(containers);
     local newItems = {};
@@ -905,10 +942,27 @@ function M.stage(containers, quiet)
     if not quiet or status ~= 'OK' then   -- a failed load-check must surface even on auto-sync
         print(string.format('[dlac] staged %d new item(s) -> gear_staging.lua  [load-check: %s]', staged, status));
     end
-    if not quiet then
-        for _, s in ipairs(skipped) do
-            print(string.format('  ! skipped %s: %s', tostring(s.name), tostring(s.reason)));
+    -- A SKIPPED ITEM MUST SAY SO, auto-sync included (2026-08-03). These lines
+    -- used to be gated on `not quiet`, and M.sync stages quiet -- so on the one
+    -- path every player actually runs, an item dlac could not index vanished
+    -- with no error anywhere. `/dl scan` even LISTS it (the skip happens later,
+    -- at serialize time), so it read as found and then never landed. That is
+    -- how the all-jobs Animator stayed missing until somebody's friend
+    -- mentioned it in passing.
+    --
+    -- Once per name per state, because a skipped item is never Known and so
+    -- comes back on EVERY scan: the periodic sync would otherwise turn an
+    -- honest warning into a spam loop, which is the same silence by another
+    -- route.
+    for _, s in ipairs(skipped) do
+        local seen = string.lower(tostring(s.name));
+        if not _skipWarned[seen] then
+            _skipWarned[seen] = true;
+            print(string.format('[dlac] could not index "%s": %s -- it will not appear in dlac.',
+                tostring(s.name), tostring(s.reason)));
         end
+    end
+    if not quiet then
         if status == 'OK' then
             print('[dlac] review gear_staging.lua by your profile, then (soon) /dl commit will merge it.');
         end
