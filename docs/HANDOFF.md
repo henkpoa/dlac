@@ -903,6 +903,53 @@ research already recorded. In rough priority order:
 
 ## Current state (as of 2026-08-02)
 
+- **2026-08-03: PASSIVE POP TRACKING — the placeholder rounds you personally witnessed, and a
+  count that refuses to lie — ON A PR BRANCH off `dev` (`issue-155-pop-tracking`), NOT
+  field-run** (issue #155, PRD #151). `/dl nm <name>` could state the disfavour curve but not
+  where on it you were. `feature/nmtrack.lua` counts placeholder kills as they happen,
+  converts them to **rounds** (`kills / phCount` — six Buffalo make **one** Bonnacon round)
+  and renders the **current** chance under the curve, plus the rounds left to a guaranteed pop.
+  **Automatic, nothing to arm.**
+  - **BY TARGET INDEX, NEVER BY NAME.** Uleguerand holds ten Buffalo and only six (354-359)
+    are placeholders; a name would credit four mobs that never rolled and read HIGH. A name is
+    allowed to answer for the **NM itself** only — where a false positive can only RESET a
+    count, never inflate one.
+  - **Two observations already in the addon, joined:** `engagewatch` knows the INDEX of what
+    you attacked, the `text_in` death line knows WHAT died. A death is matched to the newest
+    engaged target of that name and **consumes** it, so one engagement credits at most one
+    kill. What is left over is an **under-count**, which is the safe direction.
+  - **The honesty rules are the feature.** The count is a **floor** (the server's counter is
+    zone-wide and shared) and says so beside every number. Zoning, a relog/reload, or an age
+    past the NM's **own** ceiling makes it **stale**, and a stale record shows the raw count
+    and when it was last vouched for and renders **no percentage at all** — the error a break
+    makes runs optimistic. Staleness is **sticky** (nothing can re-vouch for a break); pop
+    evidence zeroes the count, and `/dl nm <name> reset` is the one manual door. Kills inside
+    the post-kill **cooldown** or while the NM is **primed** are tallied as wasted effort
+    rather than sold back as progress, and the *uncertain* part of the cooldown window is said
+    out loud instead of counted as clear.
+  - **The curve is CONSUMED, not re-carried** — `chanceAfter`/`roundsToGuaranteed` stay in
+    `nmlookup` with their anchors; `NT00d` greps the tracker's source to pin that the formula
+    was never copied. Load-time dependency runs one way (`nmtrack` → `nmlookup`); the reverse
+    is call-time, so there is no cycle.
+  - Persisted per character at `<char>\dlac\nmcounts.lua` through `lib/statefile` +
+    `lib/safewrite`, like the other passive watchers. New: `/dl nm counts` (which camps am I
+    part-way through) and `/dl nm <name> reset`. Suites **6475 + 1138** green. No engine bump
+    — addon-state only, no seeded file moved, and no UI (no gearui locals, nothing new in the
+    UI chunk).
+  - **NOT FIELD-RUN, and one thing here can only be settled in game: THE DEATH LINE.** The
+    tracker recognises `"The Buffalo falls to the ground."` and `"<Player> defeats the
+    Buffalo."` (`M.DEATH_FALLS` / `M.DEATH_DEFEATS`). If CatsEyeXI words a mob death
+    differently, **nothing will ever count** — silently, because an under-count is the
+    designed-safe direction. **`/dl nm counts` on an empty tracker is the diagnosis**: it
+    prints the last engaged target *with its index* and the last death line it recognised, so
+    "nothing killed yet" and "the wording is different here" cannot look alike.
+    **First field check: kill one placeholder at a known camp and run `/dl nm <that NM>` — if
+    the count says 1, the whole chain (edge → death line → correlation → index → round) is
+    proven in one kill.** Second: zone out and back and confirm it reads STALE with no
+    percentage. Third, the one that would be embarrassing to miss: kill a same-named mob that
+    is NOT a placeholder (Uleguerand's Buffalo at 26-29) and confirm the count does **not**
+    move. It also inherits the round already owed on `/dl nm` itself (below): no widescan has
+    yet been filtered with a generated line.
 - **2026-08-03: `/dl nm` STOPS PRESENTING THE BASE CHANCE AS FLAT — the disfavour curve is
   hand-carried — ON A PR BRANCH off `dev` (`issue-152-nm-disfavour`), NOT field-run**
   (issue #152, PRD #151). `/dl nm <name>` printed *"5% per kill"*. That is only the **base**:

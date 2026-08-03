@@ -24102,6 +24102,486 @@ end)();
     package.loaded['dlac\\chatfmt'] = savedChat;
 end)();
 
+-- ---------------------------------------------------------------------------
+-- NT. Passive pop tracking (feature\nmtrack, issue #155, PRD #151).
+--
+--   The tracker counts the placeholder kills this character personally
+--   witnessed, turns them into disfavour ROUNDS, and refuses to render a
+--   percentage it cannot stand behind. Three properties carry the whole
+--   feature and each is pinned directly:
+--
+--     * COUNTED BY TARGET INDEX, NEVER BY NAME. Uleguerand holds ten Buffalo
+--       and only six are placeholders; a name-based counter would credit the
+--       other four -- kills that never rolled -- and read HIGH.
+--     * A ROUND IS NOT A KILL. rounds = kills / phCount; six Buffalo make one
+--       Bonnacon round, and feeding raw kills to the curve overstates the odds
+--       six times over.
+--     * A STALE RECORD RENDERS NO PERCENTAGE. The error a broken observation
+--       makes runs optimistic -- someone else popping and killing the NM while
+--       you were away leaves your number high -- so the number is withheld,
+--       not hedged.
+--
+--   The reducer is driven as a PURE function throughout (state + event + data
+--   in, new state out), and the live feed (engage edge x death line) is driven
+--   through the same pump the game calls.
+-- ---------------------------------------------------------------------------
+(function()
+    local savedChat = package.loaded['dlac\\chatfmt'];
+    local out = {};
+    local function sink(s) out[#out + 1] = tostring(s); end
+    package.loaded['dlac\\chatfmt'] = { msg = sink, good = sink, warn = sink, err = sink };
+
+    -- Its own nmlookup instance, registered so nmtrack's load-time require
+    -- resolves to the SAME module the assertions read (the curve, the shipped
+    -- table and the pop kind all come from there -- nothing is re-derived).
+    local handler = nil;
+    local savedReg = ashita.events.register;
+    ashita.events.register = function(evt, name, fn)
+        if name == 'dlac-nmlookup-cmd' then handler = fn; end
+    end;
+    local NM = dofile('feature/nmlookup.lua');
+    package.loaded['dlac\\feature\\nmlookup'] = NM;
+    local TR = dofile('feature/nmtrack.lua');
+    package.loaded['dlac\\feature\\nmtrack'] = TR;
+    ashita.events.register = savedReg;
+
+    check('NT00a the tracker loads',            type(TR), 'table');
+    check('NT00b the reducer is exported pure', type(TR.reduce), 'function');
+    check('NT00c ...and so is the readout',     type(TR.status), 'function');
+    -- The curve is CONSUMED, never re-carried: a second copy of the formula is
+    -- how the anchors and the readout drift apart.
+    local src = (function()
+        local f = io.open('feature/nmtrack.lua', 'r');
+        if f == nil then return ''; end
+        local t = f:read('*a'); f:close(); return t;
+    end)();
+    check('NT00d the disfavour formula is not copied into the tracker',
+        src:find('100 / max', 1, true) == nil and src:find('(1 - base / 100)', 1, true) == nil, true);
+
+    -- Disk stays out of the way for everything but the persistence block: a
+    -- path of nil makes load() and save() no-ops, so M.state is exactly what
+    -- each check puts there (an earlier section leaves profiles.dataDir stubbed).
+    TR.path = function() return nil; end;
+    TR.TICK_S = 0;      -- the frame throttle is not what is under test
+
+    -- The worked example from the issue, hand-built so the reducer is driven by
+    -- values rather than by whatever the shipped table happens to hold today.
+    -- Buffalo at 354-359 ARE Bonnacon's placeholders; the Buffalo at 26-29 are
+    -- ordinary mobs wearing the same name.
+    local BON = { n = 'Bonnacon', nm = { 360 }, ph = { 354, 355, 356, 357, 358, 359 },
+                  p = 'Buffalo', c = 5, w = { 3600, 86400 }, kind = { 'lottery' } };
+    local SCRIPTED = { n = 'Charybdis', nm = { 412 }, ph = { 406, 408 }, p = 'Devil Manta',
+                       c = 10, kind = { 'scripted' } };
+    local DATA = { [5] = { BON, SCRIPTED } };
+    local KEY  = TR.campKey(5, BON);
+    local NOW  = 1700000000;
+    local function ctxAt(zone, now) return { data = DATA, zone = zone, now = now or NOW }; end
+    local function killAt(index, name, at)
+        return { kind = 'kill', index = index, name = name, at = at or NOW };
+    end
+
+    -- ---- classify: the index is the authority, the name is not ------------
+    local e1, r1 = TR.classify(DATA[5], 354, 'Buffalo');
+    check('NT01a a placeholder index is a placeholder', r1, 'ph');
+    check('NT01b ...of the right camp',                 e1 and e1.n, 'Bonnacon');
+    local e2, r2 = TR.classify(DATA[5], 26, 'Buffalo');
+    check('NT01c a same-named non-placeholder index is nothing', r2, nil);
+    check('NT01d ...and answers with no camp',                   e2, nil);
+    local e3, r3 = TR.classify(DATA[5], 360, 'Bonnacon');
+    check('NT01e the NM index is the NM',               r3, 'nm');
+    check('NT01f ...and names the camp',                e3 and e3.n, 'Bonnacon');
+    local _, r4 = TR.classify(DATA[5], nil, 'Bonnacon');
+    check('NT01g the NM answers by NAME when no index came with the line', r4, 'nm');
+    local _, r5 = TR.classify(DATA[5], nil, 'Buffalo');
+    check('NT01h a placeholder NEVER answers by name', r5, nil);
+    -- The index gets BOTH its chances before a name is consulted, so a
+    -- placeholder whose display name collides with some other camp's NM is
+    -- still read as the placeholder it is -- not as evidence that NM popped.
+    local COLLIDE = { DATA[5][1], { n = 'Buffalo', nm = { 900 }, kind = { 'scripted' } } };
+    local e6, r6 = TR.classify(COLLIDE, 354, 'Buffalo');
+    check('NT01i an index that answers wins over a colliding name', r6, 'ph');
+    check('NT01j ...for the camp the spawn point belongs to', e6 and e6.n, 'Bonnacon');
+    local e7, r7 = TR.classify(COLLIDE, 900, 'Buffalo');
+    check('NT01k ...while that NM\'s own index still reads as the NM', r7, 'nm');
+    check('NT01l ...and names it',                    e7 and e7.n, 'Buffalo');
+
+    -- ---- the reducer: a kill at a placeholder index counts ----------------
+    local s0 = {};
+    local s1 = TR.reduce(s0, killAt(354, 'Buffalo'), ctxAt(5));
+    check('NT02a a placeholder kill starts a count', s1[KEY] and s1[KEY].kills, 1);
+    check('NT02b ...keyed to the camp in that zone', s1[KEY] and s1[KEY].nm, 'Bonnacon');
+    check('NT02c ...remembering how many placeholders a round takes',
+        s1[KEY] and s1[KEY].ph, 6);
+    -- PURITY: the input state is never mutated, so a caller can hold the old one.
+    check('NT02d the input state is untouched',      next(s0), nil);
+    local s2 = TR.reduce(s1, killAt(355, 'Buffalo'), ctxAt(5));
+    check('NT02e a second placeholder increments',   s2[KEY].kills, 2);
+    check('NT02f ...and the state it came from does not', s1[KEY].kills, 1);
+
+    -- THE HEADLINE RULE: same name, wrong spawn point, no credit.
+    local s3 = TR.reduce(s2, killAt(26, 'Buffalo'), ctxAt(5));
+    check('NT03a a same-named non-placeholder does NOT increment', s3[KEY].kills, 2);
+    check('NT03b ...and creates no record of its own',
+        (function() local n = 0; for _ in pairs(s3) do n = n + 1; end; return n; end)(), 1);
+    -- A zone we could not read is not a zone to guess at.
+    local s4 = TR.reduce(s3, killAt(354, 'Buffalo'), ctxAt(nil));
+    check('NT03c an unreadable zone drops the kill rather than crediting it',
+        s4[KEY].kills, 2);
+    -- A scripted NM's placeholders roll nothing, so counting them would invent
+    -- a curve the server does not run.
+    local s5 = TR.reduce(s4, killAt(406, 'Devil Manta'), ctxAt(5));
+    check('NT03d a scripted NM\'s placeholder is not counted',
+        s5[TR.campKey(5, SCRIPTED)], nil);
+
+    -- ---- kills become ROUNDS, and the CURRENT chance is shown -------------
+    local sixty = {};
+    for i = 1, 60 do
+        sixty = TR.reduce(sixty, killAt(354 + (i % 6), 'Buffalo'), ctxAt(5));
+    end
+    check('NT04a sixty kills are sixty kills',        sixty[KEY].kills, 60);
+    local st = TR.status(sixty[KEY], BON, NOW);
+    check('NT04b ...and ten ROUNDS, not sixty',       st.rounds, 10);
+    check('NT04c the chance is the curve at ten rounds, not the base',
+        string.format('%.4f', st.chance), string.format('%.4f', NM.chanceAfter(5, 10)));
+    check('NT04d ...which is not the base chance',    st.chance > 5, true);
+    check('NT04e rounds to a guaranteed pop come from the lookup module',
+        st.guaranteed, NM.roundsToGuaranteed(5));
+    check('NT04f rounds REMAINING are reported',      st.roundsLeft, 30);
+    check('NT04g ...and what that is in kills',       st.killsLeft, 180);
+    local liveLines = table.concat(TR.lines(sixty[KEY], BON, NOW), '\n');
+    check('NT04h the readout states the count',       liveLines:match('60 placeholder kills') ~= nil, true);
+    check('NT04i ...as rounds',                       liveLines:match('10 rounds') ~= nil, true);
+    check('NT04j ...with the CURRENT chance',         liveLines:match('6%.6%% now') ~= nil, true);
+    check('NT04k ...and the rounds left to a guaranteed pop',
+        liveLines:match('30 rounds %(180 kills%) to a guaranteed pop') ~= nil, true);
+    -- THE FLOOR, and the reason for it, wherever a number is shown.
+    check('NT05a the count is labelled a floor',      liveLines:match('FLOOR') ~= nil, true);
+    check('NT05b ...because the server counter is shared',
+        liveLines:match('zone%-wide and shared') ~= nil, true);
+    check('NT05c ...and other players are invisible',
+        liveLines:match("other players' placeholder kills are invisible") ~= nil, true);
+
+    -- ---- evidence of a pop resets the count -------------------------------
+    local dead = TR.reduce(sixty, killAt(360, 'Bonnacon'), ctxAt(5));
+    check('NT06a seeing the NM DIE resets the count', dead[KEY].kills, 0);
+    check('NT06b ...and records what was seen',       dead[KEY].saw, 'dead');
+    check('NT06c ...without touching the old state',  sixty[KEY].kills, 60);
+    local alive = TR.reduce(sixty, { kind = 'sight', index = 360, name = 'Bonnacon', at = NOW }, ctxAt(5));
+    check('NT06d seeing the NM ALIVE resets it too',  alive[KEY].kills, 0);
+    check('NT06e ...and records that',                alive[KEY].saw, 'alive');
+    -- A death line naming the NM with no index attached is still evidence: a
+    -- wrong match here can only ever RESET, never inflate.
+    local byName = TR.reduce(sixty, killAt(nil, 'Bonnacon'), ctxAt(5));
+    check('NT06f the NM name alone is enough to reset', byName[KEY].kills, 0);
+
+    -- ---- the two "kills cannot roll" states -------------------------------
+    check('NT07a right after a kill it is on cooldown',
+        select(1, TR.rollState(dead[KEY], BON, NOW + 60)), 'cooldown');
+    check('NT07b ...for as long as the SHORTEST cooldown it can draw',
+        select(1, TR.rollState(dead[KEY], BON, NOW + 3599)), 'cooldown');
+    check('NT07c past that nothing is claimed',
+        select(1, TR.rollState(dead[KEY], BON, NOW + 3601)), 'ok');
+    check('NT07d ...but it is not claimed as CLEAR either',
+        select(2, TR.rollState(dead[KEY], BON, NOW + 3601)), true);
+    check('NT07e past the longest cooldown the hedge is gone',
+        select(2, TR.rollState(dead[KEY], BON, NOW + 86401)), false);
+    check('NT07f an NM you have seen alive is primed',
+        select(1, TR.rollState(alive[KEY], BON, NOW + 60)), 'primed');
+    local cdLines = table.concat(TR.lines(dead[KEY], BON, NOW + 60), '\n');
+    check('NT07g the cooldown says kills cannot roll right now',
+        cdLines:match('kills cannot roll right now') ~= nil, true);
+    check('NT07h ...and names the window',            cdLines:match('1h%-24h') ~= nil, true);
+    local prLines = table.concat(TR.lines(alive[KEY], BON, NOW + 60), '\n');
+    check('NT07i primed says kills cannot roll right now',
+        prLines:match('kills cannot roll right now') ~= nil, true);
+    check('NT07j ...because you saw it up',           prLines:match('saw it alive') ~= nil, true);
+    local hedgeLines = table.concat(TR.lines(dead[KEY], BON, NOW + 7200), '\n');
+    check('NT07k the uncertain window is said out loud, not counted as clear',
+        hedgeLines:match('may not have rolled') ~= nil, true);
+
+    -- A kill that cannot roll is not sold back as progress.
+    local wasted = TR.reduce(dead, killAt(354, 'Buffalo', NOW + 60), ctxAt(5, NOW + 60));
+    check('NT08a a kill inside the cooldown does not raise the count', wasted[KEY].kills, 0);
+    check('NT08b ...it is tallied as wasted effort',                   wasted[KEY].void, 1);
+    check('NT08c ...and it does not re-vouch for the count',           wasted[KEY].at, NOW);
+    local wastedLines = table.concat(TR.lines(wasted[KEY], BON, NOW + 60), '\n');
+    check('NT08d ...which the readout says',
+        wastedLines:match('landed while nothing could roll') ~= nil, true);
+    local primedKill = TR.reduce(alive, killAt(354, 'Buffalo', NOW + 60), ctxAt(5, NOW + 60));
+    check('NT08e a kill while it is primed does not count either', primedKill[KEY].kills, 0);
+    check('NT08f ...and is wasted effort too',                     primedKill[KEY].void, 1);
+    -- Once the certain part of the cooldown is behind us, kills count again.
+    local after = TR.reduce(dead, killAt(354, 'Buffalo', NOW + 7200), ctxAt(5, NOW + 7200));
+    check('NT08g past the shortest cooldown a kill counts again', after[KEY].kills, 1);
+
+    -- ---- a break in observation makes it stale ----------------------------
+    local zoned = TR.reduce(sixty, { kind = 'zone', at = NOW + 10 }, ctxAt(5, NOW + 10));
+    check('NT09a zoning marks the record stale',      zoned[KEY].stale, true);
+    check('NT09b ...saying which break it was',       zoned[KEY].why, 'zone');
+    check('NT09c ...and the raw count SURVIVES',      zoned[KEY].kills, 60);
+    local relogged = TR.reduce(sixty, { kind = 'relog', at = NOW + 10 }, ctxAt(5, NOW + 10));
+    check('NT09d a relog marks it stale',             relogged[KEY].stale, true);
+    check('NT09e ...with its own reason',             relogged[KEY].why, 'relog');
+    check('NT09f ...and keeps the count',             relogged[KEY].kills, 60);
+    -- Age: past the NM's OWN ceiling (its longest repop window), nobody can
+    -- vouch for the count -- the camp may have popped and re-armed without you.
+    local old = TR.reduce(sixty, { kind = 'tick', at = NOW + 86401 }, ctxAt(5, NOW + 86401));
+    check('NT09g age past the cooldown ceiling marks it stale', old[KEY].stale, true);
+    check('NT09h ...for that reason',                           old[KEY].why, 'age');
+    local young = TR.reduce(sixty, { kind = 'tick', at = NOW + 3600 }, ctxAt(5, NOW + 3600));
+    check('NT09i ...but a fresh count is left alone',           young[KEY].stale, nil);
+    -- Staleness is STICKY: a later kill still counts, but nothing re-vouches
+    -- for the break -- only pop evidence (which zeroes it) or an explicit reset.
+    local after2 = TR.reduce(zoned, killAt(354, 'Buffalo', NOW + 20), ctxAt(5, NOW + 20));
+    check('NT09j a kill after the break still raises the raw count', after2[KEY].kills, 61);
+    check('NT09k ...and does NOT un-stale the record',               after2[KEY].stale, true);
+    check('NT09l pop evidence is what clears it',
+        TR.reduce(zoned, killAt(360, 'Bonnacon', NOW + 30), ctxAt(5, NOW + 30))[KEY].stale, nil);
+
+    -- ---- THE PROPERTY: a stale record renders NO percentage ---------------
+    local staleSt = TR.status(zoned[KEY], BON, NOW + 10);
+    check('NT10a a stale record has no chance at all -- not a hedged one',
+        staleSt.chance, nil);
+    check('NT10b ...while the raw count is still there',   staleSt.kills, 60);
+    check('NT10c ...and it says it is stale',              staleSt.stale, true);
+    local staleLines = table.concat(TR.lines(zoned[KEY], BON, NOW + 600), '\n');
+    check('NT10d the rendered lines carry no percentage sign at all',
+        staleLines:find('%%') == nil, true);
+    check('NT10e ...they say STALE',                       staleLines:match('STALE') ~= nil, true);
+    check('NT10f ...name the break',                       staleLines:match('you left the zone') ~= nil, true);
+    check('NT10g ...show the raw count',                   staleLines:match('60 placeholder kills') ~= nil, true);
+    check('NT10h ...and when it was last vouched for',     staleLines:match('last vouched for 10m ago') ~= nil, true);
+    check('NT10i ...and why the number cannot be trusted',
+        staleLines:match('may have popped while you were not watching') ~= nil, true);
+    -- The same, for every break: none of them may render a number.
+    for _, br in ipairs({ zoned, relogged, old }) do
+        check('NT10j no break renders a percentage',
+            table.concat(TR.lines(br[KEY], BON, NOW + 86500), '\n'):find('%%') == nil, true);
+    end
+
+    -- ---- the death line ---------------------------------------------------
+    check('NT11a the standard death line names what died',
+        TR.deathName('The Buffalo falls to the ground.'), 'Buffalo');
+    check('NT11b ...and a party member\'s kill does too',
+        TR.deathName('Mindie defeats the Buffalo.'), 'Buffalo');
+    check('NT11c ...for a name the message carries bare',
+        TR.deathName('Mindie defeats Bonnacon.'), 'Bonnacon');
+    check('NT11d the client\'s colour bytes do not stick to the name',
+        TR.deathName('\30\1The Buffalo falls to the ground.\7'), 'Buffalo');
+    check('NT11e an ordinary line is not a death',
+        TR.deathName('Mindie casts Cure on Mindie.'), nil);
+    check('NT11f a non-string is not a death',        TR.deathName(nil), nil);
+
+    -- ---- the live feed: engage edge x death line --------------------------
+    local ZONE, saves = 5, 0;
+    local reads = {
+        now  = function() return NOW; end,
+        zone = function() return ZONE; end,
+        data = function() return DATA; end,
+        save = function() saves = saves + 1; return true; end,
+    };
+    TR.reset(); TR.state = {};
+    TR.onEdge({ index = 354, name = 'Buffalo' }, NOW);
+    TR.onDeathLine('The Buffalo falls to the ground.', NOW);
+    TR.pump(reads);
+    check('NT12a an engaged placeholder that dies is counted',
+        TR.state[KEY] and TR.state[KEY].kills, 1);
+    check('NT12b ...and the count is written',        saves > 0, true);
+    -- One engagement can credit at most one kill: a second death line with
+    -- nothing engaged cannot borrow the last target.
+    TR.onDeathLine('The Buffalo falls to the ground.', NOW);
+    TR.pump(reads);
+    check('NT12c a death with nothing engaged credits nothing', TR.state[KEY].kills, 1);
+    -- The headline rule again, this time through the whole feed.
+    TR.onEdge({ index = 26, name = 'Buffalo' }, NOW);
+    TR.onDeathLine('The Buffalo falls to the ground.', NOW);
+    TR.pump(reads);
+    check('NT12d killing a same-named NON-placeholder counts nothing',
+        TR.state[KEY].kills, 1);
+    -- AUTO-TARGET ORDERING, and it is not a detail: the client rolls onto the
+    -- next mob the moment the last one dies, so the ring holds BOTH by the time
+    -- the death line renders. The kill belongs to the one engaged FIRST.
+    TR.reset(); TR.state = {};
+    TR.onEdge({ index = 354, name = 'Buffalo' }, NOW);   -- the one you fought
+    TR.onEdge({ index = 26,  name = 'Buffalo' }, NOW);   -- auto-target's next pick, alive
+    TR.onDeathLine('The Buffalo falls to the ground.', NOW);
+    TR.pump(reads);
+    check('NT12g the kill goes to the mob engaged first, not the one now facing you',
+        TR.state[KEY] and TR.state[KEY].kills, 1);
+    -- ...and the other way round, which is the over-count this prevents: the
+    -- ordinary Buffalo died, the placeholder auto-target rolled onto is alive.
+    TR.reset(); TR.state = {};
+    TR.onEdge({ index = 26,  name = 'Buffalo' }, NOW);
+    TR.onEdge({ index = 354, name = 'Buffalo' }, NOW);
+    TR.onDeathLine('The Buffalo falls to the ground.', NOW);
+    TR.pump(reads);
+    check('NT12h ...so a placeholder still standing is never credited',
+        TR.state[KEY], nil);
+
+    -- The NM itself, through the feed: engaged (alive) then dead.
+    TR.state = {};
+    TR.onEdge({ index = 354, name = 'Buffalo' }, NOW);
+    TR.onDeathLine('The Buffalo falls to the ground.', NOW);
+    TR.pump(reads);
+    check('NT12i a count exists before the NM is seen', TR.state[KEY].kills, 1);
+    TR.onEdge({ index = 360, name = 'Bonnacon' }, NOW);
+    TR.onDeathLine('The Bonnacon falls to the ground.', NOW);
+    TR.pump(reads);
+    check('NT12e killing the NM resets the count',    TR.state[KEY].kills, 0);
+    check('NT12f ...and starts its cooldown',         TR.state[KEY].saw, 'dead');
+    -- Zoning, through the pump: only a change between two KNOWN zones counts.
+    TR.reset(); TR.state = {};
+    TR.onEdge({ index = 354, name = 'Buffalo' }, NOW);
+    TR.onDeathLine('The Buffalo falls to the ground.', NOW);
+    TR.pump(reads);
+    check('NT13a a count exists before the zone',     TR.state[KEY].kills, 1);
+    ZONE = nil; TR.pump(reads);
+    check('NT13b a zone we cannot read is not a zone change', TR.state[KEY].stale, nil);
+    ZONE = 6; TR.pump(reads);
+    check('NT13c zoning out marks it stale',          TR.state[KEY].stale, true);
+    check('NT13d ...for the right reason',            TR.state[KEY].why, 'zone');
+    ZONE = 5;
+
+    -- ---- persistence: per character, across a reload and a relog ----------
+    local TMP = 'tests' .. string.char(92) .. 'nt_nmcounts.lua';
+    TR.path = function() return TMP; end;
+    TR._loadedFrom = nil;
+    TR.state = { [KEY] = { zone = 5, nm = 'Bonnacon', kills = 14, void = 2, ph = 6,
+                           at = NOW, since = NOW - 900, saw = 'dead', sawAt = NOW - 100 } };
+    check('NT14a the count is written',               TR.save(), true);
+    -- A reload/relog is a fresh module with an empty memory.
+    TR.state = {}; TR._loadedFrom = nil;
+    TR.load();
+    check('NT14b the count survives the reload',      TR.state[KEY] and TR.state[KEY].kills, 14);
+    check('NT14c ...with its wasted-kill tally',      TR.state[KEY].void, 2);
+    check('NT14d ...its placeholder count',           TR.state[KEY].ph, 6);
+    check('NT14e ...and what it last saw',            TR.state[KEY].saw, 'dead');
+    -- ...and it comes back STALE, because dlac was not watching in between.
+    check('NT14f everything read off disk is stale',  TR.state[KEY].stale, true);
+    check('NT14g ...as a relog/reload',               TR.state[KEY].why, 'relog');
+    check('NT14h ...so it renders no percentage',
+        TR.status(TR.state[KEY], BON, NOW).chance, nil);
+    -- A junk row is dropped rather than half-read.
+    (function()
+        local f = io.open(TMP, 'w');
+        f:write('return { fmt = 1, camps = { { zone = 5 }, { nm = "Bonnacon", zone = 5, kills = 3 } } }\n');
+        f:close();
+    end)();
+    TR.state = {}; TR._loadedFrom = nil;
+    TR.load();
+    check('NT14i a row with no NM name is dropped',
+        (function() local n = 0; for _ in pairs(TR.state) do n = n + 1; end; return n; end)(), 1);
+    check('NT14j ...and the good one survives',       TR.state[KEY].kills, 3);
+    -- The login window: the file path is unreadable for the first moments after
+    -- a character loads, so a kill witnessed before the first successful read
+    -- must not be thrown away by it.
+    TR.state = { [KEY] = { zone = 5, nm = 'Bonnacon', kills = 1, void = 0, ph = 6,
+                           at = NOW, since = NOW } };
+    TR._loadedFrom = nil;
+    TR.load();
+    check('NT14k a kill witnessed before the first read is not lost to it',
+        TR.state[KEY].kills, 1);
+    check('NT14l ...and is not marked stale by the read either',
+        TR.state[KEY].stale, nil);
+    os.remove(TMP);
+    TR.path = function() return nil; end;
+
+    -- ---- the readout, end to end through the real command handler ---------
+    local function joined() return table.concat(out, '\n'); end
+    local function run(cmd)
+        out = {};
+        local e = { command = cmd, blocked = false };
+        handler(e);
+        return e, joined();
+    end
+    NM.zoneReader = function() return 5; end;
+    local realBon = select(1, NM.matchInZone(5, 'Bonnacon'));
+    check('NT15a the shipped table still carries the worked example',
+        realBon ~= nil and realBon.n, 'Bonnacon');
+    local realKey = TR.campKey(5, realBon);
+
+    TR.state = {};
+    local _, t0 = run('/dl nm bonnacon');
+    check('NT15b with no count, the command says so',
+        t0:match('no count here yet') ~= nil, true);
+    check('NT15c ...and says there is nothing to arm',
+        t0:match('nothing to arm') ~= nil, true);
+    check('NT15d ...while the curve itself is untouched',
+        t0:match('40 rounds is a guaranteed pop') ~= nil, true);
+
+    TR.state = { [realKey] = { zone = 5, nm = 'Bonnacon', kills = 60, void = 0, ph = 6,
+                               at = os.time(), since = os.time() } };
+    local _, t1 = run('/dl nm bonnacon');
+    check('NT16a the count reaches the readout',      t1:match('your count: 60 placeholder kills') ~= nil, true);
+    check('NT16b ...as rounds',                       t1:match('= 10 rounds') ~= nil, true);
+    check('NT16c ...with the CURRENT chance, not the base',
+        t1:match('6%.6%% now') ~= nil, true);
+    check('NT16d ...and the base is still stated as the base',
+        t1:match('5%% base') ~= nil, true);
+    check('NT16e ...with the rounds left to a guaranteed pop',
+        t1:match('30 rounds %(180 kills%) to a guaranteed pop') ~= nil, true);
+    check('NT16f ...labelled a floor',                t1:match('FLOOR') ~= nil, true);
+
+    TR.state[realKey].stale = true; TR.state[realKey].why = 'zone';
+    local _, t2 = run('/dl nm bonnacon');
+    check('NT17a a stale count says STALE',           t2:match('STALE') ~= nil, true);
+    check('NT17b ...and renders no current chance',   t2:match('%% now') == nil, true);
+    check('NT17c ...while still showing the raw count', t2:match('60 placeholder kills') ~= nil, true);
+    check('NT17d ...and the mechanic is still explained',
+        t2:match('40 rounds is a guaranteed pop') ~= nil, true);
+
+    -- The camp list: which counts do I hold, and can I trust them?
+    local _, t3 = run('/dl nm counts');
+    check('NT18a the list names the camp',            t3:match('Bonnacon') ~= nil, true);
+    check('NT18b ...and its zone',                    t3:match('Uleguerand Range') ~= nil, true);
+    check('NT18c ...marks the stale one',             t3:match('STALE') ~= nil, true);
+    check('NT18d ...and calls every count a floor',   t3:match('floor') ~= nil, true);
+    check('NT18e the list is not hunted for as an NM name',
+        t3:match('closest match') == nil, true);
+
+    -- Reset: the one manual door, because staleness is sticky by design.
+    local _, t4 = run('/dl nm bonnacon reset');
+    check('NT19a reset says the count is cleared',    t4:match('count cleared') ~= nil, true);
+    check('NT19b ...and the count is gone',           TR.state[realKey], nil);
+    check('NT19c ...leaving the camp with a clean slate',
+        t4:match('no count here yet') ~= nil, true);
+    local _, t5 = run('/dl nm bonnacon reset');
+    check('NT19d resetting nothing says so, rather than pretending',
+        t5:match('no count to clear') ~= nil, true);
+    local _, t6 = run('/dl nm reset');
+    check('NT19e reset with no NM named is answered, not dropped',
+        t6:match('nothing to reset') ~= nil, true);
+    check('NT19f ...and is not hunted for as an NM called "reset"',
+        t6:match('closest match') == nil, true);
+    local _, t7 = run('/dl nm counts');
+    check('NT19g an empty tracker says it is empty',  t7:match('no NM counts yet') ~= nil, true);
+    -- ...and says which half it has seen, so "nothing is counting" and "the
+    -- death line is worded differently on this server" cannot look identical
+    -- in the field (hard rule 12). Both halves are needed for a kill to count.
+    check('NT19h ...and reports what the feed has seen',
+        t7:match('seen so far') ~= nil, true);
+    check('NT19i ...naming the last engaged target and its index',
+        t7:match('last engaged: "Buffalo" index 354') ~= nil, true);
+    check('NT19j ...and the last death line it recognised',
+        t7:match('last death line: "Buffalo"') ~= nil, true);
+    TR.reset();
+    local _, t7b = run('/dl nm counts');
+    check('NT19k a feed that has seen nothing says exactly that',
+        t7b:match('last engaged: nothing yet; last death line: nothing yet') ~= nil, true);
+
+    -- A scripted NM has no rounds to be part-way through, so it gets no
+    -- tracking lines at all -- the same rule that keeps the curve off it.
+    NM.zoneReader = function() return 176; end;
+    local _, t8 = run('/dl nm Charybdis');
+    check('NT20a a scripted NM shows no count invitation',
+        t8:match('no count here yet') == nil, true);
+    check('NT20b ...and no floor caveat for a number it will never have',
+        t8:match('FLOOR') == nil, true);
+    NM.zoneReader = function() return 5; end;
+
+    package.loaded['dlac\\chatfmt'] = savedChat;
+end)();
+
 -- The warm-note artifact the dispatch-driving sections leave behind (dataDir
 -- stubbed 'tests\'): on Windows a real tests\debug\mpwarm.txt (gitignored via
 -- debug/), under WSL ONE backslash-bearing filename that drvfs PUA-mangles on
