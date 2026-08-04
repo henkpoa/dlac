@@ -180,6 +180,7 @@ return {
     panel  = function(ctx) end,        -- REQUIRED. render your Panel
     status = function(ctx) end,        -- optional. one short line beside the Panel title
     window = function(ctx) end,        -- optional. a floating window (§2.8)
+    open   = function(S) end,          -- optional. "open this helper" (§2.9)
 };
 ```
 
@@ -220,6 +221,11 @@ so a player can always tell "installed but dormant" from "not installed".
 
 A module declaring several jobs appears under **each** of them: same row, same pill, one shared
 switch state.
+
+**The sub-job switch is the framework's, not yours.** The floating quick menu lists the current
+main job's helpers and — for helpers whose *Sub job* switch is on (Panel header, default **on**)
+— the current sub job's too. That switch gates **menu visibility only**; the activity predicate
+stays main-job, matching the approved envelope. Declare nothing for it.
 
 ### 2.4 `init(S)` — arm your standing behaviors
 
@@ -359,6 +365,21 @@ may OPEN a floating window; exactly one place may DRAW it"*):
   session-silenced window as the bug report it is.
 - **One window per module.** A module that wants a second window wants a design conversation
   first (the icon-tray precedent: two little boxes doing the same kind of job became one).
+
+### 2.9 `open(S)` — what "open this helper" means for your module
+
+Optional (added 2026-08-04). The floating quick menu carries a **Job helpers** cascade for the
+player's current main/sub jobs; choosing a helper calls its `open` hook. Declare it when your
+module has its own surface to present — Bludex opens its floating window:
+
+```lua
+open = function(S) myWindowOpen = true; end,
+```
+
+Without the hook, the framework's fallback is the **Panel jump**: your Panel is selected on the
+Job Helpers tab and the main window opens there (the `openAutomation` shape). A deliberate menu
+pick is like a named action (§2.7): it is not gated on your rule switches, only on the pill —
+a silenced helper is not offered in the menu at all.
 
 ---
 

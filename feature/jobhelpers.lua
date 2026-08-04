@@ -20,6 +20,9 @@
             window = function(ctx) end,       -- optional; a floating window, drawn
                                               -- at gearui's float site (self-gated;
                                               -- ADR 0028 amendment 2026-08-04)
+            open   = function(S) end,         -- optional; "open this helper" (the
+                                              -- quick menu's verb -- Bludex pops
+                                              -- its window; omitted = Panel jump)
         }
 
     `S` (feature\modapi) is the SUPPORTED surface -- identity, the one clock, the
@@ -143,6 +146,19 @@ function M._serialize(cfg)
         end
     end
     out[#out + 1] = '    },\n';
+    -- subjob = { [id] = false } -- the quick-menu sub-job switch. Default is
+    -- TRUE (include sub-job helpers), so ONLY an explicit opt-out is stored
+    -- and a player who never touches the switch never grows the file.
+    local sids = {};
+    for id in pairs(type(cfg.subjob) == 'table' and cfg.subjob or {}) do sids[#sids + 1] = id; end
+    table.sort(sids);
+    out[#out + 1] = '    subjob = {\n';
+    for _, id in ipairs(sids) do
+        if cfg.subjob[id] == false then
+            out[#out + 1] = string.format('        [%q] = false,\n', tostring(id));
+        end
+    end
+    out[#out + 1] = '    },\n';
     -- rank = { [JOB] = <anchor row name> } -- the JobHelper Claim Priority
     -- position, per job (issue #138). Written on mutation only, like `order`.
     local rjobs = {};
@@ -163,8 +179,13 @@ end
 -- Normalize a table read off disk into the live shape, tolerating a torn or
 -- older file (drop-on-corrupt / self-heal, the watcher-statefile policy).
 local function normalizeCfg(t)
-    local cfg = { fmt = 1, enabled = {}, order = {}, rank = {} };
+    local cfg = { fmt = 1, enabled = {}, order = {}, rank = {}, subjob = {} };
     if type(t) ~= 'table' then return cfg; end
+    if type(t.subjob) == 'table' then
+        for id, v in pairs(t.subjob) do
+            if type(id) == 'string' and v == false then cfg.subjob[id] = false; end
+        end
+    end
     if type(t.rank) == 'table' then
         for job, anchor in pairs(t.rank) do
             if type(job) == 'string' and type(anchor) == 'string' and anchor ~= '' then
@@ -230,6 +251,32 @@ function M.isEnabled(id)
     local v = cfg.enabled[id];
     if v == nil then return true; end
     return v;
+end
+
+-- Does this helper also count while its job is the SUB job? Gates the QUICK
+-- MENU listing only -- the acting predicate stays main-job (the approved
+-- envelope). Default TRUE: include sub-job helpers unless the player opts
+-- this one out.
+function M.subjobApplicable(id)
+    local cfg = loadCfg();
+    if cfg == nil then return true; end          -- pre-login: default for display
+    return cfg.subjob[id] ~= false;
+end
+
+-- Flip the sub-job switch. Mutation only: TRUE is the default, so it is
+-- stored as the ABSENCE of an entry (the rank-anchor precedent).
+function M.setSubjobApplicable(id, on)
+    if type(id) ~= 'string' then return false; end
+    local cfg = loadCfg();
+    if cfg == nil then return false; end         -- pre-login: nothing to write to
+    local want = (on == true);
+    if want and cfg.subjob[id] == nil then return true; end     -- already default
+    if (not want) and cfg.subjob[id] == false then return true; end  -- no change
+    -- explicit branches: `want and nil or false` is the and/or trap (nil
+    -- collapses to the or arm) and stored false when clearing was meant
+    if want then cfg.subjob[id] = nil; else cfg.subjob[id] = false; end
+    saveCfg();
+    return true;
 end
 
 -- Flip / set the pill (the row master switch). Writes on mutation only.
@@ -371,6 +418,42 @@ function M.moveRankRow(placedOrder, job, dir)
 end
 
 -- ---------------------------------------------------------------------------
+-- the one live job read
+-- ---------------------------------------------------------------------------
+--
+-- MEMORY MANAGER FIRST -- gData is LAC's global and this addon state does not
+-- carry it (field 2026-08-04: every gData consumer here degraded to
+-- permissive-unknown so its absence was invisible, until the quick-menu
+-- cascade -- the one consumer where unknown must list NOTHING -- silently
+-- never appeared). gData stays as the fallback. Returns abbreviations or nil.
+
+-- numeric job id -> abbreviation (the client's own ordering -- BLU = 16 is
+-- the same constant lib-level consumers compare against).
+local JOB_ABBR = {
+    [1] = 'WAR', [2] = 'MNK', [3] = 'WHM', [4] = 'BLM', [5] = 'RDM', [6] = 'THF',
+    [7] = 'PLD', [8] = 'DRK', [9] = 'BST', [10] = 'BRD', [11] = 'RNG', [12] = 'SAM',
+    [13] = 'NIN', [14] = 'DRG', [15] = 'SMN', [16] = 'BLU', [17] = 'COR', [18] = 'PUP',
+    [19] = 'DNC', [20] = 'SCH', [21] = 'GEO', [22] = 'RUN',
+};
+
+local function liveJobs()
+    local mj, sj = nil, nil;
+    pcall(function()
+        local p = AshitaCore:GetMemoryManager():GetPlayer();
+        mj = JOB_ABBR[p:GetMainJob()];
+        sj = JOB_ABBR[p:GetSubJob()];
+    end);
+    if mj == nil then
+        pcall(function()
+            local p = gData.GetPlayer();
+            mj = mj or p.MainJob;
+            sj = sj or p.SubJob;
+        end);
+    end
+    return mj, sj;
+end
+
+-- ---------------------------------------------------------------------------
 -- the module-activity predicate (future features consult this too)
 -- ---------------------------------------------------------------------------
 --
@@ -420,10 +503,11 @@ end
 -- M.liveReads for tests; the tab passes the module's pill state in.
 function M.liveReads(id)
     local reads = { enabled = M.isEnabled(id) };
+    reads.mainJob = (liveJobs());
     pcall(function()
         local p = gData and gData.GetPlayer and gData.GetPlayer() or nil;
         if type(p) == 'table' then
-            reads.mainJob = p.MainJob;
+            reads.mainJob = reads.mainJob or p.MainJob;
             reads.dead    = (p.Status == 'Dead');
             if p.Status == 'Zoning' then reads.zoning = true; end
         end
@@ -472,6 +556,7 @@ function M._validate(id, mod)
     if mod.init ~= nil and type(mod.init) ~= 'function' then return nil, 'init is not a function'; end
     if mod.status ~= nil and type(mod.status) ~= 'function' then return nil, 'status is not a function'; end
     if mod.window ~= nil and type(mod.window) ~= 'function' then return nil, 'window is not a function'; end
+    if mod.open ~= nil and type(mod.open) ~= 'function' then return nil, 'open is not a function'; end
     -- The optional `config` block (api 2): the module declares its keys and their
     -- types, the framework owns the file format. Refused LOUDLY on a bad shape
     -- rather than silently dropping writes -- a settings declaration that does not
@@ -795,8 +880,7 @@ end
 function M.sectionOrder(id)
     local order = 1;
     pcall(function()
-        local job = nil;
-        pcall(function() job = gData.GetPlayer().MainJob; end);
+        local job = (liveJobs());
         if type(job) ~= 'string' or job == '' or job == '?' then return; end
         local ids = M.idsForJob(job);
         for i, n in ipairs(ids) do
@@ -804,6 +888,52 @@ function M.sectionOrder(id)
         end
     end);
     return order;
+end
+
+-- The quick-menu listing: this character's helpers for the CURRENT main job
+-- first, then the sub job's -- for helpers whose sub-job switch is on (the
+-- framework's per-helper setting, default include). PURE core: jobs and the
+-- two per-id reads are injected so the suite drives every case with no
+-- player. Entries: { id, label, via = 'main'|'sub', job }. A silenced module
+-- (pill off) is not listed -- a menu row that opened a helper whose window
+-- the pill gate then refuses to draw would be a field mystery.
+function M.menuEntriesCore(mainJob, subJob, subFlagOf, enabledOf)
+    subFlagOf = subFlagOf or function() return true; end
+    enabledOf = enabledOf or function() return true; end
+    local out, seen = {}, {};
+    local function collect(job, via)
+        if type(job) ~= 'string' or job == '' or job == '?' then return; end
+        for _, id in ipairs(M.idsForJob(job)) do
+            local rec = M.record(id);
+            if rec ~= nil and not seen[id] and enabledOf(id) == true
+                and (via == 'main' or subFlagOf(id) == true) then
+                seen[id] = true;
+                out[#out + 1] = { id = id, label = rec.label, via = via, job = job };
+            end
+        end
+    end
+    collect(mainJob, 'main');
+    if subJob ~= mainJob then collect(subJob, 'sub'); end
+    return out;
+end
+
+-- The live flavor: current jobs from the one job read, the real switches.
+function M.menuEntries()
+    local mj, sj = liveJobs();
+    return M.menuEntriesCore(mj, sj, M.subjobApplicable, M.isEnabled);
+end
+
+-- Open one helper from anywhere (the quick menu's verb): the module's own
+-- `open` hook when it declared one (Bludex pops its window). Returns true
+-- when a hook ran; false = the caller falls back to the Panel jump.
+function M.openHelper(id)
+    local rec = M.record(id);
+    if rec == nil then return false; end
+    if type(rec.mod.open) == 'function' then
+        pcall(rec.mod.open, rec.S);
+        return true;
+    end
+    return false;
 end
 
 -- The module ids declaring `job`, in this character's remembered section order.
@@ -852,9 +982,7 @@ end
 function M.onItsJob(id, job)
     local rec = M.record(id);
     if rec == nil then return false; end
-    if job == nil then
-        pcall(function() job = gData.GetPlayer().MainJob; end);
-    end
+    if job == nil then job = (liveJobs()); end
     if type(job) ~= 'string' or job == '' or job == '?' then return true; end
     for _, j in ipairs(rec.jobs) do
         if j == job then return true; end
@@ -928,8 +1056,7 @@ end
 -- What this character's modules want bound right now.
 function M.bindEntries()
     local out = {};
-    local job = nil;
-    pcall(function() job = gData.GetPlayer().MainJob; end);
+    local job = (liveJobs());
     for _, rec in ipairs(M.modules) do
         if M.isEnabled(rec.id) and M.onItsJob(rec.id, job) and rec.cfg ~= nil then
             for _, action in ipairs(M.actionNames(rec.id)) do

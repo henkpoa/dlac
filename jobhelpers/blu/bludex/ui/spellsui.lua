@@ -301,10 +301,11 @@ end
 -- list rows and the Spell Info window
 -- ---------------------------------------------------------------------------
 
--- One list row: icon (unless showIcon is false) + the spell name as a
--- Selectable. Returns (leftClicked, rightClicked). In-set spells draw
--- green; unlearned dim (while on BLU); in-set wins.
-function M.listRow(ctx, id, iconSz, nameW, selected, showIcon)
+-- One list row: icon (unless showIcon is false) + a Selectable label.
+-- Returns (leftClicked, rightClicked). In-set spells draw green; unlearned
+-- draw opts.dimColor (default dim) while on BLU; in-set wins. opts.label
+-- overrides the row text (the traits tab composes weight/level into it).
+function M.listRow(ctx, id, iconSz, nameW, selected, showIcon, opts)
     local im, book = ctx.im, ctx.book;
     local s = book.spells[id];
     local pushed = pushId(im, 'bdxrow' .. id);
@@ -314,6 +315,8 @@ function M.listRow(ctx, id, iconSz, nameW, selected, showIcon)
         popId(im, pushed);
         return clicked, false;
     end
+    local label = (opts and opts.label) or s.name;
+    local dimColor = (opts and opts.dimColor) or kit.COL.dim;
     local dim = ctx.blu.onBlu() and not book.learned(id) or false;
     local inSet = ctx.sets.contains(ctx.state.editingSet, id) ~= nil;
     local selH = iconSz;
@@ -334,19 +337,19 @@ function M.listRow(ctx, id, iconSz, nameW, selected, showIcon)
             end
         end
     end
-    local textCol = inSet and kit.COL.ok or (dim and kit.COL.dim or nil);
+    local textCol = inSet and kit.COL.ok or (dim and dimColor or nil);
     if kit.isFn(im, 'Selectable') then
         local pushedCol = false;
         if textCol and kit.isFn(im, 'PushStyleColor') and kit.isFn(im, 'PopStyleColor') then
             im.PushStyleColor(0, textCol);                     -- Text
             pushedCol = true;
         end
-        local ok, r = pcall(im.Selectable, kit.esc(s.name), selected, 0, { nameW, selH });
-        if not ok then ok, r = pcall(im.Selectable, kit.esc(s.name), selected); end
+        local ok, r = pcall(im.Selectable, kit.esc(label), selected, 0, { nameW, selH });
+        if not ok then ok, r = pcall(im.Selectable, kit.esc(label), selected); end
         if pushedCol then im.PopStyleColor(1); end
         clicked = ok and r or false;
     else
-        clicked = kit.litButton(im, s.name, selected, nameW, selH);
+        clicked = kit.litButton(im, label, selected, nameW, selH);
     end
     if kit.isFn(im, 'IsItemClicked') then
         local okc, rc = pcall(im.IsItemClicked, 1);            -- right button
@@ -354,6 +357,31 @@ function M.listRow(ctx, id, iconSz, nameW, selected, showIcon)
     end
     popId(im, pushed);
     return clicked, rclicked;
+end
+
+-- The View density combo, shared by the codex and traits tabs: reads and
+-- persists ctx.cfg[cfgKey] ('big' | 'normal' | 'compact'); returns the key.
+function M.densityCombo(ctx, cfgKey)
+    local im = ctx.im;
+    local density = ctx.cfg[cfgKey] or 'normal';
+    local dChoices = { 'Big (64px icons)', 'Compact (no icons)' };
+    local dToKey = { ['Big (64px icons)'] = 'big', ['Compact (no icons)'] = 'compact' };
+    local dFromKey = { big = dChoices[1], compact = dChoices[2] };
+    local w = kit.measure(im, { dChoices[1], dChoices[2], 'Normal' }, 96) + 24;
+    local dstate = { value = dFromKey[density] };
+    if kit.combo(im, '##bdxview_' .. cfgKey, dstate, dChoices, 'Normal', w) then
+        density = dstate.value and dToKey[dstate.value] or 'normal';
+        ctx.cfg[cfgKey] = density;
+        if ctx.save then ctx.save(); end
+    end
+    return density;
+end
+
+-- density key -> (iconSz, showIcon) for list rows
+function M.densityParams(density)
+    if density == 'big' then return 64, true; end
+    if density == 'compact' then return 18, false; end
+    return 24, true;
 end
 
 -- The Spell Info window: opened by clicking a row, closable via the title
@@ -475,16 +503,7 @@ function M.render(ctx)
     if kit.isFn(im, 'SameLine') then im.SameLine(); end
     kit.ctext(im, kit.COL.dim, '  View:');
     if kit.isFn(im, 'SameLine') then im.SameLine(); end
-    local density = ctx.cfg.codexDensity or 'normal';
-    local dChoices = { 'Big (64px icons)', 'Compact (no icons)' };
-    local dToKey = { ['Big (64px icons)'] = 'big', ['Compact (no icons)'] = 'compact' };
-    local dFromKey = { big = dChoices[1], compact = dChoices[2] };
-    local dstate = { value = dFromKey[density] };
-    if kit.combo(im, '##bdxview', dstate, dChoices, 'Normal', comboW(dChoices, 'Normal')) then
-        density = dstate.value and dToKey[dstate.value] or 'normal';
-        ctx.cfg.codexDensity = density;
-        if ctx.save then ctx.save(); end
-    end
+    local density = M.densityCombo(ctx, 'codexDensity');
     if st.addNote then
         if kit.isFn(im, 'SameLine') then im.SameLine(); end
         kit.ctext(im, kit.COL.dim, '   ' .. st.addNote);
@@ -494,12 +513,10 @@ function M.render(ctx)
     -- big = 64px icons in 1-2 columns, normal = 24px in up to 3,
     -- compact = text only in up to 5
     local availW = availWidth(im, 800);
-    local iconSz, targetW, maxCols, showIcon = 24, 250, 3, true;
-    if density == 'big' then
-        iconSz, targetW, maxCols = 64, 340, 2;
-    elseif density == 'compact' then
-        iconSz, targetW, maxCols, showIcon = 18, 180, 5, false;
-    end
+    local iconSz, showIcon = M.densityParams(density);
+    local targetW, maxCols = 250, 3;
+    if density == 'big' then targetW, maxCols = 340, 2;
+    elseif density == 'compact' then targetW, maxCols = 180, 5; end
     local cols = math.max(1, math.min(maxCols, math.floor(availW / targetW)));
     local colW = math.floor((availW - 16) / cols);   -- -16: scrollbar margin
     local nameW = math.max(colW - (showIcon and iconSz or 0) - 28, 80);
@@ -521,9 +538,25 @@ function M.render(ctx)
     end
 
     local function rows()
+        local rowTop = nil;
         for i, id in ipairs(ids) do
             local col = (i - 1) % cols;
-            if col ~= 0 and kit.isFn(im, 'SameLine') then im.SameLine(col * colW + 8); end
+            if col == 0 then
+                rowTop = nil;
+                if kit.isFn(im, 'GetCursorPosY') then
+                    local oky, cy = pcall(im.GetCursorPosY);
+                    if oky and type(cy) == 'number' then rowTop = cy; end
+                end
+            elseif kit.isFn(im, 'SameLine') then
+                im.SameLine(col * colW + 8);
+                -- anchor every column to the ROW top: the previous item was
+                -- the vertically-centered NAME (cursor moved down half the
+                -- icon height), and SameLine anchors to ITS line -- which
+                -- staggered the columns by 22px in the Big view (field).
+                if rowTop ~= nil and kit.isFn(im, 'SetCursorPosY') then
+                    pcall(im.SetCursorPosY, rowTop);
+                end
+            end
             local lclick, rclick = M.listRow(ctx, id, iconSz, nameW, st.selectedId == id, showIcon);
             if lclick then
                 st.selectedId = id;
@@ -569,10 +602,8 @@ function M.render(ctx)
     else
         rows();
     end
-
-    if ctx.embedded ~= true then
-        M.detailWindow(ctx);
-    end
+    -- (the Spell Info window itself draws in host.renderBody now -- traits
+    -- rows open it too, so it serves every tab)
 end
 
 return M;
