@@ -12,6 +12,7 @@ local ROOT = (...):sub(1, -#('ui\\setsui') - 1);     -- relocatable require base
 local kit      = require(ROOT .. 'ui\\kit');
 local filetex  = require(ROOT .. 'ui\\filetex');
 local spellsui = require(ROOT .. 'ui\\spellsui');
+local blusetsimport = require(ROOT .. 'lib\\blusetsimport');
 
 local M = {};
 
@@ -136,6 +137,17 @@ local function savedList(ctx)
             st.applyNote = 'Deleted.';
         end
     end
+
+    -- one-way pull from the blusets addon's saved lists; existing bludex
+    -- names are skipped, never overwritten -- safe to click repeatedly
+    if kit.litButton(im, 'Import blusets', false, LEFT_W - 20, 20) then
+        local res = blusetsimport.importAll(cfg, ctx.book);
+        if #res.imported > 0 and ctx.save then ctx.save(); end
+        st.applyNote = blusetsimport.describe(res);
+    end
+    kit.tip(im, 'Import every blusets spell list\n'
+        .. '(config/addons/blusets/*.txt) as bludex saved sets.\n'
+        .. 'A set name that already exists here is skipped.');
 
     -- name box
     kit.ctext(im, kit.COL.dim, 'Name');
