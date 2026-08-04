@@ -2,16 +2,23 @@
     bludex/ui/traitsui.lua -- the Traits tab: every blue trait ladder, what the
     current editing set feeds it, and which spells to add for the next tier
     (the "I want more Dual Wield" answer).
+
+    The spell rows speak the codex grammar (2026-08-04): icon+name rows in the
+    chosen View density (own setting, cfg.traitsDensity), left-click opens the
+    Spell Info window, right-click toggles the spell in/out of the editing
+    set, hover shows the rich tooltip. In-set rows draw green, unlearned red.
 ]]--
 
 local ROOT = (...):sub(1, -#('ui\\traitsui') - 1);   -- relocatable require base
-local kit = require(ROOT .. 'ui\\kit');
+local kit      = require(ROOT .. 'ui\\kit');
+local spellsui = require(ROOT .. 'ui\\spellsui');
 
 local M = {};
 
 function M.render(ctx)
     local im, book, st = ctx.im, ctx.book, ctx.state;
     local set = st.editingSet;
+    st.detailOpen = st.detailOpen or { false };
 
     -- current weights by category, once per frame
     local evalByCat = {};
@@ -21,10 +28,20 @@ function M.render(ctx)
 
     kit.ctext(im, kit.COL.dim,
         'Weights come from spells in your CURRENT editing set (Sets tab).');
+    if kit.isFn(im, 'SameLine') then im.SameLine(); end
+    kit.ctext(im, kit.COL.dim, '   View:');
+    if kit.isFn(im, 'SameLine') then im.SameLine(); end
+    local density = spellsui.densityCombo(ctx, 'traitsDensity');
+    if st.addNote then
+        if kit.isFn(im, 'SameLine') then im.SameLine(); end
+        kit.ctext(im, kit.COL.dim, '   ' .. st.addNote);
+    end
     if kit.isFn(im, 'Separator') then im.Separator(); end
 
     if not (kit.isFn(im, 'BeginChild') and kit.isFn(im, 'EndChild')) then return; end
     if im.BeginChild('bdxtraits', { 0, 0 }, false) then
+        local iconSz, showIcon = spellsui.densityParams(density);
+        local nameW = math.max(kit.availWidth(im, 600) - (showIcon and iconSz or 0) - 56, 120);
         for _, choice in ipairs(book.traitChoices) do
             local cat = choice.cat;
             local info = book.traits.categories[cat];
@@ -62,41 +79,42 @@ function M.render(ctx)
                     kit.ctext(im, reached and kit.COL.ok or kit.COL.dim,
                         ('   tier %d  (weight %d): %s'):format(ti, tier.points, table.concat(parts, ', ')));
                 end
-                -- contributing spells
-                local ids = book.byTrait[cat] or {};
-                local max = ctx.budgetMax();
-                for _, id in ipairs(ids) do
+                -- contributing spells -- the codex row grammar (left-click =
+                -- Spell Info, right-click = toggle in/out of the set)
+                local indented = false;
+                if kit.isFn(im, 'Indent') and kit.isFn(im, 'Unindent') then
+                    pcall(im.Indent, 14);
+                    indented = true;
+                end
+                for _, id in ipairs(book.byTrait[cat] or {}) do
                     local s = book.spells[id];
                     local inSet = ctx.sets.contains(set, id) ~= nil;
-                    local learned = book.learned(id);
-                    local okAdd = ctx.sets.canAdd(set, id, book, max);
-
-                    local pushed = false;
-                    if kit.isFn(im, 'PushID') then pcall(im.PushID, 'bdxtradd' .. id); pushed = true; end
-                    if inSet then
-                        -- in the set: the button REMOVES (the + only added before)
-                        if kit.litButton(im, '-', true, 22, 18) then
-                            ctx.sets.removeId(set, id);
-                        end
-                    elseif okAdd then
-                        if kit.litButton(im, '+', false, 22, 18) then
-                            ctx.sets.add(set, id, book, max);
-                        end
-                    else
-                        kit.ctext(im, kit.COL.dim, '   ');
-                    end
-                    if pushed and kit.isFn(im, 'PopID') then pcall(im.PopID); end
-                    if kit.isFn(im, 'SameLine') then im.SameLine(); end
-
-                    local col = kit.COL.accent;
-                    if inSet then col = kit.COL.ok;
-                    elseif ctx.blu.onBlu() and not learned then col = kit.COL.err; end
-                    kit.ctext(im, col, ('%s  w%d / %spts  Lv.%s%s'):format(
+                    local label = ('%s  w%d / %spts  Lv.%s%s'):format(
                         s.name, s.trait.weight, s.setPoints or '?', s.level or '?',
-                        inSet and '  [in set]' or ''));
-                    kit.tip(im, inSet and 'click - to remove from the set'
-                        or (okAdd and 'click + to add to the set' or nil));
+                        inSet and '  [in set]' or '');
+                    local lclick, rclick = spellsui.listRow(ctx, id, iconSz, nameW,
+                        st.selectedId == id, showIcon,
+                        { label = label, dimColor = kit.COL.err });
+                    if lclick then
+                        st.selectedId = id;
+                        st.detailOpen[1] = true;
+                        st.detailFocus = true;
+                    end
+                    if rclick then
+                        if inSet then
+                            ctx.sets.removeId(set, id);
+                            st.addNote = ('Removed %s.'):format(s.name);
+                            if ctx.save then ctx.save(); end
+                        else
+                            local ok2, why = ctx.sets.add(set, id, book, ctx.budgetMax());
+                            st.addNote = ok2 and ('Added %s.'):format(s.name)
+                                or ('Cannot add %s: %s.'):format(s.name, why);
+                            if ok2 and ctx.save then ctx.save(); end
+                        end
+                    end
+                    spellsui.tooltip(ctx, id);
                 end
+                if indented then pcall(im.Unindent, 14); end
                 if kit.isFn(im, 'Separator') then im.Separator(); end
             end
         end

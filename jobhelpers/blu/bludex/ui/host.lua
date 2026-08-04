@@ -197,25 +197,27 @@ local function renderBody(im, st, deps, embedded)
     if not tok then
         kit.ctext(im, kit.COL.err, 'tab error: ' .. tostring(terr));
     end
+    -- The Spell Info window serves EVERY tab (codex and traits rows both
+    -- open it), so it draws once here after the active tab -- except in the
+    -- embedded-Panel fallback, where a Panel may not open windows (the
+    -- codex's in-panel pane covers it there).
+    if not ctx.embedded then
+        local dok, derr = pcall(spellsui.detailWindow, ctx);
+        if not dok then
+            kit.ctext(im, kit.COL.err, 'detail error: ' .. tostring(derr));
+        end
+    end
 end
 
--- the standalone window (the bludex addon's own flavor)
-function M.render()
-    local st = M.state;
-    if st == nil then return; end
-    local deps = M.deps;
-    if deps == nil then return; end
-    M.tick();
-    if not st.open[1] then return; end
-    local im = deps.im;
+-- the floating Bludex window itself (Begin/End + chrome), shared by the
+-- standalone render and the dlac float surface
+local function renderWindow(im, st, deps)
     if not kit.isFn(im, 'Begin') or not kit.isFn(im, 'End') then return; end
-
     local pushed = pushWindowTheme(im);
     if kit.isFn(im, 'SetNextWindowSizeConstraints') then
         -- 920 wide fits the measured filter row; below that the Reset button clips
         pcall(im.SetNextWindowSizeConstraints, { 920, 520 }, { 4096, 4096 });
     end
-
     local visible = false;
     local ok = pcall(function()
         visible = im.Begin('Bludex##bdxmain', st.open);
@@ -225,6 +227,44 @@ function M.render()
     end
     if ok then im.End(); end
     if pushed > 0 then im.PopStyleColor(pushed); end
+end
+
+-- the standalone flavor (the bludex addon's own d3d_present hook)
+function M.render()
+    local st = M.state;
+    if st == nil then return; end
+    local deps = M.deps;
+    if deps == nil then return; end
+    M.tick();
+    if not st.open[1] then return; end
+    renderWindow(deps.im, st, deps);
+end
+
+-- Open the window outright (the toggle flips; a launcher wants OPEN).
+-- Same open-refresh as toggle: field-confirmed cure for stale structs.
+function M.open()
+    if M.state == nil then return; end
+    if not M.state.open[1] then
+        M.state.open[1] = true;
+        if M.deps then M.deps.blu.refreshIfOnBlu(); end
+    end
+end
+
+-- The WHOLE Bludex window through an embedding host's float surface (dlac's
+-- `window` hook): the full codex/sets/traits experience in its own window,
+-- alive independent of the host's main box. Self-gates on st.open -- the
+-- host's Panel is the launcher. Marks the float surface live even while
+-- closed, so the Panel knows the launcher flavor applies (and the Spell
+-- Info window rides along exactly as in standalone, embedded = false).
+-- Ticking stays with the host's beat subscription, not here.
+function M.renderWindowFloat()
+    local st = M.state;
+    if st == nil then return; end
+    local deps = M.deps;
+    if deps == nil or deps.im == nil then return; end
+    deps.floatWindow = true;
+    if not st.open[1] then return; end
+    renderWindow(deps.im, st, deps);
 end
 
 -- The Spell Info window ALONE, for an embedding host's sanctioned float

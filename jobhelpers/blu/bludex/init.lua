@@ -96,6 +96,7 @@ end
 -- save() re-encodes into the framework store (mutation-only underneath)
 -- ---------------------------------------------------------------------------
 local cfg, Sref = nil, nil;
+local _panelAt = nil;   -- last frame the Panel rendered: the fresh-click detector
 
 local function loadCfg(S)
     cfg = {
@@ -103,6 +104,7 @@ local function loadCfg(S)
         lastApplied    = { ids = codec.decodeIds(S.cfg.get('lastApplied')) },
         activeSetName  = S.cfg.get('activeSetName'),
         codexDensity   = S.cfg.get('codexDensity'),
+        traitsDensity  = S.cfg.get('traitsDensity'),
         applyMode      = S.cfg.get('applyMode'),
         applyDelay     = S.cfg.get('applyDelay'),
         budgetOverride = S.cfg.get('budgetOverride'),
@@ -124,6 +126,7 @@ local function saveCfg()
             (cfg.lastApplied and cfg.lastApplied.ids) and codec.encodeIds(cfg.lastApplied.ids) or '');
         Sref.cfg.set('activeSetName', tostring(cfg.activeSetName or ''));
         Sref.cfg.set('codexDensity', tostring(cfg.codexDensity or 'normal'));
+        Sref.cfg.set('traitsDensity', tostring(cfg.traitsDensity or 'normal'));
         Sref.cfg.set('applyMode', tostring(cfg.applyMode or 'safe'));
         Sref.cfg.set('applyDelay', tonumber(cfg.applyDelay) or 1.1);
         Sref.cfg.set('budgetOverride', tonumber(cfg.budgetOverride) or 0);
@@ -142,13 +145,13 @@ return {
     config = {
         keys = {
             sets = 'string', lastApplied = 'string', activeSetName = 'string',
-            codexDensity = 'string', applyMode = 'string',
+            codexDensity = 'string', traitsDensity = 'string', applyMode = 'string',
             applyDelay = 'number', budgetOverride = 'number',
             autoRestore = 'boolean',
         },
         defaults = {
             sets = '', lastApplied = '', activeSetName = '',
-            codexDensity = 'normal', applyMode = 'safe',
+            codexDensity = 'normal', traitsDensity = 'normal', applyMode = 'safe',
             applyDelay = 1.1, budgetOverride = 0,
             autoRestore = false,
         },
@@ -190,19 +193,55 @@ return {
             return;
         end
         L.host.deps.im = ctx.imgui;      -- always the HOST's handle
-        L.host.renderEmbedded();
+        if L.host.deps.floatWindow == true then
+            -- The float surface is live (this dlac has the window hook), so
+            -- Bludex runs as its OWN window and this Panel is the launcher.
+            -- A FRESH row click (no Panel render for a while) pops the
+            -- window; while the Panel stays selected, a window the player
+            -- closed stays closed.
+            local now = os.clock();
+            if _panelAt == nil or (now - _panelAt) > 1.0 then L.host.open(); end
+            _panelAt = now;
+            local ui = ctx.ui;
+            if ui == nil then return; end
+            ui.dim('Bludex runs in its own window -- it stays up even while this one is closed.');
+            ui.space();
+            if L.host.isOpen() then
+                if ui.button('bdxwin_close', 'Close the Bludex window',
+                             'Close it; the row keeps working.', 220, 26) then
+                    L.host.toggle();
+                end
+            else
+                if ui.button('bdxwin_open', 'Open the Bludex window',
+                             'Codex, sets and traits, in a window of its own.', 220, 26) then
+                    L.host.open();
+                end
+            end
+        else
+            -- an older dlac without the hook: the full body renders here
+            L.host.renderEmbedded();
+        end
     end,
 
-    -- The Spell Info window, through the framework's float surface (ADR 0028
+    -- The WHOLE Bludex window through the framework's float surface (ADR 0028
     -- amendment 2026-08-04): drawn at dlac's one float draw site, so it
-    -- survives the main window closing. Self-gates -- draws nothing until a
-    -- spell is clicked open in the codex. On an older dlac that ignores this
-    -- hook, the codex falls back to its in-panel detail pane by itself.
+    -- survives the main window closing. Self-gates on its own open flag --
+    -- the Panel above is the launcher. On an older dlac that ignores this
+    -- hook, deps.floatWindow never sets and the Panel renders the embedded
+    -- body instead.
     window = function(ctx)
         local L = lib;
         if L == nil then return; end
         L.host.deps.im = ctx.imgui;
-        L.host.renderDetailFloat();
+        L.host.renderWindowFloat();
+    end,
+
+    -- The quick menu's verb (guide 2.9): choosing Bludex in the Job helpers
+    -- cascade pops the window (with the usual open-refresh of the BLU structs).
+    open = function(S)
+        local L = lib;
+        if L == nil then return; end
+        L.host.open();
     end,
 
     status = function(ctx)
