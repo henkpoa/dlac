@@ -294,6 +294,48 @@ infer it from a field confirmation, from *"works"*, or from your own read that s
 ready — his own note on the exchange was *"you are right not to assume otherwise since I
 haven't told you."* Ask when he has **not** said merge; never ask twice when he has.
 
+**THE QUEUE IS EMPTY.**
+
+*(Emptied by the first 2026-08-04 promotion — **the NM COMPENDIUM** (`2026.08.04a`), riding
+with the already-field-confirmed craft-skill rows. Henrik: *"I want this to be merged and
+pushed to main so more people can try it out more and come with input"* — an accept under the
+08-01 ruling, so nothing was asked twice. Twelve commits: ten NM, three craft.*
+
+***THE MECHANIC IS NOT FIELD-RUN. Only the WINDOW LAYOUT is.*** *Henrik opened the Compendium
+on 08-04, found the list rows clipping in both By-name and By-drop, chose the fix (*"or we
+simply just do a new line for the area"*), and confirmed the result: *"That looks much better!
+No clipping now."* **That is the whole of the field evidence.** Suites are 6777 + 1262 green on
+both interpreters and the data is verified against the live API, but nothing about pops,
+counting or filtering has been exercised in game. Do not read this onto main as field-proven.*
+
+***THE ROUND OWED, in priority order*** *(Henrik: *"I'll have to check that tomorrow"*):*
+*(1)* ***the one no test can make*** *— paste a card's `/filterscan` line and widescan: do the
+placeholders show? dlac derives the index from the server's `mob_spawn_points`, FilterScan from
+the client's zone NPC DAT. They agree in code — the field decides whether they agree in fact,
+and **if they are off by a constant every index in the addon is wrong the same way**.*
+*(2) count-by-index-not-name: in Uleguerand the Buffalo at 26-29 are NOT placeholders and
+354-359 are; only the second may move the counter. (3) staleness — zone out and back, the
+percentage must vanish. (4) persistence across `/addon reload`. (5) the `apply` verb with
+FilterScan loaded. (6) cooldown/primed after an NM kill.*
+
+***What landed:*** *`feature/nmlookup` (the disfavour curve, hand-carried with anchor tests
+because it exists in NO branch of the public server repo), `feature/nmtrack` (rounds counted by
+INDEX, shown as a floor that goes STALE rather than a prediction), `feature/nmloot` (live drop
+tables, tiers, group shares, a Treasure Hunter verdict per drop), `ui/nmui` (one window, three
+searches over one list), and two generated data files. `data/nmdrops.lua` comes from the LIVE
+API, not the clone — the clone's drop tables are a base layer under an empty submodule and give
+the wrong item at the wrong rate (see [architecture.md](architecture.md)).*
+
+***A SCOPE FLAG for whoever promotes next.*** *dlac is close to official Ashita acceptance,
+gated on one reviewer complaint: **too much stuff**. The NM Compendium shares nothing with
+dlac's gear thesis and is now the largest non-gear thing in the addon. It was promoted anyway,
+deliberately, to get wider field input — Henrik's call, made with the concern on the table.
+**Extracting it into a separate addon remains open and is cheap**: the four modules depend on
+dlac only for chat formatting, the zone table and the location service. If acceptance feedback
+turns on scope, that is the lever.*
+
+--- *the entries this promotion carried, kept for their reasoning* ---
+
 **Craft skills under the glyphs, blue when capped** — `2026.08.03zb`. Asked for by Henrik's
 friend, in his words: *"he'd love to see his skill levels under the craft icons in hobby bar
 for crafting"*, and *"when skill is capped, can we use the same blue"* — with a screenshot of
@@ -335,7 +377,8 @@ wider than the icon above it and both rows center themselves. **While here:** th
 `craftButton` claiming it was shared with the Automations panel was stale — it has no second
 caller — and now says what actually is shared.*
 
-**THE QUEUE WAS EMPTIED BY THE LAST PROMOTION; THE ENTRY ABOVE IS NEW.**
+**THE ENTRY ABOVE WENT TO MAIN IN THE 2026-08-04 PROMOTION.** *It is kept for its reasoning,
+not because it is still queued — the queue itself is the line at the top of this section.*
 
 *(Emptied by the fourth 2026-08-03 promotion — **`/dl nm`, the placeholders and a FilterScan
 filter** (`2026.08.03z`). Henrik: *"merge, and push to origin main"* — an accept under the
