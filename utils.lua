@@ -122,6 +122,7 @@ local _lastLevel, _lastSJLevel, _lastSJ = 0, 0, nil;
 -- Call `sets = utils.rebuildSets(sets)` at the top of HandleDefault. Fetches the
 -- player and manages rebuild state internally; returns the (possibly rebuilt) sets.
 local _lastModesRev = nil;
+local _lastDW = nil;
 function M.rebuildSets(sets)
     local player = gData.GetPlayer();
     if player == nil then return sets; end
@@ -132,6 +133,17 @@ function M.rebuildSets(sets)
     if mrev ~= nil and mrev ~= _lastModesRev then
         shouldRebuild = true;
         _lastModesRev = mrev;
+    end
+    -- The Dual Wield trait bit is a rebuild signal of its own: dw-ruled entries
+    -- and the Sub off-hand pairing both flatten against it, and it can flip
+    -- with NO level/sub-job change (a BLU trait-set swap) -- or arrive a beat
+    -- AFTER the sub-change rebuild already ran (the 0x0AC trait packet races
+    -- the job change; without this, that rebuild reads the OLD trait list and
+    -- the flatten stays wrong until the next unrelated signal).
+    local dwNow = M.isDualWieldAvailable(player.MainJob, newLevel, player.SubJob, newSJLevel) == true;
+    if dwNow ~= _lastDW then
+        shouldRebuild = true;
+        _lastDW = dwNow;
     end
     if shouldRebuild then
         sets = M.BuildDynamicSets(sets);
@@ -502,6 +514,14 @@ function M.slotLadder(slotTable, slotName, currentMain, cctx)
                 modeTier = 1;
             end
 
+            -- The Dual Wield gear rule (dw = true on the wrapper): the piece is
+            -- a CANDIDATE only while the trait is actually up (cctx.isDW -- the
+            -- server's own trait bit, same answer the Sub pairing trusts). A
+            -- gate, not a tier: with the trait up it ranks like any other entry
+            -- (Suppanomimi's high item level usually wins on its own), without
+            -- it the slot's next-best piece owns the slot.
+            if gearObject.dw == true and cctx.isDW ~= true then break; end
+
             if gearObject.maxLevel ~= nil then
                 maxLevel = gearObject.maxLevel;
             end
@@ -650,7 +670,7 @@ function M.workingPick(list, slotName, currentMain, cctx)
                 a = (it.mode ~= nil) and { gear = it.rec.Name, mode = it.mode } or it.rec.Name;
             else
                 a = { gear = it.rec, minLevel = it.minLevel, maxLevel = it.maxLevel,
-                      mode = it.mode, autoType = it.autoType,
+                      mode = it.mode, dw = it.dw, autoType = it.autoType,
                       removePrio = it.removePrio, acc = it.acc };
             end
         end
