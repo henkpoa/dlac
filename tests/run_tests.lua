@@ -19028,6 +19028,18 @@ end)();
     check('JH11e ...naming the window hook',
           (ledger3.failed[1] or {}).err and ledger3.failed[1].err:find('window', 1, true) ~= nil, true);
 
+    -- `open` (the quick-menu verb, 2026-08-04): same law -- function or refused.
+    local ledger4 = { total = 0, failed = {} };
+    jh.loadAll({
+        names = { 'badopen' },
+        loadModule = function() return true, { api = jh.API, label = 'BO', jobs = { 'BST' },
+            panel = function() end, open = 'nope' }; end,
+        ledger = ledger4, emit = function() end,
+    });
+    check('JH11f a non-function open is refused', #ledger4.failed, 1);
+    check('JH11g ...naming the open hook',
+          (ledger4.failed[1] or {}).err and ledger4.failed[1].err:find('open', 1, true) ~= nil, true);
+
     -- ---- registry queries ---------------------------------------------------
     local a = { api = jh.API, label = 'Alpha', jobs = { 'BST', 'PUP' }, panel = function() end };
     local b = { api = jh.API, label = 'Beta',  jobs = { 'PUP' },        panel = function() end };
@@ -19037,6 +19049,34 @@ end)();
     check('JH13 jobs() lists the union, sorted', table.concat(jh.jobs(), ','), 'BST,PUP');
     check('JH14 idsForJob BST = the multi-job module only', table.concat(jh.idsForJob('BST'), ','), 'alpha');
     check('JH15 idsForJob PUP = both, default order', table.concat(jh.idsForJob('PUP'), ','), 'alpha,beta');
+
+    -- ---- the quick-menu listing (menuEntriesCore, 2026-08-04) ---------------
+    -- alpha declares BST+PUP, beta PUP only (loaded above). Pure core: jobs and
+    -- both per-id switches injected, so every case runs with no player.
+    local yes = function() return true; end
+    local no  = function() return false; end
+    local function menu(m, s, f, e)
+        local t = {};
+        for _, r in ipairs(jh.menuEntriesCore(m, s, f, e)) do t[#t + 1] = r.id .. ':' .. r.via; end
+        return table.concat(t, ',');
+    end
+    check('JH15a main-job helpers list via main', menu('BST', 'WHM', yes, yes), 'alpha:main');
+    check('JH15b sub-job helpers ride behind main', menu('WAR', 'PUP', yes, yes), 'alpha:sub,beta:sub');
+    check('JH15c the sub switch excludes from the sub door', menu('WAR', 'PUP', no, yes), '');
+    check('JH15d a multi-job module lists ONCE, via main', menu('BST', 'PUP', yes, yes), 'alpha:main,beta:sub');
+    check('JH15e a silenced module is not offered at all', menu('BST', 'PUP', yes, no), '');
+    check('JH15f unknown jobs list nothing', menu(nil, '?', yes, yes), '');
+    check('JH15g same main and sub collects once, via main', menu('PUP', 'PUP', yes, yes), 'alpha:main,beta:main');
+
+    -- openHelper: a declared hook runs (handed rec.S -- nil in this harness,
+    -- since modapi does not resolve headless); no hook = false (the caller
+    -- falls back to the Panel jump).
+    local opened = 0;
+    jh.modules[1].mod.open = function() opened = opened + 1; end
+    check('JH15h openHelper runs a declared hook', jh.openHelper('alpha'), true);
+    check('JH15i ...exactly once', opened, 1);
+    check('JH15j no hook answers false', jh.openHelper('beta'), false);
+    jh.modules[1].mod.open = nil;
 
     -- ---- config store (pill + per-job order) -------------------------------
     -- point the store at an in-memory fake dir so writes round-trip through the
@@ -19077,6 +19117,22 @@ end)();
     jh._loadCfg();  -- warm
     local reread = jh._normalizeCfg((loadstring or load)(FILES['FAKEDIR\\jobhelpers.lua'])());
     check('JH19 off state survives a re-read', reread.enabled['alpha'], false);
+
+    -- the sub-job switch (2026-08-04): default ON, only the opt-out is stored,
+    -- and the opt-out round-trips like the pill. The write stub above APPENDS
+    -- on every open (a real 'wb' truncates), so each snapshot clears first.
+    check('JH19a sub-job default is ON for an untouched module', jh.subjobApplicable('alpha'), true);
+    FILES['FAKEDIR\\jobhelpers.lua'] = nil;
+    jh.setSubjobApplicable('alpha', false);
+    check('JH19b the opt-out takes', jh.subjobApplicable('alpha'), false);
+    local reread2 = jh._normalizeCfg((loadstring or load)(FILES['FAKEDIR\\jobhelpers.lua'])());
+    check('JH19c the opt-out survives a re-read', reread2.subjob['alpha'], false);
+    FILES['FAKEDIR\\jobhelpers.lua'] = nil;
+    jh.setSubjobApplicable('alpha', true);
+    check('JH19d flipping back to the default clears the entry',
+          jh.subjobApplicable('alpha'), true);
+    local reread3 = jh._normalizeCfg((loadstring or load)(FILES['FAKEDIR\\jobhelpers.lua'])());
+    check('JH19e ...and the file stores no default-true rows', reread3.subjob['alpha'], nil);
 
     -- per-job order: reorder PUP section (alpha,beta) -> (beta,alpha), persisted.
     local moved = jh.moveInSection('PUP', { 'alpha', 'beta' }, 1, 1);

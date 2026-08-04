@@ -1667,6 +1667,52 @@ local function renderTeleportsPopup()
         'Show/hide the hobby bar -- Craft, HELM, Fishing and Chocobo controls in\none window (one hobby active at a time).');
     renderQuickWindowRow('lockstyle', 'Lockstyle',
         'Open the Lockstyle window -- your 30 saved looks for this job: apply one,\nsave the marked box, set the town style.');
+    -- Job helpers for the CURRENT jobs (Henrik, 2026-08-04): a cascade under
+    -- the quick windows -- the main job's helpers first, then the sub job's
+    -- for helpers left sub-applicable (the framework's per-helper switch on
+    -- the Job Helpers tab, default include). Choosing one OPENS it: a module
+    -- with an `open` hook opens its own surface (Bludex pops its window); a
+    -- panel-only helper jumps to its Panel -- the openAutomation shape. The
+    -- whole cascade vanishes when nothing is installed for these jobs, and a
+    -- silenced (pill-off) helper is not offered. Function-scoped requires
+    -- inside one pcall (hard rule 1; a headless frame no-ops).
+    pcall(function()
+        local jh = require('dlac\\feature\\jobhelpers');
+        local entries = jh.menuEntries();
+        if #entries == 0 then return; end
+        local function jhRow(e, key)
+            imgui.Dummy({ 18, 18 });        -- no per-helper art; the column holds
+            imgui.SameLine(0, 6);
+            if imgui.Selectable('##tpjh' .. key) then
+                if not jh.openHelper(e.id) then
+                    pcall(function() require('dlac\\ui\\jobhelpersui').select(e.id); end);
+                    pcall(host.selectTab, 'Job Helpers');
+                    M.visible = true;
+                end
+                imgui.CloseCurrentPopup();
+            end
+            if imgui.IsItemHovered() then
+                imgui.SetTooltip('Open ' .. fmt.esc(e.label)
+                    .. ((e.via == 'sub') and (' (' .. e.job .. ' is your sub job).') or '.'));
+            end
+            imgui.SameLine(30);
+            imgui.TextColored(COL.USABLE, fmt.esc(e.label));
+            if e.via == 'sub' then
+                imgui.SameLine(150);
+                imgui.TextColored(COL.DIM, fmt.esc(e.job .. ' sub'));
+            end
+        end
+        if tpHasMenu then
+            if imgui.BeginMenu('Job helpers##tpjh') then
+                for i, e in ipairs(entries) do jhRow(e, i); end
+                imgui.EndMenu();
+            end
+        else
+            imgui.Separator();
+            imgui.TextColored(COL.HEADER, 'Job helpers');
+            for i, e in ipairs(entries) do jhRow(e, i); end
+        end
+    end);
     -- The most recently eaten foods you still carry (2026-07-30). They belong
     -- HERE more than anywhere: this popup is the floating quick menu, and "my food
     -- just wore off" happens mid-fight with the main window shut. ONE definition,

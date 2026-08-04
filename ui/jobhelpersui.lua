@@ -53,6 +53,10 @@ function M.init(d) deps = d; end
 -- keyed, so it survives a reorder.
 local _sel = nil;
 
+-- Select a module's Panel from outside the tab (the quick menu's Panel-jump
+-- fallback for helpers without an `open` hook).
+function M.select(id) _sel = id; end
+
 -- Modules whose render hook has already thrown this session -- print the loud
 -- line ONCE, then just show the red placeholder (no per-frame chat spam).
 local _blamed = {};
@@ -171,6 +175,19 @@ local function renderPanel()
     -- Panel title (Henrik's field ruling 2026-07-29): the row stays name+pill.
     imgui.SameLine(0, 10);
     imgui.TextColored(statusColor(act), esc((act ~= nil and act.label) or '?'));
+    -- The framework's own per-helper switch (2026-08-04): list this helper in
+    -- the QUICK MENU while its job is the sub job too. Menu visibility only --
+    -- the acting predicate stays main-job.
+    imgui.SameLine(0, 14);
+    local sjBox = { jh.subjobApplicable(rec.id) };
+    if imgui.Checkbox('Sub job##jhsj_' .. rec.id, sjBox) then
+        jh.setSubjobApplicable(rec.id, sjBox[1] == true);
+    end
+    if imgui.IsItemHovered() then
+        imgui.SetTooltip('Quick menu: also list ' .. esc(rec.label) .. ' while '
+            .. esc(table.concat(rec.jobs, '/')) .. ' is your SUB job.\n'
+            .. 'Menu visibility only -- acting stays main-job.');
+    end
 
     if type(rec.mod.status) == 'function' then
         imgui.SameLine(0, 10);
