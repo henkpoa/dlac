@@ -29,6 +29,7 @@ function M.defaults()
         activeSetName = '',       -- last selected saved set, reloaded at startup
         codexDensity = 'normal',  -- codex list size: 'big'|'medium'|'normal'|'compact'
         traitsDensity = 'normal', -- traits spell-row size, same four choices
+        setsLayout = 'grid',      -- Sets slots as 'grid' (5x4 cells) | 'list' (named rows)
     };
 end
 

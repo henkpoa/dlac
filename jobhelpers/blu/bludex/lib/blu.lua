@@ -19,6 +19,10 @@
 require('common');
 local chat = require('chat');
 
+-- relocatable require base; setmodel provides the sorted apply layout
+local ROOT = (...):sub(1, -#('lib\\blu') - 1);
+local setmodel = require(ROOT .. 'lib\\setmodel');
+
 local _fok, ffi = pcall(require, 'ffi');
 
 local M = {
@@ -359,9 +363,10 @@ local function byLevel(ids, book)
 end
 
 -- Position-independent plan against the live set: targets are matched by
--- spell IDENTITY, not slot -- the same spells in any layout cost zero
--- packets. Missing spells are paired lowest-level-first with the lowest
--- open slots. removeExtras=false never unsets anything (the restore path).
+-- spell IDENTITY, not slot. Since the sorted slot-wise plan took over the
+-- apply path (2026-08-04), this serves ONLY the adds-only restore -- a
+-- level-change restore must put spells back without reshuffling the set.
+-- Missing spells are paired lowest-level-first with the lowest open slots.
 -- Returns nil when the live set is unreadable.
 local function planDiff(ids, book, removeExtras)
     local live = M.currentSet();
@@ -462,30 +467,48 @@ function M.applyDiff(ids, book, onDone)
             msg(('Skipping %s: not learned.'):format(sp and sp.Name[1] or tostring(id)));
         end
     end
-    local plan = planDiff(ids, book, true);
-    if plan == nil then
+    local live = M.currentSet();
+    if #live ~= 20 then
         msg('Could not read the live set - doing a full reset + apply instead.');
         return M.applySet(ids, book, onDone);
     end
-    if #plan.removes == 0 and #plan.adds == 0 then
-        msg('The live set already matches - nothing to send.');
+    -- The target LAYOUT is level-sorted (field 2026-08-04: the game's own
+    -- set list should read in level order): slot i holds the i-th lowest
+    -- learned spell. Slot-wise diff against it -- a matching slot costs
+    -- nothing; a spell in the wrong slot is an unset plus a set (the client
+    -- refuses a spell set twice, so every unset goes first). An insertion
+    -- LOW in the list therefore shifts what follows -- dearer than the old
+    -- identity diff, and exactly what a sorted list costs.
+    local T = setmodel.sortedLayout(ids, book);
+    local removes, adds, kept = {}, {}, 0;
+    for slot = 1, 20 do
+        local have = live[slot] or 0;
+        if have == T[slot] then
+            if have ~= 0 then kept = kept + 1; end
+        else
+            if have ~= 0 then removes[#removes + 1] = slot; end
+            if T[slot] ~= 0 then adds[#adds + 1] = { slot = slot, id = T[slot] }; end
+        end
+    end
+    if #removes == 0 and #adds == 0 then
+        msg('The live set already matches (level order) - nothing to send.');
         if onDone then pcall(onDone); end
         return true;
     end
     local delay = stepDelay();
     M.applying = true;
     ashita.tasks.once(1, function()
-        for _, slot in ipairs(plan.removes) do
+        for _, slot in ipairs(removes) do
             M.setSlot(slot, 0);
             coroutine.sleep(delay);
         end
-        for _, e in ipairs(plan.adds) do
+        for _, e in ipairs(adds) do        -- ascending slot = ascending level
             M.setSlot(e.slot, e.id);
             coroutine.sleep(delay);
         end
         M.applying = false;
-        msg(('Set updated: %d added (lowest level first), %d removed, %d kept. Spells castable in ~%ds.'):format(
-            #plan.adds, #plan.removes, plan.kept, M.castLock));
+        msg(('Set updated: %d placed (level order), %d cleared, %d kept. Spells castable in ~%ds.'):format(
+            #adds, #removes, kept, M.castLock));
         if onDone then pcall(onDone); end
     end);
     return true;
