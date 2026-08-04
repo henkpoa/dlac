@@ -63,6 +63,14 @@
     this module) and `/dl nm window` reaches back for it at CALL time, so a
     build where the GUI failed to load loses the verb and nothing else.
 
+    AND THE SAME QUESTION BACKWARDS (issue #157). "Who drops Leaping Boots?"
+    is the Compendium's third filter mode, and it lives here -- M.dropRows --
+    for the reason the other two do: it answers with NMs. The item half of it
+    (item -> pools) is feature\nmloot's index; the matching is M.score, the one
+    already above. Its floor is STRICTER than a name search's, and deliberately
+    so: a typo about a monster should still find the monster, but a near-miss
+    across 2183 item names is not a hedge, it is noise -- see M.ITEM_FLOOR.
+
     WHAT IT DROPS (issue #153) is feature\nmloot's answer, for the same reason:
     "how does it pop" and "is it worth popping" are two questions joined by one
     field -- the NM's `pool`, the server pool id that keys the generated drop
@@ -371,6 +379,17 @@ end
 -- accepts a real name hit -- exact, prefix, substring, or every word present.
 M.ANYWHERE_FLOOR = 700;
 
+-- The score an ITEM name must beat to be treated as the thing the player asked
+-- about, in the by-drop filter mode (issue #157). Deliberately the same figure
+-- and the same reasoning as ANYWHERE_FLOOR: the drop table names 2183 distinct
+-- items, and across a field that size an edit-distance guess is not a hedge, it
+-- is noise -- "who drops Leaping Boots" answered with a list of NMs dropping
+-- something spelled a bit like it is worse than being told nothing resembles
+-- it. So only a real name hit counts: exact, prefix, substring, or every word
+-- present. It is named separately from ANYWHERE_FLOOR because it answers a
+-- different question, and one of the two may need to move without the other.
+M.ITEM_FLOOR = 700;
+
 -- Below this the name did not match, it merely RESEMBLED -- so the answer is
 -- shown and labelled a guess rather than presented as the monster you asked
 -- for. Named because chat and the Compendium window must hedge on the same
@@ -442,6 +461,12 @@ end
 -- These are PURE -- data in, plain rows out, no imgui. `ui\nmui` is a thin
 -- renderer over them, and the chat command scores names through the same
 -- M.score, so a matching rule can never mean two things on two surfaces.
+
+-- feature\nmloot, reached at CALL time. Forward-declared here because the
+-- by-drop filter mode below is written beside the other two and the accessor
+-- itself belongs with the other call-time reaches, further down -- and a local
+-- referenced before its declaration is a silent nil GLOBAL (hard rule 8).
+local loot;
 
 -- One row: the entry, the zone it lives in, and (for a name search) how well it
 -- answered. `guess` is the weak-match verdict the chat readout hedges on,
@@ -517,6 +542,123 @@ function M.areaRows(zid)
         return (ai or 0) < (bi or 0);
     end);
     return out;
+end
+
+-- How many of an NM's matched drops a row names before it stops naming them.
+-- A search for "boots" hits several items on one Abyssea NM, and a row that
+-- reads as a paragraph is a row nobody scans.
+M.DROP_NAMES = 3;
+
+-- Filter mode BY DROP: every NM that drops the item you typed -- the reverse
+-- lookup, and the one question the Compendium could not answer without leaving
+-- the game. It runs the join backwards: the item names the drop table can
+-- answer for -> the pools carrying them -> the NM entries carrying those pools.
+--
+-- ONLY A REAL NAME HIT COUNTS (M.ITEM_FLOOR). The by-name mode hedges a weak
+-- match and labels it a guess, because there the player has one monster in mind
+-- and a typo should still find it. Here they have an ITEM in mind out of 2183,
+-- and a list of NMs dropping something spelled a bit like it does not answer
+-- the question -- it buries it. So a weak resemblance yields nothing and the
+-- window says nothing resembles it, which is an answer.
+--
+-- -> rows, total, items
+--    rows  -- the NM rows, best first, capped at `limit`
+--    total -- how many matched before the cap
+--    items -- the item names the query hit, best first: what the list is OF
+function M.dropRows(query, limit)
+    local out, items = {}, {};
+    query = tostring(query or '');
+    if query:gsub('%s', '') == '' then return out, 0, items; end
+    -- All three halves of the reverse index, checked together: this module
+    -- reaches nmloot at call time, so "it loaded" is not the same as "it is the
+    -- build that carries these" -- and a nil call here would take the window's
+    -- whole frame rather than one filter mode.
+    local lt = loot();
+    if lt == nil or type(lt.namedItems) ~= 'function'
+       or type(lt.poolsForItem) ~= 'function' or type(lt.poolsOf) ~= 'function' then
+        return out, 0, items;
+    end
+
+    -- 1. Which items did they name? Scored through the SAME matcher the NM
+    -- names go through -- there is one implementation of "does this resemble
+    -- that" here, and a second one is how two surfaces start disagreeing.
+    -- Declared on its own line, and that is not style: a local is not in scope
+    -- inside its OWN declaration, so `local hits, ok = {}, pcall(function()
+    -- ... hits ... end)` would have the closure writing to a nil global (hard
+    -- rule 8, and it cost a debugging round here).
+    local hits = {};
+    local ok = pcall(function()
+        for _, it in ipairs(lt.namedItems()) do
+            local s = M.score(query, it.name);
+            if s >= M.ITEM_FLOOR then
+                hits[#hits + 1] = { id = it.id, name = it.name, score = s };
+            end
+        end
+    end);
+    if not ok or #hits == 0 then return out, 0, items; end
+
+    -- 2. Which pools carry them. Walked in the hits' own (id-ascending) order,
+    -- so the names a row lists are in the same order every time.
+    local pool = {};
+    for _, h in ipairs(hits) do
+        for _, pid in ipairs(lt.poolsForItem(h.id)) do
+            local b = pool[pid];
+            if b == nil then b = { score = 0, names = {}, seen = {} }; pool[pid] = b; end
+            if h.score > b.score then b.score = h.score; end
+            if not b.seen[h.name] then
+                b.seen[h.name] = true;
+                b.names[#b.names + 1] = h.name;
+            end
+        end
+    end
+
+    -- 3. Which NMs carry those pools. An NM with several pools answers once.
+    for _, zid in ipairs(M.zoneIds()) do
+        for _, e in ipairs(M.data[zid]) do
+            local best, names, seen = 0, {}, {};
+            for _, pid in ipairs(lt.poolsOf(e)) do
+                local b = pool[pid];
+                if b ~= nil then
+                    if b.score > best then best = b.score; end
+                    for _, nm in ipairs(b.names) do
+                        if not seen[nm] then seen[nm] = true; names[#names + 1] = nm; end
+                    end
+                end
+            end
+            if best > 0 then
+                local row = makeRow(e, zid, best);
+                -- NOT a guess, whatever the score: nothing about the MONSTER
+                -- was guessed at. The table says this NM drops that item, and
+                -- the score only measures how squarely the item was named.
+                row.guess = false;
+                row.drops = names;
+                row.dropNote = names[1] or '';
+                if #names > M.DROP_NAMES then
+                    local shown = {};
+                    for k = 1, M.DROP_NAMES do shown[k] = names[k]; end
+                    row.dropNote = table.concat(shown, ', ')
+                        .. string.format(' +%d more', #names - M.DROP_NAMES);
+                elseif #names > 1 then
+                    row.dropNote = table.concat(names, ', ');
+                end
+                out[#out + 1] = row;
+            end
+        end
+    end
+    table.sort(out, rowOrder);
+
+    table.sort(hits, function(a, b)
+        if a.score ~= b.score then return a.score > b.score; end
+        return a.name < b.name;
+    end);
+    for _, h in ipairs(hits) do items[#items + 1] = h.name; end
+
+    local total = #out;
+    limit = tonumber(limit);
+    if limit ~= nil and limit > 0 then
+        for i = total, limit + 1, -1 do out[i] = nil; end
+    end
+    return out, total, items;
 end
 
 -- The zones the table can answer for, named and counted: the area picker's
@@ -656,8 +798,9 @@ M._tracker = tracker;   -- test seam
 
 -- The drop readout (feature\nmloot), reached at CALL time for the same reason:
 -- an absent or broken module must cost this command its drops section and
--- nothing else.
-local function loot()
+-- nothing else. Forward-declared up in the compendium-list section, which asks
+-- it for the by-drop filter mode's reverse index.
+loot = function()
     return try('dlac\\feature\\nmloot');
 end
 M._loot = loot;         -- test seam
