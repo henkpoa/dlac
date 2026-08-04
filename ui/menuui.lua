@@ -100,6 +100,8 @@ local ROWS = {
       tip = 'One shared window for Craft / HELM / Fishing / Chocobo:\npick controls and switch a hobby on (idle only).' },
     { key = 'teleports', icon = 'teleports', label = 'Teleports',
       tip = 'Warp / Retrace scrolls, teleport earrings and rings, the Chocobo Whistle,\nevery other travel enchant you own and your exp rings -- plus quick rows\nfor the Hobby bar and Lockstyle.' },
+    { key = 'nm',        icon = 'nmcompendium', label = 'NM Compendium',
+      tip = 'Notorious monsters in the field: which spawn points are their placeholders,\nhow they actually pop (the odds are NOT flat -- disfavour lifts them every round),\nwhat they drop and whether Treasure Hunter can help. Search by name, area or drop.\nSame window as "/dl nm window".' },
     { key = 'wishlist',  icon = 'wishlist',  label = 'Wishlist',
       tip = 'Gear you are hunting -- what it is for, and what you wanted it for.\nRight-click anything in All Equipment to add it; a piece you don\'t own\nadded to a set lands here too. Turns green when it reaches your bags.' },
     { key = 'level',     icon = 'level',     label = 'Level override',
@@ -682,6 +684,11 @@ function M.activate(key)
     elseif key == 'macrobook' then pcall(function() require('dlac\\feature\\macrobook').open(); end);
     elseif key == 'hobbybar'  then pcall(function() require('dlac\\ui\\hobbybar').toggleVisible(); end);
     elseif key == 'wishlist'  then pcall(function() require('dlac\\ui\\wishlistui').open(); end);
+    -- Through nmlookup.openWindow, NOT straight into ui\nmui: that is the one
+    -- entry point `/dl nm window` uses, so the row and the command cannot drift
+    -- into opening different things -- and it is the only place that already
+    -- says so in chat when the GUI half of the build is missing.
+    elseif key == 'nm'        then pcall(function() require('dlac\\feature\\nmlookup').openWindow(''); end);
     elseif key == 'teleports' then ui._tpOpen = true;
     elseif key == 'level'     then ui._lvlOpen = true; ui._lvlSeed = nil;
     elseif key == 'settings'  then ui._setOpen = true;

@@ -296,6 +296,20 @@ haven't told you."* Ask when he has **not** said merge; never ask twice when he 
 
 **THE QUEUE IS EMPTY.**
 
+*(Emptied by the second 2026-08-04 promotion — **the NM Compendium gets a door** (`2026.08.04b`),
+one commit. Henrik: *"Please merge and push to main"* — an accept under the 08-01 ruling. A menu
+row between Teleports and Wishlist, on his own dragon icon (64x64, matching every other menu
+icon). It routes through `nmlookup.openWindow` rather than into `ui\nmui` directly, because he
+asked for exactly that — *"I want this to point to the same window as /dl nm window"* — and one
+entry point is what stops the row and the command drifting apart. Test MN21a-d pins it by
+capturing the door, not by watching the window appear.*
+
+***The ICON is the one field check*** *— `filetex` hands back nil headless, so the smoke only
+ever exercises the TEXT FALLBACK. If the row renders as a wide labelled button instead of the
+dragon, the asset did not load. Everything else here is covered: suites 6777 + 1266 green on
+both interpreters, and ten hardcoded roster counts moved 7 to 8 (they are hardcoded precisely
+so a row appearing or vanishing unnoticed fails the build).*
+
 *(Emptied by the first 2026-08-04 promotion — **the NM COMPENDIUM** (`2026.08.04a`), riding
 with the already-field-confirmed craft-skill rows. Henrik: *"I want this to be merged and
 pushed to main so more people can try it out more and come with input"* — an accept under the

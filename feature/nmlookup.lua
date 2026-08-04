@@ -819,7 +819,12 @@ M._windowUI = windowUI;   -- test seam
 -- A name lands the window on that search; with nothing to search for it opens
 -- on the zone you are standing in, because that is the case that should take no
 -- input at all.
+-- `zid` is optional: a caller that already read the zone (the command does)
+-- passes it, and a caller that has no business reading it (the header menu)
+-- leaves it out and gets the same answer. ONE entry point for every surface --
+-- the menu row and `/dl nm window` must not be able to open different windows.
 function M.openWindow(query, zid)
+    if zid == nil then zid = M.zoneReader(); end
     local ui = windowUI();
     if ui == nil or type(ui.openName) ~= 'function' or ui.degraded == true then
         sayWarn('nm: the Compendium window is not available in this build -- '
