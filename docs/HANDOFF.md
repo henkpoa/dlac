@@ -903,6 +903,66 @@ research already recorded. In rough priority order:
 
 ## Current state (as of 2026-08-02)
 
+- **2026-08-03: THE NM COMPENDIUM IS FINISHED — the card, and a third way to search — ON A PR
+  BRANCH off `dev` (`feature/157-nm-detail-card`), NOT field-run** (issue #157, PRD #151). #156
+  shipped the window with the right pane holding a place. This fills it: **select an NM and the
+  card shows everything the four slices before it gathered**, and the third filter mode answers
+  the one question the feature could not — *who drops this?*
+  - **THE CARD COMPUTES NOTHING, and that is the design.** Placeholders and their indexes come
+    from `nmlookup.runs`/`filterFor`; the pop kind, repop window, base chance and disfavour
+    curve from `nmlookup.popLines`; the live count from `nmtrack.entryLines`; the drop table and
+    every TH figure from `nmloot`. Not one percentage is worked out in `ui/nmui.lua`. The payoff
+    is not tidiness: **the stale-count rule now holds BY CONSTRUCTION** — `nmtrack` answers
+    `chance = nil` for a stale record, so there is no number in the window to render, and the
+    window cannot start hedging differently from chat about the same monster in one session.
+    Even the *colour* of the count block comes from `status` rather than from reading its words
+    back.
+  - **BY DROP — the join run backwards.** `nmloot` grew a reverse index (item → pools, built
+    once, pool ids sorted first so two runs cannot order the list two ways) and `nmlookup` grew
+    `dropRows`. Item NAMES stay out of the index for the same reason they are not in the data
+    file: the client cannot name anything pre-login, so the name list is retried while any id is
+    unresolved and **frozen the moment they all answer** — a miss must never latch (ADR 0007),
+    and `NM74a/b` pins exactly that.
+  - **MATCHING IS STRICTER HERE, deliberately.** By name, a typo should still find the monster,
+    so a weak match is shown and **labelled a guess**. By drop the player has one item in mind
+    out of **2183**, and a list of NMs dropping something spelled a bit like it does not answer
+    the question — it buries it. So `ITEM_FLOOR` refuses the near-miss, and a drop row is
+    **never** a guess whatever the score: nothing about the monster was matched.
+  - **Clicking a drop pivots the list to it**, the mirror of clicking a zone, and both pivots are
+    deferred to the end of the frame — acting mid-draw leaves the rows after the click reading a
+    mode the rows before it were not drawn in. Pinned: the pivot happens and **exactly one
+    window is ever begun**.
+  - **Two TH presentation rulings**, both consequences of the bracket lookup. The **verdict** is
+    printed at *every* level including TH0 — "no gain, it already drops every time" is the answer
+    a player needs before they know to ask for a level. The **figure** at TH0 is held back where
+    it would only repeat the rate beside it, *except* for an off-tier rate, which does not read
+    back as itself (`gr = 750` reads 24%) and is exactly the number that looks like a bug when
+    left unsaid. Both pinned (`NW16h2`-`NW16h5`).
+  - The one-click FilterScan apply goes through **`lib/cmdqueue.issue`**, the central command
+    door — so the line leaves on the next frame on the main thread rather than from inside a
+    render call — and the card **says it went** (hard rule 12: a silent button and a broken one
+    must not look alike). The card is deliberately **uncapped** where chat stops at 32 rolls and
+    twelve group members: the pane scrolls, so the reason for the cap does not exist.
+  - **The window's own list cache had to learn the same lesson.** An empty by-drop result from a
+    client that could name *nothing* is "cannot tell yet", not "no NM drops that" — cached, it
+    would keep saying so after the client caught up — so that one result is deliberately left
+    uncached and heals itself on the next frame (`NW19n`/`NW19o`).
+  - Tests `NM70*`-`NM74*` (pure: the index, the mode, the refusal, the lazy-name rule, the
+    tie-break) and `NW14`-`NW19` (render, through `nmui._state`). Suites **6777 + 1262** green.
+    No engine bump — addon-state only, no seeded file moved, and no new gearui locals (hard
+    rule 1).
+  - **NOT FIELD-RUN, and the round it owes is specific.** `/dl nm window leaping lizzy`, pick the
+    row: the card must show **Rock Lizard x2 at indexes 379, 399**, the curve, and five rolls with
+    real item names — **Leaping Boots at `common (15%)`**, Rock Salt twice, and Beastcoin under
+    Steal. Set the picker to **TH4**: Leaping Boots must read **45%**. Then `Mee Deggi the
+    Punisher` at any TH level: the group must still say **no gain** and Ochiudo's Kote must still
+    read a **10% share** (an 18% anywhere means TH reached a member's weight). Then **click
+    Leaping Boots** — the list must pivot to the by-drop mode *in the same window*. Then the
+    **Apply FilterScan filter** button with FilterScan loaded, which is the only thing here that
+    touches the game. It inherits the round owed on `/dl nm` itself and on the four slices below.
+  - **The new player-facing strings are unapproved and flagged in the PR** — "By drop", the card
+    headings ("Placeholders", "How it pops", "Your count", "Drops"), "Apply FilterScan filter",
+    and the by-drop refusal wording. Only "NM Compendium" is settled, from the PRD.
 - **2026-08-03: THE NM COMPENDIUM HAS A WINDOW — one list, two filter modes — ON A PR BRANCH off
   `dev` (`issue-156-nm-compendium-window`), NOT field-run** (issue #156, PRD #151). Everything
   `/dl nm` knows was chat-only. `ui/nmui.lua` is the **Floating window** half: master-detail, the

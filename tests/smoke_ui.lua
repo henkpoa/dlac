@@ -5308,12 +5308,25 @@ end)();
     IM.SmallButton = btn;
     IM.Selectable  = function(l) selects[#selects + 1] = tostring(l); return false; end
 
+    -- Which drawn line was it? The card stacks several readouts, and "the text
+    -- somewhere on screen has no percent sign in it" is not the claim -- the
+    -- drops section is nothing but percentages. The claims below are about ONE
+    -- line, so the line is what they read.
+    local function drawnLine(prefix)
+        for _, t in ipairs(drawn) do
+            if t:sub(1, #prefix) == prefix then return t; end
+        end
+        return nil;
+    end
+
     -- The fixture. Zone ids are real (5 = Uleguerand Range, 112 = Xarcabard) so
     -- the zone NAMES resolve through the same table the window uses.
     local FIX = {
         [5] = {
             { n = 'Bonnacon', nm = { 360 }, ph = { 354, 355, 356 }, p = 'Buffalo',
-              c = 5, w = { 3600, 86400 }, kind = { 'lottery' } },
+              c = 5, w = { 3600, 86400 }, kind = { 'lottery' }, pool = { 500 } },
+            -- no `pool` at all: the card must say the drops cannot be LOOKED UP
+            -- rather than that there are none (hard rule 12)
             { n = 'Jormungand', nm = { 361 }, ph = {}, kind = { 'scripted' } },
             -- the LOSING half of the tie: same name, no placeholders, LOWER zone
             -- id, so a missing tie-break would sort it first
@@ -5321,22 +5334,69 @@ end)();
         },
         [112] = {
             { n = 'Shadow Eye', nm = { 212 }, ph = { 206 }, p = 'Evil Eye',
-              c = 5, kind = { 'lottery' } },
+              c = 5, kind = { 'lottery' }, pool = { 777 } },
             { n = 'Twinned Opo-opo', nm = { 901 }, ph = { 899 }, p = 'Opo-opo',
               c = 5, kind = { 'lottery' } },
         },
     };
+    -- The drop fixture, built on the two cases the design session verified
+    -- against live data (PRD #151, issue #154): a common ungrouped drop that
+    -- reads 15% at TH0 and 45% at TH4, and a signature item sitting at a 10%
+    -- share inside a group that always drops, which no amount of TH can move.
+    -- Both NMs give Leaping Boots, so the by-drop mode has two sources to list.
+    local DROPS = {
+        [500] = {
+            { i = 13014, r = 150 },
+            { i = 16703, r = 900, t = 1, g = 1, gr = 1000 },
+            { i = 13952, r = 100, t = 1, g = 1, gr = 1000 },
+            { i = 656,   r = 0,   t = 2 },
+            -- an OFF-TIER rate: 75% is not one of the server's eight tiers, so
+            -- it only selects a bracket and reads back at that bracket's value
+            -- (24% at TH0). The 68 shipped rows at gr = 750 are this shape, and
+            -- unsaid it reads as "TH lowered my drop rate".
+            { i = 1234,  r = 750 },
+        },
+        [777] = { { i = 13014, r = 50 } },
+    };
+    local NAMES = { [13014] = 'Leaping Boots', [16703] = 'Impact Knuckles',
+                    [13952] = 'Ochiudo\'s Kote', [656] = 'Beastcoin',
+                    [1234]  = 'Bronze Sword' };
 
     local saved = { imgui = package.loaded['imgui'],
                     fmt   = package.loaded['dlac\\gear\\gearfmt'],
                     data  = package.loaded['dlac\\data\\nmdata'],
+                    drops = package.loaded['dlac\\data\\nmdrops'],
                     nml   = package.loaded['dlac\\feature\\nmlookup'],
+                    nlt   = package.loaded['dlac\\feature\\nmloot'],
+                    ntr   = package.loaded['dlac\\feature\\nmtrack'],
+                    cmdq  = package.loaded['dlac\\lib\\cmdqueue'],
                     nu    = package.loaded['dlac\\ui\\nmui'] };
     package.loaded['imgui'] = IM;
     package.loaded['dlac\\gear\\gearfmt'] = nil;         -- re-bind it to THIS stub
     package.loaded['dlac\\data\\nmdata'] = FIX;
+    package.loaded['dlac\\data\\nmdrops'] = DROPS;
     package.loaded['dlac\\feature\\nmlookup'] = nil;     -- re-read the fixture at load
+    package.loaded['dlac\\feature\\nmloot'] = nil;
+    package.loaded['dlac\\feature\\nmtrack'] = nil;
     package.loaded['dlac\\ui\\nmui'] = nil;
+
+    -- The three modules the card reads, loaded HERE rather than left to the
+    -- window's call-time reach, so the fixtures are in place before any of them
+    -- builds an index or a name cache off the shipped tables.
+    local LT = require('dlac\\feature\\nmloot');
+    LT._clientName  = function(id) return NAMES[id]; end
+    LT.NAME_RETRY_S = 0;
+    LT._resetIndex();
+    local TR = require('dlac\\feature\\nmtrack');
+    local NOW = 1000000;
+    TR.reads.now = function() return NOW; end
+    local issued = nil;
+    package.loaded['dlac\\lib\\cmdqueue'] = {
+        issue = function(c) issued = c; return true; end,
+        tick = function() end, frame = function() return 0; end,
+        enqueue = function() end,
+    };
+
     local ok, nu = pcall(require, 'dlac\\ui\\nmui');
     check('NW1 nmui re-requires against a stub imgui', ok and type(nu.render), 'function');
     check('NW1b ...and is not degraded (the shared palette reached it)',
@@ -5380,9 +5440,6 @@ end)();
             text:find('Pick one on the left', 1, true) ~= nil, true);
 
         -- ---- the right pane, with a row picked --------------------------
-        -- A PLACEHOLDER this slice, but a rendered one: it must name the NM,
-        -- offer the zone as a pivot, and SAY the card is still coming rather
-        -- than sitting empty and looking broken.
         st.sel = '5/Bonnacon/360';               -- zone / name / first NM index
         drawn, buttons = {}, {};
         local sok = pcall(nu.render);
@@ -5390,8 +5447,8 @@ end)();
         local dtext = table.concat(drawn, ' | ');
         check('NW4p the detail pane names the NM', dtext:find('Bonnacon', 1, true) ~= nil, true);
         check('NW4q ...and what pops it',          dtext:find('Buffalo x3', 1, true) ~= nil, true);
-        check('NW4r ...and says the card is still coming',
-            dtext:find('next slice', 1, true) ~= nil, true);
+        check('NW4r ...as a real card, not a promise of one',
+            dtext:find('next slice', 1, true), nil);
         check('NW4s ...offering the zone as a pivot there too',
             table.concat(buttons, ' | '):find('##dlacnmdetzone', 1, true) ~= nil, true);
         check('NW4t ...and Begin/End still balanced', depth.win, 0);
@@ -5463,6 +5520,244 @@ end)();
         check('NW9f ...and not the other one\'s',   ztext:find('Bonnacon', 1, true), nil);
         check('NW9g still one window',              begun, 1);
 
+        -- ---- THE DETAIL CARD (issue #157) ---------------------------------
+        --
+        --   The payoff pane. Every figure on it is computed somewhere else --
+        --   nmlookup's pop lines, nmtrack's count, nmloot's drop table -- so
+        --   what is pinned here is that each of them REACHED THE SCREEN, and
+        --   that the honesty rules survived the trip. A render check is the
+        --   only thing that can say so: an unknown Lua name is a silent nil
+        --   global, so a typo'd helper leaves the pane blank and nothing else.
+        -- -------------------------------------------------------------------
+        nu.openArea(5);
+        st.sel = '5/Bonnacon/360';
+        st.th  = 0;
+        TR.state = {};
+        drawn, buttons, begun = {}, {}, 0;
+        local cok, cerr = pcall(nu.render);
+        check('NW14 the detail card renders', cok, true);
+        if not cok then print('   nmui card error: ' .. tostring(cerr)); end
+        check('NW14a still exactly one window', begun, 1);
+        check('NW14b Begin/End balanced',    depth.win, 0);
+        check('NW14c BeginChild balanced',   depth.child, 0);
+        check('NW14d item-width balanced',   depth.item, 0);
+        check('NW14e combo balanced',        depth.combo, 0);
+        local card = table.concat(drawn, ' | ');
+        local cbtn = table.concat(buttons, ' | ');
+        check('NW14f nothing threw inside the card', card:find('render error', 1, true), nil);
+        -- the placeholders: their name, their count, and the indexes to watch
+        check('NW14g the card names the placeholder and counts it',
+            card:find('Buffalo x3', 1, true) ~= nil, true);
+        check('NW14h ...with the spawn indexes to watch',
+            card:find('indexes 354-356', 1, true) ~= nil, true);
+        check('NW14i ...and the NM\'s own index',
+            card:find('index 360', 1, true) ~= nil, true);
+        -- how it pops: the kind, the window, the base, the rounds to guaranteed
+        check('NW14j the pop kind reaches the card',
+            card:find('lottery pop', 1, true) ~= nil, true);
+        check('NW14k ...with the repop window',
+            card:find('repop 1h-24h', 1, true) ~= nil, true);
+        -- the base is stated as a FLOOR, never as a flat rate: that distinction
+        -- is the whole of issue #152 and it must not be lost in the window.
+        check('NW14l ...the base chance, said not to be flat',
+            card:find('5%% base, and not flat', 1, true) ~= nil, true);
+        check('NW14m ...and the rounds to a guaranteed pop',
+            card:find('40 rounds is a guaranteed pop', 1, true) ~= nil, true);
+        -- the action
+        check('NW14n the FilterScan filter is offered as one click',
+            cbtn:find('Apply FilterScan filter##dlacnmapply', 1, true) ~= nil, true);
+        check('NW14o ...over this NM\'s own spawn points',
+            card:find('/filterscan 354,355,356,360', 1, true) ~= nil, true);
+        check('NW14p a camp with no count says so rather than sitting empty',
+            card:find('no count here yet', 1, true) ~= nil, true);
+
+        -- ---- the count, and the three states it must not be trusted in ----
+        local KEY = TR.campKey(5, { n = 'Bonnacon' });
+        TR.state = { [KEY] = { zone = 5, nm = 'Bonnacon', kills = 14, void = 0,
+                               ph = 3, at = NOW, since = NOW - 3000 } };
+        drawn = {};
+        pcall(nu.render);
+        local live = drawnLine('your count:') or '';
+        check('NW15a a live count reaches the card',
+            live:find('14 placeholder kills', 1, true) ~= nil, true);
+        -- A ROUND IS NOT A KILL: three placeholders make 14 kills 4.7 rounds,
+        -- and feeding raw kills to the curve would overstate the odds threefold.
+        check('NW15b ...as ROUNDS, not as raw kills',
+            live:find('4.7 rounds', 1, true) ~= nil, true);
+        -- ...and the CURRENT chance, not the 5% base it started from.
+        check('NW15c ...with the current chance, not the base',
+            live:find('5.6%% now', 1, true) ~= nil, true);
+        check('NW15d ...and the floor caveat beside the number',
+            table.concat(drawn, ' | '):find('a FLOOR', 1, true) ~= nil, true);
+
+        TR.state = { [KEY] = { zone = 5, nm = 'Bonnacon', kills = 14, void = 0, ph = 3,
+                               at = NOW - 1200, since = NOW - 4000, stale = true, why = 'zone' } };
+        drawn = {};
+        pcall(nu.render);
+        local stale = drawnLine('your count:') or '';
+        check('NW15e a stale record still shows its raw count',
+            stale:find('14 placeholder kills', 1, true) ~= nil, true);
+        check('NW15f ...and when it was last vouched for',
+            stale:find('20m ago', 1, true) ~= nil, true);
+        check('NW15g ...naming the break in observation',
+            stale:find('STALE (you left the zone)', 1, true) ~= nil, true);
+        -- THE rule the whole feature stands on. Asserted on the LINE and not on
+        -- the pane, because the drop table beside it is nothing but percentages
+        -- -- "no percentage on screen" would be the wrong claim and would pass
+        -- for the wrong reason.
+        check('NW15h ...and NO percentage anywhere on that line',
+            stale:find('%%', 1, true), nil);
+
+        TR.state = { [KEY] = { zone = 5, nm = 'Bonnacon', kills = 2, void = 0, ph = 3,
+                               at = NOW - 60, since = NOW - 600, saw = 'dead', sawAt = NOW - 60 } };
+        drawn = {};
+        pcall(nu.render);
+        check('NW15i a post-kill cooldown says kills cannot roll',
+            (drawnLine('kills cannot roll right now') or ''):find('saw it die', 1, true) ~= nil, true);
+        TR.state = { [KEY] = { zone = 5, nm = 'Bonnacon', kills = 2, void = 0, ph = 3,
+                               at = NOW - 60, since = NOW - 600, saw = 'alive', sawAt = NOW - 60 } };
+        drawn = {};
+        pcall(nu.render);
+        check('NW15j a primed camp says the same, for the other reason',
+            (drawnLine('kills cannot roll right now') or ''):find('saw it alive', 1, true) ~= nil, true);
+        TR.state = {};
+
+        -- ---- the drop table, and the Treasure Hunter verdict ---------------
+        drawn, buttons = {}, {};
+        pcall(nu.render);
+        local dcard, dbtn = table.concat(drawn, ' | '), table.concat(buttons, ' | ');
+        check('NW16a the drop table reaches the card, with the server\'s tier name',
+            dcard:find('common (15%%)', 1, true) ~= nil, true);
+        check('NW16b ...and every drop is a click target',
+            dbtn:find('Leaping Boots##dlacnmdrop', 1, true) ~= nil, true);
+        check('NW16c a group renders AS a group',
+            dcard:find('one of these, always (100%%):', 1, true) ~= nil, true);
+        check('NW16d ...with each member\'s share of it',
+            dcard:find('90%%', 1, true) ~= nil and dcard:find('10%%', 1, true) ~= nil, true);
+        check('NW16e ...its members clickable too',
+            dbtn:find('Ochiudo\'s Kote##dlacnmdrop', 1, true) ~= nil, true);
+        check('NW16f Steal is kept out of the kill loot',
+            dcard:find('Not kill loot -- Steal only', 1, true) ~= nil, true);
+        check('NW16g ...with the stolen item still named',
+            dbtn:find('Beastcoin##dlacnmdrop', 1, true) ~= nil, true);
+        -- THE VERDICT IS THE FEATURE, NOT THE NUMBER: a group already at 100%
+        -- gains nothing from any TH level, and an unchanged number could never
+        -- have said so. It is printed with NO level asked for, because that is
+        -- the answer a player needs before they know to ask.
+        check('NW16h a 100%% group says in words that TH cannot help it',
+            dcard:find('no gain -- the group already drops every time', 1, true) ~= nil, true);
+        -- An off-tier rate does NOT read back as itself, because the rate only
+        -- selects a bracket. Shown at TH0 (where the tier rates' figures are
+        -- held back as noise) precisely because it is the one that would
+        -- otherwise read as "TH lowered my drop rate".
+        check('NW16h2 an off-tier rate states its own value',
+            dcard:find('75%%', 1, true) ~= nil, true);
+        check('NW16h3 ...and the bracket it actually reads at',
+            dcard:find('TH0 24%%', 1, true) ~= nil, true);
+        check('NW16h4 ...saying why, so it cannot read as TH lowering a rate',
+            dcard:find('the stated rate only picks the bracket', 1, true) ~= nil, true);
+        -- ...while a tier rate repeats nothing: "TH0 15%" beside "common (15%)"
+        -- is noise, and the card is long enough already.
+        check('NW16h5 a tier rate carries no redundant TH0 figure',
+            dcard:find('TH0 15%%', 1, true), nil);
+        st.th = 4;
+        drawn = {};
+        pcall(nu.render);
+        local th4 = table.concat(drawn, ' | ');
+        check('NW16i a selectable level lifts the ungrouped drop: 15%% becomes 45%%',
+            th4:find('TH4 45%%', 1, true) ~= nil, true);
+        check('NW16j ...while the 100%% group still gains nothing',
+            th4:find('no gain -- the group already drops every time', 1, true) ~= nil, true);
+        -- TH applies to the GROUP's rate, never to a member's weight. Ochiudo's
+        -- Kote's weight of 100 would read 18% if the wrong rate were looked up;
+        -- that number is pinned ABSENT.
+        check('NW16k ...and TH never reaches a member\'s weight', th4:find('18%%', 1, true), nil);
+        check('NW16l ...with the lookup said out loud, so it cannot read as a multiplier',
+            th4:find('not a multiplier', 1, true) ~= nil, true);
+        st.th = 0;
+
+        -- ---- an NM with no placeholders still gets a card ------------------
+        st.sel = '5/Jormungand/361';
+        drawn = {};
+        pcall(nu.render);
+        local jcard = table.concat(drawn, ' | ');
+        check('NW17a an NM with no placeholders is not an empty card',
+            jcard:find('None in the table', 1, true) ~= nil, true);
+        check('NW17b ...it shows its pop conditions instead',
+            jcard:find('a pop item, a quest, or a forced spawn', 1, true) ~= nil, true);
+        check('NW17c ...and borrows no lottery curve from the ones that have them',
+            jcard:find('guaranteed pop', 1, true), nil);
+        -- Three absences must not look alike (hard rule 12): this one cannot be
+        -- LOOKED UP, which is not the same as dropping nothing.
+        check('NW17d an NM carrying no pool id says the drops cannot be looked up',
+            jcard:find('carries no pool id', 1, true) ~= nil, true);
+
+        -- ---- the one-click FilterScan action actually issues ---------------
+        st.sel = '5/Bonnacon/360';
+        issued = nil;
+        hitButton = 'Apply FilterScan filter##dlacnmapply';
+        drawn = {};
+        local aok = pcall(nu.render);
+        check('NW18a the apply frame renders', aok, true);
+        check('NW18b ...and one click queued the filter through the central door',
+            issued, '/filterscan 354,355,356,360');
+        -- A button that says nothing back is indistinguishable from a broken
+        -- one (hard rule 12).
+        check('NW18c ...with the card saying it went',
+            table.concat(drawn, ' | '):find('Applied', 1, true) ~= nil, true);
+
+        -- ---- filter mode: BY DROP, and the pivot that reaches it -----------
+        drawn, buttons, begun = {}, {}, 0;
+        hitButton = 'Leaping Boots##dlacnmdrop1';
+        local pok = pcall(nu.render);
+        check('NW19a the frame with the drop click renders', pok, true);
+        check('NW19b clicking a drop pivots the list to that item', st.mode, 'drop');
+        check('NW19c ...on the item that was clicked', st.dq[1], 'Leaping Boots');
+        check('NW19d ...and only ever ONE window was begun', begun, 1);
+        drawn, selects, begun = {}, {}, 0;
+        pcall(nu.render);
+        local drop = table.concat(drawn, ' | ');
+        check('NW19e the by-drop frame renders', begun, 1);
+        check('NW19f ...saying what the list is OF',
+            drop:find('Every NM that drops Leaping Boots', 1, true) ~= nil, true);
+        check('NW19g ...holding every NM that gives it',
+            drop:find('Bonnacon', 1, true) ~= nil and drop:find('Shadow Eye', 1, true) ~= nil, true);
+        check('NW19h ...and naming the drop that answered on each row',
+            select(2, drop:gsub('Leaping Boots', '')) >= 2, true);
+        check('NW19i Begin/End still balanced',  depth.win, 0);
+        check('NW19j BeginChild still balanced', depth.child, 0);
+        -- Refused, not answered with something close: across 2183 items a
+        -- near-miss is noise, not a hedge.
+        nu.showDrop('zzzznothing');
+        drawn, selects, buttons = {}, {}, {};
+        pcall(nu.render);
+        check('NW19k an item nothing drops is refused in words',
+            table.concat(drawn, ' | '):find('No NM in the drop table drops anything called',
+                1, true) ~= nil, true);
+        check('NW19l ...and no row is offered', #selects, 0);
+        check('NW19m the by-drop mode is a filter button, not only a click target',
+            table.concat(buttons, ' | '):find('By drop##dlacnmmodedrop', 1, true) ~= nil, true);
+
+        -- A CLIENT THAT CANNOT NAME ANYTHING YET IS NOT AN ANSWER (ADR 0007).
+        -- Item names come from the client's own resources and it answers with
+        -- nothing before the player is in the world -- so "no NM drops that"
+        -- must not be CACHED off a read that never happened, or the window
+        -- keeps saying it long after the client caught up.
+        LT._clientName = function() return nil; end
+        LT._names = {};            -- a fresh session: nothing resolved yet
+        LT._resetIndex();
+        nu.showDrop('Leaping Boots');
+        drawn = {};
+        pcall(nu.render);
+        check('NW19n a client that can name nothing answers nothing',
+            table.concat(drawn, ' | '):find('No NM in the drop table drops', 1, true) ~= nil, true);
+        LT._clientName = function(id) return NAMES[id]; end
+        drawn = {};
+        pcall(nu.render);          -- the SAME query, nothing reset, nobody retyped
+        check('NW19o ...and the miss never latched: the next frame answers properly',
+            table.concat(drawn, ' | '):find('Every NM that drops Leaping Boots', 1, true) ~= nil, true);
+        st.sel = nil;
+
         -- ---- the truncation notice is never silent ------------------------
         local savedCap = nu.CAP;
         nu.CAP = 1;
@@ -5514,7 +5809,11 @@ end)();
     package.loaded['imgui'] = saved.imgui;
     package.loaded['dlac\\gear\\gearfmt'] = saved.fmt;
     package.loaded['dlac\\data\\nmdata'] = saved.data;
+    package.loaded['dlac\\data\\nmdrops'] = saved.drops;
     package.loaded['dlac\\feature\\nmlookup'] = saved.nml;
+    package.loaded['dlac\\feature\\nmloot'] = saved.nlt;
+    package.loaded['dlac\\feature\\nmtrack'] = saved.ntr;
+    package.loaded['dlac\\lib\\cmdqueue'] = saved.cmdq;
     package.loaded['dlac\\ui\\nmui'] = saved.nu;
 end)();
 

@@ -112,6 +112,15 @@
        group, and no amount of TH moves it -- saying so in WORDS is what saves
        a player a gear set, which an unchanged number never would.
 
+    THE SAME TABLE READ BACKWARDS (issue #157) is what answers "who drops
+    Leaping Boots?" -- the Compendium's third filter mode. The join above runs
+    NM -> pool -> rows; the reverse index runs item -> pools, and `nmlookup`
+    walks the NM table for the entries carrying one of them. It is an INDEX and
+    not a search: the drop table cannot change while the client runs, so the id
+    half is built once. The NAME half is not part of it, for the same reason
+    names are resolved lazily above -- it is retried while any id is still
+    unresolved and frozen the moment every one of them answers.
+
     A CONSEQUENCE WORTH KNOWING BEFORE IT SURPRISES YOU: because the rate only
     SELECTS a bracket, a rate that is not one of the eight tiers does not read
     back as itself. The bracket floors are the tiers times ten (2400, 1500,
@@ -382,28 +391,39 @@ end
 -- the join
 -- ---------------------------------------------------------------------------
 
--- Every drop row for an NM, in table order, with duplicates intact. An NM may
--- carry several pools (16 shipped entries do, up to nine); each is a mob
--- template with its own droplist, so their rows CONCATENATE. The same pool id
--- listed twice is one droplist, not two, so pool ids -- and only pool ids --
--- are de-duplicated.
-function M.rowsFor(entry)
+-- The pool ids one NM entry carries, in table order and de-duplicated. An NM
+-- may carry several pools (16 shipped entries do, up to nine); each is a mob
+-- template with its own droplist. The same pool id listed twice is one
+-- droplist, not two -- so pool ids, and only pool ids, are de-duplicated.
+-- A single `pool = 500` and a `pool = { 500 }` are the same statement.
+function M.poolsOf(entry)
     local out = {};
     if type(entry) ~= 'table' then return out; end
     local pools = entry.pool;
     if type(pools) == 'number' then pools = { pools }; end
     if type(pools) ~= 'table' then return out; end
-    if type(M.data) ~= 'table' then return out; end
     local seen = {};
     for _, p in ipairs(pools) do
         local id = tonumber(p);
         if id ~= nil and not seen[id] then
             seen[id] = true;
-            local list = M.data[id];
-            if type(list) == 'table' then
-                for _, r in ipairs(list) do
-                    if type(r) == 'table' then out[#out + 1] = r; end
-                end
+            out[#out + 1] = id;
+        end
+    end
+    return out;
+end
+
+-- Every drop row for an NM, in table order, with duplicates intact. Several
+-- pools CONCATENATE their rows -- see M.poolsOf for why that is one droplist
+-- per pool and not one per mention.
+function M.rowsFor(entry)
+    local out = {};
+    if type(M.data) ~= 'table' then return out; end
+    for _, id in ipairs(M.poolsOf(entry)) do
+        local list = M.data[id];
+        if type(list) == 'table' then
+            for _, r in ipairs(list) do
+                if type(r) == 'table' then out[#out + 1] = r; end
             end
         end
     end
@@ -416,6 +436,125 @@ function M.hasPool(entry)
     if type(entry) ~= 'table' then return false; end
     if type(entry.pool) == 'number' then return true; end
     return type(entry.pool) == 'table' and #entry.pool > 0;
+end
+
+-- ---------------------------------------------------------------------------
+-- the reverse index -- "who drops Leaping Boots?" (issue #157)
+-- ---------------------------------------------------------------------------
+-- The join above runs NM -> pool -> rows. The by-drop filter mode runs it
+-- BACKWARDS -- item -> pools, and then nmlookup walks the NM table for the
+-- entries carrying one of them. That direction is an INDEX, not a search: the
+-- drop table does not change while the client runs, so it is built once.
+--
+-- Item names deliberately are NOT part of that index. They come from the
+-- client's own resources, one id at a time, and before the player is logged in
+-- the client answers with nothing (ADR 0007) -- so the id half is permanent and
+-- the name half is retried until it resolves.
+
+local _pools = nil;      -- [itemId] = { poolId, ... }, ascending
+local _ids   = nil;      -- every item id in the table, ascending
+
+local function buildIndex()
+    if _pools ~= nil then return; end
+    _pools, _ids = {}, {};
+    if type(M.data) ~= 'table' then return; end
+    -- pairs() order is undefined (hard rule 8) and this index is walked to
+    -- build a list a player reads, so the pool ids are sorted FIRST and the
+    -- index is filled in that order. Otherwise two runs of the same search
+    -- could list the same NMs in two different orders.
+    local pids = {};
+    for pid, list in pairs(M.data) do
+        if type(list) == 'table' and tonumber(pid) ~= nil then pids[#pids + 1] = tonumber(pid); end
+    end
+    table.sort(pids);
+    for _, pid in ipairs(pids) do
+        -- The key was read back as a NUMBER above, so a table keyed by strings
+        -- would index to nothing here. The shipped table is numeric-keyed; this
+        -- guard is what keeps a hand-made one from erroring instead of saying
+        -- it has nothing.
+        for _, r in ipairs((type(M.data[pid]) == 'table') and M.data[pid] or {}) do
+            local id = (type(r) == 'table') and tonumber(r.i) or nil;
+            if id ~= nil then
+                local into = _pools[id];
+                if into == nil then
+                    _pools[id] = { pid };
+                    _ids[#_ids + 1] = id;
+                elseif into[#into] ~= pid then
+                    -- Duplicate rows in one pool are two independent ROLLS and
+                    -- both matter to the drops readout -- but to "who drops
+                    -- this" one pool is one answer, so only the pool is kept.
+                    into[#into + 1] = pid;
+                end
+            end
+        end
+    end
+    table.sort(_ids);
+end
+
+-- Every item id the drop table carries, ascending. Pure, and built once.
+function M.itemIds()
+    buildIndex();
+    return _ids;
+end
+
+-- Which pools drop this item. {} for an id the table does not carry.
+function M.poolsForItem(id)
+    buildIndex();
+    local n = tonumber(id);
+    if n == nil then return {}; end
+    return _pools[n] or {};
+end
+
+-- How long to wait before asking the client again about the ids it could not
+-- name. Pre-login it can name NONE of them, and re-asking 2183 times per
+-- keystroke is the difference between a search box and a stutter.
+M.NAME_RETRY_S = 2.0;
+
+local _named   = nil;    -- { { id = n, name = s }, ... }, id-ascending
+local _missing = 0;      -- ids the client could not answer for last build
+local _namedAt = -1e9;   -- os.clock() of that build
+
+-- Every drop-table item the client can NAME, id-ascending: the whole source
+-- for a by-drop search. A miss is never cached (ADR 0007 -- "cannot tell yet"
+-- is not "no such item"), so the list is rebuilt while any id is still
+-- unresolved and frozen the moment they all are.
+function M.namedItems()
+    if _named ~= nil and _missing == 0 then return _named; end
+    local now = 0;
+    pcall(function() now = os.clock(); end);
+    if _named ~= nil and (now - _namedAt) < M.NAME_RETRY_S then return _named; end
+    _namedAt = now;
+    local out, miss = {}, 0;
+    for _, id in ipairs(M.itemIds()) do
+        local name = M._names[id];
+        if name == nil then
+            name = M._clientName(id);
+            if name ~= nil then M._names[id] = name; end
+        end
+        if name ~= nil then
+            out[#out + 1] = { id = id, name = name };
+        else
+            miss = miss + 1;
+        end
+    end
+    _named, _missing = out, miss;
+    return _named;
+end
+
+-- How many of the table's items the client has managed to name so far. CHEAP
+-- and side-effect free -- it never triggers a resolve -- so a caller can ask
+-- "did the client know anything when that answered?" without paying for the
+-- sweep again. Zero means the answer above was "nothing", not "nothing drops
+-- that", and those two must not be cached alike (ADR 0007).
+function M.namedCount()
+    return (_named ~= nil) and #_named or 0;
+end
+
+-- Drop every cached index. The data table is swapped under this module by the
+-- tests and by nothing else in the game; without this a fixture would answer
+-- out of the shipped table's index.
+function M._resetIndex()
+    _pools, _ids, _named, _missing, _namedAt = nil, nil, nil, 0, -1e9;
 end
 
 -- ---------------------------------------------------------------------------

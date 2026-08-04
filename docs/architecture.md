@@ -1415,6 +1415,29 @@ cap fires today.
 it at **call time**, exactly like the tracker, so a build where it fails to load loses the drops
 section and nothing else; there is no load-time edge in either direction. Tests `ND00*`-`ND09*`.
 
+#### The reverse index — "who drops Leaping Boots?" (issue #157)
+The join above runs NM → pool → rows. The Compendium's **by-drop** filter mode runs it
+backwards, and `nmloot` owns the item half of that: `itemIds()` and `poolsForItem(id)` are one
+index over the whole table, built **once** — the drop table cannot change while the client runs
+— with the pool ids walked in sorted order first, so two runs of the same search can never list
+the same NMs in two orders (`pairs()` order is undefined, hard rule 8). `poolsOf(entry)` is the
+entry→pools half, shared with `rowsFor` so "the same pool listed twice is one droplist" is
+stated in exactly one place.
+
+**Item names are deliberately not in that index**, for the same reason they are not in the data
+file: they come from the client one id at a time and pre-login it can name none of them.
+`namedItems()` therefore rebuilds while any id is still unresolved and **freezes the moment
+they all answer** — a miss must never latch (ADR 0007) — with `NAME_RETRY_S` throttling the
+retry so a pre-login window cannot re-ask 2183 times a keystroke. The matching itself lives in
+`nmlookup` (`dropRows`), because that is where "does this name match" already lives.
+
+`ITEM_FLOOR` is the one behavioural difference from the by-name mode, and it is deliberate:
+there the player has one **monster** in mind and a typo should still find it, so a weak match is
+shown and **labelled a guess**. Here they have one **item** in mind out of 2183, and a list of
+NMs dropping something spelled a bit like it does not answer the question — it buries it. So
+only a real name hit counts and a near-miss is **refused**. A drop row is consequently never a
+guess, whatever the item score: nothing about the monster was matched. Tests `NM70*`-`NM74*`.
+
 #### The Treasure Hunter verdict (issue #154)
 **TH is a bracket LOOKUP, not a multiplier**, and that is the only reason this can be answered
 at all: the rate selects a **rarity bracket** and the TH level selects the value **inside** it,
@@ -1459,26 +1482,56 @@ Steal and Despoil carry **no** TH figures and say why: the lookup ported here is
 drop roll, which is not where those come from.
 
 ### ui/nmui.lua — the NM Compendium window: one list, several filter modes
-The GUI half of `/dl nm` (issue #156, PRD #151). One **Floating window**, master-detail: the
-filter and the result list on the left, the detail card on the right. This slice is the shell —
-the list and the **by-name** and **by-area** filter modes; the card itself and the by-drop mode
-land in #157, and the right pane holds their place until they do.
+The GUI half of `/dl nm` (issues #156 + #157, PRD #151). One **Floating window**, master-detail:
+the filter and the result list on the left, the **NM card** on the right. #156 built the shell
+and the **by-name** / **by-area** modes; #157 filled the card in and added **by-drop**.
 
-**One list, several filter modes — not several windows.** Every search here returns NMs, so one
+**One list, several filter modes — not several windows.** All three searches return NMs, so one
 list serves all of them. That is the whole difference from the Chocobo dig search, which needs
 *two* windows because its two searches return different kinds of thing (items and zones) and
-cross-linking them needs a second window to land in. Here, clicking a zone only re-filters the
-list already on screen, so the cross-link problem does not exist in this shape at all.
+cross-linking them needs a second window to land in. Here, clicking a zone — or a **drop** —
+only re-filters the list already on screen, so the cross-link problem does not exist in this
+shape at all.
 
-**It owns no answers.** Every question it asks is answered by `feature/nmlookup` — the same
-module the chat command asks. That module grew the pure list side (`nameRows`, `areaRows`,
-`zoneChoices`, `rowNote`, `zoneIds`) rather than the window growing a second matcher, and the
-reason is behavioural, not tidiness: **a weak match is labelled a guess and gibberish is refused
-on both surfaces**, because there is one implementation of "does this name match" and one
-`M.GUESS_FLOOR` deciding when an answer stops being one. On a score tie the entry **with
-placeholders wins** — the same rule the chat command has always used, now expressed as a total
-sort order (score → placeholders → zone → name) so a 2000-row list cannot reshuffle between
-frames.
+**It owns no answers, and the card is where that earns its keep.** Every question it asks is
+answered by a feature module, and not one percentage is worked out in the window:
+
+| block | consumed from | what it renders |
+| --- | --- | --- |
+| Placeholders | `nmlookup.runs` / `filterFor` | the placeholder's name and count, the target **indexes** as runs, the NM's own index, and the `/filterscan` line — appliable in one click through `lib/cmdqueue.issue`, the central command door |
+| How it pops | `nmlookup.popLines` | the pop **kind**, the repop window, the base chance *stated as a floor*, the **disfavour** curve at quarter marks, and the rounds to a guaranteed pop |
+| Your count | `nmtrack.entryLines` + `status` | the rounds witnessed and the current chance, or the **cooldown** / **primed** / **stale** states. `status` supplies the *colour* — the words are never read back to decide it |
+| Drops | `nmloot.rowsFor` / `rolls` / `rateText` / `shareOf` / `thVerdict` | one line per **roll**, groups **as groups** with each member's share, Steal and Despoil in their own block, and a **TH verdict** at a level chosen on the card |
+
+That is not tidiness. The chat command and the window must not disagree about the same monster
+in the same session, and the honesty rules only hold once: **the stale-count rule survives here
+by construction rather than by care**, because `nmtrack` answers `chance = nil` for a stale
+record and there is no number in the window to render.
+
+**A weak match is labelled a guess and gibberish is refused on both surfaces**, because there is
+one implementation of "does this name match" and one `M.GUESS_FLOOR` deciding when an answer
+stops being one. On a score tie the entry **with placeholders wins** — the same rule the chat
+command has always used, now expressed as a total sort order (score → placeholders → zone →
+name) so a 2000-row list cannot reshuffle between frames. The **by-drop** mode is the one place
+that hedge does *not* apply: its rows are never guesses, because only the item name was matched
+(see `nmloot`'s reverse index above).
+
+**Two pivots, both deferred to the end of the frame.** A zone click re-filters to that area; a
+drop click re-filters to every NM giving that item. Both are recorded and acted on *after* the
+whole frame is drawn — pivoting mid-draw would leave the rows after the click reading a mode the
+rows before it were not drawn in, one frame of a list that disagrees with itself.
+
+**The card is deliberately uncapped where chat is not.** The chat readout stops at 32 rolls and
+twelve group members because nobody wants a hundred lines scrolling past; the card sits in a
+child that scrolls, so the reason for the cap does not exist and the whole table is shown.
+
+**Two Treasure Hunter presentation rulings**, both consequences of TH being a bracket lookup.
+The **verdict** is printed at every level including TH0 — "no gain, it already drops every time"
+is the answer a player needs *before* they know to ask for a level, and an unchanged number
+could never give it. The **figure** at TH0 is held back where it would only repeat the rate
+already printed beside it, with one exception that is not noise: an off-tier rate does not read
+back as itself (the 68 shipped rows at `gr = 750` read 24%), and that is precisely the number
+that looks like a bug when left unsaid.
 
 **The load-time edge runs one way**, exactly as `nmtrack` and `nmloot` do: the window requires
 `nmlookup`; `nmlookup` reaches back for the window only at call time, inside the `window` verb.
@@ -1489,8 +1542,8 @@ else.
 while `M.visible` is set — the same contract every other floating window here follows: any
 surface may *open* one, exactly one site may *draw* it, because two `Begin()` calls on one
 window name in a frame merge both bodies into it. `M.open` / `M.openName` / `M.openArea` /
-`M.showArea` only set state. Opened today from `/dl nm window [name]`; bare, it opens on the
-zone you are standing in, so the common case takes no input.
+`M.showArea` / `M.showDrop` only set state. Opened today from `/dl nm window [name]`; bare, it
+opens on the zone you are standing in, so the common case takes no input.
 
 **The list scrolls, and that is not a formality.** Most zones hold a handful of NMs; Escha
 Ru'Aun holds **61**. The rows sit in their own `BeginChild` inside the left pane, and a name
@@ -1503,11 +1556,17 @@ is the difference between a window and a stutter. The cache key is the mode, the
 zone, so a change no imgui binding bothered to report still rebuilds the list.
 
 Covered by the UI smoke harness through the exported state seam (`nmui._state`, the dig-search
-precedent) — `NW1`-`NW13`: the window opens, each filter mode renders with its rows actually on
+precedent) — `NW1`-`NW19`: the window opens, each filter mode renders with its rows actually on
 screen, a weak match is labelled, gibberish is refused, the tie-break holds *in the rendered
 order*, a zone click re-filters while exactly one window is begun, and the one-draw-site rule is
 pinned as **source** (`imgui.Begin` appears once in the module, `nmMod.render` once in gearui),
-because a render check can only see the window this module draws.
+because a render check can only see the window this module draws. `NW14`-`NW19` drive the card:
+every block reaches the screen, a **stale** count shows its raw number and its last-vouched time
+with **no percentage on that line** (asserted on the line, not the pane — the drops beside it
+are nothing but percentages), a 100% group says in words that TH cannot help it while 15%
+becomes 45% at TH4 and a member's weight is never the rate TH reads, an NM with no placeholders
+still gets a card, the FilterScan button issues, and clicking a drop pivots to the by-drop mode
+with exactly one window begun.
 
 ### data/statdefs.lua — stat metadata registry
 Single source of truth for stat presentation/weighting: key, label, section, percent,
@@ -1744,7 +1803,7 @@ like the command does not exist.
 | `/dl engine [native on\|off \| migrate]` | feature/engine | The Native-engine flip: status / flag + storage migration (see § The Native engine) |
 | `/dl nm [name] [apply\|reset]` (`ph`) | nmlookup + nmtrack + nmloot | **Which NMs are in this zone, what pops them, and what they give.** Bare lists the zone's notorious monsters, placeholders first; a name gives the **pop kind**, that NM's target indexes, its placeholders (name, count, repop window) and a ready `/filterscan` line over those spawn points. For a **lottery** it states the **base** chance, that the chance is **not flat**, the **disfavour** curve at quarter marks and the rounds to a guaranteed pop; a non-lottery NM gets its own words and **no curve**. It also states **your own count** — the placeholder kills you personally witnessed, as rounds, with the *current* chance and the rounds left to a guaranteed pop, labelled a **floor**; a **stale** count (you zoned, relogged, or left it too long) shows the raw number and **no percentage at all**, and a **cooldown**/**primed** camp says kills cannot roll right now. Names match loosely; a weak match is shown *labelled as a guess*. A name that lives elsewhere answers about that zone rather than dead-ending. `apply` queues the `/filterscan` for you; `reset` clears that camp's count. It closes with the **drop table**: one line per **roll**, the server's own tier name beside each percentage, a **group** rendered as a group with each item's share inside it, **Steal/Despoil in their own section** because a kill never gives them, and duplicate rows kept as the two independent rolls they are — or a plain line saying the table has nothing for this one. Reads only `data/nmdata.lua`, `data/nmdrops.lua`, your zone id, your own count file and the client's item names — no live scanning |
 | `/dl nm counts` (`count`) | nmtrack | **Which camps am I part-way through?** Every NM holding a Pop count, newest first, with its zone, kills, rounds and current chance — or why one is showing none (stale, cooldown, primed). The chat surface for resuming a camp started earlier |
-| `/dl nm window [name]` (`win`, `gui`) | nmlookup → nmui | **The same answers as a window.** Opens the **NM Compendium** (one list, filter modes by name and by area) on that name, or — bare — on the zone you are standing in, so the common case takes no input. An OPEN only: the window is drawn from gearui's one draw site. `apply` / `reset` / `th` are chat-only and say so rather than being dropped; a build without the GUI says the window is unavailable and points back at the chat readout |
+| `/dl nm window [name]` (`win`, `gui`) | nmlookup → nmui | **The same answers as a window, plus one chat cannot give.** Opens the **NM Compendium** — one list with three filter modes (by name, by area, by **drop**) and the **NM card** on the right: placeholder indexes with a one-click FilterScan apply, the pop kind and disfavour curve, your live count, and the full drop table with a **TH verdict** at a level chosen on the card. Lands on that name, or — bare — on the zone you are standing in, so the common case takes no input. An OPEN only: the window is drawn from gearui's one draw site. `apply` / `reset` / `th` are chat-only and say so rather than being dropped; a build without the GUI says the window is unavailable and points back at the chat readout |
 | `/dlmv` | gearmove | (branch-only) gate/version diagnostic |
 
 ## Per-character state vs repo

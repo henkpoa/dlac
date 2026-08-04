@@ -24910,6 +24910,178 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- NM7*. Filter mode BY DROP -- the reverse lookup (issue #157, PRD #151).
+--
+--   "Who drops Leaping Boots?" is the one question the Compendium could not
+--   answer without leaving the game, and it is the same join run backwards:
+--   item -> pools (feature\nmloot's index) -> the NM entries carrying them
+--   (feature\nmlookup's table). It lives HERE rather than up in the NM block
+--   because it needs both halves at once -- the drop table AND a client that
+--   can name items -- which is the environment this section already builds.
+--
+--   Two properties decide whether the mode is worth having, and each is a way
+--   it could quietly answer the wrong question:
+--
+--     * ONLY A REAL NAME HIT COUNTS. The by-name mode hedges a weak match and
+--       LABELS it a guess, because there the player has one monster in mind.
+--       Here they have one ITEM in mind out of 2183, and a list of NMs
+--       dropping something spelled a bit like it does not answer the question,
+--       it buries it. So M.ITEM_FLOOR refuses the near-miss outright.
+--     * A ROW IS NEVER A GUESS. Whatever the item score, nothing about the
+--       MONSTER was guessed at -- the table says it drops that item -- so the
+--       "(guess)" hedge must not leak across from the by-name mode.
+-- ---------------------------------------------------------------------------
+(function()
+    local savedAC    = AshitaCore;
+    local savedLoot  = package.loaded['dlac\\feature\\nmloot'];
+    local savedLook  = package.loaded['dlac\\feature\\nmlookup'];
+    local savedDrops = package.loaded['dlac\\data\\nmdrops'];
+    package.loaded['dlac\\data\\nmdata']  = package.loaded['dlac\\data\\nmdata']
+        or dofile('data/nmdata.lua');
+    package.loaded['dlac\\data\\nmdrops'] = dofile('data/nmdrops.lua');
+
+    -- A DELIBERATELY TINY name universe over the REAL drop table. The client
+    -- only ever answers for these five, so `namedItems` holds five entries and
+    -- every row below is the shipped table's own answer about them -- which
+    -- makes each check a data tripwire as well as a behaviour one.
+    local RES = { [13014] = 'Leaping Boots', [13952] = 'Ochiudo\'s Kote',
+                  [16703] = 'Impact Knuckles', [656] = 'Beastcoin', [926] = 'Rock Salt' };
+    AshitaCore = {
+        GetResourceManager = function()
+            return { GetItemById = function(_, id)
+                if RES[id] == nil then return nil; end
+                return { Name = { RES[id] } };
+            end };
+        end,
+    };
+
+    -- dofile + register, the harness pattern: `require` has no addons/ on its
+    -- path here, and nmlookup reaches nmloot through `require` at call time --
+    -- so both instances have to be the ones package.loaded hands back.
+    local savedReg = ashita.events.register;
+    ashita.events.register = function() end;      -- the command handler is not this block's
+    local NM = dofile('feature/nmlookup.lua');
+    package.loaded['dlac\\feature\\nmlookup'] = NM;
+    local LT = dofile('feature/nmloot.lua');
+    package.loaded['dlac\\feature\\nmloot'] = LT;
+    ashita.events.register = savedReg;
+    LT._resetIndex();
+    LT.NAME_RETRY_S = 0;      -- no throttle: the suite changes what the client knows
+
+    -- ---- the index itself --------------------------------------------------
+    check('NM70a the drop table indexes every item it carries', #LT.itemIds(), 2183);
+    check('NM70b ...and Leaping Boots reaches exactly one pool',
+        table.concat(LT.poolsForItem(13014), ','), '2384');
+    check('NM70c an item the table does not carry indexes to nothing',
+        #LT.poolsForItem(999999), 0);
+    check('NM70d ...and so does a nonsense id',  #LT.poolsForItem('x'), 0);
+    -- An NM may carry the same pool twice. That is one droplist mentioned
+    -- twice, not two droplists -- and the drops readout has always read it
+    -- that way, so the reverse index must agree.
+    check('NM70e a repeated pool id is one pool',
+        #LT.poolsOf({ pool = { 9, 9, 9 } }), 1);
+    check('NM70f a bare number pool is a pool',   #LT.poolsOf({ pool = 500 }), 1);
+    check('NM70g an entry with no pool has none', #LT.poolsOf({ n = 'x' }), 0);
+
+    -- ---- the mode ----------------------------------------------------------
+    local brows, btotal, bitems = NM.dropRows('Leaping Boots');
+    check('NM71a a drop search answers with the NMs that give it', btotal, 1);
+    check('NM71b ...naming the monster',        brows[1] ~= nil and brows[1].n, 'Leaping Lizzy');
+    check('NM71c ...in the zone it lives in',   brows[1] ~= nil and NM.zoneName(brows[1].zid),
+        'South Gustaberg');
+    check('NM71d ...and saying WHICH drop answered', brows[1] ~= nil and brows[1].dropNote,
+        'Leaping Boots');
+    check('NM71e the search says what it is a list OF', table.concat(bitems, ', '),
+        'Leaping Boots');
+    -- The hedge must not leak across from the by-name mode: the table SAYS
+    -- this NM drops that item. Nothing about the monster was guessed at.
+    check('NM71f a drop row is never a guess',   brows[1] ~= nil and brows[1].guess, false);
+    -- Part of a name still finds it -- that much forgiveness is worth having.
+    check('NM71g part of an item name still finds it',
+        select(2, NM.dropRows('boots')), 1);
+
+    -- ---- refusal, not a wild guess ----------------------------------------
+    check('NM72a a near-miss is refused rather than guessed at',
+        select(2, NM.dropRows('Leeping Bots')), 0);
+    check('NM72b gibberish is refused',      select(2, NM.dropRows('zzzznothing')), 0);
+    check('NM72c an empty query is not a search', #NM.dropRows(''), 0);
+    check('NM72d ...nor is whitespace',      #NM.dropRows('   '), 0);
+    check('NM72e ...nor is nil',             #NM.dropRows(nil), 0);
+    check('NM72f the floor is the one it is documented at', NM.ITEM_FLOOR, 700);
+
+    -- ---- a common item lists every source, campable ones first -------------
+    local crows, ctotal = NM.dropRows('beastcoin');
+    check('NM73a a common drop lists every NM that gives it', ctotal, 24);
+    check('NM73b ...the ones with placeholders first', crows[1].ph > 0, true);
+    check('NM73c ...and the ones without at the end',  crows[ctotal].ph, 0);
+    local phBlock = true;
+    local seenNone = false;
+    for _, r in ipairs(crows) do
+        if r.ph == 0 then seenNone = true; elseif seenNone then phBlock = false; end
+    end
+    check('NM73d ...with no campable one stranded below them', phBlock, true);
+    local capped, capTotal = NM.dropRows('beastcoin', 2);
+    check('NM73e the cap holds the list down',        #capped, 2);
+    check('NM73f ...and the total still says what matched', capTotal, 24);
+
+    -- ---- the synthetic half: the shapes the shipped table cannot show ------
+    local savedNMData, savedLTData = NM.data, LT.data;
+    NM.data = {
+        [1] = {
+            { n = 'Fixture Alpha', nm = { 10 }, ph = { 11, 12 }, p = 'Fixture PH',
+              c = 5, kind = { 'lottery' }, pool = { 9001 } },
+            { n = 'Fixture Beta',  nm = { 20 }, ph = {}, kind = { 'scripted' }, pool = { 9002 } },
+            -- the same droplist reached through a repeated pool id, plus one
+            -- more: it must answer ONCE and list both pools' matches
+            { n = 'Fixture Gamma', nm = { 30 }, ph = { 31 }, p = 'Fixture PH', c = 5,
+              kind = { 'lottery' }, pool = { 9001, 9001, 9002 } },
+        },
+    };
+    LT.data = {
+        [9001] = { { i = 8001, r = 150 }, { i = 8002, r = 100 }, { i = 8003, r = 50 },
+                   { i = 8004, r = 10 },  { i = 8005, r = 5 } },
+        [9002] = { { i = 8006, r = 240 } },
+    };
+    local SYN = {};
+    RES = SYN;                -- the client knows NOTHING about these yet
+    LT._resetIndex();
+
+    -- A PRE-LOGIN READ MUST NOT LATCH (ADR 0007). The client cannot name an
+    -- item before the player is in the world, and "cannot tell yet" is not
+    -- "no such item" -- so the same search must start working the moment it
+    -- can, with nothing reset and nobody asked to retry.
+    check('NM74a a client that can name nothing finds nothing', #NM.dropRows('widget'), 0);
+    SYN[8001] = 'Widget Boots';  SYN[8002] = 'Widget Gloves'; SYN[8003] = 'Widget Cap';
+    SYN[8004] = 'Widget Ring';   SYN[8005] = 'Widget Belt';   SYN[8006] = 'Gadget Sword';
+    local wrows, wtotal = NM.dropRows('widget');
+    check('NM74b ...and the miss never latched: the same search now answers', wtotal, 2);
+    check('NM74c an NM listing one pool twice still answers once',
+        wrows[2] ~= nil and wrows[2].n, 'Fixture Gamma');
+    -- A row that matched five items names three and COUNTS the rest. A row
+    -- that reads as a paragraph is a row nobody scans -- and a silent cut
+    -- reads as "that is all it drops".
+    check('NM74d a row names its matches, capped, and says what it cut',
+        wrows[1] ~= nil and wrows[1].dropNote,
+        'Widget Boots, Widget Gloves, Widget Cap +2 more');
+    check('NM74e ...at the documented cap', NM.DROP_NAMES, 3);
+    check('NM74f a row with one match just names it',
+        (select(1, NM.dropRows('Gadget Sword')))[1].dropNote, 'Gadget Sword');
+    -- The tie-break the whole list order rests on, in THIS mode too: two NMs
+    -- give the item and the one you can camp is the one you mean.
+    local grows = NM.dropRows('Gadget Sword');
+    check('NM74g two sources tie, and the campable one wins', grows[1].n, 'Fixture Gamma');
+    check('NM74h ...which is the one with placeholders',      grows[1].ph > 0, true);
+    check('NM74i ...while the other is still listed',         grows[2].n, 'Fixture Beta');
+
+    NM.data, LT.data = savedNMData, savedLTData;
+    LT._resetIndex();
+    package.loaded['dlac\\feature\\nmloot']   = savedLoot;
+    package.loaded['dlac\\feature\\nmlookup'] = savedLook;
+    package.loaded['dlac\\data\\nmdrops']     = savedDrops;
+    AshitaCore = savedAC;
+end)();
+
+-- ---------------------------------------------------------------------------
 -- NT. Passive pop tracking (feature\nmtrack, issue #155, PRD #151).
 --
 --   The tracker counts the placeholder kills this character personally
