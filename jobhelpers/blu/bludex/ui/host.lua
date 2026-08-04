@@ -143,6 +143,27 @@ local function tabCtx(im, st, deps, embedded)
     };
 end
 
+-- Does the editing set differ from the LIVE in-game set (identity compare,
+-- both directions)? true / false, nil when the live set is unreadable.
+-- Drives the header Apply button's green.
+local function applyDirty(deps, st)
+    local live = deps.blu.currentSet();
+    if #live ~= 20 then return nil; end
+    local liveIds, liveN = {}, 0;
+    for i = 1, 20 do
+        if live[i] ~= 0 then liveIds[live[i]] = true; liveN = liveN + 1; end
+    end
+    local wantN = 0;
+    for i = 1, 20 do
+        local id = st.editingSet.ids[i] or 0;
+        if id ~= 0 then
+            wantN = wantN + 1;
+            if not liveIds[id] then return true; end
+        end
+    end
+    return liveN ~= wantN;
+end
+
 -- header + tab row + the active tab: everything between Begin and End,
 -- shared verbatim by the standalone window and the embedded flavor.
 -- `embedded` reaches the tabs through ctx: a dlac Job helper Panel may not
@@ -180,6 +201,51 @@ local function renderBody(im, st, deps, embedded)
         kit.ctext(im, kit.COL.dim, '   (not on BLU)');
     end
 
+    -- set actions on the header line, every tab (Henrik 2026-08-04): Save
+    -- and Apply light GREEN when they have work, Revert discards the unsaved
+    -- changes. One definition each -- setsui owns the verbs.
+    local ctx = tabCtx(im, st, deps, embedded);
+    local unsaved = setsui.unsaved(ctx);
+    local dirty = applyDirty(deps, st);
+    local bw = kit.measure(im, { 'Save', 'Apply', 'Revert', 'Applying...' }, 48);
+    if kit.isFn(im, 'SameLine') then im.SameLine(); end
+    if kit.litButton(im, 'Save', false, bw, 22, unsaved and kit.PAL.go or kit.PAL.off) then
+        if unsaved then setsui.saveEditing(ctx);
+        else st.applyNote = 'Nothing to save.'; end
+    end
+    kit.tip(im, unsaved and 'Save the editing set - it has unsaved changes.'
+        or 'The editing set matches its saved copy.');
+    if kit.isFn(im, 'SameLine') then im.SameLine(); end
+    local applyPal = nil;
+    if not deps.blu.applying then
+        if dirty == true then applyPal = kit.PAL.go;
+        elseif dirty == false then applyPal = kit.PAL.off; end
+    end
+    if kit.litButton(im, deps.blu.applying and 'Applying...' or 'Apply', false, bw, 22, applyPal) then
+        if dirty == false then
+            st.applyNote = 'Already up to date - nothing to apply.';
+        else
+            setsui.applyEditing(ctx);
+        end
+    end
+    kit.tip(im, 'Apply the editing set in game - only the changed slots are sent.');
+    if kit.isFn(im, 'SameLine') then im.SameLine(); end
+    if kit.litButton(im, 'Revert', false, bw, 22, unsaved and nil or kit.PAL.off) then
+        if unsaved then setsui.revertEditing(ctx); end
+    end
+    kit.tip(im, unsaved and 'Discard the unsaved changes - back to the saved set.'
+        or 'No unsaved changes to revert.');
+
+    -- the cast lock countdown: changing set spells locks Blue Magic casting
+    -- for about a minute (the game's rule) -- count it down where the eye is
+    local lockRem = deps.blu.castReadyIn();
+    if lockRem > 0 then
+        if kit.isFn(im, 'SameLine') then im.SameLine(); end
+        kit.ctext(im, kit.COL.warn, ('   castable in %ds'):format(lockRem));
+        kit.tip(im, 'Changing set spells locks Blue Magic casting for about a\n'
+            .. 'minute. The countdown runs from the last set change Bludex sent.');
+    end
+
     -- tab row
     local w = kit.measure(im, TABS, 90);
     for _, t in ipairs(TABS) do
@@ -189,7 +255,6 @@ local function renderBody(im, st, deps, embedded)
     if kit.isFn(im, 'NewLine') then im.NewLine(); end
     if kit.isFn(im, 'Separator') then im.Separator(); end
 
-    local ctx = tabCtx(im, st, deps, embedded);
     local tabfn = (st.tab == 'Sets' and setsui.render)
         or (st.tab == 'Traits' and traitsui.render)
         or spellsui.render;

@@ -19,6 +19,77 @@ local LEFT_W  = 210;
 local MID_W   = 330;
 
 -- ---------------------------------------------------------------------------
+-- the set actions -- ONE definition each, shared by the Sets tab buttons and
+-- the window header's Save / Apply / Revert (host.renderBody)
+-- ---------------------------------------------------------------------------
+
+-- Save the editing set into the saved list (the active entry, or a new one).
+function M.saveEditing(ctx)
+    local st, cfg = ctx.state, ctx.cfg;
+    local copy = ctx.sets.clone(st.editingSet, st.editingSet.name);
+    copy.name = st.editingSet.name;
+    if st.activeSet and cfg.sets[st.activeSet] then
+        cfg.sets[st.activeSet] = copy;
+    else
+        table.insert(cfg.sets, copy);
+        st.activeSet = #cfg.sets;
+    end
+    cfg.activeSetName = copy.name;                 -- remembered across loads
+    if ctx.save then ctx.save(); end
+    st.applyNote = 'Saved.';
+end
+
+-- Revert the editing set to its saved copy (or to a fresh empty set when
+-- nothing is saved yet) -- removes ALL unsaved changes.
+function M.revertEditing(ctx)
+    local st, cfg = ctx.state, ctx.cfg;
+    local saved = st.activeSet and cfg.sets[st.activeSet] or nil;
+    if saved ~= nil then
+        st.editingSet = ctx.sets.clone(saved, saved.name);
+        st.applyNote = 'Reverted to the saved set.';
+    else
+        st.editingSet = ctx.sets.new(('Set %d'):format(#cfg.sets + 1));
+        st.applyNote = 'Reverted - empty set.';
+    end
+    st.addNote = nil;
+end
+
+-- Apply the editing set in game (diff), snapshotting the auto-restore
+-- target. Says WHY when it cannot.
+function M.applyEditing(ctx)
+    local st = ctx.state;
+    if ctx.blu.applying then return; end
+    if not ctx.blu.canApply() then
+        st.applyNote = ctx.blu.onBlu()
+            and 'Cannot apply: the client memory signatures did not resolve.'
+            or 'Cannot apply: BLU is not your main or sub job.';
+        return;
+    end
+    if ctx.blu.applyDiff(st.editingSet.ids, ctx.book) then
+        local snap = {};
+        for k = 1, 20 do snap[k] = st.editingSet.ids[k] or 0; end
+        ctx.cfg.lastApplied = { ids = snap };
+        if ctx.save then ctx.save(); end
+        st.applyNote = 'Applying the changes, lowest level first - watch the chat log.';
+    end
+end
+
+-- Does the editing set differ from its SAVED copy? Drives the header's
+-- green Save and the Revert. With no active saved set, any content counts.
+function M.unsaved(ctx)
+    local st, cfg = ctx.state, ctx.cfg;
+    local saved = st.activeSet and cfg.sets[st.activeSet] or nil;
+    if saved == nil then
+        return ctx.sets.count(st.editingSet) > 0;
+    end
+    if tostring(saved.name) ~= tostring(st.editingSet.name) then return true; end
+    for i = 1, 20 do
+        if (saved.ids[i] or 0) ~= (st.editingSet.ids[i] or 0) then return true; end
+    end
+    return false;
+end
+
+-- ---------------------------------------------------------------------------
 -- saved sets (persisted in settings as { name = s, ids = {20} })
 -- ---------------------------------------------------------------------------
 local function savedList(ctx)
@@ -53,17 +124,7 @@ local function savedList(ctx)
     end
     if kit.isFn(im, 'SameLine') then im.SameLine(); end
     if kit.litButton(im, 'Save', false, rowW, 22) then
-        local copy = ctx.sets.clone(st.editingSet, st.editingSet.name);
-        copy.name = st.editingSet.name;
-        if st.activeSet and cfg.sets[st.activeSet] then
-            cfg.sets[st.activeSet] = copy;
-        else
-            table.insert(cfg.sets, copy);
-            st.activeSet = #cfg.sets;
-        end
-        cfg.activeSetName = copy.name;             -- remembered across loads
-        if ctx.save then ctx.save(); end
-        st.applyNote = 'Saved.';
+        M.saveEditing(ctx);
     end
     if kit.isFn(im, 'SameLine') then im.SameLine(); end
     if kit.litButton(im, 'Delete', false, rowW, 22) then
@@ -195,7 +256,6 @@ local function slotGrid(ctx)
         for _ in pairs(liveIds) do liveN = liveN + 1; end
         if liveN ~= wantN then dirty = true; end
     end
-    local canApply = ctx.blu.canApply() and not ctx.blu.applying;
     local pal = nil;
     if not ctx.blu.applying then
         if dirty == true then pal = kit.PAL.go;
@@ -204,20 +264,8 @@ local function slotGrid(ctx)
     if kit.litButton(im, ctx.blu.applying and 'Applying...' or 'Apply in game', false, applyW, 26, pal) then
         if dirty == false then
             st.applyNote = 'Already up to date - nothing to apply.';
-        elseif canApply then
-            if ctx.blu.applyDiff(st.editingSet.ids, ctx.book) then
-                -- snapshot the intent: the auto-restore target after level changes
-                local snap = {};
-                for k = 1, 20 do snap[k] = st.editingSet.ids[k] or 0; end
-                ctx.cfg.lastApplied = { ids = snap };
-                if ctx.save then ctx.save(); end
-            end
-            st.applyNote = 'Applying the changes, lowest level first - watch the chat log.';
-        elseif not ctx.blu.applying then
-            -- a dead button with no reason is a field mystery -- say why
-            st.applyNote = ctx.blu.onBlu()
-                and 'Cannot apply: the client memory signatures did not resolve.'
-                or 'Cannot apply: BLU is not your main or sub job.';
+        else
+            M.applyEditing(ctx);
         end
     end
     if kit.isFn(im, 'SameLine') then im.SameLine(); end

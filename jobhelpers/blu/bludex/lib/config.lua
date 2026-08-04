@@ -27,8 +27,8 @@ function M.defaults()
         autoRestore = false,      -- re-add spells stripped by level changes
         lastApplied = TT{ },      -- { ids = {20} } -- the auto-restore target
         activeSetName = '',       -- last selected saved set, reloaded at startup
-        codexDensity = 'normal',  -- codex list size: 'big' | 'normal' | 'compact'
-        traitsDensity = 'normal', -- traits spell-row size, same three choices
+        codexDensity = 'normal',  -- codex list size: 'big'|'medium'|'normal'|'compact'
+        traitsDensity = 'normal', -- traits spell-row size, same four choices
     };
 end
 

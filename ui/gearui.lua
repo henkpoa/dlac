@@ -2327,9 +2327,11 @@ local function resolveSetItem(elem)
 
     local ref, minL, maxL, modeC = elem, nil, nil, nil;
     local autoT, remP, accV = nil, nil, nil;   -- Type automation fields (AutoAcc)
+    local dwG = nil;                           -- Dual Wield gear rule (dw = true)
     if elem.gear ~= nil and elem.Name == nil then
         ref = elem.gear; minL = elem.minLevel; maxL = elem.maxLevel; modeC = elem.mode;
         autoT = elem.autoType; remP = elem.removePrio; accV = elem.acc;
+        dwG = (elem.dw == true) and true or nil;
     end
     -- Wrapper around a STRING gear ref: a gated VIRTUAL entry, exactly how the
     -- Sets tab commits one ({ gear = "dlac:AutoIridescence", mode = "..." }).
@@ -2342,7 +2344,7 @@ local function resolveSetItem(elem)
         end
         local rec = _ownedByName and _ownedByName[string.lower(ref)] or nil;
         return rec and { rec = rec, minLevel = minL, maxLevel = maxL, mode = modeC,
-                         autoType = autoT, removePrio = remP, acc = accV } or nil;
+                         dw = dwG, autoType = autoT, removePrio = remP, acc = accV } or nil;
     end
     if type(ref) ~= 'table' then return nil; end
 
@@ -2361,7 +2363,7 @@ local function resolveSetItem(elem)
     end
     if rec == nil then return nil; end
     return { rec = rec, minLevel = minL, maxLevel = maxL, mode = modeC,
-             autoType = autoT, removePrio = remP, acc = accV };
+             dw = dwG, autoType = autoT, removePrio = remP, acc = accV };
 end
 
 -- The profile's raw `sets` table lives in its OWN module (dlac\\profilesets.lua) --
@@ -2675,6 +2677,7 @@ local function buildCommitSlots()
                     if it.minLevel ~= nil then entry.minLevel = it.minLevel; end
                     if it.maxLevel ~= nil then entry.maxLevel = it.maxLevel; end
                     if it.mode ~= nil then entry.mode = it.mode; end
+                    if it.dw == true then entry.dw = true; end
                     if it.autoType ~= nil then
                         -- Type automation: bake the piece's ACC (base stats +
                         -- your copy's augments) into the wrapper -- the seeded
@@ -4032,14 +4035,24 @@ local function renderEntryEditPopup()
         imgui.Separator();
         imgui.TextColored(COL.DIM, 'Gear Rule');
         if imgui.IsItemHovered() then
-            imgui.SetTooltip('Give this piece a gear rule: the engine then decides at\nequip time whether to wear it or the slot\'s next-best piece.\nNo rules are available yet.');
+            imgui.SetTooltip('Give this piece a gear rule: it is then worn only while the rule\nholds, otherwise the slot\'s next-best piece takes the slot.\nDual Wield: a candidate only while the Dual Wield job trait is up\n(e.g. Suppanomimi -- without the trait it does nothing for you).');
         end
-        local curType = (it.autoType ~= nil) and tostring(it.autoType) or 'None';
+        local curType = (it.autoType ~= nil) and tostring(it.autoType)
+                     or (it.dw == true) and 'Dual Wield' or 'None';
         imgui.PushItemWidth(120);
         if imgui.BeginCombo('##eeautotype', curType) then
-            if imgui.Selectable('None', it.autoType == nil) and it.autoType ~= nil then
+            if imgui.Selectable('None', it.autoType == nil and it.dw == nil)
+               and (it.autoType ~= nil or it.dw ~= nil) then
+                it.autoType = nil; it.removePrio = nil; it.acc = nil; it.dw = nil;
+                _setDirty = true;
+            end
+            if imgui.Selectable('Dual Wield', it.dw == true) and it.dw ~= true then
+                it.dw = true;
                 it.autoType = nil; it.removePrio = nil; it.acc = nil;
                 _setDirty = true;
+            end
+            if imgui.IsItemHovered() then
+                imgui.SetTooltip('This piece is a candidate only while the Dual Wield trait\nis available (main/sub job, or a BLU trait set). Read from\nthe server\'s own trait list, so it follows this server\'s rules.');
             end
             imgui.EndCombo();
         end
@@ -4171,6 +4184,9 @@ local function renderSetBuilder(job, level)
     local pick = wornByLevel(list, level, ui.setSelected);
     local pickRec = pick and pick.rec or nil;
     local disp = sortItemsForDisplay(list);
+    -- The Dual Wield rule tag's live answer, once per frame (same judge the
+    -- preview cctx hands the evaluator, so tag and pick cannot disagree).
+    local dwLive = previewCctx(level).isDW == true;
 
     local action = nil;   -- { kind, it }  (by identity, so it maps back to the data list)
     imgui.BeginChild('##ffxilac_slotlist', { -1, -1 }, false);
@@ -4238,6 +4254,13 @@ local function renderSetBuilder(job, level)
                     imgui.SetTooltip('Type automation: the engine decides at equip time whether this piece\nor the slot\'s next-best is worn. p = Removal Priority (higher first).');
                 end
             end
+            if it.dw == true then
+                imgui.SameLine(0, 8);
+                imgui.TextColored(dwLive and COL.JOBS or COL.DIM, '[DW]');
+                if imgui.IsItemHovered() then
+                    imgui.SetTooltip('Dual Wield gear rule: a candidate only while the Dual Wield\njob trait is available. Green = you have the trait right now.');
+                end
+            end
             imgui.SameLine(imgui.GetWindowWidth() - 86);   -- buttons at the right edge
             if imgui.Button('B##ed_' .. di, { 24, 20 }) then
                 ui._editIt = it;
@@ -4247,7 +4270,7 @@ local function renderSetBuilder(job, level)
                 openEdit = true;
             end
             if imgui.IsItemHovered() then
-                imgui.SetTooltip('Behaviour rules for this piece:\nlimit it to a level range, or gate it on a mode --\na gated entry is used only while its mode is active.\nNeed the same item in two ranges? Duplicate the row (D)\nand give each row its own range.');
+                imgui.SetTooltip('Behaviour rules for this piece:\nlimit it to a level range, gate it on a mode, or give it a\ngear rule (e.g. Dual Wield: only while the trait is up).\nNeed the same item in two ranges? Duplicate the row (D)\nand give each row its own range.');
             end
             imgui.SameLine(0, 4);
             if imgui.Button('D##dup_' .. di, { 24, 20 }) then action = { kind = 'dup', it = it }; end

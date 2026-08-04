@@ -940,6 +940,27 @@ dispatchM.setMode('DT', false);
 sets20 = utils.rebuildSets(sets20);
 check('G22 flip back re-flattens again', sets20.TP and sets20.TP.Body, 'PlainBody');
 
+-- The Dual Wield trait bit is a rebuild signal of its own (the dw gear rule):
+-- it can flip with NO level/sub-job/mode change (a BLU trait-set swap, or the
+-- 0x0AC trait packet landing AFTER the sub-change rebuild already ran), and a
+-- dw-ruled entry must follow the bit, not the last unrelated signal.
+local plainEar = { Name = 'PlainEar', Level = 50, Type = 'Ear' };
+local suppaEar = { Name = 'SuppaEar', Level = 60, Type = 'Ear' };   -- higher level: with the trait up it wins on rank alone
+TEST_PLAYER = { MainJob = 'RDM', SubJob = 'NIN', MainJobSync = 75, SubJobSync = 37 };  -- sub change fires the initial flatten
+AshitaCore = ashitaWithDW(false);
+local sets23 = { Dynamic = { TP = {
+    Ear1 = { plainEar, { gear = suppaEar, dw = true } },
+} } };
+sets23 = utils.rebuildSets(sets23);
+check('G23 no trait: the dw-ruled ear is excluded outright', sets23.TP and sets23.TP.Ear1, 'PlainEar');
+AshitaCore = ashitaWithDW(true);
+sets23 = utils.rebuildSets(sets23);         -- same level/SJ/modes: only the trait bit moved
+check('G24 the trait bit alone re-flattens -- the dw ear takes the slot', sets23.TP and sets23.TP.Ear1, 'SuppaEar');
+AshitaCore = ashitaWithDW(false);
+sets23 = utils.rebuildSets(sets23);
+check('G25 losing the trait re-flattens back', sets23.TP and sets23.TP.Ear1, 'PlainEar');
+check('G26 the dw wrapper does not mutate the shared record', suppaEar.dw, nil);
+
 -- serializer writes both gate forms
 local serLines = table.concat(setmgr.renderSetLines('T', {
     { name = 'Body', items = {
@@ -949,6 +970,10 @@ local serLines = table.concat(setmgr.renderSetLines('T', {
 }), '\n');
 check('G18 serializes single gate',  serLines:find('mode = "DT"', 1, true) ~= nil, true);
 check('G19 serializes gate list',    serLines:find('mode = { "Weapon:Melee", "Weapon:Ranged" }', 1, true) ~= nil, true);
+local dwSer = table.concat(setmgr.renderSetLines('T', {
+    { name = 'Ear1', items = { { path = 'gear.Ear.Suppanomimi', dw = true } } },
+}), '\n');
+check('G19b serializes the Dual Wield gear rule', dwSer:find('dw = true', 1, true) ~= nil, true);
 
 -- min/maxLevel bounds through the same wrapper (the ffxi-lac semantics)
 TEST_PLAYER = { MainJob = 'WHM', SubJob = 'NIN', MainJobSync = 50, SubJobSync = 25 };
@@ -8165,6 +8190,17 @@ end)();
     lad = L({ { Name = 'Plain Body', Level = 40 }, { Name = 'PDT Body', Level = 10, mode = 'PDT' } },
             'Body', nil, cctx);
     check('LD4c an INACTIVE mode entry is excluded outright', #lad.items, 1);
+
+    -- The Dual Wield gear rule (dw = true): a pure GATE, not a tier -- without
+    -- the trait the entry is not a rung at all; with it, normal ranking decides.
+    local dwList = { { Name = 'Plain Ear', Level = 20 },
+                     { Name = 'Suppanomimi', Level = 30, dw = true } };
+    lad = L(dwList, 'Ear1', nil, cctx);                       -- cctx.isDW = false
+    check('LD4d a dw entry without the trait is excluded outright', #lad.items, 1);
+    check('LD4e ...and the plain piece owns the slot', lad.items[1].name, 'Plain Ear');
+    lad = L(dwList, 'Ear1', nil, { mjLevel = 50, isDW = true });
+    check('LD4f with the trait it ranks like any entry (level wins)', lad.items[1].name, 'Suppanomimi');
+    check('LD4g the plain piece stays as its fallback rung', lad.items[2].name, 'Plain Ear');
 
     -- Virtuals: marker|fallback composition + the minLevel rung law.
     utils.dispatchModule = { virtualMinLevel = function() return 3 end };

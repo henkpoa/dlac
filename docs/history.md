@@ -9185,3 +9185,39 @@ answer up to "foodwatch works" would have retired a check that had not been run 
 touches the player's own artifact and is the half that could quietly do nothing, or do too
 much. `/dl food forget` was rejected during the build for exactly that reason: it would have
 taken the Pork Cutlet with the junk.
+
+## Session "the first gear rule" (2026-08-04, `2026.08.04c`)
+
+Henrik: *"Can we add a gear rule that checks if dual wield job trait is available, then
+this piece is available as a candidate. Suppanomimi is a perfect candidate for this. No
+need to have it on if you don't have suppanomimi."* The Gear Rule combo has sat on the
+Behaviour popup since the AutoAcc foundation landed, offering `None` and a tooltip
+apologizing that no rules exist yet. This is the first one that ships on main.
+
+**It is a GATE, not a Type automation.** Henrik's phrasing decided the design: "available
+as a candidate" is candidacy, which is `slotLadder`'s vocabulary, not the engine's.
+AutoAcc needs equip-time machinery (removePrio, budgets, a marker the seeded engine
+parses) because its answer changes mid-fight; the Dual Wield trait answers at flatten
+time, exactly like a mode gate. So the wrapper grows `dw = true` and slotLadder excludes
+the entry outright while `cctx.isDW` is false — no tier bump, rank stays normal
+(Suppanomimi's item level wins on its own once the trait is up). Everything downstream —
+`isDualWieldAvailable` (the server's own trait bit, `HasAbility(1554)`), `cctx.isDW`, the
+preview's live judge — already existed for the Sub off-hand pairing; the rule is one
+`break` beside the mode gate, plus serialization.
+
+**The trait bit became a rebuild signal of its own.** The flatten re-ran on
+level/sub-job/mode changes only, which held a race: on a sub change the 0x0AC trait
+packet can land AFTER the sub-change rebuild already read the old trait list — and a BLU
+trait-set swap flips the bit with no job change at all. `rebuildSets` now watches the bit
+alongside modesRev. This quietly fixes the same staleness for the Sub pairing, which has
+trusted `isDW` since long before this rule.
+
+Round-trip seams touched: `renderItem` (serialize `dw = true`), `resolveSetItem` (parse
+it back into the working entry), `buildCommitSlots` (commit it), `workingPick`'s authored
+shape (the preview obeys the gate), the Gear Rule combo (None / Dual Wield; picking one
+clears the other family's fields), and a `[DW]` row tag — green while the trait is up,
+dim while the row is dormant, same at-a-glance grammar as `[Lv 30-54]` and `@mode`.
+
+**Tests:** `LD4d`–`LD4g` (the gate excludes without the trait, ranks normally with it),
+`G19b` (serializer), `G23`–`G26` (the trait bit ALONE re-flattens, both directions, and
+the wrapper never mutates the shared record). Suites **6807 + 1281**, both interpreters.

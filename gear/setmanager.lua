@@ -20,6 +20,8 @@
 -- for Ring1/Ring2 -> gear.Ring.X, Ear1/Ear2 -> gear.Ear.X). min/maxLevel optional.
 -- Type automations ride the same wrapper: autoType = 'AutoAcc' plus its
 -- removePrio (release order) and acc (the piece's baked ACC for the engine).
+-- The Dual Wield gear rule rides it too: dw = true (a candidate only while
+-- the trait is up -- gated at flatten time by utils.slotLadder).
 
 local M = {};
 
@@ -72,12 +74,14 @@ local function splitLines(text)
 end
 
 local function renderItem(it)
-    if it.minLevel == nil and it.maxLevel == nil and it.mode == nil and it.autoType == nil then
+    if it.minLevel == nil and it.maxLevel == nil and it.mode == nil
+       and it.dw == nil and it.autoType == nil then
         return string.rep(' ', 16) .. it.path .. ',';   -- no rules -> bare gear ref
     end
     local parts = { 'gear = ' .. it.path };
     if it.minLevel ~= nil then parts[#parts + 1] = 'minLevel = ' .. tostring(it.minLevel); end
     if it.maxLevel ~= nil then parts[#parts + 1] = 'maxLevel = ' .. tostring(it.maxLevel); end
+    if it.dw ~= nil then parts[#parts + 1] = 'dw = true'; end   -- Dual Wield gear rule
     if it.mode ~= nil then
         if type(it.mode) == 'table' then                 -- list = OR: any active mode
             local qs = {};
