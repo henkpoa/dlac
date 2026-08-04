@@ -92,7 +92,7 @@ function M.render(ctx)
                     local label = ('%s  w%d / %spts  Lv.%s%s'):format(
                         s.name, s.trait.weight, s.setPoints or '?', s.level or '?',
                         inSet and '  [in set]' or '');
-                    local lclick, rclick = spellsui.listRow(ctx, id, iconSz, nameW,
+                    local lclick, rclick, hov = spellsui.listRow(ctx, id, iconSz, nameW,
                         st.selectedId == id, showIcon,
                         { label = label, dimColor = kit.COL.err });
                     if lclick then
@@ -112,7 +112,7 @@ function M.render(ctx)
                             if ok2 and ctx.save then ctx.save(); end
                         end
                     end
-                    spellsui.tooltip(ctx, id);
+                    spellsui.tooltip(ctx, id, hov);
                 end
                 if indented then pcall(im.Unindent, 14); end
                 if kit.isFn(im, 'Separator') then im.Separator(); end

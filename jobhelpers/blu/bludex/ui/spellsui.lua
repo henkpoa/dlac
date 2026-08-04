@@ -12,6 +12,7 @@
 local ROOT = (...):sub(1, -#('ui\\spellsui') - 1);   -- relocatable require base
 local kit     = require(ROOT .. 'ui\\kit');
 local filetex = require(ROOT .. 'ui\\filetex');
+local scrules = require(ROOT .. 'lib\\skillchain');
 
 local M = {};
 
@@ -83,9 +84,14 @@ local function learnedText(ctx, id)
     return nil, nil;
 end
 
-function M.tooltip(ctx, id)
+-- `hovered` (optional): the row-wide state from listRow -- the overlay row
+-- draws art LAST, so IsItemHovered on the last item only covers the name.
+-- true shows, false skips, nil falls back to the last-item check.
+function M.tooltip(ctx, id, hovered)
     local im, book = ctx.im, ctx.book;
-    if not (kit.isFn(im, 'IsItemHovered') and im.IsItemHovered()) then return; end
+    if hovered == false then return; end
+    if hovered ~= true
+        and not (kit.isFn(im, 'IsItemHovered') and im.IsItemHovered()) then return; end
     local s = book.spells[id];
     if s == nil then return; end
 
@@ -94,6 +100,9 @@ function M.tooltip(ctx, id)
     local function add(txt, col) rows[#rows + 1] = { txt, col }; end
     add(s.name, kit.COL.head);
     add(('%s - Lv.%s - %s'):format(s.category, s.level or '?', s.spellType or '?'), kit.COL.dim);
+    -- the client DAT's own description (it carries its own line breaks)
+    local desc = book.description(id);
+    if desc then add(desc, { 0.90, 0.90, 0.95, 1.00 }); end
     if s.setPoints then add(('Set: %d pts'):format(s.setPoints), kit.COL.accent); end
     if s.mods and #s.mods > 0 then
         local parts = {};
@@ -231,6 +240,13 @@ function M.detail(ctx, id)
         pcall(im.Image, h, { 320, 320 });
     end
 
+    -- the client DAT's own description, ahead of the stat rows
+    local desc = book.description(id);
+    if desc then
+        kit.wrapped(im, { 0.90, 0.90, 0.95, 1.00 }, desc);
+        if kit.isFn(im, 'Separator') then im.Separator(); end
+    end
+
     kit.kv(im, 'Type', ('%s%s'):format(s.spellType or '?',
         s.damageType and (' (' .. s.damageType .. ')') or ''));
     kit.kv(im, 'Element', s.element or 'None', kit.ELEMENT[s.element] or kit.COL.accent);
@@ -253,6 +269,22 @@ function M.detail(ctx, id)
     end
     if s.skillchain and #s.skillchain > 0 then
         kit.kvw(im, 'Skillchain', table.concat(s.skillchain, ', '));
+        -- weaponskill partners live in their OWN window (a lot of rows) --
+        -- here just the door. Hidden in the embedded-Panel fallback: a
+        -- Panel host may not open windows.
+        if not (ctx.embedded == true and ctx.floatWindow ~= true) then
+            local st = ctx.state;
+            st.scOpen = st.scOpen or { false };
+            local w = kit.measure(im, { 'Skillchain partners' }, 150);
+            if kit.litButton(im, 'Skillchain partners', st.scOpen[1], w, 24) then
+                st.scOpen[1] = not st.scOpen[1];
+                st.scFocus = true;
+            end
+            kit.tip(im, 'Which weaponskills chain with this spell, per weapon --\n'
+                .. 'open with the weaponskill and close with the spell, or the\n'
+                .. 'other way around. WSNM, Relic, Mythic, Empyrean and\n'
+                .. 'Merit/Aeonic weaponskills included.');
+        end
     end
     if s.bursts and #s.bursts > 0 then
         kit.kvw(im, 'Bursts on', table.concat(s.bursts, ', '));
@@ -273,22 +305,38 @@ function M.detail(ctx, id)
         end
     end
 
-    -- learn-location hints (retail-era data via blucheck)
+    -- learn-location hints (retail-era data via blucheck) live in their OWN
+    -- window (field ask 2026-08-04: the inline zone list made Spell Info a
+    -- wall) -- here just the door. The embedded-Panel fallback keeps the
+    -- inline list: a Panel host may not open windows.
     local hints = book.hintList(id);
     if hints then
         if kit.isFn(im, 'Separator') then im.Separator(); end
-        kit.ctext(im, kit.COL.head, 'Learn from');
-        local shown = 0;
-        for _, hz in ipairs(hints) do
-            if shown >= 6 then
-                kit.ctext(im, kit.COL.dim, ('...and %d more zones'):format(#hints - shown));
-                break;
+        if ctx.embedded == true and ctx.floatWindow ~= true then
+            kit.ctext(im, kit.COL.head, 'Learn from');
+            local shown = 0;
+            for _, hz in ipairs(hints) do
+                if shown >= 6 then
+                    kit.ctext(im, kit.COL.dim, ('...and %d more zones'):format(#hints - shown));
+                    break;
+                end
+                kit.ctext(im, kit.COL.accent, hz.zone);
+                kit.wrapped(im, kit.COL.dim, '  ' .. table.concat(hz.mobs, ', '));
+                shown = shown + 1;
             end
-            kit.ctext(im, kit.COL.accent, hz.zone);
-            kit.wrapped(im, kit.COL.dim, '  ' .. table.concat(hz.mobs, ', '));
-            shown = shown + 1;
+            kit.ctext(im, kit.COL.dim, '(retail-era data; CatsEyeXI can differ)');
+        else
+            local st = ctx.state;
+            st.learnOpen = st.learnOpen or { false };
+            local lbl = ('Learn from - %d zone%s'):format(#hints, #hints == 1 and '' or 's');
+            local w = kit.measure(im, { lbl }, 150);
+            if kit.litButton(im, lbl, st.learnOpen[1], w, 24) then
+                st.learnOpen[1] = not st.learnOpen[1];
+                st.learnFocus = true;
+            end
+            kit.tip(im, 'Where to learn this spell, in its own window.\n'
+                .. '(retail-era data; CatsEyeXI can differ)');
         end
-        kit.ctext(im, kit.COL.dim, '(retail-era data; CatsEyeXI can differ)');
     end
 
     -- provenance, quietly
@@ -301,62 +349,117 @@ end
 -- list rows and the Spell Info window
 -- ---------------------------------------------------------------------------
 
--- One list row: icon (unless showIcon is false) + a Selectable label.
--- Returns (leftClicked, rightClicked). In-set spells draw green; unlearned
--- draw opts.dimColor (default dim) while on BLU; in-set wins. opts.label
--- overrides the row text (the traits tab composes weight/level into it).
+-- One list row: ONE Selectable spans the whole row -- icon AND name (field
+-- ask 2026-08-04: the icon was inert art beside a text-only hit target).
+-- The highlight, both clicks and hover cover everything; the art and the
+-- colored name draw OVER the Selectable afterwards.
+-- Returns (leftClicked, rightClicked, hovered). `hovered` is the row-wide
+-- state for tooltip(); nil on the fallback path (tooltip self-checks then).
+-- In-set spells draw green; unlearned draw opts.dimColor (default dim)
+-- while on BLU; in-set wins. opts.label overrides the row text (the traits
+-- tab composes weight/level into it).
 function M.listRow(ctx, id, iconSz, nameW, selected, showIcon, opts)
     local im, book = ctx.im, ctx.book;
     local s = book.spells[id];
     local pushed = pushId(im, 'bdxrow' .. id);
-    local clicked, rclicked = false, false;
+    local clicked, rclicked, hovered = false, false, nil;
     if s == nil then
         clicked = kit.litButton(im, '#' .. tostring(id), selected, nameW, iconSz);
         popId(im, pushed);
-        return clicked, false;
+        return clicked, false, nil;
     end
     local label = (opts and opts.label) or s.name;
     local dimColor = (opts and opts.dimColor) or kit.COL.dim;
     local dim = ctx.blu.onBlu() and not book.learned(id) or false;
     local inSet = ctx.sets.contains(ctx.state.editingSet, id) ~= nil;
-    local selH = iconSz;
-    if showIcon ~= false then
-        local h = filetex.spell(book, s, 'grid64');
-        if h ~= nil and kit.isFn(im, 'Image') then
-            local tint = dim and { 0.45, 0.45, 0.50, 0.85 } or { 1, 1, 1, 1 };
-            local okI = pcall(im.Image, h, { iconSz, iconSz }, { 0, 0 }, { 1, 1 }, tint);
-            if not okI then pcall(im.Image, h, { iconSz, iconSz }); end
-            if kit.isFn(im, 'SameLine') then im.SameLine(); end
-        end
-        -- keep the name a text-height item, vertically centered on the icon
-        selH = math.min(iconSz, 20);
-        if iconSz > selH and kit.isFn(im, 'GetCursorPosY') and kit.isFn(im, 'SetCursorPosY') then
-            local oky, cy = pcall(im.GetCursorPosY);
-            if oky and type(cy) == 'number' then
-                pcall(im.SetCursorPosY, cy + (iconSz - selH) / 2);
-            end
-        end
-    end
     local textCol = inSet and kit.COL.ok or (dim and dimColor or nil);
-    if kit.isFn(im, 'Selectable') then
-        local pushedCol = false;
-        if textCol and kit.isFn(im, 'PushStyleColor') and kit.isFn(im, 'PopStyleColor') then
-            im.PushStyleColor(0, textCol);                     -- Text
-            pushedCol = true;
-        end
-        local ok, r = pcall(im.Selectable, kit.esc(label), selected, 0, { nameW, selH });
-        if not ok then ok, r = pcall(im.Selectable, kit.esc(label), selected); end
-        if pushedCol then im.PopStyleColor(1); end
-        clicked = ok and r or false;
-    else
-        clicked = kit.litButton(im, label, selected, nameW, selH);
+    local drawIcon = showIcon ~= false;
+    local rowH = drawIcon and iconSz or math.min(iconSz, 20);
+    local pad = 8;                                     -- icon-to-name gap
+    local rowW = (drawIcon and (iconSz + pad) or 0) + nameW;
+
+    local x0, y0 = nil, nil;
+    if kit.isFn(im, 'GetCursorPosX') and kit.isFn(im, 'GetCursorPosY') then
+        local okx, cx = pcall(im.GetCursorPosX);
+        local oky, cy = pcall(im.GetCursorPosY);
+        if okx and type(cx) == 'number' then x0 = cx; end
+        if oky and type(cy) == 'number' then y0 = cy; end
     end
-    if kit.isFn(im, 'IsItemClicked') then
-        local okc, rc = pcall(im.IsItemClicked, 1);            -- right button
-        rclicked = okc and rc or false;
+    local overlayOk = false;
+    if x0 ~= nil and y0 ~= nil and kit.isFn(im, 'Selectable')
+        and kit.isFn(im, 'SetCursorPosX') and kit.isFn(im, 'SetCursorPosY') then
+        local okS, r = pcall(im.Selectable, '##bdxhit', selected, 0, { rowW, rowH });
+        if okS then
+            overlayOk = true;
+            clicked = r or false;
+            if kit.isFn(im, 'IsItemHovered') then
+                local okh, hv = pcall(im.IsItemHovered);
+                hovered = okh and (hv or false) or false;
+            end
+            if kit.isFn(im, 'IsItemClicked') then
+                local okc, rc = pcall(im.IsItemClicked, 1);    -- right button
+                rclicked = okc and rc or false;
+            end
+            -- where the NEXT row starts -- the Selectable owns the row's
+            -- real item spacing; restored after the art overlays
+            local yAfter = nil;
+            local oky2, cy2 = pcall(im.GetCursorPosY);
+            if oky2 and type(cy2) == 'number' then yAfter = cy2; end
+            if drawIcon then
+                local h = filetex.spell(book, s, 'grid64');
+                if h ~= nil and kit.isFn(im, 'Image') then
+                    pcall(im.SetCursorPosX, x0);
+                    pcall(im.SetCursorPosY, y0);
+                    local tint = dim and { 0.45, 0.45, 0.50, 0.85 } or { 1, 1, 1, 1 };
+                    local okI = pcall(im.Image, h, { iconSz, iconSz }, { 0, 0 }, { 1, 1 }, tint);
+                    if not okI then pcall(im.Image, h, { iconSz, iconSz }); end
+                end
+            end
+            local textH = 17;
+            if kit.isFn(im, 'GetTextLineHeight') then
+                local okt, th = pcall(im.GetTextLineHeight);
+                if okt and type(th) == 'number' and th > 0 then textH = th; end
+            end
+            pcall(im.SetCursorPosX, x0 + (drawIcon and (iconSz + pad) or 0));
+            pcall(im.SetCursorPosY, y0 + math.max(0, (rowH - textH) / 2));
+            if textCol then kit.ctext(im, textCol, label);
+            else kit.text(im, label); end
+            if yAfter ~= nil then pcall(im.SetCursorPosY, yAfter); end
+        end
+    end
+    if not overlayOk then
+        -- fallback (binding without the cursor calls): icon + text target
+        local selH = iconSz;
+        if drawIcon then
+            local h = filetex.spell(book, s, 'grid64');
+            if h ~= nil and kit.isFn(im, 'Image') then
+                local tint = dim and { 0.45, 0.45, 0.50, 0.85 } or { 1, 1, 1, 1 };
+                local okI = pcall(im.Image, h, { iconSz, iconSz }, { 0, 0 }, { 1, 1 }, tint);
+                if not okI then pcall(im.Image, h, { iconSz, iconSz }); end
+                if kit.isFn(im, 'SameLine') then im.SameLine(); end
+            end
+            selH = math.min(iconSz, 20);
+        end
+        if kit.isFn(im, 'Selectable') then
+            local pushedCol = false;
+            if textCol and kit.isFn(im, 'PushStyleColor') and kit.isFn(im, 'PopStyleColor') then
+                im.PushStyleColor(0, textCol);                 -- Text
+                pushedCol = true;
+            end
+            local ok, r = pcall(im.Selectable, kit.esc(label), selected, 0, { nameW, selH });
+            if not ok then ok, r = pcall(im.Selectable, kit.esc(label), selected); end
+            if pushedCol then im.PopStyleColor(1); end
+            clicked = ok and r or false;
+        else
+            clicked = kit.litButton(im, label, selected, nameW, selH);
+        end
+        if kit.isFn(im, 'IsItemClicked') then
+            local okc, rc = pcall(im.IsItemClicked, 1);        -- right button
+            rclicked = okc and rc or false;
+        end
     end
     popId(im, pushed);
-    return clicked, rclicked;
+    return clicked, rclicked, hovered;
 end
 
 -- The View density combo, shared by the codex and traits tabs: reads and
@@ -417,6 +520,120 @@ function M.detailWindow(ctx)
     if ok then im.End(); end
 end
 
+-- The Learn-from window: opened by the Spell Info button, follows the
+-- selected spell, closable via the title bar. Lists EVERY zone -- the
+-- inline section it replaced truncated at six.
+function M.learnWindow(ctx)
+    local im, st, book = ctx.im, ctx.state, ctx.book;
+    if not st.learnOpen or not st.learnOpen[1] then return; end
+    if st.selectedId == nil then st.learnOpen[1] = false; return; end
+    local s = book.spells[st.selectedId];
+    local hints = s ~= nil and book.hintList(st.selectedId) or nil;
+    if hints == nil then st.learnOpen[1] = false; return; end
+    if not (kit.isFn(im, 'Begin') and kit.isFn(im, 'End')) then return; end
+    if kit.isFn(im, 'SetNextWindowSizeConstraints') then
+        pcall(im.SetNextWindowSizeConstraints, { 320, 240 }, { 700, 900 });
+    end
+    if st.learnFocus and kit.isFn(im, 'SetNextWindowFocus') then
+        pcall(im.SetNextWindowFocus);
+    end
+    st.learnFocus = nil;
+    local visible = false;
+    local ok = pcall(function()
+        visible = im.Begin('Learn from##bdxlearn', st.learnOpen);
+    end);
+    if ok and visible then
+        kit.ctext(im, kit.COL.head, s.name);
+        kit.ctext(im, kit.COL.dim, '(retail-era data; CatsEyeXI can differ)');
+        if kit.isFn(im, 'Separator') then im.Separator(); end
+        for _, hz in ipairs(hints) do
+            kit.ctext(im, kit.COL.accent, hz.zone);
+            kit.wrapped(im, kit.COL.dim, '  ' .. table.concat(hz.mobs, ', '));
+        end
+    end
+    if ok then im.End(); end
+end
+
+-- chain level -> row color: the big chains wear the loud colors
+local SC_LEVEL_COL = {
+    [1] = kit.COL.accent, [2] = kit.COL.ok, [3] = kit.COL.warn, [4] = kit.COL.badge,
+};
+
+-- one partner list: 'WS name   -> Chain  [tag]' rows, chain colored by level
+local function scPartnerRows(im, list)
+    if #list == 0 then
+        kit.ctext(im, kit.COL.dim, '  nothing chains');
+        return;
+    end
+    local nameW = 120;
+    if kit.isFn(im, 'CalcTextSize') then
+        for _, e in ipairs(list) do
+            local ok, tw = pcall(im.CalcTextSize, kit.esc(e.ws.name));
+            if ok and type(tw) == 'number' and tw > nameW then nameW = tw; end
+        end
+    end
+    for _, e in ipairs(list) do
+        kit.text(im, e.ws.name);
+        if kit.isFn(im, 'SameLine') then im.SameLine(nameW + 24); end
+        kit.ctext(im, SC_LEVEL_COL[e.level] or kit.COL.accent, '-> ' .. e.chain);
+        kit.tip(im, ('Magic burst: %s'):format(scrules.ELEMENTS[e.chain] or '?'));
+        if e.ws.tag then
+            if kit.isFn(im, 'SameLine') then im.SameLine(); end
+            kit.ctext(im, kit.COL.dim, '  [' .. (scrules.TAGS[e.ws.tag] or e.ws.tag) .. ']');
+        end
+    end
+end
+
+-- The Skillchain-partners window: opened from Spell Info, follows the
+-- selected spell. A weapon chooser (Sword first -- BLU's weapon), then the
+-- two directions the user asked for in this order: open with the
+-- weaponskill / close with the spell, and open with the spell / close with
+-- a weaponskill.
+function M.scWindow(ctx)
+    local im, st, book = ctx.im, ctx.state, ctx.book;
+    if not st.scOpen or not st.scOpen[1] then return; end
+    if st.selectedId == nil then st.scOpen[1] = false; return; end
+    local s = book.spells[st.selectedId];
+    if s == nil or s.skillchain == nil or #s.skillchain == 0 then
+        st.scOpen[1] = false;
+        return;
+    end
+    if not (kit.isFn(im, 'Begin') and kit.isFn(im, 'End')) then return; end
+    if kit.isFn(im, 'SetNextWindowSizeConstraints') then
+        pcall(im.SetNextWindowSizeConstraints, { 380, 320 }, { 800, 1200 });
+    end
+    if st.scFocus and kit.isFn(im, 'SetNextWindowFocus') then
+        pcall(im.SetNextWindowFocus);
+    end
+    st.scFocus = nil;
+    local visible = false;
+    local ok = pcall(function()
+        visible = im.Begin('Skillchain partners##bdxsc', st.scOpen);
+    end);
+    if ok and visible then
+        kit.ctext(im, kit.COL.head, s.name);
+        if kit.isFn(im, 'SameLine') then im.SameLine(); end
+        kit.ctext(im, kit.COL.accent, '  ' .. table.concat(s.skillchain, ', '));
+        st.scWeapon = st.scWeapon or { value = 'Sword' };
+        kit.ctext(im, kit.COL.dim, 'Weapon');
+        if kit.isFn(im, 'SameLine') then im.SameLine(); end
+        local w = kit.measure(im, scrules.weapons, 100) + 24;
+        kit.combo(im, '##bdxscweapon', st.scWeapon, scrules.weapons, nil, w);
+        if kit.isFn(im, 'Separator') then im.Separator(); end
+
+        local weapon = st.scWeapon.value or 'Sword';
+        local wsOpens, spellOpens = scrules.partners(s.skillchain, weapon);
+        kit.ctext(im, kit.COL.head, ('Open with a %s weaponskill, close with %s'):format(weapon, s.name));
+        scPartnerRows(im, wsOpens);
+        if kit.isFn(im, 'Separator') then im.Separator(); end
+        kit.ctext(im, kit.COL.head, ('Open with %s, close with a %s weaponskill'):format(s.name, weapon));
+        scPartnerRows(im, spellOpens);
+        if kit.isFn(im, 'Separator') then im.Separator(); end
+        kit.ctext(im, kit.COL.dim, 'Hover a chain for its magic-burst elements.');
+    end
+    if ok then im.End(); end
+end
+
 -- ---------------------------------------------------------------------------
 -- the tab
 -- ---------------------------------------------------------------------------
@@ -424,6 +641,7 @@ function M.render(ctx)
     local im, book, st = ctx.im, ctx.book, ctx.state;
     local f = st.filters;
     f.sort = f.sort or {};
+    f.stat = f.stat or {};
     st.detailOpen = st.detailOpen or { false };
 
     -- filter row -- combo widths measured over every label they can show
@@ -459,7 +677,7 @@ function M.render(ctx)
     if kit.litButton(im, 'Reset', false, 60, 22) then
         f.text[1] = ''; f.category.value = nil; f.element.value = nil;
         f.spellType.value = nil; f.trait.value = nil; f.learned.value = nil;
-        f.sort.value = nil;
+        f.sort.value = nil; f.stat.value = nil;
     end
 
     -- resolve filter spec
@@ -475,6 +693,7 @@ function M.render(ctx)
     local ids = book.filter({
         text = f.text[1], category = f.category.value, element = f.element.value,
         spellType = f.spellType.value, traitCat = traitCat, learned = learned,
+        stat = f.stat.value,
     });
 
     -- sort (in place -- book.filter returns a fresh array each call)
@@ -506,6 +725,12 @@ function M.render(ctx)
     if kit.isFn(im, 'SameLine') then im.SameLine(); end
     kit.combo(im, '##bdxsort', f.sort, { 'Name', 'Level', 'Type' }, 'default',
         comboW({ 'Name', 'Level', 'Type' }, 'default'));
+    if kit.isFn(im, 'SameLine') then im.SameLine(); end
+    kit.ctext(im, kit.COL.dim, '  Stat:');
+    if kit.isFn(im, 'SameLine') then im.SameLine(); end
+    kit.combo(im, '##bdxstatf', f.stat, book.statChoices, 'All stats',
+        comboW(book.statChoices, 'All stats'));
+    kit.tip(im, 'Only spells whose set bonus grants this stat.');
     if kit.isFn(im, 'SameLine') then im.SameLine(); end
     kit.ctext(im, kit.COL.dim, '  View:');
     if kit.isFn(im, 'SameLine') then im.SameLine(); end
@@ -564,7 +789,7 @@ function M.render(ctx)
                     pcall(im.SetCursorPosY, rowTop);
                 end
             end
-            local lclick, rclick = M.listRow(ctx, id, iconSz, nameW, st.selectedId == id, showIcon);
+            local lclick, rclick, hov = M.listRow(ctx, id, iconSz, nameW, st.selectedId == id, showIcon);
             if lclick then
                 st.selectedId = id;
                 st.detailOpen[1] = true;
@@ -586,7 +811,7 @@ function M.render(ctx)
                     end
                 end
             end
-            M.tooltip(ctx, id);
+            M.tooltip(ctx, id, hov);
         end
     end
 
