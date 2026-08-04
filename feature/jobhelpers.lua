@@ -418,6 +418,42 @@ function M.moveRankRow(placedOrder, job, dir)
 end
 
 -- ---------------------------------------------------------------------------
+-- the one live job read
+-- ---------------------------------------------------------------------------
+--
+-- MEMORY MANAGER FIRST -- gData is LAC's global and this addon state does not
+-- carry it (field 2026-08-04: every gData consumer here degraded to
+-- permissive-unknown so its absence was invisible, until the quick-menu
+-- cascade -- the one consumer where unknown must list NOTHING -- silently
+-- never appeared). gData stays as the fallback. Returns abbreviations or nil.
+
+-- numeric job id -> abbreviation (the client's own ordering -- BLU = 16 is
+-- the same constant lib-level consumers compare against).
+local JOB_ABBR = {
+    [1] = 'WAR', [2] = 'MNK', [3] = 'WHM', [4] = 'BLM', [5] = 'RDM', [6] = 'THF',
+    [7] = 'PLD', [8] = 'DRK', [9] = 'BST', [10] = 'BRD', [11] = 'RNG', [12] = 'SAM',
+    [13] = 'NIN', [14] = 'DRG', [15] = 'SMN', [16] = 'BLU', [17] = 'COR', [18] = 'PUP',
+    [19] = 'DNC', [20] = 'SCH', [21] = 'GEO', [22] = 'RUN',
+};
+
+local function liveJobs()
+    local mj, sj = nil, nil;
+    pcall(function()
+        local p = AshitaCore:GetMemoryManager():GetPlayer();
+        mj = JOB_ABBR[p:GetMainJob()];
+        sj = JOB_ABBR[p:GetSubJob()];
+    end);
+    if mj == nil then
+        pcall(function()
+            local p = gData.GetPlayer();
+            mj = mj or p.MainJob;
+            sj = sj or p.SubJob;
+        end);
+    end
+    return mj, sj;
+end
+
+-- ---------------------------------------------------------------------------
 -- the module-activity predicate (future features consult this too)
 -- ---------------------------------------------------------------------------
 --
@@ -467,10 +503,11 @@ end
 -- M.liveReads for tests; the tab passes the module's pill state in.
 function M.liveReads(id)
     local reads = { enabled = M.isEnabled(id) };
+    reads.mainJob = (liveJobs());
     pcall(function()
         local p = gData and gData.GetPlayer and gData.GetPlayer() or nil;
         if type(p) == 'table' then
-            reads.mainJob = p.MainJob;
+            reads.mainJob = reads.mainJob or p.MainJob;
             reads.dead    = (p.Status == 'Dead');
             if p.Status == 'Zoning' then reads.zoning = true; end
         end
@@ -843,8 +880,7 @@ end
 function M.sectionOrder(id)
     local order = 1;
     pcall(function()
-        local job = nil;
-        pcall(function() job = gData.GetPlayer().MainJob; end);
+        local job = (liveJobs());
         if type(job) ~= 'string' or job == '' or job == '?' then return; end
         local ids = M.idsForJob(job);
         for i, n in ipairs(ids) do
@@ -881,34 +917,9 @@ function M.menuEntriesCore(mainJob, subJob, subFlagOf, enabledOf)
     return out;
 end
 
--- numeric job id -> abbreviation (the client's own ordering -- BLU = 16 is
--- the same constant lib-level consumers compare against).
-local JOB_ABBR = {
-    [1] = 'WAR', [2] = 'MNK', [3] = 'WHM', [4] = 'BLM', [5] = 'RDM', [6] = 'THF',
-    [7] = 'PLD', [8] = 'DRK', [9] = 'BST', [10] = 'BRD', [11] = 'RNG', [12] = 'SAM',
-    [13] = 'NIN', [14] = 'DRG', [15] = 'SMN', [16] = 'BLU', [17] = 'COR', [18] = 'PUP',
-    [19] = 'DNC', [20] = 'SCH', [21] = 'GEO', [22] = 'RUN',
-};
-
--- The live flavor: current jobs from the player, the real switches. The
--- MEMORY MANAGER is the primary read -- gData is LAC's global and this addon
--- state may not carry it. Every other gData consumer here degrades to
--- permissive-unknown, which a MENU must not: an unknown job lists nothing,
--- so the popup showed no cascade at all (field, 2026-08-04).
+-- The live flavor: current jobs from the one job read, the real switches.
 function M.menuEntries()
-    local mj, sj = nil, nil;
-    pcall(function()
-        local p = AshitaCore:GetMemoryManager():GetPlayer();
-        mj = JOB_ABBR[p:GetMainJob()];
-        sj = JOB_ABBR[p:GetSubJob()];
-    end);
-    if mj == nil then
-        pcall(function()
-            local p = gData.GetPlayer();
-            mj = mj or p.MainJob;
-            sj = sj or p.SubJob;
-        end);
-    end
+    local mj, sj = liveJobs();
     return M.menuEntriesCore(mj, sj, M.subjobApplicable, M.isEnabled);
 end
 
@@ -971,9 +982,7 @@ end
 function M.onItsJob(id, job)
     local rec = M.record(id);
     if rec == nil then return false; end
-    if job == nil then
-        pcall(function() job = gData.GetPlayer().MainJob; end);
-    end
+    if job == nil then job = (liveJobs()); end
     if type(job) ~= 'string' or job == '' or job == '?' then return true; end
     for _, j in ipairs(rec.jobs) do
         if j == job then return true; end
@@ -1047,8 +1056,7 @@ end
 -- What this character's modules want bound right now.
 function M.bindEntries()
     local out = {};
-    local job = nil;
-    pcall(function() job = gData.GetPlayer().MainJob; end);
+    local job = (liveJobs());
     for _, rec in ipairs(M.modules) do
         if M.isEnabled(rec.id) and M.onItsJob(rec.id, job) and rec.cfg ~= nil then
             for _, action in ipairs(M.actionNames(rec.id)) do
