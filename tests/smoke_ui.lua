@@ -3183,7 +3183,7 @@ end)();
         check('MN7 open: popup stack balanced', depth.popup, 0);
         check('MN8 open: colour stack balanced', depth.col, 0);
         check('MN9 open: Begin/End balanced',   depth.win, 0);
-        check('MN10 seven menu rows drawn', drew.selectable, 7);   -- +wishlist (2026-07-27)
+        check('MN10 eight menu rows drawn', drew.selectable, 8);   -- +wishlist (2026-07-27), +NM Compendium (2026-08-04)
         check('MN11 every row reserved an icon cell (no PNG -> Dummy)', drew.dummy >= 6, true);
         check('MN12 no texture drawn when filetex has none', drew.image, 0);
         -- The bodies run GUARDED, so an exception inside one would otherwise be
@@ -3198,7 +3198,7 @@ end)();
         flags.debug = true;
         drew.selectable = 0;
         check('MN13 renders under debug', pcall(mn.renderPopups), true);
-        check('MN14 debug adds the four developer rows', drew.selectable, 11);
+        check('MN14 debug adds the four developer rows', drew.selectable, 12);
         check('MN15 debug: popup stack balanced', depth.popup, 0);
         check('MN16 debug: colour stack balanced', depth.col, 0);
         flags.debug = false;
@@ -3226,7 +3226,7 @@ end)();
         package.loaded['dlac\\ui\\itemicons'] = { handleOf = function() return 4242; end };
         drew.selectable, drew.image = 0, 0;
         check('MN18a renders with food to eat', pcall(mn.renderPopups), true);
-        check('MN18b food adds its two rows', drew.selectable, 9);
+        check('MN18b food adds its two rows', drew.selectable, 10);
         check('MN18c ...each with the item\'s own icon', drew.image, 2);
         check('MN18d food: popup stack balanced', depth.popup, 0);
         check('MN18e food: colour stack balanced', depth.col, 0);
@@ -3235,13 +3235,13 @@ end)();
         stubFW.menu = function() return {}; end
         drew.selectable = 0;
         check('MN18f renders with nothing to eat', pcall(mn.renderPopups), true);
-        check('MN18g ...and the whole section vanishes', drew.selectable, 7);
+        check('MN18g ...and the whole section vanishes', drew.selectable, 8);
         -- A foodwatch that THROWS must cost its own rows, never the menu (guarded).
         stubFW.menu = function() error('food boom'); end
         drew.selectable = 0;
         check('MN18h a throwing food section does not take the menu down',
               pcall(mn.renderPopups), true);
-        check('MN18i ...the roster still drew', drew.selectable, 7);
+        check('MN18i ...the roster still drew', drew.selectable, 8);
         check('MN18j ...and the popup stack survived it', depth.popup, 0);
 
         -- THE ACTIVE-FOOD ROW (2026-08-01). Its empty case is the OPPOSITE of the
@@ -3264,7 +3264,7 @@ end)();
         stubFW._fmtLeft = function(s) return (tonumber(s) ~= nil) and ('LEFT' .. tostring(s)) or nil; end
         drew.selectable, drew.image = 0, 0;
         check('MN18k the active food draws with nothing left to eat', pcall(mn.renderPopups), true);
-        check('MN18l ...as one row on top of the roster', drew.selectable, 8);
+        check('MN18l ...as one row on top of the roster', drew.selectable, 9);
         check('MN18m ...carrying the food\'s own icon', drew.image, 1);
 
         -- The hover IS the feature: the row names the food, the tooltip says what
@@ -3340,13 +3340,13 @@ end)();
         stubFW.status = function() return { active = true, current = nil, recent = {} }; end
         drew.selectable = 0;
         check('MN18r an unnameable food draws no row at all', pcall(mn.renderPopups), true);
-        check('MN18s ...leaving just the roster', drew.selectable, 7);
+        check('MN18s ...leaving just the roster', drew.selectable, 8);
         -- A throwing status() costs the row, never the menu.
         stubFW.status = function() error('status boom'); end
         drew.selectable = 0;
         check('MN18t a throwing status does not take the menu down',
               pcall(mn.renderPopups), true);
-        check('MN18u ...and the roster still drew', drew.selectable, 7);
+        check('MN18u ...and the roster still drew', drew.selectable, 8);
 
         package.loaded['dlac\\feature\\foodwatch'] = savedFW;
         package.loaded['dlac\\ui\\itemicons'] = savedIC;
@@ -3358,6 +3358,26 @@ end)();
             (function() mn.activate('level'); return ui._lvlOpen; end)(), true);
         check('MN21 settings row arms the settings popup',
             (function() mn.activate('settings'); return ui._setOpen; end)(), true);
+
+        -- The NM Compendium row must reach the SAME entry point `/dl nm window`
+        -- uses (Henrik, 2026-08-04: "I want this to point to the same window as
+        -- /dl nm window"). Pinned by capturing nmlookup.openWindow rather than
+        -- by watching nmui, because the requirement is that the two surfaces
+        -- share ONE door -- a row that opened the window some other way would
+        -- still look right on screen and drift the moment the door changes.
+        do
+            local savedNML = package.loaded['dlac\\feature\\nmlookup'];
+            local seen = nil;
+            package.loaded['dlac\\feature\\nmlookup'] = {
+                openWindow = function(q, zid) seen = { q = q, zid = zid }; return true; end,
+            };
+            local routed = mn.activate('nm');
+            package.loaded['dlac\\feature\\nmlookup'] = savedNML;
+            check('MN21a the NM Compendium row routes',            routed, true);
+            check('MN21b ...through nmlookup.openWindow',          seen ~= nil, true);
+            check('MN21c ...with no query, so it opens on the area', seen and seen.q, '');
+            check('MN21d ...and no zone, so openWindow reads it',  seen and seen.zid, nil);
+        end
 
         -- the header button entry gearui's btns loop consumes. With filetex handing
         -- back nil (the headless case) it is the labelled wide text button.
@@ -3384,7 +3404,7 @@ end)();
         flags.debug = true;
         drew.image = 0;
         check('MN33 renders debug section with art', pcall(mn.renderPopups), true);
-        check('MN34 debug heading drew one icon per row + one heading', drew.image, 8);
+        check('MN34 debug heading drew one icon per row + one heading', drew.image, 9);
         check('MN35 debug section: popup stack balanced', depth.popup, 0);
         flags.debug = false;
         package.loaded['dlac\\ui\\filetex'] = { handle = function() return nil; end };

@@ -17037,7 +17037,7 @@ end)();
     -- under /dl debug on.
     local plain = mn._menuRows(false);
     local dbg   = mn._menuRows(true);
-    check('SET32 seven rows when not debugging', #plain, 7);   -- +wishlist (2026-07-27)
+    check('SET32 eight rows when not debugging', #plain, 8);   -- +wishlist (2026-07-27), +NM Compendium (2026-08-04)
     check('SET33 first row is lockstyle',      plain[1], 'lockstyle');
     check('SET55 wishlist is a plain row',
         (function() for _, k in ipairs(plain) do if k == 'wishlist' then return true; end end return false; end)(), true);
@@ -17076,7 +17076,7 @@ end)();
     -- behaviour, but it means a typo or a rename is INVISIBLE in game. Pin it here.
     -- Seven row icons + the header button + the Developer section heading.
     local icons = mn._menuIcons();
-    check('SET42 every icon slot is named', #icons, 9);
+    check('SET42 every icon slot is named', #icons, 10);   -- +NM Compendium (2026-08-04)
     local missing = {};
     for _, name in ipairs(icons) do
         local f = io.open('assets/' .. name .. '.png', 'rb');

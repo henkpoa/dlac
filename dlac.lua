@@ -18,7 +18,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.08.04a';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.08.04b';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
                                 -- (03f = engine v163: the contest explains its own plan;
                                 --  03g = one floating tray: Teleports + the E-Box crates;
@@ -78,7 +78,11 @@ addon.version = '2026.08.04a';  -- date of the last shipped change (Ashita print
                                 --  placeholder-round tracking counted by INDEX
                                 --  and shown as a floor that goes stale rather
                                 --  than a prediction -- and a window that
-                                --  searches all of it by name, area or drop)
+                                --  searches all of it by name, area or drop;
+                                --  04b = ...and it has a door: an NM Compendium
+                                --  row in the header menu, between Teleports and
+                                --  Wishlist, opening the SAME window as
+                                --  "/dl nm window" through the one entry point)
 addon.desc    = 'Gear sets, triggers and live stats with level scaling -- dlac equips your gear itself.';
 
 -- Load BEACON ('/dl check' field round, 2026-07-23): written by PLAIN io at
