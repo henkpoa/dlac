@@ -6533,6 +6533,39 @@ end)();
         check('S333 a throwing Panel does not break the tab render', rok2, true);
         balanced('S334 after a throwing Panel');
 
+        -- --- the WINDOW hook (ADR 0028 amendment 2026-08-04): renderFloats is
+        -- the ONE draw site for module floats. Driven synthetically so the
+        -- call, the ctx shape, the pill gate and the throw containment are
+        -- all pinned here, where a regression is cheapest to see.
+        local winCalls, winCtx = 0, nil;
+        jh.modules[1].mod.panel  = function() end;          -- back to a sane panel
+        jh.modules[1].mod.window = function(c) winCalls = winCalls + 1; winCtx = c; end
+        local wok = pcall(jhui.renderFloats);
+        check('S358 the window hook is called from the float site', wok and winCalls, 1);
+        check('S358a ...with the panel ctx shape (same S, an imgui handle)',
+              winCtx ~= nil and winCtx.S == jh.modules[1].S and winCtx.imgui ~= nil, true);
+        balanced('S358b after a module float render');
+
+        -- pill OFF: a silenced module draws no window.
+        local realEnabled = jh.isEnabled;
+        jh.isEnabled = function() return false; end
+        pcall(jhui.renderFloats);
+        check('S358c a silenced module draws no window', winCalls, 1);
+        jh.isEnabled = realEnabled;
+
+        -- a THROWING window hook is blamed once and SILENCED for the session:
+        -- the frame survives, and the next frame does not call it again (a
+        -- float has no container for a red notice, and a torn Begin/End must
+        -- not be handed a second frame to tear another).
+        jh.modules[1].mod.window = function() error('window boom'); end
+        local fok = pcall(jhui.renderFloats);
+        check('S358d a throwing window hook does not break the frame', fok, true);
+        balanced('S358e after the throwing window hook');
+        local before = winCalls;
+        jh.modules[1].mod.window = function() winCalls = winCalls + 1; end
+        pcall(jhui.renderFloats);
+        check('S358f ...and the hook is silenced for the session', winCalls, before);
+
         -- clean the shared host so the verdict-time state matches a normal run.
         jh.modules = {};
     end

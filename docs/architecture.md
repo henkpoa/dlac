@@ -306,6 +306,12 @@ Two consequences worth stating: the render call site is where `deps` comes from
 must re-derive its own data rather than take it from whatever panel used to hold it —
 `fishui.renderTargetBody` re-reads db/owned counts/skill for exactly this reason.
 
+Job helper modules get the same treatment without touching this file: the optional
+`window` contract hook (ADR 0028 amendment 2026-08-04) is drawn by
+`jobhelpersui.renderFloats` from ONE block in gearui's float chain — pill-gated,
+theme-bracketed, contained per module (a throw silences that hook for the session) —
+so a module's float lives by the same law as the first-party ones.
+
 ### Wishlist — ui/wishlistui.lua + feature/wishlist.lua (ADR 0026)
 Gear you mean to own. The model file (`<char>\dlac\wishlist.lua`) is id-keyed and carries
 the item NAME because the **engine** reads it: `utils.warnMissingGear` asks

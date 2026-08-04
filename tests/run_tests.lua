@@ -19006,6 +19006,28 @@ end)();
     check('JH10 init-throw is one ledger failure', #ledger2.failed, 1);
     check('JH11 init-throw named as init', (ledger2.failed[1] or {}).err and ledger2.failed[1].err:find('init', 1, true) ~= nil, true);
 
+    -- the optional `window` hook (ADR 0028 amendment 2026-08-04): a function
+    -- loads and rides the record; anything else is refused loudly, naming the
+    -- hook, like every other malformed piece of the contract.
+    local ledger3 = { total = 0, failed = {} };
+    jh.loadAll({
+        names      = { 'badwindow', 'withwindow' },
+        loadModule = function(id)
+            if id == 'withwindow' then
+                return true, { api = jh.API, label = 'W', jobs = { 'BST' },
+                               panel = function() end, window = function() end };
+            end
+            return true, { api = jh.API, label = 'BW', jobs = { 'BST' },
+                           panel = function() end, window = 'not a function' };
+        end,
+        ledger = ledger3, emit = function() end,
+    });
+    check('JH11b a module with a window hook loads', jh.count(), 1);
+    check('JH11c its record carries the hook', type(jh.list()[1].mod.window), 'function');
+    check('JH11d a non-function window is refused', #ledger3.failed, 1);
+    check('JH11e ...naming the window hook',
+          (ledger3.failed[1] or {}).err and ledger3.failed[1].err:find('window', 1, true) ~= nil, true);
+
     -- ---- registry queries ---------------------------------------------------
     local a = { api = jh.API, label = 'Alpha', jobs = { 'BST', 'PUP' }, panel = function() end };
     local b = { api = jh.API, label = 'Beta',  jobs = { 'PUP' },        panel = function() end };

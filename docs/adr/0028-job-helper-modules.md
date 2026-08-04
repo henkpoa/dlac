@@ -64,6 +64,22 @@ to a conclusion and left parked until something needed to live in-state. This is
 - **Hot-plugging without a reload.** A watch on the folder adds a moving part for a case a reload
   already covers; modules appear on addon (re)load, full stop.
 
+## Amended 2026-08-04 (Henrik): the optional `window` hook — module floats through the framework
+
+A module may declare `window = function(ctx) end` on its contract: a FLOATING window drawn at
+gearui's float draw site (the "many openers, ONE draw site" law), inside dlac's theme bracket,
+gated on the module's row pill, contained per module — a throw is blamed once and the hook is
+silenced for the session. The hook self-gates on the module's own open flag; job/town/dead gating
+stays the module's own call.
+
+Why: the Panel ban on `Begin`/`End` is load-bearing (the containment guarantee is scoped to the
+Panel region, and ad-hoc windows sidestep the float law's field lessons — body-merge on
+double-Begin, popup layering, the main-box lifecycle) — but "no windows ever" was never the
+intent. The authoring guide's §6.9 promised any second surface would arrive through the
+framework; this is that surface, with the full reasoning now written down in the guide's §2.5.
+Validation: `window` must be a function when present, refused loudly otherwise. First consumer:
+Bludex's Spell Info window (`jobhelpers/blu/bludex`).
+
 ## Amended 2026-07-29 (Henrik): the layout is job-first
 
 `jobhelpers\<job>\<module>\` -- "bst-helper is the module of bst": the job folder GROUPS its

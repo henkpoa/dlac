@@ -136,6 +136,22 @@ local function jobSection(job)
     end
 end
 
+-- The render ctx (api 2) -- ONE shape for every module hook (panel, status,
+-- and the window hook alike). `ui` is the Panel widget kit already BOUND to
+-- the host's imgui handle -- which is the handle a module must draw with,
+-- because the smoke suite renders every tab against a stub binding and a
+-- module that required its own would get the wrong instance. `S` is the
+-- module's own API table, the same one its init hook received.
+local function buildCtx(rec)
+    local kit = nil;
+    pcall(function()
+        local pk = require('dlac\\ui\\panelkit');
+        if type(pk) == 'table' and type(pk.bind) == 'function' then kit = pk.bind(imgui); end
+    end);
+    return { imgui = imgui, ui = kit, id = rec.id, record = rec,
+             S = rec.S, deps = rec.S or deps, activity = jh.activity(rec.id) };
+end
+
 -- The selected module's Panel, contained: a throw loses the Panel and prints
 -- once, never the tab.
 local function renderPanel()
@@ -148,25 +164,13 @@ local function renderPanel()
         imgui.TextColored(COL_DIM, 'Select a helper on the left to configure it.');
         return;
     end
+    local ctx = buildCtx(rec);
+    local act = ctx.activity;
     imgui.TextColored(COL_HEADER, esc(rec.label));
     -- The live status + the module's own status hook live HERE, beside the
     -- Panel title (Henrik's field ruling 2026-07-29): the row stays name+pill.
-    local act = jh.activity(rec.id);
     imgui.SameLine(0, 10);
     imgui.TextColored(statusColor(act), esc((act ~= nil and act.label) or '?'));
-
-    -- The render ctx (api 2). `ui` is the Panel widget kit already BOUND to the
-    -- host's imgui handle -- which is the handle a module must draw with, because
-    -- the smoke suite renders every tab against a stub binding and a module that
-    -- required its own would get the wrong instance. `S` is the module's own API
-    -- table, the same one its init hook received.
-    local kit = nil;
-    pcall(function()
-        local pk = require('dlac\\ui\\panelkit');
-        if type(pk) == 'table' and type(pk.bind) == 'function' then kit = pk.bind(imgui); end
-    end);
-    local ctx = { imgui = imgui, ui = kit, id = rec.id, record = rec,
-                  S = rec.S, deps = rec.S or deps, activity = act };
 
     if type(rec.mod.status) == 'function' then
         imgui.SameLine(0, 10);
@@ -214,6 +218,37 @@ function M.renderTab(job, level)
     local okR = imgui.BeginChild('##jh_right', { 0, 0 }, true);
     if okR then renderPanel(); end
     imgui.EndChild();
+end
+
+-- The MODULE WINDOWS -- every loaded module's optional `window` hook, drawn
+-- once per frame from gearui's float site (ADR 0028 amendment 2026-08-04).
+-- This is THE ONE DRAW SITE for a Job helper's floating window (the nmui /
+-- tray law: any surface may OPEN a window, exactly one place DRAWS it); the
+-- hook itself self-gates on its module's own open flag and draws nothing
+-- otherwise. The framework gates only the pill -- a silenced module draws no
+-- window; job/town/dead gating stays the module's own business, because an
+-- info window on the wrong job is the module's call, not the framework's.
+--
+-- Containment: a throw is blamed ONCE and the hook is silenced for the rest
+-- of the session -- stronger than the Panel's red notice, because a float has
+-- no container to draw a notice in, and a hook that tears its own Begin/End
+-- must not be given a second frame to tear another.
+function M.renderFloats()
+    if not hasImgui then return; end
+    if jh.count() < 1 then return; end
+    for _, rec in ipairs(jh.list()) do
+        if type(rec.mod.window) == 'function'
+            and not _blamed['window:' .. rec.id]
+            and jh.isEnabled(rec.id) then
+            local ok, err = pcall(rec.mod.window, buildCtx(rec));
+            if not ok then
+                _blamed['window:' .. rec.id] = true;
+                print('[dlac] Job helper ' .. tostring(rec.id) .. ' window hook errored: '
+                    .. tostring(err):gsub('%s+', ' '):sub(1, 120)
+                    .. ' -- its window is off for this session.');
+            end
+        end
+    end
 end
 
 -- Register the tab with the UI host -- ONLY when a module is loaded. Idempotent
