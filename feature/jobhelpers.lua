@@ -17,6 +17,9 @@
             init   = function(S) end,         -- optional; the module API in
             panel  = function(ctx) end,       -- required; renders the Panel
             status = function(ctx) end,       -- optional; extra row-status draw
+            window = function(ctx) end,       -- optional; a floating window, drawn
+                                              -- at gearui's float site (self-gated;
+                                              -- ADR 0028 amendment 2026-08-04)
         }
 
     `S` (feature\modapi) is the SUPPORTED surface -- identity, the one clock, the
@@ -468,6 +471,7 @@ function M._validate(id, mod)
     if type(mod.panel) ~= 'function' then return nil, 'missing panel render hook'; end
     if mod.init ~= nil and type(mod.init) ~= 'function' then return nil, 'init is not a function'; end
     if mod.status ~= nil and type(mod.status) ~= 'function' then return nil, 'status is not a function'; end
+    if mod.window ~= nil and type(mod.window) ~= 'function' then return nil, 'window is not a function'; end
     -- The optional `config` block (api 2): the module declares its keys and their
     -- types, the framework owns the file format. Refused LOUDLY on a bad shape
     -- rather than silently dropping writes -- a settings declaration that does not

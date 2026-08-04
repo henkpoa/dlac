@@ -5450,6 +5450,24 @@ ashita.events.register('d3d_present', 'dlac-gearui-render', function()
             if ifThemed then style.pop(); end
         end
     end
+    -- Job helper module WINDOWS (ADR 0028 amendment 2026-08-04): every loaded
+    -- module's optional `window` hook -- INDEPENDENT of the main box like every
+    -- float above, so a helper's window survives closing dlac's main window.
+    -- THIS IS THE ONE DRAW SITE for all of them; jobhelpersui.renderFloats
+    -- walks the registry, gates each on its row pill, and contains a throw to
+    -- the one module (blamed once, silenced for the session). Each hook
+    -- self-gates on its module's own open flag, so zero open windows cost a
+    -- registry walk and nothing else. Own theme bracket, function-scoped
+    -- require -- no new chunk local (hard rule 1).
+    if has.imgui then
+        local jhwMod = nil;
+        pcall(function() jhwMod = require('dlac\\ui\\jobhelpersui'); end);
+        if jhwMod ~= nil and type(jhwMod.renderFloats) == 'function' then
+            local jhwThemed = style ~= nil and style.push();
+            pcall(jhwMod.renderFloats);
+            if jhwThemed then style.pop(); end
+        end
+    end
     if not M.visible or not has.imgui then return; end
     -- Theme push/pop brackets the pcall so an imgui error mid-draw can never
     -- leak the style stack (that would corrupt every OTHER addon's UI too).

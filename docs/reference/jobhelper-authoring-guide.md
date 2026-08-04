@@ -31,6 +31,7 @@ substituted.
 | **The Panel widget kit** (`ctx.ui`) | ✅ **Shipped** — `ui/panelkit.lua`. |
 | **The Action sequencer** and the shared `JobHelper` claimant row | ✅ **Shipped** — issue #138, ADR [0030](../adr/0030-module-owns-initiation.md). |
 | **Combat state + edges**, **pet vitals** + the pet-loss edge, **ability recasts** | ✅ **Shipped** — issues #139 / #140 / #141, plus `feature/combat.lua`. |
+| **The `window` hook** (a module float at the framework's draw site) | ✅ **Shipped** — ADR [0028](../adr/0028-job-helper-modules.md) amendment 2026-08-04. |
 | **Hot-plugging**, capability tiers, sandboxing | ❌ **Not coming.** Modules appear on addon (re)load; the door is documentation and contracts, not walls (ADR 0028). |
 
 ---
@@ -178,6 +179,7 @@ return {
     init   = function(S) end,          -- optional. arm standing behaviors, once, at load
     panel  = function(ctx) end,        -- REQUIRED. render your Panel
     status = function(ctx) end,        -- optional. one short line beside the Panel title
+    window = function(ctx) end,        -- optional. a floating window (§2.8)
 };
 ```
 
@@ -268,6 +270,25 @@ file that is *not* handed a handle, `imgui` is **not a global** — hard rule 2.
 Your Panel draws *inside* an already-open child region. Do not call `imgui.Begin`/`End`, do not
 open a window, do not register a tab.
 
+**Why a Panel cannot open a window** — load-bearing, not taste, and it has two legs:
+
+1. **The containment promise is scoped to the Panel.** §4's guarantee — a throwing `panel` costs
+   you your Panel and nothing else — is implemented *around* the Panel region (the render pcall,
+   with gearui's `tabGuard` as the frame-level recovery above it). A window your Panel opened
+   itself sits outside that machinery: a throw between your own `Begin`/`End` leaves a torn stack
+   that is the whole frame's problem — exactly what PRD user story 6 says a module must never be
+   able to cause. The rule is what makes the guarantee provable **by contract** instead of by
+   auditing every module's window discipline by hand.
+2. **dlac already has a law for floating windows, paid for in the field** (architecture.md,
+   *"Floating windows — many openers, ONE draw site"*): two `Begin` calls on one window name in a
+   frame silently merge their bodies (the floatgear S50 class), a plain `Begin` window is always
+   drawn *under* an open popup, and a real float must be drawn from the one site **above** the
+   main-window visibility gate or it blinks out whenever the player closes the main box or
+   switches tabs. A window drawn from inside a Panel render gets none of that.
+
+The sanctioned path is the **`window` hook (§2.8)**: the framework draws it at the floats' one
+draw site, wrapped in the same containment, and your window behaves like every other dlac float.
+
 ### 2.6 `status(ctx)` — the short line beside the Panel title
 
 Optional. Same `ctx`. Draw **one** short item: `Reward ready`, `Reward 12s`. It renders on the
@@ -307,6 +328,37 @@ that did nothing and said nothing is indistinguishable from a broken bind.
 **A named action is a DELIBERATE press.** It is not gated on your rule switches, and it should not
 be: the switch governs what happens *without* the player. The framework checks only that they are
 on your job.
+
+### 2.8 `window(ctx)` — a floating window, drawn at the framework's one draw site
+
+Optional (added 2026-08-04; the first consumer is Bludex's Spell Info window). Declare it when
+your module has a window that must behave like dlac's other floats — independent of the main box,
+alive while the player plays.
+
+```lua
+window = function(ctx)
+    if not myWindowOpen then return; end      -- SELF-GATE: draw nothing when closed
+    -- Begin/End your window here, guarded; ctx is the same shape panel gets
+end,
+```
+
+The division of labor is the float law every first-party window already lives by (*"any surface
+may OPEN a floating window; exactly one place may DRAW it"*):
+
+- **You own the open flag.** Any of your surfaces (your Panel, a rule, a command) may set it;
+  only the hook draws. Draw nothing when it is off — the hook is called every frame.
+- **The framework owns the site and the gates it can prove.** Your hook is called from gearui's
+  float draw site (so your window survives the main window closing and never rides tab
+  visibility), inside dlac's theme bracket, and only while your row pill is on. Job/town/dead
+  gating stays *yours* if your window wants it — an info window on the wrong job is your call,
+  not the framework's.
+- **Containment is stricter than the Panel's.** A throw is blamed once and your window hook is
+  **silenced for the rest of the session** — a float has no container to draw a red notice in,
+  and a hook that tore its own `Begin`/`End` once must not be handed a second frame to tear
+  another. So: `End` on every path where `Begin` succeeded, pcall your own body, and treat a
+  session-silenced window as the bug report it is.
+- **One window per module.** A module that wants a second window wants a design conversation
+  first (the icon-tray precedent: two little boxes doing the same kind of job became one).
 
 ---
 
@@ -352,6 +404,7 @@ The guarantees, all structural:
 | `init` throws | One loud line: `init threw (...)`. The whole module is dropped — the other modules are untouched. |
 | `panel` throws at render time | Your Panel is replaced by a red one-line notice and your name is printed **once** per session; the tab, the other modules' rows and the frame all survive. |
 | `status` throws at render time | Contained the same way — one line, once — and the Panel below it still renders. |
+| `window` throws at render time | One line, once, and the hook is **silenced for the session** — a float has no container for a red notice, and a torn `Begin`/`End` must not recur (§2.8). Everything else survives. |
 
 Every failure also lands in the **same load ledger** `/dl check` reads, namespaced
 `jobhelper:<id>` — so "my tab is missing" is diagnosable in seconds, and a failure is readable off
@@ -885,8 +938,9 @@ the lockout" happen on most beats, and colouring them orange would cry wolf all 
 belong in the dim `last` line. This is precedence, not decoration, which is why it lives in the kit
 rather than in each Panel.
 
-**Do not add UI outside your Panel.** No tabs, no windows, no chrome. If dlac ever grows another
-surface for modules it will arrive through `uihost`.
+**Do not add UI outside your Panel and your declared `window` hook (§2.8).** No tabs, no ad-hoc
+windows, no chrome. The window hook IS the promised second surface, arrived 2026-08-04; anything
+further will come the same way — through the framework, never from a render hook.
 
 **Report state in the Panel, not in chat.** A rule that evaluates every beat has nothing to say on
 most beats; only an *attempt* is news.
