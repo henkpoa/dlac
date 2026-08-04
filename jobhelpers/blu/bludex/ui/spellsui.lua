@@ -360,14 +360,19 @@ function M.listRow(ctx, id, iconSz, nameW, selected, showIcon, opts)
 end
 
 -- The View density combo, shared by the codex and traits tabs: reads and
--- persists ctx.cfg[cfgKey] ('big' | 'normal' | 'compact'); returns the key.
+-- persists ctx.cfg[cfgKey] ('big' | 'medium' | 'normal' | 'compact');
+-- returns the key. 'Normal' (24px) is the combo's all-label default.
 function M.densityCombo(ctx, cfgKey)
     local im = ctx.im;
     local density = ctx.cfg[cfgKey] or 'normal';
-    local dChoices = { 'Big (64px icons)', 'Compact (no icons)' };
-    local dToKey = { ['Big (64px icons)'] = 'big', ['Compact (no icons)'] = 'compact' };
-    local dFromKey = { big = dChoices[1], compact = dChoices[2] };
-    local w = kit.measure(im, { dChoices[1], dChoices[2], 'Normal' }, 96) + 24;
+    local dChoices = { 'Big (64px icons)', 'Medium (32px icons)', 'Compact (no icons)' };
+    local dToKey = {
+        ['Big (64px icons)']    = 'big',
+        ['Medium (32px icons)'] = 'medium',
+        ['Compact (no icons)']  = 'compact',
+    };
+    local dFromKey = { big = dChoices[1], medium = dChoices[2], compact = dChoices[3] };
+    local w = kit.measure(im, { dChoices[1], dChoices[2], dChoices[3], 'Normal' }, 96) + 24;
     local dstate = { value = dFromKey[density] };
     if kit.combo(im, '##bdxview_' .. cfgKey, dstate, dChoices, 'Normal', w) then
         density = dstate.value and dToKey[dstate.value] or 'normal';
@@ -380,6 +385,7 @@ end
 -- density key -> (iconSz, showIcon) for list rows
 function M.densityParams(density)
     if density == 'big' then return 64, true; end
+    if density == 'medium' then return 32, true; end
     if density == 'compact' then return 18, false; end
     return 24, true;
 end
@@ -516,6 +522,7 @@ function M.render(ctx)
     local iconSz, showIcon = M.densityParams(density);
     local targetW, maxCols = 250, 3;
     if density == 'big' then targetW, maxCols = 340, 2;
+    elseif density == 'medium' then targetW, maxCols = 270, 3;
     elseif density == 'compact' then targetW, maxCols = 180, 5; end
     local cols = math.max(1, math.min(maxCols, math.floor(availW / targetW)));
     local colW = math.floor((availW - 16) / cols);   -- -16: scrollbar margin
