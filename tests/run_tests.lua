@@ -1746,6 +1746,29 @@ check('T24f a sane value is kept',         craftwatch.setSynthWait(45), 45);
 check('T24g setSynthWait clamps too',      craftwatch.setSynthWait(1), 20);
 craftwatch.setSynthWait(30);
 
+-- Guild rank + cap (2026-08-03) -- the numbers under the bar's craft glyphs and
+-- the BLUE that says "capped". Server rules, not retail lore:
+--   cap    = (rank + 1) * 10   (crafting/utils.lua getCraftSkillCap)
+--   capped = (rank + 1) * 100 <= RealSkill, i.e. skill >= cap (charutils.cpp,
+--            the same test that sets the 0x8000 "Blue text." bit)
+--   ranks  = scripts/enum/craft_rank.lua, whose own comment ends "16+ invalid"
+check('T24h Amateur caps at 10',           craftwatch.craftRankCap(0), 10);
+check('T24i Journeyman caps at 60',        craftwatch.craftRankCap(5), 60);
+check('T24j Veteran caps at 100',          craftwatch.craftRankCap(9), 100);
+check('T24k Legend (15) is the last rank', craftwatch.craftRankCap(15), 160);
+check('T24l rank 16+ is invalid',          craftwatch.craftRankCap(16), nil);
+check('T24m the mask rank (31) is too',    craftwatch.craftRankCap(31), nil);
+check('T24n a nil rank has no cap',        craftwatch.craftRankCap(nil), nil);
+check('T24o rank names come off the enum', craftwatch.craftRankName(9), 'Veteran');
+check('T24p ...all the way to Legend',     craftwatch.craftRankName(15), 'Legend');
+check('T24q an off-ladder rank has none',  craftwatch.craftRankName(31), nil);
+-- The blue only lights AT the cap: 59/60 is still grey, 60/60 and above are blue.
+check('T24r under the cap is not capped',  craftwatch.craftIsCapped(59, 5), false);
+check('T24s exactly at the cap IS capped', craftwatch.craftIsCapped(60, 5), true);
+check('T24t over the cap stays capped',    craftwatch.craftIsCapped(61, 5), true);
+check('T24u a fresh guild joiner (0/10)',  craftwatch.craftIsCapped(0, 0), false);
+check('T24v an unreadable rank is never capped', craftwatch.craftIsCapped(60, nil), false);
+
 -- ---------------------------------------------------------------------------
 -- U. synthrun -- the 2..6 repeat-synth batch runner (feature/synthrun.lua).
 -- Drives the whole state machine headless on an injected clock, a recording
@@ -23746,7 +23769,8 @@ end)();
     check('NM10c ...six placeholders',         #bon.ph, 6);
     check('NM10d ...contiguous 354-359',       NM.runs(bon.ph), '354-359');
     check('NM10e ...which are Buffalo',        bon.p, 'Buffalo');
-    check('NM10f ...5% per kill',              bon.c, 5);
+    -- 5% is the BASE, not the rate: disfavour lifts it every round (NM40*/NM41*).
+    check('NM10f ...a 5% base chance',         bon.c, 5);
     check('NM10g ...1h-24h window',            string.format('%d-%d', bon.w[1], bon.w[2]), '3600-86400');
     -- Shadow Eye, Xarcabard (112): one Evil Eye at NM-6.
     local se = select(1, NM.matchInZone(112, 'Shadow Eye'));
@@ -23878,6 +23902,344 @@ end)();
     check('NM39c ...and does not hunt for an NM called "apply"',
         t13:match('closest match') == nil, true);
 
+    -- ---- the disfavour curve (issue #152) ---------------------------------
+    --
+    --   THESE TESTS ARE THE SOURCE. CatsEyeXI's disfavour system (bad-luck
+    --   protection on lottery pops) exists in NO branch of the public server
+    --   repository -- it lives in the private `catseyexi` overlay, which is
+    --   empty publicly -- so the formula is HAND-CARRIED in nmlookup.lua and
+    --   these checks stand in for the source it cannot be derived from.
+    --
+    --       rounds = phKills / phCount
+    --       chance = 100 / max( (100/base) - rounds * (1 - base/100) / 2, 1 )
+    --
+    --   Four anchors were published with the mechanic and all four are pinned
+    --   below. Anchors ALONE are not enough: they only fix the point where the
+    --   curve reaches 100%, and several wrong formulas hit that point too. So
+    --   the MIDDLE is pinned as well -- a dropped `/2`, a flipped sign or a
+    --   base/100 read as base all move the mid-curve values while some of them
+    --   leave an endpoint intact.
+    -- -----------------------------------------------------------------------
+
+    -- Compared to 4 decimals: fine enough that any of those slips fails, coarse
+    -- enough to be immune to last-bit differences between interpreters.
+    local function pct4(x) return string.format('%.4f', x); end
+
+    -- The published anchors, written out here rather than read from the module,
+    -- so the constant and the code are pinned to the SAME external fact.
+    local PUBLISHED = { { 5, 40 }, { 10, 20 }, { 15, 14 }, { 20, 10 } };
+    for _, a in ipairs(PUBLISHED) do
+        local base, rounds = a[1], a[2];
+        check(string.format('NM40 base %d%% is guaranteed after %d rounds', base, rounds),
+            NM.roundsToGuaranteed(base), rounds);
+        check(string.format('NM40 ...and %d rounds reads exactly 100%%', rounds),
+            pct4(NM.chanceAfter(base, rounds)), '100.0000');
+        -- The anchor is the FIRST guaranteed round, not merely a late one.
+        check(string.format('NM40 ...while %d rounds is not there yet', rounds - 1),
+            NM.chanceAfter(base, rounds - 1) < 100, true);
+    end
+    check('NM40e the constant records all four anchors', #NM.DISFAVOUR.anchors, 4);
+    for i, a in ipairs(PUBLISHED) do
+        check(string.format('NM40f anchor %d base', i),   NM.DISFAVOUR.anchors[i].base, a[1]);
+        check(string.format('NM40g anchor %d rounds', i), NM.DISFAVOUR.anchors[i].rounds, a[2]);
+    end
+
+    -- Mid-curve. NM41d is the figure the PRD quotes back at the player ("30
+    -- rounds in they are at 17%") and NM41e is the near-vertical end that made
+    -- printing the base alone misleading in the first place.
+    check('NM41a base 5% at 0 rounds is the base itself',  pct4(NM.chanceAfter(5, 0)),   '5.0000');
+    check('NM41b base 5% at 10 rounds has already moved',  pct4(NM.chanceAfter(5, 10)),  '6.5574');
+    check('NM41c base 5% at 20 rounds (halfway)',          pct4(NM.chanceAfter(5, 20)),  '9.5238');
+    check('NM41d base 5% at 30 rounds -- the published ~17%',
+        pct4(NM.chanceAfter(5, 30)),  '17.3913');
+    check('NM41e base 5% at 39 rounds -- near-vertical',   pct4(NM.chanceAfter(5, 39)),  '67.7966');
+    check('NM41f base 10% at 10 rounds',                   pct4(NM.chanceAfter(10, 10)), '18.1818');
+    check('NM41g base 15% at 7 rounds',                    pct4(NM.chanceAfter(15, 7)),  '27.0880');
+    check('NM41h base 20% at 5 rounds',                    pct4(NM.chanceAfter(20, 5)),  '33.3333');
+
+    local rose, fell = true, false;
+    local prevChance = NM.chanceAfter(5, 0);
+    for r = 1, 40 do
+        local c = NM.chanceAfter(5, r);
+        if c <= prevChance then rose = false; end
+        if c < prevChance then fell = true; end
+        prevChance = c;
+    end
+    check('NM41i the curve rises on every single round',   rose, true);
+    check('NM41j ...and never falls back',                 fell, false);
+
+    -- Clamps and the guards around a base the table does not carry.
+    check('NM42a past the guarantee it stays at 100%',     pct4(NM.chanceAfter(5, 41)), '100.0000');
+    check('NM42b a negative round count reads as none',
+        pct4(NM.chanceAfter(5, -3)), pct4(NM.chanceAfter(5, 0)));
+    check('NM42c no rounds given reads as none',
+        pct4(NM.chanceAfter(5, nil)), pct4(NM.chanceAfter(5, 0)));
+    check('NM42d no base chance -> no number, never a guess', NM.chanceAfter(nil, 10), nil);
+    check('NM42e a zero base is not a curve',                NM.chanceAfter(0, 10), nil);
+    check('NM42f ...nor a round count',                      NM.roundsToGuaranteed(nil), nil);
+    check('NM42g a 100% base is guaranteed on the first kill', NM.roundsToGuaranteed(100), 0);
+    check('NM42h ...and reads 100% there',                   pct4(NM.chanceAfter(100, 0)), '100.0000');
+    -- Quarter-way sample points, and never one that is already the guarantee.
+    local pts = NM.curvePoints(5);
+    check('NM42i three sample points on the way up',         #pts, 3);
+    check('NM42j ...the first at a quarter of the distance', pts[1].rounds, 10);
+    check('NM42k ...the last still short of guaranteed',     pts[3].rounds < 40, true);
+
+    -- Provenance travels WITH the constant: an unscrapable fact with no source
+    -- and no date is folklore, and the next maintainer cannot re-verify it.
+    check('NM43a the source is recorded', type(NM.DISFAVOUR.source) == 'string'
+        and #NM.DISFAVOUR.source > 20, true);
+    check('NM43b ...and says it is not in the public repo',
+        NM.DISFAVOUR.source:lower():match('overlay') ~= nil, true);
+    check('NM43c a verification date is recorded',
+        NM.DISFAVOUR.verified:match('^%d%d%d%d%-%d%d%-%d%d$') ~= nil, true);
+    check('NM43d the formula is recorded next to it',
+        NM.DISFAVOUR.formula:match('rounds') ~= nil, true);
+
+    -- ---- the readout stops presenting the base as flat --------------------
+    local _, t40 = run('/dl nm bonnacon');
+    check('NM44a the old flat claim is gone',      t40:match('%% per kill') == nil, true);
+    check('NM44b the base is named as a base',     t40:match('5%% base') ~= nil, true);
+    check('NM44c ...and explicitly not flat',      t40:match('not flat') ~= nil, true);
+    check('NM44d the mechanic is named',           t40:match('disfavour') ~= nil, true);
+    check('NM44e rounds to a guaranteed pop are stated',
+        t40:match('40 rounds is a guaranteed pop') ~= nil, true);
+    check('NM44f the pop kind is stated',          t40:match('lottery pop') ~= nil, true);
+    check('NM44g a round is defined in kills',     t40:match('a round = all 6 placeholders') ~= nil, true);
+    -- The climb is SHOWN, not just asserted: a mid-curve figure that is neither
+    -- the base nor 100 is the only thing that reads as a curve.
+    check('NM44h the curve is shown at quarter marks',
+        t40:match('10 rounds 6%.6%%, 20 rounds 9%.5%%, 30 rounds 17%%') ~= nil, true);
+    check('NM44i the placeholders survive the rewrite',
+        t40:match('Buffalo x6') ~= nil and t40:match('PH indexes 354%-359') ~= nil, true);
+    check('NM44j ...and so does the filter',
+        t40:match('/filterscan 354,355,356,357,358,359,360') ~= nil, true);
+
+    -- ---- a non-lottery NM gets its OWN words, and no curve -----------------
+    -- Reading a placeholder curve for an NM whose placeholders roll nothing is
+    -- exactly the wasted camp this command exists to prevent.
+    NM.zoneReader = function() return 2; end;
+    local _, t45 = run('/dl nm Tempest Tigon');
+    check('NM45a a timed NM says timed',            t45:match('timed pop') ~= nil, true);
+    check('NM45b ...in plain words',                t45:match('its own timer') ~= nil, true);
+    check('NM45c ...with the respawn it has',       t45:match('respawn 1h') ~= nil, true);
+    check('NM45d ...and NO disfavour curve',        t45:match('disfavour') == nil, true);
+    check('NM45e ...and no guaranteed-pop claim',   t45:match('guaranteed') == nil, true);
+    check('NM45f ...and no borrowed lottery word',  t45:match('lottery') == nil, true);
+
+    NM.zoneReader = function() return 1; end;
+    local _, t46 = run('/dl nm Aipaloovik');
+    check('NM46a a scripted NM says scripted',      t46:match('scripted pop') ~= nil, true);
+    check('NM46b ...and what that means',           t46:match('a pop item, a quest, or a forced spawn') ~= nil, true);
+    check('NM46c ...with no curve',                 t46:match('disfavour') == nil, true);
+    local _, t46b = run('/dl nm Vodyanoi');
+    check('NM46d a night spawn says night',         t46b:match('night pop') ~= nil, true);
+    check('NM46e ...and still hands over its filter', t46b:match('/filterscan 14') ~= nil, true);
+
+    -- Charybdis is the hard case and the reason `kind` is consulted at all: it
+    -- CARRIES placeholders and a pop chance, but the server's spawn kind says
+    -- scripted. The indexes stay (they are still where it comes from, and the
+    -- filter needs them); the lottery language does not.
+    NM.zoneReader = function() return 176; end;
+    local _, t47 = run('/dl nm Charybdis');
+    check('NM47a a scripted NM with placeholders says scripted',
+        t47:match('scripted pop') ~= nil, true);
+    check('NM47b ...and says why there is no curve',
+        t47:match('not a lottery, so no disfavour curve') ~= nil, true);
+    check('NM47c ...shows NO percentage at all',    t47:match('%d+%% base') == nil, true);
+    check('NM47d ...and no rounds figure',          t47:match('rounds') == nil, true);
+    check('NM47e ...but keeps the placeholders',    t47:match('Devil Manta x2') ~= nil, true);
+    check('NM47f ...and keeps the filter',          t47:match('/filterscan 406,408,410') ~= nil, true);
+    -- ...and the table itself still says so, so a regeneration that lost `kind`
+    -- fails here rather than silently restoring the lottery language.
+    local chary = select(1, NM.matchInZone(176, 'Charybdis'));
+    check('NM47g the shipped table reads scripted for it', NM.kindLabel(chary), 'scripted');
+    check('NM47h ...while carrying a pop chance',          chary.c, 10);
+    check('NM47i ...and placeholders',                     #chary.ph, 2);
+    check('NM47j so isLottery refuses it',                 NM.isLottery(chary), false);
+    local bonk = select(1, NM.matchInZone(5, 'Bonnacon'));
+    check('NM47k ...where Bonnacon reads lottery',         NM.kindLabel(bonk), 'lottery');
+    check('NM47l ...and isLottery accepts it',             NM.isLottery(bonk), true);
+
+    -- ---- honest degradations ----------------------------------------------
+    -- A lottery whose base chance the table does not carry: the mechanic is
+    -- still named, the number is not invented.
+    NM.zoneReader = function() return 12; end;
+    local _, t48 = run('/dl nm Swashstox');
+    check('NM48a it is still a lottery',            t48:match('lottery pop') ~= nil, true);
+    check('NM48b ...but the missing base is admitted',
+        t48:match('base chance is not in the table') ~= nil, true);
+    check('NM48c ...and no percentage is guessed',  t48:match('%d+%% base') == nil, true);
+    -- A lottery the table has no placeholders for says exactly that.
+    NM.zoneReader = function() return 15; end;
+    local _, t49 = run('/dl nm Tonberry Lieje');
+    check('NM49a it says the kind',                 t49:match('lottery pop') ~= nil, true);
+    check('NM49b ...and that it has no placeholders here',
+        t49:match('no placeholders for it') ~= nil, true);
+    check('NM49c ...with no curve',                 t49:match('guaranteed') == nil, true);
+    -- A pre-2026-08-03 table has no `kind` at all. That is not the server
+    -- saying "not a lottery", so placeholders + a base chance still get the
+    -- curve rather than silently losing it on a stale install.
+    local old = { n = 'Old Table', nm = { 9 }, ph = { 7, 8 }, p = 'Thing', c = 10 };
+    check('NM49d a kindless entry with placeholders is still a lottery',
+        NM.isLottery(old), true);
+    local oldLines = table.concat(NM.describe(old, 5, false), '\n');
+    check('NM49e ...and still gets its curve',
+        oldLines:match('20 rounds is a guaranteed pop') ~= nil, true);
+    check('NM49f a kindless entry with no placeholders admits it does not know',
+        table.concat(NM.describe({ n = 'x', nm = { 3 } }, 5, false), '\n')
+            :match('the table does not say how') ~= nil, true);
+    NM.zoneReader = function() return 5; end;
+
+    -- ---- the compendium list (issue #156) ---------------------------------
+    --
+    --   The window is a thin renderer over THESE. They are pinned here rather
+    --   than in the UI suite for the reason every pure core is: an imgui-less
+    --   check can assert the ANSWER, where a render check can only assert that
+    --   something was drawn. Two behaviours carry over from the chat command
+    --   and are the whole reason the window does not grow its own matcher --
+    --   a weak match is labelled a guess, and gibberish is refused.
+    -- -----------------------------------------------------------------------
+    local nrows, ntotal = NM.nameRows('bonnacon');
+    check('NM60a a name search answers with rows',      #nrows > 0, true);
+    check('NM60b ...best first',                        nrows[1].n, 'Bonnacon');
+    check('NM60c ...carrying the zone it is in',        nrows[1].zid, 5);
+    check('NM60d ...and the entry itself',              nrows[1].e.p, 'Buffalo');
+    check('NM60e an exact hit is NOT a guess',          nrows[1].guess, false);
+    check('NM60f ...and the total is what matched',     ntotal, #nrows);
+
+    -- Gibberish is refused, exactly as chat refuses it: M.score answers 0 for a
+    -- name with no resemblance, and a zero never becomes a row. Offering the
+    -- closest thing in the game to nonsense is how a player ends up reading
+    -- about a monster they never asked for.
+    check('NM61a gibberish yields no rows at all',      #NM.nameRows('zzzznothing'), 0);
+    check('NM61b an empty query is not a search',       #NM.nameRows(''), 0);
+    check('NM61c ...nor is whitespace',                 #NM.nameRows('   '), 0);
+    check('NM61d ...nor is nil',                        #NM.nameRows(nil), 0);
+
+    -- A typo still finds it, and still says it is a guess. The threshold is
+    -- ONE named constant, so the window and the chat readout cannot hedge
+    -- differently about the same score.
+    local trows = NM.nameRows('bonacon');
+    check('NM62a a typo still finds the NM',            trows[1].n, 'Bonnacon');
+    check('NM62b ...but the row is flagged a guess',    trows[1].guess, true);
+    check('NM62c ...below the one shared floor',        trows[1].score < NM.GUESS_FLOOR, true);
+    check('NM62d ...which is the floor chat hedges on', NM.GUESS_FLOOR, 800);
+
+    -- THE TIE-BREAK. Same score, and one entry HAS placeholders: that is the
+    -- open-world camp, and it wins. Pinned twice on purpose --
+    --   * against a HAND-VERIFIED shipped row, so a regeneration that loses
+    --     placeholders is caught here (Poisonhand Gnadgad is in Davoi with 8
+    --     placeholders, and in two Campaign zones with none; Davoi's zone id is
+    --     the HIGHER one, so without the tie-break it sorts last), and
+    --   * against a synthetic pair, so the RULE stays pinned even on a day the
+    --     shipped table happens to hold no tie at all.
+    local tie = NM.nameRows('Poisonhand Gnadgad');
+    check('NM63a the shipped table still holds this tie', #tie >= 2, true);
+    check('NM63b every copy scores the same',           tie[1].score, tie[2].score);
+    check('NM63c the one with placeholders wins',       tie[1].zid, 149);
+    check('NM63d ...and it is the one with placeholders', tie[1].ph > 0, true);
+    check('NM63e ...while the loser has none',          tie[2].ph, 0);
+    local savedForTie = NM.data;
+    NM.data = {
+        [1] = { { n = 'Twinned Opo-opo', nm = { 900 }, ph = {}, kind = { 'scripted' } } },
+        [2] = { { n = 'Twinned Opo-opo', nm = { 901 }, ph = { 899 }, p = 'Opo-opo',
+                  c = 5, kind = { 'lottery' } } },
+    };
+    local syn = NM.nameRows('Twinned Opo-opo');
+    check('NM63f a synthetic tie ranks placeholders first', syn[1].zid, 2);
+    check('NM63g ...even though the other zone sorts lower', syn[2].zid, 1);
+    NM.data = savedForTie;
+
+    -- The cap is a READING limit, not a search limit: what was cut is counted
+    -- and reported, because a silent truncation reads as "that is all there is".
+    local crows, ctotal = NM.nameRows('a', 5);
+    check('NM64a the cap holds the list down',          #crows, 5);
+    check('NM64b ...and the total still says what matched', ctotal > 5, true);
+    check('NM64c an uncapped search returns everything',
+        select(2, NM.nameRows('a')), ctotal);
+
+    -- ---- filter mode: by area ---------------------------------------------
+    local arows = NM.areaRows(5);
+    check('NM65a an area answers with every NM in it',  #arows, 14);
+    check('NM65b ...the campable ones first',           arows[1].ph > 0, true);
+    check('NM65c ...and none of them is a guess',       arows[1].guess, false);
+    check('NM65d the last one has no placeholders',     arows[#arows].ph, 0);
+    check('NM65e an unknown zone is empty, not an error', #NM.areaRows(99999), 0);
+    check('NM65f ...and so is no zone at all',          #NM.areaRows(nil), 0);
+    -- "Most zones hold a handful, the busiest field zone holds dozens" -- the
+    -- reason the window's list must scroll rather than assume it is short.
+    check('NM65g the busiest field zone really is dozens', #NM.areaRows(289) > 40, true);
+
+    -- ---- the area picker's source -----------------------------------------
+    local zc = NM.zoneChoices();
+    check('NM66a every zone in the table is offered',   #zc, #NM.zoneIds());
+    check('NM66b ...sorted by NAME, which is what is read',
+        zc[1].name <= zc[2].name, true);
+    check('NM66c ...each carrying how many it holds',   zc[1].n > 0, true);
+    local zc5 = nil;
+    for _, z in ipairs(zc) do if z.zid == 5 then zc5 = z; end end
+    check('NM66d Uleguerand Range is in the picker',    zc5 ~= nil and zc5.name, 'Uleguerand Range');
+    check('NM66e ...with its 14 NMs counted',           zc5 ~= nil and zc5.n, 14);
+
+    -- ---- the row note (what a list row says beside the name) --------------
+    check('NM67a a lottery row names its placeholders',
+        NM.rowNote(select(1, NM.matchInZone(5, 'Bonnacon'))), 'Buffalo x6');
+    check('NM67b a scripted NM with placeholders says so on the row',
+        NM.rowNote(select(1, NM.matchInZone(176, 'Charybdis'))):match('not a lottery') ~= nil, true);
+    check('NM67c one with no placeholders says how it pops instead',
+        NM.rowNote({ n = 'x', nm = { 1 }, ph = {}, kind = { 'scripted' } }),
+        'scripted pop, no placeholders');
+    check('NM67d ...and admits it when the table does not say',
+        NM.rowNote({ n = 'x', nm = { 1 }, ph = {} }), 'no placeholders');
+    -- No percentage anywhere on a row: the numbers belong on the detail card,
+    -- and every one of them is a `%` that has to survive an ImGui format string.
+    check('NM67e a row note carries no percent sign',
+        NM.rowNote(select(1, NM.matchInZone(5, 'Bonnacon'))):find('%%') == nil, true);
+
+    -- ---- /dl nm window: the opener ----------------------------------------
+    --
+    --   Any surface may OPEN a floating window; exactly one site may DRAW it.
+    --   This is the open, so all it may do is set state on ui\nmui -- and with
+    --   no window module present it must SAY it cannot rather than no-op.
+    -- -----------------------------------------------------------------------
+    local savedUI = package.loaded['dlac\\ui\\nmui'];
+    local opened = { name = nil, zid = nil, n = 0 };
+    package.loaded['dlac\\ui\\nmui'] = {
+        openName = function(q) opened.name = q; opened.n = opened.n + 1; end,
+        openArea = function(z) opened.zid = z;  opened.n = opened.n + 1; end,
+    };
+    local ew, tw = run('/dl nm window bonnacon');
+    check('NM68a the window verb is claimed',           ew.blocked, true);
+    check('NM68b ...and opens on the name typed',       opened.name, 'bonnacon');
+    check('NM68c ...without also answering in chat',    tw:match('Buffalo x6'), nil);
+    opened = { name = nil, zid = nil, n = 0 };
+    run('/dl nm window');
+    check('NM68d bare, it opens on the zone you are in', opened.zid, 5);
+    check('NM68e ...and does not also run a name search', opened.name, nil);
+    opened = { name = nil, zid = nil, n = 0 };
+    run('/dl nm win');
+    check('NM68f the short alias works',                opened.zid, 5);
+    -- The chat-only verbs do not travel into the window, and a dropped word
+    -- must not look like an honoured one (hard rule 12).
+    opened = { name = nil, zid = nil, n = 0 };
+    local _, tw2 = run('/dl nm window bonnacon apply');
+    check('NM68g apply beside window is answered, not eaten',
+        tw2:match('answer in chat') ~= nil, true);
+    check('NM68h ...and the window still opens',        opened.name, 'bonnacon');
+    -- A build where the GUI failed to load loses the verb and NOTHING else.
+    package.loaded['dlac\\ui\\nmui'] = { degraded = true, openName = function() end,
+                                         openArea = function() end };
+    local _, tw3 = run('/dl nm window');
+    check('NM68i a degraded window says so',
+        tw3:match('not available in this build') ~= nil, true);
+    check('NM68j ...and points at the chat answer',     tw3:match('/dl nm <name>') ~= nil, true);
+    package.loaded['dlac\\ui\\nmui'] = nil;
+    local _, tw4 = run('/dl nm window');
+    check('NM68k no window module at all is the same honest refusal',
+        tw4:match('not available in this build') ~= nil, true);
+    package.loaded['dlac\\ui\\nmui'] = savedUI;
+
     -- ---- a missing table degrades OFF, never errors -----------------------
     local savedData = NM.data;
     NM.data = {};
@@ -23885,6 +24247,1316 @@ end)();
     check('NM37a no table -> a plain warning, no crash',
         t10:match('nmdata%.lua is missing') ~= nil, true);
     NM.data = savedData;
+
+    package.loaded['dlac\\chatfmt'] = savedChat;
+end)();
+
+-- ---------------------------------------------------------------------------
+-- ND. What an NM drops (feature\nmloot, issue #153, PRD #151).
+--
+--   Three properties of data\nmdrops.lua are load-bearing, and each is a
+--   different way this readout could lie to a camper:
+--     * a GROUPED row's `r` is a WEIGHT, not a percentage. The group rolls
+--       ONCE at `gr` and then one item inside it wins by weight; 2009 of the
+--       5372 rows are grouped, so flattening them misstates more than a third
+--       of the shipped table.
+--     * DUPLICATE rows are two independent rolls, not one row written twice.
+--     * STEAL and DESPOIL are not kill loot, and listing them as drops tells a
+--       player to expect something a kill will never give.
+--
+--   THE GROUP PIN IS CHOSEN, NOT CONVENIENT. Mee Deggi -- the worked example
+--   in the issue -- cannot pin the first property: its group weights sum to
+--   exactly 1000, so the share (10%) and the flattened reading (r/10 = 10%)
+--   are the same number and a flattening bug passes. Ouryu's pool 3070 carries
+--   a group of two at 425 each under `gr = 750`: the share is 50% and the
+--   flattened reading is 42.5%, so only a correct implementation can print it.
+--   The synthetic pool below is built on the same principle -- every rate in it
+--   is chosen so that a wrong reading produces a DIFFERENT string.
+-- ---------------------------------------------------------------------------
+(function()
+    package.loaded['dlac\\data\\nmdrops'] = dofile('data/nmdrops.lua');
+    local NMDATA = package.loaded['dlac\\data\\nmdata'] or dofile('data/nmdata.lua');
+
+    -- The client's item resources, with every ask COUNTED. The resolve has to
+    -- be lazy -- a name table built at load runs before the player is logged in
+    -- and the client answers with nothing -- and "how many times was the client
+    -- asked, and when" is the only honest way to test that.
+    local savedAC = AshitaCore;
+    local asked = 0;
+    local RES = {
+        [16703] = 'Impact Knuckles', [13952] = 'Ochiudo\'s Kote', [656] = 'Beastcoin',
+        [13014] = 'Leaping Boots',
+        [101] = 'Widget A', [102] = 'Widget C', [103] = 'Widget D', [104] = 'Widget E',
+        [105] = 'Widget F', [106] = 'Widget G', [107] = 'Widget H', [108] = 'Widget I',
+    };
+    -- The chat manager is here for `apply` alone (the TH verb has to compose
+    -- with it); every other check in this section is arithmetic over a table.
+    local sent = nil;
+    AshitaCore = {
+        GetResourceManager = function()
+            return { GetItemById = function(_, id)
+                asked = asked + 1;
+                if RES[id] == nil then return nil; end
+                return { Name = { RES[id] } };
+            end };
+        end,
+        GetChatManager = function()
+            return { QueueCommand = function(_, _, cmd) sent = cmd; end };
+        end,
+    };
+
+    local LT = dofile('feature/nmloot.lua');
+
+    local function entryFor(zid, name)
+        for _, e in ipairs(NMDATA[zid] or {}) do
+            if e.n == name then return e; end
+        end
+        return nil;
+    end
+    -- `th` is the Treasure Hunter level to render the rates at (issue #154);
+    -- omitted means the player asked for no level, which is the default readout.
+    local function rendered(entry, th) return table.concat(LT.lines(entry, th), '\n'); end
+
+    -- ---- names resolve LAZILY, and a miss never latches ------------------
+    check('ND00a loading the module asks the client for nothing', asked, 0);
+    check('ND00b the shipped table is there all the same', #LT.rowsFor({ pool = { 2607 } }), 3);
+    check('ND00c ...and that still asked the client for nothing', asked, 0);
+    check('ND00d the first name resolves through the client', LT.itemName(16703), 'Impact Knuckles');
+    check('ND00e ...which is one ask', asked, 1);
+    check('ND00f asking again is remembered, not re-asked', LT.itemName(16703), 'Impact Knuckles');
+    check('ND00g ...still one ask', asked, 1);
+    -- An id the client cannot answer for renders AS AN ID: a row that vanished
+    -- would be indistinguishable from a table that never carried it.
+    check('ND00h an unresolvable id renders as an id', LT.itemName(4242), 'item #4242');
+    -- ...and is NOT cached. A pre-login read is "cannot tell yet", not "no such
+    -- item", and latching it would make one early ask permanent (ADR 0007).
+    local before = asked;
+    check('ND00i ...and asking again really asks again', LT.itemName(4242), 'item #4242');
+    check('ND00j ...so the miss was never cached', asked > before, true);
+    RES[4242] = 'Late Arrival';                       -- the player finishes logging in
+    check('ND00k ...and the name arrives once the client can answer',
+        LT.itemName(4242), 'Late Arrival');
+    check('ND00l a nonsense id is still never nil', LT.itemName('x'), 'item #?');
+
+    -- ---- the server's eight named tiers -----------------------------------
+    check('ND01a 1000 is always',          LT.tierName(1000), 'always');
+    check('ND01b 240 is very common',      LT.tierName(240), 'very common');
+    check('ND01c 150 is common',           LT.tierName(150), 'common');
+    check('ND01d 100 is uncommon',         LT.tierName(100), 'uncommon');
+    check('ND01e 50 is rare',              LT.tierName(50), 'rare');
+    check('ND01f 10 is very rare',         LT.tierName(10), 'very rare');
+    check('ND01g 5 is super rare',         LT.tierName(5), 'super rare');
+    check('ND01h 1 is ultra rare',         LT.tierName(1), 'ultra rare');
+    check('ND01i the tier list is exactly those eight', (function()
+        local n = 0; for _ in pairs(LT.TIERS) do n = n + 1; end; return n;
+    end)(), 8);
+    check('ND01j a tier renders its name beside the percentage',
+        LT.rateText(150), 'common (15%)');
+    check('ND01k rare reads 5%, the way the game says it, not 5.0%',
+        LT.rateText(50), 'rare (5%)');
+    check('ND01l the half-percent tier keeps its decimal',
+        LT.rateText(5), 'super rare (0.5%)');
+    check('ND01m ...and so does the tenth',  LT.rateText(1), 'ultra rare (0.1%)');
+    check('ND01n always is 100%',            LT.rateText(1000), 'always (100%)');
+    -- 1215 shipped rows carry a rate outside the eight. It is a valid weight,
+    -- and snapping it to the nearest tier would be inventing a fact.
+    check('ND01o a rate outside the eight has NO tier name', LT.tierName(250), nil);
+    check('ND01p ...and renders as a bare percentage',       LT.rateText(250), '25%');
+    check('ND01q ...even next door to a tier',               LT.rateText(230), '23%');
+    check('ND01r a rate of zero is no rate at all',          LT.rateText(0), nil);
+
+    -- ---- percentages for reading ------------------------------------------
+    check('ND02a 100',            LT.pctText(100), '100%');
+    check('ND02b 24',             LT.pctText(24), '24%');
+    check('ND02c 10',             LT.pctText(10), '10%');
+    check('ND02d 5 loses the dead decimal',   LT.pctText(5), '5%');
+    check('ND02e 1 too',                      LT.pctText(1), '1%');
+    check('ND02f a half percent keeps it',    LT.pctText(0.5), '0.5%');
+    check('ND02g a tenth keeps it',           LT.pctText(0.1), '0.1%');
+    check('ND02h a real share never prints as 0%', LT.pctText(0.0001), '<0.01%');
+    check('ND02i nothing to say is said as nothing', LT.pctText(nil), '?');
+
+    -- ---- the join, through the NM's pool id -------------------------------
+    local mee = entryFor(151, 'Mee Deggi the Punisher');
+    check('ND03a the shipped NM carries a pool id', (mee.pool or {})[1], 2607);
+    check('ND03b ...and the join reaches its rows', #LT.rowsFor(mee), 3);
+    check('ND03c an entry with no pool joins to nothing', #LT.rowsFor({ n = 'x' }), 0);
+    check('ND03d ...and "cannot look it up" is not "has none"', LT.hasPool({ n = 'x' }), false);
+    check('ND03e the same pool listed twice is ONE droplist',
+        #LT.rowsFor({ pool = { 2607, 2607 } }), 3);
+    check('ND03f several pools concatenate', #LT.rowsFor({ pool = { 2607, 2384 } }), 9);
+
+    -- ---- rolls: what rolls together and what rolls apart -------------------
+    local killM, takeM = LT.rolls(LT.rowsFor(mee));
+    check('ND04a Mee Deggi is one roll',        #killM, 1);
+    check('ND04b ...a group',                   killM[1].kind, 'group');
+    check('ND04c ...of two',                    #killM[1].rows, 2);
+    check('ND04d ...that always drops',         killM[1].gr, 1000);
+    check('ND04e the Kote is its SHARE of the group', LT.shareOf(killM[1], killM[1].rows[2]), 10);
+    check('ND04f ...and the Knuckles the rest',       LT.shareOf(killM[1], killM[1].rows[1]), 90);
+    check('ND04g the steal row never reaches kill loot', #takeM, 1);
+    check('ND04h ...and is named as Steal',             takeM[1].how, 'Steal');
+
+    -- Leaping Lizzy lists item 926 at 240 and AGAIN at 150. Two rolls.
+    local liz = entryFor(107, 'Leaping Lizzy');
+    local killL = select(1, LT.rolls(LT.rowsFor(liz)));
+    check('ND04i Leaping Lizzy rolls five times',   #killL, 5);
+    check('ND04j the repeated item is TWO rolls',   killL[1].row.i, killL[2].row.i);
+    check('ND04k ...at two different rates',
+        string.format('%d/%d', killL[1].row.r, killL[2].row.r), '240/150');
+    check('ND04l ...and the second pair repeats too',
+        string.format('%d/%d', killL[4].row.i, killL[5].row.i), '852/852');
+
+    -- Pool 245 lists group 1 at gr=1000 and then the SAME four items as group 1
+    -- again at gr=100. Keyed on the group id alone one of those rates -- and the
+    -- roll it belongs to -- would have to be thrown away.
+    local kill245 = select(1, LT.rolls(LT.rowsFor({ pool = { 245 } })));
+    check('ND04m a group id whose group rate changes under it is two rolls', #kill245, 3);
+    check('ND04n ...the first always drops',            kill245[2].gr, 1000);
+    check('ND04o ...the second is a tenth of that',     kill245[3].gr, 100);
+    check('ND04p ...and neither lost a member',
+        string.format('%d/%d', #kill245[2].rows, #kill245[3].rows), '4/4');
+
+    -- ---- the readout, on a pool built so a wrong reading reads DIFFERENTLY --
+    LT.data[999001] = {
+        { i = 101, r = 240 },                          -- one of the eight tiers
+        { i = 101, r = 150 },                          -- the SAME item again: a second roll
+        { i = 102, r = 250 },                          -- not one of the eight
+        { i = 103, r = 300, t = 1, g = 1, gr = 150 },  -- share 75%; flattened it would read 30%
+        { i = 105, r = 0,   t = 2 },                   -- a steal row INSIDE the run
+        { i = 104, r = 100, t = 1, g = 1, gr = 150 },  -- share 25%; flattened it would read 10%
+        { i = 106, r = 500, t = 1, g = 1, gr = 1000 }, -- same group id, new group rate: a new roll
+        { i = 107, r = 500, t = 1, g = 1, gr = 1000 },
+        { i = 108, r = 150, t = 4 },                   -- despoil, and this one HAS a rate
+        { i = 888888, r = 50 },                        -- an id the client cannot name
+    };
+    local syn = rendered({ n = 'Synthetic', pool = { 999001 } });
+    check('ND05a ten rows are six independent ROLLS',
+        syn:match('drops %-%- 6 rolls') ~= nil, true);
+    check('ND05b a tier is named beside its percentage',
+        syn:match('Widget A %-%- very common %(24%%%)') ~= nil, true);
+    check('ND05c the repeated item appears a second time, at its own rate',
+        syn:match('Widget A %-%- common %(15%%%)') ~= nil, true);
+    check('ND05d a rate outside the eight shows a percentage and no tier name',
+        syn:match('Widget C %-%- 25%%') ~= nil, true);
+    check('ND05e ...and is not snapped to the nearest tier',
+        syn:match('Widget C %-%- %a') == nil, true);
+    check('ND05f a group renders AS a group, at the group\'s own rate, with shares',
+        syn:match('one of these, common %(15%%%): Widget D 75%%, Widget E 25%%') ~= nil, true);
+    check('ND05g ...never flattened into per-item percentages',
+        syn:match('Widget D %-%-') == nil and syn:match('30%%') == nil, true);
+    check('ND05h a steal row inside a group run does not split the group',
+        syn:match('Widget D 75%%, Widget E 25%%') ~= nil, true);
+    check('ND05i the same group id at a new group rate is a SECOND roll',
+        syn:match('one of these, always %(100%%%): Widget G 50%%, Widget H 50%%') ~= nil, true);
+    check('ND05j what the % beside a member means is said, once',
+        select(2, syn:gsub('share of the group', '')), 1);
+    check('ND05k steal and despoil get their own section, named',
+        syn:match('not kill loot %-%- Steal / Despoil only') ~= nil, true);
+    check('ND05l ...and are kept out of the drops list',
+        syn:match('Widget F %-%-') == nil, true);
+    check('ND05m a steal row the API gives no rate for states none',
+        syn:match('Widget F %(Steal%)\n') ~= nil, true);
+    check('ND05n ...and one that has a rate keeps it',
+        syn:match('Widget I %(Despoil%) %-%- common %(15%%%)') ~= nil, true);
+    check('ND05o an unresolvable id renders as an id rather than vanishing',
+        syn:match('item #888888 %-%- rare %(5%%%)') ~= nil, true);
+
+    -- A group of ONE is not a group to a player: its chance IS the group rate,
+    -- and 22 shipped groups are that shape.
+    LT.data[999002] = { { i = 101, r = 250, t = 1, g = 1, gr = 150 } };
+    check('ND05p a group of one renders at the GROUP rate, not its weight',
+        rendered({ pool = { 999002 } }):match('Widget A %-%- common %(15%%%)') ~= nil, true);
+    check('ND05q ...and is not called "one of these"',
+        rendered({ pool = { 999002 } }):match('one of these') == nil, true);
+
+    -- ---- the same properties, against the SHIPPED table --------------------
+    -- Ouryu's pool 3070: two items at 425 under a group rate of 750. Share 50%,
+    -- flattened 42.5% -- the two readings cannot be confused here.
+    local ouryu = rendered({ pool = { 3070 } });
+    check('ND06a a shipped group states each member\'s share',
+        ouryu:match('one of these, 75%%: item #1769 50%%, item #1764 50%%') ~= nil, true);
+    check('ND06b ...and never the weight read as a percentage',
+        ouryu:match('item #1769 4[23]') == nil, true);
+    check('ND06c a group rate outside the eight is a bare percentage too',
+        ouryu:match('one of these, 75%%:') ~= nil, true);
+    check('ND06d the shipped NM table still joins Ouryu to that pool',
+        (entryFor(29, 'Ouryu').pool or {})[1], 3070);
+    check('ND06e the shipped group is still two items at 425 under gr 750', (function()
+        for _, b in ipairs((select(1, LT.rolls(LT.rowsFor({ pool = { 3070 } }))))) do
+            if b.kind == 'group' and b.gr == 750 and #b.rows == 2 then
+                return string.format('%d+%d', b.rows[1].r, b.rows[2].r);
+            end
+        end
+        return 'gone';
+    end)(), '425+425');
+
+    -- ---- absences, and they must not look alike ----------------------------
+    check('ND07a an NM the drop table has nothing for says so',
+        rendered(entryFor(112, 'Boreal Coeurl')),
+        '  drops: nothing in the drop table for this one.');
+    check('ND07b an NM table with no pool id says something else entirely',
+        rendered({ n = 'x' }):match('carries no pool id') ~= nil, true);
+    -- Five shipped pools hold Steal and Despoil rows and nothing else. Printing
+    -- only that section would leave "what does it drop" unanswered.
+    check('ND07e a pool with no kill loot at all says so, not nothing',
+        rendered({ pool = { 4290 } }):match('nothing a kill gives') ~= nil, true);
+    check('ND07f ...and still lists what is not kill loot',
+        rendered({ pool = { 4290 } }):match('not kill loot %-%-') ~= nil, true);
+    local savedDrops = LT.data;
+    LT.data = {};
+    check('ND07c a missing drop table names the file, and does not crash',
+        rendered(mee):match('nmdrops%.lua') ~= nil, true);
+    check('ND07d ...and does not read as "this NM drops nothing"',
+        rendered(mee):match('nothing in the drop table') == nil, true);
+    LT.data = savedDrops;
+
+    -- ---- the caps say what they left out -----------------------------------
+    -- A silent cap reads as "that is all of it", which is the one thing a drop
+    -- readout must never imply.
+    local big = {};
+    for k = 1, 20 do big[k] = { i = 100 + k, r = 50, t = 1, g = 1, gr = 1000 }; end
+    LT.data[999003] = big;
+    local bigTxt = rendered({ pool = { 999003 } });
+    check('ND08a a group past the cap shows exactly the cap\'s worth of members',
+        select(2, bigTxt:gsub(' 5%%', '')), 12);
+    check('ND08b ...says how many it did not show',
+        bigTxt:match('%+8 more') ~= nil, true);
+    check('ND08c ...and what they are worth together',
+        bigTxt:match('%+8 more sharing 40%%') ~= nil, true);
+    local many = {};
+    for k = 1, 40 do many[k] = { i = 100 + k, r = 150 }; end
+    LT.data[999004] = many;
+    local manyTxt = rendered({ pool = { 999004 } });
+    check('ND08d the roll cap is stated, never silent',
+        manyTxt:match('and 8 more rolls not shown') ~= nil, true);
+    check('ND08e ...and the head still counts them all',
+        manyTxt:match('drops %-%- 40 rolls') ~= nil, true);
+    check('ND08f nothing in the shipped table reaches that cap', (function()
+        for _, list in pairs(NMDATA) do
+            for _, e in ipairs(list) do
+                if #(select(1, LT.rolls(LT.rowsFor(e)))) > LT.MAX_ROLLS then return e.n; end
+            end
+        end
+        return 'none';
+    end)(), 'none');
+    LT.data[999001], LT.data[999002], LT.data[999003], LT.data[999004] = nil, nil, nil, nil;
+
+    -- ---- Treasure Hunter: a bracket LOOKUP, not a multiplier (issue #154) ---
+    --
+    --   The whole feature rests on TH being computable: the rate selects a
+    --   RARITY BRACKET and the TH level selects the value inside it, so the
+    --   exact rate at any level is arithmetic rather than folklore. The table
+    --   below is the server's own, and these checks are what stand between a
+    --   transcription slip and a readout that confidently lies about odds.
+    --
+    --   THE UNITS ARE THE TRAP, and they are pinned first: the lookup works out
+    --   of 10000 and the caller hands it `DropRate * 10`, so a stored 150 enters
+    --   as 1500 and comes back 4500 at TH4. A missing times-ten reads a common
+    --   drop as ultra rare and would still "look like a percentage".
+    check('ND10a the table carries all fifteen TH levels', (function()
+        local n = 0;
+        for lvl = 0, 14 do if type(LT.TH_TABLE[lvl]) == 'table' then n = n + 1; end end
+        return n;
+    end)(), 15);
+    check('ND10b ...and nothing above the last one', LT.TH_TABLE[15], nil);
+    check('ND10c every row is the seven rarity brackets', (function()
+        for lvl = 0, 14 do if #LT.TH_TABLE[lvl] ~= 7 then return 'row ' .. lvl; end end
+        return 'all 7';
+    end)(), 'all 7');
+    check('ND10d the row ends are the shipped ones (0 and 14)',
+        string.format('%d/%d/%d/%d', LT.TH_TABLE[0][1], LT.TH_TABLE[0][7],
+            LT.TH_TABLE[14][1], LT.TH_TABLE[14][7]), '2400/10/8000/150');
+    -- Row 5 opens 6666. It is left exactly as the server has it: this table is
+    -- a copy, and tidying it to 6650 would be designing.
+    check('ND10e the 6666 quirk on row 5 survives transcription', LT.TH_TABLE[5][1], 6666);
+    -- Every column rises with the level. This is WHY "TH cannot help" has only
+    -- two causes (the two short-circuits) rather than a third hiding in a flat
+    -- column, which is the claim the verdict line makes to the player.
+    check('ND10f no column ever falls as the TH level rises', (function()
+        for col = 1, 7 do
+            for lvl = 1, 14 do
+                if LT.TH_TABLE[lvl][col] < LT.TH_TABLE[lvl - 1][col] then
+                    return string.format('col %d fell at %d', col, lvl);
+                end
+            end
+        end
+        return 'rises';
+    end)(), 'rises');
+    check('ND10g ...and every one of them ends higher than it started', (function()
+        for col = 1, 7 do
+            if LT.TH_TABLE[14][col] <= LT.TH_TABLE[0][col] then return 'col ' .. col; end
+        end
+        return 'all climb';
+    end)(), 'all climb');
+
+    -- The bracket floors ARE the eight named tiers times ten, `always` dropped
+    -- off the top -- which is why the bracket a drop sits in is the tier name
+    -- this readout already prints beside it, and why no second vocabulary had
+    -- to be invented for the columns.
+    check('ND11a the bracket floors are the tiers x10',
+        table.concat(LT.TH_BRACKETS, '/'), '2400/1500/1000/500/100/50/0');
+    check('ND11b ...and each floor is a tier this module already names', (function()
+        for i = 1, 6 do
+            if LT.tierName(LT.TH_BRACKETS[i] / 10) ~= LT.TH_BRACKET_TIER[i] then
+                return 'bracket ' .. i;
+            end
+        end
+        return 'all named';
+    end)(), 'all named');
+    check('ND11c a rate lands in the FIRST floor it reaches',
+        string.format('%d%d%d%d%d%d%d', LT.thBracket(2400), LT.thBracket(1500),
+            LT.thBracket(1000), LT.thBracket(500), LT.thBracket(100),
+            LT.thBracket(50), LT.thBracket(10)), '1234567');
+    check('ND11d ...one under a floor drops to the next bracket',
+        string.format('%d/%d', LT.thBracket(2399), LT.thBracket(1499)), '2/3');
+    check('ND11e a rate above every floor is still the top bracket', LT.thBracket(9999), 1);
+
+    -- The lookup itself, at several levels and in every bracket.
+    check('ND12a common at TH0 is itself',        LT.thRate(0, 1500), 1500);
+    check('ND12b common at TH4',                  LT.thRate(4, 1500), 4500);
+    check('ND12c common at TH14',                 LT.thRate(14, 1500), 7000);
+    check('ND12d very common at TH2',             LT.thRate(2, 2400), 5600);
+    check('ND12e uncommon at TH7',                LT.thRate(7, 1000), 2100);
+    check('ND12f rare at TH9',                    LT.thRate(9, 500), 1150);
+    check('ND12g very rare at TH11',              LT.thRate(11, 100), 750);
+    check('ND12h super rare at TH12',             LT.thRate(12, 50), 400);
+    check('ND12i ultra rare at TH13',             LT.thRate(13, 10), 130);
+    check('ND12j ...and ultra rare at TH0 is the one floor that is not a tier',
+        LT.thRate(0, 10), 10);
+    -- Both short-circuits, at every level -- these are the two ways TH cannot
+    -- help, and the verdict line depends on there being no third.
+    check('ND12k a rate already at 100% is unmoved at EVERY level', (function()
+        for lvl = 0, 14 do if LT.thRate(lvl, 10000) ~= 10000 then return 'moved at ' .. lvl; end end
+        return 'unmoved';
+    end)(), 'unmoved');
+    check('ND12l ...and a rate of nothing stays nothing', (function()
+        for lvl = 0, 14 do if LT.thRate(lvl, 0) ~= 0 then return 'moved at ' .. lvl; end end
+        return 'unmoved';
+    end)(), 'unmoved');
+    -- The clamps, both ends, both arguments.
+    check('ND12m a level below the table clamps to TH0',   LT.thRate(-3, 1500), 1500);
+    check('ND12n a level above it clamps to TH14',         LT.thRate(99, 1500), 7000);
+    check('ND12o a rate above 10000 clamps to guaranteed', LT.thRate(4, 99999), 10000);
+    check('ND12p a negative rate is nothing',              LT.thRate(4, -5), 0);
+    check('ND12q the clamp says when it moved',
+        string.format('%d/%s', select(1, LT.clampTH(20)), tostring(select(2, LT.clampTH(20)))), '14/true');
+    check('ND12r ...and when it did not',
+        string.format('%d/%s', select(1, LT.clampTH(4)), tostring(select(2, LT.clampTH(4)))), '4/false');
+
+    -- The stored-rate door: out of 1000 in, a percentage out, with the server's
+    -- times-ten done here so no caller holds two scales at once.
+    check('ND13a a stored common rate reads 15% at TH0',  LT.thPct(0, 150), 15);
+    check('ND13b ...and 45% at TH4',                      LT.thPct(4, 150), 45);
+    check('ND13c ...and 70% at TH14',                     LT.thPct(14, 150), 70);
+    check('ND13d a rate the table does not state is not guessed at', LT.thPct(4, 0), nil);
+    check('ND13e TH can lift a rate below 100%',          LT.thHelps(150), true);
+    check('ND13f ...and nothing lifts one already at it', LT.thHelps(1000), false);
+    check('ND13g ...nor one the table does not state',    LT.thHelps(0), false);
+
+    -- ---- the two cases verified against the live server --------------------
+    -- 1. LEAPING BOOTS, pool 2384, ungrouped at r = 150: 15% at TH0, 45% at TH4.
+    local boots = nil;
+    for _, r in ipairs(LT.data[2384] or {}) do if r.i == 13014 then boots = r; end end
+    check('ND14a the shipped table still carries Leaping Boots at 150',
+        string.format('%s/%s', tostring(boots and boots.r), tostring(boots and boots.t)), '150/nil');
+    check('ND14b ...which is 15% at TH0',  LT.thPct(0, boots.r), 15);
+    check('ND14c ...45% at TH4',           LT.thPct(4, boots.r), 45);
+    check('ND14d ...and 70% at TH14',      LT.thPct(14, boots.r), 70);
+    local lizzy0 = rendered(entryFor(107, 'Leaping Lizzy'), 0);
+    local lizzy4 = rendered(entryFor(107, 'Leaping Lizzy'), 4);
+    check('ND14e the drop line itself reads 15% at TH0',
+        lizzy0:match('Leaping Boots %-%- common %(15%%%)  |  TH0 15%%') ~= nil, true);
+    check('ND14f ...and 45% at TH4',
+        lizzy4:match('Leaping Boots %-%- common %(15%%%)  |  TH4 45%%') ~= nil, true);
+    check('ND14g every roll on it carries its own TH figure',
+        select(2, lizzy4:gsub('|  TH4 ', '')), 5);
+
+    -- 2. OCHIUDO'S KOTE, pool 2607, a 10% share inside a group that ALWAYS
+    --    drops. The group rate short-circuits, so no amount of TH moves it --
+    --    the case that tells a player not to bother bringing TH at all.
+    local meeKill = select(1, LT.rolls(LT.rowsFor(mee)));
+    local meeGroup = meeKill[1];
+    check('ND15a the Kote still sits in a group that always drops', meeGroup.gr, 1000);
+    check('ND15b a 100% group is unchanged at EVERY TH level', (function()
+        for lvl = 0, 14 do
+            if LT.thPct(lvl, meeGroup.gr) ~= 100 then return 'moved at TH' .. lvl; end
+        end
+        return 'unchanged';
+    end)(), 'unchanged');
+    check('ND15c ...and so is the Kote\'s share of it, at every level', (function()
+        for lvl = 0, 14 do
+            local txt = rendered(mee, lvl);
+            if txt:match('Ochiudo\'s Kote 10%%') == nil then return 'share moved at TH' .. lvl; end
+        end
+        return 'unchanged';
+    end)(), 'unchanged');
+    check('ND15d ...which the line says in WORDS, not by an unchanged number', (function()
+        for lvl = 0, 14 do
+            if rendered(mee, lvl):match('TH%d+: no gain %-%- the group already drops every time') == nil then
+                return 'silent at TH' .. lvl;
+            end
+        end
+        return 'said';
+    end)(), 'said');
+    check('ND15e ...and says TH never picks the winner inside the group either',
+        rendered(mee, 4):match('TH never picks which item in it wins') ~= nil, true);
+    -- The verdict a player gets WITHOUT asking for a level: the one that saves
+    -- a gear set.
+    check('ND15f the no-level verdict says there is nothing to gain',
+        rendered(mee):match('TH: nothing to gain here') ~= nil, true);
+    check('ND15g ...and why',
+        rendered(mee):match('already drops every time') ~= nil, true);
+    check('ND15h ...without printing a TH figure nobody asked for',
+        rendered(mee):match('|  TH') == nil, true);
+
+    -- ---- TH applies to the GROUP rate, never to the share inside it --------
+    check('ND16a an ungrouped roll offers its own rate to the lookup',
+        LT.rollRate({ kind = 'item', row = { i = 1, r = 150 } }), 150);
+    check('ND16b a grouped roll offers the GROUP rate, not a member weight',
+        LT.rollRate(meeGroup), 1000);
+    -- The discriminating case: the Kote's own weight is 100, which the lookup
+    -- would turn into 18% at TH4. That number must appear nowhere, because the
+    -- weight is not a rate and TH never touches it.
+    check('ND16c the member weight is never what gets looked up',
+        LT.thPct(4, meeGroup.rows[2].r), 18);          -- what the wrong reading would say
+    check('ND16d ...and that wrong reading reaches no line',
+        rendered(mee, 4):match('18%%') == nil, true);
+    -- Shares still sum once TH is applied to the group rate: the group's rate
+    -- moved, the weights did not, so the shares are the same numbers as before.
+    LT.data[999005] = {
+        { i = 101, r = 300, t = 1, g = 1, gr = 150 },   -- share 75%
+        { i = 102, r = 100, t = 1, g = 1, gr = 150 },   -- share 25%
+    };
+    local g5 = select(1, LT.rolls(LT.rowsFor({ pool = { 999005 } })))[1];
+    check('ND16e the shares of a TH-lifted group still sum to 100', (function()
+        local sum = 0;
+        for _, row in ipairs(g5.rows) do sum = sum + LT.shareOf(g5, row); end
+        return sum;
+    end)(), 100);
+    check('ND16f ...and the group rate itself is what TH lifted',
+        string.format('%g -> %g', LT.pctOf(g5.gr), LT.thPct(4, g5.gr)), '15 -> 45');
+    local sh0 = rendered({ pool = { 999005 } });
+    local sh4 = rendered({ pool = { 999005 } }, 4);
+    check('ND16g the printed shares do not move when TH is applied',
+        sh4:match('Widget A 75%%, Widget C 25%%') ~= nil
+            and sh0:match('Widget A 75%%, Widget C 25%%') ~= nil, true);
+    check('ND16h ...and the group\'s own rate is the thing that did',
+        sh4:match('TH4: the group rolls at 45%%; the shares above are unchanged') ~= nil, true);
+    -- The members' line ENDS at the shares: no member is handed a TH figure of
+    -- its own, because a share is not a chance and TH never touched it.
+    check('ND16i ...which is stated as the group\'s roll, not an item\'s chance',
+        sh4:match('one of these, common %(15%%%): Widget A 75%%, Widget C 25%%\n') ~= nil, true);
+
+    -- ---- an off-tier rate reads at its BRACKET's value ---------------------
+    -- 1215 shipped rows carry a rate outside the eight tiers, and the rate only
+    -- SELECTS a bracket -- so 75% (the top bracket) reads 24% at TH0 and 64% at
+    -- TH4. Left unexplained that reads as "TH lowered my drop rate", which is
+    -- the one thing this line must never be taken for.
+    check('ND17a an off-tier group rate reads at its bracket',
+        string.format('%g/%g', LT.thPct(0, 750), LT.thPct(4, 750)), '24/64');
+    local our4 = rendered({ pool = { 3070 } }, 4);
+    check('ND17b ...and the line says why it is not the stated rate',
+        our4:match('the group rolls at 64%% %-%- the stated rate only picks the bracket') ~= nil, true);
+    check('ND17c a tier rate never carries that caveat',
+        lizzy4:match('TH4 45%% %-%- the stated') == nil, true);
+    check('ND17d the mental model is stated once, and only with figures on screen',
+        string.format('%d/%d',
+            select(2, our4:gsub('TH is a lookup, not a multiplier', '')),
+            select(2, rendered({ pool = { 3070 } }):gsub('TH is a lookup, not a multiplier', ''))), '1/0');
+
+    -- ---- the whole-NM verdict ---------------------------------------------
+    check('ND18a an NM TH helps says how many rolls climb',
+        rendered(entryFor(107, 'Leaping Lizzy')):match('TH: every roll here climbs with it') ~= nil, true);
+    check('ND18b ...and names the command that shows the rates',
+        rendered(entryFor(107, 'Leaping Lizzy')):match('"/dl nm Leaping Lizzy th4"') ~= nil, true);
+    -- Mixed: Ouryu's pool rolls 24 times, six of them at a rate no TH can lift.
+    check('ND18c a mixed NM counts both halves',
+        rendered({ n = 'Ouryu', pool = { 3070 } }):match('TH: 18 of 24 rolls climb with it') ~= nil, true);
+    check('ND18d ...and with a level asked for, only the stuck ones are called out',
+        our4:match('TH: 6 of the 24 rolls above cannot be lifted by any TH level') ~= nil, true);
+    check('ND18e ...while an NM where everything climbs adds nothing to repeat',
+        lizzy4:match('cannot be lifted') == nil, true);
+    -- Steal and Despoil are not the kill's drop roll, and the ABSENCE of TH
+    -- figures there is stated rather than left to read as "TH does nothing".
+    check('ND18f the not-kill-loot section says why it carries no TH figures',
+        lizzy4:match('no TH figures here %-%- the lookup above is the kill\'s drop roll') ~= nil, true);
+    check('ND18g ...and says nothing of the sort when no level was asked for',
+        rendered(entryFor(107, 'Leaping Lizzy')):match('no TH figures here') == nil, true);
+    -- A group of ONE renders as a plain drop, but at the GROUP's rate -- the
+    -- presentation shortcut must never become an arithmetic one.
+    LT.data[999006] = { { i = 101, r = 250, t = 1, g = 1, gr = 150 } };
+    check('ND18h a group of one takes TH on the group rate, not its weight',
+        rendered({ pool = { 999006 } }, 4):match('Widget A %-%- common %(15%%%)  |  TH4 45%%') ~= nil, true);
+    -- The second short-circuit. No shipped kill row carries `r = 0` today, but
+    -- "the table states no rate" and "TH cannot raise it" are different facts
+    -- and must not be told in the same words (hard rule 12).
+    LT.data[999007] = { { i = 101, r = 0 }, { i = 102, r = 150 } };
+    local nor4 = rendered({ pool = { 999007 } }, 4);
+    check('ND18i a roll with no stated rate says that, not "no gain"',
+        nor4:match('Widget A  |  TH4 nothing to raise %-%- the table states no rate') ~= nil, true);
+    check('ND18j ...and is counted among the ones TH cannot lift',
+        nor4:match('TH: 1 of the 2 rolls above cannot be lifted by any TH level %-%- the table states no rate for it') ~= nil, true);
+    LT.data[999005], LT.data[999006], LT.data[999007] = nil, nil, nil;
+
+    -- ---- and it all reaches chat under /dl nm ------------------------------
+    local savedChat = package.loaded['dlac\\chatfmt'];
+    local savedLoot = package.loaded['dlac\\feature\\nmloot'];
+    local out = {};
+    local function sink(s) out[#out + 1] = tostring(s); end
+    package.loaded['dlac\\chatfmt'] = { msg = sink, good = sink, warn = sink, err = sink };
+    package.loaded['dlac\\data\\nmdata'] = NMDATA;
+    package.loaded['dlac\\feature\\nmloot'] = LT;
+    local handler = nil;
+    local savedReg = ashita.events.register;
+    ashita.events.register = function(evt, name, fn)
+        if name == 'dlac-nmlookup-cmd' then handler = fn; end
+    end;
+    local NM2 = dofile('feature/nmlookup.lua');
+    ashita.events.register = savedReg;
+    local function run(zid, cmd)
+        NM2.zoneReader = function() return zid; end;
+        out = {};
+        local e = { command = cmd, blocked = false };
+        handler(e);
+        return table.concat(out, '\n');
+    end
+
+    local t1 = run(151, '/dl nm mee deggi');
+    check('ND09a the drops reach chat',        t1:match('drops %-%- 1 roll') ~= nil, true);
+    check('ND09b ...as a group, with shares',
+        t1:match('one of these, always %(100%%%): Impact Knuckles 90%%, Ochiudo\'s Kote 10%%') ~= nil, true);
+    check('ND09c ...with steal in its own section',
+        t1:match('not kill loot %-%- Steal only') ~= nil, true);
+    check('ND09d ...and Beastcoin never listed as a drop',
+        t1:match('Beastcoin %-%-') == nil, true);
+    -- Nothing that was already there may move.
+    check('ND09e the pop kind survives',       t1:match('lottery pop') ~= nil, true);
+    check('ND09f the placeholders survive',    t1:match('Yagudo Interrogator x8') ~= nil, true);
+    check('ND09g the disfavour lines survive',
+        t1:match('5%% base') ~= nil and t1:match('not flat') ~= nil, true);
+    check('ND09h the indexes survive',         t1:match('NM index 88') ~= nil, true);
+    check('ND09i the FilterScan filter survives',
+        t1:match('/filterscan 49,54,57,63,71,72,86,87,88') ~= nil, true);
+    check('ND09j ...and the filter still comes before the drops',
+        t1:find('/filterscan') < t1:find('drops %-%-'), true);
+    local t2 = run(112, '/dl nm Boreal Coeurl');
+    check('ND09k an NM with no drop data says so inside the command',
+        t2:match('nothing in the drop table') ~= nil, true);
+    check('ND09l ...and still answers everything else',
+        t2:match('Boreal Coeurl') ~= nil, true);
+    -- A guess is still labelled a guess, with drops attached.
+    local t3 = run(5, '/dl nm bonacon');
+    check('ND09m guess labelling survives the new section',
+        t3:match('closest match') ~= nil and t3:match('drops %-%- 7 rolls') ~= nil, true);
+
+    -- ---- ...and so does the TH level, under `/dl nm <name> th4` (#154) -----
+    local t4 = run(107, '/dl nm leaping lizzy th4');
+    check('ND19a a TH level reaches the drop lines -- 15% becomes 45% at TH4',
+        t4:match('Leaping Boots %-%- common %(15%%%)  |  TH4 45%%') ~= nil, true);
+    check('ND19b ...on every roll',            select(2, t4:gsub('|  TH4 ', '')), 5);
+    check('ND19c ...without eating the NM name',
+        t4:match('Leaping Lizzy %-%-') ~= nil, true);
+    check('ND19d ...or anything else the card already answered',
+        t4:match('/filterscan 379,380,399,400') ~= nil and t4:match('9%% base') ~= nil, true);
+    check('ND19e a spaced "th 4" is the same verb',
+        run(107, '/dl nm leaping lizzy th 4'):match('|  TH4 45%%') ~= nil, true);
+    check('ND19f TH0 is a real level, not a missing one',
+        run(107, '/dl nm leaping lizzy th0'):match('Leaping Boots %-%- common %(15%%%)  |  TH0 15%%') ~= nil, true);
+    -- Above the table: clamped, and SAID -- answering TH14 to someone who typed
+    -- TH20 without saying so answers a different question than the one asked.
+    local t5 = run(107, '/dl nm leaping lizzy th20');
+    check('ND19g a level past the table is clamped',
+        t5:match('|  TH14 70%%') ~= nil, true);
+    check('ND19h ...and the clamp is said out loud',
+        t5:match('TH runs 0%-14 in the server\'s own table %-%- showing TH14') ~= nil, true);
+    -- A bare `th` is answered with the syntax, never with a level we picked:
+    -- the whole readout would then be about gear the player may not own.
+    local t6 = run(107, '/dl nm leaping lizzy th');
+    check('ND19i a bare th asks which level',
+        t6:match('say which TH level') ~= nil, true);
+    check('ND19j ...shows no figures it was not given a level for',
+        t6:match('|  TH') == nil, true);
+    check('ND19k ...and still answers the NM',
+        t6:match('Leaping Lizzy %-%-') ~= nil, true);
+    -- The verb is stripped whatever order it is typed in, and never swallows
+    -- the ones that were already there.
+    check('ND19l th composes with apply, either way round',
+        string.format('%s/%s',
+            tostring(run(107, '/dl nm leaping lizzy th4 apply'):match('|  TH4 45%%') ~= nil),
+            tostring(run(107, '/dl nm leaping lizzy apply th4'):match('|  TH4 45%%') ~= nil)),
+        'true/true');
+    sent = nil;
+    check('ND19m ...and apply still applies',
+        run(107, '/dl nm leaping lizzy th4 apply'):match('applied') ~= nil, true);
+    check('ND19m2 ...queuing the filter the NM was always going to get',
+        sent, '/filterscan 379,380,399,400');
+    check('ND19n a zone list has nothing to show a TH rate for, and says so',
+        run(107, '/dl nm th4'):match('nothing to show a TH rate for') ~= nil, true);
+    -- The verdict that saves a gear set, in chat, without asking for a level.
+    check('ND19o the no-level verdict reaches chat',
+        t1:match('TH: nothing to gain here') ~= nil, true);
+    check('ND19p ...and names the group as the reason',
+        t1:match('TH never picks which item inside a group wins') ~= nil, true);
+    check('ND19q the same NM at TH14 still gains nothing, in words',
+        run(151, '/dl nm mee deggi th14'):match('TH14: no gain %-%- the group already drops every time') ~= nil, true);
+    check('ND19r ...and its share is the same 10% it always was',
+        run(151, '/dl nm mee deggi th14'):match('Ochiudo\'s Kote 10%%') ~= nil, true);
+
+    package.loaded['dlac\\chatfmt'] = savedChat;
+    package.loaded['dlac\\feature\\nmloot'] = savedLoot;
+    package.loaded['dlac\\data\\nmdrops'] = nil;
+    AshitaCore = savedAC;
+end)();
+
+-- ---------------------------------------------------------------------------
+-- NM7*. Filter mode BY DROP -- the reverse lookup (issue #157, PRD #151).
+--
+--   "Who drops Leaping Boots?" is the one question the Compendium could not
+--   answer without leaving the game, and it is the same join run backwards:
+--   item -> pools (feature\nmloot's index) -> the NM entries carrying them
+--   (feature\nmlookup's table). It lives HERE rather than up in the NM block
+--   because it needs both halves at once -- the drop table AND a client that
+--   can name items -- which is the environment this section already builds.
+--
+--   Two properties decide whether the mode is worth having, and each is a way
+--   it could quietly answer the wrong question:
+--
+--     * ONLY A REAL NAME HIT COUNTS. The by-name mode hedges a weak match and
+--       LABELS it a guess, because there the player has one monster in mind.
+--       Here they have one ITEM in mind out of 2183, and a list of NMs
+--       dropping something spelled a bit like it does not answer the question,
+--       it buries it. So M.ITEM_FLOOR refuses the near-miss outright.
+--     * A ROW IS NEVER A GUESS. Whatever the item score, nothing about the
+--       MONSTER was guessed at -- the table says it drops that item -- so the
+--       "(guess)" hedge must not leak across from the by-name mode.
+-- ---------------------------------------------------------------------------
+(function()
+    local savedAC    = AshitaCore;
+    local savedLoot  = package.loaded['dlac\\feature\\nmloot'];
+    local savedLook  = package.loaded['dlac\\feature\\nmlookup'];
+    local savedDrops = package.loaded['dlac\\data\\nmdrops'];
+    package.loaded['dlac\\data\\nmdata']  = package.loaded['dlac\\data\\nmdata']
+        or dofile('data/nmdata.lua');
+    package.loaded['dlac\\data\\nmdrops'] = dofile('data/nmdrops.lua');
+
+    -- A DELIBERATELY TINY name universe over the REAL drop table. The client
+    -- only ever answers for these five, so `namedItems` holds five entries and
+    -- every row below is the shipped table's own answer about them -- which
+    -- makes each check a data tripwire as well as a behaviour one.
+    local RES = { [13014] = 'Leaping Boots', [13952] = 'Ochiudo\'s Kote',
+                  [16703] = 'Impact Knuckles', [656] = 'Beastcoin', [926] = 'Rock Salt' };
+    AshitaCore = {
+        GetResourceManager = function()
+            return { GetItemById = function(_, id)
+                if RES[id] == nil then return nil; end
+                return { Name = { RES[id] } };
+            end };
+        end,
+    };
+
+    -- dofile + register, the harness pattern: `require` has no addons/ on its
+    -- path here, and nmlookup reaches nmloot through `require` at call time --
+    -- so both instances have to be the ones package.loaded hands back.
+    local savedReg = ashita.events.register;
+    ashita.events.register = function() end;      -- the command handler is not this block's
+    local NM = dofile('feature/nmlookup.lua');
+    package.loaded['dlac\\feature\\nmlookup'] = NM;
+    local LT = dofile('feature/nmloot.lua');
+    package.loaded['dlac\\feature\\nmloot'] = LT;
+    ashita.events.register = savedReg;
+    LT._resetIndex();
+    LT.NAME_RETRY_S = 0;      -- no throttle: the suite changes what the client knows
+
+    -- ---- the index itself --------------------------------------------------
+    check('NM70a the drop table indexes every item it carries', #LT.itemIds(), 2183);
+    check('NM70b ...and Leaping Boots reaches exactly one pool',
+        table.concat(LT.poolsForItem(13014), ','), '2384');
+    check('NM70c an item the table does not carry indexes to nothing',
+        #LT.poolsForItem(999999), 0);
+    check('NM70d ...and so does a nonsense id',  #LT.poolsForItem('x'), 0);
+    -- An NM may carry the same pool twice. That is one droplist mentioned
+    -- twice, not two droplists -- and the drops readout has always read it
+    -- that way, so the reverse index must agree.
+    check('NM70e a repeated pool id is one pool',
+        #LT.poolsOf({ pool = { 9, 9, 9 } }), 1);
+    check('NM70f a bare number pool is a pool',   #LT.poolsOf({ pool = 500 }), 1);
+    check('NM70g an entry with no pool has none', #LT.poolsOf({ n = 'x' }), 0);
+
+    -- ---- the mode ----------------------------------------------------------
+    local brows, btotal, bitems = NM.dropRows('Leaping Boots');
+    check('NM71a a drop search answers with the NMs that give it', btotal, 1);
+    check('NM71b ...naming the monster',        brows[1] ~= nil and brows[1].n, 'Leaping Lizzy');
+    check('NM71c ...in the zone it lives in',   brows[1] ~= nil and NM.zoneName(brows[1].zid),
+        'South Gustaberg');
+    check('NM71d ...and saying WHICH drop answered', brows[1] ~= nil and brows[1].dropNote,
+        'Leaping Boots');
+    check('NM71e the search says what it is a list OF', table.concat(bitems, ', '),
+        'Leaping Boots');
+    -- The hedge must not leak across from the by-name mode: the table SAYS
+    -- this NM drops that item. Nothing about the monster was guessed at.
+    check('NM71f a drop row is never a guess',   brows[1] ~= nil and brows[1].guess, false);
+    -- Part of a name still finds it -- that much forgiveness is worth having.
+    check('NM71g part of an item name still finds it',
+        select(2, NM.dropRows('boots')), 1);
+
+    -- ---- refusal, not a wild guess ----------------------------------------
+    check('NM72a a near-miss is refused rather than guessed at',
+        select(2, NM.dropRows('Leeping Bots')), 0);
+    check('NM72b gibberish is refused',      select(2, NM.dropRows('zzzznothing')), 0);
+    check('NM72c an empty query is not a search', #NM.dropRows(''), 0);
+    check('NM72d ...nor is whitespace',      #NM.dropRows('   '), 0);
+    check('NM72e ...nor is nil',             #NM.dropRows(nil), 0);
+    check('NM72f the floor is the one it is documented at', NM.ITEM_FLOOR, 700);
+
+    -- ---- a common item lists every source, campable ones first -------------
+    local crows, ctotal = NM.dropRows('beastcoin');
+    check('NM73a a common drop lists every NM that gives it', ctotal, 24);
+    check('NM73b ...the ones with placeholders first', crows[1].ph > 0, true);
+    check('NM73c ...and the ones without at the end',  crows[ctotal].ph, 0);
+    local phBlock = true;
+    local seenNone = false;
+    for _, r in ipairs(crows) do
+        if r.ph == 0 then seenNone = true; elseif seenNone then phBlock = false; end
+    end
+    check('NM73d ...with no campable one stranded below them', phBlock, true);
+    local capped, capTotal = NM.dropRows('beastcoin', 2);
+    check('NM73e the cap holds the list down',        #capped, 2);
+    check('NM73f ...and the total still says what matched', capTotal, 24);
+
+    -- ---- the synthetic half: the shapes the shipped table cannot show ------
+    local savedNMData, savedLTData = NM.data, LT.data;
+    NM.data = {
+        [1] = {
+            { n = 'Fixture Alpha', nm = { 10 }, ph = { 11, 12 }, p = 'Fixture PH',
+              c = 5, kind = { 'lottery' }, pool = { 9001 } },
+            { n = 'Fixture Beta',  nm = { 20 }, ph = {}, kind = { 'scripted' }, pool = { 9002 } },
+            -- the same droplist reached through a repeated pool id, plus one
+            -- more: it must answer ONCE and list both pools' matches
+            { n = 'Fixture Gamma', nm = { 30 }, ph = { 31 }, p = 'Fixture PH', c = 5,
+              kind = { 'lottery' }, pool = { 9001, 9001, 9002 } },
+        },
+    };
+    LT.data = {
+        [9001] = { { i = 8001, r = 150 }, { i = 8002, r = 100 }, { i = 8003, r = 50 },
+                   { i = 8004, r = 10 },  { i = 8005, r = 5 } },
+        [9002] = { { i = 8006, r = 240 } },
+    };
+    local SYN = {};
+    RES = SYN;                -- the client knows NOTHING about these yet
+    LT._resetIndex();
+
+    -- A PRE-LOGIN READ MUST NOT LATCH (ADR 0007). The client cannot name an
+    -- item before the player is in the world, and "cannot tell yet" is not
+    -- "no such item" -- so the same search must start working the moment it
+    -- can, with nothing reset and nobody asked to retry.
+    check('NM74a a client that can name nothing finds nothing', #NM.dropRows('widget'), 0);
+    SYN[8001] = 'Widget Boots';  SYN[8002] = 'Widget Gloves'; SYN[8003] = 'Widget Cap';
+    SYN[8004] = 'Widget Ring';   SYN[8005] = 'Widget Belt';   SYN[8006] = 'Gadget Sword';
+    local wrows, wtotal = NM.dropRows('widget');
+    check('NM74b ...and the miss never latched: the same search now answers', wtotal, 2);
+    check('NM74c an NM listing one pool twice still answers once',
+        wrows[2] ~= nil and wrows[2].n, 'Fixture Gamma');
+    -- A row that matched five items names three and COUNTS the rest. A row
+    -- that reads as a paragraph is a row nobody scans -- and a silent cut
+    -- reads as "that is all it drops".
+    check('NM74d a row names its matches, capped, and says what it cut',
+        wrows[1] ~= nil and wrows[1].dropNote,
+        'Widget Boots, Widget Gloves, Widget Cap +2 more');
+    check('NM74e ...at the documented cap', NM.DROP_NAMES, 3);
+    check('NM74f a row with one match just names it',
+        (select(1, NM.dropRows('Gadget Sword')))[1].dropNote, 'Gadget Sword');
+    -- The tie-break the whole list order rests on, in THIS mode too: two NMs
+    -- give the item and the one you can camp is the one you mean.
+    local grows = NM.dropRows('Gadget Sword');
+    check('NM74g two sources tie, and the campable one wins', grows[1].n, 'Fixture Gamma');
+    check('NM74h ...which is the one with placeholders',      grows[1].ph > 0, true);
+    check('NM74i ...while the other is still listed',         grows[2].n, 'Fixture Beta');
+
+    NM.data, LT.data = savedNMData, savedLTData;
+    LT._resetIndex();
+    package.loaded['dlac\\feature\\nmloot']   = savedLoot;
+    package.loaded['dlac\\feature\\nmlookup'] = savedLook;
+    package.loaded['dlac\\data\\nmdrops']     = savedDrops;
+    AshitaCore = savedAC;
+end)();
+
+-- ---------------------------------------------------------------------------
+-- NT. Passive pop tracking (feature\nmtrack, issue #155, PRD #151).
+--
+--   The tracker counts the placeholder kills this character personally
+--   witnessed, turns them into disfavour ROUNDS, and refuses to render a
+--   percentage it cannot stand behind. Three properties carry the whole
+--   feature and each is pinned directly:
+--
+--     * COUNTED BY TARGET INDEX, NEVER BY NAME. Uleguerand holds ten Buffalo
+--       and only six are placeholders; a name-based counter would credit the
+--       other four -- kills that never rolled -- and read HIGH.
+--     * A ROUND IS NOT A KILL. rounds = kills / phCount; six Buffalo make one
+--       Bonnacon round, and feeding raw kills to the curve overstates the odds
+--       six times over.
+--     * A STALE RECORD RENDERS NO PERCENTAGE. The error a broken observation
+--       makes runs optimistic -- someone else popping and killing the NM while
+--       you were away leaves your number high -- so the number is withheld,
+--       not hedged.
+--
+--   The reducer is driven as a PURE function throughout (state + event + data
+--   in, new state out), and the live feed (engage edge x death line) is driven
+--   through the same pump the game calls.
+-- ---------------------------------------------------------------------------
+(function()
+    local savedChat = package.loaded['dlac\\chatfmt'];
+    local out = {};
+    local function sink(s) out[#out + 1] = tostring(s); end
+    package.loaded['dlac\\chatfmt'] = { msg = sink, good = sink, warn = sink, err = sink };
+
+    -- Its own nmlookup instance, registered so nmtrack's load-time require
+    -- resolves to the SAME module the assertions read (the curve, the shipped
+    -- table and the pop kind all come from there -- nothing is re-derived).
+    local handler = nil;
+    local savedReg = ashita.events.register;
+    ashita.events.register = function(evt, name, fn)
+        if name == 'dlac-nmlookup-cmd' then handler = fn; end
+    end;
+    local NM = dofile('feature/nmlookup.lua');
+    package.loaded['dlac\\feature\\nmlookup'] = NM;
+    local TR = dofile('feature/nmtrack.lua');
+    package.loaded['dlac\\feature\\nmtrack'] = TR;
+    ashita.events.register = savedReg;
+
+    check('NT00a the tracker loads',            type(TR), 'table');
+    check('NT00b the reducer is exported pure', type(TR.reduce), 'function');
+    check('NT00c ...and so is the readout',     type(TR.status), 'function');
+    -- The curve is CONSUMED, never re-carried: a second copy of the formula is
+    -- how the anchors and the readout drift apart.
+    local src = (function()
+        local f = io.open('feature/nmtrack.lua', 'r');
+        if f == nil then return ''; end
+        local t = f:read('*a'); f:close(); return t;
+    end)();
+    check('NT00d the disfavour formula is not copied into the tracker',
+        src:find('100 / max', 1, true) == nil and src:find('(1 - base / 100)', 1, true) == nil, true);
+
+    -- Disk stays out of the way for everything but the persistence block: a
+    -- path of nil makes load() and save() no-ops, so M.state is exactly what
+    -- each check puts there (an earlier section leaves profiles.dataDir stubbed).
+    TR.path = function() return nil; end;
+    TR.TICK_S = 0;      -- the frame throttle is not what is under test
+
+    -- The worked example from the issue, hand-built so the reducer is driven by
+    -- values rather than by whatever the shipped table happens to hold today.
+    -- Buffalo at 354-359 ARE Bonnacon's placeholders; the Buffalo at 26-29 are
+    -- ordinary mobs wearing the same name.
+    local BON = { n = 'Bonnacon', nm = { 360 }, ph = { 354, 355, 356, 357, 358, 359 },
+                  p = 'Buffalo', c = 5, w = { 3600, 86400 }, kind = { 'lottery' } };
+    local SCRIPTED = { n = 'Charybdis', nm = { 412 }, ph = { 406, 408 }, p = 'Devil Manta',
+                       c = 10, kind = { 'scripted' } };
+    local DATA = { [5] = { BON, SCRIPTED } };
+    local KEY  = TR.campKey(5, BON);
+    local NOW  = 1700000000;
+    local function ctxAt(zone, now) return { data = DATA, zone = zone, now = now or NOW }; end
+    local function killAt(index, name, at)
+        return { kind = 'kill', index = index, name = name, at = at or NOW };
+    end
+
+    -- ---- classify: the index is the authority, the name is not ------------
+    local e1, r1 = TR.classify(DATA[5], 354, 'Buffalo');
+    check('NT01a a placeholder index is a placeholder', r1, 'ph');
+    check('NT01b ...of the right camp',                 e1 and e1.n, 'Bonnacon');
+    local e2, r2 = TR.classify(DATA[5], 26, 'Buffalo');
+    check('NT01c a same-named non-placeholder index is nothing', r2, nil);
+    check('NT01d ...and answers with no camp',                   e2, nil);
+    local e3, r3 = TR.classify(DATA[5], 360, 'Bonnacon');
+    check('NT01e the NM index is the NM',               r3, 'nm');
+    check('NT01f ...and names the camp',                e3 and e3.n, 'Bonnacon');
+    local _, r4 = TR.classify(DATA[5], nil, 'Bonnacon');
+    check('NT01g the NM answers by NAME when no index came with the line', r4, 'nm');
+    local _, r5 = TR.classify(DATA[5], nil, 'Buffalo');
+    check('NT01h a placeholder NEVER answers by name', r5, nil);
+    -- The index gets BOTH its chances before a name is consulted, so a
+    -- placeholder whose display name collides with some other camp's NM is
+    -- still read as the placeholder it is -- not as evidence that NM popped.
+    local COLLIDE = { DATA[5][1], { n = 'Buffalo', nm = { 900 }, kind = { 'scripted' } } };
+    local e6, r6 = TR.classify(COLLIDE, 354, 'Buffalo');
+    check('NT01i an index that answers wins over a colliding name', r6, 'ph');
+    check('NT01j ...for the camp the spawn point belongs to', e6 and e6.n, 'Bonnacon');
+    local e7, r7 = TR.classify(COLLIDE, 900, 'Buffalo');
+    check('NT01k ...while that NM\'s own index still reads as the NM', r7, 'nm');
+    check('NT01l ...and names it',                    e7 and e7.n, 'Buffalo');
+
+    -- ---- the reducer: a kill at a placeholder index counts ----------------
+    local s0 = {};
+    local s1 = TR.reduce(s0, killAt(354, 'Buffalo'), ctxAt(5));
+    check('NT02a a placeholder kill starts a count', s1[KEY] and s1[KEY].kills, 1);
+    check('NT02b ...keyed to the camp in that zone', s1[KEY] and s1[KEY].nm, 'Bonnacon');
+    check('NT02c ...remembering how many placeholders a round takes',
+        s1[KEY] and s1[KEY].ph, 6);
+    -- PURITY: the input state is never mutated, so a caller can hold the old one.
+    check('NT02d the input state is untouched',      next(s0), nil);
+    local s2 = TR.reduce(s1, killAt(355, 'Buffalo'), ctxAt(5));
+    check('NT02e a second placeholder increments',   s2[KEY].kills, 2);
+    check('NT02f ...and the state it came from does not', s1[KEY].kills, 1);
+
+    -- THE HEADLINE RULE: same name, wrong spawn point, no credit.
+    local s3 = TR.reduce(s2, killAt(26, 'Buffalo'), ctxAt(5));
+    check('NT03a a same-named non-placeholder does NOT increment', s3[KEY].kills, 2);
+    check('NT03b ...and creates no record of its own',
+        (function() local n = 0; for _ in pairs(s3) do n = n + 1; end; return n; end)(), 1);
+    -- A zone we could not read is not a zone to guess at.
+    local s4 = TR.reduce(s3, killAt(354, 'Buffalo'), ctxAt(nil));
+    check('NT03c an unreadable zone drops the kill rather than crediting it',
+        s4[KEY].kills, 2);
+    -- A scripted NM's placeholders roll nothing, so counting them would invent
+    -- a curve the server does not run.
+    local s5 = TR.reduce(s4, killAt(406, 'Devil Manta'), ctxAt(5));
+    check('NT03d a scripted NM\'s placeholder is not counted',
+        s5[TR.campKey(5, SCRIPTED)], nil);
+
+    -- ---- kills become ROUNDS, and the CURRENT chance is shown -------------
+    local sixty = {};
+    for i = 1, 60 do
+        sixty = TR.reduce(sixty, killAt(354 + (i % 6), 'Buffalo'), ctxAt(5));
+    end
+    check('NT04a sixty kills are sixty kills',        sixty[KEY].kills, 60);
+    local st = TR.status(sixty[KEY], BON, NOW);
+    check('NT04b ...and ten ROUNDS, not sixty',       st.rounds, 10);
+    check('NT04c the chance is the curve at ten rounds, not the base',
+        string.format('%.4f', st.chance), string.format('%.4f', NM.chanceAfter(5, 10)));
+    check('NT04d ...which is not the base chance',    st.chance > 5, true);
+    check('NT04e rounds to a guaranteed pop come from the lookup module',
+        st.guaranteed, NM.roundsToGuaranteed(5));
+    check('NT04f rounds REMAINING are reported',      st.roundsLeft, 30);
+    check('NT04g ...and what that is in kills',       st.killsLeft, 180);
+    local liveLines = table.concat(TR.lines(sixty[KEY], BON, NOW), '\n');
+    check('NT04h the readout states the count',       liveLines:match('60 placeholder kills') ~= nil, true);
+    check('NT04i ...as rounds',                       liveLines:match('10 rounds') ~= nil, true);
+    check('NT04j ...with the CURRENT chance',         liveLines:match('6%.6%% now') ~= nil, true);
+    check('NT04k ...and the rounds left to a guaranteed pop',
+        liveLines:match('30 rounds %(180 kills%) to a guaranteed pop') ~= nil, true);
+    -- THE FLOOR, and the reason for it, wherever a number is shown.
+    check('NT05a the count is labelled a floor',      liveLines:match('FLOOR') ~= nil, true);
+    check('NT05b ...because the server counter is shared',
+        liveLines:match('zone%-wide and shared') ~= nil, true);
+    check('NT05c ...and other players are invisible',
+        liveLines:match("other players' placeholder kills are invisible") ~= nil, true);
+
+    -- ---- evidence of a pop resets the count -------------------------------
+    local dead = TR.reduce(sixty, killAt(360, 'Bonnacon'), ctxAt(5));
+    check('NT06a seeing the NM DIE resets the count', dead[KEY].kills, 0);
+    check('NT06b ...and records what was seen',       dead[KEY].saw, 'dead');
+    check('NT06c ...without touching the old state',  sixty[KEY].kills, 60);
+    local alive = TR.reduce(sixty, { kind = 'sight', index = 360, name = 'Bonnacon', at = NOW }, ctxAt(5));
+    check('NT06d seeing the NM ALIVE resets it too',  alive[KEY].kills, 0);
+    check('NT06e ...and records that',                alive[KEY].saw, 'alive');
+    -- A death line naming the NM with no index attached is still evidence: a
+    -- wrong match here can only ever RESET, never inflate.
+    local byName = TR.reduce(sixty, killAt(nil, 'Bonnacon'), ctxAt(5));
+    check('NT06f the NM name alone is enough to reset', byName[KEY].kills, 0);
+
+    -- ---- the two "kills cannot roll" states -------------------------------
+    check('NT07a right after a kill it is on cooldown',
+        select(1, TR.rollState(dead[KEY], BON, NOW + 60)), 'cooldown');
+    check('NT07b ...for as long as the SHORTEST cooldown it can draw',
+        select(1, TR.rollState(dead[KEY], BON, NOW + 3599)), 'cooldown');
+    check('NT07c past that nothing is claimed',
+        select(1, TR.rollState(dead[KEY], BON, NOW + 3601)), 'ok');
+    check('NT07d ...but it is not claimed as CLEAR either',
+        select(2, TR.rollState(dead[KEY], BON, NOW + 3601)), true);
+    check('NT07e past the longest cooldown the hedge is gone',
+        select(2, TR.rollState(dead[KEY], BON, NOW + 86401)), false);
+    check('NT07f an NM you have seen alive is primed',
+        select(1, TR.rollState(alive[KEY], BON, NOW + 60)), 'primed');
+    local cdLines = table.concat(TR.lines(dead[KEY], BON, NOW + 60), '\n');
+    check('NT07g the cooldown says kills cannot roll right now',
+        cdLines:match('kills cannot roll right now') ~= nil, true);
+    check('NT07h ...and names the window',            cdLines:match('1h%-24h') ~= nil, true);
+    local prLines = table.concat(TR.lines(alive[KEY], BON, NOW + 60), '\n');
+    check('NT07i primed says kills cannot roll right now',
+        prLines:match('kills cannot roll right now') ~= nil, true);
+    check('NT07j ...because you saw it up',           prLines:match('saw it alive') ~= nil, true);
+    local hedgeLines = table.concat(TR.lines(dead[KEY], BON, NOW + 7200), '\n');
+    check('NT07k the uncertain window is said out loud, not counted as clear',
+        hedgeLines:match('may not have rolled') ~= nil, true);
+
+    -- A kill that cannot roll is not sold back as progress.
+    local wasted = TR.reduce(dead, killAt(354, 'Buffalo', NOW + 60), ctxAt(5, NOW + 60));
+    check('NT08a a kill inside the cooldown does not raise the count', wasted[KEY].kills, 0);
+    check('NT08b ...it is tallied as wasted effort',                   wasted[KEY].void, 1);
+    check('NT08c ...and it does not re-vouch for the count',           wasted[KEY].at, NOW);
+    local wastedLines = table.concat(TR.lines(wasted[KEY], BON, NOW + 60), '\n');
+    check('NT08d ...which the readout says',
+        wastedLines:match('landed while nothing could roll') ~= nil, true);
+    local primedKill = TR.reduce(alive, killAt(354, 'Buffalo', NOW + 60), ctxAt(5, NOW + 60));
+    check('NT08e a kill while it is primed does not count either', primedKill[KEY].kills, 0);
+    check('NT08f ...and is wasted effort too',                     primedKill[KEY].void, 1);
+    -- Once the certain part of the cooldown is behind us, kills count again.
+    local after = TR.reduce(dead, killAt(354, 'Buffalo', NOW + 7200), ctxAt(5, NOW + 7200));
+    check('NT08g past the shortest cooldown a kill counts again', after[KEY].kills, 1);
+
+    -- ---- a break in observation makes it stale ----------------------------
+    local zoned = TR.reduce(sixty, { kind = 'zone', at = NOW + 10 }, ctxAt(5, NOW + 10));
+    check('NT09a zoning marks the record stale',      zoned[KEY].stale, true);
+    check('NT09b ...saying which break it was',       zoned[KEY].why, 'zone');
+    check('NT09c ...and the raw count SURVIVES',      zoned[KEY].kills, 60);
+    local relogged = TR.reduce(sixty, { kind = 'relog', at = NOW + 10 }, ctxAt(5, NOW + 10));
+    check('NT09d a relog marks it stale',             relogged[KEY].stale, true);
+    check('NT09e ...with its own reason',             relogged[KEY].why, 'relog');
+    check('NT09f ...and keeps the count',             relogged[KEY].kills, 60);
+    -- Age: past the NM's OWN ceiling (its longest repop window), nobody can
+    -- vouch for the count -- the camp may have popped and re-armed without you.
+    local old = TR.reduce(sixty, { kind = 'tick', at = NOW + 86401 }, ctxAt(5, NOW + 86401));
+    check('NT09g age past the cooldown ceiling marks it stale', old[KEY].stale, true);
+    check('NT09h ...for that reason',                           old[KEY].why, 'age');
+    local young = TR.reduce(sixty, { kind = 'tick', at = NOW + 3600 }, ctxAt(5, NOW + 3600));
+    check('NT09i ...but a fresh count is left alone',           young[KEY].stale, nil);
+    -- Staleness is STICKY: a later kill still counts, but nothing re-vouches
+    -- for the break -- only pop evidence (which zeroes it) or an explicit reset.
+    local after2 = TR.reduce(zoned, killAt(354, 'Buffalo', NOW + 20), ctxAt(5, NOW + 20));
+    check('NT09j a kill after the break still raises the raw count', after2[KEY].kills, 61);
+    check('NT09k ...and does NOT un-stale the record',               after2[KEY].stale, true);
+    check('NT09l pop evidence is what clears it',
+        TR.reduce(zoned, killAt(360, 'Bonnacon', NOW + 30), ctxAt(5, NOW + 30))[KEY].stale, nil);
+
+    -- ---- THE PROPERTY: a stale record renders NO percentage ---------------
+    local staleSt = TR.status(zoned[KEY], BON, NOW + 10);
+    check('NT10a a stale record has no chance at all -- not a hedged one',
+        staleSt.chance, nil);
+    check('NT10b ...while the raw count is still there',   staleSt.kills, 60);
+    check('NT10c ...and it says it is stale',              staleSt.stale, true);
+    local staleLines = table.concat(TR.lines(zoned[KEY], BON, NOW + 600), '\n');
+    check('NT10d the rendered lines carry no percentage sign at all',
+        staleLines:find('%%') == nil, true);
+    check('NT10e ...they say STALE',                       staleLines:match('STALE') ~= nil, true);
+    check('NT10f ...name the break',                       staleLines:match('you left the zone') ~= nil, true);
+    check('NT10g ...show the raw count',                   staleLines:match('60 placeholder kills') ~= nil, true);
+    check('NT10h ...and when it was last vouched for',     staleLines:match('last vouched for 10m ago') ~= nil, true);
+    check('NT10i ...and why the number cannot be trusted',
+        staleLines:match('may have popped while you were not watching') ~= nil, true);
+    -- The same, for every break: none of them may render a number.
+    for _, br in ipairs({ zoned, relogged, old }) do
+        check('NT10j no break renders a percentage',
+            table.concat(TR.lines(br[KEY], BON, NOW + 86500), '\n'):find('%%') == nil, true);
+    end
+
+    -- ---- the death line ---------------------------------------------------
+    check('NT11a the standard death line names what died',
+        TR.deathName('The Buffalo falls to the ground.'), 'Buffalo');
+    check('NT11b ...and a party member\'s kill does too',
+        TR.deathName('Mindie defeats the Buffalo.'), 'Buffalo');
+    check('NT11c ...for a name the message carries bare',
+        TR.deathName('Mindie defeats Bonnacon.'), 'Bonnacon');
+    check('NT11d the client\'s colour bytes do not stick to the name',
+        TR.deathName('\30\1The Buffalo falls to the ground.\7'), 'Buffalo');
+    check('NT11e an ordinary line is not a death',
+        TR.deathName('Mindie casts Cure on Mindie.'), nil);
+    check('NT11f a non-string is not a death',        TR.deathName(nil), nil);
+
+    -- ---- the live feed: engage edge x death line --------------------------
+    local ZONE, saves = 5, 0;
+    local reads = {
+        now  = function() return NOW; end,
+        zone = function() return ZONE; end,
+        data = function() return DATA; end,
+        save = function() saves = saves + 1; return true; end,
+    };
+    TR.reset(); TR.state = {};
+    TR.onEdge({ index = 354, name = 'Buffalo' }, NOW);
+    TR.onDeathLine('The Buffalo falls to the ground.', NOW);
+    TR.pump(reads);
+    check('NT12a an engaged placeholder that dies is counted',
+        TR.state[KEY] and TR.state[KEY].kills, 1);
+    check('NT12b ...and the count is written',        saves > 0, true);
+    -- One engagement can credit at most one kill: a second death line with
+    -- nothing engaged cannot borrow the last target.
+    TR.onDeathLine('The Buffalo falls to the ground.', NOW);
+    TR.pump(reads);
+    check('NT12c a death with nothing engaged credits nothing', TR.state[KEY].kills, 1);
+    -- The headline rule again, this time through the whole feed.
+    TR.onEdge({ index = 26, name = 'Buffalo' }, NOW);
+    TR.onDeathLine('The Buffalo falls to the ground.', NOW);
+    TR.pump(reads);
+    check('NT12d killing a same-named NON-placeholder counts nothing',
+        TR.state[KEY].kills, 1);
+    -- AUTO-TARGET ORDERING, and it is not a detail: the client rolls onto the
+    -- next mob the moment the last one dies, so the ring holds BOTH by the time
+    -- the death line renders. The kill belongs to the one engaged FIRST.
+    TR.reset(); TR.state = {};
+    TR.onEdge({ index = 354, name = 'Buffalo' }, NOW);   -- the one you fought
+    TR.onEdge({ index = 26,  name = 'Buffalo' }, NOW);   -- auto-target's next pick, alive
+    TR.onDeathLine('The Buffalo falls to the ground.', NOW);
+    TR.pump(reads);
+    check('NT12g the kill goes to the mob engaged first, not the one now facing you',
+        TR.state[KEY] and TR.state[KEY].kills, 1);
+    -- ...and the other way round, which is the over-count this prevents: the
+    -- ordinary Buffalo died, the placeholder auto-target rolled onto is alive.
+    TR.reset(); TR.state = {};
+    TR.onEdge({ index = 26,  name = 'Buffalo' }, NOW);
+    TR.onEdge({ index = 354, name = 'Buffalo' }, NOW);
+    TR.onDeathLine('The Buffalo falls to the ground.', NOW);
+    TR.pump(reads);
+    check('NT12h ...so a placeholder still standing is never credited',
+        TR.state[KEY], nil);
+
+    -- The NM itself, through the feed: engaged (alive) then dead.
+    TR.state = {};
+    TR.onEdge({ index = 354, name = 'Buffalo' }, NOW);
+    TR.onDeathLine('The Buffalo falls to the ground.', NOW);
+    TR.pump(reads);
+    check('NT12i a count exists before the NM is seen', TR.state[KEY].kills, 1);
+    TR.onEdge({ index = 360, name = 'Bonnacon' }, NOW);
+    TR.onDeathLine('The Bonnacon falls to the ground.', NOW);
+    TR.pump(reads);
+    check('NT12e killing the NM resets the count',    TR.state[KEY].kills, 0);
+    check('NT12f ...and starts its cooldown',         TR.state[KEY].saw, 'dead');
+    -- Zoning, through the pump: only a change between two KNOWN zones counts.
+    TR.reset(); TR.state = {};
+    TR.onEdge({ index = 354, name = 'Buffalo' }, NOW);
+    TR.onDeathLine('The Buffalo falls to the ground.', NOW);
+    TR.pump(reads);
+    check('NT13a a count exists before the zone',     TR.state[KEY].kills, 1);
+    ZONE = nil; TR.pump(reads);
+    check('NT13b a zone we cannot read is not a zone change', TR.state[KEY].stale, nil);
+    ZONE = 6; TR.pump(reads);
+    check('NT13c zoning out marks it stale',          TR.state[KEY].stale, true);
+    check('NT13d ...for the right reason',            TR.state[KEY].why, 'zone');
+    ZONE = 5;
+
+    -- ---- persistence: per character, across a reload and a relog ----------
+    local TMP = 'tests' .. string.char(92) .. 'nt_nmcounts.lua';
+    TR.path = function() return TMP; end;
+    TR._loadedFrom = nil;
+    TR.state = { [KEY] = { zone = 5, nm = 'Bonnacon', kills = 14, void = 2, ph = 6,
+                           at = NOW, since = NOW - 900, saw = 'dead', sawAt = NOW - 100 } };
+    check('NT14a the count is written',               TR.save(), true);
+    -- A reload/relog is a fresh module with an empty memory.
+    TR.state = {}; TR._loadedFrom = nil;
+    TR.load();
+    check('NT14b the count survives the reload',      TR.state[KEY] and TR.state[KEY].kills, 14);
+    check('NT14c ...with its wasted-kill tally',      TR.state[KEY].void, 2);
+    check('NT14d ...its placeholder count',           TR.state[KEY].ph, 6);
+    check('NT14e ...and what it last saw',            TR.state[KEY].saw, 'dead');
+    -- ...and it comes back STALE, because dlac was not watching in between.
+    check('NT14f everything read off disk is stale',  TR.state[KEY].stale, true);
+    check('NT14g ...as a relog/reload',               TR.state[KEY].why, 'relog');
+    check('NT14h ...so it renders no percentage',
+        TR.status(TR.state[KEY], BON, NOW).chance, nil);
+    -- A junk row is dropped rather than half-read.
+    (function()
+        local f = io.open(TMP, 'w');
+        f:write('return { fmt = 1, camps = { { zone = 5 }, { nm = "Bonnacon", zone = 5, kills = 3 } } }\n');
+        f:close();
+    end)();
+    TR.state = {}; TR._loadedFrom = nil;
+    TR.load();
+    check('NT14i a row with no NM name is dropped',
+        (function() local n = 0; for _ in pairs(TR.state) do n = n + 1; end; return n; end)(), 1);
+    check('NT14j ...and the good one survives',       TR.state[KEY].kills, 3);
+    -- The login window: the file path is unreadable for the first moments after
+    -- a character loads, so a kill witnessed before the first successful read
+    -- must not be thrown away by it.
+    TR.state = { [KEY] = { zone = 5, nm = 'Bonnacon', kills = 1, void = 0, ph = 6,
+                           at = NOW, since = NOW } };
+    TR._loadedFrom = nil;
+    TR.load();
+    check('NT14k a kill witnessed before the first read is not lost to it',
+        TR.state[KEY].kills, 1);
+    check('NT14l ...and is not marked stale by the read either',
+        TR.state[KEY].stale, nil);
+    os.remove(TMP);
+    TR.path = function() return nil; end;
+
+    -- ---- the readout, end to end through the real command handler ---------
+    local function joined() return table.concat(out, '\n'); end
+    local function run(cmd)
+        out = {};
+        local e = { command = cmd, blocked = false };
+        handler(e);
+        return e, joined();
+    end
+    NM.zoneReader = function() return 5; end;
+    local realBon = select(1, NM.matchInZone(5, 'Bonnacon'));
+    check('NT15a the shipped table still carries the worked example',
+        realBon ~= nil and realBon.n, 'Bonnacon');
+    local realKey = TR.campKey(5, realBon);
+
+    TR.state = {};
+    local _, t0 = run('/dl nm bonnacon');
+    check('NT15b with no count, the command says so',
+        t0:match('no count here yet') ~= nil, true);
+    check('NT15c ...and says there is nothing to arm',
+        t0:match('nothing to arm') ~= nil, true);
+    check('NT15d ...while the curve itself is untouched',
+        t0:match('40 rounds is a guaranteed pop') ~= nil, true);
+
+    TR.state = { [realKey] = { zone = 5, nm = 'Bonnacon', kills = 60, void = 0, ph = 6,
+                               at = os.time(), since = os.time() } };
+    local _, t1 = run('/dl nm bonnacon');
+    check('NT16a the count reaches the readout',      t1:match('your count: 60 placeholder kills') ~= nil, true);
+    check('NT16b ...as rounds',                       t1:match('= 10 rounds') ~= nil, true);
+    check('NT16c ...with the CURRENT chance, not the base',
+        t1:match('6%.6%% now') ~= nil, true);
+    check('NT16d ...and the base is still stated as the base',
+        t1:match('5%% base') ~= nil, true);
+    check('NT16e ...with the rounds left to a guaranteed pop',
+        t1:match('30 rounds %(180 kills%) to a guaranteed pop') ~= nil, true);
+    check('NT16f ...labelled a floor',                t1:match('FLOOR') ~= nil, true);
+
+    TR.state[realKey].stale = true; TR.state[realKey].why = 'zone';
+    local _, t2 = run('/dl nm bonnacon');
+    check('NT17a a stale count says STALE',           t2:match('STALE') ~= nil, true);
+    check('NT17b ...and renders no current chance',   t2:match('%% now') == nil, true);
+    check('NT17c ...while still showing the raw count', t2:match('60 placeholder kills') ~= nil, true);
+    check('NT17d ...and the mechanic is still explained',
+        t2:match('40 rounds is a guaranteed pop') ~= nil, true);
+
+    -- The camp list: which counts do I hold, and can I trust them?
+    local _, t3 = run('/dl nm counts');
+    check('NT18a the list names the camp',            t3:match('Bonnacon') ~= nil, true);
+    check('NT18b ...and its zone',                    t3:match('Uleguerand Range') ~= nil, true);
+    check('NT18c ...marks the stale one',             t3:match('STALE') ~= nil, true);
+    check('NT18d ...and calls every count a floor',   t3:match('floor') ~= nil, true);
+    check('NT18e the list is not hunted for as an NM name',
+        t3:match('closest match') == nil, true);
+
+    -- Reset: the one manual door, because staleness is sticky by design.
+    local _, t4 = run('/dl nm bonnacon reset');
+    check('NT19a reset says the count is cleared',    t4:match('count cleared') ~= nil, true);
+    check('NT19b ...and the count is gone',           TR.state[realKey], nil);
+    check('NT19c ...leaving the camp with a clean slate',
+        t4:match('no count here yet') ~= nil, true);
+    local _, t5 = run('/dl nm bonnacon reset');
+    check('NT19d resetting nothing says so, rather than pretending',
+        t5:match('no count to clear') ~= nil, true);
+    local _, t6 = run('/dl nm reset');
+    check('NT19e reset with no NM named is answered, not dropped',
+        t6:match('nothing to reset') ~= nil, true);
+    check('NT19f ...and is not hunted for as an NM called "reset"',
+        t6:match('closest match') == nil, true);
+    local _, t7 = run('/dl nm counts');
+    check('NT19g an empty tracker says it is empty',  t7:match('no NM counts yet') ~= nil, true);
+    -- ...and says which half it has seen, so "nothing is counting" and "the
+    -- death line is worded differently on this server" cannot look identical
+    -- in the field (hard rule 12). Both halves are needed for a kill to count.
+    check('NT19h ...and reports what the feed has seen',
+        t7:match('seen so far') ~= nil, true);
+    check('NT19i ...naming the last engaged target and its index',
+        t7:match('last engaged: "Buffalo" index 354') ~= nil, true);
+    check('NT19j ...and the last death line it recognised',
+        t7:match('last death line: "Buffalo"') ~= nil, true);
+    TR.reset();
+    local _, t7b = run('/dl nm counts');
+    check('NT19k a feed that has seen nothing says exactly that',
+        t7b:match('last engaged: nothing yet; last death line: nothing yet') ~= nil, true);
+
+    -- A scripted NM has no rounds to be part-way through, so it gets no
+    -- tracking lines at all -- the same rule that keeps the curve off it.
+    NM.zoneReader = function() return 176; end;
+    local _, t8 = run('/dl nm Charybdis');
+    check('NT20a a scripted NM shows no count invitation',
+        t8:match('no count here yet') == nil, true);
+    check('NT20b ...and no floor caveat for a number it will never have',
+        t8:match('FLOOR') == nil, true);
+    NM.zoneReader = function() return 5; end;
 
     package.loaded['dlac\\chatfmt'] = savedChat;
 end)();

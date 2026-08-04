@@ -296,6 +296,90 @@ haven't told you."* Ask when he has **not** said merge; never ask twice when he 
 
 **THE QUEUE IS EMPTY.**
 
+*(Emptied by the first 2026-08-04 promotion — **the NM COMPENDIUM** (`2026.08.04a`), riding
+with the already-field-confirmed craft-skill rows. Henrik: *"I want this to be merged and
+pushed to main so more people can try it out more and come with input"* — an accept under the
+08-01 ruling, so nothing was asked twice. Twelve commits: ten NM, three craft.*
+
+***THE MECHANIC IS NOT FIELD-RUN. Only the WINDOW LAYOUT is.*** *Henrik opened the Compendium
+on 08-04, found the list rows clipping in both By-name and By-drop, chose the fix (*"or we
+simply just do a new line for the area"*), and confirmed the result: *"That looks much better!
+No clipping now."* **That is the whole of the field evidence.** Suites are 6777 + 1262 green on
+both interpreters and the data is verified against the live API, but nothing about pops,
+counting or filtering has been exercised in game. Do not read this onto main as field-proven.*
+
+***THE ROUND OWED, in priority order*** *(Henrik: *"I'll have to check that tomorrow"*):*
+*(1)* ***the one no test can make*** *— paste a card's `/filterscan` line and widescan: do the
+placeholders show? dlac derives the index from the server's `mob_spawn_points`, FilterScan from
+the client's zone NPC DAT. They agree in code — the field decides whether they agree in fact,
+and **if they are off by a constant every index in the addon is wrong the same way**.*
+*(2) count-by-index-not-name: in Uleguerand the Buffalo at 26-29 are NOT placeholders and
+354-359 are; only the second may move the counter. (3) staleness — zone out and back, the
+percentage must vanish. (4) persistence across `/addon reload`. (5) the `apply` verb with
+FilterScan loaded. (6) cooldown/primed after an NM kill.*
+
+***What landed:*** *`feature/nmlookup` (the disfavour curve, hand-carried with anchor tests
+because it exists in NO branch of the public server repo), `feature/nmtrack` (rounds counted by
+INDEX, shown as a floor that goes STALE rather than a prediction), `feature/nmloot` (live drop
+tables, tiers, group shares, a Treasure Hunter verdict per drop), `ui/nmui` (one window, three
+searches over one list), and two generated data files. `data/nmdrops.lua` comes from the LIVE
+API, not the clone — the clone's drop tables are a base layer under an empty submodule and give
+the wrong item at the wrong rate (see [architecture.md](architecture.md)).*
+
+***A SCOPE FLAG for whoever promotes next.*** *dlac is close to official Ashita acceptance,
+gated on one reviewer complaint: **too much stuff**. The NM Compendium shares nothing with
+dlac's gear thesis and is now the largest non-gear thing in the addon. It was promoted anyway,
+deliberately, to get wider field input — Henrik's call, made with the concern on the table.
+**Extracting it into a separate addon remains open and is cheap**: the four modules depend on
+dlac only for chat formatting, the zone table and the location service. If acceptance feedback
+turns on scope, that is the lever.*
+
+--- *the entries this promotion carried, kept for their reasoning* ---
+
+**Craft skills under the glyphs, blue when capped** — `2026.08.03zb`. Asked for by Henrik's
+friend, in his words: *"he'd love to see his skill levels under the craft icons in hobby bar
+for crafting"*, and *"when skill is capped, can we use the same blue"* — with a screenshot of
+the in-game skills menu attached. **Both glyph rows carry it** — the hobby bar first, then
+the Automations panel's craft row when Henrik said *"Sure, go ahead"* to the offer.
+
+**The blue is the SERVER'S, not a colour dlac invents.** CatsEye sets bit `0x8000` on a craft's
+skill word the moment it reaches the guild cap — `charutils.cpp` comments it *"Blue text."* and
+`synthutils.cpp` re-sets it on the skill-up that arrives at the cap — and that is the same bit
+the game's own skills menu paints. `craftwatch.craftSkillInfo` reads it back through Ashita's
+`craftskill_t.IsCapped()`, so the bar cannot disagree with the menu. The arithmetic fallback
+(`skill >= (rank + 1) * 10`, the server's own `getCraftSkillCap`) is there only for a binding
+that does not expose the bit — it is the same rule, so the two can never diverge.
+
+***FIELD-CONFIRMED, BOTH SURFACES*** *(Henrik, 2026-08-03: *"It works, I checked both. Confirmed
+x2"*). Suites **6249 + 1138** on both interpreters — and now the part the suites could never
+answer, because every skill value in them is a stub and the exact blue was a sample off a JPEG.
+It has been on his screen, on the bar and on the Gear Helpers → Crafting Gear panel. **NOTHING IS
+OWED HERE.** Waiting only on his go-ahead to promote.*
+
+*The colour, for anyone who has to touch it later: `COL_SKILL_CAPPED` in `ui/craftbar.lua`, one
+constant, sampled at `#659EC9` off the screenshot he sent and nudged up for the antialiasing the
+JPEG flattened. It read right against the game's own menu in the field, so it is now a MEASURED
+value in the only sense that matters — do not "correct" it back toward the raw sample.*
+
+***What landed:*** *`feature/craftwatch.lua` gains the guild-rank half it never had —
+`craftRankCap`, `craftRankName`, `craftIsCapped` (all pure, headless-tested T24h..T24v) over
+`M.CRAFT_RANKS` taken from the server's* `scripts/enum/craft_rank.lua` *(to **Legend**, 15; the
+enum's own comment ends "16+ invalid", which is why rank 31 — the masked-word rank — is refused
+rather than priced at 320). `craftSkillInfo` is the Ashita glue, cached a second because the bar
+asks for all eight every frame.*
+
+***The two rows share the CELL, not the row*** *(`craftbar.craftSkillCell` measures,
+`craftbar.craftSkillUnder` draws). The bar's glyphs are 30px and equip on click; the panel's are
+32px, have their own texture cache, and only switch which craft's items are listed — so the rows
+stay separate, but the number, its blue and its hover come from one place and cannot drift. Both
+now wrap each glyph in a GROUP and measure the row before drawing it, since a 3-digit skill is
+wider than the icon above it and both rows center themselves. **While here:** the comment on
+`craftButton` claiming it was shared with the Automations panel was stale — it has no second
+caller — and now says what actually is shared.*
+
+**THE ENTRY ABOVE WENT TO MAIN IN THE 2026-08-04 PROMOTION.** *It is kept for its reasoning,
+not because it is still queued — the queue itself is the line at the top of this section.*
+
 *(Emptied by the fourth 2026-08-03 promotion — **`/dl nm`, the placeholders and a FilterScan
 filter** (`2026.08.03z`). Henrik: *"merge, and push to origin main"* — an accept under the
 08-01 ruling, so nothing was asked twice. It never sat in this queue: asked for, built, and
@@ -862,6 +946,271 @@ research already recorded. In rough priority order:
 
 ## Current state (as of 2026-08-02)
 
+- **2026-08-03: THE NM COMPENDIUM IS FINISHED — the card, and a third way to search — ON A PR
+  BRANCH off `dev` (`feature/157-nm-detail-card`), NOT field-run** (issue #157, PRD #151). #156
+  shipped the window with the right pane holding a place. This fills it: **select an NM and the
+  card shows everything the four slices before it gathered**, and the third filter mode answers
+  the one question the feature could not — *who drops this?*
+  - **THE CARD COMPUTES NOTHING, and that is the design.** Placeholders and their indexes come
+    from `nmlookup.runs`/`filterFor`; the pop kind, repop window, base chance and disfavour
+    curve from `nmlookup.popLines`; the live count from `nmtrack.entryLines`; the drop table and
+    every TH figure from `nmloot`. Not one percentage is worked out in `ui/nmui.lua`. The payoff
+    is not tidiness: **the stale-count rule now holds BY CONSTRUCTION** — `nmtrack` answers
+    `chance = nil` for a stale record, so there is no number in the window to render, and the
+    window cannot start hedging differently from chat about the same monster in one session.
+    Even the *colour* of the count block comes from `status` rather than from reading its words
+    back.
+  - **BY DROP — the join run backwards.** `nmloot` grew a reverse index (item → pools, built
+    once, pool ids sorted first so two runs cannot order the list two ways) and `nmlookup` grew
+    `dropRows`. Item NAMES stay out of the index for the same reason they are not in the data
+    file: the client cannot name anything pre-login, so the name list is retried while any id is
+    unresolved and **frozen the moment they all answer** — a miss must never latch (ADR 0007),
+    and `NM74a/b` pins exactly that.
+  - **MATCHING IS STRICTER HERE, deliberately.** By name, a typo should still find the monster,
+    so a weak match is shown and **labelled a guess**. By drop the player has one item in mind
+    out of **2183**, and a list of NMs dropping something spelled a bit like it does not answer
+    the question — it buries it. So `ITEM_FLOOR` refuses the near-miss, and a drop row is
+    **never** a guess whatever the score: nothing about the monster was matched.
+  - **Clicking a drop pivots the list to it**, the mirror of clicking a zone, and both pivots are
+    deferred to the end of the frame — acting mid-draw leaves the rows after the click reading a
+    mode the rows before it were not drawn in. Pinned: the pivot happens and **exactly one
+    window is ever begun**.
+  - **Two TH presentation rulings**, both consequences of the bracket lookup. The **verdict** is
+    printed at *every* level including TH0 — "no gain, it already drops every time" is the answer
+    a player needs before they know to ask for a level. The **figure** at TH0 is held back where
+    it would only repeat the rate beside it, *except* for an off-tier rate, which does not read
+    back as itself (`gr = 750` reads 24%) and is exactly the number that looks like a bug when
+    left unsaid. Both pinned (`NW16h2`-`NW16h5`).
+  - The one-click FilterScan apply goes through **`lib/cmdqueue.issue`**, the central command
+    door — so the line leaves on the next frame on the main thread rather than from inside a
+    render call — and the card **says it went** (hard rule 12: a silent button and a broken one
+    must not look alike). The card is deliberately **uncapped** where chat stops at 32 rolls and
+    twelve group members: the pane scrolls, so the reason for the cap does not exist.
+  - **The window's own list cache had to learn the same lesson.** An empty by-drop result from a
+    client that could name *nothing* is "cannot tell yet", not "no NM drops that" — cached, it
+    would keep saying so after the client caught up — so that one result is deliberately left
+    uncached and heals itself on the next frame (`NW19n`/`NW19o`).
+  - Tests `NM70*`-`NM74*` (pure: the index, the mode, the refusal, the lazy-name rule, the
+    tie-break) and `NW14`-`NW19` (render, through `nmui._state`). Suites **6777 + 1262** green.
+    No engine bump — addon-state only, no seeded file moved, and no new gearui locals (hard
+    rule 1).
+  - **NOT FIELD-RUN, and the round it owes is specific.** `/dl nm window leaping lizzy`, pick the
+    row: the card must show **Rock Lizard x2 at indexes 379, 399**, the curve, and five rolls with
+    real item names — **Leaping Boots at `common (15%)`**, Rock Salt twice, and Beastcoin under
+    Steal. Set the picker to **TH4**: Leaping Boots must read **45%**. Then `Mee Deggi the
+    Punisher` at any TH level: the group must still say **no gain** and Ochiudo's Kote must still
+    read a **10% share** (an 18% anywhere means TH reached a member's weight). Then **click
+    Leaping Boots** — the list must pivot to the by-drop mode *in the same window*. Then the
+    **Apply FilterScan filter** button with FilterScan loaded, which is the only thing here that
+    touches the game. It inherits the round owed on `/dl nm` itself and on the four slices below.
+  - **The new player-facing strings are unapproved and flagged in the PR** — "By drop", the card
+    headings ("Placeholders", "How it pops", "Your count", "Drops"), "Apply FilterScan filter",
+    and the by-drop refusal wording. Only "NM Compendium" is settled, from the PRD.
+- **2026-08-03: THE NM COMPENDIUM HAS A WINDOW — one list, two filter modes — ON A PR BRANCH off
+  `dev` (`issue-156-nm-compendium-window`), NOT field-run** (issue #156, PRD #151). Everything
+  `/dl nm` knows was chat-only. `ui/nmui.lua` is the **Floating window** half: master-detail, the
+  filter and the result list on the left, the detail card's place held on the right. This slice
+  is the **shell** — the list and the **by-name** and **by-area** modes. The card and the by-drop
+  mode are #157 and were deliberately not built here.
+  - **ONE LIST, SEVERAL FILTER MODES — not several windows.** Every search here returns NMs, so
+    one list serves all of them and **clicking a zone re-filters the list already on screen**.
+    That is the whole difference from the Chocobo dig search, which needs two windows because its
+    two searches return different *kinds* of thing (items and zones) and the cross-link needs a
+    second window to land in. Pinned in the smoke suite: a zone click flips the mode and **exactly
+    one window is ever begun**.
+  - **THE WINDOW OWNS NO ANSWERS.** `feature/nmlookup` grew the pure list side (`nameRows`,
+    `areaRows`, `zoneChoices`, `rowNote`, `zoneIds`) rather than the window growing a second
+    matcher, and the reason is behavioural: **a weak match is labelled a guess and gibberish is
+    refused on both surfaces**, out of one implementation and one `M.GUESS_FLOOR` (800 — the
+    threshold chat was already hedging on, now named). On a score tie the entry **with
+    placeholders wins**, expressed as a total sort order (score → placeholders → zone → name) so
+    a 2000-row list cannot reshuffle between frames. Pinned twice: against `Poisonhand Gnadgad`
+    (Davoi, 8 placeholders, beats two Campaign copies with none — and Davoi's zone id is the
+    *higher* one, so the tie-break is doing real work) **and** against a synthetic pair, so the
+    rule stays pinned on a day the shipped table holds no tie.
+  - **ONE DRAW SITE**, gearui's `d3d_present`, self-gated on `M.visible` — any surface may open a
+    floating window, exactly one may draw it, or two `Begin()` calls on one name merge both
+    bodies into it. Pinned as **source** (`imgui.Begin` once in the module, `nmMod.render` once
+    in gearui), because a render check can only see the window the module itself draws.
+  - **The list scrolls and the cap speaks.** Escha Ru'Aun holds **61** NMs; the rows sit in their
+    own child, and a name search is capped at 200 rows with the remainder counted out loud. The
+    result list is cached on (mode, query, zone) — a name search scores every shipped entry,
+    Levenshtein included, and doing that per frame is the difference between a window and a
+    stutter.
+  - Opened from `/dl nm window [name]`; **bare it opens on the zone you are standing in**, so the
+    common case takes no input. `apply` / `reset` / `th` beside it are answered, not eaten. A
+    build where the GUI failed to load loses the verb *and says so*. Tests `NM60*`-`NM68*`
+    (pure) and `NW1`-`NW13` (render, through the exported `nmui._state` seam). Suites
+    **6742 + 1197** green. No engine bump — addon-state only, no seeded file moved; the UI chunk
+    still loads headless (no new gearui chunk locals, hard rule 1).
+  - **NOT FIELD-RUN, and the round it owes is specific.** `/dl nm window` while standing in a
+    zone with a known camp: the list must hold what is actually around you, campable ones first.
+    Then **`/dl nm window bonnacon`** (an exact hit, no "(guess)" anywhere) and
+    **`/dl nm window bonacon`** (the same NM, and the list must *say* these are closest matches).
+    Then click a row's zone button — the list must pivot to that area **in the same window**.
+    Finally a busy zone (Escha Ru'Aun) to confirm the list scrolls rather than running off the
+    bottom. It inherits the round already owed on `/dl nm` itself. **The small labels are
+    unapproved** — "By name", "By area" and the pane wording are flagged in the PR for a naming
+    call; only "NM Compendium" is settled, from the PRD.
+- **2026-08-03: `/dl nm` NOW ANSWERS "IS A THF WORTH BRINGING FOR THIS?" — a per-drop Treasure
+  Hunter verdict — ON A PR BRANCH off `dev` (`issue-154-th-verdict`), NOT field-run** (issue
+  #154, PRD #151). The drops section could say what an NM gives but not whether TH would move
+  any of it. `feature/nmloot.lua` now carries the server's own TH table (rows 0-14, seven
+  rarity brackets) and its `getDropRate`, ported verbatim, and `/dl nm <name> th4` renders every
+  roll's rate at that level.
+  - **TH IS A BRACKET LOOKUP, NOT A MULTIPLIER**, which is the only reason this is answerable:
+    the rate selects a bracket, the TH level selects the value inside it. A common ungrouped
+    drop reads **15% at TH0, 45% at TH4, 70% at TH14** — Leaping Boots, pinned against the
+    live-verified figures.
+  - **THE UNITS ARE THE TRAP.** The lookup works out of 10000 and its caller hands it
+    `DropRate * 10`; every entry point takes the STORED rate and does the times-ten itself, so
+    no caller holds two scales. A missing times-ten reads a common drop as ultra rare and still
+    looks like a percentage.
+  - **THE VERDICT IS THE FEATURE, NOT THE NUMBER.** A rate already at 100% short-circuits
+    unchanged, so **Ochiudo's Kote — a 10% share inside a `gr = 1000` group — gains nothing from
+    any amount of TH**, and the line says so *in words*: an unchanged number is indistinguishable
+    from a number nobody applied TH to. Asserted at every level 0-14, in both directions (the
+    group rate and the share).
+  - **TH applies to the GROUP rate only**, never to a member's weight, and never to which member
+    wins. The Kote's weight of 100 would read 18% at TH4 if the wrong rate were looked up; that
+    number is pinned absent. Shares still sum to 100 after the group rate is lifted.
+  - **One consequence needs a ruling and is flagged in the PR:** because the rate only *selects*
+    a bracket, an off-tier rate does not read back as itself — the 68 shipped rows at `gr = 750`
+    sit in the top bracket and read **24% at TH0, 64% at TH4**, i.e. *below* the rate the table
+    states. That is the lookup as the issue specifies it; the line says the stated rate only
+    picks the bracket so it cannot read as "TH lowered my rate". If the live server does not run
+    the lookup on off-tier rates, this is the line to revisit.
+  - Figures are opt-in (`th4`, `th 4`, clamped to 0-14 out loud, composing with `apply` and
+    `reset` in any order); without a level the section gains **one** line — whether TH can lift
+    anything here — because a TH figure on every line is noise for the four jobs in five that
+    cannot bring any. Steal and Despoil carry no TH figures and say why. Tests `ND10*`-`ND19*`;
+    suites **6688 + 1138** green. No engine bump — addon-state only, no seeded file moved, and
+    no UI (no gearui locals, nothing new in the UI chunk).
+  - **NOT FIELD-RUN.** Everything here is arithmetic over a committed table, so the round it
+    owes is short: **`/dl nm Leaping Lizzy th4` — Leaping Boots must read `common (15%) | TH4
+    45%`**, which proves the units, the bracket and the render in one command. Second:
+    **`/dl nm Mee Deggi th14`**, which must still say *no gain* and still show the Kote at a 10%
+    share. Third: `/dl nm <anything> th20` clamps to TH14 and says it did. It inherits the round
+    already owed on `/dl nm` itself and on the drops readout below.
+- **2026-08-03: `/dl nm` NOW SAYS WHAT AN NM DROPS — grouped as groups, Steal and Despoil kept
+  out of it — ON A PR BRANCH off `dev` (`feat/153-nm-drops`), NOT field-run** (issue #153,
+  PRD #151). The command could tell you how an NM pops and where you stood on the curve, but
+  not whether it was worth camping. `feature/nmloot.lua` joins the NM to the committed
+  `data/nmdrops.lua` (973 pools, 5372 rows, crawled from the **live API**) through its `pool`
+  field and closes the card with the drop table. **Addon side only** — the crawler half was
+  already committed by the maintainer, `tools/` is gitignored and nothing under it or under
+  `data/` was touched.
+  - **A GROUPED ROW'S `r` IS A WEIGHT, NOT A PERCENTAGE.** The group rolls once at `gr` and
+    then ONE item inside it wins by weight, so 2009 of the 5372 rows — more than a third of the
+    table — would be misstated by a flat percentage. Groups render **as groups** ("one of
+    these, always (100%): Impact Knuckles 90%, Ochiudo's Kote 10%") with each member's **share**
+    of the group. **Mee Deggi cannot pin this and must not be used to**: its weights sum to
+    exactly 1000, so the share and the flattened reading are both 10% and a flattening bug
+    passes. The pin is **Ouryu's pool 3070** — two items at 425 under `gr = 750`, share 50%
+    against a flattened 42.5%.
+  - **Duplicate rows are two rolls, and stay two.** Leaping Lizzy lists item 926 at 240 *and*
+    at 150; the section head counts **rolls**, not items, so the repetition reads as the
+    mechanic it is rather than a bug.
+  - **Steal and Despoil are not kill loot** and get their own section — listing them as drops
+    tells a player to expect something a kill will never give. Most carry `r = 0` (the API
+    states no rate) and that is left **unsaid**, never printed as "0%".
+  - **Where one group ends is a RUN over `(g, gr)`, and the data forced it.** Pool 245 lists
+    group 1 four times at `gr = 1000` and then the same four items as group 1 again at
+    `gr = 100`; 86 rows carry a group id whose rate changes under it. Keying on the group id
+    alone would discard one of the two rates and the roll with it. **This is the one place the
+    issue is silent** — flagged in the PR for a ruling.
+  - **Item names resolve from the client's own resources, lazily and one id at a time**, never
+    at load (a name table built at load runs before login and gets nothing back). Only a HIT is
+    cached — a miss is "cannot tell yet", not "no such item", and latching it would make one
+    early read permanent (ADR 0007). An id that will not resolve renders **as an id**.
+  - Three absences are told apart (hard rule 12): no drop table names the file; an NM whose
+    pool has no rows says so plainly; a pre-`pool` `nmdata.lua` says the drops cannot be looked
+    up. Two caps keep chat sane (12 members per group, 32 rolls) and **both say what they left
+    out**. Suites **6596 + 1138** green. No engine bump — addon-state only, no seeded file
+    moved, and no UI (no gearui locals, nothing new in the UI chunk).
+  - **NOT FIELD-RUN, and one thing can only be settled in game: THE ITEM NAMES.** Everything
+    else is arithmetic over a committed table, but `AshitaCore:GetResourceManager():GetItemById`
+    is stubbed in the suite. **First field check: `/dl nm Leaping Lizzy` — five rolls with real
+    item names (Rock Salt twice, Leaping Boots) and Beastcoin under Steal proves the whole chain
+    (join → rolls → tiers → names) in one command.** Second: `/dl nm Mee Deggi` for the group
+    line. Third: any `item #<number>` still showing after a full login means the resource read
+    is wrong, not the table. It inherits the round still owed on `/dl nm` itself.
+- **2026-08-03: PASSIVE POP TRACKING — the placeholder rounds you personally witnessed, and a
+  count that refuses to lie — ON A PR BRANCH off `dev` (`issue-155-pop-tracking`), NOT
+  field-run** (issue #155, PRD #151). `/dl nm <name>` could state the disfavour curve but not
+  where on it you were. `feature/nmtrack.lua` counts placeholder kills as they happen,
+  converts them to **rounds** (`kills / phCount` — six Buffalo make **one** Bonnacon round)
+  and renders the **current** chance under the curve, plus the rounds left to a guaranteed pop.
+  **Automatic, nothing to arm.**
+  - **BY TARGET INDEX, NEVER BY NAME.** Uleguerand holds ten Buffalo and only six (354-359)
+    are placeholders; a name would credit four mobs that never rolled and read HIGH. A name is
+    allowed to answer for the **NM itself** only — where a false positive can only RESET a
+    count, never inflate one.
+  - **Two observations already in the addon, joined:** `engagewatch` knows the INDEX of what
+    you attacked, the `text_in` death line knows WHAT died. A death is matched to the newest
+    engaged target of that name and **consumes** it, so one engagement credits at most one
+    kill. What is left over is an **under-count**, which is the safe direction.
+  - **The honesty rules are the feature.** The count is a **floor** (the server's counter is
+    zone-wide and shared) and says so beside every number. Zoning, a relog/reload, or an age
+    past the NM's **own** ceiling makes it **stale**, and a stale record shows the raw count
+    and when it was last vouched for and renders **no percentage at all** — the error a break
+    makes runs optimistic. Staleness is **sticky** (nothing can re-vouch for a break); pop
+    evidence zeroes the count, and `/dl nm <name> reset` is the one manual door. Kills inside
+    the post-kill **cooldown** or while the NM is **primed** are tallied as wasted effort
+    rather than sold back as progress, and the *uncertain* part of the cooldown window is said
+    out loud instead of counted as clear.
+  - **The curve is CONSUMED, not re-carried** — `chanceAfter`/`roundsToGuaranteed` stay in
+    `nmlookup` with their anchors; `NT00d` greps the tracker's source to pin that the formula
+    was never copied. Load-time dependency runs one way (`nmtrack` → `nmlookup`); the reverse
+    is call-time, so there is no cycle.
+  - Persisted per character at `<char>\dlac\nmcounts.lua` through `lib/statefile` +
+    `lib/safewrite`, like the other passive watchers. New: `/dl nm counts` (which camps am I
+    part-way through) and `/dl nm <name> reset`. Suites **6475 + 1138** green. No engine bump
+    — addon-state only, no seeded file moved, and no UI (no gearui locals, nothing new in the
+    UI chunk).
+  - **NOT FIELD-RUN, and one thing here can only be settled in game: THE DEATH LINE.** The
+    tracker recognises `"The Buffalo falls to the ground."` and `"<Player> defeats the
+    Buffalo."` (`M.DEATH_FALLS` / `M.DEATH_DEFEATS`). If CatsEyeXI words a mob death
+    differently, **nothing will ever count** — silently, because an under-count is the
+    designed-safe direction. **`/dl nm counts` on an empty tracker is the diagnosis**: it
+    prints the last engaged target *with its index* and the last death line it recognised, so
+    "nothing killed yet" and "the wording is different here" cannot look alike.
+    **First field check: kill one placeholder at a known camp and run `/dl nm <that NM>` — if
+    the count says 1, the whole chain (edge → death line → correlation → index → round) is
+    proven in one kill.** Second: zone out and back and confirm it reads STALE with no
+    percentage. Third, the one that would be embarrassing to miss: kill a same-named mob that
+    is NOT a placeholder (Uleguerand's Buffalo at 26-29) and confirm the count does **not**
+    move. It also inherits the round already owed on `/dl nm` itself (below): no widescan has
+    yet been filtered with a generated line.
+- **2026-08-03: `/dl nm` STOPS PRESENTING THE BASE CHANCE AS FLAT — the disfavour curve is
+  hand-carried — ON A PR BRANCH off `dev` (`issue-152-nm-disfavour`), NOT field-run**
+  (issue #152, PRD #151). `/dl nm <name>` printed *"5% per kill"*. That is only the **base**:
+  CatsEyeXI applies **disfavour** (bad-luck protection) to lottery pops, so every completed
+  placeholder **round** lifts the chance until a pop is guaranteed, and a camper reading 5%
+  had no idea that 30 rounds in he is at 17% and that the last quarter is near-vertical. The
+  readout now states the base, that it is **not flat**, three quarter-way sample points and
+  the rounds to a guaranteed pop.
+  - **The curve is a hand-carried constant** (`nmlookup.M.DISFAVOUR`) with its **source and
+    verification date beside it** — it exists in **no branch** of the public server repo,
+    because the loader activates a `catseyexi` overlay that is empty there, and scraping a
+    wiki for it was rejected as a way to silently poison the odds. **The tests are its
+    source**: `NM40*` pins all four published anchors (5→40, 10→20, 15→14, 20→10) and `NM41*`
+    pins the **middle** of the curve — anchors alone only fix where it reaches 100%, and six
+    plausible wrong formulas were checked to confirm the mid-curve values are what actually
+    discriminate them.
+  - **Only `kind == "lottery"` gets a curve.** `scripted` / `timed` / `weather` / `night` NMs
+    get their own plain words and their respawn. **Five shipped entries carry placeholders
+    AND a scripted kind** (Charybdis, Crypt Ghost, Magicked Bones, Sea Horror ×2) — their
+    indexes stay in the filter, the lottery language does not. Charybdis is pinned as the
+    tripwire for exactly that, so a regeneration that lost `kind` fails the suite instead of
+    quietly restoring the wrong words.
+  - Everything else is untouched and still pinned: fuzzy matching, guess labelling, gibberish
+    refusal, the FilterScan filter, `apply`, and the missing-data warning. No engine bump —
+    `nmlookup` is addon-state only, and no seeded file moved. Suites **6337 + 1138** green.
+  - **NOT FIELD-RUN, and it inherits the round still owed on `/dl nm` itself** (the entry
+    under the fourth 2026-08-03 promotion above): nothing has ever filtered a live widescan
+    with a generated line. Two things this slice adds to that round — does the `kind` word
+    match what the zone actually does, and does the curve read right to someone who camps?
 - **2026-08-03 (`2026.08.03w`): THE FOOD REGISTER STOPS BELIEVING A ZONE.** Henrik's first
   field round on foodwatch found it: *"it is showing my instant warp scroll as recently
   eaten... I tried to use a warp scroll almost immediately after zoning after everything

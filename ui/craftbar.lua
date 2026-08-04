@@ -60,8 +60,12 @@ local function texture(cr)
 end
 M.texture = texture;
 
--- One clickable craft glyph (bright when selected, dim otherwise). Shared with
--- the Automations panel. Returns true on click.
+-- One clickable craft glyph (bright when selected, dim otherwise). Returns true
+-- on click. NOT shared with the Automations panel, whatever the comment here
+-- used to say: that panel keeps its own 32px row with its own texture cache,
+-- because its glyphs only switch which craft's items are listed -- they do not
+-- equip. What the two surfaces DO share is the on/off pill and the skill cell
+-- below (M.onOffSwitch / M.craftSkillCell + M.craftSkillUnder).
 function M.craftButton(cr, selected, size)
     local drew, tex = false, texture(cr);
     if tex ~= nil then
@@ -119,6 +123,94 @@ local isOpen = { true };
 local BAR_MIN_W = 430;   -- min CONTENT width (Henrik: wider bar, centered rows;
                          -- fits the goal row + Last Synth with air to spare)
 
+-- ---------------------------------------------------------------------------
+-- Skill numbers under the glyphs (2026-08-03). BLUE IS NOT DECORATION. CatsEye
+-- sets bit 0x8000 on a craft's skill word the moment it reaches the guild cap
+-- -- the comment in charutils.cpp is literally "Blue text." -- and that is the
+-- bit the game's own skills menu paints. dlac reads the same bit (see
+-- craftwatch.craftSkillInfo), so a blue number here says exactly what a blue
+-- number says in the menu: you are at this rank's ceiling, and the next point
+-- needs a rank-up test at the guild, not another synth.
+--
+-- The colour was sampled off the in-game capture Henrik sent (brightest text
+-- pixel #659EC9) and nudged up for the antialiasing the sample flattened.
+-- ---------------------------------------------------------------------------
+local GLYPH_W          = 30;
+local COL_SKILL_CAPPED = { 0.42, 0.65, 0.86, 1.00 };   -- at the guild cap
+local COL_SKILL        = { 0.70, 0.70, 0.70, 1.00 };   -- room to skill up
+local COL_SKILL_UNKNOWN = { 0.42, 0.42, 0.42, 1.00 };  -- unread / never joined
+
+-- The hover behind the number. The icon keeps its own "click to equip" tooltip
+-- (craftButton, shared with the Automations panel); this one answers the
+-- question the colour raises, which is the panel-text rule -- the surface shows
+-- the short thing, the hover explains it.
+local function skillTip(craft, info)
+    if info == nil then
+        return craft .. '\nSkill not readable yet (still logging in?).';
+    end
+    local s = string.format('%s: skill %d', craft, info.skill);
+    if info.cap ~= nil then s = s .. string.format(' / %d', info.cap); end
+    local rn = (type(cw.craftRankName) == 'function') and cw.craftRankName(info.rank) or nil;
+    if rn ~= nil then s = s .. '  (' .. rn .. ')'; end
+    if info.capped then
+        s = s .. '\nCAPPED -- blue means you are at this rank\'s ceiling.'
+              .. '\nTake the rank-up test at the guild; synthing will not move it.';
+    elseif info.cap ~= nil then
+        s = s .. string.format('\n%d to go before the cap for this rank.', info.cap - info.skill);
+    end
+    return s;
+end
+
+-- Text width, falling back to the codebase's ~8px/char estimate when the
+-- binding's CalcTextSize is unavailable or answers something odd.
+local function textW(s)
+    local w = #tostring(s) * 8;
+    pcall(function()
+        local m = imgui.CalcTextSize(s);
+        if type(m) == 'number' then w = m; end
+    end);
+    return w;
+end
+
+-- ---- the shared cell (both surfaces that draw craft glyphs use these) -------
+-- The bar and the Automations panel draw their glyph rows differently -- 30px
+-- and equip-on-click here, 32px and switch-the-section there -- but the NUMBER
+-- under a glyph must be the same number in the same colour with the same hover,
+-- or the two surfaces start arguing about whether you are capped. So the cell is
+-- shared and the rows are not.
+--
+-- MEASURE, then DRAW, in two calls: both callers center their own row and so
+-- need the width before the first glyph goes down, and a 3-digit skill is wider
+-- than the glyph above it. `glyphW` is the caller's icon size; `w` comes back as
+-- the column width, the wider of the two.
+function M.craftSkillCell(craft, glyphW)
+    local info = (type(cw.craftSkillInfo) == 'function') and cw.craftSkillInfo(craft) or nil;
+    local txt  = (info ~= nil) and tostring(info.skill) or '--';
+    return { craft = craft, info = info, txt = txt, tw = textW(txt),
+             w = math.max(tonumber(glyphW) or GLYPH_W, textW(txt)) };
+end
+
+-- Draw a measured cell's number. Call it INSIDE the glyph's group, immediately
+-- after the glyph -- it centers itself against the group's left edge, which is
+-- the glyph's own left edge, so it lands under its own icon and not the window.
+function M.craftSkillUnder(cell)
+    if type(cell) ~= 'table' then return; end
+    pcall(function()
+        local x = imgui.GetCursorPosX();
+        if type(x) == 'number' then
+            imgui.SetCursorPosX(x + math.max(0, math.floor((cell.w - cell.tw) / 2)));
+        end
+    end);
+    local col = COL_SKILL;
+    if cell.info == nil or cell.info.skill == 0 then
+        col = COL_SKILL_UNKNOWN;      -- unreadable, or a guild you never joined
+    elseif cell.info.capped then
+        col = COL_SKILL_CAPPED;
+    end
+    imgui.TextColored(col, cell.txt);
+    if imgui.IsItemHovered() then imgui.SetTooltip(skillTip(cell.craft, cell.info)); end
+end
+
 -- Center the next row of known width within the bar: Dummy + SameLine(indent)
 -- (the automationsui craft-glyph pattern).
 local function centerNext(availW, rowW)
@@ -144,10 +236,25 @@ function M.renderContent(availW)
     local waitMax  = tonumber(cw.WAIT_MAX) or 120;
     if _waitBuf == nil or (_waitSeen ~= nil and _waitSeen ~= waitSecs) then _waitBuf = { waitSecs }; end
     _waitSeen = waitSecs;
-    -- Row 1, centered: the 8 craft glyphs + the on/off switch.
-    centerNext(availW, 8 * 30 + 7 * 6 + 6 + 46);
+    -- Row 1, centered: the 8 craft glyphs, each with its skill under it, + the
+    -- on/off switch.
+    --
+    -- MEASURE FIRST, then draw. Each craft is a GROUP (glyph over number), so a
+    -- column is as wide as the wider of the two -- and centerNext needs the row
+    -- width BEFORE the first group is begun. Reading the eight skills up front
+    -- also means the row cannot change width halfway through itself.
+    local cols = {};
+    local rowW = 0;
     for i, cr in ipairs(ORDER) do
-        if M.craftButton(cr, sel == cr, 30) then cw.selectCraft(cr); end
+        cols[i] = M.craftSkillCell(cr, GLYPH_W);
+        rowW = rowW + cols[i].w;
+    end
+    centerNext(availW, rowW + 7 * 6 + 6 + 46);
+    for _, c in ipairs(cols) do
+        imgui.BeginGroup();
+        if M.craftButton(c.craft, sel == c.craft, GLYPH_W) then cw.selectCraft(c.craft); end
+        M.craftSkillUnder(c);
+        imgui.EndGroup();
         imgui.SameLine(0, 6);
     end
     if M.onOffSwitch(on, 'bar') then cw.setEnabled(not on); end

@@ -275,6 +275,95 @@ function M.playerCraftSkill(craft)
     return v;
 end
 
+-- ---------------------------------------------------------------------------
+-- Guild rank + the CAP (2026-08-03). The bars show your skill under each craft
+-- glyph and paint it BLUE when it is capped -- the same blue the game's own
+-- skills menu uses, which is the one thing every veteran reads instantly
+-- ("capped: go take the rank test, not another synth").
+--
+-- Every number here comes from the SERVER, not retail lore (CatsEyeXI is not
+-- LSB):
+--   * the ladder is scripts/enum/craft_rank.lua `xi.craftRank`, whose own
+--     comment ends "-- 16+ invalid";
+--   * the cap is scripts/globals/hobbies/crafting/utils.lua
+--     `getCraftSkillCap = (rank + 1) * 10`;
+--   * the BLUE FLAG is a real bit on the wire, not something dlac derives:
+--     charutils.cpp sets `WorkingSkills.skill[i] |= 0x8000` ("Blue text.") for
+--     craft indices 48..57 exactly when `(rank + 1) * 100 <= RealSkill`, and
+--     synthutils.cpp re-sets it on the skill-up that reaches the cap. Ashita's
+--     craftskill_t.IsCapped() reads that same bit (plugins/sdk/ffxi/player.h),
+--     so asking the client gives the byte-identical answer to the menu's.
+-- The arithmetic below is the FALLBACK for a binding that does not expose
+-- IsCapped -- the same rule, so the two can never disagree.
+-- ---------------------------------------------------------------------------
+
+M.CRAFT_RANKS = {
+    [0]  = 'Amateur',   [1]  = 'Recruit',  [2]  = 'Initiate',    [3]  = 'Novice',
+    [4]  = 'Apprentice',[5]  = 'Journeyman',[6] = 'Craftsman',   [7]  = 'Artisan',
+    [8]  = 'Adept',     [9]  = 'Veteran',  [10] = 'Expert',      [11] = 'Authority',
+    [12] = 'Luminary',  [13] = 'Master',   [14] = 'Grandmaster', [15] = 'Legend',
+};
+
+-- Pure: the guild cap for a rank, or nil for a rank off the server's ladder
+-- (16+ is invalid there -- and 31 is what a MASKED skill word decodes to, so
+-- refusing it keeps the digging sentinel from ever printing as a real cap).
+function M.craftRankCap(rank)
+    local r = tonumber(rank);
+    if r == nil or r < 0 or r > 15 then return nil; end
+    return (r + 1) * 10;
+end
+
+function M.craftRankName(rank)
+    local r = tonumber(rank);
+    if r == nil then return nil; end
+    return M.CRAFT_RANKS[r];
+end
+
+-- Pure: does this skill/rank pair sit at the guild ceiling? Mirrors the server's
+-- `(rank + 1) * 100 <= RealSkill` on the whole-number skill the client carries.
+function M.craftIsCapped(skill, rank)
+    local s, cap = tonumber(skill), M.craftRankCap(rank);
+    if s == nil or cap == nil then return false; end
+    return s >= cap;
+end
+
+-- { skill, rank, cap, capped } for one craft, or nil when the read is not
+-- available (not logged in yet, an unknown craft name, a masked word). Cached
+-- for a second: this is called for all eight crafts every frame the bar is up,
+-- and a craft skill moves once a synth at most.
+local CRAFT_SKILL_TTL = 1;
+local _csCache = {};
+
+function M.craftSkillInfo(craft, now)
+    local sid = CRAFT_SID[craft];
+    if sid == nil then return nil; end
+    now = tonumber(now) or os.clock();
+    local c = _csCache[craft];
+    if c ~= nil and (now - c.at) < CRAFT_SKILL_TTL then return c.info; end
+    local info = nil;
+    pcall(function()
+        local cs = AshitaCore:GetMemoryManager():GetPlayer():GetCraftSkill(sid);
+        if cs == nil then return; end
+        local skill = tonumber(cs:GetSkill());
+        if skill == nil then return; end
+        local rank = nil;
+        if cs.GetRank ~= nil then pcall(function() rank = tonumber(cs:GetRank()); end); end
+        -- The 0xFFFF mask signature (skill 255 / rank 31). The server only masks
+        -- 58..63 (digging and friends) so a craft should never show it -- but if
+        -- one ever does, "unreadable" is the honest answer, not "skill 255".
+        if skill == 255 and rank == 31 then return; end
+        local capped = nil;
+        if cs.IsCapped ~= nil then
+            local ok, v = pcall(function() return cs:IsCapped(); end);
+            if ok and type(v) == 'boolean' then capped = v; end
+        end
+        if capped == nil then capped = M.craftIsCapped(skill, rank); end
+        info = { skill = skill, rank = rank, cap = M.craftRankCap(rank), capped = capped };
+    end);
+    _csCache[craft] = { at = now, info = info };
+    return info;
+end
+
 -- HQ tier for a skill margin over the recipe cap (0 = none, 3 = best odds).
 function M.tierOf(margin)
     if margin == nil then return nil; end

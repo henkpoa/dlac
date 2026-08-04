@@ -18,7 +18,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.08.03z';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.08.04a';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
                                 -- (03f = engine v163: the contest explains its own plan;
                                 --  03g = one floating tray: Teleports + the E-Box crates;
@@ -63,7 +63,22 @@ addon.version = '2026.08.03z';  -- date of the last shipped change (Ashita print
                                 --  what pops them, and a ready-to-paste
                                 --  FilterScan filter over the placeholder
                                 --  spawn points -- straight from the server's
-                                --  own phList, no camping notes required)
+                                --  own phList, no camping notes required;
+                                --  03za = your craft skills, under the glyphs
+                                --  on the hobby bar -- and BLUE when they are
+                                --  capped, read off the server's own blue-text
+                                --  bit, so the bar says what the skills menu
+                                --  says;
+                                --  03zb = ...and under the Automations panel's
+                                --  craft glyphs too, from the same shared cell;
+                                --  04a = THE NM COMPENDIUM: /dl nm grew the real
+                                --  disfavour curve (the 5% was never flat), live
+                                --  drop tables with tiers and group shares, a
+                                --  Treasure Hunter verdict per drop, passive
+                                --  placeholder-round tracking counted by INDEX
+                                --  and shown as a floor that goes stale rather
+                                --  than a prediction -- and a window that
+                                --  searches all of it by name, area or drop)
 addon.desc    = 'Gear sets, triggers and live stats with level scaling -- dlac equips your gear itself.';
 
 -- Load BEACON ('/dl check' field round, 2026-07-23): written by PLAIN io at
@@ -315,7 +330,14 @@ for _, mod in ipairs({ 'gear', 'feature\\augments', 'gear\\gearoptim', 'gear\\ge
                        'feature\\meritwatch', 'feature\\integration', 'feature\\foodwatch',
                        'feature\\engagewatch', 'feature\\petvitals', 'feature\\combat',
                        'feature\\sendlog', 'feature\\check', 'feature\\debug', 'feature\\report',
-                       'feature\\nmlookup',
+                       -- nmtrack AFTER nmlookup: it requires the lookup module at
+                       -- load for the disfavour curve, the shipped table and the
+                       -- pop kind (the reverse edge is call-time only, so there
+                       -- is no cycle -- see the header of either file). nmloot
+                       -- (the drop readout) has no load-time edge in either
+                       -- direction -- nmlookup reaches it at call time -- so its
+                       -- place in this list is only where it reads best.
+                       'feature\\nmlookup', 'feature\\nmtrack', 'feature\\nmloot',
                        'feature\\lockstyle',
                        'feature\\lockstyleapply', 'feature\\equipengine',
                        'feature\\engine', 'ui\\gearui',
