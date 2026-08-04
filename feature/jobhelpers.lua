@@ -881,13 +881,34 @@ function M.menuEntriesCore(mainJob, subJob, subFlagOf, enabledOf)
     return out;
 end
 
--- The live flavor: current jobs from the player, the real switches.
+-- numeric job id -> abbreviation (the client's own ordering -- BLU = 16 is
+-- the same constant lib-level consumers compare against).
+local JOB_ABBR = {
+    [1] = 'WAR', [2] = 'MNK', [3] = 'WHM', [4] = 'BLM', [5] = 'RDM', [6] = 'THF',
+    [7] = 'PLD', [8] = 'DRK', [9] = 'BST', [10] = 'BRD', [11] = 'RNG', [12] = 'SAM',
+    [13] = 'NIN', [14] = 'DRG', [15] = 'SMN', [16] = 'BLU', [17] = 'COR', [18] = 'PUP',
+    [19] = 'DNC', [20] = 'SCH', [21] = 'GEO', [22] = 'RUN',
+};
+
+-- The live flavor: current jobs from the player, the real switches. The
+-- MEMORY MANAGER is the primary read -- gData is LAC's global and this addon
+-- state may not carry it. Every other gData consumer here degrades to
+-- permissive-unknown, which a MENU must not: an unknown job lists nothing,
+-- so the popup showed no cascade at all (field, 2026-08-04).
 function M.menuEntries()
     local mj, sj = nil, nil;
     pcall(function()
-        local p = gData.GetPlayer();
-        mj, sj = p.MainJob, p.SubJob;
+        local p = AshitaCore:GetMemoryManager():GetPlayer();
+        mj = JOB_ABBR[p:GetMainJob()];
+        sj = JOB_ABBR[p:GetSubJob()];
     end);
+    if mj == nil then
+        pcall(function()
+            local p = gData.GetPlayer();
+            mj = mj or p.MainJob;
+            sj = sj or p.SubJob;
+        end);
+    end
     return M.menuEntriesCore(mj, sj, M.subjobApplicable, M.isEnabled);
 end
 
