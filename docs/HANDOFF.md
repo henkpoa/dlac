@@ -322,15 +322,26 @@ No clipping now."* **That is the whole of the field evidence.** Suites are 6777 
 both interpreters and the data is verified against the live API, but nothing about pops,
 counting or filtering has been exercised in game. Do not read this onto main as field-proven.*
 
-***THE ROUND OWED, in priority order*** *(Henrik: *"I'll have to check that tomorrow"*):*
-*(1)* ***the one no test can make*** *— paste a card's `/filterscan` line and widescan: do the
-placeholders show? dlac derives the index from the server's `mob_spawn_points`, FilterScan from
-the client's zone NPC DAT. They agree in code — the field decides whether they agree in fact,
-and **if they are off by a constant every index in the addon is wrong the same way**.*
-*(2) count-by-index-not-name: in Uleguerand the Buffalo at 26-29 are NOT placeholders and
-354-359 are; only the second may move the counter. (3) staleness — zone out and back, the
-percentage must vanish. (4) persistence across `/addon reload`. (5) the `apply` verb with
-FilterScan loaded. (6) cooldown/primed after an NM kill.*
+***CHECK (1) IS FIELD-CONFIRMED — the index parity holds.*** *(Henrik, 2026-08-04: *"I tried it
+earlier on Bonnacon and its PHs before we made this a GUI, and it worked!"*.) This was the one
+no test could make and the one that could invalidate everything: dlac derives the target index
+from the server's `mob_spawn_points`, FilterScan from the client's zone NPC DAT, and if the two
+were off by a constant **every index in the addon would be wrong the same way**. They are not.*
+
+*Scope of that confirmation, stated exactly: it was Bonnacon in Uleguerand Range on the
+pre-GUI build (`2026.08.03z`). It carries to the current build because the derivation is
+uniform — `mobid & 0xFFF` for every mob in every zone — and because Bonnacon's numbers are
+pinned by test (PH 354-359, NM 360) and did not move when the table was regenerated for field
+scope. **One camp is not every camp**, but the shared arithmetic is what was in doubt, and it
+is now field-proven.*
+
+***THE ROUND STILL OWED*** *(Henrik: *"I'll have to check that tomorrow"*):*
+*(2)* ***now the sharpest one*** *— count-by-index-not-name: in Uleguerand the Buffalo at 26-29
+are NOT placeholders and 354-359 are; only the second may move the counter. (3) staleness —
+zone out and back, the percentage must vanish. (4) persistence across `/addon reload`. (5) the
+`apply` verb with FilterScan loaded. (6) cooldown/primed after an NM kill. (7) the menu row's
+ICON renders as the dragon and not a text button — `filetex` is nil headless, so no suite can
+see it.*
 
 ***What landed:*** *`feature/nmlookup` (the disfavour curve, hand-carried with anchor tests
 because it exists in NO branch of the public server repo), `feature/nmtrack` (rounds counted by
