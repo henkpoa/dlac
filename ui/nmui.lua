@@ -366,7 +366,16 @@ end
 -- One row: an invisible Selectable as the click target, with the columns drawn
 -- over it (the + Add list idiom in gearui). A row is a whole line, so a click
 -- anywhere on it selects.
-local function drawRow(r, i, nameX)
+-- TWO LINES per row, not one (field, Henrik 2026-08-04). The note used to sit
+-- at a fixed column beside the name, and in the field it CLIPPED: "Damselfly x1
+-- Valku..." with the zone button off the edge entirely. The name column is as
+-- wide as the longest NM name, the note carries a placeholder name AND a count
+-- AND (outside area mode) a zone button -- one line only fits if the pane is
+-- absurdly wide, and the pane cannot be, because the card lives to its right.
+-- So the note drops to its own indented line under the name. Henrik's call
+-- between this and a wider column: "or we simply just do a new line for the
+-- area".
+local function drawRow(r, i)
     local key = rowKey(r);
     -- The widget id is positional (unique within the frame); the SELECTION is
     -- not (it has to survive the list re-sorting).
@@ -383,7 +392,12 @@ local function drawRow(r, i, nameX)
         imgui.SameLine(0, 4);
         imgui.TextColored(COL.WANT, '(guess)');
     end
-    imgui.SameLine(nameX);
+    -- The second line. Indented with the chocoui idiom (a zero-height Dummy
+    -- then SameLine with no spacing) -- inlined rather than calling the helper
+    -- further down this file, because a name declared LATER is not an upvalue
+    -- here, it is a silent nil global.
+    imgui.Dummy({ 14, 0 });
+    imgui.SameLine(0, 0);
     -- In the by-drop mode the news is WHICH drop answered, not how the NM pops
     -- -- that is what the card is for, and the row was listed because of the
     -- item. The pop note is still one hover away, on the tooltip above.
@@ -440,17 +454,21 @@ local function drawList(rows, total, items)
     if st.mode == 'drop' and items ~= nil and #items > 0 then
         local named = items[1];
         if #items > 1 then named = named .. string.format(' (+%d more matching)', #items - 1); end
+        -- WRAPS rather than clips: this header names an item the player typed,
+        -- so its length is not ours to bound, and in the field it ran off the
+        -- pane ("...Emperor Hairpin (+2 more match"). A truncated sentence that
+        -- ends mid-word reads as a rendering fault, not as a long name.
+        imgui.PushTextWrapPos(0.0);
         imgui.TextColored(COL.DIM, esc('Every NM that drops ' .. named .. ':'));
+        imgui.PopTextWrapPos();
     end
 
     local anyGuess = false;
-    local nameW = 150;
+    -- The note is on its own line now, so there is no second column to align to
+    -- and no width to measure -- this loop only asks whether anything is a guess.
     for _, r in ipairs(rows) do
         if r.guess then anyGuess = true; end
-        local w = textW(r.n) + (r.guess and textW(' (guess)') or 0) + 20;
-        if w > nameW then nameW = w; end
     end
-    nameW = math.min(nameW, 300);
 
     if st.mode == 'name' and rows[1] ~= nil and rows[1].guess then
         imgui.TextColored(COL.WANT, 'Closest matches to what you typed -- none of them is an exact name.');
@@ -461,7 +479,7 @@ local function drawList(rows, total, items)
     imgui.BeginChild('##dlacnmrows', { -1, -1 }, false);
     local lok = pcall(function()
         for i, r in ipairs(rows) do
-            drawRow(r, i, 4 + nameW);
+            drawRow(r, i);
         end
         if total > #rows then
             imgui.Spacing();
