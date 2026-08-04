@@ -151,10 +151,71 @@ end
 -- ---------------------------------------------------------------------------
 -- the slot grid + meters + game actions
 -- ---------------------------------------------------------------------------
+
+-- The LIST flavor of the slot area (Henrik 2026-08-04): the set's spells as
+-- codex-grammar rows -- left-click Spell Info, right-click removes, the
+-- live state as a label tag. Empty slots collapse into one dim count.
+local function slotList(ctx, liveIds)
+    local im, st, book = ctx.im, ctx.state, ctx.book;
+    local set = st.editingSet;
+    local nameW = math.max(kit.availWidth(im, MID_W) - 24 - 40, 120);
+    local shown = 0;
+    for i = 1, 20 do
+        local id = set.ids[i] or 0;
+        if id ~= 0 then
+            shown = shown + 1;
+            local s = book.spells[id];
+            local liveTag = '';
+            if liveIds ~= nil then
+                liveTag = liveIds[id] and '' or '  (not active yet)';
+            end
+            local label = ((s ~= nil) and s.name or ('#' .. id)) .. liveTag;
+            local lclick, rclick = spellsui.listRow(ctx, id, 24, nameW,
+                st.selectedId == id, true, { label = label });
+            if lclick then
+                st.selectedId = id;
+                st.detailOpen[1] = true;
+                st.detailFocus = true;
+            end
+            if rclick then
+                ctx.sets.removeSlot(set, i);
+                st.applyNote = nil;
+            end
+            spellsui.tooltip(ctx, id);
+        end
+    end
+    if shown == 0 then
+        kit.ctext(im, kit.COL.dim, 'The set is empty - add spells from the Codex or Traits.');
+    else
+        local free = 20 - ctx.sets.count(set);
+        if free > 0 then
+            kit.ctext(im, kit.COL.dim, ('%d free slot%s'):format(free, free == 1 and '' or 's'));
+        end
+    end
+end
 local function slotGrid(ctx)
     local im, st, book = ctx.im, ctx.state, ctx.book;
     local set = st.editingSet;
-    kit.header(im, 'Slots');
+    st.detailOpen = st.detailOpen or { false };
+
+    -- the layout choice on the header line (Henrik 2026-08-04): the spatial
+    -- 5x4 grid, or codex-grammar rows with names. Persisted.
+    kit.ctext(im, kit.COL.head, 'Slots');
+    if kit.isFn(im, 'SameLine') then im.SameLine(); end
+    local layout = ctx.cfg.setsLayout or 'grid';
+    local lw = kit.measure(im, { 'Grid', 'List' }, 40);
+    if kit.litButton(im, 'Grid', layout == 'grid', lw, 18) and layout ~= 'grid' then
+        ctx.cfg.setsLayout = 'grid'; layout = 'grid';
+        if ctx.save then ctx.save(); end
+    end
+    kit.tip(im, 'The 5x4 slot cells.');
+    if kit.isFn(im, 'SameLine') then im.SameLine(); end
+    if kit.litButton(im, 'List', layout == 'list', lw, 18) and layout ~= 'list' then
+        ctx.cfg.setsLayout = 'list'; layout = 'list';
+        if ctx.save then ctx.save(); end
+    end
+    kit.tip(im, 'Named rows, like the Codex: left-click for Spell Info,\nright-click removes from the set.');
+    if kit.isFn(im, 'Separator') then im.Separator(); end
 
     -- what the CLIENT has set right now, refreshed every frame: spells not
     -- yet live draw dimmed and light up one by one as an apply lands them.
@@ -166,7 +227,11 @@ local function slotGrid(ctx)
         for i = 1, 20 do if live[i] ~= 0 then liveIds[live[i]] = true; end end
     end
 
+    if layout == 'list' then
+        slotList(ctx, liveIds);
+    else
     -- center the 5-cell rows in the column: equal space both sides
+    -- (the grid body keeps its original indent; the else wraps it)
     local cell = 48;
     local gridW = (cell + 4) * 5 + 8 * 4;      -- cell+frame padding, 8px gaps
     local pad = math.max(0, math.floor((kit.availWidth(im, MID_W) - gridW) / 2));
@@ -224,6 +289,7 @@ local function slotGrid(ctx)
             kit.tip(im, ('slot %d (empty)'):format(i));
         end
     end
+    end
 
     if kit.isFn(im, 'Separator') then im.Separator(); end
     local used = ctx.sets.usedPoints(st.editingSet, book);
@@ -244,17 +310,13 @@ local function slotGrid(ctx)
     local clearW = kit.measure(im, { 'Clear' }, 50);
     local dirty = nil;                     -- nil = unknown (live unreadable)
     if liveIds ~= nil then
+        -- slot-wise against the SORTED layout (what Apply would send): the
+        -- right spells in the wrong order count as pending too
         dirty = false;
-        local wantN, liveN = 0, 0;
+        local T = ctx.sets.sortedLayout(set.ids, ctx.book);
         for i = 1, 20 do
-            local id = set.ids[i] or 0;
-            if id ~= 0 then
-                wantN = wantN + 1;
-                if not liveIds[id] then dirty = true; end
-            end
+            if (live[i] or 0) ~= T[i] then dirty = true; break; end
         end
-        for _ in pairs(liveIds) do liveN = liveN + 1; end
-        if liveN ~= wantN then dirty = true; end
     end
     local pal = nil;
     if not ctx.blu.applying then

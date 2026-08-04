@@ -143,25 +143,18 @@ local function tabCtx(im, st, deps, embedded)
     };
 end
 
--- Does the editing set differ from the LIVE in-game set (identity compare,
--- both directions)? true / false, nil when the live set is unreadable.
--- Drives the header Apply button's green.
+-- Does the LIVE in-game set differ from the editing set's SORTED layout
+-- (slot-wise -- what applyDiff would send)? So a right-spells-wrong-order
+-- set lights Apply green, and one click re-sorts it. true / false, nil
+-- when the live set is unreadable.
 local function applyDirty(deps, st)
     local live = deps.blu.currentSet();
     if #live ~= 20 then return nil; end
-    local liveIds, liveN = {}, 0;
+    local T = deps.sets.sortedLayout(st.editingSet.ids, deps.book);
     for i = 1, 20 do
-        if live[i] ~= 0 then liveIds[live[i]] = true; liveN = liveN + 1; end
+        if (live[i] or 0) ~= T[i] then return true; end
     end
-    local wantN = 0;
-    for i = 1, 20 do
-        local id = st.editingSet.ids[i] or 0;
-        if id ~= 0 then
-            wantN = wantN + 1;
-            if not liveIds[id] then return true; end
-        end
-    end
-    return liveN ~= wantN;
+    return false;
 end
 
 -- header + tab row + the active tab: everything between Begin and End,

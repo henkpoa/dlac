@@ -94,6 +94,30 @@ function M.clear(set)
     for i = 1, 20 do set.ids[i] = 0; end
 end
 
+-- The APPLY layout (field 2026-08-04: the game's own set list should read
+-- in level order): the set's learned spells sorted ascending by spell level
+-- (ties by id) into slots 1..n, zeros after. This is exactly what applyDiff
+-- sends and what the Apply-dirty compare measures -- low spells sit in the
+-- low slots a level-down spares.
+function M.sortedLayout(ids, book)
+    local pick = {};
+    for i = 1, 20 do
+        local id = ids[i] or 0;
+        if id ~= 0 and book.spells[id] ~= nil and book.learned(id) then
+            pick[#pick + 1] = id;
+        end
+    end
+    table.sort(pick, function(a, b)
+        local la = book.spells[a].level or 999;
+        local lb = book.spells[b].level or 999;
+        if la ~= lb then return la < lb; end
+        return a < b;
+    end);
+    local T = {};
+    for i = 1, 20 do T[i] = pick[i] or 0; end
+    return T;
+end
+
 -- 'DUAL_WIELD' -> 'Dual Wield', 'MND' stays 'MND' (<=4 chars = stat acronym)
 function M.prettyStat(s)
     if #s <= 4 and not s:find('_') then return s; end
