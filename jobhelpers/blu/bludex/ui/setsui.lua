@@ -182,7 +182,7 @@ local function slotList(ctx, liveIds)
                 liveTag = liveIds[id] and '' or '  (not active yet)';
             end
             local label = ((s ~= nil) and s.name or ('#' .. id)) .. liveTag;
-            local lclick, rclick = spellsui.listRow(ctx, id, 24, nameW,
+            local lclick, rclick, hov = spellsui.listRow(ctx, id, 24, nameW,
                 st.selectedId == id, true, { label = label });
             if lclick then
                 st.selectedId = id;
@@ -193,7 +193,7 @@ local function slotList(ctx, liveIds)
                 ctx.sets.removeSlot(set, i);
                 st.applyNote = nil;
             end
-            spellsui.tooltip(ctx, id);
+            spellsui.tooltip(ctx, id, hov);
         end
     end
     if shown == 0 then
