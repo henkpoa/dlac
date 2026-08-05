@@ -117,8 +117,9 @@ Cheap, and none of them need a setup. Fold into whatever you're already doing.
 - [ ] **E4** — the pre-flat Ammo handling, re-tested (`2026.07.28n` handled or reported all
       three cases).
 - [ ] **E5** — the new **P** button beside the E-Box **Store** crate: it opens the Restock
-      panel, and it sits far enough from Store that a slightly-wide click cannot deposit your
-      whole inventory instead. That second half is the only reason this is on the list.
+      panel, it lines up with the `x4` badge below it, and a click aimed at it does not land
+      on Store — which deposits your whole inventory with no confirm. That last half is the
+      only reason this is on the list; P sits one badge-width from it.
 
 ---
 

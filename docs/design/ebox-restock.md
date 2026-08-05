@@ -92,8 +92,10 @@ A small floating icon (the wicker-box item icon 43, the icon trove uses) that ap
   lived solely in a tooltip — a control you have to already know about is not a control. `P`
   rides the **Store** line because Store is the one icon that is unconditional past the
   proximity gate, so it holds a fixed position while the green and yellow crates come and go
-  beneath it. Its gap from Store is 12px, not the badge's 6: Store is one click, no confirm,
-  and deposits your whole Inventory, so a cursor that lands slightly wide of `P` must not hit it.
+  beneath it. Its gap from Store is the badge's **6px** — so `P` and the `x4` badge on the
+  crate below start at the same offset and read as one column. (It shipped at 12px to keep
+  distance from a Store button that deposits your whole Inventory on one unconfirmed click;
+  Henrik moved it in. The button's own size is unchanged, so the click target did not shrink.)
 - **Badge** = the number of tracked items with a **box-fillable shortfall** (below target AND `in-box ≥ 1`).
 
 **Two settings** (both stored in `restock.lua`):

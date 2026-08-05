@@ -750,16 +750,18 @@ function M.trayDraw(deps)
         -- the green and yellow crates come and go beneath it. Beside a crate that
         -- flickers, P would flicker with it.
         --
-        -- THE GAP IS 12, NOT THE BADGE'S 6, AND THAT IS DELIBERATE. Store is one
-        -- click with no confirm and it deposits your entire Inventory. A cursor
-        -- aimed at P that lands 6px left of target should not empty your bags, so
-        -- the two buttons get real distance between them.
+        -- THE GAP IS THE BADGE'S 6 (Henrik, 2026-08-05: "closer to the box").
+        -- It shipped at 12 to put distance between P and a Store button that is
+        -- one click, no confirm, and deposits your entire Inventory -- but 6 is
+        -- what the badges use, so at 6 the P and the 'x4' below it start at the
+        -- same offset and read as one column instead of two ragged ones. The
+        -- button's own size is unchanged, so the target is as big as it was.
         --
         -- A plain Button, NOT iconButton: no PushID, so the crate-order assertion
         -- (TR21, which pins rsnudge_red,green,yellow exactly) still describes the
         -- crates and nothing else. The SameLine here is consumed by this button,
         -- so the green crate below still opens its own line -- the column holds.
-        imgui.SameLine(0, 12);
+        imgui.SameLine(0, 6);
         if imgui.Button('P##rsnudge_panel', { 24, 24 }) then openPanel(); end
         if imgui.IsItemHovered() then
             imgui.BeginTooltip();
