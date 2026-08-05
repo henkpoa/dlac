@@ -1,6 +1,6 @@
-# Field checks owed — against `v2026.08.05a`
+# Field checks owed — against `v2026.08.05b`
 
-**Reload first.** `/addon reload dlac`, then check the load banner says **`2026.08.05a`**.
+**Reload first.** `/addon reload dlac`, then check the load banner says **`2026.08.05b`**.
 If it says anything else, stop — you are testing a different tree than this list describes,
 and every answer below becomes unreliable.
 
@@ -147,6 +147,28 @@ legacy-tier file, because the engine and the Triggers tab both resolve to it.
 **Support fact worth keeping:** wiping `config\addons\dlac\` does **not** reset a migrated
 character — it makes `engineAutoMigrate` run again on the next login and re-copy the same
 legacy tree. The lever is the LuaAshitacast `dlac\` folder, not dlac's own.
+
+---
+
+## Session G — the debug handoff, which has been broken for a while (`2026.08.05b`)
+
+Found in the legacy-fallback sweep, not by anyone noticing. `dispatch.writeDebugHandoff` writes
+the engine half to `charDir() .. name`; all three readers in `feature\debug.lua` were asking for
+`handoffDir() .. 'dlac\' .. name`. The native home already carries the character level, so the
+readers have been looking one folder too deep since the purge moved the home — **no engine
+section has merged into a `/dl report` since**, and the handoff watch (the fallback that fires
+the addon half when this state misses the command) never fired either.
+
+This one is worth running deliberately, because it silently degraded the artifact this whole
+file tells you to send.
+
+- [ ] **G1 — `/dl debug ls`, then `/dl report`.** The bundle must contain a populated
+      `== engine half ==` section, not `NO_ENGINE_HALF` and not an empty one.
+- [ ] **G2 — the handoff watch.** Run `/dl check` and confirm the engine's `alive` line and the
+      addon readout both appear. If the addon half is missing, the watch is still not firing.
+- [ ] **G3 — nothing new under `luashitacast\`.** After a login and a profile switch, confirm
+      `config\addons\luashitacast\<Char>\` has no freshly-created empty `dlac\` folder —
+      `profiles.setActive` was creating one on every pointer write.
 
 ---
 
