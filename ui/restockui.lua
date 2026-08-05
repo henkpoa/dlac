@@ -183,6 +183,46 @@ end
 local function homeScan() return scanBags(HOME_BAGS, nil); end
 
 -- What "do I have enough?" should count: loose + what your containers hold.
+-- Resolve an item id to a record for the hover card, BUILDING THE CATALOG INDEX
+-- IF NOBODY HAS YET (Henrik, 2026-08-05: "for ammo I cannot see the level or
+-- anything").
+--
+-- gearui's lookupById is a READ-ONLY accessor over the oracle -- it deliberately
+-- never triggers a flatten, because the render paths own when that happens. Every
+-- other consumer of it lives on a gear tab, which has always built the index by
+-- the time you can hover anything. This panel does NOT: you can reach it from the
+-- Automations tab, from /dl restock, and now from the tray's P button while
+-- standing at a box, on a client that has never opened a gear tab this session.
+-- So the lookup answered nil, the row fell back to printing the name it already
+-- showed, and ammo -- which nobody browses on the gear tabs first -- was the
+-- obvious victim.
+--
+-- Retry once through allEquipList, which is the builder itself and memoises on
+-- _allEquip: the flatten happens at most once per session, on the first hover
+-- that misses, and every later lookup is a plain table read.
+local function itemRec(deps, id)
+    if deps == nil or id == nil or type(deps.lookupById) ~= 'function' then return nil; end
+    local rec = deps.lookupById(id);
+    if rec == nil and type(deps.allEquipList) == 'function' then
+        pcall(deps.allEquipList);
+        rec = deps.lookupById(id);
+    end
+    return rec;
+end
+
+M._itemRec = itemRec;   -- test seam (RS-T*), above the imgui guard
+
+-- The hover card for one tracked/searchable item: the full card when we can
+-- resolve it, the bare name when we genuinely cannot (an item the catalog has
+-- never heard of -- see the five that were missing until today).
+local function itemHover(deps, id, name)
+    if not imgui.IsItemHovered() then return; end
+    local rec = itemRec(deps, id);
+    if rec ~= nil and deps ~= nil and type(deps.itemTooltip) == 'function'
+       and pcall(deps.itemTooltip, rec) then return; end
+    if name ~= nil then imgui.SetTooltip(esc(name)); end
+end
+
 local function stockOf(all, boxed, id)
     local n = (all or {})[id] or 0;
     local b = (boxed or {})[id];
@@ -427,15 +467,11 @@ function M.render(deps, availW)
                                      or  ('c_' .. tostring(e.id));
         imgui.PushID('rsrow_' .. key);
         imgui.Dummy({ 0, 0 }); imgui.SameLine(NAME_X);
-        local rec = (deps ~= nil and type(deps.lookupById) == 'function') and deps.lookupById(e.id) or nil;
         if deps ~= nil and type(deps.renderIcon) == 'function' then deps.renderIcon(e.id, 18); end
         local have = stockOf(onHand, boxed, e.id);
         local tgt = effT[e.id] or e.target;
         imgui.TextColored((have >= tgt) and COL_TEXT or COL_GOLD, esc(clip(e.name, NAME_MAX)));
-        if imgui.IsItemHovered() then
-            if rec ~= nil and deps ~= nil and type(deps.itemTooltip) == 'function' then pcall(deps.itemTooltip, rec);
-            else imgui.SetTooltip(esc(e.name)); end
-        end
+        itemHover(deps, e.id, e.name);
         if scope == 'character' and shadowed[e.id] then
             imgui.SameLine(0, 6); imgui.TextColored(COL_DIM, string.format('(job uses %d)', tgt));
         elseif scope == 'job' and charTgt[e.id] ~= nil then
@@ -584,7 +620,11 @@ function M.render(deps, availW)
                     imgui.Dummy({ 0, 0 }); imgui.SameLine(NAME_X);
                     if deps ~= nil and type(deps.renderIcon) == 'function' then deps.renderIcon(r.id, 18); end
                     imgui.TextColored(COL_TEXT, esc(clip(r.name or ('#' .. tostring(r.id)), NAME_MAX)));
-                    if imgui.IsItemHovered() and r.name ~= nil then imgui.SetTooltip(esc(r.name)); end
+                    -- The search results are exactly where the card matters most:
+                    -- you are deciding whether to TRACK this item, and its level
+                    -- and stats are the decision. This row only ever showed the
+                    -- name it was already displaying.
+                    itemHover(deps, r.id, r.name);
                     imgui.SameLine(BOX_X);
                     imgui.TextColored(COL_DIM, 'box x' .. tostring(r.qty or 0));
                     imgui.SameLine(0, GAP);
@@ -632,6 +672,7 @@ local TIP_MAX   = 12;    -- rows before a tooltip starts saying "+N more"
 local function openPanel()
     pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '/dl restock'); end);
 end
+
 
 -- One icon button. A missing PNG falls back to a labelled button -- an asset
 -- that failed to load must never leave the surface unclickable.

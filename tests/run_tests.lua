@@ -14637,6 +14637,42 @@ end)();
         rui._stockOf({}, { [18150] = { qty = 1188, n = 12 } }, 18150), 1188);
     check('AC6d nothing at all -> 0', rui._stockOf({}, {}, 18150), 0);
 
+    -- AC7. The hover card's item lookup (Henrik 2026-08-05: "for ammo I cannot
+    -- see the level or anything"). gearui's lookupById is a READ-ONLY accessor
+    -- that never triggers a flatten -- fine for every consumer that lives on a
+    -- gear tab, wrong for this panel, which you can reach from the Automations
+    -- tab, /dl restock, or the tray's P button without a gear tab ever having
+    -- been opened. So a miss must BUILD once and retry, not give up.
+    do
+        local built, table_ = 0, { Id = 18150, Name = 'Blind Bolt', Level = 40 };
+        local haveIndex = false;
+        local deps = {
+            lookupById   = function(id) return (haveIndex and id == 18150) and table_ or nil; end,
+            allEquipList = function() built = built + 1; haveIndex = true; end,
+        };
+        check('AC7 a cold lookup still resolves the item', rui._itemRec(deps, 18150), table_);
+        check('AC7b ...by building the catalog index exactly once', built, 1);
+
+        -- Warm: the index is up, so no build at all. This is what keeps the fix
+        -- from turning every hover into a flatten.
+        built = 0;
+        check('AC7c a warm lookup resolves', rui._itemRec(deps, 18150), table_);
+        check('AC7d ...and does not rebuild', built, 0);
+
+        -- An item the catalog genuinely does not know: one build attempt, then
+        -- nil -- the caller falls back to printing the bare name. It must not
+        -- loop, and it must not error.
+        built = 0;
+        check('AC7e an unknown id gives up cleanly', rui._itemRec(deps, 999999), nil);
+        check('AC7f ...after one build attempt', built, 1);
+
+        -- Degrade: no deps, no id, no lookup function. The panel renders on a
+        -- client where gearui may not have handed us anything.
+        check('AC7g no deps -> nil, no error', rui._itemRec(nil, 18150), nil);
+        check('AC7h no id -> nil', rui._itemRec(deps, nil), nil);
+        check('AC7i deps without a lookup -> nil', rui._itemRec({}, 18150), nil);
+    end
+
     -- level: persisted per entry (GUI sort data; the engine ignores it --
     -- the fmt-2 round-trip above pins the serializer side)
     aw.jobsData.COR.ammo = {};
