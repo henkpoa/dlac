@@ -88,6 +88,12 @@ A small floating icon (the wicker-box item icon 43, the icon trove uses) that ap
 - **Hover** = the exact fetch plan tooltip: each item and the count it will pull (`fetches` from §3), plus a `free N slots` line and any deferred `remainder`.
 - **LEFT-click** = execute that plan (Fetch all, pre-clamped — it cannot over-draw or lose items).
 - **RIGHT-click** = open the panel (queues `/dl restock`, landing on the E-Box Restock detail view).
+- **P button** (2026-08-05) = the same thing, visibly. Right-click was the only way in and it
+  lived solely in a tooltip — a control you have to already know about is not a control. `P`
+  rides the **Store** line because Store is the one icon that is unconditional past the
+  proximity gate, so it holds a fixed position while the green and yellow crates come and go
+  beneath it. Its gap from Store is 12px, not the badge's 6: Store is one click, no confirm,
+  and deposits your whole Inventory, so a cursor that lands slightly wide of `P` must not hit it.
 - **Badge** = the number of tracked items with a **box-fillable shortfall** (below target AND `in-box ≥ 1`).
 
 **Two settings** (both stored in `restock.lua`):

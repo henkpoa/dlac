@@ -2944,6 +2944,14 @@ end)();
         pushed[#pushed + 1] = tostring(id);
         ops[#ops + 1] = 'icon:' .. tostring(id);
     end
+    -- Buttons go in the ops log too, or the glued-icon check below reads a
+    -- SameLine that a BUTTON consumed as if the next icon had eaten it. The P
+    -- (open panel) button sits on the Store line for exactly that reason, and an
+    -- incomplete log would have failed it while the column was in fact intact.
+    IM.Button = function(l)
+        ops[#ops + 1] = 'btn:' .. tostring(l);
+        return tostring(l) == CLICK;
+    end
     local PLAN = { pulls = {}, fetches = {}, remainder = {}, badge = 0 };
     package.loaded['dlac\\feature\\restockwatch'] = {
         loadState = nop, master = true, showNudge = true, onlyWhenNeeded = false,
@@ -2990,6 +2998,35 @@ end)();
             if ops[i]:sub(1, 5) == 'icon:' and ops[i - 1] == 'sameline' then glued = ops[i]; end
         end
         check('TR21b the crates stack -- no icon opens with a SameLine', glued, nil);
+        -- P (open panel) rides the STORE line: Store is the one crate that is
+        -- unconditional past the proximity gate, so P has a fixed position while
+        -- green and yellow come and go under it. Assert BOTH halves -- that it is
+        -- drawn, and that it sits between Store and the next crate rather than on
+        -- a line of its own.
+        local pAt, redAt, greenAt = nil, nil, nil;
+        for i, o in ipairs(ops) do
+            if o == 'btn:P##rsnudge_panel' then pAt = i; end
+            if o == 'icon:rsnudge_red'   then redAt = i; end
+            if o == 'icon:rsnudge_green' then greenAt = i; end
+        end
+        check('TR21c the P button is drawn at all', type(pAt), 'number');
+        check('TR21d ...on the Store line, above the crates that come and go',
+            (pAt ~= nil and redAt ~= nil and greenAt ~= nil)
+            and (pAt > redAt) and (pAt < greenAt), true);
+        check('TR21e ...taking the SameLine itself, so the column holds',
+            (pAt ~= nil) and ops[pAt - 1] == 'sameline', true);
+        -- And that it actually opens the panel. openPanel queues the command, so
+        -- a stub chat manager is the only way to see it -- without this the button
+        -- could be wired to nothing and every check above would still pass.
+        local savedAshita, queued = AshitaCore, nil;
+        AshitaCore = { GetChatManager = function()
+            return { QueueCommand = function(_, _, c) queued = c; end };
+        end };
+        CLICK = 'P##rsnudge_panel';
+        pcall(rs.trayDraw, {});
+        CLICK = nil;
+        AshitaCore = savedAshita;
+        check('TR21f clicking P opens the Restock panel', queued, '/dl restock');
         check('TR22 the E-Box slot balances PushID/PopID', depth.id, 0);
         check('TR23 the E-Box slot balances its tooltips', depth.tip, 0);
         check('TR24 the E-Box slot begins NO window of its own', depth.win, 0);

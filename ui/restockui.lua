@@ -739,6 +739,37 @@ function M.trayDraw(deps)
             imgui.TextColored(COL_DIM, 'Left-click: store everything (no confirm).');
             imgui.EndTooltip();
         end
+
+        -- P for Panel (Henrik, 2026-08-05): edit Restock on the fly, standing at
+        -- the box, without going hunting for the tab. Right-clicking a crate has
+        -- always done this, but that only ever lived in a tooltip -- a control
+        -- you have to already know about is not a control.
+        --
+        -- It rides the STORE line, which is the one anchored icon here: past the
+        -- proximity gate Store is unconditional, so P has a fixed position while
+        -- the green and yellow crates come and go beneath it. Beside a crate that
+        -- flickers, P would flicker with it.
+        --
+        -- THE GAP IS 12, NOT THE BADGE'S 6, AND THAT IS DELIBERATE. Store is one
+        -- click with no confirm and it deposits your entire Inventory. A cursor
+        -- aimed at P that lands 6px left of target should not empty your bags, so
+        -- the two buttons get real distance between them.
+        --
+        -- A plain Button, NOT iconButton: no PushID, so the crate-order assertion
+        -- (TR21, which pins rsnudge_red,green,yellow exactly) still describes the
+        -- crates and nothing else. The SameLine here is consumed by this button,
+        -- so the green crate below still opens its own line -- the column holds.
+        imgui.SameLine(0, 12);
+        if imgui.Button('P##rsnudge_panel', { 24, 24 }) then openPanel(); end
+        if imgui.IsItemHovered() then
+            imgui.BeginTooltip();
+            imgui.TextColored(COL_HEADER, 'P -- open the Restock panel');
+            imgui.TextColored(COL_TEXT, 'Edit what Restock keeps you stocked with, right here');
+            imgui.TextColored(COL_TEXT, 'at the box: targets, per-job lists, the two nudge settings.');
+            imgui.Separator();
+            imgui.TextColored(COL_DIM, 'Right-clicking a crate does the same thing.');
+            imgui.EndTooltip();
+        end
     end
 
     -- ...then the two crates that come and go, each on its own line (the tray is
