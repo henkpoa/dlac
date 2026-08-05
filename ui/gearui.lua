@@ -214,8 +214,9 @@ local COL = {   -- ONE table, not ten locals: the 200-local chunk cap
     -- colour at all. Dimmer than COL.DIM so it does not land on the same note as
     -- a panel's own helper text. It replaced a literal "(not owned)" tag on the
     -- picker's rows -- with the tick on, a third of the list wore one, and a tag
-    -- repeated that often stops being read. The item hover still SAYS it, so the
-    -- fact never lives in the colour alone.
+    -- repeated that often stops being read. The hover briefly carried the fact in
+    -- words instead; that came out on 08-05 for the same reason the tag did --
+    -- on a list where nothing is owned, saying so on every row is noise.
     -- NOT the lockstyle picker, which keeps its orange: there an unowned piece is
     -- PREVIEW ONLY (the server will not render it on you), a warning about what
     -- the game will do, not a note about what you have.
@@ -1244,16 +1245,16 @@ local function renderItemTooltip(rec, note)
         -- with no location detail still warns ('?') rather than staying silent.
         if rec.Id ~= nil then
             local locs = owned.whereText(rec);         -- populates the split cache too
-            if rec.Virtual ~= true and not owned.haveInBags(rec) then
-                -- Says the thing the row's grey only implies. The + Add picker
-                -- dropped its "(not owned)" tag (2026-08-04) and a colour is not a
-                -- fact you can read back to yourself -- so the hover carries it,
-                -- here rather than in the picker, because every surface that shows
-                -- a catalog row you lack wants the same sentence.
-                -- haveInBags fails OPEN: pre-login / headless nothing is painted
-                -- unowned, so this line cannot appear on gear you actually have.
-                imgui.TextColored(COL.UNOWN, 'Not owned yet -- the engine skips it until it reaches your bags.');
-            elseif owned.isStored(rec) then
+            -- No "not owned yet" line here (Henrik, 2026-08-05: "that text gives
+            -- us nothing"). It was added the day before as a hedge -- the picker
+            -- had just dropped its "(not owned)" tag and I wanted the fact stated
+            -- in words somewhere. It is not worth stating: the row is already
+            -- grey, and on the surfaces where the card is read most (the E-Box
+            -- Restock picker, browsing what is in the BOX) every single row is
+            -- gear you do not own, so the sentence appeared on all of them and
+            -- told you nothing you had not just typed a search for.
+            -- The colour carries it, which is what was asked for originally.
+            if owned.isStored(rec) then
                 imgui.TextColored(COL.ERR, 'IN STORAGE: ' .. fmt.esc((locs ~= '') and locs or '?')
                     .. '  (move to Inventory/Wardrobe to equip)');
             elseif locs ~= '' then
@@ -3695,7 +3696,8 @@ local function renderAddRow(rec, ordinal, level, nameW)
     -- for the same reason it always did -- not having it at all is the more basic
     -- fact. The literal "(not owned)" tag is gone (Henrik 2026-08-04): with the tick
     -- on, a third of the list wore it, and a tag repeated that often stops being
-    -- read. The hover still SAYS it, so the fact never lives in the colour alone.
+    -- read. The colour carries it alone now -- the hover line that briefly said
+    -- so as well came out on 08-05 (it fired on every row of an unowned list).
     local mine = (rec.Virtual == true) or owned.haveInBags(rec);
     local nameColr = (not mine) and COL.UNOWN or (owned.isStored(rec) and COL.ERR or COL.USABLE);
     imgui.TextColored(nameColr, fmt.esc(rec.Name or '?') .. fmt.qtyTag(rec));
