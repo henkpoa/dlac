@@ -15622,6 +15622,39 @@ end)();
     check('NO34 new job did NOT rewrite gear.lua',     has('gear.lua'), false);
     curAbbr = 'WHM';
 
+    -- --- THE MIGRATED CHARACTER (2026-08-05, the field case) ---
+    -- engineAutoMigrate copies config\addons\luashitacast\<char>\dlac\ WHOLE into
+    -- the native home, so an old triggers\<JOB>.lua lands at the LEGACY TIER.
+    -- seedTriggersFile then refuses to overwrite it ("user data") while the
+    -- baseline check demanded the PROFILE tier -- two halves disagreeing about
+    -- what "has a trigger file" means, so auto-setup warned and retried forever
+    -- on a character whose rules were working the whole time. A legacy-tier file
+    -- is LIVE (triggersui.trigFilePath and the engine both fall back to it).
+    do
+        curAbbr = 'RUN';
+        disk = { ['I:\\game\\addons\\dlac\\gear.lua'] = 'return {}\n' };
+        disk[NROOT .. 'gear.lua'] = 'return {}\n';
+        disk[NROOT .. 'profiles\\Default\\sets\\RUN.lua'] = 'return {}\n';
+        disk[NROOT .. 'triggers\\RUN.lua'] = '-- migrated rules\n';   -- LEGACY TIER ONLY
+        storageOn = true; writes = {};
+        check('NO34a a migrated legacy-tier trigger file completes the baseline',
+              setup.nativeBaselineComplete('RUN'), true);
+        check('NO34b ...so auto-setup goes quiet instead of warning forever',
+              setup.autoSetupNative(), 'complete');
+        check('NO34c ...and writes nothing (migrated rules are never clobbered)',
+              #writes, 0);
+        -- With NEITHER tier present the gate still fails -- and says so in a way
+        -- that shows both were looked at, so the next reader does not re-derive
+        -- the two-tier rule from scratch.
+        disk[NROOT .. 'triggers\\RUN.lua'] = nil;
+        local ok2, miss = setup.nativeBaselineComplete('RUN');
+        check('NO34d neither tier -> still incomplete', ok2, false);
+        check('NO34e ...and the reason names the legacy tier as checked',
+              type(miss) == 'string' and miss:find('legacy-tier', 1, true) ~= nil, true);
+        curAbbr = 'WHM';
+        disk = { ['I:\\game\\addons\\dlac\\gear.lua'] = 'return {}\n' };
+    end
+
     -- --- job not ready (abbr nil, GetMainJob 0 at login) never seeds (hard rule 11) ---
     curAbbr = nil; writes = {};
     check('NO35 job-not-ready auto-setup idles',       setup.autoSetupNative(), 'idle');

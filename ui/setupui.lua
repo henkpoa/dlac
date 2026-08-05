@@ -323,9 +323,23 @@ setup.nativeBaselineComplete = function(abbr)
         local sp = (type(prof.setsPath) == 'function') and prof.setsPath(abbr) or nil;
         if sp == nil then missing = 'no sets path for ' .. abbr; return; end
         if D.readFileText(sp) == nil then missing = 'sets file ' .. sp; return; end
+        -- TRIGGERS ARE TWO-TIER, and this check must agree with the RESOLVERS.
+        -- seedTriggersFile bails with "user data: never overwrite" when the
+        -- LEGACY TIER file exists, and triggersui.trigFilePath / the engine both
+        -- fall back to that tier -- so a legacy-tier file is LIVE and the
+        -- baseline really is complete. Accepting only the profile tier here made
+        -- the two halves disagree forever (2026-08-05, a migrated character):
+        -- engineAutoMigrate copies config\addons\luashitacast\<char>\dlac\ whole
+        -- into the native home, which lands the old triggers\<JOB>.lua at
+        -- exactly the legacy tier -- so the seeder saw a file and refused, this
+        -- check saw none and warned, and it retried every beat for good.
         local tp = (type(prof.triggersPath) == 'function') and prof.triggersPath(abbr) or nil;
         if tp == nil then missing = 'no triggers path for ' .. abbr; return; end
-        if D.readFileText(tp) == nil then missing = 'triggers file ' .. tp; return; end
+        if D.readFileText(tp) == nil then
+            local lt = (type(prof.legacyTriggersPath) == 'function') and prof.legacyTriggersPath(abbr) or nil;
+            if lt ~= nil and D.readFileText(lt) ~= nil then complete = true; return; end
+        end
+        if D.readFileText(tp) == nil then missing = 'triggers file ' .. tp .. ' (and no legacy-tier file either)'; return; end
         complete = true;
     end);
     return complete, missing;
