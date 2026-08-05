@@ -133,10 +133,20 @@ machine.
 - [ ] **F4 — `/dl report` ships it.** The baseline verdict must be in the bundle, not only in
       chat. The whole point is that the artifact answers without the player narrating.
 
-**What we still do not know** about the original case: whether `dispatch` fails to load in his
-addon state, or whether `profiles\Default\triggers\` was never created. F3 answers it in one
-line. Until then the cause is open — the hand-made `RUN.lua` silenced the message without
-fixing anything, and he still cannot edit triggers.
+**The original case is CLOSED** (root cause fixed in `c5d09c6`, same version). It was neither
+of the two things I was chasing. `engineAutoMigrate` copies the LuaAshitacast `dlac\` tree
+whole into the native home, landing an old `triggers\<JOB>.lua` at the **legacy tier** —
+which `seedTriggersFile` refuses to overwrite and `nativeBaselineComplete` refused to count.
+Two halves disagreeing about what "has a trigger file" means, forever. The gate now accepts a
+legacy-tier file, because the engine and the Triggers tab both resolve to it.
+
+- [ ] **F5 — the migrated character goes quiet.** Anyone who ever ran the LuaAshitacast era:
+      confirm no "could not create its native starter files" line at login, and that the
+      Triggers tab opens their existing rules rather than an empty file.
+
+**Support fact worth keeping:** wiping `config\addons\dlac\` does **not** reset a migrated
+character — it makes `engineAutoMigrate` run again on the next login and re-copy the same
+legacy tree. The lever is the LuaAshitacast `dlac\` folder, not dlac's own.
 
 ---
 
