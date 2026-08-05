@@ -3983,6 +3983,33 @@ end)();
             check('TB30 ...with an empty & leg',      (type(r) == 'table') and next(r.when or {}), nil);
             check('TB31 the popup stack stayed balanced', depth.popup, 0);
             check('TB32 the colour stack stayed balanced', depth.col, 0);
+
+            -- TB33-37. The `mode` condition is a PICKER, not a text box
+            -- (2026-08-05). The value therefore arrives on _addValSel like every
+            -- other dropdown -- the bug this guards is the plumbing one: leave
+            -- 'mode' out of addCond's list-valued branch and the combo renders
+            -- perfectly, picks fine, and silently adds NOTHING.
+            trig.data = { Modes = { DT = {}, Weapon = { values = { 'Melee', 'Caster' } } } };
+            trig.addFor, trig.addConds = 'Item', {};
+            trig._addDef = 4;                        -- COND_DEFS.Item: name, contains, group, mode
+            trig.addValText[1] = 'ignored'; trig._addValSel = nil; trig.addValNum[1] = 0;
+            trig.addSet, trig.addPrio[1] = 'Bait', 0;
+            trig.addNote, trig.addSwap = nil, nil;
+            trig.editIdx, trig._editEquip, trig._bpEdit = nil, nil, nil;
+
+            check('TB33 the mode picker frame renders', frame(nil), true);
+
+            -- Nothing picked, and a leftover in the text box: that text must NOT
+            -- become a mode. This is what proves the widget actually moved off
+            -- addValText -- this block's stub does not record BeginCombo, so the
+            -- behaviour is the evidence, not the draw call.
+            check('TB34 the & click with no pick renders', frame('+ & condition##trgac'), true);
+            check('TB35 ...and adds nothing', #trig.addConds, 0);
+
+            trig._addValSel = 'Weapon:Melee';        -- what clicking the combo row does
+            frame('+ & condition##trgac');
+            check('TB36 a picked cycle value lands whole',
+                (trig.addConds[1] ~= nil) and trig.addConds[1].value, 'Weapon:Melee');
         end
     end
 

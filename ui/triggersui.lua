@@ -118,6 +118,22 @@ local TARGET_HINT = 'who the action is aimed at. Self = the action targets YOU -
     .. 'VIT beside your CHR) while waltzing someone else keeps the plain CHR set.\n'
     .. 'Stack it with contains/name: the self rule overlays the base rule.';
 
+-- The `mode` condition, shared by every handler that offers it -- ONE table
+-- referenced by all eight, the way SPELL_CONDS is shared by Precast/Midcast,
+-- rather than eight copies of a hint to keep in step.
+--
+-- kind 'mode' (2026-08-05) = a DROPDOWN of this job's defined mode conditions,
+-- in the vocabulary the Modes section authors and the engine stores: a toggle's
+-- bare name, or one cycle value as 'Name:Value'. It was free text until Henrik
+-- said so (*"having to write em manually is not a good way to do it"*), and the
+-- failure that removes is the worst kind this tab can produce -- a mistyped mode
+-- leaves a rule that is still VALID, matches nothing, and says nothing about it.
+local MODE_COND = { key = 'mode', kind = 'mode',
+    hint = 'a player-toggled mode must be ON. Pick from the modes defined for this\n'
+        .. 'job: a cycle offers one entry per value (Weapon:Melee), a toggle its bare\n'
+        .. 'name (DT). Define them in the Modes section.\n'
+        .. 'Stack with other conditions to make a rule mode-dependent.' };
+
 local SPELL_CONDS = {
     { key = 'skill',     kind = 'list', items = { 'Divine Magic', 'Healing Magic', 'Enhancing Magic', 'Enfeebling Magic', 'Elemental Magic', 'Dark Magic', 'Summoning', 'Ninjutsu', 'Singing', 'Blue Magic', 'Geomancy' } },
     { key = 'magicType', kind = 'list', items = { 'White Magic', 'Black Magic', 'Bard Song', 'Ninjutsu', 'Summoning', 'Blue Magic' } },
@@ -130,7 +146,7 @@ local SPELL_CONDS = {
     { key = 'dayWeatherBonus', kind = 'flag', hint = 'the day + weather NET favours the spell you are casting\n(+1 per matching day/weather, -1 per the opposing element; fires when\nthe net is positive) -- the obi rule. For a plain one-sided match,\nuse weatherMatch or dayMatch below.' },
     { key = 'weatherMatch', kind = 'flag', hint = 'the CURRENT weather element matches the spell you are casting\n(single or double weather, and your own storm counts) -- NOT the\nday+weather net, a plain weather match. Stack with a buff condition\n(Celerity / Alacrity) to gate a Scholar cast-time set.' },
     { key = 'dayMatch', kind = 'flag', hint = 'TODAY\'S day element matches the spell you are casting --\nFire spells on Firesday. Weather is not part of it, and the opposing\nelement costs nothing: for gear that pays out on the DAY alone. The\nnet (dayWeatherBonus) would miss it in opposing weather.' },
-    { key = 'mode',      kind = 'text', hint = 'a player-toggled mode must be ON (e.g. DT) -- stack with other\nconditions to make a rule mode-dependent' },
+    MODE_COND,
     { key = 'any',       kind = 'flag' },
 };
 local COND_DEFS = {
@@ -139,7 +155,7 @@ local COND_DEFS = {
         { key = 'moving', kind = 'flag' },
         { key = 'inTown', kind = 'flag',
           hint = 'you are standing in a town -- pair with status = Idle to show off\nyour gear in the cities. The town list is server-derived (data/zones.lua):\nevery city plus Nashmau, Celennia Memorial Library, Mog Garden.' },
-        { key = 'mode',   kind = 'text', hint = 'mode name, e.g. DT' },
+        MODE_COND,
     },
     Precast = SPELL_CONDS,
     Midcast = SPELL_CONDS,
@@ -149,23 +165,23 @@ local COND_DEFS = {
         { key = 'group',    kind = 'group', hint = 'match every ability in a named group (Groups section)' },
         { key = 'name',     kind = 'text', hint = 'exact ability name, e.g. Repair' },
         { key = 'target',   kind = 'list', items = TARGET_ITEMS, hint = TARGET_HINT },
-        { key = 'mode',     kind = 'text', hint = 'a player-toggled mode must be ON' },
+        MODE_COND,
         { key = 'any',      kind = 'flag' },
     },
     Item = {
         { key = 'name',     kind = 'text', hint = 'exact item name, e.g. Holy Water' },
         { key = 'contains', kind = 'text', hint = 'name contains this text' },
         { key = 'group',    kind = 'group', hint = 'match every item in a named group (Groups section)' },
-        { key = 'mode',     kind = 'text', hint = 'a player-toggled mode must be ON' },
+        MODE_COND,
     },
     Weaponskill = {
         { key = 'name', kind = 'text', hint = 'exact weaponskill name' },
         { key = 'group', kind = 'group', hint = 'match every weaponskill in a named group (Groups section)' },
-        { key = 'mode', kind = 'text', hint = 'a player-toggled mode must be ON' },
+        MODE_COND,
         { key = 'any',  kind = 'flag' },
     },
-    Preshot = { { key = 'any', kind = 'flag' }, { key = 'mode', kind = 'text', hint = 'a player-toggled mode must be ON' } },
-    Midshot = { { key = 'any', kind = 'flag' }, { key = 'mode', kind = 'text', hint = 'a player-toggled mode must be ON' } },
+    Preshot = { { key = 'any', kind = 'flag' }, MODE_COND },
+    Midshot = { { key = 'any', kind = 'flag' }, MODE_COND },
     -- Fires when YOUR PET starts an action (Blood Pact, Ready move, pet spell).
     -- NO LAC version calls a pet handler -- the upstream tutorial's
     -- HandlePetAction is a call-it-yourself pattern; dlac's engine tick does
@@ -175,7 +191,7 @@ local COND_DEFS = {
         { key = 'contains', kind = 'text', hint = 'pet action name contains this text, e.g. "Predator" for\nPredator Claws' },
         { key = 'name',     kind = 'text', hint = 'exact pet action name, e.g. Volt Strike' },
         { key = 'element',  kind = 'list', items = { 'Fire', 'Ice', 'Wind', 'Earth', 'Thunder', 'Water', 'Light', 'Dark', 'Non-Elemental' } },
-        { key = 'mode',     kind = 'text', hint = 'a player-toggled mode must be ON' },
+        MODE_COND,
         { key = 'any',      kind = 'flag' },
     },
 };
@@ -2785,6 +2801,14 @@ local function renderTrigAddPopup()
         if kind == 'number' then trig.addValNum[1] = tonumber(c.value) or 0;
         elseif kind == 'text' then trig.addValText[1] = tostring(c.value);
         elseif kind == 'list' or kind == 'group' or kind == 'buff' then trig._addValSel = c.value;
+        elseif kind == 'mode' then
+            -- `mode` is the one LIST-VALUED matcher (a rule may gate on several).
+            -- The picker holds one, so editing a multi-mode condition loads the
+            -- FIRST and re-adding narrows the rule to it -- visible in the combo
+            -- before you commit, and the rest of the leg is untouched until you do.
+            -- The free-text box this replaced ran tostring() on that list and put
+            -- `table: 0x...` in the box, which then got STORED as the mode name.
+            trig._addValSel = (type(c.value) == 'table') and c.value[1] or c.value;
         end
         table.remove(conds, ci);
     end
@@ -2953,6 +2977,28 @@ local function renderTrigAddPopup()
             if #gnames == 0 and imgui.IsItemHovered() then
                 imgui.SetTooltip('No groups defined for this job yet. Open the Groups section to create one.');
             end
+        elseif cur.kind == 'mode' then
+            -- Value = a dropdown of this job's mode conditions, read from
+            -- M.modeConditions() -- the SAME list the Sets tab's mode gate offers,
+            -- so the two tabs can never disagree about what a mode is called.
+            -- Built exactly like the group combo above, including the empty state:
+            -- with none defined the combo says where to make one instead of
+            -- offering a dead pick.
+            local mnames = M.modeConditions();
+            imgui.PushItemWidth(170);
+            if imgui.BeginCombo('##trgcondmode', trig._addValSel or '(pick mode)') then
+                if #mnames == 0 then imgui.TextColored(COL_DIM, '(no modes yet -- create one in the Modes section)'); end
+                for vi, it in ipairs(mnames) do
+                    if imgui.Selectable(esc(it) .. '##trgcm' .. vi, trig._addValSel == it) then trig._addValSel = it; end
+                end
+                imgui.EndCombo();
+            end
+            imgui.PopItemWidth();
+            if #mnames == 0 and imgui.IsItemHovered() then
+                imgui.SetTooltip('No modes defined for this job yet. Open the Modes section to create one.');
+            elseif cur.hint ~= nil and imgui.IsItemHovered() then
+                imgui.SetTooltip(cur.hint);
+            end
         elseif cur.kind == 'player' then
             -- Value widget ONLY: the parameter itself was picked in the
             -- cascading condition menu (one box, not two -- Henrik's revision).
@@ -3025,7 +3071,7 @@ local function renderTrigAddPopup()
             end
             local val;
             if ck == 'fixed' then val = fixedVal;   -- pet = true/false: false is a real value
-            elseif ck == 'list' or ck == 'group' or ck == 'buff' then val = trig._addValSel;
+            elseif ck == 'list' or ck == 'group' or ck == 'buff' or ck == 'mode' then val = trig._addValSel;
             elseif ck == 'text' then val = (trig.addValText[1] ~= '') and trig.addValText[1] or nil;
             elseif ck == 'number' then
                 val = ((tonumber(trig.addValNum[1]) or 0) > 0) and trig.addValNum[1] or nil;
