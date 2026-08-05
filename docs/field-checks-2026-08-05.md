@@ -1,8 +1,14 @@
-# Field checks owed — against `v2026.08.05d`
+# Field checks owed
 
-**Reload first.** `/addon reload dlac`, then check the load banner says **`2026.08.05d`**.
-If it says anything else, stop — you are testing a different tree than this list describes,
-and every answer below becomes unreliable.
+**Reload first.** `/addon reload dlac`, then check the load banner matches `addon.version`
+at the top of `dlac.lua` **in the tree you pulled**. If they disagree the reload did not
+take, and you are testing a different build than this list describes — stop, because every
+answer below becomes unreliable.
+
+*(Deliberately not a hardcoded version number. This line named one for the first three
+versions of this file and was stale in all three, which is worse than useless: a check that
+lies tells you to abort a session that was fine. The two things that must agree are the
+running addon and the checkout — so compare those, and the line never rots.)*
 
 This is the whole of the debt on `main`: four features that have **never run in game**, plus
 a tail on Job Helpers that is partly closed. Sourced from `docs/HANDOFF.md`, which stays the
