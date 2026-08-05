@@ -5486,18 +5486,32 @@ local function ammoOverlayFor(as, ctx, event, hits, fishOn)
         f.plannedAmmo = ammoPlannedByHits(hits);
     end
     local plan, why, code, chat = M.resolveAmmoPlan(cfg, f);
-    -- STOCK talks, LEVEL does not (Henrik, v134). Edge-triggered on a change of
-    -- cause, NOT on a timer: the engine re-plans every ~0.4s, so a remembered
-    -- last-cause is the only thing between one empty stack and a scrolling chat
-    -- log. Runs BEFORE the no-plan/no-churn returns below, because the loudest
-    -- case of all -- the ladder ran dry and there is nothing to plan -- exits there.
+    -- STOCK talks, LEVEL does not (Henrik, v134). Edge-triggered, never on a
+    -- timer: the engine re-plans every ~0.4s, so a remembered last-cause is the
+    -- only thing between one empty stack and a scrolling chat log. Runs BEFORE
+    -- the no-plan/no-churn returns below, because the loudest case of all -- the
+    -- ladder ran dry and there is nothing to plan -- exits there.
+    --
+    -- ONCE PER ZONE per distinct message (Henrik, 2026-08-05, screenshot: the
+    -- same "Steel Bullet is out -- loading Iron Bullet" six times in 27 seconds
+    -- of one COR fight). The old latch remembered the last cause but ANY other
+    -- ladder result cleared it -- and a COR firing shots between weaponskills
+    -- walks a different ladder every few seconds, each one answering 'pick'
+    -- because ITS topmost entry is stocked. So the reset fired constantly and
+    -- the stockout line re-announced a fact that had not changed since the first
+    -- time. Zone id is the latch (the BST "no pet food" precedent); an unknown
+    -- zone reads nil and compares equal to itself, so headless and a failed read
+    -- both still speak exactly once.
+    --
+    -- Keyed on the MESSAGE too, not the zone alone: "Iron is out -- loading
+    -- Bronze" after "Steel is out -- loading Iron" is a different fact and worth
+    -- its one line. Same fact, same zone = silence, however many shots you fire.
     if code == 'stockout' and type(chat) == 'string' then
-        if M._ammoLastCause ~= chat then
-            M._ammoLastCause = chat;
+        local z = zoneOf((type(ctx) == 'table') and ctx or {});
+        if M._ammoSaid ~= chat or M._ammoSaidZone ~= z then
+            M._ammoSaid, M._ammoSaidZone = chat, z;
             pcall(function() print('[dlac] Ammo: ' .. chat); end);
         end
-    elseif code ~= 'hold' then
-        M._ammoLastCause = nil;   -- the condition cleared: the next one speaks again
     end
     if plan == nil then return nil; end
     -- Already wearing the plan: hold (no churn, no trace noise). 'remove' with
