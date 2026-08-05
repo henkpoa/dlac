@@ -27,6 +27,7 @@ end
 local imgui = try('imgui');
 local gb    = try('dlac\\feature\\giftbox');
 local icons = try('dlac\\ui\\itemicons');
+local gmode = try('dlac\\feature\\gamemode');
 
 local M = {};
 
@@ -36,17 +37,38 @@ local M = {};
 local ICON_SZ  = 30;
 local ICON_PAD = 3;
 
+-- CRYSTAL WARRIORS ONLY (Henrik, 2026-08-05). Giftboxes come off Ventures, and
+-- this icon lives in the same tray as the E-Box crates, which are CW-only for
+-- the same reason -- so it follows the rule every other CW surface here follows:
+-- the AFFIRMATIVE gate (architecture.md), `== 'CW'` and nothing else. Wings and
+-- ACE are hidden, and so is nil -- UNKNOWN IS NOT PERMISSION. A failed
+-- render-flags read must not paint a CW-only icon onto a non-CW screen.
+--
+-- UCW answers 'CW' by design (Henrik's ruling: same playmode).
+local function isCW()
+    if gmode == nil or type(gmode.get) ~= 'function' then return false; end
+    local ok, mode = pcall(gmode.get);
+    return ok and mode == 'CW';
+end
+
 -- THE CHEAP GATE. Reads feature\giftbox's throttled snapshot, never the bag:
 -- the scan behind it runs at most every SCAN_EVERY seconds (see the note on
 -- that constant for why this is inside the contract rather than a breach of it).
+--
+-- The mode is asked FIRST, and that ordering is worth keeping: it is a render-
+-- flags read against no bag at all, so a character who is not a Crystal Warrior
+-- never pays for the giftbox scan -- not even the throttled one.
 function M.trayWants()
-    if gb == nil then return false; end
+    if gb == nil or not isCW() then return false; end
     local ok, p = pcall(gb.peek);
     return ok and type(p) == 'table' and p.have == true;
 end
 
 function M.trayDraw()
-    if imgui == nil or gb == nil then return; end
+    -- Re-checked here, belt-and-braces, exactly as restockui re-checks its own
+    -- CW gate: the tray asks trayWants and then calls this, and the two must not
+    -- be able to disagree if a caller ever draws without asking.
+    if imgui == nil or gb == nil or not isCW() then return; end
     local ok, p = pcall(gb.peek);
     if not ok or type(p) ~= 'table' or not p.have then return; end
 
