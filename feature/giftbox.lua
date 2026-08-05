@@ -56,15 +56,22 @@ M.NEED_FREE = 6;   -- strictly MORE than 5
 -- refused. Generous on purpose: a long animation is not a failure, and the cost
 -- of waiting is seconds while the cost of firing again is a duplicate use.
 M.CONFIRM_TIMEOUT = 15.0;
--- The beat after a CONFIRMED open, before the next fire. Raised 0.6 -> 1.6 on
--- Henrik's first field run (2026-08-05: it worked, "but I suspect lag may create
--- issues"). Worth being clear about what this does and does not protect: the
--- count-drop confirm already proves the previous use landed, so this is not the
--- pacing -- it is headroom for the client to finish settling after a payout of
--- up to 5 items lands in the bag. On a laggy client the confirm can arrive on
--- the same frame the inventory is still being written, and the next use would
--- then read a half-updated bag for its space gate.
-M.SETTLE          = 1.6;
+-- The beat after a CONFIRMED open, before the next fire. 0.6 shipped, raised to
+-- 1.6 after Henrik's first field run ("I suspect lag may create issues"), then
+-- settled at 1.2 (his call, same day) -- enough headroom without making a stack
+-- of ten feel slow.
+--
+-- Worth being clear about what this does and does not protect: the count-drop
+-- confirm already proves the previous use landed, so this is not the pacing --
+-- it is headroom for the client to finish settling after a payout of up to 5
+-- items lands in the bag. On a laggy client the confirm can arrive on the same
+-- frame the inventory is still being written, and the next use would then read
+-- a half-updated bag for its space gate.
+--
+-- Any decimal is honoured to the FRAME: tickSettle is called from d3d_present
+-- every frame and compares os.clock() against settleAt, so it is not rounded to
+-- POLL (0.25) or to anything else -- 1.2 means 1.2, +/- one frame.
+M.SETTLE          = 1.2;
 M.POLL            = 0.25;
 
 -- How stale the tray's cached bag snapshot may get. The tray's gate contract

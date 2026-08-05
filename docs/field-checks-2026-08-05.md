@@ -116,6 +116,10 @@ Cheap, and none of them need a setup. Fold into whatever you're already doing.
 - [ ] **E3** — rebuild the MP/Refresh set; confirm Dalmatica and the head land.
 - [ ] **E4** — the pre-flat Ammo handling, re-tested (`2026.07.28n` handled or reported all
       three cases).
+- [ ] **E5** — the new **P** button beside the E-Box **Store** crate: it opens the Restock
+      panel, it lines up with the `x4` badge below it, and a click aimed at it does not land
+      on Store — which deposits your whole inventory with no confirm. That last half is the
+      only reason this is on the list; P sits one badge-width from it.
 
 ---
 
@@ -201,7 +205,7 @@ the two tabs have drifted and that is the bug, not either list on its own.*
 ## Session I — the giftbox tray icon (`2026.08.05g`)
 
 **The opening loop itself is FIELD-CONFIRMED** (Henrik, 2026-08-05: it worked first try;
-the settle between opens was raised 0.6s → 1.6s afterwards on his lag concern, and that
+the settle between opens was raised 0.6s → 1.2s afterwards on his lag concern, and that
 raise has not been run). What is unfielded is the icon.
 
 - [ ] **I1 — it appears at all.** As a **Crystal Warrior**, with a giftbox in inventory, an
@@ -217,8 +221,9 @@ raise has not been run). What is unfielded is the icon.
       of the tray and Store is one click with no confirm.
 - [ ] **I4 — the click does what the command does.** Clicking the icon runs the same open-all
       as `/dl giftbox` (it issues the command rather than duplicating the logic).
-- [ ] **I5 — the longer settle still completes a run.** 1.6s between opens: a stack of several
-      boxes should still empty without stalling or double-firing.
+- [ ] **I5 — the longer settle still completes a run.** 1.2s between opens: a stack of several
+      boxes should still empty without stalling or double-firing. If lag still bothers it, this
+      is one number in `feature/giftbox.lua` (`M.SETTLE`) and any decimal is honoured.
 
 ---
 
