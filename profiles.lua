@@ -371,8 +371,13 @@ function M.setActive(name)
     if name == nil then return false, 'bad profile name (letters/digits/_/- only)'; end
     local p = M.pointerPath();
     if p == nil then return false, 'not logged in'; end
-    local b = charBase();
-    ensureDir(b .. 'dlac\\');
+    -- Ensure the pointer's OWN home. This used to ensureDir(charBase() ..
+    -- 'dlac\\') -- the LEGACY tree -- while writing p into the NATIVE one: it
+    -- created an empty folder under luashitacast\ (a write into the tree the
+    -- purge forbids) and did not create the directory the write actually needed.
+    -- It only ever worked because ensureStorage makes dataDir() first.
+    ensureDir(M.nativeRoot());
+    ensureDir(M.dataDir());
     local ok = writeFile(p, string.format(
         '-- dlac active profile pointer -- written by /dl profile use (hand edits are fine).\nreturn { active = %q };\n', name));
     M.invalidate();

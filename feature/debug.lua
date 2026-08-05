@@ -320,7 +320,14 @@ ashita.events.register('d3d_present', 'dlac-debug-deliver', function()
             local base = handoffDir();
             if base == nil then return; end
             local cmdIdle = (os.clock() - _cmdAt) > 8;
-            local raw = readAll(base .. 'dlac\\debug-check-engine.txt');
+            -- NO 'dlac\\' SEGMENT. handoffDir() is profiles.dataDir(), which is
+            -- the native char home and ALREADY the folder dispatch writes into
+            -- (writeDebugHandoff: io.open(charDir() .. name)). The extra level
+            -- is a leftover of the legacy layout, where the home was
+            -- luashitacast\<char>\ and dlac\ hung under it. The writer moved
+            -- with the purge and these three readers did not, so every engine
+            -- half has been read from a folder that does not exist.
+            local raw = readAll(base .. 'debug-check-engine.txt');
             local st = raw ~= nil and tonumber(raw:match('^(%d+)')) or nil;
             local act = M._watchFire(st, _seen.check, os.time(), cmdIdle);
             if act ~= 'keep' then _seen.check = st; end
@@ -329,7 +336,7 @@ ashita.events.register('d3d_present', 'dlac-debug-deliver', function()
                 local c = try('dlac\\feature\\check');
                 if c ~= nil and type(c.report) == 'function' then pcall(c.report); end
             end
-            local raw2 = readAll(base .. 'dlac\\debug-ls-open.txt');
+            local raw2 = readAll(base .. 'debug-ls-open.txt');   -- same seam, same fix
             local st2 = raw2 ~= nil and tonumber(raw2:match('^(%d+)')) or nil;
             local act2 = M._watchFire(st2, _seen.lsopen, os.time(), cmdIdle);
             if act2 ~= 'keep' then _seen.lsopen = st2; end
@@ -355,7 +362,7 @@ ashita.events.register('d3d_present', 'dlac-debug-deliver', function()
         engineRaw = nil;   -- a half WAS expected: nil now means it never came
         pcall(function()
             local base = handoffDir();
-            if base ~= nil then engineRaw = readAll(base .. 'dlac\\' .. p.handoff); end
+            if base ~= nil then engineRaw = readAll(base .. p.handoff); end   -- same seam, same fix
         end);
     end
     writeOut(p.base, M._mergeSections(p.label, p.lines, engineRaw, os.time(), p.ver),

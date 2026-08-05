@@ -345,8 +345,11 @@ two kinds:</p>
 <p>Three ways to let modes change your gear:</p>
 <ol>
   <li><b>Mode rules</b> — a trigger rule with a mode condition:
-      <i>mode <code>DT</code> → set <code>DT</code></i>. Mode rules run at the highest
-      priority, so they overlay everything else. Good for toggles.</li>
+      <i>mode <code>DT</code> → set <code>DT</code></i>. The condition is a <b>dropdown of
+      the modes you've defined</b> — a cycle offers one entry per value
+      (<span class="mode">Weapon:Melee</span>), a toggle its bare name — so there's no name
+      to spell right. Mode rules run at the highest priority, so they overlay everything
+      else. Good for toggles.</li>
   <li><b>Mode locks</b> — the <b>locks</b> button on a mode box. Pick a set for a slot and,
       while that mode is active, <b>that slot stops following your trigger rules
       altogether</b> — on every event, whatever fires. This is the answer to

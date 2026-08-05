@@ -2531,9 +2531,13 @@ local function weightsPathFor(charFolder)
         d = prof.charDataDirAt(charFolder);
     end);
     if d ~= nil then return d .. 'gearweights.lua'; end
-    local install = safeCall(function() return AshitaCore:GetInstallPath(); end);
-    if type(install) ~= 'string' then return nil; end
-    return string.format('%sconfig\\addons\\luashitacast\\%s\\dlac\\gearweights.lua', install, charFolder);
+    -- (the luashitacast composition is GONE, 2026-08-05. charDataDirAt takes the
+    -- char folder as an argument, so it needs no login and returns nil only when
+    -- storageRoot() does -- i.e. when AshitaCore itself is unreachable, and a
+    -- legacy path is no more useful then than nil. Weights are READ AND WRITTEN
+    -- through this one function, so a fallback here does not degrade a read: it
+    -- silently moves the save.)
+    return nil;
 end
 
 function M.weightsPath()

@@ -12447,7 +12447,24 @@ end)();
 (function()
     local savedReg, savedClock, savedCore = ashita.events.register, os.clock, AshitaCore;
     local savedProf = package.loaded['dlac\\profiles'];
-    package.loaded['dlac\\profiles'] = nil;   -- force the legacy-tier read (restored below)
+    -- Force the LEGACY-TIER read (the flat <char>\lockstyles.lua rather than a
+    -- profile job entry) by handing back a profiles that resolves no per-job
+    -- path. This used to nil the module outright, which made lockstyle's
+    -- `require` fail and sent dataDir down a charBase() .. 'dlac\\' fallback
+    -- into the LuaAshitacast tree -- the only route on which that fallback ever
+    -- fired, and it wrote data nothing else in dlac would read. The fallback is
+    -- gone (2026-08-05 sweep, PRG3), so the tier is selected honestly here: the
+    -- subject of LGF is the moogle-subjob heal, not the dead path.
+    -- The fixture moved with it: tests\fixtures\keepflow\config\addons\dlac\
+    -- Testy_1234\lockstyles.lua. It used to sit under ...\luashitacast\
+    -- Testy_1234\dlac\, which only the deleted fallback could reach -- so the
+    -- fixture was pinning the legacy LAYOUT, not the legacy TIER. The tier is
+    -- the flat per-character lockstyles.lua, and it lives in the native home.
+    package.loaded['dlac\\profiles'] = {
+        dataDir            = function() return 'tests\\fixtures\\keepflow\\config\\addons\\dlac\\Testy_1234\\'; end,
+        activeName         = function() return 'Default'; end,
+        readLockstylesPath = function() return nil; end,   -- no job entry -> legacy tier
+    };
 
     local handlers, queued = {}, {};
     ashita.events.register = function(ev, nm, fn) handlers[ev .. '/' .. nm] = fn; end
@@ -15184,6 +15201,33 @@ end)();
           stampV = 98, modules = { total = 17, failed = { { mod = 'x', err = 'boom' } } },
           catalogTried = true, catalogN = 4200 })[6]
           :find('3 ISSUES', 1, true) ~= nil, true);
+
+    -- The native-baseline readout (2026-08-05). A healthy baseline must stay
+    -- INVISIBLE -- the six-line shape above is load-bearing for every reader,
+    -- and a row that is always green is a row people learn to skip.
+    check('CHKB1 healthy baseline adds no line and no issue',
+          #ck._lines(HEALTHY), 6);
+    check('CHKB2 a COMPLETE baseline is still silent',
+          #ck._issues({ baseline = { job = 'RUN', complete = true } }), 0);
+    local BROKEN = { baseline = { job = 'RUN', complete = false,
+                     missing = 'triggers file C:\\x\\profiles\\Default\\triggers\\RUN.lua',
+                     why = { 'triggers: dispatch module would not load: boom' },
+                     at = '2026-08-05 13:28:41' } };
+    local BL = ck._lines(BROKEN);
+    check('CHKB3 a broken baseline earns a line', #BL, 7);
+    check('CHKB4 ...naming the gate that is missing',
+          BL[6]:find('triggers file', 1, true) ~= nil, true);
+    check('CHKB5 ...and the seeder reason beside it',
+          BL[6]:find('dispatch module would not load', 1, true) ~= nil, true);
+    check('CHKB6 ...and the verdict stays LAST',
+          BL[7]:find('ISSUE', 1, true) ~= nil, true);
+    check('CHKB7 an incomplete baseline is a real issue',
+          ck._issues(BROKEN)[1]:find('baseline INCOMPLETE', 1, true) ~= nil, true);
+    -- The gate must survive a seeder that said nothing (a hand-deleted file:
+    -- nothing failed, the baseline is simply not there).
+    check('CHKB8 a missing gate with no seeder reason still reports',
+          ck._issues({ baseline = { job = 'RUN', complete = false, missing = 'gear inventory X' } })[1]
+          :find('gear inventory X', 1, true) ~= nil, true);
 end)();
 
 -- DBT. the /dl debug section router (feature/debug.lua, v104): topic
@@ -15594,6 +15638,39 @@ end)();
     check('NO33 new job wrote BLM sets + triggers',    has('sets\\BLM.lua') and has('triggers\\BLM.lua'), true);
     check('NO34 new job did NOT rewrite gear.lua',     has('gear.lua'), false);
     curAbbr = 'WHM';
+
+    -- --- THE MIGRATED CHARACTER (2026-08-05, the field case) ---
+    -- engineAutoMigrate copies config\addons\luashitacast\<char>\dlac\ WHOLE into
+    -- the native home, so an old triggers\<JOB>.lua lands at the LEGACY TIER.
+    -- seedTriggersFile then refuses to overwrite it ("user data") while the
+    -- baseline check demanded the PROFILE tier -- two halves disagreeing about
+    -- what "has a trigger file" means, so auto-setup warned and retried forever
+    -- on a character whose rules were working the whole time. A legacy-tier file
+    -- is LIVE (triggersui.trigFilePath and the engine both fall back to it).
+    do
+        curAbbr = 'RUN';
+        disk = { ['I:\\game\\addons\\dlac\\gear.lua'] = 'return {}\n' };
+        disk[NROOT .. 'gear.lua'] = 'return {}\n';
+        disk[NROOT .. 'profiles\\Default\\sets\\RUN.lua'] = 'return {}\n';
+        disk[NROOT .. 'triggers\\RUN.lua'] = '-- migrated rules\n';   -- LEGACY TIER ONLY
+        storageOn = true; writes = {};
+        check('NO34a a migrated legacy-tier trigger file completes the baseline',
+              setup.nativeBaselineComplete('RUN'), true);
+        check('NO34b ...so auto-setup goes quiet instead of warning forever',
+              setup.autoSetupNative(), 'complete');
+        check('NO34c ...and writes nothing (migrated rules are never clobbered)',
+              #writes, 0);
+        -- With NEITHER tier present the gate still fails -- and says so in a way
+        -- that shows both were looked at, so the next reader does not re-derive
+        -- the two-tier rule from scratch.
+        disk[NROOT .. 'triggers\\RUN.lua'] = nil;
+        local ok2, miss = setup.nativeBaselineComplete('RUN');
+        check('NO34d neither tier -> still incomplete', ok2, false);
+        check('NO34e ...and the reason names the legacy tier as checked',
+              type(miss) == 'string' and miss:find('legacy-tier', 1, true) ~= nil, true);
+        curAbbr = 'WHM';
+        disk = { ['I:\\game\\addons\\dlac\\gear.lua'] = 'return {}\n' };
+    end
 
     -- --- job not ready (abbr nil, GetMainJob 0 at login) never seeds (hard rule 11) ---
     curAbbr = nil; writes = {};
@@ -18749,9 +18826,10 @@ end)();
     local ALLOW = {   -- Henrik's keep-list: read-only doors into the old tree
         ['profiles.lua'] = true,          -- charBase/lacRoot/legacyDataPresent/legacyExportsDir
         ['gear/setmanager.lua'] = true,   -- the job-file scanner (whole-block import)
-        ['feature/lockstyle.lua'] = true, -- legacy boxes read-fallback tier
-        ['feature/macrobook.lua'] = true, -- legacy books read-fallback tier
-        ['gear/gearoptim.lua'] = true,    -- legacy weights read tier
+        -- (lockstyle, macrobook and gearoptim came OFF this list 2026-08-05:
+        -- their literals fed dataDir fallbacks that could never fire, so the
+        -- literals went with the fallbacks. Nothing was allowlisted away here --
+        -- there is simply no legacy path left in those three files.)
     };
     local offenders = {};
     for _, f in ipairs(SHIPPED) do
@@ -18770,6 +18848,49 @@ end)();
         local raw = fh:read('*a'); fh:close();
         return raw:find('\\\\luashitacast', 1, true) ~= nil;
     end)(), true);
+
+    -- PRG3: THE COMPOSED FALLBACK. PRG1 greps for the path LITERAL, so it was
+    -- blind to the shape that actually survived the purge -- taking the LEGACY
+    -- char base from somewhere else and hanging `dlac\` off it:
+    --
+    --     local base = charBase();  return base and (base .. 'dlac\\') or nil;
+    --     if ddir == nil then ddir = base .. 'dlac\\'; end
+    --
+    -- Six of those outlived Phase 4 in five files, invisible to the guard,
+    -- because the literal lives in profiles.charBase and the composition lives
+    -- in the consumer. They were all dead code -- dataDir and charBase resolve
+    -- off the same identity, so the fallback only fired when it was about to
+    -- return nil anyway -- but one of them aimed the trigger editor at the
+    -- legacy tree, and the same blindness hid a THIRD variant for months: the
+    -- debug handoff readers kept a `dlac\` segment after the writer dropped it,
+    -- so no engine half ever merged into a /dl report.
+    --
+    -- The rule this pins: `.. 'dlac\\'` composed onto anything is illegal in
+    -- shipped code. The native home already carries the character level, and
+    -- profiles.dataDir() is the only composer.
+    -- profiles.lua is the ONE exception, and only for the two migration readers:
+    -- _legacyProbe (does this character have legacy data?) and
+    -- engineMigrateStorage's copyTree SOURCE. Both must name the old layout --
+    -- that is their whole job. Everything else composes through dataDir().
+    local COMPOSE_ALLOW = { ['profiles.lua'] = true };
+    local composed = {};
+    for _, f in ipairs(SHIPPED) do
+        local fh = io.open(f, 'rb');
+        if fh ~= nil then
+            local raw = fh:read('*a'); fh:close();
+            -- strip comment lines first: the ban is on CODE, and the comments
+            -- explaining the removal must be free to name the shape they killed.
+            local code = {};
+            for line in (raw .. '\n'):gmatch('([^\n]*)\n') do
+                if line:match('^%s*%-%-') == nil then code[#code + 1] = line; end
+            end
+            if table.concat(code, '\n'):find("%.%.%s*'dlac\\\\'") ~= nil and not COMPOSE_ALLOW[f] then
+                composed[#composed + 1] = f;
+            end
+        end
+    end
+    check('PRG3 no composed legacy `.. \'dlac\\\\\'` path in shipped code',
+          table.concat(composed, ','), '');
 end)();
 
 -- ---------------------------------------------------------------------------

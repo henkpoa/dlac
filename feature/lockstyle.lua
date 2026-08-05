@@ -131,17 +131,13 @@ local function fsp(p)
     return (p:gsub('\\', '/'));
 end
 
-local function charBase()
-    local base = nil;
-    pcall(function()
-        local party = AshitaCore:GetMemoryManager():GetParty();
-        local name  = party:GetMemberName(0);
-        local id    = party:GetMemberServerId(0);
-        if name == nil or name == '' or id == nil or id == 0 then return; end
-        base = string.format('%sconfig\\addons\\luashitacast\\%s_%u\\', AshitaCore:GetInstallPath(), name, id);
-    end);
-    return base;
-end
+-- (charBase -- the luashitacast composition -- is GONE, 2026-08-05. It existed
+-- only to feed dataDir's fallback, and that fallback was unreachable: it fired
+-- when profiles.dataDir() was nil, which happens exactly when the party
+-- identity is unavailable, which is exactly when charBase() returned nil too.
+-- Dead in every state but one -- a FAILED require of profiles -- where it
+-- pointed reads and writes at the legacy tree. See the purge, and the migrated
+-- character that cost an evening on 2026-08-05.)
 
 local function jobAbbr()
     local abbr = nil;
@@ -174,8 +170,7 @@ local function dataDir()
         local ok2, d = pcall(prof.dataDir);
         if ok2 and d ~= nil then return d; end
     end
-    local base = charBase();
-    return base and (base .. 'dlac\\') or nil;
+    return nil;   -- native home or nothing (purge Phase 4: no legacy composition)
 end
 
 local function legacyPath()
@@ -222,7 +217,7 @@ local function load_()
         if act == 'keep' then return; end
         keepCur = (act == 'follow-keep-edit');
     end
-    if charBase() == nil or job == nil then return; end   -- pre-login: retry next call
+    if dataDir() == nil or job == nil then return; end   -- pre-login: retry next call
     -- boxes are PER JOB ENTRY: the active profile's lockstyles\<JOB>.lua,
     -- falling back to the v40 per-profile file, then the pre-profile global
     -- one (profiles.lua is the shared path authority)

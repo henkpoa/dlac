@@ -82,6 +82,17 @@ function M._issues(info)
     elseif tonumber(info.catalogN) ~= nil and tonumber(info.catalogN) < CATALOG_MIN then
         I[#I + 1] = string.format('catalog has only %d items (~14.9k expected) -- truncated sync?', tonumber(info.catalogN));
     end
+    -- The native baseline (2026-08-05): auto-setup retries every beat and says
+    -- its one line once, so by the time a player runs /dl check the chat is long
+    -- gone. An incomplete baseline is a PROVABLE problem -- name the gate and
+    -- the seeder's reason, which together are the whole diagnosis.
+    local bl = info.baseline;
+    if type(bl) == 'table' and bl.complete ~= true then
+        local s = string.format('native baseline INCOMPLETE for %s -- missing %s',
+            tostring(bl.job or '?'), tostring(bl.missing or '(unknown)'));
+        if type(bl.why) == 'table' and #bl.why > 0 then s = s .. ' -- ' .. table.concat(bl.why, '; '); end
+        I[#I + 1] = s;
+    end
     return I;
 end
 
@@ -121,7 +132,7 @@ function M._lines(info)
         verdict = string.format('verdict: %d ISSUE%s -- %s', #issues, (#issues == 1) and '' or 'S',
             table.concat(issues, '; '));
     end
-    return {
+    local L = {
         string.format('check (addon): dlac %s -- engine file v%s',
             tostring(info.addonVer or '?'), tostring(info.fileV or '?')),
         string.format('check (addon): sets file: %s', setsWord),
@@ -131,8 +142,22 @@ function M._lines(info)
         string.format('check (addon): engine %s -- a "[dlac] check (engine): alive" line must appear'
             .. ' with this readout; if it is MISSING, the engine is not armed in this state'
             .. ' (tripwire? /dl engine explains) -- /dl reload reloads dlac.', stampWord),
-        verdict,
     };
+    -- The baseline line EARNS its place: it appears only when the baseline is
+    -- actually broken, so a healthy install keeps its six lines and the reader
+    -- never learns to skip a row that is always green.
+    local bl = info.baseline;
+    if type(bl) == 'table' and bl.complete ~= true then
+        local s = string.format('check (addon): native baseline for %s: MISSING %s',
+            tostring(bl.job or '?'), tostring(bl.missing or '(unknown)'));
+        if type(bl.why) == 'table' and #bl.why > 0 then
+            s = s .. ' -- seeder said: ' .. table.concat(bl.why, '; ');
+        end
+        if bl.at ~= nil then s = s .. ' (last tried ' .. tostring(bl.at) .. ')'; end
+        L[#L + 1] = s;
+    end
+    L[#L + 1] = verdict;
+    return L;
 end
 
 -- ---------------------------------------------------------------------------
@@ -199,6 +224,24 @@ function M.gather()
     pcall(function()
         local prof = try('dlac\\profiles');
         if prof ~= nil and type(prof.activeName) == 'function' then info.profName = prof.activeName(); end
+    end);
+    -- The native baseline, asked of the SAME function auto-setup gates on, so
+    -- the readout and the retry loop can never disagree. Plus whatever the last
+    -- seed attempt said about WHY -- the half that used to exist only as a chat
+    -- line nobody still had by the time they asked for help.
+    pcall(function()
+        local su = try('dlac\\ui\\setupui');
+        if su == nil or type(su.nativeBaselineComplete) ~= 'function' then return; end
+        local job = nil;
+        pcall(function() job = gData.GetPlayer().MainJob; end);
+        if type(job) ~= 'string' or job == '' or job == '?' then return; end
+        local complete, missing = su.nativeBaselineComplete(job);
+        local fail = su.lastSeedFail;
+        info.baseline = {
+            job = job, complete = complete, missing = missing,
+            why = (type(fail) == 'table' and fail.job == job) and fail.why or nil,
+            at  = (type(fail) == 'table' and fail.job == job) and fail.at or nil,
+        };
     end);
     return info;
 end

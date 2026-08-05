@@ -1236,11 +1236,10 @@ function M.maxmpMode()
         _mm.at = now;
         _mm.on = false;
         pcall(function()
+            -- dataDir or nothing: the charBase fallback that used to live here
+            -- resolved off the same identity, so it only fired when it would
+            -- return nil too (removed 2026-08-05 with the rest of the sweep).
             local base = (type(deps.dataDir) == 'function') and deps.dataDir() or nil;
-            if base == nil then
-                local cb = deps.charBase();
-                base = cb and (cb .. 'dlac\\') or nil;
-            end
             if base == nil then return; end
             local chunk = loadfile(base .. 'modestate.lua');
             if chunk == nil then return; end
