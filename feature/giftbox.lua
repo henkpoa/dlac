@@ -56,8 +56,23 @@ M.NEED_FREE = 6;   -- strictly MORE than 5
 -- refused. Generous on purpose: a long animation is not a failure, and the cost
 -- of waiting is seconds while the cost of firing again is a duplicate use.
 M.CONFIRM_TIMEOUT = 15.0;
-M.SETTLE          = 0.6;    -- a beat after a confirmed open, before the next fire
+-- The beat after a CONFIRMED open, before the next fire. Raised 0.6 -> 1.6 on
+-- Henrik's first field run (2026-08-05: it worked, "but I suspect lag may create
+-- issues"). Worth being clear about what this does and does not protect: the
+-- count-drop confirm already proves the previous use landed, so this is not the
+-- pacing -- it is headroom for the client to finish settling after a payout of
+-- up to 5 items lands in the bag. On a laggy client the confirm can arrive on
+-- the same frame the inventory is still being written, and the next use would
+-- then read a half-updated bag for its space gate.
+M.SETTLE          = 1.6;
 M.POLL            = 0.25;
+
+-- How stale the tray's cached bag snapshot may get. The tray's gate contract
+-- says trayWants must be CHEAP -- flags only, no bag scans -- and detecting
+-- giftboxes is unavoidably a bag scan, so the scan is throttled to this and the
+-- gate reads the cache. A ~80 slot walk every 2s is not the per-frame cost the
+-- contract was written to forbid.
+M.SCAN_EVERY = 2.0;
 
 -- The ladder, smallest first, so a run is deterministic and a space-limited run
 -- always stops at a predictable place. Matching is by SUBSTRING on the resource
@@ -164,6 +179,32 @@ function M.countOf(name)
     end
     return 0;
 end
+
+-- The throttled snapshot the floating tray reads: whether you have any boxes,
+-- how many, how much room, and WHICH box to show. Cached because the tray asks
+-- every frame (M.SCAN_EVERY).
+--
+-- `top` is the HIGHEST rung you are carrying, and that is what the tray draws:
+-- a Grand Giftbox is the one worth noticing, and it is the most distinctive art
+-- of the four. Falling back to the best box you actually hold also means the
+-- icon is never for something you do not have.
+local _peekAt, _peek = 0, { have = false, total = 0, free = 0, top = nil };
+
+function M.peek(now)
+    now = tonumber(now) or os.clock();
+    if now < _peekAt then return _peek; end
+    _peekAt = now + M.SCAN_EVERY;
+    local found, free = M.scan();
+    local total, top = 0, nil;
+    for _, e in ipairs(found or {}) do
+        total = total + math.max(0, tonumber(e.count) or 0);
+        if (tonumber(e.count) or 0) > 0 and (top == nil or e.rank > top.rank) then top = e; end
+    end
+    _peek = { have = (total > 0), total = total, free = free or 0, top = top };
+    return _peek;
+end
+
+M._peekReset = function() _peekAt = 0; end   -- test seam
 
 -- ---------------------------------------------------------------------------
 -- The run

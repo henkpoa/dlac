@@ -13549,6 +13549,33 @@ end)();
     gb.start();
     check('GB13 boxes but no room -> no run', gb.running(), false);
 
+    -- ---- the tray snapshot ---------------------------------------------------
+    -- The tray asks trayWants EVERY FRAME, so peek() caches. Two things must
+    -- hold: it reports the HIGHEST rung held (that is the icon drawn), and it
+    -- does NOT re-walk the bag until SCAN_EVERY has passed -- a per-frame bag
+    -- scan is exactly what the tray's contract forbids.
+    setBag(2, 1, 0, 30);
+    gb._peekReset();
+    local pk = gb.peek(1000);
+    check('GB14 the snapshot sees boxes', pk.have, true);
+    check('GB14b ...counting every one of them', pk.total, 3);
+    check('GB14c ...and the icon is the HIGHEST rung held',
+        (pk.top or {}).name, 'Grand Giftbox');
+
+    setBag(0, 0, 0, 30);                 -- bag emptied behind its back
+    local cached = gb.peek(1000.5);
+    check('GB15 inside the window it does not re-walk the bag', cached.have, true);
+    local fresh = gb.peek(1000 + gb.SCAN_EVERY + 0.1);
+    check('GB15b ...and past it, it sees the truth', fresh.have, false);
+    check('GB15c ...with nothing to draw', fresh.top, nil);
+
+    -- Only smalls: the icon falls back to the best box you ACTUALLY hold, so it
+    -- is never art for something you do not have.
+    setBag(1, 0, 0, 30);
+    local only = gb.peek(2000);
+    check('GB16 one rung held -> that rung is the icon',
+        (only.top or {}).name, 'Goblin Giftbox (Small)');
+
     AshitaCore = savedAshita;
 end)();
 
