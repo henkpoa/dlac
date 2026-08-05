@@ -204,9 +204,12 @@ the two tabs have drifted and that is the bug, not either list on its own.*
 the settle between opens was raised 0.6s → 1.6s afterwards on his lag concern, and that
 raise has not been run). What is unfielded is the icon.
 
-- [ ] **I1 — it appears at all.** With a giftbox in inventory, an icon shows in the floating
-      tray **under** the E-Box crates. It draws the box's own in-game art — the highest rung
-      you are carrying, so a Grand Giftbox shows the Grand icon.
+- [ ] **I1 — it appears at all.** As a **Crystal Warrior**, with a giftbox in inventory, an
+      icon shows in the floating tray **under** the E-Box crates. It draws the box's own
+      in-game art — the highest rung you are carrying, so a Grand Giftbox shows the Grand icon.
+- [ ] **I1b — and only there.** On a non-CW character holding giftboxes, the icon must NOT
+      appear at all. `/dl giftbox` itself still works — the gate is on the icon, not the
+      command.
 - [ ] **I2 — it dims when there is no room.** Below 6 free slots the icon greys out and the
       hover says how many slots short you are. It must NOT disappear — you still have boxes.
 - [ ] **I3 — it does not push Store around.** Walk up to an E-Box with giftboxes in your bag:

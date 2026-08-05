@@ -2878,6 +2878,44 @@ end)();
         check('TR12i ...drawing by themselves', table.concat(drew, ','), 'gift');
         wantsC = false;
 
+        -- ---- the REAL giftboxui gate ------------------------------------
+        -- Everything above stubs giftboxui out, so none of it can see the CW
+        -- gate. Drive the actual module: Crystal Warriors only (Henrik), on the
+        -- affirmative rule -- 'CW' shows, and Wings/ACE/nil do NOT. `nil` is the
+        -- one that matters: a failed render-flags read is UNKNOWN, and unknown
+        -- must never be read as permission to paint a CW-only icon.
+        local MODE, PEEKED = nil, 0;
+        package.loaded['dlac\\feature\\gamemode'] = { get = function() return MODE; end };
+        package.loaded['dlac\\feature\\giftbox']  = {
+            peek = function() PEEKED = PEEKED + 1; return { have = true, total = 3, free = 20 }; end,
+            running = function() return false; end,
+            NEED_FREE = 6,
+        };
+        package.loaded['dlac\\ui\\giftboxui'] = nil;
+        local gok, gui = pcall(require, 'dlac\\ui\\giftboxui');
+        check('TR18 giftboxui loads against the stubs', gok and type(gui.trayWants), 'function');
+        if gok then
+            MODE = 'CW';
+            check('TR19 a Crystal Warrior with boxes wants the tray', gui.trayWants(), true);
+            MODE = 'Wings';
+            check('TR20 Wings does not', gui.trayWants(), false);
+            MODE = 'ACE';
+            check('TR21 ACE does not', gui.trayWants(), false);
+            MODE = nil;
+            check('TR22 and UNKNOWN is not permission', gui.trayWants(), false);
+            -- The mode is asked BEFORE the bag snapshot, so a non-CW character
+            -- never pays for the scan -- not even the throttled one.
+            PEEKED = 0;
+            gui.trayWants(); gui.trayWants();
+            check('TR23 a non-CW gate never reaches the bag scan', PEEKED, 0);
+            MODE = 'CW'; PEEKED = 0;
+            gui.trayWants();
+            check('TR23b ...and a CW one does', PEEKED, 1);
+            -- trayDraw re-checks independently (restockui's belt-and-braces).
+            MODE = 'Wings';
+            check('TR24 draw refuses on its own too', pcall(gui.trayDraw), true);
+        end
+
         -- A member whose GATE throws is absent for a frame; it must not cost the
         -- other member its window (nor take down d3d_present with it).
         blowUp, wantsB, drew = true, true, {};
