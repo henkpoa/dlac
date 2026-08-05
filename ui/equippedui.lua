@@ -107,11 +107,13 @@ local function renderBrowseRow(rec, ordinal, job, level, nameW, onRight)
     -- UNOWNED sits ABOVE all three (Henrik's call): not having a piece at all is
     -- the more basic fact than which bag it is in or whether this job could wear
     -- it, and the job gate is spelled out in the hover anyway. haveInBags fails
-    -- OPEN, so pre-login (empty bag map) nothing is painted orange.
+    -- OPEN, so pre-login (empty bag map) nothing is painted unowned.
+    -- Greyed out since 2026-08-04 (was orange) -- the one unowned shade dlac uses,
+    -- see COL.UNOWN in gearui. The hover says it in words too.
     local mine = owned.haveInBags(rec);
     local nameColr;
     if not mine then
-        nameColr = COL.WANT;
+        nameColr = COL.UNOWN;
     else
         local v = owned.verdict(rec, usable);
         nameColr = (v == 'stored' and COL.ERR) or (v == 'locked' and COL.LOCKED) or COL.USABLE;
@@ -615,7 +617,7 @@ local function renderAllEquipTab(job, level)
     imgui.TextColored(COL.DIM, string.format('Showing %d of %d  |  source: %s  |  red = in storage (not equippable)%s',
         shown, #items, showAll and (S.hasCatalog and 'full catalog (catalog.lua)' or 'gear.lua (no catalog)')
                               or 'gear you own (anywhere)',
-        showAll and '  |  orange = not owned' or ''));
+        showAll and '  |  grey = not owned' or ''));
     if not showAll then
         imgui.SameLine(0, 8);
         imgui.TextColored(COL.DIM, '-- tick "Show gear I don\'t own" to browse the full catalog.');

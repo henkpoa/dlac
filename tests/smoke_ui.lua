@@ -1446,7 +1446,7 @@ end)();
     local Sx = host.services;
     local keep = { Sx.buildOwned, Sx.buildAllEquip, Sx.isUsable, Sx.renderItemTooltip };
     -- Two rows, one owned and one not, so BOTH colour branches of renderBrowseRow
-    -- run in the same frame -- the orange path is new and pushes like the rest.
+    -- run in the same frame -- the unowned (grey) path pushes like the rest.
     local ROWS = {
         { Id = 13795, Name = "Arhat's Gi", Level = 71, Slot = 'Body' },
         { Id = 99991, Name = 'Dalmatica',  Level = 71, Slot = 'Body' },
@@ -1477,7 +1477,7 @@ end)();
     -- Both ticks are on the filter row now: "Usable now" and the new one.
     check('S155 two filter checkboxes drawn', drew.checkbox >= 2, true);
 
-    -- Unowned view: the orange branch of every row, plus the legend change.
+    -- Unowned view: the greyed-out branch of every row, plus the legend change.
     drew.checkbox = 0;
     Sx.ui.showAll[1] = true;
     check('S156 All Equipment renders (unowned view)', pcall(eui.renderAllEquipTab, 'WHM', 75), true);

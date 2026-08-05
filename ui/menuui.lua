@@ -501,7 +501,7 @@ local function renderSettingsBody()
     -- Same wording as the tab's own tick (they are ONE flag): "Show all
     -- equipment" read as a preference and nobody found it here.
     settingCheck('showall', "Show gear I don't own",
-        'Off (default): the All Equipment tab lists only gear you own.\nOn: it lists the full CatsEyeXI catalog, with what you lack in orange.\n\nSame switch as the tick on the All Equipment tab itself.',
+        'Off (default): the All Equipment tab lists only gear you own.\nOn: it lists the full CatsEyeXI catalog, with what you lack greyed out.\n\nSame switch as the tick on the All Equipment tab itself.',
         function() return type(ui.showAll) == 'table' and ui.showAll[1] == true; end,
         function(v) if type(ui.showAll) == 'table' then ui.showAll[1] = v; end end);
 
