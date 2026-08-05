@@ -15184,6 +15184,33 @@ end)();
           stampV = 98, modules = { total = 17, failed = { { mod = 'x', err = 'boom' } } },
           catalogTried = true, catalogN = 4200 })[6]
           :find('3 ISSUES', 1, true) ~= nil, true);
+
+    -- The native-baseline readout (2026-08-05). A healthy baseline must stay
+    -- INVISIBLE -- the six-line shape above is load-bearing for every reader,
+    -- and a row that is always green is a row people learn to skip.
+    check('CHKB1 healthy baseline adds no line and no issue',
+          #ck._lines(HEALTHY), 6);
+    check('CHKB2 a COMPLETE baseline is still silent',
+          #ck._issues({ baseline = { job = 'RUN', complete = true } }), 0);
+    local BROKEN = { baseline = { job = 'RUN', complete = false,
+                     missing = 'triggers file C:\\x\\profiles\\Default\\triggers\\RUN.lua',
+                     why = { 'triggers: dispatch module would not load: boom' },
+                     at = '2026-08-05 13:28:41' } };
+    local BL = ck._lines(BROKEN);
+    check('CHKB3 a broken baseline earns a line', #BL, 7);
+    check('CHKB4 ...naming the gate that is missing',
+          BL[6]:find('triggers file', 1, true) ~= nil, true);
+    check('CHKB5 ...and the seeder reason beside it',
+          BL[6]:find('dispatch module would not load', 1, true) ~= nil, true);
+    check('CHKB6 ...and the verdict stays LAST',
+          BL[7]:find('ISSUE', 1, true) ~= nil, true);
+    check('CHKB7 an incomplete baseline is a real issue',
+          ck._issues(BROKEN)[1]:find('baseline INCOMPLETE', 1, true) ~= nil, true);
+    -- The gate must survive a seeder that said nothing (a hand-deleted file:
+    -- nothing failed, the baseline is simply not there).
+    check('CHKB8 a missing gate with no seeder reason still reports',
+          ck._issues({ baseline = { job = 'RUN', complete = false, missing = 'gear inventory X' } })[1]
+          :find('gear inventory X', 1, true) ~= nil, true);
 end)();
 
 -- DBT. the /dl debug section router (feature/debug.lua, v104): topic

@@ -83,15 +83,21 @@ end
 -- existing file). The starter text lives in dispatch.lua (single source of truth); the
 -- addon-state copy of dispatch is inert but its exports are still readable. Returns true
 -- when a file was written.
+-- Returns `written, reason`. A nil reason means nothing was wrong (the file was
+-- already there); a STRING reason means the seed genuinely failed and names why
+-- -- hard rule 12, and the field case that bought it (2026-08-05, a friend's
+-- clean install: the trigger file never appeared and every bail-out here was a
+-- bare `return false`, so four rounds of guessing could not tell a missing
+-- dispatch from an unwritable directory).
 setup.seedTriggersFile = function(base, abbr)
-    if D == nil then return false; end
-    if base == nil or abbr == nil then return false; end
+    if D == nil then return false, 'setup not configured (no deps)'; end
+    if base == nil or abbr == nil then return false, 'no character/job yet'; end
     -- the legacy tier lives in the data home (mode-aware, feature/native-engine)
     local ddir = (type(D.dataDir) == 'function') and D.dataDir() or nil;
     if ddir == nil then ddir = base .. 'dlac\\'; end
     local legacyTierPath = ddir .. 'triggers\\' .. abbr .. '.lua';
     local path = legacyTierPath;
-    if D.readFileText(path) ~= nil then return false; end   -- user data: never overwrite
+    if D.readFileText(path) ~= nil then return false, nil; end   -- user data: never overwrite
     -- Profile storage live? Seed INTO the active profile instead (and never
     -- clobber a file already there) -- same target the engine resolves.
     pcall(function()
@@ -101,9 +107,18 @@ setup.seedTriggersFile = function(base, abbr)
             if pp ~= nil then prof.ensureStorage(); path = pp; end
         end
     end);
-    if D.readFileText(path) ~= nil then return false; end
+    if D.readFileText(path) ~= nil then return false, nil; end
+    -- The starter text lives on dispatch. dispatch is NOT in dlac.lua's load
+    -- ledger and every other require of it is call-time under pcall, so a
+    -- dispatch that will not load is invisible everywhere else: this is the one
+    -- place that can name it. Split the two failures -- a load error and a
+    -- version mismatch need different fixes.
     local ok, dsp = pcall(require, "dlac\\dispatch");
-    if not ok or type(dsp) ~= 'table' or type(dsp.starterTriggersText) ~= 'string' then return false; end
+    if not ok then return false, 'dispatch module would not load: ' .. tostring(dsp); end
+    if type(dsp) ~= 'table' then return false, 'dispatch module is not a table (got ' .. type(dsp) .. ')'; end
+    if type(dsp.starterTriggersText) ~= 'string' then
+        return false, 'dispatch has no starterTriggersText string (mismatched dispatch.lua?)';
+    end
     -- Create the legacy dir only when the seed actually lands there (profile
     -- storage dirs come from ensureStorage) -- a fresh player owns zero
     -- legacy-layout files AND zero legacy-layout dirs (sim finding, 2026-07-17).
@@ -114,7 +129,10 @@ setup.seedTriggersFile = function(base, abbr)
             end
         end);
     end
-    return D.writeFileText(path, dsp.starterTriggersText);
+    if D.writeFileText(path, dsp.starterTriggersText) ~= true then
+        return false, 'could not write ' .. path .. ' (does its folder exist?)';
+    end
+    return true, nil;
 end
 
 -- Seed the active profile's sets\<JOB>.lua with the four base sets the starter
@@ -123,19 +141,27 @@ end
 -- trigger targets before the player builds anything (Henrik's field test,
 -- 2026-07-17). Never clobbers an existing sets file; travels with
 -- seedTriggersFile -- the starter rules and their targets arrive together.
+-- Returns `written, reason` on the seedTriggersFile contract above: nil reason =
+-- nothing wrong, a string = a real failure that names itself.
 setup.seedSetsFile = function(base, abbr)
-    if D == nil or base == nil or abbr == nil then return false; end
-    local written = false;
-    pcall(function()
+    if D == nil or base == nil or abbr == nil then return false, 'no character/job yet'; end
+    local written, reason = false, nil;
+    local ok, err = pcall(function()
         local prof = require('dlac\\profiles');
-        if type(prof) ~= 'table' or type(prof.frameSetsText) ~= 'function' then return; end
+        if type(prof) ~= 'table' or type(prof.frameSetsText) ~= 'function' then
+            reason = 'profiles module unavailable or has no frameSetsText'; return;
+        end
         prof.ensureStorage();
         local pp = prof.setsPath(abbr);
-        if pp == nil or D.readFileText(pp) ~= nil then return; end   -- user data: never overwrite
+        if pp == nil then reason = 'no sets path (not logged in?)'; return; end
+        if D.readFileText(pp) ~= nil then return; end   -- user data: never overwrite
         local framed = prof.frameSetsText(prof.starterDynText);
-        if (loadstring or load)(framed) ~= nil then written = D.writeFileText(pp, framed) == true; end
+        if (loadstring or load)(framed) == nil then reason = 'starter sets text would not parse'; return; end
+        written = D.writeFileText(pp, framed) == true;
+        if not written then reason = 'could not write ' .. pp .. ' (does its folder exist?)'; end
     end);
-    return written;
+    if not ok and reason == nil then reason = 'threw: ' .. tostring(err); end
+    return written, reason;
 end
 
 -- Seed the data home's gear.lua (the gear inventory) from dlac's OWN bundled
@@ -160,13 +186,22 @@ end
 -- `/dl scan` rebuilds all of it correctly from the real bags in seconds, which
 -- is strictly better than anything the copy could give. The empty template is
 -- enough for the profile to load and for Scan/Commit to populate.
+-- Returns `written, reason` on the seedTriggersFile contract above.
 local function seedGearFile(base)
     local ddir = (type(D.dataDir) == 'function') and D.dataDir() or nil;
     if ddir == nil then ddir = base .. 'dlac\\'; end
     pcall(function() os.execute('mkdir "' .. ddir:gsub('\\+$', '') .. '" 2>nul'); end);
-    if D.readFileText(ddir .. 'gear.lua') ~= nil then return; end
-    local src = D.readFileText(AshitaCore:GetInstallPath() .. 'addons\\dlac\\gear.lua');
-    if src ~= nil then D.writeFileText(ddir .. 'gear.lua', src); end
+    if D.readFileText(ddir .. 'gear.lua') ~= nil then return false, nil; end
+    -- The template ships in the addon folder. A nil read here means the install
+    -- is not where we think it is (extracted nested, or the folder renamed) --
+    -- name the path we looked at, because that is the whole diagnosis.
+    local tpl = AshitaCore:GetInstallPath() .. 'addons\\dlac\\gear.lua';
+    local src = D.readFileText(tpl);
+    if src == nil then return false, 'bundled gear template missing: ' .. tpl; end
+    if D.writeFileText(ddir .. 'gear.lua', src) ~= true then
+        return false, 'could not write ' .. ddir .. 'gear.lua (does its folder exist?)';
+    end
+    return true, nil;
 end
 
 -- The ONE migration path (the standard, see the header): every non-shim
@@ -267,22 +302,33 @@ end
 -- brand-new job on an old character is incomplete for its own sets/triggers
 -- only. Reads through the same deps the seeders write through, so what it sees
 -- is exactly what they just wrote (no torn view between write and verify).
+-- Returns `complete, missing` -- missing names the FIRST unmet gate and the path
+-- it looked at, so a failure is one line instead of an investigation. The four
+-- gates are checked in creation order, which is also the order they depend on
+-- each other, so the first miss is the real one.
 setup.nativeBaselineComplete = function(abbr)
-    if D == nil or abbr == nil then return false; end
-    local complete = false;
+    if D == nil then return false, 'setup not configured (no deps)'; end
+    if abbr == nil then return false, 'no job yet'; end
+    local complete, missing = false, nil;
     pcall(function()
         local prof = require('dlac\\profiles');
-        if type(prof) ~= 'table' then return; end
-        if type(prof.storageExists) == 'function' and prof.storageExists() ~= true then return; end
+        if type(prof) ~= 'table' then missing = 'profiles module unavailable'; return; end
+        if type(prof.storageExists) == 'function' and prof.storageExists() ~= true then
+            local pp = (type(prof.pointerPath) == 'function') and prof.pointerPath() or nil;
+            missing = 'storage pointer ' .. tostring(pp); return;
+        end
         local ddir = (type(D.dataDir) == 'function') and D.dataDir() or nil;
-        if ddir == nil or D.readFileText(ddir .. 'gear.lua') == nil then return; end
+        if ddir == nil then missing = 'no data home (not logged in?)'; return; end
+        if D.readFileText(ddir .. 'gear.lua') == nil then missing = 'gear inventory ' .. ddir .. 'gear.lua'; return; end
         local sp = (type(prof.setsPath) == 'function') and prof.setsPath(abbr) or nil;
-        if sp == nil or D.readFileText(sp) == nil then return; end
+        if sp == nil then missing = 'no sets path for ' .. abbr; return; end
+        if D.readFileText(sp) == nil then missing = 'sets file ' .. sp; return; end
         local tp = (type(prof.triggersPath) == 'function') and prof.triggersPath(abbr) or nil;
-        if tp == nil or D.readFileText(tp) == nil then return; end
+        if tp == nil then missing = 'no triggers path for ' .. abbr; return; end
+        if D.readFileText(tp) == nil then missing = 'triggers file ' .. tp; return; end
         complete = true;
     end);
-    return complete;
+    return complete, missing;
 end
 
 -- FRESH-INSTALL AUTO-SETUP (ADR 0015 ruling 4 refined; issue #91). Under the
@@ -297,6 +343,10 @@ end
 -- died in the purge, Phase 2: every boot is native and decided.)
 -- Returns 'seeded' | 'complete' | 'failed' | 'idle' (for the caller + tests).
 setup._autoWarned = {};   -- per-job failure-notice throttle (cleared on success)
+-- The last seed failure, kept for the artifacts: { job, missing, why, at }.
+-- Chat scrolls and the player sends a report, not a screenshot -- so the reason
+-- has to survive somewhere /dl check and /dl report can read it. nil = healthy.
+setup.lastSeedFail = nil;
 setup.autoSetupNative = function()
     if D == nil then return 'idle'; end
     if not setup.isNative() then return 'idle'; end          -- auto-setup NEVER fires in legacy mode
@@ -314,21 +364,35 @@ setup.autoSetupNative = function()
         local prof = require('dlac\\profiles');
         if type(prof) == 'table' and type(prof.ensureStorage) == 'function' then prof.ensureStorage(); end
     end);
-    seedGearFile(base);
-    setup.seedSetsFile(base, abbr);
-    setup.seedTriggersFile(base, abbr);
+    local _, gearWhy = seedGearFile(base);
+    local _, setsWhy = setup.seedSetsFile(base, abbr);
+    local _, trigWhy = setup.seedTriggersFile(base, abbr);
     pcall(function() require('dlac\\gear\\profilesets').invalidate(); end);
     _setupState = nil;
-    if not setup.nativeBaselineComplete(abbr) then
+    local done, missing = setup.nativeBaselineComplete(abbr);
+    if not done then
+        -- Every seeder that failed for a REAL reason gets a clause. The gate
+        -- says WHAT is missing, the seeder says WHY it could not make it -- the
+        -- two halves that used to be a four-round conversation.
+        local why = {};
+        if gearWhy ~= nil then why[#why + 1] = 'gear: ' .. gearWhy; end
+        if setsWhy ~= nil then why[#why + 1] = 'sets: ' .. setsWhy; end
+        if trigWhy ~= nil then why[#why + 1] = 'triggers: ' .. trigWhy; end
+        setup.lastSeedFail = {   -- read by feature\check (so /dl check and /dl report carry it)
+            job = abbr, missing = missing, why = why, at = os.date('%Y-%m-%d %H:%M:%S'),
+        };
         if not setup._autoWarned[abbr] then
             setup._autoWarned[abbr] = true;   -- one loud line, then keep retrying quietly
             local m = abbr .. ': dlac could not create its native starter files under config\\addons\\dlac\\ '
-                .. '(disk error?) -- it will keep trying.';
+                .. '-- missing ' .. tostring(missing or '(unknown)')
+                .. (#why > 0 and ('; ' .. table.concat(why, '; ')) or '')
+                .. ' -- it will keep trying (/dl check has the detail).';
             D.status(m);
             pcall(function() print('[dlac] ' .. m); end);
         end
         return 'failed';
     end
+    setup.lastSeedFail = nil;
     setup._autoWarned[abbr] = nil;
     -- A successful seed is SILENT (Henrik, 07-23, post-field-confirm: the
     -- player is not told about first runs, engines, or scanning -- the gear

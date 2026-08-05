@@ -18,7 +18,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.08.04d';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.08.05a';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
                                 -- (03f = engine v163: the contest explains its own plan;
                                 --  03g = one floating tray: Teleports + the E-Box crates;
@@ -82,7 +82,16 @@ addon.version = '2026.08.04d';  -- date of the last shipped change (Ashita print
                                 --  04b = ...and it has a door: an NM Compendium
                                 --  row in the header menu, between Teleports and
                                 --  Wishlist, opening the SAME window as
-                                --  "/dl nm window" through the one entry point)
+                                --  "/dl nm window" through the one entry point;
+                                --  05a = THE SEED FAILURE NAMES ITSELF: the three
+                                --  baseline seeders return a reason instead of a
+                                --  bare false, the gate check says WHICH of the
+                                --  four files is missing and where, the load
+                                --  ledger probes the spine it never covered
+                                --  (dispatch first -- every other require of it
+                                --  is call-time under pcall, so it could fail in
+                                --  total silence), and /dl check carries the
+                                --  whole verdict for /dl report to ship)
 addon.desc    = 'Gear sets, triggers and live stats with level scaling -- dlac equips your gear itself.';
 
 -- Load BEACON ('/dl check' field round, 2026-07-23): written by PLAIN io at
@@ -371,6 +380,28 @@ pcall(function()
     if type(jhui.init) == 'function' then jhui.init(deps); end
     if type(jhui.maybeRegister) == 'function' then jhui.maybeRegister(host); end
 end);
+
+-- SPINE PROBE (2026-08-05, the field case that bought it): the loop above is an
+-- explicit list, and the modules it does NOT name are exactly the ones nothing
+-- else can report on. dispatch is the worst of them -- every require of it in
+-- the tree is call-time and inside a pcall (gearoracle, gearui, lockstyle,
+-- modapi, actionseq), so a dispatch that will not load produces no ledger entry,
+-- no chat line and no red text: a friend's clean install lost its starter
+-- trigger file to exactly that, and the beacon said "0 failed" the whole time.
+-- These are loaded LAST and only if something has not already pulled them in,
+-- so the probe cannot change what loads for anyone whose install is healthy --
+-- it only makes an existing failure speak. Namespaced `spine:` in the ledger so
+-- /dl check can tell a probe result from a load-loop result.
+for _, mod in ipairs({ 'dispatch', 'profiles', 'ui\\setupui', 'ui\\triggersui',
+                       'gear\\triggermodel', 'ui\\uihost' }) do
+    local ok, err = pcall(require, 'dlac\\' .. mod);
+    ledger.total = ledger.total + 1;
+    if not ok then
+        ledger.failed[#ledger.failed + 1] = { mod = 'spine:' .. mod, err = tostring(err) };
+        local m = string.format('failed to load %s: %s', mod, tostring(err));
+        if _cfok then _cfmt.err(m); else print('[dlac] ' .. m); end
+    end
+end
 
 -- The beacon's second half: the ledger, appended once the loop is done. A
 -- module failure is now readable OFF DISK (addons\dlac\debug\load-report.txt)
