@@ -390,7 +390,11 @@ function M.renderItemMenu(rec, job)
     imgui.TextColored(COL.HEADER, fmt.esc(tostring(rec.Name or '?')));
     if not owned.haveInBags(rec) then
         imgui.SameLine(0, 8);
-        imgui.TextColored(COL.WANT, '(not owned)');
+        -- The tag STAYS here (unlike the + Add picker's rows, which dropped it for
+        -- the colour alone): this is a one-line popup header, not a list, so it is
+        -- never repeated -- and the name above it is COL.HEADER, so a colour on
+        -- this line would have nothing to contrast against.
+        imgui.TextColored(COL.UNOWN, '(not owned)');
     end
     imgui.Separator();
     if hasMenu then
@@ -755,7 +759,11 @@ function M.render()
             end
         end
         imgui.SameLine(NAME_X);
-        imgui.TextColored(r.own and COL.HAVE or COL.WANT, fmt.esc(e.name or '?'));
+        -- Green = it arrived, grey = still hunting (2026-08-04; the grey was orange).
+        -- Nearly every row on a wishlist is one you do not own yet, so the loud
+        -- colour belongs to the RARE state -- the day the piece lands. Ownership is
+        -- re-read live (r.own), never remembered, so a sale greys the row straight back.
+        imgui.TextColored(r.own and COL.HAVE or COL.UNOWN, fmt.esc(e.name or '?'));
         imgui.SameLine(LV_X);
         imgui.TextColored(COL.LEVEL, string.format('Lv%d', (r.rec and r.rec.Level) or 0));
         imgui.SameLine(SLOT_X);

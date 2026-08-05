@@ -43,10 +43,11 @@ and from here on everything is GUI work. Repeat for each job.
 | Tab | Does |
 |---|---|
 | **Equipped** | Live 16-slot view, worn stat totals (augment- and set-bonus-aware), per-slot alternatives, slot locking, the **floating equipment window** (an always-up 4×4 with right-click item **pins**) |
-| **All Equipment** | Browse everything you own — or the full CatsEyeXI catalog — with search and stats; **"Show gear I don't own"** paints what you lack orange, and right-click adds it to your **Wishlist** |
+| **All Equipment** | Browse everything you own — or the full CatsEyeXI catalog — with search and stats; **"Show gear I don't own"** greys out what you lack, and right-click adds it to your **Wishlist** |
 | **Sets** | Build sets by hand or **Auto-build** from stat weights (**Points** or ordered **Priority** mode); level-scaling candidate lists per slot; live score; **Equip & Lock**; import your old profile's sets via **Copy from** |
 | **Triggers** | Wire sets to the game: statuses, spells (by skill / type / element / `contains` / exact name), abilities, items, weaponskills, pets, **player state** (HP/MP — raw or percent — TP, active buffs & debuffs), **in-town**, **target = Self**, with **AND/OR condition groups** — plus player-defined **Modes** with live toggle buttons and the **Blueprints** rule library |
 | **Gear Helpers** | The self-dressing gear family (below) with live per-job coverage, and the **Priority** section — the draggable ladder that referees which helper wins a contested slot |
+| **Job Helpers** | Job-specific companion modules. BLU ships with **[Bludex](https://github.com/henkpoa/bludex)** — a Blue Magic codex + visual set planner: every spell with stats and descriptions, a 20-slot set builder that applies in game, trait ladders, learn-location hints and a skillchain-partner finder. Also usable as a [standalone addon](https://github.com/henkpoa/bludex) without dlac |
 
 Beyond the tabs: **lockstyle sets** (the armor header button — your look, in 30
 saved boxes per job, with town behaviour), your **Wishlist** (gear you're hunting,
@@ -152,7 +153,7 @@ anything *any* of your jobs can wear at its current level.
 ### Wishlist — gear you mean to own
 
 The **All Equipment** tab has a **"Show gear I don't own"** tick: it opens the
-full CatsEyeXI catalog and paints what you lack orange. Combine it with **Usable
+full CatsEyeXI catalog and greys out what you lack. Combine it with **Usable
 now** and you have a shopping list — everything your job could wear at your level
 that isn't yours yet. **Right-click any row → Wishlist** to put it on the list.
 

@@ -196,13 +196,30 @@ local COL = {   -- ONE table, not ten locals: the 200-local chunk cap
     SCORE  = { 0.95, 0.85, 0.45, 1.00 },
     DMG    = { 0.90, 0.80, 0.45, 1.00 },
     ERR    = { 1.00, 0.45, 0.40, 1.00 },
-    -- Gear you do NOT own. Deliberately the same orange the lockstyle picker has
-    -- used for this since 07-15 (its COL_WARN): "you don't have this" already
-    -- means one thing to the eye here, and All Equipment / the + Add picker /
-    -- the Wishlist window all inherit it rather than inventing a third shade.
+    -- Orange. It USED to mean "you do not own this" everywhere; COL.UNOWN took
+    -- that job on 2026-08-04 (below). What is left is the other reading orange
+    -- always had -- "this row is a guess / an approximation, not a fact" (the NM
+    -- compendium's inferred rows, the wardrobe audit's flagged count).
     WANT   = { 1.00, 0.55, 0.30, 1.00 },
-    -- ...and the green for a wishlisted piece that has since landed in your bags.
+    -- The green for a wishlisted piece that has since landed in your bags. Now the
+    -- only saturated colour on a wishlist row, which is the point: the ARRIVAL is
+    -- the event worth seeing, and it stopped competing with an equally loud orange.
     HAVE   = { 0.45, 0.90, 0.45, 1.00 },
+    -- GEAR YOU DO NOT OWN -- the one shade, every surface (Henrik 2026-08-04): the
+    -- + Add picker, the All Equipment tab, the Wishlist window. Greyed out, the
+    -- universal "not available to you" read, and the same treatment the Gear
+    -- Helpers detail and the teleports menu have always given an unowned row.
+    -- Grey, not the dark red also on the table: red already means "in storage" in
+    -- those same lists, and two reds one shade apart is a worse read than no
+    -- colour at all. Dimmer than COL.DIM so it does not land on the same note as
+    -- a panel's own helper text. It replaced a literal "(not owned)" tag on the
+    -- picker's rows -- with the tick on, a third of the list wore one, and a tag
+    -- repeated that often stops being read. The item hover still SAYS it, so the
+    -- fact never lives in the colour alone.
+    -- NOT the lockstyle picker, which keeps its orange: there an unowned piece is
+    -- PREVIEW ONLY (the server will not render it on you), a warning about what
+    -- the game will do, not a note about what you have.
+    UNOWN  = { 0.56, 0.56, 0.56, 1.00 },
 };
 pmenu.configure({ ui = ui, COL = COL });   -- Profiles popup state lives in the shared ui table
 
@@ -1227,7 +1244,16 @@ local function renderItemTooltip(rec, note)
         -- with no location detail still warns ('?') rather than staying silent.
         if rec.Id ~= nil then
             local locs = owned.whereText(rec);         -- populates the split cache too
-            if owned.isStored(rec) then
+            if rec.Virtual ~= true and not owned.haveInBags(rec) then
+                -- Says the thing the row's grey only implies. The + Add picker
+                -- dropped its "(not owned)" tag (2026-08-04) and a colour is not a
+                -- fact you can read back to yourself -- so the hover carries it,
+                -- here rather than in the picker, because every surface that shows
+                -- a catalog row you lack wants the same sentence.
+                -- haveInBags fails OPEN: pre-login / headless nothing is painted
+                -- unowned, so this line cannot appear on gear you actually have.
+                imgui.TextColored(COL.UNOWN, 'Not owned yet -- the engine skips it until it reaches your bags.');
+            elseif owned.isStored(rec) then
                 imgui.TextColored(COL.ERR, 'IN STORAGE: ' .. fmt.esc((locs ~= '') and locs or '?')
                     .. '  (move to Inventory/Wardrobe to equip)');
             elseif locs ~= '' then
@@ -3664,14 +3690,15 @@ local function renderAddRow(rec, ordinal, level, nameW)
     if imgui.IsItemHovered() then renderItemTooltip(rec); end
     local nameCol = 26;
     imgui.SameLine(nameCol);
-    -- Orange = you do not own it (ADR 0026): addable on purpose, and the engine
-    -- skips it until the day it lands in your bags. Same shade the All Equipment
-    -- tab and the lockstyle picker use, and it outranks the in-storage red for
-    -- the same reason -- not having it at all is the more basic fact.
+    -- Greyed out = you do not own it (ADR 0026): addable on purpose, and the engine
+    -- skips it until the day it lands in your bags. It outranks the in-storage red
+    -- for the same reason it always did -- not having it at all is the more basic
+    -- fact. The literal "(not owned)" tag is gone (Henrik 2026-08-04): with the tick
+    -- on, a third of the list wore it, and a tag repeated that often stops being
+    -- read. The hover still SAYS it, so the fact never lives in the colour alone.
     local mine = (rec.Virtual == true) or owned.haveInBags(rec);
-    local nameColr = (not mine) and COL.WANT or (owned.isStored(rec) and COL.ERR or COL.USABLE);
-    imgui.TextColored(nameColr, fmt.esc(rec.Name or '?') .. fmt.qtyTag(rec)
-        .. ((not mine) and '   (not owned)' or ''));
+    local nameColr = (not mine) and COL.UNOWN or (owned.isStored(rec) and COL.ERR or COL.USABLE);
+    imgui.TextColored(nameColr, fmt.esc(rec.Name or '?') .. fmt.qtyTag(rec));
     imgui.SameLine(nameCol + (nameW or 200));
     imgui.TextColored(COL.LEVEL, string.format('Lv%2d', rec.Level or 0));
     local ss = fmt.statSummary(rec, level);
@@ -3757,7 +3784,8 @@ local function renderAddPopup(job, level)
         imgui.SameLine(0, 14);
         imgui.Checkbox("Show gear I don't own##addall", ui.addShowAll);
         if imgui.IsItemHovered() then
-            imgui.SetTooltip('Also offer gear you do not have yet, so a set can be built ahead of the hunt.\n\n'
+            imgui.SetTooltip('Also offer gear you do not have yet, so a set can be built ahead of the hunt.\n'
+                .. 'Those rows are GREYED OUT (the red ones are gear you own but have in storage).\n\n'
                 .. 'A piece you do not own is SKIPPED by the engine -- the slot keeps its normal\n'
                 .. 'best-by-level pick, and set totals do not count it. The day it reaches your\n'
                 .. 'bags it starts being worn, with nothing to change.\n\n'
