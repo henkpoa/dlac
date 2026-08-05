@@ -1075,6 +1075,33 @@ local function groupDefined(name)
     return false;
 end
 
+-- Is `cond` a mode condition this job actually defines? Same vocabulary as
+-- everything else here: 'Name' (a toggle, or a cycle matched on any value) or
+-- 'Name:Value' (one exact cycle value). Case-insensitive, like groupDefined.
+--
+-- Deliberately reads data.Modes and NOT M.modeConditions() -- that one also
+-- harvests names REFERENCED by rules, so asking it "is this defined" would
+-- answer yes for every stale reference by construction. The picker wants the
+-- wider list; the marker wants the narrower one. (2026-08-05)
+local function modeDefined(cond)
+    local data = select(1, M.currentModel());
+    if type(data) ~= 'table' or type(data.Modes) ~= 'table' then return false; end
+    local s = tostring(cond or '');
+    local name, value = s:match('^([^:]+):(.+)$');
+    if name == nil then name = s; end
+    local def = nil;
+    for nm, d in pairs(data.Modes) do
+        if type(nm) == 'string' and string.lower(nm) == string.lower(name) then def = d; break; end
+    end
+    if def == nil then return false; end
+    if value == nil then return true; end          -- bare name: matches the mode, any value
+    if type(def.values) ~= 'table' then return false; end   -- a VALUE named on a toggle
+    for _, v in ipairs(def.values) do
+        if string.lower(tostring(v)) == string.lower(value) then return true; end
+    end
+    return false;                                   -- the cycle lost that value
+end
+
 local function trigPrettyKey(k)
     if hasDispatch and type(dsp.PRETTY_KEY) == 'table' and dsp.PRETTY_KEY[k] ~= nil then return dsp.PRETTY_KEY[k]; end
     return k;
@@ -2113,6 +2140,25 @@ local function renderTrigRuleBox(h, i, r, setNames, colX)
                 imgui.TextColored(COL_ERR, '[missing group]');
                 if imgui.IsItemHovered() then
                     imgui.SetTooltip('No group with this name exists for this job -- the rule matches\nnothing and equips nothing. Create it in the Groups section (or fix the name).');
+                end
+            end
+        end
+        -- Same treatment for a stale MODE reference (2026-08-05). The picker means
+        -- you can no longer AUTHOR one of these, but a hand-edited file, a
+        -- blueprint import or a deleted cycle value can still carry one -- and a
+        -- rule gated on a mode that does not exist is exactly the silent no-op
+        -- hard rule 12 exists to forbid. Covers a whole missing mode AND a cycle
+        -- value that was removed from a mode that still exists.
+        if ln.key == 'mode' then
+            local mv = r.when and r.when.mode;
+            local refs = (type(mv) == 'table') and mv or ((mv ~= nil) and { mv } or {});
+            local miss = false;
+            for _, mnm in ipairs(refs) do if not modeDefined(mnm) then miss = true; break; end end
+            if miss then
+                imgui.SameLine(0, 6);
+                imgui.TextColored(COL_ERR, '[missing mode]');
+                if imgui.IsItemHovered() then
+                    imgui.SetTooltip('No mode with this name (or this cycle value) is defined for this job --\nthe rule matches nothing and equips nothing. Create it in the Modes section,\nor pick a live one with the mode condition\'s dropdown.');
                 end
             end
         end
@@ -5264,6 +5310,33 @@ function M.render(job, level)
             imgui.TextColored(COL_ERR, string.format(
                 '[!] %d trigger group reference(s) not defined for this job: %s -- those rules match NOTHING (red [missing group] below). Create them in the Groups section.',
                 #gmiss, esc(table.concat(gmiss, ', '))));
+        end
+    end
+
+    -- Missing-MODE banner: the same thing for `mode` (2026-08-05). The marker
+    -- alone would only be found by scrolling past every rule -- the group
+    -- precedent is a banner AND a marker, and this is the pair, not one of them.
+    -- Walks the same shape (the & leg's condition) for the same reason: one
+    -- surface, one coverage, so the two banners can never mean different things.
+    do
+        local mmiss, mseen = {}, {};
+        for _, ev in ipairs(TRIG_HANDLERS) do
+            for _, r in ipairs(trig.data[ev] or {}) do
+                local mv = r.when and r.when.mode;
+                local refs = (type(mv) == 'table') and mv or ((mv ~= nil) and { mv } or {});
+                for _, mnm in ipairs(refs) do
+                    mnm = tostring(mnm);
+                    if not modeDefined(mnm) and not mseen[string.lower(mnm)] then
+                        mseen[string.lower(mnm)] = true; mmiss[#mmiss + 1] = mnm;
+                    end
+                end
+            end
+        end
+        if #mmiss > 0 then
+            table.sort(mmiss);
+            imgui.TextColored(COL_ERR, string.format(
+                '[!] %d trigger mode reference(s) not defined for this job: %s -- those rules match NOTHING (red [missing mode] below). Create them in the Modes section.',
+                #mmiss, esc(table.concat(mmiss, ', '))));
         end
     end
 
