@@ -18,7 +18,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.08.05d';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.08.05e';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
                                 -- (03f = engine v163: the contest explains its own plan;
                                 --  03g = one floating tray: Teleports + the E-Box crates;
@@ -108,7 +108,13 @@ addon.version = '2026.08.05d';  -- date of the last shipped change (Ashita print
                                 --  rule and a banner over the tab, the same
                                 --  pair a missing group has always had, because
                                 --  a rule gated on a mode that does not exist
-                                --  matches nothing and used to do it silently)
+                                --  matches nothing and used to do it silently;
+                                --  05e = AutoAmmo says a stock-out ONCE PER
+                                --  ZONE: a weaponskill between shots walks a
+                                --  different ladder, and the old latch read
+                                --  that as the condition clearing -- so one
+                                --  empty stack announced itself every few
+                                --  seconds all fight)
 addon.desc    = 'Gear sets, triggers and live stats with level scaling -- dlac equips your gear itself.';
 
 -- Load BEACON ('/dl check' field round, 2026-07-23): written by PLAIN io at

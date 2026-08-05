@@ -13427,6 +13427,125 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- AZ. The AutoAmmo stock-out line is ONCE PER ZONE, per distinct message.
+--     Henrik's screenshot (2026-08-05): the same "Steel Bullet is out --
+--     loading Iron Bullet" six times inside 27 seconds of one COR fight. The
+--     plan itself was right every time -- it is the SPEAKING that repeated,
+--     which no resolveAmmoPlan test could ever have caught: the whole bug lives
+--     in the rim, between the plan and the print.
+-- ---------------------------------------------------------------------------
+(function()
+    local savedAshita = AshitaCore;
+    local RES = {
+        [17222] = { Name = { 'Hexagun' },      Skill = 26 },
+        [12]    = { Name = { 'Steel Bullet' }, Skill = 26 },
+        [13]    = { Name = { 'Iron Bullet' },  Skill = 26 },
+    };
+    -- The gun is worn, the Ammo slot is EMPTY, the preferred rung (Steel) is not
+    -- in the bag and the fallback (Iron) is: the exact shape of the screenshot.
+    local bag = { [1] = { Id = 17222, Count = 1 }, [2] = { Id = 13, Count = 99 } };
+    AshitaCore = {
+        GetMemoryManager = function() return { GetInventory = function() return {
+            GetEquippedItem = function(_, slot)
+                if slot == 2 then return { Index = 1 }; end
+                return { Index = 0 };
+            end,
+            GetContainerItem = function(_, cid, idx) return (cid == 0) and bag[idx] or nil; end,
+            GetContainerCountMax = function(_, cid) return (cid == 0) and 2 or 0; end,
+        }; end }; end,
+        GetResourceManager = function() return { GetItemById = function(_, id) return RES[id]; end }; end,
+    };
+    -- dispatch.lua:150 binds `print` to chatfmt.print AT LOAD TIME, into a
+    -- file-scope local -- so overriding the global here would capture nothing
+    -- and this whole block would pass while the chat log still scrolled. Swap
+    -- the upvalue itself; every closure in dispatch shares that one binding, so
+    -- one swap covers the call site and one restore puts it back.
+    local said = {};
+    local sink = function(s) said[#said + 1] = tostring(s); end;
+    local function swapPrint(fn)
+        local f, i = dispatchM._ammoOverlayFor, 1;
+        while true do
+            local nm = debug.getupvalue(f, i);
+            if nm == nil then return nil; end
+            if nm == 'print' then
+                local _, old = debug.getupvalue(f, i);
+                debug.setupvalue(f, i, fn);
+                return old;
+            end
+            i = i + 1;
+        end
+    end
+    local realPrint = swapPrint(sink);
+    check('AZ0 the print seam was actually found (else this block proves nothing)',
+        type(realPrint), 'function');
+
+    -- Steel is the ranged rung and is OUT; Iron is stocked and is the only entry
+    -- flagged for weaponskills. That asymmetry is the whole point: the WS ladder
+    -- never even considers Steel, so it finds a stocked winner and answers
+    -- 'pick' -- which is what the old latch treated as "the condition cleared".
+    local AS = { fmt = 2, jobs = { COR = { enabled = true, at = 0, ammo = {
+        { name = 'Steel Bullet', id = 12, type = 'Marksmanship', pair = '26', ranged = true, ws = false, special = false },
+        { name = 'Iron Bullet',  id = 13, type = 'Marksmanship', pair = '26', ranged = true, ws = true,  special = false },
+    } } } };
+    -- The Ammo slot stays empty between calls, so every shot re-plans identically
+    -- -- which is what makes this the spam case and not a state machine.
+    local function fire(zone, ev, action)
+        local ctx = { player = { MainJob = 'COR' }, zone = zone, action = action };
+        return dispatchM._ammoOverlayFor(AS, ctx, ev or 'Preshot', nil, false);
+    end
+    local function shoot(zone) return fire(zone, 'Preshot'); end
+    -- 217 = a FREE weaponskill (AMMO_WS_FREE): nothing can run out, so it answers
+    -- code 'pick' with no chat -- precisely the result the old rim mistook for
+    -- "the stock-out cleared".
+    local function ws(zone)    return fire(zone, 'Weaponskill', { Id = 217 }); end
+
+    dispatchM._ammoSaid, dispatchM._ammoSaidZone = nil, nil;
+    local eq = shoot(100);
+    check('AZ1 the stock-out still loads the fallback',
+        (type(eq) == 'table') and eq.Ammo or nil, 'Iron Bullet');
+    check('AZ2 ...and says so once', #said, 1);
+    check('AZ3 ...naming what ran out and what replaced it',
+        said[1]:find('Steel Bullet is out -- loading Iron Bullet', 1, true) ~= nil, true);
+
+    for _ = 1, 5 do shoot(100); end
+    check('AZ4 five more shots in the same zone stay silent', #said, 1);
+
+    -- THE ACTUAL BUG. A weaponskill between shots walks the ws ladder, whose
+    -- topmost entry IS stocked -- code 'pick'. The old rim read that as "the
+    -- condition cleared" and armed the line again, so the next shot re-announced
+    -- a fact that had not changed. Without this interleave the block above passes
+    -- against the broken code too, which is most of why it is here.
+    local wsEq = ws(100);
+    check('AZ4b the weaponskill ladder finds its own stocked rung',
+        (type(wsEq) == 'table') and wsEq.Ammo or nil, 'Iron Bullet');
+    shoot(100);
+    check('AZ4c ...and the shot after it is still silent', #said, 1);
+
+    shoot(101);
+    check('AZ5 a new zone speaks again', #said, 2);
+
+    -- A DIFFERENT fact is its own line, same zone or not: the latch is on the
+    -- message, not on "an ammo notice happened here".
+    bag[2] = nil;                       -- now nothing at all is stocked
+    shoot(101);
+    check('AZ6 a different stock-out line is a different message', #said, 3);
+    check('AZ7 ...the dead-end one',
+        said[3]:find('no enabled ammo left', 1, true) ~= nil, true);
+    shoot(101);
+    check('AZ8 ...and it latches too', #said, 3);
+
+    -- An unknown zone (headless, or a failed party read) must not become a
+    -- free-speaking wildcard: nil compares equal to nil, so it latches like any
+    -- other zone. This is the branch a live client hits during a zone load.
+    dispatchM._ammoSaid, dispatchM._ammoSaidZone = nil, nil;
+    said = {};
+    shoot(nil); shoot(nil); shoot(nil);
+    check('AZ9 an unknown zone still speaks exactly once', #said, 1);
+
+    swapPrint(realPrint); AshitaCore = savedAshita;
+end)();
+
+-- ---------------------------------------------------------------------------
 -- AW. ammowatch -- the GUI's half of AutoAmmo: the fmt-2 PER-JOB serializer
 --     (round-trips through the engine's reader shape), the fmt-1 migration
 --     (every ticked job gets its own copy; an unowned list becomes the
