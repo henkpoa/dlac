@@ -44015,6 +44015,19 @@ return {
                     SpellInterruptionRateDown = 25,
                 }
             },
+            EtherealClub = {
+                Name = "Ethereal Club",
+                Level = 1,
+                Id = 22053,
+                Model = 937,
+                Jobs = {"All"},
+                OneHanded = true,
+                Type = "Club",
+                Stats = {
+                    DMG = 1,
+                    Delay = 288,
+                }
+            },
             FederationClub = {
                 Name = "Federation Club",
                 Level = 15,
@@ -49581,6 +49594,19 @@ return {
                 Stats = {
                     DMG = 217,
                     Delay = 402,
+                }
+            },
+            EtherealStaff = {
+                Name = "Ethereal Staff",
+                Level = 1,
+                Id = 22090,
+                Model = 938,
+                Jobs = {"All"},
+                OneHanded = false,
+                Type = "Staff",
+                Stats = {
+                    DMG = 1,
+                    Delay = 366,
                 }
             },
             ExaltedStaff = {
@@ -60692,6 +60718,19 @@ return {
                     Delay = 720,
                 }
             },
+            EtherealBow = {
+                Name = "Ethereal Bow",
+                Level = 1,
+                Id = 22146,
+                Model = 154,
+                Jobs = {"All"},
+                Type = "Archery",
+                Pair = "25:4",
+                Stats = {
+                    DMG = 1,
+                    Delay = 540,
+                }
+            },
             EurytosBow = {
                 Name = "Eurytos Bow",
                 Level = 55,
@@ -64087,6 +64126,19 @@ return {
                 Stats = {
                     DMG = 57,
                     Delay = 582,
+                }
+            },
+            EtherealGun = {
+                Name = "Ethereal Gun",
+                Level = 1,
+                Id = 22165,
+                Model = 155,
+                Jobs = {"All"},
+                Type = "Marksmanship",
+                Pair = "26:1",
+                Stats = {
+                    DMG = 1,
+                    Delay = 600,
                 }
             },
             ExaltedCBow = {
