@@ -1,6 +1,6 @@
-# Field checks owed — against `v2026.08.05b`
+# Field checks owed — against `v2026.08.05d`
 
-**Reload first.** `/addon reload dlac`, then check the load banner says **`2026.08.05b`**.
+**Reload first.** `/addon reload dlac`, then check the load banner says **`2026.08.05d`**.
 If it says anything else, stop — you are testing a different tree than this list describes,
 and every answer below becomes unreliable.
 
@@ -169,6 +169,26 @@ file tells you to send.
 - [ ] **G3 — nothing new under `luashitacast\`.** After a login and a profile switch, confirm
       `config\addons\luashitacast\<Char>\` has no freshly-created empty `dlac\` folder —
       `profiles.setActive` was creating one on every pointer write.
+
+---
+
+## Session H — the mode condition picker (`2026.08.05c`/`d`)
+
+Cheap, and it needs nothing but a job with modes defined. Here because this file claims to be
+the whole of the debt on `main`, and these two shipped unfielded like everything above them.
+
+- [ ] **H1 — the picker offers the right vocabulary.** Triggers → a rule → `mode` condition:
+      it is a dropdown now. A cycle must offer one entry **per value** (`Weapon:Melee`,
+      `Weapon:Caster`), a toggle its **bare name** (`DT`).
+- [ ] **H2 — an empty job says where to go.** On a job with no modes defined, the combo reads
+      *"no modes yet -- create one in the Modes section"* rather than offering a dead pick.
+- [ ] **H3 — the marker fires.** Delete a value from a cycle that a rule still names (or edit
+      a trigger file by hand to name a mode that does not exist). The rule must show a red
+      **[missing mode]**, and a banner must appear over the tab naming it.
+- [ ] **H4 — and clears.** Re-create the mode or repoint the rule; both must go out.
+
+*The Sets tab's mode gate reads the same list — if H1 disagrees with what that combo offers,
+the two tabs have drifted and that is the bug, not either list on its own.*
 
 ---
 
