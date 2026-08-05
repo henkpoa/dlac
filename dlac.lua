@@ -18,7 +18,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.08.05a';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.08.05b';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
                                 -- (03f = engine v163: the contest explains its own plan;
                                 --  03g = one floating tray: Teleports + the E-Box crates;
@@ -91,7 +91,14 @@ addon.version = '2026.08.05a';  -- date of the last shipped change (Ashita print
                                 --  (dispatch first -- every other require of it
                                 --  is call-time under pcall, so it could fail in
                                 --  total silence), and /dl check carries the
-                                --  whole verdict for /dl report to ship)
+                                --  whole verdict for /dl report to ship;
+                                --  05b = THE LEGACY-FALLBACK SWEEP: eight dead
+                                --  `charBase() .. 'dlac\' ` compositions removed
+                                --  across six files, setActive stops creating a
+                                --  folder under luashitacast\, and the /dl debug
+                                --  handoff readers lose a `dlac\` segment the
+                                --  writer dropped at the purge -- so an engine
+                                --  half can actually merge into a report again)
 addon.desc    = 'Gear sets, triggers and live stats with level scaling -- dlac equips your gear itself.';
 
 -- Load BEACON ('/dl check' field round, 2026-07-23): written by PLAIN io at

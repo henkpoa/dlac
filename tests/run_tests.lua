@@ -12447,7 +12447,24 @@ end)();
 (function()
     local savedReg, savedClock, savedCore = ashita.events.register, os.clock, AshitaCore;
     local savedProf = package.loaded['dlac\\profiles'];
-    package.loaded['dlac\\profiles'] = nil;   -- force the legacy-tier read (restored below)
+    -- Force the LEGACY-TIER read (the flat <char>\lockstyles.lua rather than a
+    -- profile job entry) by handing back a profiles that resolves no per-job
+    -- path. This used to nil the module outright, which made lockstyle's
+    -- `require` fail and sent dataDir down a charBase() .. 'dlac\\' fallback
+    -- into the LuaAshitacast tree -- the only route on which that fallback ever
+    -- fired, and it wrote data nothing else in dlac would read. The fallback is
+    -- gone (2026-08-05 sweep, PRG3), so the tier is selected honestly here: the
+    -- subject of LGF is the moogle-subjob heal, not the dead path.
+    -- The fixture moved with it: tests\fixtures\keepflow\config\addons\dlac\
+    -- Testy_1234\lockstyles.lua. It used to sit under ...\luashitacast\
+    -- Testy_1234\dlac\, which only the deleted fallback could reach -- so the
+    -- fixture was pinning the legacy LAYOUT, not the legacy TIER. The tier is
+    -- the flat per-character lockstyles.lua, and it lives in the native home.
+    package.loaded['dlac\\profiles'] = {
+        dataDir            = function() return 'tests\\fixtures\\keepflow\\config\\addons\\dlac\\Testy_1234\\'; end,
+        activeName         = function() return 'Default'; end,
+        readLockstylesPath = function() return nil; end,   -- no job entry -> legacy tier
+    };
 
     local handlers, queued = {}, {};
     ashita.events.register = function(ev, nm, fn) handlers[ev .. '/' .. nm] = fn; end
@@ -18809,9 +18826,10 @@ end)();
     local ALLOW = {   -- Henrik's keep-list: read-only doors into the old tree
         ['profiles.lua'] = true,          -- charBase/lacRoot/legacyDataPresent/legacyExportsDir
         ['gear/setmanager.lua'] = true,   -- the job-file scanner (whole-block import)
-        ['feature/lockstyle.lua'] = true, -- legacy boxes read-fallback tier
-        ['feature/macrobook.lua'] = true, -- legacy books read-fallback tier
-        ['gear/gearoptim.lua'] = true,    -- legacy weights read tier
+        -- (lockstyle, macrobook and gearoptim came OFF this list 2026-08-05:
+        -- their literals fed dataDir fallbacks that could never fire, so the
+        -- literals went with the fallbacks. Nothing was allowlisted away here --
+        -- there is simply no legacy path left in those three files.)
     };
     local offenders = {};
     for _, f in ipairs(SHIPPED) do
@@ -18830,6 +18848,49 @@ end)();
         local raw = fh:read('*a'); fh:close();
         return raw:find('\\\\luashitacast', 1, true) ~= nil;
     end)(), true);
+
+    -- PRG3: THE COMPOSED FALLBACK. PRG1 greps for the path LITERAL, so it was
+    -- blind to the shape that actually survived the purge -- taking the LEGACY
+    -- char base from somewhere else and hanging `dlac\` off it:
+    --
+    --     local base = charBase();  return base and (base .. 'dlac\\') or nil;
+    --     if ddir == nil then ddir = base .. 'dlac\\'; end
+    --
+    -- Six of those outlived Phase 4 in five files, invisible to the guard,
+    -- because the literal lives in profiles.charBase and the composition lives
+    -- in the consumer. They were all dead code -- dataDir and charBase resolve
+    -- off the same identity, so the fallback only fired when it was about to
+    -- return nil anyway -- but one of them aimed the trigger editor at the
+    -- legacy tree, and the same blindness hid a THIRD variant for months: the
+    -- debug handoff readers kept a `dlac\` segment after the writer dropped it,
+    -- so no engine half ever merged into a /dl report.
+    --
+    -- The rule this pins: `.. 'dlac\\'` composed onto anything is illegal in
+    -- shipped code. The native home already carries the character level, and
+    -- profiles.dataDir() is the only composer.
+    -- profiles.lua is the ONE exception, and only for the two migration readers:
+    -- _legacyProbe (does this character have legacy data?) and
+    -- engineMigrateStorage's copyTree SOURCE. Both must name the old layout --
+    -- that is their whole job. Everything else composes through dataDir().
+    local COMPOSE_ALLOW = { ['profiles.lua'] = true };
+    local composed = {};
+    for _, f in ipairs(SHIPPED) do
+        local fh = io.open(f, 'rb');
+        if fh ~= nil then
+            local raw = fh:read('*a'); fh:close();
+            -- strip comment lines first: the ban is on CODE, and the comments
+            -- explaining the removal must be free to name the shape they killed.
+            local code = {};
+            for line in (raw .. '\n'):gmatch('([^\n]*)\n') do
+                if line:match('^%s*%-%-') == nil then code[#code + 1] = line; end
+            end
+            if table.concat(code, '\n'):find("%.%.%s*'dlac\\\\'") ~= nil and not COMPOSE_ALLOW[f] then
+                composed[#composed + 1] = f;
+            end
+        end
+    end
+    check('PRG3 no composed legacy `.. \'dlac\\\\\'` path in shipped code',
+          table.concat(composed, ','), '');
 end)();
 
 -- ---------------------------------------------------------------------------

@@ -28,17 +28,9 @@ local _openReq = false;    -- header button clicked -> OpenPopup next render
 
 local COL_DIM = { 0.62, 0.62, 0.62, 1.0 };
 
-local function charBase()
-    local base = nil;
-    pcall(function()
-        local party = AshitaCore:GetMemoryManager():GetParty();
-        local name  = party:GetMemberName(0);
-        local id    = party:GetMemberServerId(0);
-        if name == nil or name == '' or id == nil or id == 0 then return; end
-        base = string.format('%sconfig\\addons\\luashitacast\\%s_%u\\', AshitaCore:GetInstallPath(), name, id);
-    end);
-    return base;
-end
+-- (charBase -- the luashitacast composition -- is GONE, 2026-08-05: it fed only
+-- dataDir's fallback, and that fallback was unreachable. Same removal, same
+-- reason as feature\lockstyle.)
 
 local function jobAbbr()
     local abbr = nil;
@@ -59,8 +51,7 @@ local function dataDir()
         local ok2, d = pcall(prof.dataDir);
         if ok2 and d ~= nil then return d; end
     end
-    local base = charBase();
-    return base and (base .. 'dlac\\') or nil;
+    return nil;   -- native home or nothing (purge Phase 4: no legacy composition)
 end
 
 local function path()

@@ -384,8 +384,11 @@ local function dlacDataDir()
         local d = deps.dataDir();
         if d ~= nil then return d; end
     end
-    local base = deps and deps.charBase and deps.charBase() or nil;
-    return base and (base .. 'dlac\\') or nil;
+    -- (the `deps.charBase() .. 'dlac\\'` fallback is GONE, 2026-08-05: deps.dataDir
+    -- and deps.charBase both resolve off the same character identity, so this
+    -- only ever fired when it was about to return nil anyway -- and on the one
+    -- path where it did not, it aimed the TRIGGER EDITOR at the legacy tree.)
+    return nil;
 end
 
 local function trigFilePath()

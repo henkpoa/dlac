@@ -93,8 +93,12 @@ setup.seedTriggersFile = function(base, abbr)
     if D == nil then return false, 'setup not configured (no deps)'; end
     if base == nil or abbr == nil then return false, 'no character/job yet'; end
     -- the legacy tier lives in the data home (mode-aware, feature/native-engine)
+    -- No `base .. 'dlac\\'` fallback (removed 2026-08-05): base is the LEGACY
+    -- char home, and seeding a starter file into the LuaAshitacast tree is
+    -- exactly what the purge forbids. dataDir nil here means not-logged-in, and
+    -- the honest answer to that is to do nothing and retry next beat.
     local ddir = (type(D.dataDir) == 'function') and D.dataDir() or nil;
-    if ddir == nil then ddir = base .. 'dlac\\'; end
+    if ddir == nil then return false, 'no data home (not logged in?)'; end
     local legacyTierPath = ddir .. 'triggers\\' .. abbr .. '.lua';
     local path = legacyTierPath;
     if D.readFileText(path) ~= nil then return false, nil; end   -- user data: never overwrite
@@ -189,7 +193,7 @@ end
 -- Returns `written, reason` on the seedTriggersFile contract above.
 local function seedGearFile(base)
     local ddir = (type(D.dataDir) == 'function') and D.dataDir() or nil;
-    if ddir == nil then ddir = base .. 'dlac\\'; end
+    if ddir == nil then return false, 'no data home (not logged in?)'; end   -- never the legacy tree
     pcall(function() os.execute('mkdir "' .. ddir:gsub('\\+$', '') .. '" 2>nul'); end);
     if D.readFileText(ddir .. 'gear.lua') ~= nil then return false, nil; end
     -- The template ships in the addon folder. A nil read here means the install
