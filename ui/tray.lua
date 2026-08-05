@@ -76,6 +76,12 @@ local M = {};
 local SLOTS = {
     { mod = 'dlac\\ui\\gearui',    wants = 'trayTeleportsWants', draw = 'trayTeleportsDraw' },
     { mod = 'dlac\\ui\\restockui', wants = 'trayWants',          draw = 'trayDraw'          },
+    -- Giftboxes LAST (Henrik, 2026-08-05: "under the e-box stocker icons"), and
+    -- the ORDER ruling above says the same thing independently: this is the most
+    -- volatile member in the tray -- it comes and goes with what is in your bag
+    -- -- and the crate above it is Store, one click and no confirm. Anything
+    -- that could slide Store under a cursor is the arrangement to avoid.
+    { mod = 'dlac\\ui\\giftboxui', wants = 'trayWants',          draw = 'trayDraw'          },
 };
 M.SLOTS = SLOTS;   -- test seam: the ORDER is the ruling, so it is assertable
 

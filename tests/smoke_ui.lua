@@ -2798,6 +2798,7 @@ end)();
     IM.IsItemClicked     = function() return false; end
 
     local NAMES = { 'dlac\\ui\\tray', 'dlac\\ui\\gearui', 'dlac\\ui\\restockui',
+                    'dlac\\ui\\giftboxui', 'dlac\\feature\\giftbox',
                     'dlac\\feature\\restockwatch', 'dlac\\feature\\eboxclient',
                     'dlac\\feature\\gamemode', 'dlac\\ui\\filetex', 'imgui' };
     local saved = {};
@@ -2807,7 +2808,7 @@ end)();
 
     -- ---- (a) the host window, against two stub members --------------------
     local drew = {};
-    local wantsA, wantsB, blowUp = false, false, false;
+    local wantsA, wantsB, wantsC, blowUp = false, false, false, false;
     package.loaded['dlac\\ui\\gearui'] = {
         trayTeleportsWants = function()
             if blowUp then error('gate exploded'); end
@@ -2818,6 +2819,10 @@ end)();
     package.loaded['dlac\\ui\\restockui'] = {
         trayWants = function() return wantsB; end,
         trayDraw  = function() drew[#drew + 1] = 'ebox'; end,
+    };
+    package.loaded['dlac\\ui\\giftboxui'] = {
+        trayWants = function() return wantsC; end,
+        trayDraw  = function() drew[#drew + 1] = 'gift'; end,
     };
 
     package.loaded['dlac\\ui\\tray'] = nil;
@@ -2851,6 +2856,27 @@ end)();
         check('TR12 SLOTS is ordered Teleports-then-restock',
             tr.SLOTS[1].mod .. '|' .. tr.SLOTS[2].mod,
             'dlac\\ui\\gearui|dlac\\ui\\restockui');
+
+        -- All three, and the giftbox icon is LAST (Henrik: "under the e-box
+        -- stocker icons"). Not cosmetic: Store is the crate directly above it,
+        -- one click and no confirm, and giftboxes are the most volatile member
+        -- in the tray -- they appear and vanish with your bag. Any order that
+        -- put them above Store would slide Store under a waiting cursor.
+        wantsA, wantsB, wantsC, drew, sameLines, dummies = true, true, true, {}, 0, {};
+        check('TR12b all three members render', pcall(tr.render, {}), true);
+        check('TR12c giftboxes draw UNDER the crates',
+            table.concat(drew, ','), 'tp,ebox,gift');
+        check('TR12d three: Begin/End balanced', depth.win, 0);
+        check('TR12e still a COLUMN -- no SameLine between slots', sameLines, 0);
+        check('TR12f ...with a vertical gap per extra slot', #dummies, 2);
+        check('TR12g SLOTS puts giftboxui last',
+            tr.SLOTS[#tr.SLOTS].mod, 'dlac\\ui\\giftboxui');
+        -- Boxes in the bag with the other two quiet: the tray still opens for it
+        -- alone (it is a full member, not a decoration on the crates).
+        wantsA, wantsB, drew = false, false, {};
+        check('TR12h giftboxes alone still open the tray', pcall(tr.render, {}), true);
+        check('TR12i ...drawing by themselves', table.concat(drew, ','), 'gift');
+        wantsC = false;
 
         -- A member whose GATE throws is absent for a frame; it must not cost the
         -- other member its window (nor take down d3d_present with it).

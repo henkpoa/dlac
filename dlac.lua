@@ -18,7 +18,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.08.05e';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.08.05i';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
                                 -- (03f = engine v163: the contest explains its own plan;
                                 --  03g = one floating tray: Teleports + the E-Box crates;
@@ -114,7 +114,18 @@ addon.version = '2026.08.05e';  -- date of the last shipped change (Ashita print
                                 --  different ladder, and the old latch read
                                 --  that as the condition clearing -- so one
                                 --  empty stack announced itself every few
-                                --  seconds all fight)
+                                --  seconds all fight;
+                                --  05f = /dl giftbox: open every Goblin/Grand
+                                --  Giftbox in your inventory, smallest first,
+                                --  stopping before your bag is too full to
+                                --  hold the next payout -- and paced by each
+                                --  box's own count dropping, never by a
+                                --  guessed delay;
+                                --  05g = ...and the giftboxes get an icon in
+                                --  the floating tray, under the E-Box crates,
+                                --  drawn as the box's OWN in-game art -- plus
+                                --  a longer beat between opens, because the
+                                --  first field run met lag)
 addon.desc    = 'Gear sets, triggers and live stats with level scaling -- dlac equips your gear itself.';
 
 -- Load BEACON ('/dl check' field round, 2026-07-23): written by PLAIN io at
@@ -364,6 +375,7 @@ for _, mod in ipairs({ 'gear', 'feature\\augments', 'gear\\gearoptim', 'gear\\ge
                        'ui\\craftbar', 'feature\\helmwatch', 'ui\\helmbar',
                        'feature\\fishwatch', 'ui\\fishbar', 'feature\\chocowatch',
                        'feature\\meritwatch', 'feature\\integration', 'feature\\foodwatch',
+                       'feature\\giftbox',
                        'feature\\engagewatch', 'feature\\petvitals', 'feature\\combat',
                        'feature\\sendlog', 'feature\\check', 'feature\\debug', 'feature\\report',
                        -- nmtrack AFTER nmlookup: it requires the lookup module at

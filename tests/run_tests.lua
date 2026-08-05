@@ -13427,6 +13427,159 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- GB. /dl giftbox -- open every Goblin/Grand Giftbox in inventory, stopping
+--     before there is no room for the next payout.
+--
+--     The interesting half is NOT the pure gate, it is the pacing: the loop
+--     refuses to guess a delay and instead waits for the item's own count to
+--     drop as proof the use landed. So the tests drive a MUTABLE stub bag --
+--     the count only changes when the test says it does, exactly like a server
+--     that is slower or faster than anyone's guess.
+-- ---------------------------------------------------------------------------
+(function()
+    local gb = dofile('feature/giftbox.lua');
+    local savedAshita = AshitaCore;
+
+    check('GB1 a known box classifies onto the ladder', gb.classify('Goblin Giftbox (Small)'), 1);
+    check('GB1b ...case-insensitively', gb.classify('GOBLIN GIFTBOX (LARGE)'), 3);
+    check('GB1c the Grand box is the top rung', gb.classify('Grand Giftbox'), 4);
+    -- The substring match is what makes this survive the next box CatsEyeXI adds.
+    check('GB1d an UNKNOWN giftbox is still ours, sorted last',
+        gb.classify('Goblin Giftbox (Colossal)'), 5);
+    check('GB1e ...and a normal item is not a giftbox', gb.classify('Goblin Bread'), nil);
+    check('GB1f nor is a nil name', gb.classify(nil), nil);
+
+    local FOUND = {
+        { name = 'Grand Giftbox',          rank = 4, count = 1 },
+        { name = 'Goblin Giftbox (Small)', rank = 1, count = 2 },
+    };
+    check('GB2 the smallest rung opens first', (gb.pickNext(FOUND) or {}).name, 'Goblin Giftbox (Small)');
+    check('GB2b an empty stack is not a candidate',
+        (gb.pickNext({ { name = 'x', rank = 1, count = 0 },
+                       { name = 'y', rank = 2, count = 1 } }) or {}).name, 'y');
+    check('GB2c nothing at all -> nil', gb.pickNext({}), nil);
+
+    -- The three outcomes of the gate are three different instructions to the
+    -- player, which is why plan() never answers a bare false.
+    local _, cNone = gb.plan({}, 30);
+    check('GB3 no boxes reads "none"', cNone, 'none');
+    local pSp, cSp, wSp = gb.plan(FOUND, 5);
+    check('GB4 five free slots is NOT enough (the rule is MORE than 5)', cSp, 'space');
+    check('GB4b ...and it plans nothing', pSp, nil);
+    check('GB4c ...naming both numbers so the player knows what to free',
+        (wSp:find('need 6', 1, true) ~= nil) and (wSp:find('have 5', 1, true) ~= nil), true);
+    local pGo, cGo = gb.plan(FOUND, 6);
+    check('GB5 six is enough', cGo, 'go');
+    check('GB5b ...and it picks the smallest', (pGo or {}).name, 'Goblin Giftbox (Small)');
+
+    -- ---- the run, against a mutable bag -------------------------------------
+    local RES = {
+        [1] = { Name = { 'Goblin Giftbox (Small)' } },
+        [2] = { Name = { 'Grand Giftbox' } },
+        [3] = { Name = { 'Goblin Bread' } },
+    };
+    local slots, cmds = {}, {};
+    local function setBag(boxSmall, grand, junk, size)
+        slots = {};
+        for i = 1, (size or 30) do slots[i] = nil; end
+        local n = 0;
+        if boxSmall > 0 then n = n + 1; slots[n] = { Id = 1, Count = boxSmall }; end
+        if grand    > 0 then n = n + 1; slots[n] = { Id = 2, Count = grand };    end
+        for _ = 1, (junk or 0) do n = n + 1; slots[n] = { Id = 3, Count = 1 }; end
+        slots.__size = size or 30;
+    end
+    AshitaCore = {
+        GetMemoryManager = function() return { GetInventory = function() return {
+            GetContainerCountMax = function(_, cid) return (cid == 0) and (slots.__size or 30) or 0; end,
+            GetContainerItem     = function(_, cid, i) return (cid == 0) and slots[i] or nil; end,
+        }; end }; end,
+        GetResourceManager = function() return { GetItemById = function(_, id) return RES[id]; end }; end,
+        GetChatManager     = function() return { QueueCommand = function(_, _, c) cmds[#cmds + 1] = c; end }; end,
+    };
+
+    setBag(2, 1, 0, 30);                 -- 3 boxes, 27 free
+    local found, free = gb.scan();
+    check('GB6 the scan finds both names', #found, 2);
+    check('GB6b ...counting QUANTITY, not slots (stacking is irrelevant)',
+        (found[1].count + found[2].count), 3);
+    check('GB6c ...and free slots come from the same walk', free, 28);
+
+    cmds = {};
+    gb.start();
+    check('GB7 starting fires exactly one use', #cmds, 1);
+    check('GB7b ...for the smallest box, targeted at you',
+        cmds[1], '/item "Goblin Giftbox (Small)" <me>');
+
+    -- The count has NOT dropped yet: the server is still thinking. Nothing may
+    -- fire. This is the assertion that a guessed delay would have failed.
+    gb.tick(os.clock() + 1); gb.tickSettle(os.clock() + 1);
+    check('GB8 an unconfirmed use never fires the next one', #cmds, 1);
+    check('GB8b ...and the run is still alive', gb.running(), true);
+
+    setBag(1, 1, 0, 30);                 -- one Small consumed
+    local t = os.clock() + 2;
+    gb.tick(t);
+    check('GB9 the count dropping is what counts as opened', #cmds, 1);
+    gb.tickSettle(t + gb.SETTLE + 0.1);
+    check('GB9b ...and only then does the next use fire', #cmds, 2);
+
+    -- Space runs out mid-run: stop, and say which boxes are left.
+    setBag(1, 1, 26, 30);                -- 28 slots used, 2 free
+    local t2 = os.clock() + 5;
+    gb.tick(t2);                          -- confirms nothing; count unchanged
+    setBag(0, 1, 26, 30);                 -- ...now the Small is gone: confirmed
+    gb.tick(t2 + gb.POLL + 0.01);
+    gb.tickSettle(t2 + gb.POLL + gb.SETTLE + 0.1);
+    check('GB10 a full bag stops the run instead of opening into it', gb.running(), false);
+
+    -- The timeout path: a use that never lands must NOT be retried.
+    cmds = {};
+    setBag(3, 0, 0, 30);
+    gb.start();
+    check('GB11 the run started', #cmds, 1);
+    gb.tick(os.clock() + gb.CONFIRM_TIMEOUT + 1);
+    check('GB11b a use that never lands stops the run', gb.running(), false);
+    check('GB11c ...and never fires a second time at the same wall', #cmds, 1);
+
+    -- Refusing to start is not the same as failing: three reasons, three lines.
+    setBag(0, 0, 0, 30);
+    gb.start();
+    check('GB12 no boxes -> no run', gb.running(), false);
+    setBag(2, 0, 27, 30);                -- 29 used, 1 free
+    gb.start();
+    check('GB13 boxes but no room -> no run', gb.running(), false);
+
+    -- ---- the tray snapshot ---------------------------------------------------
+    -- The tray asks trayWants EVERY FRAME, so peek() caches. Two things must
+    -- hold: it reports the HIGHEST rung held (that is the icon drawn), and it
+    -- does NOT re-walk the bag until SCAN_EVERY has passed -- a per-frame bag
+    -- scan is exactly what the tray's contract forbids.
+    setBag(2, 1, 0, 30);
+    gb._peekReset();
+    local pk = gb.peek(1000);
+    check('GB14 the snapshot sees boxes', pk.have, true);
+    check('GB14b ...counting every one of them', pk.total, 3);
+    check('GB14c ...and the icon is the HIGHEST rung held',
+        (pk.top or {}).name, 'Grand Giftbox');
+
+    setBag(0, 0, 0, 30);                 -- bag emptied behind its back
+    local cached = gb.peek(1000.5);
+    check('GB15 inside the window it does not re-walk the bag', cached.have, true);
+    local fresh = gb.peek(1000 + gb.SCAN_EVERY + 0.1);
+    check('GB15b ...and past it, it sees the truth', fresh.have, false);
+    check('GB15c ...with nothing to draw', fresh.top, nil);
+
+    -- Only smalls: the icon falls back to the best box you ACTUALLY hold, so it
+    -- is never art for something you do not have.
+    setBag(1, 0, 0, 30);
+    local only = gb.peek(2000);
+    check('GB16 one rung held -> that rung is the icon',
+        (only.top or {}).name, 'Goblin Giftbox (Small)');
+
+    AshitaCore = savedAshita;
+end)();
+
+-- ---------------------------------------------------------------------------
 -- AZ. The AutoAmmo stock-out line is ONCE PER ZONE, per distinct message.
 --     Henrik's screenshot (2026-08-05): the same "Steel Bullet is out --
 --     loading Iron Bullet" six times inside 27 seconds of one COR fight. The
