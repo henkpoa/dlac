@@ -71414,6 +71414,19 @@ return {
                 Delay = 2243,
             }
         },
+        Fjoturangon = {
+            Name = "Fjoturangon",
+            Level = 75,
+            Id = 22500,
+            Model = 88,
+            Jobs = {"DRG"},
+            Type = "Ammo",
+            Pair = "0:0",
+            RSlot = 4,
+            Stats = {
+                Delay = 3,
+            }
+        },
         FlameSachet = {
             Name = "Flame Sachet",
             Level = 90,
