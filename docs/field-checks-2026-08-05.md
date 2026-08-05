@@ -198,6 +198,27 @@ the two tabs have drifted and that is the bug, not either list on its own.*
 
 ---
 
+## Session I — the giftbox tray icon (`2026.08.05g`)
+
+**The opening loop itself is FIELD-CONFIRMED** (Henrik, 2026-08-05: it worked first try;
+the settle between opens was raised 0.6s → 1.6s afterwards on his lag concern, and that
+raise has not been run). What is unfielded is the icon.
+
+- [ ] **I1 — it appears at all.** With a giftbox in inventory, an icon shows in the floating
+      tray **under** the E-Box crates. It draws the box's own in-game art — the highest rung
+      you are carrying, so a Grand Giftbox shows the Grand icon.
+- [ ] **I2 — it dims when there is no room.** Below 6 free slots the icon greys out and the
+      hover says how many slots short you are. It must NOT disappear — you still have boxes.
+- [ ] **I3 — it does not push Store around.** Walk up to an E-Box with giftboxes in your bag:
+      the Store crate must stay exactly where it was. Giftboxes are the most volatile member
+      of the tray and Store is one click with no confirm.
+- [ ] **I4 — the click does what the command does.** Clicking the icon runs the same open-all
+      as `/dl giftbox` (it issues the command rather than duplicating the logic).
+- [ ] **I5 — the longer settle still completes a run.** 1.6s between opens: a stack of several
+      boxes should still empty without stalling or double-firing.
+
+---
+
 ## What this unblocks
 
 These are the gate on a real v1.0, not the tagging or the tooling. A release is a promise the
