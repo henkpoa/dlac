@@ -199,6 +199,7 @@ nothing is ever deleted for you — clearing an entry is always your call.
 | `/dl ls apply [box]` | Apply a saved lockstyle box (GUI: the armor header button) |
 | `/dl wish` | Open the Wishlist window (also **Menu → Wishlist**) |
 | `/dl unused` | **Wardrobe cleanup** — what is sitting in a Mog Wardrobe that nothing asks for. Reads every profile and job entry on the character (triggers → the sets they point at), plus your lockstyle boxes, gear helpers, ammo rules and fishing pick, then lists the wardrobe pieces none of it names. Opens a window on the last report with a Refresh button; `/dl unused scan` rebuilds and answers in chat |
+| `/dl giftbox` | **Open every Goblin/Grand Giftbox in your inventory**, smallest first, one at a time. Each box pays out up to 5 items, so it stops the moment you are under 6 free slots and tells you how many are left — it never opens into a bag that cannot hold the contents. It waits for each box's count to actually drop before using the next, so it paces itself to the server instead of firing on a timer; a box that does not open stops the run rather than being tried again. `/dl giftbox stop` halts it, `/dl giftbox status` counts without opening |
 | `/dl weight` / `best` | Stat-weight helpers for set auto-building |
 | `/dl set level main <n>` | Preview as another level |
 | `/dl p` / `/dl w` | Panic escape: lock Ring2, equip the Provenance/Warp Ring, wait out its equip delay, use it (`off` cancels) |
