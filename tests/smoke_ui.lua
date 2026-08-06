@@ -345,9 +345,35 @@ for _, k in ipairs({
     -- and its LOCKED readout both guard on S.engineHeld ~= nil, so dropping it
     -- from gearui's provide{} would make them vanish in silence.
     'engineHeld',
+    -- The locked-slot cross (2026-08-06). Both the Equipped tab and the floating
+    -- bar hand the grid a crossOf hook and answer it from `encumbered`, and all
+    -- of it lives on the render path inside a pcall -- an absent service would
+    -- cost the cross in silence.
+    'encumbered', 'ENCUMBERED_NOTE', 'drawSlotCross', 'crossGeom',
 }) do
     check('S12 service ' .. k, S[k] ~= nil, true);
 end
+
+-- The service reads through equipengine -- the wiring both surfaces stub away
+-- when they check their own hooks, so it is proven exactly once, here. Pinning
+-- it to a stub also keeps the rest of the suite off whatever the real engine's
+-- sixteen booleans happen to hold.
+package.loaded['dlac\\feature\\equipengine'] = {
+    isEncumbered = function(idx) return idx == 9; end,
+};
+check('S12e the encumbrance service reads through equipengine',
+    S.encumbered(9) == true and S.encumbered(0) == false, true);
+
+-- The X's arithmetic across the whole size slider (floatgear clamps scale to
+-- 0.5..3.0 against a 40px box, so 20..120). Two ways it could be wrong and
+-- neither would throw: a stroke that rounds to zero at the small end, and an
+-- inset that meets in the middle and draws a dot instead of a cross.
+for _, b in ipairs({ 12, 20, 40, 60, 120 }) do
+    local m, w, box = S.crossGeom(b);
+    check('S12x' .. b .. ' cross stays a cross', (m >= 1 and w >= 2 and m * 2 < box), true);
+end
+check('S12x default box is the tab\'s 40', select(3, S.crossGeom(nil)), 40);
+check('S12x a sub-floor box clamps like the grid does', select(3, S.crossGeom(4)), 12);
 
 -- ---------------------------------------------------------------------------
 -- 4. lockstyle look preview: model-id resolution through the FULL live chain
@@ -851,6 +877,28 @@ check('S20 gear you really do not own stays unowned',
     check('S76 shift OVER the window shows the grab cue',   cueWith(true, true) ~= nil, true);
     heldShift = false;
     IM.IsWindowHovered = function(f) hoverFlags = f; return true; end
+
+    -- THE LOCKED-SLOT CROSS (2026-08-06). The server's encumbrance bits reach
+    -- the grid as opts.crossOf and the words reach it as opts.noteOf, so this
+    -- stub engine is the entire world as far as the window is concerned. Both
+    -- hooks are checked against a slot that IS locked and one that is not: a
+    -- crossOf that answered true for everything would strike out all sixteen
+    -- boxes and still pass a one-sided test.
+    local savedEnc = Sx.encumbered;
+    Sx.encumbered = function(idx) return idx == 4; end;         -- Head only
+    gridOpts = nil;
+    pcall(fg.render);
+    check('FGX1 the grid is told which slots are locked',
+        type(gridOpts) == 'table' and type(gridOpts.crossOf) == 'function'
+            and type(gridOpts.noteOf) == 'function', true);
+    check('FGX2 a locked slot crosses, a free one does not',
+        gridOpts.crossOf({ label = 'Head', equip = 4 }) == true
+            and gridOpts.crossOf({ label = 'Body', equip = 5 }) == false, true);
+    check('FGX3 the hover says WHY, and only where the cross draws',
+        gridOpts.noteOf({ label = 'Head', equip = 4 }) == Sx.ENCUMBERED_NOTE
+            and gridOpts.noteOf({ label = 'Body', equip = 5 }) == nil, true);
+    balanced('FGX4 cross overlay');
+    Sx.encumbered = savedEnc;
 
     -- window off: must draw nothing at all and touch no stack
     Sx.ui._gearFloat = false;
@@ -2322,6 +2370,26 @@ end)();
         AshitaCore = recAshita;
         local u = Sx.ui;
         u.showStats = false;  u._gearFloat = false;  u.altSearch = { '' };
+
+        -- THE LOCKED-SLOT CROSS on the TAB (2026-08-06). Checked here and not
+        -- only on the floating bar, because the point of the shared service is
+        -- that the two views agree -- and a tab that quietly stopped passing
+        -- the hook would leave "they agree" true and worthless.
+        local keptEnc, keptGrid = Sx.encumbered, Sx.renderSlotGrid;
+        local tabOpts = nil;
+        Sx.encumbered = function(idx) return idx == 4; end;     -- Head only
+        Sx.renderSlotGrid = function(_, _, _, _, _, _, _, _, opts) tabOpts = opts; end
+        pcall(render, 'WHM', 75);
+        check('EQX1 the tab hands the grid a cross hook',
+            type(tabOpts) == 'table' and type(tabOpts.crossOf) == 'function'
+                and type(tabOpts.noteOf) == 'function', true);
+        check('EQX2 it crosses the locked slot and only that one',
+            tabOpts.crossOf({ label = 'Head', equip = 4 }) == true
+                and tabOpts.crossOf({ label = 'Body', equip = 5 }) == false, true);
+        check('EQX3 the tab and the bar say the SAME words',
+            tabOpts.noteOf({ label = 'Head', equip = 4 }) == Sx.ENCUMBERED_NOTE
+                and tabOpts.noteOf({ label = 'Body', equip = 5 }) == nil, true);
+        Sx.encumbered, Sx.renderSlotGrid = keptEnc, keptGrid;
 
         -- FREE EQUIP (ADR 0024). It used to fire the global /lac disable, which
         -- under the NATIVE engine talks to a LuaAshitacast that is no longer
@@ -3896,7 +3964,10 @@ end)();
             (idxOf('WAR##') < idxOf('BLM##')) and (idxOf('BLM##') < idxOf('RDM##')), true);
         check('CP11 the job you are on is shown, not offered', saw('the job you are on -- the rule lives here'), true);
         check('CP12 another job is a tickable target', saw('RDM##trgcpm_jobs_RDM'), true);
-        check('CP13 a job with no rules yet says a file is created', saw('no rules for this job yet'), true);
+        -- A job dlac has never used is INSTANTIATED by the copy (2026-08-06), not
+        -- handed a one-rule trigger file -- the row has to say so before the tick.
+        check('CP13 a job dlac has never used says it is set up first',
+            saw('dlac has never used this job -- it is set up with the default rules first'), true);
         check('CP14 one button ticks every job', saw('All jobs##trgcpall_jobs'), true);
         -- The PROFILE axis, still there, its own everything.
         check('CP15 the profiles list is its own section', saw('Other profiles (same job)'), true);

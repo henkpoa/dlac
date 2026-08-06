@@ -67,6 +67,14 @@
         the cursor is on the menu; a window of our own is ALWAYS drawn under an
         open popup in ImGui, whatever order it is created in, so the cascade
         simply painted over it. Inside the popup neither problem exists.
+
+    2026-08-06: a LOCKED slot wears a red X (Henrik, from Incursion T3 -- "want
+    to see what is locked and not"). Those are the server's encumbrance bits,
+    which equipengine already read off the job-info packet for the resolver --
+    an encumbered slot has never resolved -- so nothing new is being decided
+    here, only shown. Two things had to change for it: the packet read moved OUT
+    from behind the native-engine gate (it is a pure read, and this bar draws on
+    whichever engine you run), and renderSlotGrid grew `opts.crossOf`.
 ]]--
 
 local host = require("dlac\\ui\\uihost");
@@ -1100,6 +1108,22 @@ end
 -- The window.
 -- --------------------------------------------------------------------------
 
+-- THE LOCKED SLOTS. The server's encumbrance bits -- "You are unable to equip
+-- certain weapons or armor.", the thing Incursion T3 does to you -- read off the
+-- job-info packet by equipengine, which already tracked them for the resolver
+-- (an encumbered slot never resolves). All this adds is a way to SEE them:
+-- Henrik, 2026-08-06, "want to see what is locked and not".
+--
+-- Asked through S.encumbered, gearui's service, rather than resolving the
+-- engine here: the Equipped tab draws the same cross from the same bits, and
+-- two copies of the lookup could drift into striking out different boxes on two
+-- views of one character.
+local function encumbered(equipIdx)
+    if type(S.encumbered) ~= 'function' then return false; end
+    return S.encumbered(equipIdx) == true;
+end
+M._encumbered = encumbered;   -- test seam
+
 local PIN_BOX  = { 0.55, 0.13, 0.13, 1.0 };   -- red:    pinned for ALL dispatches
 -- Violet: pinned, but only on named triggers -- the slot dispatches normally the
 -- rest of the time. Worth its own colour now that a slot can hold several pins:
@@ -1208,6 +1232,20 @@ function M.render()
                         return pins.hasAllPin(sl.label) and PIN_BOX or PIN_COND;
                     end
                     return nil;
+                end,
+                -- The red X over a slot the server has locked. Deliberately NOT
+                -- a box colour: the box already carries the pin state and the
+                -- grab cue, and those three can all be true at once -- a fourth
+                -- colour fighting for the same pixel would just make the frame
+                -- ambiguous. A cross sits on top of whatever the box is saying.
+                crossOf = function(sl) return encumbered(sl.equip); end,
+                -- ...and the same fact in words on hover, because a cross tells
+                -- you THAT and never why. noteOf is the grid's existing channel
+                -- for a slot-scoped warning, so this lands in the item card and
+                -- on an empty slot's plain tooltip alike.
+                noteOf = function(sl)
+                    if not encumbered(sl.equip) then return nil; end
+                    return S.ENCUMBERED_NOTE;
                 end,
                 -- RIGHT-click is never suppressed: the drag is a LEFT-button
                 -- gesture, and in move mode the menu is the only way back OUT of

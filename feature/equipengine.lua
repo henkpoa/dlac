@@ -54,6 +54,19 @@ local function noteSend(id, why, pass)
     if _slok then slog.note(id, why, pass); end
 end
 
+-- The wire-shape override (/dl gearpackets). Required at CALL time and cached
+-- on success, not at load: gearpackets sits after modcfg in dlac.lua's list
+-- and therefore after this module, so a load-time require would resolve to
+-- nothing and silently pin today's shape forever -- the same load-order trap
+-- that bare package.loaded lookups fall into.
+local _gp = nil;
+local function gearpackets()
+    if _gp ~= nil then return _gp; end
+    local ok, m = pcall(require, 'dlac\\feature\\gearpackets');
+    if ok and type(m) == 'table' and type(m.styleFor) == 'function' then _gp = m; end
+    return _gp;
+end
+
 -- ---------------------------------------------------------------------------
 -- settings (LuaAshitacast timing defaults, verbatim)
 -- ---------------------------------------------------------------------------
@@ -123,7 +136,13 @@ end
 
 -- One row per handled outgoing 0x01A category. `pre` fires before the action
 -- re-injects (its gear must beat the action out the door), `mid` after.
--- Styles are LAC's: precast wants one 0x051 ('set'), midcast singles.
+-- Styles are LAC's, verbatim: Precast/Preshot want one 0x051 ('set'),
+-- Midcast/Midshot singles, the rest 'auto'. LAC records no reason for that
+-- split and the intuitive one does not survive reading handleAction below --
+-- pre, the re-inject and mid are three synchronous calls inside ONE outgoing
+-- chunk, so midcast is microseconds behind precast, not a cast-time later.
+-- They stay as LAC set them because parity is the contract; /dl gearpackets
+-- overrides them all at once so the field can price the difference.
 -- A future dispatch point = a new row (or a fireEvent call site elsewhere).
 M.ACTION_ROUTES = {
     [0x03] = { type = 'Spell',       pre = 'Precast',     preStyle = 'set',
@@ -514,7 +533,19 @@ function M.bufferFlush(style)
         _trust[c.Slot + 1] = { Timer = os.clock() + 0.2, Item = nil };
     end
 
-    local chosen = eqc.chooseStyle(#plan.equips, style);
+    -- The wire shape, in three steps: the dispatch point ASKS (route styles
+    -- below), /dl gearpackets may OVERRIDE, and equipcore decides what 'auto'
+    -- means at this many slots. Wrapped because a readout knob must never be
+    -- able to cost an equip -- a broken override falls back to LAC parity.
+    local wantStyle, threshold = style, nil;
+    local gp = gearpackets();
+    if gp ~= nil then
+        pcall(function()
+            wantStyle = gp.styleFor(style);
+            threshold = gp.threshold();
+        end);
+    end
+    local chosen = eqc.chooseStyle(#plan.equips, wantStyle, threshold);
     if #plan.equips > 0 then
         if chosen == 'set' then
             injectPacket(0x51, eqc.build0x51(plan.equips),
@@ -715,7 +746,39 @@ function M.parse0x28Pet(str)
     };
 end
 
+-- The server's "You are unable to equip certain weapons or armor." bits: a u32
+-- at 0x60 of the job-info packet, one bit per equip slot, LSB = Main. Pure and
+-- exported so the tests can drive a wire body through it instead of a packet
+-- event. (equipmon reads the same word the same way -- the two agree by
+-- construction, which is what makes the cross the floating bar draws from these
+-- bits trustworthy.)
+function M.readEncumbrance(data)
+    for i = 1, 16 do
+        M.state.encumbered[i] = (M.bitsAt(data, 0x60, i - 1, 1) == 1);
+    end
+end
+
+-- One slot's answer, keyed by the 0-BASED equip index the UI's slot table
+-- carries (Main = 0). state.encumbered is 1-based because the resolver keys it
+-- on the same 1..16 slot ids equipcore uses; the +1 lives here so that
+-- off-by-one has exactly one home.
+function M.isEncumbered(equipIdx)
+    local i = tonumber(equipIdx);
+    if i == nil then return false; end
+    return M.state.encumbered[i + 1] == true;
+end
+
 function M.handleIncoming(e)
+    -- 0x01B is handled AHEAD of the engine gate, unlike everything below it.
+    -- These bits are a pure READ of server state -- nothing is sent, nothing is
+    -- blocked -- and the floating bar's cross draws from them, so they have to
+    -- be current whether or not the native engine is armed. A player on the
+    -- legacy engine is exactly as encumbered as one on this one, and before
+    -- this they simply never saw a bit set.
+    if e.id == 0x01B then
+        pcall(function() M.readEncumbrance(e.data); end);
+        return;
+    end
     if not nativeOn() then return; end
     if e.id == 0x028 then
         local a = M.parse0x28(e.data);
@@ -763,12 +826,6 @@ function M.handleIncoming(e)
             end
             M.state.petAction = pa;
             M.fireEvent('PetAction', 'auto', pa);   -- the dispatch point pet rules ride
-        end);
-    elseif e.id == 0x01B then
-        pcall(function()
-            for i = 1, 16 do
-                M.state.encumbered[i] = (M.bitsAt(e.data, 0x60, i - 1, 1) == 1);
-            end
         end);
     end
 end

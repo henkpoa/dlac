@@ -2022,6 +2022,79 @@ local SLOT_BOX = 40;                  -- outer box; the icon fills it minus the 
 --   box -> outer box size in px (default SLOT_BOX). The icon and the frame pad
 --     scale WITH it, so the grid is one knob wide; at the default it reproduces
 --     the old 40/32/4 numbers exactly.
+--   crossOf(sl) -> true to strike that slot out with a red X. A fact about the
+--     SLOT and not about the piece in it, which is why it is here and not in
+--     the item card: the server's encumbrance says nothing can go in, whatever
+--     is currently sitting there.
+
+-- The strike-out itself: equipmon's encumber overlay, drawn in lines rather
+-- than from a texture (dlac ships no image assets, and a cross is four lines).
+-- Two strokes per diagonal -- a near-black one, then the red on top -- so it
+-- stays readable over a pale icon as well as a dark one.
+--
+-- AddLine, four arguments, a TABLE per point: the call shape uistyle's
+-- underline has already field-proven in this binding. Nothing here invents a
+-- signature -- an AddRect with six arguments drew nothing in this client and
+-- did it silently (see floatgear's note), and a silent indicator is worse than
+-- no indicator at all.
+--
+-- The ARITHMETIC is split out and exported (crossGeom) while the four draw
+-- calls are not, because those are the two different kinds of wrong: the call
+-- shape is borrowed verbatim from a proven site and is either right everywhere
+-- or nowhere, whereas the inset and stroke are new, scale with the size slider
+-- from 20px to 120px, and can be quietly off at one end of that range.
+-- IS THE SERVER HOLDING THIS SLOT SHUT? The encumbrance bits off the job-info
+-- packet, which equipengine reads and the resolver already obeys. Lives here
+-- rather than in either window because BOTH ask now (the floating bar and the
+-- Equipped tab), and two copies of this could drift into striking out different
+-- boxes on two surfaces showing the same character.
+--
+-- ONE chunk local, via the IIFE (the floatgear ffi pattern): this file is the
+-- one with a 200-local ceiling to respect, and a bare `local _eng` beside it
+-- would spend two for no gain. The module is resolved at CALL time and cached
+-- -- the feature modules load on their own schedule, so a load-time capture
+-- would be a load-order contract for nothing. false on every failure: a missing
+-- engine means no cross, never a dead grid.
+local encumbered = (function()
+    local eng = nil;
+    return function(equipIdx)
+        if eng == nil then
+            local ok, m = pcall(require, "dlac\\feature\\equipengine");
+            if not ok or type(m) ~= 'table' or type(m.isEncumbered) ~= 'function' then return false; end
+            eng = m;
+        end
+        local ok, v = pcall(eng.isEncumbered, equipIdx);
+        return ok and v == true;
+    end;
+end)();
+
+local function crossGeom(box)
+    local b = math.floor(tonumber(box) or SLOT_BOX);
+    if b < 12 then b = 12; end                                 -- renderSlotGrid's own floor
+    local m = math.max(2, math.floor(b * 0.16));               -- inset from the frame
+    local w = math.max(2, math.floor(b * 0.09 + 0.5));         -- stroke
+    if m * 2 >= b - 2 then m = math.max(1, math.floor(b / 4)); end   -- never inside out
+    return m, w, b;
+end
+
+local function drawSlotCross(box)
+    pcall(function()
+        local x, y = imgui.GetItemRectMin();
+        if type(x) == 'table' then y = (x[2] or x.y); x = (x[1] or x.x); end
+        if type(x) ~= 'number' or type(y) ~= 'number' then return; end
+        local dl = imgui.GetWindowDrawList();
+        if dl == nil or type(dl.AddLine) ~= 'function' then return; end
+        local m, w, b = crossGeom(box);
+        local x1, y1, x2, y2 = x + m, y + m, x + b - m, y + b - m;
+        local dark = imgui.GetColorU32({ 0.06, 0.0, 0.0, 0.85 });
+        local red  = imgui.GetColorU32({ 0.90, 0.13, 0.13, 1.0 });
+        dl:AddLine({ x1, y1 }, { x2, y2 }, dark, w + 2);
+        dl:AddLine({ x2, y1 }, { x1, y2 }, dark, w + 2);
+        dl:AddLine({ x1, y1 }, { x2, y2 }, red, w);
+        dl:AddLine({ x2, y1 }, { x1, y2 }, red, w);
+    end);
+end
+
 local function renderSlotGrid(idPrefix, gridHeight, selectedLabel, getItemId, getText, onClick, hoverRec, gridW, opts)
     opts = opts or {};
     local gap = opts.tight and 0 or 4;
@@ -2066,6 +2139,9 @@ local function renderSlotGrid(idPrefix, gridHeight, selectedLabel, getItemId, ge
                 end);
             end
         end
+        -- The X goes on AFTER the button, so it lands over the icon: within one
+        -- draw list, later is on top. Same order drawElementWheel relies on.
+        if opts.crossOf ~= nil and opts.crossOf(sl) == true then drawSlotCross(BOX); end
         if clicked then onClick(sl.label); end
         if imgui.IsItemHovered() then
             -- RMB: the gearmove pattern, field-confirmed in this client --
@@ -5104,6 +5180,18 @@ host.provide({
     -- shared render helpers
     renderStatsPanel = renderStatsPanel, renderSlotGrid = renderSlotGrid,
     renderSortCombo = renderSortCombo, renderItemTooltip = renderItemTooltip,
+    -- The locked-slot X. `encumbered` is the one door the surfaces ask through
+    -- (a central service, not a per-window helper -- the tab and the floating
+    -- bar must never disagree about which boxes are struck out). drawSlotCross
+    -- is exported for the reason rsv and avail are: it runs inside a pcall on
+    -- the render path, so getting it wrong is SILENT. crossGeom is exported
+    -- because it is the half a test can pin down without an imgui.
+    encumbered = encumbered, drawSlotCross = drawSlotCross, crossGeom = crossGeom,
+    -- ...and the WORDS, beside the fact, because a cross tells you THAT and
+    -- never why. A string rather than each surface writing its own: two
+    -- explanations of one server state is one explanation too many.
+    ENCUMBERED_NOTE = 'LOCKED by the server (encumbrance) -- nothing can be '
+        .. 'equipped here until it lifts. dlac will not try.',
 });
 do
     -- The Wishlist window + the shared item context-menu BODY. FIRST on purpose:

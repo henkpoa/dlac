@@ -9222,6 +9222,89 @@ dim while the row is dormant, same at-a-glance grammar as `[Lv 30-54]` and `@mod
 `G19b` (serializer), `G23`–`G26` (the trait bit ALONE re-flattens, both directions, and
 the wrapper never mutates the shared record). Suites **6807 + 1281**, both interpreters.
 
+## Session "does an equipset batch it" (2026-08-06, `2026.08.06`)
+
+**Theme:** Henrik's question — `/dl sends` shows a packet per changed slot; does the
+game's own Equipment Set feature send one packet instead, and could dlac build sets and
+ride them? Researched against the local CatsEyeXI clone, then built the switch that lets
+the field price the answer instead of the source.
+
+**What the server actually offers** (`src\map\packets\c2s`, clone on `stable`):
+
+| packet | shape | server tail |
+| --- | --- | --- |
+| `0x050` EQUIP_SET | one slot, **8 bytes** | persist + `CheckForGearSet` + `UpdateHealth` + latent retrigger, **per packet** |
+| `0x051` EQUIPSET_SET | `Count` + **16** `{ItemIndex, EquipKind, Category}` triples, fixed **72 bytes** | the same tail, **once for the batch** |
+| `0x052` EQUIPSET_CHECK | a validity query answered with `0x116` | — |
+
+**The idea's expensive half does not exist.** The server stores no equipset: `0x051`
+carries raw index/slot/container triples and `0x052` only asks whether a set is still
+valid. The in-game Equipment Sets UI is client-side bookkeeping. So there is nothing to
+register, nothing to keep in sync, and no reason to detect recurring sets — **the batch is
+a shape available on every send**, which is why this landed as a style switch and not a
+set-builder. dlac already sent `0x051`; `equipcore.chooseStyle`'s `< 9` threshold is why
+the field mostly sees singles.
+
+**Where the costs really sit.** Bytes favour singles under 9 pieces (`8n` vs a flat 72 —
+and 72/8 = 9 is exactly LAC's threshold, so that constant was always byte parity and
+nothing deeper). Bytes are also the cheapest thing in play: the client bundles its
+outgoing packets into one chunk (the server's own parse loop walks several small packets
+inside one buffer, `map_networking.cpp:466`), so N singles are not N round trips. What
+does scale with packet count is the server's post-equip tail — `luautils::CheckForGearSet`
+is a C++→Lua call that clears every gear-set mod and rescans all 16 slots against 126
+defined sets, and a 5-slot swap runs it five times, walking through four intermediate
+gear states. Neither `0x050` nor `0x051` is rate-limited (`packet_guard.cpp:86`), and
+downstream traffic is identical either way (`EquipItem` pushes an `EQUIP_LIST` per item
+regardless). The batch's one real cost: validation is all-or-nothing — `packet_system.cpp:223`
+drops the whole packet on a bad entry, with only a server-side warning.
+
+**THE MIDCAST MYTH, killed.** Henrik's follow-up was the sharp one: precast being rushed
+explains `'set'`, but midcast has a whole cast to work with — why `'single'`? It does not.
+`equipengine.handleAction` fires pre, re-injects the action and fires mid as **three
+synchronous calls inside ONE outgoing chunk** (LAC is identical —
+`packethandlers.lua:195-207`), so midcast is microseconds behind precast, not seconds. The
+cast time is never used. That rules out the only timing story, and bytes cannot explain it
+either: hardcoded `'single'` is **strictly dominated by `'auto'`** — identical below the
+threshold, worse on bytes *and* server work above it. Also ruled out by reading the source:
+no cast interrupt on equip, no interleaving (same chunk, same tick), no differing
+validation, no rate limit. LAC carries **no recorded rationale** — no comment, no mention
+in its HTML docs, and the addon folder is not a git repo. Its own profile-facing functions
+(`EquipSet`, `ForceEquipSet`, `InterimEquipSet`, `Equip`) all pass `'auto'`; only the four
+internal dispatch points hardcode a style, in the pattern "the two that must beat the
+action packet out get the batch". A plausible authorial mental model that was already moot
+when it was written. **The route table keeps LAC's values** — parity is the contract — and
+the switch overrides them instead.
+
+**Landed:** `feature\gearpackets.lua` + `/dl gearpackets` (alias `/dl gp`) — four modes
+(`default` = LAC parity, `single`, `set`, `auto`) that override **every** dispatch point at
+once, plus a `threshold 1-16` knob for `auto`. Precast and midcast move together on
+purpose: they are the same timing problem, so a switch that moved one would measure
+nothing. Persisted via `modcfg` (`<char>\dlac\gearpackets.lua`) because a mode that
+silently reverted on `/addon reload` would let a field round report numbers for a mode the
+player thought they had left. `equipcore.chooseStyle` grew a `threshold` parameter and
+`AUTO_THRESHOLD = 9`; `equipengine.bufferFlush` consults the override under `pcall` (a
+readout knob must never cost an equip — a broken override falls back to parity).
+`gearpackets` is required at CALL time there, since it loads after `modcfg` and therefore
+after `equipengine`.
+
+**Two lines that exist to save a field round.** The readout says outright that conflict
+strips always ride as separate `0x050`s ahead of the equips — so the first `0x050` seen in
+`set` mode reads as correct rather than as a broken switch. And `/dl sends` now names the
+mode in force (`_lines` grew an optional `modeNote`; the pure half stays pure, the live
+`report()` supplies it), because counts taken under a switched mode are uninterpretable
+unless the same artifact says which mode produced them — and the player who forgot they
+were mid-experiment is exactly the one who sends the file.
+
+**Tests:** `GP0`–`GP10` (mode/threshold parsing, the resolution, the readout, the command
+parse under sendlog's eats-its-neighbours law, and **GP9 — the defaults ARE LAC parity, so
+a player who never types the command and a store that fails to open both land on what
+shipped**; `GP10` pins every style the route table declares as one the module can resolve,
+so a typo'd new dispatch point cannot silently read as `auto`), `EQC46`–`EQC48` (the
+threshold parameter, default still 9), `SND16` (the mode note's placement, and that an
+absent note leaves today's output byte for byte). Suites **6941 + 1305**, both interpreters.
+
+**Field round owed** — nothing here has been run in game.
+
 ## Session "the eyepatch goes to Norg" (2026-08-06, `2026.08.06a`)
 
 **Theme:** one item card, one row. A player's Brigand's Eyepatch — relayed by Henrik,
@@ -9493,6 +9576,85 @@ with no code change.
 visible sign a catalog-less row is wired at all. `FS12b5a`/`FS12b5b` (Chart and Hook ask
 by live id), `FS12b5c` (the mount reserves the column with no art). Suites 6969 + 1323.
 
+## Session "the slot the server took away" (2026-08-06, `2026.08.06i`)
+
+**The ask, in full:** *"Show crossed equips when disabled in armor floating bar (4x4)
+like the picture. Common thing in Incursion T3, so want to see what is locked and not."*
+With it, a screenshot of the game saying **"You are unable to equip certain weapons or
+armor."** and, a message later, *"I think it works for equipmon, if that helps."*
+
+**It did help, and the answer was already in the addon.** equipmon draws a red X from a
+u32 at byte `0x60` of the job-info packet (`0x01B`), one bit per equip slot, LSB = Main.
+dlac reads that identical word -- `feature\equipengine` has kept `state.encumbered` since
+the native engine landed, and `equipcore` has refused to resolve an encumbered slot ever
+since. So nothing new is decided here. The bits were simply never *shown*.
+
+**The one real bug the ask uncovered: the read sat behind the engine gate.**
+`handleIncoming` opened with `if not nativeOn() then return; end`, and the `0x01B` branch
+was the last `elseif` under it. On the legacy engine -- or with the tripwire fired, or
+inside LAC's own Lua state -- the encumbrance word never landed and every slot read as
+free. That never showed because the only consumer was a resolver that does not run in
+those states either. A UI consumer changes the calculus: the bar draws on whichever
+engine you run. `0x01B` is now handled **ahead** of the gate and returns, which is safe
+for the reason it was worth doing -- it sends nothing, blocks nothing, and touches no
+state but its own sixteen booleans.
+
+**`opts.crossOf`, not a box colour.** The floating bar's box already carries two things
+(a pin is red or violet, a live grab cue is gold) and they can be true at the same time
+as a lock. A fourth colour competing for the same pixel makes the frame ambiguous; an
+overlay sits on top of whatever the box is saying. `renderSlotGrid` gained one optional
+hook, so the Equipped and Sets tabs are byte-identical -- the cross is opt-in and only
+the floating window opts in.
+
+**Drawn in lines, not from a texture** (dlac ships no art for this, and a cross is four
+lines): a near-black stroke then a red one per diagonal, so it reads over a pale icon as
+well as a dark one. `AddLine` with **four** arguments and a table per point -- uistyle's
+underline shape, copied rather than invented, because an `AddRect` with six arguments
+drew nothing in this client once and *said nothing about it*. That episode is why the
+arithmetic (`crossGeom`) is split out and exported while the draw calls are not: the call
+shape is either right everywhere or nowhere, but the inset and stroke are new and scale
+across the size slider's 20px..120px, where a stroke can round to zero at one end and an
+inset can meet in the middle at the other.
+
+**And the words on hover**, through the grid's existing `noteOf`: a cross tells you THAT
+and never why. "LOCKED by the server (encumbrance) -- nothing can be equipped here until
+it lifts. dlac will not try."
+
+**Tests:** `EQE37`-`EQE42` drive a real packed word through `readEncumbrance` (a set bit
+lands on the 1-based slot id; `isEncumbered` takes the 0-BASED equip index; an empty word
+CLEARS, because encumbrance lifting is another `0x01B` and a stale `true` would strike a
+slot out forever; and the read happens with the engine disarmed). `FGX1`-`FGX4` check
+both hooks against a locked slot AND a free one -- a `crossOf` that answered true for
+everything would strike out all sixteen boxes and still pass a one-sided test.
+`S12x*` walks the geometry across the slider. Suites 6975 + 1339.
+
+**Owed:** the field round. Nothing here has been seen in game -- the layout is derived
+from equipmon's, the bits from a packet dlac has read for weeks but never displayed.
+
+**Addendum, same version — the Equipped tab too.** Henrik: *"yes, do the Equipped tab
+too."* The tab's 4x4 is the same worn gear through the same `renderSlotGrid`, so it is
+the one `opts` table plus the same two hooks. What the second consumer actually changed
+is where the lookup lives: it moved out of floatgear and onto **`S.encumbered`**, a
+gearui service, with `S.ENCUMBERED_NOTE` beside it. Two copies of "is this slot shut"
+could drift into striking out different boxes on two views of one character, and two
+copies of the sentence could explain the same server state two ways.
+
+**One chunk local, via an IIFE** (the floatgear `ffi` pattern), because gearui is the
+file with the 200-local ceiling to respect and a bare `local eng` beside it would have
+spent two for nothing. Measured after the change: **25 free**, which is the number to
+check before the next thing lands there. (`luac -p` on a copy with N dummy chunk locals
+appended at a top-level line bisects it in about four runs.)
+
+**Not dlac's own locks.** The tab already states those in words — `[LOCKED]` beside the
+selected slot, with the way to release it. Server encumbrance and a dlac lock are
+different claims: one you can undo from that panel, one you cannot undo at all. One mark
+for both would say neither.
+
+**Tests:** `EQX1`-`EQX3` drive the REAL Equipped-tab render (the S205 re-require block)
+and read back the opts it hands the grid, against a locked slot and a free one, asserting
+the note is the *same string* the bar uses. `FGX3` now asserts the same identity from the
+other side. `S12e` proves the service reads through equipengine — the wiring both surface
+tests stub away, so it is pinned exactly once. Suites 6975 + 1345.
 
 **Addendum (`2026.08.06j`) — the crab icon is in.** Henrik dropped `crab icons.zip` in
 Downloads: six PNGs, and they are TWO artworks, not six sizes of one. `icon-16/32/48/64/
@@ -9508,6 +9670,68 @@ that looks sharper or mushier than its neighbours. The pixel family had no good 
 sprite shimmers at both. It is copied byte-identical to `assets\redcrab.png` and the
 reasoning sits in the code comment, because "we have a 128px one, use that" is exactly
 the improvement someone will try.
+
+## Session "copy to an unused job" (2026-08-06, `2026.08.06k`)
+
+**The bug, in Henrik's words:** *"if you do a 'copy to...' from triggers, and you choose
+a job that doesn't have a DLAC job entry yet, then it simply creates that trigger file
+for that job with only those that were copied. Since trigger files have been generated,
+it doesn't generate the default ones."* And the fix he wanted with it: *"Best case, just
+instantiate the whole job if it has not been used by DLAC yet, the moment you try to copy
+something to it."*
+
+**Why only this door.** Every other way into a job entry seeds first and edits after --
+Setup, the migration sweep, the job change, the Triggers tab's own "Create starter
+triggers" button -- so a job entry has always begun life holding Engaged / Resting /
+Movement / Idle. `copy to...` is the single place in dlac where you can *address* a job
+you have never played, and it went straight to `bp.stamp(entry, {})`. One rule, in a file
+that now exists, and existing is the whole test every seeder applies: `seedTriggersFile`
+bails with "user data: never overwrite" and the four default rules never arrive. Henrik's
+read of the blast radius was right -- **this is the only such door**, which is why it took
+until now to find and why the fix belongs here rather than in the seeders.
+
+**The rule lands ON TOP of the defaults, in one write.** `dispatch.starterTriggersRaw()`
+is new and is the whole seam: the same starter TEXT Setup writes verbatim, parsed, a
+fresh table per call. `rulecopy.applyTo` grew a third argument -- what a MISSING file
+starts from -- and `cpCopyOne` passes the starter model through `triggermodel.fromRaw`,
+so the file that lands is byte-identical to seeding the job and then adding the rule by
+hand (`RC48` pins exactly that equality). One write, not seed-then-rewrite: a second pass
+would leave a backup of a file dlac made two milliseconds earlier.
+
+**Refuse, never fall back.** If `starterTriggersRaw` ever returns nil -- the starter text
+stopped parsing, dispatch and triggermodel disagree -- the copy fails and says so. The
+tempting `or {}` is the bug itself, so the pure core keeps its empty-entry fallback
+(callable without a starter, `RC29e`) and the *caller* is the one that refuses.
+
+**"The whole job", so the sets came too.** The default rules target four sets, and a job
+entry with the rules and no `sets\<JOB>.lua` reads `[missing]` on all four. `cpSeedStarterSets`
+writes `frameSetsText(starterDynText)` -- the same four empty base sets `seedSetsFile`
+writes -- only when there is no file, only after the trigger write actually landed, and
+under the same guard as its sibling: `ensureStorage` would ADOPT a named profile as
+ACTIVE if the pointer were missing, and a copy must never switch profiles. Its failures
+report through the receipt's existing Sets-NOT-brought clause, merged with
+`cpBringSets`'s into one list so the two writers cannot name one problem and swallow the
+other.
+
+**Both axes, because both have the hole.** The classifier that answers "what would landing
+this rule there do?" serves jobs and profiles alike, and `create` means the same thing on
+each -- a job entry that does not exist. The profiles axis (this job, another profile) was
+creating the same one-rule stub.
+
+**Said out loud in the receipt.** "Started 2 new job entries from the default rules and
+base sets." The player now owns a job entry they never made; finding that out by changing
+job is too late. The row notes changed with it -- "no rules for this job yet -- a trigger
+file is created" was accurate about the file and silent about what would be in it, and now
+reads *"dlac has never used this job -- it is set up with the default rules first"*.
+
+**Tests:** `RC29a`-`RC29e` on the transform (the four defaults survive, the rule lands on
+top, the starter is not mutated -- it serves every target in one loop -- and a starter is
+ignored where a file already exists, because this is a create path and not a merge).
+`RC41`-`RC44` on the receipt, including that a FAILED create is never counted as started.
+`RC45`-`RC49` end to end against the REAL starter text. `CP13` updated. Suites 6989 + 1345.
+
+**Owed:** the field round -- copy a rule onto a job never played and confirm the new entry
+opens with all four default rules and four empty base sets.
 
 ## Session "the troves, and four rungs that never matched" (2026-08-06, `2026.08.06k`)
 

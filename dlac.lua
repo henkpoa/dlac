@@ -18,7 +18,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.08.06n';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.08.06o';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
                                 -- (03f = engine v163: the contest explains its own plan;
                                 --  03g = one floating tray: Teleports + the E-Box crates;
@@ -181,6 +181,13 @@ addon.version = '2026.08.06n';  -- date of the last shipped change (Ashita print
                                 --  the substring caught them while the ladder
                                 --  ranked all four unknown and opened the
                                 --  GRAND first, the reverse of the rule;
+                                --  06l = BROWSE ANOTHER JOB: a job picker at the
+                                --  top of the Gear window points the editors --
+                                --  Sets, Triggers, Groups, Modes, Blueprints,
+                                --  Weights -- at another job's files, as if you
+                                --  were on it at level 75. Editing only: nothing
+                                --  equips, and the Equipped tab says so rather
+                                --  than guessing a worn set it cannot know;
                                 --  06m = troves confirmed opening in game, so
                                 --  the beat between opens comes down 1.2s ->
                                 --  1.0s (Henrik's fourth field call on that
@@ -195,7 +202,17 @@ addon.version = '2026.08.06n';  -- date of the last shipped change (Ashita print
                                 --  out; it had opened fine either way, which
                                 --  is the whole lesson -- the substring opens
                                 --  boxes, the ladder only orders them, so
-                                --  "it worked" can never confirm a name)
+                                --  "it worked" can never confirm a name);
+                                --  06o = three work blocks land together: equip
+                                --  packets get their own module (feature\
+                                --  gearpackets) with the batch question settled
+                                --  at the send site; the slot the SERVER holds
+                                --  shut is struck out wherever gear is drawn
+                                --  (the tab, the floating window, the pin menu)
+                                --  from ONE shared reader; and copying a rule to
+                                --  a job dlac has never used INSTANTIATES that
+                                --  job entry first, instead of writing a rule
+                                --  into a file with nothing to target)
 addon.desc    = 'Gear sets, triggers and live stats with level scaling -- dlac equips your gear itself.';
 
 -- Load BEACON ('/dl check' field round, 2026-07-23): written by PLAIN io at
@@ -464,7 +481,11 @@ for _, mod in ipairs({ 'gear', 'feature\\augments', 'gear\\gearoptim', 'gear\\ge
                        -- SILENCE while the ledger still reads "0 failed" -- the
                        -- documented blind spot. Named here so it cannot.
                        'ui\\jobbrowse',
-                       'ui\\panelkit', 'feature\\keybinds', 'feature\\modcfg', 'feature\\modapi',
+                       'ui\\panelkit', 'feature\\keybinds', 'feature\\modcfg',
+                       -- gearpackets AFTER modcfg: it opens a settings store at
+                       -- first use. equipengine reaches it at CALL time (it loads
+                       -- earlier), so there is no cycle and no load-order trap.
+                       'feature\\gearpackets', 'feature\\modapi',
                        'feature\\jobhelpers', 'ui\\jobhelpersui' }) do
     local ok, err = pcall(require, 'dlac\\' .. mod);
     ledger.total = ledger.total + 1;

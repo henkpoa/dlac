@@ -5276,6 +5276,26 @@ end)();
     check('RC28 the copy is identical afterwards',    rc.holdsIdentical(entry, after), true);
     check('RC29 ...and was not before',               rc.holdsIdentical(entry, before), false);
 
+    -- The 2026-08-06 bug: a copy into a job dlac had never touched wrote the copied
+    -- rule ALONE into a brand-new trigger file, and because a file then existed every
+    -- seeder read it as user data -- so the job never got Engaged/Resting/Movement/
+    -- Idle at all. 'create' now stamps onto the STARTER rules.
+    local STARTER = { Default = {
+        { when = { status = 'Engaged' }, set = 'Tp_Default' },
+        { when = { status = 'Resting' }, set = 'Resting' },
+        { when = { moving  = true },     set = 'Movement' },
+        { when = { status = 'Idle' },    set = 'Idle' },
+    } };
+    local fresh = rc.applyTo(entry, nil, STARTER);
+    check('RC29a a new job entry keeps the four default rules', #fresh.Default, 4);
+    check('RC29b ...and the copied rule lands on top of them',  #fresh.Midcast, 1);
+    check('RC29c the starter is not mutated -- it serves every target in the loop',
+        STARTER.Midcast, nil);
+    check('RC29d a starter is IGNORED where a file already exists (it is not a merge)',
+        #(rc.applyTo(entry, before, STARTER).Default), 1);
+    check('RC29e no starter still starts an empty entry -- the pure core stands alone',
+        #(rc.applyTo(entry, nil).Default or {}), 0);
+
     -- The receipt names EVERY outcome, and carries whichever coordinate was varied.
     local okText, okErr = rc.receipt({ { name = 'BLM', ok = true }, { name = 'RDM', ok = true } },
         'Midcast rules, profile Default');
@@ -5314,6 +5334,42 @@ end)();
     check('RC39 a set that did not follow is named',
         badSet:find('Sets NOT brought: CureSet -> BLM (no sets path).', 1, true) ~= nil, true);
     check('RC40 ...and the copy reads as an error even though the rule landed', badSetErr, true);
+
+    -- Job entries the copy STARTED are said out loud: the player now owns a job
+    -- entry they never made, and changing job is too late to find that out.
+    local madeText, madeErr = rc.receipt({
+        { name = 'BLU', ok = true, created = true },
+        { name = 'SMN', ok = true, created = true },
+        { name = 'RDM', ok = true },
+    }, 'Midcast rules, profile Default');
+    check('RC41 job entries started by the copy are counted',
+        madeText:find('Started 2 new job entries from the default rules and base sets.', 1, true) ~= nil, true);
+    check('RC42 ...and one reads as singular',
+        rc.receipt({ { name = 'BLU', ok = true, created = true } }, 'x')
+            :find('Started 1 new job entry from the default rules and base sets.', 1, true) ~= nil, true);
+    check('RC43 starting a job entry is not an error', madeErr, false);
+    check('RC44 a FAILED create is never counted as started',
+        rc.receipt({ { name = 'BLU', ok = false, created = true, err = 'no path' } }, 'x')
+            :find('Started', 1, true), nil);
+
+    -- End to end, against the REAL starter text: copying one rule into a job dlac
+    -- has never used must produce the same file that seeding the job and adding the
+    -- rule by hand produces. dispatch.starterTriggersRaw is the seam -- if the
+    -- starter text ever stops parsing it returns nil and the copy REFUSES, because
+    -- falling back to an empty job entry is the bug this pins.
+    local tmodel = dofile('gear/triggermodel.lua');
+    local sraw = dispatchM.starterTriggersRaw();
+    check('RC45 the real starter text parses to a table', type(sraw), 'table');
+    check('RC46 ...holding the four classic Default rules', #sraw.Default, 4);
+    check('RC47 each call hands out a FRESH table (targets stamp into it)',
+        dispatchM.starterTriggersRaw() ~= sraw, true);
+    local seeded = tmodel.fromRaw(sraw, dispatchM.canonEvent);
+    local landed = dispatchM.serializeTriggers(rc.applyTo(entry, nil, seeded));
+    local byHand = dispatchM.serializeTriggers(
+        rc.applyTo(entry, tmodel.fromRaw(dispatchM.starterTriggersRaw(), dispatchM.canonEvent)));
+    check('RC48 a copy into an unused job == seed-then-add, byte for byte', landed, byHand);
+    check('RC49 ...and the file it writes still has an Idle rule',
+        landed:find('status = "Idle"', 1, true) ~= nil, true);
 end)();
 
 -- ---------------------------------------------------------------------------
@@ -16431,6 +16487,23 @@ end)();
     check('EQC43 auto at 9 = equipset',   eqc.chooseStyle(9), 'set');
     check('EQC44 explicit set wins',      eqc.chooseStyle(2, 'set'), 'set');
     check('EQC45 explicit single wins',   eqc.chooseStyle(12, 'single'), 'single');
+
+    -- The threshold is a PARAMETER now (/dl gearpackets), and the default has
+    -- to stay 9 or 'default' mode stops being LAC parity -- which is the one
+    -- promise the whole equip pipeline makes.
+    check('EQC46a the default threshold is byte parity', eqc.AUTO_THRESHOLD, 9);
+    check('EQC46b ...and an absent argument still means 9',
+          eqc.chooseStyle(8) == 'single' and eqc.chooseStyle(9) == 'set', true);
+    check('EQC47a a lower threshold batches sooner',
+          eqc.chooseStyle(3, 'auto', 3), 'set');
+    check('EQC47b ...and still leaves smaller plans alone',
+          eqc.chooseStyle(2, 'auto', 3), 'single');
+    check('EQC47c threshold 1 batches everything',
+          eqc.chooseStyle(1, 'auto', 1), 'set');
+    check('EQC48a an explicit style ignores the threshold',
+          eqc.chooseStyle(1, 'single', 1), 'single');
+    check('EQC48b garbage falls back to the default threshold',
+          eqc.chooseStyle(8, 'auto', 'x'), 'single');
 end)();
 
 -- ---------------------------------------------------------------------------
@@ -16565,6 +16638,32 @@ end)();
     check('EQE35 numeric slot keys accepted', eng._bufferPeek()[11], 'Karin Obi');
     eng.bufferClear();
     check('EQE36 clear empties the buffer', next(eng._bufferPeek()), nil);
+
+    -- --- encumbrance: the 0x01B word at 0x60, one bit per equip slot ---
+    -- Head is equip index 4 (bit 4), Legs is 7. The same word equipmon reads as
+    -- a u32 and masks with 1<<slot -- if these two ever disagree, one of them is
+    -- drawing a cross over the wrong box.
+    local enc = packStr(0x64, { { 0x60 * 8 + 4, 1, 1 }, { 0x60 * 8 + 7, 1, 1 } });
+    eng.readEncumbrance(enc);
+    check('EQE37 a set bit lands on the 1-based slot id', eng.state.encumbered[5], true);
+    check('EQE38 isEncumbered takes the 0-BASED equip index',
+          eng.isEncumbered(4) == true and eng.isEncumbered(7) == true, true);
+    check('EQE39 a clear bit is not encumbered', eng.isEncumbered(0), false);
+    check('EQE40 a garbage index never claims a lock', eng.isEncumbered(nil), false);
+    -- ...and the read happens with the engine DISARMED. These bits are the only
+    -- source the floating bar's cross has, and the bar draws on whichever engine
+    -- you run -- before the hoist they were gated behind nativeOn() and a legacy
+    -- player never saw a bit set at all.
+    for i = 1, 16 do eng.state.encumbered[i] = false; end
+    local savedTrip = eng.state.tripped;
+    eng.state.tripped = true;                -- nativeOn() is false whatever else is set
+    eng.handleIncoming({ id = 0x01B, data = enc });
+    check('EQE41 0x01B is read with the engine disarmed', eng.isEncumbered(4), true);
+    eng.state.tripped = savedTrip;
+    -- A word with nothing set CLEARS: encumbrance lifting is another 0x01B, not
+    -- a separate packet, so a stale true would strike out a slot forever.
+    eng.readEncumbrance(packStr(0x64, {}));
+    check('EQE42 an empty word clears every slot', eng.isEncumbered(4), false);
 end)();
 
 -- ---------------------------------------------------------------------------
@@ -23665,6 +23764,158 @@ end)();
     check('SND14b ...with the cause intact', SL.state.byWhy['Precast (set, 2 slots)'], 1);
     SL.reset();
     check('SND14c reset empties it', SL.state.total, 0);
+
+    -- SND16. The wire-shape note (2026-08-06). Counts taken under a switched
+    -- /dl gearpackets mode are uninterpretable unless the artifact says which
+    -- mode produced them, and the player who forgot they were mid-experiment
+    -- is exactly the one who sends the file. Absent note = today's output,
+    -- byte for byte, which is what every check above still asserts.
+    local nl = SL._lines(st, 160, nil, 'mode SET -- OVERRIDING every dispatch point');
+    check('SND16a the note rides under the headline',
+          (nl[2] or ''):match('^sends: wire shape %-%- mode SET') ~= nil, true);
+    check('SND16b ...and pushes the counters down, not out',
+          (nl[3] or ''):match('^sends: by packet') ~= nil, true);
+    local zn = SL._lines(SL.newState(0), 300, nil, 'mode SINGLE');
+    check('SND16c silence names the mode too',
+          (zn[2] or ''):match('^sends: wire shape %-%- mode SINGLE') ~= nil, true);
+    check('SND16d ...without losing the explanation',
+          (zn[3] or ''):match('edge%-driven') ~= nil, true);
+    check('SND16e an empty note adds no line',
+          (SL._lines(st, 160, nil, '')[2] or ''):match('^sends: by packet') ~= nil, true);
+end)();
+
+-- ---------------------------------------------------------------------------
+-- GP. /dl gearpackets -- the wire-shape switch (feature\gearpackets, 08-06).
+--
+-- Henrik asked whether the game's equipsets batch what dlac sends per slot.
+-- They do: 0x051 carries up to 16 {index, slot, container} triples and the
+-- server keeps no equipset of its own, so the batch needs no registration --
+-- it is a shape choice available on every send. What it COSTS is the field's
+-- to say (bytes favour singles under 9 pieces; the server's per-packet tail
+-- favours the batch always), so this module exists to make the A/B one
+-- command apart, for every dispatch point at once.
+--
+-- GP9 is the one that matters most: the defaults ARE LAC parity, so a player
+-- who never types the command is on exactly the shape that shipped.
+-- ---------------------------------------------------------------------------
+(function()
+    local GP = dofile('feature/gearpackets.lua');
+    check('GP0 gearpackets loads', type(GP), 'table');
+    if type(GP) ~= 'table' then return; end
+
+    check('GP1a a mode is recognised',        GP.isMode('single'), 'single');
+    check('GP1b ...case-insensitively',       GP.isMode('SET'),    'set');
+    check('GP1c junk is not a mode',          GP.isMode('batch'),  nil);
+    check('GP1d nil is not a mode',           GP.isMode(nil),      nil);
+    check('GP1e every listed mode has a blurb to print', (function()
+        for _, m in ipairs(GP.MODES) do
+            if type(GP.MODE_BLURB[m]) ~= 'string' then return m; end
+        end
+        return true;
+    end)(), true);
+
+    check('GP2a a threshold clamps up from zero',  GP.clampThreshold(0),   1);
+    check('GP2b ...and down from past sixteen',    GP.clampThreshold(99),  16);
+    check('GP2c a float floors',                   GP.clampThreshold(3.7), 3);
+    check('GP2d a numeric string is a number',     GP.clampThreshold('4'), 4);
+    check('GP2e garbage is nil, not a guess',      GP.clampThreshold('x'), nil);
+
+    -- THE RESOLUTION. 'default' is the only mode that lets the dispatch point
+    -- speak; the rest replace it, which is what makes precast and midcast move
+    -- together (they are the same timing problem -- both fire inside ONE
+    -- outgoing chunk -- so a switch that moved one would measure nothing).
+    check('GP3a default defers to the route',   GP.resolve('set', 'default'),  'set');
+    check('GP3b ...for singles as well',        GP.resolve('single', 'default'), 'single');
+    check('GP3c an unknown route style reads as auto',
+          GP.resolve('bogus', 'default'), 'auto');
+    check('GP3d single overrides a set route',  GP.resolve('set', 'single'),   'single');
+    check('GP3e set overrides a single route',  GP.resolve('single', 'set'),   'set');
+    check('GP3f auto overrides both',           GP.resolve('set', 'auto'),     'auto');
+    check('GP3g an unknown MODE falls back to default, never to a guess',
+          GP.resolve('set', 'sideways'), 'set');
+
+    local pts = { { name = 'Precast', style = 'set' }, { name = 'Midcast', style = 'single' } };
+    local eff = GP.effective(pts, 'set');
+    check('GP4a effective keeps the asked style for the record',
+          eff[2].asked, 'single');
+    check('GP4b ...and reports what it will actually get', eff[2].gets, 'set');
+    check('GP4c an unmoved point is visibly unmoved',
+          GP.effective(pts, 'default')[1].gets, 'set');
+
+    check('GP5a a set shape names one packet',   GP.shapeOf('set'),    'one 0x051');
+    check('GP5b a single shape names per-slot',  GP.shapeOf('single'), 'one 0x050 per slot');
+    check('GP5c auto is the only shape that quotes the number',
+          GP.shapeOf('auto', 4):match('from 4 slots up') ~= nil, true);
+
+    local L = GP.lines('set', 9, pts);
+    check('GP6a the readout leads with the mode',
+          L[1]:match('^gearpackets: mode SET') ~= nil, true);
+    check('GP6b an unconsulted threshold says so rather than implying it applies',
+          L[2]:match('not consulted in set mode') ~= nil, true);
+    check('GP6c ...where a consulted one explains the number',
+          GP.lines('auto', 3, pts)[2]:match('from 3 changed slots up') ~= nil, true);
+    check('GP6d overridden points are marked', (function()
+        for _, l in ipairs(L) do
+            if l:match('Midcast') and l:match('overridden') then return true; end
+        end
+        return false;
+    end)(), true);
+    -- THE LINE THAT SAVES A FIELD ROUND: conflict strips stay 0x050 at every
+    -- mode, so the first 0x050 seen in set mode is correct, not a broken switch.
+    check('GP6e the strip caveat is always printed', (function()
+        for _, l in ipairs(GP.lines('set', 9, pts)) do
+            if l:match('conflict strips') then return true; end
+        end
+        return false;
+    end)(), true);
+
+    check('GP7a bare command',             #GP.parse('/dl gearpackets'),     0);
+    check('GP7b the short alias',          #GP.parse('/dl gp'),              0);
+    check('GP7c /dlac alias',              #GP.parse('/dlac gearpackets'),   0);
+    check('GP7d arguments split',          table.concat(GP.parse('/dl gp threshold 3'), ','), 'threshold,3');
+    check('GP7e a neighbour is NOT ours',  GP.parse('/dl gearpacketsfoo'),   nil);
+    check('GP7f ...nor is a longer word starting gp', GP.parse('/dl gps'),   nil);
+    check('GP7g another command entirely', GP.parse('/dl sends'),            nil);
+
+    check('GP8a bare is show',        GP.intent({}).kind,                     'show');
+    check('GP8b a mode word',         GP.intent({ 'single' }).mode,           'single');
+    check('GP8c threshold long form', GP.intent({ 'threshold', '5' }).n,      5);
+    check('GP8d threshold short form',GP.intent({ 't', '5' }).n,              5);
+    check('GP8e a bare number is a threshold -- what a tired thumb types',
+          GP.intent({ '3' }).n, 3);
+    check('GP8f a threshold with no number is usage, not a silent default',
+          GP.intent({ 'threshold' }).kind, 'usage');
+    check('GP8g an unknown word is usage', GP.intent({ 'batch' }).kind,       'usage');
+
+    -- GP9. THE PARITY PIN. With no store (headless, and pre-login in game)
+    -- these must serve the LAC shape: a player who never types the command,
+    -- and a store that fails to open, both land on what shipped.
+    check('GP9a the default mode is LAC parity',   GP.mode(),      'default');
+    check('GP9b the default threshold is 9',       GP.threshold(), 9);
+    check('GP9c styleFor is identity under default', GP.styleFor('single'), 'single');
+    check('GP9d a write with no store fails honestly rather than pretending',
+          GP.setMode('set'), false);
+    check('GP9e ...and leaves the mode alone',     GP.mode(),      'default');
+
+    -- GP10. Every style the ROUTE TABLE declares must be one this module can
+    -- resolve. A new dispatch point with a typo'd style would otherwise read
+    -- as 'auto' forever and nobody would see it happen.
+    local eng = dofile('feature/equipengine.lua');
+    local known = { set = true, single = true, auto = true };
+    local strays = {};
+    for _, r in pairs((type(eng) == 'table' and eng.ACTION_ROUTES) or {}) do
+        for _, key in ipairs({ 'preStyle', 'midStyle' }) do
+            local s = r[key];
+            if s ~= nil and known[s] ~= true then
+                strays[#strays + 1] = tostring(r.type) .. '.' .. key .. '=' .. tostring(s);
+            end
+        end
+    end
+    check('GP10a every route style is a style this module knows',
+          table.concat(strays, ', '), '');
+    check('GP10b ...and the route table still declares the LAC split',
+          (eng.ACTION_ROUTES[0x03] or {}).preStyle == 'set'
+          and (eng.ACTION_ROUTES[0x03] or {}).midStyle == 'single', true);
 end)();
 
 -- ---------------------------------------------------------------------------

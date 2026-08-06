@@ -581,6 +581,19 @@ the copies are simply there on the next job (or profile) change.
 `M.renderTrigCopyPopup` / `M._cpOpen` are exposed as headless render seams (smoke_ui CP*, the
 `renderTrigRuleBox` precedent: a popup body only runs while open).
 
+A destination **dlac has never used is instantiated first** (2026-08-06 bug fix): this window
+is the only door in dlac that can address a job entry that was never seeded — every other one
+(Setup, the migration sweep, the job change, "Create starter triggers") seeds and then edits —
+and it used to write the copied rule ALONE, after which the file existed and every seeder read
+it as user data, so the job never got its Engaged/Resting/Movement/Idle at all. `create` now
+stamps the rule **on top of the default rules** in ONE write (`dispatch.starterTriggersRaw()` →
+`triggermodel.fromRaw` → `rulecopy.applyTo(entry, nil, starter)`), byte-identical to seeding the
+job and adding the rule by hand, and writes the four empty base sets those rules target
+(`frameSetsText(starterDynText)`, never over an existing file). A starter that will not parse
+**refuses the copy** — falling back to an empty job entry is the bug. The receipt names it
+("Started 2 new job entries from the default rules and base sets"): the player now owns a job
+entry they never made. Both axes, since `create` means the same thing on each.
+
 ### ui/automationsui.lua — the Gear Helpers tab + the manifest machinery
 (Tab label renamed Automations → **Gear Helpers** 2026-07-28; module/file/key names are
 unchanged, see "Naming" below.) The whole block, extracted verbatim from triggersui 2026-07-18 (it owned

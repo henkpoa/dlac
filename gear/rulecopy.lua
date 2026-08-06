@@ -46,7 +46,8 @@ function M.usable() return hasBp; end
 --   'source'     where the rule already lives (the job you are on / the active profile)
 --                -- never a target, and never tickable: it already has the rule
 --   'unreadable' its trigger file exists but does not parse -- REFUSED (never overwritten)
---   'create'     no trigger file there yet -- one is written
+--   'create'     dlac has no job entry there yet -- one is INSTANTIATED (the default
+--                rules and the base sets they target) and the rule lands on top
 --   'dup'        an identical rule already sits in that handler -- allowed, warned (the
 --                Blueprint double-stamp law: caught, never forbidden)
 --   'add'        the ordinary case
@@ -143,11 +144,21 @@ function M.selection(rows, marked)
 end
 
 -- The stamp transform, one target's data in -> a NEW data table out (non-mutating and
--- detached, blueprintsmodel.stamp's contract). A missing file's `nil` starts an empty
--- job entry, which is what makes 'create' just another copy.
-function M.applyTo(entry, data)
+-- detached, blueprintsmodel.stamp's contract).
+--
+-- `starter` is what a MISSING file starts from ('create'), and it is the whole fix for
+-- the 2026-08-06 bug: a copy into a job dlac had never touched stamped onto `{}`, so
+-- the trigger file it created held the copied rule and nothing else -- no Engaged, no
+-- Resting, no Movement, no Idle -- and the seeders never fill a file that exists. Every
+-- OTHER door to a new job entry seeds the starter rules first and edits after; passing
+-- them here makes 'create' do the same thing, which is what "just another copy" was
+-- always supposed to mean. `nil` still falls back to an empty entry so the pure core
+-- stays callable without one.
+function M.applyTo(entry, data, starter)
     if not hasBp then return data; end
-    return bp.stamp(entry, (type(data) == 'table') and data or {});
+    local base = (type(data) == 'table') and data
+              or ((type(starter) == 'table') and starter or {});
+    return bp.stamp(entry, base);
 end
 
 -- Does this target already hold the rule? (The caller re-asks at WRITE time, because
@@ -171,11 +182,17 @@ function M.receipt(results, where)
     -- did not follow it is the exact dud this option exists to prevent, so the
     -- receipt must not report the rule as copied and stay quiet about the set.
     local setsOk, setsBad = 0, {};
+    -- Job entries STARTED by this copy (`created`): a destination dlac had never
+    -- touched is instantiated -- default rules and base sets -- and the rule lands on
+    -- top. Said out loud because it is a bigger thing than a copy: the player now owns
+    -- a job entry they never made, and finding that out by changing job is too late.
+    local made = 0;
     for _, r in ipairs((type(results) == 'table') and results or {}) do
         if type(r) == 'table' and type(r.name) == 'string' then
             if r.ok ~= true then failed[#failed + 1] = r.name .. ' (' .. tostring(r.err or 'unknown error') .. ')';
             elseif r.dup == true then dups[#dups + 1] = r.name;
             else done[#done + 1] = r.name; end
+            if r.ok == true and r.created == true then made = made + 1; end
             setsOk = setsOk + (tonumber(r.setsOk) or 0);
             for _, s in ipairs((type(r.setsBad) == 'table') and r.setsBad or {}) do
                 setsBad[#setsBad + 1] = tostring(s);
@@ -194,6 +211,10 @@ function M.receipt(results, where)
         parts[#parts + 1] = string.format('%d already had an identical rule -- copied anyway: %s.', #dups, join(dups));
     end
     if #failed > 0 then parts[#parts + 1] = 'FAILED: ' .. join(failed) .. '.'; end
+    if made > 0 then
+        parts[#parts + 1] = string.format('Started %d new job entr%s from the default rules and base sets.',
+            made, (made == 1) and 'y' or 'ies');
+    end
     if setsOk > 0 then
         parts[#parts + 1] = string.format('Brought %d missing set%s along.', setsOk, (setsOk == 1) and '' or 's');
     end

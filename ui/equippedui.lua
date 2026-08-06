@@ -457,7 +457,23 @@ local function renderEquippedTab(job, level)
         end,
         function(labelKey) ui.eqSelected = labelKey; ui.altSearch = { '' }; end,
         function(sl) return S.lookupById(S.getEquippedId(sl.equip)); end,
-        190);                                          -- fixed width: the compare panel sits beside
+        190,                                           -- fixed width: the compare panel sits beside
+        {
+            -- The server's encumbrance, struck across the box (2026-08-06). The
+            -- same hook and the same service the floating bar draws from, so
+            -- the tab and the bar cannot disagree about which slots are shut.
+            --
+            -- Server encumbrance ONLY -- deliberately not dlac's own engine
+            -- locks, which this tab already states in words ("[LOCKED]" beside
+            -- the selected slot, with the way to release it). Those two are
+            -- different claims: one you can undo from here, one you cannot
+            -- undo at all, and one mark for both would say neither.
+            crossOf = function(sl) return S.encumbered(sl.equip) == true; end,
+            noteOf  = function(sl)
+                if S.encumbered(sl.equip) ~= true then return nil; end
+                return S.ENCUMBERED_NOTE;
+            end,
+        });
     imgui.SameLine(0, 14);
     -- FIXED-height panel: hover must never resize the layout, or the list below
     -- shifts under the cursor and the hover jitters between two rows. Card area

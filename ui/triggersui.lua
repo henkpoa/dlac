@@ -4766,6 +4766,13 @@ end
 -- whose safety backup could not be written -- and both are named in the receipt
 -- rather than worked around.
 --
+-- A destination dlac has NEVER USED is instantiated first (2026-08-06): the
+-- default rules and the base sets they target, with the copied rule on top. This
+-- window is the only place a player can address a job entry that was never
+-- seeded, and it used to write the copied rule alone -- after which the file
+-- existed, so every seeder read it as user data and the job never got its
+-- Engaged/Resting/Movement/Idle at all.
+--
 -- Nothing here touches the live job entry, so nothing needs a hot-reload: the
 -- copies are already there when the player changes job (or profile).
 -- ---------------------------------------------------------------------------
@@ -4788,13 +4795,13 @@ local cpUI = {
 -- what "this one" means, and a wrong-axis note is how a player copies blind).
 local CP_NOTE = {
     jobs = {
-        create     = 'no rules for this job yet -- a trigger file is created',
+        create     = 'dlac has never used this job -- it is set up with the default rules first',
         dup        = 'already has an identical rule -- copying adds a second',
         source     = 'the job you are on -- the rule lives here',
         unreadable = 'its trigger file does not parse -- skipped, never overwritten',
     },
     profiles = {
-        create     = 'no trigger file for this job there yet -- one is created',
+        create     = 'this job is unused there -- it is set up with the default rules first',
         dup        = 'already has an identical rule -- copying adds a second',
         source     = 'this profile -- the rule lives here',
         unreadable = 'its trigger file does not parse -- skipped, never overwritten',
@@ -4958,15 +4965,70 @@ local function cpBringSets(prof, entry, tJob, tProf, srcText, label)
     return okN, bad;
 end
 
--- Write ONE target profile's <JOB> trigger file with the rule appended. ok, dup, err.
+-- The default rules as a model -- what every job entry dlac creates starts with.
+-- Read from dispatch's starter TEXT (the one source of truth Setup writes verbatim)
+-- and parsed through the same model the tab edits, so the file this produces is
+-- byte-identical to seeding the job and then adding the rule by hand.
+local function cpStarterData()
+    if not hasDispatch or not hasTrigModel then return nil; end
+    if type(dsp.starterTriggersRaw) ~= 'function' then return nil; end
+    local raw = nil;
+    pcall(function() raw = dsp.starterTriggersRaw(); end);
+    if type(raw) ~= 'table' then return nil; end
+    local data = nil;
+    pcall(function() data = tmodel.fromRaw(raw, dsp.canonEvent); end);
+    return (type(data) == 'table') and data or nil;
+end
+
+-- The other half of instantiating a job entry: the four base sets the default rules
+-- target (Idle / Tp_Default / Resting / Movement), EMPTY -- exactly what Setup's
+-- seedSetsFile writes, and the reason a freshly created entry does not read
+-- [missing] on all four. Never touches an existing file. Returns nil, or a "why"
+-- string for the receipt's Sets-NOT-brought clause.
+local function cpSeedStarterSets(prof, job, profName, label)
+    local why = function(s) return 'the default sets -> ' .. tostring(label or job) .. ' (' .. s .. ')'; end
+    local path = nil;
+    pcall(function() path = prof.setsPath(job, profName); end);
+    if path == nil then return why('no sets path'); end
+    if readFileText(path) ~= nil then return nil; end          -- user data: never overwrite
+    local text = nil;
+    pcall(function() text = prof.frameSetsText(prof.starterDynText); end);
+    if type(text) ~= 'string' then return why('profiles has no starter sets text'); end
+    if (loadstring or load)(text) == nil then return why('the starter sets text would not parse'); end
+    -- Same guard as the trigger half: ensureStorage would ADOPT profName as ACTIVE if
+    -- the pointer file were missing, and a copy must never switch profiles.
+    pcall(function()
+        if prof.storageExists() then prof.ensureStorage(profName); end
+    end);
+    if not writeFileText(path, text) then return why('could not write ' .. path); end
+    return nil;
+end
+
+-- Write ONE target profile's <JOB> trigger file with the rule appended.
+-- Returns ok, dup, err, created -- `created` meaning the job entry did not exist and
+-- this copy INSTANTIATED it (Henrik, 2026-08-06: "just instantiate the whole job if
+-- it has not been used by DLAC yet, the moment you try to copy something to it").
+-- This is the only door in dlac that can address a job entry that was never seeded,
+-- and it used to write the copied rule alone into a brand-new file -- which then
+-- looked like user data to every seeder, so the job never got its default rules at
+-- all. The rule now lands ON TOP of them, in ONE write.
 local function cpCopyOne(prof, entry, job, profName)
     local path = prof.triggersPath(job, profName);
     if path == nil then return false, false, 'no path'; end
     local data, derr = cpReadProfile(prof, profName, job);
     if derr ~= nil then return false, false, derr; end   -- torn file: refused, not overwritten
+    local starter, created = nil, false;
+    if data == nil then
+        starter = cpStarterData();
+        -- Refused, not worked around: falling back to an empty entry IS the bug.
+        if starter == nil then
+            return false, false, 'could not build the default rules for a new job entry (dispatch/triggermodel mismatch?)';
+        end
+        created = true;
+    end
     local dup = rc.holdsIdentical(entry, data);
     local text;
-    local sok = pcall(function() text = dsp.serializeTriggers(rc.applyTo(entry, data)); end);
+    local sok = pcall(function() text = dsp.serializeTriggers(rc.applyTo(entry, data, starter)); end);
     if not sok or type(text) ~= 'string' then return false, dup, 'serialize failed'; end
     -- The profile may have no triggers\ folder yet. ensureStorage would ADOPT the
     -- named profile as ACTIVE if the pointer file were missing -- a copy must never
@@ -5000,7 +5062,7 @@ local function cpCopyOne(prof, entry, job, profName)
         if not wok then return false, dup, tostring(werr); end
     end
     if readFileText(path) ~= text then return false, dup, 'write verify failed'; end
-    return true, dup, nil;
+    return true, dup, nil, created;
 end
 
 -- Copy into every ticked destination of ONE axis ('jobs' | 'profiles'), then
@@ -5028,14 +5090,28 @@ local function cpApply(kind)
             -- we already are. One writer, two axes.
             local tJob  = (kind == 'jobs') and row.name or job;
             local tProf = (kind == 'jobs') and cpUI.profile or row.name;
-            local ok, dup, err = cpCopyOne(prof, entry, tJob, tProf);
-            local res = { name = row.name, ok = ok, dup = dup, err = err };
+            local ok, dup, err, created = cpCopyOne(prof, entry, tJob, tProf);
+            local res = { name = row.name, ok = ok, dup = dup, err = err, created = created };
+            -- Both sets writers report through ONE channel, so the receipt cannot
+            -- name one and swallow the other.
+            local bad = {};
+            -- Finish instantiating a job entry this copy just started: its trigger
+            -- file now holds the default rules, which target four base sets that do
+            -- not exist yet. Only after the rule landed -- a sets file for a job whose
+            -- trigger write we refused is gear for rules that are not there.
+            if ok and created then
+                local sErr = cpSeedStarterSets(prof, tJob, tProf, row.name);
+                if sErr ~= nil then bad[#bad + 1] = sErr; end
+            end
             -- Sets follow only a rule that actually LANDED: bringing a set to a job
             -- whose trigger file we just refused to touch would leave the profile
             -- carrying gear for a rule that is not there.
             if ok and wantSets then
-                res.setsOk, res.setsBad = cpBringSets(prof, entry, tJob, tProf, srcSets, row.name);
+                local n, b = cpBringSets(prof, entry, tJob, tProf, srcSets, row.name);
+                res.setsOk = n;
+                for _, x in ipairs(b or {}) do bad[#bad + 1] = x; end
             end
+            if #bad > 0 then res.setsBad = bad; end
             results[#results + 1] = res;
         end
     end
