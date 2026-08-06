@@ -380,9 +380,11 @@ local function slotGrid(ctx)
         ctx.cfg.autoRestore = true;
         if ctx.save then ctx.save(); end
     end
-    kit.tip(im, 'After a level or job change, any spells stripped from the\n'
+    kit.tip(im, 'After a level UP or job change, any spells stripped from the\n'
         .. 'LAST APPLIED set are re-set automatically - lowest level first,\n'
-        .. 'into the lowest open slots. Adds only; never removes.');
+        .. 'into the lowest open slots. Adds only; never removes.\n'
+        .. 'A level DOWN (sync, delevel) never sends anything: the game\n'
+        .. 'disables over-level spells itself and brings them back after.');
     if kit.isFn(im, 'SameLine') then im.SameLine(); end
     if kit.litButton(im, 'Manual', not auto, lvW, 20) and auto then
         ctx.cfg.autoRestore = false;
