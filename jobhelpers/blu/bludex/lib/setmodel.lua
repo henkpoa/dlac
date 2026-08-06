@@ -118,6 +118,16 @@ function M.sortedLayout(ids, book)
     return T;
 end
 
+-- The server's set-slot count for a BLU level (blueutils GetTotalSlots):
+-- 6 slots through level 10, +2 every 10 levels after, capped at 20.
+function M.slotsAtLevel(level)
+    if level == nil or level < 1 then return 0; end
+    local n = math.floor((level - 1) / 10) * 2 + 6;
+    if n < 6 then n = 6; end
+    if n > 20 then n = 20; end
+    return n;
+end
+
 -- 'DUAL_WIELD' -> 'Dual Wield', 'MND' stays 'MND' (<=4 chars = stat acronym)
 function M.prettyStat(s)
     if #s <= 4 and not s:find('_') then return s; end

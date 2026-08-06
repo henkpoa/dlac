@@ -200,6 +200,23 @@ local function renderBody(im, st, deps, embedded)
         or 'Points used by the set you are editing.\nThe total appears when you are on BLU (or set budgetOverride).');
     if kit.isFn(im, 'SameLine') then im.SameLine(); end
     kit.meter(im, '   Slots:', deps.sets.count(st.editingSet), 20, '');
+    -- the level-sync line (Henrik 2026-08-06): the meters above stay the
+    -- PLAN (the editing set at full level); when the effective BLU level is
+    -- under the 75 cap this shows what the client holds RIGHT NOW -- the
+    -- sync-enabled spells' points against the synced budget, and those
+    -- spells against the synced slot count (the server's slot rule).
+    local ss = deps.blu.syncStats(deps.book);
+    if ss ~= nil and ss.level < 75 then
+        if kit.isFn(im, 'SameLine') then im.SameLine(); end
+        local liveMax = deps.blu.points();
+        kit.ctext(im, kit.COL.warn, ('   Sync Lv.%d: %d / %s pts  %d / %d slots'):format(
+            ss.level, ss.activePoints, liveMax and tostring(liveMax) or '?',
+            ss.active, ss.maxSlots));
+        kit.tip(im, ('Level sync: what is live RIGHT NOW at Lv.%d.\n'
+            .. 'The game disabled the rest of the set itself; everything\n'
+            .. 'returns when the sync ends. The Set/Slots meters keep\n'
+            .. 'showing the plan at full level.'):format(ss.level));
+    end
     if deps.blu.onBlu() and (deps.blu.points()) == nil then
         if kit.isFn(im, 'SameLine') then im.SameLine(); end
         kit.ctext(im, kit.COL.dim, '   (live points: reading...)');
