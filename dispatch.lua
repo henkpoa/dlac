@@ -7754,6 +7754,29 @@ return {
 };
 ]];
 
+-- The starter rules as DATA (the same text, parsed) -- for the callers that have to
+-- land something ON TOP of them instead of writing the file verbatim.
+--
+-- "copy to..." is the one place a player can address a job dlac has never touched
+-- (Henrik, 2026-08-06): every other door to a job entry -- Setup, the job change,
+-- the Triggers tab's "Create starter triggers" -- seeds first and edits after, so a
+-- job entry always begins life with Engaged/Resting/Movement/Idle. The copy wrote
+-- straight into `nil`, and the file it created held the copied rule and NOTHING
+-- else -- and because a trigger file now existed, the seeders would never fill in
+-- the four that were missing. So the copy asks for the starter CONTENT and stamps
+-- onto it, which lands the same end state the seed-then-edit path produces.
+--
+-- A fresh table each call (the caller stamps into it). nil if the text ever stops
+-- parsing -- the caller must refuse the copy rather than silently fall back to an
+-- empty entry, which is the bug itself.
+function M.starterTriggersRaw()
+    local chunk = (loadstring or load)(M.starterTriggersText);
+    if chunk == nil then return nil; end
+    local ok, t = pcall(chunk);
+    if not ok or type(t) ~= 'table' then return nil; end
+    return t;
+end
+
 -- Write the starter file for the current job if none exists. Returns ok, message.
 function M.initTriggers()
     local dir = charDir();

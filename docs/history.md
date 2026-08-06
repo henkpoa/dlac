@@ -9222,6 +9222,89 @@ dim while the row is dormant, same at-a-glance grammar as `[Lv 30-54]` and `@mod
 `G19b` (serializer), `G23`–`G26` (the trait bit ALONE re-flattens, both directions, and
 the wrapper never mutates the shared record). Suites **6807 + 1281**, both interpreters.
 
+## Session "does an equipset batch it" (2026-08-06, `2026.08.06`)
+
+**Theme:** Henrik's question — `/dl sends` shows a packet per changed slot; does the
+game's own Equipment Set feature send one packet instead, and could dlac build sets and
+ride them? Researched against the local CatsEyeXI clone, then built the switch that lets
+the field price the answer instead of the source.
+
+**What the server actually offers** (`src\map\packets\c2s`, clone on `stable`):
+
+| packet | shape | server tail |
+| --- | --- | --- |
+| `0x050` EQUIP_SET | one slot, **8 bytes** | persist + `CheckForGearSet` + `UpdateHealth` + latent retrigger, **per packet** |
+| `0x051` EQUIPSET_SET | `Count` + **16** `{ItemIndex, EquipKind, Category}` triples, fixed **72 bytes** | the same tail, **once for the batch** |
+| `0x052` EQUIPSET_CHECK | a validity query answered with `0x116` | — |
+
+**The idea's expensive half does not exist.** The server stores no equipset: `0x051`
+carries raw index/slot/container triples and `0x052` only asks whether a set is still
+valid. The in-game Equipment Sets UI is client-side bookkeeping. So there is nothing to
+register, nothing to keep in sync, and no reason to detect recurring sets — **the batch is
+a shape available on every send**, which is why this landed as a style switch and not a
+set-builder. dlac already sent `0x051`; `equipcore.chooseStyle`'s `< 9` threshold is why
+the field mostly sees singles.
+
+**Where the costs really sit.** Bytes favour singles under 9 pieces (`8n` vs a flat 72 —
+and 72/8 = 9 is exactly LAC's threshold, so that constant was always byte parity and
+nothing deeper). Bytes are also the cheapest thing in play: the client bundles its
+outgoing packets into one chunk (the server's own parse loop walks several small packets
+inside one buffer, `map_networking.cpp:466`), so N singles are not N round trips. What
+does scale with packet count is the server's post-equip tail — `luautils::CheckForGearSet`
+is a C++→Lua call that clears every gear-set mod and rescans all 16 slots against 126
+defined sets, and a 5-slot swap runs it five times, walking through four intermediate
+gear states. Neither `0x050` nor `0x051` is rate-limited (`packet_guard.cpp:86`), and
+downstream traffic is identical either way (`EquipItem` pushes an `EQUIP_LIST` per item
+regardless). The batch's one real cost: validation is all-or-nothing — `packet_system.cpp:223`
+drops the whole packet on a bad entry, with only a server-side warning.
+
+**THE MIDCAST MYTH, killed.** Henrik's follow-up was the sharp one: precast being rushed
+explains `'set'`, but midcast has a whole cast to work with — why `'single'`? It does not.
+`equipengine.handleAction` fires pre, re-injects the action and fires mid as **three
+synchronous calls inside ONE outgoing chunk** (LAC is identical —
+`packethandlers.lua:195-207`), so midcast is microseconds behind precast, not seconds. The
+cast time is never used. That rules out the only timing story, and bytes cannot explain it
+either: hardcoded `'single'` is **strictly dominated by `'auto'`** — identical below the
+threshold, worse on bytes *and* server work above it. Also ruled out by reading the source:
+no cast interrupt on equip, no interleaving (same chunk, same tick), no differing
+validation, no rate limit. LAC carries **no recorded rationale** — no comment, no mention
+in its HTML docs, and the addon folder is not a git repo. Its own profile-facing functions
+(`EquipSet`, `ForceEquipSet`, `InterimEquipSet`, `Equip`) all pass `'auto'`; only the four
+internal dispatch points hardcode a style, in the pattern "the two that must beat the
+action packet out get the batch". A plausible authorial mental model that was already moot
+when it was written. **The route table keeps LAC's values** — parity is the contract — and
+the switch overrides them instead.
+
+**Landed:** `feature\gearpackets.lua` + `/dl gearpackets` (alias `/dl gp`) — four modes
+(`default` = LAC parity, `single`, `set`, `auto`) that override **every** dispatch point at
+once, plus a `threshold 1-16` knob for `auto`. Precast and midcast move together on
+purpose: they are the same timing problem, so a switch that moved one would measure
+nothing. Persisted via `modcfg` (`<char>\dlac\gearpackets.lua`) because a mode that
+silently reverted on `/addon reload` would let a field round report numbers for a mode the
+player thought they had left. `equipcore.chooseStyle` grew a `threshold` parameter and
+`AUTO_THRESHOLD = 9`; `equipengine.bufferFlush` consults the override under `pcall` (a
+readout knob must never cost an equip — a broken override falls back to parity).
+`gearpackets` is required at CALL time there, since it loads after `modcfg` and therefore
+after `equipengine`.
+
+**Two lines that exist to save a field round.** The readout says outright that conflict
+strips always ride as separate `0x050`s ahead of the equips — so the first `0x050` seen in
+`set` mode reads as correct rather than as a broken switch. And `/dl sends` now names the
+mode in force (`_lines` grew an optional `modeNote`; the pure half stays pure, the live
+`report()` supplies it), because counts taken under a switched mode are uninterpretable
+unless the same artifact says which mode produced them — and the player who forgot they
+were mid-experiment is exactly the one who sends the file.
+
+**Tests:** `GP0`–`GP10` (mode/threshold parsing, the resolution, the readout, the command
+parse under sendlog's eats-its-neighbours law, and **GP9 — the defaults ARE LAC parity, so
+a player who never types the command and a store that fails to open both land on what
+shipped**; `GP10` pins every style the route table declares as one the module can resolve,
+so a typo'd new dispatch point cannot silently read as `auto`), `EQC46`–`EQC48` (the
+threshold parameter, default still 9), `SND16` (the mode note's placement, and that an
+absent note leaves today's output byte for byte). Suites **6941 + 1305**, both interpreters.
+
+**Field round owed** — nothing here has been run in game.
+
 ## Session "the eyepatch goes to Norg" (2026-08-06, `2026.08.06a`)
 
 **Theme:** one item card, one row. A player's Brigand's Eyepatch — relayed by Henrik,
@@ -9493,6 +9576,85 @@ with no code change.
 visible sign a catalog-less row is wired at all. `FS12b5a`/`FS12b5b` (Chart and Hook ask
 by live id), `FS12b5c` (the mount reserves the column with no art). Suites 6969 + 1323.
 
+## Session "the slot the server took away" (2026-08-06, `2026.08.06i`)
+
+**The ask, in full:** *"Show crossed equips when disabled in armor floating bar (4x4)
+like the picture. Common thing in Incursion T3, so want to see what is locked and not."*
+With it, a screenshot of the game saying **"You are unable to equip certain weapons or
+armor."** and, a message later, *"I think it works for equipmon, if that helps."*
+
+**It did help, and the answer was already in the addon.** equipmon draws a red X from a
+u32 at byte `0x60` of the job-info packet (`0x01B`), one bit per equip slot, LSB = Main.
+dlac reads that identical word -- `feature\equipengine` has kept `state.encumbered` since
+the native engine landed, and `equipcore` has refused to resolve an encumbered slot ever
+since. So nothing new is decided here. The bits were simply never *shown*.
+
+**The one real bug the ask uncovered: the read sat behind the engine gate.**
+`handleIncoming` opened with `if not nativeOn() then return; end`, and the `0x01B` branch
+was the last `elseif` under it. On the legacy engine -- or with the tripwire fired, or
+inside LAC's own Lua state -- the encumbrance word never landed and every slot read as
+free. That never showed because the only consumer was a resolver that does not run in
+those states either. A UI consumer changes the calculus: the bar draws on whichever
+engine you run. `0x01B` is now handled **ahead** of the gate and returns, which is safe
+for the reason it was worth doing -- it sends nothing, blocks nothing, and touches no
+state but its own sixteen booleans.
+
+**`opts.crossOf`, not a box colour.** The floating bar's box already carries two things
+(a pin is red or violet, a live grab cue is gold) and they can be true at the same time
+as a lock. A fourth colour competing for the same pixel makes the frame ambiguous; an
+overlay sits on top of whatever the box is saying. `renderSlotGrid` gained one optional
+hook, so the Equipped and Sets tabs are byte-identical -- the cross is opt-in and only
+the floating window opts in.
+
+**Drawn in lines, not from a texture** (dlac ships no art for this, and a cross is four
+lines): a near-black stroke then a red one per diagonal, so it reads over a pale icon as
+well as a dark one. `AddLine` with **four** arguments and a table per point -- uistyle's
+underline shape, copied rather than invented, because an `AddRect` with six arguments
+drew nothing in this client once and *said nothing about it*. That episode is why the
+arithmetic (`crossGeom`) is split out and exported while the draw calls are not: the call
+shape is either right everywhere or nowhere, but the inset and stroke are new and scale
+across the size slider's 20px..120px, where a stroke can round to zero at one end and an
+inset can meet in the middle at the other.
+
+**And the words on hover**, through the grid's existing `noteOf`: a cross tells you THAT
+and never why. "LOCKED by the server (encumbrance) -- nothing can be equipped here until
+it lifts. dlac will not try."
+
+**Tests:** `EQE37`-`EQE42` drive a real packed word through `readEncumbrance` (a set bit
+lands on the 1-based slot id; `isEncumbered` takes the 0-BASED equip index; an empty word
+CLEARS, because encumbrance lifting is another `0x01B` and a stale `true` would strike a
+slot out forever; and the read happens with the engine disarmed). `FGX1`-`FGX4` check
+both hooks against a locked slot AND a free one -- a `crossOf` that answered true for
+everything would strike out all sixteen boxes and still pass a one-sided test.
+`S12x*` walks the geometry across the slider. Suites 6975 + 1339.
+
+**Owed:** the field round. Nothing here has been seen in game -- the layout is derived
+from equipmon's, the bits from a packet dlac has read for weeks but never displayed.
+
+**Addendum, same version — the Equipped tab too.** Henrik: *"yes, do the Equipped tab
+too."* The tab's 4x4 is the same worn gear through the same `renderSlotGrid`, so it is
+the one `opts` table plus the same two hooks. What the second consumer actually changed
+is where the lookup lives: it moved out of floatgear and onto **`S.encumbered`**, a
+gearui service, with `S.ENCUMBERED_NOTE` beside it. Two copies of "is this slot shut"
+could drift into striking out different boxes on two views of one character, and two
+copies of the sentence could explain the same server state two ways.
+
+**One chunk local, via an IIFE** (the floatgear `ffi` pattern), because gearui is the
+file with the 200-local ceiling to respect and a bare `local eng` beside it would have
+spent two for nothing. Measured after the change: **25 free**, which is the number to
+check before the next thing lands there. (`luac -p` on a copy with N dummy chunk locals
+appended at a top-level line bisects it in about four runs.)
+
+**Not dlac's own locks.** The tab already states those in words — `[LOCKED]` beside the
+selected slot, with the way to release it. Server encumbrance and a dlac lock are
+different claims: one you can undo from that panel, one you cannot undo at all. One mark
+for both would say neither.
+
+**Tests:** `EQX1`-`EQX3` drive the REAL Equipped-tab render (the S205 re-require block)
+and read back the opts it hands the grid, against a locked slot and a free one, asserting
+the note is the *same string* the bar uses. `FGX3` now asserts the same identity from the
+other side. `S12e` proves the service reads through equipengine — the wiring both surface
+tests stub away, so it is pinned exactly once. Suites 6975 + 1345.
 
 **Addendum (`2026.08.06j`) — the crab icon is in.** Henrik dropped `crab icons.zip` in
 Downloads: six PNGs, and they are TWO artworks, not six sizes of one. `icon-16/32/48/64/
@@ -9508,3 +9670,242 @@ that looks sharper or mushier than its neighbours. The pixel family had no good 
 sprite shimmers at both. It is copied byte-identical to `assets\redcrab.png` and the
 reasoning sits in the code comment, because "we have a 128px one, use that" is exactly
 the improvement someone will try.
+
+## Session "copy to an unused job" (2026-08-06, `2026.08.06k`)
+
+**The bug, in Henrik's words:** *"if you do a 'copy to...' from triggers, and you choose
+a job that doesn't have a DLAC job entry yet, then it simply creates that trigger file
+for that job with only those that were copied. Since trigger files have been generated,
+it doesn't generate the default ones."* And the fix he wanted with it: *"Best case, just
+instantiate the whole job if it has not been used by DLAC yet, the moment you try to copy
+something to it."*
+
+**Why only this door.** Every other way into a job entry seeds first and edits after --
+Setup, the migration sweep, the job change, the Triggers tab's own "Create starter
+triggers" button -- so a job entry has always begun life holding Engaged / Resting /
+Movement / Idle. `copy to...` is the single place in dlac where you can *address* a job
+you have never played, and it went straight to `bp.stamp(entry, {})`. One rule, in a file
+that now exists, and existing is the whole test every seeder applies: `seedTriggersFile`
+bails with "user data: never overwrite" and the four default rules never arrive. Henrik's
+read of the blast radius was right -- **this is the only such door**, which is why it took
+until now to find and why the fix belongs here rather than in the seeders.
+
+**The rule lands ON TOP of the defaults, in one write.** `dispatch.starterTriggersRaw()`
+is new and is the whole seam: the same starter TEXT Setup writes verbatim, parsed, a
+fresh table per call. `rulecopy.applyTo` grew a third argument -- what a MISSING file
+starts from -- and `cpCopyOne` passes the starter model through `triggermodel.fromRaw`,
+so the file that lands is byte-identical to seeding the job and then adding the rule by
+hand (`RC48` pins exactly that equality). One write, not seed-then-rewrite: a second pass
+would leave a backup of a file dlac made two milliseconds earlier.
+
+**Refuse, never fall back.** If `starterTriggersRaw` ever returns nil -- the starter text
+stopped parsing, dispatch and triggermodel disagree -- the copy fails and says so. The
+tempting `or {}` is the bug itself, so the pure core keeps its empty-entry fallback
+(callable without a starter, `RC29e`) and the *caller* is the one that refuses.
+
+**"The whole job", so the sets came too.** The default rules target four sets, and a job
+entry with the rules and no `sets\<JOB>.lua` reads `[missing]` on all four. `cpSeedStarterSets`
+writes `frameSetsText(starterDynText)` -- the same four empty base sets `seedSetsFile`
+writes -- only when there is no file, only after the trigger write actually landed, and
+under the same guard as its sibling: `ensureStorage` would ADOPT a named profile as
+ACTIVE if the pointer were missing, and a copy must never switch profiles. Its failures
+report through the receipt's existing Sets-NOT-brought clause, merged with
+`cpBringSets`'s into one list so the two writers cannot name one problem and swallow the
+other.
+
+**Both axes, because both have the hole.** The classifier that answers "what would landing
+this rule there do?" serves jobs and profiles alike, and `create` means the same thing on
+each -- a job entry that does not exist. The profiles axis (this job, another profile) was
+creating the same one-rule stub.
+
+**Said out loud in the receipt.** "Started 2 new job entries from the default rules and
+base sets." The player now owns a job entry they never made; finding that out by changing
+job is too late. The row notes changed with it -- "no rules for this job yet -- a trigger
+file is created" was accurate about the file and silent about what would be in it, and now
+reads *"dlac has never used this job -- it is set up with the default rules first"*.
+
+**Tests:** `RC29a`-`RC29e` on the transform (the four defaults survive, the rule lands on
+top, the starter is not mutated -- it serves every target in one loop -- and a starter is
+ignored where a file already exists, because this is a create path and not a merge).
+`RC41`-`RC44` on the receipt, including that a FAILED create is never counted as started.
+`RC45`-`RC49` end to end against the REAL starter text. `CP13` updated. Suites 6989 + 1345.
+
+**Owed:** the field round -- copy a rule onto a job never played and confirm the new entry
+opens with all four default rules and four empty base sets.
+
+## Session "the troves, and four rungs that never matched" (2026-08-06, `2026.08.06k`)
+
+**Theme:** Henrik pasted three item URLs — `catseyexi.com/item/6554`, `6555`, `6556` —
+and asked for them in the box run. Adding them was ten minutes. Reading the item table to
+do it turned up a bug that had been shipping since 08-05.
+
+**The three are Troves:** `Mamool JA Trove` (6554), `Lamia Trove` (6555), `Troll Trove`
+(6556) — type 5 usables, stack 99. `trove` joins `giftbox`/`gatherbox`/`tacklebox` in
+`M.MATCH`, and they sort under the giftboxes like the other new families.
+
+**The bug: the four giftbox rungs have never matched anything.** `M.LADDER` has said
+`goblin giftbox (small)` … `grand giftbox` since the feature shipped. The game calls them
+**`Gob. Giftbox (sm)` / `(md)` / `(lg)` / `(gr)`** (5109 / 5111 / 6264 / 6558). The
+substring `giftbox` still caught all four, so nothing ever looked broken — they were simply
+classified as *unknown, sorts last*, which ranks them **alphabetically**: `(gr)`, `(lg)`,
+`(md)`, `(sm)`. So a stack of mixed giftboxes opened the **grand one first and the small
+one last** — the exact reverse of the rule the ladder exists to state, on a feature Henrik
+had already field-confirmed as working. It worked. It just never did the one thing the
+ordered list was there for.
+
+**Why no test could have caught it.** The GB fixtures asserted `classify('Goblin Giftbox
+(Small)') == 1` — the ladder's own invented string, checked against the ladder. Perfectly
+green, and perfectly circular. **A fixture is only evidence if it comes from the source the
+code will meet.** The names are now the API's, and `GB1a` pins all four abbreviated forms
+by rank; the long spellings stay on the ladder as aliases (dlac reads the CLIENT name and
+the API serves the SERVER's — three prior instances of those disagreeing, so four dead
+array entries is the cheap side of that bet).
+
+**How the item table was read, since this is repeatable.** `tools/apicrawl.py` already
+knows the per-id endpoint (`/api/item/<id>`), and the 22k-entry `tools/api_cache/` answered
+the first question for free — one grep found `Gob. Giftbox (md)` sitting at 5111 and the
+whole thing unravelled from there. The *search* endpoint is not in any tool: the site's own
+⌘K box calls **`/api/search/items?q=`**, found by typing into it with the browser open and
+reading the network log. `WebFetch` is 403'd by the site; the browser and plain
+`urllib` with a UA both work.
+
+**That search also priced the substrings, which was the open risk.** `giftbox` → 4 items,
+`tacklebox` → 3, `gatherbox` → 1, `trove` → 3. Fifteen items, no strays, across the live
+table. `trove` was the one worth checking — it is the shortest and least box-like word of
+the four — and `box` on its own would have been a disaster (50+ hits: `Beech Strongbox`,
+`Old Bolt Box`, `Ocl. Gearbox`, and the *Boxers* leg pieces). `GB1n`/`GB1o` pin two of
+those as negatives.
+
+**Ids are recorded as provenance only.** The logic stays name-based on purpose, so a box
+CatsEyeXI adds tomorrow opens with no addon update — the property that made this feature
+worth building the open-ended way in the first place.
+
+**Tests:** `GB1a` (the regression, all four rungs by their real names), `GB1`-`GB1o`
+re-aimed, `GB1l`/`GB1m` for the troves, `GB1n`/`GB1o` for the box-like negatives, `GB2`
+`GB2d` `GB5b` `GB7b` `GB14c` `GB16` `GB17b` re-based on live names. Suites **6994 + 1345**,
+both interpreters. Field checks J1-J5 rewritten around a name table; **J1 is now one hover**
+— read what the client calls any one of the eleven and the whole naming question closes.
+
+## Session "as if I was on the job" (2026-08-06, `2026.08.06l`)
+
+**Theme:** a job picker at the top of the Gear window — browse and *build* another job's
+sets and triggers without changing job. Henrik: *"Sometimes you just want to edit other
+jobs, if you're waiting for someone or just had an idea, you know. The way everything is
+built now, this shouldn't be too bad right?"*
+
+**It was not, and the reason is worth recording: there are exactly two job seams in
+gearui.** `jobFile()` decides which job's FILES — and it is injected *once* into every
+file-shaped consumer (`profilesets.configure`, the shared triggersui/automationsui deps,
+setupui), so six call sites in three modules cover the whole editing surface.
+`drawWindow`'s `(job, level)` pair decides which job the TABS draw, and it already
+travels as a parameter through `host.renderTabs` — no tab digs for the job itself. The
+feature is one new module behind both seams; the rest was an audit, not plumbing.
+
+**Four things fell out for free**, each because an earlier decision had already put the
+job in the right place:
+* `isUsable` is `gearOracle.canWear(rec, job, level)` since issue #71 — main job only, no
+  hidden live read — so "as if I were on WAR at 75" is *literally those two arguments*.
+  The sub job never enters wearability, which killed the sub-job question outright (the
+  Sub picker was never job-gated anyway — the rule reverted three times).
+* `profilesets.loadRoot` caches on `jobFile() .. activeName()`, so the cache key moves
+  with the picker and the browsed job's files re-parse unprompted.
+* The working-set drop keys on the same `job` value, so it handles picker moves with no
+  second guard — *and* leaves a half-built WAR set alone when you change job in game.
+* Gear Helpers reads its own `playerJob` dep rather than the tab parameter, so the one
+  surface that plans equips for RIGHT NOW stayed live without being touched.
+
+**The engine was never at risk, structurally.** `dispatch`/`equipengine` read
+`GetMainJob()` themselves and have never asked the UI for a job, so the Arbiter keeps
+dressing your real job whatever is on screen. What *did* need care was the opposite
+direction: `setupui` (shim state, auto-seed, migration) had to keep the LIVE job, which is
+why `jobFile()` split into it plus `liveJobFile()`.
+
+**Level: flat 75, and deliberately not the real one.** Henrik: *"You do not need to know
+the job levels honestly... 99% of the time you build as lvl 75 either way."* Per-job levels
+are one `GetJobLevel` call away and were left alone — build-ahead is already how this
+codebase treats set building. The trap avoided: **not** routing that 75 through
+`staticMainLevel`, which is the obvious lever and is read by the ENGINE (dispatch,
+gearoptim, petfood, ammoui) — previewing WAR would have re-levelled what your live job
+equips.
+
+**The Equipped tab is disabled off-job, not simulated.** Henrik: *"can't view live
+equipment either way on a job you're not on... unless you wanna do the guess work."* A
+guessed "what you'd be wearing as WAR" is inference over facts we do not have (what the
+Arbiter would rule, what is in your bags then), and it would be confidently wrong exactly
+when it mattered. It stays *submitted* to the tab bar and says why: dropping the selected
+tab makes ImGui reassign the selection, and this build's tab-selection flag does not work.
+All Equipment follows the picker instead — its "usable now" filter is the browse view, and
+its right-click menu is wishlist-only.
+
+**Two receipts had to stop lying.** An off-job Triggers commit skips `/dl triggers reload`
+(the engine reloads the job it is ON) and says the rules go live when you change to that
+job; `setStatus` — the single sink every Sets receipt funnels through — strips the
+"live now (hot-swapped)" tail rather than contradicting the banner two lines above it.
+
+**Tests:** `JB1`-`JB7d` (21 checks: the state contract, including the two that are easy to
+get backwards — picking your own job means *follow live*, and a real job change does *not*
+clear a selection) and `JBU1`-`JBU4f` (17 checks: the picker and banner rendered against a
+stub imgui for stack balance, and the Equipped tab's off-job branch proven to return before
+it reaches the live grid). Suites **7015 + 1362**.
+
+**Owed:** a field round. Nothing here has been in front of the client yet.
+
+## Session "a Halvung Trove that never existed" (2026-08-06, `2026.08.06m`-`n`)
+
+**Theme:** the first field word on the troves — Henrik: *"I tried troves now, it worked.
+Not all of them yet, but the halvung trove worked just fine. Think we can also tweak the
+use timer down 0.2 seconds."* Two things landed, and the throwaway half of the sentence was
+the interesting one.
+
+**The timer.** `M.SETTLE` 1.2 → **1.0**. That constant has now been 0.6, 1.6, 1.2 and 1.0,
+and every one of those was a number Henrik gave after a run — which is the only kind it
+should ever take. Nobody has measured what a box costs the client, and the count-drop
+confirm is what actually paces the loop; SETTLE is only headroom for the inventory to
+finish being written after a payout of up to five items.
+
+~~**"The halvung trove" is the fourth client-vs-server name split.**~~ **WRONG, and
+corrected inside the hour — the striking-out is the point of this entry.** The reasoning
+was: there is no Halvung Trove in the server table (6556 is `Troll Trove`), Trolls come
+from Halvung, and the neighbouring **Hoard** family (`Mamook` 3063, `Halvung` 3064,
+`Arrapago` 3065) is named for the REGIONS while the Troves are named for the RACES — so a
+client naming a trove by region looked exactly like the trap that had already bitten twice
+that day (HELM's `Excavation Point` / `Excav. Point`, and the four `Gob. Giftbox` rungs an
+hour earlier). A `halvung trove` rung went on the ladder.
+
+Henrik: *"na, it's just me remembering wrong, it should be correct as it is (since it
+worked)"* — and then a screenshot, which is what actually settled it:
+
+```
+[16:40:35] Mindie uses a Troll trove.
+[16:40:54] Lift uses a Mamool Ja trove.
+```
+
+Word for word what the ladder already carried. The alias came straight back out; `mamook`
+and `arrapago` were never added, because they were a pattern guess and a guess is not what
+that list is for. **6554 and 6556 are now the only rungs in this feature confirmed against
+the client** — the four giftbox names are still the server's word, and `Lamia Trove` has
+not been opened.
+
+**The half of Henrik's sentence that must not be adopted is "since it worked".** It did
+work — under a rung that did not exist. The SUBSTRING opens things; the ladder only orders
+them. That is precisely how the four giftbox rungs shipped broken for two days, and it is
+why a name gets confirmed by a log line or a hover and by nothing else. Two hours, two
+wrong names, one of them mine: the failure mode is not carelessness, it is that this
+feature cannot tell you when a name is wrong.
+
+**Why a missing rung costs something where the ORDER does not, which is the reusable half.**
+Trove order
+is admittedly arbitrary — nobody has priced the payouts — so "which trove opens first"
+is worth nothing. But an unrecognised box classifies as `#LADDER + 1`, and that is **above
+every giftbox**. The tray draws the highest rung you hold. So a trove the ladder does not
+know takes the icon off the grand giftbox and opens after it, quietly undoing the one
+arrangement Session I field-checked. *An "arbitrary" ordering still has a load-bearing end.*
+`GB1q` pins that consequence directly, so the next person to shrug at an unread name has
+to argue with a test.
+
+**Tests:** `GB1p` now pins the LOG spelling (`Troll trove`, case ignored) instead of the
+withdrawn alias, `GB1q` pins the cost of a miss (an unknown box outranks the grand
+giftbox), and the rank fixtures went out one and back. Suites **7017 + 1362**, both
+interpreters. Field checks: **J2 holds for the troves**, **J1 is CLOSED for 6554 and
+6556**, I5 re-based on 1.0s, and what is left is J1b — nobody has read a giftbox or a
+Lamia Trove off the client yet.

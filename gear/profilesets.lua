@@ -419,6 +419,14 @@ local function liveSetNames()
 end
 
 local function getSetsRoot()
+    -- BROWSING ANOTHER JOB (2026-08-06): these two globals are the LIVE job's
+    -- loaded sets, so taking either while the editors point at another job would
+    -- show WHM's sets under a WAR header -- and commit them there. Off-job the
+    -- files are the only truth, and loadRoot already keys its cache on
+    -- jobFile(), so it answers for the browsed job on its own.
+    if deps ~= nil and type(deps.browsing) == 'function' and deps.browsing() == true then
+        return loadRoot();
+    end
     -- LAC-state conveniences kept for safety (the addon state has neither).
     local prof = rawget(_G, 'gProfile');
     if type(prof) == 'table' and type(prof.Sets) == 'table' then return prof.Sets; end

@@ -222,40 +222,94 @@ raise has not been run). What is unfielded is the icon.
       of the tray and Store is one click with no confirm.
 - [ ] **I4 — the click does what the command does.** Clicking the icon runs the same open-all
       as `/dl giftbox` (it issues the command rather than duplicating the logic).
-- [ ] **I5 — the longer settle still completes a run.** 1.2s between opens: a stack of several
-      boxes should still empty without stalling or double-firing. If lag still bothers it, this
-      is one number in `feature/giftbox.lua` (`M.SETTLE`) and any decimal is honoured.
+- [ ] **I5 — the settle still completes a run.** **1.0s** between opens as of `2026.08.06n`
+      (0.6 → 1.6 → 1.2 → 1.0, every step of it a field call): a stack of several boxes should
+      still empty without stalling or double-firing. If lag bothers it, this is one number in
+      `feature/giftbox.lua` (`M.SETTLE`) and any decimal is honoured to the frame.
 
 ---
 
-## Session J — the other two box families (`2026.08.06h`)
+## Session J — the other three box families (`2026.08.06n`)
 
-`/dl giftbox` now opens the **Goblin Gatherbox** and the **Tiny / Timeworn / Titanic
-Tackleboxes** in the same run as the giftboxes. The loop underneath is the field-confirmed
-one — nothing about the pacing or the space gate changed — so what is unfielded is
-**whether these four items are recognised at all**, and that is a names question.
+> **THE TROVES ARE DONE, 2026-08-06.** `/dl giftbox` ran them live on two characters and
+> the log settles the names outright:
+>
+> ```
+> [16:40:35] Mindie uses a Troll trove.
+> [16:40:54] Lift uses a Mamool Ja trove.
+> ```
+>
+> Word for word what `M.LADDER` carries. **J2 holds for the troves** and **J1 is closed for
+> two of the three** — `Lamia Trove` (6555) is the only one nobody has seen in a log.
+>
+> *(The log lowercases item names — `a silver hairpin` in the same screenshot — so it fixes
+> the WORDS, not the capitalisation. Matching ignores case, so that costs nothing.)*
+>
+> **The withdrawn claim, kept rather than deleted.** The first report said *"the halvung
+> trove worked just fine"*, and this file spent one version treating that as a fourth
+> client-vs-server name split — there is no Halvung Trove, 6556 is `Troll Trove`, and the
+> region/race split with the neighbouring **Hoard** family (`Mamook` 3063 / `Halvung` 3064 /
+> `Arrapago` 3065) made it look like a real pattern. It was a misremembered name. The alias
+> went in and came straight back out.
+>
+> **The lesson is the reusable part, and it is the same one that hid the giftbox bug:** the
+> box opened correctly under a rung that did not exist, because the SUBSTRING is what opens
+> things and the ladder only orders them. *"It worked" can never confirm a name.* Only a
+> log line or a hover can — which is why J1 asks for one.
 
-That is the check worth caring about: dlac decides a box is ours by finding `gatherbox` or
-`tacklebox` inside the **client's** name for it, and this project has now been bitten three
-times by a hardcoded name that was the *server's* spelling (the latest being HELM's
-`Excavation Point`, which the client calls `Excav. Point`). A truncated or abbreviated name
-here means the box is simply invisible to the feature.
+`/dl giftbox` now opens **eleven** items in one run — the four Goblin Giftboxes, the
+**Goblin Gatherbox**, the **Tiny / Timeworn / Titanic Tackleboxes** and the **Mamool Ja /
+Lamia / Troll Troves**. The loop underneath is the field-confirmed one; nothing about the
+pacing or the space gate changed.
 
-- [ ] **J1 — they are seen.** With one of each in your inventory, `/dl giftbox status` must
-      count them. Four boxes in the bag and a count of four means every name matched. A
-      count that is short by one is the whole bug, and the missing one names itself:
-      compare what the item is called in your inventory against `M.LADDER` in
-      `feature/giftbox.lua`.
-- [ ] **J2 — they open.** `/dl giftbox` with a mixed bag. Expect one run, lowest rung first:
-      tackleboxes, then the Gatherbox, then the giftboxes. Every line it prints should say
-      *box* — a line that still says *giftbox* while opening a tacklebox is a miss.
+**The names are no longer a guess.** All eleven were read off the live item API on
+2026-08-06 (`tools/apicrawl.py`'s endpoint, and `/api/search/items?q=`), which is also how
+the giftbox rungs turned out to have **never matched**: the game calls them
+`Gob. Giftbox (sm/md/lg/gr)`, not the `Goblin Giftbox (Small)` / `Grand Giftbox` this file
+has been saying since 08-05. Both spellings now sit on the ladder.
+
+What is still owed is the one thing the API cannot answer: it serves the **server's** name
+and dlac reads the **client's**, and those have disagreed three times before (HELM's
+`Excavation Point` against the client's `Excav. Point`). The abbreviations are the ~20-char
+DAT style, so they are almost certainly the same string — but "almost certainly" is what J1
+is for.
+
+| what it is | id | the name the server uses |
+| --- | --- | --- |
+| Tiny Tacklebox | 5110 | `Tiny Tacklebox` |
+| Timeworn Tacklebox | 5946 | `Timeworn Tacklebox` |
+| Titanic Tacklebox | 5112 | `Titanic Tacklebox` |
+| Goblin Gatherbox | 6345 | `Goblin Gatherbox` |
+| Mamool Ja Trove | 6554 | `Mamool JA Trove` |
+| Lamia Trove | 6555 | `Lamia Trove` |
+| Troll Trove | 6556 | `Troll Trove` |
+| giftbox, small → grand | 5109 / 5111 / 6264 / 6558 | `Gob. Giftbox (sm/md/lg/gr)` |
+
+- [x] ~~**J1 — the client agrees**, for the troves.~~ **CLOSED for 6554 and 6556** by the
+      log above: `Mamool Ja trove` and `Troll trove`, exactly the ladder's rungs.
+- [ ] **J1b — the four giftbox rungs, which are the ones still unread.** `Gob. Giftbox
+      (sm/md/lg/gr)` came from the server table, and the server has been wrong about a
+      client name three times. One line in the log — open any giftbox and read what it
+      says you used — closes it. If those four strings are NOT what the client says, all
+      four fall to the same unknown rank and the order goes alphabetical again, which is
+      the original bug exactly (grand first, small last). Same question for
+      `Lamia Trove` (6555), the one trove nobody has opened yet — and there a miss also
+      takes the tray icon off the grand box, because an unknown outranks it (see J4).
+- [ ] **J1c — they are seen.** With several kinds in your bag, `/dl giftbox status` must
+      count every one. A count short by one is the bug, and the missing one names itself by
+      comparison against the table.
+- [ ] **J2 — they open, in order.** `/dl giftbox` with a mixed bag. Expect one run, lowest
+      rung first: tackleboxes, the Gatherbox, the troves, then the giftboxes **smallest
+      first**. That last part has never once happened — up to now the giftboxes came out in
+      alphabetical order, which put the *grand* box first. Every line it prints should say
+      *box*; a line that still says *giftbox* while opening a trove is a miss.
 - [ ] **J3 — the payout fits.** The gate insists on **6 free slots** before every box,
-      because a giftbox pays up to 5. Nobody has priced a Gatherbox or a Tacklebox. If one
-      of them pays out **more than 5** and you see "you cannot carry any more" during a run
-      with room to spare, that number (`M.NEED_FREE`) is the fix, not the pacing.
-- [ ] **J4 — the tray icon did not move.** Holding a Grand Giftbox *and* a tacklebox, the
-      tray must still draw the **Grand Giftbox** art. The giftboxes were deliberately left
-      at the top of the ladder so this stayed exactly as Session I checked it.
+      because a giftbox pays up to 5. Nobody has priced a Gatherbox, a Tacklebox or a Trove.
+      If one of them pays out **more than 5** and you see "you cannot carry any more" during
+      a run with room to spare, that number (`M.NEED_FREE`) is the fix, not the pacing.
+- [ ] **J4 — the tray icon did not move.** Holding a `Gob. Giftbox (gr)` *and* anything
+      else, the tray must still draw the **grand giftbox** art. The giftboxes were
+      deliberately left at the top of the ladder so this stayed as Session I checked it.
 - [ ] **J5 — the new command names.** `/dl box` and `/dl boxes` do what `/dl giftbox` does.
       `/dl gb` still works.
 

@@ -357,12 +357,28 @@ function M.build0x51(equips)
     return p;
 end
 
+-- The 'auto' crossover, in pieces. This is BYTE PARITY and nothing else: a
+-- 0x050 is 8 bytes on the wire, a 0x051 is a fixed 72 whatever its count
+-- (the server's size check is strict-equal -- map_networking.cpp tests
+-- PacketSize[id] against the header's size field), so 72/8 = 9 is the point
+-- where the batch stops costing more. LAC picked it and dlac inherited it.
+--
+-- Bytes are the CHEAPEST thing in play, though, which is why this is a
+-- constant and not a law. The client bundles its outgoing packets into one
+-- chunk, so N singles are not N round trips -- but the server runs its whole
+-- post-equip tail ONCE PER PACKET: persist, the gear-set Lua rescan (all 16
+-- slots against every defined set), UpdateHealth, latent retrigger. A lower
+-- threshold trades a few bytes for a lot less of that. /dl gearpackets exists
+-- to measure the trade in the field rather than argue it here.
+M.AUTO_THRESHOLD = 9;
+
 -- Which packet shape a plan should ride: LAC's rule -- explicit styles win;
--- 'auto' sends singles under 9 pieces, the equipset from 9 up.
-function M.chooseStyle(nEquips, style)
+-- 'auto' sends singles under the threshold, the equipset from it up.
+function M.chooseStyle(nEquips, style, threshold)
     if style == 'set' then return 'set'; end
     if style == 'single' then return 'single'; end
-    if nEquips < 9 then return 'single'; end
+    local t = tonumber(threshold) or M.AUTO_THRESHOLD;
+    if nEquips < t then return 'single'; end
     return 'set';
 end
 

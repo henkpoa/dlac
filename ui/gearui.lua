@@ -80,6 +80,12 @@ end)();
 -- the quick menu's CW-only row. nil means UNKNOWN, never a mode: an unreadable
 -- entity hides the row rather than guessing it in.
 local gmode = try("dlac\\feature\\gamemode");
+-- The job selector above the tabs (2026-08-06): browse and BUILD another job's
+-- sets/triggers as if you were on it at level 75. Editing only -- the module's
+-- header explains why that separation is structural. It backs BOTH job seams in
+-- this file: jobFile() (which job's FILES) and drawWindow's (job, level) pair
+-- (which job the TABS draw).
+local jbrowse = try("dlac\\ui\\jobbrowse");
 
 -- Capability flags in ONE table (each was its own local; the 200-cap again).
 -- has.statdefs is assigned where that module loads, further down.
@@ -1412,8 +1418,12 @@ local function engineDisabled() return engineModestate().disabled; end
 local function engineNaked() return engineModestate().naked; end
 local function engineHeld()  return engineModestate().held;  end
 
--- Current main job's <JOB>.lua path + its abbr (or nil, nil).
-local function jobFile()
+-- The job file of the job you are actually ON: <JOB>.lua path + its abbr (or
+-- nil, nil). Setup, migration, shim repair and auto-seed take THIS one -- they
+-- are about the job you are standing on, never the one you are reading (job
+-- browsing, 2026-08-06). It also stays the "job not ready" gate: nil until
+-- GetMainJob settles, which is what keeps id-0 'NON' from ever seeding.
+local function liveJobFile()
     local base = charBase();
     if base == nil then return nil, nil; end
     local abbr = nil;
@@ -1422,12 +1432,32 @@ local function jobFile()
     return base .. abbr .. '.lua', abbr;
 end
 
+-- The job file the EDITORS read and write: the BROWSED job when one is picked,
+-- otherwise the live one. THE seam -- every file-shaped consumer already
+-- resolves through this one injected helper (profilesets.loadRoot, triggersui's
+-- trigFilePath and its group scan), which is why browsing costs them nothing.
+-- profilesets even caches on jobFile() .. activeName(), so the key moves with
+-- the selection and the browsed job's files re-parse on their own.
+--
+-- A browsed job still needs a character folder: with no base there is no file to
+-- edit, browsing or not.
+local function jobFile()
+    local abbr = (jbrowse ~= nil) and jbrowse.selected() or nil;
+    if abbr == nil then return liveJobFile(); end
+    local base = charBase();
+    if base == nil then return nil, nil; end
+    return base .. abbr .. '.lua', abbr;
+end
+
 -- Setup / migration machinery: own module (dlac\setupui.lua). It gets the
 -- file/profile helpers once (the profilesets.configure precedent); the Setup
 -- button + plan popup below still render here and call setup.*.
 local setup = require("dlac\\ui\\setupui");
 setup.configure({
-    charBase = charBase, jobFile = jobFile, dataDir = dataDir, charRoot = charRoot,
+    -- LIVE, not browsed: shim state, auto-seed and migration all answer for the
+    -- job you are standing on. Handing setupui the browsed job would let reading
+    -- WAR's sets decide whether your WHM needs setting up.
+    charBase = charBase, jobFile = liveJobFile, dataDir = dataDir, charRoot = charRoot,
     readFileText = readFileText, writeFileText = writeFileText,
     ui = ui,
     status = function(s) _augStatus = s; end,   -- the header status line
@@ -1853,7 +1883,7 @@ local function renderHeaderButtons()
                 -- native engine. Fresh installs are auto-set-up and never see it.
                 -- Function-scoped throughout (gearui's chunk is at the 200-local cap).
                 local base = charBase();
-                local jf, abbr = jobFile();
+                local jf, abbr = liveJobFile();   -- migration is about the job you are ON
                 if base == nil or jf == nil then _augStatus = 'Setup: log in first (no character/job).'; return; end
                 local plan = { mode = 'migrate', abbr = abbr, title = 'Migrate to the native engine', lines = {} };
                 local L = plan.lines;
@@ -1992,6 +2022,79 @@ local SLOT_BOX = 40;                  -- outer box; the icon fills it minus the 
 --   box -> outer box size in px (default SLOT_BOX). The icon and the frame pad
 --     scale WITH it, so the grid is one knob wide; at the default it reproduces
 --     the old 40/32/4 numbers exactly.
+--   crossOf(sl) -> true to strike that slot out with a red X. A fact about the
+--     SLOT and not about the piece in it, which is why it is here and not in
+--     the item card: the server's encumbrance says nothing can go in, whatever
+--     is currently sitting there.
+
+-- The strike-out itself: equipmon's encumber overlay, drawn in lines rather
+-- than from a texture (dlac ships no image assets, and a cross is four lines).
+-- Two strokes per diagonal -- a near-black one, then the red on top -- so it
+-- stays readable over a pale icon as well as a dark one.
+--
+-- AddLine, four arguments, a TABLE per point: the call shape uistyle's
+-- underline has already field-proven in this binding. Nothing here invents a
+-- signature -- an AddRect with six arguments drew nothing in this client and
+-- did it silently (see floatgear's note), and a silent indicator is worse than
+-- no indicator at all.
+--
+-- The ARITHMETIC is split out and exported (crossGeom) while the four draw
+-- calls are not, because those are the two different kinds of wrong: the call
+-- shape is borrowed verbatim from a proven site and is either right everywhere
+-- or nowhere, whereas the inset and stroke are new, scale with the size slider
+-- from 20px to 120px, and can be quietly off at one end of that range.
+-- IS THE SERVER HOLDING THIS SLOT SHUT? The encumbrance bits off the job-info
+-- packet, which equipengine reads and the resolver already obeys. Lives here
+-- rather than in either window because BOTH ask now (the floating bar and the
+-- Equipped tab), and two copies of this could drift into striking out different
+-- boxes on two surfaces showing the same character.
+--
+-- ONE chunk local, via the IIFE (the floatgear ffi pattern): this file is the
+-- one with a 200-local ceiling to respect, and a bare `local _eng` beside it
+-- would spend two for no gain. The module is resolved at CALL time and cached
+-- -- the feature modules load on their own schedule, so a load-time capture
+-- would be a load-order contract for nothing. false on every failure: a missing
+-- engine means no cross, never a dead grid.
+local encumbered = (function()
+    local eng = nil;
+    return function(equipIdx)
+        if eng == nil then
+            local ok, m = pcall(require, "dlac\\feature\\equipengine");
+            if not ok or type(m) ~= 'table' or type(m.isEncumbered) ~= 'function' then return false; end
+            eng = m;
+        end
+        local ok, v = pcall(eng.isEncumbered, equipIdx);
+        return ok and v == true;
+    end;
+end)();
+
+local function crossGeom(box)
+    local b = math.floor(tonumber(box) or SLOT_BOX);
+    if b < 12 then b = 12; end                                 -- renderSlotGrid's own floor
+    local m = math.max(2, math.floor(b * 0.16));               -- inset from the frame
+    local w = math.max(2, math.floor(b * 0.09 + 0.5));         -- stroke
+    if m * 2 >= b - 2 then m = math.max(1, math.floor(b / 4)); end   -- never inside out
+    return m, w, b;
+end
+
+local function drawSlotCross(box)
+    pcall(function()
+        local x, y = imgui.GetItemRectMin();
+        if type(x) == 'table' then y = (x[2] or x.y); x = (x[1] or x.x); end
+        if type(x) ~= 'number' or type(y) ~= 'number' then return; end
+        local dl = imgui.GetWindowDrawList();
+        if dl == nil or type(dl.AddLine) ~= 'function' then return; end
+        local m, w, b = crossGeom(box);
+        local x1, y1, x2, y2 = x + m, y + m, x + b - m, y + b - m;
+        local dark = imgui.GetColorU32({ 0.06, 0.0, 0.0, 0.85 });
+        local red  = imgui.GetColorU32({ 0.90, 0.13, 0.13, 1.0 });
+        dl:AddLine({ x1, y1 }, { x2, y2 }, dark, w + 2);
+        dl:AddLine({ x2, y1 }, { x1, y2 }, dark, w + 2);
+        dl:AddLine({ x1, y1 }, { x2, y2 }, red, w);
+        dl:AddLine({ x2, y1 }, { x1, y2 }, red, w);
+    end);
+end
+
 local function renderSlotGrid(idPrefix, gridHeight, selectedLabel, getItemId, getText, onClick, hoverRec, gridW, opts)
     opts = opts or {};
     local gap = opts.tight and 0 or 4;
@@ -2036,6 +2139,9 @@ local function renderSlotGrid(idPrefix, gridHeight, selectedLabel, getItemId, ge
                 end);
             end
         end
+        -- The X goes on AFTER the button, so it lands over the icon: within one
+        -- draw list, later is on top. Same order drawElementWheel relies on.
+        if opts.crossOf ~= nil and opts.crossOf(sl) == true then drawSlotCross(BOX); end
         if clicked then onClick(sl.label); end
         if imgui.IsItemHovered() then
             -- RMB: the gearmove pattern, field-confirmed in this client --
@@ -2398,7 +2504,14 @@ end
 -- own module (same pattern as triggersui). It reads gProfile.Sets / a global `sets`,
 -- falling back to sandbox-running the job file on disk; jobFile is injected once.
 local profsets = require("dlac\\gear\\profilesets");
-profsets.configure({ jobFile = jobFile });
+-- `browsing` travels as a READER, not a value: the picker can move long after
+-- this table is built, and getSetsRoot has to know at CALL time whether the live
+-- `gProfile.Sets` shortcut is still the right answer (gearWarnEnabled sets the
+-- precedent).
+profsets.configure({
+    jobFile  = jobFile,
+    browsing = function() return jbrowse ~= nil and jbrowse.active(); end,
+});
 
 -- ---------------------------------------------------------------------------
 -- Tab: Triggers -- lives in its OWN module (dlac\\triggersui.lua). LuaJIT caps a
@@ -2419,6 +2532,11 @@ do
     local d = {
         ui = ui,   -- the Trigger Monitor toggle rides gearui's persisted view-state
         charBase = charBase, jobFile = jobFile, dataDir = dataDir, charRoot = charRoot,
+        -- Are the editors pointed at a job we are not on? A READER, for the same
+        -- reason gearWarnEnabled is one -- the picker moves while this table
+        -- lives. triggersui asks at commit time: the engine only ever reloads the
+        -- job it is ON, so an off-job commit must not claim "live now".
+        browsing = function() return jbrowse ~= nil and jbrowse.active(); end,
         seedTriggersFile = setup.seedTriggersFile,
         dynamicSetNames = profsets.dynamicSetNames, staticSetNames = profsets.staticSetNames,
         liveSetNames = profsets.liveSetNames,   -- Dynamic + LIVE-file statics (no backup): trigger-target authority
@@ -2552,6 +2670,18 @@ local function modeTagText(m)
 end
 
 local function previewCctx(mainLevel)
+    -- BROWSING ANOTHER JOB (2026-08-06): Dual Wield is a fact about the character
+    -- you are ON -- utils.isDualWieldAvailable reads the live trait bit
+    -- (HasAbility 1554), and there is no honest way to ask "would WAR/NIN have
+    -- it". FAIL OPEN off-job: assume it, so a `dw = true` entry is SHOWN in the
+    -- preview rather than silently dropped. The lockstyle jobgate mirror is the
+    -- precedent -- offering a little more than you could wear is recoverable,
+    -- hiding gear you own is the failure that costs an evening. (The Sub picker
+    -- needed nothing: while BUILDING it never adapts to Dual Wield at all -- the
+    -- hard rule in subCandidateOk, reverted three times.)
+    if jbrowse ~= nil and jbrowse.active() then
+        return { mjLevel = tonumber(mainLevel) or 0, isDW = true, modeOk = entryModeOk };
+    end
     local isDW = false;
     pcall(function()
         local utils = require("dlac\\utils");
@@ -3129,7 +3259,22 @@ local function autoBuild(job, level)
 end
 
 local function setStatus(msg, isErr)
-    ui.setsStatus = msg or '';
+    msg = msg or '';
+    -- OFF-JOB COMMITS ARE NOT LIVE (2026-08-06). Every Sets-tab receipt funnels
+    -- through here, and several of them end in "-- live now (hot-swapped)" /
+    -- "committed and live" because a commit normally fires '/dl sets reload'.
+    -- That reload re-reads the job the ENGINE is on, so while browsing it is a
+    -- no-op and the claim is false -- a receipt contradicting the banner two
+    -- lines above it is worse than saying nothing. Correct it at the ONE sink
+    -- rather than in seven call sites: the file was still written, only its
+    -- liveness changed.
+    if jbrowse ~= nil and jbrowse.active() and msg ~= '' and not (isErr == true) then
+        msg = msg:gsub(' %-%- live now %(hot%-swapped%)%.?$', '.')
+                 :gsub(' %-%- committed and live%.?$', ' -- committed.')
+                 :gsub(' %-%- live now[^%.]*%.?$', '.')
+            .. '  (' .. tostring(jbrowse.selected()) .. ' is not your live job -- it takes effect when you change to it.)';
+    end
+    ui.setsStatus = msg;
     ui.setsStatusErr = (isErr == true);
     ui.setsStatusAt = os.clock();   -- stamp for the 5s auto-expiry (see the render site)
 end
@@ -5035,6 +5180,18 @@ host.provide({
     -- shared render helpers
     renderStatsPanel = renderStatsPanel, renderSlotGrid = renderSlotGrid,
     renderSortCombo = renderSortCombo, renderItemTooltip = renderItemTooltip,
+    -- The locked-slot X. `encumbered` is the one door the surfaces ask through
+    -- (a central service, not a per-window helper -- the tab and the floating
+    -- bar must never disagree about which boxes are struck out). drawSlotCross
+    -- is exported for the reason rsv and avail are: it runs inside a pcall on
+    -- the render path, so getting it wrong is SILENT. crossGeom is exported
+    -- because it is the half a test can pin down without an imgui.
+    encumbered = encumbered, drawSlotCross = drawSlotCross, crossGeom = crossGeom,
+    -- ...and the WORDS, beside the fact, because a cross tells you THAT and
+    -- never why. A string rather than each surface writing its own: two
+    -- explanations of one server state is one explanation too many.
+    ENCUMBERED_NOTE = 'LOCKED by the server (encumbrance) -- nothing can be '
+        .. 'equipped here until it lifts. dlac will not try.',
 });
 do
     -- The Wishlist window + the shared item context-menu BODY. FIRST on purpose:
@@ -5102,6 +5259,15 @@ local function drawWindow()
     buildAllEquip();   -- populate catalog indexes for tooltips / worn-set totals
     local job, level = getPlayerInfo();
 
+    -- JOB BROWSING (2026-08-06). From here down, `job`/`level` are the job the
+    -- EDITORS are pointed at -- the browsed one at a flat 75 when a job is
+    -- picked, the live pair otherwise. getPlayerInfo() stays the live truth for
+    -- anything that must not follow (the Equipped tab reads it through the
+    -- services table rather than trusting these two).
+    if jbrowse ~= nil and jbrowse.active() then
+        job, level = jbrowse.job(), jbrowse.level();
+    end
+
     -- A set belongs to the job that built it. The picker's LIST already follows
     -- main job (profilesets caches on the job file), but the SELECTION is only a
     -- name and the working copy is only a table -- neither moved, so changing job
@@ -5111,6 +5277,12 @@ local function drawWindow()
     -- off the name (bindSetWeights mints a blank NEWJOB|OldSetName record for a
     -- name the new job never had). Nil/empty job = zoning or character select, not
     -- a change: latch only what we can trust, so the drop lands on the real switch.
+    --
+    -- Browsing rides the SAME guard, which is why it needed no second one: switch
+    -- the picker from WAR to BLM and the half-built WAR set drops exactly as it
+    -- would on a real job change. The converse falls out too -- change job in game
+    -- while browsing WAR and `job` does NOT move, so the WAR set you are building
+    -- survives (it is still a valid WAR set; only the header changes).
     if job ~= nil and job ~= '' then
         if _setsJob ~= nil and _setsJob ~= job then
             M.working = {}; M.workingSetName = nil; ui.setSelected = nil; _setDirty = false;
@@ -5132,12 +5304,26 @@ local function drawWindow()
             imgui.SetTooltip('Every dlac profile on this install -- character > profile > jobs.\nSwitch or clone your own; import another character\'s profile into this one.');
         end
         imgui.SameLine(0, 10);
+        -- THE JOB SELECTOR (2026-08-06). Deliberately LEFT of the job/level
+        -- readout it does not replace: that readout stays the live truth (what
+        -- you are actually on), and the banner below is what says the editors are
+        -- pointed somewhere else. Guarded like every optional module here -- a
+        -- broken picker must cost its own widget, never the header row.
+        if jbrowse ~= nil then
+            pcall(jbrowse.render, COL);
+            imgui.SameLine(0, 10);
+        end
         imgui.TextColored(COL.HEADER, jobHeader());
         imgui.SameLine();
         imgui.TextColored(COL.DIM, string.format('|  %d owned%s', #owned, has.optim and '' or '  |  optimizer OFF'));
         -- ("Show all" moved to Menu > Settings on 2026-07-24 -- it is a preference,
         -- and it was the only checkbox squatting in the header.)
         renderHeaderButtons();
+        -- BROWSING ANOTHER JOB: say so, loudly, above everything else in the
+        -- window. This is persistent state rather than a transient status line,
+        -- so it goes first -- half of what makes browsing safe is that it can
+        -- never be mistaken for being on the job.
+        if jbrowse ~= nil then pcall(jbrowse.renderBanner, COL, fmt.textWrapped); end
         if _augStatus ~= nil and _augStatus ~= '' then
             fmt.textWrapped(COL.SCORE, fmt.esc(_augStatus));
         end

@@ -5276,6 +5276,26 @@ end)();
     check('RC28 the copy is identical afterwards',    rc.holdsIdentical(entry, after), true);
     check('RC29 ...and was not before',               rc.holdsIdentical(entry, before), false);
 
+    -- The 2026-08-06 bug: a copy into a job dlac had never touched wrote the copied
+    -- rule ALONE into a brand-new trigger file, and because a file then existed every
+    -- seeder read it as user data -- so the job never got Engaged/Resting/Movement/
+    -- Idle at all. 'create' now stamps onto the STARTER rules.
+    local STARTER = { Default = {
+        { when = { status = 'Engaged' }, set = 'Tp_Default' },
+        { when = { status = 'Resting' }, set = 'Resting' },
+        { when = { moving  = true },     set = 'Movement' },
+        { when = { status = 'Idle' },    set = 'Idle' },
+    } };
+    local fresh = rc.applyTo(entry, nil, STARTER);
+    check('RC29a a new job entry keeps the four default rules', #fresh.Default, 4);
+    check('RC29b ...and the copied rule lands on top of them',  #fresh.Midcast, 1);
+    check('RC29c the starter is not mutated -- it serves every target in the loop',
+        STARTER.Midcast, nil);
+    check('RC29d a starter is IGNORED where a file already exists (it is not a merge)',
+        #(rc.applyTo(entry, before, STARTER).Default), 1);
+    check('RC29e no starter still starts an empty entry -- the pure core stands alone',
+        #(rc.applyTo(entry, nil).Default or {}), 0);
+
     -- The receipt names EVERY outcome, and carries whichever coordinate was varied.
     local okText, okErr = rc.receipt({ { name = 'BLM', ok = true }, { name = 'RDM', ok = true } },
         'Midcast rules, profile Default');
@@ -5314,6 +5334,42 @@ end)();
     check('RC39 a set that did not follow is named',
         badSet:find('Sets NOT brought: CureSet -> BLM (no sets path).', 1, true) ~= nil, true);
     check('RC40 ...and the copy reads as an error even though the rule landed', badSetErr, true);
+
+    -- Job entries the copy STARTED are said out loud: the player now owns a job
+    -- entry they never made, and changing job is too late to find that out.
+    local madeText, madeErr = rc.receipt({
+        { name = 'BLU', ok = true, created = true },
+        { name = 'SMN', ok = true, created = true },
+        { name = 'RDM', ok = true },
+    }, 'Midcast rules, profile Default');
+    check('RC41 job entries started by the copy are counted',
+        madeText:find('Started 2 new job entries from the default rules and base sets.', 1, true) ~= nil, true);
+    check('RC42 ...and one reads as singular',
+        rc.receipt({ { name = 'BLU', ok = true, created = true } }, 'x')
+            :find('Started 1 new job entry from the default rules and base sets.', 1, true) ~= nil, true);
+    check('RC43 starting a job entry is not an error', madeErr, false);
+    check('RC44 a FAILED create is never counted as started',
+        rc.receipt({ { name = 'BLU', ok = false, created = true, err = 'no path' } }, 'x')
+            :find('Started', 1, true), nil);
+
+    -- End to end, against the REAL starter text: copying one rule into a job dlac
+    -- has never used must produce the same file that seeding the job and adding the
+    -- rule by hand produces. dispatch.starterTriggersRaw is the seam -- if the
+    -- starter text ever stops parsing it returns nil and the copy REFUSES, because
+    -- falling back to an empty job entry is the bug this pins.
+    local tmodel = dofile('gear/triggermodel.lua');
+    local sraw = dispatchM.starterTriggersRaw();
+    check('RC45 the real starter text parses to a table', type(sraw), 'table');
+    check('RC46 ...holding the four classic Default rules', #sraw.Default, 4);
+    check('RC47 each call hands out a FRESH table (targets stamp into it)',
+        dispatchM.starterTriggersRaw() ~= sraw, true);
+    local seeded = tmodel.fromRaw(sraw, dispatchM.canonEvent);
+    local landed = dispatchM.serializeTriggers(rc.applyTo(entry, nil, seeded));
+    local byHand = dispatchM.serializeTriggers(
+        rc.applyTo(entry, tmodel.fromRaw(dispatchM.starterTriggersRaw(), dispatchM.canonEvent)));
+    check('RC48 a copy into an unused job == seed-then-add, byte for byte', landed, byHand);
+    check('RC49 ...and the file it writes still has an Idle rule',
+        landed:find('status = "Idle"', 1, true) ~= nil, true);
 end)();
 
 -- ---------------------------------------------------------------------------
@@ -13470,8 +13526,17 @@ end)();
 
 -- ---------------------------------------------------------------------------
 -- GB. /dl giftbox -- open every reward box in inventory, stopping before there
---     is no room for the next payout. THREE FAMILIES since 2026-08-06: the
---     Goblin/Grand Giftboxes, the Goblin Gatherbox, and the tackleboxes.
+--     is no room for the next payout. FOUR FAMILIES since 2026-08-06: the
+--     Goblin Giftboxes, the Goblin Gatherbox, the tackleboxes and the troves.
+--
+--     THE NAMES ARE THE SERVER'S, pulled from the live item API rather than
+--     typed from memory -- and doing that is what exposed GB1a: the four
+--     giftbox rungs shipped as `Goblin Giftbox (Small)` / `Grand Giftbox` and
+--     the game has never called them that. The substring caught them anyway, so
+--     the feature worked while ranking all four unknown-sorts-last, which
+--     alphabetically opened the GRAND first. A test that asserts the ladder
+--     with the names the ladder itself invented can never see that, which is
+--     the reusable half: pin the fixtures to the SOURCE, not to the code.
 --
 --     The interesting half is NOT the pure gate, it is the pacing: the loop
 --     refuses to guess a delay and instead waits for the item's own count to
@@ -13483,41 +13548,74 @@ end)();
     local gb = dofile('feature/giftbox.lua');
     local savedAshita = AshitaCore;
 
-    check('GB1 a known box classifies onto the ladder', gb.classify('Goblin Giftbox (Small)'), 5);
-    check('GB1b ...case-insensitively', gb.classify('GOBLIN GIFTBOX (LARGE)'), 7);
-    check('GB1c the Grand box is the top rung', gb.classify('Grand Giftbox'), #gb.LADDER);
+    -- The REGRESSION. These four strings are what the item table says (ids
+    -- 5109 / 5111 / 6264 / 6558); before 2026-08-06 every one of them landed on
+    -- #LADDER + 1 and the "smallest first" rule was decorative.
+    check('GB1a the giftboxes classify under their REAL names, smallest first',
+        table.concat({ gb.classify('Gob. Giftbox (sm)'), gb.classify('Gob. Giftbox (md)'),
+                       gb.classify('Gob. Giftbox (lg)'), gb.classify('Gob. Giftbox (gr)') }, ','),
+        '8,10,12,14');
+    check('GB1 the long spelling is carried too, in case the client differs',
+        gb.classify('Goblin Giftbox (Small)'), 9);
+    check('GB1b ...case-insensitively', gb.classify('GOB. GIFTBOX (LG)'), 12);
+    check('GB1c the grand box is the top rung', gb.classify('Grand Giftbox'), #gb.LADDER);
     -- The substring match is what makes this survive the next box CatsEyeXI adds.
     check('GB1d an UNKNOWN giftbox is still ours, sorted last',
-        gb.classify('Goblin Giftbox (Colossal)'), #gb.LADDER + 1);
+        gb.classify('Gob. Giftbox (xl)'), #gb.LADDER + 1);
     check('GB1e ...and a normal item is not a box', gb.classify('Goblin Bread'), nil);
     check('GB1f nor is a nil name', gb.classify(nil), nil);
 
-    -- The 2026-08-06 families. Each is a SEPARATE substring, so none of them
+    -- The other three families. Each is a SEPARATE substring, so none of them
     -- rides on the giftbox match, and each sorts BELOW the giftboxes -- which
-    -- is what keeps the Grand Giftbox the tray's icon (GB14c).
+    -- is what keeps the grand giftbox the tray's icon (GB14c).
     check('GB1g the Gatherbox is ours', gb.classify('Goblin Gatherbox'), 4);
     check('GB1h the tackleboxes are ours, smallest first',
         table.concat({ gb.classify('Tiny Tacklebox'), gb.classify('Timeworn Tacklebox'),
                        gb.classify('Titanic Tacklebox') }, ','), '1,2,3');
     check('GB1i ...and every one of them sorts under the giftboxes',
-        gb.classify('Titanic Tacklebox') < gb.classify('Goblin Giftbox (Small)'), true);
+        gb.classify('Titanic Tacklebox') < gb.classify('Gob. Giftbox (sm)'), true);
     check('GB1j an unheard-of tacklebox still opens',
         gb.classify('Tarnished Tacklebox'), #gb.LADDER + 1);
     check('GB1k ...and a fishing rod is not a box', gb.classify('Halcyon Rod'), nil);
+    check('GB1l the troves are ours, in id order',
+        table.concat({ gb.classify('Mamool JA Trove'), gb.classify('Lamia Trove'),
+                       gb.classify('Troll Trove') }, ','), '5,6,7');
+    check('GB1m ...and they sort under the giftboxes too',
+        gb.classify('Troll Trove') < gb.classify('Gob. Giftbox (sm)'), true);
+    -- FIELD-VERIFIED 2026-08-06, off Henrik's log: `Mindie uses a Troll trove.`
+    -- and `Lift uses a Mamool Ja trove.` -- these two strings came from the
+    -- game, not from this file. A `halvung trove` rung lived here for one
+    -- commit on a misremembered name; it opened fine either way, because the
+    -- SUBSTRING is what opens things. Which is the point of GB1q below: "it
+    -- worked" is not evidence a rung is right, and never was.
+    check('GB1p the log spelling is what the ladder carries (case is ignored)',
+        gb.classify('Troll trove'), 7);
+    -- The cost of getting one wrong, even though trove order is admittedly
+    -- arbitrary: an unrecognised box outranks every giftbox, so it takes the
+    -- tray icon off the grand box and opens after it -- undoing the one
+    -- arrangement Session I field-checked.
+    check('GB1q an UNKNOWN box outranks the grand giftbox (the cost of a miss)',
+        gb.classify('Mystery Trove') > gb.classify('Gob. Giftbox (gr)'), true);
+    -- The negative that matters for `trove`/`box`: a real item from the same
+    -- table whose name is box-like and is NOT one of ours. `Beech Strongbox`
+    -- (2680) would be caught by any gate lazy enough to match on "box".
+    check('GB1n a Strongbox is not a box of ours', gb.classify('Beech Strongbox'), nil);
+    check('GB1o nor is a Forgotten Pouch', gb.classify('Frgtn. Pouch (head)'), nil);
 
     local FOUND = {
-        { name = 'Grand Giftbox',          rank = 8, count = 1 },
-        { name = 'Goblin Giftbox (Small)', rank = 5, count = 2 },
+        { name = 'Gob. Giftbox (gr)', rank = 14, count = 1 },
+        { name = 'Gob. Giftbox (sm)', rank = 8,  count = 2 },
     };
-    check('GB2 the smallest rung opens first', (gb.pickNext(FOUND) or {}).name, 'Goblin Giftbox (Small)');
+    check('GB2 the smallest rung opens first', (gb.pickNext(FOUND) or {}).name, 'Gob. Giftbox (sm)');
     check('GB2b an empty stack is not a candidate',
         (gb.pickNext({ { name = 'x', rank = 1, count = 0 },
                        { name = 'y', rank = 2, count = 1 } }) or {}).name, 'y');
     check('GB2c nothing at all -> nil', gb.pickNext({}), nil);
     check('GB2d across families the ladder still decides, and it is one run',
         (gb.pickNext({
-            { name = 'Grand Giftbox',  rank = gb.classify('Grand Giftbox'),  count = 1 },
-            { name = 'Tiny Tacklebox', rank = gb.classify('Tiny Tacklebox'), count = 1 },
+            { name = 'Gob. Giftbox (gr)', rank = gb.classify('Gob. Giftbox (gr)'), count = 1 },
+            { name = 'Troll Trove',       rank = gb.classify('Troll Trove'),       count = 1 },
+            { name = 'Tiny Tacklebox',    rank = gb.classify('Tiny Tacklebox'),    count = 1 },
         }) or {}).name, 'Tiny Tacklebox');
 
     -- The three outcomes of the gate are three different instructions to the
@@ -13531,12 +13629,15 @@ end)();
         (wSp:find('need 6', 1, true) ~= nil) and (wSp:find('have 5', 1, true) ~= nil), true);
     local pGo, cGo = gb.plan(FOUND, 6);
     check('GB5 six is enough', cGo, 'go');
-    check('GB5b ...and it picks the smallest', (pGo or {}).name, 'Goblin Giftbox (Small)');
+    check('GB5b ...and it picks the smallest', (pGo or {}).name, 'Gob. Giftbox (sm)');
 
     -- ---- the run, against a mutable bag -------------------------------------
+    -- The Id fields are opaque fixture handles, deliberately not the real
+    -- 5109/6558: classify never sees an id, and writing real ones here would
+    -- imply the feature keys on them. The NAMES are the live ones.
     local RES = {
-        [1] = { Name = { 'Goblin Giftbox (Small)' } },
-        [2] = { Name = { 'Grand Giftbox' } },
+        [1] = { Name = { 'Gob. Giftbox (sm)' } },
+        [2] = { Name = { 'Gob. Giftbox (gr)' } },
         [3] = { Name = { 'Goblin Bread' } },
     };
     local slots, cmds = {}, {};
@@ -13569,7 +13670,7 @@ end)();
     gb.start();
     check('GB7 starting fires exactly one use', #cmds, 1);
     check('GB7b ...for the smallest box, targeted at you',
-        cmds[1], '/item "Goblin Giftbox (Small)" <me>');
+        cmds[1], '/item "Gob. Giftbox (sm)" <me>');
 
     -- The count has NOT dropped yet: the server is still thinking. Nothing may
     -- fire. This is the assertion that a guessed delay would have failed.
@@ -13621,7 +13722,7 @@ end)();
     check('GB14 the snapshot sees boxes', pk.have, true);
     check('GB14b ...counting every one of them', pk.total, 3);
     check('GB14c ...and the icon is the HIGHEST rung held',
-        (pk.top or {}).name, 'Grand Giftbox');
+        (pk.top or {}).name, 'Gob. Giftbox (gr)');
 
     setBag(0, 0, 0, 30);                 -- bag emptied behind its back
     local cached = gb.peek(1000.5);
@@ -13635,12 +13736,12 @@ end)();
     setBag(1, 0, 0, 30);
     local only = gb.peek(2000);
     check('GB16 one rung held -> that rung is the icon',
-        (only.top or {}).name, 'Goblin Giftbox (Small)');
+        (only.top or {}).name, 'Gob. Giftbox (sm)');
 
     -- ---- a mixed bag, live ---------------------------------------------------
     -- The two properties that only show up when the families meet: the run is
     -- ONE run over all of them (a tacklebox is fired first because it sorts
-    -- lower), and the tray still draws the Grand Giftbox, which is the whole
+    -- lower), and the tray still draws the grand giftbox, which is the whole
     -- reason the giftboxes were left at the top of the ladder.
     RES[4] = { Name = { 'Timeworn Tacklebox' } };
     slots = { { Id = 2, Count = 1 }, { Id = 4, Count = 1 }, __size = 30 };
@@ -13651,8 +13752,8 @@ end)();
     gb.stop();
     gb._peekReset();
     local mixed = gb.peek(3000);
-    check('GB17b ...and the tray icon is still the Grand Giftbox',
-        (mixed.top or {}).name, 'Grand Giftbox');
+    check('GB17b ...and the tray icon is still the grand giftbox',
+        (mixed.top or {}).name, 'Gob. Giftbox (gr)');
     check('GB17c ...counting boxes of every family together', mixed.total, 2);
 
     AshitaCore = savedAshita;
@@ -16386,6 +16487,23 @@ end)();
     check('EQC43 auto at 9 = equipset',   eqc.chooseStyle(9), 'set');
     check('EQC44 explicit set wins',      eqc.chooseStyle(2, 'set'), 'set');
     check('EQC45 explicit single wins',   eqc.chooseStyle(12, 'single'), 'single');
+
+    -- The threshold is a PARAMETER now (/dl gearpackets), and the default has
+    -- to stay 9 or 'default' mode stops being LAC parity -- which is the one
+    -- promise the whole equip pipeline makes.
+    check('EQC46a the default threshold is byte parity', eqc.AUTO_THRESHOLD, 9);
+    check('EQC46b ...and an absent argument still means 9',
+          eqc.chooseStyle(8) == 'single' and eqc.chooseStyle(9) == 'set', true);
+    check('EQC47a a lower threshold batches sooner',
+          eqc.chooseStyle(3, 'auto', 3), 'set');
+    check('EQC47b ...and still leaves smaller plans alone',
+          eqc.chooseStyle(2, 'auto', 3), 'single');
+    check('EQC47c threshold 1 batches everything',
+          eqc.chooseStyle(1, 'auto', 1), 'set');
+    check('EQC48a an explicit style ignores the threshold',
+          eqc.chooseStyle(1, 'single', 1), 'single');
+    check('EQC48b garbage falls back to the default threshold',
+          eqc.chooseStyle(8, 'auto', 'x'), 'single');
 end)();
 
 -- ---------------------------------------------------------------------------
@@ -16520,6 +16638,32 @@ end)();
     check('EQE35 numeric slot keys accepted', eng._bufferPeek()[11], 'Karin Obi');
     eng.bufferClear();
     check('EQE36 clear empties the buffer', next(eng._bufferPeek()), nil);
+
+    -- --- encumbrance: the 0x01B word at 0x60, one bit per equip slot ---
+    -- Head is equip index 4 (bit 4), Legs is 7. The same word equipmon reads as
+    -- a u32 and masks with 1<<slot -- if these two ever disagree, one of them is
+    -- drawing a cross over the wrong box.
+    local enc = packStr(0x64, { { 0x60 * 8 + 4, 1, 1 }, { 0x60 * 8 + 7, 1, 1 } });
+    eng.readEncumbrance(enc);
+    check('EQE37 a set bit lands on the 1-based slot id', eng.state.encumbered[5], true);
+    check('EQE38 isEncumbered takes the 0-BASED equip index',
+          eng.isEncumbered(4) == true and eng.isEncumbered(7) == true, true);
+    check('EQE39 a clear bit is not encumbered', eng.isEncumbered(0), false);
+    check('EQE40 a garbage index never claims a lock', eng.isEncumbered(nil), false);
+    -- ...and the read happens with the engine DISARMED. These bits are the only
+    -- source the floating bar's cross has, and the bar draws on whichever engine
+    -- you run -- before the hoist they were gated behind nativeOn() and a legacy
+    -- player never saw a bit set at all.
+    for i = 1, 16 do eng.state.encumbered[i] = false; end
+    local savedTrip = eng.state.tripped;
+    eng.state.tripped = true;                -- nativeOn() is false whatever else is set
+    eng.handleIncoming({ id = 0x01B, data = enc });
+    check('EQE41 0x01B is read with the engine disarmed', eng.isEncumbered(4), true);
+    eng.state.tripped = savedTrip;
+    -- A word with nothing set CLEARS: encumbrance lifting is another 0x01B, not
+    -- a separate packet, so a stale true would strike out a slot forever.
+    eng.readEncumbrance(packStr(0x64, {}));
+    check('EQE42 an empty word clears every slot', eng.isEncumbered(4), false);
 end)();
 
 -- ---------------------------------------------------------------------------
@@ -23620,6 +23764,158 @@ end)();
     check('SND14b ...with the cause intact', SL.state.byWhy['Precast (set, 2 slots)'], 1);
     SL.reset();
     check('SND14c reset empties it', SL.state.total, 0);
+
+    -- SND16. The wire-shape note (2026-08-06). Counts taken under a switched
+    -- /dl gearpackets mode are uninterpretable unless the artifact says which
+    -- mode produced them, and the player who forgot they were mid-experiment
+    -- is exactly the one who sends the file. Absent note = today's output,
+    -- byte for byte, which is what every check above still asserts.
+    local nl = SL._lines(st, 160, nil, 'mode SET -- OVERRIDING every dispatch point');
+    check('SND16a the note rides under the headline',
+          (nl[2] or ''):match('^sends: wire shape %-%- mode SET') ~= nil, true);
+    check('SND16b ...and pushes the counters down, not out',
+          (nl[3] or ''):match('^sends: by packet') ~= nil, true);
+    local zn = SL._lines(SL.newState(0), 300, nil, 'mode SINGLE');
+    check('SND16c silence names the mode too',
+          (zn[2] or ''):match('^sends: wire shape %-%- mode SINGLE') ~= nil, true);
+    check('SND16d ...without losing the explanation',
+          (zn[3] or ''):match('edge%-driven') ~= nil, true);
+    check('SND16e an empty note adds no line',
+          (SL._lines(st, 160, nil, '')[2] or ''):match('^sends: by packet') ~= nil, true);
+end)();
+
+-- ---------------------------------------------------------------------------
+-- GP. /dl gearpackets -- the wire-shape switch (feature\gearpackets, 08-06).
+--
+-- Henrik asked whether the game's equipsets batch what dlac sends per slot.
+-- They do: 0x051 carries up to 16 {index, slot, container} triples and the
+-- server keeps no equipset of its own, so the batch needs no registration --
+-- it is a shape choice available on every send. What it COSTS is the field's
+-- to say (bytes favour singles under 9 pieces; the server's per-packet tail
+-- favours the batch always), so this module exists to make the A/B one
+-- command apart, for every dispatch point at once.
+--
+-- GP9 is the one that matters most: the defaults ARE LAC parity, so a player
+-- who never types the command is on exactly the shape that shipped.
+-- ---------------------------------------------------------------------------
+(function()
+    local GP = dofile('feature/gearpackets.lua');
+    check('GP0 gearpackets loads', type(GP), 'table');
+    if type(GP) ~= 'table' then return; end
+
+    check('GP1a a mode is recognised',        GP.isMode('single'), 'single');
+    check('GP1b ...case-insensitively',       GP.isMode('SET'),    'set');
+    check('GP1c junk is not a mode',          GP.isMode('batch'),  nil);
+    check('GP1d nil is not a mode',           GP.isMode(nil),      nil);
+    check('GP1e every listed mode has a blurb to print', (function()
+        for _, m in ipairs(GP.MODES) do
+            if type(GP.MODE_BLURB[m]) ~= 'string' then return m; end
+        end
+        return true;
+    end)(), true);
+
+    check('GP2a a threshold clamps up from zero',  GP.clampThreshold(0),   1);
+    check('GP2b ...and down from past sixteen',    GP.clampThreshold(99),  16);
+    check('GP2c a float floors',                   GP.clampThreshold(3.7), 3);
+    check('GP2d a numeric string is a number',     GP.clampThreshold('4'), 4);
+    check('GP2e garbage is nil, not a guess',      GP.clampThreshold('x'), nil);
+
+    -- THE RESOLUTION. 'default' is the only mode that lets the dispatch point
+    -- speak; the rest replace it, which is what makes precast and midcast move
+    -- together (they are the same timing problem -- both fire inside ONE
+    -- outgoing chunk -- so a switch that moved one would measure nothing).
+    check('GP3a default defers to the route',   GP.resolve('set', 'default'),  'set');
+    check('GP3b ...for singles as well',        GP.resolve('single', 'default'), 'single');
+    check('GP3c an unknown route style reads as auto',
+          GP.resolve('bogus', 'default'), 'auto');
+    check('GP3d single overrides a set route',  GP.resolve('set', 'single'),   'single');
+    check('GP3e set overrides a single route',  GP.resolve('single', 'set'),   'set');
+    check('GP3f auto overrides both',           GP.resolve('set', 'auto'),     'auto');
+    check('GP3g an unknown MODE falls back to default, never to a guess',
+          GP.resolve('set', 'sideways'), 'set');
+
+    local pts = { { name = 'Precast', style = 'set' }, { name = 'Midcast', style = 'single' } };
+    local eff = GP.effective(pts, 'set');
+    check('GP4a effective keeps the asked style for the record',
+          eff[2].asked, 'single');
+    check('GP4b ...and reports what it will actually get', eff[2].gets, 'set');
+    check('GP4c an unmoved point is visibly unmoved',
+          GP.effective(pts, 'default')[1].gets, 'set');
+
+    check('GP5a a set shape names one packet',   GP.shapeOf('set'),    'one 0x051');
+    check('GP5b a single shape names per-slot',  GP.shapeOf('single'), 'one 0x050 per slot');
+    check('GP5c auto is the only shape that quotes the number',
+          GP.shapeOf('auto', 4):match('from 4 slots up') ~= nil, true);
+
+    local L = GP.lines('set', 9, pts);
+    check('GP6a the readout leads with the mode',
+          L[1]:match('^gearpackets: mode SET') ~= nil, true);
+    check('GP6b an unconsulted threshold says so rather than implying it applies',
+          L[2]:match('not consulted in set mode') ~= nil, true);
+    check('GP6c ...where a consulted one explains the number',
+          GP.lines('auto', 3, pts)[2]:match('from 3 changed slots up') ~= nil, true);
+    check('GP6d overridden points are marked', (function()
+        for _, l in ipairs(L) do
+            if l:match('Midcast') and l:match('overridden') then return true; end
+        end
+        return false;
+    end)(), true);
+    -- THE LINE THAT SAVES A FIELD ROUND: conflict strips stay 0x050 at every
+    -- mode, so the first 0x050 seen in set mode is correct, not a broken switch.
+    check('GP6e the strip caveat is always printed', (function()
+        for _, l in ipairs(GP.lines('set', 9, pts)) do
+            if l:match('conflict strips') then return true; end
+        end
+        return false;
+    end)(), true);
+
+    check('GP7a bare command',             #GP.parse('/dl gearpackets'),     0);
+    check('GP7b the short alias',          #GP.parse('/dl gp'),              0);
+    check('GP7c /dlac alias',              #GP.parse('/dlac gearpackets'),   0);
+    check('GP7d arguments split',          table.concat(GP.parse('/dl gp threshold 3'), ','), 'threshold,3');
+    check('GP7e a neighbour is NOT ours',  GP.parse('/dl gearpacketsfoo'),   nil);
+    check('GP7f ...nor is a longer word starting gp', GP.parse('/dl gps'),   nil);
+    check('GP7g another command entirely', GP.parse('/dl sends'),            nil);
+
+    check('GP8a bare is show',        GP.intent({}).kind,                     'show');
+    check('GP8b a mode word',         GP.intent({ 'single' }).mode,           'single');
+    check('GP8c threshold long form', GP.intent({ 'threshold', '5' }).n,      5);
+    check('GP8d threshold short form',GP.intent({ 't', '5' }).n,              5);
+    check('GP8e a bare number is a threshold -- what a tired thumb types',
+          GP.intent({ '3' }).n, 3);
+    check('GP8f a threshold with no number is usage, not a silent default',
+          GP.intent({ 'threshold' }).kind, 'usage');
+    check('GP8g an unknown word is usage', GP.intent({ 'batch' }).kind,       'usage');
+
+    -- GP9. THE PARITY PIN. With no store (headless, and pre-login in game)
+    -- these must serve the LAC shape: a player who never types the command,
+    -- and a store that fails to open, both land on what shipped.
+    check('GP9a the default mode is LAC parity',   GP.mode(),      'default');
+    check('GP9b the default threshold is 9',       GP.threshold(), 9);
+    check('GP9c styleFor is identity under default', GP.styleFor('single'), 'single');
+    check('GP9d a write with no store fails honestly rather than pretending',
+          GP.setMode('set'), false);
+    check('GP9e ...and leaves the mode alone',     GP.mode(),      'default');
+
+    -- GP10. Every style the ROUTE TABLE declares must be one this module can
+    -- resolve. A new dispatch point with a typo'd style would otherwise read
+    -- as 'auto' forever and nobody would see it happen.
+    local eng = dofile('feature/equipengine.lua');
+    local known = { set = true, single = true, auto = true };
+    local strays = {};
+    for _, r in pairs((type(eng) == 'table' and eng.ACTION_ROUTES) or {}) do
+        for _, key in ipairs({ 'preStyle', 'midStyle' }) do
+            local s = r[key];
+            if s ~= nil and known[s] ~= true then
+                strays[#strays + 1] = tostring(r.type) .. '.' .. key .. '=' .. tostring(s);
+            end
+        end
+    end
+    check('GP10a every route style is a style this module knows',
+          table.concat(strays, ', '), '');
+    check('GP10b ...and the route table still declares the LAC split',
+          (eng.ACTION_ROUTES[0x03] or {}).preStyle == 'set'
+          and (eng.ACTION_ROUTES[0x03] or {}).midStyle == 'single', true);
 end)();
 
 -- ---------------------------------------------------------------------------
@@ -26207,6 +26503,70 @@ end)();
     NM.zoneReader = function() return 5; end;
 
     package.loaded['dlac\\chatfmt'] = savedChat;
+end)();
+
+-- ---------------------------------------------------------------------------
+-- JB. Job browsing (2026-08-06) -- ui\jobbrowse.lua, the state behind the job
+-- picker in the Gear window's header. Pure but for ONE live read (GetMainJob),
+-- so the whole contract drives headlessly: which job the EDITORS answer for, at
+-- what level, and when that stops following the character.
+--
+-- The two that are easy to get backwards, and are the whole feature:
+--   * picking the job you are ON means "follow live" (nil), not "pin it" -- so a
+--     later job change follows, exactly as it did before browsing existed;
+--   * a real job change does NOT clear a selection -- the WAR set you are
+--     halfway through building stays valid when you change to BLM, and only the
+--     header moves. (gearui's working-set drop keys on the SAME job value, so
+--     these two together decide when a half-built set survives.)
+-- ---------------------------------------------------------------------------
+;(function()
+    local jb = dofile('ui/jobbrowse.lua');
+    local savedCore = AshitaCore;
+    local jobId = 7;                                     -- PLD
+    AshitaCore = { GetMemoryManager = function()
+        return { GetPlayer = function() return { GetMainJob = function() return jobId; end }; end };
+    end };
+
+    check('JB1a default holds no selection', jb.selected(), nil);
+    check('JB1b default is not browsing', jb.active(), false);
+    check('JB1c default level defers to the live reading', jb.level(), nil);
+    check('JB1d default job is the live job', jb.job(), 'PLD');
+
+    jb.set('WAR');
+    check('JB2a a pick is remembered', jb.selected(), 'WAR');
+    check('JB2b ...and reads as browsing', jb.active(), true);
+    check('JB2c ...at a flat 75', jb.level(), 75);
+    check('JB2d ...and IS the job the editors answer for', jb.job(), 'WAR');
+
+    jobId = 4;                                           -- change job in game: BLM
+    check('JB3a a live job change leaves the selection alone', jb.selected(), 'WAR');
+    check('JB3b ...and browsing stays on', jb.active(), true);
+    check('JB3c ...so the set being built is still WAR\'s', jb.job(), 'WAR');
+
+    jb.set('BLM');                                       -- picking the job you are ON
+    check('JB4a picking your own job clears the selection', jb.selected(), nil);
+    check('JB4b ...and stops browsing', jb.active(), false);
+    jobId = 3;                                           -- WHM
+    check('JB4c ...so a later job change is followed again', jb.job(), 'WHM');
+
+    jb.set('SAM'); jb.clear();
+    check('JB5 clear() returns the editors to live', jb.active(), false);
+    jb.set('SAM'); jb.set(nil);
+    check('JB6a a nil pick clears', jb.selected(), nil);
+    jb.set('SAM'); jb.set('');
+    check('JB6b an empty pick clears', jb.selected(), nil);
+
+    -- Character select / an unsettled GetMainJob (id 0 = no job, hard rule 11).
+    -- A held selection must still READ as browsing there: the header saying
+    -- "viewing RDM" is the honest answer, and looking normal is not.
+    jb.set('RDM'); jobId = 0;
+    check('JB7a no live job still reads as browsing', jb.active(), true);
+    check('JB7b ...and the editors answer for the pick', jb.job(), 'RDM');
+    check('JB7c liveJob is nil there', jb.liveJob(), nil);
+    jb.clear();
+    check('JB7d no pick and no live job = no job to edit', jb.job(), nil);
+
+    AshitaCore = savedCore;
 end)();
 
 -- The warm-note artifact the dispatch-driving sections leave behind (dataDir

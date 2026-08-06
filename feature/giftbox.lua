@@ -3,21 +3,21 @@
     inventory, one at a time, stopping the moment there is not room for what the
     next one pays out.
 
-    THREE FAMILIES, one run (Henrik, 2026-08-06). It started as the Goblin/Grand
-    Giftboxes that CatsEyeXI drops off Ventures; the Goblin Gatherbox and the
-    Tiny/Timeworn/Titanic Tackleboxes are the same job -- a container you use
-    from your bag that pays out several items -- so they open through the same
-    loop rather than three copies of it. The command keeps its name (`/dl
-    giftbox`, `/dl gb`) because that is what is in the README and in muscle
-    memory; `/dl box` and `/dl boxes` answer to it too, and every line the run
-    prints says "box" so it is never claiming to have opened a giftbox it did
-    not.
+    FOUR FAMILIES, one run (Henrik, 2026-08-06). It started as the Goblin
+    Giftboxes that CatsEyeXI drops off Ventures; the Goblin Gatherbox, the
+    Tiny/Timeworn/Titanic Tackleboxes and the Mamool Ja/Lamia/Troll Troves are
+    the same job -- a container you use from your bag that pays out several
+    items -- so they open through the same loop rather than four copies of it.
+    The command keeps its name (`/dl giftbox`, `/dl gb`) because that is what is
+    in the README and in muscle memory; `/dl box` and `/dl boxes` answer to it
+    too, and every line the run prints says "box" so it is never claiming to
+    have opened a giftbox it did not.
 
     One box yields UP TO 5 ITEMS, so the space gate is the whole feature: open
     one with a nearly full bag and the payout is refused item by item, which is
     how you lose a box's contents to a wall of "you cannot carry any more"
     lines. That "up to 5" is measured on the giftboxes; the gate applies the
-    same number to all three families, which for a smaller payout is merely
+    same number to all four families, which for a smaller payout is merely
     strict and for a larger one would be the bug -- if a Titanic Tacklebox ever
     turns out to pay more than five, NEED_FREE is where that is fixed.
 
@@ -70,9 +70,11 @@ M.NEED_FREE = 6;   -- strictly MORE than 5
 -- of waiting is seconds while the cost of firing again is a duplicate use.
 M.CONFIRM_TIMEOUT = 15.0;
 -- The beat after a CONFIRMED open, before the next fire. 0.6 shipped, raised to
--- 1.6 after Henrik's first field run ("I suspect lag may create issues"), then
--- settled at 1.2 (his call, same day) -- enough headroom without making a stack
--- of ten feel slow.
+-- 1.6 after Henrik's first field run ("I suspect lag may create issues"), cut to
+-- 1.2 the same day, and to 1.0 on 2026-08-06 -- his call again, after a live
+-- trove run: "think we can also tweak the use timer down 0.2 seconds". Each of
+-- those was a FIELD number, which is the only kind this constant should ever
+-- take; nobody has measured what a box actually costs the client.
 --
 -- Worth being clear about what this does and does not protect: the count-drop
 -- confirm already proves the previous use landed, so this is not the pacing --
@@ -83,8 +85,8 @@ M.CONFIRM_TIMEOUT = 15.0;
 --
 -- Any decimal is honoured to the FRAME: tickSettle is called from d3d_present
 -- every frame and compares os.clock() against settleAt, so it is not rounded to
--- POLL (0.25) or to anything else -- 1.2 means 1.2, +/- one frame.
-M.SETTLE          = 1.2;
+-- POLL (0.25) or to anything else -- 1.0 means 1.0, +/- one frame.
+M.SETTLE          = 1.0;
 M.POLL            = 0.25;
 
 -- How stale the tray's cached bag snapshot may get. The tray's gate contract
@@ -102,25 +104,76 @@ M.SCAN_EVERY = 2.0;
 --
 -- ORDER ACROSS FAMILIES: the giftboxes stay at the TOP, where they have always
 -- been, for one reason worth stating -- the tray draws the highest rung you are
--- carrying (see M.peek), and the Grand Giftbox is the art that was field-checked
+-- carrying (see M.peek), and the grand giftbox is the art that was field-checked
 -- as the icon. Keeping it the top rung means nothing anyone has already seen
--- changes; the new families slot in below it and simply open first. Within the
--- giftboxes the order is untouched.
+-- changes; the other families slot in below it and simply open first. Within
+-- the giftboxes the intended order is unchanged (sm, md, lg, gr) -- it is just
+-- that from 08-05 until now it was never actually reached; see the note on the
+-- names below.
 --
--- ORDER WITHIN THE TACKLEBOXES is a reading of the names, not a measurement --
--- nobody has priced their payouts. All it decides is which of the three opens
--- first, so a wrong guess costs a run's ordering and nothing else.
+-- ORDER WITHIN A FAMILY is a reading of the names where the names say a size
+-- (the tackleboxes, the giftboxes) and the item id where they say nothing at
+-- all (the troves -- Mamool Ja / Lamia / Troll is 6554 / 6555 / 6556 and
+-- nothing more principled than that). Nobody has priced any of these payouts.
+-- All it decides is which opens first, so a wrong guess costs a run's ordering
+-- and nothing else.
+--
+-- THE NAMES ARE THE SERVER'S, read off the live item API on 2026-08-06 rather
+-- than typed from memory -- which is how the four giftbox rungs turned out to
+-- have never matched anything. They are `Gob. Giftbox (sm/md/lg/gr)`, not the
+-- `Goblin Giftbox (Small)` / `Grand Giftbox` that shipped here from 08-05; the
+-- substring still caught them, so the feature worked while quietly ranking all
+-- four as unknown-sorts-last, which alphabetically opened the GRAND first and
+-- the small last -- the exact reverse of the rule this list exists to state.
+--
+-- BOTH SPELLINGS ARE LISTED. dlac reads the CLIENT's name for an item and the
+-- API serves the SERVER's, and this project has been bitten three times by the
+-- two disagreeing (HELM's `Excavation Point` against the client's `Excav.
+-- Point`). The abbreviations here are the ~20-char DAT-name style, so the
+-- client almost certainly says the same thing -- but "almost certainly" is
+-- worth four dead array entries, and only one of each pair can ever match.
+--
+-- THE TROVES ARE FIELD-VERIFIED, and the giftboxes still are not. Henrik's
+-- 2026-08-06 log shows `Mindie uses a Troll trove.` and `Lift uses a Mamool Ja
+-- trove.` -- the two rungs above, word for word. (The log lowercases item names
+-- -- `a silver hairpin` in the same screenshot -- so it fixes the WORDS, not the
+-- capitalisation, which matching ignores anyway.) A `halvung trove` entry lived
+-- here for one commit on a misremembered name and came straight back out: it
+-- opened fine either way, because the SUBSTRING is what opens things, and that
+-- is exactly why "it worked" can never confirm a rung.
+--
+-- WHY A MISSING RUNG COSTS SOMETHING EVEN WHERE THE ORDER DOES NOT. Trove order
+-- is admittedly arbitrary, so who cares which opens first -- but an unrecognised
+-- box gets #LADDER + 1, which is ABOVE the giftboxes, and the tray draws the
+-- highest rung you hold. A box the ladder does not know therefore takes the icon
+-- off the grand giftbox and opens after it, quietly undoing the one arrangement
+-- Session I field-checked. That is the whole cost of a name being wrong here,
+-- and it is why the rungs are worth reading off the game rather than guessing.
+-- `lamia trove` (6555) is the one trove nobody has seen in a log yet.
+--
+-- Ids, for provenance only -- the logic is name-based on purpose, so a box
+-- CatsEyeXI adds tomorrow opens without an addon update:
+--   tackleboxes 5110 / 5946 / 5112 · gatherbox 6345
+--   troves 6554 / 6555 / 6556      · giftboxes 5109 / 5111 / 6264 / 6558
 M.LADDER = { 'tiny tacklebox', 'timeworn tacklebox', 'titanic tacklebox',
              'goblin gatherbox',
-             'goblin giftbox (small)', 'goblin giftbox (medium)',
-             'goblin giftbox (large)', 'grand giftbox' };
+             'mamool ja trove', 'lamia trove', 'troll trove',
+             'gob. giftbox (sm)', 'goblin giftbox (small)',
+             'gob. giftbox (md)', 'goblin giftbox (medium)',
+             'gob. giftbox (lg)', 'goblin giftbox (large)',
+             'gob. giftbox (gr)', 'grand giftbox' };
 
 -- What makes an item ours. Substrings, so an unheard-of rung in any of the
--- three families still opens. The cost of being this open-ended is bounded: a
+-- four families still opens. The cost of being this open-ended is bounded: a
 -- non-usable item that happened to be named "...Tacklebox" would be fired at
 -- once, never confirm, and stop the run with one honest line after the timeout
 -- -- not a loop, and nothing lost.
-M.MATCH  = { 'giftbox', 'gatherbox', 'tacklebox' };
+--
+-- All four were checked against the live item table on 2026-08-06 and each one
+-- catches its family and NOTHING else: giftbox 4, tacklebox 3, gatherbox 1,
+-- trove 3 -- fifteen items, no strays. `trove` was the one worth checking; it
+-- is the shortest and the least box-like word here.
+M.MATCH  = { 'giftbox', 'gatherbox', 'tacklebox', 'trove' };
 
 -- Is this item name one of ours, and where does it sort? nil = not a box.
 function M.classify(name)
@@ -227,10 +280,11 @@ end
 -- every frame (M.SCAN_EVERY).
 --
 -- `top` is the HIGHEST rung you are carrying, and that is what the tray draws:
--- a Grand Giftbox is the one worth noticing, and it is the most distinctive art
+-- a grand giftbox is the one worth noticing, and it is the most distinctive art
 -- on the ladder -- which is why the giftboxes were left at the top of it when
--- the gatherbox and the tackleboxes were added. Falling back to the best box
--- you actually hold also means the icon is never for something you do not have.
+-- the gatherbox, the tackleboxes and the troves were added. Falling back to the
+-- best box you actually hold also means the icon is never for something you do
+-- not have.
 local _peekAt, _peek = 0, { have = false, total = 0, free = 0, top = nil };
 
 function M.peek(now)

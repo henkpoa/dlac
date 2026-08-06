@@ -137,17 +137,26 @@ end
 -- would otherwise scroll the counters -- the part you came for -- off the
 -- top), the FILE passes nil and gets the whole ring. Chat is a summary, the
 -- artifact is the record.
-function M._lines(st, now, ringMax)
+--
+-- `modeNote` names the wire shape in force (/dl gearpackets). It is passed in
+-- rather than read here for the usual reason -- this half stays pure -- but
+-- the REASON it exists is the field round: counts produced under a switched
+-- mode are uninterpretable unless the same artifact says which mode produced
+-- them, and a player who forgot they were mid-experiment is exactly who sends
+-- the file.
+function M._lines(st, now, ringMax, modeNote)
     st = st or M.newState(0);
     now = tonumber(now) or 0;
     local elapsed = now - (tonumber(st.since) or 0);
     local L = {};
     local total = st.total or 0;
+    local note = (type(modeNote) == 'string' and modeNote ~= '') and modeNote or nil;
 
     if total == 0 then
         L[#L + 1] = string.format(
             'sends: NOTHING sent in %s -- dlac has put zero packets on the wire this session.',
             M._dur(elapsed));
+        if note ~= nil then L[#L + 1] = 'sends: wire shape -- ' .. note .. '.'; end
         L[#L + 1] = 'sends: this is the expected steady state -- equips are edge-driven'
                  .. ' (the Default tick resolves a plan every 0.4s but sends only when a slot'
                  .. ' actually differs).';
@@ -177,6 +186,7 @@ function M._lines(st, now, ringMax)
                  .. ' a pass-through is your own packet, blocked while dlac dressed you and put'
                  .. ' back on the wire byte-identical.';
     end
+    if note ~= nil then L[#L + 1] = 'sends: wire shape -- ' .. note .. '.'; end
     L[#L + 1] = 'sends: by packet -- ' .. table.concat(ranked(st.byId, idName, st.passedById), ', ');
     L[#L + 1] = 'sends: by cause -- ' .. table.concat(ranked(st.byWhy, tostring), ', ');
 
@@ -243,9 +253,32 @@ end
 -- How many recent sends the CHAT readout shows. The file gets all of them.
 M.CHAT_RING = 8;
 
+-- The wire shape in force, as one phrase, or nil when it cannot be read.
+-- Guarded and call-time: /dl sends predates the knob and must keep working
+-- without it.
+function M._modeNote()
+    local note = nil;
+    pcall(function()
+        local gp = require('dlac\\feature\\gearpackets');
+        if type(gp) ~= 'table' or type(gp.mode) ~= 'function' then return; end
+        local m = gp.mode();
+        if m == 'default' then
+            note = 'mode default -- each dispatch point picks (LAC parity)';
+        else
+            note = string.format('mode %s -- OVERRIDING every dispatch point (/dl gearpackets)',
+                string.upper(tostring(m)));
+        end
+        if m == 'default' or m == 'auto' then
+            note = note .. string.format(', batch threshold %d', gp.threshold());
+        end
+    end);
+    return note;
+end
+
 function M.report()
     local now = clock();
-    for _, l in ipairs(M._lines(M.state, now, M.CHAT_RING)) do print('[dlac] ' .. l); end
+    local note = M._modeNote();
+    for _, l in ipairs(M._lines(M.state, now, M.CHAT_RING, note)) do print('[dlac] ' .. l); end
     -- The file rule (Henrik 07-23): a debug run lands as ONE transferable
     -- .txt. No engine half to merge -- the purge left one state, and every
     -- send site lives in it, so deliver is called with no handoff name (which
@@ -253,7 +286,7 @@ function M.report()
     -- must not be reported as the diagnosis).
     local dbg = try('dlac\\feature\\debug');
     if dbg ~= nil and type(dbg.deliver) == 'function' then
-        pcall(dbg.deliver, 'sends', 'dlac-sends', M._lines(M.state, now, nil), nil, { delay = 1.2 });
+        pcall(dbg.deliver, 'sends', 'dlac-sends', M._lines(M.state, now, nil, note), nil, { delay = 1.2 });
     end
 end
 
