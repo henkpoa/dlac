@@ -4930,6 +4930,12 @@ end)();
     IM.CalcTextSize      = function(s) return #tostring(s) * 8; end
     IM.GetContentRegionAvail = function() return 720, 400; end
     IM.CollapsingHeader  = function() return true; end
+    -- Drawn text and tooltips are recorded too (2026-08-06): the gear matrix is
+    -- pure TextColored, so a row that stops being drawn -- or a tooltip that
+    -- promises a stat the piece has no line for -- is otherwise invisible here.
+    local texts, tips = {}, {};
+    IM.TextColored = function(_, s) texts[#texts + 1] = tostring(s); end
+    IM.SetTooltip  = function(s) tips[#tips + 1] = tostring(s); end
     -- Every Selectable label this frame is recorded, so FS9b can prove the spot
     -- rows offer a FULL-ROW hit target rather than a bait-sized one.
     local sels = {};
@@ -5020,10 +5026,36 @@ end)();
 
         -- The PANEL keeps "what I own" and must no longer draw the picker.
         depth.win = 0;
+        texts, tips = {}, {};
         local pok, perr = pcall(fui.render, deps, 800);
         check('FS11 the panel still renders without the target section', pok, true);
         if not pok then print('   fishui.render error: ' .. tostring(perr)); end
         check('FS12 the panel opens no window of its own', depth.win, 0);
+        -- Brigands Eyepatch: Henrik reversed the undisplayed ruling 2026-08-06
+        -- ("I was wrong about the eyepatch"), so the Mariners column now has a
+        -- head row. It draws whether or not it is owned -- an unowned Mariners
+        -- piece is the dim row that tells you the tier exists.
+        local sawPatch, patchTip = false, nil;
+        for _, t in ipairs(texts) do if t == 'Brigands Eyepatch' then sawPatch = true; end end
+        for _, t in ipairs(tips) do
+            if t:find('Fatigue Limit +20%', 1, true) then patchTip = t; end
+        end
+        check('FS12b the Mariners column draws its head piece', sawPatch, true);
+        check('FS12c ...with the Expert Angler note', patchTip ~= nil, true);
+        -- The one carrier with NO Fish mod: the note must not promise skill.
+        check('FS12d ...that does not claim a Fishing skill line',
+              patchTip and patchTip:find('no Fishing skill of its own', 1, true) ~= nil, true);
+        -- Halieutica + the legendary +1s stay invisible -- Henrik reversed ONE
+        -- item, not the ruling.
+        local sawHalieutica = false;
+        for _, t in ipairs(texts) do if t:find('Halieutica', 1, true) then sawHalieutica = true; end end
+        check('FS12e the rest of the undisplayed ruling still holds', sawHalieutica, false);
+        -- ...and it counts as the venture tier it is: base four dressed + the
+        -- Eyepatch alone = coverage 3.
+        check('FS12f the Eyepatch is venture-tier coverage', fui.coverage({
+            ownedCounts = function()
+                return { [13808] = 1, [14070] = 1, [14292] = 1, [14171] = 1, [28443] = 1 };
+            end }), 3);
 
         fui._target.open[1] = false;
     end

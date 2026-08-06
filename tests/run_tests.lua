@@ -14855,6 +14855,7 @@ end)();
         [13180] = 'Republic Stables Medal',  -- neck, one of 4 'stables' dests
         [11538] = 'Nexus Cape',              -- moved off the top strip 2026-07-26
         [26517] = 'Shadow Lord Shirt',       -- ditto
+        [28443] = "Brigand's Eyepatch",      -- head, keepInPicker, shares Norg with the earring
     };
     local bag0 = {
         { Id = 15194, Count = 1, Extra = '' },
@@ -14862,6 +14863,7 @@ end)();
         { Id = 13180, Count = 1, Extra = '' },
         { Id = 11538, Count = 1, Extra = '' },
         { Id = 26517, Count = 1, Extra = '' },
+        { Id = 28443, Count = 1, Extra = '' },
     };
     local inv = {
         GetContainerCountMax = function(self, bag) return (bag == 0) and #bag0 or 0; end,
@@ -14888,7 +14890,7 @@ end)();
         if row.grp == 'ear' then earNames[#earNames + 1] = row.name; end
         if row.grp == nil then topNames[#topNames + 1] = row.name; end
     end
-    check('UT1 util tier is owned-only (5 rows)', #util, 5);
+    check('UT1 util tier is owned-only (6 rows)', #util, 6);
     local haveMaat = false;
     for _, r in ipairs(util) do if r.name == "Maat's Cap" then haveMaat = true; end end
     check('UT1b Maat\'s Cap surfaced', haveMaat, true);
@@ -14918,6 +14920,20 @@ end)();
     check('UT3b Tavnazian Ring hidden from the picker', hide['tavnazian ring'], true);
     check('UT3c suits hidden from the picker', hide['custom top +1'], true);
     check('UT3d earrings still hidden', hide['kazham earring'], true);
+    -- Brigand's Eyepatch (2026-08-06): a util row, and the family's SECOND
+    -- picker exemption -- it is real fishing gear ("Expert Angler", fishdb
+    -- gearBonus 28443), so hiding it from set building would cost a fishing
+    -- set its head piece. (Its place under the Tidal Talisman is a TABLE
+    -- order; the talisman is unowned here, so only the row itself shows.)
+    local patchAt = nil;
+    for i, r in ipairs(util) do
+        if r.name == "Brigand's Eyepatch" then patchAt = i; end
+    end
+    check('UT3e the Eyepatch rides the util cascade', patchAt ~= nil, true);
+    check('UT3f ...labelled with its destination', patchAt and util[patchAt].label, 'Norg');
+    check('UT3g ...and its row targets itself, not the earring',
+          patchAt and util[patchAt].cmd, '/dl t eyepatch');
+    check('UT3h the Eyepatch stays in the picker', hide["brigand's eyepatch"], nil);
 
     -- command narrowing
     check('UT4 command handler registered', type(cmdHandler), 'function');
@@ -14934,6 +14950,16 @@ end)();
         cmdHandler({ command = '/dl t outpost' });   -- Return+Homing share the dest, neither owned
         p = useitem.pending();
         check('UT8 unowned same-dest pair refuses (pending unchanged)', p and p.name, 'Republic Stables Medal');
+        -- Norg is now TWO items (earring + Brigand's Eyepatch, 2026-08-06):
+        -- same destination, so ownership narrows it -- only the Eyepatch is
+        -- in the bag here. The row's own alias never needs the narrowing.
+        cmdHandler({ command = '/dl t norg' });
+        p = useitem.pending();
+        check('UT8b /dl t norg narrows to the owned Norg item', p and p.name, "Brigand's Eyepatch");
+        cmdHandler({ command = '/dl t off' });
+        cmdHandler({ command = '/dl t eyepatch' });
+        p = useitem.pending();
+        check('UT8d /dl t eyepatch names it outright', p and p.name, "Brigand's Eyepatch");
         cmdHandler({ command = '/dl t off' });
         check('UT9 /dl t off releases', useitem.pending(), nil);
     end

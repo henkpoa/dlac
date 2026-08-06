@@ -9221,3 +9221,79 @@ dim while the row is dormant, same at-a-glance grammar as `[Lv 30-54]` and `@mod
 **Tests:** `LD4d`–`LD4g` (the gate excludes without the trait, ranks normally with it),
 `G19b` (serializer), `G23`–`G26` (the trait bit ALONE re-flattens, both directions, and
 the wrapper never mutates the shared record). Suites **6807 + 1281**, both interpreters.
+
+## Session "the eyepatch goes to Norg" (2026-08-06, `2026.08.06a`)
+
+**Theme:** one item card, one row. A player's Brigand's Eyepatch — relayed by Henrik,
+who does not own one — reads `Enchantment: "Teleport" (Norg)`, so it belongs in
+**Other Teleports**, under the Tidal Talisman where he asked for it.
+
+**Landed:** a 29th entry in useitem's `TELEPORTS` table (id 28443, head, `grp` util,
+aliases eyepatch/brigand/brigands). Everything downstream is data-driven, so the GUI
+cascade, the tooltip, the charges column and `/dl t` all picked it up without a line of
+UI work.
+
+Two things about it are NOT the family pattern:
+
+- **Its use delay is 0:15, not 0:30.** The card reads `[20:00, 0:15]` where the other 28
+  are `useDelay = 30` in `item_usable`. So `/dl t` learned a per-entry `wait` (`t.wait or
+  TELE_WAIT`) — the exp rings' pattern, and the Provenance Ring's 15+margin = 20. This is
+  the FALLBACK timer only: the game clock still rules, and it can only push the moment
+  later (`useAt = math.max(useAt, now + rem)`), so a short wait can never fire early while
+  the polls are readable.
+- **It is real gear**, the second `keepInPicker` exemption after Maat's Cap: MP+15, CHR+3,
+  Water+10 and `"Expert Angler"+2` — it is fishdb's `gearBonus[28443]` (cx4 20 / cx5 2),
+  the head piece of fishing's VP tier. Hiding it from set building the way the DEF-1
+  trinketry is hidden would have cost a fishing set its Head slot.
+
+**Norg is now two items.** The Norg Earring and the Eyepatch share a destination, so
+`/dl t norg` runs the ownership narrowing that already served the eight Purgonorgo suits
+and the two Ru'Lude items — own one, get it; own both, the readiest wins. The menu row
+itself never needs that: it sends `/dl t eyepatch`, which is an exact alias hit.
+
+**Also true, and worth recording:** `docs/design/fishing-gear.md` §7 asked whether the
+Eyepatch is obtainable at all ("Henrik believes not — they exist only in the live DB").
+The screenshot answers it: yes, and it is Lv.50 all jobs with DEF 15. The round-2 ruling
+that keeps it OUT of the fishing panel's display was made on "nothing in-game mentions
+them" — that premise is now false, but the display call is Henrik's, not this session's.
+
+**Tests:** `UT1` (util tier 5 → 6 owned rows), `UT3e`–`UT3h` (the cascade row, its Norg
+label, that its command targets itself rather than the earring, and the picker
+exemption), `UT8b`/`UT8d` (the shared-destination narrowing and the direct alias).
+Suites 6947 + 1305, both interpreters.
+
+**Field round owed, and it cannot be Henrik's** — he has no Eyepatch, so the check goes
+to the player who sent the card. Worth watching: whether the 15s delay is what the
+enchant really wants (the "ready in Ns (game clock)" line says so on the first use).
+
+**Addendum, same day (`2026.08.06b`) — the ruling reverses.** Henrik: *"I was wrong
+about the eyepatch, you can add it to the fishing gear list in gear helper as well."* So
+the round-2 undisplayed ruling (07-18) is lifted for that one item and the fishing
+panel's Mariners column grew its **head** row — `MARINERS[5] = { 28443 }`, landing on
+row 5, which is the matrix's head row (the Angler's column shows Tlahtlamah Glasses
+there). It glows like the rest of the VP set and joins `ADVANCED`, so owning it with the
+base four dressed reads as coverage 3.
+
+The entry is a one-id "pair" — the Eyepatch has no +1 — so `owned()` now treats a nil id
+as "not owned" instead of relying on Lua tolerating `t[nil]` on a read, and the
+`ADVANCED` seeding skips the missing second id (that one WOULD have thrown: `t[nil] = v`
+is an error).
+
+**And its Expert Angler tooltip had to stop lying.** The note ended `(+ Fishing skill --
+CatsEyeXI venture gear)`, which was true of every carrier until now: the Eyepatch is the
+only one with cx mods and **no Fish mod at all** (fishdb 28443 has no `fish` key — that
+is why it needed the gearBonus supplement in the first place). The tail is conditional
+now.
+
+Halieutica and the legendary-rod +1s keep the ruling — one item was reversed, not the
+policy. The premise that died was "nothing in-game mentions them", and it died only for
+the item a player turned out to be wearing.
+
+**Tests:** the smoke harness' stub imgui records `TextColored` and `SetTooltip` now (the
+gear matrix is pure TextColored, so a row that stops drawing was invisible to tests) --
+`FS12b`-`FS12f`: the head row draws, its note carries Fatigue Limit +20%, the note does
+NOT claim a Fishing skill line, Halieutica stays invisible, and base-four + Eyepatch =
+coverage 3. Suites 6947 + 1310, both interpreters.
+
+**Field round owed on both halves, by the card's owner** — the teleport row and the
+panel row are both unclicked, and neither can be checked from Henrik's own bags.

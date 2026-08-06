@@ -32,11 +32,19 @@ local EXTRAS    = { 10925, 15452 };                        -- Fisher's Torque, F
 local HEAD_RING = { 25608, 39051 };                        -- Tlahtlamah, Angler's Ring
 local GUILD_GEAR = { 14195, 11337, 14400, 15554 };         -- Waders, Smock, Apron, Pelican Ring
 local MARINERS  = { { 26535, 26536 }, { 25986, 25987 },    -- Tunica, Gloves (base, +1)
-                    { 25899, 25900 }, { 25966, 25967 } };  -- Hose, Boots
--- NOT displayed (Henrik 2026-07-18): Halieutica 20945 + Brigands Eyepatch 28443
--- (nothing in-game mentions them) and the legendary-rod +1s 19320/19321 (look
--- unobtainable on CatsEyeXI). fishdb keeps their data and autoPick still
--- honours one if it ever lands in a bag -- they are only invisible here.
+                    { 25899, 25900 }, { 25966, 25967 },    -- Hose, Boots
+                    { 28443 } };                           -- Brigands Eyepatch (no +1)
+-- The Eyepatch is the VP set's HEAD -- row 5, which is the matrix's head row
+-- (column 2 shows Tlahtlamah Glasses there). It has no +1, so its entry is a
+-- one-id "pair"; owned() tolerates the missing second id.
+-- Henrik REVERSED the 2026-07-18 undisplayed ruling on 2026-08-06 ("I was
+-- wrong about the eyepatch") -- a PLAYER has one and sent its card, so the
+-- "nothing in-game mentions them" premise died with it (Henrik does not own
+-- one; the field check goes to that player).
+-- Still NOT displayed: Halieutica 20945 and the
+-- legendary-rod +1s 19320/19321 (they still look unobtainable here). fishdb
+-- keeps their data and autoPick still honours one if it lands in a bag --
+-- they are only invisible here.
 local LEGENDARY_RODS = { 17386, 17011 };                   -- Lu Shang's, Ebisu
 local LEG_ANY = { [17386] = true, [19320] = true, [17011] = true, [19321] = true };
 local SPECIAL_RODS = { [17012] = true, [17013] = true, [19319] = true };  -- Judge's, Basket, MMM
@@ -45,7 +53,10 @@ local NO_SUGGEST = { [17012] = true, [17013] = true, [19319] = true,      -- spe
 
 local ADVANCED = {};   -- any of these owned = coverage level 3
 for _, id in ipairs(GUILD_GEAR) do ADVANCED[id] = true; end
-for _, pair in ipairs(MARINERS) do ADVANCED[pair[1]] = true; ADVANCED[pair[2]] = true; end
+for _, pair in ipairs(MARINERS) do
+    ADVANCED[pair[1]] = true;
+    if pair[2] ~= nil then ADVANCED[pair[2]] = true; end   -- the Eyepatch has no +1
+end
 for _, id in ipairs(HEAD_RING) do ADVANCED[id] = true; end
 
 -- ---------------------------------------------------------------------------
@@ -63,7 +74,9 @@ local function counts(deps)
     local ok, t = pcall(deps.ownedCounts);
     return (ok and type(t) == 'table') and t or nil;
 end
-local function owned(oc, id) return oc ~= nil and (oc[id] or 0) >= 1; end
+-- id may be nil (the Mariners head has no +1 to ask about) -- that is "not
+-- owned", never an error.
+local function owned(oc, id) return id ~= nil and oc ~= nil and (oc[id] or 0) >= 1; end
 
 -- Worn-at-once Fish+ total: per slot the best owned Mod::FISH piece. The
 -- math lives in fishcalc.wornFishTotal now (the fish bar's rod-dropdown
@@ -217,8 +230,12 @@ local function expertNote(id)
     local parts = {};
     if g.cx4 ~= nil then parts[#parts + 1] = string.format('Fatigue Limit +%d%%', g.cx4); end
     if g.cx5 ~= nil then parts[#parts + 1] = string.format('Golden Arrow Rate +%d%%', g.cx5); end
-    return string.format('Expert Angler: %s\n(+ Fishing skill -- CatsEyeXI venture gear)',
-        table.concat(parts, ', '));
+    -- Brigands Eyepatch carries the cx mods and NO Fish mod (fishdb 28443) --
+    -- the only carrier that does, so the tail must not promise skill it has
+    -- no line for.
+    local tail = (g.fish ~= nil) and '\n(+ Fishing skill -- CatsEyeXI venture gear)'
+                                  or '\n(CatsEyeXI venture gear -- no Fishing skill of its own)';
+    return 'Expert Angler: ' .. table.concat(parts, ', ') .. tail;
 end
 
 -- Target-picker state. Shared by every surface that opens the window, which is

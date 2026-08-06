@@ -18,7 +18,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.08.05o';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.08.06b';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
                                 -- (03f = engine v163: the contest explains its own plan;
                                 --  03g = one floating tray: Teleports + the E-Box crates;
@@ -125,7 +125,18 @@ addon.version = '2026.08.05o';  -- date of the last shipped change (Ashita print
                                 --  the floating tray, under the E-Box crates,
                                 --  drawn as the box's OWN in-game art -- plus
                                 --  a longer beat between opens, because the
-                                --  first field run met lag)
+                                --  first field run met lag;
+                                --  06a = Brigand's Eyepatch joins Other
+                                --  Teleports, under the Tidal Talisman: a
+                                --  head-slot Teleport (Norg) whose use delay
+                                --  is 15s, not the family's 30 -- and it
+                                --  stays visible to set building, being real
+                                --  fishing gear;
+                                --  06b = ...and it displays in the fishing
+                                --  panel too, as the Mariners column's head
+                                --  row -- the undisplayed ruling rested on
+                                --  "nothing in-game mentions them", and a
+                                --  player turned up holding one)
 addon.desc    = 'Gear sets, triggers and live stats with level scaling -- dlac equips your gear itself.';
 
 -- Load BEACON ('/dl check' field round, 2026-07-23): written by PLAIN io at

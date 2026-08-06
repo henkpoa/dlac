@@ -41,6 +41,13 @@ end-game); Halieutica, Brigands Eyepatch and the legendary-rod +1s are NOT displ
 (unmentioned in-game / look unobtainable — data stays shipped, autoPick still honours
 an owned one); owning Lu Shang's or Ebisu greens the whole standard rod ladder.
 
+**Round-3 amendment (2026-08-06):** the Eyepatch is OUT of that exclusion — a player
+owns one, so it displays as the Mariners column's **head** row (row 5, aligned with
+Tlahtlamah Glasses in the Angler's column), glowing like the rest of the VP set and
+counting toward coverage level 3. It is the only carrier with **no Fish mod at all**, so
+its Expert Angler tooltip says so rather than implying a skill line it does not have.
+Halieutica and the rod +1s keep the round-2 ruling.
+
 Mechanics the addon USES (file:line = fishingutils.cpp unless noted):
 
 - **What bites**: position → fishing area (point-in-poly/cylinder, :1287) → catch groups
@@ -309,14 +316,21 @@ the test fixtures.
    heartbeat) and round 6 (the dropdown pins behave).
 5. Halieutica/Mariners/Brigands Eyepatch: if Henrik owns any, hover shows them in
    ladders via gearBonus; report actual in-game stats text so the "unverified" labels
-   can be tightened. **Still open** — needs the items to drop first.
+   can be tightened. **Eyepatch ANSWERED 2026-08-06** (a player's item card, relayed
+   by Henrik — he does not own one): DEF 15,
+   MP+15, CHR+3, Water+10, `"Expert Angler"+2`, Lv.50 all jobs — and an enchantment
+   the fishing work never saw, `Teleport` (Norg), which is why it now also rides
+   useitem's Other Teleports cascade. Halieutica/Mariners still open.
 
 ## 7. Open questions (server-questions.md style)
 
 - ~~Mods **2004/2005** semantics~~ **ANSWERED round 2**: Expert Angler — 2004 Fatigue
   Limit +%, 2005 Golden Arrow Rate +% (bg-wiki Ventures page; values match the DB).
-- Are Lu Shang's +1 / Ebisu +1 / Halieutica / Brigands Eyepatch obtainable at all?
-  Henrik believes not (they exist only in the live DB) — undisplayed until one shows up.
+- ~~Are Lu Shang's +1 / Ebisu +1 / Halieutica / Brigands Eyepatch obtainable at all?~~
+  **The Eyepatch is** — a player has one (2026-08-06): "I was wrong about the eyepatch."
+  The round-2 undisplayed ruling rested on "nothing in-game mentions them", so it died
+  with the premise and the Eyepatch now DISPLAYS (Mariners column, head row). The other
+  three keep the ruling until one of them turns up the same way.
 - Does `!ventures fishing` exist as a sub-command (vs plain `!ventures`)? Field test 1.
 - Ashita rank bits for fishing cap: if `GetCraftSkill(0)` exposes rank like retail
   (cap = (rank+1)×10), status line shows skill/cap; else skill only.
