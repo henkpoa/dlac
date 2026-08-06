@@ -88,17 +88,31 @@ local TABS = { 'Codex', 'Sets', 'Traits' };
 
 -- The job/level watch and auto-restore, run once per frame whether or not
 -- anything renders: a level change invalidates the BLU structs like a fresh
--- login (refresh fires inside the watch), and -- if the setting is on --
--- any spells the change stripped from the last-applied set get re-added.
--- Two delayed checks so the 0x061 answer has landed before we compare.
+-- login (refresh fires inside the watch). BY DIRECTION (Henrik 2026-08-06):
+--   level UP / job change -- if the setting is on, spells the change
+--     stripped from the last-applied set are re-added (two delayed checks
+--     so the 0x061 answer has landed; quiet when nothing is missing);
+--   level DOWN (sync down, delevel) -- NOTHING is sent: the client disables
+--     over-level spells itself and re-enables them when the level returns,
+--     and the level-sorted layout keeps the survivors in the low slots.
+--     One delayed chat line reports what the sync disabled, nothing more.
 -- The standalone render calls this itself; an EMBEDDING host (dlac's BLU
 -- helper) calls it directly every frame, even while its panel is hidden.
 function M.tick()
     local deps = M.deps;
     if deps == nil then return; end
-    if deps.blu.watchJobState() then
+    local change = deps.blu.watchJobState();
+    if change == 'down' then
+        M.downCheck = os.clock() + 2.0;
+        M.restoreChecks = nil;             -- a pending restore is moot now
+    elseif change ~= nil then
         local now = os.clock();
         M.restoreChecks = { now + 2.0, now + 8.0 };
+        M.downCheck = nil;
+    end
+    if M.downCheck ~= nil and os.clock() >= M.downCheck then
+        M.downCheck = nil;
+        deps.blu.reportLevelDown(deps.book);
     end
     if M.restoreChecks ~= nil then
         local due = M.restoreChecks[1];

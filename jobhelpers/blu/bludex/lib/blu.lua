@@ -210,21 +210,31 @@ end
 -- once per frame while the window is open; the compare makes it a no-op
 -- almost always. First sight only sets the baseline (the on-open refresh
 -- already covered that moment).
+--
+-- Returns nil (no change) or the KIND of change, so the caller can react by
+-- direction: 'jobs' (main/sub identity moved), 'up' / 'down' (pure level
+-- movement, the BLU-relevant level when on BLU). A falsy check still works
+-- for callers that only care THAT something changed.
 local watched = nil;
 function M.watchJobState()
-    local ok, cur = pcall(function()
+    local ok, jobs, lvl = pcall(function()
         local p = player();
-        return ('%d.%d/%d.%d'):format(p:GetMainJob(), p:GetMainJobLevel(),
-            p:GetSubJob(), p:GetSubJobLevel());
+        local main, sub = p:GetMainJob(), p:GetSubJob();
+        local l = (main == 16 and p:GetMainJobLevel())
+            or (sub == 16 and p:GetSubJobLevel())
+            or p:GetMainJobLevel();
+        return ('%d/%d'):format(main, sub), l;
     end);
-    if not ok or cur == nil then return false; end
-    if watched == nil then watched = cur; return false; end
-    if cur ~= watched then
-        watched = cur;
-        if M.onBlu() then M.requestJobData(); end
-        return true;
+    if not ok or jobs == nil then return nil; end
+    if watched == nil then watched = { jobs = jobs, lvl = lvl }; return nil; end
+    if jobs == watched.jobs and lvl == watched.lvl then return nil; end
+    local kind = 'jobs';
+    if jobs == watched.jobs then
+        kind = (lvl > watched.lvl) and 'up' or 'down';
     end
-    return false;
+    watched = { jobs = jobs, lvl = lvl };
+    if M.onBlu() then M.requestJobData(); end
+    return kind;
 end
 
 function M.canApply()
@@ -512,6 +522,39 @@ function M.applyDiff(ids, book, onDone)
         if onDone then pcall(onDone); end
     end);
     return true;
+end
+
+-- The level-DOWN report: a level decrease (sync down, delevel) sends NO
+-- packets -- the client disables over-level spells itself and re-enables
+-- them when the level returns, and the set is level-sorted so the survivors
+-- already sit in the low slots. This only tells the user where the set
+-- stands now. Quiet off BLU, when the set is unreadable, and when the new
+-- level disables nothing (Henrik 2026-08-06: no noise unless it matters).
+function M.reportLevelDown(book)
+    if not M.onBlu() then return; end
+    local live = M.currentSet();
+    if #live ~= 20 then return; end
+    local ok, lvl = pcall(function()
+        local p = player();
+        return M.isBluMain() and p:GetMainJobLevel() or p:GetSubJobLevel();
+    end);
+    if not ok or lvl == nil or lvl <= 0 then return; end
+    local filled, disabled = 0, 0;
+    for i = 1, 20 do
+        local id = live[i] or 0;
+        if id ~= 0 then
+            filled = filled + 1;
+            local s = book and book.spells and book.spells[id];
+            if s ~= nil and s.level ~= nil and s.level > lvl then
+                disabled = disabled + 1;
+            end
+        end
+    end
+    if disabled == 0 then return; end
+    local free = 20 - filled;
+    msg(('Level down to %d: the game disabled %d of %d set spells (above level) - nothing was sent, they return when the level does. %d castable%s.'):format(
+        lvl, disabled, filled, filled - disabled,
+        free > 0 and (', %d slots free'):format(free) or ''));
 end
 
 -- The auto-restore path: put back whatever a level change stripped from the
