@@ -13469,8 +13469,9 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
--- GB. /dl giftbox -- open every Goblin/Grand Giftbox in inventory, stopping
---     before there is no room for the next payout.
+-- GB. /dl giftbox -- open every reward box in inventory, stopping before there
+--     is no room for the next payout. THREE FAMILIES since 2026-08-06: the
+--     Goblin/Grand Giftboxes, the Goblin Gatherbox, and the tackleboxes.
 --
 --     The interesting half is NOT the pure gate, it is the pacing: the loop
 --     refuses to guess a delay and instead waits for the item's own count to
@@ -13482,24 +13483,42 @@ end)();
     local gb = dofile('feature/giftbox.lua');
     local savedAshita = AshitaCore;
 
-    check('GB1 a known box classifies onto the ladder', gb.classify('Goblin Giftbox (Small)'), 1);
-    check('GB1b ...case-insensitively', gb.classify('GOBLIN GIFTBOX (LARGE)'), 3);
-    check('GB1c the Grand box is the top rung', gb.classify('Grand Giftbox'), 4);
+    check('GB1 a known box classifies onto the ladder', gb.classify('Goblin Giftbox (Small)'), 5);
+    check('GB1b ...case-insensitively', gb.classify('GOBLIN GIFTBOX (LARGE)'), 7);
+    check('GB1c the Grand box is the top rung', gb.classify('Grand Giftbox'), #gb.LADDER);
     -- The substring match is what makes this survive the next box CatsEyeXI adds.
     check('GB1d an UNKNOWN giftbox is still ours, sorted last',
-        gb.classify('Goblin Giftbox (Colossal)'), 5);
-    check('GB1e ...and a normal item is not a giftbox', gb.classify('Goblin Bread'), nil);
+        gb.classify('Goblin Giftbox (Colossal)'), #gb.LADDER + 1);
+    check('GB1e ...and a normal item is not a box', gb.classify('Goblin Bread'), nil);
     check('GB1f nor is a nil name', gb.classify(nil), nil);
 
+    -- The 2026-08-06 families. Each is a SEPARATE substring, so none of them
+    -- rides on the giftbox match, and each sorts BELOW the giftboxes -- which
+    -- is what keeps the Grand Giftbox the tray's icon (GB14c).
+    check('GB1g the Gatherbox is ours', gb.classify('Goblin Gatherbox'), 4);
+    check('GB1h the tackleboxes are ours, smallest first',
+        table.concat({ gb.classify('Tiny Tacklebox'), gb.classify('Timeworn Tacklebox'),
+                       gb.classify('Titanic Tacklebox') }, ','), '1,2,3');
+    check('GB1i ...and every one of them sorts under the giftboxes',
+        gb.classify('Titanic Tacklebox') < gb.classify('Goblin Giftbox (Small)'), true);
+    check('GB1j an unheard-of tacklebox still opens',
+        gb.classify('Tarnished Tacklebox'), #gb.LADDER + 1);
+    check('GB1k ...and a fishing rod is not a box', gb.classify('Halcyon Rod'), nil);
+
     local FOUND = {
-        { name = 'Grand Giftbox',          rank = 4, count = 1 },
-        { name = 'Goblin Giftbox (Small)', rank = 1, count = 2 },
+        { name = 'Grand Giftbox',          rank = 8, count = 1 },
+        { name = 'Goblin Giftbox (Small)', rank = 5, count = 2 },
     };
     check('GB2 the smallest rung opens first', (gb.pickNext(FOUND) or {}).name, 'Goblin Giftbox (Small)');
     check('GB2b an empty stack is not a candidate',
         (gb.pickNext({ { name = 'x', rank = 1, count = 0 },
                        { name = 'y', rank = 2, count = 1 } }) or {}).name, 'y');
     check('GB2c nothing at all -> nil', gb.pickNext({}), nil);
+    check('GB2d across families the ladder still decides, and it is one run',
+        (gb.pickNext({
+            { name = 'Grand Giftbox',  rank = gb.classify('Grand Giftbox'),  count = 1 },
+            { name = 'Tiny Tacklebox', rank = gb.classify('Tiny Tacklebox'), count = 1 },
+        }) or {}).name, 'Tiny Tacklebox');
 
     -- The three outcomes of the gate are three different instructions to the
     -- player, which is why plan() never answers a bare false.
@@ -13617,6 +13636,24 @@ end)();
     local only = gb.peek(2000);
     check('GB16 one rung held -> that rung is the icon',
         (only.top or {}).name, 'Goblin Giftbox (Small)');
+
+    -- ---- a mixed bag, live ---------------------------------------------------
+    -- The two properties that only show up when the families meet: the run is
+    -- ONE run over all of them (a tacklebox is fired first because it sorts
+    -- lower), and the tray still draws the Grand Giftbox, which is the whole
+    -- reason the giftboxes were left at the top of the ladder.
+    RES[4] = { Name = { 'Timeworn Tacklebox' } };
+    slots = { { Id = 2, Count = 1 }, { Id = 4, Count = 1 }, __size = 30 };
+    cmds = {};
+    gb.start();
+    check('GB17 one run covers every family, lowest rung first',
+        cmds[1], '/item "Timeworn Tacklebox" <me>');
+    gb.stop();
+    gb._peekReset();
+    local mixed = gb.peek(3000);
+    check('GB17b ...and the tray icon is still the Grand Giftbox',
+        (mixed.top or {}).name, 'Grand Giftbox');
+    check('GB17c ...counting boxes of every family together', mixed.total, 2);
 
     AshitaCore = savedAshita;
 end)();

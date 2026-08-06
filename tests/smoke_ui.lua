@@ -2800,7 +2800,8 @@ end)();
     local NAMES = { 'dlac\\ui\\tray', 'dlac\\ui\\gearui', 'dlac\\ui\\restockui',
                     'dlac\\ui\\giftboxui', 'dlac\\feature\\giftbox',
                     'dlac\\feature\\restockwatch', 'dlac\\feature\\eboxclient',
-                    'dlac\\feature\\gamemode', 'dlac\\ui\\filetex', 'imgui' };
+                    'dlac\\feature\\gamemode', 'dlac\\feature\\location',
+                    'dlac\\ui\\filetex', 'imgui' };
     local saved = {};
     for _, k in ipairs(NAMES) do saved[k] = package.loaded[k]; end
 
@@ -2879,13 +2880,15 @@ end)();
         wantsC = false;
 
         -- ---- the REAL giftboxui gate ------------------------------------
-        -- Everything above stubs giftboxui out, so none of it can see the CW
-        -- gate. Drive the actual module: Crystal Warriors only (Henrik), on the
-        -- affirmative rule -- 'CW' shows, and Wings/ACE/nil do NOT. `nil` is the
-        -- one that matters: a failed render-flags read is UNKNOWN, and unknown
-        -- must never be read as permission to paint a CW-only icon.
-        local MODE, PEEKED = nil, 0;
-        package.loaded['dlac\\feature\\gamemode'] = { get = function() return MODE; end };
+        -- Everything above stubs giftboxui out, so none of it can see the place
+        -- gate. Drive the actual module. It is NOT a mode gate (it was, for one
+        -- day) -- it asks the mode WHICH PLACE, per Henrik 2026-08-06: "For
+        -- non-CW, you can have that icon once you're in town. CW is only
+        -- interested in using this close to an e-box."
+        local MODE, NEAR, TOWN, PEEKED = nil, false, false, 0;
+        package.loaded['dlac\\feature\\gamemode']  = { get = function() return MODE; end };
+        package.loaded['dlac\\feature\\location']  = { inTown = function() return TOWN; end };
+        package.loaded['dlac\\feature\\eboxclient'] = { nearBox = function() return NEAR; end };
         package.loaded['dlac\\feature\\giftbox']  = {
             peek = function() PEEKED = PEEKED + 1; return { have = true, total = 3, free = 20 }; end,
             running = function() return false; end,
@@ -2895,24 +2898,44 @@ end)();
         local gok, gui = pcall(require, 'dlac\\ui\\giftboxui');
         check('TR18 giftboxui loads against the stubs', gok and type(gui.trayWants), 'function');
         if gok then
-            MODE = 'CW';
-            check('TR19 a Crystal Warrior with boxes wants the tray', gui.trayWants(), true);
-            MODE = 'Wings';
-            check('TR20 Wings does not', gui.trayWants(), false);
-            MODE = 'ACE';
-            check('TR21 ACE does not', gui.trayWants(), false);
-            MODE = nil;
-            check('TR22 and UNKNOWN is not permission', gui.trayWants(), false);
-            -- The mode is asked BEFORE the bag snapshot, so a non-CW character
-            -- never pays for the scan -- not even the throttled one.
-            PEEKED = 0;
+            -- A Crystal Warrior is asked about the BOX, never the town: he wants
+            -- the payout going straight into the Ephemeral Box he is stood at.
+            MODE, NEAR, TOWN = 'CW', true, false;
+            check('TR19 a Crystal Warrior at an E-Box wants the tray', gui.trayWants(), true);
+            NEAR, TOWN = false, true;
+            check('TR19b ...and in town away from one does NOT', gui.trayWants(), false);
+
+            -- Everyone else has no box to stand at, so the question is the town.
+            MODE, NEAR, TOWN = 'Wings', false, true;
+            check('TR20 Wings in town wants it now (it used to be refused)', gui.trayWants(), true);
+            TOWN = false;
+            check('TR20b ...and out in the field does not', gui.trayWants(), false);
+            MODE, TOWN = 'ACE', true;
+            check('TR21 ACE in town too', gui.trayWants(), true);
+
+            -- The reversal worth spelling out: an unreadable mode falls to the
+            -- TOWN rule. "Unknown is not permission" guarded a CW-ONLY icon and
+            -- there is no such icon any more -- so the choice is which of two
+            -- conditions to apply, and the strict one silently costs a non-CW
+            -- player the feature outright.
+            MODE, NEAR, TOWN = nil, false, true;
+            check('TR22 an UNREADABLE mode falls to the town rule', gui.trayWants(), true);
+            TOWN = false;
+            check('TR22b ...which still says no outside a town', gui.trayWants(), false);
+            -- inTown answers nil for an unreadable zone. Mid-zone is not a town.
+            MODE, TOWN = 'ACE', nil;
+            check('TR22c an unknown ZONE is not a town', gui.trayWants(), false);
+
+            -- Place is asked BEFORE the bag snapshot, so nobody out in the field
+            -- pays for the scan -- not even the throttled one.
+            MODE, NEAR, TOWN, PEEKED = 'ACE', false, false, 0;
             gui.trayWants(); gui.trayWants();
-            check('TR23 a non-CW gate never reaches the bag scan', PEEKED, 0);
-            MODE = 'CW'; PEEKED = 0;
+            check('TR23 a refused place never reaches the bag scan', PEEKED, 0);
+            MODE, NEAR, PEEKED = 'CW', true, 0;
             gui.trayWants();
-            check('TR23b ...and a CW one does', PEEKED, 1);
+            check('TR23b ...and an allowed one does', PEEKED, 1);
             -- trayDraw re-checks independently (restockui's belt-and-braces).
-            MODE = 'Wings';
+            MODE, NEAR, TOWN = 'CW', false, true;
             check('TR24 draw refuses on its own too', pcall(gui.trayDraw), true);
         end
 

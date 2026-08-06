@@ -18,7 +18,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.08.06g';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.08.06h';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
                                 -- (03f = engine v163: the contest explains its own plan;
                                 --  03g = one floating tray: Teleports + the E-Box crates;
@@ -156,7 +156,16 @@ addon.version = '2026.08.06g';  -- date of the last shipped change (Ashita print
                                 --  carry and the public server clone gives to
                                 --  other items entirely), the Red Crab Mount
                                 --  from assets\redcrab.png, because a mount
-                                --  is not an item to have an id at all)
+                                --  is not an item to have an id at all;
+                                --  06h = /dl giftbox grows two more families:
+                                --  the Goblin Gatherbox and the Tiny/Timeworn/
+                                --  Titanic Tackleboxes open in the same run,
+                                --  same space gate, same count-drop pacing --
+                                --  the command answers to /dl box(es) too, and
+                                --  every line it prints now says "box"; and its
+                                --  tray icon stops being CW-only -- it is a
+                                --  PLACE gate now, at an E-Box for a Crystal
+                                --  Warrior, in town for everyone else)
 addon.desc    = 'Gear sets, triggers and live stats with level scaling -- dlac equips your gear itself.';
 
 -- Load BEACON ('/dl check' field round, 2026-07-23): written by PLAIN io at

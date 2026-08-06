@@ -9333,6 +9333,100 @@ craftable set, into a shop", and doubloons are a shop. The nil-id guard added to
 and its note carries the price, which is the assertion that would have caught the
 original mistake (a Mariners row has no price line). Suites 6960 + 1312.
 
+## Session "the other two box families" (2026-08-06, `2026.08.06h`)
+
+**Theme:** Henrik — "can we add Goblin Gatherbox, Timeworn Tacklebox, Titanic Tacklebox
+and Tiny Tacklebox to it?" `/dl giftbox` opened Goblin/Grand Giftboxes only. It now opens
+all three families in one run.
+
+**Why this was a data change and not a feature.** The loop was already the general thing:
+use a container from your bag, wait for that item's own count to drop as proof the use
+landed, re-ask the space gate before every box. None of that is giftbox-specific — a
+Tacklebox is the same job. So the diff is a longer `M.LADDER`, an `M.MATCH` that went from
+one substring to three, and a `classify` that loops over them. The pacing, the timeout, the
+"never retry at a wall" rule and the tray plumbing are untouched.
+
+**Two orderings had to be decided, and only one of them matters.**
+
+*Across families:* the giftboxes stayed at the **top** of the ladder. The tray draws the
+highest rung you are carrying, Session I field-checked that as the Grand Giftbox art, and
+there was no reason to invalidate a check that has already been run. The new families slot
+in underneath and therefore open first — which is arbitrary, and said to be arbitrary in
+the comment rather than dressed up as a size rule.
+
+*Within the tackleboxes:* Tiny → Timeworn → Titanic is a **reading of the names**, not a
+measurement. Nobody has priced their payouts. All it decides is which of the three fires
+first, so a wrong guess costs a run's ordering and nothing else — worth stating so the next
+reader doesn't take it for a fact.
+
+**The gate carries an assumption now.** `NEED_FREE = 6` is "more than 5", and the 5 was
+measured on giftboxes. Applied to a smaller payout it is merely strict; applied to a larger
+one it would be the bug. Field check J3 exists to price that, and the comment names
+`NEED_FREE` as the one place it gets fixed.
+
+**Every line the run prints says "box".** It would otherwise announce "opened 3 giftboxes"
+after opening three tackleboxes. `/dl box` and `/dl boxes` answer to the command for the
+same reason; `/dl giftbox` and `/dl gb` are what the README and everyone's fingers know and
+are not going anywhere, and the module keeps its filename.
+
+**The real risk is names, not logic.** A box is ours because `gatherbox` or `tacklebox`
+appears in the **client's** name for it — and this project has been bitten three times by a
+hardcoded name that turned out to be the server's spelling, most recently HELM's
+`Excavation Point` against the client's `Excav. Point`. If one of these four is abbreviated
+in the DAT, it is invisible to the feature and nothing says so. That is field check **J1**,
+and it is the only one worth running first: four boxes in the bag must count as four.
+
+**Tests:** `GB1` `GB1b`-`GB1d` re-aimed at the longer ladder (and off hardcoded rank
+numbers where `#gb.LADDER` says it better); `GB1g`-`GB1k` are the new families — each on
+its own substring, all sorting under the giftboxes, an unheard-of `Tarnished Tacklebox`
+still opening, and a `Halcyon Rod` still not a box. `GB2d` and `GB17`-`GB17c` are the
+properties that only appear once the families meet: one run covers all of them lowest-rung
+first, and the tray icon is still the Grand Giftbox. Suites **6969 + 1312**, both
+interpreters.
+
+## Session "the box icon is a place, not a playmode" (2026-08-06, `2026.08.06h`)
+
+**Theme:** the same day the box families landed, Henrik reversed the tray icon's gate —
+*"For non-CW, you can have that icon once you're in town. CW is only interested in using
+this close to an e-box."*
+
+**It shipped CW-only on 08-05** because giftboxes come off Ventures and the icon lives in
+the same tray as the E-Box crates. That reasoning turned out to be one step short: it
+gated on *who drops the boxes* when the useful question is *where you want to open them*.
+A Crystal Warrior wants the payout going into the Ephemeral Box he is standing at, so the
+icon belongs at that box and nowhere else — being in town is **not** enough for a CW, which
+is strictly narrower than what shipped. Everyone else has no box to stand at, so the moment
+that matters is arriving in town with a full bag.
+
+So it is no longer a mode gate at all. It is a **place** gate that asks the mode *which
+place*: `gamemode.get() == 'CW'` → `eboxclient.nearBox()`, otherwise `location.inTown()`.
+Both are central services this addon already runs (`docs/architecture.md`, Central
+services) — restockui pays for the entwatch lookup every frame regardless, and `inTown` is
+one party-memory word.
+
+**The affirmative-gate rule was reversed here, deliberately, and that is the part worth
+recording.** The old comment said *unknown is not permission* and refused a nil mode read.
+That rule existed to stop a **CW-only** icon being painted onto a non-CW screen — and there
+is no CW-only icon any more. What is left is a choice between two conditions, where the
+strict one silently costs a non-CW player the feature outright and the general one costs a
+Crystal Warrior an extra icon while he stands in town. A tray icon is not a click. An
+unreadable mode now falls to the town rule. *The affirmative gate is still the right
+default everywhere it guards an exclusive surface; it stopped applying here because the
+surface stopped being exclusive.*
+
+**The gate also got cheaper, which was not the point but is worth having.** Place is asked
+before the bag snapshot, so nobody out in the field pays for the throttled scan — a wider
+saving than the CW-only test made, since most characters are not in town most of the time.
+
+**The command is untouched and always was.** `/dl giftbox` works wherever you are; the
+place rule only decides when the icon is worth the screen space.
+
+**Tests:** `TR19`/`TR19b` (a CW at a box yes, a CW in town away from one **no**), `TR20`
+`TR20b` `TR21` (Wings/ACE in town yes, in the field no — the half that never existed),
+`TR22`-`TR22c` (an unreadable mode falls to town; an unreadable **zone** is not a town),
+`TR23`/`TR23b` (place before the bag scan). `docs/field-checks-2026-08-05.md` gains J6-J8
+and strikes **I1b**, which this contradicts outright. Suites **6969 + 1320**.
+
 ## Session "the whole Sinister Stash" (2026-08-06, `2026.08.06f`)
 
 **Theme:** Henrik sent a screenshot of the Eyepatch tooltip with two things wrong in it —

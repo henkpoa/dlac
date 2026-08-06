@@ -1,12 +1,25 @@
 --[[
-    dlac/feature/giftbox.lua -- /dl giftbox: open every Goblin/Grand Giftbox in
-    your inventory, one at a time, stopping the moment there is not room for
-    what the next one pays out.
+    dlac/feature/giftbox.lua -- /dl giftbox: open every reward box in your
+    inventory, one at a time, stopping the moment there is not room for what the
+    next one pays out.
 
-    CatsEyeXI drops these off Ventures. One box yields UP TO 5 ITEMS, so the
-    space gate is the whole feature: open one with a nearly full bag and the
-    payout is refused item by item, which is how you lose a box's contents to a
-    wall of "you cannot carry any more" lines.
+    THREE FAMILIES, one run (Henrik, 2026-08-06). It started as the Goblin/Grand
+    Giftboxes that CatsEyeXI drops off Ventures; the Goblin Gatherbox and the
+    Tiny/Timeworn/Titanic Tackleboxes are the same job -- a container you use
+    from your bag that pays out several items -- so they open through the same
+    loop rather than three copies of it. The command keeps its name (`/dl
+    giftbox`, `/dl gb`) because that is what is in the README and in muscle
+    memory; `/dl box` and `/dl boxes` answer to it too, and every line the run
+    prints says "box" so it is never claiming to have opened a giftbox it did
+    not.
+
+    One box yields UP TO 5 ITEMS, so the space gate is the whole feature: open
+    one with a nearly full bag and the payout is refused item by item, which is
+    how you lose a box's contents to a wall of "you cannot carry any more"
+    lines. That "up to 5" is measured on the giftboxes; the gate applies the
+    same number to all three families, which for a smaller payout is merely
+    strict and for a larger one would be the bug -- if a Titanic Tacklebox ever
+    turns out to pay more than five, NEED_FREE is where that is fixed.
 
     THE GATE RUNS BEFORE EVERY BOX, NOT ONCE (Henrik's spec said "more than 5
     free"; the correction is that it has to be re-asked each time). A box gives
@@ -76,7 +89,7 @@ M.POLL            = 0.25;
 
 -- How stale the tray's cached bag snapshot may get. The tray's gate contract
 -- says trayWants must be CHEAP -- flags only, no bag scans -- and detecting
--- giftboxes is unavoidably a bag scan, so the scan is throttled to this and the
+-- boxes is unavoidably a bag scan, so the scan is throttled to this and the
 -- gate reads the cache. A ~80 slot walk every 2s is not the per-frame cost the
 -- contract was written to forbid.
 M.SCAN_EVERY = 2.0;
@@ -86,19 +99,41 @@ M.SCAN_EVERY = 2.0;
 -- name (case-insensitive), not this list: the list only orders what we found.
 -- A name we do not know still opens -- it just sorts last -- which is the
 -- difference between this working on the next box CatsEyeXI adds and not.
-M.LADDER = { 'goblin giftbox (small)', 'goblin giftbox (medium)',
+--
+-- ORDER ACROSS FAMILIES: the giftboxes stay at the TOP, where they have always
+-- been, for one reason worth stating -- the tray draws the highest rung you are
+-- carrying (see M.peek), and the Grand Giftbox is the art that was field-checked
+-- as the icon. Keeping it the top rung means nothing anyone has already seen
+-- changes; the new families slot in below it and simply open first. Within the
+-- giftboxes the order is untouched.
+--
+-- ORDER WITHIN THE TACKLEBOXES is a reading of the names, not a measurement --
+-- nobody has priced their payouts. All it decides is which of the three opens
+-- first, so a wrong guess costs a run's ordering and nothing else.
+M.LADDER = { 'tiny tacklebox', 'timeworn tacklebox', 'titanic tacklebox',
+             'goblin gatherbox',
+             'goblin giftbox (small)', 'goblin giftbox (medium)',
              'goblin giftbox (large)', 'grand giftbox' };
-M.MATCH  = 'giftbox';
 
--- Is this item name one of ours, and where does it sort? nil = not a giftbox.
+-- What makes an item ours. Substrings, so an unheard-of rung in any of the
+-- three families still opens. The cost of being this open-ended is bounded: a
+-- non-usable item that happened to be named "...Tacklebox" would be fired at
+-- once, never confirm, and stop the run with one honest line after the timeout
+-- -- not a loop, and nothing lost.
+M.MATCH  = { 'giftbox', 'gatherbox', 'tacklebox' };
+
+-- Is this item name one of ours, and where does it sort? nil = not a box.
 function M.classify(name)
     if type(name) ~= 'string' then return nil; end
-    local low = string.lower(name);
-    if string.find(low, M.MATCH, 1, true) == nil then return nil; end
+    local low, ours = string.lower(name), false;
+    for _, frag in ipairs(M.MATCH) do
+        if string.find(low, frag, 1, true) ~= nil then ours = true; break; end
+    end
+    if not ours then return nil; end
     for i, known in ipairs(M.LADDER) do
         if low == known then return i; end
     end
-    return #M.LADDER + 1;    -- an unknown giftbox: still ours, sorts last
+    return #M.LADDER + 1;    -- an unknown box: still ours, sorts last
 end
 
 -- Which box to open next: lowest rank first, ties by name so the order is
@@ -126,11 +161,11 @@ function M.plan(found, freeSlots)
     local total = 0;
     for _, e in ipairs(found or {}) do total = total + math.max(0, tonumber(e.count) or 0); end
     if total <= 0 then
-        return nil, 'none', 'no giftboxes in your inventory.';
+        return nil, 'none', 'no boxes in your inventory.';
     end
     if free < M.NEED_FREE then
         return nil, 'space', string.format(
-            '%d giftbox%s waiting -- you need %d free inventory slots and have %d.',
+            '%d box%s waiting -- you need %d free inventory slots and have %d.',
             total, (total == 1) and '' or 'es', M.NEED_FREE, free);
     end
     return M.pickNext(found), 'go', nil;
@@ -140,7 +175,7 @@ end
 -- Live reads (guarded: headless every one of these is simply absent)
 -- ---------------------------------------------------------------------------
 
--- Every giftbox in Inventory, plus the free-slot count, in ONE walk -- the two
+-- Every box in Inventory, plus the free-slot count, in ONE walk -- the two
 -- numbers must come from the same instant or the gate is deciding on a bag that
 -- no longer exists.
 function M.scan()
@@ -193,8 +228,9 @@ end
 --
 -- `top` is the HIGHEST rung you are carrying, and that is what the tray draws:
 -- a Grand Giftbox is the one worth noticing, and it is the most distinctive art
--- of the four. Falling back to the best box you actually hold also means the
--- icon is never for something you do not have.
+-- on the ladder -- which is why the giftboxes were left at the top of it when
+-- the gatherbox and the tackleboxes were added. Falling back to the best box
+-- you actually hold also means the icon is never for something you do not have.
 local _peekAt, _peek = 0, { have = false, total = 0, free = 0, top = nil };
 
 function M.peek(now)
@@ -228,7 +264,7 @@ end
 
 local function report(opened, tail)
     local head = (opened > 0)
-        and string.format('opened %d giftbox%s', opened, (opened == 1) and '' or 'es')
+        and string.format('opened %d box%s', opened, (opened == 1) and '' or 'es')
         or 'opened nothing';
     return head .. ((tail ~= nil) and (' -- ' .. tail) or '.');
 end
@@ -257,14 +293,14 @@ local function fireNext()
 end
 
 function M.start()
-    if run ~= nil then say('already opening giftboxes -- /dl giftbox stop to halt.'); return; end
+    if run ~= nil then say('already opening boxes -- /dl giftbox stop to halt.'); return; end
     local found, free = M.scan();
     if found == nil then warn('cannot read your inventory.'); return; end
     local pick, code, why = M.plan(found, free);
     if pick == nil then (code == 'space' and warn or say)(why); return; end
     local total = 0;
     for _, e in ipairs(found) do total = total + e.count; end
-    say(string.format('opening %d giftbox%s (%d free slots) -- /dl giftbox stop to halt.',
+    say(string.format('opening %d box%s (%d free slots) -- /dl giftbox stop to halt.',
         total, (total == 1) and '' or 'es', free));
     run = { opened = 0 };
     fireNext();
@@ -315,7 +351,10 @@ if ashita ~= nil and ashita.events ~= nil and type(ashita.events.register) == 'f
             local raw = string.lower(e.command or '');
             local a, b = raw:match('^/dl%s+(%S+)%s*(%S*)');
             if a == nil then a, b = raw:match('^/dlac%s+(%S+)%s*(%S*)'); end
-            if a ~= 'giftbox' and a ~= 'gb' then return; end
+            -- `box`/`boxes` since 2026-08-06, when the run stopped being only
+            -- about giftboxes. `giftbox`/`gb` are what the docs and everyone's
+            -- fingers know, so they are not going anywhere.
+            if a ~= 'giftbox' and a ~= 'gb' and a ~= 'box' and a ~= 'boxes' then return; end
             e.blocked = true;
             if b == 'stop' then M.stop(); return; end
             if b == 'status' then
@@ -323,7 +362,7 @@ if ashita ~= nil and ashita.events ~= nil and type(ashita.events.register) == 'f
                 if found == nil then warn('cannot read your inventory.'); return; end
                 local total = 0;
                 for _, x in ipairs(found) do total = total + x.count; end
-                say(string.format('%d giftbox%s in inventory, %d free slots%s.',
+                say(string.format('%d box%s in inventory, %d free slots%s.',
                     total, (total == 1) and '' or 'es', free,
                     (run ~= nil) and '  (opening now)' or ''));
                 return;
