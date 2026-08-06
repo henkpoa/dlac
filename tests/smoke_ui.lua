@@ -5053,7 +5053,24 @@ end)();
         check('FS12b the panel draws the Eyepatch', sawPatch, true);
         check('FS12b2 ...under its own doubloon header', sawJones, true);
         check('FS12b3 ...priced in the currency it actually costs',
-              patchTipHas(tips, '12,000 doubloons'), true);
+              patchTipHas(texts, '12,000'), true);
+        -- The whole Stash, not just the fishing piece (Henrik, 2026-08-06):
+        -- seven rows, three of which have no id to draw an icon for.
+        local shopSeen = 0;
+        for _, want in ipairs({ '5,000', '8,000', '10,000', '12,000',
+                                '15,000', '20,000' }) do
+            if patchTipHas(texts, want) then shopSeen = shopSeen + 1; end
+        end
+        check('FS12b4 every Sinister Stash price is on the panel', shopSeen, 6);
+        check('FS12b5 ...including the rows with no catalog id',
+              patchTipHas(texts, 'Rusty Fishing Hook')
+              and patchTipHas(texts, 'Red Crab Mount')
+              and patchTipHas(texts, "Buccaneer's Chart"), true);
+        -- and the tooltip stops calling it venture gear
+        check('FS12b6 the Eyepatch note names the right economy',
+              patchTip and patchTip:find('Crooked Jones gear', 1, true) ~= nil, true);
+        check('FS12b7 ...and no longer says venture',
+              patchTip and patchTip:find('venture', 1, true), nil);
         check('FS12c ...with the Expert Angler note', patchTip ~= nil, true);
         -- The one carrier with NO Fish mod: the note must not promise skill.
         check('FS12d ...that does not claim a Fishing skill line',

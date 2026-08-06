@@ -56,12 +56,30 @@ is a fishing economy the design doc had never covered: he stands in **Norg (H-8)
 each day names three fish — one lower-tier (max 60), one middle (max 40), one legendary
 (max 15) — trading them for **doubloons**; fishing 20+ to play, +100 doubloons for
 maxing all three. The **Sinister Stash** stalls in Norg and Lower Jeuno spend them.
-Brigands Eyepatch is 12,000. The rest of that shop is NOT fishing gear and is not
-modelled here (Brigand's Shovel 5,000 for treasure hunts, Crab Cap +1 8,000,
-Buccaneer's Chart 10,000, Rusty Fishing Hook 20,000 — ultimate-weapon material, Red Crab
-Mount 15,000 ACE-only). The wiki also frames Expert Angler the way the item card does:
-**+1 per increment = +10% daily capacity, multiplicative**, which is exactly the
-cx4 = N x 10 / cx5 = N shape in fishdb.
+The **whole Stash is listed** on the panel (Henrik, 2026-08-06: "add the rest of the
+Sinister Stash shop items") — the panel is where you read your doubloon balance, so it is
+where "what do they buy" belongs, fishing gear or not:
+
+| Item | Doubloons | id | Note |
+|---|---|---|---|
+| Brigand's Shovel | 5,000 | 18888 | required for Treasure Hunts (a HELM staff) |
+| Crab Cap +1 | 8,000 | 25669 | crab costumes |
+| Buccaneer's Chart | 10,000 | — | spawns an encounter in Cape Terrigan |
+| **Brigand's Eyepatch** | **12,000** | **28443** | **the fishing piece — "Expert Angler"+2** |
+| Red Crab Mount | 15,000 | — | ACE only |
+| Shaper's Shawl | 15,000 | 11009 | CW only |
+| Rusty Fishing Hook | 20,000 | — | Fishing ultimate-weapon material |
+
+Three rows have **no catalog id** — the Chart and the Hook are not equipment, the mount is
+not an item at all — so they draw as priced lines with no icon and no ownership state.
+That is deliberate: we cannot see a mount in a bag, and inventing an id to fill the icon
+column would be a lie the rest of the panel never tells. The three that DO have ids get
+the usual green-when-owned, because "I already bought the shovel" is exactly what the
+list is for. Only the Eyepatch counts toward coverage.
+
+The wiki also frames Expert Angler the way the item card does: **+1 per increment = +10%
+daily capacity, multiplicative**, which is exactly the cx4 = N x 10 / cx5 = N shape in
+fishdb.
 
 Mechanics the addon USES (file:line = fishingutils.cpp unless noted):
 

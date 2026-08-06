@@ -9332,3 +9332,44 @@ craftable set, into a shop", and doubloons are a shop. The nil-id guard added to
 **Tests:** `FS12b`-`FS12f` re-aimed — the Eyepatch draws under its own doubloon header
 and its note carries the price, which is the assertion that would have caught the
 original mistake (a Mariners row has no price line). Suites 6960 + 1312.
+
+## Session "the whole Sinister Stash" (2026-08-06, `2026.08.06f`)
+
+**Theme:** Henrik sent a screenshot of the Eyepatch tooltip with two things wrong in it —
+one he named, one he did not.
+
+**The one he named:** *"It is not a venture gear, which we know now."* The Expert Angler
+note ended `(CatsEyeXI venture gear -- no Fishing skill of its own)`, written when every
+carrier of mods 2004/2005 was venture gear. `expertNote` takes a `source` now, defaulting
+to the venture line; the Crooked Jones row passes its own.
+
+**The one the screenshot showed:** the percent signs were GONE — `Fatigue Limit +20,
+Golden Arrow Rate +2`, and the comma after the first value with them. `imgui.SetTooltip`
+is **printf**, so `%,` and `%\n` were consumed as format specifiers. fishui has had an
+`esc()` since it was written and `itemLine` used it on the NAME (`TextColored`) but not on
+the note — the one string in the file we build with a literal percent in it. Both
+SetTooltip calls in itemLine are escaped now. This is the same law as the BST helper
+panel (an unescaped `%` there printed a heap address); the lesson that generalises is
+that **the escape belongs at the imgui call, not at the string that happens to look
+safe** — a note assembled from `string.format` percentages is exactly the string nobody
+thinks of as risky.
+
+**Landed with it: the whole Sinister Stash**, since a doubloon balance raises exactly one
+question. Seven rows in the wiki's price order — Shovel 5,000 / Crab Cap +1 8,000 /
+Chart 10,000 / Eyepatch 12,000 / Red Crab Mount 15,000 / Shaper's Shawl 15,000 / Rusty
+Fishing Hook 20,000 — name, price, note. **Three of them have no catalog id**: the Chart
+and the Hook are not equipment and the mount is not an item at all, so they draw with no
+icon and no ownership state. `renderIcon(nil, 18)` still reserves the icon's width and
+SameLines, so those names start on the same x as the rows with art. The three that DO
+have ids (18888, 25669, 11009 — a HELM staff, a costume hat, a craft back piece) green
+when owned, because "did I already buy the shovel" is the other question the list
+answers. Only the Eyepatch counts toward coverage.
+
+**Where the names come from.** `nameOf` walks fishdb then the client resource, and none
+of those three shop items has a fishdb row — so it fell through to `#18888`. A
+`SHOP_NAMES` fallback sits under the client resource, not over it: the game still wins
+when it is there to ask.
+
+**Tests:** `FS12b3`-`FS12b7` — every price on the panel, the three id-less rows present
+by name, the note naming Crooked Jones, and the note NOT containing "venture". Suites
+6969 + 1320.

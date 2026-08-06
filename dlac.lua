@@ -18,7 +18,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.08.06d';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.08.06f';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
                                 -- (03f = engine v163: the contest explains its own plan;
                                 --  03g = one floating tray: Teleports + the E-Box crates;
@@ -140,7 +140,16 @@ addon.version = '2026.08.06d';  -- date of the last shipped change (Ashita print
                                 --  the Mariners column: it is bought with
                                 --  DOUBLOONS in Norg, a third fishing
                                 --  currency, and the id that sits beside the
-                                --  venture block never meant otherwise)
+                                --  venture block never meant otherwise;
+                                --  06f = the whole Sinister Stash is on the
+                                --  fishing panel -- seven rows with prices,
+                                --  three of which own no catalog id and say
+                                --  so by drawing no icon -- and the Expert
+                                --  Angler tooltip both stops calling the
+                                --  Eyepatch venture gear AND gets its percent
+                                --  signs back: SetTooltip is printf, and the
+                                --  bare '%' had been eating the character
+                                --  after it since the note shipped)
 addon.desc    = 'Gear sets, triggers and live stats with level scaling -- dlac equips your gear itself.';
 
 -- Load BEACON ('/dl check' field round, 2026-07-23): written by PLAIN io at
