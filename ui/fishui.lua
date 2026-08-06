@@ -49,21 +49,27 @@ local MARINERS  = { { 26535, 26536 }, { 25986, 25987 },    -- Tunica, Gloves (ba
 -- Halieutica 20945 and the legendary-rod +1s 19320/19321 (they still look
 -- unobtainable here). fishdb keeps their data and autoPick still honours one
 -- if it lands in a bag -- they are only invisible here.
--- The Sinister Stash, in the wiki's own price order. Three rows have no
--- catalog id -- the Chart and the Hook are not equipment and the mount is not
--- an item at all -- so they draw as plain priced lines with no icon and no
--- ownership; that is honest, and inventing ids to fill the column would not
--- be. `gear` marks the one row that is fishing gear (ADVANCED, Expert Angler
--- tooltip); everything else is here because it is what doubloons BUY, which
--- is the question a doubloon balance actually raises.
+-- The Sinister Stash, in the wiki's own price order. `gear` marks the one row
+-- that is fishing gear (ADVANCED, Expert Angler tooltip); everything else is
+-- here because it is what doubloons BUY, which is the question a doubloon
+-- balance actually raises.
+--   The Chart 9426 and the Hook 9420 are LIVE ids (Henrik, catseyexi.com/item,
+-- 2026-08-06) and they are NOT in dlac's catalog, which carries equipment. Do
+-- not "correct" them from the public server clone: it has woodworking_set_94
+-- at 9420 and smithing_set_80 at 9426 -- the live DB repurposed both, exactly
+-- the id-collision the augment/Garrison work hit. The client resource is the
+-- authority at runtime and it is what draws the icon.
+--   The mount alone has no id, because it is not an item; its art comes from
+-- assets\redcrab.png through filetex (the icon bg-wiki uses). Missing file =
+-- the row still draws, just without art.
 local JONES_SHOP = {
     { id = 18888, cost =  5000, note = 'Required for Treasure Hunts' },
     { id = 25669, cost =  8000, note = 'Crab costumes' },
-    { n = "Buccaneer's Chart",  cost = 10000, note = 'Spawns an encounter in Cape Terrigan' },
+    { id =  9426, cost = 10000, note = 'Spawns an encounter in Cape Terrigan' },
     { id = 28443, cost = 12000, note = '"Expert Angler"+2 -- Lv.50 all jobs', gear = true },
-    { n = 'Red Crab Mount',     cost = 15000, note = 'ACE only' },
+    { n = 'Red Crab Mount', icon = 'redcrab', cost = 15000, note = 'ACE only' },
     { id = 11009, cost = 15000, note = 'CW only' },
-    { n = 'Rusty Fishing Hook', cost = 20000, note = 'Fishing ultimate-weapon material' },
+    { id =  9420, cost = 20000, note = 'Fishing ultimate-weapon material' },
 };
 local JONES_GEAR = {};                                     -- the fishing half, for ADVANCED
 for _, row in ipairs(JONES_SHOP) do
@@ -174,6 +180,11 @@ end
 local _fwok, fw = pcall(require, 'dlac\\feature\\fishwatch');
 _fwok = _fwok and type(fw) == 'table';
 
+-- assets\*.png loader, for the one Stash row that is not an item (restockui's
+-- crate-icon precedent). nil handle = no art, never an error.
+local _ftok, filetex = pcall(require, 'dlac\\ui\\filetex');
+_ftok = _ftok and type(filetex) == 'table' and type(filetex.handle) == 'function';
+
 -- Names for ids fishdb has no row for -- the Sinister Stash sells things that
 -- are not fishing gear (a HELM staff, a costume hat, a craft back piece), so
 -- nameOf's usual sources come up empty. Client resources still win when the
@@ -182,6 +193,8 @@ local SHOP_NAMES = {
     [18888] = "Brigand's Shovel",
     [25669] = 'Crab Cap +1',
     [11009] = "Shaper's Shawl",
+    [ 9426] = "Buccaneer's Chart",
+    [ 9420] = 'Rusty Fishing Hook',
 };
 
 -- Display name for an id: live API name from fishdb (catalog-identical), else
@@ -696,11 +709,16 @@ function M.render(deps, availW)
             local note = row.gear and expertNote(row.id, 'Crooked Jones gear') or nil;
             itemLine(deps, row.id, isOwned and 'owned' or 'dim', note);
         else
-            -- no id: not equipment (or not an item at all). No ownership
-            -- claim -- we cannot see a mount in a bag. renderIcon(nil) still
-            -- reserves the icon's space and SameLines, so these names start
-            -- on the same x as the rows that have art.
-            if deps ~= nil and type(deps.renderIcon) == 'function' then
+            -- No id: not an item at all, so no ownership claim -- we cannot
+            -- see a mount in a bag. Its art is a file (bg-wiki's icon) rather
+            -- than a client resource; when the file is missing renderIcon(nil)
+            -- still reserves the icon's space and SameLines, so the name keeps
+            -- the same x as the rows that have art.
+            local h = (row.icon ~= nil and _ftok) and filetex.handle(row.icon) or nil;
+            if h ~= nil then
+                imgui.Image(h, { 18, 18 });
+                imgui.SameLine(0, 6);                  -- renderIcon's own spacing
+            elseif deps ~= nil and type(deps.renderIcon) == 'function' then
                 deps.renderIcon(nil, 18);
             end
             imgui.TextColored(COL_DIM, esc(row.n));

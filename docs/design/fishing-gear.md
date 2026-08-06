@@ -64,18 +64,28 @@ where "what do they buy" belongs, fishing gear or not:
 |---|---|---|---|
 | Brigand's Shovel | 5,000 | 18888 | required for Treasure Hunts (a HELM staff) |
 | Crab Cap +1 | 8,000 | 25669 | crab costumes |
-| Buccaneer's Chart | 10,000 | — | spawns an encounter in Cape Terrigan |
+| Buccaneer's Chart | 10,000 | 9426 | spawns an encounter in Cape Terrigan |
 | **Brigand's Eyepatch** | **12,000** | **28443** | **the fishing piece — "Expert Angler"+2** |
 | Red Crab Mount | 15,000 | — | ACE only |
 | Shaper's Shawl | 15,000 | 11009 | CW only |
-| Rusty Fishing Hook | 20,000 | — | Fishing ultimate-weapon material |
+| Rusty Fishing Hook | 20,000 | 9420 | Fishing ultimate-weapon material |
 
-Three rows have **no catalog id** — the Chart and the Hook are not equipment, the mount is
-not an item at all — so they draw as priced lines with no icon and no ownership state.
-That is deliberate: we cannot see a mount in a bag, and inventing an id to fill the icon
-column would be a lie the rest of the panel never tells. The three that DO have ids get
-the usual green-when-owned, because "I already bought the shovel" is exactly what the
-list is for. Only the Eyepatch counts toward coverage.
+**The Chart and the Hook are live ids that dlac's catalog does not carry** (Henrik,
+`catseyexi.com/item/9426` and `/9420`, 2026-08-06) — the catalog is equipment, and these
+are general items. **Do not "correct" them against the public server clone**: it holds
+`woodworking_set_94` at 9420 and `smithing_set_80` at 9426. The live DB repurposed both
+ids, the same collision the augment and Garrison-latent work hit; the client resource is
+the authority at runtime and it is what draws the icon and resolves the name.
+`SHOP_NAMES` in fishui is only the headless/last-resort spelling and sits UNDER the
+client resource, never over it.
+
+**The mount has no id because it is not an item.** Its art is `assets\redcrab.png`
+(bg-wiki's icon) through `filetex`, the restockui crate-icon precedent; a missing file
+means the row draws without art, never an error. It carries no ownership state either —
+we cannot see a mount in a bag, and inventing an id to fill the icon column would be a
+lie the rest of the panel never tells. Every row that HAS an id gets the usual
+green-when-owned, because "I already bought the shovel" is exactly what the list is for.
+Only the Eyepatch counts toward coverage.
 
 The wiki also frames Expert Angler the way the item card does: **+1 per increment = +10%
 daily capacity, multiplicative**, which is exactly the cx4 = N x 10 / cx5 = N shape in

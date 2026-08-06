@@ -9373,3 +9373,28 @@ when it is there to ask.
 **Tests:** `FS12b3`-`FS12b7` — every price on the panel, the three id-less rows present
 by name, the note naming Crooked Jones, and the note NOT containing "venture". Suites
 6969 + 1320.
+
+**Addendum (`2026.08.06g`) — two of the three id-less rows had ids after all.** Henrik
+sent `catseyexi.com/item/9426` (Buccaneer's Chart) and `/9420` (Rusty Fishing Hook), plus
+the Red Crab Mount icon bg-wiki uses. So the Chart and the Hook draw their real art and
+green when owned; only the mount stays id-less, and it is the one row that genuinely has
+no item behind it.
+
+**The trap in those two ids, recorded because it will come back.** They are absent from
+the dlac catalog (which is equipment; both are general items) AND the public server clone
+answers for them with something else entirely -- `woodworking_set_94` at 9420,
+`smithing_set_80` at 9426. A future reader who greps the clone to "check" these will
+find confident wrong answers. This is the same live-DB id repurposing the augment work
+and the Garrison latents hit; the clone is base-LSB and the live DB reuses ids freely.
+The comment in fishui says so at the table, where the temptation to fix will be.
+
+**The mount art is a FILE.** `assets\redcrab.png` through filetex (the restockui crate-icon
+precedent) -- a mount has no item id to draw from. Missing file = the row draws without
+art, never an error, and `renderIcon(nil, 18)` still reserves the icon column so the name
+keeps its x. **The PNG itself is owed**: Claude cannot write an image it was shown in
+chat, so Henrik drops the file at `Ashita\addons\dlac\assets\redcrab.png` and it appears
+with no code change.
+
+**Tests:** the smoke harness renderIcon records the ids it is ASKED for now -- the only
+visible sign a catalog-less row is wired at all. `FS12b5a`/`FS12b5b` (Chart and Hook ask
+by live id), `FS12b5c` (the mount reserves the column with no art). Suites 6969 + 1323.

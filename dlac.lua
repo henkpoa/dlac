@@ -18,7 +18,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.08.06f';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.08.06g';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
                                 -- (03f = engine v163: the contest explains its own plan;
                                 --  03g = one floating tray: Teleports + the E-Box crates;
@@ -149,7 +149,14 @@ addon.version = '2026.08.06f';  -- date of the last shipped change (Ashita print
                                 --  Eyepatch venture gear AND gets its percent
                                 --  signs back: SetTooltip is printf, and the
                                 --  bare '%' had been eating the character
-                                --  after it since the note shipped)
+                                --  after it since the note shipped;
+                                --  06g = ...and the Stash rows get their art:
+                                --  the Chart and the Hook by LIVE item id
+                                --  (9426 / 9420 -- ids the catalog does not
+                                --  carry and the public server clone gives to
+                                --  other items entirely), the Red Crab Mount
+                                --  from assets\redcrab.png, because a mount
+                                --  is not an item to have an id at all)
 addon.desc    = 'Gear sets, triggers and live stats with level scaling -- dlac equips your gear itself.';
 
 -- Load BEACON ('/dl check' field round, 2026-07-23): written by PLAIN io at

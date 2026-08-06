@@ -4987,8 +4987,13 @@ end)();
     local ok, fui = pcall(require, 'dlac\\ui\\fishui');
     check('FS1 fishui re-requires against a stub imgui', ok and type(fui.renderSearch), 'function');
     if ok and type(fui._target) == 'table' then
+        -- renderIcon records the ids it is asked for: the Sinister Stash rows
+        -- are keyed by LIVE ids that dlac's catalog does not carry, so "did
+        -- this row ask for an icon at all" is the only way to see them.
+        local iconIds = {};
         local deps = { ownedCounts = function() return { [17386] = 1, [17403] = 12 }; end,
-                       renderIcon = nop, itemTooltip = nop,
+                       renderIcon = function(id) iconIds[#iconIds + 1] = id or 'none'; end,
+                       itemTooltip = nop,
                        lookupByName = function() return nil; end };
 
         check('FS2 a closed target window draws nothing', (function()
@@ -5062,10 +5067,23 @@ end)();
             if patchTipHas(texts, want) then shopSeen = shopSeen + 1; end
         end
         check('FS12b4 every Sinister Stash price is on the panel', shopSeen, 6);
-        check('FS12b5 ...including the rows with no catalog id',
+        check('FS12b5 ...including the items dlac\'s catalog does not carry',
               patchTipHas(texts, 'Rusty Fishing Hook')
               and patchTipHas(texts, 'Red Crab Mount')
               and patchTipHas(texts, "Buccaneer's Chart"), true);
+        -- Chart 9426 / Hook 9420 are LIVE ids (Henrik, 2026-08-06): absent from
+        -- the catalog, so the ONLY visible sign they are wired is that the row
+        -- asks the icon service for them. The mount asks for nil -- it has no
+        -- id to ask with, and its art comes from assets\redcrab.png instead.
+        local askedChart, askedHook, reservedBlank = false, false, false;
+        for _, id in ipairs(iconIds) do
+            if id == 9426 then askedChart = true; end
+            if id == 9420 then askedHook = true; end
+            if id == 'none' then reservedBlank = true; end
+        end
+        check('FS12b5a the Chart draws from its live id', askedChart, true);
+        check('FS12b5b the Hook draws from its live id',  askedHook, true);
+        check('FS12b5c the mount still reserves the icon column', reservedBlank, true);
         -- and the tooltip stops calling it venture gear
         check('FS12b6 the Eyepatch note names the right economy',
               patchTip and patchTip:find('Crooked Jones gear', 1, true) ~= nil, true);
