@@ -9625,3 +9625,41 @@ stub imgui for stack balance, and the Equipped tab's off-job branch proven to re
 it reaches the live grid). Suites **7015 + 1362**.
 
 **Owed:** a field round. Nothing here has been in front of the client yet.
+
+## Session "a Halvung Trove, and one fewer fifth of a second" (2026-08-06, `2026.08.06m`)
+
+**Theme:** the first field word on the troves — Henrik: *"I tried troves now, it worked.
+Not all of them yet, but the halvung trove worked just fine. Think we can also tweak the
+use timer down 0.2 seconds."* Two things landed, and the throwaway half of the sentence was
+the interesting one.
+
+**The timer.** `M.SETTLE` 1.2 → **1.0**. That constant has now been 0.6, 1.6, 1.2 and 1.0,
+and every one of those was a number Henrik gave after a run — which is the only kind it
+should ever take. Nobody has measured what a box costs the client, and the count-drop
+confirm is what actually paces the loop; SETTLE is only headroom for the inventory to
+finish being written after a payout of up to five items.
+
+**"The halvung trove" is the fourth client-vs-server name split.** There is no Halvung
+Trove in the server table: 6556 is `Troll Trove`. Trolls come from Halvung — and the
+neighbouring **Hoard** family (`Mamook Hoard` 3063, `Halvung Hoard` 3064, `Arrapago Hoard`
+3065) is named for the REGIONS while the Troves are named for the RACES. So the client
+naming a trove by region is exactly the shape you would expect, and it is the same trap as
+HELM's `Excavation Point` / `Excav. Point` and the four `Gob. Giftbox` rungs from an hour
+earlier. `halvung trove` is on the ladder. The matching `mamook` / `arrapago` spellings for
+6554 / 6555 are **not** — they are a pattern guess, and a guess is not what that list is
+for. They go in when someone reads them in game.
+
+**Why an alias matters where the ORDER does not, which is the reusable half.** Trove order
+is admittedly arbitrary — nobody has priced the payouts — so "which trove opens first"
+is worth nothing. But an unrecognised box classifies as `#LADDER + 1`, and that is **above
+every giftbox**. The tray draws the highest rung you hold. So a trove the ladder does not
+know would take the icon off the grand giftbox and open after it, quietly undoing the one
+arrangement Session I field-checked. *An "arbitrary" ordering still has a load-bearing end.*
+`GB1q` pins that consequence directly, so the next person to shrug at a missing alias has
+to argue with a test.
+
+**Tests:** `GB1p` (Halvung is a KNOWN rung, not an unknown one), `GB1q` (an unknown box
+outranks the grand giftbox — the cost of a miss), and the GB rank fixtures shifted by one
+for the new entry. Suites **7017 + 1362**, both interpreters. Field checks: **J2 holds for
+the troves**, I5 re-based on 1.0s, and J1 narrows to one question — what does the game call
+6554 and 6555?

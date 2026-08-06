@@ -222,13 +222,25 @@ raise has not been run). What is unfielded is the icon.
       of the tray and Store is one click with no confirm.
 - [ ] **I4 — the click does what the command does.** Clicking the icon runs the same open-all
       as `/dl giftbox` (it issues the command rather than duplicating the logic).
-- [ ] **I5 — the longer settle still completes a run.** 1.2s between opens: a stack of several
-      boxes should still empty without stalling or double-firing. If lag still bothers it, this
-      is one number in `feature/giftbox.lua` (`M.SETTLE`) and any decimal is honoured.
+- [ ] **I5 — the settle still completes a run.** **1.0s** between opens as of `2026.08.06m`
+      (0.6 → 1.6 → 1.2 → 1.0, every step of it a field call): a stack of several boxes should
+      still empty without stalling or double-firing. If lag bothers it, this is one number in
+      `feature/giftbox.lua` (`M.SETTLE`) and any decimal is honoured to the frame.
 
 ---
 
-## Session J — the other three box families (`2026.08.06k`)
+## Session J — the other three box families (`2026.08.06m`)
+
+> **PARTLY ANSWERED, 2026-08-06.** Henrik: *"I tried troves now, it worked. Not all of them
+> yet, but the halvung trove worked just fine."* So **J2 holds for the troves** — one run,
+> one open, no stall. And J1 got its first live answer, which is the interesting half: he
+> read the box as a **Halvung** Trove, and the server table has no such item (6556 is
+> `Troll Trove`). Trolls come from Halvung, and the neighbouring **Hoard** family
+> (`Mamook Hoard` 3063 / `Halvung Hoard` 3064 / `Arrapago Hoard` 3065) is named for the
+> REGIONS — so the client naming troves by region is exactly the expected shape. The
+> `halvung trove` alias is on the ladder; the matching `mamook` / `arrapago` spellings are
+> **not**, because they are a pattern guess and this list does not take guesses. J1 below is
+> now: read the other two.
 
 `/dl giftbox` now opens **eleven** items in one run — the four Goblin Giftboxes, the
 **Goblin Gatherbox**, the **Tiny / Timeworn / Titanic Tackleboxes** and the **Mamool Ja /
@@ -260,9 +272,12 @@ is for.
 
 - [ ] **J1 — the client agrees.** Hover any one of these in your inventory and read the
       name the game gives it. If it matches the table above, the whole naming question is
-      closed for all eleven. If it does not — that is the fourth instance of the
-      server/client split and the exact string goes into `M.LADDER` in
-      `feature/giftbox.lua`.
+      closed for that family. **It already failed once** — 6556 reads as a *Halvung* Trove,
+      not a `Troll Trove`, which is the fourth instance of the server/client split. So the
+      two that matter now are **6554 and 6555**: are they `Mamool Ja` / `Lamia`, or
+      `Mamook` / `Arrapago`? Either answer is one line in `M.LADDER`
+      (`feature/giftbox.lua`), and until it is read the two sort as unknown — which
+      **outranks the giftboxes** and takes the tray icon off the grand box (see J4).
 - [ ] **J1b — they are seen.** With several kinds in your bag, `/dl giftbox status` must
       count every one. A count short by one is the bug, and the missing one names itself by
       comparison against the table.

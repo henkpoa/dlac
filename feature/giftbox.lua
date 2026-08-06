@@ -70,9 +70,11 @@ M.NEED_FREE = 6;   -- strictly MORE than 5
 -- of waiting is seconds while the cost of firing again is a duplicate use.
 M.CONFIRM_TIMEOUT = 15.0;
 -- The beat after a CONFIRMED open, before the next fire. 0.6 shipped, raised to
--- 1.6 after Henrik's first field run ("I suspect lag may create issues"), then
--- settled at 1.2 (his call, same day) -- enough headroom without making a stack
--- of ten feel slow.
+-- 1.6 after Henrik's first field run ("I suspect lag may create issues"), cut to
+-- 1.2 the same day, and to 1.0 on 2026-08-06 -- his call again, after a live
+-- trove run: "think we can also tweak the use timer down 0.2 seconds". Each of
+-- those was a FIELD number, which is the only kind this constant should ever
+-- take; nobody has measured what a box actually costs the client.
 --
 -- Worth being clear about what this does and does not protect: the count-drop
 -- confirm already proves the previous use landed, so this is not the pacing --
@@ -83,8 +85,8 @@ M.CONFIRM_TIMEOUT = 15.0;
 --
 -- Any decimal is honoured to the FRAME: tickSettle is called from d3d_present
 -- every frame and compares os.clock() against settleAt, so it is not rounded to
--- POLL (0.25) or to anything else -- 1.2 means 1.2, +/- one frame.
-M.SETTLE          = 1.2;
+-- POLL (0.25) or to anything else -- 1.0 means 1.0, +/- one frame.
+M.SETTLE          = 1.0;
 M.POLL            = 0.25;
 
 -- How stale the tray's cached bag snapshot may get. The tray's gate contract
@@ -131,13 +133,30 @@ M.SCAN_EVERY = 2.0;
 -- client almost certainly says the same thing -- but "almost certainly" is
 -- worth four dead array entries, and only one of each pair can ever match.
 --
+-- `halvung trove` is the FOURTH instance, reported live: Henrik opened one on
+-- 2026-08-06 and called it "the halvung trove", and no such item exists in the
+-- server table -- 6556 is `Troll Trove` there. Trolls come from Halvung, and
+-- the neighbouring Hoard family (3063-3065) is named for the REGIONS -- Mamook,
+-- Halvung, Arrapago -- so the client naming a trove for the region is exactly
+-- the shape you would expect. Only that one is listed: the matching `mamook` /
+-- `arrapago` spellings for 6554/6555 are a guess off a pattern, and a guess is
+-- not what this list is for. They go in when someone reads them in game.
+--
+-- WHY AN ALIAS MATTERS EVEN WHERE THE ORDER DOES NOT. Trove order is admittedly
+-- arbitrary, so who cares which opens first -- but an unrecognised box gets
+-- #LADDER + 1, which is ABOVE the giftboxes, and the tray draws the highest
+-- rung you hold. A trove the ladder does not know would therefore take the
+-- icon off the grand giftbox and open after it, quietly undoing the one
+-- arrangement Session I field-checked. That is the cost of a missing alias
+-- here, and it is why they are worth adding on nothing more than a report.
+--
 -- Ids, for provenance only -- the logic is name-based on purpose, so a box
 -- CatsEyeXI adds tomorrow opens without an addon update:
 --   tackleboxes 5110 / 5946 / 5112 · gatherbox 6345
 --   troves 6554 / 6555 / 6556      · giftboxes 5109 / 5111 / 6264 / 6558
 M.LADDER = { 'tiny tacklebox', 'timeworn tacklebox', 'titanic tacklebox',
              'goblin gatherbox',
-             'mamool ja trove', 'lamia trove', 'troll trove',
+             'mamool ja trove', 'lamia trove', 'troll trove', 'halvung trove',
              'gob. giftbox (sm)', 'goblin giftbox (small)',
              'gob. giftbox (md)', 'goblin giftbox (medium)',
              'gob. giftbox (lg)', 'goblin giftbox (large)',
