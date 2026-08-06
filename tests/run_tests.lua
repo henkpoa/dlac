@@ -13470,8 +13470,17 @@ end)();
 
 -- ---------------------------------------------------------------------------
 -- GB. /dl giftbox -- open every reward box in inventory, stopping before there
---     is no room for the next payout. THREE FAMILIES since 2026-08-06: the
---     Goblin/Grand Giftboxes, the Goblin Gatherbox, and the tackleboxes.
+--     is no room for the next payout. FOUR FAMILIES since 2026-08-06: the
+--     Goblin Giftboxes, the Goblin Gatherbox, the tackleboxes and the troves.
+--
+--     THE NAMES ARE THE SERVER'S, pulled from the live item API rather than
+--     typed from memory -- and doing that is what exposed GB1a: the four
+--     giftbox rungs shipped as `Goblin Giftbox (Small)` / `Grand Giftbox` and
+--     the game has never called them that. The substring caught them anyway, so
+--     the feature worked while ranking all four unknown-sorts-last, which
+--     alphabetically opened the GRAND first. A test that asserts the ladder
+--     with the names the ladder itself invented can never see that, which is
+--     the reusable half: pin the fixtures to the SOURCE, not to the code.
 --
 --     The interesting half is NOT the pure gate, it is the pacing: the loop
 --     refuses to guess a delay and instead waits for the item's own count to
@@ -13483,41 +13492,60 @@ end)();
     local gb = dofile('feature/giftbox.lua');
     local savedAshita = AshitaCore;
 
-    check('GB1 a known box classifies onto the ladder', gb.classify('Goblin Giftbox (Small)'), 5);
-    check('GB1b ...case-insensitively', gb.classify('GOBLIN GIFTBOX (LARGE)'), 7);
-    check('GB1c the Grand box is the top rung', gb.classify('Grand Giftbox'), #gb.LADDER);
+    -- The REGRESSION. These four strings are what the item table says (ids
+    -- 5109 / 5111 / 6264 / 6558); before 2026-08-06 every one of them landed on
+    -- #LADDER + 1 and the "smallest first" rule was decorative.
+    check('GB1a the giftboxes classify under their REAL names, smallest first',
+        table.concat({ gb.classify('Gob. Giftbox (sm)'), gb.classify('Gob. Giftbox (md)'),
+                       gb.classify('Gob. Giftbox (lg)'), gb.classify('Gob. Giftbox (gr)') }, ','),
+        '8,10,12,14');
+    check('GB1 the long spelling is carried too, in case the client differs',
+        gb.classify('Goblin Giftbox (Small)'), 9);
+    check('GB1b ...case-insensitively', gb.classify('GOB. GIFTBOX (LG)'), 12);
+    check('GB1c the grand box is the top rung', gb.classify('Grand Giftbox'), #gb.LADDER);
     -- The substring match is what makes this survive the next box CatsEyeXI adds.
     check('GB1d an UNKNOWN giftbox is still ours, sorted last',
-        gb.classify('Goblin Giftbox (Colossal)'), #gb.LADDER + 1);
+        gb.classify('Gob. Giftbox (xl)'), #gb.LADDER + 1);
     check('GB1e ...and a normal item is not a box', gb.classify('Goblin Bread'), nil);
     check('GB1f nor is a nil name', gb.classify(nil), nil);
 
-    -- The 2026-08-06 families. Each is a SEPARATE substring, so none of them
+    -- The other three families. Each is a SEPARATE substring, so none of them
     -- rides on the giftbox match, and each sorts BELOW the giftboxes -- which
-    -- is what keeps the Grand Giftbox the tray's icon (GB14c).
+    -- is what keeps the grand giftbox the tray's icon (GB14c).
     check('GB1g the Gatherbox is ours', gb.classify('Goblin Gatherbox'), 4);
     check('GB1h the tackleboxes are ours, smallest first',
         table.concat({ gb.classify('Tiny Tacklebox'), gb.classify('Timeworn Tacklebox'),
                        gb.classify('Titanic Tacklebox') }, ','), '1,2,3');
     check('GB1i ...and every one of them sorts under the giftboxes',
-        gb.classify('Titanic Tacklebox') < gb.classify('Goblin Giftbox (Small)'), true);
+        gb.classify('Titanic Tacklebox') < gb.classify('Gob. Giftbox (sm)'), true);
     check('GB1j an unheard-of tacklebox still opens',
         gb.classify('Tarnished Tacklebox'), #gb.LADDER + 1);
     check('GB1k ...and a fishing rod is not a box', gb.classify('Halcyon Rod'), nil);
+    check('GB1l the troves are ours, in id order',
+        table.concat({ gb.classify('Mamool JA Trove'), gb.classify('Lamia Trove'),
+                       gb.classify('Troll Trove') }, ','), '5,6,7');
+    check('GB1m ...and they sort under the giftboxes too',
+        gb.classify('Troll Trove') < gb.classify('Gob. Giftbox (sm)'), true);
+    -- The negative that matters for `trove`/`box`: a real item from the same
+    -- table whose name is box-like and is NOT one of ours. `Beech Strongbox`
+    -- (2680) would be caught by any gate lazy enough to match on "box".
+    check('GB1n a Strongbox is not a box of ours', gb.classify('Beech Strongbox'), nil);
+    check('GB1o nor is a Forgotten Pouch', gb.classify('Frgtn. Pouch (head)'), nil);
 
     local FOUND = {
-        { name = 'Grand Giftbox',          rank = 8, count = 1 },
-        { name = 'Goblin Giftbox (Small)', rank = 5, count = 2 },
+        { name = 'Gob. Giftbox (gr)', rank = 14, count = 1 },
+        { name = 'Gob. Giftbox (sm)', rank = 8,  count = 2 },
     };
-    check('GB2 the smallest rung opens first', (gb.pickNext(FOUND) or {}).name, 'Goblin Giftbox (Small)');
+    check('GB2 the smallest rung opens first', (gb.pickNext(FOUND) or {}).name, 'Gob. Giftbox (sm)');
     check('GB2b an empty stack is not a candidate',
         (gb.pickNext({ { name = 'x', rank = 1, count = 0 },
                        { name = 'y', rank = 2, count = 1 } }) or {}).name, 'y');
     check('GB2c nothing at all -> nil', gb.pickNext({}), nil);
     check('GB2d across families the ladder still decides, and it is one run',
         (gb.pickNext({
-            { name = 'Grand Giftbox',  rank = gb.classify('Grand Giftbox'),  count = 1 },
-            { name = 'Tiny Tacklebox', rank = gb.classify('Tiny Tacklebox'), count = 1 },
+            { name = 'Gob. Giftbox (gr)', rank = gb.classify('Gob. Giftbox (gr)'), count = 1 },
+            { name = 'Troll Trove',       rank = gb.classify('Troll Trove'),       count = 1 },
+            { name = 'Tiny Tacklebox',    rank = gb.classify('Tiny Tacklebox'),    count = 1 },
         }) or {}).name, 'Tiny Tacklebox');
 
     -- The three outcomes of the gate are three different instructions to the
@@ -13531,12 +13559,15 @@ end)();
         (wSp:find('need 6', 1, true) ~= nil) and (wSp:find('have 5', 1, true) ~= nil), true);
     local pGo, cGo = gb.plan(FOUND, 6);
     check('GB5 six is enough', cGo, 'go');
-    check('GB5b ...and it picks the smallest', (pGo or {}).name, 'Goblin Giftbox (Small)');
+    check('GB5b ...and it picks the smallest', (pGo or {}).name, 'Gob. Giftbox (sm)');
 
     -- ---- the run, against a mutable bag -------------------------------------
+    -- The Id fields are opaque fixture handles, deliberately not the real
+    -- 5109/6558: classify never sees an id, and writing real ones here would
+    -- imply the feature keys on them. The NAMES are the live ones.
     local RES = {
-        [1] = { Name = { 'Goblin Giftbox (Small)' } },
-        [2] = { Name = { 'Grand Giftbox' } },
+        [1] = { Name = { 'Gob. Giftbox (sm)' } },
+        [2] = { Name = { 'Gob. Giftbox (gr)' } },
         [3] = { Name = { 'Goblin Bread' } },
     };
     local slots, cmds = {}, {};
@@ -13569,7 +13600,7 @@ end)();
     gb.start();
     check('GB7 starting fires exactly one use', #cmds, 1);
     check('GB7b ...for the smallest box, targeted at you',
-        cmds[1], '/item "Goblin Giftbox (Small)" <me>');
+        cmds[1], '/item "Gob. Giftbox (sm)" <me>');
 
     -- The count has NOT dropped yet: the server is still thinking. Nothing may
     -- fire. This is the assertion that a guessed delay would have failed.
@@ -13621,7 +13652,7 @@ end)();
     check('GB14 the snapshot sees boxes', pk.have, true);
     check('GB14b ...counting every one of them', pk.total, 3);
     check('GB14c ...and the icon is the HIGHEST rung held',
-        (pk.top or {}).name, 'Grand Giftbox');
+        (pk.top or {}).name, 'Gob. Giftbox (gr)');
 
     setBag(0, 0, 0, 30);                 -- bag emptied behind its back
     local cached = gb.peek(1000.5);
@@ -13635,12 +13666,12 @@ end)();
     setBag(1, 0, 0, 30);
     local only = gb.peek(2000);
     check('GB16 one rung held -> that rung is the icon',
-        (only.top or {}).name, 'Goblin Giftbox (Small)');
+        (only.top or {}).name, 'Gob. Giftbox (sm)');
 
     -- ---- a mixed bag, live ---------------------------------------------------
     -- The two properties that only show up when the families meet: the run is
     -- ONE run over all of them (a tacklebox is fired first because it sorts
-    -- lower), and the tray still draws the Grand Giftbox, which is the whole
+    -- lower), and the tray still draws the grand giftbox, which is the whole
     -- reason the giftboxes were left at the top of the ladder.
     RES[4] = { Name = { 'Timeworn Tacklebox' } };
     slots = { { Id = 2, Count = 1 }, { Id = 4, Count = 1 }, __size = 30 };
@@ -13651,8 +13682,8 @@ end)();
     gb.stop();
     gb._peekReset();
     local mixed = gb.peek(3000);
-    check('GB17b ...and the tray icon is still the Grand Giftbox',
-        (mixed.top or {}).name, 'Grand Giftbox');
+    check('GB17b ...and the tray icon is still the grand giftbox',
+        (mixed.top or {}).name, 'Gob. Giftbox (gr)');
     check('GB17c ...counting boxes of every family together', mixed.total, 2);
 
     AshitaCore = savedAshita;

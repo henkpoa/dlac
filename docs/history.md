@@ -9508,3 +9508,56 @@ that looks sharper or mushier than its neighbours. The pixel family had no good 
 sprite shimmers at both. It is copied byte-identical to `assets\redcrab.png` and the
 reasoning sits in the code comment, because "we have a 128px one, use that" is exactly
 the improvement someone will try.
+
+## Session "the troves, and four rungs that never matched" (2026-08-06, `2026.08.06k`)
+
+**Theme:** Henrik pasted three item URLs — `catseyexi.com/item/6554`, `6555`, `6556` —
+and asked for them in the box run. Adding them was ten minutes. Reading the item table to
+do it turned up a bug that had been shipping since 08-05.
+
+**The three are Troves:** `Mamool JA Trove` (6554), `Lamia Trove` (6555), `Troll Trove`
+(6556) — type 5 usables, stack 99. `trove` joins `giftbox`/`gatherbox`/`tacklebox` in
+`M.MATCH`, and they sort under the giftboxes like the other new families.
+
+**The bug: the four giftbox rungs have never matched anything.** `M.LADDER` has said
+`goblin giftbox (small)` … `grand giftbox` since the feature shipped. The game calls them
+**`Gob. Giftbox (sm)` / `(md)` / `(lg)` / `(gr)`** (5109 / 5111 / 6264 / 6558). The
+substring `giftbox` still caught all four, so nothing ever looked broken — they were simply
+classified as *unknown, sorts last*, which ranks them **alphabetically**: `(gr)`, `(lg)`,
+`(md)`, `(sm)`. So a stack of mixed giftboxes opened the **grand one first and the small
+one last** — the exact reverse of the rule the ladder exists to state, on a feature Henrik
+had already field-confirmed as working. It worked. It just never did the one thing the
+ordered list was there for.
+
+**Why no test could have caught it.** The GB fixtures asserted `classify('Goblin Giftbox
+(Small)') == 1` — the ladder's own invented string, checked against the ladder. Perfectly
+green, and perfectly circular. **A fixture is only evidence if it comes from the source the
+code will meet.** The names are now the API's, and `GB1a` pins all four abbreviated forms
+by rank; the long spellings stay on the ladder as aliases (dlac reads the CLIENT name and
+the API serves the SERVER's — three prior instances of those disagreeing, so four dead
+array entries is the cheap side of that bet).
+
+**How the item table was read, since this is repeatable.** `tools/apicrawl.py` already
+knows the per-id endpoint (`/api/item/<id>`), and the 22k-entry `tools/api_cache/` answered
+the first question for free — one grep found `Gob. Giftbox (md)` sitting at 5111 and the
+whole thing unravelled from there. The *search* endpoint is not in any tool: the site's own
+⌘K box calls **`/api/search/items?q=`**, found by typing into it with the browser open and
+reading the network log. `WebFetch` is 403'd by the site; the browser and plain
+`urllib` with a UA both work.
+
+**That search also priced the substrings, which was the open risk.** `giftbox` → 4 items,
+`tacklebox` → 3, `gatherbox` → 1, `trove` → 3. Fifteen items, no strays, across the live
+table. `trove` was the one worth checking — it is the shortest and least box-like word of
+the four — and `box` on its own would have been a disaster (50+ hits: `Beech Strongbox`,
+`Old Bolt Box`, `Ocl. Gearbox`, and the *Boxers* leg pieces). `GB1n`/`GB1o` pin two of
+those as negatives.
+
+**Ids are recorded as provenance only.** The logic stays name-based on purpose, so a box
+CatsEyeXI adds tomorrow opens with no addon update — the property that made this feature
+worth building the open-ended way in the first place.
+
+**Tests:** `GB1a` (the regression, all four rungs by their real names), `GB1`-`GB1o`
+re-aimed, `GB1l`/`GB1m` for the troves, `GB1n`/`GB1o` for the box-like negatives, `GB2`
+`GB2d` `GB5b` `GB7b` `GB14c` `GB16` `GB17b` re-based on live names. Suites **6994 + 1345**,
+both interpreters. Field checks J1-J5 rewritten around a name table; **J1 is now one hover**
+— read what the client calls any one of the eleven and the whole naming question closes.

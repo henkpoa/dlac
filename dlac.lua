@@ -18,7 +18,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.08.06j';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.08.06k';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
                                 -- (03f = engine v163: the contest explains its own plan;
                                 --  03g = one floating tray: Teleports + the E-Box crates;
@@ -172,7 +172,15 @@ addon.version = '2026.08.06j';  -- date of the last shipped change (Ashita print
                                 --  beside game item icons that are themselves
                                 --  32x32 downscaled -- the pixel-art variants
                                 --  are one 16px sprite upscaled and shimmer
-                                --  at any non-integer size)
+                                --  at any non-integer size;
+                                --  06k = the Mamool Ja, Lamia and Troll Troves
+                                --  join /dl giftbox -- and reading the live
+                                --  item table to add them showed the four
+                                --  giftbox rungs have NEVER matched: the game
+                                --  calls them Gob. Giftbox (sm/md/lg/gr), so
+                                --  the substring caught them while the ladder
+                                --  ranked all four unknown and opened the
+                                --  GRAND first, the reverse of the rule)
 addon.desc    = 'Gear sets, triggers and live stats with level scaling -- dlac equips your gear itself.';
 
 -- Load BEACON ('/dl check' field round, 2026-07-23): written by PLAIN io at
