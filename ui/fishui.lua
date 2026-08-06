@@ -32,19 +32,25 @@ local EXTRAS    = { 10925, 15452 };                        -- Fisher's Torque, F
 local HEAD_RING = { 25608, 39051 };                        -- Tlahtlamah, Angler's Ring
 local GUILD_GEAR = { 14195, 11337, 14400, 15554 };         -- Waders, Smock, Apron, Pelican Ring
 local MARINERS  = { { 26535, 26536 }, { 25986, 25987 },    -- Tunica, Gloves (base, +1)
-                    { 25899, 25900 }, { 25966, 25967 },    -- Hose, Boots
-                    { 28443 } };                           -- Brigands Eyepatch (no +1)
--- The Eyepatch is the VP set's HEAD -- row 5, which is the matrix's head row
--- (column 2 shows Tlahtlamah Glasses there). It has no +1, so its entry is a
--- one-id "pair"; owned() tolerates the missing second id.
--- Henrik REVERSED the 2026-07-18 undisplayed ruling on 2026-08-06 ("I was
--- wrong about the eyepatch") -- a PLAYER has one and sent its card, so the
--- "nothing in-game mentions them" premise died with it (Henrik does not own
--- one; the field check goes to that player).
--- Still NOT displayed: Halieutica 20945 and the
--- legendary-rod +1s 19320/19321 (they still look unobtainable here). fishdb
--- keeps their data and autoPick still honours one if it lands in a bag --
--- they are only invisible here.
+                    { 25899, 25900 }, { 25966, 25967 } };  -- Hose, Boots
+-- Crooked Jones: a SEPARATE fishing economy, not the VP set (Henrik,
+-- 2026-08-06, bg-wiki CatsEyeXI_Systems/Fishing #Crooked_Jones). He trades
+-- three named fish a day for DOUBLOONS in Norg (H-8) -- fishing 20+, and the
+-- Sinister Stash stalls in Norg and Lower Jeuno are where they spend. The
+-- Eyepatch is 12,000 of them.
+--   The round-2 research had it as "the Mariners hat analog" purely because
+-- id 28443 sits beside HELM's Plain block the way the Mariners ids do. It
+-- does not: ADJACENT IDS ARE NOT AN ACQUISITION PATH. It gets its own
+-- section under the matrix rather than a column that says VP.
+--   Displayed at all since 2026-08-06, when Henrik reversed the 07-18 ruling
+-- ("I was wrong about the eyepatch") -- a PLAYER has one and sent its card,
+-- so the "nothing in-game mentions them" premise died with it (Henrik does
+-- not own one; the field check goes to that player). Still NOT displayed:
+-- Halieutica 20945 and the legendary-rod +1s 19320/19321 (they still look
+-- unobtainable here). fishdb keeps their data and autoPick still honours one
+-- if it lands in a bag -- they are only invisible here.
+local JONES_GEAR = { 28443 };                              -- Brigands Eyepatch
+local JONES_COST = { [28443] = '12,000 doubloons' };
 local LEGENDARY_RODS = { 17386, 17011 };                   -- Lu Shang's, Ebisu
 local LEG_ANY = { [17386] = true, [19320] = true, [17011] = true, [19321] = true };
 local SPECIAL_RODS = { [17012] = true, [17013] = true, [19319] = true };  -- Judge's, Basket, MMM
@@ -53,10 +59,10 @@ local NO_SUGGEST = { [17012] = true, [17013] = true, [19319] = true,      -- spe
 
 local ADVANCED = {};   -- any of these owned = coverage level 3
 for _, id in ipairs(GUILD_GEAR) do ADVANCED[id] = true; end
-for _, pair in ipairs(MARINERS) do
-    ADVANCED[pair[1]] = true;
-    if pair[2] ~= nil then ADVANCED[pair[2]] = true; end   -- the Eyepatch has no +1
-end
+for _, pair in ipairs(MARINERS) do ADVANCED[pair[1]] = true; ADVANCED[pair[2]] = true; end
+-- Doubloon gear counts as the currency tier too: level 3 reads "guild/venture"
+-- but what it MEANS is "you are past the craftable set and into a shop".
+for _, id in ipairs(JONES_GEAR) do ADVANCED[id] = true; end
 for _, id in ipairs(HEAD_RING) do ADVANCED[id] = true; end
 
 -- ---------------------------------------------------------------------------
@@ -74,9 +80,7 @@ local function counts(deps)
     local ok, t = pcall(deps.ownedCounts);
     return (ok and type(t) == 'table') and t or nil;
 end
--- id may be nil (the Mariners head has no +1 to ask about) -- that is "not
--- owned", never an error.
-local function owned(oc, id) return id ~= nil and oc ~= nil and (oc[id] or 0) >= 1; end
+local function owned(oc, id) return oc ~= nil and (oc[id] or 0) >= 1; end
 
 -- Worn-at-once Fish+ total: per slot the best owned Mod::FISH piece. The
 -- math lives in fishcalc.wornFishTotal now (the fish bar's rod-dropdown
@@ -620,6 +624,27 @@ function M.render(deps, availW)
         else
             imgui.Dummy({ 0, 1 });
         end
+    end
+    imgui.Spacing();
+
+    -- ---- Crooked Jones (doubloons) ----------------------------------------
+    -- Its own row, not a fifth column: doubloons are a third currency beside
+    -- GP and VP, and the matrix's columns ARE the currencies. Green when
+    -- owned, no glow -- the glow ruling names the Mariners set specifically
+    -- (2026-07-18), and this is not it.
+    imgui.TextColored(COL_HEADER, 'CROOKED JONES (doubloons)');
+    if imgui.IsItemHovered() then
+        imgui.SetTooltip('Norg (H-8): trade him the day\'s three named fish for doubloons\n'
+            .. '(fishing 20+; the Sinister Stash stalls in Norg and Lower Jeuno spend them).');
+    end
+    imgui.Separator();
+    for _, id in ipairs(JONES_GEAR) do
+        local note = expertNote(id);
+        if JONES_COST[id] ~= nil then
+            note = (note ~= nil) and (note .. '\nCrooked Jones: ' .. JONES_COST[id])
+                                  or ('Crooked Jones: ' .. JONES_COST[id]);
+        end
+        itemLine(deps, id, owned(oc, id) and 'owned' or 'dim', note);
     end
     imgui.Spacing();
 

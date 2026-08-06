@@ -9297,3 +9297,38 @@ coverage 3. Suites 6947 + 1310, both interpreters.
 
 **Field round owed on both halves, by the card's owner** — the teleport row and the
 panel row are both unclicked, and neither can be checked from Henrik's own bags.
+
+**Correction, same day (`2026.08.06d`) — it was never venture gear.** Henrik, with the
+page: *"This one is actually Crooked Jones, another Fishing points / mechanic"*
+(bg-wiki `CatsEyeXI_Systems/Fishing#Crooked_Jones`). So the entry above is wrong where it
+calls the Eyepatch "the head piece of fishing's VP tier", and the panel was wrong to put
+it in a column headed **MARINERS (VP)**.
+
+**Crooked Jones is a third fishing currency.** He stands in Norg (H-8) and names three
+fish a day — one lower-tier (max 60), one middle (max 40), one legendary (max 15) —
+trading them for DOUBLOONS (fishing 20+; +100 for maxing all three), spent at the
+Sinister Stash stalls in Norg and Lower Jeuno. The Eyepatch is 12,000 of them. Its
+enchantment lands you in Norg, which is where Jones stands — the item is coherent with
+its own shop, and that was visible the whole time.
+
+**Where the false belief came from, because it is the reusable part.** The round-2
+research (07-18) found the Mariners ids interleaved with HELM's Plain block —
+25899/900, 25966/67, 25986/87, 26535/36 — read 28443 as the next one along, and wrote
+"Brigands Eyepatch is the hat analog" into the design doc. That inference was right four
+times and wrong the fifth, and **nothing in the id can tell those cases apart**. Id
+adjacency is evidence about the GENERATOR, never about the acquisition path. The design
+doc now carries the claim struck through with that lesson attached rather than quietly
+deleted.
+
+**Landed:** `MARINERS` is four pieces again; the Eyepatch moved to its own
+`CROOKED JONES (doubloons)` row under the matrix — not a fifth column, because the
+matrix's columns ARE the currencies and there is no width for a fourth. Green when
+owned, no glow (the glow ruling names Mariners specifically). Its tooltip carries the
+12,000 price, and the header hovers with where Jones stands and what he wants. It still
+joins `ADVANCED`: level 3 reads "guild/venture tier", but what it MEANS is "past the
+craftable set, into a shop", and doubloons are a shop. The nil-id guard added to
+`owned()` yesterday is gone with the one-id pair that needed it.
+
+**Tests:** `FS12b`-`FS12f` re-aimed — the Eyepatch draws under its own doubloon header
+and its note carries the price, which is the assertion that would have caught the
+original mistake (a Mariners row has no price line). Suites 6960 + 1312.

@@ -5032,15 +5032,28 @@ end)();
         if not pok then print('   fishui.render error: ' .. tostring(perr)); end
         check('FS12 the panel opens no window of its own', depth.win, 0);
         -- Brigands Eyepatch: Henrik reversed the undisplayed ruling 2026-08-06
-        -- ("I was wrong about the eyepatch"), so the Mariners column now has a
-        -- head row. It draws whether or not it is owned -- an unowned Mariners
-        -- piece is the dim row that tells you the tier exists.
-        local sawPatch, patchTip = false, nil;
-        for _, t in ipairs(texts) do if t == 'Brigands Eyepatch' then sawPatch = true; end end
+        -- ("I was wrong about the eyepatch"), so it draws -- in its OWN
+        -- Crooked Jones section, NOT the Mariners column (doubloons are a
+        -- third currency; the round-2 "hat analog" reading was id adjacency,
+        -- not an acquisition path). It draws owned or not.
+        local function patchTipHas(list, needle)
+            for _, t in ipairs(list) do
+                if t:find(needle, 1, true) then return true; end
+            end
+            return false;
+        end
+        local sawPatch, sawJones, patchTip = false, false, nil;
+        for _, t in ipairs(texts) do
+            if t == 'Brigands Eyepatch' then sawPatch = true; end
+            if t == 'CROOKED JONES (doubloons)' then sawJones = true; end
+        end
         for _, t in ipairs(tips) do
             if t:find('Fatigue Limit +20%', 1, true) then patchTip = t; end
         end
-        check('FS12b the Mariners column draws its head piece', sawPatch, true);
+        check('FS12b the panel draws the Eyepatch', sawPatch, true);
+        check('FS12b2 ...under its own doubloon header', sawJones, true);
+        check('FS12b3 ...priced in the currency it actually costs',
+              patchTipHas(tips, '12,000 doubloons'), true);
         check('FS12c ...with the Expert Angler note', patchTip ~= nil, true);
         -- The one carrier with NO Fish mod: the note must not promise skill.
         check('FS12d ...that does not claim a Fishing skill line',
@@ -5050,9 +5063,11 @@ end)();
         local sawHalieutica = false;
         for _, t in ipairs(texts) do if t:find('Halieutica', 1, true) then sawHalieutica = true; end end
         check('FS12e the rest of the undisplayed ruling still holds', sawHalieutica, false);
-        -- ...and it counts as the venture tier it is: base four dressed + the
-        -- Eyepatch alone = coverage 3.
-        check('FS12f the Eyepatch is venture-tier coverage', fui.coverage({
+        -- ...and it still counts as a currency-tier piece: base four dressed
+        -- plus the Eyepatch alone = coverage 3. Level 3's LABEL says
+        -- "guild/venture"; what it means is "past the craftable set, into a
+        -- shop", and doubloons are a shop.
+        check('FS12f the Eyepatch is currency-tier coverage', fui.coverage({
             ownedCounts = function()
                 return { [13808] = 1, [14070] = 1, [14292] = 1, [14171] = 1, [28443] = 1 };
             end }), 3);

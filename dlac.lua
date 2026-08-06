@@ -18,7 +18,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.08.06c';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.08.06d';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
                                 -- (03f = engine v163: the contest explains its own plan;
                                 --  03g = one floating tray: Teleports + the E-Box crates;
@@ -133,10 +133,14 @@ addon.version = '2026.08.06c';  -- date of the last shipped change (Ashita print
                                 --  stays visible to set building, being real
                                 --  fishing gear;
                                 --  06b = ...and it displays in the fishing
-                                --  panel too, as the Mariners column's head
-                                --  row -- the undisplayed ruling rested on
-                                --  "nothing in-game mentions them", and a
-                                --  player turned up holding one)
+                                --  panel too -- the undisplayed ruling rested
+                                --  on "nothing in-game mentions them", and a
+                                --  player turned up holding one;
+                                --  06d = ...in its OWN Crooked Jones row, not
+                                --  the Mariners column: it is bought with
+                                --  DOUBLOONS in Norg, a third fishing
+                                --  currency, and the id that sits beside the
+                                --  venture block never meant otherwise)
 addon.desc    = 'Gear sets, triggers and live stats with level scaling -- dlac equips your gear itself.';
 
 -- Load BEACON ('/dl check' field round, 2026-07-23): written by PLAIN io at

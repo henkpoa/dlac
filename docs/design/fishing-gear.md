@@ -42,11 +42,26 @@ end-game); Halieutica, Brigands Eyepatch and the legendary-rod +1s are NOT displ
 an owned one); owning Lu Shang's or Ebisu greens the whole standard rod ladder.
 
 **Round-3 amendment (2026-08-06):** the Eyepatch is OUT of that exclusion — a player
-owns one, so it displays as the Mariners column's **head** row (row 5, aligned with
-Tlahtlamah Glasses in the Angler's column), glowing like the rest of the VP set and
-counting toward coverage level 3. It is the only carrier with **no Fish mod at all**, so
-its Expert Angler tooltip says so rather than implying a skill line it does not have.
+owns one, so it displays. It gets **its own row under the matrix**, headed `CROOKED
+JONES (doubloons)`, not a cell in the Mariners column: the matrix's columns ARE the
+currencies (craft / +1 / GP / VP) and doubloons are a third one. Green when owned, no
+glow — the glow ruling names the Mariners set specifically. It still counts toward
+coverage 3 (level 3's label says "guild/venture"; what it means is "past the craftable
+set, into a shop"). It is the only carrier with **no Fish mod at all**, so its Expert
+Angler tooltip says so rather than implying a skill line it does not have.
 Halieutica and the rod +1s keep the round-2 ruling.
+
+**Crooked Jones** (bg-wiki `CatsEyeXI_Systems/Fishing#Crooked_Jones`, Henrik 2026-08-06)
+is a fishing economy the design doc had never covered: he stands in **Norg (H-8)** and
+each day names three fish — one lower-tier (max 60), one middle (max 40), one legendary
+(max 15) — trading them for **doubloons**; fishing 20+ to play, +100 doubloons for
+maxing all three. The **Sinister Stash** stalls in Norg and Lower Jeuno spend them.
+Brigands Eyepatch is 12,000. The rest of that shop is NOT fishing gear and is not
+modelled here (Brigand's Shovel 5,000 for treasure hunts, Crab Cap +1 8,000,
+Buccaneer's Chart 10,000, Rusty Fishing Hook 20,000 — ultimate-weapon material, Red Crab
+Mount 15,000 ACE-only). The wiki also frames Expert Angler the way the item card does:
+**+1 per increment = +10% daily capacity, multiplicative**, which is exactly the
+cx4 = N x 10 / cx5 = N shape in fishdb.
 
 Mechanics the addon USES (file:line = fishingutils.cpp unless noted):
 
@@ -124,8 +139,13 @@ Mechanics the addon USES (file:line = fishingutils.cpp unless noted):
 **The Mariners set is fishing's VP tier** (generator discovery 2026-07-18): its ids
 interleave HELM's Plain block — Plain Hose 25897/98 then **Mariners Hose 25899/25900
 (+1)**, Plain Boots 25964/65 then **Mariners Boots 25966/67**, Plain Gloves 25984/85 then
-**Mariners Gloves 25986/87**, Plain Tunica 26533/34 then **Mariners Tunica 26535/36** —
-and **Brigands Eyepatch 28443** is the hat analog. All carry Fish+1 (+2 on +1 pieces);
+**Mariners Gloves 25986/87**, Plain Tunica 26533/34 then **Mariners Tunica 26535/36**.
+~~and **Brigands Eyepatch 28443** is the hat analog~~ — **WRONG, corrected 2026-08-06**:
+the Eyepatch is **Crooked Jones** gear, bought with doubloons, an entirely different
+economy (see below). Its id sits beside the block and nothing more. **Adjacent ids are
+not an acquisition path** — the generator discovery was a real pattern for the four
+Mariners pieces and a coincidence for the fifth id, and nothing in the id alone can tell
+the two apart. All the Mariners pieces carry Fish+1 (+2 on +1 pieces);
 Tunica/Boots (+1s) add cx-mods 2004/2005 (10/1 base, 20/2 on +1). The panel's Mariners
 column is the Plain column's sibling; VP prices field-verifiable (likely 3000/hat 5000).
 **Halieutica 20945 is NOT a rod** — a Main-slot weapon (polearm-skill fishing spear):
@@ -329,7 +349,7 @@ the test fixtures.
 - ~~Are Lu Shang's +1 / Ebisu +1 / Halieutica / Brigands Eyepatch obtainable at all?~~
   **The Eyepatch is** — a player has one (2026-08-06): "I was wrong about the eyepatch."
   The round-2 undisplayed ruling rested on "nothing in-game mentions them", so it died
-  with the premise and the Eyepatch now DISPLAYS (Mariners column, head row). The other
+  with the premise and the Eyepatch now DISPLAYS (its own Crooked Jones row). The other
   three keep the ruling until one of them turns up the same way.
 - Does `!ventures fishing` exist as a sub-command (vs plain `!ventures`)? Field test 1.
 - Ashita rank bits for fishing cap: if `GetCraftSkill(0)` exposes rank like retail
