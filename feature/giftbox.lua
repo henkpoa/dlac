@@ -133,22 +133,23 @@ M.SCAN_EVERY = 2.0;
 -- client almost certainly says the same thing -- but "almost certainly" is
 -- worth four dead array entries, and only one of each pair can ever match.
 --
--- `halvung trove` is the FOURTH instance, reported live: Henrik opened one on
--- 2026-08-06 and called it "the halvung trove", and no such item exists in the
--- server table -- 6556 is `Troll Trove` there. Trolls come from Halvung, and
--- the neighbouring Hoard family (3063-3065) is named for the REGIONS -- Mamook,
--- Halvung, Arrapago -- so the client naming a trove for the region is exactly
--- the shape you would expect. Only that one is listed: the matching `mamook` /
--- `arrapago` spellings for 6554/6555 are a guess off a pattern, and a guess is
--- not what this list is for. They go in when someone reads them in game.
+-- THE TROVES ARE FIELD-VERIFIED, and the giftboxes still are not. Henrik's
+-- 2026-08-06 log shows `Mindie uses a Troll trove.` and `Lift uses a Mamool Ja
+-- trove.` -- the two rungs above, word for word. (The log lowercases item names
+-- -- `a silver hairpin` in the same screenshot -- so it fixes the WORDS, not the
+-- capitalisation, which matching ignores anyway.) A `halvung trove` entry lived
+-- here for one commit on a misremembered name and came straight back out: it
+-- opened fine either way, because the SUBSTRING is what opens things, and that
+-- is exactly why "it worked" can never confirm a rung.
 --
--- WHY AN ALIAS MATTERS EVEN WHERE THE ORDER DOES NOT. Trove order is admittedly
--- arbitrary, so who cares which opens first -- but an unrecognised box gets
--- #LADDER + 1, which is ABOVE the giftboxes, and the tray draws the highest
--- rung you hold. A trove the ladder does not know would therefore take the
--- icon off the grand giftbox and open after it, quietly undoing the one
--- arrangement Session I field-checked. That is the cost of a missing alias
--- here, and it is why they are worth adding on nothing more than a report.
+-- WHY A MISSING RUNG COSTS SOMETHING EVEN WHERE THE ORDER DOES NOT. Trove order
+-- is admittedly arbitrary, so who cares which opens first -- but an unrecognised
+-- box gets #LADDER + 1, which is ABOVE the giftboxes, and the tray draws the
+-- highest rung you hold. A box the ladder does not know therefore takes the icon
+-- off the grand giftbox and opens after it, quietly undoing the one arrangement
+-- Session I field-checked. That is the whole cost of a name being wrong here,
+-- and it is why the rungs are worth reading off the game rather than guessing.
+-- `lamia trove` (6555) is the one trove nobody has seen in a log yet.
 --
 -- Ids, for provenance only -- the logic is name-based on purpose, so a box
 -- CatsEyeXI adds tomorrow opens without an addon update:
@@ -156,7 +157,7 @@ M.SCAN_EVERY = 2.0;
 --   troves 6554 / 6555 / 6556      · giftboxes 5109 / 5111 / 6264 / 6558
 M.LADDER = { 'tiny tacklebox', 'timeworn tacklebox', 'titanic tacklebox',
              'goblin gatherbox',
-             'mamool ja trove', 'lamia trove', 'troll trove', 'halvung trove',
+             'mamool ja trove', 'lamia trove', 'troll trove',
              'gob. giftbox (sm)', 'goblin giftbox (small)',
              'gob. giftbox (md)', 'goblin giftbox (medium)',
              'gob. giftbox (lg)', 'goblin giftbox (large)',

@@ -13498,10 +13498,10 @@ end)();
     check('GB1a the giftboxes classify under their REAL names, smallest first',
         table.concat({ gb.classify('Gob. Giftbox (sm)'), gb.classify('Gob. Giftbox (md)'),
                        gb.classify('Gob. Giftbox (lg)'), gb.classify('Gob. Giftbox (gr)') }, ','),
-        '9,11,13,15');
+        '8,10,12,14');
     check('GB1 the long spelling is carried too, in case the client differs',
-        gb.classify('Goblin Giftbox (Small)'), 10);
-    check('GB1b ...case-insensitively', gb.classify('GOB. GIFTBOX (LG)'), 13);
+        gb.classify('Goblin Giftbox (Small)'), 9);
+    check('GB1b ...case-insensitively', gb.classify('GOB. GIFTBOX (LG)'), 12);
     check('GB1c the grand box is the top rung', gb.classify('Grand Giftbox'), #gb.LADDER);
     -- The substring match is what makes this survive the next box CatsEyeXI adds.
     check('GB1d an UNKNOWN giftbox is still ours, sorted last',
@@ -13526,16 +13526,18 @@ end)();
                        gb.classify('Troll Trove') }, ','), '5,6,7');
     check('GB1m ...and they sort under the giftboxes too',
         gb.classify('Troll Trove') < gb.classify('Gob. Giftbox (sm)'), true);
-    -- Henrik opened one in game on 2026-08-06 and called it "the halvung
-    -- trove"; the server table has no such item (6556 is `Troll Trove`), so
-    -- this is the fourth client-vs-server name split and the alias is field
-    -- evidence, not a guess.
-    check('GB1p the Halvung spelling is a KNOWN rung, not an unknown one',
-        gb.classify('Halvung Trove'), 8);
-    -- ...and this is WHY that alias earns its place even though trove order is
-    -- admittedly arbitrary: an unrecognised box outranks every giftbox, so it
-    -- would take the tray icon off the grand box and open after it -- undoing
-    -- the one arrangement Session I field-checked.
+    -- FIELD-VERIFIED 2026-08-06, off Henrik's log: `Mindie uses a Troll trove.`
+    -- and `Lift uses a Mamool Ja trove.` -- these two strings came from the
+    -- game, not from this file. A `halvung trove` rung lived here for one
+    -- commit on a misremembered name; it opened fine either way, because the
+    -- SUBSTRING is what opens things. Which is the point of GB1q below: "it
+    -- worked" is not evidence a rung is right, and never was.
+    check('GB1p the log spelling is what the ladder carries (case is ignored)',
+        gb.classify('Troll trove'), 7);
+    -- The cost of getting one wrong, even though trove order is admittedly
+    -- arbitrary: an unrecognised box outranks every giftbox, so it takes the
+    -- tray icon off the grand box and opens after it -- undoing the one
+    -- arrangement Session I field-checked.
     check('GB1q an UNKNOWN box outranks the grand giftbox (the cost of a miss)',
         gb.classify('Mystery Trove') > gb.classify('Gob. Giftbox (gr)'), true);
     -- The negative that matters for `trove`/`box`: a real item from the same
@@ -13545,8 +13547,8 @@ end)();
     check('GB1o nor is a Forgotten Pouch', gb.classify('Frgtn. Pouch (head)'), nil);
 
     local FOUND = {
-        { name = 'Gob. Giftbox (gr)', rank = 15, count = 1 },
-        { name = 'Gob. Giftbox (sm)', rank = 9,  count = 2 },
+        { name = 'Gob. Giftbox (gr)', rank = 14, count = 1 },
+        { name = 'Gob. Giftbox (sm)', rank = 8,  count = 2 },
     };
     check('GB2 the smallest rung opens first', (gb.pickNext(FOUND) or {}).name, 'Gob. Giftbox (sm)');
     check('GB2b an empty stack is not a candidate',

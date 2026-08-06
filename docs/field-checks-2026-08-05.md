@@ -222,25 +222,40 @@ raise has not been run). What is unfielded is the icon.
       of the tray and Store is one click with no confirm.
 - [ ] **I4 — the click does what the command does.** Clicking the icon runs the same open-all
       as `/dl giftbox` (it issues the command rather than duplicating the logic).
-- [ ] **I5 — the settle still completes a run.** **1.0s** between opens as of `2026.08.06m`
+- [ ] **I5 — the settle still completes a run.** **1.0s** between opens as of `2026.08.06n`
       (0.6 → 1.6 → 1.2 → 1.0, every step of it a field call): a stack of several boxes should
       still empty without stalling or double-firing. If lag bothers it, this is one number in
       `feature/giftbox.lua` (`M.SETTLE`) and any decimal is honoured to the frame.
 
 ---
 
-## Session J — the other three box families (`2026.08.06m`)
+## Session J — the other three box families (`2026.08.06n`)
 
-> **PARTLY ANSWERED, 2026-08-06.** Henrik: *"I tried troves now, it worked. Not all of them
-> yet, but the halvung trove worked just fine."* So **J2 holds for the troves** — one run,
-> one open, no stall. And J1 got its first live answer, which is the interesting half: he
-> read the box as a **Halvung** Trove, and the server table has no such item (6556 is
-> `Troll Trove`). Trolls come from Halvung, and the neighbouring **Hoard** family
-> (`Mamook Hoard` 3063 / `Halvung Hoard` 3064 / `Arrapago Hoard` 3065) is named for the
-> REGIONS — so the client naming troves by region is exactly the expected shape. The
-> `halvung trove` alias is on the ladder; the matching `mamook` / `arrapago` spellings are
-> **not**, because they are a pattern guess and this list does not take guesses. J1 below is
-> now: read the other two.
+> **THE TROVES ARE DONE, 2026-08-06.** `/dl giftbox` ran them live on two characters and
+> the log settles the names outright:
+>
+> ```
+> [16:40:35] Mindie uses a Troll trove.
+> [16:40:54] Lift uses a Mamool Ja trove.
+> ```
+>
+> Word for word what `M.LADDER` carries. **J2 holds for the troves** and **J1 is closed for
+> two of the three** — `Lamia Trove` (6555) is the only one nobody has seen in a log.
+>
+> *(The log lowercases item names — `a silver hairpin` in the same screenshot — so it fixes
+> the WORDS, not the capitalisation. Matching ignores case, so that costs nothing.)*
+>
+> **The withdrawn claim, kept rather than deleted.** The first report said *"the halvung
+> trove worked just fine"*, and this file spent one version treating that as a fourth
+> client-vs-server name split — there is no Halvung Trove, 6556 is `Troll Trove`, and the
+> region/race split with the neighbouring **Hoard** family (`Mamook` 3063 / `Halvung` 3064 /
+> `Arrapago` 3065) made it look like a real pattern. It was a misremembered name. The alias
+> went in and came straight back out.
+>
+> **The lesson is the reusable part, and it is the same one that hid the giftbox bug:** the
+> box opened correctly under a rung that did not exist, because the SUBSTRING is what opens
+> things and the ladder only orders them. *"It worked" can never confirm a name.* Only a
+> log line or a hover can — which is why J1 asks for one.
 
 `/dl giftbox` now opens **eleven** items in one run — the four Goblin Giftboxes, the
 **Goblin Gatherbox**, the **Tiny / Timeworn / Titanic Tackleboxes** and the **Mamool Ja /
@@ -270,15 +285,17 @@ is for.
 | Troll Trove | 6556 | `Troll Trove` |
 | giftbox, small → grand | 5109 / 5111 / 6264 / 6558 | `Gob. Giftbox (sm/md/lg/gr)` |
 
-- [ ] **J1 — the client agrees.** Hover any one of these in your inventory and read the
-      name the game gives it. If it matches the table above, the whole naming question is
-      closed for that family. **It already failed once** — 6556 reads as a *Halvung* Trove,
-      not a `Troll Trove`, which is the fourth instance of the server/client split. So the
-      two that matter now are **6554 and 6555**: are they `Mamool Ja` / `Lamia`, or
-      `Mamook` / `Arrapago`? Either answer is one line in `M.LADDER`
-      (`feature/giftbox.lua`), and until it is read the two sort as unknown — which
-      **outranks the giftboxes** and takes the tray icon off the grand box (see J4).
-- [ ] **J1b — they are seen.** With several kinds in your bag, `/dl giftbox status` must
+- [x] ~~**J1 — the client agrees**, for the troves.~~ **CLOSED for 6554 and 6556** by the
+      log above: `Mamool Ja trove` and `Troll trove`, exactly the ladder's rungs.
+- [ ] **J1b — the four giftbox rungs, which are the ones still unread.** `Gob. Giftbox
+      (sm/md/lg/gr)` came from the server table, and the server has been wrong about a
+      client name three times. One line in the log — open any giftbox and read what it
+      says you used — closes it. If those four strings are NOT what the client says, all
+      four fall to the same unknown rank and the order goes alphabetical again, which is
+      the original bug exactly (grand first, small last). Same question for
+      `Lamia Trove` (6555), the one trove nobody has opened yet — and there a miss also
+      takes the tray icon off the grand box, because an unknown outranks it (see J4).
+- [ ] **J1c — they are seen.** With several kinds in your bag, `/dl giftbox status` must
       count every one. A count short by one is the bug, and the missing one names itself by
       comparison against the table.
 - [ ] **J2 — they open, in order.** `/dl giftbox` with a mixed bag. Expect one run, lowest
