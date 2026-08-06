@@ -2800,7 +2800,8 @@ end)();
     local NAMES = { 'dlac\\ui\\tray', 'dlac\\ui\\gearui', 'dlac\\ui\\restockui',
                     'dlac\\ui\\giftboxui', 'dlac\\feature\\giftbox',
                     'dlac\\feature\\restockwatch', 'dlac\\feature\\eboxclient',
-                    'dlac\\feature\\gamemode', 'dlac\\ui\\filetex', 'imgui' };
+                    'dlac\\feature\\gamemode', 'dlac\\feature\\location',
+                    'dlac\\ui\\filetex', 'imgui' };
     local saved = {};
     for _, k in ipairs(NAMES) do saved[k] = package.loaded[k]; end
 
@@ -2879,13 +2880,15 @@ end)();
         wantsC = false;
 
         -- ---- the REAL giftboxui gate ------------------------------------
-        -- Everything above stubs giftboxui out, so none of it can see the CW
-        -- gate. Drive the actual module: Crystal Warriors only (Henrik), on the
-        -- affirmative rule -- 'CW' shows, and Wings/ACE/nil do NOT. `nil` is the
-        -- one that matters: a failed render-flags read is UNKNOWN, and unknown
-        -- must never be read as permission to paint a CW-only icon.
-        local MODE, PEEKED = nil, 0;
-        package.loaded['dlac\\feature\\gamemode'] = { get = function() return MODE; end };
+        -- Everything above stubs giftboxui out, so none of it can see the place
+        -- gate. Drive the actual module. It is NOT a mode gate (it was, for one
+        -- day) -- it asks the mode WHICH PLACE, per Henrik 2026-08-06: "For
+        -- non-CW, you can have that icon once you're in town. CW is only
+        -- interested in using this close to an e-box."
+        local MODE, NEAR, TOWN, PEEKED = nil, false, false, 0;
+        package.loaded['dlac\\feature\\gamemode']  = { get = function() return MODE; end };
+        package.loaded['dlac\\feature\\location']  = { inTown = function() return TOWN; end };
+        package.loaded['dlac\\feature\\eboxclient'] = { nearBox = function() return NEAR; end };
         package.loaded['dlac\\feature\\giftbox']  = {
             peek = function() PEEKED = PEEKED + 1; return { have = true, total = 3, free = 20 }; end,
             running = function() return false; end,
@@ -2895,24 +2898,44 @@ end)();
         local gok, gui = pcall(require, 'dlac\\ui\\giftboxui');
         check('TR18 giftboxui loads against the stubs', gok and type(gui.trayWants), 'function');
         if gok then
-            MODE = 'CW';
-            check('TR19 a Crystal Warrior with boxes wants the tray', gui.trayWants(), true);
-            MODE = 'Wings';
-            check('TR20 Wings does not', gui.trayWants(), false);
-            MODE = 'ACE';
-            check('TR21 ACE does not', gui.trayWants(), false);
-            MODE = nil;
-            check('TR22 and UNKNOWN is not permission', gui.trayWants(), false);
-            -- The mode is asked BEFORE the bag snapshot, so a non-CW character
-            -- never pays for the scan -- not even the throttled one.
-            PEEKED = 0;
+            -- A Crystal Warrior is asked about the BOX, never the town: he wants
+            -- the payout going straight into the Ephemeral Box he is stood at.
+            MODE, NEAR, TOWN = 'CW', true, false;
+            check('TR19 a Crystal Warrior at an E-Box wants the tray', gui.trayWants(), true);
+            NEAR, TOWN = false, true;
+            check('TR19b ...and in town away from one does NOT', gui.trayWants(), false);
+
+            -- Everyone else has no box to stand at, so the question is the town.
+            MODE, NEAR, TOWN = 'Wings', false, true;
+            check('TR20 Wings in town wants it now (it used to be refused)', gui.trayWants(), true);
+            TOWN = false;
+            check('TR20b ...and out in the field does not', gui.trayWants(), false);
+            MODE, TOWN = 'ACE', true;
+            check('TR21 ACE in town too', gui.trayWants(), true);
+
+            -- The reversal worth spelling out: an unreadable mode falls to the
+            -- TOWN rule. "Unknown is not permission" guarded a CW-ONLY icon and
+            -- there is no such icon any more -- so the choice is which of two
+            -- conditions to apply, and the strict one silently costs a non-CW
+            -- player the feature outright.
+            MODE, NEAR, TOWN = nil, false, true;
+            check('TR22 an UNREADABLE mode falls to the town rule', gui.trayWants(), true);
+            TOWN = false;
+            check('TR22b ...which still says no outside a town', gui.trayWants(), false);
+            -- inTown answers nil for an unreadable zone. Mid-zone is not a town.
+            MODE, TOWN = 'ACE', nil;
+            check('TR22c an unknown ZONE is not a town', gui.trayWants(), false);
+
+            -- Place is asked BEFORE the bag snapshot, so nobody out in the field
+            -- pays for the scan -- not even the throttled one.
+            MODE, NEAR, TOWN, PEEKED = 'ACE', false, false, 0;
             gui.trayWants(); gui.trayWants();
-            check('TR23 a non-CW gate never reaches the bag scan', PEEKED, 0);
-            MODE = 'CW'; PEEKED = 0;
+            check('TR23 a refused place never reaches the bag scan', PEEKED, 0);
+            MODE, NEAR, PEEKED = 'CW', true, 0;
             gui.trayWants();
-            check('TR23b ...and a CW one does', PEEKED, 1);
+            check('TR23b ...and an allowed one does', PEEKED, 1);
             -- trayDraw re-checks independently (restockui's belt-and-braces).
-            MODE = 'Wings';
+            MODE, NEAR, TOWN = 'CW', false, true;
             check('TR24 draw refuses on its own too', pcall(gui.trayDraw), true);
         end
 
@@ -4930,6 +4953,12 @@ end)();
     IM.CalcTextSize      = function(s) return #tostring(s) * 8; end
     IM.GetContentRegionAvail = function() return 720, 400; end
     IM.CollapsingHeader  = function() return true; end
+    -- Drawn text and tooltips are recorded too (2026-08-06): the gear matrix is
+    -- pure TextColored, so a row that stops being drawn -- or a tooltip that
+    -- promises a stat the piece has no line for -- is otherwise invisible here.
+    local texts, tips = {}, {};
+    IM.TextColored = function(_, s) texts[#texts + 1] = tostring(s); end
+    IM.SetTooltip  = function(s) tips[#tips + 1] = tostring(s); end
     -- Every Selectable label this frame is recorded, so FS9b can prove the spot
     -- rows offer a FULL-ROW hit target rather than a bait-sized one.
     local sels = {};
@@ -4981,8 +5010,13 @@ end)();
     local ok, fui = pcall(require, 'dlac\\ui\\fishui');
     check('FS1 fishui re-requires against a stub imgui', ok and type(fui.renderSearch), 'function');
     if ok and type(fui._target) == 'table' then
+        -- renderIcon records the ids it is asked for: the Sinister Stash rows
+        -- are keyed by LIVE ids that dlac's catalog does not carry, so "did
+        -- this row ask for an icon at all" is the only way to see them.
+        local iconIds = {};
         local deps = { ownedCounts = function() return { [17386] = 1, [17403] = 12 }; end,
-                       renderIcon = nop, itemTooltip = nop,
+                       renderIcon = function(id) iconIds[#iconIds + 1] = id or 'none'; end,
+                       itemTooltip = nop,
                        lookupByName = function() return nil; end };
 
         check('FS2 a closed target window draws nothing', (function()
@@ -5020,10 +5054,81 @@ end)();
 
         -- The PANEL keeps "what I own" and must no longer draw the picker.
         depth.win = 0;
+        texts, tips = {}, {};
         local pok, perr = pcall(fui.render, deps, 800);
         check('FS11 the panel still renders without the target section', pok, true);
         if not pok then print('   fishui.render error: ' .. tostring(perr)); end
         check('FS12 the panel opens no window of its own', depth.win, 0);
+        -- Brigands Eyepatch: Henrik reversed the undisplayed ruling 2026-08-06
+        -- ("I was wrong about the eyepatch"), so it draws -- in its OWN
+        -- Crooked Jones section, NOT the Mariners column (doubloons are a
+        -- third currency; the round-2 "hat analog" reading was id adjacency,
+        -- not an acquisition path). It draws owned or not.
+        local function patchTipHas(list, needle)
+            for _, t in ipairs(list) do
+                if t:find(needle, 1, true) then return true; end
+            end
+            return false;
+        end
+        local sawPatch, sawJones, patchTip = false, false, nil;
+        for _, t in ipairs(texts) do
+            if t == 'Brigands Eyepatch' then sawPatch = true; end
+            if t == 'CROOKED JONES (doubloons)' then sawJones = true; end
+        end
+        for _, t in ipairs(tips) do
+            if t:find('Fatigue Limit +20%', 1, true) then patchTip = t; end
+        end
+        check('FS12b the panel draws the Eyepatch', sawPatch, true);
+        check('FS12b2 ...under its own doubloon header', sawJones, true);
+        check('FS12b3 ...priced in the currency it actually costs',
+              patchTipHas(texts, '12,000'), true);
+        -- The whole Stash, not just the fishing piece (Henrik, 2026-08-06):
+        -- seven rows, three of which have no id to draw an icon for.
+        local shopSeen = 0;
+        for _, want in ipairs({ '5,000', '8,000', '10,000', '12,000',
+                                '15,000', '20,000' }) do
+            if patchTipHas(texts, want) then shopSeen = shopSeen + 1; end
+        end
+        check('FS12b4 every Sinister Stash price is on the panel', shopSeen, 6);
+        check('FS12b5 ...including the items dlac\'s catalog does not carry',
+              patchTipHas(texts, 'Rusty Fishing Hook')
+              and patchTipHas(texts, 'Red Crab Mount')
+              and patchTipHas(texts, "Buccaneer's Chart"), true);
+        -- Chart 9426 / Hook 9420 are LIVE ids (Henrik, 2026-08-06): absent from
+        -- the catalog, so the ONLY visible sign they are wired is that the row
+        -- asks the icon service for them. The mount asks for nil -- it has no
+        -- id to ask with, and its art comes from assets\redcrab.png instead.
+        local askedChart, askedHook, reservedBlank = false, false, false;
+        for _, id in ipairs(iconIds) do
+            if id == 9426 then askedChart = true; end
+            if id == 9420 then askedHook = true; end
+            if id == 'none' then reservedBlank = true; end
+        end
+        check('FS12b5a the Chart draws from its live id', askedChart, true);
+        check('FS12b5b the Hook draws from its live id',  askedHook, true);
+        check('FS12b5c the mount still reserves the icon column', reservedBlank, true);
+        -- and the tooltip stops calling it venture gear
+        check('FS12b6 the Eyepatch note names the right economy',
+              patchTip and patchTip:find('Crooked Jones gear', 1, true) ~= nil, true);
+        check('FS12b7 ...and no longer says venture',
+              patchTip and patchTip:find('venture', 1, true), nil);
+        check('FS12c ...with the Expert Angler note', patchTip ~= nil, true);
+        -- The one carrier with NO Fish mod: the note must not promise skill.
+        check('FS12d ...that does not claim a Fishing skill line',
+              patchTip and patchTip:find('no Fishing skill of its own', 1, true) ~= nil, true);
+        -- Halieutica + the legendary +1s stay invisible -- Henrik reversed ONE
+        -- item, not the ruling.
+        local sawHalieutica = false;
+        for _, t in ipairs(texts) do if t:find('Halieutica', 1, true) then sawHalieutica = true; end end
+        check('FS12e the rest of the undisplayed ruling still holds', sawHalieutica, false);
+        -- ...and it still counts as a currency-tier piece: base four dressed
+        -- plus the Eyepatch alone = coverage 3. Level 3's LABEL says
+        -- "guild/venture"; what it means is "past the craftable set, into a
+        -- shop", and doubloons are a shop.
+        check('FS12f the Eyepatch is currency-tier coverage', fui.coverage({
+            ownedCounts = function()
+                return { [13808] = 1, [14070] = 1, [14292] = 1, [14171] = 1, [28443] = 1 };
+            end }), 3);
 
         fui._target.open[1] = false;
     end

@@ -211,9 +211,10 @@ raise has not been run). What is unfielded is the icon.
 - [ ] **I1 — it appears at all.** As a **Crystal Warrior**, with a giftbox in inventory, an
       icon shows in the floating tray **under** the E-Box crates. It draws the box's own
       in-game art — the highest rung you are carrying, so a Grand Giftbox shows the Grand icon.
-- [ ] **I1b — and only there.** On a non-CW character holding giftboxes, the icon must NOT
-      appear at all. `/dl giftbox` itself still works — the gate is on the icon, not the
-      command.
+- [x] ~~**I1b — and only there.** On a non-CW character holding giftboxes, the icon must NOT
+      appear at all.~~ **SUPERSEDED by J7** (2026-08-06): a non-CW character gets the icon in
+      town. The half of this check that survives is that `/dl giftbox` itself works
+      everywhere — the gate is on the icon, not the command.
 - [ ] **I2 — it dims when there is no room.** Below 6 free slots the icon greys out and the
       hover says how many slots short you are. It must NOT disappear — you still have boxes.
 - [ ] **I3 — it does not push Store around.** Walk up to an E-Box with giftboxes in your bag:
@@ -224,6 +225,58 @@ raise has not been run). What is unfielded is the icon.
 - [ ] **I5 — the longer settle still completes a run.** 1.2s between opens: a stack of several
       boxes should still empty without stalling or double-firing. If lag still bothers it, this
       is one number in `feature/giftbox.lua` (`M.SETTLE`) and any decimal is honoured.
+
+---
+
+## Session J — the other two box families (`2026.08.06h`)
+
+`/dl giftbox` now opens the **Goblin Gatherbox** and the **Tiny / Timeworn / Titanic
+Tackleboxes** in the same run as the giftboxes. The loop underneath is the field-confirmed
+one — nothing about the pacing or the space gate changed — so what is unfielded is
+**whether these four items are recognised at all**, and that is a names question.
+
+That is the check worth caring about: dlac decides a box is ours by finding `gatherbox` or
+`tacklebox` inside the **client's** name for it, and this project has now been bitten three
+times by a hardcoded name that was the *server's* spelling (the latest being HELM's
+`Excavation Point`, which the client calls `Excav. Point`). A truncated or abbreviated name
+here means the box is simply invisible to the feature.
+
+- [ ] **J1 — they are seen.** With one of each in your inventory, `/dl giftbox status` must
+      count them. Four boxes in the bag and a count of four means every name matched. A
+      count that is short by one is the whole bug, and the missing one names itself:
+      compare what the item is called in your inventory against `M.LADDER` in
+      `feature/giftbox.lua`.
+- [ ] **J2 — they open.** `/dl giftbox` with a mixed bag. Expect one run, lowest rung first:
+      tackleboxes, then the Gatherbox, then the giftboxes. Every line it prints should say
+      *box* — a line that still says *giftbox* while opening a tacklebox is a miss.
+- [ ] **J3 — the payout fits.** The gate insists on **6 free slots** before every box,
+      because a giftbox pays up to 5. Nobody has priced a Gatherbox or a Tacklebox. If one
+      of them pays out **more than 5** and you see "you cannot carry any more" during a run
+      with room to spare, that number (`M.NEED_FREE`) is the fix, not the pacing.
+- [ ] **J4 — the tray icon did not move.** Holding a Grand Giftbox *and* a tacklebox, the
+      tray must still draw the **Grand Giftbox** art. The giftboxes were deliberately left
+      at the top of the ladder so this stayed exactly as Session I checked it.
+- [ ] **J5 — the new command names.** `/dl box` and `/dl boxes` do what `/dl giftbox` does.
+      `/dl gb` still works.
+
+**The icon's gate changed at the same time** (Henrik, 2026-08-06: *"For non-CW, you can
+have that icon once you're in town. CW is only interested in using this close to an
+e-box."*). It is no longer CW-only — it is a **place** gate that asks the mode which place.
+**This supersedes Session I's I1b**, which said a non-CW character must never see it.
+
+- [ ] **J6 — Crystal Warrior: at the box, and only there.** With boxes in your bag, walk
+      up to an Ephemeral Box: the icon appears under the crates. Walk away (still in town):
+      it goes. Being in town is not enough for a CW — the Ephemeral Box is.
+- [ ] **J7 — non-CW: the town is the trigger.** On a Wings or ACE character with boxes,
+      the icon appears **in town** and not out in the field. This is the half that has
+      never existed before, so it is the one most likely to be wrong.
+- [ ] **J8 — zoning does not flicker it.** Zone in and out a few times with boxes in the
+      bag. The zone read answers nil mid-zone and that is treated as *not a town*, so the
+      icon may vanish for a moment — it must come back, and it must not strobe.
+
+*Session I's I1, I2, I3, I4 and I5 still stand — same icon, same click. Run I1 and I3 as a
+Crystal Warrior at a box (that is now the only place a CW sees it at all), and I5 (the 1.2s
+settle over a full stack) on a mixed bag, since that is a longer run than it was.*
 
 ---
 

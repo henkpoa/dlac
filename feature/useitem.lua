@@ -140,6 +140,15 @@ local TELEPORTS = {
     -- tidalDestinations map) -- BODY slot here, not retail's pendant slot.
     -- Bought with Obsidian Fragments on ACE/CW (wiki, Henrik 2026-07-23).
     { name = 'Tidal Talisman',     dest = 'the coast',       lbl = 'Coast', slot = 'body', grp = 'util', aliases = { 'tidal' }, id = 11290 },
+    -- Brigand's Eyepatch (a player's item card, relayed 2026-08-06): Enchantment
+    -- "Teleport" (Norg), Lv.50 all jobs, [20:00, 0:15] -- the ONLY entry in
+    -- the family whose use delay is 15s and not 30, hence its own wait (the
+    -- Provenance Ring's 15+margin). It shares Norg with the Norg Earring, so
+    -- '/dl t norg' resolves by ownership like the other shared destinations;
+    -- the row's own command is the unambiguous 'eyepatch'. keepInPicker with
+    -- Maat's Cap: real gear (MP+15 CHR+3 Water+10 and "Expert Angler"+2 --
+    -- fishdb gearBonus 28443), which set building must keep offering.
+    { name = "Brigand's Eyepatch", dest = 'Norg', slot = 'head', grp = 'util', aliases = { 'eyepatch', 'brigand', 'brigands' }, id = 28443, wait = 20, keepInPicker = true },
     -- The HQ seasonal swimsuits (Celestial Nights / Sunbreeze): one per
     -- race+gender (RSE), all -> Purgonorgo Isle -- owned-only rows mean you
     -- see just yours. Wyrmking Suit +1 and Cumulus Masque +1 ride the same
@@ -679,7 +688,11 @@ ashita.events.register('command', 'dlac-useitem', function(e)
             print('[dlac] "' .. q .. '" is ambiguous -- did you mean: ' .. listTeleports(hits, true) .. '?');
         else
             local t = hits[1];
-            start({ name = t.name, slot = t.slot, wait = TELE_WAIT },
+            -- TELE_WAIT covers the family's usual 30s use delay; an entry
+            -- whose card says otherwise carries its own (the exp rings'
+            -- pattern). Fallback only -- the game clock still rules, and it
+            -- can only push the moment LATER.
+            start({ name = t.name, slot = t.slot, wait = t.wait or TELE_WAIT },
                 'teleporting to ' .. t.dest, '/dl t off');
         end
         return;

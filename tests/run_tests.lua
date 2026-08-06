@@ -10618,6 +10618,21 @@ end)();
     check('H8 Harvesting Point',           helmwatch.gatherFromNpcName('Harvesting Point'), 'Harvesting');
     check('H9 unrelated npc -> nil',       helmwatch.gatherFromNpcName('Goblin Miner'), nil);
     check('H10 nil npc -> nil',            helmwatch.gatherFromNpcName(nil), nil);
+    -- The CLIENT abbreviates excavation (field-read 2026-08-06, Arrapago
+    -- Reef): matching only the server's full polutils_name left Auto HELM
+    -- blind to every excavation point. Harvesting is the same 16 characters
+    -- and is NOT abbreviated -- length is not the rule, so both spellings
+    -- have to match and the other three must stay single-named.
+    check('H8b Excav. Point (client name) -> Excavation',
+                                           helmwatch.gatherFromNpcName('Excav. Point'), 'Excavation');
+    check('H8c Excavation Point (server spelling) still matches',
+                                           helmwatch.gatherFromNpcName('Excavation Point'), 'Excavation');
+    check('H8d trailing whitespace tolerated (GetName pads)',
+                                           helmwatch.gatherFromNpcName('Excav. Point  '), 'Excavation');
+    -- the `.` must be matched LITERALLY, not as a pattern wildcard
+    check('H8e "." is not a wildcard',      helmwatch.gatherFromNpcName('ExcavX Point'), nil);
+    check('H8f abbreviation is excavation-only',
+                                           helmwatch.gatherFromNpcName('Harvest. Point'), nil);
     local evt = string.char(0x34, 0x1A, 0x8D, 0x06, 0x3F, 0xC1, 0x08, 0x01, 0xB0, 0x02, 0, 0)
         .. string.rep('\0', 28)
         .. string.char(0x3F, 0x01, 0x8C, 0x00, 0x64, 0x00, 0x08, 0x00, 0x8C, 0x00, 0x00, 0x00);
@@ -10789,6 +10804,33 @@ end)();
     helmwatch.setAutoHelm(false);
     world.points['Mining Point'] = 5;
     check('H64 disarmed: never holds',         helmwatch.proximityStep(probe), false);
+
+    -- A category can render under MORE THAN ONE client name. Excavation is
+    -- the live case: the client shows "Excav. Point" (Arrapago Reef,
+    -- 2026-08-06) where the server's npc_list says "Excavation Point", and
+    -- the exact-name watcher saw neither because we only ever asked for the
+    -- server spelling. Auto HELM was blind to excavation entirely.
+    check('H64a excavation carries both client names', #helmwatch.pointNames('Excavation'), 2);
+    check('H64a2 the other three stay single-named',   #helmwatch.pointNames('Mining'), 1);
+    check('H64a3 unknown category falls back to the convention',
+                                               helmwatch.pointNames('Clamming')[1], 'Clamming Point');
+    helmwatch.setAutoHelm(true);
+    world.points = { ['Excav. Point'] = 4 };
+    check('H64b abbreviated client name acquires', helmwatch.proximityStep(probe), true);
+    check('H64c and selects Excavation',           helmwatch.getGather(), 'Excavation');
+    world.points = {};
+    check('H64d gone -> hold drops',               helmwatch.proximityStep(probe), false);
+    world.points = { ['Excavation Point'] = 4 };   -- a zone that spells it out
+    check('H64e full spelling acquires too',       helmwatch.proximityStep(probe), true);
+    world.points = {};
+    helmwatch.proximityStep(probe);                -- drop the hold: force a FRESH acquire
+    -- Both spellings loaded at once: the NEAREST of a category's names
+    -- answers, so a distant twin can never mask a point inside enter range
+    -- (7.5 is past the 6y enter gate; only the 3y match can acquire here).
+    world.points = { ['Excavation Point'] = 7.5, ['Excav. Point'] = 3 };
+    check('H64f nearest across the category names wins', helmwatch.proximityStep(probe), true);
+    world.points = {};
+    helmwatch.setAutoHelm(false);
 
     -- Configurable detect range (Henrik: default 10 for macro-spam-at-range
     -- and lag; panel setting clamped 3..20, keep-wearing leash = range+2).
@@ -13427,8 +13469,9 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
--- GB. /dl giftbox -- open every Goblin/Grand Giftbox in inventory, stopping
---     before there is no room for the next payout.
+-- GB. /dl giftbox -- open every reward box in inventory, stopping before there
+--     is no room for the next payout. THREE FAMILIES since 2026-08-06: the
+--     Goblin/Grand Giftboxes, the Goblin Gatherbox, and the tackleboxes.
 --
 --     The interesting half is NOT the pure gate, it is the pacing: the loop
 --     refuses to guess a delay and instead waits for the item's own count to
@@ -13440,24 +13483,42 @@ end)();
     local gb = dofile('feature/giftbox.lua');
     local savedAshita = AshitaCore;
 
-    check('GB1 a known box classifies onto the ladder', gb.classify('Goblin Giftbox (Small)'), 1);
-    check('GB1b ...case-insensitively', gb.classify('GOBLIN GIFTBOX (LARGE)'), 3);
-    check('GB1c the Grand box is the top rung', gb.classify('Grand Giftbox'), 4);
+    check('GB1 a known box classifies onto the ladder', gb.classify('Goblin Giftbox (Small)'), 5);
+    check('GB1b ...case-insensitively', gb.classify('GOBLIN GIFTBOX (LARGE)'), 7);
+    check('GB1c the Grand box is the top rung', gb.classify('Grand Giftbox'), #gb.LADDER);
     -- The substring match is what makes this survive the next box CatsEyeXI adds.
     check('GB1d an UNKNOWN giftbox is still ours, sorted last',
-        gb.classify('Goblin Giftbox (Colossal)'), 5);
-    check('GB1e ...and a normal item is not a giftbox', gb.classify('Goblin Bread'), nil);
+        gb.classify('Goblin Giftbox (Colossal)'), #gb.LADDER + 1);
+    check('GB1e ...and a normal item is not a box', gb.classify('Goblin Bread'), nil);
     check('GB1f nor is a nil name', gb.classify(nil), nil);
 
+    -- The 2026-08-06 families. Each is a SEPARATE substring, so none of them
+    -- rides on the giftbox match, and each sorts BELOW the giftboxes -- which
+    -- is what keeps the Grand Giftbox the tray's icon (GB14c).
+    check('GB1g the Gatherbox is ours', gb.classify('Goblin Gatherbox'), 4);
+    check('GB1h the tackleboxes are ours, smallest first',
+        table.concat({ gb.classify('Tiny Tacklebox'), gb.classify('Timeworn Tacklebox'),
+                       gb.classify('Titanic Tacklebox') }, ','), '1,2,3');
+    check('GB1i ...and every one of them sorts under the giftboxes',
+        gb.classify('Titanic Tacklebox') < gb.classify('Goblin Giftbox (Small)'), true);
+    check('GB1j an unheard-of tacklebox still opens',
+        gb.classify('Tarnished Tacklebox'), #gb.LADDER + 1);
+    check('GB1k ...and a fishing rod is not a box', gb.classify('Halcyon Rod'), nil);
+
     local FOUND = {
-        { name = 'Grand Giftbox',          rank = 4, count = 1 },
-        { name = 'Goblin Giftbox (Small)', rank = 1, count = 2 },
+        { name = 'Grand Giftbox',          rank = 8, count = 1 },
+        { name = 'Goblin Giftbox (Small)', rank = 5, count = 2 },
     };
     check('GB2 the smallest rung opens first', (gb.pickNext(FOUND) or {}).name, 'Goblin Giftbox (Small)');
     check('GB2b an empty stack is not a candidate',
         (gb.pickNext({ { name = 'x', rank = 1, count = 0 },
                        { name = 'y', rank = 2, count = 1 } }) or {}).name, 'y');
     check('GB2c nothing at all -> nil', gb.pickNext({}), nil);
+    check('GB2d across families the ladder still decides, and it is one run',
+        (gb.pickNext({
+            { name = 'Grand Giftbox',  rank = gb.classify('Grand Giftbox'),  count = 1 },
+            { name = 'Tiny Tacklebox', rank = gb.classify('Tiny Tacklebox'), count = 1 },
+        }) or {}).name, 'Tiny Tacklebox');
 
     -- The three outcomes of the gate are three different instructions to the
     -- player, which is why plan() never answers a bare false.
@@ -13575,6 +13636,24 @@ end)();
     local only = gb.peek(2000);
     check('GB16 one rung held -> that rung is the icon',
         (only.top or {}).name, 'Goblin Giftbox (Small)');
+
+    -- ---- a mixed bag, live ---------------------------------------------------
+    -- The two properties that only show up when the families meet: the run is
+    -- ONE run over all of them (a tacklebox is fired first because it sorts
+    -- lower), and the tray still draws the Grand Giftbox, which is the whole
+    -- reason the giftboxes were left at the top of the ladder.
+    RES[4] = { Name = { 'Timeworn Tacklebox' } };
+    slots = { { Id = 2, Count = 1 }, { Id = 4, Count = 1 }, __size = 30 };
+    cmds = {};
+    gb.start();
+    check('GB17 one run covers every family, lowest rung first',
+        cmds[1], '/item "Timeworn Tacklebox" <me>');
+    gb.stop();
+    gb._peekReset();
+    local mixed = gb.peek(3000);
+    check('GB17b ...and the tray icon is still the Grand Giftbox',
+        (mixed.top or {}).name, 'Grand Giftbox');
+    check('GB17c ...counting boxes of every family together', mixed.total, 2);
 
     AshitaCore = savedAshita;
 end)();
@@ -14855,6 +14934,7 @@ end)();
         [13180] = 'Republic Stables Medal',  -- neck, one of 4 'stables' dests
         [11538] = 'Nexus Cape',              -- moved off the top strip 2026-07-26
         [26517] = 'Shadow Lord Shirt',       -- ditto
+        [28443] = "Brigand's Eyepatch",      -- head, keepInPicker, shares Norg with the earring
     };
     local bag0 = {
         { Id = 15194, Count = 1, Extra = '' },
@@ -14862,6 +14942,7 @@ end)();
         { Id = 13180, Count = 1, Extra = '' },
         { Id = 11538, Count = 1, Extra = '' },
         { Id = 26517, Count = 1, Extra = '' },
+        { Id = 28443, Count = 1, Extra = '' },
     };
     local inv = {
         GetContainerCountMax = function(self, bag) return (bag == 0) and #bag0 or 0; end,
@@ -14888,7 +14969,7 @@ end)();
         if row.grp == 'ear' then earNames[#earNames + 1] = row.name; end
         if row.grp == nil then topNames[#topNames + 1] = row.name; end
     end
-    check('UT1 util tier is owned-only (5 rows)', #util, 5);
+    check('UT1 util tier is owned-only (6 rows)', #util, 6);
     local haveMaat = false;
     for _, r in ipairs(util) do if r.name == "Maat's Cap" then haveMaat = true; end end
     check('UT1b Maat\'s Cap surfaced', haveMaat, true);
@@ -14918,6 +14999,20 @@ end)();
     check('UT3b Tavnazian Ring hidden from the picker', hide['tavnazian ring'], true);
     check('UT3c suits hidden from the picker', hide['custom top +1'], true);
     check('UT3d earrings still hidden', hide['kazham earring'], true);
+    -- Brigand's Eyepatch (2026-08-06): a util row, and the family's SECOND
+    -- picker exemption -- it is real fishing gear ("Expert Angler", fishdb
+    -- gearBonus 28443), so hiding it from set building would cost a fishing
+    -- set its head piece. (Its place under the Tidal Talisman is a TABLE
+    -- order; the talisman is unowned here, so only the row itself shows.)
+    local patchAt = nil;
+    for i, r in ipairs(util) do
+        if r.name == "Brigand's Eyepatch" then patchAt = i; end
+    end
+    check('UT3e the Eyepatch rides the util cascade', patchAt ~= nil, true);
+    check('UT3f ...labelled with its destination', patchAt and util[patchAt].label, 'Norg');
+    check('UT3g ...and its row targets itself, not the earring',
+          patchAt and util[patchAt].cmd, '/dl t eyepatch');
+    check('UT3h the Eyepatch stays in the picker', hide["brigand's eyepatch"], nil);
 
     -- command narrowing
     check('UT4 command handler registered', type(cmdHandler), 'function');
@@ -14934,6 +15029,16 @@ end)();
         cmdHandler({ command = '/dl t outpost' });   -- Return+Homing share the dest, neither owned
         p = useitem.pending();
         check('UT8 unowned same-dest pair refuses (pending unchanged)', p and p.name, 'Republic Stables Medal');
+        -- Norg is now TWO items (earring + Brigand's Eyepatch, 2026-08-06):
+        -- same destination, so ownership narrows it -- only the Eyepatch is
+        -- in the bag here. The row's own alias never needs the narrowing.
+        cmdHandler({ command = '/dl t norg' });
+        p = useitem.pending();
+        check('UT8b /dl t norg narrows to the owned Norg item', p and p.name, "Brigand's Eyepatch");
+        cmdHandler({ command = '/dl t off' });
+        cmdHandler({ command = '/dl t eyepatch' });
+        p = useitem.pending();
+        check('UT8d /dl t eyepatch names it outright', p and p.name, "Brigand's Eyepatch");
         cmdHandler({ command = '/dl t off' });
         check('UT9 /dl t off releases', useitem.pending(), nil);
     end

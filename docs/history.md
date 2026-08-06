@@ -9221,3 +9221,290 @@ dim while the row is dormant, same at-a-glance grammar as `[Lv 30-54]` and `@mod
 **Tests:** `LD4d`–`LD4g` (the gate excludes without the trait, ranks normally with it),
 `G19b` (serializer), `G23`–`G26` (the trait bit ALONE re-flattens, both directions, and
 the wrapper never mutates the shared record). Suites **6807 + 1281**, both interpreters.
+
+## Session "the eyepatch goes to Norg" (2026-08-06, `2026.08.06a`)
+
+**Theme:** one item card, one row. A player's Brigand's Eyepatch — relayed by Henrik,
+who does not own one — reads `Enchantment: "Teleport" (Norg)`, so it belongs in
+**Other Teleports**, under the Tidal Talisman where he asked for it.
+
+**Landed:** a 29th entry in useitem's `TELEPORTS` table (id 28443, head, `grp` util,
+aliases eyepatch/brigand/brigands). Everything downstream is data-driven, so the GUI
+cascade, the tooltip, the charges column and `/dl t` all picked it up without a line of
+UI work.
+
+Two things about it are NOT the family pattern:
+
+- **Its use delay is 0:15, not 0:30.** The card reads `[20:00, 0:15]` where the other 28
+  are `useDelay = 30` in `item_usable`. So `/dl t` learned a per-entry `wait` (`t.wait or
+  TELE_WAIT`) — the exp rings' pattern, and the Provenance Ring's 15+margin = 20. This is
+  the FALLBACK timer only: the game clock still rules, and it can only push the moment
+  later (`useAt = math.max(useAt, now + rem)`), so a short wait can never fire early while
+  the polls are readable.
+- **It is real gear**, the second `keepInPicker` exemption after Maat's Cap: MP+15, CHR+3,
+  Water+10 and `"Expert Angler"+2` — it is fishdb's `gearBonus[28443]` (cx4 20 / cx5 2),
+  the head piece of fishing's VP tier. Hiding it from set building the way the DEF-1
+  trinketry is hidden would have cost a fishing set its Head slot.
+
+**Norg is now two items.** The Norg Earring and the Eyepatch share a destination, so
+`/dl t norg` runs the ownership narrowing that already served the eight Purgonorgo suits
+and the two Ru'Lude items — own one, get it; own both, the readiest wins. The menu row
+itself never needs that: it sends `/dl t eyepatch`, which is an exact alias hit.
+
+**Also true, and worth recording:** `docs/design/fishing-gear.md` §7 asked whether the
+Eyepatch is obtainable at all ("Henrik believes not — they exist only in the live DB").
+The screenshot answers it: yes, and it is Lv.50 all jobs with DEF 15. The round-2 ruling
+that keeps it OUT of the fishing panel's display was made on "nothing in-game mentions
+them" — that premise is now false, but the display call is Henrik's, not this session's.
+
+**Tests:** `UT1` (util tier 5 → 6 owned rows), `UT3e`–`UT3h` (the cascade row, its Norg
+label, that its command targets itself rather than the earring, and the picker
+exemption), `UT8b`/`UT8d` (the shared-destination narrowing and the direct alias).
+Suites 6947 + 1305, both interpreters.
+
+**Field round owed, and it cannot be Henrik's** — he has no Eyepatch, so the check goes
+to the player who sent the card. Worth watching: whether the 15s delay is what the
+enchant really wants (the "ready in Ns (game clock)" line says so on the first use).
+
+**Addendum, same day (`2026.08.06b`) — the ruling reverses.** Henrik: *"I was wrong
+about the eyepatch, you can add it to the fishing gear list in gear helper as well."* So
+the round-2 undisplayed ruling (07-18) is lifted for that one item and the fishing
+panel's Mariners column grew its **head** row — `MARINERS[5] = { 28443 }`, landing on
+row 5, which is the matrix's head row (the Angler's column shows Tlahtlamah Glasses
+there). It glows like the rest of the VP set and joins `ADVANCED`, so owning it with the
+base four dressed reads as coverage 3.
+
+The entry is a one-id "pair" — the Eyepatch has no +1 — so `owned()` now treats a nil id
+as "not owned" instead of relying on Lua tolerating `t[nil]` on a read, and the
+`ADVANCED` seeding skips the missing second id (that one WOULD have thrown: `t[nil] = v`
+is an error).
+
+**And its Expert Angler tooltip had to stop lying.** The note ended `(+ Fishing skill --
+CatsEyeXI venture gear)`, which was true of every carrier until now: the Eyepatch is the
+only one with cx mods and **no Fish mod at all** (fishdb 28443 has no `fish` key — that
+is why it needed the gearBonus supplement in the first place). The tail is conditional
+now.
+
+Halieutica and the legendary-rod +1s keep the ruling — one item was reversed, not the
+policy. The premise that died was "nothing in-game mentions them", and it died only for
+the item a player turned out to be wearing.
+
+**Tests:** the smoke harness' stub imgui records `TextColored` and `SetTooltip` now (the
+gear matrix is pure TextColored, so a row that stops drawing was invisible to tests) --
+`FS12b`-`FS12f`: the head row draws, its note carries Fatigue Limit +20%, the note does
+NOT claim a Fishing skill line, Halieutica stays invisible, and base-four + Eyepatch =
+coverage 3. Suites 6947 + 1310, both interpreters.
+
+**Field round owed on both halves, by the card's owner** — the teleport row and the
+panel row are both unclicked, and neither can be checked from Henrik's own bags.
+
+**Correction, same day (`2026.08.06d`) — it was never venture gear.** Henrik, with the
+page: *"This one is actually Crooked Jones, another Fishing points / mechanic"*
+(bg-wiki `CatsEyeXI_Systems/Fishing#Crooked_Jones`). So the entry above is wrong where it
+calls the Eyepatch "the head piece of fishing's VP tier", and the panel was wrong to put
+it in a column headed **MARINERS (VP)**.
+
+**Crooked Jones is a third fishing currency.** He stands in Norg (H-8) and names three
+fish a day — one lower-tier (max 60), one middle (max 40), one legendary (max 15) —
+trading them for DOUBLOONS (fishing 20+; +100 for maxing all three), spent at the
+Sinister Stash stalls in Norg and Lower Jeuno. The Eyepatch is 12,000 of them. Its
+enchantment lands you in Norg, which is where Jones stands — the item is coherent with
+its own shop, and that was visible the whole time.
+
+**Where the false belief came from, because it is the reusable part.** The round-2
+research (07-18) found the Mariners ids interleaved with HELM's Plain block —
+25899/900, 25966/67, 25986/87, 26535/36 — read 28443 as the next one along, and wrote
+"Brigands Eyepatch is the hat analog" into the design doc. That inference was right four
+times and wrong the fifth, and **nothing in the id can tell those cases apart**. Id
+adjacency is evidence about the GENERATOR, never about the acquisition path. The design
+doc now carries the claim struck through with that lesson attached rather than quietly
+deleted.
+
+**Landed:** `MARINERS` is four pieces again; the Eyepatch moved to its own
+`CROOKED JONES (doubloons)` row under the matrix — not a fifth column, because the
+matrix's columns ARE the currencies and there is no width for a fourth. Green when
+owned, no glow (the glow ruling names Mariners specifically). Its tooltip carries the
+12,000 price, and the header hovers with where Jones stands and what he wants. It still
+joins `ADVANCED`: level 3 reads "guild/venture tier", but what it MEANS is "past the
+craftable set, into a shop", and doubloons are a shop. The nil-id guard added to
+`owned()` yesterday is gone with the one-id pair that needed it.
+
+**Tests:** `FS12b`-`FS12f` re-aimed — the Eyepatch draws under its own doubloon header
+and its note carries the price, which is the assertion that would have caught the
+original mistake (a Mariners row has no price line). Suites 6960 + 1312.
+
+## Session "the other two box families" (2026-08-06, `2026.08.06h`)
+
+**Theme:** Henrik — "can we add Goblin Gatherbox, Timeworn Tacklebox, Titanic Tacklebox
+and Tiny Tacklebox to it?" `/dl giftbox` opened Goblin/Grand Giftboxes only. It now opens
+all three families in one run.
+
+**Why this was a data change and not a feature.** The loop was already the general thing:
+use a container from your bag, wait for that item's own count to drop as proof the use
+landed, re-ask the space gate before every box. None of that is giftbox-specific — a
+Tacklebox is the same job. So the diff is a longer `M.LADDER`, an `M.MATCH` that went from
+one substring to three, and a `classify` that loops over them. The pacing, the timeout, the
+"never retry at a wall" rule and the tray plumbing are untouched.
+
+**Two orderings had to be decided, and only one of them matters.**
+
+*Across families:* the giftboxes stayed at the **top** of the ladder. The tray draws the
+highest rung you are carrying, Session I field-checked that as the Grand Giftbox art, and
+there was no reason to invalidate a check that has already been run. The new families slot
+in underneath and therefore open first — which is arbitrary, and said to be arbitrary in
+the comment rather than dressed up as a size rule.
+
+*Within the tackleboxes:* Tiny → Timeworn → Titanic is a **reading of the names**, not a
+measurement. Nobody has priced their payouts. All it decides is which of the three fires
+first, so a wrong guess costs a run's ordering and nothing else — worth stating so the next
+reader doesn't take it for a fact.
+
+**The gate carries an assumption now.** `NEED_FREE = 6` is "more than 5", and the 5 was
+measured on giftboxes. Applied to a smaller payout it is merely strict; applied to a larger
+one it would be the bug. Field check J3 exists to price that, and the comment names
+`NEED_FREE` as the one place it gets fixed.
+
+**Every line the run prints says "box".** It would otherwise announce "opened 3 giftboxes"
+after opening three tackleboxes. `/dl box` and `/dl boxes` answer to the command for the
+same reason; `/dl giftbox` and `/dl gb` are what the README and everyone's fingers know and
+are not going anywhere, and the module keeps its filename.
+
+**The real risk is names, not logic.** A box is ours because `gatherbox` or `tacklebox`
+appears in the **client's** name for it — and this project has been bitten three times by a
+hardcoded name that turned out to be the server's spelling, most recently HELM's
+`Excavation Point` against the client's `Excav. Point`. If one of these four is abbreviated
+in the DAT, it is invisible to the feature and nothing says so. That is field check **J1**,
+and it is the only one worth running first: four boxes in the bag must count as four.
+
+**Tests:** `GB1` `GB1b`-`GB1d` re-aimed at the longer ladder (and off hardcoded rank
+numbers where `#gb.LADDER` says it better); `GB1g`-`GB1k` are the new families — each on
+its own substring, all sorting under the giftboxes, an unheard-of `Tarnished Tacklebox`
+still opening, and a `Halcyon Rod` still not a box. `GB2d` and `GB17`-`GB17c` are the
+properties that only appear once the families meet: one run covers all of them lowest-rung
+first, and the tray icon is still the Grand Giftbox. Suites **6969 + 1312**, both
+interpreters.
+
+## Session "the box icon is a place, not a playmode" (2026-08-06, `2026.08.06h`)
+
+**Theme:** the same day the box families landed, Henrik reversed the tray icon's gate —
+*"For non-CW, you can have that icon once you're in town. CW is only interested in using
+this close to an e-box."*
+
+**It shipped CW-only on 08-05** because giftboxes come off Ventures and the icon lives in
+the same tray as the E-Box crates. That reasoning turned out to be one step short: it
+gated on *who drops the boxes* when the useful question is *where you want to open them*.
+A Crystal Warrior wants the payout going into the Ephemeral Box he is standing at, so the
+icon belongs at that box and nowhere else — being in town is **not** enough for a CW, which
+is strictly narrower than what shipped. Everyone else has no box to stand at, so the moment
+that matters is arriving in town with a full bag.
+
+So it is no longer a mode gate at all. It is a **place** gate that asks the mode *which
+place*: `gamemode.get() == 'CW'` → `eboxclient.nearBox()`, otherwise `location.inTown()`.
+Both are central services this addon already runs (`docs/architecture.md`, Central
+services) — restockui pays for the entwatch lookup every frame regardless, and `inTown` is
+one party-memory word.
+
+**The affirmative-gate rule was reversed here, deliberately, and that is the part worth
+recording.** The old comment said *unknown is not permission* and refused a nil mode read.
+That rule existed to stop a **CW-only** icon being painted onto a non-CW screen — and there
+is no CW-only icon any more. What is left is a choice between two conditions, where the
+strict one silently costs a non-CW player the feature outright and the general one costs a
+Crystal Warrior an extra icon while he stands in town. A tray icon is not a click. An
+unreadable mode now falls to the town rule. *The affirmative gate is still the right
+default everywhere it guards an exclusive surface; it stopped applying here because the
+surface stopped being exclusive.*
+
+**The gate also got cheaper, which was not the point but is worth having.** Place is asked
+before the bag snapshot, so nobody out in the field pays for the throttled scan — a wider
+saving than the CW-only test made, since most characters are not in town most of the time.
+
+**The command is untouched and always was.** `/dl giftbox` works wherever you are; the
+place rule only decides when the icon is worth the screen space.
+
+**Tests:** `TR19`/`TR19b` (a CW at a box yes, a CW in town away from one **no**), `TR20`
+`TR20b` `TR21` (Wings/ACE in town yes, in the field no — the half that never existed),
+`TR22`-`TR22c` (an unreadable mode falls to town; an unreadable **zone** is not a town),
+`TR23`/`TR23b` (place before the bag scan). `docs/field-checks-2026-08-05.md` gains J6-J8
+and strikes **I1b**, which this contradicts outright. Suites **6969 + 1320**.
+
+## Session "the whole Sinister Stash" (2026-08-06, `2026.08.06f`)
+
+**Theme:** Henrik sent a screenshot of the Eyepatch tooltip with two things wrong in it —
+one he named, one he did not.
+
+**The one he named:** *"It is not a venture gear, which we know now."* The Expert Angler
+note ended `(CatsEyeXI venture gear -- no Fishing skill of its own)`, written when every
+carrier of mods 2004/2005 was venture gear. `expertNote` takes a `source` now, defaulting
+to the venture line; the Crooked Jones row passes its own.
+
+**The one the screenshot showed:** the percent signs were GONE — `Fatigue Limit +20,
+Golden Arrow Rate +2`, and the comma after the first value with them. `imgui.SetTooltip`
+is **printf**, so `%,` and `%\n` were consumed as format specifiers. fishui has had an
+`esc()` since it was written and `itemLine` used it on the NAME (`TextColored`) but not on
+the note — the one string in the file we build with a literal percent in it. Both
+SetTooltip calls in itemLine are escaped now. This is the same law as the BST helper
+panel (an unescaped `%` there printed a heap address); the lesson that generalises is
+that **the escape belongs at the imgui call, not at the string that happens to look
+safe** — a note assembled from `string.format` percentages is exactly the string nobody
+thinks of as risky.
+
+**Landed with it: the whole Sinister Stash**, since a doubloon balance raises exactly one
+question. Seven rows in the wiki's price order — Shovel 5,000 / Crab Cap +1 8,000 /
+Chart 10,000 / Eyepatch 12,000 / Red Crab Mount 15,000 / Shaper's Shawl 15,000 / Rusty
+Fishing Hook 20,000 — name, price, note. **Three of them have no catalog id**: the Chart
+and the Hook are not equipment and the mount is not an item at all, so they draw with no
+icon and no ownership state. `renderIcon(nil, 18)` still reserves the icon's width and
+SameLines, so those names start on the same x as the rows with art. The three that DO
+have ids (18888, 25669, 11009 — a HELM staff, a costume hat, a craft back piece) green
+when owned, because "did I already buy the shovel" is the other question the list
+answers. Only the Eyepatch counts toward coverage.
+
+**Where the names come from.** `nameOf` walks fishdb then the client resource, and none
+of those three shop items has a fishdb row — so it fell through to `#18888`. A
+`SHOP_NAMES` fallback sits under the client resource, not over it: the game still wins
+when it is there to ask.
+
+**Tests:** `FS12b3`-`FS12b7` — every price on the panel, the three id-less rows present
+by name, the note naming Crooked Jones, and the note NOT containing "venture". Suites
+6969 + 1320.
+
+**Addendum (`2026.08.06g`) — two of the three id-less rows had ids after all.** Henrik
+sent `catseyexi.com/item/9426` (Buccaneer's Chart) and `/9420` (Rusty Fishing Hook), plus
+the Red Crab Mount icon bg-wiki uses. So the Chart and the Hook draw their real art and
+green when owned; only the mount stays id-less, and it is the one row that genuinely has
+no item behind it.
+
+**The trap in those two ids, recorded because it will come back.** They are absent from
+the dlac catalog (which is equipment; both are general items) AND the public server clone
+answers for them with something else entirely -- `woodworking_set_94` at 9420,
+`smithing_set_80` at 9426. A future reader who greps the clone to "check" these will
+find confident wrong answers. This is the same live-DB id repurposing the augment work
+and the Garrison latents hit; the clone is base-LSB and the live DB reuses ids freely.
+The comment in fishui says so at the table, where the temptation to fix will be.
+
+**The mount art is a FILE.** `assets\redcrab.png` through filetex (the restockui crate-icon
+precedent) -- a mount has no item id to draw from. Missing file = the row draws without
+art, never an error, and `renderIcon(nil, 18)` still reserves the icon column so the name
+keeps its x. **The PNG itself is owed**: Claude cannot write an image it was shown in
+chat, so Henrik drops the file at `Ashita\addons\dlac\assets\redcrab.png` and it appears
+with no code change.
+
+**Tests:** the smoke harness renderIcon records the ids it is ASKED for now -- the only
+visible sign a catalog-less row is wired at all. `FS12b5a`/`FS12b5b` (Chart and Hook ask
+by live id), `FS12b5c` (the mount reserves the column with no art). Suites 6969 + 1323.
+
+
+**Addendum (`2026.08.06j`) — the crab icon is in.** Henrik dropped `crab icons.zip` in
+Downloads: six PNGs, and they are TWO artworks, not six sizes of one. `icon-16/32/48/64/
+128` are a single 16px pixel sprite at integer upscales -- 467 bytes at 32x32 and 1317 at
+128x128 give it away, there is no added detail up there. `alt-original-32.png` is a real
+anti-aliased illustration, 1861 bytes at the same 32x32.
+
+**Picked the anti-aliased 32.** The row draws at 18px directly beside game item icons,
+and those are 32x32 resources downscaled by the same renderer -- so a 32x32 source lands
+on the identical ratio and the identical softness, and the mount stops being the one row
+that looks sharper or mushier than its neighbours. The pixel family had no good option:
+16 -> 18 is a 1.125x upscale, 32 -> 18 a 0.56x downscale, and a hard nearest-neighbour
+sprite shimmers at both. It is copied byte-identical to `assets\redcrab.png` and the
+reasoning sits in the code comment, because "we have a 128px one, use that" is exactly
+the improvement someone will try.

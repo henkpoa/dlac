@@ -33,10 +33,54 @@ local HEAD_RING = { 25608, 39051 };                        -- Tlahtlamah, Angler
 local GUILD_GEAR = { 14195, 11337, 14400, 15554 };         -- Waders, Smock, Apron, Pelican Ring
 local MARINERS  = { { 26535, 26536 }, { 25986, 25987 },    -- Tunica, Gloves (base, +1)
                     { 25899, 25900 }, { 25966, 25967 } };  -- Hose, Boots
--- NOT displayed (Henrik 2026-07-18): Halieutica 20945 + Brigands Eyepatch 28443
--- (nothing in-game mentions them) and the legendary-rod +1s 19320/19321 (look
--- unobtainable on CatsEyeXI). fishdb keeps their data and autoPick still
--- honours one if it ever lands in a bag -- they are only invisible here.
+-- Crooked Jones: a SEPARATE fishing economy, not the VP set (Henrik,
+-- 2026-08-06, bg-wiki CatsEyeXI_Systems/Fishing #Crooked_Jones). He trades
+-- three named fish a day for DOUBLOONS in Norg (H-8) -- fishing 20+, and the
+-- Sinister Stash stalls in Norg and Lower Jeuno are where they spend. The
+-- Eyepatch is 12,000 of them.
+--   The round-2 research had it as "the Mariners hat analog" purely because
+-- id 28443 sits beside HELM's Plain block the way the Mariners ids do. It
+-- does not: ADJACENT IDS ARE NOT AN ACQUISITION PATH. It gets its own
+-- section under the matrix rather than a column that says VP.
+--   Displayed at all since 2026-08-06, when Henrik reversed the 07-18 ruling
+-- ("I was wrong about the eyepatch") -- a PLAYER has one and sent its card,
+-- so the "nothing in-game mentions them" premise died with it (Henrik does
+-- not own one; the field check goes to that player). Still NOT displayed:
+-- Halieutica 20945 and the legendary-rod +1s 19320/19321 (they still look
+-- unobtainable here). fishdb keeps their data and autoPick still honours one
+-- if it lands in a bag -- they are only invisible here.
+-- The Sinister Stash, in the wiki's own price order. `gear` marks the one row
+-- that is fishing gear (ADVANCED, Expert Angler tooltip); everything else is
+-- here because it is what doubloons BUY, which is the question a doubloon
+-- balance actually raises.
+--   The Chart 9426 and the Hook 9420 are LIVE ids (Henrik, catseyexi.com/item,
+-- 2026-08-06) and they are NOT in dlac's catalog, which carries equipment. Do
+-- not "correct" them from the public server clone: it has woodworking_set_94
+-- at 9420 and smithing_set_80 at 9426 -- the live DB repurposed both, exactly
+-- the id-collision the augment/Garrison work hit. The client resource is the
+-- authority at runtime and it is what draws the icon.
+--   The mount alone has no id, because it is not an item; its art comes from
+-- assets\redcrab.png through filetex (the icon bg-wiki uses). Missing file =
+-- the row still draws, just without art.
+--   That PNG is the 32x32 ANTI-ALIASED crab, not the pixel-art variants that
+-- shipped beside it (16/32/48/64/128 are all one 16px sprite at integer
+-- upscales -- 467 bytes at 32x32 against this one's 1861 says it). Drawn at
+-- 18px next to game item icons, which are themselves 32x32 downscaled, it
+-- carries the same ratio and the same softness as its neighbours; a hard
+-- pixel sprite at 1.125x or 0.56x shimmers. Do not "upgrade" it to icon-128.
+local JONES_SHOP = {
+    { id = 18888, cost =  5000, note = 'Required for Treasure Hunts' },
+    { id = 25669, cost =  8000, note = 'Crab costumes' },
+    { id =  9426, cost = 10000, note = 'Spawns an encounter in Cape Terrigan' },
+    { id = 28443, cost = 12000, note = '"Expert Angler"+2 -- Lv.50 all jobs', gear = true },
+    { n = 'Red Crab Mount', icon = 'redcrab', cost = 15000, note = 'ACE only' },
+    { id = 11009, cost = 15000, note = 'CW only' },
+    { id =  9420, cost = 20000, note = 'Fishing ultimate-weapon material' },
+};
+local JONES_GEAR = {};                                     -- the fishing half, for ADVANCED
+for _, row in ipairs(JONES_SHOP) do
+    if row.gear and row.id ~= nil then JONES_GEAR[#JONES_GEAR + 1] = row.id; end
+end
 local LEGENDARY_RODS = { 17386, 17011 };                   -- Lu Shang's, Ebisu
 local LEG_ANY = { [17386] = true, [19320] = true, [17011] = true, [19321] = true };
 local SPECIAL_RODS = { [17012] = true, [17013] = true, [19319] = true };  -- Judge's, Basket, MMM
@@ -46,6 +90,9 @@ local NO_SUGGEST = { [17012] = true, [17013] = true, [19319] = true,      -- spe
 local ADVANCED = {};   -- any of these owned = coverage level 3
 for _, id in ipairs(GUILD_GEAR) do ADVANCED[id] = true; end
 for _, pair in ipairs(MARINERS) do ADVANCED[pair[1]] = true; ADVANCED[pair[2]] = true; end
+-- Doubloon gear counts as the currency tier too: level 3 reads "guild/venture"
+-- but what it MEANS is "you are past the craftable set and into a shop".
+for _, id in ipairs(JONES_GEAR) do ADVANCED[id] = true; end
 for _, id in ipairs(HEAD_RING) do ADVANCED[id] = true; end
 
 -- ---------------------------------------------------------------------------
@@ -128,11 +175,37 @@ local GREEN_GLOW  = { 0.75, 1.00, 0.70, 1.0 };
 
 local function esc(s) return (tostring(s):gsub('%%', '%%%%')); end
 
+-- 12000 -> "12,000". The Stash prices are five figures and read as noise
+-- without it; same grouping the wiki's shop table uses.
+local function comma(n)
+    local s = tostring(math.floor(tonumber(n) or 0));
+    local out = s:reverse():gsub('(%d%d%d)', '%1,'):reverse();
+    return (out:gsub('^,', ''));
+end
+
 local _fwok, fw = pcall(require, 'dlac\\feature\\fishwatch');
 _fwok = _fwok and type(fw) == 'table';
 
+-- assets\*.png loader, for the one Stash row that is not an item (restockui's
+-- crate-icon precedent). nil handle = no art, never an error.
+local _ftok, filetex = pcall(require, 'dlac\\ui\\filetex');
+_ftok = _ftok and type(filetex) == 'table' and type(filetex.handle) == 'function';
+
+-- Names for ids fishdb has no row for -- the Sinister Stash sells things that
+-- are not fishing gear (a HELM staff, a costume hat, a craft back piece), so
+-- nameOf's usual sources come up empty. Client resources still win when the
+-- game is there to ask; these are the headless/last-resort spelling.
+local SHOP_NAMES = {
+    [18888] = "Brigand's Shovel",
+    [25669] = 'Crab Cap +1',
+    [11009] = "Shaper's Shawl",
+    [ 9426] = "Buccaneer's Chart",
+    [ 9420] = 'Rusty Fishing Hook',
+};
+
 -- Display name for an id: live API name from fishdb (catalog-identical), else
--- the client resource name, else the fishdb SQL name, else the id.
+-- the client resource name, else the fishdb SQL name, else a shop name, else
+-- the id.
 local _names = {};
 local function nameOf(id)
     if _names[id] ~= nil then return _names[id]; end
@@ -153,7 +226,7 @@ local function nameOf(id)
                 or ((db.fish or {})[id] or {}).n;
         end
     end
-    _names[id] = n or ('#' .. tostring(id));
+    _names[id] = n or SHOP_NAMES[id] or ('#' .. tostring(id));
     return _names[id];
 end
 
@@ -180,15 +253,19 @@ local function itemLine(deps, id, state, note)
     imgui.TextColored(col, esc(name));
     if imgui.IsItemHovered() then
         -- explicit note WINS (the helmui rule -- cascade/Expert Angler notes
-        -- must not lose to the generic stat card)
+        -- must not lose to the generic stat card).
+        -- esc() is NOT optional here: SetTooltip is printf, so a bare '%' eats
+        -- the character after it. The Expert Angler note shipped 08-06 as
+        -- "Fatigue Limit +20%, ..." and rendered "+20" with the comma gone
+        -- (Henrik's screenshot) -- the percent was never on screen.
         if note ~= nil then
-            imgui.SetTooltip(note);
+            imgui.SetTooltip(esc(note));
         else
             local rec = (deps ~= nil and deps.lookupByName ~= nil) and deps.lookupByName(name) or nil;
             if rec ~= nil and deps ~= nil and type(deps.itemTooltip) == 'function' then
                 pcall(deps.itemTooltip, rec);
             else
-                imgui.SetTooltip(name);
+                imgui.SetTooltip(esc(name));
             end
         end
     end
@@ -206,10 +283,16 @@ end
 
 local BETTER_NOTE = 'Green via progression: you own a better piece for this slot --\nso this one is covered. You\'re awesome.';
 
--- Expert Angler tooltip for the Mariners pieces that carry the custom mods
--- (identified 2026-07-18 via bg-wiki CatsEyeXI_Content/Ventures: 2004 =
--- Fatigue Limit +%, 2005 = Golden Arrow Rate +% -- values match the live DB).
-local function expertNote(id)
+-- Expert Angler tooltip for the pieces that carry the custom mods (identified
+-- 2026-07-18 via bg-wiki CatsEyeXI_Content/Ventures: 2004 = Fatigue Limit +%,
+-- 2005 = Golden Arrow Rate +% -- values match the live DB). The wiki's own
+-- framing: one Expert Angler increment = +10% daily capacity, multiplicative,
+-- which is exactly the cx4 = N x 10 / cx5 = N shape fishdb stores.
+--   `source` names the economy the piece comes from and MUST be passed when it
+-- is not the venture set -- the Eyepatch spent a day labelled "venture gear"
+-- and it is bought with doubloons (Henrik, 2026-08-06: "It is not a venture
+-- gear, which we know now").
+local function expertNote(id, source)
     if not _fcok then return nil; end
     local db = fcalc.db(); if db == nil then return nil; end
     local g = (db.gearBonus or {})[id];
@@ -217,8 +300,13 @@ local function expertNote(id)
     local parts = {};
     if g.cx4 ~= nil then parts[#parts + 1] = string.format('Fatigue Limit +%d%%', g.cx4); end
     if g.cx5 ~= nil then parts[#parts + 1] = string.format('Golden Arrow Rate +%d%%', g.cx5); end
-    return string.format('Expert Angler: %s\n(+ Fishing skill -- CatsEyeXI venture gear)',
-        table.concat(parts, ', '));
+    -- Brigands Eyepatch carries the cx mods and NO Fish mod (fishdb 28443) --
+    -- the only carrier that does, so the tail must not promise skill it has
+    -- no line for.
+    local src = source or 'CatsEyeXI venture gear';
+    local tail = (g.fish ~= nil) and ('\n(+ Fishing skill -- ' .. src .. ')')
+                                  or ('\n(' .. src .. ' -- no Fishing skill of its own)');
+    return 'Expert Angler: ' .. table.concat(parts, ', ') .. tail;
 end
 
 -- Target-picker state. Shared by every surface that opens the window, which is
@@ -603,6 +691,51 @@ function M.render(deps, availW)
         else
             imgui.Dummy({ 0, 1 });
         end
+    end
+    imgui.Spacing();
+
+    -- ---- Crooked Jones (doubloons) ----------------------------------------
+    -- Its own section, not a fifth column: doubloons are a third currency
+    -- beside GP and VP, and the matrix's columns ARE the currencies. Green
+    -- when owned, no glow -- the glow ruling names the Mariners set
+    -- specifically (2026-07-18), and this is not it. The whole Sinister Stash
+    -- is listed, not just the fishing piece: the panel is where you see your
+    -- doubloon balance, so it is where "what do they buy" belongs.
+    imgui.TextColored(COL_HEADER, 'CROOKED JONES (doubloons)');
+    if imgui.IsItemHovered() then
+        imgui.SetTooltip('Norg (H-8): trade him the day\'s three named fish for doubloons --\n'
+            .. 'one lower-tier (60), one middle (40), one legendary (15), +100 for\n'
+            .. 'maxing all three; fishing 20+. The Sinister Stash stalls in Norg\n'
+            .. 'and Lower Jeuno are where they spend.');
+    end
+    imgui.Separator();
+    for _, row in ipairs(JONES_SHOP) do
+        local isOwned = row.id ~= nil and owned(oc, row.id);
+        if row.id ~= nil then
+            local note = row.gear and expertNote(row.id, 'Crooked Jones gear') or nil;
+            itemLine(deps, row.id, isOwned and 'owned' or 'dim', note);
+        else
+            -- No id: not an item at all, so no ownership claim -- we cannot
+            -- see a mount in a bag. Its art is a file (bg-wiki's icon) rather
+            -- than a client resource; when the file is missing renderIcon(nil)
+            -- still reserves the icon's space and SameLines, so the name keeps
+            -- the same x as the rows that have art.
+            local h = (row.icon ~= nil and _ftok) and filetex.handle(row.icon) or nil;
+            if h ~= nil then
+                imgui.Image(h, { 18, 18 });
+                imgui.SameLine(0, 6);                  -- renderIcon's own spacing
+            elseif deps ~= nil and type(deps.renderIcon) == 'function' then
+                deps.renderIcon(nil, 18);
+            end
+            imgui.TextColored(COL_DIM, esc(row.n));
+        end
+        -- Own stops, not the matrix's: the longest name here is the Eyepatch
+        -- at 18 characters, and the notes need the room the matrix spends on
+        -- two more columns. Price at colW, note at colW*2.
+        imgui.SameLine(colW);
+        imgui.TextColored(isOwned and GREEN_OWNED or COL_TEXT, esc(comma(row.cost)));
+        imgui.SameLine(colW * 2);
+        imgui.TextColored(COL_DIM, esc(row.note));
     end
     imgui.Spacing();
 

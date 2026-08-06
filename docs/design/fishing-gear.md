@@ -41,6 +41,56 @@ end-game); Halieutica, Brigands Eyepatch and the legendary-rod +1s are NOT displ
 (unmentioned in-game / look unobtainable — data stays shipped, autoPick still honours
 an owned one); owning Lu Shang's or Ebisu greens the whole standard rod ladder.
 
+**Round-3 amendment (2026-08-06):** the Eyepatch is OUT of that exclusion — a player
+owns one, so it displays. It gets **its own row under the matrix**, headed `CROOKED
+JONES (doubloons)`, not a cell in the Mariners column: the matrix's columns ARE the
+currencies (craft / +1 / GP / VP) and doubloons are a third one. Green when owned, no
+glow — the glow ruling names the Mariners set specifically. It still counts toward
+coverage 3 (level 3's label says "guild/venture"; what it means is "past the craftable
+set, into a shop"). It is the only carrier with **no Fish mod at all**, so its Expert
+Angler tooltip says so rather than implying a skill line it does not have.
+Halieutica and the rod +1s keep the round-2 ruling.
+
+**Crooked Jones** (bg-wiki `CatsEyeXI_Systems/Fishing#Crooked_Jones`, Henrik 2026-08-06)
+is a fishing economy the design doc had never covered: he stands in **Norg (H-8)** and
+each day names three fish — one lower-tier (max 60), one middle (max 40), one legendary
+(max 15) — trading them for **doubloons**; fishing 20+ to play, +100 doubloons for
+maxing all three. The **Sinister Stash** stalls in Norg and Lower Jeuno spend them.
+The **whole Stash is listed** on the panel (Henrik, 2026-08-06: "add the rest of the
+Sinister Stash shop items") — the panel is where you read your doubloon balance, so it is
+where "what do they buy" belongs, fishing gear or not:
+
+| Item | Doubloons | id | Note |
+|---|---|---|---|
+| Brigand's Shovel | 5,000 | 18888 | required for Treasure Hunts (a HELM staff) |
+| Crab Cap +1 | 8,000 | 25669 | crab costumes |
+| Buccaneer's Chart | 10,000 | 9426 | spawns an encounter in Cape Terrigan |
+| **Brigand's Eyepatch** | **12,000** | **28443** | **the fishing piece — "Expert Angler"+2** |
+| Red Crab Mount | 15,000 | — | ACE only |
+| Shaper's Shawl | 15,000 | 11009 | CW only |
+| Rusty Fishing Hook | 20,000 | 9420 | Fishing ultimate-weapon material |
+
+**The Chart and the Hook are live ids that dlac's catalog does not carry** (Henrik,
+`catseyexi.com/item/9426` and `/9420`, 2026-08-06) — the catalog is equipment, and these
+are general items. **Do not "correct" them against the public server clone**: it holds
+`woodworking_set_94` at 9420 and `smithing_set_80` at 9426. The live DB repurposed both
+ids, the same collision the augment and Garrison-latent work hit; the client resource is
+the authority at runtime and it is what draws the icon and resolves the name.
+`SHOP_NAMES` in fishui is only the headless/last-resort spelling and sits UNDER the
+client resource, never over it.
+
+**The mount has no id because it is not an item.** Its art is `assets\redcrab.png`
+(bg-wiki's icon) through `filetex`, the restockui crate-icon precedent; a missing file
+means the row draws without art, never an error. It carries no ownership state either —
+we cannot see a mount in a bag, and inventing an id to fill the icon column would be a
+lie the rest of the panel never tells. Every row that HAS an id gets the usual
+green-when-owned, because "I already bought the shovel" is exactly what the list is for.
+Only the Eyepatch counts toward coverage.
+
+The wiki also frames Expert Angler the way the item card does: **+1 per increment = +10%
+daily capacity, multiplicative**, which is exactly the cx4 = N x 10 / cx5 = N shape in
+fishdb.
+
 Mechanics the addon USES (file:line = fishingutils.cpp unless noted):
 
 - **What bites**: position → fishing area (point-in-poly/cylinder, :1287) → catch groups
@@ -117,8 +167,13 @@ Mechanics the addon USES (file:line = fishingutils.cpp unless noted):
 **The Mariners set is fishing's VP tier** (generator discovery 2026-07-18): its ids
 interleave HELM's Plain block — Plain Hose 25897/98 then **Mariners Hose 25899/25900
 (+1)**, Plain Boots 25964/65 then **Mariners Boots 25966/67**, Plain Gloves 25984/85 then
-**Mariners Gloves 25986/87**, Plain Tunica 26533/34 then **Mariners Tunica 26535/36** —
-and **Brigands Eyepatch 28443** is the hat analog. All carry Fish+1 (+2 on +1 pieces);
+**Mariners Gloves 25986/87**, Plain Tunica 26533/34 then **Mariners Tunica 26535/36**.
+~~and **Brigands Eyepatch 28443** is the hat analog~~ — **WRONG, corrected 2026-08-06**:
+the Eyepatch is **Crooked Jones** gear, bought with doubloons, an entirely different
+economy (see below). Its id sits beside the block and nothing more. **Adjacent ids are
+not an acquisition path** — the generator discovery was a real pattern for the four
+Mariners pieces and a coincidence for the fifth id, and nothing in the id alone can tell
+the two apart. All the Mariners pieces carry Fish+1 (+2 on +1 pieces);
 Tunica/Boots (+1s) add cx-mods 2004/2005 (10/1 base, 20/2 on +1). The panel's Mariners
 column is the Plain column's sibling; VP prices field-verifiable (likely 3000/hat 5000).
 **Halieutica 20945 is NOT a rod** — a Main-slot weapon (polearm-skill fishing spear):
@@ -309,14 +364,21 @@ the test fixtures.
    heartbeat) and round 6 (the dropdown pins behave).
 5. Halieutica/Mariners/Brigands Eyepatch: if Henrik owns any, hover shows them in
    ladders via gearBonus; report actual in-game stats text so the "unverified" labels
-   can be tightened. **Still open** — needs the items to drop first.
+   can be tightened. **Eyepatch ANSWERED 2026-08-06** (a player's item card, relayed
+   by Henrik — he does not own one): DEF 15,
+   MP+15, CHR+3, Water+10, `"Expert Angler"+2`, Lv.50 all jobs — and an enchantment
+   the fishing work never saw, `Teleport` (Norg), which is why it now also rides
+   useitem's Other Teleports cascade. Halieutica/Mariners still open.
 
 ## 7. Open questions (server-questions.md style)
 
 - ~~Mods **2004/2005** semantics~~ **ANSWERED round 2**: Expert Angler — 2004 Fatigue
   Limit +%, 2005 Golden Arrow Rate +% (bg-wiki Ventures page; values match the DB).
-- Are Lu Shang's +1 / Ebisu +1 / Halieutica / Brigands Eyepatch obtainable at all?
-  Henrik believes not (they exist only in the live DB) — undisplayed until one shows up.
+- ~~Are Lu Shang's +1 / Ebisu +1 / Halieutica / Brigands Eyepatch obtainable at all?~~
+  **The Eyepatch is** — a player has one (2026-08-06): "I was wrong about the eyepatch."
+  The round-2 undisplayed ruling rested on "nothing in-game mentions them", so it died
+  with the premise and the Eyepatch now DISPLAYS (its own Crooked Jones row). The other
+  three keep the ruling until one of them turns up the same way.
 - Does `!ventures fishing` exist as a sub-command (vs plain `!ventures`)? Field test 1.
 - Ashita rank bits for fishing cap: if `GetCraftSkill(0)` exposes rank like retail
   (cap = (rank+1)×10), status line shows skill/cap; else skill only.
