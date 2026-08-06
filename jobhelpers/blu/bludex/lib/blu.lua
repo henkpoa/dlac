@@ -524,6 +524,46 @@ function M.applyDiff(ids, book, onDone)
     return true;
 end
 
+-- The effective BLU level RIGHT NOW -- the synced level when a level sync
+-- is on (the client reports the adjusted level). nil off BLU / unreadable.
+function M.effectiveLevel()
+    local ok, lvl = pcall(function()
+        local p = player();
+        if p:GetMainJob() == 16 then return p:GetMainJobLevel(); end
+        if p:GetSubJob() == 16 then return p:GetSubJobLevel(); end
+        return nil;
+    end);
+    if not ok or lvl == nil or lvl <= 0 then return nil; end
+    return lvl;
+end
+
+-- The level-sync view of the LIVE set: what the client holds right now.
+-- Under a sync the client's set struct keeps only the spells the level
+-- still enables (field 2026-08-06), so this is simply the live set counted
+-- and costed, with the server's slot rule for the level. nil off BLU, when
+-- the set is unreadable, or when the level cannot be read.
+function M.syncStats(book)
+    local lvl = M.effectiveLevel();
+    if lvl == nil then return nil; end
+    local live = M.currentSet();
+    if #live ~= 20 then return nil; end
+    local active, pts = 0, 0;
+    for i = 1, 20 do
+        local id = live[i] or 0;
+        if id ~= 0 then
+            active = active + 1;
+            local s = book and book.spells and book.spells[id];
+            if s ~= nil then pts = pts + (s.setPoints or 0); end
+        end
+    end
+    return {
+        level = lvl,
+        active = active,
+        activePoints = pts,
+        maxSlots = setmodel.slotsAtLevel(lvl),
+    };
+end
+
 -- The level-DOWN report: a level decrease (sync down, delevel) sends NO
 -- packets -- the client disables over-level spells itself and re-enables
 -- them when the level returns, and the set is level-sorted so the survivors
@@ -534,11 +574,8 @@ function M.reportLevelDown(book)
     if not M.onBlu() then return; end
     local live = M.currentSet();
     if #live ~= 20 then return; end
-    local ok, lvl = pcall(function()
-        local p = player();
-        return M.isBluMain() and p:GetMainJobLevel() or p:GetSubJobLevel();
-    end);
-    if not ok or lvl == nil or lvl <= 0 then return; end
+    local lvl = M.effectiveLevel();
+    if lvl == nil then return; end
     local filled, disabled = 0, 0;
     for i = 1, 20 do
         local id = live[i] or 0;

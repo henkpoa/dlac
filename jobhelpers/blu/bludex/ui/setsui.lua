@@ -171,6 +171,7 @@ local function slotList(ctx, liveIds)
     local im, st, book = ctx.im, ctx.state, ctx.book;
     local set = st.editingSet;
     local nameW = math.max(kit.availWidth(im, MID_W) - 24 - 40, 120);
+    local lvl = ctx.blu.effectiveLevel();
     local shown = 0;
     for i = 1, 20 do
         local id = set.ids[i] or 0;
@@ -178,8 +179,15 @@ local function slotList(ctx, liveIds)
             shown = shown + 1;
             local s = book.spells[id];
             local liveTag = '';
-            if liveIds ~= nil then
-                liveTag = liveIds[id] and '' or '  (not active yet)';
+            if liveIds ~= nil and not liveIds[id] then
+                -- a sync-disabled spell is not WAITING for an apply -- the
+                -- game holds it and returns it when the sync ends
+                if lvl ~= nil and lvl < 75 and s ~= nil
+                    and s.level ~= nil and s.level > lvl then
+                    liveTag = '  (disabled by level sync)';
+                else
+                    liveTag = '  (not active yet)';
+                end
             end
             local label = ((s ~= nil) and s.name or ('#' .. id)) .. liveTag;
             local lclick, rclick, hov = spellsui.listRow(ctx, id, 24, nameW,
@@ -263,7 +271,16 @@ local function slotGrid(ctx)
             end
             local liveLine = '';
             if liveIds ~= nil then
-                liveLine = inGame and '\nactive in game' or '\nnot active in game (Apply sends it)';
+                local s2 = book.spells[id];
+                local lvl2 = ctx.blu.effectiveLevel();
+                if inGame then
+                    liveLine = '\nactive in game';
+                elseif lvl2 ~= nil and lvl2 < 75 and s2 ~= nil
+                    and s2.level ~= nil and s2.level > lvl2 then
+                    liveLine = '\ndisabled by level sync (returns when it ends)';
+                else
+                    liveLine = '\nnot active in game (Apply sends it)';
+                end
             end
             local s = book.spells[id];
             if s ~= nil then
@@ -312,6 +329,17 @@ local function slotGrid(ctx)
     end
     kit.meter(im, 'Slots ', ctx.sets.count(st.editingSet), 20, '');
     kit.ctext(im, kit.COL.dim, ('Total MP %d'):format(ctx.sets.usedMP(st.editingSet, book)));
+    -- the level-sync line: the meters above are the PLAN; this is what the
+    -- client holds right now while synced under the cap (see host header)
+    local ss = ctx.blu.syncStats(book);
+    if ss ~= nil and ss.level < 75 then
+        local liveMax = ctx.blu.points();
+        kit.ctext(im, kit.COL.warn, ('Sync Lv.%d: %d / %s pts, %d / %d slots'):format(
+            ss.level, ss.activePoints, liveMax and tostring(liveMax) or '?',
+            ss.active, ss.maxSlots));
+        kit.tip(im, 'What the level sync leaves live right now - the game\n'
+            .. 'disabled the rest itself and restores it when the sync ends.');
+    end
 
     -- game actions (widths measured -- 'Apply in gam' clipped in the field).
     -- The Apply button wears the diff state: green = the live set differs
