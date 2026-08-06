@@ -18,7 +18,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.08.06h';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.08.06j';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
                                 -- (03f = engine v163: the contest explains its own plan;
                                 --  03g = one floating tray: Teleports + the E-Box crates;
@@ -165,7 +165,14 @@ addon.version = '2026.08.06h';  -- date of the last shipped change (Ashita print
                                 --  every line it prints now says "box"; and its
                                 --  tray icon stops being CW-only -- it is a
                                 --  PLACE gate now, at an E-Box for a Crystal
-                                --  Warrior, in town for everyone else)
+                                --  Warrior, in town for everyone else;
+                                --  06j = the Red Crab Mount's icon is real:
+                                --  the 32x32 anti-aliased crab of the six
+                                --  Henrik sent, because the row draws at 18px
+                                --  beside game item icons that are themselves
+                                --  32x32 downscaled -- the pixel-art variants
+                                --  are one 16px sprite upscaled and shimmer
+                                --  at any non-integer size)
 addon.desc    = 'Gear sets, triggers and live stats with level scaling -- dlac equips your gear itself.';
 
 -- Load BEACON ('/dl check' field round, 2026-07-23): written by PLAIN io at

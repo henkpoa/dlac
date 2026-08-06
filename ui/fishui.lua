@@ -62,6 +62,12 @@ local MARINERS  = { { 26535, 26536 }, { 25986, 25987 },    -- Tunica, Gloves (ba
 --   The mount alone has no id, because it is not an item; its art comes from
 -- assets\redcrab.png through filetex (the icon bg-wiki uses). Missing file =
 -- the row still draws, just without art.
+--   That PNG is the 32x32 ANTI-ALIASED crab, not the pixel-art variants that
+-- shipped beside it (16/32/48/64/128 are all one 16px sprite at integer
+-- upscales -- 467 bytes at 32x32 against this one's 1861 says it). Drawn at
+-- 18px next to game item icons, which are themselves 32x32 downscaled, it
+-- carries the same ratio and the same softness as its neighbours; a hard
+-- pixel sprite at 1.125x or 0.56x shimmers. Do not "upgrade" it to icon-128.
 local JONES_SHOP = {
     { id = 18888, cost =  5000, note = 'Required for Treasure Hunts' },
     { id = 25669, cost =  8000, note = 'Crab costumes' },

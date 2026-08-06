@@ -9492,3 +9492,19 @@ with no code change.
 **Tests:** the smoke harness renderIcon records the ids it is ASKED for now -- the only
 visible sign a catalog-less row is wired at all. `FS12b5a`/`FS12b5b` (Chart and Hook ask
 by live id), `FS12b5c` (the mount reserves the column with no art). Suites 6969 + 1323.
+
+
+**Addendum (`2026.08.06j`) — the crab icon is in.** Henrik dropped `crab icons.zip` in
+Downloads: six PNGs, and they are TWO artworks, not six sizes of one. `icon-16/32/48/64/
+128` are a single 16px pixel sprite at integer upscales -- 467 bytes at 32x32 and 1317 at
+128x128 give it away, there is no added detail up there. `alt-original-32.png` is a real
+anti-aliased illustration, 1861 bytes at the same 32x32.
+
+**Picked the anti-aliased 32.** The row draws at 18px directly beside game item icons,
+and those are 32x32 resources downscaled by the same renderer -- so a 32x32 source lands
+on the identical ratio and the identical softness, and the mount stops being the one row
+that looks sharper or mushier than its neighbours. The pixel family had no good option:
+16 -> 18 is a 1.125x upscale, 32 -> 18 a 0.56x downscale, and a hard nearest-neighbour
+sprite shimmers at both. It is copied byte-identical to `assets\redcrab.png` and the
+reasoning sits in the code comment, because "we have a 128px one, use that" is exactly
+the improvement someone will try.
