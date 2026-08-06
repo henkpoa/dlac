@@ -9561,3 +9561,67 @@ re-aimed, `GB1l`/`GB1m` for the troves, `GB1n`/`GB1o` for the box-like negatives
 `GB2d` `GB5b` `GB7b` `GB14c` `GB16` `GB17b` re-based on live names. Suites **6994 + 1345**,
 both interpreters. Field checks J1-J5 rewritten around a name table; **J1 is now one hover**
 — read what the client calls any one of the eleven and the whole naming question closes.
+
+## Session "as if I was on the job" (2026-08-06, `2026.08.06l`)
+
+**Theme:** a job picker at the top of the Gear window — browse and *build* another job's
+sets and triggers without changing job. Henrik: *"Sometimes you just want to edit other
+jobs, if you're waiting for someone or just had an idea, you know. The way everything is
+built now, this shouldn't be too bad right?"*
+
+**It was not, and the reason is worth recording: there are exactly two job seams in
+gearui.** `jobFile()` decides which job's FILES — and it is injected *once* into every
+file-shaped consumer (`profilesets.configure`, the shared triggersui/automationsui deps,
+setupui), so six call sites in three modules cover the whole editing surface.
+`drawWindow`'s `(job, level)` pair decides which job the TABS draw, and it already
+travels as a parameter through `host.renderTabs` — no tab digs for the job itself. The
+feature is one new module behind both seams; the rest was an audit, not plumbing.
+
+**Four things fell out for free**, each because an earlier decision had already put the
+job in the right place:
+* `isUsable` is `gearOracle.canWear(rec, job, level)` since issue #71 — main job only, no
+  hidden live read — so "as if I were on WAR at 75" is *literally those two arguments*.
+  The sub job never enters wearability, which killed the sub-job question outright (the
+  Sub picker was never job-gated anyway — the rule reverted three times).
+* `profilesets.loadRoot` caches on `jobFile() .. activeName()`, so the cache key moves
+  with the picker and the browsed job's files re-parse unprompted.
+* The working-set drop keys on the same `job` value, so it handles picker moves with no
+  second guard — *and* leaves a half-built WAR set alone when you change job in game.
+* Gear Helpers reads its own `playerJob` dep rather than the tab parameter, so the one
+  surface that plans equips for RIGHT NOW stayed live without being touched.
+
+**The engine was never at risk, structurally.** `dispatch`/`equipengine` read
+`GetMainJob()` themselves and have never asked the UI for a job, so the Arbiter keeps
+dressing your real job whatever is on screen. What *did* need care was the opposite
+direction: `setupui` (shim state, auto-seed, migration) had to keep the LIVE job, which is
+why `jobFile()` split into it plus `liveJobFile()`.
+
+**Level: flat 75, and deliberately not the real one.** Henrik: *"You do not need to know
+the job levels honestly... 99% of the time you build as lvl 75 either way."* Per-job levels
+are one `GetJobLevel` call away and were left alone — build-ahead is already how this
+codebase treats set building. The trap avoided: **not** routing that 75 through
+`staticMainLevel`, which is the obvious lever and is read by the ENGINE (dispatch,
+gearoptim, petfood, ammoui) — previewing WAR would have re-levelled what your live job
+equips.
+
+**The Equipped tab is disabled off-job, not simulated.** Henrik: *"can't view live
+equipment either way on a job you're not on... unless you wanna do the guess work."* A
+guessed "what you'd be wearing as WAR" is inference over facts we do not have (what the
+Arbiter would rule, what is in your bags then), and it would be confidently wrong exactly
+when it mattered. It stays *submitted* to the tab bar and says why: dropping the selected
+tab makes ImGui reassign the selection, and this build's tab-selection flag does not work.
+All Equipment follows the picker instead — its "usable now" filter is the browse view, and
+its right-click menu is wishlist-only.
+
+**Two receipts had to stop lying.** An off-job Triggers commit skips `/dl triggers reload`
+(the engine reloads the job it is ON) and says the rules go live when you change to that
+job; `setStatus` — the single sink every Sets receipt funnels through — strips the
+"live now (hot-swapped)" tail rather than contradicting the banner two lines above it.
+
+**Tests:** `JB1`-`JB7d` (21 checks: the state contract, including the two that are easy to
+get backwards — picking your own job means *follow live*, and a real job change does *not*
+clear a selection) and `JBU1`-`JBU4f` (17 checks: the picker and banner rendered against a
+stub imgui for stack balance, and the Equipped tab's off-job branch proven to return before
+it reaches the live grid). Suites **7015 + 1362**.
+
+**Owed:** a field round. Nothing here has been in front of the client yet.

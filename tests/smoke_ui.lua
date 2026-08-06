@@ -6992,6 +6992,104 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- JBU. Job browsing, RENDERED (2026-08-06). The state core is pinned headlessly
+-- (run_tests JB*); what only an in-game frame could catch is the render side --
+-- an unbalanced PushItemWidth/BeginCombo (native UB no pcall sees, the S50
+-- lesson), and the Equipped tab's new off-job branch, which is a code path that
+-- otherwise never runs outside the client.
+--
+-- Both are driven against a stub imgui, re-requiring the modules so they capture
+-- it (the floatgear precedent -- the real gearui captured the REAL nil imgui at
+-- its own load, so only re-required modules can render here).
+-- ---------------------------------------------------------------------------
+;(function()
+    local said, depth = {}, { item = 0, combo = 0 };
+    local function nop() end
+    local IM = {};
+    for _, n in ipairs({ 'Separator', 'Text', 'TextWrapped', 'SameLine', 'Spacing',
+                         'SetTooltip', 'Dummy', 'PushID', 'PopID' }) do IM[n] = nop; end
+    IM.TextColored   = function(_, s) said[#said + 1] = tostring(s); end
+    IM.PushItemWidth = function() depth.item = depth.item + 1; end
+    IM.PopItemWidth  = function() depth.item = depth.item - 1; end
+    IM.BeginCombo    = function() depth.combo = depth.combo + 1; return true; end
+    IM.EndCombo      = function() depth.combo = depth.combo - 1; end
+    IM.CalcTextSize  = function() return 10, 10; end
+    for _, n in ipairs({ 'Button', 'SmallButton', 'Selectable', 'IsItemHovered' }) do
+        IM[n] = function() return false; end
+    end
+    local savedIM, savedCore = package.loaded['imgui'], AshitaCore;
+    package.loaded['imgui'] = IM;
+    AshitaCore = { GetMemoryManager = function()
+        return { GetPlayer = function() return { GetMainJob = function() return 3; end }; end };  -- WHM
+    end };
+
+    package.loaded['dlac\\ui\\jobbrowse'] = nil;
+    local jok, jb = pcall(require, 'dlac\\ui\\jobbrowse');
+    check('JBU1 jobbrowse re-requires against a stub imgui', jok and type(jb.render), 'function');
+    if jok then
+        local COLX = { DIM = { 0, 0, 0, 1 }, WANT = { 1, 0.55, 0.3, 1 } };
+
+        -- The picker, with the combo OPEN: the 22-row list builds and draws.
+        said = {};
+        local rok = pcall(jb.render, COLX);
+        check('JBU2a the picker renders', rok, true);
+        check('JBU2b ...leaving no item-width push behind', depth.item, 0);
+        check('JBU2c ...and no open combo', depth.combo, 0);
+        local onRows, newRows = 0, 0;
+        for _, s in ipairs(said) do
+            if s == '(on)'  then onRows  = onRows + 1; end
+            if s == '(new)' then newRows = newRows + 1; end
+        end
+        check('JBU2d the live job is marked exactly once', onRows, 1);
+        check('JBU2e ...and every other job reads as having no entry yet', newRows, 21);
+
+        -- The banner, while browsing a job we are not on.
+        jb.set('WAR');
+        said = {};
+        local bok = pcall(jb.renderBanner, COLX, nil);
+        local banner = said[1] or '';
+        check('JBU3a the banner renders while browsing', bok, true);
+        check('JBU3b ...naming the job being viewed', banner:find('Viewing WAR', 1, true) ~= nil, true);
+        check('JBU3c ...the job you are actually on', banner:find('you are on WHM', 1, true) ~= nil, true);
+        check('JBU3d ...and that nothing equips', banner:find('nothing equips', 1, true) ~= nil, true);
+        said = {};
+        jb.clear();
+        pcall(jb.renderBanner, COLX, nil);
+        check('JBU3e ...and says nothing at all when not browsing', #said, 0);
+
+        -- The Equipped tab's off-job branch. It must return BEFORE it touches a
+        -- single gearui service: the guard is what stops a tab about your body
+        -- from drawing another job's gear (and from equipping it on click).
+        package.loaded['dlac\\ui\\equippedui'] = nil;
+        local eok, eq = pcall(require, 'dlac\\ui\\equippedui');
+        check('JBU4a equippedui re-requires against the stub', eok and type(eq.renderEquippedTab), 'function');
+        if eok then
+            jb.set('WAR');
+            said = {};
+            local tok = pcall(eq.renderEquippedTab, 'WAR', 75);
+            check('JBU4b the Equipped tab renders off-job', tok, true);
+            local body = table.concat(said, '\n');
+            check('JBU4c ...saying it is unavailable',
+                body:find('Not available while browsing WAR', 1, true) ~= nil, true);
+            check('JBU4d ...naming the job you are on',
+                body:find('you are on WHM', 1, true) ~= nil, true);
+            check('JBU4e ...and refusing to guess',
+                body:find('will not guess', 1, true) ~= nil, true);
+            -- The hover line the LIVE tab opens with must NOT be there: that is
+            -- the proof the guard returned rather than falling through.
+            check('JBU4f ...and never reaching the live grid',
+                body:find('click for alternatives', 1, true), nil);
+            jb.clear();
+        end
+    end
+
+    package.loaded['imgui'] = savedIM;
+    package.loaded['dlac\\ui\\jobbrowse'] = nil;
+    package.loaded['dlac\\ui\\equippedui'] = nil;
+    AshitaCore = savedCore;
+end)();
+
+-- ---------------------------------------------------------------------------
 -- verdict
 -- ---------------------------------------------------------------------------
 if #failures > 0 then

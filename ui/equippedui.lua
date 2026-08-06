@@ -35,6 +35,13 @@ local uistyle  = try("dlac\\ui\\uistyle");   -- helpLabel: underline + hover, th
 -- popup scope. Required through try(): a missing/broken wishlistui must cost the
 -- menu, never the tab.
 local wishui = try("dlac\\ui\\wishlistui");
+-- The job selector (ui\jobbrowse). Required directly rather than threaded
+-- through the services table: it is a leaf module with no gearui dependency, and
+-- only ONE of these two tabs consults it. The Equipped tab refuses to draw while
+-- browsing (see its head); All Equipment follows the picker like every other
+-- editing surface -- its "usable now" filter IS the "what can this job wear"
+-- view, and its right-click menu is wishlist-only, so it cannot touch your gear.
+local jbrowse = try("dlac\\ui\\jobbrowse");
 local ITEM_MENU = '##dlac_itemmenu';
 
 local S = host.services;
@@ -261,6 +268,32 @@ end
 -- Tab: Equipped
 -- ---------------------------------------------------------------------------
 local function renderEquippedTab(job, level)
+    -- BROWSING ANOTHER JOB (2026-08-06). This tab is a picture of YOUR BODY --
+    -- what you are wearing, plus per-slot alternatives that EQUIP ON CLICK. There
+    -- is no honest version of it for a job you are not on, and the guessed
+    -- version ("what the engine would put on you as WAR") would be inference over
+    -- facts we do not have: what the Arbiter would actually rule, and what is in
+    -- your bags at the time. Henrik, 2026-08-06: "can't view live equipment
+    -- either way on a job you're not on."
+    --
+    -- The tab stays SUBMITTED to the bar rather than being dropped from it. If it
+    -- happens to be the selected tab when the picker moves, removing it makes
+    -- ImGui reassign the selection -- and this build's tab-selection flag does not
+    -- work, so putting it back costs the whole bar-regeneration machinery
+    -- (uihost's beginForced comment block). A greyed-out tab is not worth that.
+    if jbrowse ~= nil and jbrowse.active() then
+        local live = jbrowse.liveJob();
+        imgui.Spacing();
+        imgui.TextColored(COL.WANT, 'Not available while browsing ' .. tostring(jbrowse.selected())
+            .. ' -- you are on ' .. (live or 'no job') .. '.');
+        imgui.TextColored(COL.DIM, 'This tab shows what you are WEARING. There is nothing to show for a job you');
+        imgui.TextColored(COL.DIM, 'are not on, and dlac will not guess it.');
+        imgui.Spacing();
+        if live ~= nil and imgui.Button('Back to ' .. live .. '##dlac_eqbackjob', { 0, 24 }) then
+            jbrowse.clear();
+        end
+        return;
+    end
     imgui.TextColored(COL.DIM, 'Hover a slot for details; click for alternatives.');
     imgui.SameLine();
     if imgui.Button((ui.showStats and 'Stats v' or 'Stats >') .. '##eqstats', { 76, 0 }) then

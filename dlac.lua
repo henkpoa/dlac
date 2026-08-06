@@ -18,7 +18,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.08.06k';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.08.06l';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
                                 -- (03f = engine v163: the contest explains its own plan;
                                 --  03g = one floating tray: Teleports + the E-Box crates;
@@ -444,6 +444,11 @@ for _, mod in ipairs({ 'gear', 'feature\\augments', 'gear\\gearoptim', 'gear\\ge
                        'feature\\lockstyle',
                        'feature\\lockstyleapply', 'feature\\equipengine',
                        'feature\\engine', 'ui\\gearui',
+                       -- jobbrowse is reached through gearui's (and equippedui's)
+                       -- guarded try(), so a broken one costs the job picker in
+                       -- SILENCE while the ledger still reads "0 failed" -- the
+                       -- documented blind spot. Named here so it cannot.
+                       'ui\\jobbrowse',
                        'ui\\panelkit', 'feature\\keybinds', 'feature\\modcfg', 'feature\\modapi',
                        'feature\\jobhelpers', 'ui\\jobhelpersui' }) do
     local ok, err = pcall(require, 'dlac\\' .. mod);

@@ -508,6 +508,15 @@ local function trigCommit()
     -- Our own write is the new baseline for the content-follow (trigLoad):
     -- without this, every Commit reads as "changed on disk" a second later.
     trig.path, trig.rawText, trig._drift = path, text, false;
+    -- The engine reloads the job it is ON. Committing another job's file while
+    -- browsing has nothing to hot-reload, so say what actually happened instead
+    -- of claiming "live now" about a file the engine will not read until you
+    -- change to that job (hard rule 12: the two outcomes must not read alike).
+    if deps ~= nil and type(deps.browsing) == 'function' and deps.browsing() == true then
+        trigSetStatus('Committed to ' .. tostring(abbr) .. '\'s trigger file. You are not on '
+            .. tostring(abbr) .. ' -- these rules go live when you change to it.', false);
+        return;
+    end
     pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '/dl triggers reload'); end);
     trigSetStatus('Committed -- live now (hot-reloaded; no /lac reload needed).', false);
 end

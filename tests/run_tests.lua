@@ -26240,6 +26240,70 @@ end)();
     package.loaded['dlac\\chatfmt'] = savedChat;
 end)();
 
+-- ---------------------------------------------------------------------------
+-- JB. Job browsing (2026-08-06) -- ui\jobbrowse.lua, the state behind the job
+-- picker in the Gear window's header. Pure but for ONE live read (GetMainJob),
+-- so the whole contract drives headlessly: which job the EDITORS answer for, at
+-- what level, and when that stops following the character.
+--
+-- The two that are easy to get backwards, and are the whole feature:
+--   * picking the job you are ON means "follow live" (nil), not "pin it" -- so a
+--     later job change follows, exactly as it did before browsing existed;
+--   * a real job change does NOT clear a selection -- the WAR set you are
+--     halfway through building stays valid when you change to BLM, and only the
+--     header moves. (gearui's working-set drop keys on the SAME job value, so
+--     these two together decide when a half-built set survives.)
+-- ---------------------------------------------------------------------------
+;(function()
+    local jb = dofile('ui/jobbrowse.lua');
+    local savedCore = AshitaCore;
+    local jobId = 7;                                     -- PLD
+    AshitaCore = { GetMemoryManager = function()
+        return { GetPlayer = function() return { GetMainJob = function() return jobId; end }; end };
+    end };
+
+    check('JB1a default holds no selection', jb.selected(), nil);
+    check('JB1b default is not browsing', jb.active(), false);
+    check('JB1c default level defers to the live reading', jb.level(), nil);
+    check('JB1d default job is the live job', jb.job(), 'PLD');
+
+    jb.set('WAR');
+    check('JB2a a pick is remembered', jb.selected(), 'WAR');
+    check('JB2b ...and reads as browsing', jb.active(), true);
+    check('JB2c ...at a flat 75', jb.level(), 75);
+    check('JB2d ...and IS the job the editors answer for', jb.job(), 'WAR');
+
+    jobId = 4;                                           -- change job in game: BLM
+    check('JB3a a live job change leaves the selection alone', jb.selected(), 'WAR');
+    check('JB3b ...and browsing stays on', jb.active(), true);
+    check('JB3c ...so the set being built is still WAR\'s', jb.job(), 'WAR');
+
+    jb.set('BLM');                                       -- picking the job you are ON
+    check('JB4a picking your own job clears the selection', jb.selected(), nil);
+    check('JB4b ...and stops browsing', jb.active(), false);
+    jobId = 3;                                           -- WHM
+    check('JB4c ...so a later job change is followed again', jb.job(), 'WHM');
+
+    jb.set('SAM'); jb.clear();
+    check('JB5 clear() returns the editors to live', jb.active(), false);
+    jb.set('SAM'); jb.set(nil);
+    check('JB6a a nil pick clears', jb.selected(), nil);
+    jb.set('SAM'); jb.set('');
+    check('JB6b an empty pick clears', jb.selected(), nil);
+
+    -- Character select / an unsettled GetMainJob (id 0 = no job, hard rule 11).
+    -- A held selection must still READ as browsing there: the header saying
+    -- "viewing RDM" is the honest answer, and looking normal is not.
+    jb.set('RDM'); jobId = 0;
+    check('JB7a no live job still reads as browsing', jb.active(), true);
+    check('JB7b ...and the editors answer for the pick', jb.job(), 'RDM');
+    check('JB7c liveJob is nil there', jb.liveJob(), nil);
+    jb.clear();
+    check('JB7d no pick and no live job = no job to edit', jb.job(), nil);
+
+    AshitaCore = savedCore;
+end)();
+
 -- The warm-note artifact the dispatch-driving sections leave behind (dataDir
 -- stubbed 'tests\'): on Windows a real tests\debug\mpwarm.txt (gitignored via
 -- debug/), under WSL ONE backslash-bearing filename that drvfs PUA-mangles on

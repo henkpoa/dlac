@@ -243,6 +243,55 @@ lives here rather than in the tab that right-clicks so future rows like `Move To
 `Wishlist ▸` without moving house). `tests\smoke_ui.lua` headless-loads
 the whole chunk: 200-cap breaches, registration order, services contract.
 
+### ui/jobbrowse.lua — browsing another job (2026-08-06)
+The Gear window's header carries a **job picker**; picking a job you are not on re-points
+the *editors* — Sets, Triggers, Groups, Modes, Blueprints, Weights — at that job's files,
+**at a flat level 75**. Purely browsing and building: it never equips, never claims a
+slot, never tells the engine anything.
+
+**Why it was cheap: there are only two job seams in gearui, and this module backs both.**
+
+| Seam | What it decides | Off-job |
+|---|---|---|
+| `jobFile()` | which job's FILES | the browsed job — one injected helper that `profilesets.loadRoot`, `triggersui.trigFilePath` and the group scan all already resolved through |
+| `drawWindow`'s `(job, level)` → `host.renderTabs` | which job the TABS draw | `(browsed, 75)` |
+
+`liveJobFile()` is the split-off original and stays the live truth for **setupui**
+(shim state, auto-seed, migration — those answer for the job you are standing on).
+`getPlayerInfo()` likewise stays live; the tabs that must not follow read it rather than
+trusting their parameters.
+
+**Nothing else needed changing**, for three reasons worth keeping:
+* `isUsable` is `gearOracle.canWear(rec, job, level)` — main job only, no hidden live
+  read — so "as if I were on WAR at 75" is literally those two arguments. The **sub job
+  never enters wearability**, so browsing raised no sub-job question at all.
+* `profilesets.loadRoot` caches on `jobFile() .. activeName()`, so the key moves with the
+  selection and the browsed job's files re-parse on their own. Its `getSetsRoot`
+  shortcut past the live `gProfile.Sets`/`sets` globals is the one thing that had to
+  learn about browsing (injected `browsing` reader — those globals are the LIVE job's).
+* The working-set drop in `drawWindow` keys on the same `job` value, so switching the
+  picker drops a half-built set exactly as a real job change does — and a real job change
+  *while browsing* does **not** move `job`, so the set you are building survives.
+
+**The level is never `staticMainLevel`.** That global is read by the ENGINE (dispatch,
+gearoptim, petfood, ammoui); borrowing it to preview WAR would quietly re-level what your
+live job equips. Browsing owns its own number and hands it only to the tab renderers.
+Flat 75 is Henrik's call ("99% of the time you build as lvl 75 either way") and matches
+how this codebase already treats set building — over-level sets are allowed, the group
+browser is explicitly not level-gated. The one case it under-shows is a job past 75.
+
+**The Equipped tab refuses to draw off-job** (it is a picture of your body, and its
+alternates equip on click; the guessed version would be inference over facts we do not
+have). It stays *submitted* to the tab bar rather than being dropped from it: removing the
+selected tab makes ImGui reassign the selection, and this build's tab-selection flag does
+not work (see `uihost`'s `beginForced`). **All Equipment follows** — its "usable now"
+filter *is* the "what can this job wear" view, and its right-click menu is wishlist-only.
+
+Off-job commits are not live: the Triggers commit skips its `/dl triggers reload` and says
+so, and `setStatus` — the one sink every Sets receipt funnels through — strips the
+"live now (hot-swapped)" tail and appends the real state. Tests: `JB*` (run_tests, the
+state contract) + `JBU*` (smoke_ui, the rendered picker/banner and the Equipped guard).
+
 ### Floating windows — many openers, ONE draw site
 A **Floating window** (CONTEXT.md) is *not* a `host.register` window: those render inside
 `drawWindow`, which returns early when the main box is shut. A floating window is drawn
