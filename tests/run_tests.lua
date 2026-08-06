@@ -10618,6 +10618,21 @@ end)();
     check('H8 Harvesting Point',           helmwatch.gatherFromNpcName('Harvesting Point'), 'Harvesting');
     check('H9 unrelated npc -> nil',       helmwatch.gatherFromNpcName('Goblin Miner'), nil);
     check('H10 nil npc -> nil',            helmwatch.gatherFromNpcName(nil), nil);
+    -- The CLIENT abbreviates excavation (field-read 2026-08-06, Arrapago
+    -- Reef): matching only the server's full polutils_name left Auto HELM
+    -- blind to every excavation point. Harvesting is the same 16 characters
+    -- and is NOT abbreviated -- length is not the rule, so both spellings
+    -- have to match and the other three must stay single-named.
+    check('H8b Excav. Point (client name) -> Excavation',
+                                           helmwatch.gatherFromNpcName('Excav. Point'), 'Excavation');
+    check('H8c Excavation Point (server spelling) still matches',
+                                           helmwatch.gatherFromNpcName('Excavation Point'), 'Excavation');
+    check('H8d trailing whitespace tolerated (GetName pads)',
+                                           helmwatch.gatherFromNpcName('Excav. Point  '), 'Excavation');
+    -- the `.` must be matched LITERALLY, not as a pattern wildcard
+    check('H8e "." is not a wildcard',      helmwatch.gatherFromNpcName('ExcavX Point'), nil);
+    check('H8f abbreviation is excavation-only',
+                                           helmwatch.gatherFromNpcName('Harvest. Point'), nil);
     local evt = string.char(0x34, 0x1A, 0x8D, 0x06, 0x3F, 0xC1, 0x08, 0x01, 0xB0, 0x02, 0, 0)
         .. string.rep('\0', 28)
         .. string.char(0x3F, 0x01, 0x8C, 0x00, 0x64, 0x00, 0x08, 0x00, 0x8C, 0x00, 0x00, 0x00);
@@ -10789,6 +10804,33 @@ end)();
     helmwatch.setAutoHelm(false);
     world.points['Mining Point'] = 5;
     check('H64 disarmed: never holds',         helmwatch.proximityStep(probe), false);
+
+    -- A category can render under MORE THAN ONE client name. Excavation is
+    -- the live case: the client shows "Excav. Point" (Arrapago Reef,
+    -- 2026-08-06) where the server's npc_list says "Excavation Point", and
+    -- the exact-name watcher saw neither because we only ever asked for the
+    -- server spelling. Auto HELM was blind to excavation entirely.
+    check('H64a excavation carries both client names', #helmwatch.pointNames('Excavation'), 2);
+    check('H64a2 the other three stay single-named',   #helmwatch.pointNames('Mining'), 1);
+    check('H64a3 unknown category falls back to the convention',
+                                               helmwatch.pointNames('Clamming')[1], 'Clamming Point');
+    helmwatch.setAutoHelm(true);
+    world.points = { ['Excav. Point'] = 4 };
+    check('H64b abbreviated client name acquires', helmwatch.proximityStep(probe), true);
+    check('H64c and selects Excavation',           helmwatch.getGather(), 'Excavation');
+    world.points = {};
+    check('H64d gone -> hold drops',               helmwatch.proximityStep(probe), false);
+    world.points = { ['Excavation Point'] = 4 };   -- a zone that spells it out
+    check('H64e full spelling acquires too',       helmwatch.proximityStep(probe), true);
+    world.points = {};
+    helmwatch.proximityStep(probe);                -- drop the hold: force a FRESH acquire
+    -- Both spellings loaded at once: the NEAREST of a category's names
+    -- answers, so a distant twin can never mask a point inside enter range
+    -- (7.5 is past the 6y enter gate; only the 3y match can acquire here).
+    world.points = { ['Excavation Point'] = 7.5, ['Excav. Point'] = 3 };
+    check('H64f nearest across the category names wins', helmwatch.proximityStep(probe), true);
+    world.points = {};
+    helmwatch.setAutoHelm(false);
 
     -- Configurable detect range (Henrik: default 10 for macro-spam-at-range
     -- and lag; panel setting clamped 3..20, keep-wearing leash = range+2).

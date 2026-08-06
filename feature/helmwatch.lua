@@ -30,8 +30,10 @@
     the NEXT swing.
 
     Auto HELM proximity: the CENTRAL entity watcher (lib/entwatch) tracks
-    the four "* Point" names while armed -- ANY point within the detect
-    range keeps the temporary hold alive; no targeting involved. (The old
+    the four categories' "* Point" names while armed (M.POINTS -- a category
+    can render under more than ONE client name; excavation does) -- ANY point
+    within the detect range keeps the temporary hold alive; no targeting
+    involved. (The old
     target-anchor model died in the field: /target macros swing before the
     tick ever sees the new target, and mined-out points DESPAWN under you
     while stacked twins sit on the same spot -- the gear popped off with the
@@ -51,6 +53,43 @@ local M = {};
 M.ORDER = { 'Harvesting', 'Excavation', 'Logging', 'Mining' };
 M.HATS  = { Harvesting = 'Harv. Sun Hat',   Excavation = 'Excavators Shades',
             Logging    = 'Lumberjacks Beret', Mining     = 'Miners Helmet' };
+
+-- The entity names the CLIENT SHOWS for each category's gathering Point --
+-- one category, possibly SEVERAL names. Every match here is byte-exact
+-- (entwatch keys its registry on the trimmed, lowercased name), so the list
+-- has to carry whatever a zone actually renders.
+--
+-- FIELD-PINNED 2026-08-06 (Arrapago Reef): the client renders Excavation as
+-- "Excav. Point" -- SE's own abbreviation -- while the server's npc_list
+-- polutils_name is the full "Excavation Point". Asking only for the full
+-- string meant Auto HELM could NEVER see an excavation point: no proximity
+-- hold, and no post-swing category switch either (both paths built the name
+-- as `<Category> .. ' Point'`). Excavation was simply dead, and with the
+-- manual idle switch unwired from the UI there was no workaround.
+--
+-- Length is NOT the rule, so do not "fix" this by truncating: "Harvesting
+-- Point" is the same 16 characters and is NOT abbreviated (field-confirmed
+-- the same day). Only Excavation is.
+--
+-- BOTH excavation names are kept on purpose. The abbreviation lives in the
+-- client's zone DAT (the server only pushes a name for RENAMED entities), so
+-- it is per-zone data we cannot enumerate from any file on disk -- if some
+-- zone spells it out in full, that zone keeps working. An extra name is free:
+-- entwatch runs ONE shared sweep serving every registered watch.
+M.POINTS = {
+    Harvesting = { 'Harvesting Point' },
+    Excavation = { 'Excavation Point', 'Excav. Point' },
+    Logging    = { 'Logging Point' },
+    Mining     = { 'Mining Point' },
+};
+
+-- Every client name for a category (never nil -- an unknown category falls
+-- back to the old `<Category> Point` convention rather than matching nothing).
+function M.pointNames(gather)
+    local t = M.POINTS[gather];
+    if type(t) == 'table' and #t > 0 then return t; end
+    return { tostring(gather or '') .. ' Point' };
+end
 
 local VALID = {};
 for _, g in ipairs(M.ORDER) do VALID[g] = true; VALID[string.lower(g)] = g; end
@@ -565,10 +604,16 @@ end
 -- ---------------------------------------------------------------------------
 M.lastDetect = nil;   -- { gather, npc, at = os.clock() }
 
+-- PLAIN prefix match, not a Lua pattern: "Excav. Point" carries a `.`, which
+-- as a pattern is a wildcard that would also swallow "ExcavX Point". `find(s,
+-- 1, true) == 1` is the same anchored-prefix test without the metacharacters
+-- (GetName's trailing whitespace rides along harmlessly, as before).
 function M.gatherFromNpcName(name)
     local n = tostring(name or '');
     for _, g in ipairs(M.ORDER) do
-        if n:find('^' .. g .. ' Point') ~= nil then return g; end
+        for _, pn in ipairs(M.pointNames(g)) do
+            if n:find(pn, 1, true) == 1 then return g; end
+        end
     end
     return nil;
 end
@@ -612,8 +657,22 @@ function M.setProxRange(n)
     saveState();
 end
 
+-- Nearest point of ONE category, across every client name it can render
+-- under (M.POINTS). Asking for each name is also what REGISTERS the live
+-- watch (the probe's nearest() subscribes), so both excavation spellings stay
+-- swept for as long as Auto HELM keeps polling.
+local function nearestOf(probe, gather)
+    local best = nil;
+    for _, pn in ipairs(M.pointNames(gather)) do
+        local d = probe.nearest(pn);
+        if type(d) == 'number' and (best == nil or d < best) then best = d; end
+    end
+    return best;
+end
+M._nearestOf = nearestOf;   -- test seam
+
 -- One proximity pass. `probe` abstracts the watcher for tests:
---   { nearest = fn('<Category> Point') -> distance in YALMS, or nil }
+--   { nearest = fn('<client point name>') -> distance in YALMS, or nil }
 -- Returns true while any point holds us (and keeps the engine hold alive at
 -- its full length, with sparse state writes -- one per second, not per frame).
 function M.proximityStep(probe)
@@ -623,7 +682,7 @@ function M.proximityStep(probe)
     local pick = nil;
     -- The ACTIVE category is sticky to the leash: still gathering here.
     if M._proxHold and M.activeGather ~= nil then
-        local d = probe.nearest(M.activeGather .. ' Point');
+        local d = nearestOf(probe, M.activeGather);
         if type(d) == 'number' and d <= leave then pick = M.activeGather; end
     end
     -- Fresh acquire / category switch: the NEAREST point within enter range
@@ -632,7 +691,7 @@ function M.proximityStep(probe)
     if pick == nil then
         local best = nil;
         for _, g in ipairs(M.ORDER) do
-            local d = probe.nearest(g .. ' Point');
+            local d = nearestOf(probe, g);
             if type(d) == 'number' and d <= enter and (best == nil or d < best) then
                 best, pick = d, g;
             end
