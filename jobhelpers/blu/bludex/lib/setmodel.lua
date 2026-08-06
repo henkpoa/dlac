@@ -128,6 +128,25 @@ function M.slotsAtLevel(level)
     return n;
 end
 
+-- The server's BASE set-point budget for a BLU level, verbatim from
+-- blueutils.cpp GetTotalBlueMagicPoints:
+--     clamp(((level - 1) / 10) * 5 + 10, 0, 55)
+-- 10 through Lv10, +5 every ten levels: 10/15/20/25/30/35/40/45 at the
+-- bracket tops, 45 at the level-75 cap.
+--
+-- This is the BASE ONLY. Everything above it is character-specific and
+-- cannot be derived: Assimilation merits (server-side, level >= 75 ONLY --
+-- merits do not apply under a sync) and, on CatsEyeXI, a custom bonus for
+-- spells learned that applies at EVERY level. Those are measured live --
+-- see blu.learnedBonus / blu.meritPts / blu.expectedCap.
+function M.baseCapAtLevel(level)
+    if level == nil or level < 1 then return 0; end
+    local n = math.floor((level - 1) / 10) * 5 + 10;
+    if n < 0 then n = 0; end
+    if n > 55 then n = 55; end
+    return n;
+end
+
 -- 'DUAL_WIELD' -> 'Dual Wield', 'MND' stays 'MND' (<=4 chars = stat acronym)
 function M.prettyStat(s)
     if #s <= 4 and not s:find('_') then return s; end

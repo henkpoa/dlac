@@ -63,6 +63,27 @@ function M.tip(im, tip)
     if im.IsItemHovered() then im.SetTooltip(esc(tip)); end
 end
 
+-- The panel-text standard, borrowed from dlac's uistyle.helpLabel: the label
+-- is UNDERLINED and its explanation lives in the hover, not on the panel.
+-- Keeps a settings row one line instead of a wall of text.
+function M.helpLabel(im, text, tip, col)
+    col = col or M.COL.head;
+    M.ctext(im, col, text);
+    if isFn(im, 'GetItemRectMin') and isFn(im, 'GetItemRectMax')
+       and isFn(im, 'GetWindowDrawList') then
+        pcall(function()
+            local x1 = im.GetItemRectMin();
+            local x2, y2 = im.GetItemRectMax();
+            local dl = im.GetWindowDrawList();
+            if dl ~= nil and type(dl.AddLine) == 'function' then
+                local u = isFn(im, 'GetColorU32') and im.GetColorU32(col) or 0xFFFFFFFF;
+                dl:AddLine({ x1, y2 }, { x2, y2 }, u, 1.0);
+            end
+        end);
+    end
+    M.tip(im, tip);
+end
+
 function M.text(im, s)
     if isFn(im, 'Text') then im.Text(esc(s)); end
 end
