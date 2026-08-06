@@ -16,8 +16,12 @@
     display fallback only.
 ]]--
 
-require('common');
-local chat = require('chat');
+-- Headless-safe requires: everything Ashita-side is used at RUN time only,
+-- so the module must still LOAD without the client -- that is what lets the
+-- smoke suite test the pure parts (parseMeritBonus, the budget model).
+pcall(require, 'common');
+local _cok, chat = pcall(require, 'chat');
+if not _cok then chat = nil; end
 
 -- relocatable require base; setmodel provides the sorted apply layout
 local ROOT = (...):sub(1, -#('lib\\blu') - 1);
@@ -174,6 +178,27 @@ end
 -- ---------------------------------------------------------------------------
 local nudge = { last = 0, tries = 0 };
 
+-- The 0x102 QUERY: SpellId 0 with NO slots named changes nothing server-side
+-- (the unset loop finds nothing) but the handler still answers with the
+-- extended-job packet (0x044) -- the refresh opening the native Set Spells
+-- menu triggers, and the ONLY thing that recomputes the point cap after a
+-- level sync starts or ends (field 2026-08-06: 0x061 does not touch it).
+-- DO NOT add a 0x102 "query" here to chase the point cap. That was tried
+-- (4430c86) and DISPROVED in the field on 2026-08-06, twice over:
+--
+--   * The server's answer cannot carry the cap. GP_SERV_COMMAND_EXTENDED_JOB
+--     ::BLU writes Job, IsSubJob and SetSpells[20] and leaves its remaining
+--     132 bytes untouched -- the point cap NEVER crosses the wire. The
+--     client computes max/spent itself, so no packet can refresh them.
+--   * The packet is not free. The 0x102 handler ends with an unconditional
+--     "force recast on all currently-set blu spells" loop (60s each),
+--     whatever the packet asked for -- so a "harmless query" silently locks
+--     Blue Magic for a minute, and did so on every window open.
+--
+-- Probe capture (addons/bdxdiag): two injected 0x102 queries fired straight
+-- through a sync transition and the cap did not move; opening the native
+-- Set Spells menu moved it with NO packets on the wire at all.
+-- 0x061 stays: it genuinely does wake the stale-after-login structs.
 function M.requestJobData()
     local ok = pcall(function()
         -- full packet bytes incl. header: id 0x61, size 0x08 (byte1 = size/2)
@@ -181,6 +206,334 @@ function M.requestJobData()
             { 0x61, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 });
     end);
     return ok;
+end
+
+-- ---------------------------------------------------------------------------
+-- THE CAP IS CLIENT-SIDE, AND ONLY THE NATIVE MENU RECOMPUTES IT.
+--
+-- Field 2026-08-06: synced 75 -> 40 and the struct held the level-75 numbers
+-- (max=79 spent=79) for seven seconds against a 3-spell set, until the native
+-- Set Spells menu was opened -- then both snapped to max=49 spent=7 at once.
+-- So after ANY level change the struct describes the PREVIOUS level until the
+-- player opens that menu. Nothing we can send changes it.
+--
+-- We cannot fix it, so we detect it and say so. The cap is trustworthy only
+-- while the level still matches the one it was computed at: remember the
+-- level each time the client recomputes, and suspect the cap whenever the
+-- current level has moved away from it. Returning to that level clears the
+-- suspicion by itself -- the untouched cap is correct there again, which is
+-- exactly the sync-down-and-back case.
+-- ---------------------------------------------------------------------------
+-- verified: we WATCHED the client recompute this value. A value merely
+-- found sitting there at load looks identical but may be hours stale.
+local capWatch = { max = nil, lvl = nil, suspect = false, verified = false };
+
+-- THE BUDGET, in three named parts. Only the base is derivable; the other
+-- two are read or measured, and they are NEVER lumped together (doing that
+-- produced a 133-point budget against a true 79 on 2026-08-06).
+--
+--     cap(level) = base(level) + learnedBonus + merits, merits only at 75+
+--
+--   learnedBonus  CatsEyeXI's award for spells learned, from Boruko in Aht
+--                 Urghan Whitegate. Up to 25. Applies at EVERY level, level
+--                 sync included -- so below 75 it is the ONLY thing above
+--                 the base rule, and one reading there gives it outright.
+--   merits        Assimilation (job group 2), 2 points each, 5 max = 10.
+--                 Server-side these apply ONLY at level 75.
+--
+-- Henrik 2026-08-06: at Lv40 the client read 49, base 25 -> bonus 24. At
+-- Lv75 it read 79, base 45 -> merits = 79 - 45 - 24 = 10, his five merits.
+M.learnedBonus = nil;  -- points from spells learned (nil = not known yet)
+M.meritPts     = nil;  -- Assimilation points (nil = not known yet)
+M.onCapLearn   = nil;  -- host sets this to persist a new reading
+
+-- Packet 0x063 MISCDATA type 0x02 carries a `bluBonus` field, which arrives
+-- by itself at login, on every zone, and on any merit change -- nothing is
+-- ever sent to ask for it.
+--
+--   0x063_miscdata_merits.h, after the 4-byte packet header:
+--     0x04 type (0x02 = merits)   0x08 limitPoints
+--     0x0A uint16 bitfield: meritPoints:7, bluBonus:6, then three flags
+--
+-- CAUTION: on CatsEyeXI this field is NOT the merit points. Stock LSB fills
+-- it from GetMeritValue(MERIT_ASSIMILATION) alone, but Henrik's client sent
+-- 34 where his merits are worth 10 -- CEXI folds the learned bonus in too.
+-- So it equals learnedBonus + merits, and is only useful for CROSS-CHECKING
+-- the two numbers we track separately. Never treat it as either one.
+function M.parseMeritBonus(data)
+    if type(data) ~= 'string' or #data < 0x0C then return nil; end
+    if data:byte(0x04 + 1) ~= 0x02 then return nil; end   -- not the merits variant
+    local lo, hi = data:byte(0x0A + 1), data:byte(0x0B + 1);
+    if lo == nil or hi == nil then return nil; end
+    return math.floor((lo + hi * 256) / 128) % 64;        -- (w >> 7) & 0x3F
+end
+
+-- true when a level change has happened and the client has not recomputed
+-- since: max (and spent) still belong to the level we left.
+function M.capStale()
+    return capWatch.suspect;
+end
+
+-- the level the current cap was computed for (nil until first seen)
+function M.capLevel()
+    return capWatch.lvl;
+end
+
+-- the client's own cap as the watch last observed it (nil until first seen)
+function M.capValue()
+    return capWatch.max;
+end
+
+-- THE MERITS, READ ON ZONING (packet 0x08C, the approach dlac's meritwatch
+-- proved). This is the one that actually reports Assimilation: 0x063 gives
+-- the two summed and can never split them, while 0x08C carries the per-merit
+-- ALLOCATIONS, and CatsEyeXI pushes the full list at EVERY ZONE-IN (plus a
+-- single-entry update whenever a merit is raised or lowered). Nothing is
+-- requested -- the merit system is push-only.
+--
+--   u16 count; u16 pad; { u16 id; u8 next; u8 count } x count
+--
+-- Merit ids are even on the wire; an ODD id is the full-removal flag (id|1),
+-- meaning that merit is back to zero.
+M.MERIT_ASSIMILATION = 3014;   -- merits.sql 3014 = MCATEGORY_BLU_2 + 0x06
+M.meritValue         = 2;      -- CatsEyeXI pays 2 points per merit (stock: 1)
+M.meritCount         = nil;    -- merits ALLOCATED, straight off 0x08C
+M.meritValueProven   = false;  -- true once meritValue is measured, not assumed
+
+-- Pure parser: 0x08C wire data (header included) -> the Assimilation merit
+-- COUNT, or nil when this packet carries no Assimilation entry. Bounds-
+-- checked per entry, so a short or legacy packet can never over-read.
+function M.parseMeritCount(data)
+    if type(data) ~= 'string' or #data < 0x0C then return nil; end
+    local n = (data:byte(0x04 + 1) or 0) + (data:byte(0x05 + 1) or 0) * 256;
+    local found = nil;
+    for i = 0, n - 1 do
+        local off = 0x08 + i * 4;
+        if off + 4 > #data then break; end
+        local id = (data:byte(off + 1) or 0) + (data:byte(off + 2) or 0) * 256;
+        local removed = (id % 2 == 1);
+        if removed then id = id - 1; end
+        if id == M.MERIT_ASSIMILATION then
+            found = removed and 0 or (data:byte(off + 4) or 0);
+        end
+    end
+    return found;
+end
+
+-- Reconcile the three figures. The MERITS are authoritative -- 0x08C reports
+-- the allocations themselves -- and the wire total is bonus + merits, so the
+-- learned bonus is simply the remainder, RECOMPUTED every time either input
+-- moves. That is what makes a Boruko visit cost a zone rather than a trip to
+-- the set menu: collect the points, zone, and the new total arrives with the
+-- merits still known, so the bonus follows by subtraction.
+-- Returns true when something changed.
+local function reconcile()
+    if M.wireTotal == nil then return false; end
+    -- All three known? Then the per-merit rate is MEASURED, not assumed:
+    -- 0x08C gives the allocations, a sub-75 reading gives the learned bonus
+    -- on its own, and the rest of the wire total is what the merits are
+    -- worth. Proves (or corrects) the +2 CatsEyeXI is believed to pay.
+    if M.meritCount ~= nil and M.meritCount > 0 and M.learnedBonus ~= nil then
+        local worth = M.wireTotal - M.learnedBonus;
+        if worth >= 0 and (worth % M.meritCount) == 0 then
+            local per = worth / M.meritCount;
+            if per > 0 then
+                M.meritValue = per;
+                M.meritValueProven = true;
+                if M.meritPts ~= worth then M.meritPts = worth; return true; end
+                return false;
+            end
+        end
+    end
+    if M.meritPts ~= nil then
+        local b = M.wireTotal - M.meritPts;
+        if b >= 0 and M.learnedBonus ~= b then M.learnedBonus = b; return true; end
+        return false;
+    end
+    if M.learnedBonus ~= nil then
+        local m = M.wireTotal - M.learnedBonus;
+        if m >= 0 and M.meritPts ~= m then M.meritPts = m; return true; end
+    end
+    return false;
+end
+
+-- One 0x08C landed. Merit COUNTS are level-independent -- unlike 0x063's
+-- total, the server does not zero them under a sync -- so this is believed
+-- at any level. With the merits known, one 0x063 completes the set.
+function M.setMeritCount(count)
+    if count == nil then return false; end
+    M.meritCount = count;
+    local pts = count * M.meritValue;
+    local moved = (M.meritPts ~= pts);
+    M.meritPts = pts;
+    -- reconcile may correct meritValue (and so meritPts) from the real numbers
+    local fixed = reconcile();
+    return moved or fixed;
+end
+
+-- The 0x063 reading (standalone only): learnedBonus + merits, summed.
+-- Kept purely as a CROSS-CHECK -- it can confirm the pair we track but can
+-- never be either of them. Believed only at 75+, where the server sends it.
+M.wireTotal = nil;
+
+function M.setWireTotal(n)
+    if n == nil then return false; end
+    local lvl = M.effectiveLevel();
+    if lvl == nil or lvl < 75 then return false; end
+    if M.wireTotal == n then return false; end
+    M.wireTotal = n;
+    reconcile();
+    return true;
+end
+
+-- cap(level) = base(level) + learnedBonus + merits (merits only at 75+).
+-- nil while a term that applies at this level is still unknown.
+function M.expectedCap(level)
+    level = level or M.effectiveLevel();
+    if level == nil or level < 1 then return nil; end
+    if M.learnedBonus == nil then return nil; end
+    local total = setmodel.baseCapAtLevel(level) + M.learnedBonus;
+    if level < 75 then return total; end
+    if M.meritPts == nil then return nil; end
+    return total + M.meritPts;
+end
+
+-- The budget to SHOW. The client's own number while it is trustworthy;
+-- otherwise the model for the level we are actually standing at.
+-- Returns value, source: 'live' | 'model' | 'stale' (nothing better known).
+-- OURS WINS once both parts are known (Henrik's call 2026-08-06, and the
+-- evidence backs it): the client's number is a cache that goes stale on
+-- every level change, while ours is recomputed from the level each frame.
+-- Once a zone has given the merits and one recompute has given the learned
+-- bonus, our answer is right at every level and the client's is right only
+-- until you sync.
+--
+-- The exception is the useful one: if the client's value is FRESH -- it just
+-- recomputed, so it describes this very level -- and still disagrees with
+-- ours, then OUR MODEL IS WRONG. Defer to the client and let the UI say so,
+-- rather than quietly overriding the game with arithmetic.
+function M.budget(levelIn)
+    -- capWatch.max is the client's value AS OBSERVED by the watch (which runs
+    -- every frame from host.tick) -- the same number points() returns, but the
+    -- one the freshness flags actually describe.
+    local mx  = capWatch.max;
+    local est = M.expectedCap(levelIn);
+    local fresh = (mx ~= nil) and not capWatch.suspect;
+    if est ~= nil then
+        -- the client only outranks us when we actually WATCHED it recompute
+        -- at this level. A value merely found at load proves nothing -- it is
+        -- most likely the level sync's leftover (field 2026-08-06: 49 sitting
+        -- there at Lv75 after a reload, while ours correctly said 79).
+        if fresh and capWatch.verified and mx ~= est then return mx, 'live'; end
+        return est, 'model';
+    end
+    if fresh then return mx, 'live'; end
+    if mx ~= nil then return mx, 'stale'; end
+    return nil, nil;
+end
+
+-- true when the client's number and ours differ. verified says whether the
+-- client's was WATCHED being recomputed at this level: if it was, our model
+-- is wrong; if it was not, the client is simply out of date and one visit to
+-- the set menu settles it.
+function M.capDisagrees(levelIn)
+    local mx, est = capWatch.max, M.expectedCap(levelIn);
+    if mx == nil or est == nil or capWatch.suspect then return false, false; end
+    return mx ~= est, capWatch.verified;
+end
+
+-- Call once per frame (host.tick does). Cheap: two reads and a compare.
+-- mxIn/lvlIn override the live reads so the suite can drive it (this
+-- function has been the source of three separate field bugs; it is not
+-- allowed to stay untestable).
+--
+-- The rule it exists to enforce: the client's cap is trustworthy ONLY while
+-- our level still matches the level it was computed at. Everything below is
+-- about not mistaking something else for a recompute.
+function M.watchCap(mxIn, lvlIn)
+    local testing = (mxIn ~= nil or lvlIn ~= nil);
+    if not testing and not M.onBlu() then capWatch.suspect = false; return; end
+    local mx  = testing and mxIn or M.points();
+    local lvl = testing and lvlIn or M.effectiveLevel();
+
+    -- An EMPTY struct is not a reading. It reads empty through a zone
+    -- handoff and at login, and treating the nil -> value bounce as a
+    -- recompute is how a Lv40 cap of 49 got adopted as correct for Lv75
+    -- after zoning out of a sync (field 2026-08-06). Hold everything.
+    if mx == nil then return; end
+
+    -- The FIRST real reading is not a transition either -- it is merely the
+    -- first time we looked, and the value may have been stale for hours.
+    -- Baseline it, never learn from it (this produced a bogus 54-point
+    -- learned bonus, and a 133-point budget with it).
+    if capWatch.max == nil then
+        capWatch.max, capWatch.lvl, capWatch.suspect = mx, lvl, false;
+        capWatch.verified = false;      -- found sitting there, not witnessed
+        return;
+    end
+
+    if mx ~= capWatch.max then
+        -- A real value -> value change: the client recomputed just now, for
+        -- the level we are standing at. The one instant its number is known
+        -- to describe our level -- so measure while it is true.
+        capWatch.max, capWatch.lvl, capWatch.suspect = mx, lvl, false;
+        capWatch.verified = true;       -- we watched this one happen
+        if lvl ~= nil and lvl >= 1 then
+            local rest, moved = mx - setmodel.baseCapAtLevel(lvl), false;
+            if lvl < 75 then
+                -- Merits do not apply here, so what is left above the base IS
+                -- the learned bonus, with no assumption in it at all: 49 - 25
+                -- = 24. This is the reading that SETTLES a fresh character --
+                -- until it lands, the split of 0x063's total rests on the
+                -- believed per-merit rate, and reconcile can now measure that
+                -- rate from this bonus and correct the merits with it.
+                if rest >= 0 and M.learnedBonus ~= rest then
+                    M.learnedBonus = rest; moved = true;
+                end
+                if reconcile() then moved = true; end
+            else
+                -- At 75 every term applies, so what sits above the base IS
+                -- bonus + merits -- the very number 0x063 carries. Take it
+                -- from the client's own cap instead of waiting for the
+                -- packet: 79 - 45 = 34. This is what lets the dlac flavor,
+                -- which has no packet hook at all, reach the same answer
+                -- from two menu visits (one at 75, one under a sync).
+                if rest >= 0 and M.wireTotal ~= rest then
+                    M.wireTotal = rest; moved = true;
+                end
+                if reconcile() then moved = true; end
+            end
+            if moved and M.onCapLearn ~= nil then pcall(M.onCapLearn); end
+        end
+        return;
+    end
+
+    -- Unchanged value: trustworthy only if we are still at its level.
+    if lvl == nil or capWatch.lvl == nil then return; end
+    capWatch.suspect = (lvl ~= capWatch.lvl);
+end
+
+-- Forget everything learned about this character's point budget: both
+-- figures, the merit allocations behind them, the measured per-merit rate,
+-- and the watch's idea of what the client last reported. Returns what was
+-- discarded so the caller can show it. Everything re-derives itself -- the
+-- merits and the server total from one zone, the learned bonus from the next
+-- level sync or Set Spells visit.
+function M.forgetBudget()
+    local had = {
+        bonus  = M.learnedBonus, merits = M.meritPts, count = M.meritCount,
+        wire   = M.wireTotal,    rate   = M.meritValue,
+        proven = M.meritValueProven,
+    };
+    M.learnedBonus, M.meritPts, M.meritCount, M.wireTotal = nil, nil, nil, nil;
+    M.meritValue, M.meritValueProven = 2, false;
+    M.resetCapWatch();
+    return had;
+end
+
+-- test seam: forget everything the watch has observed
+function M.resetCapWatch()
+    capWatch = { max = nil, lvl = nil, suspect = false };
 end
 
 -- Call freely (the header does, every frame it shows 'reading...'): fires
@@ -226,6 +579,12 @@ function M.watchJobState()
         return ('%d/%d'):format(main, sub), l;
     end);
     if not ok or jobs == nil then return nil; end
+    -- Level 0 is NOT a level change -- it is the client mid-handoff. Probe
+    -- capture 2026-08-06: one level sync produced 75 -> 0 -> 75 -> 40, three
+    -- "changes" where the player experienced one, each firing a refresh (and,
+    -- while the 0x102 query existed, a 60s Blue Magic recast). Treat an
+    -- unreadable level as no reading at all: hold the baseline and wait.
+    if lvl == nil or lvl <= 0 then return nil; end
     if watched == nil then watched = { jobs = jobs, lvl = lvl }; return nil; end
     if jobs == watched.jobs and lvl == watched.lvl then return nil; end
     local kind = 'jobs';
@@ -242,6 +601,7 @@ function M.canApply()
 end
 
 local function msg(s)
+    if chat == nil then print('[bludex] ' .. tostring(s)); return; end
     print(chat.header('bludex'):append(chat.message(s)));
 end
 

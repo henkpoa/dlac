@@ -13,6 +13,7 @@ local filetex  = require(ROOT .. 'ui\\filetex');
 local spellsui = require(ROOT .. 'ui\\spellsui');
 local setsui   = require(ROOT .. 'ui\\setsui');
 local traitsui = require(ROOT .. 'ui\\traitsui');
+local settingsui = require(ROOT .. 'ui\\settingsui');
 
 local M = {};
 
@@ -48,6 +49,25 @@ end
 function M.init(deps)
     M.deps = deps;                      -- { im, book, blu, sets, cfg, save }
     M.state = freshState(deps.sets);
+    -- restore the measured point-budget gap and keep it saved. Both flavors
+    -- come through here, so the dlac module gets this for free. 0 means
+    -- never measured: blu treats that as unknown, not as a real zero gap.
+    -- measurements taken under an older model meant something else: drop
+    -- them rather than compute confidently from them (2026-08-06: a sub-75
+    -- gap learned from a stale reading produced 133 points against a true 79)
+    if (deps.cfg.capModelVer or 0) < 3 then
+        deps.cfg.capModelVer = 3;
+        deps.cfg.capLearnedBonus, deps.cfg.capMeritPoints = -1, -1;
+        if deps.save then deps.save(); end
+    end
+    local function known(v) if v ~= nil and v >= 0 then return v; end return nil; end
+    deps.blu.learnedBonus = known(deps.cfg.capLearnedBonus);
+    deps.blu.meritPts     = known(deps.cfg.capMeritPoints);
+    deps.blu.onCapLearn = function()
+        deps.cfg.capLearnedBonus = deps.blu.learnedBonus or -1;
+        deps.cfg.capMeritPoints  = deps.blu.meritPts or -1;
+        if deps.save then deps.save(); end
+    end;
     -- restore the last active saved set (matched by name -- indices shift
     -- when sets are deleted), exactly as if it had been clicked
     local want = deps.cfg.activeSetName;
@@ -76,7 +96,11 @@ function M.isOpen()
 end
 
 local function budgetMax(deps)
-    local max = deps.blu.points();
+    -- blu.budget prefers the client's own number while it is trustworthy and
+    -- falls back to the measured model for the level we are actually at --
+    -- the client only recomputes its cap when the native Set Spells menu
+    -- opens, so after a level change its number describes the level we left.
+    local max = deps.blu.budget();
     if max then return max; end
     if deps.cfg.budgetOverride and deps.cfg.budgetOverride > 0 then
         return deps.cfg.budgetOverride;
@@ -84,7 +108,7 @@ local function budgetMax(deps)
     return nil;
 end
 
-local TABS = { 'Codex', 'Sets', 'Traits' };
+local TABS = { 'Codex', 'Sets', 'Traits', 'Settings' };
 
 -- The job/level watch and auto-restore, run once per frame whether or not
 -- anything renders: a level change invalidates the BLU structs like a fresh
@@ -101,6 +125,10 @@ local TABS = { 'Codex', 'Sets', 'Traits' };
 function M.tick()
     local deps = M.deps;
     if deps == nil then return; end
+    -- the cap-staleness watch runs every frame whether or not anything
+    -- renders: the client recomputes the cap on its own schedule (the native
+    -- Set Spells menu), and we have to catch the moment it does
+    deps.blu.watchCap();
     local change = deps.blu.watchJobState();
     if change == 'down' then
         M.downCheck = os.clock() + 2.0;
@@ -208,7 +236,10 @@ local function renderBody(im, st, deps, embedded)
     local ss = deps.blu.syncStats(deps.book);
     if ss ~= nil and ss.level < 75 then
         if kit.isFn(im, 'SameLine') then im.SameLine(); end
-        local liveMax = deps.blu.points();
+        -- the budget FOR THE SYNCED LEVEL, not the client's leftover from
+        -- full level (field 2026-08-06: this read "7 / 79 pts" at a Lv40 sync
+        -- whose real budget is 49, because points() had not recomputed)
+        local liveMax = deps.blu.budget();
         kit.ctext(im, kit.COL.warn, ('   Sync Lv.%d: %d / %s pts  %d / %d slots'):format(
             ss.level, ss.activePoints, liveMax and tostring(liveMax) or '?',
             ss.active, ss.maxSlots));
@@ -216,6 +247,62 @@ local function renderBody(im, st, deps, embedded)
             .. 'The game disabled the rest of the set itself; everything\n'
             .. 'returns when the sync ends. The Set/Slots meters keep\n'
             .. 'showing the plan at full level.'):format(ss.level));
+    end
+    -- the cap the client holds can belong to a level we have left (the client
+    -- only recomputes it when the native Set Spells menu opens). Say so
+    -- rather than showing a confident wrong number -- and name the one action
+    -- that actually fixes it, because nothing Bludex can send does.
+    local differs, watched = deps.blu.capDisagrees();
+    if differs and not watched then
+        -- The client's number was never seen to recompute -- Bludex has only
+        -- found it sitting there. Almost always the level sync's leftover.
+        -- Tell the player the two clicks that refresh it for good.
+        if kit.isFn(im, 'SameLine') then im.SameLine(); end
+        kit.ctext(im, kit.COL.warn, '   refresh points');
+        kit.tip(im, ('The game client still reports %s points; Bludex works your\n'
+            .. 'total out as %s and is showing that.\n\n'
+            .. 'To refresh the game\'s own number, open:\n'
+            .. '    Magic  ->  Blue Magic  ->  Set\n'
+            .. 'That is the only thing that makes the client recalculate it.\n\n'
+            .. 'Also zone once after loading Bludex: your merits arrive with the\n'
+            .. 'zone, and Bludex needs them to work the total out.'):format(
+            tostring(deps.blu.capValue()), tostring(deps.blu.expectedCap())));
+    elseif differs then
+        -- we WATCHED it recompute at this level and it still disagrees:
+        -- our own parts are wrong, and the game is the authority
+        if kit.isFn(im, 'SameLine') then im.SameLine(); end
+        kit.ctext(im, kit.COL.err, '   check Settings');
+        kit.tip(im, ('The game client recalculated its total for your current\n'
+            .. 'level and got %s, but Bludex works it out as %s.\n\n'
+            .. 'The game is right, and it is the number being shown. One of the\n'
+            .. 'parts on the Settings tab is wrong -- most likely the learned\n'
+            .. 'bonus, if you have collected more from Boruko since.'):format(
+            tostring(deps.blu.capValue()), tostring(deps.blu.expectedCap())));
+    elseif deps.blu.capStale() then
+        local _, src = deps.blu.budget();
+        if kit.isFn(im, 'SameLine') then im.SameLine(); end
+        if src == 'model' then
+            -- we have measured this character's gap, so the number above is
+            -- ours and correct -- say where it came from, quietly
+            kit.ctext(im, kit.COL.dim, '   (computed)');
+            kit.tip(im, ('The game client has not recomputed its point total since\n'
+                .. 'your level changed -- it still holds the Lv.%s figure. The\n'
+                .. 'total above is Bludex\'s own, from the parts on the Settings\n'
+                .. 'tab: the base rule for Lv.%s plus your learned bonus, plus\n'
+                .. 'Assimilation merits when you are at 75.\n\n'
+                .. 'Open the native Blue Magic set menu to see the game agree.'):format(
+                tostring(deps.blu.capLevel()),
+                tostring(deps.blu.effectiveLevel())));
+        else
+            kit.ctext(im, kit.COL.warn, '   cap stale');
+            kit.tip(im, ('The point total above was computed by the game at Lv.%s\n'
+                .. 'and it has not recomputed since your level changed.\n\n'
+                .. 'Open the native Set Spells menu once: it corrects the number\n'
+                .. 'AND teaches Bludex your point bonus, after which Bludex can\n'
+                .. 'work it out for itself at every level. The cap never crosses\n'
+                .. 'the network, so this one look is the only way to learn it.'):format(
+                tostring(deps.blu.capLevel())));
+        end
     end
     if deps.blu.onBlu() and (deps.blu.points()) == nil then
         if kit.isFn(im, 'SameLine') then im.SameLine(); end
@@ -286,6 +373,7 @@ local function renderBody(im, st, deps, embedded)
 
     local tabfn = (st.tab == 'Sets' and setsui.render)
         or (st.tab == 'Traits' and traitsui.render)
+        or (st.tab == 'Settings' and settingsui.render)
         or spellsui.render;
     local tok, terr = pcall(tabfn, ctx);
     if not tok then

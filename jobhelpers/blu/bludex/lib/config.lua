@@ -30,6 +30,12 @@ function M.defaults()
         codexDensity = 'normal',  -- codex list size: 'big'|'medium'|'normal'|'compact'
         traitsDensity = 'normal', -- traits spell-row size, same four choices
         setsLayout = 'grid',      -- Sets slots as 'grid' (5x4 cells) | 'list' (named rows)
+        -- The point budget: cap = base(level) + learnedBonus + merits, with
+        -- merits counting only at level 75. Bumped when the meaning changes,
+        -- so readings taken under older rules are discarded, not reused.
+        capModelVer = 3,
+        capLearnedBonus = -1,     -- points from spells learned (Boruko); -1 = unknown
+        capMeritPoints = -1,      -- Assimilation points; -1 = unknown
     };
 end
 

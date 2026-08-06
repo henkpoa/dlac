@@ -333,7 +333,7 @@ local function slotGrid(ctx)
     -- client holds right now while synced under the cap (see host header)
     local ss = ctx.blu.syncStats(book);
     if ss ~= nil and ss.level < 75 then
-        local liveMax = ctx.blu.points();
+        local liveMax = ctx.blu.budget();      -- the synced level's budget
         kit.ctext(im, kit.COL.warn, ('Sync Lv.%d: %d / %s pts, %d / %d slots'):format(
             ss.level, ss.activePoints, liveMax and tostring(liveMax) or '?',
             ss.active, ss.maxSlots));

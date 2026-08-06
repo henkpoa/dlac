@@ -151,6 +151,11 @@ return {
             applyMode = 'string',
             applyDelay = 'number', budgetOverride = 'number',
             autoRestore = 'boolean',
+            -- the point-budget model (see ui/settingsui.lua). This flavor
+            -- has no packet hook, so the 0x063 cross-check never arrives
+            -- here -- both figures come from readings or the Settings tab.
+            capModelVer = 'number',
+            capLearnedBonus = 'number', capMeritPoints = 'number',
         },
         defaults = {
             sets = '', lastApplied = '', activeSetName = '',
@@ -158,6 +163,7 @@ return {
             applyMode = 'safe',
             applyDelay = 1.1, budgetOverride = 0,
             autoRestore = false,
+            capModelVer = 3, capLearnedBonus = -1, capMeritPoints = -1,
         },
     },
 
