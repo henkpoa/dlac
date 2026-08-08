@@ -110,6 +110,9 @@ local function loadCfg(S)
         applyDelay     = S.cfg.get('applyDelay'),
         budgetOverride = S.cfg.get('budgetOverride'),
         autoRestore    = S.cfg.get('autoRestore'),
+        capModelVer     = S.cfg.get('capModelVer'),
+        capLearnedBonus = S.cfg.get('capLearnedBonus'),
+        capMeritPoints  = S.cfg.get('capMeritPoints'),
     };
     local any = false;
     for i = 1, 20 do
@@ -133,7 +136,44 @@ local function saveCfg()
         Sref.cfg.set('applyDelay', tonumber(cfg.applyDelay) or 1.1);
         Sref.cfg.set('budgetOverride', tonumber(cfg.budgetOverride) or 0);
         Sref.cfg.set('autoRestore', cfg.autoRestore == true);
+        Sref.cfg.set('capModelVer', tonumber(cfg.capModelVer) or 3);
+        Sref.cfg.set('capLearnedBonus', tonumber(cfg.capLearnedBonus) or -1);
+        Sref.cfg.set('capMeritPoints', tonumber(cfg.capMeritPoints) or -1);
     end);
+end
+
+-- ---------------------------------------------------------------------------
+-- the store watch: the bridge is a snapshot, the store is per-character
+-- ---------------------------------------------------------------------------
+--
+-- dlac loads modules at addon load -- BEFORE login -- and its store serves
+-- declared defaults until the character directory exists. So the snapshot
+-- loadCfg takes at init holds an EMPTY set list, and without a re-read the
+-- session's first save would write that emptiness over the character's real
+-- file: the dlac flavor of the save-after-logoff bug. Watch the one fact
+-- that names the store's identity -- the file it would write (S.cfg.path(),
+-- per-character, nil pre-login) -- and re-decode the bridge the moment it
+-- changes: the first login, and every character switch. The fresh table
+-- goes through host.onSettingsSwap, which keeps or drops the working state
+-- by character exactly as the standalone flavor does. Runs at every beat
+-- and at the top of every render, so no save-capable surface can act on a
+-- stale bridge first.
+local _storeAt = nil;   -- the store path the bridge was decoded from
+
+local function syncStore()
+    if Sref == nil or Sref.cfg == nil or lib == nil or cfg == nil then return; end
+    local p = nil;
+    pcall(function() p = Sref.cfg.path(); end);
+    if p == nil or p == _storeAt then return; end
+    _storeAt = p;
+    loadCfg(Sref);
+    lib.blu.delay = tonumber(cfg.applyDelay) or 1.1;
+    lib.blu.mode  = tostring(cfg.applyMode or 'safe');
+    if type(lib.host.onSettingsSwap) == 'function' then
+        lib.host.onSettingsSwap(cfg, p);
+    elseif lib.host.deps ~= nil then
+        lib.host.deps.cfg = cfg;    -- an older vendored host: rebind at least
+    end
 end
 
 -- ---------------------------------------------------------------------------
@@ -175,6 +215,9 @@ return {
             return;
         end
         loadCfg(S);
+        -- a mid-session load (/addon reload dlac) already has the character
+        -- directory: record it so the watch only fires on a real change
+        pcall(function() _storeAt = S.cfg.path(); end);
         L.blu.delay = tonumber(cfg.applyDelay) or 1.1;
         L.blu.mode  = tostring(cfg.applyMode or 'safe');
         L.host.init({
@@ -182,11 +225,17 @@ return {
             book = L.book, blu = L.blu, sets = L.sets,
             cfg = cfg, save = saveCfg,
         });
+        pcall(function()
+            if type(L.host.noteChar) == 'function' then L.host.noteChar(_storeAt); end
+        end);
         -- the level-change watch + armed Restore ride the framework beat,
         -- Panel open or not, gated on the one activity predicate. A read we
-        -- could not make is not permission: '~= true' stays inert.
+        -- could not make is not permission: '~= true' stays inert. The store
+        -- watch runs FIRST and ungated -- login detection cannot depend on
+        -- the module being 'active'.
         pcall(function()
             S.combat.subscribe('tick', function()
+                syncStore();
                 if S.me.acting().active == true then
                     pcall(L.host.tick);
                 end
@@ -202,6 +251,7 @@ return {
             end
             return;
         end
+        syncStore();                     -- never render (or save) a stale bridge
         L.host.deps.im = ctx.imgui;      -- always the HOST's handle
         if L.host.deps.floatWindow == true then
             -- The float surface is live (this dlac has the window hook), so
@@ -242,6 +292,7 @@ return {
     window = function(ctx)
         local L = lib;
         if L == nil then return; end
+        syncStore();                     -- never render (or save) a stale bridge
         L.host.deps.im = ctx.imgui;
         L.host.renderWindowFloat();
     end,
@@ -264,5 +315,9 @@ return {
     end,
 
     -- not part of the loader contract; exposed for the headless smoke suite
+    -- (_forceLib seeds the lazy lib cache: the repo layout lacks the vendored
+    -- sibling dirs, so require-based loadLib cannot resolve there)
     _codec = codec,
+    _syncStore = syncStore,
+    _forceLib = function(t) lib = t; end,
 };
