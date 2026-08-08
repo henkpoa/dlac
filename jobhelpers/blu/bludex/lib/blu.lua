@@ -596,6 +596,13 @@ function M.watchJobState()
     return kind;
 end
 
+-- Forget the observed job identity. For a character switch: the character
+-- coming in must set a fresh baseline, not read as the previous one having
+-- changed jobs (which would arm the level-change restore for them).
+function M.resetJobWatch()
+    watched = nil;
+end
+
 function M.canApply()
     return sig.equipex ~= nil and sig.offset ~= nil and M.onBlu();
 end
