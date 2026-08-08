@@ -46,9 +46,13 @@ local function freshState(sets)
     };
 end
 
-function M.init(deps)
-    M.deps = deps;                      -- { im, book, blu, sets, cfg, save }
-    M.state = freshState(deps.sets);
+-- Adopt deps.cfg as the current character's settings. Runs at init AND on
+-- every login swap: addons load at the title screen, where the settings
+-- library serves the shared defaults profile -- the character's real file
+-- only arrives with the first login, so adopting once at init is adopting
+-- the wrong table (the bug behind "saved sets do not survive a log off":
+-- the data was on disk, but nothing ever adopted it back).
+local function adoptCfg(deps)
     -- restore the measured point-budget gap and keep it saved. Both flavors
     -- come through here, so the dlac module gets this for free. 0 means
     -- never measured: blu treats that as unknown, not as a real zero gap.
@@ -63,11 +67,6 @@ function M.init(deps)
     local function known(v) if v ~= nil and v >= 0 then return v; end return nil; end
     deps.blu.learnedBonus = known(deps.cfg.capLearnedBonus);
     deps.blu.meritPts     = known(deps.cfg.capMeritPoints);
-    deps.blu.onCapLearn = function()
-        deps.cfg.capLearnedBonus = deps.blu.learnedBonus or -1;
-        deps.cfg.capMeritPoints  = deps.blu.meritPts or -1;
-        if deps.save then deps.save(); end
-    end;
     -- restore the last active saved set (matched by name -- indices shift
     -- when sets are deleted), exactly as if it had been clicked
     local want = deps.cfg.activeSetName;
@@ -80,6 +79,66 @@ function M.init(deps)
             end
         end
     end
+end
+
+function M.init(deps)
+    M.deps = deps;                      -- { im, book, blu, sets, cfg, save }
+    M.state = freshState(deps.sets);
+    deps.blu.onCapLearn = function()
+        deps.cfg.capLearnedBonus = deps.blu.learnedBonus or -1;
+        deps.cfg.capMeritPoints  = deps.blu.meritPts or -1;
+        if deps.save then deps.save(); end
+    end;
+    adoptCfg(deps);
+end
+
+-- Reset the per-character working state: the editing set, the saved-set
+-- selection and the pending level-change checks belong to the character who
+-- logged off. What is pure view -- the open flag, the active tab, the codex
+-- filters -- carries over.
+local function resetCharState()
+    local old = M.state;
+    M.state = freshState(M.deps.sets);
+    if old ~= nil then
+        M.state.open, M.state.tab = old.open, old.tab;
+        M.state.filters, M.state.openCat, M.state.scWeapon =
+            old.filters, old.openCat, old.scWeapon;
+    end
+    M.downCheck, M.restoreChecks = nil, nil;
+end
+
+-- Which character the adopted cfg belongs to ('Name_serverid'; nil = logged
+-- off or unknown). The standalone entry keeps it current; onSettingsSwap
+-- uses it to tell a relog from a character switch.
+M.charTag = nil;
+function M.noteChar(tag) M.charTag = tag; end
+
+-- The settings library swapped tables underneath us: a logoff (the shared
+-- defaults profile comes in), a login, or a character switch. Rebind cfg
+-- FIRST and unconditionally -- a save serializes the registered table, so a
+-- stale deps.cfg is how edits stop reaching the disk. Then:
+--   logged off  -> keep the working state (the same character usually comes
+--                  back; the standalone entry gates rendering meanwhile);
+--   same char   -> their own file just reloaded into a fresh table, and the
+--                  working state -- unsaved edits included -- is still theirs;
+--   other char  -> drop everything the previous character owned (editing
+--                  set, set selection, blu's learned budget, the job watch)
+--                  and adopt the new file exactly as init would. Keeping any
+--                  of it is how one character's sets got overwritten with
+--                  another's, and how budget figures crossed characters.
+-- The FIRST login after a cold start lands in the third arm too: init could
+-- only adopt the defaults profile, so the real file's budget and active set
+-- arrive here.
+function M.onSettingsSwap(cfg, tag)
+    local deps = M.deps;
+    if deps == nil then return; end
+    deps.cfg = cfg;
+    if tag == nil or tag == M.charTag then return; end
+    M.charTag = tag;
+    resetCharState();
+    deps.blu.forgetBudget();
+    if deps.blu.resetJobWatch then deps.blu.resetJobWatch(); end
+    adoptCfg(deps);
 end
 
 function M.toggle()
