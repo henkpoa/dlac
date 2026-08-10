@@ -3,7 +3,7 @@
 
     A tray member (ui\tray.lua -- read its header for the slot contract): it
     appears when there are openable boxes in your inventory -- whatever
-    feature\giftbox's six families cover -- AND you are somewhere it is worth
+    feature\giftbox's families cover -- AND you are somewhere it is worth
     opening them (see placeOK: at an E-Box as a Crystal Warrior, in town as
     anyone else). Clicking it opens them, the same run as /dl giftbox. Henrik,
     2026-08-05: "if any giftboxes are detected, add this icon in the floating

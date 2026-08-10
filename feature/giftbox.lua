@@ -3,13 +3,13 @@
     inventory, one at a time, stopping the moment there is not room for what the
     next one pays out.
 
-    SIX FAMILIES, one run (Henrik: four on 2026-08-06, purses and pouches on
-    2026-08-10). It started as the Goblin Giftboxes that CatsEyeXI drops off
-    Ventures; the Goblin Gatherbox, the Tiny/Timeworn/Titanic Tackleboxes, the
-    Mamool Ja/Lamia/Troll Troves, the two alexandrite Purses and the five
-    Forgotten Pouches are the same job -- a container you use from your bag that
-    pays out items -- so they open through the same loop rather than six copies
-    of it.
+    SEVEN FAMILIES, one run (Henrik: four on 2026-08-06, purses/pouches and the
+    carp creels on 2026-08-10). It started as the Goblin Giftboxes that
+    CatsEyeXI drops off Ventures; the Goblin Gatherbox, the Tiny/Timeworn/
+    Titanic Tackleboxes, the Mamool Ja/Lamia/Troll Troves, the two alexandrite
+    Purses, the five Forgotten Pouches and the Moat/Forest Carp Creels are the
+    same job -- a container you use from your bag that pays out items -- so they
+    open through the same loop rather than seven copies of it.
     The command keeps its name (`/dl giftbox`, `/dl gb`) because that is what is
     in the README and in muscle memory; `/dl box` and `/dl boxes` answer to it
     too, and every line the run prints says "box" so it is never claiming to
@@ -85,7 +85,15 @@ M.NEED_FREE = 6;   -- strictly MORE than 5
 -- strict default. The law is unchanged and just applied per family: need = the
 -- payout + 1 slot of margin (5 -> 6, 1 -> 2). The margin is what covers a box
 -- opened out of a STACK, which pays out without freeing the slot it came from.
-M.NEED = { ['purse'] = 2, ['frgtn. pouch'] = 2, ['forgotten pouch'] = 2 };
+--
+-- IT IS SLOTS, NOT ITEMS -- the Moat Carp Creel is what makes that explicit
+-- (Henrik, 2026-08-10: "6-12 moat carps, so never more than one stack"). Twelve
+-- carp is the biggest payout on this ladder by item count and the SMALLEST by
+-- slot count, because they are one stacking item and land in one slot. A gate
+-- written on item counts would demand 13 free slots for a box that needs 1.
+-- Read every number here as "slots the payout can occupy at worst".
+M.NEED = { ['purse'] = 2, ['frgtn. pouch'] = 2, ['forgotten pouch'] = 2,
+           ['creel'] = 2 };
 
 -- Free slots needed before opening THIS box. Same first-fragment-wins walk as
 -- M.classify, so the two can never disagree about which family a name is in.
@@ -210,13 +218,14 @@ M.LADDER = { 'tiny tacklebox', 'timeworn tacklebox', 'titanic tacklebox',
              'frgtn. pouch (hands)', 'forgotten pouch (hands)',
              'frgtn. pouch (legs)',  'forgotten pouch (legs)',
              'frgtn. pouch (feet)',  'forgotten pouch (feet)',
+             'moat carp creel', 'forest carp creel',
              'gob. giftbox (sm)', 'goblin giftbox (small)',
              'gob. giftbox (md)', 'goblin giftbox (medium)',
              'gob. giftbox (lg)', 'goblin giftbox (large)',
              'gob. giftbox (gr)', 'grand giftbox' };
 
 -- What makes an item ours. Substrings, so an unheard-of rung in any of the
--- six families still opens. The cost of being this open-ended is bounded: a
+-- seven families still opens. The cost of being this open-ended is bounded: a
 -- non-usable item that happened to be named "...Tacklebox" would be fired at
 -- once, never confirm, and stop the run with one honest line after the timeout
 -- -- not a loop, and nothing lost.
@@ -247,8 +256,16 @@ M.LADDER = { 'tiny tacklebox', 'timeworn tacklebox', 'titanic tacklebox',
 -- else, `frgtn. pouch` matches NOTHING and the five never open. `forgotten
 -- pouch` is the other half of that pair and is just as exclusive -- the only
 -- other `Forgotten` items are Hope/Step/Touch (3494/3497/3495), none a pouch.
+--
+-- `creel` (2026-08-10) is priced like `purse`: exactly 2 items in the table,
+-- 5810 Moat Carp Creel and 5811 Forest Carp Creel, and nothing else anywhere.
+-- Henrik asked for the moat one; the forest one is its mirror and the open
+-- fragment takes it too, which is the behaviour this list is built for. Both
+-- are laddered so neither can sort last and steal the tray icon. What is
+-- ASSUMED rather than told: that the forest creel also pays one stack. If it
+-- ever pays two, `creel` is where that splits into two fragments.
 M.MATCH  = { 'giftbox', 'gatherbox', 'tacklebox', 'trove',
-             'purse', 'frgtn. pouch', 'forgotten pouch' };
+             'purse', 'frgtn. pouch', 'forgotten pouch', 'creel' };
 
 -- Is this item name one of ours, and where does it sort? nil = not a box.
 function M.classify(name)

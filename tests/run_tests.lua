@@ -13737,10 +13737,10 @@ end)();
     check('GB1a the giftboxes classify under their REAL names, smallest first',
         table.concat({ gb.classify('Gob. Giftbox (sm)'), gb.classify('Gob. Giftbox (md)'),
                        gb.classify('Gob. Giftbox (lg)'), gb.classify('Gob. Giftbox (gr)') }, ','),
-        '22,24,26,28');
+        '24,26,28,30');
     check('GB1 the long spelling is carried too, in case the client differs',
-        gb.classify('Goblin Giftbox (Small)'), 23);
-    check('GB1b ...case-insensitively', gb.classify('GOB. GIFTBOX (LG)'), 26);
+        gb.classify('Goblin Giftbox (Small)'), 25);
+    check('GB1b ...case-insensitively', gb.classify('GOB. GIFTBOX (LG)'), 28);
     check('GB1c the grand box is the top rung', gb.classify('Grand Giftbox'), #gb.LADDER);
     -- The substring match is what makes this survive the next box CatsEyeXI adds.
     check('GB1d an UNKNOWN giftbox is still ours, sorted last',
@@ -13824,6 +13824,19 @@ end)();
     check('GB1y an unheard-of purse still opens',
         gb.classify('Velvet Purse (alx.)'), #gb.LADDER + 1);
 
+    -- The creels (2026-08-10). Henrik asked for the moat one; `creel` is exactly
+    -- 2 items in the table so the forest mirror comes along, and BOTH are
+    -- laddered -- an unranked one would sort last and take the tray icon off the
+    -- grand giftbox, which is the standing cost of a missing rung (GB1q).
+    check('GB1z the creels are ours, in id order',
+        table.concat({ gb.classify('Moat Carp Creel'), gb.classify('Forest Carp Creel') }, ','),
+        '22,23');
+    check('GB1za ...and they sort under the giftboxes',
+        gb.classify('Forest Carp Creel') < gb.classify('Gob. Giftbox (sm)'), true);
+    -- The negative for `creel`: the carp themselves are a stack of fish, not a
+    -- container, and the fragment must not reach them.
+    check('GB1zb a Moat Carp is not a creel', gb.classify('Moat Carp'), nil);
+
     local FOUND = {
         { name = 'Gob. Giftbox (gr)', rank = 14, count = 1 },
         { name = 'Gob. Giftbox (sm)', rank = 8,  count = 2 },
@@ -13864,6 +13877,12 @@ end)();
                        gb.needFor('Forgotten Pouch (head)') }, ','), '2,2,2');
     check('GB5e an item that is not ours falls back to the strict default',
         gb.needFor('Goblin Bread'), 6);
+    -- SLOTS, NOT ITEMS. A creel is the biggest payout here by item count (6-12
+    -- carp) and the smallest by slot count -- they stack, so it is one slot. A
+    -- gate written on items would have demanded 13 free for a box needing 1.
+    check('GB5e2 a creel needs 2 -- 6-12 carp is ONE stack',
+        table.concat({ gb.needFor('Moat Carp Creel'), gb.needFor('Forest Carp Creel') }, ','),
+        '2,2');
 
     local PURSES = { { name = 'Ctn. Purse (alx.)', rank = gb.classify('Ctn. Purse (alx.)'), count = 4 } };
     local pP2, cP2 = gb.plan(PURSES, 2);
