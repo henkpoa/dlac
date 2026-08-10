@@ -13853,6 +13853,43 @@ end)();
     check('GB5 six is enough', cGo, 'go');
     check('GB5b ...and it picks the smallest', (pGo or {}).name, 'Gob. Giftbox (sm)');
 
+    -- THE GATE IS PER BOX (2026-08-10). Henrik: the purses and pouches "only
+    -- yield 1 item, not up to 5", so holding them to the giftboxes' 6 refused
+    -- runs that were affordable all along. need = payout + 1, per family.
+    check('GB5c needFor: the strict default still covers the 5-item families',
+        table.concat({ gb.needFor('Gob. Giftbox (sm)'), gb.needFor('Troll Trove'),
+                       gb.needFor('Tiny Tacklebox') }, ','), '6,6,6');
+    check('GB5d ...and the 1-item families need 2',
+        table.concat({ gb.needFor('Ctn. Purse (alx.)'), gb.needFor('Frgtn. Pouch (feet)'),
+                       gb.needFor('Forgotten Pouch (head)') }, ','), '2,2,2');
+    check('GB5e an item that is not ours falls back to the strict default',
+        gb.needFor('Goblin Bread'), 6);
+
+    local PURSES = { { name = 'Ctn. Purse (alx.)', rank = gb.classify('Ctn. Purse (alx.)'), count = 4 } };
+    local pP2, cP2 = gb.plan(PURSES, 2);
+    check('GB5f two free slots opens a purse', cP2, 'go');
+    check('GB5g ...and one does not', (select(2, gb.plan(PURSES, 1))), 'space');
+    check('GB5h ...and five free slots opens it too (the old gate refused this)',
+        (select(2, gb.plan(PURSES, 5))), 'go');
+    check('GB5i the message quotes the CHEAPEST need, not the strict 6',
+        (select(3, gb.plan(PURSES, 1))):find('need 2', 1, true) ~= nil, true);
+    check('GB5j ...and it still picks the purse', (pP2 or {}).name, 'Ctn. Purse (alx.)');
+
+    -- The case a per-RUN gate got wrong: pickNext hands back the lowest rank
+    -- whether or not you can afford it, so a tacklebox you cannot open used to
+    -- stop a purse you could. Affordability is filtered BEFORE the ladder now.
+    local MIXED = {
+        { name = 'Tiny Tacklebox',    rank = gb.classify('Tiny Tacklebox'),    count = 1 },
+        { name = 'Ctn. Purse (alx.)', rank = gb.classify('Ctn. Purse (alx.)'), count = 1 },
+    };
+    local pMix, cMix = gb.plan(MIXED, 3);
+    check('GB5k an unaffordable tacklebox no longer blocks an affordable purse', cMix, 'go');
+    check('GB5l ...and the purse is what gets opened', (pMix or {}).name, 'Ctn. Purse (alx.)');
+    check('GB5m with room for both, the ladder decides again',
+        (gb.plan(MIXED, 6) or {}).name, 'Tiny Tacklebox');
+    check('GB5n with room for neither it is still "space"',
+        (select(2, gb.plan(MIXED, 1))), 'space');
+
     -- ---- the run, against a mutable bag -------------------------------------
     -- The Id fields are opaque fixture handles, deliberately not the real
     -- 5109/6558: classify never sees an id, and writing real ones here would
@@ -13977,6 +14014,23 @@ end)();
     check('GB17b ...and the tray icon is still the grand giftbox',
         (mixed.top or {}).name, 'Gob. Giftbox (gr)');
     check('GB17c ...counting boxes of every family together', mixed.total, 2);
+
+    -- The tray dims on the CHEAPEST box in the bag, not the strict default
+    -- (2026-08-10). A bag of purses at five free slots is openable, and the flat
+    -- gate drew it as blocked -- the icon has to answer "can I open SOMETHING".
+    RES[5] = { Name = { 'Ctn. Purse (alx.)' } };
+    slots = { { Id = 5, Count = 3 }, __size = 30 };
+    gb._peekReset();
+    check('GB18 the snapshot carries the cheapest requirement', gb.peek(4000).need, 2);
+    slots = { { Id = 5, Count = 1 }, { Id = 2, Count = 1 }, __size = 30 };
+    gb._peekReset();
+    local both = gb.peek(5000);
+    check('GB18b a giftbox alongside does not raise it', both.need, 2);
+    check('GB18c ...and the icon is still the grand giftbox',
+        (both.top or {}).name, 'Gob. Giftbox (gr)');
+    slots = { { Id = 2, Count = 1 }, __size = 30 };
+    gb._peekReset();
+    check('GB18d giftboxes alone report the strict 6', gb.peek(6000).need, 6);
 
     AshitaCore = savedAshita;
 end)();

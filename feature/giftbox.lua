@@ -19,11 +19,16 @@
     one with a nearly full bag and the payout is refused item by item, which is
     how you lose a box's contents to a wall of "you cannot carry any more"
     lines. That "up to 5" is measured on the giftboxes; the gate applies the
-    same number to all six families, which for a smaller payout is merely
-    strict and for a larger one would be the bug -- if a Titanic Tacklebox ever
-    turns out to pay more than five, NEED_FREE is where that is fixed. Nobody
-    has priced a Purse or a Forgotten Pouch either; both are assumed to be at or
-    under five, which is the safe direction to be wrong in.
+    same number to a family, and for a larger payout it would be the bug -- if a
+    Titanic Tacklebox ever turns out to pay more than five, NEED_FREE is where
+    that is fixed.
+
+    THE FAMILIES DO NOT SHARE A PAYOUT (Henrik, 2026-08-10: the purses and the
+    Forgotten Pouches "only yield 1 item, not up to 5"). Being strict is the
+    safe direction to be wrong in, but it is still wrong: five free slots and a
+    bag of purses would sit there refusing a run it could obviously afford. So
+    the requirement is per family (M.NEED) and the gate is asked per BOX rather
+    than once per run -- see M.plan.
 
     THE GATE RUNS BEFORE EVERY BOX, NOT ONCE (Henrik's spec said "more than 5
     free"; the correction is that it has to be re-asked each time). A box gives
@@ -68,6 +73,31 @@ M.BAG = 0;
 -- payout size: "up to 5 items from it". Not a setting -- a smaller number is
 -- just a slower way of losing a box.
 M.NEED_FREE = 6;   -- strictly MORE than 5
+
+-- ...but the payout is NOT the same for every family, so neither is the gate
+-- (Henrik, 2026-08-10: "all in the list that we just added only yield 1 item,
+-- not up to 5"). The purses and the Forgotten Pouches pay ONE item, so holding
+-- them to the giftboxes' 6 would refuse a run you can obviously afford -- five
+-- free slots and a bag of purses would sit there doing nothing.
+--
+-- Keyed by the M.MATCH fragment that made the item ours, so a family's gate is
+-- stated in the same place its name is, and an unknown box falls back to the
+-- strict default. The law is unchanged and just applied per family: need = the
+-- payout + 1 slot of margin (5 -> 6, 1 -> 2). The margin is what covers a box
+-- opened out of a STACK, which pays out without freeing the slot it came from.
+M.NEED = { ['purse'] = 2, ['frgtn. pouch'] = 2, ['forgotten pouch'] = 2 };
+
+-- Free slots needed before opening THIS box. Same first-fragment-wins walk as
+-- M.classify, so the two can never disagree about which family a name is in.
+function M.needFor(name)
+    local low = string.lower(tostring(name or ''));
+    for _, frag in ipairs(M.MATCH) do
+        if string.find(low, frag, 1, true) ~= nil then
+            return M.NEED[frag] or M.NEED_FREE;
+        end
+    end
+    return M.NEED_FREE;
+end
 
 -- How long one use may take to show up as a count drop before we call it
 -- refused. Generous on purpose: a long animation is not a failure, and the cost
@@ -254,19 +284,41 @@ end
 -- room there is, do we open something -- and if not, WHY not. Never returns a
 -- bare false: a run that does nothing has to be able to say which of the three
 -- reasons it was, because they call for three different actions from the player.
+-- THE GATE IS PER BOX, NOT PER RUN (2026-08-10). It used to be one number
+-- against the whole bag, which was right while every family paid the same 5.
+-- Now that a purse pays 1 and a giftbox pays 5, "can I afford this?" is a
+-- question about the box we are about to open, so the affordable ones are
+-- filtered FIRST and the ladder then orders what is left. A bag holding a
+-- tacklebox and a purse with 3 free slots opens the purse rather than stopping
+-- on the tacklebox it cannot afford -- and stopping is what a per-run gate did,
+-- because pickNext hands back the lowest rank whether you can afford it or not.
+--
+-- When nothing is affordable the message quotes the CHEAPEST requirement in the
+-- bag, because that is the number that actually unblocks the run; quoting the
+-- strict 6 while you hold nothing but purses would send you off to free four
+-- slots you do not need.
 function M.plan(found, freeSlots)
     local free  = math.max(0, math.floor(tonumber(freeSlots) or 0));
-    local total = 0;
-    for _, e in ipairs(found or {}) do total = total + math.max(0, tonumber(e.count) or 0); end
+    local total, cheapest, affordable = 0, nil, {};
+    for _, e in ipairs(found or {}) do
+        local c = math.max(0, tonumber(e.count) or 0);
+        total = total + c;
+        if c > 0 then
+            local need = M.needFor(e.name);
+            if cheapest == nil or need < cheapest then cheapest = need; end
+            if free >= need then affordable[#affordable + 1] = e; end
+        end
+    end
     if total <= 0 then
         return nil, 'none', 'no boxes in your inventory.';
     end
-    if free < M.NEED_FREE then
+    local pick = M.pickNext(affordable);
+    if pick == nil then
         return nil, 'space', string.format(
             '%d box%s waiting -- you need %d free inventory slots and have %d.',
-            total, (total == 1) and '' or 'es', M.NEED_FREE, free);
+            total, (total == 1) and '' or 'es', cheapest or M.NEED_FREE, free);
     end
-    return M.pickNext(found), 'go', nil;
+    return pick, 'go', nil;
 end
 
 -- ---------------------------------------------------------------------------
@@ -337,12 +389,21 @@ function M.peek(now)
     if now < _peekAt then return _peek; end
     _peekAt = now + M.SCAN_EVERY;
     local found, free = M.scan();
-    local total, top = 0, nil;
+    local total, top, need = 0, nil, nil;
     for _, e in ipairs(found or {}) do
         total = total + math.max(0, tonumber(e.count) or 0);
-        if (tonumber(e.count) or 0) > 0 and (top == nil or e.rank > top.rank) then top = e; end
+        if (tonumber(e.count) or 0) > 0 then
+            if top == nil or e.rank > top.rank then top = e; end
+            -- `need` is the CHEAPEST box in the bag, which is the honest answer
+            -- to "can I open anything right now" -- the tray dims on that, not
+            -- on the strict default, or a bag of purses would read as blocked
+            -- at five free slots.
+            local n = M.needFor(e.name);
+            if need == nil or n < need then need = n; end
+        end
     end
-    _peek = { have = (total > 0), total = total, free = free or 0, top = top };
+    _peek = { have = (total > 0), total = total, free = free or 0, top = top,
+              need = need or M.NEED_FREE };
     return _peek;
 end
 

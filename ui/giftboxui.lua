@@ -111,7 +111,13 @@ function M.trayDraw()
 
     local running = false;
     pcall(function() running = gb.running() == true; end);
-    local roomy = (p.free >= gb.NEED_FREE);
+    -- The CHEAPEST box in the bag decides, not the strict default: since
+    -- 2026-08-10 the families do not share a payout (a purse pays 1, a giftbox
+    -- 5), so "is there room" means "is there room for something". `p.need` is
+    -- absent from an older snapshot (and from the smoke stubs), hence the
+    -- fallback -- never let the tray hard-fail on a missing field.
+    local need  = tonumber(p.need) or gb.NEED_FREE;
+    local roomy = (p.free >= need);
 
     local clicked = false;
     imgui.PushID('dlac_giftbox_tray');
@@ -146,10 +152,10 @@ function M.trayDraw()
             tip = 'Opening boxes now.\nType /dl giftbox stop to halt.';
         elseif not roomy then
             tip = string.format('%d box%s -- NOT ENOUGH ROOM.\n\n'
-                .. 'Each box pays out up to 5 items, so %d free inventory slots\n'
-                .. 'are needed and you have %d. Free %d more and click.',
+                .. 'The cheapest box you are carrying needs %d free inventory\n'
+                .. 'slots and you have %d. Free %d more and click.',
                 p.total, (p.total == 1) and '' or 'es',
-                gb.NEED_FREE, p.free, gb.NEED_FREE - p.free);
+                need, p.free, need - p.free);
         else
             tip = string.format('%d box%s in your inventory (%d free slots).\n\n'
                 .. 'Click to open them all, one at a time. It stops by itself\n'
