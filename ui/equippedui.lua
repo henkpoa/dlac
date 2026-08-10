@@ -105,7 +105,9 @@ end
 local function renderBrowseRow(rec, ordinal, job, level, nameW, onRight)
     local bg = (ordinal % 2 == 0) and { 1, 1, 1, 0.03 } or { 1, 1, 1, 0.07 };
     imgui.PushStyleColor(ImGuiCol_ChildBg, bg);
-    imgui.BeginChild('##aeqrow_' .. tostring(rec.Id or ('n' .. ordinal)), { -1, 22 }, false);
+    -- AugKey joins the id: augment-split rolls share an Id, and two rows under
+    -- one imgui id leave the second one dead to clicks.
+    imgui.BeginChild('##aeqrow_' .. tostring(rec.Id or ('n' .. ordinal)) .. (rec.AugKey or ''), { -1, 22 }, false);
     icons.renderIcon(rec.Id, 18);
     local usable = S.isUsable(rec, job, level);
     -- stored beats locked beats ok -- the precedence lives in ownedcache.verdict
@@ -157,7 +159,9 @@ local function renderItemCard(rec, level, w, tag)
     local innerW = w - 18;
     local ss = fmt.statSummary(rec, level);
     local augText = nil;
-    if rec.Id ~= nil then
+    if type(rec.AugText) == 'string' and rec.AugText ~= '' then
+        augText = 'Aug: ' .. rec.AugText;              -- augment-split roll: exactly this copy
+    elseif rec.Id ~= nil then
         local al = S.ownedAugMap()[rec.Id];
         if al ~= nil and #al > 0 then
             augText = 'Aug: ' .. al[1] .. ((#al > 1) and string.format(' (+%d)', #al - 1) or '');

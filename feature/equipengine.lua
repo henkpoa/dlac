@@ -267,6 +267,32 @@ end
 -- never equipped by mistake).
 M.augmentStringsOf = nil;   -- function(item) -> { 'STR+5', ... } | nil
 
+-- The canonical CatsEyeXI private-augment signature of an Extra byte-string
+-- (feature\augments.signature) -- injected by the ADDON state at boot, exactly
+-- like augmentStringsOf above (this module must load in the LAC state too,
+-- where feature\augments cannot -- ADR 0002's require wall, hence a hook and
+-- never a require). It feeds item.augment.Key, the value an entry's AugKey pin
+-- exact-matches in equipcore.checkAugments. Absent, augmented items carry no
+-- Key and non-'' AugKey pins never match -- the same safe direction.
+M.augmentKeyOf = nil;       -- function(extra) -> canonical signature ('' = none)
+
+-- The augment view of one container item's Extra bytes: the LAC-parity header
+-- decode (Path/Rank/Trial) PLUS the private-augment signature when the addon
+-- state wired the reader. ONE builder for the three snapshot sites (worn view,
+-- bag scan, trust stamps) -- a site that forgot the Key would make the worn
+-- copy look wrong and re-equip it every dispatch.
+local function augmentView(extra)
+    local aug = M.parseAugmentHeader(extra);
+    if type(M.augmentKeyOf) == 'function' then
+        local ok, key = pcall(M.augmentKeyOf, extra);
+        if ok and type(key) == 'string' and key ~= '' then
+            aug = aug or {};
+            aug.Key = key;
+        end
+    end
+    return aug;
+end
+
 -- ---------------------------------------------------------------------------
 -- state
 -- ---------------------------------------------------------------------------
@@ -336,7 +362,7 @@ local function currentEquip(slot, invMgr, resMgr)
             Name = string.lower(res.Name[1] or ''),
             Level = res.Level, Jobs = res.Jobs, Slots = res.Slots,
             ResFlags = res.Flags,
-            augment = M.parseAugmentHeader(ci.Extra),
+            augment = augmentView(ci.Extra),
         };
     end);
     return item;
@@ -393,7 +419,7 @@ local function liveSnapshot(wantNames)
                                 Count = ci.Count, Flags = ci.Flags,
                                 Name = nm, Level = res.Level, Jobs = res.Jobs,
                                 Slots = res.Slots, ResFlags = res.Flags,
-                                augment = M.parseAugmentHeader(ci.Extra),
+                                augment = augmentView(ci.Extra),
                             };
                         end
                     end
@@ -457,7 +483,7 @@ local function stampTrust(stamps, invMgr)
                         Jobs = res ~= nil and res.Jobs or 0,
                         Slots = res ~= nil and res.Slots or 0,
                         ResFlags = res ~= nil and res.Flags or 0,
-                        augment = M.parseAugmentHeader(ci.Extra),
+                        augment = augmentView(ci.Extra),
                     };
                 end
             end);

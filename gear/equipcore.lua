@@ -91,9 +91,11 @@ M.bitSet = bitSet;
 -- ---------------------------------------------------------------------------
 
 -- A set entry is a string name or a table { Name, Augment, AugPath, AugRank,
--- AugTrial, Bag, Priority }. Special names: 'remove' (unequip; default
+-- AugTrial, AugKey, Bag, Priority }. Special names: 'remove' (unequip; default
 -- priority -100), 'displaced' (hold the slot empty without a packet),
 -- 'ignore' (drop the slot from the plan entirely -- callers see nil).
+-- AugKey is dlac's own pin -- the canonical CatsEyeXI private-augment signature
+-- (feature\augments.signature); the LAC-heritage pins ride beside it untouched.
 function M.normalizeEntry(v)
     local e = nil;
     if type(v) == 'string' then
@@ -119,6 +121,8 @@ function M.normalizeEntry(v)
                 e.AugRank = val;
             elseif k == 'AugTrial' then
                 e.AugTrial = val;
+            elseif k == 'AugKey' and type(val) == 'string' then
+                e.AugKey = val;
             end
         end
     else
@@ -143,8 +147,18 @@ end
 
 -- Does a parsed augment satisfy an entry's augment pins? `augment` may be nil
 -- (unaugmented item): pins then fail, absent pins pass.
+--
+-- AugKey is an EXACT match on the canonical signature (aug.Key, stamped by the
+-- snapshot builder via equipengine.augmentKeyOf), deliberately not the subset
+-- semantics of the Augment string pins below: with two same-item copies whose
+-- augment lists overlap, a subset pin could hand copy B to copy A's slot and
+-- leave B's own entry unfillable. A missing aug.Key reads as '' -- so
+-- AugKey = '' pins "the unaugmented copy", and any non-'' pin refuses to match
+-- when the signature reader isn't wired (a wrong-augment piece is never
+-- equipped by mistake -- the augmentStringsOf direction, same law).
 function M.checkAugments(entry, augment)
     local aug = augment or {};
+    if entry.AugKey ~= nil and (aug.Key or '') ~= entry.AugKey then return false; end
     if entry.AugPath ~= nil and aug.Path ~= entry.AugPath then return false; end
     if entry.AugRank ~= nil and aug.Rank ~= entry.AugRank then return false; end
     if entry.AugTrial ~= nil and aug.Trial ~= entry.AugTrial then return false; end

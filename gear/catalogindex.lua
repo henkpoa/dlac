@@ -104,10 +104,26 @@ function M.flatten(src)
             Model = e.Model,   -- appearance model id (catalog) -- the lockstyle look
                                -- preview resolves through THESE records (catalogById /
                                -- enrichment), so dropping it here blanks the preview
+            AugKey = e.AugKey,   -- private-augment pin: this record means ONE
+                                 -- specific roll of the item (augment-split scan);
+                                 -- '' pins the unaugmented copy
+            AugText = e.AugText, -- that roll, readable ("Acc+3, Dagger Skill+6")
         };
         list[#list + 1] = rec;
-        if rec.Id ~= nil then byId[rec.Id] = rec; end
-        if type(rec.Name) == 'string' then byName[string.lower(rec.Name)] = rec; end
+        -- The collapsing indexes: with augment-split records several rows share
+        -- one Id/Name. The UNPINNED record (when one exists) is the right
+        -- ambassador for id/name questions -- "what is item 15142" -- so a
+        -- pinned row never overwrites, and the first row keeps the seat
+        -- otherwise (pairs order must not pick the winner).
+        if rec.Id ~= nil then
+            local cur = byId[rec.Id];
+            if cur == nil or (cur.AugKey ~= nil and rec.AugKey == nil) then byId[rec.Id] = rec; end
+        end
+        if type(rec.Name) == 'string' then
+            local ln = string.lower(rec.Name);
+            local cur = byName[ln];
+            if cur == nil or (cur.AugKey ~= nil and rec.AugKey == nil) then byName[ln] = rec; end
+        end
     end
     local function walk(slot, container, category)
         for key, v in pairs(container) do

@@ -619,6 +619,11 @@ local function factsLines(rec, level, wrapN)
         end
     end);
     pcall(function()
+        if type(rec.AugText) == 'string' and rec.AugText ~= '' then
+            -- augment-split roll: this record IS one specific copy
+            add(COL.SCORE, fmt.truncate('Aug: ' .. rec.AugText, wrapN));
+            return;
+        end
         if rec.Id == nil or type(S.ownedAugMap) ~= 'function' then return; end
         local al = S.ownedAugMap()[rec.Id];
         if type(al) == 'table' and al[1] ~= nil then
@@ -1054,13 +1059,15 @@ local function renderPinMenu(job, level, choices, pool, maxW, fpool)
                     -- facts up while you travel across to pick a trigger, which
                     -- a hover test on the parent row would drop the moment the
                     -- cursor left it.
-                    if imgui.BeginMenu(nm .. '##pin' .. tostring(rec.Id)) then
+                    -- AugKey joins the imgui id: augment-split rolls share an
+                    -- Id, and two rows under one id leave the second unclickable.
+                    if imgui.BeginMenu(nm .. '##pin' .. tostring(rec.Id) .. (rec.AugKey or '')) then
                         _hoverNext = rec;
                         renderScopeRows(slot, nm, choices, true);
                         imgui.EndMenu();
                     end
                 else
-                    if imgui.Selectable(nm .. '##pin' .. tostring(rec.Id)) then
+                    if imgui.Selectable(nm .. '##pin' .. tostring(rec.Id) .. (rec.AugKey or '')) then
                         _drillItem = nm;
                     end
                     if imgui.IsItemHovered() then _hoverNext = rec; end

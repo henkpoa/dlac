@@ -643,7 +643,20 @@ function M.flattenHead(ladder, slotName)
             head = mk;
         end
     elseif itemHead ~= nil then
-        head = itemHead.name;
+        -- An augment-PINNED winner (augment-split gear.lua records, AugKey)
+        -- flattens as the table entry form -- { Name, AugKey } -- so the pin
+        -- reaches the resolver: a bare name would equip whichever roll of the
+        -- item the bag scan found first, which is exactly the ambiguity the
+        -- split records exist to end. The table shape is not new to any
+        -- consumer: static sets have always fed record tables through the same
+        -- doors, and every reader of flattened values type-checks before its
+        -- string ops (setEntryName, the 'dlac:' sniffs, scanSet, ammo planning).
+        local g = itemHead.gear;
+        if type(g) == 'table' and type(g.AugKey) == 'string' then
+            head = { Name = itemHead.name, AugKey = g.AugKey };
+        else
+            head = itemHead.name;
+        end
     end
     return head, mainObj;
 end

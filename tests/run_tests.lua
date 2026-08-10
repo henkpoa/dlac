@@ -564,6 +564,55 @@ check('D4 owned name still kept', select(3, gearimport.computePrune(fixtureGear,
     { { Name = 'Noted Body' }, { Name = 'Clean Sword' }, { Name = 'Noted Sword' }, { Name = 'Clean Body' } })), 0);
 
 -- ---------------------------------------------------------------------------
+-- DA. Augment split (the two-Hecatomb-mittens case): the signature IS the roll's
+--     identity -- raw id:tier words, sorted, label-independent -- and the key
+--     suffix renderEntry derives from it must be stable across rescans, or set
+--     files pointing at gear.<Slot>.<Key> would orphan on every bag shuffle.
+-- ---------------------------------------------------------------------------
+do
+    local aug = dofile('feature/augments.lua');
+    -- Extra fixture: 0x02 header, then 2-byte LE words id+(tier-1)*2048:
+    -- Acc+3 (23:3), Crit Dmg+3% (328:3), Dagger Skill+6 (258:6), terminator.
+    local function word(id, mag)
+        local w = id + (mag - 1) * 2048;
+        return string.char(w % 256, math.floor(w / 256));
+    end
+    local extra  = '\2\0' .. word(23, 3) .. word(328, 3) .. word(258, 6) .. '\0\0';
+    local extra2 = '\2\0' .. word(258, 6) .. word(23, 3) .. word(328, 3) .. '\0\0';
+    check('DA1 signature = sorted id:tier words', aug.signature(extra), '23:3|258:6|328:3');
+    check('DA2 word order never changes the signature', aug.signature(extra2), aug.signature(extra));
+    check('DA3 unaugmented reads the empty signature', aug.signature('\0\0'), '');
+    check('DA4 describe names the roll in extdata order',
+          aug.describe(extra), 'Acc+3, Crit Dmg+3%, Dagger Skill+6');
+
+    local h1 = gearimport.augHash('23:3|258:6|328:3');
+    check('DA5 augHash is stable', gearimport.augHash('23:3|258:6|328:3'), h1);
+    check('DA6 different rolls hash apart', h1 == gearimport.augHash('25:5|54:2'), false);
+    check('DA7 the plain-copy suffix hashes to 0', gearimport.augHash(''), '0');
+
+    local entry = gearimport.renderEntry({
+        Slot = 'Hands', Name = 'Hecatomb Mittens +1', FullName = 'Hecatomb Mittens +1',
+        Level = 73, Id = 15142,
+        AugKey = '23:3|258:6|328:3', AugText = 'Acc+3, Crit Dmg+3%, Dagger Skill+6',
+    });
+    check('DA8 split record key carries the hash suffix', entry and entry.key, 'HecatombMittens_1_A' .. h1);
+    check('DA9 AugKey stamped into the entry',
+          entry and entry.lua:find('AugKey = "23:3|258:6|328:3"', 1, true) ~= nil, true);
+    check('DA10 AugText stamped into the entry',
+          entry and entry.lua:find('AugText = "Acc+3, Crit Dmg+3%, Dagger Skill+6"', 1, true) ~= nil, true);
+    local plainE = gearimport.renderEntry({ Slot = 'Hands', Name = 'Hecatomb Mittens +1',
+        FullName = 'Hecatomb Mittens +1', Level = 73, Id = 15142, AugKey = '' });
+    check('DA11 the pinned-plain record keys _A0 and stamps AugKey ""',
+          plainE ~= nil and plainE.key == 'HecatombMittens_1_A0'
+          and plainE.lua:find('AugKey = ""', 1, true) ~= nil, true);
+    local bare = gearimport.renderEntry({ Slot = 'Hands', Name = 'Hecatomb Mittens +1',
+        FullName = 'Hecatomb Mittens +1', Level = 73, Id = 15142 });
+    check('DA12 an unpinned record renders exactly as before (no AugKey line)',
+          bare ~= nil and bare.key == 'HecatombMittens_1'
+          and bare.lua:find('AugKey', 1, true) == nil, true);
+end
+
+-- ---------------------------------------------------------------------------
 -- E. computeFixes metadata backfill -- the equip-time engine reads RAW gear.lua,
 --    so /dl fix stamps Type / OneHanded from the catalog (weapons) and the
 --    Shield/Grip label (Sub items). Must be idempotent.
@@ -8317,6 +8366,31 @@ end)();
     check('LD7 the acc pool never contests the normal pick', lad.items[1].name, 'Plain Ring');
     check('LD7b it composes the AutoAcc marker over the fallback',
         (H(lad, 'Ring1')), 'dlac:AutoAcc:2:15:Acc Ring|Plain Ring');
+
+    -- LD7c-e. An augment-PINNED winner (augment-split records) flattens as the
+    -- table entry form so the AugKey reaches the resolver -- a bare name would
+    -- equip whichever roll the bag scan found first. Unpinned winners keep the
+    -- plain-string head byte-identical.
+    lad = L({ { Name = 'Hecatomb Mittens +1', Level = 50, AugKey = '23:3|258:6', AugText = 'Acc+3, Dagger Skill+6' } },
+            'Hands', nil, cctx);
+    local pinHead = H(lad, 'Hands');
+    check('LD7c a pinned winner flattens as { Name, AugKey }',
+        type(pinHead) == 'table' and pinHead.Name == 'Hecatomb Mittens +1'
+        and pinHead.AugKey == '23:3|258:6', true);
+    lad = L({ { Name = 'Hecatomb Mittens +1', Level = 50 } }, 'Hands', nil, cctx);
+    check('LD7d an unpinned winner keeps the plain-string head',
+        H(lad, 'Hands'), 'Hecatomb Mittens +1');
+    -- ...and the arbiter reasons about a pinned entry by its Name: the floor
+    -- merge and the reserve walk must SEE the slot, not skip it as a non-string.
+    local ARBt = dofile('gear/arbiter.lua');
+    local fl = ARBt.reserveFloor({ { prio = 1, set = { Hands = pinHead }, src = 'S' } });
+    check('LD7e the floor merges a pinned entry by Name',
+        fl.Hands ~= nil and fl.Hands.name == 'Hecatomb Mittens +1', true);
+    local rd = ARBt.reservedDrops(
+        { Body = 'Vermillion Cloak', Head = pinHead },
+        function(nm) return (nm == 'Vermillion Cloak') and 0x0010 or 0; end);   -- Body reserves Head
+    check('LD7f a reserver still drops a pinned slot (judged by its Name)',
+        rd ~= nil and rd.Head, 'Vermillion Cloak');
 
     -- The pass-2 virtual re-adoption QUIRK, preserved on purpose (see the
     -- slotLadder comment): with no eligible mode item, the last BARE virtual
@@ -16430,6 +16504,35 @@ end)();
     plan = eqc.planSet({ Ring1 = { Name = 'Oneiros Ring', AugPath = 'A' } },
         mkSnap({ items = { mkItem(8, 3, 'oneiros ring', 14) } }));
     check('EQC29 pin vs unaugmented item refuses', #plan.equips, 0);
+
+    -- --- AugKey pins (augment-split records): EXACT signature, never subset ---
+    -- Two rolls of one item share a Name; the pin is what tells them apart, so a
+    -- first-fit bag scan must skip the wrong roll even though its name matches.
+    local rollA = mkItem(8, 3, 'hecatomb mittens +1', 7, { augment = { Key = '23:3|258:6|328:3' } });
+    local rollB = mkItem(8, 4, 'hecatomb mittens +1', 7, { augment = { Key = '25:5|54:2' } });
+    local ak = eqc.normalizeEntry({ Name = 'Hct. Mittens +1', AugKey = '23:3' });
+    check('EQC29a normalizeEntry carries AugKey', ak and ak.AugKey, '23:3');
+    plan = eqc.planSet({ Hands = { Name = 'Hecatomb Mittens +1', AugKey = '25:5|54:2' } },
+        mkSnap({ items = { rollA, rollB } }));
+    check('EQC29b AugKey picks its roll, not the first bag find',
+          #plan.equips == 1 and plan.equips[1].Index == 4, true);
+    plan = eqc.planSet({ Hands = { Name = 'Hecatomb Mittens +1', AugKey = '9:9' } },
+        mkSnap({ items = { rollA, rollB } }));
+    check('EQC29c an unowned signature refuses every copy', #plan.equips, 0);
+    plan = eqc.planSet({ Hands = { Name = 'Hecatomb Mittens +1', AugKey = '23:3' } },
+        mkSnap({ items = { rollA } }));
+    check('EQC29d a partial signature is not a match (exact, never subset)', #plan.equips, 0);
+    plan = eqc.planSet({ Hands = { Name = 'Hecatomb Mittens +1', AugKey = '' } },
+        mkSnap({ items = { rollA, mkItem(8, 5, 'hecatomb mittens +1', 7) } }));
+    check('EQC29e AugKey \'\' pins the unaugmented copy',
+          #plan.equips == 1 and plan.equips[1].Index == 5, true);
+    plan = eqc.planSet({ Hands = { Name = 'Hecatomb Mittens +1', AugKey = '25:5|54:2' } },
+        mkSnap({ equipped = { [7] = rollB }, items = { rollA, rollB } }));
+    check('EQC29f the worn matching roll satisfies (no re-equip)', plan.satisfied, true);
+    plan = eqc.planSet({ Hands = { Name = 'Hecatomb Mittens +1', AugKey = '25:5|54:2' } },
+        mkSnap({ equipped = { [7] = rollA }, items = { rollA, rollB } }));
+    check('EQC29g a worn WRONG roll swaps to the right one',
+          #plan.equips == 1 and plan.equips[1].Index == 4, true);
 
     -- --- one instance never fills two slots; second copy does ---
     plan = eqc.planSet({ Ring1 = 'Reraise Ring', Ring2 = 'Reraise Ring' },

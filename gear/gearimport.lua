@@ -312,11 +312,59 @@ local function collectExistingKeys()
     return keys;
 end
 
+-- The CatsEyeXI private-augment decoder, required lazily and only once (addon
+-- state; in a state where it cannot load -- headless, LAC -- every signature
+-- reads '' and the augment-aware paths fall back to id behaviour).
+local _augTried, _augmod = false, nil;
+local function augdecoder()
+    if not _augTried then
+        _augTried = true;
+        pcall(function()
+            local m = require('dlac\\feature\\augments');
+            if type(m) == 'table' and type(m.signature) == 'function' then _augmod = m; end
+        end);
+    end
+    return _augmod;
+end
+
+-- Existing augment-PINNED records: { [lower(Name)..'|'..AugKey] = true }. The
+-- augment-split scan judges Known per ROLL against this -- a bare (unpinned)
+-- record means "any copy" and cannot vouch for a specific roll, or the second
+-- mitten would read as already-documented forever and never stage.
+local function collectExistingAugPairs()
+    local out = {};
+    local function walk(t)
+        for _, v in pairs(t) do
+            if type(v) == 'table' then
+                if v.Name ~= nil then
+                    if type(v.AugKey) == 'string' and type(v.Name) == 'string' then
+                        out[string.lower(v.Name) .. '|' .. v.AugKey] = true;
+                    end
+                else
+                    walk(v);
+                end
+            end
+        end
+    end
+    for slotName, slotVars in pairs(gear) do
+        if slotName ~= 'NameToObject' and type(slotVars) == 'table' then walk(slotVars); end
+    end
+    return out;
+end
+
 -- Scan the given containers (default: ALL_CONTAINERS -- every bag, safe, locker,
 -- satchel, sack, case and wardrobe) and return a list of unique enriched records.
 -- Multiple copies of one item collapse to a single record with an incremented
 -- .Count (renderEntry emits Count >= 2 on Main weapons -- the same-weapon
 -- dual-wield fact that replaced the legacy InBothHands flag).
+--
+-- EXCEPT augment rolls (2026-08-10, the two-Hecatomb-mittens case): an id owned
+-- in >= 2 DISTINCT private-augment rolls is different gear wearing one name --
+-- collapsed, every roll but the engine's first bag find is unreachable. Such an
+-- id yields one record PER ROLL: AugKey = the canonical signature (augments.
+-- signature; '' = the unaugmented copy), AugText = the roll readable, Count =
+-- that roll's copies, Known judged per roll (collectExistingAugPairs). A
+-- single-roll id keeps the collapsed record, byte-identical to the old scan.
 function M.scan(containers)
     containers = containers or M.ALL_CONTAINERS;   -- gear.lua documents everything you OWN,
                                                    -- wherever it lives; availability is display state
@@ -328,6 +376,8 @@ function M.scan(containers)
 
     local byId  = {};   -- Id -> record, or false once we've decided it's not gear
     local items = {};
+    local dec   = augdecoder();
+    local rolls = {};   -- Id -> { n=distinct, order={sig..}, count={sig->copies}, text={sig->readable} }
 
     -- Recognise already-documented items tolerantly: match the short name, the full
     -- (log) name, OR the generated key, against existing Names and keys. Humans
@@ -366,12 +416,55 @@ function M.scan(containers)
                     elseif cached ~= false then
                         cached.Count = cached.Count + 1;
                     end
+                    -- Roll tally: one bump per bag slot (the same unit Count
+                    -- counts), signature '' for unaugmented copies -- a plain
+                    -- copy beside an augmented one is a distinct roll too.
+                    if dec ~= nil and byId[entry.Id] ~= false and byId[entry.Id] ~= nil then
+                        local sig, txt = '', nil;
+                        pcall(function()
+                            sig = dec.signature(entry.Extra);
+                            if sig ~= '' then txt = dec.describe(entry.Extra); end
+                        end);
+                        local t = rolls[entry.Id];
+                        if t == nil then
+                            t = { n = 0, order = {}, count = {}, text = {} };
+                            rolls[entry.Id] = t;
+                        end
+                        if t.count[sig] == nil then
+                            t.n = t.n + 1;
+                            t.order[#t.order + 1] = sig;
+                            t.count[sig] = 0;
+                            t.text[sig] = txt;
+                        end
+                        t.count[sig] = t.count[sig] + 1;
+                    end
                 end
             end
         end
     end
 
-    return items;
+    -- The augment split (see the function header). Bag-walk order is kept for
+    -- the roll records so a rescan stages them in a stable order.
+    local out, knownAug = {}, nil;
+    for _, rec in ipairs(items) do
+        local t = rolls[rec.Id];
+        if t ~= nil and t.n >= 2 then
+            if knownAug == nil then knownAug = collectExistingAugPairs(); end
+            local ln = string.lower(rec.Name or '');
+            for _, sig in ipairs(t.order) do
+                local copy = {};
+                for k, v in pairs(rec) do copy[k] = v; end
+                copy.Count   = t.count[sig];
+                copy.AugKey  = sig;
+                copy.AugText = t.text[sig];
+                copy.Known   = (knownAug[ln .. '|' .. sig] == true);
+                out[#out + 1] = copy;
+            end
+        else
+            out[#out + 1] = rec;
+        end
+    end
+    return out;
 end
 
 -- ---------------------------------------------------------------------------
@@ -395,6 +488,9 @@ local function augPart(v)
 end
 
 local function augString(rec)
+    if type(rec.AugText) == 'string' and rec.AugText ~= '' then   -- augment-split roll
+        return ' {aug: ' .. rec.AugText .. '}';
+    end
     if rec.Augment == nil or rec.Augment.Augs == nil then return ''; end
     local parts = {};
     for _, v in pairs(rec.Augment.Augs) do
@@ -459,15 +555,21 @@ local CONTAINER_NAMES = {
 };
 function M.containerName(cid) return CONTAINER_NAMES[cid] or ('container ' .. tostring(cid)); end
 
--- One pass over EVERY container -> { total = {id->n}, avail = {id->n}, where = {id->{cid->n}} }.
+-- One pass over EVERY container -> { total = {id->n}, avail = {id->n}, where = {id->{cid->n}},
+--                                    aug = {id->{sig->{total,avail,where}}} }.
 --   total: owned anywhere (Safe/Storage/Locker/Satchel/... included) -- visibility.
 --   avail: Inventory + Wardrobes only -- equippability (pairing rules, automations,
 --          and the red "in storage" name colour when owned but 0 available).
 --   where: per-container counts, so tooltips can say WHICH bag holds the item.
+--   aug:   the same three, PER private-augment roll (augments.signature of the
+--          item's Extra) for augmented copies only -- how an augment-split
+--          record (gear.lua AugKey) counts/colours ITS copy instead of every
+--          copy of the id (ownedcache.augEntry reads this).
 function M.ownedSplit()
-    local split = { total = {}, avail = {}, where = {} };
+    local split = { total = {}, avail = {}, where = {}, aug = {} };
     local inv = AshitaCore:GetMemoryManager():GetInventory();
     if inv == nil then return split; end
+    local dec = augdecoder();
     for _, cid in ipairs(M.ALL_CONTAINERS) do
         local maxCount = inv:GetContainerCountMax(cid);
         if maxCount ~= nil and maxCount > 0 then
@@ -483,6 +585,19 @@ function M.ownedSplit()
                     local w = split.where[entry.Id];
                     if w == nil then w = {}; split.where[entry.Id] = w; end
                     w[cid] = (w[cid] or 0) + n;
+                    if dec ~= nil then
+                        local sig = '';
+                        pcall(function() sig = dec.signature(entry.Extra); end);
+                        if sig ~= '' then
+                            local per = split.aug[entry.Id];
+                            if per == nil then per = {}; split.aug[entry.Id] = per; end
+                            local e = per[sig];
+                            if e == nil then e = { total = 0, avail = 0, where = {} }; per[sig] = e; end
+                            e.total = e.total + n;
+                            if AVAIL_SET[cid] then e.avail = e.avail + n; end
+                            e.where[cid] = (e.where[cid] or 0) + n;
+                        end
+                    end
                 end
             end
         end
@@ -531,6 +646,20 @@ local function makeKey(name)
     return key .. suffix;
 end
 M.makeKey = makeKey;
+
+-- Key suffix for an augment-split record: '_A' + 4 hex digits of the signature
+-- (djb2), '_A0' for the pinned-unaugmented copy. A HASH, not an ordinal, so the
+-- key -- which set files reference as gear.<Slot>.<Key> -- survives rescans and
+-- bag shuffles: the same roll always regenerates the same key. Labels are the
+-- wrong input (AUG_NAME edits would orphan every set reference); the raw
+-- signature can't move.
+local function augHash(sig)
+    if sig == nil or sig == '' then return '0'; end
+    local h = 5381;
+    for i = 1, #sig do h = (h * 33 + sig:byte(i)) % 65536; end
+    return string.format('%04X', h);
+end
+M.augHash = augHash;
 
 -- Control codes seen inside item descriptions (from the fancychat addon).
 local DESC_CODES = {
@@ -698,11 +827,22 @@ local function renderEntry(rec)
     end
 
     local key = makeKey(rec.FullName or rec.Name);
+    if type(rec.AugKey) == 'string' then key = key .. '_A' .. augHash(rec.AugKey); end
     local L = {};
     local function add(s) table.insert(L, s); end
 
     add(key .. ' = {');
     add(string.format('    Name = %q,', rec.Name or '?'));
+    -- Augment-split records (see M.scan): AugKey is the pin the native engine
+    -- exact-matches at equip time (equipcore.checkAugments; '' = must be the
+    -- unaugmented copy), AugText the human reading the GUI shows. Both are
+    -- machine-stamped, like RSlot.
+    if type(rec.AugKey) == 'string' then
+        add(string.format('    AugKey = %q,', rec.AugKey));
+        if type(rec.AugText) == 'string' and rec.AugText ~= '' then
+            add(string.format('    AugText = %q,', rec.AugText));
+        end
+    end
     add(string.format('    Level = %s,', tostring(rec.Level or 0)));
     add(string.format('    Id = %d,', rec.Id or 0));
     local jobList = decodeJobs(rec.Jobs);

@@ -104,15 +104,22 @@ end
 -- slot already dropped never reserves anything itself (Body takes Legs, so the Legs
 -- piece must not go on to take Feet).
 function M.reservedDrops(set, lookup, worn)
+    -- A slot may hold a NAME or a TABLE entry ({ Name, AugKey } -- an
+    -- augment-pinned piece from the flatten, or a hand-authored LAC-form
+    -- entry). The reserve law reasons in names; the pin is the resolver's
+    -- business, so a table contributes its Name here and nothing else.
     local keyOf = {};   -- lowercase slot -> the set's actual key, whatever its case
     for slot, v in pairs(set) do
-        if type(v) == 'string' then keyOf[string.lower(tostring(slot))] = slot; end
+        if type(v) == 'string' or (type(v) == 'table' and type(v.Name) == 'string') then
+            keyOf[string.lower(tostring(slot))] = slot;
+        end
     end
     local name = {};    -- what each slot will actually hold once this set lands
     for _, e in ipairs(RSLOT_ORDER) do
         local ls = string.lower(e[2]);
         if keyOf[ls] ~= nil then
-            name[ls] = set[keyOf[ls]];
+            local v = set[keyOf[ls]];
+            name[ls] = (type(v) == 'table') and v.Name or v;
         elseif worn ~= nil then
             local ok, w = pcall(worn, e[2]);
             if ok and type(w) == 'string' then name[ls] = w; end
@@ -170,8 +177,13 @@ function M.reserveFloor(entries)
         if type(e) == 'table' and type(e.set) == 'table' then
             local p = tonumber(e.prio) or 0;
             for slot, item in pairs(e.set) do
-                if type(item) == 'string' and string.sub(tostring(slot), 1, 2) ~= '__' then
-                    floor[slot] = { name = item, prio = p, src = e.src, row = e.row };
+                -- A table entry ({ Name, AugKey } -- an augment-pinned piece, or
+                -- any hand-authored LAC-form entry) merges by its Name; the
+                -- LOCK_HELD / DISABLED_FREE sentinels carry no Name and pass
+                -- through untouched, exactly as before.
+                local nm = (type(item) == 'table') and item.Name or item;
+                if type(nm) == 'string' and string.sub(tostring(slot), 1, 2) ~= '__' then
+                    floor[slot] = { name = nm, prio = p, src = e.src, row = e.row };
                 end
             end
         end

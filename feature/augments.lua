@@ -214,8 +214,9 @@ function M.stats(extra)
     return t;
 end
 
--- Human-readable augment summary, e.g. "HP+15, DEX/AGI+3, Haste+3%". "" if none.
-function M.describe(extra)
+-- Readable augment strings of an Extra string, one per augment, in extdata
+-- order: { "HP+15", "DEX/AGI+3", "Haste+3%" }. {} if none.
+function M.parts(extra)
     local parts = {};
     for _, a in ipairs(M.decode(extra)) do
         local nm   = a.name or ('aug#' .. tostring(a.id));
@@ -223,7 +224,28 @@ function M.describe(extra)
         local pct  = a.pct and '%' or '';
         parts[#parts + 1] = string.format('%s%s%d%s', nm, sign, a.val, pct);
     end
-    return table.concat(parts, ', ');
+    return parts;
+end
+
+-- Human-readable augment summary, e.g. "HP+15, DEX/AGI+3, Haste+3%". "" if none.
+function M.describe(extra)
+    return table.concat(M.parts(extra), ', ');
+end
+
+-- Canonical augment SIGNATURE of an Extra string: raw "id:tier" words, sorted,
+-- '|'-joined -- e.g. "23:3|258:6|328:3"; '' when unaugmented. This is the
+-- identity of a private-augment roll: two copies of one item are the SAME gear
+-- exactly when their signatures match. Built from the packet ids, never the
+-- display labels, so renaming an AUG_NAME entry can't orphan a stored pin
+-- (gear.lua AugKey / equipcore's AugKey match). Sorted so a server that ever
+-- reorders the words still yields the same key.
+function M.signature(extra)
+    local augs = M.decode(extra);
+    if #augs == 0 then return ''; end
+    local words = {};
+    for i, a in ipairs(augs) do words[i] = a.id .. ':' .. a.mag; end
+    table.sort(words);
+    return table.concat(words, '|');
 end
 
 -- True if the item has any augment data (0x02 header + a non-zero augment word).
