@@ -193,7 +193,13 @@ end
 
 -- A one-line colored progress bar drawn as text (ProgressBar is not
 -- field-proven here): "Points  34 / 79" with the value colored by fit.
-function M.meter(im, label, used, max, unit)
+-- `nowUsed`/`nowMax` (optional) fold the LIVE reading into the same meter as
+-- parentheses -- '67 (18) / 79 (49) pts' (Henrik 2026-08-10, sixth round:
+-- the separate sync line "takes up too much space"). Outside the brackets is
+-- the plan against its own budget; inside is what the game holds right now
+-- against the budget for the level you are standing at. Either may be nil on
+-- its own; the colour always follows the PLAN, the thing you are editing.
+function M.meter(im, label, used, max, unit, nowUsed, nowMax)
     local col = M.COL.ok;
     if max and max > 0 then
         if used > max then col = M.COL.err;
@@ -202,7 +208,10 @@ function M.meter(im, label, used, max, unit)
     M.ctext(im, M.COL.dim, label);
     if isFn(im, 'SameLine') then im.SameLine(); end
     local maxs = (max and max > 0) and tostring(max) or '?';
-    M.ctext(im, col, string.format('%d / %s%s', used, maxs, unit or ''));
+    M.ctext(im, col, string.format('%d%s / %s%s%s',
+        used, (nowUsed ~= nil) and (' (%d)'):format(nowUsed) or '',
+        maxs, (nowMax ~= nil) and (' (%d)'):format(nowMax) or '',
+        unit or ''));
 end
 
 -- Content-region width, tolerant of binding return shapes ((x,y) numbers or

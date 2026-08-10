@@ -61,15 +61,15 @@ end
 
 -- The sentence that matters: what the job already gives. Kept in one place
 -- -- the Traits tab says it long, the spell tooltip says it short. (CEXI
--- law, field 2026-08-10: the job GRANTS its tier; weight that only reaches
--- that tier buys nothing NEW, but a higher tier is still yours for the
--- full weight -- nothing is blocked.)
+-- law, field 2026-08-10: the job GRANTS its tier; points that only reach
+-- that tier buy nothing NEW, but a higher tier is still yours for the
+-- full points -- nothing is blocked.)
 function M.givenTip(v)
     local e = v.blocker;
     if e == nil then return nil; end
-    return ('%s grants %s at rank %d whatever your set does, so weight that\n'
-        .. 'only reaches that tier buys nothing new. A HIGHER tier still\n'
-        .. 'applies -- invest its full weight and the blue trait takes over.'):format(
+    return ('%s grants %s at rank %d whatever your set does, so points that\n'
+        .. 'only reach that tier buy nothing new. A HIGHER tier still\n'
+        .. 'applies -- pay its full points and the blue trait takes over.'):format(
         jobLabel(e), v.name, e.rank);
 end
 M.blockedTip = M.givenTip;             -- the old name, kept for callers
@@ -118,7 +118,7 @@ function M.render(ctx)
     end
     if kit.isFn(im, 'Separator') then im.Separator(); end
 
-    -- weights by category -- from the slotlist RESOLVED at the slider level
+    -- trait points by category -- from the slotlist RESOLVED at the slider level
     -- when there is one, from the editing build itself otherwise
     local evalSource = isTl and ctx.sets.resolveAtLevel(set, shown or 75, book) or set;
     local evalByCat = {};
@@ -221,19 +221,19 @@ function M.render(ctx)
                 -- THE ROAD ABOVE, for ANY active ladder (Henrik 2026-08-10,
                 -- third round: name the next tier's cost plainly -- and on
                 -- a set-earned ladder too, where the tag stays silent). The
-                -- blue ladder counts its own weight from zero either way.
+                -- blue ladder counts its own points from zero either way.
                 local top = v.active[1];
                 if top ~= nil and info ~= nil and weight > 0 then
                     local nxtTier = (top.tier or 0) + 1;
                     local nxt = info.tiers[nxtTier];
                     if nxt ~= nil and weight < nxt.points then
                         if kit.isFn(im, 'SameLine') then im.SameLine(); end
-                        kit.ctext(im, kit.COL.warn, ('  Tier %d at %d weight (%d now)'):format(
-                            nxtTier, nxt.points, weight));
+                        kit.ctext(im, kit.COL.warn, ('  Tier %d: %d/%d Points'):format(
+                            nxtTier, weight, nxt.points));
                         local jobNote = (top.source == 'job')
                             and ('\nThe job\'s tier %d does not stand in for the blue\nrungs below it.'):format(top.tier or 0)
                             or '';
-                        kit.tip(im, ('Tier %d activates once your set feeds %d total weight\n'
+                        kit.tip(im, ('Tier %d activates once your set feeds %d total points\n'
                             .. '-- %d more from here.%s'):format(
                             nxtTier, nxt.points, nxt.points - weight, jobNote));
                     end
@@ -243,12 +243,12 @@ function M.render(ctx)
                 -- price when the trait isn't active yet")
                 local t1 = info and info.tiers and info.tiers[1] or nil;
                 if t1 ~= nil then
-                    kit.ctext(im, kit.COL.warn, ('Tier 1 at %d weight (%d now)'):format(
-                        t1.points, weight));
-                    kit.tip(im, ('Tier 1 activates once your set feeds %d total weight\n-- %d more from here.'):format(
+                    kit.ctext(im, kit.COL.warn, ('Tier 1: %d/%d Points'):format(
+                        weight, t1.points));
+                    kit.tip(im, ('Tier 1 activates once your set feeds %d total points\n-- %d more from here.'):format(
                         t1.points, t1.points - weight));
                 else
-                    kit.ctext(im, kit.COL.warn, ('weight %d - below tier 1'):format(weight));
+                    kit.ctext(im, kit.COL.warn, ('%d Points - below tier 1'):format(weight));
                 end
             else
                 kit.ctext(im, kit.COL.dim, 'not in set');
@@ -289,13 +289,13 @@ function M.render(ctx)
                     elseif reached then
                         col = kit.COL.ok;
                     end
-                    kit.ctext(im, col, ('   tier %d  (weight %d): %s%s'):format(
+                    kit.ctext(im, col, ('   tier %d  (%d Points): %s%s'):format(
                         ti, tier.points, modsText(ctx, tier.mods), note));
                     if heldBy ~= nil then
                         kit.tip(im, ('You already have tier %d of %s, from %s.\n\n'
                             .. 'The job trait grants %s; the blue rung grants %s --\n'
                             .. 'the same trait through a different modifier, which is why\n'
-                            .. 'only the tier number compares. Feeding weight PAST this\n'
+                            .. 'only the tier number compares. Feeding points PAST this\n'
                             .. 'tier still climbs: a higher blue tier takes over.'):format(
                             ti, v.name, jobLabel(heldBy),
                             modsText(ctx, heldBy.mods), modsText(ctx, tier.mods)));
@@ -315,8 +315,14 @@ function M.render(ctx)
                 for _, id in ipairs(book.byTrait[cat] or {}) do
                     local s = book.spells[id];
                     local inSet = ctx.sets.contains(set, id) ~= nil;
-                    local label = ('%s  w%d / %spts  Lv.%s%s'):format(
-                        s.name, s.trait.weight, s.setPoints or '?', s.level or '?',
+                    -- the two numbers a trait row is picked on, each named:
+                    -- what it feeds THIS ladder, and what it costs the SET
+                    -- (Henrik 2026-08-10, fifth round: no more "weight" -- and
+                    -- 'pts' already means set points everywhere else)
+                    local tw = s.trait.weight or 0;
+                    local label = ('%s  +%d Point%s / Set: %s pts  Lv.%s%s'):format(
+                        s.name, tw, tw == 1 and '' or 's',
+                        s.setPoints or '?', s.level or '?',
                         inSet and '  [in set]' or '');
                     local lclick, rclick, hov = spellsui.listRow(ctx, id, iconSz, nameW,
                         st.selectedId == id, showIcon,

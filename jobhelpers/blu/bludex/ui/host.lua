@@ -117,7 +117,7 @@ local function adoptCfg(deps)
                 M.state.activeSet = i;
                 if deps.sets.kindOf(entry) == 'levels' then
                     M.state.editLevel = nil;
-                    M.state.editingSet = deps.sets.draft(entry, nil);
+                    M.state.editingSet = deps.sets.draft(entry, nil, deps.book);
                 else
                     M.state.editingSet = deps.sets.clone(entry, entry.name);
                 end
@@ -216,11 +216,19 @@ local function budgetMax(deps)
         if here ~= nil and here ~= dLevel then return nil; end
         -- planning the band you stand in: the live number may speak
     end
+    -- PLANNING IS DONE AT THE LEVEL YOU REALLY ARE, not the one a sync has
+    -- you standing at (Henrik 2026-08-10, sixth round: "I still want to be
+    -- able to do that planning even though I am level synced"). A synced 75
+    -- is building a 75 set; refusing adds past the Lv.40 budget made the
+    -- editor useless for the hours a sync lasts. Nothing is lost by it --
+    -- what the game will actually WEAR is the bracket greying and the live
+    -- pair in the header, both of which still speak the effective level.
+    --
     -- blu.budget prefers the client's own number while it is trustworthy and
-    -- falls back to the measured model for the level we are actually at --
-    -- the client only recomputes its cap when the native Set Spells menu
-    -- opens, so after a level change its number describes the level we left.
-    local max = deps.blu.budget();
+    -- falls back to the measured model otherwise -- the client only
+    -- recomputes its cap when the native Set Spells menu opens, so after a
+    -- level change its number describes the level we left.
+    local max = deps.blu.budget(deps.blu.planLevel());
     if max then return max; end
     if deps.cfg.budgetOverride and deps.cfg.budgetOverride > 0 then
         return deps.cfg.budgetOverride;
@@ -331,6 +339,63 @@ local function restoreNow(deps)
     if ids ~= nil then deps.blu.restoreMissing(ids, deps.book); end
 end
 
+-- THE TAIL A SYNC REFUSED (Henrik 2026-08-10, sixth round: "make it notice
+-- and offer that automatically"). Applying a level-75 plan while synced down
+-- gets the over-level spells bounced by the game -- silently, and the only
+-- cure was remembering to Apply again once the sync ended. applyEditing
+-- banks what was refused and the level it needs; this comes back for it.
+--
+-- Unconditional by design: this is not one of the level RULES deciding to
+-- act on your behalf, it is finishing the apply you already commanded. It
+-- still refuses to act on a set you have since moved away from -- the live
+-- spells must all belong to the banked plan, or the promise is dropped
+-- rather than allowed to clobber whatever you are wearing now.
+--
+-- READ IT THROUGH pendingPromise, NEVER FIELD BY FIELD. While the promise
+-- is still the settings default it is an Ashita T{}, and a T{} carries the
+-- table HELPERS as fields -- `count` among them. `pend.count > 0` compared
+-- a function to a number and took the addon down on the first frame (field
+-- 2026-08-10). Only ids/need/waiting are ever stored, none of them helper
+-- names, and `ids` proves the shape before anything else is touched.
+function M.pendingPromise(cfg)
+    local p = cfg and cfg.pendingSync or nil;
+    if type(p) ~= 'table' or type(p.ids) ~= 'table' then return nil; end
+    local n = (type(p.waiting) == 'table') and #p.waiting or 0;
+    local need = tonumber(p.need);
+    if n == 0 or need == nil then return nil; end
+    return { ids = p.ids, need = need, n = n };
+end
+
+local function finishPending(deps)
+    local p = M.pendingPromise(deps.cfg);
+    if p == nil then return; end
+    local lvl = deps.blu.effectiveLevel();
+    if lvl == nil then return; end
+    if lvl < p.need then return; end                        -- not there yet
+    local function drop()
+        -- EMPTY, never nil: the settings lib merges its defaults over a
+        -- missing key on load, so a hole would read back as whatever the
+        -- default says. An empty table says "nothing pending" in both.
+        deps.cfg.pendingSync = {};
+        if deps.save then deps.save(); end
+    end
+    local live = deps.blu.currentSet();
+    if #live ~= 20 then return; end                          -- unreadable; keep waiting
+    local plan = {};
+    for i = 1, 20 do
+        local id = p.ids[i] or 0;
+        if id ~= 0 then plan[id] = true; end
+    end
+    for i = 1, 20 do
+        local id = live[i] or 0;
+        if id ~= 0 and not plan[id] then return drop(); end  -- another set is on
+    end
+    drop();
+    deps.blu.announce(('Back at Lv.%d - setting the %d spell(s) the sync refused.'):format(
+        lvl, p.n));
+    deps.blu.restoreMissing(p.ids, deps.book);
+end
+
 -- The job/level watch and the settled checks, run once per frame whether or
 -- not anything renders: a level change invalidates the BLU structs like a
 -- fresh login (refresh fires inside the watch). Every check is debounced: a
@@ -400,6 +465,10 @@ function M.tick()
         if due ~= nil and os.clock() >= due then
             table.remove(M.restoreChecks, 1);
             if #M.restoreChecks == 0 then M.restoreChecks = nil; end
+            -- the sync promise runs FIRST and on its own terms: it is the
+            -- rest of an apply you commanded, not a rule acting for you.
+            -- Both are adds-only, so the order costs nothing either way.
+            pcall(finishPending, deps);
             pcall(restoreNow, deps);
         end
     end
@@ -591,11 +660,32 @@ local function renderBody(im, st, deps, embedded)
     -- the header meters are the EDITING set against the budget -- the
     -- planning numbers needed while adding from the codex. Live-vs-
     -- planned shows per-slot in the Sets tab (dimming).
-    local max = budgetMax(deps);
-    kit.meter(im, '   Set:', deps.sets.usedPoints(st.editingSet, deps.book), max, ' pts');
-    kit.tip(im, max ~= nil
-        and 'Points used by the set you are editing (its level-75 plan) /\nyour total from the game client (CatsEyeXI bonuses included).'
-        or 'Points used by the set you are editing (its level-75 plan).\nThe total appears when you are on BLU (or set budgetOverride).');
+    -- THE PLAN AGAINST ITS OWN BUDGET, with the live reading in brackets
+    -- (Henrik 2026-08-10, sixth round). A base build IS the level-75 plan,
+    -- so measuring it against the budget for the level you happen to stand
+    -- at read as permanently over ('67 / 49 pts' at Lv.40). It is priced at
+    -- 75 now, and what the game holds right now rides along in brackets --
+    -- which is the whole sync line, folded into the space it belongs in.
+    local planLvl = (st.editingSet.draft and st.editingSet.level)
+        or deps.blu.planLevel() or 75;
+    local max = deps.blu.budget(planLvl) or budgetMax(deps);
+    local ss = deps.blu.syncStats(deps.book);
+    -- the brackets are worth drawing whenever the game is holding you below
+    -- the level you are planning at -- a sync, or simply not being 75 yet
+    local synced = (ss ~= nil and ss.level < planLvl) and ss or nil;
+    local liveMax = synced and deps.blu.budget() or nil;
+    kit.meter(im, '   Set:', deps.sets.usedPoints(st.editingSet, deps.book), max, ' pts',
+        synced and synced.activePoints or nil, liveMax);
+    kit.tip(im, (max ~= nil
+        and ('Points used by the set you are editing / the budget it is\nplanned against (Lv.%d).'):format(planLvl)
+        or 'Points used by the set you are editing.\nThe total appears when you are on BLU (or set budgetOverride).')
+        .. (synced and ('\n\nIn brackets: what the game holds RIGHT NOW at Lv.%d,\n'
+            .. 'against the budget for that level.%s\n'
+            .. 'The rest of the set is disabled by the game itself and\n'
+            .. 'comes back with the level -- and you can go on planning\n'
+            .. 'the whole thing meanwhile.'):format(synced.level,
+            deps.blu.syncedFrom() and ('\nYou are level synced from Lv.%d; Bludex budgets at %d.'):format(
+                planLvl, planLvl) or '') or ''));
     if kit.isFn(im, 'SameLine') then im.SameLine(); end
     -- SLOTS the plan occupies (the ids mirror), NOT chain entries: a Wild
     -- Oats -> Bludgeon stack is one slot, not two (review 2026-08-08). The
@@ -605,30 +695,27 @@ local function renderBody(im, st, deps, embedded)
     for i = 1, 20 do
         if ((st.editingSet.ids or {})[i] or 0) ~= 0 then slots75 = slots75 + 1; end
     end
-    kit.meter(im, '   Slots:', slots75, deps.sets.slotMax(st.editingSet), '');
+    kit.meter(im, '   Slots:', slots75, deps.sets.slotMax(st.editingSet), '',
+        synced and synced.active or nil, synced and synced.maxSlots or nil);
+    kit.tip(im, 'Slots the plan occupies / the slots it is planned against.'
+        .. (synced and ('\n\nIn brackets: spells live RIGHT NOW / the %d slots the\n'
+            .. 'game gives at Lv.%d. The rest of the set is still yours --\n'
+            .. 'it returns with the level.'):format(synced.maxSlots, synced.level) or ''));
+    -- THE PROMISE, visible while it is outstanding (Henrik 2026-08-10,
+    -- sixth round): spells the sync refused, and the level they are waiting
+    -- for. It clears itself the moment the watcher sets them.
+    local pend = M.pendingPromise(deps.cfg);
+    if pend ~= nil then
+        if kit.isFn(im, 'SameLine') then im.SameLine(); end
+        kit.ctext(im, kit.COL.warn, ('   %d waiting for Lv.%d'):format(pend.n, pend.need));
+        kit.tip(im, ('%d spell(s) of this set could not go in at your level.\n'
+            .. 'Bludex sets them by itself once you are Lv.%d -- nothing to\n'
+            .. 'remember, and no need to Apply again.\n\n'
+            .. 'Applying anything else retires the promise.'):format(pend.n, pend.need));
+    end
     -- the set picker (Henrik 2026-08-10): every saved set one click away,
     -- and a second menu for WHICH build when the set has level builds
     setsui.headerPicker(ctx);
-    -- the level-sync line (Henrik 2026-08-06): the meters above stay the
-    -- PLAN (the editing set at full level); when the effective BLU level is
-    -- under the 75 cap this shows what the client holds RIGHT NOW -- the
-    -- sync-enabled spells' points against the synced budget, and those
-    -- spells against the synced slot count (the server's slot rule).
-    local ss = deps.blu.syncStats(deps.book);
-    if ss ~= nil and ss.level < 75 then
-        if kit.isFn(im, 'SameLine') then im.SameLine(); end
-        -- the budget FOR THE SYNCED LEVEL, not the client's leftover from
-        -- full level (field 2026-08-06: this read "7 / 79 pts" at a Lv40 sync
-        -- whose real budget is 49, because points() had not recomputed)
-        local liveMax = deps.blu.budget();
-        kit.ctext(im, kit.COL.warn, ('   Sync Lv.%d: %d / %s pts  %d / %d slots'):format(
-            ss.level, ss.activePoints, liveMax and tostring(liveMax) or '?',
-            ss.active, ss.maxSlots));
-        kit.tip(im, ('Level sync: what is live RIGHT NOW at Lv.%d.\n'
-            .. 'The game disabled the rest of the set itself; everything\n'
-            .. 'returns when the sync ends. The Set/Slots meters keep\n'
-            .. 'showing the plan at full level.'):format(ss.level));
-    end
     -- the cap the client holds can belong to a level we have left (the client
     -- only recomputes it when the native Set Spells menu opens). Say so
     -- rather than showing a confident wrong number -- and name the one action

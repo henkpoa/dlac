@@ -134,7 +134,7 @@ function M.revertEditing(ctx)
     local saved = st.activeSet and cfg.sets[st.activeSet] or nil;
     if saved ~= nil then
         if st.editingSet.draft then
-            st.editingSet = ctx.sets.draft(saved, st.editingSet.level);
+            st.editingSet = ctx.sets.draft(saved, st.editingSet.level, ctx.book);
             st.applyNote = (st.editingSet.level == nil)
                 and 'Reverted to the saved base build.'
                 or ('Reverted to the saved Lv.%d build.'):format(st.editingSet.level);
@@ -187,6 +187,31 @@ function M.applyEditing(ctx, forLevel)
         local snap = {};
         for k = 1, 20 do snap[k] = ids[k] or 0; end
         ctx.cfg.lastApplied = { ids = snap, level = lvl };
+        -- WHAT THIS LEVEL WILL REFUSE, and a promise to come back for it
+        -- (Henrik 2026-08-10, sixth round). Applying a 75 plan under a sync
+        -- gets the tail bounced by the game; that used to be silent, and
+        -- the only cure was remembering to Apply again once the sync ended.
+        -- Bank it and the level watcher finishes the job. Measured at the
+        -- LIVE level whatever level the plan was sent for -- 'Apply for
+        -- Lv.41' at 75 is refused nothing.
+        --
+        -- FIELD NAMES ARE NOT FREE HERE: this table lands in cfg, whose
+        -- default is an Ashita T{}, and a T{} carries the table helpers as
+        -- fields. `count` is one of them, and reading it back cost a crash
+        -- (field 2026-08-10). ids/need/waiting only, read back through
+        -- host.pendingPromise, never field by field.
+        local liveLvl = ctx.blu.effectiveLevel();
+        ctx.cfg.pendingSync = {};         -- a new apply retires any old tail
+        if liveLvl ~= nil then
+            local refused, need = ctx.sets.refusedAtLevel(snap, liveLvl, ctx.book);
+            if #refused > 0 and need ~= nil then
+                ctx.cfg.pendingSync = { ids = snap, need = need, waiting = refused };
+                local line = ('Lv.%d cannot hold %d of these spells - Bludex will set them\nwhen you reach Lv.%d.'):format(
+                    liveLvl, #refused, need);
+                st.applyNote = (line:gsub('\n', ' '));
+                if ctx.blu.announce then pcall(ctx.blu.announce, (line:gsub('\n', ' '))); end
+            end
+        end
         -- WHICH SET this came from, by name: the level-change watcher obeys
         -- the FOLLOWED set's kind and rule. Only a SAVED set has a name to
         -- follow -- an unsaved draft leaves nothing, and says so by clearing.
@@ -196,8 +221,9 @@ function M.applyEditing(ctx, forLevel)
         if ctx.save then ctx.save(); end
         -- no success note (Henrik 2026-08-10, from the field: "the green
         -- button says it all") -- the chat log narrates the apply itself,
-        -- and this line only ever restated it. Refusals still speak above.
-        st.applyNote = nil;
+        -- and this line only ever restated it. Refusals still speak above,
+        -- and so does the sync promise set just now.
+        if (ctx.cfg.pendingSync or {}).ids == nil then st.applyNote = nil; end
     end
 end
 
@@ -318,7 +344,7 @@ local function loadBuild(ctx, index, level)
     if entry == nil then return; end
     ctx.sets.normalizeGroup(entry);
     st.activeSet, st.editLevel = index, level;
-    st.editingSet = ctx.sets.draft(entry, level);
+    st.editingSet = ctx.sets.draft(entry, level, ctx.book);
     st.applyNote = nil;
     st.addNote = nil;
     st.assignSlot = nil;
@@ -749,7 +775,7 @@ local function savedList(ctx)
                         if st.activeSet == i then
                             if ctx.sets.kindOf(entry) == 'levels' then
                                 st.editLevel = nil;
-                                st.editingSet = ctx.sets.draft(entry, nil);
+                                st.editingSet = ctx.sets.draft(entry, nil, ctx.book);
                             else
                                 st.editingSet = ctx.sets.clone(entry, entry.name);
                             end
@@ -815,7 +841,7 @@ local function savedList(ctx)
     -- AND carries the blusets file pull at its bottom
     if kit.litButton(im, 'Import', st.importOpen == true, LEFT_W - 20, 20) then
         st.importOpen = not st.importOpen or nil;
-        st.shareOpen, st.pickKind, st.convertOpen = nil, nil, nil;
+        st.shareOpen, st.pickKind, st.copyOpen = nil, nil, nil;
     end
     kit.tip(im, 'Paste a set someone sent you (a BDXSET1 line) and\n'
         .. 'save it as your own. Importing from the old blusets\n'
@@ -837,112 +863,92 @@ local function savedList(ctx)
         end
     end
 
-    -- CONVERT IN PLACE (docs/set-types-plan.md 6): a SAVED set may become
-    -- another kind. The flat projection is the bridge -- the base/Lv.75
-    -- plan crosses, and whatever cannot is NAMED before the click that
-    -- drops it (which is why a lossy convert takes two clicks).
-    local convEntry = st.activeSet and cfg.sets[st.activeSet] or nil;
-    if convEntry ~= nil then
-        local halfW = math.floor((LEFT_W - 24) / 2);
-        if kit.litButton(im, 'Convert...', st.convertOpen == true, halfW, 20) then
-            st.convertOpen = not st.convertOpen or nil;
-            st.convertConfirm = nil;
-            st.shareOpen, st.importOpen = nil, nil;
-        end
-        kit.tip(im, 'Turn this saved set into another kind. What the new kind\n'
-            .. 'cannot carry is listed -- and dropped -- when you do\n'
-            .. '(the old state banks as backup 1, so it is undoable).');
+    -- COPY FROM ANOTHER SET (Henrik 2026-08-10, sixth round -- this took
+    -- Convert's place): seed the build you are editing from one you already
+    -- have. The source is read at its TOP LEVEL, which is the one reading
+    -- that means the same thing whatever kind it came from; the spells
+    -- cross, the per-level authorship does not, and the tooltip says so
+    -- rather than letting it be discovered.
+    local halfW = math.floor((LEFT_W - 24) / 2);
+    if kit.litButton(im, 'Copy from...', st.copyOpen == true, halfW, 20) then
+        st.copyOpen = not st.copyOpen or nil;
+        st.copyConfirm = nil;
+        st.shareOpen, st.importOpen = nil, nil;
+    end
+    kit.tip(im, 'Fill this build from another saved set - its top-level\n'
+        .. 'spells, laid out the way THIS set\'s kind wants them.\n\n'
+        .. 'It REPLACES what is here. Nothing is saved until you Save,\n'
+        .. 'so Revert is always the way back.');
+    local shareEntry = st.activeSet and cfg.sets[st.activeSet] or nil;
+    if shareEntry ~= nil then
         if kit.isFn(im, 'SameLine') then im.SameLine(); end
         if kit.litButton(im, 'Share...', st.shareOpen == true, halfW, 20) then
             st.shareOpen = not st.shareOpen or nil;
-            st.importOpen, st.pickKind, st.convertOpen = nil, nil, nil;
+            st.importOpen, st.pickKind, st.copyOpen = nil, nil, nil;
         end
         kit.tip(im, 'This set as one line of text -- send it to a friend,\nthey paste it under Import.');
     end
-    if st.convertOpen and convEntry ~= nil then
-        if M.unsaved(ctx) then
-            kit.wrapped(im, kit.COL.warn, 'Save or Revert your edits first.');
-            kit.tip(im, 'Converting works from the SAVED set; unsaved edits\nwould be lost silently. Settle them first.');
-        else
-            local fromKind = ctx.sets.kindOf(convEntry);
-            for _, k in ipairs(M.KIND_ORDER) do
-                if k ~= fromKind then
-                    local loss = ctx.sets.convertLoss(convEntry, k, ctx.book);
-                    local confirming = st.convertConfirm ~= nil
-                        and st.convertConfirm.kind == k
-                        and os.clock() < st.convertConfirm.till;
-                    if st.convertConfirm ~= nil and st.convertConfirm.kind == k
-                        and not confirming then
-                        st.convertConfirm = nil;       -- the 4s window closed
-                    end
-                    local label = confirming and 'Confirm convert?'
-                        or ('To ' .. M.KIND_INFO[k].label);
-                    if kit.litButton(im, label, confirming, LEFT_W - 20, 20,
-                        confirming and kit.PAL.go or nil) then
-                        if not confirming and #loss > 0 then
-                            st.convertConfirm = { kind = k, till = os.clock() + 4.0 };
-                        else
-                            st.convertConfirm = nil;
-                            local conv = ctx.sets.convertTo(convEntry, k, ctx.book);
-                            -- THE RING CROSSES, and the state being left
-                            -- banks on it: a kind-shaped backup restores
-                            -- across kinds, so this conversion is undoable
-                            conv.backups = convEntry.backups;
-                            ctx.sets.pushBackup(conv, convEntry, os.time());
-                            cfg.sets[st.activeSet] = conv;
-                            if k == 'levels' then
-                                loadBuild(ctx, st.activeSet, nil);
-                            else
-                                st.editLevel = nil;
-                                st.editingSet = ctx.sets.clone(conv, conv.name);
-                                st.assignSlot = nil;
-                            end
-                            st.convertOpen = nil;
-                            if ctx.save then ctx.save(); end
-                            st.applyNote = (#loss == 0)
-                                and ('"%s" is a %s set now (the old state is backup 1).'):format(
-                                    conv.name, M.KIND_INFO[k].label)
-                                or ('"%s" is a %s set now. Dropped: %s -- backup 1 has it all.'):format(
-                                    conv.name, M.KIND_INFO[k].label,
-                                    table.concat(loss, ', '));
+    if st.copyOpen then
+        -- every saved set except the one being edited -- copying a set onto
+        -- itself is the one move with nothing to offer
+        local srcN = 0;
+        for i, e in ipairs(cfg.sets) do
+            if i ~= st.activeSet then
+                srcN = srcN + 1;
+                local n = ctx.sets.countIds(ctx.sets.resolveAtLevel(e, 75, ctx.book));
+                local confirming = st.copyConfirm ~= nil and st.copyConfirm.i == i
+                    and os.clock() < st.copyConfirm.till;
+                if st.copyConfirm ~= nil and st.copyConfirm.i == i and not confirming then
+                    st.copyConfirm = nil;              -- the 4s window closed
+                end
+                local label = confirming and 'Confirm copy?'
+                    or ('%s  (%d)'):format(e.name, n);
+                if kit.litButton(im, label, confirming, LEFT_W - 20, 20,
+                    confirming and kit.PAL.go or nil) then
+                    -- ONE CLICK into an empty build, TWO over a full one:
+                    -- the same idiom Read current uses, for the same reason
+                    if not confirming and ctx.sets.count(st.editingSet) > 0 then
+                        st.copyConfirm = { i = i, till = os.clock() + 4.0 };
+                    else
+                        st.copyConfirm = nil;
+                        local src = ctx.sets.resolveAtLevel(e, 75, ctx.book);
+                        local rep = ctx.sets.copyFrom(st.editingSet, src, ctx.book);
+                        st.assignSlot, st.slotEdit = nil, nil;
+                        local parts = { ('Copied %d spell%s from "%s".'):format(
+                            rep.taken, (rep.taken == 1) and '' or 's', e.name) };
+                        if (rep.tooHigh or 0) > 0 then
+                            parts[#parts + 1] = ('%d need a higher level than this build reaches.'):format(rep.tooHigh);
                         end
-                    end
-                    kit.tip(im, M.KIND_INFO[k].blurb .. '\n\n'
-                        .. ((#loss == 0) and 'Nothing is lost in this conversion.'
-                            or ('One click arms it, a second converts.')));
-                    for _, L in ipairs(loss) do
-                        kit.wrapped(im, kit.COL.warn, 'drops ' .. L);
+                        if (rep.noSlot or 0) > 0 then
+                            parts[#parts + 1] = ('%d had no slot left.'):format(rep.noSlot);
+                        end
+                        if (rep.refused or 0) > 0 then
+                            parts[#parts + 1] = ('%d could not be set (unlearned, or not settable).'):format(rep.refused);
+                        end
+                        parts[#parts + 1] = 'Save to keep it.';
+                        st.applyNote = table.concat(parts, ' ');
+                        st.copyOpen = nil;
                     end
                 end
+                kit.tip(im, ('Fill this build with the %d spell%s "%s" holds at\n'
+                    .. 'Lv.75.%s%s'):format(n, (n == 1) and '' or 's', e.name,
+                    (ctx.sets.kindOf(e) == 'timeline')
+                        and '\n\nIts per-slot levels do NOT come along -- a flat reading\nis all one set can hand another.' or '',
+                    (ctx.sets.count(st.editingSet) > 0)
+                        and '\n\nThis build has spells in it: one click arms, a second copies.' or ''));
             end
+        end
+        if srcN == 0 then
+            kit.wrapped(im, kit.COL.dim, 'No other saved set to copy from yet.');
         end
     end
 
-    if ekind == 'timeline' then
-        -- the built-for floor (plan 2.5): where budget ENFORCEMENT starts.
-        -- 75 = an endgame set (nothing below is its problem); 1 = a leveling
-        -- set that must fit everywhere.
-        kit.helpLabel(im, 'Built for Lv.',
-            'The level this set must actually FIT from. The point budget is\n'
-            .. 'enforced from here up to 75: violations below only inform\n'
-            .. '(grey bands), violations at or above BLOCK Apply (red).\n\n'
-            .. '75 = an endgame set -- over-budget at lower levels is fine,\n'
-            .. 'you never play it there. 1 = a leveling set that must fit at\n'
-            .. 'every level. Anything between works too.', kit.COL.dim);
-        if kit.isFn(im, 'SameLine') then im.SameLine(); end
-        st.builtForBuf = st.builtForBuf or { '' };
-        st.builtForBuf[1] = tostring(st.editingSet.builtFor or 75);
-        if kit.isFn(im, 'SetNextItemWidth') then im.SetNextItemWidth(40); end
-        if kit.isFn(im, 'InputText') then
-            if pcall(im.InputText, '##bdxbuiltfor', st.builtForBuf, 3) then
-                local n = tonumber(st.builtForBuf[1]);
-                if n ~= nil and n >= 1 and n <= 75 then
-                    n = math.floor(n);
-                    if n ~= st.editingSet.builtFor then st.editingSet.builtFor = n; end
-                end
-            end
-        end
-    elseif ekind == 'levels' then
+    -- THE 'Built for Lv.' BOX IS GONE (Henrik 2026-08-10, sixth round: "it
+    -- should always be built for 75"). It set where budget enforcement
+    -- STARTS, and every set is enforced from 75 now -- setmodel.upgrade
+    -- pins the field, which stays in the model and on the wire so shared
+    -- and stored sets keep their shape.
+    if ekind == 'levels' then
         -- everything else about the SET, in order: what it does on a level
         -- change, then the levels it has. Both belong to the set, not to
         -- the build open in the editor.
@@ -1020,26 +1026,28 @@ local function chainRow(ctx, slot, shown, liveIds, locked, nameW)
         else
             local s = book.spells[e.id];
             local lo, hi = ctx.sets.entryRange(set, slot, activeIdx);
-            local liveTag = '';
-            if liveIds ~= nil and not liveIds[e.id] then
-                -- a sync-disabled spell is not WAITING for an apply -- the
-                -- game holds it and returns it when the sync ends
-                local lvl = ctx.blu.effectiveLevel();
-                if lvl ~= nil and lvl < 75 and s ~= nil
-                    and s.level ~= nil and s.level > lvl then
-                    liveTag = '  (disabled by level sync)';
-                else
-                    liveTag = '  (not active yet)';
-                end
+            -- SYNC-DISABLED IS GREY, NOT LABELLED (Henrik 2026-08-10, sixth
+            -- round) -- the same law the flat list follows, and the row
+            -- already carries the levels that explain it. Not waiting for an
+            -- apply either: the game gives it back when the sync ends.
+            local lvl = ctx.blu.effectiveLevel();
+            local why = nil;
+            if lvl ~= nil and lvl < 75 and s ~= nil
+                and s.level ~= nil and s.level > lvl then
+                why = ('Lv.%d cannot cast this - the sync disabled it, and\nthe game gives it back when the sync ends.'):format(lvl);
             end
+            local pending = (why == nil) and liveIds ~= nil and not liveIds[e.id];
             local label = ((s ~= nil) and s.name or ('#' .. e.id))
-                .. ('  %d-%d'):format(lo or floor, hi or 75) .. liveTag;
+                .. ('  %d-%d'):format(lo or floor, hi or 75)
+                .. (pending and '  (not active yet)' or '');
             -- every row here is 'in the set', so the green tint says
-            -- nothing -- head color instead, except unlearned stays loud
-            local headCol = kit.COL.head;
+            -- nothing -- head color instead, grey for what the level cannot
+            -- give you, and unlearned stays loud over both
+            local headCol = (why ~= nil) and kit.COL.dim or kit.COL.head;
             if ctx.blu.onBlu() and not book.learned(e.id) then headCol = kit.COL.err; end
             local lclick, rclick, hov = spellsui.listRow(ctx, e.id, 24, nameW,
-                selected, true, { label = label, textCol = headCol });
+                selected, true,
+                { label = label, textCol = headCol, dimArt = why ~= nil });
             if lclick then
                 -- the click MARKS the slot (Henrik 2026-08-10); the spell
                 -- becomes the info target without forcing the window open
@@ -1060,8 +1068,9 @@ local function chainRow(ctx, slot, shown, liveIds, locked, nameW)
                     return;                        -- the chain just changed
                 end
             end
-            spellsui.tooltip(ctx, e.id, hov,
-                { { 'click: mark the slot for Assign - right-click: Edit slot / Remove', kit.COL.dim } });
+            local extra = { { 'click: mark the slot for Assign - right-click: Edit slot / Remove', kit.COL.dim } };
+            if why ~= nil then table.insert(extra, 1, { why, kit.COL.warn }); end
+            spellsui.tooltip(ctx, e.id, hov, extra);
         end
     end
 
@@ -1161,13 +1170,21 @@ local function slotPlanner(ctx)
     else
         capShown = M.budgetFn(ctx)(shown);
     end
-    kit.meter(im, ('Points Lv.%d'):format(shown), ctx.sets.usedPoints(ids, book), capShown, '');
-    if capShown == nil then
-        kit.tip(im, 'The budget for this level is not known yet (learned bonus\nunmeasured). Bands below are provisional meanwhile.');
-    end
+    -- the LIVE reading rides in brackets rather than on its own line (Henrik
+    -- 2026-08-10, sixth round) -- and only while it says something the plan
+    -- does not: previewing the very level you stand at, the two agree.
+    local ss = ctx.blu.syncStats(book);
+    local synced = (ss ~= nil and ss.level < 75 and ss.level ~= shown) and ss or nil;
+    kit.meter(im, ('Points Lv.%d'):format(shown), ctx.sets.usedPoints(ids, book), capShown, '',
+        synced and synced.activePoints or nil, synced and ctx.blu.budget() or nil);
+    kit.tip(im, (capShown == nil
+        and 'The budget for this level is not known yet (learned bonus\nunmeasured). Bands below are provisional meanwhile.'
+        or ('The plan at Lv.%d against that level\'s budget.'):format(shown))
+        .. (synced and ('\n\nIn brackets: what the game holds RIGHT NOW at Lv.%d.'):format(synced.level) or ''));
     local activeN = 0;
     for i = 1, 20 do if (ids[i] or 0) ~= 0 then activeN = activeN + 1; end end
-    kit.meter(im, 'Slots ', activeN, ctx.sets.slotsAtLevel(shown), '');
+    kit.meter(im, 'Slots ', activeN, ctx.sets.slotsAtLevel(shown), '',
+        synced and synced.active or nil, synced and synced.maxSlots or nil);
     kit.ctext(im, kit.COL.dim, ('Total MP %d'):format(ctx.sets.usedMP(ids, book)));
 
     -- the whole-curve verdict (plan 2.6): red = enforced and real (Apply
@@ -1181,18 +1198,6 @@ local function slotPlanner(ctx)
         local col = (b.enforced and not b.provisional) and kit.COL.err
             or (b.enforced and kit.COL.warn or kit.COL.dim);
         kit.ctext(im, col, '  ' .. ctx.sets.bandText(b));
-    end
-
-    -- the level-sync line: the meters above are the PLAN at the preview
-    -- level; this is what the client holds right now while synced
-    local ss = ctx.blu.syncStats(book);
-    if ss ~= nil and ss.level < 75 then
-        local liveMax = ctx.blu.budget();      -- the synced level's budget
-        kit.ctext(im, kit.COL.warn, ('Sync Lv.%d: %d / %s pts, %d / %d slots'):format(
-            ss.level, ss.activePoints, liveMax and tostring(liveMax) or '?',
-            ss.active, ss.maxSlots));
-        kit.tip(im, 'What the level sync leaves live right now - the game\n'
-            .. 'disabled the rest itself and restores it when the sync ends.');
     end
 
     -- game actions (widths measured -- the clipping law)
@@ -1500,6 +1505,10 @@ local function flatPlanner(ctx)
             local liveNow = ctx.blu.currentSet();
             if #liveNow == 20 then
                 for i = 1, 20 do set.ids[i] = liveNow[i] or 0; end
+                -- into the flat set's own order -- the game's slot numbers
+                -- are not authorship here, and Apply would re-sort anyway.
+                -- Nothing is dropped: ids the data does not know sort last.
+                ctx.sets.sortFlat(set, book);
                 local unknown = 0;
                 for i = 1, 20 do
                     if liveNow[i] ~= 0 and book.spells[liveNow[i]] == nil then
@@ -1537,48 +1546,100 @@ local function flatPlanner(ctx)
         liveIds = {};
         for i = 1, 20 do if live[i] ~= 0 then liveIds[live[i]] = true; end end
     end
+    -- EVERY SLOT THE GAME HAS, grouped by the level it opens at -- the same
+    -- list shape the slotlist editor draws (Henrik 2026-08-10, fifth round:
+    -- "for Normal sets, add similar list as in slotlist"). It reads as the
+    -- LEVEL-SYNC ORDER: the spells sit lowest-level-first (setmodel.sortFlat
+    -- keeps the array that way, and that is exactly what Apply sends), and
+    -- a sync closes slots from the bottom of this list upward.
     kit.ctext(im, kit.COL.head, 'Slots');
-    kit.tip(im, 'Named rows, like the Codex: left-click for Spell Info,\nright-click removes from the set.');
-    local nameW = math.max(kit.availWidth(im, MID_W) - 24 - 40, 120);
-    local lvl = ctx.blu.effectiveLevel();
-    local shown = 0;
-    for i = 1, 20 do
-        local id = set.ids[i] or 0;
-        if id ~= 0 then
-            shown = shown + 1;
-            local s = book.spells[id];
-            local liveTag = '';
-            if liveIds ~= nil and not liveIds[id] then
-                -- a sync-disabled spell is not WAITING for an apply -- the
-                -- game holds it and returns it when the sync ends
-                if lvl ~= nil and lvl < 75 and s ~= nil
-                    and s.level ~= nil and s.level > lvl then
-                    liveTag = '  (disabled by level sync)';
-                else
-                    liveTag = '  (not active yet)';
-                end
-            end
-            local label = ((s ~= nil) and s.name or ('#' .. id)) .. liveTag;
-            local lclick, rclick, hov = spellsui.listRow(ctx, id, 24, nameW,
-                st.selectedId == id, true, { label = label });
-            if lclick then
-                st.selectedId = id;
-                st.detailOpen[1] = true;
-                st.detailFocus = true;
-            end
-            if rclick then
-                ctx.sets.removeSlot(set, i);
-                st.applyNote = nil;
-            end
-            spellsui.tooltip(ctx, id, hov);
-        end
+    kit.tip(im, 'Every slot, grouped by the level it opens at.\n\n'
+        .. 'The spells sit in LEVEL ORDER, lowest first -- which is the order\n'
+        .. 'Apply sends them, so reading up from the bottom is the order a\n'
+        .. 'level sync takes them away in.\n\n'
+        .. 'A row your level cannot give you yet is GREYED, never barred:\n'
+        .. 'its own Lv. says why, and it edits like any other.\n\n'
+        .. 'Left-click a row for Spell Info, right-click removes it.');
+    if ctx.sets.count(set) == 0 then
+        kit.wrapped(im, kit.COL.dim, 'The set is empty - add spells from the Codex or Traits.');
     end
-    if shown == 0 then
-        kit.ctext(im, kit.COL.dim, 'The set is empty - add spells from the Codex or Traits.');
-    else
-        local free = slotMax - ctx.sets.count(set);
-        if free > 0 then
-            kit.ctext(im, kit.COL.dim, ('%d free slot%s'):format(free, free == 1 and '' or 's'));
+    local nameW = math.max(kit.availWidth(im, MID_W) - 78, 120);
+    local lvl = ctx.blu.effectiveLevel();
+    -- WHICH LEVEL GRADES THE SLOTS: a band draft is built for its own band
+    -- and is graded there whatever you happen to be right now; everything
+    -- else is graded at the level you are actually at.
+    local gradeLvl = (set.draft and set.level ~= nil) and set.level or (lvl or 75);
+    -- a band build is graded for its WHOLE band -- Lv.41-50 has the same 14
+    -- slots at either end, so naming one level of it would read as a limit
+    -- that lifts halfway through
+    local gradeText = (set.draft and set.level ~= nil)
+        and ('Lv.%s'):format(bandText(ctx, set.level))
+        or ('Lv.%d'):format(gradeLvl);
+    for _, g in ipairs(ctx.sets.brackets()) do
+        local locked = gradeLvl < g.floor;
+        kit.ctext(im, locked and kit.COL.dim or kit.COL.head,
+            ('Lv.%d-%d'):format(g.floor, bracketTop(g.floor)));
+        if locked then
+            if kit.isFn(im, 'SameLine') then im.SameLine(); end
+            kit.ctext(im, kit.COL.dim, ('  (no slots here at %s)'):format(gradeText));
+        end
+        for _, i in ipairs(g.slots) do
+            local id = set.ids[i] or 0;
+            if id == 0 then
+                kit.ctext(im, kit.COL.dim, locked
+                    and ('   (opens at Lv.%d)'):format(g.floor)
+                    or '   (empty)');
+            else
+                local s = book.spells[id];
+                -- WHAT YOUR LEVEL CANNOT GIVE YOU IS GREY, NOT LABELLED
+                -- (Henrik 2026-08-10, sixth round: "instead of saying on
+                -- every slot (disabled by) or (no slot until), maybe we
+                -- should just grey it out... we already provide the levels
+                -- on the slots"). Two reasons, one look: the slot is past
+                -- the level's bracket, or the spell is over the sync
+                -- ceiling. Neither is WAITING for an apply -- the game
+                -- returns them when the sync ends -- and neither stops you
+                -- editing the row. The reason still lives in the tooltip,
+                -- where it costs no space.
+                local why = nil;
+                if lvl ~= nil and lvl < g.floor then
+                    why = ('Lv.%d has no slot this deep - it opens at Lv.%d.'):format(
+                        lvl, g.floor);
+                elseif lvl ~= nil and lvl < 75 and s ~= nil
+                    and s.level ~= nil and s.level > lvl then
+                    why = ('Lv.%d cannot cast this - the sync disabled it, and\nthe game gives it back when the sync ends.'):format(lvl);
+                end
+                -- 'not active yet' is a DIFFERENT thing and keeps its words:
+                -- the game could hold this and does not, so Apply is the fix
+                local pending = (why == nil) and liveIds ~= nil and not liveIds[id];
+                local label = ('%s  Lv.%s%s'):format(
+                    (s ~= nil) and s.name or ('#' .. id),
+                    (s ~= nil) and (s.level or '?') or '?',
+                    pending and '  (not active yet)' or '');
+                -- every row here is in the set, so the green tint says
+                -- nothing: head normally, grey for out of reach, and
+                -- unlearned still wins outright (Apply drops it entirely)
+                local rowCol = (why ~= nil) and kit.COL.dim or kit.COL.head;
+                if ctx.blu.onBlu() and not book.learned(id) then rowCol = kit.COL.err; end
+                local lclick, rclick, hov = spellsui.listRow(ctx, id, 24, nameW,
+                    st.selectedId == id, true,
+                    { label = label, textCol = rowCol, dimArt = why ~= nil });
+                if lclick then
+                    st.selectedId = id;
+                    st.detailOpen[1] = true;
+                    st.detailFocus = true;
+                end
+                if rclick then
+                    ctx.sets.removeSlot(set, i);
+                    st.applyNote = nil;
+                    return;                    -- the rows just shifted down
+                end
+                local extra = { { 'right-click: remove from the set', kit.COL.dim } };
+                if why ~= nil then
+                    table.insert(extra, 1, { why, kit.COL.warn });
+                end
+                spellsui.tooltip(ctx, id, hov, extra);
+            end
         end
     end
 end
@@ -1693,7 +1754,7 @@ local function importPane(ctx)
             st.activeSet = #cfg.sets;
             if ctx.sets.kindOf(entry) == 'levels' then
                 st.editLevel = nil;
-                st.editingSet = ctx.sets.draft(entry, nil);
+                st.editingSet = ctx.sets.draft(entry, nil, ctx.book);
             else
                 st.editLevel = nil;
                 st.editingSet = ctx.sets.clone(entry, entry.name);
@@ -1778,7 +1839,7 @@ local function statsPanel(ctx)
     kit.header(im, 'Traits');
     local evals = ctx.sets.traitEval(ids, book);
     if #evals == 0 then
-        kit.ctext(im, kit.COL.dim, 'no trait weight at this level');
+        kit.ctext(im, kit.COL.dim, 'no trait points at this level');
     end
     for _, ev in ipairs(evals) do
         -- what the SET earns is not always what you GET: a job trait of the
@@ -1788,12 +1849,12 @@ local function statsPanel(ctx)
         local v = ctx.verdict and ctx.verdict(ev.cat, ev.weight) or nil;
         if v ~= nil and v.deadWeight and v.blocker ~= nil then
             -- given, not blocked (the CEXI law, field 2026-08-10): the job
-            -- grants this tier already; the weight buys nothing NEW, and a
-            -- higher tier is still reachable for its full weight
+            -- grants this tier already; the points buy nothing NEW, and a
+            -- higher tier is still reachable for its full points
             kit.ctext(im, kit.COL.dim, ('%s: from %s (rank %d)'):format(
                 ev.name, v.blocker.code or 'your job', v.blocker.rank));
             kit.tip(im, ('%s grants %s at rank %d whatever this set does, so the %d\n'
-                .. 'weight buys nothing new. Feeding PAST that tier still climbs --\n'
+                .. 'points buy nothing new. Feeding PAST that tier still climbs --\n'
                 .. 'a higher blue tier takes over. See the Traits tab.'):format(
                 v.blocker.name or 'Your job', ev.name, v.blocker.rank, ev.weight));
         elseif ev.tier then
@@ -1802,7 +1863,7 @@ local function statsPanel(ctx)
             kit.ctext(im, kit.COL.dim, ('%s: below tier 1'):format(ev.name));
         end
         if ev.nextPoints then
-            kit.ctext(im, kit.COL.dim, ('   %d more weight -> %s'):format(
+            kit.ctext(im, kit.COL.dim, ('   %d more Points -> %s'):format(
                 ev.nextPoints - ev.weight, ev.nextText or 'next tier'));
         end
     end
@@ -1965,23 +2026,42 @@ function M.slotEditorWindow(ctx)
             if kit.isFn(im, 'SameLine') then im.SameLine(); end
             kit.ctext(im, kit.COL.dim, ' at Lv.');
             if kit.isFn(im, 'SameLine') then im.SameLine(); end
+            -- PREFILLED WITH THE SPELL'S OWN LEVEL (Henrik 2026-08-10, sixth
+            -- round: "auto fill in the level of the ability so it's not just
+            -- blank"). It is exactly what the blank box already meant --
+            -- setmodel.addEntry defaults to s.level -- now shown rather than
+            -- implied, and a starting point to edit from instead of an empty
+            -- field you have to know the answer for.
+            --
+            -- Keyed to the pending id: handing a DIFFERENT spell to this
+            -- window refills it, instead of leaving the last one's number
+            -- sitting there looking deliberate.
+            if se.addFor ~= se.addId then
+                se.addFor = se.addId;
+                se.addLvl = { tostring((s and s.level) or 1) };
+            end
             se.addLvl = se.addLvl or { '' };
             if kit.isFn(im, 'SetNextItemWidth') then im.SetNextItemWidth(40); end
             if kit.isFn(im, 'InputText') then
                 pcall(im.InputText, '##bdxseaddlvl', se.addLvl, 3);
             end
-            kit.tip(im, 'Blank = the spell\'s own level (the earliest legal moment).');
+            kit.tip(im, ('Filled in with %s\'s own level - the earliest it can\n'
+                .. 'activate. Type any level from there up; blank means the\n'
+                .. 'same thing as the number shown.'):format(
+                (s and s.name) or 'the spell'));
             if kit.isFn(im, 'SameLine') then im.SameLine(); end
             if kit.litButton(im, 'Add', false, kit.measure(im, { 'Add' }, 44), 20, kit.PAL.go) then
                 local lv = tonumber(se.addLvl[1]);
                 local okA, whyA = ctx.sets.addEntry(set, se.slot, se.addId, lv, book);
                 se.note = okA and ('Added %s.'):format(s and s.name or se.addId)
                     or ('Cannot add: %s.'):format(whyA);
-                if okA then se.addId = nil; se.bufs = {}; end
+                if okA then se.addId, se.addFor = nil, nil; se.bufs = {}; end
             end
             if kit.isFn(im, 'SameLine') then im.SameLine(); end
             if kit.litButton(im, 'Drop', false, kit.measure(im, { 'Drop' }, 44), 20) then
-                se.addId = nil;
+                -- addFor goes with it, so handing the SAME spell over again
+                -- comes back prefilled rather than holding the dropped edit
+                se.addId, se.addFor = nil, nil;
             end
             kit.tip(im, 'Forget this add (the slot keeps what it has).');
             if kit.isFn(im, 'Separator') then im.Separator(); end
@@ -2112,7 +2192,11 @@ function M.render(ctx)
         + kit.measure(im, { 'Clear' }, 50);
     local levelRow = kit.measure(im, { 'Level change:' }, 60)
         + kit.measure(im, { 'Auto-apply', 'Manual' }, 64) * 2;
-    MID_W = math.max(340, gameRow + 34, levelRow + 34);
+    -- the floor is a READING width, not a fitting one: the slot list runs
+    -- twenty spell names deep and 340 clipped the longer ones (Henrik
+    -- 2026-08-10, sixth round: "can we make the middle column a little
+    -- wider"). The measured rows still win whenever they need more.
+    MID_W = math.max(400, gameRow + 34, levelRow + 34);
     -- while the share/import panes are up they own EVERYTHING right of the
     -- saved list (Henrik 2026-08-10, from the field: "we have ample space")
     -- -- the stats panel has nothing to say about a text box anyway

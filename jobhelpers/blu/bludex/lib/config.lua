@@ -43,6 +43,19 @@ function M.defaults()
                                   -- draft): the FOLLOWED set -- the one
                                   -- whose kind and rule the level-change
                                   -- watcher obeys (docs/set-types-plan.md 5)
+        pendingSync = TT{ },      -- { ids = {20}, need = n, waiting = {ids} }
+                                  -- the tail an apply made UNDER A SYNC had
+                                  -- refused by the game, and the level that
+                                  -- would take it. host.finishPending comes
+                                  -- back for it and clears this; applying
+                                  -- anything else retires it. Persisted, so
+                                  -- the promise survives a reload mid-sync.
+                                  -- READ IT VIA host.pendingPromise: while
+                                  -- this is still the default it is a T{},
+                                  -- and T{} carries table helpers as fields
+                                  -- (a `count` key here cost a crash on the
+                                  -- first frame, field 2026-08-10). Never
+                                  -- name a field after a table method.
         activeSetName = '',       -- last selected saved set, reloaded at startup
         tooltipDelay = 0.5,       -- seconds the cursor must rest before a tooltip
         codexDensity = 'normal',  -- codex list size: 'big'|'medium'|'normal'|'compact'

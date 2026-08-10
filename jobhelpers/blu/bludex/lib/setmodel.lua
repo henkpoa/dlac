@@ -204,6 +204,16 @@ function M.upgrade(set, book)
     if set.kind == 'levels' then
         if set.builds == nil then changed = true; end
         M.normalizeGroup(set);
+        -- THE LEVEL ORDER IS ADOPTED, ONCE (Henrik 2026-08-10, fifth
+        -- round). A stored flat build kept whatever order it was typed in
+        -- while the apply sorted it anyway, so the order carried no
+        -- meaning worth keeping -- and the new slot list would have read
+        -- the wrong drop order off it. Base and every band, idempotent
+        -- after the first pass.
+        if M.sortFlat(set, book) then changed = true; end
+        for _, t in ipairs(set.builds or {}) do
+            if M.sortFlat(t, book) then changed = true; end
+        end
         return changed;
     end
     local chainCount = 0;
@@ -216,13 +226,18 @@ function M.upgrade(set, book)
     end
     if chainCount == 0 and idCount > 0 then
         set.chains = M.buildChains(set.ids, book);
-        set.builtFor = set.builtFor or 75;
+        set.builtFor = 75;
         M.syncLegacyIds(set, book);
         return true;
     end
     -- make sure the shape is complete (a store decode arrives without the
     -- ids mirror -- re-derive it here)
-    if set.builtFor == nil then set.builtFor = 75; changed = true; end
+    -- ALWAYS 75 (Henrik 2026-08-10, sixth round: "it should always be built
+    -- for 75"). The field stays -- the wire format and the dlac store both
+    -- carry it, and a stored set must keep its shape -- but nothing sets it
+    -- to anything else any more, and an older set that carries a lower
+    -- floor is pinned here. Budget enforcement is the whole curve now.
+    if set.builtFor ~= 75 then set.builtFor = 75; changed = true; end
     for i = 1, 20 do
         if set.chains[i] == nil then set.chains[i] = {}; changed = true; end
     end
@@ -852,6 +867,21 @@ function M.groupPick(entry, level)
     return best;
 end
 
+-- THE FLAT ORDER, in one place: spell level ascending, ties by id, and an
+-- id the data does not know sorted LAST rather than dropped. Every flat
+-- placement speaks it -- copyInto, sortedLayout on the way to the game, and
+-- sortFlat on the stored array itself.
+local function byLevel(book)
+    return function(a, b)
+        local sa = book and book.spells[a] or nil;
+        local sb = book and book.spells[b] or nil;
+        local la = (sa and sa.level) or 999;
+        local lb = (sb and sb.level) or 999;
+        if la ~= lb then return la < lb; end
+        return a < b;
+    end;
+end
+
 -- Copy a build's spells into another band, keeping what that band can
 -- actually hold: nothing above the level it can cast, lowest levels first,
 -- until its slots run out.
@@ -878,13 +908,7 @@ function M.copyInto(ids, level, book)
             end
         end
     end
-    table.sort(pick, function(a, b)
-        local sa, sb = book.spells[a], book.spells[b];
-        local la = (sa and sa.level) or 999;
-        local lb = (sb and sb.level) or 999;
-        if la ~= lb then return la < lb; end
-        return a < b;
-    end);
+    table.sort(pick, byLevel(book));
     local out = {};
     for i = 1, 20 do out[i] = pick[i] or 0; end
     local taken = #pick;
@@ -895,84 +919,72 @@ function M.copyInto(ids, level, book)
     return out, { taken = taken, tooHigh = tooHigh, noSlot = #pick - taken };
 end
 
+-- COPY ANOTHER SET'S SPELLS INTO THIS ONE (Henrik 2026-08-10, sixth round:
+-- "make it a copy from button instead... obviously it will only be able to
+-- copy the top level of spells, but should save people some time").
+--
+-- The source arrives already flattened -- resolveAtLevel at 75, its
+-- TOP-LEVEL plan, which is the one reading that means the same thing
+-- whatever kind it came from. A slotlist's per-level authorship cannot
+-- survive that flattening and is not pretended to: what crosses is the set
+-- of spells, and the target's own kind decides how they land.
+--
+-- REPLACES, never merges. "Copy from" means make this look like that; a
+-- merge would need a rule for collisions nobody asked for. The caller does
+-- the confirming.
+--
+-- Returns { taken, tooHigh, noSlot, refused }:
+--   tooHigh   above what this band can cast (a levels draft's ceiling)
+--   noSlot    ran out of slots
+--   refused   the model said no for any other reason (unlearned, unbridled)
+function M.copyFrom(set, srcIds, book)
+    if M.kindOf(set) ~= 'timeline' then
+        -- the id-array path already knows this job: sorted by level, the
+        -- band's ceilings applied, the rest reported
+        local ids, rep = M.copyInto(srcIds, set.level, book);
+        for i = 1, 20 do set.ids[i] = ids[i]; end
+        rep.refused = 0;
+        return rep;
+    end
+    -- A SLOTLIST takes one spell per slot, each activating at its own level
+    -- -- the only honest placement from a flat reading: nothing in a 20-id
+    -- list says when anything should take over from anything else. Chains
+    -- are yours to build from here.
+    M.clear(set);
+    local pick = {};
+    for i = 1, 20 do
+        local id = srcIds[i] or 0;
+        if id ~= 0 then pick[#pick + 1] = id; end
+    end
+    table.sort(pick, byLevel(book));
+    local rep = { taken = 0, tooHigh = 0, noSlot = 0, refused = 0 };
+    for _, id in ipairs(pick) do
+        local slot = M.freeSlot(set);
+        if slot == nil then
+            rep.noSlot = rep.noSlot + 1;
+        elseif M.addEntry(set, slot, id, nil, book) then
+            rep.taken = rep.taken + 1;
+        else
+            rep.refused = rep.refused + 1;
+        end
+    end
+    return rep;
+end
+
 -- One build of a levels set as an editable DRAFT -- the shape the Sets tab
 -- edits and every computation takes (no chains, so every editing op below
 -- runs its id-array path; level carries the band ceilings into canAdd).
-function M.draft(entry, level)
-    return { kind = 'levels', draft = true, name = entry.name,
-             level = level, ids = M.groupIds(entry, level) };
-end
-
--- ---------------------------------------------------------------------------
--- KIND CONVERSION (docs/set-types-plan.md 6): a saved set may become
--- another kind, in place. THE FLAT PROJECTION IS THE BRIDGE -- what the
--- set plans at the cap (a flat set's ids, a levels set's BASE build, a
--- timeline's level-75 mirror) -- and whatever the projection cannot carry
--- is dropped: convertLoss NAMES it so the UI can say so before the click.
--- ---------------------------------------------------------------------------
-
-local function flatProjection(set, book)
-    if M.kindOf(set) == 'timeline' then
-        return M.resolveAtLevel(set, 75, book);
-    end
-    return copyIds(set.ids);
-end
-
--- What converting this set to `kind` would drop, as reader-facing phrases.
--- Empty = lossless.
-function M.convertLoss(set, kind, book)
-    local from = M.kindOf(set);
-    local out = {};
-    if from == kind then return out; end
-    if from == 'levels' then
-        local n = #(set.builds or {});
-        if n > 0 then
-            out[#out + 1] = ('its %d level build%s'):format(n, (n == 1) and '' or 's');
-        end
-        if M.RULE_KEYS[set.rule or ''] then
-            out[#out + 1] = ('its stored level-change rule (%s)'):format(set.rule);
-        end
-    elseif from == 'timeline' then
-        if not M.isFlat(set, book) then
-            local entries, markers = 0, 0;
-            for slot = 1, 20 do
-                for _, e in ipairs((set.chains or {})[slot] or {}) do
-                    if e.id == 0 then markers = markers + 1;
-                    else entries = entries + 1; end
-                end
-            end
-            local beyond = (entries - M.countIds(set.ids or {})) + markers;
-            if beyond > 0 then
-                out[#out + 1] = ('its timeline (%d entr%s beyond the Lv.75 plan)')
-                    :format(beyond, (beyond == 1) and 'y' or 'ies');
-            else
-                -- every spell survives, but not its timing: activation
-                -- levels are authorship the flat projection cannot carry
-                out[#out + 1] = 'its activation levels (the spells survive, the timing does not)';
-            end
-        end
-        -- backups are NOT a loss: the ring crosses with the set, and the
-        -- convert itself banks the old state (kind-shaped backups restore
-        -- across kinds -- the conversion is undoable)
-    end
-    return out;
-end
-
--- A NEW set of `kind` built from this one's flat projection, same name.
--- Never mutates the source -- the caller decides what replaces what.
-function M.convertTo(set, kind, book)
-    if M.kindOf(set) == kind then return M.clone(set, set.name); end
-    local ids = flatProjection(set, book);
-    local c = M.new(set.name, kind);
-    if kind == 'timeline' then
-        -- sorted placement, one entry per spell at its own level -- the
-        -- same faithful layout the v2 migration used
-        c.chains = M.buildChains(ids, book);
-        M.syncLegacyIds(c, book);
-    else
-        c.ids = ids;
-    end
-    return c;
+-- `book` is optional and only buys the level sort: OPENING a build is the
+-- one choke point every band build passes through on its way to the editor,
+-- whatever wrote it (copyInto, a draft save, a hand-edited settings file,
+-- an old store entry), so the list can never read out of order. Without a
+-- book the ids are left exactly as found -- guessing an order from ids
+-- alone would be worse than none.
+function M.draft(entry, level, book)
+    local d = { kind = 'levels', draft = true, name = entry.name,
+                level = level, ids = M.groupIds(entry, level) };
+    if book ~= nil then M.sortFlat(d, book); end
+    return d;
 end
 
 -- ---------------------------------------------------------------------------
@@ -1255,6 +1267,7 @@ function M.add(set, id, book, budgetMax)
     local ok, reason = M.canAdd(set, id, book, budgetMax);
     if not ok then return false, reason; end
     set.ids[M.freeSlot(set)] = id;
+    M.sortFlat(set, book);             -- level order, always (see sortFlat)
     return true;
 end
 
@@ -1279,7 +1292,10 @@ function M.removeId(set, id)
         return;
     end
     local i = M.contains(set, id);
-    if i then set.ids[i] = 0; end
+    if i then
+        set.ids[i] = 0;
+        M.compactFlat(set);            -- no gap in the level-ordered list
+    end
 end
 
 function M.removeSlot(set, i)
@@ -1287,7 +1303,10 @@ function M.removeSlot(set, i)
         if i >= 1 and i <= 20 then set.chains[i] = {}; set.ids[i] = 0; end
         return;
     end
-    if i >= 1 and i <= 20 then set.ids[i] = 0; end
+    if i >= 1 and i <= 20 then
+        set.ids[i] = 0;
+        M.compactFlat(set);
+    end
 end
 
 -- The APPLY layout (field 2026-08-04: the game's own set list should read
@@ -1304,15 +1323,95 @@ function M.sortedLayout(ids, book)
             pick[#pick + 1] = id;
         end
     end
-    table.sort(pick, function(a, b)
-        local la = book.spells[a].level or 999;
-        local lb = book.spells[b].level or 999;
-        if la ~= lb then return la < lb; end
-        return a < b;
-    end);
+    table.sort(pick, byLevel(book));
     local T = {};
     for i = 1, 20 do T[i] = pick[i] or 0; end
     return T;
+end
+
+-- WHAT A LEVEL WILL REFUSE of a plan (Henrik 2026-08-10, sixth round). Two
+-- ways a spell bounces off the game: it is over the level's own ceiling, or
+-- it landed past the slots that level has. Measured against sortedLayout,
+-- which is what an apply actually sends -- low spells first, so the refusals
+-- are always the tail.
+--
+-- Returns ids{}, need -- `need` is the level at which ALL of them would fit
+-- (the highest bar among them), nil when nothing is refused. That is the
+-- level worth waiting for, and the one a sync-end check compares against.
+function M.refusedAtLevel(ids, level, book)
+    local layout = M.sortedLayout(ids, book);
+    local slots = M.slotsAtLevel(level);
+    local out, need = {}, nil;
+    for i = 1, 20 do
+        local id = layout[i] or 0;
+        if id ~= 0 then
+            local s = book.spells[id];
+            local bar = nil;
+            -- the level ceiling first: a spell too high for here needs its
+            -- OWN level, which is a higher bar than its slot's floor
+            if s ~= nil and s.level ~= nil and s.level > level then
+                bar = s.level;
+            elseif i > slots then
+                bar = M.bracketFloor(i);
+            end
+            if bar ~= nil then
+                out[#out + 1] = id;
+                if need == nil or bar > need then need = bar; end
+            end
+        end
+    end
+    return out, need;
+end
+
+-- THE STORED ARRAY IN THE SAME ORDER (Henrik 2026-08-10, fifth round:
+-- "always sort the spells in level order... so people know what spells will
+-- be gotten in what order if you level sync down"). sortedLayout has always
+-- sorted a flat set on the way OUT; the editor showed insertion order, so
+-- the list you read was not the list the game got. A flat build has no
+-- per-slot authorship to protect -- only a SLOTLIST does -- so the array
+-- itself is kept sorted and the two finally agree.
+--
+-- Low levels sit in the low slots, and slots close from the top down as you
+-- sync, so the list reads bottom-up as the drop order.
+--
+-- Unlike sortedLayout this NEVER DROPS: an unlearned spell keeps its place,
+-- and an id the data does not know sorts last instead of vanishing (Read
+-- current has to stay an honest mirror of the client). Returns true when
+-- something actually moved.
+function M.sortFlat(set, book)
+    if set == nil or set.chains ~= nil or set.ids == nil then return false; end
+    local pick = {};
+    for i = 1, 20 do
+        local id = set.ids[i] or 0;
+        if id ~= 0 then pick[#pick + 1] = id; end
+    end
+    table.sort(pick, byLevel(book));
+    local moved = false;
+    for i = 1, 20 do
+        local want = pick[i] or 0;
+        if (set.ids[i] or 0) ~= want then moved = true; end
+        set.ids[i] = want;
+    end
+    return moved;
+end
+
+-- Close the holes, order untouched -- what a REMOVAL needs. Dropping one
+-- entry from a sorted list leaves it sorted, so this needs no book and
+-- cannot reorder a set behind the player's back.
+function M.compactFlat(set)
+    if set == nil or set.chains ~= nil or set.ids == nil then return false; end
+    local pick = {};
+    for i = 1, 20 do
+        local id = set.ids[i] or 0;
+        if id ~= 0 then pick[#pick + 1] = id; end
+    end
+    local moved = false;
+    for i = 1, 20 do
+        local want = pick[i] or 0;
+        if (set.ids[i] or 0) ~= want then moved = true; end
+        set.ids[i] = want;
+    end
+    return moved;
 end
 
 -- THE LAYOUT AN APPLY SENDS, per kind (field 2026-08-10, Henrik's slotlist

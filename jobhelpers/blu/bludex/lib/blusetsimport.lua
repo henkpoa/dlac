@@ -101,6 +101,10 @@ function M.importAll(cfg, book, only)
                     local ids, unknown = M.parse(lines, book);
                     local set = setmodel.new(f.name, 'flat');
                     for i = 1, 20 do set.ids[i] = ids[i] or 0; end
+                    -- a blusets file lists spells in whatever order it was
+                    -- written; a flat set here reads in LEVEL order, and
+                    -- blank lines in the middle become no gap at all
+                    setmodel.sortFlat(set, book);
                     table.insert(cfg.sets, set);
                     have[book.norm(f.name)] = true;
                     res.imported[#res.imported + 1] = f.name;

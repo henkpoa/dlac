@@ -93,6 +93,15 @@ end
 local function learnedText(ctx, id)
     if ctx.blu.onBlu() or ctx.book.learned(id) then
         if ctx.book.learned(id) then return 'learned', kit.COL.ok; end
+        -- NOT EVERY SPELL YOU LACK IS ONE YOU MISSED (Henrik 2026-08-10,
+        -- sixth round). A granted spell -- Thunderbolt, off the food Lengua
+        -- Regia -- is not learned from a mob at all, so the red "not
+        -- learned" was accusing you of a gap you cannot close. It reads as
+        -- what it is, and the note below names what does grant it.
+        local s = ctx.book.spells[id];
+        if s ~= nil and s.grantedBy ~= nil then
+            return 'not learnable - granted', kit.COL.badge;
+        end
         return 'not learned', kit.COL.err;
     end
     return nil, nil;
@@ -135,8 +144,10 @@ function M.tooltip(ctx, id, hovered, extra)
     end
     if s.trait then
         local cat = s.trait.category;
-        add(('Trait: %s  (weight %d)'):format(book.traitName(cat), s.trait.weight), kit.COL.accent);
-        -- the editing set's progress on that ladder: weight / next threshold
+        local tw = s.trait.weight or 0;
+        add(('Trait: %s  (+%d Point%s)'):format(
+            book.traitName(cat), tw, tw == 1 and '' or 's'), kit.COL.accent);
+        -- the editing set's progress on that ladder: points / next threshold
         local weight = 0;
         for _, ev in ipairs(ctx.sets.traitEval(ctx.state.editingSet, book)) do
             if ev.cat == cat then weight = ev.weight; break; end
@@ -150,9 +161,9 @@ function M.tooltip(ctx, id, hovered, extra)
             if nextP then
                 -- the same price idiom the Traits tab speaks (Henrik
                 -- 2026-08-10: one grammar for tier costs everywhere)
-                add(('   Tier %d at %d weight (%d now)'):format(nextRank, nextP, weight), kit.COL.dim);
+                add(('   Tier %d: %d/%d Points'):format(nextRank, weight, nextP), kit.COL.dim);
             else
-                add(('   %d weight - max tier reached'):format(weight), kit.COL.ok);
+                add(('   %d Points - max tier reached'):format(weight), kit.COL.ok);
             end
         end
         -- the job's stake in the ladder, one short line (Henrik 2026-08-10,
@@ -243,6 +254,10 @@ function M.detail(ctx, id)
     if s.unbridled then
         kit.ctext(im, kit.COL.badge, 'Unbridled Learning');
     end
+    if s.grantedBy then
+        kit.wrapped(im, kit.COL.badge,
+            ('Not learned from a mob - granted by %s.'):format(s.grantedBy));
+    end
     if not s.castable then
         kit.ctext(im, kit.COL.err, 'Learnable but NEVER castable at the 75 cap.');
     end
@@ -302,8 +317,9 @@ function M.detail(ctx, id)
         kit.kv(im, 'Set cost', ('%d point%s'):format(s.setPoints, s.setPoints == 1 and '' or 's'));
     end
     if s.trait then
-        kit.kv(im, 'Trait', ('%s  (weight %d)'):format(
-            book.traitName(s.trait.category), s.trait.weight));
+        kit.kv(im, 'Trait', ('%s  (+%d Point%s)'):format(
+            book.traitName(s.trait.category), s.trait.weight or 0,
+            (s.trait.weight or 0) == 1 and '' or 's'));
         -- and the job's stake in that ladder, one short line
         local bl = M.ladderBlocks(ctx, s.trait.category);
         if bl ~= nil and #bl.blocks > 0 then
@@ -408,7 +424,11 @@ end
 -- state for tooltip(); nil on the fallback path (tooltip self-checks then).
 -- In-set spells draw green; unlearned draw opts.dimColor (default dim)
 -- while on BLU; in-set wins. opts.label overrides the row text (the traits
--- tab composes weight/level into it).
+-- tab composes the trait points and level into it).
+-- `opts.dimArt` greys the ICON without touching the text rule -- what a row
+-- the level cannot give you yet needs (Henrik 2026-08-10, sixth round:
+-- grey the row instead of tagging every one of them), where the caller
+-- already owns the text color through opts.textCol.
 function M.listRow(ctx, id, iconSz, nameW, selected, showIcon, opts)
     local im, book = ctx.im, ctx.book;
     local s = book.spells[id];
@@ -421,7 +441,12 @@ function M.listRow(ctx, id, iconSz, nameW, selected, showIcon, opts)
     end
     local label = (opts and opts.label) or s.name;
     local dimColor = (opts and opts.dimColor) or kit.COL.dim;
-    local dim = ctx.blu.onBlu() and not book.learned(id) or false;
+    -- unlearned draws loud -- but a GRANTED spell is not unlearned, it is
+    -- simply not something you learn (Henrik 2026-08-10, sixth round), so
+    -- it never wears the red of a gap you could have closed
+    local dim = ctx.blu.onBlu() and not book.learned(id)
+        and s.grantedBy == nil or false;
+    local artDim = dim or ((opts and opts.dimArt) == true);
     local inSet = ctx.sets.contains(ctx.state.editingSet, id) ~= nil;
     -- opts.textCol overrides the whole coloring rule -- the Sets tab's own
     -- rows are ALL in the set, so the green tint says nothing there
@@ -464,7 +489,7 @@ function M.listRow(ctx, id, iconSz, nameW, selected, showIcon, opts)
                 if h ~= nil and kit.isFn(im, 'Image') then
                     pcall(im.SetCursorPosX, x0);
                     pcall(im.SetCursorPosY, y0);
-                    local tint = dim and { 0.45, 0.45, 0.50, 0.85 } or { 1, 1, 1, 1 };
+                    local tint = artDim and { 0.45, 0.45, 0.50, 0.85 } or { 1, 1, 1, 1 };
                     local okI = pcall(im.Image, h, { iconSz, iconSz }, { 0, 0 }, { 1, 1 }, tint);
                     if not okI then pcall(im.Image, h, { iconSz, iconSz }); end
                 end
@@ -487,7 +512,7 @@ function M.listRow(ctx, id, iconSz, nameW, selected, showIcon, opts)
         if drawIcon then
             local h = filetex.spell(book, s, 'grid64');
             if h ~= nil and kit.isFn(im, 'Image') then
-                local tint = dim and { 0.45, 0.45, 0.50, 0.85 } or { 1, 1, 1, 1 };
+                local tint = artDim and { 0.45, 0.45, 0.50, 0.85 } or { 1, 1, 1, 1 };
                 local okI = pcall(im.Image, h, { iconSz, iconSz }, { 0, 0 }, { 1, 1 }, tint);
                 if not okI then pcall(im.Image, h, { iconSz, iconSz }); end
                 if kit.isFn(im, 'SameLine') then im.SameLine(); end
@@ -773,14 +798,12 @@ function M.render(ctx)
     f.stat = f.stat or {};
     st.detailOpen = st.detailOpen or { false };
 
-    -- THE SLOTLIST MARKER (Henrik 2026-08-10: "mark this out clearly"):
-    -- a slotlist assigns per slot, so codex right-clicks cannot add into it
-    if ctx.sets ~= nil and ctx.sets.kindOf ~= nil
-        and ctx.sets.kindOf(st.editingSet) == 'timeline' then
-        kit.wrapped(im, kit.COL.warn, 'Editing a Slotlist set: spells are assigned '
-            .. 'PER SLOT in the Sets tab (mark a slot, pick from Assign). '
-            .. 'Right-click here only REMOVES.');
-    end
+    -- The slotlist banner is GONE (Henrik 2026-08-10, sixth round: "we can
+    -- add via the add menu atm, so please remove this text"). It was written
+    -- when a codex right-click could only REMOVE from a slotlist; the assign
+    -- menu landed on that same right-click a round later and the warning
+    -- went stale where it stood, telling people the opposite of the truth.
+    -- The menu names the slots itself -- nothing left to warn about.
 
     -- filter row -- combo widths measured over every label they can show
     -- (the kit law: a hardcoded width clips a trailing character; "All eleme").

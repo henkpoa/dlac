@@ -191,6 +191,12 @@ function M.filter(spec)
             if not has then keep = false; end
         end
         if keep and text and not norm(s.name):find(text, 1, true) then keep = false; end
+        -- MISSING means "you could go learn this". A GRANTED spell -- one a
+        -- food or some other condition hands you, never a mob -- can never
+        -- be gone and got (Henrik 2026-08-10, sixth round, on Thunderbolt),
+        -- so it does not sit in that list forever as a thing you failed at.
+        -- It still shows under Learned once the client actually holds it.
+        if keep and spec.learned == false and s.grantedBy ~= nil then keep = false; end
         if keep and spec.learned ~= nil and M.learned(id) ~= spec.learned then keep = false; end
         if keep then out[#out + 1] = id; end
     end

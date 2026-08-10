@@ -435,7 +435,15 @@ function M.budget(levelIn)
     -- one the freshness flags actually describe.
     local mx  = capWatch.max;
     local est = M.expectedCap(levelIn);
-    local fresh = (mx ~= nil) and not capWatch.suspect;
+    -- THE CLIENT'S NUMBER DESCRIBES ONE LEVEL -- capWatch.lvl, the level it
+    -- was read at. Asked about any OTHER level it has nothing to say, and
+    -- letting it answer anyway is how a synced-to-40 character planning at
+    -- 75 got told its budget was 49 (Henrik 2026-08-10, sixth round). Only
+    -- the model can speak for a level you are not standing at. An unknown
+    -- watch level blocks nothing -- `suspect` is the guard there.
+    local here = (levelIn == nil) or (capWatch.lvl == nil)
+        or (levelIn == capWatch.lvl);
+    local fresh = here and (mx ~= nil) and not capWatch.suspect;
     if est ~= nil then
         -- the client only outranks us when we actually WATCHED it recompute
         -- at this level. A value merely found at load proves nothing -- it is
@@ -445,7 +453,7 @@ function M.budget(levelIn)
         return est, 'model';
     end
     if fresh then return mx, 'live'; end
-    if mx ~= nil then return mx, 'stale'; end
+    if here and mx ~= nil then return mx, 'stale'; end
     return nil, nil;
 end
 
@@ -888,6 +896,42 @@ function M.effectiveLevel()
     end);
     if not ok or lvl == nil or lvl <= 0 then return nil; end
     return lvl;
+end
+
+-- THE LEVEL YOU ACTUALLY ARE, sync or no sync (Henrik 2026-08-10, sixth
+-- round: "it should be able to detect that I am level synced and that I am
+-- actually level 75"). GetMainJobLevel reports the ADJUSTED level while a
+-- sync is on; GetJobLevel(job) reads the character's own job list, which the
+-- sync never touches -- the same pair the chains addon reads side by side.
+--
+-- MAIN JOB BLU ONLY. As a SUB job your blue level is capped at half the
+-- main's, and the job list knows nothing of that halving -- answering 75
+-- there would plan a set you could never wear. nil then, and every caller
+-- falls back to effectiveLevel, which is right for that case.
+function M.realLevel()
+    local ok, lvl = pcall(function()
+        local p = player();
+        if p:GetMainJob() ~= 16 then return nil; end
+        return p:GetJobLevel(16);
+    end);
+    if not ok or lvl == nil or lvl <= 0 then return nil; end
+    return lvl;
+end
+
+-- THE LEVEL TO PLAN AT: what you really are, falling back to what you are
+-- effectively. The two differ only under a sync (or on sub-job BLU, where
+-- realLevel stands down). This is the level a build is BUDGETED at -- what
+-- the game lets you WEAR right now is effectiveLevel, and the difference
+-- between them is the whole point: a synced 75 is still planning a 75 set.
+function M.planLevel()
+    return M.realLevel() or M.effectiveLevel();
+end
+
+-- Synced down? Returns real, effective when they differ -- nil otherwise.
+function M.syncedFrom()
+    local real, eff = M.realLevel(), M.effectiveLevel();
+    if real == nil or eff == nil or real <= eff then return nil; end
+    return real, eff;
 end
 
 -- BOTH jobs and BOTH levels, for the trait-collision model: a blue trait is
