@@ -13737,10 +13737,10 @@ end)();
     check('GB1a the giftboxes classify under their REAL names, smallest first',
         table.concat({ gb.classify('Gob. Giftbox (sm)'), gb.classify('Gob. Giftbox (md)'),
                        gb.classify('Gob. Giftbox (lg)'), gb.classify('Gob. Giftbox (gr)') }, ','),
-        '8,10,12,14');
+        '22,24,26,28');
     check('GB1 the long spelling is carried too, in case the client differs',
-        gb.classify('Goblin Giftbox (Small)'), 9);
-    check('GB1b ...case-insensitively', gb.classify('GOB. GIFTBOX (LG)'), 12);
+        gb.classify('Goblin Giftbox (Small)'), 23);
+    check('GB1b ...case-insensitively', gb.classify('GOB. GIFTBOX (LG)'), 26);
     check('GB1c the grand box is the top rung', gb.classify('Grand Giftbox'), #gb.LADDER);
     -- The substring match is what makes this survive the next box CatsEyeXI adds.
     check('GB1d an UNKNOWN giftbox is still ours, sorted last',
@@ -13783,7 +13783,46 @@ end)();
     -- table whose name is box-like and is NOT one of ours. `Beech Strongbox`
     -- (2680) would be caught by any gate lazy enough to match on "box".
     check('GB1n a Strongbox is not a box of ours', gb.classify('Beech Strongbox'), nil);
-    check('GB1o nor is a Forgotten Pouch', gb.classify('Frgtn. Pouch (head)'), nil);
+
+    -- The purses and the pouches (2026-08-10). GB1o used to assert the exact
+    -- OPPOSITE of GB1s -- `Frgtn. Pouch (head)` was a deliberate negative,
+    -- because `pouch` is the most dangerous word in this table. Henrik asked for
+    -- them, so the FRAGMENT got narrow instead of the gate getting loose, and
+    -- the negative it used to provide is now carried by GB1u/GB1v below, which
+    -- are the items that made it dangerous in the first place.
+    check('GB1r the purses are ours, in id order',
+        table.concat({ gb.classify('Ctn. Purse (alx.)'), gb.classify('Lin. Purse (alx.)') }, ','),
+        '8,10');
+    check('GB1s the pouches are ours, in id/equipment order',
+        table.concat({ gb.classify('Frgtn. Pouch (head)'), gb.classify('Frgtn. Pouch (body)'),
+                       gb.classify('Frgtn. Pouch (hands)'), gb.classify('Frgtn. Pouch (legs)'),
+                       gb.classify('Frgtn. Pouch (feet)') }, ','),
+        '12,14,16,18,20');
+    check('GB1t ...and both families sort under the giftboxes',
+        gb.classify('Frgtn. Pouch (feet)') < gb.classify('Gob. Giftbox (sm)')
+        and gb.classify('Ctn. Purse (alx.)') < gb.classify('Gob. Giftbox (sm)'), true);
+    -- THE NEGATIVES THAT PAY FOR THE NARROW FRAGMENT. Every one of these is a
+    -- real item whose name ends in "Pouch"; the first two are AMMUNITION and are
+    -- in data/catalog.lua, so a bare `pouch` gate would fire /item at the ammo
+    -- in your bag. If someone ever shortens M.MATCH, these are what break.
+    check('GB1u a Bullet Pouch is NOT a box (it is ammo)',
+        gb.classify('Chr. Bul. Pouch'), nil);
+    check('GB1v nor is any other pouch in the table',
+        table.concat({ tostring(gb.classify('Crystal Pouch')), tostring(gb.classify('Leather Pouch')),
+                       tostring(gb.classify('Bead Pouch')), tostring(gb.classify('Mandragora Pouch')),
+                       tostring(gb.classify('Fuma Sh. Pouch')) }, ','),
+        'nil,nil,nil,nil,nil');
+    -- The client-spelling half of the pair: if the client expands `Frgtn.`, the
+    -- long rung is the only thing that opens the five (and it must still RANK,
+    -- or an expanded name takes the tray icon off the grand giftbox).
+    check('GB1w the expanded pouch spelling is carried and ranks',
+        gb.classify('Forgotten Pouch (head)'), 13);
+    check('GB1x the expanded purse spelling is carried and ranks',
+        gb.classify('Cotton Purse (alx.)'), 9);
+    -- `purse` is the open fragment of the two: it survives either spelling, so
+    -- an unheard-of purse still opens (and sorts last, as always).
+    check('GB1y an unheard-of purse still opens',
+        gb.classify('Velvet Purse (alx.)'), #gb.LADDER + 1);
 
     local FOUND = {
         { name = 'Gob. Giftbox (gr)', rank = 14, count = 1 },

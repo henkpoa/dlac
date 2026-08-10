@@ -3,11 +3,13 @@
     inventory, one at a time, stopping the moment there is not room for what the
     next one pays out.
 
-    FOUR FAMILIES, one run (Henrik, 2026-08-06). It started as the Goblin
-    Giftboxes that CatsEyeXI drops off Ventures; the Goblin Gatherbox, the
-    Tiny/Timeworn/Titanic Tackleboxes and the Mamool Ja/Lamia/Troll Troves are
-    the same job -- a container you use from your bag that pays out several
-    items -- so they open through the same loop rather than four copies of it.
+    SIX FAMILIES, one run (Henrik: four on 2026-08-06, purses and pouches on
+    2026-08-10). It started as the Goblin Giftboxes that CatsEyeXI drops off
+    Ventures; the Goblin Gatherbox, the Tiny/Timeworn/Titanic Tackleboxes, the
+    Mamool Ja/Lamia/Troll Troves, the two alexandrite Purses and the five
+    Forgotten Pouches are the same job -- a container you use from your bag that
+    pays out items -- so they open through the same loop rather than six copies
+    of it.
     The command keeps its name (`/dl giftbox`, `/dl gb`) because that is what is
     in the README and in muscle memory; `/dl box` and `/dl boxes` answer to it
     too, and every line the run prints says "box" so it is never claiming to
@@ -17,9 +19,11 @@
     one with a nearly full bag and the payout is refused item by item, which is
     how you lose a box's contents to a wall of "you cannot carry any more"
     lines. That "up to 5" is measured on the giftboxes; the gate applies the
-    same number to all four families, which for a smaller payout is merely
+    same number to all six families, which for a smaller payout is merely
     strict and for a larger one would be the bug -- if a Titanic Tacklebox ever
-    turns out to pay more than five, NEED_FREE is where that is fixed.
+    turns out to pay more than five, NEED_FREE is where that is fixed. Nobody
+    has priced a Purse or a Forgotten Pouch either; both are assumed to be at or
+    under five, which is the safe direction to be wrong in.
 
     THE GATE RUNS BEFORE EVERY BOX, NOT ONCE (Henrik's spec said "more than 5
     free"; the correction is that it has to be re-asked each time). A box gives
@@ -151,6 +155,17 @@ M.SCAN_EVERY = 2.0;
 -- and it is why the rungs are worth reading off the game rather than guessing.
 -- `lamia trove` (6555) is the one trove nobody has seen in a log yet.
 --
+-- THE PURSES AND POUCHES (2026-08-10, Henrik's ids). Same 08-06 method: names
+-- read off the live item API, never typed from memory. They slot in ABOVE the
+-- troves and BELOW the giftboxes, which leaves ranks 1-7 exactly where they
+-- were -- the grand giftbox keeps the top rung and therefore the tray icon, and
+-- the four older families keep their order.
+--   purses  5735 / 5736      pouches 6541 / 6542 / 6543 / 6544 / 6545
+-- Purse order is id order, which also reads smallest-first (cotton is the lower
+-- cloth than linen); pouch order is id order, which is the equipment order the
+-- names themselves state (head, body, hands, legs, feet). As with the troves,
+-- nobody has priced these payouts, so the order decides only which opens first.
+--
 -- Ids, for provenance only -- the logic is name-based on purpose, so a box
 -- CatsEyeXI adds tomorrow opens without an addon update:
 --   tackleboxes 5110 / 5946 / 5112 · gatherbox 6345
@@ -158,22 +173,52 @@ M.SCAN_EVERY = 2.0;
 M.LADDER = { 'tiny tacklebox', 'timeworn tacklebox', 'titanic tacklebox',
              'goblin gatherbox',
              'mamool ja trove', 'lamia trove', 'troll trove',
+             'ctn. purse (alx.)',    'cotton purse (alx.)',
+             'lin. purse (alx.)',    'linen purse (alx.)',
+             'frgtn. pouch (head)',  'forgotten pouch (head)',
+             'frgtn. pouch (body)',  'forgotten pouch (body)',
+             'frgtn. pouch (hands)', 'forgotten pouch (hands)',
+             'frgtn. pouch (legs)',  'forgotten pouch (legs)',
+             'frgtn. pouch (feet)',  'forgotten pouch (feet)',
              'gob. giftbox (sm)', 'goblin giftbox (small)',
              'gob. giftbox (md)', 'goblin giftbox (medium)',
              'gob. giftbox (lg)', 'goblin giftbox (large)',
              'gob. giftbox (gr)', 'grand giftbox' };
 
 -- What makes an item ours. Substrings, so an unheard-of rung in any of the
--- four families still opens. The cost of being this open-ended is bounded: a
+-- six families still opens. The cost of being this open-ended is bounded: a
 -- non-usable item that happened to be named "...Tacklebox" would be fired at
 -- once, never confirm, and stop the run with one honest line after the timeout
 -- -- not a loop, and nothing lost.
 --
--- All four were checked against the live item table on 2026-08-06 and each one
--- catches its family and NOTHING else: giftbox 4, tacklebox 3, gatherbox 1,
--- trove 3 -- fifteen items, no strays. `trove` was the one worth checking; it
--- is the shortest and the least box-like word here.
-M.MATCH  = { 'giftbox', 'gatherbox', 'tacklebox', 'trove' };
+-- The first four were checked against the live item table on 2026-08-06 and
+-- each one catches its family and NOTHING else: giftbox 4, tacklebox 3,
+-- gatherbox 1, trove 3 -- fifteen items, no strays. `trove` was the one worth
+-- checking; it is the shortest and the least box-like word there.
+--
+-- `POUCH` IS THE ONE THAT CANNOT BE A FRAGMENT -- read this before "tidying"
+-- the two long entries below into one short one. Priced the same way on
+-- 2026-08-10: `purse` is exactly the 2 items we want (5735/5736) and collides
+-- with nothing, in the item table OR in our own equipment catalog. `pouch`
+-- returns 50+ and is a minefield -- Bullet Pouches, shuriken pouches, Crystal
+-- Pouch, Leather Pouch, Bead Pouch, Mandragora Pouch. Several of those are
+-- AMMUNITION and sit in `data/catalog.lua` as equipment (`Chr. Bul. Pouch`,
+-- `Dev. Bul. Pouch`, ...), so a bare `pouch` gate would fire `/item` at the
+-- ammo in your bag, stall on a use that can never confirm, and end the run.
+-- That is why `Frgtn. Pouch (head)` shipped 08-06 as an explicit NEGATIVE test
+-- (the old GB1o); Henrik asked for the pouches on 08-10, so the fragment got
+-- narrow rather than the gate getting loose.
+--
+-- BOTH SPELLINGS AGAIN, and here it is load-bearing rather than belt-and-braces.
+-- We match the CLIENT's name and priced against the SERVER's, and the two have
+-- disagreed three times (HELM's `Excavation Point` vs `Excav. Point`). `purse`
+-- survives either spelling because `Ctn.`/`Cotton` both keep the word. The
+-- pouches do not: if the client expands `Frgtn.` the way it expands nothing
+-- else, `frgtn. pouch` matches NOTHING and the five never open. `forgotten
+-- pouch` is the other half of that pair and is just as exclusive -- the only
+-- other `Forgotten` items are Hope/Step/Touch (3494/3497/3495), none a pouch.
+M.MATCH  = { 'giftbox', 'gatherbox', 'tacklebox', 'trove',
+             'purse', 'frgtn. pouch', 'forgotten pouch' };
 
 -- Is this item name one of ours, and where does it sort? nil = not a box.
 function M.classify(name)
