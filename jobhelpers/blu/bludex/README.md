@@ -29,9 +29,14 @@ do not run both flavors at once.
 1. **0x102 extended-equip packets** that set or unset Blue Magic spells —
    the same packet the game's own Set Spells menu sends, one spell per
    packet. Fired only by (a) the player clicking Apply, (b) the player's
-   `/…apply` command, or (c) the **Restore on level change** rule, which
-   **defaults OFF** and only ever re-adds spells the player's last applied
-   set already contained (it never unsets anything). Default 'safe' mode
+   `/…apply` command, or (c) the **level change** rule carried by the set the
+   player last applied — so nothing acts on its own until the player has
+   explicitly applied a set at least once, and only ever with that set's own
+   spells. One rule per set, three choices: **Restore** (re-adds spells the
+   applied set already contained; never unsets anything), **Lvl Set Switch**
+   (the same, except a level band the player built a set for gets that set
+   equipped instead), or **Manual** (nothing). Either acting rule sends
+   nothing when the live set already matches. Default 'safe' mode
    sends through the client's own function, which self-paces to ~1/s; the
    opt-in 'fast' mode injects the identical packet with a player-set delay
    (floor 0.2s).
@@ -49,11 +54,21 @@ second readers for things dlac already answers.
 
 ## Behavior defaults
 
-- The **Restore on level change** rule defaults **off**; the player arms it.
-  When armed: after a job/level change it re-adds spells stripped from the
-  last applied set, lowest spell level first, and reports one line with how
-  many stuck. Success cases are silent; refusals are one line naming the
-  blocker.
+- The **level change** rule is a property of each saved set, and the set the
+  player last APPLIED is the one whose rule runs — so a fresh install does
+  nothing on its own until the player has applied a set themselves. Unset, a
+  set's rule follows its own shape: **Restore** while it is a plain set,
+  **Lvl Set Switch** once the player has given it level-specific sets to
+  switch between. Picking one on the set stands.
+  - **Restore**: after a job/level change it re-adds spells stripped from that
+    set, lowest spell level first, and reports one line with how many stuck.
+    Success cases are silent; refusals are one line naming the blocker.
+  - **Lvl Set Switch**: the same, except when the level crosses into a band
+    (1/11/…/71, where the game's own set-point and slot rules step) the player
+    built a set for — that set is equipped instead, with one line saying which.
+    Nothing is sent when the live set already matches, so a level change that
+    changes nothing costs no packets and no cast lock.
+  - **Manual**: nothing acts; every change is a click.
 - Everything else acts only on a click.
 
 ## Strings

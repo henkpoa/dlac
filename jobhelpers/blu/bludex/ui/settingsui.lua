@@ -51,6 +51,20 @@ local function edit(im, id, current, isKnown, onSet, onClear)
     if kit.isFn(im, 'PopItemWidth') then im.PopItemWidth(); end
 end
 
+-- hover-delay choices, in the order they show. A settings file edited by hand
+-- can hold anything; delayLabel shows that value rather than snapping it.
+local DELAYS = {
+    { 'Instant', 0.0 }, { '0.25s', 0.25 }, { '0.5s', 0.5 }, { '0.75s', 0.75 },
+    { '1s', 1.0 }, { '1.5s', 1.5 }, { '2s', 2.0 },
+};
+
+local function delayLabel(v)
+    for _, d in ipairs(DELAYS) do
+        if math.abs(d[2] - v) < 0.001 then return d[1]; end
+    end
+    return ('%gs'):format(v);
+end
+
 function M.render(ctx)
     local im, cfg, blu = ctx.im, ctx.cfg, ctx.blu;
     local lvl   = blu.effectiveLevel();
@@ -146,6 +160,61 @@ function M.render(ctx)
             .. 'the merits added together, so it should equal the two figures\n'
             .. 'above summed. It cannot separate them, which is why each is\n'
             .. 'tracked on its own.', kit.COL.dim);
+    end
+
+    if kit.isFn(im, 'Separator') then im.Separator(); end
+    kit.helpLabel(im, 'Interface',
+        'How the window behaves, rather than what it computes.');
+    if kit.isFn(im, 'Separator') then im.Separator(); end
+
+    local delay = tonumber(cfg.tooltipDelay) or 0.5;
+    kit.helpLabel(im, 'Hover tooltip delay:',
+        'How long the cursor has to REST on something before its tooltip\n'
+        .. 'appears.\n\n'
+        .. 'At Instant every tooltip fires the moment the cursor crosses it,\n'
+        .. 'so simply moving the mouse across the window throws a panel of\n'
+        .. 'text over whatever you were reaching for.\n\n'
+        .. 'Covers every tooltip in Bludex, the spell tooltips included.');
+    if kit.isFn(im, 'SameLine') then im.SameLine(); end
+    local labels = {};
+    for _, d in ipairs(DELAYS) do labels[#labels + 1] = d[1]; end
+    local dstate = { value = delayLabel(delay) };
+    if kit.combo(im, '##bdxtipdelay', dstate, labels, nil,
+                 kit.measure(im, labels, 60) + 24) then
+        for _, d in ipairs(DELAYS) do
+            if d[1] == dstate.value then
+                cfg.tooltipDelay = d[2];
+                kit.hoverDelay = d[2];      -- takes effect on this very frame
+                if ctx.save then ctx.save(); end
+                break;
+            end
+        end
+    end
+
+    -- WHICH KIND COMES FIRST (docs/set-types-plan.md 3): the New chooser
+    -- lists this one on top, preselected. It never converts a set.
+    local KINDS = { 'levels', 'timeline' };
+    kit.helpLabel(im, 'New sets start as:',
+        'The set type the New chooser offers first.\n\n'
+        .. 'Flat: one spell per slot, applied as-is - and you can add\n'
+        .. 'dedicated builds per level range (level sync) under the same\n'
+        .. 'name whenever you want them.\n'
+        .. 'Slotlist: a list of spells per slot, each taking over at its\n'
+        .. 'own level - the most granular control.\n\n'
+        .. 'You still choose per set - this only orders the chooser.');
+    if kit.isFn(im, 'SameLine') then im.SameLine(); end
+    local klabels = {};
+    for _, k in ipairs(KINDS) do klabels[#klabels + 1] = ctx.sets.KIND_LABELS[k]; end
+    local kstate = { value = ctx.sets.KIND_LABELS[cfg.newSetKind] or 'Flat' };
+    if kit.combo(im, '##bdxnewkind', kstate, klabels, nil,
+                 kit.measure(im, klabels, 80) + 24) then
+        for _, k in ipairs(KINDS) do
+            if ctx.sets.KIND_LABELS[k] == kstate.value then
+                cfg.newSetKind = k;
+                if ctx.save then ctx.save(); end
+                break;
+            end
+        end
     end
 end
 
