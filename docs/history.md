@@ -205,8 +205,21 @@ panel), and fixed several load-bearing bugs. All landed on **`main`** and pushed
 - **Reproducibility bug fixed:** DT-family mods are mixed-scale (percentÃ—100 vs literal) â€”
   the builder now applies the `|v|>=100` rule (same as SkillchainDamage) so a rebuild
   reproduces `catalog.lua` byte-for-byte. Per-item desc-vs-DB drift fixups live in
-  `MOD_STRIP`/`MOD_ADD` (Neph. Grip 22198 has phantom craft mods; Hocho/Debahocho lack
-  their Cooking mod) â€” KEEP IN SYNC across apicrawl.py + apiscan.py. Report drift to GMs.
+  `MOD_STRIP`/`MOD_ADD` (Neph. Grip 22198 has phantom craft mods; the Plain set
+  stores double Surveyor) â€” KEEP IN SYNC across apicrawl.py + apiscan.py. Report drift to GMs.
+- **Craft skill mods can arrive as LATENTS, not `mods`** (2026-08-10). The crawler read
+  only an item's `mods` array, so the Hocho family's Cooking bonus disappeared and had
+  been hand-patched into `MOD_ADD` as "DB mods empty" -- it never was empty. The value is
+  a latent: `modId 135`, `latentId 40` = *equipped in the main hand*, i.e. exactly the
+  item text's "Main hand: Cooking skill +N", which is true whenever the weapon is worn.
+  `LATENT_CRAFT` derives it now and the three hardcodes are gone. NARROW on purpose --
+  craft family (128..135) + `latentId 40` only: 958 of 16,085 cached items carry latents
+  and the rest are genuinely conditional (HP/MP thresholds, weather, day, job, key
+  items). The 8 Trainee guild tools carry the same craft mods behind `latentId 24` (a
+  guild KEY ITEM) and stay out for that reason. Two catalog rows changed, rest
+  byte-identical: Debahocho +1 gained Cooking +3, and **Hocho is +3** -- confirmed by
+  Henrik against catseyexi.com/item/16924, NOT the +1 the retail-era note assumed. Do
+  not "correct" it back.
 
 ### Crafting stat family
 - Mapped (Henrik-approved names): 8 craft skills (`WoodworkingSkill`â€¦`CookingSkill`),
