@@ -261,9 +261,13 @@ M.LADDER = { 'tiny tacklebox', 'timeworn tacklebox', 'titanic tacklebox',
 -- 5810 Moat Carp Creel and 5811 Forest Carp Creel, and nothing else anywhere.
 -- Henrik asked for the moat one; the forest one is its mirror and the open
 -- fragment takes it too, which is the behaviour this list is built for. Both
--- are laddered so neither can sort last and steal the tray icon. What is
--- ASSUMED rather than told: that the forest creel also pays one stack. If it
--- ever pays two, `creel` is where that splits into two fragments.
+-- are laddered so neither can sort last and steal the tray icon.
+--
+-- The forest creel paying one stack like the moat one was an ASSUMPTION when
+-- this shipped, and it is not any more -- Henrik, 2026-08-10, asked for it
+-- explicitly "same as moat". Both sides of `creel` are now told, not inferred,
+-- so the shared need = 2 is as solid as the moat one's. If a third creel ever
+-- turns up paying two stacks, `creel` is where that splits into fragments.
 M.MATCH  = { 'giftbox', 'gatherbox', 'tacklebox', 'trove',
              'purse', 'frgtn. pouch', 'forgotten pouch', 'creel' };
 

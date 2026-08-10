@@ -13824,10 +13824,11 @@ end)();
     check('GB1y an unheard-of purse still opens',
         gb.classify('Velvet Purse (alx.)'), #gb.LADDER + 1);
 
-    -- The creels (2026-08-10). Henrik asked for the moat one; `creel` is exactly
-    -- 2 items in the table so the forest mirror comes along, and BOTH are
-    -- laddered -- an unranked one would sort last and take the tray icon off the
-    -- grand giftbox, which is the standing cost of a missing rung (GB1q).
+    -- The creels (2026-08-10). `creel` is exactly 2 items in the table, and
+    -- Henrik asked for both -- the moat one first, then the forest one "same as
+    -- moat", which is why they share a rank block and a need. BOTH are laddered:
+    -- an unranked one would sort last and take the tray icon off the grand
+    -- giftbox, the standing cost of a missing rung (GB1q).
     check('GB1z the creels are ours, in id order',
         table.concat({ gb.classify('Moat Carp Creel'), gb.classify('Forest Carp Creel') }, ','),
         '22,23');
