@@ -16,7 +16,7 @@ local M = {};
 
 local _iok, imgui = pcall(require, 'imgui');
 
--- Injected by gearui (M.configure): effStats, ownedCounts.
+-- Injected by gearui (M.configure): effStats, ownedCounts, ownedAugs, augCounts.
 local deps = nil;
 function M.configure(d) deps = d; end
 
@@ -206,10 +206,21 @@ local function fullStatList(stats)
 end
 
 -- "xN" owned tag (only when we own two or more -- the interesting case for DW /
--- paired slots). Empty otherwise. Contains no '%'.
+-- paired slots). Empty otherwise. Contains no '%'. An augment-pinned record
+-- (AugKey) counts ITS roll only (deps.augCounts) -- "x2" on both halves of a
+-- split pair is exactly the "he has two of them" confusion the split exists to
+-- end; a missing per-roll reader falls back to the id count rather than lie
+-- with silence.
 local function qtyTag(rec)
-    local oc = (deps ~= nil and deps.ownedCounts ~= nil) and deps.ownedCounts() or nil;
-    local c = (rec and rec.Id and oc ~= nil) and oc[rec.Id] or nil;
+    local c = nil;
+    if rec ~= nil and type(rec.AugKey) == 'string' and deps ~= nil
+       and type(deps.augCounts) == 'function' then
+        c = deps.augCounts(rec);
+    end
+    if c == nil then
+        local oc = (deps ~= nil and deps.ownedCounts ~= nil) and deps.ownedCounts() or nil;
+        c = (rec and rec.Id and oc ~= nil) and oc[rec.Id] or nil;
+    end
     if c ~= nil and c >= 2 then return '  x' .. tostring(c); end
     return '';
 end
@@ -217,7 +228,12 @@ end
 -- "Aug: <first> (+N)" tag for the augments on YOUR owned copy (by id) -- render
 -- it in the gold COL_SCORE so augmented copies stand out wherever gear is being
 -- chosen or viewed. Empty string when the copy is unaugmented (or dep missing).
+-- An augment-split record knows exactly which roll it is (AugText, stamped by
+-- the scan): show THAT, never the by-id "first copy (+N)" guess.
 local function augTag(rec)
+    if rec ~= nil and type(rec.AugText) == 'string' and rec.AugText ~= '' then
+        return 'Aug: ' .. rec.AugText;
+    end
     local f = (deps ~= nil) and deps.ownedAugs or nil;
     if f == nil or rec == nil or rec.Id == nil then return ''; end
     local al = f()[rec.Id];

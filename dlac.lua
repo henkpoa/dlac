@@ -18,7 +18,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.08.06o';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.08.10a';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
                                 -- (03f = engine v163: the contest explains its own plan;
                                 --  03g = one floating tray: Teleports + the E-Box crates;
@@ -495,6 +495,17 @@ for _, mod in ipairs({ 'gear', 'feature\\augments', 'gear\\gearoptim', 'gear\\ge
         if _cfok then _cfmt.err(m); else print('[dlac] ' .. m); end
     end
 end
+
+-- Native-engine augment pins: hand the CatsEyeXI private-augment signature
+-- reader to the equip engine. INJECTED, never require'd from there --
+-- equipengine must stay loadable in the LAC state, where feature\augments
+-- cannot (the augmentStringsOf pattern). Without this line an AugKey-pinned
+-- set entry (augment-split gear.lua records) would never find its item.
+pcall(function()
+    local eng = require('dlac\\feature\\equipengine');
+    local aug = require('dlac\\feature\\augments');
+    if type(aug.signature) == 'function' then eng.augmentKeyOf = aug.signature; end
+end);
 
 -- Job helper modules (issue #137): now that the UI host and main GUI are up, scan
 -- addons\dlac\jobhelpers\ for drop-in module folders. The loader feeds the SAME

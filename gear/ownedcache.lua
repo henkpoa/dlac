@@ -50,13 +50,51 @@ end
 -- Drop the cached split (Scan / Reload / the ~4s availability heartbeat).
 function M.resetCache() _ownedCounts = nil; end
 
+-- The per-ROLL tallies for an augment-pinned record: { total, avail, where } for
+-- exactly the copies whose private-augment signature matches rec.AugKey, or nil
+-- when the record carries no pin / the split has no per-roll map (an old test
+-- override, the decoder missing) -- callers then fall back to the id answer, so
+-- nothing is ever hidden on a shrug. AugKey == '' means the UNAUGMENTED copy:
+-- whatever the id owns beyond its augmented rolls.
+local function augEntry(rec)
+    if rec == nil or rec.Id == nil or type(rec.AugKey) ~= 'string' then return nil; end
+    M.counts();                             -- populate the split cache
+    local aug = (_ownedCounts ~= nil) and _ownedCounts.aug or nil;
+    if type(aug) ~= 'table' then return nil; end
+    local per = aug[rec.Id];
+    if rec.AugKey == '' then
+        local t  = (_ownedCounts.total ~= nil) and (_ownedCounts.total[rec.Id] or 0) or 0;
+        local av = (_ownedCounts.avail ~= nil) and (_ownedCounts.avail[rec.Id] or 0) or 0;
+        if type(per) == 'table' then
+            for _, e in pairs(per) do
+                t  = t  - (e.total or 0);
+                av = av - (e.avail or 0);
+            end
+        end
+        return { total = math.max(0, t), avail = math.max(0, av) };
+    end
+    if type(per) ~= 'table' then return { total = 0, avail = 0 }; end
+    return per[rec.AugKey] or { total = 0, avail = 0 };
+end
+
+-- Owned copies of exactly rec's roll (total, anywhere), or nil when rec is not
+-- augment-pinned / the per-roll map is unavailable. gearfmt.qtyTag's dep.
+function M.augCounts(rec)
+    local e = augEntry(rec);
+    return (e ~= nil) and e.total or nil;
+end
+
 -- Is the record actually in your bags (owned ANYWHERE)? gear.lua is a curated DB
 -- and can list items you no longer own (e.g. a base "Garrison Sallet" when you
 -- only have the +1). Availability is colour; ownership gates visibility.
+-- An augment-pinned record asks about ITS roll: sell the Acc+3 mittens and that
+-- row goes, the other roll's row stays.
 function M.haveInBags(rec)
     if rec == nil or rec.Id == nil then return true; end
     local oc = M.totals();   -- owned anywhere counts as owned;
     if type(oc) ~= 'table' or next(oc) == nil then return true; end   -- availability is colour
+    local ae = augEntry(rec);
+    if ae ~= nil then return ae.total >= 1; end
     return (oc[rec.Id] or 0) >= 1;
 end
 
@@ -66,6 +104,8 @@ function M.isStored(rec)
     if rec == nil or rec.Id == nil then return false; end
     local tot = M.totals();
     if type(tot) ~= 'table' or (tot[rec.Id] or 0) < 1 then return false; end
+    local ae = augEntry(rec);
+    if ae ~= nil then return ae.total >= 1 and ae.avail == 0; end
     local av = M.counts();
     return type(av) == 'table' and (av[rec.Id] or 0) == 0;
 end
@@ -87,6 +127,8 @@ end
 function M.whereText(rec)
     if rec == nil or rec.Id == nil then return ''; end
     local w = M.whereOf(rec.Id);
+    local ae = augEntry(rec);   -- a pinned record names ITS roll's bags only
+    if ae ~= nil and type(ae.where) == 'table' then w = ae.where; end
     if w == nil then return ''; end
     local locs = '';
     pcall(function()

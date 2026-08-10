@@ -993,7 +993,8 @@ end
 -- below ownedAugMap's declaration -- a forward reference would capture a nil
 -- global, not the local (hard rule 8).
 fmt.configure({ effStats = effStats, ownedCounts = owned.counts,
-                ownedAugs = function() return ownedAugMap(); end });
+                ownedAugs = function() return ownedAugMap(); end,
+                augCounts = owned.augCounts });   -- per-roll counts for augment-split records
 
 -- Dual-wield availability. Prefer utils.isDualWieldAvailable (required lazily to
 -- avoid a load-time circular require); else mirror it (THF>=20 / NIN>=10 / DNC>=20).
@@ -1267,7 +1268,12 @@ local function renderItemTooltip(rec, note)
                 imgui.TextColored(COL.DIM, 'Held: ' .. fmt.esc(locs));
             end
         end
-        if rec.Id ~= nil then                          -- private augments on your owned copy
+        if type(rec.AugText) == 'string' and rec.AugText ~= '' then
+            -- an augment-split record IS one specific roll: show exactly it
+            imgui.TextColored(COL.SCORE, 'Aug: ' .. fmt.esc(rec.AugText));
+        elseif type(rec.AugKey) == 'string' and rec.AugKey == '' then
+            imgui.TextColored(COL.SCORE, 'The unaugmented copy (an augmented twin has its own row).');
+        elseif rec.Id ~= nil then                      -- private augments on your owned copy
             local al = ownedAugMap()[rec.Id];
             if al ~= nil and #al > 0 then
                 local more = (#al > 1) and string.format('   (+%d more copies)', #al - 1) or '';
@@ -2487,7 +2493,21 @@ local function resolveSetItem(elem)
     -- applied where the value is finally used).
     local rec = nil;
     local refName = (type(ref.Name) == 'string') and ref.Name or nil;
-    if type(ref.Id) == 'number' then rec = _ownedById[ref.Id]; end
+    -- An augment-pinned ref must land on ITS flattened record, not whichever
+    -- same-Id row won the byId seat: two rolls of one item share Id and Name,
+    -- and collapsing them here re-creates the very ambiguity the split ended
+    -- (both set entries would edit -- and commit -- as one record).
+    if type(ref.AugKey) == 'string' and type(_owned) == 'table' then
+        for _, r in ipairs(_owned) do
+            if r.AugKey == ref.AugKey
+               and ((type(ref.Id) == 'number' and r.Id == ref.Id)
+                    or (refName ~= nil and r.Name == refName)) then
+                rec = r;
+                break;
+            end
+        end
+    end
+    if rec == nil and type(ref.Id) == 'number' then rec = _ownedById[ref.Id]; end
     if rec == nil and refName ~= nil then rec = _ownedByName[string.lower(refName)]; end
     if rec == nil and refName ~= nil then     -- not in gear.lua: display-only, no path
         rec = { Name = refName, Level = tonumber(ref.Level) or 0, Id = tonumber(ref.Id),
@@ -3881,8 +3901,15 @@ local function renderAddPopup(job, level)
         -- has to exist before the filter row renders). Sub takes the full paired pool.
         local gearKey = GEAR_OF[ui.setSelected] or ui.setSelected;
         local list = M.working[ui.setSelected] or {};
+        -- Keyed Name + AugKey, not Name alone: adding one roll of an augment-
+        -- split pair must not hide its twin from the picker (they share a Name
+        -- on purpose -- the pin is the difference).
         local inList = {};
-        for _, it in ipairs(list) do if it.rec and it.rec.Name then inList[it.rec.Name] = true; end end
+        for _, it in ipairs(list) do
+            if it.rec and it.rec.Name then
+                inList[it.rec.Name .. '\1' .. (it.rec.AugKey or '')] = true;
+            end
+        end
         local useLevel = setBuildLevel(level);   -- "Build as lv.75" lifts the cap for + Add too
         -- "Show gear I don't own" (ADR 0026). Sticky across opens (ui state), NOT
         -- persisted: like the lockstyle picker's tick, it is a way of looking at
@@ -3983,7 +4010,7 @@ local function renderAddPopup(job, level)
         local typeHidden = 0;     -- ditto, for the weapon-type filter
         local shown = {};
         for _, rec in ipairs(cands) do
-            if not inList[rec.Name] and not (rec.Id and blocked[rec.Id])
+            if not inList[(rec.Name or '?') .. '\1' .. (rec.AugKey or '')] and not (rec.Id and blocked[rec.Id])
                and itemSearchMatch(rec, qTerms, useLevel)
                and (ui.addAvail[1] ~= true or not owned.isStored(rec)) then
                 if travelSet ~= nil and rec.Name ~= nil and travelSet[string.lower(rec.Name)] then

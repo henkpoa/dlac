@@ -9909,3 +9909,63 @@ giftbox), and the rank fixtures went out one and back. Suites **7017 + 1362**, b
 interpreters. Field checks: **J2 holds for the troves**, **J1 is CLOSED for 6554 and
 6556**, I5 re-based on 1.0s, and what is left is J1b — nobody has read a giftbox or a
 Lamia Trove off the client yet.
+
+## Session "two Hecatomb Mittens +1" (2026-08-10, `2026.08.10a`)
+
+**Theme:** a friend's field report through Henrik: he owns two Hecatomb Mittens +1 with
+DIFFERENT private augments, and dlac showed one row ("x2") — the second roll was
+unreachable. Every identity in the pipeline was the item Id (or its name), so two
+different pieces of gear wearing one name collapsed everywhere: one picker row, one
+gear.lua record, and an equip that took whichever copy the bag scan hit first.
+
+**The identity.** `augments.signature(extra)` — the raw `id:tier` words of the
+CatsEyeXI extdata, sorted, `|`-joined (`"23:3|258:6|328:3"`). Built from packet ids,
+never display labels, so renaming an `AUG_NAME` entry can't orphan a stored pin; `''`
+is the unaugmented copy. The signature is called the roll's **AugKey** everywhere.
+
+**The split (scan side).** `/dl scan` (and auto-sync) now tallies rolls per id; an id
+owned in ≥2 distinct rolls yields one record PER ROLL: `AugKey`, `AugText` (the human
+reading), per-roll `Count`, and a key suffixed `_A<djb2 hex4>` of the signature —
+a HASH, not an ordinal, so a rescan regenerates the same key and set references
+(`gear.Hands.HecatombMittens_1_A7F3A`) survive bag shuffles. `_A0` = the pinned-plain
+copy. Known is judged per roll against records that pin that signature — a bare record
+means "any copy" and cannot vouch, or the second mitten would read documented forever.
+Single-roll ids scan byte-identical to before. Bare legacy records stay untouched
+(they keep meaning "any copy"); `dedupe` groups by key and `prune` keeps by Id, so
+neither eats a split.
+
+**The pin (equip side).** `equipcore.checkAugments` gained an `AugKey` clause —
+EXACT signature match, deliberately not the LAC `Augment` subset semantics: with
+overlapping rolls a subset pin could hand copy B to copy A's slot and leave B's own
+entry unfillable. The snapshot builders stamp `item.augment.Key` via
+`equipengine.augmentKeyOf`, an INJECTED hook wired in dlac.lua (the
+`augmentStringsOf` pattern — equipengine must stay loadable in the LAC state, where
+`feature\augments` cannot). Hook absent → augmented items carry no Key and non-`''`
+pins never match: the safe direction, a wrong-augment piece is never equipped by
+mistake.
+
+**The flatten trap, found by reading, not the field.** `utils.flattenHead` stored the
+ladder winner as a bare NAME — the pin died before the engine ever saw it. A pinned
+winner now flattens as the LAC-native table form `{ Name, AugKey }`; every consumer of
+flattened values already type-checks (the `dlac:` sniffs, scanSet, ammo planning), and
+the two arbiter readers that didn't — `reservedDrops`, `reserveFloor` — now take a
+table entry by its `.Name`, so a pinned slot still stands in reserve contests and the
+pair law. The arbiter keeps reasoning in names; the pin is the resolver's business.
+
+**GUI.** Split records simply ARE separate rows (no picker dedup existed), each showing
+its own gold `Aug:` tag (`AugText` beats the by-id "first copy (+N)" guess in gearfmt,
+tooltips, floatgear facts, the equipped cards); `ownedSplit` grew a per-roll `aug` map
+so counts/colours answer per roll (each mitten says x1, sell one and only ITS row goes);
+`resolveSetItem` resolves a pinned ref past the by-Id collapse; the add-popup's
+in-list filter keys Name+AugKey so adding one roll doesn't hide its twin; imgui ids
+that were bare `rec.Id` take the AugKey too or the second row is unclickable.
+
+**Known limits, on purpose:** optimizer scoring still folds `augStats[id]` (the first
+copy's stats price both rolls); the legacy LAC engine ignores AugKey (name-first-fit,
+old behaviour); a virtual marker's `|fallback` string can't carry a pin.
+
+**Tests:** EQC29a–g (exact match, partial refused, `''` pins plain, worn right roll
+satisfies / wrong roll swaps), DA1–12 (signature laws, hash stability, renderEntry
+stamps, unpinned byte-parity), LD7c–f (pinned flatten shape, floor/reserve by Name).
+Suites **7040 + 1362**. Field round owed: the friend rescans, picks each mitten into a
+set, and the right copy must land — read the `/dl report` before believing it.
