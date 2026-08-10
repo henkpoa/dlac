@@ -36507,6 +36507,7 @@ return {
                 Stats = {
                     DMG = 2,
                     Delay = 222,
+                    CookingSkill = 3,
                 }
             },
             ElettaKatana = {
@@ -36956,7 +36957,7 @@ return {
                 Stats = {
                     DMG = 30,
                     Delay = 227,
-                    CookingSkill = 1,
+                    CookingSkill = 3,
                 }
             },
             Hochomasamune = {
