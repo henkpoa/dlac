@@ -1677,10 +1677,44 @@ local function renderQuickWindowRow(key, label, tip, icon, fn)
 end
 
 local function renderTeleportsPopup()
+    -- Position memory (Henrik, 2026-08-10): a menu you DRAGGED reopens where you
+    -- left it -- both doors, kept across logons (uiflags tmx/tmy) -- while one
+    -- you never moved keeps the default at-click placement. Appearing-cond, so
+    -- a live drag always wins over the pin.
+    if type(ui._tpMenuPos) == 'table' then
+        imgui.SetNextWindowPos({ ui._tpMenuPos[1], ui._tpMenuPos[2] }, ImGuiCond_Appearing or 8);
+    end
+    -- The drag-settle debounce (idlefloat's _MovedAt trick: one uiflags write per
+    -- settled drag, not 60/s) -- checked OUTSIDE the open gate, so the save still
+    -- lands when the drag ended by closing the menu.
+    if ui._tpMenuMovedAt ~= nil and os.clock() >= ui._tpMenuMovedAt then
+        ui._tpMenuMovedAt = nil;
+        ui._flagsDirty = true;
+    end
     if not imgui.BeginPopup('##dlac_teleports') then return; end
+    -- Only a MOVE pins the menu. The baseline is wherever this open APPEARED
+    -- (the click spot, or the pin), so "position differs from baseline" can
+    -- never turn the default placement into an accidental pin. Fresh opens are
+    -- detected by the render gap -- an open popup draws every frame.
+    pcall(function()
+        local px, py = imgui.GetWindowPos();
+        if type(px) == 'table' then py = (px[2] or px.y); px = (px[1] or px.x); end
+        if type(px) ~= 'number' or type(py) ~= 'number' then return; end
+        px, py = math.floor(px), math.floor(py);
+        local now = os.clock();
+        if now - (ui._tpMenuSeenAt or -10) > 0.25 then ui._tpMenuBase = { px, py }; end
+        ui._tpMenuSeenAt = now;
+        local b = ui._tpMenuBase;
+        if type(b) == 'table' and (b[1] ~= px or b[2] ~= py)
+           and (type(ui._tpMenuPos) ~= 'table' or ui._tpMenuPos[1] ~= px or ui._tpMenuPos[2] ~= py) then
+            ui._tpMenuPos = { px, py };
+            ui._tpMenuMovedAt = now + 1;
+        end
+    end);
+    -- (The "click: equip + use when the game says ready" helper line lived beside
+    -- this header until 2026-08-10 -- Henrik: gone; the footer's Reset position
+    -- button took its place, and every row explains itself on hover.)
     imgui.TextColored(COL.HEADER, 'Teleports');
-    imgui.SameLine(0, 10);
-    imgui.TextColored(COL.DIM, 'click: equip + use when the game says ready');
     imgui.Separator();
     local rows = {};
     pcall(function() rows = useit.menu() or {}; end);
@@ -1797,6 +1831,18 @@ local function renderTeleportsPopup()
     end
     if imgui.IsItemHovered() then
         imgui.SetTooltip('Pin a small always-on-screen Teleports button (PartyFinder-style).\nIt shares one draggable tray with the E-Box crates -- drag the tray\'s\nedge to move them together. Untick -- here or in the floating menu\nitself -- to remove it. Remembered across sessions.');
+    end
+    -- Reset position (Henrik, 2026-08-10 -- the header helper text's successor):
+    -- forget the remembered spot, back to opening beside the click. Closes the
+    -- menu so the very next open demonstrates the answer.
+    imgui.SameLine(0, 14);
+    if imgui.SmallButton('Reset position##tpmenupos') then
+        ui._tpMenuPos = nil; ui._tpMenuBase = nil; ui._tpMenuMovedAt = nil;
+        ui._flagsDirty = true;
+        imgui.CloseCurrentPopup();
+    end
+    if imgui.IsItemHovered() then
+        imgui.SetTooltip('Forget the remembered menu spot -- it opens beside your click again.\nDrag the menu anywhere and it remembers the new spot (kept across logons).');
     end
     imgui.EndPopup();
 end

@@ -101,6 +101,13 @@ sf.saveUiFlags = function()
         if type(ui._tpPos) == 'table' then
             tpx, tpy = tonumber(ui._tpPos[1]) or 0, tonumber(ui._tpPos[2]) or 0;
         end
+        -- The Teleports MENU's dragged spot (2026-08-10) -- distinct from the
+        -- floating BUTTON's tray above. 0,0 = never dragged / reset: the menu
+        -- opens beside the click (the loader skips it, same rule as tpx/tpy).
+        local tmx, tmy = 0, 0;
+        if type(ui._tpMenuPos) == 'table' then
+            tmx, tmy = tonumber(ui._tpMenuPos[1]) or 0, tonumber(ui._tpMenuPos[2]) or 0;
+        end
         local gfx, gfy = 0, 0;
         if type(ui._gfPos) == 'table' then
             gfx, gfy = tonumber(ui._gfPos[1]) or 0, tonumber(ui._gfPos[2]) or 0;
@@ -119,11 +126,11 @@ sf.saveUiFlags = function()
         -- "Show all" became a Setting when it moved out of the header, so it is
         -- remembered now like every other one.
         local showall = (type(ui.showAll) == 'table' and ui.showAll[1] == true);
-        D.writeFileText(p, string.format('return { debug = %s, autosync = %s, viewids = %s, buildmax = %s, tgmon = %s, arbmon = %s, tpfloat = %s, tpx = %d, tpy = %d, gearfloat = %s, gfx = %d, gfy = %d, gfscale = %.2f, ifx = %d, ify = %d, openui = %q, showall = %s, autobuildimport = %s, gearwarn = %s, buildstored = %s }\n',
+        D.writeFileText(p, string.format('return { debug = %s, autosync = %s, viewids = %s, buildmax = %s, tgmon = %s, arbmon = %s, tpfloat = %s, tpx = %d, tpy = %d, tmx = %d, tmy = %d, gearfloat = %s, gfx = %d, gfy = %d, gfscale = %.2f, ifx = %d, ify = %d, openui = %q, showall = %s, autobuildimport = %s, gearwarn = %s, buildstored = %s }\n',
             tostring(sf.flags.debug), tostring(sf.flags.autosync), tostring(sf.flags.viewids), tostring(bm),
             tostring(ui._tgMon == true),
             tostring(ui._arbMon == true),
-            tostring(ui._tpFloat == true), tpx, tpy,
+            tostring(ui._tpFloat == true), tpx, tpy, tmx, tmy,
             tostring(ui._gearFloat == true), gfx, gfy,
             tonumber(ui._gfScale) or 1.0, ifx, ify,
             openui, tostring(showall), tostring(sf.flags.autobuildimport ~= false),
@@ -174,6 +181,11 @@ sf.loadUiFlags = function()
             if type(t.arbmon)   == 'boolean' then ui._arbMon  = t.arbmon;  end
             if type(t.tpx) == 'number' and type(t.tpy) == 'number' and (t.tpx ~= 0 or t.tpy ~= 0) then
                 ui._tpPos = { t.tpx, t.tpy };
+            end
+            -- The Teleports MENU's remembered spot (2026-08-10): absent or 0,0
+            -- (never dragged / reset) leaves the default at-click placement.
+            if type(t.tmx) == 'number' and type(t.tmy) == 'number' and (t.tmx ~= 0 or t.tmy ~= 0) then
+                ui._tpMenuPos = { t.tmx, t.tmy };
             end
             -- The floating equipment window remembers open/closed + where it sat.
             -- (The PINS it edits do not persist -- pinwatch clears them on load.)

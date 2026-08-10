@@ -18162,6 +18162,17 @@ end)();
     -- cannot enter, so it is pinned on the source, anchored to the row it guards.
     check('SET59 the restock row sits behind the CW gate',
         tostring(gsrc or ''):match("gmode%.get%(%) == 'CW'.-renderQuickWindowRow%('restock'") ~= nil, true);
+    -- SET60-62: the Teleports menu's position memory (Henrik, 2026-08-10). The
+    -- popup body only runs under a live imgui, so the three facts are pinned on
+    -- the source: a dragged menu is remembered (the uiflags consumer exists),
+    -- the old header helper text is GONE (the ask was remove-and-replace), and
+    -- the replacement Reset position button is really there.
+    check('SET60 the teleports menu pins its dragged spot',
+        tostring(gsrc or ''):find('_tpMenuPos', 1, true) ~= nil, true);
+    check('SET61 the "click: equip + use" helper text is gone',
+        tostring(gsrc or ''):find("TextColored(COL.DIM, 'click: equip + use", 1, true), nil);
+    check('SET62 the Reset position button took its place',
+        tostring(gsrc or ''):find("SmallButton('Reset position##tpmenupos')", 1, true) ~= nil, true);
 end)();
 
 -- ---------------------------------------------------------------------------
@@ -18174,7 +18185,8 @@ end)();
     check('UIF1 module loads headless', type(sf), 'table');
 
     local wrote = {};
-    local ui = { showAll = { false }, _openMode = 'job', _tgMon = true, _gfScale = 1.25 };
+    local ui = { showAll = { false }, _openMode = 'job', _tgMon = true, _gfScale = 1.25,
+                 _tpMenuPos = { 415, 208 } };   -- the Teleports MENU's dragged spot (2026-08-10)
     sf.configure({
         dataDir = function() return 'X:\\char\\dlac\\'; end,
         charBase = function() return 'X:\\char\\'; end,
@@ -18204,6 +18216,15 @@ end)();
     check('UIF9 showall round-trips',  t.showall,  false);
     check('UIF10 tgmon round-trips',   t.tgmon,    true);
     check('UIF11 gfscale round-trips', t.gfscale,  1.25);
+    -- The Teleports MENU's remembered spot (2026-08-10): a dragged position
+    -- round-trips; a reset (nil) writes the 0,0 none-marker the loader skips.
+    check('UIF11a tmx round-trips', t.tmx, 415);
+    check('UIF11b tmy round-trips', t.tmy, 208);
+    ui._tpMenuPos = nil;                       -- the Reset position button
+    sf.saveUiFlags();
+    local tr = (loadstring or load)(wrote.text)();
+    check('UIF11c reset writes the 0,0 none-marker', tr.tmx == 0 and tr.tmy == 0, true);
+    ui._tpMenuPos = { 415, 208 };              -- restore for the sections below
 
     -- A hand-edited openui must not be able to inject Lua: %q quotes and escapes it.
     ui._openMode = 'ne"ver\nrm -rf';
@@ -18224,6 +18245,7 @@ end)();
     _G.loadfile = function() return function()
         return { debug = false, autosync = true, viewids = false,
                  openui = 'login', showall = true, gfscale = 2.0,
+                 tmx = 415, tmy = 208,
                  autobuildimport = false, gearwarn = false, buildstored = false };
     end; end
     sf2.configure({
@@ -18242,12 +18264,14 @@ end)();
     check('UIF18a autobuildimport loads', sf2.flags.autobuildimport, false);
     check('UIF18b gearwarn loads', sf2.flags.gearwarn, false);
     check('UIF18c buildstored loads', sf2.flags.buildstored, false);
+    check('UIF18d teleport-menu spot loads',
+        type(ui2._tpMenuPos) == 'table' and ui2._tpMenuPos[1] == 415 and ui2._tpMenuPos[2] == 208, true);
 
     -- Absent keys keep their defaults -- an old uiflags.lua written before this
     -- slice must not start opening windows or flipping Show all.
     local sf3 = dofile('gear/syncflags.lua');
     local ui3 = { showAll = { false } };
-    _G.loadfile = function() return function() return { debug = true }; end; end
+    _G.loadfile = function() return function() return { debug = true, tmx = 0, tmy = 0 }; end; end
     sf3.configure({
         dataDir = function() return 'X:\\char\\dlac\\'; end,
         charBase = function() return 'X:\\char\\'; end,
@@ -18261,6 +18285,9 @@ end)();
     check('UIF20 ...which normalizes to never',
         dofile('ui/menuui.lua')._normalizeOpenMode(ui3._openMode), 'never');
     check('UIF21 absent showall stays off', ui3.showAll[1], false);
+    -- 0,0 is the none-marker (never dragged / reset): the menu keeps its default
+    -- at-click placement rather than pinning to the screen corner.
+    check('UIF21z the 0,0 marker leaves the menu unpinned', ui3._tpMenuPos, nil);
     -- Every uiflags.lua written before 2026-07-27 lacks the key. Those installs
     -- must keep auto-building on import, or a dlac update would silently change
     -- what an import does to everybody who never asked for the opt-out.
