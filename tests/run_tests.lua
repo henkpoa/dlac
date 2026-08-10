@@ -3241,14 +3241,18 @@ end
 --    RULE (Henrik, 2026-07-20 -- REVISES the 07-15 "anything you own" rule,
 --    which was too OPEN): the picker offers gear ONE of your jobs can wear at
 --    its CURRENT level -- the server's canEquipItemOnAnyJob (charutils.cpp:2591,
---    getReqLvl() <= jobs.job[i]). We mirror it via GetJobLevel, which reads that
---    same current level, so it is PRESTIGE-CORRECT: a DE-LEVELED THF's gear
---    drops out. Not the OLD current-job-only filter (too tight) and not
---    anything-owned (too loose) -- the middle. It FAILS OPEN on a nil levels
---    read (pre-login): offer everything, never hide it all (the Save-gate
---    lesson). Ownership is a SEPARATE axis, still gated only at Save. Supersedes
---    [[lockstyle-anything-you-own]]; the engine's _lsStyleGate (AJ) is the same
---    gate, and the LOOK preview (AI) still renders anything.
+--    getReqLvl() <= jobs.job[i]). We mirror it via GetJobLevel. (The old claim
+--    here that this was "PRESTIGE-CORRECT" was WRONG -- CatsEyeXI's gate WAIVES
+--    level requirements on a prestiged job, so the raw read must be folded
+--    through jobgate.effectiveLevels first; section PW. These AH fixtures feed
+--    the gate EFFECTIVE levels directly, so every AH check stands as written --
+--    an under-level job here is one that is genuinely under level, e.g.
+--    de-leveled by deaths, NOT prestiged.) Not the OLD current-job-only filter
+--    (too tight) and not anything-owned (too loose) -- the middle. It FAILS
+--    OPEN on a nil levels read (pre-login): offer everything, never hide it all
+--    (the Save-gate lesson). Ownership is a SEPARATE axis, still gated only at
+--    Save. Supersedes [[lockstyle-anything-you-own]]; the engine's _lsStyleGate
+--    (AJ) is the same gate, and the LOOK preview (AI) still renders anything.
 -- ---------------------------------------------------------------------------
 local savedGear = package.loaded['dlac\\gear'];
 package.loaded['dlac\\gear'] = {
@@ -3259,7 +3263,7 @@ package.loaded['dlac\\gear'] = {
         Highlevel = { Name = 'Highlevel Cap', Level = 99, Jobs = { 'WHM' } },
         Wrongboth = { Name = 'Wrongboth Cap', Level = 99, Jobs = { 'BLM' } },
         Anyjob    = { Name = 'Anyjob Cap',    Level = 1,  Jobs = { 'All' } },
-        Thief     = { Name = 'Thief Cap',     Level = 50, Jobs = { 'THF' } },   -- the prestige case
+        Thief     = { Name = 'Thief Cap',     Level = 50, Jobs = { 'THF' } },   -- the de-leveled case
     },
     Main = {   -- Main/Range nest one level deeper, by skill category
         Sword      = { Offsword = { Name = 'Offjob Sword', Level = 75, Jobs = { 'DRK' }, OneHanded = true } },
@@ -3277,7 +3281,7 @@ package.loaded['dlac\\gear'] = savedGear;
 
 check('AH0 _listFor exported', type(lockstyleM._listFor), 'function');
 if type(lockstyleM._listFor) == 'function' then
-    -- You have WHM 50, THF 30 (prestige-lowered), DRK 80. No BLM.
+    -- You have WHM 50, THF 30 (de-leveled, NOT prestiged), DRK 80. No BLM.
     local JL = { WHM = 50, THF = 30, DRK = 80 };
     local function offered(slot, jl, q)
         local set = {};
@@ -3290,7 +3294,7 @@ if type(lockstyleM._listFor) == 'function' then
     check('AH3 wrong-job AND under-level NOT offered',    head['Wrongboth Cap'], nil);
     check('AH4 on-job item offered (WHM 50>=1)',          head['Onjob Cap'],     true);
     check('AH5 All-jobs item offered (some job >=1)',     head['Anyjob Cap'],    true);
-    check('AH5b PRESTIGE: de-leveled THF gear NOT offered (THF 30<50)', head['Thief Cap'], nil);
+    check('AH5b de-leveled THF gear NOT offered (THF 30<50)', head['Thief Cap'], nil);
     check('AH6 picker offers only wearable gear (2 of 6)', #lockstyleM._listFor('Head', '', false, JL), 2);
     check('AH7 any-job gear offered when a job IS at level (DRK 80 >= sword 75)',
         offered('Main', JL)['Offjob Sword'], true);
@@ -3307,7 +3311,7 @@ if type(lockstyleM._listFor) == 'function' then
     -- the pure gate (jobgate.canEquip) itself:
     local jg = dofile('gear/jobgate.lua');
     check('AH15 canEquip: on-job at level',               jg.canEquip({ Jobs = { 'THF' }, Level = 30 }, { THF = 30 }), true);
-    check('AH16 canEquip: on-job UNDER level (prestige)', jg.canEquip({ Jobs = { 'THF' }, Level = 50 }, { THF = 30 }), false);
+    check('AH16 canEquip: on-job UNDER level (de-leveled)', jg.canEquip({ Jobs = { 'THF' }, Level = 50 }, { THF = 30 }), false);
     check('AH17 canEquip: All jobs, any at level',        jg.canEquip({ Jobs = { 'All' }, Level = 40 }, { WHM = 50 }), true);
     check('AH18 canEquip: no such job of yours',          jg.canEquip({ Jobs = { 'BLM' }, Level = 1 }, { WHM = 50 }), false);
     check('AH19 canEquip: no Jobs data -> pass',          jg.canEquip({ Level = 99 }, { WHM = 1 }), true);
@@ -3319,6 +3323,111 @@ if type(lockstyleM._listFor) == 'function' then
     check('AH21 box all-wearable -> nil',                 lockstyleM._boxBadPiece({ Head = 'Onjob Cap' }, JL, resolve), nil);
     check('AH22 box gate FAILS OPEN (nil levels)',        lockstyleM._boxBadPiece({ Head = 'Thief Cap' }, nil, resolve), nil);
 end
+
+-- ---------------------------------------------------------------------------
+-- PW. CatsEyeXI PRESTIGE vs the job-level gate (2026-08-10).
+--
+--    Field discovery: a prestiged PLD searched "valor" in the lockstyle Head
+--    picker -- "Nothing in the game matches that." Prestige resets a job to
+--    Lv1, and the SERVER's canEquipItemOnAnyJob waives level requirements on
+--    a prestiged job (hidden cexi submodules; Henrik, field-verified) -- so
+--    the AH gate, fed raw GetJobLevel, wrongly hid the gear. The mirror:
+--    feature\prestigewatch learns the tiers off Trove's 0x1A4 pluginId-1
+--    profile blob (sibling authority: trove/plugins/profile.lua) and
+--    jobgate.effectiveLevels folds them into levels() -- a prestiged job
+--    reports 75, the item cap, which IS "requirement waived". canEquip stays
+--    pure and parity-pinned (OR19/AJ); only the LEVEL PRODUCTION changed.
+--    HENRIK'S LAW: prestige can never be lost -> merge is a monotonic MAX and
+--    the persisted floor (<char>\dlac\prestige.lua) never invalidates.
+-- ---------------------------------------------------------------------------
+(function()
+    local pw = dofile('feature/prestigewatch.lua');
+    local jg = package.loaded['dlac\\gear\\jobgate'];
+    check('PW0 prestigewatch loads headless', type(pw), 'table');
+
+    -- A 0x1A4 reply, byte-built: 4-byte header, action @0x04, pluginId @0x05,
+    -- 22 tier bytes @0x06..0x1B (trove/plugins/profile.lua offsets), zero-pad.
+    local function reply(action, pid, tiers)
+        local b = { 0, 0, 0, 0, action, pid };
+        for i = 1, 22 do b[6 + i] = (tiers or {})[i] or 0; end
+        for i = #b + 1, 64 do b[i] = 0; end
+        local s = {};
+        for i, v in ipairs(b) do s[i] = string.char(v); end
+        return table.concat(s);
+    end
+
+    -- parse1A4: the PLD byte (job index 7) lands on PLD; strangers are nil.
+    local arr = pw.parse1A4(reply(17, 1, { [7] = 2, [1] = 1 }));
+    check('PW1 parse: PLD tier lands (index 7)',   arr and arr[7], 2);
+    check('PW2 parse: WAR tier lands (index 1)',   arr and arr[1], 1);
+    check('PW3 parse: unprestiged job reads 0',    arr and arr[22], 0);
+    check('PW4 parse: wrong action -> nil',        pw.parse1A4(reply(3, 1, { [7] = 2 })), nil);
+    check('PW5 parse: wrong pluginId -> nil',      pw.parse1A4(reply(17, 2, { [7] = 2 })), nil);
+    check('PW6 parse: short packet -> nil',        pw.parse1A4(string.sub(reply(17, 1, {}), 1, 20)), nil);
+    check('PW7 parse: non-string -> nil',          pw.parse1A4(nil), nil);
+
+    -- the monotonic merge (Henrik's law): MAX per job, never down.
+    local m1, c1 = pw._merge({ [7] = 2 }, { [7] = 1, [1] = 1 });
+    check('PW8 merge: a lower wire read never lowers the floor', m1[7], 2);
+    check('PW9 merge: a new job is learned',                     m1[1], 1);
+    check('PW10 merge: learning flags changed',                  c1, true);
+    local m2, c2 = pw._merge({ [7] = 2 }, { [7] = 2 });
+    check('PW11 merge: same tiers -> unchanged', c2, false);
+    check('PW12 merge: sanitizes to all 22',     m2[22], 0);
+
+    -- the request bytes: byte-for-byte Trove's requestData (action @0x04 ->
+    -- index 5, pluginId @0x06 -> index 7, 64 bytes total).
+    local req = pw._requestPacket();
+    check('PW13 request: action byte',   req[5], 17);
+    check('PW14 request: pluginId byte', req[7], 1);
+    check('PW15 request: 64 bytes',      #req, 64);
+    check('PW16 request: pad is zero',   req[64], 0);
+
+    -- persistence round-trip through the serialized literal.
+    local back = (loadstring or load)(pw._serialize({ [7] = 2, [16] = 5 }))();
+    check('PW17 serialize round-trip: PLD',   back[7], 2);
+    check('PW18 serialize round-trip: BLU',   back[16], 5);
+    check('PW19 serialize round-trip: zeros', back[3], 0);
+
+    -- tiers(): the abbr view off jobgate.JOBS -- only prestiged jobs appear.
+    pw._arr = pw._merge(nil, { [7] = 2, [1] = 1 });
+    local t = pw.tiers();
+    check('PW20 tiers: PLD mapped by abbr',    t and t.PLD, 2);
+    check('PW21 tiers: WAR mapped by abbr',    t and t.WAR, 1);
+    check('PW22 tiers: unprestiged jobs absent', t and t.WHM, nil);
+    pw._arr = nil;
+    check('PW23 tiers: nothing known -> nil', pw.tiers(), nil);
+
+    -- effectiveLevels: THE fold. Raw read + tiers -> what the gate judges.
+    local eff = jg.effectiveLevels({ PLD = 12, WHM = 50 }, { PLD = 1 });
+    check('PW24 fold: prestiged job reports 75',      eff.PLD, 75);
+    check('PW25 fold: unprestiged job untouched',     eff.WHM, 50);
+    check('PW26 fold: nil prestige -> raw handed back',
+          jg.effectiveLevels({ PLD = 12 }, nil).PLD, 12);
+    check('PW27 fold: nil raw stays nil (fail-open)', jg.effectiveLevels(nil, { PLD = 1 }), nil);
+    check('PW28 fold: does not mutate the raw table',
+          (function() local r = { PLD = 12 }; jg.effectiveLevels(r, { PLD = 1 }); return r.PLD; end)(), 12);
+
+    -- THE FIELD CASE, end to end: Valor Coronet (Lv73 PLD) vs a prestiged PLD
+    -- at level 12 -- raw read says no, folded read says yes.
+    local valor = { Jobs = { 'PLD' }, Level = 73 };
+    check('PW29 VALOR: raw read still refuses (the bug as reported)',
+          jg.canEquip(valor, { PLD = 12 }), false);
+    check('PW30 VALOR: folded read offers it (the fix)',
+          jg.canEquip(valor, jg.effectiveLevels({ PLD = 12 }, { PLD = 1 })), true);
+
+    -- levels() wiring: an injected reader + injected prestige read compose.
+    -- (The injected-reads law: both seams are FUNCTIONS, swapped whole.)
+    local savedReader, savedPrestige = jg.reader, jg.prestige;
+    jg.reader   = function() return { PLD = 12 }; end;
+    jg.prestige = function() return { PLD = 1 }; end;
+    check('PW31 levels(): reader folded through prestige', jg.levels().PLD, 75);
+    jg.prestige = function() return nil; end;
+    check('PW32 levels(): no prestige data -> raw',        jg.levels().PLD, 12);
+    jg.reader = function() return nil; end;
+    check('PW33 levels(): nil reader stays nil (fail-open)', jg.levels(), nil);
+    jg.reader, jg.prestige = savedReader, savedPrestige;
+end)();
 
 -- ---------------------------------------------------------------------------
 -- AI. lockstyle LOOK preview: entity look_t plan (v42)

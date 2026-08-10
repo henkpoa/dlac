@@ -18,7 +18,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.08.10a';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.08.10c';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
                                 -- (03f = engine v163: the contest explains its own plan;
                                 --  03g = one floating tray: Teleports + the E-Box crates;
@@ -333,6 +333,14 @@ ashita.events.register('d3d_present', 'dlac-seed-watch', function()
         -- network thread -- ratchet + save + announce here on the MAIN thread.
         if type(cw.pumpObtains) == 'function' then cw.pumpObtains(); end
     end);
+    -- The prestige mirror's beat (2026-08-10): drain what the 0x1A4 packet
+    -- handler stashed on the network thread, merge (monotonic -- prestige is
+    -- never lost), persist, and fire the profile request once per zone-in.
+    -- Main thread only (the chocowatch rule); a no-op between events.
+    pcall(function()
+        local pw = require('dlac\\feature\\prestigewatch');
+        if type(pw) == 'table' and type(pw.pump) == 'function' then pw.pump(); end
+    end);
     -- The Action sequencer's frame pump (issue #138): advance any live sequence
     -- (verify worn -> fire -> release) against the live gear/command io. A no-op
     -- when idle; contained, so a bad frame never breaks present.
@@ -461,7 +469,8 @@ for _, mod in ipairs({ 'gear', 'feature\\augments', 'gear\\gearoptim', 'gear\\ge
                        'feature\\synthrun',
                        'ui\\craftbar', 'feature\\helmwatch', 'ui\\helmbar',
                        'feature\\fishwatch', 'ui\\fishbar', 'feature\\chocowatch',
-                       'feature\\meritwatch', 'feature\\integration', 'feature\\foodwatch',
+                       'feature\\meritwatch', 'feature\\prestigewatch',
+                       'feature\\integration', 'feature\\foodwatch',
                        'feature\\giftbox',
                        'feature\\engagewatch', 'feature\\petvitals', 'feature\\combat',
                        'feature\\sendlog', 'feature\\check', 'feature\\debug', 'feature\\report',
