@@ -700,15 +700,33 @@ starts being worn — no editing, no remembering, nothing to switch on.</p>
 <p>Adding a piece that way also puts it on your Wishlist and links it to that job and set,
 so you never have to say you want something twice.</p>
 
-<h3>Macro books</h3>
-<p><b>Menu &rsaquo; Macro book</b> stores your macro book and page per job, applied
-automatically on login and every job change. No more <code>/macro book</code> lines in
-profiles. Picking a book is all there is to it &mdash; that is what tells dlac to manage
-that job; a job you never pick a book for is never touched.</p>
-<p>The page can also follow your <b>subjob</b>: give <code>NIN</code> page 2 and
-<code>SAM</code> page 3 on your WAR, and swapping sub swaps the page &mdash; same book,
-no job change needed. A subjob you haven't given a page to just uses the job's own
-<b>Page</b>, and the <b>x</b> beside a subjob row takes that row away again.</p>
+<h3>Macro books &mdash; and a page per subjob</h3>
+<p><b>Menu &rsaquo; Macro book</b> remembers your macro book <i>and</i> page per job and
+sets them for you &mdash; on login, on every job change, and on every <b>subjob</b> change.
+No more <code>/macro book</code> lines buried in a profile.</p>
+<ul>
+  <li><b>Pick a book.</b> All forty are listed the way the game lists them, two columns of
+      twenty, under their real titles &mdash; dlac reads those out of the game's own macro
+      title files, so the list looks like the one you already know. Picking a book is the
+      whole setup: <i>that</i> is what tells dlac to manage this job. There is nothing to
+      switch on, and a job you never pick a book for is never touched.</li>
+  <li><b>Page</b> is the page that book opens on &mdash; <code>/macro set</code>, if you
+      have ever typed it by hand.</li>
+  <li><b>A page per subjob.</b> Below <b>Page</b>, each subjob gets its own row of ten. Give
+      <code>NIN</code> page 2 and <code>SAM</code> page 3 on your WAR and swapping sub swaps
+      the page: same book, no job change needed, nothing to remember. The subjob you're
+      actually on is the highlighted row, because that's the one you usually came here to
+      set.</li>
+  <li><b>+ subjob</b> adds a row for a sub you're <i>not</i> on right now, so you can lay
+      out all of them in one sitting. The <b>x</b> beside a row takes it away again; a
+      subjob with no page of its own simply uses the job's <b>Page</b>.</li>
+</ul>
+<div class="box"><b>Editing another subjob's row never moves your macros.</b> If you're on
+WAR/NIN and you set the WHM row to page 3, that is saved for the day you're WAR/WHM &mdash;
+your palette stays where it is. dlac says which pair it's talking about every time, so the
+chat line is <i>"macro page 3 saved for WAR/WHM &mdash; you are on WAR/NIN"</i>, not a
+number you have to interpret. Same when the job's <b>Page</b> is being overridden: it tells
+you which subjob is winning and with what.</div>
 
 <h3>Profiles</h3>
 <p>The <b>PROFILES</b> menu (header) keeps named collections of your sets and triggers
