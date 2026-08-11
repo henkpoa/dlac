@@ -9982,3 +9982,58 @@ satisfies / wrong roll swaps), DA1–12 (signature laws, hash stability, renderE
 stamps, unpinned byte-parity), LD7c–f (pinned flatten shape, floor/reserve by Name).
 Suites **7040 + 1362**. Field round owed: the friend rescans, picks each mitten into a
 set, and the right copy must land — read the `/dl report` before believing it.
+
+## Session "the page follows the sub" (2026-08-11, `2026.08.11`)
+
+**Theme:** a player asked Henrik whether dlac could manage macro *pages* as well as
+books — "many people want to use different pages depending on which subjob you have."
+Plus one trim he asked for in the same breath: drop the *"Manage <job>'s macro book"*
+step, because *"people running DLAC will 100 % use this feature. Players just need to
+select which macro book."*
+
+**Landed** (`feature/macrobook.lua`, one file plus its menu tooltip):
+
+**Pages per subjob.** An entry is now
+`WAR = { book = 5, page = 1, subs = { NIN = 2, SAM = 3 } }` — `page` is the fallback,
+`subs[<abbr>]` overrides it. The pump keys on **main AND sub**, so swapping only your
+subjob re-applies (~2s) even though the main job never moved; that is the entire
+feature, and the old pump could not have noticed. A sub with no page of its own falls
+back to the job's page — not to 1, and not to some other sub's.
+
+**The storage key is `page`, not `set`.** "Set" means a GEAR set everywhere else in
+dlac; one name, one thing (hard rule 13's family). Files written before today name it
+`set` and fold in on read (`_normalize`), then the key is gone.
+
+**No manage step.** Picking a book IS the opt-in — the book grid is right there the
+moment the popup opens, and *Stop managing* is still the way back out. An unmanaged job
+gets one dim line saying dlac is leaving it alone, which is the honest state and takes a
+line instead of a button.
+
+**The two commands are FRAME-SPACED now** (`lib\cmdqueue`, book at +0, page at +2).
+Two `QueueCommand`s in one frame can arrive reversed, and a `/macro book` landing
+*after* its `/macro set` drops you on page 1 — which is exactly the symptom the field
+described ("when we select a book and DLAC loads, it loads that book's first page").
+Whether that was the cause or the reporter simply never had a second page, the pair had
+no business being same-frame; cmdqueue is the house door for issuing a game command
+anyway (Henrik's 2026-07-29 ruling) and it frame-spaces for free.
+
+**Two things fixed while in the file.** Book titles reach `SetTooltip` and
+`TextColored`, both printf sinks, and a `%` in a title had been eating the character
+after it since the picker shipped — every sink now takes `esc()` at the call. And the
+22-job roster the "+ subjob" combo needs comes from `gear\jobgate.JOBS` rather than a
+fresh literal: GRD4 exists to stop exactly that duplication, and it caught it.
+
+**Tests.** The feature had **no coverage at all** — not a single check named it. Now:
+MB1-4 in `run_tests` on the three pure seams (`_pageFor`, `_normalize`, `_serialize`,
+including that a dirty table still writes a chunk that *parses* — a bad key there is a
+silently empty palette at login, not a test failure), and MBU1-8 in `smoke_ui` driving
+`renderPopup` against an imgui-shaped stub: every stack (popup, colour, style-var,
+group, combo, item-width) back to 0, the 40 books offered with no manage step, the page
+rows appearing only once a book is picked, and the pump run on a stubbed `os.clock`
+through login → sub swap → fallback. Suites **7131 + 1398** on both interpreters.
+
+***NOT FIELD-RUN.*** *The round owed is small: on a job with a subjob, pick a book, give
+the sub you are on a different page, then swap subjob and watch the page follow —
+and check the book/page pair still lands correctly at login, which is the frame-spacing
+change. If the reporter's "always page 1" was the reversal, this fixes it; if it was not,
+the sub pages are what they were asking for either way.*

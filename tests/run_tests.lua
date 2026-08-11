@@ -26921,6 +26921,69 @@ end)();
     AshitaCore = savedCore;
 end)();
 
+-- ---------------------------------------------------------------------------
+-- MB. Macro pages per subjob (2026-08-11) -- feature\macrobook.lua's three pure
+-- seams. The feature is "one book per job, but the PAGE follows the SUB": the
+-- resolution order, the on-read migration off the old `set` key, and the file
+-- text (which has to survive being read back by loadfile).
+--
+-- The one that is easy to get wrong: an entry with NO override for the sub you
+-- are on must fall back to the job's own page -- not to 1, and not to whatever
+-- some other sub was given.
+-- ---------------------------------------------------------------------------
+;(function()
+    local mb = dofile('feature/macrobook.lua');
+
+    -- resolution
+    local e = { book = 5, page = 3, subs = { NIN = 2, SAM = 7 } };
+    check('MB1a no sub -> the job page',            mb._pageFor(e, nil), 3);
+    check('MB1b a sub with a page -> that page',    mb._pageFor(e, 'NIN'), 2);
+    check('MB1c ...each sub its own',               mb._pageFor(e, 'SAM'), 7);
+    check('MB1d a sub with no page -> the job page',mb._pageFor(e, 'DRK'), 3);
+    check('MB1e no entry at all -> page 1',         mb._pageFor(nil, 'NIN'), 1);
+    check('MB1f an out-of-range override is ignored',
+          mb._pageFor({ book = 1, page = 4, subs = { NIN = 99 } }, 'NIN'), 4);
+    check('MB1g an out-of-range page floors to 1',  mb._pageFor({ book = 1, page = 0 }, nil), 1);
+
+    -- migration: files written before this feature name the page `set`, and
+    -- `set` means a GEAR set everywhere else -- it must fold in and disappear.
+    local old = mb._normalize({ WAR = { book = 5, set = 3 } });
+    check('MB2a the old `set` key becomes the page', mb._pageFor(old.WAR, nil), 3);
+    check('MB2b ...and is not kept around',          old.WAR.set, nil);
+    local both = mb._normalize({ WAR = { book = 5, set = 3, page = 9 } });
+    check('MB2c an explicit page wins over a stale `set`', mb._pageFor(both.WAR, nil), 9);
+    check('MB2d a non-table entry survives normalize', (function()
+        local ok = pcall(mb._normalize, { WAR = 'junk' }); return ok; end)(), true);
+
+    -- the file text. It is loadfile'd back on the next login, so a bad key would
+    -- not fail here -- it would fail as a SILENTLY EMPTY palette in the field.
+    local text = mb._serialize({
+        WAR = { book = 5, page = 3, subs = { NIN = 2 } },
+        BLM = { book = 1, page = 1 },
+    });
+    local okp, back = pcall(function() return load(text)(); end);
+    check('MB3a the written file parses',          okp and type(back), 'table');
+    check('MB3b ...with the book',                 back.WAR.book, 5);
+    check('MB3c ...the page',                      back.WAR.page, 3);
+    check('MB3d ...and the sub override',          back.WAR.subs.NIN, 2);
+    check('MB3e a job with no overrides writes no subs table', back.BLM.subs, nil);
+    check('MB3f jobs come out sorted (a stable file, not a churning diff)',
+          text:find('BLM', 1, true) < text:find('WAR', 1, true), true);
+
+    -- Garbage in the table must never reach the file: it is a Lua chunk, and one
+    -- unquoted odd key takes the whole palette down at login.
+    local dirty = mb._serialize({
+        ['not a job'] = { book = 1, page = 1 },
+        WAR = { book = 2, page = 1, subs = { NIN = 99, ['x y'] = 3, SAM = 4 } },
+    });
+    local okd, backd = pcall(function() return load(dirty)(); end);
+    check('MB4a a dirty table still writes a parsable file', okd and type(backd), 'table');
+    check('MB4b a non-abbr job is dropped',        backd['not a job'], nil);
+    check('MB4c an out-of-range override is dropped', backd.WAR.subs.NIN, nil);
+    check('MB4d ...and a non-abbr sub with it',    backd.WAR.subs['x y'], nil);
+    check('MB4e the good override survives',       backd.WAR.subs.SAM, 4);
+end)();
+
 -- The warm-note artifact the dispatch-driving sections leave behind (dataDir
 -- stubbed 'tests\'): on Windows a real tests\debug\mpwarm.txt (gitignored via
 -- debug/), under WSL ONE backslash-bearing filename that drvfs PUA-mangles on

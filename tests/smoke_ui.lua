@@ -7161,6 +7161,185 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- MBU. Macro book/page popup + pump (2026-08-11) -- feature\macrobook.lua had
+--      NO render coverage at all, and this change rewrote the body: the "Manage
+--      this job's macro book" gate is gone (picking a book IS the opt-in) and
+--      there are now page rows, one per subjob.
+--
+--      Two failure classes only an imgui-shaped stub catches: an unpaired
+--      EndPopup / PopStyleColor / PopStyleVar / EndCombo (native UB in game, no
+--      pcall catches it), and a body that dies half way -- which looks like a
+--      short panel, not an error. Both are asserted by counting what the body
+--      draws LAST and pinning every stack back to 0.
+--
+--      The pump drives on a stubbed os.clock, because the whole point of the
+--      feature is that a SUBJOB change re-applies while the main job never moved.
+-- ---------------------------------------------------------------------------
+;(function()
+    local depth = { popup = 0, col = 0, var = 0, group = 0, combo = 0, itemw = 0 };
+    local drew  = { book = 0, page = 0, small = 0, sel = 0 };
+    local popupOpen, clickLabel, hoverLabel = false, nil, nil;
+    local function nop() end
+    local IM = setmetatable({}, { __index = function() return nop; end });
+    local lastLabel = nil;
+    IM.BeginPopup     = function() if popupOpen then depth.popup = depth.popup + 1; end return popupOpen; end
+    IM.EndPopup       = function() depth.popup = depth.popup - 1; end
+    IM.PushStyleColor = function() depth.col = depth.col + 1; end
+    IM.PopStyleColor  = function(n) depth.col = depth.col - (tonumber(n) or 1); end
+    IM.PushStyleVar   = function() depth.var = depth.var + 1; end
+    IM.PopStyleVar    = function(n) depth.var = depth.var - (tonumber(n) or 1); end
+    IM.BeginGroup     = function() depth.group = depth.group + 1; end
+    IM.EndGroup       = function() depth.group = depth.group - 1; end
+    IM.PushItemWidth  = function() depth.itemw = depth.itemw + 1; end
+    IM.PopItemWidth   = function() depth.itemw = depth.itemw - 1; end
+    IM.BeginCombo     = function() depth.combo = depth.combo + 1; return true; end
+    IM.EndCombo       = function() depth.combo = depth.combo - 1; end
+    IM.GetCursorPosX  = function() return 8; end
+    IM.Button         = function(label)
+        lastLabel = label;
+        if label:find('##mbk', 1, true) then drew.book = drew.book + 1;
+        elseif label:find('##mpg', 1, true) then drew.page = drew.page + 1; end
+        return label == clickLabel;
+    end
+    IM.SmallButton    = function(label) lastLabel = label; drew.small = drew.small + 1; return label == clickLabel; end
+    IM.Selectable     = function(label) lastLabel = label; drew.sel = drew.sel + 1; return label == clickLabel; end
+    IM.Text           = function(label) lastLabel = label; end
+    IM.TextColored    = function(_, label) lastLabel = label; end
+    IM.IsItemHovered  = function() return hoverLabel ~= nil and lastLabel == hoverLabel; end
+    local tips = {};
+    IM.SetTooltip     = function(s) tips[#tips + 1] = s; end
+
+    -- A controllable clock: the pump's whole contract is "wait, THEN apply".
+    local savedClock, now = os.clock, 0;
+    os.clock = function() return now; end
+
+    local sent = {};   -- every frame-spaced command the feature issued
+    local NAMES = { 'imgui', 'dlac\\profiles', 'dlac\\lib\\cmdqueue', 'dlac\\feature\\macrobook' };
+    local saved = {};
+    for _, k in ipairs(NAMES) do saved[k] = package.loaded[k]; end
+
+    local MBFILE = 'tests/macrobooks.lua';
+    os.remove(MBFILE);
+    package.loaded['imgui'] = IM;
+    package.loaded['dlac\\profiles'] = { dataDir = function() return 'tests/'; end };
+    package.loaded['dlac\\lib\\cmdqueue'] = {
+        enqueue = function(d, c) sent[#sent + 1] = { d = d, c = c }; end,
+    };
+    package.loaded['dlac\\feature\\macrobook'] = nil;
+
+    local savedCore = AshitaCore;
+    local mainId, subId = 1, 13;                            -- WAR / NIN
+    local ABBR = { [1] = 'WAR', [12] = 'SAM', [13] = 'NIN' };
+    AshitaCore = {
+        GetMemoryManager = function()
+            return {
+                GetPlayer = function() return {
+                    GetMainJob = function() return mainId; end,
+                    GetSubJob  = function() return subId; end,
+                }; end,
+                GetParty = function() return { GetMemberServerId = function() return 0; end }; end,
+            };
+        end,
+        GetResourceManager = function()
+            return { GetString = function(_, _, id) return ABBR[id] or 'NON'; end };
+        end,
+        GetInstallPath = function() return 'no-such-path/'; end,
+    };
+    ImGuiCol_Button, ImGuiStyleVar_ItemSpacing = 21, 13;    -- exercise the styled path
+
+    local ok, mb = pcall(require, 'dlac\\feature\\macrobook');
+    check('MBU1 macrobook re-requires against a stub imgui', ok and type(mb.renderPopup), 'function');
+    if ok then
+        -- shut: draws nothing, touches nothing
+        popupOpen = false;
+        check('MBU2a renders with the popup shut', pcall(mb.renderPopup), true);
+        check('MBU2b shut: nothing drawn', drew.book + drew.page, 0);
+
+        -- open, job not managed yet. The old body stopped here at a "Manage
+        -- <job>'s macro book" button; the books must be RIGHT THERE now.
+        popupOpen = true;
+        check('MBU3a renders open + unmanaged', pcall(mb.renderPopup), true);
+        check('MBU3b all 40 books offered straight away', drew.book, 40);
+        check('MBU3c no page rows before a book is picked', drew.page, 0);
+        check('MBU3d popup stack balanced', depth.popup, 0);
+        check('MBU3e colour stack balanced', depth.col, 0);
+        check('MBU3f style-var stack balanced', depth.var, 0);
+        check('MBU3g group stack balanced', depth.group, 0);
+        local sawManage = false;
+        for _, t in ipairs(tips) do if tostring(t):find('Manage', 1, true) then sawManage = true; end end
+        check('MBU3h the "manage this job" step is gone', sawManage, false);
+
+        -- pick book 5: that IS the opt-in, and it applies on the spot
+        drew.book, drew.page, sent = 0, 0, {};
+        clickLabel = 'Book 5##mbk5';
+        check('MBU4a renders while a book is clicked', pcall(mb.renderPopup), true);
+        clickLabel = nil;
+        check('MBU4b the book went out first',      (sent[1] or {}).c, '/macro book 5');
+        check('MBU4c ...and the page after it',     (sent[2] or {}).c, '/macro set 1');
+        check('MBU4d ...FRAME-SPACED, never same-frame', (sent[1] or {}).d ~= (sent[2] or {}).d, true);
+        check('MBU4e nothing else was issued',      #sent, 2);
+        check('MBU4f the file was written',         (function()
+            local f = io.open(MBFILE, 'r'); if f == nil then return false; end
+            local s = f:read('*a'); f:close(); return s:find('book = 5', 1, true) ~= nil; end)(), true);
+
+        -- managed: page rows appear -- the fallback plus a row for the sub you
+        -- are ON (that is the row people actually want), and the combo to add more.
+        drew.page, drew.sel = 0, 0;
+        check('MBU5a renders open + managed', pcall(mb.renderPopup), true);
+        check('MBU5b two page rows: the fallback and the live sub', drew.page, 20);
+        check('MBU5c the combo opened and closed', depth.combo, 0);
+        -- The combo offers what has no row yet: every job except the main job
+        -- (you cannot sub it) and except the live sub (its row is already there).
+        check('MBU5d ...offering every job that has no row yet',
+              drew.sel, #require('dlac\\gear\\jobgate').JOBS - 2);
+        check('MBU5e item-width stack balanced', depth.itemw, 0);
+        check('MBU5f popup stack balanced', depth.popup, 0);
+        check('MBU5g colour stack balanced', depth.col, 0);
+
+        -- give NIN page 4. The base page must NOT move.
+        sent = {};
+        clickLabel = '4##mpgNIN4';
+        check('MBU6a renders while a sub page is clicked', pcall(mb.renderPopup), true);
+        clickLabel = nil;
+        check('MBU6b the sub page applied immediately', (sent[2] or {}).c, '/macro set 4');
+        check('MBU6c the file carries the override', (function()
+            local f = io.open(MBFILE, 'r'); local s = f:read('*a'); f:close();
+            return s:find('subs = { NIN = 4 }', 1, true) ~= nil; end)(), true);
+        check('MBU6d ...and the fallback page is untouched', (function()
+            local f = io.open(MBFILE, 'r'); local s = f:read('*a'); f:close();
+            return s:find('page = 1', 1, true) ~= nil; end)(), true);
+
+        -- the clear button only exists for a sub that HAS a page
+        drew.small = 0;
+        check('MBU7a renders with an override set', pcall(mb.renderPopup), true);
+        check('MBU7b one clear button + Stop managing', drew.small, 2);
+
+        -- --- the pump: a SUBJOB change re-applies, with the main job never moving
+        popupOpen = false;
+        sent = {}; now = 0;
+        pcall(mb.pump);                                  -- login: schedules, does not fire
+        check('MBU8a nothing applies before the login grace', #sent, 0);
+        now = 6; pcall(mb.pump);
+        check('MBU8b then WAR/NIN gets the sub page',    (sent[2] or {}).c, '/macro set 4');
+        sent = {};
+        now = 7; pcall(mb.pump);
+        check('MBU8c a settled job re-applies nothing',  #sent, 0);
+        subId = 12;                                      -- WAR/SAM: main job unchanged
+        pcall(mb.pump);
+        check('MBU8d a subjob swap alone does not fire instantly', #sent, 0);
+        now = 10; pcall(mb.pump);
+        check('MBU8e ...and then falls back to the job page', (sent[2] or {}).c, '/macro set 1');
+        check('MBU8f ...on the same book',                (sent[1] or {}).c, '/macro book 5');
+    end
+
+    os.clock = savedClock;
+    os.remove(MBFILE);
+    AshitaCore = savedCore;
+    ImGuiCol_Button, ImGuiStyleVar_ItemSpacing = nil, nil;
+    for _, k in ipairs(NAMES) do package.loaded[k] = saved[k]; end
+end)();
+
+-- ---------------------------------------------------------------------------
 -- verdict
 -- ---------------------------------------------------------------------------
 if #failures > 0 then
