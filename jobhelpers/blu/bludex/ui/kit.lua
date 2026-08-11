@@ -56,11 +56,44 @@ M.isFn = isFn;
 local function esc(s) return (tostring(s):gsub('%%', '%%%%')); end
 M.esc = esc;
 
+-- ---------------------------------------------------------------------------
+-- the hover gate -- how long the cursor must REST before a tooltip appears
+-- ---------------------------------------------------------------------------
+-- Field ask 2026-08-07: tooltips that fire the instant the cursor crosses an
+-- item stand in front of whatever you were reaching for, just from moving the
+-- mouse across the window. Every tooltip Bludex draws asks this first, so one
+-- setting covers them all.
+--
+-- imgui's own hover-delay flags are 1.89+ and this binding is older, so the
+-- dwell is timed here. Only one item can be hovered at a time, so one slot is
+-- enough: the key changing means the cursor moved to a different item, and a
+-- gap in the asking means it left the last one (nothing calls this for an item
+-- that is not hovered, so silence IS the cursor being elsewhere).
+M.hoverDelay = 0.5;          -- seconds; the host writes the setting here
+
+local hoverKey  = nil;
+local hoverAt   = 0;         -- when the dwell on hoverKey started
+local hoverSeen = 0;         -- when it was last asked about
+local HOVER_GAP = 0.25;      -- longer than any frame: a gap = hover lost
+
+-- Has `key` been hovered long enough to show its tooltip? `key` identifies the
+-- hovered item -- its tip text, a spell id, anything stable frame to frame.
+function M.hoverReady(key)
+    local d = tonumber(M.hoverDelay) or 0;
+    if d <= 0 then return true; end
+    local now = os.clock();
+    if key ~= hoverKey or (now - hoverSeen) > HOVER_GAP then
+        hoverKey, hoverAt = key, now;
+    end
+    hoverSeen = now;
+    return (now - hoverAt) >= d;
+end
+
 -- Attach a tooltip to the item just drawn. Multi-line is fine.
 function M.tip(im, tip)
     if tip == nil or tip == '' then return; end
     if not isFn(im, 'IsItemHovered') or not isFn(im, 'SetTooltip') then return; end
-    if im.IsItemHovered() then im.SetTooltip(esc(tip)); end
+    if im.IsItemHovered() and M.hoverReady(tip) then im.SetTooltip(esc(tip)); end
 end
 
 -- The panel-text standard, borrowed from dlac's uistyle.helpLabel: the label
@@ -160,7 +193,13 @@ end
 
 -- A one-line colored progress bar drawn as text (ProgressBar is not
 -- field-proven here): "Points  34 / 79" with the value colored by fit.
-function M.meter(im, label, used, max, unit)
+-- `nowUsed`/`nowMax` (optional) fold the LIVE reading into the same meter as
+-- parentheses -- '67 (18) / 79 (49) pts' (Henrik 2026-08-10, sixth round:
+-- the separate sync line "takes up too much space"). Outside the brackets is
+-- the plan against its own budget; inside is what the game holds right now
+-- against the budget for the level you are standing at. Either may be nil on
+-- its own; the colour always follows the PLAN, the thing you are editing.
+function M.meter(im, label, used, max, unit, nowUsed, nowMax)
     local col = M.COL.ok;
     if max and max > 0 then
         if used > max then col = M.COL.err;
@@ -169,7 +208,10 @@ function M.meter(im, label, used, max, unit)
     M.ctext(im, M.COL.dim, label);
     if isFn(im, 'SameLine') then im.SameLine(); end
     local maxs = (max and max > 0) and tostring(max) or '?';
-    M.ctext(im, col, string.format('%d / %s%s', used, maxs, unit or ''));
+    M.ctext(im, col, string.format('%d%s / %s%s%s',
+        used, (nowUsed ~= nil) and (' (%d)'):format(nowUsed) or '',
+        maxs, (nowMax ~= nil) and (' (%d)'):format(nowMax) or '',
+        unit or ''));
 end
 
 -- Content-region width, tolerant of binding return shapes ((x,y) numbers or
@@ -198,6 +240,37 @@ function M.measure(im, labels, minW)
         end
     end
     return w;
+end
+
+-- Guarded integer slider over an array buffer ({ value }, InputText-style).
+-- Returns true when the value changed. Falls back to a -/+ button pair with
+-- the value between them when SliderInt is absent (the kit law: degrade to
+-- something usable, never to an error).
+function M.sliderInt(im, id, buf, minV, maxV, width)
+    if isFn(im, 'SliderInt') then
+        if width and isFn(im, 'SetNextItemWidth') then pcall(im.SetNextItemWidth, width); end
+        local ok, changed = pcall(im.SliderInt, id, buf, minV, maxV);
+        if ok then
+            if type(buf[1]) == 'number' then
+                if buf[1] < minV then buf[1] = minV; end
+                if buf[1] > maxV then buf[1] = maxV; end
+            end
+            return changed == true;
+        end
+    end
+    local changed = false;
+    if M.litButton(im, '-##dn' .. id, false, 22, 18) then
+        buf[1] = math.max(minV, (tonumber(buf[1]) or minV) - 1);
+        changed = true;
+    end
+    if isFn(im, 'SameLine') then im.SameLine(); end
+    M.ctext(im, M.COL.accent, tostring(buf[1] or minV));
+    if isFn(im, 'SameLine') then im.SameLine(); end
+    if M.litButton(im, '+##up' .. id, false, 22, 18) then
+        buf[1] = math.min(maxV, (tonumber(buf[1]) or minV) + 1);
+        changed = true;
+    end
+    return changed;
 end
 
 -- Simple guarded combo over a list of string choices. `state` is a table with

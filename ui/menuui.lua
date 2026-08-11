@@ -95,7 +95,7 @@ local ROWS = {
     { key = 'lockstyle', icon = 'lockstyle', label = 'Lockstyle',
       tip = 'Lockstyle boxes -- 30 saved looks PER JOB.\nSave the marked box, import old static lockstyle sets, and\n"OnLoad Lockstyle" re-applies it on every login / job change.' },
     { key = 'macrobook', icon = 'macrobook', label = 'Macro book',
-      tip = 'Macro book & set for the CURRENT job -- saved per job and applied\nautomatically on login and every job change. Jobs you don\'t manage\nare never touched.' },
+      tip = 'Macro book & page for the CURRENT job -- saved per job and applied\nautomatically on login and every job change. A page can also be set\nPER SUBJOB (WAR/NIN one page, WAR/SAM another). Jobs you don\'t\npick a book for are never touched.' },
     { key = 'hobbybar',  icon = 'hobbybar',  label = 'Hobby bar',
       tip = 'One shared window for Craft / HELM / Fishing / Chocobo:\npick controls and switch a hobby on (idle only).' },
     { key = 'teleports', icon = 'teleports', label = 'Teleports',

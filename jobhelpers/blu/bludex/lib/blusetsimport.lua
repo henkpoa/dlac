@@ -1,12 +1,18 @@
 --[[
     bludex/lib/blusetsimport.lua -- one-way import of `blusets` spell lists
     (config/addons/blusets/<name>.txt -- one spell name per line, blank line
-    = empty slot) into bludex saved sets { name, ids = {20 real ids} }.
+    = empty slot) into bludex saved sets. Imports land as FLAT sets -- the
+    faithful shape: blusets has no notion of level, and under the kinds
+    model (docs/set-types-plan.md) a flat set is first-class, nothing waits
+    on an adopt to convert it.
 
     parse() is pure given the book; everything touching AshitaCore or the
     filesystem is guarded, so the module loads headless (smoke test).
     A name collision SKIPS the file -- imports never clobber a bludex set.
 ]]--
+
+local ROOT = (...):sub(1, -#('lib\\blusetsimport') - 1);
+local setmodel = require(ROOT .. 'lib\\setmodel');
 
 local M = {};
 
@@ -93,7 +99,13 @@ function M.importAll(cfg, book, only)
                 local lines = readLines(f.path);
                 if lines ~= nil then
                     local ids, unknown = M.parse(lines, book);
-                    table.insert(cfg.sets, { name = f.name, ids = ids });
+                    local set = setmodel.new(f.name, 'flat');
+                    for i = 1, 20 do set.ids[i] = ids[i] or 0; end
+                    -- a blusets file lists spells in whatever order it was
+                    -- written; a flat set here reads in LEVEL order, and
+                    -- blank lines in the middle become no gap at all
+                    setmodel.sortFlat(set, book);
+                    table.insert(cfg.sets, set);
                     have[book.norm(f.name)] = true;
                     res.imported[#res.imported + 1] = f.name;
                     for _, u in ipairs(unknown) do

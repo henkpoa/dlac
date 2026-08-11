@@ -53,7 +53,8 @@ Beyond the tabs: **lockstyle sets** (the armor header button — your look, in 3
 saved boxes per job, with town behaviour), your **Wishlist** (gear you're hunting,
 with notes and the jobs/sets that want it), the **Teleports** menu (one click from
 anywhere to anywhere, plus quick rows for every gear helper), per-job **macro
-books**, and named **profiles** per character.
+books** (with the page following your *subjob* — NIN one page, SAM another), and
+named **profiles** per character.
 
 ### Triggers, in short
 

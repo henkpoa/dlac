@@ -1,4 +1,4 @@
-﻿# dlac â€” Project history & session journal
+# dlac â€” Project history & session journal
 
 > What happened, in order, with the reasoning that is NOT recoverable from the code.
 > Sources: git history + mined Claude Code session transcripts (2026-07-10).
@@ -9982,3 +9982,97 @@ satisfies / wrong roll swaps), DA1–12 (signature laws, hash stability, renderE
 stamps, unpinned byte-parity), LD7c–f (pinned flatten shape, floor/reserve by Name).
 Suites **7040 + 1362**. Field round owed: the friend rescans, picks each mitten into a
 set, and the right copy must land — read the `/dl report` before believing it.
+
+## Session "the page follows the sub" (2026-08-11, `2026.08.11`-`b`)
+
+**Theme:** a player asked Henrik whether dlac could manage macro *pages* as well as
+books — "many people want to use different pages depending on which subjob you have."
+Plus one trim he asked for in the same breath: drop the *"Manage <job>'s macro book"*
+step, because *"people running DLAC will 100 % use this feature. Players just need to
+select which macro book."*
+
+**Landed** (`feature/macrobook.lua`, one file plus its menu tooltip):
+
+**Pages per subjob.** An entry is now
+`WAR = { book = 5, page = 1, subs = { NIN = 2, SAM = 3 } }` — `page` is the fallback,
+`subs[<abbr>]` overrides it. The pump keys on **main AND sub**, so swapping only your
+subjob re-applies (~2s) even though the main job never moved; that is the entire
+feature, and the old pump could not have noticed. A sub with no page of its own falls
+back to the job's page — not to 1, and not to some other sub's.
+
+**The storage key is `page`, not `set`.** "Set" means a GEAR set everywhere else in
+dlac; one name, one thing (hard rule 13's family). Files written before today name it
+`set` and fold in on read (`_normalize`), then the key is gone.
+
+**No manage step — and, second pass, no *stop managing* either.** Picking a book IS the
+opt-in; the book grid is right there the moment the popup opens. The *Stop managing*
+button survived the first pass and Henrik took it out in the same breath as the other
+one: *"Remove the 'Stop managing', as it assumes that."* Both buttons were asking a
+question nobody running dlac has. A job you never pick a book for is still never
+touched, and it says so in one dim line — that is the only "off" anyone needs.
+
+**The one thing you CAN take back is a subjob row,** so that is where the removal went:
+an **x** beside the row, offered only when there is something to remove (a page of its
+own, or a row you added from the combo). The row for the sub you are ON is an offer, not
+something you put there, so it carries no x until you give it a page.
+
+**The two commands are FRAME-SPACED now** (`lib\cmdqueue`, book at +0, page at +2).
+Two `QueueCommand`s in one frame can arrive reversed, and a `/macro book` landing
+*after* its `/macro set` drops you on page 1 — which is exactly the symptom the field
+described ("when we select a book and DLAC loads, it loads that book's first page").
+Whether that was the cause or the reporter simply never had a second page, the pair had
+no business being same-frame; cmdqueue is the house door for issuing a game command
+anyway (Henrik's 2026-07-29 ruling) and it frame-spaces for free.
+
+**Two things fixed while in the file.** Book titles reach `SetTooltip` and
+`TextColored`, both printf sinks, and a `%` in a title had been eating the character
+after it since the picker shipped — every sink now takes `esc()` at the call. And the
+22-job roster the "+ subjob" combo needs comes from `gear\jobgate.JOBS` rather than a
+fresh literal: GRD4 exists to stop exactly that duplication, and it caught it.
+
+**Tests.** The feature had **no coverage at all** — not a single check named it. Now:
+MB1-4 in `run_tests` on the three pure seams (`_pageFor`, `_normalize`, `_serialize`,
+including that a dirty table still writes a chunk that *parses* — a bad key there is a
+silently empty palette at login, not a test failure), and MBU1-8 in `smoke_ui` driving
+`renderPopup` against an imgui-shaped stub: every stack (popup, colour, style-var,
+group, combo, item-width) back to 0, the 40 books offered with no manage step, the page
+rows appearing only once a book is picked, and the pump run on a stubbed `os.clock`
+through login → sub swap → fallback. Suites **7131 + 1398** on both interpreters.
+
+***NOT FIELD-RUN.*** *The round owed is small: on a job with a subjob, pick a book, give
+the sub you are on a different page, then swap subjob and watch the page follow —
+and check the book/page pair still lands correctly at login, which is the frame-spacing
+change. If the reporter's "always page 1" was the reversal, this fixes it; if it was not,
+the sub pages are what they were asking for either way.*
+
+**FIELD-CONFIRMED 2026-08-11** *(`2026.08.11b`, after the two rounds below): Henrik ran it
+and said* **"Works, commit as ready for merge."** *Queued in [HANDOFF.md](HANDOFF.md).*
+
+### Field round 1 (2026-08-11, `2026.08.11b`) — the ack described the wrong pair
+
+Henrik, on BLU/NIN: *"if I change my BLU/WHM to Page 3 for example, it still prints out
+that I changed my BLU/NIN to page 2, which it is currently. So the print takes no regard
+on what I configure."*
+
+Every edit ended in `apply(job, sub)` — the LIVE pair — so the chat line always described
+what you were wearing, never what you clicked. Two bugs in one: the line was wrong, and
+the commands were pointless (re-asserting NIN's page after editing WHM's row).
+
+Now the site decides. `apply` speaks for the palette you are wearing and still prints
+`macro book 5, page 2 (BLU/NIN)`; a new `ack` speaks for a pair you configured but are
+not on, and nothing is sent:
+
+- another subjob's row → `macro page 3 saved for BLU/WHM -- you are on BLU/NIN.`
+- clearing one → `macro page for BLU/WHM cleared -- you are on BLU/NIN.`
+- the fallback **while the live sub has its own page** → `macro page 3 saved for BLU --
+  NIN is on its own page 2.` (which also answers the next question, *why did nothing
+  change?*)
+
+An unmasked fallback, the live sub's own row, and any book pick are still the palette
+you are wearing, so those apply as before. Removing a combo-added row that never had a
+page says nothing at all — there is nothing to report.
+
+**The stub could not have caught this**, which is the lesson worth keeping: MBU counted
+COMMANDS, and the bug was a wrong SENTENCE about correct-enough commands. The section
+now captures `print` as well, and MBU9a-o pin all four sites — including that editing
+another sub sends **zero** commands, where before it sent two.

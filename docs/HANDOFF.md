@@ -296,6 +296,37 @@ haven't told you."* Ask when he has **not** said merge; never ask twice when he 
 
 **THE QUEUE IS EMPTY.**
 
+*(Emptied by the 2026-08-11 promotion — **macro pages per subjob** (`2026.08.11b`), three
+commits plus its docs entry. Henrik: *"merge and push to main"* — an accept under the 08-01
+ruling, and he had already field-confirmed it (*"Works, commit as ready for merge."*). Three
+vendored `jobhelpers/blu/bludex` syncs rode along whole-or-not; they are upstream syncs of
+the vendored addon and the in-game render/sig round bludex has owed since 08-04 is **still
+owed** — nothing in this work touched them.*
+
+***What landed.*** *A player asked whether dlac could manage macro **pages**, not just books
+— "many people want to use different pages depending on which subjob you have." An entry in
+`<char>\dlac\macrobooks.lua` is now* `WAR = { book = 5, page = 1, subs = { NIN = 2, SAM = 3 } }`
+*— `page` is the fallback, `subs[<abbr>]` overrides it, and the pump keys on **main AND sub**
+so a subjob-only swap re-applies. The storage key is `page`, not `set`, because "set" means a
+GEAR set everywhere else in dlac; pre-08-11 files fold in on read.*
+
+***Two rulings worth carrying forward.*** ***Both manage buttons are gone*** *— the "Manage
+<job>'s macro book" gate ("people running DLAC will 100 % use this feature") and then* **"Remove
+the 'Stop managing', as it assumes that."** *Read that as a **standing preference**: a button
+asking whether the user wants an obviously-wanted feature is clutter in both directions. And
+***the field round found a wrong ACK, not a wrong command*** — every edit ended in
+`apply(job, sub)`, the LIVE pair, so configuring BLU/WHM announced BLU/NIN. **The smoke stub
+could not have caught it: it counted COMMANDS, and the bug was a wrong SENTENCE about
+correct-enough commands.** It captures `print` now — worth copying anywhere a UI stub exists.*
+
+***Underneath:*** *`/macro book` and `/macro set` are FRAME-SPACED through `lib\cmdqueue`
+(+0 / +2) — same-frame QueueCommands can arrive reversed, and a book landing after its page
+drops you to page 1, which is what the field reported. Every text sink took `esc()`: a `%` in
+a macro book title had been eating the character after it since the picker shipped.*
+
+***Coverage, where there was none:*** *MB1-4 (`run_tests`) on the pure seams, MBU1-9
+(`smoke_ui`) driving `renderPopup` against an imgui-shaped stub. Suites **7131 + 1426**.*
+
 *(Emptied by the second 2026-08-04 promotion — **the NM Compendium gets a door** (`2026.08.04b`),
 one commit. Henrik: *"Please merge and push to main"* — an accept under the 08-01 ruling. A menu
 row between Teleports and Wishlist, on his own dragon icon (64x64, matching every other menu

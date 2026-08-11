@@ -10,6 +10,7 @@
 local ROOT = (...):sub(1, -#('ui\\host') - 1);       -- relocatable require base
 local kit      = require(ROOT .. 'ui\\kit');
 local filetex  = require(ROOT .. 'ui\\filetex');
+local tsrc     = require(ROOT .. 'lib\\traitsource');
 local spellsui = require(ROOT .. 'ui\\spellsui');
 local setsui   = require(ROOT .. 'ui\\setsui');
 local traitsui = require(ROOT .. 'ui\\traitsui');
@@ -36,13 +37,23 @@ local function freshState(sets)
         addNote = nil,
         applyNote = nil,
         nameBuf = { '' },
-        addBuf = { '' },
+        builtForBuf = { '' },
         openCat = {},
         filters = {
             text = { '' },
             category = {}, element = {}, spellType = {}, trait = {}, learned = {},
             sort = {}, stat = {},
         },
+        -- the timeline planner's working state (all per-character: the
+        -- preview level and the assign target belong to whoever edits)
+        preview = { value = nil },     -- slider; nil = follow the live level
+        rightTab = 'Stats',            -- right column: 'Stats' | 'Assign'
+        assignSlot = nil,              -- the slot the Assign pane targets
+        assignLevel = { '' },          -- activation override ('' = spell level)
+        assignFilter = { text = { '' }, category = {} },
+        readConfirm = nil,             -- Read-current two-step deadline
+        backupsFor = nil,              -- saved-set index with backups shown
+        replanPending = nil,           -- { level, adds } -- the manual nudge
     };
 end
 
@@ -64,17 +75,52 @@ local function adoptCfg(deps)
         deps.cfg.capLearnedBonus, deps.cfg.capMeritPoints = -1, -1;
         if deps.save then deps.save(); end
     end
+    -- the kinds migration (setsModelVer 3, docs/set-types-plan.md): every
+    -- stored set is STAMPED with the kind its shape says it is -- chains ->
+    -- timeline, builds -> levels, else flat -- and nothing converts (the v2
+    -- chains-for-everyone migration is repealed; a set that arrived with
+    -- chains keeps them). Runs at init AND on every swap, so both flavors
+    -- and every store shape funnel through here.
+    local migrated = false;
+    for _, entry in ipairs(deps.cfg.sets) do
+        if deps.sets.upgrade(entry, deps.book) then migrated = true; end
+    end
+    if migrated or (deps.cfg.setsModelVer or 0) < 4 then
+        -- v4 (2026-08-10, second field round): flat and levels are ONE
+        -- kind -- upgrade() folds stored flat sets in; nothing else moves
+        deps.cfg.setsModelVer = 4;
+        if deps.save then deps.save(); end
+    end
+    -- the chooser's default must always be a real kind ('flat' folds into
+    -- the merged kind)
+    if deps.cfg.newSetKind == 'flat' then deps.cfg.newSetKind = 'levels'; end
+    if deps.cfg.newSetKind ~= 'levels' and deps.cfg.newSetKind ~= 'timeline' then
+        deps.cfg.newSetKind = 'levels';
+    end
+    -- the replan setting replaces the retired adds-only autoRestore; the
+    -- meaning changed (auto may now UNSET), so everyone starts at 'manual'
+    -- whatever the old toggle said
+    if deps.cfg.replan ~= 'auto' and deps.cfg.replan ~= 'manual' then
+        deps.cfg.replan = 'manual';
+    end
     local function known(v) if v ~= nil and v >= 0 then return v; end return nil; end
     deps.blu.learnedBonus = known(deps.cfg.capLearnedBonus);
     deps.blu.meritPts     = known(deps.cfg.capMeritPoints);
     -- restore the last active saved set (matched by name -- indices shift
-    -- when sets are deleted), exactly as if it had been clicked
+    -- when sets are deleted), exactly as if it had been clicked. A levels
+    -- set is edited THROUGH A DRAFT of one build (its base here) -- saving
+    -- a draft writes that one build back and can never clobber the others.
     local want = deps.cfg.activeSetName;
     if want ~= nil and want ~= '' then
         for i, entry in ipairs(deps.cfg.sets) do
             if entry.name == want then
                 M.state.activeSet = i;
-                M.state.editingSet = deps.sets.clone(entry, entry.name);
+                if deps.sets.kindOf(entry) == 'levels' then
+                    M.state.editLevel = nil;
+                    M.state.editingSet = deps.sets.draft(entry, nil, deps.book);
+                else
+                    M.state.editingSet = deps.sets.clone(entry, entry.name);
+                end
                 break;
             end
         end
@@ -104,7 +150,8 @@ local function resetCharState()
         M.state.filters, M.state.openCat, M.state.scWeapon =
             old.filters, old.openCat, old.scWeapon;
     end
-    M.downCheck, M.restoreChecks = nil, nil;
+    M.downCheck, M.replanCheck = nil, nil;
+    M.switchCheck, M.restoreChecks, M.lastRung = nil, nil, nil;
 end
 
 -- Which character the adopted cfg belongs to ('Name_serverid'; nil = logged
@@ -155,11 +202,33 @@ function M.isOpen()
 end
 
 local function budgetMax(deps)
+    -- A LEVELS DRAFT is planned at ITS OWN rung, not at the level you happen
+    -- to stand at -- that is what makes a Lv.41 build a Lv.41 plan. The
+    -- model (blu.rungCap) answers there once the learned bonus is measured;
+    -- a bare base-rule floor must not gate adds as if it were the total.
+    local st = M.state;
+    local dLevel = st and st.editingSet and st.editingSet.draft
+        and st.editingSet.level or nil;
+    if dLevel ~= nil then
+        local cap, src = deps.blu.rungCap(dLevel);
+        if src == 'model' then return cap; end
+        local here = deps.sets.rungFor(deps.blu.effectiveLevel());
+        if here ~= nil and here ~= dLevel then return nil; end
+        -- planning the band you stand in: the live number may speak
+    end
+    -- PLANNING IS DONE AT THE LEVEL YOU REALLY ARE, not the one a sync has
+    -- you standing at (Henrik 2026-08-10, sixth round: "I still want to be
+    -- able to do that planning even though I am level synced"). A synced 75
+    -- is building a 75 set; refusing adds past the Lv.40 budget made the
+    -- editor useless for the hours a sync lasts. Nothing is lost by it --
+    -- what the game will actually WEAR is the bracket greying and the live
+    -- pair in the header, both of which still speak the effective level.
+    --
     -- blu.budget prefers the client's own number while it is trustworthy and
-    -- falls back to the measured model for the level we are actually at --
-    -- the client only recomputes its cap when the native Set Spells menu
-    -- opens, so after a level change its number describes the level we left.
-    local max = deps.blu.budget();
+    -- falls back to the measured model otherwise -- the client only
+    -- recomputes its cap when the native Set Spells menu opens, so after a
+    -- level change its number describes the level we left.
+    local max = deps.blu.budget(deps.blu.planLevel());
     if max then return max; end
     if deps.cfg.budgetOverride and deps.cfg.budgetOverride > 0 then
         return deps.cfg.budgetOverride;
@@ -169,50 +238,243 @@ end
 
 local TABS = { 'Codex', 'Sets', 'Traits', 'Settings' };
 
--- The job/level watch and auto-restore, run once per frame whether or not
--- anything renders: a level change invalidates the BLU structs like a fresh
--- login (refresh fires inside the watch). BY DIRECTION (Henrik 2026-08-06):
---   level UP / job change -- if the setting is on, spells the change
---     stripped from the last-applied set are re-added (two delayed checks
---     so the 0x061 answer has landed; quiet when nothing is missing);
---   level DOWN (sync down, delevel) -- NOTHING is sent: the client disables
---     over-level spells itself and re-enables them when the level returns,
---     and the level-sorted layout keeps the survivors in the low slots.
---     One delayed chat line reports what the sync disabled, nothing more.
+-- ---------------------------------------------------------------------------
+-- THE LEVEL-CHANGE WATCHERS (docs/set-types-plan.md 5, the levels slice of
+-- 2026-08-10). ONE LAW: the behavior belongs to the set you last APPLIED --
+-- cfg.lastAppliedSet, by name. A followed LEVELS set arms ITS rule
+-- (restore / switch, setmodel.ruleOf); everything else leaves the timeline
+-- re-plan check in charge, and never both on one change.
+-- ---------------------------------------------------------------------------
+
+-- THE SET BEING FOLLOWED: the one last APPLIED, by name. Never what happens
+-- to be selected in the UI -- the rule is about what you are wearing.
+local function followedSet(deps)
+    local name = deps.cfg.lastAppliedSet;
+    if name == nil or name == '' then return nil; end
+    for _, e in ipairs(deps.cfg.sets) do
+        if e.name == name then return e; end
+    end
+    return nil;
+end
+
+-- The ARMED rule: the followed set's, for the merged flat/levels kind --
+-- ruleOf derives Restore for a build-less set (the old flat auto-restore,
+-- back as the shape's default) and Switch once builds exist; a timeline
+-- set re-plans instead (checkReplan). 'manual' = nothing armed.
+local function armedRule(deps)
+    local entry = followedSet(deps);
+    if entry == nil or deps.sets.kindOf(entry) ~= 'levels' then
+        return 'manual', nil;
+    end
+    return deps.sets.ruleOf(entry), entry;
+end
+
+-- The band's OWN build, when it has one worth wearing. nil means this level
+-- has no build of its own -- and then Lvl Set Switch behaves as Restore
+-- does, on the set's base build (Henrik's wording: "will equip normal set
+-- with restore behaviour, unless a level appropriate set has been defined").
+local function bandBuild(deps, entry)
+    local rung = deps.sets.rungFor(deps.blu.effectiveLevel());
+    if entry == nil or rung == nil then return nil; end
+    local b = deps.sets.groupBuild(entry, rung);
+    if b == nil or deps.sets.countIds(b.ids) == 0 then return nil; end
+    return b;
+end
+
+-- THE BAND SWITCH (Henrik 2026-08-06, from the field: "I walked out now,
+-- and I still have my level 31 set equipped"). A level build serves ITS
+-- band and no other, so crossing into a band that HAS one means the set you
+-- are wearing is the wrong build of itself: equip that band's build
+-- outright.
+--
+-- A band with no build of its own is not this rule's business -- the
+-- restore path below covers it, adds-only, exactly as before.
+--
+-- Deliberately quiet when it has nothing to do: a band change that does not
+-- move a spell must not cost the game's 60s Blue Magic cast lock, so the
+-- diff is checked here rather than left to applyDiff's chat line.
+local function bandSwitch(deps)
+    if deps.blu.applying or not deps.blu.canApply() then return; end
+    local rule, entry = armedRule(deps);
+    if rule ~= 'switch' then return; end
+    local build = bandBuild(deps, entry);
+    if build == nil then return; end
+    local ids = build.ids;
+    local live = deps.blu.currentSet();
+    if #live ~= 20 then return; end
+    local T = deps.sets.sortedLayout(ids, deps.book);
+    local same = true;
+    for i = 1, 20 do
+        if (live[i] or 0) ~= T[i] then same = false; break; end
+    end
+    if same then return; end
+    deps.blu.announce(('Level %s: equipping the Lv.%d build of "%s".'):format(
+        tostring(deps.blu.effectiveLevel()), build.level, entry.name));
+    if deps.blu.applyDiff(ids, deps.book) then
+        local snap = {};
+        for i = 1, 20 do snap[i] = ids[i] or 0; end
+        deps.cfg.lastApplied = { ids = snap,
+            level = deps.blu.effectiveLevel() or 75 };
+        if deps.save then deps.save(); end
+    end
+end
+
+-- THE RESTORE PATH: put back what a level change stripped, adds-only,
+-- never removing anything. Under Lvl Set Switch it works from the followed
+-- set -- its build for this band if there is one, otherwise its base build
+-- (resolveAtLevel carries groupPick) -- rather than from the raw
+-- last-applied snapshot, which may be some other band's build entirely.
+local function restoreNow(deps)
+    local rule, entry = armedRule(deps);
+    if rule == 'manual' then return; end
+    local ids = nil;
+    if rule == 'switch' and entry ~= nil then
+        ids = deps.sets.resolveAtLevel(entry, deps.blu.effectiveLevel(), deps.book);
+        if deps.sets.countIds(ids) == 0 then ids = nil; end
+    end
+    if ids == nil then
+        local last = deps.cfg.lastApplied;
+        ids = (last ~= nil) and last.ids or nil;
+    end
+    if ids ~= nil then deps.blu.restoreMissing(ids, deps.book); end
+end
+
+-- THE TAIL A SYNC REFUSED (Henrik 2026-08-10, sixth round: "make it notice
+-- and offer that automatically"). Applying a level-75 plan while synced down
+-- gets the over-level spells bounced by the game -- silently, and the only
+-- cure was remembering to Apply again once the sync ended. applyEditing
+-- banks what was refused and the level it needs; this comes back for it.
+--
+-- Unconditional by design: this is not one of the level RULES deciding to
+-- act on your behalf, it is finishing the apply you already commanded. It
+-- still refuses to act on a set you have since moved away from -- the live
+-- spells must all belong to the banked plan, or the promise is dropped
+-- rather than allowed to clobber whatever you are wearing now.
+--
+-- READ IT THROUGH pendingPromise, NEVER FIELD BY FIELD. While the promise
+-- is still the settings default it is an Ashita T{}, and a T{} carries the
+-- table HELPERS as fields -- `count` among them. `pend.count > 0` compared
+-- a function to a number and took the addon down on the first frame (field
+-- 2026-08-10). Only ids/need/waiting are ever stored, none of them helper
+-- names, and `ids` proves the shape before anything else is touched.
+function M.pendingPromise(cfg)
+    local p = cfg and cfg.pendingSync or nil;
+    if type(p) ~= 'table' or type(p.ids) ~= 'table' then return nil; end
+    local n = (type(p.waiting) == 'table') and #p.waiting or 0;
+    local need = tonumber(p.need);
+    if n == 0 or need == nil then return nil; end
+    return { ids = p.ids, need = need, n = n };
+end
+
+local function finishPending(deps)
+    local p = M.pendingPromise(deps.cfg);
+    if p == nil then return; end
+    local lvl = deps.blu.effectiveLevel();
+    if lvl == nil then return; end
+    if lvl < p.need then return; end                        -- not there yet
+    local function drop()
+        -- EMPTY, never nil: the settings lib merges its defaults over a
+        -- missing key on load, so a hole would read back as whatever the
+        -- default says. An empty table says "nothing pending" in both.
+        deps.cfg.pendingSync = {};
+        if deps.save then deps.save(); end
+    end
+    local live = deps.blu.currentSet();
+    if #live ~= 20 then return; end                          -- unreadable; keep waiting
+    local plan = {};
+    for i = 1, 20 do
+        local id = p.ids[i] or 0;
+        if id ~= 0 then plan[id] = true; end
+    end
+    for i = 1, 20 do
+        local id = live[i] or 0;
+        if id ~= 0 and not plan[id] then return drop(); end  -- another set is on
+    end
+    drop();
+    deps.blu.announce(('Back at Lv.%d - setting the %d spell(s) the sync refused.'):format(
+        lvl, p.n));
+    deps.blu.restoreMissing(p.ids, deps.book);
+end
+
+-- The job/level watch and the settled checks, run once per frame whether or
+-- not anything renders: a level change invalidates the BLU structs like a
+-- fresh login (refresh fires inside the watch). Every check is debounced: a
+-- level sync bounces through several readings (75 -> 0 -> 75 -> 40 in one
+-- capture), so nothing is decided until the level has sat still. What runs
+-- when it settles is decided by the FOLLOWED set (armedRule above):
+--   levels kind, Switch  -- crossing into a band with its own build equips
+--     it outright (bandSwitch); other moves restore, adds-only;
+--   levels kind, Restore -- spells the change stripped are re-added, quiet
+--     when nothing is missing; level DOWN sends NOTHING (the client
+--     disables and re-enables over-level spells itself);
+--   anything else        -- the timeline re-plan check (checkReplan), which
+--     stands down while a levels rule is armed.
 -- The standalone render calls this itself; an EMBEDDING host (dlac's BLU
 -- helper) calls it directly every frame, even while its panel is hidden.
 function M.tick()
     local deps = M.deps;
     if deps == nil then return; end
+    -- PROOF OF LIFE for the level rules. They ride the host's beat --
+    -- dlac's is gated on its own activity predicate -- and a rule that
+    -- never runs looks exactly like a rule that decided not to act. The
+    -- Sets tab reads this and says which of the two it is.
+    M.tickedAt = os.clock();
     -- the cap-staleness watch runs every frame whether or not anything
     -- renders: the client recomputes the cap on its own schedule (the native
     -- Set Spells menu), and we have to catch the moment it does
     deps.blu.watchCap();
+    -- the BAND watch: cheap, every frame, and independent of watchJobState
+    -- -- what matters here is not that the level moved but that it crossed
+    -- into a band with a different build. An unreadable level (nil:
+    -- mid-handoff, off BLU) is not a change; it holds the last band until
+    -- one reads again.
+    local rung = deps.sets.rungFor(deps.blu.effectiveLevel());
+    if rung ~= nil then
+        if M.lastRung == nil then
+            M.lastRung = rung;
+        elseif rung ~= M.lastRung then
+            M.lastRung = rung;
+            M.switchCheck = os.clock() + 3.0;
+        end
+    end
+    if M.switchCheck ~= nil and os.clock() >= M.switchCheck then
+        M.switchCheck = nil;
+        pcall(bandSwitch, deps);
+    end
     local change = deps.blu.watchJobState();
-    if change == 'down' then
-        M.downCheck = os.clock() + 2.0;
-        M.restoreChecks = nil;             -- a pending restore is moot now
-    elseif change ~= nil then
-        local now = os.clock();
-        M.restoreChecks = { now + 2.0, now + 8.0 };
-        M.downCheck = nil;
+    if change ~= nil then
+        M.replanCheck = os.clock() + 3.0;
+        M.downCheck = (change == 'down') and (os.clock() + 2.0) or nil;
+        -- the adds-only restore rides level UP / job change only, with two
+        -- delayed checks so the 0x061 answer has landed; a level DOWN sends
+        -- nothing (the client's own disable covers it)
+        M.restoreChecks = (change ~= 'down')
+            and { os.clock() + 2.0, os.clock() + 6.0 } or nil;
     end
     if M.downCheck ~= nil and os.clock() >= M.downCheck then
         M.downCheck = nil;
-        deps.blu.reportLevelDown(deps.book);
+        -- when a band build is about to be equipped outright its own line
+        -- says so, and the what-the-sync-disabled report would be noise
+        local rule, entry = armedRule(deps);
+        if not (rule == 'switch' and bandBuild(deps, entry) ~= nil) then
+            deps.blu.reportLevelDown(deps.book);
+        end
     end
     if M.restoreChecks ~= nil then
         local due = M.restoreChecks[1];
         if due ~= nil and os.clock() >= due then
             table.remove(M.restoreChecks, 1);
             if #M.restoreChecks == 0 then M.restoreChecks = nil; end
-            if deps.cfg.autoRestore == true then
-                local last = deps.cfg.lastApplied;
-                if last ~= nil and last.ids ~= nil then
-                    deps.blu.restoreMissing(last.ids, deps.book);
-                end
-            end
+            -- the sync promise runs FIRST and on its own terms: it is the
+            -- rest of an apply you commanded, not a rule acting for you.
+            -- Both are adds-only, so the order costs nothing either way.
+            pcall(finishPending, deps);
+            pcall(restoreNow, deps);
         end
+    end
+    if M.replanCheck ~= nil and os.clock() >= M.replanCheck then
+        M.replanCheck = nil;
+        M.checkReplan();
     end
 end
 
@@ -225,7 +487,28 @@ local function pushBodyTheme(im)
     im.PushStyleColor(24, { 0.16, 0.34, 0.62, 0.85 });     -- Header
     im.PushStyleColor(25, { 0.20, 0.42, 0.74, 0.85 });     -- HeaderHovered
     im.PushStyleColor(26, { 0.24, 0.48, 0.80, 1.00 });     -- HeaderActive
-    return 4;
+    -- THE RED IS THE DEFAULT THEME'S, AND IT LEAKS (field 2026-08-07: every
+    -- filter combo wore a red arrow). Anything the kit does not style itself
+    -- falls back to the host's theme, so the widget colors are set here once:
+    -- a combo's arrow is a BUTTON, its body is a FRAME, and both were still
+    -- Ashita's default red/grey while everything around them was blue.
+    --
+    -- The contrast that carries it: the FRAME sits a shade DARKER than the
+    -- panel it is on, the ARROW a good deal lighter -- so the box reads as
+    -- inset and the one part you click reads as raised, without a border and
+    -- without either of them competing with the blue-white text on top.
+    im.PushStyleColor(7,  { 0.10, 0.13, 0.20, 1.00 });     -- FrameBg
+    im.PushStyleColor(8,  { 0.13, 0.18, 0.28, 1.00 });     -- FrameBgHovered
+    im.PushStyleColor(9,  { 0.16, 0.22, 0.34, 1.00 });     -- FrameBgActive
+    im.PushStyleColor(21, { 0.16, 0.34, 0.62, 1.00 });     -- Button = combo arrow
+    im.PushStyleColor(22, { 0.20, 0.42, 0.74, 1.00 });     -- ButtonHovered
+    im.PushStyleColor(23, { 0.24, 0.48, 0.80, 1.00 });     -- ButtonActive
+    im.PushStyleColor(4,  { 0.05, 0.08, 0.14, 0.98 });     -- PopupBg: the open list
+    im.PushStyleColor(14, { 0.05, 0.07, 0.12, 0.60 });     -- ScrollbarBg
+    im.PushStyleColor(15, { 0.16, 0.34, 0.62, 0.90 });     -- ScrollbarGrab
+    im.PushStyleColor(16, { 0.20, 0.42, 0.74, 0.95 });     -- ScrollbarGrabHovered
+    im.PushStyleColor(17, { 0.24, 0.48, 0.80, 1.00 });     -- ScrollbarGrabActive
+    return 15;
 end
 
 local function pushWindowTheme(im)
@@ -238,29 +521,123 @@ end
 
 -- the per-frame ctx handed to every tab (and to the detail float)
 local function tabCtx(im, st, deps, embedded)
+    -- the tooltip dwell belongs to the kit (every tooltip in Bludex goes
+    -- through it) but the setting lives in cfg -- carried across here, at the
+    -- one point every rendering flavor passes through. NOT in tick(): an
+    -- embedding host may gate its beat (dlac's rides an activity predicate),
+    -- and a tooltip can be hovered whether or not the beat is running.
+    kit.hoverDelay = tonumber(deps.cfg.tooltipDelay) or 0.5;
+    -- THE JOB SIDE OF THE TRAIT COLLISION, resolved once per render: which
+    -- traits your two jobs already grant, and therefore which blue tiers the
+    -- server will throw away (lib/traitsource.lua). An unreadable character
+    -- gives an empty map -- nothing is claimed when nothing can be read.
+    local jp = deps.blu.jobPair and deps.blu.jobPair() or nil;
+    local jobTraits = jp and tsrc.jobs(jp.mainJob, jp.mainLevel, jp.subJob, jp.subLevel) or {};
+    -- THE REFEREE, ONLY WHEN IT IS AWAKE. The client's trait bits arrive on
+    -- 0x0AC and are all zero until they do (a fresh zone, a job change still
+    -- in flight) -- and an empty table reads exactly like "you have none of
+    -- these". Hand the live reader over only once a trait we EXPECT is lit;
+    -- until then nothing is contradicted, because nothing has been read.
+    local hasTrait = nil;
+    if deps.blu.hasTrait ~= nil then
+        for traitId in pairs(jobTraits) do
+            if deps.blu.hasTrait(traitId) == true then
+                hasTrait = deps.blu.hasTrait;
+                break;
+            end
+        end
+    end
     return {
         im = im, book = deps.book, blu = deps.blu, sets = deps.sets,
         cfg = deps.cfg, save = deps.save, state = st,
         embedded = embedded == true,
+        tsrc = tsrc, jobPair = jp, jobTraits = jobTraits,
+        -- one ladder's whole answer: active tiers and where each came from
+        verdict = function(cat, weight)
+            return tsrc.verdict(cat, weight, deps.book, jobTraits, hasTrait);
+        end,
         -- true once an embedding host's sanctioned float surface has run:
         -- the codex then routes Spell Info there instead of its in-panel pane
         floatWindow = deps.floatWindow == true,
         budgetMax = function() return budgetMax(deps); end,
+        -- the level-rule surface (levels sets): is the beat that drives the
+        -- rules actually reaching us, and which set is being followed?
+        watchAlive = function()
+            return M.tickedAt ~= nil and (os.clock() - M.tickedAt) < 5.0;
+        end,
+        followedName = function() return deps.cfg.lastAppliedSet or ''; end,
+        -- arming Switch is a click, and a click may act: put the player on
+        -- the right build now rather than at the next band change. Silent
+        -- when they are already wearing it (bandSwitch checks the diff).
+        armSwitch = function() M.switchCheck = os.clock() + 0.5; end,
     };
 end
 
--- Does the LIVE in-game set differ from the editing set's SORTED layout
--- (slot-wise -- what applyDiff would send)? So a right-spells-wrong-order
--- set lights Apply green, and one click re-sorts it. true / false, nil
--- when the live set is unreadable.
-local function applyDirty(deps, st)
-    local live = deps.blu.currentSet();
-    if #live ~= 20 then return nil; end
-    local T = deps.sets.sortedLayout(st.editingSet.ids, deps.book);
-    for i = 1, 20 do
-        if (live[i] or 0) ~= T[i] then return true; end
+-- After a SETTLED level change: does the timeline plan different spells for
+-- the new level than what is live? Auto applies the plan (this may unset);
+-- Manual arms the nudge -- header glow, the float, one chat line. THE
+-- QUIET-FLAT RULE: when the plan for the level would only REMOVE spells
+-- (nothing new comes in -- the flat-set-under-sync case), nothing fires:
+-- the client's own disable already handles it better than packets would,
+-- and re-adding on sync-end costs a cast lock the player never asked for.
+function M.checkReplan()
+    local deps, st = M.deps, M.state;
+    if deps == nil or st == nil then return; end
+    -- off BLU the nudge is moot -- clear it, or a job change leaves a
+    -- stale float with a button that can never work (review 2026-08-08)
+    if not deps.blu.onBlu() then st.replanPending = nil; return; end
+    -- the re-plan is TIMELINE behavior (docs/set-types-plan.md 5): a flat
+    -- set plans the same spells at every level, and the levels kind has
+    -- its own watchers (bandSwitch / restoreNow above)
+    if deps.sets.kindOf(st.editingSet) ~= 'timeline' then
+        st.replanPending = nil;
+        return;
     end
-    return false;
+    -- NEVER TWO WRITERS ON ONE CHANGE: while the followed set is a levels
+    -- set with an armed rule, that rule owns the level change and the
+    -- re-plan stands down -- whatever happens to be open in the editor
+    if (armedRule(deps)) ~= 'manual' then
+        st.replanPending = nil;
+        return;
+    end
+    if deps.blu.applying then return; end
+    local ctx = tabCtx(deps.im, st, deps, false);
+    local state, lvl = setsui.applyState(ctx);
+    -- nil = the live set is unreadable (zoning): decide NOTHING on it --
+    -- neither arming a nudge nor dropping a legitimate pending one
+    if state == nil then return; end
+    if state ~= 'dirty' then st.replanPending = nil; return; end
+    local live = deps.blu.currentSet();
+    -- POSITIONS COUNT (field 2026-08-10, Henrik's slotlist round): the
+    -- layout is the timeline's authorship, so a spell MOVING slots at a
+    -- level boundary is a real change -- the old by-identity adds count
+    -- read it as nothing to do. The quiet-flat rule survives in its true
+    -- form: only a difference made purely of REMOVALS stays silent (the
+    -- client's own sync-disable already covers those, and re-adding on
+    -- sync-end would cost a cast lock nobody asked for).
+    local plan = deps.sets.resolveAtLevel(st.editingSet, lvl, deps.book);
+    local T = deps.sets.applyLayout(st.editingSet, plan, deps.book);
+    local changes = 0;
+    for i = 1, 20 do
+        if T[i] ~= (live[i] or 0) and T[i] ~= 0 then changes = changes + 1; end
+    end
+    if changes == 0 then st.replanPending = nil; return; end
+    if deps.cfg.replan == 'auto' then
+        st.replanPending = nil;
+        setsui.applyEditing(ctx);
+        return;
+    end
+    if st.replanPending ~= nil and st.replanPending.level == lvl then return; end
+    st.replanPending = { level = lvl, changes = changes };
+    deps.blu.announce(('Level %d: the set plans %d spell change(s) for this level - Apply when ready, or /bdx replan.'):format(lvl, changes));
+end
+
+-- Apply the plan for the CURRENT level from outside the window (the /bdx
+-- replan command and the nudge float's button).
+function M.replanNow()
+    local deps, st = M.deps, M.state;
+    if deps == nil or st == nil then return; end
+    setsui.applyEditing(tabCtx(deps.im, st, deps, false));
 end
 
 -- header + tab row + the active tab: everything between Begin and End,
@@ -269,6 +646,9 @@ end
 -- open windows itself, so the codex either uses the host's float surface
 -- (renderDetailFloat below) or falls back to an in-panel pane.
 local function renderBody(im, st, deps, embedded)
+    -- ONE ctx per frame, built up front: the header picker needs it before
+    -- the buttons do
+    local ctx = tabCtx(im, st, deps, embedded);
     -- header: logo + budget
     local logo = filetex.ui('logo-64');
     if logo ~= nil and kit.isFn(im, 'Image') then
@@ -280,33 +660,62 @@ local function renderBody(im, st, deps, embedded)
     -- the header meters are the EDITING set against the budget -- the
     -- planning numbers needed while adding from the codex. Live-vs-
     -- planned shows per-slot in the Sets tab (dimming).
-    local max = budgetMax(deps);
-    kit.meter(im, '   Set:', deps.sets.usedPoints(st.editingSet, deps.book), max, ' pts');
-    kit.tip(im, max ~= nil
-        and 'Points used by the set you are editing /\nyour total from the game client (CatsEyeXI bonuses included).'
-        or 'Points used by the set you are editing.\nThe total appears when you are on BLU (or set budgetOverride).');
-    if kit.isFn(im, 'SameLine') then im.SameLine(); end
-    kit.meter(im, '   Slots:', deps.sets.count(st.editingSet), 20, '');
-    -- the level-sync line (Henrik 2026-08-06): the meters above stay the
-    -- PLAN (the editing set at full level); when the effective BLU level is
-    -- under the 75 cap this shows what the client holds RIGHT NOW -- the
-    -- sync-enabled spells' points against the synced budget, and those
-    -- spells against the synced slot count (the server's slot rule).
+    -- THE PLAN AGAINST ITS OWN BUDGET, with the live reading in brackets
+    -- (Henrik 2026-08-10, sixth round). A base build IS the level-75 plan,
+    -- so measuring it against the budget for the level you happen to stand
+    -- at read as permanently over ('67 / 49 pts' at Lv.40). It is priced at
+    -- 75 now, and what the game holds right now rides along in brackets --
+    -- which is the whole sync line, folded into the space it belongs in.
+    local planLvl = (st.editingSet.draft and st.editingSet.level)
+        or deps.blu.planLevel() or 75;
+    local max = deps.blu.budget(planLvl) or budgetMax(deps);
     local ss = deps.blu.syncStats(deps.book);
-    if ss ~= nil and ss.level < 75 then
-        if kit.isFn(im, 'SameLine') then im.SameLine(); end
-        -- the budget FOR THE SYNCED LEVEL, not the client's leftover from
-        -- full level (field 2026-08-06: this read "7 / 79 pts" at a Lv40 sync
-        -- whose real budget is 49, because points() had not recomputed)
-        local liveMax = deps.blu.budget();
-        kit.ctext(im, kit.COL.warn, ('   Sync Lv.%d: %d / %s pts  %d / %d slots'):format(
-            ss.level, ss.activePoints, liveMax and tostring(liveMax) or '?',
-            ss.active, ss.maxSlots));
-        kit.tip(im, ('Level sync: what is live RIGHT NOW at Lv.%d.\n'
-            .. 'The game disabled the rest of the set itself; everything\n'
-            .. 'returns when the sync ends. The Set/Slots meters keep\n'
-            .. 'showing the plan at full level.'):format(ss.level));
+    -- the brackets are worth drawing whenever the game is holding you below
+    -- the level you are planning at -- a sync, or simply not being 75 yet
+    local synced = (ss ~= nil and ss.level < planLvl) and ss or nil;
+    local liveMax = synced and deps.blu.budget() or nil;
+    kit.meter(im, '   Set:', deps.sets.usedPoints(st.editingSet, deps.book), max, ' pts',
+        synced and synced.activePoints or nil, liveMax);
+    kit.tip(im, (max ~= nil
+        and ('Points used by the set you are editing / the budget it is\nplanned against (Lv.%d).'):format(planLvl)
+        or 'Points used by the set you are editing.\nThe total appears when you are on BLU (or set budgetOverride).')
+        .. (synced and ('\n\nIn brackets: what the game holds RIGHT NOW at Lv.%d,\n'
+            .. 'against the budget for that level.%s\n'
+            .. 'The rest of the set is disabled by the game itself and\n'
+            .. 'comes back with the level -- and you can go on planning\n'
+            .. 'the whole thing meanwhile.'):format(synced.level,
+            deps.blu.syncedFrom() and ('\nYou are level synced from Lv.%d; Bludex budgets at %d.'):format(
+                planLvl, planLvl) or '') or ''));
+    if kit.isFn(im, 'SameLine') then im.SameLine(); end
+    -- SLOTS the plan occupies (the ids mirror), NOT chain entries: a Wild
+    -- Oats -> Bludgeon stack is one slot, not two (review 2026-08-08). The
+    -- ceiling follows the build being edited -- a Lv.41 draft owns its
+    -- band's 14, everything else the full 20 (slotMax knows).
+    local slots75 = 0;
+    for i = 1, 20 do
+        if ((st.editingSet.ids or {})[i] or 0) ~= 0 then slots75 = slots75 + 1; end
     end
+    kit.meter(im, '   Slots:', slots75, deps.sets.slotMax(st.editingSet), '',
+        synced and synced.active or nil, synced and synced.maxSlots or nil);
+    kit.tip(im, 'Slots the plan occupies / the slots it is planned against.'
+        .. (synced and ('\n\nIn brackets: spells live RIGHT NOW / the %d slots the\n'
+            .. 'game gives at Lv.%d. The rest of the set is still yours --\n'
+            .. 'it returns with the level.'):format(synced.maxSlots, synced.level) or ''));
+    -- THE PROMISE, visible while it is outstanding (Henrik 2026-08-10,
+    -- sixth round): spells the sync refused, and the level they are waiting
+    -- for. It clears itself the moment the watcher sets them.
+    local pend = M.pendingPromise(deps.cfg);
+    if pend ~= nil then
+        if kit.isFn(im, 'SameLine') then im.SameLine(); end
+        kit.ctext(im, kit.COL.warn, ('   %d waiting for Lv.%d'):format(pend.n, pend.need));
+        kit.tip(im, ('%d spell(s) of this set could not go in at your level.\n'
+            .. 'Bludex sets them by itself once you are Lv.%d -- nothing to\n'
+            .. 'remember, and no need to Apply again.\n\n'
+            .. 'Applying anything else retires the promise.'):format(pend.n, pend.need));
+    end
+    -- the set picker (Henrik 2026-08-10): every saved set one click away,
+    -- and a second menu for WHICH build when the set has level builds
+    setsui.headerPicker(ctx);
     -- the cap the client holds can belong to a level we have left (the client
     -- only recomputes it when the native Set Spells menu opens). Say so
     -- rather than showing a confident wrong number -- and name the one action
@@ -378,10 +787,16 @@ local function renderBody(im, st, deps, embedded)
 
     -- set actions on the header line, every tab (Henrik 2026-08-04): Save
     -- and Apply light GREEN when they have work, Revert discards the unsaved
-    -- changes. One definition each -- setsui owns the verbs.
-    local ctx = tabCtx(im, st, deps, embedded);
+    -- changes. One definition each -- setsui owns the verbs, including the
+    -- consolidated live-vs-plan compare (applyState).
     local unsaved = setsui.unsaved(ctx);
-    local dirty = applyDirty(deps, st);
+    local astate, alevel = setsui.applyState(ctx);
+    -- the manual-replan nudge self-clears the moment live MATCHES a plan --
+    -- an unreadable live set (astate nil, zoning) proves nothing and must
+    -- not drop a legitimate nudge (review 2026-08-08)
+    if st.replanPending ~= nil and (astate == 'clean' or astate == 'planned') then
+        st.replanPending = nil;
+    end
     local bw = kit.measure(im, { 'Save', 'Apply', 'Revert', 'Applying...' }, 48);
     if kit.isFn(im, 'SameLine') then im.SameLine(); end
     if kit.litButton(im, 'Save', false, bw, 22, unsaved and kit.PAL.go or kit.PAL.off) then
@@ -393,23 +808,47 @@ local function renderBody(im, st, deps, embedded)
     if kit.isFn(im, 'SameLine') then im.SameLine(); end
     local applyPal = nil;
     if not deps.blu.applying then
-        if dirty == true then applyPal = kit.PAL.go;
-        elseif dirty == false then applyPal = kit.PAL.off; end
+        if astate == 'dirty' then applyPal = kit.PAL.go;
+        elseif astate ~= nil then applyPal = kit.PAL.off; end
     end
     if kit.litButton(im, deps.blu.applying and 'Applying...' or 'Apply', false, bw, 22, applyPal) then
-        if dirty == false then
+        if astate == 'clean' then
             st.applyNote = 'Already up to date - nothing to apply.';
         else
             setsui.applyEditing(ctx);
         end
     end
-    kit.tip(im, 'Apply the editing set in game - only the changed slots are sent.');
+    kit.tip(im, astate == 'planned'
+        and ('The live set matches your Lv.%d plan (applied ahead of a sync),\nso Apply is quiet. Clicking it applies the plan for your CURRENT\nlevel instead, replacing the preemptive setup.'):format(alevel or 0)
+        or 'Apply the editing set in game - the timeline resolved for your\ncurrent level, only the changed slots sent.');
     if kit.isFn(im, 'SameLine') then im.SameLine(); end
     if kit.litButton(im, 'Revert', false, bw, 22, unsaved and nil or kit.PAL.off) then
         if unsaved then setsui.revertEditing(ctx); end
     end
     kit.tip(im, unsaved and 'Discard the unsaved changes - back to the saved set.'
         or 'No unsaved changes to revert.');
+
+    -- the over-budget badge (plan 2.6): an ENFORCED band violation shows
+    -- wherever the eye is, and Apply is blocked while it stands. Save is
+    -- never blocked -- the badge, not a lost edit, is the protection.
+    local viols = deps.sets.enforcedViolations(st.editingSet, deps.book, setsui.budgetFn(ctx));
+    if #viols > 0 then
+        if kit.isFn(im, 'SameLine') then im.SameLine(); end
+        kit.ctext(im, kit.COL.err, ('   over budget %d-%d'):format(viols[1].lo, viols[1].hi));
+        local lines = {};
+        for _, b in ipairs(viols) do lines[#lines + 1] = deps.sets.bandText(b); end
+        lines[#lines + 1] = '';
+        lines[#lines + 1] = 'Apply is blocked until the set fits its whole built-for range.';
+        lines[#lines + 1] = 'Saving still works - the set just carries this badge.';
+        kit.tip(im, table.concat(lines, '\n'));
+    end
+    -- the manual-replan nudge, where the eye is (the float shows it while
+    -- the window is closed)
+    if st.replanPending ~= nil then
+        if kit.isFn(im, 'SameLine') then im.SameLine(); end
+        kit.ctext(im, kit.COL.warn, ('   plan changed for Lv.%d'):format(st.replanPending.level));
+        kit.tip(im, 'Your level changed and the timeline plans different spells for\nit. Apply sends them; this note clears itself if the live set\ncomes to match the plan.');
+    end
 
     -- the cast lock countdown: changing set spells locks Blue Magic casting
     -- for about a minute (the game's rule) -- count it down where the eye is
@@ -448,9 +887,11 @@ local function renderBody(im, st, deps, embedded)
             kit.ctext(im, kit.COL.err, 'detail error: ' .. tostring(derr));
         end
         -- the Learn-from and Skillchain-partners windows ride along the
-        -- same way (their open buttons live inside Spell Info)
+        -- same way (their open buttons live inside Spell Info) -- and the
+        -- slot editor (fourth field round), which any tab can open
         pcall(spellsui.learnWindow, ctx);
         pcall(spellsui.scWindow, ctx);
+        pcall(setsui.slotEditorWindow, ctx);
     end
 end
 
@@ -474,6 +915,40 @@ local function renderWindow(im, st, deps)
     if pushed > 0 then im.PopStyleColor(pushed); end
 end
 
+-- The nudge float (plan 2.8, Henrik's ask 2026-08-08): while the main
+-- window is CLOSED and a manual re-plan waits, a small window with the one
+-- fact and the one button. It never acts by itself -- Apply or Dismiss.
+-- (While the window is open, the header carries the same note instead.)
+local function renderNudge(im, st, deps)
+    if st.replanPending == nil or deps.blu.applying then return; end
+    if not (kit.isFn(im, 'Begin') and kit.isFn(im, 'End')) then return; end
+    local pushed = pushWindowTheme(im);
+    if kit.isFn(im, 'SetNextWindowSizeConstraints') then
+        pcall(im.SetNextWindowSizeConstraints, { 250, 60 }, { 460, 200 });
+    end
+    local visible = false;
+    local ok = pcall(function()
+        visible = im.Begin('Bludex - level change##bdxnudge');
+    end);
+    if ok and visible then
+        kit.ctext(im, kit.COL.warn,
+            ('Plan changed for Lv.%d (%d spell change(s))'):format(
+                st.replanPending.level, st.replanPending.changes or 0));
+        local w = kit.measure(im, { 'Apply', 'Dismiss' }, 70);
+        if kit.litButton(im, 'Apply', false, w, 22, kit.PAL.go) then
+            M.replanNow();
+        end
+        kit.tip(im, 'Send the plan for this level now (the usual cast lock follows).');
+        if kit.isFn(im, 'SameLine') then im.SameLine(); end
+        if kit.litButton(im, 'Dismiss', false, w, 22) then
+            st.replanPending = nil;
+        end
+        kit.tip(im, 'Ignore it - the note returns on the next level change.');
+    end
+    if ok then im.End(); end
+    if pushed > 0 then im.PopStyleColor(pushed); end
+end
+
 -- the standalone flavor (the bludex addon's own d3d_present hook)
 function M.render()
     local st = M.state;
@@ -481,7 +956,10 @@ function M.render()
     local deps = M.deps;
     if deps == nil then return; end
     M.tick();
-    if not st.open[1] then return; end
+    if not st.open[1] then
+        renderNudge(deps.im, st, deps);
+        return;
+    end
     renderWindow(deps.im, st, deps);
 end
 
@@ -508,7 +986,12 @@ function M.renderWindowFloat()
     local deps = M.deps;
     if deps == nil or deps.im == nil then return; end
     deps.floatWindow = true;
-    if not st.open[1] then return; end
+    if not st.open[1] then
+        -- the float surface is the one place this flavor may open a window,
+        -- so the level-change nudge rides it while the main window sleeps
+        renderNudge(deps.im, st, deps);
+        return;
+    end
     renderWindow(deps.im, st, deps);
 end
 
@@ -531,6 +1014,7 @@ function M.renderDetailFloat()
     pcall(spellsui.detailWindow, ctx);
     pcall(spellsui.learnWindow, ctx);
     pcall(spellsui.scWindow, ctx);
+    pcall(setsui.slotEditorWindow, ctx);
     if pushed > 0 then im.PopStyleColor(pushed); end
 end
 

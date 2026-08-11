@@ -16,6 +16,11 @@ local scrules = require(ROOT .. 'lib\\skillchain');
 
 local M = {};
 
+-- The codex's "which spells" choices: two axes on one list, because they
+-- answer the same question. The last two are membership of the build being
+-- edited -- the same spells the rows draw green.
+M.SHOW_CHOICES = { 'Learned', 'Missing', 'In the set', 'Not in the set' };
+
 -- guarded PushID/PopID: a grid of ImageButtons re-uses texture handles as IDs,
 -- so every button gets an explicit ID pushed around it.
 local function pushId(im, id)
@@ -76,9 +81,27 @@ function M.spellButton(ctx, id, size, selected, dimmed)
     return clicked;
 end
 
+-- The job side of a trait ladder, when the host wired it in (ctx.jobTraits).
+-- nil when it did not -- an unwired host claims nothing rather than claiming
+-- "no job grants this".
+function M.ladderBlocks(ctx, cat)
+    if ctx.tsrc == nil or ctx.jobTraits == nil or cat == nil then return nil; end
+    local ok, r = pcall(ctx.tsrc.ladderBlocks, cat, ctx.book, ctx.jobTraits);
+    return ok and r or nil;
+end
+
 local function learnedText(ctx, id)
     if ctx.blu.onBlu() or ctx.book.learned(id) then
         if ctx.book.learned(id) then return 'learned', kit.COL.ok; end
+        -- NOT EVERY SPELL YOU LACK IS ONE YOU MISSED (Henrik 2026-08-10,
+        -- sixth round). A granted spell -- Thunderbolt, off the food Lengua
+        -- Regia -- is not learned from a mob at all, so the red "not
+        -- learned" was accusing you of a gap you cannot close. It reads as
+        -- what it is, and the note below names what does grant it.
+        local s = ctx.book.spells[id];
+        if s ~= nil and s.grantedBy ~= nil then
+            return 'not learnable - granted', kit.COL.badge;
+        end
         return 'not learned', kit.COL.err;
     end
     return nil, nil;
@@ -87,11 +110,16 @@ end
 -- `hovered` (optional): the row-wide state from listRow -- the overlay row
 -- draws art LAST, so IsItemHovered on the last item only covers the name.
 -- true shows, false skips, nil falls back to the last-item check.
-function M.tooltip(ctx, id, hovered)
+-- `extra` (optional): array of { text, color } rows appended at the end --
+-- the Assign pane explains a blocked spell through it.
+function M.tooltip(ctx, id, hovered, extra)
     local im, book = ctx.im, ctx.book;
     if hovered == false then return; end
     if hovered ~= true
         and not (kit.isFn(im, 'IsItemHovered') and im.IsItemHovered()) then return; end
+    -- the same dwell every other tooltip waits out (Settings: hover delay).
+    -- Keyed by spell so moving along a list restarts it row by row.
+    if not kit.hoverReady('bdxspell' .. tostring(id)) then return; end
     local s = book.spells[id];
     if s == nil then return; end
 
@@ -100,6 +128,9 @@ function M.tooltip(ctx, id, hovered)
     local function add(txt, col) rows[#rows + 1] = { txt, col }; end
     add(s.name, kit.COL.head);
     add(('%s - Lv.%s - %s'):format(s.category, s.level or '?', s.spellType or '?'), kit.COL.dim);
+    -- what it costs to CAST, next to what it costs to SET (field ask
+    -- 2026-08-07) -- the two numbers a spell is picked on
+    if s.mpCost then add(('%d MP'):format(s.mpCost), kit.COL.accent); end
     -- the client DAT's own description (it carries its own line breaks)
     local desc = book.description(id);
     if desc then add(desc, { 0.90, 0.90, 0.95, 1.00 }); end
@@ -113,8 +144,10 @@ function M.tooltip(ctx, id, hovered)
     end
     if s.trait then
         local cat = s.trait.category;
-        add(('Trait: %s  (weight %d)'):format(book.traitName(cat), s.trait.weight), kit.COL.accent);
-        -- the editing set's progress on that ladder: weight / next threshold
+        local tw = s.trait.weight or 0;
+        add(('Trait: %s  (+%d Point%s)'):format(
+            book.traitName(cat), tw, tw == 1 and '' or 's'), kit.COL.accent);
+        -- the editing set's progress on that ladder: points / next threshold
         local weight = 0;
         for _, ev in ipairs(ctx.sets.traitEval(ctx.state.editingSet, book)) do
             if ev.cat == cat then weight = ev.weight; break; end
@@ -126,22 +159,46 @@ function M.tooltip(ctx, id, hovered)
                 if weight < tier.points then nextP = tier.points; nextRank = ti; break; end
             end
             if nextP then
-                add(('   %d / %d - for rank %d'):format(weight, nextP, nextRank), kit.COL.dim);
+                -- the same price idiom the Traits tab speaks (Henrik
+                -- 2026-08-10: one grammar for tier costs everywhere)
+                add(('   Tier %d: %d/%d Points'):format(nextRank, weight, nextP), kit.COL.dim);
             else
-                add(('   %d - max rank reached'):format(weight), kit.COL.ok);
+                add(('   %d Points - max tier reached'):format(weight), kit.COL.ok);
+            end
+        end
+        -- the job's stake in the ladder, one short line (Henrik 2026-08-10,
+        -- third round: no mechanics lecture in a tooltip)
+        local bl = M.ladderBlocks(ctx, cat);
+        if bl ~= nil and #bl.blocks > 0 then
+            local j = bl.blocks[1].job;
+            local who = ('%s (%s job)'):format(j.code or '?',
+                j.slot == 'sub' and 'sub' or 'main');
+            if bl.all then
+                add(('   %s already grants every tier of this ladder'):format(who),
+                    kit.COL.warn);
+            else
+                add(('   %s grants tier %d'):format(who, j.rank), kit.COL.dim);
             end
         end
     end
     if s.unbridled then add('Unbridled Learning', kit.COL.badge); end
     local lt, ltc = learnedText(ctx, id);
     if lt then add(lt, ltc); end
-    if s.castable and not s.unbridled and s.setPoints then
-        if ctx.sets.contains(ctx.state.editingSet, id) then
-            add('right-click: remove from set', kit.COL.dim);
-        elseif book.learned(id) then
-            add('right-click: add to set', kit.COL.dim);
+    -- assignment status, timeline-aware: a spell in the set shows its level
+    -- range(s) even while inactive at the current level (Henrik's ask) --
+    -- mutation lives in the Sets tab now, so no click hints here
+    if ctx.sets.contains(ctx.state.editingSet, id) then
+        local ranges = ctx.sets.activeRanges
+            and ctx.sets.activeRanges(ctx.state.editingSet, id) or {};
+        if #ranges > 0 then
+            for _, r in ipairs(ranges) do
+                add(('in set: Lv.%d-%d'):format(r.lo, r.hi), kit.COL.ok);
+            end
+        else
+            add('in the editing set', kit.COL.ok);
         end
     end
+    for _, e in ipairs(extra or {}) do add(e[1], e[2]); end
 
     -- rich flavor: the 64 sprite centered over the text, lines colored.
     -- BeginTooltip is not field-proven here, so everything inside is
@@ -197,34 +254,30 @@ function M.detail(ctx, id)
     if s.unbridled then
         kit.ctext(im, kit.COL.badge, 'Unbridled Learning');
     end
+    if s.grantedBy then
+        kit.wrapped(im, kit.COL.badge,
+            ('Not learned from a mob - granted by %s.'):format(s.grantedBy));
+    end
     if not s.castable then
         kit.ctext(im, kit.COL.err, 'Learnable but NEVER castable at the 75 cap.');
     end
 
-    -- add/remove FIRST -- the working button belongs at the top, not under
-    -- a screen of lore. It flips to remove when the spell is in the set.
+    -- assignment status FIRST, where the button used to be. The compendium
+    -- is a pure reference now (Henrik 2026-08-08) -- every set mutation
+    -- lives in the Sets tab, so this reports and points, never acts.
     if s.castable and not s.unbridled and s.setPoints then
-        local btnW = kit.measure(im, { 'Add to current set', 'Remove from set' }, 150);
-        if ctx.sets.contains(ctx.state.editingSet, id) then
-            -- removal always works, even for spells that predate the
-            -- learned gate (or came in from a live read)
-            if kit.litButton(im, 'Remove from set', true, btnW, 26) then
-                ctx.sets.removeId(ctx.state.editingSet, id);
-                ctx.state.addNote = ('Removed %s.'):format(s.name);
-                if ctx.save then ctx.save(); end
+        local ranges = ctx.sets.activeRanges
+            and ctx.sets.activeRanges(ctx.state.editingSet, id) or {};
+        if #ranges > 0 then
+            for _, r in ipairs(ranges) do
+                kit.ctext(im, kit.COL.ok, ('In the editing set: Lv.%d-%d'):format(r.lo, r.hi));
             end
+        elseif ctx.sets.contains(ctx.state.editingSet, id) then
+            kit.ctext(im, kit.COL.ok, 'In the editing set.');
         elseif not book.learned(id) then
             kit.ctext(im, kit.COL.err, 'Not learned - learn it before it can be set.');
         else
-            if kit.litButton(im, 'Add to current set', false, btnW, 26) then
-                local max = ctx.budgetMax();
-                local ok, why = ctx.sets.add(ctx.state.editingSet, id, book, max);
-                ctx.state.addNote = ok and ('Added %s.'):format(s.name) or ('Cannot add: %s.'):format(why);
-                if ok and ctx.save then ctx.save(); end
-            end
-        end
-        if ctx.state.addNote then
-            kit.ctext(im, kit.COL.dim, ctx.state.addNote);
+            kit.ctext(im, kit.COL.dim, 'Not in the editing set - assign it on the Sets tab (a slot\'s + button).');
         end
     end
     if kit.isFn(im, 'Separator') then im.Separator(); end
@@ -264,8 +317,22 @@ function M.detail(ctx, id)
         kit.kv(im, 'Set cost', ('%d point%s'):format(s.setPoints, s.setPoints == 1 and '' or 's'));
     end
     if s.trait then
-        kit.kv(im, 'Trait', ('%s  (weight %d)'):format(
-            book.traitName(s.trait.category), s.trait.weight));
+        kit.kv(im, 'Trait', ('%s  (+%d Point%s)'):format(
+            book.traitName(s.trait.category), s.trait.weight or 0,
+            (s.trait.weight or 0) == 1 and '' or 's'));
+        -- and the job's stake in that ladder, one short line
+        local bl = M.ladderBlocks(ctx, s.trait.category);
+        if bl ~= nil and #bl.blocks > 0 then
+            local j = bl.blocks[1].job;
+            local who = ('%s (%s job)'):format(j.code or '?',
+                j.slot == 'sub' and 'sub' or 'main');
+            kit.wrapped(im, bl.all and kit.COL.warn or kit.COL.dim,
+                bl.all
+                    and ('%s already grants every tier of %s.'):format(
+                        who, book.traitName(s.trait.category))
+                    or ('%s grants tier %d of %s.'):format(
+                        who, j.rank, book.traitName(s.trait.category)));
+        end
     end
     if s.skillchain and #s.skillchain > 0 then
         kit.kvw(im, 'Skillchain', table.concat(s.skillchain, ', '));
@@ -357,7 +424,11 @@ end
 -- state for tooltip(); nil on the fallback path (tooltip self-checks then).
 -- In-set spells draw green; unlearned draw opts.dimColor (default dim)
 -- while on BLU; in-set wins. opts.label overrides the row text (the traits
--- tab composes weight/level into it).
+-- tab composes the trait points and level into it).
+-- `opts.dimArt` greys the ICON without touching the text rule -- what a row
+-- the level cannot give you yet needs (Henrik 2026-08-10, sixth round:
+-- grey the row instead of tagging every one of them), where the caller
+-- already owns the text color through opts.textCol.
 function M.listRow(ctx, id, iconSz, nameW, selected, showIcon, opts)
     local im, book = ctx.im, ctx.book;
     local s = book.spells[id];
@@ -370,9 +441,17 @@ function M.listRow(ctx, id, iconSz, nameW, selected, showIcon, opts)
     end
     local label = (opts and opts.label) or s.name;
     local dimColor = (opts and opts.dimColor) or kit.COL.dim;
-    local dim = ctx.blu.onBlu() and not book.learned(id) or false;
+    -- unlearned draws loud -- but a GRANTED spell is not unlearned, it is
+    -- simply not something you learn (Henrik 2026-08-10, sixth round), so
+    -- it never wears the red of a gap you could have closed
+    local dim = ctx.blu.onBlu() and not book.learned(id)
+        and s.grantedBy == nil or false;
+    local artDim = dim or ((opts and opts.dimArt) == true);
     local inSet = ctx.sets.contains(ctx.state.editingSet, id) ~= nil;
-    local textCol = inSet and kit.COL.ok or (dim and dimColor or nil);
+    -- opts.textCol overrides the whole coloring rule -- the Sets tab's own
+    -- rows are ALL in the set, so the green tint says nothing there
+    local textCol = (opts and opts.textCol)
+        or (inSet and kit.COL.ok or (dim and dimColor or nil));
     local drawIcon = showIcon ~= false;
     local rowH = drawIcon and iconSz or math.min(iconSz, 20);
     local pad = 8;                                     -- icon-to-name gap
@@ -410,7 +489,7 @@ function M.listRow(ctx, id, iconSz, nameW, selected, showIcon, opts)
                 if h ~= nil and kit.isFn(im, 'Image') then
                     pcall(im.SetCursorPosX, x0);
                     pcall(im.SetCursorPosY, y0);
-                    local tint = dim and { 0.45, 0.45, 0.50, 0.85 } or { 1, 1, 1, 1 };
+                    local tint = artDim and { 0.45, 0.45, 0.50, 0.85 } or { 1, 1, 1, 1 };
                     local okI = pcall(im.Image, h, { iconSz, iconSz }, { 0, 0 }, { 1, 1 }, tint);
                     if not okI then pcall(im.Image, h, { iconSz, iconSz }); end
                 end
@@ -433,7 +512,7 @@ function M.listRow(ctx, id, iconSz, nameW, selected, showIcon, opts)
         if drawIcon then
             local h = filetex.spell(book, s, 'grid64');
             if h ~= nil and kit.isFn(im, 'Image') then
-                local tint = dim and { 0.45, 0.45, 0.50, 0.85 } or { 1, 1, 1, 1 };
+                local tint = artDim and { 0.45, 0.45, 0.50, 0.85 } or { 1, 1, 1, 1 };
                 local okI = pcall(im.Image, h, { iconSz, iconSz }, { 0, 0 }, { 1, 1 }, tint);
                 if not okI then pcall(im.Image, h, { iconSz, iconSz }); end
                 if kit.isFn(im, 'SameLine') then im.SameLine(); end
@@ -637,12 +716,94 @@ end
 -- ---------------------------------------------------------------------------
 -- the tab
 -- ---------------------------------------------------------------------------
+-- ---------------------------------------------------------------------------
+-- THE ASSIGN MENU (Henrik 2026-08-10, fourth round): right-clicking a spell
+-- while a SLOTLIST is being edited opens a list of all twenty slots -- each
+-- named with its bracket and the spell its Lv.75 plan holds -- and hovering
+-- one cascades into that slot's whole timeline, "Add <spell> here..." on
+-- top (which hands the add to the slot editor window, level box and all).
+-- Opened by the codex AND traits rows; rendered once at each list's scope.
+-- Degrades: without cascade support the slots list flat and click straight
+-- through to the editor; without popups at all the right-click keeps its
+-- old refusal note.
+-- ---------------------------------------------------------------------------
+function M.canAssignMenu(im)
+    return kit.isFn(im, 'OpenPopup') and kit.isFn(im, 'BeginPopup')
+        and kit.isFn(im, 'EndPopup');
+end
+
+function M.renderAssignMenu(ctx)
+    local im, st, book = ctx.im, ctx.state, ctx.book;
+    local id = st.assignMenuId;
+    if id == nil or not M.canAssignMenu(im) then return; end
+    local set = st.editingSet;
+    if ctx.sets.kindOf(set) ~= 'timeline' or set.chains == nil then
+        st.assignMenuId = nil;
+        return;
+    end
+    local opened = false;
+    pcall(function() opened = im.BeginPopup('##bdxassignmenu'); end);
+    if not opened then return; end
+    local s = book.spells[id];
+    local sname = s and s.name or ('#' .. tostring(id));
+    kit.ctext(im, kit.COL.head, ('Assign %s to...'):format(sname));
+    if kit.isFn(im, 'Separator') then im.Separator(); end
+    local canCascade = kit.isFn(im, 'BeginMenu') and kit.isFn(im, 'EndMenu');
+    for slot = 1, 20 do
+        local floor = ctx.sets.bracketFloor(slot);
+        local cur = (set.ids or {})[slot] or 0;
+        local curName = (cur ~= 0)
+            and ((book.spells[cur] and book.spells[cur].name) or ('#' .. cur))
+            or '(empty)';
+        local label = ('%2d  Lv.%d+  %s'):format(slot, floor, curName);
+        if canCascade then
+            local okM = false;
+            pcall(function() okM = im.BeginMenu(kit.esc(label) .. ('##bdxam%d'):format(slot)); end);
+            if okM then
+                local okA, hitA = pcall(im.Selectable, kit.esc(('Add %s here...'):format(sname)));
+                if okA and hitA then
+                    st.slotEdit = { slot = slot, addId = id, addLvl = { '' } };
+                    st.assignMenuId = nil;
+                    pcall(im.CloseCurrentPopup);
+                end
+                if kit.isFn(im, 'Separator') then im.Separator(); end
+                local chain = set.chains[slot] or {};
+                if #chain == 0 then
+                    kit.ctext(im, kit.COL.dim, '(no entries)');
+                end
+                for i, e in ipairs(chain) do
+                    local lo, hi = ctx.sets.entryRange(set, slot, i);
+                    local nm = (e.id == 0) and 'empty'
+                        or ((book.spells[e.id] and book.spells[e.id].name) or ('#' .. e.id));
+                    kit.ctext(im, kit.COL.dim, ('%d-%d  %s'):format(lo or floor, hi or 75, nm));
+                end
+                pcall(im.EndMenu);
+            end
+        else
+            local okS, hitS = pcall(im.Selectable, kit.esc(label) .. ('##bdxam%d'):format(slot));
+            if okS and hitS then
+                st.slotEdit = { slot = slot, addId = id, addLvl = { '' } };
+                st.assignMenuId = nil;
+                pcall(im.CloseCurrentPopup);
+            end
+        end
+    end
+    pcall(im.EndPopup);
+end
+
 function M.render(ctx)
     local im, book, st = ctx.im, ctx.book, ctx.state;
     local f = st.filters;
     f.sort = f.sort or {};
     f.stat = f.stat or {};
     st.detailOpen = st.detailOpen or { false };
+
+    -- The slotlist banner is GONE (Henrik 2026-08-10, sixth round: "we can
+    -- add via the add menu atm, so please remove this text"). It was written
+    -- when a codex right-click could only REMOVE from a slotlist; the assign
+    -- menu landed on that same right-click a round later and the warning
+    -- went stale where it stood, telling people the opposite of the truth.
+    -- The menu names the slots itself -- nothing left to warn about.
 
     -- filter row -- combo widths measured over every label they can show
     -- (the kit law: a hardcoded width clips a trailing character; "All eleme").
@@ -671,8 +832,14 @@ function M.render(ctx)
     kit.combo(im, '##bdxtrait', f.trait, traitNames, 'All traits',
         comboW(traitNames, 'All traits'));
     if kit.isFn(im, 'SameLine') then im.SameLine(); end
-    kit.combo(im, '##bdxlearn', f.learned, { 'Learned', 'Missing' }, 'All spells',
-        comboW({ 'Learned', 'Missing' }, 'All spells'));
+    -- which spells to show at all: what you know, and what you have set
+    -- (Henrik 2026-08-07 -- the codex colors them green, this lists them alone)
+    kit.combo(im, '##bdxlearn', f.learned, M.SHOW_CHOICES, 'All spells',
+        comboW(M.SHOW_CHOICES, 'All spells'));
+    kit.tip(im, 'Which spells the list shows.\n\n'
+        .. 'Learned / Missing is what you have learned in game.\n'
+        .. 'In the set / Not in the set is the build you are editing --\n'
+        .. 'the same spells the list draws in green.');
     if kit.isFn(im, 'SameLine') then im.SameLine(); end
     if kit.litButton(im, 'Reset', false, 60, 22) then
         f.text[1] = ''; f.category.value = nil; f.element.value = nil;
@@ -687,14 +854,27 @@ function M.render(ctx)
             if t.name == f.trait.value then traitCat = t.cat; break; end
         end
     end
-    local learned = nil;
+    local learned, inSet = nil, nil;
     if f.learned.value == 'Learned' then learned = true;
-    elseif f.learned.value == 'Missing' then learned = false; end
+    elseif f.learned.value == 'Missing' then learned = false;
+    elseif f.learned.value == M.SHOW_CHOICES[3] then inSet = true;
+    elseif f.learned.value == M.SHOW_CHOICES[4] then inSet = false; end
     local ids = book.filter({
         text = f.text[1], category = f.category.value, element = f.element.value,
         spellType = f.spellType.value, traitCat = traitCat, learned = learned,
         stat = f.stat.value,
     });
+    -- membership is the SET's business, not the book's: the book has no idea
+    -- which build is open, so the filter engine stays free of it
+    if inSet ~= nil then
+        local keep = {};
+        for _, id in ipairs(ids) do
+            if (ctx.sets.contains(ctx.state.editingSet, id) ~= nil) == inSet then
+                keep[#keep + 1] = id;
+            end
+        end
+        ids = keep;
+    end
 
     -- sort (in place -- book.filter returns a fresh array each call)
     local sortBy = f.sort.value;
@@ -789,30 +969,42 @@ function M.render(ctx)
                     pcall(im.SetCursorPosY, rowTop);
                 end
             end
+            -- the row grammar, right-click restored for the flat kind
+            -- (Henrik 2026-08-10: "you can just right click like before").
+            -- A SLOTLIST assigns per slot: right-click still REMOVES, and
+            -- an add is refused with the reason pointing at the Sets tab
+            -- (setmodel.canAdd names it).
             local lclick, rclick, hov = M.listRow(ctx, id, iconSz, nameW, st.selectedId == id, showIcon);
             if lclick then
                 st.selectedId = id;
                 st.detailOpen[1] = true;
                 st.detailFocus = true;
             end
-            if rclick then
-                -- toggle set membership without opening the window
-                local s = book.spells[id];
-                if s ~= nil then
-                    if ctx.sets.contains(st.editingSet, id) then
-                        ctx.sets.removeId(st.editingSet, id);
-                        st.addNote = ('Removed %s.'):format(s.name);
-                        if ctx.save then ctx.save(); end
+            if rclick and ctx.sets ~= nil then
+                local eset = st.editingSet;
+                local s2 = book.spells[id];
+                if ctx.sets.kindOf(eset) == 'timeline' and M.canAssignMenu(im) then
+                    -- a slotlist right-click opens the slot menu (fourth
+                    -- field round) -- assignment stays per slot
+                    st.assignMenuId = id;
+                    pcall(im.OpenPopup, '##bdxassignmenu');
+                elseif ctx.sets.contains(eset, id) then
+                    ctx.sets.removeId(eset, id);
+                    st.addNote = ('Removed %s.'):format(s2 and s2.name or id);
+                else
+                    local okAdd, whyAdd = ctx.sets.canAdd(eset, id, book,
+                        ctx.budgetMax and ctx.budgetMax() or nil);
+                    if okAdd then
+                        ctx.sets.add(eset, id, book, ctx.budgetMax and ctx.budgetMax() or nil);
+                        st.addNote = ('Added %s.'):format(s2 and s2.name or id);
                     else
-                        local ok, why = ctx.sets.add(st.editingSet, id, book, ctx.budgetMax());
-                        st.addNote = ok and ('Added %s.'):format(s.name)
-                            or ('Cannot add %s: %s.'):format(s.name, why);
-                        if ok and ctx.save then ctx.save(); end
+                        st.addNote = ('Cannot add %s: %s.'):format(s2 and s2.name or id, whyAdd);
                     end
                 end
             end
             M.tooltip(ctx, id, hov);
         end
+        M.renderAssignMenu(ctx);       -- the slot menu, if a row opened it
     end
 
     if kit.isFn(im, 'BeginChild') and kit.isFn(im, 'EndChild') then

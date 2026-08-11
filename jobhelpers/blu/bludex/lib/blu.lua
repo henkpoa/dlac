@@ -398,6 +398,23 @@ function M.expectedCap(level)
     return total + M.meritPts;
 end
 
+-- The budget to PLAN A RUNG with (setmodel.LEVELS: 1/11/.../71). A rung is a
+-- band -- 41 covers 41-50 -- and a band shares one base, so the rung's own
+-- level answers for all of it. The top band is the exception: it runs 71-75
+-- and the Assimilation merits switch on at 75, so that is the level it is
+-- planned at (a Lv.71 build IS the level-75 build).
+--
+-- Returns cap, source:
+--   'model'  both parts known -- ours, and right at every rung
+--   'base'   the server's base rule alone, a FLOOR: this character's learned
+--            bonus is not measured yet, so the real cap is higher than this.
+function M.rungCap(level)
+    if level == nil or level < 1 then return nil, nil; end
+    local est = M.expectedCap(level >= setmodel.TOP and 75 or level);
+    if est ~= nil then return est, 'model'; end
+    return setmodel.baseCapAtLevel(level), 'base';
+end
+
 -- The budget to SHOW. The client's own number while it is trustworthy;
 -- otherwise the model for the level we are actually standing at.
 -- Returns value, source: 'live' | 'model' | 'stale' (nothing better known).
@@ -418,7 +435,15 @@ function M.budget(levelIn)
     -- one the freshness flags actually describe.
     local mx  = capWatch.max;
     local est = M.expectedCap(levelIn);
-    local fresh = (mx ~= nil) and not capWatch.suspect;
+    -- THE CLIENT'S NUMBER DESCRIBES ONE LEVEL -- capWatch.lvl, the level it
+    -- was read at. Asked about any OTHER level it has nothing to say, and
+    -- letting it answer anyway is how a synced-to-40 character planning at
+    -- 75 got told its budget was 49 (Henrik 2026-08-10, sixth round). Only
+    -- the model can speak for a level you are not standing at. An unknown
+    -- watch level blocks nothing -- `suspect` is the guard there.
+    local here = (levelIn == nil) or (capWatch.lvl == nil)
+        or (levelIn == capWatch.lvl);
+    local fresh = here and (mx ~= nil) and not capWatch.suspect;
     if est ~= nil then
         -- the client only outranks us when we actually WATCHED it recompute
         -- at this level. A value merely found at load proves nothing -- it is
@@ -428,7 +453,7 @@ function M.budget(levelIn)
         return est, 'model';
     end
     if fresh then return mx, 'live'; end
-    if mx ~= nil then return mx, 'stale'; end
+    if here and mx ~= nil then return mx, 'stale'; end
     return nil, nil;
 end
 
@@ -612,6 +637,12 @@ local function msg(s)
     print(chat.header('bludex'):append(chat.message(s)));
 end
 
+-- the one chat voice, exported: the host's level-change watcher speaks
+-- through it so every bludex line wears the same header
+function M.announce(s)
+    msg(s);
+end
+
 -- The CAST LOCK: setting or unsetting any spell locks Blue Magic casting
 -- for about a minute (the game's own rule). Every 0x102 we send restamps
 -- the clock, so the countdown runs from the LAST packet of an apply.
@@ -739,45 +770,6 @@ local function byLevel(ids, book)
     return out;
 end
 
--- Position-independent plan against the live set: targets are matched by
--- spell IDENTITY, not slot. Since the sorted slot-wise plan took over the
--- apply path (2026-08-04), this serves ONLY the adds-only restore -- a
--- level-change restore must put spells back without reshuffling the set.
--- Missing spells are paired lowest-level-first with the lowest open slots.
--- Returns nil when the live set is unreadable.
-local function planDiff(ids, book, removeExtras)
-    local live = M.currentSet();
-    if #live ~= 20 then return nil; end
-    local want = {};
-    for slot = 1, 20 do
-        local id = ids[slot] or 0;
-        if id ~= 0 and M.hasSpell(id) then want[id] = true; end
-    end
-    local liveIds, removes, empties = {}, {}, {};
-    for slot = 1, 20 do
-        local id = live[slot] or 0;
-        if id == 0 then
-            empties[#empties + 1] = slot;
-        elseif want[id] or not removeExtras then
-            liveIds[id] = true;
-        else
-            removes[#removes + 1] = slot;
-            empties[#empties + 1] = slot;   -- open once the unset lands
-        end
-    end
-    local missing, kept = {}, 0;
-    for id in pairs(want) do
-        if liveIds[id] then kept = kept + 1; else missing[#missing + 1] = id; end
-    end
-    missing = byLevel(missing, book);
-    local adds, noSlot = {}, 0;
-    for i, id in ipairs(missing) do
-        if empties[i] then adds[#adds + 1] = { slot = empties[i], id = id };
-        else noSlot = noSlot + 1; end
-    end
-    return { removes = removes, adds = adds, kept = kept, noSlot = noSlot };
-end
-
 -- Apply a whole set (array of 20 real ids / 0s): reset, then set each spell
 -- lowest level first with a delay between packets. Skips unlearned spells.
 -- Runs as a background task; onDone() fires from that task when finished.
@@ -828,7 +820,10 @@ end
 -- go first (frees slots, points, and any spell moving between slots -- the
 -- client refuses a spell set twice), then adds, lowest level first into the
 -- lowest slots. Falls back to applySet when the live set cannot be read.
-function M.applyDiff(ids, book, onDone)
+-- layoutT (optional) is a caller-computed 20-slot target layout
+-- (setmodel.applyLayout: a timeline set's slots are authorship and must
+-- not be re-sorted); without it the sorted-placement law applies.
+function M.applyDiff(ids, book, onDone, layoutT)
     if not M.canApply() then
         msg('Cannot apply: BLU is not your main or sub job (or memory signatures failed).');
         return false;
@@ -849,14 +844,13 @@ function M.applyDiff(ids, book, onDone)
         msg('Could not read the live set - doing a full reset + apply instead.');
         return M.applySet(ids, book, onDone);
     end
-    -- The target LAYOUT is level-sorted (field 2026-08-04: the game's own
-    -- set list should read in level order): slot i holds the i-th lowest
-    -- learned spell. Slot-wise diff against it -- a matching slot costs
-    -- nothing; a spell in the wrong slot is an unset plus a set (the client
-    -- refuses a spell set twice, so every unset goes first). An insertion
-    -- LOW in the list therefore shifts what follows -- dearer than the old
-    -- identity diff, and exactly what a sorted list costs.
-    local T = setmodel.sortedLayout(ids, book);
+    -- The target LAYOUT: the caller's (a timeline set's slot authorship),
+    -- else level-sorted (field 2026-08-04: the game's own set list should
+    -- read in level order -- slot i holds the i-th lowest learned spell).
+    -- Slot-wise diff against it -- a matching slot costs nothing; a spell
+    -- in the wrong slot is an unset plus a set (the client refuses a spell
+    -- set twice, so every unset goes first).
+    local T = layoutT or setmodel.sortedLayout(ids, book);
     local removes, adds, kept = {}, {}, 0;
     for slot = 1, 20 do
         local have = live[slot] or 0;
@@ -868,7 +862,7 @@ function M.applyDiff(ids, book, onDone)
         end
     end
     if #removes == 0 and #adds == 0 then
-        msg('The live set already matches (level order) - nothing to send.');
+        msg('The live set already matches - nothing to send.');
         if onDone then pcall(onDone); end
         return true;
     end
@@ -904,7 +898,80 @@ function M.effectiveLevel()
     return lvl;
 end
 
+-- THE LEVEL YOU ACTUALLY ARE, sync or no sync (Henrik 2026-08-10, sixth
+-- round: "it should be able to detect that I am level synced and that I am
+-- actually level 75"). GetMainJobLevel reports the ADJUSTED level while a
+-- sync is on; GetJobLevel(job) reads the character's own job list, which the
+-- sync never touches -- the same pair the chains addon reads side by side.
+--
+-- MAIN JOB BLU ONLY. As a SUB job your blue level is capped at half the
+-- main's, and the job list knows nothing of that halving -- answering 75
+-- there would plan a set you could never wear. nil then, and every caller
+-- falls back to effectiveLevel, which is right for that case.
+function M.realLevel()
+    local ok, lvl = pcall(function()
+        local p = player();
+        if p:GetMainJob() ~= 16 then return nil; end
+        return p:GetJobLevel(16);
+    end);
+    if not ok or lvl == nil or lvl <= 0 then return nil; end
+    return lvl;
+end
+
+-- THE LEVEL TO PLAN AT: what you really are, falling back to what you are
+-- effectively. The two differ only under a sync (or on sub-job BLU, where
+-- realLevel stands down). This is the level a build is BUDGETED at -- what
+-- the game lets you WEAR right now is effectiveLevel, and the difference
+-- between them is the whole point: a synced 75 is still planning a 75 set.
+function M.planLevel()
+    return M.realLevel() or M.effectiveLevel();
+end
+
+-- Synced down? Returns real, effective when they differ -- nil otherwise.
+function M.syncedFrom()
+    local real, eff = M.realLevel(), M.effectiveLevel();
+    if real == nil or eff == nil or real <= eff then return nil; end
+    return real, eff;
+end
+
+-- BOTH jobs and BOTH levels, for the trait-collision model: a blue trait is
+-- killed by the same trait coming from either job (lib/traitsource.lua), so
+-- the whole pair matters, not just whichever side is BLU. All four nil off a
+-- readable character; sub job 0 = no sub job.
+function M.jobPair()
+    local ok, r = pcall(function()
+        local p = player();
+        return {
+            mainJob = p:GetMainJob(), mainLevel = p:GetMainJobLevel(),
+            subJob = p:GetSubJob(), subLevel = p:GetSubJobLevel(),
+        };
+    end);
+    if not ok or r == nil then return nil; end
+    return r;
+end
+
+-- IS THIS TRAIT UP RIGHT NOW -- the server's own answer, not ours.
+-- The server builds the merged trait list (job traits then blue) and ships it
+-- as a bit mask on packet 0x0AC, which the client keeps in its command table
+-- with job traits based at 0x600. So ability id 1536 + traitId is the live
+-- bit; dlac reads 1554 for Dual Wield the same way.
+--
+-- It is the REFEREE, never the source: blue traits set these same bits, so a
+-- lit bit says "you have it" and nothing about where it came from.
+-- true / false, or nil when unreadable.
+function M.hasTrait(traitId)
+    if traitId == nil then return nil; end
+    local ok, r = pcall(function()
+        return player():HasAbility(1536 + traitId) == true;
+    end);
+    if not ok then return nil; end
+    return r;
+end
+
 -- The level-sync view of the LIVE set: what the client holds right now.
+-- Part of the read surface, currently drawn by nothing: the header used to
+-- carry it as a second pair of meters beside the editing build's, and one
+-- pair that describes where you are said it better (Henrik 2026-08-07).
 -- Under a sync the client's set struct keeps only the spells the level
 -- still enables (field 2026-08-06), so this is simply the live set counted
 -- and costed, with the server's slot rule for the level. nil off BLU, when
@@ -961,11 +1028,49 @@ function M.reportLevelDown(book)
         free > 0 and (', %d slots free'):format(free) or ''));
 end
 
--- The auto-restore path: put back whatever a level change stripped from the
--- last-applied set. ADDS ONLY -- never unsets, so anything set by hand in
--- the native menu survives. Quiet when nothing is missing (this fires after
--- every level change). Ends by re-reading the live set and reporting how
--- many actually stuck -- a still-synced level rejects the tail server-side.
+-- THE ADDS-ONLY RESTORE, back from its 2026-08-08 retirement (docs/
+-- set-types-plan.md: the LEVELS kind keeps the old promise -- a level
+-- change puts spells back and never takes any away -- while the timeline
+-- kind keeps its re-plan. Which one runs is decided by the followed set's
+-- kind in ui/host.lua, never both.)
+--
+-- Position-independent plan against the live set: targets are matched by
+-- spell IDENTITY, not slot -- a level-change restore must put spells back
+-- without reshuffling the set. Missing spells are paired lowest-level-first
+-- with the lowest open slots. Returns nil when the live set is unreadable.
+local function planDiff(ids, book, removeExtras)
+    local live = M.currentSet();
+    if #live ~= 20 then return nil; end
+    local want = {};
+    for slot = 1, 20 do
+        local id = ids[slot] or 0;
+        if id ~= 0 and M.hasSpell(id) then want[id] = true; end
+    end
+    local liveIds, removes, empties = {}, {}, {};
+    for slot = 1, 20 do
+        local id = live[slot] or 0;
+        if id == 0 then
+            empties[#empties + 1] = slot;
+        elseif want[id] or not removeExtras then
+            liveIds[id] = true;
+        else
+            removes[#removes + 1] = slot;
+            empties[#empties + 1] = slot;   -- open once the unset lands
+        end
+    end
+    local missing, kept = {}, 0;
+    for id in pairs(want) do
+        if liveIds[id] then kept = kept + 1; else missing[#missing + 1] = id; end
+    end
+    missing = byLevel(missing, book);
+    local adds, noSlot = {}, 0;
+    for i, id in ipairs(missing) do
+        if empties[i] then adds[#adds + 1] = { slot = empties[i], id = id };
+        else noSlot = noSlot + 1; end
+    end
+    return { removes = removes, adds = adds, kept = kept, noSlot = noSlot };
+end
+
 function M.restoreMissing(ids, book, onDone)
     if not M.canApply() or M.applying then return false; end
     local plan = planDiff(ids, book, false);
