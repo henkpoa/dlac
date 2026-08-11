@@ -306,8 +306,13 @@ function M.open() _openReq = true; end
 -- Books render like the GAME's own macro-book list (field request): names
 -- visible immediately, fixed-width rows stacked top-to-bottom, TWO columns of
 -- 20 (the two in-game pages). A click saves AND applies on the spot -- never
--- waits for a profile load. There is no "manage this job" step (2026-08-11):
--- picking a book IS the opt-in, and "Stop managing" is the way back out.
+-- waits for a profile load.
+--
+-- There is no "manage this job" step and no "stop managing" button (2026-08-11,
+-- Henrik: everyone running dlac wants this, so both buttons were asking a
+-- question nobody has). Picking a book IS the opt-in; a job you never pick a
+-- book for is still never touched, which is the only state anyone needs. The
+-- only thing you can take back is a SUBJOB row, and its 'x' sits on the row.
 local GOLD = { 0.42, 0.36, 0.16, 1.0 };
 local function pickGrid(prefix, count, perRow, current, w)
     local picked = nil;
@@ -444,13 +449,19 @@ function M.renderPopup()
     end
 
     for _, s in ipairs(order) do
+        local key = job .. '/' .. s;
         local cur = (type(e.subs) == 'table') and tonumber(e.subs[s]) or nil;
         local ps, sHov = pageRow('mpg' .. s, s, (s == sub) and COL_LIVE or COL_DIM, cur);
+        -- The row goes away with the 'x'. It is only offered when there IS
+        -- something to remove -- a page of its own, or a row you added from the
+        -- combo. The sub you are ON keeps its (unhighlighted) row either way:
+        -- that row is an offer, not something you put there.
         local xHov = false;
-        if cur ~= nil then
+        if cur ~= nil or _extraRows[key] then
             imgui.SameLine(0, 6);
             if imgui.SmallButton('x##mpgx' .. s) then
-                e.subs[s] = nil;
+                if type(e.subs) == 'table' then e.subs[s] = nil; end
+                _extraRows[key] = nil;
                 save();
                 apply(job, sub);
             end
@@ -460,7 +471,7 @@ function M.renderPopup()
             imgui.SetTooltip(esc(string.format('%s/%s uses this page.%s', job, s,
                 (cur == nil) and (' Unset -- it follows page ' .. basePage .. '.') or '')));
         elseif xHov then
-            imgui.SetTooltip(esc(string.format('Clear %s -- %s/%s goes back to page %d.', s, job, s, basePage)));
+            imgui.SetTooltip(esc(string.format('Remove %s -- %s/%s goes back to page %d.', s, job, s, basePage)));
         end
         if ps ~= nil then
             e.subs = (type(e.subs) == 'table') and e.subs or {};
@@ -486,18 +497,6 @@ function M.renderPopup()
     imgui.PopItemWidth();
     if imgui.IsItemHovered() then
         imgui.SetTooltip('Add a page row for a subjob you are not on right now.');
-    end
-
-    imgui.Spacing();
-    if imgui.SmallButton('Stop managing##mboff') then
-        data[job] = nil;
-        for k in pairs(_extraRows) do
-            if k:sub(1, #job + 1) == (job .. '/') then _extraRows[k] = nil; end
-        end
-        save();
-    end
-    if imgui.IsItemHovered() then
-        imgui.SetTooltip('Forget the saved book/pages for ' .. job .. ' -- dlac stops touching\nits macro palette (the game keeps whatever is active).');
     end
     imgui.EndPopup();
 end

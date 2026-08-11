@@ -7309,10 +7309,51 @@ end)();
             local f = io.open(MBFILE, 'r'); local s = f:read('*a'); f:close();
             return s:find('page = 1', 1, true) ~= nil; end)(), true);
 
-        -- the clear button only exists for a sub that HAS a page
+        -- The ONLY button in the body is the per-subjob 'x' -- "Stop managing"
+        -- was cut (2026-08-11): a job you never pick a book for is never
+        -- touched, and that is the whole of "off". If a second SmallButton ever
+        -- reappears here, this fails rather than quietly re-growing the panel.
         drew.small = 0;
         check('MBU7a renders with an override set', pcall(mb.renderPopup), true);
-        check('MBU7b one clear button + Stop managing', drew.small, 2);
+        check('MBU7b exactly one x, and nothing else', drew.small, 1);
+
+        -- ...and it removes the override. NIN is the LIVE sub, so its row stays
+        -- (an offer, not something you added) -- but unhighlighted and with no x.
+        sent = {};
+        clickLabel = 'x##mpgxNIN';
+        check('MBU7c renders while the x is clicked', pcall(mb.renderPopup), true);
+        clickLabel = nil;
+        check('MBU7d clearing re-applies the fallback page', (sent[2] or {}).c, '/macro set 1');
+        check('MBU7e ...and the override is gone from the file', (function()
+            local f = io.open(MBFILE, 'r'); local s = f:read('*a'); f:close();
+            return s:find('subs = {', 1, true); end)(), nil);   -- the file's own header says "subs" too
+        drew.small, drew.page = 0, 0;
+        check('MBU7f renders after the clear', pcall(mb.renderPopup), true);
+        check('MBU7g the live sub keeps its row', drew.page, 20);
+        check('MBU7h ...with nothing left to remove', drew.small, 0);
+
+        -- A row added from the combo has an x too, or there would be no way back
+        -- out of a mis-click: it is the row itself that goes, nothing is saved.
+        drew.small, drew.page = 0, 0;
+        clickLabel = 'DRK##mbsaDRK';
+        check('MBU7i renders while a subjob is added', pcall(mb.renderPopup), true);
+        clickLabel = nil;
+        drew.small, drew.page = 0, 0;
+        check('MBU7j renders with the added row', pcall(mb.renderPopup), true);
+        check('MBU7k three page rows now', drew.page, 30);
+        check('MBU7l the added row can be removed', drew.small, 1);
+        drew.small, drew.page = 0, 0;
+        clickLabel = 'x##mpgxDRK';
+        check('MBU7m renders while it is removed', pcall(mb.renderPopup), true);
+        clickLabel = nil;
+        drew.page = 0;
+        check('MBU7n renders after the removal', pcall(mb.renderPopup), true);
+        check('MBU7o ...and the row is gone', drew.page, 20);
+
+        -- put NIN's page back for the pump section below
+        clickLabel = '4##mpgNIN4';
+        pcall(mb.renderPopup);
+        clickLabel = nil;
 
         -- --- the pump: a SUBJOB change re-applies, with the main job never moving
         popupOpen = false;

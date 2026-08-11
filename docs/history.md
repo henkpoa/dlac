@@ -9983,7 +9983,7 @@ stamps, unpinned byte-parity), LD7c–f (pinned flatten shape, floor/reserve by 
 Suites **7040 + 1362**. Field round owed: the friend rescans, picks each mitten into a
 set, and the right copy must land — read the `/dl report` before believing it.
 
-## Session "the page follows the sub" (2026-08-11, `2026.08.11`)
+## Session "the page follows the sub" (2026-08-11, `2026.08.11`-`a`)
 
 **Theme:** a player asked Henrik whether dlac could manage macro *pages* as well as
 books — "many people want to use different pages depending on which subjob you have."
@@ -10004,10 +10004,17 @@ back to the job's page — not to 1, and not to some other sub's.
 dlac; one name, one thing (hard rule 13's family). Files written before today name it
 `set` and fold in on read (`_normalize`), then the key is gone.
 
-**No manage step.** Picking a book IS the opt-in — the book grid is right there the
-moment the popup opens, and *Stop managing* is still the way back out. An unmanaged job
-gets one dim line saying dlac is leaving it alone, which is the honest state and takes a
-line instead of a button.
+**No manage step — and, second pass, no *stop managing* either.** Picking a book IS the
+opt-in; the book grid is right there the moment the popup opens. The *Stop managing*
+button survived the first pass and Henrik took it out in the same breath as the other
+one: *"Remove the 'Stop managing', as it assumes that."* Both buttons were asking a
+question nobody running dlac has. A job you never pick a book for is still never
+touched, and it says so in one dim line — that is the only "off" anyone needs.
+
+**The one thing you CAN take back is a subjob row,** so that is where the removal went:
+an **x** beside the row, offered only when there is something to remove (a page of its
+own, or a row you added from the combo). The row for the sub you are ON is an offer, not
+something you put there, so it carries no x until you give it a page.
 
 **The two commands are FRAME-SPACED now** (`lib\cmdqueue`, book at +0, page at +2).
 Two `QueueCommand`s in one frame can arrive reversed, and a `/macro book` landing
