@@ -294,7 +294,54 @@ infer it from a field confirmation, from *"works"*, or from your own read that s
 ready — his own note on the exchange was *"you are right not to assume otherwise since I
 haven't told you."* Ask when he has **not** said merge; never ask twice when he has.
 
-**THE QUEUE IS EMPTY.**
+### QUEUED — **macro pages per subjob** (`2026.08.11b`, 3 commits) — FIELD-CONFIRMED
+
+*Henrik, 2026-08-11: **"Works, commit as ready for merge."** Field-confirmed and marked
+ready by him; it waits on the promotion itself. `7a95cfb` → `2769413` → `fc75f0c` on `dev`,
+suites **7131 + 1426** green on both interpreters.*
+
+***The feature.*** *A player asked whether dlac could manage macro **pages**, not just
+books — "many people want to use different pages depending on which subjob you have." An
+entry in `<char>\dlac\macrobooks.lua` is now*
+`WAR = { book = 5, page = 1, subs = { NIN = 2, SAM = 3 } }` *— `page` is the fallback,
+`subs[<abbr>]` overrides it, and the pump keys on **main AND sub** so a subjob-only swap
+re-applies. The storage key is `page`, not `set`: "set" means a GEAR set everywhere else
+in dlac. Pre-08-11 files name it `set` and fold in on read.*
+
+***Both manage buttons are gone*** *(his call, both in the same exchange: the "Manage
+<job>'s macro book" gate because "people running DLAC will 100 % use this feature", then
+**"Remove the 'Stop managing', as it assumes that."*** *Picking a book IS the opt-in; a job
+you never pick a book for is never touched, and that is the whole of "off". The only
+removal left is per-subjob — an `x` on the row, shown only when there is something to
+remove. **Read this as a standing preference**, not a one-off: a button asking whether the
+user wants an obviously-wanted feature is clutter in both directions.*
+
+***Two things fixed underneath.*** *`/macro book` and `/macro set` were queued in the SAME
+frame, where they can arrive reversed — a book landing after its page drops you to page 1,
+which is what the field reported. They go through `lib\cmdqueue` at +0 and +2 frames now.
+And every text sink took `esc()`: a `%` in a macro book title had been eating the character
+after it since the picker shipped.*
+
+***The one field round already closed a bug*** *— and it is the interesting one. Every edit
+ended in `apply(job, sub)`, the LIVE pair, so setting BLU/WHM's page while on BLU/NIN
+printed* `book 5, page 2 (BLU/NIN)`*. The commands were pointless too (re-asserting NIN's
+page after editing WHM's row). Now `apply()` speaks for the palette you are wearing and
+`ack()` for a pair you configured but are not on, sending nothing. **The smoke stub could
+not have caught it: it counted COMMANDS, and the bug was a wrong SENTENCE about
+correct-enough commands.** It captures `print` now — worth copying anywhere a UI stub
+exists.*
+
+***Coverage, where there was none.*** *The feature had not a single check naming it. MB1-4
+in `run_tests` on the pure seams (`_pageFor`, `_normalize`, `_serialize` — including that a
+dirty table still writes a chunk that PARSES, since a bad key there is a silently empty
+palette at login, not a test failure), MBU1-9 in `smoke_ui` driving `renderPopup` against an
+imgui-shaped stub (every stack back to 0; the pump run on a stubbed `os.clock` through
+login → sub swap → fallback).*
+
+***Riding along, and NOT field-confirmed:*** *three `jobhelpers/blu/bludex` syncs
+(`d6a9018`, `a187b3b`, `36b7886`). `dev` promotes **whole-or-not**, so they go with this —
+they are upstream syncs of the vendored addon, and the in-game render/sig round bludex has
+owed since 08-04 is still owed. Nothing here changed them.*
 
 *(Emptied by the second 2026-08-04 promotion — **the NM Compendium gets a door** (`2026.08.04b`),
 one commit. Henrik: *"Please merge and push to main"* — an accept under the 08-01 ruling. A menu

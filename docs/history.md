@@ -1,4 +1,4 @@
-﻿# dlac â€” Project history & session journal
+# dlac â€” Project history & session journal
 
 > What happened, in order, with the reasoning that is NOT recoverable from the code.
 > Sources: git history + mined Claude Code session transcripts (2026-07-10).
@@ -10044,6 +10044,9 @@ the sub you are on a different page, then swap subjob and watch the page follow 
 and check the book/page pair still lands correctly at login, which is the frame-spacing
 change. If the reporter's "always page 1" was the reversal, this fixes it; if it was not,
 the sub pages are what they were asking for either way.*
+
+**FIELD-CONFIRMED 2026-08-11** *(`2026.08.11b`, after the two rounds below): Henrik ran it
+and said* **"Works, commit as ready for merge."** *Queued in [HANDOFF.md](HANDOFF.md).*
 
 ### Field round 1 (2026-08-11, `2026.08.11b`) — the ack described the wrong pair
 
