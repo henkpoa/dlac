@@ -7209,6 +7209,19 @@ end)();
     local tips = {};
     IM.SetTooltip     = function(s) tips[#tips + 1] = s; end
 
+    -- Every line the feature prints. The field bug this section grew for was a
+    -- WRONG LINE, not a wrong command: setting BLU/WHM's page while on BLU/NIN
+    -- announced "book 5, page 2 (BLU/NIN)". A stub that only counts commands
+    -- cannot see that, so capture the chat too.
+    local said = {};
+    local savedPrint = print;
+    print = function(...)
+        local parts = {};
+        for i = 1, select('#', ...) do parts[i] = tostring((select(i, ...))); end
+        said[#said + 1] = table.concat(parts, '\t');
+        savedPrint(...);
+    end
+
     -- A controllable clock: the pump's whole contract is "wait, THEN apply".
     local savedClock, now = os.clock, 0;
     os.clock = function() return now; end
@@ -7350,6 +7363,64 @@ end)();
         check('MBU7n renders after the removal', pcall(mb.renderPopup), true);
         check('MBU7o ...and the row is gone', drew.page, 20);
 
+        -- --- THE FIELD BUG (2026-08-11): editing a row for a subjob you are NOT
+        --     on must not touch the palette you are wearing, and must not report
+        --     as though it had. On BLU/NIN, setting WHM to page 3 printed
+        --     "book 5, page 2 (BLU/NIN)" -- the live pair, not the edit. Here the
+        --     stub sits on WAR/NIN and the row edited is DRK's.
+        local function lastLine() return said[#said]; end
+        clickLabel = 'DRK##mbsaDRK';                     -- give DRK a row again
+        pcall(mb.renderPopup);
+        clickLabel = nil;
+        sent, said = {}, {};
+        clickLabel = '3##mpgDRK3';
+        check('MBU9a renders while another sub is configured', pcall(mb.renderPopup), true);
+        clickLabel = nil;
+        check('MBU9b nothing was sent -- your palette did not move', #sent, 0);
+        check('MBU9c ...and the line names the pair you EDITED',
+              (lastLine() or ''):find('WAR/DRK', 1, true) ~= nil, true);
+        check('MBU9d ...with the page you gave it',
+              (lastLine() or ''):find('page 3', 1, true) ~= nil, true);
+        check('MBU9e ...and never claims the live pair changed',
+              (lastLine() or ''):find('macro book', 1, true), nil);
+        check('MBU9f the override really was saved', (function()
+            local f = io.open(MBFILE, 'r'); local s = f:read('*a'); f:close();
+            return s:find('DRK = 3', 1, true) ~= nil; end)(), true);
+
+        -- ...and clearing it is the same story from the other side
+        sent, said = {}, {};
+        clickLabel = 'x##mpgxDRK';
+        check('MBU9g renders while another sub is cleared', pcall(mb.renderPopup), true);
+        clickLabel = nil;
+        check('MBU9h clearing another sub sends nothing', #sent, 0);
+        check('MBU9i ...and says so about THAT sub',
+              (lastLine() or ''):find('WAR/DRK', 1, true) ~= nil, true);
+
+        -- The same rule for the FALLBACK page while the live sub has its own:
+        -- editing it is a save, not a change to what you are wearing.
+        clickLabel = '4##mpgNIN4';                       -- NIN (live) takes page 4
+        pcall(mb.renderPopup);
+        clickLabel = nil;
+        sent, said = {}, {};
+        clickLabel = '7##mpg7';                          -- ...now move the fallback
+        check('MBU9j renders while the masked fallback is edited', pcall(mb.renderPopup), true);
+        clickLabel = nil;
+        check('MBU9k a masked fallback sends nothing', #sent, 0);
+        check('MBU9l ...and says which sub is masking it',
+              (lastLine() or ''):find('NIN is on its own page 4', 1, true) ~= nil, true);
+        check('MBU9m the fallback was still saved', (function()
+            local f = io.open(MBFILE, 'r'); local s = f:read('*a'); f:close();
+            return s:find('page = 7', 1, true) ~= nil; end)(), true);
+
+        -- ...while an UNMASKED fallback is your palette, and does apply.
+        sent, said = {}, {};
+        clickLabel = 'x##mpgxNIN';                       -- drop NIN's own page
+        pcall(mb.renderPopup);
+        clickLabel = '1##mpg1';
+        check('MBU9n renders while an unmasked fallback is edited', pcall(mb.renderPopup), true);
+        clickLabel = nil;
+        check('MBU9o an unmasked fallback DOES apply', (sent[#sent] or {}).c, '/macro set 1');
+
         -- put NIN's page back for the pump section below
         clickLabel = '4##mpgNIN4';
         pcall(mb.renderPopup);
@@ -7374,6 +7445,7 @@ end)();
     end
 
     os.clock = savedClock;
+    print = savedPrint;
     os.remove(MBFILE);
     AshitaCore = savedCore;
     ImGuiCol_Button, ImGuiStyleVar_ItemSpacing = nil, nil;

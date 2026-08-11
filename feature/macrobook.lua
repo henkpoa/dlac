@@ -219,6 +219,13 @@ local function issue(cmd, delayFrames)
     end
 end
 
+-- One edit, one line -- and the line names WHAT YOU EDITED. `apply` below speaks
+-- for the palette you are wearing; this speaks for a page you configured for a
+-- pair you are not on. Field-caught 2026-08-11: setting BLU/WHM to page 3 while
+-- on BLU/NIN echoed back "book 5, page 2 (BLU/NIN)" -- every edit called apply,
+-- so the ack described the live pair no matter what the click touched.
+local function ack(fmt, ...) print('[dlac] ' .. string.format(fmt, ...)); end
+
 local function apply(job, sub)
     local e = (data ~= nil and job ~= nil) and data[job] or nil;
     if type(e) ~= 'table' then return; end
@@ -420,11 +427,23 @@ function M.renderPopup()
 
     imgui.Spacing();
     local basePage = M._pageFor(e, nil);
+    -- The live sub's own page, if it has one: while that is in force the
+    -- fallback below is not what you are wearing, and editing it must not send
+    -- commands OR report as though it had.
+    local liveOverride = (sub ~= nil and type(e.subs) == 'table') and tonumber(e.subs[sub]) or nil;
     local pp, pHov = pageRow('mpg', 'Page', COL_DIM, basePage);
     if pHov then
         imgui.SetTooltip('The page (/macro set) this book opens on.\nA subjob row below overrides it while you are on that sub.');
     end
-    if pp ~= nil then e.page = pp; save(); apply(job, sub); end
+    if pp ~= nil then
+        e.page = pp;
+        save();
+        if liveOverride == nil then
+            apply(job, sub);
+        else
+            ack('macro page %d saved for %s -- %s is on its own page %d.', pp, job, sub, liveOverride);
+        end
+    end
 
     -- Subjob rows: the one you are ON (always offered -- that is the common
     -- case, "set the page for what I am playing right now"), then every sub
@@ -463,7 +482,11 @@ function M.renderPopup()
                 if type(e.subs) == 'table' then e.subs[s] = nil; end
                 _extraRows[key] = nil;
                 save();
-                apply(job, sub);
+                if s == sub then
+                    apply(job, sub);            -- your own page went: fall back now
+                elseif cur ~= nil then
+                    ack('macro page for %s/%s cleared -- you are on %s.', job, s, who);
+                end                             -- an empty row you added says nothing
             end
             xHov = imgui.IsItemHovered();
         end
@@ -477,7 +500,11 @@ function M.renderPopup()
             e.subs = (type(e.subs) == 'table') and e.subs or {};
             e.subs[s] = ps;
             save();
-            apply(job, sub);
+            if s == sub then
+                apply(job, sub);                -- the pair you are wearing: apply it
+            else
+                ack('macro page %d saved for %s/%s -- you are on %s.', ps, job, s, who);
+            end
         end
     end
 

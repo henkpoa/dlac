@@ -9983,7 +9983,7 @@ stamps, unpinned byte-parity), LD7c–f (pinned flatten shape, floor/reserve by 
 Suites **7040 + 1362**. Field round owed: the friend rescans, picks each mitten into a
 set, and the right copy must land — read the `/dl report` before believing it.
 
-## Session "the page follows the sub" (2026-08-11, `2026.08.11`-`a`)
+## Session "the page follows the sub" (2026-08-11, `2026.08.11`-`b`)
 
 **Theme:** a player asked Henrik whether dlac could manage macro *pages* as well as
 books — "many people want to use different pages depending on which subjob you have."
@@ -10044,3 +10044,32 @@ the sub you are on a different page, then swap subjob and watch the page follow 
 and check the book/page pair still lands correctly at login, which is the frame-spacing
 change. If the reporter's "always page 1" was the reversal, this fixes it; if it was not,
 the sub pages are what they were asking for either way.*
+
+### Field round 1 (2026-08-11, `2026.08.11b`) — the ack described the wrong pair
+
+Henrik, on BLU/NIN: *"if I change my BLU/WHM to Page 3 for example, it still prints out
+that I changed my BLU/NIN to page 2, which it is currently. So the print takes no regard
+on what I configure."*
+
+Every edit ended in `apply(job, sub)` — the LIVE pair — so the chat line always described
+what you were wearing, never what you clicked. Two bugs in one: the line was wrong, and
+the commands were pointless (re-asserting NIN's page after editing WHM's row).
+
+Now the site decides. `apply` speaks for the palette you are wearing and still prints
+`macro book 5, page 2 (BLU/NIN)`; a new `ack` speaks for a pair you configured but are
+not on, and nothing is sent:
+
+- another subjob's row → `macro page 3 saved for BLU/WHM -- you are on BLU/NIN.`
+- clearing one → `macro page for BLU/WHM cleared -- you are on BLU/NIN.`
+- the fallback **while the live sub has its own page** → `macro page 3 saved for BLU --
+  NIN is on its own page 2.` (which also answers the next question, *why did nothing
+  change?*)
+
+An unmasked fallback, the live sub's own row, and any book pick are still the palette
+you are wearing, so those apply as before. Removing a combo-added row that never had a
+page says nothing at all — there is nothing to report.
+
+**The stub could not have caught this**, which is the lesson worth keeping: MBU counted
+COMMANDS, and the bug was a wrong SENTENCE about correct-enough commands. The section
+now captures `print` as well, and MBU9a-o pin all four sites — including that editing
+another sub sends **zero** commands, where before it sent two.
