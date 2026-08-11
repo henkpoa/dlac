@@ -674,11 +674,11 @@ local function renderBody(im, st, deps, embedded)
     -- the level you are planning at -- a sync, or simply not being 75 yet
     local synced = (ss ~= nil and ss.level < planLvl) and ss or nil;
     local liveMax = synced and deps.blu.budget() or nil;
-    kit.meter(im, '   Set:', deps.sets.usedPoints(st.editingSet, deps.book), max, ' pts',
+    kit.meter(im, '   Set:', deps.sets.usedPoints(st.editingSet, deps.book), max, ' blue pts',
         synced and synced.activePoints or nil, liveMax);
     kit.tip(im, (max ~= nil
-        and ('Points used by the set you are editing / the budget it is\nplanned against (Lv.%d).'):format(planLvl)
-        or 'Points used by the set you are editing.\nThe total appears when you are on BLU (or set budgetOverride).')
+        and ('Blue points used by the set you are editing / the budget it is\nplanned against (Lv.%d).'):format(planLvl)
+        or 'Blue points used by the set you are editing.\nThe total appears when you are on BLU (or set budgetOverride).')
         .. (synced and ('\n\nIn brackets: what the game holds RIGHT NOW at Lv.%d,\n'
             .. 'against the budget for that level.%s\n'
             .. 'The rest of the set is disabled by the game itself and\n'
@@ -726,8 +726,8 @@ local function renderBody(im, st, deps, embedded)
         -- found it sitting there. Almost always the level sync's leftover.
         -- Tell the player the two clicks that refresh it for good.
         if kit.isFn(im, 'SameLine') then im.SameLine(); end
-        kit.ctext(im, kit.COL.warn, '   refresh points');
-        kit.tip(im, ('The game client still reports %s points; Bludex works your\n'
+        kit.ctext(im, kit.COL.warn, '   refresh blue points');
+        kit.tip(im, ('The game client still reports %s blue points; Bludex works your\n'
             .. 'total out as %s and is showing that.\n\n'
             .. 'To refresh the game\'s own number, open:\n'
             .. '    Magic  ->  Blue Magic  ->  Set\n'
@@ -772,18 +772,22 @@ local function renderBody(im, st, deps, embedded)
                 tostring(deps.blu.capLevel())));
         end
     end
-    if deps.blu.onBlu() and (deps.blu.points()) == nil then
-        if kit.isFn(im, 'SameLine') then im.SameLine(); end
-        kit.ctext(im, kit.COL.dim, '   (live points: reading...)');
-        kit.tip(im, 'The client has not filled the points struct yet.\n'
-            .. 'Bludex is requesting the data from the server (the same\n'
-            .. '0x061 ask the native menus send). If it stays stuck:\n'
-            .. '/bludex refresh re-asks, /bludex debug shows details.');
-        deps.blu.nudgePoints();
-    elseif not deps.blu.onBlu() then
-        if kit.isFn(im, 'SameLine') then im.SameLine(); end
-        kit.ctext(im, kit.COL.dim, '   (not on BLU)');
-    end
+    -- THE STATUS NOTES SIT AT THE END OF THE ROW (Henrik 2026-08-12: "those
+    -- buttons are more important than that message"). Only the per-frame WORK
+    -- happens here -- the nudge, which is logic and not drawing; both labels
+    -- are drawn after the buttons and after every badge, at the bottom of
+    -- this function.
+    --
+    -- The live-points one also stopped claiming to be reading. nudgePoints
+    -- gives up after three tries and only re-arms on a successful read, so
+    -- 'reading...' went on saying it for the rest of the session while nothing
+    -- was being asked -- and on this server the struct can sit at zero all
+    -- session anyway (the 0x061 ask does not always wake it). The label now
+    -- names the one thing that does fill it, which is what /bludex debug
+    -- already said.
+    local onBlu = deps.blu.onBlu();
+    local livePointsCold = onBlu and (deps.blu.points()) == nil;
+    if livePointsCold then deps.blu.nudgePoints(); end
 
     -- set actions on the header line, every tab (Henrik 2026-08-04): Save
     -- and Apply light GREEN when they have work, Revert discards the unsaved
@@ -858,6 +862,29 @@ local function renderBody(im, st, deps, embedded)
         kit.ctext(im, kit.COL.warn, ('   castable in %ds'):format(lockRem));
         kit.tip(im, 'Changing set spells locks Blue Magic casting for about a\n'
             .. 'minute. The countdown runs from the last set change Bludex sent.');
+    end
+
+    -- LAST ON THE ROW, after every badge: the standing status notes (the nudge
+    -- that goes with the first one runs above, where the condition is read).
+    -- They sit at the end because everything between them and Revert is louder
+    -- -- an enforced over-budget, a changed plan, the cast lock -- and a note
+    -- that is true all session must not push a warning further from the button
+    -- it is about. The two are mutually exclusive by construction: one needs
+    -- to be on BLU, the other needs not to be, so the tail slot is never
+    -- contested.
+    if not onBlu then
+        if kit.isFn(im, 'SameLine') then im.SameLine(); end
+        kit.ctext(im, kit.COL.dim, '   (not on BLU)');
+    elseif livePointsCold then
+        if kit.isFn(im, 'SameLine') then im.SameLine(); end
+        -- an underlined helpLabel rather than a sentence: the panel-text
+        -- standard is a short label with the explanation in the hover. No
+        -- leading pad on the text -- helpLabel underlines the ITEM, and
+        -- spaces inside it drag the rule out past the words; SameLine's own
+        -- spacing is the gap.
+        kit.helpLabel(im, 'Update Live Blue Points?',
+            'To update your live blue points, open the blue mage set spells menu.',
+            kit.COL.dim);
     end
 
     -- tab row

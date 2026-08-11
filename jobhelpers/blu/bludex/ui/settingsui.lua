@@ -114,9 +114,9 @@ function M.render(ctx)
             tostring(lvl or '?'), base));
 
     local mKnown = blu.meritPts ~= nil;
-    field(im, 'Assimilation Points',
+    field(im, 'Assimilation Blue Points',
         'From Assimilation, in the job group 2 merits.\n\n'
-        .. '2 points per merit, 5 merits maximum -- so 10 points at most.\n'
+        .. '2 blue points per merit, 5 merits maximum -- so 10 at most.\n'
         .. 'They count only at level 75: a level sync removes them.\n\n'
         .. 'Read automatically WHEN YOU ZONE -- the server pushes your full\n'
         .. 'merit list on every zone-in, and again whenever you raise or lower\n'
@@ -133,13 +133,13 @@ function M.render(ctx)
         function() blu.meritPts = nil; save(); end);
 
     local bKnown = blu.learnedBonus ~= nil;
-    field(im, 'Learned Bonus Points',
-        'CatsEyeXI awards set points for blue magic you have learned.\n'
+    field(im, 'Learned Bonus Blue Points',
+        'CatsEyeXI awards blue points for blue magic you have learned.\n'
         .. 'Collect them from Boruko in Aht Urghan Whitegate (J-10, near\n'
-        .. 'Waoud), up to 25 points in total.\n\n'
+        .. 'Waoud), up to 25 blue points in total.\n\n'
         .. 'These count at EVERY level, level sync included -- so below 75,\n'
         .. 'where merits do not count, they are simply cap - base level\n'
-        .. 'points. Open the native Blue Magic set menu once while synced and\n'
+        .. 'blue points. Open the native Blue Magic set menu once while synced and\n'
         .. 'Bludex reads them off. Type a value to set it yourself.',
         bKnown and tostring(blu.learnedBonus) or 'not known yet',
         bKnown and kit.COL.ok or kit.COL.warn);

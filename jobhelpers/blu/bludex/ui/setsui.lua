@@ -479,7 +479,7 @@ local function rungRow(ctx, index, entry, level, here)
             slots, (slots == 1) and '' or 's'),
     };
     if src == 'base' then
-        lines[2] = ('%d points (the base rule -- your learned bonus is not\n'
+        lines[2] = ('%d blue points (the base rule -- your learned bonus is not\n'
             .. 'measured yet, so the real total is higher), %d slots'):format(cap or 0, slots);
     elseif cap == nil then
         lines[2] = ('point total unknown, %d slots'):format(slots);
@@ -499,7 +499,7 @@ local function rungRow(ctx, index, entry, level, here)
         for i = 1, 20 do
             local s = book.spells[ids[i] or 0];
             if s ~= nil then
-                lines[#lines + 1] = ('  %s  (%d pts)'):format(s.name, s.setPoints or 0);
+                lines[#lines + 1] = ('  %s  (%d blue pts)'):format(s.name, s.setPoints or 0);
             elseif (ids[i] or 0) ~= 0 then
                 lines[#lines + 1] = ('  #%d'):format(ids[i]);
             end
@@ -515,7 +515,7 @@ end
 -- wording is Henrik's, kept verbatim. Order is his too.
 M.RULES = {
     { key = 'restore', label = 'Restore',
-      tip = 'Will equip spells as spell slots and points\nbecome available.' },
+      tip = 'Will equip spells as spell slots and blue points\nbecome available.' },
     { key = 'switch',  label = 'Lvl Set Switch',
       tip = 'Will behave as Restore, unless you have added a\n'
          .. 'Level Set for the range your level is currently\n'
@@ -623,7 +623,7 @@ local function levelsSection(ctx)
     if #levels == 0 then
         kit.ctext(im, kit.COL.dim, 'none yet - only the base build');
     else
-        kit.ctext(im, kit.COL.dim, '  Lv   points    slots');
+        kit.ctext(im, kit.COL.dim, '  Lv  blue pts   slots');
         kit.tip(im, 'What each build costs against what its level allows.\n'
             .. '">" is the band you are standing in right now.');
         for _, lvl in ipairs(levels) do
@@ -1107,7 +1107,7 @@ local function chainRow(ctx, slot, shown, liveIds, locked, nameW)
                     spellsui.tooltip(ctx, e.id, nil,
                         { { 'right-click: remove this entry', kit.COL.dim } });
                 else
-                    kit.tip(im, 'The slot is deliberately empty over this range\n(the points go to other slots).\nright-click: remove the marker');
+                    kit.tip(im, 'The slot is deliberately empty over this range\n(the blue points go to other slots).\nright-click: remove the marker');
                 end
                 if p2 and kit.isFn(im, 'PopID') then pcall(im.PopID); end
                 if okS and sclick and e.id ~= 0 then
@@ -1175,7 +1175,7 @@ local function slotPlanner(ctx)
     -- does not: previewing the very level you stand at, the two agree.
     local ss = ctx.blu.syncStats(book);
     local synced = (ss ~= nil and ss.level < 75 and ss.level ~= shown) and ss or nil;
-    kit.meter(im, ('Points Lv.%d'):format(shown), ctx.sets.usedPoints(ids, book), capShown, '',
+    kit.meter(im, ('Blue Points Lv.%d'):format(shown), ctx.sets.usedPoints(ids, book), capShown, '',
         synced and synced.activePoints or nil, synced and ctx.blu.budget() or nil);
     kit.tip(im, (capShown == nil
         and 'The budget for this level is not known yet (learned bonus\nunmeasured). Bands below are provisional meanwhile.'
@@ -1394,7 +1394,7 @@ local function flatPlanner(ctx)
             or ('Editing Lv.%d - levels %s'):format(set.level, bandText(ctx, set.level)));
         kit.tip(im, (set.level == nil)
             and 'The build the set falls back to wherever no level range\nis built. The set\'s level builds list under its name.'
-            or ('The game gives the same %d slots and the same points\n'
+            or ('The game gives the same %d slots and the same blue points\n'
                 .. 'anywhere in Lv.%s, so one build serves the whole band.\n\n'
                 .. 'Other levels of this set are under its name on the left.'):format(
                 slotMax, bandText(ctx, set.level)));
@@ -1463,7 +1463,7 @@ local function flatPlanner(ctx)
     end
     local capShown = cap;
     if src == 'base' then capShown = nil; end      -- a floor is not a total
-    kit.meter(im, 'Points', ctx.sets.usedPoints(set, book), capShown, '');
+    kit.meter(im, 'Blue Points', ctx.sets.usedPoints(set, book), capShown, '');
     if src == 'base' then
         kit.tip(im, ('At least %d (the base rule) - your learned bonus is not\nmeasured yet, so the real total is higher.'):format(cap or 0));
     end
@@ -1914,7 +1914,7 @@ local function assignPane(ctx)
         end
     end
     kit.tip(im, 'End the chain deliberately: from that level the slot sits\n'
-        .. 'vacant and its points go elsewhere. Shows as an entry;\n'
+        .. 'vacant and its blue points go elsewhere. Shows as an entry;\n'
         .. 'remove it like one.');
     if st.addNote then kit.ctext(im, kit.COL.dim, st.addNote); end
     if kit.isFn(im, 'Separator') then im.Separator(); end
@@ -1960,7 +1960,7 @@ local function assignPane(ctx)
         for _, id in ipairs(ids) do
             local s = sp[id];
             local okA, whyA = ctx.sets.canAddEntry(set, slot, id, lvOverride, book);
-            local label = ('%s  Lv.%s  %spt'):format(s.name, s.level or '?', s.setPoints or '?');
+            local label = ('%s  Lv.%s  %s blue pt'):format(s.name, s.level or '?', s.setPoints or '?');
             local lclick, rclick, hov = spellsui.listRow(ctx, id, 24, nameW, false, true,
                 okA and { label = label } or { label = label, textCol = kit.COL.dim });
             if lclick then

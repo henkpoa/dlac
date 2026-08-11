@@ -1632,13 +1632,20 @@ end
 
 function M.traitEval(setOrIds, book)
     local ids = flatIds(setOrIds);
-    local weights, order = {}, {};
+    -- BOTH CURRENCIES, per ladder: the TRAIT points it is fed, and the BLUE
+    -- points (set points) the feeding costs. The second is what makes an
+    -- overspend legible -- trait points alone cannot say what it cost you.
+    local weights, spends, order = {}, {}, {};
     for i = 1, 20 do
         local s = book.spells[ids[i] or 0];
         if s and s.trait then
             local c = s.trait.category;
-            if weights[c] == nil then weights[c] = 0; order[#order + 1] = c; end
+            if weights[c] == nil then
+                weights[c], spends[c] = 0, 0;
+                order[#order + 1] = c;
+            end
             weights[c] = weights[c] + (s.trait.weight or 0);
+            spends[c] = spends[c] + (s.setPoints or 0);
         end
     end
     local out = {};
@@ -1667,6 +1674,7 @@ function M.traitEval(setOrIds, book)
             cat = cat,
             name = (info and info.name) or ('Trait ' .. cat),
             weight = total,
+            setPoints = spends[cat],
             tier = active,
             tierText = tierText(active),
             nextPoints = nextTier and nextTier.points or nil,
@@ -1675,6 +1683,90 @@ function M.traitEval(setOrIds, book)
     end
     table.sort(out, function(a, b) return a.name < b.name; end);
     return out;
+end
+
+-- THE CHEAPEST HOLD (Henrik 2026-08-11, from his Auto Refresh reading in the
+-- field: 27 set points fed into a rung that costs 8). A rung has a price in
+-- TRAIT points and a set can pay it many ways -- the spells you happen to have
+-- set are rarely the cheapest. This answers: which of THIS set's feeders would
+-- hold the tier you are already standing on, for the fewest SET points?
+--
+-- Every spell feeds exactly one category, so trimming one can never cost
+-- another ladder its tier. But it can cost you a spell you set to CAST, and
+-- the stat mods it carries while set. The answer is ADVISORY: it names what
+-- the trait does not need, never what you do not want.
+--
+-- nil when there is nothing to say -- no feeders, not standing on a rung at
+-- all, or the feeders already ARE the cheapest way to stand where you stand.
+function M.cheapestHold(setOrIds, book, cat)
+    local cats = book.traits and book.traits.categories;
+    local info = cats and cats[cat];
+    if info == nil or info.tiers == nil or info.tiers[1] == nil then return nil; end
+
+    local ids = flatIds(setOrIds);
+    local feeders, fed, spent = {}, 0, 0;
+    for i = 1, 20 do
+        local s = book.spells[ids[i] or 0];
+        if s and s.trait and s.trait.category == cat and (s.trait.weight or 0) > 0 then
+            feeders[#feeders + 1] = { id = s.id, name = s.name,
+                tp = s.trait.weight, sp = s.setPoints or 0 };
+            fed = fed + s.trait.weight;
+            spent = spent + (s.setPoints or 0);
+        end
+    end
+    if feeders[1] == nil then return nil; end
+
+    -- the rung the set is actually standing on
+    local target, tier = nil, nil;
+    for i, t in ipairs(info.tiers) do
+        if fed >= t.points then target, tier = t.points, i; end
+    end
+    if target == nil then return nil; end       -- below tier 1: nothing is spare
+
+    -- Fewest SET points that still reach TARGET trait points. Sums cap AT the
+    -- target -- paying past the rung is the very thing being priced -- so the
+    -- state space is tiny and the answer exact: 20 feeders over <=48 points.
+    local best = { [0] = { sp = 0, take = {} } };
+    for _, f in ipairs(feeders) do
+        local nxt = {};
+        for p, rec in pairs(best) do nxt[p] = rec; end
+        for p, rec in pairs(best) do          -- reads the state BEFORE f: 0/1
+            local np = p + f.tp;
+            if np > target then np = target; end
+            local cand = rec.sp + f.sp;
+            local cur = nxt[np];
+            if cur == nil or cand < cur.sp then
+                local take = {};
+                for k, v in ipairs(rec.take) do take[k] = v; end
+                take[#take + 1] = f;
+                nxt[np] = { sp = cand, take = take };
+            end
+        end
+        best = nxt;
+    end
+    local hold = best[target];
+    if hold == nil then return nil; end
+
+    local keeping = {};
+    for _, f in ipairs(hold.take) do keeping[f.id] = true; end
+    local keep, drop, saved = {}, {}, 0;
+    for _, f in ipairs(feeders) do
+        if keeping[f.id] then
+            keep[#keep + 1] = f;
+        else
+            drop[#drop + 1] = f;
+            saved = saved + f.sp;
+        end
+    end
+    if saved <= 0 then return nil; end          -- already the cheapest hold
+
+    return {
+        cat = cat, tier = tier, points = target,
+        fed = fed, spare = fed - target,
+        keep = keep, drop = drop,
+        cost = hold.sp, spent = spent, saved = saved,
+        maxed = (tier == #info.tiers),
+    };
 end
 
 return M;

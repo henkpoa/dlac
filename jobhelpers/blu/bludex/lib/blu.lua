@@ -561,9 +561,9 @@ function M.resetCapWatch()
     capWatch = { max = nil, lvl = nil, suspect = false };
 end
 
--- Call freely (the header does, every frame it shows 'reading...'): fires
--- only on BLU, only when the signature is alive but the struct reads zero,
--- at most 3 times, 10s apart. A successful read re-arms it.
+-- Call freely (the header does, every frame the points struct reads cold):
+-- fires only on BLU, only when the signature is alive but the struct reads
+-- zero, at most 3 times, 10s apart. A successful read re-arms it.
 function M.nudgePoints()
     if not M.onBlu() then return; end
     local okRaw, max = M.pointsRaw();

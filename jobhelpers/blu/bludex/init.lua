@@ -686,7 +686,7 @@ return {
         if L == nil then return; end
         local ok, max, spent = pcall(L.blu.points);
         if ok and max then
-            ctx.ui.dim(('%d / %d pts set'):format(spent or 0, max));
+            ctx.ui.dim(('%d / %d blue pts set'):format(spent or 0, max));
         end
     end,
 

@@ -1,4 +1,4 @@
--- hints.lua -- learn-location hints (GENERATED 2026-08-10 by tools/generate_spells.py -- DO NOT EDIT)
+-- hints.lua -- learn-location hints (GENERATED 2026-08-12 by tools/generate_spells.py -- DO NOT EDIT)
 -- Source: blucheck's data/spells.json (retail-era zones/mobs; CatsEyeXI can differ).
 
 local M = { hints = {} }

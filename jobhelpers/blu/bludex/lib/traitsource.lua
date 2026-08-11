@@ -15,10 +15,18 @@
     beats the public source, and the live 0x0AC bit stays the referee.
 
     THE COLLISION IS BY TRAIT ID, NOT BY LADDER. Category 24 is trait 15
-    (Double Attack) at 2 points and trait 16 (Triple Attack) at 4; category 28
-    is 20 (Gilfinder) then 19 (Treasure Hunter). A WAR sub kills the 2-point
-    rung and leaves the 4-point one standing, because they are different
-    traits. Every tier carries its own traitId for exactly this reason.
+    (Double Attack) on rung 1 and trait 16 (Triple Attack) on rung 2; category
+    28 is 20 (Gilfinder) then 19 (Treasure Hunter). A WAR sub kills rung 1 and
+    leaves rung 2 standing, because they are different traits. Every tier
+    carries its own traitId for exactly this reason.
+
+    THE SCALE IS bg-wiki's (2026-08-11): every ladder costs 8 trait points per
+    rung, and a feeder spell pays 4 (6 on Skillchain/Mag. Burst/Gilfinder, 8
+    for the lv99 spells, per-spell on Auto Refresh). Never write a rung's cost
+    as a literal -- read it off the ladder. base-LSB is NOT the authority here:
+    it mixes that scale with a legacy 1-unit one and ships only the first rung
+    of most ladders. tools/generate_spells.py WIKI_LADDER carries the whole
+    story and data/traits.lua is generated from it.
 
     ORDER OF EVENTS (src/map/utils/charutils.cpp, BuildingCharTraitsTable):
     main job at your main level, then sub job at your sub level, then blue.

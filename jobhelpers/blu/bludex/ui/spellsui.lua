@@ -134,7 +134,7 @@ function M.tooltip(ctx, id, hovered, extra)
     -- the client DAT's own description (it carries its own line breaks)
     local desc = book.description(id);
     if desc then add(desc, { 0.90, 0.90, 0.95, 1.00 }); end
-    if s.setPoints then add(('Set: %d pts'):format(s.setPoints), kit.COL.accent); end
+    if s.setPoints then add(('Set: %d blue pts'):format(s.setPoints), kit.COL.accent); end
     if s.mods and #s.mods > 0 then
         local parts = {};
         for _, m in ipairs(s.mods) do
@@ -314,7 +314,7 @@ function M.detail(ctx, id)
     end
     if s.aoe then kit.kv(im, 'Area', 'AoE'); end
     if s.setPoints then
-        kit.kv(im, 'Set cost', ('%d point%s'):format(s.setPoints, s.setPoints == 1 and '' or 's'));
+        kit.kv(im, 'Set cost', ('%d blue point%s'):format(s.setPoints, s.setPoints == 1 and '' or 's'));
     end
     if s.trait then
         kit.kv(im, 'Trait', ('%s  (+%d Point%s)'):format(

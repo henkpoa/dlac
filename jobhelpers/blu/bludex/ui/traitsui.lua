@@ -223,6 +223,30 @@ function M.render(ctx)
                 -- a set-earned ladder too, where the tag stays silent). The
                 -- blue ladder counts its own points from zero either way.
                 local top = v.active[1];
+                -- WHAT THIS LADDER WOULD COST IF YOU PAID IT EXACTLY. The rung
+                -- has a price in trait points and the spells you happen to have
+                -- set are rarely the cheapest way to meet it (Auto Refresh at
+                -- 75: 27 set points fed into a rung 9 would hold).
+                local hold = nil;
+                if ctx.sets.cheapestHold ~= nil then
+                    local okHold, res = pcall(ctx.sets.cheapestHold, evalSource, book, cat);
+                    hold = okHold and res or nil;
+                end
+                -- The surplus means two DIFFERENT things and must never be
+                -- worded as one: past the last rung it buys nothing ever,
+                -- below it the spare points are progress toward the next.
+                local function holdLine(nextTier)
+                    if hold == nil then return ''; end
+                    local names = {};
+                    for _, f in ipairs(hold.keep) do names[#names + 1] = f.name; end
+                    local fate = nextTier
+                        and ('The other %d blue points only count toward tier %d.')
+                            :format(hold.saved, nextTier)
+                        or ('The other %d blue points buy nothing at all.'):format(hold.saved);
+                    return ('\n\nTier %d costs %d Points, and %d blue points hold it:\n%s.\n%s')
+                        :format(hold.tier, hold.points, hold.cost,
+                                table.concat(names, ', '), fate);
+                end
                 if top ~= nil and info ~= nil and weight > 0 then
                     local nxtTier = (top.tier or 0) + 1;
                     local nxt = info.tiers[nxtTier];
@@ -234,8 +258,42 @@ function M.render(ctx)
                             and ('\nThe job\'s tier %d does not stand in for the blue\nrungs below it.'):format(top.tier or 0)
                             or '';
                         kit.tip(im, ('Tier %d activates once your set feeds %d total points\n'
-                            .. '-- %d more from here.%s'):format(
-                            nxtTier, nxt.points, nxt.points - weight, jobNote));
+                            .. '-- %d more from here.%s%s'):format(
+                            nxtTier, nxt.points, nxt.points - weight, jobNote,
+                            holdLine(nxtTier)));
+                    end
+                    -- MAXED, AND STILL BEING FED (Henrik 2026-08-11, from the
+                    -- field: "if I equip everything I only get 1 MP / tick
+                    -- refresh"). The last rung is the last -- points past it
+                    -- buy nothing at all. This waste was invisible until the
+                    -- rung counts were cut to what blue magic can actually
+                    -- reach, because the ladder used to claim a rung above.
+                    local last = info.tiers[#info.tiers];
+                    if last ~= nil and weight > last.points then
+                        if kit.isFn(im, 'SameLine') then im.SameLine(); end
+                        -- Henrik's wording (2026-08-11): name the overspend in
+                        -- BOTH currencies. BOTH figures are the WASTE, never
+                        -- the total -- the blue number is what the surplus
+                        -- trait points COST, i.e. what a trim would give back,
+                        -- not what the ladder holds. The total belongs in the
+                        -- tooltip, where it is context rather than a verdict.
+                        --
+                        -- A ladder can be over-fed and still be its own
+                        -- cheapest hold (one big feeder overshooting a small
+                        -- rung). Nothing is recoverable then, so the blue
+                        -- clause is dropped rather than printed as a zero.
+                        local over = weight - last.points;
+                        kit.ctext(im, kit.COL.warn, hold ~= nil
+                            and ('  %d trait points over cap, from overspending %d blue points.')
+                                :format(over, hold.saved)
+                            or ('  %d trait points over cap.'):format(over));
+                        kit.tip(im, ('Tier %d is the top of this ladder for blue magic,\n'
+                            .. 'and it costs %d Points. The %d above it buy nothing --\n'
+                            .. 'the spells feeding them are earning their keep as\n'
+                            .. 'spells to cast, or not at all.\n\n'
+                            .. 'This ladder is holding %d blue points in total.%s'):format(
+                            #info.tiers, last.points, over,
+                            (ev and ev.setPoints) or 0, holdLine(nil)));
                     end
                 end
             elseif weight > 0 then
@@ -318,9 +376,9 @@ function M.render(ctx)
                     -- the two numbers a trait row is picked on, each named:
                     -- what it feeds THIS ladder, and what it costs the SET
                     -- (Henrik 2026-08-10, fifth round: no more "weight" -- and
-                    -- 'pts' already means set points everywhere else)
+                    -- 'pts' already means BLUE points everywhere else)
                     local tw = s.trait.weight or 0;
-                    local label = ('%s  +%d Point%s / Set: %s pts  Lv.%s%s'):format(
+                    local label = ('%s  +%d Point%s / Set: %s blue pts  Lv.%s%s'):format(
                         s.name, tw, tw == 1 and '' or 's',
                         s.setPoints or '?', s.level or '?',
                         inSet and '  [in set]' or '');
