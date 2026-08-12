@@ -144,6 +144,26 @@ hosting the engine — is history; see `docs/design/lac-purge-plan.md` and histo
   edits on one checkout. Before any branch switch / stash / commit: `git status` and
   re-read files you're about to edit. Never switch branches while another session's
   agent is committing.
+- **CI actions are pinned to `actions/checkout@v7`** (both `ci.yml` and
+  `issue-agent.yml`, bumped 2026-08-11). v4 targeted Node 20, which GitHub deprecated —
+  runs were already being force-migrated to Node 24 and annotated, and would eventually
+  have failed outright. v5/v6/v7 all target node24; v7 was safe here because neither
+  workflow uses `pull_request_target` or `workflow_run` (what v7.0.0 restricts) and both
+  run on `ubuntu-latest`, satisfying v6's runner floor for its `RUNNER_TEMP` credential
+  change. The same bump landed in bludex's `sync-dlac.yml`.
+- **`jobhelpers/blu/bludex/` is vendored, not authored here** — see **Vendored module**
+  in [CONTEXT.md](../CONTEXT.md). It is copied in wholesale by bludex's `sync-dlac.yml`
+  on every push to *that* repo's main, landing on dlac **`dev`**; main is a human merge
+  as usual. **Never hand-edit that folder** — the next sync overwrites it without trace.
+  Fix it in github.com/henkpoa/bludex.
+  Until 2026-08-11 that sync wrote its `VENDORED.md` provenance stamp *before* checking
+  whether anything had changed, so its per-push SHA guaranteed a diff: every bludex
+  push, docs-only ones included, produced a dlac commit whose entire content was
+  `VENDORED.md +1 -1` with the library byte-identical, and dlac's dev and main sat
+  diverged over a line of provenance. Fixed in bludex — the stamp is carried across
+  untouched now and rewritten only once a vendored file really differs, so **"dlac dev
+  is ahead of main" means a real library change again.** A lone `VENDORED.md`-only sync
+  commit means that regression is back.
 
 ## Agent skills
 
