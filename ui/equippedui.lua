@@ -27,7 +27,7 @@ local imgui    = try('imgui');
 -- #69): this module asks gearOracle.wornAugExtra/describeAugments and never
 -- requires the augment decoder itself (the GRD5 rule is absolute since #74).
 local gearOracle = require("dlac\\gear\\gearoracle");
-local statdefs = try("dlac\\data\\statdefs");
+local statdefs = try("dlac\\gear\\statdefs");
 local uistyle  = try("dlac\\ui\\uistyle");   -- helpLabel: underline + hover, the panel-text standard
 
 -- The Wishlist owns the item context-menu BODY (so the same rows can hang off

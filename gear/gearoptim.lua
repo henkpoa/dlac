@@ -42,7 +42,7 @@
 local gear = require("dlac\\gear");
 -- Level-scaling stats (Rajas/Tamas/Sattva etc.): rank slots on the EFFECTIVE stats
 -- for the build level, not the catalog's flat base. Guarded: absent module = no-op.
-local _lsok, lscale = pcall(require, "dlac\\data\\levelstats");
+local _lsok, lscale = pcall(require, "dlac\\gear\\levelstats");
 local hasLScale = _lsok and type(lscale) == 'table';
 -- Gear-set bonus evaluator (docs/design/conditional-effects.md P3): buildBestSet
 -- wires its membership/tier lookups into optimizePicks via opts.effects.

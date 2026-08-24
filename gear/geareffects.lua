@@ -67,7 +67,7 @@ do  -- default load: generated data + the central level resolver, all fail-soft
     if ok and type(d) == 'table' then gearsets = d; end
     ok, d = pcall(require, "dlac\\data\\latentstats");
     if ok and type(d) == 'table' then latents = d; end
-    ok, d = pcall(require, "dlac\\data\\levelstats");
+    ok, d = pcall(require, "dlac\\gear\\levelstats");
     if ok and type(d) == 'table' then lstats = d; end
     rebuildIndex();
 end

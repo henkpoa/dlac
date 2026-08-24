@@ -97,7 +97,7 @@ if ashita ~= nil and ashita.events ~= nil and type(ashita.events.register) == 'f
             end);
             say('Max MP merits -- manifest: ' .. ((saved ~= nil) and tostring(saved) or 'unset (counts as 0)'));
             pcall(function()
-                local nmp = require('dlac\\data\\nativemp');
+                local nmp = require('dlac\\gear\\nativemp');
                 local lv = math.min(math.max(saved or 0, 0), 10);
                 local base = nmp.self(lv * 10);
                 if base ~= nil and base > 0 then

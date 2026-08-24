@@ -158,7 +158,7 @@ _pok = _pok and type(_prof) == 'table';
 
 -- Native-MP calculator (data/nativemp.lua): the server's base-pool formula.
 -- The Oneiros resolver aims its latent threshold with it at resolve time.
-local _nmok, _nmp = pcall(require, 'dlac\\data\\nativemp');
+local _nmok, _nmp = pcall(require, 'dlac\\gear\\nativemp');
 if not (_nmok and type(_nmp) == 'table') then _nmp = nil; end
 
 -- The banded-ladder core (maxmp v2, engine v88) -- pure module, guarded like

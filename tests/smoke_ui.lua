@@ -25,6 +25,12 @@ table.insert(package.searchers or package.loaders, 1, function(name)
     return chunk;
 end);
 
+-- THE SERVER SEAM (ADR 0035), armed exactly as the live boot arms it: mounts
+-- the active pack's data files into the virtual dlac\data\ namespace, so a
+-- require('dlac\\data\\gearsets') below reaches servers\cexi\data\ through
+-- the same searcher. This smoke suite therefore exercises the REAL mount.
+require('dlac\\gear\\serverpack').init();
+
 -- The event stub RECORDS handlers rather than dropping them: floatgear's shift
 -- tracking is a 'key' (WNDPROC) handler, and section 6 drives it directly -- the
 -- transition-bit test in there is easy to get backwards and worth exercising.

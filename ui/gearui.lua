@@ -2262,7 +2262,7 @@ local STATS_W   = 250;   -- left stats panel width (name column + value column)
 -- unlisted stats fall under "Other".
 -- statdefs: the central stat registry (label / section / aliases). Used by the weights
 -- picker (so aliases are searchable) and, over time, the other stat tables below. Guarded.
-local statdefs = try("dlac\\data\\statdefs");
+local statdefs = try("dlac\\gear\\statdefs");
 has.statdefs = statdefs ~= nil and type(statdefs.list) == 'table';
 
 -- Item-search matching shared by the pickers: comma-separated terms, ALL required

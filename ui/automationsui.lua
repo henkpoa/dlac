@@ -29,7 +29,7 @@ local _dpok, dsp  = pcall(require, "dlac\\dispatch");
 -- #69). The interpreters (levelstats/augments) keep their homes; this module asks
 -- the door, never requires them (the GRD5 rule, now absolute).
 local gearOracle  = require("dlac\\gear\\gearoracle");
-local _nmok, nmp  = pcall(require, "dlac\\data\\nativemp");
+local _nmok, nmp  = pcall(require, "dlac\\gear\\nativemp");
 local _gmok, gmode = pcall(require, "dlac\\feature\\gamemode");
 -- helpLabel: the panel-text standard (underline the label, explain in a hover).
 local _usok, uistyle = pcall(require, "dlac\\ui\\uistyle");

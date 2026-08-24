@@ -8,8 +8,8 @@
 package.loaded['dlac\\gear'] = { NameToObject = {} };   -- utils requires dlac\gear at load
 ashita = { events = { register = function() end } };    -- utils registers /dl at load
 package.loaded['dlac\\profiles'] = dofile('profiles.lua');   -- dispatch/setmanager require it (guarded)
-package.loaded['dlac\\data\\nativemp'] = dofile('data/nativemp.lua');   -- dispatch requires it (Oneiros resolver)
-package.loaded['dlac\\data\\zones'] = dofile('data/zones.lua');   -- dispatch requires it (the inTown town set)
+package.loaded['dlac\\gear\\nativemp'] = dofile('gear/nativemp.lua');   -- dispatch requires it (Oneiros resolver)
+package.loaded['dlac\\data\\zones'] = dofile('servers/cexi/data/zones.lua');   -- dispatch requires it (the inTown town set)
 package.loaded['dlac\\feature\\mpbands'] = dofile('feature/mpbands.lua');   -- dispatch requires it (the banded ladder, maxmp v2)
 package.loaded['dlac\\feature\\location'] = dofile('feature/location.lua');   -- lockstyle requires it (Disable-in-town)
 package.loaded['dlac\\gear\\jobgate'] = dofile('gear/jobgate.lua');   -- lockstyle requires it (v47 picker/box job-level gate)
@@ -355,7 +355,7 @@ end)();
     -- STANDING central service -- callers browse it directly, architecture.md -- so it
     -- is not policed here; the oracle fronts it only for the identity JOIN.)
     --
-    -- On-disk the path reads with escaped separators (dlac\\data\\levelstats); plain
+    -- On-disk the path reads with escaped separators (dlac\\gear\\levelstats); plain
     -- find, backslashes literal. Load form (require / try / pcall) is irrelevant -- the
     -- PATH string is the signal.
     local function loadsInterp(s)
@@ -1536,8 +1536,8 @@ end)();
 --    ranking, the automation manifests -- resolves item stats through this one
 --    function, so no section values a scaling item at its base stats.
 -- ---------------------------------------------------------------------------
-package.loaded['dlac\\data\\levelscaling'] = dofile('data/levelscaling.lua');
-local lstats = dofile('data/levelstats.lua');
+package.loaded['dlac\\data\\levelscaling'] = dofile('servers/cexi/data/levelscaling.lua');
+local lstats = dofile('gear/levelstats.lua');
 local tamas = { Name = 'Tamas Ring', Id = 15545, Level = 30,
                 Stats = { MP = 15, INT = 2, MND = 2, Enmity = -3 } };
 check('L1 Tamas MP at Lv74',       lstats.effective(tamas, 74).MP, 29);
@@ -11113,7 +11113,7 @@ end)();
 --     Shapes verified against the server source 2026-07-17 (design Appendix C).
 -- ---------------------------------------------------------------------------
 (function()
-    local gsD = dofile('data/gearsets.lua');
+    local gsD = dofile('servers/cexi/data/gearsets.lua');
     local nSets, nFlat, nTiered = 0, 0, 0;
     local census = {};
     local tierKeysOk, piecesOk = true, true;
@@ -11145,7 +11145,7 @@ end)();
     check('GD9 [43] alternate-piece shape (9 pieces, min2/max2)',
         s43 ~= nil and (#s43.pieces .. '/' .. s43.min .. '/' .. s43.max), '9/2/2');
 
-    local lsD = dofile('data/latentstats.lua');
+    local lsD = dofile('servers/cexi/data/latentstats.lua');
     local rows, items, levelLeak = 0, 0, false;
     for _, rr in pairs(lsD) do
         items = items + 1;
@@ -11287,7 +11287,7 @@ end)();
 
     -- the REAL shipped data end-to-end: worn Lava's + Kusha's (ids 15850/15851)
     local gfe2 = dofile('gear/geareffects.lua');
-    gfe2.configure({ gearsets = dofile('data/gearsets.lua') });
+    gfe2.configure({ gearsets = dofile('servers/cexi/data/gearsets.lua') });
     local worn = gfe2.comboStats({
         Ring1 = { Id = 15850, Name = "Lava's Ring",  Level = 30, Stats = {} },
         Ring2 = { Id = 15851, Name = "Kusha's Ring", Level = 30, Stats = {} },
@@ -11592,7 +11592,7 @@ end)();
 -- moves one of these numbers, re-derive from the C++ before touching the test.
 -- ---------------------------------------------------------------------------
 (function()
-    package.loaded['dlac\\data\\fishdb'] = dofile('data/fishdb.lua');
+    package.loaded['dlac\\data\\fishdb'] = dofile('servers/cexi/data/fishdb.lua');
     local fcalc = dofile('feature/fishcalc.lua');
     package.loaded['dlac\\feature\\fishcalc'] = fcalc;
 
@@ -12055,7 +12055,7 @@ end)();
 -- Max MP Boost -- the trait rides health.modmp (DISPLAY); health.maxmp = 714.
 -- ---------------------------------------------------------------------------
 (function()
-    local nmp = dofile('data/nativemp.lua');
+    local nmp = dofile('gear/nativemp.lua');
     local g = nmp.get;
 
     -- the field pin: race D 10+3*59+4*15=247, WHM C 12+4*59+4*15=308,
@@ -12120,7 +12120,7 @@ end)();
 -- 10/10 merits): maxmp 714 -> fires at MP <= 357; meritless 614 -> 307.
 -- ---------------------------------------------------------------------------
 (function()
-    local nmpM = package.loaded['dlac\\data\\nativemp'];   -- THE instance dispatch captured
+    local nmpM = package.loaded['dlac\\gear\\nativemp'];   -- THE instance dispatch captured
     local rv = dispatchM._resolveVirtual;
     local ctx75 = { player = { MainJobSync = 75 } };
 
@@ -12321,7 +12321,7 @@ end)();
 -- namespace and gearoptim's pricing/negation are pinned below (PM17+).
 -- ---------------------------------------------------------------------------
 (function()
-    local pm = dofile('data/petmods.lua');
+    local pm = dofile('servers/cexi/data/petmods.lua');
     check('PM0 petmods loads', type(pm), 'table');
     check('PM1 Drachen Brais wyvern HP% (the field case)',
         pm[14227] ~= nil and pm[14227].Wyvern ~= nil and pm[14227].Wyvern.HPP, 10);
@@ -12398,7 +12398,7 @@ end)();
         table.concat(ptypes.RangedAccuracy, ','), 'Automaton');
 
     -- statdefs speaks the namespace: derived label/section, canon keeps the prefix
-    local sd = dofile('data/statdefs.lua');
+    local sd = dofile('gear/statdefs.lua');
     check('PM19 Pet: label derives from the inner stat', sd.get('Pet:Haste').label, 'Pet: Haste');
     check('PM19a ...and lands in the Pet section', sd.get('Pet:Haste').section, 'Pet');
     check('PM19b inner aliases resolve through (MagicAttackBonus -> MAB)',
@@ -15062,7 +15062,7 @@ end)();
     -- server defines (109): the old glob missed CLUSTERS (`!box cluster`, the
     -- shape a crafter hits first) and TOOLBAGS (ninjutsu tools, in the
     -- restocker's staple set), plus card cases and stone pouches.
-    local ac = dofile('data/itembundles.lua');
+    local ac = dofile('servers/cexi/data/itembundles.lua');
     local acN = 0; for _ in pairs(ac) do acN = acN + 1; end
     check('AC1 the generated pairing table loads with rows', acN > 100, true);
     check('AC1b clusters: `!box cluster` returns one Wind Cluster worth 12 crystal',
@@ -17141,7 +17141,7 @@ end)();
     check('DC36 empty pool no items', #empty.items, 0);
 
     -- ---- digdata shape (the shipped table the guide trusts) ----
-    dc._setDb(dofile('data/digdata.lua'));
+    dc._setDb(dofile('servers/cexi/data/digdata.lua'));
     local db = dc.db();
     check('DC37 digdata loads', db ~= nil, true);
     check('DC38 rank ladder is 0..10', db.ranks and #db.ranks, 10);   -- [0]..[10] -> #=10
@@ -17469,7 +17469,7 @@ end)();
 (function()
     local dc = dofile('feature/digcalc.lua');
     package.loaded['dlac\\feature\\digcalc'] = dc;
-    dc._setDb(dofile('data/digdata.lua'));
+    dc._setDb(dofile('servers/cexi/data/digdata.lua'));
 
     -- ---- zones(): the sorted { id, n } zone-picker source ----
     local zl = dc.zones();
@@ -17569,7 +17569,7 @@ end)();
 (function()
     local dc = dofile('feature/digcalc.lua');
     package.loaded['dlac\\feature\\digcalc'] = dc;
-    dc._setDb(dofile('data/digdata.lua'));
+    dc._setDb(dofile('servers/cexi/data/digdata.lua'));
 
     -- ---- itemIndex(): the searchable diggable-item index ----
     local idx = dc.itemIndex();
@@ -17686,7 +17686,7 @@ end)();
     dc._setDb(false);
     check('BI25 absent db -> itemIndex empty', #dc.itemIndex(), 0);
     check('BI26 absent db -> itemSources nil', dc.itemSources(plate, 8, 1, {}), nil);
-    dc._setDb(dofile('data/digdata.lua'));
+    dc._setDb(dofile('servers/cexi/data/digdata.lua'));
     check('BI27 nil entry -> itemSources nil', dc.itemSources(nil, 8, 1, {}), nil);
     dc._setDb(nil);   -- restore lazy load
 end)();
@@ -25025,7 +25025,7 @@ end)();
     local out = {};
     local function sink(s) out[#out + 1] = tostring(s); end
     package.loaded['dlac\\chatfmt'] = { msg = sink, good = sink, warn = sink, err = sink };
-    package.loaded['dlac\\data\\nmdata'] = dofile('data/nmdata.lua');
+    package.loaded['dlac\\data\\nmdata'] = dofile('servers/cexi/data/nmdata.lua');
 
     local handler = nil;
     local savedReg = ashita.events.register;
@@ -25570,8 +25570,8 @@ end)();
 --   is chosen so that a wrong reading produces a DIFFERENT string.
 -- ---------------------------------------------------------------------------
 (function()
-    package.loaded['dlac\\data\\nmdrops'] = dofile('data/nmdrops.lua');
-    local NMDATA = package.loaded['dlac\\data\\nmdata'] or dofile('data/nmdata.lua');
+    package.loaded['dlac\\data\\nmdrops'] = dofile('servers/cexi/data/nmdrops.lua');
+    local NMDATA = package.loaded['dlac\\data\\nmdata'] or dofile('servers/cexi/data/nmdata.lua');
 
     -- The client's item resources, with every ask COUNTED. The resolve has to
     -- be lazy -- a name table built at load runs before the player is logged in
@@ -26233,8 +26233,8 @@ end)();
     local savedLook  = package.loaded['dlac\\feature\\nmlookup'];
     local savedDrops = package.loaded['dlac\\data\\nmdrops'];
     package.loaded['dlac\\data\\nmdata']  = package.loaded['dlac\\data\\nmdata']
-        or dofile('data/nmdata.lua');
-    package.loaded['dlac\\data\\nmdrops'] = dofile('data/nmdrops.lua');
+        or dofile('servers/cexi/data/nmdata.lua');
+    package.loaded['dlac\\data\\nmdrops'] = dofile('servers/cexi/data/nmdrops.lua');
 
     -- A DELIBERATELY TINY name universe over the REAL drop table. The client
     -- only ever answers for these five, so `namedItems` holds five entries and
