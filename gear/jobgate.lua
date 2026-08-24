@@ -59,10 +59,12 @@ end
 -- known) hands the raw table back untouched; nil raw stays nil (fail-open).
 function M.effectiveLevels(raw, prestige)
     if type(raw) ~= 'table' or type(prestige) ~= 'table' then return raw; end
+    local cap = 75;   -- the item cap; the pack's level cap overrides (ADR 0035)
+    pcall(function() cap = require('dlac\\gear\\serverpack').maxLevel(); end);
     local out = {};
     for ab, lv in pairs(raw) do out[ab] = lv; end
     for ab, tier in pairs(prestige) do
-        if (tonumber(tier) or 0) > 0 and (tonumber(out[ab]) or 0) < 75 then out[ab] = 75; end
+        if (tonumber(tier) or 0) > 0 and (tonumber(out[ab]) or 0) < cap then out[ab] = cap; end
     end
     return out;
 end

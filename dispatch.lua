@@ -1566,13 +1566,16 @@ end
 -- manifest; an unresolvable marker DROPS its slot, so LAC leaves what you're wearing.
 
 -- The character's current effective level (honours the /dl set level main override).
--- Unknown -> 75, so a missing player read never blocks resolution.
+-- Unknown -> the pack's level cap (75 without one, ADR 0035), so a missing
+-- player read never blocks resolution.
 local function playerLevel(ctx)
     local sl = rawget(_G, 'staticMainLevel');
     if type(sl) == 'number' and sl > 0 then return sl; end
     local lv = ctx.player and ctx.player.MainJobSync;
     if type(lv) == 'number' and lv > 0 then return lv; end
-    return 75;
+    local cap = 75;
+    pcall(function() cap = require('dlac\\gear\\serverpack').maxLevel(); end);
+    return cap;
 end
 
 -- A manifest entry is usable when its recorded level fits the character. Entries

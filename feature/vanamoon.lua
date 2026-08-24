@@ -24,6 +24,10 @@ local M = {};
 
 M.CYCLE  = 84;   -- Vana'diel days per lunar cycle
 M.OFFSET = 68;   -- epoch alignment: 26 (server daysmod) + 42 (Full-peak) -- see above
+pcall(function()  -- a pack may realign the epoch (ADR 0035; const moonOffset)
+    local v = tonumber(require('dlac\\gear\\serverpack').const('moonOffset'));
+    if v ~= nil then M.OFFSET = v; end
+end);
 local HALF = M.CYCLE / 2;   -- 42: the Full-Moon midpoint
 
 -- Moon age within the cycle (0 = New, 42 = Full) for an absolute Vana'diel day

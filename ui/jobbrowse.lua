@@ -54,7 +54,8 @@
 local M = {};
 
 -- The level every browsed job is viewed at. UI-only; see the header.
-M.LEVEL = 75;
+M.LEVEL = 75;   -- historical default; the pack's cap overrides (ADR 0035)
+pcall(function() M.LEVEL = require('dlac\\gear\\serverpack').maxLevel(); end);
 
 local _sel  = nil;    -- browsed job abbr; nil = follow the live job
 local _list = nil;    -- combo snapshot, built on OPEN and dropped on close

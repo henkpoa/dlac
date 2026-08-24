@@ -399,7 +399,8 @@ end
 -- ON by default (Henrik 2026-07-17: building sets should always ignore the level
 -- cap unless deliberately narrowed). An UNTICK is remembered across reloads via
 -- uiflags.lua (absent key = this ON default).
-local MAX_LEVEL = 75;
+local MAX_LEVEL = 75;   -- historical default; the pack's cap overrides (ADR 0035)
+pcall(function() MAX_LEVEL = require('dlac\\gear\\serverpack').maxLevel(); end);
 M.MAX_LEVEL = MAX_LEVEL;
 M.buildAtMaxLevel = true;
 
