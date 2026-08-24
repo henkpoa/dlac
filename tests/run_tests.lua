@@ -20,6 +20,24 @@ package.loaded['dlac\\gear\\gearoracle'] = dofile('gear/gearoracle.lua');   -- T
 package.loaded['dlac\\lib\\statefile'] = dofile('lib/statefile.lua');   -- addon-side charDir: the watchers require it (guarded)
 package.loaded['dlac\\feature\\wishlist'] = dofile('feature/wishlist.lua');   -- utils asks it before warning about an unresolvable set entry (ADR 0026)
 package.loaded['dlac\\gear\\arbiter'] = dofile('gear/arbiter.lua');   -- THE pure decision core (ADR 0027 stage 3): dispatch hard-requires it; one shared instance for every dofile('dispatch.lua') below
+-- THE SERVER SEAM (ADR 0035), armed with the REAL CEXI manifest so capability
+-- gates (helmwatch/fishwatch ventures, the CW service reads) answer as live
+-- CEXI does. Pack DATA stays unmounted on purpose: this suite always ran
+-- catalog-less (smoke_ui is the catalog-bearing suite), so the injected
+-- _require serves the index + manifests and refuses data\ -- a mounted
+-- preload that errors degrades exactly like the missing file always did.
+package.loaded['dlac\\gear\\serverpack'] = (function()
+    local sp = dofile('gear/serverpack.lua');
+    sp._require = function(name)
+        local rel = tostring(name):match('^dlac\\servers\\(.+)$');
+        if rel == nil then error('headless serverpack: only servers\\ resolves, not ' .. tostring(name)); end
+        if rel:find('\\data\\', 1, true) ~= nil then error('headless serverpack: pack data stays unmounted'); end
+        return dofile('servers/' .. (rel:gsub('\\', '/')) .. '.lua');
+    end;
+    sp._configLoader = function() return nil; end;
+    sp.init();
+    return sp;
+end)();
 
 local TEST_PLAYER = nil;                                -- set per test
 gData = { GetPlayer = function() return TEST_PLAYER; end };
@@ -223,14 +241,14 @@ end)();
     local ROOT_FILES = { 'utils.lua', 'dispatch.lua', 'chatfmt.lua', 'profiles.lua', 'gear.lua', 'dlac.lua' };
     local UI = { 'ammoui','automationsui','craftbar','equippedui','filetex','fishbar','fishui',
                  'floatgear','gearui','helmbar','helmui','hobbybar','idlefloat','itemicons','jobhelpersui','menuui','panelkit','priorityui','profilesmenu',
-                 'restockui','setupui','tray','triggersui','uihost','uistyle','unusedui','weightsui' };
+                 'setupui','tray','triggersui','uihost','uistyle','unusedui','weightsui' };
     local GEAR = { 'acimport','actionpicker','arbiter','blueprintsmodel','catalogindex','gearcheck','geareffects','gearexport',
                    'gearfmt','gearimport','gearoptim','gearoracle','gearrecord','groupimport','groupscan',
-                   'groupsmodel','jobgate','modeslibrary','ownedcache','profileexport','profilesets','rulecopy','setimport',
-                   'setmanager','syncflags','triggermodel','unusedgear','weaponfilter','weightimport' };
+                   'groupsmodel','jobgate','levelstats','modeslibrary','nativemp','ownedcache','profileexport','profilesets','rulecopy','serverpack','setimport',
+                   'setmanager','statdefs','syncflags','triggermodel','unusedgear','weaponfilter','weightimport' };
     local FEATURE = { 'actionseq','ammowatch','arbwatch','augments','check','chocowatch','combat','craftwatch','debug','digcalc','digrank',
-                      'eboxclient','eboxtrace','engagewatch','fishcalc','fishwatch','foodwatch','gamehud','gamemode','helmwatch','idleexcl','jobhelpers','location','lockstyle','lookpreview',
-                      'macrobook','meritwatch','modapi','modcfg','mpbands','petfood','petvitals','pinwatch','recast','restockwatch','synthrun','useitem','vanamoon' };
+                      'engagewatch','fishcalc','fishwatch','foodwatch','gamehud','helmwatch','idleexcl','jobhelpers','location','lockstyle','lookpreview',
+                      'macrobook','meritwatch','modapi','modcfg','mpbands','petfood','petvitals','pinwatch','recast','servermods','synthrun','useitem','vanamoon' };
     local LIB = { 'cmdqueue','entwatch','safewrite','statefile' };
     -- Job helper modules (issue #137): each is a drop-in FOLDER under jobhelpers\
     -- with an init.lua, plus whatever pure cores it splits out beside it (issue
@@ -239,6 +257,16 @@ end)();
     -- module paths under jobhelpers\<job>\<module>\, no extension.
     local JOBHELP = { 'bst/bst-helper/init', 'bst/bst-helper/fight',
                       'bst/bst-helper/reward', 'bst/bst-helper/resummon', 'bst/bst-helper/jugs' };
+    -- Server-pack modules (ADR 0035): the CEXI pack's drop-in folders under
+    -- servers\cexi\modules\. They ship inside dlac, so they join the ratchet
+    -- too -- entries are pack-relative module paths, no extension.
+    local SERVERMODS = { 'cexi/modules/gamemode/init',
+                         'cexi/modules/prestige/init', 'cexi/modules/prestige/prestigewatch',
+                         'cexi/modules/ebox/init', 'cexi/modules/ebox/eboxclient',
+                         'cexi/modules/ebox/eboxtrace', 'cexi/modules/ebox/restockwatch',
+                         'cexi/modules/ebox/restockui',
+                         'cexi/modules/giftbox/init', 'cexi/modules/giftbox/giftbox',
+                         'cexi/modules/giftbox/giftboxui' };
 
     local ALL = {};
     for _, f in ipairs(ROOT_FILES) do ALL[#ALL + 1] = f; end
@@ -246,6 +274,7 @@ end)();
     for _, n in ipairs(GEAR)    do ALL[#ALL + 1] = 'gear/' .. n .. '.lua'; end
     for _, n in ipairs(FEATURE) do ALL[#ALL + 1] = 'feature/' .. n .. '.lua'; end
     for _, n in ipairs(LIB)     do ALL[#ALL + 1] = 'lib/' .. n .. '.lua'; end
+    for _, n in ipairs(SERVERMODS) do ALL[#ALL + 1] = 'servers/' .. n .. '.lua'; end
     for _, n in ipairs(JOBHELP) do ALL[#ALL + 1] = 'jobhelpers/' .. n .. '.lua'; end
 
     -- Cache each scanned file's stripped source once.
@@ -3341,7 +3370,7 @@ end
 --    the persisted floor (<char>\dlac\prestige.lua) never invalidates.
 -- ---------------------------------------------------------------------------
 (function()
-    local pw = dofile('feature/prestigewatch.lua');
+    local pw = dofile('servers/cexi/modules/prestige/prestigewatch.lua');
     local jg = package.loaded['dlac\\gear\\jobgate'];
     check('PW0 prestigewatch loads headless', type(pw), 'table');
 
@@ -11936,13 +11965,13 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
--- section GM: game-mode icon detection (feature/gamemode.lua)
+-- section GM: game-mode icon detection (servers/cexi/modules/gamemode/init.lua)
 -- Field truth 2026-07-18 Tavnazian Safehold (dlacprobe ICON dump): crystal
 -- players (UCW Mindie idx 1107, CW Skincrawler idx 1055) carry RenderFlags4
 -- 0x1000; Wings (Askar idx 1029) carries 0x4000; ACE (Tcb idx 1074) neither.
 -- ---------------------------------------------------------------------------
 (function()
-    local gamemode = dofile('feature/gamemode.lua');
+    local gamemode = dofile('servers/cexi/modules/gamemode/init.lua');
 
     AshitaCore = nil;
     check('GM1 headless get -> nil', gamemode.get(), nil);
@@ -13728,7 +13757,7 @@ end)();
 --     that is slower or faster than anyone's guess.
 -- ---------------------------------------------------------------------------
 (function()
-    local gb = dofile('feature/giftbox.lua');
+    local gb = dofile('servers/cexi/modules/giftbox/giftbox.lua');
     local savedAshita = AshitaCore;
 
     -- The REGRESSION. These four strings are what the item table says (ids
@@ -14346,7 +14375,7 @@ end)();
     -- reimplemented with a MULTI-category shared counts cache + batch withdraw +
     -- search + throttle; every future E-Box feature consumes this, never a second
     -- speaker. Injected clock; the pk/msgAt helpers above build synthetic packets.
-    local ec = dofile('feature/eboxclient.lua');
+    local ec = dofile('servers/cexi/modules/ebox/eboxclient.lua');
     ec._now = function() return 5000; end
 
     check('EBC1 clamp: none in box -> 0', ec._clampQty(99, 0), 0);
@@ -14774,7 +14803,7 @@ end)();
     -- AFTER its use compiles to a nil GLOBAL read, silently. M.rescan uses the
     -- entwatch handle, so the require must come first -- it did not, and the box
     -- re-sweep half of Rescan had never run.
-    local ecFh = io.open('feature/eboxclient.lua', 'r');
+    local ecFh = io.open('servers/cexi/modules/ebox/eboxclient.lua', 'r');
     local ecSrc = ecFh:read('*a'); ecFh:close();
     check('EBC22 entwatch is required BEFORE M.rescan reaches for it',
         (ecSrc:find('local _ewok, _ew = pcall%(require') or math.huge)
@@ -14831,7 +14860,7 @@ end)();
 
     -- EBT. eboxtrace -- the readout itself. Pure over a stand-in client, so the
     -- shape of what Henrik reads in the field is pinned without a game.
-    local et = dofile('feature/eboxtrace.lua');
+    local et = dofile('servers/cexi/modules/ebox/eboxtrace.lua');
     check('EBT1 ages read as time, not float noise',
         et._dur(0.4) .. '/' .. et._dur(12.34) .. '/' .. et._dur(124) .. '/' .. et._dur(3725),
         '0.4s/12.3s/2m04s/1h02m');
@@ -14892,7 +14921,7 @@ end)();
     -- RS. restockwatch -- E-Box Restock config + the two PURE cores (ADR 0016;
     -- docs/design/ebox-restock.md). No packets/engine: the union+override and the
     -- slot-safety planner are arithmetic, so the panel and the nudge share ONE answer.
-    local rs = dofile('feature/restockwatch.lua');
+    local rs = dofile('servers/cexi/modules/ebox/restockwatch.lua');
 
     -- _fromTable defaults: settings default TRUE; only an explicit false turns off
     local rsd = rs._fromTable(nil);
@@ -15038,7 +15067,7 @@ end)();
         #rs.homeStockNeed(rsYEnt, nil), 0);
     check('RS9h the bag split itself: Satchel/Sack/Case are carried, never "home"',
         (function()
-            local rsui = dofile('ui/restockui.lua');
+            local rsui = dofile('servers/cexi/modules/ebox/restockui.lua');
             local home = {}; for _, b in ipairs(rsui._HOME_BAGS) do home[b] = true; end
             for _, b in ipairs(rsui._FIELD_BAGS) do
                 if home[b] then return 'bag ' .. tostring(b) .. ' is in both lists'; end
@@ -15104,7 +15133,7 @@ end)();
     -- ...and the arithmetic the panel and the nudge share. Containers count
     -- toward "do I have enough", never toward "is it in my Inventory" -- you
     -- cannot shoot a quiver, so the yellow icon must not treat one as ammo.
-    local rui = dofile('ui/restockui.lua');
+    local rui = dofile('servers/cexi/modules/ebox/restockui.lua');
     check('AC6 stock = loose + what the containers hold',
         rui._stockOf({ [18150] = 12 }, { [18150] = { qty = 198, n = 2 } }, 18150), 210);
     check('AC6b no containers -> just the loose count',
@@ -18143,8 +18172,16 @@ end)();
             end
         end
     end
-    check('SET56 three quick rows, restock above the Hobby bar',
-        table.concat(qkeys, ','), 'restock,hobbybar,lockstyle');
+    check('SET56 two static quick rows -- pack rows are registrations now (ADR 0035)',
+        table.concat(qkeys, ','), 'hobbybar,lockstyle');
+    -- The server-pack quick-row loop keeps the E-Box row's old seat: ABOVE the
+    -- Hobby bar (Henrik, 2026-07-30 -- the ruling outlives the extraction).
+    check('SET56b the pack-row loop rides above the Hobby bar', (function()
+        local src = tostring(gsrc or '');
+        local a = src:find('extraHelpers()', 1, true);
+        local b = src:find("renderQuickWindowRow('hobbybar'", 1, true);
+        return a ~= nil and b ~= nil and a < b;
+    end)(), true);
     local known, badKey, badArt = {}, {}, {};
     for _, k in ipairs(mn._menuRows(true)) do known[k] = true; end
     for _, r in ipairs(qrows) do
@@ -18156,12 +18193,19 @@ end)();
     end
     check('SET57 every menu-routed quick row is a real Menu row key', table.concat(badKey, ','), '');
     check('SET58 every quick row has its art on disk',    table.concat(badArt, ','), '');
-    -- The CW gate is that row's whole safety -- a non-Crystal-Warrior must never
-    -- see a row for content they cannot have (the same affirmative gate the Gear
-    -- Helpers row uses). It lives inside an imgui-only draw path this suite
-    -- cannot enter, so it is pinned on the source, anchored to the row it guards.
-    check('SET59 the restock row sits behind the CW gate',
-        tostring(gsrc or ''):match("gmode%.get%(%) == 'CW'.-renderQuickWindowRow%('restock'") ~= nil, true);
+    -- The want() gate is a pack row's whole safety -- a character must never
+    -- see a row for content they cannot have. Two pins now (ADR 0035): the
+    -- generic loop honors spec.want before rendering, and the CEXI ebox
+    -- module keeps its affirmative CW gate on the registered spec.
+    check('SET59 a pack quick row sits behind its want() gate',
+        tostring(gsrc or ''):match('spec%.want.-renderQuickWindowRow%(spec%.key') ~= nil, true);
+    check('SET59b the CEXI ebox row keeps the CW gate', (function()
+        local f = io.open('servers/cexi/modules/ebox/init.lua', 'r');
+        if f == nil then return false; end
+        local s = f:read('*a'); f:close();
+        return s:find('want = isCW', 1, true) ~= nil
+           and s:match("gm%.get%(%) == 'CW'") ~= nil;
+    end)(), true);
     -- SET60-62: the Teleports menu's position memory (Henrik, 2026-08-10). The
     -- popup body only runs under a live imgui, so the three facts are pinned on
     -- the source: a dragged menu is remembered (the uiflags consumer exists),
@@ -19719,7 +19763,7 @@ end)();
 (function()
     local SHIPPED = { 'dlac.lua','utils.lua','dispatch.lua','profiles.lua','chatfmt.lua','gear.lua',
         'feature/augments.lua','feature/check.lua','feature/chocowatch.lua','feature/craftwatch.lua',
-        'feature/debug.lua','feature/eboxclient.lua','feature/eboxtrace.lua','feature/engine.lua',
+        'feature/debug.lua','servers/cexi/modules/ebox/eboxclient.lua','servers/cexi/modules/ebox/eboxtrace.lua','feature/engine.lua',
         'feature/equipengine.lua','feature/fishwatch.lua','feature/helmwatch.lua','feature/lockstyle.lua',
         'feature/lockstyleapply.lua','feature/location.lua','feature/macrobook.lua','feature/meritwatch.lua',
         'feature/mpbands.lua','feature/nativedata.lua','feature/synthrun.lua','feature/useitem.lua',
@@ -19730,7 +19774,7 @@ end)();
         'lib/cmdqueue.lua','lib/safewrite.lua','lib/statefile.lua','lib/entwatch.lua',
         'ui/automationsui.lua','ui/chocoui.lua','ui/craftbar.lua','ui/equippedui.lua','ui/fishbar.lua',
         'ui/fishui.lua','ui/gearui.lua','ui/helmbar.lua','ui/menuui.lua','ui/priorityui.lua',
-        'ui/profilesmenu.lua','ui/restockui.lua','ui/setupui.lua','ui/triggersui.lua','ui/uihost.lua',
+        'ui/profilesmenu.lua','servers/cexi/modules/ebox/restockui.lua','ui/setupui.lua','ui/triggersui.lua','ui/uihost.lua',
         'ui/uistyle.lua','ui/itemicons.lua' };
     local ALLOW = {   -- Henrik's keep-list: read-only doors into the old tree
         ['profiles.lua'] = true,          -- charBase/lacRoot/legacyDataPresent/legacyExportsDir
@@ -24071,7 +24115,7 @@ end)();
     -- globbed (no io.popen: `dir` vs `ls` would split Windows from the WSL CI
     -- run); A NEW FILE THAT SENDS PACKETS MUST BE ADDED HERE.
     local SEND_FILES = { 'feature/equipengine.lua', 'feature/lockstyleapply.lua',
-                         'feature/craftwatch.lua', 'feature/eboxclient.lua',
+                         'feature/craftwatch.lua', 'servers/cexi/modules/ebox/eboxclient.lua',
                          'feature/helmwatch.lua' };
     local sites, bare = 0, {};
     for _, path in ipairs(SEND_FILES) do

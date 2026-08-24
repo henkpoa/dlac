@@ -30,14 +30,44 @@ local _dpok, dsp  = pcall(require, "dlac\\dispatch");
 -- the door, never requires them (the GRD5 rule, now absolute).
 local gearOracle  = require("dlac\\gear\\gearoracle");
 local _nmok, nmp  = pcall(require, "dlac\\gear\\nativemp");
-local _gmok, gmode = pcall(require, "dlac\\feature\\gamemode");
 -- helpLabel: the panel-text standard (underline the label, explain in a hover).
 local _usok, uistyle = pcall(require, "dlac\\ui\\uistyle");
 _usok = _usok and type(uistyle) == 'table' and type(uistyle.helpLabel) == 'function';
 local hasImgui    = _iok and imgui ~= nil;
 local hasDispatch = _dpok and type(dsp) == 'table';
 local hasNmp      = _nmok and type(nmp) == 'table';
-local hasGmode    = _gmok and type(gmode) == 'table';
+
+-- The game mode, asked of the server seam per read (ADR 0035): the CEXI pack's
+-- gamemode module provides it; on any other server the service is nil and
+-- this returns nil-unknown, which every affirmative gate below treats as NO.
+local function gmodeGet()
+    local out = nil;
+    pcall(function()
+        local gm = require('dlac\\gear\\serverpack').service('gamemode');
+        if type(gm) == 'table' and type(gm.get) == 'function' then out = gm.get(); end
+    end);
+    return out;
+end
+
+-- Server-pack helper rows (ADR 0035): a pack module registers its Gear
+-- Helpers presence here at mount time -- one spec carries the row (the list
+-- entry + status), the panel (the detail view under the row's key), the
+-- optional quick-menu entry gearui renders, and the optional want() gate
+-- that hides all three. Registration order is display order after the core
+-- rows; the key is the row's identity everywhere (openAutomation, /dl
+-- jumps), so a module keeps its historical key across the move.
+local extraHelpers = {};
+function M.registerHelper(spec)
+    if type(spec) ~= 'table' or type(spec.key) ~= 'string' or spec.key == '' then return; end
+    extraHelpers[#extraHelpers + 1] = spec;
+end
+function M.extraHelpers() return extraHelpers; end
+local function extraByKey(key)
+    for _, s in ipairs(extraHelpers) do
+        if s.key == key then return s; end
+    end
+    return nil;
+end
 
 local function mainLevel()
     local lv = nil;
@@ -1339,19 +1369,20 @@ local function buildAutoRows()
             end
         end
     end);
-    -- E-Box Restock: CW-ONLY. Appended last AND only for Crystal Warriors, so a
-    -- non-CW character never sees the row at all (Henrik: 100% CW-only). Status
-    -- via restockui (same by-key pattern). Placed after every rows[#rows] read
+    -- Server-pack helper rows (ADR 0035): appended LAST, in registration
+    -- order, each behind its own want() gate (the E-Box CW rule lives in the
+    -- CEXI pack's ebox module now). Placed after every rows[#rows] read
     -- above (the maxmp block) so those indices stay valid.
-    if hasGmode and gmode.get() == 'CW' then
-        local r = { key = 'restock', name = 'E-Box Restock', kind = 'restock helper (Ephemeral Box, CW)',
-                    level = 0, max = 1, txt = nil };
-        rows[#rows + 1] = r;
-        pcall(function()
-            local restockui = require('dlac\\ui\\restockui');
-            r.max = restockui.maxLevel or 1;
-            r.level, r.txt = restockui.status(deps);
-        end);
+    for _, spec in ipairs(extraHelpers) do
+        local wantOk = true;
+        if type(spec.want) == 'function' then
+            local wok, w = pcall(spec.want);
+            wantOk = wok and w == true;
+        end
+        if wantOk and type(spec.row) == 'function' then
+            local rok, r = pcall(spec.row, deps);
+            if rok and type(r) == 'table' then rows[#rows + 1] = r; end
+        end
     end
     return rows;
 end
@@ -1558,7 +1589,7 @@ local function renderAutomations()
             -- (session-only; Henrik: let other modes see what CW has). Display
             -- only -- the ownership scan never gates (a non-CW character
             -- simply never owns them).
-            local isCW = hasGmode and gmode.get() == 'CW';
+            local isCW = gmodeGet() == 'CW';
             local showCW = isCW or auto.showCW == true;
             local nq, hq, ir = {}, {}, { {}, {}, {} };
             for _, el in ipairs(ELEMENTS8) do nq[#nq + 1] = STAFF_NQ[el]; hq[#hq + 1] = STAFF_HQ[el]; end
@@ -1632,14 +1663,21 @@ local function renderAutomations()
             imgui.BeginGroup();
             imgui.TextColored(COL_HEADER, 'Universals');
             for _, nm in ipairs(CRAFT_UI.universals) do autoItemLine(nm); end
-            imgui.TextColored(COL_DIM, '- - - - - - - -');
-            if _usok then
-                uistyle.helpLabel(imgui, 'Ventures', VENT_TIP, COL_HEADER);
-            else
-                imgui.TextColored(COL_HEADER, 'Ventures');
-                if imgui.IsItemHovered() then imgui.SetTooltip(VENT_TIP); end
+            -- The Ventures column exists only where the pack has the economy
+            -- (ADR 0035); the ownership scan below never gated, and still
+            -- does not -- an owned Populox ring counts wherever it came from.
+            local ventOn = false;
+            pcall(function() ventOn = require('dlac\\gear\\serverpack').cap('ventures'); end);
+            if ventOn then
+                imgui.TextColored(COL_DIM, '- - - - - - - -');
+                if _usok then
+                    uistyle.helpLabel(imgui, 'Ventures', VENT_TIP, COL_HEADER);
+                else
+                    imgui.TextColored(COL_HEADER, 'Ventures');
+                    if imgui.IsItemHovered() then imgui.SetTooltip(VENT_TIP); end
+                end
+                for _, v in ipairs(CRAFT_UI.ventures) do autoSourceLine(v.name, v.tag, v.tip); end
             end
-            for _, v in ipairs(CRAFT_UI.ventures) do autoSourceLine(v.name, v.tag, v.tip); end
             imgui.EndGroup();
             imgui.Spacing();
             imgui.Separator();
@@ -1793,13 +1831,15 @@ local function renderAutomations()
             else
                 imgui.TextColored(COL_ERR, 'ammoui failed to load.');
             end
-        elseif auto.view == 'restock' then
-            -- Same pattern: the whole panel lives in ui/restockui.lua (CW-only).
-            local rok, restockui = pcall(require, 'dlac\\ui\\restockui');
-            if rok and type(restockui) == 'table' and type(restockui.render) == 'function' then
-                pcall(restockui.render, deps, availW);
+        elseif extraByKey(auto.view) ~= nil then
+            -- A server-pack helper's detail view (ADR 0035): the whole panel
+            -- lives in the pack module that registered the key (on CEXI,
+            -- 'restock' -> the ebox module's restockui).
+            local spec = extraByKey(auto.view);
+            if type(spec.panel) == 'function' then
+                pcall(spec.panel, deps, availW);
             else
-                imgui.TextColored(COL_ERR, 'restockui failed to load.');
+                imgui.TextColored(COL_ERR, 'this helper registered no panel.');
             end
         elseif auto.view == 'oneiros' then
             imgui.TextColored(COL_HEADER, 'Oneiros Grip');

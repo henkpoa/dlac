@@ -83,12 +83,13 @@ M.reader = function()
 end;
 
 -- The prestige read: { abbr -> tier } or nil. A FUNCTION seam (the injected-
--- reads law: stubs replace the function, values go stale). Call-time require
--- keeps load order flat (the meritwatch pattern) and headless suites inert.
+-- reads law: stubs replace the function, values go stale). Asked of the
+-- server seam (ADR 0035): only a pack whose module provides 'prestige' has
+-- tiers at all -- everywhere else this is nil and levels() stays raw.
 M.prestige = function()
     local out = nil;
     pcall(function()
-        local pw = require('dlac\\feature\\prestigewatch');
+        local pw = require('dlac\\gear\\serverpack').service('prestige');
         if type(pw) == 'table' and type(pw.tiers) == 'function' then out = pw.tiers(); end
     end);
     return out;

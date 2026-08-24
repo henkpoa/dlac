@@ -1,5 +1,5 @@
 --[[
-    dlac/feature/eboxtrace.lua -- the readout behind `/dl debug ebox`.
+    dlac/servers/cexi/modules/ebox/eboxtrace.lua -- the readout behind `/dl debug ebox`.
 
     E-Box Restock v2 rests on a promise about server load: the box's contents are
     tracked by arithmetic, so standing at a box crafting sends NOTHING (see
@@ -30,7 +30,7 @@
 
 local M = {};
 
-local _ecok, ec = pcall(require, 'dlac\\feature\\eboxclient');
+local _ecok, ec = pcall(require, 'dlac\\servers\\cexi\\modules\\ebox\\eboxclient');
 _ecok = _ecok and type(ec) == 'table';
 
 -- "12.3s" / "2m04s" / "1h02m". Pure (tests EBT*).
@@ -157,7 +157,7 @@ end);
 --   * check RenderFlags0 bit 0x200 (rendered; the flags read back SIGNED) before
 --     trusting GetDistance, which is SQUARED.
 -- ---------------------------------------------------------------------------
-local _gmok, _gm = pcall(require, 'dlac\\feature\\gamemode');
+local _gmok, _gm = pcall(require, 'dlac\\servers\\cexi\\modules\\gamemode\\init');
 _gmok = _gmok and type(_gm) == 'table';
 local _ewok, _ew = pcall(require, 'dlac\\lib\\entwatch');
 _ewok = _ewok and type(_ew) == 'table';

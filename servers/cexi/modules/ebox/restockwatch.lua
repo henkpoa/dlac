@@ -1,5 +1,5 @@
 --[[
-    dlac/feature/restockwatch.lua -- E-Box Restock config + the pure planner
+    dlac/servers/cexi/modules/ebox/restockwatch.lua -- E-Box Restock config + the pure planner
     (docs/design/ebox-restock.md; ADR 0016).
 
     The GUI's half of E-Box Restock: this module OWNS <char>\dlac\restock.lua and

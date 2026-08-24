@@ -45,6 +45,13 @@ return {
         teleWait           = 34,      -- item_usable useDelay 30 + margin (feature\useitem)
     },
 
+    -- The pack's modules (servers\cexi\modules\<name>\init.lua), mounted by
+    -- feature\servermods in THIS order -- which is also the tray order
+    -- (ebox's crates above giftbox's volatile row: the Store-under-cursor
+    -- ruling) and the Gear Helpers row order. gamemode first: it provides
+    -- the service the ebox module's gates read.
+    modules = { 'gamemode', 'prestige', 'ebox', 'giftbox' },
+
     -- The data files this pack ships under servers\cexi\data\ -- the mount
     -- list for the virtual dlac\data\ namespace. A file not named here
     -- does not resolve.

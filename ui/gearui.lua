@@ -76,10 +76,9 @@ local useit = (function()
     local m = try("dlac\\feature\\useitem");
     return (m ~= nil and type(m.menu) == 'function') and m or nil;
 end)();
--- "Is this a Crystal Warrior?" -- the central service (architecture.md), used by
--- the quick menu's CW-only row. nil means UNKNOWN, never a mode: an unreadable
--- entity hides the row rather than guessing it in.
-local gmode = try("dlac\\feature\\gamemode");
+-- (The game-mode read left this file with ADR 0035: the quick menu's CW-only
+-- row is a server-pack registration now -- see the extraHelpers loop in the
+-- quick menu, and servers\cexi\modules\ebox\init.lua for the row itself.)
 -- The job selector above the tabs (2026-08-06): browse and BUILD another job's
 -- sets/triggers as if you were on it at level 75. Editing only -- the module's
 -- header explains why that separation is structural. It backs BOTH job seams in
@@ -1747,19 +1746,28 @@ local function renderTeleportsPopup()
     -- the travel tiers. No cascade and no BeginMenu fallback to think about --
     -- these are plain rows that open something and close the popup.
     imgui.Separator();
-    -- E-Box Restock rides ABOVE the Hobby bar (Henrik, 2026-07-30), and ONLY for
-    -- Crystal Warriors -- the same affirmative gate the Gear Helpers row uses
-    -- (automationsui: gamemode.get() == 'CW', nil is unknown and hides it), so a
-    -- non-CW character never sees a row for content it cannot have. It is not a
-    -- window like the two below it: the panel lives on the Gear Helpers tab, so
-    -- the row opens it through openAutomation -- the one door /dl restock and the
-    -- nudge's right-click already use. Art: the crate the nudge wears
-    -- (assets\ebox.png), not a key-named Menu icon, hence the explicit name.
-    if gmode ~= nil and gmode.get() == 'CW' then
-        renderQuickWindowRow('restock', 'E-Box Restock',
-            'Open the E-Box Restock panel -- what you keep topped up from the Ephemeral\nBox, how many of each, and the floating nudge\'s settings.',
-            'ebox', function() M.openAutomation('restock'); end);
-    end
+    -- Server-pack quick rows ride ABOVE the Hobby bar (the E-Box Restock
+    -- row's old seat, Henrik 2026-07-30; ADR 0035 moved the row itself into
+    -- the CEXI pack): each helper a pack module registered that carries a
+    -- quick spec and passes its own want() gate. Not windows like the two
+    -- below: each panel lives on the Gear Helpers tab, so the row opens it
+    -- through openAutomation -- the one door the /dl jumps already use.
+    pcall(function()
+        local auto = require('dlac\\ui\\automationsui');
+        if type(auto.extraHelpers) ~= 'function' then return; end
+        for _, spec in ipairs(auto.extraHelpers()) do
+            local wantOk = true;
+            if type(spec.want) == 'function' then
+                local wok, w = pcall(spec.want);
+                wantOk = wok and w == true;
+            end
+            if wantOk and type(spec.quick) == 'table' then
+                renderQuickWindowRow(spec.key, spec.quick.label or spec.key,
+                    spec.quick.tip or '', spec.quick.icon,
+                    function() M.openAutomation(spec.key); end);
+            end
+        end
+    end);
     renderQuickWindowRow('hobbybar', 'Hobby bar',
         'Show/hide the hobby bar -- Craft, HELM, Fishing and Chocobo controls in\none window (one hobby active at a time).');
     renderQuickWindowRow('lockstyle', 'Lockstyle',

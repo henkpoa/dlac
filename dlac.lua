@@ -343,13 +343,12 @@ ashita.events.register('d3d_present', 'dlac-seed-watch', function()
         -- network thread -- ratchet + save + announce here on the MAIN thread.
         if type(cw.pumpObtains) == 'function' then cw.pumpObtains(); end
     end);
-    -- The prestige mirror's beat (2026-08-10): drain what the 0x1A4 packet
-    -- handler stashed on the network thread, merge (monotonic -- prestige is
-    -- never lost), persist, and fire the profile request once per zone-in.
-    -- Main thread only (the chocowatch rule); a no-op between events.
+    -- The server-pack modules' beat (ADR 0035; the prestige mirror's old
+    -- seat, 2026-08-10, now generic): every mounted module's pump, contained.
+    -- Main thread only (the chocowatch rule); a no-op with nothing mounted.
     pcall(function()
-        local pw = require('dlac\\feature\\prestigewatch');
-        if type(pw) == 'table' and type(pw.pump) == 'function' then pw.pump(); end
+        local sm = require('dlac\\feature\\servermods');
+        if type(sm) == 'table' and type(sm.pump) == 'function' then sm.pump(); end
     end);
     -- The Action sequencer's frame pump (issue #138): advance any live sequence
     -- (verify worn -> fire -> release) against the live gear/command io. A no-op
@@ -479,9 +478,11 @@ for _, mod in ipairs({ 'gear', 'feature\\augments', 'gear\\gearoptim', 'gear\\ge
                        'feature\\synthrun',
                        'ui\\craftbar', 'feature\\helmwatch', 'ui\\helmbar',
                        'feature\\fishwatch', 'ui\\fishbar', 'feature\\chocowatch',
-                       'feature\\meritwatch', 'feature\\prestigewatch',
+                       'feature\\meritwatch',
                        'feature\\integration', 'feature\\foodwatch',
-                       'feature\\giftbox',
+                       -- (prestigewatch and giftbox left this list for the CEXI
+                       -- server pack, ADR 0035 -- servers\cexi\modules\, mounted
+                       -- by feature\servermods below.)
                        'feature\\engagewatch', 'feature\\petvitals', 'feature\\combat',
                        'feature\\sendlog', 'feature\\check', 'feature\\debug', 'feature\\report',
                        -- nmtrack AFTER nmlookup: it requires the lookup module at
@@ -540,6 +541,17 @@ pcall(function()
     local jhui = require('dlac\\ui\\jobhelpersui');
     if type(jhui.init) == 'function' then jhui.init(deps); end
     if type(jhui.maybeRegister) == 'function' then jhui.maybeRegister(host); end
+end);
+
+-- Server-pack modules (ADR 0035): mount the active pack's modules\ folders --
+-- the code that only exists because THIS server exists (on CEXI: game modes,
+-- prestige, the 0x1A4 E-Box family, gift boxes). After the UI host and main
+-- GUI so their tray/helper/quick-menu registrations land on live surfaces;
+-- failures feed the same ledger under 'server:<name>'.
+pcall(function()
+    local sm = require('dlac\\feature\\servermods');
+    local host = require('dlac\\ui\\uihost');
+    sm.load({ host = host });
 end);
 
 -- SPINE PROBE (2026-08-05, the field case that bought it): the loop above is an

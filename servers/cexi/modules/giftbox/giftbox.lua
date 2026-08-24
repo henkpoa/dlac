@@ -1,5 +1,5 @@
 --[[
-    dlac/feature/giftbox.lua -- /dl giftbox: open every reward box in your
+    dlac/servers/cexi/modules/giftbox/giftbox.lua -- /dl giftbox: open every reward box in your
     inventory, one at a time, stopping the moment there is not room for what the
     next one pays out.
 

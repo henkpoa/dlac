@@ -1601,7 +1601,7 @@ end)();
     -- feature/eboxammo was deleted 2026-07-27 with AutoAmmo's E-Box section, and
     -- its /dl ebox entity probe moved into eboxtrace as `/dl debug ebox scan`
     -- (auto-ammo.md Section 10.8). Pin the module that inherited it.
-    local ok6, ebt = pcall(require, 'dlac\\feature\\eboxtrace');
+    local ok6, ebt = pcall(require, 'dlac\\servers\\cexi\\modules\\ebox\\eboxtrace');
     check('S139 eboxtrace loads headless', ok6 and type(ebt) == 'table', true);
     check('S139b the moved entity probe is reachable as "scan"',
         ok6 and ebt._word('ebox scan') == 'scan' and type(ebt.scan) == 'function', true);
@@ -2871,10 +2871,10 @@ end)();
     IM.IsItemHovered     = function() return true; end     -- exercise every tooltip
     IM.IsItemClicked     = function() return false; end
 
-    local NAMES = { 'dlac\\ui\\tray', 'dlac\\ui\\gearui', 'dlac\\ui\\restockui',
-                    'dlac\\ui\\giftboxui', 'dlac\\feature\\giftbox',
-                    'dlac\\feature\\restockwatch', 'dlac\\feature\\eboxclient',
-                    'dlac\\feature\\gamemode', 'dlac\\feature\\location',
+    local NAMES = { 'dlac\\ui\\tray', 'dlac\\ui\\gearui', 'dlac\\servers\\cexi\\modules\\ebox\\restockui',
+                    'dlac\\servers\\cexi\\modules\\giftbox\\giftboxui', 'dlac\\servers\\cexi\\modules\\giftbox\\giftbox',
+                    'dlac\\servers\\cexi\\modules\\ebox\\restockwatch', 'dlac\\servers\\cexi\\modules\\ebox\\eboxclient',
+                    'dlac\\servers\\cexi\\modules\\gamemode\\init', 'dlac\\feature\\location',
                     'dlac\\ui\\filetex', 'imgui' };
     local saved = {};
     for _, k in ipairs(NAMES) do saved[k] = package.loaded[k]; end
@@ -2891,11 +2891,11 @@ end)();
         end,
         trayTeleportsDraw  = function() drew[#drew + 1] = 'tp'; end,
     };
-    package.loaded['dlac\\ui\\restockui'] = {
+    package.loaded['dlac\\servers\\cexi\\modules\\ebox\\restockui'] = {
         trayWants = function() return wantsB; end,
         trayDraw  = function() drew[#drew + 1] = 'ebox'; end,
     };
-    package.loaded['dlac\\ui\\giftboxui'] = {
+    package.loaded['dlac\\servers\\cexi\\modules\\giftbox\\giftboxui'] = {
         trayWants = function() return wantsC; end,
         trayDraw  = function() drew[#drew + 1] = 'gift'; end,
     };
@@ -2904,6 +2904,11 @@ end)();
     local ok, tr = pcall(require, 'dlac\\ui\\tray');
     check('TR1 tray re-requires against a stub imgui', ok and type(tr.render), 'function');
     if ok then
+        -- The pack rows, registered exactly as the CEXI modules register them
+        -- at mount (ADR 0035; manifest order = ebox then giftbox): the tray
+        -- ships only the pinned Teleports row now.
+        tr.register({ mod = 'dlac\\servers\\cexi\\modules\\ebox\\restockui',    wants = 'trayWants', draw = 'trayDraw' });
+        tr.register({ mod = 'dlac\\servers\\cexi\\modules\\giftbox\\giftboxui', wants = 'trayWants', draw = 'trayDraw' });
         -- THE invariant. Both members quiet -> the tray must not Begin at all.
         wantsA, wantsB, drew = false, false, {};
         pcall(tr.render, {});
@@ -2930,7 +2935,7 @@ end)();
             (#dummies == 1) and (dummies[1][1] == 0) and (dummies[1][2] > 0), true);
         check('TR12 SLOTS is ordered Teleports-then-restock',
             tr.SLOTS[1].mod .. '|' .. tr.SLOTS[2].mod,
-            'dlac\\ui\\gearui|dlac\\ui\\restockui');
+            'dlac\\ui\\gearui|dlac\\servers\\cexi\\modules\\ebox\\restockui');
 
         -- All three, and the giftbox icon is LAST (Henrik: "under the e-box
         -- stocker icons"). Not cosmetic: Store is the crate directly above it,
@@ -2945,7 +2950,7 @@ end)();
         check('TR12e still a COLUMN -- no SameLine between slots', sameLines, 0);
         check('TR12f ...with a vertical gap per extra slot', #dummies, 2);
         check('TR12g SLOTS puts giftboxui last',
-            tr.SLOTS[#tr.SLOTS].mod, 'dlac\\ui\\giftboxui');
+            tr.SLOTS[#tr.SLOTS].mod, 'dlac\\servers\\cexi\\modules\\giftbox\\giftboxui');
         -- Boxes in the bag with the other two quiet: the tray still opens for it
         -- alone (it is a full member, not a decoration on the crates).
         wantsA, wantsB, drew = false, false, {};
@@ -2960,16 +2965,16 @@ end)();
         -- non-CW, you can have that icon once you're in town. CW is only
         -- interested in using this close to an e-box."
         local MODE, NEAR, TOWN, PEEKED = nil, false, false, 0;
-        package.loaded['dlac\\feature\\gamemode']  = { get = function() return MODE; end };
+        package.loaded['dlac\\servers\\cexi\\modules\\gamemode\\init']  = { get = function() return MODE; end };
         package.loaded['dlac\\feature\\location']  = { inTown = function() return TOWN; end };
-        package.loaded['dlac\\feature\\eboxclient'] = { nearBox = function() return NEAR; end };
-        package.loaded['dlac\\feature\\giftbox']  = {
+        package.loaded['dlac\\servers\\cexi\\modules\\ebox\\eboxclient'] = { nearBox = function() return NEAR; end };
+        package.loaded['dlac\\servers\\cexi\\modules\\giftbox\\giftbox']  = {
             peek = function() PEEKED = PEEKED + 1; return { have = true, total = 3, free = 20 }; end,
             running = function() return false; end,
             NEED_FREE = 6,
         };
-        package.loaded['dlac\\ui\\giftboxui'] = nil;
-        local gok, gui = pcall(require, 'dlac\\ui\\giftboxui');
+        package.loaded['dlac\\servers\\cexi\\modules\\giftbox\\giftboxui'] = nil;
+        local gok, gui = pcall(require, 'dlac\\servers\\cexi\\modules\\giftbox\\giftboxui');
         check('TR18 giftboxui loads against the stubs', gok and type(gui.trayWants), 'function');
         if gok then
             -- A Crystal Warrior is asked about the BOX, never the town: he wants
@@ -3050,7 +3055,7 @@ end)();
         return tostring(l) == CLICK;
     end
     local PLAN = { pulls = {}, fetches = {}, remainder = {}, badge = 0 };
-    package.loaded['dlac\\feature\\restockwatch'] = {
+    package.loaded['dlac\\servers\\cexi\\modules\\ebox\\restockwatch'] = {
         loadState = nop, master = true, showNudge = true, onlyWhenNeeded = false,
         character = {}, jobs = {},
         effectiveList  = function() return {}; end,
@@ -3061,7 +3066,7 @@ end)();
             return { { id = 1, name = 'Blind Bolt', held = 0, target = 99, want = 99 } };
         end,
     };
-    package.loaded['dlac\\feature\\eboxclient'] = {
+    package.loaded['dlac\\servers\\cexi\\modules\\ebox\\eboxclient'] = {
         BOX_RANGE = 6,
         boxDistance = function() return 2.0; end,
         verifyCategories = nop, boxCount = function() return 0; end,
@@ -3072,11 +3077,11 @@ end)();
         canQuery = function() return true; end,
         clearSearch = nop,
     };
-    package.loaded['dlac\\feature\\gamemode'] = { get = function() return 'CW'; end };
+    package.loaded['dlac\\servers\\cexi\\modules\\gamemode\\init'] = { get = function() return 'CW'; end };
     package.loaded['dlac\\ui\\filetex'] = { handle = function() return nil; end };
 
-    package.loaded['dlac\\ui\\restockui'] = nil;
-    local rok, rs = pcall(require, 'dlac\\ui\\restockui');
+    package.loaded['dlac\\servers\\cexi\\modules\\ebox\\restockui'] = nil;
+    local rok, rs = pcall(require, 'dlac\\servers\\cexi\\modules\\ebox\\restockui');
     check('TR18 restockui re-requires against a stub imgui', rok and type(rs.trayDraw), 'function');
     if rok then
         check('TR19 the E-Box slot answers the cheap gate near a box', rs.trayWants(), true);
@@ -3129,7 +3134,7 @@ end)();
         check('TR24 the E-Box slot begins NO window of its own', depth.win, 0);
         -- Away from a box the gate says no, and the tray asks nothing further --
         -- which is what keeps the feature free when you are not standing at one.
-        package.loaded['dlac\\feature\\eboxclient'].boxDistance = function() return 40.0; end
+        package.loaded['dlac\\servers\\cexi\\modules\\ebox\\eboxclient'].boxDistance = function() return 40.0; end
         check('TR25 out of range the E-Box slot wants nothing', rs.trayWants(), false);
     end
 
@@ -7456,6 +7461,36 @@ end)();
     AshitaCore = savedCore;
     ImGuiCol_Button, ImGuiStyleVar_ItemSpacing = nil, nil;
     for _, k in ipairs(NAMES) do package.loaded[k] = saved[k]; end
+end)();
+
+-- ---------------------------------------------------------------------------
+-- SM. Server-pack modules mount FOR REAL (ADR 0035): feature\servermods over
+--     the live CEXI manifest, through the same searcher the whole suite uses.
+--     This is the load test for the four module folders -- a broken init.lua,
+--     a bad cross-require after a move, or a failed registration surfaces
+--     HERE, not at a player's login.
+-- ---------------------------------------------------------------------------
+;(function()
+    local ok, sm = pcall(require, 'dlac\\feature\\servermods');
+    check('SM0 servermods loads headless', ok and type(sm), 'table');
+    if not ok then return; end
+    local mok = pcall(sm.load, {});
+    check('SM1 load survives headless', mok, true);
+    check('SM2 all four CEXI modules mounted', table.concat(sm.list(), ','),
+          'gamemode,prestige,ebox,giftbox');
+    local sp = require('dlac\\gear\\serverpack');
+    check('SM3 gamemode service provided',  type(sp.service('gamemode')), 'table');
+    check('SM4 prestige service provided',  type(sp.service('prestige')), 'table');
+    check('SM5 eboxtrace service provided', type(sp.service('eboxtrace')), 'table');
+    check('SM6 headless game mode reads nil-unknown', sp.service('gamemode').get(), nil);
+    -- the ebox module's helper registration landed (row hidden headless: the
+    -- CW want() gate reads nil-unknown -> NO).
+    local auto = require('dlac\\ui\\automationsui');
+    local found = false;
+    for _, s in ipairs(auto.extraHelpers()) do
+        if s.key == 'restock' then found = true; end
+    end
+    check('SM7 the restock helper is registered', found, true);
 end)();
 
 -- ---------------------------------------------------------------------------

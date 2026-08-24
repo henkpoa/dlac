@@ -1,5 +1,5 @@
 --[[
-    dlac/ui/restockui.lua -- the E-Box Restock panel (docs/design/ebox-restock.md;
+    dlac/servers/cexi/modules/ebox/restockui.lua -- the E-Box Restock panel (docs/design/ebox-restock.md;
     ADR 0016). Rendered inside automationsui's Automations detail
     (auto.view == 'restock'); its own module (the 200-local law). CRYSTAL
     WARRIORS ONLY -- automationsui only adds the row when gamemode.get() == 'CW',
@@ -56,11 +56,11 @@
 local M = {};
 
 local _iok, imgui = pcall(require, 'imgui');
-local _rwok, rw = pcall(require, 'dlac\\feature\\restockwatch');
+local _rwok, rw = pcall(require, 'dlac\\servers\\cexi\\modules\\ebox\\restockwatch');
 _rwok = _rwok and type(rw) == 'table';
-local _ecok, ec = pcall(require, 'dlac\\feature\\eboxclient');
+local _ecok, ec = pcall(require, 'dlac\\servers\\cexi\\modules\\ebox\\eboxclient');
 _ecok = _ecok and type(ec) == 'table';
-local _gmok, gm = pcall(require, 'dlac\\feature\\gamemode');
+local _gmok, gm = pcall(require, 'dlac\\servers\\cexi\\modules\\gamemode\\init');
 _gmok = _gmok and type(gm) == 'table';
 local _ftok, filetex = pcall(require, 'dlac\\ui\\filetex');   -- the crate icons (assets/ebox*.png)
 _ftok = _ftok and type(filetex) == 'table';

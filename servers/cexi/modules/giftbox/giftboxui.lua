@@ -1,5 +1,5 @@
 --[[
-    dlac/ui/giftboxui.lua -- the reward-box icon in the ONE floating tray.
+    dlac/servers/cexi/modules/giftbox/giftboxui.lua -- the reward-box icon in the ONE floating tray.
 
     A tray member (ui\tray.lua -- read its header for the slot contract): it
     appears when there are openable boxes in your inventory -- whatever
@@ -31,11 +31,11 @@ local function try(name)
     return (ok and type(m) == 'table') and m or nil;
 end
 local imgui = try('imgui');
-local gb    = try('dlac\\feature\\giftbox');
+local gb    = try('dlac\\servers\\cexi\\modules\\giftbox\\giftbox');
 local icons = try('dlac\\ui\\itemicons');
-local gmode = try('dlac\\feature\\gamemode');
+local gmode = try('dlac\\servers\\cexi\\modules\\gamemode\\init');
 local loc   = try('dlac\\feature\\location');
-local ec    = try('dlac\\feature\\eboxclient');
+local ec    = try('dlac\\servers\\cexi\\modules\\ebox\\eboxclient');
 
 local M = {};
 

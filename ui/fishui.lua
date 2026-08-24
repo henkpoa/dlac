@@ -604,8 +604,16 @@ function M.render(deps, availW)
     end
     local gp = _fwok and fw.guildPoints() or nil;
     parts[#parts + 1] = 'GP ' .. (gp ~= nil and tostring(gp) or '?');
-    local vp = _fwok and fw.venturePoints() or nil;
-    parts[#parts + 1] = 'VP ' .. (vp ~= nil and tostring(vp) or '?');
+    -- VP only where the pack has ventures at all (ADR 0035). Guarded: the
+    -- headless suites stub fishwatch without the gate.
+    local ventOn = false;
+    if _fwok and type(fw.venturesOn) == 'function' then
+        pcall(function() ventOn = fw.venturesOn() == true; end);
+    end
+    if ventOn then
+        local vp = fw.venturePoints();
+        parts[#parts + 1] = 'VP ' .. (vp ~= nil and tostring(vp) or '?');
+    end
     imgui.TextColored(COL_GOLD, esc(table.concat(parts, '   |   ')));
     -- Panel chrome, all on the status row: the target picker, the idle pill and
     -- the bar toggle. The TARGET FISH section that used to sit below is a
@@ -839,8 +847,12 @@ function M.render(deps, availW)
         if not any then imgui.TextColored(COL_DIM, 'no bait in any bag.'); end
     end
 
-    -- ---- today's ventures -------------------------------------------------
-    if imgui.CollapsingHeader("Today's fishing ventures") then
+    -- ---- today's ventures (only where the pack has them, ADR 0035) --------
+    local ventHdrOn = false;
+    if _fwok and type(fw.venturesOn) == 'function' then
+        pcall(function() ventHdrOn = fw.venturesOn() == true; end);
+    end
+    if ventHdrOn and imgui.CollapsingHeader("Today's fishing ventures") then
         if imgui.Button('!ventures fishing##fishvent') then
             if _fwok then fw.openCapture(6); end
             pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '!ventures fishing'); end);

@@ -1,5 +1,5 @@
 --[[
-    dlac/feature/eboxclient.lua -- THE one client for CatsEyeXI's E-Box.
+    dlac/servers/cexi/modules/ebox/eboxclient.lua -- THE one client for CatsEyeXI's E-Box.
 
     ADR 0016 (one E-Box client): exactly ONE module speaks the custom 0x1A4
     wire protocol; every E-Box feature (AutoAmmo's counts, E-Box Restock, and
@@ -202,7 +202,7 @@ end
 -- (unknown) / Wings / ACE stay shut -- the never-gate-on-nil rule points the
 -- safe way: unknown = hidden. LOCKED is the belt-and-braces server answer.
 -- ---------------------------------------------------------------------------
-local _gmok, _gm = pcall(require, 'dlac\\feature\\gamemode');
+local _gmok, _gm = pcall(require, 'dlac\\servers\\cexi\\modules\\gamemode\\init');
 _gmok = _gmok and type(_gm) == 'table' and type(_gm.get) == 'function';
 function M.isCW()
     if not _gmok then return false; end

@@ -409,10 +409,22 @@ function M.on1A4(data)
     return true;   -- any other 0x1A4 action: not ours, still not the client's
 end
 
+-- The ventures capability gate (ADR 0035): the 0x1A4 Venture-point protocol
+-- and the !ventures capture exist only where the manifest says so. A server
+-- without the cap never sends the custom opcode and never opens a capture --
+-- the rest of helmwatch (skills, hats, proximity) is server-neutral.
+local function venturesOn()
+    local on = false;
+    pcall(function() on = require('dlac\\gear\\serverpack').cap('ventures'); end);
+    return on;
+end
+M.venturesOn = venturesOn;   -- the panels ask the same gate (helmui/fishui)
+
 -- Ask the server for the points list (trove packet.send(GET_POINTS) clone:
 -- 64 zero bytes, action at offset 0x04). Debounced like requestGuildPoints.
 local _vpReqAt = -10;
 function M.requestPoints(force)
+    if not venturesOn() then return; end
     if os.clock() - _vpReqAt < (force and 1 or 5) then return; end
     _vpReqAt = os.clock();
     local ok = pcall(function()
@@ -530,6 +542,7 @@ function M.cleanLine(msg)
 end
 
 function M.openCapture(seconds)
+    if not venturesOn() then return; end
     _capUntil = os.clock() + (tonumber(seconds) or 6);
     _capCount = 0;
     ventLoad();
