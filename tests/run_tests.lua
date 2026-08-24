@@ -34,7 +34,7 @@ package.loaded['dlac\\gear\\serverpack'] = (function()
         if rel:find('\\data\\', 1, true) ~= nil then error('headless serverpack: pack data stays unmounted'); end
         return dofile('servers/' .. (rel:gsub('\\', '/')) .. '.lua');
     end;
-    sp._configLoader = function() return nil; end;
+    sp._configLoader = function() return { server = 'cexi' }; end;   -- explicit: this suite IS the CEXI baseline
     sp.init();
     return sp;
 end)();

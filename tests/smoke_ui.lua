@@ -29,7 +29,13 @@ end);
 -- the active pack's data files into the virtual dlac\data\ namespace, so a
 -- require('dlac\\data\\gearsets') below reaches servers\cexi\data\ through
 -- the same searcher. This smoke suite therefore exercises the REAL mount.
-require('dlac\\gear\\serverpack').init();
+-- The choice is EXPLICIT (the repo ships several packs; this suite is the
+-- CEXI baseline -- pack_lint.lua is the per-pack gate).
+do
+    local __sp = require('dlac\\gear\\serverpack');
+    __sp._configLoader = function() return { server = 'cexi' }; end;
+    __sp.init();
+end
 
 -- The event stub RECORDS handlers rather than dropping them: floatgear's shift
 -- tracking is a 'key' (WNDPROC) handler, and section 6 drives it directly -- the
