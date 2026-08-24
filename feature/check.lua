@@ -77,10 +77,18 @@ function M._issues(info)
         for _, f in ipairs(mods.failed) do names[#names + 1] = tostring(f.mod); end
         I[#I + 1] = string.format('%d module(s) FAILED to load: %s (corrupt/partial files?)', #names, table.concat(names, ', '));
     end
+    -- The pack question first (ADR 0035): no active pack means the catalog
+    -- CANNOT be present -- one issue that explains, not two that confuse.
+    if info.packTried == true and info.packId == nil then
+        I[#I + 1] = 'no server pack active (servers\\ missing or unreadable) -- every data file and server capability is off';
+    end
+    local catMin = tonumber(info.catalogMin) or CATALOG_MIN;
     if info.catalogTried == true and info.catalogN == nil then
-        I[#I + 1] = 'catalog UNREADABLE (data\\catalog.lua missing or corrupt)';
-    elseif tonumber(info.catalogN) ~= nil and tonumber(info.catalogN) < CATALOG_MIN then
-        I[#I + 1] = string.format('catalog has only %d items (~14.9k expected) -- truncated sync?', tonumber(info.catalogN));
+        if not (info.packTried == true and info.packId == nil) then
+            I[#I + 1] = 'catalog UNREADABLE (the pack\'s catalog.lua missing or corrupt)';
+        end
+    elseif tonumber(info.catalogN) ~= nil and tonumber(info.catalogN) < catMin then
+        I[#I + 1] = string.format('catalog has only %d items (min %d) -- truncated sync?', tonumber(info.catalogN), catMin);
     end
     -- The native baseline (2026-08-05): auto-setup retries every beat and says
     -- its one line once, so by the time a player runs /dl check the chat is long
@@ -137,7 +145,10 @@ function M._lines(info)
             tostring(info.addonVer or '?'), tostring(info.fileV or '?')),
         string.format('check (addon): sets file: %s', setsWord),
         string.format('check (addon): modules: %s', modWord),
-        string.format('check (addon): data: catalog %s -- gear.lua %s -- profile %s',
+        string.format('check (addon): data: pack %s -- catalog %s -- gear.lua %s -- profile %s',
+            (info.packId ~= nil) and (tostring(info.packId)
+                .. (info.packName ~= nil and (' (' .. tostring(info.packName) .. ')') or ''))
+            or (info.packTried == true and 'NONE' or '?'),
             catWord, gearWord, profWord),
         string.format('check (addon): engine %s -- a "[dlac] check (engine): alive" line must appear'
             .. ' with this readout; if it is MISSING, the engine is not armed in this state'
@@ -202,6 +213,15 @@ function M.gather()
     -- the failures' errors.
     local led = try('dlac\\loadledger');
     if led ~= nil and tonumber(led.total) ~= nil then info.modules = led; end
+    -- The active server pack, through the one seam (ADR 0035).
+    pcall(function()
+        local sp = try('dlac\\gear\\serverpack');
+        if sp == nil then return; end
+        info.packTried = true;
+        info.packId    = sp.active();
+        info.packName  = sp.name();
+        info.catalogMin = tonumber(sp.const('catalogMin'));
+    end);
     -- Catalog through its ONE door (catalogindex; GRD law -- never require
     -- the catalog directly). rawIndex() builds/caches the byId map the GUI
     -- uses anyway; its size is the item count a truncated file cannot fake.

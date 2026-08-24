@@ -238,6 +238,16 @@ pcall(function()
     package.path = package.path .. ';' .. AshitaCore:GetInstallPath() .. 'addons\\?.lua';
 end);
 
+-- THE SERVER SEAM (ADR 0035): discover the shipped server packs, pick the
+-- active one, and mount its data files into the virtual dlac\data\ namespace
+-- -- BEFORE anything can require data. Every later pcall(require,
+-- 'dlac\\data\\X') resolves through the active pack, or degrades exactly as
+-- a missing file always has. A failure here means NO pack: neutral defaults,
+-- capabilities off, and /dl check says so.
+pcall(function()
+    require('dlac\\gear\\serverpack').init();
+end);
+
 -- Load THIS character's gear from their config folder, so the GUI shows your
 -- real gear instead of the bundled empty template. Preloads package.loaded so every
 -- module's require("dlac\\gear") returns it. Falls back to the template if none found.

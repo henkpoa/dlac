@@ -26984,6 +26984,116 @@ end)();
     check('MB4e the good override survives',       backd.WAR.subs.SAM, 4);
 end)();
 
+-- SPK. The server seam (gear/serverpack.lua, ADR 0035): discovery off the
+--      tracked index, the one-pack auto-select, the several-packs flag-file
+--      choice, the virtual dlac\data\ mount, and the neutral no-pack
+--      defaults (caps FALSE, consts nil, maxLevel 75). All seams injected:
+--      no filesystem, no Ashita.
+(function()
+    local sp = dofile('gear/serverpack.lua');
+    check('SPK0 serverpack loads headless', type(sp), 'table');
+
+    local warns = {};
+    local fixtures = {};
+    local configured = nil;
+    -- one arming helper: every scenario resets state then re-installs seams
+    -- (the _reset clears nothing but state; seams survive, but explicit
+    -- re-arming keeps each scenario readable on its own).
+    local function arm()
+        sp._reset();
+        warns = {};
+        sp._emit = function(m) warns[#warns + 1] = tostring(m); end;
+        sp._require = function(name)
+            local v = fixtures[name];
+            if v == nil then error('module not found: ' .. tostring(name)); end
+            return v;
+        end;
+        sp._configLoader = function() return configured; end;
+    end
+
+    -- no index at all -> NEUTRAL
+    fixtures = {}; configured = nil; arm();
+    sp.init();
+    check('SPK1 no packs -> no active id',       sp.active(), nil);
+    check('SPK2 no packs -> maxLevel default',   sp.maxLevel(), 75);
+    check('SPK3 no packs -> every cap is false', sp.cap('ebox'), false);
+    check('SPK4 no packs -> consts are nil',     sp.const('catalogMin'), nil);
+    check('SPK5 no packs -> data is nil',        sp.data('spkzones'), nil);
+
+    -- one pack -> auto-active, config not needed, data mounts
+    local MAN_A = { fmt = 1, id = 'aaa', name = 'Server A', maxLevel = 80,
+                    caps = { ebox = true }, const = { catalogMin = 42 },
+                    files = { 'spkzones' } };
+    fixtures = {
+        ['dlac\\servers\\index'] = { 'aaa' },
+        ['dlac\\servers\\aaa\\manifest'] = MAN_A,
+        ['dlac\\servers\\aaa\\data\\spkzones'] = { [1] = { n = 'Test Zone' } },
+    };
+    configured = nil; arm();
+    sp.init();
+    check('SPK6 one pack -> active',            sp.active(), 'aaa');
+    check('SPK7 ...with its name',              sp.name(), 'Server A');
+    check('SPK8 ...its maxLevel',               sp.maxLevel(), 80);
+    check('SPK9 ...its caps',                   sp.cap('ebox'), true);
+    check('SPK10 an undeclared cap is false',   sp.cap('prestige'), false);
+    check('SPK11 ...its consts',                sp.const('catalogMin'), 42);
+    check('SPK12 an uncarried const is nil',    sp.const('nope'), nil);
+    check('SPK13 the virtual name resolves through the pack',
+          (require('dlac\\data\\spkzones'))[1].n, 'Test Zone');
+    check('SPK14 sp.data speaks the same door',  sp.data('spkzones')[1].n, 'Test Zone');
+    check('SPK15 an unlisted file does not resolve', sp.data('spkother'), nil);
+    check('SPK16 one pack is silent',            #warns, 0);
+
+    -- several packs, no choice -> the index's FIRST, loudly
+    local MAN_B = { fmt = 1, id = 'bbb', name = 'Server B', maxLevel = 99, files = {} };
+    fixtures['dlac\\servers\\index'] = { 'aaa', 'bbb' };
+    fixtures['dlac\\servers\\bbb\\manifest'] = MAN_B;
+    configured = nil; arm();
+    sp.init();
+    check('SPK17 several packs, no choice -> first wins', sp.active(), 'aaa');
+    check('SPK18 ...and says so',                #warns >= 1 and warns[1]:find('several server packs', 1, true) ~= nil, true);
+    check('SPK19 installed() lists both',        #sp.installed(), 2);
+
+    -- several packs, the flag file chooses
+    configured = { server = 'bbb' }; arm();
+    sp.init();
+    check('SPK20 the flag file chooses',         sp.active(), 'bbb');
+    check('SPK21 ...quietly',                    #warns, 0);
+    check('SPK22 ...and its manifest answers',   sp.maxLevel(), 99);
+
+    -- the flag names a pack that is not installed -> fall back, loudly
+    configured = { server = 'zzz' }; arm();
+    sp.init();
+    check('SPK23 a missing configured pack falls back', sp.active(), 'aaa');
+    check('SPK24 ...and names the ghost',        warns[1] ~= nil and warns[1]:find('zzz', 1, true) ~= nil, true);
+
+    -- a broken manifest is not a pack
+    fixtures['dlac\\servers\\index'] = { 'broken', 'bbb' };
+    configured = nil; arm();
+    sp.init();
+    check('SPK25 a broken manifest is skipped',  sp.active(), 'bbb');
+
+    -- a harness-preloaded virtual name is never shadowed by a mount
+    package.loaded['dlac\\data\\spkheld'] = { held = true };
+    fixtures = {
+        ['dlac\\servers\\index'] = { 'aaa' },
+        ['dlac\\servers\\aaa\\manifest'] = { id = 'aaa', files = { 'spkheld' } },
+        ['dlac\\servers\\aaa\\data\\spkheld'] = { held = false },
+    };
+    configured = nil; arm();
+    sp.init();
+    check('SPK26 package.loaded wins over the mount', require('dlac\\data\\spkheld').held, true);
+    package.loaded['dlac\\data\\spkheld'] = nil;
+
+    -- the service registry (a pack module's live providers)
+    sp._reset();
+    check('SPK27 an unregistered service is nil', sp.service('gamemode'), nil);
+    sp.provide('gamemode', { get = function() return 'CW'; end });
+    check('SPK28 provide -> service answers',     sp.service('gamemode').get(), 'CW');
+    sp._reset();
+    check('SPK29 _reset clears services',         sp.service('gamemode'), nil);
+end)();
+
 -- The warm-note artifact the dispatch-driving sections leave behind (dataDir
 -- stubbed 'tests\'): on Windows a real tests\debug\mpwarm.txt (gitignored via
 -- debug/), under WSL ONE backslash-bearing filename that drvfs PUA-mangles on
