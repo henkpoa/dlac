@@ -67,6 +67,11 @@ end
 -- ALWAYS take explicit permission, every mode) }.
 function R.pressure() return st.pressure; end
 
+-- Free shelf slots as the engine counts them (capacity minus layout units,
+-- the cap override included) -- the bench header's "you could restore
+-- something" figure. nil until a beat has measured.
+function R.freeSlots() return st.freeSlots; end
+
 -- A zone-in may have landed us in a city: let the next beat retry a
 -- city-blocked push immediately instead of waiting out lastPushKey.
 function R.zoneArmed()
@@ -145,6 +150,7 @@ function R.tick()
     local capacity = (type(D.capacity) == 'function') and (D.capacity() or 0) or 0;
     local layoutUnits = 0;
     for _, e in ipairs(vc.layoutCache.entries or {}) do layoutUnits = layoutUnits + (e.count or 1); end
+    st.freeSlots = (capacity > 0) and math.max(0, capacity - layoutUnits) or nil;
 
     -- The adds, under THREE gates (Henrik's 2026-08-27 field round -- the
     -- remove/re-add tug-of-war, and "dlac would keep trying to load the

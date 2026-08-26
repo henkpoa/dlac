@@ -842,7 +842,18 @@ function M.render(job, level)
     -- engine re-adds the piece the moment the shelf has room -- his "only
     -- re-add when space is available", with the CHOICE remembered.
     if usg ~= nil and usg.excludedCount() > 0 then
-        if imgui.CollapsingHeader(string.format('Benched (%d)###gvbench', usg.excludedCount())) then
+        -- The header carries the ACTIONABLE fact -- free shelf slots mean a
+        -- Restore would land right now -- and lights GOLD when that is true
+        -- (the Inventory tab's lights-up language; Henrik's 2026-08-27 note:
+        -- "clearly show something should be done").
+        local free = (recon ~= nil and type(recon.freeSlots) == 'function') and recon.freeSlots() or nil;
+        local actionable = (free ~= nil and free > 0);
+        local benchLabel = string.format('Benched (%d)%s###gvbench', usg.excludedCount(),
+            (free ~= nil) and string.format(' -- %d shelf slot%s free', free, (free == 1) and '' or 's') or '');
+        if actionable then imgui.PushStyleColor(ImGuiCol_Text, cGOLD); end
+        local benchOpen = imgui.CollapsingHeader(benchLabel);
+        if actionable then imgui.PopStyleColor(1); end
+        if benchOpen then
             imgui.TextColored(cDIM, 'Removed by you; dlac will not re-add these by itself.');
             for _, b in ipairs(usg.excludedList()) do
                 imgui.TextColored(COL.USABLE or { 1, 1, 1, 1 }, esc(nameOf(b.itemId)));
