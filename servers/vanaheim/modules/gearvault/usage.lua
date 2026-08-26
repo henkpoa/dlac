@@ -44,6 +44,11 @@ local st = {
     loaded   = false,
     dirty    = false,
     stamps   = {},                       -- key -> epoch seconds
+    excluded = {},                       -- key -> true: "the player removed this
+                                         -- from the layout; the engine must not
+                                         -- re-add it" (the tombstone that ends
+                                         -- the add/remove tug-of-war -- Henrik's
+                                         -- 2026-08-27 field round)
     settings = { additions = 'auto', removals = 'ask' },
 };
 
@@ -84,6 +89,14 @@ function M._serialize()
         L[#L + 1] = string.format('        [%q] = %d,', k, st.stamps[k]);
     end
     L[#L + 1] = '    },';
+    L[#L + 1] = '    excluded = {';
+    keys = {};
+    for k in pairs(st.excluded) do keys[#keys + 1] = k; end
+    table.sort(keys);
+    for _, k in ipairs(keys) do
+        L[#L + 1] = string.format('        [%q] = true,', k);
+    end
+    L[#L + 1] = '    },';
     L[#L + 1] = '}';
     return table.concat(L, '\n') .. '\n';
 end
@@ -98,6 +111,11 @@ function M._apply(t)
     if type(t.stamps) == 'table' then
         for k, v in pairs(t.stamps) do
             if type(k) == 'string' and type(v) == 'number' then st.stamps[k] = v; end
+        end
+    end
+    if type(t.excluded) == 'table' then
+        for k, v in pairs(t.excluded) do
+            if type(k) == 'string' and v == true then st.excluded[k] = true; end
         end
     end
 end
@@ -169,6 +187,63 @@ end
 function M.lastUsed(key) return st.stamps[key]; end
 
 -- ---------------------------------------------------------------------------
+-- Exclusions (the tombstones): a set-wanted entry the player REMOVED must
+-- stay removed -- the additions engine skips excluded identities, or the
+-- remove and the re-add fight forever. Cleared by the player adding the
+-- piece back (the Layout button), or pruned automatically once the
+-- derivation stops wanting the id (a tombstone for gear no set names is
+-- dead weight).
+-- ---------------------------------------------------------------------------
+function M.exclude(keys)
+    for _, k in ipairs(keys or {}) do
+        if not st.excluded[k] then
+            st.excluded[k] = true;
+            st.dirty = true;
+        end
+    end
+end
+
+function M.unexclude(key)
+    if st.excluded[key] then
+        st.excluded[key] = nil;
+        st.dirty = true;
+        return true;
+    end
+    return false;
+end
+
+function M.isExcluded(key) return st.excluded[key] == true; end
+
+function M.excludedCount()
+    local n = 0;
+    for _ in pairs(st.excluded) do n = n + 1; end
+    return n;
+end
+
+-- The bench, listable: { { key, itemId } ... } sorted by id -- the layout
+-- pane renders it with a Restore button per row.
+function M.excludedList()
+    local out = {};
+    for k in pairs(st.excluded) do
+        out[#out + 1] = { key = k, itemId = tonumber(k:match('^(%d+):')) or 0 };
+    end
+    table.sort(out, function(a, b) return a.itemId < b.itemId; end);
+    return out;
+end
+
+-- Drop tombstones for ids the derivation no longer wants ({ [itemId] = true }).
+function M.pruneExclusions(derivedIds)
+    if type(derivedIds) ~= 'table' then return; end
+    for k in pairs(st.excluded) do
+        local id = tonumber(k:match('^(%d+):'));
+        if id ~= nil and not derivedIds[id] then
+            st.excluded[k] = nil;
+            st.dirty = true;
+        end
+    end
+end
+
+-- ---------------------------------------------------------------------------
 -- Settings
 -- ---------------------------------------------------------------------------
 function M.settings() return st.settings; end
@@ -217,7 +292,7 @@ end
 
 -- test seam
 function M._reset()
-    st = { loaded = false, dirty = false, stamps = {},
+    st = { loaded = false, dirty = false, stamps = {}, excluded = {},
            settings = { additions = 'auto', removals = 'ask' } };
 end
 function M._st() return st; end

@@ -676,24 +676,32 @@ function M.render(job, level)
 
     -- ---- shelf pressure (GV3): the banner + the marking dialog ----
     local pr = (recon ~= nil and type(recon.pressure) == 'function') and recon.pressure() or nil;
-    if pr ~= nil and pr.over > 0 then
+    if pr ~= nil and (pr.over > 0 or (pr.waiting or 0) > 0) then
         -- BUTTON FIRST, text wrapped under it (Henrik's screenshot: the
         -- button rode the end of a long line and clipped off the pane edge)
         local wrapped = (fmt ~= nil and type(fmt.textWrapped) == 'function')
             and fmt.textWrapped or function(col, s) imgui.TextColored(col, s); end;
+        local words = (pr.over > 0)
+            and string.format('Shelf full: the layout wants %d more slot%s than Wardrobes 1-8 hold.%s',
+                pr.over, (pr.over == 1) and '' or 's',
+                ((pr.waiting or 0) > 0) and string.format('  %d more piece%s from your sets wait outside.',
+                    pr.waiting, (pr.waiting == 1) and '' or 's') or '')
+            or string.format('Shelf full: %d piece%s from your sets %s waiting for room -- nothing was sent to the server.',
+                pr.waiting, (pr.waiting == 1) and '' or 's', (pr.waiting == 1) and 'is' or 'are');
         if pr.mode == 'off' then
-            wrapped(cERR, string.format('Shelf full: the layout wants %d more slot%s than Wardrobes 1-8 hold.',
-                pr.over, (pr.over == 1) and '' or 's'));
+            wrapped(cERR, words);
             wrapped(cDIM, 'Removals are Off -- trim the layout with the Remove buttons below.');
         else
             if imgui.SmallButton((M._evictOpen and 'Hide' or 'Choose what to remove') .. '###gvevb') then
                 if not M._evictOpen then
-                    -- pre-tick greedily: least-used unpinned until the overflow
-                    -- is covered; pinned entries are NEVER pre-ticked
+                    -- pre-tick greedily: least-used unpinned until BOTH the
+                    -- overflow and the waiting derived pieces have room;
+                    -- pinned entries are NEVER pre-ticked
                     M._marks = {};
                     local freed = 0;
+                    local target = (pr.over or 0) + (pr.waiting or 0);
                     for _, c in ipairs(pr.candidates) do
-                        local tick = freed < pr.over;
+                        local tick = freed < target;
                         M._marks[c.key] = { tick };
                         if tick then freed = freed + c.count; end
                     end
@@ -701,8 +709,7 @@ function M.render(job, level)
                 end
                 M._evictOpen = not M._evictOpen;
             end
-            wrapped(cERR, string.format('Shelf full: the layout wants %d more slot%s than Wardrobes 1-8 hold.',
-                pr.over, (pr.over == 1) and '' or 's'));
+            wrapped(cERR, words);
         end
         if M._evictOpen and pr.mode ~= 'off' then
             local marked, frees = 0, 0;
@@ -728,14 +735,22 @@ function M.render(job, level)
                     local all = {};
                     for _, c in ipairs(pr.candidates) do all[#all + 1] = c; end
                     for _, c in ipairs(pr.pinned) do all[#all + 1] = c; end
+                    local tomb = {};
                     for _, c in ipairs(all) do
                         local buf = M._marks[c.key];
                         if buf ~= nil and buf[1] then
+                            -- a removed SET-WANTED entry is tombstoned, or the
+                            -- additions engine re-adds it on the next beat
+                            -- (the 2026-08-27 tug-of-war field round)
+                            if c.assigned and usg ~= nil then
+                                tomb[#tomb + 1] = usg.keyOf(c.itemId, nil);
+                            end
                             layoutEdit({ job = 0, verb = vc.verb.REMOVE, itemId = c.itemId,
                                          count = 0, hint = 0, pinned = false, identity = c.identity },
                                 nameOf(c.itemId) .. ' removed from the layout');
                         end
                     end
+                    if #tomb > 0 and usg ~= nil then pcall(usg.exclude, tomb); end
                     M._evictOpen = false;
                     M._marks = {};
                 end
@@ -793,6 +808,15 @@ function M.render(job, level)
                             _confirm = { key = rkey, at = os.clock() };
                         else
                             _confirm = nil;
+                            -- removing the plain copy of a SET-WANTED id is
+                            -- tombstoned, or the engine re-adds it next beat
+                            if usg ~= nil and e.identity == ZERO24 then
+                                local der = (recon ~= nil and type(recon.derivedIds) == 'function')
+                                    and recon.derivedIds() or {};
+                                if der[e.itemId] then
+                                    pcall(usg.exclude, { usg.keyOf(e.itemId, nil) });
+                                end
+                            end
                             layoutEdit({ job = 0, verb = vc.verb.REMOVE, itemId = e.itemId, count = 0,
                                          hint = 0, pinned = false, identity = e.identity },
                                 e.name .. ' removed from the layout');
@@ -810,6 +834,28 @@ function M.render(job, level)
         end);
     elseif lc.fresh then
         imgui.TextColored(cDIM, searching and 'Nothing in the layout matches.' or 'No entries yet -- this job\'s shelf empties at the next job change.');
+    end
+
+    -- THE BENCH (Henrik's 2026-08-27 design round: exclusions must be
+    -- visible and one click from coming back). Set-wanted pieces the player
+    -- removed sit here BY NAME; Restore clears the tombstone and the
+    -- engine re-adds the piece the moment the shelf has room -- his "only
+    -- re-add when space is available", with the CHOICE remembered.
+    if usg ~= nil and usg.excludedCount() > 0 then
+        if imgui.CollapsingHeader(string.format('Benched (%d)###gvbench', usg.excludedCount())) then
+            imgui.TextColored(cDIM, 'Removed by you; dlac will not re-add these by itself.');
+            for _, b in ipairs(usg.excludedList()) do
+                imgui.TextColored(COL.USABLE or { 1, 1, 1, 1 }, esc(nameOf(b.itemId)));
+                imgui.SameLine(0, 10);
+                if imgui.SmallButton('Restore##gvrb' .. tostring(b.itemId)) then
+                    usg.unexclude(b.key);
+                    noteResult(nameOf(b.itemId) .. ' restored -- it rejoins the layout when the shelf has room', false);
+                end
+                if imgui.IsItemHovered() then
+                    imgui.SetTooltip('Let dlac add this back -- it returns to the layout on the next\nbeat if the shelf has room, and waits (visibly) if not.');
+                end
+            end
+        end
     end
     imgui.EndChild();
 
@@ -845,10 +891,20 @@ function M.render(job, level)
                             imgui.TextColored(cGOLD, '[aug]');
                             -- no tooltip of its own: the row hover carries it
                         end
+                        if usg ~= nil and usg.isExcluded(usg.keyOf(e.itemId, nil)) then
+                            imgui.SameLine(0, 8);
+                            imgui.TextColored(cDIM, '[excluded]');
+                            if imgui.IsItemHovered() then
+                                imgui.SetTooltip('You removed this from the layout, so dlac will not add it back\nby itself. The Layout button puts it back and clears this.');
+                            end
+                        end
                     end,
                     buttons = function(hot, b1, b2)
                         imgui.SameLine(b1);
                         if imgui.SmallButton('Layout##gvl' .. tostring(e.rowId)) then
+                            -- a manual add is the player overruling their own
+                            -- removal: clear the tombstone first
+                            if usg ~= nil then pcall(usg.unexclude, usg.keyOf(e.itemId, nil)); end
                             layoutEdit({ job = 0, verb = vc.verb.ADD, itemId = e.itemId, count = 1,
                                          hint = 0, pinned = false, identity = e.identity },
                                 e.name .. ' added to this job\'s layout');

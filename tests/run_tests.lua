@@ -27423,14 +27423,16 @@ end)();
     check('GVR16 additions Off -> the engine pushes nothing', rc.tick(), 'clean');
     check('GVR17 ...but the derivation still feeds the wanted tags', rc.derivedIds()[10], true);
 
-    -- shelf pressure, 'ask': the verdict is exposed, nothing removed
+    -- shelf pressure, 'ask': only what FITS is pushed, the rest waits in
+    -- the verdict, nothing is removed
     ug.setSetting('additions', 'auto');
-    CAP.n = 3;   -- the five derived adds cannot fit a 3-slot shelf
+    CAP.n = 3;   -- the six derived units cannot fit a 3-slot shelf
     rc.zoneArmed(); rc._st().lastPushKey = nil;
     T = T + rc.BEAT + 1;
     local r16 = rc.tick();
-    check('GVR18 pressure computed under ask', rc.pressure() ~= nil and rc.pressure().over > 0, true);
-    check('GVR19 ...and the adds still pushed', r16:find('pushed:', 1, true) ~= nil, true);
+    check('GVR18 pressure computed under ask (the rest waits)',
+          rc.pressure() ~= nil and (rc.pressure().waiting or 0) > 0, true);
+    check('GVR19 ...and only the fitting adds pushed', r16, 'pushed:2');
     check('GVR20 ...with nothing auto-removed', (function()
         for _, p in ipairs(sent) do
             if p[5] == vc.op.LAYOUT_SET and p[10] == 1 then return 'a remove went out'; end
@@ -27438,8 +27440,9 @@ end)();
         return true;
     end)(), true);
 
-    -- shelf pressure, 'auto': unpinned LRU evictions ride the wire
-    for _ = 1, 5 do T = T + 1; vc.pump(true); vc.onFrame(reply(0, 0, vc._wu16(0) .. vc._wu16(0))); end
+    -- shelf pressure, 'auto': the LAYOUT ITSELF outgrows the shelf ->
+    -- unpinned LRU evictions ride the wire
+    for _ = 1, 2 do T = T + 1; vc.pump(true); vc.onFrame(reply(0, 0, vc._wu16(0) .. vc._wu16(0))); end
     T = T + 1; vc.pump(true);
     vc.onFrame(reply(0, 0, vc._wu16(5) .. vc._wu16(0)
         .. layoutEntry(1, 10, 1) .. layoutEntry(2, 20, 2)
@@ -27484,6 +27487,63 @@ end)();
     T = T + rc.BEAT + 1;
     check('GVR24 a capacity change ALONE surfaces pressure on the next beat',
           rc.tick() == 'clean' and rc.pressure() ~= nil and rc.pressure().over == 3, true);
+
+    -- TOMBSTONES end the remove/re-add tug-of-war (Henrik's 2026-08-27
+    -- round: "after it removes, it auto adds them back")
+    ug._reset();
+    check('USG12 exclude/isExcluded', (function()
+        ug.exclude({ ug.keyOf(10, nil) });
+        return ug.isExcluded(ug.keyOf(10, nil));
+    end)(), true);
+    check('USG13 the tombstone round-trips the file', (function()
+        local t = ((loadstring or load)(ug._serialize()))();
+        return t.excluded[ug.keyOf(10, nil)];
+    end)(), true);
+    check('USG14 unexclude clears it', (function()
+        ug.unexclude(ug.keyOf(10, nil));
+        return ug.isExcluded(ug.keyOf(10, nil));
+    end)(), false);
+
+    vc._reset(); rc._reset(); ug._reset(); T, sent, msgs = 3000, {}, {};
+    CAP.n = 640;
+    vc.pump(true); T = 3003; vc.pump(true);
+    vc.onFrame(reply(0, 0, hp));
+    vc.onFrame(reply(0, 0, vc._wu16(0) .. vc._wu16(0)));
+    vc.noteJob(1);
+    T = T + rc.BEAT + 1; rc.tick();
+    T = T + 1; vc.pump(true);
+    vc.onFrame(reply(0, 0, vc._wu16(0) .. vc._wu16(0)));   -- empty layout
+    ug.exclude({ ug.keyOf(10, nil) });
+    T = T + rc.BEAT + 1;
+    check('GVR25 a tombstoned id is never re-added', rc.tick(), 'pushed:4');
+    -- ack the four adds so the run finishes (the engine idles while acks
+    -- are outstanding), and give it the refreshed layout
+    for _ = 1, 4 do T = T + 1; vc.pump(true); vc.onFrame(reply(0, 0, vc._wu16(0) .. vc._wu16(0))); end
+    T = T + 1; vc.pump(true);
+    vc.onFrame(reply(0, 0, vc._wu16(4) .. vc._wu16(0)
+        .. layoutEntry(1, 20, 2) .. layoutEntry(2, 30, 1)
+        .. layoutEntry(3, 40, 1) .. layoutEntry(4, 31, 1)));
+    ug.exclude({ ug.keyOf(999, nil) });                    -- no set wants 999
+    T = T + rc.BEAT + 1; rc.tick();
+    check('GVR26 an unwanted id\'s tombstone prunes itself',
+          ug.isExcluded(ug.keyOf(999, nil)), false);
+    check('GVR26b ...while the wanted one stays', ug.isExcluded(ug.keyOf(10, nil)), true);
+
+    -- CAPACITY-AWARE adds: nothing that cannot fit is ever sent (the
+    -- "dlac would keep trying to load the server needlessly" worry)
+    vc._reset(); rc._reset(); ug._reset(); T, sent, msgs = 4000, {}, {};
+    CAP.n = 2;                                             -- room for 2 units; the sets want 6
+    vc.pump(true); T = 4003; vc.pump(true);
+    vc.onFrame(reply(0, 0, hp));
+    vc.onFrame(reply(0, 0, vc._wu16(0) .. vc._wu16(0)));
+    vc.noteJob(1);
+    T = T + rc.BEAT + 1; rc.tick();
+    T = T + 1; vc.pump(true);
+    vc.onFrame(reply(0, 0, vc._wu16(0) .. vc._wu16(0)));   -- empty layout
+    T = T + rc.BEAT + 1;
+    check('GVR27 adds clamp to the shelf (2 of 6 units fit)', rc.tick(), 'pushed:2');
+    check('GVR28 ...and the rest wait, reported, unsent',
+          rc.pressure() ~= nil and rc.pressure().over == 0 and rc.pressure().waiting == 4, true);
 
     vc._reset(); rc._reset(); ug._reset();
 end)();

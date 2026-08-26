@@ -134,13 +134,43 @@ function R.tick()
         end
     end
 
+    -- tombstone housekeeping: exclusions for ids no set names any more are
+    -- dead weight
+    if D.usage ~= nil then
+        local derivedIds = {};
+        for _, it in ipairs(d.items) do derivedIds[it.itemId] = true; end
+        pcall(D.usage.pruneExclusions, derivedIds);
+    end
+
+    local capacity = (type(D.capacity) == 'function') and (D.capacity() or 0) or 0;
+    local layoutUnits = 0;
+    for _, e in ipairs(vc.layoutCache.entries or {}) do layoutUnits = layoutUnits + (e.count or 1); end
+
+    -- The adds, under THREE gates (Henrik's 2026-08-27 field round -- the
+    -- remove/re-add tug-of-war, and "dlac would keep trying to load the
+    -- server needlessly"): the additions setting; the TOMBSTONES (an entry
+    -- the player removed stays removed); and the SHELF -- the engine never
+    -- pushes an add that cannot fit, so a full shelf costs zero wire.
     local adds = {};
+    local waiting = 0;
     if not (D.settings ~= nil and D.settings().additions == 'off') then
+        local units = layoutUnits;
         for _, it in ipairs(d.items) do
             local c = have[it.itemId];
             if c == nil or c < it.count then
-                adds[#adds + 1] = it;
-                if #adds >= R.MAX_PUSH then break; end
+                local excluded = false;
+                if D.usage ~= nil then
+                    excluded = D.usage.isExcluded(D.usage.keyOf(it.itemId, nil));
+                end
+                if not excluded then
+                    local need = it.count - (c or 0);
+                    if capacity > 0 and units + need > capacity then
+                        waiting = waiting + need;
+                    elseif #adds < R.MAX_PUSH then
+                        units = units + need;
+                        adds[#adds + 1] = it;
+                    end
+                end
             end
         end
     end
@@ -157,41 +187,42 @@ function R.tick()
     -- layout -- Henrik's cap-override field round found exactly that beat
     -- answering 'clean' forever while the pressure verdict sat stale.
     st.pressure = nil;
-    local capacity = (type(D.capacity) == 'function') and (D.capacity() or 0) or 0;
     if capacity > 0 and D.usage ~= nil then
-        local units = 0;
-        for _, e in ipairs(vc.layoutCache.entries or {}) do units = units + (e.count or 1); end
-        for _, it in ipairs(adds) do
-            local c = have[it.itemId] or 0;
-            units = units + (it.count - c);
-        end
-        local over = units - capacity;
-        if over > 0 then
+        -- over = the layout ITSELF outgrows the shelf; waiting = it fits,
+        -- but derived pieces are queued outside for room. Either way the
+        -- player decides what makes room (or Auto does, unpinned only).
+        local over = layoutUnits - capacity;
+        if over > 0 or waiting > 0 then
             local assigned = {};
             for _, it in ipairs(d.items) do assigned[it.itemId] = true; end
             local ranked = D.usage.rankEvictions(vc.layoutCache.entries, assigned);
             local mode = (D.settings ~= nil) and D.settings().removals or 'ask';
-            if mode == 'auto' and st.evictStamp ~= vc.layoutCache.stamp then
+            if mode == 'auto' and over > 0 and st.evictStamp ~= vc.layoutCache.stamp then
                 st.evictStamp = vc.layoutCache.stamp;
                 local freed, evicted = 0, 0;
+                local tomb = {};
                 for _, c in ipairs(ranked.unpinned) do
                     if freed >= over then break; end
                     freed = freed + c.count;
                     evicted = evicted + 1;
+                    if c.assigned then tomb[#tomb + 1] = D.usage.keyOf(c.itemId, nil); end
                     vc.requestLayoutSet({ job = 0, verb = vc.verb.REMOVE, itemId = c.itemId,
                                           count = 0, hint = 0, pinned = false, identity = c.identity },
                         function(code) if code == vc.code.OK then vc.requestLayout(0); end end);
                 end
+                -- an auto-evicted set-wanted entry is tombstoned too, or the
+                -- next beat re-adds what this beat just removed
+                if #tomb > 0 then pcall(D.usage.exclude, tomb); end
                 if evicted > 0 then
                     say(string.format('gear vault: shelf over by %d -- evicted %d least-used unpinned entr%s (Removals: Auto).',
                         over, evicted, (evicted == 1) and 'y' or 'ies'));
                 end
                 if freed < over then
-                    st.pressure = { over = over - freed, mode = mode,
+                    st.pressure = { over = over - freed, waiting = waiting, mode = mode,
                                     candidates = {}, pinned = ranked.pinned };
                 end
-            elseif mode ~= 'auto' then
-                st.pressure = { over = over, mode = mode,
+            elseif mode ~= 'auto' or over <= 0 then
+                st.pressure = { over = math.max(0, over), waiting = waiting, mode = mode,
                                 candidates = ranked.unpinned, pinned = ranked.pinned };
             end
         end
