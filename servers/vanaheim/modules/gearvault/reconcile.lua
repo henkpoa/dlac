@@ -42,10 +42,30 @@ local st = {
     runOk       = 0,
     runCity     = 0,
     runFail     = 0,
+    lastDerived = nil,   -- the latest derivation (the tab's [wanted] tags)
+    pressure    = nil,   -- { over, mode, candidates, pinned } | nil (see tick)
+    seedStamp   = nil,   -- layout stamp already seeded into usage
+    evictStamp  = nil,   -- layout stamp auto-eviction already ran for
 };
 
 -- The tab's badge (and /dl vault's line).
 function R.cityBlocked() return st.pendingCity; end
+
+-- The latest derivation's item ids ({ [itemId] = true }) -- the Inventory
+-- tab's [wanted] tags and Store-wanted read this.
+function R.derivedIds()
+    local out = {};
+    if st.lastDerived ~= nil then
+        for _, it in ipairs(st.lastDerived.items) do out[it.itemId] = true; end
+    end
+    return out;
+end
+
+-- The live shelf-pressure verdict for the tab: nil when the layout fits,
+-- else { over = units past the shelf, mode = the removals setting,
+-- candidates = ranked unpinned evictees, pinned = the pinned ones (which
+-- ALWAYS take explicit permission, every mode) }.
+function R.pressure() return st.pressure; end
 
 -- A zone-in may have landed us in a city: let the next beat retry a
 -- city-blocked push immediately instead of waiting out lastPushKey.
@@ -92,6 +112,19 @@ function R.tick()
     end
 
     local d = D.derive.derive(D.setsRoot(), D.triggers(), D.resolve);
+    st.lastDerived = d;
+
+    -- FIRST SIGHT SEEDING (GV4): every layout identity gets an age the
+    -- moment the layout shows it, once per layout stamp.
+    if D.usage ~= nil and st.seedStamp ~= vc.layoutCache.stamp then
+        st.seedStamp = vc.layoutCache.stamp;
+        local keys = {};
+        for _, e in ipairs(vc.layoutCache.entries or {}) do
+            keys[#keys + 1] = D.usage.keyOf(e.itemId, e.identity);
+        end
+        pcall(D.usage.seed, keys);
+    end
+
     local pushKey = d.hash .. '|' .. tostring(vc.layoutCache.stamp);
     if pushKey == st.lastPushKey then return 'clean'; end
 
@@ -105,11 +138,59 @@ function R.tick()
     end
 
     local adds = {};
-    for _, it in ipairs(d.items) do
-        local c = have[it.itemId];
-        if c == nil or c < it.count then
-            adds[#adds + 1] = it;
-            if #adds >= R.MAX_PUSH then break; end
+    if not (D.settings ~= nil and D.settings().additions == 'off') then
+        for _, it in ipairs(d.items) do
+            local c = have[it.itemId];
+            if c == nil or c < it.count then
+                adds[#adds + 1] = it;
+                if #adds >= R.MAX_PUSH then break; end
+            end
+        end
+    end
+
+    -- SHELF PRESSURE (GV3): the layout (plus what is about to join it) must
+    -- fit the live shelf, or the swap engine will be told to dress more
+    -- slots than the wardrobes hold. Verdict exposed to the tab; 'auto'
+    -- evicts unpinned LRU candidates itself, ONCE per layout stamp -- and a
+    -- pinned entry takes explicit permission in EVERY mode.
+    st.pressure = nil;
+    local capacity = (type(D.capacity) == 'function') and (D.capacity() or 0) or 0;
+    if capacity > 0 and D.usage ~= nil then
+        local units = 0;
+        for _, e in ipairs(vc.layoutCache.entries or {}) do units = units + (e.count or 1); end
+        for _, it in ipairs(adds) do
+            local c = have[it.itemId] or 0;
+            units = units + (it.count - c);
+        end
+        local over = units - capacity;
+        if over > 0 then
+            local assigned = {};
+            for _, it in ipairs(d.items) do assigned[it.itemId] = true; end
+            local ranked = D.usage.rankEvictions(vc.layoutCache.entries, assigned);
+            local mode = (D.settings ~= nil) and D.settings().removals or 'ask';
+            if mode == 'auto' and st.evictStamp ~= vc.layoutCache.stamp then
+                st.evictStamp = vc.layoutCache.stamp;
+                local freed, evicted = 0, 0;
+                for _, c in ipairs(ranked.unpinned) do
+                    if freed >= over then break; end
+                    freed = freed + c.count;
+                    evicted = evicted + 1;
+                    vc.requestLayoutSet({ job = 0, verb = vc.verb.REMOVE, itemId = c.itemId,
+                                          count = 0, hint = 0, pinned = false, identity = c.identity },
+                        function(code) if code == vc.code.OK then vc.requestLayout(0); end end);
+                end
+                if evicted > 0 then
+                    say(string.format('gear vault: shelf over by %d -- evicted %d least-used unpinned entr%s (Removals: Auto).',
+                        over, evicted, (evicted == 1) and 'y' or 'ies'));
+                end
+                if freed < over then
+                    st.pressure = { over = over - freed, mode = mode,
+                                    candidates = {}, pinned = ranked.pinned };
+                end
+            elseif mode ~= 'auto' then
+                st.pressure = { over = over, mode = mode,
+                                candidates = ranked.unpinned, pinned = ranked.pinned };
+            end
         end
     end
 
@@ -152,7 +233,8 @@ end
 function R._st() return st; end
 function R._reset()
     st = { lastBeat = 0, lastPushKey = nil, pendingCity = false,
-           inFlight = 0, runOk = 0, runCity = 0, runFail = 0 };
+           inFlight = 0, runOk = 0, runCity = 0, runFail = 0,
+           lastDerived = nil, pressure = nil, seedStamp = nil, evictStamp = nil };
 end
 
 return R;

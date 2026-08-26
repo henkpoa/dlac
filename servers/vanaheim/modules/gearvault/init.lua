@@ -17,6 +17,7 @@ local base = 'dlac\\servers\\vanaheim\\modules\\gearvault\\';
 local vc  = require(base .. 'vaultclient');
 local drv = require(base .. 'derive');
 local rec = require(base .. 'reconcile');
+local usg = require(base .. 'usage');
 
 -- Production seams -----------------------------------------------------------
 
@@ -185,6 +186,19 @@ local RD = {
         end);
         return out;
     end,
+    -- slice 4: the usage memory + the behaviour settings + the live shelf
+    usage    = usg,
+    settings = usg.settings,
+    capacity = function()
+        local cap = 0;
+        pcall(function()
+            local inv = AshitaCore:GetMemoryManager():GetInventory();
+            for _, cid in ipairs({ 8, 10, 11, 12, 13, 14, 15, 16 }) do
+                cap = cap + (inv:GetContainerCountMax(cid) or 0);
+            end
+        end);
+        return cap;
+    end,
 };
 rec.configure(RD);
 
@@ -249,12 +263,45 @@ vaultWhy = function(name)
     for _, s in ipairs(out) do vc._say(s); end
 end
 
+-- THE USAGE BEATS (slice 4). Worn observation is GV4's one witness: A+C
+-- both end with the piece ON the body, so a periodic worn scan through the
+-- shared services (never a raw GetEquippedItem -- GRD1's law) stamps every
+-- identity actually worn. The save rides a lazy debounce.
+local _wornAt, _saveAt = 0, 0;
+local function usageBeat()
+    local nowc = os.clock();
+    usg.load();   -- no-op once loaded; retries until the char dir exists
+    if nowc - _wornAt >= 60 then
+        _wornAt = nowc;
+        pcall(function()
+            local S = require('dlac\\ui\\uihost').services;
+            if type(S.EQUIP_SLOTS) ~= 'table' or type(S.getEquippedId) ~= 'function' then return; end
+            local oracle = require('dlac\\gear\\gearoracle');
+            local keys = {};
+            for _, sl in ipairs(S.EQUIP_SLOTS) do
+                local id = S.getEquippedId(sl.equip);
+                if type(id) == 'number' and id > 0 then
+                    local extra = nil;
+                    pcall(function() extra = oracle.wornAugExtra(sl.equip); end);
+                    keys[#keys + 1] = usg.keyOf(id, extra);
+                end
+            end
+            usg.stamp(keys);
+        end);
+    end
+    if usg.dirty() and nowc - _saveAt >= 10 then
+        _saveAt = nowc;
+        pcall(usg.save);
+    end
+end
+
 return {
     pump = function()
         local j = mainJob();
         local ready = (type(j) == 'number' and j ~= 0);
         if ready then vc.noteJob(j); end
         vc.pump(ready);
+        if ready then pcall(usageBeat); end
         if ready then
             -- A silently-dead engine looks exactly like "nothing happened"
             -- (hard rule 12): one loud line per DISTINCT error, and the

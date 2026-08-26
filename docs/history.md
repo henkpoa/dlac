@@ -10306,3 +10306,39 @@ carries the one card). Server side, on vanaheim `henrik/wardrobe-lock`
 missing quarter of "auto sets to and from", found by three field reports in
 one session. The full loop is field-confirmed: loot → Store → derivation →
 layout → shelf → trigger dresses you.
+
+## Session "the Gear Vault, slice 4" (2026-08-26, closing block)
+
+**Theme:** the space-pressure removals, the LRU memory, and the two behaviour
+settings — the design's last slice.
+
+**Landed:**
+
+- **`usage.lua`** — the dlac-side memory the vault must never hold (Henrik's
+  ruling): identity-keyed last-used stamps in `<char>\dlac\gearvault_usage.lua`
+  (safe-ladder writes), plus the two settings. GV4's A+C collapse into ONE
+  witness — a 60s worn-scan beat through the shared services (`getEquippedId`
+  + the oracle's `wornAugExtra`; never a raw read — GRD1) — because everything
+  the engine equips IS worn moments later. Layout identities are SEEDED at
+  first sight, so never-used gear has an age; a seed never freshens a real
+  stamp.
+- **Settings** (Vault options, a collapsed header on the layout pane):
+  *Additions from sets* Auto/Off gates the reconcile push; *Removals when the
+  shelf is full* Ask/Auto/Off. Persisted with the stamps, one file.
+- **Shelf pressure (GV3):** the reconcile beat compares layout units (plus
+  incoming adds) against the LIVE wardrobe capacity. Over it: **Ask** shows
+  the banner + a marking dialog — least-used unpinned entries come pre-marked
+  to cover the overflow, each row saying whether the sets still name it and
+  when it was last seen worn; **Auto** evicts unpinned LRU by itself, once per
+  layout stamp, and says so; **a pinned entry never auto-ranks in ANY mode** —
+  it sits in the dialog unticked, and ticking it is the permission. Off = the
+  banner alone.
+- **GV7's curation:** Inventory rows the sets or layout name wear a gold
+  `[wanted]` tag, and **Store wanted (N)** deposits exactly those — sell-loot
+  stays in the bags. Store all remains beside it.
+
+**Checks:** run_tests 7326 (+USG0–11 stamps/settings/ranking, GVR16–22 the
+additions gate, ask-pressure verdict, auto-eviction), smoke_ui 1455 (the
+options rows). Field gate: shrink is unreachable at 640 shelf slots until the
+wardrobe-lock lands server-side — the machinery is ready for it; the settings,
+[wanted] tags and Store wanted are testable today.

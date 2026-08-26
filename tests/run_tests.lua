@@ -27353,7 +27353,114 @@ end)();
     T = T + rc.BEAT + 1;
     check('GVR15 a zone-in re-arms the push', rc.tick(), 'pushed:5');
 
-    vc._reset(); rc._reset();
+    -- ---- slice 4: usage stamps, settings, ranking, shelf pressure ----
+    local ug = dofile('servers/vanaheim/modules/gearvault/usage.lua');
+    check('USG0 usage loads headless', type(ug), 'table');
+    local UT = 1000;
+    ug._clock = function() return UT; end;
+    ug._reset();
+
+    check('USG1 keyOf speaks the identity vocabulary',
+          ug.keyOf(16714, string.rep('\0', 24)), '16714:' .. string.rep('0', 48));
+    ug.seed({ 'a:00', 'b:00' });
+    UT = 2000;
+    ug.stamp({ 'a:00' });
+    check('USG2 a stamp moves, a seed holds', ug.lastUsed('a:00') == 2000 and ug.lastUsed('b:00') == 1000, true);
+    ug.seed({ 'a:00' });
+    check('USG3 a seed never freshens a real stamp', ug.lastUsed('a:00'), 2000);
+    check('USG4 settings default auto/ask',
+          ug.settings().additions == 'auto' and ug.settings().removals == 'ask', true);
+    check('USG5 a junk setting value is refused', ug.setSetting('removals', 'yolo'), false);
+    ug.setSetting('removals', 'auto');
+    check('USG6 a real value lands', ug.settings().removals, 'auto');
+    check('USG7 the file round-trips', (function()
+        local chunk = (loadstring or load)(ug._serialize());
+        if chunk == nil then return 'did not parse'; end
+        local t = chunk();
+        return t.settings.removals == 'auto' and t.stamps['a:00'] == 2000;
+    end)(), true);
+
+    -- ranking: unpinned only auto-rank; unassigned first; oldest first
+    ug._reset();
+    ug.seed({ ug.keyOf(1, vc.ZERO24), ug.keyOf(2, vc.ZERO24), ug.keyOf(3, vc.ZERO24) });
+    UT = 5000;
+    ug.stamp({ ug.keyOf(2, vc.ZERO24) });
+    local ranked = ug.rankEvictions({
+        { itemId = 1, identity = vc.ZERO24, count = 1, pinned = false, name = 'Old Unassigned' },
+        { itemId = 2, identity = vc.ZERO24, count = 1, pinned = false, name = 'Fresh Unassigned' },
+        { itemId = 3, identity = vc.ZERO24, count = 1, pinned = false, name = 'Old Assigned' },
+        { itemId = 4, identity = vc.ZERO24, count = 1, pinned = true,  name = 'Pinned Thing' },
+    }, { [3] = true });
+    check('USG8 unassigned-oldest ranks first', ranked.unpinned[1].itemId, 1);
+    check('USG9 fresh unassigned before assigned', ranked.unpinned[2].itemId, 2);
+    check('USG10 assigned ranks last', ranked.unpinned[3].itemId, 3);
+    check('USG11 pinned never auto-ranks', #ranked.pinned == 1 and ranked.pinned[1].itemId, 4);
+
+    -- additions 'off' gates the push
+    vc._reset(); rc._reset(); T, sent, msgs = 1000, {}, {};
+    ug._reset();
+    local CAP = { n = 640 };
+    rc.configure({
+        vc = vc, derive = dv, clock = function() return T; end,
+        say = function(m) msgs[#msgs + 1] = m; end,
+        mainJob = function() return 1; end,
+        browsing = function() return false; end,
+        setsRoot = function() return sets; end,
+        triggers = function() return triggers; end,
+        resolve = resolve,
+        usage = ug, settings = ug.settings,
+        capacity = function() return CAP.n; end,
+    });
+    vc.pump(true); T = 1003; vc.pump(true);
+    vc.onFrame(reply(0, 0, hp));
+    vc.onFrame(reply(0, 0, vc._wu16(0) .. vc._wu16(0)));
+    vc.noteJob(1);
+    T = T + rc.BEAT + 1; rc.tick();
+    T = T + 1; vc.pump(true);
+    vc.onFrame(reply(0, 0, vc._wu16(0) .. vc._wu16(0)));   -- empty layout
+    ug.setSetting('additions', 'off');
+    T = T + rc.BEAT + 1;
+    check('GVR16 additions Off -> the engine pushes nothing', rc.tick(), 'clean');
+    check('GVR17 ...but the derivation still feeds the wanted tags', rc.derivedIds()[10], true);
+
+    -- shelf pressure, 'ask': the verdict is exposed, nothing removed
+    ug.setSetting('additions', 'auto');
+    CAP.n = 3;   -- the five derived adds cannot fit a 3-slot shelf
+    rc.zoneArmed(); rc._st().lastPushKey = nil;
+    T = T + rc.BEAT + 1;
+    local r16 = rc.tick();
+    check('GVR18 pressure computed under ask', rc.pressure() ~= nil and rc.pressure().over > 0, true);
+    check('GVR19 ...and the adds still pushed', r16:find('pushed:', 1, true) ~= nil, true);
+    check('GVR20 ...with nothing auto-removed', (function()
+        for _, p in ipairs(sent) do
+            if p[5] == vc.op.LAYOUT_SET and p[10] == 1 then return 'a remove went out'; end
+        end
+        return true;
+    end)(), true);
+
+    -- shelf pressure, 'auto': unpinned LRU evictions ride the wire
+    for _ = 1, 5 do T = T + 1; vc.pump(true); vc.onFrame(reply(0, 0, vc._wu16(0) .. vc._wu16(0))); end
+    T = T + 1; vc.pump(true);
+    vc.onFrame(reply(0, 0, vc._wu16(5) .. vc._wu16(0)
+        .. layoutEntry(1, 10, 1) .. layoutEntry(2, 20, 2)
+        .. layoutEntry(3, 30, 1) .. layoutEntry(4, 40, 1)
+        .. layoutEntry(5, 31, 1)));                        -- 6 units on a 3 shelf
+    ug.setSetting('removals', 'auto');
+    rc._st().lastPushKey = nil;
+    T = T + rc.BEAT + 1; rc.tick();
+    check('GVR21 auto mode queued evictions', (function()
+        local n = 0;
+        for _, q in ipairs(vc._st().layoutSetQ or {}) do
+            if q.e.verb == vc.verb.REMOVE then n = n + 1; end
+        end
+        return n > 0;
+    end)(), true);
+    check('GVR22 ...and said so once', (function()
+        for _, m in ipairs(msgs) do if m:find('evicted', 1, true) then return true; end end
+        return false;
+    end)(), true);
+
+    vc._reset(); rc._reset(); ug._reset();
 end)();
 
 -- ---------------------------------------------------------------------------

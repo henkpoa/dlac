@@ -7624,6 +7624,8 @@ end)();
     check('GVU6 the pinned layout entry offers Unpin + Remove',
           hits:find('Unpin##', 1, true) ~= nil and hits:find('Remove##', 1, true) ~= nil, true);
     check('GVU6c vault rows offer Layout', hits:find('Layout##', 1, true) ~= nil, true);
+    check('GVU6d the Vault options rows render (slice 4 settings)',
+          hits:find('gvset_additions', 1, true) ~= nil and hits:find('gvset_removals', 1, true) ~= nil, true);
     local heads = table.concat(headers, '|');
     check('GVU6a slot sections drew with counts',
           heads:find('Body (1)', 1, true) ~= nil and heads:find('Main (1)', 1, true) ~= nil, true);

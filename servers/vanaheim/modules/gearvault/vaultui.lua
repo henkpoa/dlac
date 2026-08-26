@@ -40,6 +40,7 @@ local fmt    = try('dlac\\gear\\gearfmt');
 local uistyl = try('dlac\\ui\\uistyle');
 local vc     = require('dlac\\servers\\vanaheim\\modules\\gearvault\\vaultclient');
 local recon  = try('dlac\\servers\\vanaheim\\modules\\gearvault\\reconcile');
+local usg    = try('dlac\\servers\\vanaheim\\modules\\gearvault\\usage');
 
 local esc = (fmt ~= nil and type(fmt.esc) == 'function') and fmt.esc or function(s) return tostring(s or ''); end
 
@@ -647,6 +648,102 @@ function M.render(job, level)
             imgui.SetTooltip('Edits to your ACTIVE job\'s layout move gear live, so the server only\ntakes them in a city (or your Mog House). They push by themselves when\nyou get there; other jobs\' layouts save from anywhere.');
         end
     end
+
+    -- ---- Vault options (slice 4's two behaviour settings) ----
+    if usg ~= nil and imgui.CollapsingHeader('Vault options###gvopts') then
+        local s = usg.settings();
+        local function settingRow(label, tip, key, options)
+            imgui.TextColored(cDIM, label);
+            if imgui.IsItemHovered() then imgui.SetTooltip(tip); end
+            imgui.SameLine(0, 8);
+            for i, o in ipairs(options) do
+                if i > 1 then imgui.SameLine(0, 4); end
+                local on = (s[key] == o.v);
+                if on then imgui.PushStyleColor(ImGuiCol_Button, { 0.55, 0.45, 0.15, 1.0 }); end
+                if imgui.SmallButton(o.l .. '###gvset_' .. key .. '_' .. o.v) then
+                    usg.setSetting(key, o.v);
+                end
+                if on then imgui.PopStyleColor(1); end
+            end
+        end
+        settingRow('Additions from sets:',
+            'Auto (default): dlac pushes every piece your sets and triggers name into\nthis job\'s layout by itself.\nOff: layouts change only by your own hand (the buttons here, !vault).',
+            'additions', { { v = 'auto', l = 'Auto' }, { v = 'off', l = 'Off' } });
+        settingRow('Removals when the shelf is full:',
+            'Ask (default): dlac presents a list of least-used entries for you to mark.\nAuto: dlac removes least-used UNPINNED entries by itself -- pinned entries\nstill always ask.\nOff: dlac never removes; trim the layout by hand.',
+            'removals', { { v = 'ask', l = 'Ask' }, { v = 'auto', l = 'Auto' }, { v = 'off', l = 'Off' } });
+    end
+
+    -- ---- shelf pressure (GV3): the banner + the marking dialog ----
+    local pr = (recon ~= nil and type(recon.pressure) == 'function') and recon.pressure() or nil;
+    if pr ~= nil and pr.over > 0 then
+        imgui.TextColored(cERR, string.format('Shelf full: the layout wants %d more slot%s than Wardrobes 1-8 hold.',
+            pr.over, (pr.over == 1) and '' or 's'));
+        if pr.mode == 'off' then
+            imgui.TextColored(cDIM, 'Removals are Off -- trim the layout with the Remove buttons below.');
+        else
+            imgui.SameLine(0, 10);
+            if imgui.SmallButton((M._evictOpen and 'Hide' or 'Choose what to remove') .. '###gvevb') then
+                if not M._evictOpen then
+                    -- pre-tick greedily: least-used unpinned until the overflow
+                    -- is covered; pinned entries are NEVER pre-ticked
+                    M._marks = {};
+                    local freed = 0;
+                    for _, c in ipairs(pr.candidates) do
+                        local tick = freed < pr.over;
+                        M._marks[c.key] = { tick };
+                        if tick then freed = freed + c.count; end
+                    end
+                    for _, c in ipairs(pr.pinned) do M._marks[c.key] = { false }; end
+                end
+                M._evictOpen = not M._evictOpen;
+            end
+        end
+        if M._evictOpen and pr.mode ~= 'off' then
+            local marked, frees = 0, 0;
+            local function evictRow(c, isPinned)
+                local buf = M._marks[c.key] or { false };
+                M._marks[c.key] = buf;
+                imgui.Checkbox('##gvem' .. c.key, buf);
+                imgui.SameLine(0, 6);
+                imgui.TextColored(isPinned and cGOLD or (COL.USABLE or { 1, 1, 1, 1 }),
+                    esc(nameOf(c.itemId)) .. (isPinned and '  [pin]' or ''));
+                if imgui.IsItemHovered() then
+                    local age = (usg ~= nil and usg.lastUsed(c.key)) or nil;
+                    imgui.SetTooltip((c.assigned and 'Your sets still name this piece.\n' or 'Nothing in your sets names this piece.\n')
+                        .. (age ~= nil and os.date('Last seen worn: %Y-%m-%d', age) or 'Never seen worn.')
+                        .. (isPinned and '\nPINNED: only you may remove it -- ticking it here is that permission.' or ''));
+                end
+                if buf[1] then marked = marked + 1; frees = frees + c.count; end
+            end
+            for _, c in ipairs(pr.candidates) do evictRow(c, false); end
+            for _, c in ipairs(pr.pinned) do evictRow(c, true); end
+            if marked > 0 then
+                if imgui.SmallButton(string.format('Remove marked (%d, frees %d)###gvevgo', marked, frees)) then
+                    local all = {};
+                    for _, c in ipairs(pr.candidates) do all[#all + 1] = c; end
+                    for _, c in ipairs(pr.pinned) do all[#all + 1] = c; end
+                    for _, c in ipairs(all) do
+                        local buf = M._marks[c.key];
+                        if buf ~= nil and buf[1] then
+                            layoutEdit({ job = 0, verb = vc.verb.REMOVE, itemId = c.itemId,
+                                         count = 0, hint = 0, pinned = false, identity = c.identity },
+                                nameOf(c.itemId) .. ' removed from the layout');
+                        end
+                    end
+                    M._evictOpen = false;
+                    M._marks = {};
+                end
+            else
+                imgui.TextColored(cDIM, 'Mark entries to remove; least-used come pre-marked.');
+            end
+        end
+        imgui.Separator();
+    elseif M._evictOpen then
+        M._evictOpen = false;   -- pressure resolved: the dialog closes itself
+        M._marks = {};
+    end
+
     local lv = filterView(layoutView(), needle);
     if lv.total > 0 then
         renderTree(lv, 'L', searching, forceClose, level, COL, function(e)
@@ -786,7 +883,30 @@ function M.render(job, level)
             if a.name == b.name then return a.slot < b.slot; end
             return a.name < b.name;
         end);
+        -- WANTED (GV7's curation): pieces your sets or this job's layout
+        -- name -- the ones that belong on a shelf, as opposed to sell-loot.
+        local wanted = {};
+        pcall(function()
+            if recon ~= nil and type(recon.derivedIds) == 'function' then
+                wanted = recon.derivedIds();
+            end
+            for _, le in ipairs(vc.layoutCache.entries or {}) do wanted[le.itemId] = true; end
+        end);
+        local wantedRows = {};
+        for _, r in ipairs(shown) do
+            if wanted[r.itemId] then wantedRows[#wantedRows + 1] = r; end
+        end
+
         if #shown > 0 then
+            if #wantedRows > 0 then
+                if imgui.SmallButton(string.format('Store wanted (%d)##gvsw', #wantedRows)) then
+                    storeRows(wantedRows);
+                end
+                if imgui.IsItemHovered() then
+                    imgui.SetTooltip('Deposit only the pieces your sets or this job\'s layout name --\nsell-loot stays in your bags. Works at a Void Warden.');
+                end
+                imgui.SameLine(0, 6);
+            end
             if imgui.SmallButton(string.format('Store all (%d)##gvsa', #shown)) then
                 storeRows(shown);
             end
@@ -835,6 +955,10 @@ function M.render(job, level)
                 if e.qty > 1 then
                     imgui.SameLine(0, 6);
                     imgui.TextColored(cDIM, 'x' .. e.qty);
+                end
+                if wanted[e.itemId] then
+                    imgui.SameLine(0, 8);
+                    imgui.TextColored(cGOLD, '[wanted]');
                 end
                 imgui.SameLine(btnCol);
                 if imgui.SmallButton('Store##gvs' .. tostring(e.slot)) then
