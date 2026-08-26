@@ -314,7 +314,18 @@ infer it from a field confirmation, from *"works"*, or from your own read that s
 ready — his own note on the exchange was *"you are right not to assume otherwise since I
 haven't told you."* Ask when he has **not** said merge; never ask twice when he has.
 
-**THE QUEUE IS EMPTY.**
+- **Server packs + the Vanaheim field round** (`2026.08.26`, 6 commits `83365dc..6a1b3e0`):
+  ADR 0035 (the server seam, `servers\cexi\` + `servers\vanaheim\` packs, pack modules,
+  `pack_lint`), ADR 0036 (`lib\imguicompat` — the newer Ashita binding's ImGui 1.90+
+  reshapes, wrapped once, keyed on the binding never the server), ADR 0037
+  (`lib\featuregate` — tabs/menu rows gated per pack with per-character Settings
+  overrides; Vanaheim ships gear-only). Field-confirmed by Henrik on Vanaheim
+  2026-08-26 (*"Seems to work now"*). **Caveat for the promoter: the ADR 0035
+  refactor moves the CEXI subsystems into pack modules and has NOT had a dedicated
+  post-refactor field round on CatsEyeXI itself** — suites are green (7208 + 1434 +
+  pack_lint 33/29) and the cexi pack is the reference implementation, but a CEXI
+  login check (E-Box, giftbox, prestige, game modes mount) before promoting would be
+  cheap insurance.
 
 *(Emptied by the 2026-08-11 promotion — **macro pages per subjob** (`2026.08.11b`), three
 commits plus its docs entry. Henrik: *"merge and push to main"* — an accept under the 08-01
