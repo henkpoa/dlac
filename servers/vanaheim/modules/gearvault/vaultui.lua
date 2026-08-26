@@ -581,7 +581,7 @@ function M.render(job, level)
     end
     local n = 0;
     for _, r in ipairs(vc.mirror.rows) do n = n + math.max(1, r.qty); end
-    imgui.TextColored(cVAULT, string.format('Vault: %d instance%s', n, (n == 1) and '' or 's'));
+    imgui.TextColored(cVAULT, string.format('Vault: %d piece%s stored', n, (n == 1) and '' or 's'));
     imgui.SameLine(0, 10);
     imgui.TextColored((state == 'fresh') and cDIM or cGOLD, '[' .. state .. ']');
     if imgui.IsItemHovered() then

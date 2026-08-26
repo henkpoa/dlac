@@ -27756,6 +27756,14 @@ end)();
     check('GVC28 the mirror subtracted the row', #vc.mirror.rows == 0 and next(vc.mirror.counts) == nil, true);
     check('GVC29 ...and stays fresh (arithmetic, not a re-ask)', vc.mirror.fresh, true);
 
+    -- Henrik, playtest 2026-08-26: the subtraction IS a change to the
+    -- mirror, so the stamp has to move with it. Views cache on the stamp
+    -- (the vault list does), so a withdraw that leaves the stamp behind
+    -- keeps painting the row that just left until the player presses Sync
+    -- by hand.
+    check('GVC29b ...and RE-STAMPS the mirror, so stamp-keyed views rebuild',
+          vc.mirror.stamp, T);
+
     -- a TOO_FAR frame refuses the whole withdraw and moves nothing
     vc._reset(); T, sent = 500, {};
     vc.pump(true); T = 503; vc.pump(true);

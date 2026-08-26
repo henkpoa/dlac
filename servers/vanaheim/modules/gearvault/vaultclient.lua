@@ -763,9 +763,10 @@ function M.onFrame(f)
         -- moved, so the mirror is arithmetic -- no re-LIST. A NO_INSTANCE
         -- answer means the mirror believed a row the vault no longer holds:
         -- that one forces the honest resync.
-        local goneRow = false;
+        local goneRow, changed = false, false;
         for _, e in ipairs(ack.entries) do
             if e.moved > 0 then
+                changed = true;
                 for i, row in ipairs(M.mirror.rows) do
                     if row.rowId == e.rowId then
                         row.qty = row.qty - e.moved;
@@ -782,6 +783,11 @@ function M.onFrame(f)
         end
         M.mirror.counts = counts;
         M.mirror.vaultCount = #M.mirror.rows;
+        -- The subtraction IS a commit, so it re-stamps like one. Views cache
+        -- on the stamp (slice 2's vault list does), so a withdraw that left
+        -- the stamp behind kept painting the row that had just gone, and the
+        -- player had to press Sync by hand (Henrik, playtest 2026-08-26).
+        if changed then M.mirror.stamp = M._clock(); end
         if type(M._onFresh) == 'function' then pcall(M._onFresh); end
         if goneRow then M.markStale(0, 'withdraw met a gone row'); end
         if req ~= nil and type(req.onDone) == 'function' then pcall(req.onDone, ack.entries, nil); end
@@ -808,7 +814,7 @@ function M.statusLine()
     end
     local n = 0;
     for _, r in ipairs(M.mirror.rows) do n = n + math.max(1, r.qty); end
-    return string.format('gear vault: %s -- %d instance%s mirrored (%d row%s)%s.',
+    return string.format('gear vault: %s -- %d piece%s mirrored (%d row%s)%s.',
         s, n, (n == 1) and '' or 's', #M.mirror.rows, (#M.mirror.rows == 1) and '' or 's',
         (st.giveups > 0) and (' -- ' .. st.giveups .. ' failed sync(s), retrying') or '');
 end
