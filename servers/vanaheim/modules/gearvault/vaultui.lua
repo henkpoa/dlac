@@ -82,6 +82,21 @@ local function isAugmented(identity)
     return type(identity) == 'string' and #identity > 0 and identity ~= ZERO24;
 end
 
+-- The augments ON a vault instance, readable: the identity blob IS the raw
+-- exdata for standard augmented gear (every byte of AugmentStandard is
+-- stable -- gear-vault.md §4.6), so the oracle's augment passthrough (the
+-- one door, ADR 0013 -- never feature\augments directly) decodes it as it
+-- would a bag copy's Extra. nil when the blob carries no decodable augments
+-- (a signature-only copy, an exotic exdata kind, headless).
+local function augTextOf(identity)
+    local txt = nil;
+    pcall(function()
+        local t = require('dlac\\gear\\gearoracle').describeAugments(identity);
+        if type(t) == 'string' and t ~= '' then txt = t; end
+    end);
+    return txt;
+end
+
 -- The standard item card, unconditionally -- callers decide WHAT was hovered
 -- (a name, or a whole row). Falls to a plain name tooltip when the record or
 -- the service is missing: a hover must never answer NOTHING.
@@ -632,6 +647,15 @@ function M.render(job, level)
                         imgui.SameLine(0, 6);
                         imgui.TextColored(cDIM, 'x' .. e.count);
                     end
+                    if isAugmented(e.identity) then
+                        imgui.SameLine(0, 8);
+                        imgui.TextColored(cGOLD, '[aug]');
+                        if imgui.IsItemHovered() then
+                            local at = augTextOf(e.identity);
+                            imgui.SetTooltip(at ~= nil and ('Augments: ' .. esc(at) .. '\n(this entry names that exact copy)')
+                                or 'This entry names a signed/augmented copy exactly.');
+                        end
+                    end
                 end,
                 buttons = function(hot, b1, b2)
                     imgui.SameLine(b1);
@@ -708,7 +732,9 @@ function M.render(job, level)
                             imgui.SameLine(0, 8);
                             imgui.TextColored(cGOLD, '[aug]');
                             if imgui.IsItemHovered() then
-                                imgui.SetTooltip('This copy carries augments or an inscription -- it comes back byte-identical.');
+                                local at = augTextOf(e.identity);
+                                imgui.SetTooltip(at ~= nil and ('Augments: ' .. esc(at) .. '\n(this copy comes back byte-identical)')
+                                    or 'This copy carries an inscription -- it comes back byte-identical.');
                             end
                         end
                     end,
