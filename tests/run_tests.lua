@@ -27183,6 +27183,172 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- GVD/GVR. Gear Vault slice 3: the DERIVED layout (derive.lua, pure) and the
+--      additions-push engine (reconcile.lua) driven against the vaultclient
+--      harness -- the GV1/GV3 laws: every set and trigger payload feeds it,
+--      pairs derive count 2, dlac: virtuals and augment-pinned records stay
+--      out, the engine only ever ADDS, and a NOT_IN_CITY refusal cancels the
+--      run and re-arms on zone-in.
+-- ---------------------------------------------------------------------------
+(function()
+    local dv = dofile('servers/vanaheim/modules/gearvault/derive.lua');
+    check('GVD0 derive loads headless', type(dv), 'table');
+
+    local RES = {
+        ['Sword A'] = { id = 10 }, ['Ring X'] = { id = 20 },
+        ['Hat B'] = { id = 30 }, ['Obi C'] = { id = 40 },
+        ['Aug Piece'] = { id = 50, aug = true },
+    };
+    local function resolve(name)
+        local r = RES[name];
+        if r == nil then return nil; end
+        return { id = r.id, aug = r.aug == true };
+    end
+
+    local sets = {
+        Dynamic = {
+            Melee = {
+                Main  = { 'Sword A' },
+                Ring1 = { 'Ring X' },
+                Ring2 = { 'Ring X', 'Unknown Thing' },
+                Head  = { 'dlac:AutoStaff', 'Hat B' },
+            },
+        },
+        Idle = { Head = 'Hat B', Ring1 = 'Ring X' },
+    };
+    local triggers = {
+        Midcast = {
+            { equip = { Waist = 'Obi C' }, cases = { { equip = { Head = 'Hat B' } } } },
+            { set = 'Melee' },                       -- contributes nothing of its own
+            { equip = { Body = 'Aug Piece' } },      -- augment-pinned: skipped
+        },
+    };
+
+    local d = dv.derive(sets, triggers, resolve);
+    local got = {};
+    for _, it in ipairs(d.items) do got[it.itemId] = it.count; end
+    check('GVD1 a Dynamic rung derives',            got[10], 1);
+    check('GVD2 a PAIR derives count 2',            got[20], 2);
+    check('GVD3 flat + candidate + case merge to one', got[30], 1);
+    check('GVD4 a trigger inline payload derives',  got[40], 1);
+    check('GVD5 dlac: virtuals derive NOTHING', (function()
+        for _, it in ipairs(d.items) do if it.itemId == 50 then return 'aug leaked'; end end
+        return true;
+    end)(), true);
+    check('GVD6 augment-pinned records are counted, not pushed', d.skippedAug, 1);
+    check('GVD7 unresolved names are reported', d.unresolved[1], 'Unknown Thing');
+    check('GVD8 the hash is stable', dv.derive(sets, triggers, resolve).hash, d.hash);
+
+    -- ---- GVR: the engine against the wire harness ----
+    local vc = dofile('servers/vanaheim/modules/gearvault/vaultclient.lua');
+    local rc = dofile('servers/vanaheim/modules/gearvault/reconcile.lua');
+    local T, sent = 0, {};
+    local msgs = {};
+    vc._clock = function() return T; end;
+    vc._send  = function(p) sent[#sent + 1] = p; end;
+    vc._say   = function() end;
+    vc._onFresh = nil;
+
+    local function s2c(op, seq, status, flags, payload)
+        return string.char(0, 0, 0, 0, op, seq, status, flags) .. (payload or '');
+    end
+    local function reply(status, flags, payload)
+        local last = sent[#sent];
+        return vc.parseFrame(s2c(last[5], last[6], status, flags, payload));
+    end
+    local hp = vc._wu16(1) .. vc._wu16(0) .. vc._wu32(0) .. string.char(15, 124, 62, 0);
+    local function layoutEntry(ord, item, count)
+        return vc._wu16(ord) .. vc._wu16(item) .. vc._wu16(count) .. string.char(0, 0) .. vc.ZERO24;
+    end
+
+    rc.configure({
+        vc = vc, derive = dv, clock = function() return T; end,
+        say = function(m) msgs[#msgs + 1] = m; end,
+        mainJob = function() return 1; end,
+        browsing = function() return false; end,
+        setsRoot = function() return sets; end,
+        triggers = function() return triggers; end,
+        resolve = resolve,
+    });
+
+    -- boot: fresh (empty) mirror
+    vc._reset(); rc._reset(); T, sent, msgs = 0, {}, {};
+    vc.pump(true); T = 3; vc.pump(true);
+    vc.onFrame(reply(0, 0, hp));
+    vc.onFrame(reply(0, 0, vc._wu16(0) .. vc._wu16(0)));
+    vc.noteJob(1);
+    check('GVR1 mirror fresh at boot', vc.state(), 'fresh');
+
+    -- beat 1: no fresh layout -> the engine asks for it
+    T = T + rc.BEAT + 1;
+    check('GVR2 first beat asks for the layout', rc.tick(), 'asked-layout');
+    T = T + 1; vc.pump(true);
+    vc.onFrame(reply(0, 0, vc._wu16(0) .. vc._wu16(0)));   -- empty layout
+    check('GVR3 layout fresh for the job', vc.layoutCache.fresh and vc.layoutCache.job, 1);
+
+    -- beat 2: derivation pushes the four adds
+    T = T + rc.BEAT + 1;
+    local r = rc.tick();
+    check('GVR4 the engine pushes the derived adds', r, 'pushed:4');
+    local okAcks = 0;
+    for _ = 1, 4 do
+        T = T + 1; vc.pump(true);
+        check('GVR5.' .. okAcks .. ' a LAYOUT_SET frame is on the wire', sent[#sent][5], vc.op.LAYOUT_SET);
+        vc.onFrame(reply(0, 0, vc._wu16(0) .. vc._wu16(0)));   -- code OK
+        okAcks = okAcks + 1;
+    end
+    check('GVR6 all four acked', okAcks, 4);
+    check('GVR7 success re-asks the layout', vc._st().layoutWant ~= nil, true);
+    check('GVR8 ...and says so once', (function()
+        for _, m in ipairs(msgs) do if m:find('+4', 1, true) then return true; end end
+        return false;
+    end)(), true);
+
+    -- the pair pushed count 2 (find the id-20 frame: count bytes @ offset 4-5 of payload)
+    check('GVR9 the pair rode with count 2', (function()
+        for _, p in ipairs(sent) do
+            if p[5] == vc.op.LAYOUT_SET then
+                local item = (p[11] or 0) + (p[12] or 0) * 256;
+                local cnt  = (p[13] or 0) + (p[14] or 0) * 256;
+                if item == 20 then return cnt; end
+            end
+        end
+        return 'no frame';
+    end)(), 2);
+
+    -- refresh the layout with the four entries -> the next beat is clean
+    T = T + 1; vc.pump(true);
+    vc.onFrame(reply(0, 0, vc._wu16(4) .. vc._wu16(0)
+        .. layoutEntry(1, 10, 1) .. layoutEntry(2, 20, 2)
+        .. layoutEntry(3, 30, 1) .. layoutEntry(4, 40, 1)));
+    T = T + rc.BEAT + 1;
+    check('GVR10 a satisfied derivation is clean', rc.tick(), 'clean');
+
+    -- NOT_IN_CITY: the first refusal cancels the run and arms the badge
+    vc._reset(); rc._reset(); T, sent, msgs = 100, {}, {};
+    vc.pump(true); T = 103; vc.pump(true);
+    vc.onFrame(reply(0, 0, hp));
+    vc.onFrame(reply(0, 0, vc._wu16(0) .. vc._wu16(0)));
+    vc.noteJob(1);
+    T = T + rc.BEAT + 1; rc.tick();
+    T = T + 1; vc.pump(true);
+    vc.onFrame(reply(0, 0, vc._wu16(0) .. vc._wu16(0)));   -- empty layout
+    T = T + rc.BEAT + 1;
+    check('GVR11 the field beat pushes', rc.tick(), 'pushed:4');
+    T = T + 1; vc.pump(true);
+    vc.onFrame(reply(0, 0, vc._wu16(12) .. vc._wu16(0)));  -- NOT_IN_CITY
+    check('GVR12 the refusal cancels the queued siblings', #(vc._st().layoutSetQ or {}), 0);
+    check('GVR13 ...arms the city badge', rc.cityBlocked(), true);
+    T = T + rc.BEAT + 1;
+    check('GVR14 the same derivation does not re-spam', rc.tick(), 'clean');
+    rc.zoneArmed();
+    T = T + rc.BEAT + 1;
+    check('GVR15 a zone-in re-arms the push', rc.tick(), 'pushed:4');
+
+    vc._reset(); rc._reset();
+end)();
+
+-- ---------------------------------------------------------------------------
 -- FGT. The surface gate (lib/featuregate.lua, 2026-08-26): pack defaults ->
 --      character overrides -> the two persistence halves. The pack layer is
 --      injected through M._packFeatures, so no serverpack and no filesystem.

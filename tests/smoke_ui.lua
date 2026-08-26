@@ -7511,7 +7511,7 @@ end)();
 --      stubs up itself (the tray-section idiom).
 -- ---------------------------------------------------------------------------
 (function()
-    local depth = { child = 0, item = 0, tree = 0, tip = 0 };
+    local depth = { child = 0, item = 0, tree = 0, tip = 0, col = 0 };
     local texts, smallHits, headers = {}, {}, {};
     local pressWithdraw = false;
     local nop = function() end;
@@ -7519,6 +7519,8 @@ end)();
         TextColored   = function(_, s) texts[#texts + 1] = tostring(s); end,
         SameLine      = nop, Separator = nop, SetTooltip = nop,
         SetNextItemOpen = nop, Dummy = nop,
+        PushStyleColor = function() depth.col = depth.col + 1; end,
+        PopStyleColor  = function(n) depth.col = depth.col - (n or 1); end,
         GetContentRegionAvail = function() return 800, 500; end,
         IsItemHovered = function() return true; end,
         SmallButton   = function(label)
@@ -7590,11 +7592,15 @@ end)();
     check('GVU3 item-width stack balanced', depth.item, 0);
     check('GVU3a tree stack balanced',  depth.tree, 0);
     check('GVU3b tooltip stack balanced (the standard hover card ran)', depth.tip, 0);
+    check('GVU3c style-colour stack balanced', depth.col, 0);
     local blob = table.concat(texts, '|');
     check('GVU4 the browser drew both rows',
           blob:find('Item100', 1, true) ~= nil and blob:find('Item200', 1, true) ~= nil, true);
     check('GVU5 the augmented copy is tagged', blob:find('[aug]', 1, true) ~= nil, true);
-    check('GVU6 the layout drew its pinned entry', blob:find('[pin]', 1, true) ~= nil, true);
+    local hits = table.concat(smallHits, '|');
+    check('GVU6 the pinned layout entry offers Unpin + Remove',
+          hits:find('Unpin##', 1, true) ~= nil and hits:find('Remove##', 1, true) ~= nil, true);
+    check('GVU6c vault rows offer + Layout', hits:find('+ Layout##', 1, true) ~= nil, true);
     local heads = table.concat(headers, '|');
     check('GVU6a slot sections drew with counts',
           heads:find('Body (1)', 1, true) ~= nil and heads:find('Main (1)', 1, true) ~= nil, true);

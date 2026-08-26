@@ -242,12 +242,40 @@ function M.parseWithdrawAck(payload)
     return { entries = entries };
 end
 
--- The per-entry GearVaultCode words this slice can meet (withdraw path).
+-- The per-entry GearVaultCode words the client meets.
 M.code =
 {
     OK = 0, PARTIAL = 1, NOTHING_TO_DO = 2, NOT_ELIGIBLE = 3, ITEM_BUSY = 4,
     NO_INSTANCE = 5, INVENTORY_FULL = 6, RARE_HELD = 7, BUSY = 8, STORE_ERROR = 9,
+    DUPLICATE = 10, TOO_FAR = 11, NOT_IN_CITY = 12, UNKNOWN_ITEM = 13,
+    AMBIGUOUS_NAME = 14, NOT_IN_LAYOUT = 15,
 };
+
+M.ZERO24 = string.rep('\0', 24);
+
+-- LAYOUT_SET C2S: { u8 Job (0 = my main); u8 Verb (0 add / 1 remove / 2 pin);
+-- u16 ItemNo; u16 Count; u8 Hint; u8 Pinned; u8 IdentityExtra[24] }. One
+-- entry per frame by protocol; batches ride the queue with distinct Seqs.
+M.verb = { ADD = 0, REMOVE = 1, PIN = 2 };
+
+function M.layoutSetPayload(e)
+    local id24 = e.identity;
+    if type(id24) ~= 'string' or #id24 < 24 then
+        id24 = (type(id24) == 'string') and (id24 .. string.rep('\0', 24 - #id24)) or M.ZERO24;
+    else
+        id24 = id24:sub(1, 24);
+    end
+    return string.char((e.job or 0) % 256, (e.verb or 0) % 256)
+        .. wu16(e.itemId or 0) .. wu16(e.count or 1)
+        .. string.char((e.hint or 0) % 256, e.pinned and 1 or 0)
+        .. id24;
+end
+
+-- LAYOUT_SET S2C: { u16 Code; u16 Rsvd }.
+function M.parseLayoutSetAck(payload)
+    if type(payload) ~= 'string' or #payload < 2 then return nil; end
+    return { code = u16(payload, 0) };
+end
 
 -- ---------------------------------------------------------------------------
 -- The mirror -- what consumers read (through the serverpack service, never
@@ -403,6 +431,32 @@ function M.requestWithdraw(entries, onDone)
     return true;
 end
 
+-- Queue one layout edit (slice 3). e = { job (0 = my main), verb (M.verb.*),
+-- itemId, count, hint, pinned, identity (24 raw bytes; nil = zero blob) };
+-- onDone(code, err) fires once -- code from the ack (NOT_IN_CITY included),
+-- or nil with err on a refused/lost frame. Same mutating-op laws as
+-- withdraw: same-Seq retries only, exhaustion reports and never re-sends.
+function M.requestLayoutSet(e, onDone)
+    if st.dormant or type(e) ~= 'table' or type(e.itemId) ~= 'number' then return false; end
+    st.layoutSetQ = st.layoutSetQ or {};
+    st.layoutSetQ[#st.layoutSetQ + 1] = { e = e, onDone = onDone };
+    return true;
+end
+
+-- Drop every QUEUED layout edit (the in-flight one, if any, still answers).
+-- The reconcile engine calls this the moment one add refuses NOT_IN_CITY:
+-- every sibling targets the same job, so the rest would only spam refusals.
+function M.cancelLayoutSets()
+    local n = #(st.layoutSetQ or {});
+    -- keep index 1 when it is the in-flight request's backing entry
+    if st.pending ~= nil and st.pending.op == M.op.LAYOUT_SET and n > 0 then
+        st.layoutSetQ = { st.layoutSetQ[1] };
+        return n - 1;
+    end
+    st.layoutSetQ = {};
+    return n;
+end
+
 -- ---------------------------------------------------------------------------
 -- The frame pump. `ready` = a real character is known (job id ~= 0). All
 -- pacing lives here; callers just call it every frame.
@@ -432,6 +486,14 @@ function M.pump(ready)
                         pcall(req.onDone, nil, 'timeout');
                     end
                     M.markStale(0, 'withdraw timeout');
+                elseif dead.op == M.op.LAYOUT_SET then
+                    -- Same mutating-op law: report, drop, and let the layout
+                    -- re-ask reveal what actually landed.
+                    local req = table.remove(st.layoutSetQ or {}, 1);
+                    if req ~= nil and type(req.onDone) == 'function' then
+                        pcall(req.onDone, nil, 'timeout');
+                    end
+                    M.layoutCache.fresh = false;
                 elseif dead.op == M.op.LAYOUT_LIST then
                     st.layoutAcc = nil;   -- the tab just shows stale and re-asks
                 else
@@ -452,10 +514,14 @@ function M.pump(ready)
 
     if now - st.lastSend < M.MIN_GAP then return; end
 
-    -- Send priority: the write verb a player is waiting on, then a layout
+    -- Send priority: the write verbs a player is waiting on, then a layout
     -- ask, then the background mirror sync.
     if st.withdrawQ ~= nil and st.withdrawQ[1] ~= nil then
         beginOp('withdraw', M.op.WITHDRAW, M.withdrawPayload(st.withdrawQ[1].entries), now);
+        return;
+    end
+    if st.layoutSetQ ~= nil and st.layoutSetQ[1] ~= nil then
+        beginOp('layoutset', M.op.LAYOUT_SET, M.layoutSetPayload(st.layoutSetQ[1].e), now);
         return;
     end
     if st.layoutWant ~= nil then
@@ -504,6 +570,15 @@ function M.onFrame(f)
                 pcall(req.onDone, nil, word);
             end
             return true;   -- a refused withdraw moved nothing: the mirror stands
+        end
+        if p.op == M.op.LAYOUT_SET then
+            local req = table.remove(st.layoutSetQ or {}, 1);
+            if req ~= nil and type(req.onDone) == 'function' then
+                local word = (f.status == M.status.TOO_FAR and 'too_far')
+                    or (f.status == M.status.BUSY and 'busy') or 'unavailable';
+                pcall(req.onDone, nil, word);
+            end
+            return true;
         end
         if p.op == M.op.LAYOUT_LIST then
             st.layoutAcc = nil;
@@ -585,6 +660,25 @@ function M.onFrame(f)
                 stamp   = now,
             };
             st.layoutAcc = nil;
+        end
+        return true;
+    end
+
+    if p.op == M.op.LAYOUT_SET then
+        local ack = M.parseLayoutSetAck(f.payload);
+        st.pending = nil;
+        local req = table.remove(st.layoutSetQ or {}, 1);
+        if req ~= nil and type(req.onDone) == 'function' then
+            if ack == nil then
+                pcall(req.onDone, nil, 'malformed');
+            else
+                pcall(req.onDone, ack.code, nil);
+            end
+        end
+        -- An accepted edit changed the server's layout: the cached view is
+        -- behind until the next LAYOUT_LIST (the caller batches the re-ask).
+        if ack ~= nil and ack.code == M.code.OK then
+            M.layoutCache.fresh = false;
         end
         return true;
     end

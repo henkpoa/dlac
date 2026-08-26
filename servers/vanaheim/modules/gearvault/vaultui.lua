@@ -39,6 +39,7 @@ local icons  = try('dlac\\ui\\itemicons');
 local fmt    = try('dlac\\gear\\gearfmt');
 local uistyl = try('dlac\\ui\\uistyle');
 local vc     = require('dlac\\servers\\vanaheim\\modules\\gearvault\\vaultclient');
+local recon  = try('dlac\\servers\\vanaheim\\modules\\gearvault\\reconcile');
 
 local esc = (fmt ~= nil and type(fmt.esc) == 'function') and fmt.esc or function(s) return tostring(s or ''); end
 
@@ -147,6 +148,40 @@ local function noteResult(text, isErr)
     chat('gear vault: ' .. text);
 end
 
+-- One queued layout edit from a tab button. `okText` is the success line;
+-- the refusal vocabulary is shared. Every accepted edit re-asks the layout
+-- so the pane catches up.
+local LAYOUT_CODE_WORDS = {
+    [12] = 'edits to your ACTIVE job\'s layout need a city (or your Mog House)',
+    [15] = 'that entry is no longer in the layout -- re-syncing the view',
+    [13] = 'the server did not recognise that item',
+    [9]  = 'the vault store errored -- nothing changed',
+};
+
+local function layoutEdit(e, okText)
+    local queued = vc.requestLayoutSet(e, function(code, err)
+        if code == vc.code.OK then
+            noteResult(okText, false);
+            vc.requestLayout(0);
+        elseif code ~= nil then
+            noteResult(LAYOUT_CODE_WORDS[code] or ('layout edit refused (code ' .. tostring(code) .. ')'), true);
+            if code == vc.code.NOT_IN_LAYOUT then vc.requestLayout(0); end
+        else
+            noteResult(ERR_WORDS[err] or ('layout edit failed (' .. tostring(err) .. ')'), true);
+        end
+    end);
+    if not queued then
+        noteResult('could not queue the layout edit (client dormant)', true);
+    end
+end
+
+-- The pinned-remove confirmation: first click arms, second click within the
+-- window sends. Keyed on the entry so two rows can never confirm each other.
+local _confirm = nil;     -- { key, at }
+local function confirmArmed(key)
+    return _confirm ~= nil and _confirm.key == key and (os.clock() - _confirm.at) < 5.0;
+end
+
 local function withdrawRow(row)
     local nm = nameOf(row.itemId);
     local okQueued = vc.requestWithdraw({ { rowId = row.rowId, qty = row.qty } }, function(acks, err)
@@ -231,6 +266,7 @@ local function layoutView()
         total = total + 1;
         bucket(grouped, rec, {
             itemId = e.itemId, count = e.count, hint = e.hint, pinned = e.pinned,
+            identity = e.identity,
             rec = rec, name = nameOf(e.itemId), sortKey = e.ordinal,
         });
     end
@@ -450,6 +486,12 @@ function M.render(job, level)
         imgui.SameLine(0, 8);
         imgui.TextColored(cGOLD, '(fetching...)');
     end
+    if recon ~= nil and type(recon.cityBlocked) == 'function' and recon.cityBlocked() then
+        imgui.TextColored(cGOLD, 'Additions from your sets are waiting for a city.');
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('Edits to your ACTIVE job\'s layout move gear live, so the server only\ntakes them in a city (or your Mog House). They push by themselves when\nyou get there; other jobs\' layouts save from anywhere.');
+        end
+    end
     local lv = filterView(layoutView(), needle);
     if lv.total > 0 then
         renderTree(lv, 'L', searching, forceClose, level, COL, function(e)
@@ -458,12 +500,39 @@ function M.render(job, level)
                     imgui.SameLine(0, 6);
                     imgui.TextColored(cDIM, 'x' .. e.count);
                 end
-                if e.pinned then
-                    imgui.SameLine(0, 8);
-                    imgui.TextColored(cGOLD, '[pin]');
-                    if imgui.IsItemHovered() then
-                        imgui.SetTooltip('Soft-locked: no automation may remove this entry without asking you.');
+                imgui.SameLine(0, 8);
+                local pinLabel = (e.pinned and 'Unpin' or 'Pin') .. '##gvp' .. tostring(e.sortKey);
+                if e.pinned then imgui.PushStyleColor(ImGuiCol_Button, { 0.55, 0.45, 0.15, 1.0 }); end
+                if imgui.SmallButton(pinLabel) then
+                    layoutEdit({ job = 0, verb = vc.verb.PIN, itemId = e.itemId, count = e.count,
+                                 hint = e.hint or 0, pinned = not e.pinned, identity = e.identity },
+                        e.pinned and (e.name .. ' unpinned') or (e.name .. ' pinned -- automations must ask before touching it'));
+                end
+                if e.pinned then imgui.PopStyleColor(1); end
+                if imgui.IsItemHovered() then
+                    imgui.SetTooltip(e.pinned
+                        and 'Pinned (soft-locked): no automation may remove this entry without asking.\nClick to release the pin.'
+                        or  'Pin (soft-lock) this entry: dlac\'s own automation must ask you before\nremoving it, even in space-pressure cleanups.');
+                end
+                imgui.SameLine(0, 4);
+                local rkey = 'rm' .. tostring(e.sortKey);
+                local armed = e.pinned and confirmArmed(rkey);
+                if armed then imgui.PushStyleColor(ImGuiCol_Button, { 0.75, 0.25, 0.20, 1.0 }); end
+                if imgui.SmallButton((armed and 'Sure?' or 'Remove') .. '##gvr' .. tostring(e.sortKey)) then
+                    if e.pinned and not armed then
+                        _confirm = { key = rkey, at = os.clock() };
+                    else
+                        _confirm = nil;
+                        layoutEdit({ job = 0, verb = vc.verb.REMOVE, itemId = e.itemId, count = 0,
+                                     hint = 0, pinned = false, identity = e.identity },
+                            e.name .. ' removed from the layout');
                     end
+                end
+                if armed then imgui.PopStyleColor(1); end
+                if imgui.IsItemHovered() then
+                    imgui.SetTooltip(e.pinned
+                        and 'Remove this PINNED entry -- takes a second click to confirm.\nThe piece itself stays in the vault; only the layout forgets it.'
+                        or  'Remove from this job\'s layout. The piece stays in the vault;\nthe shelf drops it at the next job change or live edit.');
                 end
             end;
         end);
@@ -497,6 +566,15 @@ function M.render(job, level)
                     end
                 end
                 imgui.SameLine(0, 12);
+                if imgui.SmallButton('+ Layout##gvl' .. tostring(e.rowId)) then
+                    layoutEdit({ job = 0, verb = vc.verb.ADD, itemId = e.itemId, count = 1,
+                                 hint = 0, pinned = false, identity = e.identity },
+                        e.name .. ' added to this job\'s layout');
+                end
+                if imgui.IsItemHovered() then
+                    imgui.SetTooltip('Add THIS copy (augments included) to your current main job\'s layout.\nLive in a city (or your Mog House); refused in the field.');
+                end
+                imgui.SameLine(0, 4);
                 if imgui.SmallButton('Withdraw##gvw' .. tostring(e.rowId)) then
                     withdrawRow(e);
                 end

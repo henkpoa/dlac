@@ -14,7 +14,9 @@
 
 local base = 'dlac\\servers\\vanaheim\\modules\\gearvault\\';
 
-local vc = require(base .. 'vaultclient');
+local vc  = require(base .. 'vaultclient');
+local drv = require(base .. 'derive');
+local rec = require(base .. 'reconcile');
 
 -- Production seams -----------------------------------------------------------
 
@@ -50,6 +52,7 @@ pcall(function()
         state      = vc.state,
         refresh    = vc.refresh,
         statusLine = vc.statusLine,
+        cityBlocked = function() return rec.cityBlocked(); end,
     });
 end);
 
@@ -59,6 +62,7 @@ pcall(function()
     ashita.events.register('packet_in', 'dlac_gearvault_packet_in', function(e)
         if e.id == 0x00A then
             vc.noteZoneIn();
+            rec.zoneArmed();   -- a city-blocked push may retry where we landed
             return;
         end
         if e.id ~= vc.PKT then return; end
@@ -122,11 +126,63 @@ local function mainJob()
     return j;
 end
 
+-- THE RECONCILE ENGINE (slice 3 -- reconcile.lua's header carries the whole
+-- design). Readers arrive here so the engine stays pure of files and Ashita:
+-- sets through profilesets (the one sets reader -- it answers for the LIVE
+-- job unless browsing, and the engine refuses to run while browsing), the
+-- trigger file through dispatch's raw reader (profile tier first, legacy
+-- tier as the fallback -- the two-tier law), names through the shared
+-- lookupByName service, at call time.
+rec.configure({
+    vc     = vc,
+    derive = drv,
+    clock  = os.clock,
+    say    = function(m) vc._say(m); end,
+    mainJob = mainJob,
+    browsing = function()
+        local b = false;
+        pcall(function() b = require('dlac\\ui\\jobbrowse').active() == true; end);
+        return b;
+    end,
+    setsRoot = function()
+        local root = nil;
+        pcall(function() root = require('dlac\\gear\\profilesets').getSetsRoot(); end);
+        return root;
+    end,
+    triggers = function()
+        local t = nil;
+        pcall(function()
+            local j = mainJob();
+            local abbr = require('dlac\\gear\\jobgate').JOBS[j];
+            if abbr == nil then return; end
+            local prof = require('dlac\\profiles');
+            local disp = require('dlac\\dispatch');
+            local tt = disp.readTriggersRaw(prof.triggersPath(abbr));
+            if tt == nil then tt = disp.readTriggersRaw(prof.legacyTriggersPath(abbr)); end
+            t = tt;
+        end);
+        return t;
+    end,
+    resolve = function(name)
+        local out = nil;
+        pcall(function()
+            local S = require('dlac\\ui\\uihost').services;
+            if type(S.lookupByName) ~= 'function' then return; end
+            local r = S.lookupByName(name);
+            if type(r) == 'table' and type(r.Id) == 'number' then
+                out = { id = r.Id, aug = (type(r.AugKey) == 'string' and r.AugKey ~= '') };
+            end
+        end);
+        return out;
+    end,
+});
+
 return {
     pump = function()
         local j = mainJob();
         local ready = (type(j) == 'number' and j ~= 0);
         if ready then vc.noteJob(j); end
         vc.pump(ready);
+        if ready then pcall(rec.tick); end
     end,
 };

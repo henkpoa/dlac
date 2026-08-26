@@ -10217,3 +10217,40 @@ divide the window"): row 1 = icon + name + the decorations and BUTTONS (more
 coming), row 2 indented = Lv + the stat summary, dim. And the left pane takes
 50% of the live width (GetContentRegionAvail), never a fixed 360. The aligned-
 column helpers went with the fixed width. Suites 7272 + 1449.
+
+## Session "the Gear Vault, slice 3" (2026-08-26, fourth block)
+
+**Theme:** the derived layout — your sets start writing the shelf (GV1/GV3).
+
+**Landed:**
+
+- **`derive.lua`** (pure): a job's derived layout from plain tables — every set
+  in the sets root (every candidate rung of a Dynamic set), every trigger's
+  inline equip payload and case payloads; `dlac:` virtuals contribute nothing;
+  PAIRS derive count 2 (Ring1+Ring2 in one set; max across sets); augment-pinned
+  records are skipped-and-counted (their exact blob comes from the vault pane's
+  "+ Layout" — GV8's road); unresolved names reported; a stable hash keys change
+  detection.
+- **`reconcile.lua`** — the additions push, STATELESS by design: an 8s beat
+  re-derives the ACTIVE job (never while browsing — the sets root answers for
+  the browsed job there), diffs against the server layout's zero-blob entries,
+  and queues LAYOUT_SET adds. One shape covers every trigger: a set commit
+  moves the hash, login is the first beat, a NOT_IN_CITY refusal cancels the
+  run's siblings + arms the badge, and zone-in re-arms it (the server is the
+  city-gate authority — dlac predicts nothing). Additions ONLY: the engine may
+  add or raise a count, never remove or lower (removals = slice 4's
+  space-pressure flow, or the player's hand).
+- **The tab grows its verbs:** Pin/Unpin (the server's pinned flag — gold when
+  set), Remove (a pinned entry takes a second "Sure?" click), "+ Layout" on
+  vault rows (carries THAT copy's exact identity bytes — the augmented road),
+  and the gold "additions waiting for a city" badge.
+- **Wire:** LAYOUT_SET codec + queue in vaultclient with the mutating-op laws
+  (same-Seq retries; exhaustion reports and never re-sends; `cancelLayoutSets`
+  for the city refusal). The GV3 addition/removal SETTINGS arrive with slice 4;
+  this slice ships the design's defaults (additions free).
+
+**Checks:** run_tests 7299 (+GVD0–8 derivation, GVR1–15 the engine end-to-end
+over the wire harness), smoke_ui 1451 (buttons + style-colour balance),
+pack_lint 29. Field gate: edit a set in a city → "layout +N pieces" within ~8s
+→ change job → the shelf follows; the same edit in the field arms the badge and
+pushes on the next city visit.
