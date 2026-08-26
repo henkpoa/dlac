@@ -10288,3 +10288,21 @@ a successful run marks the mirror stale for one cheap LIST resync — the ack
 carries no quantities, and you are standing at a Warden anyway). Refusals speak
 per item: a DUPLICATE stays in your bags and says it is future scrap fodder.
 Suites 7307 + 1454.
+
+### The polish rounds (2026-08-26, evening) — one-row rows, the vault reads whole
+
+The rapid-fire field loop that followed slice 3, each round shipped within
+minutes of the report: the Inventory sub-tab (Vault | Inventory (N), gold when
+gear waits, Store / Store all on the DEPOSIT verb) then flattened to a one-row
+list with right-edge buttons; ALL panes to one-row entries (icon, name, Lv,
+tags, button columns — stats live in the hover card); whole-row hover
+highlight that survives button hover (hot-row memory + full-width Selectable
+under SetNextItemAllowOverlap); the newer ImGui's SetCursorPos assert
+(normalization dropped with the second line); vault augments decoded through
+the oracle passthrough into the card's own Aug: seat (the identity blob IS the
+raw exdata); and the doubled-card fix (the [aug] tag is a marker, the row
+carries the one card). Server side, on vanaheim `henrik/wardrobe-lock`
+(`b25a572924`): a deposit the active layout names applies ON THE SPOT — the
+missing quarter of "auto sets to and from", found by three field reports in
+one session. The full loop is field-confirmed: loot → Store → derivation →
+layout → shelf → trigger dresses you.

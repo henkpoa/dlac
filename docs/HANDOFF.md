@@ -314,6 +314,21 @@ infer it from a field confirmation, from *"works"*, or from your own read that s
 ready — his own note on the exchange was *"you are right not to assume otherwise since I
 haven't told you."* Ask when he has **not** said merge; never ask twice when he has.
 
+- **THE GEAR VAULT INTEGRATION, slices 1-3 + the polish rounds** (`2026.08.26v`,
+  commits `2f17513..7b59d10` — design: `docs/design/gear-vault-integration.md`,
+  a Vanaheim-only pack module): the 0x1E0 wire client + vault mirror (vaulted
+  = an ownership tier, violet everywhere, prune-safe), the Gear Vault tab
+  (Vault | Inventory sub-tabs, one-row entries, whole-row hover with the
+  standard card, augments decoded into the card), the derived layout (sets
+  write the shelf; additions push; soft-lock = the server's pin; city-gate
+  badge), Store/Store all + Withdraw + layout verbs on the wire under the
+  mutating-op laws. **Field-confirmed by Henrik end-to-end** (loot → Store →
+  layout → shelf → trigger dresses you) across ~a dozen same-day rounds.
+  Companion server commit on vanaheim `henrik/wardrobe-lock` (`b25a572924`):
+  deposit-applies-what-the-layout-names. Owed (slice 4): the space-pressure
+  removal flows + LRU stamps + the GV3/GV4 settings; GV7's curated sweep
+  ordering.
+
 - **Server packs + the Vanaheim field round** (`2026.08.26`, 6 commits `83365dc..6a1b3e0`):
   ADR 0035 (the server seam, `servers\cexi\` + `servers\vanaheim\` packs, pack modules,
   `pack_lint`), ADR 0036 (`lib\imguicompat` — the newer Ashita binding's ImGui 1.90+
