@@ -125,9 +125,6 @@ function R.tick()
         pcall(D.usage.seed, keys);
     end
 
-    local pushKey = d.hash .. '|' .. tostring(vc.layoutCache.stamp);
-    if pushKey == st.lastPushKey then return 'clean'; end
-
     -- zero-blob layout entries only (see header): id -> count
     local have = {};
     for _, e in ipairs(vc.layoutCache.entries or {}) do
@@ -153,6 +150,12 @@ function R.tick()
     -- slots than the wardrobes hold. Verdict exposed to the tab; 'auto'
     -- evicts unpinned LRU candidates itself, ONCE per layout stamp -- and a
     -- pinned entry takes explicit permission in EVERY mode.
+    --
+    -- Evaluated EVERY beat, deliberately BEFORE the derivation-unchanged
+    -- early-out below: capacity can move on its own (the wardrobe lock, a
+    -- /dl vault cap override) with no change to the derivation or the
+    -- layout -- Henrik's cap-override field round found exactly that beat
+    -- answering 'clean' forever while the pressure verdict sat stale.
     st.pressure = nil;
     local capacity = (type(D.capacity) == 'function') and (D.capacity() or 0) or 0;
     if capacity > 0 and D.usage ~= nil then
@@ -194,6 +197,9 @@ function R.tick()
         end
     end
 
+    -- The PUSH half alone rides the change gate (pressure above never does).
+    local pushKey = d.hash .. '|' .. tostring(vc.layoutCache.stamp);
+    if pushKey == st.lastPushKey then return 'clean'; end
     st.lastPushKey = pushKey;
     if #adds == 0 then
         if st.runCity == 0 then st.pendingCity = false; end

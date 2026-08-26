@@ -27460,6 +27460,31 @@ end)();
         return false;
     end)(), true);
 
+    -- a capacity change ALONE surfaces pressure: no derivation change, no
+    -- layout change, no lastPushKey reset (the /dl vault cap field bug --
+    -- pressure must never hide behind the derivation-unchanged early-out)
+    vc._reset(); rc._reset(); ug._reset(); T, sent, msgs = 2000, {}, {};
+    ug.setSetting('removals', 'ask');
+    CAP.n = 640;
+    vc.pump(true); T = 2003; vc.pump(true);
+    vc.onFrame(reply(0, 0, hp));
+    vc.onFrame(reply(0, 0, vc._wu16(0) .. vc._wu16(0)));
+    vc.noteJob(1);
+    T = T + rc.BEAT + 1; rc.tick();                        -- asks layout
+    T = T + 1; vc.pump(true);
+    vc.onFrame(reply(0, 0, vc._wu16(5) .. vc._wu16(0)
+        .. layoutEntry(1, 10, 1) .. layoutEntry(2, 20, 2)
+        .. layoutEntry(3, 30, 1) .. layoutEntry(4, 40, 1)
+        .. layoutEntry(5, 31, 1)));                        -- 6 units, roomy shelf
+    T = T + rc.BEAT + 1; rc.tick();
+    T = T + rc.BEAT + 1;
+    check('GVR23 roomy shelf: clean beat, no pressure',
+          rc.tick() == 'clean' and rc.pressure() == nil, true);
+    CAP.n = 3;                                             -- the cap override lands
+    T = T + rc.BEAT + 1;
+    check('GVR24 a capacity change ALONE surfaces pressure on the next beat',
+          rc.tick() == 'clean' and rc.pressure() ~= nil and rc.pressure().over == 3, true);
+
     vc._reset(); rc._reset(); ug._reset();
 end)();
 
