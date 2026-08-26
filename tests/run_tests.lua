@@ -27136,6 +27136,152 @@ end)();
     check('SPK28 provide -> service answers',     sp.service('gamemode').get(), 'CW');
     sp._reset();
     check('SPK29 _reset clears services',         sp.service('gamemode'), nil);
+
+    -- features(): the pack's hand-maintained surface defaults (2026-08-26).
+    -- A pack that ships the file answers it; one that does not answers nil;
+    -- and pre-init the answer is nil WITHOUT latching (hard rule 11's shape).
+    fixtures = {
+        ['dlac\\servers\\index'] = { 'aaa' },
+        ['dlac\\servers\\aaa\\manifest'] = { id = 'aaa', files = {} },
+        ['dlac\\servers\\aaa\\features'] = { tabs = { gearhelpers = false } },
+    };
+    configured = nil; arm();
+    check('SPK30 features() pre-init is nil',     sp.features(), nil);
+    sp.init();
+    check('SPK31 ...and does not latch: post-init it answers',
+          sp.features() ~= nil and sp.features().tabs.gearhelpers, false);
+    check('SPK32 ...memoized to one table',       sp.features(), sp.features());
+    fixtures['dlac\\servers\\aaa\\features'] = nil;
+    configured = nil; arm();
+    sp.init();
+    check('SPK33 a pack without the file -> nil', sp.features(), nil);
+end)();
+
+-- ---------------------------------------------------------------------------
+-- FGT. The surface gate (lib/featuregate.lua, 2026-08-26): pack defaults ->
+--      character overrides -> the two persistence halves. The pack layer is
+--      injected through M._packFeatures, so no serverpack and no filesystem.
+-- ---------------------------------------------------------------------------
+(function()
+    local fg = dofile('lib/featuregate.lua');
+    check('FGT0 featuregate loads headless', type(fg), 'table');
+
+    -- no pack file -> everything on
+    fg._reset(); fg._packFeatures = false;
+    check('FGT1 no pack file -> a tab is on',      fg.tabEnabled('Sets'), true);
+    check('FGT2 no pack file -> a menu row is on', fg.menuEnabled('lockstyle'), true);
+    check('FGT3 an unknown tab label is NEVER gated', fg.tabEnabled('Some Future Tab'), true);
+    check('FGT4 an unrostered menu key is never gated', fg.menuEnabled('settings'), true);
+
+    -- the pack default: only an explicit false disables
+    fg._reset();
+    fg._packFeatures = { tabs = { gearhelpers = false }, menu = { lockstyle = false } };
+    check('FGT5 pack false -> tab off',            fg.tabEnabled('Gear Helpers'), false);
+    check('FGT6 an unlisted tab stays on',         fg.tabEnabled('Triggers'), true);
+    check('FGT7 pack false -> menu row off',       fg.menuEnabled('lockstyle'), false);
+    check('FGT8 an unlisted menu row stays on',    fg.menuEnabled('wishlist'), true);
+
+    -- the character's flip overrides the pack both ways
+    fg.set('tab', 'gearhelpers', true);
+    check('FGT9 a flip ON beats a pack false',     fg.tabEnabled('Gear Helpers'), true);
+    fg.set('tab', 'triggers', false);
+    check('FGT10 a flip OFF beats a pack on',      fg.tabEnabled('Triggers'), false);
+
+    -- flipping back TO the pack default forgets the override
+    fg.set('tab', 'gearhelpers', false);
+    local fgOn, fgOff = fg.export();
+    check('FGT11 a flip back to default is forgotten', fgOn:find('gearhelpers', 1, true), nil);
+    check('FGT12 the real flip is exported',       fgOff, 'tab:triggers');
+
+    -- the persistence round-trip
+    fg.set('menu', 'wishlist', false);
+    fgOn, fgOff = fg.export();
+    local fg2 = dofile('lib/featuregate.lua');
+    fg2._packFeatures = { tabs = { gearhelpers = false }, menu = { lockstyle = false } };
+    fg2.applySaved(fgOn, fgOff);
+    check('FGT13 saved flips round-trip (tab)',    fg2.tabEnabled('Triggers'), false);
+    check('FGT14 saved flips round-trip (menu)',   fg2.menuEnabled('wishlist'), false);
+    check('FGT15 unflipped surfaces keep pack defaults', fg2.tabEnabled('Gear Helpers'), false);
+
+    -- garbage in the saved csv (uiflags.lua is a plain file a player may
+    -- hand-edit) is dropped, not applied
+    local fg3 = dofile('lib/featuregate.lua');
+    fg3._packFeatures = false;
+    fg3.applySaved(nil, 'tab:sets;x,not a token,tab :sets');
+    check('FGT16 a malformed OFF token is dropped', fg3.tabEnabled('Sets'), true);
+
+    -- the SHIPPED vanaheim defaults: gear only (the file is tracked data --
+    -- pin it so a pack regeneration cannot silently widen the surface)
+    local vf = dofile('servers/vanaheim/features.lua');
+    local fg4 = dofile('lib/featuregate.lua');
+    fg4._packFeatures = vf;
+    check('FGT17 vanaheim: Equipped on',       fg4.tabEnabled('Equipped'), true);
+    check('FGT18 vanaheim: All Equipment on',  fg4.tabEnabled('All Equipment'), true);
+    check('FGT19 vanaheim: Sets on',           fg4.tabEnabled('Sets'), true);
+    check('FGT20 vanaheim: Triggers on',       fg4.tabEnabled('Triggers'), true);
+    check('FGT21 vanaheim: Gear Helpers off',  fg4.tabEnabled('Gear Helpers'), false);
+    check('FGT22 vanaheim: Job Helpers off',   fg4.tabEnabled('Job Helpers'), false);
+    check('FGT23 vanaheim: every rostered menu row off', (function()
+        for _, r in ipairs(fg4.MENU) do
+            if fg4.menuEnabled(r.key) then return r.key; end
+        end
+        return true;
+    end)(), true);
+
+    -- roster labels match the registrations they gate (a rename on either
+    -- side must fail HERE, not vanish a tab in the field)
+    check('FGT24 tab roster carries the six known labels', (function()
+        local want = { 'Equipped', 'All Equipment', 'Sets', 'Triggers',
+                       'Gear Helpers', 'Job Helpers' };
+        if #fg.TABS ~= #want then return 'count ' .. #fg.TABS; end
+        for i, w in ipairs(want) do
+            if fg.TABS[i].label ~= w then return fg.TABS[i].label; end
+        end
+        return true;
+    end)(), true);
+end)();
+
+-- ---------------------------------------------------------------------------
+-- IMC. The imgui-binding seam (lib/imguicompat.lua, 2026-08-26): the pure
+--      mapping halves, and that install() wraps NOTHING on an old binding.
+--      (The wrapped calls themselves need a live binding; the mappings are
+--      what can rot silently.)
+-- ---------------------------------------------------------------------------
+(function()
+    local ic = dofile('lib/imguicompat.lua');
+    check('IMC0 imguicompat loads headless', type(ic), 'table');
+
+    -- headless there is no ImGuiChildFlags_* global: the OLD binding
+    check('IMC1 headless reads as the old binding', ic.isNewBinding(), false);
+
+    -- the border bool -> ImGuiChildFlags mapping
+    check('IMC2 border true -> Borders flag',  ic._childFlags(true), 1);
+    check('IMC3 border false -> no flags',     ic._childFlags(false), 0);
+    check('IMC4 border nil -> no flags',       ic._childFlags(nil), 0);
+    check('IMC5 a number passes through (caller already speaks new)',
+          ic._childFlags(96), 96);
+
+    -- the ImageButton reshape: id derived from the texture (the old binding's
+    -- own identity rule), defaults filled, framePadding carried only when real
+    local a = ic._imageButtonArgs(12345, { 24, 24 }, nil, nil, 2, nil, nil);
+    check('IMC6 str_id derives from the texture',  a.id, '##dlacib_12345');
+    check('IMC7 uv0 defaults',   a.uv0[1] == 0 and a.uv0[2] == 0, true);
+    check('IMC8 uv1 defaults',   a.uv1[1] == 1 and a.uv1[2] == 1, true);
+    check('IMC9 bg defaults transparent', a.bg[4], 0);
+    check('IMC10 tint defaults white',    a.tint[1] == 1 and a.tint[4] == 1, true);
+    check('IMC11 framePadding carried',   a.pad, 2);
+    check('IMC12 a negative padding is dropped',
+          ic._imageButtonArgs(1, {2,2}, nil, nil, -1).pad, nil);
+
+    -- install() on the old binding: a no-op that leaves imgui untouched
+    local fakeBC = function() return true; end;
+    package.loaded['imgui'] = { BeginChild = fakeBC };
+    local ic2 = dofile('lib/imguicompat.lua');
+    check('IMC13 install() runs headless',        ic2.install(), false);
+    check('IMC14 old binding: BeginChild untouched',
+          package.loaded['imgui'].BeginChild, fakeBC);
+    check('IMC15 ...and reports unwrapped',       ic2.wrapped, false);
+    package.loaded['imgui'] = nil;
 end)();
 
 -- The warm-note artifact the dispatch-driving sections leave behind (dataDir

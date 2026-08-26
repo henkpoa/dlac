@@ -45,6 +45,22 @@ end)();
 local mods   = {};   -- registration order = render order
 local byName = {};
 
+-- The surface gate (lib\featuregate): which registered tabs EXIST on this
+-- install -- the server pack's defaults plus the character's Settings flips.
+-- Absent or broken, every tab renders (gating is a subtraction, never a
+-- prerequisite); a label the gate's roster does not know is never hidden.
+local fgate = (function()
+    local ok, m = pcall(require, 'dlac\\lib\\featuregate');
+    return (ok and type(m) == 'table') and m or nil;
+end)();
+
+local function tabAllowed(label)
+    if fgate == nil then return true; end
+    local ok, v = pcall(fgate.tabEnabled, label);
+    if not ok then return true; end
+    return v ~= false;
+end
+
 host.services = {};  -- live shared-services table; filled via host.provide{}
 
 host.provide = function(tbl)
@@ -200,7 +216,9 @@ host.renderTabs = function(guard, job, level)
     local list = {};
     for _, m in ipairs(mods) do
         if type(m.tabs) == 'table' then
-            for _, t in ipairs(m.tabs) do list[#list + 1] = t; end
+            for _, t in ipairs(m.tabs) do
+                if tabAllowed(t.label) then list[#list + 1] = t; end
+            end
         end
     end
     if sel ~= nil and sel.rebuilt then

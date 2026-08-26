@@ -18,7 +18,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.08.11b';   -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.08.26';   -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
                                 -- (03f = engine v163: the contest explains its own plan;
                                 --  03g = one floating tray: Teleports + the E-Box crates;
@@ -212,7 +212,19 @@ addon.version = '2026.08.11b';   -- date of the last shipped change (Ashita prin
                                 --  from ONE shared reader; and copying a rule to
                                 --  a job dlac has never used INSTANTIATES that
                                 --  job entry first, instead of writing a rule
-                                --  into a file with nothing to target)
+                                --  into a file with nothing to target;
+                                --  07a = SERVER-AGNOSTIC RENDERING + SURFACES:
+                                --  lib\imguicompat wraps the three imgui calls
+                                --  whose shapes changed in the newer Ashita
+                                --  binding (BeginChild's border bool ->
+                                --  ImGuiChildFlags; ImageButton/Image), keyed
+                                --  on the BINDING so old builds run untouched;
+                                --  and lib\featuregate gates tabs + menu rows
+                                --  per server pack (servers\<id>\features.lua)
+                                --  with per-character overrides under Menu >
+                                --  Settings > Features -- Vanaheim ships
+                                --  gear-only: Equipped, All Equipment, Sets,
+                                --  Triggers)
 addon.desc    = 'Gear sets, triggers and live stats with level scaling -- dlac equips your gear itself.';
 
 -- Load BEACON ('/dl check' field round, 2026-07-23): written by PLAIN io at
@@ -236,6 +248,16 @@ require('common');
 -- Resolve the profile-style "dlac\\X" requires to addons/dlac/X.lua in the addon state.
 pcall(function()
     package.path = package.path .. ';' .. AshitaCore:GetInstallPath() .. 'addons\\?.lua';
+end);
+
+-- THE IMGUI-BINDING SEAM: newer Ashita builds ship ImGui 1.90+, where
+-- BeginChild's border bool became ImGuiChildFlags and ImageButton/Image
+-- changed shape -- every dlac call site speaks the OLD shapes. Detect the
+-- binding once and wrap the three entries so both builds render; on the old
+-- binding this wraps nothing at all. Must run before the first frame -- see
+-- lib\imguicompat.lua for the whole story.
+pcall(function()
+    require('dlac\\lib\\imguicompat').install();
 end);
 
 -- THE SERVER SEAM (ADR 0035): discover the shipped server packs, pick the

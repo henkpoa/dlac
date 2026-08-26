@@ -3400,7 +3400,10 @@ end)();
         -- draws LAST-ish and assert it: the Settings panel owns 8 checkboxes, the
         -- level panel owns the typed-number InputText. If either body dies early,
         -- these drop and the section fails instead of lying.
-        check('MN12a Settings body ran to completion (14 checkboxes)', drew.checkbox, 14);
+        -- 14 Settings + 12 Features (6 tabs + 6 menu rows, lib\featuregate,
+        -- 2026-08-26): the gate section renders whenever featuregate loads,
+        -- which headless it always does.
+        check('MN12a Settings body ran to completion (26 checkboxes)', drew.checkbox, 26);
         check('MN12b level body drew its typed-number box', drew.input, 1);
 
         -- debug on: the developer quartet appears

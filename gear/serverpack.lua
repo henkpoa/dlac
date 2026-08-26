@@ -209,6 +209,24 @@ function M.data(name)
     return nil;
 end
 
+-- The pack's hand-maintained SURFACE defaults (servers\<id>\features.lua) --
+-- which dlac tabs / menu rows exist on this server out of the box. A separate
+-- file from the GENERATED manifest on purpose: gen_pack tooling owns the
+-- manifest and would clobber a hand edit. Optional: nil when the pack ships
+-- none (or no pack is active), and callers read nil as "everything on".
+-- Only an explicit false in the file disables a surface; lib\featuregate is
+-- the one consumer and layers the character's own Settings overrides on top.
+-- Memoized only once init() has run (a pre-init nil must not latch -- hard
+-- rule 11's shape).
+function M.features()
+    if not state.ready or state.active == nil then return nil; end
+    if state.featsRead then return state.feats; end
+    state.featsRead = true;
+    local ok, t = pcall(M._require, 'dlac\\servers\\' .. state.active .. '\\features');
+    state.feats = (ok and type(t) == 'table') and t or nil;
+    return state.feats;
+end
+
 -- Discovery readout for /dl check: { { id, name }, ... } in index order.
 function M.installed()
     local out = {};

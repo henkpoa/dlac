@@ -10076,3 +10076,34 @@ page says nothing at all — there is nothing to report.
 COMMANDS, and the bug was a wrong SENTENCE about correct-enough commands. The section
 now captures `print` as well, and MBU9a-o pin all four sites — including that editing
 another sub sends **zero** commands, where before it sent two.
+
+## Session "dlac meets Vanaheim's Ashita" (2026-08-26, on the Vanaheim install)
+
+**Theme:** the first live round on Vanaheim's own Ashita build killed every tab with
+`sol: no matching function call` — and Henrik's ruling for this server is gear-only to
+start: *"initially I only want the gear part to work (Equipped, All equips, sets and
+triggers, nothing else)"*, with a settings switch to widen it later.
+
+**Landed:**
+
+- **The imgui-binding seam** (`lib/imguicompat.lua`, ADR 0036). Vanaheim's Ashita ships
+  ImGui 1.90+: `BeginChild`'s border bool became `ImGuiChildFlags`, `ImageButton` grew a
+  leading `str_id` and lost `framePadding`, `Image` lost its tint overload
+  (`ImageWithBg` carries it now). One shim, installed from `dlac.lua` before the first
+  frame, keyed on the BINDING (the `ImGuiChildFlags_*` globals exist ⇔ new build) — on
+  the old build it wraps nothing at all. An audit of every `imgui.*` name the tree calls
+  against the new build's annotations stub found only those three reshapes plus
+  `SetItemAllowOverlap` (removed; both call sites already feature-detect it). The
+  binding table resolves through `__index = GetGuiManager()`, so the wrappers guard on
+  `~= nil`, never `type() == 'function'`.
+- **The surface gate** (`lib/featuregate.lua` + `serverpack.features()`, ADR 0037).
+  Which tabs / menu rows exist = the character's Settings flips, else the pack's
+  hand-maintained `servers/<id>/features.lua` (separate from the GENERATED manifest on
+  purpose), else ON. `uihost.renderTabs` and `menuui` subtract through it; the Settings
+  panel grew a **Features** section (12 checkboxes) persisted as `featson`/`featsoff`
+  in uiflags. Vanaheim's file ships gear-only; cexi ships no file and keeps everything.
+
+**Checks:** run_tests 7208 (+IMC0–15, FGT0–24, SPK30–33), smoke_ui 1434 (MN12a now
+counts 26 Settings checkboxes), pack_lint vanaheim 29. Awaiting Henrik's field round on
+Vanaheim; NOT yet carried back to the CatsEyeXI repo (this session edited the Vanaheim
+install's copy, which is not a git checkout).

@@ -13,6 +13,7 @@ servers/
   index.lua                  -- return { '<id>', ... }  (tracked; adding a pack is a commit)
   <id>/
     manifest.lua             -- the pack's declaration (below)
+    features.lua             -- optional, HAND-MAINTAINED surface defaults (below)
     data/<file>.lua          -- one Lua table per file, mounted as dlac\data\<file>
     modules/<name>/init.lua  -- optional pack modules (jobhelpers containment rules)
 ```
@@ -43,6 +44,28 @@ Known caps: `ebox`, `prestige`, `ventures`, `gamemodes`, `giftbox`,
 Known consts: `augFormat` ('cexi' | 'lsb'), `catalogMin`, `oneirosMpPct`,
 `meritMaxMpCap`, `mpPlayerMultiplier`, `mpSjDivisor`, `moonOffset`, `teleWait`.
 Unknown keys are ignored — an older dlac never breaks on a newer pack.
+
+## features.lua — surface defaults (optional, hand-maintained)
+
+Which dlac SURFACES exist on this server out of the box (ADR 0037). A
+separate file from the generated manifest **on purpose**: pack generators own
+`manifest.lua` and would clobber a hand edit, and flipping a surface on is a
+human judgement ("this is now field-tested here"), not a data regeneration.
+
+```lua
+return {
+    tabs = { gearhelpers = false, jobhelpers = false },   -- main-window tabs
+    menu = { lockstyle = false, ... },                    -- header-menu rows
+}
+```
+
+Only an explicit `false` disables; an absent file, section or key reads as ON
+(`cexi` ships no file and keeps every surface). Keys are `lib/featuregate.lua`'s
+rosters — tabs: `equipped allequip sets triggers gearhelpers jobhelpers`; menu:
+`lockstyle macrobook hobbybar teleports nm wishlist`. Read only through
+`serverpack.features()`; a player overrides any default per character from
+Menu > Settings > Features. Gating hides the surface — it never unloads a
+module and never touches the engine.
 
 ## catalog.lua — the contract that matters most
 
