@@ -661,9 +661,9 @@ function M.render(job, level)
                     if isAugmented(e.identity) then
                         imgui.SameLine(0, 8);
                         imgui.TextColored(cGOLD, '[aug]');
-                        if imgui.IsItemHovered() then
-                            showCard(e.rec, e.name, augTextOf(e.identity));
-                        end
+                        -- no tooltip of its own: the ROW hover already shows
+                        -- the card with the Aug: line (a second card doubled
+                        -- the box -- Henrik's screenshot)
                     end
                 end,
                 buttons = function(hot, b1, b2)
@@ -741,9 +741,7 @@ function M.render(job, level)
                         if isAugmented(e.identity) then
                             imgui.SameLine(0, 8);
                             imgui.TextColored(cGOLD, '[aug]');
-                            if imgui.IsItemHovered() then
-                                showCard(e.rec, e.name, augTextOf(e.identity));
-                            end
+                            -- no tooltip of its own: the row hover carries it
                         end
                     end,
                     buttons = function(hot, b1, b2)
