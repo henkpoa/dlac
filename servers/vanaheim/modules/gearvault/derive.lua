@@ -36,23 +36,59 @@ local function isVirtual(name)
     return type(name) == 'string' and name:sub(1, 5) == 'dlac:';
 end
 
--- One set's contribution: name -> slots-it-fills count.
-local function walkSet(set, into)
+-- One gear REF -> a key + what is known about it, or nil. A ref is any of
+-- the three shapes a set entry takes on disk (the committed shape is the
+-- RECORD: `gear.Main.GreatAxe.Neckchopper` resolves to the gear.lua record
+-- table at load -- the 2026-08-26 field round found the walker speaking
+-- only strings, deriving nothing from every real set):
+--   * a RECORD table (.Name, usually .Id, maybe .AugKey) -- id known here,
+--     no resolution needed; AugKey ~= '' marks the augment-pinned copy;
+--   * a plain string name (hand-written entries; trigger payloads);
+--   * a WRAPPER { ref, dw = true, ... } -- the gear-rule shape, ref at [1].
+local function refOf(v)
+    if type(v) == 'string' then
+        if v == '' or isVirtual(v) then return nil; end
+        return { key = 'n:' .. v, name = v };
+    end
+    if type(v) == 'table' then
+        if type(v.Name) == 'string' and v.Name ~= '' then
+            if isVirtual(v.Name) then return nil; end
+            local aug = (type(v.AugKey) == 'string' and v.AugKey ~= '');
+            if type(v.Id) == 'number' then
+                return { key = 'i:' .. v.Id .. (aug and ':a' or ''), id = v.Id, name = v.Name, aug = aug };
+            end
+            return { key = 'n:' .. v.Name, name = v.Name, aug = aug };
+        end
+        if v[1] ~= nil then return refOf(v[1]); end
+    end
+    return nil;
+end
+
+-- One set's contribution: ref key -> slots-it-fills count (+ the ref facts).
+-- A slot's value is a DIRECT ref (string, or a record -- a table carrying
+-- .Name) or a candidate LIST (any other table): the list check must come
+-- from the .Name test, never from refOf's wrapper recursion, or a
+-- two-candidate list would derive only its first rung.
+local function walkSet(set, into, facts)
     if type(set) ~= 'table' then return; end
     for _, entry in pairs(set) do
-        if type(entry) == 'string' then
-            if entry ~= '' and not isVirtual(entry) then
-                into[entry] = (into[entry] or 0) + 1;
+        if type(entry) == 'string' or (type(entry) == 'table' and type(entry.Name) == 'string') then
+            local r = refOf(entry);
+            if r ~= nil then
+                facts[r.key] = facts[r.key] or r;
+                into[r.key] = (into[r.key] or 0) + 1;
             end
         elseif type(entry) == 'table' then
             -- a Dynamic slot's candidate LIST: every rung is wanted, but the
-            -- slot still only wears ONE of them -- each name counts this slot
+            -- slot still only wears ONE of them -- each ref counts this slot
             -- once, never more.
             local seen = {};
             for _, cand in ipairs(entry) do
-                if type(cand) == 'string' and cand ~= '' and not isVirtual(cand) and not seen[cand] then
-                    seen[cand] = true;
-                    into[cand] = (into[cand] or 0) + 1;
+                local r = refOf(cand);
+                if r ~= nil and not seen[r.key] then
+                    seen[r.key] = true;
+                    facts[r.key] = facts[r.key] or r;
+                    into[r.key] = (into[r.key] or 0) + 1;
                 end
             end
         end
@@ -66,29 +102,30 @@ local function foldMax(counts, global)
     end
 end
 
--- An equip payload's contribution (trigger rules / cases): each slot string
+-- An equip payload's contribution (trigger rules / cases): each slot ref
 -- counts its slot, same walk as a flattened set.
-local function walkEquip(equip, global)
+local function walkEquip(equip, global, facts)
     if type(equip) ~= 'table' then return; end
     local counts = {};
-    walkSet(equip, counts);
+    walkSet(equip, counts, facts);
     foldMax(counts, global);
 end
 
 function M.derive(setsRoot, triggers, resolve)
-    local wanted = {};   -- name -> max simultaneous count
+    local wanted = {};   -- ref key -> max simultaneous count
+    local facts  = {};   -- ref key -> what walkSet learned (id/name/aug)
 
     if type(setsRoot) == 'table' then
         for setName, set in pairs(setsRoot) do
             if setName == 'Dynamic' and type(set) == 'table' then
                 for _, ds in pairs(set) do
                     local counts = {};
-                    walkSet(ds, counts);
+                    walkSet(ds, counts, facts);
                     foldMax(counts, wanted);
                 end
             elseif type(set) == 'table' then
                 local counts = {};
-                walkSet(set, counts);
+                walkSet(set, counts, facts);
                 foldMax(counts, wanted);
             end
         end
@@ -99,10 +136,10 @@ function M.derive(setsRoot, triggers, resolve)
             if type(rules) == 'table' then
                 for _, rule in ipairs(rules) do
                     if type(rule) == 'table' then
-                        walkEquip(rule.equip, wanted);
+                        walkEquip(rule.equip, wanted, facts);
                         if type(rule.cases) == 'table' then
                             for _, case in ipairs(rule.cases) do
-                                if type(case) == 'table' then walkEquip(case.equip, wanted); end
+                                if type(case) == 'table' then walkEquip(case.equip, wanted, facts); end
                             end
                         end
                     end
@@ -111,20 +148,29 @@ function M.derive(setsRoot, triggers, resolve)
         end
     end
 
-    -- resolve names -> ids; merge same-id names (an item under two spellings
-    -- resolves once, max count wins)
+    -- a record ref carries its id already; a name ref resolves here. Same-id
+    -- refs merge (an item under two spellings / a record and a string), max
+    -- count wins.
     local byId = {};
     local skippedAug, unresolved = 0, {};
-    for name, count in pairs(wanted) do
-        local r = (type(resolve) == 'function') and resolve(name) or nil;
-        if r == nil or type(r.id) ~= 'number' then
-            unresolved[#unresolved + 1] = name;
-        elseif r.aug == true then
+    for key, count in pairs(wanted) do
+        local f = facts[key] or {};
+        local id, aug = f.id, (f.aug == true);
+        if id == nil then
+            local r = (type(resolve) == 'function') and resolve(f.name) or nil;
+            if r ~= nil and type(r.id) == 'number' then
+                id = r.id;
+                aug = aug or (r.aug == true);
+            end
+        end
+        if id == nil then
+            unresolved[#unresolved + 1] = tostring(f.name or key);
+        elseif aug then
             skippedAug = skippedAug + 1;
         else
-            local e = byId[r.id];
+            local e = byId[id];
             if e == nil then
-                byId[r.id] = { itemId = r.id, count = count };
+                byId[id] = { itemId = id, count = count };
             elseif e.count < count then
                 e.count = count;
             end

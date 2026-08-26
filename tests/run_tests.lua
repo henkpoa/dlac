@@ -27197,7 +27197,6 @@ end)();
     local RES = {
         ['Sword A'] = { id = 10 }, ['Ring X'] = { id = 20 },
         ['Hat B'] = { id = 30 }, ['Obi C'] = { id = 40 },
-        ['Aug Piece'] = { id = 50, aug = true },
     };
     local function resolve(name)
         local r = RES[name];
@@ -27205,36 +27204,44 @@ end)();
         return { id = r.id, aug = r.aug == true };
     end
 
+    -- THE COMMITTED SHAPE (the 2026-08-26 Neckchopper round: entries on disk
+    -- are `gear.Main.GreatAxe.X` -- RECORD TABLES, not strings; a walker that
+    -- speaks only strings derives NOTHING from every real set). The fixture
+    -- mixes all three ref shapes: records, plain names, and a dw wrapper.
+    local function REC(id, name, augKey)
+        return { Id = id, Name = name, AugKey = augKey, Level = 1 };
+    end
     local sets = {
         Dynamic = {
             Melee = {
-                Main  = { 'Sword A' },
-                Ring1 = { 'Ring X' },
-                Ring2 = { 'Ring X', 'Unknown Thing' },
-                Head  = { 'dlac:AutoStaff', 'Hat B' },
+                Main  = { REC(10, 'Sword A') },
+                Ring1 = { REC(20, 'Ring X') },
+                Ring2 = { REC(20, 'Ring X'), 'Unknown Thing' },
+                Head  = { 'dlac:AutoStaff', REC(30, 'Hat B'), { REC(31, 'DW Hat'), dw = true } },
             },
         },
-        Idle = { Head = 'Hat B', Ring1 = 'Ring X' },
+        Idle = { Head = REC(30, 'Hat B'), Ring1 = 'Ring X' },
     };
     local triggers = {
         Midcast = {
             { equip = { Waist = 'Obi C' }, cases = { { equip = { Head = 'Hat B' } } } },
-            { set = 'Melee' },                       -- contributes nothing of its own
-            { equip = { Body = 'Aug Piece' } },      -- augment-pinned: skipped
+            { set = 'Melee' },                                 -- contributes nothing of its own
+            { equip = { Body = REC(50, 'Aug Piece', 'SIG1') } },   -- augment-pinned: skipped
         },
     };
 
     local d = dv.derive(sets, triggers, resolve);
     local got = {};
     for _, it in ipairs(d.items) do got[it.itemId] = it.count; end
-    check('GVD1 a Dynamic rung derives',            got[10], 1);
-    check('GVD2 a PAIR derives count 2',            got[20], 2);
-    check('GVD3 flat + candidate + case merge to one', got[30], 1);
-    check('GVD4 a trigger inline payload derives',  got[40], 1);
-    check('GVD5 dlac: virtuals derive NOTHING', (function()
+    check('GVD1 a RECORD rung derives by its own id',  got[10], 1);
+    check('GVD2 a PAIR derives count 2',               got[20], 2);
+    check('GVD3 record + string + case merge to one',  got[30], 1);
+    check('GVD4 a trigger inline payload derives',     got[40], 1);
+    check('GVD4a a dw WRAPPER derives its ref',        got[31], 1);
+    check('GVD5 dlac: virtuals + aug records leak nothing', (function()
         for _, it in ipairs(d.items) do if it.itemId == 50 then return 'aug leaked'; end end
-        return true;
-    end)(), true);
+        return #d.items;
+    end)(), 5);
     check('GVD6 augment-pinned records are counted, not pushed', d.skippedAug, 1);
     check('GVD7 unresolved names are reported', d.unresolved[1], 'Unknown Thing');
     check('GVD8 the hash is stable', dv.derive(sets, triggers, resolve).hash, d.hash);
@@ -27289,18 +27296,18 @@ end)();
     -- beat 2: derivation pushes the four adds
     T = T + rc.BEAT + 1;
     local r = rc.tick();
-    check('GVR4 the engine pushes the derived adds', r, 'pushed:4');
+    check('GVR4 the engine pushes the derived adds', r, 'pushed:5');
     local okAcks = 0;
-    for _ = 1, 4 do
+    for _ = 1, 5 do
         T = T + 1; vc.pump(true);
         check('GVR5.' .. okAcks .. ' a LAYOUT_SET frame is on the wire', sent[#sent][5], vc.op.LAYOUT_SET);
         vc.onFrame(reply(0, 0, vc._wu16(0) .. vc._wu16(0)));   -- code OK
         okAcks = okAcks + 1;
     end
-    check('GVR6 all four acked', okAcks, 4);
+    check('GVR6 all five acked', okAcks, 5);
     check('GVR7 success re-asks the layout', vc._st().layoutWant ~= nil, true);
     check('GVR8 ...and says so once', (function()
-        for _, m in ipairs(msgs) do if m:find('+4', 1, true) then return true; end end
+        for _, m in ipairs(msgs) do if m:find('+5', 1, true) then return true; end end
         return false;
     end)(), true);
 
@@ -27318,9 +27325,10 @@ end)();
 
     -- refresh the layout with the four entries -> the next beat is clean
     T = T + 1; vc.pump(true);
-    vc.onFrame(reply(0, 0, vc._wu16(4) .. vc._wu16(0)
+    vc.onFrame(reply(0, 0, vc._wu16(5) .. vc._wu16(0)
         .. layoutEntry(1, 10, 1) .. layoutEntry(2, 20, 2)
-        .. layoutEntry(3, 30, 1) .. layoutEntry(4, 40, 1)));
+        .. layoutEntry(3, 30, 1) .. layoutEntry(4, 40, 1)
+        .. layoutEntry(5, 31, 1)));
     T = T + rc.BEAT + 1;
     check('GVR10 a satisfied derivation is clean', rc.tick(), 'clean');
 
@@ -27334,7 +27342,7 @@ end)();
     T = T + 1; vc.pump(true);
     vc.onFrame(reply(0, 0, vc._wu16(0) .. vc._wu16(0)));   -- empty layout
     T = T + rc.BEAT + 1;
-    check('GVR11 the field beat pushes', rc.tick(), 'pushed:4');
+    check('GVR11 the field beat pushes', rc.tick(), 'pushed:5');
     T = T + 1; vc.pump(true);
     vc.onFrame(reply(0, 0, vc._wu16(12) .. vc._wu16(0)));  -- NOT_IN_CITY
     check('GVR12 the refusal cancels the queued siblings', #(vc._st().layoutSetQ or {}), 0);
@@ -27343,7 +27351,7 @@ end)();
     check('GVR14 the same derivation does not re-spam', rc.tick(), 'clean');
     rc.zoneArmed();
     T = T + rc.BEAT + 1;
-    check('GVR15 a zone-in re-arms the push', rc.tick(), 'pushed:4');
+    check('GVR15 a zone-in re-arms the push', rc.tick(), 'pushed:5');
 
     vc._reset(); rc._reset();
 end)();

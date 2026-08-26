@@ -10254,3 +10254,22 @@ over the wire harness), smoke_ui 1451 (buttons + style-colour balance),
 pack_lint 29. Field gate: edit a set in a city → "layout +N pieces" within ~8s
 → change job → the shelf follows; the same edit in the field arms the badge and
 pushes on the next city visit.
+
+### Slice-3 field round — the walker spoke only strings (Neckchopper, 2026-08-26)
+
+`/dl vault why neckchopper` earned its keep on its first outing: ownership was
+RIGHT (`verdict=vaulted`) but **`derived: 0 items total`** — the engine derived
+nothing from sets that plainly exist. Cause: a committed set entry on disk is
+`gear.Main.GreatAxe.Neckchopper` — a **gear RECORD TABLE**, not a name string —
+and `derive.walkSet` spoke only strings. The walker now speaks all three ref
+shapes (record — id taken directly, AugKey marks the aug-pinned skip; plain
+name — resolved; dw wrapper — ref at [1]), and the list-vs-wrapper dispatch
+keys on `.Name`, never on refOf recursion (a two-rung list would have derived
+only its first rung). GVD/GVR fixtures now use the committed shape — the exact
+regression, pinned. Suites 7301 + 1451.
+
+Still open from the same round, SERVER-side: a deposit never triggers an apply
+(`gv.depositSlot` — by construction), so "layout already names it, then
+deposit" waits for a job change. Fix belongs in the vanaheim repo's module
+(apply when the deposited identity is in the active job's layout); proposed to
+Henrik — his shard, his call.
