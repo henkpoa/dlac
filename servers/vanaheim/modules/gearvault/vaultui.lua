@@ -1,26 +1,29 @@
 --[[
-    vanaheim/gearvault/vaultui.lua -- the Gear Vault TAB (slice 2: read-first).
+    vanaheim/gearvault/vaultui.lua -- the Gear Vault TAB (slice 2; layout
+    reworked to Henrik's field notes, 2026-08-26: "slice the sections
+    vertically... adapt to All Equipment look... know the stats").
 
-    Registered on the uihost by this pack module's init, so the tab exists
-    only where the pack mounts -- and shows through the gear-only surface
+    Two PANES side by side, splitting VERTICALLY so both scale to hundreds
+    of rows: THIS JOB'S LAYOUT on the left, THE VAULT on the right. Both
+    panes wear the All Equipment look -- collapsible per-slot sections
+    (Main/Range nest their weapon categories), counts on every header,
+    search force-opens the tree -- and every row shows Lv + the stat
+    summary inline and the STANDARD item hover card (host.services
+    .itemTooltip, the same renderer every other gear line uses), so vault
+    gear reads like gear, not like a name list.
+
+    Registered on the uihost by this pack module's init: the tab exists
+    only where the pack mounts, and shows through the gear-only surface
     default because the gate never hides a label it cannot name (ADR 0037).
 
-    Three blocks, top to bottom:
-      * the status header -- the client's state, the mirrored instance count,
-        shelf occupancy read live off the wardrobes, and a Sync button;
-      * THIS JOB'S LAYOUT, the server's truth via LAYOUT_LIST -- including
-        entries made by `!vault` or the website, which is the point of
-        showing the wire's answer rather than anything derived (that half
-        arrives in slice 3);
-      * the VAULT BROWSER over the mirror -- search, and the slice's one
-        write verb: Withdraw, per row. dlac does not know the Void Wardens'
-        coordinates (server data, deliberately not in the pack), so the
-        button is always live and a TOO_FAR refusal says in words where to
-        stand -- honest, and no stale geometry to maintain.
+    Withdraw (the slice's one write verb) rides each vault row. dlac does
+    not know the Void Wardens' coordinates (server data, deliberately not
+    in the pack), so the button is always live and a TOO_FAR refusal says
+    in words where to stand.
 
-    Everything is read at CALL time from host.services (the uihost law) and
-    every text sink goes through fmt.esc (SetTooltip/TextColored are printf
-    -- the imgui geometry law).
+    Everything is read at CALL time from host.services (the uihost law)
+    and every text sink goes through fmt.esc (SetTooltip/TextColored are
+    printf -- the imgui geometry law).
 ]]--
 
 local M = {};
@@ -49,14 +52,27 @@ end
 -- Small readers
 -- ---------------------------------------------------------------------------
 
+local function services()
+    return (host ~= nil) and host.services or {};
+end
+
 -- Item display name: the shared service first (client-spelling), '#id' last.
 local function nameOf(id)
-    local S = (host ~= nil) and host.services or {};
+    local S = services();
     if type(S.displayName) == 'function' then
         local ok, n = pcall(S.displayName, id);
         if ok and type(n) == 'string' and n ~= '' then return n; end
     end
     return '#' .. tostring(id);
+end
+
+local function recOf(id)
+    local S = services();
+    if type(S.lookupById) == 'function' then
+        local ok, r = pcall(S.lookupById, id);
+        if ok and type(r) == 'table' then return r; end
+    end
+    return nil;
 end
 
 local ZERO24 = string.rep('\0', 24);
@@ -65,10 +81,22 @@ local function isAugmented(identity)
     return type(identity) == 'string' and #identity > 0 and identity ~= ZERO24;
 end
 
+-- The standard hover card, or a plain name tooltip when the record (or the
+-- service) is missing -- a hover must never answer NOTHING.
+local function hoverCard(rec, name)
+    if not imgui.IsItemHovered() then return; end
+    local S = services();
+    if rec ~= nil and type(S.itemTooltip) == 'function' then
+        local ok = pcall(S.itemTooltip, rec);
+        if ok then return; end
+    end
+    pcall(imgui.SetTooltip, esc(name));
+end
+
 -- Shelf occupancy: used/max over Wardrobes 1-8 (cids 8, 10-16 -- NOT
 -- contiguous, 9 is Mog Safe 2). Live client read, cached a beat.
 local WARDROBES = { 8, 10, 11, 12, 13, 14, 15, 16 };
-local _occ = nil;      -- { used, max }
+local _occ = nil;
 local _occAt = 0;
 local function shelfOccupancy()
     local now = os.clock();
@@ -90,7 +118,7 @@ local function shelfOccupancy()
 end
 
 -- ---------------------------------------------------------------------------
--- Withdraw feedback -- one remembered line under the browser, plus chat (the
+-- Withdraw feedback -- one remembered line under the panes, plus chat (the
 -- field is where withdraws happen to fail, and the tab may be closed by then).
 -- ---------------------------------------------------------------------------
 local _lastMsg = nil;      -- { text, err = bool }
@@ -142,23 +170,204 @@ local function withdrawRow(row)
 end
 
 -- ---------------------------------------------------------------------------
--- The browser's sorted view -- rebuilt only when the mirror moves.
+-- Grouping -- the All Equipment shape: rows bucketed by the record's Slot
+-- (Main/Range nest their weapon Category), unknown ids under 'Other'. Views
+-- are rebuilt only when their source stamp moves.
 -- ---------------------------------------------------------------------------
-local _view = nil;        -- sorted rows with names attached
-local _viewStamp = nil;
-local function browserRows()
-    if _view ~= nil and _viewStamp == vc.mirror.stamp then return _view; end
-    _viewStamp = vc.mirror.stamp;
-    local out = {};
-    for _, r in ipairs(vc.mirror.rows) do
-        out[#out + 1] = { rowId = r.rowId, itemId = r.itemId, qty = r.qty,
-                          identity = r.identity, name = nameOf(r.itemId) };
+local function bucket(grouped, rec, entry)
+    local slot = (rec ~= nil and rec.Slot) or 'Other';
+    if slot == 'Main' or slot == 'Range' then
+        grouped[slot] = grouped[slot] or { _cats = {} };
+        local cat = (rec ~= nil and rec.Category) or '?';
+        grouped[slot]._cats[cat] = grouped[slot]._cats[cat] or {};
+        table.insert(grouped[slot]._cats[cat], entry);
+    else
+        grouped[slot] = grouped[slot] or {};
+        table.insert(grouped[slot], entry);
     end
-    table.sort(out, function(a, b)
-        if a.name == b.name then return a.rowId < b.rowId; end
+end
+
+local function sortGroups(grouped)
+    local byName = function(a, b)
+        if a.name == b.name then return (a.sortKey or 0) < (b.sortKey or 0); end
         return a.name < b.name;
-    end);
-    _view = out;
+    end
+    for _, data in pairs(grouped) do
+        if data._cats ~= nil then
+            for _, list in pairs(data._cats) do table.sort(list, byName); end
+        else
+            table.sort(data, byName);
+        end
+    end
+end
+
+-- The vault browser's view: mirror rows enriched with rec/name.
+local _vView, _vStamp = nil, nil;
+local function vaultView()
+    if _vView ~= nil and _vStamp == vc.mirror.stamp then return _vView; end
+    _vStamp = vc.mirror.stamp;
+    local grouped, total = {}, 0;
+    for _, r in ipairs(vc.mirror.rows) do
+        local rec = recOf(r.itemId);
+        total = total + 1;
+        bucket(grouped, rec, {
+            rowId = r.rowId, itemId = r.itemId, qty = r.qty, identity = r.identity,
+            rec = rec, name = nameOf(r.itemId), sortKey = r.rowId,
+        });
+    end
+    sortGroups(grouped);
+    _vView = { grouped = grouped, total = total };
+    return _vView;
+end
+
+-- The layout pane's view: layout entries enriched the same way.
+local _lView, _lStamp = nil, nil;
+local function layoutView()
+    if _lView ~= nil and _lStamp == vc.layoutCache.stamp then return _lView; end
+    _lStamp = vc.layoutCache.stamp;
+    local grouped, total = {}, 0;
+    for _, e in ipairs(vc.layoutCache.entries or {}) do
+        local rec = recOf(e.itemId);
+        total = total + 1;
+        bucket(grouped, rec, {
+            itemId = e.itemId, count = e.count, hint = e.hint, pinned = e.pinned,
+            rec = rec, name = nameOf(e.itemId), sortKey = e.ordinal,
+        });
+    end
+    sortGroups(grouped);
+    _lView = { grouped = grouped, total = total };
+    return _lView;
+end
+
+-- ---------------------------------------------------------------------------
+-- Row + tree renderers (the All Equipment look)
+-- ---------------------------------------------------------------------------
+
+-- One row: icon, name (fixed column), Lv, stat summary -- then the caller's
+-- trailing decorations. The standard card on hovering the name.
+local function renderRow(e, level, nameW, COL, trailing)
+    if icons ~= nil and type(icons.renderIcon) == 'function' then
+        pcall(icons.renderIcon, e.itemId, 18);
+        imgui.SameLine(0, 6);
+    end
+    imgui.TextColored(COL.USABLE or { 1, 1, 1, 1 }, esc(e.name));
+    hoverCard(e.rec, e.name);
+    local nameCol = 26 + (nameW or 200);
+    if e.rec ~= nil then
+        imgui.SameLine(nameCol);
+        imgui.TextColored(COL.LEVEL or COL.DIM, string.format('Lv%2d', e.rec.Level or 0));
+        local ss = (fmt ~= nil and type(fmt.statSummary) == 'function') and fmt.statSummary(e.rec, level) or '';
+        if ss ~= '' then
+            imgui.SameLine(nameCol + 46);
+            imgui.TextColored(COL.STATS or COL.DIM, esc(ss));
+        end
+    end
+    if type(trailing) == 'function' then trailing(); end
+end
+
+-- The name-column width for a group (fmt.nameWidthOf wants records with .Name).
+local function widthOf(list)
+    if fmt ~= nil and type(fmt.nameWidthOf) == 'function' then
+        local ok, w = pcall(fmt.nameWidthOf, list);
+        if ok and type(w) == 'number' then return w; end
+    end
+    return 200;
+end
+
+-- The slot order the All Equipment tree walks, from the shared services --
+-- falling back to alphabetical pairs() order only when the service is absent.
+local function slotOrder(grouped)
+    local S = services();
+    local order = {};
+    local seen = {};
+    for _, slot in ipairs(S.SLOT_TREE_ORDER or {}) do
+        if grouped[slot] ~= nil then order[#order + 1] = slot; seen[slot] = true; end
+    end
+    local extra = {};
+    for slot in pairs(grouped) do
+        if not seen[slot] then extra[#extra + 1] = slot; end
+    end
+    table.sort(extra);
+    for _, slot in ipairs(extra) do order[#order + 1] = slot; end
+    return order;
+end
+
+-- One pane's tree: collapsible slot sections, Main/Range nesting categories.
+-- `idp` keeps the two panes' imgui ids apart. Searching force-opens every
+-- section; clearing the search collapses them once (the All Equipment
+-- idiom, so the tree does not stay sprawled after a lookup).
+local function renderTree(view, idp, searching, forceClose, level, COL, rowTail)
+    local S = services();
+    local function renderList(list)
+        local nW = widthOf(list);
+        for _, e in ipairs(list) do renderRow(e, level, nW, COL, rowTail and rowTail(e) or nil); end
+    end
+    local function arm()
+        if searching then imgui.SetNextItemOpen(true);
+        elseif forceClose then imgui.SetNextItemOpen(false); end
+    end
+    for _, slot in ipairs(slotOrder(view.grouped)) do
+        local data = view.grouped[slot];
+        local cnt = 0;
+        if data._cats ~= nil then
+            for _, list in pairs(data._cats) do cnt = cnt + #list; end
+        else
+            cnt = #data;
+        end
+        if cnt > 0 then
+            arm();
+            if imgui.CollapsingHeader(string.format('%s (%d)###gvh%s_%s', slot, cnt, idp, slot)) then
+                if data._cats ~= nil then
+                    local seen = {};
+                    local function renderCat(cat)
+                        local list = data._cats[cat];
+                        if list == nil or #list == 0 then return; end
+                        seen[cat] = true;
+                        arm();
+                        if imgui.TreeNode(string.format('%s (%d)###gvc%s_%s_%s', cat, #list, idp, slot, cat)) then
+                            renderList(list);
+                            imgui.TreePop();
+                        end
+                    end
+                    for _, cat in ipairs((S.CAT_ORDER or {})[slot] or {}) do renderCat(cat); end
+                    local extra = {};
+                    for cat in pairs(data._cats) do if not seen[cat] then extra[#extra + 1] = cat; end end
+                    table.sort(extra);
+                    for _, cat in ipairs(extra) do renderCat(cat); end
+                else
+                    renderList(data);
+                end
+            end
+        end
+    end
+end
+
+-- A filtered COPY of a view for the search needle (name substring).
+local function filterView(view, needle)
+    if needle == '' then return view; end
+    local out = { grouped = {}, total = 0 };
+    for slot, data in pairs(view.grouped) do
+        if data._cats ~= nil then
+            for cat, list in pairs(data._cats) do
+                for _, e in ipairs(list) do
+                    if string.find(string.lower(e.name), needle, 1, true) ~= nil then
+                        out.grouped[slot] = out.grouped[slot] or { _cats = {} };
+                        out.grouped[slot]._cats[cat] = out.grouped[slot]._cats[cat] or {};
+                        table.insert(out.grouped[slot]._cats[cat], e);
+                        out.total = out.total + 1;
+                    end
+                end
+            end
+        else
+            for _, e in ipairs(data) do
+                if string.find(string.lower(e.name), needle, 1, true) ~= nil then
+                    out.grouped[slot] = out.grouped[slot] or {};
+                    table.insert(out.grouped[slot], e);
+                    out.total = out.total + 1;
+                end
+            end
+        end
+    end
     return out;
 end
 
@@ -168,21 +377,23 @@ local _search = { '' };
 local _layoutAskAt = 0;
 local LAYOUT_ASK_GAP = 3.0;
 
+-- The layout pane's fixed width: enough for name + Lv + a stat clip.
+local LEFT_W = 360;
+
 -- ---------------------------------------------------------------------------
 -- The tab
 -- ---------------------------------------------------------------------------
 function M.render(job, level)
     if imgui == nil then return; end
-    local S   = (host ~= nil) and host.services or {};
+    local S   = services();
     local COL = S.COL or {};
     local cERR   = COL.ERR    or { 1.00, 0.45, 0.40, 1.00 };
     local cDIM   = COL.DIM    or { 0.70, 0.70, 0.70, 1.00 };
     local cHEAD  = COL.HEADER or { 0.60, 0.75, 1.00, 1.00 };
-    local cOK    = COL.USABLE or { 1, 1, 1, 1 };
     local cGOLD  = COL.SCORE  or { 0.95, 0.85, 0.45, 1.00 };
     local cVAULT = COL.VAULT  or { 0.72, 0.55, 0.95, 1.00 };
 
-    -- ---- status header ----
+    -- ---- status header (full width) ----
     local state = vc.state();
     if state == 'dormant' then
         imgui.TextColored(cDIM, 'The Gear Vault is not available on this server (or the addon was refused).');
@@ -192,8 +403,7 @@ function M.render(job, level)
     for _, r in ipairs(vc.mirror.rows) do n = n + math.max(1, r.qty); end
     imgui.TextColored(cVAULT, string.format('Vault: %d instance%s', n, (n == 1) and '' or 's'));
     imgui.SameLine(0, 10);
-    local stCol = (state == 'fresh') and cDIM or cGOLD;
-    imgui.TextColored(stCol, '[' .. state .. ']');
+    imgui.TextColored((state == 'fresh') and cDIM or cGOLD, '[' .. state .. ']');
     if imgui.IsItemHovered() then
         imgui.SetTooltip('fresh -- the mirror matches the server.\nstale -- something moved (job change, !vault, zoning); a re-sync is due.\nsyncing -- pages are on the wire now.');
     end
@@ -213,15 +423,28 @@ function M.render(job, level)
     if imgui.IsItemHovered() then
         imgui.SetTooltip('Re-read the vault and the layout from the server now.');
     end
+    imgui.SameLine(0, 12);
+    imgui.TextColored(cDIM, 'Search:');
+    imgui.SameLine(0, 4);
+    imgui.PushItemWidth(160);
+    imgui.InputText('##gvsearch', _search, 64);
+    imgui.PopItemWidth();
+    if imgui.IsItemHovered() then imgui.SetTooltip('Filter BOTH panes by name.'); end
 
     imgui.Separator();
 
-    -- ---- this job's layout (the server's truth) ----
+    local needle = string.lower(tostring(_search[1] or ''));
+    local searching = (needle ~= '');
+    local forceClose = (not searching) and (M._wasSearching == true);
+    M._wasSearching = searching;
+
+    -- ---- left pane: this job's layout ----
     local lc = vc.layoutCache;
     if not lc.fresh and os.clock() - _layoutAskAt > LAYOUT_ASK_GAP then
         _layoutAskAt = os.clock();
         vc.requestLayout(0);
     end
+    imgui.BeginChild('##gvleft', { LEFT_W, -24 }, false);
     if uistyl ~= nil and type(uistyl.helpLabel) == 'function' then
         uistyl.helpLabel(imgui, 'This job\'s layout', 'What the SERVER holds for your current main job -- every entry here\nis pulled onto the shelf at job change, wherever it came from (dlac,\n!vault, the website). Editing from this tab arrives in the next slice;\nuntil then: !vault add/remove <item>, in a city.', cHEAD);
     else
@@ -231,81 +454,64 @@ function M.render(job, level)
         imgui.SameLine(0, 8);
         imgui.TextColored(cGOLD, '(fetching...)');
     end
-    if lc.entries ~= nil and #lc.entries > 0 then
-        local gi = try('dlac\\gear\\gearimport');
-        imgui.BeginChild('##gvlayout', { -1, math.min(150, 8 + #lc.entries * 19) }, false);
-        for _, e in ipairs(lc.entries) do
-            imgui.TextColored(cOK, esc(nameOf(e.itemId)));
-            if e.count > 1 then
-                imgui.SameLine(0, 6);
-                imgui.TextColored(cDIM, 'x' .. e.count);
-            end
-            if e.pinned then
-                imgui.SameLine(0, 8);
-                imgui.TextColored(cGOLD, '[pinned]');
-                if imgui.IsItemHovered() then
-                    imgui.SetTooltip('Soft-locked: no automation may remove this entry without asking you.');
+    local lv = filterView(layoutView(), needle);
+    if lv.total > 0 then
+        renderTree(lv, 'L', searching, forceClose, level, COL, function(e)
+            return function()
+                if e.count > 1 then
+                    imgui.SameLine(0, 6);
+                    imgui.TextColored(cDIM, 'x' .. e.count);
                 end
-            end
-            if e.hint ~= nil and gi ~= nil then
-                imgui.SameLine(0, 8);
-                imgui.TextColored(cDIM, esc(gi.containerName(e.hint)));
-            end
-        end
-        imgui.EndChild();
+                if e.pinned then
+                    imgui.SameLine(0, 8);
+                    imgui.TextColored(cGOLD, '[pin]');
+                    if imgui.IsItemHovered() then
+                        imgui.SetTooltip('Soft-locked: no automation may remove this entry without asking you.');
+                    end
+                end
+            end;
+        end);
     elseif lc.fresh then
-        imgui.TextColored(cDIM, 'No entries yet -- this job\'s shelf empties at the next job change.');
+        imgui.TextColored(cDIM, searching and 'Nothing in the layout matches.' or 'No entries yet -- this job\'s shelf empties at the next job change.');
     end
+    imgui.EndChild();
 
-    imgui.Separator();
+    imgui.SameLine(0, 10);
 
-    -- ---- the vault browser ----
+    -- ---- right pane: the vault ----
+    imgui.BeginChild('##gvright', { -1, -24 }, false);
     if uistyl ~= nil and type(uistyl.helpLabel) == 'function' then
         uistyl.helpLabel(imgui, 'Vault contents', 'Everything in your Gear Vault (the server-side void space).\nWithdraw needs a Void Warden nearby -- the button says so if you are not.', cHEAD);
     else
         imgui.TextColored(cHEAD, 'Vault contents');
     end
-    imgui.SameLine(0, 12);
-    imgui.PushItemWidth(180);
-    imgui.InputText('##gvsearch', _search, 64);
-    imgui.PopItemWidth();
-    if imgui.IsItemHovered() then imgui.SetTooltip('Filter by name.'); end
-
-    local needle = string.lower(tostring(_search[1] or ''));
-    local rows = browserRows();
-    imgui.BeginChild('##gvbrowse', { -1, -24 }, false);
-    local shown = 0;
-    for _, row in ipairs(rows) do
-        if needle == '' or string.find(string.lower(row.name), needle, 1, true) ~= nil then
-            shown = shown + 1;
-            if icons ~= nil and type(icons.renderIcon) == 'function' then
-                pcall(icons.renderIcon, row.itemId, 18);
-                imgui.SameLine(0, 6);
-            end
-            imgui.TextColored(cOK, esc(row.name));
-            if row.qty > 1 then
-                imgui.SameLine(0, 6);
-                imgui.TextColored(cDIM, 'x' .. row.qty);
-            end
-            if isAugmented(row.identity) then
-                imgui.SameLine(0, 8);
-                imgui.TextColored(cGOLD, '[aug]');
-                if imgui.IsItemHovered() then
-                    imgui.SetTooltip('This copy carries augments or an inscription -- it comes back byte-identical.');
+    local vv = filterView(vaultView(), needle);
+    if vv.total > 0 then
+        renderTree(vv, 'V', searching, forceClose, level, COL, function(e)
+            return function()
+                if e.qty > 1 then
+                    imgui.SameLine(0, 6);
+                    imgui.TextColored(cDIM, 'x' .. e.qty);
                 end
-            end
-            imgui.SameLine(0, 12);
-            if imgui.SmallButton('Withdraw##gvw' .. tostring(row.rowId)) then
-                withdrawRow(row);
-            end
-            if imgui.IsItemHovered() then
-                imgui.SetTooltip('Move this to your inventory. Works at a Void Warden (anywhere for a GM).');
-            end
-        end
-    end
-    if shown == 0 then
-        imgui.TextColored(cDIM, (#rows == 0) and 'The vault is empty (or the first sync has not run -- try Sync).'
-                                            or 'Nothing matches the search.');
+                if isAugmented(e.identity) then
+                    imgui.SameLine(0, 8);
+                    imgui.TextColored(cGOLD, '[aug]');
+                    if imgui.IsItemHovered() then
+                        imgui.SetTooltip('This copy carries augments or an inscription -- it comes back byte-identical.');
+                    end
+                end
+                imgui.SameLine(0, 12);
+                if imgui.SmallButton('Withdraw##gvw' .. tostring(e.rowId)) then
+                    withdrawRow(e);
+                end
+                if imgui.IsItemHovered() then
+                    imgui.SetTooltip('Move this to your inventory. Works at a Void Warden (anywhere for a GM).');
+                end
+            end;
+        end);
+    else
+        imgui.TextColored(cDIM, (vc.mirror.stamp == nil) and 'The vault has not synced yet -- try Sync.'
+            or (searching and 'Nothing in the vault matches.' or 'The vault is empty.'));
     end
     imgui.EndChild();
 
@@ -315,9 +521,8 @@ function M.render(job, level)
 end
 
 -- test seams
-M._browserRows = browserRows;
 M._search = _search;
+M._filterView = filterView;
 function M._lastResult() return _lastMsg; end
-function M._noteResult(t, e) noteResult(t, e); end
 
 return M;

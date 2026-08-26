@@ -10185,3 +10185,26 @@ subtraction / refusal / the timeout-no-fresh-Seq law), smoke_ui 1445 (+GVU1–11
 the tab renders whole against the stub, stacks balanced, search filters, a
 Withdraw click queues exactly one request), pack_lint 29. Field gate (slice 2):
 browse + withdraw round-trip at a Warden; the layout list matching `!vault list`.
+
+### Slice-2 UX round (2026-08-26) — "looks horrible, but it's a good start"
+
+Henrik's three notes, all landed the same block:
+
+1. **Vertical panes.** The stacked sections became two side-by-side panes —
+   this job's layout LEFT, the vault RIGHT — because horizontal bands stop
+   scaling the moment either list grows; vertical columns scroll independently
+   forever. One search box filters BOTH panes.
+2. **The All Equipment look.** Both panes group rows under collapsible per-slot
+   sections with counts (Main/Range nest their weapon categories, CAT_ORDER
+   and SLOT_TREE_ORDER from the shared services); searching force-opens the
+   tree and clearing the search collapses it once — the exact idiom, so the
+   vault reads like the tab players already know. Unknown ids fall to an
+   'Other' bucket rather than vanishing.
+3. **Stats.** Every row shows Lv + the inline stat summary, and hovering a
+   name shows THE standard item card — `renderItemTooltip` was published as
+   `host.services.itemTooltip` (it already went to automationsui by injection),
+   so a pack surface shows the same card as every core gear line instead of
+   inventing a lesser one.
+
+smoke_ui 1449 (GVU grew tree/tooltip stack balance, section counts, the Other
+bucket); run_tests 7272 unchanged.

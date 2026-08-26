@@ -7511,18 +7511,24 @@ end)();
 --      stubs up itself (the tray-section idiom).
 -- ---------------------------------------------------------------------------
 (function()
-    local depth = { child = 0, item = 0 };
-    local texts, smallHits = {}, {};
+    local depth = { child = 0, item = 0, tree = 0, tip = 0 };
+    local texts, smallHits, headers = {}, {}, {};
     local pressWithdraw = false;
     local nop = function() end;
     local IM = {
         TextColored   = function(_, s) texts[#texts + 1] = tostring(s); end,
         SameLine      = nop, Separator = nop, SetTooltip = nop,
+        SetNextItemOpen = nop,
         IsItemHovered = function() return true; end,
         SmallButton   = function(label)
             smallHits[#smallHits + 1] = tostring(label);
             return pressWithdraw and tostring(label):match('^Withdraw') ~= nil;
         end,
+        CollapsingHeader = function(label) headers[#headers + 1] = tostring(label); return true; end,
+        TreeNode      = function() depth.tree = depth.tree + 1; return true; end,
+        TreePop       = function() depth.tree = depth.tree - 1; end,
+        BeginTooltip  = function() depth.tip = depth.tip + 1; end,
+        EndTooltip    = function() depth.tip = depth.tip - 1; end,
         PushItemWidth = function() depth.item = depth.item + 1; end,
         PopItemWidth  = function() depth.item = depth.item - 1; end,
         InputText     = function() return false; end,
@@ -7542,8 +7548,20 @@ end)();
     package.loaded['dlac\\ui\\uihost'] = {
         services = {
             COL = { ERR = {1,0,0,1}, DIM = {1,1,1,1}, HEADER = {1,1,1,1},
-                    USABLE = {1,1,1,1}, SCORE = {1,1,1,1}, VAULT = {1,1,1,1} },
+                    USABLE = {1,1,1,1}, SCORE = {1,1,1,1}, VAULT = {1,1,1,1},
+                    LEVEL = {1,1,1,1}, STATS = {1,1,1,1} },
             displayName = function(id) return 'Item' .. tostring(id); end,
+            -- Body rows exercise the slot-section path; a Main row exercises
+            -- the nested weapon-category path; id 300 stays UNKNOWN so the
+            -- 'Other' fallback bucket renders too.
+            lookupById = function(id)
+                if id == 300 then return nil; end
+                if id == 200 then return { Id = id, Name = 'Item' .. id, Slot = 'Main', Category = 'Sword', Level = 10 }; end
+                return { Id = id, Name = 'Item' .. id, Slot = 'Body', Level = 10 };
+            end,
+            itemTooltip = function() IM.BeginTooltip(); IM.EndTooltip(); end,
+            SLOT_TREE_ORDER = { 'Main', 'Body' },
+            CAT_ORDER = { Main = { 'Sword' } },
         },
     };
     package.loaded['dlac\\servers\\vanaheim\\modules\\gearvault\\vaultclient'] = nil;
@@ -7569,13 +7587,19 @@ end)();
     check('GVU1 the tab renders whole', pcall(vui.render, 1, 75), true);
     check('GVU2 child stack balanced',  depth.child, 0);
     check('GVU3 item-width stack balanced', depth.item, 0);
+    check('GVU3a tree stack balanced',  depth.tree, 0);
+    check('GVU3b tooltip stack balanced (the standard hover card ran)', depth.tip, 0);
     local blob = table.concat(texts, '|');
     check('GVU4 the browser drew both rows',
           blob:find('Item100', 1, true) ~= nil and blob:find('Item200', 1, true) ~= nil, true);
     check('GVU5 the augmented copy is tagged', blob:find('[aug]', 1, true) ~= nil, true);
-    check('GVU6 the layout drew its pinned entry', blob:find('[pinned]', 1, true) ~= nil, true);
+    check('GVU6 the layout drew its pinned entry', blob:find('[pin]', 1, true) ~= nil, true);
+    local heads = table.concat(headers, '|');
+    check('GVU6a slot sections drew with counts',
+          heads:find('Body (1)', 1, true) ~= nil and heads:find('Main (1)', 1, true) ~= nil, true);
+    check('GVU6b the unknown id fell to the Other bucket', heads:find('Other (', 1, true) ~= nil, true);
 
-    -- the search filters the browser
+    -- the search filters BOTH panes
     vui._search[1] = 'item200';
     texts = {};
     check('GVU7 renders under a search', pcall(vui.render, 1, 75), true);

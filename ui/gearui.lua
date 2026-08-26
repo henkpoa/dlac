@@ -5243,6 +5243,11 @@ host.provide({
     avail = avail, wornByLevel = wornByLevel,
     -- gear data + candidate machinery
     effStats = effStats, isUsable = isUsable,
+    -- The standard item hover card (BeginTooltip + name/type/stats/set bonus),
+    -- the same renderer automationsui gets by injection -- published so a pack
+    -- module's surface (the Gear Vault tab) shows the SAME card as every other
+    -- gear line instead of inventing a lesser one.
+    itemTooltip = renderItemTooltip,
     lookupById = lookupById, lookupByName = lookupByName, displayName = displayName,
     buildOwned = buildOwned, buildAllEquip = buildAllEquip, ownedAugMap = ownedAugMap,
     candidatesForSlot = candidatesForSlot, subCandidatePool = subCandidatePool,
