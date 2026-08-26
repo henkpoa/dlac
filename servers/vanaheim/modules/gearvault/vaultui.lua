@@ -333,7 +333,10 @@ local function renderRow(e, level, COL, deco)
             if deco.key ~= nil then _hotNext = deco.key; end
         end, b1, b2);
     end
-    imgui.SetCursorPosY(y0 + rowH + 2);
+    -- No trailing SetCursorPosY: the content line's own advance matches the
+    -- one-line Selectable's, and the newer ImGui ASSERTS on a cursor moved
+    -- past the last submitted item ("please submit an item e.g. Dummy()") --
+    -- Henrik's screenshot, 2026-08-26.
 
     if rowHovered then
         if deco.key ~= nil then _hotNext = deco.key; end
