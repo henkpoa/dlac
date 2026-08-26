@@ -72,6 +72,13 @@ function R.pressure() return st.pressure; end
 -- something" figure. nil until a beat has measured.
 function R.freeSlots() return st.freeSlots; end
 
+-- What is on the body right now ({ [itemId] = true }) -- the tab's Remove
+-- guard reads the same eyes the eviction ranking uses.
+function R.wornNow()
+    if D ~= nil and type(D.worn) == 'function' then return D.worn() or {}; end
+    return {};
+end
+
 -- A zone-in may have landed us in a city: let the next beat retry a
 -- city-blocked push immediately instead of waiting out lastPushKey.
 function R.zoneArmed()
@@ -201,7 +208,8 @@ function R.tick()
         if over > 0 or waiting > 0 then
             local assigned = {};
             for _, it in ipairs(d.items) do assigned[it.itemId] = true; end
-            local ranked = D.usage.rankEvictions(vc.layoutCache.entries, assigned);
+            local worn = (type(D.worn) == 'function') and D.worn() or {};
+            local ranked = D.usage.rankEvictions(vc.layoutCache.entries, assigned, worn);
             local mode = (D.settings ~= nil) and D.settings().removals or 'ask';
             if mode == 'auto' and over > 0 and st.evictStamp ~= vc.layoutCache.stamp then
                 st.evictStamp = vc.layoutCache.stamp;

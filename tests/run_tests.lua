@@ -27395,6 +27395,14 @@ end)();
     check('USG9 fresh unassigned before assigned', ranked.unpinned[2].itemId, 2);
     check('USG10 assigned ranks last', ranked.unpinned[3].itemId, 3);
     check('USG11 pinned never auto-ranks', #ranked.pinned == 1 and ranked.pinned[1].itemId, 4);
+    check('USG11b a WORN id ranks in NEITHER list (the equipped-piece desync)', (function()
+        local rk = ug.rankEvictions({
+            { itemId = 1, identity = vc.ZERO24, count = 1, pinned = false, name = 'Worn Thing' },
+            { itemId = 2, identity = vc.ZERO24, count = 1, pinned = true,  name = 'Worn Pinned' },
+            { itemId = 3, identity = vc.ZERO24, count = 1, pinned = false, name = 'Free Thing' },
+        }, {}, { [1] = true, [2] = true });
+        return #rk.unpinned == 1 and rk.unpinned[1].itemId == 3 and #rk.pinned == 0;
+    end)(), true);
 
     -- additions 'off' gates the push
     vc._reset(); rc._reset(); T, sent, msgs = 1000, {}, {};

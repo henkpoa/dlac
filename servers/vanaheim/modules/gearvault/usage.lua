@@ -263,22 +263,29 @@ end
 -- ---------------------------------------------------------------------------
 -- Eviction ranking (GV3): entries = layout entries ({ itemId, identity,
 -- count, pinned, name }); assignedIds = { [itemId] = true } from the current
--- derivation. Returns { unpinned = ordered candidates, pinned = the pinned
--- ones in the same order } -- the caller evicts from `unpinned` and ASKS
--- about `pinned`, in every mode.
+-- derivation; wornIds = { [itemId] = true } for what is ON THE BODY right
+-- now. Returns { unpinned = ordered candidates, pinned = the pinned ones in
+-- the same order } -- the caller evicts from `unpinned` and ASKS about
+-- `pinned`, in every mode. A WORN id appears in NEITHER list (Henrik's
+-- 2026-08-27 field round): the apply cannot move an equipped piece off the
+-- shelf, so evicting its entry only desyncs the layout from the shelf and
+-- sets the moogle chasing an immovable item.
 -- ---------------------------------------------------------------------------
-function M.rankEvictions(entries, assignedIds)
+function M.rankEvictions(entries, assignedIds, wornIds)
     assignedIds = assignedIds or {};
+    wornIds = wornIds or {};
     local unpinned, pinned = {}, {};
     for _, e in ipairs(entries or {}) do
-        local c = {
-            itemId = e.itemId, identity = e.identity, count = e.count or 1,
-            pinned = e.pinned == true, name = e.name or tostring(e.itemId),
-            key = M.keyOf(e.itemId, e.identity),
-            assigned = assignedIds[e.itemId] == true,
-        };
-        c.last = st.stamps[c.key] or 0;
-        if c.pinned then pinned[#pinned + 1] = c; else unpinned[#unpinned + 1] = c; end
+        if not wornIds[e.itemId] then
+            local c = {
+                itemId = e.itemId, identity = e.identity, count = e.count or 1,
+                pinned = e.pinned == true, name = e.name or tostring(e.itemId),
+                key = M.keyOf(e.itemId, e.identity),
+                assigned = assignedIds[e.itemId] == true,
+            };
+            c.last = st.stamps[c.key] or 0;
+            if c.pinned then pinned[#pinned + 1] = c; else unpinned[#unpinned + 1] = c; end
+        end
     end
     local function order(a, b)
         if a.assigned ~= b.assigned then return not a.assigned; end   -- unassigned first

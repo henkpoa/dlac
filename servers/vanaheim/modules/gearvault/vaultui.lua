@@ -804,7 +804,13 @@ function M.render(job, level)
                     local armed = e.pinned and confirmArmed(rkey);
                     if armed then imgui.PushStyleColor(ImGuiCol_Button, { 0.75, 0.25, 0.20, 1.0 }); end
                     if imgui.SmallButton((armed and 'Sure?' or 'Remove') .. '##gvr' .. tostring(e.sortKey)) then
-                        if e.pinned and not armed then
+                        local wornNow = (recon ~= nil and type(recon.wornNow) == 'function') and recon.wornNow() or {};
+                        if wornNow[e.itemId] then
+                            -- an equipped piece cannot leave the shelf: the
+                            -- apply skips ITEM_LOCKED, so removing its entry
+                            -- only desyncs the layout (Henrik's field round)
+                            noteResult(e.name .. ' is equipped right now -- unequip it first, then remove', true);
+                        elseif e.pinned and not armed then
                             _confirm = { key = rkey, at = os.clock() };
                         else
                             _confirm = nil;

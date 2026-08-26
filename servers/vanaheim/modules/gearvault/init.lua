@@ -149,6 +149,27 @@ local function mainJob()
     return j;
 end
 
+-- What is ON THE BODY right now, by item id, through the shared services
+-- (never a raw read -- GRD1). Cached a beat: the eviction ranking, the
+-- usage stamps and the tab's Remove guard all look through these eyes.
+local _wornCache, _wornCacheAt = nil, 0;
+local function wornIds()
+    local nowc = os.clock();
+    if _wornCache ~= nil and nowc - _wornCacheAt < 2.0 then return _wornCache; end
+    _wornCacheAt = nowc;
+    local out = {};
+    pcall(function()
+        local S = require('dlac\\ui\\uihost').services;
+        if type(S.EQUIP_SLOTS) ~= 'table' or type(S.getEquippedId) ~= 'function' then return; end
+        for _, sl in ipairs(S.EQUIP_SLOTS) do
+            local id = S.getEquippedId(sl.equip);
+            if type(id) == 'number' and id > 0 then out[id] = true; end
+        end
+    end);
+    _wornCache = out;
+    return out;
+end
+
 -- THE RECONCILE ENGINE (slice 3 -- reconcile.lua's header carries the whole
 -- design). Readers live in ONE table so the engine and the `/dl vault why`
 -- probe read the world through the same eyes: sets through profilesets (the
@@ -199,6 +220,7 @@ local RD = {
         end);
         return out;
     end,
+    worn = wornIds,
     -- slice 4: the usage memory + the behaviour settings + the live shelf.
     -- `/dl vault cap <n>` overrides the capacity for a session -- the only
     -- way to FIELD-TEST the pressure flows before the server's wardrobe
