@@ -7519,6 +7519,7 @@ end)();
         TextColored   = function(_, s) texts[#texts + 1] = tostring(s); end,
         SameLine      = nop, Separator = nop, SetTooltip = nop,
         SetNextItemOpen = nop, Dummy = nop,
+        Selectable    = function() return false; end,
         PushStyleColor = function() depth.col = depth.col + 1; end,
         PopStyleColor  = function(n) depth.col = depth.col - (n or 1); end,
         GetContentRegionAvail = function() return 800, 500; end,

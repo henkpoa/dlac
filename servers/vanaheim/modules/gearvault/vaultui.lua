@@ -82,16 +82,22 @@ local function isAugmented(identity)
     return type(identity) == 'string' and #identity > 0 and identity ~= ZERO24;
 end
 
--- The standard hover card, or a plain name tooltip when the record (or the
--- service) is missing -- a hover must never answer NOTHING.
-local function hoverCard(rec, name)
-    if not imgui.IsItemHovered() then return; end
+-- The standard item card, unconditionally -- callers decide WHAT was hovered
+-- (a name, or a whole row). Falls to a plain name tooltip when the record or
+-- the service is missing: a hover must never answer NOTHING.
+local function showCard(rec, name)
     local S = services();
     if rec ~= nil and type(S.itemTooltip) == 'function' then
         local ok = pcall(S.itemTooltip, rec);
         if ok then return; end
     end
     pcall(imgui.SetTooltip, esc(name));
+end
+
+-- ...and the common shape: the card when the LAST item is hovered.
+local function hoverCard(rec, name)
+    if not imgui.IsItemHovered() then return; end
+    showCard(rec, name);
 end
 
 -- Shelf occupancy: used/max over Wardrobes 1-8 (cids 8, 10-16 -- NOT
@@ -715,13 +721,22 @@ function M.render(job, level)
                 local w = imgui.GetWindowWidth();
                 if type(w) == 'number' and w > 120 then btnCol = w - 62; end
             end);
+            -- Each row rides an invisible full-row Selectable (the Sets-tab /
+            -- alternatives idiom): hovering ANYWHERE on the row highlights the
+            -- whole line AND shows the item card -- so the eye can pair a name
+            -- with its far-right Store button without aiming at the text. The
+            -- Selectable STOPS SHORT of the button column (the automationsui
+            -- law: two click targets must never share a pixel).
             for _, e in ipairs(shown) do
                 if icons ~= nil and type(icons.renderIcon) == 'function' then
                     pcall(icons.renderIcon, e.itemId, 18);
                     imgui.SameLine(0, 6);
                 end
+                imgui.Selectable('##gvirow' .. tostring(e.slot), false,
+                    ImGuiSelectableFlags_None or 0, { math.max(60, btnCol - 34), 18 });
+                local rowHovered = imgui.IsItemHovered();
+                imgui.SameLine(26);
                 imgui.TextColored(COL.USABLE or { 1, 1, 1, 1 }, esc(e.name));
-                hoverCard(e.rec, e.name);
                 if e.qty > 1 then
                     imgui.SameLine(0, 6);
                     imgui.TextColored(cDIM, 'x' .. e.qty);
@@ -732,6 +747,8 @@ function M.render(job, level)
                 end
                 if imgui.IsItemHovered() then
                     imgui.SetTooltip('Deposit this into the Gear Vault. Works at a Void Warden\n(anywhere for a GM).');
+                elseif rowHovered then
+                    showCard(e.rec, e.name);
                 end
             end
         else
