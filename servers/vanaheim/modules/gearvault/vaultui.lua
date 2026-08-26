@@ -680,7 +680,7 @@ function M.render(job, level)
                         withdrawRow(e);
                     end
                     if imgui.IsItemHovered() then
-                        imgui.SetTooltip('Move this to your inventory. Works at a Void Warden (anywhere for a GM).');
+                        imgui.SetTooltip('Move this to your inventory (at a Void Warden).');
                     end
                 end;
             end);
@@ -709,7 +709,7 @@ function M.render(job, level)
                 storeRows(shown);
             end
             if imgui.IsItemHovered() then
-                imgui.SetTooltip('Deposit every listed piece into the Gear Vault.\nWorks at a Void Warden (anywhere for a GM). Equipped pieces and\nduplicates are refused per item and stay in your bags.');
+                imgui.SetTooltip('Deposit every listed piece into the Gear Vault.\nWorks at a Void Warden. Equipped pieces and\nduplicates are refused per item and stay in your bags.');
             end
             imgui.SameLine(0, 10);
             imgui.TextColored(cDIM, 'Storable gear in your inventory:');
@@ -722,17 +722,22 @@ function M.render(job, level)
                 if type(w) == 'number' and w > 120 then btnCol = w - 62; end
             end);
             -- Each row rides an invisible full-row Selectable (the Sets-tab /
-            -- alternatives idiom): hovering ANYWHERE on the row highlights the
-            -- whole line AND shows the item card -- so the eye can pair a name
-            -- with its far-right Store button without aiming at the text. The
-            -- Selectable STOPS SHORT of the button column (the automationsui
-            -- law: two click targets must never share a pixel).
+            -- alternatives idiom): hovering ANYWHERE on the row -- the Store
+            -- button included -- highlights the whole line, so the eye can
+            -- pair a name with its far-right button without aiming at the
+            -- text. The button sits OUTSIDE the Selectable (the automationsui
+            -- law: two click targets never share a pixel), so its hover
+            -- cannot light the Selectable natively -- instead LAST frame's
+            -- hot row renders selected=true (the Header fill), a one-frame
+            -- lag no eye can see. Row hover shows the item card; button
+            -- hover keeps its own words.
+            local hotNow = nil;
             for _, e in ipairs(shown) do
                 if icons ~= nil and type(icons.renderIcon) == 'function' then
                     pcall(icons.renderIcon, e.itemId, 18);
                     imgui.SameLine(0, 6);
                 end
-                imgui.Selectable('##gvirow' .. tostring(e.slot), false,
+                imgui.Selectable('##gvirow' .. tostring(e.slot), M._hotRow == e.slot,
                     ImGuiSelectableFlags_None or 0, { math.max(60, btnCol - 34), 18 });
                 local rowHovered = imgui.IsItemHovered();
                 imgui.SameLine(26);
@@ -745,12 +750,15 @@ function M.render(job, level)
                 if imgui.SmallButton('Store##gvs' .. tostring(e.slot)) then
                     storeRows({ e });
                 end
-                if imgui.IsItemHovered() then
-                    imgui.SetTooltip('Deposit this into the Gear Vault. Works at a Void Warden\n(anywhere for a GM).');
+                local btnHovered = imgui.IsItemHovered();
+                if rowHovered or btnHovered then hotNow = e.slot; end
+                if btnHovered then
+                    imgui.SetTooltip('Deposit this into the Gear Vault (at a Void Warden).');
                 elseif rowHovered then
                     showCard(e.rec, e.name);
                 end
             end
+            M._hotRow = hotNow;
         else
             imgui.TextColored(cDIM, searching and 'Nothing in your inventory matches.'
                 or 'No storable gear in your inventory.');
