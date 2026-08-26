@@ -285,24 +285,24 @@ end
 -- Row + tree renderers (the All Equipment look)
 -- ---------------------------------------------------------------------------
 
--- One gear piece = TWO text lines treated as ONE row (Henrik's rulings,
--- 2026-08-26): line 1 = icon + name + the caller's tags, with the two
--- action buttons in FIXED COLUMNS against the right edge so every row's
--- buttons line up; line 2, indented = Lv + the stat summary, dim. The
--- whole unit -- both lines AND the buttons -- highlights as one (a
--- full-height Selectable underneath, lit from LAST frame's hot row so a
--- button hover keeps it glowing -- the one-frame lag no eye can see), and
--- hovering anywhere on it shows the standard item card; the buttons keep
--- their own tooltips.
+-- One gear piece = ONE row (Henrik's ruling, 2026-08-26: "stats are mostly
+-- relevant when building the sets anyway, we want a quick overview"): icon +
+-- name + Lv + the caller's tags, with the two action buttons in FIXED
+-- COLUMNS against the right edge so every row's buttons line up. The stats
+-- live in the hover card. The whole row -- buttons included -- highlights
+-- as one (a full-width Selectable underneath, lit from LAST frame's hot row
+-- so a button hover keeps it glowing -- the one-frame lag no eye can see),
+-- and hovering anywhere on it shows the standard item card; the buttons
+-- keep their own tooltips.
 --
 -- deco = { key = unique row id, tags = fn() inline after the name,
---          buttons = fn(hot) -- draws at the columns, calls hot() after any
---          hovered button }. Overlay mechanics: remember Y, lay the
--- Selectable, rewind, draw content over it, then normalize Y.
+--          buttons = fn(hot, b1, b2) -- draws at the columns, calls hot()
+--          after any hovered button }. Overlay mechanics: remember Y, lay
+-- the Selectable, rewind, draw content over it, then normalize Y.
 local _hotKey, _hotNext = nil, nil;
 local function renderRow(e, level, COL, deco)
     deco = deco or {};
-    local rowH = (e.rec ~= nil) and 37 or 19;
+    local rowH = 19;
     local w = 420;
     pcall(function()
         local ww = imgui.GetWindowWidth();
@@ -312,10 +312,6 @@ local function renderRow(e, level, COL, deco)
     local b1 = b2 - 84;         -- first button column (Layout / Pin)
 
     local y0 = imgui.GetCursorPosY();
-    -- FULL-width strip, buttons included (Henrik: the highlight must span the
-    -- whole row). The buttons draw AFTER it over the same pixels; the overlap
-    -- declaration hands them their own hover and clicks -- this module only
-    -- ever runs on Vanaheim's binding, which carries the call.
     pcall(function() imgui.SetNextItemAllowOverlap(); end);
     imgui.Selectable('##gvrow' .. tostring(deco.key or e.name), _hotKey ~= nil and _hotKey == deco.key,
         ImGuiSelectableFlags_None or 0, { math.max(60, w - 24), rowH });
@@ -327,18 +323,15 @@ local function renderRow(e, level, COL, deco)
         imgui.SameLine(0, 6);
     end
     imgui.TextColored(COL.USABLE or { 1, 1, 1, 1 }, esc(e.name));
+    if e.rec ~= nil then
+        imgui.SameLine(0, 8);
+        imgui.TextColored(COL.LEVEL or COL.DIM, string.format('Lv%d', e.rec.Level or 0));
+    end
     if type(deco.tags) == 'function' then deco.tags(); end
     if type(deco.buttons) == 'function' then
         deco.buttons(function()
             if deco.key ~= nil then _hotNext = deco.key; end
         end, b1, b2);
-    end
-    if e.rec ~= nil then
-        imgui.Dummy({ 24, 1 });
-        imgui.SameLine(0, 0);
-        local ss = (fmt ~= nil and type(fmt.statSummary) == 'function') and fmt.statSummary(e.rec, level) or '';
-        imgui.TextColored(COL.STATS or COL.DIM, string.format('Lv%2d%s%s',
-            e.rec.Level or 0, (ss ~= '') and '  ' or '', esc(ss)));
     end
     imgui.SetCursorPosY(y0 + rowH + 2);
 
@@ -800,6 +793,10 @@ function M.render(job, level)
                 local rowHovered = imgui.IsItemHovered();
                 imgui.SameLine(26);
                 imgui.TextColored(COL.USABLE or { 1, 1, 1, 1 }, esc(e.name));
+                if e.rec ~= nil then
+                    imgui.SameLine(0, 8);
+                    imgui.TextColored(COL.LEVEL or cDIM, string.format('Lv%d', e.rec.Level or 0));
+                end
                 if e.qty > 1 then
                     imgui.SameLine(0, 6);
                     imgui.TextColored(cDIM, 'x' .. e.qty);
