@@ -842,6 +842,33 @@ function M.render(job, level)
         imgui.TextColored(cDIM, searching and 'Nothing in the layout matches.' or 'No entries yet -- this job\'s shelf empties at the next job change.');
     end
 
+    -- WAITING FOR ROOM (Henrik's 2026-08-27 "limbo" round: pieces the
+    -- engine holds back for space were invisible until they materialised
+    -- after a removal). Named here, gold: they belong to the layout the
+    -- moment room appears; Bench one to stop wanting it instead.
+    if pr ~= nil and pr.waitingItems ~= nil and #pr.waitingItems > 0 then
+        imgui.PushStyleColor(ImGuiCol_Text, cGOLD);
+        local wOpen = imgui.CollapsingHeader(string.format('Waiting for room (%d)###gvwait', #pr.waitingItems));
+        imgui.PopStyleColor(1);
+        if wOpen then
+            imgui.TextColored(cDIM, 'Your sets want these; they join the layout the moment the shelf has room.');
+            for _, wI in ipairs(pr.waitingItems) do
+                imgui.TextColored(COL.USABLE or { 1, 1, 1, 1 }, esc(nameOf(wI.itemId))
+                    .. ((wI.need or 1) > 1 and (' x' .. wI.need) or ''));
+                imgui.SameLine(0, 10);
+                if imgui.SmallButton('Bench##gvwb' .. tostring(wI.itemId)) then
+                    if usg ~= nil then
+                        pcall(usg.exclude, { usg.keyOf(wI.itemId, nil) });
+                        noteResult(nameOf(wI.itemId) .. ' benched -- dlac stops trying to shelve it', false);
+                    end
+                end
+                if imgui.IsItemHovered() then
+                    imgui.SetTooltip('Stop wanting this on the shelf -- it moves to the Bench below,\nand Restore brings it back any time.');
+                end
+            end
+        end
+    end
+
     -- THE BENCH (Henrik's 2026-08-27 design round: exclusions must be
     -- visible and one click from coming back). Set-wanted pieces the player
     -- removed sit here BY NAME; Restore clears the tombstone and the

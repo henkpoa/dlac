@@ -165,7 +165,7 @@ function R.tick()
     -- the player removed stays removed); and the SHELF -- the engine never
     -- pushes an add that cannot fit, so a full shelf costs zero wire.
     local adds = {};
-    local waiting = 0;
+    local waiting, waitingItems = 0, {};
     if not (D.settings ~= nil and D.settings().additions == 'off') then
         local units = layoutUnits;
         for _, it in ipairs(d.items) do
@@ -179,6 +179,7 @@ function R.tick()
                     local need = it.count - (c or 0);
                     if capacity > 0 and units + need > capacity then
                         waiting = waiting + need;
+                        waitingItems[#waitingItems + 1] = { itemId = it.itemId, need = need };
                     elseif #adds < R.MAX_PUSH then
                         units = units + need;
                         adds[#adds + 1] = it;
@@ -232,12 +233,12 @@ function R.tick()
                         over, evicted, (evicted == 1) and 'y' or 'ies'));
                 end
                 if freed < over then
-                    st.pressure = { over = over - freed, waiting = waiting, mode = mode,
-                                    candidates = {}, pinned = ranked.pinned };
+                    st.pressure = { over = over - freed, waiting = waiting, waitingItems = waitingItems,
+                                    mode = mode, candidates = {}, pinned = ranked.pinned };
                 end
             elseif mode ~= 'auto' or over <= 0 then
-                st.pressure = { over = math.max(0, over), waiting = waiting, mode = mode,
-                                candidates = ranked.unpinned, pinned = ranked.pinned };
+                st.pressure = { over = math.max(0, over), waiting = waiting, waitingItems = waitingItems,
+                                mode = mode, candidates = ranked.unpinned, pinned = ranked.pinned };
             end
         end
     end
