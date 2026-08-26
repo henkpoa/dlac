@@ -243,35 +243,27 @@ end
 -- Row + tree renderers (the All Equipment look)
 -- ---------------------------------------------------------------------------
 
--- One row: icon, name (fixed column), Lv, stat summary -- then the caller's
--- trailing decorations. The standard card on hovering the name.
-local function renderRow(e, level, nameW, COL, trailing)
+-- One gear piece = TWO rows (Henrik's ruling, 2026-08-26: the split window
+-- halves the width All Equipment has, so its single aligned row cannot fit --
+-- and the first row must keep room for MORE buttons later):
+--   row 1: icon + name + the caller's decorations and buttons;
+--   row 2, indented under the name: Lv + the stat summary, dim.
+-- The standard card on hovering the name.
+local function renderRow(e, level, COL, trailing)
     if icons ~= nil and type(icons.renderIcon) == 'function' then
         pcall(icons.renderIcon, e.itemId, 18);
         imgui.SameLine(0, 6);
     end
     imgui.TextColored(COL.USABLE or { 1, 1, 1, 1 }, esc(e.name));
     hoverCard(e.rec, e.name);
-    local nameCol = 26 + (nameW or 200);
-    if e.rec ~= nil then
-        imgui.SameLine(nameCol);
-        imgui.TextColored(COL.LEVEL or COL.DIM, string.format('Lv%2d', e.rec.Level or 0));
-        local ss = (fmt ~= nil and type(fmt.statSummary) == 'function') and fmt.statSummary(e.rec, level) or '';
-        if ss ~= '' then
-            imgui.SameLine(nameCol + 46);
-            imgui.TextColored(COL.STATS or COL.DIM, esc(ss));
-        end
-    end
     if type(trailing) == 'function' then trailing(); end
-end
-
--- The name-column width for a group (fmt.nameWidthOf wants records with .Name).
-local function widthOf(list)
-    if fmt ~= nil and type(fmt.nameWidthOf) == 'function' then
-        local ok, w = pcall(fmt.nameWidthOf, list);
-        if ok and type(w) == 'number' then return w; end
+    if e.rec ~= nil then
+        imgui.Dummy({ 24, 1 });
+        imgui.SameLine(0, 0);
+        local ss = (fmt ~= nil and type(fmt.statSummary) == 'function') and fmt.statSummary(e.rec, level) or '';
+        imgui.TextColored(COL.STATS or COL.DIM, string.format('Lv%2d%s%s',
+            e.rec.Level or 0, (ss ~= '') and '  ' or '', esc(ss)));
     end
-    return 200;
 end
 
 -- The slot order the All Equipment tree walks, from the shared services --
@@ -299,8 +291,7 @@ end
 local function renderTree(view, idp, searching, forceClose, level, COL, rowTail)
     local S = services();
     local function renderList(list)
-        local nW = widthOf(list);
-        for _, e in ipairs(list) do renderRow(e, level, nW, COL, rowTail and rowTail(e) or nil); end
+        for _, e in ipairs(list) do renderRow(e, level, COL, rowTail and rowTail(e) or nil); end
     end
     local function arm()
         if searching then imgui.SetNextItemOpen(true);
@@ -377,9 +368,6 @@ local _search = { '' };
 local _layoutAskAt = 0;
 local LAYOUT_ASK_GAP = 3.0;
 
--- The layout pane's fixed width: enough for name + Lv + a stat clip.
-local LEFT_W = 360;
-
 -- ---------------------------------------------------------------------------
 -- The tab
 -- ---------------------------------------------------------------------------
@@ -444,7 +432,15 @@ function M.render(job, level)
         _layoutAskAt = os.clock();
         vc.requestLayout(0);
     end
-    imgui.BeginChild('##gvleft', { LEFT_W, -24 }, false);
+    -- HALF the window each (Henrik: "take 50% of the space, not a set
+    -- amount"), split live from the available width so a resized window
+    -- keeps the ratio. GetContentRegionAvail's first return is the width.
+    local availW = 700;
+    pcall(function()
+        local w = imgui.GetContentRegionAvail();
+        if type(w) == 'number' and w > 0 then availW = w; end
+    end);
+    imgui.BeginChild('##gvleft', { math.floor(availW * 0.5) - 6, -24 }, false);
     if uistyl ~= nil and type(uistyl.helpLabel) == 'function' then
         uistyl.helpLabel(imgui, 'This job\'s layout', 'What the SERVER holds for your current main job -- every entry here\nis pulled onto the shelf at job change, wherever it came from (dlac,\n!vault, the website). Editing from this tab arrives in the next slice;\nuntil then: !vault add/remove <item>, in a city.', cHEAD);
     else

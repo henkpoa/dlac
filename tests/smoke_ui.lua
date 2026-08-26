@@ -7518,7 +7518,8 @@ end)();
     local IM = {
         TextColored   = function(_, s) texts[#texts + 1] = tostring(s); end,
         SameLine      = nop, Separator = nop, SetTooltip = nop,
-        SetNextItemOpen = nop,
+        SetNextItemOpen = nop, Dummy = nop,
+        GetContentRegionAvail = function() return 800, 500; end,
         IsItemHovered = function() return true; end,
         SmallButton   = function(label)
             smallHits[#smallHits + 1] = tostring(label);

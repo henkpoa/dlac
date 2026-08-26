@@ -10208,3 +10208,12 @@ Henrik's three notes, all landed the same block:
 
 smoke_ui 1449 (GVU grew tree/tooltip stack balance, section counts, the Other
 bucket); run_tests 7272 unchanged.
+
+### Slice-2 UX round 2 (2026-08-26) — two-row rows, a real 50% split
+
+The screenshot round: the fixed name column collided with Lv/stats at pane
+width. Henrik's ruling — a gear piece gets TWO rows in this tab ("since we
+divide the window"): row 1 = icon + name + the decorations and BUTTONS (more
+coming), row 2 indented = Lv + the stat summary, dim. And the left pane takes
+50% of the live width (GetContentRegionAvail), never a fixed 360. The aligned-
+column helpers went with the fixed width. Suites 7272 + 1449.
