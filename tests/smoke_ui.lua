@@ -7520,6 +7520,9 @@ end)();
         SameLine      = nop, Separator = nop, SetTooltip = nop,
         SetNextItemOpen = nop, Dummy = nop,
         Selectable    = function() return false; end,
+        GetCursorPosY = function() return 0; end,
+        SetCursorPosY = nop,
+        GetWindowWidth = function() return 800; end,
         PushStyleColor = function() depth.col = depth.col + 1; end,
         PopStyleColor  = function(n) depth.col = depth.col - (n or 1); end,
         GetContentRegionAvail = function() return 800, 500; end,
@@ -7620,7 +7623,7 @@ end)();
     local hits = table.concat(smallHits, '|');
     check('GVU6 the pinned layout entry offers Unpin + Remove',
           hits:find('Unpin##', 1, true) ~= nil and hits:find('Remove##', 1, true) ~= nil, true);
-    check('GVU6c vault rows offer + Layout', hits:find('+ Layout##', 1, true) ~= nil, true);
+    check('GVU6c vault rows offer Layout', hits:find('Layout##', 1, true) ~= nil, true);
     local heads = table.concat(headers, '|');
     check('GVU6a slot sections drew with counts',
           heads:find('Body (1)', 1, true) ~= nil and heads:find('Main (1)', 1, true) ~= nil, true);

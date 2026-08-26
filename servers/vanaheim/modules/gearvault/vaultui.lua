@@ -285,26 +285,61 @@ end
 -- Row + tree renderers (the All Equipment look)
 -- ---------------------------------------------------------------------------
 
--- One gear piece = TWO rows (Henrik's ruling, 2026-08-26: the split window
--- halves the width All Equipment has, so its single aligned row cannot fit --
--- and the first row must keep room for MORE buttons later):
---   row 1: icon + name + the caller's decorations and buttons;
---   row 2, indented under the name: Lv + the stat summary, dim.
--- The standard card on hovering the name.
-local function renderRow(e, level, COL, trailing)
+-- One gear piece = TWO text lines treated as ONE row (Henrik's rulings,
+-- 2026-08-26): line 1 = icon + name + the caller's tags, with the two
+-- action buttons in FIXED COLUMNS against the right edge so every row's
+-- buttons line up; line 2, indented = Lv + the stat summary, dim. The
+-- whole unit -- both lines AND the buttons -- highlights as one (a
+-- full-height Selectable underneath, lit from LAST frame's hot row so a
+-- button hover keeps it glowing -- the one-frame lag no eye can see), and
+-- hovering anywhere on it shows the standard item card; the buttons keep
+-- their own tooltips.
+--
+-- deco = { key = unique row id, tags = fn() inline after the name,
+--          buttons = fn(hot) -- draws at the columns, calls hot() after any
+--          hovered button }. Overlay mechanics: remember Y, lay the
+-- Selectable, rewind, draw content over it, then normalize Y.
+local _hotKey, _hotNext = nil, nil;
+local function renderRow(e, level, COL, deco)
+    deco = deco or {};
+    local rowH = (e.rec ~= nil) and 37 or 19;
+    local w = 420;
+    pcall(function()
+        local ww = imgui.GetWindowWidth();
+        if type(ww) == 'number' and ww > 200 then w = ww; end
+    end);
+    local b2 = w - 84;          -- second button column (Withdraw / Remove)
+    local b1 = b2 - 84;         -- first button column (Layout / Pin)
+
+    local y0 = imgui.GetCursorPosY();
+    imgui.Selectable('##gvrow' .. tostring(deco.key or e.name), _hotKey ~= nil and _hotKey == deco.key,
+        ImGuiSelectableFlags_None or 0, { math.max(60, b1 - 34), rowH });
+    local rowHovered = imgui.IsItemHovered();
+    imgui.SetCursorPosY(y0);
+
     if icons ~= nil and type(icons.renderIcon) == 'function' then
         pcall(icons.renderIcon, e.itemId, 18);
         imgui.SameLine(0, 6);
     end
     imgui.TextColored(COL.USABLE or { 1, 1, 1, 1 }, esc(e.name));
-    hoverCard(e.rec, e.name);
-    if type(trailing) == 'function' then trailing(); end
+    if type(deco.tags) == 'function' then deco.tags(); end
+    if type(deco.buttons) == 'function' then
+        deco.buttons(function()
+            if deco.key ~= nil then _hotNext = deco.key; end
+        end, b1, b2);
+    end
     if e.rec ~= nil then
         imgui.Dummy({ 24, 1 });
         imgui.SameLine(0, 0);
         local ss = (fmt ~= nil and type(fmt.statSummary) == 'function') and fmt.statSummary(e.rec, level) or '';
         imgui.TextColored(COL.STATS or COL.DIM, string.format('Lv%2d%s%s',
             e.rec.Level or 0, (ss ~= '') and '  ' or '', esc(ss)));
+    end
+    imgui.SetCursorPosY(y0 + rowH + 2);
+
+    if rowHovered then
+        if deco.key ~= nil then _hotNext = deco.key; end
+        showCard(e.rec, e.name);
     end
 end
 
@@ -589,46 +624,53 @@ function M.render(job, level)
     local lv = filterView(layoutView(), needle);
     if lv.total > 0 then
         renderTree(lv, 'L', searching, forceClose, level, COL, function(e)
-            return function()
-                if e.count > 1 then
-                    imgui.SameLine(0, 6);
-                    imgui.TextColored(cDIM, 'x' .. e.count);
-                end
-                imgui.SameLine(0, 8);
-                local pinLabel = (e.pinned and 'Unpin' or 'Pin') .. '##gvp' .. tostring(e.sortKey);
-                if e.pinned then imgui.PushStyleColor(ImGuiCol_Button, { 0.55, 0.45, 0.15, 1.0 }); end
-                if imgui.SmallButton(pinLabel) then
-                    layoutEdit({ job = 0, verb = vc.verb.PIN, itemId = e.itemId, count = e.count,
-                                 hint = e.hint or 0, pinned = not e.pinned, identity = e.identity },
-                        e.pinned and (e.name .. ' unpinned') or (e.name .. ' pinned -- automations must ask before touching it'));
-                end
-                if e.pinned then imgui.PopStyleColor(1); end
-                if imgui.IsItemHovered() then
-                    imgui.SetTooltip(e.pinned
-                        and 'Pinned (soft-locked): no automation may remove this entry without asking.\nClick to release the pin.'
-                        or  'Pin (soft-lock) this entry: dlac\'s own automation must ask you before\nremoving it, even in space-pressure cleanups.');
-                end
-                imgui.SameLine(0, 4);
-                local rkey = 'rm' .. tostring(e.sortKey);
-                local armed = e.pinned and confirmArmed(rkey);
-                if armed then imgui.PushStyleColor(ImGuiCol_Button, { 0.75, 0.25, 0.20, 1.0 }); end
-                if imgui.SmallButton((armed and 'Sure?' or 'Remove') .. '##gvr' .. tostring(e.sortKey)) then
-                    if e.pinned and not armed then
-                        _confirm = { key = rkey, at = os.clock() };
-                    else
-                        _confirm = nil;
-                        layoutEdit({ job = 0, verb = vc.verb.REMOVE, itemId = e.itemId, count = 0,
-                                     hint = 0, pinned = false, identity = e.identity },
-                            e.name .. ' removed from the layout');
+            return {
+                key = 'L' .. tostring(e.sortKey),
+                tags = function()
+                    if e.count > 1 then
+                        imgui.SameLine(0, 6);
+                        imgui.TextColored(cDIM, 'x' .. e.count);
                     end
-                end
-                if armed then imgui.PopStyleColor(1); end
-                if imgui.IsItemHovered() then
-                    imgui.SetTooltip(e.pinned
-                        and 'Remove this PINNED entry -- takes a second click to confirm.\nThe piece itself stays in the vault; only the layout forgets it.'
-                        or  'Remove from this job\'s layout. The piece stays in the vault;\nthe shelf drops it at the next job change or live edit.');
-                end
-            end;
+                end,
+                buttons = function(hot, b1, b2)
+                    imgui.SameLine(b1);
+                    local pinLabel = (e.pinned and 'Unpin' or 'Pin') .. '##gvp' .. tostring(e.sortKey);
+                    if e.pinned then imgui.PushStyleColor(ImGuiCol_Button, { 0.55, 0.45, 0.15, 1.0 }); end
+                    if imgui.SmallButton(pinLabel) then
+                        layoutEdit({ job = 0, verb = vc.verb.PIN, itemId = e.itemId, count = e.count,
+                                     hint = e.hint or 0, pinned = not e.pinned, identity = e.identity },
+                            e.pinned and (e.name .. ' unpinned') or (e.name .. ' pinned -- automations must ask before touching it'));
+                    end
+                    if e.pinned then imgui.PopStyleColor(1); end
+                    if imgui.IsItemHovered() then
+                        hot();
+                        imgui.SetTooltip(e.pinned
+                            and 'Pinned (soft-locked): no automation may remove this entry without asking.\nClick to release the pin.'
+                            or  'Pin (soft-lock) this entry: dlac\'s own automation must ask you before\nremoving it, even in space-pressure cleanups.');
+                    end
+                    imgui.SameLine(b2);
+                    local rkey = 'rm' .. tostring(e.sortKey);
+                    local armed = e.pinned and confirmArmed(rkey);
+                    if armed then imgui.PushStyleColor(ImGuiCol_Button, { 0.75, 0.25, 0.20, 1.0 }); end
+                    if imgui.SmallButton((armed and 'Sure?' or 'Remove') .. '##gvr' .. tostring(e.sortKey)) then
+                        if e.pinned and not armed then
+                            _confirm = { key = rkey, at = os.clock() };
+                        else
+                            _confirm = nil;
+                            layoutEdit({ job = 0, verb = vc.verb.REMOVE, itemId = e.itemId, count = 0,
+                                         hint = 0, pinned = false, identity = e.identity },
+                                e.name .. ' removed from the layout');
+                        end
+                    end
+                    if armed then imgui.PopStyleColor(1); end
+                    if imgui.IsItemHovered() then
+                        hot();
+                        imgui.SetTooltip(e.pinned
+                            and 'Remove this PINNED entry -- takes a second click to confirm.\nThe piece itself stays in the vault; only the layout forgets it.'
+                            or  'Remove from this job\'s layout. The piece stays in the vault;\nthe shelf drops it at the next job change or live edit.');
+                    end
+                end,
+            };
         end);
     elseif lc.fresh then
         imgui.TextColored(cDIM, searching and 'Nothing in the layout matches.' or 'No entries yet -- this job\'s shelf empties at the next job change.');
@@ -654,35 +696,42 @@ function M.render(job, level)
         local vv = filterView(vaultView(), needle);
         if vv.total > 0 then
             renderTree(vv, 'V', searching, forceClose, level, COL, function(e)
-                return function()
-                    if e.qty > 1 then
-                        imgui.SameLine(0, 6);
-                        imgui.TextColored(cDIM, 'x' .. e.qty);
-                    end
-                    if isAugmented(e.identity) then
-                        imgui.SameLine(0, 8);
-                        imgui.TextColored(cGOLD, '[aug]');
-                        if imgui.IsItemHovered() then
-                            imgui.SetTooltip('This copy carries augments or an inscription -- it comes back byte-identical.');
+                return {
+                    key = 'V' .. tostring(e.rowId),
+                    tags = function()
+                        if e.qty > 1 then
+                            imgui.SameLine(0, 6);
+                            imgui.TextColored(cDIM, 'x' .. e.qty);
                         end
-                    end
-                    imgui.SameLine(0, 12);
-                    if imgui.SmallButton('+ Layout##gvl' .. tostring(e.rowId)) then
-                        layoutEdit({ job = 0, verb = vc.verb.ADD, itemId = e.itemId, count = 1,
-                                     hint = 0, pinned = false, identity = e.identity },
-                            e.name .. ' added to this job\'s layout');
-                    end
-                    if imgui.IsItemHovered() then
-                        imgui.SetTooltip('Add THIS copy (augments included) to your current main job\'s layout.\nLive in a city (or your Mog House); refused in the field.');
-                    end
-                    imgui.SameLine(0, 4);
-                    if imgui.SmallButton('Withdraw##gvw' .. tostring(e.rowId)) then
-                        withdrawRow(e);
-                    end
-                    if imgui.IsItemHovered() then
-                        imgui.SetTooltip('Move this to your inventory (at a Void Warden).');
-                    end
-                end;
+                        if isAugmented(e.identity) then
+                            imgui.SameLine(0, 8);
+                            imgui.TextColored(cGOLD, '[aug]');
+                            if imgui.IsItemHovered() then
+                                imgui.SetTooltip('This copy carries augments or an inscription -- it comes back byte-identical.');
+                            end
+                        end
+                    end,
+                    buttons = function(hot, b1, b2)
+                        imgui.SameLine(b1);
+                        if imgui.SmallButton('Layout##gvl' .. tostring(e.rowId)) then
+                            layoutEdit({ job = 0, verb = vc.verb.ADD, itemId = e.itemId, count = 1,
+                                         hint = 0, pinned = false, identity = e.identity },
+                                e.name .. ' added to this job\'s layout');
+                        end
+                        if imgui.IsItemHovered() then
+                            hot();
+                            imgui.SetTooltip('Add THIS copy (augments included) to your current main job\'s layout.\nLive in a city (or your Mog House); refused in the field.');
+                        end
+                        imgui.SameLine(b2);
+                        if imgui.SmallButton('Withdraw##gvw' .. tostring(e.rowId)) then
+                            withdrawRow(e);
+                        end
+                        if imgui.IsItemHovered() then
+                            hot();
+                            imgui.SetTooltip('Move this to your inventory (at a Void Warden).');
+                        end
+                    end,
+                };
             end);
         else
             imgui.TextColored(cDIM, (vc.mirror.stamp == nil) and 'The vault has not synced yet -- try Sync.'
@@ -802,6 +851,10 @@ function M.render(job, level)
     if _lastMsg ~= nil then
         imgui.TextColored(_lastMsg.err and cERR or cDIM, esc(_lastMsg.text));
     end
+
+    -- commit the hot row for next frame's highlight (the one-frame lag)
+    _hotKey = _hotNext;
+    _hotNext = nil;
 end
 
 -- test seams
