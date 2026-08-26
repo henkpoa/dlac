@@ -707,20 +707,32 @@ function M.render(job, level)
             end
             imgui.SameLine(0, 10);
             imgui.TextColored(cDIM, 'Storable gear in your inventory:');
+            -- ONE row per piece here (the hover card carries the stats), with
+            -- every Store button flush against the right edge so they line up
+            -- in a clean column.
+            local btnCol = 340;
+            pcall(function()
+                local w = imgui.GetWindowWidth();
+                if type(w) == 'number' and w > 120 then btnCol = w - 62; end
+            end);
             for _, e in ipairs(shown) do
-                renderRow(e, level, COL, function()
-                    if e.qty > 1 then
-                        imgui.SameLine(0, 6);
-                        imgui.TextColored(cDIM, 'x' .. e.qty);
-                    end
-                    imgui.SameLine(0, 12);
-                    if imgui.SmallButton('Store##gvs' .. tostring(e.slot)) then
-                        storeRows({ e });
-                    end
-                    if imgui.IsItemHovered() then
-                        imgui.SetTooltip('Deposit this into the Gear Vault. Works at a Void Warden\n(anywhere for a GM).');
-                    end
-                end);
+                if icons ~= nil and type(icons.renderIcon) == 'function' then
+                    pcall(icons.renderIcon, e.itemId, 18);
+                    imgui.SameLine(0, 6);
+                end
+                imgui.TextColored(COL.USABLE or { 1, 1, 1, 1 }, esc(e.name));
+                hoverCard(e.rec, e.name);
+                if e.qty > 1 then
+                    imgui.SameLine(0, 6);
+                    imgui.TextColored(cDIM, 'x' .. e.qty);
+                end
+                imgui.SameLine(btnCol);
+                if imgui.SmallButton('Store##gvs' .. tostring(e.slot)) then
+                    storeRows({ e });
+                end
+                if imgui.IsItemHovered() then
+                    imgui.SetTooltip('Deposit this into the Gear Vault. Works at a Void Warden\n(anywhere for a GM).');
+                end
             end
         else
             imgui.TextColored(cDIM, searching and 'Nothing in your inventory matches.'
