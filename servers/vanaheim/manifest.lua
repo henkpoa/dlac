@@ -25,8 +25,9 @@ return {
         mpSjDivisor        = 2,
     },
 
-    -- no pack modules yet
-    modules = {},
+    -- gearvault: the Gear Vault integration (0x1E0 ops 0x40-0x7F --
+    -- docs/design/gear-vault-integration.md)
+    modules = { 'gearvault' },
 
     files = {
         'catalog', 'spells', 'abilities', 'zones',

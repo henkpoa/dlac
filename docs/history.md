@@ -10107,3 +10107,34 @@ triggers, nothing else)"*, with a settings switch to widen it later.
 counts 26 Settings checkboxes), pack_lint vanaheim 29. Awaiting Henrik's field round on
 Vanaheim; NOT yet carried back to the CatsEyeXI repo (this session edited the Vanaheim
 install's copy, which is not a git checkout).
+
+## Session "the Gear Vault, slice 1" (2026-08-26, second block)
+
+**Theme:** the dlac half of Vanaheim's Gear Vault (the server side shipped at
+stage 8 the same day — vanaheim repo `documentation/custom/gear-vault*.md`).
+Design grilled with Henrik (7 questions) and recorded as
+`docs/design/gear-vault-integration.md` (GV1–GV8 + the slice plan): layouts
+are DERIVED from sets/triggers, the soft-lock IS the server's pinned flag,
+additions free / removals are a space-pressure flow (marking dialog default,
+LRU auto-evict optional — last-used = engine-equipped + observed worn),
+vaulted is an OWNERSHIP tier, one pack-registered tab + a Warden nudge, the
+deposit sweep is curated.
+
+**Landed (slice 1 — the wire + the mirror, read-only):**
+`servers/vanaheim/modules/gearvault/` — `vaultclient.lua` (the 0x1E0 codec +
+state machine on injectable seams: HELLO/LIST only, one in flight, SAME-Seq
+retries under the server's replay ring, BAD_OP → session dormancy, zone-in
+probes via HELLO's VaultCount, full resync on main-job-change/`!vault`/manual
+settle) and `init.lua` (Ashita glue, `/dl vault [sync]`, the serverpack
+service `'gearvault'`). Core asks the service or lives without (ADR 0035):
+`gearimport.foldVault` joins mirror counts into total/where under
+`VAULT_CID = 99` ("Gear Vault") — owned, never available — and `/dl prune`
+folds vaulted ids in, ABORTING when the mirror is not fresh (hard rule 11's
+shape). The vanaheim manifest mounts `gearvault`; the pack generator
+(vanaheim repo `tools/dlac-pack/gen_pack.py`, branch `henrik/dlac-pack`)
+emits the same line so a regen cannot unmount it.
+
+**Checks:** run_tests 7247 (+GVW0–12 codec, GVC1–20 state machine, GVF0–5
+fold), smoke_ui 1434, pack_lint vanaheim 29 / cexi 33. Field round owed:
+mirror correctness, verdicts, and that a job-change swap leaves the bag sync
+unconfused (slice-1 gate). Slice 2 next: the tab, read-first.

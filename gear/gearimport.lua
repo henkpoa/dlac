@@ -546,12 +546,17 @@ function M.ownedCounts()
 end
 
 -- Human names for the container ids (tooltips: WHERE an item actually lives).
+-- VAULT_CID is a PSEUDO container: Vanaheim's Gear Vault is server-side void
+-- space, not a bag, but the ownership split speaks container ids -- so the
+-- vault mirror folds in under this one (docs/design/gear-vault-integration.md
+-- GV5). Inert on any server whose pack mounts no 'gearvault' service.
+M.VAULT_CID = 99;
 local CONTAINER_NAMES = {
     [0] = 'Inventory',  [1] = 'Mog Safe',    [2] = 'Storage',     [3] = 'Temporary',
     [4] = 'Mog Locker', [5] = 'Mog Satchel', [6] = 'Mog Sack',    [7] = 'Mog Case',
     [8] = 'Wardrobe',   [9] = 'Mog Safe 2',  [10] = 'Wardrobe 2', [11] = 'Wardrobe 3',
     [12] = 'Wardrobe 4', [13] = 'Wardrobe 5', [14] = 'Wardrobe 6', [15] = 'Wardrobe 7',
-    [16] = 'Wardrobe 8',
+    [16] = 'Wardrobe 8', [M.VAULT_CID] = 'Gear Vault',
 };
 function M.containerName(cid) return CONTAINER_NAMES[cid] or ('container ' .. tostring(cid)); end
 
@@ -600,6 +605,35 @@ function M.ownedSplit()
                     end
                 end
             end
+        end
+    end
+    -- THE VAULT FOLD (GV5, docs/design/gear-vault-integration.md): a mounted
+    -- gear-vault pack module provides 'gearvault'; its mirror counts join
+    -- total/where under VAULT_CID -- OWNED, never available (retrieval needs
+    -- a Void Warden). No pack, no service, no change -- the ADR 0035
+    -- ask-or-live-without pattern. Deliberately id-level in slice 1: an
+    -- augment-pinned record's per-roll counts do not see vault copies yet
+    -- (the mirror's identity blobs are not signature-decoded until the tab
+    -- slice needs them).
+    pcall(function()
+        local svc = require('dlac\\gear\\serverpack').service('gearvault');
+        if svc ~= nil and type(svc.counts) == 'function' then
+            M.foldVault(split, svc.counts());
+        end
+    end);
+    return split;
+end
+
+-- PURE half of the fold, so the suite pins it without a bag scan: vault
+-- quantities join `total` and `where[id][VAULT_CID]`, never `avail`.
+function M.foldVault(split, vaultCounts)
+    if type(split) ~= 'table' or type(vaultCounts) ~= 'table' then return split; end
+    for id, n in pairs(vaultCounts) do
+        if type(id) == 'number' and type(n) == 'number' and n > 0 then
+            split.total[id] = (split.total[id] or 0) + n;
+            local w = split.where[id];
+            if w == nil then w = {}; split.where[id] = w; end
+            w[M.VAULT_CID] = (w[M.VAULT_CID] or 0) + n;
         end
     end
     return split;
@@ -1803,6 +1837,27 @@ function M.prune(apply)
         -- An empty scan means the game isn't readable right now (zoning / char
         -- select), NOT that you own nothing -- pruning on it would erase the file.
         print('[dlac] prune ABORTED: the bag scan found nothing (zoning? not logged in?). gear.lua untouched.');
+        return;
+    end
+
+    -- Vaulted gear is OWNED (GV5): fold the vault mirror's ids in so prune
+    -- never removes the record of a piece that lives in the vault. On a
+    -- server WITH a vault, a mirror we cannot vouch for is not permission
+    -- to delete anything (hard rule 11's shape) -- abort instead.
+    local vaultBlocked = false;
+    pcall(function()
+        local svc = require('dlac\\gear\\serverpack').service('gearvault');
+        if svc == nil then return; end
+        if type(svc.fresh) ~= 'function' or svc.fresh() ~= true then
+            vaultBlocked = true;
+            return;
+        end
+        for id in pairs(svc.counts()) do
+            owned[#owned + 1] = { Id = id };
+        end
+    end);
+    if vaultBlocked then
+        print('[dlac] prune ABORTED: the Gear Vault mirror is not fresh -- a vaulted piece would read as gone. /dl vault sync, then retry.');
         return;
     end
 

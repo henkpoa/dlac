@@ -27284,6 +27284,144 @@ end)();
     package.loaded['imgui'] = nil;
 end)();
 
+-- ---------------------------------------------------------------------------
+-- GVW/GVC/GVF. The Gear Vault integration, slice 1 (vanaheim pack module;
+--      design: docs/design/gear-vault-integration.md). GVW pins the byte
+--      codec against the server's documented layouts; GVC drives the whole
+--      client state machine through the _clock/_send seams (no Ashita); GVF
+--      pins the ownership fold (GV5) in gear/gearimport.
+-- ---------------------------------------------------------------------------
+(function()
+    local vc = dofile('servers/vanaheim/modules/gearvault/vaultclient.lua');
+    check('GVW0 vaultclient loads headless', type(vc), 'table');
+
+    -- the C2S frame: op @4, seq @5, reserved zeros, payload @8, 4-aligned
+    local f = vc.buildFrame(vc.op.HELLO, 7, vc.helloPayload());
+    check('GVW1 op lands at offset 4',    f[5], 0x40);
+    check('GVW2 seq lands at offset 5',   f[6], 7);
+    check('GVW3 reserved bytes are zero', f[7] == 0 and f[8] == 0, true);
+    check('GVW4 frame is 4-aligned',      #f % 4, 0);
+    check('GVW5 hello payload = proto 1', f[9] == 1 and f[10] == 0, true);
+
+    -- the S2C envelope parse
+    local function s2c(op, seq, status, flags, payload)
+        return string.char(0, 0, 0, 0, op, seq, status, flags) .. (payload or '');
+    end
+    local pf = vc.parseFrame(s2c(0x41, 9, 0, 1, 'xy'));
+    check('GVW6 parseFrame reads the envelope',
+          pf.op == 0x41 and pf.seq == 9 and pf.status == 0 and pf.flags == 1 and pf.payload == 'xy', true);
+    check('GVW7 a short frame refuses whole', vc.parseFrame('abc'), nil);
+
+    -- HELLO reply parse
+    local hp = vc._wu16(1) .. vc._wu16(0) .. vc._wu32(321) .. string.char(15, 124, 62, 0);
+    local h = vc.parseHello(hp);
+    check('GVW8 hello: vault count',  h.vaultCount, 321);
+    check('GVW9 hello: the limits',   h.maxList == 15 and h.maxDeposit == 124 and h.maxWithdraw == 62, true);
+
+    -- LIST chunk parse: 32-byte entries, 24-byte identity carried raw
+    local id24 = string.rep('\7', 24);
+    local entry = vc._wu32(11) .. vc._wu16(4444) .. vc._wu16(2) .. id24;
+    local chunk = vc.parseListChunk(vc._wu16(1) .. vc._wu16(0) .. entry);
+    check('GVW10 list row: rowId/item/qty',
+          chunk.entries[1].rowId == 11 and chunk.entries[1].itemId == 4444 and chunk.entries[1].qty == 2, true);
+    check('GVW11 list row: identity is the 24 raw bytes', chunk.entries[1].identity, id24);
+    check('GVW12 a truncated chunk refuses whole',
+          vc.parseListChunk(vc._wu16(2) .. vc._wu16(0) .. entry), nil);
+
+    -- ---- GVC: the state machine, driven on seams ----
+    local T, sent = 0, {};
+    vc._clock = function() return T; end;
+    vc._send  = function(p) sent[#sent + 1] = p; end;
+    local freshed = 0;
+    vc._onFresh = function() freshed = freshed + 1; end;
+
+    local function reply(status, flags, payload)
+        local last = sent[#sent];
+        return vc.parseFrame(s2c(last[5], last[6], status, flags, payload));
+    end
+
+    -- a full login sync: HELLO -> two LIST pages -> committed mirror
+    vc._reset(); T, sent, freshed = 0, {}, 0;
+    vc.pump(true);                       -- arms the first-readiness sync
+    check('GVC1 nothing sent before the settle', #sent, 0);
+    T = 3; vc.pump(true);
+    check('GVC2 the sync opens with HELLO', #sent == 1 and sent[1][5] == vc.op.HELLO, true);
+    vc.onFrame(reply(0, 0, hp));
+    check('GVC3 hello OK -> LIST from cursor 0',
+          #sent == 2 and sent[2][5] == vc.op.LIST and sent[2][9] == 0, true);
+    local e1 = vc._wu32(5) .. vc._wu16(100) .. vc._wu16(1) .. id24;
+    local e2 = vc._wu32(9) .. vc._wu16(200) .. vc._wu16(3) .. id24;
+    vc.onFrame(reply(0, 1, vc._wu16(2) .. vc._wu16(0) .. e1 .. e2));   -- MORE
+    check('GVC4 MORE -> next page from the last rowId', #sent == 3 and sent[3][9] == 9, true);
+    local e3 = vc._wu32(12) .. vc._wu16(100) .. vc._wu16(1) .. id24;
+    vc.onFrame(reply(0, 0, vc._wu16(1) .. vc._wu16(0) .. e3));         -- final
+    check('GVC5 the mirror committed fresh', vc.mirror.fresh, true);
+    check('GVC6 counts merge by item id', vc.mirror.counts[100] == 2 and vc.mirror.counts[200] == 3, true);
+    check('GVC7 the fresh hook fired once', freshed, 1);
+    check('GVC8 state reads fresh', vc.state(), 'fresh');
+
+    -- the zone probe: count agrees -> re-stamped WITHOUT spending LIST pages
+    vc.noteZoneIn();
+    check('GVC9 zone-in marks stale', vc.mirror.fresh, false);
+    T = T + vc.SETTLE_ZONE + 1; vc.pump(true);
+    local before = #sent;
+    check('GVC10 the probe is a HELLO', sent[before][5], vc.op.HELLO);
+    vc.onFrame(reply(0, 0, vc._wu16(1) .. vc._wu16(0) .. vc._wu32(3) .. string.char(15, 124, 62, 0)));
+    check('GVC11 agreeing count -> fresh again, no LIST', vc.mirror.fresh == true and #sent == before, true);
+
+    -- ...and a DISAGREEING count escalates to a full LIST
+    vc.noteZoneIn();
+    T = T + vc.SETTLE_ZONE + 1; vc.pump(true);
+    vc.onFrame(reply(0, 0, vc._wu16(1) .. vc._wu16(0) .. vc._wu32(9) .. string.char(15, 124, 62, 0)));
+    check('GVC12 disagreeing count -> LIST begins', sent[#sent][5], vc.op.LIST);
+    vc.onFrame(reply(0, 0, vc._wu16(0) .. vc._wu16(0)));   -- empty vault now
+    check('GVC13 empty vault commits clean', vc.mirror.fresh == true and next(vc.mirror.counts) == nil, true);
+
+    -- the main-job edge: first sight arms nothing, a change marks stale
+    check('GVC14 fresh before the job edge', vc.state(), 'fresh');
+    vc.noteJob(1);
+    check('GVC15 first job sighting is not a change', vc.state(), 'fresh');
+    vc.noteJob(3);
+    check('GVC16 a job change marks stale', vc.state(), 'stale');
+
+    -- retries re-send the SAME Seq; exhaustion backs off quietly
+    vc._reset(); T, sent = 100, {};
+    vc.pump(true); T = 103; vc.pump(true);
+    local seq1 = sent[1][6];
+    T = T + vc.SEND_TIMEOUT + 0.1; vc.pump(true);
+    check('GVC17 a timeout re-sends the SAME seq', #sent == 2 and sent[2][6] == seq1, true);
+    for _ = 1, vc.MAX_RETRIES + 1 do T = T + vc.SEND_TIMEOUT + 0.1; vc.pump(true); end
+    check('GVC18 exhaustion clears pending and stays stale',
+          vc._st().pending == nil and vc.state() == 'stale', true);
+
+    -- BAD_OP = no vault on this server: dormant for the session, silently
+    vc._reset(); T, sent = 200, {};
+    vc.pump(true); T = 203; vc.pump(true);
+    vc.onFrame(reply(1, 0, ''));   -- BAD_OP
+    check('GVC19 BAD_OP -> dormant', vc.state(), 'dormant');
+    T = 300; vc.pump(true);
+    check('GVC20 dormant sends nothing ever again', #sent, 1);
+
+    vc._reset();
+
+    -- ---- GVF: the ownership fold (GV5) in gear/gearimport ----
+    -- (the MA section's cleanup dropped the catalogindex preload; gearimport
+    -- requires it at load -- re-seed before the dofile)
+    if package.loaded['dlac\\gear\\catalogindex'] == nil then
+        package.loaded['dlac\\gear\\catalogindex'] = dofile('gear/catalogindex.lua');
+    end
+    local gi = dofile('gear/gearimport.lua');
+    check('GVF0 VAULT_CID is a pseudo container with a name',
+          type(gi.VAULT_CID) == 'number' and gi.containerName(gi.VAULT_CID), 'Gear Vault');
+    local split = { total = { [100] = 1 }, avail = { [100] = 1 }, where = { [100] = { [0] = 1 } }, aug = {} };
+    gi.foldVault(split, { [100] = 2, [555] = 1 });
+    check('GVF1 vault counts join total',        split.total[100], 3);
+    check('GVF2 a vault-only id becomes owned',  split.total[555], 1);
+    check('GVF3 vault copies are NEVER available', split.avail[555], nil);
+    check('GVF4 where says Gear Vault',          split.where[555][gi.VAULT_CID], 1);
+    check('GVF5 bag copies keep their homes',    split.where[100][0] == 1 and split.where[100][gi.VAULT_CID] == 2, true);
+end)();
+
 -- The warm-note artifact the dispatch-driving sections leave behind (dataDir
 -- stubbed 'tests\'): on Windows a real tests\debug\mpwarm.txt (gitignored via
 -- debug/), under WSL ONE backslash-bearing filename that drvfs PUA-mangles on

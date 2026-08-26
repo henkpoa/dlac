@@ -18,7 +18,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.08.26';   -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.08.26b';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
                                 -- (03f = engine v163: the contest explains its own plan;
                                 --  03g = one floating tray: Teleports + the E-Box crates;
@@ -224,7 +224,13 @@ addon.version = '2026.08.26';   -- date of the last shipped change (Ashita print
                                 --  with per-character overrides under Menu >
                                 --  Settings > Features -- Vanaheim ships
                                 --  gear-only: Equipped, All Equipment, Sets,
-                                --  Triggers)
+                                --  Triggers;
+                                --  07b = GEAR VAULT slice 1 (Vanaheim only):
+                                --  the 0x1E0 wire client + the read-only
+                                --  vault mirror as a pack module -- vaulted
+                                --  gear is OWNED (never available), prune is
+                                --  vault-safe, /dl vault answers; design in
+                                --  docs/design/gear-vault-integration.md)
 addon.desc    = 'Gear sets, triggers and live stats with level scaling -- dlac equips your gear itself.';
 
 -- Load BEACON ('/dl check' field round, 2026-07-23): written by PLAIN io at
