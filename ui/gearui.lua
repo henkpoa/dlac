@@ -3929,7 +3929,9 @@ local function renderAddRow(rec, ordinal, level, nameW)
     -- read. The colour carries it alone now -- the hover line that briefly said
     -- so as well came out on 08-05 (it fired on every row of an unowned list).
     local mine = (rec.Virtual == true) or owned.haveInBags(rec);
-    local nameColr = (not mine) and COL.UNOWN or (owned.isStored(rec) and COL.ERR or COL.USABLE);
+    local nameColr = (not mine) and COL.UNOWN
+        or (owned.isVaulted ~= nil and owned.isVaulted(rec) and COL.VAULT)
+        or (owned.isStored(rec) and COL.ERR or COL.USABLE);
     imgui.TextColored(nameColr, fmt.esc(rec.Name or '?') .. fmt.qtyTag(rec));
     imgui.SameLine(nameCol + (nameW or 200));
     imgui.TextColored(COL.LEVEL, string.format('Lv%2d', rec.Level or 0));
@@ -4484,6 +4486,7 @@ local function renderSetBuilder(job, level)
             -- one item may appear as several rows with different level ranges, and
             -- only the row the engine would actually use should light up.
             imgui.TextColored((pick ~= nil and it == pick) and COL.SCORE
+                or (owned.isVaulted ~= nil and owned.isVaulted(rec) and COL.VAULT)
                 or (owned.isStored(rec) and COL.ERR or COL.USABLE),
                 fmt.esc((rec and rec.Name) or '?') .. fmt.qtyTag(rec));
             if rec ~= nil and imgui.IsItemHovered() then renderItemTooltip(rec); end

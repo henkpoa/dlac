@@ -312,8 +312,13 @@ local function renderRow(e, level, COL, deco)
     local b1 = b2 - 84;         -- first button column (Layout / Pin)
 
     local y0 = imgui.GetCursorPosY();
+    -- FULL-width strip, buttons included (Henrik: the highlight must span the
+    -- whole row). The buttons draw AFTER it over the same pixels; the overlap
+    -- declaration hands them their own hover and clicks -- this module only
+    -- ever runs on Vanaheim's binding, which carries the call.
+    pcall(function() imgui.SetNextItemAllowOverlap(); end);
     imgui.Selectable('##gvrow' .. tostring(deco.key or e.name), _hotKey ~= nil and _hotKey == deco.key,
-        ImGuiSelectableFlags_None or 0, { math.max(60, b1 - 34), rowH });
+        ImGuiSelectableFlags_None or 0, { math.max(60, w - 24), rowH });
     local rowHovered = imgui.IsItemHovered();
     imgui.SetCursorPosY(y0);
 
@@ -786,8 +791,9 @@ function M.render(job, level)
                     pcall(icons.renderIcon, e.itemId, 18);
                     imgui.SameLine(0, 6);
                 end
+                pcall(function() imgui.SetNextItemAllowOverlap(); end);
                 imgui.Selectable('##gvirow' .. tostring(e.slot), M._hotRow == e.slot,
-                    ImGuiSelectableFlags_None or 0, { math.max(60, btnCol - 34), 18 });
+                    ImGuiSelectableFlags_None or 0, { -1, 18 });
                 local rowHovered = imgui.IsItemHovered();
                 imgui.SameLine(26);
                 imgui.TextColored(COL.USABLE or { 1, 1, 1, 1 }, esc(e.name));
