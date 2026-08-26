@@ -677,12 +677,15 @@ function M.render(job, level)
     -- ---- shelf pressure (GV3): the banner + the marking dialog ----
     local pr = (recon ~= nil and type(recon.pressure) == 'function') and recon.pressure() or nil;
     if pr ~= nil and pr.over > 0 then
-        imgui.TextColored(cERR, string.format('Shelf full: the layout wants %d more slot%s than Wardrobes 1-8 hold.',
-            pr.over, (pr.over == 1) and '' or 's'));
+        -- BUTTON FIRST, text wrapped under it (Henrik's screenshot: the
+        -- button rode the end of a long line and clipped off the pane edge)
+        local wrapped = (fmt ~= nil and type(fmt.textWrapped) == 'function')
+            and fmt.textWrapped or function(col, s) imgui.TextColored(col, s); end;
         if pr.mode == 'off' then
-            imgui.TextColored(cDIM, 'Removals are Off -- trim the layout with the Remove buttons below.');
+            wrapped(cERR, string.format('Shelf full: the layout wants %d more slot%s than Wardrobes 1-8 hold.',
+                pr.over, (pr.over == 1) and '' or 's'));
+            wrapped(cDIM, 'Removals are Off -- trim the layout with the Remove buttons below.');
         else
-            imgui.SameLine(0, 10);
             if imgui.SmallButton((M._evictOpen and 'Hide' or 'Choose what to remove') .. '###gvevb') then
                 if not M._evictOpen then
                     -- pre-tick greedily: least-used unpinned until the overflow
@@ -698,6 +701,8 @@ function M.render(job, level)
                 end
                 M._evictOpen = not M._evictOpen;
             end
+            wrapped(cERR, string.format('Shelf full: the layout wants %d more slot%s than Wardrobes 1-8 hold.',
+                pr.over, (pr.over == 1) and '' or 's'));
         end
         if M._evictOpen and pr.mode ~= 'off' then
             local marked, frees = 0, 0;
