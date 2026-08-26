@@ -94,6 +94,8 @@ end);
 -- every module command (the giftbox pattern); gearui's /dl dispatch never
 -- learns vault words.
 local vaultWhy;
+local _capOverride = nil;   -- /dl vault cap <n>: session-only shelf-capacity
+                            -- override (pressure-flow field testing)
 pcall(function()
     ashita.events.register('command', 'dlac_gearvault_cmd', function(e)
         local raw = tostring(e.command or '');
@@ -104,6 +106,17 @@ pcall(function()
             vc.refresh();
             vc.requestLayout(0);
             vc._say('gear vault: sync requested.');
+        elseif rest:match('^cap%s*%d*$') then
+            -- pressure-flow field testing: pretend the shelf holds only <n>
+            -- slots for this session (0 or bare clears the pretence)
+            local n = tonumber(rest:match('^cap%s*(%d+)$'));
+            if n ~= nil and n > 0 then
+                _capOverride = n;
+                vc._say(string.format('gear vault: PRETENDING the shelf holds %d slot(s) this session -- /dl vault cap 0 to clear.', n));
+            else
+                _capOverride = nil;
+                vc._say('gear vault: shelf capacity back to the real wardrobes.');
+            end
         elseif rest:match('^why%s+%S') then
             -- take the name from the RAW command (case preserved for display;
             -- resolution is case-tolerant anyway)
@@ -186,10 +199,14 @@ local RD = {
         end);
         return out;
     end,
-    -- slice 4: the usage memory + the behaviour settings + the live shelf
+    -- slice 4: the usage memory + the behaviour settings + the live shelf.
+    -- `/dl vault cap <n>` overrides the capacity for a session -- the only
+    -- way to FIELD-TEST the pressure flows before the server's wardrobe
+    -- lock (#107) makes a small shelf real. 0 clears it.
     usage    = usg,
     settings = usg.settings,
     capacity = function()
+        if _capOverride ~= nil then return _capOverride; end
         local cap = 0;
         pcall(function()
             local inv = AshitaCore:GetMemoryManager():GetInventory();
@@ -256,9 +273,16 @@ vaultWhy = function(name)
             line('  next job change or live layout edit (a deposit alone does not trigger an apply).');
         end
     end
+    if r ~= nil then
+        local worn = usg.lastUsed(usg.keyOf(r.id, nil));
+        line('  worn: ' .. (worn ~= nil and os.date('last seen %Y-%m-%d %H:%M', worn) or 'never seen worn (or the plain copy has no stamp yet)'));
+    end
+    local s = usg.settings();
     local rst = rec._st();
-    line(string.format('  engine: cityBlocked=%s lastPushKey=%s%s',
+    line(string.format('  engine: additions=%s removals=%s cityBlocked=%s lastPushKey=%s%s%s',
+        s.additions, s.removals,
         tostring(rec.cityBlocked()), rst.lastPushKey and 'set' or 'none',
+        _capOverride ~= nil and ('  CAP OVERRIDE=' .. _capOverride) or '',
         _tickErr ~= nil and ('  LAST ERROR: ' .. _tickErr) or ''));
     for _, s in ipairs(out) do vc._say(s); end
 end
