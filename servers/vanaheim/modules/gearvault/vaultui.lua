@@ -791,9 +791,12 @@ function M.render(job, level)
                     pcall(icons.renderIcon, e.itemId, 18);
                     imgui.SameLine(0, 6);
                 end
+                -- explicit width: Selectable does NOT speak the child-window
+                -- "-1 = fill" convention -- a negative collapses it to a stub
+                -- (the sliver Henrik's screenshot caught)
                 pcall(function() imgui.SetNextItemAllowOverlap(); end);
                 imgui.Selectable('##gvirow' .. tostring(e.slot), M._hotRow == e.slot,
-                    ImGuiSelectableFlags_None or 0, { -1, 18 });
+                    ImGuiSelectableFlags_None or 0, { math.max(60, btnCol + 20), 18 });
                 local rowHovered = imgui.IsItemHovered();
                 imgui.SameLine(26);
                 imgui.TextColored(COL.USABLE or { 1, 1, 1, 1 }, esc(e.name));
