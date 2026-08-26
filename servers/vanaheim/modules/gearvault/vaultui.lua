@@ -483,12 +483,14 @@ local function storeRows(rows)
     end
 end
 
--- Sub-tab selection: on RE-ENTERING the Gear Vault tab with storable gear in
--- the bag, the bar gets a new generation and Inventory is submitted first --
--- a bar ImGui has never seen adopts the first tab (the ADR 0033 rung-3
--- mechanism, which owes nothing to the SetSelected flag any binding may
--- drop). The order then stays put until the next re-entry.
-local _sub = { gen = 0, first = 'vault', lastSeen = 0 };
+-- Sub-tab selection. The order is FIXED -- Vault, then Inventory (Henrik:
+-- "keep it to the right of Vault") -- so the ADR 0033 rebuild trick is out
+-- (it selects by submitting first). On re-entering the Gear Vault tab with
+-- storable gear, the SetSelected flag rides Inventory's BeginTabItem for a
+-- few passes instead: this build's newer binding may honour it (the old
+-- one demonstrably dropped it -- ADR 0033), and when it does not, the gold
+-- label still points the way. Either way the order never moves.
+local _sub = { want = 0, lastSeen = 0 };
 
 -- ---------------------------------------------------------------------------
 -- The tab
@@ -636,15 +638,10 @@ function M.render(job, level)
     local nowClock = os.clock();
     local reentered = (nowClock - _sub.lastSeen) > 1.0;
     _sub.lastSeen = nowClock;
-    if reentered then
-        -- auto-switch: opening the Gear Vault tab with storable gear in the
-        -- bag lands you on Inventory, ready to Store
-        if #invList > 0 then
-            _sub.gen = _sub.gen + 1;
-            _sub.first = 'inv';
-        else
-            _sub.first = 'vault';
-        end
+    if reentered and #invList > 0 then
+        -- auto-switch attempt: opening the Gear Vault tab with storable gear
+        -- lands you on Inventory, ready to Store (see _sub's comment)
+        _sub.want = 3;
     end
 
     local function renderVaultTab()
@@ -688,25 +685,21 @@ function M.render(job, level)
     end
 
     local function renderInvTab()
-        -- the storable list as a grouped view, same tree as everything else
-        local grouped, total = {}, 0;
+        -- FLAT list, no category tree (Henrik: "skip the categories in
+        -- Inventory, it can't hold that much anyway") -- sorted by name,
+        -- the same two-row rows as everywhere else.
+        local shown = {};
         for _, r in ipairs(invList) do
             if needle == '' or string.find(string.lower(r.name), needle, 1, true) ~= nil then
-                total = total + 1;
-                bucket(grouped, r.rec, r);
+                shown[#shown + 1] = r;
             end
         end
-        sortGroups(grouped);
-        if total > 0 then
-            local shown = {};
-            for _, slotGroup in pairs(grouped) do
-                if slotGroup._cats ~= nil then
-                    for _, list in pairs(slotGroup._cats) do for _, r in ipairs(list) do shown[#shown + 1] = r; end end
-                else
-                    for _, r in ipairs(slotGroup) do shown[#shown + 1] = r; end
-                end
-            end
-            if imgui.SmallButton(string.format('Store all (%d)##gvsa', total)) then
+        table.sort(shown, function(a, b)
+            if a.name == b.name then return a.slot < b.slot; end
+            return a.name < b.name;
+        end);
+        if #shown > 0 then
+            if imgui.SmallButton(string.format('Store all (%d)##gvsa', #shown)) then
                 storeRows(shown);
             end
             if imgui.IsItemHovered() then
@@ -714,8 +707,8 @@ function M.render(job, level)
             end
             imgui.SameLine(0, 10);
             imgui.TextColored(cDIM, 'Storable gear in your inventory:');
-            renderTree({ grouped = grouped, total = total }, 'I', searching, forceClose, level, COL, function(e)
-                return function()
+            for _, e in ipairs(shown) do
+                renderRow(e, level, COL, function()
                     if e.qty > 1 then
                         imgui.SameLine(0, 6);
                         imgui.TextColored(cDIM, 'x' .. e.qty);
@@ -727,40 +720,43 @@ function M.render(job, level)
                     if imgui.IsItemHovered() then
                         imgui.SetTooltip('Deposit this into the Gear Vault. Works at a Void Warden\n(anywhere for a GM).');
                     end
-                end;
-            end);
+                end);
+            end
         else
             imgui.TextColored(cDIM, searching and 'Nothing in your inventory matches.'
                 or 'No storable gear in your inventory.');
         end
     end
 
-    local function invTabItem()
-        local n = #invList;
-        if n > 0 then imgui.PushStyleColor(ImGuiCol_Text, cGOLD); end
-        local open = imgui.BeginTabItem(string.format('Inventory (%d)###gvti', n));
-        if n > 0 then imgui.PopStyleColor(1); end
-        if open then
-            renderInvTab();
-            imgui.EndTabItem();
-        end
-    end
-
-    local function vaultTabItem()
+    -- Fixed order: Vault, then Inventory. The auto-switch is a held
+    -- SetSelected flag on Inventory (see _sub's comment); a binding that
+    -- drops the flag simply leaves the player one click from the gold tab.
+    if imgui.BeginTabBar('##gvsub') then
         if imgui.BeginTabItem('Vault###gvtv') then
             renderVaultTab();
             imgui.EndTabItem();
         end
-    end
-
-    local barId = '##gvsub' .. ((_sub.gen > 0) and ('#g' .. _sub.gen) or '');
-    if imgui.BeginTabBar(barId) then
-        if _sub.first == 'inv' then
-            invTabItem();
-            vaultTabItem();
+        local n = #invList;
+        if n > 0 then imgui.PushStyleColor(ImGuiCol_Text, cGOLD); end
+        local label = string.format('Inventory (%d)###gvti', n);
+        local open;
+        if _sub.want > 0 then
+            _sub.want = _sub.want - 1;
+            local ok, o = pcall(imgui.BeginTabItem, label, nil, ImGuiTabItemFlags_SetSelected or 2);
+            if ok then
+                open = (o and true or false);
+            else
+                open = (imgui.BeginTabItem(label) and true or false);
+                _sub.want = 0;   -- the shape is refused on this binding: stop asking
+            end
+            if open then _sub.want = 0; end
         else
-            vaultTabItem();
-            invTabItem();
+            open = (imgui.BeginTabItem(label) and true or false);
+        end
+        if n > 0 then imgui.PopStyleColor(1); end
+        if open then
+            renderInvTab();
+            imgui.EndTabItem();
         end
         imgui.EndTabBar();
     end
