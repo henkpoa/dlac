@@ -98,12 +98,22 @@ local function augTextOf(identity)
 end
 
 -- The standard item card, unconditionally -- callers decide WHAT was hovered
--- (a name, or a whole row). Falls to a plain name tooltip when the record or
--- the service is missing: a hover must never answer NOTHING.
-local function showCard(rec, name)
+-- (a name, or a whole row). `augText` (a vault copy's decoded augments)
+-- rides IN as the record's AugText, so the card prints it gold in its own
+-- Aug: seat right under the stats -- never a second tooltip stacked on top
+-- (Henrik's screenshot round, 2026-08-26). Falls to a plain name tooltip
+-- when the record or the service is missing: a hover must never answer
+-- NOTHING.
+local function showCard(rec, name, augText)
     local S = services();
     if rec ~= nil and type(S.itemTooltip) == 'function' then
-        local ok = pcall(S.itemTooltip, rec);
+        local r = rec;
+        if type(augText) == 'string' and augText ~= '' then
+            r = {};
+            for k, v in pairs(rec) do r[k] = v; end
+            r.AugText = augText;
+        end
+        local ok = pcall(S.itemTooltip, r);
         if ok then return; end
     end
     pcall(imgui.SetTooltip, esc(name));
@@ -355,7 +365,7 @@ local function renderRow(e, level, COL, deco)
 
     if rowHovered then
         if deco.key ~= nil then _hotNext = deco.key; end
-        showCard(e.rec, e.name);
+        showCard(e.rec, e.name, (type(deco.augOf) == 'function') and deco.augOf() or nil);
     end
 end
 
@@ -642,6 +652,7 @@ function M.render(job, level)
         renderTree(lv, 'L', searching, forceClose, level, COL, function(e)
             return {
                 key = 'L' .. tostring(e.sortKey),
+                augOf = function() return isAugmented(e.identity) and augTextOf(e.identity) or nil; end,
                 tags = function()
                     if e.count > 1 then
                         imgui.SameLine(0, 6);
@@ -651,9 +662,7 @@ function M.render(job, level)
                         imgui.SameLine(0, 8);
                         imgui.TextColored(cGOLD, '[aug]');
                         if imgui.IsItemHovered() then
-                            local at = augTextOf(e.identity);
-                            imgui.SetTooltip(at ~= nil and ('Augments: ' .. esc(at) .. '\n(this entry names that exact copy)')
-                                or 'This entry names a signed/augmented copy exactly.');
+                            showCard(e.rec, e.name, augTextOf(e.identity));
                         end
                     end
                 end,
@@ -723,6 +732,7 @@ function M.render(job, level)
             renderTree(vv, 'V', searching, forceClose, level, COL, function(e)
                 return {
                     key = 'V' .. tostring(e.rowId),
+                    augOf = function() return isAugmented(e.identity) and augTextOf(e.identity) or nil; end,
                     tags = function()
                         if e.qty > 1 then
                             imgui.SameLine(0, 6);
@@ -732,9 +742,7 @@ function M.render(job, level)
                             imgui.SameLine(0, 8);
                             imgui.TextColored(cGOLD, '[aug]');
                             if imgui.IsItemHovered() then
-                                local at = augTextOf(e.identity);
-                                imgui.SetTooltip(at ~= nil and ('Augments: ' .. esc(at) .. '\n(this copy comes back byte-identical)')
-                                    or 'This copy carries an inscription -- it comes back byte-identical.');
+                                showCard(e.rec, e.name, augTextOf(e.identity));
                             end
                         end
                     end,
