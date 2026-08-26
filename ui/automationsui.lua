@@ -88,6 +88,7 @@ end
 local COL_HEADER = { 0.60, 0.75, 1.00, 1.00 };
 local COL_DIM    = { 0.70, 0.70, 0.70, 1.00 };
 local COL_ERR    = { 1.00, 0.45, 0.40, 1.00 };
+local COL_VAULT  = { 0.72, 0.55, 0.95, 1.00 };   -- gear whose copies sit in the Gear Vault (COL.VAULT's twin)
 
 -- Owned-vs-Available facts (ADR 0005) for the item rows: a piece parked in
 -- storage must read RED (owned, can't be equipped), not dim-as-unowned.
@@ -1057,11 +1058,16 @@ local function autoItemLine(item, synergyNote)
         return;
     end
     if not owned and _ocok and ocache.isStored(rec) then   -- owned somewhere, zero equippable copies
-        imgui.TextColored(COL_ERR, esc(name));
+        local vaulted = (type(ocache.isVaulted) == 'function') and ocache.isVaulted(rec) or false;
+        imgui.TextColored(vaulted and COL_VAULT or COL_ERR, esc(name));
         if imgui.IsItemHovered() then
-            local where = ocache.whereText(rec);
-            imgui.SetTooltip(string.format('Owned -- but parked in %s, so the automation cannot equip it.\nMove it to Inventory/Wardrobe, then Rescan.',
-                (where ~= '') and where or 'storage'));
+            if vaulted then
+                imgui.SetTooltip('Owned -- in the Gear Vault. In a city, add it to a layout to shelve it;\nor withdraw it at a Void Warden. Then Rescan.');
+            else
+                local where = ocache.whereText(rec);
+                imgui.SetTooltip(string.format('Owned -- but parked in %s, so the automation cannot equip it.\nMove it to Inventory/Wardrobe, then Rescan.',
+                    (where ~= '') and where or 'storage'));
+            end
         end
         return;
     end

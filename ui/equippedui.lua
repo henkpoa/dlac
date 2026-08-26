@@ -58,6 +58,16 @@ local function calcTextW(s)
     return #tostring(s or '') * 7;
 end
 
+-- The unavailable-name shade, one rule for every row here: violet for a piece
+-- whose only copies sit in the GEAR VAULT (a layout add away in a city --
+-- Henrik's 2026-08-26 ruling that vaulted must not read as storage-red),
+-- red for real storage, plain otherwise.
+local function nameShade(rec)
+    if owned.isVaulted ~= nil and owned.isVaulted(rec) then return COL.VAULT or COL.ERR; end
+    if owned.isStored(rec) then return COL.ERR; end
+    return COL.USABLE;
+end
+
 -- Alternatives row (Equipped tab): icon + selectable + static columns. Returns
 -- true when clicked. Hovering feeds the compare panel (drawn above the list).
 local function renderAltRow(rec, ordinal, job, level, nameW)
@@ -72,7 +82,7 @@ local function renderAltRow(rec, ordinal, job, level, nameW)
     end
     local nameCol = 26;                                -- just after the icon
     imgui.SameLine(nameCol);
-    imgui.TextColored(owned.isStored(rec) and COL.ERR or COL.USABLE, fmt.esc(rec.Name or '?'));
+    imgui.TextColored(nameShade(rec), fmt.esc(rec.Name or '?'));
     imgui.SameLine(nameCol + (nameW or 200));
     imgui.TextColored(COL.LEVEL, string.format('Lv%2d', rec.Level or 0));
     local ss = fmt.statSummary(rec, level);
@@ -125,7 +135,8 @@ local function renderBrowseRow(rec, ordinal, job, level, nameW, onRight)
         nameColr = COL.UNOWN;
     else
         local v = owned.verdict(rec, usable);
-        nameColr = (v == 'stored' and COL.ERR) or (v == 'locked' and COL.LOCKED) or COL.USABLE;
+        nameColr = (v == 'vaulted' and (COL.VAULT or COL.ERR)) or (v == 'stored' and COL.ERR)
+            or (v == 'locked' and COL.LOCKED) or COL.USABLE;
     end
     imgui.TextColored(nameColr, fmt.esc(rec.Name or '?'));
     local nameCol = 26 + (nameW or 200);               -- icon (18+6 pad) + name column
@@ -172,7 +183,7 @@ local function renderItemCard(rec, level, w, tag)
     imgui.BeginChild('##card_' .. tostring(tag or '') .. '_' .. tostring(rec.Id or rec.Name or '?'),
         { w, CARD_H }, true, ImGuiWindowFlags_NoScrollbar or 0);
     icons.renderIcon(rec.Id, 18);
-    fmt.textWrapped(owned.isStored(rec) and COL.ERR or COL.USABLE, fmt.esc(tostring(rec.Name or '?')));
+    fmt.textWrapped(nameShade(rec), fmt.esc(tostring(rec.Name or '?')));
     imgui.TextColored(COL.DIM, '[' .. tostring(ui.eqSelected or rec.Slot or '?') .. ']'
         .. ((tag ~= nil) and ('  ' .. tag) or ''));
     if ss ~= '' then fmt.textWrapped(COL.STATS, fmt.esc(ss)); end

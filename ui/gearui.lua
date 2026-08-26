@@ -226,6 +226,14 @@ local COL = {   -- ONE table, not ten locals: the 200-local chunk cap
     -- PREVIEW ONLY (the server will not render it on you), a warning about what
     -- the game will do, not a note about what you have.
     UNOWN  = { 0.56, 0.56, 0.56, 1.00 },
+    -- GEAR IN THE VAULT (Vanaheim's Gear Vault, docs/design/
+    -- gear-vault-integration.md). Violet, deliberately NOT the storage red
+    -- (Henrik's field ruling, 2026-08-26: "use another color instead of red,
+    -- since it is technically easily available") -- in a city a layout add
+    -- puts it straight on your shelf, where a red Mog Safe piece always
+    -- means a bag trip. Violet is void-flavoured and the one saturated lane
+    -- no other surface uses.
+    VAULT  = { 0.72, 0.55, 0.95, 1.00 },
 };
 pmenu.configure({ ui = ui, COL = COL });   -- Profiles popup state lives in the shared ui table
 
@@ -1260,7 +1268,10 @@ local function renderItemTooltip(rec, note)
             -- gear you do not own, so the sentence appeared on all of them and
             -- told you nothing you had not just typed a search for.
             -- The colour carries it, which is what was asked for originally.
-            if owned.isStored(rec) then
+            if owned.isVaulted ~= nil and owned.isVaulted(rec) then
+                imgui.TextColored(COL.VAULT,
+                    'IN THE GEAR VAULT  (in a city: add it to a layout; or withdraw at a Void Warden)');
+            elseif owned.isStored(rec) then
                 imgui.TextColored(COL.ERR, 'IN STORAGE: ' .. fmt.esc((locs ~= '') and locs or '?')
                     .. '  (move to Inventory/Wardrobe to equip)');
             elseif locs ~= '' then

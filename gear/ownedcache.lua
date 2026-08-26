@@ -110,12 +110,36 @@ function M.isStored(rec)
     return type(av) == 'table' and (av[rec.Id] or 0) == 0;
 end
 
+-- Owned with zero equippable copies AND every unavailable copy sitting in the
+-- GEAR VAULT (the Vanaheim pack's pseudo-container, gearimport.VAULT_CID) --
+-- a DIFFERENT fact from 'stored', by Henrik's field ruling (2026-08-26): in a
+-- city one layout add puts it straight onto your shelf ("!vault add ... and it
+-- equipped immediately"), where a Mog Safe piece always needs the bag trip.
+-- Mixed homes (a copy in the Safe AND one in the vault) stay 'stored': the
+-- nearest copy defines the road back. Aug-pinned records answer at id level
+-- (the slice-1 fold carries no per-roll vault data), which can only ever err
+-- toward 'stored' -- the duller claim.
+function M.isVaulted(rec)
+    if not M.isStored(rec) then return false; end
+    local vcid = 99;
+    pcall(function() vcid = require("dlac\\gear\\gearimport").VAULT_CID or vcid; end);
+    local w = M.whereOf(rec and rec.Id);
+    if w == nil then return false; end
+    local vaultN = 0;
+    for cid, n in pairs(w) do
+        if cid ~= vcid then return false; end
+        vaultN = vaultN + n;
+    end
+    return vaultN > 0;
+end
+
 -- THE availability verdict (ADR 0005's two bag facts + the caller's eligibility
--- fact, combined ONCE): 'stored' beats 'locked' beats 'ok'. `usable` is the
--- caller's own job/level eligibility for its surface (nil = not asked). Panels
--- map states to their own palette -- the STATE is the shared meaning, the
--- colour stays theirs. Tests AV* pin the precedence.
+-- fact, combined ONCE): 'vaulted' beats 'stored' beats 'locked' beats 'ok'.
+-- `usable` is the caller's own job/level eligibility for its surface (nil =
+-- not asked). Panels map states to their own palette -- the STATE is the
+-- shared meaning, the colour stays theirs. Tests AV* pin the precedence.
 function M.verdict(rec, usable)
+    if M.isVaulted(rec) then return 'vaulted'; end
     if M.isStored(rec) then return 'stored'; end
     if usable == false then return 'locked'; end
     return 'ok';

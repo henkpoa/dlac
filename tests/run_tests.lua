@@ -7153,6 +7153,31 @@ end)();
     package.loaded['dlac\\gear\\gearimport'] = saved;
     check('AV11 whereText unowned empty', oc.whereText({ Id = 99 }), '');
 
+    -- The VAULTED tier (Gear Vault slice 1 + Henrik's 2026-08-26 colour
+    -- ruling): only-in-the-vault answers 'vaulted' and outranks 'stored';
+    -- a copy in any REAL container keeps the duller 'stored' claim.
+    oc._splitOverride = {
+        avail = {},
+        total = { [5] = 1, [6] = 2 },
+        where = {
+            [5] = { [99] = 1 },              -- vault only (VAULT_CID fallback = 99)
+            [6] = { [1] = 1, [99] = 1 },     -- Mog Safe AND vault: mixed
+        },
+    };
+    package.loaded['dlac\\gear\\gearimport'] = { VAULT_CID = 99, containerName = function(cid) return 'C' .. cid; end };
+    check('AV20 vault-only -> vaulted',        oc.verdict({ Id = 5 }, true), 'vaulted');
+    check('AV21 vaulted beats locked too',     oc.verdict({ Id = 5 }, false), 'vaulted');
+    check('AV22 mixed homes stay stored',      oc.verdict({ Id = 6 }, true), 'stored');
+    check('AV23 vaulted is still isStored',    oc.isStored({ Id = 5 }), true);
+    check('AV24 unowned is never vaulted',     oc.isVaulted({ Id = 99 }), false);
+    package.loaded['dlac\\gear\\gearimport'] = saved;
+    oc._splitOverride = {
+        avail = { [1] = 1, [3] = 2 },
+        total = { [1] = 1, [2] = 1, [3] = 2 },
+        where = { [2] = { [1] = 1, [4] = 2 } },
+    };
+    oc.resetCache();
+
     -- the safe fallback (documented): an empty scan hides NOTHING -- availability
     -- is colour, ownership gates visibility, and no data means no gating
     local oc2 = dofile('gear/ownedcache.lua');

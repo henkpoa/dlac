@@ -10138,3 +10138,20 @@ emits the same line so a regen cannot unmount it.
 fold), smoke_ui 1434, pack_lint vanaheim 29 / cexi 33. Field round owed:
 mirror correctness, verdicts, and that a job-change swap leaves the bag sync
 unconfused (slice-1 gate). Slice 2 next: the tab, read-first.
+
+### Slice-1 field round (2026-08-26, same day) — confirmed, plus the colour ruling
+
+Henrik's round: two vaulted pieces mirrored as 2 rows, a third deposit showed as 3,
+All Equipment marked the piece with "Gear Vault" in the hover, and `!vault add
+Garrison Tunica` equipped it immediately. *"So worked perfectly?"* — slice 1 is
+field-confirmed.
+
+One ruling came back with it: **vaulted must not wear storage-red** — *"use another
+color instead of red, since it is technically easily available"* (in a city, a layout
+add puts it straight on the shelf; a Safe piece always costs the bag trip). So the
+GV5 verdict got its third word for real: `ownedcache.isVaulted` (only-in-the-vault;
+mixed homes stay 'stored' — the nearest copy defines the road back) and
+`verdict` = vaulted > stored > locked > ok, with **COL.VAULT violet** mapped in
+every surface that painted stored-red (All Equipment rows + card line, the Equipped
+tab's alternatives and compare names, the Gear Helpers detail rows' tooltip).
+Tests AV20–24 pin the precedence. Suites 7252 + 1434.
