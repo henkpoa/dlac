@@ -7503,6 +7503,99 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- GVU. The Gear Vault tab (servers/vanaheim/modules/gearvault/vaultui.lua,
+--      slice 2): renders whole against an imgui-shaped stub -- stack balance,
+--      the browser draws the mirror's rows, the search filters, and a
+--      Withdraw click queues exactly one wire request. The vanaheim module
+--      is not mounted by this CEXI-baseline suite, so the harness stands the
+--      stubs up itself (the tray-section idiom).
+-- ---------------------------------------------------------------------------
+(function()
+    local depth = { child = 0, item = 0 };
+    local texts, smallHits = {}, {};
+    local pressWithdraw = false;
+    local nop = function() end;
+    local IM = {
+        TextColored   = function(_, s) texts[#texts + 1] = tostring(s); end,
+        SameLine      = nop, Separator = nop, SetTooltip = nop,
+        IsItemHovered = function() return true; end,
+        SmallButton   = function(label)
+            smallHits[#smallHits + 1] = tostring(label);
+            return pressWithdraw and tostring(label):match('^Withdraw') ~= nil;
+        end,
+        PushItemWidth = function() depth.item = depth.item + 1; end,
+        PopItemWidth  = function() depth.item = depth.item - 1; end,
+        InputText     = function() return false; end,
+        BeginChild    = function() depth.child = depth.child + 1; return true; end,
+        EndChild      = function() depth.child = depth.child - 1; end,
+    };
+
+    local NAMES = { 'imgui', 'dlac\\ui\\uihost', 'dlac\\ui\\itemicons', 'dlac\\ui\\uistyle',
+                    'dlac\\servers\\vanaheim\\modules\\gearvault\\vaultclient',
+                    'dlac\\servers\\vanaheim\\modules\\gearvault\\vaultui' };
+    local saved = {};
+    for _, k in ipairs(NAMES) do saved[k] = package.loaded[k]; end
+
+    package.loaded['imgui'] = IM;
+    package.loaded['dlac\\ui\\itemicons'] = { renderIcon = nop };
+    package.loaded['dlac\\ui\\uistyle'] = {};   -- no helpLabel: the plain-text path
+    package.loaded['dlac\\ui\\uihost'] = {
+        services = {
+            COL = { ERR = {1,0,0,1}, DIM = {1,1,1,1}, HEADER = {1,1,1,1},
+                    USABLE = {1,1,1,1}, SCORE = {1,1,1,1}, VAULT = {1,1,1,1} },
+            displayName = function(id) return 'Item' .. tostring(id); end,
+        },
+    };
+    package.loaded['dlac\\servers\\vanaheim\\modules\\gearvault\\vaultclient'] = nil;
+    package.loaded['dlac\\servers\\vanaheim\\modules\\gearvault\\vaultui'] = nil;
+
+    local vc = require('dlac\\servers\\vanaheim\\modules\\gearvault\\vaultclient');
+    vc._reset();
+    vc._say = nop;
+    -- a fresh two-row mirror + a fresh one-entry layout, straight into state
+    vc.mirror.rows = {
+        { rowId = 1, itemId = 100, qty = 1, identity = string.rep('\0', 24) },
+        { rowId = 2, itemId = 200, qty = 3, identity = string.rep('\7', 24) },
+    };
+    vc.mirror.counts = { [100] = 1, [200] = 3 };
+    vc.mirror.fresh  = true;
+    vc.mirror.stamp  = 1;
+    -- the layout's item is DISTINCT from the browser's (300): the layout
+    -- section ignores the browser search, so a shared id would fog GVU8
+    vc.layoutCache = { job = 1, fresh = true, stamp = 1,
+                       entries = { { ordinal = 1, itemId = 300, count = 2, hint = nil, pinned = true } } };
+
+    local vui = require('dlac\\servers\\vanaheim\\modules\\gearvault\\vaultui');
+    check('GVU1 the tab renders whole', pcall(vui.render, 1, 75), true);
+    check('GVU2 child stack balanced',  depth.child, 0);
+    check('GVU3 item-width stack balanced', depth.item, 0);
+    local blob = table.concat(texts, '|');
+    check('GVU4 the browser drew both rows',
+          blob:find('Item100', 1, true) ~= nil and blob:find('Item200', 1, true) ~= nil, true);
+    check('GVU5 the augmented copy is tagged', blob:find('[aug]', 1, true) ~= nil, true);
+    check('GVU6 the layout drew its pinned entry', blob:find('[pinned]', 1, true) ~= nil, true);
+
+    -- the search filters the browser
+    vui._search[1] = 'item200';
+    texts = {};
+    check('GVU7 renders under a search', pcall(vui.render, 1, 75), true);
+    blob = table.concat(texts, '|');
+    check('GVU8 the filtered row is gone', blob:find('Item100', 1, true), nil);
+    check('GVU9 the match remains',        blob:find('Item200', 1, true) ~= nil, true);
+    vui._search[1] = '';
+
+    -- a Withdraw click queues exactly one wire request (nothing sends here:
+    -- the pump is never called)
+    pressWithdraw = true;
+    check('GVU10 renders through the click', pcall(vui.render, 1, 75), true);
+    pressWithdraw = false;
+    check('GVU11 the click queued withdraw requests', #(vc._st().withdrawQ or {}) >= 1, true);
+
+    vc._reset();
+    for _, k in ipairs(NAMES) do package.loaded[k] = saved[k]; end
+end)();
+
+-- ---------------------------------------------------------------------------
 -- verdict
 -- ---------------------------------------------------------------------------
 if #failures > 0 then

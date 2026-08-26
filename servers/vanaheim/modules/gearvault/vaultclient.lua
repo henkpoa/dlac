@@ -187,6 +187,68 @@ function M.parseListChunk(payload)
     return { entries = entries };
 end
 
+-- LAYOUT_LIST C2S: { u8 Job (0 = my main); u8 Rsvd; u16 AfterOrdinal }.
+function M.layoutPayload(job, afterOrdinal)
+    return string.char((job or 0) % 256, 0) .. wu16(afterOrdinal or 0);
+end
+
+-- LAYOUT_LIST S2C chunk: 32-byte entries { u16 Ordinal; u16 ItemNo; u16
+-- Count; u8 Hint (0 = none); u8 Pinned; u8 IdentityExtra[24] }.
+function M.parseLayoutChunk(payload)
+    if type(payload) ~= 'string' or #payload < 4 then return nil; end
+    local count = u16(payload, 0);
+    if #payload < 4 + count * 32 then return nil; end
+    local entries = {};
+    for i = 0, count - 1 do
+        local off = 4 + i * 32;
+        local hint = u8(payload, off + 6);
+        entries[#entries + 1] = {
+            ordinal  = u16(payload, off),
+            itemId   = u16(payload, off + 2),
+            count    = u16(payload, off + 4),
+            hint     = (hint ~= 0) and hint or nil,
+            pinned   = u8(payload, off + 7) ~= 0,
+            identity = payload:sub(off + 9, off + 32),
+        };
+    end
+    return { entries = entries };
+end
+
+-- WITHDRAW C2S: { u16 Count; u16 Rsvd; N x { u32 RowId; u16 Qty; u16 Rsvd } }.
+function M.withdrawPayload(entries)
+    local parts = { wu16(#entries), wu16(0) };
+    for _, e in ipairs(entries) do
+        parts[#parts + 1] = wu32(e.rowId);
+        parts[#parts + 1] = wu16(math.max(1, e.qty or 1));
+        parts[#parts + 1] = wu16(0);
+    end
+    return table.concat(parts);
+end
+
+-- WITHDRAW S2C: { u16 Count; u16 Rsvd; N x { u32 RowId; u16 Moved; u16 Code } }.
+function M.parseWithdrawAck(payload)
+    if type(payload) ~= 'string' or #payload < 4 then return nil; end
+    local count = u16(payload, 0);
+    if #payload < 4 + count * 8 then return nil; end
+    local entries = {};
+    for i = 0, count - 1 do
+        local off = 4 + i * 8;
+        entries[#entries + 1] = {
+            rowId = u32(payload, off),
+            moved = u16(payload, off + 4),
+            code  = u16(payload, off + 6),
+        };
+    end
+    return { entries = entries };
+end
+
+-- The per-entry GearVaultCode words this slice can meet (withdraw path).
+M.code =
+{
+    OK = 0, PARTIAL = 1, NOTHING_TO_DO = 2, NOT_ELIGIBLE = 3, ITEM_BUSY = 4,
+    NO_INSTANCE = 5, INVENTORY_FULL = 6, RARE_HELD = 7, BUSY = 8, STORE_ERROR = 9,
+};
+
 -- ---------------------------------------------------------------------------
 -- The mirror -- what consumers read (through the serverpack service, never
 -- by requiring this file from core).
@@ -201,6 +263,12 @@ M.mirror =
 };
 
 M.limits = nil;          -- HELLO's { maxList, maxDeposit, maxWithdraw }
+
+-- The CURRENT job's layout as the server holds it (slice 2, read-only view):
+-- committed whole from LAYOUT_LIST pages, exactly like the mirror. `job` is
+-- the job the entries belong to (an ask with 0 resolves to the main job we
+-- last saw). Invalidated by a job change or a `!vault` command.
+M.layoutCache = { job = nil, entries = {}, fresh = false, stamp = nil };
 
 -- ---------------------------------------------------------------------------
 -- Client state
@@ -290,6 +358,7 @@ function M.noteJob(job)
     if type(job) ~= 'number' or job == 0 then return; end
     if st.lastJob ~= nil and job ~= st.lastJob then
         M.markStale(M.SETTLE_JOB, 'job change');
+        M.layoutCache.fresh = false;   -- "the current job's layout" is a different job's now
     end
     st.lastJob = job;
 end
@@ -303,9 +372,35 @@ function M.noteZoneIn()
 end
 
 function M.noteVaultChat()
-    -- An outgoing `!vault ...` may mutate the store; resync after it lands.
+    -- An outgoing `!vault ...` may mutate the store OR a layout; resync after
+    -- it lands.
     M.markStale(M.SETTLE_CHAT, 'chat');
+    M.layoutCache.fresh = false;
     st.probeOnly = false;
+end
+
+-- Ask for a job's layout (0 = my main job). The tab calls this; pages ride
+-- the same one-in-flight machinery as everything else.
+function M.requestLayout(job)
+    if st.dormant then return false; end
+    st.layoutWant = { job = job or 0 };
+    return true;
+end
+
+-- Queue a withdraw (slice 2's one write verb). entries = { { rowId, qty } ... },
+-- at most limits.maxWithdraw of them; onDone(ackEntries, err) fires exactly
+-- once -- ackEntries nil with err = 'too_far' | 'busy' | 'unavailable' |
+-- 'timeout' | 'malformed' when the frame as a whole was refused or lost.
+-- Retries re-send the SAME Seq (the server's replay ring answers a retried
+-- frame from the ring); an exhausted retry NEVER re-queues with a fresh Seq
+-- -- the outcome is unknown, so the mirror resyncs instead.
+function M.requestWithdraw(entries, onDone)
+    if st.dormant or type(entries) ~= 'table' or #entries == 0 then return false; end
+    local cap = (M.limits ~= nil and M.limits.maxWithdraw) or 62;
+    if #entries > cap then return false; end
+    st.withdrawQ = st.withdrawQ or {};
+    st.withdrawQ[#st.withdrawQ + 1] = { entries = entries, onDone = onDone };
+    return true;
 end
 
 -- ---------------------------------------------------------------------------
@@ -325,13 +420,28 @@ function M.pump(ready)
     if st.pending ~= nil then
         if now - st.pending.sentAt >= M.SEND_TIMEOUT then
             if st.pending.retries >= M.MAX_RETRIES then
-                -- Lost cause for now: stale mirror, long backoff, ONE quiet
-                -- state (no chat spam -- /dl vault says it when asked).
+                local dead = st.pending;
                 st.pending = nil;
-                st.rowsAcc = nil;
-                st.giveups = st.giveups + 1;
-                st.staleAt = now + M.GIVEUP_BACKOFF;
-                M.mirror.fresh = false;
+                if dead.op == M.op.WITHDRAW then
+                    -- The outcome is UNKNOWN (it may have executed and the
+                    -- reply died). Never re-send with a fresh Seq -- that is
+                    -- how a lost frame becomes a double withdraw. Report, and
+                    -- let a full resync reveal the truth.
+                    local req = table.remove(st.withdrawQ or {}, 1);
+                    if req ~= nil and type(req.onDone) == 'function' then
+                        pcall(req.onDone, nil, 'timeout');
+                    end
+                    M.markStale(0, 'withdraw timeout');
+                elseif dead.op == M.op.LAYOUT_LIST then
+                    st.layoutAcc = nil;   -- the tab just shows stale and re-asks
+                else
+                    -- Lost sync: stale mirror, long backoff, ONE quiet state
+                    -- (no chat spam -- /dl vault says it when asked).
+                    st.rowsAcc = nil;
+                    st.giveups = st.giveups + 1;
+                    st.staleAt = now + M.GIVEUP_BACKOFF;
+                    M.mirror.fresh = false;
+                end
             else
                 st.pending.retries = st.pending.retries + 1;
                 sendPending(now);   -- SAME Seq: the replay ring makes this safe
@@ -340,8 +450,24 @@ function M.pump(ready)
         return;
     end
 
-    if st.staleAt == nil or now < st.staleAt then return; end
     if now - st.lastSend < M.MIN_GAP then return; end
+
+    -- Send priority: the write verb a player is waiting on, then a layout
+    -- ask, then the background mirror sync.
+    if st.withdrawQ ~= nil and st.withdrawQ[1] ~= nil then
+        beginOp('withdraw', M.op.WITHDRAW, M.withdrawPayload(st.withdrawQ[1].entries), now);
+        return;
+    end
+    if st.layoutWant ~= nil then
+        local want = st.layoutWant;
+        st.layoutWant = nil;
+        st.layoutAcc = {};
+        beginOp('layout', M.op.LAYOUT_LIST, M.layoutPayload(want.job, 0), now, 0);
+        st.pending.job = want.job;
+        return;
+    end
+
+    if st.staleAt == nil or now < st.staleAt then return; end
 
     -- A sync (or a probe) always starts at HELLO: proto check + the count.
     beginOp(st.probeOnly and 'probe' or 'sync-hello', M.op.HELLO, M.helloPayload(), now);
@@ -367,8 +493,22 @@ function M.onFrame(f)
         return true;
     end
     if f.status ~= M.status.OK then
-        -- BUSY / UNAVAILABLE / MALFORMED: not a dead server, just not now.
+        -- BUSY / TOO_FAR / UNAVAILABLE / MALFORMED: not a dead server, just
+        -- not now -- and each op kind fails toward its own consumer.
         st.pending = nil;
+        if p.op == M.op.WITHDRAW then
+            local req = table.remove(st.withdrawQ or {}, 1);
+            if req ~= nil and type(req.onDone) == 'function' then
+                local word = (f.status == M.status.TOO_FAR and 'too_far')
+                    or (f.status == M.status.BUSY and 'busy') or 'unavailable';
+                pcall(req.onDone, nil, word);
+            end
+            return true;   -- a refused withdraw moved nothing: the mirror stands
+        end
+        if p.op == M.op.LAYOUT_LIST then
+            st.layoutAcc = nil;
+            return true;
+        end
         st.rowsAcc = nil;
         st.staleAt = now + M.GIVEUP_BACKOFF;
         M.mirror.fresh = false;
@@ -422,6 +562,70 @@ function M.onFrame(f)
         return true;
     end
 
+    if p.op == M.op.LAYOUT_LIST then
+        local chunk = M.parseLayoutChunk(f.payload);
+        st.pending = nil;
+        if chunk == nil then
+            st.layoutAcc = nil;
+            return true;
+        end
+        local last = p.cursor or 0;
+        for _, e in ipairs(chunk.entries) do
+            st.layoutAcc[#st.layoutAcc + 1] = e;
+            if e.ordinal > last then last = e.ordinal; end
+        end
+        if f.flags % 2 == M.FLAG_MORE then
+            beginOp('layout', M.op.LAYOUT_LIST, M.layoutPayload(p.job, last), now, last);
+            st.pending.job = p.job;
+        else
+            M.layoutCache = {
+                job     = (p.job ~= nil and p.job ~= 0) and p.job or st.lastJob,
+                entries = st.layoutAcc,
+                fresh   = true,
+                stamp   = now,
+            };
+            st.layoutAcc = nil;
+        end
+        return true;
+    end
+
+    if p.op == M.op.WITHDRAW then
+        local ack = M.parseWithdrawAck(f.payload);
+        st.pending = nil;
+        local req = table.remove(st.withdrawQ or {}, 1);
+        if ack == nil then
+            if req ~= nil and type(req.onDone) == 'function' then pcall(req.onDone, nil, 'malformed'); end
+            return true;
+        end
+        -- SUBTRACTION, the E-Box law: we sent the rows, the ack says what
+        -- moved, so the mirror is arithmetic -- no re-LIST. A NO_INSTANCE
+        -- answer means the mirror believed a row the vault no longer holds:
+        -- that one forces the honest resync.
+        local goneRow = false;
+        for _, e in ipairs(ack.entries) do
+            if e.moved > 0 then
+                for i, row in ipairs(M.mirror.rows) do
+                    if row.rowId == e.rowId then
+                        row.qty = row.qty - e.moved;
+                        if row.qty <= 0 then table.remove(M.mirror.rows, i); end
+                        break;
+                    end
+                end
+            end
+            if e.code == M.code.NO_INSTANCE then goneRow = true; end
+        end
+        local counts = {};
+        for _, r in ipairs(M.mirror.rows) do
+            counts[r.itemId] = (counts[r.itemId] or 0) + math.max(1, r.qty);
+        end
+        M.mirror.counts = counts;
+        M.mirror.vaultCount = #M.mirror.rows;
+        if type(M._onFresh) == 'function' then pcall(M._onFresh); end
+        if goneRow then M.markStale(0, 'withdraw met a gone row'); end
+        if req ~= nil and type(req.onDone) == 'function' then pcall(req.onDone, ack.entries, nil); end
+        return true;
+    end
+
     return true;
 end
 
@@ -450,6 +654,7 @@ end
 -- test seam
 function M._reset()
     M.mirror = { fresh = false, rows = {}, counts = {}, vaultCount = nil, stamp = nil };
+    M.layoutCache = { job = nil, entries = {}, fresh = false, stamp = nil };
     M.limits = nil;
     st = { dormant = false, pending = nil, seq = 0, lastSend = 0, staleAt = nil,
            giveups = 0, rowsAcc = nil, lastJob = nil, saidProto = false };

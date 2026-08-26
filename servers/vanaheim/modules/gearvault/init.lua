@@ -101,6 +101,20 @@ pcall(function()
     end);
 end);
 
+-- THE TAB (slice 2): registered on the uihost like any first-party module,
+-- so it renders under gearui's tabGuard (a broken tab costs itself, never
+-- the frame). It exists only where this pack mounts, and shows through the
+-- gear-only surface default because featuregate never hides a label it
+-- cannot name (ADR 0037).
+pcall(function()
+    local vui  = require(base .. 'vaultui');
+    local uhost = require('dlac\\ui\\uihost');
+    uhost.register({
+        name = 'gearvault',
+        tabs = { { label = 'Gear Vault', render = function(j, lv) vui.render(j, lv); end } },
+    });
+end);
+
 -- The module contract's beat: feed the client readiness + the main-job edge.
 local function mainJob()
     local j = nil;

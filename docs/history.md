@@ -10155,3 +10155,33 @@ mixed homes stay 'stored' — the nearest copy defines the road back) and
 every surface that painted stored-red (All Equipment rows + card line, the Equipped
 tab's alternatives and compare names, the Gear Helpers detail rows' tooltip).
 Tests AV20–24 pin the precedence. Suites 7252 + 1434.
+
+## Session "the Gear Vault, slice 2" (2026-08-26, third block)
+
+**Theme:** the tab, read-first — plus the slice's one write verb.
+
+**Landed:** the **Gear Vault tab** (`vaultui.lua`, registered on the uihost by the
+pack module — exists only where the pack mounts, shows through the gear-only
+default because featuregate never hides an unknown label). Status header (state /
+mirrored instances / live shelf occupancy over Wardrobes 1–8 / Sync), **this
+job's layout** as the SERVER holds it (LAYOUT_LIST pages — `!vault` and website
+entries included; pinned + wardrobe-hint markers), and the **vault browser**
+(search, icons, [aug] tag for a non-zero identity blob, per-row **Withdraw**).
+dlac carries no Void Warden coordinates on purpose (server data, not in the
+pack): the button is always live and a TOO_FAR refusal says in words where to
+stand.
+
+The wire grew LAYOUT_LIST + WITHDRAW in `vaultclient` with the disciplines that
+matter: send priority (write verb > layout ask > background sync), withdraw acks
+maintain the mirror by SUBTRACTION (the E-Box law — no re-LIST; a NO_INSTANCE
+answer forces the honest resync), and **an exhausted withdraw retry never
+re-sends with a fresh Seq** — the outcome is unknown, so it reports `timeout`
+and the mirror resyncs instead; only same-Seq retries ride the server's replay
+ring. A refused frame (TOO_FAR/BUSY) fails toward its consumer and leaves the
+mirror standing.
+
+**Checks:** run_tests 7272 (+GVW13–17 codec, GVC21–35 layout paging / withdraw
+subtraction / refusal / the timeout-no-fresh-Seq law), smoke_ui 1445 (+GVU1–11:
+the tab renders whole against the stub, stacks balanced, search filters, a
+Withdraw click queues exactly one request), pack_lint 29. Field gate (slice 2):
+browse + withdraw round-trip at a Warden; the layout list matching `!vault list`.

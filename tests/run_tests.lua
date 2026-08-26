@@ -27427,6 +27427,87 @@ end)();
     T = 300; vc.pump(true);
     check('GVC20 dormant sends nothing ever again', #sent, 1);
 
+    -- ---- slice 2: LAYOUT_LIST + WITHDRAW ----
+
+    -- codec first
+    local lp = vc.layoutPayload(7, 3);
+    check('GVW13 layout ask: job @0, cursor @2',
+          lp:byte(1) == 7 and lp:byte(3) == 3, true);
+    local lent = vc._wu16(4) .. vc._wu16(1234) .. vc._wu16(2) .. string.char(10) .. string.char(1) .. id24;
+    local lch = vc.parseLayoutChunk(vc._wu16(1) .. vc._wu16(0) .. lent);
+    check('GVW14 layout row parses whole',
+          lch.entries[1].ordinal == 4 and lch.entries[1].itemId == 1234
+          and lch.entries[1].count == 2 and lch.entries[1].hint == 10
+          and lch.entries[1].pinned == true, true);
+    check('GVW15 hint 0 reads as none',
+          vc.parseLayoutChunk(vc._wu16(1) .. vc._wu16(0)
+              .. vc._wu16(4) .. vc._wu16(1) .. vc._wu16(1) .. string.char(0, 0) .. id24).entries[1].hint, nil);
+    local wp = vc.withdrawPayload({ { rowId = 9, qty = 2 } });
+    check('GVW16 withdraw entry: rowId u32 + qty u16', #wp == 12 and wp:byte(5) == 9 and wp:byte(9) == 2, true);
+    local wack = vc.parseWithdrawAck(vc._wu16(1) .. vc._wu16(0) .. vc._wu32(9) .. vc._wu16(2) .. vc._wu16(0));
+    check('GVW17 withdraw ack parses', wack.entries[1].rowId == 9 and wack.entries[1].moved == 2, true);
+
+    -- a layout ask pages and commits, and never disturbs the fresh mirror
+    vc._reset(); T, sent = 400, {};
+    vc.pump(true); T = 403; vc.pump(true);            -- login sync begins
+    vc.onFrame(reply(0, 0, hp));
+    vc.onFrame(reply(0, 0, vc._wu16(1) .. vc._wu16(0) .. e1));   -- mirror: one row
+    check('GVC21 mirror fresh before the layout ask', vc.mirror.fresh, true);
+    vc.noteJob(1);
+    vc.requestLayout(0);
+    T = 404; vc.pump(true);
+    check('GVC22 layout ask on the wire', sent[#sent][5], vc.op.LAYOUT_LIST);
+    vc.onFrame(reply(0, 1, vc._wu16(1) .. vc._wu16(0) .. lent));               -- MORE
+    check('GVC23 MORE -> next page from the last ordinal',
+          sent[#sent][5] == vc.op.LAYOUT_LIST and sent[#sent][11] == 4, true);
+    vc.onFrame(reply(0, 0, vc._wu16(0) .. vc._wu16(0)));                       -- final, empty
+    check('GVC24 layout committed for the main job',
+          vc.layoutCache.fresh == true and vc.layoutCache.job == 1 and #vc.layoutCache.entries == 1, true);
+    check('GVC25 the mirror was never touched', vc.mirror.fresh, true);
+
+    -- withdraw: the ack subtracts (no re-LIST), rows at zero vanish
+    local acks, errw = nil, nil;
+    vc.requestWithdraw({ { rowId = 5, qty = 1 } }, function(a, e) acks, errw = a, e; end);
+    T = 405; vc.pump(true);
+    check('GVC26 withdraw on the wire', sent[#sent][5], vc.op.WITHDRAW);
+    vc.onFrame(reply(0, 0, vc._wu16(1) .. vc._wu16(0) .. vc._wu32(5) .. vc._wu16(1) .. vc._wu16(0)));
+    check('GVC27 the callback carries the ack', acks ~= nil and acks[1].moved == 1 and errw == nil, true);
+    check('GVC28 the mirror subtracted the row', #vc.mirror.rows == 0 and next(vc.mirror.counts) == nil, true);
+    check('GVC29 ...and stays fresh (arithmetic, not a re-ask)', vc.mirror.fresh, true);
+
+    -- a TOO_FAR frame refuses the whole withdraw and moves nothing
+    vc._reset(); T, sent = 500, {};
+    vc.pump(true); T = 503; vc.pump(true);
+    vc.onFrame(reply(0, 0, hp));
+    vc.onFrame(reply(0, 0, vc._wu16(1) .. vc._wu16(0) .. e1));
+    acks, errw = nil, nil;
+    vc.requestWithdraw({ { rowId = 5, qty = 1 } }, function(a, e) acks, errw = a, e; end);
+    T = 504; vc.pump(true);
+    vc.onFrame(reply(4, 0, ''));   -- TOO_FAR
+    check('GVC30 TOO_FAR names itself', acks == nil and errw, 'too_far');
+    check('GVC31 ...and the mirror stands untouched', #vc.mirror.rows == 1 and vc.mirror.fresh == true, true);
+
+    -- a withdraw that times out is NEVER re-sent with a fresh Seq: the
+    -- outcome is unknown, so it reports and the mirror resyncs instead
+    acks, errw = nil, nil;
+    vc.requestWithdraw({ { rowId = 5, qty = 1 } }, function(a, e) acks, errw = a, e; end);
+    T = 505; vc.pump(true);
+    local wSeq = sent[#sent][6];
+    local wSends = #sent;
+    for _ = 1, vc.MAX_RETRIES do T = T + vc.SEND_TIMEOUT + 0.1; vc.pump(true); end
+    check('GVC32 every retry re-sends the SAME seq', (function()
+        for i = wSends + 1, #sent do
+            if sent[i][6] ~= wSeq or sent[i][5] ~= vc.op.WITHDRAW then return false; end
+        end
+        return #sent == wSends + vc.MAX_RETRIES;
+    end)(), true);
+    T = T + vc.SEND_TIMEOUT + 0.1; vc.pump(true);   -- exhaustion
+    check('GVC33 exhaustion reports timeout', errw, 'timeout');
+    check('GVC34 ...marks the mirror stale (outcome unknown)', vc.mirror.fresh, false);
+    T = T + 1; vc.pump(true);
+    check('GVC35 ...and the next send is the RESYNC, not the withdraw',
+          sent[#sent][5], vc.op.HELLO);
+
     vc._reset();
 
     -- ---- GVF: the ownership fold (GV5) in gear/gearimport ----
