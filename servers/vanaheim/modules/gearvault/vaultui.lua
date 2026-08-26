@@ -405,6 +405,92 @@ local _layoutAskAt = 0;
 local LAYOUT_ASK_GAP = 3.0;
 
 -- ---------------------------------------------------------------------------
+-- The Inventory sub-tab's list: storable gear sitting in the INVENTORY bag
+-- (container 0) right now. dlac's own filter mirrors the server's structural
+-- rules where it can: known equipment only (the catalog is gear-only, which
+-- IS the equipment test) and never cat-15 ammo (void-storage territory).
+-- Equipped/busy pieces stay listed -- the server refuses those per row with
+-- its own words. Cached a beat; a deposit ack drops the cache.
+-- ---------------------------------------------------------------------------
+local _inv, _invAt = nil, 0;
+M._invOverride = nil;   -- test seam
+local function inventoryStorable()
+    if M._invOverride ~= nil then return M._invOverride; end
+    local now = os.clock();
+    if _inv ~= nil and now - _invAt < 2.0 then return _inv; end
+    _invAt = now;
+    local out = {};
+    pcall(function()
+        local inv = AshitaCore:GetMemoryManager():GetInventory();
+        local max = inv:GetContainerCountMax(0) or 0;
+        for idx = 0, max do
+            local entry = inv:GetContainerItem(0, idx);
+            if entry ~= nil and entry.Id ~= nil and entry.Id ~= 0 and entry.Id ~= 65535 then
+                local rec = recOf(entry.Id);
+                if rec ~= nil and rec.Slot ~= 'Ammo' then
+                    out[#out + 1] = {
+                        container = 0, slot = idx, itemId = entry.Id,
+                        qty = math.max(1, entry.Count or 1),
+                        rec = rec, name = rec.Name or nameOf(entry.Id),
+                        sortKey = idx,
+                    };
+                end
+            end
+        end
+    end);
+    _inv = out;
+    return out;
+end
+
+local function invalidateInv() _invAt = 0; end
+
+-- One deposit run (Store / Store all): entries from the inventory list.
+local DEPOSIT_WORDS = {
+    [3]  = 'not vault gear',
+    [4]  = 'equipped or busy',
+    [10] = 'the vault already holds its copy (duplicates are refused -- future scrap fodder)',
+    [9]  = 'the vault store errored',
+};
+local function storeRows(rows)
+    local list = {};
+    for _, r in ipairs(rows) do
+        list[#list + 1] = { container = r.container, slot = r.slot };
+    end
+    local queued = vc.requestDeposit(list, function(acks, err)
+        invalidateInv();
+        if acks == nil then
+            noteResult((err == 'too_far') and 'stand at a Void Warden to store'
+                or (ERR_WORDS[err] or ('store failed (' .. tostring(err) .. ')')), true);
+            return;
+        end
+        local stored, dupes, refused = 0, 0, 0;
+        for _, a in ipairs(acks) do
+            if a.code == vc.code.OK or a.code == vc.code.PARTIAL then stored = stored + 1;
+            elseif a.code == vc.code.DUPLICATE then dupes = dupes + 1;
+            else refused = refused + 1; end
+        end
+        if #acks == 1 and stored == 0 then
+            noteResult((rows[1] and rows[1].name or 'that piece') .. ': '
+                .. (DEPOSIT_WORDS[acks[1].code] or ('refused (code ' .. tostring(acks[1].code) .. ')')), true);
+        else
+            noteResult(string.format('stored %d piece%s%s%s', stored, (stored == 1) and '' or 's',
+                (dupes > 0) and (' -- ' .. dupes .. ' duplicate(s) kept in your bags') or '',
+                (refused > 0) and (' -- ' .. refused .. ' refused') or ''), stored == 0);
+        end
+    end);
+    if not queued then
+        noteResult('could not queue the store (client dormant, or too many at once)', true);
+    end
+end
+
+-- Sub-tab selection: on RE-ENTERING the Gear Vault tab with storable gear in
+-- the bag, the bar gets a new generation and Inventory is submitted first --
+-- a bar ImGui has never seen adopts the first tab (the ADR 0033 rung-3
+-- mechanism, which owes nothing to the SetSelected flag any binding may
+-- drop). The order then stays put until the next re-entry.
+local _sub = { gen = 0, first = 'vault', lastSeen = 0 };
+
+-- ---------------------------------------------------------------------------
 -- The tab
 -- ---------------------------------------------------------------------------
 function M.render(job, level)
@@ -543,49 +629,140 @@ function M.render(job, level)
 
     imgui.SameLine(0, 10);
 
-    -- ---- right pane: the vault ----
+    -- ---- right pane: Vault | Inventory sub-tabs (Henrik, 2026-08-26) ----
     imgui.BeginChild('##gvright', { -1, -24 }, false);
-    if uistyl ~= nil and type(uistyl.helpLabel) == 'function' then
-        uistyl.helpLabel(imgui, 'Vault contents', 'Everything in your Gear Vault (the server-side void space).\nWithdraw needs a Void Warden nearby -- the button says so if you are not.', cHEAD);
-    else
-        imgui.TextColored(cHEAD, 'Vault contents');
+
+    local invList = inventoryStorable();
+    local nowClock = os.clock();
+    local reentered = (nowClock - _sub.lastSeen) > 1.0;
+    _sub.lastSeen = nowClock;
+    if reentered then
+        -- auto-switch: opening the Gear Vault tab with storable gear in the
+        -- bag lands you on Inventory, ready to Store
+        if #invList > 0 then
+            _sub.gen = _sub.gen + 1;
+            _sub.first = 'inv';
+        else
+            _sub.first = 'vault';
+        end
     end
-    local vv = filterView(vaultView(), needle);
-    if vv.total > 0 then
-        renderTree(vv, 'V', searching, forceClose, level, COL, function(e)
-            return function()
-                if e.qty > 1 then
-                    imgui.SameLine(0, 6);
-                    imgui.TextColored(cDIM, 'x' .. e.qty);
-                end
-                if isAugmented(e.identity) then
-                    imgui.SameLine(0, 8);
-                    imgui.TextColored(cGOLD, '[aug]');
-                    if imgui.IsItemHovered() then
-                        imgui.SetTooltip('This copy carries augments or an inscription -- it comes back byte-identical.');
+
+    local function renderVaultTab()
+        local vv = filterView(vaultView(), needle);
+        if vv.total > 0 then
+            renderTree(vv, 'V', searching, forceClose, level, COL, function(e)
+                return function()
+                    if e.qty > 1 then
+                        imgui.SameLine(0, 6);
+                        imgui.TextColored(cDIM, 'x' .. e.qty);
                     end
+                    if isAugmented(e.identity) then
+                        imgui.SameLine(0, 8);
+                        imgui.TextColored(cGOLD, '[aug]');
+                        if imgui.IsItemHovered() then
+                            imgui.SetTooltip('This copy carries augments or an inscription -- it comes back byte-identical.');
+                        end
+                    end
+                    imgui.SameLine(0, 12);
+                    if imgui.SmallButton('+ Layout##gvl' .. tostring(e.rowId)) then
+                        layoutEdit({ job = 0, verb = vc.verb.ADD, itemId = e.itemId, count = 1,
+                                     hint = 0, pinned = false, identity = e.identity },
+                            e.name .. ' added to this job\'s layout');
+                    end
+                    if imgui.IsItemHovered() then
+                        imgui.SetTooltip('Add THIS copy (augments included) to your current main job\'s layout.\nLive in a city (or your Mog House); refused in the field.');
+                    end
+                    imgui.SameLine(0, 4);
+                    if imgui.SmallButton('Withdraw##gvw' .. tostring(e.rowId)) then
+                        withdrawRow(e);
+                    end
+                    if imgui.IsItemHovered() then
+                        imgui.SetTooltip('Move this to your inventory. Works at a Void Warden (anywhere for a GM).');
+                    end
+                end;
+            end);
+        else
+            imgui.TextColored(cDIM, (vc.mirror.stamp == nil) and 'The vault has not synced yet -- try Sync.'
+                or (searching and 'Nothing in the vault matches.' or 'The vault is empty.'));
+        end
+    end
+
+    local function renderInvTab()
+        -- the storable list as a grouped view, same tree as everything else
+        local grouped, total = {}, 0;
+        for _, r in ipairs(invList) do
+            if needle == '' or string.find(string.lower(r.name), needle, 1, true) ~= nil then
+                total = total + 1;
+                bucket(grouped, r.rec, r);
+            end
+        end
+        sortGroups(grouped);
+        if total > 0 then
+            local shown = {};
+            for _, slotGroup in pairs(grouped) do
+                if slotGroup._cats ~= nil then
+                    for _, list in pairs(slotGroup._cats) do for _, r in ipairs(list) do shown[#shown + 1] = r; end end
+                else
+                    for _, r in ipairs(slotGroup) do shown[#shown + 1] = r; end
                 end
-                imgui.SameLine(0, 12);
-                if imgui.SmallButton('+ Layout##gvl' .. tostring(e.rowId)) then
-                    layoutEdit({ job = 0, verb = vc.verb.ADD, itemId = e.itemId, count = 1,
-                                 hint = 0, pinned = false, identity = e.identity },
-                        e.name .. ' added to this job\'s layout');
-                end
-                if imgui.IsItemHovered() then
-                    imgui.SetTooltip('Add THIS copy (augments included) to your current main job\'s layout.\nLive in a city (or your Mog House); refused in the field.');
-                end
-                imgui.SameLine(0, 4);
-                if imgui.SmallButton('Withdraw##gvw' .. tostring(e.rowId)) then
-                    withdrawRow(e);
-                end
-                if imgui.IsItemHovered() then
-                    imgui.SetTooltip('Move this to your inventory. Works at a Void Warden (anywhere for a GM).');
-                end
-            end;
-        end);
-    else
-        imgui.TextColored(cDIM, (vc.mirror.stamp == nil) and 'The vault has not synced yet -- try Sync.'
-            or (searching and 'Nothing in the vault matches.' or 'The vault is empty.'));
+            end
+            if imgui.SmallButton(string.format('Store all (%d)##gvsa', total)) then
+                storeRows(shown);
+            end
+            if imgui.IsItemHovered() then
+                imgui.SetTooltip('Deposit every listed piece into the Gear Vault.\nWorks at a Void Warden (anywhere for a GM). Equipped pieces and\nduplicates are refused per item and stay in your bags.');
+            end
+            imgui.SameLine(0, 10);
+            imgui.TextColored(cDIM, 'Storable gear in your inventory:');
+            renderTree({ grouped = grouped, total = total }, 'I', searching, forceClose, level, COL, function(e)
+                return function()
+                    if e.qty > 1 then
+                        imgui.SameLine(0, 6);
+                        imgui.TextColored(cDIM, 'x' .. e.qty);
+                    end
+                    imgui.SameLine(0, 12);
+                    if imgui.SmallButton('Store##gvs' .. tostring(e.slot)) then
+                        storeRows({ e });
+                    end
+                    if imgui.IsItemHovered() then
+                        imgui.SetTooltip('Deposit this into the Gear Vault. Works at a Void Warden\n(anywhere for a GM).');
+                    end
+                end;
+            end);
+        else
+            imgui.TextColored(cDIM, searching and 'Nothing in your inventory matches.'
+                or 'No storable gear in your inventory.');
+        end
+    end
+
+    local function invTabItem()
+        local n = #invList;
+        if n > 0 then imgui.PushStyleColor(ImGuiCol_Text, cGOLD); end
+        local open = imgui.BeginTabItem(string.format('Inventory (%d)###gvti', n));
+        if n > 0 then imgui.PopStyleColor(1); end
+        if open then
+            renderInvTab();
+            imgui.EndTabItem();
+        end
+    end
+
+    local function vaultTabItem()
+        if imgui.BeginTabItem('Vault###gvtv') then
+            renderVaultTab();
+            imgui.EndTabItem();
+        end
+    end
+
+    local barId = '##gvsub' .. ((_sub.gen > 0) and ('#g' .. _sub.gen) or '');
+    if imgui.BeginTabBar(barId) then
+        if _sub.first == 'inv' then
+            invTabItem();
+            vaultTabItem();
+        else
+            vaultTabItem();
+            invTabItem();
+        end
+        imgui.EndTabBar();
     end
     imgui.EndChild();
 

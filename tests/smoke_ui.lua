@@ -7530,6 +7530,10 @@ end)();
         CollapsingHeader = function(label) headers[#headers + 1] = tostring(label); return true; end,
         TreeNode      = function() depth.tree = depth.tree + 1; return true; end,
         TreePop       = function() depth.tree = depth.tree - 1; end,
+        BeginTabBar   = function() depth.bar = (depth.bar or 0) + 1; return true; end,
+        EndTabBar     = function() depth.bar = depth.bar - 1; end,
+        BeginTabItem  = function(label) headers[#headers + 1] = tostring(label); depth.tab = (depth.tab or 0) + 1; return true; end,
+        EndTabItem    = function() depth.tab = depth.tab - 1; end,
         BeginTooltip  = function() depth.tip = depth.tip + 1; end,
         EndTooltip    = function() depth.tip = depth.tip - 1; end,
         PushItemWidth = function() depth.item = depth.item + 1; end,
@@ -7587,7 +7591,22 @@ end)();
                        entries = { { ordinal = 1, itemId = 300, count = 2, hint = nil, pinned = true } } };
 
     local vui = require('dlac\\servers\\vanaheim\\modules\\gearvault\\vaultui');
+    -- two storable pieces in the bag (the _invOverride seam): the Inventory
+    -- sub-tab must light up with the count and offer Store / Store all
+    vui._invOverride = {
+        { container = 0, slot = 3, itemId = 100, qty = 1, sortKey = 3,
+          rec = { Id = 100, Name = 'Item100', Slot = 'Body', Level = 10 }, name = 'Item100' },
+        { container = 0, slot = 5, itemId = 400, qty = 1, sortKey = 5,
+          rec = { Id = 400, Name = 'Item400', Slot = 'Head', Level = 5 }, name = 'Item400' },
+    };
     check('GVU1 the tab renders whole', pcall(vui.render, 1, 75), true);
+    check('GVU1a tab-bar/tab stacks balanced', (depth.bar or 0) == 0 and (depth.tab or 0) == 0, true);
+    check('GVU1b the Inventory sub-tab carries its count',
+          table.concat(headers, '|'):find('Inventory (2)', 1, true) ~= nil, true);
+    check('GVU1c Store and Store all are offered', (function()
+        local h = table.concat(smallHits, '|');
+        return h:find('Store all (2)', 1, true) ~= nil and h:find('Store##', 1, true) ~= nil;
+    end)(), true);
     check('GVU2 child stack balanced',  depth.child, 0);
     check('GVU3 item-width stack balanced', depth.item, 0);
     check('GVU3a tree stack balanced',  depth.tree, 0);

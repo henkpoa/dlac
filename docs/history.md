@@ -10273,3 +10273,18 @@ Still open from the same round, SERVER-side: a deposit never triggers an apply
 deposit" waits for a job change. Fix belongs in the vanaheim repo's module
 (apply when the deposited identity is in the active job's layout); proposed to
 Henrik — his shard, his call.
+
+### The Inventory sub-tab (Henrik's round, 2026-08-26) — Store from the tab
+
+The right pane became TWO sub-tabs, **Vault | Inventory (N)**: the Inventory
+tab lists the storable gear sitting in your bag right now (known equipment
+only — the catalog being gear-only IS the equipment test — and never cat-15
+ammo), lights its label gold when N > 0, and **re-entering the Gear Vault tab
+with storable gear lands you on Inventory directly** — done with ADR 0033's
+rung-3 mechanism (a new bar generation + first-submission adoption), which owes
+nothing to the SetSelected flag any binding may drop. Per-row **Store** and a
+**Store all (N)** up top ride the new DEPOSIT wire verb (same mutating-op laws;
+a successful run marks the mirror stale for one cheap LIST resync — the ack
+carries no quantities, and you are standing at a Warden anyway). Refusals speak
+per item: a DUPLICATE stays in your bags and says it is future scrap fodder.
+Suites 7307 + 1454.

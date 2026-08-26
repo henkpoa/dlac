@@ -27661,11 +27661,33 @@ end)();
     check('GVC30 TOO_FAR names itself', acks == nil and errw, 'too_far');
     check('GVC31 ...and the mirror stands untouched', #vc.mirror.rows == 1 and vc.mirror.fresh == true, true);
 
+    -- DEPOSIT (the Inventory sub-tab's Store): codec + the queue laws
+    local dp = vc.depositPayload({ { container = 0, slot = 7 }, { container = 0, slot = 9 } });
+    check('GVW18 deposit entries are 4 bytes each', #dp == 12 and dp:byte(5) == 0 and dp:byte(6) == 7 and dp:byte(10) == 9, true);
+    local dack = vc.parseDepositAck(vc._wu16(1) .. vc._wu16(0)
+        .. string.char(0, 7) .. vc._wu16(10) .. vc._wu32(44));
+    check('GVW19 deposit ack parses (a DUPLICATE refusal)',
+          dack.entries[1].slot == 7 and dack.entries[1].code == 10 and dack.entries[1].rowId == 44, true);
+
+    local dacks, derr = nil, nil;
+    vc.requestDeposit({ { container = 0, slot = 7 } }, function(a, e) dacks, derr = a, e; end);
+    T = T + 1; vc.pump(true);
+    check('GVC36 deposit on the wire', sent[#sent][5], vc.op.DEPOSIT);
+    vc.onFrame(reply(0, 0, vc._wu16(1) .. vc._wu16(0) .. string.char(0, 7) .. vc._wu16(0) .. vc._wu32(9)));
+    check('GVC37 the callback carries the ack', dacks ~= nil and dacks[1].code == 0 and derr == nil, true);
+    check('GVC38 a stored piece marks the mirror stale (LIST resync, not arithmetic)',
+          vc.mirror.fresh, false);
+    dacks, derr = nil, nil;
+    vc.requestDeposit({ { container = 0, slot = 7 } }, function(a, e) dacks, derr = a, e; end);
+    T = T + 1; vc.pump(true);
+    vc.onFrame(reply(4, 0, ''));   -- TOO_FAR
+    check('GVC39 a far deposit names itself', dacks == nil and derr, 'too_far');
+
     -- a withdraw that times out is NEVER re-sent with a fresh Seq: the
     -- outcome is unknown, so it reports and the mirror resyncs instead
     acks, errw = nil, nil;
     vc.requestWithdraw({ { rowId = 5, qty = 1 } }, function(a, e) acks, errw = a, e; end);
-    T = 505; vc.pump(true);
+    T = T + 1; vc.pump(true);
     local wSeq = sent[#sent][6];
     local wSends = #sent;
     for _ = 1, vc.MAX_RETRIES do T = T + vc.SEND_TIMEOUT + 0.1; vc.pump(true); end

@@ -214,6 +214,34 @@ function M.parseLayoutChunk(payload)
     return { entries = entries };
 end
 
+-- DEPOSIT C2S: { u16 Count; u16 Rsvd; N x { u8 Container; u8 Slot; u16 Rsvd } }.
+function M.depositPayload(entries)
+    local parts = { wu16(#entries), wu16(0) };
+    for _, e in ipairs(entries) do
+        parts[#parts + 1] = string.char((e.container or 0) % 256, (e.slot or 0) % 256) .. wu16(0);
+    end
+    return table.concat(parts);
+end
+
+-- DEPOSIT S2C: { u16 Count; u16 Rsvd; N x { u8 Container; u8 Slot; u16 Code;
+-- u32 RowId } }.
+function M.parseDepositAck(payload)
+    if type(payload) ~= 'string' or #payload < 4 then return nil; end
+    local count = u16(payload, 0);
+    if #payload < 4 + count * 8 then return nil; end
+    local entries = {};
+    for i = 0, count - 1 do
+        local off = 4 + i * 8;
+        entries[#entries + 1] = {
+            container = u8(payload, off),
+            slot      = u8(payload, off + 1),
+            code      = u16(payload, off + 2),
+            rowId     = u32(payload, off + 4),
+        };
+    end
+    return { entries = entries };
+end
+
 -- WITHDRAW C2S: { u16 Count; u16 Rsvd; N x { u32 RowId; u16 Qty; u16 Rsvd } }.
 function M.withdrawPayload(entries)
     local parts = { wu16(#entries), wu16(0) };
@@ -431,6 +459,20 @@ function M.requestWithdraw(entries, onDone)
     return true;
 end
 
+-- Queue a deposit (the Inventory sub-tab's Store / Store all). entries =
+-- { { container, slot } ... }, at most limits.maxDeposit; onDone(ackEntries,
+-- err) fires once. Same mutating-op laws as withdraw. A successful run marks
+-- the mirror stale (0s) rather than doing arithmetic: the ack carries no
+-- quantities, and one LIST after a Warden stop is cheap.
+function M.requestDeposit(entries, onDone)
+    if st.dormant or type(entries) ~= 'table' or #entries == 0 then return false; end
+    local cap = (M.limits ~= nil and M.limits.maxDeposit) or 124;
+    if #entries > cap then return false; end
+    st.depositQ = st.depositQ or {};
+    st.depositQ[#st.depositQ + 1] = { entries = entries, onDone = onDone };
+    return true;
+end
+
 -- Queue one layout edit (slice 3). e = { job (0 = my main), verb (M.verb.*),
 -- itemId, count, hint, pinned, identity (24 raw bytes; nil = zero blob) };
 -- onDone(code, err) fires once -- code from the ack (NOT_IN_CITY included),
@@ -476,16 +518,17 @@ function M.pump(ready)
             if st.pending.retries >= M.MAX_RETRIES then
                 local dead = st.pending;
                 st.pending = nil;
-                if dead.op == M.op.WITHDRAW then
+                if dead.op == M.op.WITHDRAW or dead.op == M.op.DEPOSIT then
                     -- The outcome is UNKNOWN (it may have executed and the
                     -- reply died). Never re-send with a fresh Seq -- that is
-                    -- how a lost frame becomes a double withdraw. Report, and
-                    -- let a full resync reveal the truth.
-                    local req = table.remove(st.withdrawQ or {}, 1);
+                    -- how a lost frame becomes a double op. Report, and let
+                    -- a full resync reveal the truth.
+                    local q = (dead.op == M.op.WITHDRAW) and st.withdrawQ or st.depositQ;
+                    local req = table.remove(q or {}, 1);
                     if req ~= nil and type(req.onDone) == 'function' then
                         pcall(req.onDone, nil, 'timeout');
                     end
-                    M.markStale(0, 'withdraw timeout');
+                    M.markStale(0, 'write timeout');
                 elseif dead.op == M.op.LAYOUT_SET then
                     -- Same mutating-op law: report, drop, and let the layout
                     -- re-ask reveal what actually landed.
@@ -518,6 +561,10 @@ function M.pump(ready)
     -- ask, then the background mirror sync.
     if st.withdrawQ ~= nil and st.withdrawQ[1] ~= nil then
         beginOp('withdraw', M.op.WITHDRAW, M.withdrawPayload(st.withdrawQ[1].entries), now);
+        return;
+    end
+    if st.depositQ ~= nil and st.depositQ[1] ~= nil then
+        beginOp('deposit', M.op.DEPOSIT, M.depositPayload(st.depositQ[1].entries), now);
         return;
     end
     if st.layoutSetQ ~= nil and st.layoutSetQ[1] ~= nil then
@@ -562,14 +609,15 @@ function M.onFrame(f)
         -- BUSY / TOO_FAR / UNAVAILABLE / MALFORMED: not a dead server, just
         -- not now -- and each op kind fails toward its own consumer.
         st.pending = nil;
-        if p.op == M.op.WITHDRAW then
-            local req = table.remove(st.withdrawQ or {}, 1);
+        if p.op == M.op.WITHDRAW or p.op == M.op.DEPOSIT then
+            local q = (p.op == M.op.WITHDRAW) and st.withdrawQ or st.depositQ;
+            local req = table.remove(q or {}, 1);
             if req ~= nil and type(req.onDone) == 'function' then
                 local word = (f.status == M.status.TOO_FAR and 'too_far')
                     or (f.status == M.status.BUSY and 'busy') or 'unavailable';
                 pcall(req.onDone, nil, word);
             end
-            return true;   -- a refused withdraw moved nothing: the mirror stands
+            return true;   -- a refused write moved nothing: the mirror stands
         end
         if p.op == M.op.LAYOUT_SET then
             local req = table.remove(st.layoutSetQ or {}, 1);
@@ -680,6 +728,26 @@ function M.onFrame(f)
         if ack ~= nil and ack.code == M.code.OK then
             M.layoutCache.fresh = false;
         end
+        return true;
+    end
+
+    if p.op == M.op.DEPOSIT then
+        local ack = M.parseDepositAck(f.payload);
+        st.pending = nil;
+        local req = table.remove(st.depositQ or {}, 1);
+        if ack == nil then
+            if req ~= nil and type(req.onDone) == 'function' then pcall(req.onDone, nil, 'malformed'); end
+            return true;
+        end
+        -- Anything stored changed the vault: one LIST resync is the honest
+        -- (and cheap -- you are standing at a Warden) way to fold it in.
+        for _, e in ipairs(ack.entries) do
+            if e.code == M.code.OK or e.code == M.code.PARTIAL then
+                M.markStale(0, 'deposit');
+                break;
+            end
+        end
+        if req ~= nil and type(req.onDone) == 'function' then pcall(req.onDone, ack.entries, nil); end
         return true;
     end
 
