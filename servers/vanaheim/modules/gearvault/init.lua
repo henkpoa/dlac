@@ -87,18 +87,27 @@ pcall(function()
     end);
 end);
 
--- `/dl vault` -- the slice-1 field probe: state, mirrored count, and a
--- `sync` verb to force a refresh. Registered here like every module command
--- (the giftbox pattern); gearui's /dl dispatch never learns vault words.
+-- `/dl vault` -- the field probe: state, mirrored count, a `sync` verb, and
+-- `why <name>` (defined below, forward-declared here -- a local referenced
+-- before declaration is a silent nil global, hard rule 8). Registered like
+-- every module command (the giftbox pattern); gearui's /dl dispatch never
+-- learns vault words.
+local vaultWhy;
 pcall(function()
     ashita.events.register('command', 'dlac_gearvault_cmd', function(e)
-        local raw = string.lower(tostring(e.command or ''));
-        local rest = raw:match('^/dl%s+vault%s*(.*)$');
+        local raw = tostring(e.command or '');
+        local rest = string.lower(raw):match('^/dl%s+vault%s*(.*)$');
         if rest == nil then return; end
         e.blocked = true;
         if rest:match('^sync') then
             vc.refresh();
+            vc.requestLayout(0);
             vc._say('gear vault: sync requested.');
+        elseif rest:match('^why%s+%S') then
+            -- take the name from the RAW command (case preserved for display;
+            -- resolution is case-tolerant anyway)
+            local name = raw:match('^/[dD][lL]%s+%S+%s+%S+%s+(.+)$') or rest:match('^why%s+(.+)$');
+            pcall(vaultWhy, (name or ''):gsub('%s+$', ''));
         else
             vc._say(vc.statusLine());
         end
@@ -127,13 +136,14 @@ local function mainJob()
 end
 
 -- THE RECONCILE ENGINE (slice 3 -- reconcile.lua's header carries the whole
--- design). Readers arrive here so the engine stays pure of files and Ashita:
--- sets through profilesets (the one sets reader -- it answers for the LIVE
--- job unless browsing, and the engine refuses to run while browsing), the
--- trigger file through dispatch's raw reader (profile tier first, legacy
--- tier as the fallback -- the two-tier law), names through the shared
--- lookupByName service, at call time.
-rec.configure({
+-- design). Readers live in ONE table so the engine and the `/dl vault why`
+-- probe read the world through the same eyes: sets through profilesets (the
+-- one sets reader -- it answers for the LIVE job unless browsing, and the
+-- engine refuses to run while browsing), the trigger file through dispatch's
+-- raw reader (profile tier first, legacy tier as the fallback -- the
+-- two-tier law), names through the shared lookupByName service, at call
+-- time.
+local RD = {
     vc     = vc,
     derive = drv,
     clock  = os.clock,
@@ -175,7 +185,69 @@ rec.configure({
         end);
         return out;
     end,
-});
+};
+rec.configure(RD);
+
+-- `/dl vault why <name>` -- the WHOLE chain for one item, in one screen: what
+-- the mirror holds, what ownership believes, what derivation wants, what the
+-- layout carries, and what the engine last did. The debugging law: when a
+-- report survives one code-read, stop reading and make the engine print its
+-- own evidence.
+local _tickErr = nil;   -- the engine's last error, said once (hard rule 12)
+vaultWhy = function(name)
+    local out = {};
+    local function line(s) out[#out + 1] = s; end
+    local r = RD.resolve(name);
+    if r == nil then
+        line(string.format('why "%s": dlac cannot resolve that name (gear.lua / catalog spelling?).', name));
+    else
+        line(string.format('why "%s": id %d%s', name, r.id, r.aug and ' (augment-pinned record: derivation skips it -- use + Layout)' or ''));
+        local held, zerocnt = 0, 0;
+        for _, row in ipairs(vc.mirror.rows) do
+            if row.itemId == r.id then
+                held = held + math.max(1, row.qty);
+                if row.identity == vc.ZERO24 then zerocnt = zerocnt + 1; end
+            end
+        end
+        line(string.format('  mirror [%s]: %d instance(s) of it in the vault (%d plain, %d augmented/signed)',
+            vc.state(), held, zerocnt, held - zerocnt));
+        pcall(function()
+            local oc = require('dlac\\gear\\ownedcache');
+            local rec2 = { Id = r.id };
+            local w = oc.whereOf(r.id);
+            local homes = {};
+            if type(w) == 'table' then
+                local gi = require('dlac\\gear\\gearimport');
+                for cid, n in pairs(w) do homes[#homes + 1] = gi.containerName(cid) .. ' x' .. n; end
+                table.sort(homes);
+            end
+            line(string.format('  ownership: verdict=%s stored=%s vaulted=%s  where: %s',
+                oc.verdict(rec2, true), tostring(oc.isStored(rec2)), tostring(oc.isVaulted(rec2)),
+                (#homes > 0) and table.concat(homes, ', ') or '(nowhere)'));
+        end);
+        local d = drv.derive(RD.setsRoot(), RD.triggers(), RD.resolve);
+        local want = 0;
+        for _, it in ipairs(d.items) do if it.itemId == r.id then want = it.count; end end
+        line(string.format('  derived: this job wants %d of it (%d items total, %d aug-skipped, %d unresolved)',
+            want, #d.items, d.skippedAug, #d.unresolved));
+        local lc = vc.layoutCache;
+        local inLayout = 0;
+        for _, e in ipairs(lc.entries or {}) do
+            if e.itemId == r.id then inLayout = inLayout + e.count; end
+        end
+        line(string.format('  layout [job %s, %s]: carries %d of it',
+            tostring(lc.job), lc.fresh and 'fresh' or 'STALE', inLayout));
+        if inLayout > 0 and held > 0 then
+            line('  NOTE: the layout names it and the vault holds it -- the SHELF catches up at the');
+            line('  next job change or live layout edit (a deposit alone does not trigger an apply).');
+        end
+    end
+    local rst = rec._st();
+    line(string.format('  engine: cityBlocked=%s lastPushKey=%s%s',
+        tostring(rec.cityBlocked()), rst.lastPushKey and 'set' or 'none',
+        _tickErr ~= nil and ('  LAST ERROR: ' .. _tickErr) or ''));
+    for _, s in ipairs(out) do vc._say(s); end
+end
 
 return {
     pump = function()
@@ -183,6 +255,18 @@ return {
         local ready = (type(j) == 'number' and j ~= 0);
         if ready then vc.noteJob(j); end
         vc.pump(ready);
-        if ready then pcall(rec.tick); end
+        if ready then
+            -- A silently-dead engine looks exactly like "nothing happened"
+            -- (hard rule 12): one loud line per DISTINCT error, and the
+            -- probe carries it too.
+            local ok, err = pcall(rec.tick);
+            if not ok then
+                err = tostring(err);
+                if err ~= _tickErr then
+                    _tickErr = err;
+                    vc._say('gear vault: the layout engine errored: ' .. err .. ' -- please report this line.');
+                end
+            end
+        end
     end,
 };
