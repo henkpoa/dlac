@@ -7503,10 +7503,10 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
--- GVU. The Gear Vault tab (servers/vanaheim/modules/gearvault/vaultui.lua,
+-- GVU. The Gear Vault tab (servers/ascensionxi/modules/gearvault/vaultui.lua,
 --      slice 2): renders whole against an imgui-shaped stub -- stack balance,
 --      the browser draws the mirror's rows, the search filters, and a
---      Withdraw click queues exactly one wire request. The vanaheim module
+--      Withdraw click queues exactly one wire request. The ascensionxi module
 --      is not mounted by this CEXI-baseline suite, so the harness stands the
 --      stubs up itself (the tray-section idiom).
 -- ---------------------------------------------------------------------------
@@ -7548,8 +7548,8 @@ end)();
     };
 
     local NAMES = { 'imgui', 'dlac\\ui\\uihost', 'dlac\\ui\\itemicons', 'dlac\\ui\\uistyle',
-                    'dlac\\servers\\vanaheim\\modules\\gearvault\\vaultclient',
-                    'dlac\\servers\\vanaheim\\modules\\gearvault\\vaultui' };
+                    'dlac\\servers\\ascensionxi\\modules\\gearvault\\vaultclient',
+                    'dlac\\servers\\ascensionxi\\modules\\gearvault\\vaultui' };
     local saved = {};
     for _, k in ipairs(NAMES) do saved[k] = package.loaded[k]; end
 
@@ -7575,10 +7575,10 @@ end)();
             CAT_ORDER = { Main = { 'Sword' } },
         },
     };
-    package.loaded['dlac\\servers\\vanaheim\\modules\\gearvault\\vaultclient'] = nil;
-    package.loaded['dlac\\servers\\vanaheim\\modules\\gearvault\\vaultui'] = nil;
+    package.loaded['dlac\\servers\\ascensionxi\\modules\\gearvault\\vaultclient'] = nil;
+    package.loaded['dlac\\servers\\ascensionxi\\modules\\gearvault\\vaultui'] = nil;
 
-    local vc = require('dlac\\servers\\vanaheim\\modules\\gearvault\\vaultclient');
+    local vc = require('dlac\\servers\\ascensionxi\\modules\\gearvault\\vaultclient');
     vc._reset();
     vc._say = nop;
     -- a fresh two-row mirror + a fresh one-entry layout, straight into state
@@ -7594,7 +7594,7 @@ end)();
     vc.layoutCache = { job = 1, fresh = true, stamp = 1,
                        entries = { { ordinal = 1, itemId = 300, count = 2, hint = nil, pinned = true } } };
 
-    local vui = require('dlac\\servers\\vanaheim\\modules\\gearvault\\vaultui');
+    local vui = require('dlac\\servers\\ascensionxi\\modules\\gearvault\\vaultui');
     -- two storable pieces in the bag (the _invOverride seam): the Inventory
     -- sub-tab must light up with the count and offer Store / Store all
     vui._invOverride = {

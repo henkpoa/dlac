@@ -1,5 +1,9 @@
 # 0036 — The imgui binding is a seam, not an assumption
 
+> **Amended 2026-08-27:** the server named *Vanaheim* throughout this ADR was renamed
+> **AscensionXI**. Same server, same pack -- the pack id is now `ascensionxi` and it
+> lives at `servers/ascensionxi/`. Names below are left as written at the time.
+
 Accepted 2026-08-26. Adds `lib/imguicompat.lua`, installed once from `dlac.lua` before the
 first frame. No call site changes; nothing about the ImGui idioms the tree uses changes.
 

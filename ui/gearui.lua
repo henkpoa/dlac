@@ -226,7 +226,7 @@ local COL = {   -- ONE table, not ten locals: the 200-local chunk cap
     -- PREVIEW ONLY (the server will not render it on you), a warning about what
     -- the game will do, not a note about what you have.
     UNOWN  = { 0.56, 0.56, 0.56, 1.00 },
-    -- GEAR IN THE VAULT (Vanaheim's Gear Vault, docs/design/
+    -- GEAR IN THE VAULT (AscensionXI's Gear Vault, docs/design/
     -- gear-vault-integration.md). Violet, deliberately NOT the storage red
     -- (Henrik's field ruling, 2026-08-26: "use another color instead of red,
     -- since it is technically easily available") -- in a city a layout add

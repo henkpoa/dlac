@@ -1,19 +1,19 @@
-# dlac × Gear Vault — the integration design (Vanaheim/AscensionXI only)
+# dlac × Gear Vault — the integration design (AscensionXI only)
 
 - **Status:** design ratified 2026-08-26 (Henrik grill, 7 questions); slice 1
   next. This document is the decision record; the server side is ALREADY
-  BUILT AND GREEN — its design authority is the vanaheim repo's
+  BUILT AND GREEN — its design authority is the ascensionxi repo's
   `documentation/custom/gear-vault.md` (D1–D13) and the wire/implementation
   map is `gear-vault-implementation.md` there. Nothing here re-decides a
   server ruling.
-- **Where it lands:** a pack module, `servers/vanaheim/modules/gearvault/`
-  (ADR 0035). Mounts only with the vanaheim pack — this feature is
-  Vanaheim/AscensionXI-only by Henrik's ruling and will most likely never
+- **Where it lands:** a pack module, `servers/ascensionxi/modules/gearvault/`
+  (ADR 0035). Mounts only with the ascensionxi pack — this feature is
+  AscensionXI/AscensionXI-only by Henrik's ruling and will most likely never
   exist elsewhere. No featuregate row needed: a pack-registered tab shows
   through the gear-only default because the gate never hides labels it
   cannot name (ADR 0037).
 
-## The server system, in five lines (see the vanaheim docs for the rest)
+## The server system, in five lines (see the ascensionxi docs for the rest)
 
 The vault is an unlimited per-character store for equippable items. Mog
 Wardrobes 1–8 are a **sealed cache** — the vault system is the only door.

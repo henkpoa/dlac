@@ -1,5 +1,5 @@
 --[[
-    vanaheim/gearvault -- the Gear Vault integration's mount (ADR 0035 pack
+    ascensionxi/gearvault -- the Gear Vault integration's mount (ADR 0035 pack
     module; design: docs/design/gear-vault-integration.md). Slice 1: the
     0x1E0 wire client + the read-only vault MIRROR, published to core as the
     serverpack service 'gearvault' -- which is how vaulted gear becomes an
@@ -12,7 +12,7 @@
     lives in vaultclient.lua, which runs headless.
 ]]--
 
-local base = 'dlac\\servers\\vanaheim\\modules\\gearvault\\';
+local base = 'dlac\\servers\\ascensionxi\\modules\\gearvault\\';
 
 local vc  = require(base .. 'vaultclient');
 local drv = require(base .. 'derive');

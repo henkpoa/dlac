@@ -1,5 +1,9 @@
 # 0037 — Surfaces are gated per server pack, and the player holds the override
 
+> **Amended 2026-08-27:** the server named *Vanaheim* throughout this ADR was renamed
+> **AscensionXI**. Same server, same pack -- the pack id is now `ascensionxi` and it
+> lives at `servers/ascensionxi/`. Names below are left as written at the time.
+
 Accepted 2026-08-26. Adds `lib/featuregate.lua`, `serverpack.features()`, the optional
 hand-maintained `servers/<id>/features.lua`, a tab filter in `ui/uihost.renderTabs`, a row
 filter in `ui/menuui`, and a **Features** section under Menu > Settings persisted in
@@ -58,5 +62,5 @@ data regeneration). Or a separate hand-maintained pack file behind the serverpac
 ## Records
 
 `lib/featuregate.lua`, `gear/serverpack.lua` (`features()`),
-`docs/reference/server-pack-contract.md` ("features.lua"), `servers/vanaheim/features.lua`,
+`docs/reference/server-pack-contract.md` ("features.lua"), `servers/ascensionxi/features.lua`,
 `docs/history.md`.

@@ -27191,7 +27191,7 @@ end)();
 --      run and re-arms on zone-in.
 -- ---------------------------------------------------------------------------
 (function()
-    local dv = dofile('servers/vanaheim/modules/gearvault/derive.lua');
+    local dv = dofile('servers/ascensionxi/modules/gearvault/derive.lua');
     check('GVD0 derive loads headless', type(dv), 'table');
 
     local RES = {
@@ -27247,8 +27247,8 @@ end)();
     check('GVD8 the hash is stable', dv.derive(sets, triggers, resolve).hash, d.hash);
 
     -- ---- GVR: the engine against the wire harness ----
-    local vc = dofile('servers/vanaheim/modules/gearvault/vaultclient.lua');
-    local rc = dofile('servers/vanaheim/modules/gearvault/reconcile.lua');
+    local vc = dofile('servers/ascensionxi/modules/gearvault/vaultclient.lua');
+    local rc = dofile('servers/ascensionxi/modules/gearvault/reconcile.lua');
     local T, sent = 0, {};
     local msgs = {};
     vc._clock = function() return T; end;
@@ -27354,7 +27354,7 @@ end)();
     check('GVR15 a zone-in re-arms the push', rc.tick(), 'pushed:5');
 
     -- ---- slice 4: usage stamps, settings, ranking, shelf pressure ----
-    local ug = dofile('servers/vanaheim/modules/gearvault/usage.lua');
+    local ug = dofile('servers/ascensionxi/modules/gearvault/usage.lua');
     check('USG0 usage loads headless', type(ug), 'table');
     local UT = 1000;
     ug._clock = function() return UT; end;
@@ -27609,18 +27609,18 @@ end)();
     fg3.applySaved(nil, 'tab:sets;x,not a token,tab :sets');
     check('FGT16 a malformed OFF token is dropped', fg3.tabEnabled('Sets'), true);
 
-    -- the SHIPPED vanaheim defaults: gear only (the file is tracked data --
+    -- the SHIPPED ascensionxi defaults: gear only (the file is tracked data --
     -- pin it so a pack regeneration cannot silently widen the surface)
-    local vf = dofile('servers/vanaheim/features.lua');
+    local vf = dofile('servers/ascensionxi/features.lua');
     local fg4 = dofile('lib/featuregate.lua');
     fg4._packFeatures = vf;
-    check('FGT17 vanaheim: Equipped on',       fg4.tabEnabled('Equipped'), true);
-    check('FGT18 vanaheim: All Equipment on',  fg4.tabEnabled('All Equipment'), true);
-    check('FGT19 vanaheim: Sets on',           fg4.tabEnabled('Sets'), true);
-    check('FGT20 vanaheim: Triggers on',       fg4.tabEnabled('Triggers'), true);
-    check('FGT21 vanaheim: Gear Helpers off',  fg4.tabEnabled('Gear Helpers'), false);
-    check('FGT22 vanaheim: Job Helpers off',   fg4.tabEnabled('Job Helpers'), false);
-    check('FGT23 vanaheim: every rostered menu row off', (function()
+    check('FGT17 ascensionxi: Equipped on',       fg4.tabEnabled('Equipped'), true);
+    check('FGT18 ascensionxi: All Equipment on',  fg4.tabEnabled('All Equipment'), true);
+    check('FGT19 ascensionxi: Sets on',           fg4.tabEnabled('Sets'), true);
+    check('FGT20 ascensionxi: Triggers on',       fg4.tabEnabled('Triggers'), true);
+    check('FGT21 ascensionxi: Gear Helpers off',  fg4.tabEnabled('Gear Helpers'), false);
+    check('FGT22 ascensionxi: Job Helpers off',   fg4.tabEnabled('Job Helpers'), false);
+    check('FGT23 ascensionxi: every rostered menu row off', (function()
         for _, r in ipairs(fg4.MENU) do
             if fg4.menuEnabled(r.key) then return r.key; end
         end
@@ -27684,14 +27684,14 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
--- GVW/GVC/GVF. The Gear Vault integration, slice 1 (vanaheim pack module;
+-- GVW/GVC/GVF. The Gear Vault integration, slice 1 (ascensionxi pack module;
 --      design: docs/design/gear-vault-integration.md). GVW pins the byte
 --      codec against the server's documented layouts; GVC drives the whole
 --      client state machine through the _clock/_send seams (no Ashita); GVF
 --      pins the ownership fold (GV5) in gear/gearimport.
 -- ---------------------------------------------------------------------------
 (function()
-    local vc = dofile('servers/vanaheim/modules/gearvault/vaultclient.lua');
+    local vc = dofile('servers/ascensionxi/modules/gearvault/vaultclient.lua');
     check('GVW0 vaultclient loads headless', type(vc), 'table');
 
     -- the C2S frame: op @4, seq @5, reserved zeros, payload @8, 4-aligned

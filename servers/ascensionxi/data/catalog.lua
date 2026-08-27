@@ -1,5 +1,5 @@
--- catalog.lua -- full Vanaheim equipment reference (generated from the server repo).
--- Rebuild with: python tools/dlac-pack/gen_pack.py (in the vanaheim repo)
+-- catalog.lua -- full AscensionXI equipment reference (generated from the server repo).
+-- Rebuild with: python tools/dlac-pack/gen_pack.py (in the ascensionxi repo)
 return {
     Main = {
         HandToHand = {

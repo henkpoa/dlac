@@ -1,5 +1,5 @@
 --[[
-    vanaheim/gearvault/usage.lua -- slice 4's dlac-side memory (GV3/GV4).
+    ascensionxi/gearvault/usage.lua -- slice 4's dlac-side memory (GV3/GV4).
 
     Two things the vault deliberately does not know (Henrik: "this info
     needs to be handled in DLAC, because gear vault has no business knowing

@@ -10342,3 +10342,28 @@ additions gate, ask-pressure verdict, auto-eviction), smoke_ui 1455 (the
 options rows). Field gate: shrink is unreachable at 640 shelf slots until the
 wardrobe-lock lands server-side — the machinery is ready for it; the settings,
 [wanted] tags and Store wanted are testable today.
+
+## Session "Vanaheim is AscensionXI" (2026-08-27)
+
+**Theme:** the server renamed itself. Everything dlac knew as *Vanaheim* is now
+*AscensionXI* — same server, same pack, new id.
+
+**Landed:** `servers/vanaheim/` → `servers/ascensionxi/` (manifest `id`/`name`, the
+seven data files, `features.lua`, and the whole `modules/gearvault/` tree with its
+hardcoded `dlac\servers\<id>\modules\gearvault\` require paths); `servers/index.lua`
+now names `ascensionxi`; the prose references in `gear/gearimport.lua`,
+`gear/ownedcache.lua`, `ui/gearui.lua`, `lib/imguicompat.lua` and `gear/serverpack.lua`
+follow. Tests renamed with them (run_tests GV*/FGT*, smoke_ui GVU) — the suites pin the
+pack path by string, so a half-rename would have been silent.
+
+**The trap:** the per-install flag `configddons\dlac\server.lua` still read
+`return { server = "vanaheim" }`. serverpack.init() does not fail on an unknown id — it
+warns and falls back to the index's FIRST pack, which is `cexi`. So a stale flag file
+quietly hands an AscensionXI install the CatsEyeXI catalog. Flag file updated on the live
+install; anyone else migrating must edit theirs.
+
+**Owed upstream:** the AscensionXI repo's `tools/dlac-pack/gen_pack.py` emitted
+`modules = {}` — the generated manifest dropped `gearvault`. Restored by hand here; the
+generator needs to carry the modules list or every regeneration will drop it again.
+
+**Checks:** run_tests 7338, smoke_ui 1455 — both green.

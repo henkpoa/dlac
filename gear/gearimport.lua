@@ -546,7 +546,7 @@ function M.ownedCounts()
 end
 
 -- Human names for the container ids (tooltips: WHERE an item actually lives).
--- VAULT_CID is a PSEUDO container: Vanaheim's Gear Vault is server-side void
+-- VAULT_CID is a PSEUDO container: AscensionXI's Gear Vault is server-side void
 -- space, not a bag, but the ownership split speaks container ids -- so the
 -- vault mirror folds in under this one (docs/design/gear-vault-integration.md
 -- GV5). Inert on any server whose pack mounts no 'gearvault' service.

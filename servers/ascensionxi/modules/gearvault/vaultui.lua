@@ -1,5 +1,5 @@
 --[[
-    vanaheim/gearvault/vaultui.lua -- the Gear Vault TAB (slice 2; layout
+    ascensionxi/gearvault/vaultui.lua -- the Gear Vault TAB (slice 2; layout
     reworked to Henrik's field notes, 2026-08-26: "slice the sections
     vertically... adapt to All Equipment look... know the stats").
 
@@ -38,9 +38,9 @@ local host   = try('dlac\\ui\\uihost');
 local icons  = try('dlac\\ui\\itemicons');
 local fmt    = try('dlac\\gear\\gearfmt');
 local uistyl = try('dlac\\ui\\uistyle');
-local vc     = require('dlac\\servers\\vanaheim\\modules\\gearvault\\vaultclient');
-local recon  = try('dlac\\servers\\vanaheim\\modules\\gearvault\\reconcile');
-local usg    = try('dlac\\servers\\vanaheim\\modules\\gearvault\\usage');
+local vc     = require('dlac\\servers\\ascensionxi\\modules\\gearvault\\vaultclient');
+local recon  = try('dlac\\servers\\ascensionxi\\modules\\gearvault\\reconcile');
+local usg    = try('dlac\\servers\\ascensionxi\\modules\\gearvault\\usage');
 
 local esc = (fmt ~= nil and type(fmt.esc) == 'function') and fmt.esc or function(s) return tostring(s or ''); end
 

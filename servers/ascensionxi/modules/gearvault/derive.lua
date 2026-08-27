@@ -1,5 +1,5 @@
 --[[
-    vanaheim/gearvault/derive.lua -- the DERIVED layout (GV1), pure.
+    ascensionxi/gearvault/derive.lua -- the DERIVED layout (GV1), pure.
 
     "Building sets IS authoring the shelf": a job's layout is a projection of
     what dlac already knows the job wants. This module computes that

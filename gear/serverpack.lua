@@ -163,7 +163,7 @@ end
 -- questions
 -- ---------------------------------------------------------------------------
 
--- The active pack id ('cexi', 'vanaheim', ...) or nil when no pack is
+-- The active pack id ('cexi', 'ascensionxi', ...) or nil when no pack is
 -- installed. nil means NEUTRAL: caps all false, consts all nil, no data.
 function M.active() return state.active; end
 

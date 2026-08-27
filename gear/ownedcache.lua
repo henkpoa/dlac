@@ -111,7 +111,7 @@ function M.isStored(rec)
 end
 
 -- Owned with zero equippable copies AND every unavailable copy sitting in the
--- GEAR VAULT (the Vanaheim pack's pseudo-container, gearimport.VAULT_CID) --
+-- GEAR VAULT (the AscensionXI pack's pseudo-container, gearimport.VAULT_CID) --
 -- a DIFFERENT fact from 'stored', by Henrik's field ruling (2026-08-26): in a
 -- city one layout add puts it straight onto your shelf ("!vault add ... and it
 -- equipped immediately"), where a Mog Safe piece always needs the bag trip.

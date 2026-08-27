@@ -1,12 +1,12 @@
 --[[
-    vanaheim/gearvault/vaultclient.lua -- THE one client for Vanaheim's Gear
+    ascensionxi/gearvault/vaultclient.lua -- THE one client for AscensionXI's Gear
     Vault wire (slice 1 of docs/design/gear-vault-integration.md: the wire +
     the mirror, READ-ONLY -- HELLO and LIST only; no write op exists in this
     file yet by design).
 
     The protocol is the 0x1E0 channel's vault partition (ops 0x40-0x7F),
     whose byte layouts are recorded in the design doc and owned server-side
-    by the vanaheim repo's modules/custom/lua/gear_vault.lua. The eboxclient
+    by the ascensionxi repo's modules/custom/lua/gear_vault.lua. The eboxclient
     discipline applies wholesale: ONE module speaks the wire, plain
     string.byte byte-math so every path runs headless, one request in
     flight, a global min-gap, and consumers read the shared mirror -- never

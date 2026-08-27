@@ -2,6 +2,10 @@
 
 **Supersedes ADR 0001 (dlac is CatsEyeXI-only).**
 
+> **Amended 2026-08-27:** the server named *Vanaheim* throughout this ADR was renamed
+> **AscensionXI**. Same server, same pack -- the pack id is now `ascensionxi` and it
+> lives at `servers/ascensionxi/`. Names below are left as written at the time.
+
 ## Decision
 
 dlac targets FFXI private servers, plural. Everything true of *a particular

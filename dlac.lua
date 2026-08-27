@@ -18,7 +18,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.08.27h';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.08.27i';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
                                 -- (03f = engine v163: the contest explains its own plan;
                                 --  03g = one floating tray: Teleports + the E-Box crates;
@@ -222,15 +222,21 @@ addon.version = '2026.08.27h';  -- date of the last shipped change (Ashita print
                                 --  and lib\featuregate gates tabs + menu rows
                                 --  per server pack (servers\<id>\features.lua)
                                 --  with per-character overrides under Menu >
-                                --  Settings > Features -- Vanaheim ships
+                                --  Settings > Features -- AscensionXI ships
                                 --  gear-only: Equipped, All Equipment, Sets,
                                 --  Triggers;
-                                --  07b = GEAR VAULT slice 1 (Vanaheim only):
+                                --  07b = GEAR VAULT slice 1 (AscensionXI only):
                                 --  the 0x1E0 wire client + the read-only
                                 --  vault mirror as a pack module -- vaulted
                                 --  gear is OWNED (never available), prune is
                                 --  vault-safe, /dl vault answers; design in
-                                --  docs/design/gear-vault-integration.md)
+                                --  docs/design/gear-vault-integration.md;
+                                --  07c = the server RENAMED: the Vanaheim
+                                --  pack is now servers\ascensionxi\ --
+                                --  same pack, new id/name, and the
+                                --  per-install flag config\addons\dlac\
+                                --  server.lua must now read
+                                --  return { server = 'ascensionxi' })
 addon.desc    = 'Gear sets, triggers and live stats with level scaling -- dlac equips your gear itself.';
 
 -- Load BEACON ('/dl check' field round, 2026-07-23): written by PLAIN io at

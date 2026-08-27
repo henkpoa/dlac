@@ -1,5 +1,5 @@
 --[[
-    vanaheim/gearvault/reconcile.lua -- the ADDITIONS PUSH (GV3, slice 3).
+    ascensionxi/gearvault/reconcile.lua -- the ADDITIONS PUSH (GV3, slice 3).
 
     STATELESS BY DESIGN: instead of a durable queue of pending edits, the
     engine recomputes the derived layout for the ACTIVE main job on a slow
