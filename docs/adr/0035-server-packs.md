@@ -59,7 +59,7 @@ ventures, gift boxes) become modules of `servers/cexi/`, mounted only when that
 pack is active — on any other server they are not gated off, they are *not
 there*. A second server is a generated pack plus, where its mechanics need
 code, its own modules — CEXI's approval relationship, vocabulary and data are
-untouched by another pack existing. The Vanaheim pack is the first proof.
+untouched by another pack existing. The AscensionXI pack is the first proof.
 
 ## What does not change
 

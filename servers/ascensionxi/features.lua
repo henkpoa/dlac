@@ -1,5 +1,5 @@
 --[[
-    dlac/servers/vanaheim/features.lua -- which dlac surfaces exist on Vanaheim
+    dlac/servers/ascensionxi/features.lua -- which dlac surfaces exist on AscensionXI
     out of the box. HAND-MAINTAINED, deliberately separate from manifest.lua
     (which gen_pack.py generates and would clobber): flip a surface on here the
     day it is field-tested on this server.
@@ -10,7 +10,7 @@
 
     Initial ruling (Henrik, 2026-08-26): gear only -- Equipped, All Equipment,
     Sets and Triggers. The helpers and the CEXI-grown extras stay off until
-    each is proven against Vanaheim.
+    each is proven against AscensionXI.
 ]]--
 return {
     tabs = {

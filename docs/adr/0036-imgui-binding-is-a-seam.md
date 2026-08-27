@@ -5,7 +5,7 @@ first frame. No call site changes; nothing about the ImGui idioms the tree uses 
 
 ## Context
 
-dlac was written against the ImGui generation CatsEyeXI's Ashita build binds. Vanaheim's
+dlac was written against the ImGui generation CatsEyeXI's Ashita build binds. AscensionXI's
 Ashita ships ImGui 1.90+, where three calls the tree makes everywhere changed shape at the
 Lua-visible level:
 
@@ -63,5 +63,5 @@ difference, call sites own nothing.
 
 ## Records
 
-`lib/imguicompat.lua` (the whole story in its header), `docs/history.md` (the Vanaheim
+`lib/imguicompat.lua` (the whole story in its header), `docs/history.md` (the AscensionXI
 field round), run_tests `IMC*`.

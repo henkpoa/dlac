@@ -2,7 +2,7 @@
     dlac/lib/imguicompat.lua -- the ONE imgui-BINDING seam.
 
     Different Ashita builds ship different ImGui generations, and the whole
-    tree is written against the older binding. On a 1.90+ build (Vanaheim's
+    tree is written against the older binding. On a 1.90+ build (AscensionXI's
     Ashita, 2026-08-26) three calls dlac makes everywhere stop matching any
     sol overload and every tab dies with "no matching function call":
 

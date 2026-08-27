@@ -8,7 +8,7 @@ filter in `ui/menuui`, and a **Features** section under Menu > Settings persiste
 ## Context
 
 dlac grew up on CatsEyeXI with every tab and menu row always present. On a younger pack
-most of those surfaces are noise or untested there — Henrik's ruling for Vanaheim
+most of those surfaces are noise or untested there — Henrik's ruling for AscensionXI
 (2026-08-26): *"initially I only want the gear part to work (Equipped, All equips, sets
 and triggers, nothing else)"* — and he wants a profile/settings switch to turn features
 and tabs on and off as they get proven.
@@ -43,7 +43,7 @@ data regeneration). Or a separate hand-maintained pack file behind the serverpac
 
 ## Consequences
 
-* Vanaheim ships gear-only out of the box (Gear Helpers + Job Helpers tabs and all six
+* AscensionXI ships gear-only out of the box (Gear Helpers + Job Helpers tabs and all six
   extra menu rows off), and flipping one on when it is proven is a one-line pack edit —
   or one player's tick, immediately, without waiting for the pack.
 * Pre-2026-08-26 `uiflags.lua` files lack the keys and read as "no flips" — every
@@ -51,12 +51,12 @@ data regeneration). Or a separate hand-maintained pack file behind the serverpac
 * A jump (`host.selectTab`) aimed at a hidden tab expires with ADR 0033's give-up chat
   line. Acceptable: the doors to hidden surfaces are themselves hidden, so it takes a
   typed command to get there.
-* Pinned headless: run_tests `FGT0–FGT24` (layering, round-trip, the shipped Vanaheim
+* Pinned headless: run_tests `FGT0–FGT24` (layering, round-trip, the shipped AscensionXI
   defaults, roster/label agreement) and `SPK30–SPK33` (`features()` answers post-init
   without latching — hard rule 11's shape).
 
 ## Records
 
 `lib/featuregate.lua`, `gear/serverpack.lua` (`features()`),
-`docs/reference/server-pack-contract.md` ("features.lua"), `servers/vanaheim/features.lua`,
+`docs/reference/server-pack-contract.md` ("features.lua"), `servers/ascensionxi/features.lua`,
 `docs/history.md`.

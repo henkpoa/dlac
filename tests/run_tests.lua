@@ -27210,18 +27210,18 @@ end)();
     fg3.applySaved(nil, 'tab:sets;x,not a token,tab :sets');
     check('FGT16 a malformed OFF token is dropped', fg3.tabEnabled('Sets'), true);
 
-    -- the SHIPPED vanaheim defaults: gear only (the file is tracked data --
+    -- the SHIPPED ascensionxi defaults: gear only (the file is tracked data --
     -- pin it so a pack regeneration cannot silently widen the surface)
-    local vf = dofile('servers/vanaheim/features.lua');
+    local vf = dofile('servers/ascensionxi/features.lua');
     local fg4 = dofile('lib/featuregate.lua');
     fg4._packFeatures = vf;
-    check('FGT17 vanaheim: Equipped on',       fg4.tabEnabled('Equipped'), true);
-    check('FGT18 vanaheim: All Equipment on',  fg4.tabEnabled('All Equipment'), true);
-    check('FGT19 vanaheim: Sets on',           fg4.tabEnabled('Sets'), true);
-    check('FGT20 vanaheim: Triggers on',       fg4.tabEnabled('Triggers'), true);
-    check('FGT21 vanaheim: Gear Helpers off',  fg4.tabEnabled('Gear Helpers'), false);
-    check('FGT22 vanaheim: Job Helpers off',   fg4.tabEnabled('Job Helpers'), false);
-    check('FGT23 vanaheim: every rostered menu row off', (function()
+    check('FGT17 ascensionxi: Equipped on',       fg4.tabEnabled('Equipped'), true);
+    check('FGT18 ascensionxi: All Equipment on',  fg4.tabEnabled('All Equipment'), true);
+    check('FGT19 ascensionxi: Sets on',           fg4.tabEnabled('Sets'), true);
+    check('FGT20 ascensionxi: Triggers on',       fg4.tabEnabled('Triggers'), true);
+    check('FGT21 ascensionxi: Gear Helpers off',  fg4.tabEnabled('Gear Helpers'), false);
+    check('FGT22 ascensionxi: Job Helpers off',   fg4.tabEnabled('Job Helpers'), false);
+    check('FGT23 ascensionxi: every rostered menu row off', (function()
         for _, r in ipairs(fg4.MENU) do
             if fg4.menuEnabled(r.key) then return r.key; end
         end

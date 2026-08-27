@@ -222,7 +222,7 @@ addon.version = '2026.08.26';   -- date of the last shipped change (Ashita print
                                 --  and lib\featuregate gates tabs + menu rows
                                 --  per server pack (servers\<id>\features.lua)
                                 --  with per-character overrides under Menu >
-                                --  Settings > Features -- Vanaheim ships
+                                --  Settings > Features -- AscensionXI ships
                                 --  gear-only: Equipped, All Equipment, Sets,
                                 --  Triggers)
 addon.desc    = 'Gear sets, triggers and live stats with level scaling -- dlac equips your gear itself.';
