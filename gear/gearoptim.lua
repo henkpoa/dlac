@@ -42,7 +42,7 @@
 local gear = require("dlac\\gear");
 -- Level-scaling stats (Rajas/Tamas/Sattva etc.): rank slots on the EFFECTIVE stats
 -- for the build level, not the catalog's flat base. Guarded: absent module = no-op.
-local _lsok, lscale = pcall(require, "dlac\\data\\levelstats");
+local _lsok, lscale = pcall(require, "dlac\\gear\\levelstats");
 local hasLScale = _lsok and type(lscale) == 'table';
 -- Gear-set bonus evaluator (docs/design/conditional-effects.md P3): buildBestSet
 -- wires its membership/tier lookups into optimizePicks via opts.effects.
@@ -399,7 +399,8 @@ end
 -- ON by default (Henrik 2026-07-17: building sets should always ignore the level
 -- cap unless deliberately narrowed). An UNTICK is remembered across reloads via
 -- uiflags.lua (absent key = this ON default).
-local MAX_LEVEL = 75;
+local MAX_LEVEL = 75;   -- historical default; the pack's cap overrides (ADR 0035)
+pcall(function() MAX_LEVEL = require('dlac\\gear\\serverpack').maxLevel(); end);
 M.MAX_LEVEL = MAX_LEVEL;
 M.buildAtMaxLevel = true;
 

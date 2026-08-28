@@ -236,7 +236,14 @@ function M.export()
         end);
     end
 
-    local meta = { character = cname, server = 'CatsEyeXI',
+    -- server name through the seam (ADR 0035); an install with no pack
+    -- exports honestly as unknown rather than claiming a server.
+    local srvName = 'unknown';
+    pcall(function()
+        local sp = require('dlac\\gear\\serverpack');
+        srvName = sp.name() or srvName;
+    end);
+    local meta = { character = cname, server = srvName,
                    exportedAt = os.date('!%Y-%m-%dT%H:%M:%SZ') };
     pcall(function()
         local p = gData.GetPlayer();

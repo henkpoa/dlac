@@ -76,6 +76,14 @@ M.JOB_GRADE = {
 };
 
 M.SJ_MP_DIVISOR       = 2;      -- settings map.SJ_MP_DIVISOR (retail half)
+M.PLAYER_MP_MULT      = 1.0;    -- settings map.PLAYER_MP_MULTIPLIER
+-- A pack tunes both off its own settings (ADR 0035; const mpSjDivisor /
+-- mpPlayerMultiplier). The historical CEXI values above are the fallbacks.
+pcall(function()
+    local sp = require('dlac\\gear\\serverpack');
+    M.SJ_MP_DIVISOR  = tonumber(sp.const('mpSjDivisor')) or M.SJ_MP_DIVISOR;
+    M.PLAYER_MP_MULT = tonumber(sp.const('mpPlayerMultiplier')) or M.PLAYER_MP_MULT;
+end);
 M.MERIT_MP_PER_LEVEL  = 10;     -- merits.sql id 66 value
 M.MERIT_MP_CAP_LEVELS = 10;     -- USABLE cap: merit.cpp min(count, cap[mlvl]) and
                                 -- cap[75]=10 -- the sql upgrade=15 headroom only
@@ -125,7 +133,11 @@ function M.get(race, mjob, mlvl, sjob, slvl, meritMP)
     local jobStat  = (mg ~= 0) and pool(mg, upTo60, over60) or 0;
     local sJobStat = (sg ~= 0) and (pool(sg, slvl - 1, 0) / M.SJ_MP_DIVISOR) or 0;
 
-    return math.floor(raceStat + jobStat + sJobStat + (tonumber(meritMP) or 0));
+    -- The settings multiplier scales the FORMULA half only (the server adds
+    -- merit MP as a modifier after CalculateStats). 1.0 on CEXI, so this was
+    -- invisible until a pack tuned it (ADR 0035).
+    return math.floor((raceStat + jobStat + sJobStat) * (M.PLAYER_MP_MULT or 1.0)
+                      + (tonumber(meritMP) or 0));
 end
 
 -- Live readers, injectable for headless tests (gamemode.lua pattern). All

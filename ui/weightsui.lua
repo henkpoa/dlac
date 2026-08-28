@@ -34,7 +34,7 @@ local function try(name)
 end
 local imgui    = try('imgui');
 local optim    = try("dlac\\gear\\gearoptim");
-local statdefs = try("dlac\\data\\statdefs");
+local statdefs = try("dlac\\gear\\statdefs");
 local wimp     = try("dlac\\gear\\weightimport");
 local oracle   = try("dlac\\gear\\gearoracle");
 local hasStatdefs = statdefs ~= nil and type(statdefs.list) == 'table';

@@ -10076,3 +10076,294 @@ page says nothing at all — there is nothing to report.
 COMMANDS, and the bug was a wrong SENTENCE about correct-enough commands. The section
 now captures `print` as well, and MBU9a-o pin all four sites — including that editing
 another sub sends **zero** commands, where before it sent two.
+
+## Session "dlac meets Vanaheim's Ashita" (2026-08-26, on the Vanaheim install)
+
+**Theme:** the first live round on Vanaheim's own Ashita build killed every tab with
+`sol: no matching function call` — and Henrik's ruling for this server is gear-only to
+start: *"initially I only want the gear part to work (Equipped, All equips, sets and
+triggers, nothing else)"*, with a settings switch to widen it later.
+
+**Landed:**
+
+- **The imgui-binding seam** (`lib/imguicompat.lua`, ADR 0036). Vanaheim's Ashita ships
+  ImGui 1.90+: `BeginChild`'s border bool became `ImGuiChildFlags`, `ImageButton` grew a
+  leading `str_id` and lost `framePadding`, `Image` lost its tint overload
+  (`ImageWithBg` carries it now). One shim, installed from `dlac.lua` before the first
+  frame, keyed on the BINDING (the `ImGuiChildFlags_*` globals exist ⇔ new build) — on
+  the old build it wraps nothing at all. An audit of every `imgui.*` name the tree calls
+  against the new build's annotations stub found only those three reshapes plus
+  `SetItemAllowOverlap` (removed; both call sites already feature-detect it). The
+  binding table resolves through `__index = GetGuiManager()`, so the wrappers guard on
+  `~= nil`, never `type() == 'function'`.
+- **The surface gate** (`lib/featuregate.lua` + `serverpack.features()`, ADR 0037).
+  Which tabs / menu rows exist = the character's Settings flips, else the pack's
+  hand-maintained `servers/<id>/features.lua` (separate from the GENERATED manifest on
+  purpose), else ON. `uihost.renderTabs` and `menuui` subtract through it; the Settings
+  panel grew a **Features** section (12 checkboxes) persisted as `featson`/`featsoff`
+  in uiflags. Vanaheim's file ships gear-only; cexi ships no file and keeps everything.
+
+**Checks:** run_tests 7208 (+IMC0–15, FGT0–24, SPK30–33), smoke_ui 1434 (MN12a now
+counts 26 Settings checkboxes), pack_lint vanaheim 29. Awaiting Henrik's field round on
+Vanaheim; NOT yet carried back to the CatsEyeXI repo (this session edited the Vanaheim
+install's copy, which is not a git checkout).
+
+## Session "the Gear Vault, slice 1" (2026-08-26, second block)
+
+**Theme:** the dlac half of Vanaheim's Gear Vault (the server side shipped at
+stage 8 the same day — vanaheim repo `documentation/custom/gear-vault*.md`).
+Design grilled with Henrik (7 questions) and recorded as
+`docs/design/gear-vault-integration.md` (GV1–GV8 + the slice plan): layouts
+are DERIVED from sets/triggers, the soft-lock IS the server's pinned flag,
+additions free / removals are a space-pressure flow (marking dialog default,
+LRU auto-evict optional — last-used = engine-equipped + observed worn),
+vaulted is an OWNERSHIP tier, one pack-registered tab + a Warden nudge, the
+deposit sweep is curated.
+
+**Landed (slice 1 — the wire + the mirror, read-only):**
+`servers/vanaheim/modules/gearvault/` — `vaultclient.lua` (the 0x1E0 codec +
+state machine on injectable seams: HELLO/LIST only, one in flight, SAME-Seq
+retries under the server's replay ring, BAD_OP → session dormancy, zone-in
+probes via HELLO's VaultCount, full resync on main-job-change/`!vault`/manual
+settle) and `init.lua` (Ashita glue, `/dl vault [sync]`, the serverpack
+service `'gearvault'`). Core asks the service or lives without (ADR 0035):
+`gearimport.foldVault` joins mirror counts into total/where under
+`VAULT_CID = 99` ("Gear Vault") — owned, never available — and `/dl prune`
+folds vaulted ids in, ABORTING when the mirror is not fresh (hard rule 11's
+shape). The vanaheim manifest mounts `gearvault`; the pack generator
+(vanaheim repo `tools/dlac-pack/gen_pack.py`, branch `henrik/dlac-pack`)
+emits the same line so a regen cannot unmount it.
+
+**Checks:** run_tests 7247 (+GVW0–12 codec, GVC1–20 state machine, GVF0–5
+fold), smoke_ui 1434, pack_lint vanaheim 29 / cexi 33. Field round owed:
+mirror correctness, verdicts, and that a job-change swap leaves the bag sync
+unconfused (slice-1 gate). Slice 2 next: the tab, read-first.
+
+### Slice-1 field round (2026-08-26, same day) — confirmed, plus the colour ruling
+
+Henrik's round: two vaulted pieces mirrored as 2 rows, a third deposit showed as 3,
+All Equipment marked the piece with "Gear Vault" in the hover, and `!vault add
+Garrison Tunica` equipped it immediately. *"So worked perfectly?"* — slice 1 is
+field-confirmed.
+
+One ruling came back with it: **vaulted must not wear storage-red** — *"use another
+color instead of red, since it is technically easily available"* (in a city, a layout
+add puts it straight on the shelf; a Safe piece always costs the bag trip). So the
+GV5 verdict got its third word for real: `ownedcache.isVaulted` (only-in-the-vault;
+mixed homes stay 'stored' — the nearest copy defines the road back) and
+`verdict` = vaulted > stored > locked > ok, with **COL.VAULT violet** mapped in
+every surface that painted stored-red (All Equipment rows + card line, the Equipped
+tab's alternatives and compare names, the Gear Helpers detail rows' tooltip).
+Tests AV20–24 pin the precedence. Suites 7252 + 1434.
+
+## Session "the Gear Vault, slice 2" (2026-08-26, third block)
+
+**Theme:** the tab, read-first — plus the slice's one write verb.
+
+**Landed:** the **Gear Vault tab** (`vaultui.lua`, registered on the uihost by the
+pack module — exists only where the pack mounts, shows through the gear-only
+default because featuregate never hides an unknown label). Status header (state /
+mirrored instances / live shelf occupancy over Wardrobes 1–8 / Sync), **this
+job's layout** as the SERVER holds it (LAYOUT_LIST pages — `!vault` and website
+entries included; pinned + wardrobe-hint markers), and the **vault browser**
+(search, icons, [aug] tag for a non-zero identity blob, per-row **Withdraw**).
+dlac carries no Void Warden coordinates on purpose (server data, not in the
+pack): the button is always live and a TOO_FAR refusal says in words where to
+stand.
+
+The wire grew LAYOUT_LIST + WITHDRAW in `vaultclient` with the disciplines that
+matter: send priority (write verb > layout ask > background sync), withdraw acks
+maintain the mirror by SUBTRACTION (the E-Box law — no re-LIST; a NO_INSTANCE
+answer forces the honest resync), and **an exhausted withdraw retry never
+re-sends with a fresh Seq** — the outcome is unknown, so it reports `timeout`
+and the mirror resyncs instead; only same-Seq retries ride the server's replay
+ring. A refused frame (TOO_FAR/BUSY) fails toward its consumer and leaves the
+mirror standing.
+
+**Checks:** run_tests 7272 (+GVW13–17 codec, GVC21–35 layout paging / withdraw
+subtraction / refusal / the timeout-no-fresh-Seq law), smoke_ui 1445 (+GVU1–11:
+the tab renders whole against the stub, stacks balanced, search filters, a
+Withdraw click queues exactly one request), pack_lint 29. Field gate (slice 2):
+browse + withdraw round-trip at a Warden; the layout list matching `!vault list`.
+
+### Slice-2 UX round (2026-08-26) — "looks horrible, but it's a good start"
+
+Henrik's three notes, all landed the same block:
+
+1. **Vertical panes.** The stacked sections became two side-by-side panes —
+   this job's layout LEFT, the vault RIGHT — because horizontal bands stop
+   scaling the moment either list grows; vertical columns scroll independently
+   forever. One search box filters BOTH panes.
+2. **The All Equipment look.** Both panes group rows under collapsible per-slot
+   sections with counts (Main/Range nest their weapon categories, CAT_ORDER
+   and SLOT_TREE_ORDER from the shared services); searching force-opens the
+   tree and clearing the search collapses it once — the exact idiom, so the
+   vault reads like the tab players already know. Unknown ids fall to an
+   'Other' bucket rather than vanishing.
+3. **Stats.** Every row shows Lv + the inline stat summary, and hovering a
+   name shows THE standard item card — `renderItemTooltip` was published as
+   `host.services.itemTooltip` (it already went to automationsui by injection),
+   so a pack surface shows the same card as every core gear line instead of
+   inventing a lesser one.
+
+smoke_ui 1449 (GVU grew tree/tooltip stack balance, section counts, the Other
+bucket); run_tests 7272 unchanged.
+
+### Slice-2 UX round 2 (2026-08-26) — two-row rows, a real 50% split
+
+The screenshot round: the fixed name column collided with Lv/stats at pane
+width. Henrik's ruling — a gear piece gets TWO rows in this tab ("since we
+divide the window"): row 1 = icon + name + the decorations and BUTTONS (more
+coming), row 2 indented = Lv + the stat summary, dim. And the left pane takes
+50% of the live width (GetContentRegionAvail), never a fixed 360. The aligned-
+column helpers went with the fixed width. Suites 7272 + 1449.
+
+## Session "the Gear Vault, slice 3" (2026-08-26, fourth block)
+
+**Theme:** the derived layout — your sets start writing the shelf (GV1/GV3).
+
+**Landed:**
+
+- **`derive.lua`** (pure): a job's derived layout from plain tables — every set
+  in the sets root (every candidate rung of a Dynamic set), every trigger's
+  inline equip payload and case payloads; `dlac:` virtuals contribute nothing;
+  PAIRS derive count 2 (Ring1+Ring2 in one set; max across sets); augment-pinned
+  records are skipped-and-counted (their exact blob comes from the vault pane's
+  "+ Layout" — GV8's road); unresolved names reported; a stable hash keys change
+  detection.
+- **`reconcile.lua`** — the additions push, STATELESS by design: an 8s beat
+  re-derives the ACTIVE job (never while browsing — the sets root answers for
+  the browsed job there), diffs against the server layout's zero-blob entries,
+  and queues LAYOUT_SET adds. One shape covers every trigger: a set commit
+  moves the hash, login is the first beat, a NOT_IN_CITY refusal cancels the
+  run's siblings + arms the badge, and zone-in re-arms it (the server is the
+  city-gate authority — dlac predicts nothing). Additions ONLY: the engine may
+  add or raise a count, never remove or lower (removals = slice 4's
+  space-pressure flow, or the player's hand).
+- **The tab grows its verbs:** Pin/Unpin (the server's pinned flag — gold when
+  set), Remove (a pinned entry takes a second "Sure?" click), "+ Layout" on
+  vault rows (carries THAT copy's exact identity bytes — the augmented road),
+  and the gold "additions waiting for a city" badge.
+- **Wire:** LAYOUT_SET codec + queue in vaultclient with the mutating-op laws
+  (same-Seq retries; exhaustion reports and never re-sends; `cancelLayoutSets`
+  for the city refusal). The GV3 addition/removal SETTINGS arrive with slice 4;
+  this slice ships the design's defaults (additions free).
+
+**Checks:** run_tests 7299 (+GVD0–8 derivation, GVR1–15 the engine end-to-end
+over the wire harness), smoke_ui 1451 (buttons + style-colour balance),
+pack_lint 29. Field gate: edit a set in a city → "layout +N pieces" within ~8s
+→ change job → the shelf follows; the same edit in the field arms the badge and
+pushes on the next city visit.
+
+### Slice-3 field round — the walker spoke only strings (Neckchopper, 2026-08-26)
+
+`/dl vault why neckchopper` earned its keep on its first outing: ownership was
+RIGHT (`verdict=vaulted`) but **`derived: 0 items total`** — the engine derived
+nothing from sets that plainly exist. Cause: a committed set entry on disk is
+`gear.Main.GreatAxe.Neckchopper` — a **gear RECORD TABLE**, not a name string —
+and `derive.walkSet` spoke only strings. The walker now speaks all three ref
+shapes (record — id taken directly, AugKey marks the aug-pinned skip; plain
+name — resolved; dw wrapper — ref at [1]), and the list-vs-wrapper dispatch
+keys on `.Name`, never on refOf recursion (a two-rung list would have derived
+only its first rung). GVD/GVR fixtures now use the committed shape — the exact
+regression, pinned. Suites 7301 + 1451.
+
+Still open from the same round, SERVER-side: a deposit never triggers an apply
+(`gv.depositSlot` — by construction), so "layout already names it, then
+deposit" waits for a job change. Fix belongs in the vanaheim repo's module
+(apply when the deposited identity is in the active job's layout); proposed to
+Henrik — his shard, his call.
+
+### The Inventory sub-tab (Henrik's round, 2026-08-26) — Store from the tab
+
+The right pane became TWO sub-tabs, **Vault | Inventory (N)**: the Inventory
+tab lists the storable gear sitting in your bag right now (known equipment
+only — the catalog being gear-only IS the equipment test — and never cat-15
+ammo), lights its label gold when N > 0, and **re-entering the Gear Vault tab
+with storable gear lands you on Inventory directly** — done with ADR 0033's
+rung-3 mechanism (a new bar generation + first-submission adoption), which owes
+nothing to the SetSelected flag any binding may drop. Per-row **Store** and a
+**Store all (N)** up top ride the new DEPOSIT wire verb (same mutating-op laws;
+a successful run marks the mirror stale for one cheap LIST resync — the ack
+carries no quantities, and you are standing at a Warden anyway). Refusals speak
+per item: a DUPLICATE stays in your bags and says it is future scrap fodder.
+Suites 7307 + 1454.
+
+### The polish rounds (2026-08-26, evening) — one-row rows, the vault reads whole
+
+The rapid-fire field loop that followed slice 3, each round shipped within
+minutes of the report: the Inventory sub-tab (Vault | Inventory (N), gold when
+gear waits, Store / Store all on the DEPOSIT verb) then flattened to a one-row
+list with right-edge buttons; ALL panes to one-row entries (icon, name, Lv,
+tags, button columns — stats live in the hover card); whole-row hover
+highlight that survives button hover (hot-row memory + full-width Selectable
+under SetNextItemAllowOverlap); the newer ImGui's SetCursorPos assert
+(normalization dropped with the second line); vault augments decoded through
+the oracle passthrough into the card's own Aug: seat (the identity blob IS the
+raw exdata); and the doubled-card fix (the [aug] tag is a marker, the row
+carries the one card). Server side, on vanaheim `henrik/wardrobe-lock`
+(`b25a572924`): a deposit the active layout names applies ON THE SPOT — the
+missing quarter of "auto sets to and from", found by three field reports in
+one session. The full loop is field-confirmed: loot → Store → derivation →
+layout → shelf → trigger dresses you.
+
+## Session "the Gear Vault, slice 4" (2026-08-26, closing block)
+
+**Theme:** the space-pressure removals, the LRU memory, and the two behaviour
+settings — the design's last slice.
+
+**Landed:**
+
+- **`usage.lua`** — the dlac-side memory the vault must never hold (Henrik's
+  ruling): identity-keyed last-used stamps in `<char>\dlac\gearvault_usage.lua`
+  (safe-ladder writes), plus the two settings. GV4's A+C collapse into ONE
+  witness — a 60s worn-scan beat through the shared services (`getEquippedId`
+  + the oracle's `wornAugExtra`; never a raw read — GRD1) — because everything
+  the engine equips IS worn moments later. Layout identities are SEEDED at
+  first sight, so never-used gear has an age; a seed never freshens a real
+  stamp.
+- **Settings** (Vault options, a collapsed header on the layout pane):
+  *Additions from sets* Auto/Off gates the reconcile push; *Removals when the
+  shelf is full* Ask/Auto/Off. Persisted with the stamps, one file.
+- **Shelf pressure (GV3):** the reconcile beat compares layout units (plus
+  incoming adds) against the LIVE wardrobe capacity. Over it: **Ask** shows
+  the banner + a marking dialog — least-used unpinned entries come pre-marked
+  to cover the overflow, each row saying whether the sets still name it and
+  when it was last seen worn; **Auto** evicts unpinned LRU by itself, once per
+  layout stamp, and says so; **a pinned entry never auto-ranks in ANY mode** —
+  it sits in the dialog unticked, and ticking it is the permission. Off = the
+  banner alone.
+- **GV7's curation:** Inventory rows the sets or layout name wear a gold
+  `[wanted]` tag, and **Store wanted (N)** deposits exactly those — sell-loot
+  stays in the bags. Store all remains beside it.
+
+**Checks:** run_tests 7326 (+USG0–11 stamps/settings/ranking, GVR16–22 the
+additions gate, ask-pressure verdict, auto-eviction), smoke_ui 1455 (the
+options rows). Field gate: shrink is unreachable at 640 shelf slots until the
+wardrobe-lock lands server-side — the machinery is ready for it; the settings,
+[wanted] tags and Store wanted are testable today.
+
+## Session "Vanaheim is AscensionXI" (2026-08-27)
+
+**Theme:** the server renamed itself. Everything dlac knew as *Vanaheim* is now
+*AscensionXI* — same server, same pack, new id.
+
+**Landed:** `servers/vanaheim/` → `servers/ascensionxi/` (manifest `id`/`name`, the
+seven data files, `features.lua`, and the whole `modules/gearvault/` tree with its
+hardcoded `dlac\servers\<id>\modules\gearvault\` require paths); `servers/index.lua`
+now names `ascensionxi`; the prose references in `gear/gearimport.lua`,
+`gear/ownedcache.lua`, `ui/gearui.lua`, `lib/imguicompat.lua` and `gear/serverpack.lua`
+follow. Tests renamed with them (run_tests GV*/FGT*, smoke_ui GVU) — the suites pin the
+pack path by string, so a half-rename would have been silent.
+
+**The trap:** the per-install flag `configddons\dlac\server.lua` still read
+`return { server = "vanaheim" }`. serverpack.init() does not fail on an unknown id — it
+warns and falls back to the index's FIRST pack, which is `cexi`. So a stale flag file
+quietly hands an AscensionXI install the CatsEyeXI catalog. Flag file updated on the live
+install; anyone else migrating must edit theirs.
+
+**Owed upstream:** the AscensionXI repo's `tools/dlac-pack/gen_pack.py` emitted
+`modules = {}` — the generated manifest dropped `gearvault`. Restored by hand here; the
+generator needs to carry the modules list or every regeneration will drop it again.
+
+**Checks:** run_tests 7338, smoke_ui 1455 — both green.

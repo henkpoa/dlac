@@ -421,6 +421,13 @@ end
 function M.requestPoints(force)
     pcall(function() require('dlac\\feature\\helmwatch').requestPoints(force); end);
 end
+-- The ventures capability, asked of helmwatch's one gate (ADR 0035): the
+-- fishing panel's VP/ventures surfaces exist only where the pack says so.
+function M.venturesOn()
+    local on = false;
+    pcall(function() on = require('dlac\\feature\\helmwatch').venturesOn() == true; end);
+    return on;
+end
 function M.guildPoints()
     local v = nil;
     pcall(function()
@@ -521,6 +528,7 @@ function M.cleanLine(msg)
 end
 
 function M.openCapture(seconds)
+    if not M.venturesOn() then return; end
     _capUntil = os.clock() + (tonumber(seconds) or 6);
     _contArmed = false;
     _capFresh = true;

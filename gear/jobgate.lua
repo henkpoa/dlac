@@ -59,10 +59,12 @@ end
 -- known) hands the raw table back untouched; nil raw stays nil (fail-open).
 function M.effectiveLevels(raw, prestige)
     if type(raw) ~= 'table' or type(prestige) ~= 'table' then return raw; end
+    local cap = 75;   -- the item cap; the pack's level cap overrides (ADR 0035)
+    pcall(function() cap = require('dlac\\gear\\serverpack').maxLevel(); end);
     local out = {};
     for ab, lv in pairs(raw) do out[ab] = lv; end
     for ab, tier in pairs(prestige) do
-        if (tonumber(tier) or 0) > 0 and (tonumber(out[ab]) or 0) < 75 then out[ab] = 75; end
+        if (tonumber(tier) or 0) > 0 and (tonumber(out[ab]) or 0) < cap then out[ab] = cap; end
     end
     return out;
 end
@@ -83,12 +85,13 @@ M.reader = function()
 end;
 
 -- The prestige read: { abbr -> tier } or nil. A FUNCTION seam (the injected-
--- reads law: stubs replace the function, values go stale). Call-time require
--- keeps load order flat (the meritwatch pattern) and headless suites inert.
+-- reads law: stubs replace the function, values go stale). Asked of the
+-- server seam (ADR 0035): only a pack whose module provides 'prestige' has
+-- tiers at all -- everywhere else this is nil and levels() stays raw.
 M.prestige = function()
     local out = nil;
     pcall(function()
-        local pw = require('dlac\\feature\\prestigewatch');
+        local pw = require('dlac\\gear\\serverpack').service('prestige');
         if type(pw) == 'table' and type(pw.tiers) == 'function' then out = pw.tiers(); end
     end);
     return out;

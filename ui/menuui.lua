@@ -46,6 +46,19 @@ local imgui  = try('imgui');
 local uistyl = try('dlac\\ui\\uistyle');
 local hasImgui = (imgui ~= nil);
 
+-- The surface gate (lib\featuregate): which of this menu's rows exist on this
+-- install -- server-pack defaults + the character's Settings flips. Absent or
+-- broken, every row renders; the settings / level / debug rows are outside its
+-- roster and can never be gated (the way back ON lives in this menu).
+local fgate = try('dlac\\lib\\featuregate');
+
+local function rowAllowed(key)
+    if fgate == nil then return true; end
+    local ok, v = pcall(fgate.menuEnabled, key);
+    if not ok then return true; end
+    return v ~= false;
+end
+
 -- Deps from gearui (M.configure). Everything the rows act on arrives here, so this
 -- module never reaches into gearui's chunk and never requires anything GRD5 bans.
 --   ui, COL            -- the shared UI state table + the palette
@@ -606,6 +619,37 @@ local function renderSettingsBody()
         function(v)
             pcall(function() require('dlac\\feature\\extclaim').setOn(v == true); end);
         end);
+
+    -- ------------------------------------------------------------------
+    -- FEATURES (lib\featuregate): which dlac surfaces exist for this
+    -- character. Defaults come from the server pack (servers\<id>\
+    -- features.lua); a tick here is the character's own override and is
+    -- remembered like every other Setting. Hiding a tab or row never
+    -- unloads anything -- it is the surface that goes, not the module.
+    -- ------------------------------------------------------------------
+    if fgate ~= nil then
+        imgui.Separator();
+        if uistyl ~= nil and type(uistyl.helpLabel) == 'function' then
+            uistyl.helpLabel(imgui, 'Features',
+                'Which parts of dlac exist on this character.\nThe defaults come from the server pack -- what is proven on this\nserver starts on, the rest starts off. Your ticks here override the\ndefaults and are remembered.', COL.HEADER);
+        else
+            imgui.TextColored(COL.HEADER, 'Features');
+        end
+        imgui.TextColored(COL.DIM, 'Tabs in the main window:');
+        for _, t in ipairs(fgate.TABS) do
+            settingCheck('ftab_' .. t.key, t.label,
+                'Show the ' .. t.label .. ' tab in the main dlac window.',
+                function() return fgate.enabled('tab', t.key) == true; end,
+                function(v) fgate.set('tab', t.key, v); end);
+        end
+        imgui.TextColored(COL.DIM, 'Rows in this menu:');
+        for _, r in ipairs(fgate.MENU) do
+            settingCheck('fmenu_' .. r.key, r.label,
+                'Show the ' .. r.label .. ' row in the header menu.',
+                function() return fgate.enabled('menu', r.key) == true; end,
+                function(v) fgate.set('menu', r.key, v); end);
+        end
+    end
 end
 
 -- ---------------------------------------------------------------------------
@@ -765,7 +809,7 @@ function M.renderPopups()
     if ui._menuOpen then imgui.OpenPopup('##dlac_menu'); ui._menuOpen = nil; end
     if imgui.BeginPopup('##dlac_menu') then
         for _, r in ipairs(ROWS) do
-            if menuRow(r, COL.USABLE) then
+            if rowAllowed(r.key) and menuRow(r, COL.USABLE) then
                 M.activate(r.key);
                 imgui.CloseCurrentPopup();
             end

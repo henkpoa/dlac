@@ -314,7 +314,37 @@ infer it from a field confirmation, from *"works"*, or from your own read that s
 ready — his own note on the exchange was *"you are right not to assume otherwise since I
 haven't told you."* Ask when he has **not** said merge; never ask twice when he has.
 
-**THE QUEUE IS EMPTY.**
+- **THE GEAR VAULT INTEGRATION, slices 1-3 + the polish rounds** (`2026.08.26v`,
+  commits `2f17513..7b59d10` — design: `docs/design/gear-vault-integration.md`,
+  an AscensionXI-only pack module): the 0x1E0 wire client + vault mirror (vaulted
+  = an ownership tier, violet everywhere, prune-safe), the Gear Vault tab
+  (Vault | Inventory sub-tabs, one-row entries, whole-row hover with the
+  standard card, augments decoded into the card), the derived layout (sets
+  write the shelf; additions push; soft-lock = the server's pin; city-gate
+  badge), Store/Store all + Withdraw + layout verbs on the wire under the
+  mutating-op laws. **Field-confirmed by Henrik end-to-end** (loot → Store →
+  layout → shelf → trigger dresses you) across ~a dozen same-day rounds.
+  Companion server commit on ascensionxi `henrik/wardrobe-lock` (`b25a572924`):
+  deposit-applies-what-the-layout-names -- still on an UNMERGED branch.
+  Slice 4 has since SHIPPED (`ccedb7f`): the space-pressure removal flows,
+  the LRU stamps, the GV3/GV4 settings and GV7's curated sweep. Nothing is
+  owed on the dlac side; what remains is server-side and written up in
+  `docs/design/ascensionxi-server-handover-2026-08-27.md` -- chiefly the
+  wardrobe lock (#107), without which the pressure flows are unreachable
+  at a 640-slot shelf.
+
+- **Server packs + the AscensionXI field round** (`2026.08.26`, 6 commits `83365dc..6a1b3e0`):
+  ADR 0035 (the server seam, `servers\cexi\` + `servers\ascensionxi\` packs, pack modules,
+  `pack_lint`), ADR 0036 (`lib\imguicompat` — the newer Ashita binding's ImGui 1.90+
+  reshapes, wrapped once, keyed on the binding never the server), ADR 0037
+  (`lib\featuregate` — tabs/menu rows gated per pack with per-character Settings
+  overrides; AscensionXI ships gear-only). Field-confirmed by Henrik on AscensionXI
+  2026-08-26 (*"Seems to work now"*). **Caveat for the promoter: the ADR 0035
+  refactor moves the CEXI subsystems into pack modules and has NOT had a dedicated
+  post-refactor field round on CatsEyeXI itself** — suites are green (7208 + 1434 +
+  pack_lint 33/29) and the cexi pack is the reference implementation, but a CEXI
+  login check (E-Box, giftbox, prestige, game modes mount) before promoting would be
+  cheap insurance.
 
 *(Emptied by the 2026-08-11 promotion — **macro pages per subjob** (`2026.08.11b`), three
 commits plus its docs entry. Henrik: *"merge and push to main"* — an accept under the 08-01

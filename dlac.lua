@@ -18,7 +18,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.08.11b';   -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.08.27i';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
                                 -- (03f = engine v163: the contest explains its own plan;
                                 --  03g = one floating tray: Teleports + the E-Box crates;
@@ -212,7 +212,31 @@ addon.version = '2026.08.11b';   -- date of the last shipped change (Ashita prin
                                 --  from ONE shared reader; and copying a rule to
                                 --  a job dlac has never used INSTANTIATES that
                                 --  job entry first, instead of writing a rule
-                                --  into a file with nothing to target)
+                                --  into a file with nothing to target;
+                                --  07a = SERVER-AGNOSTIC RENDERING + SURFACES:
+                                --  lib\imguicompat wraps the three imgui calls
+                                --  whose shapes changed in the newer Ashita
+                                --  binding (BeginChild's border bool ->
+                                --  ImGuiChildFlags; ImageButton/Image), keyed
+                                --  on the BINDING so old builds run untouched;
+                                --  and lib\featuregate gates tabs + menu rows
+                                --  per server pack (servers\<id>\features.lua)
+                                --  with per-character overrides under Menu >
+                                --  Settings > Features -- AscensionXI ships
+                                --  gear-only: Equipped, All Equipment, Sets,
+                                --  Triggers;
+                                --  07b = GEAR VAULT slice 1 (AscensionXI only):
+                                --  the 0x1E0 wire client + the read-only
+                                --  vault mirror as a pack module -- vaulted
+                                --  gear is OWNED (never available), prune is
+                                --  vault-safe, /dl vault answers; design in
+                                --  docs/design/gear-vault-integration.md;
+                                --  07c = the server RENAMED: the Vanaheim
+                                --  pack is now servers\ascensionxi\ --
+                                --  same pack, new id/name, and the
+                                --  per-install flag config\addons\dlac\
+                                --  server.lua must now read
+                                --  return { server = 'ascensionxi' })
 addon.desc    = 'Gear sets, triggers and live stats with level scaling -- dlac equips your gear itself.';
 
 -- Load BEACON ('/dl check' field round, 2026-07-23): written by PLAIN io at
@@ -236,6 +260,26 @@ require('common');
 -- Resolve the profile-style "dlac\\X" requires to addons/dlac/X.lua in the addon state.
 pcall(function()
     package.path = package.path .. ';' .. AshitaCore:GetInstallPath() .. 'addons\\?.lua';
+end);
+
+-- THE IMGUI-BINDING SEAM: newer Ashita builds ship ImGui 1.90+, where
+-- BeginChild's border bool became ImGuiChildFlags and ImageButton/Image
+-- changed shape -- every dlac call site speaks the OLD shapes. Detect the
+-- binding once and wrap the three entries so both builds render; on the old
+-- binding this wraps nothing at all. Must run before the first frame -- see
+-- lib\imguicompat.lua for the whole story.
+pcall(function()
+    require('dlac\\lib\\imguicompat').install();
+end);
+
+-- THE SERVER SEAM (ADR 0035): discover the shipped server packs, pick the
+-- active one, and mount its data files into the virtual dlac\data\ namespace
+-- -- BEFORE anything can require data. Every later pcall(require,
+-- 'dlac\\data\\X') resolves through the active pack, or degrades exactly as
+-- a missing file always has. A failure here means NO pack: neutral defaults,
+-- capabilities off, and /dl check says so.
+pcall(function()
+    require('dlac\\gear\\serverpack').init();
 end);
 
 -- Load THIS character's gear from their config folder, so the GUI shows your
@@ -333,13 +377,12 @@ ashita.events.register('d3d_present', 'dlac-seed-watch', function()
         -- network thread -- ratchet + save + announce here on the MAIN thread.
         if type(cw.pumpObtains) == 'function' then cw.pumpObtains(); end
     end);
-    -- The prestige mirror's beat (2026-08-10): drain what the 0x1A4 packet
-    -- handler stashed on the network thread, merge (monotonic -- prestige is
-    -- never lost), persist, and fire the profile request once per zone-in.
-    -- Main thread only (the chocowatch rule); a no-op between events.
+    -- The server-pack modules' beat (ADR 0035; the prestige mirror's old
+    -- seat, 2026-08-10, now generic): every mounted module's pump, contained.
+    -- Main thread only (the chocowatch rule); a no-op with nothing mounted.
     pcall(function()
-        local pw = require('dlac\\feature\\prestigewatch');
-        if type(pw) == 'table' and type(pw.pump) == 'function' then pw.pump(); end
+        local sm = require('dlac\\feature\\servermods');
+        if type(sm) == 'table' and type(sm.pump) == 'function' then sm.pump(); end
     end);
     -- The Action sequencer's frame pump (issue #138): advance any live sequence
     -- (verify worn -> fire -> release) against the live gear/command io. A no-op
@@ -469,9 +512,11 @@ for _, mod in ipairs({ 'gear', 'feature\\augments', 'gear\\gearoptim', 'gear\\ge
                        'feature\\synthrun',
                        'ui\\craftbar', 'feature\\helmwatch', 'ui\\helmbar',
                        'feature\\fishwatch', 'ui\\fishbar', 'feature\\chocowatch',
-                       'feature\\meritwatch', 'feature\\prestigewatch',
+                       'feature\\meritwatch',
                        'feature\\integration', 'feature\\foodwatch',
-                       'feature\\giftbox',
+                       -- (prestigewatch and giftbox left this list for the CEXI
+                       -- server pack, ADR 0035 -- servers\cexi\modules\, mounted
+                       -- by feature\servermods below.)
                        'feature\\engagewatch', 'feature\\petvitals', 'feature\\combat',
                        'feature\\sendlog', 'feature\\check', 'feature\\debug', 'feature\\report',
                        -- nmtrack AFTER nmlookup: it requires the lookup module at
@@ -530,6 +575,17 @@ pcall(function()
     local jhui = require('dlac\\ui\\jobhelpersui');
     if type(jhui.init) == 'function' then jhui.init(deps); end
     if type(jhui.maybeRegister) == 'function' then jhui.maybeRegister(host); end
+end);
+
+-- Server-pack modules (ADR 0035): mount the active pack's modules\ folders --
+-- the code that only exists because THIS server exists (on CEXI: game modes,
+-- prestige, the 0x1A4 E-Box family, gift boxes). After the UI host and main
+-- GUI so their tray/helper/quick-menu registrations land on live surfaces;
+-- failures feed the same ledger under 'server:<name>'.
+pcall(function()
+    local sm = require('dlac\\feature\\servermods');
+    local host = require('dlac\\ui\\uihost');
+    sm.load({ host = host });
 end);
 
 -- SPINE PROBE (2026-08-05, the field case that bought it): the loop above is an

@@ -415,13 +415,14 @@ local PRINTERS = {
         M.requestEngine('ls ' .. dur);
         lsRun(dur);
     end,
-    -- E-Box traffic. Addon-state only (the one 0x1A4 client lives here), so no
-    -- engine request: the LAC half returns silently for any topic but 'ls'.
-    -- Required lazily, so this debug surface costs nothing until it is asked for.
+    -- E-Box traffic. A server-pack service (ADR 0035): the CEXI pack's ebox
+    -- module provides 'eboxtrace'; on a server without one this topic says
+    -- so instead of guessing. Asked lazily, so it costs nothing until then.
     ebox = function(rest)
-        local t = try('dlac\\feature\\eboxtrace');
+        local t = nil;
+        pcall(function() t = require('dlac\\gear\\serverpack').service('eboxtrace'); end);
         if t == nil or type(t.run) ~= 'function' then
-            print('[dlac] eboxtrace failed to load.');
+            print('[dlac] no E-Box on this server (the active pack mounts no ebox module).');
             return;
         end
         t.run(rest);

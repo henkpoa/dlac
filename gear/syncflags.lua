@@ -126,7 +126,13 @@ sf.saveUiFlags = function()
         -- "Show all" became a Setting when it moved out of the header, so it is
         -- remembered now like every other one.
         local showall = (type(ui.showAll) == 'table' and ui.showAll[1] == true);
-        D.writeFileText(p, string.format('return { debug = %s, autosync = %s, viewids = %s, buildmax = %s, tgmon = %s, arbmon = %s, tpfloat = %s, tpx = %d, tpy = %d, tmx = %d, tmy = %d, gearfloat = %s, gfx = %d, gfy = %d, gfscale = %.2f, ifx = %d, ify = %d, openui = %q, showall = %s, autobuildimport = %s, gearwarn = %s, buildstored = %s }\n',
+        -- The character's feature flips (lib\featuregate -- Menu > Settings >
+        -- Features): two csv token lists, explicit ONs and explicit OFFs.
+        -- Empty strings when the character never flipped anything, which is
+        -- also what every uiflags.lua written before 2026-08-26 reads as.
+        local fOn, fOff = '', '';
+        pcall(function() fOn, fOff = require('dlac\\lib\\featuregate').export(); end);
+        D.writeFileText(p, string.format('return { debug = %s, autosync = %s, viewids = %s, buildmax = %s, tgmon = %s, arbmon = %s, tpfloat = %s, tpx = %d, tpy = %d, tmx = %d, tmy = %d, gearfloat = %s, gfx = %d, gfy = %d, gfscale = %.2f, ifx = %d, ify = %d, openui = %q, showall = %s, autobuildimport = %s, gearwarn = %s, buildstored = %s, featson = %q, featsoff = %q }\n',
             tostring(sf.flags.debug), tostring(sf.flags.autosync), tostring(sf.flags.viewids), tostring(bm),
             tostring(ui._tgMon == true),
             tostring(ui._arbMon == true),
@@ -135,7 +141,8 @@ sf.saveUiFlags = function()
             tonumber(ui._gfScale) or 1.0, ifx, ify,
             openui, tostring(showall), tostring(sf.flags.autobuildimport ~= false),
             tostring(sf.flags.gearwarn ~= false),
-            tostring(sf.flags.buildstored ~= false)));
+            tostring(sf.flags.buildstored ~= false),
+            tostring(fOn), tostring(fOff)));
     end);
 end
 
@@ -207,6 +214,15 @@ sf.loadUiFlags = function()
             -- "Show all" -- absent key = OFF, its long-standing default.
             if type(t.showall) == 'boolean' and type(ui.showAll) == 'table' then
                 ui.showAll[1] = t.showall;
+            end
+            -- The character's feature flips (Menu > Settings > Features).
+            -- Absent keys (every pre-2026-08-26 uiflags.lua) = no flips: the
+            -- server pack's defaults stand, which is the behavior those
+            -- installs had.
+            if type(t.featson) == 'string' or type(t.featsoff) == 'string' then
+                pcall(function()
+                    require('dlac\\lib\\featuregate').applySaved(t.featson, t.featsoff);
+                end);
             end
         end
     end);

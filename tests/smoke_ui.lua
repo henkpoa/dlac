@@ -25,6 +25,18 @@ table.insert(package.searchers or package.loaders, 1, function(name)
     return chunk;
 end);
 
+-- THE SERVER SEAM (ADR 0035), armed exactly as the live boot arms it: mounts
+-- the active pack's data files into the virtual dlac\data\ namespace, so a
+-- require('dlac\\data\\gearsets') below reaches servers\cexi\data\ through
+-- the same searcher. This smoke suite therefore exercises the REAL mount.
+-- The choice is EXPLICIT (the repo ships several packs; this suite is the
+-- CEXI baseline -- pack_lint.lua is the per-pack gate).
+do
+    local __sp = require('dlac\\gear\\serverpack');
+    __sp._configLoader = function() return { server = 'cexi' }; end;
+    __sp.init();
+end
+
 -- The event stub RECORDS handlers rather than dropping them: floatgear's shift
 -- tracking is a 'key' (WNDPROC) handler, and section 6 drives it directly -- the
 -- transition-bit test in there is easy to get backwards and worth exercising.
@@ -1595,7 +1607,7 @@ end)();
     -- feature/eboxammo was deleted 2026-07-27 with AutoAmmo's E-Box section, and
     -- its /dl ebox entity probe moved into eboxtrace as `/dl debug ebox scan`
     -- (auto-ammo.md Section 10.8). Pin the module that inherited it.
-    local ok6, ebt = pcall(require, 'dlac\\feature\\eboxtrace');
+    local ok6, ebt = pcall(require, 'dlac\\servers\\cexi\\modules\\ebox\\eboxtrace');
     check('S139 eboxtrace loads headless', ok6 and type(ebt) == 'table', true);
     check('S139b the moved entity probe is reachable as "scan"',
         ok6 and ebt._word('ebox scan') == 'scan' and type(ebt.scan) == 'function', true);
@@ -2865,10 +2877,10 @@ end)();
     IM.IsItemHovered     = function() return true; end     -- exercise every tooltip
     IM.IsItemClicked     = function() return false; end
 
-    local NAMES = { 'dlac\\ui\\tray', 'dlac\\ui\\gearui', 'dlac\\ui\\restockui',
-                    'dlac\\ui\\giftboxui', 'dlac\\feature\\giftbox',
-                    'dlac\\feature\\restockwatch', 'dlac\\feature\\eboxclient',
-                    'dlac\\feature\\gamemode', 'dlac\\feature\\location',
+    local NAMES = { 'dlac\\ui\\tray', 'dlac\\ui\\gearui', 'dlac\\servers\\cexi\\modules\\ebox\\restockui',
+                    'dlac\\servers\\cexi\\modules\\giftbox\\giftboxui', 'dlac\\servers\\cexi\\modules\\giftbox\\giftbox',
+                    'dlac\\servers\\cexi\\modules\\ebox\\restockwatch', 'dlac\\servers\\cexi\\modules\\ebox\\eboxclient',
+                    'dlac\\servers\\cexi\\modules\\gamemode\\init', 'dlac\\feature\\location',
                     'dlac\\ui\\filetex', 'imgui' };
     local saved = {};
     for _, k in ipairs(NAMES) do saved[k] = package.loaded[k]; end
@@ -2885,11 +2897,11 @@ end)();
         end,
         trayTeleportsDraw  = function() drew[#drew + 1] = 'tp'; end,
     };
-    package.loaded['dlac\\ui\\restockui'] = {
+    package.loaded['dlac\\servers\\cexi\\modules\\ebox\\restockui'] = {
         trayWants = function() return wantsB; end,
         trayDraw  = function() drew[#drew + 1] = 'ebox'; end,
     };
-    package.loaded['dlac\\ui\\giftboxui'] = {
+    package.loaded['dlac\\servers\\cexi\\modules\\giftbox\\giftboxui'] = {
         trayWants = function() return wantsC; end,
         trayDraw  = function() drew[#drew + 1] = 'gift'; end,
     };
@@ -2898,6 +2910,11 @@ end)();
     local ok, tr = pcall(require, 'dlac\\ui\\tray');
     check('TR1 tray re-requires against a stub imgui', ok and type(tr.render), 'function');
     if ok then
+        -- The pack rows, registered exactly as the CEXI modules register them
+        -- at mount (ADR 0035; manifest order = ebox then giftbox): the tray
+        -- ships only the pinned Teleports row now.
+        tr.register({ mod = 'dlac\\servers\\cexi\\modules\\ebox\\restockui',    wants = 'trayWants', draw = 'trayDraw' });
+        tr.register({ mod = 'dlac\\servers\\cexi\\modules\\giftbox\\giftboxui', wants = 'trayWants', draw = 'trayDraw' });
         -- THE invariant. Both members quiet -> the tray must not Begin at all.
         wantsA, wantsB, drew = false, false, {};
         pcall(tr.render, {});
@@ -2924,7 +2941,7 @@ end)();
             (#dummies == 1) and (dummies[1][1] == 0) and (dummies[1][2] > 0), true);
         check('TR12 SLOTS is ordered Teleports-then-restock',
             tr.SLOTS[1].mod .. '|' .. tr.SLOTS[2].mod,
-            'dlac\\ui\\gearui|dlac\\ui\\restockui');
+            'dlac\\ui\\gearui|dlac\\servers\\cexi\\modules\\ebox\\restockui');
 
         -- All three, and the giftbox icon is LAST (Henrik: "under the e-box
         -- stocker icons"). Not cosmetic: Store is the crate directly above it,
@@ -2939,7 +2956,7 @@ end)();
         check('TR12e still a COLUMN -- no SameLine between slots', sameLines, 0);
         check('TR12f ...with a vertical gap per extra slot', #dummies, 2);
         check('TR12g SLOTS puts giftboxui last',
-            tr.SLOTS[#tr.SLOTS].mod, 'dlac\\ui\\giftboxui');
+            tr.SLOTS[#tr.SLOTS].mod, 'dlac\\servers\\cexi\\modules\\giftbox\\giftboxui');
         -- Boxes in the bag with the other two quiet: the tray still opens for it
         -- alone (it is a full member, not a decoration on the crates).
         wantsA, wantsB, drew = false, false, {};
@@ -2954,16 +2971,16 @@ end)();
         -- non-CW, you can have that icon once you're in town. CW is only
         -- interested in using this close to an e-box."
         local MODE, NEAR, TOWN, PEEKED = nil, false, false, 0;
-        package.loaded['dlac\\feature\\gamemode']  = { get = function() return MODE; end };
+        package.loaded['dlac\\servers\\cexi\\modules\\gamemode\\init']  = { get = function() return MODE; end };
         package.loaded['dlac\\feature\\location']  = { inTown = function() return TOWN; end };
-        package.loaded['dlac\\feature\\eboxclient'] = { nearBox = function() return NEAR; end };
-        package.loaded['dlac\\feature\\giftbox']  = {
+        package.loaded['dlac\\servers\\cexi\\modules\\ebox\\eboxclient'] = { nearBox = function() return NEAR; end };
+        package.loaded['dlac\\servers\\cexi\\modules\\giftbox\\giftbox']  = {
             peek = function() PEEKED = PEEKED + 1; return { have = true, total = 3, free = 20 }; end,
             running = function() return false; end,
             NEED_FREE = 6,
         };
-        package.loaded['dlac\\ui\\giftboxui'] = nil;
-        local gok, gui = pcall(require, 'dlac\\ui\\giftboxui');
+        package.loaded['dlac\\servers\\cexi\\modules\\giftbox\\giftboxui'] = nil;
+        local gok, gui = pcall(require, 'dlac\\servers\\cexi\\modules\\giftbox\\giftboxui');
         check('TR18 giftboxui loads against the stubs', gok and type(gui.trayWants), 'function');
         if gok then
             -- A Crystal Warrior is asked about the BOX, never the town: he wants
@@ -3044,7 +3061,7 @@ end)();
         return tostring(l) == CLICK;
     end
     local PLAN = { pulls = {}, fetches = {}, remainder = {}, badge = 0 };
-    package.loaded['dlac\\feature\\restockwatch'] = {
+    package.loaded['dlac\\servers\\cexi\\modules\\ebox\\restockwatch'] = {
         loadState = nop, master = true, showNudge = true, onlyWhenNeeded = false,
         character = {}, jobs = {},
         effectiveList  = function() return {}; end,
@@ -3055,7 +3072,7 @@ end)();
             return { { id = 1, name = 'Blind Bolt', held = 0, target = 99, want = 99 } };
         end,
     };
-    package.loaded['dlac\\feature\\eboxclient'] = {
+    package.loaded['dlac\\servers\\cexi\\modules\\ebox\\eboxclient'] = {
         BOX_RANGE = 6,
         boxDistance = function() return 2.0; end,
         verifyCategories = nop, boxCount = function() return 0; end,
@@ -3066,11 +3083,11 @@ end)();
         canQuery = function() return true; end,
         clearSearch = nop,
     };
-    package.loaded['dlac\\feature\\gamemode'] = { get = function() return 'CW'; end };
+    package.loaded['dlac\\servers\\cexi\\modules\\gamemode\\init'] = { get = function() return 'CW'; end };
     package.loaded['dlac\\ui\\filetex'] = { handle = function() return nil; end };
 
-    package.loaded['dlac\\ui\\restockui'] = nil;
-    local rok, rs = pcall(require, 'dlac\\ui\\restockui');
+    package.loaded['dlac\\servers\\cexi\\modules\\ebox\\restockui'] = nil;
+    local rok, rs = pcall(require, 'dlac\\servers\\cexi\\modules\\ebox\\restockui');
     check('TR18 restockui re-requires against a stub imgui', rok and type(rs.trayDraw), 'function');
     if rok then
         check('TR19 the E-Box slot answers the cheap gate near a box', rs.trayWants(), true);
@@ -3123,7 +3140,7 @@ end)();
         check('TR24 the E-Box slot begins NO window of its own', depth.win, 0);
         -- Away from a box the gate says no, and the tray asks nothing further --
         -- which is what keeps the feature free when you are not standing at one.
-        package.loaded['dlac\\feature\\eboxclient'].boxDistance = function() return 40.0; end
+        package.loaded['dlac\\servers\\cexi\\modules\\ebox\\eboxclient'].boxDistance = function() return 40.0; end
         check('TR25 out of range the E-Box slot wants nothing', rs.trayWants(), false);
     end
 
@@ -3383,7 +3400,10 @@ end)();
         -- draws LAST-ish and assert it: the Settings panel owns 8 checkboxes, the
         -- level panel owns the typed-number InputText. If either body dies early,
         -- these drop and the section fails instead of lying.
-        check('MN12a Settings body ran to completion (14 checkboxes)', drew.checkbox, 14);
+        -- 14 Settings + 12 Features (6 tabs + 6 menu rows, lib\featuregate,
+        -- 2026-08-26): the gate section renders whenever featuregate loads,
+        -- which headless it always does.
+        check('MN12a Settings body ran to completion (26 checkboxes)', drew.checkbox, 26);
         check('MN12b level body drew its typed-number box', drew.input, 1);
 
         -- debug on: the developer quartet appears
@@ -7449,6 +7469,185 @@ end)();
     os.remove(MBFILE);
     AshitaCore = savedCore;
     ImGuiCol_Button, ImGuiStyleVar_ItemSpacing = nil, nil;
+    for _, k in ipairs(NAMES) do package.loaded[k] = saved[k]; end
+end)();
+
+-- ---------------------------------------------------------------------------
+-- SM. Server-pack modules mount FOR REAL (ADR 0035): feature\servermods over
+--     the live CEXI manifest, through the same searcher the whole suite uses.
+--     This is the load test for the four module folders -- a broken init.lua,
+--     a bad cross-require after a move, or a failed registration surfaces
+--     HERE, not at a player's login.
+-- ---------------------------------------------------------------------------
+;(function()
+    local ok, sm = pcall(require, 'dlac\\feature\\servermods');
+    check('SM0 servermods loads headless', ok and type(sm), 'table');
+    if not ok then return; end
+    local mok = pcall(sm.load, {});
+    check('SM1 load survives headless', mok, true);
+    check('SM2 all four CEXI modules mounted', table.concat(sm.list(), ','),
+          'gamemode,prestige,ebox,giftbox');
+    local sp = require('dlac\\gear\\serverpack');
+    check('SM3 gamemode service provided',  type(sp.service('gamemode')), 'table');
+    check('SM4 prestige service provided',  type(sp.service('prestige')), 'table');
+    check('SM5 eboxtrace service provided', type(sp.service('eboxtrace')), 'table');
+    check('SM6 headless game mode reads nil-unknown', sp.service('gamemode').get(), nil);
+    -- the ebox module's helper registration landed (row hidden headless: the
+    -- CW want() gate reads nil-unknown -> NO).
+    local auto = require('dlac\\ui\\automationsui');
+    local found = false;
+    for _, s in ipairs(auto.extraHelpers()) do
+        if s.key == 'restock' then found = true; end
+    end
+    check('SM7 the restock helper is registered', found, true);
+end)();
+
+-- ---------------------------------------------------------------------------
+-- GVU. The Gear Vault tab (servers/ascensionxi/modules/gearvault/vaultui.lua,
+--      slice 2): renders whole against an imgui-shaped stub -- stack balance,
+--      the browser draws the mirror's rows, the search filters, and a
+--      Withdraw click queues exactly one wire request. The ascensionxi module
+--      is not mounted by this CEXI-baseline suite, so the harness stands the
+--      stubs up itself (the tray-section idiom).
+-- ---------------------------------------------------------------------------
+(function()
+    local depth = { child = 0, item = 0, tree = 0, tip = 0, col = 0 };
+    local texts, smallHits, headers = {}, {}, {};
+    local pressWithdraw = false;
+    local nop = function() end;
+    local IM = {
+        TextColored   = function(_, s) texts[#texts + 1] = tostring(s); end,
+        SameLine      = nop, Separator = nop, SetTooltip = nop,
+        SetNextItemOpen = nop, Dummy = nop,
+        Selectable    = function() return false; end,
+        GetCursorPosY = function() return 0; end,
+        SetCursorPosY = nop,
+        GetWindowWidth = function() return 800; end,
+        PushStyleColor = function() depth.col = depth.col + 1; end,
+        PopStyleColor  = function(n) depth.col = depth.col - (n or 1); end,
+        GetContentRegionAvail = function() return 800, 500; end,
+        IsItemHovered = function() return true; end,
+        SmallButton   = function(label)
+            smallHits[#smallHits + 1] = tostring(label);
+            return pressWithdraw and tostring(label):match('^Withdraw') ~= nil;
+        end,
+        CollapsingHeader = function(label) headers[#headers + 1] = tostring(label); return true; end,
+        TreeNode      = function() depth.tree = depth.tree + 1; return true; end,
+        TreePop       = function() depth.tree = depth.tree - 1; end,
+        BeginTabBar   = function() depth.bar = (depth.bar or 0) + 1; return true; end,
+        EndTabBar     = function() depth.bar = depth.bar - 1; end,
+        BeginTabItem  = function(label) headers[#headers + 1] = tostring(label); depth.tab = (depth.tab or 0) + 1; return true; end,
+        EndTabItem    = function() depth.tab = depth.tab - 1; end,
+        BeginTooltip  = function() depth.tip = depth.tip + 1; end,
+        EndTooltip    = function() depth.tip = depth.tip - 1; end,
+        PushItemWidth = function() depth.item = depth.item + 1; end,
+        PopItemWidth  = function() depth.item = depth.item - 1; end,
+        InputText     = function() return false; end,
+        BeginChild    = function() depth.child = depth.child + 1; return true; end,
+        EndChild      = function() depth.child = depth.child - 1; end,
+    };
+
+    local NAMES = { 'imgui', 'dlac\\ui\\uihost', 'dlac\\ui\\itemicons', 'dlac\\ui\\uistyle',
+                    'dlac\\servers\\ascensionxi\\modules\\gearvault\\vaultclient',
+                    'dlac\\servers\\ascensionxi\\modules\\gearvault\\vaultui' };
+    local saved = {};
+    for _, k in ipairs(NAMES) do saved[k] = package.loaded[k]; end
+
+    package.loaded['imgui'] = IM;
+    package.loaded['dlac\\ui\\itemicons'] = { renderIcon = nop };
+    package.loaded['dlac\\ui\\uistyle'] = {};   -- no helpLabel: the plain-text path
+    package.loaded['dlac\\ui\\uihost'] = {
+        services = {
+            COL = { ERR = {1,0,0,1}, DIM = {1,1,1,1}, HEADER = {1,1,1,1},
+                    USABLE = {1,1,1,1}, SCORE = {1,1,1,1}, VAULT = {1,1,1,1},
+                    LEVEL = {1,1,1,1}, STATS = {1,1,1,1} },
+            displayName = function(id) return 'Item' .. tostring(id); end,
+            -- Body rows exercise the slot-section path; a Main row exercises
+            -- the nested weapon-category path; id 300 stays UNKNOWN so the
+            -- 'Other' fallback bucket renders too.
+            lookupById = function(id)
+                if id == 300 then return nil; end
+                if id == 200 then return { Id = id, Name = 'Item' .. id, Slot = 'Main', Category = 'Sword', Level = 10 }; end
+                return { Id = id, Name = 'Item' .. id, Slot = 'Body', Level = 10 };
+            end,
+            itemTooltip = function() IM.BeginTooltip(); IM.EndTooltip(); end,
+            SLOT_TREE_ORDER = { 'Main', 'Body' },
+            CAT_ORDER = { Main = { 'Sword' } },
+        },
+    };
+    package.loaded['dlac\\servers\\ascensionxi\\modules\\gearvault\\vaultclient'] = nil;
+    package.loaded['dlac\\servers\\ascensionxi\\modules\\gearvault\\vaultui'] = nil;
+
+    local vc = require('dlac\\servers\\ascensionxi\\modules\\gearvault\\vaultclient');
+    vc._reset();
+    vc._say = nop;
+    -- a fresh two-row mirror + a fresh one-entry layout, straight into state
+    vc.mirror.rows = {
+        { rowId = 1, itemId = 100, qty = 1, identity = string.rep('\0', 24) },
+        { rowId = 2, itemId = 200, qty = 3, identity = string.rep('\7', 24) },
+    };
+    vc.mirror.counts = { [100] = 1, [200] = 3 };
+    vc.mirror.fresh  = true;
+    vc.mirror.stamp  = 1;
+    -- the layout's item is DISTINCT from the browser's (300): the layout
+    -- section ignores the browser search, so a shared id would fog GVU8
+    vc.layoutCache = { job = 1, fresh = true, stamp = 1,
+                       entries = { { ordinal = 1, itemId = 300, count = 2, hint = nil, pinned = true } } };
+
+    local vui = require('dlac\\servers\\ascensionxi\\modules\\gearvault\\vaultui');
+    -- two storable pieces in the bag (the _invOverride seam): the Inventory
+    -- sub-tab must light up with the count and offer Store / Store all
+    vui._invOverride = {
+        { container = 0, slot = 3, itemId = 100, qty = 1, sortKey = 3,
+          rec = { Id = 100, Name = 'Item100', Slot = 'Body', Level = 10 }, name = 'Item100' },
+        { container = 0, slot = 5, itemId = 400, qty = 1, sortKey = 5,
+          rec = { Id = 400, Name = 'Item400', Slot = 'Head', Level = 5 }, name = 'Item400' },
+    };
+    check('GVU1 the tab renders whole', pcall(vui.render, 1, 75), true);
+    check('GVU1a tab-bar/tab stacks balanced', (depth.bar or 0) == 0 and (depth.tab or 0) == 0, true);
+    check('GVU1b the Inventory sub-tab carries its count',
+          table.concat(headers, '|'):find('Inventory (2)', 1, true) ~= nil, true);
+    check('GVU1c Store and Store all are offered', (function()
+        local h = table.concat(smallHits, '|');
+        return h:find('Store all (2)', 1, true) ~= nil and h:find('Store##', 1, true) ~= nil;
+    end)(), true);
+    check('GVU2 child stack balanced',  depth.child, 0);
+    check('GVU3 item-width stack balanced', depth.item, 0);
+    check('GVU3a tree stack balanced',  depth.tree, 0);
+    check('GVU3b tooltip stack balanced (the standard hover card ran)', depth.tip, 0);
+    check('GVU3c style-colour stack balanced', depth.col, 0);
+    local blob = table.concat(texts, '|');
+    check('GVU4 the browser drew both rows',
+          blob:find('Item100', 1, true) ~= nil and blob:find('Item200', 1, true) ~= nil, true);
+    check('GVU5 the augmented copy is tagged', blob:find('[aug]', 1, true) ~= nil, true);
+    local hits = table.concat(smallHits, '|');
+    check('GVU6 the pinned layout entry offers Unpin + Remove',
+          hits:find('Unpin##', 1, true) ~= nil and hits:find('Remove##', 1, true) ~= nil, true);
+    check('GVU6c vault rows offer Layout', hits:find('Layout##', 1, true) ~= nil, true);
+    check('GVU6d the Vault options rows render (slice 4 settings)',
+          hits:find('gvset_additions', 1, true) ~= nil and hits:find('gvset_removals', 1, true) ~= nil, true);
+    local heads = table.concat(headers, '|');
+    check('GVU6a slot sections drew with counts',
+          heads:find('Body (1)', 1, true) ~= nil and heads:find('Main (1)', 1, true) ~= nil, true);
+    check('GVU6b the unknown id fell to the Other bucket', heads:find('Other (', 1, true) ~= nil, true);
+
+    -- the search filters BOTH panes
+    vui._search[1] = 'item200';
+    texts = {};
+    check('GVU7 renders under a search', pcall(vui.render, 1, 75), true);
+    blob = table.concat(texts, '|');
+    check('GVU8 the filtered row is gone', blob:find('Item100', 1, true), nil);
+    check('GVU9 the match remains',        blob:find('Item200', 1, true) ~= nil, true);
+    vui._search[1] = '';
+
+    -- a Withdraw click queues exactly one wire request (nothing sends here:
+    -- the pump is never called)
+    pressWithdraw = true;
+    check('GVU10 renders through the click', pcall(vui.render, 1, 75), true);
+    pressWithdraw = false;
+    check('GVU11 the click queued withdraw requests', #(vc._st().withdrawQ or {}) >= 1, true);
+
+    vc._reset();
     for _, k in ipairs(NAMES) do package.loaded[k] = saved[k]; end
 end)();
 

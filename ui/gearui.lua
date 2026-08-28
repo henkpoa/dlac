@@ -76,10 +76,9 @@ local useit = (function()
     local m = try("dlac\\feature\\useitem");
     return (m ~= nil and type(m.menu) == 'function') and m or nil;
 end)();
--- "Is this a Crystal Warrior?" -- the central service (architecture.md), used by
--- the quick menu's CW-only row. nil means UNKNOWN, never a mode: an unreadable
--- entity hides the row rather than guessing it in.
-local gmode = try("dlac\\feature\\gamemode");
+-- (The game-mode read left this file with ADR 0035: the quick menu's CW-only
+-- row is a server-pack registration now -- see the extraHelpers loop in the
+-- quick menu, and servers\cexi\modules\ebox\init.lua for the row itself.)
 -- The job selector above the tabs (2026-08-06): browse and BUILD another job's
 -- sets/triggers as if you were on it at level 75. Editing only -- the module's
 -- header explains why that separation is structural. It backs BOTH job seams in
@@ -227,6 +226,14 @@ local COL = {   -- ONE table, not ten locals: the 200-local chunk cap
     -- PREVIEW ONLY (the server will not render it on you), a warning about what
     -- the game will do, not a note about what you have.
     UNOWN  = { 0.56, 0.56, 0.56, 1.00 },
+    -- GEAR IN THE VAULT (AscensionXI's Gear Vault, docs/design/
+    -- gear-vault-integration.md). Violet, deliberately NOT the storage red
+    -- (Henrik's field ruling, 2026-08-26: "use another color instead of red,
+    -- since it is technically easily available") -- in a city a layout add
+    -- puts it straight on your shelf, where a red Mog Safe piece always
+    -- means a bag trip. Violet is void-flavoured and the one saturated lane
+    -- no other surface uses.
+    VAULT  = { 0.72, 0.55, 0.95, 1.00 },
 };
 pmenu.configure({ ui = ui, COL = COL });   -- Profiles popup state lives in the shared ui table
 
@@ -1261,7 +1268,10 @@ local function renderItemTooltip(rec, note)
             -- gear you do not own, so the sentence appeared on all of them and
             -- told you nothing you had not just typed a search for.
             -- The colour carries it, which is what was asked for originally.
-            if owned.isStored(rec) then
+            if owned.isVaulted ~= nil and owned.isVaulted(rec) then
+                imgui.TextColored(COL.VAULT,
+                    'IN THE GEAR VAULT  (in a city: add it to a layout; or withdraw at a Void Warden)');
+            elseif owned.isStored(rec) then
                 imgui.TextColored(COL.ERR, 'IN STORAGE: ' .. fmt.esc((locs ~= '') and locs or '?')
                     .. '  (move to Inventory/Wardrobe to equip)');
             elseif locs ~= '' then
@@ -1747,19 +1757,28 @@ local function renderTeleportsPopup()
     -- the travel tiers. No cascade and no BeginMenu fallback to think about --
     -- these are plain rows that open something and close the popup.
     imgui.Separator();
-    -- E-Box Restock rides ABOVE the Hobby bar (Henrik, 2026-07-30), and ONLY for
-    -- Crystal Warriors -- the same affirmative gate the Gear Helpers row uses
-    -- (automationsui: gamemode.get() == 'CW', nil is unknown and hides it), so a
-    -- non-CW character never sees a row for content it cannot have. It is not a
-    -- window like the two below it: the panel lives on the Gear Helpers tab, so
-    -- the row opens it through openAutomation -- the one door /dl restock and the
-    -- nudge's right-click already use. Art: the crate the nudge wears
-    -- (assets\ebox.png), not a key-named Menu icon, hence the explicit name.
-    if gmode ~= nil and gmode.get() == 'CW' then
-        renderQuickWindowRow('restock', 'E-Box Restock',
-            'Open the E-Box Restock panel -- what you keep topped up from the Ephemeral\nBox, how many of each, and the floating nudge\'s settings.',
-            'ebox', function() M.openAutomation('restock'); end);
-    end
+    -- Server-pack quick rows ride ABOVE the Hobby bar (the E-Box Restock
+    -- row's old seat, Henrik 2026-07-30; ADR 0035 moved the row itself into
+    -- the CEXI pack): each helper a pack module registered that carries a
+    -- quick spec and passes its own want() gate. Not windows like the two
+    -- below: each panel lives on the Gear Helpers tab, so the row opens it
+    -- through openAutomation -- the one door the /dl jumps already use.
+    pcall(function()
+        local auto = require('dlac\\ui\\automationsui');
+        if type(auto.extraHelpers) ~= 'function' then return; end
+        for _, spec in ipairs(auto.extraHelpers()) do
+            local wantOk = true;
+            if type(spec.want) == 'function' then
+                local wok, w = pcall(spec.want);
+                wantOk = wok and w == true;
+            end
+            if wantOk and type(spec.quick) == 'table' then
+                renderQuickWindowRow(spec.key, spec.quick.label or spec.key,
+                    spec.quick.tip or '', spec.quick.icon,
+                    function() M.openAutomation(spec.key); end);
+            end
+        end
+    end);
     renderQuickWindowRow('hobbybar', 'Hobby bar',
         'Show/hide the hobby bar -- Craft, HELM, Fishing and Chocobo controls in\none window (one hobby active at a time).');
     renderQuickWindowRow('lockstyle', 'Lockstyle',
@@ -2262,7 +2281,7 @@ local STATS_W   = 250;   -- left stats panel width (name column + value column)
 -- unlisted stats fall under "Other".
 -- statdefs: the central stat registry (label / section / aliases). Used by the weights
 -- picker (so aliases are searchable) and, over time, the other stat tables below. Guarded.
-local statdefs = try("dlac\\data\\statdefs");
+local statdefs = try("dlac\\gear\\statdefs");
 has.statdefs = statdefs ~= nil and type(statdefs.list) == 'table';
 
 -- Item-search matching shared by the pickers: comma-separated terms, ALL required
@@ -3910,7 +3929,9 @@ local function renderAddRow(rec, ordinal, level, nameW)
     -- read. The colour carries it alone now -- the hover line that briefly said
     -- so as well came out on 08-05 (it fired on every row of an unowned list).
     local mine = (rec.Virtual == true) or owned.haveInBags(rec);
-    local nameColr = (not mine) and COL.UNOWN or (owned.isStored(rec) and COL.ERR or COL.USABLE);
+    local nameColr = (not mine) and COL.UNOWN
+        or (owned.isVaulted ~= nil and owned.isVaulted(rec) and COL.VAULT)
+        or (owned.isStored(rec) and COL.ERR or COL.USABLE);
     imgui.TextColored(nameColr, fmt.esc(rec.Name or '?') .. fmt.qtyTag(rec));
     imgui.SameLine(nameCol + (nameW or 200));
     imgui.TextColored(COL.LEVEL, string.format('Lv%2d', rec.Level or 0));
@@ -4465,6 +4486,7 @@ local function renderSetBuilder(job, level)
             -- one item may appear as several rows with different level ranges, and
             -- only the row the engine would actually use should light up.
             imgui.TextColored((pick ~= nil and it == pick) and COL.SCORE
+                or (owned.isVaulted ~= nil and owned.isVaulted(rec) and COL.VAULT)
                 or (owned.isStored(rec) and COL.ERR or COL.USABLE),
                 fmt.esc((rec and rec.Name) or '?') .. fmt.qtyTag(rec));
             if rec ~= nil and imgui.IsItemHovered() then renderItemTooltip(rec); end
@@ -5224,6 +5246,11 @@ host.provide({
     avail = avail, wornByLevel = wornByLevel,
     -- gear data + candidate machinery
     effStats = effStats, isUsable = isUsable,
+    -- The standard item hover card (BeginTooltip + name/type/stats/set bonus),
+    -- the same renderer automationsui gets by injection -- published so a pack
+    -- module's surface (the Gear Vault tab) shows the SAME card as every other
+    -- gear line instead of inventing a lesser one.
+    itemTooltip = renderItemTooltip,
     lookupById = lookupById, lookupByName = lookupByName, displayName = displayName,
     buildOwned = buildOwned, buildAllEquip = buildAllEquip, ownedAugMap = ownedAugMap,
     candidatesForSlot = candidatesForSlot, subCandidatePool = subCandidatePool,

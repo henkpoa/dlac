@@ -332,24 +332,29 @@ function M.render(deps, availW)
     end
     imgui.Spacing();
 
+    -- The ventures half of this panel exists only where the pack declares the
+    -- capability (ADR 0035) -- helmwatch owns the gate, this panel asks it.
+    local ventOn = false;
+    if hwok then pcall(function() ventOn = hw.venturesOn() == true; end); end
+
     -- Venture points for the selected category (0x1A4 GET_POINTS; every entry
     -- into this section re-requests -- the craft panel's GP-refresh pattern).
-    if hwok then
+    if ventOn then
         if _vpSectionSeen == nil or (os.clock() - _vpSectionSeen) > 1.0 then
             pcall(function() hw.requestPoints(true); end);
         end
         _vpSectionSeen = os.clock();
-    end
-    imgui.TextColored(COL_HEADER, selected .. ' Venture Points: ');
-    imgui.SameLine(0, 4);
-    local vp = nil;
-    if hwok then pcall(function() vp = hw.pointsFor(selected); end); end
-    if vp ~= nil then
-        imgui.TextColored(COL_GOLD, tostring(vp));
-    elseif hwok and hw.pointsReady() then
-        imgui.TextColored(COL_DIM, 'not in the points stream yet  (/dl helm points to inspect)');
-    else
-        imgui.TextColored(COL_DIM, '(requested -- reopen in a moment)');
+        imgui.TextColored(COL_HEADER, selected .. ' Venture Points: ');
+        imgui.SameLine(0, 4);
+        local vp = nil;
+        pcall(function() vp = hw.pointsFor(selected); end);
+        if vp ~= nil then
+            imgui.TextColored(COL_GOLD, tostring(vp));
+        elseif hw.pointsReady() then
+            imgui.TextColored(COL_DIM, 'not in the points stream yet  (/dl helm points to inspect)');
+        else
+            imgui.TextColored(COL_DIM, '(requested -- reopen in a moment)');
+        end
     end
 
     -- The category's double-yield hat.
@@ -364,6 +369,8 @@ function M.render(deps, availW)
 
     -- Today's ventures for this category (0x017-captured; format pinned by
     -- field capture -- until then the keyword buckets carry the display).
+    -- Same capability gate as the points above.
+    if ventOn then
     imgui.TextColored(COL_HEADER, 'Today\'s ' .. selected .. ' ventures:');
     imgui.SameLine(0, 8);
     -- MEASURED width (themed-font rule: ~9.5px/char clips fixed 110) + full
@@ -398,6 +405,7 @@ function M.render(deps, availW)
         imgui.TextColored(COL_DIM, 'Uncategorized venture lines:');
         for _, ln in ipairs(general) do imgui.TextColored(COL_DIM, esc(ln)); end
     end
+    end   -- ventOn (Today's ventures)
     imgui.Spacing();
 
     -- Last auto-detected category (outgoing-trade watch).

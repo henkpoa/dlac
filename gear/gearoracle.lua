@@ -216,7 +216,7 @@ local function interp(path)
     pcall(function() m = require(path); end);
     return (type(m) == 'table') and m or nil;
 end
-local function levelstats()  return interp('dlac\\data\\levelstats');   end
+local function levelstats()  return interp('dlac\\gear\\levelstats');   end
 local function geareffects() return interp('dlac\\gear\\geareffects');  end
 local function augmod()      return interp('dlac\\feature\\augments');  end
 local function petmods()     return interp('dlac\\data\\petmods');      end

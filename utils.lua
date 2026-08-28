@@ -468,6 +468,7 @@ function M.slotLadder(slotTable, slotName, currentMain, cctx)
             end
 
             local maxLevel = 75; -- If you have passed the max level for the slot, set high so it won't be limiting if it's not specified.
+            pcall(function() maxLevel = require('dlac\\gear\\serverpack').maxLevel(); end);   -- the pack's cap (ADR 0035)
             local minLevel = 0;
             local gearVarObject = gearVar;
 

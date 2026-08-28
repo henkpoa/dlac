@@ -8,8 +8,8 @@
 package.loaded['dlac\\gear'] = { NameToObject = {} };   -- utils requires dlac\gear at load
 ashita = { events = { register = function() end } };    -- utils registers /dl at load
 package.loaded['dlac\\profiles'] = dofile('profiles.lua');   -- dispatch/setmanager require it (guarded)
-package.loaded['dlac\\data\\nativemp'] = dofile('data/nativemp.lua');   -- dispatch requires it (Oneiros resolver)
-package.loaded['dlac\\data\\zones'] = dofile('data/zones.lua');   -- dispatch requires it (the inTown town set)
+package.loaded['dlac\\gear\\nativemp'] = dofile('gear/nativemp.lua');   -- dispatch requires it (Oneiros resolver)
+package.loaded['dlac\\data\\zones'] = dofile('servers/cexi/data/zones.lua');   -- dispatch requires it (the inTown town set)
 package.loaded['dlac\\feature\\mpbands'] = dofile('feature/mpbands.lua');   -- dispatch requires it (the banded ladder, maxmp v2)
 package.loaded['dlac\\feature\\location'] = dofile('feature/location.lua');   -- lockstyle requires it (Disable-in-town)
 package.loaded['dlac\\gear\\jobgate'] = dofile('gear/jobgate.lua');   -- lockstyle requires it (v47 picker/box job-level gate)
@@ -20,6 +20,24 @@ package.loaded['dlac\\gear\\gearoracle'] = dofile('gear/gearoracle.lua');   -- T
 package.loaded['dlac\\lib\\statefile'] = dofile('lib/statefile.lua');   -- addon-side charDir: the watchers require it (guarded)
 package.loaded['dlac\\feature\\wishlist'] = dofile('feature/wishlist.lua');   -- utils asks it before warning about an unresolvable set entry (ADR 0026)
 package.loaded['dlac\\gear\\arbiter'] = dofile('gear/arbiter.lua');   -- THE pure decision core (ADR 0027 stage 3): dispatch hard-requires it; one shared instance for every dofile('dispatch.lua') below
+-- THE SERVER SEAM (ADR 0035), armed with the REAL CEXI manifest so capability
+-- gates (helmwatch/fishwatch ventures, the CW service reads) answer as live
+-- CEXI does. Pack DATA stays unmounted on purpose: this suite always ran
+-- catalog-less (smoke_ui is the catalog-bearing suite), so the injected
+-- _require serves the index + manifests and refuses data\ -- a mounted
+-- preload that errors degrades exactly like the missing file always did.
+package.loaded['dlac\\gear\\serverpack'] = (function()
+    local sp = dofile('gear/serverpack.lua');
+    sp._require = function(name)
+        local rel = tostring(name):match('^dlac\\servers\\(.+)$');
+        if rel == nil then error('headless serverpack: only servers\\ resolves, not ' .. tostring(name)); end
+        if rel:find('\\data\\', 1, true) ~= nil then error('headless serverpack: pack data stays unmounted'); end
+        return dofile('servers/' .. (rel:gsub('\\', '/')) .. '.lua');
+    end;
+    sp._configLoader = function() return { server = 'cexi' }; end;   -- explicit: this suite IS the CEXI baseline
+    sp.init();
+    return sp;
+end)();
 
 local TEST_PLAYER = nil;                                -- set per test
 gData = { GetPlayer = function() return TEST_PLAYER; end };
@@ -223,14 +241,14 @@ end)();
     local ROOT_FILES = { 'utils.lua', 'dispatch.lua', 'chatfmt.lua', 'profiles.lua', 'gear.lua', 'dlac.lua' };
     local UI = { 'ammoui','automationsui','craftbar','equippedui','filetex','fishbar','fishui',
                  'floatgear','gearui','helmbar','helmui','hobbybar','idlefloat','itemicons','jobhelpersui','menuui','panelkit','priorityui','profilesmenu',
-                 'restockui','setupui','tray','triggersui','uihost','uistyle','unusedui','weightsui' };
+                 'setupui','tray','triggersui','uihost','uistyle','unusedui','weightsui' };
     local GEAR = { 'acimport','actionpicker','arbiter','blueprintsmodel','catalogindex','gearcheck','geareffects','gearexport',
                    'gearfmt','gearimport','gearoptim','gearoracle','gearrecord','groupimport','groupscan',
-                   'groupsmodel','jobgate','modeslibrary','ownedcache','profileexport','profilesets','rulecopy','setimport',
-                   'setmanager','syncflags','triggermodel','unusedgear','weaponfilter','weightimport' };
+                   'groupsmodel','jobgate','levelstats','modeslibrary','nativemp','ownedcache','profileexport','profilesets','rulecopy','serverpack','setimport',
+                   'setmanager','statdefs','syncflags','triggermodel','unusedgear','weaponfilter','weightimport' };
     local FEATURE = { 'actionseq','ammowatch','arbwatch','augments','check','chocowatch','combat','craftwatch','debug','digcalc','digrank',
-                      'eboxclient','eboxtrace','engagewatch','fishcalc','fishwatch','foodwatch','gamehud','gamemode','helmwatch','idleexcl','jobhelpers','location','lockstyle','lookpreview',
-                      'macrobook','meritwatch','modapi','modcfg','mpbands','petfood','petvitals','pinwatch','recast','restockwatch','synthrun','useitem','vanamoon' };
+                      'engagewatch','fishcalc','fishwatch','foodwatch','gamehud','helmwatch','idleexcl','jobhelpers','location','lockstyle','lookpreview',
+                      'macrobook','meritwatch','modapi','modcfg','mpbands','petfood','petvitals','pinwatch','recast','servermods','synthrun','useitem','vanamoon' };
     local LIB = { 'cmdqueue','entwatch','safewrite','statefile' };
     -- Job helper modules (issue #137): each is a drop-in FOLDER under jobhelpers\
     -- with an init.lua, plus whatever pure cores it splits out beside it (issue
@@ -239,6 +257,16 @@ end)();
     -- module paths under jobhelpers\<job>\<module>\, no extension.
     local JOBHELP = { 'bst/bst-helper/init', 'bst/bst-helper/fight',
                       'bst/bst-helper/reward', 'bst/bst-helper/resummon', 'bst/bst-helper/jugs' };
+    -- Server-pack modules (ADR 0035): the CEXI pack's drop-in folders under
+    -- servers\cexi\modules\. They ship inside dlac, so they join the ratchet
+    -- too -- entries are pack-relative module paths, no extension.
+    local SERVERMODS = { 'cexi/modules/gamemode/init',
+                         'cexi/modules/prestige/init', 'cexi/modules/prestige/prestigewatch',
+                         'cexi/modules/ebox/init', 'cexi/modules/ebox/eboxclient',
+                         'cexi/modules/ebox/eboxtrace', 'cexi/modules/ebox/restockwatch',
+                         'cexi/modules/ebox/restockui',
+                         'cexi/modules/giftbox/init', 'cexi/modules/giftbox/giftbox',
+                         'cexi/modules/giftbox/giftboxui' };
 
     local ALL = {};
     for _, f in ipairs(ROOT_FILES) do ALL[#ALL + 1] = f; end
@@ -246,6 +274,7 @@ end)();
     for _, n in ipairs(GEAR)    do ALL[#ALL + 1] = 'gear/' .. n .. '.lua'; end
     for _, n in ipairs(FEATURE) do ALL[#ALL + 1] = 'feature/' .. n .. '.lua'; end
     for _, n in ipairs(LIB)     do ALL[#ALL + 1] = 'lib/' .. n .. '.lua'; end
+    for _, n in ipairs(SERVERMODS) do ALL[#ALL + 1] = 'servers/' .. n .. '.lua'; end
     for _, n in ipairs(JOBHELP) do ALL[#ALL + 1] = 'jobhelpers/' .. n .. '.lua'; end
 
     -- Cache each scanned file's stripped source once.
@@ -355,7 +384,7 @@ end)();
     -- STANDING central service -- callers browse it directly, architecture.md -- so it
     -- is not policed here; the oracle fronts it only for the identity JOIN.)
     --
-    -- On-disk the path reads with escaped separators (dlac\\data\\levelstats); plain
+    -- On-disk the path reads with escaped separators (dlac\\gear\\levelstats); plain
     -- find, backslashes literal. Load form (require / try / pcall) is irrelevant -- the
     -- PATH string is the signal.
     local function loadsInterp(s)
@@ -1536,8 +1565,8 @@ end)();
 --    ranking, the automation manifests -- resolves item stats through this one
 --    function, so no section values a scaling item at its base stats.
 -- ---------------------------------------------------------------------------
-package.loaded['dlac\\data\\levelscaling'] = dofile('data/levelscaling.lua');
-local lstats = dofile('data/levelstats.lua');
+package.loaded['dlac\\data\\levelscaling'] = dofile('servers/cexi/data/levelscaling.lua');
+local lstats = dofile('gear/levelstats.lua');
 local tamas = { Name = 'Tamas Ring', Id = 15545, Level = 30,
                 Stats = { MP = 15, INT = 2, MND = 2, Enmity = -3 } };
 check('L1 Tamas MP at Lv74',       lstats.effective(tamas, 74).MP, 29);
@@ -3341,7 +3370,7 @@ end
 --    the persisted floor (<char>\dlac\prestige.lua) never invalidates.
 -- ---------------------------------------------------------------------------
 (function()
-    local pw = dofile('feature/prestigewatch.lua');
+    local pw = dofile('servers/cexi/modules/prestige/prestigewatch.lua');
     local jg = package.loaded['dlac\\gear\\jobgate'];
     check('PW0 prestigewatch loads headless', type(pw), 'table');
 
@@ -7123,6 +7152,31 @@ end)();
     check('AV10 whereText sorted with counts', oc.whereText({ Id = 2 }), 'C1, C4 x2');
     package.loaded['dlac\\gear\\gearimport'] = saved;
     check('AV11 whereText unowned empty', oc.whereText({ Id = 99 }), '');
+
+    -- The VAULTED tier (Gear Vault slice 1 + Henrik's 2026-08-26 colour
+    -- ruling): only-in-the-vault answers 'vaulted' and outranks 'stored';
+    -- a copy in any REAL container keeps the duller 'stored' claim.
+    oc._splitOverride = {
+        avail = {},
+        total = { [5] = 1, [6] = 2 },
+        where = {
+            [5] = { [99] = 1 },              -- vault only (VAULT_CID fallback = 99)
+            [6] = { [1] = 1, [99] = 1 },     -- Mog Safe AND vault: mixed
+        },
+    };
+    package.loaded['dlac\\gear\\gearimport'] = { VAULT_CID = 99, containerName = function(cid) return 'C' .. cid; end };
+    check('AV20 vault-only -> vaulted',        oc.verdict({ Id = 5 }, true), 'vaulted');
+    check('AV21 vaulted beats locked too',     oc.verdict({ Id = 5 }, false), 'vaulted');
+    check('AV22 mixed homes stay stored',      oc.verdict({ Id = 6 }, true), 'stored');
+    check('AV23 vaulted is still isStored',    oc.isStored({ Id = 5 }), true);
+    check('AV24 unowned is never vaulted',     oc.isVaulted({ Id = 99 }), false);
+    package.loaded['dlac\\gear\\gearimport'] = saved;
+    oc._splitOverride = {
+        avail = { [1] = 1, [3] = 2 },
+        total = { [1] = 1, [2] = 1, [3] = 2 },
+        where = { [2] = { [1] = 1, [4] = 2 } },
+    };
+    oc.resetCache();
 
     -- the safe fallback (documented): an empty scan hides NOTHING -- availability
     -- is colour, ownership gates visibility, and no data means no gating
@@ -11113,7 +11167,7 @@ end)();
 --     Shapes verified against the server source 2026-07-17 (design Appendix C).
 -- ---------------------------------------------------------------------------
 (function()
-    local gsD = dofile('data/gearsets.lua');
+    local gsD = dofile('servers/cexi/data/gearsets.lua');
     local nSets, nFlat, nTiered = 0, 0, 0;
     local census = {};
     local tierKeysOk, piecesOk = true, true;
@@ -11145,7 +11199,7 @@ end)();
     check('GD9 [43] alternate-piece shape (9 pieces, min2/max2)',
         s43 ~= nil and (#s43.pieces .. '/' .. s43.min .. '/' .. s43.max), '9/2/2');
 
-    local lsD = dofile('data/latentstats.lua');
+    local lsD = dofile('servers/cexi/data/latentstats.lua');
     local rows, items, levelLeak = 0, 0, false;
     for _, rr in pairs(lsD) do
         items = items + 1;
@@ -11287,7 +11341,7 @@ end)();
 
     -- the REAL shipped data end-to-end: worn Lava's + Kusha's (ids 15850/15851)
     local gfe2 = dofile('gear/geareffects.lua');
-    gfe2.configure({ gearsets = dofile('data/gearsets.lua') });
+    gfe2.configure({ gearsets = dofile('servers/cexi/data/gearsets.lua') });
     local worn = gfe2.comboStats({
         Ring1 = { Id = 15850, Name = "Lava's Ring",  Level = 30, Stats = {} },
         Ring2 = { Id = 15851, Name = "Kusha's Ring", Level = 30, Stats = {} },
@@ -11592,7 +11646,7 @@ end)();
 -- moves one of these numbers, re-derive from the C++ before touching the test.
 -- ---------------------------------------------------------------------------
 (function()
-    package.loaded['dlac\\data\\fishdb'] = dofile('data/fishdb.lua');
+    package.loaded['dlac\\data\\fishdb'] = dofile('servers/cexi/data/fishdb.lua');
     local fcalc = dofile('feature/fishcalc.lua');
     package.loaded['dlac\\feature\\fishcalc'] = fcalc;
 
@@ -11936,13 +11990,13 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
--- section GM: game-mode icon detection (feature/gamemode.lua)
+-- section GM: game-mode icon detection (servers/cexi/modules/gamemode/init.lua)
 -- Field truth 2026-07-18 Tavnazian Safehold (dlacprobe ICON dump): crystal
 -- players (UCW Mindie idx 1107, CW Skincrawler idx 1055) carry RenderFlags4
 -- 0x1000; Wings (Askar idx 1029) carries 0x4000; ACE (Tcb idx 1074) neither.
 -- ---------------------------------------------------------------------------
 (function()
-    local gamemode = dofile('feature/gamemode.lua');
+    local gamemode = dofile('servers/cexi/modules/gamemode/init.lua');
 
     AshitaCore = nil;
     check('GM1 headless get -> nil', gamemode.get(), nil);
@@ -12055,7 +12109,7 @@ end)();
 -- Max MP Boost -- the trait rides health.modmp (DISPLAY); health.maxmp = 714.
 -- ---------------------------------------------------------------------------
 (function()
-    local nmp = dofile('data/nativemp.lua');
+    local nmp = dofile('gear/nativemp.lua');
     local g = nmp.get;
 
     -- the field pin: race D 10+3*59+4*15=247, WHM C 12+4*59+4*15=308,
@@ -12120,7 +12174,7 @@ end)();
 -- 10/10 merits): maxmp 714 -> fires at MP <= 357; meritless 614 -> 307.
 -- ---------------------------------------------------------------------------
 (function()
-    local nmpM = package.loaded['dlac\\data\\nativemp'];   -- THE instance dispatch captured
+    local nmpM = package.loaded['dlac\\gear\\nativemp'];   -- THE instance dispatch captured
     local rv = dispatchM._resolveVirtual;
     local ctx75 = { player = { MainJobSync = 75 } };
 
@@ -12321,7 +12375,7 @@ end)();
 -- namespace and gearoptim's pricing/negation are pinned below (PM17+).
 -- ---------------------------------------------------------------------------
 (function()
-    local pm = dofile('data/petmods.lua');
+    local pm = dofile('servers/cexi/data/petmods.lua');
     check('PM0 petmods loads', type(pm), 'table');
     check('PM1 Drachen Brais wyvern HP% (the field case)',
         pm[14227] ~= nil and pm[14227].Wyvern ~= nil and pm[14227].Wyvern.HPP, 10);
@@ -12398,7 +12452,7 @@ end)();
         table.concat(ptypes.RangedAccuracy, ','), 'Automaton');
 
     -- statdefs speaks the namespace: derived label/section, canon keeps the prefix
-    local sd = dofile('data/statdefs.lua');
+    local sd = dofile('gear/statdefs.lua');
     check('PM19 Pet: label derives from the inner stat', sd.get('Pet:Haste').label, 'Pet: Haste');
     check('PM19a ...and lands in the Pet section', sd.get('Pet:Haste').section, 'Pet');
     check('PM19b inner aliases resolve through (MagicAttackBonus -> MAB)',
@@ -13728,7 +13782,7 @@ end)();
 --     that is slower or faster than anyone's guess.
 -- ---------------------------------------------------------------------------
 (function()
-    local gb = dofile('feature/giftbox.lua');
+    local gb = dofile('servers/cexi/modules/giftbox/giftbox.lua');
     local savedAshita = AshitaCore;
 
     -- The REGRESSION. These four strings are what the item table says (ids
@@ -14346,7 +14400,7 @@ end)();
     -- reimplemented with a MULTI-category shared counts cache + batch withdraw +
     -- search + throttle; every future E-Box feature consumes this, never a second
     -- speaker. Injected clock; the pk/msgAt helpers above build synthetic packets.
-    local ec = dofile('feature/eboxclient.lua');
+    local ec = dofile('servers/cexi/modules/ebox/eboxclient.lua');
     ec._now = function() return 5000; end
 
     check('EBC1 clamp: none in box -> 0', ec._clampQty(99, 0), 0);
@@ -14774,7 +14828,7 @@ end)();
     -- AFTER its use compiles to a nil GLOBAL read, silently. M.rescan uses the
     -- entwatch handle, so the require must come first -- it did not, and the box
     -- re-sweep half of Rescan had never run.
-    local ecFh = io.open('feature/eboxclient.lua', 'r');
+    local ecFh = io.open('servers/cexi/modules/ebox/eboxclient.lua', 'r');
     local ecSrc = ecFh:read('*a'); ecFh:close();
     check('EBC22 entwatch is required BEFORE M.rescan reaches for it',
         (ecSrc:find('local _ewok, _ew = pcall%(require') or math.huge)
@@ -14831,7 +14885,7 @@ end)();
 
     -- EBT. eboxtrace -- the readout itself. Pure over a stand-in client, so the
     -- shape of what Henrik reads in the field is pinned without a game.
-    local et = dofile('feature/eboxtrace.lua');
+    local et = dofile('servers/cexi/modules/ebox/eboxtrace.lua');
     check('EBT1 ages read as time, not float noise',
         et._dur(0.4) .. '/' .. et._dur(12.34) .. '/' .. et._dur(124) .. '/' .. et._dur(3725),
         '0.4s/12.3s/2m04s/1h02m');
@@ -14892,7 +14946,7 @@ end)();
     -- RS. restockwatch -- E-Box Restock config + the two PURE cores (ADR 0016;
     -- docs/design/ebox-restock.md). No packets/engine: the union+override and the
     -- slot-safety planner are arithmetic, so the panel and the nudge share ONE answer.
-    local rs = dofile('feature/restockwatch.lua');
+    local rs = dofile('servers/cexi/modules/ebox/restockwatch.lua');
 
     -- _fromTable defaults: settings default TRUE; only an explicit false turns off
     local rsd = rs._fromTable(nil);
@@ -15038,7 +15092,7 @@ end)();
         #rs.homeStockNeed(rsYEnt, nil), 0);
     check('RS9h the bag split itself: Satchel/Sack/Case are carried, never "home"',
         (function()
-            local rsui = dofile('ui/restockui.lua');
+            local rsui = dofile('servers/cexi/modules/ebox/restockui.lua');
             local home = {}; for _, b in ipairs(rsui._HOME_BAGS) do home[b] = true; end
             for _, b in ipairs(rsui._FIELD_BAGS) do
                 if home[b] then return 'bag ' .. tostring(b) .. ' is in both lists'; end
@@ -15062,7 +15116,7 @@ end)();
     -- server defines (109): the old glob missed CLUSTERS (`!box cluster`, the
     -- shape a crafter hits first) and TOOLBAGS (ninjutsu tools, in the
     -- restocker's staple set), plus card cases and stone pouches.
-    local ac = dofile('data/itembundles.lua');
+    local ac = dofile('servers/cexi/data/itembundles.lua');
     local acN = 0; for _ in pairs(ac) do acN = acN + 1; end
     check('AC1 the generated pairing table loads with rows', acN > 100, true);
     check('AC1b clusters: `!box cluster` returns one Wind Cluster worth 12 crystal',
@@ -15104,7 +15158,7 @@ end)();
     -- ...and the arithmetic the panel and the nudge share. Containers count
     -- toward "do I have enough", never toward "is it in my Inventory" -- you
     -- cannot shoot a quiver, so the yellow icon must not treat one as ammo.
-    local rui = dofile('ui/restockui.lua');
+    local rui = dofile('servers/cexi/modules/ebox/restockui.lua');
     check('AC6 stock = loose + what the containers hold',
         rui._stockOf({ [18150] = 12 }, { [18150] = { qty = 198, n = 2 } }, 18150), 210);
     check('AC6b no containers -> just the loose count',
@@ -17141,7 +17195,7 @@ end)();
     check('DC36 empty pool no items', #empty.items, 0);
 
     -- ---- digdata shape (the shipped table the guide trusts) ----
-    dc._setDb(dofile('data/digdata.lua'));
+    dc._setDb(dofile('servers/cexi/data/digdata.lua'));
     local db = dc.db();
     check('DC37 digdata loads', db ~= nil, true);
     check('DC38 rank ladder is 0..10', db.ranks and #db.ranks, 10);   -- [0]..[10] -> #=10
@@ -17469,7 +17523,7 @@ end)();
 (function()
     local dc = dofile('feature/digcalc.lua');
     package.loaded['dlac\\feature\\digcalc'] = dc;
-    dc._setDb(dofile('data/digdata.lua'));
+    dc._setDb(dofile('servers/cexi/data/digdata.lua'));
 
     -- ---- zones(): the sorted { id, n } zone-picker source ----
     local zl = dc.zones();
@@ -17569,7 +17623,7 @@ end)();
 (function()
     local dc = dofile('feature/digcalc.lua');
     package.loaded['dlac\\feature\\digcalc'] = dc;
-    dc._setDb(dofile('data/digdata.lua'));
+    dc._setDb(dofile('servers/cexi/data/digdata.lua'));
 
     -- ---- itemIndex(): the searchable diggable-item index ----
     local idx = dc.itemIndex();
@@ -17686,7 +17740,7 @@ end)();
     dc._setDb(false);
     check('BI25 absent db -> itemIndex empty', #dc.itemIndex(), 0);
     check('BI26 absent db -> itemSources nil', dc.itemSources(plate, 8, 1, {}), nil);
-    dc._setDb(dofile('data/digdata.lua'));
+    dc._setDb(dofile('servers/cexi/data/digdata.lua'));
     check('BI27 nil entry -> itemSources nil', dc.itemSources(nil, 8, 1, {}), nil);
     dc._setDb(nil);   -- restore lazy load
 end)();
@@ -18143,8 +18197,16 @@ end)();
             end
         end
     end
-    check('SET56 three quick rows, restock above the Hobby bar',
-        table.concat(qkeys, ','), 'restock,hobbybar,lockstyle');
+    check('SET56 two static quick rows -- pack rows are registrations now (ADR 0035)',
+        table.concat(qkeys, ','), 'hobbybar,lockstyle');
+    -- The server-pack quick-row loop keeps the E-Box row's old seat: ABOVE the
+    -- Hobby bar (Henrik, 2026-07-30 -- the ruling outlives the extraction).
+    check('SET56b the pack-row loop rides above the Hobby bar', (function()
+        local src = tostring(gsrc or '');
+        local a = src:find('extraHelpers()', 1, true);
+        local b = src:find("renderQuickWindowRow('hobbybar'", 1, true);
+        return a ~= nil and b ~= nil and a < b;
+    end)(), true);
     local known, badKey, badArt = {}, {}, {};
     for _, k in ipairs(mn._menuRows(true)) do known[k] = true; end
     for _, r in ipairs(qrows) do
@@ -18156,12 +18218,19 @@ end)();
     end
     check('SET57 every menu-routed quick row is a real Menu row key', table.concat(badKey, ','), '');
     check('SET58 every quick row has its art on disk',    table.concat(badArt, ','), '');
-    -- The CW gate is that row's whole safety -- a non-Crystal-Warrior must never
-    -- see a row for content they cannot have (the same affirmative gate the Gear
-    -- Helpers row uses). It lives inside an imgui-only draw path this suite
-    -- cannot enter, so it is pinned on the source, anchored to the row it guards.
-    check('SET59 the restock row sits behind the CW gate',
-        tostring(gsrc or ''):match("gmode%.get%(%) == 'CW'.-renderQuickWindowRow%('restock'") ~= nil, true);
+    -- The want() gate is a pack row's whole safety -- a character must never
+    -- see a row for content they cannot have. Two pins now (ADR 0035): the
+    -- generic loop honors spec.want before rendering, and the CEXI ebox
+    -- module keeps its affirmative CW gate on the registered spec.
+    check('SET59 a pack quick row sits behind its want() gate',
+        tostring(gsrc or ''):match('spec%.want.-renderQuickWindowRow%(spec%.key') ~= nil, true);
+    check('SET59b the CEXI ebox row keeps the CW gate', (function()
+        local f = io.open('servers/cexi/modules/ebox/init.lua', 'r');
+        if f == nil then return false; end
+        local s = f:read('*a'); f:close();
+        return s:find('want = isCW', 1, true) ~= nil
+           and s:match("gm%.get%(%) == 'CW'") ~= nil;
+    end)(), true);
     -- SET60-62: the Teleports menu's position memory (Henrik, 2026-08-10). The
     -- popup body only runs under a live imgui, so the three facts are pinned on
     -- the source: a dragged menu is remembered (the uiflags consumer exists),
@@ -19719,7 +19788,7 @@ end)();
 (function()
     local SHIPPED = { 'dlac.lua','utils.lua','dispatch.lua','profiles.lua','chatfmt.lua','gear.lua',
         'feature/augments.lua','feature/check.lua','feature/chocowatch.lua','feature/craftwatch.lua',
-        'feature/debug.lua','feature/eboxclient.lua','feature/eboxtrace.lua','feature/engine.lua',
+        'feature/debug.lua','servers/cexi/modules/ebox/eboxclient.lua','servers/cexi/modules/ebox/eboxtrace.lua','feature/engine.lua',
         'feature/equipengine.lua','feature/fishwatch.lua','feature/helmwatch.lua','feature/lockstyle.lua',
         'feature/lockstyleapply.lua','feature/location.lua','feature/macrobook.lua','feature/meritwatch.lua',
         'feature/mpbands.lua','feature/nativedata.lua','feature/synthrun.lua','feature/useitem.lua',
@@ -19730,7 +19799,7 @@ end)();
         'lib/cmdqueue.lua','lib/safewrite.lua','lib/statefile.lua','lib/entwatch.lua',
         'ui/automationsui.lua','ui/chocoui.lua','ui/craftbar.lua','ui/equippedui.lua','ui/fishbar.lua',
         'ui/fishui.lua','ui/gearui.lua','ui/helmbar.lua','ui/menuui.lua','ui/priorityui.lua',
-        'ui/profilesmenu.lua','ui/restockui.lua','ui/setupui.lua','ui/triggersui.lua','ui/uihost.lua',
+        'ui/profilesmenu.lua','servers/cexi/modules/ebox/restockui.lua','ui/setupui.lua','ui/triggersui.lua','ui/uihost.lua',
         'ui/uistyle.lua','ui/itemicons.lua' };
     local ALLOW = {   -- Henrik's keep-list: read-only doors into the old tree
         ['profiles.lua'] = true,          -- charBase/lacRoot/legacyDataPresent/legacyExportsDir
@@ -24071,7 +24140,7 @@ end)();
     -- globbed (no io.popen: `dir` vs `ls` would split Windows from the WSL CI
     -- run); A NEW FILE THAT SENDS PACKETS MUST BE ADDED HERE.
     local SEND_FILES = { 'feature/equipengine.lua', 'feature/lockstyleapply.lua',
-                         'feature/craftwatch.lua', 'feature/eboxclient.lua',
+                         'feature/craftwatch.lua', 'servers/cexi/modules/ebox/eboxclient.lua',
                          'feature/helmwatch.lua' };
     local sites, bare = 0, {};
     for _, path in ipairs(SEND_FILES) do
@@ -25025,7 +25094,7 @@ end)();
     local out = {};
     local function sink(s) out[#out + 1] = tostring(s); end
     package.loaded['dlac\\chatfmt'] = { msg = sink, good = sink, warn = sink, err = sink };
-    package.loaded['dlac\\data\\nmdata'] = dofile('data/nmdata.lua');
+    package.loaded['dlac\\data\\nmdata'] = dofile('servers/cexi/data/nmdata.lua');
 
     local handler = nil;
     local savedReg = ashita.events.register;
@@ -25570,8 +25639,8 @@ end)();
 --   is chosen so that a wrong reading produces a DIFFERENT string.
 -- ---------------------------------------------------------------------------
 (function()
-    package.loaded['dlac\\data\\nmdrops'] = dofile('data/nmdrops.lua');
-    local NMDATA = package.loaded['dlac\\data\\nmdata'] or dofile('data/nmdata.lua');
+    package.loaded['dlac\\data\\nmdrops'] = dofile('servers/cexi/data/nmdrops.lua');
+    local NMDATA = package.loaded['dlac\\data\\nmdata'] or dofile('servers/cexi/data/nmdata.lua');
 
     -- The client's item resources, with every ask COUNTED. The resolve has to
     -- be lazy -- a name table built at load runs before the player is logged in
@@ -26233,8 +26302,8 @@ end)();
     local savedLook  = package.loaded['dlac\\feature\\nmlookup'];
     local savedDrops = package.loaded['dlac\\data\\nmdrops'];
     package.loaded['dlac\\data\\nmdata']  = package.loaded['dlac\\data\\nmdata']
-        or dofile('data/nmdata.lua');
-    package.loaded['dlac\\data\\nmdrops'] = dofile('data/nmdrops.lua');
+        or dofile('servers/cexi/data/nmdata.lua');
+    package.loaded['dlac\\data\\nmdrops'] = dofile('servers/cexi/data/nmdrops.lua');
 
     -- A DELIBERATELY TINY name universe over the REAL drop table. The client
     -- only ever answers for these five, so `namedItems` holds five entries and
@@ -26982,6 +27051,885 @@ end)();
     check('MB4c an out-of-range override is dropped', backd.WAR.subs.NIN, nil);
     check('MB4d ...and a non-abbr sub with it',    backd.WAR.subs['x y'], nil);
     check('MB4e the good override survives',       backd.WAR.subs.SAM, 4);
+end)();
+
+-- SPK. The server seam (gear/serverpack.lua, ADR 0035): discovery off the
+--      tracked index, the one-pack auto-select, the several-packs flag-file
+--      choice, the virtual dlac\data\ mount, and the neutral no-pack
+--      defaults (caps FALSE, consts nil, maxLevel 75). All seams injected:
+--      no filesystem, no Ashita.
+(function()
+    local sp = dofile('gear/serverpack.lua');
+    check('SPK0 serverpack loads headless', type(sp), 'table');
+
+    local warns = {};
+    local fixtures = {};
+    local configured = nil;
+    -- one arming helper: every scenario resets state then re-installs seams
+    -- (the _reset clears nothing but state; seams survive, but explicit
+    -- re-arming keeps each scenario readable on its own).
+    local function arm()
+        sp._reset();
+        warns = {};
+        sp._emit = function(m) warns[#warns + 1] = tostring(m); end;
+        sp._require = function(name)
+            local v = fixtures[name];
+            if v == nil then error('module not found: ' .. tostring(name)); end
+            return v;
+        end;
+        sp._configLoader = function() return configured; end;
+    end
+
+    -- no index at all -> NEUTRAL
+    fixtures = {}; configured = nil; arm();
+    sp.init();
+    check('SPK1 no packs -> no active id',       sp.active(), nil);
+    check('SPK2 no packs -> maxLevel default',   sp.maxLevel(), 75);
+    check('SPK3 no packs -> every cap is false', sp.cap('ebox'), false);
+    check('SPK4 no packs -> consts are nil',     sp.const('catalogMin'), nil);
+    check('SPK5 no packs -> data is nil',        sp.data('spkzones'), nil);
+
+    -- one pack -> auto-active, config not needed, data mounts
+    local MAN_A = { fmt = 1, id = 'aaa', name = 'Server A', maxLevel = 80,
+                    caps = { ebox = true }, const = { catalogMin = 42 },
+                    files = { 'spkzones' } };
+    fixtures = {
+        ['dlac\\servers\\index'] = { 'aaa' },
+        ['dlac\\servers\\aaa\\manifest'] = MAN_A,
+        ['dlac\\servers\\aaa\\data\\spkzones'] = { [1] = { n = 'Test Zone' } },
+    };
+    configured = nil; arm();
+    sp.init();
+    check('SPK6 one pack -> active',            sp.active(), 'aaa');
+    check('SPK7 ...with its name',              sp.name(), 'Server A');
+    check('SPK8 ...its maxLevel',               sp.maxLevel(), 80);
+    check('SPK9 ...its caps',                   sp.cap('ebox'), true);
+    check('SPK10 an undeclared cap is false',   sp.cap('prestige'), false);
+    check('SPK11 ...its consts',                sp.const('catalogMin'), 42);
+    check('SPK12 an uncarried const is nil',    sp.const('nope'), nil);
+    check('SPK13 the virtual name resolves through the pack',
+          (require('dlac\\data\\spkzones'))[1].n, 'Test Zone');
+    check('SPK14 sp.data speaks the same door',  sp.data('spkzones')[1].n, 'Test Zone');
+    check('SPK15 an unlisted file does not resolve', sp.data('spkother'), nil);
+    check('SPK16 one pack is silent',            #warns, 0);
+
+    -- several packs, no choice -> the index's FIRST, loudly
+    local MAN_B = { fmt = 1, id = 'bbb', name = 'Server B', maxLevel = 99, files = {} };
+    fixtures['dlac\\servers\\index'] = { 'aaa', 'bbb' };
+    fixtures['dlac\\servers\\bbb\\manifest'] = MAN_B;
+    configured = nil; arm();
+    sp.init();
+    check('SPK17 several packs, no choice -> first wins', sp.active(), 'aaa');
+    check('SPK18 ...and says so',                #warns >= 1 and warns[1]:find('several server packs', 1, true) ~= nil, true);
+    check('SPK19 installed() lists both',        #sp.installed(), 2);
+
+    -- several packs, the flag file chooses
+    configured = { server = 'bbb' }; arm();
+    sp.init();
+    check('SPK20 the flag file chooses',         sp.active(), 'bbb');
+    check('SPK21 ...quietly',                    #warns, 0);
+    check('SPK22 ...and its manifest answers',   sp.maxLevel(), 99);
+
+    -- the flag names a pack that is not installed -> fall back, loudly
+    configured = { server = 'zzz' }; arm();
+    sp.init();
+    check('SPK23 a missing configured pack falls back', sp.active(), 'aaa');
+    check('SPK24 ...and names the ghost',        warns[1] ~= nil and warns[1]:find('zzz', 1, true) ~= nil, true);
+
+    -- a broken manifest is not a pack
+    fixtures['dlac\\servers\\index'] = { 'broken', 'bbb' };
+    configured = nil; arm();
+    sp.init();
+    check('SPK25 a broken manifest is skipped',  sp.active(), 'bbb');
+
+    -- a harness-preloaded virtual name is never shadowed by a mount
+    package.loaded['dlac\\data\\spkheld'] = { held = true };
+    fixtures = {
+        ['dlac\\servers\\index'] = { 'aaa' },
+        ['dlac\\servers\\aaa\\manifest'] = { id = 'aaa', files = { 'spkheld' } },
+        ['dlac\\servers\\aaa\\data\\spkheld'] = { held = false },
+    };
+    configured = nil; arm();
+    sp.init();
+    check('SPK26 package.loaded wins over the mount', require('dlac\\data\\spkheld').held, true);
+    package.loaded['dlac\\data\\spkheld'] = nil;
+
+    -- the service registry (a pack module's live providers)
+    sp._reset();
+    check('SPK27 an unregistered service is nil', sp.service('gamemode'), nil);
+    sp.provide('gamemode', { get = function() return 'CW'; end });
+    check('SPK28 provide -> service answers',     sp.service('gamemode').get(), 'CW');
+    sp._reset();
+    check('SPK29 _reset clears services',         sp.service('gamemode'), nil);
+
+    -- features(): the pack's hand-maintained surface defaults (2026-08-26).
+    -- A pack that ships the file answers it; one that does not answers nil;
+    -- and pre-init the answer is nil WITHOUT latching (hard rule 11's shape).
+    fixtures = {
+        ['dlac\\servers\\index'] = { 'aaa' },
+        ['dlac\\servers\\aaa\\manifest'] = { id = 'aaa', files = {} },
+        ['dlac\\servers\\aaa\\features'] = { tabs = { gearhelpers = false } },
+    };
+    configured = nil; arm();
+    check('SPK30 features() pre-init is nil',     sp.features(), nil);
+    sp.init();
+    check('SPK31 ...and does not latch: post-init it answers',
+          sp.features() ~= nil and sp.features().tabs.gearhelpers, false);
+    check('SPK32 ...memoized to one table',       sp.features(), sp.features());
+    fixtures['dlac\\servers\\aaa\\features'] = nil;
+    configured = nil; arm();
+    sp.init();
+    check('SPK33 a pack without the file -> nil', sp.features(), nil);
+end)();
+
+-- ---------------------------------------------------------------------------
+-- GVD/GVR. Gear Vault slice 3: the DERIVED layout (derive.lua, pure) and the
+--      additions-push engine (reconcile.lua) driven against the vaultclient
+--      harness -- the GV1/GV3 laws: every set and trigger payload feeds it,
+--      pairs derive count 2, dlac: virtuals and augment-pinned records stay
+--      out, the engine only ever ADDS, and a NOT_IN_CITY refusal cancels the
+--      run and re-arms on zone-in.
+-- ---------------------------------------------------------------------------
+(function()
+    local dv = dofile('servers/ascensionxi/modules/gearvault/derive.lua');
+    check('GVD0 derive loads headless', type(dv), 'table');
+
+    local RES = {
+        ['Sword A'] = { id = 10 }, ['Ring X'] = { id = 20 },
+        ['Hat B'] = { id = 30 }, ['Obi C'] = { id = 40 },
+    };
+    local function resolve(name)
+        local r = RES[name];
+        if r == nil then return nil; end
+        return { id = r.id, aug = r.aug == true };
+    end
+
+    -- THE COMMITTED SHAPE (the 2026-08-26 Neckchopper round: entries on disk
+    -- are `gear.Main.GreatAxe.X` -- RECORD TABLES, not strings; a walker that
+    -- speaks only strings derives NOTHING from every real set). The fixture
+    -- mixes all three ref shapes: records, plain names, and a dw wrapper.
+    local function REC(id, name, augKey)
+        return { Id = id, Name = name, AugKey = augKey, Level = 1 };
+    end
+    local sets = {
+        Dynamic = {
+            Melee = {
+                Main  = { REC(10, 'Sword A') },
+                Ring1 = { REC(20, 'Ring X') },
+                Ring2 = { REC(20, 'Ring X'), 'Unknown Thing' },
+                Head  = { 'dlac:AutoStaff', REC(30, 'Hat B'), { REC(31, 'DW Hat'), dw = true } },
+            },
+        },
+        Idle = { Head = REC(30, 'Hat B'), Ring1 = 'Ring X' },
+    };
+    local triggers = {
+        Midcast = {
+            { equip = { Waist = 'Obi C' }, cases = { { equip = { Head = 'Hat B' } } } },
+            { set = 'Melee' },                                 -- contributes nothing of its own
+            { equip = { Body = REC(50, 'Aug Piece', 'SIG1') } },   -- augment-pinned: skipped
+        },
+    };
+
+    local d = dv.derive(sets, triggers, resolve);
+    local got = {};
+    for _, it in ipairs(d.items) do got[it.itemId] = it.count; end
+    check('GVD1 a RECORD rung derives by its own id',  got[10], 1);
+    check('GVD2 a PAIR derives count 2',               got[20], 2);
+    check('GVD3 record + string + case merge to one',  got[30], 1);
+    check('GVD4 a trigger inline payload derives',     got[40], 1);
+    check('GVD4a a dw WRAPPER derives its ref',        got[31], 1);
+    check('GVD5 dlac: virtuals + aug records leak nothing', (function()
+        for _, it in ipairs(d.items) do if it.itemId == 50 then return 'aug leaked'; end end
+        return #d.items;
+    end)(), 5);
+    check('GVD6 augment-pinned records are counted, not pushed', d.skippedAug, 1);
+    check('GVD7 unresolved names are reported', d.unresolved[1], 'Unknown Thing');
+    check('GVD8 the hash is stable', dv.derive(sets, triggers, resolve).hash, d.hash);
+
+    -- ---- GVR: the engine against the wire harness ----
+    local vc = dofile('servers/ascensionxi/modules/gearvault/vaultclient.lua');
+    local rc = dofile('servers/ascensionxi/modules/gearvault/reconcile.lua');
+    local T, sent = 0, {};
+    local msgs = {};
+    vc._clock = function() return T; end;
+    vc._send  = function(p) sent[#sent + 1] = p; end;
+    vc._say   = function() end;
+    vc._onFresh = nil;
+
+    local function s2c(op, seq, status, flags, payload)
+        return string.char(0, 0, 0, 0, op, seq, status, flags) .. (payload or '');
+    end
+    local function reply(status, flags, payload)
+        local last = sent[#sent];
+        return vc.parseFrame(s2c(last[5], last[6], status, flags, payload));
+    end
+    local hp = vc._wu16(1) .. vc._wu16(0) .. vc._wu32(0) .. string.char(15, 124, 62, 0);
+    local function layoutEntry(ord, item, count)
+        return vc._wu16(ord) .. vc._wu16(item) .. vc._wu16(count) .. string.char(0, 0) .. vc.ZERO24;
+    end
+
+    rc.configure({
+        vc = vc, derive = dv, clock = function() return T; end,
+        say = function(m) msgs[#msgs + 1] = m; end,
+        mainJob = function() return 1; end,
+        browsing = function() return false; end,
+        setsRoot = function() return sets; end,
+        triggers = function() return triggers; end,
+        resolve = resolve,
+    });
+
+    -- boot: fresh (empty) mirror
+    vc._reset(); rc._reset(); T, sent, msgs = 0, {}, {};
+    vc.pump(true); T = 3; vc.pump(true);
+    vc.onFrame(reply(0, 0, hp));
+    vc.onFrame(reply(0, 0, vc._wu16(0) .. vc._wu16(0)));
+    vc.noteJob(1);
+    check('GVR1 mirror fresh at boot', vc.state(), 'fresh');
+
+    -- beat 1: no fresh layout -> the engine asks for it
+    T = T + rc.BEAT + 1;
+    check('GVR2 first beat asks for the layout', rc.tick(), 'asked-layout');
+    T = T + 1; vc.pump(true);
+    vc.onFrame(reply(0, 0, vc._wu16(0) .. vc._wu16(0)));   -- empty layout
+    check('GVR3 layout fresh for the job', vc.layoutCache.fresh and vc.layoutCache.job, 1);
+
+    -- beat 2: derivation pushes the four adds
+    T = T + rc.BEAT + 1;
+    local r = rc.tick();
+    check('GVR4 the engine pushes the derived adds', r, 'pushed:5');
+    local okAcks = 0;
+    for _ = 1, 5 do
+        T = T + 1; vc.pump(true);
+        check('GVR5.' .. okAcks .. ' a LAYOUT_SET frame is on the wire', sent[#sent][5], vc.op.LAYOUT_SET);
+        vc.onFrame(reply(0, 0, vc._wu16(0) .. vc._wu16(0)));   -- code OK
+        okAcks = okAcks + 1;
+    end
+    check('GVR6 all five acked', okAcks, 5);
+    check('GVR7 success re-asks the layout', vc._st().layoutWant ~= nil, true);
+    check('GVR8 ...and says so once', (function()
+        for _, m in ipairs(msgs) do if m:find('+5', 1, true) then return true; end end
+        return false;
+    end)(), true);
+
+    -- the pair pushed count 2 (find the id-20 frame: count bytes @ offset 4-5 of payload)
+    check('GVR9 the pair rode with count 2', (function()
+        for _, p in ipairs(sent) do
+            if p[5] == vc.op.LAYOUT_SET then
+                local item = (p[11] or 0) + (p[12] or 0) * 256;
+                local cnt  = (p[13] or 0) + (p[14] or 0) * 256;
+                if item == 20 then return cnt; end
+            end
+        end
+        return 'no frame';
+    end)(), 2);
+
+    -- refresh the layout with the four entries -> the next beat is clean
+    T = T + 1; vc.pump(true);
+    vc.onFrame(reply(0, 0, vc._wu16(5) .. vc._wu16(0)
+        .. layoutEntry(1, 10, 1) .. layoutEntry(2, 20, 2)
+        .. layoutEntry(3, 30, 1) .. layoutEntry(4, 40, 1)
+        .. layoutEntry(5, 31, 1)));
+    T = T + rc.BEAT + 1;
+    check('GVR10 a satisfied derivation is clean', rc.tick(), 'clean');
+
+    -- NOT_IN_CITY: the first refusal cancels the run and arms the badge
+    vc._reset(); rc._reset(); T, sent, msgs = 100, {}, {};
+    vc.pump(true); T = 103; vc.pump(true);
+    vc.onFrame(reply(0, 0, hp));
+    vc.onFrame(reply(0, 0, vc._wu16(0) .. vc._wu16(0)));
+    vc.noteJob(1);
+    T = T + rc.BEAT + 1; rc.tick();
+    T = T + 1; vc.pump(true);
+    vc.onFrame(reply(0, 0, vc._wu16(0) .. vc._wu16(0)));   -- empty layout
+    T = T + rc.BEAT + 1;
+    check('GVR11 the field beat pushes', rc.tick(), 'pushed:5');
+    T = T + 1; vc.pump(true);
+    vc.onFrame(reply(0, 0, vc._wu16(12) .. vc._wu16(0)));  -- NOT_IN_CITY
+    check('GVR12 the refusal cancels the queued siblings', #(vc._st().layoutSetQ or {}), 0);
+    check('GVR13 ...arms the city badge', rc.cityBlocked(), true);
+    T = T + rc.BEAT + 1;
+    check('GVR14 the same derivation does not re-spam', rc.tick(), 'clean');
+    rc.zoneArmed();
+    T = T + rc.BEAT + 1;
+    check('GVR15 a zone-in re-arms the push', rc.tick(), 'pushed:5');
+
+    -- ---- slice 4: usage stamps, settings, ranking, shelf pressure ----
+    local ug = dofile('servers/ascensionxi/modules/gearvault/usage.lua');
+    check('USG0 usage loads headless', type(ug), 'table');
+    local UT = 1000;
+    ug._clock = function() return UT; end;
+    ug._reset();
+
+    check('USG1 keyOf speaks the identity vocabulary',
+          ug.keyOf(16714, string.rep('\0', 24)), '16714:' .. string.rep('0', 48));
+    ug.seed({ 'a:00', 'b:00' });
+    UT = 2000;
+    ug.stamp({ 'a:00' });
+    check('USG2 a stamp moves, a seed holds', ug.lastUsed('a:00') == 2000 and ug.lastUsed('b:00') == 1000, true);
+    ug.seed({ 'a:00' });
+    check('USG3 a seed never freshens a real stamp', ug.lastUsed('a:00'), 2000);
+    check('USG4 settings default auto/ask',
+          ug.settings().additions == 'auto' and ug.settings().removals == 'ask', true);
+    check('USG5 a junk setting value is refused', ug.setSetting('removals', 'yolo'), false);
+    ug.setSetting('removals', 'auto');
+    check('USG6 a real value lands', ug.settings().removals, 'auto');
+    check('USG7 the file round-trips', (function()
+        local chunk = (loadstring or load)(ug._serialize());
+        if chunk == nil then return 'did not parse'; end
+        local t = chunk();
+        return t.settings.removals == 'auto' and t.stamps['a:00'] == 2000;
+    end)(), true);
+
+    -- ranking: unpinned only auto-rank; unassigned first; oldest first
+    ug._reset();
+    ug.seed({ ug.keyOf(1, vc.ZERO24), ug.keyOf(2, vc.ZERO24), ug.keyOf(3, vc.ZERO24) });
+    UT = 5000;
+    ug.stamp({ ug.keyOf(2, vc.ZERO24) });
+    local ranked = ug.rankEvictions({
+        { itemId = 1, identity = vc.ZERO24, count = 1, pinned = false, name = 'Old Unassigned' },
+        { itemId = 2, identity = vc.ZERO24, count = 1, pinned = false, name = 'Fresh Unassigned' },
+        { itemId = 3, identity = vc.ZERO24, count = 1, pinned = false, name = 'Old Assigned' },
+        { itemId = 4, identity = vc.ZERO24, count = 1, pinned = true,  name = 'Pinned Thing' },
+    }, { [3] = true });
+    check('USG8 unassigned-oldest ranks first', ranked.unpinned[1].itemId, 1);
+    check('USG9 fresh unassigned before assigned', ranked.unpinned[2].itemId, 2);
+    check('USG10 assigned ranks last', ranked.unpinned[3].itemId, 3);
+    check('USG11 pinned never auto-ranks', #ranked.pinned == 1 and ranked.pinned[1].itemId, 4);
+    check('USG11b a WORN id ranks in NEITHER list (the equipped-piece desync)', (function()
+        local rk = ug.rankEvictions({
+            { itemId = 1, identity = vc.ZERO24, count = 1, pinned = false, name = 'Worn Thing' },
+            { itemId = 2, identity = vc.ZERO24, count = 1, pinned = true,  name = 'Worn Pinned' },
+            { itemId = 3, identity = vc.ZERO24, count = 1, pinned = false, name = 'Free Thing' },
+        }, {}, { [1] = true, [2] = true });
+        return #rk.unpinned == 1 and rk.unpinned[1].itemId == 3 and #rk.pinned == 0;
+    end)(), true);
+
+    -- additions 'off' gates the push
+    vc._reset(); rc._reset(); T, sent, msgs = 1000, {}, {};
+    ug._reset();
+    local CAP = { n = 640 };
+    rc.configure({
+        vc = vc, derive = dv, clock = function() return T; end,
+        say = function(m) msgs[#msgs + 1] = m; end,
+        mainJob = function() return 1; end,
+        browsing = function() return false; end,
+        setsRoot = function() return sets; end,
+        triggers = function() return triggers; end,
+        resolve = resolve,
+        usage = ug, settings = ug.settings,
+        capacity = function() return CAP.n; end,
+    });
+    vc.pump(true); T = 1003; vc.pump(true);
+    vc.onFrame(reply(0, 0, hp));
+    vc.onFrame(reply(0, 0, vc._wu16(0) .. vc._wu16(0)));
+    vc.noteJob(1);
+    T = T + rc.BEAT + 1; rc.tick();
+    T = T + 1; vc.pump(true);
+    vc.onFrame(reply(0, 0, vc._wu16(0) .. vc._wu16(0)));   -- empty layout
+    ug.setSetting('additions', 'off');
+    T = T + rc.BEAT + 1;
+    check('GVR16 additions Off -> the engine pushes nothing', rc.tick(), 'clean');
+    check('GVR17 ...but the derivation still feeds the wanted tags', rc.derivedIds()[10], true);
+
+    -- shelf pressure, 'ask': only what FITS is pushed, the rest waits in
+    -- the verdict, nothing is removed
+    ug.setSetting('additions', 'auto');
+    CAP.n = 3;   -- the six derived units cannot fit a 3-slot shelf
+    rc.zoneArmed(); rc._st().lastPushKey = nil;
+    T = T + rc.BEAT + 1;
+    local r16 = rc.tick();
+    check('GVR18 pressure computed under ask (the rest waits)',
+          rc.pressure() ~= nil and (rc.pressure().waiting or 0) > 0, true);
+    check('GVR19 ...and only the fitting adds pushed', r16, 'pushed:2');
+    check('GVR20 ...with nothing auto-removed', (function()
+        for _, p in ipairs(sent) do
+            if p[5] == vc.op.LAYOUT_SET and p[10] == 1 then return 'a remove went out'; end
+        end
+        return true;
+    end)(), true);
+
+    -- shelf pressure, 'auto': the LAYOUT ITSELF outgrows the shelf ->
+    -- unpinned LRU evictions ride the wire
+    for _ = 1, 2 do T = T + 1; vc.pump(true); vc.onFrame(reply(0, 0, vc._wu16(0) .. vc._wu16(0))); end
+    T = T + 1; vc.pump(true);
+    vc.onFrame(reply(0, 0, vc._wu16(5) .. vc._wu16(0)
+        .. layoutEntry(1, 10, 1) .. layoutEntry(2, 20, 2)
+        .. layoutEntry(3, 30, 1) .. layoutEntry(4, 40, 1)
+        .. layoutEntry(5, 31, 1)));                        -- 6 units on a 3 shelf
+    ug.setSetting('removals', 'auto');
+    rc._st().lastPushKey = nil;
+    T = T + rc.BEAT + 1; rc.tick();
+    check('GVR21 auto mode queued evictions', (function()
+        local n = 0;
+        for _, q in ipairs(vc._st().layoutSetQ or {}) do
+            if q.e.verb == vc.verb.REMOVE then n = n + 1; end
+        end
+        return n > 0;
+    end)(), true);
+    check('GVR22 ...and said so once', (function()
+        for _, m in ipairs(msgs) do if m:find('evicted', 1, true) then return true; end end
+        return false;
+    end)(), true);
+
+    -- a capacity change ALONE surfaces pressure: no derivation change, no
+    -- layout change, no lastPushKey reset (the /dl vault cap field bug --
+    -- pressure must never hide behind the derivation-unchanged early-out)
+    vc._reset(); rc._reset(); ug._reset(); T, sent, msgs = 2000, {}, {};
+    ug.setSetting('removals', 'ask');
+    CAP.n = 640;
+    vc.pump(true); T = 2003; vc.pump(true);
+    vc.onFrame(reply(0, 0, hp));
+    vc.onFrame(reply(0, 0, vc._wu16(0) .. vc._wu16(0)));
+    vc.noteJob(1);
+    T = T + rc.BEAT + 1; rc.tick();                        -- asks layout
+    T = T + 1; vc.pump(true);
+    vc.onFrame(reply(0, 0, vc._wu16(5) .. vc._wu16(0)
+        .. layoutEntry(1, 10, 1) .. layoutEntry(2, 20, 2)
+        .. layoutEntry(3, 30, 1) .. layoutEntry(4, 40, 1)
+        .. layoutEntry(5, 31, 1)));                        -- 6 units, roomy shelf
+    T = T + rc.BEAT + 1; rc.tick();
+    T = T + rc.BEAT + 1;
+    check('GVR23 roomy shelf: clean beat, no pressure',
+          rc.tick() == 'clean' and rc.pressure() == nil, true);
+    CAP.n = 3;                                             -- the cap override lands
+    T = T + rc.BEAT + 1;
+    check('GVR24 a capacity change ALONE surfaces pressure on the next beat',
+          rc.tick() == 'clean' and rc.pressure() ~= nil and rc.pressure().over == 3, true);
+
+    -- TOMBSTONES end the remove/re-add tug-of-war (Henrik's 2026-08-27
+    -- round: "after it removes, it auto adds them back")
+    ug._reset();
+    check('USG12 exclude/isExcluded', (function()
+        ug.exclude({ ug.keyOf(10, nil) });
+        return ug.isExcluded(ug.keyOf(10, nil));
+    end)(), true);
+    check('USG13 the tombstone round-trips the file', (function()
+        local t = ((loadstring or load)(ug._serialize()))();
+        return t.excluded[ug.keyOf(10, nil)];
+    end)(), true);
+    check('USG14 unexclude clears it', (function()
+        ug.unexclude(ug.keyOf(10, nil));
+        return ug.isExcluded(ug.keyOf(10, nil));
+    end)(), false);
+
+    vc._reset(); rc._reset(); ug._reset(); T, sent, msgs = 3000, {}, {};
+    CAP.n = 640;
+    vc.pump(true); T = 3003; vc.pump(true);
+    vc.onFrame(reply(0, 0, hp));
+    vc.onFrame(reply(0, 0, vc._wu16(0) .. vc._wu16(0)));
+    vc.noteJob(1);
+    T = T + rc.BEAT + 1; rc.tick();
+    T = T + 1; vc.pump(true);
+    vc.onFrame(reply(0, 0, vc._wu16(0) .. vc._wu16(0)));   -- empty layout
+    ug.exclude({ ug.keyOf(10, nil) });
+    T = T + rc.BEAT + 1;
+    check('GVR25 a tombstoned id is never re-added', rc.tick(), 'pushed:4');
+    -- ack the four adds so the run finishes (the engine idles while acks
+    -- are outstanding), and give it the refreshed layout
+    for _ = 1, 4 do T = T + 1; vc.pump(true); vc.onFrame(reply(0, 0, vc._wu16(0) .. vc._wu16(0))); end
+    T = T + 1; vc.pump(true);
+    vc.onFrame(reply(0, 0, vc._wu16(4) .. vc._wu16(0)
+        .. layoutEntry(1, 20, 2) .. layoutEntry(2, 30, 1)
+        .. layoutEntry(3, 40, 1) .. layoutEntry(4, 31, 1)));
+    ug.exclude({ ug.keyOf(999, nil) });                    -- no set wants 999
+    T = T + rc.BEAT + 1; rc.tick();
+    check('GVR26 an unwanted id\'s tombstone prunes itself',
+          ug.isExcluded(ug.keyOf(999, nil)), false);
+    check('GVR26b ...while the wanted one stays', ug.isExcluded(ug.keyOf(10, nil)), true);
+
+    -- CAPACITY-AWARE adds: nothing that cannot fit is ever sent (the
+    -- "dlac would keep trying to load the server needlessly" worry)
+    vc._reset(); rc._reset(); ug._reset(); T, sent, msgs = 4000, {}, {};
+    CAP.n = 2;                                             -- room for 2 units; the sets want 6
+    vc.pump(true); T = 4003; vc.pump(true);
+    vc.onFrame(reply(0, 0, hp));
+    vc.onFrame(reply(0, 0, vc._wu16(0) .. vc._wu16(0)));
+    vc.noteJob(1);
+    T = T + rc.BEAT + 1; rc.tick();
+    T = T + 1; vc.pump(true);
+    vc.onFrame(reply(0, 0, vc._wu16(0) .. vc._wu16(0)));   -- empty layout
+    T = T + rc.BEAT + 1;
+    check('GVR27 adds clamp to the shelf (2 of 6 units fit)', rc.tick(), 'pushed:2');
+    check('GVR28 ...and the rest wait, reported, unsent',
+          rc.pressure() ~= nil and rc.pressure().over == 0 and rc.pressure().waiting == 4, true);
+
+    vc._reset(); rc._reset(); ug._reset();
+end)();
+
+-- ---------------------------------------------------------------------------
+-- FGT. The surface gate (lib/featuregate.lua, 2026-08-26): pack defaults ->
+--      character overrides -> the two persistence halves. The pack layer is
+--      injected through M._packFeatures, so no serverpack and no filesystem.
+-- ---------------------------------------------------------------------------
+(function()
+    local fg = dofile('lib/featuregate.lua');
+    check('FGT0 featuregate loads headless', type(fg), 'table');
+
+    -- no pack file -> everything on
+    fg._reset(); fg._packFeatures = false;
+    check('FGT1 no pack file -> a tab is on',      fg.tabEnabled('Sets'), true);
+    check('FGT2 no pack file -> a menu row is on', fg.menuEnabled('lockstyle'), true);
+    check('FGT3 an unknown tab label is NEVER gated', fg.tabEnabled('Some Future Tab'), true);
+    check('FGT4 an unrostered menu key is never gated', fg.menuEnabled('settings'), true);
+
+    -- the pack default: only an explicit false disables
+    fg._reset();
+    fg._packFeatures = { tabs = { gearhelpers = false }, menu = { lockstyle = false } };
+    check('FGT5 pack false -> tab off',            fg.tabEnabled('Gear Helpers'), false);
+    check('FGT6 an unlisted tab stays on',         fg.tabEnabled('Triggers'), true);
+    check('FGT7 pack false -> menu row off',       fg.menuEnabled('lockstyle'), false);
+    check('FGT8 an unlisted menu row stays on',    fg.menuEnabled('wishlist'), true);
+
+    -- the character's flip overrides the pack both ways
+    fg.set('tab', 'gearhelpers', true);
+    check('FGT9 a flip ON beats a pack false',     fg.tabEnabled('Gear Helpers'), true);
+    fg.set('tab', 'triggers', false);
+    check('FGT10 a flip OFF beats a pack on',      fg.tabEnabled('Triggers'), false);
+
+    -- flipping back TO the pack default forgets the override
+    fg.set('tab', 'gearhelpers', false);
+    local fgOn, fgOff = fg.export();
+    check('FGT11 a flip back to default is forgotten', fgOn:find('gearhelpers', 1, true), nil);
+    check('FGT12 the real flip is exported',       fgOff, 'tab:triggers');
+
+    -- the persistence round-trip
+    fg.set('menu', 'wishlist', false);
+    fgOn, fgOff = fg.export();
+    local fg2 = dofile('lib/featuregate.lua');
+    fg2._packFeatures = { tabs = { gearhelpers = false }, menu = { lockstyle = false } };
+    fg2.applySaved(fgOn, fgOff);
+    check('FGT13 saved flips round-trip (tab)',    fg2.tabEnabled('Triggers'), false);
+    check('FGT14 saved flips round-trip (menu)',   fg2.menuEnabled('wishlist'), false);
+    check('FGT15 unflipped surfaces keep pack defaults', fg2.tabEnabled('Gear Helpers'), false);
+
+    -- garbage in the saved csv (uiflags.lua is a plain file a player may
+    -- hand-edit) is dropped, not applied
+    local fg3 = dofile('lib/featuregate.lua');
+    fg3._packFeatures = false;
+    fg3.applySaved(nil, 'tab:sets;x,not a token,tab :sets');
+    check('FGT16 a malformed OFF token is dropped', fg3.tabEnabled('Sets'), true);
+
+    -- the SHIPPED ascensionxi defaults: gear only (the file is tracked data --
+    -- pin it so a pack regeneration cannot silently widen the surface)
+    local vf = dofile('servers/ascensionxi/features.lua');
+    local fg4 = dofile('lib/featuregate.lua');
+    fg4._packFeatures = vf;
+    check('FGT17 ascensionxi: Equipped on',       fg4.tabEnabled('Equipped'), true);
+    check('FGT18 ascensionxi: All Equipment on',  fg4.tabEnabled('All Equipment'), true);
+    check('FGT19 ascensionxi: Sets on',           fg4.tabEnabled('Sets'), true);
+    check('FGT20 ascensionxi: Triggers on',       fg4.tabEnabled('Triggers'), true);
+    check('FGT21 ascensionxi: Gear Helpers off',  fg4.tabEnabled('Gear Helpers'), false);
+    check('FGT22 ascensionxi: Job Helpers off',   fg4.tabEnabled('Job Helpers'), false);
+    check('FGT23 ascensionxi: every rostered menu row off', (function()
+        for _, r in ipairs(fg4.MENU) do
+            if fg4.menuEnabled(r.key) then return r.key; end
+        end
+        return true;
+    end)(), true);
+
+    -- roster labels match the registrations they gate (a rename on either
+    -- side must fail HERE, not vanish a tab in the field)
+    check('FGT24 tab roster carries the six known labels', (function()
+        local want = { 'Equipped', 'All Equipment', 'Sets', 'Triggers',
+                       'Gear Helpers', 'Job Helpers' };
+        if #fg.TABS ~= #want then return 'count ' .. #fg.TABS; end
+        for i, w in ipairs(want) do
+            if fg.TABS[i].label ~= w then return fg.TABS[i].label; end
+        end
+        return true;
+    end)(), true);
+end)();
+
+-- ---------------------------------------------------------------------------
+-- IMC. The imgui-binding seam (lib/imguicompat.lua, 2026-08-26): the pure
+--      mapping halves, and that install() wraps NOTHING on an old binding.
+--      (The wrapped calls themselves need a live binding; the mappings are
+--      what can rot silently.)
+-- ---------------------------------------------------------------------------
+(function()
+    local ic = dofile('lib/imguicompat.lua');
+    check('IMC0 imguicompat loads headless', type(ic), 'table');
+
+    -- headless there is no ImGuiChildFlags_* global: the OLD binding
+    check('IMC1 headless reads as the old binding', ic.isNewBinding(), false);
+
+    -- the border bool -> ImGuiChildFlags mapping
+    check('IMC2 border true -> Borders flag',  ic._childFlags(true), 1);
+    check('IMC3 border false -> no flags',     ic._childFlags(false), 0);
+    check('IMC4 border nil -> no flags',       ic._childFlags(nil), 0);
+    check('IMC5 a number passes through (caller already speaks new)',
+          ic._childFlags(96), 96);
+
+    -- the ImageButton reshape: id derived from the texture (the old binding's
+    -- own identity rule), defaults filled, framePadding carried only when real
+    local a = ic._imageButtonArgs(12345, { 24, 24 }, nil, nil, 2, nil, nil);
+    check('IMC6 str_id derives from the texture',  a.id, '##dlacib_12345');
+    check('IMC7 uv0 defaults',   a.uv0[1] == 0 and a.uv0[2] == 0, true);
+    check('IMC8 uv1 defaults',   a.uv1[1] == 1 and a.uv1[2] == 1, true);
+    check('IMC9 bg defaults transparent', a.bg[4], 0);
+    check('IMC10 tint defaults white',    a.tint[1] == 1 and a.tint[4] == 1, true);
+    check('IMC11 framePadding carried',   a.pad, 2);
+    check('IMC12 a negative padding is dropped',
+          ic._imageButtonArgs(1, {2,2}, nil, nil, -1).pad, nil);
+
+    -- install() on the old binding: a no-op that leaves imgui untouched
+    local fakeBC = function() return true; end;
+    package.loaded['imgui'] = { BeginChild = fakeBC };
+    local ic2 = dofile('lib/imguicompat.lua');
+    check('IMC13 install() runs headless',        ic2.install(), false);
+    check('IMC14 old binding: BeginChild untouched',
+          package.loaded['imgui'].BeginChild, fakeBC);
+    check('IMC15 ...and reports unwrapped',       ic2.wrapped, false);
+    package.loaded['imgui'] = nil;
+end)();
+
+-- ---------------------------------------------------------------------------
+-- GVW/GVC/GVF. The Gear Vault integration, slice 1 (ascensionxi pack module;
+--      design: docs/design/gear-vault-integration.md). GVW pins the byte
+--      codec against the server's documented layouts; GVC drives the whole
+--      client state machine through the _clock/_send seams (no Ashita); GVF
+--      pins the ownership fold (GV5) in gear/gearimport.
+-- ---------------------------------------------------------------------------
+(function()
+    local vc = dofile('servers/ascensionxi/modules/gearvault/vaultclient.lua');
+    check('GVW0 vaultclient loads headless', type(vc), 'table');
+
+    -- the C2S frame: op @4, seq @5, reserved zeros, payload @8, 4-aligned
+    local f = vc.buildFrame(vc.op.HELLO, 7, vc.helloPayload());
+    check('GVW1 op lands at offset 4',    f[5], 0x40);
+    check('GVW2 seq lands at offset 5',   f[6], 7);
+    check('GVW3 reserved bytes are zero', f[7] == 0 and f[8] == 0, true);
+    check('GVW4 frame is 4-aligned',      #f % 4, 0);
+    check('GVW5 hello payload = proto 1', f[9] == 1 and f[10] == 0, true);
+
+    -- the S2C envelope parse
+    local function s2c(op, seq, status, flags, payload)
+        return string.char(0, 0, 0, 0, op, seq, status, flags) .. (payload or '');
+    end
+    local pf = vc.parseFrame(s2c(0x41, 9, 0, 1, 'xy'));
+    check('GVW6 parseFrame reads the envelope',
+          pf.op == 0x41 and pf.seq == 9 and pf.status == 0 and pf.flags == 1 and pf.payload == 'xy', true);
+    check('GVW7 a short frame refuses whole', vc.parseFrame('abc'), nil);
+
+    -- HELLO reply parse
+    local hp = vc._wu16(1) .. vc._wu16(0) .. vc._wu32(321) .. string.char(15, 124, 62, 0);
+    local h = vc.parseHello(hp);
+    check('GVW8 hello: vault count',  h.vaultCount, 321);
+    check('GVW9 hello: the limits',   h.maxList == 15 and h.maxDeposit == 124 and h.maxWithdraw == 62, true);
+
+    -- LIST chunk parse: 32-byte entries, 24-byte identity carried raw
+    local id24 = string.rep('\7', 24);
+    local entry = vc._wu32(11) .. vc._wu16(4444) .. vc._wu16(2) .. id24;
+    local chunk = vc.parseListChunk(vc._wu16(1) .. vc._wu16(0) .. entry);
+    check('GVW10 list row: rowId/item/qty',
+          chunk.entries[1].rowId == 11 and chunk.entries[1].itemId == 4444 and chunk.entries[1].qty == 2, true);
+    check('GVW11 list row: identity is the 24 raw bytes', chunk.entries[1].identity, id24);
+    check('GVW12 a truncated chunk refuses whole',
+          vc.parseListChunk(vc._wu16(2) .. vc._wu16(0) .. entry), nil);
+
+    -- ---- GVC: the state machine, driven on seams ----
+    local T, sent = 0, {};
+    vc._clock = function() return T; end;
+    vc._send  = function(p) sent[#sent + 1] = p; end;
+    local freshed = 0;
+    vc._onFresh = function() freshed = freshed + 1; end;
+
+    local function reply(status, flags, payload)
+        local last = sent[#sent];
+        return vc.parseFrame(s2c(last[5], last[6], status, flags, payload));
+    end
+
+    -- a full login sync: HELLO -> two LIST pages -> committed mirror
+    vc._reset(); T, sent, freshed = 0, {}, 0;
+    vc.pump(true);                       -- arms the first-readiness sync
+    check('GVC1 nothing sent before the settle', #sent, 0);
+    T = 3; vc.pump(true);
+    check('GVC2 the sync opens with HELLO', #sent == 1 and sent[1][5] == vc.op.HELLO, true);
+    vc.onFrame(reply(0, 0, hp));
+    check('GVC3 hello OK -> LIST from cursor 0',
+          #sent == 2 and sent[2][5] == vc.op.LIST and sent[2][9] == 0, true);
+    local e1 = vc._wu32(5) .. vc._wu16(100) .. vc._wu16(1) .. id24;
+    local e2 = vc._wu32(9) .. vc._wu16(200) .. vc._wu16(3) .. id24;
+    vc.onFrame(reply(0, 1, vc._wu16(2) .. vc._wu16(0) .. e1 .. e2));   -- MORE
+    check('GVC4 MORE -> next page from the last rowId', #sent == 3 and sent[3][9] == 9, true);
+    local e3 = vc._wu32(12) .. vc._wu16(100) .. vc._wu16(1) .. id24;
+    vc.onFrame(reply(0, 0, vc._wu16(1) .. vc._wu16(0) .. e3));         -- final
+    check('GVC5 the mirror committed fresh', vc.mirror.fresh, true);
+    check('GVC6 counts merge by item id', vc.mirror.counts[100] == 2 and vc.mirror.counts[200] == 3, true);
+    check('GVC7 the fresh hook fired once', freshed, 1);
+    check('GVC8 state reads fresh', vc.state(), 'fresh');
+
+    -- the zone probe: count agrees -> re-stamped WITHOUT spending LIST pages
+    vc.noteZoneIn();
+    check('GVC9 zone-in marks stale', vc.mirror.fresh, false);
+    T = T + vc.SETTLE_ZONE + 1; vc.pump(true);
+    local before = #sent;
+    check('GVC10 the probe is a HELLO', sent[before][5], vc.op.HELLO);
+    vc.onFrame(reply(0, 0, vc._wu16(1) .. vc._wu16(0) .. vc._wu32(3) .. string.char(15, 124, 62, 0)));
+    check('GVC11 agreeing count -> fresh again, no LIST', vc.mirror.fresh == true and #sent == before, true);
+
+    -- ...and a DISAGREEING count escalates to a full LIST
+    vc.noteZoneIn();
+    T = T + vc.SETTLE_ZONE + 1; vc.pump(true);
+    vc.onFrame(reply(0, 0, vc._wu16(1) .. vc._wu16(0) .. vc._wu32(9) .. string.char(15, 124, 62, 0)));
+    check('GVC12 disagreeing count -> LIST begins', sent[#sent][5], vc.op.LIST);
+    vc.onFrame(reply(0, 0, vc._wu16(0) .. vc._wu16(0)));   -- empty vault now
+    check('GVC13 empty vault commits clean', vc.mirror.fresh == true and next(vc.mirror.counts) == nil, true);
+
+    -- the main-job edge: first sight arms nothing, a change marks stale
+    check('GVC14 fresh before the job edge', vc.state(), 'fresh');
+    vc.noteJob(1);
+    check('GVC15 first job sighting is not a change', vc.state(), 'fresh');
+    vc.noteJob(3);
+    check('GVC16 a job change marks stale', vc.state(), 'stale');
+
+    -- retries re-send the SAME Seq; exhaustion backs off quietly
+    vc._reset(); T, sent = 100, {};
+    vc.pump(true); T = 103; vc.pump(true);
+    local seq1 = sent[1][6];
+    T = T + vc.SEND_TIMEOUT + 0.1; vc.pump(true);
+    check('GVC17 a timeout re-sends the SAME seq', #sent == 2 and sent[2][6] == seq1, true);
+    for _ = 1, vc.MAX_RETRIES + 1 do T = T + vc.SEND_TIMEOUT + 0.1; vc.pump(true); end
+    check('GVC18 exhaustion clears pending and stays stale',
+          vc._st().pending == nil and vc.state() == 'stale', true);
+
+    -- BAD_OP = no vault on this server: dormant for the session, silently
+    vc._reset(); T, sent = 200, {};
+    vc.pump(true); T = 203; vc.pump(true);
+    vc.onFrame(reply(1, 0, ''));   -- BAD_OP
+    check('GVC19 BAD_OP -> dormant', vc.state(), 'dormant');
+    T = 300; vc.pump(true);
+    check('GVC20 dormant sends nothing ever again', #sent, 1);
+
+    -- ---- slice 2: LAYOUT_LIST + WITHDRAW ----
+
+    -- codec first
+    local lp = vc.layoutPayload(7, 3);
+    check('GVW13 layout ask: job @0, cursor @2',
+          lp:byte(1) == 7 and lp:byte(3) == 3, true);
+    local lent = vc._wu16(4) .. vc._wu16(1234) .. vc._wu16(2) .. string.char(10) .. string.char(1) .. id24;
+    local lch = vc.parseLayoutChunk(vc._wu16(1) .. vc._wu16(0) .. lent);
+    check('GVW14 layout row parses whole',
+          lch.entries[1].ordinal == 4 and lch.entries[1].itemId == 1234
+          and lch.entries[1].count == 2 and lch.entries[1].hint == 10
+          and lch.entries[1].pinned == true, true);
+    check('GVW15 hint 0 reads as none',
+          vc.parseLayoutChunk(vc._wu16(1) .. vc._wu16(0)
+              .. vc._wu16(4) .. vc._wu16(1) .. vc._wu16(1) .. string.char(0, 0) .. id24).entries[1].hint, nil);
+    local wp = vc.withdrawPayload({ { rowId = 9, qty = 2 } });
+    check('GVW16 withdraw entry: rowId u32 + qty u16', #wp == 12 and wp:byte(5) == 9 and wp:byte(9) == 2, true);
+    local wack = vc.parseWithdrawAck(vc._wu16(1) .. vc._wu16(0) .. vc._wu32(9) .. vc._wu16(2) .. vc._wu16(0));
+    check('GVW17 withdraw ack parses', wack.entries[1].rowId == 9 and wack.entries[1].moved == 2, true);
+
+    -- a layout ask pages and commits, and never disturbs the fresh mirror
+    vc._reset(); T, sent = 400, {};
+    vc.pump(true); T = 403; vc.pump(true);            -- login sync begins
+    vc.onFrame(reply(0, 0, hp));
+    vc.onFrame(reply(0, 0, vc._wu16(1) .. vc._wu16(0) .. e1));   -- mirror: one row
+    check('GVC21 mirror fresh before the layout ask', vc.mirror.fresh, true);
+    vc.noteJob(1);
+    vc.requestLayout(0);
+    T = 404; vc.pump(true);
+    check('GVC22 layout ask on the wire', sent[#sent][5], vc.op.LAYOUT_LIST);
+    vc.onFrame(reply(0, 1, vc._wu16(1) .. vc._wu16(0) .. lent));               -- MORE
+    check('GVC23 MORE -> next page from the last ordinal',
+          sent[#sent][5] == vc.op.LAYOUT_LIST and sent[#sent][11] == 4, true);
+    vc.onFrame(reply(0, 0, vc._wu16(0) .. vc._wu16(0)));                       -- final, empty
+    check('GVC24 layout committed for the main job',
+          vc.layoutCache.fresh == true and vc.layoutCache.job == 1 and #vc.layoutCache.entries == 1, true);
+    check('GVC25 the mirror was never touched', vc.mirror.fresh, true);
+
+    -- withdraw: the ack subtracts (no re-LIST), rows at zero vanish
+    local acks, errw = nil, nil;
+    vc.requestWithdraw({ { rowId = 5, qty = 1 } }, function(a, e) acks, errw = a, e; end);
+    T = 405; vc.pump(true);
+    check('GVC26 withdraw on the wire', sent[#sent][5], vc.op.WITHDRAW);
+    vc.onFrame(reply(0, 0, vc._wu16(1) .. vc._wu16(0) .. vc._wu32(5) .. vc._wu16(1) .. vc._wu16(0)));
+    check('GVC27 the callback carries the ack', acks ~= nil and acks[1].moved == 1 and errw == nil, true);
+    check('GVC28 the mirror subtracted the row', #vc.mirror.rows == 0 and next(vc.mirror.counts) == nil, true);
+    check('GVC29 ...and stays fresh (arithmetic, not a re-ask)', vc.mirror.fresh, true);
+
+    -- Henrik, playtest 2026-08-26: the subtraction IS a change to the
+    -- mirror, so the stamp has to move with it. Views cache on the stamp
+    -- (the vault list does), so a withdraw that leaves the stamp behind
+    -- keeps painting the row that just left until the player presses Sync
+    -- by hand.
+    check('GVC29b ...and RE-STAMPS the mirror, so stamp-keyed views rebuild',
+          vc.mirror.stamp, T);
+
+    -- a TOO_FAR frame refuses the whole withdraw and moves nothing
+    vc._reset(); T, sent = 500, {};
+    vc.pump(true); T = 503; vc.pump(true);
+    vc.onFrame(reply(0, 0, hp));
+    vc.onFrame(reply(0, 0, vc._wu16(1) .. vc._wu16(0) .. e1));
+    acks, errw = nil, nil;
+    vc.requestWithdraw({ { rowId = 5, qty = 1 } }, function(a, e) acks, errw = a, e; end);
+    T = 504; vc.pump(true);
+    vc.onFrame(reply(4, 0, ''));   -- TOO_FAR
+    check('GVC30 TOO_FAR names itself', acks == nil and errw, 'too_far');
+    check('GVC31 ...and the mirror stands untouched', #vc.mirror.rows == 1 and vc.mirror.fresh == true, true);
+
+    -- DEPOSIT (the Inventory sub-tab's Store): codec + the queue laws
+    local dp = vc.depositPayload({ { container = 0, slot = 7 }, { container = 0, slot = 9 } });
+    check('GVW18 deposit entries are 4 bytes each', #dp == 12 and dp:byte(5) == 0 and dp:byte(6) == 7 and dp:byte(10) == 9, true);
+    local dack = vc.parseDepositAck(vc._wu16(1) .. vc._wu16(0)
+        .. string.char(0, 7) .. vc._wu16(10) .. vc._wu32(44));
+    check('GVW19 deposit ack parses (a DUPLICATE refusal)',
+          dack.entries[1].slot == 7 and dack.entries[1].code == 10 and dack.entries[1].rowId == 44, true);
+
+    local dacks, derr = nil, nil;
+    vc.requestDeposit({ { container = 0, slot = 7 } }, function(a, e) dacks, derr = a, e; end);
+    T = T + 1; vc.pump(true);
+    check('GVC36 deposit on the wire', sent[#sent][5], vc.op.DEPOSIT);
+    vc.onFrame(reply(0, 0, vc._wu16(1) .. vc._wu16(0) .. string.char(0, 7) .. vc._wu16(0) .. vc._wu32(9)));
+    check('GVC37 the callback carries the ack', dacks ~= nil and dacks[1].code == 0 and derr == nil, true);
+    check('GVC38 a stored piece marks the mirror stale (LIST resync, not arithmetic)',
+          vc.mirror.fresh, false);
+    dacks, derr = nil, nil;
+    vc.requestDeposit({ { container = 0, slot = 7 } }, function(a, e) dacks, derr = a, e; end);
+    T = T + 1; vc.pump(true);
+    vc.onFrame(reply(4, 0, ''));   -- TOO_FAR
+    check('GVC39 a far deposit names itself', dacks == nil and derr, 'too_far');
+
+    -- a withdraw that times out is NEVER re-sent with a fresh Seq: the
+    -- outcome is unknown, so it reports and the mirror resyncs instead
+    acks, errw = nil, nil;
+    vc.requestWithdraw({ { rowId = 5, qty = 1 } }, function(a, e) acks, errw = a, e; end);
+    T = T + 1; vc.pump(true);
+    local wSeq = sent[#sent][6];
+    local wSends = #sent;
+    for _ = 1, vc.MAX_RETRIES do T = T + vc.SEND_TIMEOUT + 0.1; vc.pump(true); end
+    check('GVC32 every retry re-sends the SAME seq', (function()
+        for i = wSends + 1, #sent do
+            if sent[i][6] ~= wSeq or sent[i][5] ~= vc.op.WITHDRAW then return false; end
+        end
+        return #sent == wSends + vc.MAX_RETRIES;
+    end)(), true);
+    T = T + vc.SEND_TIMEOUT + 0.1; vc.pump(true);   -- exhaustion
+    check('GVC33 exhaustion reports timeout', errw, 'timeout');
+    check('GVC34 ...marks the mirror stale (outcome unknown)', vc.mirror.fresh, false);
+    T = T + 1; vc.pump(true);
+    check('GVC35 ...and the next send is the RESYNC, not the withdraw',
+          sent[#sent][5], vc.op.HELLO);
+
+    vc._reset();
+
+    -- ---- GVF: the ownership fold (GV5) in gear/gearimport ----
+    -- (the MA section's cleanup dropped the catalogindex preload; gearimport
+    -- requires it at load -- re-seed before the dofile)
+    if package.loaded['dlac\\gear\\catalogindex'] == nil then
+        package.loaded['dlac\\gear\\catalogindex'] = dofile('gear/catalogindex.lua');
+    end
+    local gi = dofile('gear/gearimport.lua');
+    check('GVF0 VAULT_CID is a pseudo container with a name',
+          type(gi.VAULT_CID) == 'number' and gi.containerName(gi.VAULT_CID), 'Gear Vault');
+    local split = { total = { [100] = 1 }, avail = { [100] = 1 }, where = { [100] = { [0] = 1 } }, aug = {} };
+    gi.foldVault(split, { [100] = 2, [555] = 1 });
+    check('GVF1 vault counts join total',        split.total[100], 3);
+    check('GVF2 a vault-only id becomes owned',  split.total[555], 1);
+    check('GVF3 vault copies are NEVER available', split.avail[555], nil);
+    check('GVF4 where says Gear Vault',          split.where[555][gi.VAULT_CID], 1);
+    check('GVF5 bag copies keep their homes',    split.where[100][0] == 1 and split.where[100][gi.VAULT_CID] == 2, true);
 end)();
 
 -- The warm-note artifact the dispatch-driving sections leave behind (dataDir

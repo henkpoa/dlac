@@ -71,4 +71,12 @@ function M.get(idx)
     return 'ACE';
 end
 
+-- THE seam core asks (ADR 0035): serverpack.service('gamemode'). On a server
+-- with no such module the service is nil, the caller reads nil-unknown, and
+-- every affirmative gate stays shut -- the retail flag bits above can never
+-- misread as a mode where modes do not exist.
+pcall(function()
+    require('dlac\\gear\\serverpack').provide('gamemode', M);
+end);
+
 return M;

@@ -67,23 +67,30 @@ local imgui = try('imgui');
 local M = {};
 
 -- TOP TO BOTTOM. The Teleports button first (it is pinned, so it is there or it
--- is not -- it never flickers with what you are standing next to), then the
--- E-Box crates, whose own first icon is the anchored Store.
+-- is not -- it never flickers with what you are standing next to); everything
+-- under it is REGISTERED by a server-pack module at mount time (ADR 0035 --
+-- on CEXI: the E-Box crates, then the giftboxes).
 --
--- Members are named, not registered: a tray slot is a deliberate decision about
--- what may live permanently on a player's screen, and the list of those is worth
--- being able to read in one place.
+-- The old "named, not registered" ruling survives in a new home: what may live
+-- permanently on a player's screen is still a deliberate, readable list -- it
+-- is the manifest's `modules` order now (dlac.lua mounts in that order, and
+-- registration order IS the vertical order). CEXI's standing arrangement
+-- (Henrik 2026-08-05: giftboxes "under the e-box stocker icons"; the volatile
+-- row must never slide Store's one-click crate under a cursor) is therefore
+-- the ebox-before-giftbox order in servers\cexi\manifest.lua.
 local SLOTS = {
     { mod = 'dlac\\ui\\gearui',    wants = 'trayTeleportsWants', draw = 'trayTeleportsDraw' },
-    { mod = 'dlac\\ui\\restockui', wants = 'trayWants',          draw = 'trayDraw'          },
-    -- Giftboxes LAST (Henrik, 2026-08-05: "under the e-box stocker icons"), and
-    -- the ORDER ruling above says the same thing independently: this is the most
-    -- volatile member in the tray -- it comes and goes with what is in your bag
-    -- -- and the crate above it is Store, one click and no confirm. Anything
-    -- that could slide Store under a cursor is the arrangement to avoid.
-    { mod = 'dlac\\ui\\giftboxui', wants = 'trayWants',          draw = 'trayDraw'          },
 };
 M.SLOTS = SLOTS;   -- test seam: the ORDER is the ruling, so it is assertable
+
+-- A pack module's tray row: appended under the pinned core rows, in call
+-- order. Same shape as a SLOTS member ({ mod, wants, draw } -- mod is a
+-- require name, resolved lazily per frame like every core row).
+function M.register(slot)
+    if type(slot) ~= 'table' or type(slot.mod) ~= 'string' then return; end
+    if type(slot.wants) ~= 'string' or type(slot.draw) ~= 'string' then return; end
+    SLOTS[#SLOTS + 1] = slot;
+end
 
 -- Vertical breathing room between two SLOTS -- the pinned button and the crates
 -- are different kinds of thing and should not read as one block. Within a slot,
