@@ -330,12 +330,17 @@ Gear Vault**, all four slices plus a dozen polish rounds: the 0x1E0 wire client,
 a third ownership tier (*vaulted*, violet everywhere, prune-safe), the tab, the derived layout
 (*your sets write the shelf*), and slice 4's space pressure, LRU memory and settings.*
 
-***The caveat that rode along.*** *The queue entry carried a standing warning: the ADR 0035
-refactor moves the CEXI subsystems into pack modules and had had **no dedicated post-refactor
-field round on CatsEyeXI itself**. The friend's OK is what closed it -- IF his round was on
-CEXI. That is not recorded here, and it is the one thing worth confirming: if he tested on
-AscensionXI, the CEXI login check (E-Box, giftbox, prestige, game modes mount) is still owed
-against main, not dev.*
+***The caveat that rode along -- CLOSED 2026-08-29.*** *The queue entry carried a standing
+warning: the ADR 0035 refactor moves the CEXI subsystems into pack modules and had had **no
+dedicated post-refactor field round on CatsEyeXI itself**. Henrik: *"he tested on CEXI, I have
+also used it on CEXI."* Two CEXI rounds, and deliberately of **different shapes** -- one
+install arriving here a commit at a time, the other jumping straight from the old main to the
+big update. His reasoning, worth keeping: *"common that an on-going project differs from
+going directly to a big update, so both has been verified."* An install that upgraded a commit
+at a time is not the same artifact as one that jumped; a pack refactor of this size can break
+only the second (stale flag files, orphaned data\ requires, a features.lua that never existed
+locally). **Both paths verified on CEXI: the ADR 0035 module mounts are field-proven and
+nothing is owed against main.***
 
 ***What never sat in the queue.*** *The AscensionXI rename (`0b4ad80`) was written and
 promoted the same day. `serversanaheim\` is `serversscensionxi\`; git recorded all 15
