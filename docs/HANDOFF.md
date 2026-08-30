@@ -314,6 +314,25 @@ infer it from a field confirmation, from *"works"*, or from your own read that s
 ready — his own note on the exchange was *"you are right not to assume otherwise since I
 haven't told you."* Ask when he has **not** said merge; never ask twice when he has.
 
+*(Emptied by the 2026-08-30 promotion -- **the server is asked + the vault law + the
+module-list immunity** (`2026.08.30c`, tag `v2026.08.30c`): four commits,
+`d8b01a6..aeaefdb`. Henrik: *"push it and merge, so if he downloads the new update he will
+get it fixed"* -- an accept under the 08-01 ruling; `dev` promotes whole-or-not, so all
+four rode together.*
+
+***What landed.*** *`2312a32` -- **selection is flag > detect.lua > ASK** (ADR 0035
+amended): with no flag and no detection match NOTHING mounts and the first-run chooser
+(`ui/serverchoose`) writes the flag -- index order never silently chooses again (the
+brother's first install had mounted cexi silently); plus the VAULT LAW (the additions
+engine shelves only what the vault holds) and the Gear Vault tab's field-round rework.
+`5913a4f` -- the tab bar's ID carries its order (this ImGui build keeps a known bar's tab
+order across `/addon reload`). `aeaefdb` -- **the module list is a CODE fact**:
+hand-maintained `servers/<id>/modules.lua` outranks the GENERATED `manifest.modules`, so a
+`gen_pack.py` regeneration can never again ship the Gear Vault silently unloaded (the
+brother's second dark install, 2026-08-30 -- `/dl vault` answering nothing was the
+diagnostic); `/dl check` and `pack_lint` print the effective list and its source. Suites at
+promotion: run_tests 7364, smoke_ui 1476, pack_lint green on both packs.*
+
 *(Emptied by the 2026-08-28 promotion -- **server packs + the Gear Vault** (`2026.08.27i`,
 tag `v2026.08.27i`, merge `05e87b7`), the largest promotion since the native migration: **39
 commits**, `83365dc..0b4ad80`. Henrik: *"my friend has OKed that current dev works for him as
