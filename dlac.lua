@@ -18,7 +18,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.08.30a';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.08.30b';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
                                 -- (03f = engine v163: the contest explains its own plan;
                                 --  03g = one floating tray: Teleports + the E-Box crates;
@@ -254,7 +254,17 @@ addon.version = '2026.08.30a';  -- date of the last shipped change (Ashita print
                                 --  wardrobe complaint, and the additions
                                 --  engine obeys the VAULT LAW -- only gear
                                 --  the vault holds is ever pushed into a
-                                --  layout, never bag/unowned gear)
+                                --  layout, never bag/unowned gear;
+                                --  30b = Henrik's same-day field round: the
+                                --  tab ORDER is folded into the bar's ID
+                                --  (this ImGui build keeps a known bar's
+                                --  tab order, and its context outlives an
+                                --  /addon reload -- only a new ID reorders);
+                                --  [wanted] tags + Store-wanted CUT (the
+                                --  player curates); vault-row button is
+                                --  'Add to Mog Wardrobe'; the header's
+                                --  'N pieces stored' sentence becomes the
+                                --  Vault (N) sub-tab count, fresh = silent)
 addon.desc    = 'Gear sets, triggers and live stats with level scaling -- dlac equips your gear itself.';
 
 -- Load BEACON ('/dl check' field round, 2026-07-23): written by PLAIN io at

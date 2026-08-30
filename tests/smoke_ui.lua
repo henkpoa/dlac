@@ -7100,6 +7100,14 @@ end)();
         oh.renderTabs(function() end);
         check('TAB26 ranked labels render in the base order, unranked after',
             table.concat(seen, ','), 'Gear Vault,Sets,Triggers,All Equipment,Equipped,Gear Helpers');
+        -- ...and the ORDER is part of the bar's identity (field-caught
+        -- 2026-08-30: this ImGui build keeps a known bar's tab order in its
+        -- persistent state, and its context outlives an /addon reload -- only
+        -- a new ID rebuilds in submission order).
+        local idBefore = oh.tabBarId('##t');
+        oh.register({ name = 'late', tabs = { { label = 'Late Tab', render = function() end } } });
+        check('TAB27 an order change changes the bar id', oh.tabBarId('##t') ~= idBefore, true);
+        check('TAB27b ...and a stable order keeps it stable', oh.tabBarId('##t'), oh.tabBarId('##t'));
     end
 
     package.loaded['imgui'] = saved.imgui;
@@ -7637,6 +7645,12 @@ end)();
     check('GVU1a tab-bar/tab stacks balanced', (depth.bar or 0) == 0 and (depth.tab or 0) == 0, true);
     check('GVU1b the Inventory sub-tab carries its count',
           table.concat(headers, '|'):find('Inventory (2)', 1, true) ~= nil, true);
+    check('GVU1d the Vault sub-tab carries the stored count (the old header sentence)',
+          table.concat(headers, '|'):find('Vault (4)', 1, true) ~= nil, true);
+    check('GVU1e a fresh mirror shows no state badge and no header sentence', (function()
+        local blob0 = table.concat(texts, '|');
+        return blob0:find('pieces stored', 1, true) == nil and blob0:find('[fresh]', 1, true) == nil;
+    end)(), true);
     check('GVU1c Store and Store all are offered', (function()
         local h = table.concat(smallHits, '|');
         return h:find('Store all (2)', 1, true) ~= nil and h:find('Store##', 1, true) ~= nil;
@@ -7654,7 +7668,11 @@ end)();
     local hits = table.concat(smallHits, '|');
     check('GVU6 the pinned layout entry offers Unpin + Remove',
           hits:find('Unpin##', 1, true) ~= nil and hits:find('Remove##', 1, true) ~= nil, true);
-    check('GVU6c vault rows offer Layout', hits:find('Layout##', 1, true) ~= nil, true);
+    check('GVU6c vault rows offer Add to Mog Wardrobe',
+          hits:find('Add to Mog Wardrobe##', 1, true) ~= nil, true);
+    check('GVU6e no [wanted] tag and no Store-wanted shortcut remain (2026-08-30)',
+          table.concat(texts, '|'):find('[wanted]', 1, true) == nil
+          and hits:find('Store wanted', 1, true) == nil, true);
     check('GVU6d the Vault options rows render (slice 4 settings)',
           hits:find('gvset_additions', 1, true) ~= nil and hits:find('gvset_removals', 1, true) ~= nil, true);
     local heads = table.concat(headers, '|');
