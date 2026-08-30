@@ -221,6 +221,15 @@ local RD = {
         return out;
     end,
     worn = wornIds,
+    -- The town PREDICTION (feature\location, the central town service):
+    -- true/false/nil-unknown. Gates only auto-eviction's ACTION (and the
+    -- tab's presentation reads the same service) -- never the wire's pushes,
+    -- which stay evidence-based (the server answers NOT_IN_CITY itself).
+    inTown = function()
+        local t = nil;
+        pcall(function() t = require('dlac\\feature\\location').inTown(); end);
+        return t;
+    end,
     -- slice 4: the usage memory + the behaviour settings + the live shelf.
     -- `/dl vault cap <n>` overrides the capacity for a session -- the only
     -- way to FIELD-TEST the pressure flows before the server's wardrobe
@@ -283,6 +292,10 @@ vaultWhy = function(name)
         for _, it in ipairs(d.items) do if it.itemId == r.id then want = it.count; end end
         line(string.format('  derived: this job wants %d of it (%d items total, %d aug-skipped, %d unresolved)',
             want, #d.items, d.skippedAug, #d.unresolved));
+        if want > 0 and held == 0 then
+            line('  NOT IN THE VAULT: the engine will not shelve it (bags never count) --');
+            line('  store it with a Void Warden first, then it joins the layout by itself.');
+        end
         local lc = vc.layoutCache;
         local inLayout = 0;
         for _, e in ipairs(lc.entries or {}) do
@@ -301,9 +314,9 @@ vaultWhy = function(name)
     end
     local s = usg.settings();
     local rst = rec._st();
-    line(string.format('  engine: additions=%s removals=%s cityBlocked=%s lastPushKey=%s%s%s',
+    line(string.format('  engine: additions=%s removals=%s cityBlocked=%s notVaulted=%d lastPushKey=%s%s%s',
         s.additions, s.removals,
-        tostring(rec.cityBlocked()), rst.lastPushKey and 'set' or 'none',
+        tostring(rec.cityBlocked()), rec.notVaulted(), rst.lastPushKey and 'set' or 'none',
         _capOverride ~= nil and ('  CAP OVERRIDE=' .. _capOverride) or '',
         _tickErr ~= nil and ('  LAST ERROR: ' .. _tickErr) or ''));
     for _, s in ipairs(out) do vc._say(s); end

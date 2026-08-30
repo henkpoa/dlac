@@ -27113,14 +27113,16 @@ end)();
     check('SPK15 an unlisted file does not resolve', sp.data('spkother'), nil);
     check('SPK16 one pack is silent',            #warns, 0);
 
-    -- several packs, no choice -> the index's FIRST, loudly
+    -- several packs, no choice, no detection -> NEUTRAL HOLD + needsChoice
+    -- (2026-08-30: index order must never choose -- the first-install trap)
     local MAN_B = { fmt = 1, id = 'bbb', name = 'Server B', maxLevel = 99, files = {} };
     fixtures['dlac\\servers\\index'] = { 'aaa', 'bbb' };
     fixtures['dlac\\servers\\bbb\\manifest'] = MAN_B;
     configured = nil; arm();
     sp.init();
-    check('SPK17 several packs, no choice -> first wins', sp.active(), 'aaa');
-    check('SPK18 ...and says so',                #warns >= 1 and warns[1]:find('several server packs', 1, true) ~= nil, true);
+    check('SPK17 several packs, no choice -> NOTHING mounts', sp.active(), nil);
+    check('SPK17b ...and needsChoice is raised', sp.needsChoice(), true);
+    check('SPK18 ...and says so',                #warns >= 1 and warns[1]:find('no server chosen', 1, true) ~= nil, true);
     check('SPK19 installed() lists both',        #sp.installed(), 2);
 
     -- several packs, the flag file chooses
@@ -27128,13 +27130,48 @@ end)();
     sp.init();
     check('SPK20 the flag file chooses',         sp.active(), 'bbb');
     check('SPK21 ...quietly',                    #warns, 0);
+    check('SPK21b ...with no choice owed',       sp.needsChoice(), false);
     check('SPK22 ...and its manifest answers',   sp.maxLevel(), 99);
 
-    -- the flag names a pack that is not installed -> fall back, loudly
+    -- the flag names a pack that is not installed -> the ghost is named and
+    -- (nothing detecting) the chooser is owed -- a STALE flag never silently
+    -- mounts the index's first pack any more (the Vanaheim-rename trap)
     configured = { server = 'zzz' }; arm();
     sp.init();
-    check('SPK23 a missing configured pack falls back', sp.active(), 'aaa');
+    check('SPK23 a missing configured pack holds neutral', sp.active(), nil);
+    check('SPK23b ...and raises needsChoice',    sp.needsChoice(), true);
     check('SPK24 ...and names the ghost',        warns[1] ~= nil and warns[1]:find('zzz', 1, true) ~= nil, true);
+
+    -- DETECTION (2026-08-30): a pack's hand-maintained detect.lua may
+    -- recognise the client bundle's boot config; it ranks BELOW the flag.
+    fixtures['dlac\\servers\\bbb\\detect'] = {
+        match = function(boot) return boot.command:find('bserver.example', 1, true) ~= nil; end,
+    };
+    configured = nil; arm();
+    sp._bootReader = function() return { command = '--server bserver.example', name = 'B' }; end;
+    sp.init();
+    check('SPK24b detection picks the matching pack', sp.active(), 'bbb');
+    check('SPK24c ...quiet needsChoice',         sp.needsChoice(), false);
+    check('SPK24d ...and says it detected',      #warns >= 1 and warns[1]:find('detected', 1, true) ~= nil, true);
+    configured = { server = 'aaa' }; arm();
+    sp._bootReader = function() return { command = '--server bserver.example', name = 'B' }; end;
+    sp.init();
+    check('SPK24e the flag file outranks detection', sp.active(), 'aaa');
+    configured = nil; arm();
+    sp._bootReader = function() return {}; end;
+    sp.init();
+    check('SPK24f an unmatched boot config still asks', sp.needsChoice(), true);
+    fixtures['dlac\\servers\\bbb\\detect'] = nil;
+    sp._bootReader = nil;
+
+    -- writeChoice: the flag writer seam
+    do
+        local wrote = nil;
+        sp._flagWriter = function(id) wrote = id; return true; end;
+        check('SPK24g writeChoice writes through the seam', sp.writeChoice('bbb') and wrote, 'bbb');
+        check('SPK24h a junk id is refused', sp.writeChoice(''), false);
+        sp._flagWriter = nil;
+    end
 
     -- a broken manifest is not a pack
     fixtures['dlac\\servers\\index'] = { 'broken', 'bbb' };
@@ -27180,6 +27217,48 @@ end)();
     configured = nil; arm();
     sp.init();
     check('SPK33 a pack without the file -> nil', sp.features(), nil);
+
+    -- modules(): the pack's MODULE list -- a hand-maintained modules.lua
+    -- OUTRANKS manifest.modules (2026-08-30: a GENERATED manifest once
+    -- shipped modules = {} and the Gear Vault silently never loaded).
+    fixtures = {
+        ['dlac\\servers\\index'] = { 'aaa' },
+        ['dlac\\servers\\aaa\\manifest'] = { id = 'aaa', files = {}, modules = {} },
+        ['dlac\\servers\\aaa\\modules']  = { 'gearvault' },
+    };
+    configured = nil; arm();
+    sp.init();
+    do
+        local list, src = sp.modules();
+        check('SPK34 modules.lua outranks an empty generated list', list[1], 'gearvault');
+        check('SPK34b ...and names its source',   src, 'modules.lua');
+        check('SPK34c ...memoized to one table',  sp.modules(), list);
+    end
+    fixtures['dlac\\servers\\aaa\\modules'] = nil;
+    fixtures['dlac\\servers\\aaa\\manifest'] = { id = 'aaa', files = {}, modules = { 'ebox', 'giftbox' } };
+    configured = nil; arm();
+    sp.init();
+    do
+        local list, src = sp.modules();
+        check('SPK35 no modules.lua -> the manifest list', list[1] .. ',' .. list[2], 'ebox,giftbox');
+        check('SPK35b ...and names its source',   src, 'manifest');
+    end
+    fixtures['dlac\\servers\\aaa\\modules'] = 'not a table';
+    configured = nil; arm();
+    sp.init();
+    do
+        local list, src = sp.modules();
+        check('SPK36 a malformed modules.lua falls back to the manifest', src, 'manifest');
+        check('SPK36b ...loudly', #warns >= 1 and warns[#warns]:find('modules.lua', 1, true) ~= nil, true);
+        check('SPK36c ...with the manifest list intact', list[1], 'ebox');
+    end
+    fixtures['dlac\\servers\\aaa\\modules'] = nil;
+    sp._reset();
+    do
+        local list, src = sp.modules();
+        check('SPK37 no pack -> an empty list', #list, 0);
+        check('SPK37b ...and no source',        src, nil);
+    end
 end)();
 
 -- ---------------------------------------------------------------------------
@@ -27267,6 +27346,14 @@ end)();
     local function layoutEntry(ord, item, count)
         return vc._wu16(ord) .. vc._wu16(item) .. vc._wu16(count) .. string.char(0, 0) .. vc.ZERO24;
     end
+    -- The vault holds every derived id (the 2026-08-30 VAULT LAW: the engine
+    -- only shelves what the vault holds) -- id 20 with qty 2 for the pair.
+    local function vaultRow(rowId, item, qty)
+        return vc._wu32(rowId) .. vc._wu16(item) .. vc._wu16(qty) .. vc.ZERO24;
+    end
+    local VAULT5 = vc._wu16(5) .. vc._wu16(0)
+        .. vaultRow(1, 10, 1) .. vaultRow(2, 20, 2)
+        .. vaultRow(3, 30, 1) .. vaultRow(4, 40, 1) .. vaultRow(5, 31, 1);
 
     rc.configure({
         vc = vc, derive = dv, clock = function() return T; end,
@@ -27282,7 +27369,7 @@ end)();
     vc._reset(); rc._reset(); T, sent, msgs = 0, {}, {};
     vc.pump(true); T = 3; vc.pump(true);
     vc.onFrame(reply(0, 0, hp));
-    vc.onFrame(reply(0, 0, vc._wu16(0) .. vc._wu16(0)));
+    vc.onFrame(reply(0, 0, VAULT5));
     vc.noteJob(1);
     check('GVR1 mirror fresh at boot', vc.state(), 'fresh');
 
@@ -27336,7 +27423,7 @@ end)();
     vc._reset(); rc._reset(); T, sent, msgs = 100, {}, {};
     vc.pump(true); T = 103; vc.pump(true);
     vc.onFrame(reply(0, 0, hp));
-    vc.onFrame(reply(0, 0, vc._wu16(0) .. vc._wu16(0)));
+    vc.onFrame(reply(0, 0, VAULT5));
     vc.noteJob(1);
     T = T + rc.BEAT + 1; rc.tick();
     T = T + 1; vc.pump(true);
@@ -27421,7 +27508,7 @@ end)();
     });
     vc.pump(true); T = 1003; vc.pump(true);
     vc.onFrame(reply(0, 0, hp));
-    vc.onFrame(reply(0, 0, vc._wu16(0) .. vc._wu16(0)));
+    vc.onFrame(reply(0, 0, VAULT5));
     vc.noteJob(1);
     T = T + rc.BEAT + 1; rc.tick();
     T = T + 1; vc.pump(true);
@@ -27479,7 +27566,7 @@ end)();
     CAP.n = 640;
     vc.pump(true); T = 2003; vc.pump(true);
     vc.onFrame(reply(0, 0, hp));
-    vc.onFrame(reply(0, 0, vc._wu16(0) .. vc._wu16(0)));
+    vc.onFrame(reply(0, 0, VAULT5));
     vc.noteJob(1);
     T = T + rc.BEAT + 1; rc.tick();                        -- asks layout
     T = T + 1; vc.pump(true);
@@ -27516,7 +27603,7 @@ end)();
     CAP.n = 640;
     vc.pump(true); T = 3003; vc.pump(true);
     vc.onFrame(reply(0, 0, hp));
-    vc.onFrame(reply(0, 0, vc._wu16(0) .. vc._wu16(0)));
+    vc.onFrame(reply(0, 0, VAULT5));
     vc.noteJob(1);
     T = T + rc.BEAT + 1; rc.tick();
     T = T + 1; vc.pump(true);
@@ -27543,7 +27630,7 @@ end)();
     CAP.n = 2;                                             -- room for 2 units; the sets want 6
     vc.pump(true); T = 4003; vc.pump(true);
     vc.onFrame(reply(0, 0, hp));
-    vc.onFrame(reply(0, 0, vc._wu16(0) .. vc._wu16(0)));
+    vc.onFrame(reply(0, 0, VAULT5));
     vc.noteJob(1);
     T = T + rc.BEAT + 1; rc.tick();
     T = T + 1; vc.pump(true);
@@ -27552,6 +27639,77 @@ end)();
     check('GVR27 adds clamp to the shelf (2 of 6 units fit)', rc.tick(), 'pushed:2');
     check('GVR28 ...and the rest wait, reported, unsent',
           rc.pressure() ~= nil and rc.pressure().over == 0 and rc.pressure().waiting == 4, true);
+
+    -- THE VAULT LAW (2026-08-30): a set-wanted piece the vault holds no copy
+    -- of (in the bags, or unowned) is never pushed and never "waiting" --
+    -- and a pair with ONE vaulted copy shelves exactly one.
+    vc._reset(); rc._reset(); ug._reset(); T, sent, msgs = 5000, {}, {};
+    CAP.n = 640;
+    vc.pump(true); T = 5003; vc.pump(true);
+    vc.onFrame(reply(0, 0, hp));
+    vc.onFrame(reply(0, 0, vc._wu16(2) .. vc._wu16(0)
+        .. vaultRow(1, 10, 1) .. vaultRow(2, 20, 1)));     -- only Sword A + ONE Ring X vaulted
+    vc.noteJob(1);
+    T = T + rc.BEAT + 1; rc.tick();
+    T = T + 1; vc.pump(true);
+    vc.onFrame(reply(0, 0, vc._wu16(0) .. vc._wu16(0)));   -- empty layout
+    T = T + rc.BEAT + 1;
+    check('GVR29 only vaulted derived ids push (2 of 5)', rc.tick(), 'pushed:2');
+    check('GVR29b ...the unvaulted rest are counted, not waiting',
+          rc.notVaulted() == 3 and (rc.pressure() == nil or (rc.pressure().waiting or 0) == 0), true);
+    check('GVR29c the half-vaulted pair pushes count 1', (function()
+        for _, q in ipairs(vc._st().layoutSetQ or {}) do
+            if q.e.itemId == 20 then return q.e.count; end
+        end
+        return 'not queued';
+    end)(), 1);
+
+    -- AUTO-EVICT HOLDS IN THE FIELD (2026-08-30): the town service predicting
+    -- 'not a town' keeps auto removals off the wire (they would only be
+    -- refused NOT_IN_CITY) while the pressure verdict stays exposed.
+    local TOWN = { v = false };
+    rc.configure({
+        vc = vc, derive = dv, clock = function() return T; end,
+        say = function(m) msgs[#msgs + 1] = m; end,
+        mainJob = function() return 1; end,
+        browsing = function() return false; end,
+        setsRoot = function() return sets; end,
+        triggers = function() return triggers; end,
+        resolve = resolve,
+        usage = ug, settings = ug.settings,
+        capacity = function() return CAP.n; end,
+        inTown = function() return TOWN.v; end,
+    });
+    vc._reset(); rc._reset(); ug._reset(); T, sent, msgs = 6000, {}, {};
+    CAP.n = 3;
+    ug.setSetting('removals', 'auto');
+    vc.pump(true); T = 6003; vc.pump(true);
+    vc.onFrame(reply(0, 0, hp));
+    vc.onFrame(reply(0, 0, VAULT5));
+    vc.noteJob(1);
+    T = T + rc.BEAT + 1; rc.tick();
+    T = T + 1; vc.pump(true);
+    vc.onFrame(reply(0, 0, vc._wu16(5) .. vc._wu16(0)
+        .. layoutEntry(1, 10, 1) .. layoutEntry(2, 20, 2)
+        .. layoutEntry(3, 30, 1) .. layoutEntry(4, 40, 1)
+        .. layoutEntry(5, 31, 1)));                        -- 6 units on a 3 shelf
+    T = T + rc.BEAT + 1; rc.tick();
+    check('GVR30 auto-evict holds in the field (no REMOVE queued)', (function()
+        for _, q in ipairs(vc._st().layoutSetQ or {}) do
+            if q.e.verb == vc.verb.REMOVE then return 'a remove went out'; end
+        end
+        return true;
+    end)(), true);
+    check('GVR30b ...but the pressure verdict is still exposed',
+          rc.pressure() ~= nil and rc.pressure().over == 3, true);
+    TOWN.v = true;
+    T = T + rc.BEAT + 1; rc.tick();
+    check('GVR30c reaching town lets auto-evict act', (function()
+        for _, q in ipairs(vc._st().layoutSetQ or {}) do
+            if q.e.verb == vc.verb.REMOVE then return true; end
+        end
+        return 'nothing queued';
+    end)(), true);
 
     vc._reset(); rc._reset(); ug._reset();
 end)();
@@ -27630,7 +27788,7 @@ end)();
     -- roster labels match the registrations they gate (a rename on either
     -- side must fail HERE, not vanish a tab in the field)
     check('FGT24 tab roster carries the six known labels', (function()
-        local want = { 'Equipped', 'All Equipment', 'Sets', 'Triggers',
+        local want = { 'Sets', 'Triggers', 'All Equipment', 'Equipped',
                        'Gear Helpers', 'Job Helpers' };
         if #fg.TABS ~= #want then return 'count ' .. #fg.TABS; end
         for i, w in ipairs(want) do

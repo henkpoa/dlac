@@ -61,6 +61,43 @@ local function tabAllowed(label)
     return v ~= false;
 end
 
+-- THE BASE TAB ORDER (Henrik, 2026-08-30): the ranked labels render in this
+-- fixed order however load order registered them -- the Gear Vault module
+-- mounts LAST (a pack module, after the whole UI) but its tab leads. A label
+-- not ranked here keeps its registration order, AFTER the ranked ones. On a
+-- server without the vault the rank simply never matches and the rest close up.
+host.TAB_RANK = {
+    ['Gear Vault']    = 1,
+    ['Sets']          = 2,
+    ['Triggers']      = 3,
+    ['All Equipment'] = 4,
+    ['Equipped']      = 5,
+};
+
+-- The one submission list, gated and sorted -- shared by renderTabs (what
+-- to draw) and tabBarId (what identity the bar carries), so the two can
+-- never disagree about the order.
+local function orderedTabs()
+    local list = {};
+    for _, m in ipairs(mods) do
+        if type(m.tabs) == 'table' then
+            for _, t in ipairs(m.tabs) do
+                if tabAllowed(t.label) then list[#list + 1] = t; end
+            end
+        end
+    end
+    local ranked = {};
+    for i, t in ipairs(list) do
+        ranked[i] = { t = t, r = host.TAB_RANK[t.label] or (100 + i), i = i };
+    end
+    table.sort(ranked, function(a, b)
+        if a.r ~= b.r then return a.r < b.r; end
+        return a.i < b.i;
+    end);
+    for i, e in ipairs(ranked) do list[i] = e.t; end
+    return list;
+end
+
 host.services = {};  -- live shared-services table; filled via host.provide{}
 
 host.provide = function(tbl)
@@ -149,6 +186,21 @@ local _barGen = 0;        -- tab-bar ID generation; every bump = a bar ImGui has
 -- are a handful per session, so the drift is not worth managing.
 host.tabBarId = function(base)
     base = (type(base) == 'string') and base or '##dlac_tabs';
+    -- THE ORDER IS PART OF THE BAR'S IDENTITY (field-caught 2026-08-30, the
+    -- day TAB_RANK shipped without this): this ImGui build keeps a bar's tab
+    -- order in its persistent per-ID state, so submitting the same labels in
+    -- a new order changes NOTHING on a bar it already knows -- and ImGui's
+    -- context outlives an /addon reload, so even a fresh Lua state inherited
+    -- the old order. Folding a signature of the ordered labels into the ID
+    -- means any order change (TAB_RANK, a featuregate flip, a late-mounting
+    -- pack module) is a bar ImGui has never seen, which rebuilds in
+    -- submission order. Same order = same ID, so nothing churns per frame.
+    local sig = 5381;
+    for _, t in ipairs(orderedTabs()) do
+        for k = 1, #t.label do sig = (sig * 33 + t.label:byte(k)) % 16777213; end
+        sig = (sig * 33 + 124) % 16777213;
+    end
+    base = base .. '#o' .. tostring(sig);
     if _barGen == 0 then return base; end
     return base .. '#g' .. tostring(_barGen);
 end
@@ -210,17 +262,12 @@ host.renderTabs = function(guard, job, level)
         end
     end
 
-    -- One flat submission list. While a rebuild is riding, the wanted tab goes
-    -- FIRST -- a bar ImGui has never seen has nothing selected and adopts the tab
-    -- at index 0. The order returns to normal the moment the request clears.
-    local list = {};
-    for _, m in ipairs(mods) do
-        if type(m.tabs) == 'table' then
-            for _, t in ipairs(m.tabs) do
-                if tabAllowed(t.label) then list[#list + 1] = t; end
-            end
-        end
-    end
+    -- The one gated, TAB_RANK-sorted submission list (orderedTabs -- shared
+    -- with tabBarId, whose identity carries this order). While a rebuild is
+    -- riding, the wanted tab goes FIRST -- a bar ImGui has never seen has
+    -- nothing selected and adopts the tab at index 0. The order returns to
+    -- normal the moment the request clears.
+    local list = orderedTabs();
     if sel ~= nil and sel.rebuilt then
         for i, t in ipairs(list) do
             if t.label == sel.label then

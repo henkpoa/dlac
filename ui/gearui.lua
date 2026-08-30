@@ -5672,6 +5672,21 @@ ashita.events.register('d3d_present', 'dlac-gearui-render', function()
     local hudHidden = false;
     pcall(function() hudHidden = require('dlac\\feature\\gamehud').hidden(); end);
     if hudHidden then return; end
+    -- FIRST-RUN SERVER CHOICE (2026-08-30): several packs ship and neither
+    -- the flag file nor detection answered -- serverpack holds NEUTRAL until
+    -- the player says which server this install plays. Independent of the
+    -- main window: it must find a brand-new player at first login. Gated on
+    -- needsChoice before the module is even required, so a healthy install
+    -- pays one boolean per frame. Function-scoped requires (hard rule 1).
+    if has.imgui then
+        local spNeeds = false;
+        pcall(function() spNeeds = require('dlac\\gear\\serverpack').needsChoice(); end);
+        if spNeeds then
+            local scThemed = style ~= nil and style.push();
+            pcall(function() require('dlac\\ui\\serverchoose').render(); end);
+            if scThemed then style.pop(); end
+        end
+    end
     if ui.showMetrics == true and has.imgui then       -- /dl metrics: overlay hunter
         pcall(function() imgui.ShowMetricsWindow(ui.metricsOpen); end);
         if ui.metricsOpen ~= nil and ui.metricsOpen[1] == false then ui.showMetrics = false; end

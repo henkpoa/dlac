@@ -157,6 +157,20 @@ for _, fname in ipairs({ 'spells', 'abilities' }) do
     end
 end
 
+-- The MODULE list, from the seam that outranks a generated manifest
+-- (servers\<id>\modules.lua > manifest.modules -- the 2026-08-27 gen_pack.py
+-- regeneration shipped modules = {} and the Gear Vault silently never
+-- loaded). Printed loudly so the human regenerating a pack SEES the list,
+-- and every named module's init.lua must at least compile.
+local modlist, modsrc = {}, nil;
+if type(sp.modules) == 'function' then modlist, modsrc = sp.modules(); end
+print(('  modules: %s (from %s)'):format(
+    (#modlist > 0) and table.concat(modlist, ', ') or 'none', tostring(modsrc)));
+for _, mname in ipairs(modlist) do
+    local chunk = loadfile(('servers/%s/modules/%s/init.lua'):format(packid, mname));
+    check('L17 module init compiles: ' .. mname, chunk ~= nil, true);
+end
+
 if #failures == 0 then
     print(('OK -- pack "%s": %d checks passed'):format(packid, count));
     os.exit(0);

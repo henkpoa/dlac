@@ -14,14 +14,35 @@ servers/
   <id>/
     manifest.lua             -- the pack's declaration (below)
     features.lua             -- optional, HAND-MAINTAINED surface defaults (below)
+    detect.lua               -- optional, HAND-MAINTAINED client-bundle matcher (below)
+    modules.lua              -- optional, HAND-MAINTAINED module list (outranks manifest.modules)
     data/<file>.lua          -- one Lua table per file, mounted as dlac\data\<file>
     modules/<name>/init.lua  -- optional pack modules (jobhelpers containment rules)
 ```
 
-Selection: one pack installed → active. Several → `config\addons\dlac\server.lua`
-(`return { server = '<id>' }`) chooses; without it the index's first pack wins
-loudly. `serverpack.init()` mounts one `package.preload` entry per `files`
-member; a file the manifest does not list does not resolve.
+Selection (amended 2026-08-30): one pack installed → active. Several →
+`config\addons\dlac\server.lua` (`return { server = '<id>' }`) chooses; without
+it, the first pack whose `detect.lua` matches the Ashita boot config wins; and
+failing that NOTHING mounts — `serverpack.needsChoice()` raises the first-run
+chooser (`ui/serverchoose`), which writes the flag and reloads. Index order
+never chooses. `serverpack.init()` mounts one `package.preload` entry per
+`files` member; a file the manifest does not list does not resolve.
+
+## detect.lua — client-bundle detection (optional, hand-maintained)
+
+How this server's *client bundle* presents itself — the packager's label, not
+the server's word, so it ranks below the flag file and only auto-fills the gap:
+
+```lua
+return {
+    -- boot = { command = '<ashita.boot command>', name = '<ashita.launcher name>' }
+    match = function(boot) return boot.command:lower():find('myserver.example', 1, true) ~= nil; end,
+};
+```
+
+Hand-maintained for the features.lua reason: pack generators own `manifest.lua`
+and would clobber it. A missing file, or a matcher that errors, simply does not
+detect. Today only `servers/cexi/` ships one (`server.catseyexi.com`).
 
 ## manifest.lua
 
@@ -33,7 +54,7 @@ return {
     maxLevel = 75,            -- serverpack.maxLevel(); every historical 75 reads this
     caps  = { ... },          -- capability flags; ABSENT = the feature does not exist
     const = { ... },          -- tuning constants; converted sites keep their historical fallback
-    modules = { ... },        -- mount list AND order (tray/helper registration order)
+    modules = { ... },        -- mount list AND order -- but see modules.lua below
     files   = { ... },        -- data mount list
     counts  = { <file> = n }, -- optional; pack_lint validates when present
 }
@@ -114,6 +135,17 @@ percent. `HELM = 1` is a flag, not a value.
   degrades soft, which is the addon's standing failure mode.
 
 ## Pack modules
+
+**The module list is a CODE fact, not a data fact** (2026-08-30). It is read
+through `serverpack.modules()`: a hand-maintained `servers/<id>/modules.lua`
+(returning `{ '<name>', ... }`) outranks `manifest.modules`, and only falls
+back to the manifest when the file does not ship. A pack whose manifest is
+hand-maintained (cexi) may keep the list in the manifest; a pack whose
+manifest is GENERATED (ascensionxi, `gen_pack.py`) must ship `modules.lua` —
+a 2026-08-27 regeneration emitted `modules = {}` and silently unloaded the
+whole Gear Vault (no tab, no mirror, no error; handover doc §4a). `/dl check`
+prints the effective list and its source; `pack_lint` prints it and compiles
+every named module's `init.lua`.
 
 `servers/<id>/modules/<name>/init.lua` returns a table; optional `init(deps)`
 and `pump()`. Everything else the module does itself at load: register

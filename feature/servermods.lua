@@ -7,9 +7,13 @@
     its game modes, its prestige system -- so on any other server the code
     is not gated off, it is NOT THERE.
 
-    The manifest's `modules` list is the mount list AND the order: a name
-    the manifest does not carry never loads, and registration order (tray
-    rows, helper rows) follows the list. The jobhelpers containment
+    serverpack.modules() is the mount list AND the order: a name the pack
+    does not carry never loads, and registration order (tray rows, helper
+    rows) follows the list. The list itself comes from the pack's
+    hand-maintained servers\<id>\modules.lua when one ships, else from
+    manifest.modules -- the split exists because a generated manifest once
+    dropped the list and unloaded the Gear Vault silently (2026-08-27,
+    handover doc par.4a). The jobhelpers containment
     discipline applies wholesale: a module whose init.lua is missing,
     malformed or throws gets ONE loud line and a ledger entry, never a
     crash and never collateral damage to its siblings.
@@ -45,11 +49,16 @@ end
 function M.load(deps)
     local ok, sp = pcall(require, 'dlac\\gear\\serverpack');
     if not ok or type(sp) ~= 'table' then return; end
-    local id  = sp.active();
-    local man = sp.manifest();
-    if id == nil or type(man) ~= 'table' or type(man.modules) ~= 'table' then return; end
+    local id = sp.active();
+    if id == nil then return; end
+    local list = (type(sp.modules) == 'function') and sp.modules() or nil;
+    if type(list) ~= 'table' then
+        local man = sp.manifest();   -- older serverpack: the manifest is the list
+        list = (type(man) == 'table') and man.modules or nil;
+    end
+    if type(list) ~= 'table' then return; end
     local ledger = package.loaded['dlac\\loadledger'];
-    for _, name in ipairs(man.modules) do
+    for _, name in ipairs(list) do
         if loaded[name] == nil and type(name) == 'string' and name ~= '' then
             local okm, mod = pcall(require, 'dlac\\servers\\' .. id .. '\\modules\\' .. name .. '\\init');
             if type(ledger) == 'table' and type(ledger.failed) == 'table' then

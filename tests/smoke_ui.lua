@@ -7077,6 +7077,39 @@ end)();
             src:find('BeginTabBar(host.tabBarId(', 1, true) ~= nil, true);
     end
 
+    -- THE BASE TAB ORDER (2026-08-30): however load order registered them,
+    -- ranked labels submit Gear Vault > Sets > Triggers > All Equipment >
+    -- Equipped, and unranked labels keep registration order AFTER them.
+    do
+        local seen = {};
+        local OIM = {
+            BeginTabItem = function(label) seen[#seen + 1] = tostring(label); return false; end,
+            EndTabItem = function() end,
+        };
+        package.loaded['imgui'] = OIM;
+        package.loaded['dlac\\ui\\uihost'] = nil;
+        local oh = require('dlac\\ui\\uihost');
+        -- the historical LOAD order: equippedui first, the vault module last
+        oh.register({ name = 'equipped', tabs = {
+            { label = 'Equipped', render = function() end },
+            { label = 'All Equipment', render = function() end } } });
+        oh.register({ name = 'sets', tabs = { { label = 'Sets', render = function() end } } });
+        oh.register({ name = 'triggers', tabs = { { label = 'Triggers', render = function() end } } });
+        oh.register({ name = 'automations', tabs = { { label = 'Gear Helpers', render = function() end } } });
+        oh.register({ name = 'gearvault', tabs = { { label = 'Gear Vault', render = function() end } } });
+        oh.renderTabs(function() end);
+        check('TAB26 ranked labels render in the base order, unranked after',
+            table.concat(seen, ','), 'Gear Vault,Sets,Triggers,All Equipment,Equipped,Gear Helpers');
+        -- ...and the ORDER is part of the bar's identity (field-caught
+        -- 2026-08-30: this ImGui build keeps a known bar's tab order in its
+        -- persistent state, and its context outlives an /addon reload -- only
+        -- a new ID rebuilds in submission order).
+        local idBefore = oh.tabBarId('##t');
+        oh.register({ name = 'late', tabs = { { label = 'Late Tab', render = function() end } } });
+        check('TAB27 an order change changes the bar id', oh.tabBarId('##t') ~= idBefore, true);
+        check('TAB27b ...and a stable order keeps it stable', oh.tabBarId('##t'), oh.tabBarId('##t'));
+    end
+
     package.loaded['imgui'] = saved.imgui;
     package.loaded['dlac\\ui\\uihost'] = saved.host;
     package.loaded['dlac\\chatfmt'] = saved.fmt;
@@ -7532,6 +7565,11 @@ end)();
             return pressWithdraw and tostring(label):match('^Withdraw') ~= nil;
         end,
         CollapsingHeader = function(label) headers[#headers + 1] = tostring(label); return true; end,
+        -- the Vault-options COG popup (2026-08-30): open always "succeeds" so
+        -- the settings rows render and GVU6d keeps its coverage
+        OpenPopup     = nop,
+        BeginPopup    = function() depth.pop = (depth.pop or 0) + 1; return true; end,
+        EndPopup      = function() depth.pop = depth.pop - 1; end,
         TreeNode      = function() depth.tree = depth.tree + 1; return true; end,
         TreePop       = function() depth.tree = depth.tree - 1; end,
         BeginTabBar   = function() depth.bar = (depth.bar or 0) + 1; return true; end,
@@ -7607,6 +7645,12 @@ end)();
     check('GVU1a tab-bar/tab stacks balanced', (depth.bar or 0) == 0 and (depth.tab or 0) == 0, true);
     check('GVU1b the Inventory sub-tab carries its count',
           table.concat(headers, '|'):find('Inventory (2)', 1, true) ~= nil, true);
+    check('GVU1d the Vault sub-tab carries the stored count (the old header sentence)',
+          table.concat(headers, '|'):find('Vault (4)', 1, true) ~= nil, true);
+    check('GVU1e a fresh mirror shows no state badge and no header sentence', (function()
+        local blob0 = table.concat(texts, '|');
+        return blob0:find('pieces stored', 1, true) == nil and blob0:find('[fresh]', 1, true) == nil;
+    end)(), true);
     check('GVU1c Store and Store all are offered', (function()
         local h = table.concat(smallHits, '|');
         return h:find('Store all (2)', 1, true) ~= nil and h:find('Store##', 1, true) ~= nil;
@@ -7616,6 +7660,7 @@ end)();
     check('GVU3a tree stack balanced',  depth.tree, 0);
     check('GVU3b tooltip stack balanced (the standard hover card ran)', depth.tip, 0);
     check('GVU3c style-colour stack balanced', depth.col, 0);
+    check('GVU3d popup stack balanced (the options cog)', depth.pop or 0, 0);
     local blob = table.concat(texts, '|');
     check('GVU4 the browser drew both rows',
           blob:find('Item100', 1, true) ~= nil and blob:find('Item200', 1, true) ~= nil, true);
@@ -7623,7 +7668,11 @@ end)();
     local hits = table.concat(smallHits, '|');
     check('GVU6 the pinned layout entry offers Unpin + Remove',
           hits:find('Unpin##', 1, true) ~= nil and hits:find('Remove##', 1, true) ~= nil, true);
-    check('GVU6c vault rows offer Layout', hits:find('Layout##', 1, true) ~= nil, true);
+    check('GVU6c vault rows offer Add to Mog Wardrobe',
+          hits:find('Add to Mog Wardrobe##', 1, true) ~= nil, true);
+    check('GVU6e no [wanted] tag and no Store-wanted shortcut remain (2026-08-30)',
+          table.concat(texts, '|'):find('[wanted]', 1, true) == nil
+          and hits:find('Store wanted', 1, true) == nil, true);
     check('GVU6d the Vault options rows render (slice 4 settings)',
           hits:find('gvset_additions', 1, true) ~= nil and hits:find('gvset_removals', 1, true) ~= nil, true);
     local heads = table.concat(headers, '|');
@@ -7647,8 +7696,120 @@ end)();
     pressWithdraw = false;
     check('GVU11 the click queued withdraw requests', #(vc._st().withdrawQ or {}) >= 1, true);
 
+    -- WARDROBE PRESSURE, 2026-08-30 wording: a stubbed reconcile puts the
+    -- pane under pressure (in "town" -- location resolves nothing here, and
+    -- unknown reads as town), so the red words, the marking dialog and the
+    -- Waiting-for-room section all render -- and no player-facing string
+    -- says "shelf" any more.
+    local savedFmt = package.loaded['dlac\\gear\\gearfmt'];
+    local savedRec = package.loaded['dlac\\servers\\ascensionxi\\modules\\gearvault\\reconcile'];
+    package.loaded['dlac\\gear\\gearfmt'] = {
+        esc = function(s) return tostring(s or ''); end,
+        textWrapped = function(col, s) IM.TextColored(col, s); end,
+    };
+    package.loaded['dlac\\servers\\ascensionxi\\modules\\gearvault\\reconcile'] = {
+        pressure = function() return {
+            over = 2, waiting = 1,
+            waitingItems = { { itemId = 100, need = 1 } },
+            mode = 'ask',
+            candidates = { { key = 'k1', itemId = 100, count = 1, assigned = false,
+                             identity = string.rep('\0', 24) } },
+            pinned = {},
+        }; end,
+        cityBlocked = function() return false; end,
+        freeSlots = function() return 0; end,
+        wornNow = function() return {}; end,
+        derivedIds = function() return {}; end,
+    };
+    package.loaded['dlac\\servers\\ascensionxi\\modules\\gearvault\\vaultui'] = nil;
+    local vui2 = require('dlac\\servers\\ascensionxi\\modules\\gearvault\\vaultui');
+    texts, smallHits, headers = {}, {}, {};
+    check('GVU12 renders under wardrobe pressure', pcall(vui2.render, 1, 75), true);
+    blob = table.concat(texts, '|');
+    check('GVU13 the full-wardrobe words carry the count',
+          blob:find('Mog Wardrobe is full: 3 equipment pieces cannot fit in.', 1, true) ~= nil, true);
+    check('GVU13b ...and the withdraw advice', blob:find('Void Storage Warden', 1, true) ~= nil, true);
+    check('GVU13c the marking dialog is offered',
+          table.concat(smallHits, '|'):find('Choose what to remove', 1, true) ~= nil, true);
+    check('GVU13d Waiting for room renders as a header',
+          table.concat(headers, '|'):find('Waiting for room (1)', 1, true) ~= nil, true);
+    check('GVU14 no player-facing "shelf" remains', (function()
+        local all = (blob .. '|' .. table.concat(headers, '|') .. '|' .. table.concat(smallHits, '|')):lower();
+        return all:find('shelf', 1, true) == nil;
+    end)(), true);
+    package.loaded['dlac\\gear\\gearfmt'] = savedFmt;
+    package.loaded['dlac\\servers\\ascensionxi\\modules\\gearvault\\reconcile'] = savedRec;
+
     vc._reset();
     for _, k in ipairs(NAMES) do package.loaded[k] = saved[k]; end
+end)();
+
+-- ---------------------------------------------------------------------------
+-- SCH. The first-run server chooser (ui/serverchoose.lua, 2026-08-30):
+--      renders only while serverpack.needsChoice() holds, offers every
+--      installed pack, and a click writes the choice + queues the reload.
+-- ---------------------------------------------------------------------------
+(function()
+    local texts, buttons, press = {}, {}, nil;
+    local began = 0;
+    local IM = {
+        Begin = function() began = began + 1; return true; end,
+        End = function() end,
+        Text = function(s) texts[#texts + 1] = tostring(s); end,
+        TextColored = function(_, s) texts[#texts + 1] = tostring(s); end,
+        Separator = function() end,
+        SetNextWindowPos = function() end,
+        Button = function(label)
+            buttons[#buttons + 1] = tostring(label);
+            return press ~= nil and tostring(label):find(press, 1, true) ~= nil;
+        end,
+    };
+    local wrote, queued = nil, {};
+    local SP = {
+        needsChoice = function() return true; end,
+        installed = function() return { { id = 'cexi', name = 'CatsEyeXI' },
+                                        { id = 'ascensionxi', name = 'AscensionXI' } }; end,
+        writeChoice = function(id) wrote = id; return true; end,
+    };
+    local savedIM = package.loaded['imgui'];
+    local savedSP = package.loaded['dlac\\gear\\serverpack'];
+    local savedCore = AshitaCore;
+    package.loaded['imgui'] = IM;
+    package.loaded['dlac\\gear\\serverpack'] = SP;
+    package.loaded['dlac\\ui\\serverchoose'] = nil;
+    AshitaCore = { GetChatManager = function()
+        return { QueueCommand = function(_, _mode, c) queued[#queued + 1] = tostring(c); end };
+    end };
+
+    local sc = require('dlac\\ui\\serverchoose');
+    check('SCH1 the chooser renders while a choice is owed', pcall(sc.render), true);
+    check('SCH2 ...opening its window', began >= 1, true);
+    check('SCH3 ...offering every installed pack',
+          table.concat(buttons, '|'):find('CatsEyeXI', 1, true) ~= nil
+          and table.concat(buttons, '|'):find('AscensionXI', 1, true) ~= nil, true);
+    press = 'AscensionXI';
+    check('SCH4 a click renders whole', pcall(sc.render), true);
+    press = nil;
+    check('SCH5 ...writes the chosen id', wrote, 'ascensionxi');
+    check('SCH6 ...and queues the reload', queued[1], '/addon reload dlac');
+    texts = {};
+    check('SCH7 after the click it says it is reloading', (function()
+        pcall(sc.render);
+        return table.concat(texts, '|'):find('reloading', 1, true) ~= nil;
+    end)(), true);
+    SP.needsChoice = function() return false; end;
+    package.loaded['dlac\\ui\\serverchoose'] = nil;
+    local sc2 = require('dlac\\ui\\serverchoose');
+    began = 0;
+    check('SCH8 no choice owed -> nothing renders', (function()
+        pcall(sc2.render);
+        return began;
+    end)(), 0);
+
+    package.loaded['imgui'] = savedIM;
+    package.loaded['dlac\\gear\\serverpack'] = savedSP;
+    package.loaded['dlac\\ui\\serverchoose'] = nil;
+    AshitaCore = savedCore;
 end)();
 
 -- ---------------------------------------------------------------------------

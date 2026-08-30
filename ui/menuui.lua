@@ -621,6 +621,45 @@ local function renderSettingsBody()
         end);
 
     -- ------------------------------------------------------------------
+    -- SERVER (ADR 0035): which server pack this INSTALL runs. Per-install,
+    -- not per-character -- switching writes config\addons\dlac\server.lua
+    -- through serverpack (the flag's one owner) and reloads dlac, because
+    -- every module that pcall-required data has cached the old pack's
+    -- answers. Only shown when there is actually a choice to make.
+    -- ------------------------------------------------------------------
+    pcall(function()
+        local sp = require('dlac\\gear\\serverpack');
+        local packs = sp.installed();
+        if #packs < 2 then return; end
+        imgui.Separator();
+        if uistyl ~= nil and type(uistyl.helpLabel) == 'function' then
+            uistyl.helpLabel(imgui, 'Server',
+                'Which server this dlac install plays on -- it decides the item\ncatalog, the level cap and the server-specific features.\nSwitching writes the per-install choice and reloads dlac.', COL.HEADER);
+        else
+            imgui.TextColored(COL.HEADER, 'Server');
+        end
+        local active = sp.active();
+        for i, p in ipairs(packs) do
+            if i > 1 then imgui.SameLine(0, 6); end
+            local on = (p.id == active);
+            if on then imgui.PushStyleColor(ImGuiCol_Button, { 0.55, 0.45, 0.15, 1.0 }); end
+            if imgui.SmallButton(esc(tostring(p.name)) .. '###dlacsetsrv_' .. tostring(p.id)) and not on then
+                if sp.writeChoice(p.id) then
+                    print(('[dlac] server set to %s -- reloading dlac.'):format(tostring(p.name)));
+                    pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '/addon reload dlac'); end);
+                else
+                    print('[dlac] could not write config\\addons\\dlac\\server.lua -- write it by hand: return { server = \'' .. tostring(p.id) .. '\' }');
+                end
+            end
+            if on then imgui.PopStyleColor(1); end
+            if imgui.IsItemHovered() then
+                imgui.SetTooltip(on and 'The active server pack.'
+                    or esc('Switch this install to ' .. tostring(p.name) .. ' and reload dlac.'));
+            end
+        end
+    end);
+
+    -- ------------------------------------------------------------------
     -- FEATURES (lib\featuregate): which dlac surfaces exist for this
     -- character. Defaults come from the server pack (servers\<id>\
     -- features.lua); a tick here is the character's own override and is

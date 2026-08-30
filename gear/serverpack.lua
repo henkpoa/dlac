@@ -16,8 +16,16 @@
     * SELECTION -- one pack present: it is active, no configuration exists
       (the one-install-one-server rule). Several packs: the per-install flag
       file config\addons\dlac\server.lua (`return { server = '<id>' }` --
-      the engine-flag pattern) chooses; without it the index's first pack
-      wins LOUDLY. No login-time detection: the pack is the declaration.
+      the engine-flag pattern) chooses. Without it, DETECTION may answer: a
+      pack can ship a hand-maintained servers\<id>\detect.lua naming how its
+      server's CLIENT BUNDLE presents itself (today only cexi carries one --
+      the Ashita boot command names server.catseyexi.com). Detection reads
+      the launcher's own boot config, never the wire: there is no login-time
+      protocol detection, the pack is still the declaration. When neither
+      the flag nor detection answers, NO pack mounts (needsChoice() = true)
+      and the first-run chooser (ui\serverchoose) asks the player -- the
+      2026-08-30 field case: index order silently handed a brand-new
+      AscensionXI install the cexi pack.
 
     * THE VIRTUAL DATA NAMESPACE -- `dlac\data\<file>` remains the require
       vocabulary the whole tree speaks, but no data\ directory exists:
@@ -64,6 +72,8 @@ local services = {};
 -- seams (tests override; live code never does)
 M._require      = require;
 M._configLoader = nil;    -- function() -> table|nil; nil = read the real flag file
+M._bootReader   = nil;    -- function() -> { command, name }|nil; nil = ask Ashita
+M._flagWriter   = nil;    -- function(id) -> boolean; nil = write the real flag file
 
 local function emit(msg)
     if type(M._emit) == 'function' then pcall(M._emit, msg); return; end
@@ -111,6 +121,39 @@ local function configuredId()
     return got;
 end
 
+-- How this install's CLIENT BUNDLE presents itself: the Ashita boot config
+-- ('boot' is the alias Ashita loads the active .ini under -- the aspect
+-- addon reads it the same way). No field is guaranteed; matchers get ''.
+local function bootInfo()
+    if type(M._bootReader) == 'function' then
+        local ok, t = pcall(M._bootReader);
+        return (ok and type(t) == 'table') and t or {};
+    end
+    local out = {};
+    pcall(function()
+        local cm = AshitaCore:GetConfigurationManager();
+        out.command = tostring(cm:GetString('boot', 'ashita.boot', 'command') or '');
+        out.name    = tostring(cm:GetString('boot', 'ashita.launcher', 'name') or '');
+    end);
+    return out;
+end
+
+-- Detection, index order: the first pack whose hand-maintained detect.lua
+-- (match(boot) -> true) recognises the boot config wins. A pack without the
+-- file, or a matcher that errors, simply does not detect -- and detection
+-- ranks BELOW the flag file: it never overrides a declared choice.
+local function detectPack(packs)
+    local boot = bootInfo();
+    for _, p in ipairs(packs) do
+        local ok, det = pcall(M._require, 'dlac\\servers\\' .. p.id .. '\\detect');
+        if ok and type(det) == 'table' and type(det.match) == 'function' then
+            local mok, hit = pcall(det.match, boot);
+            if mok and hit == true then return p; end
+        end
+    end
+    return nil;
+end
+
 -- ---------------------------------------------------------------------------
 -- init -- discover, select, mount. Idempotent; call once at boot, before any
 -- module can require data. Headless harnesses call it after installing seams.
@@ -137,8 +180,17 @@ function M.init()
     end
     if chosen == nil and #packs == 1 then chosen = packs[1]; end
     if chosen == nil and #packs > 1 then
-        chosen = packs[1];
-        emit(("several server packs installed and no choice made -- using '%s'. Write config\\addons\\dlac\\server.lua: return { server = '<id>' }"):format(chosen.id));
+        chosen = detectPack(packs);
+        if chosen ~= nil then
+            emit(("server '%s' detected from the launcher config."):format(chosen.id));
+        else
+            -- No flag, no detection: hold NEUTRAL and ask. Index order must
+            -- never choose -- a first install that silently mounts the wrong
+            -- pack indexes gear against the wrong catalog for days before
+            -- anyone notices (the 2026-08-30 field case).
+            state.needsChoice = true;
+            emit('no server chosen yet -- pick your server in the window in game (or Menu > Settings > Server).');
+        end
     end
 
     if chosen ~= nil then
@@ -176,6 +228,42 @@ function M.name()
 end
 
 function M.manifest() return state.manifest; end
+
+-- The pack's MODULE list -- the client code feature\servermods mounts -- and
+-- where it came from: -> list, 'modules.lua' | 'manifest' (list = {} and
+-- source = nil when no pack is active). A hand-maintained
+-- servers\<id>\modules.lua (returning an array of names) OUTRANKS
+-- manifest.modules: which modules exist is a CODE fact owned by this repo,
+-- and the ascensionxi manifest is GENERATED (gen_pack.py) -- a 2026-08-27
+-- regeneration emitted modules = {} and silently unloaded the whole Gear
+-- Vault (no tab, no mirror, no error; the handover doc's par.4a). A pack whose
+-- manifest is hand-maintained (cexi) may keep its list in the manifest and
+-- ship no modules.lua. Computed once per mount; _reset clears it.
+function M.modules()
+    local id = state.active;
+    if id == nil then return {}, nil; end
+    if state.modlist ~= nil then return state.modlist, state.modsrc; end
+    local raw, src = nil, nil;
+    local ok, t = pcall(M._require, 'dlac\\servers\\' .. id .. '\\modules');
+    if ok then
+        if type(t) == 'table' then
+            raw, src = t, 'modules.lua';
+        else
+            emit(("pack '%s' modules.lua did not return a table -- using the manifest's list."):format(id));
+        end
+    end
+    if raw == nil then
+        local m = state.manifest;
+        if m ~= nil and type(m.modules) == 'table' then raw, src = m.modules, 'manifest'; end
+    end
+    local list = {};
+    for _, n in ipairs(raw or {}) do
+        if type(n) == 'string' and n ~= '' then list[#list + 1] = n; end
+    end
+    state.modlist = list;
+    state.modsrc  = src;
+    return state.modlist, state.modsrc;
+end
 
 function M.maxLevel()
     local m = state.manifest;
@@ -225,6 +313,35 @@ function M.features()
     local ok, t = pcall(M._require, 'dlac\\servers\\' .. state.active .. '\\features');
     state.feats = (ok and type(t) == 'table') and t or nil;
     return state.feats;
+end
+
+-- true when several packs ship and neither the flag file nor detection
+-- answered: NOTHING is mounted, and the first-run chooser is owed a render.
+function M.needsChoice() return state.needsChoice == true; end
+
+-- Write the per-install flag file (the player's declaration -- the chooser
+-- and the Settings switcher both land here). Does NOT re-select live: the
+-- callers queue '/addon reload dlac', because modules that pcall-required
+-- data before a choice have already cached their misses.
+function M.writeChoice(id)
+    if type(id) ~= 'string' or id == '' then return false; end
+    if type(M._flagWriter) == 'function' then
+        local ok, r = pcall(M._flagWriter, id);
+        return ok and r == true;
+    end
+    local wrote = false;
+    pcall(function()
+        local dir = AshitaCore:GetInstallPath() .. 'config\\addons\\dlac\\';
+        if ashita and ashita.fs and ashita.fs.create_directory then ashita.fs.create_directory(dir); end
+        local f = io.open(dir .. 'server.lua', 'w');
+        if f == nil then return; end
+        f:write("-- dlac's per-install server choice (ADR 0035). Written by the server\n");
+        f:write("-- picker; hand-edit or delete this file to choose again.\n");
+        f:write(("return { server = '%s' };\n"):format(id));
+        f:close();
+        wrote = true;
+    end);
+    return wrote;
 end
 
 -- Discovery readout for /dl check: { { id, name }, ... } in index order.

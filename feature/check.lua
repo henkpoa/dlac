@@ -80,7 +80,11 @@ function M._issues(info)
     -- The pack question first (ADR 0035): no active pack means the catalog
     -- CANNOT be present -- one issue that explains, not two that confuse.
     if info.packTried == true and info.packId == nil then
-        I[#I + 1] = 'no server pack active (servers\\ missing or unreadable) -- every data file and server capability is off';
+        if info.packChoice == true then
+            I[#I + 1] = 'no server CHOSEN yet -- answer the picker window in game (or Menu > Settings > Server); nothing loads until you do';
+        else
+            I[#I + 1] = 'no server pack active (servers\\ missing or unreadable) -- every data file and server capability is off';
+        end
     end
     local catMin = tonumber(info.catalogMin) or CATALOG_MIN;
     if info.catalogTried == true and info.catalogN == nil then
@@ -147,7 +151,10 @@ function M._lines(info)
         string.format('check (addon): modules: %s', modWord),
         string.format('check (addon): data: pack %s -- catalog %s -- gear.lua %s -- profile %s',
             (info.packId ~= nil) and (tostring(info.packId)
-                .. (info.packName ~= nil and (' (' .. tostring(info.packName) .. ')') or ''))
+                .. (info.packName ~= nil and (' (' .. tostring(info.packName) .. ')') or '')
+                .. (info.packModules ~= nil and (' [modules: ' .. tostring(info.packModules)
+                    .. (info.packModulesSrc ~= nil and (' <- ' .. tostring(info.packModulesSrc)) or '')
+                    .. ']') or ''))
             or (info.packTried == true and 'NONE' or '?'),
             catWord, gearWord, profWord),
         string.format('check (addon): engine %s -- a "[dlac] check (engine): alive" line must appear'
@@ -220,7 +227,18 @@ function M.gather()
         info.packTried = true;
         info.packId    = sp.active();
         info.packName  = sp.name();
+        info.packChoice = (type(sp.needsChoice) == 'function') and sp.needsChoice() or false;
         info.catalogMin = tonumber(sp.const('catalogMin'));
+        -- The pack's module list AND its source (modules.lua vs manifest) --
+        -- the one-command diagnosis for a dark install: a generated manifest
+        -- once shipped modules = {} and the Gear Vault silently never loaded.
+        if type(sp.modules) == 'function' then
+            local list, src = sp.modules();
+            if type(list) == 'table' then
+                info.packModules    = (#list > 0) and table.concat(list, ',') or 'none';
+                info.packModulesSrc = src;
+            end
+        end
     end);
     -- Catalog through its ONE door (catalogindex; GRD law -- never require
     -- the catalog directly). rawIndex() builds/caches the byId map the GUI

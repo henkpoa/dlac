@@ -12,7 +12,10 @@
     Additions ONLY, the GV3 law: the engine may add a missing identity or
     RAISE a count (a pair the sets now need twice), and may never remove or
     lower anything -- removals are the space-pressure flow (slice 4) or the
-    player's own hand in the tab. Derived entries carry the ZERO blob
+    player's own hand in the tab. And only FROM THE VAULT, the 2026-08-30
+    law: a set-wanted piece the vault holds no copy of (it is in your bags,
+    or not owned at all) is never pushed into a layout -- storing it with a
+    Void Warden is what makes it eligible. Derived entries carry the ZERO blob
     (augment-pinned records are skipped by derivation -- the vault pane's
     "+ Layout" carries real blobs); only zero-blob layout entries are
     compared against, so a manually-added augmented copy is never disturbed.
@@ -71,6 +74,11 @@ function R.pressure() return st.pressure; end
 -- the cap override included) -- the bench header's "you could restore
 -- something" figure. nil until a beat has measured.
 function R.freeSlots() return st.freeSlots; end
+
+-- How many set-wanted items the last beat could NOT shelve because the
+-- vault holds no copy (the 2026-08-30 vault law) -- `/dl vault why`'s
+-- aggregate line. 0 until a beat has measured.
+function R.notVaulted() return st.notVaulted or 0; end
 
 -- What is on the body right now ({ [itemId] = true }) -- the tab's Remove
 -- guard reads the same eyes the eviction ranking uses.
@@ -159,35 +167,48 @@ function R.tick()
     for _, e in ipairs(vc.layoutCache.entries or {}) do layoutUnits = layoutUnits + (e.count or 1); end
     st.freeSlots = (capacity > 0) and math.max(0, capacity - layoutUnits) or nil;
 
-    -- The adds, under THREE gates (Henrik's 2026-08-27 field round -- the
+    -- The adds, under FOUR gates (Henrik's 2026-08-27 field round -- the
     -- remove/re-add tug-of-war, and "dlac would keep trying to load the
-    -- server needlessly"): the additions setting; the TOMBSTONES (an entry
-    -- the player removed stays removed); and the SHELF -- the engine never
-    -- pushes an add that cannot fit, so a full shelf costs zero wire.
+    -- server needlessly" -- plus the 2026-08-30 VAULT LAW): the additions
+    -- setting; the TOMBSTONES (an entry the player removed stays removed);
+    -- the VAULT -- the engine may only shelve what the vault actually
+    -- holds, never gear sitting in your bags or not owned at all (storing
+    -- it with a Void Warden is what makes it eligible; the Inventory pane's
+    -- [wanted] tags point at exactly those pieces). Want is capped at vault
+    -- + layout copies, so a pair the sets need twice with one copy vaulted
+    -- shelves ONE; and the SHELF -- the engine never pushes an add that
+    -- cannot fit, so a full shelf costs zero wire.
+    local vaultCounts = (vc.mirror ~= nil and vc.mirror.counts) or {};
     local adds = {};
-    local waiting, waitingItems = 0, {};
+    local waiting, waitingItems, notVaulted = 0, {}, 0;
     if not (D.settings ~= nil and D.settings().additions == 'off') then
         local units = layoutUnits;
         for _, it in ipairs(d.items) do
             local c = have[it.itemId];
-            if c == nil or c < it.count then
+            local wantable = math.min(it.count, (vaultCounts[it.itemId] or 0) + (c or 0));
+            if wantable > (c or 0) then
                 local excluded = false;
                 if D.usage ~= nil then
                     excluded = D.usage.isExcluded(D.usage.keyOf(it.itemId, nil));
                 end
                 if not excluded then
-                    local need = it.count - (c or 0);
+                    local need = wantable - (c or 0);
                     if capacity > 0 and units + need > capacity then
                         waiting = waiting + need;
                         waitingItems[#waitingItems + 1] = { itemId = it.itemId, need = need };
                     elseif #adds < R.MAX_PUSH then
                         units = units + need;
-                        adds[#adds + 1] = it;
+                        adds[#adds + 1] = { itemId = it.itemId, count = wantable };
                     end
                 end
+            elseif (c == nil or c < it.count) then
+                -- the sets want it, the vault cannot supply it: NOT pushed,
+                -- NOT waiting -- it is the Inventory pane / Warden's problem
+                notVaulted = notVaulted + 1;
             end
         end
     end
+    st.notVaulted = notVaulted;
 
     -- SHELF PRESSURE (GV3): the layout (plus what is about to join it) must
     -- fit the live shelf, or the swap engine will be told to dress more
@@ -212,7 +233,15 @@ function R.tick()
             local worn = (type(D.worn) == 'function') and D.worn() or {};
             local ranked = D.usage.rankEvictions(vc.layoutCache.entries, assigned, worn);
             local mode = (D.settings ~= nil) and D.settings().removals or 'ask';
-            if mode == 'auto' and over > 0 and st.evictStamp ~= vc.layoutCache.stamp then
+            -- Auto-eviction only ACTS in town (Henrik's 2026-08-30 field
+            -- round): out in the field the active job's layout edits are
+            -- refused NOT_IN_CITY anyway, so an auto-evict would just burn
+            -- the once-per-stamp latch on a run of refusals. The PREDICTION
+            -- (the town service) gates the action, never the verdict --
+            -- pressure is still computed and exposed, and unknown (nil)
+            -- reads as town so a broken service returns old behaviour.
+            local town = not (type(D.inTown) == 'function' and D.inTown() == false);
+            if mode == 'auto' and over > 0 and town and st.evictStamp ~= vc.layoutCache.stamp then
                 st.evictStamp = vc.layoutCache.stamp;
                 local freed, evicted = 0, 0;
                 local tomb = {};
@@ -236,7 +265,7 @@ function R.tick()
                     st.pressure = { over = over - freed, waiting = waiting, waitingItems = waitingItems,
                                     mode = mode, candidates = {}, pinned = ranked.pinned };
                 end
-            elseif mode ~= 'auto' or over <= 0 then
+            elseif (not town) or mode ~= 'auto' or over <= 0 then
                 st.pressure = { over = math.max(0, over), waiting = waiting, waitingItems = waitingItems,
                                 mode = mode, candidates = ranked.unpinned, pinned = ranked.pinned };
             end
