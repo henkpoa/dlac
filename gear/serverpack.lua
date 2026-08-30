@@ -229,6 +229,42 @@ end
 
 function M.manifest() return state.manifest; end
 
+-- The pack's MODULE list -- the client code feature\servermods mounts -- and
+-- where it came from: -> list, 'modules.lua' | 'manifest' (list = {} and
+-- source = nil when no pack is active). A hand-maintained
+-- servers\<id>\modules.lua (returning an array of names) OUTRANKS
+-- manifest.modules: which modules exist is a CODE fact owned by this repo,
+-- and the ascensionxi manifest is GENERATED (gen_pack.py) -- a 2026-08-27
+-- regeneration emitted modules = {} and silently unloaded the whole Gear
+-- Vault (no tab, no mirror, no error; the handover doc's par.4a). A pack whose
+-- manifest is hand-maintained (cexi) may keep its list in the manifest and
+-- ship no modules.lua. Computed once per mount; _reset clears it.
+function M.modules()
+    local id = state.active;
+    if id == nil then return {}, nil; end
+    if state.modlist ~= nil then return state.modlist, state.modsrc; end
+    local raw, src = nil, nil;
+    local ok, t = pcall(M._require, 'dlac\\servers\\' .. id .. '\\modules');
+    if ok then
+        if type(t) == 'table' then
+            raw, src = t, 'modules.lua';
+        else
+            emit(("pack '%s' modules.lua did not return a table -- using the manifest's list."):format(id));
+        end
+    end
+    if raw == nil then
+        local m = state.manifest;
+        if m ~= nil and type(m.modules) == 'table' then raw, src = m.modules, 'manifest'; end
+    end
+    local list = {};
+    for _, n in ipairs(raw or {}) do
+        if type(n) == 'string' and n ~= '' then list[#list + 1] = n; end
+    end
+    state.modlist = list;
+    state.modsrc  = src;
+    return state.modlist, state.modsrc;
+end
+
 function M.maxLevel()
     local m = state.manifest;
     local n = (m ~= nil) and tonumber(m.maxLevel) or nil;

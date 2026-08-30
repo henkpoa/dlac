@@ -355,6 +355,12 @@ shrinks the client-visible container max, the unmerged deposit-apply commit (`b2
 its owed suite case, and `gen_pack.py`'s dropped `modules` list. Nothing is owed on the dlac
 side. Suites at promotion: **run_tests 7338, smoke_ui 1455**.*
 
+*(2026-08-30 update: the `gen_pack.py` trap fired in the field — a fresh install via the
+generated pack shipped with the Gear Vault silently unloaded. dlac is now immune: the module
+list lives in hand-maintained `servers/<id>/modules.lua`, which `serverpack.modules()` reads
+ahead of the generated `manifest.modules`; `/dl check` and `pack_lint` print the effective
+list and its source. The generator fix itself stays owed server-side.)*
+
 *(Emptied by the 2026-08-11 promotion — **macro pages per subjob** (`2026.08.11b`), three
 commits plus its docs entry. Henrik: *"merge and push to main"* — an accept under the 08-01
 ruling, and he had already field-confirmed it (*"Works, commit as ready for merge."*). Three

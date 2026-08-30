@@ -18,7 +18,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.08.30b';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.08.30c';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
                                 -- (03f = engine v163: the contest explains its own plan;
                                 --  03g = one floating tray: Teleports + the E-Box crates;
@@ -264,7 +264,14 @@ addon.version = '2026.08.30b';  -- date of the last shipped change (Ashita print
                                 --  player curates); vault-row button is
                                 --  'Add to Mog Wardrobe'; the header's
                                 --  'N pieces stored' sentence becomes the
-                                --  Vault (N) sub-tab count, fresh = silent)
+                                --  Vault (N) sub-tab count, fresh = silent;
+                                --  30c = the module list is a CODE fact:
+                                --  hand-maintained servers\<id>\modules.lua
+                                --  outranks the GENERATED manifest.modules
+                                --  (gen_pack.py once emitted {} and the
+                                --  Gear Vault silently never loaded -- the
+                                --  brother's install, again); /dl check +
+                                --  pack_lint print the list and its source)
 addon.desc    = 'Gear sets, triggers and live stats with level scaling -- dlac equips your gear itself.';
 
 -- Load BEACON ('/dl check' field round, 2026-07-23): written by PLAIN io at

@@ -15,6 +15,7 @@ servers/
     manifest.lua             -- the pack's declaration (below)
     features.lua             -- optional, HAND-MAINTAINED surface defaults (below)
     detect.lua               -- optional, HAND-MAINTAINED client-bundle matcher (below)
+    modules.lua              -- optional, HAND-MAINTAINED module list (outranks manifest.modules)
     data/<file>.lua          -- one Lua table per file, mounted as dlac\data\<file>
     modules/<name>/init.lua  -- optional pack modules (jobhelpers containment rules)
 ```
@@ -53,7 +54,7 @@ return {
     maxLevel = 75,            -- serverpack.maxLevel(); every historical 75 reads this
     caps  = { ... },          -- capability flags; ABSENT = the feature does not exist
     const = { ... },          -- tuning constants; converted sites keep their historical fallback
-    modules = { ... },        -- mount list AND order (tray/helper registration order)
+    modules = { ... },        -- mount list AND order -- but see modules.lua below
     files   = { ... },        -- data mount list
     counts  = { <file> = n }, -- optional; pack_lint validates when present
 }
@@ -134,6 +135,17 @@ percent. `HELM = 1` is a flag, not a value.
   degrades soft, which is the addon's standing failure mode.
 
 ## Pack modules
+
+**The module list is a CODE fact, not a data fact** (2026-08-30). It is read
+through `serverpack.modules()`: a hand-maintained `servers/<id>/modules.lua`
+(returning `{ '<name>', ... }`) outranks `manifest.modules`, and only falls
+back to the manifest when the file does not ship. A pack whose manifest is
+hand-maintained (cexi) may keep the list in the manifest; a pack whose
+manifest is GENERATED (ascensionxi, `gen_pack.py`) must ship `modules.lua` —
+a 2026-08-27 regeneration emitted `modules = {}` and silently unloaded the
+whole Gear Vault (no tab, no mirror, no error; handover doc §4a). `/dl check`
+prints the effective list and its source; `pack_lint` prints it and compiles
+every named module's `init.lua`.
 
 `servers/<id>/modules/<name>/init.lua` returns a table; optional `init(deps)`
 and `pump()`. Everything else the module does itself at load: register

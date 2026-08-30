@@ -148,6 +148,14 @@ mirror, no wire client, and no error, because a pack that declares no modules is
 perfectly valid pack. Every future regeneration re-introduces this. I restored it by hand
 in dlac for now.
 
+> **Status 2026-08-30 — dlac-side immunized, generator fix still owed.** The trap fired in
+> the field: a fresh install (Henrik's brother, via the generated pack) shipped dark — no
+> tab, no mirror, `/dl vault` answered nothing. dlac now keeps the module list in a
+> hand-maintained `servers/<id>/modules.lua` that **outranks** the generated manifest
+> (`serverpack.modules()`), so a regeneration can no longer drop client code. The
+> generator fix above remains the right thing in the server repo, but it is no longer
+> load-bearing for dlac installs.
+
 ### 4b. Everything else the generator emits is correct
 
 `id = 'ascensionxi'`, `name = 'AscensionXI'`, `maxLevel`, `caps`, `consts` and the seven

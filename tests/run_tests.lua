@@ -27217,6 +27217,48 @@ end)();
     configured = nil; arm();
     sp.init();
     check('SPK33 a pack without the file -> nil', sp.features(), nil);
+
+    -- modules(): the pack's MODULE list -- a hand-maintained modules.lua
+    -- OUTRANKS manifest.modules (2026-08-30: a GENERATED manifest once
+    -- shipped modules = {} and the Gear Vault silently never loaded).
+    fixtures = {
+        ['dlac\\servers\\index'] = { 'aaa' },
+        ['dlac\\servers\\aaa\\manifest'] = { id = 'aaa', files = {}, modules = {} },
+        ['dlac\\servers\\aaa\\modules']  = { 'gearvault' },
+    };
+    configured = nil; arm();
+    sp.init();
+    do
+        local list, src = sp.modules();
+        check('SPK34 modules.lua outranks an empty generated list', list[1], 'gearvault');
+        check('SPK34b ...and names its source',   src, 'modules.lua');
+        check('SPK34c ...memoized to one table',  sp.modules(), list);
+    end
+    fixtures['dlac\\servers\\aaa\\modules'] = nil;
+    fixtures['dlac\\servers\\aaa\\manifest'] = { id = 'aaa', files = {}, modules = { 'ebox', 'giftbox' } };
+    configured = nil; arm();
+    sp.init();
+    do
+        local list, src = sp.modules();
+        check('SPK35 no modules.lua -> the manifest list', list[1] .. ',' .. list[2], 'ebox,giftbox');
+        check('SPK35b ...and names its source',   src, 'manifest');
+    end
+    fixtures['dlac\\servers\\aaa\\modules'] = 'not a table';
+    configured = nil; arm();
+    sp.init();
+    do
+        local list, src = sp.modules();
+        check('SPK36 a malformed modules.lua falls back to the manifest', src, 'manifest');
+        check('SPK36b ...loudly', #warns >= 1 and warns[#warns]:find('modules.lua', 1, true) ~= nil, true);
+        check('SPK36c ...with the manifest list intact', list[1], 'ebox');
+    end
+    fixtures['dlac\\servers\\aaa\\modules'] = nil;
+    sp._reset();
+    do
+        local list, src = sp.modules();
+        check('SPK37 no pack -> an empty list', #list, 0);
+        check('SPK37b ...and no source',        src, nil);
+    end
 end)();
 
 -- ---------------------------------------------------------------------------
