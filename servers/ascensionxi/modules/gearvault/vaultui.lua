@@ -323,8 +323,11 @@ end
 --
 -- deco = { key = unique row id, tags = fn() inline after the name,
 --          buttons = fn(hot, b1, b2) -- draws at the columns, calls hot()
---          after any hovered button }. Overlay mechanics: remember Y, lay
--- the Selectable, rewind, draw content over it, then normalize Y.
+--          after any hovered button,
+--          b1w = optional first-column width (default 84 -- the vault pane
+--          widens it for its Add to Mog Wardrobe button) }.
+-- Overlay mechanics: remember Y, lay the Selectable, rewind, draw content
+-- over it, then normalize Y.
 local _hotKey, _hotNext = nil, nil;
 local function renderRow(e, level, COL, deco)
     deco = deco or {};
@@ -335,7 +338,8 @@ local function renderRow(e, level, COL, deco)
         if type(ww) == 'number' and ww > 200 then w = ww; end
     end);
     local b2 = w - 84;          -- second button column (Withdraw / Remove)
-    local b1 = b2 - 84;         -- first button column (Layout / Pin)
+    local b1 = b2 - (deco.b1w or 84);   -- first button column (Pin, or the vault
+                                        -- pane's wider Add to Mog Wardrobe)
 
     local y0 = imgui.GetCursorPosY();
     pcall(function() imgui.SetNextItemAllowOverlap(); end);
@@ -571,26 +575,28 @@ function M.render(job, level)
     local cDIM   = COL.DIM    or { 0.70, 0.70, 0.70, 1.00 };
     local cHEAD  = COL.HEADER or { 0.60, 0.75, 1.00, 1.00 };
     local cGOLD  = COL.SCORE  or { 0.95, 0.85, 0.45, 1.00 };
-    local cVAULT = COL.VAULT  or { 0.72, 0.55, 0.95, 1.00 };
-
-    -- ---- status header (full width) ----
+    -- ---- status header (full width). The vault COUNT rides the Vault
+    -- sub-tab's label instead of a sentence here (Henrik, 2026-08-30:
+    -- "needless space... just add the total number of equips to the vault
+    -- tab like we do with inventory"), and the sync state keeps a seat only
+    -- when it has something to say -- fresh is silence.
     local state = vc.state();
     if state == 'dormant' then
         imgui.TextColored(cDIM, 'The Gear Vault is not available on this server (or the addon was refused).');
         return;
     end
-    local n = 0;
-    for _, r in ipairs(vc.mirror.rows) do n = n + math.max(1, r.qty); end
-    imgui.TextColored(cVAULT, string.format('Vault: %d piece%s stored', n, (n == 1) and '' or 's'));
-    imgui.SameLine(0, 10);
-    imgui.TextColored((state == 'fresh') and cDIM or cGOLD, '[' .. state .. ']');
-    if imgui.IsItemHovered() then
-        imgui.SetTooltip('fresh -- the mirror matches the server.\nstale -- something moved (job change, !vault, zoning); a re-sync is due.\nsyncing -- pages are on the wire now.');
+    local vaultN = 0;
+    for _, r in ipairs(vc.mirror.rows) do vaultN = vaultN + math.max(1, r.qty); end
+    if state ~= 'fresh' then
+        imgui.TextColored(cGOLD, '[' .. state .. ']');
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('stale -- something moved (job change, !vault, zoning); a re-sync is due.\nsyncing -- pages are on the wire now. Nothing shows here when the\nmirror matches the server.');
+        end
+        imgui.SameLine(0, 12);
     end
-    imgui.SameLine(0, 12);
     local occ = shelfOccupancy();
     if occ.max > 0 then
-        imgui.TextColored(cDIM, string.format('Shelf (Wardrobes 1-8): %d/%d', occ.used, occ.max));
+        imgui.TextColored(cDIM, string.format('Wardrobes 1-8: %d/%d', occ.used, occ.max));
         if imgui.IsItemHovered() then
             imgui.SetTooltip('The wardrobes are the vault\'s CACHE on this server: the active job\'s\nworking set, swapped automatically at job change. dlac never writes them.');
         end
@@ -610,6 +616,52 @@ function M.render(job, level)
     imgui.InputText('##gvsearch', _search, 64);
     imgui.PopItemWidth();
     if imgui.IsItemHovered() then imgui.SetTooltip('Filter BOTH panes by name.'); end
+
+    -- Vault options live behind the COG at the row's right edge (Henrik,
+    -- 2026-08-30: "move Vault options to a cog wheel icon right of the
+    -- search bar -- edge right if possible"). The settings.png the header
+    -- menu already ships; no texture (headless, or a failed load) degrades
+    -- to a plain Options button so the popup is never lost.
+    do
+        local winW = nil;
+        pcall(function() winW = imgui.GetWindowWidth(); end);
+        if type(winW) == 'number' and winW > 260 then imgui.SameLine(winW - 34);
+        else imgui.SameLine(0, 12); end
+        local cogClicked = false;
+        local tex = nil;
+        pcall(function() tex = require('dlac\\ui\\filetex').handle('settings'); end);
+        if tex ~= nil and type(imgui.ImageButton) == 'function' then
+            cogClicked = imgui.ImageButton(tex, { 16, 16 });
+        else
+            cogClicked = imgui.SmallButton('Options##gvcog');
+        end
+        if imgui.IsItemHovered() then imgui.SetTooltip('Vault options.'); end
+        if cogClicked and type(imgui.OpenPopup) == 'function' then imgui.OpenPopup('##gvoptpop'); end
+        if usg ~= nil and type(imgui.BeginPopup) == 'function' and imgui.BeginPopup('##gvoptpop') then
+            local s = usg.settings();
+            local function settingRow(label, tip, key, options)
+                imgui.TextColored(cDIM, label);
+                if imgui.IsItemHovered() then imgui.SetTooltip(tip); end
+                imgui.SameLine(0, 8);
+                for i, o in ipairs(options) do
+                    if i > 1 then imgui.SameLine(0, 4); end
+                    local on = (s[key] == o.v);
+                    if on then imgui.PushStyleColor(ImGuiCol_Button, { 0.55, 0.45, 0.15, 1.0 }); end
+                    if imgui.SmallButton(o.l .. '###gvset_' .. key .. '_' .. o.v) then
+                        usg.setSetting(key, o.v);
+                    end
+                    if on then imgui.PopStyleColor(1); end
+                end
+            end
+            settingRow('Additions from sets:',
+                'Auto (default): dlac pushes every VAULTED piece your sets and triggers name\ninto this job\'s layout by itself (gear in your bags never moves -- store it\nwith a Void Warden first).\nOff: layouts change only by your own hand (the buttons here, !vault).',
+                'additions', { { v = 'auto', l = 'Auto' }, { v = 'off', l = 'Off' } });
+            settingRow('Removals when the wardrobes are full:',
+                'Ask (default): dlac presents a list of least-used entries for you to mark.\nAuto: dlac removes least-used UNPINNED entries by itself -- pinned entries\nstill always ask.\nOff: dlac never removes; trim the layout by hand.',
+                'removals', { { v = 'ask', l = 'Ask' }, { v = 'auto', l = 'Auto' }, { v = 'off', l = 'Off' } });
+            imgui.EndPopup();
+        end
+    end
 
     imgui.Separator();
 
@@ -634,60 +686,52 @@ function M.render(job, level)
     end);
     imgui.BeginChild('##gvleft', { math.floor(availW * 0.5) - 6, -24 }, false);
     if uistyl ~= nil and type(uistyl.helpLabel) == 'function' then
-        uistyl.helpLabel(imgui, 'This job\'s layout', 'What the SERVER holds for your current main job -- every entry here\nis pulled onto the shelf at job change, wherever it came from (dlac,\n!vault, the website). Editing from this tab arrives in the next slice;\nuntil then: !vault add/remove <item>, in a city.', cHEAD);
+        uistyl.helpLabel(imgui, 'Current Mog Wardrobe Layout', 'This is what you have in your current Mog Wardrobe for this job.\nThe Mog Wardrobe is fed gear from the Gear Vault per job, to fully\nutilize your wardrobe slots.\nGear can only move between your Gear Vault and wardrobe when you\nare in a city.\nTo add gear into the Gear Vault, stand near a Void Storage Warden NPC.', cHEAD);
     else
-        imgui.TextColored(cHEAD, 'This job\'s layout');
+        imgui.TextColored(cHEAD, 'Current Mog Wardrobe Layout');
     end
     if not lc.fresh then
         imgui.SameLine(0, 8);
         imgui.TextColored(cGOLD, '(fetching...)');
     end
-    if recon ~= nil and type(recon.cityBlocked) == 'function' and recon.cityBlocked() then
-        imgui.TextColored(cGOLD, 'Additions from your sets are waiting for a city.');
-        if imgui.IsItemHovered() then
-            imgui.SetTooltip('Edits to your ACTIVE job\'s layout move gear live, so the server only\ntakes them in a city (or your Mog House). They push by themselves when\nyou get there; other jobs\' layouts save from anywhere.');
-        end
-    end
 
-    -- ---- Vault options (slice 4's two behaviour settings) ----
-    if usg ~= nil and imgui.CollapsingHeader('Vault options###gvopts') then
-        local s = usg.settings();
-        local function settingRow(label, tip, key, options)
-            imgui.TextColored(cDIM, label);
-            if imgui.IsItemHovered() then imgui.SetTooltip(tip); end
-            imgui.SameLine(0, 8);
-            for i, o in ipairs(options) do
-                if i > 1 then imgui.SameLine(0, 4); end
-                local on = (s[key] == o.v);
-                if on then imgui.PushStyleColor(ImGuiCol_Button, { 0.55, 0.45, 0.15, 1.0 }); end
-                if imgui.SmallButton(o.l .. '###gvset_' .. key .. '_' .. o.v) then
-                    usg.setSetting(key, o.v);
-                end
-                if on then imgui.PopStyleColor(1); end
-            end
-        end
-        settingRow('Additions from sets:',
-            'Auto (default): dlac pushes every piece your sets and triggers name into\nthis job\'s layout by itself.\nOff: layouts change only by your own hand (the buttons here, !vault).',
-            'additions', { { v = 'auto', l = 'Auto' }, { v = 'off', l = 'Off' } });
-        settingRow('Removals when the shelf is full:',
-            'Ask (default): dlac presents a list of least-used entries for you to mark.\nAuto: dlac removes least-used UNPINNED entries by itself -- pinned entries\nstill always ask.\nOff: dlac never removes; trim the layout by hand.',
-            'removals', { { v = 'ask', l = 'Ask' }, { v = 'auto', l = 'Auto' }, { v = 'off', l = 'Off' } });
-    end
+    -- Where are we? The town service PREDICTS what the server's city gate
+    -- will say; the evidence (a NOT_IN_CITY refusal -> cityBlocked) can only
+    -- confirm it. Prediction never gates the wire -- only what this pane
+    -- COMPLAINS about (Henrik's 2026-08-30 field round: "shelf is full"
+    -- fired at him in the field when the real blocker was the city gate).
+    local inField = false;
+    pcall(function() inField = require('dlac\\feature\\location').inTown() == false; end);
 
-    -- ---- shelf pressure (GV3): the banner + the marking dialog ----
+    -- ---- wardrobe pressure (GV3): the banner + the marking dialog ----
     local pr = (recon ~= nil and type(recon.pressure) == 'function') and recon.pressure() or nil;
-    if pr ~= nil and (pr.over > 0 or (pr.waiting or 0) > 0) then
-        -- BUTTON FIRST, text wrapped under it (Henrik's screenshot: the
-        -- button rode the end of a long line and clipped off the pane edge)
+    local prWant = (pr ~= nil) and ((pr.over or 0) + (pr.waiting or 0)) or 0;
+
+    -- OUT IN THE FIELD nothing can transfer whatever the space situation,
+    -- so a full wardrobe is not a complaint and the eviction dialog would
+    -- only queue refusals: one calm gold notice covers everything pending.
+    local cityHeld = (recon ~= nil and type(recon.cityBlocked) == 'function' and recon.cityBlocked());
+    if cityHeld or (inField and prWant > 0) then
         local wrapped = (fmt ~= nil and type(fmt.textWrapped) == 'function')
             and fmt.textWrapped or function(col, s) imgui.TextColored(col, s); end;
-        local words = (pr.over > 0)
-            and string.format('Shelf full: the layout wants %d more slot%s than Wardrobes 1-8 hold.%s',
-                pr.over, (pr.over == 1) and '' or 's',
-                ((pr.waiting or 0) > 0) and string.format('  %d more piece%s from your sets wait outside.',
-                    pr.waiting, (pr.waiting == 1) and '' or 's') or '')
-            or string.format('Shelf full: %d piece%s from your sets %s waiting for room -- nothing was sent to the server.',
-                pr.waiting, (pr.waiting == 1) and '' or 's', (pr.waiting == 1) and 'is' or 'are');
+        wrapped(cGOLD, (prWant > 0)
+            and string.format('%d piece%s from your sets %s waiting to move into your wardrobes.',
+                prWant, (prWant == 1) and '' or 's', (prWant == 1) and 'is' or 'are')
+            or 'Additions from your sets are waiting for a city.');
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('Gear only moves between the Gear Vault and your wardrobes in a city\n(or your Mog House) -- everything pending transfers by itself when\nyou arrive. Other jobs\' layouts save from anywhere.');
+        end
+    end
+
+    if pr ~= nil and prWant > 0 and not inField then
+        -- BUTTON FIRST, text wrapped under it (Henrik's screenshot: the
+        -- button rode the end of a long line and clipped off the pane edge).
+        -- No "shelf" in player-facing words (Henrik, 2026-08-30: "people
+        -- don't know what shelf means").
+        local wrapped = (fmt ~= nil and type(fmt.textWrapped) == 'function')
+            and fmt.textWrapped or function(col, s) imgui.TextColored(col, s); end;
+        local words = string.format('Mog Wardrobe is full: %d equipment piece%s cannot fit in.',
+            prWant, (prWant == 1) and '' or 's');
         if pr.mode == 'off' then
             wrapped(cERR, words);
             wrapped(cDIM, 'Removals are Off -- trim the layout with the Remove buttons below.');
@@ -711,6 +755,7 @@ function M.render(job, level)
             end
             wrapped(cERR, words);
         end
+        wrapped(cDIM, 'If you don\'t have enough wardrobe space, the recommended action is to\nwithdraw gear into your inventory: stand close to a Void Storage Warden\nto withdraw equipment there and keep using it from your bags.');
         if M._evictOpen and pr.mode ~= 'off' then
             local marked, frees = 0, 0;
             local function evictRow(c, isPinned)
@@ -833,13 +878,14 @@ function M.render(job, level)
                         hot();
                         imgui.SetTooltip(e.pinned
                             and 'Remove this PINNED entry -- takes a second click to confirm.\nThe piece itself stays in the vault; only the layout forgets it.'
-                            or  'Remove from this job\'s layout. The piece stays in the vault;\nthe shelf drops it at the next job change or live edit.');
+                            or  'Remove from this job\'s layout. The piece stays in the vault;\nyour wardrobes drop it at the next job change or live edit.');
                     end
                 end,
             };
         end);
     elseif lc.fresh then
-        imgui.TextColored(cDIM, searching and 'Nothing in the layout matches.' or 'No entries yet -- this job\'s shelf empties at the next job change.');
+        imgui.TextColored(cDIM, searching and 'Nothing in the layout matches.'
+            or 'Nothing here yet -- add gear to your Mog Wardrobe layout:\neither from the Vault tab (Add to Mog Wardrobe),\nor let dlac add automatically based on your built sets\n(see settings, the cog wheel).');
     end
 
     -- WAITING FOR ROOM (Henrik's 2026-08-27 "limbo" round: pieces the
@@ -850,8 +896,11 @@ function M.render(job, level)
         imgui.PushStyleColor(ImGuiCol_Text, cGOLD);
         local wOpen = imgui.CollapsingHeader(string.format('Waiting for room (%d)###gvwait', #pr.waitingItems));
         imgui.PopStyleColor(1);
+        -- the explanation is a HOVER, not free text (Henrik, 2026-08-30)
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('These items are queued up to be added to your wardrobe layout.\nIf space is available and you enter a city, these will automatically\nbe added.');
+        end
         if wOpen then
-            imgui.TextColored(cDIM, 'Your sets want these; they join the layout the moment the shelf has room.');
             for _, wI in ipairs(pr.waitingItems) do
                 imgui.TextColored(COL.USABLE or { 1, 1, 1, 1 }, esc(nameOf(wI.itemId))
                     .. ((wI.need or 1) > 1 and (' x' .. wI.need) or ''));
@@ -863,7 +912,7 @@ function M.render(job, level)
                     end
                 end
                 if imgui.IsItemHovered() then
-                    imgui.SetTooltip('Stop wanting this on the shelf -- it moves to the Bench below,\nand Restore brings it back any time.');
+                    imgui.SetTooltip('Stop wanting this in your wardrobes -- it moves to the Bench below,\nand Restore brings it back any time.');
                 end
             end
         end
@@ -882,7 +931,7 @@ function M.render(job, level)
         local free = (recon ~= nil and type(recon.freeSlots) == 'function') and recon.freeSlots() or nil;
         local actionable = (free ~= nil and free > 0);
         local benchLabel = string.format('Benched (%d)%s###gvbench', usg.excludedCount(),
-            (free ~= nil) and string.format(' -- %d shelf slot%s free', free, (free == 1) and '' or 's') or '');
+            (free ~= nil) and string.format(' -- %d wardrobe slot%s free', free, (free == 1) and '' or 's') or '');
         if actionable then imgui.PushStyleColor(ImGuiCol_Text, cGOLD); end
         local benchOpen = imgui.CollapsingHeader(benchLabel);
         if actionable then imgui.PopStyleColor(1); end
@@ -893,10 +942,10 @@ function M.render(job, level)
                 imgui.SameLine(0, 10);
                 if imgui.SmallButton('Restore##gvrb' .. tostring(b.itemId)) then
                     usg.unexclude(b.key);
-                    noteResult(nameOf(b.itemId) .. ' restored -- it rejoins the layout when the shelf has room', false);
+                    noteResult(nameOf(b.itemId) .. ' restored -- it rejoins the layout when your wardrobes have room', false);
                 end
                 if imgui.IsItemHovered() then
-                    imgui.SetTooltip('Let dlac add this back -- it returns to the layout on the next\nbeat if the shelf has room, and waits (visibly) if not.');
+                    imgui.SetTooltip('Let dlac add this back -- it returns to the layout on the next\nbeat if your wardrobes have room, and waits (visibly) if not.');
                 end
             end
         end
@@ -939,13 +988,14 @@ function M.render(job, level)
                             imgui.SameLine(0, 8);
                             imgui.TextColored(cDIM, '[excluded]');
                             if imgui.IsItemHovered() then
-                                imgui.SetTooltip('You removed this from the layout, so dlac will not add it back\nby itself. The Layout button puts it back and clears this.');
+                                imgui.SetTooltip('You removed this from the layout, so dlac will not add it back\nby itself. Add to Mog Wardrobe puts it back and clears this.');
                             end
                         end
                     end,
+                    b1w = 210,   -- room for the named action (was 'Layout' -- jargon)
                     buttons = function(hot, b1, b2)
                         imgui.SameLine(b1);
-                        if imgui.SmallButton('Layout##gvl' .. tostring(e.rowId)) then
+                        if imgui.SmallButton('Add to Mog Wardrobe##gvl' .. tostring(e.rowId)) then
                             -- a manual add is the player overruling their own
                             -- removal: clear the tombstone first
                             if usg ~= nil then pcall(usg.unexclude, usg.keyOf(e.itemId, nil)); end
@@ -955,7 +1005,7 @@ function M.render(job, level)
                         end
                         if imgui.IsItemHovered() then
                             hot();
-                            imgui.SetTooltip('Add THIS copy (augments included) to your current main job\'s layout.\nLive in a city (or your Mog House); refused in the field.');
+                            imgui.SetTooltip('Add THIS copy (augments included) to your current main job\'s\nMog Wardrobe layout. Live in a city (or your Mog House);\nrefused in the field.');
                         end
                         imgui.SameLine(b2);
                         if imgui.SmallButton('Withdraw##gvw' .. tostring(e.rowId)) then
@@ -988,30 +1038,11 @@ function M.render(job, level)
             if a.name == b.name then return a.slot < b.slot; end
             return a.name < b.name;
         end);
-        -- WANTED (GV7's curation): pieces your sets or this job's layout
-        -- name -- the ones that belong on a shelf, as opposed to sell-loot.
-        local wanted = {};
-        pcall(function()
-            if recon ~= nil and type(recon.derivedIds) == 'function' then
-                wanted = recon.derivedIds();
-            end
-            for _, le in ipairs(vc.layoutCache.entries or {}) do wanted[le.itemId] = true; end
-        end);
-        local wantedRows = {};
-        for _, r in ipairs(shown) do
-            if wanted[r.itemId] then wantedRows[#wantedRows + 1] = r; end
-        end
-
+        -- No [wanted] tags and no Store-wanted shortcut any more (Henrik,
+        -- 2026-08-30: "it's confusing, people need to realize themselves
+        -- that they need to add gear into vault for mog wardrobe usage") --
+        -- the pane just lists what is storable and lets the player curate.
         if #shown > 0 then
-            if #wantedRows > 0 then
-                if imgui.SmallButton(string.format('Store wanted (%d)##gvsw', #wantedRows)) then
-                    storeRows(wantedRows);
-                end
-                if imgui.IsItemHovered() then
-                    imgui.SetTooltip('Deposit only the pieces your sets or this job\'s layout name --\nsell-loot stays in your bags. Works at a Void Warden.');
-                end
-                imgui.SameLine(0, 6);
-            end
             if imgui.SmallButton(string.format('Store all (%d)##gvsa', #shown)) then
                 storeRows(shown);
             end
@@ -1061,10 +1092,6 @@ function M.render(job, level)
                     imgui.SameLine(0, 6);
                     imgui.TextColored(cDIM, 'x' .. e.qty);
                 end
-                if wanted[e.itemId] then
-                    imgui.SameLine(0, 8);
-                    imgui.TextColored(cGOLD, '[wanted]');
-                end
                 imgui.SameLine(btnCol);
                 if imgui.SmallButton('Store##gvs' .. tostring(e.slot)) then
                     storeRows({ e });
@@ -1088,7 +1115,9 @@ function M.render(job, level)
     -- SetSelected flag on Inventory (see _sub's comment); a binding that
     -- drops the flag simply leaves the player one click from the gold tab.
     if imgui.BeginTabBar('##gvsub') then
-        if imgui.BeginTabItem('Vault###gvtv') then
+        -- the count is the header's old "N pieces stored" sentence, demoted
+        -- to the fun-stat seat the Inventory tab already uses
+        if imgui.BeginTabItem(string.format('Vault (%d)###gvtv', vaultN)) then
             renderVaultTab();
             imgui.EndTabItem();
         end

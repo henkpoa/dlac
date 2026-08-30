@@ -33,10 +33,12 @@ local M = {};
 -- a features.lua names); `label` matches the uihost tab registration / menuui
 -- row label verbatim, and renaming a label must not orphan saved overrides.
 M.TABS = {
-    { key = 'equipped',    label = 'Equipped' },
-    { key = 'allequip',    label = 'All Equipment' },
+    -- listed in the render order uihost.TAB_RANK settles (Gear Vault leads it
+    -- but is a pack module's tab -- not in this roster, so never gateable)
     { key = 'sets',        label = 'Sets' },
     { key = 'triggers',    label = 'Triggers' },
+    { key = 'allequip',    label = 'All Equipment' },
+    { key = 'equipped',    label = 'Equipped' },
     { key = 'gearhelpers', label = 'Gear Helpers' },
     { key = 'jobhelpers',  label = 'Job Helpers' },
 };
