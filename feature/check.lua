@@ -80,7 +80,11 @@ function M._issues(info)
     -- The pack question first (ADR 0035): no active pack means the catalog
     -- CANNOT be present -- one issue that explains, not two that confuse.
     if info.packTried == true and info.packId == nil then
-        I[#I + 1] = 'no server pack active (servers\\ missing or unreadable) -- every data file and server capability is off';
+        if info.packChoice == true then
+            I[#I + 1] = 'no server CHOSEN yet -- answer the picker window in game (or Menu > Settings > Server); nothing loads until you do';
+        else
+            I[#I + 1] = 'no server pack active (servers\\ missing or unreadable) -- every data file and server capability is off';
+        end
     end
     local catMin = tonumber(info.catalogMin) or CATALOG_MIN;
     if info.catalogTried == true and info.catalogN == nil then
@@ -220,6 +224,7 @@ function M.gather()
         info.packTried = true;
         info.packId    = sp.active();
         info.packName  = sp.name();
+        info.packChoice = (type(sp.needsChoice) == 'function') and sp.needsChoice() or false;
         info.catalogMin = tonumber(sp.const('catalogMin'));
     end);
     -- Catalog through its ONE door (catalogindex; GRD law -- never require

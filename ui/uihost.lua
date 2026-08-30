@@ -61,6 +61,19 @@ local function tabAllowed(label)
     return v ~= false;
 end
 
+-- THE BASE TAB ORDER (Henrik, 2026-08-30): the ranked labels render in this
+-- fixed order however load order registered them -- the Gear Vault module
+-- mounts LAST (a pack module, after the whole UI) but its tab leads. A label
+-- not ranked here keeps its registration order, AFTER the ranked ones. On a
+-- server without the vault the rank simply never matches and the rest close up.
+host.TAB_RANK = {
+    ['Gear Vault']    = 1,
+    ['Sets']          = 2,
+    ['Triggers']      = 3,
+    ['All Equipment'] = 4,
+    ['Equipped']      = 5,
+};
+
 host.services = {};  -- live shared-services table; filled via host.provide{}
 
 host.provide = function(tbl)
@@ -210,9 +223,11 @@ host.renderTabs = function(guard, job, level)
         end
     end
 
-    -- One flat submission list. While a rebuild is riding, the wanted tab goes
-    -- FIRST -- a bar ImGui has never seen has nothing selected and adopts the tab
-    -- at index 0. The order returns to normal the moment the request clears.
+    -- One flat submission list, sorted by TAB_RANK (registration order breaks
+    -- ties, so unranked labels keep their historical order after the base
+    -- five). While a rebuild is riding, the wanted tab goes FIRST -- a bar
+    -- ImGui has never seen has nothing selected and adopts the tab at index 0.
+    -- The order returns to normal the moment the request clears.
     local list = {};
     for _, m in ipairs(mods) do
         if type(m.tabs) == 'table' then
@@ -220,6 +235,17 @@ host.renderTabs = function(guard, job, level)
                 if tabAllowed(t.label) then list[#list + 1] = t; end
             end
         end
+    end
+    do
+        local ranked = {};
+        for i, t in ipairs(list) do
+            ranked[i] = { t = t, r = host.TAB_RANK[t.label] or (100 + i), i = i };
+        end
+        table.sort(ranked, function(a, b)
+            if a.r ~= b.r then return a.r < b.r; end
+            return a.i < b.i;
+        end);
+        for i, e in ipairs(ranked) do list[i] = e.t; end
     end
     if sel ~= nil and sel.rebuilt then
         for i, t in ipairs(list) do

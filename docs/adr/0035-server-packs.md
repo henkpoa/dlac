@@ -6,6 +6,18 @@
 > **AscensionXI**. Same server, same pack -- the pack id is now `ascensionxi` and it
 > lives at `servers/ascensionxi/`. Names below are left as written at the time.
 
+> **Amended 2026-08-30:** with several packs installed and no flag file, the index's
+> first pack **no longer wins**. A field case proved the cost: a brand-new AscensionXI
+> install silently mounted the cexi pack and indexed gear against the wrong catalog.
+> Selection is now: flag file > **detection** > **ask**. Detection is a hand-maintained
+> `servers/<id>/detect.lua` (`match(boot) -> true`) matched against the Ashita boot
+> config the launcher itself loaded (today only cexi ships one -- its boot command
+> names `server.catseyexi.com`); it is the *packager's* label, not the server's word,
+> so it only ever fills the gap below the flag. When neither answers, **nothing
+> mounts** (`serverpack.needsChoice()`), and the first-run chooser (`ui/serverchoose`)
+> -- or Menu > Settings > Server -- writes the flag and reloads. "The pack IS the
+> declaration" stands: there is still no login-time protocol detection.
+
 ## Decision
 
 dlac targets FFXI private servers, plural. Everything true of *a particular

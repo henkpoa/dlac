@@ -18,7 +18,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.08.27i';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.08.30a';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
                                 -- (03f = engine v163: the contest explains its own plan;
                                 --  03g = one floating tray: Teleports + the E-Box crates;
@@ -236,7 +236,25 @@ addon.version = '2026.08.27i';  -- date of the last shipped change (Ashita print
                                 --  same pack, new id/name, and the
                                 --  per-install flag config\addons\dlac\
                                 --  server.lua must now read
-                                --  return { server = 'ascensionxi' })
+                                --  return { server = 'ascensionxi' };
+                                --  30a = THE SERVER IS ASKED, NEVER ASSUMED
+                                --  (the brother's first install mounted cexi
+                                --  silently): no flag file -> detection off
+                                --  the Ashita boot config (servers\<id>\
+                                --  detect.lua -- only cexi ships one), and
+                                --  failing that a first-run chooser window
+                                --  writes the flag (also Menu > Settings >
+                                --  Server). Index order never chooses again.
+                                --  Base tabs reordered (Gear Vault > Sets >
+                                --  Triggers > All Equipment > Equipped, via
+                                --  uihost.TAB_RANK); Gear Vault tab reworked:
+                                --  options behind a cog, wardrobe wording
+                                --  (no "shelf"), the city gate is a calm
+                                --  notice in the field instead of a full-
+                                --  wardrobe complaint, and the additions
+                                --  engine obeys the VAULT LAW -- only gear
+                                --  the vault holds is ever pushed into a
+                                --  layout, never bag/unowned gear)
 addon.desc    = 'Gear sets, triggers and live stats with level scaling -- dlac equips your gear itself.';
 
 -- Load BEACON ('/dl check' field round, 2026-07-23): written by PLAIN io at
