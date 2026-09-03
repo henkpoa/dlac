@@ -13791,10 +13791,10 @@ end)();
     check('GB1a the giftboxes classify under their REAL names, smallest first',
         table.concat({ gb.classify('Gob. Giftbox (sm)'), gb.classify('Gob. Giftbox (md)'),
                        gb.classify('Gob. Giftbox (lg)'), gb.classify('Gob. Giftbox (gr)') }, ','),
-        '24,26,28,30');
+        '25,27,29,31');
     check('GB1 the long spelling is carried too, in case the client differs',
-        gb.classify('Goblin Giftbox (Small)'), 25);
-    check('GB1b ...case-insensitively', gb.classify('GOB. GIFTBOX (LG)'), 28);
+        gb.classify('Goblin Giftbox (Small)'), 26);
+    check('GB1b ...case-insensitively', gb.classify('GOB. GIFTBOX (LG)'), 29);
     check('GB1c the grand box is the top rung', gb.classify('Grand Giftbox'), #gb.LADDER);
     -- The substring match is what makes this survive the next box CatsEyeXI adds.
     check('GB1d an UNKNOWN giftbox is still ours, sorted last',
@@ -13892,6 +13892,20 @@ end)();
     -- container, and the fragment must not reach them.
     check('GB1zb a Moat Carp is not a creel', gb.classify('Moat Carp'), nil);
 
+    -- The Old Case (2026-09-03, item 6614 -- the one item of that name on the
+    -- live table). Matched by FULL NAME: `case` alone is 22 items, nine of
+    -- them card-case ammo -- the `pouch` trap again -- so the negatives below
+    -- are the point of the test, not the positive.
+    check('GB1zc the Old Case is ours', gb.classify('Old Case'), 24);
+    check('GB1zd ...ranked between the creels and the giftboxes',
+        gb.classify('Forest Carp Creel') < gb.classify('Old Case')
+        and gb.classify('Old Case') < gb.classify('Gob. Giftbox (sm)'), true);
+    check('GB1ze a Card Case is NOT a box (it is ammo)',
+        gb.classify('Fire Card Case') or gb.classify('Trump Card Case'), nil);
+    check('GB1zf nor is any other case in the table',
+        gb.classify('Pluton Case') or gb.classify('Boulder Case') or gb.classify('Museum Case')
+        or gb.classify('Jewelry Case') or gb.classify('Ointment Case'), nil);
+
     local FOUND = {
         { name = 'Gob. Giftbox (gr)', rank = 14, count = 1 },
         { name = 'Gob. Giftbox (sm)', rank = 8,  count = 2 },
@@ -13938,6 +13952,10 @@ end)();
     check('GB5e2 a creel needs 2 -- 6-12 carp is ONE stack',
         table.concat({ gb.needFor('Moat Carp Creel'), gb.needFor('Forest Carp Creel') }, ','),
         '2,2');
+    -- UNPRICED payout = the strict gate. Nobody has logged what an Old Case
+    -- opens to, so it must NOT be in M.NEED yet; a cheap guess here is how a
+    -- payout gets lost to "you cannot carry any more" lines.
+    check('GB5e3 the Old Case, unpriced, needs the strict 6', gb.needFor('Old Case'), 6);
 
     local PURSES = { { name = 'Ctn. Purse (alx.)', rank = gb.classify('Ctn. Purse (alx.)'), count = 4 } };
     local pP2, cP2 = gb.plan(PURSES, 2);
