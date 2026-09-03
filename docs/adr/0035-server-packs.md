@@ -11,8 +11,9 @@
 > install silently mounted the cexi pack and indexed gear against the wrong catalog.
 > Selection is now: flag file > **detection** > **ask**. Detection is a hand-maintained
 > `servers/<id>/detect.lua` (`match(boot) -> true`) matched against the Ashita boot
-> config the launcher itself loaded (today only cexi ships one -- its boot command
-> names `server.catseyexi.com`); it is the *packager's* label, not the server's word,
+> config the launcher itself loaded (cexi's boot command names `server.catseyexi.com`;
+> since 2026-09-03 ascensionxi's names `play.ascensionffxi.com`, matched on the domain);
+> it is the *packager's* label, not the server's word,
 > so it only ever fills the gap below the flag. When neither answers, **nothing
 > mounts** (`serverpack.needsChoice()`), and the first-run chooser (`ui/serverchoose`)
 > -- or Menu > Settings > Server -- writes the flag and reloads. "The pack IS the

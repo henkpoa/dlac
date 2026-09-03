@@ -42,7 +42,14 @@ return {
 
 Hand-maintained for the features.lua reason: pack generators own `manifest.lua`
 and would clobber it. A missing file, or a matcher that errors, simply does not
-detect. Today only `servers/cexi/` ships one (`server.catseyexi.com`).
+detect. Both shipped packs carry one: `servers/cexi/` matches
+`catseyexi.com` (its bundle boots `--server server.catseyexi.com`), and
+`servers/ascensionxi/` matches `ascensionffxi.com` (the public bundle boots
+`--server play.ascensionffxi.com`, 2026-09-03). Match the DOMAIN, not the host, so
+a new login host under it detects without a code change. Only the boot command is
+visible to dlac: the DAT/image channel (`dl.ascensionffxi.com`) lives in the
+launcher's own config, which Ashita never loads. Dev/LAN installs booting a raw IP
+match nothing and answer the chooser, by design.
 
 ## manifest.lua
 

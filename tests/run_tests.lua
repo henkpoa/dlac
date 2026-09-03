@@ -27164,6 +27164,27 @@ end)();
     fixtures['dlac\\servers\\bbb\\detect'] = nil;
     sp._bootReader = nil;
 
+    -- the SHIPPED matchers, against the boot commands the real bundles carry
+    -- (pinned to the .ini strings, never invented: cexi = server.catseyexi.com;
+    -- ascensionxi = play.ascensionffxi.com since 2026-09-03, matched on the
+    -- domain so a future host under it detects too). Dev/LAN installs boot
+    -- against a raw IP and must NOT match -- they answer the chooser.
+    do
+        local cexiDet = dofile('servers/cexi/detect.lua');
+        local axiDet  = dofile('servers/ascensionxi/detect.lua');
+        local CEXI = { command = '--server server.catseyexi.com', name = 'CatsEyeXI' };
+        local AXI  = { command = '--server play.ascensionffxi.com --hairpin', name = 'AscensionXI' };
+        local LAN  = { command = '--server 192.168.170.50', name = 'AscensionXI' };
+        check('SPK24i cexi detects its own bundle',          cexiDet.match(CEXI), true);
+        check('SPK24j cexi does not claim AscensionXI',      cexiDet.match(AXI), false);
+        check('SPK24k ascensionxi detects play.ascensionffxi.com', axiDet.match(AXI), true);
+        check('SPK24l ...case-insensitively',                axiDet.match({ command = '--server PLAY.AscensionFFXI.com' }), true);
+        check('SPK24m ...and any host under the domain',     axiDet.match({ command = '--server login2.ascensionffxi.com' }), true);
+        check('SPK24n ascensionxi does not claim cexi',      axiDet.match(CEXI), false);
+        check('SPK24o a raw-IP LAN boot detects nothing',    axiDet.match(LAN) or cexiDet.match(LAN), false);
+        check('SPK24p a missing boot table is a miss, not an error', axiDet.match(nil), false);
+    end
+
     -- writeChoice: the flag writer seam
     do
         local wrote = nil;
