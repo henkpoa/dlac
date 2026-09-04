@@ -6,7 +6,7 @@
     SEVEN FAMILIES, one run (Henrik: four on 2026-08-06, purses/pouches and the
     carp creels on 2026-08-10). It started as the Goblin Giftboxes that
     CatsEyeXI drops off Ventures; the Goblin Gatherbox, the Tiny/Timeworn/
-    Titanic Tackleboxes, the Mamool Ja/Lamia/Troll Troves, the two alexandrite
+    Titanic Tackleboxes, the Mamool Ja/Lamia/Troll Troves, the Old Case, the two alexandrite
     Purses, the five Forgotten Pouches and the Moat/Forest Carp Creels are the
     same job -- a container you use from your bag that pays out items -- so they
     open through the same loop rather than seven copies of it.
@@ -208,6 +208,7 @@ M.SCAN_EVERY = 2.0;
 -- CatsEyeXI adds tomorrow opens without an addon update:
 --   tackleboxes 5110 / 5946 / 5112 · gatherbox 6345
 --   troves 6554 / 6555 / 6556      · giftboxes 5109 / 5111 / 6264 / 6558
+--   creels 5810 / 5811             · old case 6614
 M.LADDER = { 'tiny tacklebox', 'timeworn tacklebox', 'titanic tacklebox',
              'goblin gatherbox',
              'mamool ja trove', 'lamia trove', 'troll trove',
@@ -219,6 +220,7 @@ M.LADDER = { 'tiny tacklebox', 'timeworn tacklebox', 'titanic tacklebox',
              'frgtn. pouch (legs)',  'forgotten pouch (legs)',
              'frgtn. pouch (feet)',  'forgotten pouch (feet)',
              'moat carp creel', 'forest carp creel',
+             'old case',
              'gob. giftbox (sm)', 'goblin giftbox (small)',
              'gob. giftbox (md)', 'goblin giftbox (medium)',
              'gob. giftbox (lg)', 'goblin giftbox (large)',
@@ -268,8 +270,23 @@ M.LADDER = { 'tiny tacklebox', 'timeworn tacklebox', 'titanic tacklebox',
 -- explicitly "same as moat". Both sides of `creel` are now told, not inferred,
 -- so the shared need = 2 is as solid as the moat one's. If a third creel ever
 -- turns up paying two stacks, `creel` is where that splits into fragments.
+--
+-- `OLD CASE` (2026-09-03, Henrik: "add Old Case") IS THE FULL NAME, NOT A
+-- FRAGMENT, and it is the `pouch` lesson over again. Priced against the live
+-- item API the same day: `old case` is exactly ONE item (6614, usable, stacks
+-- to 12) and collides with nothing; a bare `case` returns 22 -- the eight
+-- elemental Card Cases and the Trump Card Case are AMMUNITION-type usables,
+-- the Pluton/Boulder Cases are Oboro currency, the rest are furnishings. A
+-- `case` gate would fire `/item` at a card case in your bag and end the run
+-- on a use that never confirms. One spelling suffices: the name is eight
+-- characters, nothing for the client to abbreviate. Its payout is UNPRICED
+-- -- nobody has logged what one opens to -- so it is deliberately absent from
+-- M.NEED and takes the strict default of 6, the same rule an unknown box
+-- gets. It is laddered (below the giftboxes, above the creels) purely so it
+-- cannot sort last and take the tray icon off the grand giftbox (GB1q). When
+-- a field log shows what it pays, M.NEED['old case'] is the one line to add.
 M.MATCH  = { 'giftbox', 'gatherbox', 'tacklebox', 'trove',
-             'purse', 'frgtn. pouch', 'forgotten pouch', 'creel' };
+             'purse', 'frgtn. pouch', 'forgotten pouch', 'creel', 'old case' };
 
 -- Is this item name one of ours, and where does it sort? nil = not a box.
 function M.classify(name)

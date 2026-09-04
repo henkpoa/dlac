@@ -218,3 +218,62 @@ falsified by one in-game test and reverted (`594927c`).
 
 **On an answer:** nothing to delete on our side — we already send the bare form. If the
 command becomes chat-kind agnostic, the party-chat dead spot closes on its own.
+
+---
+
+## 9. The three Abyssea Cruor set bonuses don't match the CatsEyeXI wiki — OPEN
+
+The 2026-09 Abyssea patch re-based all 15 Cruor pieces to their retail Lv75 values, and
+the live API now agrees with
+https://www.bg-wiki.com/ffxi/CatsEyeXI_Content/Abyssea **exactly, on all 15** (verified
+stat-for-stat, 2026-09-04). The *set bonuses* are the one part the API does not serialize,
+so they still come from `scripts/globals/gear_sets.lua` on the CatsAndBoats/catseyexi
+**base** branch — and that branch disagrees with the wiki on all three:
+
+| set | id | base branch (what dlac ships) | wiki (CatsEyeXI's own page) |
+|---|---|---|---|
+| Perle | 11 | Haste +5%, at exactly 5 pieces | Haste +1/+2/+3/+4% at 2/3/4/5 |
+| Aurore | 12 | Store TP +8, at exactly 5 pieces | Store TP +2/+3/+4/+5 at 2/3/4/5 |
+| Teal | 13 | Fast Cast +4/+6/+8/+10% at 2/3/4/5 | Fast Cast +1/+3/+5/+7% at 2/3/4/5 |
+
+The base branch is base-LSB and the item rows on it were stale in exactly the same way the
+item stats were before this crawl, so the wiki is the better bet — but a set bonus cannot
+be read back from the API to settle it, and it is not worth guessing at, since these feed
+gear scoring.
+
+**Question:** are the live Perle/Aurore/Teal set bonuses the wiki's ladders? If so, the
+base-branch `gear_sets.lua` is stale for sets 11/12/13.
+
+**What dlac does meanwhile:** nothing — `servers/cexi/data/gearsets.lua` still carries the
+base-branch values, because it is generated (`tools/gen_gearsets.py`) and hand-editing it
+would be silently overwritten by the next re-run. If the answer is "the wiki is right", the
+fix is a documented per-set override in the generator, the same shape as the `MOD_STRIP`/
+`MOD_ADD` item fixups in question 1.
+
+---
+
+## 10. `HASTE_GEAR` is stored at two different scales — OPEN (likely a real bug)
+
+`HASTE_GEAR` (mod 384) is percent×100 nearly everywhere: 2062 catalog items carry it and
+all but one are exact multiples of 100 (`Perle Salade` 200 = Haste+2%). Two carriers use
+the bare percent instead, and the server applies the ×100 reading uniformly, so both grant
+about one-hundredth of what their author meant:
+
+| carrier | stored | server grants | evidently meant |
+|---|---|---|---|
+| `gear_sets.lua` set **76** (Perle +1 set) | `{ HASTE_GEAR, 2, 3, 4, 5 }` | 0.02–0.05% | Haste +2–5% |
+| `Sakpatas Fists` (21527, Lv99) | `4` | 0.04% | Haste +4% (retail value) |
+
+Every other `gear_sets.lua` entry is scaled correctly (500, 600, 800, and the
+`300/500/700/900` ladder), which is what makes set 76 look like a typo rather than a
+convention.
+
+**Question:** should those two be ×100? Set 76 is the live Perle +1 set bonus, so if it is
+a typo it is currently doing nothing for anyone wearing that set.
+
+**What dlac does meanwhile:** reports what the server would actually grant — `gearsets.lua`
+set 76 renders `Haste = 0` at every tier and Sakpatas Fists shows no Haste. Deliberately
+not "corrected" to the intended percent: `modmap.py` divides `HASTE_GEAR` by 100
+unconditionally, and relaxing that to the mixed `abs >= 100` rule the BASIS100 family uses
+would make dlac promise haste the server does not grant. Sakpatas Fists is Lv99 and so
+dormant on a Lv75 server; set 76 is live.
