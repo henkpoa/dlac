@@ -733,7 +733,7 @@ return {
             },
             Burattinaios = {
                 Name = "Burattinaios",
-                Level = 89,
+                Level = 75,
                 Id = 18780,
                 Model = 509,
                 Jobs = {"PUP"},
@@ -1650,6 +1650,24 @@ return {
                     Evasion = 5,
                 }
             },
+            FaceBreakers = {
+                Name = "Face Breakers",
+                Level = 75,
+                Id = 21519,
+                Model = 478,
+                Jobs = {"MNK", "PUP"},
+                OneHanded = false,
+                Type = "HandToHand",
+                Stats = {
+                    DMG = 28,
+                    Delay = 566,
+                    STR = 8,
+                    DEX = 8,
+                    Accuracy = 10,
+                    BoostEffect = 50,
+                    ManeuverBonus = 2,
+                }
+            },
             FaithBaghnakhs = {
                 Name = "Faith Baghnakhs",
                 Level = 73,
@@ -1844,7 +1862,7 @@ return {
             },
             FurorCesti = {
                 Name = "Furor Cesti",
-                Level = 90,
+                Level = 75,
                 Id = 18781,
                 Model = 127,
                 Jobs = {"MNK", "PUP"},
@@ -1854,7 +1872,7 @@ return {
                     DMG = 22,
                     Delay = 510,
                     STR = 2,
-                    SubtleBlow = 8,
+                    SubtleBlow = 7,
                 }
             },
             GaeBuide = {
@@ -2362,7 +2380,7 @@ return {
             },
             HeofonKnuckles = {
                 Name = "Heofon Knuckles",
-                Level = 85,
+                Level = 74,
                 Id = 18776,
                 Model = 135,
                 Jobs = {"MNK", "PUP"},
@@ -2703,24 +2721,6 @@ return {
                     Accuracy = 35,
                     Attack = 25,
                     MagicAccuracy = 35,
-                }
-            },
-            Karambit = {
-                Name = "Karambit",
-                Level = 75,
-                Id = 21519,
-                Model = 478,
-                Jobs = {"MNK", "PUP"},
-                OneHanded = false,
-                Type = "HandToHand",
-                Stats = {
-                    DMG = 28,
-                    Delay = 566,
-                    STR = 8,
-                    DEX = 8,
-                    Accuracy = 10,
-                    BoostEffect = 50,
-                    ManeuverBonus = 2,
                 }
             },
             Katars = {
@@ -3331,7 +3331,7 @@ return {
             },
             MarotteClaws = {
                 Name = "Marotte Claws",
-                Level = 82,
+                Level = 73,
                 Id = 18778,
                 Model = 121,
                 Jobs = {"PUP"},
@@ -5239,7 +5239,7 @@ return {
             },
             TaurineCesti = {
                 Name = "Taurine Cesti",
-                Level = 89,
+                Level = 75,
                 Id = 18779,
                 Model = 126,
                 Jobs = {"MNK"},
@@ -5249,7 +5249,7 @@ return {
                     DMG = 28,
                     Delay = 528,
                     STR = 6,
-                    SubtleBlow = 10,
+                    SubtleBlow = 7,
                     BoostEffect = 55,
                 }
             },
@@ -5695,43 +5695,43 @@ return {
             },
             Verethragna = {
                 Name = "Verethragna",
-                Level = 80,
+                Level = 75,
                 Id = 19397,
                 Model = 500,
                 Jobs = {"MNK", "PUP"},
                 OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
-                    DMG = 27,
+                    DMG = 18,
                     Delay = 531,
                 }
             },
             Verethragna_2 = {
                 Name = "Verethragna",
-                Level = 85,
+                Level = 75,
                 Id = 19456,
                 Model = 500,
                 Jobs = {"MNK", "PUP"},
                 OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
-                    DMG = 32,
+                    DMG = 20,
                     Delay = 531,
-                    STR = 10,
+                    STR = 5,
                 }
             },
             Verethragna_3 = {
                 Name = "Verethragna",
-                Level = 90,
+                Level = 75,
                 Id = 19534,
                 Model = 500,
                 Jobs = {"MNK", "PUP"},
                 OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
-                    DMG = 35,
+                    DMG = 22,
                     Delay = 531,
-                    STR = 15,
+                    STR = 10,
                 }
             },
             Verethragna_4 = {
@@ -6025,7 +6025,7 @@ return {
             },
             Acinaces = {
                 Name = "Acinaces",
-                Level = 89,
+                Level = 75,
                 Id = 19135,
                 Model = 379,
                 Jobs = {"COR"},
@@ -6241,7 +6241,7 @@ return {
             },
             AngrHarpe = {
                 Name = "Angr Harpe",
-                Level = 90,
+                Level = 75,
                 Id = 19137,
                 Model = 354,
                 Jobs = {"THF", "DNC"},
@@ -7405,7 +7405,7 @@ return {
             },
             ClementSkean = {
                 Name = "Clement Skean",
-                Level = 85,
+                Level = 74,
                 Id = 19130,
                 Model = 163,
                 Jobs = {"RDM", "THF", "BRD", "DNC"},
@@ -8134,7 +8134,7 @@ return {
             },
             FelibresDague = {
                 Name = "Felibres Dague",
-                Level = 89,
+                Level = 75,
                 Id = 19134,
                 Model = 158,
                 Jobs = {"BRD"},
@@ -9120,7 +9120,7 @@ return {
             },
             MagnusDagger = {
                 Name = "Magnus Dagger",
-                Level = 82,
+                Level = 73,
                 Id = 19131,
                 Model = 163,
                 Jobs = {"THF", "BRD", "DNC"},
@@ -10156,7 +10156,7 @@ return {
             },
             Phurba = {
                 Name = "Phurba",
-                Level = 89,
+                Level = 75,
                 Id = 19136,
                 Model = 162,
                 Jobs = {"DNC"},
@@ -10462,7 +10462,7 @@ return {
             },
             RapidusSax = {
                 Name = "Rapidus Sax",
-                Level = 84,
+                Level = 73,
                 Id = 19129,
                 Model = 179,
                 Jobs = {"THF"},
@@ -11419,7 +11419,7 @@ return {
             },
             TriplusDagger = {
                 Name = "Triplus Dagger",
-                Level = 89,
+                Level = 75,
                 Id = 19133,
                 Model = 177,
                 Jobs = {"THF"},
@@ -11467,43 +11467,43 @@ return {
             },
             Twashtar = {
                 Name = "Twashtar",
-                Level = 80,
+                Level = 75,
                 Id = 19398,
                 Model = 465,
                 Jobs = {"THF", "BRD", "DNC"},
                 OneHanded = true,
                 Type = "Dagger",
                 Stats = {
-                    DMG = 42,
+                    DMG = 38,
                     Delay = 176,
                 }
             },
             Twashtar_2 = {
                 Name = "Twashtar",
-                Level = 85,
+                Level = 75,
                 Id = 19457,
                 Model = 465,
                 Jobs = {"THF", "BRD", "DNC"},
                 OneHanded = true,
                 Type = "Dagger",
                 Stats = {
-                    DMG = 45,
+                    DMG = 39,
                     Delay = 176,
-                    DEX = 10,
+                    DEX = 5,
                 }
             },
             Twashtar_3 = {
                 Name = "Twashtar",
-                Level = 90,
+                Level = 75,
                 Id = 19535,
                 Model = 465,
                 Jobs = {"THF", "BRD", "DNC"},
                 OneHanded = true,
                 Type = "Dagger",
                 Stats = {
-                    DMG = 48,
+                    DMG = 40,
                     Delay = 176,
-                    DEX = 15,
+                    DEX = 10,
                 }
             },
             Twashtar_4 = {
@@ -11593,7 +11593,7 @@ return {
             },
             TwilightKnife = {
                 Name = "Twilight Knife",
-                Level = 90,
+                Level = 75,
                 Id = 19132,
                 Model = 527,
                 Jobs = {"WAR", "RDM", "THF", "BST", "BRD", "RNG", "NIN", "COR", "DNC"},
@@ -12068,7 +12068,7 @@ return {
             },
             AccoladeSword = {
                 Name = "Accolade Sword",
-                Level = 81,
+                Level = 73,
                 Id = 18894,
                 Model = 281,
                 Jobs = {"PLD", "DRK", "RUN"},
@@ -12156,43 +12156,43 @@ return {
             },
             Almace = {
                 Name = "Almace",
-                Level = 80,
+                Level = 75,
                 Id = 19399,
                 Model = 466,
                 Jobs = {"RDM", "PLD", "BLU"},
                 OneHanded = true,
                 Type = "Sword",
                 Stats = {
-                    DMG = 52,
+                    DMG = 44,
                     Delay = 224,
                 }
             },
             Almace_2 = {
                 Name = "Almace",
-                Level = 85,
+                Level = 75,
                 Id = 19458,
                 Model = 466,
                 Jobs = {"RDM", "PLD", "BLU"},
                 OneHanded = true,
                 Type = "Sword",
                 Stats = {
-                    DMG = 57,
+                    DMG = 45,
                     Delay = 224,
-                    DEX = 10,
+                    DEX = 5,
                 }
             },
             Almace_3 = {
                 Name = "Almace",
-                Level = 90,
+                Level = 75,
                 Id = 19536,
                 Model = 466,
                 Jobs = {"RDM", "PLD", "BLU"},
                 OneHanded = true,
                 Type = "Sword",
                 Stats = {
-                    DMG = 61,
+                    DMG = 47,
                     Delay = 224,
-                    DEX = 15,
+                    DEX = 10,
                 }
             },
             Almace_4 = {
@@ -13358,7 +13358,7 @@ return {
             },
             ChimericFleuret = {
                 Name = "Chimeric Fleuret",
-                Level = 89,
+                Level = 75,
                 Id = 18895,
                 Model = 193,
                 Jobs = {"RDM"},
@@ -13621,7 +13621,7 @@ return {
             },
             CorbenicSword = {
                 Name = "Corbenic Sword",
-                Level = 85,
+                Level = 74,
                 Id = 18892,
                 Model = 269,
                 Jobs = {"RDM", "PLD", "BLU"},
@@ -14255,29 +14255,6 @@ return {
                     DMG = 36,
                     Delay = 215,
                     Accuracy = 3,
-                }
-            },
-            Ephemeron = {
-                Name = "Ephemeron",
-                Level = 75,
-                Id = 18904,
-                Model = 538,
-                Jobs = {"RDM", "BRD"},
-                OneHanded = true,
-                Type = "Sword",
-                Stats = {
-                    DMG = 42,
-                    Delay = 201,
-                    Accuracy = 15,
-                    Iridescence = 1,
-                    FireStaffBonus = 3,
-                    IceStaffBonus = 3,
-                    WindStaffBonus = 3,
-                    EarthStaffBonus = 3,
-                    ThunderStaffBonus = 3,
-                    WaterStaffBonus = 3,
-                    LightStaffBonus = 3,
-                    DarkStaffBonus = 3,
                 }
             },
             EradicatorsKilij = {
@@ -15172,7 +15149,7 @@ return {
             },
             HannibalsSword = {
                 Name = "Hannibals Sword",
-                Level = 85,
+                Level = 74,
                 Id = 18891,
                 Model = 285,
                 Jobs = {"WAR", "PLD", "DRK", "BLU", "RUN"},
@@ -15369,7 +15346,7 @@ return {
             },
             Honorbound = {
                 Name = "Honorbound",
-                Level = 89,
+                Level = 75,
                 Id = 18896,
                 Model = 390,
                 Jobs = {"PLD"},
@@ -15378,7 +15355,7 @@ return {
                 Stats = {
                     DMG = 58,
                     Delay = 240,
-                    HP = 55,
+                    HP = 38,
                     DivineMagicSkill = 7,
                 }
             },
@@ -15574,7 +15551,7 @@ return {
             },
             Isador = {
                 Name = "Isador",
-                Level = 89,
+                Level = 75,
                 Id = 18897,
                 Model = 402,
                 Jobs = {"BLU"},
@@ -16239,7 +16216,7 @@ return {
             },
             Mageblade = {
                 Name = "Mageblade",
-                Level = 90,
+                Level = 75,
                 Id = 18898,
                 Model = 267,
                 Jobs = {"WAR", "RDM", "PLD", "DRK", "BLU", "COR", "RUN"},
@@ -16254,7 +16231,7 @@ return {
             },
             MagnusSword = {
                 Name = "Magnus Sword",
-                Level = 82,
+                Level = 73,
                 Id = 18893,
                 Model = 273,
                 Jobs = {"RDM", "PLD", "BLU"},
@@ -17226,7 +17203,7 @@ return {
             },
             RunicAnelace = {
                 Name = "Runic Anelace",
-                Level = 90,
+                Level = 75,
                 Id = 18899,
                 Model = 274,
                 Jobs = {"WAR", "RDM", "PLD", "DRK", "BLU", "COR", "RUN"},
@@ -17317,24 +17294,6 @@ return {
                 Stats = {
                     DMG = 22,
                     Delay = 225,
-                }
-            },
-            Sagasinger = {
-                Name = "Sagasinger",
-                Level = 75,
-                Id = 17669,
-                Model = 528,
-                Jobs = {"WAR", "RDM", "PLD", "DRK", "BLU", "COR", "RUN"},
-                OneHanded = true,
-                Type = "Sword",
-                Stats = {
-                    DMG = 51,
-                    Delay = 233,
-                    HP = 30,
-                    MP = 30,
-                    STR = 8,
-                    VIT = 8,
-                    MagicAttackBonus = 7,
                 }
             },
             SakpatasSword = {
@@ -17785,7 +17744,7 @@ return {
             },
             SkeldSword = {
                 Name = "Skeld Sword",
-                Level = 90,
+                Level = 75,
                 Id = 18900,
                 Model = 281,
                 Jobs = {"WAR", "PLD", "DRK", "RUN"},
@@ -17824,6 +17783,29 @@ return {
                     DMG = 39,
                     Delay = 218,
                     ResistPoison = 2,
+                }
+            },
+            SomniaMelodiam = {
+                Name = "Somnia Melodiam",
+                Level = 75,
+                Id = 18904,
+                Model = 538,
+                Jobs = {"RDM", "BRD"},
+                OneHanded = true,
+                Type = "Sword",
+                Stats = {
+                    DMG = 42,
+                    Delay = 201,
+                    Accuracy = 15,
+                    Iridescence = 1,
+                    FireStaffBonus = 3,
+                    IceStaffBonus = 3,
+                    WindStaffBonus = 3,
+                    EarthStaffBonus = 3,
+                    ThunderStaffBonus = 3,
+                    WaterStaffBonus = 3,
+                    LightStaffBonus = 3,
+                    DarkStaffBonus = 3,
                 }
             },
             Soulsaber = {
@@ -18565,6 +18547,24 @@ return {
                     DragonKiller = 5,
                 }
             },
+            UndulantBlack = {
+                Name = "Undulant Black",
+                Level = 75,
+                Id = 17669,
+                Model = 528,
+                Jobs = {"WAR", "RDM", "PLD", "DRK", "BLU", "COR", "RUN"},
+                OneHanded = true,
+                Type = "Sword",
+                Stats = {
+                    DMG = 51,
+                    Delay = 233,
+                    HP = 30,
+                    MP = 30,
+                    STR = 8,
+                    VIT = 8,
+                    MagicAttackBonus = 7,
+                }
+            },
             Usonmunku = {
                 Name = "Usonmunku",
                 Level = 99,
@@ -19050,7 +19050,7 @@ return {
                 Level = 75,
                 Id = 19344,
                 Model = 70,
-                Jobs = {"PLD", "DRK"},
+                Jobs = {"PLD", "DRK", "RUN"},
                 OneHanded = false,
                 Type = "GreatSword",
                 Stats = {
@@ -19343,6 +19343,25 @@ return {
                     Delay = 480,
                 }
             },
+            Bifrost = {
+                Name = "Bifrost",
+                Level = 75,
+                Id = 19174,
+                Model = 543,
+                Jobs = {"PLD", "DRK", "RUN"},
+                OneHanded = false,
+                Type = "GreatSword",
+                Stats = {
+                    DMG = 86,
+                    Delay = 444,
+                    DEX = 8,
+                    VIT = 8,
+                    Attack = 15,
+                    MagicDefenseBonus = 3,
+                    Enmity = 10,
+                    MDTII = -10,
+                }
+            },
             Bitterness = {
                 Name = "Bitterness",
                 Level = 20,
@@ -19407,25 +19426,6 @@ return {
                     DMG = 255,
                     Delay = 494,
                     Accuracy = 20,
-                }
-            },
-            Borealis = {
-                Name = "Borealis",
-                Level = 75,
-                Id = 19174,
-                Model = 543,
-                Jobs = {"PLD", "DRK", "RUN"},
-                OneHanded = false,
-                Type = "GreatSword",
-                Stats = {
-                    DMG = 86,
-                    Delay = 444,
-                    DEX = 8,
-                    VIT = 8,
-                    Attack = 15,
-                    MagicDefenseBonus = 3,
-                    Enmity = 10,
-                    MDTII = -10,
                 }
             },
             BrandDarcon = {
@@ -19497,43 +19497,43 @@ return {
             },
             Caladbolg = {
                 Name = "Caladbolg",
-                Level = 80,
+                Level = 75,
                 Id = 19400,
                 Model = 467,
-                Jobs = {"PLD", "DRK"},
+                Jobs = {"PLD", "DRK", "RUN"},
                 OneHanded = false,
                 Type = "GreatSword",
                 Stats = {
-                    DMG = 98,
+                    DMG = 84,
                     Delay = 430,
                 }
             },
             Caladbolg_2 = {
                 Name = "Caladbolg",
-                Level = 85,
+                Level = 75,
                 Id = 19459,
                 Model = 467,
-                Jobs = {"PLD", "DRK"},
+                Jobs = {"PLD", "DRK", "RUN"},
                 OneHanded = false,
                 Type = "GreatSword",
                 Stats = {
-                    DMG = 109,
+                    DMG = 87,
                     Delay = 430,
-                    VIT = 10,
+                    VIT = 5,
                 }
             },
             Caladbolg_3 = {
                 Name = "Caladbolg",
-                Level = 90,
+                Level = 75,
                 Id = 19537,
                 Model = 467,
-                Jobs = {"PLD", "DRK"},
+                Jobs = {"PLD", "DRK", "RUN"},
                 OneHanded = false,
                 Type = "GreatSword",
                 Stats = {
-                    DMG = 120,
+                    DMG = 90,
                     Delay = 430,
-                    VIT = 15,
+                    VIT = 10,
                 }
             },
             Caladbolg_4 = {
@@ -20900,7 +20900,7 @@ return {
             },
             KhlorosBlade = {
                 Name = "Khloros Blade",
-                Level = 85,
+                Level = 74,
                 Id = 19167,
                 Model = 64,
                 Jobs = {"WAR", "PLD", "DRK", "RUN"},
@@ -20939,7 +20939,7 @@ return {
             },
             Kriegsmesser = {
                 Name = "Kriegsmesser",
-                Level = 90,
+                Level = 75,
                 Id = 19169,
                 Model = 64,
                 Jobs = {"WAR", "PLD", "DRK", "RUN"},
@@ -22084,7 +22084,7 @@ return {
                 Level = 75,
                 Id = 19343,
                 Model = 72,
-                Jobs = {"PLD", "DRK"},
+                Jobs = {"PLD", "DRK", "RUN"},
                 OneHanded = false,
                 Type = "GreatSword",
                 Stats = {
@@ -22734,7 +22734,7 @@ return {
             },
             ArtiosAxe = {
                 Name = "Artios Axe",
-                Level = 90,
+                Level = 75,
                 Id = 18536,
                 Model = 78,
                 Jobs = {"WAR", "BST"},
@@ -23335,7 +23335,7 @@ return {
             },
             CarabiniersAxe = {
                 Name = "Carabiniers Axe",
-                Level = 89,
+                Level = 75,
                 Id = 18535,
                 Model = 78,
                 Jobs = {"RNG"},
@@ -23351,7 +23351,7 @@ return {
             },
             CharmersMerlin = {
                 Name = "Charmers Merlin",
-                Level = 89,
+                Level = 75,
                 Id = 18534,
                 Model = 81,
                 Jobs = {"BST"},
@@ -23380,7 +23380,7 @@ return {
             },
             CleofunAxe = {
                 Name = "Cleofun Axe",
-                Level = 85,
+                Level = 74,
                 Id = 18532,
                 Model = 91,
                 Jobs = {"BST"},
@@ -23563,24 +23563,6 @@ return {
                 Stats = {
                     DMG = 159,
                     Delay = 276,
-                }
-            },
-            Dolichenus = {
-                Name = "Dolichenus",
-                Level = 75,
-                Id = 21722,
-                Model = 850,
-                Jobs = {"WAR", "DRK", "BST", "RNG", "RUN"},
-                OneHanded = true,
-                Type = "Axe",
-                Stats = {
-                    DMG = 58,
-                    Delay = 288,
-                    AGI = 12,
-                    Attack = 7,
-                    RangedAttack = 7,
-                    PDT = -10,
-                    RDT = -10,
                 }
             },
             DoomTabar = {
@@ -23779,45 +23761,45 @@ return {
             },
             Farsha = {
                 Name = "Farsha",
-                Level = 80,
+                Level = 75,
                 Id = 19401,
                 Model = 468,
-                Jobs = {"WAR", "BST"},
+                Jobs = {"MNK", "BRD"},
                 OneHanded = true,
                 Type = "Axe",
                 Stats = {
-                    DMG = 61,
+                    DMG = 52,
                     Delay = 276,
                 }
             },
             Farsha_2 = {
                 Name = "Farsha",
-                Level = 85,
+                Level = 75,
                 Id = 19460,
                 Model = 468,
-                Jobs = {"WAR", "BST"},
+                Jobs = {"MNK", "BRD"},
                 OneHanded = true,
                 Type = "Axe",
                 Stats = {
-                    DMG = 68,
+                    DMG = 54,
                     Delay = 276,
-                    STR = 7,
-                    MND = 7,
+                    STR = 3,
+                    MND = 3,
                 }
             },
             Farsha_3 = {
                 Name = "Farsha",
-                Level = 90,
+                Level = 75,
                 Id = 19538,
                 Model = 468,
-                Jobs = {"WAR", "BST"},
+                Jobs = {"MNK", "BRD"},
                 OneHanded = true,
                 Type = "Axe",
                 Stats = {
-                    DMG = 74,
+                    DMG = 56,
                     Delay = 276,
-                    STR = 10,
-                    MND = 10,
+                    STR = 7,
+                    MND = 7,
                 }
             },
             Farsha_4 = {
@@ -23825,7 +23807,7 @@ return {
                 Level = 95,
                 Id = 19636,
                 Model = 468,
-                Jobs = {"WAR", "BST"},
+                Jobs = {"MNK", "BRD"},
                 OneHanded = true,
                 Type = "Axe",
                 Stats = {
@@ -23840,7 +23822,7 @@ return {
                 Level = 99,
                 Id = 19809,
                 Model = 468,
-                Jobs = {"WAR", "BST"},
+                Jobs = {"MNK", "BRD"},
                 OneHanded = true,
                 Type = "Axe",
                 Stats = {
@@ -23855,7 +23837,7 @@ return {
                 Level = 99,
                 Id = 19857,
                 Model = 574,
-                Jobs = {"WAR", "BST"},
+                Jobs = {"MNK", "BRD"},
                 OneHanded = true,
                 Type = "Axe",
                 Stats = {
@@ -23870,7 +23852,7 @@ return {
                 Level = 99,
                 Id = 20794,
                 Model = 468,
-                Jobs = {"WAR", "BST"},
+                Jobs = {"MNK", "BRD"},
                 OneHanded = true,
                 Type = "Axe",
                 Stats = {
@@ -23885,7 +23867,7 @@ return {
                 Level = 99,
                 Id = 20795,
                 Model = 574,
-                Jobs = {"WAR", "BST"},
+                Jobs = {"MNK", "BRD"},
                 OneHanded = true,
                 Type = "Axe",
                 Stats = {
@@ -23900,7 +23882,7 @@ return {
                 Level = 99,
                 Id = 21752,
                 Model = 574,
-                Jobs = {"WAR", "BST"},
+                Jobs = {"MNK", "BRD"},
                 OneHanded = true,
                 Type = "Axe",
                 Stats = {
@@ -24638,7 +24620,7 @@ return {
             },
             MagnusAxe = {
                 Name = "Magnus Axe",
-                Level = 82,
+                Level = 73,
                 Id = 18533,
                 Model = 81,
                 Jobs = {"WAR", "BST"},
@@ -25105,6 +25087,24 @@ return {
                     MND = -1,
                     CHR = -1,
                     StoreTP = 1,
+                }
+            },
+            Raqia = {
+                Name = "Raqia",
+                Level = 75,
+                Id = 21722,
+                Model = 850,
+                Jobs = {"WAR", "DRK", "BST", "RNG", "RUN"},
+                OneHanded = true,
+                Type = "Axe",
+                Stats = {
+                    DMG = 58,
+                    Delay = 288,
+                    AGI = 12,
+                    Attack = 7,
+                    RangedAttack = 7,
+                    PDT = -10,
+                    RDT = -10,
                 }
             },
             RavanasAxe = {
@@ -26133,7 +26133,7 @@ return {
             },
             BarbarusBhuj = {
                 Name = "Barbarus Bhuj",
-                Level = 85,
+                Level = 74,
                 Id = 18513,
                 Model = 96,
                 Jobs = {"WAR"},
@@ -27201,6 +27201,24 @@ return {
                     Delay = 489,
                 }
             },
+            Hax = {
+                Name = "Hax",
+                Level = 75,
+                Id = 18525,
+                Model = 603,
+                Jobs = {"WAR"},
+                OneHanded = false,
+                Type = "GreatAxe",
+                Stats = {
+                    DMG = 109,
+                    Delay = 504,
+                    STR = 8,
+                    VIT = 8,
+                    Accuracy = 5,
+                    Attack = 12,
+                    DoubleAttackDamage = 3,
+                }
+            },
             HeavyAxe = {
                 Name = "Heavy Axe",
                 Level = 34,
@@ -27326,24 +27344,6 @@ return {
                 Stats = {
                     DMG = 72,
                     Delay = 488,
-                }
-            },
-            Himthige = {
-                Name = "Himthige",
-                Level = 75,
-                Id = 18525,
-                Model = 603,
-                Jobs = {"WAR"},
-                OneHanded = false,
-                Type = "GreatAxe",
-                Stats = {
-                    DMG = 109,
-                    Delay = 504,
-                    STR = 8,
-                    VIT = 8,
-                    Accuracy = 5,
-                    Attack = 12,
-                    DoubleAttackDamage = 3,
                 }
             },
             Hodadenon = {
@@ -27881,7 +27881,7 @@ return {
             },
             MagnusToporok = {
                 Name = "Magnus Toporok",
-                Level = 82,
+                Level = 73,
                 Id = 18514,
                 Model = 92,
                 Jobs = {"WAR"},
@@ -28788,43 +28788,43 @@ return {
             },
             Ukonvasara = {
                 Name = "Ukonvasara",
-                Level = 80,
+                Level = 75,
                 Id = 19402,
                 Model = 469,
                 Jobs = {"WAR"},
                 OneHanded = false,
                 Type = "GreatAxe",
                 Stats = {
-                    DMG = 109,
+                    DMG = 94,
                     Delay = 482,
                 }
             },
             Ukonvasara_2 = {
                 Name = "Ukonvasara",
-                Level = 85,
+                Level = 75,
                 Id = 19461,
                 Model = 469,
                 Jobs = {"WAR"},
                 OneHanded = false,
                 Type = "GreatAxe",
                 Stats = {
-                    DMG = 122,
+                    DMG = 97,
                     Delay = 482,
-                    STR = 10,
+                    STR = 5,
                 }
             },
             Ukonvasara_3 = {
                 Name = "Ukonvasara",
-                Level = 90,
+                Level = 75,
                 Id = 19539,
                 Model = 469,
                 Jobs = {"WAR"},
                 OneHanded = false,
                 Type = "GreatAxe",
                 Stats = {
-                    DMG = 131,
+                    DMG = 100,
                     Delay = 482,
-                    STR = 15,
+                    STR = 10,
                 }
             },
             Ukonvasara_4 = {
@@ -29010,7 +29010,7 @@ return {
             },
             WarlordsAxe = {
                 Name = "Warlords Axe",
-                Level = 90,
+                Level = 75,
                 Id = 18516,
                 Model = 98,
                 Jobs = {"WAR"},
@@ -29026,7 +29026,7 @@ return {
             },
             Widowmaker = {
                 Name = "Widowmaker",
-                Level = 89,
+                Level = 75,
                 Id = 18515,
                 Model = 451,
                 Jobs = {"WAR"},
@@ -29679,7 +29679,7 @@ return {
             },
             BountySickle = {
                 Name = "Bounty Sickle",
-                Level = 82,
+                Level = 73,
                 Id = 18968,
                 Model = 350,
                 Jobs = {"WAR", "BLM", "DRK", "BST"},
@@ -29730,6 +29730,24 @@ return {
                     Delay = 528,
                     Accuracy = -5,
                     Attack = 25,
+                }
+            },
+            BrokenPromise = {
+                Name = "Broken Promise",
+                Level = 75,
+                Id = 21830,
+                Model = 853,
+                Jobs = {"DRK"},
+                OneHanded = false,
+                Type = "Scythe",
+                Stats = {
+                    DMG = 105,
+                    Delay = 513,
+                    STR = 8,
+                    DEX = 8,
+                    Attack = 15,
+                    StoreTP = 5,
+                    BloodWeaponBonus = 15,
                 }
             },
             BronzeZaghnal = {
@@ -29786,7 +29804,7 @@ return {
             },
             CrisisScythe = {
                 Name = "Crisis Scythe",
-                Level = 85,
+                Level = 74,
                 Id = 18966,
                 Model = 322,
                 Jobs = {"DRK"},
@@ -29856,7 +29874,7 @@ return {
             },
             DarklinnScythe = {
                 Name = "Darklinn Scythe",
-                Level = 90,
+                Level = 75,
                 Id = 18554,
                 Model = 194,
                 Jobs = {"DRK"},
@@ -30016,24 +30034,6 @@ return {
                     Delay = 513,
                     DEX = 4,
                     INT = 4,
-                }
-            },
-            Drepanum = {
-                Name = "Drepanum",
-                Level = 75,
-                Id = 21830,
-                Model = 853,
-                Jobs = {"DRK"},
-                OneHanded = false,
-                Type = "Scythe",
-                Stats = {
-                    DMG = 105,
-                    Delay = 513,
-                    STR = 8,
-                    DEX = 8,
-                    Attack = 15,
-                    StoreTP = 5,
-                    BloodWeaponBonus = 15,
                 }
             },
             DstScythe_1 = {
@@ -30845,7 +30845,7 @@ return {
             },
             MagnusScythe = {
                 Name = "Magnus Scythe",
-                Level = 82,
+                Level = 73,
                 Id = 18967,
                 Model = 372,
                 Jobs = {"DRK"},
@@ -30911,7 +30911,7 @@ return {
             },
             Maleficus = {
                 Name = "Maleficus",
-                Level = 89,
+                Level = 75,
                 Id = 18552,
                 Model = 350,
                 Jobs = {"BLM"},
@@ -30920,7 +30920,7 @@ return {
                 Stats = {
                     DMG = 98,
                     Delay = 501,
-                    INT = 10,
+                    INT = 9,
                     MagicAttackBonus = 10,
                     MagicCriticalHitRate = 10,
                     MagicCriticalHitDamage = 30,
@@ -31488,45 +31488,45 @@ return {
             },
             Redemption = {
                 Name = "Redemption",
-                Level = 80,
+                Level = 75,
                 Id = 19403,
                 Model = 470,
                 Jobs = {"DRK"},
                 OneHanded = false,
                 Type = "Scythe",
                 Stats = {
-                    DMG = 113,
+                    DMG = 97,
                     Delay = 502,
                 }
             },
             Redemption_2 = {
                 Name = "Redemption",
-                Level = 85,
+                Level = 75,
                 Id = 19462,
                 Model = 470,
                 Jobs = {"DRK"},
                 OneHanded = false,
                 Type = "Scythe",
                 Stats = {
-                    DMG = 127,
+                    DMG = 100,
                     Delay = 502,
-                    STR = 7,
-                    MND = 7,
+                    STR = 3,
+                    MND = 3,
                 }
             },
             Redemption_3 = {
                 Name = "Redemption",
-                Level = 90,
+                Level = 75,
                 Id = 19540,
                 Model = 470,
                 Jobs = {"DRK"},
                 OneHanded = false,
                 Type = "Scythe",
                 Stats = {
-                    DMG = 136,
+                    DMG = 103,
                     Delay = 502,
-                    STR = 10,
-                    MND = 10,
+                    STR = 7,
+                    MND = 7,
                 }
             },
             Redemption_4 = {
@@ -32018,7 +32018,7 @@ return {
             },
             TwilightScythe = {
                 Name = "Twilight Scythe",
-                Level = 90,
+                Level = 75,
                 Id = 18551,
                 Model = 526,
                 Jobs = {"DRK"},
@@ -32199,7 +32199,7 @@ return {
             },
             Woeborn = {
                 Name = "Woeborn",
-                Level = 89,
+                Level = 75,
                 Id = 18553,
                 Model = 322,
                 Jobs = {"DRK"},
@@ -33226,7 +33226,7 @@ return {
             },
             DraconisLance = {
                 Name = "Draconis Lance",
-                Level = 90,
+                Level = 75,
                 Id = 16843,
                 Model = 212,
                 Jobs = {"DRG"},
@@ -33375,7 +33375,7 @@ return {
             },
             ErebussLance = {
                 Name = "Erebuss Lance",
-                Level = 81,
+                Level = 73,
                 Id = 19315,
                 Model = 349,
                 Jobs = {"SAM", "DRG"},
@@ -33467,7 +33467,7 @@ return {
             },
             FetterLance = {
                 Name = "Fetter Lance",
-                Level = 81,
+                Level = 73,
                 Id = 19316,
                 Model = 209,
                 Jobs = {"DRG"},
@@ -34380,7 +34380,7 @@ return {
             },
             MagnusLance = {
                 Name = "Magnus Lance",
-                Level = 82,
+                Level = 73,
                 Id = 19313,
                 Model = 210,
                 Jobs = {"DRG"},
@@ -34952,7 +34952,7 @@ return {
             },
             QuintSpear = {
                 Name = "Quint Spear",
-                Level = 82,
+                Level = 73,
                 Id = 19314,
                 Model = 203,
                 Jobs = {"WAR", "PLD", "SAM", "DRG"},
@@ -35107,43 +35107,43 @@ return {
             },
             Rhongomiant = {
                 Name = "Rhongomiant",
-                Level = 80,
+                Level = 75,
                 Id = 19404,
                 Model = 512,
                 Jobs = {"DRG"},
                 OneHanded = false,
                 Type = "Polearm",
                 Stats = {
-                    DMG = 111,
+                    DMG = 96,
                     Delay = 492,
                 }
             },
             Rhongomiant_2 = {
                 Name = "Rhongomiant",
-                Level = 85,
+                Level = 75,
                 Id = 19463,
                 Model = 512,
                 Jobs = {"DRG"},
                 OneHanded = false,
                 Type = "Polearm",
                 Stats = {
-                    DMG = 125,
+                    DMG = 99,
                     Delay = 492,
-                    VIT = 10,
+                    VIT = 5,
                 }
             },
             Rhongomiant_3 = {
                 Name = "Rhongomiant",
-                Level = 90,
+                Level = 75,
                 Id = 19541,
                 Model = 512,
                 Jobs = {"DRG"},
                 OneHanded = false,
                 Type = "Polearm",
                 Stats = {
-                    DMG = 132,
+                    DMG = 102,
                     Delay = 492,
-                    VIT = 15,
+                    VIT = 10,
                 }
             },
             Rhongomiant_4 = {
@@ -35665,7 +35665,7 @@ return {
             },
             SkogulLance = {
                 Name = "Skogul Lance",
-                Level = 85,
+                Level = 74,
                 Id = 19312,
                 Model = 210,
                 Jobs = {"DRG"},
@@ -36116,7 +36116,7 @@ return {
             },
             VougiersContus = {
                 Name = "Vougiers Contus",
-                Level = 89,
+                Level = 75,
                 Id = 16854,
                 Model = 436,
                 Jobs = {"DRG"},
@@ -36450,6 +36450,27 @@ return {
                 Stats = {
                     DMG = 81,
                     Delay = 227,
+                }
+            },
+            Carver = {
+                Name = "Carver",
+                Level = 75,
+                Id = 19298,
+                Model = 589,
+                Jobs = {"NIN"},
+                OneHanded = true,
+                Type = "Katana",
+                Stats = {
+                    DMG = 41,
+                    Delay = 222,
+                    STR = 8,
+                    DEX = 8,
+                    Evasion = 10,
+                    MagicEvasion = 5,
+                    Enmity = 5,
+                    Regen = 1,
+                    EnemyCriticalHitRate = 5,
+                    UtsusemiShadows = 1,
                 }
             },
             Chidori = {
@@ -37045,25 +37066,6 @@ return {
                     Delay = 999,
                 }
             },
-            Ikarigiri = {
-                Name = "Ikarigiri",
-                Level = 75,
-                Id = 19298,
-                Model = 589,
-                Jobs = {"NIN"},
-                OneHanded = true,
-                Type = "Katana",
-                Stats = {
-                    DMG = 41,
-                    Delay = 222,
-                    STR = 8,
-                    DEX = 8,
-                    Evasion = 5,
-                    Enmity = 5,
-                    Regen = 1,
-                    UtsusemiShadows = 1,
-                }
-            },
             Imanotsurugi = {
                 Name = "Imanotsurugi",
                 Level = 67,
@@ -37311,7 +37313,7 @@ return {
             },
             Kamome = {
                 Name = "Kamome",
-                Level = 84,
+                Level = 73,
                 Id = 19287,
                 Model = 314,
                 Jobs = {"NIN"},
@@ -37340,43 +37342,43 @@ return {
             },
             Kannagi = {
                 Name = "Kannagi",
-                Level = 80,
+                Level = 75,
                 Id = 19405,
                 Model = 513,
                 Jobs = {"NIN"},
                 OneHanded = true,
                 Type = "Katana",
                 Stats = {
-                    DMG = 47,
+                    DMG = 41,
                     Delay = 210,
                 }
             },
             Kannagi_2 = {
                 Name = "Kannagi",
-                Level = 85,
+                Level = 75,
                 Id = 19464,
                 Model = 513,
                 Jobs = {"NIN"},
                 OneHanded = true,
                 Type = "Katana",
                 Stats = {
-                    DMG = 52,
+                    DMG = 42,
                     Delay = 210,
-                    AGI = 10,
+                    AGI = 5,
                 }
             },
             Kannagi_3 = {
                 Name = "Kannagi",
-                Level = 90,
+                Level = 75,
                 Id = 19542,
                 Model = 513,
                 Jobs = {"NIN"},
                 OneHanded = true,
                 Type = "Katana",
                 Stats = {
-                    DMG = 55,
+                    DMG = 43,
                     Delay = 210,
-                    AGI = 15,
+                    AGI = 10,
                 }
             },
             Kannagi_4 = {
@@ -37807,7 +37809,7 @@ return {
             },
             Kogara = {
                 Name = "Kogara",
-                Level = 90,
+                Level = 75,
                 Id = 19292,
                 Model = 314,
                 Jobs = {"NIN"},
@@ -38518,7 +38520,7 @@ return {
             },
             Oirandori = {
                 Name = "Oirandori",
-                Level = 89,
+                Level = 75,
                 Id = 19291,
                 Model = 394,
                 Jobs = {"NIN"},
@@ -38867,7 +38869,7 @@ return {
             },
             Sekirei = {
                 Name = "Sekirei",
-                Level = 85,
+                Level = 74,
                 Id = 19288,
                 Model = 312,
                 Jobs = {"NIN"},
@@ -39198,7 +39200,7 @@ return {
             },
             Toki = {
                 Name = "Toki",
-                Level = 82,
+                Level = 73,
                 Id = 19289,
                 Model = 310,
                 Jobs = {"NIN"},
@@ -39687,7 +39689,7 @@ return {
             },
             AmeNoOhabari = {
                 Name = "Ame-no-ohabari",
-                Level = 85,
+                Level = 74,
                 Id = 18455,
                 Model = 148,
                 Jobs = {"SAM"},
@@ -39727,7 +39729,7 @@ return {
             },
             AsaArashi = {
                 Name = "Asa-arashi",
-                Level = 90,
+                Level = 75,
                 Id = 17806,
                 Model = 323,
                 Jobs = {"SAM"},
@@ -40470,7 +40472,7 @@ return {
             },
             Ishikirimaru = {
                 Name = "Ishikirimaru",
-                Level = 83,
+                Level = 72,
                 Id = 18454,
                 Model = 147,
                 Jobs = {"SAM"},
@@ -40479,7 +40481,7 @@ return {
                 Stats = {
                     DMG = 100,
                     Delay = 480,
-                    VIT = 10,
+                    VIT = 8,
                     EarthResistance = 10,
                 }
             },
@@ -40802,7 +40804,7 @@ return {
             },
             Kikugosaku = {
                 Name = "Kikugosaku",
-                Level = 89,
+                Level = 75,
                 Id = 17801,
                 Model = 440,
                 Jobs = {"SAM"},
@@ -41245,43 +41247,43 @@ return {
             },
             Masamune = {
                 Name = "Masamune",
-                Level = 80,
+                Level = 75,
                 Id = 19406,
                 Model = 514,
                 Jobs = {"SAM"},
                 OneHanded = false,
                 Type = "GreatKatana",
                 Stats = {
-                    DMG = 97,
+                    DMG = 83,
                     Delay = 437,
                 }
             },
             Masamune_2 = {
                 Name = "Masamune",
-                Level = 85,
+                Level = 75,
                 Id = 19465,
                 Model = 514,
                 Jobs = {"SAM"},
                 OneHanded = false,
                 Type = "GreatKatana",
                 Stats = {
-                    DMG = 107,
+                    DMG = 85,
                     Delay = 437,
-                    STR = 10,
+                    STR = 5,
                 }
             },
             Masamune_3 = {
                 Name = "Masamune",
-                Level = 90,
+                Level = 75,
                 Id = 19543,
                 Model = 514,
                 Jobs = {"SAM"},
                 OneHanded = false,
                 Type = "GreatKatana",
                 Stats = {
-                    DMG = 114,
+                    DMG = 88,
                     Delay = 437,
-                    STR = 15,
+                    STR = 10,
                 }
             },
             Masamune_4 = {
@@ -42430,7 +42432,7 @@ return {
             },
             Yoshihiro = {
                 Name = "Yoshihiro",
-                Level = 82,
+                Level = 73,
                 Id = 18456,
                 Model = 144,
                 Jobs = {"SAM"},
@@ -42844,7 +42846,7 @@ return {
             },
             Beneficus = {
                 Name = "Beneficus",
-                Level = 89,
+                Level = 75,
                 Id = 17077,
                 Model = 218,
                 Jobs = {"WHM"},
@@ -43584,7 +43586,7 @@ return {
                 Level = 75,
                 Id = 19379,
                 Model = 116,
-                Jobs = {"WHM"},
+                Jobs = {"WHM", "GEO"},
                 OneHanded = true,
                 Type = "Club",
                 Stats = {
@@ -44209,45 +44211,45 @@ return {
             },
             Gambanteinn = {
                 Name = "Gambanteinn",
-                Level = 80,
+                Level = 75,
                 Id = 19407,
                 Model = 515,
-                Jobs = {"WHM"},
+                Jobs = {"WHM", "GEO"},
                 OneHanded = true,
                 Type = "Club",
                 Stats = {
-                    DMG = 67,
+                    DMG = 57,
                     Delay = 300,
                 }
             },
             Gambanteinn_2 = {
                 Name = "Gambanteinn",
-                Level = 85,
+                Level = 75,
                 Id = 19466,
                 Model = 515,
-                Jobs = {"WHM"},
+                Jobs = {"WHM", "GEO"},
                 OneHanded = true,
                 Type = "Club",
                 Stats = {
-                    DMG = 74,
+                    DMG = 59,
                     Delay = 300,
-                    HP = 50,
-                    MP = 50,
+                    HP = 25,
+                    MP = 25,
                 }
             },
             Gambanteinn_3 = {
                 Name = "Gambanteinn",
-                Level = 90,
+                Level = 75,
                 Id = 19544,
                 Model = 515,
-                Jobs = {"WHM"},
+                Jobs = {"WHM", "GEO"},
                 OneHanded = true,
                 Type = "Club",
                 Stats = {
-                    DMG = 78,
+                    DMG = 61,
                     Delay = 300,
-                    HP = 70,
-                    MP = 70,
+                    HP = 50,
+                    MP = 50,
                 }
             },
             Gambanteinn_4 = {
@@ -45191,7 +45193,7 @@ return {
             },
             MagnusHammer = {
                 Name = "Magnus Hammer",
-                Level = 82,
+                Level = 73,
                 Id = 17047,
                 Model = 116,
                 Jobs = {"WHM", "GEO"},
@@ -45625,7 +45627,7 @@ return {
             },
             MolvaMaul = {
                 Name = "Molva Maul",
-                Level = 85,
+                Level = 74,
                 Id = 17066,
                 Model = 114,
                 Jobs = {"WHM", "SCH", "GEO"},
@@ -46295,7 +46297,7 @@ return {
                 Level = 75,
                 Id = 19378,
                 Model = 115,
-                Jobs = {"WHM"},
+                Jobs = {"WHM", "GEO"},
                 OneHanded = true,
                 Type = "Club",
                 Stats = {
@@ -46914,7 +46916,7 @@ return {
             },
             Siriti = {
                 Name = "Siriti",
-                Level = 89,
+                Level = 75,
                 Id = 17078,
                 Model = 233,
                 Jobs = {"SCH"},
@@ -47607,7 +47609,7 @@ return {
             },
             WingedWand = {
                 Name = "Winged Wand",
-                Level = 90,
+                Level = 75,
                 Id = 17079,
                 Model = 228,
                 Jobs = {"WAR", "WHM", "PLD", "GEO"},
@@ -48774,7 +48776,7 @@ return {
             },
             CeleritasPole = {
                 Name = "Celeritas Pole",
-                Level = 90,
+                Level = 75,
                 Id = 17110,
                 Model = 297,
                 Jobs = {"MNK", "WHM", "BLM", "SMN", "SCH", "GEO"},
@@ -48868,7 +48870,7 @@ return {
             },
             ChthonicStaff = {
                 Name = "Chthonic Staff",
-                Level = 85,
+                Level = 74,
                 Id = 18619,
                 Model = 295,
                 Jobs = {"BLM", "SMN"},
@@ -49450,6 +49452,25 @@ return {
                 Stats = {
                     DMG = 55,
                     Delay = 402,
+                }
+            },
+            ElegysRespite = {
+                Name = "Elegys Respite",
+                Level = 75,
+                Id = 22086,
+                Model = 857,
+                Jobs = {"WAR", "MNK", "WHM", "BLM", "RDM", "BST", "BRD", "SMN", "SCH", "GEO"},
+                OneHanded = false,
+                Type = "Staff",
+                Stats = {
+                    DMG = 72,
+                    Delay = 402,
+                    INT = 8,
+                    MND = 8,
+                    Accuracy = 10,
+                    Attack = 15,
+                    Refresh = 1,
+                    DT = -5,
                 }
             },
             ElettaStaff = {
@@ -50215,43 +50236,43 @@ return {
             },
             Hvergelmir = {
                 Name = "Hvergelmir",
-                Level = 80,
+                Level = 75,
                 Id = 19408,
                 Model = 516,
                 Jobs = {"BLM", "SMN", "SCH"},
                 OneHanded = false,
                 Type = "Staff",
                 Stats = {
-                    DMG = 87,
+                    DMG = 74,
                     Delay = 390,
                 }
             },
             Hvergelmir_2 = {
                 Name = "Hvergelmir",
-                Level = 85,
+                Level = 75,
                 Id = 19467,
                 Model = 516,
                 Jobs = {"BLM", "SMN", "SCH"},
                 OneHanded = false,
                 Type = "Staff",
                 Stats = {
-                    DMG = 93,
+                    DMG = 76,
                     Delay = 390,
-                    MP = 80,
+                    MP = 40,
                 }
             },
             Hvergelmir_3 = {
                 Name = "Hvergelmir",
-                Level = 90,
+                Level = 75,
                 Id = 19545,
                 Model = 516,
                 Jobs = {"BLM", "SMN", "SCH"},
                 OneHanded = false,
                 Type = "Staff",
                 Stats = {
-                    DMG = 98,
+                    DMG = 79,
                     Delay = 390,
-                    MP = 120,
+                    MP = 80,
                 }
             },
             Hvergelmir_4 = {
@@ -51194,7 +51215,7 @@ return {
             },
             MagnusPole = {
                 Name = "Magnus Pole",
-                Level = 82,
+                Level = 73,
                 Id = 18620,
                 Model = 303,
                 Jobs = {"BLM", "SMN", "SCH", "GEO"},
@@ -52954,7 +52975,7 @@ return {
             },
             Soulscourge = {
                 Name = "Soulscourge",
-                Level = 89,
+                Level = 75,
                 Id = 17105,
                 Model = 305,
                 Jobs = {"SMN"},
@@ -54188,25 +54209,6 @@ return {
                     StaffSkill = 10,
                 }
             },
-            Xoanon = {
-                Name = "Xoanon",
-                Level = 75,
-                Id = 22086,
-                Model = 857,
-                Jobs = {"WAR", "MNK", "WHM", "BLM", "RDM", "BST", "BRD", "SMN", "SCH", "GEO"},
-                OneHanded = false,
-                Type = "Staff",
-                Stats = {
-                    DMG = 72,
-                    Delay = 402,
-                    INT = 8,
-                    MND = 8,
-                    Accuracy = 10,
-                    Attack = 15,
-                    Refresh = 1,
-                    DT = -5,
-                }
-            },
             XsaetaI = {
                 Name = "Xsaeta I",
                 Level = 99,
@@ -54674,7 +54676,7 @@ return {
         },
         AmicusGrip = {
             Name = "Amicus Grip",
-            Level = 90,
+            Level = 75,
             Id = 18805,
             Jobs = {"All"},
             Type = "Sub",
@@ -54745,7 +54747,7 @@ return {
         },
         ArgosShield = {
             Name = "Argos Shield",
-            Level = 90,
+            Level = 75,
             Id = 12318,
             Model = 50,
             Jobs = {"WAR", "PLD", "DRK"},
@@ -55079,14 +55081,14 @@ return {
         },
         BloodbeadEcu = {
             Name = "Bloodbead Ecu",
-            Level = 87,
+            Level = 73,
             Id = 12345,
             Model = 46,
             Jobs = {"WAR", "WHM", "RDM", "THF", "PLD", "BST", "SAM"},
             Type = "Sub",
             Stats = {
                 DEF = 20,
-                HP = 55,
+                HP = 38,
             }
         },
         BloodrainStrap = {
@@ -55104,7 +55106,7 @@ return {
         },
         BloomBuckler = {
             Name = "Bloom Buckler",
-            Level = 83,
+            Level = 72,
             Id = 16190,
             Model = 44,
             Jobs = {"WAR", "RDM", "PLD", "BST", "SAM"},
@@ -55394,7 +55396,7 @@ return {
         },
         CaecusGrip = {
             Name = "Caecus Grip",
-            Level = 83,
+            Level = 72,
             Id = 19057,
             Jobs = {"All"},
             Type = "Sub",
@@ -55684,7 +55686,7 @@ return {
         },
         CuratioGrip = {
             Name = "Curatio Grip",
-            Level = 83,
+            Level = 72,
             Id = 19053,
             Jobs = {"All"},
             Type = "Sub",
@@ -55709,7 +55711,7 @@ return {
         },
         DangerGrip = {
             Name = "Danger Grip",
-            Level = 81,
+            Level = 73,
             Id = 18801,
             Jobs = {"All"},
             Type = "Sub",
@@ -55879,7 +55881,7 @@ return {
         },
         DivinusGrip = {
             Name = "Divinus Grip",
-            Level = 83,
+            Level = 72,
             Id = 19052,
             Jobs = {"All"},
             Type = "Sub",
@@ -56053,7 +56055,7 @@ return {
         },
         ElementaGrip = {
             Name = "Elementa Grip",
-            Level = 83,
+            Level = 72,
             Id = 19056,
             Jobs = {"All"},
             Type = "Sub",
@@ -56280,7 +56282,7 @@ return {
         },
         FulcioGrip = {
             Name = "Fulcio Grip",
-            Level = 83,
+            Level = 72,
             Id = 19054,
             Jobs = {"All"},
             Type = "Sub",
@@ -57258,7 +57260,7 @@ return {
         },
         MaceroGrip = {
             Name = "Macero Grip",
-            Level = 83,
+            Level = 72,
             Id = 19055,
             Jobs = {"All"},
             Type = "Sub",
@@ -57758,65 +57760,65 @@ return {
         },
         Ochain = {
             Name = "Ochain",
-            Level = 99,
+            Level = 75,
             Id = 11926,
             Model = 57,
             Jobs = {"PLD"},
             Type = "Sub",
             Stats = {
-                DEF = 40,
-                VIT = 25,
+                DEF = 30,
+                VIT = 8,
                 PhysDamageToMP = 35,
             }
         },
         Ochain_2 = {
             Name = "Ochain",
-            Level = 85,
+            Level = 74,
             Id = 16192,
             Model = 57,
             Jobs = {"PLD"},
             Type = "Sub",
             Stats = {
                 DEF = 20,
-                VIT = 10,
+                VIT = 8,
             }
         },
         Ochain_3 = {
             Name = "Ochain",
-            Level = 90,
+            Level = 75,
             Id = 16193,
             Model = 57,
             Jobs = {"PLD"},
             Type = "Sub",
             Stats = {
-                DEF = 40,
-                VIT = 20,
+                DEF = 30,
+                VIT = 8,
                 PhysDamageToMP = 25,
             }
         },
         Ochain_4 = {
             Name = "Ochain",
-            Level = 95,
+            Level = 75,
             Id = 16194,
             Model = 57,
             Jobs = {"PLD"},
             Type = "Sub",
             Stats = {
-                DEF = 40,
-                VIT = 22,
+                DEF = 30,
+                VIT = 8,
                 PhysDamageToMP = 30,
             }
         },
         Ochain_5 = {
             Name = "Ochain",
-            Level = 99,
+            Level = 75,
             Id = 16199,
             Model = 57,
             Jobs = {"PLD"},
             Type = "Sub",
             Stats = {
-                DEF = 40,
-                VIT = 25,
+                DEF = 30,
+                VIT = 8,
                 PhysDamageToMP = 35,
             }
         },
@@ -58021,7 +58023,7 @@ return {
         },
         PaxGrip = {
             Name = "Pax Grip",
-            Level = 83,
+            Level = 72,
             Id = 18803,
             Jobs = {"All"},
             Type = "Sub",
@@ -58260,7 +58262,7 @@ return {
         },
         QuireGrip = {
             Name = "Quire Grip",
-            Level = 83,
+            Level = 72,
             Id = 19059,
             Jobs = {"All"},
             Type = "Sub",
@@ -59606,7 +59608,7 @@ return {
         },
         UthersGrip = {
             Name = "Uthers Grip",
-            Level = 90,
+            Level = 75,
             Id = 18804,
             Jobs = {"All"},
             Type = "Sub",
@@ -59646,7 +59648,7 @@ return {
         },
         VallusGrip = {
             Name = "Vallus Grip",
-            Level = 84,
+            Level = 73,
             Id = 18802,
             Jobs = {"All"},
             Type = "Sub",
@@ -59760,7 +59762,7 @@ return {
         },
         VoxGrip = {
             Name = "Vox Grip",
-            Level = 83,
+            Level = 72,
             Id = 19058,
             Jobs = {"All"},
             Type = "Sub",
@@ -60934,14 +60936,14 @@ return {
             },
             Gandiva = {
                 Name = "Gandiva",
-                Level = 80,
+                Level = 75,
                 Id = 19409,
                 Model = 98,
                 Jobs = {"RNG"},
                 Type = "Archery",
                 Pair = "25:4",
                 Stats = {
-                    DMG = 89,
+                    DMG = 74,
                     Delay = 490,
                 }
             },
@@ -60961,30 +60963,30 @@ return {
             },
             Gandiva_2 = {
                 Name = "Gandiva",
-                Level = 85,
+                Level = 75,
                 Id = 19468,
                 Model = 98,
                 Jobs = {"RNG"},
                 Type = "Archery",
                 Pair = "25:4",
                 Stats = {
-                    DMG = 95,
+                    DMG = 76,
                     Delay = 490,
-                    DEX = 10,
+                    DEX = 5,
                 }
             },
             Gandiva_3 = {
                 Name = "Gandiva",
-                Level = 90,
+                Level = 75,
                 Id = 19546,
                 Model = 98,
                 Jobs = {"RNG"},
                 Type = "Archery",
                 Pair = "25:4",
                 Stats = {
-                    DMG = 103,
+                    DMG = 79,
                     Delay = 490,
-                    DEX = 15,
+                    DEX = 10,
                 }
             },
             Gandiva_4 = {
@@ -61670,7 +61672,7 @@ return {
             },
             MurtiBow = {
                 Name = "Murti Bow",
-                Level = 85,
+                Level = 74,
                 Id = 19187,
                 Model = 86,
                 Jobs = {"RNG", "SAM"},
@@ -62374,8 +62376,8 @@ return {
                     Delay = 360,
                 }
             },
-            Ullr = {
-                Name = "Ullr",
+            Tonzoffun = {
+                Name = "Tonzoffun",
                 Level = 75,
                 Id = 22107,
                 Model = 140,
@@ -62389,7 +62391,7 @@ return {
                     AGI = 8,
                     RangedAccuracy = 10,
                     RangedAttack = 10,
-                    StoreTP = 5,
+                    StoreTP = 8,
                     RapidShot = 3,
                 }
             },
@@ -62474,7 +62476,7 @@ return {
             },
             VisionBow = {
                 Name = "Vision Bow",
-                Level = 90,
+                Level = 75,
                 Id = 19730,
                 Model = 32,
                 Jobs = {"RNG"},
@@ -63096,14 +63098,14 @@ return {
             },
             Armageddon = {
                 Name = "Armageddon",
-                Level = 80,
+                Level = 75,
                 Id = 19410,
                 Model = 99,
                 Jobs = {"RNG", "COR"},
                 Type = "Marksmanship",
                 Pair = "26:1",
                 Stats = {
-                    DMG = 58,
+                    DMG = 49,
                     Delay = 582,
                 }
             },
@@ -63124,30 +63126,30 @@ return {
             },
             Armageddon_2 = {
                 Name = "Armageddon",
-                Level = 85,
+                Level = 75,
                 Id = 19469,
                 Model = 99,
                 Jobs = {"RNG", "COR"},
                 Type = "Marksmanship",
                 Pair = "26:1",
                 Stats = {
-                    DMG = 61,
+                    DMG = 50,
                     Delay = 582,
-                    AGI = 10,
+                    AGI = 5,
                 }
             },
             Armageddon_3 = {
                 Name = "Armageddon",
-                Level = 90,
+                Level = 75,
                 Id = 19547,
                 Model = 99,
                 Jobs = {"RNG", "COR"},
                 Type = "Marksmanship",
                 Pair = "26:1",
                 Stats = {
-                    DMG = 64,
+                    DMG = 51,
                     Delay = 582,
-                    AGI = 15,
+                    AGI = 10,
                 }
             },
             Armageddon_4 = {
@@ -64178,7 +64180,7 @@ return {
             },
             ExequyGun = {
                 Name = "Exequy Gun",
-                Level = 85,
+                Level = 74,
                 Id = 19191,
                 Model = 58,
                 Jobs = {"RNG", "COR"},
@@ -64244,7 +64246,7 @@ return {
             },
             FluidCrossbow = {
                 Name = "Fluid Crossbow",
-                Level = 83,
+                Level = 72,
                 Id = 19190,
                 Model = 61,
                 Jobs = {"RNG"},
@@ -65308,7 +65310,7 @@ return {
             },
             MiramarGun = {
                 Name = "Miramar Gun",
-                Level = 90,
+                Level = 75,
                 Id = 19732,
                 Model = 59,
                 Jobs = {"COR"},
@@ -65318,7 +65320,7 @@ return {
                     DMG = 48,
                     Delay = 582,
                     RangedAccuracy = 7,
-                    MagicAccuracy = 7,
+                    MagicAccuracy = 6,
                 }
             },
             Mollfrith = {
@@ -66110,7 +66112,7 @@ return {
             },
             SuppressorGun = {
                 Name = "Suppressor Gun",
-                Level = 90,
+                Level = 75,
                 Id = 19731,
                 Model = 60,
                 Jobs = {"COR"},
@@ -66324,7 +66326,7 @@ return {
             },
             VirtusCrossbow = {
                 Name = "Virtus Crossbow",
-                Level = 85,
+                Level = 74,
                 Id = 19189,
                 Model = 62,
                 Jobs = {"RNG"},
@@ -66334,7 +66336,7 @@ return {
                     DMG = 60,
                     Delay = 436,
                     AGI = 8,
-                    MND = 8,
+                    MND = 6,
                 }
             },
             Zamburak = {
@@ -66684,7 +66686,7 @@ return {
             },
             JinxDiscus = {
                 Name = "Jinx Discus",
-                Level = 83,
+                Level = 72,
                 Id = 19261,
                 Model = 28,
                 Jobs = {"THF", "NIN", "BLU", "DNC"},
@@ -66876,7 +66878,7 @@ return {
             },
             RaidersBmrng = {
                 Name = "Raiders Bmrng.",
-                Level = 84,
+                Level = 73,
                 Id = 19260,
                 Model = 24,
                 Jobs = {"THF"},
@@ -67531,7 +67533,7 @@ return {
             },
             Vihuela = {
                 Name = "Vihuela",
-                Level = 81,
+                Level = 73,
                 Id = 18834,
                 Model = 78,
                 Jobs = {"BRD"},
@@ -67618,7 +67620,7 @@ return {
             },
             CantabanksHorn = {
                 Name = "Cantabanks Horn",
-                Level = 82,
+                Level = 73,
                 Id = 18833,
                 Model = 68,
                 Jobs = {"BRD"},
@@ -68160,7 +68162,7 @@ return {
             },
             Ney = {
                 Name = "Ney",
-                Level = 82,
+                Level = 73,
                 Id = 17855,
                 Model = 67,
                 Jobs = {"BRD"},
@@ -68188,7 +68190,7 @@ return {
             },
             PansHorn = {
                 Name = "Pans Horn",
-                Level = 86,
+                Level = 73,
                 Id = 18343,
                 Model = 68,
                 Jobs = {"BRD"},
@@ -68386,7 +68388,7 @@ return {
             },
             Syrinx = {
                 Name = "Syrinx",
-                Level = 83,
+                Level = 72,
                 Id = 17856,
                 Model = 65,
                 Jobs = {"BRD"},
@@ -69180,7 +69182,7 @@ return {
         },
         AeolusArrow = {
             Name = "Aeolus Arrow",
-            Level = 83,
+            Level = 72,
             Id = 19193,
             Jobs = {"RNG"},
             Type = "Ammo",
@@ -69371,7 +69373,7 @@ return {
         },
         AquaSachet = {
             Name = "Aqua Sachet",
-            Level = 90,
+            Level = 75,
             Id = 18478,
             Jobs = {"All"},
             Type = "Ammo",
@@ -69967,7 +69969,7 @@ return {
         },
         BreezeSachet = {
             Name = "Breeze Sachet",
-            Level = 90,
+            Level = 75,
             Id = 18475,
             Jobs = {"All"},
             Type = "Ammo",
@@ -70200,14 +70202,14 @@ return {
         },
         CharisFeather = {
             Name = "Charis Feather",
-            Level = 84,
+            Level = 73,
             Id = 19256,
             Jobs = {"DNC"},
             Type = "Ammo",
             Pair = "0:0",
             Stats = {
                 Delay = 999,
-                DEX = 5,
+                DEX = 4,
                 CriticalHitDamage = 5,
             }
         },
@@ -70323,7 +70325,7 @@ return {
         },
         ClarusStone = {
             Name = "Clarus Stone",
-            Level = 81,
+            Level = 73,
             Id = 19259,
             Jobs = {"WHM", "BLM", "RDM", "BRD", "SMN", "SCH", "GEO"},
             Type = "Ammo",
@@ -71482,7 +71484,7 @@ return {
         },
         FlameSachet = {
             Name = "Flame Sachet",
-            Level = 90,
+            Level = 75,
             Id = 18473,
             Jobs = {"All"},
             Type = "Ammo",
@@ -72429,7 +72431,7 @@ return {
         },
         IncantorStone = {
             Name = "Incantor Stone",
-            Level = 83,
+            Level = 72,
             Id = 19257,
             Jobs = {"WHM", "PLD", "SCH"},
             Type = "Ammo",
@@ -72836,7 +72838,7 @@ return {
         },
         LightSachet = {
             Name = "Light Sachet",
-            Level = 90,
+            Level = 75,
             Id = 18479,
             Jobs = {"All"},
             Type = "Ammo",
@@ -73105,7 +73107,7 @@ return {
         },
         MaviTathlum = {
             Name = "Mavi Tathlum",
-            Level = 84,
+            Level = 73,
             Id = 19255,
             Jobs = {"BLU"},
             Type = "Ammo",
@@ -74138,7 +74140,7 @@ return {
         },
         QirmizTathlum = {
             Name = "Qirmiz Tathlum",
-            Level = 83,
+            Level = 72,
             Id = 19258,
             Jobs = {"THF", "NIN", "DNC", "RUN"},
             Type = "Ammo",
@@ -74283,7 +74285,7 @@ return {
         },
         RavagersOrb = {
             Name = "Ravagers Orb",
-            Level = 84,
+            Level = 73,
             Id = 19253,
             Jobs = {"WAR"},
             Type = "Ammo",
@@ -74670,7 +74672,7 @@ return {
         },
         SavantsTreatise = {
             Name = "Savants Treatise",
-            Level = 80,
+            Level = 75,
             Id = 19247,
             Jobs = {"SCH"},
             Type = "Ammo",
@@ -74813,7 +74815,7 @@ return {
         },
         ShadowSachet = {
             Name = "Shadow Sachet",
-            Level = 90,
+            Level = 75,
             Id = 18480,
             Jobs = {"All"},
             Type = "Ammo",
@@ -75085,7 +75087,7 @@ return {
         },
         SnowSachet = {
             Name = "Snow Sachet",
-            Level = 90,
+            Level = 75,
             Id = 18474,
             Jobs = {"All"},
             Type = "Ammo",
@@ -75099,7 +75101,7 @@ return {
         },
         SoilSachet = {
             Name = "Soil Sachet",
-            Level = 90,
+            Level = 75,
             Id = 18476,
             Jobs = {"All"},
             Type = "Ammo",
@@ -75475,7 +75477,7 @@ return {
         },
         TantraTathlum = {
             Name = "Tantra Tathlum",
-            Level = 84,
+            Level = 73,
             Id = 19254,
             Jobs = {"MNK"},
             Type = "Ammo",
@@ -75570,7 +75572,7 @@ return {
         },
         ThunderSachet = {
             Name = "Thunder Sachet",
-            Level = 90,
+            Level = 75,
             Id = 18477,
             Jobs = {"All"},
             Type = "Ammo",
@@ -75798,7 +75800,7 @@ return {
         },
         VertexBolt = {
             Name = "Vertex Bolt",
-            Level = 83,
+            Level = 72,
             Id = 19194,
             Jobs = {"RNG"},
             Type = "Ammo",
@@ -75808,7 +75810,7 @@ return {
                 DMG = 68,
                 Delay = 144,
                 RangedAttack = 15,
-                MagicAttackBonus = 15,
+                MagicAttackBonus = 11,
             }
         },
         VerthandisGem = {
@@ -77144,7 +77146,7 @@ return {
         },
         AoidosCalot = {
             Name = "Aoidos Calot",
-            Level = 85,
+            Level = 74,
             Id = 12017,
             Model = 291,
             Jobs = {"BRD"},
@@ -77157,7 +77159,7 @@ return {
         },
         AoidosCalot_1 = {
             Name = "Aoidos Calot +1",
-            Level = 85,
+            Level = 75,
             Id = 11173,
             Model = 291,
             Jobs = {"BRD"},
@@ -77171,7 +77173,7 @@ return {
         },
         AoidosCalot_2 = {
             Name = "Aoidos Calot +2",
-            Level = 85,
+            Level = 75,
             Id = 11073,
             Model = 291,
             Jobs = {"BRD"},
@@ -77208,7 +77210,7 @@ return {
                 MP = 15,
                 DEX = 3,
                 AGI = 3,
-                Haste = 1,
+                Haste = 3,
             }
         },
         ApogeeCrown = {
@@ -77273,7 +77275,7 @@ return {
                 STR = 2,
                 VIT = 2,
                 AGI = 2,
-                Haste = 1,
+                Haste = 3,
             }
         },
         AppetenceCrown = {
@@ -78451,7 +78453,7 @@ return {
         },
         BaleBurgeonet = {
             Name = "Bale Burgeonet",
-            Level = 85,
+            Level = 74,
             Id = 12015,
             Model = 289,
             Jobs = {"DRK"},
@@ -78464,7 +78466,7 @@ return {
         },
         BaleBurgeonet_1 = {
             Name = "Bale Burgeonet +1",
-            Level = 85,
+            Level = 75,
             Id = 11171,
             Model = 289,
             Jobs = {"DRK"},
@@ -78473,13 +78475,13 @@ return {
                 DEF = 40,
                 STR = 4,
                 DEX = 4,
-                Haste = 5,
+                Haste = 4,
                 DoubleAttack = 2,
             }
         },
         BaleBurgeonet_2 = {
             Name = "Bale Burgeonet +2",
-            Level = 85,
+            Level = 75,
             Id = 11071,
             Model = 289,
             Jobs = {"DRK"},
@@ -78488,7 +78490,7 @@ return {
                 DEF = 42,
                 STR = 7,
                 DEX = 7,
-                Haste = 6,
+                Haste = 5,
                 DoubleAttack = 3,
                 ScytheSkill = 7,
             }
@@ -79109,6 +79111,21 @@ return {
             Jobs = {"All"},
             Type = "Head",
             Stats = {
+            }
+        },
+        BladedancerHelm = {
+            Name = "Bladedancer Helm",
+            Level = 56,
+            Id = 39212,
+            Model = 349,
+            Jobs = {"RUN"},
+            Type = "Head",
+            Stats = {
+                DEF = 22,
+                HP = 14,
+                INT = 3,
+                Attack = 5,
+                Enmity = 1,
             }
         },
         BlinkBand = {
@@ -79896,7 +79913,7 @@ return {
         },
         CallersHorn = {
             Name = "Callers Horn",
-            Level = 85,
+            Level = 74,
             Id = 12022,
             Model = 296,
             Jobs = {"SMN"},
@@ -79909,7 +79926,7 @@ return {
         },
         CallersHorn_1 = {
             Name = "Callers Horn +1",
-            Level = 85,
+            Level = 75,
             Id = 11178,
             Model = 296,
             Jobs = {"SMN"},
@@ -79924,7 +79941,7 @@ return {
         },
         CallersHorn_2 = {
             Name = "Callers Horn +2",
-            Level = 85,
+            Level = 75,
             Id = 11078,
             Model = 296,
             Jobs = {"SMN"},
@@ -80251,7 +80268,7 @@ return {
         },
         CharisTiara = {
             Name = "Charis Tiara",
-            Level = 85,
+            Level = 74,
             Id = 12026,
             Model = 305,
             Jobs = {"DNC"},
@@ -80263,7 +80280,7 @@ return {
         },
         CharisTiara_1 = {
             Name = "Charis Tiara +1",
-            Level = 85,
+            Level = 75,
             Id = 11182,
             Model = 305,
             Jobs = {"DNC"},
@@ -80272,13 +80289,13 @@ return {
                 DEF = 30,
                 Accuracy = 3,
                 Attack = 3,
-                Haste = 5,
+                Haste = 4,
                 StoreTP = 4,
             }
         },
         CharisTiara_2 = {
             Name = "Charis Tiara +2",
-            Level = 85,
+            Level = 75,
             Id = 11082,
             Model = 305,
             Jobs = {"DNC"},
@@ -80287,8 +80304,8 @@ return {
                 DEF = 32,
                 Accuracy = 8,
                 Attack = 8,
-                Haste = 6,
-                StoreTP = 7,
+                Haste = 5,
+                StoreTP = 5,
             }
         },
         CharityCap = {
@@ -80686,7 +80703,7 @@ return {
         },
         CirqueCappello = {
             Name = "Cirque Cappello",
-            Level = 85,
+            Level = 74,
             Id = 12025,
             Model = 299,
             Jobs = {"PUP"},
@@ -80698,27 +80715,27 @@ return {
         },
         CirqueCappello_1 = {
             Name = "Cirque Cappello +1",
-            Level = 85,
+            Level = 75,
             Id = 11181,
             Model = 299,
             Jobs = {"PUP"},
             Type = "Head",
             Stats = {
                 DEF = 31,
-                Haste = 5,
+                Haste = 4,
                 DoubleAttack = 2,
             }
         },
         CirqueCappello_2 = {
             Name = "Cirque Cappello +2",
-            Level = 85,
+            Level = 75,
             Id = 11081,
             Model = 299,
             Jobs = {"PUP"},
             Type = "Head",
             Stats = {
                 DEF = 33,
-                Haste = 6,
+                Haste = 5,
                 DoubleAttack = 3,
                 HandToHandSkill = 5,
             }
@@ -81300,7 +81317,7 @@ return {
         },
         CreedArmet = {
             Name = "Creed Armet",
-            Level = 85,
+            Level = 74,
             Id = 12014,
             Model = 288,
             Jobs = {"PLD"},
@@ -81313,7 +81330,7 @@ return {
         },
         CreedArmet_1 = {
             Name = "Creed Armet +1",
-            Level = 85,
+            Level = 75,
             Id = 11170,
             Model = 288,
             Jobs = {"PLD"},
@@ -81328,7 +81345,7 @@ return {
         },
         CreedArmet_2 = {
             Name = "Creed Armet +2",
-            Level = 85,
+            Level = 75,
             Id = 11070,
             Model = 288,
             Jobs = {"PLD"},
@@ -81689,7 +81706,7 @@ return {
         },
         DeceitMask = {
             Name = "Deceit Mask",
-            Level = 86,
+            Level = 73,
             Id = 11801,
             Model = 16,
             Jobs = {"MNK", "THF", "RNG", "NIN", "BLU", "COR", "DNC", "RUN"},
@@ -83036,7 +83053,7 @@ return {
         },
         EstqChappel = {
             Name = "Estq. Chappel",
-            Level = 85,
+            Level = 74,
             Id = 12012,
             Model = 286,
             Jobs = {"RDM"},
@@ -83050,7 +83067,7 @@ return {
         },
         EstqChappel_1 = {
             Name = "Estq. Chappel +1",
-            Level = 85,
+            Level = 75,
             Id = 11168,
             Model = 286,
             Jobs = {"RDM"},
@@ -83066,7 +83083,7 @@ return {
         },
         EstqChappel_2 = {
             Name = "Estq. Chappel +2",
-            Level = 85,
+            Level = 75,
             Id = 11068,
             Model = 286,
             Jobs = {"RDM"},
@@ -83076,7 +83093,7 @@ return {
                 MP = 40,
                 INT = 8,
                 MND = 8,
-                MagicAccuracy = 7,
+                MagicAccuracy = 6,
                 MagicAttackBonus = 7,
             }
         },
@@ -83543,7 +83560,7 @@ return {
         },
         FerineCabasset = {
             Name = "Ferine Cabasset",
-            Level = 85,
+            Level = 74,
             Id = 12016,
             Model = 290,
             Jobs = {"BST"},
@@ -83557,7 +83574,7 @@ return {
         },
         FerineCabasset_1 = {
             Name = "Ferine Cabasset +1",
-            Level = 85,
+            Level = 75,
             Id = 11172,
             Model = 290,
             Jobs = {"BST"},
@@ -83567,12 +83584,12 @@ return {
                 DEX = 6,
                 CHR = 6,
                 Accuracy = 6,
-                Haste = 5,
+                Haste = 4,
             }
         },
         FerineCabasset_2 = {
             Name = "Ferine Cabasset +2",
-            Level = 85,
+            Level = 75,
             Id = 11072,
             Model = 290,
             Jobs = {"BST"},
@@ -83582,7 +83599,7 @@ return {
                 DEX = 8,
                 CHR = 8,
                 Accuracy = 8,
-                Haste = 6,
+                Haste = 5,
             }
         },
         FeroxVizor = {
@@ -84912,7 +84929,7 @@ return {
         },
         GoetiaPetasos = {
             Name = "Goetia Petasos",
-            Level = 85,
+            Level = 74,
             Id = 12011,
             Model = 285,
             Jobs = {"BLM"},
@@ -84925,7 +84942,7 @@ return {
         },
         GoetiaPetasos_1 = {
             Name = "Goetia Petasos +1",
-            Level = 85,
+            Level = 75,
             Id = 11167,
             Model = 285,
             Jobs = {"BLM"},
@@ -84939,7 +84956,7 @@ return {
         },
         GoetiaPetasos_2 = {
             Name = "Goetia Petasos +2",
-            Level = 85,
+            Level = 75,
             Id = 11067,
             Model = 285,
             Jobs = {"BLM"},
@@ -86638,7 +86655,7 @@ return {
         },
         IgaZukin = {
             Name = "Iga Zukin",
-            Level = 85,
+            Level = 74,
             Id = 12020,
             Model = 294,
             Jobs = {"NIN"},
@@ -86650,7 +86667,7 @@ return {
         },
         IgaZukin_1 = {
             Name = "Iga Zukin +1",
-            Level = 85,
+            Level = 75,
             Id = 11176,
             Model = 294,
             Jobs = {"NIN"},
@@ -86658,12 +86675,12 @@ return {
             Stats = {
                 DEF = 35,
                 DEX = 7,
-                Haste = 5,
+                Haste = 4,
             }
         },
         IgaZukin_2 = {
             Name = "Iga Zukin +2",
-            Level = 85,
+            Level = 75,
             Id = 11076,
             Model = 294,
             Jobs = {"NIN"},
@@ -86671,7 +86688,7 @@ return {
             Stats = {
                 DEF = 37,
                 DEX = 10,
-                Haste = 6,
+                Haste = 5,
                 DualWield = 5,
             }
         },
@@ -88060,7 +88077,7 @@ return {
         },
         LancersMezail = {
             Name = "Lancers Mezail",
-            Level = 85,
+            Level = 74,
             Id = 12021,
             Model = 295,
             Jobs = {"DRG"},
@@ -88072,28 +88089,28 @@ return {
         },
         LancersMezail_1 = {
             Name = "Lancers Mezail +1",
-            Level = 85,
+            Level = 75,
             Id = 11177,
             Model = 295,
             Jobs = {"DRG"},
             Type = "Head",
             Stats = {
                 DEF = 39,
-                Attack = 14,
-                Haste = 5,
+                Attack = 13,
+                Haste = 4,
             }
         },
         LancersMezail_2 = {
             Name = "Lancers Mezail +2",
-            Level = 85,
+            Level = 75,
             Id = 11077,
             Model = 295,
             Jobs = {"DRG"},
             Type = "Head",
             Stats = {
                 DEF = 40,
-                Attack = 20,
-                Haste = 6,
+                Attack = 14,
+                Haste = 5,
                 PolearmSkill = 7,
             }
         },
@@ -89189,7 +89206,7 @@ return {
         },
         MaviKavuk = {
             Name = "Mavi Kavuk",
-            Level = 85,
+            Level = 74,
             Id = 12023,
             Model = 297,
             Jobs = {"BLU"},
@@ -89201,7 +89218,7 @@ return {
         },
         MaviKavuk_1 = {
             Name = "Mavi Kavuk +1",
-            Level = 85,
+            Level = 75,
             Id = 11179,
             Model = 297,
             Jobs = {"BLU"},
@@ -89209,14 +89226,14 @@ return {
             Stats = {
                 DEF = 32,
                 Accuracy = 8,
-                Haste = 5,
+                Haste = 4,
                 SwordSkill = 5,
                 ChainAffinityBonus = 10,
             }
         },
         MaviKavuk_2 = {
             Name = "Mavi Kavuk +2",
-            Level = 85,
+            Level = 75,
             Id = 11079,
             Model = 297,
             Jobs = {"BLU"},
@@ -89224,7 +89241,7 @@ return {
             Stats = {
                 DEF = 34,
                 Accuracy = 12,
-                Haste = 6,
+                Haste = 5,
                 SwordSkill = 7,
                 ChainAffinityBonus = 20,
             }
@@ -90359,7 +90376,7 @@ return {
         },
         NavarchsTricorne = {
             Name = "Navarchs Tricorne",
-            Level = 85,
+            Level = 74,
             Id = 12024,
             Model = 298,
             Jobs = {"COR"},
@@ -90723,7 +90740,7 @@ return {
         },
         NvrchTricorne_1 = {
             Name = "Nvrch. Tricorne +1",
-            Level = 85,
+            Level = 75,
             Id = 11180,
             Model = 298,
             Jobs = {"COR"},
@@ -90731,14 +90748,14 @@ return {
             Stats = {
                 DEF = 33,
                 AGI = 8,
-                RangedAccuracy = 12,
+                RangedAccuracy = 11,
                 RapidShot = 7,
                 BlitzersRollBonus = 40,
             }
         },
         NvrchTricorne_2 = {
             Name = "Nvrch. Tricorne +2",
-            Level = 85,
+            Level = 75,
             Id = 11080,
             Model = 298,
             Jobs = {"COR"},
@@ -90746,7 +90763,7 @@ return {
             Stats = {
                 DEF = 35,
                 AGI = 10,
-                RangedAccuracy = 16,
+                RangedAccuracy = 12,
                 RapidShot = 10,
                 BlitzersRollBonus = 100,
             }
@@ -91122,7 +91139,7 @@ return {
         },
         OrisonCap = {
             Name = "Orison Cap",
-            Level = 85,
+            Level = 74,
             Id = 12010,
             Model = 284,
             Jobs = {"WHM"},
@@ -91135,7 +91152,7 @@ return {
         },
         OrisonCap_1 = {
             Name = "Orison Cap +1",
-            Level = 85,
+            Level = 75,
             Id = 11166,
             Model = 284,
             Jobs = {"WHM"},
@@ -91149,7 +91166,7 @@ return {
         },
         OrisonCap_2 = {
             Name = "Orison Cap +2",
-            Level = 85,
+            Level = 75,
             Id = 11066,
             Model = 284,
             Jobs = {"WHM"},
@@ -91956,7 +91973,7 @@ return {
                 STR = 2,
                 VIT = 2,
                 AGI = 2,
-                Haste = 1,
+                Haste = 3,
             }
         },
         PitreTaj = {
@@ -92722,7 +92739,7 @@ return {
         },
         RaidBonnet_1 = {
             Name = "Raid. Bonnet +1",
-            Level = 85,
+            Level = 75,
             Id = 11169,
             Model = 287,
             Jobs = {"THF"},
@@ -92730,13 +92747,13 @@ return {
             Stats = {
                 DEF = 34,
                 Accuracy = 8,
-                Haste = 5,
+                Haste = 4,
                 AccompliceBonus = 5,
             }
         },
         RaidBonnet_2 = {
             Name = "Raid. Bonnet +2",
-            Level = 85,
+            Level = 75,
             Id = 11069,
             Model = 287,
             Jobs = {"THF"},
@@ -92744,14 +92761,14 @@ return {
             Stats = {
                 DEF = 36,
                 Accuracy = 12,
-                Haste = 6,
-                TripleAttack = 3,
+                Haste = 5,
+                TripleAttack = 1,
                 AccompliceBonus = 10,
             }
         },
         RaidersBonnet = {
             Name = "Raiders Bonnet",
-            Level = 85,
+            Level = 74,
             Id = 12013,
             Model = 287,
             Jobs = {"THF"},
@@ -92924,7 +92941,7 @@ return {
         },
         RavagersMask = {
             Name = "Ravagers Mask",
-            Level = 85,
+            Level = 74,
             Id = 12008,
             Model = 282,
             Jobs = {"WAR"},
@@ -92938,7 +92955,7 @@ return {
         },
         RavagersMask_1 = {
             Name = "Ravagers Mask +1",
-            Level = 85,
+            Level = 75,
             Id = 11164,
             Model = 282,
             Jobs = {"WAR"},
@@ -92954,7 +92971,7 @@ return {
         },
         RavagersMask_2 = {
             Name = "Ravagers Mask +2",
-            Level = 85,
+            Level = 75,
             Id = 11064,
             Model = 282,
             Jobs = {"WAR"},
@@ -92963,9 +92980,9 @@ return {
                 DEF = 38,
                 STR = 8,
                 VIT = 8,
-                Accuracy = 14,
+                Accuracy = 12,
                 Attack = 14,
-                DoubleAttack = 4,
+                DoubleAttack = 3,
                 CriticalHitRate = 3,
             }
         },
@@ -94001,7 +94018,7 @@ return {
         },
         SavantsBonnet = {
             Name = "Savants Bonnet",
-            Level = 85,
+            Level = 74,
             Id = 12027,
             Model = 306,
             Jobs = {"SCH"},
@@ -95694,7 +95711,7 @@ return {
         },
         SvntBonnet_1 = {
             Name = "Svnt. Bonnet +1",
-            Level = 85,
+            Level = 75,
             Id = 11183,
             Model = 306,
             Jobs = {"SCH"},
@@ -95709,7 +95726,7 @@ return {
         },
         SvntBonnet_2 = {
             Name = "Svnt. Bonnet +2",
-            Level = 85,
+            Level = 75,
             Id = 11083,
             Model = 306,
             Jobs = {"SCH"},
@@ -95754,7 +95771,7 @@ return {
         },
         SylvanGapette = {
             Name = "Sylvan Gapette",
-            Level = 85,
+            Level = 74,
             Id = 12018,
             Model = 292,
             Jobs = {"RNG"},
@@ -95767,7 +95784,7 @@ return {
         },
         SylvanGapette_1 = {
             Name = "Sylvan Gapette +1",
-            Level = 85,
+            Level = 75,
             Id = 11174,
             Model = 292,
             Jobs = {"RNG"},
@@ -95783,16 +95800,16 @@ return {
         },
         SylvanGapette_2 = {
             Name = "Sylvan Gapette +2",
-            Level = 85,
+            Level = 75,
             Id = 11074,
             Model = 292,
             Jobs = {"RNG"},
             Type = "Head",
             Stats = {
                 DEF = 34,
-                RangedAccuracy = 13,
-                RangedAttack = 13,
-                SubtleBlow = 10,
+                RangedAccuracy = 12,
+                RangedAttack = 10,
+                SubtleBlow = 6,
                 Snapshot = 5,
                 DoubleShotRate = 5,
             }
@@ -95968,7 +95985,7 @@ return {
         },
         TantraCrown = {
             Name = "Tantra Crown",
-            Level = 85,
+            Level = 74,
             Id = 12009,
             Model = 283,
             Jobs = {"MNK"},
@@ -95980,21 +95997,21 @@ return {
         },
         TantraCrown_1 = {
             Name = "Tantra Crown +1",
-            Level = 85,
+            Level = 75,
             Id = 11165,
             Model = 283,
             Jobs = {"MNK"},
             Type = "Head",
             Stats = {
                 DEF = 34,
-                Haste = 6,
-                SubtleBlow = 8,
+                Haste = 4,
+                SubtleBlow = 6,
                 PerfectCounterAttack = 10,
             }
         },
         TantraCrown_2 = {
             Name = "Tantra Crown +2",
-            Level = 85,
+            Level = 75,
             Id = 11065,
             Model = 283,
             Jobs = {"MNK"},
@@ -96002,8 +96019,8 @@ return {
             Stats = {
                 DEF = 36,
                 STR = 7,
-                Haste = 7,
-                SubtleBlow = 10,
+                Haste = 5,
+                SubtleBlow = 6,
                 PerfectCounterAttack = 20,
             }
         },
@@ -96051,6 +96068,21 @@ return {
             Jobs = {"WHM", "BLM", "RDM", "BRD", "SMN", "BLU", "PUP", "SCH", "GEO", "RUN"},
             Type = "Head",
             Stats = {
+            }
+        },
+        TelluristCirclet = {
+            Name = "Tellurist Circlet",
+            Level = 58,
+            Id = 39222,
+            Model = 351,
+            Jobs = {"GEO"},
+            Type = "Head",
+            Stats = {
+                DEF = 18,
+                MP = 15,
+                INT = 3,
+                MagicAccuracy = 2,
+                Enmity = -2,
             }
         },
         TemaHeadband = {
@@ -96824,7 +96856,7 @@ return {
         },
         UnkaiKabuto = {
             Name = "Unkai Kabuto",
-            Level = 85,
+            Level = 74,
             Id = 12019,
             Model = 293,
             Jobs = {"SAM"},
@@ -96837,7 +96869,7 @@ return {
         },
         UnkaiKabuto_1 = {
             Name = "Unkai Kabuto +1",
-            Level = 85,
+            Level = 75,
             Id = 11175,
             Model = 293,
             Jobs = {"SAM"},
@@ -96845,13 +96877,13 @@ return {
             Stats = {
                 DEF = 39,
                 DEX = 5,
-                Haste = 5,
+                Haste = 4,
                 StoreTP = 5,
             }
         },
         UnkaiKabuto_2 = {
             Name = "Unkai Kabuto +2",
-            Level = 85,
+            Level = 75,
             Id = 11075,
             Model = 293,
             Jobs = {"SAM"},
@@ -96859,8 +96891,8 @@ return {
             Stats = {
                 DEF = 41,
                 DEX = 7,
-                Haste = 6,
-                StoreTP = 8,
+                Haste = 5,
+                StoreTP = 5,
             }
         },
         UrjaHelm = {
@@ -100932,13 +100964,13 @@ return {
         },
         FeudPendant = {
             Name = "Feud Pendant",
-            Level = 86,
+            Level = 73,
             Id = 16308,
             Jobs = {"WHM", "BLM", "RDM", "BRD", "SMN", "SCH", "GEO"},
             Type = "Neck",
             Stats = {
                 MP = 20,
-                INT = 7,
+                INT = 6,
                 Enmity = 5,
             }
         },
@@ -101558,7 +101590,7 @@ return {
         },
         InvidiaTorque = {
             Name = "Invidia Torque",
-            Level = 86,
+            Level = 73,
             Id = 16309,
             Jobs = {"All"},
             Type = "Neck",
@@ -112764,7 +112796,7 @@ return {
         },
         AoidosHngrln_1 = {
             Name = "Aoidos Hngrln. +1",
-            Level = 89,
+            Level = 75,
             Id = 11193,
             Model = 291,
             Jobs = {"BRD"},
@@ -112779,7 +112811,7 @@ return {
         },
         AoidosHngrln_2 = {
             Name = "Aoidos Hngrln. +2",
-            Level = 89,
+            Level = 75,
             Id = 11093,
             Model = 291,
             Jobs = {"BRD"},
@@ -112795,7 +112827,7 @@ return {
         },
         AoidosHongreline = {
             Name = "Aoidos Hongreline",
-            Level = 89,
+            Level = 75,
             Id = 12037,
             Model = 291,
             Jobs = {"BRD"},
@@ -112830,6 +112862,7 @@ return {
                 STR = 2,
                 VIT = 4,
                 AGI = 5,
+                Evasion = 5,
             }
         },
         ApoDalmatica_1 = {
@@ -112872,6 +112905,7 @@ return {
                 VIT = 2,
                 INT = 4,
                 MND = 5,
+                MagicEvasion = 5,
             }
         },
         ApogeeDalmatica = {
@@ -113777,19 +113811,19 @@ return {
         },
         AugursJaseran = {
             Name = "Augurs Jaseran",
-            Level = 79,
+            Level = 74,
             Id = 14365,
             Model = 223,
             Jobs = {"WHM", "BLM", "RDM", "BRD", "SMN", "SCH", "GEO"},
             Type = "Body",
             Stats = {
-                DEF = 50,
-                INT = 13,
-                MND = 13,
-                CHR = 13,
+                DEF = 40,
+                INT = 10,
+                MND = 10,
+                CHR = 10,
                 Enmity = -5,
                 LightMACC = 10,
-                SummoningMagicSkill = 10,
+                SummoningMagicSkill = 8,
             }
         },
         AuroreDoublet = {
@@ -114162,39 +114196,39 @@ return {
         },
         BaleCuirass = {
             Name = "Bale Cuirass",
-            Level = 89,
+            Level = 75,
             Id = 12035,
             Model = 289,
             Jobs = {"DRK"},
             Type = "Body",
             Stats = {
-                DEF = 65,
+                DEF = 56,
                 Attack = 12,
             }
         },
         BaleCuirass_1 = {
             Name = "Bale Cuirass +1",
-            Level = 89,
+            Level = 75,
             Id = 11191,
             Model = 289,
             Jobs = {"DRK"},
             Type = "Body",
             Stats = {
-                DEF = 68,
-                Attack = 28,
+                DEF = 63,
+                Attack = 25,
                 Haste = 2,
             }
         },
         BaleCuirass_2 = {
             Name = "Bale Cuirass +2",
-            Level = 89,
+            Level = 75,
             Id = 11091,
             Model = 289,
             Jobs = {"DRK"},
             Type = "Body",
             Stats = {
-                DEF = 71,
-                Attack = 38,
+                DEF = 66,
+                Attack = 26,
                 Haste = 3,
                 CriticalHitRate = 4,
             }
@@ -114874,6 +114908,21 @@ return {
                 DEF = 4,
                 FireResistance = 2,
                 SmithingSkill = 1,
+            }
+        },
+        BladedancerBreastplate = {
+            Name = "Bladedancer Breastplate",
+            Level = 60,
+            Id = 39214,
+            Model = 349,
+            Jobs = {"RUN"},
+            Type = "Body",
+            Stats = {
+                DEF = 42,
+                HP = 18,
+                STR = 4,
+                Accuracy = 5,
+                Haste = 2,
             }
         },
         BlessedBliaut = {
@@ -115665,7 +115714,7 @@ return {
         },
         CallDoublet_2 = {
             Name = "Call. Doublet +2",
-            Level = 89,
+            Level = 75,
             Id = 11098,
             Model = 296,
             Jobs = {"SMN"},
@@ -115679,7 +115728,7 @@ return {
         },
         CallersDoublet = {
             Name = "Callers Doublet",
-            Level = 89,
+            Level = 75,
             Id = 12042,
             Model = 296,
             Jobs = {"SMN"},
@@ -115692,7 +115741,7 @@ return {
         },
         CallersDoublet_1 = {
             Name = "Callers Doublet +1",
-            Level = 89,
+            Level = 75,
             Id = 11198,
             Model = 296,
             Jobs = {"SMN"},
@@ -115960,7 +116009,7 @@ return {
         },
         CharisCasaque = {
             Name = "Charis Casaque",
-            Level = 89,
+            Level = 75,
             Id = 12046,
             Model = 305,
             Jobs = {"DNC"},
@@ -115973,7 +116022,7 @@ return {
         },
         CharisCasaque_1 = {
             Name = "Charis Casaque +1",
-            Level = 89,
+            Level = 75,
             Id = 11202,
             Model = 305,
             Jobs = {"DNC"},
@@ -115988,7 +116037,7 @@ return {
         },
         CharisCasaque_2 = {
             Name = "Charis Casaque +2",
-            Level = 89,
+            Level = 75,
             Id = 11102,
             Model = 305,
             Jobs = {"DNC"},
@@ -116341,7 +116390,7 @@ return {
         },
         CirqueFarsetto = {
             Name = "Cirque Farsetto",
-            Level = 89,
+            Level = 75,
             Id = 12045,
             Model = 299,
             Jobs = {"PUP"},
@@ -116354,7 +116403,7 @@ return {
         },
         CirqueFarsetto_1 = {
             Name = "Cirque Farsetto +1",
-            Level = 89,
+            Level = 75,
             Id = 11201,
             Model = 299,
             Jobs = {"PUP"},
@@ -116369,7 +116418,7 @@ return {
         },
         CirqueFarsetto_2 = {
             Name = "Cirque Farsetto +2",
-            Level = 89,
+            Level = 75,
             Id = 11101,
             Model = 299,
             Jobs = {"PUP"},
@@ -117024,13 +117073,13 @@ return {
         },
         CreedCuirass = {
             Name = "Creed Cuirass",
-            Level = 89,
+            Level = 75,
             Id = 12034,
             Model = 288,
             Jobs = {"PLD"},
             Type = "Body",
             Stats = {
-                DEF = 71,
+                DEF = 56,
                 Accuracy = 6,
                 Attack = 6,
                 Enmity = 3,
@@ -117038,13 +117087,13 @@ return {
         },
         CreedCuirass_1 = {
             Name = "Creed Cuirass +1",
-            Level = 89,
+            Level = 75,
             Id = 11190,
             Model = 288,
             Jobs = {"PLD"},
             Type = "Body",
             Stats = {
-                DEF = 74,
+                DEF = 63,
                 HP = 40,
                 MP = 40,
                 Accuracy = 14,
@@ -117054,14 +117103,14 @@ return {
         },
         CreedCuirass_2 = {
             Name = "Creed Cuirass +2",
-            Level = 89,
+            Level = 75,
             Id = 11090,
             Model = 288,
             Jobs = {"PLD"},
             Type = "Body",
             Stats = {
-                DEF = 77,
-                HP = 65,
+                DEF = 66,
+                HP = 62,
                 MP = 65,
                 Accuracy = 20,
                 Attack = 20,
@@ -118981,7 +119030,7 @@ return {
         },
         EstoqueursSayon = {
             Name = "Estoqueurs Sayon",
-            Level = 89,
+            Level = 75,
             Id = 12032,
             Model = 286,
             Jobs = {"RDM"},
@@ -118994,7 +119043,7 @@ return {
         },
         EstqSayon_1 = {
             Name = "Estq. Sayon +1",
-            Level = 89,
+            Level = 75,
             Id = 11188,
             Model = 286,
             Jobs = {"RDM"},
@@ -119009,7 +119058,7 @@ return {
         },
         EstqSayon_2 = {
             Name = "Estq. Sayon +2",
-            Level = 89,
+            Level = 75,
             Id = 11088,
             Model = 286,
             Jobs = {"RDM"},
@@ -119451,13 +119500,13 @@ return {
         },
         FerineGausape = {
             Name = "Ferine Gausape",
-            Level = 89,
+            Level = 75,
             Id = 12036,
             Model = 290,
             Jobs = {"BST"},
             Type = "Body",
             Stats = {
-                DEF = 61,
+                DEF = 56,
                 Accuracy = 5,
                 Attack = 5,
                 Evasion = 5,
@@ -119465,31 +119514,31 @@ return {
         },
         FerineGausape_1 = {
             Name = "Ferine Gausape +1",
-            Level = 89,
+            Level = 75,
             Id = 11192,
             Model = 290,
             Jobs = {"BST"},
             Type = "Body",
             Stats = {
-                DEF = 64,
+                DEF = 63,
                 Accuracy = 15,
                 Attack = 15,
-                Evasion = 15,
+                Evasion = 11,
                 AxeSkill = 5,
             }
         },
         FerineGausape_2 = {
             Name = "Ferine Gausape +2",
-            Level = 89,
+            Level = 75,
             Id = 11092,
             Model = 290,
             Jobs = {"BST"},
             Type = "Body",
             Stats = {
-                DEF = 67,
+                DEF = 66,
                 Accuracy = 18,
                 Attack = 18,
-                Evasion = 18,
+                Evasion = 12,
                 Haste = 2,
                 AxeSkill = 7,
             }
@@ -120890,7 +120939,7 @@ return {
         },
         GoetiaCoat = {
             Name = "Goetia Coat",
-            Level = 89,
+            Level = 75,
             Id = 12031,
             Model = 285,
             Jobs = {"BLM"},
@@ -120903,7 +120952,7 @@ return {
         },
         GoetiaCoat_1 = {
             Name = "Goetia Coat +1",
-            Level = 89,
+            Level = 75,
             Id = 11187,
             Model = 285,
             Jobs = {"BLM"},
@@ -120919,7 +120968,7 @@ return {
         },
         GoetiaCoat_2 = {
             Name = "Goetia Coat +2",
-            Level = 89,
+            Level = 75,
             Id = 11087,
             Model = 285,
             Jobs = {"BLM"},
@@ -120928,7 +120977,7 @@ return {
                 DEF = 50,
                 MP = 45,
                 MagicAccuracy = 11,
-                MagicAttackBonus = 11,
+                MagicAttackBonus = 10,
                 Refresh = 2,
                 ElementalMagicRecast = -12,
             }
@@ -122783,7 +122832,7 @@ return {
         },
         IgaNingi = {
             Name = "Iga Ningi",
-            Level = 89,
+            Level = 75,
             Id = 12040,
             Model = 294,
             Jobs = {"NIN"},
@@ -122796,7 +122845,7 @@ return {
         },
         IgaNingi_1 = {
             Name = "Iga Ningi +1",
-            Level = 89,
+            Level = 75,
             Id = 11196,
             Model = 294,
             Jobs = {"NIN"},
@@ -122812,7 +122861,7 @@ return {
         },
         IgaNingi_2 = {
             Name = "Iga Ningi +2",
-            Level = 89,
+            Level = 75,
             Id = 11096,
             Model = 294,
             Jobs = {"NIN"},
@@ -124730,20 +124779,20 @@ return {
         },
         LncrPlackart = {
             Name = "Lncr. Plackart",
-            Level = 89,
+            Level = 75,
             Id = 12041,
             Model = 295,
             Jobs = {"DRG"},
             Type = "Body",
             Stats = {
-                DEF = 60,
+                DEF = 56,
                 STR = 3,
                 DEX = 3,
             }
         },
         LncrPlackart_1 = {
             Name = "Lncr. Plackart +1",
-            Level = 89,
+            Level = 75,
             Id = 11197,
             Model = 295,
             Jobs = {"DRG"},
@@ -124759,15 +124808,15 @@ return {
         },
         LncrPlackart_2 = {
             Name = "Lncr. Plackart +2",
-            Level = 89,
+            Level = 75,
             Id = 11097,
             Model = 295,
             Jobs = {"DRG"},
             Type = "Body",
             Stats = {
                 DEF = 66,
-                STR = 14,
-                DEX = 14,
+                STR = 13,
+                DEX = 12,
                 Accuracy = 14,
                 Attack = 14,
                 StoreTP = 10,
@@ -124775,17 +124824,17 @@ return {
         },
         LokisKaftan = {
             Name = "Lokis Kaftan",
-            Level = 79,
+            Level = 75,
             Id = 14337,
             Model = 234,
             Jobs = {"MNK", "THF", "RNG", "NIN", "BLU", "COR", "DNC", "RUN"},
             Type = "Body",
             Stats = {
-                DEF = 58,
-                DEX = 11,
-                AGI = 11,
+                DEF = 46,
+                DEX = 6,
+                AGI = 6,
                 RangedAttack = 7,
-                StoreTP = 7,
+                StoreTP = 5,
                 CriticalHitDamage = 5,
             }
         },
@@ -125666,7 +125715,7 @@ return {
         },
         MaviMintan = {
             Name = "Mavi Mintan",
-            Level = 89,
+            Level = 75,
             Id = 12043,
             Model = 297,
             Jobs = {"BLU"},
@@ -125679,7 +125728,7 @@ return {
         },
         MaviMintan_1 = {
             Name = "Mavi Mintan +1",
-            Level = 89,
+            Level = 75,
             Id = 11199,
             Model = 297,
             Jobs = {"BLU"},
@@ -125693,7 +125742,7 @@ return {
         },
         MaviMintan_2 = {
             Name = "Mavi Mintan +2",
-            Level = 89,
+            Level = 75,
             Id = 11099,
             Model = 297,
             Jobs = {"BLU"},
@@ -125701,7 +125750,7 @@ return {
             Stats = {
                 DEF = 60,
                 Accuracy = 12,
-                MagicAccuracy = 12,
+                MagicAccuracy = 11,
                 Haste = 3,
                 Refresh = 2,
             }
@@ -126850,7 +126899,7 @@ return {
         },
         NavarchsFrac = {
             Name = "Navarchs Frac",
-            Level = 89,
+            Level = 75,
             Id = 12044,
             Model = 298,
             Jobs = {"COR"},
@@ -126863,7 +126912,7 @@ return {
         },
         NavarchsFrac_1 = {
             Name = "Navarchs Frac +1",
-            Level = 89,
+            Level = 75,
             Id = 11200,
             Model = 298,
             Jobs = {"COR"},
@@ -127284,15 +127333,15 @@ return {
         },
         NvrchFrac_2 = {
             Name = "Nvrch. Frac +2",
-            Level = 89,
+            Level = 75,
             Id = 11100,
             Model = 298,
             Jobs = {"COR"},
             Type = "Body",
             Stats = {
                 DEF = 61,
-                RangedAccuracy = 14,
-                RangedAttack = 14,
+                RangedAccuracy = 12,
+                RangedAttack = 12,
                 MagicAccuracy = 10,
                 TacticiansRollBonus = 100,
             }
@@ -127699,7 +127748,7 @@ return {
         },
         OrisonBliaud = {
             Name = "Orison Bliaud",
-            Level = 89,
+            Level = 75,
             Id = 12030,
             Model = 284,
             Jobs = {"WHM"},
@@ -127712,7 +127761,7 @@ return {
         },
         OrisonBliaud_1 = {
             Name = "Orison Bliaud +1",
-            Level = 89,
+            Level = 75,
             Id = 11186,
             Model = 284,
             Jobs = {"WHM"},
@@ -127727,7 +127776,7 @@ return {
         },
         OrisonBliaud_2 = {
             Name = "Orison Bliaud +2",
-            Level = 89,
+            Level = 75,
             Id = 11086,
             Model = 284,
             Jobs = {"WHM"},
@@ -128552,6 +128601,7 @@ return {
                 VIT = 3,
                 INT = 3,
                 CHR = 5,
+                EnemyCriticalHitRate = 3,
             }
         },
         PitreTobe = {
@@ -128819,15 +128869,15 @@ return {
         },
         Pluviale = {
             Name = "Pluviale",
-            Level = 84,
+            Level = 73,
             Id = 11361,
             Model = 160,
             Jobs = {"WHM", "BLM", "RDM", "SMN", "SCH", "GEO"},
             Type = "Body",
             Stats = {
                 DEF = 45,
-                HP = 100,
-                MP = 100,
+                HP = 46,
+                MP = 49,
                 Refresh = 1,
                 Regen = 1,
             }
@@ -129349,19 +129399,19 @@ return {
         },
         RaidersVest = {
             Name = "Raiders Vest",
-            Level = 89,
+            Level = 75,
             Id = 12033,
             Model = 287,
             Jobs = {"THF"},
             Type = "Body",
             Stats = {
-                DEF = 58,
+                DEF = 56,
                 DEX = 3,
             }
         },
         RaidersVest_1 = {
             Name = "Raiders Vest +1",
-            Level = 89,
+            Level = 75,
             Id = 11189,
             Model = 287,
             Jobs = {"THF"},
@@ -129369,14 +129419,14 @@ return {
             Stats = {
                 DEF = 61,
                 DEX = 7,
-                Haste = 4,
+                Haste = 3,
                 DaggerSkill = 3,
                 ConspiratorBonus = 1,
             }
         },
         RaidersVest_2 = {
             Name = "Raiders Vest +2",
-            Level = 89,
+            Level = 75,
             Id = 11089,
             Model = 287,
             Jobs = {"THF"},
@@ -129384,7 +129434,7 @@ return {
             Stats = {
                 DEF = 64,
                 DEX = 10,
-                Haste = 5,
+                Haste = 4,
                 DaggerSkill = 5,
                 ConspiratorBonus = 1,
             }
@@ -129578,13 +129628,13 @@ return {
         },
         RavagersLorica = {
             Name = "Ravagers Lorica",
-            Level = 89,
+            Level = 75,
             Id = 12028,
             Model = 282,
             Jobs = {"WAR"},
             Type = "Body",
             Stats = {
-                DEF = 62,
+                DEF = 56,
                 Accuracy = 6,
                 Attack = 6,
                 StoreTP = 2,
@@ -130427,13 +130477,13 @@ return {
         },
         RvgLorica_1 = {
             Name = "Rvg. Lorica +1",
-            Level = 89,
+            Level = 75,
             Id = 11184,
             Model = 282,
             Jobs = {"WAR"},
             Type = "Body",
             Stats = {
-                DEF = 65,
+                DEF = 63,
                 Accuracy = 15,
                 Attack = 15,
                 StoreTP = 5,
@@ -130443,13 +130493,13 @@ return {
         },
         RvgLorica_2 = {
             Name = "Rvg. Lorica +2",
-            Level = 89,
+            Level = 75,
             Id = 11084,
             Model = 282,
             Jobs = {"WAR"},
             Type = "Body",
             Stats = {
-                DEF = 68,
+                DEF = 66,
                 Accuracy = 20,
                 Attack = 20,
                 StoreTP = 8,
@@ -131019,7 +131069,7 @@ return {
         },
         SavantsGown = {
             Name = "Savants Gown",
-            Level = 89,
+            Level = 75,
             Id = 12047,
             Model = 306,
             Jobs = {"SCH"},
@@ -131032,7 +131082,7 @@ return {
         },
         SavantsGown_1 = {
             Name = "Savants Gown +1",
-            Level = 89,
+            Level = 75,
             Id = 11203,
             Model = 306,
             Jobs = {"SCH"},
@@ -131049,7 +131099,7 @@ return {
         },
         SavantsGown_2 = {
             Name = "Savants Gown +2",
-            Level = 89,
+            Level = 75,
             Id = 11103,
             Model = 306,
             Jobs = {"SCH"},
@@ -131059,7 +131109,7 @@ return {
                 INT = 12,
                 MND = 12,
                 MagicAccuracy = 11,
-                MagicAttackBonus = 11,
+                MagicAttackBonus = 10,
                 Refresh = 1,
                 LightArtsSkill = 20,
                 DarkArtsSkill = 20,
@@ -132592,7 +132642,7 @@ return {
         },
         SylvanCaban = {
             Name = "Sylvan Caban",
-            Level = 89,
+            Level = 75,
             Id = 12038,
             Model = 292,
             Jobs = {"RNG"},
@@ -132606,7 +132656,7 @@ return {
         },
         SylvanCaban_1 = {
             Name = "Sylvan Caban +1",
-            Level = 89,
+            Level = 75,
             Id = 11194,
             Model = 292,
             Jobs = {"RNG"},
@@ -132615,7 +132665,7 @@ return {
                 DEF = 58,
                 STR = 8,
                 AGI = 8,
-                RangedAccuracy = 15,
+                RangedAccuracy = 11,
                 Enmity = -7,
                 VelocitySnapshotBonus = 5,
                 VelocityRAttBonus = 10,
@@ -132623,7 +132673,7 @@ return {
         },
         SylvanCaban_2 = {
             Name = "Sylvan Caban +2",
-            Level = 89,
+            Level = 75,
             Id = 11094,
             Model = 292,
             Jobs = {"RNG"},
@@ -132632,7 +132682,7 @@ return {
                 DEF = 61,
                 STR = 12,
                 AGI = 12,
-                RangedAccuracy = 20,
+                RangedAccuracy = 12,
                 Enmity = -9,
                 VelocitySnapshotBonus = 5,
                 VelocityRAttBonus = 10,
@@ -132864,13 +132914,13 @@ return {
         },
         TantraCyclas = {
             Name = "Tantra Cyclas",
-            Level = 89,
+            Level = 75,
             Id = 12029,
             Model = 283,
             Jobs = {"MNK"},
             Type = "Body",
             Stats = {
-                DEF = 58,
+                DEF = 56,
                 STR = 3,
                 VIT = 3,
                 Accuracy = 4,
@@ -132879,7 +132929,7 @@ return {
         },
         TantraCyclas_1 = {
             Name = "Tantra Cyclas +1",
-            Level = 89,
+            Level = 75,
             Id = 11185,
             Model = 283,
             Jobs = {"MNK"},
@@ -132895,7 +132945,7 @@ return {
         },
         TantraCyclas_2 = {
             Name = "Tantra Cyclas +2",
-            Level = 89,
+            Level = 75,
             Id = 11085,
             Model = 283,
             Jobs = {"MNK"},
@@ -132912,14 +132962,14 @@ return {
         },
         TaranissHarness = {
             Name = "Taraniss Harness",
-            Level = 84,
+            Level = 73,
             Id = 11360,
             Model = 148,
             Jobs = {"MNK", "THF", "BST", "RNG", "NIN", "BLU", "COR", "PUP", "DNC", "RUN"},
             Type = "Body",
             Stats = {
-                DEF = 59,
-                Accuracy = 25,
+                DEF = 50,
+                Accuracy = 15,
                 StoreTP = 5,
                 ThunderResistance = 15,
             }
@@ -133061,6 +133111,21 @@ return {
             Jobs = {"WHM", "BLM", "RDM", "BRD", "SMN", "BLU", "PUP", "SCH", "GEO", "RUN"},
             Type = "Body",
             Stats = {
+            }
+        },
+        TelluristRobe = {
+            Name = "Tellurist Robe",
+            Level = 60,
+            Id = 39224,
+            Model = 351,
+            Jobs = {"GEO"},
+            Type = "Body",
+            Stats = {
+                DEF = 35,
+                MP = 20,
+                INT = 4,
+                MagicAttackBonus = 3,
+                FastCast = 3,
             }
         },
         TemachtianiShirt = {
@@ -133672,13 +133737,13 @@ return {
         },
         TristansBrstplate = {
             Name = "Tristans Brstplate",
-            Level = 89,
+            Level = 75,
             Id = 11843,
             Model = 32,
             Jobs = {"PLD"},
             Type = "Body",
             Stats = {
-                DEF = 68,
+                DEF = 50,
                 PDT = -5,
                 RDT = -5,
                 FireResistance = -10,
@@ -133755,36 +133820,36 @@ return {
         },
         TwilightCloak = {
             Name = "Twilight Cloak",
-            Level = 90,
+            Level = 75,
             Id = 11363,
             Model = 212,
             Jobs = {"WHM", "BLM", "RDM", "DRK", "SMN", "SCH", "GEO"},
             Type = "Body",
             RSlot = 16,
             Stats = {
-                DEF = 51,
-                MP = 75,
-                MagicAttackBonus = 15,
+                DEF = 50,
+                MP = 49,
+                MagicAttackBonus = 8,
                 Enmity = -15,
             }
         },
         TwilightMail = {
             Name = "Twilight Mail",
-            Level = 90,
+            Level = 75,
             Id = 11362,
             Model = 181,
             Jobs = {"WAR", "PLD", "DRK", "BST", "SAM", "DRG"},
             Type = "Body",
             Stats = {
-                DEF = 70,
-                STR = 15,
-                DEX = 15,
+                DEF = 50,
+                STR = 10,
+                DEX = 9,
                 VIT = 15,
-                AGI = 15,
-                INT = 15,
-                MND = 15,
+                AGI = 14,
+                INT = 10,
+                MND = 10,
                 CHR = 15,
-                Accuracy = 25,
+                Accuracy = 15,
                 Refresh = 2,
             }
         },
@@ -133870,26 +133935,26 @@ return {
         },
         UnkaiDomaru = {
             Name = "Unkai Domaru",
-            Level = 89,
+            Level = 75,
             Id = 12039,
             Model = 293,
             Jobs = {"SAM"},
             Type = "Body",
             Stats = {
-                DEF = 64,
+                DEF = 56,
                 Accuracy = 6,
                 Attack = 6,
             }
         },
         UnkaiDomaru_1 = {
             Name = "Unkai Domaru +1",
-            Level = 89,
+            Level = 75,
             Id = 11195,
             Model = 293,
             Jobs = {"SAM"},
             Type = "Body",
             Stats = {
-                DEF = 67,
+                DEF = 63,
                 Accuracy = 12,
                 Attack = 12,
                 StoreTP = 7,
@@ -133898,13 +133963,13 @@ return {
         },
         UnkaiDomaru_2 = {
             Name = "Unkai Domaru +2",
-            Level = 89,
+            Level = 75,
             Id = 11095,
             Model = 293,
             Jobs = {"SAM"},
             Type = "Body",
             Stats = {
-                DEF = 70,
+                DEF = 66,
                 Accuracy = 17,
                 Attack = 17,
                 StoreTP = 10,
@@ -134169,13 +134234,13 @@ return {
         },
         VeloxHarness = {
             Name = "Velox Harness",
-            Level = 85,
+            Level = 74,
             Id = 11359,
             Model = 110,
             Jobs = {"MNK", "THF", "BST", "NIN", "PUP", "DNC", "RUN"},
             Type = "Body",
             Stats = {
-                DEF = 55,
+                DEF = 50,
                 Accuracy = 4,
                 Attack = 4,
                 Haste = 2,
@@ -135975,15 +136040,15 @@ return {
         },
         AcesMufflers = {
             Name = "Aces Mufflers",
-            Level = 88,
+            Level = 74,
             Id = 11896,
             Model = 63,
             Jobs = {"DRK", "SAM", "DRG"},
             Type = "Hands",
             Stats = {
-                DEF = 30,
+                DEF = 23,
                 STR = 7,
-                Haste = 4,
+                Haste = 3,
                 StoreTP = -4,
                 Zanshin = 3,
             }
@@ -136008,7 +136073,7 @@ return {
         },
         AdMnchtte_1 = {
             Name = "Ad. Mnchtte. +1",
-            Level = 87,
+            Level = 74,
             Id = 11213,
             Model = 291,
             Jobs = {"BRD"},
@@ -136024,7 +136089,7 @@ return {
         },
         AdMnchtte_2 = {
             Name = "Ad. Mnchtte. +2",
-            Level = 87,
+            Level = 75,
             Id = 11113,
             Model = 291,
             Jobs = {"BRD"},
@@ -136032,7 +136097,7 @@ return {
             Stats = {
                 DEF = 24,
                 CHR = 12,
-                MagicAccuracy = 8,
+                MagicAccuracy = 6,
                 SingingSkill = 8,
                 StringInstrumentSkill = 8,
                 WindInstrumentSkill = 8,
@@ -136559,13 +136624,13 @@ return {
         },
         AmpleGloves = {
             Name = "Ample Gloves",
-            Level = 81,
+            Level = 73,
             Id = 11886,
             Model = 50,
             Jobs = {"WAR", "MNK", "THF", "BST", "NIN", "DNC", "RUN"},
             Type = "Hands",
             Stats = {
-                DEF = 24,
+                DEF = 23,
                 STR = 5,
                 DEX = 5,
                 VIT = 5,
@@ -136814,7 +136879,7 @@ return {
         },
         AoidosMnchtte = {
             Name = "Aoidos Mnchtte.",
-            Level = 87,
+            Level = 73,
             Id = 12057,
             Model = 291,
             Jobs = {"BRD"},
@@ -136849,6 +136914,7 @@ return {
                 MP = 15,
                 INT = 4,
                 CHR = 4,
+                RangedAccuracy = 8,
                 Haste = 1,
             }
         },
@@ -136865,6 +136931,7 @@ return {
                 MP = 20,
                 INT = 4,
                 MND = 4,
+                MagicAccuracy = 3,
                 Haste = 1,
             }
         },
@@ -137719,18 +137786,18 @@ return {
         },
         AugursGloves = {
             Name = "Augurs Gloves",
-            Level = 79,
+            Level = 74,
             Id = 14888,
             Model = 223,
             Jobs = {"WHM", "BLM", "RDM", "BRD", "SMN", "SCH", "GEO"},
             Type = "Hands",
             Stats = {
-                DEF = 20,
-                MND = 7,
-                CHR = 7,
-                CurePotency = 4,
-                HealingMagicSkill = 5,
-                EnhancingMagicSkill = 5,
+                DEF = 15,
+                MND = 6,
+                CHR = 6,
+                CurePotency = 3,
+                HealingMagicSkill = 4,
+                EnhancingMagicSkill = 4,
             }
         },
         AuroreGloves = {
@@ -138085,7 +138152,7 @@ return {
         },
         BaleGauntlets = {
             Name = "Bale Gauntlets",
-            Level = 87,
+            Level = 73,
             Id = 12055,
             Model = 289,
             Jobs = {"DRK"},
@@ -138098,7 +138165,7 @@ return {
         },
         BaleGauntlets_1 = {
             Name = "Bale Gauntlets +1",
-            Level = 87,
+            Level = 74,
             Id = 11211,
             Model = 289,
             Jobs = {"DRK"},
@@ -138113,7 +138180,7 @@ return {
         },
         BaleGauntlets_2 = {
             Name = "Bale Gauntlets +2",
-            Level = 87,
+            Level = 75,
             Id = 11111,
             Model = 289,
             Jobs = {"DRK"},
@@ -138122,7 +138189,7 @@ return {
                 DEF = 31,
                 Accuracy = 10,
                 Attack = 10,
-                Haste = 5,
+                Haste = 4,
                 GreatSwordSkill = 5,
             }
         },
@@ -138727,6 +138794,21 @@ return {
                 DEF = 10,
             }
         },
+        BladedancerGauntlets = {
+            Name = "Bladedancer Gauntlets",
+            Level = 54,
+            Id = 39211,
+            Model = 349,
+            Jobs = {"RUN"},
+            Type = "Hands",
+            Stats = {
+                DEF = 15,
+                HP = 12,
+                DEX = 3,
+                Accuracy = 3,
+                ParryingSkill = 5,
+            }
+        },
         BlessedMitts = {
             Name = "Blessed Mitts",
             Level = 70,
@@ -139199,22 +139281,22 @@ return {
         },
         BrookGages = {
             Name = "Brook Gages",
-            Level = 87,
+            Level = 73,
             Id = 11905,
             Model = 135,
             Jobs = {"All"},
             Type = "Hands",
             Stats = {
                 DEF = 16,
-                HP = -80,
-                MP = 100,
+                HP = -45,
+                MP = 22,
                 INT = 7,
                 MND = -4,
             }
         },
         BruteGauntlets = {
             Name = "Brute Gauntlets",
-            Level = 89,
+            Level = 75,
             Id = 11908,
             Model = 25,
             Jobs = {"WAR", "PLD", "DRK"},
@@ -139223,7 +139305,7 @@ return {
                 DEF = 23,
                 STR = 8,
                 AGI = 3,
-                Accuracy = -15,
+                Accuracy = -9,
                 Attack = 5,
             }
         },
@@ -139411,14 +139493,14 @@ return {
         },
         CallBracers_2 = {
             Name = "Call. Bracers +2",
-            Level = 87,
+            Level = 75,
             Id = 11118,
             Model = 296,
             Jobs = {"SMN"},
             Type = "Hands",
             Stats = {
                 DEF = 23,
-                MP = 50,
+                MP = 30,
                 ManaCedeBonus = 100,
                 PerpetuationDay = 1,
                 PerpetuationWeather = 1,
@@ -139426,7 +139508,7 @@ return {
         },
         CallersBracers = {
             Name = "Callers Bracers",
-            Level = 87,
+            Level = 73,
             Id = 12062,
             Model = 296,
             Jobs = {"SMN"},
@@ -139438,14 +139520,14 @@ return {
         },
         CallersBracers_1 = {
             Name = "Callers Bracers +1",
-            Level = 87,
+            Level = 74,
             Id = 11218,
             Model = 296,
             Jobs = {"SMN"},
             Type = "Hands",
             Stats = {
                 DEF = 21,
-                MP = 40,
+                MP = 28,
                 ManaCedeBonus = 50,
                 PerpetuationDay = 1,
             }
@@ -139650,7 +139732,7 @@ return {
         },
         CharisBangles = {
             Name = "Charis Bangles",
-            Level = 87,
+            Level = 73,
             Id = 12066,
             Model = 305,
             Jobs = {"DNC"},
@@ -139664,7 +139746,7 @@ return {
         },
         CharisBangles_1 = {
             Name = "Charis Bangles +1",
-            Level = 87,
+            Level = 74,
             Id = 11222,
             Model = 305,
             Jobs = {"DNC"},
@@ -139680,7 +139762,7 @@ return {
         },
         CharisBangles_2 = {
             Name = "Charis Bangles +2",
-            Level = 87,
+            Level = 75,
             Id = 11122,
             Model = 305,
             Jobs = {"DNC"},
@@ -139934,7 +140016,7 @@ return {
         },
         CirqueGuanti = {
             Name = "Cirque Guanti",
-            Level = 87,
+            Level = 73,
             Id = 12065,
             Model = 299,
             Jobs = {"PUP"},
@@ -139947,7 +140029,7 @@ return {
         },
         CirqueGuanti_1 = {
             Name = "Cirque Guanti +1",
-            Level = 87,
+            Level = 74,
             Id = 11221,
             Model = 299,
             Jobs = {"PUP"},
@@ -139963,7 +140045,7 @@ return {
         },
         CirqueGuanti_2 = {
             Name = "Cirque Guanti +2",
-            Level = 87,
+            Level = 75,
             Id = 11121,
             Model = 299,
             Jobs = {"PUP"},
@@ -140559,13 +140641,13 @@ return {
         },
         CrdGauntlets_1 = {
             Name = "Crd. Gauntlets +1",
-            Level = 87,
+            Level = 74,
             Id = 11210,
             Model = 288,
             Jobs = {"PLD"},
             Type = "Hands",
             Stats = {
-                DEF = 33,
+                DEF = 29,
                 STR = 7,
                 VIT = 7,
                 Haste = 3,
@@ -140575,13 +140657,13 @@ return {
         },
         CrdGauntlets_2 = {
             Name = "Crd. Gauntlets +2",
-            Level = 87,
+            Level = 75,
             Id = 11110,
             Model = 288,
             Jobs = {"PLD"},
             Type = "Hands",
             Stats = {
-                DEF = 35,
+                DEF = 31,
                 STR = 11,
                 VIT = 11,
                 Haste = 4,
@@ -140591,13 +140673,13 @@ return {
         },
         CreedGauntlets = {
             Name = "Creed Gauntlets",
-            Level = 87,
+            Level = 73,
             Id = 12054,
             Model = 288,
             Jobs = {"PLD"},
             Type = "Hands",
             Stats = {
-                DEF = 30,
+                DEF = 26,
                 STR = 3,
                 VIT = 3,
             }
@@ -140966,7 +141048,7 @@ return {
         },
         DerobadeMittens = {
             Name = "Derobade Mittens",
-            Level = 86,
+            Level = 73,
             Id = 11910,
             Model = 14,
             Jobs = {"MNK", "THF", "RNG", "BLU", "COR", "PUP", "DNC", "RUN"},
@@ -142015,7 +142097,7 @@ return {
         },
         EradicoMitts = {
             Name = "Eradico Mitts",
-            Level = 84,
+            Level = 73,
             Id = 11884,
             Model = 130,
             Jobs = {"WHM", "BLM", "RDM", "BRD", "SMN", "GEO"},
@@ -142023,7 +142105,7 @@ return {
             Stats = {
                 DEF = 20,
                 MP = 15,
-                MagicAttackBonus = 7,
+                MagicAttackBonus = 4,
                 Enmity = -3,
                 MagicCriticalHitDamage = 5,
             }
@@ -142124,7 +142206,7 @@ return {
         },
         EstqGantherots = {
             Name = "Estq. Gantherots",
-            Level = 87,
+            Level = 73,
             Id = 12052,
             Model = 286,
             Jobs = {"RDM"},
@@ -142137,7 +142219,7 @@ return {
         },
         EstqGanthrt_1 = {
             Name = "Estq. Ganthrt. +1",
-            Level = 87,
+            Level = 74,
             Id = 11208,
             Model = 286,
             Jobs = {"RDM"},
@@ -142151,7 +142233,7 @@ return {
         },
         EstqGanthrt_2 = {
             Name = "Estq. Ganthrt. +2",
-            Level = 87,
+            Level = 75,
             Id = 11108,
             Model = 286,
             Jobs = {"RDM"},
@@ -142159,7 +142241,7 @@ return {
             Stats = {
                 DEF = 22,
                 MND = 6,
-                MagicAccuracy = 7,
+                MagicAccuracy = 6,
                 EnfeeblingMagicSkill = 15,
             }
         },
@@ -142498,7 +142580,7 @@ return {
         },
         FerineManoplas = {
             Name = "Ferine Manoplas",
-            Level = 87,
+            Level = 73,
             Id = 12056,
             Model = 290,
             Jobs = {"BST"},
@@ -142916,7 +142998,7 @@ return {
         },
         FrnManoplas_1 = {
             Name = "Frn. Manoplas +1",
-            Level = 87,
+            Level = 74,
             Id = 11212,
             Model = 290,
             Jobs = {"BST"},
@@ -142930,7 +143012,7 @@ return {
         },
         FrnManoplas_2 = {
             Name = "Frn. Manoplas +2",
-            Level = 87,
+            Level = 75,
             Id = 11112,
             Model = 290,
             Jobs = {"BST"},
@@ -143770,7 +143852,7 @@ return {
         },
         GoetiaGloves = {
             Name = "Goetia Gloves",
-            Level = 87,
+            Level = 73,
             Id = 12051,
             Model = 285,
             Jobs = {"BLM"},
@@ -143783,7 +143865,7 @@ return {
         },
         GoetiaGloves_1 = {
             Name = "Goetia Gloves +1",
-            Level = 87,
+            Level = 74,
             Id = 11207,
             Model = 285,
             Jobs = {"BLM"},
@@ -143798,7 +143880,7 @@ return {
         },
         GoetiaGloves_2 = {
             Name = "Goetia Gloves +2",
-            Level = 87,
+            Level = 75,
             Id = 11107,
             Model = 285,
             Jobs = {"BLM"},
@@ -143806,7 +143888,7 @@ return {
             Stats = {
                 DEF = 23,
                 INT = 7,
-                MagicAttackBonus = 8,
+                MagicAttackBonus = 6,
                 MagicCriticalHitRate = 5,
                 MagicCriticalHitDamage = 5,
             }
@@ -145258,7 +145340,7 @@ return {
         },
         IgaTekko = {
             Name = "Iga Tekko",
-            Level = 87,
+            Level = 73,
             Id = 12060,
             Model = 294,
             Jobs = {"NIN"},
@@ -145271,7 +145353,7 @@ return {
         },
         IgaTekko_1 = {
             Name = "Iga Tekko +1",
-            Level = 87,
+            Level = 74,
             Id = 11216,
             Model = 294,
             Jobs = {"NIN"},
@@ -145288,7 +145370,7 @@ return {
         },
         IgaTekko_2 = {
             Name = "Iga Tekko +2",
-            Level = 87,
+            Level = 75,
             Id = 11116,
             Model = 294,
             Jobs = {"NIN"},
@@ -146504,7 +146586,7 @@ return {
         },
         LancersVambraces = {
             Name = "Lancers Vambraces",
-            Level = 87,
+            Level = 73,
             Id = 12061,
             Model = 295,
             Jobs = {"DRG"},
@@ -146792,7 +146874,7 @@ return {
         },
         LncrVmbrc_1 = {
             Name = "Lncr. Vmbrc. +1",
-            Level = 87,
+            Level = 74,
             Id = 11217,
             Model = 295,
             Jobs = {"DRG"},
@@ -146806,7 +146888,7 @@ return {
         },
         LncrVmbrc_2 = {
             Name = "Lncr. Vmbrc. +2",
-            Level = 87,
+            Level = 75,
             Id = 11117,
             Model = 295,
             Jobs = {"DRG"},
@@ -147568,7 +147650,7 @@ return {
         },
         MaviBazubands = {
             Name = "Mavi Bazubands",
-            Level = 87,
+            Level = 73,
             Id = 12063,
             Model = 297,
             Jobs = {"BLU"},
@@ -148439,7 +148521,7 @@ return {
         },
         MvBazubands_1 = {
             Name = "Mv. Bazubands +1",
-            Level = 87,
+            Level = 74,
             Id = 11219,
             Model = 297,
             Jobs = {"BLU"},
@@ -148447,14 +148529,14 @@ return {
             Stats = {
                 DEF = 24,
                 MND = 7,
-                MagicAttackBonus = 7,
+                MagicAttackBonus = 6,
                 Enmity = -3,
                 BlueMagicRecast = -6,
             }
         },
         MvBazubands_2 = {
             Name = "Mv. Bazubands +2",
-            Level = 87,
+            Level = 75,
             Id = 11119,
             Model = 297,
             Jobs = {"BLU"},
@@ -148462,7 +148544,7 @@ return {
             Stats = {
                 DEF = 26,
                 MND = 10,
-                MagicAttackBonus = 10,
+                MagicAttackBonus = 6,
                 Enmity = -4,
                 BlueMagicRecast = -12,
             }
@@ -148644,7 +148726,7 @@ return {
         },
         NavarchsGants = {
             Name = "Navarchs Gants",
-            Level = 87,
+            Level = 73,
             Id = 12064,
             Model = 298,
             Jobs = {"COR"},
@@ -148990,14 +149072,14 @@ return {
         },
         NvrchGants_1 = {
             Name = "Nvrch. Gants +1",
-            Level = 87,
+            Level = 74,
             Id = 11220,
             Model = 298,
             Jobs = {"COR"},
             Type = "Hands",
             Stats = {
                 DEF = 24,
-                Accuracy = 13,
+                Accuracy = 11,
                 RangedAccuracy = 13,
                 CriticalHitRate = 4,
                 PhantomDuration = 20,
@@ -149006,16 +149088,16 @@ return {
         },
         NvrchGants_2 = {
             Name = "Nvrch. Gants +2",
-            Level = 87,
+            Level = 75,
             Id = 11120,
             Model = 298,
             Jobs = {"COR"},
             Type = "Hands",
             Stats = {
                 DEF = 26,
-                Accuracy = 16,
+                Accuracy = 12,
                 RangedAttack = 16,
-                CriticalHitRate = 5,
+                CriticalHitRate = 4,
                 PhantomDuration = 40,
                 AlliesRollBonus = 100,
             }
@@ -149327,7 +149409,7 @@ return {
         },
         OrisonMitts = {
             Name = "Orison Mitts",
-            Level = 87,
+            Level = 73,
             Id = 12050,
             Model = 284,
             Jobs = {"WHM"},
@@ -149341,7 +149423,7 @@ return {
         },
         OrisonMitts_1 = {
             Name = "Orison Mitts +1",
-            Level = 87,
+            Level = 74,
             Id = 11206,
             Model = 284,
             Jobs = {"WHM"},
@@ -149356,7 +149438,7 @@ return {
         },
         OrisonMitts_2 = {
             Name = "Orison Mitts +2",
-            Level = 87,
+            Level = 75,
             Id = 11106,
             Model = 284,
             Jobs = {"WHM"},
@@ -150096,6 +150178,7 @@ return {
                 MP = 10,
                 VIT = 5,
                 MND = 3,
+                Accuracy = 5,
                 Haste = 1,
             }
         },
@@ -150735,7 +150818,7 @@ return {
         },
         RaidArmlets_1 = {
             Name = "Raid. Armlets +1",
-            Level = 87,
+            Level = 74,
             Id = 11209,
             Model = 287,
             Jobs = {"THF"},
@@ -150751,7 +150834,7 @@ return {
         },
         RaidArmlets_2 = {
             Name = "Raid. Armlets +2",
-            Level = 87,
+            Level = 75,
             Id = 11109,
             Model = 287,
             Jobs = {"THF"},
@@ -150767,7 +150850,7 @@ return {
         },
         RaidersArmlets = {
             Name = "Raiders Armlets",
-            Level = 87,
+            Level = 73,
             Id = 12053,
             Model = 287,
             Jobs = {"THF"},
@@ -150906,13 +150989,13 @@ return {
         },
         RavagersMufflers = {
             Name = "Ravagers Mufflers",
-            Level = 87,
+            Level = 73,
             Id = 12048,
             Model = 282,
             Jobs = {"WAR"},
             Type = "Hands",
             Stats = {
-                DEF = 27,
+                DEF = 26,
                 STR = 3,
                 DEX = 3,
                 Accuracy = 4,
@@ -151484,13 +151567,13 @@ return {
         },
         RvgMufflers_1 = {
             Name = "Rvg. Mufflers +1",
-            Level = 87,
+            Level = 74,
             Id = 11204,
             Model = 282,
             Jobs = {"WAR"},
             Type = "Hands",
             Stats = {
-                DEF = 30,
+                DEF = 29,
                 STR = 7,
                 DEX = 7,
                 Accuracy = 9,
@@ -151500,13 +151583,13 @@ return {
         },
         RvgMufflers_2 = {
             Name = "Rvg. Mufflers +2",
-            Level = 87,
+            Level = 75,
             Id = 11104,
             Model = 282,
             Jobs = {"WAR"},
             Type = "Hands",
             Stats = {
-                DEF = 32,
+                DEF = 31,
                 STR = 9,
                 DEX = 9,
                 Accuracy = 12,
@@ -151865,22 +151948,22 @@ return {
         },
         SavannaGages = {
             Name = "Savanna Gages",
-            Level = 87,
+            Level = 73,
             Id = 11900,
             Model = 135,
             Jobs = {"All"},
             Type = "Hands",
             Stats = {
                 DEF = 16,
-                HP = 100,
-                MP = -80,
+                HP = 45,
+                MP = -22,
                 STR = 7,
                 DEX = -4,
             }
         },
         SavantsBracers = {
             Name = "Savants Bracers",
-            Level = 87,
+            Level = 73,
             Id = 12067,
             Model = 306,
             Jobs = {"SCH"},
@@ -151931,7 +152014,7 @@ return {
         },
         Schellenband = {
             Name = "Schellenband",
-            Level = 82,
+            Level = 73,
             Id = 11885,
             Jobs = {"BRD"},
             Type = "Hands",
@@ -151976,7 +152059,7 @@ return {
         },
         SchutzenMittens = {
             Name = "Schutzen Mittens",
-            Level = 86,
+            Level = 73,
             Id = 11897,
             Model = 100,
             Jobs = {"THF", "RNG", "COR"},
@@ -151984,7 +152067,7 @@ return {
             Stats = {
                 DEF = 16,
                 AGI = 8,
-                MagicAccuracy = 5,
+                MagicAccuracy = 4,
             }
         },
         ScorpionMittens = {
@@ -153207,15 +153290,15 @@ return {
         },
         StrandGages = {
             Name = "Strand Gages",
-            Level = 87,
+            Level = 73,
             Id = 11902,
             Model = 135,
             Jobs = {"All"},
             Type = "Hands",
             Stats = {
                 DEF = 16,
-                HP = -80,
-                MP = 100,
+                HP = -45,
+                MP = 22,
                 INT = -4,
                 MND = 7,
             }
@@ -153303,7 +153386,7 @@ return {
         },
         SvntBracers_1 = {
             Name = "Svnt. Bracers +1",
-            Level = 87,
+            Level = 74,
             Id = 11223,
             Model = 306,
             Jobs = {"SCH"},
@@ -153318,7 +153401,7 @@ return {
         },
         SvntBracers_2 = {
             Name = "Svnt. Bracers +2",
-            Level = 87,
+            Level = 75,
             Id = 11123,
             Model = 306,
             Jobs = {"SCH"},
@@ -153378,7 +153461,7 @@ return {
         },
         SylGlovelettes = {
             Name = "Syl. Glovelettes",
-            Level = 87,
+            Level = 73,
             Id = 12058,
             Model = 292,
             Jobs = {"RNG"},
@@ -153390,7 +153473,7 @@ return {
         },
         SylGlvltte_1 = {
             Name = "Syl. Glvltte. +1",
-            Level = 87,
+            Level = 74,
             Id = 11214,
             Model = 292,
             Jobs = {"RNG"},
@@ -153405,7 +153488,7 @@ return {
         },
         SylGlvltte_2 = {
             Name = "Syl. Glvltte. +2",
-            Level = 87,
+            Level = 75,
             Id = 11114,
             Model = 292,
             Jobs = {"RNG"},
@@ -153609,7 +153692,7 @@ return {
         },
         TantraGloves = {
             Name = "Tantra Gloves",
-            Level = 87,
+            Level = 73,
             Id = 12049,
             Model = 283,
             Jobs = {"MNK"},
@@ -153621,7 +153704,7 @@ return {
         },
         TantraGloves_1 = {
             Name = "Tantra Gloves +1",
-            Level = 87,
+            Level = 74,
             Id = 11205,
             Model = 283,
             Jobs = {"MNK"},
@@ -153636,7 +153719,7 @@ return {
         },
         TantraGloves_2 = {
             Name = "Tantra Gloves +2",
-            Level = 87,
+            Level = 75,
             Id = 11105,
             Model = 283,
             Jobs = {"MNK"},
@@ -153766,6 +153849,21 @@ return {
             Type = "Hands",
             Stats = {
                 DEF = 3,
+            }
+        },
+        TelluristGloves = {
+            Name = "Tellurist Gloves",
+            Level = 54,
+            Id = 39221,
+            Model = 351,
+            Jobs = {"GEO"},
+            Type = "Hands",
+            Stats = {
+                DEF = 12,
+                MP = 12,
+                MND = 3,
+                Enmity = -1,
+                ConserveMP = 3,
             }
         },
         TemachtianiGloves = {
@@ -154066,15 +154164,15 @@ return {
         },
         ThicketGages = {
             Name = "Thicket Gages",
-            Level = 87,
+            Level = 73,
             Id = 11904,
             Model = 135,
             Jobs = {"All"},
             Type = "Hands",
             Stats = {
                 DEF = 16,
-                HP = 80,
-                MP = -50,
+                HP = 45,
+                MP = -22,
                 STR = 7,
                 DEX = -4,
             }
@@ -154166,7 +154264,7 @@ return {
         },
         TideGages = {
             Name = "Tide Gages",
-            Level = 87,
+            Level = 73,
             Id = 11903,
             Model = 135,
             Jobs = {"All"},
@@ -154174,7 +154272,7 @@ return {
             Stats = {
                 DEF = 16,
                 HP = -40,
-                MP = 50,
+                MP = 22,
                 VIT = -5,
                 INT = 5,
                 MND = 5,
@@ -154256,15 +154354,15 @@ return {
         },
         TorridGages = {
             Name = "Torrid Gages",
-            Level = 87,
+            Level = 73,
             Id = 11907,
             Model = 135,
             Jobs = {"All"},
             Type = "Hands",
             Stats = {
                 DEF = 16,
-                HP = 100,
-                MP = 80,
+                HP = 45,
+                MP = 22,
                 VIT = 7,
                 AGI = -4,
             }
@@ -154421,13 +154519,13 @@ return {
         },
         TriggerGloves = {
             Name = "Trigger Gloves",
-            Level = 86,
+            Level = 73,
             Id = 11909,
             Model = 6,
             Jobs = {"THF", "RNG", "COR"},
             Type = "Hands",
             Stats = {
-                DEF = 28,
+                DEF = 23,
                 AGI = 3,
                 RangedAccuracy = 6,
                 RangedAttack = 8,
@@ -154435,7 +154533,7 @@ return {
         },
         TropicGages = {
             Name = "Tropic Gages",
-            Level = 87,
+            Level = 73,
             Id = 11901,
             Model = 135,
             Jobs = {"All"},
@@ -154443,7 +154541,7 @@ return {
             Stats = {
                 DEF = 16,
                 HP = -40,
-                MP = 50,
+                MP = 22,
                 INT = -4,
                 MND = 7,
             }
@@ -154563,7 +154661,7 @@ return {
         },
         UnkaiKote = {
             Name = "Unkai Kote",
-            Level = 87,
+            Level = 73,
             Id = 12059,
             Model = 293,
             Jobs = {"SAM"},
@@ -154577,7 +154675,7 @@ return {
         },
         UnkaiKote_1 = {
             Name = "Unkai Kote +1",
-            Level = 87,
+            Level = 74,
             Id = 11215,
             Model = 293,
             Jobs = {"SAM"},
@@ -154593,7 +154691,7 @@ return {
         },
         UnkaiKote_2 = {
             Name = "Unkai Kote +2",
-            Level = 87,
+            Level = 75,
             Id = 11115,
             Model = 293,
             Jobs = {"SAM"},
@@ -155440,15 +155538,15 @@ return {
         },
         WaveGages = {
             Name = "Wave Gages",
-            Level = 87,
+            Level = 73,
             Id = 11898,
             Model = 135,
             Jobs = {"All"},
             Type = "Hands",
             Stats = {
                 DEF = 16,
-                HP = 50,
-                MP = -40,
+                HP = 45,
+                MP = -22,
                 STR = 5,
                 DEX = -5,
                 AGI = 5,
@@ -155481,15 +155579,15 @@ return {
         },
         WealdGages = {
             Name = "Weald Gages",
-            Level = 87,
+            Level = 73,
             Id = 11899,
             Model = 135,
             Jobs = {"All"},
             Type = "Hands",
             Stats = {
                 DEF = 16,
-                HP = -50,
-                MP = 80,
+                HP = -45,
+                MP = 22,
                 INT = 7,
                 MND = -4,
             }
@@ -155634,15 +155732,15 @@ return {
         },
         WildGages = {
             Name = "Wild Gages",
-            Level = 87,
+            Level = 73,
             Id = 11906,
             Model = 135,
             Jobs = {"All"},
             Type = "Hands",
             Stats = {
                 DEF = 16,
-                HP = 50,
-                MP = -40,
+                HP = 45,
+                MP = -22,
                 STR = -4,
                 DEX = 7,
             }
@@ -162597,7 +162695,7 @@ return {
         },
         TitaniumBand = {
             Name = "Titanium Band",
-            Level = 70,
+            Level = 75,
             Id = 28577,
             Jobs = {"All"},
             Type = "Ring",
@@ -163869,14 +163967,14 @@ return {
         },
         AthelingMantle = {
             Name = "Atheling Mantle",
-            Level = 89,
+            Level = 75,
             Id = 16260,
             Jobs = {"WAR", "MNK", "RDM", "THF", "PLD", "DRK", "BST", "BRD", "RNG", "SAM", "NIN", "DRG", "BLU", "COR", "DNC", "RUN"},
             Type = "Back",
             Stats = {
-                DEF = 15,
-                Attack = 20,
-                DoubleAttack = 3,
+                DEF = 13,
+                Attack = 15,
+                DoubleAttack = 1,
             }
         },
         AttackersMantle = {
@@ -164892,14 +164990,14 @@ return {
         },
         EbullientCape = {
             Name = "Ebullient Cape",
-            Level = 82,
+            Level = 73,
             Id = 16210,
             Jobs = {"WHM", "BLM", "RDM", "BRD", "SMN", "SCH", "GEO"},
             Type = "Back",
             Stats = {
                 DEF = 6,
                 HP = 45,
-                MP = 45,
+                MP = 24,
                 LightResistance = 20,
                 DarkResistance = 20,
             }
@@ -168180,14 +168278,14 @@ return {
         },
         TwilightCape = {
             Name = "Twilight Cape",
-            Level = 90,
+            Level = 75,
             Id = 16259,
             Jobs = {"WHM", "BLM", "RDM", "BRD", "SMN", "BLU", "PUP", "SCH", "GEO"},
             Type = "Back",
             Stats = {
                 DEF = 7,
                 HP = 25,
-                MP = 25,
+                MP = 24,
                 DayNukeBonus = 5,
             }
         },
@@ -169387,12 +169485,12 @@ return {
         },
         CascadeBelt = {
             Name = "Cascade Belt",
-            Level = 86,
+            Level = 73,
             Id = 15909,
             Jobs = {"MNK", "WHM", "BLM", "RDM", "PLD", "BRD", "RNG", "SMN", "BLU", "PUP", "SCH", "GEO", "RUN"},
             Type = "Waist",
             Stats = {
-                MND = 7,
+                MND = 5,
                 EnhancingMagicSkill = 3,
             }
         },
@@ -172201,12 +172299,12 @@ return {
         },
         PrimalBelt = {
             Name = "Primal Belt",
-            Level = 89,
+            Level = 75,
             Id = 15910,
             Jobs = {"BST"},
             Type = "Waist",
             Stats = {
-                CHR = 5,
+                CHR = 4,
             }
         },
         PrismObi = {
@@ -172835,7 +172933,7 @@ return {
         },
         SiegelSash = {
             Name = "Siegel Sash",
-            Level = 90,
+            Level = 75,
             Id = 15960,
             Jobs = {"MNK", "WHM", "BLM", "RDM", "PLD", "BRD", "RNG", "SMN", "BLU", "PUP", "SCH", "GEO", "RUN"},
             Type = "Waist",
@@ -173554,14 +173652,14 @@ return {
         },
         TwilightBelt = {
             Name = "Twilight Belt",
-            Level = 90,
+            Level = 75,
             Id = 15959,
             Jobs = {"MNK", "THF", "BST", "RNG", "NIN", "BLU", "COR", "PUP", "DNC", "RUN"},
             Type = "Waist",
             Stats = {
-                DEF = 8,
-                Haste = 7,
-                DoubleAttack = 2,
+                DEF = 6,
+                Haste = 4,
+                DoubleAttack = 1,
             }
         },
         TwinthreadObi = {
@@ -174139,13 +174237,13 @@ return {
         },
         AcesHose = {
             Name = "Aces Hose",
-            Level = 79,
+            Level = 74,
             Id = 12921,
             Model = 221,
             Jobs = {"DRK", "SAM", "DRG"},
             Type = "Legs",
             Stats = {
-                DEF = 29,
+                DEF = 27,
                 Accuracy = -10,
                 Attack = 12,
                 Haste = 4,
@@ -174639,7 +174737,7 @@ return {
         },
         AmbushersHose = {
             Name = "Ambushers Hose",
-            Level = 83,
+            Level = 72,
             Id = 11935,
             Model = 94,
             Jobs = {"MNK", "THF", "RNG", "SAM", "NIN", "COR", "PUP", "DNC", "RUN"},
@@ -174648,7 +174746,7 @@ return {
                 DEF = 33,
                 AGI = 10,
                 MND = 5,
-                SubtleBlow = 10,
+                SubtleBlow = 4,
             }
         },
         AminiBrague = {
@@ -174915,7 +175013,7 @@ return {
         },
         AoidosRhing_1 = {
             Name = "Aoidos Rhing. +1",
-            Level = 83,
+            Level = 73,
             Id = 11233,
             Model = 291,
             Jobs = {"BRD"},
@@ -174929,7 +175027,7 @@ return {
         },
         AoidosRhing_2 = {
             Name = "Aoidos Rhing. +2",
-            Level = 83,
+            Level = 74,
             Id = 11133,
             Model = 291,
             Jobs = {"BRD"},
@@ -174944,7 +175042,7 @@ return {
         },
         AoidosRhingrave = {
             Name = "Aoidos Rhingrave",
-            Level = 83,
+            Level = 72,
             Id = 12077,
             Model = 291,
             Jobs = {"BRD"},
@@ -175858,15 +175956,15 @@ return {
         },
         AugursBrais = {
             Name = "Augurs Brais",
-            Level = 79,
+            Level = 74,
             Id = 15430,
             Model = 223,
             Jobs = {"WHM", "BLM", "RDM", "BRD", "SMN", "SCH", "GEO"},
             Type = "Legs",
             Stats = {
-                DEF = 34,
-                MND = 9,
-                CHR = 9,
+                DEF = 29,
+                MND = 7,
+                CHR = 7,
                 EnfeeblingMagicSkill = 4,
                 SingingSkill = 4,
                 PerpetuationCost = 1,
@@ -176273,13 +176371,13 @@ return {
         },
         BaleFlanchard = {
             Name = "Bale Flanchard",
-            Level = 83,
+            Level = 72,
             Id = 12075,
             Model = 289,
             Jobs = {"DRK"},
             Type = "Legs",
             Stats = {
-                DEF = 48,
+                DEF = 43,
                 STR = 3,
                 Accuracy = 4,
                 Attack = 4,
@@ -176287,13 +176385,13 @@ return {
         },
         BaleFlanchard_1 = {
             Name = "Bale Flanchard +1",
-            Level = 83,
+            Level = 73,
             Id = 11231,
             Model = 289,
             Jobs = {"DRK"},
             Type = "Legs",
             Stats = {
-                DEF = 51,
+                DEF = 48,
                 STR = 8,
                 Accuracy = 10,
                 Attack = 10,
@@ -176302,15 +176400,15 @@ return {
         },
         BaleFlanchard_2 = {
             Name = "Bale Flanchard +2",
-            Level = 83,
+            Level = 74,
             Id = 11131,
             Model = 289,
             Jobs = {"DRK"},
             Type = "Legs",
             Stats = {
-                DEF = 53,
+                DEF = 51,
                 STR = 12,
-                Accuracy = 15,
+                Accuracy = 12,
                 Attack = 15,
                 DarkMagicSkill = 15,
             }
@@ -176868,6 +176966,21 @@ return {
                 DEF = 10,
             }
         },
+        BladedancerCuisses = {
+            Name = "Bladedancer Cuisses",
+            Level = 58,
+            Id = 39213,
+            Model = 349,
+            Jobs = {"RUN"},
+            Type = "Legs",
+            Stats = {
+                DEF = 32,
+                HP = 15,
+                VIT = 3,
+                Attack = 5,
+                StoreTP = 3,
+            }
+        },
         BlazeHose = {
             Name = "Blaze Hose",
             Level = 48,
@@ -177401,7 +177514,7 @@ return {
         },
         BustleDirs = {
             Name = "Bustle Dirs",
-            Level = 85,
+            Level = 74,
             Id = 11936,
             Model = 174,
             Jobs = {"WAR", "SAM"},
@@ -177410,7 +177523,7 @@ return {
                 DEF = 35,
                 HP = -10,
                 VIT = -3,
-                Haste = 7,
+                Haste = 3,
             }
         },
         ByakkosHaidate = {
@@ -177556,7 +177669,7 @@ return {
         },
         CallersSpats = {
             Name = "Callers Spats",
-            Level = 83,
+            Level = 72,
             Id = 12082,
             Model = 296,
             Jobs = {"SMN"},
@@ -177569,7 +177682,7 @@ return {
         },
         CallersSpats_1 = {
             Name = "Callers Spats +1",
-            Level = 83,
+            Level = 73,
             Id = 11238,
             Model = 296,
             Jobs = {"SMN"},
@@ -177582,7 +177695,7 @@ return {
         },
         CallersSpats_2 = {
             Name = "Callers Spats +2",
-            Level = 83,
+            Level = 74,
             Id = 11138,
             Model = 296,
             Jobs = {"SMN"},
@@ -177800,7 +177913,7 @@ return {
         },
         CharisTights = {
             Name = "Charis Tights",
-            Level = 83,
+            Level = 72,
             Id = 12086,
             Model = 305,
             Jobs = {"DNC"},
@@ -177812,7 +177925,7 @@ return {
         },
         CharisTights_1 = {
             Name = "Charis Tights +1",
-            Level = 83,
+            Level = 73,
             Id = 11242,
             Model = 305,
             Jobs = {"DNC"},
@@ -177825,14 +177938,14 @@ return {
         },
         CharisTights_2 = {
             Name = "Charis Tights +2",
-            Level = 83,
+            Level = 74,
             Id = 11142,
             Model = 305,
             Jobs = {"DNC"},
             Type = "Legs",
             Stats = {
                 DEF = 45,
-                Evasion = 15,
+                Evasion = 11,
                 Haste = 5,
                 DaggerSkill = 5,
             }
@@ -178080,7 +178193,7 @@ return {
         },
         CirqPantaloni_1 = {
             Name = "Cirq. Pantaloni +1",
-            Level = 83,
+            Level = 73,
             Id = 11241,
             Model = 299,
             Jobs = {"PUP"},
@@ -178094,7 +178207,7 @@ return {
         },
         CirqPantaloni_2 = {
             Name = "Cirq. Pantaloni +2",
-            Level = 83,
+            Level = 74,
             Id = 11141,
             Model = 299,
             Jobs = {"PUP"},
@@ -178108,7 +178221,7 @@ return {
         },
         CirquePantaloni = {
             Name = "Cirque Pantaloni",
-            Level = 83,
+            Level = 72,
             Id = 12085,
             Model = 299,
             Jobs = {"PUP"},
@@ -178603,25 +178716,25 @@ return {
         },
         CreedCuisses = {
             Name = "Creed Cuisses",
-            Level = 83,
+            Level = 72,
             Id = 12074,
             Model = 288,
             Jobs = {"PLD"},
             Type = "Legs",
             Stats = {
-                DEF = 53,
+                DEF = 43,
                 HP = 15,
             }
         },
         CreedCuisses_1 = {
             Name = "Creed Cuisses +1",
-            Level = 83,
+            Level = 73,
             Id = 11230,
             Model = 288,
             Jobs = {"PLD"},
             Type = "Legs",
             Stats = {
-                DEF = 56,
+                DEF = 48,
                 HP = 30,
                 Haste = 3,
                 PDT = -3,
@@ -178631,14 +178744,14 @@ return {
         },
         CreedCuisses_2 = {
             Name = "Creed Cuisses +2",
-            Level = 83,
+            Level = 74,
             Id = 11130,
             Model = 288,
             Jobs = {"PLD"},
             Type = "Legs",
             Stats = {
-                DEF = 58,
-                HP = 50,
+                DEF = 51,
+                HP = 46,
                 Haste = 4,
                 PDT = -5,
                 RDT = -5,
@@ -178872,7 +178985,7 @@ return {
         },
         CybelePants = {
             Name = "Cybele Pants",
-            Level = 84,
+            Level = 73,
             Id = 11934,
             Model = 143,
             Jobs = {"BLM", "SCH", "GEO"},
@@ -180388,7 +180501,7 @@ return {
         },
         EstqFuseau = {
             Name = "Estq. Fuseau",
-            Level = 83,
+            Level = 72,
             Id = 12072,
             Model = 286,
             Jobs = {"RDM"},
@@ -180401,14 +180514,14 @@ return {
         },
         EstqrFuseau_1 = {
             Name = "Estqr. Fuseau +1",
-            Level = 83,
+            Level = 73,
             Id = 11228,
             Model = 286,
             Jobs = {"RDM"},
             Type = "Legs",
             Stats = {
                 DEF = 40,
-                MP = 55,
+                MP = 52,
                 INT = 7,
                 MagicAccuracy = 5,
                 MagicAttackBonus = 5,
@@ -180416,14 +180529,14 @@ return {
         },
         EstqrFuseau_2 = {
             Name = "Estqr. Fuseau +2",
-            Level = 83,
+            Level = 74,
             Id = 11128,
             Model = 286,
             Jobs = {"RDM"},
             Type = "Legs",
             Stats = {
                 DEF = 42,
-                MP = 65,
+                MP = 55,
                 INT = 9,
                 MagicAccuracy = 6,
                 MagicAttackBonus = 6,
@@ -180839,13 +180952,13 @@ return {
         },
         FerineQuijotes = {
             Name = "Ferine Quijotes",
-            Level = 83,
+            Level = 72,
             Id = 12076,
             Model = 290,
             Jobs = {"BST"},
             Type = "Legs",
             Stats = {
-                DEF = 46,
+                DEF = 43,
                 CHR = 3,
                 Accuracy = 2,
                 Attack = 2,
@@ -180853,22 +180966,22 @@ return {
         },
         FerineQuijotes_1 = {
             Name = "Ferine Quijotes +1",
-            Level = 83,
+            Level = 73,
             Id = 11232,
             Model = 290,
             Jobs = {"BST"},
             Type = "Legs",
             Stats = {
-                DEF = 49,
+                DEF = 48,
                 CHR = 7,
                 Accuracy = 5,
                 Attack = 5,
-                Haste = 6,
+                Haste = 4,
             }
         },
         FerineQuijotes_2 = {
             Name = "Ferine Quijotes +2",
-            Level = 83,
+            Level = 74,
             Id = 11132,
             Model = 290,
             Jobs = {"BST"},
@@ -180878,7 +180991,7 @@ return {
                 CHR = 10,
                 Accuracy = 7,
                 Attack = 7,
-                Haste = 7,
+                Haste = 5,
             }
         },
         FieldHose = {
@@ -181985,7 +182098,7 @@ return {
         },
         GoetChausses_1 = {
             Name = "Goet. Chausses +1",
-            Level = 83,
+            Level = 73,
             Id = 11227,
             Model = 285,
             Jobs = {"BLM"},
@@ -181999,7 +182112,7 @@ return {
         },
         GoetChausses_2 = {
             Name = "Goet. Chausses +2",
-            Level = 83,
+            Level = 74,
             Id = 11127,
             Model = 285,
             Jobs = {"BLM"},
@@ -182024,7 +182137,7 @@ return {
         },
         GoetiaChausses = {
             Name = "Goetia Chausses",
-            Level = 83,
+            Level = 72,
             Id = 12071,
             Model = 285,
             Jobs = {"BLM"},
@@ -182517,13 +182630,13 @@ return {
         },
         HavenHose = {
             Name = "Haven Hose",
-            Level = 86,
+            Level = 73,
             Id = 11949,
             Model = 163,
             Jobs = {"All"},
             Type = "Legs",
             Stats = {
-                DEF = 40,
+                DEF = 38,
                 MP = 10,
                 MND = 5,
                 StoneskinPotency = 20,
@@ -183492,7 +183605,7 @@ return {
         },
         IgaHakama = {
             Name = "Iga Hakama",
-            Level = 83,
+            Level = 72,
             Id = 12080,
             Model = 294,
             Jobs = {"NIN"},
@@ -183504,7 +183617,7 @@ return {
         },
         IgaHakama_1 = {
             Name = "Iga Hakama +1",
-            Level = 83,
+            Level = 73,
             Id = 11236,
             Model = 294,
             Jobs = {"NIN"},
@@ -183512,13 +183625,13 @@ return {
             Stats = {
                 DEF = 46,
                 Accuracy = 6,
-                Haste = 6,
+                Haste = 4,
                 KatanaSkill = 3,
             }
         },
         IgaHakama_2 = {
             Name = "Iga Hakama +2",
-            Level = 83,
+            Level = 74,
             Id = 11136,
             Model = 294,
             Jobs = {"NIN"},
@@ -183526,7 +183639,7 @@ return {
             Stats = {
                 DEF = 48,
                 Accuracy = 8,
-                Haste = 7,
+                Haste = 5,
                 KatanaSkill = 5,
             }
         },
@@ -184665,13 +184778,13 @@ return {
         },
         LancersCuissots = {
             Name = "Lancers Cuissots",
-            Level = 83,
+            Level = 72,
             Id = 12081,
             Model = 295,
             Jobs = {"DRG"},
             Type = "Legs",
             Stats = {
-                DEF = 47,
+                DEF = 43,
                 STR = 3,
                 VIT = 3,
             }
@@ -184992,13 +185105,13 @@ return {
         },
         LncrCuissots_1 = {
             Name = "Lncr. Cuissots +1",
-            Level = 83,
+            Level = 73,
             Id = 11237,
             Model = 295,
             Jobs = {"DRG"},
             Type = "Legs",
             Stats = {
-                DEF = 50,
+                DEF = 48,
                 STR = 7,
                 VIT = 7,
                 Attack = 12,
@@ -185007,13 +185120,13 @@ return {
         },
         LncrCuissots_2 = {
             Name = "Lncr. Cuissots +2",
-            Level = 83,
+            Level = 74,
             Id = 11137,
             Model = 295,
             Jobs = {"DRG"},
             Type = "Legs",
             Stats = {
-                DEF = 52,
+                DEF = 51,
                 STR = 9,
                 VIT = 9,
                 Attack = 18,
@@ -185773,7 +185886,7 @@ return {
         },
         MaviTayt = {
             Name = "Mavi Tayt",
-            Level = 83,
+            Level = 72,
             Id = 12083,
             Model = 297,
             Jobs = {"BLU"},
@@ -185786,7 +185899,7 @@ return {
         },
         MaviTayt_1 = {
             Name = "Mavi Tayt +1",
-            Level = 83,
+            Level = 73,
             Id = 11239,
             Model = 297,
             Jobs = {"BLU"},
@@ -185801,7 +185914,7 @@ return {
         },
         MaviTayt_2 = {
             Name = "Mavi Tayt +2",
-            Level = 83,
+            Level = 74,
             Id = 11139,
             Model = 297,
             Jobs = {"BLU"},
@@ -186913,7 +187026,7 @@ return {
         },
         NavarchsCulottes = {
             Name = "Navarchs Culottes",
-            Level = 83,
+            Level = 72,
             Id = 12084,
             Model = 298,
             Jobs = {"COR"},
@@ -187095,7 +187208,7 @@ return {
         },
         NisseSlacks = {
             Name = "Nisse Slacks",
-            Level = 86,
+            Level = 73,
             Id = 11947,
             Model = 142,
             Jobs = {"WHM", "BLM", "RDM", "BRD", "SMN", "BLU", "SCH", "GEO"},
@@ -187263,7 +187376,7 @@ return {
         },
         NvrchCulottes_1 = {
             Name = "Nvrch. Culottes +1",
-            Level = 83,
+            Level = 73,
             Id = 11240,
             Model = 298,
             Jobs = {"COR"},
@@ -187279,7 +187392,7 @@ return {
         },
         NvrchCulottes_2 = {
             Name = "Nvrch. Culottes +2",
-            Level = 83,
+            Level = 74,
             Id = 11140,
             Model = 298,
             Jobs = {"COR"},
@@ -187567,7 +187680,7 @@ return {
         },
         OrisonPantaloons = {
             Name = "Orison Pantaloons",
-            Level = 83,
+            Level = 72,
             Id = 12070,
             Model = 284,
             Jobs = {"WHM"},
@@ -187579,7 +187692,7 @@ return {
         },
         OrsnPantaln_1 = {
             Name = "Orsn. Pantaln. +1",
-            Level = 83,
+            Level = 73,
             Id = 11226,
             Model = 284,
             Jobs = {"WHM"},
@@ -187593,7 +187706,7 @@ return {
         },
         OrsnPantaln_2 = {
             Name = "Orsn. Pantaln. +2",
-            Level = 83,
+            Level = 74,
             Id = 11126,
             Model = 284,
             Jobs = {"WHM"},
@@ -188532,13 +188645,13 @@ return {
         },
         PortentPants = {
             Name = "Portent Pants",
-            Level = 88,
+            Level = 74,
             Id = 14241,
             Model = 107,
             Jobs = {"WHM", "BLM", "RDM", "BRD", "SMN", "BLU", "PUP", "SCH", "GEO", "RUN"},
             Type = "Legs",
             Stats = {
-                DEF = 40,
+                DEF = 38,
                 MP = 35,
                 EnhancingMagicSkill = 15,
                 EnfeeblingMagicSkill = 15,
@@ -188933,7 +189046,7 @@ return {
         },
         RaidCulottes_1 = {
             Name = "Raid. Culottes +1",
-            Level = 83,
+            Level = 73,
             Id = 11229,
             Model = 287,
             Jobs = {"THF"},
@@ -188947,7 +189060,7 @@ return {
         },
         RaidCulottes_2 = {
             Name = "Raid. Culottes +2",
-            Level = 83,
+            Level = 74,
             Id = 11129,
             Model = 287,
             Jobs = {"THF"},
@@ -188956,13 +189069,13 @@ return {
                 DEF = 48,
                 DEX = 7,
                 Haste = 5,
-                CriticalHitRate = 4,
+                CriticalHitRate = 1,
                 Despoil = 5,
             }
         },
         RaidersCulottes = {
             Name = "Raiders Culottes",
-            Level = 83,
+            Level = 72,
             Id = 12073,
             Model = 287,
             Jobs = {"THF"},
@@ -189087,13 +189200,13 @@ return {
         },
         RavagersCuisses = {
             Name = "Ravagers Cuisses",
-            Level = 83,
+            Level = 72,
             Id = 12068,
             Model = 282,
             Jobs = {"WAR"},
             Type = "Legs",
             Stats = {
-                DEF = 49,
+                DEF = 43,
                 Attack = 5,
             }
         },
@@ -189613,15 +189726,15 @@ return {
         },
         RvgCuisses_1 = {
             Name = "Rvg. Cuisses +1",
-            Level = 83,
+            Level = 73,
             Id = 11224,
             Model = 282,
             Jobs = {"WAR"},
             Type = "Legs",
             Stats = {
-                DEF = 52,
+                DEF = 48,
                 Attack = 10,
-                Haste = 6,
+                Haste = 4,
                 DoubleAttack = 3,
                 FencerTPBonus = 50,
                 FencerCritRate = 1,
@@ -189629,16 +189742,16 @@ return {
         },
         RvgCuisses_2 = {
             Name = "Rvg. Cuisses +2",
-            Level = 83,
+            Level = 74,
             Id = 11124,
             Model = 282,
             Jobs = {"WAR"},
             Type = "Legs",
             Stats = {
-                DEF = 54,
+                DEF = 51,
                 Attack = 15,
-                Haste = 7,
-                DoubleAttack = 5,
+                Haste = 5,
+                DoubleAttack = 3,
                 FencerTPBonus = 50,
                 FencerCritRate = 1,
             }
@@ -189739,7 +189852,7 @@ return {
         },
         SagacityLappas = {
             Name = "Sagacity Lappas",
-            Level = 81,
+            Level = 73,
             Id = 11937,
             Model = 137,
             Jobs = {"WHM", "BLM", "RDM", "BRD", "SMN", "PUP", "SCH", "GEO"},
@@ -189748,7 +189861,7 @@ return {
                 DEF = 29,
                 MP = 20,
                 MND = 6,
-                MagicAccuracy = 6,
+                MagicAccuracy = 5,
                 HMP = 3,
             }
         },
@@ -190030,7 +190143,7 @@ return {
         },
         SavantsPants = {
             Name = "Savants Pants",
-            Level = 83,
+            Level = 72,
             Id = 12087,
             Model = 306,
             Jobs = {"SCH"},
@@ -190042,7 +190155,7 @@ return {
         },
         SavantsPants_1 = {
             Name = "Savants Pants +1",
-            Level = 83,
+            Level = 73,
             Id = 11243,
             Model = 306,
             Jobs = {"SCH"},
@@ -190055,7 +190168,7 @@ return {
         },
         SavantsPants_2 = {
             Name = "Savants Pants +2",
-            Level = 83,
+            Level = 74,
             Id = 11143,
             Model = 306,
             Jobs = {"SCH"},
@@ -191209,15 +191322,15 @@ return {
         },
         StanchCuisses = {
             Name = "Stanch Cuisses",
-            Level = 86,
+            Level = 73,
             Id = 11948,
             Model = 55,
             Jobs = {"WAR", "PLD", "DRK"},
             Type = "Legs",
             Stats = {
-                DEF = 55,
+                DEF = 38,
                 VIT = 5,
-                Evasion = -10,
+                Evasion = -8,
                 Enmity = 3,
             }
         },
@@ -191471,7 +191584,7 @@ return {
         },
         SylvanBragues = {
             Name = "Sylvan Bragues",
-            Level = 83,
+            Level = 72,
             Id = 12078,
             Model = 292,
             Jobs = {"RNG"},
@@ -191483,7 +191596,7 @@ return {
         },
         SylvanBragues_1 = {
             Name = "Sylvan Bragues +1",
-            Level = 83,
+            Level = 73,
             Id = 11234,
             Model = 292,
             Jobs = {"RNG"},
@@ -191492,21 +191605,21 @@ return {
                 DEF = 44,
                 RangedAttack = 9,
                 StoreTP = 6,
-                CriticalHitRate = 2,
+                CriticalHitRate = 1,
             }
         },
         SylvanBragues_2 = {
             Name = "Sylvan Bragues +2",
-            Level = 83,
+            Level = 74,
             Id = 11134,
             Model = 292,
             Jobs = {"RNG"},
             Type = "Legs",
             Stats = {
                 DEF = 46,
-                RangedAttack = 12,
+                RangedAttack = 10,
                 StoreTP = 9,
-                CriticalHitRate = 3,
+                CriticalHitRate = 1,
             }
         },
         SylvaniteBrais = {
@@ -191663,20 +191776,20 @@ return {
         },
         TantraHose = {
             Name = "Tantra Hose",
-            Level = 83,
+            Level = 72,
             Id = 12069,
             Model = 283,
             Jobs = {"MNK"},
             Type = "Legs",
             Stats = {
-                DEF = 44,
+                DEF = 43,
                 Accuracy = 3,
                 Attack = 3,
             }
         },
         TantraHose_1 = {
             Name = "Tantra Hose +1",
-            Level = 83,
+            Level = 73,
             Id = 11225,
             Model = 283,
             Jobs = {"MNK"},
@@ -191685,13 +191798,13 @@ return {
                 DEF = 47,
                 Accuracy = 7,
                 Attack = 7,
-                Haste = 5,
+                Haste = 4,
                 KickAttackRate = 5,
             }
         },
         TantraHose_2 = {
             Name = "Tantra Hose +2",
-            Level = 83,
+            Level = 74,
             Id = 11125,
             Model = 283,
             Jobs = {"MNK"},
@@ -191700,7 +191813,7 @@ return {
                 DEF = 49,
                 Accuracy = 10,
                 Attack = 10,
-                Haste = 6,
+                Haste = 5,
                 StoreTP = 6,
                 KickAttackRate = 7,
             }
@@ -191854,6 +191967,21 @@ return {
                 CHR = 12,
                 MagicAccuracy = 5,
                 MagicAttackBonus = 5,
+            }
+        },
+        TelluristSlops = {
+            Name = "Tellurist Slops",
+            Level = 56,
+            Id = 39223,
+            Model = 351,
+            Jobs = {"GEO"},
+            Type = "Legs",
+            Stats = {
+                DEF = 25,
+                MP = 14,
+                MND = 3,
+                Enmity = -1,
+                GeomancySkill = 3,
             }
         },
         TemachtianiPants = {
@@ -192548,26 +192676,26 @@ return {
         },
         UnkaiHaidate = {
             Name = "Unkai Haidate",
-            Level = 83,
+            Level = 72,
             Id = 12079,
             Model = 293,
             Jobs = {"SAM"},
             Type = "Legs",
             Stats = {
-                DEF = 49,
+                DEF = 43,
                 STR = 2,
                 DEX = 2,
             }
         },
         UnkaiHaidate_1 = {
             Name = "Unkai Haidate +1",
-            Level = 83,
+            Level = 73,
             Id = 11235,
             Model = 293,
             Jobs = {"SAM"},
             Type = "Legs",
             Stats = {
-                DEF = 52,
+                DEF = 48,
                 STR = 5,
                 DEX = 5,
                 Haste = 4,
@@ -192576,13 +192704,13 @@ return {
         },
         UnkaiHaidate_2 = {
             Name = "Unkai Haidate +2",
-            Level = 83,
+            Level = 74,
             Id = 11135,
             Model = 293,
             Jobs = {"SAM"},
             Type = "Legs",
             Stats = {
-                DEF = 54,
+                DEF = 51,
                 STR = 8,
                 DEX = 8,
                 Haste = 4,
@@ -195105,7 +195233,7 @@ return {
         },
         AoidosCothrn_1 = {
             Name = "Aoidos Cothrn. +1",
-            Level = 81,
+            Level = 74,
             Id = 11253,
             Model = 291,
             Jobs = {"BRD"},
@@ -195119,7 +195247,7 @@ return {
         },
         AoidosCothrn_2 = {
             Name = "Aoidos Cothrn. +2",
-            Level = 81,
+            Level = 75,
             Id = 11153,
             Model = 291,
             Jobs = {"BRD"},
@@ -195134,7 +195262,7 @@ return {
         },
         AoidosCothurnes = {
             Name = "Aoidos Cothurnes",
-            Level = 81,
+            Level = 73,
             Id = 12097,
             Model = 291,
             Jobs = {"BRD"},
@@ -196059,15 +196187,15 @@ return {
         },
         AugursGaiters = {
             Name = "Augurs Gaiters",
-            Level = 79,
+            Level = 74,
             Id = 13001,
             Model = 223,
             Jobs = {"WHM", "BLM", "RDM", "BRD", "SMN", "SCH", "GEO"},
             Type = "Feet",
             Stats = {
-                DEF = 21,
-                INT = 8,
-                FastCast = 3,
+                DEF = 14,
+                INT = 6,
+                FastCast = 2,
                 ElementalMagicSkill = 3,
                 DarkMagicSkill = 3,
             }
@@ -196411,7 +196539,7 @@ return {
         },
         BaleSollerets = {
             Name = "Bale Sollerets",
-            Level = 81,
+            Level = 73,
             Id = 12095,
             Model = 289,
             Jobs = {"DRK"},
@@ -196425,7 +196553,7 @@ return {
         },
         BaleSollerets_1 = {
             Name = "Bale Sollerets +1",
-            Level = 81,
+            Level = 74,
             Id = 11251,
             Model = 289,
             Jobs = {"DRK"},
@@ -196442,17 +196570,17 @@ return {
         },
         BaleSollerets_2 = {
             Name = "Bale Sollerets +2",
-            Level = 81,
+            Level = 75,
             Id = 11151,
             Model = 289,
             Jobs = {"DRK"},
             Type = "Feet",
             Stats = {
                 DEF = 27,
-                STR = 9,
-                INT = 9,
+                STR = 8,
+                INT = 8,
                 MND = 9,
-                MagicAccuracy = 8,
+                MagicAccuracy = 7,
                 MagicAttackBonus = 8,
                 OccultAcumen = 25,
             }
@@ -196997,6 +197125,21 @@ return {
                 Attack = 8,
                 DT = 8,
                 AbsorbPotency = 10,
+            }
+        },
+        BladedancerGreaves = {
+            Name = "Bladedancer Greaves",
+            Level = 52,
+            Id = 39210,
+            Model = 349,
+            Jobs = {"RUN"},
+            Type = "Feet",
+            Stats = {
+                DEF = 13,
+                HP = 10,
+                AGI = 3,
+                Enmity = 1,
+                SpellInterruptionRateDown = 10,
             }
         },
         BlessedPumps = {
@@ -197602,7 +197745,7 @@ return {
         },
         CallersPgch_1 = {
             Name = "Callers Pgch. +1",
-            Level = 81,
+            Level = 74,
             Id = 11258,
             Model = 296,
             Jobs = {"SMN"},
@@ -197616,7 +197759,7 @@ return {
         },
         CallersPgch_2 = {
             Name = "Callers Pgch. +2",
-            Level = 81,
+            Level = 75,
             Id = 11158,
             Model = 296,
             Jobs = {"SMN"},
@@ -197630,7 +197773,7 @@ return {
         },
         CallersPigaches = {
             Name = "Callers Pigaches",
-            Level = 81,
+            Level = 73,
             Id = 12102,
             Model = 296,
             Jobs = {"SMN"},
@@ -197783,7 +197926,7 @@ return {
         },
         CharisShoes_1 = {
             Name = "Charis Shoes +1",
-            Level = 81,
+            Level = 74,
             Id = 11262,
             Model = 305,
             Jobs = {"DNC"},
@@ -197798,7 +197941,7 @@ return {
         },
         CharisShoes_2 = {
             Name = "Charis Shoes +2",
-            Level = 81,
+            Level = 75,
             Id = 11162,
             Model = 305,
             Jobs = {"DNC"},
@@ -197808,12 +197951,12 @@ return {
                 DEX = 8,
                 CHR = 8,
                 Haste = 4,
-                StoreTP = 8,
+                StoreTP = 7,
             }
         },
         CharisToeShoes = {
             Name = "Charis Toe Shoes",
-            Level = 81,
+            Level = 73,
             Id = 12106,
             Model = 305,
             Jobs = {"DNC"},
@@ -198078,7 +198221,7 @@ return {
         },
         CirqueScarpe = {
             Name = "Cirque Scarpe",
-            Level = 81,
+            Level = 73,
             Id = 12105,
             Model = 299,
             Jobs = {"PUP"},
@@ -198092,7 +198235,7 @@ return {
         },
         CirqueScarpe_1 = {
             Name = "Cirque Scarpe +1",
-            Level = 81,
+            Level = 74,
             Id = 11261,
             Model = 299,
             Jobs = {"PUP"},
@@ -198107,7 +198250,7 @@ return {
         },
         CirqueScarpe_2 = {
             Name = "Cirque Scarpe +2",
-            Level = 81,
+            Level = 75,
             Id = 11161,
             Model = 299,
             Jobs = {"PUP"},
@@ -198117,7 +198260,7 @@ return {
                 STR = 8,
                 DEX = 8,
                 INT = 8,
-                Accuracy = 12,
+                Accuracy = 10,
             }
         },
         CizinGreaves = {
@@ -198687,7 +198830,7 @@ return {
         },
         CreedSabatons = {
             Name = "Creed Sabatons",
-            Level = 81,
+            Level = 73,
             Id = 12094,
             Model = 288,
             Jobs = {"PLD"},
@@ -198699,7 +198842,7 @@ return {
         },
         CreedSabatons_1 = {
             Name = "Creed Sabatons +1",
-            Level = 81,
+            Level = 74,
             Id = 11250,
             Model = 288,
             Jobs = {"PLD"},
@@ -198713,14 +198856,14 @@ return {
         },
         CreedSabatons_2 = {
             Name = "Creed Sabatons +2",
-            Level = 81,
+            Level = 75,
             Id = 11150,
             Model = 288,
             Jobs = {"PLD"},
             Type = "Feet",
             Stats = {
                 DEF = 30,
-                Accuracy = 14,
+                Accuracy = 10,
                 Haste = 4,
                 Enmity = 7,
             }
@@ -200327,7 +200470,7 @@ return {
         },
         EstqHouseaux = {
             Name = "Estq. Houseaux",
-            Level = 81,
+            Level = 73,
             Id = 12092,
             Model = 286,
             Jobs = {"RDM"},
@@ -200340,7 +200483,7 @@ return {
         },
         EstqHouseaux_1 = {
             Name = "Estq. Houseaux +1",
-            Level = 81,
+            Level = 74,
             Id = 11248,
             Model = 286,
             Jobs = {"RDM"},
@@ -200355,7 +200498,7 @@ return {
         },
         EstqHouseaux_2 = {
             Name = "Estq. Houseaux +2",
-            Level = 81,
+            Level = 75,
             Id = 11148,
             Model = 286,
             Jobs = {"RDM"},
@@ -200743,7 +200886,7 @@ return {
         },
         FerineOcreae = {
             Name = "Ferine Ocreae",
-            Level = 81,
+            Level = 73,
             Id = 12096,
             Model = 290,
             Jobs = {"BST"},
@@ -200757,7 +200900,7 @@ return {
         },
         FerineOcreae_1 = {
             Name = "Ferine Ocreae +1",
-            Level = 81,
+            Level = 74,
             Id = 11252,
             Model = 290,
             Jobs = {"BST"},
@@ -200773,7 +200916,7 @@ return {
         },
         FerineOcreae_2 = {
             Name = "Ferine Ocreae +2",
-            Level = 81,
+            Level = 75,
             Id = 11152,
             Model = 290,
             Jobs = {"BST"},
@@ -201962,7 +202105,7 @@ return {
         },
         GoetiaSabots = {
             Name = "Goetia Sabots",
-            Level = 81,
+            Level = 73,
             Id = 12091,
             Model = 285,
             Jobs = {"BLM"},
@@ -201975,7 +202118,7 @@ return {
         },
         GoetiaSabots_1 = {
             Name = "Goetia Sabots +1",
-            Level = 81,
+            Level = 74,
             Id = 11247,
             Model = 285,
             Jobs = {"BLM"},
@@ -201989,14 +202132,14 @@ return {
         },
         GoetiaSabots_2 = {
             Name = "Goetia Sabots +2",
-            Level = 81,
+            Level = 75,
             Id = 11147,
             Model = 285,
             Jobs = {"BLM"},
             Type = "Feet",
             Stats = {
                 DEF = 17,
-                INT = 10,
+                INT = 8,
                 Enmity = -10,
                 DarkMagicSkill = 15,
             }
@@ -203558,7 +203701,7 @@ return {
         },
         IgaKyahan = {
             Name = "Iga Kyahan",
-            Level = 81,
+            Level = 73,
             Id = 12100,
             Model = 294,
             Jobs = {"NIN"},
@@ -203570,7 +203713,7 @@ return {
         },
         IgaKyahan_1 = {
             Name = "Iga Kyahan +1",
-            Level = 81,
+            Level = 74,
             Id = 11256,
             Model = 294,
             Jobs = {"NIN"},
@@ -203585,7 +203728,7 @@ return {
         },
         IgaKyahan_2 = {
             Name = "Iga Kyahan +2",
-            Level = 81,
+            Level = 75,
             Id = 11156,
             Model = 294,
             Jobs = {"NIN"},
@@ -205188,7 +205331,7 @@ return {
         },
         LncrSchynbalds = {
             Name = "Lncr. Schynbalds",
-            Level = 81,
+            Level = 73,
             Id = 12101,
             Model = 295,
             Jobs = {"DRG"},
@@ -205202,7 +205345,7 @@ return {
         },
         LncrSchynbld_1 = {
             Name = "Lncr. Schynbld. +1",
-            Level = 81,
+            Level = 74,
             Id = 11257,
             Model = 295,
             Jobs = {"DRG"},
@@ -205212,12 +205355,12 @@ return {
                 VIT = 7,
                 Accuracy = 8,
                 Attack = 8,
-                Haste = 4,
+                Haste = 3,
             }
         },
         LncrSchynbld_2 = {
             Name = "Lncr. Schynbld. +2",
-            Level = 81,
+            Level = 75,
             Id = 11157,
             Model = 295,
             Jobs = {"DRG"},
@@ -205225,9 +205368,9 @@ return {
             Stats = {
                 DEF = 26,
                 VIT = 10,
-                Accuracy = 12,
+                Accuracy = 10,
                 Attack = 12,
-                Haste = 5,
+                Haste = 4,
             }
         },
         LordsSabatons = {
@@ -205911,7 +206054,7 @@ return {
         },
         MaviBasmak = {
             Name = "Mavi Basmak",
-            Level = 81,
+            Level = 73,
             Id = 12103,
             Model = 297,
             Jobs = {"BLU"},
@@ -205924,7 +206067,7 @@ return {
         },
         MaviBasmak_1 = {
             Name = "Mavi Basmak +1",
-            Level = 81,
+            Level = 74,
             Id = 11259,
             Model = 297,
             Jobs = {"BLU"},
@@ -205940,15 +206083,15 @@ return {
         },
         MaviBasmak_2 = {
             Name = "Mavi Basmak +2",
-            Level = 81,
+            Level = 75,
             Id = 11159,
             Model = 297,
             Jobs = {"BLU"},
             Type = "Feet",
             Stats = {
                 DEF = 23,
-                INT = 10,
-                MagicAccuracy = 8,
+                INT = 8,
+                MagicAccuracy = 7,
                 MagicAttackBonus = 8,
                 Enmity = -6,
                 BurstAffinityBonus = 10,
@@ -207030,7 +207173,7 @@ return {
         },
         NavarchsBottes = {
             Name = "Navarchs Bottes",
-            Level = 81,
+            Level = 73,
             Id = 12104,
             Model = 298,
             Jobs = {"COR"},
@@ -207332,7 +207475,7 @@ return {
         },
         NvrchBottes_1 = {
             Name = "Nvrch. Bottes +1",
-            Level = 81,
+            Level = 74,
             Id = 11260,
             Model = 298,
             Jobs = {"COR"},
@@ -207340,21 +207483,21 @@ return {
             Stats = {
                 DEF = 20,
                 AGI = 10,
-                MagicAccuracy = 8,
+                MagicAccuracy = 7,
                 CoursersRollBonus = 50,
             }
         },
         NvrchBottes_2 = {
             Name = "Nvrch. Bottes +2",
-            Level = 81,
+            Level = 75,
             Id = 11160,
             Model = 298,
             Jobs = {"COR"},
             Type = "Feet",
             Stats = {
                 DEF = 22,
-                AGI = 13,
-                MagicAccuracy = 10,
+                AGI = 10,
+                MagicAccuracy = 7,
                 CoursersRollBonus = 100,
             }
         },
@@ -207607,7 +207750,7 @@ return {
         },
         OrisonDuckbills = {
             Name = "Orison Duckbills",
-            Level = 81,
+            Level = 73,
             Id = 12090,
             Model = 284,
             Jobs = {"WHM"},
@@ -207621,7 +207764,7 @@ return {
         },
         OrsnDuckbills_1 = {
             Name = "Orsn. Duckbills +1",
-            Level = 81,
+            Level = 74,
             Id = 11246,
             Model = 284,
             Jobs = {"WHM"},
@@ -207637,7 +207780,7 @@ return {
         },
         OrsnDuckbills_2 = {
             Name = "Orsn. Duckbills +2",
-            Level = 81,
+            Level = 75,
             Id = 11146,
             Model = 284,
             Jobs = {"WHM"},
@@ -209134,34 +209277,34 @@ return {
         },
         RaidPoulaines_1 = {
             Name = "Raid. Poulaines +1",
-            Level = 81,
+            Level = 74,
             Id = 11249,
             Model = 287,
             Jobs = {"THF"},
             Type = "Feet",
             Stats = {
                 DEF = 21,
-                AGI = 12,
+                AGI = 10,
                 Evasion = 9,
             }
         },
         RaidPoulaines_2 = {
             Name = "Raid. Poulaines +2",
-            Level = 81,
+            Level = 75,
             Id = 11149,
             Model = 287,
             Jobs = {"THF"},
             Type = "Feet",
             Stats = {
                 DEF = 23,
-                AGI = 15,
+                AGI = 10,
                 Evasion = 11,
                 TreasureHunter = 1,
             }
         },
         RaidersPoulaines = {
             Name = "Raiders Poulaines",
-            Level = 81,
+            Level = 73,
             Id = 12093,
             Model = 287,
             Jobs = {"THF"},
@@ -209313,7 +209456,7 @@ return {
         },
         RavagersCalligae = {
             Name = "Ravagers Calligae",
-            Level = 81,
+            Level = 73,
             Id = 12088,
             Model = 282,
             Jobs = {"WAR"},
@@ -209871,7 +210014,7 @@ return {
         },
         RvgCalligae_1 = {
             Name = "Rvg. Calligae +1",
-            Level = 81,
+            Level = 74,
             Id = 11244,
             Model = 282,
             Jobs = {"WAR"},
@@ -209879,13 +210022,13 @@ return {
             Stats = {
                 DEF = 25,
                 Accuracy = 5,
-                Haste = 4,
+                Haste = 3,
                 Retaliation = 10,
             }
         },
         RvgCalligae_2 = {
             Name = "Rvg. Calligae +2",
-            Level = 81,
+            Level = 75,
             Id = 11144,
             Model = 282,
             Jobs = {"WAR"},
@@ -209893,7 +210036,7 @@ return {
             Stats = {
                 DEF = 27,
                 Accuracy = 7,
-                Haste = 5,
+                Haste = 4,
                 CriticalHitDamage = 10,
                 Retaliation = 20,
             }
@@ -210280,7 +210423,7 @@ return {
         },
         SavantsLoafers = {
             Name = "Savants Loafers",
-            Level = 81,
+            Level = 73,
             Id = 12107,
             Model = 306,
             Jobs = {"SCH"},
@@ -211856,7 +211999,7 @@ return {
         },
         SvntLoafers_1 = {
             Name = "Svnt. Loafers +1",
-            Level = 81,
+            Level = 74,
             Id = 11263,
             Model = 306,
             Jobs = {"SCH"},
@@ -211870,7 +212013,7 @@ return {
         },
         SvntLoafers_2 = {
             Name = "Svnt. Loafers +2",
-            Level = 81,
+            Level = 75,
             Id = 11163,
             Model = 306,
             Jobs = {"SCH"},
@@ -211914,7 +212057,7 @@ return {
         },
         SylvanBottillons = {
             Name = "Sylvan Bottillons",
-            Level = 81,
+            Level = 73,
             Id = 12098,
             Model = 292,
             Jobs = {"RNG"},
@@ -211926,7 +212069,7 @@ return {
         },
         SylvanBottln_1 = {
             Name = "Sylvan Bottln. +1",
-            Level = 81,
+            Level = 74,
             Id = 11254,
             Model = 292,
             Jobs = {"RNG"},
@@ -211940,14 +212083,14 @@ return {
         },
         SylvanBottln_2 = {
             Name = "Sylvan Bottln. +2",
-            Level = 81,
+            Level = 75,
             Id = 11154,
             Model = 292,
             Jobs = {"RNG"},
             Type = "Feet",
             Stats = {
                 DEF = 22,
-                AGI = 15,
+                AGI = 10,
                 Enmity = -8,
                 MarksmanshipSkill = 7,
             }
@@ -212120,7 +212263,7 @@ return {
         },
         TantraGaiters = {
             Name = "Tantra Gaiters",
-            Level = 81,
+            Level = 73,
             Id = 12089,
             Model = 283,
             Jobs = {"MNK"},
@@ -212133,7 +212276,7 @@ return {
         },
         TantraGaiters_1 = {
             Name = "Tantra Gaiters +1",
-            Level = 81,
+            Level = 74,
             Id = 11245,
             Model = 283,
             Jobs = {"MNK"},
@@ -212148,7 +212291,7 @@ return {
         },
         TantraGaiters_2 = {
             Name = "Tantra Gaiters +2",
-            Level = 81,
+            Level = 75,
             Id = 11145,
             Model = 283,
             Jobs = {"MNK"},
@@ -212234,6 +212377,21 @@ return {
                 CHR = 10,
                 Haste = 3,
                 Enmity = -6,
+            }
+        },
+        TelluristBoots = {
+            Name = "Tellurist Boots",
+            Level = 52,
+            Id = 39220,
+            Model = 351,
+            Jobs = {"GEO"},
+            Type = "Feet",
+            Stats = {
+                DEF = 10,
+                MP = 10,
+                AGI = 3,
+                Enmity = -1,
+                HandbellSkill = 3,
             }
         },
         TemachtianiBoots = {
@@ -212910,7 +213068,7 @@ return {
         },
         UnkaiSuneAte = {
             Name = "Unkai Sune-ate",
-            Level = 81,
+            Level = 73,
             Id = 12099,
             Model = 293,
             Jobs = {"SAM"},
@@ -212924,7 +213082,7 @@ return {
         },
         UnkaiSuneAte_1 = {
             Name = "Unkai Sune-ate +1",
-            Level = 81,
+            Level = 74,
             Id = 11255,
             Model = 293,
             Jobs = {"SAM"},
@@ -212940,7 +213098,7 @@ return {
         },
         UnkaiSuneAte_2 = {
             Name = "Unkai Sune-ate +2",
-            Level = 81,
+            Level = 75,
             Id = 11155,
             Model = 293,
             Jobs = {"SAM"},
@@ -212948,7 +213106,7 @@ return {
             Stats = {
                 DEF = 28,
                 STR = 8,
-                Accuracy = 15,
+                Accuracy = 10,
                 Attack = 15,
                 StoreTP = 6,
                 SengikoriBonus = 10,

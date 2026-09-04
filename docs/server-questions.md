@@ -84,8 +84,10 @@ Still unknown:
 | mod | carriers | note |
 |---|---|---|
 | 2017 | Artisans Ring +1 (28566, =3) | its text is fully explained by SYNTH_SUCCESS_RATE + the ANTI_HQ set, so 2017 has no visible effect |
+| 2019 | `Tonzoffun` (22107, =20) | appeared in the 2026-09-04 full sweep, on the one item the same patch renamed from `Ullr`. Sole carrier, so nothing to triangulate against |
 
-**Question:** what is 2017? A name is enough — dlac derives the rest.
+**Question:** what is 2017? A name is enough — dlac derives the rest. Same for **2019**,
+which arrived with the Abyssea patch on a renamed Empyrean-tier bow.
 
 **What dlac does meanwhile:** 2004/2005 stay out of the catalog (crawl-time mapping is
 Henrik's call at the next apicrawl); the fishing panel shows them as "Expert Angler"
@@ -277,3 +279,31 @@ not "corrected" to the intended percent: `modmap.py` divides `HASTE_GEAR` by 100
 unconditionally, and relaxing that to the mixed `abs >= 100` rule the BASIS100 family uses
 would make dlac promise haste the server does not grant. Sakpatas Fists is Lv99 and so
 dormant on a Lv75 server; set 76 is live.
+
+---
+
+## 11. All nine `Farsha` rows have a job mask shifted one bit left — OPEN (almost certainly a bug)
+
+The 2026-09-04 full sweep found 19 items whose job mask changed. Ten of them changed the
+way the RUN/GEO rollout predicts — `Caladbolg`/`Sunblade`/`Albion` **gained RUN**,
+`Gambanteinn`/`Rageblow`/`Culacula` **gained GEO**, mask unchanged otherwise. The other
+nine are every `Farsha` in the table (19401, 19460, 19538, 19636, 19809, 19857, 20794,
+20795, 21752), and all nine moved from `257` to `514`:
+
+    257 = 0b1_0000_0001  ->  WAR + BST      (bits 0, 8)
+    514 = 0b10_0000_0010  ->  MNK + BRD     (bits 1, 9)
+
+`514 == 257 << 1` exactly, on all nine rows, while the ten legitimate changes in the same
+sweep kept their bits and only OR'd a new job in. A great axe becoming MNK/BRD is not a
+plausible re-purpose, and nine identical shifts is not a coincidence — it reads as an
+off-by-one in whatever migration re-encoded these masks.
+
+**Question:** is `Farsha` meant to be MNK/BRD now? If not, its mask needs `>> 1`, and it is
+worth checking whatever produced it for other one-bit victims — the sweep only covers ids
+dlac caches, so this may not be the only family affected.
+
+**What dlac does meanwhile:** ships what the server says — `Farsha` is MNK/BRD in
+`catalog.lua`, because the server is what enforces equippability and a catalog that
+disagrees would just make dlac try to equip something the server strips. The visible cost
+is that a WAR or BST with a Farsha in a saved set now gets it refused, which is exactly
+what happens to them in game.
