@@ -116,7 +116,7 @@ return {
             },
             Afflictors = {
                 Name = "Afflictors",
-                Level = 77,
+                Level = 73,
                 Id = 16428,
                 Model = 499,
                 Jobs = {"WAR", "MNK", "BST", "NIN", "PUP"},
@@ -6442,14 +6442,14 @@ return {
             },
             AuricDagger = {
                 Name = "Auric Dagger",
-                Level = 80,
+                Level = 71,
                 Id = 17626,
                 Model = 517,
                 Jobs = {"THF", "DNC"},
                 OneHanded = true,
                 Type = "Dagger",
                 Stats = {
-                    DMG = 39,
+                    DMG = 35,
                     Delay = 201,
                     SubtleBlow = 10,
                     DualWield = 5,
@@ -9767,7 +9767,7 @@ return {
             },
             Nguul = {
                 Name = "Nguul",
-                Level = 78,
+                Level = 72,
                 Id = 16488,
                 Model = 157,
                 Jobs = {"WAR", "THF", "PLD", "DRK", "BRD", "RNG", "SAM", "NIN", "DRG", "COR", "PUP", "DNC"},
@@ -18534,14 +18534,14 @@ return {
             },
             Tyrfing = {
                 Name = "Tyrfing",
-                Level = 78,
+                Level = 74,
                 Id = 16540,
                 Model = 518,
                 Jobs = {"WAR", "DRK", "BLU"},
                 OneHanded = true,
                 Type = "Sword",
                 Stats = {
-                    DMG = 49,
+                    DMG = 46,
                     Delay = 236,
                     MP = 25,
                 }
@@ -24078,14 +24078,14 @@ return {
             },
             GlyphAxe = {
                 Name = "Glyph Axe",
-                Level = 77,
+                Level = 72,
                 Id = 16654,
                 Model = 519,
                 Jobs = {"BST"},
                 OneHanded = true,
                 Type = "Axe",
                 Stats = {
-                    DMG = 57,
+                    DMG = 48,
                     Delay = 276,
                 }
             },
@@ -28927,14 +28927,14 @@ return {
             },
             VermeilBhuj = {
                 Name = "Vermeil Bhuj",
-                Level = 80,
+                Level = 74,
                 Id = 18510,
                 Model = 520,
                 Jobs = {"WAR", "DRK", "RUN"},
                 OneHanded = false,
                 Type = "GreatAxe",
                 Stats = {
-                    DMG = 104,
+                    DMG = 96,
                     Delay = 504,
                     STR = 8,
                 }
@@ -31348,14 +31348,14 @@ return {
             },
             PlagaScythe = {
                 Name = "Plaga Scythe",
-                Level = 76,
+                Level = 71,
                 Id = 18961,
                 Model = 521,
                 Jobs = {"DRK"},
                 OneHanded = false,
                 Type = "Scythe",
                 Stats = {
-                    DMG = 106,
+                    DMG = 99,
                     Delay = 528,
                 }
             },
@@ -36962,14 +36962,14 @@ return {
             },
             Hochomasamune = {
                 Name = "Hochomasamune",
-                Level = 80,
+                Level = 74,
                 Id = 19282,
                 Model = 522,
                 Jobs = {"NIN"},
                 OneHanded = true,
                 Type = "Katana",
                 Stats = {
-                    DMG = 45,
+                    DMG = 38,
                     Delay = 222,
                     DEX = 10,
                     FastCast = 10,
@@ -41878,14 +41878,14 @@ return {
             },
             Scathacha = {
                 Name = "Scathacha",
-                Level = 80,
+                Level = 74,
                 Id = 17808,
                 Model = 523,
                 Jobs = {"SAM"},
                 OneHanded = false,
                 Type = "GreatKatana",
                 Stats = {
-                    DMG = 91,
+                    DMG = 82,
                     Delay = 420,
                     STR = 5,
                     CHR = 20,
@@ -45999,14 +45999,14 @@ return {
             },
             Owleyes = {
                 Name = "Owleyes",
-                Level = 80,
+                Level = 74,
                 Id = 17113,
                 Model = 524,
                 Jobs = {"WHM", "BLM", "SMN", "SCH", "GEO"},
                 OneHanded = true,
                 Type = "Club",
                 Stats = {
-                    DMG = 22,
+                    DMG = 20,
                     Delay = 217,
                     Refresh = 1,
                     DT = 10,
@@ -55998,7 +55998,7 @@ return {
         },
         EisenGrip = {
             Name = "Eisen Grip",
-            Level = 76,
+            Level = 70,
             Id = 19050,
             Jobs = {"WAR", "PLD", "DRK", "BST", "SAM", "DRG"},
             Type = "Sub",
@@ -58657,7 +58657,7 @@ return {
         },
         SeigneurShield = {
             Name = "Seigneur Shield",
-            Level = 77,
+            Level = 72,
             Id = 12320,
             Model = 58,
             Jobs = {"WAR", "PLD"},
@@ -62195,14 +62195,14 @@ return {
             },
             SiegeBow = {
                 Name = "Siege Bow",
-                Level = 79,
+                Level = 73,
                 Id = 17185,
                 Model = 101,
                 Jobs = {"RNG"},
                 Type = "Archery",
                 Pair = "25:4",
                 Stats = {
-                    DMG = 83,
+                    DMG = 78,
                     Delay = 540,
                     STR = 3,
                     Enmity = -5,
@@ -75516,7 +75516,7 @@ return {
         },
         ThewBomblet = {
             Name = "Thew Bomblet",
-            Level = 78,
+            Level = 73,
             Id = 19249,
             Jobs = {"MNK", "THF", "SAM", "DRG", "PUP", "DNC", "RUN"},
             Type = "Ammo",
@@ -75524,7 +75524,7 @@ return {
             Stats = {
                 Delay = 999,
                 STR = 2,
-                Attack = 8,
+                Attack = 7,
             }
         },
         ThrTomahawk = {
@@ -75980,7 +75980,7 @@ return {
         },
         Witchstone = {
             Name = "Witchstone",
-            Level = 79,
+            Level = 73,
             Id = 19250,
             Jobs = {"WHM", "BLM", "RDM", "BRD", "SMN", "SCH", "GEO"},
             Type = "Ammo",
@@ -76709,7 +76709,7 @@ return {
         },
         AiasBonnet = {
             Name = "Aias Bonnet",
-            Level = 84,
+            Level = 73,
             Id = 11784,
             Model = 134,
             Jobs = {"MNK", "THF", "RNG", "NIN", "BLU", "COR", "DNC", "RUN"},
@@ -78055,16 +78055,17 @@ return {
         },
         AuroreBeret = {
             Name = "Aurore Beret",
-            Level = 78,
+            Level = 75,
             Id = 11504,
             Model = 241,
             Jobs = {"MNK", "THF", "BST", "RNG", "NIN", "BLU", "COR", "PUP", "DNC", "RUN"},
             Type = "Head",
             Stats = {
-                DEF = 29,
-                DEX = 4,
-                AGI = 4,
-                Haste = 4,
+                DEF = 26,
+                DEX = 3,
+                AGI = 3,
+                Haste = 3,
+                Snapshot = 2,
             }
         },
         AuroreBeret_1 = {
@@ -78810,14 +78811,14 @@ return {
         },
         BersailCap = {
             Name = "Bersail Cap",
-            Level = 79,
+            Level = 73,
             Id = 11526,
             Model = 14,
             Jobs = {"MNK", "RDM", "THF", "BST", "RNG", "NIN", "DRG", "COR", "PUP", "DNC", "RUN"},
             Type = "Head",
             Stats = {
-                DEF = 13,
-                AGI = 8,
+                DEF = 12,
+                AGI = 6,
                 RangedAccuracy = 8,
             }
         },
@@ -79629,18 +79630,18 @@ return {
         },
         BriskMask = {
             Name = "Brisk Mask",
-            Level = 79,
+            Level = 74,
             Id = 11523,
             Model = 94,
             Jobs = {"MNK", "RDM", "THF", "BST", "RNG", "NIN", "DRG", "COR", "PUP", "DNC", "RUN"},
             Type = "Head",
             Stats = {
-                DEF = 26,
-                Accuracy = 6,
-                Attack = 6,
+                DEF = 25,
+                Accuracy = 5,
+                Attack = 5,
                 Evasion = -12,
                 Haste = 4,
-                StoreTP = 4,
+                StoreTP = 3,
             }
         },
         BronzeCap = {
@@ -80177,7 +80178,7 @@ return {
         },
         CenobitesCoiffe = {
             Name = "Cenobites Coiffe",
-            Level = 86,
+            Level = 73,
             Id = 11800,
             Model = 18,
             Jobs = {"WHM", "BLM", "RDM", "BRD", "SMN", "SCH", "GEO"},
@@ -85341,30 +85342,32 @@ return {
         },
         HakkeHachimaki = {
             Name = "Hakke Hachimaki",
-            Level = 78,
+            Level = 72,
             Id = 11519,
             Model = 216,
             Jobs = {"All"},
             Type = "Head",
             Stats = {
-                DEF = 12,
-                Accuracy = 12,
+                DEF = 10,
+                Accuracy = 5,
                 LightResistance = 10,
                 StaffSkill = 5,
+                ConserveTP = 5,
             }
         },
         HakoHachimaki = {
             Name = "Hako Hachimaki",
-            Level = 78,
+            Level = 72,
             Id = 11511,
             Model = 216,
             Jobs = {"All"},
             Type = "Head",
             Stats = {
-                DEF = 12,
-                Accuracy = 12,
+                DEF = 10,
+                Accuracy = 5,
                 IceResistance = 10,
                 GreatSwordSkill = 5,
+                ConserveTP = 5,
             }
         },
         HalitusHelm = {
@@ -85653,7 +85656,7 @@ return {
         },
         HecatesCrown = {
             Name = "Hecates Crown",
-            Level = 78,
+            Level = 70,
             Id = 11527,
             Model = 57,
             Jobs = {"WHM", "BLM", "RDM", "BRD", "SMN", "SCH", "GEO"},
@@ -85663,6 +85666,7 @@ return {
                 MP = 23,
                 MagicAccuracy = -2,
                 MagicAttackBonus = 4,
+                MagicEvasion = 4,
             }
         },
         HecatombCap = {
@@ -85756,18 +85760,18 @@ return {
         },
         HerosGalea = {
             Name = "Heros Galea",
-            Level = 80,
+            Level = 75,
             Id = 11507,
             Model = 179,
             Jobs = {"WAR", "PLD"},
             Type = "Head",
             Stats = {
-                DEF = 41,
+                DEF = 39,
                 HP = 45,
-                VIT = 11,
+                VIT = 10,
                 AGI = -7,
-                CHR = 11,
-                Enmity = 8,
+                CHR = 10,
+                Enmity = 7,
             }
         },
         HervorGalea = {
@@ -86091,7 +86095,7 @@ return {
         },
         HikmetHat = {
             Name = "Hikmet Hat",
-            Level = 83,
+            Level = 72,
             Id = 11787,
             Model = 101,
             Jobs = {"WHM", "BLM", "RDM", "SMN", "BLU"},
@@ -87010,16 +87014,17 @@ return {
         },
         IssenHachimaki = {
             Name = "Issen Hachimaki",
-            Level = 78,
+            Level = 72,
             Id = 11509,
             Model = 216,
             Jobs = {"All"},
             Type = "Head",
             Stats = {
-                DEF = 12,
-                Accuracy = 12,
+                DEF = 10,
+                Accuracy = 5,
                 ThunderResistance = 10,
                 DaggerSkill = 5,
+                ConserveTP = 5,
             }
         },
         IuitlHeadgear = {
@@ -87378,16 +87383,17 @@ return {
         },
         KanjaHachimaki = {
             Name = "Kanja Hachimaki",
-            Level = 78,
+            Level = 72,
             Id = 11516,
             Model = 216,
             Jobs = {"All"},
             Type = "Head",
             Stats = {
-                DEF = 12,
-                Accuracy = 12,
+                DEF = 10,
+                Accuracy = 5,
                 WindResistance = 10,
                 KatanaSkill = 5,
+                ConserveTP = 5,
             }
         },
         KaragozCapello = {
@@ -87681,31 +87687,32 @@ return {
         },
         KengoHachimaki = {
             Name = "Kengo Hachimaki",
-            Level = 78,
+            Level = 72,
             Id = 11517,
             Model = 216,
             Jobs = {"All"},
             Type = "Head",
             Stats = {
-                DEF = 12,
-                Accuracy = 12,
+                DEF = 10,
+                Accuracy = 5,
                 FireResistance = 10,
                 GreatKatanaSkill = 5,
+                ConserveTP = 5,
             }
         },
         KenshoHachimaki = {
             Name = "Kensho Hachimaki",
-            Level = 78,
+            Level = 72,
             Id = 11510,
             Model = 216,
             Jobs = {"All"},
             Type = "Head",
             Stats = {
-                DEF = 12,
-                Accuracy = 12,
-                StoreTP = 5,
+                DEF = 10,
+                Accuracy = 5,
                 EarthResistance = 10,
                 SwordSkill = 5,
+                ConserveTP = 5,
             }
         },
         KersMask = {
@@ -88190,14 +88197,14 @@ return {
         },
         LaurelWreath = {
             Name = "Laurel Wreath",
-            Level = 84,
+            Level = 73,
             Id = 11786,
             Model = 57,
             Jobs = {"WHM", "BLM", "RDM", "SMN", "BLU", "SCH", "GEO"},
             Type = "Head",
             Stats = {
                 DEF = 24,
-                MagicAccuracy = 10,
+                MagicAccuracy = 4,
                 ConserveMP = 8,
                 ConvertHPtoMP = 15,
             }
@@ -88338,13 +88345,13 @@ return {
         },
         LightsomeCap = {
             Name = "Lightsome Cap",
-            Level = 77,
+            Level = 73,
             Id = 11522,
             Model = 14,
             Jobs = {"WAR", "THF", "PLD", "DRK", "BST", "BRD", "DRG", "RUN"},
             Type = "Head",
             Stats = {
-                DEF = 28,
+                DEF = 27,
                 DEX = 9,
                 Accuracy = -9,
             }
@@ -88775,13 +88782,13 @@ return {
         },
         MaestriaMask = {
             Name = "Maestria Mask",
-            Level = 77,
+            Level = 73,
             Id = 11525,
             Model = 16,
             Jobs = {"MNK", "THF", "BST", "RNG", "NIN", "BLU", "COR", "PUP", "DNC", "RUN"},
             Type = "Head",
             Stats = {
-                DEF = 28,
+                DEF = 25,
                 DEX = 3,
                 Accuracy = 11,
             }
@@ -90643,13 +90650,13 @@ return {
         },
         NoesisHelm = {
             Name = "Noesis Helm",
-            Level = 80,
+            Level = 75,
             Id = 11524,
             Model = 114,
             Jobs = {"WAR", "PLD", "DRK"},
             Type = "Head",
             Stats = {
-                DEF = 34,
+                DEF = 32,
                 HP = 25,
                 MP = 25,
                 MagicEvasion = 4,
@@ -91250,13 +91257,13 @@ return {
         },
         OstCerveliere = {
             Name = "Ost Cerveliere",
-            Level = 77,
+            Level = 73,
             Id = 12488,
             Model = 27,
             Jobs = {"DRK", "BST", "RNG", "SAM", "DRG"},
             Type = "Head",
             Stats = {
-                DEF = 35,
+                DEF = 30,
                 STR = 6,
                 MND = 6,
                 CHR = 6,
@@ -91662,17 +91669,17 @@ return {
         },
         PerleSalade = {
             Name = "Perle Salade",
-            Level = 78,
+            Level = 75,
             Id = 11503,
             Model = 239,
             Jobs = {"WAR", "PLD", "DRK", "BST", "SAM", "DRG"},
             Type = "Head",
             Stats = {
-                DEF = 37,
-                STR = 5,
-                VIT = 5,
+                DEF = 33,
+                STR = 4,
+                VIT = 4,
                 Attack = 7,
-                Haste = 3,
+                Haste = 2,
             }
         },
         PerleSalade_1 = {
@@ -93054,16 +93061,17 @@ return {
         },
         RekkaHachimaki = {
             Name = "Rekka Hachimaki",
-            Level = 78,
+            Level = 72,
             Id = 11514,
             Model = 216,
             Jobs = {"All"},
             Type = "Head",
             Stats = {
-                DEF = 12,
-                Accuracy = 12,
+                DEF = 10,
+                Accuracy = 5,
                 FireResistance = 10,
                 ScytheSkill = 5,
+                ConserveTP = 5,
             }
         },
         RenegadeBeret = {
@@ -93394,16 +93402,17 @@ return {
         },
         RokugoHachimaki = {
             Name = "Rokugo Hachimaki",
-            Level = 78,
+            Level = 72,
             Id = 11518,
             Model = 216,
             Jobs = {"All"},
             Type = "Head",
             Stats = {
-                DEF = 12,
-                Accuracy = 12,
-                ThunderResistance = 10,
+                DEF = 10,
+                Accuracy = 5,
+                IceResistance = 10,
                 ClubSkill = 5,
+                ConserveTP = 5,
             }
         },
         RoshiJinpachi = {
@@ -93623,16 +93632,17 @@ return {
         },
         RyoshiHachimaki = {
             Name = "Ryoshi Hachimaki",
-            Level = 78,
+            Level = 72,
             Id = 11512,
             Model = 216,
             Jobs = {"All"},
             Type = "Head",
             Stats = {
-                DEF = 12,
-                Accuracy = 12,
+                DEF = 10,
+                Accuracy = 5,
                 LightResistance = 10,
                 AxeSkill = 5,
+                ConserveTP = 5,
             }
         },
         RyuoSomen = {
@@ -93733,16 +93743,17 @@ return {
         },
         SaikaHachimaki = {
             Name = "Saika Hachimaki",
-            Level = 78,
+            Level = 72,
             Id = 11521,
             Model = 216,
             Jobs = {"All"},
             Type = "Head",
             Stats = {
-                DEF = 12,
-                RangedAccuracy = 12,
+                DEF = 10,
+                RangedAccuracy = 5,
                 WaterResistance = 10,
                 MarksmanshipSkill = 5,
+                ConserveTP = 5,
             }
         },
         SakonjiKabuto = {
@@ -94222,16 +94233,17 @@ return {
         },
         SenshinHachimaki = {
             Name = "Senshin Hachimaki",
-            Level = 78,
+            Level = 72,
             Id = 11513,
             Model = 216,
             Jobs = {"All"},
             Type = "Head",
             Stats = {
-                DEF = 12,
-                Accuracy = 12,
-                WindResistance = 10,
+                DEF = 10,
+                Accuracy = 5,
+                EarthResistance = 10,
                 GreatAxeSkill = 5,
+                ConserveTP = 5,
             }
         },
         ShabtiArmet = {
@@ -94513,16 +94525,17 @@ return {
         },
         ShitotsuHachimaki = {
             Name = "Shitotsu Hachimaki",
-            Level = 78,
+            Level = 72,
             Id = 11515,
             Model = 216,
             Jobs = {"All"},
             Type = "Head",
             Stats = {
-                DEF = 12,
-                Accuracy = 12,
+                DEF = 10,
+                Accuracy = 5,
                 ThunderResistance = 10,
                 PolearmSkill = 5,
+                ConserveTP = 5,
             }
         },
         ShnHachigane_1 = {
@@ -94639,16 +94652,17 @@ return {
         },
         ShuntenHachimaki = {
             Name = "Shunten Hachimaki",
-            Level = 78,
+            Level = 72,
             Id = 11520,
             Model = 216,
             Jobs = {"All"},
             Type = "Head",
             Stats = {
-                DEF = 12,
-                RangedAccuracy = 12,
+                DEF = 10,
+                RangedAccuracy = 5,
                 WindResistance = 10,
                 ArcherySkill = 5,
+                ConserveTP = 5,
             }
         },
         SigynsVisor = {
@@ -96016,16 +96030,16 @@ return {
         },
         TealChapeau = {
             Name = "Teal Chapeau",
-            Level = 78,
+            Level = 75,
             Id = 11505,
             Model = 240,
             Jobs = {"WHM", "BLM", "RDM", "BRD", "SMN", "BLU", "PUP", "SCH", "GEO", "RUN"},
             Type = "Head",
             Stats = {
-                DEF = 22,
+                DEF = 20,
                 HP = 17,
-                INT = 6,
-                MND = 6,
+                INT = 5,
+                MND = 5,
                 Enmity = -2,
             }
         },
@@ -96443,16 +96457,17 @@ return {
         },
         TokonHachimaki = {
             Name = "Tokon Hachimaki",
-            Level = 78,
+            Level = 72,
             Id = 11508,
             Model = 216,
             Jobs = {"All"},
             Type = "Head",
             Stats = {
-                DEF = 12,
-                Accuracy = 12,
+                DEF = 10,
+                Accuracy = 5,
                 WaterResistance = 10,
                 HandToHandSkill = 5,
+                ConserveTP = 5,
             }
         },
         ToraHachimaki = {
@@ -96694,21 +96709,21 @@ return {
         },
         TwilightHelm = {
             Name = "Twilight Helm",
-            Level = 90,
+            Level = 75,
             Id = 11798,
             Model = 103,
             Jobs = {"WAR", "PLD", "DRK", "BST", "SAM", "DRG"},
             Type = "Head",
             Stats = {
                 DEF = 41,
-                STR = 10,
-                DEX = 10,
+                STR = 9,
+                DEX = 8,
                 VIT = 10,
-                AGI = 10,
-                INT = 10,
-                MND = 10,
-                CHR = 10,
-                Attack = 25,
+                AGI = 8,
+                INT = 9,
+                MND = 9,
+                CHR = 8,
+                Attack = 10,
                 Regen = 2,
             }
         },
@@ -97025,22 +97040,22 @@ return {
         },
         VarangianHelm = {
             Name = "Varangian Helm",
-            Level = 78,
+            Level = 74,
             Id = 11506,
             Model = 230,
             Jobs = {"WAR", "PLD", "DRK", "BST", "SAM", "NIN", "DRG"},
             Type = "Head",
             Stats = {
-                DEF = 35,
-                STR = 12,
+                DEF = 27,
+                STR = 10,
                 Accuracy = -20,
-                Attack = 24,
+                Attack = 20,
                 IceResistance = 20,
             }
         },
         VeloceZuchetto = {
             Name = "Veloce Zuchetto",
-            Level = 85,
+            Level = 74,
             Id = 11785,
             Model = 136,
             Jobs = {"WAR", "PLD", "DRK", "SAM", "DRG"},
@@ -97048,8 +97063,8 @@ return {
             Stats = {
                 DEF = 28,
                 Attack = -6,
-                Haste = 6,
-                SubtleBlow = -6,
+                Haste = 3,
+                SubtleBlow = -4,
             }
         },
         VelvetHat = {
@@ -98521,14 +98536,14 @@ return {
         },
         ZelusTiara = {
             Name = "Zelus Tiara",
-            Level = 90,
+            Level = 75,
             Id = 11799,
             Model = 137,
             Jobs = {"All"},
             Type = "Head",
             Stats = {
                 Evasion = -5,
-                Haste = 8,
+                Haste = 3,
             }
         },
         ZenithCrown = {
@@ -99002,7 +99017,7 @@ return {
         },
         ArctiersTorque = {
             Name = "Arctiers Torque",
-            Level = 80,
+            Level = 75,
             Id = 11606,
             Jobs = {"WAR", "RDM", "THF", "PLD", "DRK", "BST", "BRD", "RNG", "SAM", "NIN", "DRG", "BLU", "COR", "DNC", "RUN"},
             Type = "Neck",
@@ -99081,7 +99096,7 @@ return {
         },
         ArtemissMedal = {
             Name = "Artemiss Medal",
-            Level = 77,
+            Level = 73,
             Id = 11607,
             Jobs = {"All"},
             Type = "Neck",
@@ -99287,7 +99302,7 @@ return {
         },
         BarcarolleMedal = {
             Name = "Barcarolle Medal",
-            Level = 78,
+            Level = 73,
             Id = 11608,
             Jobs = {"BRD"},
             Type = "Neck",
@@ -99817,7 +99832,7 @@ return {
         },
         CharisNecklace = {
             Name = "Charis Necklace",
-            Level = 80,
+            Level = 75,
             Id = 11603,
             Jobs = {"DNC"},
             Type = "Neck",
@@ -99904,12 +99919,12 @@ return {
         },
         ChrysTorque = {
             Name = "Chrys. Torque",
-            Level = 83,
+            Level = 72,
             Id = 11621,
             Jobs = {"WHM", "BLM", "BRD", "SMN", "SCH", "GEO"},
             Type = "Neck",
             Stats = {
-                MP = 30,
+                MP = 26,
             }
         },
         CindercallChoker = {
@@ -99925,7 +99940,7 @@ return {
         },
         CirqueNecklace = {
             Name = "Cirque Necklace",
-            Level = 80,
+            Level = 75,
             Id = 11602,
             Jobs = {"PUP"},
             Type = "Neck",
@@ -100157,7 +100172,7 @@ return {
         },
         CorvusTorque = {
             Name = "Corvus Torque",
-            Level = 79,
+            Level = 73,
             Id = 11604,
             Jobs = {"THF", "RNG", "COR"},
             Type = "Neck",
@@ -100178,13 +100193,13 @@ return {
         },
         CreedCollar = {
             Name = "Creed Collar",
-            Level = 80,
+            Level = 75,
             Id = 11595,
             Jobs = {"PLD"},
             Type = "Neck",
             Stats = {
                 Refresh = 1,
-                EnmityLossReduction = 1,
+                EnmityLossReduction = 5,
             }
         },
         CrestedTorque = {
@@ -100762,14 +100777,14 @@ return {
         },
         EstoqueursCollar = {
             Name = "Estoqueurs Collar",
-            Level = 80,
+            Level = 75,
             Id = 11594,
             Jobs = {"RDM"},
             Type = "Neck",
             Stats = {
                 HP = 20,
                 MP = 20,
-                MND = 8,
+                MND = 7,
             }
         },
         EtoileGorget = {
@@ -101179,12 +101194,12 @@ return {
         },
         GoetiaChain = {
             Name = "Goetia Chain",
-            Level = 80,
+            Level = 75,
             Id = 11593,
             Jobs = {"BLM"},
             Type = "Neck",
             Stats = {
-                INT = 7,
+                INT = 6,
                 MagicAccuracy = 4,
             }
         },
@@ -101459,7 +101474,7 @@ return {
         },
         IgaErimaki = {
             Name = "Iga Erimaki",
-            Level = 80,
+            Level = 75,
             Id = 11598,
             Jobs = {"NIN"},
             Type = "Neck",
@@ -101880,7 +101895,7 @@ return {
         },
         LancersTorque = {
             Name = "Lancers Torque",
-            Level = 80,
+            Level = 75,
             Id = 11599,
             Jobs = {"DRG"},
             Type = "Neck",
@@ -102069,7 +102084,7 @@ return {
         },
         MagoragaBeads = {
             Name = "Magoraga Beads",
-            Level = 90,
+            Level = 75,
             Id = 11627,
             Jobs = {"MNK", "RDM", "THF", "BST", "RNG", "NIN", "DRG", "COR", "PUP", "DNC", "RUN"},
             Type = "Neck",
@@ -102140,7 +102155,7 @@ return {
         },
         MaviScarf = {
             Name = "Mavi Scarf",
-            Level = 80,
+            Level = 75,
             Id = 11600,
             Jobs = {"BLU"},
             Type = "Neck",
@@ -102540,7 +102555,7 @@ return {
         },
         NavarchsChoker = {
             Name = "Navarchs Choker",
-            Level = 80,
+            Level = 75,
             Id = 11601,
             Jobs = {"COR"},
             Type = "Neck",
@@ -102707,13 +102722,13 @@ return {
         },
         NoeticTorque = {
             Name = "Noetic Torque",
-            Level = 83,
+            Level = 72,
             Id = 11623,
             Jobs = {"All"},
             Type = "Neck",
             Stats = {
                 MND = 4,
-                MagicAccuracy = 4,
+                MagicAccuracy = 2,
             }
         },
         NunaGorget = {
@@ -103201,7 +103216,7 @@ return {
         },
         RavagersGorget = {
             Name = "Ravagers Gorget",
-            Level = 80,
+            Level = 75,
             Id = 11591,
             Jobs = {"WAR"},
             Type = "Neck",
@@ -104041,13 +104056,13 @@ return {
         },
         SylvanScarf = {
             Name = "Sylvan Scarf",
-            Level = 80,
+            Level = 75,
             Id = 11596,
             Jobs = {"RNG"},
             Type = "Neck",
             Stats = {
                 AGI = 6,
-                RangedAccuracy = 8,
+                RangedAttack = 8,
                 Enmity = -3,
             }
         },
@@ -104085,7 +104100,7 @@ return {
         },
         TantraNecklace = {
             Name = "Tantra Necklace",
-            Level = 80,
+            Level = 75,
             Id = 11592,
             Jobs = {"MNK"},
             Type = "Neck",
@@ -104272,13 +104287,13 @@ return {
         },
         ToreroTorque = {
             Name = "Torero Torque",
-            Level = 86,
+            Level = 73,
             Id = 11626,
             Jobs = {"WAR", "MNK", "RDM", "THF", "PLD", "DRK", "BST", "BRD", "SAM", "NIN", "DRG", "BLU", "COR", "DNC", "RUN"},
             Type = "Neck",
             Stats = {
-                Evasion = 9,
-                SubtleBlow = 9,
+                Evasion = 4,
+                SubtleBlow = 4,
             }
         },
         Torque = {
@@ -104309,7 +104324,7 @@ return {
         },
         TwilightTorque = {
             Name = "Twilight Torque",
-            Level = 90,
+            Level = 75,
             Id = 11625,
             Jobs = {"All"},
             Type = "Neck",
@@ -104338,7 +104353,7 @@ return {
         },
         UnkaiNodowa = {
             Name = "Unkai Nodowa",
-            Level = 80,
+            Level = 75,
             Id = 11597,
             Jobs = {"SAM"},
             Type = "Neck",
@@ -104761,13 +104776,14 @@ return {
         },
         ZielCharm = {
             Name = "Ziel Charm",
-            Level = 80,
+            Level = 74,
             Id = 11605,
             Jobs = {"All"},
             Type = "Neck",
             Stats = {
                 Accuracy = 12,
                 Evasion = -8,
+                WeaponSkillAccuracy = 4,
             }
         },
     },
@@ -105736,13 +105752,13 @@ return {
         },
         BloodgemEarring = {
             Name = "Bloodgem Earring",
-            Level = 82,
+            Level = 73,
             Id = 11694,
             Jobs = {"All"},
             Type = "Ear",
             Stats = {
                 DEF = 3,
-                HP = 35,
+                HP = 15,
                 MP = 15,
             }
         },
@@ -106068,12 +106084,12 @@ return {
         },
         CentaurusEarring = {
             Name = "Centaurus Earring",
-            Level = 86,
+            Level = 73,
             Id = 11702,
             Jobs = {"WAR", "PLD", "DRK", "BST", "SAM", "NIN"},
             Type = "Ear",
             Stats = {
-                Attack = 10,
+                Attack = 5,
                 Evasion = -5,
             }
         },
@@ -106228,13 +106244,13 @@ return {
         },
         ClearviewEarring = {
             Name = "Clearview Earring",
-            Level = 87,
+            Level = 73,
             Id = 11699,
             Jobs = {"All"},
             Type = "Ear",
             Stats = {
-                RangedAccuracy = 4,
-                RangedAttack = 4,
+                RangedAccuracy = 2,
+                RangedAttack = 2,
             }
         },
         CmnEarring = {
@@ -107493,12 +107509,12 @@ return {
         },
         GiftedEarring = {
             Name = "Gifted Earring",
-            Level = 88,
+            Level = 74,
             Id = 11700,
             Jobs = {"WHM", "BLM", "RDM", "BRD", "SMN", "BLU", "SCH", "GEO"},
             Type = "Ear",
             Stats = {
-                MP = 45,
+                MP = 22,
                 ConserveMP = 3,
                 BloodBoon = 3,
             }
@@ -107615,7 +107631,7 @@ return {
         },
         GraiaiEarring = {
             Name = "Graiai Earring",
-            Level = 77,
+            Level = 72,
             Id = 16059,
             Jobs = {"All"},
             Type = "Ear",
@@ -107884,12 +107900,12 @@ return {
         },
         HecatesEarring = {
             Name = "Hecates Earring",
-            Level = 90,
+            Level = 75,
             Id = 11698,
             Jobs = {"All"},
             Type = "Ear",
             Stats = {
-                MagicAttackBonus = 6,
+                MagicAttackBonus = 5,
                 MagicCriticalHitRate = 3,
             }
         },
@@ -108303,7 +108319,7 @@ return {
         },
         KemasEarring = {
             Name = "Kemas Earring",
-            Level = 82,
+            Level = 73,
             Id = 11696,
             Jobs = {"MNK", "THF", "SAM", "DRG", "PUP", "DNC", "RUN"},
             Type = "Ear",
@@ -110451,13 +110467,13 @@ return {
         },
         SkaldBreloque = {
             Name = "Skald Breloque",
-            Level = 89,
+            Level = 75,
             Id = 11701,
             Jobs = {"MNK", "WHM", "BLM", "RDM", "THF", "DRK", "BRD", "RNG", "SMN", "BLU", "COR", "PUP", "DNC", "SCH", "GEO", "RUN"},
             Type = "Ear",
             Stats = {
                 MP = 10,
-                CHR = 3,
+                CHR = 2,
             }
         },
         SkulkEarring_1 = {
@@ -111460,12 +111476,12 @@ return {
         },
         VolleyEarring = {
             Name = "Volley Earring",
-            Level = 81,
+            Level = 73,
             Id = 11695,
             Jobs = {"THF", "BST", "RNG", "COR"},
             Type = "Ear",
             Stats = {
-                RangedAccuracy = 4,
+                RangedAccuracy = 2,
                 StoreTP = 2,
             }
         },
@@ -113778,19 +113794,19 @@ return {
         },
         AuroreDoublet = {
             Name = "Aurore Doublet",
-            Level = 78,
+            Level = 75,
             Id = 13760,
             Model = 241,
             Jobs = {"MNK", "THF", "BST", "RNG", "NIN", "BLU", "COR", "PUP", "DNC", "RUN"},
             Type = "Body",
             Stats = {
-                DEF = 56,
-                STR = 4,
+                DEF = 50,
+                STR = 3,
                 DEX = 4,
                 AGI = 4,
-                Accuracy = 8,
-                RangedAccuracy = 8,
-                Evasion = 8,
+                Accuracy = 5,
+                RangedAccuracy = 5,
+                Evasion = 7,
                 DoubleAttack = 2,
             }
         },
@@ -128258,17 +128274,17 @@ return {
         },
         PerleHauberk = {
             Name = "Perle Hauberk",
-            Level = 78,
+            Level = 75,
             Id = 13759,
             Model = 239,
             Jobs = {"WAR", "PLD", "DRK", "BST", "SAM", "DRG"},
             Type = "Body",
             Stats = {
-                DEF = 61,
-                STR = 8,
+                DEF = 55,
+                STR = 7,
                 DEX = 4,
-                Accuracy = 8,
-                Attack = 8,
+                Accuracy = 7,
+                Attack = 7,
                 CriticalHitRate = 2,
             }
         },
@@ -133021,20 +133037,20 @@ return {
         },
         TealSaio = {
             Name = "Teal Saio",
-            Level = 78,
+            Level = 75,
             Id = 13778,
             Model = 240,
             Jobs = {"WHM", "BLM", "RDM", "BRD", "SMN", "BLU", "PUP", "SCH", "GEO", "RUN"},
             Type = "Body",
             Stats = {
-                DEF = 48,
+                DEF = 45,
                 HP = 24,
                 MP = 24,
-                INT = 6,
-                MND = 6,
-                CHR = 6,
+                INT = 5,
+                MND = 5,
+                CHR = 5,
                 MagicAccuracy = 4,
-                MagicAttackBonus = 4,
+                MagicAttackBonus = 3,
             }
         },
         TealSaio_1 = {
@@ -133459,13 +133475,13 @@ return {
         },
         TimarliJawshan = {
             Name = "Timarli Jawshan",
-            Level = 79,
+            Level = 74,
             Id = 13791,
             Model = 203,
             Jobs = {"WAR", "PLD", "DRK", "DRG"},
             Type = "Body",
             Stats = {
-                DEF = 59,
+                DEF = 49,
                 HP = 22,
                 Haste = 2,
                 SubtleBlow = 6,
@@ -137719,13 +137735,13 @@ return {
         },
         AuroreGloves = {
             Name = "Aurore Gloves",
-            Level = 78,
+            Level = 75,
             Id = 12746,
             Model = 241,
             Jobs = {"MNK", "THF", "BST", "RNG", "NIN", "BLU", "COR", "PUP", "DNC", "RUN"},
             Type = "Hands",
             Stats = {
-                DEF = 21,
+                DEF = 19,
                 STR = 4,
                 AGI = 4,
                 Haste = 2,
@@ -144359,14 +144375,14 @@ return {
         },
         HeafocMitts = {
             Name = "Heafoc Mitts",
-            Level = 80,
+            Level = 75,
             Id = 15020,
             Model = 129,
             Jobs = {"WAR", "MNK", "RDM", "THF", "PLD", "DRK", "BST", "BRD", "SAM", "NIN", "DRG", "BLU", "COR", "DNC", "RUN"},
             Type = "Hands",
             Stats = {
                 DEF = 19,
-                STR = 13,
+                STR = 12,
                 DEX = -4,
                 Accuracy = -8,
             }
@@ -146878,13 +146894,13 @@ return {
         },
         LudicMitts = {
             Name = "Ludic Mitts",
-            Level = 80,
+            Level = 75,
             Id = 12741,
             Model = 14,
             Jobs = {"WAR", "THF", "PLD", "DRK", "BST", "BRD", "DRG", "RUN"},
             Type = "Hands",
             Stats = {
-                DEF = 27,
+                DEF = 24,
                 DEX = 8,
                 VIT = -8,
                 Attack = -15,
@@ -149039,13 +149055,13 @@ return {
         },
         OcelotGloves = {
             Name = "Ocelot Gloves",
-            Level = 80,
+            Level = 75,
             Id = 14887,
             Model = 231,
             Jobs = {"MNK", "THF", "BST", "RNG", "NIN", "BLU", "COR", "PUP", "DNC", "RUN"},
             Type = "Hands",
             Stats = {
-                DEF = 22,
+                DEF = 18,
                 DEX = 4,
                 AGI = 8,
                 Haste = 3,
@@ -149827,16 +149843,16 @@ return {
         },
         PerleMoufles = {
             Name = "Perle Moufles",
-            Level = 78,
+            Level = 75,
             Id = 12745,
             Model = 239,
             Jobs = {"WAR", "PLD", "DRK", "BST", "SAM", "DRG"},
             Type = "Hands",
             Stats = {
-                DEF = 23,
+                DEF = 21,
                 STR = 4,
                 DEX = 2,
-                Attack = 10,
+                Attack = 9,
                 Haste = 2,
             }
         },
@@ -150325,13 +150341,13 @@ return {
         },
         PraedaGauntlets = {
             Name = "Praeda Gauntlets",
-            Level = 77,
+            Level = 73,
             Id = 14042,
             Model = 202,
             Jobs = {"THF", "RNG", "COR"},
             Type = "Hands",
             Stats = {
-                DEF = 17,
+                DEF = 15,
                 MND = 5,
                 RangedAttack = 10,
                 Enmity = -5,
@@ -152150,15 +152166,15 @@ return {
         },
         SerpentesCuffs = {
             Name = "Serpentes Cuffs",
-            Level = 80,
+            Level = 75,
             Id = 15019,
             Model = 179,
             Jobs = {"WHM", "BLM", "RDM", "BRD", "SMN", "BLU", "SCH", "GEO"},
             Type = "Hands",
             Stats = {
-                DEF = 16,
-                HP = 17,
-                MP = 17,
+                DEF = 14,
+                HP = 10,
+                MP = 10,
             }
         },
         ShabGauntlets_1 = {
@@ -153272,16 +153288,16 @@ return {
         },
         SusurrusGauntlets = {
             Name = "Susurrus Gauntlets",
-            Level = 76,
+            Level = 71,
             Id = 14041,
             Model = 234,
             Jobs = {"WAR", "PLD", "DRK", "BST"},
             Type = "Hands",
             Stats = {
-                DEF = 25,
+                DEF = 21,
                 DEX = 4,
                 AGI = -8,
-                Accuracy = 11,
+                Accuracy = 10,
                 Enmity = 3,
             }
         },
@@ -153415,17 +153431,17 @@ return {
         },
         SymbiosGloves = {
             Name = "Symbios Gloves",
-            Level = 77,
+            Level = 72,
             Id = 15060,
             Model = 23,
             Jobs = {"BLM", "RDM", "SMN", "BLU"},
             Type = "Hands",
             Stats = {
-                DEF = 20,
+                DEF = 17,
                 STR = -4,
                 DEX = 4,
                 AGI = -4,
-                BlueMagicSkill = 5,
+                BlueMagicSkill = 3,
             }
         },
         TMCuffs_1 = {
@@ -153706,13 +153722,13 @@ return {
         },
         TealCuffs = {
             Name = "Teal Cuffs",
-            Level = 78,
+            Level = 75,
             Id = 12747,
             Model = 240,
             Jobs = {"WHM", "BLM", "RDM", "BRD", "SMN", "BLU", "PUP", "SCH", "GEO", "RUN"},
             Type = "Hands",
             Stats = {
-                DEF = 19,
+                DEF = 17,
                 HP = 12,
                 MND = 3,
                 CHR = 3,
@@ -154180,13 +154196,13 @@ return {
         },
         TimarliDastanas = {
             Name = "Timarli Dastanas",
-            Level = 79,
+            Level = 74,
             Id = 14060,
             Model = 203,
             Jobs = {"WAR", "PLD", "DRK", "DRG"},
             Type = "Hands",
             Stats = {
-                DEF = 21,
+                DEF = 19,
                 STR = 4,
                 Haste = 4,
                 SubtleBlow = -6,
@@ -156111,7 +156127,7 @@ return {
         },
         AdlerRing = {
             Name = "Adler Ring",
-            Level = 77,
+            Level = 72,
             Id = 11638,
             Jobs = {"All"},
             Type = "Ring",
@@ -156213,7 +156229,7 @@ return {
         },
         AiryRing = {
             Name = "Airy Ring",
-            Level = 83,
+            Level = 72,
             Id = 11647,
             Jobs = {"All"},
             Type = "Ring",
@@ -156866,7 +156882,7 @@ return {
         },
         BifrostRing = {
             Name = "Bifrost Ring",
-            Level = 78,
+            Level = 70,
             Id = 11640,
             Jobs = {"All"},
             Type = "Ring",
@@ -156887,7 +156903,7 @@ return {
         },
         BlasonRing = {
             Name = "Blason Ring",
-            Level = 80,
+            Level = 73,
             Id = 11639,
             Jobs = {"All"},
             Type = "Ring",
@@ -158192,13 +158208,13 @@ return {
         },
         EponasRing = {
             Name = "Eponas Ring",
-            Level = 89,
+            Level = 75,
             Id = 11651,
             Jobs = {"MNK", "THF", "BST", "RNG", "NIN", "BLU", "COR", "PUP", "DNC", "RUN"},
             Type = "Ring",
             Stats = {
-                DoubleAttack = 3,
-                TripleAttack = 3,
+                DoubleAttack = 1,
+                TripleAttack = 1,
             }
         },
         EpsilonRing = {
@@ -158955,14 +158971,14 @@ return {
         },
         HeedRing = {
             Name = "Heed Ring",
-            Level = 82,
+            Level = 73,
             Id = 11650,
             Jobs = {"All"},
             Type = "Ring",
             Stats = {
                 Accuracy = 3,
                 Evasion = 3,
-                SubtleBlow = 7,
+                SubtleBlow = 6,
             }
         },
         HennetielRing = {
@@ -159079,7 +159095,7 @@ return {
         },
         HoardRing = {
             Name = "Hoard Ring",
-            Level = 76,
+            Level = 70,
             Id = 11642,
             Jobs = {"All"},
             Type = "Ring",
@@ -159492,7 +159508,7 @@ return {
         },
         KeenRing = {
             Name = "Keen Ring",
-            Level = 86,
+            Level = 73,
             Id = 11653,
             Jobs = {"All"},
             Type = "Ring",
@@ -160145,12 +160161,12 @@ return {
         },
         MeridianRing = {
             Name = "Meridian Ring",
-            Level = 80,
+            Level = 75,
             Id = 11637,
             Jobs = {"All"},
             Type = "Ring",
             Stats = {
-                HP = 90,
+                HP = 80,
                 DarkResistance = -20,
             }
         },
@@ -160224,7 +160240,7 @@ return {
         },
         MetanoiaRing = {
             Name = "Metanoia Ring",
-            Level = 76,
+            Level = 71,
             Id = 11641,
             Jobs = {"All"},
             Type = "Ring",
@@ -160232,7 +160248,7 @@ return {
                 MP = 15,
                 INT = -4,
                 MND = -4,
-                Enmity = -5,
+                Enmity = -8,
             }
         },
         MightyRing = {
@@ -160291,7 +160307,7 @@ return {
         },
         MiseriaRing = {
             Name = "Miseria Ring",
-            Level = 86,
+            Level = 73,
             Id = 11652,
             Jobs = {"All"},
             Type = "Ring",
@@ -160620,7 +160636,7 @@ return {
         },
         OdiumRing = {
             Name = "Odium Ring",
-            Level = 76,
+            Level = 71,
             Id = 11643,
             Jobs = {"All"},
             Type = "Ring",
@@ -162086,7 +162102,7 @@ return {
         },
         SolemnRing = {
             Name = "Solemn Ring",
-            Level = 83,
+            Level = 72,
             Id = 11649,
             Jobs = {"All"},
             Type = "Ring",
@@ -162172,7 +162188,7 @@ return {
         },
         SpiralRing = {
             Name = "Spiral Ring",
-            Level = 83,
+            Level = 72,
             Id = 11648,
             Jobs = {"All"},
             Type = "Ring",
@@ -164037,15 +164053,15 @@ return {
         },
         BelenosMantle = {
             Name = "Belenos Mantle",
-            Level = 76,
+            Level = 72,
             Id = 11550,
             Jobs = {"WAR", "MNK", "THF", "BST", "NIN", "DNC", "RUN"},
             Type = "Back",
             Stats = {
-                DEF = 9,
-                Accuracy = 8,
-                Attack = 8,
-                StoreTP = 2,
+                DEF = 6,
+                Accuracy = 5,
+                Attack = 5,
+                StoreTP = 1,
             }
         },
         BelenussCape = {
@@ -164208,14 +164224,14 @@ return {
         },
         BlurMantle = {
             Name = "Blur Mantle",
-            Level = 86,
+            Level = 73,
             Id = 11573,
             Jobs = {"THF", "NIN", "DNC", "RUN"},
             Type = "Back",
             Stats = {
                 DEF = 10,
                 AGI = 4,
-                Evasion = 8,
+                Evasion = 7,
                 WindResistance = 10,
                 EnemyCriticalHitRate = 2,
             }
@@ -164420,14 +164436,14 @@ return {
         },
         CavarosMantle = {
             Name = "Cavaros Mantle",
-            Level = 80,
+            Level = 75,
             Id = 11553,
             Jobs = {"WAR", "THF", "DRK", "RNG", "NIN", "COR", "PUP", "DNC"},
             Type = "Back",
             Stats = {
-                DEF = 7,
+                DEF = 6,
                 Enmity = 2,
-                CriticalHitDamage = 3,
+                CriticalHitDamage = 2,
             }
         },
         CerbMantle_1 = {
@@ -165205,14 +165221,14 @@ return {
         },
         FerineMantle = {
             Name = "Ferine Mantle",
-            Level = 80,
+            Level = 75,
             Id = 11555,
             Jobs = {"BST"},
             Type = "Back",
             Stats = {
-                DEX = 4,
-                CHR = 4,
-                Accuracy = 7,
+                DEX = 3,
+                CHR = 3,
+                Accuracy = 5,
             }
         },
         FiFolletCape = {
@@ -165294,12 +165310,12 @@ return {
         },
         FortisMantle = {
             Name = "Fortis Mantle",
-            Level = 78,
+            Level = 73,
             Id = 11557,
             Jobs = {"WAR", "PLD", "DRK", "BST", "SAM", "DRG"},
             Type = "Back",
             Stats = {
-                DEF = 13,
+                DEF = 10,
                 STR = 6,
                 Accuracy = -4,
             }
@@ -165602,12 +165618,12 @@ return {
         },
         HarmonyCape = {
             Name = "Harmony Cape",
-            Level = 78,
+            Level = 72,
             Id = 15474,
             Jobs = {"WHM", "BLM", "RDM", "BRD", "SMN", "BLU", "PUP", "SCH", "GEO"},
             Type = "Back",
             Stats = {
-                DEF = 6,
+                DEF = 5,
                 LightResistance = 10,
                 SongRecast = 3,
             }
@@ -166053,14 +166069,14 @@ return {
         },
         LibeccioMantle = {
             Name = "Libeccio Mantle",
-            Level = 80,
+            Level = 75,
             Id = 11552,
             Jobs = {"THF", "RNG", "COR"},
             Type = "Back",
             Stats = {
-                DEF = 10,
-                RangedAccuracy = 10,
-                RangedAttack = 10,
+                DEF = 8,
+                RangedAccuracy = 8,
+                RangedAttack = 8,
                 Recycle = 5,
             }
         },
@@ -166381,19 +166397,19 @@ return {
         },
         MesmericCape = {
             Name = "Mesmeric Cape",
-            Level = 79,
+            Level = 73,
             Id = 11563,
             Jobs = {"BRD"},
             Type = "Back",
             Stats = {
-                DEF = 8,
-                CHR = 8,
+                DEF = 6,
+                CHR = 7,
                 MagicAccuracy = 4,
             }
         },
         MetallonMantle = {
             Name = "Metallon Mantle",
-            Level = 80,
+            Level = 75,
             Id = 11551,
             Jobs = {"WAR", "PLD", "DRK", "BST", "SAM", "NIN", "DRG"},
             Type = "Back",
@@ -166598,13 +166614,13 @@ return {
         },
         NiftyMantle = {
             Name = "Nifty Mantle",
-            Level = 77,
+            Level = 73,
             Id = 11558,
             Jobs = {"WAR", "MNK", "RDM", "THF", "PLD", "DRK", "BST", "BRD", "RNG", "SAM", "NIN", "DRG", "BLU", "COR", "DNC", "RUN"},
             Type = "Back",
             Stats = {
-                DEF = 12,
-                DEX = 5,
+                DEF = 9,
+                DEX = 4,
                 Attack = 9,
             }
         },
@@ -166748,7 +166764,7 @@ return {
         },
         OrisonCape = {
             Name = "Orison Cape",
-            Level = 80,
+            Level = 75,
             Id = 11554,
             Jobs = {"WHM"},
             Type = "Back",
@@ -166824,12 +166840,12 @@ return {
         },
         PedantCape = {
             Name = "Pedant Cape",
-            Level = 76,
+            Level = 71,
             Id = 11560,
             Jobs = {"WHM", "BLM", "RDM", "BRD", "SMN", "SCH", "GEO"},
             Type = "Back",
             Stats = {
-                DEF = 7,
+                DEF = 5,
                 INT = 6,
                 Evasion = -6,
             }
@@ -166948,14 +166964,14 @@ return {
         },
         PotentiaCape = {
             Name = "Potentia Cape",
-            Level = 86,
+            Level = 73,
             Id = 11574,
             Jobs = {"WHM", "BLM", "RDM", "BRD", "SMN", "BLU", "PUP", "SCH", "GEO"},
             Type = "Back",
             Stats = {
                 DEF = 10,
-                STR = 6,
-                INT = 6,
+                STR = 3,
+                INT = 4,
             }
         },
         PotionTank = {
@@ -167345,12 +167361,12 @@ return {
         },
         SalvusMantle = {
             Name = "Salvus Mantle",
-            Level = 80,
+            Level = 73,
             Id = 11561,
             Jobs = {"PLD", "DRK", "SAM", "DRG"},
             Type = "Back",
             Stats = {
-                DEF = 14,
+                DEF = 12,
                 MagicEvasion = -5,
                 MagicDefenseBonus = 5,
             }
@@ -167435,7 +167451,7 @@ return {
         },
         SearingCape = {
             Name = "Searing Cape",
-            Level = 78,
+            Level = 73,
             Id = 13573,
             Jobs = {"WHM", "BLM", "SMN", "PUP", "SCH", "GEO"},
             Type = "Back",
@@ -167538,13 +167554,13 @@ return {
         },
         SharpeyeMantle = {
             Name = "Sharpeye Mantle",
-            Level = 78,
+            Level = 74,
             Id = 11562,
             Jobs = {"MNK", "THF", "RNG", "NIN", "BLU", "COR", "DNC", "RUN"},
             Type = "Back",
             Stats = {
-                DEF = 11,
-                Accuracy = 12,
+                DEF = 9,
+                Accuracy = 9,
                 SubtleBlow = -6,
             }
         },
@@ -167771,7 +167787,7 @@ return {
         },
         SunbeamCape = {
             Name = "Sunbeam Cape",
-            Level = 79,
+            Level = 71,
             Id = 11556,
             Jobs = {"WHM", "BLM", "RDM", "BRD", "SMN", "BLU", "PUP", "SCH", "GEO"},
             Type = "Back",
@@ -167825,14 +167841,14 @@ return {
         },
         TacticalMantle = {
             Name = "Tactical Mantle",
-            Level = 77,
+            Level = 72,
             Id = 11548,
             Jobs = {"WAR", "MNK", "RDM", "THF", "PLD", "DRK", "BST", "BRD", "RNG", "SAM", "NIN", "DRG", "BLU", "COR", "DNC", "RUN"},
             Type = "Back",
             Stats = {
-                DEF = 11,
+                DEF = 9,
                 Attack = -15,
-                StoreTP = 6,
+                StoreTP = 5,
             }
         },
         TaffetaCape = {
@@ -167962,13 +167978,13 @@ return {
         },
         TerebellumMantle = {
             Name = "Terebellum Mantle",
-            Level = 78,
+            Level = 72,
             Id = 11549,
             Jobs = {"WAR", "MNK", "RDM", "THF", "PLD", "DRK", "BST", "BRD", "RNG", "SAM", "NIN", "DRG", "BLU", "COR", "DNC", "RUN"},
             Type = "Back",
             Stats = {
-                DEF = 12,
-                RangedAttack = 20,
+                DEF = 10,
+                RangedAttack = 18,
                 Enmity = -1,
             }
         },
@@ -168044,7 +168060,7 @@ return {
         },
         TiresiasCape = {
             Name = "Tiresias Cape",
-            Level = 76,
+            Level = 71,
             Id = 11564,
             Jobs = {"SMN"},
             Type = "Back",
@@ -168177,12 +168193,12 @@ return {
         },
         UltionMantle = {
             Name = "Ultion Mantle",
-            Level = 76,
+            Level = 71,
             Id = 11559,
             Jobs = {"MNK"},
             Type = "Back",
             Stats = {
-                DEF = 8,
+                DEF = 7,
                 Counter = 2,
                 CounterDamage = 10,
             }
@@ -168385,13 +168401,13 @@ return {
         },
         VitaCape = {
             Name = "Vita Cape",
-            Level = 86,
+            Level = 73,
             Id = 11572,
             Jobs = {"WHM", "BLM", "RDM", "BRD", "SMN", "BLU", "PUP", "SCH", "GEO"},
             Type = "Back",
             Stats = {
                 DEF = 8,
-                MP = 25,
+                MP = 24,
                 ConserveMP = 3,
                 HMP = 3,
             }
@@ -168749,14 +168765,14 @@ return {
         },
         AnguinusBelt = {
             Name = "Anguinus Belt",
-            Level = 78,
+            Level = 73,
             Id = 11731,
             Jobs = {"WAR", "MNK", "RDM", "THF", "PLD", "DRK", "BST", "BRD", "SAM", "NIN", "DRG", "BLU", "COR", "DNC", "RUN"},
             Type = "Waist",
             Stats = {
-                DEF = 6,
-                Accuracy = 15,
-                Attack = 15,
+                DEF = 5,
+                Accuracy = 7,
+                Attack = 7,
                 DoubleAttack = 1,
             }
         },
@@ -168772,7 +168788,7 @@ return {
         },
         AoidosBelt = {
             Name = "Aoidos Belt",
-            Level = 80,
+            Level = 75,
             Id = 11738,
             Jobs = {"BRD"},
             Type = "Waist",
@@ -168783,18 +168799,18 @@ return {
         },
         AquaBelt = {
             Name = "Aqua Belt",
-            Level = 87,
+            Level = 73,
             Id = 11760,
             Jobs = {"All"},
             Type = "Waist",
             Stats = {
-                DEF = 7,
+                DEF = 6,
                 WaterWSBonus = 25,
             }
         },
         AquilineBelt = {
             Name = "Aquiline Belt",
-            Level = 80,
+            Level = 74,
             Id = 11733,
             Jobs = {"THF", "RNG", "COR"},
             Type = "Waist",
@@ -168847,13 +168863,13 @@ return {
         },
         AristoBelt = {
             Name = "Aristo Belt",
-            Level = 80,
+            Level = 75,
             Id = 11745,
             Jobs = {"MNK", "WHM", "RDM", "THF", "BST", "BRD", "RNG", "SAM", "NIN", "BLU", "COR", "DNC", "RUN"},
             Type = "Waist",
             Stats = {
                 DEF = 5,
-                CHR = 8,
+                CHR = 6,
                 Enmity = -1,
             }
         },
@@ -169011,14 +169027,14 @@ return {
         },
         BaleBelt = {
             Name = "Bale Belt",
-            Level = 80,
+            Level = 75,
             Id = 11737,
             Jobs = {"DRK"},
             Type = "Waist",
             Stats = {
-                STR = 6,
                 INT = 6,
                 Accuracy = 6,
+                Attack = 6,
             }
         },
         BarbariansBelt = {
@@ -169218,12 +169234,12 @@ return {
         },
         BreezeBelt = {
             Name = "Breeze Belt",
-            Level = 87,
+            Level = 73,
             Id = 11757,
             Jobs = {"All"},
             Type = "Waist",
             Stats = {
-                DEF = 7,
+                DEF = 6,
                 WindWSBonus = 25,
             }
         },
@@ -169305,7 +169321,7 @@ return {
         },
         BullwhipBelt = {
             Name = "Bullwhip Belt",
-            Level = 80,
+            Level = 75,
             Id = 11728,
             Jobs = {"WAR", "MNK", "THF", "BST", "BRD", "RNG", "SAM", "NIN", "DRG", "COR", "PUP", "DNC"},
             Type = "Waist",
@@ -169322,7 +169338,7 @@ return {
         },
         CallersSash = {
             Name = "Callers Sash",
-            Level = 80,
+            Level = 75,
             Id = 11739,
             Jobs = {"SMN"},
             Type = "Waist",
@@ -169552,14 +169568,14 @@ return {
         },
         CirqueSash = {
             Name = "Cirque Sash",
-            Level = 84,
+            Level = 73,
             Id = 11751,
             Jobs = {"PUP"},
             Type = "Waist",
             Stats = {
                 DEF = 6,
-                DEX = 6,
-                Haste = 6,
+                DEX = 5,
+                Haste = 4,
             }
         },
         ClericsBelt = {
@@ -169586,25 +169602,25 @@ return {
         },
         CognitionBelt = {
             Name = "Cognition Belt",
-            Level = 80,
+            Level = 75,
             Id = 11742,
             Jobs = {"WHM", "BLM", "RDM", "BRD", "SMN", "SCH", "GEO"},
             Type = "Waist",
             Stats = {
                 DEF = 2,
                 MP = -30,
-                INT = 7,
+                INT = 6,
             }
         },
         CognizantBelt = {
             Name = "Cognizant Belt",
-            Level = 80,
+            Level = 75,
             Id = 11744,
             Jobs = {"MNK", "WHM", "BLM", "RDM", "PLD", "BRD", "RNG", "SMN", "BLU", "PUP", "SCH", "GEO", "RUN"},
             Type = "Waist",
             Stats = {
                 DEF = 4,
-                MND = 7,
+                MND = 6,
                 ConvertHPtoMP = 20,
             }
         },
@@ -169728,12 +169744,12 @@ return {
         },
         CreedBaudrier = {
             Name = "Creed Baudrier",
-            Level = 84,
+            Level = 73,
             Id = 11750,
             Jobs = {"PLD"},
             Type = "Waist",
             Stats = {
-                DEF = 10,
+                DEF = 7,
                 HP = 40,
                 MagicDefenseBonus = 4,
                 Enmity = 5,
@@ -169751,14 +169767,14 @@ return {
         },
         CrudelisBelt = {
             Name = "Crudelis Belt",
-            Level = 82,
+            Level = 73,
             Id = 11754,
             Jobs = {"WAR", "MNK", "THF", "BST", "BRD", "RNG", "SAM", "NIN", "DRG", "COR", "PUP", "DNC"},
             Type = "Waist",
             Stats = {
-                DEF = 8,
+                DEF = 6,
                 STR = 5,
-                AGI = 5,
+                AGI = 4,
                 MND = 5,
                 Enmity = -3,
             }
@@ -169938,7 +169954,7 @@ return {
         },
         DiabolossRope = {
             Name = "Diaboloss Rope",
-            Level = 83,
+            Level = 72,
             Id = 11752,
             Jobs = {"SMN"},
             Type = "Waist",
@@ -170065,7 +170081,7 @@ return {
         },
         EmphatikosRope = {
             Name = "Emphatikos Rope",
-            Level = 83,
+            Level = 72,
             Id = 11753,
             Jobs = {"WHM", "BLM", "RDM", "BRD", "SMN", "BLU", "SCH", "GEO"},
             Type = "Waist",
@@ -170269,12 +170285,12 @@ return {
         },
         FlameBelt = {
             Name = "Flame Belt",
-            Level = 87,
+            Level = 73,
             Id = 11755,
             Jobs = {"All"},
             Type = "Waist",
             Stats = {
-                DEF = 7,
+                DEF = 6,
                 FireWSBonus = 25,
             }
         },
@@ -170491,12 +170507,12 @@ return {
         },
         GoadingBelt = {
             Name = "Goading Belt",
-            Level = 77,
+            Level = 74,
             Id = 11729,
             Jobs = {"All"},
             Type = "Waist",
             Stats = {
-                Haste = 5,
+                Haste = 4,
                 StoreTP = 5,
                 Enmity = 3,
             }
@@ -170804,7 +170820,7 @@ return {
         },
         ImpulseBelt = {
             Name = "Impulse Belt",
-            Level = 78,
+            Level = 73,
             Id = 11735,
             Jobs = {"RNG", "COR"},
             Type = "Waist",
@@ -171233,12 +171249,12 @@ return {
         },
         LightBelt = {
             Name = "Light Belt",
-            Level = 87,
+            Level = 73,
             Id = 11761,
             Jobs = {"All"},
             Type = "Waist",
             Stats = {
-                DEF = 7,
+                DEF = 6,
                 LightWSBonus = 25,
             }
         },
@@ -171703,7 +171719,7 @@ return {
         },
         Nierenschutz = {
             Name = "Nierenschutz",
-            Level = 76,
+            Level = 72,
             Id = 11730,
             Jobs = {"WAR", "PLD", "DRK", "BST", "DRG"},
             Type = "Waist",
@@ -171738,7 +171754,7 @@ return {
         },
         NuskusSash = {
             Name = "Nuskus Sash",
-            Level = 80,
+            Level = 74,
             Id = 11732,
             Jobs = {"WAR", "BLM", "THF", "DRK", "BST", "RNG", "NIN", "DRG", "PUP", "DNC", "SCH"},
             Type = "Waist",
@@ -172387,12 +172403,12 @@ return {
         },
         RaidersBelt = {
             Name = "Raiders Belt",
-            Level = 80,
+            Level = 75,
             Id = 11736,
             Jobs = {"THF"},
             Type = "Waist",
             Stats = {
-                DEF = 11,
+                DEF = 8,
                 DEX = 3,
                 CHR = 3,
                 TripleAttack = 1,
@@ -172705,7 +172721,7 @@ return {
         },
         SearingSash = {
             Name = "Searing Sash",
-            Level = 80,
+            Level = 70,
             Id = 11743,
             Jobs = {"WHM", "BLM", "SMN", "SCH", "GEO"},
             Type = "Waist",
@@ -172740,7 +172756,7 @@ return {
         },
         SentryBelt = {
             Name = "Sentry Belt",
-            Level = 76,
+            Level = 71,
             Id = 11741,
             Jobs = {"WAR", "THF", "PLD", "DRK", "BRD", "RNG", "SAM", "NIN", "DRG", "COR", "PUP", "DNC"},
             Type = "Waist",
@@ -172748,17 +172764,17 @@ return {
                 DEF = 6,
                 HP = -20,
                 STR = 5,
-                Accuracy = 10,
+                Accuracy = 9,
             }
         },
         ShadowBelt = {
             Name = "Shadow Belt",
-            Level = 87,
+            Level = 73,
             Id = 11762,
             Jobs = {"All"},
             Type = "Waist",
             Stats = {
-                DEF = 7,
+                DEF = 6,
                 DarkWSBonus = 25,
             }
         },
@@ -172776,7 +172792,7 @@ return {
         },
         ShaolinBelt = {
             Name = "Shaolin Belt",
-            Level = 79,
+            Level = 74,
             Id = 11734,
             Jobs = {"WAR", "MNK", "BST", "NIN", "PUP"},
             Type = "Waist",
@@ -172940,23 +172956,23 @@ return {
         },
         SnowBelt = {
             Name = "Snow Belt",
-            Level = 87,
+            Level = 73,
             Id = 11756,
             Jobs = {"All"},
             Type = "Waist",
             Stats = {
-                DEF = 7,
+                DEF = 6,
                 IceWSBonus = 25,
             }
         },
         SoilBelt = {
             Name = "Soil Belt",
-            Level = 87,
+            Level = 73,
             Id = 11758,
             Jobs = {"All"},
             Type = "Waist",
             Stats = {
-                DEF = 7,
+                DEF = 6,
                 EarthWSBonus = 25,
             }
         },
@@ -173427,7 +173443,7 @@ return {
         },
         ThiazisBelt = {
             Name = "Thiazis Belt",
-            Level = 78,
+            Level = 73,
             Id = 11740,
             Jobs = {"WAR", "MNK", "RDM", "THF", "PLD", "DRK", "BST", "BRD", "SAM", "NIN", "DRG", "BLU", "COR", "DNC", "RUN"},
             Type = "Waist",
@@ -173439,12 +173455,12 @@ return {
         },
         ThunderBelt = {
             Name = "Thunder Belt",
-            Level = 87,
+            Level = 73,
             Id = 11759,
             Jobs = {"All"},
             Type = "Waist",
             Stats = {
-                DEF = 7,
+                DEF = 6,
                 ThunderWSBonus = 25,
             }
         },
@@ -175893,16 +175909,16 @@ return {
         },
         AuroreBrais = {
             Name = "Aurore Brais",
-            Level = 78,
+            Level = 75,
             Id = 14257,
             Model = 241,
             Jobs = {"MNK", "THF", "BST", "RNG", "NIN", "BLU", "COR", "PUP", "DNC", "RUN"},
             Type = "Legs",
             Stats = {
-                DEF = 35,
-                Accuracy = 9,
-                RangedAccuracy = 9,
-                Haste = 3,
+                DEF = 34,
+                Accuracy = 7,
+                RangedAccuracy = 7,
+                Haste = 2,
             }
         },
         AuroreBrais_1 = {
@@ -180228,16 +180244,16 @@ return {
         },
         EntoisTrousers = {
             Name = "Entois Trousers",
-            Level = 77,
+            Level = 71,
             Id = 16380,
             Model = 7,
             Jobs = {"RNG", "COR"},
             Type = "Legs",
             Stats = {
-                DEF = 30,
+                DEF = 24,
                 RangedAttack = 6,
                 Recycle = 3,
-                RapidShot = 5,
+                RapidShot = 3,
             }
         },
         EnvyFlanchard = {
@@ -183649,13 +183665,13 @@ return {
         },
         InmicusCuisses = {
             Name = "Inmicus Cuisses",
-            Level = 77,
+            Level = 73,
             Id = 16379,
             Model = 55,
             Jobs = {"WAR", "PLD", "DRK"},
             Type = "Legs",
             Stats = {
-                DEF = 36,
+                DEF = 33,
                 HP = 25,
                 Evasion = -10,
                 Enmity = 3,
@@ -185743,13 +185759,13 @@ return {
         },
         MatreBragezenn = {
             Name = "Matre Bragezenn",
-            Level = 80,
+            Level = 75,
             Id = 12920,
             Model = 7,
             Jobs = {"MNK", "THF", "DRK", "BST", "SAM", "DRG", "DNC", "RUN"},
             Type = "Legs",
             Stats = {
-                DEF = 31,
+                DEF = 28,
                 DEX = 10,
                 Accuracy = 3,
                 StoreTP = -10,
@@ -187321,7 +187337,7 @@ return {
         },
         OcelotTrousers = {
             Name = "Ocelot Trousers",
-            Level = 79,
+            Level = 74,
             Id = 15428,
             Model = 231,
             Jobs = {"MNK", "THF", "BST", "RNG", "NIN", "BLU", "COR", "PUP", "DNC", "RUN"},
@@ -187990,17 +188006,17 @@ return {
         },
         PerleBrayettes = {
             Name = "Perle Brayettes",
-            Level = 78,
+            Level = 75,
             Id = 14210,
             Model = 239,
             Jobs = {"WAR", "PLD", "DRK", "BST", "SAM", "DRG"},
             Type = "Legs",
             Stats = {
-                DEF = 37,
-                DEX = 5,
-                VIT = 5,
-                Accuracy = 10,
-                Haste = 2,
+                DEF = 36,
+                DEX = 4,
+                VIT = 4,
+                Accuracy = 9,
+                Haste = 1,
                 Enmity = 2,
             }
         },
@@ -191810,16 +191826,16 @@ return {
         },
         TealSlops = {
             Name = "Teal Slops",
-            Level = 78,
+            Level = 75,
             Id = 14258,
             Model = 240,
             Jobs = {"WHM", "BLM", "RDM", "BRD", "SMN", "BLU", "PUP", "SCH", "GEO", "RUN"},
             Type = "Legs",
             Stats = {
-                DEF = 32,
+                DEF = 31,
                 HP = 14,
-                INT = 5,
-                CHR = 5,
+                INT = 4,
+                CHR = 4,
                 MagicAccuracy = 3,
                 MagicAttackBonus = 3,
             }
@@ -192017,13 +192033,13 @@ return {
         },
         TeutatesSubligar = {
             Name = "Teutates Subligar",
-            Level = 78,
+            Level = 72,
             Id = 15427,
             Model = 179,
             Jobs = {"WAR", "RDM", "THF", "PLD", "DRK", "BST", "BRD", "RNG", "SAM", "NIN", "DRG", "BLU", "COR", "DNC", "RUN"},
             Type = "Legs",
             Stats = {
-                DEF = 34,
+                DEF = 30,
                 STR = 8,
                 Accuracy = -10,
                 Evasion = -10,
@@ -192251,13 +192267,13 @@ return {
         },
         TorrentSubligar = {
             Name = "Torrent Subligar",
-            Level = 80,
+            Level = 75,
             Id = 15426,
             Model = 202,
             Jobs = {"MNK", "NIN"},
             Type = "Legs",
             Stats = {
-                DEF = 27,
+                DEF = 25,
                 STR = -5,
                 Haste = 6,
             }
@@ -192449,16 +192465,16 @@ return {
         },
         TumblerTrunks = {
             Name = "Tumbler Trunks",
-            Level = 79,
+            Level = 73,
             Id = 16381,
             Model = 109,
             Jobs = {"WAR", "RDM", "THF", "PLD", "DRK", "BST", "BRD", "RNG", "SAM", "NIN", "DRG", "BLU", "COR", "DNC", "RUN"},
             Type = "Legs",
             Stats = {
-                DEF = 31,
+                DEF = 28,
                 DEX = 5,
                 CHR = 5,
-                Attack = 18,
+                Attack = 16,
             }
         },
         TurmsSubligar_1 = {
@@ -193548,16 +193564,17 @@ return {
         },
         WiccaSubligar = {
             Name = "Wicca Subligar",
-            Level = 80,
+            Level = 70,
             Id = 15429,
             Model = 216,
             Jobs = {"WHM", "BLM", "RDM", "SMN", "BLU", "SCH", "GEO"},
             Type = "Legs",
             Stats = {
-                DEF = 26,
+                DEF = 24,
                 STR = -4,
                 DEX = -4,
                 MagicAttackBonus = 4,
+                MagicEvasion = 4,
             }
         },
         WicceChausses = {
@@ -194310,7 +194327,7 @@ return {
         },
         AcesLeggings = {
             Name = "Aces Leggings",
-            Level = 85,
+            Level = 74,
             Id = 11432,
             Model = 16,
             Jobs = {"DRK", "SAM", "DRG"},
@@ -194319,7 +194336,7 @@ return {
                 DEF = 24,
                 Accuracy = -4,
                 Attack = 8,
-                Haste = 3,
+                Haste = 2,
                 StoreTP = 5,
             }
         },
@@ -195533,7 +195550,7 @@ return {
         },
         AreionsGamashes = {
             Name = "Areions Gamashes",
-            Level = 86,
+            Level = 73,
             Id = 11446,
             Model = 23,
             Jobs = {"MNK", "THF", "RNG", "NIN", "BLU", "COR", "DNC", "RUN"},
@@ -195542,7 +195559,7 @@ return {
                 DEF = 19,
                 STR = 5,
                 AGI = 3,
-                SubtleBlow = 5,
+                SubtleBlow = 3,
             }
         },
         AresSollerets = {
@@ -196057,14 +196074,14 @@ return {
         },
         AuroreGaiters = {
             Name = "Aurore Gaiters",
-            Level = 78,
+            Level = 75,
             Id = 11414,
             Model = 241,
             Jobs = {"MNK", "THF", "BST", "RNG", "NIN", "BLU", "COR", "PUP", "DNC", "RUN"},
             Type = "Feet",
             Stats = {
-                DEF = 19,
-                DEX = 5,
+                DEF = 18,
+                DEX = 4,
                 Evasion = 5,
                 Haste = 2,
             }
@@ -196442,7 +196459,7 @@ return {
         },
         Ballerines = {
             Name = "Ballerines",
-            Level = 85,
+            Level = 74,
             Id = 11431,
             Model = 133,
             Jobs = {"THF", "NIN", "DNC", "RUN"},
@@ -196451,7 +196468,7 @@ return {
                 DEF = 22,
                 Attack = -5,
                 Evasion = 5,
-                Haste = 4,
+                Haste = 2,
             }
         },
         BardsSlippers = {
@@ -198166,7 +198183,7 @@ return {
         },
         CloutBoots = {
             Name = "Clout Boots",
-            Level = 79,
+            Level = 73,
             Id = 11416,
             Model = 100,
             Jobs = {"WAR", "THF", "PLD", "DRK", "BST", "BRD", "DRG", "RUN"},
@@ -199020,7 +199037,7 @@ return {
         },
         DanzoSuneAte = {
             Name = "Danzo Sune-ate",
-            Level = 80,
+            Level = 70,
             Id = 12997,
             Model = 98,
             Jobs = {"SAM", "NIN"},
@@ -199028,7 +199045,7 @@ return {
             Stats = {
                 DEF = 12,
                 Enmity = -2,
-                MovementSpeed = 12,
+                MovementSpeed = 18,
             }
         },
         DeimossLeggings = {
@@ -199187,14 +199204,14 @@ return {
         },
         DornenSchuhs = {
             Name = "Dornen Schuhs",
-            Level = 84,
+            Level = 73,
             Id = 11433,
             Model = 95,
             Jobs = {"WAR", "PLD", "DRK"},
             Type = "Feet",
             Stats = {
-                DEF = 28,
-                HP = 45,
+                DEF = 24,
+                HP = 26,
                 MP = 45,
                 Enmity = 6,
             }
@@ -200353,7 +200370,7 @@ return {
         },
         EtaminGambieras = {
             Name = "Etamin Gambieras",
-            Level = 89,
+            Level = 75,
             Id = 11445,
             Model = 174,
             Jobs = {"DRG"},
@@ -201100,7 +201117,7 @@ return {
         },
         FriskySabots = {
             Name = "Frisky Sabots",
-            Level = 86,
+            Level = 73,
             Id = 11444,
             Model = 18,
             Jobs = {"WHM", "BLM", "RDM", "BRD", "SMN", "BLU", "SCH", "GEO"},
@@ -205134,13 +205151,13 @@ return {
         },
         LitheBoots = {
             Name = "Lithe Boots",
-            Level = 78,
+            Level = 75,
             Id = 11419,
             Model = 1,
             Jobs = {"WAR", "RDM", "THF", "PLD", "DRK", "BST", "BRD", "RNG", "SAM", "NIN", "DRG", "BLU", "COR", "DNC", "RUN"},
             Type = "Feet",
             Stats = {
-                DEF = 20,
+                DEF = 13,
                 DEX = 6,
                 AGI = 6,
             }
@@ -206424,16 +206441,16 @@ return {
         },
         MissileBoots = {
             Name = "Missile Boots",
-            Level = 77,
+            Level = 72,
             Id = 11421,
             Model = 1,
             Jobs = {"WAR", "RDM", "THF", "PLD", "DRK", "BST", "BRD", "RNG", "SAM", "NIN", "DRG", "BLU", "COR", "DNC", "RUN"},
             Type = "Feet",
             Stats = {
-                DEF = 21,
+                DEF = 18,
                 DEX = -3,
                 AGI = 3,
-                RangedAccuracy = 8,
+                RangedAccuracy = 6,
             }
         },
         MistPumps = {
@@ -208016,16 +208033,16 @@ return {
         },
         PerleSollerets = {
             Name = "Perle Sollerets",
-            Level = 78,
+            Level = 75,
             Id = 11413,
             Model = 239,
             Jobs = {"WAR", "PLD", "DRK", "BST", "SAM", "DRG"},
             Type = "Feet",
             Stats = {
-                DEF = 21,
-                STR = 5,
+                DEF = 20,
+                STR = 4,
                 DEX = 3,
-                Haste = 2,
+                Haste = 1,
                 Enmity = 2,
             }
         },
@@ -208625,13 +208642,13 @@ return {
         },
         PoiseShoes = {
             Name = "Poise Shoes",
-            Level = 77,
+            Level = 72,
             Id = 11418,
             Model = 3,
             Jobs = {"MNK"},
             Type = "Feet",
             Stats = {
-                DEF = 15,
+                DEF = 13,
                 KickAttackDamage = 35,
             }
         },
@@ -208661,15 +208678,15 @@ return {
         },
         PraedaSabatons = {
             Name = "Praeda Sabatons",
-            Level = 77,
+            Level = 73,
             Id = 13000,
             Model = 202,
             Jobs = {"THF", "RNG", "COR"},
             Type = "Feet",
             Stats = {
-                DEF = 18,
+                DEF = 16,
                 MND = 6,
-                RangedAccuracy = 12,
+                RangedAccuracy = 8,
                 Enmity = -2,
             }
         },
@@ -209717,13 +209734,13 @@ return {
         },
         RuffianLeggings = {
             Name = "Ruffian Leggings",
-            Level = 78,
+            Level = 74,
             Id = 11420,
             Model = 1,
             Jobs = {"WAR", "PLD", "DRK"},
             Type = "Feet",
             Stats = {
-                DEF = 24,
+                DEF = 21,
                 INT = -4,
                 MND = -4,
                 Enmity = 3,
@@ -210223,7 +210240,7 @@ return {
         },
         SapientiaSabots = {
             Name = "Sapientia Sabots",
-            Level = 82,
+            Level = 73,
             Id = 11434,
             Model = 18,
             Jobs = {"WHM", "BLM", "RDM", "BRD", "SMN", "BLU", "PUP", "SCH", "GEO"},
@@ -210556,15 +210573,15 @@ return {
         },
         SerpentesSabots = {
             Name = "Serpentes Sabots",
-            Level = 80,
+            Level = 75,
             Id = 14085,
             Model = 179,
             Jobs = {"WHM", "BLM", "RDM", "BRD", "SMN", "BLU", "SCH", "GEO"},
             Type = "Feet",
             Stats = {
-                DEF = 14,
-                HP = 13,
-                MP = 13,
+                DEF = 11,
+                HP = 10,
+                MP = 10,
             }
         },
         SetantasLed = {
@@ -211811,17 +211828,16 @@ return {
         },
         SusurrusSabatons = {
             Name = "Susurrus Sabatons",
-            Level = 76,
+            Level = 71,
             Id = 12999,
             Model = 234,
             Jobs = {"WAR", "PLD", "DRK", "BST"},
             Type = "Feet",
             Stats = {
-                DEF = 25,
-                HP = 45,
+                DEF = 21,
                 DEX = 2,
                 AGI = -5,
-                Accuracy = 10,
+                Accuracy = 8,
                 Enmity = 2,
             }
         },
@@ -212090,7 +212106,7 @@ return {
         },
         TandavaCrackows = {
             Name = "Tandava Crackows",
-            Level = 83,
+            Level = 72,
             Id = 11430,
             Model = 160,
             Jobs = {"DNC"},
@@ -212190,16 +212206,16 @@ return {
         },
         TealPigaches = {
             Name = "Teal Pigaches",
-            Level = 78,
+            Level = 75,
             Id = 11415,
             Model = 240,
             Jobs = {"WHM", "BLM", "RDM", "BRD", "SMN", "BLU", "PUP", "SCH", "GEO", "RUN"},
             Type = "Feet",
             Stats = {
-                DEF = 16,
+                DEF = 14,
                 HP = 8,
-                MND = 6,
-                CHR = 6,
+                MND = 5,
+                CHR = 5,
                 Enmity = -4,
             }
         },
@@ -212549,7 +212565,7 @@ return {
         },
         TheurgiaClogs = {
             Name = "Theurgia Clogs",
-            Level = 79,
+            Level = 71,
             Id = 11417,
             Model = 197,
             Jobs = {"WHM", "BLM", "RDM", "BRD", "SMN", "BLU", "PUP", "SCH", "GEO"},
@@ -212559,6 +212575,7 @@ return {
                 VIT = -6,
                 AGI = -6,
                 MagicAttackBonus = 4,
+                DivineMagicSkill = 4,
             }
         },
         ThickSollerets = {
