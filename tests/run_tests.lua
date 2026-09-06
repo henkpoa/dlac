@@ -11185,9 +11185,14 @@ end)();
         end
     end
     check('GD1 126 gear sets ship', nSets, 126);
-    check('GD2 flat/tiered split', nFlat .. '/' .. nTiered, '39/87');
+    -- GD2/GD3 moved by exactly 2 on 2026-09-06: the Perle (11) and Aurore (12) Cruor
+    -- sets went from the server file's flat "at exactly 5 pieces" to the CatsEyeXI
+    -- wiki's 2..5 ladders (gen_gearsets.SITE_OVERRIDE, docs/server-questions.md #9),
+    -- so both left flat->tiered and the 5/5 bucket -> 2/5. Teal (13) was already 2/5
+    -- and moves neither count. Any OTHER movement here is regeneration drift.
+    check('GD2 flat/tiered split', nFlat .. '/' .. nTiered, '37/89');
     check('GD3 min/max shape census', (census['2/2'] or 0) .. ',' .. (census['2/4'] or 0) .. ','
-        .. (census['2/5'] or 0) .. ',' .. (census['5/5'] or 0), '20,1,86,19');
+        .. (census['2/5'] or 0) .. ',' .. (census['5/5'] or 0), '20,1,88,17');
     check('GD4 every tier key within [min,max]', tierKeysOk, true);
     check('GD5 every piece id is a positive number', piecesOk, true);
     local s70 = gsD[70];   -- Lava's + Kusha's, THE reference set
@@ -11198,6 +11203,20 @@ end)();
     local s43 = gsD[43];   -- Paramount: alternates -- MORE pieces than the cap
     check('GD9 [43] alternate-piece shape (9 pieces, min2/max2)',
         s43 ~= nil and (#s43.pieces .. '/' .. s43.min .. '/' .. s43.max), '9/2/2');
+
+    -- The three Abyssea Cruor sets, whose bonuses come from the CatsEyeXI wiki rather
+    -- than the server file (gen_gearsets.SITE_OVERRIDE). Pinned by VALUE, not just by
+    -- census: a regeneration that loses the override would keep the set count and the
+    -- piece lists identical and only quietly restore the stale base-branch ladders.
+    local function ladder(s, key)
+        if not s then return 'absent'; end
+        local out = {};
+        for c = s.min, s.max do out[#out + 1] = tostring((s.tiers[c] or {})[key]); end
+        return s.min .. '-' .. s.max .. ':' .. table.concat(out, '/');
+    end
+    check('GD9a [11] Perle set bonus = wiki Haste ladder',    ladder(gsD[11], 'Haste'),    '2-5:1/2/3/4');
+    check('GD9b [12] Aurore set bonus = wiki Store TP ladder', ladder(gsD[12], 'StoreTP'),  '2-5:2/3/4/5');
+    check('GD9c [13] Teal set bonus = wiki Fast Cast ladder',  ladder(gsD[13], 'FastCast'), '2-5:1/3/5/7');
 
     local lsD = dofile('servers/cexi/data/latentstats.lua');
     local rows, items, levelLeak = 0, 0, false;

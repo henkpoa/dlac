@@ -246,11 +246,18 @@ gear scoring.
 **Question:** are the live Perle/Aurore/Teal set bonuses the wiki's ladders? If so, the
 base-branch `gear_sets.lua` is stale for sets 11/12/13.
 
-**What dlac does meanwhile:** nothing — `servers/cexi/data/gearsets.lua` still carries the
-base-branch values, because it is generated (`tools/gen_gearsets.py`) and hand-editing it
-would be silently overwritten by the next re-run. If the answer is "the wiki is right", the
-fix is a documented per-set override in the generator, the same shape as the `MOD_STRIP`/
-`MOD_ADD` item fixups in question 1.
+**What dlac does meanwhile:** ships the **wiki's** ladders. Henrik's ruling 2026-09-06 —
+*"Trust the set bonuses on the site, not on the API. They do not present everything on the
+API unfortunately."* Implemented as `SITE_OVERRIDE` in `tools/gen_gearsets.py` rather than
+by editing `gearsets.lua`, which is generated and would be silently overwritten by the next
+re-run — the same shape as the `MOD_STRIP`/`MOD_ADD` item fixups in question 1. The
+override is guarded on the piece ids, so if the server ever renumbers its sets the
+generator fails loudly instead of rewriting whichever set landed on id 11, and it is
+deliberately narrow: only the three sets that page documents, everything else still comes
+from the server file.
+
+**On an answer:** if the base branch turns out to be right after all, delete the three
+`SITE_OVERRIDE` entries — not the mechanism, which the next stale set will want.
 
 ---
 

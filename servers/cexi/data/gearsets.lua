@@ -6,6 +6,12 @@
 -- Counting is per composition slot (two copies count twice) and level-gated --
 -- see docs/design/conditional-effects.md #3.1/#7.2 and gear/geareffects.lua.
 -- Do not hand-edit; re-run the generator instead.
+--
+-- Sets 11, 12, 13 come from the CatsEyeXI wiki, NOT the server file: the live API does
+-- not serialize set bonuses at all, and the `base` branch is base-LSB, which the
+-- 2026-09 Abyssea patch left stale for the three Cruor sets (Perle/Aurore/Teal).
+-- Henrik's ruling 2026-09-06; see gen_gearsets.SITE_OVERRIDE and
+-- docs/server-questions.md #9.
 return {
     [1] = {
         pieces = { 14554, 14969, 15633, 15719, 16092 },
@@ -89,18 +95,24 @@ return {
     },
     [11] = {
         pieces = { 11413, 11503, 12745, 13759, 14210 },
-        min = 5,
+        min = 2,
         max = 5,
         tiers = {
-            [5] = { Haste = 5 },
+            [2] = { Haste = 1 },
+            [3] = { Haste = 2 },
+            [4] = { Haste = 3 },
+            [5] = { Haste = 4 },
         },
     },
     [12] = {
         pieces = { 11414, 11504, 12746, 13760, 14257 },
-        min = 5,
+        min = 2,
         max = 5,
         tiers = {
-            [5] = { StoreTP = 8 },
+            [2] = { StoreTP = 2 },
+            [3] = { StoreTP = 3 },
+            [4] = { StoreTP = 4 },
+            [5] = { StoreTP = 5 },
         },
     },
     [13] = {
@@ -108,10 +120,10 @@ return {
         min = 2,
         max = 5,
         tiers = {
-            [2] = { FastCast = 4 },
-            [3] = { FastCast = 6 },
-            [4] = { FastCast = 8 },
-            [5] = { FastCast = 10 },
+            [2] = { FastCast = 1 },
+            [3] = { FastCast = 3 },
+            [4] = { FastCast = 5 },
+            [5] = { FastCast = 7 },
         },
     },
     [14] = {
