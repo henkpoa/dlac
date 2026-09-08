@@ -65,9 +65,17 @@ M.status =
     TOO_FAR           = 4,
     UNAVAILABLE       = 5,
     PROTO_UNSUPPORTED = 6,
+    NOT_ATTUNED       = 7,   -- The Deeper Room not finished: no vault for this character (D14)
 };
 
 M.FLAG_MORE = 1;
+
+-- The attunement quest, named where the player reads it (statusLine, the
+-- tab, the one login line). The server's gate is the quest's completion
+-- and nothing else (gear_vault.lua isAttuned -> xi.axq.isComplete).
+M.ATTUNE_QUEST = 'The Deeper Room';
+M.ATTUNE_HINT  = 'the Hollow One in your starting city, level 5, after The Hollow Room';
+M.ATTUNE_WIKI  = 'https://www.ascensionffxi.com/wiki/The_Deeper_Room';
 
 -- Pacing. SEND_TIMEOUT must clear the server's frame turnaround with room;
 -- retries stay under the 5 s replay window so a retried frame is answered
@@ -79,6 +87,7 @@ M.GIVEUP_BACKOFF = 30;    -- seconds before a failed sync may try again
 M.SETTLE_JOB     = 6.0;   -- job-change swap stream settle (~3-4 s + slack)
 M.SETTLE_ZONE    = 5.0;   -- zone-in flood settle before the probe
 M.SETTLE_CHAT    = 3.0;   -- after an outgoing !vault mutation
+M.RECHECK_UNATTUNED = 300; -- an un-attuned character re-asks this rarely (one HELLO)
 
 -- ---------------------------------------------------------------------------
 -- Injectable seams (production wiring in init.lua; tests replace)
@@ -332,6 +341,8 @@ M.layoutCache = { job = nil, entries = {}, fresh = false, stamp = nil };
 local st =
 {
     dormant  = false,    -- server has no vault / proto refused: sleep for the session
+    unattuned = false,   -- server answered NOT_ATTUNED: no vault for THIS character until the quest
+    saidAttune = false,  -- the one login line about the quest, said once a session
     pending  = nil,      -- { kind='probe'|'sync-hello'|'sync-list', op, seq,
                          --   frame, sentAt, retries, cursor }
     seq      = 0,        -- last Seq used (wraps at 255)
@@ -341,7 +352,26 @@ local st =
     rowsAcc  = nil,      -- accumulating LIST pages
     lastJob  = nil,      -- main-job edge detector (pump-fed)
     saidProto = false,
+    trace    = {},       -- the evidence ring: lastSent / lastRecv / why (traceLine)
 };
+
+-- The client's own evidence (2026-09-08, Henrik's prod field report: "stale
+-- -- 0 pieces mirrored (0 rows)" with NO failed syncs -- a readout that two
+-- silent paths share, a refused status and an unparseable HELLO -- and the
+-- client could not say which). Every send, every inbound frame and every
+-- quiet outcome leaves a note; /dl vault prints them. Names, never numbers.
+local function opName(op)
+    for k, v in pairs(M.op) do if v == op then return k; end end
+    return string.format('op 0x%02X', tonumber(op) or 0);
+end
+local function statusName(s)
+    for k, v in pairs(M.status) do if v == s then return k; end end
+    return 'status ' .. tostring(s);
+end
+local function noteWhy(why, now)
+    st.trace.why   = why;
+    st.trace.whyAt = now;
+end
 
 local function nextSeq()
     st.seq = (st.seq + 1) % 256;
@@ -351,6 +381,8 @@ end
 local function sendPending(now)
     st.pending.sentAt = now;
     st.lastSend = now;
+    st.trace.lastSent = { kind = st.pending.kind, op = st.pending.op, seq = st.pending.seq,
+                          at = now, retries = st.pending.retries };
     if type(M._send) == 'function' then pcall(M._send, st.pending.frame); end
 end
 
@@ -397,8 +429,50 @@ end
 function M.markStale(settle, why)
     if st.dormant then return; end
     local at = M._clock() + (settle or 0);
+    if st.unattuned then
+        -- A reason (zone-in, job change, !vault, manual) PULLS the rare
+        -- re-check forward: the quest may just have been finished.
+        st.staleAt = at;
+        return;
+    end
     if st.staleAt == nil or at > st.staleAt then st.staleAt = at; end
     M.mirror.fresh = false;
+end
+
+-- The server said NOT_ATTUNED: The Deeper Room is not finished, so no
+-- vault exists for this character (D14 -- every op, reads included, is
+-- refused). Not dormant: the quest can be finished mid-session, so the
+-- client goes quiet -- one HELLO per RECHECK_UNATTUNED, pulled forward by
+-- the usual reasons -- instead of the 30 s failed-sync loop. Every queued
+-- ask is drained toward its consumer with 'not_attuned', the mirror reads
+-- as the truth (an empty vault), and the player hears WHY once a session.
+local function goUnattuned(now)
+    local first = not st.unattuned;
+    st.unattuned = true;
+    st.pending = nil;
+    st.rowsAcc = nil;
+    st.layoutAcc = nil;
+    st.layoutWant = nil;
+    st.probeOnly = false;
+    for _, q in ipairs({ st.withdrawQ, st.depositQ, st.layoutSetQ }) do
+        while q ~= nil and q[1] ~= nil do
+            local req = table.remove(q, 1);
+            if type(req.onDone) == 'function' then pcall(req.onDone, nil, 'not_attuned'); end
+        end
+    end
+    M.mirror.rows = {};
+    M.mirror.counts = {};
+    M.mirror.vaultCount = 0;
+    M.mirror.fresh = false;
+    M.mirror.stamp = now;          -- not "never synced": pump must not re-arm the login sync
+    M.layoutCache = { job = nil, entries = {}, fresh = false, stamp = nil };
+    st.staleAt = now + M.RECHECK_UNATTUNED;
+    if first and type(M._onFresh) == 'function' then pcall(M._onFresh); end
+    if not st.saidAttune then
+        st.saidAttune = true;
+        say(string.format('gear vault: %s does not know you yet -- finish that quest (%s) to open the vault.',
+            M.ATTUNE_QUEST, M.ATTUNE_HINT));
+    end
 end
 
 -- Manual refresh (the service verb; also `/dl vault sync`).
@@ -438,7 +512,7 @@ end
 -- Ask for a job's layout (0 = my main job). The tab calls this; pages ride
 -- the same one-in-flight machinery as everything else.
 function M.requestLayout(job)
-    if st.dormant then return false; end
+    if st.dormant or st.unattuned then return false; end   -- no layout exists to ask for
     st.layoutWant = { job = job or 0 };
     return true;
 end
@@ -538,10 +612,13 @@ function M.pump(ready)
                     end
                     M.layoutCache.fresh = false;
                 elseif dead.op == M.op.LAYOUT_LIST then
+                    noteWhy('layout ask timed out (no reply after ' .. M.MAX_RETRIES .. ' retries)', now);
                     st.layoutAcc = nil;   -- the tab just shows stale and re-asks
                 else
                     -- Lost sync: stale mirror, long backoff, ONE quiet state
                     -- (no chat spam -- /dl vault says it when asked).
+                    noteWhy(string.format('%s (%s#%d) timed out: no reply after %d retries',
+                        dead.kind, opName(dead.op), dead.seq, M.MAX_RETRIES), now);
                     st.rowsAcc = nil;
                     st.giveups = st.giveups + 1;
                     st.staleAt = now + M.GIVEUP_BACKOFF;
@@ -590,24 +667,42 @@ end
 function M.onFrame(f)
     if f == nil or type(f.op) ~= 'number' then return false; end
     if f.op < M.op.HELLO or f.op > 0x7F then return false; end
+    local now = M._clock();
+    st.trace.lastRecv = { op = f.op, seq = f.seq, status = f.status, len = #(f.payload or ''), at = now };
     local p = st.pending;
     if p == nil or f.op ~= p.op or f.seq ~= p.seq then
+        noteWhy(string.format('ate a %s#%d we were not waiting for (late duplicate)', opName(f.op), f.seq), now);
         return true;   -- ours by partition, but not the answer we await (late dupe): eat it
     end
 
-    local now = M._clock();
-
     if f.status == M.status.BAD_OP then
+        noteWhy('server answered BAD_OP: no vault service here -- dormant for the session', now);
         goDormant(false);            -- no vault on this server: sleep silently
         return true;
     end
     if f.status == M.status.PROTO_UNSUPPORTED then
+        noteWhy('server answered PROTO_UNSUPPORTED -- dormant for the session', now);
         goDormant(true);
         return true;
+    end
+    if f.status == M.status.NOT_ATTUNED then
+        noteWhy(string.format('server answered NOT_ATTUNED: %s is not finished -- no vault for this character yet (re-check every %ds, or on zone/job/!vault/Sync)',
+            M.ATTUNE_QUEST, M.RECHECK_UNATTUNED), now);
+        goUnattuned(now);
+        return true;
+    end
+    if st.unattuned and f.status == M.status.OK then
+        -- The first OK after a refusal: the quest is done. Say so once and
+        -- let the normal sync run below.
+        st.unattuned = false;
+        M.mirror.stamp = nil;
+        noteWhy('server stopped refusing: attuned now -- syncing', now);
+        say(string.format('gear vault: %s is finished -- the vault is open, syncing.', M.ATTUNE_QUEST));
     end
     if f.status ~= M.status.OK then
         -- BUSY / TOO_FAR / UNAVAILABLE / MALFORMED: not a dead server, just
         -- not now -- and each op kind fails toward its own consumer.
+        noteWhy(string.format('%s (%s#%d) refused: %s', p.kind, opName(p.op), p.seq, statusName(f.status)), now);
         st.pending = nil;
         if p.op == M.op.WITHDRAW or p.op == M.op.DEPOSIT then
             local q = (p.op == M.op.WITHDRAW) and st.withdrawQ or st.depositQ;
@@ -642,6 +737,7 @@ function M.onFrame(f)
         local h = M.parseHello(f.payload);
         st.pending = nil;
         if h == nil then
+            noteWhy(string.format('HELLO reply unreadable: %d-byte payload (need 12) -- a changed server shape?', #(f.payload or '')), now);
             st.staleAt = now + M.GIVEUP_BACKOFF;
             return true;
         end
@@ -802,6 +898,7 @@ end
 -- ---------------------------------------------------------------------------
 function M.state()
     if st.dormant then return 'dormant'; end
+    if st.unattuned then return 'unattuned'; end
     if st.pending ~= nil then return 'syncing'; end
     if M.mirror.fresh then return 'fresh'; end
     return 'stale';
@@ -812,6 +909,10 @@ function M.statusLine()
     if s == 'dormant' then
         return 'gear vault: not available on this server (or the addon was refused).';
     end
+    if s == 'unattuned' then
+        return string.format('gear vault: not open for this character yet -- finish %s (%s) to attune.',
+            M.ATTUNE_QUEST, M.ATTUNE_HINT);
+    end
     local n = 0;
     for _, r in ipairs(M.mirror.rows) do n = n + math.max(1, r.qty); end
     return string.format('gear vault: %s -- %d piece%s mirrored (%d row%s)%s.',
@@ -819,13 +920,50 @@ function M.statusLine()
         (st.giveups > 0) and (' -- ' .. st.giveups .. ' failed sync(s), retrying') or '');
 end
 
+-- The evidence line (/dl vault's second line): what left, what came back,
+-- what the client made of it, and when it will try again. Ages are whole
+-- seconds against _clock; 'never' where nothing happened yet.
+function M.traceLine()
+    local now = M._clock();
+    local function ago(at)
+        if at == nil then return 'never'; end
+        return string.format('%ds ago', math.max(0, math.floor(now - at)));
+    end
+    local tr = st.trace or {};
+    local parts = {};
+    if tr.lastSent ~= nil then
+        parts[#parts + 1] = string.format('last sent %s#%d (%s%s) %s', opName(tr.lastSent.op), tr.lastSent.seq,
+            tr.lastSent.kind, (tr.lastSent.retries or 0) > 0 and (', retry ' .. tr.lastSent.retries) or '',
+            ago(tr.lastSent.at));
+    else
+        parts[#parts + 1] = 'nothing sent yet';
+    end
+    if tr.lastRecv ~= nil then
+        parts[#parts + 1] = string.format('last reply %s#%d %s, %d-byte payload, %s', opName(tr.lastRecv.op),
+            tr.lastRecv.seq, statusName(tr.lastRecv.status), tr.lastRecv.len, ago(tr.lastRecv.at));
+    else
+        parts[#parts + 1] = 'no reply ever seen';
+    end
+    if tr.why ~= nil then parts[#parts + 1] = 'outcome: ' .. tr.why; end
+    if st.dormant then
+        parts[#parts + 1] = 'no retry (dormant)';
+    elseif st.unattuned and st.pending == nil and st.staleAt ~= nil then
+        parts[#parts + 1] = string.format('not attuned: next check in %ds', math.max(0, math.ceil(st.staleAt - now)));
+    elseif st.pending ~= nil then
+        parts[#parts + 1] = 'awaiting a reply';
+    elseif st.staleAt ~= nil then
+        parts[#parts + 1] = string.format('next try in %ds', math.max(0, math.ceil(st.staleAt - now)));
+    end
+    return 'gear vault: ' .. table.concat(parts, ' | ') .. '.';
+end
+
 -- test seam
 function M._reset()
     M.mirror = { fresh = false, rows = {}, counts = {}, vaultCount = nil, stamp = nil };
     M.layoutCache = { job = nil, entries = {}, fresh = false, stamp = nil };
     M.limits = nil;
-    st = { dormant = false, pending = nil, seq = 0, lastSend = 0, staleAt = nil,
-           giveups = 0, rowsAcc = nil, lastJob = nil, saidProto = false };
+    st = { dormant = false, unattuned = false, saidAttune = false, pending = nil, seq = 0, lastSend = 0,
+           staleAt = nil, giveups = 0, rowsAcc = nil, lastJob = nil, saidProto = false, trace = {} };
 end
 
 function M._st() return st; end

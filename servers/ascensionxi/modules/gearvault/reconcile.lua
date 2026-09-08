@@ -119,7 +119,8 @@ function R.tick()
     local now = (type(D.clock) == 'function') and D.clock() or os.clock();
     if now - st.lastBeat < R.BEAT then return 'idle'; end
     if st.inFlight > 0 then return 'idle'; end            -- a run is still acking
-    if vc.state() == 'dormant' or vc.state() == 'syncing' then return 'idle'; end
+    local vs = vc.state();
+    if vs == 'dormant' or vs == 'syncing' or vs == 'unattuned' then return 'idle'; end
     if type(D.browsing) == 'function' and D.browsing() == true then return 'idle'; end
     local job = (type(D.mainJob) == 'function') and D.mainJob() or nil;
     if type(job) ~= 'number' or job == 0 then return 'idle'; end

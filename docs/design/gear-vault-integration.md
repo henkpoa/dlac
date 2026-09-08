@@ -32,8 +32,21 @@ Envelope: `[u16 id/size][u16 sync][u8 Op][u8 Seq][u8 Status*][u8 Flags*][payload
 (*C2S: both reserved, must be 0*). Seq is client-chosen and echoed verbatim;
 mutating ops sit behind a 5 s server replay ring (a retried frame returns
 the SAME reply — retries are safe). Frame statuses: OK 0, BAD_OP 1,
-MALFORMED 2, BUSY 3, TOO_FAR 4, UNAVAILABLE 5, PROTO_UNSUPPORTED 6.
-Flags bit 1 = MORE (another chunk exists).
+MALFORMED 2, BUSY 3, TOO_FAR 4, UNAVAILABLE 5, PROTO_UNSUPPORTED 6,
+NOT_ATTUNED 7. Flags bit 1 = MORE (another chunk exists).
+
+**Attunement (server D14, 2026-09-03):** the vault does not exist for a
+character who has not finished the quest *The Deeper Room* (the Hollow
+One in the starting city, level 5, after *The Hollow Room*). The server
+answers NOT_ATTUNED to EVERY vault op, reads included, before the replay
+ring. dlac's client treats it as its own state, `unattuned` — not
+dormant (the quest can land mid-session) and not a failed sync: no
+30 s retry loop, no layout asks (the reconcile engine idles), the mirror
+reads as an empty vault, and the player is told once per session which
+quest opens it (chat line, `/dl vault`, the tab). One HELLO re-checks
+every 5 min; zone-in, a job change, an outgoing `!vault`, and the tab's
+Check now / Sync pull that forward. The first OK afterwards says so once
+and runs a full sync.
 
 Vault partition 0x40–0x7F:
 

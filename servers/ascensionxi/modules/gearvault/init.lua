@@ -130,6 +130,9 @@ pcall(function()
             pcall(vaultWhy, (name or ''):gsub('%s+$', ''));
         else
             vc._say(vc.statusLine());
+            -- the evidence line: last send, last reply, the client's verdict,
+            -- next try -- so "stale" never has to be guessed at again
+            pcall(function() vc._say(vc.traceLine()); end);
         end
     end);
 end);
