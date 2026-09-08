@@ -66,9 +66,9 @@ function M.onMeritPacket(data)
     M.learned = n;
     local ok, aui = pcall(require, 'dlac\\ui\\automationsui');
     if ok and type(aui) == 'table' and type(aui.setMpMerits) == 'function' then
-        if aui.setMpMerits(n) then
-            say(string.format('Max MP merits learned: %d (Oneiros threshold re-aimed).', n));
-        end
+        -- Silent on purpose (Henrik, 2026-09-08: "no need to spam the
+        -- players with messages"); the Automation tab shows the learned value.
+        aui.setMpMerits(n);
     end
 end
 

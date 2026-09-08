@@ -28180,8 +28180,7 @@ end)();
     T = 3; vc.pump(true); T = 6; vc.pump(true);   -- arm (+2s), then send HELLO
     vc.onFrame(reply(vc.status.NOT_ATTUNED, 0, ''));
     check('GVA0 the state is unattuned (not dormant, not stale)', vc.state(), 'unattuned');
-    check('GVA1 the player hears the quest by name, once',
-          #said == 1 and said[1]:find('The Deeper Room', 1, true) ~= nil and said[1]:find('level 5', 1, true) ~= nil, true);
+    check('GVA1 the player hears NOTHING in chat (the tab and /dl vault carry the quest)', #said, 0);
     check('GVA2 statusLine names the quest and the hint',
           vc.statusLine():find('finish The Deeper Room', 1, true) ~= nil and vc.statusLine():find('Hollow One', 1, true) ~= nil, true);
     check('GVA3 traceLine: the rare re-check, not a 30 s retry',
@@ -28210,7 +28209,7 @@ end)();
     T = T + vc.RECHECK_UNATTUNED; vc.pump(true);
     check('GVA9 one HELLO after the re-check interval', #sent == before + 1 and sent[#sent][5] == vc.op.HELLO, true);
     vc.onFrame(reply(vc.status.NOT_ATTUNED, 0, ''));
-    check('GVA10 a second refusal says nothing more', #said, 1);
+    check('GVA10 a second refusal says nothing either', #said, 0);
     check('GVA11 ...and ownership is not re-told (nothing changed)', freshed, 1);
     -- a reason (zone-in) pulls the re-check forward instead of pushing it out
     vc.noteZoneIn();
@@ -28221,7 +28220,7 @@ end)();
     -- the quest lands: the next OK clears the state, says so once, and syncs in full
     vc.onFrame(reply(vc.status.OK, 0, vc._wu16(1) .. vc._wu16(0) .. vc._wu32(1) .. string.char(15, 124, 62, 0)));
     check('GVA14 an OK reply ends unattuned', vc.state() ~= 'unattuned', true);
-    check('GVA15 the player hears the vault opened, once', #said == 2 and said[2]:find('is finished', 1, true) ~= nil, true);
+    check('GVA15 the player hears the vault opened, once (the ONE line that stays)', #said == 1 and said[1]:find('is finished', 1, true) ~= nil, true);
     check('GVA16 ...and a full LIST follows (not a probe short-cut)', sent[#sent][5], vc.op.LIST);
     vc.onFrame(reply(vc.status.OK, 0, vc._wu16(1) .. vc._wu16(0) .. vc._wu32(11) .. vc._wu16(4444) .. vc._wu16(1) .. string.rep(' ', 24)));
     check('GVA17 the mirror is fresh with the row', vc.state() == 'fresh' and #vc.mirror.rows == 1, true);
