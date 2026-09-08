@@ -97,6 +97,14 @@ excluded; fishing rods AND bait are vault territory (bait rides `quantity`).
   on login, after every deposit/withdraw ack, and after the job-change
   swap stream settles (the 0x020/0x01D flood already schedules dlac's
   debounced re-scan — same signal).
+  **Amended 2026-09-08 — the vault is a SOURCE OF TRUTH for gear.lua, not
+  only a counter.** Field report: gear stored with a Void Warden before
+  dlac's first run never became a gear.lua record (the fold only re-counts
+  records that already exist), so the + Add picker could not offer it.
+  `gearimport.scan` now walks the mirror's rows exactly like bag slots
+  (itemId = Id, the 24 identity bytes = Extra, one row = one unit; an
+  explicit bag list stays bags-only), and every mirror commit slides the
+  same debounced add-only sync an inventory packet does. Tests GVS0-10.
 - **GV6 — One "Gear Vault" tab** registered by the pack module (browse +
   manual handling), auto-populated layout inside it; plus a **Warden
   nudge** float for deposits and the vaulted verdict threaded into

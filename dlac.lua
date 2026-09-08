@@ -18,7 +18,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.09.06a';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.09.08a';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
                                 -- (03f = engine v163: the contest explains its own plan;
                                 --  03g = one floating tray: Teleports + the E-Box crates;
@@ -271,7 +271,14 @@ addon.version = '2026.09.06a';  -- date of the last shipped change (Ashita print
                                 --  (gen_pack.py once emitted {} and the
                                 --  Gear Vault silently never loaded -- the
                                 --  brother's install, again); /dl check +
-                                --  pack_lint print the list and its source)
+                                --  pack_lint print the list and its source;
+                                --  09.08a = the VAULT IS A SOURCE OF TRUTH
+                                --  for gear.lua: the scan walks the mirror's
+                                --  rows like bag slots (a piece stored before
+                                --  dlac's first run now reaches the + Add
+                                --  picker) and a fresh mirror schedules the
+                                --  same debounced add-only sync a bag packet
+                                --  does)
 addon.desc    = 'Gear sets, triggers and live stats with level scaling -- dlac equips your gear itself.';
 
 -- Load BEACON ('/dl check' field round, 2026-07-23): written by PLAIN io at
