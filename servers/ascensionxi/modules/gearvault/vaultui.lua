@@ -171,6 +171,7 @@ local ERR_WORDS = {
     too_far     = 'stand at a Void Warden to withdraw',
     busy        = 'the server is busy -- try again',
     unavailable = 'the vault is unavailable right now',
+    not_attuned = 'finish The Deeper Room first -- the vault does not know you yet',
     timeout     = 'no answer -- outcome unknown, re-syncing the mirror',
     malformed   = 'the reply did not parse -- please report this',
 };
@@ -583,6 +584,18 @@ function M.render(job, level)
     local state = vc.state();
     if state == 'dormant' then
         imgui.TextColored(cDIM, 'The Gear Vault is not available on this server (or the addon was refused).');
+        return;
+    end
+    if state == 'unattuned' then
+        -- The server refuses every vault op until The Deeper Room is done
+        -- (D14). Say so where the player is looking, and stop -- the panes
+        -- below would only describe a vault that does not exist yet.
+        imgui.TextColored(cGOLD, 'The Gear Vault does not know you yet.');
+        imgui.TextColored(cDIM, string.format('Finish the quest %s to open it: %s.', vc.ATTUNE_QUEST, vc.ATTUNE_HINT));
+        imgui.TextColored(cDIM, 'Once it is done, dlac notices on its own (or press Check now).');
+        if imgui.IsItemHovered() then imgui.SetTooltip('Quest page: ' .. vc.ATTUNE_WIKI); end
+        if imgui.SmallButton('Check now##gvattune') then vc.refresh(); end
+        if imgui.IsItemHovered() then imgui.SetTooltip('Ask the server again right now.'); end
         return;
     end
     local vaultN = 0;

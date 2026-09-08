@@ -28168,6 +28168,73 @@ end)();
     vc.onFrame(reply(vc.status.BAD_OP, 0, ''));
     check('GVT10 BAD_OP reads as dormant, no retry', vc.traceLine():find('no retry (dormant)', 1, true) ~= nil, true);
 
+    -- ---- GVA: NOT_ATTUNED (2026-09-08, Henrik: "when DLAC has no access to
+    -- the gear vault yet it is continuously trying to fetch the wardrobe
+    -- layout"). The server refuses EVERY op with status 7 until The Deeper
+    -- Room is done (D14). The client must go quiet -- no 30 s loop, no
+    -- layout asks -- tell the player why ONCE, and notice on its own when
+    -- the quest lands.
+    local said = {};
+    vc._say = function(m) said[#said + 1] = m; end;
+    vc._reset(); T, sent, freshed = 0, {}, 0;
+    T = 3; vc.pump(true); T = 6; vc.pump(true);   -- arm (+2s), then send HELLO
+    vc.onFrame(reply(vc.status.NOT_ATTUNED, 0, ''));
+    check('GVA0 the state is unattuned (not dormant, not stale)', vc.state(), 'unattuned');
+    check('GVA1 the player hears the quest by name, once',
+          #said == 1 and said[1]:find('The Deeper Room', 1, true) ~= nil and said[1]:find('level 5', 1, true) ~= nil, true);
+    check('GVA2 statusLine names the quest and the hint',
+          vc.statusLine():find('finish The Deeper Room', 1, true) ~= nil and vc.statusLine():find('Hollow One', 1, true) ~= nil, true);
+    check('GVA3 traceLine: the rare re-check, not a 30 s retry',
+          vc.traceLine():find('not attuned: next check in 300s', 1, true) ~= nil, true);
+    check('GVA4 the mirror reads as an empty vault, and ownership was told once',
+          #vc.mirror.rows == 0 and vc.mirror.vaultCount == 0 and freshed == 1, true);
+    -- the loop is gone: 60 s of pumping sends NOTHING
+    local before = #sent;
+    for _ = 1, 60 do T = T + 1; vc.pump(true); end
+    check('GVA5 a minute of pumping sends nothing', #sent, before);
+    -- a layout ask is refused locally: nothing to ask for
+    check('GVA6 requestLayout says no', vc.requestLayout(0), false);
+    T = T + 1; vc.pump(true);
+    check('GVA7 ...and no LAYOUT_LIST leaves', #sent, before);
+    -- reconcile stays idle on the state word (no 'asked-layout' beat)
+    do
+        local rc2 = dofile('servers/ascensionxi/modules/gearvault/reconcile.lua');
+        rc2.configure({ vc = vc, clock = function() return T; end, mainJob = function() return 1; end,
+                        derive = { derive = function() return { want = {} }; end },
+                        setsRoot = function() return {}; end, triggers = function() return {}; end,
+                        resolve = function() return nil; end, say = function() end });
+        T = T + rc2.BEAT + 1;
+        check('GVA8 the layout engine idles while unattuned', rc2.tick(), 'idle');
+    end
+    -- the rare re-check fires once at RECHECK_UNATTUNED, and stays quiet on a second refusal
+    T = T + vc.RECHECK_UNATTUNED; vc.pump(true);
+    check('GVA9 one HELLO after the re-check interval', #sent == before + 1 and sent[#sent][5] == vc.op.HELLO, true);
+    vc.onFrame(reply(vc.status.NOT_ATTUNED, 0, ''));
+    check('GVA10 a second refusal says nothing more', #said, 1);
+    check('GVA11 ...and ownership is not re-told (nothing changed)', freshed, 1);
+    -- a reason (zone-in) pulls the re-check forward instead of pushing it out
+    vc.noteZoneIn();
+    check('GVA12 zone-in pulls the next check to the settle time',
+          vc.traceLine():find('next check in ' .. math.ceil(vc.SETTLE_ZONE) .. 's', 1, true) ~= nil, true);
+    T = T + vc.SETTLE_ZONE + 1; vc.pump(true);
+    check('GVA13 ...and the HELLO leaves', sent[#sent][5] == vc.op.HELLO and #sent == before + 2, true);
+    -- the quest lands: the next OK clears the state, says so once, and syncs in full
+    vc.onFrame(reply(vc.status.OK, 0, vc._wu16(1) .. vc._wu16(0) .. vc._wu32(1) .. string.char(15, 124, 62, 0)));
+    check('GVA14 an OK reply ends unattuned', vc.state() ~= 'unattuned', true);
+    check('GVA15 the player hears the vault opened, once', #said == 2 and said[2]:find('is finished', 1, true) ~= nil, true);
+    check('GVA16 ...and a full LIST follows (not a probe short-cut)', sent[#sent][5], vc.op.LIST);
+    vc.onFrame(reply(vc.status.OK, 0, vc._wu16(1) .. vc._wu16(0) .. vc._wu32(11) .. vc._wu16(4444) .. vc._wu16(1) .. string.rep(' ', 24)));
+    check('GVA17 the mirror is fresh with the row', vc.state() == 'fresh' and #vc.mirror.rows == 1, true);
+    -- a queued write meets the refusal: its consumer hears 'not_attuned'
+    vc._reset(); T, sent = 0, {}; said = {};
+    local werr = nil;
+    vc.requestWithdraw({ { rowId = 1, qty = 1 } }, function(acks, err) werr = err; end);
+    T = 3; vc.pump(true);
+    check('GVA18 the withdraw leaves', sent[#sent][5], vc.op.WITHDRAW);
+    vc.onFrame(reply(vc.status.NOT_ATTUNED, 0, ''));
+    check('GVA19 ...and its consumer hears not_attuned', werr, 'not_attuned');
+    vc._say = nil;
+
     vc._reset();
 
     -- ---- GVF: the ownership fold (GV5) in gear/gearimport ----
