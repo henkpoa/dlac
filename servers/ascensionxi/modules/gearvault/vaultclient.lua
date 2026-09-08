@@ -342,7 +342,6 @@ local st =
 {
     dormant  = false,    -- server has no vault / proto refused: sleep for the session
     unattuned = false,   -- server answered NOT_ATTUNED: no vault for THIS character until the quest
-    saidAttune = false,  -- the one login line about the quest, said once a session
     pending  = nil,      -- { kind='probe'|'sync-hello'|'sync-list', op, seq,
                          --   frame, sentAt, retries, cursor }
     seq      = 0,        -- last Seq used (wraps at 255)
@@ -445,7 +444,7 @@ end
 -- client goes quiet -- one HELLO per RECHECK_UNATTUNED, pulled forward by
 -- the usual reasons -- instead of the 30 s failed-sync loop. Every queued
 -- ask is drained toward its consumer with 'not_attuned', the mirror reads
--- as the truth (an empty vault), and the player hears WHY once a session.
+-- as the truth (an empty vault); the tab and /dl vault say WHY.
 local function goUnattuned(now)
     local first = not st.unattuned;
     st.unattuned = true;
@@ -468,11 +467,9 @@ local function goUnattuned(now)
     M.layoutCache = { job = nil, entries = {}, fresh = false, stamp = nil };
     st.staleAt = now + M.RECHECK_UNATTUNED;
     if first and type(M._onFresh) == 'function' then pcall(M._onFresh); end
-    if not st.saidAttune then
-        st.saidAttune = true;
-        say(string.format('gear vault: %s does not know you yet -- finish that quest (%s) to open the vault.',
-            M.ATTUNE_QUEST, M.ATTUNE_HINT));
-    end
+    -- No chat line here (Henrik, 2026-09-08: a first-time player should not
+    -- be greeted by it -- "keep the spamming down"). The tab and /dl vault
+    -- carry the quest; the one line that stays is the vault OPENING.
 end
 
 -- Manual refresh (the service verb; also `/dl vault sync`).
@@ -962,7 +959,7 @@ function M._reset()
     M.mirror = { fresh = false, rows = {}, counts = {}, vaultCount = nil, stamp = nil };
     M.layoutCache = { job = nil, entries = {}, fresh = false, stamp = nil };
     M.limits = nil;
-    st = { dormant = false, unattuned = false, saidAttune = false, pending = nil, seq = 0, lastSend = 0,
+    st = { dormant = false, unattuned = false, pending = nil, seq = 0, lastSend = 0,
            staleAt = nil, giveups = 0, rowsAcc = nil, lastJob = nil, saidProto = false, trace = {} };
 end
 
