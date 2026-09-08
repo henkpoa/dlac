@@ -36,9 +36,15 @@ vc._say = function(msg)
 end;
 
 -- A fresh mirror changes ownership answers NOW, not at the next ~4s
--- availability heartbeat.
+-- availability heartbeat -- and it is an inventory event in its own right:
+-- the vault is a source of truth for gear.lua (gearimport.scan folds the
+-- mirror's rows in), so a mirror commit slides the same debounced add-only
+-- sync an inventory packet does. First run on a character who stored gear
+-- before dlac ever loaded: login -> LIST -> fresh -> ~5s -> the vaulted
+-- pieces are records, and the + Add picker offers them (2026-09-08).
 vc._onFresh = function()
     pcall(function() require('dlac\\gear\\ownedcache').resetCache(); end);
+    pcall(function() require('dlac\\gear\\syncflags').invDirty(); end);
 end;
 
 -- The service core consults (gearimport's vault fold, prune's guard, and

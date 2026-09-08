@@ -28148,6 +28148,95 @@ end)();
     check('GVF5 bag copies keep their homes',    split.where[100][0] == 1 and split.where[100][gi.VAULT_CID] == 2, true);
 end)();
 
+-- ---- GVS: the vault is a SOURCE OF TRUTH for gear.lua (2026-09-08) ----
+-- Henrik's field report: gear stored with a Void Warden BEFORE dlac's first
+-- run never became a record (the GV5 fold only re-counts records that already
+-- exist), so the + Add picker could not offer it. gearimport.scan now walks
+-- the mirror's rows exactly like bag slots -- one road for every owned unit.
+(function()
+    local savedCore = AshitaCore;
+    local sp = package.loaded['dlac\\gear\\serverpack'];
+    local RES = {
+        [100] = { Name = { 'Bag Hat' },      Slots = 0x0010, Level = 10, Jobs = 0xFFFF, Flags = 0 },
+        [555] = { Name = { 'Vault Boots' },  Slots = 0x0100, Level = 20, Jobs = 0xFFFF, Flags = 0 },
+        [777] = { Name = { 'Vault Gloves' }, Slots = 0x0040, Level = 30, Jobs = 0xFFFF, Flags = 0 },
+        [900] = { Name = { 'Not Gear' },     Slots = 0 },
+    };
+    local bag = { [0] = { Id = 100, Count = 1 } };
+    AshitaCore = {
+        GetMemoryManager = function() return { GetInventory = function() return {
+            GetContainerCountMax = function(_, cid) return (cid == 0) and 1 or 0; end,
+            GetContainerItem     = function(_, cid, idx) return (cid == 0) and bag[idx] or nil; end,
+        }; end }; end,
+        GetResourceManager = function() return { GetItemById = function(_, id) return RES[id]; end }; end,
+    };
+    -- the augment decoder (feature\augments) is what turns identity bytes into
+    -- a roll; a fresh gearimport instance tries it once, on the first scan
+    local hadAug = package.loaded['dlac\\feature\\augments'];
+    if hadAug == nil then package.loaded['dlac\\feature\\augments'] = dofile('feature/augments.lua'); end
+    local gi = dofile('gear/gearimport.lua');
+    local ZERO24 = string.rep('\0', 24);
+    local function byId(items)
+        local m = {};
+        for _, r in ipairs(items) do if m[r.Id] == nil then m[r.Id] = r; end end
+        return m;
+    end
+
+    -- no service mounted: the scan is the old scan (ADR 0035: no pack, no change)
+    sp.provide('gearvault', nil);
+    local m0 = byId(gi.scan());
+    check('GVS0 no vault service -> only the bag piece', m0[100] ~= nil and m0[555] == nil, true);
+
+    local rows = {
+        { rowId = 1, itemId = 555, qty = 1, identity = ZERO24 },
+        { rowId = 2, itemId = 100, qty = 1, identity = ZERO24 },
+        { rowId = 3, itemId = 900, qty = 1, identity = ZERO24 },
+    };
+    sp.provide('gearvault', { rows = function() return rows; end, counts = function() return {}; end });
+    local m = byId(gi.scan());
+    check('GVS1 a vault-only piece becomes a record',   m[555] ~= nil and m[555].Name, 'Vault Boots');
+    check('GVS2 ...unknown to gear.lua, so it stages',   m[555] ~= nil and m[555].Known, false);
+    check('GVS3 ...with its slot from the resource',     m[555] ~= nil and m[555].Slot, 'Feet');
+    check('GVS4 a bag copy + a vault copy count as two', m[100] ~= nil and m[100].Count, 2);
+    check('GVS5 a non-equippable vault row is skipped',  m[900], nil);
+    check('GVS6 an explicit bag list stays bags-only',   byId(gi.scan({ 0 }))[555], nil);
+
+    -- an augmented vault row: the identity bytes ARE the Extra -- the same
+    -- decode a bag entry gets, so two rolls of one id split like bags do
+    local w = 23 + 2 * 2048;   -- augment id 23, tier 3 -> signature '23:3'
+    local AUG24 = string.char(2, 0, w % 256, math.floor(w / 256)) .. string.rep('\0', 20);
+    rows = {
+        { rowId = 1, itemId = 777, qty = 1, identity = ZERO24 },
+        { rowId = 2, itemId = 777, qty = 1, identity = AUG24 },
+    };
+    local split = {};
+    for _, r in ipairs(gi.scan()) do if r.Id == 777 then split[#split + 1] = r; end end
+    check('GVS7 two vault rolls of one id -> two records', #split, 2);
+    local keys = {};
+    for _, r in ipairs(split) do keys[r.AugKey or 'nil'] = true; end
+    check('GVS8 ...the plain roll and the signed roll', keys[''] == true and keys['23:3'] == true, true);
+
+    -- rows the service cannot vouch for never become records
+    rows = { { rowId = 1, itemId = 0,     qty = 1, identity = ZERO24 },
+             { rowId = 2, itemId = 65535, qty = 1, identity = ZERO24 } };
+    local m2 = byId(gi.scan());
+    check('GVS9 empty/sentinel ids never resolve', m2[0] == nil and m2[65535] == nil, true);
+
+    -- the mirror's freshness hook IS the inventory event: init.lua's _onFresh
+    -- slides syncflags' debounced add-only sync. init.lua needs a mounted pack
+    -- to load, so the glue contract is pinned as text (an honest text pin, not
+    -- a circular fixture -- the behaviour it names is GVS1-8 above).
+    local f = io.open('servers/ascensionxi/modules/gearvault/init.lua', 'r');
+    local src = (f ~= nil) and f:read('*a') or '';
+    if f ~= nil then f:close(); end
+    check('GVS10 a fresh mirror schedules the add-only gear sync',
+          src:find("syncflags').invDirty()", 1, true) ~= nil, true);
+
+    sp.provide('gearvault', nil);
+    if hadAug == nil then package.loaded['dlac\\feature\\augments'] = nil; end
+    AshitaCore = savedCore;
+end)();
+
 -- The warm-note artifact the dispatch-driving sections leave behind (dataDir
 -- stubbed 'tests\'): on Windows a real tests\debug\mpwarm.txt (gitignored via
 -- debug/), under WSL ONE backslash-bearing filename that drvfs PUA-mangles on

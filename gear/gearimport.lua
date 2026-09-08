@@ -366,8 +366,10 @@ end
 -- that roll's copies, Known judged per roll (collectExistingAugPairs). A
 -- single-roll id keeps the collapsed record, byte-identical to the old scan.
 function M.scan(containers)
-    containers = containers or M.ALL_CONTAINERS;   -- gear.lua documents everything you OWN,
-                                                   -- wherever it lives; availability is display state
+    local fullScan = (containers == nil);           -- the default walk = everything you OWN;
+    containers = containers or M.ALL_CONTAINERS;   -- an explicit bag list stays bags-only
+                                                   -- (gear.lua documents everything you OWN,
+                                                   -- wherever it lives; availability is display state)
     local inv = AshitaCore:GetMemoryManager():GetInventory();
     if inv == nil then
         print('[dlac] scan: inventory manager unavailable.');
@@ -386,61 +388,95 @@ function M.scan(containers)
     for nm in pairs(gear.NameToObject) do knownNames[string.lower(nm)] = true; end
     local knownKeys = collectExistingKeys();
 
+    -- ONE unit of ownership -- a bag slot, or a vault row -- joins the tally.
+    -- The bag walk and the vault fold below both speak this, so a vaulted
+    -- piece becomes a record by exactly the road a bagged one takes.
+    local function absorb(entry)
+        local cached = byId[entry.Id];
+        if cached == nil then
+            local rec = resolveItem(entry);
+            if rec ~= nil then
+                local known = false;
+                if rec.Name and knownNames[string.lower(rec.Name)] then known = true; end
+                if not known and rec.FullName and knownNames[string.lower(rec.FullName)] then known = true; end
+                if not known then
+                    local k = M.makeKey(rec.FullName or rec.Name);
+                    if k and knownKeys[string.lower(k)] then known = true; end
+                end
+                if not known and rec.Name then
+                    local k = M.makeKey(rec.Name);
+                    if k and knownKeys[string.lower(k)] then known = true; end
+                end
+                rec.Known = known;
+                byId[entry.Id] = rec;
+                table.insert(items, rec);
+            else
+                byId[entry.Id] = false;   -- resolved once; skip future copies
+            end
+        elseif cached ~= false then
+            cached.Count = cached.Count + 1;
+        end
+        -- Roll tally: one bump per bag slot (the same unit Count
+        -- counts), signature '' for unaugmented copies -- a plain
+        -- copy beside an augmented one is a distinct roll too.
+        if dec ~= nil and byId[entry.Id] ~= false and byId[entry.Id] ~= nil then
+            local sig, txt = '', nil;
+            pcall(function()
+                sig = dec.signature(entry.Extra);
+                if sig ~= '' then txt = dec.describe(entry.Extra); end
+            end);
+            local t = rolls[entry.Id];
+            if t == nil then
+                t = { n = 0, order = {}, count = {}, text = {} };
+                rolls[entry.Id] = t;
+            end
+            if t.count[sig] == nil then
+                t.n = t.n + 1;
+                t.order[#t.order + 1] = sig;
+                t.count[sig] = 0;
+                t.text[sig] = txt;
+            end
+            t.count[sig] = t.count[sig] + 1;
+        end
+    end
+
     for _, cid in ipairs(containers) do
         local maxCount = inv:GetContainerCountMax(cid);
         if maxCount ~= nil and maxCount > 0 then
             for idx = 0, maxCount, 1 do
                 local entry = inv:GetContainerItem(cid, idx);
                 if entry ~= nil and entry.Id ~= nil and entry.Id ~= 0 and entry.Id ~= 65535 then
-                    local cached = byId[entry.Id];
-                    if cached == nil then
-                        local rec = resolveItem(entry);
-                        if rec ~= nil then
-                            local known = false;
-                            if rec.Name and knownNames[string.lower(rec.Name)] then known = true; end
-                            if not known and rec.FullName and knownNames[string.lower(rec.FullName)] then known = true; end
-                            if not known then
-                                local k = M.makeKey(rec.FullName or rec.Name);
-                                if k and knownKeys[string.lower(k)] then known = true; end
-                            end
-                            if not known and rec.Name then
-                                local k = M.makeKey(rec.Name);
-                                if k and knownKeys[string.lower(k)] then known = true; end
-                            end
-                            rec.Known = known;
-                            byId[entry.Id] = rec;
-                            table.insert(items, rec);
-                        else
-                            byId[entry.Id] = false;   -- resolved once; skip future copies
-                        end
-                    elseif cached ~= false then
-                        cached.Count = cached.Count + 1;
-                    end
-                    -- Roll tally: one bump per bag slot (the same unit Count
-                    -- counts), signature '' for unaugmented copies -- a plain
-                    -- copy beside an augmented one is a distinct roll too.
-                    if dec ~= nil and byId[entry.Id] ~= false and byId[entry.Id] ~= nil then
-                        local sig, txt = '', nil;
-                        pcall(function()
-                            sig = dec.signature(entry.Extra);
-                            if sig ~= '' then txt = dec.describe(entry.Extra); end
-                        end);
-                        local t = rolls[entry.Id];
-                        if t == nil then
-                            t = { n = 0, order = {}, count = {}, text = {} };
-                            rolls[entry.Id] = t;
-                        end
-                        if t.count[sig] == nil then
-                            t.n = t.n + 1;
-                            t.order[#t.order + 1] = sig;
-                            t.count[sig] = 0;
-                            t.text[sig] = txt;
-                        end
-                        t.count[sig] = t.count[sig] + 1;
-                    end
+                    absorb(entry);
                 end
             end
         end
+    end
+
+    -- THE VAULT IS A SOURCE OF TRUTH TOO (2026-09-08, Henrik's field report:
+    -- gear stored with a Void Warden BEFORE dlac's first run never reached
+    -- gear.lua, so the + Add picker could not offer it -- ownedSplit's GV5
+    -- fold only re-counts records that already exist; the record itself is
+    -- born HERE). Every mirror row walks through absorb() as a pseudo bag
+    -- slot: itemId is the Id, the 24 identity bytes are the Extra (the same
+    -- exdata the augment decoder reads from a bag entry -- a zero blob decodes
+    -- to the unaugmented roll ''), one row = one unit, like one slot. A stale
+    -- mirror still names what it last saw: the scan is ADD-ONLY, so an old
+    -- row can only ever keep a record, never invent an owner (prune carries
+    -- its own freshness guard). Default walk only -- a caller naming bags
+    -- asked about bags. No pack, no service, no change (ADR 0035).
+    if fullScan then
+        pcall(function()
+            local svc = require('dlac\\gear\\serverpack').service('gearvault');
+            if svc == nil or type(svc.rows) ~= 'function' then return; end
+            local rows = svc.rows();
+            if type(rows) ~= 'table' then return; end
+            for _, row in ipairs(rows) do
+                if type(row) == 'table' and type(row.itemId) == 'number'
+                   and row.itemId > 0 and row.itemId ~= 65535 then
+                    absorb({ Id = row.itemId, Count = row.qty, Extra = row.identity });
+                end
+            end
+        end);
     end
 
     -- The augment split (see the function header). Bag-walk order is kept for
