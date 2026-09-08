@@ -341,7 +341,26 @@ local st =
     rowsAcc  = nil,      -- accumulating LIST pages
     lastJob  = nil,      -- main-job edge detector (pump-fed)
     saidProto = false,
+    trace    = {},       -- the evidence ring: lastSent / lastRecv / why (traceLine)
 };
+
+-- The client's own evidence (2026-09-08, Henrik's prod field report: "stale
+-- -- 0 pieces mirrored (0 rows)" with NO failed syncs -- a readout that two
+-- silent paths share, a refused status and an unparseable HELLO -- and the
+-- client could not say which). Every send, every inbound frame and every
+-- quiet outcome leaves a note; /dl vault prints them. Names, never numbers.
+local function opName(op)
+    for k, v in pairs(M.op) do if v == op then return k; end end
+    return string.format('op 0x%02X', tonumber(op) or 0);
+end
+local function statusName(s)
+    for k, v in pairs(M.status) do if v == s then return k; end end
+    return 'status ' .. tostring(s);
+end
+local function noteWhy(why, now)
+    st.trace.why   = why;
+    st.trace.whyAt = now;
+end
 
 local function nextSeq()
     st.seq = (st.seq + 1) % 256;
@@ -351,6 +370,8 @@ end
 local function sendPending(now)
     st.pending.sentAt = now;
     st.lastSend = now;
+    st.trace.lastSent = { kind = st.pending.kind, op = st.pending.op, seq = st.pending.seq,
+                          at = now, retries = st.pending.retries };
     if type(M._send) == 'function' then pcall(M._send, st.pending.frame); end
 end
 
@@ -538,10 +559,13 @@ function M.pump(ready)
                     end
                     M.layoutCache.fresh = false;
                 elseif dead.op == M.op.LAYOUT_LIST then
+                    noteWhy('layout ask timed out (no reply after ' .. M.MAX_RETRIES .. ' retries)', now);
                     st.layoutAcc = nil;   -- the tab just shows stale and re-asks
                 else
                     -- Lost sync: stale mirror, long backoff, ONE quiet state
                     -- (no chat spam -- /dl vault says it when asked).
+                    noteWhy(string.format('%s (%s#%d) timed out: no reply after %d retries',
+                        dead.kind, opName(dead.op), dead.seq, M.MAX_RETRIES), now);
                     st.rowsAcc = nil;
                     st.giveups = st.giveups + 1;
                     st.staleAt = now + M.GIVEUP_BACKOFF;
@@ -590,24 +614,28 @@ end
 function M.onFrame(f)
     if f == nil or type(f.op) ~= 'number' then return false; end
     if f.op < M.op.HELLO or f.op > 0x7F then return false; end
+    local now = M._clock();
+    st.trace.lastRecv = { op = f.op, seq = f.seq, status = f.status, len = #(f.payload or ''), at = now };
     local p = st.pending;
     if p == nil or f.op ~= p.op or f.seq ~= p.seq then
+        noteWhy(string.format('ate a %s#%d we were not waiting for (late duplicate)', opName(f.op), f.seq), now);
         return true;   -- ours by partition, but not the answer we await (late dupe): eat it
     end
 
-    local now = M._clock();
-
     if f.status == M.status.BAD_OP then
+        noteWhy('server answered BAD_OP: no vault service here -- dormant for the session', now);
         goDormant(false);            -- no vault on this server: sleep silently
         return true;
     end
     if f.status == M.status.PROTO_UNSUPPORTED then
+        noteWhy('server answered PROTO_UNSUPPORTED -- dormant for the session', now);
         goDormant(true);
         return true;
     end
     if f.status ~= M.status.OK then
         -- BUSY / TOO_FAR / UNAVAILABLE / MALFORMED: not a dead server, just
         -- not now -- and each op kind fails toward its own consumer.
+        noteWhy(string.format('%s (%s#%d) refused: %s', p.kind, opName(p.op), p.seq, statusName(f.status)), now);
         st.pending = nil;
         if p.op == M.op.WITHDRAW or p.op == M.op.DEPOSIT then
             local q = (p.op == M.op.WITHDRAW) and st.withdrawQ or st.depositQ;
@@ -642,6 +670,7 @@ function M.onFrame(f)
         local h = M.parseHello(f.payload);
         st.pending = nil;
         if h == nil then
+            noteWhy(string.format('HELLO reply unreadable: %d-byte payload (need 12) -- a changed server shape?', #(f.payload or '')), now);
             st.staleAt = now + M.GIVEUP_BACKOFF;
             return true;
         end
@@ -819,13 +848,48 @@ function M.statusLine()
         (st.giveups > 0) and (' -- ' .. st.giveups .. ' failed sync(s), retrying') or '');
 end
 
+-- The evidence line (/dl vault's second line): what left, what came back,
+-- what the client made of it, and when it will try again. Ages are whole
+-- seconds against _clock; 'never' where nothing happened yet.
+function M.traceLine()
+    local now = M._clock();
+    local function ago(at)
+        if at == nil then return 'never'; end
+        return string.format('%ds ago', math.max(0, math.floor(now - at)));
+    end
+    local tr = st.trace or {};
+    local parts = {};
+    if tr.lastSent ~= nil then
+        parts[#parts + 1] = string.format('last sent %s#%d (%s%s) %s', opName(tr.lastSent.op), tr.lastSent.seq,
+            tr.lastSent.kind, (tr.lastSent.retries or 0) > 0 and (', retry ' .. tr.lastSent.retries) or '',
+            ago(tr.lastSent.at));
+    else
+        parts[#parts + 1] = 'nothing sent yet';
+    end
+    if tr.lastRecv ~= nil then
+        parts[#parts + 1] = string.format('last reply %s#%d %s, %d-byte payload, %s', opName(tr.lastRecv.op),
+            tr.lastRecv.seq, statusName(tr.lastRecv.status), tr.lastRecv.len, ago(tr.lastRecv.at));
+    else
+        parts[#parts + 1] = 'no reply ever seen';
+    end
+    if tr.why ~= nil then parts[#parts + 1] = 'outcome: ' .. tr.why; end
+    if st.dormant then
+        parts[#parts + 1] = 'no retry (dormant)';
+    elseif st.pending ~= nil then
+        parts[#parts + 1] = 'awaiting a reply';
+    elseif st.staleAt ~= nil then
+        parts[#parts + 1] = string.format('next try in %ds', math.max(0, math.ceil(st.staleAt - now)));
+    end
+    return 'gear vault: ' .. table.concat(parts, ' | ') .. '.';
+end
+
 -- test seam
 function M._reset()
     M.mirror = { fresh = false, rows = {}, counts = {}, vaultCount = nil, stamp = nil };
     M.layoutCache = { job = nil, entries = {}, fresh = false, stamp = nil };
     M.limits = nil;
     st = { dormant = false, pending = nil, seq = 0, lastSend = 0, staleAt = nil,
-           giveups = 0, rowsAcc = nil, lastJob = nil, saidProto = false };
+           giveups = 0, rowsAcc = nil, lastJob = nil, saidProto = false, trace = {} };
 end
 
 function M._st() return st; end

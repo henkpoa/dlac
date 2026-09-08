@@ -28128,6 +28128,46 @@ end)();
     check('GVC35 ...and the next send is the RESYNC, not the withdraw',
           sent[#sent][5], vc.op.HELLO);
 
+    -- ---- GVT: the evidence line (2026-09-08) ----
+    -- Henrik's prod report: "stale -- 0 pieces mirrored (0 rows)" with NO
+    -- failed syncs. A refused status and an unreadable HELLO share that
+    -- readout; traceLine says which, in names, with the next-try countdown.
+    vc._reset(); T, sent = 0, {};
+    check('GVT0 before anything: nothing sent, no reply',
+          vc.traceLine():find('nothing sent yet', 1, true) ~= nil
+          and vc.traceLine():find('no reply ever seen', 1, true) ~= nil, true);
+    T = 3; vc.pump(true);   -- arms at T=0 (+2s), sends at T=3
+    T = 5; vc.pump(true);
+    check('GVT1 the HELLO leaves', #sent >= 1 and sent[#sent][5], vc.op.HELLO);
+    local tl = vc.traceLine();
+    check('GVT2 ...and the line names it, by op and kind',
+          tl:find('last sent HELLO#', 1, true) ~= nil and tl:find('sync-hello', 1, true) ~= nil, true);
+    check('GVT3 ...awaiting a reply', tl:find('awaiting a reply', 1, true) ~= nil, true);
+    -- the server refuses: UNAVAILABLE (what an un-attuned character would meet)
+    vc.onFrame(reply(vc.status.UNAVAILABLE, 0, ''));
+    tl = vc.traceLine();
+    check('GVT4 a refusal is named by status word', tl:find('refused: UNAVAILABLE', 1, true) ~= nil, true);
+    check('GVT5 ...the reply is on record', tl:find('last reply HELLO#', 1, true) ~= nil, true);
+    check('GVT6 ...with the next try counted down', tl:find('next try in 30s', 1, true) ~= nil, true);
+    check('GVT7 ...and statusLine still counts NO failed syncs (a refusal is not a timeout)',
+          vc.statusLine():find('failed sync', 1, true), nil);
+    -- an unreadable HELLO (a changed server shape) says so
+    vc._reset(); T, sent = 0, {};
+    T = 3; vc.pump(true); T = 6; vc.pump(true);   -- arm (+2s), then send
+    vc.onFrame(reply(vc.status.OK, 0, 'short'));
+    check('GVT8 an unreadable HELLO is named, with the byte count',
+          vc.traceLine():find('HELLO reply unreadable: 5-byte payload', 1, true) ~= nil, true);
+    -- a timeout is named too, with the retry count
+    vc._reset(); T, sent = 0, {};
+    T = 3; vc.pump(true); T = 6; vc.pump(true);   -- arm (+2s), then send
+    for _ = 1, vc.MAX_RETRIES + 1 do T = T + vc.SEND_TIMEOUT + 0.1; vc.pump(true); end
+    check('GVT9 a timeout is named, with the retries', vc.traceLine():find('timed out: no reply after 3 retries', 1, true) ~= nil, true);
+    -- BAD_OP: dormant, and the line says there is no retry
+    vc._reset(); T, sent = 0, {};
+    T = 3; vc.pump(true); T = 6; vc.pump(true);   -- arm (+2s), then send
+    vc.onFrame(reply(vc.status.BAD_OP, 0, ''));
+    check('GVT10 BAD_OP reads as dormant, no retry', vc.traceLine():find('no retry (dormant)', 1, true) ~= nil, true);
+
     vc._reset();
 
     -- ---- GVF: the ownership fold (GV5) in gear/gearimport ----

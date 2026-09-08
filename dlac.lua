@@ -18,7 +18,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.09.08a';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.09.08b';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
                                 -- (03f = engine v163: the contest explains its own plan;
                                 --  03g = one floating tray: Teleports + the E-Box crates;
@@ -278,7 +278,13 @@ addon.version = '2026.09.08a';  -- date of the last shipped change (Ashita print
                                 --  dlac's first run now reaches the + Add
                                 --  picker) and a fresh mirror schedules the
                                 --  same debounced add-only sync a bag packet
-                                --  does)
+                                --  does;
+                                --  08b = /dl vault prints its EVIDENCE: last
+                                --  send, last reply (status by NAME), the
+                                --  client's verdict, next try -- "stale, 0
+                                --  rows" was two silent paths (a refused
+                                --  status, an unreadable HELLO) wearing one
+                                --  readout on prod)
 addon.desc    = 'Gear sets, triggers and live stats with level scaling -- dlac equips your gear itself.';
 
 -- Load BEACON ('/dl check' field round, 2026-07-23): written by PLAIN io at
