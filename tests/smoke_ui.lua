@@ -7702,24 +7702,29 @@ end)();
     check('GVU9 the match remains',        blob:find('Item200', 1, true) ~= nil, true);
     vui._search[1] = '';
 
-    -- an Unequip & Store click sends ONE unequip through the engine's door
-    -- (equipment slot 4, bag 0, stamped as the vault's) -- and NOTHING
-    -- else yet: the deposit waits until the client shows the piece off
-    -- (field round 1, 2026-09-09: a deposit behind the unequip left the
-    -- client a ghost copy)
+    -- an Unequip & Store click arms ONE leased strip on the engine's Naked
+    -- row for the worn slot (field round 2, 2026-09-09: a raw unequip lasted
+    -- one tick before Default dressed the slot back) -- and NOTHING else
+    -- yet: the deposit waits until the client shows the piece off (field
+    -- round 1: a deposit behind the unequip left the client a ghost copy).
+    -- The raw-unequip door must NOT be used when the registry is there.
     local savedEng = package.loaded['dlac\\feature\\equipengine'];
-    local unequips = {};
+    local savedDsp = package.loaded['dlac\\dispatch'];
+    local unequips, strips, releases = {}, {}, {};
     package.loaded['dlac\\feature\\equipengine'] = {
         unequipSlot = function(slot, cont, why) unequips[#unequips + 1] = { slot, cont, why }; return true; end,
+    };
+    package.loaded['dlac\\dispatch'] = {
+        stripBlocked = function() return nil; end,
+        stripSlot = function(slot, ttl) strips[#strips + 1] = { slot, ttl }; return slot; end,
+        stripRelease = function(slot) releases[#releases + 1] = slot; end,
     };
     vc._st().depositQ = {};
     pressUnequip = true;
     check('GVU9a renders through the Unequip & Store click', pcall(vui.render, 1, 75), true);
     pressUnequip = false;
-    package.loaded['dlac\\feature\\equipengine'] = savedEng;
-    check('GVU9b exactly one unequip left, for Head out of bag 0, billed to the vault',
-          #unequips == 1 and unequips[1][1] == 4 and unequips[1][2] == 0
-          and tostring(unequips[1][3]):find('Gear Vault', 1, true) ~= nil, true);
+    check('GVU9b exactly one strip armed, for Head, with a lease -- and no raw unequip',
+          #strips == 1 and strips[1][1] == 'Head' and strips[1][2] == vui.LEASE and #unequips == 0, true);
     check('GVU9c ...and NO deposit is queued yet -- the store is pending on the client',
           #(vc._st().depositQ or {}) == 0 and vui._pendingStore ~= nil and vui._pendingStore.e.slot == 5, true);
     smallHits = {};
@@ -7729,7 +7734,7 @@ end)();
         pressUnequip = false;
         local h = table.concat(smallHits, '|');
         return ok and h:find('Storing...##gvus5', 1, true) ~= nil and h:find('Unequip & Store##gvus5', 1, true) == nil
-           and #unequips == 1;
+           and #strips == 1 and #unequips == 0;
     end)(), true);
     -- the client still shows it worn: the beat waits, nothing leaves
     vui._pendingStore.at = 100;
@@ -7748,19 +7753,28 @@ end)();
         return vui._pendingStore == nil and #q == 1 and #q[1].entries == 1
            and q[1].entries[1].container == 0 and q[1].entries[1].slot == 5;
     end)(), true);
-    -- a never-applied unequip times out and stores nothing
+    check('GVU9g2 the strip HOLDS through the deposit (no release until the answer)', #releases, 0);
+    -- a never-applied unequip times out, stores nothing and lets the slot go
     vc._st().depositQ = {};
-    vui._pendingStore = { e = vui._invOverride[2], worn = { equip = 4, label = 'Head' }, at = 200 };
+    vui._pendingStore = { e = vui._invOverride[2], worn = { equip = 4, label = 'Head' }, at = 200, strip = 'Head' };
     vui._clientViewOverride = function() return true, 5, 400; end;
     vui.pumpPending(200 + vui.TIMEOUT);
-    check('GVU9h the client never showing it off = timeout, nothing stored',
-          vui._pendingStore == nil and #(vc._st().depositQ or {}) == 0, true);
+    check('GVU9h the client never showing it off = timeout, nothing stored, strip released',
+          vui._pendingStore == nil and #(vc._st().depositQ or {}) == 0 and #releases == 1 and releases[1] == 'Head', true);
     -- the bag slot changing under it (another id) aborts, nothing stored
-    vui._pendingStore = { e = vui._invOverride[2], worn = { equip = 4, label = 'Head' }, at = 300 };
+    vui._pendingStore = { e = vui._invOverride[2], worn = { equip = 4, label = 'Head' }, at = 300, strip = 'Head' };
     vui._clientViewOverride = function() return false, 0, 999; end;
     vui.pumpPending(300.1);
-    check('GVU9i a different item in the bag slot = abort, nothing stored',
-          vui._pendingStore == nil and #(vc._st().depositQ or {}) == 0, true);
+    check('GVU9i a different item in the bag slot = abort, nothing stored, strip released',
+          vui._pendingStore == nil and #(vc._st().depositQ or {}) == 0 and #releases == 2, true);
+    -- a LOCKED slot is refused in words, nothing armed
+    package.loaded['dlac\\dispatch'].stripBlocked = function() return 'locked'; end;
+    pressUnequip = true;
+    pcall(vui.render, 1, 75);
+    pressUnequip = false;
+    check('GVU9j a locked slot arms nothing (refused in words)', #strips == 1 and vui._pendingStore == nil, true);
+    package.loaded['dlac\\dispatch'] = savedDsp;
+    package.loaded['dlac\\feature\\equipengine'] = savedEng;
     vui._clientViewOverride = nil;
     vui._wornOverride = nil;
 

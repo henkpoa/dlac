@@ -564,13 +564,14 @@ local DEPOSIT_WORDS = {
     [10] = 'the vault already holds its copy (duplicates are refused -- future scrap fodder)',
     [9]  = 'the vault store errored',
 };
-local function storeRows(rows, afterUnequip)
+local function storeRows(rows, afterUnequip, onDone)
     local list = {};
     for _, r in ipairs(rows) do
         list[#list + 1] = { container = r.container, slot = r.slot };
     end
     local queued = vc.requestDeposit(list, function(acks, err)
         invalidateInv();
+        if type(onDone) == 'function' then pcall(onDone); end
         if acks == nil then
             noteResult((err == 'too_far') and 'stand at a Void Warden to store'
                 or (ERR_WORDS[err] or ('store failed (' .. tostring(err) .. ')')), true);
@@ -597,14 +598,26 @@ local function storeRows(rows, afterUnequip)
         end
     end);
     if not queued then
+        if type(onDone) == 'function' then pcall(onDone); end
         noteResult('could not queue the store (client dormant, or too many at once)', true);
     end
 end
 
 -- UNEQUIP & STORE (Henrik, 2026-09-09: "this doesn't work for equipped
 -- items"). The store refuses a worn piece per item (code 4), so a worn
--- row's button takes it off first. The unequip is the engine's own 0x050
--- (feature\equipengine.unequipSlot, billed in /dl sends as the vault's).
+-- row's button takes it off first.
+--
+-- THE STRIP IS A CLAIM (field round 2, the same day). Round 1's raw 0x050
+-- unequip left the body for exactly one 0.4s tick: the engine's Default
+-- pass, whose set still named the piece, dressed the slot straight back
+-- ("I don't see the item being unequipped either") -- the Naked argument,
+-- relived. So the button now arms a LEASED STRIP on the engine's Naked row
+-- (dispatch.stripSlot: the slot claims 'remove' on every dispatch until
+-- released or the lease runs out), and the engine itself takes the piece
+-- off and HOLDS the slot bare. A locked or Free-equip slot cannot be
+-- stripped; the button says so instead of timing out. The raw unequip
+-- (equipengine.unequipSlot) stays as the fallback where the engine's
+-- registry is not there to ask.
 --
 -- THE DEPOSIT WAITS FOR THE CLIENT (field round 1, the same day). The first
 -- cut queued the deposit straight behind the unequip -- the outgoing stream
@@ -620,9 +633,25 @@ end
 -- stores nothing. Driven from the module pump, so a closed tab still
 -- finishes it. Nothing is claimed or locked: the set that names the piece
 -- keeps naming it, and the vault layout engine brings it back by its rules.
-M._pendingStore = nil;     -- { e, worn, at, seenAt }
+M._pendingStore = nil;     -- { e, worn, at, seenAt, strip }
 M.SETTLE  = 0.35;          -- seconds the client must show it off before the deposit leaves
 M.TIMEOUT = 4.0;           -- seconds before a never-applied unequip gives up
+M.LEASE   = 10;            -- the strip's lease: outlives TIMEOUT + settle + the deposit's round trip
+
+local function dispatchMod()
+    local d = nil;
+    pcall(function() d = require('dlac\\dispatch'); end);
+    return (type(d) == 'table') and d or nil;
+end
+
+-- Let the slot go: the engine's next pass dresses it again (with whatever is
+-- left -- the piece is in the vault by then, or never left the bags).
+local function releaseStrip(p)
+    if p == nil or p.strip == nil then return; end
+    local d = dispatchMod();
+    if d ~= nil and type(d.stripRelease) == 'function' then pcall(d.stripRelease, p.strip); end
+    p.strip = nil;
+end
 
 -- What the CLIENT shows for the pending piece: is the equipment slot still
 -- pointing at its bag slot; the bag item's Flags and Id right now.
@@ -649,6 +678,7 @@ function M.pumpPending(now)
     local stillWorn, flags, id = clientView(p.e, p.worn);
     if id ~= nil and id ~= p.e.itemId then
         M._pendingStore = nil;
+        releaseStrip(p);
         noteResult(p.e.name .. ': the bag slot changed under it -- nothing stored', true);
         return;
     end
@@ -657,19 +687,43 @@ function M.pumpPending(now)
         if now - p.seenAt >= M.SETTLE then
             M._pendingStore = nil;
             invalidateWorn();
-            storeRows({ p.e }, true);
+            -- the strip holds through the deposit's round trip and lets go
+            -- on the answer, whatever it was
+            storeRows({ p.e }, true, function() releaseStrip(p); end);
         end
         return;
     end
     p.seenAt = nil;
     if now - p.at >= M.TIMEOUT then
         M._pendingStore = nil;
+        releaseStrip(p);
         noteResult(p.e.name .. ': the client never showed it unequipped -- nothing stored, try again', true);
     end
 end
 
 local function unequipAndStore(e, worn)
     if M._pendingStore ~= nil then return; end   -- one at a time
+    local d = dispatchMod();
+    if d ~= nil and type(d.stripSlot) == 'function' then
+        local why = (type(d.stripBlocked) == 'function') and d.stripBlocked(worn.label) or nil;
+        if why == 'locked' then
+            noteResult(e.name .. ': the ' .. tostring(worn.label) .. ' slot is locked -- /dl lock '
+                .. string.lower(tostring(worn.label)) .. ' off first, then try again', true);
+            return;
+        elseif why == 'disabled' then
+            noteResult(e.name .. ': the ' .. tostring(worn.label) .. ' slot is under Free equip -- '
+                .. 'dlac may not take it off; unequip it by hand, then Store', true);
+            return;
+        end
+        local canon = d.stripSlot(worn.label, M.LEASE);
+        if canon ~= nil then
+            invalidateWorn();
+            M._pendingStore = { e = e, worn = worn, at = os.clock(), seenAt = nil, strip = canon };
+            return;
+        end
+    end
+    -- no registry to ask (the legacy engine's state): the raw unequip, and
+    -- hope nothing dresses the slot back before the client shows it off
     local sent = false;
     pcall(function()
         local eng = require('dlac\\feature\\equipengine');

@@ -10404,4 +10404,20 @@ after the client itself shows the equipment slot empty AND the bag item no longe
 flagged equipped (Flags 5), plus a 0.35s settle; a 4s timeout, or the bag slot's id
 changing, aborts with a line and stores nothing. The row reads `Storing...` and
 takes no click meanwhile; one pending store at a time. smoke_ui GVU9c-i rewritten
-around the pending step (1487). Still owed: the button's right-edge alignment.
+around the pending step (1487).
+
+**Field round 2 (same day, `2026.09.09d`):** with the wait in place the piece never
+came off at all -- "the client never showed it unequipped", twice, on Brass Subligar.
+The raw 0x050 unequip lasted exactly one 0.4s tick: the engine's Default pass, whose
+set still named the piece, dressed the slot straight back. The Naked argument,
+relived: a raw strip is a strip-once; only a CLAIM holds. So `dispatch.stripSlot(slot,
+ttl)` arms a **leased strip** on Naked's row -- the slot claims `'remove'` on every
+dispatch until released or the lease (10s here, clamped 1..30) runs out; Naked armed
+keeps its byte-identical `NAKED` leg and full 16, otherwise the row carries a
+`STRIP:<slots>` leg so arming one retraces. The tab arms the strip, the engine takes
+the piece off and holds the slot bare, the client shows it off, the settle runs, the
+deposit leaves, the strip lets go on the answer (or on timeout/abort). A locked or
+Free-equip slot is refused in words up front (`stripBlocked`). The raw unequip stays
+only as the no-registry fallback. Tests NK30-NK40c (run_tests 7456), smoke GVU9b/9g2/
+9h-j (1489), pack_lint 30. Still owed: a clean field pass, and the button's
+right-edge alignment.
