@@ -27787,6 +27787,46 @@ end)();
         return 'not queued';
     end)(), 1);
 
+    -- A DEPOSIT RE-ARMS THE PUSH (Henrik's brass set, 2026-09-10): after a
+    -- clean beat, storing a set-wanted piece (Unequip & Store) changes the
+    -- VAULT -- not the derivation, not the layout -- and the next beat must
+    -- shelve it. The old hash|layout key answered 'clean' forever here.
+    vc._reset(); rc._reset(); ug._reset(); T, sent, msgs = 6000, {}, {};
+    vc.pump(true); T = 6003; vc.pump(true);
+    vc.onFrame(reply(0, 0, hp));
+    vc.onFrame(reply(0, 0, vc._wu16(2) .. vc._wu16(0)
+        .. vaultRow(1, 10, 1) .. vaultRow(2, 20, 2)));     -- Sword A + the Ring X pair vaulted
+    vc.noteJob(1);
+    T = T + rc.BEAT + 1; rc.tick();
+    T = T + 1; vc.pump(true);
+    vc.onFrame(reply(0, 0, vc._wu16(0) .. vc._wu16(0)));   -- empty layout
+    T = T + rc.BEAT + 1;
+    check('GVR29d the vaulted pieces push (2 of 5)', rc.tick(), 'pushed:2');
+    for _ = 1, 2 do T = T + 1; vc.pump(true); vc.onFrame(reply(0, 0, vc._wu16(0) .. vc._wu16(0))); end
+    T = T + 1; vc.pump(true);                              -- the success re-ask
+    vc.onFrame(reply(0, 0, vc._wu16(2) .. vc._wu16(0)
+        .. layoutEntry(1, 10, 1) .. layoutEntry(2, 20, 2)));
+    T = T + rc.BEAT + 1;
+    check('GVR29e the satisfied beat is clean', rc.tick(), 'clean');
+    -- Unequip & Store: the deposit ack marks the mirror stale, the resync
+    -- LISTs Hat B (30) as a new row, the commit re-stamps
+    vc.requestDeposit({ { container = 0, slot = 3 } }, function() end);
+    T = T + 1; vc.pump(true);
+    check('GVR29f the deposit rides the wire', sent[#sent][5], vc.op.DEPOSIT);
+    vc.onFrame(reply(0, 0, vc._wu16(1) .. vc._wu16(0) .. string.char(0, 3) .. vc._wu16(0) .. vc._wu32(3)));
+    T = T + 1; vc.pump(true);                              -- HELLO
+    vc.onFrame(reply(0, 0, hp));
+    vc.onFrame(reply(0, 0, vc._wu16(3) .. vc._wu16(0)
+        .. vaultRow(1, 10, 1) .. vaultRow(2, 20, 2) .. vaultRow(3, 30, 1)));
+    check('GVR29g ...and the mirror is fresh again with Hat B', vc.state() == 'fresh' and vc.mirror.counts[30], 1);
+    T = T + rc.BEAT + 1;
+    check('GVR29h the next beat shelves the newly vaulted piece', rc.tick(), 'pushed:1');
+    check('GVR29i ...and it is Hat B', (function()
+        local q = vc._st().layoutSetQ or {};
+        return q[1] ~= nil and q[1].e.itemId or 'not queued';
+    end)(), 30);
+    T = T + 1; vc.pump(true); vc.onFrame(reply(0, 0, vc._wu16(0) .. vc._wu16(0)));
+
     -- AUTO-EVICT HOLDS IN THE FIELD (2026-08-30): the town service predicting
     -- 'not a town' keeps auto removals off the wire (they would only be
     -- refused NOT_IN_CITY) while the pressure verdict stays exposed.

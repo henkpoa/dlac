@@ -39,7 +39,7 @@ function R.configure(deps) D = deps; end
 
 local st = {
     lastBeat    = 0,
-    lastPushKey = nil,   -- hash|layoutStamp we already pushed for (no re-spam)
+    lastPushKey = nil,   -- hash|layoutStamp|vaultStamp we already pushed for (no re-spam)
     pendingCity = false, -- adds refused by the city gate: waiting for a town
     inFlight    = 0,     -- acks not yet counted this run
     runOk       = 0,
@@ -274,7 +274,17 @@ function R.tick()
     end
 
     -- The PUSH half alone rides the change gate (pressure above never does).
-    local pushKey = d.hash .. '|' .. tostring(vc.layoutCache.stamp);
+    -- THREE inputs decide the adds, so all three key the gate: the
+    -- derivation, the layout, and the VAULT. The vault law made "does the
+    -- vault hold it" a gate on every add, but the key was still hash|layout
+    -- -- so a piece deposited AFTER a clean beat (Unequip & Store, Store,
+    -- Store all) was wantable at once and pushed never: the beat re-derived
+    -- the same hash against the same layout and answered 'clean' until an
+    -- unrelated set commit or relog moved the key (Henrik's brass set,
+    -- 2026-09-10). Every mirror commit re-stamps (a deposit's LIST resync,
+    -- a withdraw's arithmetic), so the stamp is the deposit's voice here.
+    local pushKey = d.hash .. '|' .. tostring(vc.layoutCache.stamp)
+        .. '|' .. tostring(vc.mirror ~= nil and vc.mirror.stamp or nil);
     if pushKey == st.lastPushKey then return 'clean'; end
     st.lastPushKey = pushKey;
     if #adds == 0 then
