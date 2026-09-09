@@ -7547,6 +7547,7 @@ end)();
     local depth = { child = 0, item = 0, tree = 0, tip = 0, col = 0 };
     local texts, smallHits, headers = {}, {}, {};
     local pressWithdraw = false;
+    local pressUnequip = false;
     local nop = function() end;
     local IM = {
         TextColored   = function(_, s) texts[#texts + 1] = tostring(s); end,
@@ -7562,6 +7563,7 @@ end)();
         IsItemHovered = function() return true; end,
         SmallButton   = function(label)
             smallHits[#smallHits + 1] = tostring(label);
+            if pressUnequip then return tostring(label):match('^Unequip & Store') ~= nil; end
             return pressWithdraw and tostring(label):match('^Withdraw') ~= nil;
         end,
         CollapsingHeader = function(label) headers[#headers + 1] = tostring(label); return true; end,
@@ -7641,6 +7643,10 @@ end)();
         { container = 0, slot = 5, itemId = 400, qty = 1, sortKey = 5,
           rec = { Id = 400, Name = 'Item400', Slot = 'Head', Level = 5 }, name = 'Item400' },
     };
+    -- ...and the second one is ON THE BODY (the _wornOverride seam: bag 0
+    -- slot 5 = equipment slot 4, Head): its row must offer Unequip & Store
+    -- instead of Store and say which slot it is worn in (2026-09-09)
+    vui._wornOverride = { [5] = { equip = 4, label = 'Head' } };
     check('GVU1 the tab renders whole', pcall(vui.render, 1, 75), true);
     check('GVU1a tab-bar/tab stacks balanced', (depth.bar or 0) == 0 and (depth.tab or 0) == 0, true);
     check('GVU1b the Inventory sub-tab carries its count',
@@ -7655,6 +7661,13 @@ end)();
         local h = table.concat(smallHits, '|');
         return h:find('Store all (2)', 1, true) ~= nil and h:find('Store##', 1, true) ~= nil;
     end)(), true);
+    check('GVU1f the worn row offers Unequip & Store, the free row plain Store', (function()
+        local h = table.concat(smallHits, '|');
+        return h:find('Unequip & Store##gvus5', 1, true) ~= nil and h:find('Store##gvs3', 1, true) ~= nil
+           and h:find('Store##gvs5', 1, true) == nil;
+    end)(), true);
+    check('GVU1g the worn row names its slot',
+          table.concat(texts, '|'):find('[worn: Head]', 1, true) ~= nil, true);
     check('GVU2 child stack balanced',  depth.child, 0);
     check('GVU3 item-width stack balanced', depth.item, 0);
     check('GVU3a tree stack balanced',  depth.tree, 0);
@@ -7688,6 +7701,28 @@ end)();
     check('GVU8 the filtered row is gone', blob:find('Item100', 1, true), nil);
     check('GVU9 the match remains',        blob:find('Item200', 1, true) ~= nil, true);
     vui._search[1] = '';
+
+    -- an Unequip & Store click sends ONE unequip through the engine's door
+    -- (equipment slot 4, bag 0, stamped as the vault's) and queues exactly
+    -- one deposit for that bag slot right behind it
+    local savedEng = package.loaded['dlac\\feature\\equipengine'];
+    local unequips = {};
+    package.loaded['dlac\\feature\\equipengine'] = {
+        unequipSlot = function(slot, cont, why) unequips[#unequips + 1] = { slot, cont, why }; return true; end,
+    };
+    vc._st().depositQ = {};
+    pressUnequip = true;
+    check('GVU9a renders through the Unequip & Store click', pcall(vui.render, 1, 75), true);
+    pressUnequip = false;
+    package.loaded['dlac\\feature\\equipengine'] = savedEng;
+    check('GVU9b exactly one unequip left, for Head out of bag 0, billed to the vault',
+          #unequips == 1 and unequips[1][1] == 4 and unequips[1][2] == 0
+          and tostring(unequips[1][3]):find('Gear Vault', 1, true) ~= nil, true);
+    check('GVU9c ...and one deposit for bag 0 slot 5 is queued behind it', (function()
+        local q = vc._st().depositQ or {};
+        return #q == 1 and #q[1].entries == 1 and q[1].entries[1].container == 0 and q[1].entries[1].slot == 5;
+    end)(), true);
+    vui._wornOverride = nil;
 
     -- a Withdraw click queues exactly one wire request (nothing sends here:
     -- the pump is never called)

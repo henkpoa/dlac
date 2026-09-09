@@ -498,6 +498,25 @@ end
 
 function M.bufferClear() _buffer = {}; end
 
+-- ONE slot off the body, now, outside any dispatch: the Gear Vault's
+-- "Unequip & Store" (2026-09-09). The same 0x050 the conflict-strip sends,
+-- through the same injector, so /dl sends bills it to the cause the caller
+-- names ('Gear Vault (unequip & store)') instead of hiding it in a raw
+-- AddOutgoingPacket somewhere in a pack module. The trust window is stamped
+-- empty exactly as a conflict-strip's is, so the engine's own worn view
+-- agrees with the wire for the ~0.2s the memory read lags. No claim, no
+-- lock, no plan: the next dispatch is free to dress the slot -- which it
+-- cannot do with THIS piece once the deposit behind it lands. `equipSlot`
+-- is the 0-15 equipment index, `container` the bag the item sits in.
+-- Returns true when the packet left.
+function M.unequipSlot(equipSlot, container, why)
+    if type(equipSlot) ~= 'number' or equipSlot < 0 or equipSlot > 15 then return false; end
+    local ok = injectPacket(0x50, eqc.buildUnequip0x50(equipSlot, container or 0),
+        tostring(why or 'unequip'));
+    if ok then _trust[equipSlot + 1] = { Timer = os.clock() + 0.2, Item = nil }; end
+    return ok;
+end
+
 -- Headless test seam: a shallow copy of the current buffer (EQE pins the
 -- merge semantics through the real equipSet door).
 function M._bufferPeek()

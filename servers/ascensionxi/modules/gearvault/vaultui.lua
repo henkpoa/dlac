@@ -517,6 +517,46 @@ end
 
 local function invalidateInv() _invAt = 0; end
 
+-- WHICH bag slots are on the body right now: (container*256 + slot) ->
+-- { equip = equipment slot 0-15, label = 'Head' }. Read through the shared
+-- EQUIP_SLOTS list and the oracle's location door (GRD1 -- never a raw
+-- GetEquippedItem in a pack module). Cached a beat; the unequip path drops
+-- the cache so the row re-reads the body right after its packet left.
+local _worn, _wornAt = nil, 0;
+M._wornOverride = nil;   -- test seam: { [container*256+slot] = { equip=, label= } }
+local function wornAtSlot()
+    if M._wornOverride ~= nil then return M._wornOverride; end
+    local now = os.clock();
+    if _worn ~= nil and now - _wornAt < 0.5 then return _worn; end
+    _wornAt = now;
+    local out = {};
+    pcall(function()
+        local S = services();
+        local oracle = require('dlac\\gear\\gearoracle');
+        if type(S.EQUIP_SLOTS) ~= 'table' or type(oracle.wornLocation) ~= 'function' then return; end
+        for _, sl in ipairs(S.EQUIP_SLOTS) do
+            local cont, idx = oracle.wornLocation(sl.equip);
+            if cont ~= nil and idx ~= nil then
+                out[cont * 256 + idx] = { equip = sl.equip, label = sl.label };
+            end
+        end
+    end);
+    _worn = out;
+    return out;
+end
+local function invalidateWorn() _wornAt = 0; end
+
+-- Text width for right-aligning a wider button against the Store column;
+-- the codebase's ~9.5px/char estimate when the binding has no CalcTextSize.
+local function textW(s)
+    local w = #tostring(s) * 9.5;
+    pcall(function()
+        local m = imgui.CalcTextSize(s);
+        if type(m) == 'number' then w = m; end
+    end);
+    return w;
+end
+
 -- One deposit run (Store / Store all): entries from the inventory list.
 local DEPOSIT_WORDS = {
     [3]  = 'not vault gear',
@@ -524,7 +564,7 @@ local DEPOSIT_WORDS = {
     [10] = 'the vault already holds its copy (duplicates are refused -- future scrap fodder)',
     [9]  = 'the vault store errored',
 };
-local function storeRows(rows)
+local function storeRows(rows, afterUnequip)
     local list = {};
     for _, r in ipairs(rows) do
         list[#list + 1] = { container = r.container, slot = r.slot };
@@ -543,8 +583,13 @@ local function storeRows(rows)
             else refused = refused + 1; end
         end
         if #acks == 1 and stored == 0 then
-            noteResult((rows[1] and rows[1].name or 'that piece') .. ': '
-                .. (DEPOSIT_WORDS[acks[1].code] or ('refused (code ' .. tostring(acks[1].code) .. ')')), true);
+            local words = DEPOSIT_WORDS[acks[1].code] or ('refused (code ' .. tostring(acks[1].code) .. ')');
+            if afterUnequip and acks[1].code == 4 then
+                -- the deposit outran the unequip (or something dressed the
+                -- slot again in between): say which race, not just "busy"
+                words = 'still equipped when the store arrived -- try again';
+            end
+            noteResult((rows[1] and rows[1].name or 'that piece') .. ': ' .. words, true);
         else
             noteResult(string.format('stored %d piece%s%s%s', stored, (stored == 1) and '' or 's',
                 (dupes > 0) and (' -- ' .. dupes .. ' duplicate(s) kept in your bags') or '',
@@ -554,6 +599,34 @@ local function storeRows(rows)
     if not queued then
         noteResult('could not queue the store (client dormant, or too many at once)', true);
     end
+end
+
+-- UNEQUIP & STORE (Henrik, 2026-09-09: "this doesn't work for equipped
+-- items"). The store refuses a worn piece per item (code 4), so a worn
+-- row's button takes it off first. The unequip is the engine's own 0x050
+-- (feature\equipengine.unequipSlot, billed in /dl sends as the vault's), and
+-- the deposit is queued straight behind it: the client's outgoing stream
+-- keeps the order, so the server has already cleared the item's equipped
+-- flag when the deposit arrives -- no wait, no hold, no claim. The engine's
+-- next dispatch cannot dress the slot with this piece again (it lives in
+-- the vault by then); should it win the one-frame race anyway, the store
+-- refuses and the row says which race lost. Nothing is claimed or locked:
+-- the set that names the piece keeps naming it, and the vault layout
+-- engine brings it back to a wardrobe by its own rules.
+local function unequipAndStore(e, worn)
+    local sent = false;
+    pcall(function()
+        local eng = require('dlac\\feature\\equipengine');
+        if type(eng.unequipSlot) == 'function' then
+            sent = eng.unequipSlot(worn.equip, e.container, 'Gear Vault (unequip & store)') == true;
+        end
+    end);
+    if not sent then
+        noteResult(e.name .. ': could not send the unequip -- take it off by hand, then Store', true);
+        return;
+    end
+    invalidateWorn();
+    storeRows({ e }, true);
 end
 
 -- Sub-tab selection. The order is FIXED -- Vault, then Inventory (Henrik:
@@ -1060,7 +1133,7 @@ function M.render(job, level)
                 storeRows(shown);
             end
             if imgui.IsItemHovered() then
-                imgui.SetTooltip('Deposit every listed piece into the Gear Vault.\nWorks at a Void Warden. Equipped pieces and\nduplicates are refused per item and stay in your bags.');
+                imgui.SetTooltip('Deposit every listed piece into the Gear Vault.\nWorks at a Void Warden. Equipped pieces and\nduplicates are refused per item and stay in your bags\n(a worn piece has its own Unequip & Store button).');
             end
             imgui.SameLine(0, 10);
             imgui.TextColored(cDIM, 'Storable gear in your inventory:');
@@ -1083,7 +1156,14 @@ function M.render(job, level)
             -- lag no eye can see. Row hover shows the item card; button
             -- hover keeps its own words.
             local hotNow = nil;
+            -- a WORN row's button is 'Unequip & Store' (right-aligned to the
+            -- same edge as the plain Store column) and the row says which
+            -- slot it is on, so the eye knows why the button differs
+            local wornMap = wornAtSlot();
+            local unequipLabel = 'Unequip & Store';
+            local unequipCol = math.max(60, btnCol - (textW(unequipLabel) - textW('Store')));
             for _, e in ipairs(shown) do
+                local worn = wornMap[e.container * 256 + e.slot];
                 if icons ~= nil and type(icons.renderIcon) == 'function' then
                     pcall(icons.renderIcon, e.itemId, 18);
                     imgui.SameLine(0, 6);
@@ -1105,14 +1185,25 @@ function M.render(job, level)
                     imgui.SameLine(0, 6);
                     imgui.TextColored(cDIM, 'x' .. e.qty);
                 end
-                imgui.SameLine(btnCol);
-                if imgui.SmallButton('Store##gvs' .. tostring(e.slot)) then
-                    storeRows({ e });
+                if worn ~= nil then
+                    imgui.SameLine(0, 6);
+                    imgui.TextColored(cDIM, esc('[worn: ' .. tostring(worn.label) .. ']'));
+                    imgui.SameLine(unequipCol);
+                    if imgui.SmallButton(unequipLabel .. '##gvus' .. tostring(e.slot)) then
+                        unequipAndStore(e, worn);
+                    end
+                else
+                    imgui.SameLine(btnCol);
+                    if imgui.SmallButton('Store##gvs' .. tostring(e.slot)) then
+                        storeRows({ e });
+                    end
                 end
                 local btnHovered = imgui.IsItemHovered();
                 if rowHovered or btnHovered then hotNow = e.slot; end
                 if btnHovered then
-                    imgui.SetTooltip('Deposit this into the Gear Vault (at a Void Warden).');
+                    imgui.SetTooltip((worn ~= nil)
+                        and 'Take this off, then deposit it into the Gear Vault (at a Void Warden).'
+                        or  'Deposit this into the Gear Vault (at a Void Warden).');
                 elseif rowHovered then
                     showCard(e.rec, e.name);
                 end

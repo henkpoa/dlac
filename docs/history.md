@@ -10367,3 +10367,29 @@ install; anyone else migrating must edit theirs.
 generator needs to carry the modules list or every regeneration will drop it again.
 
 **Checks:** run_tests 7338, smoke_ui 1455 — both green.
+
+## Session "Unequip & Store" (2026-09-09)
+
+**Theme:** Henrik's QoL ask -- the Gear Vault tab's **Store** button does nothing for
+a piece you are wearing (the server refuses a worn item per row, code 4 "equipped or
+busy"), so a worn row now offers **Unequip & Store** instead.
+
+**Landed (`2026.09.09b`):** the Inventory sub-tab reads which bag slots are on the
+body (a new oracle door, `gearoracle.wornLocation(equipSlot)` -> container, slot --
+GRD1 kept: no raw `GetEquippedItem` in the pack module) and a worn row shows
+`[worn: Head]` plus an **Unequip & Store** button right-aligned to the Store column.
+The click sends ONE 0x050 unequip through the engine's own injector (new
+`equipengine.unequipSlot(equipSlot, container, why)`, stamped in `/dl sends` as
+`Gear Vault (unequip & store)`, trust window stamped empty like a conflict-strip) and
+queues the deposit straight behind it. **No hold, no claim, no lock:** the client's
+outgoing stream keeps the order, so the server has already cleared the item's
+equipped flag when the deposit arrives; and once the piece sits in the vault the
+engine's next dispatch cannot dress the slot with it. Should the engine win the
+one-frame race anyway, the row says `still equipped when the store arrived -- try
+again` instead of the bare "busy". Store all is unchanged (worn pieces stay refused
+per item; its tooltip now points at the per-row button).
+
+**Checks:** run_tests 7439, smoke_ui 1481 (+GVU1f/1g the worn row's button and tag,
+GVU9a-c the click = one unequip for Head out of bag 0 + one deposit for that slot),
+pack_lint ascensionxi 30. **Field round owed:** the packet-order bet (unequip then
+deposit, same stream) and the button's right-edge alignment under the themed font.
