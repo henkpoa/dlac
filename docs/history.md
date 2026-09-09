@@ -10420,5 +10420,5 @@ deposit leaves, the strip lets go on the answer (or on timeout/abort). A locked 
 Free-equip slot is refused in words up front (`stripBlocked`). The raw unequip stays
 only as the no-registry fallback. Tests NK30-NK40c (run_tests 7456), smoke GVU9b/9g2/
 9h-j (1489), pack_lint 30. **FIELD-CONFIRMED** the same afternoon (Henrik: "It works,
-now, merge") and promoted dev -> main as . Still owed: the button's
+now, merge") and promoted dev -> main as `v2026.09.09d` (9b08d16). Still owed: the button's
 right-edge alignment under the themed font.
