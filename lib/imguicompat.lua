@@ -50,6 +50,70 @@ M.installed = false;   -- install() ran (whichever branch it took)
 M.wrapped   = false;   -- ...and it actually wrapped a new-style binding
 M.signal    = nil;     -- which detection signal called the binding new
 M.error     = nil;     -- why install() could not run, when it could not
+M.remapped  = 0;       -- enum globals whose value the lib file had WRONG for this dll
+
+-- THE ENUM VALUES THE NEW BINDING SPEAKS (mixed install, round 2, 2026-09-09).
+-- The enum globals (ImGuiStyleVar_*, ImGuiCol_*, ...) are not the dll's:
+-- addons\libs\imgui.lua defines them, a LUA FILE. A mixed install carries
+-- the 1.80 numbers into a 1.92 dll, and the numbers MOVED: WindowPadding 1
+-- is DisabledAlpha now (a float), so PushStyleVar(WindowPadding, {0,0})
+-- asserts "variant with wrong type" and the PopStyleVar behind it pops one
+-- too many -- the red MESSAGE FROM DEAR IMGUI panel on a friend's install,
+-- every frame the float grid drew. Round 1 fixed the CALL SHAPES; the
+-- VALUES are the other half of the same mismatch.
+--
+-- So on a new binding install() sets dlac's OWN copies of every enum global
+-- dlac uses to the 1.92 numbers (each Ashita addon has its own Lua state --
+-- nobody else's globals move). On a matching new install every value is
+-- already equal and nothing changes; on a mixed one the count of corrected
+-- values is the MIXED-install readout in the status line. Names the new
+-- lib retired (TabActive/TabUnfocused/...) map onto their 1.92 successors so
+-- uistyle's tab theme applies there too. Values read off Ashita 4.3.1.2's
+-- libs\imgui.lua (ImGui 1.92.3, IMGUI_VERSION_NUM 19223); every name here
+-- is one the dlac tree references. The old binding is never touched.
+M.NEW_ENUMS = {
+    -- ImGuiStyleVar (1.80 -> 1.92: DisabledAlpha slid in at 1)
+    ImGuiStyleVar_WindowPadding    = 2,    -- was 1
+    ImGuiStyleVar_WindowBorderSize = 4,    -- was 3
+    ImGuiStyleVar_FramePadding     = 11,   -- was 10
+    ImGuiStyleVar_ItemSpacing      = 14,   -- was 13
+    -- ImGuiCol (identical through ResizeGripActive 32; the tab family moved)
+    ImGuiCol_Text = 0, ImGuiCol_TextDisabled = 1, ImGuiCol_WindowBg = 2,
+    ImGuiCol_ChildBg = 3, ImGuiCol_PopupBg = 4, ImGuiCol_Border = 5,
+    ImGuiCol_FrameBg = 7, ImGuiCol_FrameBgHovered = 8, ImGuiCol_FrameBgActive = 9,
+    ImGuiCol_TitleBg = 10, ImGuiCol_TitleBgActive = 11, ImGuiCol_TitleBgCollapsed = 12,
+    ImGuiCol_ScrollbarBg = 14, ImGuiCol_ScrollbarGrab = 15,
+    ImGuiCol_ScrollbarGrabHovered = 16, ImGuiCol_ScrollbarGrabActive = 17,
+    ImGuiCol_CheckMark = 18, ImGuiCol_SliderGrab = 19, ImGuiCol_SliderGrabActive = 20,
+    ImGuiCol_Button = 21, ImGuiCol_ButtonHovered = 22, ImGuiCol_ButtonActive = 23,
+    ImGuiCol_Header = 24, ImGuiCol_HeaderHovered = 25, ImGuiCol_HeaderActive = 26,
+    ImGuiCol_Separator = 27, ImGuiCol_SeparatorHovered = 28, ImGuiCol_SeparatorActive = 29,
+    ImGuiCol_ResizeGrip = 30, ImGuiCol_ResizeGripHovered = 31, ImGuiCol_ResizeGripActive = 32,
+    ImGuiCol_TabHovered = 34,           -- unchanged
+    ImGuiCol_Tab = 35,                  -- was 33
+    ImGuiCol_TabActive = 36,            -- retired name -> TabSelected (was 35)
+    ImGuiCol_TabUnfocused = 38,         -- retired name -> TabDimmed (was 36)
+    ImGuiCol_TabUnfocusedActive = 39,   -- retired name -> TabDimmedSelected (was 37)
+    ImGuiCol_TextSelectedBg = 53,       -- was 49
+    -- flags whose bit moved
+    ImGuiInputTextFlags_EnterReturnsTrue           = 64,    -- was 1<<5
+    ImGuiHoveredFlags_AllowWhenBlockedByActiveItem = 128,   -- was 1<<5
+};
+
+-- Apply NEW_ENUMS to this Lua state's globals; returns how many values
+-- actually CHANGED (0 on a matching install, > 0 = the lib file was old).
+-- `env` is a test seam (defaults to _G).
+function M._applyEnums(env)
+    env = env or _G;
+    local changed = 0;
+    for name, value in pairs(M.NEW_ENUMS) do
+        if env[name] ~= value then
+            env[name] = value;
+            changed = changed + 1;
+        end
+    end
+    return changed;
+end
 
 -- PURE: "1.92.3 WIP" / "1.80" -> true when the generation is 1.90 or later
 -- (the BeginChild bool became ImGuiChildFlags in 1.90; ImageButton's str_id
@@ -97,7 +161,11 @@ function M.status()
     end
     if not M.installed then return 'imgui shim NOT installed (install() never ran)'; end
     if M.wrapped then
-        return 'imgui binding NEW (' .. tostring(M.signal) .. ') -- shim WRAPPED BeginChild/ImageButton/Image';
+        local mixed = (M.remapped > 0)
+            and (' on an OLD libs\\imgui.lua (MIXED install: ' .. tostring(M.remapped) .. ' enum values corrected)')
+            or '';
+        return 'imgui binding NEW (' .. tostring(M.signal) .. ')' .. mixed
+            .. ' -- shim WRAPPED BeginChild/ImageButton/Image';
     end
     return 'imgui binding OLD (no new-binding signal) -- shim inert, call sites native';
 end
@@ -135,6 +203,11 @@ function M.install()
     M.installed = true;
     if not M.isNewBinding(imgui) then return false; end   -- old binding: leave it be
     M.wrapped = true;
+
+    -- The enum VALUES first: the ImageButton wrapper below reads
+    -- ImGuiStyleVar_FramePadding at call time, and every module that loads
+    -- after install() bakes these globals into its style tables.
+    M.remapped = M._applyEnums();
 
     -- NOTE on the guards below: this build's imgui table resolves entries
     -- through __index = GetGuiManager() (a sol userdata), so a bound member
