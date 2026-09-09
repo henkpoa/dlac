@@ -27998,6 +27998,50 @@ end)();
     package.loaded['imgui'] = nil;
     IMGUI_VERSION_NUM = nil;
 
+    -- MIXED INSTALL, ROUND 2 (2026-09-09): the old lib file's enum VALUES on
+    -- the new dll. PushStyleVar(WindowPadding=1, {0,0}) lands on
+    -- DisabledAlpha (a float): "variant with wrong type", then one pop too
+    -- many. install() on a new binding sets dlac's own globals to the 1.92
+    -- numbers and counts what it had to correct.
+    local env = { ImGuiStyleVar_WindowPadding = 1, ImGuiStyleVar_WindowBorderSize = 3,
+                  ImGuiStyleVar_FramePadding = 10, ImGuiStyleVar_ItemSpacing = 13,
+                  ImGuiCol_Button = 21, ImGuiCol_Tab = 33, ImGuiCol_TextSelectedBg = 49,
+                  ImGuiInputTextFlags_EnterReturnsTrue = 32,
+                  ImGuiHoveredFlags_AllowWhenBlockedByActiveItem = 32 };
+    local n = ic._applyEnums(env);
+    check('IMC32 the old-lib values are corrected to 1.92', env.ImGuiStyleVar_WindowPadding == 2
+          and env.ImGuiStyleVar_FramePadding == 11 and env.ImGuiStyleVar_ItemSpacing == 14
+          and env.ImGuiCol_Tab == 35 and env.ImGuiCol_TextSelectedBg == 53
+          and env.ImGuiInputTextFlags_EnterReturnsTrue == 64
+          and env.ImGuiHoveredFlags_AllowWhenBlockedByActiveItem == 128, true);
+    check('IMC32b ...an unchanged value is not counted', env.ImGuiCol_Button, 21);
+    check('IMC32c ...the count is every name, minus the one already right', n, (function()
+        local total = 0; for _ in pairs(ic.NEW_ENUMS) do total = total + 1; end
+        return total - 1;
+    end)());
+    check('IMC33 a second pass changes nothing (idempotent)', ic._applyEnums(env), 0);
+    check('IMC34 the retired tab names map onto their successors',
+          env.ImGuiCol_TabActive == 36 and env.ImGuiCol_TabUnfocused == 38
+          and env.ImGuiCol_TabUnfocusedActive == 39, true);
+    -- install() on a new binding applies them to the real globals and the
+    -- status line says MIXED with the count; a matching lib counts 0
+    local savedG = {};
+    for name in pairs(ic.NEW_ENUMS) do savedG[name] = _G[name]; end
+    ImGuiStyleVar_WindowPadding = 1;   -- one stale value in this state
+    package.loaded['imgui'] = { BeginChild = function() end, ImageWithBg = function() end };
+    local ic6 = dofile('lib/imguicompat.lua');
+    ic6.install();
+    check('IMC35 install() on a new binding corrects the live global', ImGuiStyleVar_WindowPadding, 2);
+    check('IMC35b ...and the status line reads MIXED with the count',
+          ic6.status():find('MIXED install: ', 1, true) ~= nil, true);
+    local ic7 = dofile('lib/imguicompat.lua');
+    ic7.install();
+    check('IMC36 a matching lib corrects nothing and the status line stays plain',
+          ic7.remapped == 0 and ic7.status():find('MIXED', 1, true) == nil, true);
+    package.loaded['imgui'] = nil;
+    for name in pairs(ic.NEW_ENUMS) do _G[name] = savedG[name]; end
+    check('IMC37 the old binding never touches an enum (IMC13 path)', ic2.remapped, 0);
+
     -- GetVersion() alone (no ImageWithBg) is the fourth signal
     package.loaded['imgui'] = { BeginChild = function() end, GetVersion = function() return '1.91.0'; end };
     local ic4 = dofile('lib/imguicompat.lua');

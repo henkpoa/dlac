@@ -10422,3 +10422,40 @@ only as the no-registry fallback. Tests NK30-NK40c (run_tests 7456), smoke GVU9b
 9h-j (1489), pack_lint 30. **FIELD-CONFIRMED** the same afternoon (Henrik: "It works,
 now, merge") and promoted dev -> main as `v2026.09.09d` (9b08d16). Still owed: the button's
 right-edge alignment under the themed font.
+
+## Session "mixed install, round 2: the enum values" (2026-09-09)
+
+**Theme:** the friend's install (the MyGames one, new Ashita.dll under an older
+`addons\libs\imgui.lua`) came back on `v2026.09.09d` with a red MESSAGE FROM DEAR IMGUI
+panel: in `##dlac_float/##float_grid_...` every frame, *Calling PushStyleVar() variant with
+wrong type!* then *Calling PopStyleVar() too many times!*; the same pair once under
+`Debug##Default`. The gear tabs themselves rendered -- the 09-09a shim had fixed the CALL
+SHAPES on that install, and the next layer of the same mismatch surfaced.
+
+**Diagnosis (from the assert text + the enum arithmetic, no artifact needed):** the
+`ImGui*_*` globals are defined by the lib FILE, not the dll, and the 1.80 -> 1.92 enums
+MOVED: `ImGuiStyleVar_DisabledAlpha` slid in at 1, so the old lib's `WindowPadding = 1`
+reaches the new dll as DisabledAlpha (a float) and the float grid's
+`PushStyleVar(WindowPadding, {0,0})` (ui\floatgear.lua) is the wrong variant; its
+`PopStyleVar(2)` then pops one too many. `WindowBorderSize` 3 -> 4 happens to land on
+WindowRounding (also a float) and passes silently. `Debug##Default` is the shim's own
+FramePadding push (10 -> 11) inside the ImageButton wrapper. Also moved among what dlac
+uses: `ImGuiCol_Tab` 33 -> 35, `TextSelectedBg` 49 -> 53, `InputTextFlags_EnterReturnsTrue`
+1<<5 -> 1<<6, `HoveredFlags_AllowWhenBlockedByActiveItem` 1<<5 -> 1<<7.
+
+**Landed (`2026.09.09e`, dev):** `lib\imguicompat` carries `M.NEW_ENUMS` -- the 1.92
+value of every enum global the dlac tree references, read off this machine's
+Ashita 4.3.1.2 lib (IMGUI_VERSION_NUM 19223) -- and `install()` on a NEW binding sets
+dlac's own globals to them before wrapping (each addon has its own Lua state; nobody
+else's globals move). A matching new install corrects 0 values; a mixed one corrects N
+and the status line now reads `... NEW (signal) on an OLD libs\imgui.lua (MIXED install: N
+enum values corrected) -- shim WRAPPED ...` in `debug\load-report.txt` and `/dl check` --
+the first readout that NAMES a mixed install. The retired tab names
+(`TabActive/TabUnfocused/TabUnfocusedActive`) map onto `TabSelected/TabDimmed/
+TabDimmedSelected` so uistyle's tab theme applies on the new binding too. The old
+binding (CEXI) is never touched. Tests IMC32-IMC37 (run_tests 7465).
+
+**Field check owed:** the friend reloads on `e` -- the red panel must be gone, and their
+load-report imgui line should read MIXED with a count around 10. If it reads NEW without
+MIXED and the panel persists, the wrong-type push is somewhere else: ask for the panel's
+window names.
