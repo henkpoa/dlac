@@ -604,16 +604,72 @@ end
 -- UNEQUIP & STORE (Henrik, 2026-09-09: "this doesn't work for equipped
 -- items"). The store refuses a worn piece per item (code 4), so a worn
 -- row's button takes it off first. The unequip is the engine's own 0x050
--- (feature\equipengine.unequipSlot, billed in /dl sends as the vault's), and
--- the deposit is queued straight behind it: the client's outgoing stream
--- keeps the order, so the server has already cleared the item's equipped
--- flag when the deposit arrives -- no wait, no hold, no claim. The engine's
--- next dispatch cannot dress the slot with this piece again (it lives in
--- the vault by then); should it win the one-frame race anyway, the store
--- refuses and the row says which race lost. Nothing is claimed or locked:
--- the set that names the piece keeps naming it, and the vault layout
--- engine brings it back to a wardrobe by its own rules.
+-- (feature\equipengine.unequipSlot, billed in /dl sends as the vault's).
+--
+-- THE DEPOSIT WAITS FOR THE CLIENT (field round 1, the same day). The first
+-- cut queued the deposit straight behind the unequip -- the outgoing stream
+-- keeps the order, so the SERVER was fine: the piece landed in the vault.
+-- The CLIENT was not: its inventory kept a ghost copy of the piece (could
+-- not be equipped or sold; zoning resynced it away). The server's answer to
+-- the unequip and its answer to the deposit both touch the same bag slot,
+-- and when they leave in the same tick the client applies them in an order
+-- that resurrects the item. So the store is now a PENDING step: the deposit
+-- leaves only after the client ITSELF shows the equipment slot empty AND
+-- the bag item no longer flagged equipped (5 = worn), then a short settle
+-- so any trailing item update has landed; a timeout says so in words and
+-- stores nothing. Driven from the module pump, so a closed tab still
+-- finishes it. Nothing is claimed or locked: the set that names the piece
+-- keeps naming it, and the vault layout engine brings it back by its rules.
+M._pendingStore = nil;     -- { e, worn, at, seenAt }
+M.SETTLE  = 0.35;          -- seconds the client must show it off before the deposit leaves
+M.TIMEOUT = 4.0;           -- seconds before a never-applied unequip gives up
+
+-- What the CLIENT shows for the pending piece: is the equipment slot still
+-- pointing at its bag slot; the bag item's Flags and Id right now.
+M._clientViewOverride = nil;   -- test seam: function(e, worn) -> stillWorn, flags, id
+local function clientView(e, worn)
+    if M._clientViewOverride ~= nil then return M._clientViewOverride(e, worn); end
+    local stillWorn, flags, id = true, nil, nil;
+    pcall(function()
+        local oracle = require('dlac\\gear\\gearoracle');
+        local cont, idx = oracle.wornLocation(worn.equip);
+        stillWorn = (cont == e.container and idx == e.slot);
+        local ci = AshitaCore:GetMemoryManager():GetInventory():GetContainerItem(e.container, e.slot);
+        if ci ~= nil then flags = ci.Flags; id = ci.Id; end
+    end);
+    return stillWorn, flags, id;
+end
+
+-- The pending step's beat (every frame from the module pump; `now` is a
+-- test seam). One pending store at a time: the row shows 'Storing...'.
+function M.pumpPending(now)
+    local p = M._pendingStore;
+    if p == nil then return; end
+    now = now or os.clock();
+    local stillWorn, flags, id = clientView(p.e, p.worn);
+    if id ~= nil and id ~= p.e.itemId then
+        M._pendingStore = nil;
+        noteResult(p.e.name .. ': the bag slot changed under it -- nothing stored', true);
+        return;
+    end
+    if (not stillWorn) and flags ~= 5 then
+        if p.seenAt == nil then p.seenAt = now; end
+        if now - p.seenAt >= M.SETTLE then
+            M._pendingStore = nil;
+            invalidateWorn();
+            storeRows({ p.e }, true);
+        end
+        return;
+    end
+    p.seenAt = nil;
+    if now - p.at >= M.TIMEOUT then
+        M._pendingStore = nil;
+        noteResult(p.e.name .. ': the client never showed it unequipped -- nothing stored, try again', true);
+    end
+end
+
 local function unequipAndStore(e, worn)
+    if M._pendingStore ~= nil then return; end   -- one at a time
     local sent = false;
     pcall(function()
         local eng = require('dlac\\feature\\equipengine');
@@ -626,7 +682,7 @@ local function unequipAndStore(e, worn)
         return;
     end
     invalidateWorn();
-    storeRows({ e }, true);
+    M._pendingStore = { e = e, worn = worn, at = os.clock(), seenAt = nil };
 end
 
 -- Sub-tab selection. The order is FIXED -- Vault, then Inventory (Henrik:
@@ -1185,7 +1241,17 @@ function M.render(job, level)
                     imgui.SameLine(0, 6);
                     imgui.TextColored(cDIM, 'x' .. e.qty);
                 end
-                if worn ~= nil then
+                local pend = M._pendingStore;
+                local pendingHere = (pend ~= nil and pend.e.container == e.container and pend.e.slot == e.slot);
+                if pendingHere then
+                    -- the unequip is out; the deposit leaves once the client
+                    -- shows the piece off (pumpPending) -- the button says so
+                    -- and takes no click
+                    imgui.SameLine(0, 6);
+                    imgui.TextColored(cDIM, esc('[worn: ' .. tostring(worn and worn.label or '?') .. ']'));
+                    imgui.SameLine(unequipCol);
+                    imgui.SmallButton('Storing...##gvus' .. tostring(e.slot));
+                elseif worn ~= nil then
                     imgui.SameLine(0, 6);
                     imgui.TextColored(cDIM, esc('[worn: ' .. tostring(worn.label) .. ']'));
                     imgui.SameLine(unequipCol);
@@ -1201,8 +1267,9 @@ function M.render(job, level)
                 local btnHovered = imgui.IsItemHovered();
                 if rowHovered or btnHovered then hotNow = e.slot; end
                 if btnHovered then
-                    imgui.SetTooltip((worn ~= nil)
-                        and 'Take this off, then deposit it into the Gear Vault (at a Void Warden).'
+                    imgui.SetTooltip(pendingHere and 'Taking it off -- the deposit follows once the game shows it unequipped.'
+                        or (worn ~= nil)
+                        and 'Take this off, then deposit it into the Gear Vault (at a Void Warden).\nThe deposit waits until the game itself shows the piece unequipped.'
                         or  'Deposit this into the Gear Vault (at a Void Warden).');
                 elseif rowHovered then
                     showCard(e.rec, e.name);

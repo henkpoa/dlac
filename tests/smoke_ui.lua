@@ -7703,8 +7703,10 @@ end)();
     vui._search[1] = '';
 
     -- an Unequip & Store click sends ONE unequip through the engine's door
-    -- (equipment slot 4, bag 0, stamped as the vault's) and queues exactly
-    -- one deposit for that bag slot right behind it
+    -- (equipment slot 4, bag 0, stamped as the vault's) -- and NOTHING
+    -- else yet: the deposit waits until the client shows the piece off
+    -- (field round 1, 2026-09-09: a deposit behind the unequip left the
+    -- client a ghost copy)
     local savedEng = package.loaded['dlac\\feature\\equipengine'];
     local unequips = {};
     package.loaded['dlac\\feature\\equipengine'] = {
@@ -7718,10 +7720,48 @@ end)();
     check('GVU9b exactly one unequip left, for Head out of bag 0, billed to the vault',
           #unequips == 1 and unequips[1][1] == 4 and unequips[1][2] == 0
           and tostring(unequips[1][3]):find('Gear Vault', 1, true) ~= nil, true);
-    check('GVU9c ...and one deposit for bag 0 slot 5 is queued behind it', (function()
-        local q = vc._st().depositQ or {};
-        return #q == 1 and #q[1].entries == 1 and q[1].entries[1].container == 0 and q[1].entries[1].slot == 5;
+    check('GVU9c ...and NO deposit is queued yet -- the store is pending on the client',
+          #(vc._st().depositQ or {}) == 0 and vui._pendingStore ~= nil and vui._pendingStore.e.slot == 5, true);
+    smallHits = {};
+    check('GVU9d the pending row shows Storing... and takes no click', (function()
+        pressUnequip = true;
+        local ok = pcall(vui.render, 1, 75);
+        pressUnequip = false;
+        local h = table.concat(smallHits, '|');
+        return ok and h:find('Storing...##gvus5', 1, true) ~= nil and h:find('Unequip & Store##gvus5', 1, true) == nil
+           and #unequips == 1;
     end)(), true);
+    -- the client still shows it worn: the beat waits, nothing leaves
+    vui._pendingStore.at = 100;
+    vui._clientViewOverride = function() return true, 5, 400; end;
+    vui.pumpPending(100.5);
+    check('GVU9e still worn on the client = still pending, no deposit',
+          vui._pendingStore ~= nil and #(vc._st().depositQ or {}) == 0, true);
+    -- the client shows it off: the settle runs, THEN exactly one deposit leaves
+    vui._clientViewOverride = function() return false, 0, 400; end;
+    vui.pumpPending(101.0);
+    check('GVU9f off on the client but inside the settle = still pending',
+          vui._pendingStore ~= nil and #(vc._st().depositQ or {}) == 0, true);
+    vui.pumpPending(101.0 + vui.SETTLE + 0.01);   -- (+0.01: float slack on the settle edge)
+    check('GVU9g after the settle exactly one deposit for bag 0 slot 5 leaves', (function()
+        local q = vc._st().depositQ or {};
+        return vui._pendingStore == nil and #q == 1 and #q[1].entries == 1
+           and q[1].entries[1].container == 0 and q[1].entries[1].slot == 5;
+    end)(), true);
+    -- a never-applied unequip times out and stores nothing
+    vc._st().depositQ = {};
+    vui._pendingStore = { e = vui._invOverride[2], worn = { equip = 4, label = 'Head' }, at = 200 };
+    vui._clientViewOverride = function() return true, 5, 400; end;
+    vui.pumpPending(200 + vui.TIMEOUT);
+    check('GVU9h the client never showing it off = timeout, nothing stored',
+          vui._pendingStore == nil and #(vc._st().depositQ or {}) == 0, true);
+    -- the bag slot changing under it (another id) aborts, nothing stored
+    vui._pendingStore = { e = vui._invOverride[2], worn = { equip = 4, label = 'Head' }, at = 300 };
+    vui._clientViewOverride = function() return false, 0, 999; end;
+    vui.pumpPending(300.1);
+    check('GVU9i a different item in the bag slot = abort, nothing stored',
+          vui._pendingStore == nil and #(vc._st().depositQ or {}) == 0, true);
+    vui._clientViewOverride = nil;
     vui._wornOverride = nil;
 
     -- a Withdraw click queues exactly one wire request (nothing sends here:

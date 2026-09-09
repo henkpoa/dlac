@@ -10391,5 +10391,17 @@ per item; its tooltip now points at the per-row button).
 
 **Checks:** run_tests 7439, smoke_ui 1481 (+GVU1f/1g the worn row's button and tag,
 GVU9a-c the click = one unequip for Head out of bag 0 + one deposit for that slot),
-pack_lint ascensionxi 30. **Field round owed:** the packet-order bet (unequip then
-deposit, same stream) and the button's right-edge alignment under the themed font.
+pack_lint ascensionxi 30.
+
+**Field round 1 (same day, `2026.09.09c`):** the packet-order bet was only half
+right. The SERVER was fine -- the piece landed in the vault -- but the CLIENT kept a
+ghost copy in the bag (could not be equipped or sold; zoning resynced it away): the
+server's answers to the unequip and to the deposit both touch the same bag slot, and
+leaving in the same tick the client applied them in an order that resurrected the
+item. Henrik: "we're too quick... slow down to let the client react". The deposit is
+now a PENDING step driven from the module pump (tab open or not): it leaves only
+after the client itself shows the equipment slot empty AND the bag item no longer
+flagged equipped (Flags 5), plus a 0.35s settle; a 4s timeout, or the bag slot's id
+changing, aborts with a line and stores nothing. The row reads `Storing...` and
+takes no click meanwhile; one pending store at a time. smoke_ui GVU9c-i rewritten
+around the pending step (1487). Still owed: the button's right-edge alignment.
