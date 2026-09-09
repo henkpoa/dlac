@@ -39,7 +39,7 @@ function R.configure(deps) D = deps; end
 
 local st = {
     lastBeat    = 0,
-    lastPushKey = nil,   -- hash|layoutStamp we already pushed for (no re-spam)
+    lastPushKey = nil,   -- hash|layoutStamp|vaultStamp we already pushed for (no re-spam)
     pendingCity = false, -- adds refused by the city gate: waiting for a town
     inFlight    = 0,     -- acks not yet counted this run
     runOk       = 0,
@@ -85,6 +85,25 @@ function R.notVaulted() return st.notVaulted or 0; end
 function R.wornNow()
     if D ~= nil and type(D.worn) == 'function' then return D.worn() or {}; end
     return {};
+end
+
+-- The tab's countdown (Henrik, 2026-09-10: the beat is invisible, so a
+-- stored piece "did nothing" for up to 8s). Returns seconds until the next
+-- check as a number, or a word for why the clock is not running:
+-- 'busy' (a run is still acking), 'syncing' (the mirror is being re-read),
+-- 'paused' (browsing another job / no vault / no job), nil when unconfigured.
+function R.nextBeat()
+    if D == nil then return nil; end
+    local vc = D.vc;
+    if st.inFlight > 0 then return 'busy'; end
+    local vs = vc.state();
+    if vs == 'syncing' then return 'syncing'; end
+    if vs == 'dormant' or vs == 'unattuned' then return 'paused'; end
+    if type(D.browsing) == 'function' and D.browsing() == true then return 'paused'; end
+    local job = (type(D.mainJob) == 'function') and D.mainJob() or nil;
+    if type(job) ~= 'number' or job == 0 then return 'paused'; end
+    local now = (type(D.clock) == 'function') and D.clock() or os.clock();
+    return math.max(0, R.BEAT - (now - st.lastBeat));
 end
 
 -- A zone-in may have landed us in a city: let the next beat retry a
@@ -274,7 +293,17 @@ function R.tick()
     end
 
     -- The PUSH half alone rides the change gate (pressure above never does).
-    local pushKey = d.hash .. '|' .. tostring(vc.layoutCache.stamp);
+    -- THREE inputs decide the adds, so all three key the gate: the
+    -- derivation, the layout, and the VAULT. The vault law made "does the
+    -- vault hold it" a gate on every add, but the key was still hash|layout
+    -- -- so a piece deposited AFTER a clean beat (Unequip & Store, Store,
+    -- Store all) was wantable at once and pushed never: the beat re-derived
+    -- the same hash against the same layout and answered 'clean' until an
+    -- unrelated set commit or relog moved the key (Henrik's brass set,
+    -- 2026-09-10). Every mirror commit re-stamps (a deposit's LIST resync,
+    -- a withdraw's arithmetic), so the stamp is the deposit's voice here.
+    local pushKey = d.hash .. '|' .. tostring(vc.layoutCache.stamp)
+        .. '|' .. tostring(vc.mirror ~= nil and vc.mirror.stamp or nil);
     if pushKey == st.lastPushKey then return 'clean'; end
     st.lastPushKey = pushKey;
     if #adds == 0 then

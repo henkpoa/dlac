@@ -882,13 +882,31 @@ function M.render(job, level)
     end);
     imgui.BeginChild('##gvleft', { math.floor(availW * 0.5) - 6, -24 }, false);
     if uistyl ~= nil and type(uistyl.helpLabel) == 'function' then
-        uistyl.helpLabel(imgui, 'Current Mog Wardrobe Layout', 'This is what you have in your current Mog Wardrobe for this job.\nThe Mog Wardrobe is fed gear from the Gear Vault per job, to fully\nutilize your wardrobe slots.\nGear can only move between your Gear Vault and wardrobe when you\nare in a city.\nTo add gear into the Gear Vault, stand near a Void Storage Warden NPC.', cHEAD);
+        uistyl.helpLabel(imgui, 'Mog Wardrobe Layout', 'This is what you have in your current Mog Wardrobe for this job.\nThe Mog Wardrobe is fed gear from the Gear Vault per job, to fully\nutilize your wardrobe slots.\nGear can only move between your Gear Vault and wardrobe when you\nare in a city.\nTo add gear into the Gear Vault, stand near a Void Storage Warden NPC.', cHEAD);
     else
-        imgui.TextColored(cHEAD, 'Current Mog Wardrobe Layout');
+        imgui.TextColored(cHEAD, 'Mog Wardrobe Layout');
     end
+    -- Right of the header: the fetch, or the additions engine's countdown.
+    -- The engine's 8s beat was invisible (Henrik, 2026-09-10: a stored
+    -- piece "did nothing" until the next beat, which reads as broken);
+    -- the header lost its "Current" to make room for the clock.
     if not lc.fresh then
         imgui.SameLine(0, 8);
         imgui.TextColored(cGOLD, '(fetching...)');
+    else
+        local nb = (recon ~= nil and type(recon.nextBeat) == 'function') and recon.nextBeat() or nil;
+        local words = nil;
+        if type(nb) == 'number' then words = string.format('sync in %ds', math.ceil(nb));
+        elseif nb == 'busy' or nb == 'syncing' then words = 'syncing...';
+        elseif nb == 'paused' then words = 'sync paused';
+        end
+        if words ~= nil then
+            imgui.SameLine(0, 8);
+            imgui.TextColored(cDIM, words);
+            if imgui.IsItemHovered() then
+                imgui.SetTooltip('Every 8 seconds dlac checks your sets and triggers against the Gear Vault\nand adds any vaulted piece this layout is missing (gear in your bags never\nmoves -- store it with a Void Storage Warden first). Additions to your\nACTIVE job apply in a city; elsewhere they wait. Sync re-reads the server now.');
+            end
+        end
     end
 
     -- Where are we? The town service PREDICTS what the server's city gate
