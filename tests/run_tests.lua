@@ -27896,7 +27896,59 @@ end)();
     check('IMC14 old binding: BeginChild untouched',
           package.loaded['imgui'].BeginChild, fakeBC);
     check('IMC15 ...and reports unwrapped',       ic2.wrapped, false);
+    check('IMC15b old binding: status says inert',
+          ic2.status():find('OLD', 1, true) ~= nil and ic2.status():find('inert', 1, true) ~= nil, true);
     package.loaded['imgui'] = nil;
+
+    -- 2026-09-09: the MIXED install -- a new Ashita.dll under an older
+    -- libs\imgui.lua. No ImGuiChildFlags_* global, IMGUI_VERSION_NUM 18000
+    -- (or absent), yet the userdata carries ImageWithBg / GetVersion(). The
+    -- first shim read that as OLD and wrapped nothing; three tabs died.
+    check('IMC16 version string 1.92.3 WIP is new', ic._versionIsNew('1.92.3 WIP'), true);
+    check('IMC17 version string 1.80 is old',       ic._versionIsNew('1.80'), false);
+    check('IMC18 version string 1.90 is new',       ic._versionIsNew('1.90'), true);
+    check('IMC19 a non-string version is old',      ic._versionIsNew(nil), false);
+
+    local seen = {};
+    local fakeNew = {
+        BeginChild  = function(id, size, flags, wflags) seen.flags = flags; seen.wflags = wflags; return true; end,
+        ImageWithBg = function() end,
+        GetVersion  = function() return '1.92.3 WIP'; end,
+    };
+    IMGUI_VERSION_NUM = 18000;   -- the OLD lib file's global, on a NEW dll
+    package.loaded['imgui'] = fakeNew;
+    local ic3 = dofile('lib/imguicompat.lua');
+    check('IMC20 mixed install: install() wraps',  ic3.install(), true);
+    check('IMC21 ...by the userdata signal, not a lib global',
+          ic3.signal, 'ImageWithBg present');
+    check('IMC22 ...BeginChild is shadowed',       fakeNew.BeginChild ~= nil and fakeNew.BeginChild ~= seen, true);
+    fakeNew.BeginChild('##x', { -1, -1 }, false);
+    check('IMC23 border false reaches the dll as flags 0', seen.flags, 0);
+    check('IMC24 ...with window flags defaulted',  seen.wflags, 0);
+    fakeNew.BeginChild('##y', { -1, 10 }, true, 96);
+    check('IMC25 border true reaches the dll as Borders', seen.flags, 1);
+    check('IMC26 ...window flags pass through',    seen.wflags, 96);
+    check('IMC27 status names NEW + the signal',
+          ic3.status():find('NEW (ImageWithBg present)', 1, true) ~= nil, true);
+    package.loaded['imgui'] = nil;
+    IMGUI_VERSION_NUM = nil;
+
+    -- GetVersion() alone (no ImageWithBg) is the fourth signal
+    package.loaded['imgui'] = { BeginChild = function() end, GetVersion = function() return '1.91.0'; end };
+    local ic4 = dofile('lib/imguicompat.lua');
+    check('IMC28 GetVersion alone calls the binding new', ic4.install(), true);
+    check('IMC29 ...and says so',                  ic4.signal, 'GetVersion 1.91.0');
+    package.loaded['imgui'] = nil;
+
+    -- install() with no imgui at all: the failure is READABLE, not silent
+    local ic5 = dofile('lib/imguicompat.lua');
+    package.loaded['imgui'] = nil;
+    local savedPath = package.path;
+    package.path = './__nope__/?.lua';
+    check('IMC30 no imgui: install() returns false', ic5.install(), false);
+    package.path = savedPath;
+    check('IMC31 ...and status says FAILED',
+          ic5.status():find('FAILED', 1, true) ~= nil, true);
 end)();
 
 -- ---------------------------------------------------------------------------
