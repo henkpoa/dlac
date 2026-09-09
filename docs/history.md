@@ -10419,5 +10419,6 @@ the piece off and holds the slot bare, the client shows it off, the settle runs,
 deposit leaves, the strip lets go on the answer (or on timeout/abort). A locked or
 Free-equip slot is refused in words up front (`stripBlocked`). The raw unequip stays
 only as the no-registry fallback. Tests NK30-NK40c (run_tests 7456), smoke GVU9b/9g2/
-9h-j (1489), pack_lint 30. Still owed: a clean field pass, and the button's
-right-edge alignment.
+9h-j (1489), pack_lint 30. **FIELD-CONFIRMED** the same afternoon (Henrik: "It works,
+now, merge") and promoted dev -> main as . Still owed: the button's
+right-edge alignment under the themed font.
