@@ -7547,6 +7547,7 @@ end)();
     local depth = { child = 0, item = 0, tree = 0, tip = 0, col = 0 };
     local texts, smallHits, headers = {}, {}, {};
     local pressWithdraw = false;
+    local pressUnequip = false;
     local nop = function() end;
     local IM = {
         TextColored   = function(_, s) texts[#texts + 1] = tostring(s); end,
@@ -7562,6 +7563,7 @@ end)();
         IsItemHovered = function() return true; end,
         SmallButton   = function(label)
             smallHits[#smallHits + 1] = tostring(label);
+            if pressUnequip then return tostring(label):match('^Unequip & Store') ~= nil; end
             return pressWithdraw and tostring(label):match('^Withdraw') ~= nil;
         end,
         CollapsingHeader = function(label) headers[#headers + 1] = tostring(label); return true; end,
@@ -7641,6 +7643,10 @@ end)();
         { container = 0, slot = 5, itemId = 400, qty = 1, sortKey = 5,
           rec = { Id = 400, Name = 'Item400', Slot = 'Head', Level = 5 }, name = 'Item400' },
     };
+    -- ...and the second one is ON THE BODY (the _wornOverride seam: bag 0
+    -- slot 5 = equipment slot 4, Head): its row must offer Unequip & Store
+    -- instead of Store and say which slot it is worn in (2026-09-09)
+    vui._wornOverride = { [5] = { equip = 4, label = 'Head' } };
     check('GVU1 the tab renders whole', pcall(vui.render, 1, 75), true);
     check('GVU1a tab-bar/tab stacks balanced', (depth.bar or 0) == 0 and (depth.tab or 0) == 0, true);
     check('GVU1b the Inventory sub-tab carries its count',
@@ -7655,6 +7661,13 @@ end)();
         local h = table.concat(smallHits, '|');
         return h:find('Store all (2)', 1, true) ~= nil and h:find('Store##', 1, true) ~= nil;
     end)(), true);
+    check('GVU1f the worn row offers Unequip & Store, the free row plain Store', (function()
+        local h = table.concat(smallHits, '|');
+        return h:find('Unequip & Store##gvus5', 1, true) ~= nil and h:find('Store##gvs3', 1, true) ~= nil
+           and h:find('Store##gvs5', 1, true) == nil;
+    end)(), true);
+    check('GVU1g the worn row names its slot',
+          table.concat(texts, '|'):find('[worn: Head]', 1, true) ~= nil, true);
     check('GVU2 child stack balanced',  depth.child, 0);
     check('GVU3 item-width stack balanced', depth.item, 0);
     check('GVU3a tree stack balanced',  depth.tree, 0);
@@ -7688,6 +7701,82 @@ end)();
     check('GVU8 the filtered row is gone', blob:find('Item100', 1, true), nil);
     check('GVU9 the match remains',        blob:find('Item200', 1, true) ~= nil, true);
     vui._search[1] = '';
+
+    -- an Unequip & Store click arms ONE leased strip on the engine's Naked
+    -- row for the worn slot (field round 2, 2026-09-09: a raw unequip lasted
+    -- one tick before Default dressed the slot back) -- and NOTHING else
+    -- yet: the deposit waits until the client shows the piece off (field
+    -- round 1: a deposit behind the unequip left the client a ghost copy).
+    -- The raw-unequip door must NOT be used when the registry is there.
+    local savedEng = package.loaded['dlac\\feature\\equipengine'];
+    local savedDsp = package.loaded['dlac\\dispatch'];
+    local unequips, strips, releases = {}, {}, {};
+    package.loaded['dlac\\feature\\equipengine'] = {
+        unequipSlot = function(slot, cont, why) unequips[#unequips + 1] = { slot, cont, why }; return true; end,
+    };
+    package.loaded['dlac\\dispatch'] = {
+        stripBlocked = function() return nil; end,
+        stripSlot = function(slot, ttl) strips[#strips + 1] = { slot, ttl }; return slot; end,
+        stripRelease = function(slot) releases[#releases + 1] = slot; end,
+    };
+    vc._st().depositQ = {};
+    pressUnequip = true;
+    check('GVU9a renders through the Unequip & Store click', pcall(vui.render, 1, 75), true);
+    pressUnequip = false;
+    check('GVU9b exactly one strip armed, for Head, with a lease -- and no raw unequip',
+          #strips == 1 and strips[1][1] == 'Head' and strips[1][2] == vui.LEASE and #unequips == 0, true);
+    check('GVU9c ...and NO deposit is queued yet -- the store is pending on the client',
+          #(vc._st().depositQ or {}) == 0 and vui._pendingStore ~= nil and vui._pendingStore.e.slot == 5, true);
+    smallHits = {};
+    check('GVU9d the pending row shows Storing... and takes no click', (function()
+        pressUnequip = true;
+        local ok = pcall(vui.render, 1, 75);
+        pressUnequip = false;
+        local h = table.concat(smallHits, '|');
+        return ok and h:find('Storing...##gvus5', 1, true) ~= nil and h:find('Unequip & Store##gvus5', 1, true) == nil
+           and #strips == 1 and #unequips == 0;
+    end)(), true);
+    -- the client still shows it worn: the beat waits, nothing leaves
+    vui._pendingStore.at = 100;
+    vui._clientViewOverride = function() return true, 5, 400; end;
+    vui.pumpPending(100.5);
+    check('GVU9e still worn on the client = still pending, no deposit',
+          vui._pendingStore ~= nil and #(vc._st().depositQ or {}) == 0, true);
+    -- the client shows it off: the settle runs, THEN exactly one deposit leaves
+    vui._clientViewOverride = function() return false, 0, 400; end;
+    vui.pumpPending(101.0);
+    check('GVU9f off on the client but inside the settle = still pending',
+          vui._pendingStore ~= nil and #(vc._st().depositQ or {}) == 0, true);
+    vui.pumpPending(101.0 + vui.SETTLE + 0.01);   -- (+0.01: float slack on the settle edge)
+    check('GVU9g after the settle exactly one deposit for bag 0 slot 5 leaves', (function()
+        local q = vc._st().depositQ or {};
+        return vui._pendingStore == nil and #q == 1 and #q[1].entries == 1
+           and q[1].entries[1].container == 0 and q[1].entries[1].slot == 5;
+    end)(), true);
+    check('GVU9g2 the strip HOLDS through the deposit (no release until the answer)', #releases, 0);
+    -- a never-applied unequip times out, stores nothing and lets the slot go
+    vc._st().depositQ = {};
+    vui._pendingStore = { e = vui._invOverride[2], worn = { equip = 4, label = 'Head' }, at = 200, strip = 'Head' };
+    vui._clientViewOverride = function() return true, 5, 400; end;
+    vui.pumpPending(200 + vui.TIMEOUT);
+    check('GVU9h the client never showing it off = timeout, nothing stored, strip released',
+          vui._pendingStore == nil and #(vc._st().depositQ or {}) == 0 and #releases == 1 and releases[1] == 'Head', true);
+    -- the bag slot changing under it (another id) aborts, nothing stored
+    vui._pendingStore = { e = vui._invOverride[2], worn = { equip = 4, label = 'Head' }, at = 300, strip = 'Head' };
+    vui._clientViewOverride = function() return false, 0, 999; end;
+    vui.pumpPending(300.1);
+    check('GVU9i a different item in the bag slot = abort, nothing stored, strip released',
+          vui._pendingStore == nil and #(vc._st().depositQ or {}) == 0 and #releases == 2, true);
+    -- a LOCKED slot is refused in words, nothing armed
+    package.loaded['dlac\\dispatch'].stripBlocked = function() return 'locked'; end;
+    pressUnequip = true;
+    pcall(vui.render, 1, 75);
+    pressUnequip = false;
+    check('GVU9j a locked slot arms nothing (refused in words)', #strips == 1 and vui._pendingStore == nil, true);
+    package.loaded['dlac\\dispatch'] = savedDsp;
+    package.loaded['dlac\\feature\\equipengine'] = savedEng;
+    vui._clientViewOverride = nil;
+    vui._wornOverride = nil;
 
     -- a Withdraw click queues exactly one wire request (nothing sends here:
     -- the pump is never called)

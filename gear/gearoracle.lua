@@ -132,6 +132,24 @@ function M.wornItem(equipSlot)
     return out;
 end
 
+-- WHERE the item worn in equipment slot 0-15 sits: container, slot-in-container
+-- (nil, nil when the slot is empty or unreadable). The same packed-Index decode
+-- as wornItem, handed back as a LOCATION instead of a record -- what a caller
+-- that must name a BAG SLOT (the Gear Vault's unequip-and-store, whose deposit
+-- wire speaks container+slot) needs, kept behind the one door so no module
+-- grows its own GetEquippedItem (GRD1). Wrapped for the mid-zone nil.
+function M.wornLocation(equipSlot)
+    local cont, slotInCont = nil, nil;
+    pcall(function()
+        local inv = AshitaCore:GetMemoryManager():GetInventory();
+        if inv == nil then return; end
+        local eitem = inv:GetEquippedItem(equipSlot);
+        if eitem == nil or eitem.Index == 0 then return; end
+        cont, slotInCont = M.decodeIndex(eitem.Index);
+    end);
+    return cont, slotInCont;
+end
+
 -- ---------------------------------------------------------------------------
 -- ELIGIBILITY -- main-job/level equip gate (issue #71).
 -- ---------------------------------------------------------------------------

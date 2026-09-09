@@ -8255,6 +8255,71 @@ end)();
     _G.gFunc, _G.gState = savedFunc, savedState;
     package.loaded['dlac\\feature\\equipengine'] = savedEngNK;
     dispatchM.nakedArmed = false;
+
+    -- LEASED STRIPS (2026-09-09): one slot held bare on Naked's row for a
+    -- few seconds -- the Gear Vault's Unequip & Store. Pure against an
+    -- injected clock.
+    dispatchM.strips = {};
+    check('NK30 an unknown slot arms nothing', dispatchM.stripSlot('Hat', 8, 100), nil);
+    check('NK31 a strip arms on the canon slot (any casing in)', dispatchM.stripSlot('body', 8, 100), 'Body');
+    check('NK31b ...and is live', dispatchM.stripActive(101), true);
+    check('NK32 the claim names ONLY the stripped slot, as remove', (function()
+        local c = dispatchM.stripClaim(101);
+        local n = 0; for _ in pairs(c) do n = n + 1; end
+        return n == 1 and c.Body == 'remove';
+    end)(), true);
+    check('NK33 the leg names it (sorted)', (function()
+        dispatchM.stripSlot('Head', 8, 100);
+        return dispatchM.stripSig(101);
+    end)(), 'Body,Head');
+    check('NK34 the lease expires by itself', dispatchM.stripActive(109), false);
+    check('NK34b ...and an expired strip is pruned from the table', next(dispatchM.strips), nil);
+    check('NK35 release lets the slot go', (function()
+        dispatchM.stripSlot('Legs', 8, 200);
+        dispatchM.stripRelease('legs');
+        return dispatchM.stripActive(201);
+    end)(), false);
+    check('NK36 the lease is clamped to 1..30s', (function()
+        dispatchM.stripSlot('Feet', 999, 300);
+        local live = dispatchM.stripActive(329) and not dispatchM.stripActive(331);
+        dispatchM.stripRelease('Feet');
+        return live;
+    end)(), true);
+    -- the row: strips make Naked's row active with a STRIP leg; Naked armed
+    -- keeps its byte-identical 'NAKED' leg and the full 16
+    local nrow = nil;
+    for _, r in ipairs(dispatchM._claimants) do if r.name == 'Naked' then nrow = r; end end
+    dispatchM.stripSlot('Body', 30, os.clock());
+    check('NK37 a live strip activates the Naked row', nrow.active(), true);
+    check('NK37b ...whose claim is the strip alone', (function()
+        local c = nrow.claim({}, true);
+        local n = 0; for _ in pairs(c) do n = n + 1; end
+        return n == 1 and c.Body == 'remove';
+    end)(), true);
+    check('NK37c ...with a STRIP leg', nrow.sig(nil, true), 'STRIP:Body');
+    dispatchM.nakedArmed = true;
+    check('NK38 Naked armed outranks the strip: the full 16 and the NAKED leg', (function()
+        local c = nrow.claim({}, true);
+        local n = 0; for _ in pairs(c) do n = n + 1; end
+        return n == 16 and nrow.sig(nil, true) == 'NAKED';
+    end)(), true);
+    dispatchM.nakedArmed = false;
+    dispatchM.strips = {};
+    check('NK39 no strip, no naked = the row is off with an empty leg',
+          nrow.active() == false and nrow.sig(nil, false) == '', true);
+    check('NK40 a locked slot reports locked', (function()
+        dispatchM.locks['body'] = true;
+        local w = dispatchM.stripBlocked('Body');
+        dispatchM.locks['body'] = nil;
+        return w;
+    end)(), 'locked');
+    check('NK40b a Free-equip slot reports disabled', (function()
+        dispatchM.disabledSlots['body'] = true;
+        local w = dispatchM.stripBlocked('Body');
+        dispatchM.disabledSlots['body'] = nil;
+        return w;
+    end)(), 'disabled');
+    check('NK40c a free slot reports nothing', dispatchM.stripBlocked('Body'), nil);
 end)();
 
 -- ---------------------------------------------------------------------------

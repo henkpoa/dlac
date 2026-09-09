@@ -370,6 +370,9 @@ return {
         if ready then vc.noteJob(j); end
         vc.pump(ready);
         if ready then pcall(usageBeat); end
+        -- the tab's Unequip & Store pending step: the deposit leaves only
+        -- once the client shows the piece off, tab open or not
+        if ready then pcall(function() require(base .. 'vaultui').pumpPending(); end); end
         if ready then
             -- A silently-dead engine looks exactly like "nothing happened"
             -- (hard rule 12): one loud line per DISTINCT error, and the

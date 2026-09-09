@@ -10367,3 +10367,58 @@ install; anyone else migrating must edit theirs.
 generator needs to carry the modules list or every regeneration will drop it again.
 
 **Checks:** run_tests 7338, smoke_ui 1455 — both green.
+
+## Session "Unequip & Store" (2026-09-09)
+
+**Theme:** Henrik's QoL ask -- the Gear Vault tab's **Store** button does nothing for
+a piece you are wearing (the server refuses a worn item per row, code 4 "equipped or
+busy"), so a worn row now offers **Unequip & Store** instead.
+
+**Landed (`2026.09.09b`):** the Inventory sub-tab reads which bag slots are on the
+body (a new oracle door, `gearoracle.wornLocation(equipSlot)` -> container, slot --
+GRD1 kept: no raw `GetEquippedItem` in the pack module) and a worn row shows
+`[worn: Head]` plus an **Unequip & Store** button right-aligned to the Store column.
+The click sends ONE 0x050 unequip through the engine's own injector (new
+`equipengine.unequipSlot(equipSlot, container, why)`, stamped in `/dl sends` as
+`Gear Vault (unequip & store)`, trust window stamped empty like a conflict-strip) and
+queues the deposit straight behind it. **No hold, no claim, no lock:** the client's
+outgoing stream keeps the order, so the server has already cleared the item's
+equipped flag when the deposit arrives; and once the piece sits in the vault the
+engine's next dispatch cannot dress the slot with it. Should the engine win the
+one-frame race anyway, the row says `still equipped when the store arrived -- try
+again` instead of the bare "busy". Store all is unchanged (worn pieces stay refused
+per item; its tooltip now points at the per-row button).
+
+**Checks:** run_tests 7439, smoke_ui 1481 (+GVU1f/1g the worn row's button and tag,
+GVU9a-c the click = one unequip for Head out of bag 0 + one deposit for that slot),
+pack_lint ascensionxi 30.
+
+**Field round 1 (same day, `2026.09.09c`):** the packet-order bet was only half
+right. The SERVER was fine -- the piece landed in the vault -- but the CLIENT kept a
+ghost copy in the bag (could not be equipped or sold; zoning resynced it away): the
+server's answers to the unequip and to the deposit both touch the same bag slot, and
+leaving in the same tick the client applied them in an order that resurrected the
+item. Henrik: "we're too quick... slow down to let the client react". The deposit is
+now a PENDING step driven from the module pump (tab open or not): it leaves only
+after the client itself shows the equipment slot empty AND the bag item no longer
+flagged equipped (Flags 5), plus a 0.35s settle; a 4s timeout, or the bag slot's id
+changing, aborts with a line and stores nothing. The row reads `Storing...` and
+takes no click meanwhile; one pending store at a time. smoke_ui GVU9c-i rewritten
+around the pending step (1487).
+
+**Field round 2 (same day, `2026.09.09d`):** with the wait in place the piece never
+came off at all -- "the client never showed it unequipped", twice, on Brass Subligar.
+The raw 0x050 unequip lasted exactly one 0.4s tick: the engine's Default pass, whose
+set still named the piece, dressed the slot straight back. The Naked argument,
+relived: a raw strip is a strip-once; only a CLAIM holds. So `dispatch.stripSlot(slot,
+ttl)` arms a **leased strip** on Naked's row -- the slot claims `'remove'` on every
+dispatch until released or the lease (10s here, clamped 1..30) runs out; Naked armed
+keeps its byte-identical `NAKED` leg and full 16, otherwise the row carries a
+`STRIP:<slots>` leg so arming one retraces. The tab arms the strip, the engine takes
+the piece off and holds the slot bare, the client shows it off, the settle runs, the
+deposit leaves, the strip lets go on the answer (or on timeout/abort). A locked or
+Free-equip slot is refused in words up front (`stripBlocked`). The raw unequip stays
+only as the no-registry fallback. Tests NK30-NK40c (run_tests 7456), smoke GVU9b/9g2/
+9h-j (1489), pack_lint 30. **FIELD-CONFIRMED** the same afternoon (Henrik: "It works,
+now, merge") and promoted dev -> main as . Still owed: the button's
+right-edge alignment under the themed font.

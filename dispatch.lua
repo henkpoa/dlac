@@ -3259,6 +3259,91 @@ function M.nakedClaim()
     return out;
 end
 
+-- LEASED STRIPS (2026-09-09) -- ONE slot held EMPTY for a few seconds, as the
+-- very claim Naked makes, on Naked's row. The Gear Vault's "Unequip & Store"
+-- is the customer: a raw 0x050 unequip from a tab button lasted exactly one
+-- 0.4s tick before Default dressed the slot straight back (field, Brass
+-- Subligar: "I don't see the item being unequipped either"), because nothing
+-- in the engine knew the slot was meant to stay bare. Naked's own argument
+-- applies verbatim -- a lock only WITHHOLDS and is wiped by self-swaps; a
+-- claim is recomputed and re-applied every dispatch, so the strip lands on
+-- the next pass and HOLDS until released. It is a lease (expiry in os.clock
+-- seconds) so a caller that dies mid-flow can never leave a slot bare for
+-- the session. When Naked itself is armed the full 16-slot claim stands and
+-- strips are moot. Attribution (/dl why, the Monitor) reads 'Naked' for a
+-- stripped slot -- the row is shared, the trace line says STRIP.
+M.strips = M.strips or {};   -- canon slot -> expiry (os.clock seconds)
+-- (do-block: the two helpers are block locals -- the 200-local chunk cap.)
+do
+
+local function stripCanon(slot)
+    return ARB.CANON_OF[string.lower(tostring(slot or ''))];
+end
+
+-- Why a strip could not take the piece off, in one word: 'locked' (the
+-- Locks veto -- NK20's rule, a locked slot is left alone) or 'disabled'
+-- (the Free-equip ceiling -- the engine never touches that slot). nil = the
+-- strip would land. Callers turn the word into a sentence before sending.
+function M.stripBlocked(slot)
+    local canon = stripCanon(slot);
+    if canon == nil then return 'unknown'; end
+    if M.isLockedSlot(canon) then return 'locked'; end
+    if M.disabledSlots[string.lower(canon)] == true then return 'disabled'; end
+    return nil;
+end
+
+-- Arm a strip on one slot for `ttl` seconds (clamped 1..30). Returns the
+-- canon slot it holds, or nil for an unknown slot. No dispatch is kicked --
+-- setNaked's reason: the 0.4s tick is the only Default entry point.
+function M.stripSlot(slot, ttl, now)
+    local canon = stripCanon(slot);
+    if canon == nil then return nil; end
+    ttl = tonumber(ttl) or 8;
+    if ttl < 1 then ttl = 1; elseif ttl > 30 then ttl = 30; end
+    M.strips[canon] = (tonumber(now) or os.clock()) + ttl;
+    return canon;
+end
+
+function M.stripRelease(slot)
+    local canon = stripCanon(slot);
+    if canon ~= nil then M.strips[canon] = nil; end
+end
+
+-- The live strips (expired ones pruned as they are read), canon-keyed.
+local function liveStrips(now)
+    now = tonumber(now) or os.clock();
+    local out, n = {}, 0;
+    for canon, exp in pairs(M.strips) do
+        if exp > now then out[canon] = true; n = n + 1;
+        else M.strips[canon] = nil; end
+    end
+    return out, n;
+end
+
+function M.stripActive(now)
+    local _, n = liveStrips(now);
+    return n > 0;
+end
+
+-- The claim: every live strip -> 'remove'. Only the stripped slots, on
+-- purpose (unlike nakedClaim's always-16): every OTHER slot must keep what
+-- the lower layers dressed it with -- that is the whole point of a strip.
+function M.stripClaim(now)
+    local out = {};
+    for canon in pairs((liveStrips(now))) do out[canon] = 'remove'; end
+    return out;
+end
+
+-- The retrace leg: sorted canon slots, so arming/releasing a strip moves the
+-- signature and the trace re-names the slot (the External-row lesson).
+function M.stripSig(now)
+    local ks = {};
+    for canon in pairs((liveStrips(now))) do ks[#ks + 1] = canon; end
+    table.sort(ks);
+    return table.concat(ks, ',');
+end
+end
+
 -- (nakedVoidsPinReserve RETIRED, step-1 cleanup 2026-07-27: the pin-reserved
 --  hold it existed to void is itself retired -- a dominant pin reserver now
 --  suppresses slots through the cross-rank verdict (ARK4), where Naked
@@ -6179,14 +6264,24 @@ local CLAIMANTS = {
     -- nothing armed is the whole point -- hence bail1. Registered like any
     -- other claimant (one rank row, one claim table, no new arm), so woven
     -- MaxMP cedes all 16 slots to it for free.
+    -- The row also carries the LEASED STRIPS (2026-09-09, see M.stripSlot):
+    -- Naked armed = the full 16 as ever (sig 'NAKED', byte-identical); else
+    -- the live strips alone, with their own leg so arming one retraces.
     { name = 'Naked',
-      active = function() return M.nakedOn(); end,
+      active = function() return M.nakedOn() or M.stripActive(); end,
       bail1 = true, bail2 = true,
+      -- `on` alone decides as before (CR7d: naked is the flag, not a table
+      -- walk); only a LIVE strip with Naked disarmed narrows the claim.
       claim = function(st, on)
           if not on then return nil; end
-          return M.nakedClaim();
+          if M.nakedOn() or not M.stripActive() then return M.nakedClaim(); end
+          return M.stripClaim();
       end,
-      sig = function(_, on) return on and 'NAKED' or ''; end,
+      sig = function(_, on)
+          if not on then return ''; end
+          if M.nakedOn() or not M.stripActive() then return 'NAKED'; end
+          return 'STRIP:' .. M.stripSig();
+      end,
       apply = function(env)
           -- (The pinReserved void dance retired with the belt itself, step-1
           --  cleanup 2026-07-27: pins-vs-naked is the verdict's ordinary
@@ -6194,10 +6289,15 @@ local CLAIMANTS = {
           --  reservations by ROW, pins below lose them, one rule.)
           equipResolved(env.built['Naked'], env.ctx, env.respect('Naked'), 'Naked');
           if env.retrace then
-              env.lines[#env.lines + 1] = 'NAKED  ->  all 16 slots emptied';
+              env.lines[#env.lines + 1] = M.nakedOn() and 'NAKED  ->  all 16 slots emptied'
+                  or ('STRIP  ->  ' .. M.stripSig() .. ' emptied (leased)');
           end
       end,
-      prioStatus = function() return M.nakedOn() and 'ON (claims ALL 16 slots empty -- /dl dress releases)' or 'off'; end },
+      prioStatus = function()
+          if M.nakedOn() then return 'ON (claims ALL 16 slots empty -- /dl dress releases)'; end
+          if M.stripActive() then return 'ON (leased strip: ' .. M.stripSig() .. ')'; end
+          return 'off';
+      end },
     -- THE LOCKED SET rides the Locks row (ADR 0022) rather than adding a row
     -- of its own: to the player "lock" is one word and one drag target. The
     -- row carries BOTH kinds of opinion -- real item names for slots a locked
