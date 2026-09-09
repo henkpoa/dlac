@@ -10459,3 +10459,42 @@ binding (CEXI) is never touched. Tests IMC32-IMC37 (run_tests 7465).
 load-report imgui line should read MIXED with a count around 10. If it reads NEW without
 MIXED and the panel persists, the wrong-type push is somewhere else: ask for the panel's
 window names.
+
+## Session "the deposit that never shelved, and the invisible beat" (2026-09-10)
+
+**Theme:** Henrik pressed Unequip & Store on the brass set; it went into the vault,
+the idle set still names it, the wardrobes had room -- and dlac never pulled it into
+the Mog Wardrobe layout. "Why?"
+
+**Diagnosis (code, no artifact needed):** the additions engine (`gearvaulteconcile`)
+gates its push on a change key of derivation hash | layout stamp. The 2026-08-30 vault
+law made "does the vault hold it" a third input to every add, but a deposit moves
+neither of the two keyed inputs: the beat after the store computed the brass pieces as
+wantable, met the same key, and answered 'clean' until an unrelated set commit or a
+relog moved it. Not flaky, just late by an unbounded amount.
+
+**Landed (`2026.09.10a`, 28d6155):** `vc.mirror.stamp` joins the push key. Every mirror
+commit re-stamps (a deposit's LIST resync, a withdraw's arithmetic), so a store at a
+Warden is pushed on the next beat. Test GVR29d-i: two of five derived ids vaulted ->
+pushed:2 -> layout satisfied -> clean; a DEPOSIT ack + resync lists a third id ->
+pushed:1, and it is that id. Fails on the old key. Seen while writing it, NOT changed:
+the wantable cap is vault + layout copies, so a half-vaulted pair already laid out
+(vault 1 + layout 1) re-pushes count 2 whenever the key moves -- whether the vault LIST
+still shows a laid-out row is a server question.
+
+**Then "why 8 seconds?"** -- the beat is a design choice (stateless engine: re-derive
+on a slow beat, one shape for every trigger), never calibrated, and invisible: a store
+acks in under a second and then nothing happens for up to 8s, which reads as broken.
+Henrik's call: show the clock rather than nudge the beat on events.
+
+**Landed (`2026.09.10b`, 94daa9e):** the left pane header is now "Mog Wardrobe Layout"
+(the "Current" made room) and `reconcile.nextBeat()` paints `sync in Ns` in dim to its
+right -- `syncing...` while a run acks or the mirror re-reads, `sync paused` while
+browsing another job or without a vault; `(fetching...)` keeps its place while the
+layout itself is being read. Hover explains the check in player words and that Sync
+re-reads the server now. Tests GVR14a-c (run_tests 7474), smoke_ui 1489.
+
+Promoted dev -> main as `v2026.09.10b` on Henrik's "perfect, merge :)". **Field round
+owed:** store a set-wanted piece at a Warden, watch the timer run out, confirm the
+"layout +1 piece" line lands on that beat; report if the timer text clips against the
+pane edge under the themed font.
