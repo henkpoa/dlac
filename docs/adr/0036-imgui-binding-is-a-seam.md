@@ -65,6 +65,21 @@ difference, call sites own nothing.
   missing, an old call's framePadding is dropped silently — a border pixel is not worth
   a torn frame.
 
+## Amendment 2026-09-09: detect on the userdata, not a lib global
+
+Point 1 read ONE global, `ImGuiChildFlags_Borders`, which `addons\libs\imgui.lua` defines
+— a Lua file, not the DLL. An AscensionXI install then reported the exact three errors
+this shim exists to stop, on a dlac that carried the shim: its `Ashita.dll` spoke the
+1.9x binding while its `libs\imgui.lua` was an older copy (no enum, `IMGUI_VERSION_NUM`
+18000), so `isNewBinding()` said OLD and wrapped nothing. Detection now has four signals
+and any one wins: the enum global, `IMGUI_VERSION_NUM >= 19000`, `imgui.ImageWithBg`
+present on the userdata (1.91+ only), `imgui.GetVersion()` naming 1.90 or later. The
+decision is recorded (`M.signal`, `M.error`) and rendered by `M.status()` into the load
+beacon (`debug\load-report.txt`) and the `/dl check` modules line, so an inert shim is a
+readable line instead of three red tab errors. A `FAILED` status is a `/dl check` issue.
+Pinned headless as IMC16–IMC31 (the mixed install, the `GetVersion` path, the readable
+failure).
+
 ## Records
 
 `lib/imguicompat.lua` (the whole story in its header), `docs/history.md` (the Vanaheim

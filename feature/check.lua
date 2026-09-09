@@ -77,6 +77,12 @@ function M._issues(info)
         for _, f in ipairs(mods.failed) do names[#names + 1] = tostring(f.mod); end
         I[#I + 1] = string.format('%d module(s) FAILED to load: %s (corrupt/partial files?)', #names, table.concat(names, ', '));
     end
+    -- The imgui-binding shim (2026-09-09): an install that failed to wrap a
+    -- NEW binding renders every tab as "no matching function call" -- the
+    -- shim's own line names it before anyone opens a tab.
+    if type(info.imgui) == 'string' and info.imgui:find('FAILED', 1, true) then
+        I[#I + 1] = 'imgui shim did not install -- every gear tab will error (lib\\imguicompat.lua missing/corrupt?)';
+    end
     -- The pack question first (ADR 0035): no active pack means the catalog
     -- CANNOT be present -- one issue that explains, not two that confuse.
     if info.packTried == true and info.packId == nil then
@@ -129,6 +135,11 @@ function M._lines(info)
             end
             modWord = modWord .. ' -- FAILED: ' .. table.concat(parts, ', ');
         end
+    end
+    -- The imgui-binding shim rides the modules line (2026-09-09): it is a
+    -- fact about the loaded code, and the six-line shape stays load-bearing.
+    if type(info.imgui) == 'string' and info.imgui ~= '' then
+        modWord = modWord .. ' -- ' .. info.imgui;
     end
     local catWord = (info.catalogN ~= nil) and (tostring(info.catalogN) .. ' items')
                     or (info.catalogTried == true and 'UNREADABLE' or '?');
@@ -220,6 +231,13 @@ function M.gather()
     -- the failures' errors.
     local led = try('dlac\\loadledger');
     if led ~= nil and tonumber(led.total) ~= nil then info.modules = led; end
+    -- The imgui-binding shim's decision (lib\imguicompat): which generation
+    -- it found, by which signal, and whether it wrapped -- the one line that
+    -- separates "the tabs are broken" from "the shim never ran here".
+    pcall(function()
+        local ic = try('dlac\\lib\\imguicompat');
+        if ic ~= nil and type(ic.status) == 'function' then info.imgui = ic.status(); end
+    end);
     -- The active server pack, through the one seam (ADR 0035).
     pcall(function()
         local sp = try('dlac\\gear\\serverpack');

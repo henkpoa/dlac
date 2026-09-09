@@ -20,12 +20,24 @@
     shape. On the old binding it wraps NOTHING: zero overhead, zero risk to
     the install everything was field-tested on.
 
-    Detection is keyed on the BINDING, never the server: the new build
-    defines the ImGuiChildFlags_* enum globals in every addon state, the old
-    one has no such enum at all. If CatsEyeXI's Ashita updates tomorrow, the
-    shim follows the binding it actually finds. The mapping halves are pure
-    and exported (M._childFlags / M._imageButtonArgs) so the headless suite
-    pins them without an imgui table.
+    Detection is keyed on the BINDING, never the server. If CatsEyeXI's
+    Ashita updates tomorrow, the shim follows the binding it actually finds.
+    The mapping halves are pure and exported (M._childFlags /
+    M._imageButtonArgs) so the headless suite pins them without an imgui
+    table.
+
+    FOUR SIGNALS, ANY ONE WINS (2026-09-09): the first cut read ONE global,
+    ImGuiChildFlags_Borders, which addons\libs\imgui.lua defines -- a LUA
+    FILE, not the DLL. An AscensionXI install then reported the exact three
+    errors this shim exists to stop, on a dlac that carried the shim: its
+    Ashita.dll spoke the new binding while its libs\imgui.lua was an older
+    copy (no enum, IMGUI_VERSION_NUM 18000), so the shim read "old" and
+    wrapped nothing. Now the userdata itself is asked too: ImageWithBg exists
+    only on the 1.91+ binding, and GetVersion() names the generation
+    outright. install() records WHICH signal fired (M.signal) and, if it could
+    not run, WHY (M.error); status() renders that one line for the load
+    beacon and /dl check, so the next inert shim is a readable line instead
+    of three red tab errors.
 
     One deliberate loss: framePadding is honoured via a PushStyleVar bracket
     when the binding exposes it, and silently dropped otherwise -- a border
@@ -36,11 +48,58 @@ local M = {};
 
 M.installed = false;   -- install() ran (whichever branch it took)
 M.wrapped   = false;   -- ...and it actually wrapped a new-style binding
+M.signal    = nil;     -- which detection signal called the binding new
+M.error     = nil;     -- why install() could not run, when it could not
 
--- The new binding's build defines the ImGuiChildFlags_* enum globals; the old
--- one predates the enum entirely. Overridable for the headless suite.
-function M.isNewBinding()
-    return type(ImGuiChildFlags_Borders) == 'number';
+-- PURE: "1.92.3 WIP" / "1.80" -> true when the generation is 1.90 or later
+-- (the BeginChild bool became ImGuiChildFlags in 1.90; ImageButton's str_id
+-- came in 1.89, which no Ashita build shipped alone).
+function M._versionIsNew(s)
+    if type(s) ~= 'string' then return false; end
+    local major, minor = s:match('^%s*(%d+)%.(%d+)');
+    if major == nil then return false; end
+    major, minor = tonumber(major), tonumber(minor);
+    if major > 1 then return true; end
+    return major == 1 and minor >= 90;
+end
+
+-- Is the binding the 1.90+ generation? Four signals, any one wins -- the two
+-- lib-file globals first (cheap, the common case), then the userdata itself,
+-- because a mixed install (new DLL, old libs\imgui.lua) has NO true global
+-- to read. `imgui` is the required table; it may be nil headless, in which
+-- case only the globals speak. Overridable for the headless suite.
+function M.isNewBinding(imgui)
+    if type(ImGuiChildFlags_Borders) == 'number' then
+        M.signal = 'ImGuiChildFlags enum'; return true;
+    end
+    if type(IMGUI_VERSION_NUM) == 'number' and IMGUI_VERSION_NUM >= 19000 then
+        M.signal = 'IMGUI_VERSION_NUM ' .. tostring(IMGUI_VERSION_NUM); return true;
+    end
+    if type(imgui) == 'table' then
+        -- ImageWithBg exists only on the new binding (1.91+). The table
+        -- resolves through __index = the gui-manager userdata, so the lookup
+        -- itself is guarded.
+        local okw, withBg = pcall(function() return imgui.ImageWithBg; end);
+        if okw and withBg ~= nil then M.signal = 'ImageWithBg present'; return true; end
+        local okv, ver = pcall(function() return imgui.GetVersion(); end);
+        if okv and M._versionIsNew(ver) then
+            M.signal = 'GetVersion ' .. tostring(ver); return true;
+        end
+    end
+    M.signal = nil;
+    return false;
+end
+
+-- ONE line for the load beacon and /dl check: what the shim decided and why.
+function M.status()
+    if M.error ~= nil then
+        return 'imgui shim FAILED to install: ' .. tostring(M.error);
+    end
+    if not M.installed then return 'imgui shim NOT installed (install() never ran)'; end
+    if M.wrapped then
+        return 'imgui binding NEW (' .. tostring(M.signal) .. ') -- shim WRAPPED BeginChild/ImageButton/Image';
+    end
+    return 'imgui binding OLD (no new-binding signal) -- shim inert, call sites native';
 end
 
 -- PURE: the old bool-or-passthrough third argument -> ImGuiChildFlags.
@@ -69,9 +128,12 @@ end
 function M.install()
     if M.installed then return M.wrapped; end
     local ok, imgui = pcall(require, 'imgui');
-    if not ok or type(imgui) ~= 'table' then return false; end
+    if not ok or type(imgui) ~= 'table' then
+        M.error = (not ok) and ('require(imgui): ' .. tostring(imgui)) or 'require(imgui) returned no table';
+        return false;
+    end
     M.installed = true;
-    if not M.isNewBinding() then return false; end   -- old binding: leave it be
+    if not M.isNewBinding(imgui) then return false; end   -- old binding: leave it be
     M.wrapped = true;
 
     -- NOTE on the guards below: this build's imgui table resolves entries

@@ -18,7 +18,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.09.08d';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.09.09a';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
                                 -- (03f = engine v163: the contest explains its own plan;
                                 --  03g = one floating tray: Teleports + the E-Box crates;
@@ -284,7 +284,17 @@ addon.version = '2026.09.08d';  -- date of the last shipped change (Ashita print
                                 --  client's verdict, next try -- "stale, 0
                                 --  rows" was two silent paths (a refused
                                 --  status, an unreadable HELLO) wearing one
-                                --  readout on prod)
+                                --  readout on prod;
+                                --  09.09a = the imgui shim reads the BINDING,
+                                --  not a lib global: an AscensionXI install
+                                --  with a new Ashita.dll but an older
+                                --  libs\imgui.lua had no ImGuiChildFlags
+                                --  enum, so the shim stayed inert and every
+                                --  tab died again (BeginChild bool,
+                                --  ImageButton shape); now ImageWithBg /
+                                --  GetVersion() on the userdata count too,
+                                --  and the decision is ONE readable line in
+                                --  load-report.txt and /dl check)
 addon.desc    = 'Gear sets, triggers and live stats with level scaling -- dlac equips your gear itself.';
 
 -- Load BEACON ('/dl check' field round, 2026-07-23): written by PLAIN io at
@@ -318,6 +328,16 @@ end);
 -- lib\imguicompat.lua for the whole story.
 pcall(function()
     require('dlac\\lib\\imguicompat').install();
+end);
+-- ...and the decision it took, into the load beacon: a mixed install (new
+-- Ashita.dll, older libs\imgui.lua) once left the shim inert with nothing
+-- on disk saying so -- three red tab errors were the only readout.
+pcall(function()
+    local okc, ic = pcall(require, 'dlac\\lib\\imguicompat');
+    local line = (okc and type(ic) == 'table' and type(ic.status) == 'function')
+                 and ic.status() or ('imgui shim UNREADABLE: ' .. tostring(ic));
+    local f = io.open(AshitaCore:GetInstallPath() .. 'addons\\dlac\\debug\\load-report.txt', 'a');
+    if f ~= nil then f:write(line .. '\n'); f:close(); end
 end);
 
 -- THE SERVER SEAM (ADR 0035): discover the shipped server packs, pick the
