@@ -87,6 +87,25 @@ function R.wornNow()
     return {};
 end
 
+-- The tab's countdown (Henrik, 2026-09-10: the beat is invisible, so a
+-- stored piece "did nothing" for up to 8s). Returns seconds until the next
+-- check as a number, or a word for why the clock is not running:
+-- 'busy' (a run is still acking), 'syncing' (the mirror is being re-read),
+-- 'paused' (browsing another job / no vault / no job), nil when unconfigured.
+function R.nextBeat()
+    if D == nil then return nil; end
+    local vc = D.vc;
+    if st.inFlight > 0 then return 'busy'; end
+    local vs = vc.state();
+    if vs == 'syncing' then return 'syncing'; end
+    if vs == 'dormant' or vs == 'unattuned' then return 'paused'; end
+    if type(D.browsing) == 'function' and D.browsing() == true then return 'paused'; end
+    local job = (type(D.mainJob) == 'function') and D.mainJob() or nil;
+    if type(job) ~= 'number' or job == 0 then return 'paused'; end
+    local now = (type(D.clock) == 'function') and D.clock() or os.clock();
+    return math.max(0, R.BEAT - (now - st.lastBeat));
+end
+
 -- A zone-in may have landed us in a city: let the next beat retry a
 -- city-blocked push immediately instead of waiting out lastPushKey.
 function R.zoneArmed()

@@ -27559,6 +27559,14 @@ end)();
     check('GVR13 ...arms the city badge', rc.cityBlocked(), true);
     T = T + rc.BEAT + 1;
     check('GVR14 the same derivation does not re-spam', rc.tick(), 'clean');
+    -- the tab's countdown reads the same clock the beat runs on
+    check('GVR14a right after a beat the countdown is the full beat', rc.nextBeat(), rc.BEAT);
+    T = T + 3;
+    check('GVR14b ...and it counts down', rc.nextBeat(), rc.BEAT - 3);
+    check('GVR14c an acking run reads busy', (function()
+        local st = rc._st(); local was = st.inFlight; st.inFlight = 1;
+        local r = rc.nextBeat(); st.inFlight = was; return r;
+    end)(), 'busy');
     rc.zoneArmed();
     T = T + rc.BEAT + 1;
     check('GVR15 a zone-in re-arms the push', rc.tick(), 'pushed:5');
