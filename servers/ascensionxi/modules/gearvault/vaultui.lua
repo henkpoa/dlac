@@ -561,8 +561,13 @@ end
 local DEPOSIT_WORDS = {
     [3]  = 'not vault gear',
     [4]  = 'equipped or busy',
-    [10] = 'the vault already holds its copy (duplicates are refused -- future scrap fodder)',
+    [10] = 'Already in gear vault',
     [9]  = 'the vault store errored',
+};
+local DUPLICATE_WORDS = {
+    [1] = 'Already in gear vault',
+    [2] = 'Already Equipped',
+    [3] = 'Already in Mog Wardrobe',
 };
 local function storeRows(rows, afterUnequip, onDone)
     local list = {};
@@ -585,6 +590,9 @@ local function storeRows(rows, afterUnequip, onDone)
         end
         if #acks == 1 and stored == 0 then
             local words = DEPOSIT_WORDS[acks[1].code] or ('refused (code ' .. tostring(acks[1].code) .. ')');
+            if acks[1].code == vc.code.DUPLICATE then
+                words = DUPLICATE_WORDS[acks[1].duplicateLocation] or DEPOSIT_WORDS[vc.code.DUPLICATE];
+            end
             if afterUnequip and acks[1].code == 4 then
                 -- the deposit outran the unequip (or something dressed the
                 -- slot again in between): say which race, not just "busy"
