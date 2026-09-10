@@ -232,8 +232,10 @@ function M.depositPayload(entries)
     return table.concat(parts);
 end
 
--- DEPOSIT S2C: { u16 Count; u16 Rsvd; N x { u8 Container; u8 Slot; u16 Code;
+-- DEPOSIT S2C: { u16 Count; u16 DuplicateLocation; N x { u8 Container; u8 Slot; u16 Code;
 -- u32 RowId } }.
+-- Location is 1=vault, 2=equipped, 3=wardrobe for a single duplicate;
+-- zero for older servers and batches. Entry shape and result codes are unchanged.
 function M.parseDepositAck(payload)
     if type(payload) ~= 'string' or #payload < 4 then return nil; end
     local count = u16(payload, 0);
@@ -246,6 +248,7 @@ function M.parseDepositAck(payload)
             slot      = u8(payload, off + 1),
             code      = u16(payload, off + 2),
             rowId     = u32(payload, off + 4),
+            duplicateLocation = (count == 1) and u16(payload, 2) or 0,
         };
     end
     return { entries = entries };

@@ -165,3 +165,28 @@ excluded; fishing rods AND bait are vault territory (bait rides `quantity`).
   Safe 2).
 - Existing shelf contents a layout does not name are evicted to the vault
   on the first apply — that is the designed migration, not a bug report.
+## Duplicate messages (2026-09-10)
+
+Single-item deposit refusals show `<item>: Already in gear vault`,
+`<item>: Already Equipped`, or `<item>: Already in Mog Wardrobe`.
+`vaultclient.parseDepositAck` reads the former reserved header word as a
+location hint for a one-entry response: 1=vault, 2=equipped, 3=wardrobe.
+Zero/unknown values use the short gear-vault fallback. Batch responses
+ignore the hint and keep their summary. Result codes, entry sizes and
+the protocol version are unchanged; older addons ignore this word.
+
+The server determines the location by the same normalized identity that
+refused admission (AscensionXI PR #420), so this UI does not guess from
+item names or stale client holdings. The first stored count that reaches
+the allowance reports vault; otherwise the matching wardrobe instance
+that reaches it reports equipped or wardrobe. This is a display hint,
+not a new admission rule. The server extension must be deployed before
+the equipped/wardrobe distinctions appear; wording is short on older servers too.
+
+Files: `servers/ascensionxi/modules/gearvault/{vaultclient,vaultui}.lua`.
+Verification: `lua tests/smoke_ui.lua` (1499 checks, including exact strings
+through Store callbacks and decoded response bytes), `lua tests/run_tests.lua`
+(7474 checks). Reload the installed addon with `/addon reload dlac`, then
+try Store with a duplicate in each location. No client visual playtest has
+been performed by the agent. Rollback is the previous two Lua files plus
+an addon reload; player data and settings are untouched.
