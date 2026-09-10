@@ -7548,6 +7548,7 @@ end)();
     local texts, smallHits, headers = {}, {}, {};
     local pressWithdraw = false;
     local pressUnequip = false;
+    local pressStore = false;
     local nop = function() end;
     local IM = {
         TextColored   = function(_, s) texts[#texts + 1] = tostring(s); end,
@@ -7563,6 +7564,7 @@ end)();
         IsItemHovered = function() return true; end,
         SmallButton   = function(label)
             smallHits[#smallHits + 1] = tostring(label);
+            if pressStore then return tostring(label):match('^Store##') ~= nil; end
             if pressUnequip then return tostring(label):match('^Unequip & Store') ~= nil; end
             return pressWithdraw and tostring(label):match('^Withdraw') ~= nil;
         end,
@@ -7701,6 +7703,26 @@ end)();
     check('GVU8 the filtered row is gone', blob:find('Item100', 1, true), nil);
     check('GVU9 the match remains',        blob:find('Item200', 1, true) ~= nil, true);
     vui._search[1] = '';
+
+    -- Decode real reply bytes, deliver the queued Store callback, and
+    -- assert the exact user-facing message (including legacy replies).
+    pressStore = true;
+    for location, words in pairs({
+        [0] = 'Already in gear vault', [1] = 'Already in gear vault',
+        [2] = 'Already Equipped', [3] = 'Already in Mog Wardrobe',
+        [99] = 'Already in gear vault',
+    }) do
+        vc._st().depositQ = {};
+        vui.render(1, 75);
+        local queued = vc._st().depositQ;
+        check('GVU duplicate Store queued ' .. location, #queued, 1);
+        local ack = vc.parseDepositAck(vc._wu16(1) .. vc._wu16(location)
+            .. string.char(0, 3) .. vc._wu16(vc.code.DUPLICATE) .. vc._wu32(0));
+        queued[1].onDone(ack.entries);
+        check('GVU duplicate wording ' .. location, vui._lastResult().text, 'Item100: ' .. words);
+    end
+    vc._st().depositQ = {};
+    pressStore = false;
 
     -- an Unequip & Store click arms ONE leased strip on the engine's Naked
     -- row for the worn slot (field round 2, 2026-09-09: a raw unequip lasted
