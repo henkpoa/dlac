@@ -107,7 +107,7 @@ return {
         { stat = "MagicAttackBonus", add = 4, cond = "MOON_PHASE", param = 4 },
     },
     [11499] = {
-        { stat = "FISH", add = 1, cond = "SYNTH_TRAINEE", param = 48 },
+        { stat = "FishingSkill", add = 1, cond = "SYNTH_TRAINEE", param = 48 },
     },
     [11545] = {
         { stat = "Regain", add = 10, cond = "STATUS_EFFECT_ACTIVE", param = 267 },
@@ -608,7 +608,7 @@ return {
         { stat = "SLOWRES", add = 5, cond = "SUBJOB", param = 9 },
     },
     [13668] = {
-        { stat = "SILENCERES", add = 5, cond = "SUBJOB", param = 10 },
+        { stat = "ResistSilence", add = 5, cond = "SUBJOB", param = 10 },
     },
     [13669] = {
         { stat = "RAPID_SHOT", add = 5, cond = "SUBJOB", param = 11 },
@@ -2951,6 +2951,11 @@ return {
     [18684] = {
         { stat = "DMG_RATING", add = 2, cond = "IN_ASSAULT", param = 0 },
         { stat = "RangedAttack", add = 10, cond = "IN_ASSAULT", param = 0 },
+    },
+    [18693] = {
+        { stat = "MagicAttackBonus", add = 2, cond = "ZONE", param = 54 },
+        { stat = "MagicAttackBonus", add = 2, cond = "ZONE", param = 62 },
+        { stat = "MagicAttackBonus", add = 2, cond = "ZONE", param = 65 },
     },
     [18708] = {
         { stat = "REGEN_DOWN", add = 20, cond = "STATUS_EFFECT_ACTIVE", param = 3 },
