@@ -86,11 +86,39 @@ preserving hand-maintained `features.lua`, `detect.lua`, `modules.lua` and
 from the old whitespace-sensitive reader; latent condition support is not
 newly certified. Other unmapped historical modifiers remain a wider audit.
 
-This is topic-branch work, not installed or deployed. The launcher pin in
-the server repository is unchanged. Human merge comes first; then a server
-topic PR bumps and verifies the DLAC pin. Never merge or dispatch release
-workflows as an agent. Rollback uses a revert PR and, if released, restores
-the previous launcher pin; no database migration is involved.
+Release follow-up, September 12: both implementation PRs below merged. DLAC
+main `9542854` contains the catalog and engine 168, but its entry point still
+declared `2026.09.10b`. This follow-up changes `dlac.lua` to `2026.09.12a`.
+The display string is independent of `dispatch.lua`'s engine version; both
+must be checked when releasing behavior changes.
+
+The reported installed copy at `C:/AscensionXI/Ashita/addons/dlac` was on
+`codex/gear-vault-duplicate-text`, commit `960200a`, with engine 167. Its four
+uncommitted catalog/stat files match merged main exactly after normalizing
+line endings. The old branch's patches are already represented on main
+(`git log --left-right --cherry-pick HEAD...origin/main` has no left-only
+commits). Preserve the branch and a named stash before updating this working
+copy. No player configuration lives in those four files.
+
+The launcher's `.git` protection deliberately skips this developer install.
+Separately, AscensionXI's public catalog still pinned DLAC `0b272cdb54dc`
+when the report arrived. A DLAC merge alone updates neither this Git checkout
+nor that public pin. After this version correction merges, run in a server
+topic checkout:
+
+```powershell
+python tools/addon-catalog.py bump dlac
+python tools/addon-catalog.py verify
+```
+
+Review the resolved DLAC version and hashes, then submit the pin PR for human
+merge. Do not pin unmerged work or dispatch release workflows. Developer
+installs need a Git update; ordinary installs receive the published pin on
+their next launcher start. In either case a running addon needs
+`/addon reload dlac`, then `/dl check` should show `2026.09.12a`, engine 168.
+Open Gear Helpers to refresh saved autogear format 16. Live client acceptance
+remains outstanding. Rollback uses the preserved local branch/stash or a
+revert PR plus the previous launcher pin; no database migration is involved.
 
 Review: [DLAC #169](https://github.com/henkpoa/dlac/pull/169), paired with
 [server #464](https://github.com/henkpoa/AscensionXI/pull/464).
