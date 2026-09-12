@@ -23,6 +23,8 @@ return {
         catalogMin         = 10278,
         mpPlayerMultiplier = 1,
         mpSjDivisor        = 2,
+        helmModel          = 'extra-rolls',
+        helmBreakBase      = 50,
     },
 
     -- gearvault: the Gear Vault integration (0x1E0 ops 0x40-0x7F --

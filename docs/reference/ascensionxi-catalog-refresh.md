@@ -29,12 +29,24 @@ New stat definitions preserve AscensionXI's gathering values:
   numeric upgrade tier or treat it as the actual break reduction.
 
 The owner approved showing both numeric bonuses on September 12, 2026.
-A separate scope question is pending: whether this batch should adapt Gathering Gear.
-**It currently does not.** Its `ui/automationsui.lua` ladders still score
-CatsEyeXI HELM/Surveyor, `feature/helmwatch.lua` excludes heads and applies
-the old five-point break rating, and `ui/helmui.lua` / `ui/helmbar.lua` retain
-CatsEyeXI coverage text and hat assumptions. These need coordinated changes
-before claiming automatic selection or immunity display is correct here.
+The owner also approved the Gathering Gear correction. It now uses
+`gear/gathering.lua` for category-specific ladders ordered by extra rolls,
+break reduction, lower equip level, then name. The generator declares
+`helmModel = 'extra-rolls'` and reads `helmBreakBase` from the enabled server
+HELM module's `BREAK_CHANCE`. Packs without the numeric model keep their
+existing rules. Worker +1 outranks Worker, which outranks Field; eligible
+headgear participates. All candidates are retained for level fallback.
+
+`ui/automationsui.lua` keeps job/bag gates and writes the numeric category
+ladders at autogear format 16. `dispatch.lua` version 168 selects them,
+refusing saved manifests older than format 16 until rescan. Opening Gear
+Helpers refreshes the old format. `feature/helmwatch.lua` computes planned
+outfit totals; its `bonuses()` returns extraRoll, breakReduction, breakChance
+and breakProof. `ui/helmui.lua`, `ui/helmbar.lua` and `/dl helm show` present
+those numeric results without CatsEyeXI hats, Surveyor or venture-point claims.
+The panel shows planned pieces and their individual bonuses. Totals explicitly
+describe **planned gear**, since locks/other equipment rules can alter what is
+actually worn. Weapon slots remain excluded and combat stand-aside is preserved.
 The existing Fishing Gear helper does recognize `FishingSkill` after rescan.
 
 Verification from this checkout:
@@ -42,12 +54,30 @@ Verification from this checkout:
 ```powershell
 lua tests/pack_lint.lua ascensionxi
 lua tests/ascensionxi_catalog.lua
+lua tests/run_tests.lua
+lua tests/smoke_ui.lua
 ```
 
-Both pass. Pack lint runs 30 checks through the real mount/walker. The item
-test checks names, equipment levels, stats and display units. In the server
-repository, eight Python tests pass; disabling module replay makes the
-Anchor Ring regression fail. No live client testing or captures were used.
+All pass. Pack lint runs 30 checks through the real mount/walker. The item
+test checks names, equipment levels, stats, display units and all three full
+gathering sets across all four activities. Removing headgear from the totals
+deliberately makes it fail. The headless suite passes 7,490 checks and UI smoke
+passes 1,508, including numeric writer/engine integration, underlevel fallback,
+job/bag filtering, category selection, stale data, headgear, clamping and numeric
+render branches. The CEXI golden output changes only its format marker, 15 to 16.
+In the server repository, nine Python tests pass, including source-derived HELM
+constants; disabling module replay makes the Anchor Ring regression fail.
+No live client testing or captures were used.
+
+Client acceptance: default helper visibility remains off. Enable Gear Helpers
+and Hobby Bar under Settings > Features and open Gathering Gear to refresh the
+saved manifest. Inspect Field/Worker/Worker +1 at level 1: full sets give
++50/+100/+200 extra rolls and 25/0/0 percent break chance on a failed swing,
+including excavation. Remove the cap to check totals, move the upgrade to a
+non-equippable bag to check fallback, arm near a Point and confirm the planned
+outfit equips. Enter combat to verify stand-aside and test a slot lock to confirm
+the distinction between planned stats and actual equipment. Live appearance and
+equip acceptance remain outstanding.
 
 For regeneration, read server `documentation/custom/dlac-item-catalog.md`
 and `tools/dlac-pack/README.md`. Run the generator into this pack directory,
@@ -61,3 +91,6 @@ the server repository is unchanged. Human merge comes first; then a server
 topic PR bumps and verifies the DLAC pin. Never merge or dispatch release
 workflows as an agent. Rollback uses a revert PR and, if released, restores
 the previous launcher pin; no database migration is involved.
+
+Review: [DLAC #169](https://github.com/henkpoa/dlac/pull/169), paired with
+[server #464](https://github.com/henkpoa/AscensionXI/pull/464).

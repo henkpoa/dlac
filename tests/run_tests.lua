@@ -7,6 +7,7 @@
 -- ---------------------------------------------------------------------------
 package.loaded['dlac\\gear'] = { NameToObject = {} };   -- utils requires dlac\gear at load
 ashita = { events = { register = function() end } };    -- utils registers /dl at load
+package.loaded['dlac\\gear\\gathering'] = dofile('gear/gathering.lua');
 package.loaded['dlac\\profiles'] = dofile('profiles.lua');   -- dispatch/setmanager require it (guarded)
 package.loaded['dlac\\gear\\nativemp'] = dofile('gear/nativemp.lua');   -- dispatch requires it (Oneiros resolver)
 package.loaded['dlac\\data\\zones'] = dofile('servers/cexi/data/zones.lua');   -- dispatch requires it (the inTown town set)
@@ -245,7 +246,7 @@ end)();
     local GEAR = { 'acimport','actionpicker','arbiter','blueprintsmodel','catalogindex','gearcheck','geareffects','gearexport',
                    'gearfmt','gearimport','gearoptim','gearoracle','gearrecord','groupimport','groupscan',
                    'groupsmodel','jobgate','levelstats','modeslibrary','nativemp','ownedcache','profileexport','profilesets','rulecopy','serverpack','setimport',
-                   'setmanager','statdefs','syncflags','triggermodel','unusedgear','weaponfilter','weightimport' };
+                   'setmanager','statdefs','gathering','syncflags','triggermodel','unusedgear','weaponfilter','weightimport' };
     local FEATURE = { 'actionseq','ammowatch','arbwatch','augments','check','chocowatch','combat','craftwatch','debug','digcalc','digrank',
                       'engagewatch','fishcalc','fishwatch','foodwatch','gamehud','helmwatch','idleexcl','jobhelpers','location','lockstyle','lookpreview',
                       'macrobook','meritwatch','modapi','modcfg','mpbands','petfood','petvitals','pinwatch','recast','servermods','synthrun','useitem','vanamoon' };
@@ -11061,6 +11062,51 @@ end)();
         { player = { MainJobSync = 30 } });
     check('H27 underlevel rung falls through', hov3 and hov3.Body, 'Field Tunica');
     check('H28 underlevel neck -> slot empty', hov3 and hov3.Neck, nil);
+    do
+        local gathering = require('dlac\\gear\\gathering');
+        local constants = require('dlac\\gear\\serverpack').manifest().const;
+        local oldModel, oldBase = constants.helmModel, constants.helmBreakBase;
+        constants.helmModel, constants.helmBreakBase = 'extra-rolls', 50;
+        check('AXH1 numeric rules enabled by pack', gathering.enabled(), true);
+        dispatchM._autoOverride.fmtver = 15;
+        local stale = dispatchM._helmOverlayFor({ gather = 'Mining', enabled = true },
+            { player = { MainJobSync = 75 } });
+        check('AXH2 old saved manifest waits for rescan', stale and stale.Body, nil);
+        local candidates = {
+            { Name = 'Field', Slot = 'Body', Level = 1, Stats = { MiningExtraRoll = 10, HelmBreakReduction = 5 } },
+            { Name = 'Worker', Slot = 'Body', Level = 1, Stats = { MiningExtraRoll = 20, HelmBreakReduction = 10 } },
+            { Name = 'Worker +1', Slot = 'Body', Level = 40, Stats = { MiningExtraRoll = 40, HelmBreakReduction = 10 } },
+            { Name = 'Harvest', Slot = 'Body', Level = 1, Stats = { HarvestingExtraRoll = 50 } },
+            { Name = 'Worker Cap', Slot = 'Head', Level = 1, Stats = { MiningExtraRoll = 20, HelmBreakReduction = 10 } },
+            { Name = 'Fake tool', Slot = 'Main', Level = 1, Stats = { MiningExtraRoll = 1000 } },
+        };
+        local numeric = gathering.build(candidates);
+        local serialized = assert(load('return {\n' .. table.concat(gathering.serialize(numeric), '\n') .. '\n}'))();
+        dispatchM._autoOverride = serialized;
+        local plan = dispatchM._helmOverlayFor({ gather = 'Mining', enabled = true },
+            { player = { MainJobSync = 30 } });
+        check('AXH3 underlevel Worker +1 falls to Worker', plan and plan.Body, 'Worker');
+        check('AXH4 numeric head participates', plan and plan.Head, 'Worker Cap');
+        check('AXH5 gathering never replaces weapon', plan and plan.Main, nil);
+        local high = dispatchM._helmOverlayFor({ gather = 'mining', enabled = true },
+            { player = { MainJobSync = 75 } });
+        check('AXH6 Worker +1 leads when wearable and category casing drifts', high and high.Body, 'Worker +1');
+        local harvest = dispatchM._helmOverlayFor({ gather = 'Harvesting', enabled = true },
+            { player = { MainJobSync = 75 } });
+        check('AXH7 category-specific bonus changes selection', harvest and harvest.Body, 'Harvest');
+        helmwatch._setManifest(serialized);
+        local bonuses = helmwatch.bonuses('Mining', 30);
+        check('AXH8 displayed rolls match selected head and body', bonuses.extraRoll, 40);
+        check('AXH9 displayed reduction includes head', bonuses.breakReduction, 20);
+        check('AXH10 remaining break chance', bonuses.breakChance, 30);
+        check('AXH11 insufficient reduction is not immunity', bonuses.breakProof, false);
+        check('AXH12 no gear is a 50 percent break check', gathering.bonuses({}).breakChance, 50);
+        check('AXH13 reduction clamps at zero', gathering.bonuses({ Head = { reduction = 60 } }).breakChance, 0);
+        check('AXH14 missing category has no misleading totals', helmwatch.bonuses('Unknown', 75), nil);
+        check('AXH15 stale manifest prompts rescan', gathering.preview({ body = {} }, 'Mining', 75), nil);
+        constants.helmModel, constants.helmBreakBase = oldModel, oldBase;
+        check('AXH16 CEXI retains legacy rules', gathering.enabled(), false);
+    end
     local hoff = dispatchM._helmOverlayFor({ gather = 'Mining', enabled = false },
         { player = { MainJobSync = 75 } });
     check('H29 disabled -> no overlay',      hoff, nil);

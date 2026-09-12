@@ -34,4 +34,29 @@ for _, key in ipairs({ 'HarvestingExtraRoll', 'LoggingExtraRoll', 'MiningExtraRo
 end
 assert(sd.get('HelmBreakReduction').percent ~= true);
 assert(sd.get('HelmBreakReduction').lowerBetter ~= true);
+local gathering = require('dlac\\gear\\gathering');
+assert(gathering.enabled());
+local _, byId = ci.flat();
+local sets = {
+    { ids = { 14374, 14817, 14297, 14176, 26550 }, roll = 50, reduction = 25, chance = 25 },
+    { ids = { 14375, 14818, 14298, 14177, 26551 }, roll = 100, reduction = 50, chance = 0 },
+    { ids = { 26552, 26553, 26554, 26555, 26556 }, roll = 200, reduction = 50, chance = 0 },
+};
+local owned = {};
+for _, set in ipairs(sets) do
+    local records = {};
+    for _, id in ipairs(set.ids) do
+        records[#records + 1] = assert(byId[id]);
+        owned[#owned + 1] = byId[id];
+    end
+    for _, category in ipairs(gathering.categories) do
+        local b = gathering.bonuses(gathering.preview(gathering.build(records), category, 1));
+        assert(b.extraRoll == set.roll and b.breakReduction == set.reduction and b.breakChance == set.chance,
+            category .. ' full-set bonus mismatch');
+    end
+end
+local best = gathering.preview(gathering.build(owned), 'Excavation', 1);
+assert(best.Head.name == 'Worker Cap +1');
+assert(best.Body.name == 'Worker Tunica +1');
+assert(gathering.bonuses(best).breakProof);
 print('OK -- AscensionXI custom catalog names, eligibility, stats and display units');

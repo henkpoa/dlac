@@ -20,6 +20,7 @@
 ]]--
 
 local M = {};
+local gathering = require('dlac\\gear\\gathering');
 
 local _iok, imgui = pcall(require, 'imgui');
 if not _iok then return M; end
@@ -192,11 +193,20 @@ local function coverage(deps)
     return level, helmTot, survTot;
 end
 
-function M.level(deps) return (select(1, coverage(deps))); end
+function M.level(deps)
+    if gathering.enabled() then return (select(1, M.status(deps))); end
+    return (select(1, coverage(deps)));
+end
 
 -- level + display text for the Automations list row: the coverage label with
 -- the wearable totals appended once anything is owned.
 function M.status(deps)
+    if gathering.enabled() then
+        local hw = require('dlac\\feature\\helmwatch');
+        local bonuses = hw.bonuses(hw.getGather() or 'Harvesting');
+        local level = bonuses and (bonuses.breakProof and 4 or (bonuses.extraRoll > 0 and 1 or 0)) or 0;
+        return level, 'Planned: ' .. gathering.describe(bonuses);
+    end
     local level, helmTot, survTot = coverage(deps);
     local txt = M.txt[level] or '';
     if level > 0 and (helmTot > 0 or survTot > 0) then
@@ -256,7 +266,9 @@ function M.render(deps, availW)
         pcall(function() require('dlac\\ui\\hobbybar').toggle('helm'); end);
     end
     if imgui.IsItemHovered() then
-        imgui.SetTooltip('The shared hobby bar, on HELM: category glyphs, the arm switch, points\nand rating. Also /dl helm bar.');
+        imgui.SetTooltip(gathering.enabled()
+            and 'The shared hobby bar, on gathering: categories, the arm switch and planned gear bonuses. Also /dl helm bar.'
+            or 'The shared hobby bar, on HELM: category glyphs, the arm switch, points\nand rating. Also /dl helm bar.');
     end
     imgui.SameLine(0, 14);
     local activeG = hwok and hw.getGather() or nil;
@@ -266,6 +278,37 @@ function M.render(deps, availW)
         imgui.TextColored(GREEN_OWNED, '-- AUTO holding');
     end
     imgui.Spacing();
+
+    if gathering.enabled() then
+        imgui.TextColored(COL_HEADER, 'Planned gathering outfit');
+        for i, category in ipairs(ORDER) do
+            if i > 1 then imgui.SameLine(0, 8); end
+            if imgui.Button(category .. '##numericgather') and hwok then hw.selectGather(category); end
+        end
+        local category = hwok and hw.getGather() or nil;
+        if category == nil then
+            imgui.TextWrapped('Pick a category to preview your gathering outfit.');
+        else
+            local preview = hw.preview(category);
+            imgui.TextWrapped(hw.describeBonuses(hw.bonuses(category)));
+            for _, slot in ipairs(gathering.slots) do
+                local label = slot:gsub('^%l', string.upper);
+                local rung = preview[label];
+                if rung then
+                    imgui.TextColored(COL_TEXT, label .. ':');
+                    imgui.SameLine(0, 8);
+                    itemLine(deps, rung.name, 'owned');
+                    imgui.SameLine(0, 10);
+                    imgui.TextColored(COL_DIM, string.format('extra rolls +%g%%; tool break -%g pp', rung.roll, rung.reduction));
+                end
+            end
+        end
+        imgui.Spacing();
+        imgui.TextWrapped('Each 100% extra-roll bonus guarantees one additional roll; the remainder is the chance for another. Each roll keeps its own success chance.');
+        imgui.TextWrapped('Tool-break reduction includes headgear and applies to all four gathering types, including excavation. Break is checked only after a swing finds nothing.');
+        imgui.TextWrapped('These totals describe the planned outfit. Slot locks and other equipment rules can change what you wear.');
+        return;
+    end
 
     -- The four-column progression matrix.
     local colW = math.max(200, math.floor((availW or 800) / 4));

@@ -5,7 +5,7 @@
 -- higher tier per cast; ties go to the universal. WHETHER it fires is decided
 -- by the set: a dlac:AutoStaff / dlac:AutoObi entry in Main / Waist (Sets tab).
 return {
-    fmtver = 15,
+    fmtver = 16,
     written = "<golden -- normalized>",
     craftGoal = "hq",
     mpMerits = 0,
