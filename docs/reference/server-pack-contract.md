@@ -73,6 +73,16 @@ Known consts: `augFormat` ('cexi' | 'lsb'), `catalogMin`, `oneirosMpPct`,
 `meritMaxMpCap`, `mpPlayerMultiplier`, `mpSjDivisor`, `moonOffset`, `teleWait`.
 Unknown keys are ignored — an older dlac never breaks on a newer pack.
 
+`helmModel = 'extra-rolls'` selects numeric Gathering Gear rules; pair it with
+`helmBreakBase` (percentage points, currently 50 on AscensionXI). The catalog
+uses `<Category>ExtraRoll` for Harvesting/Excavation/Logging/Mining and positive
+`HelmBreakReduction`. Each 100 extra-roll bonus guarantees another roll; the
+remainder is the chance for one further roll. Break reduction subtracts from
+the base after an unsuccessful swing, including headgear and excavation.
+Absent `helmModel` preserves the existing HELM/Surveyor behavior.
+See [AscensionXI catalog refresh](ascensionxi-catalog-refresh.md) for the
+manifest migration, selection rules, validation and client checklist.
+
 ## features.lua — surface defaults (optional, hand-maintained)
 
 Which dlac SURFACES exist on this server out of the box (ADR 0037). A

@@ -777,6 +777,8 @@ end
 -- Rating = sum of HELM over the non-Head picks; >= 5 -> breakage impossible
 -- (roll floor 1 + 5*7.3 = 37.5 > the 33% default). Excavation ignores it.
 -- ---------------------------------------------------------------------------
+local gathering = require('dlac\\gear\\gathering');
+M.numericGathering = gathering.enabled;
 local _man = { data = nil, at = -10 };
 local function manifest()
     local now = os.clock();
@@ -811,6 +813,7 @@ function M.preview(gather, lvl)
     local h = (type(a) == 'table') and a.helm or nil;
     if type(h) ~= 'table' then return {}; end
     lvl = lvl or playerLevel();
+    if gathering.enabled() then return gathering.preview(h, gather, lvl) or {}; end
     local out = {};
     for _, sk in ipairs(HELM_SLOTS) do
         local pick = nil;
@@ -837,8 +840,20 @@ function M.preview(gather, lvl)
     return out;
 end
 
--- rating (sum of HELM on non-Head picks), surveyor total, breakProof flag.
+-- Numeric totals are computed from the same planned outfit as the engine.
+function M.bonuses(category, lvl)
+    local a = manifest();
+    local h = type(a) == 'table' and a.helm or nil;
+    return gathering.bonuses(gathering.preview(h, category, lvl or playerLevel()));
+end
+
+M.describeBonuses = gathering.describe;
+
 function M.rating(gather, lvl)
+    if gathering.enabled() then
+        local b = M.bonuses(gather, lvl);
+        return b and b.extraRoll or 0, b and b.breakReduction or 0, b and b.breakProof or false;
+    end
     local pv = M.preview(gather, lvl);
     local helm, surv = 0, 0;
     for slot, p in pairs(pv) do
@@ -973,9 +988,13 @@ if ashita ~= nil and ashita.events ~= nil and type(ashita.events.register) == 'f
                 local g = M.getGather();
                 if g == nil then say('helm show: pick a category first (/dl helm mining etc).'); return; end
                 local pv = M.preview(g);
-                local helm, surv, bp = M.rating(g);
-                say(string.format('helm show: %s -> engine overlay (rating %d%s, Surveyor +%d):',
-                    g, helm, bp and ' -- BREAK-PROOF' or '/5', surv));
+                if gathering.enabled() then
+                    say('helm show: ' .. g .. ' planned gear: ' .. gathering.describe(M.bonuses(g)));
+                else
+                    local helm, surv, bp = M.rating(g);
+                    say(string.format('helm show: %s -> engine overlay (rating %d%s, Surveyor +%d):',
+                        g, helm, bp and ' -- BREAK-PROOF' or '/5', surv));
+                end
                 local any = false;
                 for _, slot in ipairs({ 'Head', 'Neck', 'Body', 'Hands', 'Waist', 'Legs', 'Feet' }) do
                     if pv[slot] ~= nil then any = true; say(string.format('  %-6s %s', slot, pv[slot].name)); end

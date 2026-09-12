@@ -357,6 +357,13 @@ M.list = {
     -- carrier stores the same constant 73, so there is nothing to compare. Which of the
     -- four verbs a piece covers is not modelled -- read the item text for that.
     { key = 'HELM', label = 'HELM', section = 'Misc' },
+    -- AscensionXI: 100 gives one extra roll; the remainder is its chance.
+    -- These do not change the success chance of an individual roll.
+    { key = 'HarvestingExtraRoll', label = 'Harvest Extra Roll', section = 'Misc', percent = true },
+    { key = 'LoggingExtraRoll', label = 'Logging Extra Roll', section = 'Misc', percent = true },
+    { key = 'MiningExtraRoll', label = 'Mining Extra Roll', section = 'Misc', percent = true },
+    { key = 'ExcavationExtraRoll', label = 'Excav. Extra Roll', section = 'Misc', percent = true },
+    { key = 'HelmBreakReduction', label = 'Tool Break Reduction (pp)', section = 'Misc' },
     -- Guild anti-HQ gear: in-game text reads "Cannot Synthesize high quality
     -- items" (a hard HQ block, not a rate cut) -- the "NQ only" goal, e.g.
     -- skilling up on bridge recipes without wasting HQ materials.

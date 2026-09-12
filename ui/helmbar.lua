@@ -92,28 +92,33 @@ function M.renderContent(availW)
     if sel == nil then
         imgui.TextColored({ 0.55, 0.55, 0.55, 1 }, 'Pick a category to gear for.');
     else
-        local vp = nil;
-        pcall(function() vp = hw.pointsFor(sel); end);
-        local helm, surv, bp = 0, 0, false;
-        pcall(function() helm, surv, bp = hw.rating(sel); end);
-        imgui.TextColored({ 0.70, 0.70, 0.70, 1 }, sel .. ' VP:');
-        imgui.SameLine(0, 6);
-        imgui.TextColored(vp ~= nil and { 0.95, 0.85, 0.45, 1 } or { 0.55, 0.55, 0.55, 1 },
-            vp ~= nil and tostring(vp) or '?');
-        imgui.SameLine(0, 14);
-        imgui.TextColored({ 0.70, 0.70, 0.70, 1 }, 'Rating:');
-        imgui.SameLine(0, 6);
-        if sel == 'Excavation' then
-            imgui.TextColored({ 0.55, 0.55, 0.55, 1 }, string.format('%d (tools break anyway -- SE\'s little joke)', helm));
-        elseif bp then
-            imgui.TextColored({ 0.45, 0.90, 0.45, 1 }, string.format('%d -- BREAK-PROOF', helm));
+        if hw.numericGathering and hw.numericGathering() then
+            imgui.TextColored({ 0.70, 0.70, 0.70, 1 }, 'Planned ' .. sel .. ' gear:');
+            imgui.TextWrapped(hw.describeBonuses(hw.bonuses(sel)));
         else
-            imgui.TextColored({ 0.85, 0.80, 0.35, 1 }, string.format('%d/5', helm));
-        end
-        if surv > 0 then
+            local vp = nil;
+            pcall(function() vp = hw.pointsFor(sel); end);
+            local helm, surv, bp = 0, 0, false;
+            pcall(function() helm, surv, bp = hw.rating(sel); end);
+            imgui.TextColored({ 0.70, 0.70, 0.70, 1 }, sel .. ' VP:');
+            imgui.SameLine(0, 6);
+            imgui.TextColored(vp ~= nil and { 0.95, 0.85, 0.45, 1 } or { 0.55, 0.55, 0.55, 1 },
+                vp ~= nil and tostring(vp) or '?');
             imgui.SameLine(0, 14);
-            imgui.TextColored({ 0.70, 0.70, 0.70, 1 }, string.format('Surveyor +%d', surv));
-        end
+            imgui.TextColored({ 0.70, 0.70, 0.70, 1 }, 'Rating:');
+            imgui.SameLine(0, 6);
+            if sel == 'Excavation' then
+                imgui.TextColored({ 0.55, 0.55, 0.55, 1 }, string.format('%d (tools break anyway -- SE\'s little joke)', helm));
+            elseif bp then
+                imgui.TextColored({ 0.45, 0.90, 0.45, 1 }, string.format('%d -- BREAK-PROOF', helm));
+            else
+                imgui.TextColored({ 0.85, 0.80, 0.35, 1 }, string.format('%d/5', helm));
+            end
+            if surv > 0 then
+                imgui.SameLine(0, 14);
+                imgui.TextColored({ 0.70, 0.70, 0.70, 1 }, string.format('Surveyor +%d', surv));
+            end
+        end -- legacy rating
     end
     -- Hold state: dressing now, or armed-and-waiting-for-a-Point.
     if hw.isAutoHelm() then

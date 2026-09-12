@@ -29,6 +29,7 @@ local _dpok, dsp  = pcall(require, "dlac\\dispatch");
 -- #69). The interpreters (levelstats/augments) keep their homes; this module asks
 -- the door, never requires them (the GRD5 rule, now absolute).
 local gearOracle  = require("dlac\\gear\\gearoracle");
+local gathering = require('dlac\\gear\\gathering');
 local _nmok, nmp  = pcall(require, "dlac\\gear\\nativemp");
 -- helpLabel: the panel-text standard (underline the label, explain in a hover).
 local _usok, uistyle = pcall(require, "dlac\\ui\\uistyle");
@@ -161,7 +162,7 @@ local UNIVERSAL = {
 -- Manifest schema version: bump when autoCommit writes NEW fields. An on-disk
 -- manifest with an older fmtver self-heals (renderAutomations triggers a rescan)
 -- so a dlac update never needs a manual "Rescan owned gear" click.
-local AUTO_FMT = 15;   -- 15: choco ladders (slotKey -> best-first rungs scored by ChocoboRidingTime; Main/Neck/Body/Hands/Legs/Feet -- the Chocobo Wand rides Main) for the Chocobo riding-gear automation (issue #95, engine dlac:AutoChoco);   -- 14: mv map (name -> MovementSpeed) + the mpMoveYield setting (movement gear may override batteries while moving);   -- 2: mpBest ladders; 3: MP level-effective; 4: staves/obis job-checked; 5: craft ladders; 6: skill-up fillers in hq/nq; 7: helm ladders + hat map; 8: fish ladders; 9: oneiros grip + mpMerits; 10: universals ladder; 11: Refresh rides mp/mpBest (rf map + rung rf); 12: AUGMENTS counted -- MP and Refresh deltas from your actual bag copies fold into mp/rf; 13: PAIR HOMES -- ear/ring ladders re-home to the IDLE SET's declared positions (Default rule matching status=Idle; the MaxMP panel picker ALWAYS overrides detection) so the engine never relocates a piece across its pair
+local AUTO_FMT = 16;   -- 16: category-specific numeric gathering ladders;   -- 15: choco ladders (slotKey -> best-first rungs scored by ChocoboRidingTime; Main/Neck/Body/Hands/Legs/Feet -- the Chocobo Wand rides Main) for the Chocobo riding-gear automation (issue #95, engine dlac:AutoChoco);   -- 14: mv map (name -> MovementSpeed) + the mpMoveYield setting (movement gear may override batteries while moving);   -- 2: mpBest ladders; 3: MP level-effective; 4: staves/obis job-checked; 5: craft ladders; 6: skill-up fillers in hq/nq; 7: helm ladders + hat map; 8: fish ladders; 9: oneiros grip + mpMerits; 10: universals ladder; 11: Refresh rides mp/mpBest (rf map + rung rf); 12: AUGMENTS counted -- MP and Refresh deltas from your actual bag copies fold into mp/rf; 13: PAIR HOMES -- ear/ring ladders re-home to the IDLE SET's declared positions (Default rule matching status=Idle; the MaxMP panel picker ALWAYS overrides detection) so the engine never relocates a piece across its pair
 
 local auto = { data = nil, loadedFor = nil, status = '' };
 
@@ -552,10 +553,23 @@ local function autoCommit()
     -- (WHICH category a hat doubles is not a catalog stat -- the id block
     -- 25557-25560 is one hat per category). Stat-driven like the craft
     -- ladders: new server gear lands on the next rescan, no table to edit.
-    local helmBest, helmHats = {}, {};
+    local helmBest, helmHats, numericHelm = {}, {}, nil;
     pcall(function()
         if type(deps.ownedList) ~= 'function' then return; end
         local lvl = mainLevel();
+        if gathering.enabled() then
+            local candidates = {};
+            for _, rec in ipairs(deps.ownedList() or {}) do
+                if rec.Name and rec.Slot
+                    and (not hasDispatch or type(dsp.canWear) ~= 'function' or dsp.canWear(rec, job, 99))
+                    and (type(deps.haveInBags) ~= 'function' or deps.haveInBags(rec)) then
+                    candidates[#candidates + 1] = { Name = rec.Name, Slot = rec.Slot, Level = rec.Level,
+                        Stats = gearOracle.stats(rec, { level = lvl }) };
+                end
+            end
+            numericHelm = gathering.build(candidates);
+            return;
+        end
         local HLADDER = 4;
         local bySlot = {};   -- slot -> { {name, score, level, helm, surv}, ... }
         for _, rec in ipairs(deps.ownedList() or {}) do
@@ -840,28 +854,32 @@ local function autoCommit()
     L[#L + 1] = '    },';
     -- helm ladders: slotKey -> best-first rungs (Surveyor-major), plus the
     -- owned-hat map keyed by category (engine: dlac:AutoHelm).
-    L[#L + 1] = '    helm = {';
-    L[#L + 1] = '        hats = {';
-    for _, g in ipairs({ 'Harvesting', 'Excavation', 'Logging', 'Mining' }) do
-        local h = helmHats[g];
-        if h ~= nil then
-            L[#L + 1] = string.format('            %s = { name = %q, level = %d, surv = %d },',
-                g, h.name, h.level, h.surv);
+    if gathering.enabled() then
+        for _, line in ipairs(gathering.serialize(numericHelm or gathering.build({}))) do L[#L + 1] = line; end
+    else
+        L[#L + 1] = '    helm = {';
+        L[#L + 1] = '        hats = {';
+        for _, g in ipairs({ 'Harvesting', 'Excavation', 'Logging', 'Mining' }) do
+            local h = helmHats[g];
+            if h ~= nil then
+                L[#L + 1] = string.format('            %s = { name = %q, level = %d, surv = %d },',
+                    g, h.name, h.level, h.surv);
+            end
         end
-    end
-    L[#L + 1] = '        },';
-    local hbKeys = {};
-    for k in pairs(helmBest) do hbKeys[#hbKeys + 1] = k; end
-    table.sort(hbKeys);
-    for _, k in ipairs(hbKeys) do
-        local rungs = {};
-        for _, c in ipairs(helmBest[k]) do
-            rungs[#rungs + 1] = string.format('{ name = %q, score = %d, level = %d, helm = %d, surv = %d }',
-                c.name, c.score, c.level, c.helm, c.surv);
+        L[#L + 1] = '        },';
+        local hbKeys = {};
+        for k in pairs(helmBest) do hbKeys[#hbKeys + 1] = k; end
+        table.sort(hbKeys);
+        for _, k in ipairs(hbKeys) do
+            local rungs = {};
+            for _, c in ipairs(helmBest[k]) do
+                rungs[#rungs + 1] = string.format('{ name = %q, score = %d, level = %d, helm = %d, surv = %d }',
+                    c.name, c.score, c.level, c.helm, c.surv);
+            end
+            L[#L + 1] = string.format('        %s = { %s },', k, table.concat(rungs, ', '));
         end
-        L[#L + 1] = string.format('        %s = { %s },', k, table.concat(rungs, ', '));
-    end
-    L[#L + 1] = '    },';
+        L[#L + 1] = '    },';
+    end -- legacy HELM manifest
     -- fish ladders: slotKey -> best-first rungs (engine: dlac:AutoFish;
     -- Range/Ammo deliberately absent -- rod and bait live in fishstate.lua).
     L[#L + 1] = '    fish = {';

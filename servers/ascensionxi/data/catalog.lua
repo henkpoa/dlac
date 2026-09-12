@@ -5745,7 +5745,7 @@ return {
                     RangedAccuracy = 30,
                     MagicAccuracy = 30,
                     MAGIC_DAMAGE = 186,
-                    TREASURE_HUNTER = 1,
+                    TreasureHunter = 1,
                 }
             },
             Asteria = {
@@ -7739,7 +7739,7 @@ return {
                     RangedAccuracy = 50,
                     MagicAccuracy = 50,
                     MAGIC_DAMAGE = 217,
-                    TREASURE_HUNTER = 3,
+                    TreasureHunter = 3,
                 }
             },
             GarudasDagger = {
@@ -7805,14 +7805,14 @@ return {
             },
             GorkhaliKukri = {
                 Name = "Gorkhali Kukri",
-                Level = 97,
+                Level = 75,
                 Id = 19788,
                 Model = 172,
                 Jobs = {"WAR", "THF", "DRK", "RNG", "NIN", "COR", "PUP", "DNC"},
                 OneHanded = true,
                 Type = "Dagger",
                 Stats = {
-                    DMG = 44,
+                    DMG = 32,
                     Delay = 200,
                     DEF = 10,
                     MagicDefenseBonus = 3,
@@ -8663,17 +8663,17 @@ return {
             },
             MahakalisKukri = {
                 Name = "Mahakali's Kukri",
-                Level = 97,
+                Level = 75,
                 Id = 19789,
                 Model = 172,
                 Jobs = {"WAR", "THF", "DRK", "RNG", "NIN", "COR", "PUP", "DNC"},
                 OneHanded = true,
                 Type = "Dagger",
                 Stats = {
-                    DMG = 45,
+                    DMG = 33,
                     Delay = 194,
-                    DEF = 15,
-                    MagicDefenseBonus = 5,
+                    DEF = 12,
+                    MagicDefenseBonus = 4,
                 }
             },
             MainGauche = {
@@ -9814,7 +9814,7 @@ return {
                     RangedAccuracy = 40,
                     MagicAccuracy = 40,
                     MAGIC_DAMAGE = 201,
-                    TREASURE_HUNTER = 2,
+                    TreasureHunter = 2,
                 }
             },
             PoisonBaselard = {
@@ -10295,7 +10295,7 @@ return {
                     AGI = 10,
                     Evasion = 22,
                     Enmity = -10,
-                    TREASURE_HUNTER = 1,
+                    TreasureHunter = 1,
                 }
             },
             Sangoma = {
@@ -11022,7 +11022,7 @@ return {
                 Stats = {
                     DMG = 28,
                     Delay = 194,
-                    TREASURE_HUNTER = 1,
+                    TreasureHunter = 1,
                 }
             },
             Thokcha = {
@@ -17502,7 +17502,7 @@ return {
                     Delay = 264,
                     BINDRES = 2,
                     GRAVITYRES = 2,
-                    SILENCERES = 2,
+                    ResistSilence = 2,
                     SLEEPRES = 2,
                 }
             },
@@ -35740,7 +35740,7 @@ return {
                     HP = 10,
                     MP = 10,
                     DT = -10,
-                    SILENCERES = 2,
+                    ResistSilence = 2,
                 }
             },
             KajaLance = {
@@ -36990,7 +36990,7 @@ return {
                 Stats = {
                     DMG = 69,
                     Delay = 365,
-                    SILENCERES = 2,
+                    ResistSilence = 2,
                 }
             },
             RuneHalberd = {
@@ -50387,28 +50387,28 @@ return {
             },
             VejovisWand = {
                 Name = "Vejovis Wand",
-                Level = 97,
+                Level = 75,
                 Id = 18884,
                 Model = 225,
                 Jobs = {"WHM", "BLM", "RDM", "SMN", "BLU", "SCH", "GEO"},
                 OneHanded = true,
                 Type = "Club",
                 Stats = {
-                    DMG = 55,
+                    DMG = 28,
                     Delay = 216,
                     CURE_CAST_TIME = 3,
                 }
             },
             VejovisWand_1 = {
                 Name = "Vejovis Wand +1",
-                Level = 97,
+                Level = 75,
                 Id = 18885,
                 Model = 225,
                 Jobs = {"WHM", "BLM", "RDM", "SMN", "BLU", "SCH", "GEO"},
                 OneHanded = true,
                 Type = "Club",
                 Stats = {
-                    DMG = 56,
+                    DMG = 29,
                     Delay = 210,
                     CURE_CAST_TIME = 4,
                 }
@@ -77459,12 +77459,12 @@ return {
             Pair = "0:0",
             Stats = {
                 Delay = 999,
-                TREASURE_HUNTER = 1,
+                TreasureHunter = 1,
             }
         },
         PetFdEpsilon = {
             Name = "Pet Fd. Epsilon",
-            Level = 60,
+            Level = 0,
             Id = 17020,
             Jobs = {"All"},
             Type = "Ammo",
@@ -77477,7 +77477,7 @@ return {
         },
         PetFdGamma = {
             Name = "Pet Fd. Gamma",
-            Level = 36,
+            Level = 0,
             Id = 17018,
             Jobs = {"All"},
             Type = "Ammo",
@@ -77490,7 +77490,7 @@ return {
         },
         PetFoodAlpha = {
             Name = "Pet Food Alpha",
-            Level = 12,
+            Level = 0,
             Id = 17016,
             Jobs = {"All"},
             Type = "Ammo",
@@ -77503,7 +77503,7 @@ return {
         },
         PetFoodBeta = {
             Name = "Pet Food Beta",
-            Level = 24,
+            Level = 0,
             Id = 17017,
             Jobs = {"All"},
             Type = "Ammo",
@@ -77516,7 +77516,7 @@ return {
         },
         PetFoodDelta = {
             Name = "Pet Food Delta",
-            Level = 48,
+            Level = 0,
             Id = 17019,
             Jobs = {"All"},
             Type = "Ammo",
@@ -77555,7 +77555,7 @@ return {
         },
         PetFoodZeta = {
             Name = "Pet Food Zeta",
-            Level = 72,
+            Level = 0,
             Id = 17021,
             Jobs = {"All"},
             Type = "Ammo",
@@ -80502,7 +80502,7 @@ return {
                 SpellInterruptionRateDown = 10,
                 MAGIC_BURST_BONUS_CAPPED = 7,
                 MAGIC_DAMAGE = 20,
-                SILENCERES = 9,
+                ResistSilence = 9,
             }
         },
         AhrimanCap = {
@@ -80922,6 +80922,30 @@ return {
             Jobs = {"WHM", "BLM", "RDM", "BRD", "SMN", "PUP", "SCH", "GEO"},
             Type = "Head",
             Stats = {
+            }
+        },
+        AnglersCap = {
+            Name = "Angler's Cap",
+            Level = 1,
+            Id = 26558,
+            Model = 608,
+            Jobs = {"All"},
+            Type = "Head",
+            Stats = {
+                DEF = 1,
+                FishingSkill = 2,
+            }
+        },
+        AnglersCap_1 = {
+            Name = "Angler's Cap +1",
+            Level = 1,
+            Id = 26563,
+            Model = 512,
+            Jobs = {"All"},
+            Type = "Head",
+            Stats = {
+                DEF = 3,
+                FishingSkill = 2,
             }
         },
         AnkusaHelm = {
@@ -85156,7 +85180,7 @@ return {
                 MP = 25,
                 VIT = 4,
                 Enmity = -4,
-                SILENCERES = 1,
+                ResistSilence = 1,
             }
         },
         ClrCap_1 = {
@@ -85171,7 +85195,7 @@ return {
                 MP = 25,
                 VIT = 5,
                 Enmity = -5,
-                SILENCERES = 2,
+                ResistSilence = 2,
             }
         },
         ClrCap_2 = {
@@ -87986,6 +88010,23 @@ return {
                 DoubleAttack = 2,
             }
         },
+        FieldCap = {
+            Name = "Field Cap",
+            Level = 1,
+            Id = 26550,
+            Model = 440,
+            Jobs = {"All"},
+            Type = "Head",
+            Stats = {
+                DEF = 1,
+                ExcavationExtraRoll = 10,
+                HELM = 1,
+                HarvestingExtraRoll = 10,
+                HelmBreakReduction = 5,
+                LoggingExtraRoll = 10,
+                MiningExtraRoll = 10,
+            }
+        },
         FightersMask = {
             Name = "Fighter's Mask",
             Level = 56,
@@ -88091,6 +88132,18 @@ return {
             Jobs = {"BRD"},
             Type = "Head",
             Stats = {
+            }
+        },
+        FishermansCap = {
+            Name = "Fisherman's Cap",
+            Level = 1,
+            Id = 26557,
+            Model = 439,
+            Jobs = {"All"},
+            Type = "Head",
+            Stats = {
+                DEF = 1,
+                FishingSkill = 1,
             }
         },
         FlamZucchetto_1 = {
@@ -103202,7 +103255,7 @@ return {
                 MagicDefenseBonus = 7,
                 Haste = 5,
                 STATUSRES = 10,
-                TREASURE_HUNTER = 1,
+                TreasureHunter = 1,
             }
         },
         VolteSalade = {
@@ -103533,7 +103586,7 @@ return {
             Name = "War. Mask +1",
             Level = 75,
             Id = 15245,
-            Model = 65,
+            Model = 523,
             Jobs = {"WAR"},
             Type = "Head",
             Stats = {
@@ -103690,7 +103743,7 @@ return {
             Type = "Head",
             Stats = {
                 DEF = 2,
-                TREASURE_HUNTER = 1,
+                TreasureHunter = 1,
             }
         },
         WhirlpoolMask = {
@@ -104027,6 +104080,40 @@ return {
             Type = "Head",
             Stats = {
                 DEF = 10,
+            }
+        },
+        WorkerCap = {
+            Name = "Worker Cap",
+            Level = 1,
+            Id = 26551,
+            Model = 526,
+            Jobs = {"All"},
+            Type = "Head",
+            Stats = {
+                DEF = 1,
+                ExcavationExtraRoll = 20,
+                HELM = 1,
+                HarvestingExtraRoll = 20,
+                HelmBreakReduction = 10,
+                LoggingExtraRoll = 20,
+                MiningExtraRoll = 20,
+            }
+        },
+        WorkerCap_1 = {
+            Name = "Worker Cap +1",
+            Level = 1,
+            Id = 26556,
+            Model = 525,
+            Jobs = {"All"},
+            Type = "Head",
+            Stats = {
+                DEF = 1,
+                ExcavationExtraRoll = 40,
+                HELM = 1,
+                HarvestingExtraRoll = 40,
+                HelmBreakReduction = 10,
+                LoggingExtraRoll = 40,
+                MiningExtraRoll = 40,
             }
         },
         WormMasque = {
@@ -104390,7 +104477,7 @@ return {
                 INT = 3,
                 MND = 3,
                 CONVHPTOMP = 50,
-                SILENCERES = 1,
+                ResistSilence = 1,
             }
         },
         ZenithCrown_1 = {
@@ -104405,7 +104492,7 @@ return {
                 INT = 4,
                 MND = 4,
                 CONVHPTOMP = 55,
-                SILENCERES = 2,
+                ResistSilence = 2,
             }
         },
         ZhaGosBarbut = {
@@ -106662,6 +106749,9 @@ return {
             Type = "Neck",
             Stats = {
                 HELM = 1,
+                HarvestingExtraRoll = 1,
+                LoggingExtraRoll = 1,
+                MiningExtraRoll = 1,
             }
         },
         FiendTorque = {
@@ -106700,7 +106790,7 @@ return {
             Jobs = {"All"},
             Type = "Neck",
             Stats = {
-                FISH = 2,
+                FishingSkill = 2,
             }
         },
         FlameGorget = {
@@ -108891,6 +108981,18 @@ return {
                 DEX = 1,
                 AGI = 1,
                 STEAL = 1,
+            }
+        },
+        RabbitCharm_1 = {
+            Name = "Rabbit Charm +1",
+            Level = 7,
+            Id = 26549,
+            Jobs = {"All"},
+            Type = "Neck",
+            Stats = {
+                DEX = 2,
+                AGI = 2,
+                TreasureHunter = 1,
             }
         },
         RancorCollar = {
@@ -112677,29 +112779,29 @@ return {
                 MP = 50,
                 FastCast = 1,
                 MDT = -3,
-                SILENCERES = 15,
+                ResistSilence = 15,
             }
         },
         EvaderEarring = {
             Name = "Evader Earring",
-            Level = 99,
+            Level = 75,
             Id = 11060,
             Jobs = {"All"},
             Type = "Ear",
             Stats = {
-                Attack = -7,
-                Evasion = 7,
+                Attack = -5,
+                Evasion = 5,
             }
         },
         EvaderEarring_1 = {
             Name = "Evader Earring +1",
-            Level = 99,
+            Level = 75,
             Id = 11061,
             Jobs = {"All"},
             Type = "Ear",
             Stats = {
-                Attack = -8,
-                Evasion = 8,
+                Attack = -6,
+                Evasion = 6,
             }
         },
         EvansEarring = {
@@ -116326,7 +116428,7 @@ return {
             Type = "Ear",
             Stats = {
                 NINJUTSU = 5,
-                SILENCERES = 2,
+                ResistSilence = 2,
             }
         },
         SteelflashEarring = {
@@ -117848,7 +117950,7 @@ return {
                 FastCast = 8,
                 MAGIC_BURST_BONUS_CAPPED = 10,
                 MAGIC_DAMAGE = 20,
-                SILENCERES = 12,
+                ResistSilence = 12,
             }
         },
         AikidoGi = {
@@ -118423,14 +118525,26 @@ return {
         },
         AnglersTunica = {
             Name = "Angler's Tunica",
-            Level = 15,
+            Level = 1,
             Id = 13809,
-            Model = 102,
+            Model = 608,
+            Jobs = {"All"},
+            Type = "Body",
+            Stats = {
+                DEF = 2,
+                FishingSkill = 2,
+            }
+        },
+        AnglersTunica_1 = {
+            Name = "Angler's Tunica +1",
+            Level = 1,
+            Id = 26559,
+            Model = 512,
             Jobs = {"All"},
             Type = "Body",
             Stats = {
                 DEF = 12,
-                FISH = 1,
+                FishingSkill = 2,
             }
         },
         AnhurRobe = {
@@ -123034,7 +123148,7 @@ return {
                 Attack = 6,
                 MagicAccuracy = 7,
                 MagicAttackBonus = 7,
-                SILENCERES = 1,
+                ResistSilence = 1,
             }
         },
         Corselet_1 = {
@@ -123050,7 +123164,7 @@ return {
                 Attack = 8,
                 MagicAccuracy = 9,
                 MagicAttackBonus = 9,
-                SILENCERES = 2,
+                ResistSilence = 2,
             }
         },
         CossieTop = {
@@ -125753,7 +125867,12 @@ return {
             Type = "Body",
             Stats = {
                 DEF = 2,
+                ExcavationExtraRoll = 10,
                 HELM = 1,
+                HarvestingExtraRoll = 10,
+                HelmBreakReduction = 5,
+                LoggingExtraRoll = 10,
+                MiningExtraRoll = 10,
             }
         },
         FightersLorica = {
@@ -125899,7 +126018,7 @@ return {
             Type = "Body",
             Stats = {
                 DEF = 4,
-                FISH = 1,
+                FishingSkill = 1,
                 ICE_MEVA = 2,
                 WATER_MEVA = 2,
             }
@@ -126192,6 +126311,30 @@ return {
                 FastCast = 6,
             }
         },
+        ForgeProbeVest = {
+            Name = "Forge Probe Vest",
+            Level = 1,
+            Id = 26547,
+            Model = 502,
+            Jobs = {"All"},
+            Type = "Body",
+            Stats = {
+                DEF = 5,
+                HP = 10,
+            }
+        },
+        ForgeProbeVest_1 = {
+            Name = "Forge Probe Vest +1",
+            Level = 1,
+            Id = 26548,
+            Model = 502,
+            Jobs = {"All"},
+            Type = "Body",
+            Stats = {
+                DEF = 6,
+                HP = 12,
+            }
+        },
         FoundBreastplate = {
             Name = "Found. Breastplate",
             Level = 99,
@@ -126317,12 +126460,12 @@ return {
             Name = "Fsh. Tunica",
             Level = 1,
             Id = 13808,
-            Model = 102,
+            Model = 501,
             Jobs = {"All"},
             Type = "Body",
             Stats = {
                 DEF = 2,
-                FISH = 1,
+                FishingSkill = 1,
             }
         },
         FtrLorica_1 = {
@@ -138668,7 +138811,7 @@ return {
                 Enmity = -10,
                 Refresh = 3,
                 DT = -10,
-                SILENCERES = 90,
+                ResistSilence = 90,
             }
         },
         ShangoRobe = {
@@ -142089,7 +142232,7 @@ return {
                 MagicDefenseBonus = 7,
                 Haste = 5,
                 STATUSRES = 20,
-                TREASURE_HUNTER = 2,
+                TreasureHunter = 2,
             }
         },
         VoodooCuirass = {
@@ -142338,7 +142481,7 @@ return {
             Name = "War. Lorica +1",
             Level = 75,
             Id = 14500,
-            Model = 65,
+            Model = 500,
             Jobs = {"WAR"},
             Type = "Body",
             Stats = {
@@ -142979,14 +143122,36 @@ return {
         },
         WorkerTunica = {
             Name = "Worker Tunica",
-            Level = 15,
+            Level = 1,
             Id = 14375,
-            Model = 105,
+            Model = 526,
             Jobs = {"All"},
             Type = "Body",
             Stats = {
-                DEF = 12,
+                DEF = 2,
+                ExcavationExtraRoll = 20,
                 HELM = 1,
+                HarvestingExtraRoll = 20,
+                HelmBreakReduction = 10,
+                LoggingExtraRoll = 20,
+                MiningExtraRoll = 20,
+            }
+        },
+        WorkerTunica_1 = {
+            Name = "Worker Tunica +1",
+            Level = 1,
+            Id = 26552,
+            Model = 525,
+            Jobs = {"All"},
+            Type = "Body",
+            Stats = {
+                DEF = 2,
+                ExcavationExtraRoll = 40,
+                HELM = 1,
+                HarvestingExtraRoll = 40,
+                HelmBreakReduction = 10,
+                LoggingExtraRoll = 40,
+                MiningExtraRoll = 40,
             }
         },
         WretchedCoat = {
@@ -143887,7 +144052,7 @@ return {
                 CURE_POTENCY_RCVD = 10,
                 MAGIC_BURST_BONUS_CAPPED = 8,
                 MAGIC_DAMAGE = 20,
-                SILENCERES = 10,
+                ResistSilence = 10,
             }
         },
         AimingBracelets = {
@@ -144403,14 +144568,26 @@ return {
         },
         AnglersGloves = {
             Name = "Angler's Gloves",
-            Level = 15,
+            Level = 1,
             Id = 14071,
-            Model = 102,
+            Model = 608,
+            Jobs = {"All"},
+            Type = "Hands",
+            Stats = {
+                DEF = 1,
+                FishingSkill = 2,
+            }
+        },
+        AnglersGloves_1 = {
+            Name = "Angler's Gloves +1",
+            Level = 1,
+            Id = 26560,
+            Model = 512,
             Jobs = {"All"},
             Type = "Hands",
             Stats = {
                 DEF = 3,
-                FISH = 1,
+                FishingSkill = 2,
             }
         },
         AnguineDastanas = {
@@ -145210,7 +145387,7 @@ return {
                 HP = 26,
                 CHR = 5,
                 Enmity = 4,
-                TREASURE_HUNTER = 1,
+                TreasureHunter = 1,
             }
         },
         AsnArmlets_2 = {
@@ -145226,7 +145403,7 @@ return {
                 Accuracy = 9,
                 Evasion = 9,
                 Enmity = 5,
-                TREASURE_HUNTER = 2,
+                TreasureHunter = 2,
             }
         },
         AssassinsArmlets = {
@@ -145241,7 +145418,7 @@ return {
                 HP = 7,
                 CHR = 5,
                 Enmity = 3,
-                TREASURE_HUNTER = 1,
+                TreasureHunter = 1,
             }
         },
         AssimBazu = {
@@ -150758,7 +150935,12 @@ return {
             Type = "Hands",
             Stats = {
                 DEF = 1,
+                ExcavationExtraRoll = 10,
                 HELM = 1,
+                HarvestingExtraRoll = 10,
+                HelmBreakReduction = 5,
+                LoggingExtraRoll = 10,
+                MiningExtraRoll = 10,
             }
         },
         FightersMufflers = {
@@ -151245,12 +151427,12 @@ return {
             Name = "Fsh. Gloves",
             Level = 1,
             Id = 14070,
-            Model = 102,
+            Model = 500,
             Jobs = {"All"},
             Type = "Hands",
             Stats = {
                 DEF = 1,
-                FISH = 1,
+                FishingSkill = 1,
             }
         },
         FtrMufflers_1 = {
@@ -159402,7 +159584,7 @@ return {
                 MagicDefenseBonus = 1,
                 Haste = 4,
                 Enmity = 5,
-                TREASURE_HUNTER = 2,
+                TreasureHunter = 2,
             }
         },
         PlunArmlets_1 = {
@@ -159428,7 +159610,7 @@ return {
                 MagicDefenseBonus = 2,
                 Haste = 5,
                 Enmity = 6,
-                TREASURE_HUNTER = 3,
+                TreasureHunter = 3,
             }
         },
         PlunArmlets_2 = {
@@ -159455,7 +159637,7 @@ return {
                 MagicEvasion = 47,
                 MagicDefenseBonus = 3,
                 Haste = 5,
-                TREASURE_HUNTER = 3,
+                TreasureHunter = 3,
             }
         },
         PlunArmlets_3 = {
@@ -159482,7 +159664,7 @@ return {
                 MagicEvasion = 57,
                 MagicDefenseBonus = 4,
                 Haste = 5,
-                TREASURE_HUNTER = 4,
+                TreasureHunter = 4,
             }
         },
         PlunArmlets_4 = {
@@ -161274,7 +161456,7 @@ return {
             Stats = {
                 DEF = 12,
                 FIRE_MEVA = 5,
-                SILENCERES = 1,
+                ResistSilence = 1,
             }
         },
         ScpGnt_1 = {
@@ -161287,7 +161469,7 @@ return {
             Stats = {
                 DEF = 13,
                 FIRE_MEVA = 6,
-                SILENCERES = 2,
+                ResistSilence = 2,
             }
         },
         ScpMittens_1 = {
@@ -164514,7 +164696,7 @@ return {
                 MagicDefenseBonus = 7,
                 Haste = 5,
                 STATUSRES = 10,
-                TREASURE_HUNTER = 1,
+                TreasureHunter = 1,
             }
         },
         VolteGloves = {
@@ -164808,7 +164990,7 @@ return {
             Name = "War. Mufflers +1",
             Level = 75,
             Id = 14909,
-            Model = 65,
+            Model = 400,
             Jobs = {"WAR"},
             Type = "Hands",
             Stats = {
@@ -165357,14 +165539,36 @@ return {
         },
         WorkerGloves = {
             Name = "Worker Gloves",
-            Level = 15,
+            Level = 1,
             Id = 14818,
-            Model = 105,
+            Model = 526,
             Jobs = {"All"},
             Type = "Hands",
             Stats = {
-                DEF = 3,
+                DEF = 1,
+                ExcavationExtraRoll = 20,
                 HELM = 1,
+                HarvestingExtraRoll = 20,
+                HelmBreakReduction = 10,
+                LoggingExtraRoll = 20,
+                MiningExtraRoll = 20,
+            }
+        },
+        WorkerGloves_1 = {
+            Name = "Worker Gloves +1",
+            Level = 1,
+            Id = 26553,
+            Model = 525,
+            Jobs = {"All"},
+            Type = "Hands",
+            Stats = {
+                DEF = 1,
+                ExcavationExtraRoll = 40,
+                HELM = 1,
+                HarvestingExtraRoll = 40,
+                HelmBreakReduction = 10,
+                LoggingExtraRoll = 40,
+                MiningExtraRoll = 40,
             }
         },
         WymFngGnt_1 = {
@@ -165871,7 +166075,7 @@ return {
         },
         AnchorRing = {
             Name = "Anchor Ring",
-            Level = 1,
+            Level = 15,
             Id = 27556,
             Jobs = {"All"},
             Type = "Ring",
@@ -167644,13 +167848,13 @@ return {
         },
         EshmunsRing = {
             Name = "Eshmun's Ring",
-            Level = 96,
+            Level = 75,
             Id = 10793,
             Jobs = {"All"},
             Type = "Ring",
             Stats = {
                 DEF = 5,
-                ENHANCES_CURSNA_RCVD = 20,
+                CursnaReceived = 18,
             }
         },
         EtanaRing = {
@@ -167965,7 +168169,7 @@ return {
             Stats = {
                 STR = 3,
                 AGI = 3,
-                SILENCERES = 2,
+                ResistSilence = 2,
             }
         },
         GarudaRing = {
@@ -168155,7 +168359,7 @@ return {
             Stats = {
                 GILFINDER = 2,
                 STEAL = 2,
-                TREASURE_HUNTER = 1,
+                TreasureHunter = 1,
             }
         },
         GorneyRing_1 = {
@@ -168168,7 +168372,7 @@ return {
                 GILFINDER = 2,
                 MUG_EFFECT = 2,
                 STEAL = 3,
-                TREASURE_HUNTER = 1,
+                TreasureHunter = 1,
             }
         },
         GosheniteRing = {
@@ -168259,24 +168463,24 @@ return {
         },
         HajdukRing = {
             Name = "Hajduk Ring",
-            Level = 99,
+            Level = 75,
             Id = 11058,
             Jobs = {"All"},
             Type = "Ring",
             Stats = {
-                Accuracy = -16,
-                RangedAccuracy = 16,
+                Accuracy = -12,
+                RangedAccuracy = 12,
             }
         },
         HajdukRing_1 = {
             Name = "Hajduk Ring +1",
-            Level = 99,
+            Level = 75,
             Id = 11059,
             Jobs = {"All"},
             Type = "Ring",
             Stats = {
-                Accuracy = -15,
-                RangedAccuracy = 17,
+                Accuracy = -13,
+                RangedAccuracy = 13,
             }
         },
         HaleRing = {
@@ -168585,7 +168789,7 @@ return {
             Stats = {
                 STR = -3,
                 INT = 7,
-                SILENCERES = 2,
+                ResistSilence = 2,
             }
         },
         IfritRing = {
@@ -168644,7 +168848,7 @@ return {
             Stats = {
                 MagicAccuracy = 2,
                 POISONRES = 2,
-                SILENCERES = 2,
+                ResistSilence = 2,
                 VIRUSRES = 2,
             }
         },
@@ -170985,13 +171189,13 @@ return {
         },
         SaidaRing = {
             Name = "Saida Ring",
-            Level = 96,
+            Level = 75,
             Id = 10792,
             Jobs = {"All"},
             Type = "Ring",
             Stats = {
                 DEF = 4,
-                ENHANCES_CURSNA_RCVD = 15,
+                CursnaReceived = 15,
             }
         },
         SaintlyRing = {
@@ -172567,7 +172771,7 @@ return {
             Stats = {
                 DEF = 10,
                 POISONRES = 2,
-                SILENCERES = 2,
+                ResistSilence = 2,
                 WATER_MEVA = 20,
                 WIND_MEVA = 20,
             }
@@ -177185,7 +177389,7 @@ return {
         },
         SwithCape = {
             Name = "Swith Cape",
-            Level = 99,
+            Level = 75,
             Id = 11000,
             Jobs = {"WHM", "BLM", "RDM", "BRD", "SMN", "BLU", "PUP", "SCH", "GEO"},
             Type = "Back",
@@ -177199,7 +177403,7 @@ return {
         },
         SwithCape_1 = {
             Name = "Swith Cape +1",
-            Level = 99,
+            Level = 75,
             Id = 11001,
             Jobs = {"WHM", "BLM", "RDM", "BRD", "SMN", "BLU", "PUP", "SCH", "GEO"},
             Type = "Back",
@@ -178861,7 +179065,7 @@ return {
                 DEX = 5,
                 AGI = 5,
                 CHR = 5,
-                TREASURE_HUNTER = 1,
+                TreasureHunter = 1,
             }
         },
         ChainBelt = {
@@ -179578,6 +179782,9 @@ return {
             Type = "Waist",
             Stats = {
                 HELM = 1,
+                HarvestingExtraRoll = 1,
+                LoggingExtraRoll = 1,
+                MiningExtraRoll = 1,
             }
         },
         FierceBelt = {
@@ -179843,7 +180050,7 @@ return {
             Type = "Waist",
             Stats = {
                 CURE_POTENCY_RCVD = 10,
-                ENHANCES_CURSNA_RCVD = 10,
+                CursnaReceived = 10,
             }
         },
         GlassblowersBelt = {
@@ -183999,7 +184206,7 @@ return {
                 ELEMENTAL_DEBUFF_EFFECT = 10,
                 MAGIC_BURST_BONUS_CAPPED = 9,
                 MAGIC_DAMAGE = 20,
-                SILENCERES = 11,
+                ResistSilence = 11,
             }
         },
         AikidoKoshita = {
@@ -184413,14 +184620,26 @@ return {
         },
         AnglersHose = {
             Name = "Angler's Hose",
-            Level = 15,
+            Level = 1,
             Id = 14293,
-            Model = 102,
+            Model = 608,
+            Jobs = {"All"},
+            Type = "Legs",
+            Stats = {
+                DEF = 1,
+                FishingSkill = 2,
+            }
+        },
+        AnglersHose_1 = {
+            Name = "Angler's Hose +1",
+            Level = 1,
+            Id = 26561,
+            Model = 512,
             Jobs = {"All"},
             Type = "Legs",
             Stats = {
                 DEF = 8,
-                FISH = 1,
+                FishingSkill = 2,
             }
         },
         AnkusaTrousers = {
@@ -190973,7 +191192,12 @@ return {
             Type = "Legs",
             Stats = {
                 DEF = 1,
+                ExcavationExtraRoll = 10,
                 HELM = 1,
+                HarvestingExtraRoll = 10,
+                HelmBreakReduction = 5,
+                LoggingExtraRoll = 10,
+                MiningExtraRoll = 10,
             }
         },
         FightersCuisses = {
@@ -191095,12 +191319,12 @@ return {
             Name = "Fisherman's Hose",
             Level = 1,
             Id = 14292,
-            Model = 102,
+            Model = 501,
             Jobs = {"All"},
             Type = "Legs",
             Stats = {
                 DEF = 1,
-                FISH = 1,
+                FishingSkill = 1,
             }
         },
         FlammaDirs = {
@@ -192681,7 +192905,7 @@ return {
                 Haste = 5,
                 DT = -11,
                 BLUE = 28,
-                ENHANCES_CURSNA_RCVD = 67,
+                CursnaReceived = 67,
             }
         },
         HashishinTayt_3 = {
@@ -196160,7 +196384,7 @@ return {
             Type = "Legs",
             Stats = {
                 DEF = 31,
-                SILENCERES = 2,
+                ResistSilence = 2,
             }
         },
         MalignanceTights = {
@@ -202439,16 +202663,16 @@ return {
         },
         SthiraTrousers = {
             Name = "Sthira Trousers",
-            Level = 97,
+            Level = 75,
             Id = 10578,
             Model = 7,
             Jobs = {"WAR", "RDM", "THF", "PLD", "DRK", "BST", "BRD", "RNG", "SAM", "NIN", "DRG", "BLU", "COR", "DNC", "RUN"},
             Type = "Legs",
             Stats = {
-                DEF = 46,
-                AGI = 9,
-                Attack = 9,
-                SILENCERES = 1,
+                DEF = 31,
+                AGI = 5,
+                Attack = 5,
+                ResistSilence = 2,
             }
         },
         StinkySubligar = {
@@ -203853,16 +204077,16 @@ return {
         },
         UrjaTrousers = {
             Name = "Urja Trousers",
-            Level = 97,
+            Level = 75,
             Id = 10577,
             Model = 7,
             Jobs = {"WAR", "RDM", "THF", "PLD", "DRK", "BST", "BRD", "RNG", "SAM", "NIN", "DRG", "BLU", "COR", "DNC", "RUN"},
             Type = "Legs",
             Stats = {
-                DEF = 45,
-                AGI = 8,
-                Attack = 8,
-                SILENCERES = 1,
+                DEF = 30,
+                AGI = 4,
+                Attack = 4,
+                ResistSilence = 1,
             }
         },
         UskHizayoroi_1 = {
@@ -204439,7 +204663,7 @@ return {
                 MagicDefenseBonus = 7,
                 Haste = 5,
                 STATUSRES = 10,
-                TREASURE_HUNTER = 1,
+                TreasureHunter = 1,
             }
         },
         VolteTights = {
@@ -204705,7 +204929,7 @@ return {
             Name = "War. Cuisses +1",
             Level = 75,
             Id = 15580,
-            Model = 65,
+            Model = 400,
             Jobs = {"WAR"},
             Type = "Legs",
             Stats = {
@@ -205301,14 +205525,36 @@ return {
         },
         WorkerHose = {
             Name = "Worker Hose",
-            Level = 15,
+            Level = 1,
             Id = 14298,
-            Model = 105,
+            Model = 526,
             Jobs = {"All"},
             Type = "Legs",
             Stats = {
-                DEF = 8,
+                DEF = 1,
+                ExcavationExtraRoll = 20,
                 HELM = 1,
+                HarvestingExtraRoll = 20,
+                HelmBreakReduction = 10,
+                LoggingExtraRoll = 20,
+                MiningExtraRoll = 20,
+            }
+        },
+        WorkerHose_1 = {
+            Name = "Worker Hose +1",
+            Level = 1,
+            Id = 26554,
+            Model = 525,
+            Jobs = {"All"},
+            Type = "Legs",
+            Stats = {
+                DEF = 1,
+                ExcavationExtraRoll = 40,
+                HELM = 1,
+                HarvestingExtraRoll = 40,
+                HelmBreakReduction = 10,
+                LoggingExtraRoll = 40,
+                MiningExtraRoll = 40,
             }
         },
         WukongsHaka_1 = {
@@ -206161,7 +206407,7 @@ return {
                 ENH_DRAIN_ASPIR = 20,
                 MAGIC_BURST_BONUS_CAPPED = 6,
                 MAGIC_DAMAGE = 20,
-                SILENCERES = 8,
+                ResistSilence = 8,
             }
         },
         AhosiLeggings = {
@@ -206563,14 +206809,26 @@ return {
         },
         AnglersBoots = {
             Name = "Angler's Boots",
-            Level = 15,
+            Level = 1,
             Id = 14172,
-            Model = 102,
+            Model = 608,
+            Jobs = {"All"},
+            Type = "Feet",
+            Stats = {
+                DEF = 1,
+                FishingSkill = 2,
+            }
+        },
+        AnglersBoots_1 = {
+            Name = "Angler's Boots +1",
+            Level = 1,
+            Id = 26562,
+            Model = 512,
             Jobs = {"All"},
             Type = "Feet",
             Stats = {
                 DEF = 3,
-                FISH = 1,
+                FishingSkill = 2,
             }
         },
         AnkusaGaiters = {
@@ -207629,7 +207887,7 @@ return {
                 HP = 22,
                 MP = 22,
                 MagicDefenseBonus = 4,
-                SILENCERES = 2,
+                ResistSilence = 2,
             }
         },
         AtesSollerets = {
@@ -212895,7 +213153,12 @@ return {
             Type = "Feet",
             Stats = {
                 DEF = 1,
+                ExcavationExtraRoll = 10,
                 HELM = 1,
+                HarvestingExtraRoll = 10,
+                HelmBreakReduction = 5,
+                LoggingExtraRoll = 10,
+                MiningExtraRoll = 10,
             }
         },
         FightersCalligae = {
@@ -213019,12 +213282,12 @@ return {
             Name = "Fisherman's Boots",
             Level = 1,
             Id = 14171,
-            Model = 102,
+            Model = 500,
             Jobs = {"All"},
             Type = "Feet",
             Stats = {
                 DEF = 1,
-                FISH = 1,
+                FishingSkill = 1,
             }
         },
         FlamGambieras_1 = {
@@ -215867,7 +216130,7 @@ return {
                 DEF = 28,
                 CurePotency = 4,
                 MovementSpeed = 12,
-                SILENCERES = 1,
+                ResistSilence = 1,
             }
         },
         IdisLedelsens = {
@@ -220687,7 +220950,7 @@ return {
                 DEF = 27,
                 CurePotency = 1,
                 MovementSpeed = 8,
-                SILENCERES = 1,
+                ResistSilence = 1,
             }
         },
         PantinBabouches = {
@@ -222109,7 +222372,7 @@ return {
                 DEF = 23,
                 AGI = 15,
                 Evasion = 11,
-                TREASURE_HUNTER = 1,
+                TreasureHunter = 1,
             }
         },
         RaidersPoulaines = {
@@ -224163,7 +224426,7 @@ return {
                 MagicEvasion = 51,
                 MagicDefenseBonus = 2,
                 Haste = 4,
-                TREASURE_HUNTER = 2,
+                TreasureHunter = 2,
             }
         },
         SkulkPoulaines_1 = {
@@ -224186,7 +224449,7 @@ return {
                 MagicEvasion = 75,
                 MagicDefenseBonus = 5,
                 Haste = 4,
-                TREASURE_HUNTER = 3,
+                TreasureHunter = 3,
             }
         },
         SkulkPoulaines_2 = {
@@ -224213,7 +224476,7 @@ return {
                 Haste = 4,
                 DT = -10,
                 DESPOIL = 7,
-                TREASURE_HUNTER = 4,
+                TreasureHunter = 4,
             }
         },
         SkulkPoulaines_3 = {
@@ -224640,7 +224903,7 @@ return {
             Stats = {
                 DEF = 14,
                 CHR = 4,
-                SILENCERES = 2,
+                ResistSilence = 2,
                 THUNDER_MEVA = 8,
                 VIRUSRES = 2,
             }
@@ -226775,7 +227038,7 @@ return {
                 MagicDefenseBonus = 7,
                 Haste = 5,
                 STATUSRES = 10,
-                TREASURE_HUNTER = 1,
+                TreasureHunter = 1,
             }
         },
         VolteGaiters = {
@@ -226953,7 +227216,7 @@ return {
             Type = "Feet",
             Stats = {
                 DEF = 2,
-                FISH = 2,
+                FishingSkill = 2,
                 WATER_MEVA = 1,
             }
         },
@@ -227108,7 +227371,7 @@ return {
             Name = "War. Calligae +1",
             Level = 75,
             Id = 15665,
-            Model = 65,
+            Model = 400,
             Jobs = {"WAR"},
             Type = "Feet",
             Stats = {
@@ -227599,14 +227862,36 @@ return {
         },
         WorkerBoots = {
             Name = "Worker Boots",
-            Level = 15,
+            Level = 1,
             Id = 14177,
-            Model = 105,
+            Model = 526,
             Jobs = {"All"},
             Type = "Feet",
             Stats = {
-                DEF = 3,
+                DEF = 1,
+                ExcavationExtraRoll = 20,
                 HELM = 1,
+                HarvestingExtraRoll = 20,
+                HelmBreakReduction = 10,
+                LoggingExtraRoll = 20,
+                MiningExtraRoll = 20,
+            }
+        },
+        WorkerBoots_1 = {
+            Name = "Worker Boots +1",
+            Level = 1,
+            Id = 26555,
+            Model = 525,
+            Jobs = {"All"},
+            Type = "Feet",
+            Stats = {
+                DEF = 1,
+                ExcavationExtraRoll = 40,
+                HELM = 1,
+                HarvestingExtraRoll = 40,
+                HelmBreakReduction = 10,
+                LoggingExtraRoll = 40,
+                MiningExtraRoll = 40,
             }
         },
         WrathwingNails = {

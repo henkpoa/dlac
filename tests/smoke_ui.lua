@@ -2171,6 +2171,64 @@ end)();
     check('S180 craftGoal is always one of the three goals',
         m.craftGoal == 'hq' or m.craftGoal == 'nq' or m.craftGoal == 'skillup', true);
 
+    -- Numeric gathering uses the real writer, including job/bag eligibility.
+    local constants = require('dlac\\gear\\serverpack').manifest().const;
+    local oldModel, oldBase = constants.helmModel, constants.helmBreakBase;
+    constants.helmModel, constants.helmBreakBase = 'extra-rolls', 50;
+    for _, rec in ipairs({
+        { Name = 'Numeric Field', Id = 91001, Level = 1, Slot = 'Body', Jobs = { 'All' }, Stats = { MiningExtraRoll = 10, HelmBreakReduction = 5 } },
+        { Name = 'Numeric Worker', Id = 91002, Level = 1, Slot = 'Body', Jobs = { 'All' }, Stats = { MiningExtraRoll = 20, HelmBreakReduction = 10 } },
+        { Name = 'Numeric Worker +1', Id = 91003, Level = 1, Slot = 'Body', Jobs = { 'All' }, Stats = { MiningExtraRoll = 40, HelmBreakReduction = 10 } },
+        { Name = 'Stored upgrade', Id = 91004, Level = 1, Slot = 'Body', Jobs = { 'All' }, Stats = { MiningExtraRoll = 100 } },
+        { Name = 'Wrong job', Id = 91005, Level = 1, Slot = 'Head', Jobs = { 'WAR' }, Stats = { MiningExtraRoll = 100 } },
+        { Name = 'Numeric Cap', Id = 91006, Level = 1, Slot = 'Head', Jobs = { 'All' }, Stats = { MiningExtraRoll = 20, HelmBreakReduction = 10 } },
+    }) do
+        INV[#INV + 1] = rec; byId[rec.Id] = rec; byName[rec.Name] = rec; counts[rec.Id] = 1;
+    end
+    local numericDeps = {
+        charBase = function() return root; end,
+        lookupByName = function(n) return byName[n]; end,
+        lookupById = function(id) return byId[id]; end,
+        ownedCounts = function() return counts; end,
+        ownedList = function() return INV; end,
+        allEquipList = function() return INV; end,
+        haveInBags = function(rec) return rec.Id ~= 91004; end,
+        playerJob = function() return 'BLM'; end,
+    };
+    aui.init(numericDeps);
+    aui.rescanAutogear();
+    local numeric = assert(loadfile(mpath))();
+    check('AXS1 writer emits numeric model', numeric.helm.model, 'extra-rolls');
+    local mining = numeric.helm.categories and numeric.helm.categories.Mining or {};
+    check('AXS2 Worker +1 outranks Worker and Field; stored upgrade excluded', mining.body and mining.body[1].name, 'Numeric Worker +1');
+    check('AXS3 head excludes wrong job', mining.head and mining.head[1].name, 'Numeric Cap');
+    check('AXS4 no CEXI category hat map', numeric.helm.hats, nil);
+    check('AXS5 numeric value survives serialization', mining.body and mining.body[1].roll, 40);
+
+    local oldImgui = package.loaded.imgui;
+    local oldHelmui = package.loaded['dlac\\ui\\helmui'];
+    local text = {};
+    local IM = setmetatable({}, { __index = function() return function() return false; end; end });
+    IM.TextColored = function(_, value) text[#text + 1] = value; end;
+    IM.TextWrapped = function(value) text[#text + 1] = value; end;
+    IM.CalcTextSize = function() return 10; end;
+    package.loaded.imgui = IM;
+    local hw = require('dlac\\feature\\helmwatch');
+    local previousCategory = hw.getGather();
+    hw.selectGather('Mining'); hw._setManifest(numeric);
+    local numericUi = dofile('ui/helmui.lua');
+    package.loaded['dlac\\ui\\helmui'] = numericUi;
+    check('AXS6 numeric panel renders', pcall(numericUi.render, numericDeps, 900), true);
+    local numericBar = dofile('ui/helmbar.lua');
+    check('AXS7 numeric bar renders', pcall(numericBar.renderContent, 600), true);
+    local rendered = table.concat(text, '\n');
+    check('AXS8 displays numeric planned bonuses', rendered:find('Extra rolls +60%', 1, true) ~= nil, true);
+    check('AXS9 removes CEXI claims', rendered:find('Surveyor') or rendered:find('VP:') or rendered:find('Plain') or rendered:find('tools break anyway'), nil);
+    hw.selectGather(previousCategory); hw._setManifest(m);
+    package.loaded.imgui = oldImgui;
+    package.loaded['dlac\\ui\\helmui'] = oldHelmui;
+    constants.helmModel, constants.helmBreakBase = oldModel, oldBase;
+
     os.remove(mpath);
     if sep == '\\' then
         os.execute('rmdir "tests\\tmp_autogear\\dlac" >nul 2>&1');
