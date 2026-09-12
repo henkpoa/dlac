@@ -28,8 +28,8 @@ New stat definitions preserve AscensionXI's gathering values:
 - `HELM = 1` remains a compatibility/discovery flag. Do not turn it into a
   numeric upgrade tier or treat it as the actual break reduction.
 
-The numeric presentation is proposed pending the owner's response. A second
-scope question is pending: whether this batch should adapt Gathering Gear.
+The owner approved showing both numeric bonuses on September 12, 2026.
+A separate scope question is pending: whether this batch should adapt Gathering Gear.
 **It currently does not.** Its `ui/automationsui.lua` ladders still score
 CatsEyeXI HELM/Surveyor, `feature/helmwatch.lua` excludes heads and applies
 the old five-point break rating, and `ui/helmui.lua` / `ui/helmbar.lua` retain
