@@ -39,6 +39,7 @@ local icons  = try('dlac\\ui\\itemicons');
 local fmt    = try('dlac\\gear\\gearfmt');
 local uistyl = try('dlac\\ui\\uistyle');
 local vc     = require('dlac\\servers\\ascensionxi\\modules\\gearvault\\vaultclient');
+local counts = require('dlac\\servers\\ascensionxi\\modules\\gearvault\\layoutcounts');
 local recon  = try('dlac\\servers\\ascensionxi\\modules\\gearvault\\reconcile');
 local usg    = try('dlac\\servers\\ascensionxi\\modules\\gearvault\\usage');
 
@@ -1038,9 +1039,10 @@ function M.render(job, level)
                 key = 'L' .. tostring(e.sortKey),
                 augOf = function() return isAugmented(e.identity) and augTextOf(e.identity) or nil; end,
                 tags = function()
-                    if e.count > 1 then
+                    local count = counts.count(e, e.rec);
+                    if count > 1 then
                         imgui.SameLine(0, 6);
-                        imgui.TextColored(cDIM, 'x' .. e.count);
+                        imgui.TextColored(cDIM, 'x' .. count);
                     end
                     if isAugmented(e.identity) then
                         imgui.SameLine(0, 8);
@@ -1217,7 +1219,23 @@ function M.render(job, level)
                     b1w = 210,   -- room for the named action (was 'Layout' -- jargon)
                     buttons = function(hot, b1, b2)
                         imgui.SameLine(b1);
-                        if imgui.SmallButton('Add to Mog Wardrobe##gvl' .. tostring(e.rowId)) then
+                        local have, units = 0, 0;
+                        for _, entry in ipairs(vc.layoutCache.entries or {}) do
+                            units = units + counts.count(entry, recOf(entry.itemId));
+                            if entry.itemId == e.itemId and (entry.identity or ZERO24) == (e.identity or ZERO24) then
+                                have = have + (entry.count or 1);
+                            end
+                        end
+                        local busy = not vc.layoutCache.fresh or not vc.mirror.fresh or vc.layoutBusy();
+                        local present = have >= (counts.limit(e.rec) or math.huge);
+                        local full = occ.max > 0 and units >= occ.max;
+                        if busy then
+                            imgui.TextColored(cDIM, 'Syncing layout...');
+                        elseif present then
+                            imgui.TextColored(cDIM, 'In Mog Wardrobe');
+                        elseif full then
+                            imgui.TextColored(cDIM, 'Mog Wardrobe full');
+                        elseif imgui.SmallButton('Add to Mog Wardrobe##gvl' .. tostring(e.rowId)) then
                             -- a manual add is the player overruling their own
                             -- removal: clear the tombstone first
                             if usg ~= nil then pcall(usg.unexclude, usg.keyOf(e.itemId, nil)); end

@@ -488,6 +488,16 @@ local function renderSettingsBody()
     imgui.TextColored(COL.DIM, 'Remembered for this character.');
     imgui.Separator();
 
+    if sf ~= nil and type(sf.repairGear) == 'function' then
+        if imgui.Button('Repair gear data##dlac_catalogrepair') then
+            local n = sf.repairGear();
+            if n == 0 then print('[dlac] gear data check finished. Any repair errors are shown in chat.'); end
+        end
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('Correct equipment slots, levels and jobs from the server catalog.\nA backup is kept and saved set references continue to work.\nIf repairs are needed, DLAC reloads; commit pending set edits first.');
+        end
+    end
+
     -- The 3-value open setting, as a segmented button row. BeginCombo would work, but
     -- three tinted buttons need no popup-inside-a-popup and read at a glance (the
     -- macrobook pickGrid precedent).

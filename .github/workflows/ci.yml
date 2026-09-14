@@ -22,3 +22,12 @@ jobs:
 
       - name: UI smoke-load
         run: lua5.4 tests/smoke_ui.lua
+
+      - name: AscensionXI catalog and import regression
+        run: lua5.4 tests/ascensionxi_catalog.lua
+
+      - name: Saved gear repair regression
+        run: lua5.4 tests/gear_repair.lua
+
+      - name: Gear vault count regression
+        run: lua5.4 tests/gearvault_counts.lua

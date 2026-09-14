@@ -3395,6 +3395,7 @@ end)();
     local depth = { popup = 0, col = 0, win = 0 };
     local drew  = { dummy = 0, image = 0, selectable = 0, checkbox = 0, input = 0, imagebutton = 0 };
     local popupOpen = false;
+    local repairClick, repairCalls = false, 0;
     local function nop() end
     local IM = setmetatable({}, { __index = function() return nop; end });
     IM.BeginPopup     = function() if popupOpen then depth.popup = depth.popup + 1; end return popupOpen; end
@@ -3407,7 +3408,7 @@ end)();
     IM.Dummy          = function() drew.dummy = drew.dummy + 1; end
     IM.Image          = function() drew.image = drew.image + 1; end
     IM.ImageButton    = function() drew.imagebutton = drew.imagebutton + 1; return false; end
-    IM.Button         = function() return false; end
+    IM.Button         = function(label) return repairClick and label == 'Repair gear data##dlac_catalogrepair'; end
     IM.SmallButton    = function() return false; end
     IM.Checkbox       = function() drew.checkbox = drew.checkbox + 1; return false; end
     IM.InputText      = function() drew.input = drew.input + 1; return false; end
@@ -3430,7 +3431,8 @@ end)();
         local flags = { debug = false, autosync = true, viewids = false, autobuildimport = true,
                         gearwarn = true, buildstored = true };
         mn.configure({
-            ui = ui, COL = host.services.COL, sf = { flags = flags },
+            ui = ui, COL = host.services.COL, sf = { flags = flags,
+                repairGear = function() repairCalls = repairCalls + 1; return 1; end },
             optim = { buildAtMaxLevel = true },
             callImport = nop, dumpAugs = nop, refreshGear = nop, refreshOwnedCounts = nop,
             setVisible = nop, mainJob = function() return 5; end,
@@ -3463,6 +3465,12 @@ end)();
         -- which headless it always does.
         check('MN12a Settings body ran to completion (26 checkboxes)', drew.checkbox, 26);
         check('MN12b level body drew its typed-number box', drew.input, 1);
+
+        repairClick = true;
+        check('MN12c gear repair action renders', pcall(mn.renderPopups), true);
+        check('MN12d gear repair action uses the shared repair flow', repairCalls, 1);
+        check('MN12e repair action leaves popup stack balanced', depth.popup, 0);
+        repairClick = false;
 
         -- debug on: the developer quartet appears
         flags.debug = true;
@@ -7607,6 +7615,7 @@ end)();
     local pressWithdraw = false;
     local pressUnequip = false;
     local pressStore = false;
+    local pressLayout = false;
     local nop = function() end;
     local IM = {
         TextColored   = function(_, s) texts[#texts + 1] = tostring(s); end,
@@ -7622,6 +7631,7 @@ end)();
         IsItemHovered = function() return true; end,
         SmallButton   = function(label)
             smallHits[#smallHits + 1] = tostring(label);
+            if pressLayout then return label == 'Add to Mog Wardrobe##gvl1'; end;
             if pressStore then return tostring(label):match('^Store##') ~= nil; end
             if pressUnequip then return tostring(label):match('^Unequip & Store') ~= nil; end
             return pressWithdraw and tostring(label):match('^Withdraw') ~= nil;
@@ -7752,6 +7762,54 @@ end)();
     check('GVU6a slot sections drew with counts',
           heads:find('Body (1)', 1, true) ~= nil and heads:find('Main (1)', 1, true) ~= nil, true);
     check('GVU6b the unknown id fell to the Other bucket', heads:find('Other (', 1, true) ~= nil, true);
+
+    -- A saved layout can ask for two copies of a single-slot piece even
+    -- though the wardrobe only holds one (Leaping Boots field report).
+    -- Exercise the actual row renderer, keeping legitimate pairs visible.
+    do
+        local svc = package.loaded['dlac\\ui\\uihost'].services;
+        local oldLookup, oldNames = svc.lookupById, svc.displayName;
+        local oldEntries = vc.layoutCache.entries;
+        svc.displayName = function() return 'Leaping Boots'; end;
+        for _, slot in ipairs({ 'Feet', 'Ring', 'Ear', 'Main', 'Ammo', 'Body', 'Range' }) do
+            svc.lookupById = function(id)
+                return { Id = id, Name = 'Leaping Boots', Slot = slot, Level = 7 };
+            end;
+            vc.layoutCache.entries = {
+                { ordinal = 1, itemId = 13014, count = 2, pinned = false },
+            };
+            vc.layoutCache.stamp = vc.layoutCache.stamp + 1;
+            texts = {};
+            check('GVU quantity row renders ' .. slot, pcall(vui.render, 1, 75), true);
+            check('GVU quantity badge respects slot ' .. slot,
+                table.concat(texts, '|'):find('|x2', 1, true) ~= nil,
+                slot == 'Ring' or slot == 'Ear' or slot == 'Main' or slot == 'Ammo');
+            check('GVU display preserves saved count ' .. slot, vc.layoutCache.entries[1].count, 2);
+        end
+        svc.lookupById, svc.displayName = oldLookup, oldNames;
+        vc.layoutCache.entries = oldEntries;
+        vc.layoutCache.stamp = vc.layoutCache.stamp + 1;
+    end
+
+    -- Repeated clicks on a vault row cannot enqueue repeated increments,
+    -- either before the first reply or after the item joined the layout.
+    do
+        local oldEntries = vc.layoutCache.entries;
+        vc.layoutCache.entries = {};
+        vc.layoutCache.fresh = true;
+        vc._st().layoutSetQ = {};
+        pressLayout = true;
+        vui.render(1, 75); vui.render(1, 75);
+        check('GVU repeated add queues once while pending', #vc._st().layoutSetQ, 1);
+        vc._st().layoutSetQ = {};
+        vc.layoutCache.entries = { { ordinal = 1, itemId = 100, count = 1, identity = vc.ZERO24 } };
+        vc.layoutCache.fresh = true;
+        vui.render(1, 75);
+        check('GVU existing body piece cannot be added again', #vc._st().layoutSetQ, 0);
+        vc.layoutCache.entries = oldEntries;
+        vc.layoutCache.stamp = vc.layoutCache.stamp + 1;
+        pressLayout = false;
+    end
 
     -- the search filters BOTH panes
     vui._search[1] = 'item200';
