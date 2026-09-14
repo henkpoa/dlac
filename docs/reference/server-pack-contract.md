@@ -129,6 +129,17 @@ the item reserves while worn, own bit masked out), `Model`, `Count`,
 `AugKey`/`AugText` (augment-split records; the unpinned record keeps the
 byId seat).
 
+Bag and vault imports use the active catalog's slot, level, jobs and available
+weapon-category/handedness metadata. Ashita resources supply client spelling,
+flags and fallback metadata for items absent from the catalog. This prevents
+retail placeholders for custom IDs from being saved as real equipment facts
+(Rabbit Charm +1, September 13, 2026). Since September 14, character load also
+repairs catalog mismatches in existing owned entries, with a backup before
+replacement. Moved entries retain non-enumerated compatibility references at
+their old paths so saved sets still load. Menu > Settings > Repair gear data
+and `/dl repair` run the same check. Stats and instance augments stay owned data;
+unrecognized IDs and unsupported file shapes are not guessed or regenerated.
+
 Table keys are PascalCase names with `+N` → `_N` (`makeKey`), unique per
 slot/category bucket (`_2`, `_3` suffixes on collisions).
 

@@ -5495,6 +5495,7 @@ end
 sf.configure({
     charBase = charBase, dataDir = dataDir, writeFileText = writeFileText,
     callImport = callImport, refreshGear = refreshGear,
+    hasUnsavedGearEdits = function() return _setDirty; end,
     ui = ui,
     -- Regenerate the automations manifest (autogear.lua) at the sync cadence, so
     -- staves/obis/Iridescence detection never needs a manual Rescan. Builds the
@@ -5903,10 +5904,16 @@ ashita.events.register('command', 'dlac-ui', function(e)
     -- the command instead of running the lockstyle report -- the toggle now
     -- claims only its own three forms and lets topics pass untouched.
     if sub == 'debug' and args[2] ~= nil and args[2] ~= 'on' and args[2] ~= 'off' then return; end
-    if sub ~= 'ui' and sub ~= 'sync' and sub ~= 'autosync' and sub ~= 'debug'
+    if sub ~= 'ui' and sub ~= 'sync' and sub ~= 'repair' and sub ~= 'autosync' and sub ~= 'debug'
        and sub ~= 'metrics' and sub ~= 'view_ids' and sub ~= 'autobuildimport'
        and sub ~= 'gearwarn' and sub ~= 'buildstored' then return; end
     e.blocked = true;
+
+    if sub == 'repair' then
+        local n = sf.repairGear();
+        if n == 0 then print('[dlac] gear data check finished. Any repair errors are shown in chat.'); end
+        return;
+    end
 
     if sub == 'metrics' then        -- imgui metrics window: names the window under the
                                     -- mouse ("Internal state" section) -- the tool for

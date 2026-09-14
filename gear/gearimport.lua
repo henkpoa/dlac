@@ -81,6 +81,12 @@ local SLOT_BY_MASK = {
     [0x8000] = "Back",
 };
 
+-- Canonical masks for catalog slot buckets; Ear/Ring use both sides.
+local MASK_BY_SLOT = {};
+for mask, slot in pairs(SLOT_BY_MASK) do
+    MASK_BY_SLOT[slot] = math.max(MASK_BY_SLOT[slot] or 0, mask);
+end
+
 local SLOT_BIT_ORDER = {
     0x0001, 0x0002, 0x0004, 0x0008, 0x0010, 0x0020, 0x0040, 0x0080,
     0x0100, 0x0200, 0x0400, 0x0800, 0x1000, 0x2000, 0x4000, 0x8000,
@@ -211,6 +217,22 @@ local EQUIP_JOBS = {
 };
 local ALL_JOBS_MASK = 8388606;   -- 0x7FFFFE: every job -> unrestricted, so no Jobs emitted
 
+-- Catalog jobs are abbreviations; scan records retain Ashita's numeric mask
+-- contract (bit = job id, unlike the server SQL's bit = job id - 1).
+local EQUIP_JOB_BITS = {};
+for id, job in pairs(EQUIP_JOBS) do EQUIP_JOB_BITS[job] = 2 ^ id; end
+local function encodeJobs(jobs)
+    if type(jobs) ~= 'table' or #jobs == 0 then return nil; end
+    local mask, seen = 0, {};
+    for _, job in ipairs(jobs) do
+        if job == 'All' then return ALL_JOBS_MASK; end
+        local b = EQUIP_JOB_BITS[job];
+        if b == nil then return nil; end
+        if not seen[job] then mask = mask + b; seen[job] = true; end
+    end
+    return mask;
+end
+
 -- Decode item.Jobs to a job list. EVERY equippable item gets one: a subset lists
 -- the jobs; all-jobs collapses to {"All"} (a matchable sentinel, not omitted) so
 -- future job-aware set-building can check every entry the same way.
@@ -236,7 +258,17 @@ local EX_FLAG   = 0x6040;
 local function resolveItem(entry)
     local res = AshitaCore:GetResourceManager():GetItemById(entry.Id);
     if res == nil then return nil; end
-    if res.Slots == nil or res.Slots == 0 then return nil; end   -- not equippable
+    -- The active pack owns equipment facts. Client resources can still describe
+    -- a retail placeholder for a custom id (Rabbit Charm +1: Body/Lv127), even
+    -- when the custom name is visible. Resolve before the equippable gate so a
+    -- zero-slot placeholder cannot hide catalogued gear. Keep client spelling,
+    -- flags and instance augments; absent catalog entries use resources as before.
+    local _, catalog = ci.flat();
+    local c = catalog[entry.Id];
+    local slot = (c and c.Slot) or slotFromMask(res.Slots);
+    local slots = res.Slots;
+    if c ~= nil and slotFromMask(slots) ~= slot then slots = MASK_BY_SLOT[slot]; end
+    if slots == nil or slots == 0 then return nil; end   -- not equippable
 
     local shortName = decodeName(res.Name ~= nil and res.Name[1] or nil);
     local fullName = shortName;
@@ -248,10 +280,10 @@ local function resolveItem(entry)
         Id       = entry.Id,
         Name     = shortName,   -- short/equipment name -> what equip calls need
         FullName = fullName,    -- log name (human-readable) -> what the key is built from
-        Level    = res.Level,
-        Slots    = res.Slots,
-        Slot     = slotFromMask(res.Slots),
-        Jobs     = res.Jobs,
+        Level    = (c and c.Level) or res.Level,
+        Slots    = slots,
+        Slot     = slot,
+        Jobs     = (c and encodeJobs(c.Jobs)) or res.Jobs,
         Flags    = res.Flags,
         RSlot    = rslotFor(entry.Id),   -- slots this piece takes away while worn
         Pair     = pairFor(entry.Id),    -- Range/Ammo skill:subskill (nil = not a Range/Ammo item)
@@ -271,10 +303,14 @@ local function resolveItem(entry)
     -- instrument / fishing skill even when Damage=0, and never nil -- see
     -- rangeCategory for why the skill-0 families still get a bucket.
     if rec.Slot == 'Main' then
-        rec.Category = WEAPON_CATEGORY[res.Skill or 0];
+        rec.Category = (c and c.Category) or WEAPON_CATEGORY[res.Skill or 0];
         if rec.Category ~= nil then rec.OneHanded = (TWO_HANDED[res.Skill] ~= true); end
+        if c ~= nil and c.OneHanded ~= nil then
+            rec.IsWeapon = true;
+            rec.OneHanded = grec.healOneHanded(c.Type, c.OneHanded);
+        end
     elseif rec.Slot == 'Range' then
-        rec.Category = rangeCategory(res.Skill, res.Jobs, rec.Pair);
+        rec.Category = (c and c.Category) or rangeCategory(res.Skill, rec.Jobs, rec.Pair);
     end
 
     if res.Description ~= nil then
@@ -1429,7 +1465,9 @@ end
 
 local function gearLoadValidator(chunk, tmpPath)
     local env = setmetatable({}, { __index = _G });
-    if setfenv ~= nil then setfenv(chunk, env); end
+    if setfenv ~= nil then setfenv(chunk, env);
+    else chunk = loadfile(tmpPath, 't', env); end
+    if chunk == nil then return nil, 'could not load candidate gear.lua'; end
     local runok, runerr = pcall(chunk);
     if runok and type(env.gear) == 'table' then return true; end
     -- gear = {...} is built BEFORE the trailer runs, so even a trailer blow-up
@@ -1550,6 +1588,214 @@ local function parseGearEntries(lines)
         end
     end
     return entries;
+end
+
+-- Pure catalog repair of the generated gear.lua shape. Splice whole entries
+-- to their catalog slot, changing only equipment metadata; leave instance
+-- details and comments intact. Unknown IDs are never inferred from names.
+function M.computeCatalogRepairs(text, catalog)
+    local report = { changed = 0, moves = {} };
+    if type(catalog) ~= 'table' or next(catalog) == nil then return text, report; end
+    local env = setmetatable({}, { __index = _G });
+    local chunk, err;
+    if setfenv then
+        chunk, err = loadstring(text);
+        if chunk then setfenv(chunk, env); end
+    else chunk, err = load(text, 'gear catalog repair', 't', env); end
+    if not chunk then return nil, err; end
+    local ok, current = pcall(chunk);
+    if not ok or type(current) ~= 'table' then return nil, 'gear.lua could not be loaded: ' .. tostring(current); end
+
+    local lines = toLines(text);
+    local entries = parseGearEntries(lines);
+    local occupied, edits, removed, moved = {}, {}, {}, {};
+    local function at(path)
+        local t = current;
+        for key in path:gmatch('[^.]+') do
+            t = type(t) == 'table' and rawget(t, key) or nil;
+        end
+        return t;
+    end
+    local groups, skip = {}, {};
+    for _, e in ipairs(entries) do
+        local path = e.parent .. '.' .. e.key;
+        occupied[path] = true;
+        groups[path] = groups[path] or {};
+        table.insert(groups[path], e);
+    end
+    for path, group in pairs(groups) do
+        if #group > 1 then
+            local last = group[#group]; -- Lua's effective record is the last one.
+            local block = table.concat(lines, '\n', last.startLine, last.endLine);
+            local identical = true;
+            for _, e in ipairs(group) do
+                if table.concat(lines, '\n', e.startLine, e.endLine) ~= block then identical = false; end
+            end
+            if identical then
+                for i = 1, #group - 1 do
+                    local e = group[i];
+                    skip[e] = true;
+                    for ln = e.startLine, e.endLine do removed[ln] = true; end
+                    report.changed = report.changed + 1;
+                end
+            else
+                -- Differing duplicates need a human choice. Leave this entire
+                -- path intact (moving the last would resurrect an older copy),
+                -- but do not prevent repairs of unrelated equipment at login.
+                report.skippedDuplicates = report.skippedDuplicates or {};
+                report.skippedDuplicates[#report.skippedDuplicates + 1] = path;
+                for _, e in ipairs(group) do skip[e] = true; end
+            end
+        end
+    end
+    local function jobsKey(jobs)
+        if type(jobs) ~= 'table' then return ''; end
+        local names = {};
+        for _, j in ipairs(jobs) do names[#names + 1] = tostring(j); end
+        table.sort(names);
+        return table.concat(names, ',');
+    end
+    for _, e in ipairs(entries) do
+        local oldPath = e.parent .. '.' .. e.key;
+        local r, c = at(oldPath), catalog[e.Id];
+        if not skip[e] and type(r) == 'table' and r.Id == e.Id and c and MASK_BY_SLOT[c.Slot] then
+            local parent = c.Slot;
+            if parent == 'Main' or parent == 'Range' then
+                local category = c.Category;
+                if category == nil and parent == 'Range' then
+                    category = rangeCategory(tonumber((c.Pair or ''):match('^(%d+):')), encodeJobs(c.Jobs), c.Pair);
+                end
+                if type(category) ~= 'string' or not category:match('^%w[%w_]*$') then
+                    return nil, 'catalog category unavailable for ' .. oldPath;
+                end
+                parent = parent .. '.' .. category;
+            end
+            local changes = {};
+            if type(c.Level) == 'number' and r.Level ~= c.Level then changes.Level = tostring(c.Level); end
+            if encodeJobs(c.Jobs) ~= nil and jobsKey(r.Jobs) ~= jobsKey(c.Jobs) then
+                local jobs = {};
+                for _, j in ipairs(c.Jobs) do jobs[#jobs + 1] = string.format('%q', j); end
+                changes.Jobs = '{' .. table.concat(jobs, ', ') .. '}';
+            end
+            if parent ~= e.parent then
+                if r.Type ~= nil or c.Slot == 'Main' or c.Slot == 'Range' then
+                    changes.Type = string.format('%q', parent:match('%.(.+)$') or c.Type or c.Slot);
+                end
+                if c.Slot == 'Main' and c.OneHanded ~= nil then
+                    changes.OneHanded = tostring(grec.healOneHanded(c.Type, c.OneHanded));
+                end
+            end
+            if next(changes) ~= nil or parent ~= e.parent then
+                local block = table.concat(lines, '\n', e.startLine, e.endLine);
+                local fields = {}; for field in pairs(changes) do fields[#fields + 1] = field; end
+                table.sort(fields);
+                for _, field in ipairs(fields) do
+                    local pad = string.rep(' ', e.indent + 4);
+                    local prefix = '(\n' .. pad .. field .. '%s*=%s*)';
+                    local valuePattern = field == 'Jobs' and '%b{}'
+                        or (field == 'Type' and '"[^"]*"' or (field == 'OneHanded' and '%a+' or '%-?%d+'));
+                    local n;
+                    block, n = block:gsub(prefix .. valuePattern, function(p) return p .. changes[field]; end, 1);
+                    if n == 0 then
+                        if r[field] ~= nil then return nil, 'unsupported ' .. field .. ' expression in ' .. oldPath; end
+                        block = block:gsub('\n', '\n' .. pad .. field .. ' = ' .. changes[field] .. ',\n', 1);
+                    end
+                end
+                if parent ~= e.parent then
+                    local key, suffix = e.key, 2;
+                    while occupied[parent .. '.' .. key] or at(parent .. '.' .. key) ~= nil do
+                        key = e.key .. '_' .. suffix; suffix = suffix + 1;
+                    end
+                    occupied[parent .. '.' .. key] = true;
+                    block = block:gsub('^' .. string.rep(' ', e.indent) .. e.key,
+                        string.rep(' ', e.indent) .. key, 1);
+                    local indent = parent:find('.', 1, true) and 12 or 8;
+                    block = ('\n' .. block):gsub('\n' .. string.rep(' ', e.indent), '\n' .. string.rep(' ', indent)):sub(2);
+                    moved[#moved + 1] = { parent = parent, block = block };
+                    report.moves[oldPath] = parent .. '.' .. key;
+                    for i = e.startLine, e.endLine do removed[i] = true; end
+                else
+                    edits[e.startLine] = block;
+                    for i = e.startLine + 1, e.endLine do removed[i] = true; end
+                end
+                report.changed = report.changed + 1;
+            end
+        end
+    end
+    if report.changed == 0 then return text, report; end
+    local out = {};
+    for i, line in ipairs(lines) do
+        if not removed[i] then out[#out + 1] = edits[i] or line; end
+    end
+    local result = table.concat(out, '\n') .. '\n';
+    for _, move in ipairs(moved) do
+        local slot, category = move.parent:match('^([^.]+)%.(.+)$');
+        slot = slot or move.parent;
+        if not indexGear(toLines(result))[slot] and current[slot] == nil then
+            local n;
+            result, n = result:gsub('(gear%s*=%s*{[^\n]*\n)', function(header)
+                return header .. '    ' .. slot .. ' = {\n    },\n';
+            end, 1);
+            if n ~= 1 then return nil, 'cannot create gear slot ' .. slot; end
+        end
+        local staging = 'return {\n    ' .. slot .. ' = {\n';
+        if category then staging = staging .. '        ' .. category .. ' = {\n'; end
+        staging = staging .. move.block .. '\n' .. (category and '        },\n' or '') .. '    },\n};\n';
+        local spliced, sr = M.spliceStaging(result, staging);
+        if sr.inserted ~= 1 or #sr.notfound > 0 or #sr.shapeConflict > 0 then
+            return nil, 'cannot safely place repaired gear under ' .. move.parent;
+        end
+        result = spliced;
+    end
+
+    if next(report.moves) ~= nil then
+        -- Non-enumerated aliases keep old saved set references working. They
+        -- live inside gear.lua, so loading a repaired file needs no new module.
+        local beginMark, endMark = '-- dlac catalog redirects begin', '-- dlac catalog redirects end';
+        local redirects = {};
+        local a, b = result:find(beginMark, 1, true), result:find(endMark, 1, true);
+        if a or b then
+            if not a or not b or b < a then return nil, 'incomplete catalog redirects block'; end
+            for old, dest in result:sub(a, b):gmatch('redirect%("([%w_.]+)", "([%w_.]+)"%)') do redirects[old] = dest; end
+            result = result:sub(1, a - 1) .. result:sub(b + #endMark + 1);
+        end
+        for old, dest in pairs(report.moves) do
+            for alias, target in pairs(redirects) do if target == old then redirects[alias] = dest; end end
+            redirects[old] = dest;
+        end
+        local code = { beginMark, [[do
+    local function redirect(from, to)
+        local target = gear
+        for key in to:gmatch('[^.]+') do target = type(target) == 'table' and rawget(target, key) or nil end
+        if type(target) ~= 'table' then return end
+        local path, key = from:match('^(.*)%.([^.]+)$')
+        local parent = gear
+        for part in path:gmatch('[^.]+') do
+            if rawget(parent, part) == nil then rawset(parent, part, {}) end
+            parent = rawget(parent, part)
+        end
+        if rawget(parent, key) ~= nil then return end
+        local previous, mt = getmetatable(parent), {}
+        if previous then for k, v in pairs(previous) do mt[k] = v end end
+        local index = mt.__index
+        mt.__index = function(t, k)
+            if k == key then return target end
+            if type(index) == 'function' then return index(t, k) end
+            if type(index) == 'table' then return index[k] end
+        end
+        setmetatable(parent, mt)
+    end]] };
+        local aliases = {}; for old in pairs(redirects) do aliases[#aliases + 1] = old; end
+        table.sort(aliases);
+        for _, old in ipairs(aliases) do code[#code + 1] = string.format('    redirect(%q, %q)', old, redirects[old]); end
+        code[#code + 1] = 'end'; code[#code + 1] = endMark;
+        local n;
+        result, n = result:gsub('(\nreturn%s+gear%s*;?%s*)$', function(tail)
+            return '\n' .. table.concat(code, '\n') .. '\n' .. tail;
+        end, 1);
+        if n ~= 1 then return nil, 'gear.lua must end with return gear to preserve old references'; end
+    end
+    return result, report;
 end
 
 -- Pure reconcile: gear.lua text + owned items -> corrected text + report.
@@ -1701,6 +1947,36 @@ local function safeReplaceGear(gpath, newText, origText)
     local wok, werr = sw.replaceLua(gpath, newText, { origText = origText, validate = gearLoadValidator });
     if not wok then return nil, tostring(werr) .. ' (backup: ' .. backupPath .. ')'; end
     return backupPath;
+end
+
+-- Once at character load, or Menu > Settings > Repair gear data. Catalog
+-- corrections do not depend on bag/vault freshness: the file already proves
+-- ownership. Reloading after a write also refreshes active set references.
+function M.repairCatalog()
+    local gpath = gearPath();
+    if gpath == nil then return 0; end
+    local text = readFile(gpath);
+    if text == nil then return 0; end   -- first login: there may be no file yet
+    local _, catalog = ci.flat();
+    local ok, fixed, report = pcall(M.computeCatalogRepairs, text, catalog);
+    if not ok or fixed == nil then
+        print('[dlac] gear repair skipped: ' .. tostring(ok and report or fixed) .. '. Your file was not changed.');
+        return 0;
+    end
+    if report.changed == 0 then return 0; end
+    -- Refuse to replace a file edited since the plan was read.
+    if readFile(gpath) ~= text then
+        print('[dlac] gear repair skipped: the file changed during the check. Try Repair gear data again.');
+        return 0;
+    end
+    local backup, err = safeReplaceGear(gpath, fixed, text);
+    if backup == nil then
+        print('[dlac] gear repair failed: ' .. tostring(err));
+        return 0;
+    end
+    print(string.format('[dlac] corrected equipment data for %d item(s). Saved set references are preserved.', report.changed));
+    print('[dlac] backup: ' .. backup .. ' -- reloading DLAC to apply the repair.');
+    return report.changed;
 end
 
 function M.fix()

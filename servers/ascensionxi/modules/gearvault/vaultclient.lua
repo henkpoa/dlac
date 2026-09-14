@@ -559,6 +559,12 @@ function M.requestLayoutSet(e, onDone)
     return true;
 end
 
+-- Both the manual pane and the reconciler must wait for queued edits before
+-- deriving another increment from the same cached layout.
+function M.layoutBusy()
+    return #(st.layoutSetQ or {}) > 0;
+end
+
 -- Drop every QUEUED layout edit (the in-flight one, if any, still answers).
 -- The reconcile engine calls this the moment one add refuses NOT_IN_CITY:
 -- every sibling targets the same job, so the rest would only spam refusals.
@@ -611,6 +617,8 @@ function M.pump(ready)
                         pcall(req.onDone, nil, 'timeout');
                     end
                     M.layoutCache.fresh = false;
+                    M.markStale(M.SETTLE_JOB, 'layout edit timeout');
+                    st.probeOnly = false;
                 elseif dead.op == M.op.LAYOUT_LIST then
                     noteWhy('layout ask timed out (no reply after ' .. M.MAX_RETRIES .. ' retries)', now);
                     st.layoutAcc = nil;   -- the tab just shows stale and re-asks
@@ -812,17 +820,30 @@ function M.onFrame(f)
         local ack = M.parseLayoutSetAck(f.payload);
         st.pending = nil;
         local req = table.remove(st.layoutSetQ or {}, 1);
+        if ack == nil then
+            -- An unreadable acknowledgement cannot prove the edit failed.
+            -- Refresh both stores before offering another increment.
+            M.layoutCache.fresh = false;
+            M.requestLayout(0);
+            M.markStale(M.SETTLE_JOB, 'layout edit malformed reply');
+            st.probeOnly = false;
+        end
+        if ack ~= nil and ack.code == M.code.OK then
+            M.layoutCache.fresh = false;
+            if req ~= nil and req.e.verb ~= M.verb.PIN
+                and ((req.e.job or 0) == 0 or req.e.job == st.lastJob) then
+                -- Applying the active layout moves items between vault and
+                -- wardrobes. The old LIST must not offer those copies again.
+                M.markStale(M.SETTLE_JOB, 'layout edit');
+                st.probeOnly = false;
+            end
+        end
         if req ~= nil and type(req.onDone) == 'function' then
             if ack == nil then
                 pcall(req.onDone, nil, 'malformed');
             else
                 pcall(req.onDone, ack.code, nil);
             end
-        end
-        -- An accepted edit changed the server's layout: the cached view is
-        -- behind until the next LAYOUT_LIST (the caller batches the re-ask).
-        if ack ~= nil and ack.code == M.code.OK then
-            M.layoutCache.fresh = false;
         end
         return true;
     end

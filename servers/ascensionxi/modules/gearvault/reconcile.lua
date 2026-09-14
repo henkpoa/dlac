@@ -29,6 +29,7 @@
 ]]--
 
 local R = {};
+local counts = require('dlac\\servers\\ascensionxi\\modules\\gearvault\\layoutcounts');
 
 R.BEAT     = 8.0;     -- seconds between derivation checks
 R.MAX_PUSH = 200;     -- adds per run -- a runaway derivation must not flood
@@ -110,6 +111,7 @@ end
 -- city-blocked push immediately instead of waiting out lastPushKey.
 function R.zoneArmed()
     if st.pendingCity then st.lastPushKey = nil; end
+    st.repairBlocked, st.repairStamp = nil, nil;
 end
 
 local function say(msg)
@@ -138,6 +140,7 @@ function R.tick()
     local now = (type(D.clock) == 'function') and D.clock() or os.clock();
     if now - st.lastBeat < R.BEAT then return 'idle'; end
     if st.inFlight > 0 then return 'idle'; end            -- a run is still acking
+    if type(vc.layoutBusy) == 'function' and vc.layoutBusy() then return 'idle'; end
     local vs = vc.state();
     if vs == 'dormant' or vs == 'syncing' or vs == 'unattuned' then return 'idle'; end
     if type(D.browsing) == 'function' and D.browsing() == true then return 'idle'; end
@@ -165,9 +168,24 @@ function R.tick()
         pcall(D.usage.seed, keys);
     end
 
+    -- Use the same bounded counts for pressure, pair upgrades, and the UI.
+    -- Retain the original entries for identity-preserving wire corrections.
+    local layout, corrections = {}, {};
+    for _, e in ipairs(vc.layoutCache.entries or {}) do
+        local rec = type(D.lookupById) == 'function' and D.lookupById(e.itemId) or nil;
+        local count = counts.count(e, rec);
+        local copy = {}; for k, v in pairs(e) do copy[k] = v; end
+        copy.count = count;
+        layout[#layout + 1] = copy;
+        if count < e.count then
+            corrections[#corrections + 1] = { itemId = e.itemId, identity = e.identity,
+                count = e.count - count, hint = e.hint, pinned = e.pinned };
+        end
+    end
+
     -- zero-blob layout entries only (see header): id -> count
     local have = {};
-    for _, e in ipairs(vc.layoutCache.entries or {}) do
+    for _, e in ipairs(layout) do
         if e.identity == vc.ZERO24 then
             local c = have[e.itemId];
             if c == nil or c < e.count then have[e.itemId] = e.count; end
@@ -184,8 +202,31 @@ function R.tick()
 
     local capacity = (type(D.capacity) == 'function') and (D.capacity() or 0) or 0;
     local layoutUnits = 0;
-    for _, e in ipairs(vc.layoutCache.entries or {}) do layoutUnits = layoutUnits + (e.count or 1); end
+    for _, e in ipairs(layout) do layoutUnits = layoutUnits + e.count; end
     st.freeSlots = (capacity > 0) and math.max(0, capacity - layoutUnits) or nil;
+
+    -- Heal legacy repeated ADDs before sending any new additions or evictions.
+    -- REMOVE with a positive count subtracts just the surplus; it does not
+    -- delete the identity or change its pin/hint. Only known equipment limits
+    -- are repaired. Active-job writes wait for town and a fresh layout.
+    if #corrections > 0 then
+        st.pressure = nil;
+        if st.repairBlocked or (type(D.inTown) == 'function' and D.inTown() == false) then return 'waiting-city'; end
+        if st.repairStamp == vc.layoutCache.stamp then return 'clean'; end
+        st.repairStamp = vc.layoutCache.stamp;
+        local n = math.min(#corrections, R.MAX_PUSH);
+        st.inFlight = n;
+        local function done(code)
+            if code == vc.code.NOT_IN_CITY then st.repairBlocked = true; end
+            st.inFlight = math.max(0, st.inFlight - 1);
+            if st.inFlight == 0 then vc.requestLayout(0); end
+        end
+        for i = 1, n do
+            local e = corrections[i]; e.job = job; e.verb = vc.verb.REMOVE;
+            if not vc.requestLayoutSet(e, done) then done(); end
+        end
+        return 'repairing:' .. n;
+    end
 
     -- The adds, under FOUR gates (Henrik's 2026-08-27 field round -- the
     -- remove/re-add tug-of-war, and "dlac would keep trying to load the
@@ -201,11 +242,12 @@ function R.tick()
     local vaultCounts = (vc.mirror ~= nil and vc.mirror.counts) or {};
     local adds = {};
     local waiting, waitingItems, notVaulted = 0, {}, 0;
-    if not (D.settings ~= nil and D.settings().additions == 'off') then
+    if vc.mirror.fresh ~= false and not (D.settings ~= nil and D.settings().additions == 'off') then
         local units = layoutUnits;
         for _, it in ipairs(d.items) do
             local c = have[it.itemId];
-            local wantable = math.min(it.count, (vaultCounts[it.itemId] or 0) + (c or 0));
+            local rec = type(D.lookupById) == 'function' and D.lookupById(it.itemId) or nil;
+            local wantable = math.min(counts.count(it, rec), (vaultCounts[it.itemId] or 0) + (c or 0));
             if wantable > (c or 0) then
                 local excluded = false;
                 if D.usage ~= nil then
@@ -218,7 +260,8 @@ function R.tick()
                         waitingItems[#waitingItems + 1] = { itemId = it.itemId, need = need };
                     elseif #adds < R.MAX_PUSH then
                         units = units + need;
-                        adds[#adds + 1] = { itemId = it.itemId, count = wantable };
+                        -- ADD increments on the server; never send the total.
+                        adds[#adds + 1] = { itemId = it.itemId, count = need };
                     end
                 end
             elseif (c == nil or c < it.count) then
@@ -251,7 +294,7 @@ function R.tick()
             local assigned = {};
             for _, it in ipairs(d.items) do assigned[it.itemId] = true; end
             local worn = (type(D.worn) == 'function') and D.worn() or {};
-            local ranked = D.usage.rankEvictions(vc.layoutCache.entries, assigned, worn);
+            local ranked = D.usage.rankEvictions(layout, assigned, worn);
             local mode = (D.settings ~= nil) and D.settings().removals or 'ask';
             -- Auto-eviction only ACTS in town (Henrik's 2026-08-30 field
             -- round): out in the field the active job's layout edits are
@@ -304,6 +347,7 @@ function R.tick()
     -- a withdraw's arithmetic), so the stamp is the deposit's voice here.
     local pushKey = d.hash .. '|' .. tostring(vc.layoutCache.stamp)
         .. '|' .. tostring(vc.mirror ~= nil and vc.mirror.stamp or nil);
+    if vc.mirror.fresh == false then return 'clean'; end
     if pushKey == st.lastPushKey then return 'clean'; end
     st.lastPushKey = pushKey;
     if #adds == 0 then

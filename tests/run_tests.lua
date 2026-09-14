@@ -27496,6 +27496,7 @@ end)();
 
     -- ---- GVR: the engine against the wire harness ----
     local vc = dofile('servers/ascensionxi/modules/gearvault/vaultclient.lua');
+    package.loaded['dlac\\servers\\ascensionxi\\modules\\gearvault\\layoutcounts'] = dofile('servers/ascensionxi/modules/gearvault/layoutcounts.lua');
     local rc = dofile('servers/ascensionxi/modules/gearvault/reconcile.lua');
     local T, sent = 0, {};
     local msgs = {};

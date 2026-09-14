@@ -65,6 +65,10 @@ INVENTORY_FULL 6, RARE_HELD 7, BUSY 8, STORE_ERROR 9, DUPLICATE 10,
 TOO_FAR 11, NOT_IN_CITY 12, UNKNOWN_ITEM 13, AMBIGUOUS_NAME 14,
 NOT_IN_LAYOUT 15.
 
+**Layout count semantics:** ADD increments the stored count; it does not
+replace it with a desired total. REMOVE with a positive count subtracts
+that many units; REMOVE with zero deletes the entry. PIN is separate.
+
 **Identity:** the server mints `"<itemId>:<hex48>"` from ItemNo + the 24
 exdata bytes the client sends, normalizing volatile bytes itself (charge
 counts, timers) — dlac always sends the RAW `extra` bytes it can see (bag
@@ -190,3 +194,43 @@ through Store callbacks and decoded response bytes), `lua tests/run_tests.lua`
 try Store with a duplicate in each location. No client visual playtest has
 been performed by the agent. Rollback is the previous two Lua files plus
 an addon reload; player data and settings are untouched.
+
+## Repeated layout adds and phantom pressure (2026-09-14)
+
+Field report: repeated Add clicks on Field Tunica inflated the layout,
+producing a full warning despite live occupancy of 19/23. Earlier hiding
+of the Leaping Boots x2 badge only concealed the symptom. The server's
+`GearVaultLayoutAdd` increments (`src/map/gear_vault.cpp`); the reconciler
+had sent the desired total when raising an existing pair. Manual adds
+also lacked a membership/pending guard, and successful layout edits did
+not invalidate the vault mirror despite moving its items.
+
+The addon now sends only the missing quantity, waits for current vault
+stock, blocks repeated manual additions while edits are pending, and
+refreshes both views after active layout edits. Known single-slot gear
+counts are bounded at one; rings, earrings and potentially dual-wielded
+weapons allow two, known two-handed weapons one. Unknown items and bait
+are left unchanged. `layoutcounts.lua` owns this rule for UI, admission,
+and capacity accounting. `reconcile.lua` corrects existing excess with a
+positive-count REMOVE, retaining the entry, pin and hint. Corrections
+wait for town, precede additions/evictions, and re-read the layout after
+the acknowledgements. They target an explicit job so a queued correction
+cannot decrement the next job's layout after a job change.
+
+Apply by reloading `/addon reload dlac` in town and letting the next sync
+finish. Repeated clicks must not increase Field Tunica's count; the bench
+must no longer subtract phantom copies from capacity. The separate
+startup gear-file repair removes identical shadowed records (the reported
+Spatha/BronzeSword duplicates) through its existing backup/validation
+path. Differing duplicate blocks remain intact while unrelated records
+can still be repaired. A read-only run on the reported saved gear file
+preserved all 39 loaded records and produced a second-pass no-op.
+
+Verification: `lua tests/gearvault_counts.lua`, `lua tests/gear_repair.lua`,
+`lua tests/smoke_ui.lua`, `lua tests/run_tests.lua`, and
+`lua tests/ascensionxi_catalog.lua`. Regression coverage includes additive
+pair upgrades, inflated 19/23 layouts, pin preservation, city gating,
+pending clicks, mirror invalidation and duplicate gear blocks. Live
+in-game verification remains with the owner. No server change is needed.
+Rollback the addon changes and reload; startup gear-file writes keep a
+timestamped backup. Layout corrections persist on the server.

@@ -76,6 +76,22 @@ end
 local _syncedJob, _syncDueFrame = nil, nil;
 local _invSyncAt = nil;   -- debounced: ~5s after the LAST inventory-changing packet
 local _flagsLoaded = false;
+local _repairReloadPending = false;
+
+sf.repairGear = function()
+    if D == nil or _repairReloadPending or type(D.callImport) ~= 'function' then return 0; end
+    if type(D.hasUnsavedGearEdits) == 'function' and D.hasUnsavedGearEdits() then
+        print('[dlac] commit or discard your pending set edits before using Repair gear data.');
+        return 0;
+    end
+    local repaired = D.callImport('repairCatalog');
+    if type(repaired) == 'number' and repaired > 0 then
+        _repairReloadPending = true;
+        cmdq.issue('/addon reload dlac');
+        return repaired;
+    end
+    return 0;
+end
 
 -- The native data home, or nothing. The `D.charBase() .. 'dlac\\'` fallback that
 -- used to sit here died with gearui's twin on 2026-07-27: it was unreachable
@@ -150,6 +166,10 @@ sf.loadUiFlags = function()
     if _flagsLoaded or D == nil then return; end
     local p = uiFlagsPath(); if p == nil then return; end   -- pre-login: retry next frame
     _flagsLoaded = true;
+    -- Repair before any import compares against the saved library, even when
+    -- auto-import is disabled. One reload applies repaired active-set objects;
+    -- the next load is a no-op because the persisted metadata now matches.
+    if sf.repairGear() > 0 then return; end
     -- First frame the character is known -- also the moment to swap the REAL gear.lua in.
     -- The addon usually loads at Ashita boot, BEFORE login, so dlac.lua's load-time preload
     -- found no character and every require("dlac\\gear") resolved to the bundled EMPTY
@@ -231,7 +251,7 @@ end
 -- Quiet add-only scan; also refreshes the automations manifest (new gear may
 -- change the best staff/obi picks). Returns the number of items added.
 sf.doSync = function()
-    if D == nil then return 0; end
+    if D == nil or _repairReloadPending then return 0; end
     local added = D.callImport('sync');
     added = (type(added) == 'number') and added or 0;
     if added > 0 then D.refreshGear(); end
@@ -241,7 +261,7 @@ end
 
 -- Per-frame: fire the due syncs (job-change delay + inventory debounce).
 sf.tick = function()
-    if not sf.flags.autosync or D == nil then return; end
+    if not sf.flags.autosync or D == nil or _repairReloadPending then return; end
     local j = nil;
     pcall(function() j = AshitaCore:GetMemoryManager():GetPlayer():GetMainJob(); end);
     if j ~= nil and j ~= 0 and j ~= _syncedJob then

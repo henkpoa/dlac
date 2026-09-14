@@ -230,6 +230,14 @@ local RD = {
         return out;
     end,
     worn = wornIds,
+    lookupById = function(id)
+        local r;
+        pcall(function()
+            local S = require('dlac\\ui\\uihost').services;
+            if type(S.lookupById) == 'function' then r = S.lookupById(id); end
+        end);
+        return r;
+    end,
     -- The town PREDICTION (feature\location, the central town service):
     -- true/false/nil-unknown. Gates only auto-eviction's ACTION (and the
     -- tab's presentation reads the same service) -- never the wire's pushes,
