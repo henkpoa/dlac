@@ -1,5 +1,61 @@
 # Rabbit Charm +1 displayed as Body / Lv127
 
+Pipeline follow-up (`2026.09.14g`): the normal AscensionXI catalog generator
+now emits icons and catalog data together, and artwork lives inside the pack.
+This supersedes the separate icon generation procedure below. See
+[Catalog item artwork](pack-item-icons.md) for the current workflow.
+
+
+September 14 update (`2026.09.14f`): the owner confirmed Field Cap can equip,
+but still had its placeholder icon. The single-item artwork mapping described
+below is superseded by generated coverage for all 25 changed staging catalog
+icons. See [Catalog item artwork](pack-item-icons.md) for regeneration,
+verification and release steps. Equipment metadata remains catalog-driven.
+
+## September 14 follow-up: native equip and icon (`2026.09.14e`)
+
+The subsequent screenshot shows Neck/Lv7/All and correct stats, but the reporter
+also confirms equipment/set trouble and the gray icon. Read-only inspection of
+this install's `Mindlor_4/gear.lua` found Neck/Lv7/All, and its WAR Idle set
+already refers to `gear.Neck.RabbitCharm_1`. Repeating `/dl repair` therefore
+has no remaining saved metadata to change.
+
+`lua tests/custom_equipment.lua` initially failed with
+`Rabbit Charm +1: repaired Neck/Lv7 set must send an equip for WAR20 despite
+Body/Lv127 resources`. This drives the real native bag snapshot, resolver and
+packet-building path with an injected resource and inventory. Changing only
+the fixture resource's level/slot to 7/Neck made it pass. The engine previously
+read `res.Level`, `res.Jobs` and `res.Slots` directly in all three snapshot paths,
+bypassing the earlier import/repair correction.
+
+The importer and native engine now share `gearrecord.equipMetadata`, including
+catalog job-mask conversion and preservation of valid combined slot masks.
+The corrected facts reach bag candidates, live worn equipment and the trust
+cache; correcting the latter two prevents repeated attempts to equip an item
+that is already worn. Names, flags and instance data retain their original
+source. Unknown/catalog-less items keep resource-based gates.
+
+The same regression exercises the actual WAR20 Neck picker and confirms the
+repaired charm is offered. A separate picker failure was not reproduced.
+It also checks the outgoing Neck packet, repeated-dispatch stability, level/job
+restrictions, disabled/encumbered slots, equippable flags and catalog absence.
+
+Read-only extraction of item 26549's icon from the base `ROM/286/73.DAT` produces
+the gray square in the screenshot; extraction from the installed
+`ascensionxi-staging` overlay produces the charm with the white +1 frame.
+There is no competing `ascensionxi-staging-hd` override of this shard.
+The existing staging pixels are shipped as `assets/ascensionxi/items/26549.png`,
+declared by the optional AscensionXI `itemicons.lua` companion. Both icon rows
+and the equipped grid use the shared override. No client DAT or launcher
+configuration was changed. `lua tests/itemicons.lua` first failed on the retail
+placeholder choice, then passed with the override; it also covers missing
+artwork, other packs and texture ownership.
+
+Verification: custom equipment, item icon, catalog/import, saved repair, vault
+count, main engine and UI smoke suites. Apply with `/addon reload dlac`; the
+version should read `2026.09.14e`. Live equip/render verification remains pending.
+These are local addon changes, not a staging-server deployment.
+
 Diagnosis September 13; automatic repair added September 14, 2026. Implemented
 locally as DLAC `2026.09.14a`; not yet published or verified in a running client.
 Client DATs, server data and actual player configuration were not changed.
