@@ -25,12 +25,12 @@ local cache, tried, keep = {}, {}, {};
 -- CRITICAL: retain the texture OBJECT in `keep` -- storing only the numeric
 -- handle lets Lua GC the object, D3D frees the texture, and imgui then draws a
 -- dangling pointer -> hard crash. (This was the header-icon crash.)
-function M.handle(name)
+local function loadAsset(name)
     if not has or dev == nil then return nil; end
     if tried[name] then return cache[name]; end
     tried[name] = true;
     pcall(function()
-        local path = string.format('%saddons\\dlac\\assets\\%s.png', AshitaCore:GetInstallPath(), name);
+        local path = string.format('%saddons\\dlac\\%s.png', AshitaCore:GetInstallPath(), name);
         local ptr = ffi.new('IDirect3DTexture8*[1]');
         if ffi.C.D3DXCreateTextureFromFileA(dev, path, ptr) == 0 then   -- S_OK
             local tex = d3d.gc_safe_release(ffi.cast('IDirect3DTexture8*', ptr[0]));
@@ -39,6 +39,15 @@ function M.handle(name)
         end
     end);
     return cache[name];
+end
+
+function M.handle(name)
+    return loadAsset('assets\\' .. name);
+end
+
+-- Pack artwork travels with its catalog when servers/<pack>/ is copied.
+function M.packHandle(pack, name)
+    return loadAsset('servers\\' .. pack .. '\\assets\\' .. name);
 end
 
 return M;

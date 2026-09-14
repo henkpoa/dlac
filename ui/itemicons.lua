@@ -47,6 +47,26 @@ end
 local texCache   = {};   -- itemId -> texture (or false once we know it has none)
 local texHandles = {};   -- itemId -> uint32 handle for imgui.Image
 
+local packIcons, packId;
+local function packHandle(itemId)
+    if packIcons == nil then
+        packIcons = {};
+        pcall(function()
+            local id = require('dlac\\gear\\serverpack').active();
+            if id == nil then return; end
+            packId = id;
+            local overrides = require('dlac\\servers\\' .. id .. '\\itemicons');
+            if type(overrides) == 'table' then packIcons = overrides; end
+        end);
+    end
+    local asset = packIcons[itemId];
+    if type(asset) ~= 'string' then return nil; end
+    local ok, handle = pcall(function()
+        return require('dlac\\ui\\filetex').packHandle(packId, asset);
+    end);
+    if ok then return handle; end
+end
+
 local function loadItemTexture(itemId)
     if not hasD3D then return false; end
     if texCache[itemId] ~= nil then return texCache[itemId]; end
@@ -81,6 +101,8 @@ end
 -- text button / placeholder.
 icons.handleOf = function(itemId)
     if itemId == nil or itemId == 0 then return nil; end
+    local override = packHandle(itemId);
+    if override ~= nil then return override; end
     if loadItemTexture(itemId) == false then return nil; end
     return texHandles[itemId];
 end
@@ -116,9 +138,8 @@ icons.renderIcon = function(itemId, size, rec)
     if imgui == nil then return; end
     local drew = false;
     if itemId ~= nil and itemId ~= 0 then
-        local tex = loadItemTexture(itemId);
-        local handle = texHandles[itemId];
-        if tex and tex ~= false and handle ~= nil then
+        local handle = icons.handleOf(itemId);
+        if handle ~= nil then
             pcall(function() imgui.Image(handle, { size, size }); end);
             drew = true;
         end

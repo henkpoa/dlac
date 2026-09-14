@@ -19,6 +19,52 @@
 
 local M = {};
 
+-- Catalog facts must reach both the importer and the native equip snapshot.
+-- Custom IDs can still have retail placeholder metadata in Ashita resources.
+M.SLOT_MASKS = { Main = 1, Sub = 2, Range = 4, Ammo = 8, Head = 16,
+    Body = 32, Hands = 64, Legs = 128, Feet = 256, Neck = 512, Waist = 1024,
+    Ear = 6144, Ring = 24576, Back = 32768 };
+local EQUIP_SLOTS = { 'Main', 'Sub', 'Range', 'Ammo', 'Head', 'Body', 'Hands',
+    'Legs', 'Feet', 'Neck', 'Waist', 'Ear', 'Ear', 'Ring', 'Ring', 'Back' };
+function M.slotFromMask(mask)
+    if type(mask) ~= 'number' then return nil; end
+    for i, slot in ipairs(EQUIP_SLOTS) do
+        if math.floor(mask / 2 ^ (i - 1)) % 2 == 1 then return slot; end
+    end
+end
+
+local JOB_BITS;
+function M.encodeJobs(jobs)
+    if type(jobs) ~= 'table' or #jobs == 0 then return nil; end
+    if JOB_BITS == nil then
+        JOB_BITS = {};
+        for i, job in ipairs(require('dlac\\gear\\jobgate').JOBS) do JOB_BITS[job] = 2 ^ i; end
+    end
+    local mask, seen = 0, {};
+    for _, job in ipairs(jobs) do
+        if job == 'All' then return 8388606; end
+        local b = JOB_BITS[job];
+        if b == nil then return nil; end
+        if not seen[job] then mask = mask + b; seen[job] = true; end
+    end
+    return mask;
+end
+
+-- Return a copy; resource userdata and shared catalog records are never edited.
+-- Keep valid combined masks (Main/Sub, either ear/ring) when the bucket agrees.
+-- Resource flags and names remain client facts, just as they do at import.
+function M.equipMetadata(catalog, resource)
+    local res = resource or {};
+    local slot = (catalog and catalog.Slot) or M.slotFromMask(res.Slots);
+    local slots = res.Slots;
+    if catalog and M.SLOT_MASKS[slot] and M.slotFromMask(slots) ~= slot then
+        slots = M.SLOT_MASKS[slot];
+    end
+    return { Slot = slot, Slots = slots,
+        Level = (catalog and catalog.Level) or res.Level,
+        Jobs = (catalog and M.encodeJobs(catalog.Jobs)) or res.Jobs };
+end
+
 -- ---------------------------------------------------------------------------
 -- Canonical Type vocabulary. gear.lua and the catalog spell weapon/range types
 -- in the no-space form (WEAPON_CATEGORY / RANGE_CATEGORY at import); legacy

@@ -140,6 +140,25 @@ their old paths so saved sets still load. Menu > Settings > Repair gear data
 and `/dl repair` run the same check. Stats and instance augments stay owned data;
 unrecognized IDs and unsupported file shapes are not guessed or regenerated.
 
+The native equip pipeline uses the same catalog/resource rule for bag candidates,
+live worn items and its post-send trust cache (`gearrecord.equipMetadata`). A
+saved-record repair alone cannot correct resource-based equip gates. Client
+names, flags, bag positions and instance augments remain unchanged; missing
+catalog entries fall back to resource metadata.
+
+An optional, generated `servers/<id>/itemicons.lua` companion maps numeric
+item IDs to pack-relative `assets/<name>.png` names. The shared icon service
+loads these through `filetex.packHandle`; missing assets fall back to the client.
+The complete server-pack directory therefore contains its own artwork.
+
+AscensionXI's normal `tools/dlac-pack/gen_pack.py` command now generates the
+catalog, map and PNGs together from the same source checkout. No separate icon
+step is required when new items or changed artwork are added. It compares the
+catalog IDs' overlay pixels against `--game` and includes every difference.
+Invalid artwork fails generation before publishing the new pack. See
+[Catalog item artwork](pack-item-icons.md). `/dl repair` repairs saved equipment
+facts; newly shipped artwork is applied on addon reload.
+
 Table keys are PascalCase names with `+N` → `_N` (`makeKey`), unique per
 slot/category bucket (`_2`, `_3` suffixes on collisions).
 

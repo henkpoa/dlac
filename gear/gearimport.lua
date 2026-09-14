@@ -69,40 +69,9 @@ for _, cid in ipairs(M.SCAN_CONTAINERS) do AVAIL_SET[cid] = true; end
 -- the prune dry-run warns about that.)
 M.ALL_CONTAINERS = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16 };
 
--- item.Slots is a bitmask -> map it to the gear.lua top-level slot key. Rings
--- and earrings report a *combined* either-hand / either-ear mask, which is why
--- the 0x1800 / 0x6000 entries exist alongside the single bits.
-local SLOT_BY_MASK = {
-    [0x0001] = "Main",  [0x0002] = "Sub",    [0x0004] = "Range", [0x0008] = "Ammo",
-    [0x0010] = "Head",  [0x0020] = "Body",   [0x0040] = "Hands", [0x0080] = "Legs",
-    [0x0100] = "Feet",  [0x0200] = "Neck",   [0x0400] = "Waist",
-    [0x0800] = "Ear",   [0x1000] = "Ear",    [0x1800] = "Ear",
-    [0x2000] = "Ring",  [0x4000] = "Ring",   [0x6000] = "Ring",
-    [0x8000] = "Back",
-};
-
--- Canonical masks for catalog slot buckets; Ear/Ring use both sides.
-local MASK_BY_SLOT = {};
-for mask, slot in pairs(SLOT_BY_MASK) do
-    MASK_BY_SLOT[slot] = math.max(MASK_BY_SLOT[slot] or 0, mask);
-end
-
-local SLOT_BIT_ORDER = {
-    0x0001, 0x0002, 0x0004, 0x0008, 0x0010, 0x0020, 0x0040, 0x0080,
-    0x0100, 0x0200, 0x0400, 0x0800, 0x1000, 0x2000, 0x4000, 0x8000,
-};
-
-local function slotFromMask(slots)
-    if slots == nil or slots == 0 then return nil; end
-    if SLOT_BY_MASK[slots] ~= nil then return SLOT_BY_MASK[slots]; end
-    -- Unusual combo: fall back to the lowest mapped bit that is set.
-    for _, m in ipairs(SLOT_BIT_ORDER) do
-        if bit.band(slots, m) ~= 0 and SLOT_BY_MASK[m] ~= nil then
-            return SLOT_BY_MASK[m];
-        end
-    end
-    return nil;
-end
+-- Shared with the native engine: one catalog/resource eligibility rule.
+local MASK_BY_SLOT = grec.SLOT_MASKS;
+local encodeJobs = grec.encodeJobs;
 
 -- The effective reserved-slot mask (server rslot + the ADR 0010 trinket completion)
 -- is a RECORD RULE and lives in gearrecord with the rest of them, so the fresh
@@ -217,22 +186,6 @@ local EQUIP_JOBS = {
 };
 local ALL_JOBS_MASK = 8388606;   -- 0x7FFFFE: every job -> unrestricted, so no Jobs emitted
 
--- Catalog jobs are abbreviations; scan records retain Ashita's numeric mask
--- contract (bit = job id, unlike the server SQL's bit = job id - 1).
-local EQUIP_JOB_BITS = {};
-for id, job in pairs(EQUIP_JOBS) do EQUIP_JOB_BITS[job] = 2 ^ id; end
-local function encodeJobs(jobs)
-    if type(jobs) ~= 'table' or #jobs == 0 then return nil; end
-    local mask, seen = 0, {};
-    for _, job in ipairs(jobs) do
-        if job == 'All' then return ALL_JOBS_MASK; end
-        local b = EQUIP_JOB_BITS[job];
-        if b == nil then return nil; end
-        if not seen[job] then mask = mask + b; seen[job] = true; end
-    end
-    return mask;
-end
-
 -- Decode item.Jobs to a job list. EVERY equippable item gets one: a subset lists
 -- the jobs; all-jobs collapses to {"All"} (a matchable sentinel, not omitted) so
 -- future job-aware set-building can check every entry the same way.
@@ -265,9 +218,8 @@ local function resolveItem(entry)
     -- flags and instance augments; absent catalog entries use resources as before.
     local _, catalog = ci.flat();
     local c = catalog[entry.Id];
-    local slot = (c and c.Slot) or slotFromMask(res.Slots);
-    local slots = res.Slots;
-    if c ~= nil and slotFromMask(slots) ~= slot then slots = MASK_BY_SLOT[slot]; end
+    local facts = grec.equipMetadata(c, res);
+    local slot, slots = facts.Slot, facts.Slots;
     if slots == nil or slots == 0 then return nil; end   -- not equippable
 
     local shortName = decodeName(res.Name ~= nil and res.Name[1] or nil);
@@ -280,10 +232,10 @@ local function resolveItem(entry)
         Id       = entry.Id,
         Name     = shortName,   -- short/equipment name -> what equip calls need
         FullName = fullName,    -- log name (human-readable) -> what the key is built from
-        Level    = (c and c.Level) or res.Level,
+        Level    = facts.Level,
         Slots    = slots,
         Slot     = slot,
-        Jobs     = (c and encodeJobs(c.Jobs)) or res.Jobs,
+        Jobs     = facts.Jobs,
         Flags    = res.Flags,
         RSlot    = rslotFor(entry.Id),   -- slots this piece takes away while worn
         Pair     = pairFor(entry.Id),    -- Range/Ammo skill:subskill (nil = not a Range/Ammo item)
