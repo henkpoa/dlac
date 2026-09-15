@@ -94,16 +94,23 @@ human judgement ("this is now field-tested here"), not a data regeneration.
 return {
     tabs = { gearhelpers = false, jobhelpers = false },   -- main-window tabs
     menu = { lockstyle = false, ... },                    -- header-menu rows
+    helpers = { helm = true },                           -- optional helper allowlist
 }
 ```
 
-Only an explicit `false` disables; an absent file, section or key reads as ON
+For tabs/menu, only an explicit `false` disables; an absent file, section or key reads as ON
 (`cexi` ships no file and keeps every surface). Keys are `lib/featuregate.lua`'s
 rosters — tabs: `equipped allequip sets triggers gearhelpers jobhelpers`; menu:
 `lockstyle macrobook hobbybar teleports nm wishlist`. Read only through
 `serverpack.features()`; a player overrides any default per character from
 Menu > Settings > Features. Gating hides the surface — it never unloads a
 module and never touches the engine.
+
+`helpers` is a separate pack allowlist. When present, only helper keys set
+to `true` appear in the helper list, detail navigation and hobby selector.
+When absent, all helpers remain visible. Parent-tab/menu overrides do not
+expand the allowlist. AscensionXI enables `gearhelpers` and `hobbybar` with
+only `helm` in this list.
 
 ## catalog.lua — the contract that matters most
 

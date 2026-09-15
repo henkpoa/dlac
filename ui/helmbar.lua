@@ -76,16 +76,20 @@ function M.renderContent(availW)
     if type(availW) ~= 'number' or availW < BAR_MIN_W then availW = BAR_MIN_W; end
     local sel = hw.getGather();
     local on = hw.isAutoHelm();
+    local service = require('dlac\\gear\\serverpack').service('gathering');
+    local sharedGear = service and service.sharedGear == true;
     -- Row 1, centered: the four category glyphs + the Auto HELM on/off switch.
-    centerNext(availW, 4 * 30 + 3 * 6 + 6 + 46);
-    for _, g in ipairs(ORDER) do
-        if gatherButton(g, sel == g, 30) then hw.selectGather(g); end
-        imgui.SameLine(0, 6);
+    centerNext(availW, sharedGear and 46 or (4 * 30 + 3 * 6 + 6 + 46));
+    if not sharedGear then
+        for _, g in ipairs(ORDER) do
+            if gatherButton(g, sel == g, 30) then hw.selectGather(g); end
+            imgui.SameLine(0, 6);
+        end
     end
     if onOffSwitch(on, 'helmbar',
-        'ARMED -- gathering gear equips when you\'re near a '
+        sharedGear and 'Gathering gear is armed. Click to turn off.' or 'ARMED -- gathering gear equips when you\'re near a '
             .. tostring(sel or 'gathering') .. ' Point. Click to turn off.',
-        'Equips your best gathering gear when you\'re near a <category> Point\n(or right after a swing) -- not "always on regardless of location". Pick the\ncategory with the glyphs.')
+        sharedGear and 'Equip gathering gear automatically near a gathering Point.' or 'Equips your best gathering gear when you\'re near a <category> Point\n(or right after a swing) -- not "always on regardless of location". Pick the\ncategory with the glyphs.')
     then hw.setAutoHelm(not on); end
     imgui.Separator();
     -- Status line: points + rating + surveyor for the selected category.
@@ -93,8 +97,19 @@ function M.renderContent(availW)
         imgui.TextColored({ 0.55, 0.55, 0.55, 1 }, 'Pick a category to gear for.');
     else
         if hw.numericGathering and hw.numericGathering() then
-            imgui.TextColored({ 0.70, 0.70, 0.70, 1 }, 'Planned ' .. sel .. ' gear:');
-            imgui.TextWrapped(hw.describeBonuses(hw.bonuses(sel)));
+            local ok, panel = pcall(require, 'dlac\\ui\\helmui');
+            if ok and type(panel.renderPoints) == 'function' then panel.renderPoints('bar'); end
+            if sharedGear then
+                local bonuses = hw.bonuses(sel);
+                if bonuses then
+                    imgui.TextUnformatted(string.format('Extra rolls: +%g%%', bonuses.extraRoll));
+                    imgui.TextUnformatted(string.format('Tool break: -%g pp', bonuses.breakReduction));
+                end
+                imgui.Dummy({ BAR_MIN_W, 1 });
+                return;
+            end
+            imgui.TextColored({ 0.70, 0.70, 0.70, 1 }, sharedGear and 'Planned gathering gear:' or 'Planned ' .. sel .. ' gear:');
+            imgui.TextWrapped((hw.describeBonuses(hw.bonuses(sel)):gsub('%%', '%%%%')));
         else
             local vp = nil;
             pcall(function() vp = hw.pointsFor(sel); end);
@@ -124,7 +139,7 @@ function M.renderContent(availW)
     if hw.isAutoHelm() then
         if hw.autoActive() then
             imgui.TextColored({ 0.45, 0.90, 0.45, 1 },
-                string.format('WEARING %s gear', tostring(hw.getGather() or '?')));
+                sharedGear and 'WEARING gathering gear' or string.format('WEARING %s gear', tostring(hw.getGather() or '?')));
         else
             local ry = (type(hw.proxEnter) == 'function') and hw.proxEnter() or 10;
             imgui.TextColored({ 0.55, 0.55, 0.55, 1 },
