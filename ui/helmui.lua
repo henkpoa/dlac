@@ -125,6 +125,129 @@ local function itemLine(deps, name, state, note)
     end
 end
 
+local function gatheringService()
+    return require('dlac\\gear\\serverpack').service('gathering');
+end
+
+-- The pack owns the currency protocol. Both gathering surfaces share it.
+function M.renderPoints()
+    local service = gatheringService();
+    if service == nil or service.points == nil then return; end
+    local points = service.points;
+    points.touch();
+    local value = points.value();
+    imgui.TextColored(value ~= nil and COL_GOLD or COL_DIM,
+        'HELM points: ' .. (value ~= nil and tostring(value) or 'unknown'));
+    if imgui.IsItemHovered() then
+        imgui.SetTooltip('Updated automatically from the server every five seconds while this panel or the HELM bar is visible.');
+    end
+end
+
+local function progression(deps, availW)
+    local service = gatheringService();
+    if service == nil or type(service.rows) ~= 'table' then return; end
+    local function owned(id)
+        local counts = deps and deps.ownedCounts and deps.ownedCounts() or {};
+        return (counts[id] or 0) > 0;
+    end
+    -- Names are pinned to IDs: use the actual client record for icons/equip
+    -- spelling, retaining the pack label when the item is not indexed yet.
+    local function piece(name, id, state, note)
+        local rec = deps and deps.lookupById and deps.lookupById(id) or nil;
+        local lineDeps = {
+            lookupByName = function() return rec; end,
+            renderIcon = deps and deps.renderIcon,
+            itemTooltip = deps and deps.itemTooltip,
+        };
+        itemLine(lineDeps, rec and rec.Name or name, state, note);
+    end
+    local wide = (availW or 800) >= 750;
+    local colW = math.floor((availW or 800) / 3);
+    local headings = { 'Field Gear', 'Worker Gear', 'Worker +1 (reserved)' };
+    for column = 1, 3 do
+        if column > 1 then
+            if wide then imgui.SameLine(colW * (column - 1)); else imgui.Spacing(); end
+        end
+        imgui.BeginGroup();
+        imgui.TextColored(COL_HEADER, headings[column]);
+        for _, row in ipairs(service.rows) do
+            if column == 1 then
+                local state = owned(row.fieldId) and 'owned' or (owned(row.workerId) and 'better' or 'dim');
+                piece(row.field, row.fieldId, state, row.guide);
+                imgui.TextColored(COL_TEXT, row.cost and string.format('%d points', row.cost) or 'Quest reward');
+                imgui.TextColored(COL_DIM, row.quest or 'Buy from Helmsley');
+            elseif column == 2 then
+                piece(row.worker, row.workerId, owned(row.workerId) and 'glow' or 'dim');
+                imgui.TextColored(COL_TEXT, string.format('%d points', service.upgradeCost));
+                imgui.TextColored(COL_DIM, 'Trade ' .. row.field);
+            else
+                piece(row.reserved, row.reservedId, 'dim', 'Reserved tier: acquisition has not been released.');
+                imgui.TextColored(COL_DIM, 'Unavailable');
+                imgui.TextColored(COL_DIM, 'Acquisition not released');
+            end
+            imgui.Spacing();
+        end
+        imgui.EndGroup();
+    end
+    imgui.Spacing();
+    imgui.Separator();
+    imgui.Spacing();
+end
+
+-- TextUnformatted avoids binding-dependent printf handling of percentages.
+local function coloredPlain(color, text)
+    imgui.PushStyleColor(ImGuiCol_Text, color);
+    imgui.TextUnformatted(text);
+    imgui.PopStyleColor();
+end
+
+local function successTable(hw, availW)
+    local service = gatheringService();
+    if service == nil or service.skills == nil then return; end
+    local skills = service.skills;
+    local bonuses = hw and hw.bonuses(hw.getGather()) or nil;
+    local extra = bonuses and bonuses.extraRoll or nil;
+    local label = 'Extra roll chance: --';
+    if extra ~= nil then
+        local guaranteed, chance = math.floor(extra / 100), extra % 100;
+        label = string.format('Extra roll chance: %g%%', chance);
+        if guaranteed > 0 then
+            label = string.format('Extra rolls: %d guaranteed', guaranteed);
+            if chance > 0 then label = label .. string.format(' + %g%% chance of another', chance); end
+        end
+    end
+    coloredPlain(COL_GOLD, label);
+    if imgui.IsItemHovered() then imgui.SetTooltip('From your selected gathering gear.'); end
+    imgui.Spacing();
+    imgui.TextColored(COL_HEADER, 'Success chance per band');
+    local firstW, colW = 110, math.max(130, math.floor(((availW or 800) - 110) / 4));
+    imgui.BeginGroup();
+    imgui.TextColored(COL_HEADER, '');
+    imgui.TextColored(COL_TEXT, 'Skill');
+    for band in ipairs(skills.floors) do imgui.TextColored(COL_TEXT, 'Band ' .. band); end
+    imgui.EndGroup();
+    for column, category in ipairs(skills.order) do
+        imgui.SameLine(firstW + (column - 1) * colW);
+        imgui.BeginGroup();
+        imgui.TextColored(COL_HEADER, category);
+        local value = skills.value(category);
+        imgui.TextColored(value and COL_GOLD or COL_DIM, value and string.format('%.1f', value) or ' ');
+        if value == nil and imgui.IsItemHovered() then
+            imgui.SetTooltip('Waiting for the server skill readout.');
+        end
+        for band, floor in ipairs(skills.floors) do
+            local chance, reason = skills.chance(category, band);
+            local text = chance and string.format('%.1f%%', math.floor(chance * 10 + 0.5) / 10)
+                or (reason == 'locked' and 'Locked' or '--');
+            coloredPlain(chance and COL_TEXT or COL_DIM, text);
+            if imgui.IsItemHovered() then
+                imgui.SetTooltip(reason == 'locked' and ('Requires skill ' .. floor) or 'Success chance for each gathering roll.');
+            end
+        end
+        imgui.EndGroup();
+    end
+end
+
 -- Per-slot cascade states for one matrix row.
 local function rowStates(deps, row)
     local f, p, p1 = owns(deps, row.field), owns(deps, row.plain), owns(deps, row.p1);
@@ -224,8 +347,6 @@ function M.render(deps, availW)
     hwok = hwok and type(hw) == 'table';
 
     imgui.TextColored(COL_HEADER, 'Gathering Gear');
-    imgui.SameLine(0, 10);
-    imgui.TextColored(COL_TEXT, 'pick a category (on the hobby bar) -> your best gathering gear equips near a Point, IDLE ONLY.');
     -- ONE switch now (Henrik -- two toggles was confusing, and arming works
     -- best). Gathering gear equips when you're near a <category> Point (or on
     -- a swing); there is no separate always-on manual idle set anymore.
@@ -280,6 +401,13 @@ function M.render(deps, availW)
     imgui.Spacing();
 
     if gathering.enabled() then
+        M.renderPoints('panel');
+        progression(deps, availW);
+        local service = gatheringService();
+        if service and service.skills then
+            successTable(hwok and hw or nil, availW);
+            return;
+        end
         imgui.TextColored(COL_HEADER, 'Planned gathering outfit');
         for i, category in ipairs(ORDER) do
             if i > 1 then imgui.SameLine(0, 8); end
@@ -290,7 +418,7 @@ function M.render(deps, availW)
             imgui.TextWrapped('Pick a category to preview your gathering outfit.');
         else
             local preview = hw.preview(category);
-            imgui.TextWrapped(hw.describeBonuses(hw.bonuses(category)));
+            imgui.TextWrapped(esc(hw.describeBonuses(hw.bonuses(category))));
             for _, slot in ipairs(gathering.slots) do
                 local label = slot:gsub('^%l', string.upper);
                 local rung = preview[label];
@@ -299,12 +427,12 @@ function M.render(deps, availW)
                     imgui.SameLine(0, 8);
                     itemLine(deps, rung.name, 'owned');
                     imgui.SameLine(0, 10);
-                    imgui.TextColored(COL_DIM, string.format('extra rolls +%g%%; tool break -%g pp', rung.roll, rung.reduction));
+                    imgui.TextColored(COL_DIM, esc(string.format('extra rolls +%g%%; tool break -%g pp', rung.roll, rung.reduction)));
                 end
             end
         end
         imgui.Spacing();
-        imgui.TextWrapped('Each 100% extra-roll bonus guarantees one additional roll; the remainder is the chance for another. Each roll keeps its own success chance.');
+        imgui.TextWrapped(esc('Each 100% extra-roll bonus guarantees one additional roll; the remainder is the chance for another. Each roll keeps its own success chance.'));
         imgui.TextWrapped('Tool-break reduction includes headgear and applies to all four gathering types, including excavation. Break is checked only after a swing finds nothing.');
         imgui.TextWrapped('These totals describe the planned outfit. Slot locks and other equipment rules can change what you wear.');
         return;

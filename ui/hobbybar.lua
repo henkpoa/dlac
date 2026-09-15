@@ -35,6 +35,7 @@
 ]]--
 
 local host = require('dlac\\ui\\uihost');
+local gate = require('dlac\\lib\\featuregate');
 
 local function try(name)
     local ok, m = pcall(require, name);
@@ -132,15 +133,18 @@ local function uiTable() return host.services and host.services.ui or nil; end
 -- was permanently false, and both /dl craft bar and the Automations "Show bar"
 -- button read the wrong state (they reported "hidden" while opening it).
 local function effectiveSel(ui)
-    if VALIDSEL[ui._hobbySel] then return ui._hobbySel; end
-    return 'craft';
+    if VALIDSEL[ui._hobbySel] and gate.helperEnabled(ui._hobbySel) then return ui._hobbySel; end
+    for _, tab in ipairs(TABS) do
+        if gate.helperEnabled(tab.k) then return tab.k; end
+    end
+    return nil;
 end
 
 function M.open(key)
     local ui = uiTable(); if ui == nil then return; end
     ui._hobbyBar = true;
-    if VALIDSEL[key] then ui._hobbySel = key; end
-    if not VALIDSEL[ui._hobbySel] then ui._hobbySel = 'craft'; end
+    if VALIDSEL[key] and gate.helperEnabled(key) then ui._hobbySel = key; end
+    ui._hobbySel = effectiveSel(ui);
 end
 
 function M.close()
@@ -232,7 +236,8 @@ function M.render()
     if imgui == nil then return; end
     local ui = uiTable();
     if ui == nil or ui._hobbyBar ~= true then return; end
-    if not VALIDSEL[ui._hobbySel] then ui._hobbySel = 'craft'; end
+    ui._hobbySel = effectiveSel(ui);
+    if ui._hobbySel == nil then return; end
 
     -- Which hobby is armed -- for the ARMED MARK only (a green button + trailing
     -- * on a text tab, a green frame on an icon one). It does NOT move the
@@ -263,7 +268,11 @@ function M.render()
     if imgui.Begin('dlac Hobbies##dlac_hobbybar', isOpen, ImGuiWindowFlags_AlwaysAutoResize or 0) then
         -- Selector row: every tab is always reachable; the armed one is marked
         -- green (a trailing * on text, a frame on art).
-        for i, t in ipairs(TABS) do
+        local tabs = {};
+        for _, t in ipairs(TABS) do
+            if gate.helperEnabled(t.k) then tabs[#tabs + 1] = t; end
+        end
+        for i, t in ipairs(tabs) do
             local isSel    = (ui._hobbySel == t.k);
             local isActive = (activeKey == t.k);
             -- Art if this tab has any, else the text button unchanged. Both end
@@ -294,7 +303,7 @@ function M.render()
             -- 6px, not the old 4: at 64px the icons crowd each other, and the
             -- armed frame is drawn 2px OUTSIDE the icon, so a 4px gap would put
             -- a frame edge almost touching its neighbour's art.
-            if i < #TABS then imgui.SameLine(0, 6); end
+            if i < #tabs then imgui.SameLine(0, 6); end
         end
         imgui.Separator();
 

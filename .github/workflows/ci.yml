@@ -37,3 +37,9 @@ jobs:
 
       - name: Gear vault count regression
         run: lua5.4 tests/gearvault_counts.lua
+
+      - name: AscensionXI HELM packet regression
+        run: lua5.4 tests/ascensionxi_helm.lua
+
+      - name: HELM observation probe regression
+        run: lua5.4 dlacprobe/tests/helm_test.lua

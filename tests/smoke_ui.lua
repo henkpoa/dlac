@@ -2209,8 +2209,9 @@ end)();
     local oldHelmui = package.loaded['dlac\\ui\\helmui'];
     local text = {};
     local IM = setmetatable({}, { __index = function() return function() return false; end; end });
-    IM.TextColored = function(_, value) text[#text + 1] = value; end;
-    IM.TextWrapped = function(value) text[#text + 1] = value; end;
+    IM.TextColored = function(_, value) text[#text + 1] = string.format(value); end;
+    IM.TextWrapped = function(value) text[#text + 1] = string.format(value); end;
+    IM.TextUnformatted = function(value) text[#text + 1] = value; end;
     IM.CalcTextSize = function() return 10; end;
     package.loaded.imgui = IM;
     local hw = require('dlac\\feature\\helmwatch');
@@ -2224,6 +2225,58 @@ end)();
     local rendered = table.concat(text, '\n');
     check('AXS8 displays numeric planned bonuses', rendered:find('Extra rolls +60%', 1, true) ~= nil, true);
     check('AXS9 removes CEXI claims', rendered:find('Surveyor') or rendered:find('VP:') or rendered:find('Plain') or rendered:find('tools break anyway'), nil);
+    local sp = require('dlac\\gear\\serverpack');
+    local oldService = sp.service('gathering');
+    local service = dofile('servers/ascensionxi/modules/helm/init.lua');
+    local points = service.points;
+    local oldSend = points._send;
+    local request;
+    local requests = 0;
+    points.reset();
+    points._send = function(packet) request = packet; requests = requests + 1; return true; end;
+    IM.CollapsingHeader = function() return true; end;
+    text = {};
+    check('AXS10 AXI progression renders before balance is known', pcall(numericUi.render, numericDeps, 900), true);
+    check('AXS19 unknown skill row is blank', table.concat(text, '\n'):find('Mining\n \n--', 1, true) ~= nil, true);
+    local function p16(n) return string.char(n % 256, math.floor(n / 256)); end;
+    local payload = p16(1) .. p16(0) .. string.char(request[13], request[14], request[15], request[16])
+        .. p16(12345) .. p16(0) .. p16(200) .. p16(630) .. p16(1000) .. p16(169);
+    points.onPacket('\224\15\0\0' .. string.char(0x80, request[6], 0, 0) .. payload
+        .. string.rep('\0', 484)); -- Ashita backing buffer, 28-byte wire frame
+    check('AXS11 AXI narrow progression renders', pcall(numericUi.render, numericDeps, 600), true);
+    local buttons, positions = {}, {};
+    IM.Button = function(label) buttons[#buttons + 1] = label; return false; end;
+    IM.SameLine = function(x) positions[#positions + 1] = x; end;
+    local barStart = #text;
+    check('AXS12 AXI bar renders balance', pcall(numericBar.renderContent, 600), true);
+    check('AXS20 AXI switch centered without category buttons', positions[1], 277);
+    check('AXS21 no category or refresh buttons', table.concat(buttons, '\n'):find('##hb_')
+        or table.concat(buttons, '\n'):find('Refresh'), nil);
+    local barText = {}; for i = barStart + 1, #text do barText[#barText + 1] = text[i]; end;
+    check('AXS22 compact AXI bar shows points and two bonuses', table.concat(barText, '\n'),
+        'HELM points: 12345\nExtra rolls: +60%\nTool break: -20 pp');
+    rendered = table.concat(text, '\n');
+    for _, label in ipairs({ 'HELM points: unknown', 'HELM points: 12345', '2500 points', '10000 points',
+        'Field Cap', 'Worker Cap', 'Worker +1 (reserved)', 'Unavailable', 'Rock Bottom', 'Branch Manager', 'Grass Roots' }) do
+        check('AXS13 progression shows ' .. label, rendered:find(label, 1, true) ~= nil, true);
+    end
+    check('AXS14 shared points refresh is debounced', requests, 1);
+    check('AXS15 AXI progression excludes CEXI gear and currency', rendered:find('Surveyor') or rendered:find('Venture') or rendered:find('Plain'), nil);
+    for _, label in ipairs({ 'Extra roll chance: 60%', 'Success chance per band', 'Skill', 'Band 5', '75.4%', '54.5%', 'Locked' }) do
+        check('AXS17 skill table shows ' .. label, rendered:find(label, 1, true) ~= nil, true);
+    end
+    for _, label in ipairs({ 'Planned gathering outfit', 'Purchases and upgrades:', 'Green =', 'Each 100%', 'These totals describe',
+        'pick a category (on the hobby bar)', 'Field gear quests', 'WEARING', '%%' }) do
+        check('AXS18 removed explanation ' .. label, rendered:find(label, 1, true), nil);
+    end
+    local gate = require('dlac\\lib\\featuregate');
+    local oldFeatures = gate._packFeatures;
+    gate._packFeatures = dofile('servers/ascensionxi/features.lua');
+    local filtered = aui.listRows();
+    check('AXS16 AXI helper list contains only gathering', #filtered == 1 and filtered[1].key, 'helm');
+    gate._packFeatures = oldFeatures;
+    points._send = oldSend; points.reset();
+    sp.provide('gathering', oldService);
     hw.selectGather(previousCategory); hw._setManifest(m);
     package.loaded.imgui = oldImgui;
     package.loaded['dlac\\ui\\helmui'] = oldHelmui;
@@ -2877,6 +2930,19 @@ end)();
         check('HB12 toggle closes the bar it is already showing', ui._hobbyBar, false);
         hb.toggle('craft');
         check('HB13 toggle re-opens onto craft while HELM is armed', ui._hobbyBar and ui._hobbySel, 'craft');
+
+        local gate = require('dlac\\lib\\featuregate');
+        local oldFeatures = gate._packFeatures;
+        gate._packFeatures = dofile('servers/ascensionxi/features.lua');
+        btns = {};
+        hb.open('craft');
+        check('HB22 AXI stale/disabled selection falls back to HELM', ui._hobbySel, 'helm');
+        check('HB23 AXI hobby bar renders', pcall(hb.render), true);
+        local labels = table.concat(btns, '/');
+        check('HB24 AXI hides other hobby tabs', labels:find('##hbtabcraft', 1, true)
+            or labels:find('##hbtabfish', 1, true) or labels:find('##hbtabchoco', 1, true), nil);
+        check('HB25 AXI retains HELM tab', labels:find('##hbtabhelm', 1, true) ~= nil, true);
+        gate._packFeatures = oldFeatures;
 
         ui._hobbyBar = false;
     end

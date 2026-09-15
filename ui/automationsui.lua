@@ -1408,7 +1408,12 @@ local function buildAutoRows()
             if rok and type(r) == 'table' then rows[#rows + 1] = r; end
         end
     end
-    return rows;
+    local gate = require('dlac\\lib\\featuregate');
+    local visible = {};
+    for _, row in ipairs(rows) do
+        if gate.helperEnabled(row.key) then visible[#visible + 1] = row; end
+    end
+    return visible;
 end
 
 -- gearui's Teleports quick menu renders the SAME list with the SAME status
@@ -1427,7 +1432,7 @@ M.levelColor = levelColor;
 local DETAIL_KEYS = { iridescence = true, obi = true, oneiros = true, craft = true,
                       helm = true, fish = true, choco = true, ammo = true, maxmp = true, restock = true };
 function M.openDetail(key)
-    auto.view = (DETAIL_KEYS[key] == true) and key or nil;
+    auto.view = (DETAIL_KEYS[key] == true and require('dlac\\lib\\featuregate').helperEnabled(key)) and key or nil;
 end
 
 -- Last frame the guild-points section rendered -- a gap >1s means the panel
@@ -1550,6 +1555,9 @@ end
 
 local function renderAutomations()
     autoLoad();
+    if auto.view ~= nil and not require('dlac\\lib\\featuregate').helperEnabled(auto.view) then
+        auto.view = nil;
+    end
     -- Self-heal: an outdated-schema manifest (older dlac wrote it) regenerates
     -- itself the moment this tab renders -- no manual rescan after updates.
     if auto.data ~= nil and auto.data.fmtver ~= AUTO_FMT and not auto._healed then

@@ -27994,14 +27994,20 @@ end)();
     check('FGT18 ascensionxi: All Equipment on',  fg4.tabEnabled('All Equipment'), true);
     check('FGT19 ascensionxi: Sets on',           fg4.tabEnabled('Sets'), true);
     check('FGT20 ascensionxi: Triggers on',       fg4.tabEnabled('Triggers'), true);
-    check('FGT21 ascensionxi: Gear Helpers off',  fg4.tabEnabled('Gear Helpers'), false);
+    check('FGT21 ascensionxi: Gear Helpers on',   fg4.tabEnabled('Gear Helpers'), true);
     check('FGT22 ascensionxi: Job Helpers off',   fg4.tabEnabled('Job Helpers'), false);
-    check('FGT23 ascensionxi: every rostered menu row off', (function()
+    check('FGT23 ascensionxi: only hobby bar enabled in menu', (function()
         for _, r in ipairs(fg4.MENU) do
-            if fg4.menuEnabled(r.key) then return r.key; end
+            if fg4.menuEnabled(r.key) ~= (r.key == 'hobbybar') then return r.key; end
         end
         return true;
     end)(), true);
+
+    check('FGT25 ascensionxi: gathering enabled', fg4.helperEnabled('helm'), true);
+    for _, key in ipairs({ 'craft', 'fish', 'choco', 'obi', 'ammo', 'maxmp', 'future' }) do
+        check('FGT26 ascensionxi: helper hidden ' .. key, fg4.helperEnabled(key), false);
+    end
+    check('FGT27 no allowlist keeps future helpers', fg3.helperEnabled('future'), true);
 
     -- roster labels match the registrations they gate (a rename on either
     -- side must fail HERE, not vanish a tab in the field)
