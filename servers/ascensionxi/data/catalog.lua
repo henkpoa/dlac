@@ -87183,6 +87183,20 @@ return {
                 Evasion = 10,
             }
         },
+        EmperorHairpin_1 = {
+            Name = "Emperor Hairpin +1",
+            Level = 30,
+            Id = 26565,
+            Jobs = {"All"},
+            Type = "Head",
+            Stats = {
+                HP = 15,
+                DEX = 3,
+                AGI = 3,
+                Attack = 10,
+                Evasion = 10,
+            }
+        },
         EmpressHairpin = {
             Name = "Empress Hairpin",
             Level = 24,

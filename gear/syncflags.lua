@@ -148,13 +148,13 @@ sf.saveUiFlags = function()
         -- also what every uiflags.lua written before 2026-08-26 reads as.
         local fOn, fOff = '', '';
         pcall(function() fOn, fOff = require('dlac\\lib\\featuregate').export(); end);
-        D.writeFileText(p, string.format('return { debug = %s, autosync = %s, viewids = %s, buildmax = %s, tgmon = %s, arbmon = %s, tpfloat = %s, tpx = %d, tpy = %d, tmx = %d, tmy = %d, gearfloat = %s, gfx = %d, gfy = %d, gfscale = %.2f, ifx = %d, ify = %d, openui = %q, showall = %s, autobuildimport = %s, gearwarn = %s, buildstored = %s, featson = %q, featsoff = %q }\n',
+        D.writeFileText(p, string.format('return { debug = %s, autosync = %s, viewids = %s, buildmax = %s, tgmon = %s, arbmon = %s, tpfloat = %s, tpx = %d, tpy = %d, tmx = %d, tmy = %d, gearfloat = %s, gfx = %d, gfy = %d, gfscale = %.2f, gftransparency = %.2f, ifx = %d, ify = %d, openui = %q, showall = %s, autobuildimport = %s, gearwarn = %s, buildstored = %s, featson = %q, featsoff = %q }\n',
             tostring(sf.flags.debug), tostring(sf.flags.autosync), tostring(sf.flags.viewids), tostring(bm),
             tostring(ui._tgMon == true),
             tostring(ui._arbMon == true),
             tostring(ui._tpFloat == true), tpx, tpy, tmx, tmy,
             tostring(ui._gearFloat == true), gfx, gfy,
-            tonumber(ui._gfScale) or 1.0, ifx, ify,
+            tonumber(ui._gfScale) or 1.0, tonumber(ui._gfTransparency) or 0, ifx, ify,
             openui, tostring(showall), tostring(sf.flags.autobuildimport ~= false),
             tostring(sf.flags.gearwarn ~= false),
             tostring(sf.flags.buildstored ~= false),
@@ -223,6 +223,7 @@ sf.loadUiFlags = function()
             -- Stored raw; floatgear.scale() clamps on read, so a hand-edited 0 or
             -- a negative here cannot collapse the window past rescuing.
             if type(t.gfscale) == 'number' then ui._gfScale = t.gfscale; end
+            if type(t.gftransparency) == 'number' then ui._gfTransparency = t.gftransparency; end
             -- The idle-hobby badge's remembered position (visibility is not stored).
             if type(t.ifx) == 'number' and type(t.ify) == 'number' and (t.ifx ~= 0 or t.ify ~= 0) then
                 ui._idlePos = { t.ifx, t.ify };

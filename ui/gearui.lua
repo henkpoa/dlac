@@ -2180,7 +2180,11 @@ local function renderSlotGrid(idPrefix, gridHeight, selectedLabel, getItemId, ge
         imgui.PushStyleVar(ImGuiStyleVar_WindowPadding, { 0, 0 });
         imgui.PushStyleVar(ImGuiStyleVar_ItemSpacing, { 0, 0 });
     end
+    if opts.backgroundAlpha ~= nil then
+        imgui.PushStyleColor(ImGuiCol_ChildBg, { 0, 0, 0, 0 });
+    end
     imgui.BeginChild('##' .. idPrefix .. '_grid', { gridW or -1, gridHeight }, false);
+    if opts.backgroundAlpha ~= nil then imgui.PopStyleColor(); end
     local boxBg = { 0.10, 0.10, 0.13, 1.0 };
     local boxSel = { 0.42, 0.36, 0.16, 1.0 };          -- gold: the slot being edited
     for i, sl in ipairs(EQUIP_SLOTS) do
@@ -2191,6 +2195,16 @@ local function renderSlotGrid(idPrefix, gridHeight, selectedLabel, getItemId, ge
         local handle = icons.handleOf(id);
         local box = (opts.boxColorOf ~= nil) and opts.boxColorOf(sl) or nil;
         if box == nil then box = selected and boxSel or boxBg; end
+        -- Fade only the button surfaces. Global style alpha would fade the gear
+        -- textures and tooltips too. Scope these overrides to the button itself.
+        if opts.backgroundAlpha ~= nil then
+            local alpha = opts.backgroundAlpha;
+            box = { box[1], box[2], box[3], box[4] * alpha };
+            imgui.PushStyleColor(ImGuiCol_Button, { 0.18, 0.18, 0.22, alpha });
+            imgui.PushStyleColor(ImGuiCol_ButtonHovered, { 0.28, 0.28, 0.35, alpha });
+            imgui.PushStyleColor(ImGuiCol_ButtonActive, { 0.35, 0.35, 0.42, alpha });
+            imgui.PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0);
+        end
         if handle ~= nil then
             clicked = imgui.ImageButton(handle, { IMG, IMG }, { 0, 0 }, { 1, 1 }, PAD,
                 box, { 1, 1, 1, 1 });
@@ -2199,7 +2213,11 @@ local function renderSlotGrid(idPrefix, gridHeight, selectedLabel, getItemId, ge
             local isVirt = (vrec ~= nil and vrec.Virtual == true);
             local wheel = math.floor(BOX * 0.7);          -- 28 at BOX=40
             imgui.PushStyleColor(ImGuiCol_Button, box);
-            imgui.PushStyleColor(ImGuiCol_Text, COL.LOCKED);
+            local textColor = COL.LOCKED;
+            if opts.backgroundAlpha ~= nil then
+                textColor = { textColor[1], textColor[2], textColor[3], textColor[4] * opts.backgroundAlpha };
+            end
+            imgui.PushStyleColor(ImGuiCol_Text, textColor);
             clicked = imgui.Button(isVirt and ('##vbox' .. sl.label) or sl.short, { BOX, BOX });
             imgui.PopStyleColor(2);
             if isVirt then   -- the element wheel over the button (virtuals have no texture)
@@ -2209,6 +2227,10 @@ local function renderSlotGrid(idPrefix, gridHeight, selectedLabel, getItemId, ge
                     icons.drawElementWheel(wheel, x + (BOX - wheel) / 2, y + (BOX - wheel) / 2);
                 end);
             end
+        end
+        if opts.backgroundAlpha ~= nil then
+            imgui.PopStyleVar();
+            imgui.PopStyleColor(3);
         end
         -- The X goes on AFTER the button, so it lands over the icon: within one
         -- draw list, later is on top. Same order drawElementWheel relies on.
