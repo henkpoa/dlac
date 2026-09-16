@@ -309,8 +309,6 @@ local function renderEquippedTab(job, level)
         end
         return;
     end
-    imgui.TextColored(COL.DIM, 'Hover a slot for details; click for alternatives.');
-    imgui.SameLine();
     if imgui.Button((ui.showStats and 'Stats v' or 'Stats >') .. '##eqstats', { 76, 0 }) then
         ui.showStats = not ui.showStats;
     end
@@ -425,8 +423,6 @@ local function renderEquippedTab(job, level)
         end
     end
 
-    -- The floating equipment window (floatgear owns the window; this is just its
-    -- switch, kept next to the other Equipped-tab toggles).
     imgui.SameLine(0, 12);
     local fl = { ui._gearFloat == true };
     if imgui.Checkbox('Floating equipment', fl) then
@@ -436,12 +432,25 @@ local function renderEquippedTab(job, level)
     if imgui.IsItemHovered() then
         imgui.SetTooltip('Opens the 4x4 equipment window (equipmon-style) that stays up while you play.\nHover a slot for the same details as here; RIGHT-CLICK a slot to PIN an item\ninto it -- the engine then wears that piece and nothing can take it off.\nPinned slots show a red frame. Pins clear when you reload.\n\nSHIFT+drag the window to move it.');
     end
-    -- Size lives next to the switch, and only while the window is up: it is the
-    -- one setting you cannot discover from the window itself (it has no chrome).
+    -- Show the slider row only while floating equipment is enabled.
     if ui._gearFloat == true then
         local fg = S.floatgear;
+        imgui.Text('Transparency:');
         imgui.SameLine(0, 8);
-        imgui.PushItemWidth(84);
+        imgui.PushItemWidth(120);
+        local transparency = { (fg ~= nil) and fg.boxTransparency() or 0 };
+        if imgui.SliderFloat('##gftransparency', transparency, 0, 100, '%.0f%%') then
+            ui._gfTransparency = transparency[1];
+            ui._flagsDirty = true;
+        end
+        imgui.PopItemWidth();
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('Fades the floating equipment boxes and slot labels, including pin and move colors.\n0% = solid boxes and labels; 100% = no boxes or labels. Gear icons stay fully visible.');
+        end
+        imgui.SameLine(0, 8);
+        imgui.Text('- Size:');
+        imgui.SameLine(0, 8);
+        imgui.PushItemWidth(120);
         local sc = { (fg ~= nil) and fg.scale() or 1.0 };
         if imgui.SliderFloat('##gfscale', sc, (fg ~= nil) and fg.SCALE_MIN or 0.5,
                              (fg ~= nil) and fg.SCALE_MAX or 3.0, '%.2fx') then
