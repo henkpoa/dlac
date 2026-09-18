@@ -3010,6 +3010,42 @@ local function modeSetRefs(modeName, strip)
 end
 _modeSetRefs = modeSetRefs;
 
+-- Remove references that could select this copy from the current job's
+-- committed sets. Generic references select any copy; another augment-pinned
+-- copy remains intact. Borrowing the builder preserves its serialization rules.
+function M.removeGearFromSets(itemId, identity)
+    if _setDirty then return false, 'commit or discard the open set edits first'; end
+    if require('dlac\\ui\\jobbrowse').active() then return false, 'return to your current job first'; end
+    local _, job = jobFile();
+    if not job then return false, 'current job unavailable'; end
+    local root = profsets.getSetsRoot();
+    if profsets.diag() then return false, 'fix the set file error before editing gear'; end
+    if type(root) ~= 'table' or type(root.Dynamic) ~= 'table' then return false, 'committed sets unavailable'; end
+    buildOwned();
+    local aug = gearOracle.augmentKey(identity or '');
+    if aug == nil then return false, 'augment information is unavailable'; end
+    local keepW, keepN, keepSel = M.working, M.workingSetName, ui.setSelected;
+    local edits = {};
+    local ok, err = pcall(function()
+        for _, name in ipairs(profsets.dynamicSetNames()) do
+            loadSet(name);
+            local changed, why = setmgr.removeItemCandidates(M.working, root.Dynamic[name], itemId, aug, recordPath);
+            if changed == nil then error('set ' .. name .. ': ' .. tostring(why)); end
+            if changed then edits[#edits + 1] = { name = name, slots = buildCommitSlots() }; end
+        end
+    end);
+    M.working, M.workingSetName, ui.setSelected = keepW, keepN, keepSel;
+    _setDirty = false;
+    if not ok then return false, tostring(err); end
+    local saved, why = setmgr.commitSets(job, edits);
+    if not saved then return false, why; end
+    profsets.invalidate();
+    if keepN then loadSet(keepN); ui.setSelected = keepSel; end
+    local live, reason = require('dlac\\dispatch').reloadSets();
+    if not live then return false, 'sets saved but could not activate: ' .. tostring(reason); end
+    return true;
+end
+
 -- Auto-build the working set from stat weights. Dynamic ON = a level-scaling list per
 -- slot (keep an item only if it out-scores every kept lower-Level item; order Level
 -- asc). OFF = the single best scorer usable now. Paired slots (Ear/Ring) ladder as a
@@ -5247,6 +5283,7 @@ end
 -- Shared services first (modules capture these at require time), then the tab
 -- modules -- each guarded so a broken module costs its tabs, never the window.
 host.provide({
+    removeGearFromSets = M.removeGearFromSets,
     -- shared state + palette + layout constants
     ui = ui, COL = COL, STATS_W = STATS_W,
     EQUIP_SLOTS = EQUIP_SLOTS, GEAR_OF = GEAR_OF,

@@ -95,8 +95,11 @@ excluded; fishing rods AND bait are vault territory (bait rides `quantity`).
   Settings govern both. Default: dlac pushes new derived entries freely
   (commit-time for the edited job, login reconcile as backstop; the
   active job's push queues behind the city gate with a visible badge).
-  A piece no set references anymore just STAYS in the layout until shelf
-  pressure. Removal modes: **Default** — when the layout outgrows live
+  Superseded for instance-mode unused gear on 2026-09-18: unpinned,
+  unworn entries no current-job set or trigger references are released in
+  town before additions, even without pressure. Outside and review rows
+  are retained. Incomplete derivations pause cleanup. The existing pressure
+  settings still govern eviction of referenced gear. Removal modes: **Default** — when the layout outgrows live
   wardrobe capacity, present a marking dialog to free space; **Full** —
   dlac auto-evicts by LRU (unassigned-first, oldest last-used first),
   still asking permission whenever only pinned entries remain.
@@ -234,3 +237,147 @@ pending clicks, mirror invalidation and duplicate gear blocks. Live
 in-game verification remains with the owner. No server change is needed.
 Rollback the addon changes and reload; startup gear-file writes keep a
 timestamped backup. Layout corrections persist on the server.
+
+
+## Persistent instances: client implementation (2026-09-18)
+
+Server contract: AscensionXI PRs #549 (design), #553 and #554 (implementation),
+merged main. HELLO capability bit 0 selects instance mode; a legacy HELLO keeps
+all v1 codecs and behavior. Result codes follow the implementation: lost 17,
+outside 18, already bound 19 (the original design's 16/17/18 list is stale).
+
+The existing single wire queue now also owns LIST2 (0x46), LAYOUT_LIST2 (0x47),
+LAYOUT_SET2 (0x48), INSTANCE_LOOKUP (0x49), and LOST_LIST (0x4A). Codecs enforce
+13/12/41/30 row bounds. Lookup results are accepted only at the requested
+revision and inventory epoch; a stale reply retries at most three times before
+being deferred. Bag-slot caches invalidate on inventory packets, revision
+changes, or zoning. Snapshots happen on later present beats, never in packet_in.
+Multi-page list reads are discarded if their revisions differ. Layout writes
+retain their originating job and same-sequence retries; job changes complete
+cancelled queued requests so reconciliation cannot remain stuck in flight.
+
+Layouts, per-copy admission, usage stamps and edits use instance IDs. Missing
+legacy entries reserve zero; stack rows reserve one slot. Existing bound copies
+continue satisfying generic item demand when their extra bytes change. New
+augmented-copy choices stay manual; Anchor Ring (27556) is the explicit exception
+because its signature stores EXP. Items with legacy rows awaiting review are
+not silently re-added by derivation. Equipment selection, augment requirements,
+item-ID ownership totals and stackable identity semantics stay unchanged.
+
+The Gear Vault's **Needs review** section lists missing/ambiguous rows, displays
+saved augments and candidate-copy augments, and binds by ordinal or dismisses the
+old row. Candidates come from the fresh vault mirror or verified wardrobe-slot
+lookups; bag items must first be stored. Pins retain the existing two-click
+removal confirmation. Removed/replaced/unverified copies are visible in a
+separate expandable list. The `[aug]` badge requires decoded augments, not merely
+nonzero signature bytes.
+
+Headless verification: `lua tests/gearvault_instances.lua`,
+`lua tests/gearvault_counts.lua`, `lua tests/smoke_ui.lua`, and
+`lua tests/run_tests.lua`. The new instance suite is also in CI.
+
+Live acceptance remains required after `/addon reload dlac`: confirm HELLO
+negotiation with `/dl vault`, bank Anchor Ring EXP and change jobs twice; upgrade
+an augment; bind/dismiss review rows; verify distinct ring copies, a lost item,
+and the lost/replaced display. Exercise movement during lookups, including
+identical copies, and verify Ashita packet/present ordering. Headless tests prove
+revision/epoch rejection, not the game's memory-update timing. No live game
+interaction or shard mutation was performed during the client implementation.
+
+### Layout location and retirement (2026-09-18)
+
+HELLO capability changes invalidate pre-negotiation layout rows and request a
+fresh layout. Otherwise an early v1 reply can hide instance locations forever.
+Outside copies show a gold name and `[In bags]`, with recovery instructions.
+Container 17 is the Recycle Bin and instead shows `[Recycle Bin]` with recovery
+instructions. A discarded copy remains live while recoverable: the September
+18 Mindlorprod report was instance 2909 at location 17, slot 1, with matching
+inventory item 12503 and revision 308, including after addon reload. This is
+not a tombstone or a client-cache loss. Do not prune it merely because it left
+Inventory; permanent loss remains the server's registry/prune responsibility.
+
+Right-click a layout row for **Remove from sets and send to gear vault**. It
+updates the current job's committed dynamic sets in one backed-up write, then
+synchronously activates them before releasing that instance. Generic references
+are removed too; references pinned to different augments are retained. Unsaved
+editor changes, unresolved entries, direct trigger references, and slot locks
+block the action with a reason. Equipped copies use the existing strip lease
+and wait for the client to show them unequipped. Outside copies in Inventory
+then use the ordinary deposit flow, which still requires a Void Warden.
+
+Automatic unused-gear cleanup runs in town in instance mode. It preserves
+layout pins, worn pieces, outside assignments and legacy review rows. All
+augmented set references and trigger payloads protect their item IDs. Missing
+set/trigger reads, unresolved references and virtual `dlac:` helpers pause
+cleanup because the derivation cannot prove their gear unused. This is separate
+from the existing pressure/LRU policy. Pin a manually assigned piece to keep
+it without a set reference. Legacy-server behavior is unchanged.
+
+### Shared opcode pacing and edit evidence (2026-09-18)
+
+The server drops a second 0x1E0 frame within 100 ms. The old client's 350 ms
+check lived only in the pump's new-request branch: HELLO-to-LIST and MORE-page
+continuations called `beginOp` directly from the reply handler and bypassed it.
+HELM polls also injected the same opcode independently. A deterministic test
+reproduced two sends at the same timestamp before this fix.
+
+`servers/ascensionxi/transport.lua` now gates both DLAC producers with at least
+350 ms between actual injections, using LuaSocket wall time (whole-second
+`os.time` fallback). Vault `sendPending` also enforces its interval. Work denied
+by either gate remains pending without a send timestamp; only a real send
+starts its timeout or increments its retry count. Retries retain the same
+sequence. Unsent layout edits can still be cancelled on a job change. HELM
+retries a denied poll on a later touch. The server limit is unchanged.
+
+`tests/gearvault_instances.lua` drives immediate replies, all three paginated
+v2 lists, HELM competition, a dropped-write retry and unsent-job cancellation
+through the real shared gate. Existing state-machine harnesses now advance
+through deferred sends instead of assuming synchronous page transmission.
+Live acceptance: reload DLAC, Sync, change jobs and zone with HELM polling;
+check the map log for new `Rate-limiting ... 0x1e0` entries. Headless coverage
+proves injection spacing, not network delivery timing.
+
+Historical WHM headband removal cannot be proven from DLAC logs: only the last
+wire event was retained in memory, the inspected character debug directory
+had no vault edit log, and Ashita's application logs did not contain the
+reported item operations. The live headband's unpinned WHM row was eligible
+for the newly requested unused-gear cleanup before manual auto-pinning was
+added; that is a possible explicit REMOVE source, not a confirmed historical
+event. Do not attribute disappearance to a silently dropped REMOVE alone.
+
+Future layout mutation sends/replies/refusals/timeouts append to the character's
+`debug/gear-vault-edits.log`: timestamp, sequence, job, verb, item, instance,
+ordinal, reason and result. Reasons distinguish manual layout edits,
+remove-from-sets, unused-unpinned cleanup, pressure eviction and derived adds.
+This logs actual sends (including retries), not merely queued intent. Reply
+codes are server outcomes; a timeout explicitly means outcome unknown.
+
+#### Live follow-up: buffered traffic and cleanup decision
+
+The owner explicitly reaffirmed **keep automatic cleanup** after the rollback
+drill. The edit log proves 16 RDM REMOVE operations at 22:10:49–22:10:57 with
+`reason=unused-unpinned`, including Anchor Ring instance 2810, and successful
+server replies. Restored unpinned rows absent from local sets/triggers remain
+eligible. This is the chosen behavior, not a server prune defect. It does not
+prove which particular operation removed the earlier WHM headband row.
+
+Injection-only pacing did not establish live correctness: the map log records
+six 0x1E0 rate-limit drops for Mindlorprod and three for Mindlor between
+22:10:24 and 22:11:12. The prior headless check proved calls into Ashita were
+spaced, not when buffered packets reached the server.
+
+The shared transport now permits only one distinct request awaiting a reply
+and starts another 350 ms cooldown on inbound replies. Same-sequence retries
+are allowed; an abandoned pending request expires eight seconds after its last
+send. HELM preserves its token across denied sends/retries and bounds attempts
+so it cannot hold the channel forever. Both protocol receivers notify the
+same transport. A regression demonstrates that the old gate accepted a
+different producer after 400 ms without any acknowledgement; the new gate
+rejects it until a reply and cooldown. This covers a possible buffering cause,
+not proof of the original network timing. Exceptionally delayed originals
+and retries can still arrive together; server logs remain the acceptance test.
+
+`debug/gear-vault-wire.log` now records enqueue, reply and expired-request events
+with subsecond wall timestamps, op and sequence. It rotates at 2 MB to
+`.previous`. Compare it with the active map log after a reload and sync;
+enqueue timestamps are deliberately not labeled actual network transmission.

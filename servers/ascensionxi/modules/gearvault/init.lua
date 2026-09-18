@@ -21,9 +21,43 @@ local usg = require(base .. 'usage');
 
 -- Production seams -----------------------------------------------------------
 
-vc._send = function(p)
-    pcall(function() AshitaCore:GetPacketManager():AddOutgoingPacket(vc.PKT, p); end);
-    pcall(function() require('dlac\\feature\\sendlog').note(vc.PKT, 'gear vault'); end);
+local transport = require('dlac\\servers\\ascensionxi\\transport');
+vc._clock = transport._clock;
+vc._send = function(p) return transport.send(p, 'gear vault'); end;
+vc._received = transport.received;
+vc._audit = function(event, entry, seq, result)
+    local dir = require('dlac\\profiles').dataDir();
+    if not dir then return; end
+    dir = dir .. 'debug\\';
+    if ashita and ashita.fs then ashita.fs.create_directory(dir); end
+    local file = io.open(dir .. 'gear-vault-edits.log', 'a');
+    if not file then return; end
+    file:write(string.format('%s %s seq=%s job=%s verb=%s item=%s instance=%s ordinal=%s reason=%s result=%s\n',
+        os.date('%Y-%m-%d %H:%M:%S'), event, tostring(seq), tostring(entry.job), tostring(entry.verb),
+        tostring(entry.itemId), tostring(entry.instanceId), tostring(entry.ordinal),
+        tostring(entry.reason or 'unspecified'), tostring(result)));
+    file:close();
+end;
+
+vc._readSlot = function(container, slot)
+    local inv = AshitaCore:GetMemoryManager():GetInventory();
+    local item = inv and inv:GetContainerItem(container, slot);
+    return item and item.Id or 0;
+end;
+
+vc._shelfSlots = function(itemId)
+    local out = {};
+    local inv = AshitaCore:GetMemoryManager():GetInventory();
+    if not inv then return out; end
+    for _, cid in ipairs({ 8, 10, 11, 12, 13, 14, 15, 16 }) do
+        for slot = 1, inv:GetContainerCountMax(cid) or 0 do
+            local item = inv:GetContainerItem(cid, slot);
+            if item and item.Id == itemId then
+                out[#out + 1] = { container = cid, slot = slot, itemId = itemId, identity = item.Extra };
+            end
+        end
+    end
+    return out;
 end;
 
 vc._say = function(msg)
@@ -46,6 +80,7 @@ vc._onFresh = function()
     pcall(function() require('dlac\\gear\\ownedcache').resetCache(); end);
     pcall(function() require('dlac\\gear\\syncflags').invDirty(); end);
 end;
+vc._onLost = usg.forgetInstances;
 
 -- The service core consults (gearimport's vault fold, prune's guard, and
 -- slice 2's tab). counts()/rows() hand out the live tables -- consumers
@@ -67,6 +102,13 @@ end);
 
 pcall(function()
     ashita.events.register('packet_in', 'dlac_gearvault_packet_in', function(e)
+        -- All inventory mutations invalidate slot identities, including
+        -- counts and flags. Conservative across containers until live hook
+        -- timing is verified; snapshots happen only on later present beats.
+        if e.id >= 0x01D and e.id <= 0x020 then
+            vc.invalidateInstances();
+            if vc.instanceMode() then vc.layoutCache.fresh = false; end
+        end
         if e.id == 0x00A then
             vc.noteZoneIn();
             rec.zoneArmed();   -- a city-blocked push may retry where we landed
@@ -164,17 +206,26 @@ end
 local _wornCache, _wornCacheAt = nil, 0;
 local function wornIds()
     local nowc = os.clock();
-    if _wornCache ~= nil and nowc - _wornCacheAt < 2.0 then return _wornCache; end
+    if not vc.instanceMode() and _wornCache ~= nil and nowc - _wornCacheAt < 2.0 then return _wornCache; end
     _wornCacheAt = nowc;
     local out = {};
-    pcall(function()
+    local complete = false;
+    local ok = pcall(function()
         local S = require('dlac\\ui\\uihost').services;
         if type(S.EQUIP_SLOTS) ~= 'table' or type(S.getEquippedId) ~= 'function' then return; end
         for _, sl in ipairs(S.EQUIP_SLOTS) do
             local id = S.getEquippedId(sl.equip);
-            if type(id) == 'number' and id > 0 then out[id] = true; end
+            if type(id) == 'number' and id > 0 then
+                local oracle = require('dlac\\gear\\gearoracle');
+                local cid, slot = oracle.wornLocation(sl.equip);
+                local mapping = vc.instanceMode() and cid and vc.instanceAt(cid, slot, id);
+                if mapping and mapping.instanceId > 0 then out['i:' .. mapping.instanceId] = true;
+                else out[id] = true; end -- unknown: protect every possible copy
+            end
         end
+        complete = true;
     end);
+    if not ok or not complete then return nil; end
     _wornCache = out;
     return out;
 end
@@ -200,7 +251,11 @@ local RD = {
     end,
     setsRoot = function()
         local root = nil;
-        pcall(function() root = require('dlac\\gear\\profilesets').getSetsRoot(); end);
+        pcall(function()
+            local sets = require('dlac\\gear\\profilesets');
+            local loaded = sets.getSetsRoot();
+            if sets.diag() == nil then root = loaded; end
+        end);
         return root;
     end,
     triggers = function()
@@ -211,9 +266,12 @@ local RD = {
             if abbr == nil then return; end
             local prof = require('dlac\\profiles');
             local disp = require('dlac\\dispatch');
-            local tt = disp.readTriggersRaw(prof.triggersPath(abbr));
-            if tt == nil then tt = disp.readTriggersRaw(prof.legacyTriggersPath(abbr)); end
-            t = tt;
+            local tt, err = disp.readTriggersRaw(prof.triggersPath(abbr));
+            if tt == nil and (err == 'no file' or err == 'no path') then
+                tt, err = disp.readTriggersRaw(prof.legacyTriggersPath(abbr));
+            end
+            if tt ~= nil then t = tt;
+            elseif err == 'no file' or err == 'no path' then t = {}; end
         end);
         return t;
     end,
@@ -359,7 +417,18 @@ local function usageBeat()
                 if type(id) == 'number' and id > 0 then
                     local extra = nil;
                     pcall(function() extra = oracle.wornAugExtra(sl.equip); end);
-                    keys[#keys + 1] = usg.keyOf(id, extra);
+                    if vc.instanceMode() then
+                        local cid, slot = oracle.wornLocation(sl.equip);
+                        local mapping = cid and vc.instanceAt(cid, slot, id);
+                        if mapping and mapping.instanceId > 0 then
+                            keys[#keys + 1] = usg.keyOf(id, extra, mapping.instanceId);
+                        elseif mapping then
+                            -- Stackable ammo/bait retain identity-based usage.
+                            keys[#keys + 1] = usg.keyOf(id, extra);
+                        end
+                    else
+                        keys[#keys + 1] = usg.keyOf(id, extra);
+                    end
                 end
             end
             usg.stamp(keys);

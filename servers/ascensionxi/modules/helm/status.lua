@@ -5,6 +5,7 @@ local M = { PKT = 0x1E0, OP = 0x80, POLL_SECONDS = 5 };
 M._clock = os.clock;
 M._send = nil;
 local balance, pending, due, dormant;
+local attempts = 0;
 local token = os.time() % 0xFFFFFFFF;
 
 local function u16(data, offset)
@@ -16,6 +17,7 @@ end
 
 function M.reset(settle)
     balance, pending, dormant = nil, nil, false;
+    attempts = 0;
     due = M._clock() + (settle and 5 or 0);
     skills.reset();
     -- Keep token monotonic across zone/character resets, rejecting late replies.
@@ -26,19 +28,28 @@ function M.value() return balance; end
 function M.touch()
     local now = M._clock();
     if dormant or now < (due or 0) or type(M._send) ~= 'function' then return; end
-    token = (token + 1) % 0x100000000;
-    pending = token;
+    if pending and attempts >= 2 then pending = nil; end
+    if not pending then attempts = 0; end
+    -- Retry an unanswered poll with its original token. Do not replace the
+    -- outstanding request while a shared-channel denial delays the retry.
+    local nextToken = pending or ((token + 1) % 0x100000000);
     due = now + M.POLL_SECONDS;
-    local packet = { 0, 0, 0, 0, M.OP, token % 256, 0, 0, 1, 0, 0, 0 };
-    for i = 0, 3 do packet[13 + i] = math.floor(token / (256 ^ i)) % 256; end
+    local packet = { 0, 0, 0, 0, M.OP, nextToken % 256, 0, 0, 1, 0, 0, 0 };
+    for i = 0, 3 do packet[13 + i] = math.floor(nextToken / (256 ^ i)) % 256; end
     local ok, sent = pcall(M._send, packet);
-    if not ok or sent == false then pending = nil; end
+    if not ok or sent == false then
+        due = now + 0.35; -- shared channel busy: retry on a later touch
+    else
+        token, pending = nextToken, nextToken;
+        attempts = attempts + 1;
+    end
 end
 
 function M.onPacket(data)
     if type(data) ~= 'string' or #data < 8 then return false; end
     local op, seq, status, flags = data:byte(5, 8);
     if op < 0x80 or op > 0x8F then return false; end
+    if M._received then M._received(op, seq); end
     -- Block our partition even when late/malformed: the retail client has
     -- no handler for it. Never consume another addon's storage replies.
     if op ~= M.OP or pending == nil or seq ~= pending % 256 then return true; end

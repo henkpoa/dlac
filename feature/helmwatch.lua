@@ -67,9 +67,8 @@ M.HATS  = { Harvesting = 'Harv. Sun Hat',   Excavation = 'Excavators Shades',
 -- as `<Category> .. ' Point'`). Excavation was simply dead, and with the
 -- manual idle switch unwired from the UI there was no workaround.
 --
--- Length is NOT the rule, so do not "fix" this by truncating: "Harvesting
--- Point" is the same 16 characters and is NOT abbreviated (field-confirmed
--- the same day). Only Excavation is.
+-- Length is NOT the rule, so do not truncate names. Harvesting also appears
+-- as "Harv. Point" on AscensionXI; retain both spellings for different zones.
 --
 -- BOTH excavation names are kept on purpose. The abbreviation lives in the
 -- client's zone DAT (the server only pushes a name for RENAMED entities), so
@@ -77,7 +76,7 @@ M.HATS  = { Harvesting = 'Harv. Sun Hat',   Excavation = 'Excavators Shades',
 -- zone spells it out in full, that zone keeps working. An extra name is free:
 -- entwatch runs ONE shared sweep serving every registered watch.
 M.POINTS = {
-    Harvesting = { 'Harvesting Point' },
+    Harvesting = { 'Harvesting Point', 'Harv. Point' },
     Excavation = { 'Excavation Point', 'Excav. Point' },
     Logging    = { 'Logging Point' },
     Mining     = { 'Mining Point' },

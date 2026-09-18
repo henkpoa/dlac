@@ -27,11 +27,10 @@ local M = {
 
 require('dlac\\gear\\serverpack').provide('gathering', M);
 
-points._send = function(packet)
-    AshitaCore:GetPacketManager():AddOutgoingPacket(points.PKT, packet);
-    require('dlac\\feature\\sendlog').note(points.PKT, 'HELM status');
-    return true;
-end;
+local transport = require('dlac\\servers\\ascensionxi\\transport');
+points._clock = transport._clock;
+points._send = function(packet) return transport.send(packet, 'HELM status'); end;
+points._received = transport.received;
 
 if ashita and ashita.events and type(ashita.events.register) == 'function' then
     ashita.events.register('packet_in', 'dlac_axi_helm_points', function(e)

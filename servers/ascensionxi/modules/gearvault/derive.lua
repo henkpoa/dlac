@@ -51,6 +51,7 @@ local function refOf(v)
         return { key = 'n:' .. v, name = v };
     end
     if type(v) == 'table' then
+        if v.__dlacMissing then return { key = 'missing', name = '(unresolved gear reference)' }; end
         if type(v.Name) == 'string' and v.Name ~= '' then
             if isVirtual(v.Name) then return nil; end
             local aug = (type(v.AugKey) == 'string' and v.AugKey ~= '');
@@ -59,6 +60,7 @@ local function refOf(v)
             end
             return { key = 'n:' .. v.Name, name = v.Name, aug = aug };
         end
+        if v.gear ~= nil then return refOf(v.gear); end
         if v[1] ~= nil then return refOf(v[1]); end
     end
     return nil;
@@ -72,7 +74,8 @@ end
 local function walkSet(set, into, facts)
     if type(set) ~= 'table' then return; end
     for _, entry in pairs(set) do
-        if type(entry) == 'string' or (type(entry) == 'table' and type(entry.Name) == 'string') then
+        if type(entry) == 'string' or (type(entry) == 'table'
+            and (type(entry.Name) == 'string' or entry.gear ~= nil or entry.__dlacMissing)) then
             local r = refOf(entry);
             if r ~= nil then
                 facts[r.key] = facts[r.key] or r;
@@ -151,7 +154,7 @@ function M.derive(setsRoot, triggers, resolve)
     -- a record ref carries its id already; a name ref resolves here. Same-id
     -- refs merge (an item under two spellings / a record and a string), max
     -- count wins.
-    local byId = {};
+    local byId, referencedIds = {}, {};
     local skippedAug, unresolved = 0, {};
     for key, count in pairs(wanted) do
         local f = facts[key] or {};
@@ -163,6 +166,7 @@ function M.derive(setsRoot, triggers, resolve)
                 aug = aug or (r.aug == true);
             end
         end
+        if id ~= nil then referencedIds[id] = true; end
         if id == nil then
             unresolved[#unresolved + 1] = tostring(f.name or key);
         elseif aug then
@@ -184,7 +188,20 @@ function M.derive(setsRoot, triggers, resolve)
 
     local parts = {};
     for _, e in ipairs(items) do parts[#parts + 1] = e.itemId .. ':' .. e.count; end
+    -- Virtual helpers choose gear at runtime. Until their candidate pools
+    -- are known here, absence from the ordinary sets cannot authorize removal.
+    local function hasVirtual(t, seen)
+        if type(t) == 'string' then return isVirtual(t); end
+        if type(t) ~= 'table' or seen[t] then return false; end
+        if t.__dlacMissing then return true; end
+        seen[t] = true;
+        for _, v in pairs(t) do if hasVirtual(v, seen) then return true; end end
+        return false;
+    end
     return {
+        referencedIds = referencedIds,
+        cleanupSafe = type(setsRoot) == 'table' and type(triggers) == 'table' and #unresolved == 0
+            and not hasVirtual(setsRoot, {}) and not hasVirtual(triggers, {}),
         items      = items,
         skippedAug = skippedAug,
         unresolved = unresolved,

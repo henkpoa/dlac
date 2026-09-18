@@ -7697,12 +7697,14 @@ end)();
         IsItemHovered = function() return true; end,
         SmallButton   = function(label)
             smallHits[#smallHits + 1] = tostring(label);
-            if pressLayout then return label == 'Add to Mog Wardrobe##gvl1'; end;
+            if pressLayout then return label == 'Add to Mog Wardrobe##gvl' .. tostring(pressLayout == true and 1 or pressLayout); end;
             if pressStore then return tostring(label):match('^Store##') ~= nil; end
             if pressUnequip then return tostring(label):match('^Unequip & Store') ~= nil; end
             return pressWithdraw and tostring(label):match('^Withdraw') ~= nil;
         end,
         CollapsingHeader = function(label) headers[#headers + 1] = tostring(label); return true; end,
+        IsMouseClicked = function() return false; end,
+        CloseCurrentPopup = nop,
         -- the Vault-options COG popup (2026-08-30): open always "succeeds" so
         -- the settings rows render and GVU6d keeps its coverage
         OpenPopup     = nop,
@@ -7728,6 +7730,12 @@ end)();
                     'dlac\\servers\\ascensionxi\\modules\\gearvault\\vaultui' };
     local saved = {};
     for _, k in ipairs(NAMES) do saved[k] = package.loaded[k]; end
+
+    local oracleName = 'dlac\\gear\\gearoracle';
+    NAMES[#NAMES + 1] = oracleName; saved[oracleName] = package.loaded[oracleName];
+    local oracleCopy = {}; for k, v in pairs(saved[oracleName] or {}) do oracleCopy[k] = v; end
+    oracleCopy.describeAugments = dofile('feature/augments.lua').describe;
+    package.loaded[oracleName] = oracleCopy;
 
     package.loaded['imgui'] = IM;
     package.loaded['dlac\\ui\\itemicons'] = { renderIcon = nop };
@@ -7760,7 +7768,7 @@ end)();
     -- a fresh two-row mirror + a fresh one-entry layout, straight into state
     vc.mirror.rows = {
         { rowId = 1, itemId = 100, qty = 1, identity = string.rep('\0', 24) },
-        { rowId = 2, itemId = 200, qty = 3, identity = string.rep('\7', 24) },
+        { rowId = 2, itemId = 200, qty = 3, identity = string.char(2, 0, 1, 0) .. string.rep('\0', 20) },
     };
     vc.mirror.counts = { [100] = 1, [200] = 3 };
     vc.mirror.fresh  = true;
@@ -7860,6 +7868,7 @@ end)();
     -- Repeated clicks on a vault row cannot enqueue repeated increments,
     -- either before the first reply or after the item joined the layout.
     do
+        vc.noteJob(1);
         local oldEntries = vc.layoutCache.entries;
         vc.layoutCache.entries = {};
         vc.layoutCache.fresh = true;
@@ -7867,6 +7876,21 @@ end)();
         pressLayout = true;
         vui.render(1, 75); vui.render(1, 75);
         check('GVU repeated add queues once while pending', #vc._st().layoutSetQ, 1);
+        check('GVU manual add requests a pin', vc._st().layoutSetQ[1].e.pinned, true);
+        local added = table.remove(vc._st().layoutSetQ, 1);
+        added.onDone(vc.code.OK);
+        check('GVU successful manual add queues explicit pin', vc._st().layoutSetQ[1].e.verb, vc.verb.PIN);
+        check('GVU pin keeps the added item and job',
+            vc._st().layoutSetQ[1].e.itemId == added.e.itemId and vc._st().layoutSetQ[1].e.job == added.e.job, true);
+        vc.layoutCache.fresh = false; vc.mirror.fresh = false;
+        pressLayout = 2;
+        smallHits = {};
+        vui.render(1, 75); vui.render(1, 75);
+        check('GVU another item queues during sync', #vc._st().layoutSetQ, 2);
+        check('GVU the first item stays locked during sync',
+            table.concat(smallHits, '|'):find('Add to Mog Wardrobe##gvl1', 1, true) == nil, true);
+        vc.mirror.fresh = true;
+        pressLayout = true;
         vc._st().layoutSetQ = {};
         vc.layoutCache.entries = { { ordinal = 1, itemId = 100, count = 1, identity = vc.ZERO24 } };
         vc.layoutCache.fresh = true;
@@ -8032,6 +8056,124 @@ end)();
     end)(), true);
     package.loaded['dlac\\gear\\gearfmt'] = savedFmt;
     package.loaded['dlac\\servers\\ascensionxi\\modules\\gearvault\\reconcile'] = savedRec;
+
+    IM.TextWrapped = function(s) texts[#texts + 1] = tostring(s); end;
+    -- Instance review controls target the old row and the selected copy.
+    vc._reset(); vc.noteJob(1);
+    vc.limits = { instances = true, maxLookup = 41 };
+    vc.mirror = { rows = { { rowId = 77, itemId = 100, instanceId = 55, qty = 1,
+        identity = string.char(1) .. string.rep('\0', 11) .. '1200' .. string.rep('\0', 8) } },
+        counts = { [100] = 1 }, fresh = true, stamp = 55 };
+    vc.layoutCache = { job = 1, fresh = true, stamp = 55, entries = {
+        { ordinal = 8, itemId = 100, count = 0, kind = 2, state = 2, identity = string.rep('\0', 24) } } };
+    vc.lost = { entries = { { itemId = 100, instanceId = 54, state = 3 } }, fresh = true };
+    texts, smallHits = {}, {};
+    IM.SmallButton = function(label) smallHits[#smallHits + 1] = label; return false; end;
+    check('GVI1 review and lost panels render', pcall(vui.render, 1, 75), true);
+    check('GVI2 EXP signature is not labelled as augments', table.concat(texts, '|'):find('[aug]', 1, true), nil);
+    check('GVI3 missing row offers explicit bind', table.concat(smallHits, '|'):find('##gvbind8:55', 1, true) ~= nil, true);
+    check('GVI4 missing row offers dismiss', table.concat(smallHits, '|'):find('##gvdismiss8', 1, true) ~= nil, true);
+    local oldSet = vc.requestLayoutSet; local edit;
+    vc.requestLayoutSet = function(e) edit = e; return true; end;
+    IM.SmallButton = function(label) return label:find('##gvbind8:55', 1, true) ~= nil; end;
+    check('GVI5 binding click renders', pcall(vui.render, 1, 75), true);
+    check('GVI6 bind targets ordinal and selected instance', edit and edit.ordinal == 8 and edit.instanceId == 55 and edit.verb == vc.verb.BIND, true);
+    edit = nil;
+    IM.SmallButton = function(label) return label:find('##gvdismiss8', 1, true) ~= nil; end;
+    vui.render(1, 75);
+    check('GVI7 dismiss targets only the legacy row', edit and edit.ordinal == 8 and edit.selector == 2 and edit.verb == vc.verb.REMOVE, true);
+    vc.requestLayoutSet = oldSet;
+    check('GVI8 review tree is balanced', depth.tree, 0);
+    -- A retained instance outside the vault must be visibly distinct from
+    -- available copies; returning it to the shelf removes the warning.
+    vc.layoutCache = { job = 1, fresh = true, stamp = 56, entries = {
+        { ordinal = 9, itemId = 100, instanceId = 55, kind = 0, state = 2, count = 1, identity = vc.ZERO24 } } };
+    texts = {}; local warnings = {};
+    local oldTooltip = IM.SetTooltip;
+    IM.SetTooltip = function(s) warnings[#warnings + 1] = s; end;
+    IM.SmallButton = function() return false; end;
+    vui.render(1, 75);
+    check('GVI9 outside layout copy is marked In bags', table.concat(texts, '|'):find('[In bags]', 1, true) ~= nil, true);
+    check('GVI10 outside hover explains recovery', table.concat(warnings, '|'):find('Store this copy at a Void Storage Warden', 1, true) ~= nil, true);
+    vc.layoutCache.entries[1].location = 17; vc.layoutCache.stamp = 56.5;
+    texts, warnings = {}, {}; vui.render(1, 75);
+    check('GVI discarded recoverable copy is marked Recycle Bin', table.concat(texts, '|'):find('[Recycle Bin]', 1, true) ~= nil, true);
+    check('GVI discarded copy is not described as In bags', table.concat(texts, '|'):find('[In bags]', 1, true), nil);
+    check('GVI discarded hover explains recovery', table.concat(warnings, '|'):find('Recover it', 1, true) ~= nil, true);
+    vc.layoutCache.entries[1].state = 1; vc.layoutCache.stamp = 57;
+    texts = {}; vui.render(1, 75);
+    check('GVI11 returning the copy clears In bags', table.concat(texts, '|'):find('[In bags]', 1, true), nil);
+    IM.SetTooltip = oldTooltip;
+
+    -- Right click opens at parent scope, and sets must be activated before
+    -- the layout write. A failed set edit must never move the item.
+    local rec = require('dlac\\servers\\ascensionxi\\modules\\gearvault\\reconcile');
+    local oldBlocked = rec.retireBlocked;
+    rec.retireBlocked = function() return nil; end;
+    local svc = package.loaded['dlac\\ui\\uihost'].services;
+    local sequence = {};
+    svc.removeGearFromSets = function() sequence[#sequence + 1] = 'sets'; return true; end;
+    vc.layoutCache.entries[1].state = 0; vc.layoutCache.stamp = 58;
+    local oldBusy, oldReq = vc.layoutBusy, vc.requestLayoutSet;
+    vc.noteJob(1);
+    vc.layoutBusy = function() return false; end;
+    vc.requestLayoutSet = function(e, cb)
+        sequence[#sequence + 1] = 'remove:' .. tostring(e.instanceId);
+        cb(vc.code.OK); return true;
+    end;
+    IM.IsMouseClicked = function(button) return button == 1; end;
+    local oldOpen, oldSelect = IM.OpenPopup, IM.Selectable;
+    local popupAtParent = false;
+    IM.OpenPopup = function(id) if id == '##gv-layout-actions' then popupAtParent = depth.child == 0; end end;
+    IM.Selectable = function(label) return label == 'Remove from sets and send to gear vault'; end;
+    vui.render(1, 75);
+    check('GVI12 context popup is opened outside children', popupAtParent, true);
+    check('GVI13 set update precedes exact-copy removal', table.concat(sequence, ','), 'sets,remove:55');
+    sequence = {};
+    svc.removeGearFromSets = function() return false, 'save failed'; end;
+    vui.retireLayoutEntry(vc.layoutCache.entries[1]);
+    check('GVI14 failed set update sends no vault edit', #sequence, 0);
+    check('GVI15 set failure is visible', vui._lastResult().text, 'save failed');
+    local oldAt, oldLookup, oldDeposit = vc.instanceAt, vc.requestLookup, vc.requestDeposit;
+    local oldDispatch = package.loaded['dlac\\dispatch'];
+    local released = 0;
+    package.loaded['dlac\\dispatch'] = {
+        stripBlocked = function() return nil; end,
+        stripSlot = function() return 'Head'; end,
+        stripRelease = function() released = released + 1; end,
+    };
+    vc.instanceAt = function() return { instanceId = 55 }; end;
+    svc.removeGearFromSets = function() sequence[#sequence + 1] = 'sets'; return true; end;
+    local entry = vc.layoutCache.entries[1];
+    entry.state, entry.location, entry.slot = 1, 8, 1;
+    vui._wornOverride = { [8 * 256 + 1] = { equip = 4, label = 'Head' } };
+    vui._clientViewOverride = function() return false, 0, 100; end;
+    sequence = {};
+    vui.retireLayoutEntry(entry);
+    local pendingAt = vui._pendingStore and vui._pendingStore.at or 0;
+    check('GVI16 worn retirement waits for unequip', vui._pendingStore ~= nil, true);
+    vc.noteJob(2); -- old cached job is still 1: this was the race
+    vui.pumpPending(pendingAt + 1); vui.pumpPending(pendingAt + 2);
+    check('GVI17 job edge cancels delayed removal', table.concat(sequence, ','), 'sets');
+    check('GVI18 cancellation releases the strip lease', released, 1);
+    vc.noteJob(1); vc.layoutCache.fresh = true;
+    entry.state, entry.location, entry.slot = 2, 0, 2;
+    vui._wornOverride = {};
+    local lookupReply, deposited;
+    vc.requestLookup = function(_, cb) lookupReply = cb; return true; end;
+    vc.requestDeposit = function(entries) deposited = entries; return true; end;
+    sequence = {}; vui.retireLayoutEntry(entry);
+    check('GVI19 outside retirement waits for verified lookup', lookupReply ~= nil and deposited == nil, true);
+    lookupReply({ { instanceId = 55 } });
+    check('GVI20 deposit carries copy guard', deposited and deposited[1].expectedInstanceId, 55);
+    vui._wornOverride, vui._clientViewOverride = nil, nil;
+    package.loaded['dlac\\dispatch'] = oldDispatch;
+    vc.instanceAt, vc.requestLookup, vc.requestDeposit = oldAt, oldLookup, oldDeposit;
+    svc.removeGearFromSets = nil;
+    rec.retireBlocked = oldBlocked;
+    vc.layoutBusy, vc.requestLayoutSet = oldBusy, oldReq;
+    IM.OpenPopup, IM.Selectable = oldOpen, oldSelect;
+    IM.IsMouseClicked = function() return false; end;
 
     vc._reset();
     for _, k in ipairs(NAMES) do package.loaded[k] = saved[k]; end

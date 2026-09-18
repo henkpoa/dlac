@@ -664,6 +664,58 @@ M.commitSet = function(job, setName, slots)
     return true, action .. (note or ''), bpath;
 end
 
+-- One backup and one write for a cross-set edit; a failed splice leaves every
+-- set untouched rather than committing half of a remove-from-all operation.
+M.commitSets = function(job, edits)
+    if #edits == 0 then return true; end
+    local path, text = commitTarget(job);
+    if path == nil then return false, text; end
+    local updated = text;
+    for _, edit in ipairs(edits) do
+        local nextText, err = M.spliceSet(updated, edit.name, edit.slots);
+        if not nextText then return false, err; end
+        updated = nextText;
+    end
+    local chunk, err = loadstring(updated, '@' .. path);
+    if not chunk then return false, 'edit would not parse: ' .. tostring(err); end
+    local backup, berr = backupWithRotation(text, job, 20);
+    if not backup then return false, berr; end
+    if readFile(backup) ~= text then return false, 'backup verification failed'; end
+    local safe = require('dlac\\lib\\safewrite');
+    local saved, serr = safe.replaceLua(path, updated, { origText = text,
+        validate = function(_, tmp)
+            return readFile(tmp) == updated, 'temporary file differs from requested set changes';
+        end });
+    if not saved then return false, tostring(serr) .. ' (backup: ' .. backup .. ')'; end
+    return true;
+end
+
+-- Validate a resolved editor model against its source before removing a copy.
+-- An unavailable augment pin must never fall back to another roll on save.
+function M.removeItemCandidates(working, source, itemId, augKey, canWrite)
+    local removals = {};
+    for slot, entries in pairs(source) do
+        if type(entries) ~= 'table' or entries.Name or entries.gear
+            or #(working[slot] or {}) ~= #entries then
+            return nil, 'entries cannot be safely rewritten';
+        end
+    end
+    for slot, list in pairs(working) do
+        for i, entry in ipairs(list) do
+            local r, ref = entry.rec, source[slot][i];
+            if not r or not canWrite(r) then return nil, 'unresolved gear reference'; end
+            if type(ref) == 'table' then ref = ref.gear or ref[1] or ref; end
+            local key = type(ref) == 'table' and ref.AugKey or nil;
+            if key and key ~= '' and r.AugKey ~= key then return nil, 'unavailable augmented copy'; end
+            if r.Id == itemId and (not key or key == '' or key == augKey) then
+                removals[#removals + 1] = { list = list, index = i };
+            end
+        end
+    end
+    for i = #removals, 1, -1 do table.remove(removals[i].list, removals[i].index); end
+    return #removals > 0;
+end
+
 M.deleteSet = function(job, setName)
     -- Delete edits whichever file currently HOLDS the sets (profile-first read
     -- rule); it never creates the profile store by itself.
