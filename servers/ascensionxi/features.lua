@@ -4,25 +4,26 @@
     (which gen_pack.py generates and would clobber): flip a surface on here the
     day it is field-tested on this server.
 
-    Only an explicit false disables; anything unlisted defaults ON. A player
+    For tabs/menu, only an explicit false disables; anything unlisted defaults ON. A player
     can re-enable any of these for their character from Menu > Settings >
     Features -- this file is the default, never a wall.
 
-    Initial ruling (Henrik, 2026-08-26): gear only -- Equipped, All Equipment,
-    Sets and Triggers. The helpers and the CEXI-grown extras stay off until
-    each is proven against AscensionXI.
+    September 14: Gear Helpers and Hobby Bar enabled for HELM. The helpers
+    allowlist keeps other helpers hidden until enabled for AscensionXI.
 ]]--
 return {
     tabs = {
-        gearhelpers = false,
+        gearhelpers = true,
         jobhelpers  = false,
     },
     menu = {
         lockstyle = false,
         macrobook = false,
-        hobbybar  = false,
+        hobbybar  = true,
         teleports = false,
         nm        = false,
         wishlist  = false,
     },
+    -- Also controls the shared hobby bar. Add helpers as they are enabled.
+    helpers = { helm = true },
 };

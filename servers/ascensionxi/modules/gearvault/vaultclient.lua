@@ -54,6 +54,8 @@ M.op =
     WITHDRAW    = 0x43,   -- slice 2 (not sent from this slice)
     LAYOUT_LIST = 0x44,   -- slice 2
     LAYOUT_SET  = 0x45,   -- slice 3
+    LIST2 = 0x46, LAYOUT_LIST2 = 0x47, LAYOUT_SET2 = 0x48,
+    INSTANCE_LOOKUP = 0x49, LOST_LIST = 0x4A,
 };
 
 M.status =
@@ -167,7 +169,12 @@ end
 -- HELLO S2C: { proto, vaultCount, maxList, maxDeposit, maxWithdraw } or nil.
 function M.parseHello(payload)
     if type(payload) ~= 'string' or #payload < 12 then return nil; end
+    local instances = u16(payload, 2) % 2 == 1;
+    if instances and #payload < 20 then return nil; end
     return {
+        instances = instances, revision = instances and u32(payload, 12) or nil,
+        maxList2 = u8(payload, 16), maxLayoutList2 = u8(payload, 17),
+        maxLookup = u8(payload, 18), maxLostList = u8(payload, 19),
         proto       = u16(payload, 0),
         vaultCount  = u32(payload, 4),
         maxList     = u8(payload, 8),
@@ -289,6 +296,7 @@ M.code =
     NO_INSTANCE = 5, INVENTORY_FULL = 6, RARE_HELD = 7, BUSY = 8, STORE_ERROR = 9,
     DUPLICATE = 10, TOO_FAR = 11, NOT_IN_CITY = 12, UNKNOWN_ITEM = 13,
     AMBIGUOUS_NAME = 14, NOT_IN_LAYOUT = 15,
+    INSTANCE_LOST = 17, INSTANCE_OUTSIDE = 18, ALREADY_BOUND = 19,
 };
 
 M.ZERO24 = string.rep('\0', 24);
@@ -296,7 +304,7 @@ M.ZERO24 = string.rep('\0', 24);
 -- LAYOUT_SET C2S: { u8 Job (0 = my main); u8 Verb (0 add / 1 remove / 2 pin);
 -- u16 ItemNo; u16 Count; u8 Hint; u8 Pinned; u8 IdentityExtra[24] }. One
 -- entry per frame by protocol; batches ride the queue with distinct Seqs.
-M.verb = { ADD = 0, REMOVE = 1, PIN = 2 };
+M.verb = { ADD = 0, REMOVE = 1, PIN = 2, BIND = 3 };
 
 function M.layoutSetPayload(e)
     local id24 = e.identity;
@@ -380,12 +388,35 @@ local function nextSeq()
     return st.seq;
 end
 
-local function sendPending(now)
+local function sendPending(now, retry)
+    if now - st.lastSend < M.MIN_GAP then return false; end
+    if not retry and st.pending.op == M.op.DEPOSIT then
+        local req = st.depositQ and st.depositQ[1];
+        for _, e in ipairs(req and req.entries or {}) do
+            if e.expectedInstanceId then
+                local at = (st.instanceCache or {})[tostring(e.container) .. ':' .. tostring(e.slot)];
+                if not at or at.instanceId ~= e.expectedInstanceId or at.revision ~= M.revision then
+                    st.pending = nil; table.remove(st.depositQ, 1);
+                    if req.onDone then pcall(req.onDone, nil, 'location_changed'); end
+                    return false;
+                end
+            end
+        end
+    end
+    if type(M._send) == 'function' then
+        local ok, sent = pcall(M._send, st.pending.frame);
+        if not ok or sent == false then return false; end
+    end
+    if retry then st.pending.retries = st.pending.retries + 1; end
     st.pending.sentAt = now;
     st.lastSend = now;
     st.trace.lastSent = { kind = st.pending.kind, op = st.pending.op, seq = st.pending.seq,
                           at = now, retries = st.pending.retries };
-    if type(M._send) == 'function' then pcall(M._send, st.pending.frame); end
+    if st.pending.kind == 'layoutset' and M._audit then
+        local req = st.layoutSetQ and st.layoutSetQ[1];
+        if req then pcall(M._audit, 'send', req.e, st.pending.seq, st.pending.retries); end
+    end
+    return true;
 end
 
 local function beginOp(kind, op, payload, now, cursor)
@@ -430,6 +461,9 @@ end
 -- fresh=false is the honesty bit.
 function M.markStale(settle, why)
     if st.dormant then return; end
+    if st.layoutBatch ~= nil and why ~= 'layout edit' then
+        st.layoutBatch.valid = false;
+    end
     local at = M._clock() + (settle or 0);
     if st.unattuned then
         -- A reason (zone-in, job change, !vault, manual) PULLS the rare
@@ -456,7 +490,7 @@ local function goUnattuned(now)
     st.layoutAcc = nil;
     st.layoutWant = nil;
     st.probeOnly = false;
-    for _, q in ipairs({ st.withdrawQ, st.depositQ, st.layoutSetQ }) do
+    for _, q in ipairs({ st.withdrawQ or {}, st.depositQ or {}, st.layoutSetQ or {}, st.lookupQ or {} }) do
         while q ~= nil and q[1] ~= nil do
             local req = table.remove(q, 1);
             if type(req.onDone) == 'function' then pcall(req.onDone, nil, 'not_attuned'); end
@@ -468,6 +502,8 @@ local function goUnattuned(now)
     M.mirror.fresh = false;
     M.mirror.stamp = now;          -- not "never synced": pump must not re-arm the login sync
     M.layoutCache = { job = nil, entries = {}, fresh = false, stamp = nil };
+    M.invalidateInstances();
+    M.lost = { entries = {}, fresh = false };
     st.staleAt = now + M.RECHECK_UNATTUNED;
     if first and type(M._onFresh) == 'function' then pcall(M._onFresh); end
     -- No chat line here (Henrik, 2026-09-08: a first-time player should not
@@ -487,6 +523,8 @@ end
 function M.noteJob(job)
     if type(job) ~= 'number' or job == 0 then return; end
     if st.lastJob ~= nil and job ~= st.lastJob then
+        M.invalidateInstances();
+        M.cancelLayoutSets('job_changed');
         M.markStale(M.SETTLE_JOB, 'job change');
         M.layoutCache.fresh = false;   -- "the current job's layout" is a different job's now
     end
@@ -494,6 +532,7 @@ function M.noteJob(job)
 end
 
 function M.noteZoneIn()
+    M.invalidateInstances();
     -- Cheap probe once the zone-in flood settles: HELLO's VaultCount is the
     -- dirty check (website / offline edits surface here).
     if st.dormant then return; end
@@ -552,15 +591,139 @@ end
 -- onDone(code, err) fires once -- code from the ack (NOT_IN_CITY included),
 -- or nil with err on a refused/lost frame. Same mutating-op laws as
 -- withdraw: same-Seq retries only, exhaustion reports and never re-sends.
+-- Keep a stable admission snapshot through a batch of edits. Only additions
+-- reserve space: removals do not promise free slots until the server confirms
+-- them in a fresh layout. Locks survive acknowledgements and cancelled edits
+-- until BOTH views catch up; a job/zone/external mutation invalidates admission.
+function M.layoutAddState(itemId, identity, instanceId)
+    if not M.layoutBusy() and M.layoutCache.fresh and M.mirror.fresh then
+        st.layoutBatch = nil;
+    end
+    local batch = st.layoutBatch;
+    local key = M.entryKey({ itemId = itemId, identity = identity, instanceId = instanceId });
+    return {
+        ready = not st.dormant and not st.unattuned and
+            ((batch ~= nil and batch.valid) or
+             (batch == nil and M.layoutCache.fresh and M.mirror.fresh and not M.layoutBusy())),
+        pending = batch ~= nil and batch.items[key] == true,
+        reserved = batch and batch.reserved or 0,
+        entries = batch and batch.entries or M.layoutCache.entries,
+    };
+end
+
+-- Instance protocol, negotiated by HELLO bit 0. Never infer identity from
+-- changing extra bytes. The legacy codecs above remain byte-for-byte usable.
+function M.instanceMode() return M.limits ~= nil and M.limits.instances == true; end
+
+function M.entryKey(e)
+    if (e.instanceId or 0) > 0 then return 'i:' .. e.instanceId; end
+    if e.kind == 2 then return 'legacy:' .. tostring(e.ordinal); end
+    return tostring(e.itemId) .. ':' .. (e.identity or M.ZERO24);
+end
+
+function M.parseList2(payload)
+    if type(payload) ~= 'string' or #payload < 8 then return nil; end
+    local n = u16(payload, 0);
+    if n > 13 or #payload < 8 + n * 36 then return nil; end
+    local out = { entries = {}, revision = u32(payload, 4) };
+    for i = 0, n - 1 do
+        local o = 8 + i * 36;
+        out.entries[#out.entries + 1] = { rowId = u32(payload, o), itemId = u16(payload, o + 4),
+            qty = u16(payload, o + 6), instanceId = u32(payload, o + 8), identity = payload:sub(o + 13, o + 36) };
+    end
+    return out;
+end
+
+function M.parseLayout2(payload)
+    if type(payload) ~= 'string' or #payload < 8 then return nil; end
+    local n = u16(payload, 0);
+    if n > 12 or #payload < 8 + n * 40 then return nil; end
+    local out = { entries = {}, revision = u32(payload, 4) };
+    for i = 0, n - 1 do
+        local o = 8 + i * 40;
+        out.entries[#out.entries + 1] = { ordinal = u16(payload, o), itemId = u16(payload, o + 2),
+            count = u16(payload, o + 4), hint = u8(payload, o + 6), pinned = u8(payload, o + 7) ~= 0,
+            instanceId = u32(payload, o + 8), kind = u8(payload, o + 12), state = u8(payload, o + 13),
+            location = u8(payload, o + 14), slot = u8(payload, o + 15), identity = payload:sub(o + 17, o + 40) };
+    end
+    return out;
+end
+
+function M.layoutSet2Payload(e)
+    local selector = e.selector;
+    if selector == nil then
+        selector = e.verb == M.verb.BIND and 2 or ((e.instanceId or 0) > 0 and 0 or (e.ordinal and 2 or 1));
+    end
+    local identity = ((e.identity or '') .. M.ZERO24):sub(1, 24);
+    return string.char(e.job or 0, e.verb or 0, selector, e.hint or 0, e.pinned and 1 or 0, 0)
+        .. wu16(e.itemId) .. wu16(e.count or 1) .. wu32(e.instanceId) .. wu16(e.ordinal) .. identity;
+end
+
+function M.parseLayoutSet2Ack(payload)
+    if type(payload) ~= 'string' or #payload < 8 then return nil; end
+    local n = u16(payload, 2);
+    if n > 123 or #payload < 8 + n * 4 then return nil; end
+    local out = { code = u16(payload, 0), revision = u32(payload, 4), affected = {} };
+    for i = 0, n - 1 do out.affected[#out.affected + 1] = u32(payload, 8 + i * 4); end
+    return out;
+end
+
+function M.lookupPayload(entries, revision)
+    return wu32(revision) .. M.depositPayload(entries);
+end
+
+function M.parseLookup(payload)
+    if type(payload) ~= 'string' or #payload < 8 then return nil; end
+    local n = u16(payload, 0);
+    if n > 41 or #payload < 8 + n * 12 then return nil; end
+    local out = { entries = {}, revision = u32(payload, 4) };
+    for i = 0, n - 1 do
+        local o = 8 + i * 12;
+        out.entries[#out.entries + 1] = { container = u8(payload, o), slot = u8(payload, o + 1),
+            itemId = u16(payload, o + 2), instanceId = u32(payload, o + 4),
+            state = u8(payload, o + 8), locked = u8(payload, o + 9) ~= 0 };
+    end
+    return out;
+end
+
+function M.parseLost(payload)
+    if type(payload) ~= 'string' or #payload < 4 then return nil; end
+    local n = u16(payload, 0);
+    if n > 30 or #payload < 4 + n * 16 then return nil; end
+    local out = { entries = {} };
+    for i = 0, n - 1 do
+        local o = 4 + i * 16;
+        out.entries[#out.entries + 1] = { instanceId = u32(payload, o), itemId = u16(payload, o + 4),
+            state = u8(payload, o + 6), replacedBy = u32(payload, o + 8), lostAt = u32(payload, o + 12) };
+    end
+    return out;
+end
+
 function M.requestLayoutSet(e, onDone)
     if st.dormant or type(e) ~= 'table' or type(e.itemId) ~= 'number' then return false; end
+    local copy = {}; for k, v in pairs(e) do copy[k] = v; end; e = copy;
+    if (e.job or 0) == 0 and st.lastJob then e.job = st.lastJob; end
+    if not M.instanceMode() and (e.verb == M.verb.BIND or (e.instanceId or 0) > 0) then return false; end
+    local admission = M.layoutAddState(e.itemId, e.identity, e.instanceId);
+    if st.layoutBatch == nil and admission.ready then
+        st.layoutBatch = { valid = true, entries = M.layoutCache.entries, items = {}, reserved = 0 };
+    end
+    local batch = st.layoutBatch;
+    if batch ~= nil then
+        batch.items[M.entryKey(e)] = true;
+        if (e.job or 0) ~= 0 and e.job ~= st.lastJob then
+            batch.valid = false;
+        elseif e.verb == M.verb.ADD or e.verb == M.verb.BIND then
+            batch.reserved = batch.reserved + (e.count or 1);
+        end
+    end
     st.layoutSetQ = st.layoutSetQ or {};
     st.layoutSetQ[#st.layoutSetQ + 1] = { e = e, onDone = onDone };
     return true;
 end
 
--- Both the manual pane and the reconciler must wait for queued edits before
--- deriving another increment from the same cached layout.
+-- The reconciler waits for every edit. Manual admission uses per-item locks
+-- and reserved space from layoutAddState instead.
 function M.layoutBusy()
     return #(st.layoutSetQ or {}) > 0;
 end
@@ -568,15 +731,105 @@ end
 -- Drop every QUEUED layout edit (the in-flight one, if any, still answers).
 -- The reconcile engine calls this the moment one add refuses NOT_IN_CITY:
 -- every sibling targets the same job, so the rest would only spam refusals.
-function M.cancelLayoutSets()
+function M.cancelLayoutSets(reason)
     local n = #(st.layoutSetQ or {});
+    local old = st.layoutSetQ or {};
+    local first = 1;
     -- keep index 1 when it is the in-flight request's backing entry
-    if st.pending ~= nil and st.pending.op == M.op.LAYOUT_SET and n > 0 then
+    if st.pending ~= nil and (st.pending.op == M.op.LAYOUT_SET or st.pending.op == M.op.LAYOUT_SET2)
+        and st.pending.sentAt ~= nil and n > 0 then
         st.layoutSetQ = { st.layoutSetQ[1] };
-        return n - 1;
+        first = 2;
+    else
+        if st.pending and (st.pending.op == M.op.LAYOUT_SET or st.pending.op == M.op.LAYOUT_SET2) then st.pending = nil; end
+        st.layoutSetQ = {};
     end
-    st.layoutSetQ = {};
-    return n;
+    if reason then
+        for i = first, n do
+            if type(old[i].onDone) == 'function' then pcall(old[i].onDone, nil, reason); end
+        end
+    end
+    return n - first + 1;
+end
+
+function M.currentJob() return st.lastJob; end
+
+M.lost = { entries = {}, fresh = false };
+
+function M.invalidateInstances()
+    st.instanceCache = {};
+    st.inventoryEpoch = (st.inventoryEpoch or 0) + 1;
+    -- Two present beats allow the game to apply inventory packets before
+    -- any snapshot. No inventory memory is read inside packet_in.
+    st.lookupAfter = (st.beat or 0) + 2;
+end
+
+function M.noteRevision(revision)
+    if revision ~= nil and revision ~= M.revision then
+        M.revision = revision;
+        M.invalidateInstances();
+    end
+end
+
+function M.requestLost()
+    if not M.instanceMode() then return false; end
+    st.lostWant = true; M.lost.fresh = false; return true;
+end
+
+function M.requestLookup(entries, onDone)
+    if not M.instanceMode() or st.dormant or st.unattuned or type(entries) ~= 'table'
+        or #entries == 0 or #entries > math.min(41, M.limits.maxLookup) then return false; end
+    st.lookupQ = st.lookupQ or {};
+    local copy = {};
+    for _, e in ipairs(entries) do copy[#copy + 1] = { container = e.container, slot = e.slot }; end
+    st.lookupQ[#st.lookupQ + 1] = { entries = copy, onDone = onDone, attempts = 0 };
+    return true;
+end
+
+local function finishLookup(entries, err)
+    local req = table.remove(st.lookupQ or {}, 1);
+    if req and type(req.onDone) == 'function' then pcall(req.onDone, entries, err); end
+end
+
+-- Returns a verified mapping, or queues one read. Consumers must treat nil
+-- as unknown, never fall back to matching extra bytes to a physical copy.
+function M.instanceAt(container, slot, itemId)
+    local key = tostring(container) .. ':' .. tostring(slot);
+    local e = (st.instanceCache or {})[key];
+    if e and e.itemId == itemId and e.revision == M.revision then return e; end
+    st.lookupWaiting = st.lookupWaiting or {};
+    if not st.lookupWaiting[key] and M._clock() >= (st.lookupRetryAt or 0) then
+        st.lookupWaiting[key] = true;
+        if not M.requestLookup({ { container = container, slot = slot } }, function(_, err)
+            st.lookupWaiting[key] = nil;
+            if err then st.lookupRetryAt = M._clock() + 2; end
+        end) then st.lookupWaiting[key] = nil; end
+    end
+    return nil;
+end
+
+function M.bindingCandidates(itemId)
+    local out, bound, seen = {}, {}, {};
+    for _, e in ipairs(M.layoutCache.entries) do
+        if (e.instanceId or 0) > 0 then bound[e.instanceId] = true; end
+    end
+    local function add(e, where)
+        if e.itemId == itemId and (e.instanceId or 0) > 0 and not bound[e.instanceId] and not seen[e.instanceId] then
+            seen[e.instanceId] = true;
+            out[#out + 1] = { instanceId = e.instanceId, identity = e.identity, where = where };
+        end
+    end
+    if M.mirror.fresh then for _, e in ipairs(M.mirror.rows) do add(e, 'Vault'); end end
+    if M._shelfSlots then
+        for _, e in ipairs(M._shelfSlots(itemId)) do
+            local mapping = M.instanceAt(e.container, e.slot, itemId);
+            if mapping and mapping.state == 1 then
+                add({ itemId = itemId, instanceId = mapping.instanceId, identity = e.identity }, 'Wardrobe');
+            end
+        end
+    end
+    table.sort(out, function(a, b) return a.instanceId < b.instanceId; end);
+    return out;
 end
 
 -- ---------------------------------------------------------------------------
@@ -585,6 +838,7 @@ end
 -- ---------------------------------------------------------------------------
 function M.pump(ready)
     if st.dormant or not ready then return; end
+    st.beat = (st.beat or 0) + 1;
     local now = M._clock();
 
     -- First readiness of the session (addon load mid-session included, where
@@ -594,6 +848,7 @@ function M.pump(ready)
     end
 
     if st.pending ~= nil then
+        if st.pending.sentAt == nil then sendPending(now); return; end
         if now - st.pending.sentAt >= M.SEND_TIMEOUT then
             if st.pending.retries >= M.MAX_RETRIES then
                 local dead = st.pending;
@@ -609,17 +864,22 @@ function M.pump(ready)
                         pcall(req.onDone, nil, 'timeout');
                     end
                     M.markStale(0, 'write timeout');
-                elseif dead.op == M.op.LAYOUT_SET then
+                elseif (dead.op == M.op.LAYOUT_SET or dead.op == M.op.LAYOUT_SET2) then
                     -- Same mutating-op law: report, drop, and let the layout
                     -- re-ask reveal what actually landed.
                     local req = table.remove(st.layoutSetQ or {}, 1);
+                    if req and M._audit then pcall(M._audit, 'timeout', req.e, dead.seq, 'outcome-unknown'); end
                     if req ~= nil and type(req.onDone) == 'function' then
                         pcall(req.onDone, nil, 'timeout');
                     end
                     M.layoutCache.fresh = false;
                     M.markStale(M.SETTLE_JOB, 'layout edit timeout');
                     st.probeOnly = false;
-                elseif dead.op == M.op.LAYOUT_LIST then
+                elseif dead.op == M.op.INSTANCE_LOOKUP then
+                    finishLookup(nil, 'timeout');
+                elseif dead.op == M.op.LOST_LIST then
+                    st.lostAcc = nil;
+                elseif (dead.op == M.op.LAYOUT_LIST or dead.op == M.op.LAYOUT_LIST2) then
                     noteWhy('layout ask timed out (no reply after ' .. M.MAX_RETRIES .. ' retries)', now);
                     st.layoutAcc = nil;   -- the tab just shows stale and re-asks
                 else
@@ -633,8 +893,7 @@ function M.pump(ready)
                     M.mirror.fresh = false;
                 end
             else
-                st.pending.retries = st.pending.retries + 1;
-                sendPending(now);   -- SAME Seq: the replay ring makes this safe
+                sendPending(now, true);   -- SAME Seq: the replay ring makes this safe
             end
         end
         return;
@@ -653,18 +912,36 @@ function M.pump(ready)
         return;
     end
     if st.layoutSetQ ~= nil and st.layoutSetQ[1] ~= nil then
-        beginOp('layoutset', M.op.LAYOUT_SET, M.layoutSetPayload(st.layoutSetQ[1].e), now);
+        local e = st.layoutSetQ[1].e;
+        beginOp('layoutset', M.instanceMode() and M.op.LAYOUT_SET2 or M.op.LAYOUT_SET,
+            M.instanceMode() and M.layoutSet2Payload(e) or M.layoutSetPayload(e), now);
         return;
     end
     if st.layoutWant ~= nil then
         local want = st.layoutWant;
         st.layoutWant = nil;
         st.layoutAcc = {};
-        beginOp('layout', M.op.LAYOUT_LIST, M.layoutPayload(want.job, 0), now, 0);
-        st.pending.job = want.job;
+        st.layoutRev = nil;
+        beginOp('layout', M.instanceMode() and M.op.LAYOUT_LIST2 or M.op.LAYOUT_LIST, M.layoutPayload(want.job, 0), now, 0);
+        st.pending.job = want.job == 0 and (st.lastJob or 0) or want.job;
         return;
     end
 
+    if M.instanceMode() and st.lookupQ and st.lookupQ[1] and st.beat >= (st.lookupAfter or 0) then
+        local req = st.lookupQ[1];
+        req.attempts = req.attempts + 1;
+        req.snapshot = {};
+        for i, e in ipairs(req.entries) do
+            req.snapshot[i] = M._readSlot and M._readSlot(e.container, e.slot) or nil;
+        end
+        beginOp('lookup', M.op.INSTANCE_LOOKUP, M.lookupPayload(req.entries, M.revision), now);
+        st.pending.revision = M.revision; st.pending.epoch = st.inventoryEpoch;
+        return;
+    end
+    if M.instanceMode() and st.lostWant and M.mirror.fresh then
+        st.lostWant = nil; st.lostAcc = {};
+        beginOp('lost', M.op.LOST_LIST, wu32(0), now, 0); return;
+    end
     if st.staleAt == nil or now < st.staleAt then return; end
 
     -- A sync (or a probe) always starts at HELLO: proto check + the count.
@@ -675,10 +952,11 @@ end
 function M.onFrame(f)
     if f == nil or type(f.op) ~= 'number' then return false; end
     if f.op < M.op.HELLO or f.op > 0x7F then return false; end
+    if M._received then M._received(f.op, f.seq); end
     local now = M._clock();
     st.trace.lastRecv = { op = f.op, seq = f.seq, status = f.status, len = #(f.payload or ''), at = now };
     local p = st.pending;
-    if p == nil or f.op ~= p.op or f.seq ~= p.seq then
+    if p == nil or p.sentAt == nil or f.op ~= p.op or f.seq ~= p.seq then
         noteWhy(string.format('ate a %s#%d we were not waiting for (late duplicate)', opName(f.op), f.seq), now);
         return true;   -- ours by partition, but not the answer we await (late dupe): eat it
     end
@@ -712,6 +990,8 @@ function M.onFrame(f)
         -- not now -- and each op kind fails toward its own consumer.
         noteWhy(string.format('%s (%s#%d) refused: %s', p.kind, opName(p.op), p.seq, statusName(f.status)), now);
         st.pending = nil;
+        if p.op == M.op.INSTANCE_LOOKUP then finishLookup(nil, 'unavailable'); return true; end
+        if p.op == M.op.LOST_LIST then st.lostAcc = nil; return true; end
         if p.op == M.op.WITHDRAW or p.op == M.op.DEPOSIT then
             local q = (p.op == M.op.WITHDRAW) and st.withdrawQ or st.depositQ;
             local req = table.remove(q or {}, 1);
@@ -722,8 +1002,9 @@ function M.onFrame(f)
             end
             return true;   -- a refused write moved nothing: the mirror stands
         end
-        if p.op == M.op.LAYOUT_SET then
+        if (p.op == M.op.LAYOUT_SET or p.op == M.op.LAYOUT_SET2) then
             local req = table.remove(st.layoutSetQ or {}, 1);
+            if req and M._audit then pcall(M._audit, 'refused', req.e, p.seq, f.status); end
             if req ~= nil and type(req.onDone) == 'function' then
                 local word = (f.status == M.status.TOO_FAR and 'too_far')
                     or (f.status == M.status.BUSY and 'busy') or 'unavailable';
@@ -731,13 +1012,62 @@ function M.onFrame(f)
             end
             return true;
         end
-        if p.op == M.op.LAYOUT_LIST then
+        if (p.op == M.op.LAYOUT_LIST or p.op == M.op.LAYOUT_LIST2) then
             st.layoutAcc = nil;
             return true;
         end
         st.rowsAcc = nil;
         st.staleAt = now + M.GIVEUP_BACKOFF;
         M.mirror.fresh = false;
+        return true;
+    end
+
+    if p.op == M.op.INSTANCE_LOOKUP then
+        st.pending = nil;
+        local chunk = M.parseLookup(f.payload);
+        local req = (st.lookupQ or {})[1];
+        if not req then return true; end
+        if not chunk then finishLookup(nil, 'malformed'); return true; end
+        local raced = p.epoch ~= st.inventoryEpoch or p.revision ~= chunk.revision
+            or math.floor((f.flags or 0) / 2) % 2 == 1;
+        M.noteRevision(chunk.revision);
+        if not raced and #chunk.entries ~= #req.entries then finishLookup(nil, 'malformed'); return true; end
+        for i, e in ipairs(chunk.entries) do
+            local asked = req.entries[i];
+            if not asked or e.container ~= asked.container or e.slot ~= asked.slot then
+                finishLookup(nil, 'malformed'); return true;
+            end
+            if M._readSlot and req.snapshot[i] ~= e.itemId then raced = true; end
+        end
+        if raced then
+            st.lookupAfter = st.beat + 2;
+            if req.attempts >= 3 then finishLookup(nil, 'stale'); end
+            return true;
+        end
+        st.instanceCache = st.instanceCache or {};
+        for _, e in ipairs(chunk.entries) do
+            e.revision = chunk.revision;
+            st.instanceCache[tostring(e.container) .. ':' .. tostring(e.slot)] = e;
+        end
+        finishLookup(chunk.entries); return true;
+    end
+
+    if p.op == M.op.LOST_LIST then
+        st.pending = nil;
+        local chunk = M.parseLost(f.payload);
+        if not chunk then st.lostAcc = nil; return true; end
+        local last = p.cursor or 0;
+        for _, e in ipairs(chunk.entries) do
+            st.lostAcc[#st.lostAcc + 1] = e;
+            last = math.max(last, e.instanceId);
+        end
+        if (f.flags or 0) % 2 == 1 then
+            if last <= (p.cursor or 0) then st.lostAcc = nil; return true; end
+            beginOp('lost', M.op.LOST_LIST, wu32(last), now, last);
+        else
+            M.lost = { entries = st.lostAcc, fresh = true }; st.lostAcc = nil;
+            if M._onLost then pcall(M._onLost, M.lost.entries); end
+        end
         return true;
     end
 
@@ -749,10 +1079,20 @@ function M.onFrame(f)
             st.staleAt = now + M.GIVEUP_BACKOFF;
             return true;
         end
-        M.limits = { maxList = h.maxList, maxDeposit = h.maxDeposit, maxWithdraw = h.maxWithdraw };
+        local oldRevision = M.revision;
+        local modeChanged = M.instanceMode() ~= (h.instances == true);
+        M.limits = h;
+        if modeChanged then
+            -- A layout can arrive before the login HELLO. Its old rows lack
+            -- instance/location fields even though the mirror is now v2.
+            M.layoutCache.fresh = false;
+            M.requestLayout(0);
+        end
+        M.noteRevision(h.revision);
         M.mirror.vaultCount = h.vaultCount;
         local rowsHeld = #M.mirror.rows;
-        if p.kind == 'probe' and M.mirror.stamp ~= nil and h.vaultCount == rowsHeld then
+        if p.kind == 'probe' and M.mirror.stamp ~= nil and h.vaultCount == rowsHeld
+            and (not h.instances or oldRevision == h.revision) then
             -- The count agrees with what we hold: the probe re-stamps fresh
             -- and the LIST pages stay unspent.
             M.mirror.fresh = true;
@@ -762,39 +1102,58 @@ function M.onFrame(f)
             return true;
         end
         st.probeOnly = false;
-        st.rowsAcc = {};
-        beginOp('sync-list', M.op.LIST, M.listPayload(0), now, 0);
+        st.rowsAcc = {}; st.rowsRev = nil;
+        beginOp('sync-list', M.instanceMode() and M.op.LIST2 or M.op.LIST, M.listPayload(0), now, 0);
         return true;
     end
 
-    if p.op == M.op.LIST then
-        local chunk = M.parseListChunk(f.payload);
+    if p.op == M.op.LIST or p.op == M.op.LIST2 then
+        local chunk = p.op == M.op.LIST2 and M.parseList2(f.payload) or (p.op == M.op.LIST and M.parseListChunk(f.payload));
         st.pending = nil;
         if chunk == nil then
             st.rowsAcc = nil;
             st.staleAt = now + M.GIVEUP_BACKOFF;
             return true;
         end
-        local last = p.cursor;
+        if chunk.revision ~= nil then
+            M.noteRevision(chunk.revision);
+            if st.rowsRev ~= nil and st.rowsRev ~= chunk.revision then
+                st.rowsAcc = nil; st.staleAt = now + 1; return true;
+            end
+            st.rowsRev = chunk.revision;
+        end
+        local last = p.cursor or 0;
         for _, e in ipairs(chunk.entries) do
             st.rowsAcc[#st.rowsAcc + 1] = e;
             if e.rowId > last then last = e.rowId; end
         end
         if f.flags % 2 == M.FLAG_MORE then
-            beginOp('sync-list', M.op.LIST, M.listPayload(last), now, last);
+            if last <= (p.cursor or 0) then st.rowsAcc = nil; st.staleAt = now + M.GIVEUP_BACKOFF; return true; end
+            beginOp('sync-list', p.op, M.listPayload(last), now, last);
         else
             M.mirror.vaultCount = #st.rowsAcc;   -- LIST is now the fresher truth
             commitMirror(now);
+            if M.instanceMode() then M.requestLost(); end
         end
         return true;
     end
 
-    if p.op == M.op.LAYOUT_LIST then
-        local chunk = M.parseLayoutChunk(f.payload);
+    if (p.op == M.op.LAYOUT_LIST or p.op == M.op.LAYOUT_LIST2) then
+        local chunk = p.op == M.op.LAYOUT_LIST2 and M.parseLayout2(f.payload) or (p.op == M.op.LAYOUT_LIST and M.parseLayoutChunk(f.payload));
         st.pending = nil;
         if chunk == nil then
             st.layoutAcc = nil;
             return true;
+        end
+        if p.job ~= nil and p.job ~= 0 and p.job ~= st.lastJob then
+            st.layoutAcc = nil; M.layoutCache.fresh = false; return true;
+        end
+        if chunk.revision ~= nil then
+            M.noteRevision(chunk.revision);
+            if st.layoutRev ~= nil and st.layoutRev ~= chunk.revision then
+                st.layoutAcc = nil; M.layoutCache.fresh = false; return true;
+            end
+            st.layoutRev = chunk.revision;
         end
         local last = p.cursor or 0;
         for _, e in ipairs(chunk.entries) do
@@ -802,7 +1161,8 @@ function M.onFrame(f)
             if e.ordinal > last then last = e.ordinal; end
         end
         if f.flags % 2 == M.FLAG_MORE then
-            beginOp('layout', M.op.LAYOUT_LIST, M.layoutPayload(p.job, last), now, last);
+            if last <= (p.cursor or 0) then st.layoutAcc = nil; return true; end
+            beginOp('layout', p.op, M.layoutPayload(p.job, last), now, last);
             st.pending.job = p.job;
         else
             M.layoutCache = {
@@ -812,14 +1172,17 @@ function M.onFrame(f)
                 stamp   = now,
             };
             st.layoutAcc = nil;
+            if M.instanceMode() then M.requestLost(); end
         end
         return true;
     end
 
-    if p.op == M.op.LAYOUT_SET then
-        local ack = M.parseLayoutSetAck(f.payload);
+    if (p.op == M.op.LAYOUT_SET or p.op == M.op.LAYOUT_SET2) then
+        local ack = p.op == M.op.LAYOUT_SET2 and M.parseLayoutSet2Ack(f.payload) or (p.op == M.op.LAYOUT_SET and M.parseLayoutSetAck(f.payload));
+        if ack then M.noteRevision(ack.revision); end
         st.pending = nil;
         local req = table.remove(st.layoutSetQ or {}, 1);
+        if req and M._audit then pcall(M._audit, 'reply', req.e, p.seq, ack and ack.code or 'malformed'); end
         if ack == nil then
             -- An unreadable acknowledgement cannot prove the edit failed.
             -- Refresh both stores before offering another increment.
@@ -828,7 +1191,7 @@ function M.onFrame(f)
             M.markStale(M.SETTLE_JOB, 'layout edit malformed reply');
             st.probeOnly = false;
         end
-        if ack ~= nil and ack.code == M.code.OK then
+        if ack ~= nil and (ack.code == M.code.OK or ack.code == M.code.PARTIAL) then
             M.layoutCache.fresh = false;
             if req ~= nil and req.e.verb ~= M.verb.PIN
                 and ((req.e.job or 0) == 0 or req.e.job == st.lastJob) then
@@ -842,7 +1205,7 @@ function M.onFrame(f)
             if ack == nil then
                 pcall(req.onDone, nil, 'malformed');
             else
-                pcall(req.onDone, ack.code, nil);
+                pcall(req.onDone, ack.code, nil, ack.affected);
             end
         end
         return true;
@@ -936,9 +1299,10 @@ function M.statusLine()
     end
     local n = 0;
     for _, r in ipairs(M.mirror.rows) do n = n + math.max(1, r.qty); end
-    return string.format('gear vault: %s -- %d piece%s mirrored (%d row%s)%s.',
+    return string.format('gear vault: %s -- %d piece%s mirrored (%d row%s)%s%s.',
         s, n, (n == 1) and '' or 's', #M.mirror.rows, (#M.mirror.rows == 1) and '' or 's',
-        (st.giveups > 0) and (' -- ' .. st.giveups .. ' failed sync(s), retrying') or '');
+        (st.giveups > 0) and (' -- ' .. st.giveups .. ' failed sync(s), retrying') or '',
+        M.instanceMode() and (' -- instances, revision ' .. tostring(M.revision)) or '');
 end
 
 -- The evidence line (/dl vault's second line): what left, what came back,
@@ -971,7 +1335,7 @@ function M.traceLine()
     elseif st.unattuned and st.pending == nil and st.staleAt ~= nil then
         parts[#parts + 1] = string.format('not attuned: next check in %ds', math.max(0, math.ceil(st.staleAt - now)));
     elseif st.pending ~= nil then
-        parts[#parts + 1] = 'awaiting a reply';
+        parts[#parts + 1] = st.pending.sentAt == nil and 'queued for paced send' or 'awaiting a reply';
     elseif st.staleAt ~= nil then
         parts[#parts + 1] = string.format('next try in %ds', math.max(0, math.ceil(st.staleAt - now)));
     end
@@ -982,7 +1346,7 @@ end
 function M._reset()
     M.mirror = { fresh = false, rows = {}, counts = {}, vaultCount = nil, stamp = nil };
     M.layoutCache = { job = nil, entries = {}, fresh = false, stamp = nil };
-    M.limits = nil;
+    M.limits = nil; M.revision = nil; M.lost = { entries = {}, fresh = false };
     st = { dormant = false, unattuned = false, pending = nil, seq = 0, lastSend = 0,
            staleAt = nil, giveups = 0, rowsAcc = nil, lastJob = nil, saidProto = false, trace = {} };
 end

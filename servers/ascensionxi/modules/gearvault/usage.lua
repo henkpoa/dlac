@@ -63,8 +63,16 @@ end
 
 -- The usage key of one instance: the vault's own identity vocabulary,
 -- '<itemId>:<hex48>' (zero blob = the plain copy).
-function M.keyOf(itemId, identity)
+function M.keyOf(itemId, identity, instanceId)
+    if (instanceId or 0) > 0 then return tostring(itemId or 0) .. ':i:' .. instanceId; end
     return tostring(itemId or 0) .. ':' .. hex48(identity);
+end
+
+function M.forgetInstances(entries)
+    for _, e in ipairs(entries or {}) do
+        local key = M.keyOf(e.itemId, nil, e.instanceId);
+        if st.stamps[key] ~= nil then st.stamps[key] = nil; st.dirty = true; end
+    end
 end
 
 -- ---------------------------------------------------------------------------
@@ -276,11 +284,13 @@ function M.rankEvictions(entries, assignedIds, wornIds)
     wornIds = wornIds or {};
     local unpinned, pinned = {}, {};
     for _, e in ipairs(entries or {}) do
-        if not wornIds[e.itemId] then
+        if (e.count or 1) > 0 and e.kind ~= 2 and not wornIds[e.itemId]
+            and not wornIds['i:' .. tostring(e.instanceId)] then
             local c = {
                 itemId = e.itemId, identity = e.identity, count = e.count or 1,
                 pinned = e.pinned == true, name = e.name or tostring(e.itemId),
-                key = M.keyOf(e.itemId, e.identity),
+                key = M.keyOf(e.itemId, e.identity, e.instanceId),
+                instanceId = e.instanceId, ordinal = e.ordinal,
                 assigned = assignedIds[e.itemId] == true,
             };
             c.last = st.stamps[c.key] or 0;

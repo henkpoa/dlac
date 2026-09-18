@@ -165762,6 +165762,21 @@ return {
                 MND = 3,
             }
         },
+        ZealotsMitts_1 = {
+            Name = "Zealot's Mitts +1",
+            Level = 20,
+            Id = 26564,
+            Model = 3,
+            Jobs = {"MNK", "WHM", "BLM", "RDM", "PLD", "BRD", "RNG", "SMN", "BLU", "PUP", "SCH", "GEO", "RUN"},
+            Type = "Hands",
+            Stats = {
+                DEF = 3,
+                MP = 10,
+                INT = 3,
+                MND = 3,
+                ELEM = 3,
+            }
+        },
         ZenithMitts = {
             Name = "Zenith Mitts",
             Level = 73,

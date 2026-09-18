@@ -94,16 +94,23 @@ human judgement ("this is now field-tested here"), not a data regeneration.
 return {
     tabs = { gearhelpers = false, jobhelpers = false },   -- main-window tabs
     menu = { lockstyle = false, ... },                    -- header-menu rows
+    helpers = { helm = true },                           -- optional helper allowlist
 }
 ```
 
-Only an explicit `false` disables; an absent file, section or key reads as ON
+For tabs/menu, only an explicit `false` disables; an absent file, section or key reads as ON
 (`cexi` ships no file and keeps every surface). Keys are `lib/featuregate.lua`'s
 rosters — tabs: `equipped allequip sets triggers gearhelpers jobhelpers`; menu:
 `lockstyle macrobook hobbybar teleports nm wishlist`. Read only through
 `serverpack.features()`; a player overrides any default per character from
 Menu > Settings > Features. Gating hides the surface — it never unloads a
 module and never touches the engine.
+
+`helpers` is a separate pack allowlist. When present, only helper keys set
+to `true` appear in the helper list, detail navigation and hobby selector.
+When absent, all helpers remain visible. Parent-tab/menu overrides do not
+expand the allowlist. AscensionXI enables `gearhelpers` and `hobbybar` with
+only `helm` in this list.
 
 ## catalog.lua — the contract that matters most
 
@@ -139,6 +146,25 @@ replacement. Moved entries retain non-enumerated compatibility references at
 their old paths so saved sets still load. Menu > Settings > Repair gear data
 and `/dl repair` run the same check. Stats and instance augments stay owned data;
 unrecognized IDs and unsupported file shapes are not guessed or regenerated.
+
+The native equip pipeline uses the same catalog/resource rule for bag candidates,
+live worn items and its post-send trust cache (`gearrecord.equipMetadata`). A
+saved-record repair alone cannot correct resource-based equip gates. Client
+names, flags, bag positions and instance augments remain unchanged; missing
+catalog entries fall back to resource metadata.
+
+An optional, generated `servers/<id>/itemicons.lua` companion maps numeric
+item IDs to pack-relative `assets/<name>.png` names. The shared icon service
+loads these through `filetex.packHandle`; missing assets fall back to the client.
+The complete server-pack directory therefore contains its own artwork.
+
+AscensionXI's normal `tools/dlac-pack/gen_pack.py` command now generates the
+catalog, map and PNGs together from the same source checkout. No separate icon
+step is required when new items or changed artwork are added. It compares the
+catalog IDs' overlay pixels against `--game` and includes every difference.
+Invalid artwork fails generation before publishing the new pack. See
+[Catalog item artwork](pack-item-icons.md). `/dl repair` repairs saved equipment
+facts; newly shipped artwork is applied on addon reload.
 
 Table keys are PascalCase names with `+N` → `_N` (`makeKey`), unique per
 slot/category bucket (`_2`, `_3` suffixes on collisions).

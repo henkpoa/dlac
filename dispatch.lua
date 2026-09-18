@@ -7995,6 +7995,14 @@ local function installSets(fresh)
     end
 end
 
+-- Synchronous hot-swap for actions that must stop equipping an item before
+-- moving it. The caller receives failure instead of racing a queued command.
+function M.reloadSets()
+    local fresh, err = readSetsSource();
+    if fresh == nil or type(fresh.Dynamic) ~= 'table' then return false, err or 'sets unavailable'; end
+    return installSets(fresh);
+end
+
 -- (warnShadowedStatics died in the purge, Phase 2: it compared the incoming
 -- Dynamic against gProfile's file-authored statics, and there is no loaded
 -- job-file profile anymore -- statics live in old files the importers read.)

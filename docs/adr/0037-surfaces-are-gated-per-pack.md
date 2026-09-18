@@ -61,6 +61,15 @@ data regeneration). Or a separate hand-maintained pack file behind the serverpac
 
 ## Records
 
+September 14, 2026 amendment: a pack can declare an explicit `helpers`
+allowlist in `features.lua`. `featuregate.helperEnabled(key)` filters the
+Gear Helpers rows, detail navigation and hobby selector. An absent allowlist
+keeps all helpers; a present one exposes only keys set to `true`. This is
+pack selection, separate from the character's parent-tab/menu visibility
+overrides, and still does not gate the engine. AscensionXI now enables the
+Gear Helpers tab and Hobby Bar with `helpers = { helm = true }`.
+See [the HELM reference](../reference/ascensionxi-helm-helper.md).
+
 `lib/featuregate.lua`, `gear/serverpack.lua` (`features()`),
 `docs/reference/server-pack-contract.md` ("features.lua"), `servers/ascensionxi/features.lua`,
 `docs/history.md`.

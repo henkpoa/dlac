@@ -224,6 +224,11 @@ function M.scale()
     return s;
 end
 local scaleNow = M.scale;
+function M.boxTransparency()
+    local value = tonumber(ui._gfTransparency) or 0;
+    if value ~= value then return 0; end
+    return math.max(0, math.min(100, value));
+end
 local _openFor  = nil;    -- slot label whose menu should open next frame
 local _menuSlot = nil;    -- slot the open popup belongs to
 local _dragging = false;  -- shift+drag latch: set on press, cleared on release
@@ -1226,6 +1231,7 @@ function M.render()
             {
                 tight = true,
                 box   = box,
+                backgroundAlpha = 1 - M.boxTransparency() / 100,
                 -- Grab cue: the window has no frame, so the boxes are its only way
                 -- to say "grabbable now". Same mechanism that paints a pinned slot
                 -- red -- ImageButton's bg_col, field-proven here. (An earlier

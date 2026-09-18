@@ -27512,6 +27512,12 @@ end)();
         local last = sent[#sent];
         return vc.parseFrame(s2c(last[5], last[6], status, flags, payload));
     end
+    local function respond(status, flags, payload)
+        vc.onFrame(reply(status, flags, payload));
+        if vc._st().pending and vc._st().pending.sentAt == nil then
+            T = T + vc.MIN_GAP + 0.01; vc.pump(true);
+        end
+    end
     local hp = vc._wu16(1) .. vc._wu16(0) .. vc._wu32(0) .. string.char(15, 124, 62, 0);
     local function layoutEntry(ord, item, count)
         return vc._wu16(ord) .. vc._wu16(item) .. vc._wu16(count) .. string.char(0, 0) .. vc.ZERO24;
@@ -27538,8 +27544,8 @@ end)();
     -- boot: fresh (empty) mirror
     vc._reset(); rc._reset(); T, sent, msgs = 0, {}, {};
     vc.pump(true); T = 3; vc.pump(true);
-    vc.onFrame(reply(0, 0, hp));
-    vc.onFrame(reply(0, 0, VAULT5));
+    respond(0, 0, hp);
+    respond(0, 0, VAULT5);
     vc.noteJob(1);
     check('GVR1 mirror fresh at boot', vc.state(), 'fresh');
 
@@ -27547,7 +27553,7 @@ end)();
     T = T + rc.BEAT + 1;
     check('GVR2 first beat asks for the layout', rc.tick(), 'asked-layout');
     T = T + 1; vc.pump(true);
-    vc.onFrame(reply(0, 0, vc._wu16(0) .. vc._wu16(0)));   -- empty layout
+    respond(0, 0, vc._wu16(0) .. vc._wu16(0));   -- empty layout
     check('GVR3 layout fresh for the job', vc.layoutCache.fresh and vc.layoutCache.job, 1);
 
     -- beat 2: derivation pushes the four adds
@@ -27558,7 +27564,7 @@ end)();
     for _ = 1, 5 do
         T = T + 1; vc.pump(true);
         check('GVR5.' .. okAcks .. ' a LAYOUT_SET frame is on the wire', sent[#sent][5], vc.op.LAYOUT_SET);
-        vc.onFrame(reply(0, 0, vc._wu16(0) .. vc._wu16(0)));   -- code OK
+        respond(0, 0, vc._wu16(0) .. vc._wu16(0));   -- code OK
         okAcks = okAcks + 1;
     end
     check('GVR6 all five acked', okAcks, 5);
@@ -27582,26 +27588,26 @@ end)();
 
     -- refresh the layout with the four entries -> the next beat is clean
     T = T + 1; vc.pump(true);
-    vc.onFrame(reply(0, 0, vc._wu16(5) .. vc._wu16(0)
+    respond(0, 0, vc._wu16(5) .. vc._wu16(0)
         .. layoutEntry(1, 10, 1) .. layoutEntry(2, 20, 2)
         .. layoutEntry(3, 30, 1) .. layoutEntry(4, 40, 1)
-        .. layoutEntry(5, 31, 1)));
+        .. layoutEntry(5, 31, 1));
     T = T + rc.BEAT + 1;
     check('GVR10 a satisfied derivation is clean', rc.tick(), 'clean');
 
     -- NOT_IN_CITY: the first refusal cancels the run and arms the badge
     vc._reset(); rc._reset(); T, sent, msgs = 100, {}, {};
     vc.pump(true); T = 103; vc.pump(true);
-    vc.onFrame(reply(0, 0, hp));
-    vc.onFrame(reply(0, 0, VAULT5));
+    respond(0, 0, hp);
+    respond(0, 0, VAULT5);
     vc.noteJob(1);
     T = T + rc.BEAT + 1; rc.tick();
     T = T + 1; vc.pump(true);
-    vc.onFrame(reply(0, 0, vc._wu16(0) .. vc._wu16(0)));   -- empty layout
+    respond(0, 0, vc._wu16(0) .. vc._wu16(0));   -- empty layout
     T = T + rc.BEAT + 1;
     check('GVR11 the field beat pushes', rc.tick(), 'pushed:5');
     T = T + 1; vc.pump(true);
-    vc.onFrame(reply(0, 0, vc._wu16(12) .. vc._wu16(0)));  -- NOT_IN_CITY
+    respond(0, 0, vc._wu16(12) .. vc._wu16(0));  -- NOT_IN_CITY
     check('GVR12 the refusal cancels the queued siblings', #(vc._st().layoutSetQ or {}), 0);
     check('GVR13 ...arms the city badge', rc.cityBlocked(), true);
     T = T + rc.BEAT + 1;
@@ -27685,12 +27691,12 @@ end)();
         capacity = function() return CAP.n; end,
     });
     vc.pump(true); T = 1003; vc.pump(true);
-    vc.onFrame(reply(0, 0, hp));
-    vc.onFrame(reply(0, 0, VAULT5));
+    respond(0, 0, hp);
+    respond(0, 0, VAULT5);
     vc.noteJob(1);
     T = T + rc.BEAT + 1; rc.tick();
     T = T + 1; vc.pump(true);
-    vc.onFrame(reply(0, 0, vc._wu16(0) .. vc._wu16(0)));   -- empty layout
+    respond(0, 0, vc._wu16(0) .. vc._wu16(0));   -- empty layout
     ug.setSetting('additions', 'off');
     T = T + rc.BEAT + 1;
     check('GVR16 additions Off -> the engine pushes nothing', rc.tick(), 'clean');
@@ -27715,12 +27721,12 @@ end)();
 
     -- shelf pressure, 'auto': the LAYOUT ITSELF outgrows the shelf ->
     -- unpinned LRU evictions ride the wire
-    for _ = 1, 2 do T = T + 1; vc.pump(true); vc.onFrame(reply(0, 0, vc._wu16(0) .. vc._wu16(0))); end
+    for _ = 1, 2 do T = T + 1; vc.pump(true); respond(0, 0, vc._wu16(0) .. vc._wu16(0)); end
     T = T + 1; vc.pump(true);
-    vc.onFrame(reply(0, 0, vc._wu16(5) .. vc._wu16(0)
+    respond(0, 0, vc._wu16(5) .. vc._wu16(0)
         .. layoutEntry(1, 10, 1) .. layoutEntry(2, 20, 2)
         .. layoutEntry(3, 30, 1) .. layoutEntry(4, 40, 1)
-        .. layoutEntry(5, 31, 1)));                        -- 6 units on a 3 shelf
+        .. layoutEntry(5, 31, 1));                        -- 6 units on a 3 shelf
     ug.setSetting('removals', 'auto');
     rc._st().lastPushKey = nil;
     T = T + rc.BEAT + 1; rc.tick();
@@ -27743,15 +27749,15 @@ end)();
     ug.setSetting('removals', 'ask');
     CAP.n = 640;
     vc.pump(true); T = 2003; vc.pump(true);
-    vc.onFrame(reply(0, 0, hp));
-    vc.onFrame(reply(0, 0, VAULT5));
+    respond(0, 0, hp);
+    respond(0, 0, VAULT5);
     vc.noteJob(1);
     T = T + rc.BEAT + 1; rc.tick();                        -- asks layout
     T = T + 1; vc.pump(true);
-    vc.onFrame(reply(0, 0, vc._wu16(5) .. vc._wu16(0)
+    respond(0, 0, vc._wu16(5) .. vc._wu16(0)
         .. layoutEntry(1, 10, 1) .. layoutEntry(2, 20, 2)
         .. layoutEntry(3, 30, 1) .. layoutEntry(4, 40, 1)
-        .. layoutEntry(5, 31, 1)));                        -- 6 units, roomy shelf
+        .. layoutEntry(5, 31, 1));                        -- 6 units, roomy shelf
     T = T + rc.BEAT + 1; rc.tick();
     T = T + rc.BEAT + 1;
     check('GVR23 roomy shelf: clean beat, no pressure',
@@ -27780,22 +27786,22 @@ end)();
     vc._reset(); rc._reset(); ug._reset(); T, sent, msgs = 3000, {}, {};
     CAP.n = 640;
     vc.pump(true); T = 3003; vc.pump(true);
-    vc.onFrame(reply(0, 0, hp));
-    vc.onFrame(reply(0, 0, VAULT5));
+    respond(0, 0, hp);
+    respond(0, 0, VAULT5);
     vc.noteJob(1);
     T = T + rc.BEAT + 1; rc.tick();
     T = T + 1; vc.pump(true);
-    vc.onFrame(reply(0, 0, vc._wu16(0) .. vc._wu16(0)));   -- empty layout
+    respond(0, 0, vc._wu16(0) .. vc._wu16(0));   -- empty layout
     ug.exclude({ ug.keyOf(10, nil) });
     T = T + rc.BEAT + 1;
     check('GVR25 a tombstoned id is never re-added', rc.tick(), 'pushed:4');
     -- ack the four adds so the run finishes (the engine idles while acks
     -- are outstanding), and give it the refreshed layout
-    for _ = 1, 4 do T = T + 1; vc.pump(true); vc.onFrame(reply(0, 0, vc._wu16(0) .. vc._wu16(0))); end
+    for _ = 1, 4 do T = T + 1; vc.pump(true); respond(0, 0, vc._wu16(0) .. vc._wu16(0)); end
     T = T + 1; vc.pump(true);
-    vc.onFrame(reply(0, 0, vc._wu16(4) .. vc._wu16(0)
+    respond(0, 0, vc._wu16(4) .. vc._wu16(0)
         .. layoutEntry(1, 20, 2) .. layoutEntry(2, 30, 1)
-        .. layoutEntry(3, 40, 1) .. layoutEntry(4, 31, 1)));
+        .. layoutEntry(3, 40, 1) .. layoutEntry(4, 31, 1));
     ug.exclude({ ug.keyOf(999, nil) });                    -- no set wants 999
     T = T + rc.BEAT + 1; rc.tick();
     check('GVR26 an unwanted id\'s tombstone prunes itself',
@@ -27807,12 +27813,12 @@ end)();
     vc._reset(); rc._reset(); ug._reset(); T, sent, msgs = 4000, {}, {};
     CAP.n = 2;                                             -- room for 2 units; the sets want 6
     vc.pump(true); T = 4003; vc.pump(true);
-    vc.onFrame(reply(0, 0, hp));
-    vc.onFrame(reply(0, 0, VAULT5));
+    respond(0, 0, hp);
+    respond(0, 0, VAULT5);
     vc.noteJob(1);
     T = T + rc.BEAT + 1; rc.tick();
     T = T + 1; vc.pump(true);
-    vc.onFrame(reply(0, 0, vc._wu16(0) .. vc._wu16(0)));   -- empty layout
+    respond(0, 0, vc._wu16(0) .. vc._wu16(0));   -- empty layout
     T = T + rc.BEAT + 1;
     check('GVR27 adds clamp to the shelf (2 of 6 units fit)', rc.tick(), 'pushed:2');
     check('GVR28 ...and the rest wait, reported, unsent',
@@ -27824,13 +27830,13 @@ end)();
     vc._reset(); rc._reset(); ug._reset(); T, sent, msgs = 5000, {}, {};
     CAP.n = 640;
     vc.pump(true); T = 5003; vc.pump(true);
-    vc.onFrame(reply(0, 0, hp));
-    vc.onFrame(reply(0, 0, vc._wu16(2) .. vc._wu16(0)
-        .. vaultRow(1, 10, 1) .. vaultRow(2, 20, 1)));     -- only Sword A + ONE Ring X vaulted
+    respond(0, 0, hp);
+    respond(0, 0, vc._wu16(2) .. vc._wu16(0)
+        .. vaultRow(1, 10, 1) .. vaultRow(2, 20, 1));     -- only Sword A + ONE Ring X vaulted
     vc.noteJob(1);
     T = T + rc.BEAT + 1; rc.tick();
     T = T + 1; vc.pump(true);
-    vc.onFrame(reply(0, 0, vc._wu16(0) .. vc._wu16(0)));   -- empty layout
+    respond(0, 0, vc._wu16(0) .. vc._wu16(0));   -- empty layout
     T = T + rc.BEAT + 1;
     check('GVR29 only vaulted derived ids push (2 of 5)', rc.tick(), 'pushed:2');
     check('GVR29b ...the unvaulted rest are counted, not waiting',
@@ -27848,19 +27854,19 @@ end)();
     -- shelve it. The old hash|layout key answered 'clean' forever here.
     vc._reset(); rc._reset(); ug._reset(); T, sent, msgs = 6000, {}, {};
     vc.pump(true); T = 6003; vc.pump(true);
-    vc.onFrame(reply(0, 0, hp));
-    vc.onFrame(reply(0, 0, vc._wu16(2) .. vc._wu16(0)
-        .. vaultRow(1, 10, 1) .. vaultRow(2, 20, 2)));     -- Sword A + the Ring X pair vaulted
+    respond(0, 0, hp);
+    respond(0, 0, vc._wu16(2) .. vc._wu16(0)
+        .. vaultRow(1, 10, 1) .. vaultRow(2, 20, 2));     -- Sword A + the Ring X pair vaulted
     vc.noteJob(1);
     T = T + rc.BEAT + 1; rc.tick();
     T = T + 1; vc.pump(true);
-    vc.onFrame(reply(0, 0, vc._wu16(0) .. vc._wu16(0)));   -- empty layout
+    respond(0, 0, vc._wu16(0) .. vc._wu16(0));   -- empty layout
     T = T + rc.BEAT + 1;
     check('GVR29d the vaulted pieces push (2 of 5)', rc.tick(), 'pushed:2');
-    for _ = 1, 2 do T = T + 1; vc.pump(true); vc.onFrame(reply(0, 0, vc._wu16(0) .. vc._wu16(0))); end
+    for _ = 1, 2 do T = T + 1; vc.pump(true); respond(0, 0, vc._wu16(0) .. vc._wu16(0)); end
     T = T + 1; vc.pump(true);                              -- the success re-ask
-    vc.onFrame(reply(0, 0, vc._wu16(2) .. vc._wu16(0)
-        .. layoutEntry(1, 10, 1) .. layoutEntry(2, 20, 2)));
+    respond(0, 0, vc._wu16(2) .. vc._wu16(0)
+        .. layoutEntry(1, 10, 1) .. layoutEntry(2, 20, 2));
     T = T + rc.BEAT + 1;
     check('GVR29e the satisfied beat is clean', rc.tick(), 'clean');
     -- Unequip & Store: the deposit ack marks the mirror stale, the resync
@@ -27868,11 +27874,11 @@ end)();
     vc.requestDeposit({ { container = 0, slot = 3 } }, function() end);
     T = T + 1; vc.pump(true);
     check('GVR29f the deposit rides the wire', sent[#sent][5], vc.op.DEPOSIT);
-    vc.onFrame(reply(0, 0, vc._wu16(1) .. vc._wu16(0) .. string.char(0, 3) .. vc._wu16(0) .. vc._wu32(3)));
+    respond(0, 0, vc._wu16(1) .. vc._wu16(0) .. string.char(0, 3) .. vc._wu16(0) .. vc._wu32(3));
     T = T + 1; vc.pump(true);                              -- HELLO
-    vc.onFrame(reply(0, 0, hp));
-    vc.onFrame(reply(0, 0, vc._wu16(3) .. vc._wu16(0)
-        .. vaultRow(1, 10, 1) .. vaultRow(2, 20, 2) .. vaultRow(3, 30, 1)));
+    respond(0, 0, hp);
+    respond(0, 0, vc._wu16(3) .. vc._wu16(0)
+        .. vaultRow(1, 10, 1) .. vaultRow(2, 20, 2) .. vaultRow(3, 30, 1));
     check('GVR29g ...and the mirror is fresh again with Hat B', vc.state() == 'fresh' and vc.mirror.counts[30], 1);
     T = T + rc.BEAT + 1;
     check('GVR29h the next beat shelves the newly vaulted piece', rc.tick(), 'pushed:1');
@@ -27880,7 +27886,7 @@ end)();
         local q = vc._st().layoutSetQ or {};
         return q[1] ~= nil and q[1].e.itemId or 'not queued';
     end)(), 30);
-    T = T + 1; vc.pump(true); vc.onFrame(reply(0, 0, vc._wu16(0) .. vc._wu16(0)));
+    T = T + 1; vc.pump(true); respond(0, 0, vc._wu16(0) .. vc._wu16(0));
 
     -- AUTO-EVICT HOLDS IN THE FIELD (2026-08-30): the town service predicting
     -- 'not a town' keeps auto removals off the wire (they would only be
@@ -27902,15 +27908,15 @@ end)();
     CAP.n = 3;
     ug.setSetting('removals', 'auto');
     vc.pump(true); T = 6003; vc.pump(true);
-    vc.onFrame(reply(0, 0, hp));
-    vc.onFrame(reply(0, 0, VAULT5));
+    respond(0, 0, hp);
+    respond(0, 0, VAULT5);
     vc.noteJob(1);
     T = T + rc.BEAT + 1; rc.tick();
     T = T + 1; vc.pump(true);
-    vc.onFrame(reply(0, 0, vc._wu16(5) .. vc._wu16(0)
+    respond(0, 0, vc._wu16(5) .. vc._wu16(0)
         .. layoutEntry(1, 10, 1) .. layoutEntry(2, 20, 2)
         .. layoutEntry(3, 30, 1) .. layoutEntry(4, 40, 1)
-        .. layoutEntry(5, 31, 1)));                        -- 6 units on a 3 shelf
+        .. layoutEntry(5, 31, 1));                        -- 6 units on a 3 shelf
     T = T + rc.BEAT + 1; rc.tick();
     check('GVR30 auto-evict holds in the field (no REMOVE queued)', (function()
         for _, q in ipairs(vc._st().layoutSetQ or {}) do
@@ -27994,14 +28000,20 @@ end)();
     check('FGT18 ascensionxi: All Equipment on',  fg4.tabEnabled('All Equipment'), true);
     check('FGT19 ascensionxi: Sets on',           fg4.tabEnabled('Sets'), true);
     check('FGT20 ascensionxi: Triggers on',       fg4.tabEnabled('Triggers'), true);
-    check('FGT21 ascensionxi: Gear Helpers off',  fg4.tabEnabled('Gear Helpers'), false);
+    check('FGT21 ascensionxi: Gear Helpers on',   fg4.tabEnabled('Gear Helpers'), true);
     check('FGT22 ascensionxi: Job Helpers off',   fg4.tabEnabled('Job Helpers'), false);
-    check('FGT23 ascensionxi: every rostered menu row off', (function()
+    check('FGT23 ascensionxi: only hobby bar enabled in menu', (function()
         for _, r in ipairs(fg4.MENU) do
-            if fg4.menuEnabled(r.key) then return r.key; end
+            if fg4.menuEnabled(r.key) ~= (r.key == 'hobbybar') then return r.key; end
         end
         return true;
     end)(), true);
+
+    check('FGT25 ascensionxi: gathering enabled', fg4.helperEnabled('helm'), true);
+    for _, key in ipairs({ 'craft', 'fish', 'choco', 'obi', 'ammo', 'maxmp', 'future' }) do
+        check('FGT26 ascensionxi: helper hidden ' .. key, fg4.helperEnabled(key), false);
+    end
+    check('FGT27 no allowlist keeps future helpers', fg3.helperEnabled('future'), true);
 
     -- roster labels match the registrations they gate (a rename on either
     -- side must fail HERE, not vanish a tab in the field)
@@ -28210,6 +28222,12 @@ end)();
         local last = sent[#sent];
         return vc.parseFrame(s2c(last[5], last[6], status, flags, payload));
     end
+    local function respond(status, flags, payload)
+        vc.onFrame(reply(status, flags, payload));
+        if vc._st().pending and vc._st().pending.sentAt == nil then
+            T = T + vc.MIN_GAP + 0.01; vc.pump(true);
+        end
+    end
 
     -- a full login sync: HELLO -> two LIST pages -> committed mirror
     vc._reset(); T, sent, freshed = 0, {}, 0;
@@ -28217,15 +28235,15 @@ end)();
     check('GVC1 nothing sent before the settle', #sent, 0);
     T = 3; vc.pump(true);
     check('GVC2 the sync opens with HELLO', #sent == 1 and sent[1][5] == vc.op.HELLO, true);
-    vc.onFrame(reply(0, 0, hp));
+    respond(0, 0, hp);
     check('GVC3 hello OK -> LIST from cursor 0',
           #sent == 2 and sent[2][5] == vc.op.LIST and sent[2][9] == 0, true);
     local e1 = vc._wu32(5) .. vc._wu16(100) .. vc._wu16(1) .. id24;
     local e2 = vc._wu32(9) .. vc._wu16(200) .. vc._wu16(3) .. id24;
-    vc.onFrame(reply(0, 1, vc._wu16(2) .. vc._wu16(0) .. e1 .. e2));   -- MORE
+    respond(0, 1, vc._wu16(2) .. vc._wu16(0) .. e1 .. e2);   -- MORE
     check('GVC4 MORE -> next page from the last rowId', #sent == 3 and sent[3][9] == 9, true);
     local e3 = vc._wu32(12) .. vc._wu16(100) .. vc._wu16(1) .. id24;
-    vc.onFrame(reply(0, 0, vc._wu16(1) .. vc._wu16(0) .. e3));         -- final
+    respond(0, 0, vc._wu16(1) .. vc._wu16(0) .. e3);         -- final
     check('GVC5 the mirror committed fresh', vc.mirror.fresh, true);
     check('GVC6 counts merge by item id', vc.mirror.counts[100] == 2 and vc.mirror.counts[200] == 3, true);
     check('GVC7 the fresh hook fired once', freshed, 1);
@@ -28237,15 +28255,15 @@ end)();
     T = T + vc.SETTLE_ZONE + 1; vc.pump(true);
     local before = #sent;
     check('GVC10 the probe is a HELLO', sent[before][5], vc.op.HELLO);
-    vc.onFrame(reply(0, 0, vc._wu16(1) .. vc._wu16(0) .. vc._wu32(3) .. string.char(15, 124, 62, 0)));
+    respond(0, 0, vc._wu16(1) .. vc._wu16(0) .. vc._wu32(3) .. string.char(15, 124, 62, 0));
     check('GVC11 agreeing count -> fresh again, no LIST', vc.mirror.fresh == true and #sent == before, true);
 
     -- ...and a DISAGREEING count escalates to a full LIST
     vc.noteZoneIn();
     T = T + vc.SETTLE_ZONE + 1; vc.pump(true);
-    vc.onFrame(reply(0, 0, vc._wu16(1) .. vc._wu16(0) .. vc._wu32(9) .. string.char(15, 124, 62, 0)));
+    respond(0, 0, vc._wu16(1) .. vc._wu16(0) .. vc._wu32(9) .. string.char(15, 124, 62, 0));
     check('GVC12 disagreeing count -> LIST begins', sent[#sent][5], vc.op.LIST);
-    vc.onFrame(reply(0, 0, vc._wu16(0) .. vc._wu16(0)));   -- empty vault now
+    respond(0, 0, vc._wu16(0) .. vc._wu16(0));   -- empty vault now
     check('GVC13 empty vault commits clean', vc.mirror.fresh == true and next(vc.mirror.counts) == nil, true);
 
     -- the main-job edge: first sight arms nothing, a change marks stale
@@ -28268,7 +28286,7 @@ end)();
     -- BAD_OP = no vault on this server: dormant for the session, silently
     vc._reset(); T, sent = 200, {};
     vc.pump(true); T = 203; vc.pump(true);
-    vc.onFrame(reply(1, 0, ''));   -- BAD_OP
+    respond(1, 0, '');   -- BAD_OP
     check('GVC19 BAD_OP -> dormant', vc.state(), 'dormant');
     T = 300; vc.pump(true);
     check('GVC20 dormant sends nothing ever again', #sent, 1);
@@ -28296,17 +28314,17 @@ end)();
     -- a layout ask pages and commits, and never disturbs the fresh mirror
     vc._reset(); T, sent = 400, {};
     vc.pump(true); T = 403; vc.pump(true);            -- login sync begins
-    vc.onFrame(reply(0, 0, hp));
-    vc.onFrame(reply(0, 0, vc._wu16(1) .. vc._wu16(0) .. e1));   -- mirror: one row
+    respond(0, 0, hp);
+    respond(0, 0, vc._wu16(1) .. vc._wu16(0) .. e1);   -- mirror: one row
     check('GVC21 mirror fresh before the layout ask', vc.mirror.fresh, true);
     vc.noteJob(1);
     vc.requestLayout(0);
     T = 404; vc.pump(true);
     check('GVC22 layout ask on the wire', sent[#sent][5], vc.op.LAYOUT_LIST);
-    vc.onFrame(reply(0, 1, vc._wu16(1) .. vc._wu16(0) .. lent));               -- MORE
+    respond(0, 1, vc._wu16(1) .. vc._wu16(0) .. lent);               -- MORE
     check('GVC23 MORE -> next page from the last ordinal',
           sent[#sent][5] == vc.op.LAYOUT_LIST and sent[#sent][11] == 4, true);
-    vc.onFrame(reply(0, 0, vc._wu16(0) .. vc._wu16(0)));                       -- final, empty
+    respond(0, 0, vc._wu16(0) .. vc._wu16(0));                       -- final, empty
     check('GVC24 layout committed for the main job',
           vc.layoutCache.fresh == true and vc.layoutCache.job == 1 and #vc.layoutCache.entries == 1, true);
     check('GVC25 the mirror was never touched', vc.mirror.fresh, true);
@@ -28316,7 +28334,7 @@ end)();
     vc.requestWithdraw({ { rowId = 5, qty = 1 } }, function(a, e) acks, errw = a, e; end);
     T = 405; vc.pump(true);
     check('GVC26 withdraw on the wire', sent[#sent][5], vc.op.WITHDRAW);
-    vc.onFrame(reply(0, 0, vc._wu16(1) .. vc._wu16(0) .. vc._wu32(5) .. vc._wu16(1) .. vc._wu16(0)));
+    respond(0, 0, vc._wu16(1) .. vc._wu16(0) .. vc._wu32(5) .. vc._wu16(1) .. vc._wu16(0));
     check('GVC27 the callback carries the ack', acks ~= nil and acks[1].moved == 1 and errw == nil, true);
     check('GVC28 the mirror subtracted the row', #vc.mirror.rows == 0 and next(vc.mirror.counts) == nil, true);
     check('GVC29 ...and stays fresh (arithmetic, not a re-ask)', vc.mirror.fresh, true);
@@ -28332,12 +28350,12 @@ end)();
     -- a TOO_FAR frame refuses the whole withdraw and moves nothing
     vc._reset(); T, sent = 500, {};
     vc.pump(true); T = 503; vc.pump(true);
-    vc.onFrame(reply(0, 0, hp));
-    vc.onFrame(reply(0, 0, vc._wu16(1) .. vc._wu16(0) .. e1));
+    respond(0, 0, hp);
+    respond(0, 0, vc._wu16(1) .. vc._wu16(0) .. e1);
     acks, errw = nil, nil;
     vc.requestWithdraw({ { rowId = 5, qty = 1 } }, function(a, e) acks, errw = a, e; end);
     T = 504; vc.pump(true);
-    vc.onFrame(reply(4, 0, ''));   -- TOO_FAR
+    respond(4, 0, '');   -- TOO_FAR
     check('GVC30 TOO_FAR names itself', acks == nil and errw, 'too_far');
     check('GVC31 ...and the mirror stands untouched', #vc.mirror.rows == 1 and vc.mirror.fresh == true, true);
 
@@ -28353,14 +28371,14 @@ end)();
     vc.requestDeposit({ { container = 0, slot = 7 } }, function(a, e) dacks, derr = a, e; end);
     T = T + 1; vc.pump(true);
     check('GVC36 deposit on the wire', sent[#sent][5], vc.op.DEPOSIT);
-    vc.onFrame(reply(0, 0, vc._wu16(1) .. vc._wu16(0) .. string.char(0, 7) .. vc._wu16(0) .. vc._wu32(9)));
+    respond(0, 0, vc._wu16(1) .. vc._wu16(0) .. string.char(0, 7) .. vc._wu16(0) .. vc._wu32(9));
     check('GVC37 the callback carries the ack', dacks ~= nil and dacks[1].code == 0 and derr == nil, true);
     check('GVC38 a stored piece marks the mirror stale (LIST resync, not arithmetic)',
           vc.mirror.fresh, false);
     dacks, derr = nil, nil;
     vc.requestDeposit({ { container = 0, slot = 7 } }, function(a, e) dacks, derr = a, e; end);
     T = T + 1; vc.pump(true);
-    vc.onFrame(reply(4, 0, ''));   -- TOO_FAR
+    respond(4, 0, '');   -- TOO_FAR
     check('GVC39 a far deposit names itself', dacks == nil and derr, 'too_far');
 
     -- a withdraw that times out is NEVER re-sent with a fresh Seq: the
@@ -28400,7 +28418,7 @@ end)();
           tl:find('last sent HELLO#', 1, true) ~= nil and tl:find('sync-hello', 1, true) ~= nil, true);
     check('GVT3 ...awaiting a reply', tl:find('awaiting a reply', 1, true) ~= nil, true);
     -- the server refuses: UNAVAILABLE (what an un-attuned character would meet)
-    vc.onFrame(reply(vc.status.UNAVAILABLE, 0, ''));
+    respond(vc.status.UNAVAILABLE, 0, '');
     tl = vc.traceLine();
     check('GVT4 a refusal is named by status word', tl:find('refused: UNAVAILABLE', 1, true) ~= nil, true);
     check('GVT5 ...the reply is on record', tl:find('last reply HELLO#', 1, true) ~= nil, true);
@@ -28410,7 +28428,7 @@ end)();
     -- an unreadable HELLO (a changed server shape) says so
     vc._reset(); T, sent = 0, {};
     T = 3; vc.pump(true); T = 6; vc.pump(true);   -- arm (+2s), then send
-    vc.onFrame(reply(vc.status.OK, 0, 'short'));
+    respond(vc.status.OK, 0, 'short');
     check('GVT8 an unreadable HELLO is named, with the byte count',
           vc.traceLine():find('HELLO reply unreadable: 5-byte payload', 1, true) ~= nil, true);
     -- a timeout is named too, with the retry count
@@ -28421,7 +28439,7 @@ end)();
     -- BAD_OP: dormant, and the line says there is no retry
     vc._reset(); T, sent = 0, {};
     T = 3; vc.pump(true); T = 6; vc.pump(true);   -- arm (+2s), then send
-    vc.onFrame(reply(vc.status.BAD_OP, 0, ''));
+    respond(vc.status.BAD_OP, 0, '');
     check('GVT10 BAD_OP reads as dormant, no retry', vc.traceLine():find('no retry (dormant)', 1, true) ~= nil, true);
 
     -- ---- GVA: NOT_ATTUNED (2026-09-08, Henrik: "when DLAC has no access to
@@ -28434,7 +28452,7 @@ end)();
     vc._say = function(m) said[#said + 1] = m; end;
     vc._reset(); T, sent, freshed = 0, {}, 0;
     T = 3; vc.pump(true); T = 6; vc.pump(true);   -- arm (+2s), then send HELLO
-    vc.onFrame(reply(vc.status.NOT_ATTUNED, 0, ''));
+    respond(vc.status.NOT_ATTUNED, 0, '');
     check('GVA0 the state is unattuned (not dormant, not stale)', vc.state(), 'unattuned');
     check('GVA1 the player hears NOTHING in chat (the tab and /dl vault carry the quest)', #said, 0);
     check('GVA2 statusLine names the quest and the hint',
@@ -28464,7 +28482,7 @@ end)();
     -- the rare re-check fires once at RECHECK_UNATTUNED, and stays quiet on a second refusal
     T = T + vc.RECHECK_UNATTUNED; vc.pump(true);
     check('GVA9 one HELLO after the re-check interval', #sent == before + 1 and sent[#sent][5] == vc.op.HELLO, true);
-    vc.onFrame(reply(vc.status.NOT_ATTUNED, 0, ''));
+    respond(vc.status.NOT_ATTUNED, 0, '');
     check('GVA10 a second refusal says nothing either', #said, 0);
     check('GVA11 ...and ownership is not re-told (nothing changed)', freshed, 1);
     -- a reason (zone-in) pulls the re-check forward instead of pushing it out
@@ -28474,11 +28492,11 @@ end)();
     T = T + vc.SETTLE_ZONE + 1; vc.pump(true);
     check('GVA13 ...and the HELLO leaves', sent[#sent][5] == vc.op.HELLO and #sent == before + 2, true);
     -- the quest lands: the next OK clears the state, says so once, and syncs in full
-    vc.onFrame(reply(vc.status.OK, 0, vc._wu16(1) .. vc._wu16(0) .. vc._wu32(1) .. string.char(15, 124, 62, 0)));
+    respond(vc.status.OK, 0, vc._wu16(1) .. vc._wu16(0) .. vc._wu32(1) .. string.char(15, 124, 62, 0));
     check('GVA14 an OK reply ends unattuned', vc.state() ~= 'unattuned', true);
     check('GVA15 the player hears the vault opened, once (the ONE line that stays)', #said == 1 and said[1]:find('is finished', 1, true) ~= nil, true);
     check('GVA16 ...and a full LIST follows (not a probe short-cut)', sent[#sent][5], vc.op.LIST);
-    vc.onFrame(reply(vc.status.OK, 0, vc._wu16(1) .. vc._wu16(0) .. vc._wu32(11) .. vc._wu16(4444) .. vc._wu16(1) .. string.rep(' ', 24)));
+    respond(vc.status.OK, 0, vc._wu16(1) .. vc._wu16(0) .. vc._wu32(11) .. vc._wu16(4444) .. vc._wu16(1) .. string.rep(' ', 24));
     check('GVA17 the mirror is fresh with the row', vc.state() == 'fresh' and #vc.mirror.rows == 1, true);
     -- a queued write meets the refusal: its consumer hears 'not_attuned'
     vc._reset(); T, sent = 0, {}; said = {};
@@ -28486,7 +28504,7 @@ end)();
     vc.requestWithdraw({ { rowId = 1, qty = 1 } }, function(acks, err) werr = err; end);
     T = 3; vc.pump(true);
     check('GVA18 the withdraw leaves', sent[#sent][5], vc.op.WITHDRAW);
-    vc.onFrame(reply(vc.status.NOT_ATTUNED, 0, ''));
+    respond(vc.status.NOT_ATTUNED, 0, '');
     check('GVA19 ...and its consumer hears not_attuned', werr, 'not_attuned');
     vc._say = nil;
 

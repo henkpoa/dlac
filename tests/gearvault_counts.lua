@@ -91,6 +91,34 @@ wire.onFrame({ op = wire.op.LAYOUT_SET, seq = sent[6], status = 0, flags = 0,
     payload = wire._wu16(wire.code.OK) .. wire._wu16(0) });
 assert(called and not wire.layoutBusy() and not wire.mirror.fresh and not wire.layoutCache.fresh);
 
+-- Manual additions reserve only the edited item while both views catch up.
+local function manualState(id)
+    return wire.layoutAddState(id, wire.ZERO24);
+end
+assert(manualState(100).pending, 'the added item stays locked after its acknowledgement');
+assert(manualState(200).ready, 'another item must remain addable during sync');
+wire.requestLayoutSet({ job = 0, verb = wire.verb.ADD, itemId = 200, count = 1 });
+assert(manualState(200).pending, 'the second queued item must also lock');
+assert(manualState(300).reserved == 2, 'queued additions must reserve wardrobe capacity');
+assert(manualState(300).ready, 'a third item must remain addable');
+assert(not wire.layoutAddState(200, string.rep('\7', 24)).pending,
+    'different augmented copies must have independent locks');
+time = time + 10;
+wire.pump(true);
+assert(sent[5] == wire.op.LAYOUT_SET, 'the next queued addition precedes background sync');
+wire.onFrame({ op = wire.op.LAYOUT_SET, seq = sent[6], status = 0, flags = 0,
+    payload = wire._wu16(wire.code.OK) .. wire._wu16(0) });
+wire.layoutCache.fresh = true;
+assert(manualState(100).pending and manualState(200).pending,
+    'refreshing only the layout must not release item locks');
+assert(manualState(300).reserved == 2, 'acknowledgements retain capacity reservations');
+wire.noteZoneIn();
+assert(not manualState(300).ready, 'external changes must invalidate the batch snapshot');
+wire.cancelLayoutSets();
+wire.mirror.fresh = true; wire.layoutCache.fresh = true;
+assert(not manualState(100).pending and manualState(100).reserved == 0,
+    'a complete refresh releases reservations');
+
 -- A stale mirror cannot supply a new copy to automatic pair upgrades.
 reset({ entry(200, 1) }, { { itemId = 200, count = 2 } }, { [200] = 1 });
 vc.mirror.fresh = false; rc.tick();

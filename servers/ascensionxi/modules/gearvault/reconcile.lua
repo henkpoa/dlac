@@ -9,16 +9,17 @@
     sets the badge and a later beat in town simply succeeds), and a dlac
     restart mid-queue (nothing was queued; the next beat re-derives).
 
-    Additions ONLY, the GV3 law: the engine may add a missing identity or
-    RAISE a count (a pair the sets now need twice), and may never remove or
-    lower anything -- removals are the space-pressure flow (slice 4) or the
-    player's own hand in the tab. And only FROM THE VAULT, the 2026-08-30
+    The 2026-09-18 unused-gear rule also releases unpinned instance rows
+    proven unused by the current job's sets and triggers. Worn, outside,
+    and review rows are retained; incomplete derivations cannot remove gear.
+    Additions remain only FROM THE VAULT, the 2026-08-30
     law: a set-wanted piece the vault holds no copy of (it is in your bags,
     or not owned at all) is never pushed into a layout -- storing it with a
     Void Warden is what makes it eligible. Derived entries carry the ZERO blob
     (augment-pinned records are skipped by derivation -- the vault pane's
     "+ Layout" carries real blobs); only zero-blob layout entries are
-    compared against, so a manually-added augmented copy is never disturbed.
+    compared against on legacy servers. Augmented references protect their
+    item IDs during instance-mode cleanup even though auto-add skips them.
 
     The engine never derives WHILE BROWSING another job (the sets root
     answers for the browsed job there -- pushing WHM's gear into WAR's
@@ -88,6 +89,16 @@ function R.wornNow()
     return {};
 end
 
+function R.retireBlocked(itemId)
+    if D == nil then return 'layout service is not ready'; end
+    if type(D.browsing) == 'function' and D.browsing() then return 'return to your current job first'; end
+    if type(D.inTown) ~= 'function' or D.inTown() ~= true then return 'return to a city first'; end
+    local d = D.derive.derive({}, D.triggers(), D.resolve);
+    if not d.cleanupSafe then return 'resolve trigger names or dynamic gear helpers before sending this piece away'; end
+    if d.referencedIds[itemId] then return 'this item is used directly by a trigger; remove that trigger reference first'; end
+    return nil;
+end
+
 -- The tab's countdown (Henrik, 2026-09-10: the beat is invisible, so a
 -- stored piece "did nothing" for up to 8s). Returns seconds until the next
 -- check as a number, or a word for why the clock is not running:
@@ -138,6 +149,7 @@ function R.tick()
     if D == nil then return 'idle'; end
     local vc = D.vc;
     local now = (type(D.clock) == 'function') and D.clock() or os.clock();
+    local instances = type(vc.instanceMode) == 'function' and vc.instanceMode();
     if now - st.lastBeat < R.BEAT then return 'idle'; end
     if st.inFlight > 0 then return 'idle'; end            -- a run is still acking
     if type(vc.layoutBusy) == 'function' and vc.layoutBusy() then return 'idle'; end
@@ -163,7 +175,7 @@ function R.tick()
         st.seedStamp = vc.layoutCache.stamp;
         local keys = {};
         for _, e in ipairs(vc.layoutCache.entries or {}) do
-            keys[#keys + 1] = D.usage.keyOf(e.itemId, e.identity);
+            keys[#keys + 1] = D.usage.keyOf(e.itemId, e.identity, e.instanceId);
         end
         pcall(D.usage.seed, keys);
     end
@@ -177,16 +189,50 @@ function R.tick()
         local copy = {}; for k, v in pairs(e) do copy[k] = v; end
         copy.count = count;
         layout[#layout + 1] = copy;
-        if count < e.count then
+        if not instances and count < e.count then
             corrections[#corrections + 1] = { itemId = e.itemId, identity = e.identity,
                 count = e.count - count, hint = e.hint, pinned = e.pinned };
         end
     end
 
+    -- Release obsolete assignments before considering additions. Only a
+    -- complete derivation can prove absence; review rows and outside copies
+    -- remain assigned for recovery. Equipped pieces wait until taken off.
+    if instances and d.cleanupSafe and type(D.worn) == 'function'
+        and type(D.inTown) == 'function' and D.inTown() == true then
+        local worn, obsolete = D.worn(), {};
+        for _, e in ipairs(layout) do
+            if worn and not e.pinned and e.kind ~= 2 and (e.state == 0 or e.state == 1)
+                and not d.referencedIds[e.itemId] and not worn[e.itemId]
+                and not worn['i:' .. tostring(e.instanceId)] then
+                obsolete[#obsolete + 1] = e;
+            end
+        end
+        if #obsolete > 0 then
+            local n = math.min(#obsolete, R.MAX_PUSH);
+            st.inFlight = n;
+            for i = 1, n do
+                local e = obsolete[i];
+                local queued = vc.requestLayoutSet({ job = job, verb = vc.verb.REMOVE,
+                    itemId = e.itemId, instanceId = e.instanceId, ordinal = e.ordinal,
+                    identity = e.identity, count = 0, reason = 'unused-unpinned' }, function()
+                        st.inFlight = math.max(0, st.inFlight - 1);
+                        vc.requestLayout(0);
+                    end);
+                if not queued then st.inFlight = math.max(0, st.inFlight - 1); end
+            end
+            return 'released:' .. n;
+        end
+    end
+
     -- zero-blob layout entries only (see header): id -> count
-    local have = {};
+    local have, bound, review = {}, {}, {};
     for _, e in ipairs(layout) do
-        if e.identity == vc.ZERO24 then
+        if instances then
+            if e.kind == 2 then review[e.itemId] = true;
+            else have[e.itemId] = (have[e.itemId] or 0) + e.count; end
+            if (e.instanceId or 0) > 0 then bound[e.instanceId] = true; end
+        elseif e.identity == vc.ZERO24 then
             local c = have[e.itemId];
             if c == nil or c < e.count then have[e.itemId] = e.count; end
         end
@@ -240,6 +286,19 @@ function R.tick()
     -- shelves ONE; and the SHELF -- the engine never pushes an add that
     -- cannot fit, so a full shelf costs zero wire.
     local vaultCounts = (vc.mirror ~= nil and vc.mirror.counts) or {};
+    local candidates = {};
+    if instances then
+        vaultCounts = {};
+        for _, row in ipairs(vc.mirror.rows or {}) do
+            -- New augmented-copy choices stay manual, as before. Anchor
+            -- Ring's signature is EXP, not an augment requirement. Already
+            -- bound instances above keep satisfying demand after upgrades.
+            if not bound[row.instanceId] and (row.identity == vc.ZERO24 or row.itemId == 27556) then
+                candidates[#candidates + 1] = row;
+                vaultCounts[row.itemId] = (vaultCounts[row.itemId] or 0) + math.max(1, row.qty or 1);
+            end
+        end
+    end
     local adds = {};
     local waiting, waitingItems, notVaulted = 0, {}, 0;
     if vc.mirror.fresh ~= false and not (D.settings ~= nil and D.settings().additions == 'off') then
@@ -248,7 +307,7 @@ function R.tick()
             local c = have[it.itemId];
             local rec = type(D.lookupById) == 'function' and D.lookupById(it.itemId) or nil;
             local wantable = math.min(counts.count(it, rec), (vaultCounts[it.itemId] or 0) + (c or 0));
-            if wantable > (c or 0) then
+            if wantable > (c or 0) and not review[it.itemId] then
                 local excluded = false;
                 if D.usage ~= nil then
                     excluded = D.usage.isExcluded(D.usage.keyOf(it.itemId, nil));
@@ -261,7 +320,26 @@ function R.tick()
                     elseif #adds < R.MAX_PUSH then
                         units = units + need;
                         -- ADD increments on the server; never send the total.
-                        adds[#adds + 1] = { itemId = it.itemId, count = need };
+                        if instances then
+                            -- Select physical copies from the fresh mirror. A
+                            -- changed EXP/augment snapshot never causes a second
+                            -- addition of an already-bound instance.
+                            for _, row in ipairs(candidates) do
+                                if need <= 0 or #adds >= R.MAX_PUSH then break; end
+                                if row.itemId == it.itemId and not bound[row.instanceId] then
+                                    if (row.instanceId or 0) > 0 then
+                                        adds[#adds + 1] = { itemId = it.itemId, count = 1,
+                                            instanceId = row.instanceId, identity = row.identity };
+                                        bound[row.instanceId] = true; need = need - 1;
+                                    else
+                                        adds[#adds + 1] = { itemId = it.itemId, count = math.min(need, 8), identity = row.identity };
+                                        break;
+                                    end
+                                end
+                            end
+                        else
+                            adds[#adds + 1] = { itemId = it.itemId, count = need };
+                        end
                     end
                 end
             elseif (c == nil or c < it.count) then
@@ -314,6 +392,8 @@ function R.tick()
                     evicted = evicted + 1;
                     if c.assigned then tomb[#tomb + 1] = D.usage.keyOf(c.itemId, nil); end
                     vc.requestLayoutSet({ job = 0, verb = vc.verb.REMOVE, itemId = c.itemId,
+                                          reason = 'pressure-eviction',
+                                          instanceId = c.instanceId, ordinal = c.ordinal,
                                           count = 0, hint = 0, pinned = false, identity = c.identity },
                         function(code) if code == vc.code.OK then vc.requestLayout(0); end end);
                 end
@@ -359,7 +439,8 @@ function R.tick()
     for _, it in ipairs(adds) do
         local queued = vc.requestLayoutSet(
             { job = 0, verb = vc.verb.ADD, itemId = it.itemId, count = it.count,
-              hint = 0, pinned = false, identity = vc.ZERO24 },
+              reason = 'derived-from-sets',
+              hint = 0, pinned = false, identity = it.identity or vc.ZERO24, instanceId = it.instanceId },
             function(code, err)
                 st.inFlight = math.max(0, st.inFlight - 1);
                 if code == vc.code.OK then

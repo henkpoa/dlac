@@ -337,6 +337,13 @@ M.nativeOn = nativeOn;
 -- snapshot building (Ashita-facing)
 -- ---------------------------------------------------------------------------
 
+local function equipmentFacts(id, res)
+    local ci = require('dlac\\gear\\catalogindex');
+    local records = require('dlac\\gear\\gearrecord');
+    local _, catalog = ci.flat();
+    return records.equipMetadata(catalog[id], res);
+end
+
 -- The worn view for one slot: the trust window first (packets we just sent
 -- outrun the memory view by ~0.2s), then live equipment memory.
 local function currentEquip(slot, invMgr, resMgr)
@@ -356,11 +363,12 @@ local function currentEquip(slot, invMgr, resMgr)
         if ci == nil or ci.Id == 0 or ci.Count == 0 then return; end
         local res = resMgr:GetItemById(ci.Id);
         if res == nil then return; end
+        local facts = equipmentFacts(ci.Id, res);
         item = {
             Container = container, Index = index, Id = ci.Id,
             Count = ci.Count, Flags = ci.Flags,
             Name = string.lower(res.Name[1] or ''),
-            Level = res.Level, Jobs = res.Jobs, Slots = res.Slots,
+            Level = facts.Level, Jobs = facts.Jobs, Slots = facts.Slots,
             ResFlags = res.Flags,
             augment = augmentView(ci.Extra),
         };
@@ -414,11 +422,12 @@ local function liveSnapshot(wantNames)
                     if res ~= nil then
                         local nm = string.lower(res.Name[1] or '');
                         if wantNames == nil or wantNames[nm] then
+                            local facts = equipmentFacts(ci.Id, res);
                             snap.items[#snap.items + 1] = {
                                 Container = container, Index = index, Id = ci.Id,
                                 Count = ci.Count, Flags = ci.Flags,
-                                Name = nm, Level = res.Level, Jobs = res.Jobs,
-                                Slots = res.Slots, ResFlags = res.Flags,
+                                Name = nm, Level = facts.Level, Jobs = facts.Jobs,
+                                Slots = facts.Slots, ResFlags = res.Flags,
                                 augment = augmentView(ci.Extra),
                             };
                         end
@@ -475,13 +484,14 @@ local function stampTrust(stamps, invMgr)
                 local ci = invMgr:GetContainerItem(s.Container, s.Index);
                 if ci ~= nil and ci.Id ~= 0 then
                     local res = AshitaCore:GetResourceManager():GetItemById(ci.Id);
+                    local facts = equipmentFacts(ci.Id, res);
                     entry.Item = {
                         Container = s.Container, Index = s.Index, Id = ci.Id,
                         Count = ci.Count, Flags = ci.Flags,
                         Name = res ~= nil and string.lower(res.Name[1] or '') or '',
-                        Level = res ~= nil and res.Level or 0,
-                        Jobs = res ~= nil and res.Jobs or 0,
-                        Slots = res ~= nil and res.Slots or 0,
+                        Level = facts.Level or 0,
+                        Jobs = facts.Jobs or 0,
+                        Slots = facts.Slots or 0,
                         ResFlags = res ~= nil and res.Flags or 0,
                         augment = augmentView(ci.Extra),
                     };

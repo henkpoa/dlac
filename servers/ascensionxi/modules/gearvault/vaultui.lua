@@ -81,7 +81,9 @@ end
 local ZERO24 = string.rep('\0', 24);
 
 local function isAugmented(identity)
-    return type(identity) == 'string' and #identity > 0 and identity ~= ZERO24;
+    if type(identity) ~= 'string' or identity == ZERO24 then return false; end
+    local ok, text = pcall(function() return require('dlac\\gear\\gearoracle').describeAugments(identity); end);
+    return ok and type(text) == 'string' and text ~= '';
 end
 
 -- The augments ON a vault instance, readable: the identity blob IS the raw
@@ -186,6 +188,9 @@ end
 -- the refusal vocabulary is shared. Every accepted edit re-asks the layout
 -- so the pane catches up.
 local LAYOUT_CODE_WORDS = {
+    [17] = 'that copy no longer exists -- sync the layout',
+    [18] = 'store that copy in the vault first',
+    [19] = 'that copy is already in this job\'s layout',
     [12] = 'edits to your ACTIVE job\'s layout need a city (or your Mog House)',
     [15] = 'that entry is no longer in the layout -- re-syncing the view',
     [13] = 'the server did not recognise that item',
@@ -193,9 +198,19 @@ local LAYOUT_CODE_WORDS = {
 };
 
 local function layoutEdit(e, okText)
+    e.reason = e.reason or 'manual-layout';
+    if (e.job or 0) == 0 then e.job = vc.currentJob() or vc.layoutCache.job or 0; end
     local queued = vc.requestLayoutSet(e, function(code, err)
-        if code == vc.code.OK then
-            noteResult(okText, false);
+        if code == vc.code.OK or code == vc.code.PARTIAL then
+            if e.verb == vc.verb.ADD and e.pinned then
+                -- ADD does not apply the pin flag on the server. Queue PIN
+                -- before reconciliation can see the new unpinned assignment.
+                layoutEdit({ job = e.job, verb = vc.verb.PIN, itemId = e.itemId,
+                    instanceId = e.instanceId, identity = e.identity, count = e.count,
+                    hint = e.hint or 0, pinned = true }, okText);
+                return;
+            end
+            noteResult(code == vc.code.PARTIAL and (okText .. ' (partly applied; refreshing)') or okText, false);
             vc.requestLayout(0);
         elseif code ~= nil then
             noteResult(LAYOUT_CODE_WORDS[code] or ('layout edit refused (code ' .. tostring(code) .. ')'), true);
@@ -280,7 +295,7 @@ local function vaultView()
         local rec = recOf(r.itemId);
         total = total + 1;
         bucket(grouped, rec, {
-            rowId = r.rowId, itemId = r.itemId, qty = r.qty, identity = r.identity,
+            rowId = r.rowId, itemId = r.itemId, qty = r.qty, identity = r.identity, instanceId = r.instanceId,
             rec = rec, name = nameOf(r.itemId), sortKey = r.rowId,
         });
     end
@@ -296,13 +311,16 @@ local function layoutView()
     _lStamp = vc.layoutCache.stamp;
     local grouped, total = {}, 0;
     for _, e in ipairs(vc.layoutCache.entries or {}) do
+        if e.kind ~= 2 then
         local rec = recOf(e.itemId);
         total = total + 1;
         bucket(grouped, rec, {
             itemId = e.itemId, count = e.count, hint = e.hint, pinned = e.pinned,
-            identity = e.identity,
+            identity = e.identity, instanceId = e.instanceId, ordinal = e.ordinal, kind = e.kind, state = e.state,
+            location = e.location, slot = e.slot,
             rec = rec, name = nameOf(e.itemId), sortKey = e.ordinal,
         });
+        end
     end
     sortGroups(grouped);
     _lView = { grouped = grouped, total = total };
@@ -331,6 +349,7 @@ end
 -- Overlay mechanics: remember Y, lay the Selectable, rewind, draw content
 -- over it, then normalize Y.
 local _hotKey, _hotNext = nil, nil;
+local _openLayoutMenu, _layoutMenu = nil, nil;
 local function renderRow(e, level, COL, deco)
     deco = deco or {};
     local rowH = 19;
@@ -348,18 +367,25 @@ local function renderRow(e, level, COL, deco)
     imgui.Selectable('##gvrow' .. tostring(deco.key or e.name), _hotKey ~= nil and _hotKey == deco.key,
         ImGuiSelectableFlags_None or 0, { math.max(60, w - 24), rowH });
     local rowHovered = imgui.IsItemHovered();
+    if rowHovered and deco.context and imgui.IsMouseClicked(1) then _openLayoutMenu = e; end
     imgui.SetCursorPosY(y0);
 
     if icons ~= nil and type(icons.renderIcon) == 'function' then
         pcall(icons.renderIcon, e.itemId, 18);
         imgui.SameLine(0, 6);
     end
-    imgui.TextColored(COL.USABLE or { 1, 1, 1, 1 }, esc(e.name));
+    imgui.TextColored(deco.nameColor or COL.USABLE or { 1, 1, 1, 1 }, esc(e.name));
+    local warningHovered = deco.warning ~= nil and imgui.IsItemHovered();
     if e.rec ~= nil then
         imgui.SameLine(0, 8);
         imgui.TextColored(COL.LEVEL or COL.DIM, string.format('Lv%d', e.rec.Level or 0));
     end
     if type(deco.tags) == 'function' then deco.tags(); end
+    if deco.warning ~= nil then
+        imgui.SameLine(0, 8);
+        imgui.TextColored(deco.nameColor or COL.DIM, deco.warningTag or '[In bags]');
+        warningHovered = imgui.IsItemHovered() or warningHovered;
+    end
     if type(deco.buttons) == 'function' then
         deco.buttons(function()
             if deco.key ~= nil then _hotNext = deco.key; end
@@ -370,7 +396,10 @@ local function renderRow(e, level, COL, deco)
     -- past the last submitted item ("please submit an item e.g. Dummy()") --
     -- Henrik's screenshot, 2026-08-26.
 
-    if rowHovered then
+    if warningHovered then
+        if deco.key ~= nil then _hotNext = deco.key; end
+        imgui.SetTooltip(deco.warning);
+    elseif rowHovered then
         if deco.key ~= nil then _hotNext = deco.key; end
         showCard(e.rec, e.name, (type(deco.augOf) == 'function') and deco.augOf() or nil);
     end
@@ -573,7 +602,7 @@ local DUPLICATE_WORDS = {
 local function storeRows(rows, afterUnequip, onDone)
     local list = {};
     for _, r in ipairs(rows) do
-        list[#list + 1] = { container = r.container, slot = r.slot };
+        list[#list + 1] = { container = r.container, slot = r.slot, expectedInstanceId = r.expectedInstanceId };
     end
     local queued = vc.requestDeposit(list, function(acks, err)
         invalidateInv();
@@ -698,7 +727,8 @@ function M.pumpPending(now)
             invalidateWorn();
             -- the strip holds through the deposit's round trip and lets go
             -- on the answer, whatever it was
-            storeRows({ p.e }, true, function() releaseStrip(p); end);
+            if p.after then p.after(function() releaseStrip(p); end);
+            else storeRows({ p.e }, true, function() releaseStrip(p); end); end
         end
         return;
     end
@@ -710,7 +740,7 @@ function M.pumpPending(now)
     end
 end
 
-local function unequipAndStore(e, worn)
+local function unequipAndStore(e, worn, after)
     if M._pendingStore ~= nil then return; end   -- one at a time
     local d = dispatchMod();
     if d ~= nil and type(d.stripSlot) == 'function' then
@@ -727,7 +757,7 @@ local function unequipAndStore(e, worn)
         local canon = d.stripSlot(worn.label, M.LEASE);
         if canon ~= nil then
             invalidateWorn();
-            M._pendingStore = { e = e, worn = worn, at = os.clock(), seenAt = nil, strip = canon };
+            M._pendingStore = { e = e, worn = worn, at = os.clock(), seenAt = nil, strip = canon, after = after };
             return;
         end
     end
@@ -745,7 +775,76 @@ local function unequipAndStore(e, worn)
         return;
     end
     invalidateWorn();
-    M._pendingStore = { e = e, worn = worn, at = os.clock(), seenAt = nil };
+    M._pendingStore = { e = e, worn = worn, at = os.clock(), seenAt = nil, after = after };
+end
+
+function M.retireLayoutEntry(selected)
+    if M._pendingStore or vc.layoutBusy() then return noteResult('wait for the current gear move to finish', true); end
+    local e;
+    if vc.layoutCache.fresh and vc.currentJob() == vc.layoutCache.job then
+        for _, row in ipairs(vc.layoutCache.entries or {}) do
+            if row.instanceId == selected.instanceId and row.ordinal == selected.ordinal then e = row; break; end
+        end
+    end
+    if not e or (e.instanceId or 0) == 0 then
+        vc.requestLayout(0); return noteResult('refreshing this copy; try again once the layout is fresh', true);
+    end
+    local blocked = recon.retireBlocked(e.itemId);
+    if blocked then return noteResult(blocked, true); end
+    local name = nameOf(e.itemId);
+    local bag = { itemId = e.itemId, name = name, container = e.location, slot = e.slot };
+    if e.state ~= 0 then
+        local mapping = vc.instanceAt(e.location, e.slot, e.itemId);
+        if not mapping or mapping.instanceId ~= e.instanceId then
+            return noteResult('checking this copy\'s location; try again in a moment', true);
+        end
+        if e.state == 2 and e.location ~= 0 then
+            return noteResult('move this copy to Inventory before sending it to the Gear Vault', true);
+        end
+    end
+    local worn = e.state ~= 0 and wornAtSlot()[e.location * 256 + e.slot] or nil;
+    if worn then
+        local disp = dispatchMod();
+        local why = disp and disp.stripBlocked and disp.stripBlocked(worn.label);
+        if why then return noteResult('release the ' .. worn.label .. ' slot lock / Free equip first', true); end
+    end
+    local edit = services().removeGearFromSets;
+    if not edit then return noteResult('set editor is unavailable', true); end
+    local ok, err = edit(e.itemId, e.identity);
+    if not ok then return noteResult(err or 'could not update sets', true); end
+    local job = vc.currentJob();
+    local profile = require('dlac\\profiles');
+    local profileName = profile.activeName();
+    local function sameContext()
+        return vc.currentJob() == job and profile.activeName() == profileName;
+    end
+    local function move(done)
+        done = done or function() end;
+        if not sameContext() then done(); return noteResult('job or profile changed; gear move cancelled', true); end
+        local queued = vc.requestLayoutSet({ job = job, verb = vc.verb.REMOVE,
+            itemId = e.itemId, instanceId = e.instanceId, ordinal = e.ordinal, count = 0,
+            reason = 'remove-from-sets' }, function(code, why)
+                if code ~= vc.code.OK then
+                    done(); return noteResult('sets updated; vault move failed: ' .. tostring(why or code), true);
+                end
+                vc.requestLayout(0);
+                if e.state == 2 then
+                    local lookup = vc.requestLookup({ { container = bag.container, slot = bag.slot } }, function(rows)
+                        local at = rows and rows[1];
+                        if not sameContext() or not at or at.instanceId ~= e.instanceId then
+                            done(); return noteResult('sets and layout updated; could not verify this copy for deposit, use Store', true);
+                        end
+                        bag.expectedInstanceId = e.instanceId;
+                        storeRows({ bag }, worn ~= nil, done);
+                    end);
+                    if not lookup then done(); noteResult('sets updated; could not verify the deposit location', true); end
+                else
+                    done(); noteResult(name .. ' removed from sets and returned to Gear Vault');
+                end
+            end);
+        if not queued then done(); noteResult('sets updated; could not queue the vault move', true); end
+    end
+    if worn then unequipAndStore(bag, worn, move); else move(); end
 end
 
 -- Sub-tab selection. The order is FIXED -- Vault, then Inventory (Henrik:
@@ -1013,7 +1112,7 @@ function M.render(job, level)
                             if c.assigned and usg ~= nil then
                                 tomb[#tomb + 1] = usg.keyOf(c.itemId, nil);
                             end
-                            layoutEdit({ job = 0, verb = vc.verb.REMOVE, itemId = c.itemId,
+                            layoutEdit({ job = 0, verb = vc.verb.REMOVE, itemId = c.itemId, instanceId = c.instanceId, ordinal = c.ordinal,
                                          count = 0, hint = 0, pinned = false, identity = c.identity },
                                 nameOf(c.itemId) .. ' removed from the layout');
                         end
@@ -1032,11 +1131,74 @@ function M.render(job, level)
         M._marks = {};
     end
 
+    if type(vc.instanceMode) == 'function' and vc.instanceMode() then
+        local reviewCount = 0;
+        for _, e in ipairs(lc.entries or {}) do if e.kind == 2 then reviewCount = reviewCount + 1; end end
+        if reviewCount > 0 and imgui.TreeNode('Needs review (' .. reviewCount .. ')##gvreview') then
+            imgui.TextWrapped('Choose the copy this job should use, or dismiss the old entry. Missing entries use no wardrobe space.');
+            for _, e in ipairs(lc.entries or {}) do
+                if e.kind == 2 then
+                    local title = nameOf(e.itemId) .. (e.state == 2 and ' -- missing' or ' -- choose a copy');
+                    if e.pinned then title = title .. ' [pinned]'; end
+                    if imgui.TreeNode(title .. '##gvreview' .. e.ordinal) then
+                        local aug = augTextOf(e.identity);
+                        if aug then imgui.TextWrapped('Saved augments: ' .. aug); end
+                        local candidates = vc.bindingCandidates(e.itemId);
+                        for _, candidate in ipairs(candidates) do
+                            local label = candidate.where .. ' copy #' .. candidate.instanceId;
+                            local currentAug = augTextOf(candidate.identity);
+                            if currentAug then imgui.TextWrapped(currentAug); end
+                            if lc.fresh and vc.mirror.fresh and not vc.layoutBusy()
+                                and imgui.SmallButton('Use ' .. label .. '##gvbind' .. e.ordinal .. ':' .. candidate.instanceId) then
+                                layoutEdit({ job = lc.job, verb = vc.verb.BIND, selector = 2,
+                                    itemId = e.itemId, ordinal = e.ordinal, instanceId = candidate.instanceId },
+                                    nameOf(e.itemId) .. ' linked to the selected copy');
+                            end
+                        end
+                        if #candidates == 0 then imgui.TextWrapped('No available copy yet. Store it in the vault, or wait for wardrobe lookup.'); end
+                        local key = 'review' .. e.ordinal;
+                        local armed = e.pinned and confirmArmed(key);
+                        if lc.fresh and not vc.layoutBusy() and imgui.SmallButton((armed and 'Sure?' or 'Dismiss entry') .. '##gvdismiss' .. e.ordinal) then
+                            if e.pinned and not armed then _confirm = { key = key, at = os.clock() };
+                            else
+                                layoutEdit({ job = lc.job, verb = vc.verb.REMOVE, selector = 2,
+                                    itemId = e.itemId, ordinal = e.ordinal }, nameOf(e.itemId) .. ' old entry dismissed');
+                            end
+                        end
+                        imgui.TreePop();
+                    end
+                end
+            end
+            imgui.TreePop();
+        end
+        if vc.lost and #vc.lost.entries > 0 and imgui.TreeNode('Removed or replaced copies##gvlost') then
+            for _, e in ipairs(vc.lost.entries) do
+                local reason = e.state == 2 and ('replaced by copy #' .. e.replacedBy)
+                    or (e.state == 3 and 'identity needs review after rebuild' or 'no longer owned');
+                imgui.TextWrapped(nameOf(e.itemId) .. ' #' .. e.instanceId .. ': ' .. reason);
+            end
+            imgui.TreePop();
+        end
+    end
+
     local lv = filterView(layoutView(), needle);
     if lv.total > 0 then
         renderTree(lv, 'L', searching, forceClose, level, COL, function(e)
+            local outside = (e.instanceId or 0) > 0 and e.kind == 0 and e.state == 2;
+            local recycled = outside and e.location == 17;
             return {
                 key = 'L' .. tostring(e.sortKey),
+                context = true,
+                nameColor = outside and cGOLD or nil,
+                warningTag = recycled and '[Recycle Bin]' or nil,
+                warning = recycled and ('You discarded this copy, but it is still recoverable from the Recycle Bin.\n'
+                    .. 'It remains assigned to this job\'s layout and cannot be fetched by the vault.\n'
+                    .. 'Recover it to Inventory, then Store it at a Void Storage Warden to use it again.\n'
+                    .. 'Remove the layout entry if you no longer want it assigned.')
+                    or outside and ('This copy is in your bags, outside the Gear Vault and Mog Wardrobes.\n'
+                    .. 'It is still assigned to this job\'s layout, but the vault cannot fetch it from your bags.\n'
+                    .. 'Store this copy at a Void Storage Warden to make it available again.\n'
+                    .. 'You do not need to remove it from the layout or add it again.') or nil,
                 augOf = function() return isAugmented(e.identity) and augTextOf(e.identity) or nil; end,
                 tags = function()
                     local count = counts.count(e, e.rec);
@@ -1057,7 +1219,7 @@ function M.render(job, level)
                     local pinLabel = (e.pinned and 'Unpin' or 'Pin') .. '##gvp' .. tostring(e.sortKey);
                     if e.pinned then imgui.PushStyleColor(ImGuiCol_Button, { 0.55, 0.45, 0.15, 1.0 }); end
                     if imgui.SmallButton(pinLabel) then
-                        layoutEdit({ job = 0, verb = vc.verb.PIN, itemId = e.itemId, count = e.count,
+                        layoutEdit({ job = 0, verb = vc.verb.PIN, instanceId = e.instanceId, ordinal = e.ordinal, itemId = e.itemId, count = e.count,
                                      hint = e.hint or 0, pinned = not e.pinned, identity = e.identity },
                             e.pinned and (e.name .. ' unpinned') or (e.name .. ' pinned -- automations must ask before touching it'));
                     end
@@ -1074,7 +1236,7 @@ function M.render(job, level)
                     if armed then imgui.PushStyleColor(ImGuiCol_Button, { 0.75, 0.25, 0.20, 1.0 }); end
                     if imgui.SmallButton((armed and 'Sure?' or 'Remove') .. '##gvr' .. tostring(e.sortKey)) then
                         local wornNow = (recon ~= nil and type(recon.wornNow) == 'function') and recon.wornNow() or {};
-                        if wornNow[e.itemId] then
+                        if wornNow[e.itemId] or wornNow['i:' .. tostring(e.instanceId)] then
                             -- an equipped piece cannot leave the shelf: the
                             -- apply skips ITEM_LOCKED, so removing its entry
                             -- only desyncs the layout (Henrik's field round)
@@ -1085,14 +1247,14 @@ function M.render(job, level)
                             _confirm = nil;
                             -- removing the plain copy of a SET-WANTED id is
                             -- tombstoned, or the engine re-adds it next beat
-                            if usg ~= nil and e.identity == ZERO24 then
+                            if usg ~= nil and ((e.instanceId or 0) > 0 or e.identity == ZERO24) then
                                 local der = (recon ~= nil and type(recon.derivedIds) == 'function')
                                     and recon.derivedIds() or {};
                                 if der[e.itemId] then
                                     pcall(usg.exclude, { usg.keyOf(e.itemId, nil) });
                                 end
                             end
-                            layoutEdit({ job = 0, verb = vc.verb.REMOVE, itemId = e.itemId, count = 0,
+                            layoutEdit({ job = 0, verb = vc.verb.REMOVE, instanceId = e.instanceId, ordinal = e.ordinal, itemId = e.itemId, count = 0,
                                          hint = 0, pinned = false, identity = e.identity },
                                 e.name .. ' removed from the layout');
                         end
@@ -1219,17 +1381,20 @@ function M.render(job, level)
                     b1w = 210,   -- room for the named action (was 'Layout' -- jargon)
                     buttons = function(hot, b1, b2)
                         imgui.SameLine(b1);
-                        local have, units = 0, 0;
-                        for _, entry in ipairs(vc.layoutCache.entries or {}) do
+                        local admission = vc.layoutAddState(e.itemId, e.identity, e.instanceId);
+                        local have, units = 0, admission.reserved;
+                        for _, entry in ipairs(admission.entries or {}) do
                             units = units + counts.count(entry, recOf(entry.itemId));
-                            if entry.itemId == e.itemId and (entry.identity or ZERO24) == (e.identity or ZERO24) then
+                            if ((e.instanceId or 0) > 0 and entry.instanceId == e.instanceId)
+                                or ((e.instanceId or 0) == 0 and entry.itemId == e.itemId and (entry.identity or ZERO24) == (e.identity or ZERO24)) then
                                 have = have + (entry.count or 1);
                             end
                         end
-                        local busy = not vc.layoutCache.fresh or not vc.mirror.fresh or vc.layoutBusy();
-                        local present = have >= (counts.limit(e.rec) or math.huge);
+                        local present = have >= ((e.instanceId or 0) > 0 and 1 or (counts.limit(e.rec) or math.huge));
                         local full = occ.max > 0 and units >= occ.max;
-                        if busy then
+                        if admission.pending then
+                            imgui.TextColored(cDIM, 'Queued / syncing...');
+                        elseif not admission.ready then
                             imgui.TextColored(cDIM, 'Syncing layout...');
                         elseif present then
                             imgui.TextColored(cDIM, 'In Mog Wardrobe');
@@ -1239,13 +1404,13 @@ function M.render(job, level)
                             -- a manual add is the player overruling their own
                             -- removal: clear the tombstone first
                             if usg ~= nil then pcall(usg.unexclude, usg.keyOf(e.itemId, nil)); end
-                            layoutEdit({ job = 0, verb = vc.verb.ADD, itemId = e.itemId, count = 1,
-                                         hint = 0, pinned = false, identity = e.identity },
-                                e.name .. ' added to this job\'s layout');
+                            layoutEdit({ job = 0, verb = vc.verb.ADD, instanceId = e.instanceId, itemId = e.itemId, count = 1,
+                                         hint = 0, pinned = true, identity = e.identity },
+                                e.name .. ' added and pinned to this job\'s layout');
                         end
                         if imgui.IsItemHovered() then
                             hot();
-                            imgui.SetTooltip('Add THIS copy (augments included) to your current main job\'s\nMog Wardrobe layout. Live in a city (or your Mog House);\nrefused in the field.');
+                            imgui.SetTooltip('Add and pin THIS copy (augments included) to your current main job\'s\nMog Wardrobe layout. The pin keeps automatic cleanup from returning it.\nLive in a city (or your Mog House); refused in the field.');
                         end
                         imgui.SameLine(b2);
                         if imgui.SmallButton('Withdraw##gvw' .. tostring(e.rowId)) then
@@ -1415,6 +1580,22 @@ function M.render(job, level)
         imgui.EndTabBar();
     end
     imgui.EndChild();
+
+    -- Both popup calls share the parent window scope, like the floating menus.
+    if _openLayoutMenu then
+        _layoutMenu, _openLayoutMenu = _openLayoutMenu, nil;
+        imgui.OpenPopup('##gv-layout-actions');
+    end
+    if imgui.BeginPopup('##gv-layout-actions') then
+        if imgui.Selectable('Remove from sets and send to gear vault') and _layoutMenu then
+            M.retireLayoutEntry(_layoutMenu);
+            imgui.CloseCurrentPopup();
+        end
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('Remove this copy\'s references from the current job\'s sets and release its layout assignment.\nOther jobs are unchanged. Generic references to this item are removed too.');
+        end
+        imgui.EndPopup();
+    end
 
     if _lastMsg ~= nil then
         imgui.TextColored(_lastMsg.err and cERR or cDIM, esc(_lastMsg.text));

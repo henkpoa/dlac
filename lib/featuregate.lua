@@ -108,6 +108,14 @@ function M.menuEnabled(key)
     return M.enabled('menu', key);
 end
 
+-- A pack may expose only selected helpers. No allowlist preserves the
+-- existing roster, including helpers registered by pack modules.
+function M.helperEnabled(key)
+    local feats = packFeatures();
+    local helpers = type(feats) == 'table' and feats.helpers or nil;
+    return type(helpers) ~= 'table' or helpers[key] == true;
+end
+
 -- A Settings checkbox flip. Landing back ON the pack default forgets the
 -- override rather than pinning it -- see the overrides comment.
 function M.set(kind, key, on)

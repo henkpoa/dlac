@@ -446,6 +446,11 @@ function M.describeAugments(extra)
     if a == nil or type(a.describe) ~= 'function' then return nil; end
     return a.describe(extra);
 end
+function M.augmentKey(extra)
+    local a = augmod();
+    if a == nil or type(a.signature) ~= 'function' then return nil; end
+    return a.signature(extra);
+end
 function M.dumpAugments()
     local a = augmod();
     if a == nil or type(a.dumpToFile) ~= 'function' then return nil, nil, nil; end

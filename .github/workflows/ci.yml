@@ -29,5 +29,14 @@ jobs:
       - name: Saved gear repair regression
         run: lua5.4 tests/gear_repair.lua
 
+      - name: Custom equipment native pipeline regression
+        run: lua5.4 tests/custom_equipment.lua
+
+      - name: Server pack item icon regression
+        run: lua5.4 tests/itemicons.lua
+
       - name: Gear vault count regression
         run: lua5.4 tests/gearvault_counts.lua
+
+      - name: Gear vault instance regression
+        run: lua5.4 tests/gearvault_instances.lua

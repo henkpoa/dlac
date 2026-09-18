@@ -2180,7 +2180,11 @@ local function renderSlotGrid(idPrefix, gridHeight, selectedLabel, getItemId, ge
         imgui.PushStyleVar(ImGuiStyleVar_WindowPadding, { 0, 0 });
         imgui.PushStyleVar(ImGuiStyleVar_ItemSpacing, { 0, 0 });
     end
+    if opts.backgroundAlpha ~= nil then
+        imgui.PushStyleColor(ImGuiCol_ChildBg, { 0, 0, 0, 0 });
+    end
     imgui.BeginChild('##' .. idPrefix .. '_grid', { gridW or -1, gridHeight }, false);
+    if opts.backgroundAlpha ~= nil then imgui.PopStyleColor(); end
     local boxBg = { 0.10, 0.10, 0.13, 1.0 };
     local boxSel = { 0.42, 0.36, 0.16, 1.0 };          -- gold: the slot being edited
     for i, sl in ipairs(EQUIP_SLOTS) do
@@ -2191,6 +2195,16 @@ local function renderSlotGrid(idPrefix, gridHeight, selectedLabel, getItemId, ge
         local handle = icons.handleOf(id);
         local box = (opts.boxColorOf ~= nil) and opts.boxColorOf(sl) or nil;
         if box == nil then box = selected and boxSel or boxBg; end
+        -- Fade only the button surfaces. Global style alpha would fade the gear
+        -- textures and tooltips too. Scope these overrides to the button itself.
+        if opts.backgroundAlpha ~= nil then
+            local alpha = opts.backgroundAlpha;
+            box = { box[1], box[2], box[3], box[4] * alpha };
+            imgui.PushStyleColor(ImGuiCol_Button, { 0.18, 0.18, 0.22, alpha });
+            imgui.PushStyleColor(ImGuiCol_ButtonHovered, { 0.28, 0.28, 0.35, alpha });
+            imgui.PushStyleColor(ImGuiCol_ButtonActive, { 0.35, 0.35, 0.42, alpha });
+            imgui.PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0);
+        end
         if handle ~= nil then
             clicked = imgui.ImageButton(handle, { IMG, IMG }, { 0, 0 }, { 1, 1 }, PAD,
                 box, { 1, 1, 1, 1 });
@@ -2199,7 +2213,11 @@ local function renderSlotGrid(idPrefix, gridHeight, selectedLabel, getItemId, ge
             local isVirt = (vrec ~= nil and vrec.Virtual == true);
             local wheel = math.floor(BOX * 0.7);          -- 28 at BOX=40
             imgui.PushStyleColor(ImGuiCol_Button, box);
-            imgui.PushStyleColor(ImGuiCol_Text, COL.LOCKED);
+            local textColor = COL.LOCKED;
+            if opts.backgroundAlpha ~= nil then
+                textColor = { textColor[1], textColor[2], textColor[3], textColor[4] * opts.backgroundAlpha };
+            end
+            imgui.PushStyleColor(ImGuiCol_Text, textColor);
             clicked = imgui.Button(isVirt and ('##vbox' .. sl.label) or sl.short, { BOX, BOX });
             imgui.PopStyleColor(2);
             if isVirt then   -- the element wheel over the button (virtuals have no texture)
@@ -2209,6 +2227,10 @@ local function renderSlotGrid(idPrefix, gridHeight, selectedLabel, getItemId, ge
                     icons.drawElementWheel(wheel, x + (BOX - wheel) / 2, y + (BOX - wheel) / 2);
                 end);
             end
+        end
+        if opts.backgroundAlpha ~= nil then
+            imgui.PopStyleVar();
+            imgui.PopStyleColor(3);
         end
         -- The X goes on AFTER the button, so it lands over the icon: within one
         -- draw list, later is on top. Same order drawElementWheel relies on.
@@ -2987,6 +3009,42 @@ local function modeSetRefs(modeName, strip)
     return out;
 end
 _modeSetRefs = modeSetRefs;
+
+-- Remove references that could select this copy from the current job's
+-- committed sets. Generic references select any copy; another augment-pinned
+-- copy remains intact. Borrowing the builder preserves its serialization rules.
+function M.removeGearFromSets(itemId, identity)
+    if _setDirty then return false, 'commit or discard the open set edits first'; end
+    if require('dlac\\ui\\jobbrowse').active() then return false, 'return to your current job first'; end
+    local _, job = jobFile();
+    if not job then return false, 'current job unavailable'; end
+    local root = profsets.getSetsRoot();
+    if profsets.diag() then return false, 'fix the set file error before editing gear'; end
+    if type(root) ~= 'table' or type(root.Dynamic) ~= 'table' then return false, 'committed sets unavailable'; end
+    buildOwned();
+    local aug = gearOracle.augmentKey(identity or '');
+    if aug == nil then return false, 'augment information is unavailable'; end
+    local keepW, keepN, keepSel = M.working, M.workingSetName, ui.setSelected;
+    local edits = {};
+    local ok, err = pcall(function()
+        for _, name in ipairs(profsets.dynamicSetNames()) do
+            loadSet(name);
+            local changed, why = setmgr.removeItemCandidates(M.working, root.Dynamic[name], itemId, aug, recordPath);
+            if changed == nil then error('set ' .. name .. ': ' .. tostring(why)); end
+            if changed then edits[#edits + 1] = { name = name, slots = buildCommitSlots() }; end
+        end
+    end);
+    M.working, M.workingSetName, ui.setSelected = keepW, keepN, keepSel;
+    _setDirty = false;
+    if not ok then return false, tostring(err); end
+    local saved, why = setmgr.commitSets(job, edits);
+    if not saved then return false, why; end
+    profsets.invalidate();
+    if keepN then loadSet(keepN); ui.setSelected = keepSel; end
+    local live, reason = require('dlac\\dispatch').reloadSets();
+    if not live then return false, 'sets saved but could not activate: ' .. tostring(reason); end
+    return true;
+end
 
 -- Auto-build the working set from stat weights. Dynamic ON = a level-scaling list per
 -- slot (keep an item only if it out-scores every kept lower-Level item; order Level
@@ -5225,6 +5283,7 @@ end
 -- Shared services first (modules capture these at require time), then the tab
 -- modules -- each guarded so a broken module costs its tabs, never the window.
 host.provide({
+    removeGearFromSets = M.removeGearFromSets,
     -- shared state + palette + layout constants
     ui = ui, COL = COL, STATS_W = STATS_W,
     EQUIP_SLOTS = EQUIP_SLOTS, GEAR_OF = GEAR_OF,

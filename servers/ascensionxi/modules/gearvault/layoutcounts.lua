@@ -15,6 +15,11 @@ function M.limit(rec)
 end
 
 function M.count(entry, rec)
+    if entry.kind == 2 and entry.state == 2 then return 0; end
+    if entry.kind == 1 then return (entry.count or 0) > 0 and 1 or 0; end
+    if (entry.instanceId or 0) > 0 then
+        return (entry.state == 3 or entry.state == 4) and 0 or 1;
+    end
     local count = entry.count or 1;
     local limit = M.limit(rec);
     return limit and math.min(count, limit) or count;
