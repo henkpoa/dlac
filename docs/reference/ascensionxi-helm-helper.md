@@ -1,6 +1,6 @@
 # AscensionXI HELM helper — September 14, 2026
 
-## September 15 live reply fix (local, not released)
+## September 15 live reply fix (2026.09.15a)
 
 The live probe confirmed successful 0x80 replies every five seconds, carrying
 2,478 points and raw skills 5/0/107/39. Ashita exposes these 28-byte packets
@@ -10,9 +10,10 @@ the buffer contains enough bytes. The regression first failed on the padded
 buffer, then passed with this fix; it also rejects truncated packets and
 incorrect declared lengths. Earlier offline fixtures missed the backing buffer.
 
-The local addon version is `2026.09.15-dev` to distinguish the uncommitted
-HELM redesign and fixes from published `2026.09.14g`. Reload DLAC to load
-this fix; live UI confirmation is pending. No server change is required.
+The release candidate is `2026.09.15a`, distinguishing this HELM redesign
+and fix from published `2026.09.14g`. The owner confirmed the values populate
+after reloading the fixed addon on September 15. The subsequent label change
+from "Skill level" to "Skill" passed the UI smoke checks. No server change is required.
 The observation-only probe lives outside product code in `dlacprobe/helm.lua`.
 
 UI revision `2026.09.14d`: the menu shows the three gear columns, extra-roll
@@ -126,8 +127,10 @@ servers, zone resets and unchanged player-only `!points` output.
 passes 1,575 checks, including the simplified AXI surfaces and percentages.
 The server's standalone `lua tools/tests/helm_status.lua` also passes.
 
-Live client validation remains after the server update: reload dlac, open
-Gathering Gear, verify values appear without chat, earn/spend points and wait
-up to five seconds, then zone and confirm a fresh snapshot. Inspect the compact
-bar and arm near a Point to confirm equipping and combat stand-aside. No live
-client visual inspection, packet capture or server deployment was performed.
+Live packet capture and owner confirmation on September 15 established that
+the deployed server responds and the fixed addon displays the values. The
+release smoke check remains: sync the packaged addon on a normal installation,
+open Gathering Gear, then confirm points refresh after earning/spending and
+after zoning. Check the compact bar and equipping near a Point. The working
+copy used for playtesting is a Git checkout, so launcher delivery needs its
+own check after promotion.
