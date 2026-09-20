@@ -1379,10 +1379,13 @@ function M.statusLine()
     end
     local n = 0;
     for _, r in ipairs(M.mirror.rows) do n = n + math.max(1, r.qty); end
-    return string.format('gear vault: %s -- %d piece%s mirrored (%d row%s)%s%s.',
+    local pinMode = M.limits == nil and 'server support: unchecked'
+        or (M.instanceMode() and M.limits.atomicInstanceAdd and 'pinned instance adds: one request')
+        or 'pinned adds: ADD then PIN';
+    return string.format('gear vault: %s -- %d piece%s mirrored (%d row%s)%s%s -- %s.',
         s, n, (n == 1) and '' or 's', #M.mirror.rows, (#M.mirror.rows == 1) and '' or 's',
         (st.giveups > 0) and (' -- ' .. st.giveups .. ' failed sync(s), retrying') or '',
-        M.instanceMode() and (' -- instances, revision ' .. tostring(M.revision)) or '');
+        M.instanceMode() and (' -- instances, revision ' .. tostring(M.revision)) or '', pinMode);
 end
 
 -- The evidence line (/dl vault's second line): what left, what came back,

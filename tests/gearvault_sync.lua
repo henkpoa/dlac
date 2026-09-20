@@ -121,6 +121,8 @@ local function pinnedAdd(capabilities, instanceId, selector, status)
     setup();
     vc.limits = assert(vc.parseHello(w16(1) .. w16(capabilities) .. w32(0)
         .. string.char(15, 124, 62, 0) .. w32(10) .. string.char(13, 12, 41, 30)));
+    assert(vc.statusLine():find(capabilities == 3 and 'pinned instance adds: one request'
+        or 'pinned adds: ADD then PIN', 1, true), 'status identifies negotiated server support');
     local completed, result = 0, nil;
     vc.requestLayoutSet({ verb = vc.verb.ADD, itemId = 100, instanceId = instanceId,
         selector = selector, pinned = true }, function(code)

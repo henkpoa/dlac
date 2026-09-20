@@ -9,6 +9,14 @@ deltas and narrower invalidation.
 
 ## Implemented and verified
 
+Test build version: `2026.09.20a`. Run `/addon reload dlac`, then `/dl check` to
+verify the loaded addon version (not the engine file version). `/dl vault` shows
+`pinned instance adds: one request` when HELLO advertises atomic support, or
+`pinned adds: ADD then PIN` for the fallback. `server support: unchecked` means
+negotiation has not completed. Client batching/coalescing works with either server.
+The first implementation commit retained the old display version; this follow-up
+corrects that omission and makes the negotiated behavior visible.
+
 - `instanceAt` shares automatic lookup batches up to the negotiated maximum.
   Batches freeze when snapshotted, even if transport has not accepted the send.
   Explicit `requestLookup` callers retain their callback/result boundaries.
