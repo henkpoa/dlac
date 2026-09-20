@@ -381,3 +381,11 @@ and retries can still arrive together; server logs remain the acceptance test.
 with subsecond wall timestamps, op and sequence. It rotates at 2 MB to
 `.previous`. Compare it with the active map log after a reload and sync;
 enqueue timestamps are deliberately not labeled actual network transmission.
+
+### Sync efficiency investigation (2026-09-20)
+
+[Measured request overhead and proposed client/server improvements](gear-vault-sync-efficiency.md)
+records a 13-request manual-add sequence, a reproducible comparison of singleton
+and batched identity lookups, implementation status and remaining steps. Batching,
+refresh coalescing and negotiated atomic instance ADD are implemented locally;
+the shared pacing and six-second post-edit mirror delay are unchanged.

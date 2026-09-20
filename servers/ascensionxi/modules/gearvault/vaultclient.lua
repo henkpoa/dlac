@@ -89,6 +89,8 @@ M.GIVEUP_BACKOFF = 30;    -- seconds before a failed sync may try again
 M.SETTLE_JOB     = 6.0;   -- job-change swap stream settle (~3-4 s + slack)
 M.SETTLE_ZONE    = 5.0;   -- zone-in flood settle before the probe
 M.SETTLE_CHAT    = 3.0;   -- after an outgoing !vault mutation
+M.SETTLE_LAYOUT  = 0.25;  -- coalesce an inventory burst before reading its layout
+M.MAX_LAYOUT_WAIT = 1.0;  -- continuous inventory traffic cannot keep deferring the ask
 M.RECHECK_UNATTUNED = 300; -- an un-attuned character re-asks this rarely (one HELLO)
 
 -- ---------------------------------------------------------------------------
@@ -173,6 +175,7 @@ function M.parseHello(payload)
     if instances and #payload < 20 then return nil; end
     return {
         instances = instances, revision = instances and u32(payload, 12) or nil,
+        atomicInstanceAdd = instances and math.floor(u16(payload, 2) / 2) % 2 == 1,
         maxList2 = u8(payload, 16), maxLayoutList2 = u8(payload, 17),
         maxLookup = u8(payload, 18), maxLostList = u8(payload, 19),
         proto       = u16(payload, 0),
@@ -526,7 +529,11 @@ function M.noteJob(job)
         M.invalidateInstances();
         M.cancelLayoutSets('job_changed');
         M.markStale(M.SETTLE_JOB, 'job change');
-        M.layoutCache.fresh = false;   -- "the current job's layout" is a different job's now
+        M.invalidateLayout();   -- the current job's layout is a different job's now
+        if st.pending and st.pending.kind == 'layout' and st.pending.sentAt == nil then
+            st.pending, st.layoutAcc = nil, nil;
+            st.layoutWant = { job = 0 };
+        end
     end
     st.lastJob = job;
 end
@@ -544,7 +551,7 @@ function M.noteVaultChat()
     -- An outgoing `!vault ...` may mutate the store OR a layout; resync after
     -- it lands.
     M.markStale(M.SETTLE_CHAT, 'chat');
-    M.layoutCache.fresh = false;
+    M.invalidateLayout();
     st.probeOnly = false;
 end
 
@@ -552,8 +559,25 @@ end
 -- the same one-in-flight machinery as everything else.
 function M.requestLayout(job)
     if st.dormant or st.unattuned then return false; end   -- no layout exists to ask for
-    st.layoutWant = { job = job or 0 };
+    job = job or 0;
+    local target = job == 0 and (st.lastJob or 0) or job;
+    local p = st.pending;
+    if p and p.kind == 'layout' and p.job == target
+        and p.layoutEpoch == (st.layoutEpoch or 0) then return true; end
+    st.layoutWant = { job = job };
     return true;
+end
+
+-- Track changes separately from requests: UI/reconciler reads can share an
+-- in-flight snapshot, but a later inventory or edit event cannot be lost.
+function M.invalidateLayout(settle)
+    M.layoutCache.fresh = false;
+    st.layoutEpoch = (st.layoutEpoch or 0) + 1;
+    if settle then
+        local now = M._clock();
+        st.layoutDirtySince = st.layoutDirtySince or now;
+        st.layoutAfter = math.min(now + settle, st.layoutDirtySince + M.MAX_LAYOUT_WAIT);
+    end
 end
 
 -- Queue a withdraw (slice 2's one write verb). entries = { { rowId, qty } ... },
@@ -704,6 +728,25 @@ function M.requestLayoutSet(e, onDone)
     local copy = {}; for k, v in pairs(e) do copy[k] = v; end; e = copy;
     if (e.job or 0) == 0 and st.lastJob then e.job = st.lastJob; end
     if not M.instanceMode() and (e.verb == M.verb.BIND or (e.instanceId or 0) > 0) then return false; end
+    local atomicPin = M.instanceMode() and M.limits.atomicInstanceAdd
+        and (e.instanceId or 0) > 0 and (e.selector == nil or e.selector == 0);
+    if e.verb == M.verb.ADD and e.pinned and not atomicPin then
+        local done = onDone;
+        onDone = function(code, err, affected)
+            if code == M.code.OK or code == M.code.PARTIAL then
+                local pin = {}; for k, v in pairs(e) do pin[k] = v; end
+                pin.verb = M.verb.PIN;
+                -- The logical edit completes after both legacy operations.
+                -- Preserve a partial ADD result even when PIN succeeds.
+                local queued = M.requestLayoutSet(pin, function(pinCode, pinErr)
+                    if done then
+                        done(pinCode == M.code.OK and code or pinCode, pinErr, affected);
+                    end
+                end);
+                if not queued and done then done(nil, 'unavailable'); end
+            elseif done then done(code, err, affected); end
+        end;
+    end
     local admission = M.layoutAddState(e.itemId, e.identity, e.instanceId);
     if st.layoutBatch == nil and admission.ready then
         st.layoutBatch = { valid = true, entries = M.layoutCache.entries, items = {}, reserved = 0 };
@@ -773,17 +816,27 @@ end
 
 function M.requestLost()
     if not M.instanceMode() then return false; end
+    if M.lost.fresh and M.lost.revision == M.revision
+        and M.lost.epoch == (st.inventoryEpoch or 0) then return true; end
+    local p = st.pending;
+    if p and p.kind == 'lost' and p.lostRevision == M.revision
+        and p.lostEpoch == (st.inventoryEpoch or 0) then return true; end
     st.lostWant = true; M.lost.fresh = false; return true;
 end
 
-function M.requestLookup(entries, onDone)
+local function queueLookup(entries, onDone)
     if not M.instanceMode() or st.dormant or st.unattuned or type(entries) ~= 'table'
-        or #entries == 0 or #entries > math.min(41, M.limits.maxLookup) then return false; end
+        or #entries == 0 or #entries > math.min(41, M.limits.maxLookup) then return nil; end
     st.lookupQ = st.lookupQ or {};
     local copy = {};
     for _, e in ipairs(entries) do copy[#copy + 1] = { container = e.container, slot = e.slot }; end
-    st.lookupQ[#st.lookupQ + 1] = { entries = copy, onDone = onDone, attempts = 0 };
-    return true;
+    local req = { entries = copy, onDone = onDone, attempts = 0 };
+    st.lookupQ[#st.lookupQ + 1] = req;
+    return req;
+end
+
+function M.requestLookup(entries, onDone)
+    return queueLookup(entries, onDone) ~= nil;
 end
 
 local function finishLookup(entries, err)
@@ -799,11 +852,22 @@ function M.instanceAt(container, slot, itemId)
     if e and e.itemId == itemId and e.revision == M.revision then return e; end
     st.lookupWaiting = st.lookupWaiting or {};
     if not st.lookupWaiting[key] and M._clock() >= (st.lookupRetryAt or 0) then
-        st.lookupWaiting[key] = true;
-        if not M.requestLookup({ { container = container, slot = slot } }, function(_, err)
-            st.lookupWaiting[key] = nil;
-            if err then st.lookupRetryAt = M._clock() + 2; end
-        end) then st.lookupWaiting[key] = nil; end
+        local req = (st.lookupQ or {})[#(st.lookupQ or {})];
+        -- Once snapshotted, a batch is immutable, including while the shared
+        -- transport delays its send or a raced reply awaits another attempt.
+        if req and req.automatic and req.attempts == 0
+            and #req.entries < math.min(41, M.limits.maxLookup) then
+            req.entries[#req.entries + 1] = { container = container, slot = slot };
+        else
+            req = queueLookup({ { container = container, slot = slot } }, function(_, err)
+                for _, at in ipairs(req.entries) do
+                    st.lookupWaiting[tostring(at.container) .. ':' .. tostring(at.slot)] = nil;
+                end
+                if err then st.lookupRetryAt = M._clock() + 2; end
+            end);
+            if req then req.automatic = true; end
+        end
+        if req then st.lookupWaiting[key] = true; end
     end
     return nil;
 end
@@ -872,7 +936,7 @@ function M.pump(ready)
                     if req ~= nil and type(req.onDone) == 'function' then
                         pcall(req.onDone, nil, 'timeout');
                     end
-                    M.layoutCache.fresh = false;
+                    M.invalidateLayout();
                     M.markStale(M.SETTLE_JOB, 'layout edit timeout');
                     st.probeOnly = false;
                 elseif dead.op == M.op.INSTANCE_LOOKUP then
@@ -917,13 +981,15 @@ function M.pump(ready)
             M.instanceMode() and M.layoutSet2Payload(e) or M.layoutSetPayload(e), now);
         return;
     end
-    if st.layoutWant ~= nil then
+    if st.layoutWant ~= nil and now >= (st.layoutAfter or 0) then
         local want = st.layoutWant;
         st.layoutWant = nil;
         st.layoutAcc = {};
         st.layoutRev = nil;
+        st.layoutDirtySince, st.layoutAfter = nil, nil;
         beginOp('layout', M.instanceMode() and M.op.LAYOUT_LIST2 or M.op.LAYOUT_LIST, M.layoutPayload(want.job, 0), now, 0);
         st.pending.job = want.job == 0 and (st.lastJob or 0) or want.job;
+        st.pending.layoutEpoch = st.layoutEpoch or 0;
         return;
     end
 
@@ -940,7 +1006,10 @@ function M.pump(ready)
     end
     if M.instanceMode() and st.lostWant and M.mirror.fresh then
         st.lostWant = nil; st.lostAcc = {};
-        beginOp('lost', M.op.LOST_LIST, wu32(0), now, 0); return;
+        beginOp('lost', M.op.LOST_LIST, wu32(0), now, 0);
+        st.pending.lostRevision = M.revision;
+        st.pending.lostEpoch = st.inventoryEpoch or 0;
+        return;
     end
     if st.staleAt == nil or now < st.staleAt then return; end
 
@@ -1064,8 +1133,13 @@ function M.onFrame(f)
         if (f.flags or 0) % 2 == 1 then
             if last <= (p.cursor or 0) then st.lostAcc = nil; return true; end
             beginOp('lost', M.op.LOST_LIST, wu32(last), now, last);
+            st.pending.lostRevision, st.pending.lostEpoch = p.lostRevision, p.lostEpoch;
         else
-            M.lost = { entries = st.lostAcc, fresh = true }; st.lostAcc = nil;
+            if p.lostRevision ~= M.revision or p.lostEpoch ~= (st.inventoryEpoch or 0) then
+                st.lostAcc = nil; M.requestLost(); return true;
+            end
+            M.lost = { entries = st.lostAcc, fresh = true, revision = p.lostRevision, epoch = p.lostEpoch };
+            st.lostAcc = nil;
             if M._onLost then pcall(M._onLost, M.lost.entries); end
         end
         return true;
@@ -1085,7 +1159,7 @@ function M.onFrame(f)
         if modeChanged then
             -- A layout can arrive before the login HELLO. Its old rows lack
             -- instance/location fields even though the mirror is now v2.
-            M.layoutCache.fresh = false;
+            M.invalidateLayout();
             M.requestLayout(0);
         end
         M.noteRevision(h.revision);
@@ -1146,7 +1220,12 @@ function M.onFrame(f)
             return true;
         end
         if p.job ~= nil and p.job ~= 0 and p.job ~= st.lastJob then
-            st.layoutAcc = nil; M.layoutCache.fresh = false; return true;
+            st.layoutAcc = nil; M.layoutCache.fresh = false; M.requestLayout(0); return true;
+        end
+        if p.layoutEpoch ~= (st.layoutEpoch or 0) then
+            st.layoutAcc = nil;
+            M.requestLayout(p.job);
+            return true;
         end
         if chunk.revision ~= nil then
             M.noteRevision(chunk.revision);
@@ -1164,6 +1243,7 @@ function M.onFrame(f)
             if last <= (p.cursor or 0) then st.layoutAcc = nil; return true; end
             beginOp('layout', p.op, M.layoutPayload(p.job, last), now, last);
             st.pending.job = p.job;
+            st.pending.layoutEpoch = p.layoutEpoch;
         else
             M.layoutCache = {
                 job     = (p.job ~= nil and p.job ~= 0) and p.job or st.lastJob,
@@ -1186,13 +1266,13 @@ function M.onFrame(f)
         if ack == nil then
             -- An unreadable acknowledgement cannot prove the edit failed.
             -- Refresh both stores before offering another increment.
-            M.layoutCache.fresh = false;
+            M.invalidateLayout();
             M.requestLayout(0);
             M.markStale(M.SETTLE_JOB, 'layout edit malformed reply');
             st.probeOnly = false;
         end
         if ack ~= nil and (ack.code == M.code.OK or ack.code == M.code.PARTIAL) then
-            M.layoutCache.fresh = false;
+            M.invalidateLayout();
             if req ~= nil and req.e.verb ~= M.verb.PIN
                 and ((req.e.job or 0) == 0 or req.e.job == st.lastJob) then
                 -- Applying the active layout moves items between vault and

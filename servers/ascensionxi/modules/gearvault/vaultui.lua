@@ -202,14 +202,6 @@ local function layoutEdit(e, okText)
     if (e.job or 0) == 0 then e.job = vc.currentJob() or vc.layoutCache.job or 0; end
     local queued = vc.requestLayoutSet(e, function(code, err)
         if code == vc.code.OK or code == vc.code.PARTIAL then
-            if e.verb == vc.verb.ADD and e.pinned then
-                -- ADD does not apply the pin flag on the server. Queue PIN
-                -- before reconciliation can see the new unpinned assignment.
-                layoutEdit({ job = e.job, verb = vc.verb.PIN, itemId = e.itemId,
-                    instanceId = e.instanceId, identity = e.identity, count = e.count,
-                    hint = e.hint or 0, pinned = true }, okText);
-                return;
-            end
             noteResult(code == vc.code.PARTIAL and (okText .. ' (partly applied; refreshing)') or okText, false);
             vc.requestLayout(0);
         elseif code ~= nil then
