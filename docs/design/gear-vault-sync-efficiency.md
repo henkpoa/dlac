@@ -35,10 +35,11 @@ The historical measurements below remain the before-change evidence.
 
 Client verification: sync/probe, instances, counts, catalog, repair, native custom
 equipment, icons, HELM and probe suites pass; UI smoke passes 1,603 checks. The
-broad suite passes 7,499 checks using the committed feature manifest. The owner's
-pre-existing uncommitted `servers/ascensionxi/features.lua` enables macrobook and
-causes FGT23 in the working-tree run; a temporary `dofile` redirect to the committed
-manifest confirmed attribution without modifying that file.
+broad suite passes all 7,499 checks in the final working tree. Initially FGT23
+failed because the local macrobook setting was ahead of this checkout's test.
+Upstream PR #176 already contained that setting and its updated test; integrating
+main resolved the mismatch. The local feature contents were preserved and verified
+unchanged through that merge.
 
 Server verification: 9/9 native `instance_ops` cases pass. Testing uses an isolated
 runtime at `C:/repos/axi-vault-test-runtime`, source commit `37297e17fa`, the matching
