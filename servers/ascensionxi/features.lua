@@ -18,7 +18,7 @@ return {
     },
     menu = {
         lockstyle = false,
-        macrobook = false,
+        macrobook = true,
         hobbybar  = true,
         teleports = false,
         nm        = false,
