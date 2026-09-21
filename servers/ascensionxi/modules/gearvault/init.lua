@@ -107,7 +107,7 @@ pcall(function()
         -- timing is verified; snapshots happen only on later present beats.
         if e.id >= 0x01D and e.id <= 0x020 then
             vc.invalidateInstances();
-            if vc.instanceMode() then vc.layoutCache.fresh = false; end
+            if vc.instanceMode() then vc.invalidateLayout(vc.SETTLE_LAYOUT); end
         end
         if e.id == 0x00A then
             vc.noteZoneIn();
