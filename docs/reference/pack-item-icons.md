@@ -60,3 +60,31 @@ pack isolation, texture caching, equipment and set selection.
 Use `/addon reload dlac` after receiving the complete release. `/dl repair`
 is not required for artwork. Live rendering of this build remains pending.
 Rollback restores the previous complete addon release; no player-data migration.
+
+## September 23, 2026 pack refresh
+
+Generated from AscensionXI main `8af39bbf5e` using its normal `gen_pack.py`
+command and LFS-backed `client/dats/`, with the read-only base client at
+`C:/AscensionXI/Game/FINAL FANTASY XI`. This supersedes the pending-generator
+checkout described above: the generator and icon pipeline are now on server main.
+
+The pack contains 15,434 equipment records and 39 icon overrides. All twelve
+Forsaken/Rekindled weapons (19968-19979) have catalog records and bundled PNGs.
+The two other added records are upstream Colibri Scythe and Travesty; the
+catalog is reference data, not an obtainability list. Existing RSE level and
+item-stat corrections, two additional latent-stat items, and current zone YAML
+flags are included by the same complete generation run. No fallback item names
+were needed. Dynamic weapon effects implemented in server Lua are outside this
+SQL-based catalog's scope.
+
+Verification: all 21 server generator tests; DLAC's complete CI command set
+(7,499 core checks, 1,603 UI smoke checks, catalog/import, repair, equipment,
+icons, Gear Vault, HELM and probe regressions); pack lint (31 checks).
+Live in-game rendering and equipping still require player acceptance.
+
+Release version: `2026.09.23a`. Review the DLAC pack PR first, then the matching
+AscensionXI launcher catalog PR. The latter pins the exact reviewed DLAC commit
+and resolves every runtime file, including all icons. Human merge and channel
+promotion remain required. After installation, run `/addon reload dlac`, inspect
+Forsaken and Rekindled weapon names/icons/stats, and check equip/set selection.
+Rollback restores the previous complete addon pin; no player-data migration.
