@@ -1583,6 +1583,19 @@ return {
                     Evasion = 4,
                 }
             },
+            ForsakenKnuckles = {
+                Name = "Forsaken Knuckles",
+                Level = 10,
+                Id = 19969,
+                Model = 143,
+                Jobs = {"MNK"},
+                OneHanded = false,
+                Type = "HandToHand",
+                Stats = {
+                    DMG = 4,
+                    Delay = 570,
+                }
+            },
             FruitPunches = {
                 Name = "Fruit Punches",
                 Level = 1,
@@ -3652,6 +3665,22 @@ return {
                     MP = 50,
                     Accuracy = 57,
                     DT = -4,
+                }
+            },
+            RekindledKnuckles = {
+                Name = "Rekindled Knuckles",
+                Level = 10,
+                Id = 19975,
+                Model = 143,
+                Jobs = {"MNK"},
+                OneHanded = false,
+                Type = "HandToHand",
+                Stats = {
+                    DMG = 8,
+                    Delay = 570,
+                    STR = 2,
+                    Haste = 2,
+                    StoreTP = 2,
                 }
             },
             RelicKnuckles = {
@@ -7656,6 +7685,19 @@ return {
                     Evasion = 8,
                 }
             },
+            ForsakenDagger = {
+                Name = "Forsaken Dagger",
+                Level = 10,
+                Id = 19973,
+                Model = 157,
+                Jobs = {"THF"},
+                OneHanded = true,
+                Type = "Dagger",
+                Stats = {
+                    DMG = 5,
+                    Delay = 190,
+                }
+            },
             Fusetto = {
                 Name = "Fusetto",
                 Level = 80,
@@ -10132,6 +10174,23 @@ return {
                     Delay = 150,
                     Accuracy = 12,
                     Haste = 1,
+                }
+            },
+            RekindledDagger = {
+                Name = "Rekindled Dagger",
+                Level = 10,
+                Id = 19979,
+                Model = 157,
+                Jobs = {"THF"},
+                OneHanded = true,
+                Type = "Dagger",
+                Stats = {
+                    DMG = 12,
+                    Delay = 190,
+                    STR = 1,
+                    DEX = 1,
+                    AGI = 1,
+                    CriticalHitRate = 1,
                 }
             },
             RelicDagger = {
@@ -15062,6 +15121,19 @@ return {
                     Attack = 7,
                 }
             },
+            ForsakenRapier = {
+                Name = "Forsaken Rapier",
+                Level = 10,
+                Id = 19972,
+                Model = 182,
+                Jobs = {"RDM"},
+                OneHanded = true,
+                Type = "Sword",
+                Stats = {
+                    DMG = 9,
+                    Delay = 215,
+                }
+            },
             Fragarach = {
                 Name = "Fragarach",
                 Level = 74,
@@ -17446,6 +17518,21 @@ return {
                     WeaponSkillDamage = 4,
                     Regain = 30,
                     CRIT_DMG_INCREASE = 5,
+                }
+            },
+            RekindledRapier = {
+                Name = "Rekindled Rapier",
+                Level = 10,
+                Id = 19978,
+                Model = 182,
+                Jobs = {"RDM"},
+                OneHanded = true,
+                Type = "Sword",
+                Stats = {
+                    DMG = 16,
+                    Delay = 215,
+                    INT = 4,
+                    MND = 4,
                 }
             },
             RelicSword = {
@@ -22770,6 +22857,18 @@ return {
                 Stats = {
                     DMG = 260,
                     Delay = 480,
+                }
+            },
+            Travesty = {
+                Name = "Travesty",
+                Level = 99,
+                Id = 22238,
+                Jobs = {"WAR", "PLD", "DRK", "RUN"},
+                OneHanded = false,
+                Type = "GreatSword",
+                Stats = {
+                    DMG = 258,
+                    Delay = 430,
                 }
             },
             TrialBlade = {
@@ -28131,6 +28230,19 @@ return {
                     Accuracy = 15,
                 }
             },
+            ForsakenGreatAxe = {
+                Name = "Forsaken Great Axe",
+                Level = 10,
+                Id = 19968,
+                Model = 10,
+                Jobs = {"WAR"},
+                OneHanded = false,
+                Type = "GreatAxe",
+                Stats = {
+                    DMG = 21,
+                    Delay = 490,
+                }
+            },
             ForsetisAxe = {
                 Name = "Forseti's Axe",
                 Level = 58,
@@ -29521,6 +29633,22 @@ return {
                 Stats = {
                     DMG = 50,
                     Delay = 474,
+                }
+            },
+            RkndlGreatAxe = {
+                Name = "Rkndl. Great Axe",
+                Level = 10,
+                Id = 19974,
+                Model = 10,
+                Jobs = {"WAR"},
+                OneHanded = false,
+                Type = "GreatAxe",
+                Stats = {
+                    DMG = 40,
+                    Delay = 490,
+                    STR = 2,
+                    Accuracy = 2,
+                    RETALIATION = 2,
                 }
             },
             Router = {
@@ -30992,6 +31120,18 @@ return {
                     Delay = 513,
                 }
             },
+            ColibriScythe = {
+                Name = "Colibri Scythe",
+                Level = 1,
+                Id = 18567,
+                Jobs = {"All"},
+                OneHanded = false,
+                Type = "Scythe",
+                Stats = {
+                    DMG = 1,
+                    Delay = 528,
+                }
+            },
             CrepuscularScythe = {
                 Name = "Crepuscular Scythe",
                 Level = 99,
@@ -31604,6 +31744,19 @@ return {
                     DMG = 152,
                     Delay = 528,
                     Accuracy = 15,
+                }
+            },
+            ForsakenSickle = {
+                Name = "Forsaken Sickle",
+                Level = 10,
+                Id = 19971,
+                Model = 195,
+                Jobs = {"BLM"},
+                OneHanded = false,
+                Type = "Scythe",
+                Stats = {
+                    DMG = 23,
+                    Delay = 470,
                 }
             },
             FourthZaghnal = {
@@ -33020,6 +33173,21 @@ return {
                     ADDS_WEAPONSKILL = 108,
                     AFTERMATH = 45,
                     MAGIC_DAMAGE = 217,
+                }
+            },
+            RekindledSickle = {
+                Name = "Rekindled Sickle",
+                Level = 10,
+                Id = 19977,
+                Model = 195,
+                Jobs = {"BLM"},
+                OneHanded = false,
+                Type = "Scythe",
+                Stats = {
+                    DMG = 36,
+                    Delay = 470,
+                    INT = 4,
+                    ELEM = 2,
                 }
             },
             RelicScythe = {
@@ -46787,6 +46955,19 @@ return {
                     MagicAttackBonus = 5,
                 }
             },
+            ForsakenClub = {
+                Name = "Forsaken Club",
+                Level = 10,
+                Id = 19970,
+                Model = 105,
+                Jobs = {"WHM"},
+                OneHanded = true,
+                Type = "Club",
+                Stats = {
+                    DMG = 5,
+                    Delay = 310,
+                }
+            },
             FourthMace = {
                 Name = "Fourth Mace",
                 Level = 71,
@@ -49261,6 +49442,21 @@ return {
                 Stats = {
                     DMG = 40,
                     Delay = 320,
+                }
+            },
+            RekindledClub = {
+                Name = "Rekindled Club",
+                Level = 10,
+                Id = 19976,
+                Model = 105,
+                Jobs = {"WHM"},
+                OneHanded = true,
+                Type = "Club",
+                Stats = {
+                    DMG = 20,
+                    Delay = 310,
+                    MND = 4,
+                    HEALING = 2,
                 }
             },
             RelicMaul = {
@@ -123627,7 +123823,7 @@ return {
         },
         CustomTunic = {
             Name = "Custom Tunic",
-            Level = 33,
+            Level = 30,
             Id = 12654,
             Model = 31,
             Jobs = {"All"},
@@ -123643,7 +123839,7 @@ return {
         },
         CustomVest = {
             Name = "Custom Vest",
-            Level = 33,
+            Level = 30,
             Id = 12655,
             Model = 31,
             Jobs = {"All"},
@@ -124930,7 +125126,7 @@ return {
         },
         EldersSurcoat = {
             Name = "Elder's Surcoat",
-            Level = 33,
+            Level = 30,
             Id = 12660,
             Model = 31,
             Jobs = {"All"},
@@ -132144,7 +132340,7 @@ return {
         },
         MagnaBodice = {
             Name = "Magna Bodice",
-            Level = 33,
+            Level = 30,
             Id = 12657,
             Model = 31,
             Jobs = {"All"},
@@ -132186,7 +132382,7 @@ return {
         },
         MagnaJerkin = {
             Name = "Magna Jerkin",
-            Level = 33,
+            Level = 30,
             Id = 12656,
             Model = 31,
             Jobs = {"All"},
@@ -138334,7 +138530,7 @@ return {
         },
         SavageSeparates = {
             Name = "Savage Separates",
-            Level = 33,
+            Level = 30,
             Id = 12659,
             Model = 31,
             Jobs = {"All"},
@@ -142938,7 +143134,7 @@ return {
         },
         WonderKaftan = {
             Name = "Wonder Kaftan",
-            Level = 33,
+            Level = 30,
             Id = 12658,
             Model = 31,
             Jobs = {"All"},
@@ -189045,7 +189241,7 @@ return {
         },
         CustomPants = {
             Name = "Custom Pants",
-            Level = 31,
+            Level = 30,
             Id = 12872,
             Model = 31,
             Jobs = {"All"},
@@ -189087,7 +189283,7 @@ return {
         },
         CustomSlacks = {
             Name = "Custom Slacks",
-            Level = 31,
+            Level = 30,
             Id = 12871,
             Model = 31,
             Jobs = {"All"},
@@ -190339,7 +190535,7 @@ return {
         },
         EldersBraguette = {
             Name = "Elder's Braguette",
-            Level = 31,
+            Level = 30,
             Id = 12877,
             Model = 31,
             Jobs = {"All"},
@@ -196263,7 +196459,7 @@ return {
         },
         MagnaFChausses = {
             Name = "Magna F Chausses",
-            Level = 31,
+            Level = 30,
             Id = 12874,
             Model = 31,
             Jobs = {"All"},
@@ -196279,7 +196475,7 @@ return {
         },
         MagnaMChausses = {
             Name = "Magna M Chausses",
-            Level = 31,
+            Level = 30,
             Id = 12873,
             Model = 31,
             Jobs = {"All"},
@@ -201335,7 +201531,7 @@ return {
         },
         SavageLoincloth = {
             Name = "Savage Loincloth",
-            Level = 31,
+            Level = 30,
             Id = 12876,
             Model = 31,
             Jobs = {"All"},
@@ -205380,7 +205576,7 @@ return {
         },
         WonderBraccae = {
             Name = "Wonder Braccae",
-            Level = 31,
+            Level = 30,
             Id = 12875,
             Model = 31,
             Jobs = {"All"},
@@ -224552,7 +224748,6 @@ return {
             Type = "Feet",
             Stats = {
                 DEF = 9,
-                STEALTH = 1,
             }
         },
         Socks = {

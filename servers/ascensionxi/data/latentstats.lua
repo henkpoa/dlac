@@ -2952,10 +2952,20 @@ return {
         { stat = "DMG_RATING", add = 2, cond = "IN_ASSAULT", param = 0 },
         { stat = "RangedAttack", add = 10, cond = "IN_ASSAULT", param = 0 },
     },
+    [18692] = {
+        { stat = "Accuracy", add = 6, cond = "ZONE", param = 54 },
+        { stat = "Accuracy", add = 6, cond = "ZONE", param = 62 },
+        { stat = "Accuracy", add = 6, cond = "ZONE", param = 65 },
+    },
     [18693] = {
         { stat = "MagicAttackBonus", add = 2, cond = "ZONE", param = 54 },
         { stat = "MagicAttackBonus", add = 2, cond = "ZONE", param = 62 },
         { stat = "MagicAttackBonus", add = 2, cond = "ZONE", param = 65 },
+    },
+    [18694] = {
+        { stat = "CriticalHitRate", add = 5, cond = "ZONE", param = 54 },
+        { stat = "CriticalHitRate", add = 5, cond = "ZONE", param = 62 },
+        { stat = "CriticalHitRate", add = 5, cond = "ZONE", param = 65 },
     },
     [18708] = {
         { stat = "REGEN_DOWN", add = 20, cond = "STATUS_EFFECT_ACTIVE", param = 3 },
