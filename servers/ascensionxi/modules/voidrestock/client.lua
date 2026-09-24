@@ -2,11 +2,11 @@
 -- All traffic shares AscensionXI's transport gate with Gear Vault and HELM.
 -- Moves are never retried: an unanswered mutation has an unknown outcome.
 local transport = require('dlac\\servers\\ascensionxi\\transport');
-local M = { counts = {}, fresh = false, message = 'Visit a Void Coffer to refresh stock.' };
+local M = { counts = {}, fresh = false, message = 'Visit Void Storage to refresh stock.' };
 M._clock, M._send, M._received = transport._clock, transport.send, transport.received;
 local pending, page, proto, seq = nil, nil, nil, os.time() % 256;
 local statusText = { [1] = 'Unsupported request', [2] = 'Malformed request', [3] = 'Busy',
-    [4] = 'Move closer to a Void Coffer', [5] = 'Void Storage unavailable',
+    [4] = 'Move closer to Void Storage', [5] = 'Void Storage unavailable',
     [6] = 'Unsupported protocol', [7] = 'Void Storage is not unlocked' };
 M.reasons = { [0] = 'OK', [1] = 'Not storable', [2] = 'Storage tier locked',
     [3] = 'Not held or item busy', [4] = 'No stored stock', [5] = 'Inventory full',
@@ -24,7 +24,7 @@ function M.busy() return pending ~= nil or page ~= nil; end
 function M.reset()
     pending, page, proto = nil, nil, nil;
     M.counts, M.fresh = {}, false;
-    M.message = 'Visit a Void Coffer to refresh stock.';
+    M.message = 'Visit Void Storage to refresh stock.';
 end
 local function fail(why)
     local cb = pending and pending.done;

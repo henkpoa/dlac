@@ -120,6 +120,10 @@ Generation prompt:
 
 The generator returned a 1254px RGBA image; the original alpha is preserved.
 The tray displays it at 30px with 3px frame padding, matching E-Box's 36px button.
-The owner also reported no nearby-storage detection; the exact live target
-name is pending. Current server-reference code and the watcher say "Void
-Coffer". Do not claim a proximity fix from the icon/layout work alone.
+The missing tray was reproduced through the real entity watcher. The local
+server working branch still named the entity "Void Coffer", but its
+`origin/main` code uses `packetName = 'Void Storage'` and the Hollow Mirror
+model shown in the owner's screenshot. The watcher now recognizes both
+names, retaining the 5-yalm range. Tests cover the current name, the legacy
+name, out-of-range portals and unrelated entities. In-game confirmation of
+the new UI and proximity behavior remains with the owner.

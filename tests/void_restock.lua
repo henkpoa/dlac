@@ -88,6 +88,19 @@ assert(not client.fresh, 'non-advancing cursor rejected');
 
 -- Real controller, injected world; no player files or packets are touched.
 local restock = require(base .. 'restock');
+local watcher = require('dlac\\lib\\entwatch');
+local probeName, distance = 'Void Storage ', 9;
+local probe = { present = function(i) return i == 0x802; end,
+    name = function() return probeName; end, distSq = function() return distance; end };
+restock.near(); watcher._sweep(probe, os.clock());
+assert(restock.near(), 'live Void Storage portal must enable proximity and tray');
+distance = 36; watcher._sweep(probe, os.clock() + 3);
+assert(not restock.near(), 'portal beyond 5 yalms stays out of range');
+probeName, distance = 'Void Coffer', 9; watcher._sweep(probe, os.clock() + 6);
+assert(restock.near(), 'legacy Void Coffer still works');
+probeName = 'Other Portal'; watcher._sweep(probe, os.clock() + 9);
+assert(not restock.near(), 'unrelated portals never enable storage');
+watcher.unwatch('voidrestock');
 local realItem = restock.item;
 local oldCore = AshitaCore;
 AshitaCore = { GetResourceManager = function() return { GetItemById = function(_, id)

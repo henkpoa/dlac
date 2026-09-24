@@ -17,9 +17,13 @@ M._context = function()
     return statefile.charDir(), j;
 end;
 M.near = function()
-    watch.watch('voidrestock', 'Void Coffer');
-    local d = watch.nearest('Void Coffer');
-    return d ~= nil and d <= 5;
+    local nearest;
+    for _, name in ipairs({ 'Void Storage', 'Void Coffer' }) do
+        watch.watch('voidrestock', name);
+        local d = watch.nearest(name);
+        if d ~= nil and (nearest == nil or d < nearest) then nearest = d; end
+    end
+    return nearest ~= nil and nearest <= 5;
 end;
 function M.item(id)
     local out;
@@ -138,7 +142,7 @@ function M.tick()
     if not M.syncContext() then return; end
     local near = M.near();
     if not near and wasNear then
-        M.stop('Left the Void Coffer; restock stopped.'); client.reset(); settling = nil;
+        M.stop('Left Void Storage; restock stopped.'); client.reset(); settling = nil;
     end
     if near and not wasNear and not client.busy() then client.refresh(); end
     wasNear = near;

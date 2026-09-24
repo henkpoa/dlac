@@ -101,7 +101,7 @@ function M.render(deps, availW)
     imgui.Text('Void Restock');
     imgui.TextWrapped('Keep your chosen quantities in Inventory. Job targets override the same item on the always list. Unlisted items stay untouched.');
     local near, busy = restock.near(), restock.busy();
-    imgui.TextDisabled(near and 'Void Coffer in range' or 'Move within 5 yalms of a Void Coffer to move items.');
+    imgui.TextDisabled(near and 'Void Storage in range' or 'Move within 5 yalms of Void Storage to move items.');
     button('Refresh stock', near and not busy, function() client.refresh(); end);
     imgui.SameLine();
     button('Fetch shortfall', near and not busy and client.fresh and plan and #plan.fetch > 0,
@@ -113,7 +113,7 @@ function M.render(deps, availW)
     imgui.TextWrapped(esc(client.message));
     if restock.message ~= '' then imgui.TextWrapped(esc(restock.message)); end
     local nudge = { restock.config.nudge };
-    if imgui.Checkbox('Show buttons near Void Coffers', nudge) then
+    if imgui.Checkbox('Show buttons near Void Storage', nudge) then
         local config = copy(); config.nudge = nudge[1]; restock.save(config);
     end
     drawList('character', 'Always (every job)', restock.config.character, counts or {}, width);
