@@ -2282,6 +2282,7 @@ pcall(function()
         -- carries .Slot (flattenGear), so lockstyle filters by slot without
         -- re-walking the Main/Range category nesting.
         allEquip = buildAllEquip,
+        ownsLook = owned.haveAppearance,
         -- Owned lookup BY ID, for the same apostrophe reason as catalogById: the
         -- picker must decide "do you own this catalog row" and hand back YOUR
         -- spelling of the name. Matching "Arhats Gi" (catalog) against gear.lua's

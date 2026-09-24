@@ -28002,9 +28002,9 @@ end)();
     check('FGT20 ascensionxi: Triggers on',       fg4.tabEnabled('Triggers'), true);
     check('FGT21 ascensionxi: Gear Helpers on',   fg4.tabEnabled('Gear Helpers'), true);
     check('FGT22 ascensionxi: Job Helpers off',   fg4.tabEnabled('Job Helpers'), false);
-    check('FGT23 ascensionxi: hobby bar and macro book enabled in menu', (function()
+    check('FGT23 ascensionxi: lockstyle, hobby bar and macro book enabled in menu', (function()
         for _, r in ipairs(fg4.MENU) do
-            if fg4.menuEnabled(r.key) ~= (r.key == 'hobbybar' or r.key == 'macrobook') then return r.key; end
+            if fg4.menuEnabled(r.key) ~= (r.key == 'lockstyle' or r.key == 'hobbybar' or r.key == 'macrobook') then return r.key; end
         end
         return true;
     end)(), true);

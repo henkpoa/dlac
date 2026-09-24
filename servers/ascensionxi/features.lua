@@ -17,7 +17,7 @@ return {
         jobhelpers  = false,
     },
     menu = {
-        lockstyle = false,
+        lockstyle = true,
         macrobook = true,
         hobbybar  = true,
         teleports = false,
@@ -25,5 +25,5 @@ return {
         wishlist  = false,
     },
     -- Also controls the shared hobby bar. Add helpers as they are enabled.
-    helpers = { helm = true },
+    helpers = { helm = true, restock = true },
 };
