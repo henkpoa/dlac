@@ -23,7 +23,7 @@ end
 function M.busy() return pending ~= nil or page ~= nil; end
 function M.reset()
     pending, page, proto = nil, nil, nil;
-    M.counts, M.fresh = {}, false;
+    M.counts, M.fresh, M.tierMask = {}, false, nil;
     M.message = 'Visit Void Storage to refresh stock.';
 end
 local function fail(why)
@@ -41,6 +41,7 @@ local function send(op, body, done)
 end
 function M.refresh()
     if M.busy() then return false; end
+    proto = nil; -- Refresh also re-reads KI unlocks, not just item balances.
     M.fresh, page = false, { cursor = 0, counts = {}, at = M._clock() };
     M.message = 'Refreshing Void Storage...';
     return true;
@@ -82,6 +83,7 @@ function M.onPacket(data)
         if #body < 12 or u16(body, 0) ~= 1 or body:byte(9) < 1 or body:byte(10) < 1 or flags ~= 0 then
             fail('Invalid Void Storage handshake'); return true;
         end
+        M.tierMask = u32(body, 4);
         proto = true; pending = nil;
     elseif op == 4 then
         if not page or #body < 4 then fail('Invalid storage page'); return true; end

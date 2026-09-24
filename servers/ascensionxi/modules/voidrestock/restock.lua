@@ -8,6 +8,7 @@ local safe = require('dlac\\lib\\safewrite');
 local watch = require('dlac\\lib\\entwatch');
 local jobs = require('dlac\\gear\\jobgate').JOBS;
 local oracle = require('dlac\\gear\\gearoracle');
+local membership = require(base .. 'membership');
 local M = { config = model.normalize({}), message = '', client = client };
 local root, job, run, loadError, wasNear, settling;
 M._clock = client._clock;
@@ -35,7 +36,10 @@ function M.item(id)
             local allowed = rec and rec.Slot and rec.Slot == 'Ammo'
                 or (not (rec and rec.Slot) and (slots == 0 or slots == 8));
             out = { id = id, name = r.Name[1] or ('Item ' .. tostring(id)),
-                stack = math.max(1, tonumber(r.StackSize) or 1), restockable = allowed == true };
+                stack = math.max(1, tonumber(r.StackSize) or 1),
+                storable = allowed == true and membership.canStore(id, client.tierMask),
+                restockable = allowed == true and (membership.canStore(id, client.tierMask) or (client.counts[id] or 0) > 0),
+                requirement = membership.requirement(id) };
         end
     end);
     return out or { id = id, name = 'Item ' .. tostring(id), stack = 1, restockable = false };
@@ -129,7 +133,8 @@ function M.plan()
         if M.item(e.id).restockable then entries[#entries + 1] = e; end
     end
     return model.plan(entries, counts, client.counts, free,
-        function(id) return M.item(id).stack; end), counts;
+        function(id) return M.item(id).stack; end,
+        function(id) return M.item(id).storable == true; end), counts;
 end
 function M.start(kind)
     if not M.syncContext() or M.busy() or not M.near() or not client.fresh then return false; end

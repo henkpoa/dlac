@@ -36,12 +36,12 @@ function M.effective(config, job)
     end
     return out;
 end
-function M.plan(entries, inventory, balances, freeSlots, stackOf)
+function M.plan(entries, inventory, balances, freeSlots, stackOf, canStore)
     local out = { fetch = {}, store = {} };
     local free = math.max(0, freeSlots or 0);
     for _, e in ipairs(entries) do
         local held, target = inventory[e.id] or 0, quantity(e.target);
-        if held > target then
+        if held > target and (canStore == nil or canStore(e.id)) then
             out.store[#out.store + 1] = { id = e.id, qty = math.min(65535, held - target) };
         elseif held < target then
             local stack = math.max(1, quantity(stackOf(e.id)));

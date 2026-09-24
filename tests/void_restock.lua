@@ -6,6 +6,16 @@ end);
 ashita = { events = { register = function() end } };
 local base = 'dlac\\servers\\ascensionxi\\modules\\voidrestock\\';
 local model = require(base .. 'model');
+local membership = require(base .. 'membership');
+assert(membership.canStore(605, nil), 'HELM tool exception is base storage');
+assert(not membership.canStore(50001, 127), 'non-member rejected even with every tier');
+assert(not membership.canStore(17330, 1) and membership.canStore(17330, 33), 'ammo requires its KI tier');
+assert(not membership.canStore(3757, 1) and membership.canStore(3757, 65), 'Onslaught overrides crafting category');
+assert(membership.data.tiers[6].keyItem == 3590, 'current Onslaught KI');
+for tier, info in pairs(membership.data.tiers) do
+    local id = membership.data.itemsByTier[tier][1];
+    assert(not membership.canStore(id, 1) and membership.canStore(id, 1 + 2 ^ tier), info.label);
+end
 local config = model.normalize({ character = {
     { id = 1, name = 'Oil', target = 12 }, { id = 2, name = 'Powder', target = 6 },
 }, jobs = { NIN = { { id = 1, name = 'Oil', target = 24 }, { id = 3, name = 'Tool', target = 0 } } } });
@@ -79,6 +89,11 @@ client.move('fetch', 1, 1, function(r, err) result = err; end); now = now + 7; c
 assert(#packets == count + 1 and not client.fresh and type(result) == 'string', 'timeout never repeats a move');
 ready(); client.move('store', 1, 5); client.onPacket(ack(2, 5, 5));
 assert(not client.fresh and not client.busy(), 'mismatched ACK cannot complete a move');
+ready(); assert(client.tierMask == 1);
+client.refresh(); client.tick(); assert(last()[5] == 0, 'refresh re-reads tier unlocks');
+client.onPacket(frame(last(), w16(1) .. w16(0) .. w32(65) .. string.char(61, 124) .. w16(0)));
+client.tick(); page({ { 1, 100 } }); assert(client.tierMask == 65, 'new Onslaught KI is reflected');
+client.reset(); assert(client.tierMask == nil, 'tier permissions do not leak across characters');
 client.reset(); client.refresh(); client.tick(); client.onPacket(frame(last(), '', 7));
 assert(not client.fresh and client.message:find('unlocked'), 'attunement refusal surfaced');
 client.reset(); client.refresh(); hello(); client.tick(); page({}, true);
@@ -105,20 +120,21 @@ local realItem = restock.item;
 local oldCore = AshitaCore;
 AshitaCore = { GetResourceManager = function() return { GetItemById = function(_, id)
     return ({ [50001] = { Name = { 'Sword' }, Slots = 1, StackSize = 1 },
-        [50002] = { Name = { 'Ammo' }, Slots = 8, StackSize = 99 },
-        [50003] = { Name = { 'Oil' }, Slots = 0, StackSize = 12 } })[id];
+        [17330] = { Name = { 'Ammo' }, Slots = 8, StackSize = 99 },
+        [605] = { Name = { 'Oil' }, Slots = 0, StackSize = 12 } })[id];
 end, GetItemByName = function() return { Id = 50001 }; end }; end };
 local resourceCore = AshitaCore;
 assert(realItem(50001).restockable == false, 'gear pieces must not be restock candidates');
-assert(realItem(50002).restockable == true, 'ammo must remain a restock candidate');
-assert(realItem(50003).restockable == true, 'consumables must remain restock candidates');
+client.tierMask = 33;
+assert(realItem(17330).restockable == true, 'unlocked ammo remains a restock candidate');
+assert(realItem(605).restockable == true, 'base supplies remain restock candidates');
 AshitaCore = oldCore;
 local contextJob, nearby, inventory = 'NIN', false, { [1] = 36, [2] = 6, [3] = 5, [99] = 999 };
 restock._context = function() return 'tests/fixtures/void-restock-no-character/', contextJob; end;
 restock._clock = client._clock;
 restock.near = function() return nearby; end;
 restock.inventory = function() return inventory, 8; end;
-restock.item = function(id) return { id = id, name = 'Item' .. id, stack = 12, restockable = true }; end;
+restock.item = function(id) return { id = id, name = 'Item' .. id, stack = 12, restockable = true, storable = true }; end;
 restock.syncContext(); restock.config = config; restock.tick();
 nearby = true; restock.tick(); assert(client.busy(), 'coffer approach refreshes, never moves');
 hello(); client.tick(); page({ { 1, 100 }, { 2, 200 } });
@@ -164,10 +180,23 @@ assert(event.blocked and opened == 'restock');
 local ui = require(base .. 'ui');
 local fixtureItem, oldCounts = restock.item, client.counts;
 restock.item, AshitaCore = realItem, resourceCore;
-client.counts = { [50001] = 2, [50002] = 99 };
-local picker = ui.candidates({ [50001] = 1, [50003] = 12 }, '');
+client.counts, client.tierMask = { [50001] = 2, [17330] = 99 }, 33;
+local picker = ui.candidates({ [50001] = 1, [605] = 12 }, '');
 assert(#picker == 2 and picker[1].name == 'Ammo' and picker[2].name == 'Oil', 'all picker sources exclude gear');
 assert(#ui.candidates({}, 'Sword') == 0, 'exact-name search cannot bypass the gear filter');
+restock.config = model.normalize({ character = { { id = 605, name = 'Oil', target = 12 } } });
+assert(#ui.candidates({ [605] = 12 }, '') == 1, 'listed character item disappears');
+restock.config.jobs.NIN = { { id = 17330, name = 'Ammo', target = 99 } };
+assert(#ui.candidates({ [605] = 12 }, '') == 0, 'listed job item disappears too');
+restock.config = model.normalize({ character = { { id = 17330, name = 'Ammo', target = 99 } } });
+client.tierMask = 1;
+restock.inventory = function() return { [17330] = 120 }, 8; end;
+assert(realItem(17330).restockable and not realItem(17330).storable, 'locked stored item is withdraw-only');
+assert(#restock.plan().store == 0, 'locked tier never deposits surplus');
+restock.inventory = function() return {}, 8; end;
+assert(#restock.plan().fetch == 1, 'locked stored item remains withdrawable');
+client.counts[17330] = nil;
+assert(not realItem(17330).restockable, 'locked item with no stored balance is hidden');
 restock.config = model.normalize({ character = { { id = 50001, name = 'Sword', target = 0 } } });
 restock.inventory = function() return { [50001] = 1 }, 8; end;
 assert(#restock.plan().store == 0, 'previously saved gear entries cannot be deposited');

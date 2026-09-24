@@ -30,7 +30,7 @@ Items can be added from Inventory, the stored holdings list, or an exact
 client resource name. All three paths exclude equipment except Ammo, using
 the Gear Oracle's slot when known and the client resource mask otherwise.
 Previously saved equipment entries also stay out of move plans. The editor
-uses a 780px-wide fixed-column table layout with bounded scrolling regions
+uses an 880px-wide fixed-column table layout with bounded scrolling regions
 for the lists and picker. The server remains authoritative for membership,
 attunement, tiers, busy items and Rare restrictions. A refusal/partial move
 is displayed and stops the run. Duplicate scrolls follow the server's normal
@@ -127,3 +127,44 @@ model shown in the owner's screenshot. The watcher now recognizes both
 names, retaining the 5-yalm range. Tests cover the current name, the legacy
 name, out-of-range portals and unrelated entities. In-game confirmation of
 the new UI and proximity behavior remains with the owner.
+
+## Membership and KI access (2026.09.24d)
+
+`servers/ascensionxi/data/voidstorage.lua` contains all 3,625 accepted IDs
+from AXI's audited membership manifest at
+`2ec81c192fddf8ec3a7c30a431bd9845c14eb290`. This includes category seeds,
+explicit additions, removals and tier overrides. In particular, Onslaught
+materials belong to tier 6 even though their AH categories resemble base
+crafting materials. Unknown items are not inferred to be storable merely
+because they are not equipment.
+
+Reproduce the data with `python scripts/export_void_storage.py <axi-checkout>
+<git-ref>`; it prints the Lua data for review. The source manifest's declared
+total and duplicate IDs are validated during export. Refresh this snapshot
+when the server membership changes.
+
+HELLO's u32 TierMask is retained and refreshed on every Refresh stock, so
+the server answers which KIs the character has. No unreliable client KI
+memory reads are needed. Base tiers need no tier KI; gated tiers use:
+
+| Tier | Key item |
+| --- | --- |
+| Medicines | 3584 |
+| Fish | 3585 |
+| Meals | 3586 |
+| Ninja tools | 3587 |
+| Pet items and ammunition | 3588 |
+| Onslaught | 3590 |
+
+Overall access is still the Hollow Room quest/attunement gate, not a KI.
+Before a handshake, base members may be planned; gated members with unknown
+access are hidden unless they already have stored stock. Deposits require
+membership and the unlocked tier. AXI's rule that existing stock remains
+withdrawable is preserved even if membership/access changes: those supplies
+can be selected for withdrawal but never queued for a disallowed deposit.
+Equipment other than ammunition remains excluded from this helper.
+
+The picker omits items present in Always or the current-job list. Other-job
+lists do not hide items. Always rows provide a `+ JOB` action to create an
+override without needing to find the item in the picker again. Removing the
+last active entry makes the item eligible to appear again.

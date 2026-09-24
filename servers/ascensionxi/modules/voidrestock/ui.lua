@@ -9,7 +9,7 @@ local query, addTarget = { '' }, { 12 };
 local edits, lastConfig = {}, nil;
 -- Ashita's established fixed-column layout (E-Box uses SameLine offsets too).
 -- The scroll regions have a fixed width; long names never push actions around.
-local TABLE_W, INV_X, VOID_X, TARGET_X, ACTION_X = 780, 260, 350, 440, 550;
+local TABLE_W, INV_X, VOID_X, TARGET_X, ACTION_X = 880, 260, 350, 440, 550;
 local function esc(s) return tostring(s or ''):gsub('%%', '%%%%'); end
 local function open()
     require('dlac\\ui\\gearui').openAutomation('restock');
@@ -24,9 +24,9 @@ local function button(label, enabled, action, width)
     if not enabled then imgui.PopStyleColor(3); end
     if clicked and enabled then action(); end
 end
-local function nameCell(name)
+local function nameCell(name, tip)
     imgui.Text(esc(#name > 24 and (name:sub(1, 22) .. '..') or name));
-    if imgui.IsItemHovered() then imgui.SetTooltip(esc(name)); end
+    if imgui.IsItemHovered() then imgui.SetTooltip(esc(tip or name)); end
 end
 local function header(actions)
     imgui.TextDisabled('Item'); imgui.SameLine(INV_X); imgui.TextDisabled('Inventory');
@@ -69,6 +69,20 @@ local function drawList(scope, title, entries, counts, width)
             for i, e in ipairs(list) do if e.id == entry.id then table.remove(list, i); break; end end
             restock.save(config);
         end, 90);
+        -- Once listed, the picker hides the item. Keep the explicit job
+        -- override action on the baseline row so that workflow remains possible.
+        if scope == 'character' then
+            local hasOverride = false;
+            for _, e in ipairs(restock.config.jobs[restock.job()] or {}) do
+                if e.id == entry.id then hasOverride = true; end
+            end
+            imgui.SameLine(ACTION_X + 190);
+            button('+ ' .. restock.job(), not restock.busy() and not hasOverride, function()
+                local config = copy(); local list = editList(config, 'job');
+                list[#list + 1] = { id = entry.id, name = entry.name, target = entry.target };
+                restock.save(config);
+            end, 100);
+        end
         imgui.PopID();
     end
     imgui.EndChild();
@@ -76,6 +90,8 @@ end
 -- The same filter applies to Inventory, stored balances AND exact-name search.
 function M.candidates(counts, text)
     local candidates, rows = {}, {};
+    local listed = {};
+    for _, e in ipairs(model.effective(restock.config, restock.job())) do listed[e.id] = true; end
     for id in pairs(counts or {}) do candidates[id] = true; end
     for id in pairs(client.counts) do candidates[id] = true; end
     if text ~= '' then
@@ -87,7 +103,7 @@ function M.candidates(counts, text)
     end
     for id in pairs(candidates) do
         local rec = restock.item(id);
-        if rec.restockable and (text == '' or rec.name:lower():find(text:lower(), 1, true)) then rows[#rows + 1] = rec; end
+        if not listed[id] and rec.restockable and (text == '' or rec.name:lower():find(text:lower(), 1, true)) then rows[#rows + 1] = rec; end
     end
     table.sort(rows, function(a, b) return a.name < b.name; end);
     return rows;
@@ -129,7 +145,8 @@ function M.render(deps, availW)
     header('Add to list');
     for i = 1, math.min(200, #rows) do
         local rec = rows[i]; imgui.PushID('add' .. rec.id);
-        nameCell(rec.name); countsCells(rec.id, counts or {});
+        nameCell(rec.name, rec.storable == false and (rec.name .. '\nWithdraw only: ' .. tostring(rec.requirement) .. ' required to deposit.') or nil);
+        countsCells(rec.id, counts or {});
         imgui.SameLine(TARGET_X); imgui.Text(tostring(math.max(0, addTarget[1])));
         for _, scope in ipairs({ 'character', 'job' }) do
             imgui.SameLine(scope == 'character' and ACTION_X or ACTION_X + 110);
@@ -141,10 +158,10 @@ function M.render(deps, availW)
         end
         imgui.PopID();
     end
-    if #rows == 0 then imgui.TextDisabled('No supplies match. Gear pieces are excluded; ammo is included.'); end
+    if #rows == 0 then imgui.TextDisabled('No unlisted supplies match your storage access.'); end
     imgui.EndChild();
     if #rows > 200 then imgui.TextDisabled('Showing 200 matches; refine your search.'); end
-    imgui.TextWrapped('Void Storage decides which items and tiers can be stored. Listed duplicate scrolls follow its normal sale rule.');
+    imgui.TextWrapped('Shows supplies accepted by your unlocked storage tiers. Refresh stock updates key-item access. Stored items remain withdrawable without their tier key item. Duplicate scrolls follow the normal sale rule.');
 end
 function M.trayWants()
     return restock.syncContext() and restock.config.nudge and restock.near();
