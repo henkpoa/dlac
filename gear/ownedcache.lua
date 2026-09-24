@@ -98,6 +98,15 @@ function M.haveInBags(rec)
     return (oc[rec.Id] or 0) >= 1;
 end
 
+-- Lockstyle needs any copy of the item, not a particular augment roll.
+-- totals() includes stored bags and the server pack's Gear Vault mirror.
+function M.haveAppearance(rec)
+    if rec == nil or rec.Id == nil then return true; end
+    local totals = M.totals();
+    if type(totals) ~= 'table' or next(totals) == nil then return true; end
+    return (totals[rec.Id] or 0) > 0;
+end
+
 -- Owned somewhere but with NO copy in Inventory/Wardrobes: LAC can't equip it until
 -- it moves. Rows render these names red; the tooltip says where things stand.
 function M.isStored(rec)

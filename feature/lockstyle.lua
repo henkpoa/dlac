@@ -444,6 +444,15 @@ local function is1H(rec)
     return t ~= 'handtohand' and t ~= 'h2h';
 end
 
+-- Appearance ownership is item-id based: any copy in bags OR the Gear Vault
+-- qualifies, regardless of its augment roll or whether it is equip-ready.
+-- The optional wire preserves startup/headless behavior when counts are unknown.
+local function ownsLook(rec)
+    if W.ownsLook == nil then return true; end
+    local ok, own = pcall(W.ownsLook, rec);
+    return not ok or own ~= false;
+end
+
 local function listFor(slot, q, all, jobLevels)
     local out = {};
     -- v47: only offer gear ONE of your jobs can wear at its CURRENT level
@@ -455,7 +464,7 @@ local function listFor(slot, q, all, jobLevels)
         for _, rec in pairs(t) do
             if type(rec) == 'table' and type(rec.Name) == 'string'
                and (pred == nil or pred(rec))
-               and gateOk(rec)
+               and gateOk(rec) and ownsLook(rec)
                and (q == '' or string.find(string.lower(rec.Name), q, 1, true) ~= nil) then
                 out[#out + 1] = rec;
             end
@@ -508,16 +517,14 @@ local function ownedRec(rec)
     if type(rec) ~= 'table' or rec.Id == nil or W.ownedById == nil then return nil; end
     local o = nil;
     pcall(function() o = W.ownedById(rec.Id); end);
+    if o ~= nil and not ownsLook(o) then return nil; end
     return o;
 end
 M._ownedRec = ownedRec;   -- test seam: the catalog-spelling -> your-spelling bridge
 
--- The Save gate, over a name already in the working set. Deliberately gear.lua
--- membership and NOT a live bag scan: gear.lua is add-only and a superset of
--- what you hold, so this passes everything the owned picker would have offered
--- (no existing set can newly fail) and blocks exactly the catalog-only picks.
--- The server's HasItem is the real gate; this only stops us SAVING a style that
--- provably could not render. 'remove'/cleared slots are not items.
+-- The Save gate uses the same bag + vault ownership as the picker. gear.lua
+-- is add-only, so membership alone cannot prove that a piece is still owned.
+-- 'remove'/cleared slots are not items.
 local function nameOwned(name)
     if type(name) ~= 'string' or name == '' or name == 'remove' then return true; end
     local n2o = nil;
@@ -528,7 +535,7 @@ local function nameOwned(name)
     -- reason: a lookup that failed must never take a feature away. The server
     -- is the real gate; this only stops a save we can PROVE is pointless.
     if type(n2o) ~= 'table' or next(n2o) == nil then return true; end
-    return n2o[name] ~= nil;
+    return n2o[name] ~= nil and ownsLook(n2o[name]);
 end
 
 -- Slots in the working copy holding gear you don't own (sorted, for the warning).

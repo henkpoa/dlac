@@ -17,7 +17,7 @@ return {
         jobhelpers  = false,
     },
     menu = {
-        lockstyle = false,
+        lockstyle = true,
         macrobook = true,
         hobbybar  = true,
         teleports = false,
