@@ -10,4 +10,4 @@
     docs/design/ascensionxi-server-handover-2026-08-27.md par.4a). This file is
     written only by hand, so a regeneration can never drop client code again.
 ]]--
-return { 'gearvault', 'helm' };
+return { 'gearvault', 'helm', 'voidrestock' };

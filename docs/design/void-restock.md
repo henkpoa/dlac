@@ -1,0 +1,104 @@
+# Void Restock
+
+Implemented in the AscensionXI feature batch, draft PR #179. Lockstyle has
+been field-tested; Void Restock still needs the in-game checks below.
+
+## Player behavior
+
+On AscensionXI, Gear Helpers and the quick menu expose **Void Restock**.
+`/dl restock` opens it. CatsEyeXI retains its existing E-Box helper.
+
+The character list applies on every job. A current-job entry overrides the
+same item in the character list, including a target of zero. Targets count
+**Inventory only**: the purpose is to preserve supplies in Inventory while
+storing excess, and withdrawals land there. Satchel, Sack, Case, bundles,
+wardrobes and other jobs' lists do not satisfy these inventory targets.
+
+- **Fetch shortfall** draws up to the target, available stored stock and a
+  conservative fresh-slot budget, with job entries taking priority.
+- **Store excess** deposits only `inventory quantity - target` for listed
+  items. Unlisted items are untouched. This was explicitly chosen by the
+  owner over sweeping all other eligible inventory items.
+- A zero target stores all inventory copies of that listed item.
+- No move runs automatically. Entering range of a Void Coffer refreshes the
+  stored counts once. Buttons initiate moves; Stop cancels unsent work.
+- The tray keeps the red store button first and shows the green fetch button
+  when a shortage can be filled. Right-click either to edit lists. With stale
+  stock, the store button only refreshes; it does not combine a read and move.
+
+Items can be added from Inventory, the stored holdings list, or an exact
+client resource name. The server remains authoritative for membership,
+attunement, tiers, busy items and Rare restrictions. A refusal/partial move
+is displayed and stops the run. Duplicate scrolls follow the server's normal
+sale rule, which is explained in the panel.
+
+## Implementation and protocol
+
+`servers/ascensionxi/modules/voidrestock/` contains:
+
+- `model.lua`: normalization, stable serialization, effective list and plans.
+- `client.lua`: Void Storage v1, using the shared AscensionXI transport.
+- `restock.lua`: character configuration, live inventory and move sequencing.
+- `ui.lua`: list editor, action buttons and tray contribution.
+- `init.lua`: pack service, helper/tray registrations and event hooks.
+
+The hand-maintained pack `modules.lua` mounts it; `features.lua` enables the
+`restock` helper. No core E-Box code or server changes are needed.
+
+Grounding: the companion AscensionXI checkout's
+`modules/custom/lua/void_storage.lua`, `src/map/void_store.h`, and
+`modules/custom/lua/void_storage_npcs.lua`. Ops on 0x1E0 are HELLO 0,
+DEPOSIT 1, WITHDRAW 2 and LIST_ITEMS 4. Coffer range is 5 yalms.
+Mutation payloads are `u16 count, u16 reserved`, then `u16 item, u16 quantity`.
+This helper sends exactly one explicit item per move. **Never send a zero-entry
+deposit: the server interprets that as sweep-all.**
+
+Paged reads publish only after the final page. Move ACKs must match op,
+sequence, item and requested quantity. Actual moved quantities update the
+mirror. Mutations are never automatically retried; the server's replay
+window is limited and a repeated withdrawal can otherwise move twice.
+
+Each move is replanned from live inventory immediately before sending. After
+an ACK, the controller waits for the expected inventory quantity before
+continuing, including after Stop. Unexpected inventory changes, timeouts,
+job changes, zones and leaving range stop further moves. An already-sent
+request cannot be cancelled. The wire has no atomic keep-target operation:
+independent consumption/movement during the server round trip can still
+change the final quantity; the client stops when settlement disagrees.
+
+All requests use `servers/ascensionxi/transport.lua`, sharing its pacing and
+pending-request gate with Gear Vault and HELM. The module consumes only the
+Void Storage partition, leaving vault/HELM replies to their existing clients.
+
+## Persistence
+
+`profiles.dataDir()/void-restock.lua` is per character, outside profiles.
+On first use, an existing `restock.lua` supplies the lists if the new file is
+absent; the old file is never modified. Edits save to the new file through
+`lib/safewrite`, with five rotating backups under the character's `backups/`.
+A failed backup/write preserves the current live configuration. Malformed
+saved config blocks writes instead of silently resetting it. Character
+changes clear config, pending work and stored balances.
+
+## Verification and playtest
+
+`lua tests/void_restock.lua` covers planning, protocol pagination, partition
+isolation, transport denial, duplicate/mismatched ACKs, partial moves,
+timeouts without mutation retries, inventory settlement, job/zone/range
+cancellation, settings isolation/import/failed saves, and UI registration.
+CI runs it together with `tests/lockstyle_vault.lua`.
+
+After `/addon reload dlac`, open `/dl restock` near a Void Coffer:
+
+1. Add a consumable to Always with target 12. Hold more than 12, plus an
+   unlisted storable item. Store excess should leave 12 and leave the unlisted
+   item unchanged. Verify both inventory and the server's stored balance.
+2. Lower inventory below 12, then Fetch shortfall. Verify it returns to 12.
+3. Add a different current-job target for the same item and confirm it wins;
+   switch jobs and confirm the character target returns.
+4. Test a zero target, little inventory space, a locked-tier item, and leaving
+   the Coffer during a run. Refusals should explain themselves without repeats.
+5. Reload DLAC and confirm lists/targets persist. Check tray alignment and
+   right-click navigation, and exercise Gear Vault/HELM alongside a refresh.
+
+Do not merge the feature batch until the owner has reviewed/playtested it.
