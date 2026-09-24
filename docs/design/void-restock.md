@@ -27,7 +27,11 @@ wardrobes and other jobs' lists do not satisfy these inventory targets.
   stock, the store button only refreshes; it does not combine a read and move.
 
 Items can be added from Inventory, the stored holdings list, or an exact
-client resource name. The server remains authoritative for membership,
+client resource name. All three paths exclude equipment except Ammo, using
+the Gear Oracle's slot when known and the client resource mask otherwise.
+Previously saved equipment entries also stay out of move plans. The editor
+uses a 780px-wide fixed-column table layout with bounded scrolling regions
+for the lists and picker. The server remains authoritative for membership,
 attunement, tiers, busy items and Rare restrictions. A refusal/partial move
 is displayed and stops the run. Duplicate scrolls follow the server's normal
 sale rule, which is explained in the panel.
@@ -102,3 +106,20 @@ After `/addon reload dlac`, open `/dl restock` near a Void Coffer:
    right-click navigation, and exercise Gear Vault/HELM alongside a refresh.
 
 Do not merge the feature batch until the owner has reviewed/playtested it.
+
+## Portal artwork (2026.09.24b)
+
+`assets/void_storage.png` is the transparent portal icon used by the quick
+menu and tray. Store/fetch use red/green button backgrounds and distinct
+widget IDs. Generated using the built-in imagegen tool, referencing the
+owner's portal screenshot and `assets/ebox.png` for its pixel-art style.
+
+Generation prompt:
+
+> Create one square transparent-background pixel-art game UI icon. Reference image 1 supplies the subject: a squat ancient dark grey stone pointed arch portal, brass-gold bands and small gold accents, pitch-black opening rimmed with vivid purple violet swirling energy, low stone base. Reference image 2 supplies the style: chunky crisp retro pixel art, dark outline, readable simple shading, isolated centered object filling the square with a small transparent margin. Match that wooden E-box icon's visual weight and pixel-art treatment, but depict only the purple stone void portal. Front view, no scenery, no lettering, no text, no extra objects. Intended display 30x30 pixels so simplify details strongly. Output a single icon PNG with genuine alpha transparency, preferably 256x256.
+
+The generator returned a 1254px RGBA image; the original alpha is preserved.
+The tray displays it at 30px with 3px frame padding, matching E-Box's 36px button.
+The owner also reported no nearby-storage detection; the exact live target
+name is pending. Current server-reference code and the watcher say "Void
+Coffer". Do not claim a proximity fix from the icon/layout work alone.

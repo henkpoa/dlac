@@ -88,12 +88,24 @@ assert(not client.fresh, 'non-advancing cursor rejected');
 
 -- Real controller, injected world; no player files or packets are touched.
 local restock = require(base .. 'restock');
+local realItem = restock.item;
+local oldCore = AshitaCore;
+AshitaCore = { GetResourceManager = function() return { GetItemById = function(_, id)
+    return ({ [50001] = { Name = { 'Sword' }, Slots = 1, StackSize = 1 },
+        [50002] = { Name = { 'Ammo' }, Slots = 8, StackSize = 99 },
+        [50003] = { Name = { 'Oil' }, Slots = 0, StackSize = 12 } })[id];
+end, GetItemByName = function() return { Id = 50001 }; end }; end };
+local resourceCore = AshitaCore;
+assert(realItem(50001).restockable == false, 'gear pieces must not be restock candidates');
+assert(realItem(50002).restockable == true, 'ammo must remain a restock candidate');
+assert(realItem(50003).restockable == true, 'consumables must remain restock candidates');
+AshitaCore = oldCore;
 local contextJob, nearby, inventory = 'NIN', false, { [1] = 36, [2] = 6, [3] = 5, [99] = 999 };
 restock._context = function() return 'tests/fixtures/void-restock-no-character/', contextJob; end;
 restock._clock = client._clock;
 restock.near = function() return nearby; end;
 restock.inventory = function() return inventory, 8; end;
-restock.item = function(id) return { id = id, name = 'Item' .. id, stack = 12 }; end;
+restock.item = function(id) return { id = id, name = 'Item' .. id, stack = 12, restockable = true }; end;
 restock.syncContext(); restock.config = config; restock.tick();
 nearby = true; restock.tick(); assert(client.busy(), 'coffer approach refreshes, never moves');
 hello(); client.tick(); page({ { 1, 100 }, { 2, 200 } });
@@ -136,6 +148,17 @@ local opened;
 package.loaded['dlac\\ui\\gearui'] = { openAutomation = function(key) opened = key; end };
 local event = { command = '/dl restock' }; handlers.dlac_void_restock_cmd(event);
 assert(event.blocked and opened == 'restock');
+local ui = require(base .. 'ui');
+local fixtureItem, oldCounts = restock.item, client.counts;
+restock.item, AshitaCore = realItem, resourceCore;
+client.counts = { [50001] = 2, [50002] = 99 };
+local picker = ui.candidates({ [50001] = 1, [50003] = 12 }, '');
+assert(#picker == 2 and picker[1].name == 'Ammo' and picker[2].name == 'Oil', 'all picker sources exclude gear');
+assert(#ui.candidates({}, 'Sword') == 0, 'exact-name search cannot bypass the gear filter');
+restock.config = model.normalize({ character = { { id = 50001, name = 'Sword', target = 0 } } });
+restock.inventory = function() return { [50001] = 1 }, 8; end;
+assert(#restock.plan().store == 0, 'previously saved gear entries cannot be deposited');
+restock.item, AshitaCore, client.counts = fixtureItem, oldCore, oldCounts;
 
 -- Config isolation, old-list import, backup rotation and a failed write.
 local safe = require('dlac\\lib\\safewrite');

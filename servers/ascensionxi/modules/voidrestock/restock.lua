@@ -7,6 +7,7 @@ local statefile = require('dlac\\lib\\statefile');
 local safe = require('dlac\\lib\\safewrite');
 local watch = require('dlac\\lib\\entwatch');
 local jobs = require('dlac\\gear\\jobgate').JOBS;
+local oracle = require('dlac\\gear\\gearoracle');
 local M = { config = model.normalize({}), message = '', client = client };
 local root, job, run, loadError, wasNear, settling;
 M._clock = client._clock;
@@ -24,9 +25,16 @@ function M.item(id)
     local out;
     pcall(function()
         local r = AshitaCore:GetResourceManager():GetItemById(id);
-        if r then out = { id = id, name = r.Name[1], stack = math.max(1, tonumber(r.StackSize) or 1) }; end
+        if r then
+            local rec = oracle.lookup(id);
+            local slots = tonumber(r.Slots);
+            local allowed = rec and rec.Slot and rec.Slot == 'Ammo'
+                or (not (rec and rec.Slot) and (slots == 0 or slots == 8));
+            out = { id = id, name = r.Name[1] or ('Item ' .. tostring(id)),
+                stack = math.max(1, tonumber(r.StackSize) or 1), restockable = allowed == true };
+        end
     end);
-    return out or { id = id, name = 'Item ' .. tostring(id), stack = 1 };
+    return out or { id = id, name = 'Item ' .. tostring(id), stack = 1, restockable = false };
 end
 M.inventory = function()
     local counts, free = {}, 0;
@@ -112,7 +120,11 @@ end
 function M.plan()
     local counts, free = M.inventory();
     if not counts or not job then return nil; end
-    return model.plan(model.effective(M.config, job), counts, client.counts, free,
+    local entries = {};
+    for _, e in ipairs(model.effective(M.config, job)) do
+        if M.item(e.id).restockable then entries[#entries + 1] = e; end
+    end
+    return model.plan(entries, counts, client.counts, free,
         function(id) return M.item(id).stack; end), counts;
 end
 function M.start(kind)
