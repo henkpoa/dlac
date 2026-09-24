@@ -115,18 +115,24 @@ function M.render(deps, availW)
     local plan, counts = restock.plan();
     local width = math.min(TABLE_W, tonumber(availW) or TABLE_W);
     imgui.Text('Void Restock');
-    imgui.TextWrapped('Keep your chosen quantities in Inventory. Job targets override the same item on the always list. Unlisted items stay untouched.');
+    if imgui.IsItemHovered() then imgui.SetTooltip('Job targets override Always targets for the same item.'); end
     local near, busy = restock.near(), restock.busy();
     imgui.TextDisabled(near and 'Void Storage in range' or 'Move within 5 yalms of Void Storage to move items.');
     button('Refresh stock', near and not busy, function() client.refresh(); end);
+    if imgui.IsItemHovered() then imgui.SetTooltip('Refresh stored quantities and key-item access.'); end
     imgui.SameLine();
     button('Fetch shortfall', near and not busy and client.fresh and plan and #plan.fetch > 0,
         function() restock.start('fetch'); end);
+    if imgui.IsItemHovered() then imgui.SetTooltip('Fetch listed items up to their target quantities.'); end
     imgui.SameLine();
     button('Store excess', near and not busy and client.fresh and plan and #plan.store > 0,
         function() restock.start('store'); end);
+    if imgui.IsItemHovered() then imgui.SetTooltip('Store only surplus listed items. Duplicate scrolls follow the normal sale rule.'); end
     if busy then imgui.SameLine(); if imgui.Button('Stop') then restock.stop(); end end
-    imgui.TextWrapped(esc(client.message));
+    if client.message ~= '' and client.message ~= 'Visit Void Storage to refresh stock.'
+        and client.message ~= 'Void Storage stock refreshed.' then
+        imgui.TextWrapped(esc(client.message));
+    end
     if restock.message ~= '' then imgui.TextWrapped(esc(restock.message)); end
     local nudge = { restock.config.nudge };
     if imgui.Checkbox('Show buttons near Void Storage', nudge) then
@@ -161,7 +167,6 @@ function M.render(deps, availW)
     if #rows == 0 then imgui.TextDisabled('No unlisted supplies match your storage access.'); end
     imgui.EndChild();
     if #rows > 200 then imgui.TextDisabled('Showing 200 matches; refine your search.'); end
-    imgui.TextWrapped('Shows supplies accepted by your unlocked storage tiers. Refresh stock updates key-item access. Stored items remain withdrawable without their tier key item. Duplicate scrolls follow the normal sale rule.');
 end
 function M.trayWants()
     return restock.syncContext() and restock.config.nudge and restock.near();
