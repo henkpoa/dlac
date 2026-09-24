@@ -24,17 +24,21 @@ wardrobes and other jobs' lists do not satisfy these inventory targets.
   stored counts once. Buttons initiate moves; Stop cancels unsent work.
 - The tray keeps the red store button first and shows the green fetch button
   when a shortage can be filled. Right-click either to edit lists. With stale
-  stock, the store button only refreshes; it does not combine a read and move.
+  stock, Store waits for a successful refresh and then deposits listed surplus.
+  A click during the approach refresh also retains that intent. Stop, context
+  changes and failed reads cancel it. Completion and no-op reasons appear in chat.
 
-Items can be added from Inventory, the stored holdings list, or an exact
-client resource name. All three paths exclude equipment except Ammo, using
+Items can be added from Inventory, the stored holdings list, or a case-insensitive
+partial-name search across AXI's allowed supplies, even without current stock.
+Search caches names only and rechecks tier access and active lists each time.
+All paths exclude equipment except Ammo, using
 the Gear Oracle's slot when known and the client resource mask otherwise.
 Previously saved equipment entries also stay out of move plans. The editor
 uses an 880px-wide fixed-column table layout with bounded scrolling regions
 for the lists and picker. The server remains authoritative for membership,
 attunement, tiers, busy items and Rare restrictions. A refusal/partial move
 is displayed and stops the run. Duplicate scrolls follow the server's normal
-sale rule, which is explained in the panel.
+sale rule, which is explained in the Store tooltip.
 
 ## Implementation and protocol
 

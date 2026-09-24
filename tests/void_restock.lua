@@ -184,8 +184,12 @@ client.counts, client.tierMask = { [50001] = 2, [17330] = 99 }, 33;
 local picker = ui.candidates({ [50001] = 1, [605] = 12 }, '');
 assert(#picker == 2 and picker[1].name == 'Ammo' and picker[2].name == 'Oil', 'all picker sources exclude gear');
 assert(#ui.candidates({}, 'Sword') == 0, 'exact-name search cannot bypass the gear filter');
+local matches = ui.candidates({}, 'oI');
+assert(#matches == 1 and matches[1].id == 605,
+    'partial case-insensitive supply search includes eligible items absent from inventory and stock');
 restock.config = model.normalize({ character = { { id = 605, name = 'Oil', target = 12 } } });
 assert(#ui.candidates({ [605] = 12 }, '') == 1, 'listed character item disappears');
+assert(#ui.candidates({}, 'oil') == 0, 'membership search also hides listed items');
 restock.config.jobs.NIN = { { id = 17330, name = 'Ammo', target = 99 } };
 assert(#ui.candidates({ [605] = 12 }, '') == 0, 'listed job item disappears too');
 restock.config = model.normalize({ character = { { id = 17330, name = 'Ammo', target = 99 } } });
@@ -197,10 +201,63 @@ restock.inventory = function() return {}, 8; end;
 assert(#restock.plan().fetch == 1, 'locked stored item remains withdrawable');
 client.counts[17330] = nil;
 assert(not realItem(17330).restockable, 'locked item with no stored balance is hidden');
+restock.config = model.normalize({});
+assert(#ui.candidates({}, 'amm') == 0, 'partial search respects tier access');
+client.tierMask = 33;
+assert(#ui.candidates({}, 'amm') == 1, 'cached search names pick up newly unlocked tiers');
 restock.config = model.normalize({ character = { { id = 50001, name = 'Sword', target = 0 } } });
 restock.inventory = function() return { [50001] = 1 }, 8; end;
 assert(#restock.plan().store == 0, 'previously saved gear entries cannot be deposited');
 restock.item, AshitaCore, client.counts = fixtureItem, oldCore, oldCounts;
+
+-- Clicking Store while the approach refresh is running must retain the action.
+restock.config = config;
+restock.inventory = function() return { [1] = 36, [2] = 6, [3] = 0 }, 8; end;
+nearby = true; restock.tick();
+local imgui = package.loaded['imgui'];
+local textures = require('dlac\\ui\\filetex');
+local oldHandle = textures.handle;
+textures.handle = function() return nil; end;
+imgui.Button = function(label) return label == 'S'; end;
+ui.trayDraw();
+imgui.Button = function() return false; end;
+hello(); client.tick(); page({ { 1, 100 } });
+restock.tick();
+assert(last()[5] == 1 and last()[13] == 1 and last()[15] == 12,
+    'red Store click during refresh must deposit listed surplus once stock is ready');
+client.onPacket(ack(1, 12, 12));
+restock.inventory = function() return { [1] = 24, [2] = 6 }, 8; end;
+restock.tick();
+-- A stale-stock click starts one refresh, then one deposit without a second click.
+client.reset();
+restock.inventory = function() return { [1] = 36, [2] = 6 }, 8; end;
+textures.handle = function() return 123; end;
+imgui.ImageButton = function() return true; end;
+ui.trayDraw();
+imgui.ImageButton = function() return false; end;
+assert(client.refreshing());
+count = #packets;
+assert(not restock.start('store') and #packets == count, 'repeated click cannot queue a second run');
+hello(); client.tick(); page({ { 1, 100 } }); restock.tick();
+assert(last()[5] == 1 and last()[15] == 12, 'stale click continues into the requested deposit');
+client.onPacket(ack(1, 12, 12));
+restock.inventory = function() return { [1] = 24, [2] = 6 }, 8; end;
+restock.tick();
+local oldPrint, feedback = print, {};
+print = function(message) feedback[#feedback + 1] = message; end;
+restock.config = model.normalize({});
+assert(restock.start('store')); count = #packets; restock.tick();
+print = oldPrint;
+assert(#packets == count and feedback[1]:find('No restock items listed'), 'empty list reports why Store did nothing');
+restock.config = config;
+client.reset(); assert(restock.start('store')); client.tick();
+client.onPacket(frame(last(), '', 7)); count = #packets; restock.tick();
+assert(not restock.busy() and #packets == count and restock.message:find('unlocked'),
+    'refresh refusal stops the requested deposit');
+client.reset(); assert(restock.start('store')); restock.stop();
+hello(); client.tick(); page({ { 1, 100 } }); count = #packets; restock.tick();
+assert(#packets == count, 'Stop during refresh cancels the pending user action');
+textures.handle = oldHandle;
 
 -- Config isolation, old-list import, backup rotation and a failed write.
 local safe = require('dlac\\lib\\safewrite');

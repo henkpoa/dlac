@@ -21,6 +21,7 @@ local function frame(op, token, body)
     return p;
 end
 function M.busy() return pending ~= nil or page ~= nil; end
+function M.refreshing() return page ~= nil; end
 function M.reset()
     pending, page, proto = nil, nil, nil;
     M.counts, M.fresh, M.tierMask = {}, false, nil;

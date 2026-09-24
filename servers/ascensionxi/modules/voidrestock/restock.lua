@@ -74,8 +74,10 @@ local function decode(text)
     return model.normalize(data);
 end
 function M.stop(why)
+    local active = run ~= nil;
     run = nil;
     M.message = why or 'Stopped. Any request already sent may still complete.';
+    if active and M.message ~= '' then print('[dlac] Void Restock: ' .. M.message); end
 end
 function M.syncContext()
     local r, j = M._context();
@@ -137,8 +139,15 @@ function M.plan()
         function(id) return M.item(id).storable == true; end), counts;
 end
 function M.start(kind)
-    if not M.syncContext() or M.busy() or not M.near() or not client.fresh then return false; end
     if kind ~= 'fetch' and kind ~= 'store' then return false; end
+    local reason;
+    if not M.syncContext() then reason = M.message ~= '' and M.message or 'Character unavailable.';
+    elseif run or settling or (client.busy() and not client.refreshing()) then reason = 'Already working.';
+    elseif not M.near() then reason = 'Move within 5 yalms of Void Storage.'; end
+    if reason then print('[dlac] Void Restock: ' .. reason); return false; end
+    -- A click during the approach read retains intent, but never sends a move
+    -- until a complete fresh stock/tier snapshot arrives. Mutations never retry.
+    if not client.fresh and not client.refreshing() then client.refresh(); end
     run = { kind = kind, seen = {}, moved = 0, at = M._clock() };
     M.message = kind == 'store' and 'Storing listed surplus...' or 'Fetching shortfall...';
     return true;
@@ -172,7 +181,12 @@ function M.tick()
     local nextMove;
     for _, e in ipairs(plan[run.kind]) do if not run.seen[e.id] then nextMove = e; break; end end
     if not nextMove then
-        M.stop(string.format('Done: %d units %s.', run.moved, run.kind == 'store' and 'stored' or 'fetched'));
+        local message = string.format('Done: %d units %s.', run.moved, run.kind == 'store' and 'stored' or 'fetched');
+        if run.moved == 0 then
+            if #model.effective(M.config, job) == 0 then message = 'No restock items listed for this job.';
+            else message = run.kind == 'store' and 'No eligible listed surplus to store.' or 'No listed shortfall to fetch.'; end
+        end
+        M.stop(message);
         return;
     end
     if M._clock() - run.at > 30 then M.stop('Storage channel busy; stopped.'); return; end

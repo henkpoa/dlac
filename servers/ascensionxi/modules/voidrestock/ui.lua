@@ -1,12 +1,14 @@
 local base = 'dlac\\servers\\ascensionxi\\modules\\voidrestock\\';
 local restock = require(base .. 'restock');
 local model = require(base .. 'model');
+local membership = require(base .. 'membership');
 local client = restock.client;
 local ok, imgui = pcall(require, 'imgui');
 local textures = require('dlac\\ui\\filetex');
 local M = {};
 local query, addTarget = { '' }, { 12 };
 local edits, lastConfig = {}, nil;
+local supplyNames;
 -- Ashita's established fixed-column layout (E-Box uses SameLine offsets too).
 -- The scroll regions have a fixed width; long names never push actions around.
 local TABLE_W, INV_X, VOID_X, TARGET_X, ACTION_X = 880, 260, 350, 440, 550;
@@ -95,6 +97,25 @@ function M.candidates(counts, text)
     for id in pairs(counts or {}) do candidates[id] = true; end
     for id in pairs(client.counts) do candidates[id] = true; end
     if text ~= '' then
+        -- Cache only resource names, never the character's tier permissions.
+        -- Search the server membership list so partial names work without stock.
+        if not supplyNames then
+            local names = {};
+            local loaded = pcall(function()
+                local resources = AshitaCore:GetResourceManager();
+                for _, ids in pairs(membership.data.itemsByTier) do
+                    for _, id in ipairs(ids) do
+                        local r = resources:GetItemById(id);
+                        if r and r.Name and r.Name[1] then names[id] = r.Name[1]:lower(); end
+                    end
+                end
+            end);
+            if loaded then supplyNames = names; end
+        end
+        local needle = text:lower();
+        for id, name in pairs(supplyNames or {}) do
+            if name:find(needle, 1, true) then candidates[id] = true; end
+        end
         pcall(function()
             local r = AshitaCore:GetResourceManager():GetItemByName(text, 2)
                 or AshitaCore:GetResourceManager():GetItemByName(text, 0);
@@ -141,7 +162,7 @@ function M.render(deps, availW)
     drawList('character', 'Always (every job)', restock.config.character, counts or {}, width);
     drawList('job', restock.job() .. ' only', restock.config.jobs[restock.job()] or {}, counts or {}, width);
     imgui.Separator(); imgui.Text('Add an item');
-    imgui.SetNextItemWidth(240); imgui.InputText('Search inventory / stored stock', query, 128);
+    imgui.SetNextItemWidth(240); imgui.InputText('Search supplies', query, 128);
     imgui.SetNextItemWidth(95); imgui.InputInt('Target quantity', addTarget);
     local rows = M.candidates(counts, query[1]);
     local listed = { character = {}, job = {} };
@@ -190,9 +211,9 @@ function M.trayDraw()
     local plan = restock.plan();
     local ready = not restock.busy() and client.fresh and plan ~= nil;
     -- Store is always first: changing shortages never move a deposit button
-    -- under a cursor aimed at Fetch. Stale counts lead to a read, never a move.
+    -- under a cursor aimed at Fetch. The controller waits for fresh stock.
     trayButton('void_storage', 'S', 'Store excess of listed items; keep inventory targets.', function()
-        if ready then restock.start('store'); elseif not restock.busy() then client.refresh(); end
+        restock.start('store');
     end);
     if ready and #plan.fetch > 0 then
         trayButton('void_storage', 'F', 'Fetch listed shortages from Void Storage.', function() restock.start('fetch'); end);
