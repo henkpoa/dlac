@@ -176336,6 +176336,20 @@ return {
                 LIGHT_MEVA = 3,
             }
         },
+        MistSilkCape_1 = {
+            Name = "Mist Silk Cape +1",
+            Level = 10,
+            Id = 26567,
+            Jobs = {"WHM", "BLM", "RDM", "BRD", "SMN", "BLU", "PUP", "SCH", "GEO"},
+            Type = "Back",
+            Stats = {
+                DEF = 3,
+                MND = 4,
+                CurePotency = 3,
+                HEALING = 5,
+                LIGHT_MEVA = 3,
+            }
+        },
         MisuuchiKappa = {
             Name = "Misuuchi Kappa",
             Level = 93,
@@ -218015,6 +218029,20 @@ return {
                 DEF = 3,
                 DEX = 3,
                 AGI = 3,
+            }
+        },
+        LeapingBoots_1 = {
+            Name = "Leaping Boots +1",
+            Level = 7,
+            Id = 26566,
+            Model = 502,
+            Jobs = {"WAR", "RDM", "THF", "PLD", "DRK", "BST", "BRD", "RNG", "SAM", "NIN", "DRG", "BLU", "COR", "DNC", "RUN"},
+            Type = "Feet",
+            Stats = {
+                DEF = 3,
+                DEX = 3,
+                AGI = 3,
+                MovementSpeed = 6,
             }
         },
         LeatherHighboots = {
