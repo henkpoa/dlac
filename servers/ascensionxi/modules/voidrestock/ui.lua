@@ -148,7 +148,7 @@ function M.render(deps, availW)
     imgui.SameLine();
     button('Store excess', near and not busy and client.fresh and plan and #plan.store > 0,
         function() restock.start('store'); end);
-    if imgui.IsItemHovered() then imgui.SetTooltip('Store only surplus listed items. Duplicate scrolls follow the normal sale rule.'); end
+    if imgui.IsItemHovered() then imgui.SetTooltip('Store eligible items, keeping listed targets. Duplicate scrolls follow the normal sale rule.'); end
     if busy then imgui.SameLine(); if imgui.Button('Stop') then restock.stop(); end end
     if client.message ~= '' and client.message ~= 'Visit Void Storage to refresh stock.'
         and client.message ~= 'Void Storage stock refreshed.' then
@@ -212,7 +212,7 @@ function M.trayDraw()
     local ready = not restock.busy() and client.fresh and plan ~= nil;
     -- Store is always first: changing shortages never move a deposit button
     -- under a cursor aimed at Fetch. The controller waits for fresh stock.
-    trayButton('void_storage', 'S', 'Store excess of listed items; keep inventory targets.', function()
+    trayButton('void_storage', 'S', 'Store eligible items; keep listed inventory targets.', function()
         restock.start('store');
     end);
     if ready and #plan.fetch > 0 then

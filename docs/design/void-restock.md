@@ -16,24 +16,26 @@ wardrobes and other jobs' lists do not satisfy these inventory targets.
 
 - **Fetch shortfall** draws up to the target, available stored stock and a
   conservative fresh-slot budget, with job entries taking priority.
-- **Store excess** deposits only `inventory quantity - target` for listed
-  items. Unlisted items are untouched. This was explicitly chosen by the
-  owner over sweeping all other eligible inventory items.
+- **Store excess** deposits eligible Inventory items while keeping the active
+  target quantities. Unlisted items have a target of zero and deposit in full.
+  Empty lists therefore store all eligible Inventory items. The owner changed
+  the initial listed-only policy to this behavior on 2026-09-24.
 - A zero target stores all inventory copies of that listed item.
 - No move runs automatically. Entering range of a Void Coffer refreshes the
   stored counts once. Buttons initiate moves; Stop cancels unsent work.
 - The tray keeps the red store button first and shows the green fetch button
   when a shortage can be filled. Right-click either to edit lists. With stale
-  stock, Store waits for a successful refresh and then deposits listed surplus.
+  stock, Store waits for a successful refresh and then deposits eligible excess.
   A click during the approach refresh also retains that intent. Stop, context
   changes and failed reads cancel it. Completion and no-op reasons appear in chat.
 
 Items can be added from Inventory, the stored holdings list, or a case-insensitive
 partial-name search across AXI's allowed supplies, even without current stock.
 Search caches names only and rechecks tier access and active lists each time.
-All paths exclude equipment except Ammo, using
+Picker and fetch paths exclude equipment except Ammo, using
 the Gear Oracle's slot when known and the client resource mask otherwise.
-Previously saved equipment entries also stay out of move plans. The editor
+Deposits follow server membership and tier access for every Inventory item;
+any existing active target is preserved even for an item hidden from the picker. The editor
 uses an 880px-wide fixed-column table layout with bounded scrolling regions
 for the lists and picker. The server remains authoritative for membership,
 attunement, tiers, busy items and Rare restrictions. A refusal/partial move
@@ -99,8 +101,9 @@ CI runs it together with `tests/lockstyle_vault.lua`.
 After `/addon reload dlac`, open `/dl restock` near a Void Coffer:
 
 1. Add a consumable to Always with target 12. Hold more than 12, plus an
-   unlisted storable item. Store excess should leave 12 and leave the unlisted
-   item unchanged. Verify both inventory and the server's stored balance.
+   unlisted storable item. Store excess should leave 12 and deposit the unlisted
+   item in full. Verify both inventory and the server's stored balance. Also
+   verify empty lists deposit all eligible items and leave locked/non-members held.
 2. Lower inventory below 12, then Fetch shortfall. Verify it returns to 12.
 3. Add a different current-job target for the same item and confirm it wins;
    switch jobs and confirm the character target returns.
@@ -166,7 +169,8 @@ access are hidden unless they already have stored stock. Deposits require
 membership and the unlocked tier. AXI's rule that existing stock remains
 withdrawable is preserved even if membership/access changes: those supplies
 can be selected for withdrawal but never queued for a disallowed deposit.
-Equipment other than ammunition remains excluded from this helper.
+Equipment other than ammunition remains excluded from the picker and fetch plans;
+deposits use server membership, including any accepted equipment-shaped items.
 
 The picker omits items present in Always or the current-job list. Other-job
 lists do not hide items. Always rows provide a `+ JOB` action to create an

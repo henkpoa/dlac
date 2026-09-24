@@ -23,10 +23,15 @@ local nin, war = model.effective(config, 'NIN'), model.effective(config, 'WAR');
 assert(#nin == 3 and nin[1].target == 24 and nin[2].target == 0);
 assert(#war == 2 and war[1].target == 12, 'other-job list must not participate');
 local p = model.plan(nin, { [1] = 36, [2] = 1, [3] = 5, [99] = 999 }, { [2] = 20 }, 1, function() return 12; end);
-assert(#p.store == 2 and p.store[1].id == 1 and p.store[1].qty == 12);
+assert(#p.store == 3 and p.store[1].id == 1 and p.store[1].qty == 12);
 assert(p.store[2].id == 3 and p.store[2].qty == 5, 'zero target stores listed copies');
 assert(#p.fetch == 1 and p.fetch[1].qty == 5);
-assert(#model.plan(war, { [99] = 999 }, {}, 0, function() return 12; end).store == 0);
+assert(p.store[3].id == 99 and p.store[3].qty == 999, 'unlisted inventory deposits in full');
+assert(#model.plan(war, { [99] = 999 }, {}, 0, function() return 12; end).store == 1);
+assert(#model.plan({}, { [99] = 999 }, {}, 0, function() return 12; end, function() return false; end).store == 0,
+    'ineligible inventory is never deposited, even with empty lists');
+local otherJob = model.plan(war, { [1] = 20, [3] = 5 }, {}, 0, function() return 12; end);
+assert(otherJob.store[1].qty == 8 and otherJob.store[2].qty == 5, 'inactive-job targets do not protect items');
 assert(#model.plan(nin, {}, { [1] = 999 }, 0, function() return 12; end).fetch == 0);
 p = model.plan(nin, {}, { [1] = 999, [2] = 999 }, 1, function() return 12; end);
 assert(#p.fetch == 1 and p.fetch[1].qty == 12, 'job first; fresh-slot budget clamps withdrawal');
@@ -143,8 +148,9 @@ local move = last(); client.onPacket(ack(1, 12, 12));
 restock.tick(); assert(last() == move, 'wait for inventory packet before another item');
 inventory[1] = 24; restock.tick(); assert(last()[13] == 3 and last()[15] == 5);
 client.onPacket(ack(3, 5, 5)); inventory[3] = nil; restock.tick();
-assert(not restock.busy() and restock.message:find('17 units stored'));
-assert(inventory[99] == 999, 'unlisted copies remain untouched');
+assert(last()[13] == 99, 'controller deposits eligible unlisted inventory');
+client.onPacket(ack(99, 999, 999)); inventory[99] = nil; restock.tick();
+assert(not restock.busy() and restock.message:find('1016 units stored'));
 inventory[1] = 36; restock.start('store'); contextJob = 'WAR'; count = #packets; restock.tick();
 assert(#packets == count and not restock.busy(), 'job change cancels queued deposits');
 contextJob = 'NIN'; restock.tick(); restock.start('store'); restock.tick();
@@ -208,6 +214,14 @@ assert(#ui.candidates({}, 'amm') == 1, 'cached search names pick up newly unlock
 restock.config = model.normalize({ character = { { id = 50001, name = 'Sword', target = 0 } } });
 restock.inventory = function() return { [50001] = 1 }, 8; end;
 assert(#restock.plan().store == 0, 'previously saved gear entries cannot be deposited');
+restock.config = model.normalize({});
+client.tierMask = 1;
+restock.inventory = function() return { [17330] = 120, [605] = 5, [50001] = 1 }, 8; end;
+local eligiblePlan = restock.plan();
+assert(#eligiblePlan.store == 1 and eligiblePlan.store[1].id == 605 and eligiblePlan.store[1].qty == 5,
+    'empty lists deposit base members but exclude locked-tier and non-member inventory');
+client.tierMask = 33;
+assert(#restock.plan().store == 2, 'unlocked unlisted ammo also deposits');
 restock.item, AshitaCore, client.counts = fixtureItem, oldCore, oldCounts;
 
 -- Clicking Store while the approach refresh is running must retain the action.
@@ -247,8 +261,16 @@ local oldPrint, feedback = print, {};
 print = function(message) feedback[#feedback + 1] = message; end;
 restock.config = model.normalize({});
 assert(restock.start('store')); count = #packets; restock.tick();
+assert(#packets == count + 1 and last()[13] == 1 and last()[15] == 24,
+    'empty lists store all eligible inventory using explicit quantities');
+client.onPacket(ack(1, 24, 24));
+restock.inventory = function() return { [2] = 6 }, 8; end; restock.tick();
+client.onPacket(ack(2, 6, 6));
+restock.inventory = function() return {}, 8; end; restock.tick();
+assert(feedback[1]:find('30 units stored'));
+assert(restock.start('store')); count = #packets; restock.tick();
 print = oldPrint;
-assert(#packets == count and feedback[1]:find('No restock items listed'), 'empty list reports why Store did nothing');
+assert(#packets == count and feedback[2]:find('No eligible excess'), 'nothing eligible reports a no-op');
 restock.config = config;
 client.reset(); assert(restock.start('store')); client.tick();
 client.onPacket(frame(last(), '', 7)); count = #packets; restock.tick();

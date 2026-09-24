@@ -1,5 +1,5 @@
--- Void Restock plans against Inventory only. Unlisted items never enter a
--- deposit plan; a current-job entry overrides the character target, even at 0.
+-- Inventory targets protect listed quantities; unlisted eligible items deposit
+-- in full. A current-job entry overrides the character target, even at 0.
 local M = {};
 local function quantity(n)
     n = tonumber(n) or 0;
@@ -36,20 +36,29 @@ function M.effective(config, job)
     end
     return out;
 end
-function M.plan(entries, inventory, balances, freeSlots, stackOf, canStore)
+function M.plan(entries, inventory, balances, freeSlots, stackOf, canStore, canFetch)
     local out = { fetch = {}, store = {} };
+    local targets = {};
     local free = math.max(0, freeSlots or 0);
     for _, e in ipairs(entries) do
         local held, target = inventory[e.id] or 0, quantity(e.target);
-        if held > target and (canStore == nil or canStore(e.id)) then
-            out.store[#out.store + 1] = { id = e.id, qty = math.min(65535, held - target) };
-        elseif held < target then
+        targets[e.id] = target;
+        if held < target and (canFetch == nil or canFetch(e.id)) then
             local stack = math.max(1, quantity(stackOf(e.id)));
             local qty = math.min(target - held, balances[e.id] or 0, free * stack, 65535);
             if qty > 0 then
                 out.fetch[#out.fetch + 1] = { id = e.id, qty = qty };
                 free = free - math.ceil(qty / stack);
             end
+        end
+    end
+    local ids = {};
+    for id in pairs(inventory) do ids[#ids + 1] = id; end
+    table.sort(ids);
+    for _, id in ipairs(ids) do
+        local surplus = inventory[id] - (targets[id] or 0);
+        if surplus > 0 and (canStore == nil or canStore(id)) then
+            out.store[#out.store + 1] = { id = id, qty = math.min(65535, surplus) };
         end
     end
     return out;

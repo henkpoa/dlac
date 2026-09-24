@@ -10,7 +10,7 @@ require('dlac\\ui\\automationsui').registerHelper({
             level = client.fresh and 1 or 0, max = 1, txt = restock.busy() and 'Working' or 'Click to manage' };
     end,
     panel = ui.render,
-    quick = { label = 'Void Restock', icon = 'void_storage', tip = 'Keep inventory targets topped up and store only listed surplus.' },
+    quick = { label = 'Void Restock', icon = 'void_storage', tip = 'Keep inventory targets topped up and store eligible excess.' },
 });
 require('dlac\\ui\\tray').register({ mod = base .. 'ui', wants = 'trayWants', draw = 'trayDraw' });
 if ashita and ashita.events then

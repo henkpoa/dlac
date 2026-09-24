@@ -37,7 +37,7 @@ function M.item(id)
                 or (not (rec and rec.Slot) and (slots == 0 or slots == 8));
             out = { id = id, name = r.Name[1] or ('Item ' .. tostring(id)),
                 stack = math.max(1, tonumber(r.StackSize) or 1),
-                storable = allowed == true and membership.canStore(id, client.tierMask),
+                storable = membership.canStore(id, client.tierMask),
                 restockable = allowed == true and (membership.canStore(id, client.tierMask) or (client.counts[id] or 0) > 0),
                 requirement = membership.requirement(id) };
         end
@@ -130,13 +130,11 @@ end
 function M.plan()
     local counts, free = M.inventory();
     if not counts or not job then return nil; end
-    local entries = {};
-    for _, e in ipairs(model.effective(M.config, job)) do
-        if M.item(e.id).restockable then entries[#entries + 1] = e; end
-    end
+    local entries = model.effective(M.config, job);
     return model.plan(entries, counts, client.counts, free,
         function(id) return M.item(id).stack; end,
-        function(id) return M.item(id).storable == true; end), counts;
+        function(id) return M.item(id).storable == true; end,
+        function(id) return M.item(id).restockable == true; end), counts;
 end
 function M.start(kind)
     if kind ~= 'fetch' and kind ~= 'store' then return false; end
@@ -149,7 +147,7 @@ function M.start(kind)
     -- until a complete fresh stock/tier snapshot arrives. Mutations never retry.
     if not client.fresh and not client.refreshing() then client.refresh(); end
     run = { kind = kind, seen = {}, moved = 0, at = M._clock() };
-    M.message = kind == 'store' and 'Storing listed surplus...' or 'Fetching shortfall...';
+    M.message = kind == 'store' and 'Storing excess...' or 'Fetching shortfall...';
     return true;
 end
 function M.tick()
@@ -183,8 +181,7 @@ function M.tick()
     if not nextMove then
         local message = string.format('Done: %d units %s.', run.moved, run.kind == 'store' and 'stored' or 'fetched');
         if run.moved == 0 then
-            if #model.effective(M.config, job) == 0 then message = 'No restock items listed for this job.';
-            else message = run.kind == 'store' and 'No eligible listed surplus to store.' or 'No listed shortfall to fetch.'; end
+            message = run.kind == 'store' and 'No eligible excess to store.' or 'No listed shortfall to fetch.';
         end
         M.stop(message);
         return;
