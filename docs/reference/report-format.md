@@ -37,6 +37,30 @@ are fenced `===== FILE: <label> (<n> bytes) =====` … `===== END FILE =====`.
 | `log` | pre-roll + the timeline | what dlac actually did |
 | `manifest` | every dlac data file on the character with its size, bundled or not | what else exists to ask for |
 
+## Client resource diagnostics
+
+The gear digest also records each item's **client resource name, flags, level,
+job mask and slot mask**, sampled when the report finishes. `NAME MISMATCH`
+and `equippable=false` expose client metadata disagreements even when the
+ID-based bag check labels an item `IN BAGS`. Since `2026.09.26a`, the sender
+uses catalog corrections for level/jobs/slots and the equippable bit, so raw
+resource values for those fields alone do not prove a rejection. Client names
+still must match. These finish-time readings
+are not a history of resource or inventory changes during the capture.
+
+An Arbiter selection is an intended outfit, not confirmation that an equip
+packet was sent or accepted. Compare the decision with nearby `SEND` lines.
+In Abraxis's 2026-09-26 capture, Resting selected Spiro Staff and sent `0x050`,
+while the following Idle decision selected Rekindled Sickle without an equip
+send. That older report lacks client resource fields, so it does not identify
+the final resolver gate responsible. His next capture, with these diagnostics,
+identified flags `0xF040` (equippable bit missing), level 255 and jobs 0 for
+item 19977. The native engine already corrected level and jobs, but left the
+flag unchanged. `2026.09.26a` makes a known catalog equipment slot supply that
+bit in bag, worn and trust snapshots; unknown/non-equipment entries retain
+the original flag gate. `lua tests/idle_weapon_report.lua` replays the exact
+resource fields and verifies the outgoing Main equip and subsequent stability.
+
 ## Reading the log
 
 The log opens with `===== PRE-ROLL =====` — the decision ring, action feed and

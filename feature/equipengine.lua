@@ -369,7 +369,7 @@ local function currentEquip(slot, invMgr, resMgr)
             Count = ci.Count, Flags = ci.Flags,
             Name = string.lower(res.Name[1] or ''),
             Level = facts.Level, Jobs = facts.Jobs, Slots = facts.Slots,
-            ResFlags = res.Flags,
+            ResFlags = facts.ResFlags,
             augment = augmentView(ci.Extra),
         };
     end);
@@ -427,7 +427,7 @@ local function liveSnapshot(wantNames)
                                 Container = container, Index = index, Id = ci.Id,
                                 Count = ci.Count, Flags = ci.Flags,
                                 Name = nm, Level = facts.Level, Jobs = facts.Jobs,
-                                Slots = facts.Slots, ResFlags = res.Flags,
+                                Slots = facts.Slots, ResFlags = facts.ResFlags,
                                 augment = augmentView(ci.Extra),
                             };
                         end
@@ -492,7 +492,7 @@ local function stampTrust(stamps, invMgr)
                         Level = facts.Level or 0,
                         Jobs = facts.Jobs or 0,
                         Slots = facts.Slots or 0,
-                        ResFlags = res ~= nil and res.Flags or 0,
+                        ResFlags = facts.ResFlags or 0,
                         augment = augmentView(ci.Extra),
                     };
                 end

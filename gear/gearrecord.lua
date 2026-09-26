@@ -52,7 +52,9 @@ end
 
 -- Return a copy; resource userdata and shared catalog records are never edited.
 -- Keep valid combined masks (Main/Sub, either ear/ring) when the bucket agrees.
--- Resource flags and names remain client facts, just as they do at import.
+-- A catalog equipment slot also establishes the equippable flag: custom IDs
+-- may retain a non-equippable retail placeholder (Abraxis, item 19977).
+-- Names and all other flag bits remain client facts.
 function M.equipMetadata(catalog, resource)
     local res = resource or {};
     local slot = (catalog and catalog.Slot) or M.slotFromMask(res.Slots);
@@ -60,7 +62,13 @@ function M.equipMetadata(catalog, resource)
     if catalog and M.SLOT_MASKS[slot] and M.slotFromMask(slots) ~= slot then
         slots = M.SLOT_MASKS[slot];
     end
+    local flags = res.Flags;
+    if catalog and M.SLOT_MASKS[catalog.Slot] then
+        flags = tonumber(flags) or 0;
+        if math.floor(flags / 2048) % 2 == 0 then flags = flags + 2048; end
+    end
     return { Slot = slot, Slots = slots,
+        ResFlags = flags,
         Level = (catalog and catalog.Level) or res.Level,
         Jobs = (catalog and M.encodeJobs(catalog.Jobs)) or res.Jobs };
 end
