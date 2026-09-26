@@ -15,7 +15,10 @@
     Valor Coronet). So levels() folds the prestige tiers (feature\prestigewatch,
     the 0x1A4 mirror) over the raw read: a prestiged job reports effective level
     75 -- the item cap, so "report 75" and "waive the requirement" are the same
-    rule. canEquip stays UNTOUCHED and pure: it is parity-pinned byte-identical
+    rule. AscensionXI's ascension module provides the same service (its
+    per-job ascension counts, 0x1E0 op 0xA0): that server's lockstyle check
+    also counts an ascended job as 75, so the one fold serves both servers.
+    canEquip stays UNTOUCHED and pure: it is parity-pinned byte-identical
     to the engine twin (dispatch._lsStyleGate), and the fold happens where the
     LEVELS are produced, not where they are judged.
 
