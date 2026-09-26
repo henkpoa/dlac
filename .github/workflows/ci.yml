@@ -32,6 +32,9 @@ jobs:
       - name: Custom equipment native pipeline regression
         run: lua5.4 tests/custom_equipment.lua
 
+      - name: Idle weapon resource report regression
+        run: lua5.4 tests/idle_weapon_report.lua
+
       - name: Server pack item icon regression
         run: lua5.4 tests/itemicons.lua
 

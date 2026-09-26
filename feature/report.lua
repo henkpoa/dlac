@@ -641,7 +641,7 @@ end
 -- claimed rather than guessed wrong. `level` is the job level OBSERVED during
 -- the window: an entry above it is flagged, because that is the one refusal
 -- the decision record can never carry (the filter runs at flatten time).
-function M._digestLines(names, byName, haveFn, level)
+function M._digestLines(names, byName, haveFn, level, resourceFn)
     local sorted = {};
     for n in pairs(names or {}) do sorted[#sorted + 1] = n; end
     table.sort(sorted);
@@ -672,6 +672,25 @@ function M._digestLines(names, byName, haveFn, level)
             end
             out[#out + 1] = string.format('  %-32s id %-6s lv %-3s %s%s  jobs %s',
                 n, tostring(rec.Id or '?'), tostring(rec.Level or '?'), have, extra, jobs);
+            -- Availability uses owned IDs; the native sender also checks client
+            -- names and catalog-corrected flags. Preserve the raw client facts
+            -- at report finish so "IN BAGS" is
+            -- not mistaken for proof that the native resolver accepts the item.
+            if resourceFn ~= nil then
+                local ok, line = pcall(function()
+                    local res = resourceFn(rec.Id);
+                    if res == nil then return '    client resource unavailable'; end
+                    local name = res.Name and res.Name[1] or '';
+                    local flags = tonumber(res.Flags) or 0;
+                    local equippable = math.floor(flags / 2048) % 2 == 1;
+                    return string.format('    client resource: name=%q flags=0x%X equippable=%s'
+                        .. ' level=%s jobs=%s slots=%s%s',
+                        tostring(name), flags, tostring(equippable), tostring(res.Level),
+                        tostring(res.Jobs), tostring(res.Slots),
+                        string.lower(tostring(name)) ~= string.lower(n) and '  NAME MISMATCH' or '');
+                end);
+                out[#out + 1] = ok and line or '    client resource unavailable (read failed)';
+            end
         end
     end
     if #unknown > 0 then
@@ -1417,13 +1436,18 @@ function M._write(st)
     local haveFn = nil;
     if dsp ~= nil and type(dsp._haveEquippable) == 'function' then haveFn = dsp._haveEquippable; end
     local lvl = tonumber(st.level);
+    local function resourceOf(id)
+        return AshitaCore:GetResourceManager():GetItemById(id);
+    end
+    L[#L + 1] = 'Client resource fields are sampled when this report finishes, not at decision time.';
+    L[#L + 1] = 'These are RAW client fields. The native sender matches client names; the active equipment catalog corrects level/jobs/slots and supplies the equippable flag.';
     if lvl ~= nil then
         L[#L + 1] = string.format('levels below are checked against %s%d -- the job and level dlac was'
             .. ' DECIDING UNDER during the window (a level sync counts).', tostring(st.job or ''), lvl);
         L[#L + 1] = '';
     end
     L[#L + 1] = 'items this window actually involved:';
-    add(M._digestLines(st.names, byName, haveFn, lvl));
+    add(M._digestLines(st.names, byName, haveFn, lvl, resourceOf));
 
     -- THE SECOND LIST is the one the first field report needed and could not
     -- have (2026-08-02). A DRG26 whose whole Ws_Default was levels 33-75 got
@@ -1439,7 +1463,7 @@ function M._write(st)
         L[#L + 1] = '';
         L[#L + 1] = 'other gear your active job\'s sets ask for (never used this window) -- when a set';
         L[#L + 1] = 'appeared to do nothing, the reason is usually here:';
-        add(M._digestLines(rest, byName, haveFn, lvl));
+        add(M._digestLines(rest, byName, haveFn, lvl, resourceOf));
     end
     if st.full then
         L[#L + 1] = '';

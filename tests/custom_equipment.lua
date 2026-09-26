@@ -89,10 +89,16 @@ assert(#sent == 1, 'without a catalog, the original resource level and slot gate
 worn = true;
 assert(engine.currentEquipView(10).Level == 127, 'catalog-less worn view retains resource facts');
 worn = false;
-ci.flat = realFlat;
 resource.Flags = 0;
 engine.equipSet({ Neck = 'Rabbit Charm +1' }); engine.bufferFlush('single');
-assert(#sent == 1, 'catalog correction must not override the resource equippable flag');
+assert(#sent == 1, 'without a catalog the resource equippable flag still applies');
+ci.flat = realFlat;
+assert(records.equipMetadata({ Slot = 'Neck' }, resource).ResFlags == 0x800,
+    'known catalog equipment supplies the missing equippable bit');
+assert(records.equipMetadata({ Slot = 'Item' }, resource).ResFlags == 0,
+    'a non-equipment catalog entry must not grant equippability');
+assert(records.equipMetadata(nil, resource).ResFlags == 0,
+    'an unknown item must not gain equippability');
 resource.Flags = 0x8800;
 
 -- A second custom ID uses the same path, without any per-item engine rule.
