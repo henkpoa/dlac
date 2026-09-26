@@ -1232,6 +1232,10 @@ function M.render()
                 tight = true,
                 box   = box,
                 backgroundAlpha = 1 - M.boxTransparency() / 100,
+                countOf = function(sl)
+                    if sl.label == 'Ammo' then return S.getEquippedCount(sl.equip); end
+                    return nil;
+                end,
                 -- Grab cue: the window has no frame, so the boxes are its only way
                 -- to say "grabbable now". Same mechanism that paints a pinned slot
                 -- red -- ImageButton's bg_col, field-proven here. (An earlier

@@ -2097,6 +2097,7 @@ local SLOT_BOX = 40;                  -- outer box; the icon fills it minus the 
 --     SLOT and not about the piece in it, which is why it is here and not in
 --     the item card: the server's encumbrance says nothing can go in, whatever
 --     is currently sitting there.
+--   countOf(sl) -> remaining stack count to draw in the slot's bottom-right corner.
 
 -- The strike-out itself: equipmon's encumber overlay, drawn in lines rather
 -- than from a texture (dlac ships no image assets, and a cross is four lines).
@@ -2235,6 +2236,21 @@ local function renderSlotGrid(idPrefix, gridHeight, selectedLabel, getItemId, ge
         -- The X goes on AFTER the button, so it lands over the icon: within one
         -- draw list, later is on top. Same order drawElementWheel relies on.
         if opts.crossOf ~= nil and opts.crossOf(sl) == true then drawSlotCross(BOX); end
+        local count = opts.countOf and opts.countOf(sl);
+        if count ~= nil then
+            local text = tostring(count);
+            local x, y = imgui.GetItemRectMin();
+            if type(x) == 'table' then y = (x[2] or x.y); x = (x[1] or x.x); end
+            local tw, th = imgui.CalcTextSize(text);
+            if type(tw) == 'table' then th = (tw[2] or tw.y); tw = (tw[1] or tw.x); end
+            local dl = imgui.GetWindowDrawList();
+            local tx, ty = x + math.max(0, BOX - tw - 2), y + BOX - th - 2;
+            local dark = imgui.GetColorU32({ 0, 0, 0, 1 });
+            for _, offset in ipairs({ { -1, 0 }, { 1, 0 }, { 0, -1 }, { 0, 1 } }) do
+                dl:AddText({ tx + offset[1], ty + offset[2] }, dark, text);
+            end
+            dl:AddText({ tx, ty }, imgui.GetColorU32({ 1, 1, 1, 1 }), text);
+        end
         if clicked then onClick(sl.label); end
         if imgui.IsItemHovered() then
             -- RMB: the gearmove pattern, field-confirmed in this client --
@@ -5319,6 +5335,11 @@ host.provide({
     -- equip / lock plumbing
     getPlayerInfo = getPlayerInfo,
     getEquippedId = getEquippedId, equipToSlot = equipToSlot,
+    getEquippedCount = function(equipSlot)
+        local worn = gearOracle.wornItem(equipSlot);
+        if worn == nil or worn.id == nil or worn.id == 0 or worn.id == 65535 then return nil; end
+        return worn.item and tonumber(worn.item.Count) or nil;
+    end,
     engineLocks = engineLocks, lacSlot = lacSlot,
     engineNaked = engineNaked, setEngineNaked = setEngineNaked,
     engineDisabled = engineDisabled,           -- free equip (ADR 0024): the disabled-slot set
