@@ -75,10 +75,13 @@ counts, timers) — dlac always sends the RAW `extra` bytes it can see (bag
 scan / shelf) or echoes `IdentityExtra` from a LIST/LAYOUT_LIST row, and
 never constructs identities by hand. Unaugmented gear = id + 24 zero bytes.
 
-**Structural exclusions dlac must mirror:** cat-15 ammunition is
-vault-ineligible (void-storage territory — the Ammo ladder contributes
-NOTHING to layouts and the ammo flow is untouched); linkshell items are
-excluded; fishing rods AND bait are vault territory (bait rides `quantity`).
+**Structural exclusions dlac must mirror:** cat-15 ammunition that is
+fired or thrown is vault-ineligible (void-storage territory — the Ammo
+ladder contributes NOTHING to layouts and the ammo flow is untouched);
+linkshell items are excluded. Since 2026-09-27 (server
+`gv.isKeptOutOfVault`) fishing rods AND bait are refused too, and the
+ammo-slot trinkets with no `AmmoType` (Bomb Core, Morion Tathlum) store
+like any other gear. `vaultui.keptOutOfVault(rec)` is dlac's mirror.
 
 ## The ratified decisions (grill of 2026-08-26)
 
