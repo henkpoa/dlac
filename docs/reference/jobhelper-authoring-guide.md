@@ -929,7 +929,10 @@ learn, and prose transmits lessons only to authors who read carefully and rememb
   `%p`, a heap address printed, the `p` eaten (2026-07-29). The kit **escapes** every string it
   draws and every tooltip it attaches (`panelkit.esc`), so write percent signs plainly in `ui.dim`,
   `ui.ok`, `ui.warn`, `ui.err`, `ui.disabled`, `ui.header` and `ui.ruleStatus`. If you ever call
-  `ctx.imgui.Text*` yourself, escaping is **yours** — use `ctx.ui.esc(s)`.
+  `ctx.imgui.Text*` yourself, escaping is **yours** — use `ctx.ui.esc(s)`. Escape the same way on
+  every server: where the Ashita build draws `Text`, `TextColored` and `TextDisabled` literally
+  (AscensionXI's), dlac undoes the escape for you (ADR 0036). Labels (`Button`, `Selectable`,
+  `Checkbox`, combo previews) are never format strings, so never escape those.
 - **Stack discipline**: every `Push` pops on every path, every `BeginCombo` that returned true ends.
   The frame-level recovery in `uihost` is the host's guard against a torn frame; the kit is what
   keeps it from being needed.

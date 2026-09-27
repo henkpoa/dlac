@@ -42,6 +42,18 @@
     One deliberate loss: framePadding is honoured via a PushStyleVar bracket
     when the binding exposes it, and silently dropped otherwise -- a border
     pixel is not worth a torn frame.
+
+    THE PERCENT SIGN (2026-09-27). The old binding formats Text, TextColored
+    and TextDisabled like printf, so the tree escapes every '%' as '%%' (the
+    panelkit law: an unescaped "below 51% pet HP" printed a heap address on
+    CatsEyeXI, 2026-07-29). The new binding draws those three LITERALLY, so the
+    same escaped line shows "%%" there. AscensionXI's probe P10 (Ashita
+    4.3.2.1, ImGui 1.92.3) measured it per widget: literal are Text,
+    TextColored, TextDisabled, Selectable, MenuItem, BeginMenu; printf-style
+    are TextWrapped, BulletText, SetTooltip. So on the new binding the three
+    text widgets undo the escape ('%%' -> '%') and call sites keep escaping
+    for both. The label widgets are literal on BOTH bindings and are never
+    escaped at all; the printf-style three need no wrapper.
 ]]--
 
 local M = {};
@@ -165,9 +177,16 @@ function M.status()
             and (' on an OLD libs\\imgui.lua (MIXED install: ' .. tostring(M.remapped) .. ' enum values corrected)')
             or '';
         return 'imgui binding NEW (' .. tostring(M.signal) .. ')' .. mixed
-            .. ' -- shim WRAPPED BeginChild/ImageButton/Image';
+            .. ' -- shim WRAPPED BeginChild/ImageButton/Image/Text/TextColored/TextDisabled';
     end
     return 'imgui binding OLD (no new-binding signal) -- shim inert, call sites native';
+end
+
+-- PURE: what the old binding's printf drew for an escaped line -- each '%%'
+-- becomes '%'. A lone '%' (an unescaped call site) is left as it is.
+function M._undoPercentEscape(s)
+    if type(s) ~= 'string' or s:find('%', 1, true) == nil then return s; end
+    return (s:gsub('%%%%', '%%'));
 end
 
 -- PURE: the old bool-or-passthrough third argument -> ImGuiChildFlags.
@@ -263,6 +282,19 @@ function M.install()
             end
             return rawImage(tex, size, uv0, uv1);   -- tint lost, image kept
         end;
+    end
+
+    -- Text, TextColored, TextDisabled: literal on this binding, so the '%%'
+    -- every call site writes for the old printf would show as "%%".
+    local rawText, rawTextColored, rawTextDisabled = imgui.Text, imgui.TextColored, imgui.TextDisabled;
+    if rawText ~= nil then
+        imgui.Text = function(text) return rawText(M._undoPercentEscape(text)); end;
+    end
+    if rawTextColored ~= nil then
+        imgui.TextColored = function(col, text) return rawTextColored(col, M._undoPercentEscape(text)); end;
+    end
+    if rawTextDisabled ~= nil then
+        imgui.TextDisabled = function(text) return rawTextDisabled(M._undoPercentEscape(text)); end;
     end
 
     return true;

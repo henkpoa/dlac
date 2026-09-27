@@ -18,7 +18,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.09.27b';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.09.27c';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
                                 -- (03f = engine v163: the contest explains its own plan;
                                 --  03g = one floating tray: Teleports + the E-Box crates;
@@ -325,8 +325,9 @@ end);
 -- THE IMGUI-BINDING SEAM: newer Ashita builds ship ImGui 1.90+, where
 -- BeginChild's border bool became ImGuiChildFlags and ImageButton/Image
 -- changed shape -- every dlac call site speaks the OLD shapes. Detect the
--- binding once and wrap the three entries so both builds render; on the old
--- binding this wraps nothing at all. Must run before the first frame -- see
+-- binding once and wrap the three entries so both builds render (plus the
+-- three text widgets, which draw '%%' literally there); on the old binding
+-- this wraps nothing at all. Must run before the first frame -- see
 -- lib\imguicompat.lua for the whole story.
 pcall(function()
     require('dlac\\lib\\imguicompat').install();

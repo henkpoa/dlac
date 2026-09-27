@@ -80,6 +80,25 @@ readable line instead of three red tab errors. A `FAILED` status is a `/dl check
 Pinned headless as IMC16–IMC31 (the mixed install, the `GetVersion` path, the readable
 failure).
 
+## Amendment 2026-09-27: the percent sign is a binding difference too
+
+The tree escapes every `%` as `%%` because the old binding formats `Text`, `TextColored` and
+`TextDisabled` like printf: on CatsEyeXI (Ashita 4.2.0.1, ImGui 1.80) an unescaped
+`below 51% pet HP` printed a heap address (2026-07-29, the panelkit law). AscensionXI's probe
+P10 (2026-09-27, Ashita 4.3.2.1, ImGui 1.92.3) measured the new binding widget by widget:
+
+| Widget | New binding | Old binding |
+|---|---|---|
+| `Text`, `TextColored`, `TextDisabled` | literal: `%%` shows as `%%` | printf (field-proven for `TextColored`) |
+| `TextWrapped`, `BulletText`, `SetTooltip` | printf | printf (`SetTooltip` field-proven 2026-08-06) |
+| `Selectable`, `MenuItem`, `BeginMenu` (and the other label parameters) | literal | literal (ImGui takes no format string there) |
+
+Only the first row differs, and it gets the same treatment as the call shapes: on a new
+binding `install()` wraps those three and turns each `%%` back into `%`, and call sites keep
+escaping for both builds. Removing the escapes instead would bring the heap addresses back on
+CatsEyeXI. The status line names the wrapped text widgets. Pinned headless as IMC38–IMC47. The
+label widgets are the same on both bindings, so they take no wrapper and are never escaped.
+
 ## Records
 
 `lib/imguicompat.lua` (the whole story in its header), `docs/history.md` (the Vanaheim

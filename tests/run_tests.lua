@@ -28176,6 +28176,48 @@ end)();
     package.path = savedPath;
     check('IMC31 ...and status says FAILED',
           ic5.status():find('FAILED', 1, true) ~= nil, true);
+
+    -- THE PERCENT SIGN (AscensionXI probe P10, 2026-09-27): the new binding
+    -- draws Text, TextColored and TextDisabled literally, so the '%%' every
+    -- call site writes for the old binding's printf is undone there. The
+    -- printf-style widgets (TextWrapped, SetTooltip) keep it, and the old
+    -- binding is never touched.
+    check('IMC38 an escaped percent draws as one', ic._undoPercentEscape('below 51%% pet HP'), 'below 51% pet HP');
+    check('IMC39 an escaped pair draws as a pair', ic._undoPercentEscape('%%%%'), '%%');
+    check('IMC40 a lone percent is left as it is', ic._undoPercentEscape('51% HP'), '51% HP');
+    check('IMC41 a non-string passes through',     ic._undoPercentEscape(51), 51);
+    local savedEnums = {};
+    for name in pairs(ic.NEW_ENUMS) do savedEnums[name] = _G[name]; end
+    local drawn = {};
+    local fakeText = {
+        ImageWithBg  = function() end,
+        Text         = function(t) drawn.text = t; end,
+        TextColored  = function(c, t) drawn.col, drawn.colored = c, t; end,
+        TextDisabled = function(t) drawn.disabled = t; end,
+        TextWrapped  = function(t) drawn.wrapped = t; end,
+        SetTooltip   = function(t) drawn.tip = t; end,
+    };
+    package.loaded['imgui'] = fakeText;
+    local ic8 = dofile('lib/imguicompat.lua');
+    ic8.install();
+    fakeText.Text('5%% haste');
+    fakeText.TextColored('red', '5%% haste');
+    fakeText.TextDisabled('5%% haste');
+    fakeText.TextWrapped('5%% haste');
+    fakeText.SetTooltip('5%% haste');
+    check('IMC42 new binding: Text draws one percent',      drawn.text, '5% haste');
+    check('IMC43 ...TextColored too, with its colour',      drawn.colored == '5% haste' and drawn.col == 'red', true);
+    check('IMC44 ...and TextDisabled',                      drawn.disabled, '5% haste');
+    check('IMC45 the printf-style widgets keep the escape', drawn.wrapped == '5%% haste' and drawn.tip == '5%% haste', true);
+    check('IMC46 the status line names the text widgets',   ic8.status():find('TextColored', 1, true) ~= nil, true);
+    for name in pairs(ic.NEW_ENUMS) do _G[name] = savedEnums[name]; end
+    local oldText = function() end;
+    package.loaded['imgui'] = { Text = oldText, TextColored = oldText };
+    local ic9 = dofile('lib/imguicompat.lua');
+    ic9.install();
+    check('IMC47 old binding: the text widgets are untouched',
+          package.loaded['imgui'].Text == oldText and package.loaded['imgui'].TextColored == oldText, true);
+    package.loaded['imgui'] = nil;
 end)();
 
 -- ---------------------------------------------------------------------------
