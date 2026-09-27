@@ -501,14 +501,18 @@ local LAYOUT_ASK_GAP = 3.0;
 
 -- The server's category fence (ascensionxi gv.isKeptOutOfVault, 2026-09-27):
 -- fishing rods and bait (skill 48) stay in the bags, and ammunition a weapon
--- fires or throws belongs to void storage. An ammo-slot trinket (no AmmoType:
--- Bomb Core, Morion Tathlum) is gear and stores. Stricter than the server in
--- one place: a Rare/Ex arrow the server files under no category would store,
--- but dlac cannot see the category and keeps it off the list.
+-- fires or throws belongs to void storage -- so do Throwing Tomahawk and
+-- Angon, which abilities throw though they carry no AmmoType. Any other
+-- ammo-slot trinket (no AmmoType: Bomb Core, Morion Tathlum) is gear and
+-- stores. Stricter than the server in one place: a Rare/Ex arrow the server
+-- files under no category would store, but dlac cannot see the category and
+-- keeps it off the list.
 local FIRED_AMMO = { Archery = true, Marksmanship = true, Throwing = true };
-function M.keptOutOfVault(rec)
+local ABILITY_THROWN = { [18258] = true, [18259] = true };   -- Throwing Tomahawk, Angon
+function M.keptOutOfVault(rec, itemId)
     local skill = tonumber(tostring(rec.Pair or ''):match('^(%d+):'));
     if skill == 48 or rec.Type == 'FishingRod' or rec.AmmoType == 'FishingRod' then return true; end
+    if ABILITY_THROWN[itemId or rec.Id] then return true; end
     return rec.Slot == 'Ammo' and FIRED_AMMO[rec.AmmoType] == true;
 end
 
@@ -535,7 +539,7 @@ local function inventoryStorable()
             local entry = inv:GetContainerItem(0, idx);
             if entry ~= nil and entry.Id ~= nil and entry.Id ~= 0 and entry.Id ~= 65535 then
                 local rec = recOf(entry.Id);
-                if rec ~= nil and not M.keptOutOfVault(rec) then
+                if rec ~= nil and not M.keptOutOfVault(rec, entry.Id) then
                     out[#out + 1] = {
                         container = 0, slot = idx, itemId = entry.Id,
                         qty = math.max(1, entry.Count or 1),

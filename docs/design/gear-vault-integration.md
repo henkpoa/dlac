@@ -81,7 +81,8 @@ ladder contributes NOTHING to layouts and the ammo flow is untouched);
 linkshell items are excluded. Since 2026-09-27 (server
 `gv.isKeptOutOfVault`) fishing rods AND bait are refused too, and the
 ammo-slot trinkets with no `AmmoType` (Bomb Core, Morion Tathlum) store
-like any other gear. `vaultui.keptOutOfVault(rec)` is dlac's mirror.
+like any other gear, except the ability-thrown Throwing Tomahawk and Angon.
+`vaultui.keptOutOfVault(rec, itemId)` is dlac's mirror.
 
 ## The ratified decisions (grill of 2026-08-26)
 

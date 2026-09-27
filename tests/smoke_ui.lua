@@ -7797,6 +7797,12 @@ end)();
           vui.keptOutOfVault({ Slot = 'Range', Pair = '48:0' }), true);
     check('GVUF8 a bow is gear', vui.keptOutOfVault({ Slot = 'Range', Type = 'Archery', Pair = '25:0' }), false);
     check('GVUF9 a body piece is gear', vui.keptOutOfVault({ Slot = 'Body' }), false);
+    check('GVUF10 Throwing Tomahawk stays out',
+          vui.keptOutOfVault({ Id = 18258, Slot = 'Ammo', Type = 'Ammo', Pair = '0:0' }), true);
+    check('GVUF11 Angon stays out',
+          vui.keptOutOfVault({ Id = 18259, Slot = 'Ammo', Type = 'Ammo', Pair = '0:0' }), true);
+    check('GVUF12 an owned record without Id is judged by the bag entry id',
+          vui.keptOutOfVault({ Slot = 'Ammo', Type = 'Ammo', Pair = '0:0' }, 18259), true);
     -- two storable pieces in the bag (the _invOverride seam): the Inventory
     -- sub-tab must light up with the count and offer Store / Store all
     vui._invOverride = {
