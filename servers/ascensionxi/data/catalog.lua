@@ -316,18 +316,19 @@ return {
             },
             BeatCesti = {
                 Name = "Beat Cesti",
-                Level = 42,
+                Level = 40,
                 Id = 17478,
                 Model = 127,
                 Jobs = {"MNK"},
                 OneHanded = false,
                 Type = "HandToHand",
                 Stats = {
-                    DMG = 4,
+                    DMG = 12,
                     Delay = 528,
-                    DEX = 2,
-                    VIT = 2,
-                    Accuracy = 3,
+                    DEX = 3,
+                    VIT = 3,
+                    Accuracy = 5,
+                    StoreTP = 3,
                 }
             },
             BehemCesti_1 = {
@@ -8985,10 +8986,11 @@ return {
                 OneHanded = true,
                 Type = "Dagger",
                 Stats = {
-                    DMG = 15,
-                    Delay = 195,
-                    DEX = 2,
-                    AGI = 2,
+                    DMG = 17,
+                    Delay = 190,
+                    DEX = 3,
+                    AGI = 3,
+                    Accuracy = 5,
                 }
             },
             MartialKnife = {
@@ -14792,18 +14794,19 @@ return {
             },
             FencingDegen = {
                 Name = "Fencing Degen",
-                Level = 41,
+                Level = 40,
                 Id = 16829,
                 Model = 188,
                 Jobs = {"RDM"},
                 OneHanded = true,
                 Type = "Sword",
                 Stats = {
-                    DMG = 22,
+                    DMG = 25,
                     Delay = 224,
-                    MP = 10,
-                    INT = 1,
-                    MND = 1,
+                    MP = 15,
+                    INT = 3,
+                    MND = 3,
+                    ENSPELL_DMG_BONUS = 3,
                 }
             },
             FermionSword = {
@@ -26045,10 +26048,13 @@ return {
                 OneHanded = true,
                 Type = "Axe",
                 Stats = {
-                    DMG = 31,
-                    Delay = 276,
-                    STR = 2,
-                    DEX = 2,
+                    DMG = 35,
+                    Delay = 264,
+                    STR = 3,
+                    DEX = 3,
+                    VIT = 2,
+                    Accuracy = 3,
+                    Enmity = 3,
                 }
             },
             RelicAxe = {
@@ -45618,17 +45624,19 @@ return {
             },
             BlessedHammer = {
                 Name = "Blessed Hammer",
-                Level = 41,
+                Level = 40,
                 Id = 17422,
                 Model = 115,
                 Jobs = {"WHM"},
                 OneHanded = true,
                 Type = "Club",
                 Stats = {
-                    DMG = 27,
-                    Delay = 324,
-                    MP = 10,
-                    MND = 2,
+                    DMG = 30,
+                    Delay = 316,
+                    MP = 15,
+                    MND = 5,
+                    CurePotency = 3,
+                    HEALING = 5,
                 }
             },
             BlurredRod = {
@@ -46148,16 +46156,19 @@ return {
             },
             CastingWand = {
                 Name = "Casting Wand",
-                Level = 41,
+                Level = 40,
                 Id = 17423,
                 Model = 226,
                 Jobs = {"BLM"},
                 OneHanded = true,
                 Type = "Club",
                 Stats = {
-                    DMG = 12,
+                    DMG = 14,
                     Delay = 216,
-                    MP = 20,
+                    MP = 30,
+                    INT = 5,
+                    MagicAttackBonus = 2,
+                    ELEM = 5,
                 }
             },
             ChacChacs = {
@@ -88239,17 +88250,18 @@ return {
         },
         FightersMask = {
             Name = "Fighter's Mask",
-            Level = 56,
+            Level = 50,
             Id = 12511,
             Model = 64,
             Jobs = {"WAR"},
             Type = "Head",
             Stats = {
-                DEF = 24,
-                HP = 15,
-                DEX = 3,
-                INT = 1,
-                Enmity = 1,
+                DEF = 25,
+                HP = 20,
+                STR = 3,
+                DEX = 4,
+                Attack = 6,
+                Enmity = 2,
             }
         },
         FiliCalot = {
@@ -90481,17 +90493,18 @@ return {
         },
         HealersCap = {
             Name = "Healer's Cap",
-            Level = 54,
+            Level = 50,
             Id = 13855,
             Model = 68,
             Jobs = {"WHM"},
             Type = "Head",
             Stats = {
-                DEF = 21,
-                MP = 13,
-                MND = 4,
-                Enmity = -1,
-                DARK_MEVA = 15,
+                DEF = 22,
+                MP = 20,
+                MND = 5,
+                Enmity = -2,
+                CurePotency = 3,
+                HEALING = 5,
             }
         },
         HeathBur_3 = {
@@ -99128,16 +99141,17 @@ return {
         },
         RoguesBonnet = {
             Name = "Rogue's Bonnet",
-            Level = 54,
+            Level = 50,
             Id = 12514,
             Model = 74,
             Jobs = {"THF"},
             Type = "Head",
             Stats = {
-                DEF = 23,
-                HP = 13,
-                INT = 5,
-                PARRY = 10,
+                DEF = 24,
+                HP = 15,
+                DEX = 4,
+                AGI = 4,
+                Accuracy = 5,
                 STEAL = 1,
             }
         },
@@ -102025,15 +102039,18 @@ return {
         },
         TempleCrown = {
             Name = "Temple Crown",
-            Level = 56,
+            Level = 50,
             Id = 12512,
             Model = 66,
             Jobs = {"MNK"},
             Type = "Head",
             Stats = {
-                DEF = 21,
-                HP = 16,
+                DEF = 22,
+                HP = 20,
+                STR = 3,
+                DEX = 3,
                 MND = 5,
+                Accuracy = 6,
                 FOCUS_EFFECT = 10,
             }
         },
@@ -103824,15 +103841,16 @@ return {
         },
         WarlocksChapeau = {
             Name = "Warlock's Chapeau",
-            Level = 60,
+            Level = 50,
             Id = 12513,
             Model = 72,
             Jobs = {"RDM"},
             Type = "Head",
             Stats = {
-                DEF = 23,
-                MP = 20,
-                INT = 3,
+                DEF = 24,
+                MP = 25,
+                INT = 4,
+                MND = 4,
                 FastCast = 10,
                 ELEM = 10,
             }
@@ -104220,17 +104238,18 @@ return {
         },
         WizardsPetasos = {
             Name = "Wizard's Petasos",
-            Level = 60,
+            Level = 50,
             Id = 13856,
             Model = 70,
             Jobs = {"BLM"},
             Type = "Head",
             Stats = {
-                DEF = 20,
-                MP = 25,
-                INT = 4,
+                DEF = 21,
+                MP = 30,
+                INT = 5,
+                MagicAttackBonus = 2,
                 Enmity = -4,
-                THUNDER_MEVA = 10,
+                ELEM = 5,
             }
         },
         WlkChapeau_1 = {
@@ -126087,17 +126106,18 @@ return {
         },
         FightersLorica = {
             Name = "Fighter's Lorica",
-            Level = 60,
+            Level = 50,
             Id = 12638,
             Model = 64,
             Jobs = {"WAR"},
             Type = "Body",
             Stats = {
-                DEF = 47,
-                HP = 20,
-                VIT = 5,
+                DEF = 48,
+                HP = 30,
+                STR = 4,
+                VIT = 6,
+                Attack = 8,
                 Enmity = 8,
-                FIRE_MEVA = 10,
             }
         },
         FiliHongreline = {
@@ -128464,17 +128484,17 @@ return {
         },
         HealersBliaut = {
             Name = "Healer's Bliaut",
-            Level = 58,
+            Level = 50,
             Id = 12640,
             Model = 68,
             Jobs = {"WHM"},
             Type = "Body",
             Stats = {
-                DEF = 40,
-                MP = 15,
+                DEF = 41,
+                MP = 25,
+                MND = 5,
                 Enmity = -4,
                 ENFEEBLE = 10,
-                WIND_MEVA = 10,
             }
         },
         HealingHarness = {
@@ -137692,16 +137712,18 @@ return {
         },
         RoguesVest = {
             Name = "Rogue's Vest",
-            Level = 58,
+            Level = 50,
             Id = 12643,
             Model = 74,
             Jobs = {"THF"},
             Type = "Body",
             Stats = {
-                DEF = 44,
+                DEF = 45,
                 HP = 20,
                 STR = 3,
-                EARTH_MEVA = 10,
+                DEX = 3,
+                AGI = 3,
+                Attack = 5,
                 HIDE_DURATION = 100,
             }
         },
@@ -140781,18 +140803,18 @@ return {
         },
         TempleCyclas = {
             Name = "Temple Cyclas",
-            Level = 58,
+            Level = 50,
             Id = 12639,
             Model = 66,
             Jobs = {"MNK"},
             Type = "Body",
             Stats = {
-                DEF = 41,
-                HP = 20,
-                VIT = 3,
+                DEF = 42,
+                HP = 25,
+                STR = 3,
+                VIT = 5,
                 Accuracy = 5,
                 CHAKRA_MULT = 50,
-                CHAKRA_REMOVAL = 1,
             }
         },
         TenryuDomaru = {
@@ -142748,16 +142770,16 @@ return {
         },
         WarlocksTabard = {
             Name = "Warlock's Tabard",
-            Level = 58,
+            Level = 50,
             Id = 12642,
             Model = 72,
             Jobs = {"RDM"},
             Type = "Body",
             Stats = {
-                DEF = 44,
-                MP = 14,
-                CHR = 5,
-                SpellInterruptionRateDown = 10,
+                DEF = 45,
+                MP = 25,
+                INT = 4,
+                MND = 4,
                 ENFEEBLE = 15,
             }
         },
@@ -143104,16 +143126,17 @@ return {
         },
         WizardsCoat = {
             Name = "Wizard's Coat",
-            Level = 58,
+            Level = 50,
             Id = 12641,
             Model = 70,
             Jobs = {"BLM"},
             Type = "Body",
             Stats = {
-                DEF = 38,
-                MP = 16,
-                VIT = 5,
+                DEF = 39,
+                MP = 25,
+                INT = 5,
                 Enmity = -3,
+                ELEM = 3,
                 ENFEEBLE = 10,
             }
         },
@@ -151155,17 +151178,18 @@ return {
         },
         FightersMufflers = {
             Name = "Fighter's Mufflers",
-            Level = 54,
+            Level = 50,
             Id = 13961,
             Model = 64,
             Jobs = {"WAR"},
             Type = "Hands",
             Stats = {
-                DEF = 16,
-                HP = 13,
-                STR = 4,
+                DEF = 17,
+                HP = 15,
+                STR = 5,
+                VIT = 5,
+                Accuracy = 6,
                 Enmity = 3,
-                SHIELD = 10,
             }
         },
         FiliManchettes = {
@@ -153250,15 +153274,17 @@ return {
         },
         HealersMitts = {
             Name = "Healer's Mitts",
-            Level = 60,
+            Level = 50,
             Id = 13963,
             Model = 68,
             Jobs = {"WHM"},
             Type = "Hands",
             Stats = {
-                DEF = 14,
-                MP = 10,
-                STR = 5,
+                DEF = 15,
+                MP = 15,
+                STR = 4,
+                MND = 4,
+                Accuracy = 5,
                 Enmity = -4,
                 HEALING = 15,
             }
@@ -160925,16 +160951,17 @@ return {
         },
         RoguesArmlets = {
             Name = "Rogue's Armlets",
-            Level = 52,
+            Level = 50,
             Id = 13966,
             Model = 74,
             Jobs = {"THF"},
             Type = "Hands",
             Stats = {
-                DEF = 15,
-                HP = 10,
-                DEX = 3,
-                ICE_MEVA = 10,
+                DEF = 16,
+                HP = 12,
+                DEX = 4,
+                AGI = 2,
+                Haste = 2,
                 STEAL = 1,
             }
         },
@@ -163531,17 +163558,18 @@ return {
         },
         TempleGloves = {
             Name = "Temple Gloves",
-            Level = 54,
+            Level = 50,
             Id = 13962,
             Model = 66,
             Jobs = {"MNK"},
             Type = "Hands",
             Stats = {
-                DEF = 14,
-                HP = 14,
+                DEF = 15,
+                HP = 15,
                 STR = 4,
+                DEX = 2,
+                StoreTP = 3,
                 BOOST_EFFECT = 55,
-                DARK_MEVA = 10,
             }
         },
         TenryuTekko = {
@@ -165230,17 +165258,17 @@ return {
         },
         WarlocksGloves = {
             Name = "Warlock's Gloves",
-            Level = 54,
+            Level = 50,
             Id = 13965,
             Model = 72,
             Jobs = {"RDM"},
             Type = "Hands",
             Stats = {
-                DEF = 16,
-                MP = 12,
-                DEX = 4,
-                DARK_MEVA = 10,
-                PARRY = 10,
+                DEF = 17,
+                MP = 15,
+                STR = 4,
+                MND = 3,
+                ENHANCE = 8,
             }
         },
         WarriorsMufflers = {
@@ -165602,17 +165630,17 @@ return {
         },
         WizardsGloves = {
             Name = "Wizard's Gloves",
-            Level = 54,
+            Level = 50,
             Id = 13964,
             Model = 70,
             Jobs = {"BLM"},
             Type = "Hands",
             Stats = {
-                DEF = 13,
-                MP = 12,
-                CHR = 3,
-                Enmity = -1,
+                DEF = 14,
+                MP = 15,
+                INT = 3,
                 ELEM = 15,
+                MAGIC_BURST_BONUS_CAPPED = 3,
             }
         },
         WlkGloves_1 = {
@@ -178003,6 +178031,19 @@ return {
             Type = "Back",
             Stats = {
                 DEF = 1,
+                Evasion = 3,
+            }
+        },
+        TravelersMantle_1 = {
+            Name = "Traveler's Mantle +1",
+            Level = 12,
+            Id = 26568,
+            Jobs = {"WAR", "MNK", "RDM", "THF", "PLD", "DRK", "BST", "BRD", "RNG", "SAM", "NIN", "DRG", "BLU", "COR", "DNC", "RUN"},
+            Type = "Back",
+            Stats = {
+                DEF = 1,
+                Accuracy = 4,
+                RangedAccuracy = 4,
                 Evasion = 3,
             }
         },
@@ -191441,16 +191482,17 @@ return {
         },
         FightersCuisses = {
             Name = "Fighter's Cuisses",
-            Level = 58,
+            Level = 50,
             Id = 14214,
             Model = 64,
             Jobs = {"WAR"},
             Type = "Legs",
             Stats = {
-                DEF = 34,
-                HP = 15,
-                Accuracy = 3,
-                Evasion = 3,
+                DEF = 35,
+                HP = 20,
+                STR = 3,
+                Accuracy = 8,
+                Attack = 5,
                 Enmity = 2,
             }
         },
@@ -193273,16 +193315,17 @@ return {
         },
         HealersPantaln = {
             Name = "Healer's Pantaln.",
-            Level = 56,
+            Level = 50,
             Id = 14216,
             Model = 68,
             Jobs = {"WHM"},
             Type = "Legs",
             Stats = {
-                DEF = 28,
-                MP = 15,
-                VIT = 3,
-                Enmity = -1,
+                DEF = 29,
+                MP = 20,
+                MND = 4,
+                Attack = 5,
+                Enmity = -2,
                 DIVINE = 15,
             }
         },
@@ -200870,16 +200913,18 @@ return {
         },
         RoguesCulottes = {
             Name = "Rogue's Culottes",
-            Level = 56,
+            Level = 50,
             Id = 14219,
             Model = 74,
             Jobs = {"THF"},
             Type = "Legs",
             Stats = {
-                DEF = 32,
+                DEF = 33,
                 HP = 15,
-                AGI = 4,
-                SHIELD = 10,
+                DEX = 3,
+                AGI = 5,
+                Accuracy = 6,
+                Evasion = 5,
                 STEAL = 1,
             }
         },
@@ -203553,15 +203598,18 @@ return {
         },
         TempleHose = {
             Name = "Temple Hose",
-            Level = 60,
+            Level = 50,
             Id = 14215,
             Model = 66,
             Jobs = {"MNK"},
             Type = "Legs",
             Stats = {
-                DEF = 29,
-                HP = 18,
-                Counter = 1,
+                DEF = 30,
+                HP = 20,
+                STR = 3,
+                DEX = 3,
+                Accuracy = 5,
+                Counter = 2,
                 GUARD = 10,
             }
         },
@@ -205209,15 +205257,15 @@ return {
         },
         WarlocksTights = {
             Name = "Warlock's Tights",
-            Level = 56,
+            Level = 50,
             Id = 14218,
             Model = 72,
             Jobs = {"RDM"},
             Type = "Legs",
             Stats = {
-                DEF = 33,
-                MP = 13,
-                MND = 3,
+                DEF = 34,
+                MP = 20,
+                MND = 5,
                 ENHANCE = 15,
                 HEALING = 10,
             }
@@ -205560,15 +205608,15 @@ return {
         },
         WizardsTonban = {
             Name = "Wizard's Tonban",
-            Level = 56,
+            Level = 50,
             Id = 14217,
             Model = 70,
             Jobs = {"BLM"},
             Type = "Legs",
             Stats = {
-                DEF = 27,
-                MP = 14,
-                Evasion = 5,
+                DEF = 28,
+                MP = 20,
+                INT = 4,
                 Enmity = -1,
                 DARK = 15,
             }
@@ -213402,17 +213450,18 @@ return {
         },
         FightersCalligae = {
             Name = "Fighter's Calligae",
-            Level = 52,
+            Level = 50,
             Id = 14089,
             Model = 64,
             Jobs = {"WAR"},
             Type = "Feet",
             Stats = {
-                DEF = 14,
+                DEF = 15,
                 HP = 12,
-                AGI = 3,
+                STR = 2,
+                DEX = 3,
                 Enmity = 1,
-                DoubleAttack = 1,
+                DoubleAttack = 2,
             }
         },
         FiliCothurnes = {
@@ -215355,15 +215404,17 @@ return {
         },
         HealersDuckbills = {
             Name = "Healer's Duckbills",
-            Level = 52,
+            Level = 50,
             Id = 14091,
             Model = 68,
             Jobs = {"WHM"},
             Type = "Feet",
             Stats = {
-                DEF = 12,
-                MP = 10,
-                AGI = 3,
+                DEF = 13,
+                MP = 15,
+                DEX = 3,
+                MND = 3,
+                Accuracy = 5,
                 SpellInterruptionRateDown = 20,
             }
         },
@@ -223178,15 +223229,17 @@ return {
         },
         RoguesPoulaines = {
             Name = "Rogue's Poulaines",
-            Level = 60,
+            Level = 50,
             Id = 14094,
             Model = 74,
             Jobs = {"THF"},
             Type = "Feet",
             Stats = {
-                DEF = 13,
+                DEF = 14,
                 HP = 12,
-                DEX = 3,
+                DEX = 4,
+                AGI = 3,
+                Accuracy = 4,
                 FLEE_DURATION = 15,
                 STEAL = 2,
             }
@@ -225965,17 +226018,18 @@ return {
         },
         TempleGaiters = {
             Name = "Temple Gaiters",
-            Level = 52,
+            Level = 50,
             Id = 14090,
             Model = 66,
             Jobs = {"MNK"},
             Type = "Feet",
             Stats = {
-                DEF = 12,
+                DEF = 13,
                 HP = 12,
-                DEX = 3,
+                DEX = 4,
+                Accuracy = 4,
+                StoreTP = 2,
                 DODGE_EFFECT = 10,
-                LIGHT_MEVA = 10,
             }
         },
         TenryuSuneAte = {
@@ -227650,17 +227704,19 @@ return {
         },
         WarlocksBoots = {
             Name = "Warlock's Boots",
-            Level = 52,
+            Level = 50,
             Id = 14093,
             Model = 72,
             Jobs = {"RDM"},
             Type = "Feet",
             Stats = {
-                DEF = 13,
-                MP = 11,
-                AGI = 3,
-                SHIELD = 10,
-                WATER_MEVA = 10,
+                DEF = 14,
+                MP = 15,
+                STR = 3,
+                DEX = 3,
+                INT = 3,
+                MND = 3,
+                ConserveMP = 3,
             }
         },
         WarriorsCalligae = {
@@ -227988,17 +228044,17 @@ return {
         },
         WizardsSabots = {
             Name = "Wizard's Sabots",
-            Level = 52,
+            Level = 50,
             Id = 14092,
             Model = 70,
             Jobs = {"BLM"},
             Type = "Feet",
             Stats = {
-                DEF = 11,
-                MP = 10,
-                AGI = 3,
-                Enmity = -1,
+                DEF = 12,
+                MP = 15,
+                INT = 3,
                 SpellInterruptionRateDown = 20,
+                ConserveMP = 3,
             }
         },
         WlkBoots_1 = {

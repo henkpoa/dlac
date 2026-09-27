@@ -1,3 +1,42 @@
+# AscensionXI catalog refresh, September 27, 2026
+
+DLAC `2026.09.27e` regenerates the complete AscensionXI pack from server
+main `2999eea01c`. Exactly 36 existing records change: the six base-job
+Artifact weapons (level 40) and thirty armor pieces (level 50), matching
+`client/sources/artifact-gear/items.json` and enabled `artifact_gear.sql`.
+Traveler's Mantle +1 (26568, level 12) and its icon are added. Nothing is
+removed: 15,437 equipment records, 42 icon overrides, 866 latent-stat items.
+All equipment names come from tracked client DATs.
+
+The generated latents include Berserk (56) and RDM stance (419) conditions.
+This exports reference data; it does not add runtime latent evaluation or
+new stat mappings. Existing unmapped modifiers remain raw server keys.
+Hand-maintained pack modules and features are preserved.
+
+Reproduce from the server checkout:
+
+```powershell
+python tools/dlac-pack/gen_pack.py --out C:/repos/dlac-catalog-refresh/servers/ascensionxi --game "C:/AscensionXI/Game/FINAL FANTASY XI"
+python -m unittest discover -s tools/dlac-pack -v
+```
+
+Verification: 21 generator tests; DLAC pack lint (33 checks), catalog,
+custom equipment and icon regressions; core suite (7,519 checks) and UI
+smoke (1,612 checks). A comparison against the previous catalog verifies
+that the changed IDs are exactly the 36 authored Artifact IDs and all
+have the intended levels. No live-client verification was performed.
+
+Prepared for review, not deployed. Merge this DLAC PR before its paired
+AXI launcher-catalog PR. The AXI PR pins this immutable release commit;
+re-resolve it if review changes the payload. A human releases the staging
+channel and promotes it after acceptance. Check Artifact names, levels,
+stats, and Traveler's Mantle +1 artwork in the client. Developer Git
+installations require a Git update and `/addon reload dlac`; the launcher
+protects them from overwrites. Rollback restores the prior full pack and
+launcher pin together. No player configuration or database changes.
+
+---
+
 # AscensionXI catalog refresh, September 12, 2026
 
 This branch regenerates the AscensionXI pack from server main `26d8accdec`
