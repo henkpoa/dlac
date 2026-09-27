@@ -10498,3 +10498,43 @@ Promoted dev -> main as `v2026.09.10b` on Henrik's "perfect, merge :)". **Field 
 owed:** store a set-wanted piece at a Warden, watch the timer run out, confirm the
 "layout +1 piece" line lands on that beat; report if the timer text clips against the
 pane edge under the themed font.
+
+## Session "Nexus takes restock, and the percent sign on two bindings" (2026-09-27, `2026.09.27a`-`d`)
+
+**Theme:** AscensionXI's new Nexus addon (AscensionXI #666, `documentation/custom/nexus.md`
+§9 in that repo) takes over restocking from the Void, so DLAC stops shipping it there. Its
+probe round also measured how this Ashita build draws `%`, which turned out to differ from
+CatsEyeXI's.
+
+**Landed (`27a`): Void Restock is gone from the AscensionXI pack.** The module folder, its
+membership snapshot and export script, the portal icon, `tests/void_restock.lua` and its CI
+step are deleted; `voidrestock` left `modules.lua` and `restock` left the helpers allowlist
+(FGT26 pins it). Deleted rather than unregistered, because an unregistered copy drifts and
+can be switched back on, and two restock clients race (the old one also consumed every Void
+reply, ops 0-5). Each character's `void-restock.lua` stays on disk untouched: Nexus imports
+it once. `docs/design/void-restock.md` is now the retirement note (full design at `cd6037a`).
+CatsEyeXI's E-Box Restock shares the `restock` key and is unchanged.
+
+**Landed (`27b`): craftwatch ignores injected 0x096.** Nexus starts synths by injecting
+0x096; the client never runs its synthesis menu for those (its craft state stays idle), so
+`/lastsynth` keeps repeating the player's own synth. The Last Synth label now skips
+`e.injected` (T10b-e).
+
+**The percent sign.** The 2026-07-30 law ("every imgui text call is printf") was field truth
+on CatsEyeXI's Ashita 4.2.0.1 (ImGui 1.80): an unescaped `TextColored` printed a heap address.
+AscensionXI's probe P10 (Ashita 4.3.2.1, ImGui 1.92.3) found `Text`, `TextColored`,
+`TextDisabled`, `Selectable`, `MenuItem` and `BeginMenu` literal there, and `TextWrapped`,
+`BulletText` and `SetTooltip` printf-style. So every escaped colored line on AscensionXI
+showed `%%`, but removing the escapes would have brought the heap addresses back on
+CatsEyeXI. **Landed (`27c`):** the difference goes through the binding seam like the call
+shapes did (ADR 0036, amendment 2026-09-27): on a new binding `imguicompat` wraps the three
+text widgets and turns `%%` back into `%`; call sites keep escaping for both (IMC38-47).
+**Landed (`27d`):** labels are literal on both bindings, and 16 label sites still escaped;
+they pass plain text now, and the LBL guard keeps it that way.
+
+**Field round owed (owner):** rename a macro book in game to `Test 50%` and pick it in
+Menu > Macro book. On AscensionXI the header line must read `<JOB>: <n> "Test 50%" - page <p>`
+(it read `50%%` before `27c`), and the hover on the book's button `book <n>: Test 50%`. Then
+name a trigger Group `Test 50%` and open a trigger's group condition: the picker must list
+`Test 50%` (it read `50%%` on both servers before `27d`). On CatsEyeXI both must look the same
+as before. The bludex kit (vendored) escapes three labels too; fix those in henkpoa/bludex.
