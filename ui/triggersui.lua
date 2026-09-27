@@ -93,6 +93,7 @@ local COL_DIM    = { 0.70, 0.70, 0.70, 1.00 };
 local COL_SCORE  = { 0.95, 0.85, 0.45, 1.00 };
 local COL_ERR    = { 1.00, 0.45, 0.40, 1.00 };
 
+-- CatsEyeXI's old binding still needs percent escapes; keep these at text call sites.
 local function esc(s) return (tostring(s):gsub('%%', '%%%%')); end
 local function writeFileText(p, t)
     local f = io.open(p, 'w'); if f == nil then return false; end
@@ -2392,7 +2393,7 @@ local function renderModeBox(m, def, cur, colX)
         end
         if styled then imgui.PopStyleColor(1); end
         if imgui.IsItemHovered() then
-            imgui.SetTooltip('Advance the cycle (also: /dl mode ' .. m .. ', or the keybind).\nRules match a value with  mode = ' .. m .. ':<value>');
+            imgui.SetTooltip('Advance the cycle (also: /dl mode ' .. esc(m) .. ', or the keybind).\nRules match a value with  mode = ' .. esc(m) .. ':<value>');
         end
     else
         local on = (cur ~= nil);
@@ -2404,7 +2405,7 @@ local function renderModeBox(m, def, cur, colX)
             trig._modeStateAt = -1;
         end
         if styled then imgui.PopStyleColor(1); end
-        if imgui.IsItemHovered() then imgui.SetTooltip('Toggle on/off (also macro-able: /dl mode ' .. m .. ').'); end
+        if imgui.IsItemHovered() then imgui.SetTooltip('Toggle on/off (also macro-able: /dl mode ' .. esc(m) .. ').'); end
     end
     imgui.TextColored(COL_DIM, (def ~= nil and def.bind ~= nil) and ('bind: ' .. def.bind) or 'bind: (none)');
     imgui.SameLine(0, 12);

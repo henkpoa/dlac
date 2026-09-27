@@ -491,7 +491,7 @@ local function renderSharedPopup(sh, COL)
         imgui.TextColored(COL.USABLE, fmt.esc(n));
         imgui.SameLine(colQ);
         imgui.TextColored(COL.DIM, '(?)');
-        if imgui.IsItemHovered() then imgui.SetTooltip(sh.tip(n)); end
+        if imgui.IsItemHovered() then imgui.SetTooltip(fmt.esc(sh.tip(n))); end
         imgui.SameLine(0, 8);
         local armKey = 'm:' .. sh.key .. ':' .. n;
         if wui._delArm == armKey then
@@ -686,7 +686,7 @@ local function renderPointsTab(boundKey)
                 end
                 imgui.SameLine(colQ);
                 imgui.TextColored(COL.DIM, '(?)');
-                if imgui.IsItemHovered() then imgui.SetTooltip(weightsTip(kind, key)); end
+                if imgui.IsItemHovered() then imgui.SetTooltip(fmt.esc(weightsTip(kind, key))); end
                 if doDelete ~= nil then
                     imgui.SameLine(0, 8);
                     local armKey = kind .. ':' .. tostring(key);
@@ -924,7 +924,7 @@ local function renderPointsTab(boundKey)
             ui._wbuf[stat] = b;
         end
         imgui.TextColored(COL.USABLE, fmt.truncate(stat, nchars));
-        if #stat > nchars and imgui.IsItemHovered() then imgui.SetTooltip(stat); end
+        if #stat > nchars and imgui.IsItemHovered() then imgui.SetTooltip(fmt.esc(stat)); end
         imgui.SameLine(nameCol);
         imgui.PushItemWidth(ptsW - 6);
         local chgPer = imgui.InputInt('##per_' .. stat, b.per, 0);
@@ -1091,7 +1091,7 @@ local function renderPrioTab(boundKey)
             end
             imgui.SameLine(colQ);
             imgui.TextColored(COL.DIM, '(?)');
-            if imgui.IsItemHovered() then imgui.SetTooltip(prioTip(kind, key)); end
+            if imgui.IsItemHovered() then imgui.SetTooltip(fmt.esc(prioTip(kind, key))); end
             if doDelete ~= nil then
                 imgui.SameLine(0, 8);
                 local armKey = 'p:' .. kind .. ':' .. tostring(key);
@@ -1180,7 +1180,7 @@ local function renderPrioTab(boundKey)
         imgui.TextColored(COL.DIM, string.format('%2d.', i));
         imgui.SameLine(0, 4);
         imgui.TextColored(COL.USABLE, fmt.truncate(e.stat, nchars - 3));
-        if #e.stat > (nchars - 3) and imgui.IsItemHovered() then imgui.SetTooltip(e.stat); end
+        if #e.stat > (nchars - 3) and imgui.IsItemHovered() then imgui.SetTooltip(fmt.esc(e.stat)); end
         imgui.SameLine(nameCol);
         imgui.TextColored(COL.DIM, 'cap'); imgui.SameLine(0, 2);
         local b = wui._pbuf[e.stat];

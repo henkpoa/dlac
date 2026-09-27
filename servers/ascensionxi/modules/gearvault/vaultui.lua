@@ -43,7 +43,8 @@ local counts = require('dlac\\servers\\ascensionxi\\modules\\gearvault\\layoutco
 local recon  = try('dlac\\servers\\ascensionxi\\modules\\gearvault\\reconcile');
 local usg    = try('dlac\\servers\\ascensionxi\\modules\\gearvault\\usage');
 
-local esc = (fmt ~= nil and type(fmt.esc) == 'function') and fmt.esc or function(s) return tostring(s or ''); end
+-- CatsEyeXI's old binding still needs percent escapes; keep these at text call sites.
+local esc = (fmt ~= nil and type(fmt.esc) == 'function') and fmt.esc or function(s) return (tostring(s or ''):gsub('%%', '%%%%')); end
 
 local function chat(msg)
     local cf = try('dlac\\chatfmt');
@@ -1147,12 +1148,12 @@ function M.render(job, level)
                     if e.pinned then title = title .. ' [pinned]'; end
                     if imgui.TreeNode(title .. '##gvreview' .. e.ordinal) then
                         local aug = augTextOf(e.identity);
-                        if aug then imgui.TextWrapped('Saved augments: ' .. aug); end
+                        if aug then imgui.TextWrapped('Saved augments: ' .. esc(aug)); end
                         local candidates = vc.bindingCandidates(e.itemId);
                         for _, candidate in ipairs(candidates) do
                             local label = candidate.where .. ' copy #' .. candidate.instanceId;
                             local currentAug = augTextOf(candidate.identity);
-                            if currentAug then imgui.TextWrapped(currentAug); end
+                            if currentAug then imgui.TextWrapped(esc(currentAug)); end
                             if lc.fresh and vc.mirror.fresh and not vc.layoutBusy()
                                 and imgui.SmallButton('Use ' .. label .. '##gvbind' .. e.ordinal .. ':' .. candidate.instanceId) then
                                 layoutEdit({ job = lc.job, verb = vc.verb.BIND, selector = 2,

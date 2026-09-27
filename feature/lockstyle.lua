@@ -98,6 +98,9 @@ _locok = _locok and type(location) == 'table';
 
 M.visible = false;
 
+-- CatsEyeXI's old binding still needs percent escapes; keep these at text call sites.
+local function esc(s) return (tostring(s):gsub('%%', '%%%%')); end
+
 -- gearui-injected helpers: slotGrid (renderSlotGrid), icon (renderIcon),
 -- tooltip (renderItemTooltip), catalog (lookupByName), catalogById + ownedById
 -- (by-Id lookups -- names can't do it, the API drops apostrophes), allEquip
@@ -791,10 +794,10 @@ local function boxColumn(from, to)
         if imgui.IsItemHovered() then
             local ol = '';
             for j, b in pairs(data.onload or {}) do if b == n then ol = ol .. ' [OnLoad: ' .. j .. ']'; end end
-            imgui.SetTooltip(string.format('box %d%s%s\nClick to mark it -- Save lands in the marked box.%s%s',
+            imgui.SetTooltip(esc(string.format('box %d%s%s\nClick to mark it -- Save lands in the marked box.%s%s',
                 n, (nm ~= '--') and (': ' .. tostring(e.name)) or ' (empty)', ol,
                 (cur ~= nil and cur.dirty and n ~= data.active) and '\nWARNING: unsaved edits on the current box.' or '',
-                dead and ('\nUNAVAILABLE: "' .. tostring(dead) .. '" -- no job of yours can wear it at its level; it will not apply.') or ''));
+                dead and ('\nUNAVAILABLE: "' .. tostring(dead) .. '" -- no job of yours can wear it at its level; it will not apply.') or '')));
         end
     end
     imgui.EndGroup();
