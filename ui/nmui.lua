@@ -316,7 +316,7 @@ end
 local function drawZonePicker()
     local label = (st.zid ~= nil) and nml.zoneName(st.zid) or 'Pick an area';
     imgui.PushItemWidth(textW('Western Altepa Desert') + 40);
-    if imgui.BeginCombo('##dlacnmzone', esc(label)) then
+    if imgui.BeginCombo('##dlacnmzone', tostring(label or '')) then
         imgui.PushItemWidth(-1);
         imgui.InputText('##dlacnmzonesearch', st.zq, 48);
         imgui.PopItemWidth();
@@ -405,7 +405,7 @@ local function drawRow(r, i)
     -- The zone, only where it is news: in area mode every row shares it.
     if st.mode ~= 'area' then
         imgui.SameLine(0, 8);
-        if imgui.SmallButton(esc(r.zone) .. '##dlacnmzj' .. i) then
+        if imgui.SmallButton(tostring(r.zone or '') .. '##dlacnmzj' .. i) then
             _pivot = r.zid;
         end
         if imgui.IsItemHovered() then
@@ -683,7 +683,7 @@ end
 -- from being where browsing stops.
 local function drawDrop(name, key, px, rateTxt, tailTxt, tailCol)
     indent(px);
-    if imgui.SmallButton(esc(name) .. '##dlacnmdrop' .. key) then _pivotDrop = name; end
+    if imgui.SmallButton(tostring(name or '') .. '##dlacnmdrop' .. key) then _pivotDrop = name; end
     if imgui.IsItemHovered() then
         imgui.SetTooltip(esc(string.format(
             'Show every NM that drops %s -- it re-filters the list on the left.', name)));
@@ -813,7 +813,7 @@ local function drawDetail(rows)
     -- The zone is a cross-link here too, so a detail pane never dead-ends.
     imgui.TextColored(COL.DIM, 'Area:');
     imgui.SameLine(0, 6);
-    if imgui.SmallButton(esc(r.zone or nml.zoneName(r.zid)) .. '##dlacnmdetzone') then
+    if imgui.SmallButton(tostring(r.zone or nml.zoneName(r.zid) or '') .. '##dlacnmdetzone') then
         _pivot = r.zid;      -- acted on at the end of the frame, like the rows'
     end
     if imgui.IsItemHovered() then

@@ -86,7 +86,10 @@ end
 -- field (2026-07-29) -- ImGui read '% p' as the pointer conversion %p, printed a
 -- heap address and swallowed the 'p'. So nothing leaves this kit unescaped.
 -- (gear\gearfmt.lua carries the same helper for the gear UI; this is panelkit's
--- copy so a Panel author never has to know the trap exists.)
+-- copy so a Panel author never has to know the trap exists.) That is the OLD
+-- binding (CatsEyeXI). The new one (AscensionXI) draws Text, TextColored and
+-- TextDisabled literally; lib\imguicompat undoes the escape there, so escape
+-- the same way for both (ADR 0036, amendment 2026-09-27).
 local function esc(s) return (tostring(s):gsub('%%', '%%%%')); end
 M.esc = esc;
 

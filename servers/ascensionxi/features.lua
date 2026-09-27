@@ -25,5 +25,5 @@ return {
         wishlist  = false,
     },
     -- Also controls the shared hobby bar. Add helpers as they are enabled.
-    helpers = { helm = true, restock = true },
+    helpers = { helm = true },
 };

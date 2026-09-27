@@ -495,7 +495,7 @@ local function renderLog(ring, viewed, ui)
         local r = ring[i];
         local line = string.format('%s  %-11s %s -- %d slot%s', tostring(r.time), tostring(r.event),
             trunc(tostring(r.action or ''), 24), r.nChanged or 0, ((r.nChanged or 0) == 1) and '' or 's');
-        if imgui.Selectable(esc(line) .. '##arbdec' .. tostring(r.seq), r.seq == viewed.seq) then
+        if imgui.Selectable(line .. '##arbdec' .. tostring(r.seq), r.seq == viewed.seq) then
             if i == #ring then ui._arbPin = nil;        -- newest = just follow Live
             else ui._arbPin = r.seq; end
         end

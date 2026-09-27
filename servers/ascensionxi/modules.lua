@@ -9,5 +9,8 @@
     mirror, no /dl vault, no error; a fresh install shipped dark,
     docs/design/ascensionxi-server-handover-2026-08-27.md par.4a). This file is
     written only by hand, so a regeneration can never drop client code again.
+
+    Void Restock (`voidrestock`) left this list on 2026-09-27: the Nexus addon
+    in the AscensionXI repo owns restocking now (docs/design/void-restock.md).
 ]]--
-return { 'gearvault', 'helm', 'voidrestock', 'ascension' };
+return { 'gearvault', 'helm', 'ascension' };

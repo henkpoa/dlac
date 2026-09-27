@@ -1799,6 +1799,17 @@ check('T9 malformed packet -> nil', craftwatch.decode('short'), nil);
 check('T10 zero-ingredient packet -> nil',
     craftwatch.decode(string.char(0x96, 0x11, 0, 0, 0, 0) .. u16le(4096) .. string.char(5, 0) .. string.rep('\0', 24)), nil);
 
+-- Only the client's own synth is observed. An injected 0x096 is another addon's
+-- (Nexus on AscensionXI), which /lastsynth will not repeat, so it must not
+-- relabel the Last Synth button or move the live craft.
+craftwatch._lastRaw, craftwatch.current = nil, nil;
+craftwatch.onOutgoingPacket({ id = 0x096, data = pkt, injected = true });
+check('T10b an injected synth leaves the Last Synth label alone', craftwatch._lastRaw, nil);
+check('T10c ...and the live craft', craftwatch.current, nil);
+craftwatch.onOutgoingPacket({ id = 0x096, data = pkt, injected = false });
+check('T10d the client\'s own synth is the Last Synth', craftwatch._lastRaw, pkt);
+check('T10e ...and sets the live craft', craftwatch.current and craftwatch.current.skill, 'Alchemy');
+
 -- auto-equip: set entry resolution + the queued /lac commands
 check('T11 entry: plain string',    craftwatch._entryName('Chemists Kukri'), 'Chemists Kukri');
 check('T12 entry: virtual skipped', craftwatch._entryName('dlac:AutoStaff|Fallback'), nil);
@@ -28010,7 +28021,7 @@ end)();
     end)(), true);
 
     check('FGT25 ascensionxi: gathering enabled', fg4.helperEnabled('helm'), true);
-    for _, key in ipairs({ 'craft', 'fish', 'choco', 'obi', 'ammo', 'maxmp', 'future' }) do
+    for _, key in ipairs({ 'craft', 'fish', 'choco', 'obi', 'ammo', 'maxmp', 'restock', 'future' }) do
         check('FGT26 ascensionxi: helper hidden ' .. key, fg4.helperEnabled(key), false);
     end
     check('FGT27 no allowlist keeps future helpers', fg3.helperEnabled('future'), true);
@@ -28165,6 +28176,93 @@ end)();
     package.path = savedPath;
     check('IMC31 ...and status says FAILED',
           ic5.status():find('FAILED', 1, true) ~= nil, true);
+
+    -- THE PERCENT SIGN (AscensionXI probe P10, 2026-09-27): the new binding
+    -- draws Text, TextColored and TextDisabled literally, so the '%%' every
+    -- call site writes for the old binding's printf is undone there. The
+    -- printf-style widgets (TextWrapped, SetTooltip) keep it, and the old
+    -- binding is never touched.
+    check('IMC38 an escaped percent draws as one', ic._undoPercentEscape('below 51%% pet HP'), 'below 51% pet HP');
+    check('IMC39 an escaped pair draws as a pair', ic._undoPercentEscape('%%%%'), '%%');
+    check('IMC40 a lone percent is left as it is', ic._undoPercentEscape('51% HP'), '51% HP');
+    check('IMC41 a non-string passes through',     ic._undoPercentEscape(51), 51);
+    local savedEnums = {};
+    for name in pairs(ic.NEW_ENUMS) do savedEnums[name] = _G[name]; end
+    local drawn = {};
+    local fakeText = {
+        ImageWithBg  = function() end,
+        Text         = function(t) drawn.text = t; end,
+        TextColored  = function(c, t) drawn.col, drawn.colored = c, t; end,
+        TextDisabled = function(t) drawn.disabled = t; end,
+        TextWrapped  = function(t) drawn.wrapped = t; end,
+        SetTooltip   = function(t) drawn.tip = t; end,
+    };
+    package.loaded['imgui'] = fakeText;
+    local ic8 = dofile('lib/imguicompat.lua');
+    ic8.install();
+    fakeText.Text('5%% haste');
+    fakeText.TextColored('red', '5%% haste');
+    fakeText.TextDisabled('5%% haste');
+    fakeText.TextWrapped('5%% haste');
+    fakeText.SetTooltip('5%% haste');
+    check('IMC42 new binding: Text draws one percent',      drawn.text, '5% haste');
+    check('IMC43 ...TextColored too, with its colour',      drawn.colored == '5% haste' and drawn.col == 'red', true);
+    check('IMC44 ...and TextDisabled',                      drawn.disabled, '5% haste');
+    check('IMC45 the printf-style widgets keep the escape', drawn.wrapped == '5%% haste' and drawn.tip == '5%% haste', true);
+    check('IMC46 the status line names the text widgets',   ic8.status():find('TextColored', 1, true) ~= nil, true);
+    for name in pairs(ic.NEW_ENUMS) do _G[name] = savedEnums[name]; end
+    local oldText = function() end;
+    package.loaded['imgui'] = { Text = oldText, TextColored = oldText };
+    local ic9 = dofile('lib/imguicompat.lua');
+    ic9.install();
+    check('IMC47 old binding: the text widgets are untouched',
+          package.loaded['imgui'].Text == oldText and package.loaded['imgui'].TextColored == oldText, true);
+    package.loaded['imgui'] = nil;
+end)();
+
+-- ---------------------------------------------------------------------------
+-- LBL. A widget LABEL is never a format string, on either binding (ImGui takes
+--      no format there; probe P10 measured Selectable, MenuItem and BeginMenu
+--      literal), so an escaped label shows "%%" everywhere. Source guard over
+--      every file that escapes anything; the list is maintained by hand (no
+--      io.popen discovery), so a new file that escapes belongs here.
+-- ---------------------------------------------------------------------------
+(function()
+    local FILES = { 'feature/macrobook.lua', 'gear/gearfmt.lua',
+        'servers/ascensionxi/modules/gearvault/vaultui.lua', 'servers/cexi/modules/ebox/restockui.lua',
+        'ui/ammoui.lua', 'ui/arbmonui.lua', 'ui/automationsui.lua', 'ui/chocoui.lua', 'ui/equippedui.lua',
+        'ui/fishui.lua', 'ui/floatgear.lua', 'ui/gearui.lua', 'ui/helmui.lua', 'ui/jobbrowse.lua',
+        'ui/jobhelpersui.lua', 'ui/menuui.lua', 'ui/nmui.lua', 'ui/panelkit.lua', 'ui/profilesmenu.lua',
+        'ui/triggersui.lua', 'ui/unusedui.lua', 'ui/weightsui.lua', 'ui/wishlistui.lua' };
+    local LABELS = { 'Selectable', 'Button', 'SmallButton', 'Checkbox', 'RadioButton', 'BeginCombo',
+        'MenuItem', 'BeginMenu', 'CollapsingHeader', 'TreeNode', 'BeginTabItem' };
+    local function escapedLabel(src)
+        src = src:gsub('%-%-%[(=*)%[.-%]%1%]', ' '):gsub('%-%-[^\n]*', '');
+        for _, w in ipairs(LABELS) do
+            for args in src:gmatch('%.' .. w .. '%s*(%b())') do
+                if args:find('esc%(') then return w; end
+            end
+        end
+        return nil;
+    end
+    check('LBL0 self-check: an escaped Selectable label is caught',
+          escapedLabel("if imgui.Selectable(esc(name) .. '##id', on) then end"), 'Selectable');
+    check('LBL0b self-check: a label split over two lines is caught',
+          escapedLabel("imgui.Button(string.format('%s##z', esc(n)),\n    x)"), 'Button');
+    check('LBL0c self-check: escaped text beside a label is not',
+          escapedLabel("if imgui.Button('Go') then imgui.TextColored(c, esc(s)); end"), nil);
+    local offenders, read = {}, 0;
+    for _, path in ipairs(FILES) do
+        local fh = io.open(path, 'r');
+        if fh ~= nil then
+            read = read + 1;
+            local w = escapedLabel(fh:read('*a') or '');
+            fh:close();
+            if w ~= nil then offenders[#offenders + 1] = path .. ' (' .. w .. ')'; end
+        end
+    end
+    check('LBL1 the scan read every listed file', read, #FILES);
+    check('LBL2 no widget label is escaped', table.concat(offenders, ', '), '');
 end)();
 
 -- ---------------------------------------------------------------------------

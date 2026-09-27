@@ -226,7 +226,7 @@ local function drawBody()
         if imgui.Selectable('Every wardrobe', _wardF == nil) then _wardF = nil; end
         for _, w in ipairs(rep.wardrobes or {}) do
             if (w.items or 0) > 0 then
-                if imgui.Selectable(esc(w.name) .. '##unuw' .. tostring(w.cid), _wardF == w.cid) then
+                if imgui.Selectable(tostring(w.name or '') .. '##unuw' .. tostring(w.cid), _wardF == w.cid) then
                     _wardF = w.cid;
                 end
             end
