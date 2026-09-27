@@ -28010,7 +28010,7 @@ end)();
     end)(), true);
 
     check('FGT25 ascensionxi: gathering enabled', fg4.helperEnabled('helm'), true);
-    for _, key in ipairs({ 'craft', 'fish', 'choco', 'obi', 'ammo', 'maxmp', 'future' }) do
+    for _, key in ipairs({ 'craft', 'fish', 'choco', 'obi', 'ammo', 'maxmp', 'restock', 'future' }) do
         check('FGT26 ascensionxi: helper hidden ' .. key, fg4.helperEnabled(key), false);
     end
     check('FGT27 no allowlist keeps future helpers', fg3.helperEnabled('future'), true);

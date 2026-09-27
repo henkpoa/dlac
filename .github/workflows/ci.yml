@@ -53,8 +53,8 @@ jobs:
       - name: AscensionXI ascension packet regression
         run: lua5.4 tests/ascensionxi_ascension.lua
 
-      - name: AscensionXI lockstyle and Void Restock regression
-        run: lua5.4 tests/lockstyle_vault.lua && lua5.4 tests/void_restock.lua
+      - name: AscensionXI lockstyle regression
+        run: lua5.4 tests/lockstyle_vault.lua
 
       - name: HELM observation probe regression
         run: lua5.4 dlacprobe/tests/helm_test.lua
