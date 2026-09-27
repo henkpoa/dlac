@@ -1799,6 +1799,17 @@ check('T9 malformed packet -> nil', craftwatch.decode('short'), nil);
 check('T10 zero-ingredient packet -> nil',
     craftwatch.decode(string.char(0x96, 0x11, 0, 0, 0, 0) .. u16le(4096) .. string.char(5, 0) .. string.rep('\0', 24)), nil);
 
+-- Only the client's own synth is observed. An injected 0x096 is another addon's
+-- (Nexus on AscensionXI), which /lastsynth will not repeat, so it must not
+-- relabel the Last Synth button or move the live craft.
+craftwatch._lastRaw, craftwatch.current = nil, nil;
+craftwatch.onOutgoingPacket({ id = 0x096, data = pkt, injected = true });
+check('T10b an injected synth leaves the Last Synth label alone', craftwatch._lastRaw, nil);
+check('T10c ...and the live craft', craftwatch.current, nil);
+craftwatch.onOutgoingPacket({ id = 0x096, data = pkt, injected = false });
+check('T10d the client\'s own synth is the Last Synth', craftwatch._lastRaw, pkt);
+check('T10e ...and sets the live craft', craftwatch.current and craftwatch.current.skill, 'Alchemy');
+
 -- auto-equip: set entry resolution + the queued /lac commands
 check('T11 entry: plain string',    craftwatch._entryName('Chemists Kukri'), 'Chemists Kukri');
 check('T12 entry: virtual skipped', craftwatch._entryName('dlac:AutoStaff|Fallback'), nil);

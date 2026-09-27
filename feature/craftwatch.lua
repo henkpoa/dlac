@@ -725,18 +725,25 @@ end
 -- dlacprobe addon, NEVER in dlac. To watch a synth on the wire:
 -- /addon load dlacprobe, /probe synth, then /lastsynth.
 
-if ashita ~= nil and ashita.events ~= nil and type(ashita.events.register) == 'function' then
-    ashita.events.register('packet_out', 'dlac-craftwatch-out', function(e)
-        if e.id ~= 0x096 then return; end
-        pcall(function()
-            local crystal, ings = M.decode(e.data);
-            if crystal ~= nil then
-                M._lastRaw = e.data;   -- observation: labels the Last Synth button
-                lsSave();              -- ...and survives addon reloads
-                M.onSynth(crystal, ings);
-            end
-        end);
+-- Only a synth the CLIENT sent is observed. An injected 0x096 is another
+-- addon's synth (AscensionXI's Nexus starts synths that way): the client never
+-- ran its synthesis menu for it (its craft state stays idle, probe P2
+-- 2026-09-27), so /lastsynth still repeats the player's own last synth and the
+-- button must keep that label.
+function M.onOutgoingPacket(e)
+    if e.id ~= 0x096 or e.injected == true then return; end
+    pcall(function()
+        local crystal, ings = M.decode(e.data);
+        if crystal ~= nil then
+            M._lastRaw = e.data;   -- observation: labels the Last Synth button
+            lsSave();              -- ...and survives addon reloads
+            M.onSynth(crystal, ings);
+        end
     end);
+end
+
+if ashita ~= nil and ashita.events ~= nil and type(ashita.events.register) == 'function' then
+    ashita.events.register('packet_out', 'dlac-craftwatch-out', M.onOutgoingPacket);
 
     ashita.events.register('packet_in', 'dlac-craftwatch-in', function(e)
         if e.id == 0x055 then pcall(function() M.onKeyItemPacket(e.data); end);
