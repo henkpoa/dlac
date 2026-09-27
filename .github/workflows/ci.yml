@@ -35,6 +35,9 @@ jobs:
       - name: AscensionXI catalog and import regression
         run: lua5.4 tests/ascensionxi_catalog.lua
 
+      - name: Catalog stat vocabulary and scoring regression
+        run: lua5.4 tests/catalog_stat_mapping.lua
+
       - name: Saved gear repair regression
         run: lua5.4 tests/gear_repair.lua
 

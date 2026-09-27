@@ -52,6 +52,7 @@ end
 
 local function fmtStat(k, v)
     if k == 'Additional effect' then return k .. ': ' .. tostring(v); end
+    if k:match('Skill$') then k = k:gsub('(%l)(%u)', '%1 %2'); end
     if type(v) == 'boolean' then return k; end
     if type(v) == 'number' then return k .. ((v >= 0) and '+' or '') .. tostring(v); end
     return k .. ':' .. tostring(v);
@@ -189,17 +190,27 @@ local function statSummary(rec, level)
     local out = '';
     if type(stats) == 'table' then
         local parts, used = {}, {};
+        -- Skill bonuses often define an item's purpose. Reserve their place
+        -- before DEF/MP/attributes exhaust the compact row's token budget.
+        for _, k in ipairs(orderedStatKeys(stats)) do
+            if type(k) == 'string' and k:match('Skill$') and type(stats[k]) == 'number' then
+                parts[#parts + 1] = fmtStat(k, stats[k]); used[k] = true;
+                if #parts >= 4 then break; end
+            end
+        end
         for _, k in ipairs(STAT_PRIORITY) do
+            if #parts >= 4 then break; end
             local v = stats[k];
-            if v ~= nil and type(v) ~= 'table' then
+            if not used[k] and v ~= nil and type(v) ~= 'table' then
                 parts[#parts + 1] = fmtStat(k, v); used[k] = true;
                 if #parts >= 4 then break; end
             end
         end
         if #parts < 4 then
-            for k, v in pairs(stats) do
+            for _, k in ipairs(orderedStatKeys(stats)) do
+                local v = stats[k];
                 if not used[k] and type(k) == 'string' and type(v) ~= 'table' then
-                    parts[#parts + 1] = fmtStat(k, v);
+                    parts[#parts + 1] = fmtStat(k, v); used[k] = true;
                     if #parts >= 4 then break; end
                 end
             end
@@ -220,6 +231,11 @@ local function statSummary(rec, level)
                 if #parts >= 4 then break; end
             end
         end
+        local omitted = 0;
+        for k, v in pairs(stats) do
+            if not used[k] and type(k) == 'string' and type(v) ~= 'table' then omitted = omitted + 1; end
+        end
+        if omitted > 0 then parts[#parts + 1] = '(+' .. omitted .. ' more)'; end
         out = table.concat(parts, ' ');
     end
     rec._statStr, rec._statLvl = out, lvlKey;
