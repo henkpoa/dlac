@@ -499,11 +499,24 @@ local _search = { '' };
 local _layoutAskAt = 0;
 local LAYOUT_ASK_GAP = 3.0;
 
+-- The server's category fence (ascensionxi gv.isKeptOutOfVault, 2026-09-27):
+-- fishing rods and bait (skill 48) stay in the bags, and ammunition a weapon
+-- fires or throws belongs to void storage. An ammo-slot trinket (no AmmoType:
+-- Bomb Core, Morion Tathlum) is gear and stores. Stricter than the server in
+-- one place: a Rare/Ex arrow the server files under no category would store,
+-- but dlac cannot see the category and keeps it off the list.
+local FIRED_AMMO = { Archery = true, Marksmanship = true, Throwing = true };
+function M.keptOutOfVault(rec)
+    local skill = tonumber(tostring(rec.Pair or ''):match('^(%d+):'));
+    if skill == 48 or rec.Type == 'FishingRod' or rec.AmmoType == 'FishingRod' then return true; end
+    return rec.Slot == 'Ammo' and FIRED_AMMO[rec.AmmoType] == true;
+end
+
 -- ---------------------------------------------------------------------------
 -- The Inventory sub-tab's list: storable gear sitting in the INVENTORY bag
 -- (container 0) right now. dlac's own filter mirrors the server's structural
 -- rules where it can: known equipment only (the catalog is gear-only, which
--- IS the equipment test) and never cat-15 ammo (void-storage territory).
+-- IS the equipment test) and the category fence above.
 -- Equipped/busy pieces stay listed -- the server refuses those per row with
 -- its own words. Cached a beat; a deposit ack drops the cache.
 -- ---------------------------------------------------------------------------
@@ -522,7 +535,7 @@ local function inventoryStorable()
             local entry = inv:GetContainerItem(0, idx);
             if entry ~= nil and entry.Id ~= nil and entry.Id ~= 0 and entry.Id ~= 65535 then
                 local rec = recOf(entry.Id);
-                if rec ~= nil and rec.Slot ~= 'Ammo' then
+                if rec ~= nil and not M.keptOutOfVault(rec) then
                     out[#out + 1] = {
                         container = 0, slot = idx, itemId = entry.Id,
                         qty = math.max(1, entry.Count or 1),

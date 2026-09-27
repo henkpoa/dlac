@@ -7779,6 +7779,24 @@ end)();
                        entries = { { ordinal = 1, itemId = 300, count = 2, hint = nil, pinned = true } } };
 
     local vui = require('dlac\\servers\\ascensionxi\\modules\\gearvault\\vaultui');
+    -- The category fence mirrors the server's gv.isKeptOutOfVault (2026-09-27):
+    -- trinkets store; fired ammo, rods and bait stay in the bags.
+    check('GVUF1 a trinket (no AmmoType) is storable',
+          vui.keptOutOfVault({ Slot = 'Ammo', Type = 'Ammo', Pair = '0:0' }), false);
+    check('GVUF2 an arrow stays out',
+          vui.keptOutOfVault({ Slot = 'Ammo', Type = 'Ammo', AmmoType = 'Archery', Pair = '25:0' }), true);
+    check('GVUF3 a bolt stays out',
+          vui.keptOutOfVault({ Slot = 'Ammo', Type = 'Ammo', AmmoType = 'Marksmanship', Pair = '26:0' }), true);
+    check('GVUF4 thrown ammo stays out',
+          vui.keptOutOfVault({ Slot = 'Ammo', Type = 'Ammo', AmmoType = 'Throwing', Pair = '27:0' }), true);
+    check('GVUF5 a fishing rod stays out',
+          vui.keptOutOfVault({ Slot = 'Range', Type = 'FishingRod', Pair = '48:0' }), true);
+    check('GVUF6 bait stays out',
+          vui.keptOutOfVault({ Slot = 'Ammo', Type = 'Ammo', AmmoType = 'FishingRod', Pair = '48:0' }), true);
+    check('GVUF7 a rod known only by its skill stays out',
+          vui.keptOutOfVault({ Slot = 'Range', Pair = '48:0' }), true);
+    check('GVUF8 a bow is gear', vui.keptOutOfVault({ Slot = 'Range', Type = 'Archery', Pair = '25:0' }), false);
+    check('GVUF9 a body piece is gear', vui.keptOutOfVault({ Slot = 'Body' }), false);
     -- two storable pieces in the bag (the _invOverride seam): the Inventory
     -- sub-tab must light up with the count and offer Store / Store all
     vui._invOverride = {
