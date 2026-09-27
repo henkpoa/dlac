@@ -20,7 +20,7 @@ return {
 
     const = {
         augFormat          = 'lsb',   -- stock LSB augment extdata (not CEXI's private format)
-        catalogMin         = 10290,
+        catalogMin         = 10291,
         mpPlayerMultiplier = 1,
         mpSjDivisor        = 2,
         helmModel          = 'extra-rolls',
@@ -37,12 +37,12 @@ return {
     },
 
     counts = {
-        catalog      = 15436,
+        catalog      = 15437,
         spells       = 537,
         abilities    = 485,
         zones        = 300,
         gearsets     = 126,
-        latentstats  = 859,
+        latentstats  = 866,
         levelscaling = 8,
     },
 };

@@ -262,11 +262,19 @@ return {
     [12493] = {
         { stat = "PerpetuationCost", add = 1, cond = "PET_ID", param = 9 },
     },
+    [12513] = {
+        { stat = "Accuracy", add = 6, cond = "STATUS_EFFECT_ACTIVE", param = 419 },
+        { stat = "Attack", add = 6, cond = "STATUS_EFFECT_ACTIVE", param = 419 },
+    },
     [12589] = {
         { stat = "Regen", add = 2, cond = "STATUS_EFFECT_ACTIVE", param = 3 },
     },
     [12621] = {
         { stat = "Regen", add = 2, cond = "STATUS_EFFECT_ACTIVE", param = 3 },
+    },
+    [12642] = {
+        { stat = "Accuracy", add = 5, cond = "STATUS_EFFECT_ACTIVE", param = 419 },
+        { stat = "Attack", add = 5, cond = "STATUS_EFFECT_ACTIVE", param = 419 },
     },
     [12650] = {
         { stat = "DARK_MEVA", add = 20, cond = "PET_ID", param = 7 },
@@ -758,6 +766,10 @@ return {
         { stat = "TripleAttack", add = 1, cond = "FOOD_ACTIVE", param = 5928 },
         { stat = "TripleAttack", add = 2, cond = "FOOD_ACTIVE", param = 5929 },
     },
+    [13965] = {
+        { stat = "Accuracy", add = 5, cond = "STATUS_EFFECT_ACTIVE", param = 419 },
+        { stat = "ENSPELL_DMG_BONUS", add = 2, cond = "STATUS_EFFECT_ACTIVE", param = 419 },
+    },
     [13972] = {
         { stat = "AQUAN_KILLER", add = 4, cond = "FOOD_ACTIVE", param = 4604 },
         { stat = "Attack", add = 50, cond = "FOOD_ACTIVE", param = 4277 },
@@ -883,6 +895,9 @@ return {
         { stat = "Refresh", add = 1, cond = "TIME_OF_DAY", param = 0 },
         { stat = "Regen", add = 1, cond = "TIME_OF_DAY", param = 1 },
     },
+    [14093] = {
+        { stat = "Accuracy", add = 6, cond = "STATUS_EFFECT_ACTIVE", param = 419 },
+    },
     [14101] = {
         { stat = "MovementSpeed", add = 24, cond = "TIME_OF_DAY", param = 1 },
     },
@@ -951,6 +966,10 @@ return {
     },
     [14178] = {
         { stat = "Counter", add = 1, cond = "HP_UNDER_PERCENT", param = 25 },
+    },
+    [14218] = {
+        { stat = "Accuracy", add = 4, cond = "STATUS_EFFECT_ACTIVE", param = 419 },
+        { stat = "Attack", add = 6, cond = "STATUS_EFFECT_ACTIVE", param = 419 },
     },
     [14226] = {
         { stat = "Evasion", add = 10, cond = "TIME_OF_DAY", param = 1 },
@@ -1995,6 +2014,9 @@ return {
         { stat = "REFRESH_DOWN", add = 3, cond = "WEAPON_DRAWN_MP_OVER", param = 0 },
         { stat = "Regen", add = 5, cond = "WEAPON_DRAWN_MP_OVER", param = 0 },
     },
+    [16678] = {
+        { stat = "Attack", add = 10, cond = "STATUS_EFFECT_ACTIVE", param = 56 },
+    },
     [16686] = {
         { stat = "CriticalHitRate", add = 7, cond = "VS_ECOSYSTEM", param = 3 },
     },
@@ -2022,6 +2044,10 @@ return {
         { stat = "HP", add = -20, cond = "WEAPON_BROKEN", param = 0 },
         { stat = "LIGHT_MEVA", add = -10, cond = "WEAPON_BROKEN", param = 0 },
         { stat = "THUNDER_MEVA", add = -10, cond = "WEAPON_BROKEN", param = 0 },
+    },
+    [16829] = {
+        { stat = "Accuracy", add = 5, cond = "STATUS_EFFECT_ACTIVE", param = 419 },
+        { stat = "Attack", add = 5, cond = "STATUS_EFFECT_ACTIVE", param = 419 },
     },
     [16883] = {
         { stat = "Accuracy", add = 10, cond = "WEATHER_ELEMENT", param = 6 },
