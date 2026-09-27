@@ -24,6 +24,11 @@ notes and the playtest list, and `git show cd6037a:<path>` recovers any file.
 
 ## Kept on purpose
 
+The AscensionXI pack's `restocknotice` module answers `/dl restock` with:
+"Void Restock moved to Nexus: /nexus restock (fetch, store or stop)."
+It only prints the migration notice; it has no UI, packet handlers, or pump.
+Its folder must stay outside `modules/voidrestock/`, which the launcher deletes.
+
 Each character's `void-restock.lua` in the DLAC data folder
 (`profiles.dataDir()`), with its `backups\void-restock-N.lua`. DLAC no longer
 reads or writes them. Nexus imports `void-restock.lua` once (its ruling A9), so

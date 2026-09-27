@@ -445,7 +445,7 @@ local function renderEquippedTab(job, level)
         end
         imgui.PopItemWidth();
         if imgui.IsItemHovered() then
-            imgui.SetTooltip('Fades the floating equipment boxes and slot labels, including pin and move colors.\n0% = solid boxes and labels; 100% = no boxes or labels. Gear icons stay fully visible.');
+            imgui.SetTooltip('Fades the floating equipment boxes and slot labels, including pin and move colors.\n0%% = solid boxes and labels; 100%% = no boxes or labels. Gear icons stay fully visible.');
         end
         imgui.SameLine(0, 8);
         imgui.Text('- Size:');

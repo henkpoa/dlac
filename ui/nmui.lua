@@ -100,6 +100,7 @@ if COL == nil or nml == nil then
     return M;
 end
 
+-- CatsEyeXI's old binding still needs percent escapes; keep these at text call sites.
 local function esc(s)
     if fmt ~= nil and type(fmt.esc) == 'function' then return fmt.esc(tostring(s or '')); end
     return (tostring(s or ''):gsub('%%', '%%%%'));
@@ -323,7 +324,7 @@ local function drawZonePicker()
         local needle = tostring(st.zq[1] or ''):lower();
         for _, z in ipairs(nml.zoneChoices()) do
             if needle == '' or z.name:lower():find(needle, 1, true) ~= nil then
-                local line = string.format('%s  (%d)', esc(z.name), z.n);
+                local line = string.format('%s  (%d)', tostring(z.name), z.n);
                 if imgui.Selectable(line .. '##dlacnmz' .. tostring(z.zid), z.zid == st.zid) then
                     M.showArea(z.zid);
                 end

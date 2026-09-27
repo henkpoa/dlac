@@ -23,6 +23,12 @@ jobs:
       - name: UI smoke-load
         run: lua5.4 tests/smoke_ui.lua
 
+      - name: ImGui percent literals
+        run: lua5.4 tests/imgui_percent_literals.lua
+
+      - name: AscensionXI restock migration notice
+        run: lua5.4 tests/restock_notice.lua
+
       - name: Additional-effect tooltip formatting
         run: lua5.4 tests/gearfmt_effects.lua
 

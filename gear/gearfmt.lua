@@ -20,6 +20,7 @@ local _iok, imgui = pcall(require, 'imgui');
 local deps = nil;
 function M.configure(d) deps = d; end
 
+-- CatsEyeXI's old binding still needs percent escapes; keep these at text call sites.
 local function esc(s) return (tostring(s):gsub('%%', '%%%%')); end
 
 local function truncate(s, n)
