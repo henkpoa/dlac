@@ -1672,7 +1672,7 @@ local function renderModeLocksBody(mode, def, cond)
                     imgui.PushStyleColor(ImGuiCol_Button, on and { 0.20, 0.42, 0.58, 1.0 }
                                                               or { 0.28, 0.28, 0.32, 1.0 });
                 end
-                if imgui.Button(esc(def.values[i]) .. '##mlval' .. i, { 0, 0 }) then L.cond = c; end
+                if imgui.Button(tostring(def.values[i]) .. '##mlval' .. i, { 0, 0 }) then L.cond = c; end
                 if styled then imgui.PopStyleColor(1); end
             end
             imgui.TextColored(COL_DIM, 'Editing:  mode = ' .. esc(tostring(L.cond)));
@@ -3024,7 +3024,7 @@ local function renderTrigAddPopup()
             if imgui.BeginCombo('##trgcondgrp', trig._addValSel or '(pick group)') then
                 if #gnames == 0 then imgui.TextColored(COL_DIM, '(no groups yet -- create one in the Groups section)'); end
                 for vi, it in ipairs(gnames) do
-                    if imgui.Selectable(esc(it) .. '##trgcg' .. vi, trig._addValSel == it) then trig._addValSel = it; end
+                    if imgui.Selectable(tostring(it) .. '##trgcg' .. vi, trig._addValSel == it) then trig._addValSel = it; end
                 end
                 imgui.EndCombo();
             end
@@ -3044,7 +3044,7 @@ local function renderTrigAddPopup()
             if imgui.BeginCombo('##trgcondmode', trig._addValSel or '(pick mode)') then
                 if #mnames == 0 then imgui.TextColored(COL_DIM, '(no modes yet -- create one in the Modes section)'); end
                 for vi, it in ipairs(mnames) do
-                    if imgui.Selectable(esc(it) .. '##trgcm' .. vi, trig._addValSel == it) then trig._addValSel = it; end
+                    if imgui.Selectable(tostring(it) .. '##trgcm' .. vi, trig._addValSel == it) then trig._addValSel = it; end
                 end
                 imgui.EndCombo();
             end
@@ -5157,7 +5157,7 @@ local function cpSection(kind, title, unit, empty)
     for _, r in ipairs(rows) do
         if rc.copyable(r.state) then
             local b = cpMark(kind, r.name);
-            imgui.Checkbox(esc(r.name) .. '##trgcpm_' .. kind .. '_' .. r.name, b);
+            imgui.Checkbox(tostring(r.name) .. '##trgcpm_' .. kind .. '_' .. r.name, b);
             if b[1] == true then picked[r.name] = true; end
         else
             imgui.TextColored(COL_DIM, esc('    ' .. r.name));

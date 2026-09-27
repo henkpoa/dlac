@@ -460,7 +460,7 @@ function M.renderByArea(deps, rs, clk)
         for _, z in ipairs(zones) do
             local nm = tostring(z.n or '');
             if needle == '' or nm:lower():find(needle, 1, true) then
-                if imgui.Selectable(string.format('%s##z%d', esc(nm), z.id), z.id == area.zoneId) then
+                if imgui.Selectable(string.format('%s##z%d', tostring(nm), z.id), z.id == area.zoneId) then
                     area.zoneId = z.id;
                 end
             end
@@ -516,7 +516,7 @@ end
 local function renderItemPoolRow(deps, s, rs)
     local col = (s.gate == 'ok') and COL_TEXT or COL_DIM;
     imgui.Dummy({ 6, 0 }); imgui.SameLine(0, 0);
-    if imgui.Button(string.format('%s##bisrc%s_%s', esc(tostring(s.zoneName or '?')),
+    if imgui.Button(string.format('%s##bisrc%s_%s', tostring(s.zoneName or '?'),
                     tostring(s.zoneId), tostring(s.pool))) then
         jumpToArea(s.zoneId);
     end
@@ -564,7 +564,7 @@ function M.renderByItem(deps, rs, clk)
                 shown = shown + 1;
                 if shown <= CAP then
                     local sel = (byitem.sel ~= nil and byitem.sel.key == e.key);
-                    if imgui.Selectable(string.format('%s##bi_%s', esc(tostring(e.n)), tostring(e.key)), sel) then
+                    if imgui.Selectable(string.format('%s##bi_%s', tostring(e.n), tostring(e.key)), sel) then
                         byitem.sel = e;
                     end
                 end
@@ -636,7 +636,7 @@ function M.renderByItem(deps, rs, clk)
             imgui.TextColored(COL_TEXT, 'Diggable in these elemental-ore zones (click to jump):');
             for _, s in ipairs(view.sources) do
                 imgui.Dummy({ 6, 0 }); imgui.SameLine(0, 0);
-                if imgui.Button(string.format('%s##biore%s', esc(tostring(s.zoneName or '?')), tostring(s.zoneId))) then
+                if imgui.Button(string.format('%s##biore%s', tostring(s.zoneName or '?'), tostring(s.zoneId))) then
                     jumpToArea(s.zoneId);
                 end
             end

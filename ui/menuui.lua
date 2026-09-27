@@ -653,7 +653,7 @@ local function renderSettingsBody()
             if i > 1 then imgui.SameLine(0, 6); end
             local on = (p.id == active);
             if on then imgui.PushStyleColor(ImGuiCol_Button, { 0.55, 0.45, 0.15, 1.0 }); end
-            if imgui.SmallButton(esc(tostring(p.name)) .. '###dlacsetsrv_' .. tostring(p.id)) and not on then
+            if imgui.SmallButton(tostring(p.name) .. '###dlacsetsrv_' .. tostring(p.id)) and not on then
                 if sp.writeChoice(p.id) then
                     print(('[dlac] server set to %s -- reloading dlac.'):format(tostring(p.name)));
                     pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '/addon reload dlac'); end);

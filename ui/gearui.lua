@@ -5239,7 +5239,7 @@ local function renderSetsTab(job, level)
         if ui._delStatic ~= nil then
             local red = (ImGuiCol_Button ~= nil);
             if red then imgui.PushStyleColor(ImGuiCol_Button, { 0.72, 0.18, 0.18, 1.0 }); end
-            if imgui.Button('DELETE ' .. fmt.esc(ui._delStatic) .. '##dstatgo', { 0, 24 }) then
+            if imgui.Button('DELETE ' .. tostring(ui._delStatic) .. '##dstatgo', { 0, 24 }) then
                 -- Purge law: nothing writes under luashitacast\ -- old job
                 -- files are read-only import territory now.
                 setStatus('legacy job files are READ-ONLY since the purge -- nothing was deleted (statics stay importable via "Copy from static").', true);

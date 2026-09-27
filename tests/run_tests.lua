@@ -28221,6 +28221,51 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- LBL. A widget LABEL is never a format string, on either binding (ImGui takes
+--      no format there; probe P10 measured Selectable, MenuItem and BeginMenu
+--      literal), so an escaped label shows "%%" everywhere. Source guard over
+--      every file that escapes anything; the list is maintained by hand (no
+--      io.popen discovery), so a new file that escapes belongs here.
+-- ---------------------------------------------------------------------------
+(function()
+    local FILES = { 'feature/macrobook.lua', 'gear/gearfmt.lua',
+        'servers/ascensionxi/modules/gearvault/vaultui.lua', 'servers/cexi/modules/ebox/restockui.lua',
+        'ui/ammoui.lua', 'ui/arbmonui.lua', 'ui/automationsui.lua', 'ui/chocoui.lua', 'ui/equippedui.lua',
+        'ui/fishui.lua', 'ui/floatgear.lua', 'ui/gearui.lua', 'ui/helmui.lua', 'ui/jobbrowse.lua',
+        'ui/jobhelpersui.lua', 'ui/menuui.lua', 'ui/nmui.lua', 'ui/panelkit.lua', 'ui/profilesmenu.lua',
+        'ui/triggersui.lua', 'ui/unusedui.lua', 'ui/weightsui.lua', 'ui/wishlistui.lua' };
+    local LABELS = { 'Selectable', 'Button', 'SmallButton', 'Checkbox', 'RadioButton', 'BeginCombo',
+        'MenuItem', 'BeginMenu', 'CollapsingHeader', 'TreeNode', 'BeginTabItem' };
+    local function escapedLabel(src)
+        src = src:gsub('%-%-%[(=*)%[.-%]%1%]', ' '):gsub('%-%-[^\n]*', '');
+        for _, w in ipairs(LABELS) do
+            for args in src:gmatch('%.' .. w .. '%s*(%b())') do
+                if args:find('esc%(') then return w; end
+            end
+        end
+        return nil;
+    end
+    check('LBL0 self-check: an escaped Selectable label is caught',
+          escapedLabel("if imgui.Selectable(esc(name) .. '##id', on) then end"), 'Selectable');
+    check('LBL0b self-check: a label split over two lines is caught',
+          escapedLabel("imgui.Button(string.format('%s##z', esc(n)),\n    x)"), 'Button');
+    check('LBL0c self-check: escaped text beside a label is not',
+          escapedLabel("if imgui.Button('Go') then imgui.TextColored(c, esc(s)); end"), nil);
+    local offenders, read = {}, 0;
+    for _, path in ipairs(FILES) do
+        local fh = io.open(path, 'r');
+        if fh ~= nil then
+            read = read + 1;
+            local w = escapedLabel(fh:read('*a') or '');
+            fh:close();
+            if w ~= nil then offenders[#offenders + 1] = path .. ' (' .. w .. ')'; end
+        end
+    end
+    check('LBL1 the scan read every listed file', read, #FILES);
+    check('LBL2 no widget label is escaped', table.concat(offenders, ', '), '');
+end)();
+
+-- ---------------------------------------------------------------------------
 -- GVW/GVC/GVF. The Gear Vault integration, slice 1 (ascensionxi pack module;
 --      design: docs/design/gear-vault-integration.md). GVW pins the byte
 --      codec against the server's documented layouts; GVC drives the whole
