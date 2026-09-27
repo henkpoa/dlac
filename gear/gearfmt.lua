@@ -50,9 +50,48 @@ local function jobsText(jobs)
 end
 
 local function fmtStat(k, v)
+    if k == 'Additional effect' then return k .. ': ' .. tostring(v); end
     if type(v) == 'boolean' then return k; end
     if type(v) == 'number' then return k .. ((v >= 0) and '+' or '') .. tostring(v); end
     return k .. ':' .. tostring(v);
+end
+
+-- Additional-effect modifiers describe one proc, not independent gear bonuses.
+-- Type ids follow the server's scripts/globals/additional_effects.lua.
+local EFFECT_TYPES = {
+    [1] = 'Damage', [2] = 'Status ailment', [3] = 'HP recovery',
+    [4] = 'MP recovery', [5] = 'HP drain', [6] = 'MP drain',
+    [7] = 'TP drain', [8] = 'HP or MP drain', [9] = 'HP, MP or TP drain',
+    [10] = 'Dispel', [11] = 'Absorb status', [12] = 'Self buff',
+    [13] = 'Death', [14] = 'Special effect',
+};
+local function displayEffectStats(stats)
+    if type(stats) ~= 'table' then return stats; end
+    local out, hasEffect = {}, false;
+    for k, v in pairs(stats) do
+        if type(k) == 'string' and (k:match('^ITEM_ADDEFFECT_') or k == 'ITEM_SUBEFFECT') then
+            if v ~= 0 and v ~= false then hasEffect = true; end
+        else
+            out[k] = v;
+        end
+    end
+    if hasEffect then
+        local effectType = tonumber(stats.ITEM_ADDEFFECT_TYPE);
+        local label = EFFECT_TYPES[effectType] or 'Special effect';
+        if effectType == 2 or effectType == 12 then
+            pcall(function()
+                local status = tonumber(stats.ITEM_ADDEFFECT_STATUS);
+                if status == nil or status <= 0 then return; end
+                local name = AshitaCore:GetResourceManager():GetString('buffs.names', status);
+                if type(name) == 'string' then
+                    name = name:gsub('%z+$', '');
+                    if name ~= '' then label = name:gsub('^%l', string.upper); end
+                end
+            end);
+        end
+        out['Additional effect'] = label;
+    end
+    return out;
 end
 
 -- Priority order for compact summaries / totals; anything else comes after, alpha.
@@ -145,7 +184,7 @@ local function statSummary(rec, level)
     local lvlKey = level or -1;
     if rec._statStr ~= nil and rec._statLvl == lvlKey then return rec._statStr; end
     local stats = (deps ~= nil and deps.effStats ~= nil) and deps.effStats(rec, level) or nil;
-    stats = collapseCraftFamilies(stats);
+    stats = displayEffectStats(collapseCraftFamilies(stats));
     local out = '';
     if type(stats) == 'table' then
         local parts, used = {}, {};
@@ -189,7 +228,7 @@ end
 -- Full stat line for the tooltip (all stats, priority first, DMG/Delay & Pet omitted).
 local function fullStatList(stats)
     if type(stats) ~= 'table' then return ''; end
-    stats = collapseCraftFamilies(stats);
+    stats = displayEffectStats(collapseCraftFamilies(stats));
     local parts, used = {}, {};
     for _, k in ipairs(STAT_PRIORITY) do
         local v = stats[k];

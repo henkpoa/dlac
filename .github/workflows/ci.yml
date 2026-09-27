@@ -23,6 +23,9 @@ jobs:
       - name: UI smoke-load
         run: lua5.4 tests/smoke_ui.lua
 
+      - name: Additional-effect tooltip formatting
+        run: lua5.4 tests/gearfmt_effects.lua
+
       - name: AscensionXI catalog and import regression
         run: lua5.4 tests/ascensionxi_catalog.lua
 
