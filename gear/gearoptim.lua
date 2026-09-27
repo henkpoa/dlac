@@ -90,9 +90,37 @@ local ALIAS_GROUPS = {
     { "MATK", "MagicAttackBonus", "MAB" },
     { "MagicAccuracy", "MACC" },
 };
+-- Preserve weights saved under the old raw server names as catalogs adopt
+-- canonical keys; also read older raw stat tables without losing bonuses.
+local _maok, modAliases = pcall(require, 'dlac\\gear\\modaliases');
+local _sdok, statDefs = pcall(require, 'dlac\\gear\\statdefs');
+local canonicalSpellings = {};
+if _sdok then
+    for key in pairs(statDefs.byKey) do canonicalSpellings[string.lower(key)] = key; end
+end
+if _maok then
+    local groups = {};
+    for _, group in ipairs(ALIAS_GROUPS) do
+        for _, key in ipairs(group) do groups[key] = group; end
+    end
+    for raw, key in pairs(modAliases) do
+        local group = groups[key];
+        if group == nil then
+            group = { key }; groups[key] = group;
+            ALIAS_GROUPS[#ALIAS_GROUPS + 1] = group;
+        end
+        group[#group + 1] = raw;
+    end
+end
 local CANON_GROUP = {};   -- lower(spelling) -> the group table it belongs to
 for _, grp in ipairs(ALIAS_GROUPS) do
-    for _, k in ipairs(grp) do CANON_GROUP[string.lower(k)] = grp; end
+    for _, k in ipairs(grp) do
+        -- EVASION is server skill, Evasion is DLAC's separate derived stat.
+        local canonical = canonicalSpellings[string.lower(k)];
+        if canonical == nil or canonical == k or canonical == grp[1] then
+            CANON_GROUP[string.lower(k)] = grp;
+        end
+    end
 end
 
 -- "Negative-good" (lower-is-better) stats: gear stores a beneficial effect as a
@@ -151,6 +179,8 @@ function M.invalidate() _statSpelling = nil; end
 -- unknown stat is returned unchanged, so you can still weight something rare.
 local function canonStat(key)
     if type(key) ~= 'string' then return key; end
+    if _maok and modAliases[key] then return modAliases[key]; end
+    if canonicalSpellings[string.lower(key)] then return canonicalSpellings[string.lower(key)]; end
     return statSpellings()[string.lower(key)] or key;
 end
 M.canonStat = canonStat;

@@ -653,9 +653,17 @@ M.list = {
 -- Derived lookups (built from M.list) + fallback-safe accessors. Consumers read these.
 -- ====================================================================================
 M.byKey = {};
-for _, e in ipairs(M.list) do M.byKey[e.key] = e; end
+local canonicalSpellings = {};
+for _, e in ipairs(M.list) do
+    M.byKey[e.key] = e;
+    canonicalSpellings[string.lower(e.key)] = e.key;
+end
 
 M.aliasOf = {};   -- lower(alias) -> canonical key
+local _maok, modAliases = pcall(require, 'dlac\\gear\\modaliases');
+if _maok then
+    for raw, key in pairs(modAliases) do M.aliasOf[string.lower(raw)] = key; end
+end
 for _, e in ipairs(M.list) do
     if e.aliases ~= nil then
         for _, a in ipairs(e.aliases) do M.aliasOf[string.lower(a)] = e.key; end
@@ -675,9 +683,10 @@ end
 -- shows un-styled until it's added above.
 function M.get(key)
     if type(key) ~= 'string' then return nil; end
+    if _maok and modAliases[key] then key = modAliases[key]; end
     local e = M.byKey[key];
     if e == nil then
-        local canon = M.aliasOf[string.lower(key)];
+        local canon = canonicalSpellings[string.lower(key)] or M.aliasOf[string.lower(key)];
         e = (canon ~= nil) and M.byKey[canon] or nil;
     end
     if e == nil then
@@ -693,8 +702,9 @@ end
 -- Canonical key for any spelling (alias-aware); returns the input unchanged if unknown.
 function M.canon(key)
     if type(key) ~= 'string' then return key; end
+    if _maok and modAliases[key] then return modAliases[key]; end
     if M.byKey[key] ~= nil then return key; end
-    local a = M.aliasOf[string.lower(key)];
+    local a = canonicalSpellings[string.lower(key)] or M.aliasOf[string.lower(key)];
     if a ~= nil then return a; end
     local inner = petInner(key);
     if inner ~= nil then return 'Pet:' .. M.canon(inner); end
