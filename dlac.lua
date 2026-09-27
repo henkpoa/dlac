@@ -1,8 +1,8 @@
 --[[
-    dlac.lua â€” Ashita v4 addon entry point. dlac IS the equip engine: it reads
+    dlac.lua — Ashita v4 addon entry point. dlac IS the equip engine: it reads
     player + inventory through AshitaCore and equips via its own authentic
     0x050/0x051 packets (feature\equipengine + dispatch.lua). The name is
-    history â€” "dynamic LuaAshitacast" absorbed its host (ADR 0015) and the
+    history — "dynamic LuaAshitacast" absorbed its host (ADR 0015) and the
     LuaShitacast purge (docs/design/lac-purge-plan.md) removed the last of it:
     one Lua state, one engine, one storage home (config\addons\dlac\<char>\).
     Old luashitacast\ trees are read-only IMPORT territory (Sets tab static /
@@ -10,7 +10,7 @@
 
     The library modules use the "dlac\\X" require prefix: <install>/addons/?.lua
     is appended to package.path, so require("dlac\\X") resolves to
-    addons/dlac/X.lua. X carries the folder â€” require("dlac\\ui\\gearui") lands
+    addons/dlac/X.lua. X carries the folder — require("dlac\\ui\\gearui") lands
     on addons/dlac/ui/gearui.lua. The five root files (utils, dispatch, chatfmt,
     profiles, gear) stay flat: require("dlac\\utils") is published API. GUI in
     ui\, data in data\, gear machinery in gear\, features in feature\, lib\.
