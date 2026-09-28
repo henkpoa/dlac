@@ -1,0 +1,32 @@
+name: CEXI release ZIP
+
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  cexi-zip:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Lua 5.4
+        run: sudo apt-get update && sudo apt-get install -y lua5.4
+
+      - name: Test public package
+        run: python3 tests/cexi_release_test.py
+
+      - name: Build CEXI ZIP
+        run: python3 release/build_cexi.py --output "dist/dlac-cexi-${GITHUB_SHA}.zip"
+
+      - name: Upload verified ZIP and checksum
+        uses: actions/upload-artifact@v7
+        with:
+          name: dlac-cexi-${{ github.sha }}
+          path: dist/*
+          if-no-files-found: error

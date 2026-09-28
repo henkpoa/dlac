@@ -15,6 +15,10 @@ teleport/convenience surfaces.
 
 ## Setup — two clicks per job
 
+**Public CatsEyeXI distribution:** use the dedicated `dlac-cexi-*.zip`, which
+excludes E-Box Restock and Last Synth actions. GitHub's source archive contains
+the shared multi-server code instead. See [CEXI packaging and installation](docs/reference/cexi-release.md).
+
 You need a working LuaAshitacast install (it's part of the CatsEyeXI client).
 
 1. **Install** — drop the `dlac` folder into `Ashita\addons\`, then
