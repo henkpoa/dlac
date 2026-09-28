@@ -25,6 +25,24 @@ assert(item(19982).Level == 40 and item(19982).Stats.Accuracy == 3);
 for _, id in ipairs({14578,14579,15002,15003,15659,15660,15746,15747,16138,16139}) do
     assert(item(id).Level == 50, 'Dancer Artifact level');
 end
+-- Whole-stat goldens from AXI artifact_gear_dnc.sql, including both race variants.
+local dancer = {
+    [16138]={DEF=19,HP=15,DEX=3,CHR=5,Accuracy=5,Enmity=-2,SambaDuration=30},
+    [14578]={DEF=40,HP=25,STR=3,DEX=3,CHR=5,Attack=5,Enmity=-3,WaltzPotency=10},
+    [15002]={DEF=16,HP=14,DEX=4,Accuracy=5,Haste=2,StepAccuracy=10},
+    [15659]={DEF=29,HP=15,STR=3,DEX=3,CHR=4,Accuracy=6,Evasion=5,Enmity=-2},
+    [15746]={DEF=15,HP=12,STR=3,CHR=4,Attack=5,Evasion=6,JigDuration=25},
+};
+for id, expected in pairs(dancer) do
+    for offset=0,1 do
+        local stats=item(id+offset).Stats;
+        for key,value in pairs(expected) do assert(stats[key]==value, tostring(id+offset)..' '..key); end
+        for key in pairs(stats) do
+            assert(expected[key]~=nil or key=='EQUIPMENT_ONLY_RACE', 'unexpected Dancer stat '..key);
+        end
+        assert(stats.EQUIPMENT_ONLY_RACE==(offset==0 and 149 or 106));
+    end
+end
 assert(item(26549).Name == 'Rabbit Charm +1');
 assert(item(26549).Stats.TreasureHunter == 1);
 assert(item(27556).Name == 'Anchor Ring' and item(27556).Level == 15);
