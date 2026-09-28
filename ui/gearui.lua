@@ -749,7 +749,7 @@ end
 -- Zero-copy when the item has neither augments nor pet stats.
 local function candidateStats(rec, level)
     if rec == nil then return nil; end
-    local base = effStats(rec, level);
+    local base = optim.stanceContext and gearOracle.stats(rec, optim.stanceContext(level)) or effStats(rec, level);
     local a = (rec.Id ~= nil) and ownedAugStatsMap()[rec.Id] or nil;
     local p = (type(gearOracle.petScoreStats) == 'function') and gearOracle.petScoreStats(rec) or nil;
     if a == nil and p == nil then return base; end
@@ -2886,8 +2886,9 @@ local function workingSetTotals(mainLevel)
     local totals = {};
     local comp = workingComposition(mainLevel);
     if has.gfx then
-        local ok, res = pcall(gearOracle.setStats, comp,
-            { level = mainLevel, augStats = ownedAugStatsMap() });
+        local ctx = optim.stanceContext and optim.stanceContext(mainLevel) or { level = mainLevel };
+        ctx.augStats = ownedAugStatsMap();
+        local ok, res = pcall(gearOracle.setStats, comp, ctx);
         if ok and type(res) == 'table' and type(res.stats) == 'table' then
             for k, v in pairs(res.stats) do
                 if k ~= 'DMG' and k ~= 'Delay' then totals[k] = v; end
@@ -2916,8 +2917,9 @@ end
 local function workingWeightedScore(mainLevel)
     local comp = workingComposition(mainLevel);
     if has.gfx then
-        local ok, res = pcall(gearOracle.setStats, comp,
-            { level = mainLevel, augStats = ownedAugStatsMap() });
+        local ctx = optim.stanceContext and optim.stanceContext(mainLevel) or { level = mainLevel };
+        ctx.augStats = ownedAugStatsMap();
+        local ok, res = pcall(gearOracle.setStats, comp, ctx);
         if ok and type(res) == 'table' and type(res.stats) == 'table' then
             -- Pet channel on top (COPY -- res.stats is the evaluator's): 'Pet:'
             -- keys summed per piece, so this number stays THE one objective
@@ -4809,15 +4811,29 @@ local function renderSetsTab(job, level)
     -- Build-level override (general set management): lifts the item level cap for BOTH
     -- Auto-build and the manual + Add picker, so you can assemble over-level sets.
     if has.optim then
+        local axi = require('dlac\\gear\\serverpack').active() == 'ascensionxi';
         ui.buildMax[1] = (optim.buildAtMaxLevel == true);
-        imgui.Checkbox('Build as lv.75 (ignore level cap)', ui.buildMax);
+        imgui.Checkbox(axi and 'Ignore Level Cap' or 'Build as lv.75 (ignore level cap)', ui.buildMax);
         if imgui.IsItemHovered() then
-            imgui.SetTooltip('Ignore the item level cap when building sets OR using + Add -- pick gear as if you\nwere level 75, so you can assemble over-level sets. Your JOB restriction still applies.\nOn by default; unticking is remembered across reloads.');
+            imgui.SetTooltip('Build sets as if you were level 75, ignoring level caps.');
         end
         if (ui.buildMax[1] == true) ~= (optim.buildAtMaxLevel == true) then
             optim.buildAtMaxLevel = (ui.buildMax[1] == true);
             ui._flagsDirty = true;              -- persist via the render hook (sf.saveUiFlags
                                                 -- is defined below this function)
+        end
+        if axi then
+            imgui.SameLine();
+            local stance = { optim.isStanceSet() };
+            if imgui.Checkbox('Stance Set', stance) then
+                local ok, err = optim.setStanceSet(stance[1]);
+                if ok then ok, err = optim.saveWeights(); end
+                if not ok then setStatus(tostring(err)); end
+                invalidateCandidates();
+            end
+            if imgui.IsItemHovered() then
+                imgui.SetTooltip("Include this job's stance bonuses when building and viewing this set.");
+            end
         end
     end
 

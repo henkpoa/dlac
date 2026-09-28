@@ -449,6 +449,7 @@ local UNBOUND_PRIO = {};                 -- priority-list sentinel
 M._weights  = M._weights or UNBOUND_W;   -- ACTIVE points table (follows the binding)
 M._perSet   = M._perSet or {};           -- '<JOB>|<SetName>' -> weights table
 M._boundKey = nil;                       -- current binding, nil = none
+M._stancePerSet = {};                    -- key -> true; absent = ordinary set
 
 -- Priority-list mode (2026-07-17, the "simple" weights): an ORDERED stat list --
 -- top matters most, each entry optionally capped -- for people the pts/cap point
@@ -468,6 +469,25 @@ local ensureWeightsLoaded;   -- forward: defined with the persistence block belo
                              -- for "weights editor empty after every addon reload").
 local activeWeights;         -- forward: the mode-resolved scoring table (points table,
                              -- or the dominance weights DERIVED from the priority list)
+
+function M.isStanceSet()
+    if ensureWeightsLoaded then ensureWeightsLoaded(); end
+    return M._boundKey ~= nil and M._stancePerSet[M._boundKey] == true;
+end
+
+function M.setStanceSet(on)
+    if ensureWeightsLoaded then ensureWeightsLoaded(); end
+    if M._boundKey == nil then return false, 'no set selected'; end
+    M._stancePerSet[M._boundKey] = on == true or nil;
+    return true;
+end
+
+function M.stanceContext(level, job)
+    local on = M.isStanceSet();
+    local boundJob = M._boundKey and M._boundKey:match('^([^|]+)|');
+    return { level = level, job = job or boundJob,
+        stanceSet = on and (job == nil or job == boundJob) };
+end
 
 -- The table scoring actually uses right now. The points editor must NOT read
 -- this (it would render derived numbers in priority mode) -- it reads
@@ -861,6 +881,7 @@ function M.renameSetKey(job, old, new)
         if type(t) == 'table' and t[ok] ~= nil then t[nk] = t[ok]; t[ok] = nil; end
     end
     mv(M._perSet); mv(M._slotsPerSet); mv(M._prioPerSet); mv(M._modePerSet);
+    mv(M._stancePerSet);
     mv(M._copyUndo); mv(M._prioUndo);
     if M._boundKey == ok then M._boundKey = nk; end
     return true;
@@ -1260,6 +1281,8 @@ local function rankSlot(slotKey, scoreFn, job, level)
             if hasLScale and type(lscale.effective) == 'function' then
                 st = lscale.effective(entry, level);      -- THE central stats-at-level resolver
             end
+            local ctx = M.stanceContext(level, job);
+            if ctx.stanceSet then st = require('dlac\\gear\\stancestats').apply(entry, st, ctx); end
             ranked[#ranked + 1] = { entry = entry, score = scoreFn(st), stats = st };
         end
     end);
@@ -2629,8 +2652,11 @@ local function parseWeightsData(result)
        or (type(result.shared) ~= 'table' and type(result.perSet) ~= 'table') then
         return nil;
     end
-    local d = { perSet = {}, slotsPerSet = {}, named = {}, namedSlots = {},
+    local d = { perSet = {}, slotsPerSet = {}, named = {}, namedSlots = {}, stancePerSet = {},
                 modePerSet = {}, prioPerSet = {}, prioNamed = {} };
+    for k, v in pairs(type(result.stancePerSet) == 'table' and result.stancePerSet or {}) do
+        if type(k) == 'string' and v == true then d.stancePerSet[k] = true; end
+    end
     if type(result.perSet) == 'table' then
         for k, t in pairs(result.perSet) do
             if type(k) == 'string' and type(t) == 'table' then d.perSet[k] = cleanTable(t); end
@@ -2762,6 +2788,12 @@ local function renderWeightsFileText(d)
                 (type(e.cap) == 'number') and (', cap = ' .. tostring(e.cap)) or '');
         end
     end
+    L[#L + 1] = '    stancePerSet = {';
+    local stanceKeys = {};
+    for k, v in pairs(d.stancePerSet or {}) do if v == true then stanceKeys[#stanceKeys + 1] = k; end end
+    table.sort(stanceKeys);
+    for _, k in ipairs(stanceKeys) do L[#L + 1] = string.format('        [%q] = true,', k); end
+    L[#L + 1] = '    },';
     L[#L + 1] = '    modePerSet = {';
     local mokeys = {};
     for k, v in pairs(d.modePerSet) do
@@ -2811,7 +2843,7 @@ local function writeTextFile(path, text)
 end
 
 local function liveWeightsData()
-    return { perSet = M._perSet, slotsPerSet = M._slotsPerSet,
+    return { perSet = M._perSet, slotsPerSet = M._slotsPerSet, stancePerSet = M._stancePerSet,
              named = M._named, namedSlots = M._namedSlots,
              modePerSet = M._modePerSet, prioPerSet = M._prioPerSet,
              prioNamed = M._prioNamed };
@@ -2842,6 +2874,7 @@ function M.loadWeights()
     local d = parseWeightsData(result);   -- the ONE validating reader for this format
     if d ~= nil then
         M._perSet      = d.perSet;
+        M._stancePerSet = d.stancePerSet;
         M._slotsPerSet = d.slotsPerSet;
         M._named       = d.named;
         M._namedSlots  = d.namedSlots;
@@ -2851,6 +2884,7 @@ function M.loadWeights()
     else
         -- Legacy FLAT file: it was nothing but the dead shared table -- drop it.
         M._perSet = {};
+        M._stancePerSet = {};
         M._slotsPerSet = {};
         M._named, M._namedSlots = {}, {};
         M._modePerSet = {};
@@ -2923,8 +2957,9 @@ end
 function M.renderJobWeightsTextAt(charFolder, job)
     local d = weightsDataFor(charFolder);
     if d == nil then return nil, 'no weights file for ' .. tostring(charFolder); end
-    local out = { perSet = {}, slotsPerSet = {}, named = {}, namedSlots = {},
+    local out = { perSet = {}, slotsPerSet = {}, named = {}, namedSlots = {}, stancePerSet = {},
                   modePerSet = {}, prioPerSet = {}, prioNamed = {} };
+    rekeyJobEntries(d.stancePerSet, job, job, out.stancePerSet);
     rekeyJobEntries(d.perSet, job, job, out.perSet);
     rekeyJobEntries(d.slotsPerSet, job, job, out.slotsPerSet);
     rekeyJobEntries(d.modePerSet, job, job, out.modePerSet);
@@ -2932,6 +2967,7 @@ function M.renderJobWeightsTextAt(charFolder, job)
     -- Meaningful = at least one set with real weights or a real priority
     -- list (empty tables and bare masks are skipped by the renderer anyway).
     local sets = {};
+    for k in pairs(out.stancePerSet) do sets[k] = true; end
     for k, t in pairs(out.perSet) do if next(t) ~= nil then sets[k] = true; end end
     for k, t in pairs(out.prioPerSet) do if #t > 0 then sets[k] = true; end end
     local n = 0;
@@ -2960,12 +2996,16 @@ function M.importJobWeightsTextAt(charFolder, text, srcJob, dstJob)
     local d = parseWeightsData(result);
     if d == nil then return nil, 'not a dlac weights payload'; end
 
-    local add = { perSet = {}, slotsPerSet = {}, modePerSet = {}, prioPerSet = {} };
+    local add = { perSet = {}, slotsPerSet = {}, modePerSet = {}, prioPerSet = {}, stancePerSet = {} };
+    rekeyJobEntries(d.stancePerSet, srcJob, dstJob, add.stancePerSet);
     local n = 0;
     n = n + rekeyJobEntries(d.perSet, srcJob, dstJob, add.perSet);
     rekeyJobEntries(d.slotsPerSet, srcJob, dstJob, add.slotsPerSet);
     rekeyJobEntries(d.modePerSet, srcJob, dstJob, add.modePerSet);
     n = n + rekeyJobEntries(d.prioPerSet, srcJob, dstJob, add.prioPerSet);
+    for k in pairs(add.stancePerSet) do
+        if not add.perSet[k] and not add.prioPerSet[k] then n = n + 1; end
+    end
     if n == 0 then return nil, 'payload holds no weights for ' .. tostring(srcJob); end
 
     -- Current-character detection is BELT AND BRACES (2026-07-20, field case:
@@ -2989,6 +3029,9 @@ function M.importJobWeightsTextAt(charFolder, text, srcJob, dstJob)
         -- The current character: merge live, save through the one writer.
         if ensureWeightsLoaded ~= nil then ensureWeightsLoaded(); end
         for k, v in pairs(add.perSet) do M._perSet[k] = v; end
+        for k in pairs(add.perSet) do M._stancePerSet[k] = add.stancePerSet[k]; end
+        for k in pairs(add.prioPerSet) do M._stancePerSet[k] = add.stancePerSet[k]; end
+        for k in pairs(add.stancePerSet) do M._stancePerSet[k] = true; end
         for k, v in pairs(add.slotsPerSet) do M._slotsPerSet[k] = v; end
         for k, v in pairs(add.modePerSet) do M._modePerSet[k] = v; end
         for k, v in pairs(add.prioPerSet) do M._prioPerSet[k] = v; end
@@ -3011,6 +3054,10 @@ function M.importJobWeightsTextAt(charFolder, text, srcJob, dstJob)
     local dst = weightsDataFor(charFolder) or { perSet = {}, slotsPerSet = {}, named = {}, namedSlots = {},
                                                 modePerSet = {}, prioPerSet = {}, prioNamed = {} };
     for k, v in pairs(add.perSet) do dst.perSet[k] = v; end
+    dst.stancePerSet = dst.stancePerSet or {};
+    for k in pairs(add.perSet) do dst.stancePerSet[k] = add.stancePerSet[k]; end
+    for k in pairs(add.prioPerSet) do dst.stancePerSet[k] = add.stancePerSet[k]; end
+    for k in pairs(add.stancePerSet) do dst.stancePerSet[k] = true; end
     for k, v in pairs(add.slotsPerSet) do dst.slotsPerSet[k] = v; end
     for k, v in pairs(add.modePerSet) do dst.modePerSet[k] = v; end
     for k, v in pairs(add.prioPerSet) do dst.prioPerSet[k] = v; end
