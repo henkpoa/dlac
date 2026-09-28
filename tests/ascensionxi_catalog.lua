@@ -16,6 +16,15 @@ local function item(id)
 end
 
 for id = 26547, 26563 do assert(item(id).Name ~= ''); end
+local icons = dofile('servers/ascensionxi/itemicons.lua');
+for id, name in pairs({ [19980]='Forsaken Jambiya', [19981]='Rekindled Jambiya', [19982]='Coranto' }) do
+    assert(item(id).Name == name and item(id).Jobs[1] == 'DNC');
+    assert(icons[id], 'missing new Dancer weapon icon');
+end
+assert(item(19982).Level == 40 and item(19982).Stats.Accuracy == 3);
+for _, id in ipairs({14578,14579,15002,15003,15659,15660,15746,15747,16138,16139}) do
+    assert(item(id).Level == 50, 'Dancer Artifact level');
+end
 assert(item(26549).Name == 'Rabbit Charm +1');
 assert(item(26549).Stats.TreasureHunter == 1);
 assert(item(27556).Name == 'Anchor Ring' and item(27556).Level == 15);
