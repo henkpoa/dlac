@@ -112,10 +112,14 @@ end
 -- EQUIPPED_IN_SLOT latents.
 function M.itemStats(rec, ctx, slotLabel)
     if type(rec) ~= 'table' then return nil; end
+    local base = rec.Stats;
     if lstats ~= nil and type(lstats.effective) == 'function' then
-        return lstats.effective(rec, ctx and ctx.level or nil);
+        base = lstats.effective(rec, ctx and ctx.level or nil);
     end
-    return rec.Stats;
+    if ctx and ctx.stanceSet == true then
+        base = require('dlac\\gear\\stancestats').apply(rec, base, ctx);
+    end
+    return base;
 end
 
 -- Per-set piece counts of a composition ({ slotLabel -> rec }), per SLOT
