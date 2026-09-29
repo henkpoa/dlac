@@ -6,7 +6,7 @@ Research date: 2026-09-28. Status: **researched implementation proposal; no runt
 
 ## Status 2026-09-29: answered, and partly superseded
 
-**Read this section first.** The backend research this brief asked for is [AscensionXI PR #719](https://github.com/henkpoa/AscensionXI/pull/719): the report `documentation/custom/autoacc-backend-research.md`, its wire vectors, and the §8 "Return to dlac agent" contract. The PR is research only, not yet merged. The dlac session and the #719 author then compared notes and agreed the plan below. **Nothing is built.** Every item marked *owner* waits for Henrik's go.
+**Read this section first.** The backend research this brief asked for is [AscensionXI PR #719](https://github.com/henkpoa/AscensionXI/pull/719): the report `documentation/custom/autoacc-backend-research.md`, its wire vectors, and the §8 "Return to dlac agent" contract. The PR is research only, not yet merged. The dlac session and the #719 author then compared notes and agreed the plan below. **Nothing is built.** Henrik approved the plan on 2026-09-29; see "Owner decisions" below.
 
 ### What changed from this brief
 
@@ -69,12 +69,18 @@ dlac reads caps and correction from the server. It never hardcodes them.
 
 **Weapon skills (after v1).** One-hit melee weapon skills are computed locally: the first hit gets +100 ACC, the roll is continuous, and the cap is 95 %. This follows Henrik's 07-23 ruling. The first cut excludes `accVaries` weapon skills, jump, hybrid and ranged weapon skills, and outfits with elemental, day or any-element fTP mods. Exact gorget arithmetic follows soon after.
 
-### Decisions waiting for the owner
+### Owner decisions (2026-09-29)
 
-1. A1–A3 and the new-outfit frame rule, folded into #719. The alternative is a frame on every outfit change, which Henrik did not want for dlac's own weapon-skill swaps.
-2. Fixing the augment double count in a fenced server insertion. Both sessions recommend yes: every dlac stat surface assumes +10, not only AutoAcc.
-3. Fixing the Onslaught buff heal as its own PR. AutoAcc makes no decisions inside runs meanwhile.
-4. #719 §7. Both sessions recommend: mobs only, no server oracle, recompute at the player's tick with no engine hooks, a 45 s lease renewed after 15 s idle.
+**Approved:**
+
+1. **The joint plan**, now folded into #719 (head `39fc504a`, §7 "Decided on 2026-09-29"). That covers A1–A3, the new-outfit frame rule, the ring and sticky rules, WSACC plus the flourish bonus, and FOLLOW in slice 1.
+   - The amended SNAPSHOT is 136 fixed bytes plus 24 per context: 208 bytes for three contexts. #719 §4.3 has the tables.
+   - The regenerated `wire-vectors.md` uses real items. TV-05 wears Peacock Amulet, Toreador's Ring and the enchanted Hydra Mittens. TV-06 is the frame after Toreador's Ring is released for Rajas Ring; Rajas Ring's level latents move DEX R by +3, which is the latents-in-R case.
+   - Its "Formula vectors" project TV-05's R onto TV-06's live totals. These are d3's acceptance tests.
+2. **The augment double count is fixed on the server:** [AscensionXI PR #723](https://github.com/henkpoa/AscensionXI/pull/723), fence `equip-mods-once-per-mod`. dlac's gear model is the plain sum. v1 still treats augmented instances as unmodelled.
+3. **The rest of #719 §7:** mobs only, no server oracle, recompute at the player's `TICK` with no engine hooks, a 45 s lease renewed after 15 s idle.
+
+**Still open:** the Onslaught buff heal. #719 recommends removing the top-up, in its own Onslaught PR. Until it lands, AutoAcc makes no decisions inside runs (`GEAR_REFILL`).
 
 ### Order
 

@@ -1046,8 +1046,8 @@ research already recorded. In rough priority order:
 - **AscensionXI AutoAcc (planned 2026-09-29, nothing built):** the server publishes
   stats without gear, and dlac computes every outfit locally. The joint plan agreed
   with the author of AscensionXI PR #719 is the "Status 2026-09-29" section at the
-  top of `docs/design/ascensionxi-combat-telemetry-autoacc.md`. It waits for
-  Henrik's go on four decisions. The first dlac step, transport fixes T1–T4, is
+  top of `docs/design/ascensionxi-combat-telemetry-autoacc.md`. It is approved
+  (only the Onslaught heal is still open). The first dlac step, transport fixes T1–T4, is
   its own PR because it changes Gear Vault timing.
 
 0. **THE LUASHITACAST PURGE — EXECUTED, ALL FIVE PHASES, 2026-07-27** on `dev`
