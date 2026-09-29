@@ -65,6 +65,9 @@ jobs:
       - name: AscensionXI HELM packet regression
         run: lua5.4 tests/ascensionxi_helm.lua
 
+      - name: HELM gathered-item storage regression
+        run: lua5.4 tests/helmstorage.lua
+
       - name: AscensionXI ascension packet regression
         run: lua5.4 tests/ascensionxi_ascension.lua
 
