@@ -18,7 +18,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.09.29b';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.09.30a';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
                                 -- (03f = engine v163: the contest explains its own plan;
                                 --  03g = one floating tray: Teleports + the E-Box crates;
@@ -296,7 +296,10 @@ addon.version = '2026.09.29b';  -- date of the last shipped change (Ashita print
                                 --  and the decision is ONE readable line in
                                 --  load-report.txt and /dl check;
                                 --  09.12a = AscensionXI custom equipment and
-                                --  numeric gathering bonuses, engine v168)
+                                --  numeric gathering bonuses, engine v168;
+                                --  09.30a = the Gear Vault syncs on events:
+                                --  no 8 s beat, quiet in the field, your
+                                --  edits show at once, server pushes)
 addon.desc    = 'Gear sets, triggers and live stats with level scaling -- dlac equips your gear itself.';
 
 -- Load BEACON ('/dl check' field round, 2026-07-23): written by PLAIN io at

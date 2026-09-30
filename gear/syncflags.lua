@@ -290,9 +290,11 @@ end
 -- An inventory-changing packet arrived: slide the sync deadline ~5s out. While
 -- packets keep arriving the deadline keeps sliding, so the scan runs once, in
 -- the first quiet moment after a zone-in flood / combat swap chatter.
-sf.invDirty = function()
+-- `delay` (optional) is a caller that KNOWS its change has landed -- the Gear
+-- Vault's mirror commit -- and wants the scan sooner than the packet debounce.
+sf.invDirty = function(delay)
     if not sf.flags.autosync then return; end
-    _invSyncAt = os.clock() + 5;
+    _invSyncAt = os.clock() + (type(delay) == 'number' and delay or 5);
 end
 
 return sf;

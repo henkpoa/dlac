@@ -572,7 +572,12 @@ end
 function M.diag() return _setsDiag; end
 
 -- Drop the cached sets so the next read re-parses the files (post commit/delete).
-function M.invalidate() _cache = nil; _cacheKey = nil; _liveNames = nil; _lacDyn = nil; _lacDiag = {}; _acSets = nil; _acInfo = nil; _acNotes = {}; _acFile = nil; _watch.at, _watch.path, _watch.raw = -1, nil, nil; end
+-- Every invalidation moves the generation, so a consumer that derives from
+-- the sets (the AscensionXI Gear Vault layout engine) can react to a commit
+-- the moment it lands instead of on a polling beat.
+local _generation = 0;
+function M.invalidate() _cache = nil; _cacheKey = nil; _liveNames = nil; _lacDyn = nil; _lacDiag = {}; _acSets = nil; _acInfo = nil; _acNotes = {}; _acFile = nil; _watch.at, _watch.path, _watch.raw = -1, nil, nil; _generation = _generation + 1; end
+function M.generation() return _generation; end
 
 -- Arm the content-follow to run on the NEXT read regardless of the 1s throttle
 -- (tests; callers that just watched a file land and want the refresh this frame).

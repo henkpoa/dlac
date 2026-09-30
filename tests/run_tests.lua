@@ -27623,14 +27623,15 @@ end)();
     check('GVR13 ...arms the city badge', rc.cityBlocked(), true);
     T = T + rc.BEAT + 1;
     check('GVR14 the same derivation does not re-spam', rc.tick(), 'clean');
-    -- the tab's countdown reads the same clock the beat runs on
-    check('GVR14a right after a beat the countdown is the full beat', rc.nextBeat(), rc.BEAT);
-    T = T + 3;
-    check('GVR14b ...and it counts down', rc.nextBeat(), rc.BEAT - 3);
-    check('GVR14c an acking run reads busy', (function()
-        local st = rc._st(); local was = st.inFlight; st.inFlight = 1;
-        local r = rc.nextBeat(); st.inFlight = was; return r;
-    end)(), 'busy');
+    -- no countdown any more (2026-09-30): the tab names WORK in progress,
+    -- and an engine with nothing in flight has nothing to say
+    check('GVR14a an idle engine shows no activity', rc.activity(), nil);
+    check('GVR14b an acking run reads "adding N"', (function()
+        local st = rc._st(); local was = st.inFlight; st.inFlight = 3;
+        local r = rc.activity(); st.inFlight = was; return r and r.adding;
+    end)(), 3);
+    check('GVR14c ...and the held adds wait for the retry clock, not the beat',
+        rc._st().retryAt == math.huge, true);
     rc.zoneArmed();
     T = T + rc.BEAT + 1;
     check('GVR15 a zone-in re-arms the push', rc.tick(), 'pushed:5');
@@ -27881,7 +27882,11 @@ end)();
     T = T + rc.BEAT + 1;
     check('GVR29e the satisfied beat is clean', rc.tick(), 'clean');
     -- Unequip & Store: the deposit ack marks the mirror stale, the resync
-    -- LISTs Hat B (30) as a new row, the commit re-stamps
+    -- LISTs Hat B (30) as a new row, the commit re-stamps. The bag slot holds
+    -- Hat B as the deposit leaves -- a piece this layout does not name, so
+    -- the layout stays as it is (only a stored piece the layout NAMES is
+    -- moved on to the shelf by the server's apply).
+    vc._readSlot = function(c, s) return (c == 0 and s == 3) and 30 or 0; end;
     vc.requestDeposit({ { container = 0, slot = 3 } }, function() end);
     T = T + 1; vc.pump(true);
     check('GVR29f the deposit rides the wire', sent[#sent][5], vc.op.DEPOSIT);
@@ -27898,6 +27903,7 @@ end)();
         return q[1] ~= nil and q[1].e.itemId or 'not queued';
     end)(), 30);
     T = T + 1; vc.pump(true); respond(0, 0, vc._wu16(0) .. vc._wu16(0));
+    vc._readSlot = nil;
 
     -- AUTO-EVICT HOLDS IN THE FIELD (2026-08-30): the town service predicting
     -- 'not a town' keeps auto removals off the wire (they would only be
@@ -28347,10 +28353,14 @@ end)();
     check('GVC7 the fresh hook fired once', freshed, 1);
     check('GVC8 state reads fresh', vc.state(), 'fresh');
 
-    -- the zone probe: count agrees -> re-stamped WITHOUT spending LIST pages
+    -- the zone probe: count agrees -> re-stamped WITHOUT spending LIST pages.
+    -- A zone line itself changes nothing in the vault (2026-09-30): the rows
+    -- stay on screen and fresh; a probe is SCHEDULED for when the client
+    -- stands in the new zone (after the server's own zone-in tidy -- 5 s
+    -- against a server without pushes).
     vc.noteZoneIn();
-    check('GVC9 zone-in marks stale', vc.mirror.fresh, false);
-    T = T + vc.SETTLE_ZONE + 1; vc.pump(true);
+    check('GVC9 zone-in schedules a probe and keeps the rows', vc.mirror.fresh == true and vc._st().zoneCheckAt ~= nil, true);
+    T = T + vc.SETTLE_ZONE_OLD + 1; vc.pump(true);
     local before = #sent;
     check('GVC10 the probe is a HELLO', sent[before][5], vc.op.HELLO);
     respond(0, 0, vc._wu16(1) .. vc._wu16(0) .. vc._wu32(3) .. string.char(15, 124, 62, 0));
@@ -28358,7 +28368,7 @@ end)();
 
     -- ...and a DISAGREEING count escalates to a full LIST
     vc.noteZoneIn();
-    T = T + vc.SETTLE_ZONE + 1; vc.pump(true);
+    T = T + vc.SETTLE_ZONE_OLD + 1; vc.pump(true);
     respond(0, 0, vc._wu16(1) .. vc._wu16(0) .. vc._wu32(9) .. string.char(15, 124, 62, 0));
     check('GVC12 disagreeing count -> LIST begins', sent[#sent][5], vc.op.LIST);
     respond(0, 0, vc._wu16(0) .. vc._wu16(0));   -- empty vault now
@@ -28371,13 +28381,16 @@ end)();
     vc.noteJob(3);
     check('GVC16 a job change marks stale', vc.state(), 'stale');
 
-    -- retries re-send the SAME Seq; exhaustion backs off quietly
+    -- retries re-send the SAME Seq; exhaustion backs off quietly (a READ
+    -- waits READ_TIMEOUT per try: repeating it is harmless but costs a walk)
     vc._reset(); T, sent = 100, {};
     vc.pump(true); T = 103; vc.pump(true);
     local seq1 = sent[1][6];
     T = T + vc.SEND_TIMEOUT + 0.1; vc.pump(true);
+    check('GVC17a a read is not re-sent on the write clock', #sent, 1);
+    T = T + vc.READ_TIMEOUT; vc.pump(true);
     check('GVC17 a timeout re-sends the SAME seq', #sent == 2 and sent[2][6] == seq1, true);
-    for _ = 1, vc.MAX_RETRIES + 1 do T = T + vc.SEND_TIMEOUT + 0.1; vc.pump(true); end
+    for _ = 1, vc.READ_RETRIES + 1 do T = T + vc.READ_TIMEOUT + 0.1; vc.pump(true); end
     check('GVC18 exhaustion clears pending and stays stale',
           vc._st().pending == nil and vc.state() == 'stale', true);
 
@@ -28520,7 +28533,7 @@ end)();
     tl = vc.traceLine();
     check('GVT4 a refusal is named by status word', tl:find('refused: UNAVAILABLE', 1, true) ~= nil, true);
     check('GVT5 ...the reply is on record', tl:find('last reply HELLO#', 1, true) ~= nil, true);
-    check('GVT6 ...with the next try counted down', tl:find('next try in 30s', 1, true) ~= nil, true);
+    check('GVT6 ...with the next try counted down', tl:find('next try in ' .. vc.GIVEUP_BACKOFF .. 's', 1, true) ~= nil, true);
     check('GVT7 ...and statusLine still counts NO failed syncs (a refusal is not a timeout)',
           vc.statusLine():find('failed sync', 1, true), nil);
     -- an unreadable HELLO (a changed server shape) says so
@@ -28532,8 +28545,8 @@ end)();
     -- a timeout is named too, with the retry count
     vc._reset(); T, sent = 0, {};
     T = 3; vc.pump(true); T = 6; vc.pump(true);   -- arm (+2s), then send
-    for _ = 1, vc.MAX_RETRIES + 1 do T = T + vc.SEND_TIMEOUT + 0.1; vc.pump(true); end
-    check('GVT9 a timeout is named, with the retries', vc.traceLine():find('timed out: no reply after 3 retries', 1, true) ~= nil, true);
+    for _ = 1, vc.READ_RETRIES + 1 do T = T + vc.READ_TIMEOUT + 0.1; vc.pump(true); end
+    check('GVT9 a timeout is named, with the retries', vc.traceLine():find('timed out: no reply after ' .. vc.READ_RETRIES .. ' retries', 1, true) ~= nil, true);
     -- BAD_OP: dormant, and the line says there is no retry
     vc._reset(); T, sent = 0, {};
     T = 3; vc.pump(true); T = 6; vc.pump(true);   -- arm (+2s), then send
@@ -28708,7 +28721,7 @@ end)();
     local src = (f ~= nil) and f:read('*a') or '';
     if f ~= nil then f:close(); end
     check('GVS10 a fresh mirror schedules the add-only gear sync',
-          src:find("syncflags').invDirty()", 1, true) ~= nil, true);
+          src:find("syncflags').invDirty(", 1, true) ~= nil, true);
 
     sp.provide('gearvault', nil);
     if hadAug == nil then package.loaded['dlac\\feature\\augments'] = nil; end

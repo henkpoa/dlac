@@ -392,3 +392,14 @@ records a 13-request manual-add sequence, a reproducible comparison of singleton
 and batched identity lookups, implementation status and remaining steps. Batching,
 refresh coalescing and negotiated atomic instance ADD are implemented locally;
 the shared pacing and six-second post-edit mirror delay are unchanged.
+
+### Live sync (2026-09-30)
+
+[The live-sync round](gear-vault-live-sync.md): the vault only changes in a city
+(Henrik's ruling -- the client holds still in the field), the additions engine is
+event-driven (the 8 s beat and its countdown are gone), gear swaps no longer
+invalidate anything, counter trades are noticed, the staleness bugs of the
+2026-09-30 audit are fixed, your own edits show at once, and the server gains
+opt-in CHANGED pushes, one-request streamed reads and a 62-entry deposit cap.
+Its dupe-safety review covers every change. It supersedes the six-second
+post-edit delay and the 0.35 s pacing described above.
