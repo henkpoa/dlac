@@ -283,6 +283,16 @@ reply(w16(1) .. w16(0) .. string.char(0, 2) .. w16(0) .. w32(51));
 check('LV63 a stored piece the layout names marks the layout stale', vc.layoutCache.fresh, false);
 vc._readSlot = nil;
 
+-- ---- a batch refused part-way may have moved some entries: re-read ----
+boot(1);
+vc.requestDeposit({ { container = 0, slot = 1 }, { container = 0, slot = 2 } }, function() end); tick();
+frame(vc.status.BUSY);
+check('LV64 a BUSY batch refusal re-reads (entries before it may have moved)', vc.mirror.fresh, false);
+boot(1);
+vc.requestDeposit({ { container = 0, slot = 1 } }, function() end); tick();
+frame(vc.status.TOO_FAR);
+check('LV64a ...a TOO_FAR refusal (decided at the first entry) leaves the mirror standing', vc.mirror.fresh, true);
+
 -- ---- the counter trade (the audit's top staleness bug) ----
 boot(1);
 vc.noteCounterTrade();

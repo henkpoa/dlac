@@ -10538,3 +10538,53 @@ Menu > Macro book. On AscensionXI the header line must read `<JOB>: <n> "Test 50
 name a trigger Group `Test 50%` and open a trigger's group condition: the picker must list
 `Test 50%` (it read `50%%` on both servers before `27d`). On CatsEyeXI both must look the same
 as before. The bludex kit (vendored) escapes three labels too; fix those in henkpoa/bludex.
+
+## Session "the vault goes live" (2026-09-30, `2026.09.30a`)
+
+**Theme:** Henrik: *"The 8 second sync is confusing ... Sometimes some things don't show up
+unless a manual sync happens ... Also do it from the axi perspective."* Two rulings arrived
+mid-session and bind everything: *"there should not be any gear vault events when outside
+the city, since you can only interact with it inside one"*, and *"our highest priority last
+time was the duping risk, where performance got the back seat. Keep duping risks in mind."*
+Design, evidence and the dupe review: `docs/design/gear-vault-live-sync.md`. Server half:
+AscensionXI PR #728 (`claude/gear-vault-sync`), local, not deployed.
+
+**Evidence first.** Four read-only investigations ran in parallel -- the dlac state machine,
+the server backend and its mutation paths, the server's push/pacing machinery, and 25,278
+lines of field wire logs (8 characters, 09-18..09-29). What they found:
+- a counter trade is invisible to dlac: it deposits with no 0x1E0 frame, and nothing hooked it;
+- six further state bugs, each reproduced headlessly before any fix;
+- 34-58 % of all vault traffic came from gear swaps: a 0x01F lock flag was treated as "everything moved";
+- two thirds of chained read time was dlac's own 0.35 s gap;
+- the "sync in 8s" countdown was the additions engine's beat, not a sync;
+- a server ACK overflow for DEPOSIT batches of 63+ entries.
+
+**Landed (dlac, `e325016` + follow-up):**
+- the additions engine runs on events, with a quiet 3 s re-derive and no countdown;
+- the field holds still; a city probes once and renews the push subscription;
+- gear swaps invalidate nothing (per-slot rule, `noteInventory`);
+- reads start when the server is done: 0.3 s after an edit, 1 s after a job change;
+- the post-reply gap is 0.1 s, with transport rules T1/T2/T3;
+- a counter-trade hook;
+- the mirror generation;
+- the probe compares the listed revision;
+- Sync always reads now;
+- the push key is "the exact adds" plus a 10 s retry;
+- the city badge clears;
+- the + Add picker keys on an ownership generation;
+- character-switch reset;
+- your edits show at once as an overlay, and Store says "Storing...";
+- a batch refused part-way re-reads.
+
+**Landed (server, #728):**
+- the CHANGED push (op 0x4B, seq 0, opt-in in HELLO);
+- streamed list reads (FOLLOWS = 4);
+- MaxDeposit 62.
+
+It is Lua-only and read-only. Tests: `gear_vault/live_sync` 8/8 (fail-first on main), the
+vault directory 242/242, axq 735/735.
+
+**Dead end avoided:** pipelining several requests. The server's replay ring holds 8 writes,
+and keyset pages cannot be pipelined anyway. One request in flight stays the law.
+
+**Field round owed:** the checklist at the end of `docs/design/gear-vault-live-sync.md`.

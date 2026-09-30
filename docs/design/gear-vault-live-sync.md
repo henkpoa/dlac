@@ -1,6 +1,7 @@
 # Gear Vault live sync (2026-09-30)
 
 **Status:** dlac side on `dev` (`2026.09.30a`); server side in AscensionXI PR
+[#728](https://github.com/henkpoa/AscensionXI/pull/728), branch
 `claude/gear-vault-sync` (pushes, one-request reads, the deposit cap). The dlac
 side is useful on its own against today's server: every server addition is
 negotiated in HELLO and stays off until the server advertises it. **Field
@@ -165,6 +166,11 @@ write safe. Nothing here weakens it, and several changes tighten it:
   queued twice.
 - **Deposits never exceed one ack frame** (62), so every deposit gets its
   answer.
+- **A batch refused part-way is re-read, not trusted.** The server answers a
+  DEPOSIT / WITHDRAW batch that meets BUSY or a store error mid-way with ONE
+  status for the whole frame, and the entries that already moved lose their
+  results. dlac used to read that as "nothing moved"; it now re-reads the vault
+  (TOO_FAR, decided at the first entry, still leaves the mirror standing).
 - **One request in flight stays the law.** Nothing is pipelined; the lower gap
   applies after a *matched* reply only (T1), and an abandoned request frees
   the slot without ever being re-sent (T3).

@@ -1446,7 +1446,15 @@ function M.onFrame(f)
                     or (f.status == M.status.BUSY and 'busy') or 'unavailable';
                 pcall(req.onDone, nil, word);
             end
-            return true;   -- a refused write moved nothing: the mirror stands
+            -- TOO_FAR is decided at the first entry: nothing moved, the
+            -- mirror stands. BUSY / UNAVAILABLE can end a BATCH part-way --
+            -- the server answers the whole frame with one status and the
+            -- entries already moved lose their results -- so re-read.
+            if f.status ~= M.status.TOO_FAR and f.status ~= M.status.MALFORMED then
+                M.markStale(0, 'write refused part-way');
+                st.probeOnly = false;
+            end
+            return true;
         end
         if (p.op == M.op.LAYOUT_SET or p.op == M.op.LAYOUT_SET2) then
             local req = table.remove(st.layoutSetQ or {}, 1);
