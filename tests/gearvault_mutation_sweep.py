@@ -313,7 +313,12 @@ M = [
 ]
 
 # Mutants that survive for a stated reason (equivalent, or not a defect).
-ACCEPTED = {}
+ACCEPTED = {
+    'V30': 'equivalent: a cut read keeps its staleAt (only a commit clears it), so the pump restarts it in full '
+           'anyway; zoneFull only re-states that',
+    'R23': 'equivalent for the wire: the later `mirror.fresh == false -> clean` gate stops every send; this gate '
+           'only skips the not-vaulted / choose-a-copy bookkeeping for a stale mirror',
+}
 
 
 def git(*args):

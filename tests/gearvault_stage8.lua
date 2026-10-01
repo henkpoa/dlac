@@ -511,6 +511,171 @@ for i = 1, 63 do wrows[i] = { rowId = i, qty = 1 }; end
 check('DR14 a withdraw past the server\'s limit is refused client-side', vc.requestWithdraw(wrows, function() end), false);
 check('DR14a ...and nothing was queued', #(vc._st().withdrawQ or {}) + #(vc._st().depositQ or {}), 0);
 
+-- the answers that say "your view is out of date" re-read it
+boot(1, { { 1, 100, 5 } });
+vc.requestWithdraw({ { rowId = 1, qty = 1 } }, function() end); tick();
+frame(0, 0, w16(1) .. w16(0) .. w32(1) .. w16(0) .. w16(vc.code.NO_INSTANCE));
+check('DR17 a withdraw that met a gone row re-reads the vault', vc.mirror.fresh, false);
+boot(1, { { 1, 100, 5 } });
+local stampBefore = vc.mirror.stamp;
+vc.requestWithdraw({ { rowId = 1, qty = 1 } }, function() end); tick();
+frame(0, 0, withdrawAck(1, 1));
+check('DR18 a withdraw\'s subtraction re-stamps the mirror (views cache on the stamp)',
+    vc.mirror.stamp ~= stampBefore and vc.mirror.rows[1].qty == 4, true);
+boot(1);
+vc.requestLayoutSet({ verb = vc.verb.PIN, instanceId = 1, itemId = 100, pinned = true }, function() end); tick();
+frame(0, 0, setAck(vc.code.NO_INSTANCE));
+check('DR19 an edit that met a changed copy re-reads both views',
+    vc.mirror.fresh == false and vc.layoutCache.fresh == false, true);
+-- the old job's late page is dropped, not committed
+boot(1);
+vc.invalidateLayout(); vc.requestLayout(0); tick();
+lp = vc._st().pending;
+vc.noteJob(2);
+vc.onFrame({ op = lp.op, seq = lp.seq, status = 0, flags = 0, payload = layout2({ layoutRow(1, 555, 9) }, 10) });
+check('JZ7b the old job\'s page is dropped, never committed', #vc.layoutCache.entries, 0);
+
+-- T1: a stale reply (another seq of the same op) never frees the slot
+transport._reset(); now = now + 100;
+transport._send = ashitaSend;
+transport.send(pk(0x46, 7), 'v');
+check('TR17 a reply to another seq of the same op is not ours', transport.received(0x46, 6), false);
+now = now + transport.MIN_GAP + 0.01;
+check('TR18 ...and the slot stays held for the real reply', transport.send(pk(0x40, 8), 'v'), false);
+
+-- derivation: a dlac: virtual entry is neither an item nor an unresolved name
+local derive = require(base .. 'derive');
+local dv = derive.derive({ Idle = { Main = 'dlac:AutoStaff', Body = { 'dlac:AutoObi' } } }, {});
+check('DV1 virtual entries are not reported unresolved', #dv.unresolved, 0);
+
+-- ===========================================================================
+-- EN: the layout engine's own guards, against the real vault client.
+-- ===========================================================================
+local function usageStub(o)
+    return {
+        keyOf = function(id, _, inst) return tostring(id) .. ':' .. tostring(inst or ''); end,
+        isExcluded = function() return o.excluded == true; end,
+        pruneExclusions = function() end, seed = function() end,
+        settings = function() return { additions = o.additions or 'auto', removals = o.removals or 'ask' }; end,
+        rankEvictions = function() return o.ranked or { unpinned = {}, pinned = {} }; end,
+        exclude = function(keys) o.excludedKeys = keys; end,
+    };
+end
+local function engineWith(o)
+    rc._reset();
+    local u = usageStub(o);
+    rc.configure({ vc = vc, clock = function() return now; end, mainJob = function() return 1; end,
+        browsing = function() return o.browsing == true; end,
+        setsRoot = function() return {}; end, triggers = function() return {}; end, resolve = function() return nil; end,
+        derive = { derive = function() return { items = o.items or {}, hash = 'h',
+            cleanupSafe = o.cleanupSafe == true, referencedIds = o.referenced or {} }; end },
+        lookupById = function() return { Slot = o.slot or 'Body' }; end, say = function() end,
+        capacity = function() return o.capacity or 0; end,
+        inCity = function() return o.city ~= false; end, inTown = function() return o.town ~= false; end,
+        worn = function() return o.worn or {}; end,
+        usage = u, settings = u.settings });
+    return u;
+end
+local function run() rc.kick('t'); now = now + rc.KICK_SETTLE + 0.01; return rc.tick(); end
+local function queued(pred)
+    local n = 0;
+    for _, q in ipairs(vc._st().layoutSetQ or {}) do if pred == nil or pred(q.e) then n = n + 1; end end
+    return n;
+end
+local function isRemove(e) return e.verb == vc.verb.REMOVE; end
+
+boot(1, { { 1, 100 } });
+engineWith({ items = { { itemId = 100, count = 1 } } });
+vc.requestLayoutSet({ verb = vc.verb.PIN, instanceId = 7, itemId = 107, pinned = true }, function() end);
+check('EN1 the engine waits while any edit is queued', run(), 'idle');
+check('EN1a ...and adds nothing beside it', queued(), 1);
+boot(1, { { 1, 100 } });
+engineWith({ items = { { itemId = 100, count = 1 } } });
+vc.markStale(0, 'test'); tick();
+check('EN2 the engine waits while the vault is being read', run(), 'idle');
+boot(1, { { 1, 100 } });
+engineWith({ items = { { itemId = 100, count = 1 } }, browsing = true });
+check('EN3 browsing another job, the engine never runs', run(), 'idle');
+check('EN3a ...so the browsed job\'s sets never reach the live layout', queued(), 0);
+boot(1, { { 1, 100 } });
+engineWith({ items = { { itemId = 100, count = 1 } }, additions = 'off' });
+run();
+check('EN4 Additions: Off adds nothing', queued(), 0);
+boot(1, { { 1, 100 } });
+engineWith({ items = { { itemId = 100, count = 1 } }, excluded = true });
+run();
+check('EN5 a piece the player removed (a tombstone) is not added back', queued(), 0);
+boot(1, { { 1, 100 } });
+vc.layoutCache.entries = { { itemId = 200, instanceId = 50, ordinal = 1, kind = 0, state = 1, count = 1 } };
+engineWith({ items = { { itemId = 100, count = 1 } }, capacity = 1, referenced = { [200] = true } });
+run();
+check('EN6 an add that cannot fit waits for room', queued(), 0);
+check('EN6a ...and says so', rc.pressure() ~= nil and rc.pressure().waiting, 1);
+-- MAX_PUSH bounds one run (the legacy road, where no inner loop does)
+boot(1, { { 1, 100 }, { 2, 101 }, { 3, 102 } });
+vc.limits.instances = false;
+engineWith({ items = { { itemId = 100, count = 1 }, { itemId = 101, count = 1 }, { itemId = 102, count = 1 } } });
+local savedMax = rc.MAX_PUSH;
+rc.MAX_PUSH = 2;
+run();
+rc.MAX_PUSH = savedMax;
+check('EN7 one run never pushes more than MAX_PUSH', queued(), 2);
+-- NOT_IN_CITY on the first add drops its queued sibling: it is never sent
+boot(1, { { 1, 100 }, { 2, 101 } });
+engineWith({ items = { { itemId = 100, count = 1 }, { itemId = 101, count = 1 } } });
+check('EN8 two adds go', run(), 'pushed:2');
+tick();
+frame(0, 0, setAck(vc.code.NOT_IN_CITY));
+for _ = 1, 10 do tick(0.25); end
+check('EN8a ...the first refused NOT_IN_CITY: the second never leaves', sends(vc.op.LAYOUT_SET2), 1);
+check('EN8b ...and the engine says it waits for a city', rc.cityBlocked(), true);
+-- a copy the layout already binds is never added again (a pair wanted, one copy)
+boot(1, { { 1, 100, 1, 10 } });
+vc.layoutCache.entries = { { itemId = 100, instanceId = 10, ordinal = 1, kind = 0, state = 0, count = 1 } };
+engineWith({ items = { { itemId = 100, count = 2 } }, slot = 'Ring' });
+run();
+check('EN9 a bound copy is never added a second time', queued(function(e) return e.instanceId == 10; end), 0);
+-- cleanup releases only from a complete derivation
+boot(1);
+vc.layoutCache.entries = { { itemId = 300, instanceId = 30, ordinal = 1, kind = 0, state = 1, count = 1 } };
+engineWith({ cleanupSafe = false });
+run();
+check('EN10 an incomplete derivation never releases a layout entry', queued(isRemove), 0);
+-- instance entries are never "repaired" by the legacy count rule
+boot(1);
+vc.layoutCache.entries = { { itemId = 100, instanceId = 5, ordinal = 1, kind = 0, state = 3, count = 1 } };
+engineWith({});
+check('EN11 instance mode never sends a legacy count repair', run() ~= 'repairing:1' and queued(isRemove) == 0, true);
+-- auto-eviction: in town only, once per layout stamp, never a pinned entry,
+-- and a wanted entry it evicts is tombstoned (or the next run adds it back)
+local function shelf()
+    vc.layoutCache.entries = {
+        { itemId = 400, instanceId = 40, ordinal = 1, kind = 0, state = 1, count = 1 },
+        { itemId = 401, instanceId = 41, ordinal = 2, kind = 0, state = 1, count = 1, pinned = true },
+    };
+end
+local ranked = {
+    unpinned = { { key = '400:40', itemId = 400, instanceId = 40, ordinal = 1, count = 1, assigned = true } },
+    pinned = { { key = '401:41', itemId = 401, instanceId = 41, ordinal = 2, count = 1 } },
+};
+boot(1); shelf();
+engineWith({ capacity = 1, removals = 'auto', ranked = ranked, town = false, city = false });
+run();
+check('EN12 auto-eviction never acts outside a town', queued(isRemove), 0);
+boot(1); shelf();
+local uo = { capacity = 1, removals = 'auto', ranked = ranked };
+engineWith(uo);
+run();
+check('EN13 in town an over-full shelf evicts the least-used unpinned entry', queued(isRemove), 1);
+check('EN14 ...a wanted entry it evicts is tombstoned', uo.excludedKeys ~= nil and #uo.excludedKeys, 1);
+vc.cancelLayoutSets();
+run();
+check('EN15 ...once per layout stamp, not on every run', queued(isRemove), 0);
+boot(1); shelf();
+engineWith({ capacity = 1, removals = 'auto', ranked = { unpinned = {}, pinned = ranked.pinned } });
+run();
+check('EN16 a pinned entry is never auto-evicted', queued(isRemove), 0);
+
 if failures > 0 then
     print(string.format('FAIL -- %d of %d stage-8 checks failed', failures, checks));
     os.exit(1);
