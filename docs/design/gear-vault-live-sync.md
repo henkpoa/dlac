@@ -299,9 +299,12 @@ login (20:51:00.29 server time). dlac's LAYOUT_LIST2 (seq 118) left at
 50 ms limit; another addon's 0x1E0 must have landed just before it. Nexus is
 the only other sender and keeps no wire log, so that is likely, not proven.
 Nexus waits `LISTEN_GAP` (0.3 s) after any foreign 0x1E0; dlac's transport
-does not watch foreign sends at all. Cost: that read retried with the same
-seq 2.5 s later and succeeded. Fix if wanted: dlac's transport observes
-foreign 0x1E0 in packet_out and keeps its own gap after one, as Nexus does.
+did not watch foreign sends at all. Cost: that read retried with the same
+seq 2.5 s later and succeeded. Fixed in `2026.10.01c` (owner: "yes, make the
+Nexus collision fix"): `transport.noteOutgoing` sees every 0x1E0 in
+packet_out, recognises ours by the bytes after the header, and holds the next
+send `FOREIGN_GAP` (0.3 s) after one that is not ours. The wire log now writes
+a `foreign` line for each, so a collision can be proven next time.
 
 ## Not done (deliberately)
 

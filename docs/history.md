@@ -10659,3 +10659,11 @@ sets.`) and the Idle set wears it.
 edits add and remove pieces quickly, then passed live-sync checks 1-7 against the shard
 running AscensionXI #728. One login-time rate-limit drop, most likely a collision with Nexus
 on 0x1E0, is written up in `gear-vault-live-sync.md` under "Field round 2026-10-01".
+
+**Nexus collision fix (`2026.10.01c`, owner: "yes, make the Nexus collision fix"):** the
+shared 0x1E0 gate (`servers/ascensionxi/transport.lua`) now watches packet_out. A 0x1E0 that
+is not one of its last eight frames (compared from the op byte on) is another addon's, gets a
+`foreign` wire-log line, and holds the next vault/HELM/ascension send for `FOREIGN_GAP`
+(0.3 s), the same courtesy Nexus's `LISTEN_GAP` already gives dlac. Playtest phase: parse
+check only; CI runs the suites on the PR. A suite case for `noteOutgoing` is owed at the
+final test pass.
