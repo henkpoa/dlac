@@ -203,8 +203,10 @@ write safe. Nothing here weakens it, and several changes tighten it:
   retries run out, or whose reply died at a zone line, is reported as
   "outcome unknown" and both views are re-read (`failWrite`).
 - **Write retries now all land inside the replay window**: sends at 0, 1.5 and
-  3.0 s (`MAX_RETRIES` 3 -> 2). Reads keep more patience (2.5 s, 3 retries) —
-  a repeated read is harmless.
+  3.0 s (`MAX_RETRIES` 3 -> 2), and since `2026.10.01e` none leaves
+  `WRITE_DEADLINE` (3.5 s) or more after the first send, however long the
+  shared gate held it (the stage 8 pass, below). Reads keep more patience
+  (2.5 s, 3 retries) — a repeated read is harmless.
 - **A write on the wire at a zone line is never retried** — the new zone can be
   another map process whose ring has never seen it, and a retry there would
   run it again. Before, the retry loop re-sent it after the zone line.
@@ -305,6 +307,143 @@ Nexus collision fix"): `transport.noteOutgoing` sees every 0x1E0 in
 packet_out, recognises ours by the bytes after the header, and holds the next
 send `FOREIGN_GAP` (0.3 s) after one that is not ours. The wire log now writes
 a `foreign` line for each, so a collision can be proven next time.
+
+## Stage 8 pass (2026-10-01 night)
+
+**Result:** two client bugs found and fixed in `2026.10.01e`; a new suite,
+`tests/gearvault_stage8.lua` (115 checks, in CI); and a mutation sweep,
+`tests/gearvault_mutation_sweep.py`. The sweep breaks 114 guards one at a
+time. 111 are caught, 3 are equivalent (reasons below), none are open. This
+covers the client only. What it has to assume about the server is listed at
+the end, for the AscensionXI xi_test pass.
+
+The owner's brief: "focus on duping risks, unloading addons, zoning,
+transactions during zoning, job change during zoning, and all others you can
+think of."
+
+### Bugs found
+
+1. **A write retry had no deadline** (it could leave after the replay window).
+   The retries are timed inside the server's 5 s window: 0, 1.5 and 3.0 s.
+   But the shared gate can hold a retry back, and nothing limited how late
+   it could then leave. Three things can hold it:
+   - another producer;
+   - another addon's 0x1E0 (`FOREIGN_GAP`, new in `2026.10.01c`), which can
+     hold it for 0.3 s after *each* such packet;
+   - a frame stall.
+
+   A retry past the window is a new request, so the server runs the write
+   again: a second deposit of whatever the slot now holds, a second withdraw
+   from a stack row, a second legacy count ADD. Cases WD1, WD5, WD8 and WD10
+   went red first.
+
+   **Fix:** a write remembers its first send (`firstSentAt`). A retry that
+   would leave `WRITE_DEADLINE` (3.5 s, the same as Nexus's
+   `RETRY_DEADLINE`) or more after it is not sent. The write is then
+   reported as outcome unknown, and both views are re-read. Reads are not
+   affected, because repeating a read changes nothing.
+2. **An unreadable v2 answer threw instead of being handled.** Three
+   readers chose between the old and new op's parser with
+   `a and parseNew() or (b and parseOld())`. That expression turns a failed
+   parse into `false`, not `nil`, so the "unreadable reply" branch never ran
+   and the next line indexed a boolean. The three readers are
+   `LAYOUT_SET2`, `LIST2` and `LAYOUT_LIST2`.
+   - For an edit, the request had already left its queue, so its caller
+     never heard back. The layout engine's in-flight count then never came
+     down, and the engine sat idle until a reload.
+   - The two list reads stayed pending and retried, so they recovered.
+
+   Cases DR11, DR15 and DR16 went red first. **Fix:** a plain if/else.
+
+### Threat list and the cases that cover it
+
+| Threat | Cases |
+|---|---|
+| A write retried past the replay window runs twice | WD1-WD12 (held gate, frame stall, real transport under 4 foreign packets a second, deposit, withdraw, layout edit; reads exempt) |
+| Our own frame mistaken for another addon's (packet_out runs inside the send); a failed send remembered; another addon's 0x1E0 ignored | TR1-TR18 |
+| A write queued at the zone-out sent into the void, or twice | ZT1-ZT4, ZT15-ZT16 |
+| A write on the wire at a zone line or a logout re-sent into another map process | ZT5-ZT9, ZT13-ZT14 |
+| The old zone's late ack applied to a write already called unknown | ZT10-ZT12 |
+| A batch refused part-way while zoning trusted | ZT17 |
+| A job change while zoning: an old-job edit sent after it, the wrong job's layout read or committed | JZ1-JZ7b |
+| The engine adding to a job whose layout it has not read, or running while zoning | JZ8-JZ11 |
+| An addon reload with a request on the wire: the old reply applied, the read not restarted; a goodbye without a subscription | UR1-UR3, UR5-UR6 |
+| A replayed or mismatched ack applied twice or to the wrong request; a refused edit re-sent | DR1-DR8 |
+| An unreadable or "your view is stale" answer trusted | DR9-DR12, DR15-DR19 |
+| A deposit past one ack frame, or a withdraw past the server's limit | DR13-DR14 |
+| The engine's guards: queued edits, syncing, browsing, Additions Off, tombstones, capacity, MAX_PUSH, NOT_IN_CITY siblings, bound copies (plain and augmented), cleanup from an incomplete derivation, legacy repairs, auto-eviction (town, once per stamp, never pinned, tombstoned) | EN1-EN16 |
+
+Existing cases in `gearvault_live`, `gearvault_instances` and
+`gearvault_augmented_draw` already covered the zone-line edges, the login
+rule, pushes and the T1/T3 transport rules. The sweep shows each guard is
+caught by at least one suite.
+
+### The mutation board
+
+| Surface | Mutants | Caught, first sweep | Caught, after the new cases |
+|---|---|---|---|
+| `vaultclient.lua` | 62 | 57 | 61 + 1 equivalent |
+| `transport.lua` | 13 | 12 | 13 |
+| `reconcile.lua` | 33 | 16 | 31 + 2 equivalent |
+| `derive.lua` | 6 | 5 | 6 |
+| **Total** | **114** | **90 (79 %)** | **111 + 3 equivalent** |
+
+The three equivalents, also listed in the sweep's `ACCEPTED`:
+
+- **V30** (`zoneFull`): a read cut by the zone line keeps its due time,
+  which only a commit clears, so the pump restarts it in full anyway.
+- **R02** (the engine's in-flight count): with the real client the count is
+  above 0 only while the engine's edits sit in `layoutSetQ`, and the
+  layout-busy gate (R03, caught) already sees that queue.
+- **R23** (adds from a stale mirror): a later
+  `mirror.fresh == false -> clean` gate stops every send; this one only skips
+  bookkeeping.
+
+The pass also caught one of its own mistakes: `boot()` dropped a row's
+instance id, so EN9 and EN9b passed vacuously until EN9a went red on the
+unmutated code.
+
+### Re-running it
+
+```
+lua tests/gearvault_stage8.lua
+python tests/gearvault_mutation_sweep.py --fresh     # ~2 min; resumes without --fresh
+```
+
+The sweep refuses to start on a dirty tree or a tree whose suites already
+fail. It restores every file it touches, and exits 1 on a survivor that is
+not in `ACCEPTED`, a pattern that no longer matches, or a mutant that does
+not parse. After an edit moves a guard, update its pattern rather than
+deleting the mutant.
+
+### What the server must guarantee (assumed here, tested on the AscensionXI side)
+
+1. **The replay ring.** It is keyed on op + seq + payload bytes, per
+   character and map process. It answers a repeat of a write for at least
+   3.5 s after the first execution (os.time granularity included) and never
+   executes the repeat. The client's deadline is only as good as this.
+2. **A write never runs twice across a zone line.** A write that reaches the
+   old map process during the zone-out either runs there once or is
+   refused. The new process never runs it, since the client never re-sends
+   it there.
+3. **A second execution stays conservation-safe** in case one ever happens:
+   - a DEPOSIT of an emptied slot moves nothing;
+   - a WITHDRAW of a gone row answers NO_INSTANCE;
+   - an instance ADD of a bound copy answers ALREADY_BOUND.
+4. **A dropped packet is gone.** The 50 ms rate limiter drops a second 0x1E0
+   rather than delaying it, so a dropped retry never runs later.
+5. **Mid-load primitives answer BUSY.** BUSY arriving part-way through a
+   batch is answered with one status for the frame, which the client
+   re-reads.
+6. **A status-OK `LAYOUT_SET2` ack is at least 8 bytes.** The client now
+   survives a shorter one, but it loses the revision.
+7. **The subscription.** A HELLO with client caps 0 ends it, and a fresh
+   login ends it.
+8. **Pushes are op 0x4B with seq 0**, and are never an answer.
+9. **A reload is safe.** After a reload the client seeds a new pseudo-random
+   seq. If a reload inside the window happens to re-send a byte-identical
+   write, the ring answers the old reply and does not run it again (keyed on
+   the payload, per point 1).
 
 ## Not done (deliberately)
 
