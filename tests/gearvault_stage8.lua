@@ -105,7 +105,7 @@ local function boot(caps, rows, wired)
     reply(hello(caps or 1, #(rows or { 1 }), 10));
     assert(vc._st().pending and vc._st().pending.op == vc.op.LIST2, 'boot lists');
     local r = {};
-    for _, x in ipairs(rows or { { 1, 100 } }) do r[#r + 1] = listRow(x[1], x[2], x[3]); end
+    for _, x in ipairs(rows or { { 1, 100 } }) do r[#r + 1] = listRow(x[1], x[2], x[3], x[4]); end
     reply(list2(r, 10));
     vc.requestLayout(0); tick();
     assert(vc._st().pending and vc._st().pending.op == vc.op.LAYOUT_LIST2, 'boot reads the layout');
