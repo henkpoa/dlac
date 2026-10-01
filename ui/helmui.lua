@@ -391,14 +391,19 @@ function M.render(deps, availW)
             and 'The shared hobby bar, on gathering: categories, the arm switch and planned gear bonuses. Also /dl helm bar.'
             or 'The shared hobby bar, on HELM: category glyphs, the arm switch, points\nand rating. Also /dl helm bar.');
     end
-    imgui.SameLine(0, 14);
-    local activeG = hwok and hw.getGather() or nil;
-    imgui.TextColored(COL_DIM, 'Active: ' .. tostring(activeG or '(none)'));
-    if hwok and hw.autoActive() then
-        imgui.SameLine(0, 8);
-        imgui.TextColored(GREEN_OWNED, '-- AUTO holding');
-    end
     imgui.Spacing();
+
+    if gathering.enabled() and hwok and type(hw.setMoveDestination) == 'function' then
+        imgui.TextColored(COL_TEXT, 'Move gathered items into:');
+        for _, destination in ipairs({ { 7, 'Mog Case', 'moveCase' }, { 5, 'Mog Satchel', 'moveSatchel' } }) do
+            imgui.SameLine(0, 12);
+            local checked = { hw[destination[3]] == true };
+            if imgui.Checkbox(destination[2] .. '##helmstorage', checked) then
+                hw.setMoveDestination(destination[1], checked[1]);
+            end
+        end
+        imgui.Spacing();
+    end
 
     if gathering.enabled() then
         M.renderPoints('panel');

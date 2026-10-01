@@ -38,6 +38,9 @@ jobs:
       - name: Catalog stat vocabulary and scoring regression
         run: lua5.4 tests/catalog_stat_mapping.lua
 
+      - name: Stance set scoring and persistence regression
+        run: lua5.4 tests/stance_sets.lua
+
       - name: Saved gear repair regression
         run: lua5.4 tests/gear_repair.lua
 
@@ -61,6 +64,9 @@ jobs:
 
       - name: AscensionXI HELM packet regression
         run: lua5.4 tests/ascensionxi_helm.lua
+
+      - name: HELM gathered-item storage regression
+        run: lua5.4 tests/helmstorage.lua
 
       - name: AscensionXI ascension packet regression
         run: lua5.4 tests/ascensionxi_ascension.lua

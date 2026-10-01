@@ -365,10 +365,10 @@ return {
         min = 2,
         max = 5,
         tiers = {
-            [2] = { EXTRA_KICK_ATTACK = 2 },
-            [3] = { EXTRA_KICK_ATTACK = 3 },
-            [4] = { EXTRA_KICK_ATTACK = 4 },
-            [5] = { EXTRA_KICK_ATTACK = 5 },
+            [2] = { ExtraKickAttack = 2 },
+            [3] = { ExtraKickAttack = 3 },
+            [4] = { ExtraKickAttack = 4 },
+            [5] = { ExtraKickAttack = 5 },
         },
     },
     [40] = {
@@ -476,10 +476,10 @@ return {
         min = 2,
         max = 5,
         tiers = {
-            [2] = { EXTRA_KICK_ATTACK = 2 },
-            [3] = { EXTRA_KICK_ATTACK = 3 },
-            [4] = { EXTRA_KICK_ATTACK = 4 },
-            [5] = { EXTRA_KICK_ATTACK = 5 },
+            [2] = { ExtraKickAttack = 2 },
+            [3] = { ExtraKickAttack = 3 },
+            [4] = { ExtraKickAttack = 4 },
+            [5] = { ExtraKickAttack = 5 },
         },
     },
     [59] = {
@@ -607,10 +607,10 @@ return {
         min = 2,
         max = 5,
         tiers = {
-            [2] = { DARK_MEVA = 5, EARTH_MEVA = 5, FIRE_MEVA = 5, ICE_MEVA = 5, LIGHT_MEVA = 5, THUNDER_MEVA = 5, WATER_MEVA = 5, WIND_MEVA = 5 },
-            [3] = { DARK_MEVA = 10, EARTH_MEVA = 10, FIRE_MEVA = 10, ICE_MEVA = 10, LIGHT_MEVA = 10, THUNDER_MEVA = 10, WATER_MEVA = 10, WIND_MEVA = 10 },
-            [4] = { DARK_MEVA = 15, EARTH_MEVA = 15, FIRE_MEVA = 15, ICE_MEVA = 15, LIGHT_MEVA = 15, THUNDER_MEVA = 15, WATER_MEVA = 15, WIND_MEVA = 15 },
-            [5] = { DARK_MEVA = 30, EARTH_MEVA = 30, FIRE_MEVA = 30, ICE_MEVA = 30, LIGHT_MEVA = 30, THUNDER_MEVA = 30, WATER_MEVA = 30, WIND_MEVA = 30 },
+            [2] = { DarkResistance = 5, EarthResistance = 5, FireResistance = 5, IceResistance = 5, LightResistance = 5, ThunderResistance = 5, WaterResistance = 5, WindResistance = 5 },
+            [3] = { DarkResistance = 10, EarthResistance = 10, FireResistance = 10, IceResistance = 10, LightResistance = 10, ThunderResistance = 10, WaterResistance = 10, WindResistance = 10 },
+            [4] = { DarkResistance = 15, EarthResistance = 15, FireResistance = 15, IceResistance = 15, LightResistance = 15, ThunderResistance = 15, WaterResistance = 15, WindResistance = 15 },
+            [5] = { DarkResistance = 30, EarthResistance = 30, FireResistance = 30, IceResistance = 30, LightResistance = 30, ThunderResistance = 30, WaterResistance = 30, WindResistance = 30 },
         },
     },
     [72] = {
@@ -1101,7 +1101,7 @@ return {
         min = 5,
         max = 5,
         tiers = {
-            [5] = { CRIT_DMG_INCREASE = 10 },
+            [5] = { CriticalHitDamage = 10 },
         },
     },
     [118] = {
@@ -1161,10 +1161,10 @@ return {
         min = 2,
         max = 5,
         tiers = {
-            [2] = { CURE_POTENCY_II = 4 },
-            [3] = { CURE_POTENCY_II = 6 },
-            [4] = { CURE_POTENCY_II = 8 },
-            [5] = { CURE_POTENCY_II = 10 },
+            [2] = { CurePotencyII = 4 },
+            [3] = { CurePotencyII = 6 },
+            [4] = { CurePotencyII = 8 },
+            [5] = { CurePotencyII = 10 },
         },
     },
     [124] = {
@@ -1172,10 +1172,10 @@ return {
         min = 2,
         max = 5,
         tiers = {
-            [2] = { MARTIAL_ARTS = 8 },
-            [3] = { MARTIAL_ARTS = 12 },
-            [4] = { MARTIAL_ARTS = 16 },
-            [5] = { MARTIAL_ARTS = 20 },
+            [2] = { MartialArts = 8 },
+            [3] = { MartialArts = 12 },
+            [4] = { MartialArts = 16 },
+            [5] = { MartialArts = 20 },
         },
     },
     [125] = {
@@ -1205,10 +1205,10 @@ return {
         min = 2,
         max = 5,
         tiers = {
-            [2] = { ALL_WSDMG_FIRST_HIT = 4 },
-            [3] = { ALL_WSDMG_FIRST_HIT = 6 },
-            [4] = { ALL_WSDMG_FIRST_HIT = 8 },
-            [5] = { ALL_WSDMG_FIRST_HIT = 10 },
+            [2] = { WeaponSkillDamageFirstHit = 4 },
+            [3] = { WeaponSkillDamageFirstHit = 6 },
+            [4] = { WeaponSkillDamageFirstHit = 8 },
+            [5] = { WeaponSkillDamageFirstHit = 10 },
         },
     },
     [128] = {
@@ -1238,7 +1238,7 @@ return {
         min = 2,
         max = 2,
         tiers = {
-            [2] = { Accuracy = 5, SOULEATER_EFFECT = 2 },
+            [2] = { Accuracy = 5, SouleaterEffect = 2 },
         },
     },
     [131] = {
@@ -1268,7 +1268,7 @@ return {
         min = 2,
         max = 2,
         tiers = {
-            [2] = { ENH_DRAIN_ASPIR = 5 },
+            [2] = { DrainAspirPotency = 5 },
         },
     },
 };

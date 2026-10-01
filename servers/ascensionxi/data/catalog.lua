@@ -996,12 +996,12 @@ return {
                 Stats = {
                     DMG = 6,
                     Delay = 531,
-                    IceResistance = 4,
                     ITEM_ADDEFFECT_CHANCE = 10,
                     ITEM_ADDEFFECT_DMG = 10,
                     ITEM_ADDEFFECT_ELEMENT = 2,
                     ITEM_ADDEFFECT_TYPE = 1,
                     ITEM_SUBEFFECT = 2,
+                    IceResistance = 4,
                 }
             },
             CrossCounters = {
@@ -1890,9 +1890,9 @@ return {
                     DMG = 197,
                     Delay = 618,
                     StoreTP = 10,
+                    MDMG = 155,
                     TPBonus = 500,
                     ADDS_WEAPONSKILL = 15,
-                    MDMG = 155,
                 }
             },
             GoldPatas = {
@@ -5480,9 +5480,9 @@ return {
                     DMG = 140,
                     Delay = 200,
                     StoreTP = 10,
+                    MDMG = 155,
                     TPBonus = 500,
                     ADDS_WEAPONSKILL = 224,
-                    MDMG = 155,
                 }
             },
             AernDagger = {
@@ -5530,8 +5530,8 @@ return {
                     ITEM_ADDEFFECT_ELEMENT = 3,
                     ITEM_ADDEFFECT_TYPE = 1,
                     ITEM_SUBEFFECT = 3,
-                    WindAbsorb = 5,
                     WSAgiBonus = 10,
+                    WindAbsorb = 5,
                 }
             },
             AirKnife_2 = {
@@ -6511,9 +6511,9 @@ return {
                     DMG = 116,
                     Delay = 186,
                     MagicAccuracy = 40,
+                    MDMG = 155,
                     ADDS_WEAPONSKILL = 28,
                     AFTERMATH = 40,
-                    MDMG = 155,
                     SongDurationBonus = 50,
                     WSDMG_MORDANT_RIME = 30,
                 }
@@ -6922,6 +6922,21 @@ return {
                     RangedAccuracy = 30,
                     MagicAccuracy = 30,
                     MDMG = 186,
+                }
+            },
+            Coranto = {
+                Name = "Coranto",
+                Level = 40,
+                Id = 19982,
+                Model = 628,
+                Jobs = {"DNC"},
+                OneHanded = true,
+                Type = "Dagger",
+                Stats = {
+                    DMG = 14,
+                    Delay = 195,
+                    CHR = 3,
+                    Accuracy = 3,
                 }
             },
             CorrosiveBaselard = {
@@ -7696,6 +7711,19 @@ return {
                 Type = "Dagger",
                 Stats = {
                     DMG = 5,
+                    Delay = 190,
+                }
+            },
+            ForsakenJambiya = {
+                Name = "Forsaken Jambiya",
+                Level = 10,
+                Id = 19980,
+                Model = 409,
+                Jobs = {"DNC"},
+                OneHanded = true,
+                Type = "Dagger",
+                Stats = {
+                    DMG = 4,
                     Delay = 190,
                 }
             },
@@ -10195,6 +10223,22 @@ return {
                     CriticalHitRate = 1,
                 }
             },
+            RekindledJambiya = {
+                Name = "Rekindled Jambiya",
+                Level = 10,
+                Id = 19981,
+                Model = 409,
+                Jobs = {"DNC"},
+                OneHanded = true,
+                Type = "Dagger",
+                Stats = {
+                    DMG = 11,
+                    Delay = 190,
+                    DEX = 2,
+                    CHR = 2,
+                    StepAccuracy = 3,
+                }
+            },
             RelicDagger = {
                 Name = "Relic Dagger",
                 Level = 75,
@@ -10484,12 +10528,12 @@ return {
                 Stats = {
                     DMG = 26,
                     Delay = 150,
-                    IceResistance = -7,
                     ITEM_ADDEFFECT_CHANCE = 100,
                     ITEM_ADDEFFECT_DMG = 9,
                     ITEM_ADDEFFECT_ELEMENT = 3,
                     ITEM_ADDEFFECT_TYPE = 1,
                     ITEM_SUBEFFECT = 3,
+                    IceResistance = -7,
                     WindResistance = 7,
                 }
             },
@@ -10908,9 +10952,9 @@ return {
                 Stats = {
                     DMG = 128,
                     Delay = 205,
+                    MDMG = 155,
                     ADDS_WEAPONSKILL = 29,
                     AFTERMATH = 39,
-                    MDMG = 155,
                     StepAccuracy = 60,
                     StepFinish = 1,
                     WSDMG_PYRRHIC_KLEOS = 30,
@@ -11389,9 +11433,9 @@ return {
                     DMG = 124,
                     Delay = 176,
                     DEX = 50,
+                    MDMG = 155,
                     ADDS_WEAPONSKILL = 31,
                     AFTERMATH = 45,
-                    MDMG = 155,
                 }
             },
             TwilightKnife = {
@@ -11487,11 +11531,11 @@ return {
                 Stats = {
                     DMG = 125,
                     Delay = 200,
+                    MDMG = 155,
                     ADDS_WEAPONSKILL = 27,
                     AFTERMATH = 39,
                     AUGMENTS_SA = 30,
                     AUGMENTS_TA = 30,
-                    MDMG = 155,
                     WSDMG_MANDALIC_STAB = 30,
                 }
             },
@@ -11988,9 +12032,9 @@ return {
                     Delay = 240,
                     Accuracy = 15,
                     MagicAccuracy = 15,
+                    MDMG = 96,
                     SkillchainDamage = 10,
                     ChainAffinityBonus = 10,
-                    MDMG = 96,
                 }
             },
             AccoladeSword = {
@@ -12218,9 +12262,9 @@ return {
                     DMG = 158,
                     Delay = 224,
                     DEX = 50,
+                    MDMG = 186,
                     ADDS_WEAPONSKILL = 225,
                     AFTERMATH = 45,
-                    MDMG = 186,
                 }
             },
             AnaheraSaber = {
@@ -12459,9 +12503,9 @@ return {
                     Accuracy = 27,
                     MagicAccuracy = 15,
                     Evasion = 13,
+                    MDMG = 90,
                     EnfeeblingMagicSkill = 10,
                     EnhancingMagicSkill = 10,
-                    MDMG = 90,
                     OccultAcumen = 30,
                 }
             },
@@ -12916,8 +12960,8 @@ return {
                     MagicAttackBonus = 14,
                     Enmity = 7,
                     DT = -3,
-                    ENSPELL_DURATION = 15,
                     MDMG = 108,
+                    ENSPELL_DURATION = 15,
                 }
             },
             Broadsword = {
@@ -13075,9 +13119,9 @@ return {
                     Delay = 264,
                     Enmity = 23,
                     PDT = -18,
+                    MDMG = 186,
                     ADDS_WEAPONSKILL = 45,
                     AFTERMATH = 39,
-                    MDMG = 186,
                     WSDMG_ATONEMENT = 30,
                 }
             },
@@ -13241,8 +13285,8 @@ return {
                     DMG = 23,
                     Delay = 224,
                     DEX = 1,
-                    EnspellDamage = 2,
                     ENSPELL_DURATION = 5,
+                    EnspellDamage = 2,
                 }
             },
             CabalSword = {
@@ -14323,8 +14367,8 @@ return {
                     DMG = 157,
                     Delay = 233,
                     MagicAttackBonus = 14,
-                    EnspellDamage = 35,
                     MDMG = 108,
+                    EnspellDamage = 35,
                 }
             },
             EnrichingSword = {
@@ -14339,8 +14383,8 @@ return {
                     DMG = 156,
                     Delay = 240,
                     MagicAttackBonus = 14,
-                    EnspellDamage = 30,
                     MDMG = 108,
+                    EnspellDamage = 30,
                 }
             },
             Epee = {
@@ -15476,8 +15520,8 @@ return {
                     STR = 7,
                     MND = 7,
                     Accuracy = 27,
-                    ADDS_WEAPONSKILL = 41,
                     WeaponSkillAccuracy = 15,
+                    ADDS_WEAPONSKILL = 41,
                 }
             },
             Hofud = {
@@ -15717,12 +15761,12 @@ return {
                     Accuracy = 40,
                     MagicAccuracy = 40,
                     MagicAttackBonus = 40,
-                    IceAbsorb = 5,
+                    MDMG = 248,
                     ITEM_ADDEFFECT_DMG = 20,
                     ITEM_ADDEFFECT_ELEMENT = 2,
                     ITEM_ADDEFFECT_TYPE = 1,
                     ITEM_SUBEFFECT = 2,
-                    MDMG = 248,
+                    IceAbsorb = 5,
                     WSIntBonus = 10,
                 }
             },
@@ -16402,8 +16446,8 @@ return {
                     MP = 60,
                     Accuracy = 40,
                     MagicAccuracy = 40,
-                    BlueMagicSkill = 15,
                     MDMG = 201,
+                    BlueMagicSkill = 15,
                 }
             },
             LyftScimitar = {
@@ -16648,8 +16692,8 @@ return {
                     Delay = 236,
                     MagicAttackBonus = 24,
                     Refresh = 5,
-                    BlueMagicSkill = 10,
                     MDMG = 123,
+                    BlueMagicSkill = 10,
                 }
             },
             MensurEpee = {
@@ -16744,8 +16788,8 @@ return {
                     MP = 50,
                     Accuracy = 30,
                     MagicAccuracy = 30,
-                    BlueMagicSkill = 10,
                     MDMG = 186,
+                    BlueMagicSkill = 10,
                 }
             },
             MithranScimitar = {
@@ -16864,10 +16908,10 @@ return {
                     DMG = 140,
                     Delay = 224,
                     MagicAccuracy = 40,
+                    MDMG = 217,
                     ADDS_WEAPONSKILL = 44,
                     AFTERMATH = 41,
                     AUGMENTS_CONVERT = 50,
-                    MDMG = 217,
                     WSDMG_DEATH_BLOSSOM = 30,
                 }
             },
@@ -17519,8 +17563,8 @@ return {
                     Delay = 268,
                     Attack = 43,
                     WeaponSkillDamage = 4,
-                    Regain = 30,
                     CriticalHitDamage = 5,
+                    Regain = 30,
                 }
             },
             RekindledRapier = {
@@ -18058,10 +18102,10 @@ return {
                     DMG = 168,
                     Delay = 240,
                     StoreTP = 10,
+                    MDMG = 186,
                     TPBonus = 500,
                     ADDS_WEAPONSKILL = 226,
                     AFTERMATH = 43,
-                    MDMG = 186,
                 }
             },
             Shamshir = {
@@ -19062,11 +19106,11 @@ return {
                     STR = 15,
                     Attack = 23,
                     MagicAttackBonus = 34,
+                    MDMG = 108,
                     ITEM_ADDEFFECT_CHANCE = 100,
                     ITEM_ADDEFFECT_DMG = 20,
                     ITEM_ADDEFFECT_TYPE = 9,
                     ITEM_SUBEFFECT = 22,
-                    MDMG = 108,
                     UncappedFastCast = 7,
                 }
             },
@@ -19445,8 +19489,8 @@ return {
                     MP = 70,
                     Accuracy = 50,
                     MagicAccuracy = 50,
-                    BlueMagicSkill = 20,
                     MDMG = 217,
+                    BlueMagicSkill = 20,
                 }
             },
         },
@@ -19782,8 +19826,8 @@ return {
                     STR = 15,
                     INT = 15,
                     Accuracy = 32,
-                    ADDS_WEAPONSKILL = 55,
                     WeaponSkillAccuracy = 30,
+                    ADDS_WEAPONSKILL = 55,
                 }
             },
             BerylliumSword = {
@@ -19800,8 +19844,8 @@ return {
                     STR = 10,
                     INT = 10,
                     Accuracy = 27,
-                    ADDS_WEAPONSKILL = 55,
                     WeaponSkillAccuracy = 25,
+                    ADDS_WEAPONSKILL = 55,
                 }
             },
             Bidenhander = {
@@ -20094,9 +20138,9 @@ return {
                     DMG = 303,
                     Delay = 430,
                     VIT = 50,
+                    MDMG = 155,
                     ADDS_WEAPONSKILL = 59,
                     AFTERMATH = 45,
-                    MDMG = 155,
                 }
             },
             CamaClaymore = {
@@ -20544,10 +20588,10 @@ return {
                     Delay = 489,
                     Enmity = 23,
                     PDT = -25,
+                    MDMG = 186,
                     ADDS_WEAPONSKILL = 61,
                     AFTERMATH = 39,
                     LiementArea = 1,
-                    MDMG = 186,
                 }
             },
             Espafut = {
@@ -21281,12 +21325,12 @@ return {
                 Stats = {
                     DMG = 53,
                     Delay = 456,
-                    IceResistance = 8,
                     ITEM_ADDEFFECT_CHANCE = 5,
                     ITEM_ADDEFFECT_DMG = 10,
                     ITEM_ADDEFFECT_ELEMENT = 2,
                     ITEM_ADDEFFECT_TYPE = 1,
                     ITEM_SUBEFFECT = 2,
+                    IceResistance = 8,
                 }
             },
             InfernoSword = {
@@ -21379,8 +21423,8 @@ return {
                     Attack = 25,
                     MagicAccuracy = 35,
                     MagicAttackBonus = 18,
-                    ADDS_WEAPONSKILL = 56,
                     MDMG = 226,
+                    ADDS_WEAPONSKILL = 56,
                     WSDMG_GROUND_STRIKE = 15,
                 }
             },
@@ -21625,9 +21669,9 @@ return {
                     DMG = 336,
                     Delay = 480,
                     StoreTP = 10,
+                    MDMG = 186,
                     TPBonus = 500,
                     ADDS_WEAPONSKILL = 60,
-                    MDMG = 186,
                 }
             },
             Lockheart = {
@@ -21980,8 +22024,8 @@ return {
                     Attack = 30,
                     MagicAccuracy = 40,
                     MagicAttackBonus = 21,
-                    ADDS_WEAPONSKILL = 56,
                     MDMG = 226,
+                    ADDS_WEAPONSKILL = 56,
                     WSDMG_GROUND_STRIKE = 15,
                 }
             },
@@ -23531,9 +23575,9 @@ return {
                 Stats = {
                     DMG = 195,
                     Delay = 312,
+                    MDMG = 155,
                     ADDS_WEAPONSKILL = 74,
                     AFTERMATH = 39,
-                    MDMG = 155,
                     WSDMG_PRIMAL_REND = 30,
                 }
             },
@@ -23751,8 +23795,8 @@ return {
                 Stats = {
                     DMG = 49,
                     Delay = 288,
-                    PlantoidKiller = 7,
                     WeaponSkillAccuracy = 5,
+                    PlantoidKiller = 7,
                 }
             },
             BastokanAxe = {
@@ -24360,8 +24404,8 @@ return {
                     Attack = 30,
                     MagicAccuracy = 40,
                     MagicAttackBonus = 16,
-                    ADDS_WEAPONSKILL = 72,
                     MDMG = 217,
+                    ADDS_WEAPONSKILL = 72,
                     WSDMG_DECIMATION = 120,
                 }
             },
@@ -24718,9 +24762,9 @@ return {
                     Delay = 276,
                     STR = 35,
                     MND = 35,
+                    MDMG = 155,
                     ADDS_WEAPONSKILL = 76,
                     AFTERMATH = 45,
-                    MDMG = 155,
                 }
             },
             FellingAxe = {
@@ -25002,11 +25046,11 @@ return {
                     DMG = 197,
                     Delay = 280,
                     Attack = 60,
+                    MDMG = 155,
                     ADDS_WEAPONSKILL = 73,
                     AFTERMATH = 19,
                     EXTRA_DMG_CHANCE = 130,
                     ITEM_ADDEFFECT_TYPE = 1,
-                    MDMG = 155,
                     OCC_DO_EXTRA_DMG = 250,
                     WSDMG_ONSLAUGHT = 40,
                 }
@@ -30533,8 +30577,8 @@ return {
                     DMG = 212,
                     Delay = 528,
                     INT = 6,
-                    DrainAspirPotency = 10,
                     MDMG = 40,
+                    DrainAspirPotency = 10,
                 }
             },
             Anguta = {
@@ -31451,8 +31495,8 @@ return {
                     Attack = 30,
                     MagicAccuracy = 40,
                     MagicAttackBonus = 21,
-                    ADDS_WEAPONSKILL = 104,
                     MDMG = 226,
+                    ADDS_WEAPONSKILL = 104,
                     WSDMG_SPIRAL_HELL = 100,
                 }
             },
@@ -31791,12 +31835,12 @@ return {
                 Stats = {
                     DMG = 42,
                     Delay = 480,
-                    IceResistance = 6,
                     ITEM_ADDEFFECT_CHANCE = 10,
                     ITEM_ADDEFFECT_DMG = 5,
                     ITEM_ADDEFFECT_ELEMENT = 2,
                     ITEM_ADDEFFECT_TYPE = 1,
                     ITEM_SUBEFFECT = 2,
+                    IceResistance = 6,
                 }
             },
             GarudasSickle = {
@@ -32020,8 +32064,8 @@ return {
                     Attack = 25,
                     MagicAccuracy = 35,
                     MagicAttackBonus = 18,
-                    ADDS_WEAPONSKILL = 104,
                     MDMG = 226,
+                    ADDS_WEAPONSKILL = 104,
                     WSDMG_SPIRAL_HELL = 100,
                 }
             },
@@ -32150,10 +32194,10 @@ return {
                     DMG = 330,
                     Delay = 528,
                     MagicAccuracy = 50,
+                    MDMG = 217,
                     ADDS_WEAPONSKILL = 106,
                     AFTERMATH = 39,
                     AUGMENTS_ABSORB_LIBERATOR = 50,
-                    MDMG = 217,
                     WSDMG_INSURGENCY = 30,
                 }
             },
@@ -32460,8 +32504,8 @@ return {
                     STR = 10,
                     MND = 10,
                     Accuracy = 27,
-                    ADDS_WEAPONSKILL = 103,
                     WeaponSkillAccuracy = 25,
+                    ADDS_WEAPONSKILL = 103,
                 }
             },
             MaliyaSickle_1 = {
@@ -32478,8 +32522,8 @@ return {
                     STR = 15,
                     MND = 15,
                     Accuracy = 32,
-                    ADDS_WEAPONSKILL = 103,
                     WeaponSkillAccuracy = 30,
+                    ADDS_WEAPONSKILL = 103,
                 }
             },
             MandibularSickle = {
@@ -32581,8 +32625,8 @@ return {
                     INT = 20,
                     MND = 20,
                     MagicAccuracy = 30,
-                    DrainAspirPotency = 20,
                     MDMG = 180,
+                    DrainAspirPotency = 20,
                 }
             },
             MolionessSickle = {
@@ -33176,9 +33220,9 @@ return {
                     Delay = 502,
                     STR = 35,
                     MND = 35,
+                    MDMG = 217,
                     ADDS_WEAPONSKILL = 108,
                     AFTERMATH = 45,
-                    MDMG = 217,
                 }
             },
             RekindledSickle = {
@@ -33698,8 +33742,8 @@ return {
                     DMG = 145,
                     Delay = 513,
                     MP = 30,
-                    DarkMagicSkill = 10,
                     AbsorbPotency = 9,
+                    DarkMagicSkill = 10,
                 }
             },
             VoluntScythe = {
@@ -35104,8 +35148,8 @@ return {
                     Delay = 396,
                     STR = 15,
                     Accuracy = 47,
-                    ADDS_WEAPONSKILL = 119,
                     WeaponSkillAccuracy = 25,
+                    ADDS_WEAPONSKILL = 119,
                 }
             },
             ExaltedSpear_1 = {
@@ -35121,8 +35165,8 @@ return {
                     Delay = 385,
                     STR = 20,
                     Accuracy = 52,
-                    ADDS_WEAPONSKILL = 119,
                     WeaponSkillAccuracy = 30,
+                    ADDS_WEAPONSKILL = 119,
                 }
             },
             FayLance = {
@@ -35935,8 +35979,8 @@ return {
                     Attack = 25,
                     MagicAccuracy = 35,
                     MagicAttackBonus = 18,
-                    ADDS_WEAPONSKILL = 120,
                     MDMG = 226,
+                    ADDS_WEAPONSKILL = 120,
                     WSDMG_IMPULSE_DRIVE = 40,
                 }
             },
@@ -37098,9 +37142,9 @@ return {
                     DMG = 347,
                     Delay = 492,
                     VIT = 50,
+                    MDMG = 155,
                     ADDS_WEAPONSKILL = 124,
                     AFTERMATH = 45,
-                    MDMG = 155,
                 }
             },
             Rosschinder = {
@@ -37260,11 +37304,11 @@ return {
                 Stats = {
                     DMG = 307,
                     Delay = 492,
+                    MDMG = 155,
                     ADDS_WEAPONSKILL = 122,
                     AFTERMATH = 39,
-                    JumpCrit = 1,
                     JumpAttack = 35,
-                    MDMG = 155,
+                    JumpCrit = 1,
                     WSDMG_DRAKESBANE = 30,
                 }
             },
@@ -37297,8 +37341,8 @@ return {
                     Delay = 492,
                     ADDS_WEAPONSKILL = 122,
                     AFTERMATH = 34,
-                    JumpCrit = 1,
                     JumpAttack = 12,
+                    JumpCrit = 1,
                 }
             },
             Ryunohige_4 = {
@@ -37314,8 +37358,8 @@ return {
                     Delay = 492,
                     ADDS_WEAPONSKILL = 122,
                     AFTERMATH = 34,
-                    JumpCrit = 1,
                     JumpAttack = 20,
+                    JumpCrit = 1,
                 }
             },
             Ryunohige_5 = {
@@ -37331,8 +37375,8 @@ return {
                     Delay = 492,
                     ADDS_WEAPONSKILL = 122,
                     AFTERMATH = 34,
-                    JumpCrit = 1,
                     JumpAttack = 30,
+                    JumpCrit = 1,
                     WSDMG_DRAKESBANE = 15,
                 }
             },
@@ -37349,8 +37393,8 @@ return {
                     Delay = 492,
                     ADDS_WEAPONSKILL = 122,
                     AFTERMATH = 39,
-                    JumpCrit = 1,
                     JumpAttack = 30,
+                    JumpCrit = 1,
                     WSDMG_DRAKESBANE = 15,
                 }
             },
@@ -37367,8 +37411,8 @@ return {
                     Delay = 492,
                     ADDS_WEAPONSKILL = 122,
                     AFTERMATH = 39,
-                    JumpCrit = 1,
                     JumpAttack = 35,
+                    JumpCrit = 1,
                     WSDMG_DRAKESBANE = 30,
                 }
             },
@@ -37385,8 +37429,8 @@ return {
                     Delay = 492,
                     ADDS_WEAPONSKILL = 122,
                     AFTERMATH = 39,
-                    JumpCrit = 1,
                     JumpAttack = 35,
+                    JumpCrit = 1,
                     WSDMG_DRAKESBANE = 30,
                 }
             },
@@ -37403,8 +37447,8 @@ return {
                     Delay = 492,
                     ADDS_WEAPONSKILL = 122,
                     AFTERMATH = 39,
-                    JumpCrit = 1,
                     JumpAttack = 35,
+                    JumpCrit = 1,
                     WSDMG_DRAKESBANE = 30,
                 }
             },
@@ -37536,8 +37580,8 @@ return {
                     Attack = 30,
                     MagicAccuracy = 40,
                     MagicAttackBonus = 21,
-                    ADDS_WEAPONSKILL = 120,
                     MDMG = 226,
+                    ADDS_WEAPONSKILL = 120,
                     WSDMG_IMPULSE_DRIVE = 40,
                 }
             },
@@ -38809,8 +38853,8 @@ return {
                     RangedAccuracy = 40,
                     MagicAccuracy = 40,
                     MagicAttackBonus = 16,
-                    ADDS_WEAPONSKILL = 136,
                     MDMG = 217,
+                    ADDS_WEAPONSKILL = 136,
                     WSDMG_BLADE_KU = 60,
                 }
             },
@@ -38880,8 +38924,8 @@ return {
                     DMG = 159,
                     Delay = 227,
                     StoreTP = 10,
-                    TPBonus = 500,
                     MDMG = 186,
+                    TPBonus = 500,
                 }
             },
             Hibari = {
@@ -39290,8 +39334,8 @@ return {
                     RangedAccuracy = 35,
                     MagicAccuracy = 35,
                     MagicAttackBonus = 13,
-                    ADDS_WEAPONSKILL = 136,
                     MDMG = 217,
+                    ADDS_WEAPONSKILL = 136,
                     WSDMG_BLADE_KU = 60,
                 }
             },
@@ -39506,9 +39550,9 @@ return {
                     DMG = 148,
                     Delay = 210,
                     AGI = 50,
+                    MDMG = 186,
                     ADDS_WEAPONSKILL = 140,
                     AFTERMATH = 45,
-                    MDMG = 186,
                 }
             },
             Kannakiri = {
@@ -40361,8 +40405,8 @@ return {
                     Delay = 222,
                     Evasion = 10,
                     SubtleBlow = 10,
-                    EnemyCriticalHitRate = 3,
                     CRIT_DEF_BONUS = -3,
+                    EnemyCriticalHitRate = 3,
                 }
             },
             Muketsu = {
@@ -40451,9 +40495,9 @@ return {
                     Delay = 227,
                     MagicAccuracy = 40,
                     Enmity = 40,
+                    MDMG = 186,
                     ADDS_WEAPONSKILL = 138,
                     AFTERMATH = 39,
-                    MDMG = 186,
                     MijinReraise = 1,
                     WSDMG_BLADE_KAMU = 30,
                 }
@@ -42225,8 +42269,8 @@ return {
                     Delay = 420,
                     STR = 15,
                     Accuracy = 47,
-                    ADDS_WEAPONSKILL = 151,
                     WeaponSkillAccuracy = 25,
+                    ADDS_WEAPONSKILL = 151,
                 }
             },
             BerylliumTachi_1 = {
@@ -42242,8 +42286,8 @@ return {
                     Delay = 407,
                     STR = 20,
                     Accuracy = 52,
-                    ADDS_WEAPONSKILL = 151,
                     WeaponSkillAccuracy = 30,
+                    ADDS_WEAPONSKILL = 151,
                 }
             },
             BizenOsafune = {
@@ -45581,8 +45625,8 @@ return {
                     STR = 7,
                     MND = 7,
                     Accuracy = 27,
-                    ADDS_WEAPONSKILL = 168,
                     WeaponSkillAccuracy = 15,
+                    ADDS_WEAPONSKILL = 168,
                 }
             },
             BerylliumMace_1 = {
@@ -45599,8 +45643,8 @@ return {
                     STR = 12,
                     MND = 12,
                     Accuracy = 32,
-                    ADDS_WEAPONSKILL = 168,
                     WeaponSkillAccuracy = 20,
+                    ADDS_WEAPONSKILL = 168,
                 }
             },
             Bhima = {
@@ -46052,9 +46096,9 @@ return {
                     MagicAttackBonus = 18,
                     DoubleAttack = 7,
                     FastCast = 7,
+                    MDMG = 232,
                     SkillchainDamage = 7,
                     MagicBurstDamage = 7,
-                    MDMG = 232,
                 }
             },
             Caduceus = {
@@ -47163,9 +47207,9 @@ return {
                     Delay = 300,
                     HP = 90,
                     MP = 90,
+                    MDMG = 155,
                     ADDS_WEAPONSKILL = 173,
                     AFTERMATH = 44,
-                    MDMG = 155,
                 }
             },
             Gambanteinn_8 = {
@@ -47181,9 +47225,9 @@ return {
                     Delay = 300,
                     HP = 90,
                     MP = 90,
+                    MDMG = 155,
                     ADDS_WEAPONSKILL = 173,
                     AFTERMATH = 44,
-                    MDMG = 155,
                 }
             },
             Gambanteinn_9 = {
@@ -47199,10 +47243,10 @@ return {
                     Delay = 300,
                     HP = 135,
                     MP = 135,
+                    MDMG = 217,
                     ADDS_WEAPONSKILL = 173,
                     AFTERMATH = 45,
                     CursnaBonus = 100,
-                    MDMG = 217,
                 }
             },
             GobbieGavel = {
@@ -47775,8 +47819,8 @@ return {
                     Accuracy = 35,
                     MagicAccuracy = 35,
                     MagicAttackBonus = 18,
-                    ADDS_WEAPONSKILL = 169,
                     MDMG = 232,
+                    ADDS_WEAPONSKILL = 169,
                     WSDMG_BLACK_HALO = 50,
                 }
             },
@@ -48378,8 +48422,8 @@ return {
                     Accuracy = 40,
                     MagicAccuracy = 40,
                     MagicAttackBonus = 21,
-                    ADDS_WEAPONSKILL = 169,
                     MDMG = 232,
+                    ADDS_WEAPONSKILL = 169,
                     WSDMG_BLACK_HALO = 50,
                 }
             },
@@ -48410,8 +48454,8 @@ return {
                     INT = 6,
                     MND = 16,
                     MagicAttackBonus = 16,
-                    DivineMagicSkill = 10,
                     MDMG = 124,
+                    DivineMagicSkill = 10,
                 }
             },
             MightyCudgel = {
@@ -48504,11 +48548,11 @@ return {
                     DMG = 217,
                     Delay = 308,
                     Attack = 60,
+                    MDMG = 217,
                     ADDS_WEAPONSKILL = 170,
                     AFTERMATH = 25,
                     EXTRA_DMG_CHANCE = 130,
                     ITEM_ADDEFFECT_TYPE = 1,
-                    MDMG = 217,
                     OCC_DO_EXTRA_DMG = 300,
                     WSDMG_RANDGRITH = 40,
                 }
@@ -48643,11 +48687,11 @@ return {
                     DMG = 160,
                     Delay = 308,
                     Attack = 40,
+                    MDMG = 155,
                     ADDS_WEAPONSKILL = 170,
                     AFTERMATH = 11,
                     EXTRA_DMG_CHANCE = 130,
                     ITEM_ADDEFFECT_TYPE = 1,
-                    MDMG = 155,
                     OCC_DO_EXTRA_DMG = 300,
                     WSDMG_RANDGRITH = 40,
                 }
@@ -48664,11 +48708,11 @@ return {
                     DMG = 160,
                     Delay = 308,
                     Attack = 40,
+                    MDMG = 155,
                     ADDS_WEAPONSKILL = 170,
                     AFTERMATH = 11,
                     EXTRA_DMG_CHANCE = 130,
                     ITEM_ADDEFFECT_TYPE = 1,
-                    MDMG = 155,
                     OCC_DO_EXTRA_DMG = 300,
                     WSDMG_RANDGRITH = 40,
                 }
@@ -49667,9 +49711,9 @@ return {
                     MND = 6,
                     MagicAccuracy = 20,
                     MagicAttackBonus = 16,
+                    MDMG = 124,
                     DarkMagicSkill = 15,
                     DrainAspirPotency = 20,
-                    MDMG = 124,
                 }
             },
             RuneRod = {
@@ -50588,8 +50632,8 @@ return {
                     MND = 21,
                     MagicAttackBonus = 16,
                     CurePotency = 16,
-                    AquaveilCount = 1,
                     MDMG = 124,
+                    AquaveilCount = 1,
                 }
             },
             VejovisWand = {
@@ -50847,11 +50891,11 @@ return {
                     DMG = 133,
                     Delay = 267,
                     MagicAccuracy = 25,
+                    MDMG = 155,
                     ADDS_WEAPONSKILL = 171,
                     AFTERMATH = 40,
-                    DivineVeil = 100,
                     DivineBenison = 20,
-                    MDMG = 155,
+                    DivineVeil = 100,
                     WSDMG_MYSTIC_BOON = 30,
                 }
             },
@@ -50867,11 +50911,11 @@ return {
                     DMG = 167,
                     Delay = 267,
                     MagicAccuracy = 40,
+                    MDMG = 217,
                     ADDS_WEAPONSKILL = 171,
                     AFTERMATH = 40,
-                    DivineVeil = 100,
                     DivineBenison = 20,
-                    MDMG = 217,
+                    DivineVeil = 100,
                     WSDMG_MYSTIC_BOON = 30,
                 }
             },
@@ -50906,8 +50950,8 @@ return {
                     MagicAccuracy = 10,
                     ADDS_WEAPONSKILL = 171,
                     AFTERMATH = 35,
-                    DivineVeil = 100,
                     DivineBenison = 10,
+                    DivineVeil = 100,
                 }
             },
             Yagrush_4 = {
@@ -50924,8 +50968,8 @@ return {
                     MagicAccuracy = 15,
                     ADDS_WEAPONSKILL = 171,
                     AFTERMATH = 35,
-                    DivineVeil = 100,
                     DivineBenison = 15,
+                    DivineVeil = 100,
                 }
             },
             Yagrush_5 = {
@@ -50941,8 +50985,8 @@ return {
                     Delay = 267,
                     ADDS_WEAPONSKILL = 171,
                     AFTERMATH = 35,
-                    DivineVeil = 100,
                     DivineBenison = 20,
+                    DivineVeil = 100,
                     WSDMG_MYSTIC_BOON = 15,
                 }
             },
@@ -50960,8 +51004,8 @@ return {
                     MagicAccuracy = 20,
                     ADDS_WEAPONSKILL = 171,
                     AFTERMATH = 40,
-                    DivineVeil = 100,
                     DivineBenison = 20,
+                    DivineVeil = 100,
                     WSDMG_MYSTIC_BOON = 15,
                 }
             },
@@ -50979,8 +51023,8 @@ return {
                     MagicAccuracy = 25,
                     ADDS_WEAPONSKILL = 171,
                     AFTERMATH = 40,
-                    DivineVeil = 100,
                     DivineBenison = 20,
+                    DivineVeil = 100,
                     WSDMG_MYSTIC_BOON = 30,
                 }
             },
@@ -50998,8 +51042,8 @@ return {
                     MagicAccuracy = 25,
                     ADDS_WEAPONSKILL = 171,
                     AFTERMATH = 40,
-                    DivineVeil = 100,
                     DivineBenison = 20,
+                    DivineVeil = 100,
                     WSDMG_MYSTIC_BOON = 30,
                 }
             },
@@ -51015,11 +51059,11 @@ return {
                     DMG = 133,
                     Delay = 267,
                     MagicAccuracy = 25,
+                    MDMG = 155,
                     ADDS_WEAPONSKILL = 171,
                     AFTERMATH = 40,
-                    DivineVeil = 100,
                     DivineBenison = 20,
-                    MDMG = 155,
+                    DivineVeil = 100,
                     WSDMG_MYSTIC_BOON = 30,
                 }
             },
@@ -51099,10 +51143,10 @@ return {
                     MND = 12,
                     MagicAttackBonus = 24,
                     CurePotency = 23,
+                    MDMG = 186,
                     CureCastTime = 10,
                     EnhancingMagicSkill = 10,
                     HealingMagicSkill = 10,
-                    MDMG = 186,
                 }
             },
             Ababinili_1 = {
@@ -51120,10 +51164,10 @@ return {
                     MND = 12,
                     MagicAttackBonus = 24,
                     CurePotency = 24,
+                    MDMG = 186,
                     CureCastTime = 11,
                     EnhancingMagicSkill = 11,
                     HealingMagicSkill = 11,
-                    MDMG = 186,
                 }
             },
             AernStaff = {
@@ -51350,8 +51394,8 @@ return {
                     INT = 12,
                     MND = 12,
                     MagicAttackBonus = 28,
-                    MagicBurstDamage = 3,
                     MDMG = 217,
+                    MagicBurstDamage = 3,
                 }
             },
             ArasyStaff_1 = {
@@ -51368,8 +51412,8 @@ return {
                     INT = 17,
                     MND = 17,
                     MagicAttackBonus = 31,
-                    MagicBurstDamage = 5,
                     MDMG = 217,
+                    MagicBurstDamage = 5,
                 }
             },
             ArchalaussPole = {
@@ -51420,8 +51464,8 @@ return {
                     MP = 50,
                     Accuracy = 30,
                     MagicAccuracy = 30,
-                    EnhancingMagicDuration = 10,
                     MDMG = 279,
+                    EnhancingMagicDuration = 10,
                 }
             },
             ArkaI = {
@@ -52114,11 +52158,11 @@ return {
                     DMG = 275,
                     Delay = 390,
                     Accuracy = 60,
+                    MDMG = 279,
                     ADDS_WEAPONSKILL = 185,
                     AFTERMATH = 26,
                     EXTRA_DMG_CHANCE = 130,
                     ITEM_ADDEFFECT_TYPE = 1,
-                    MDMG = 279,
                     OCC_DO_EXTRA_DMG = 250,
                     WSDMG_GATE_OF_TARTARUS = 40,
                 }
@@ -52253,11 +52297,11 @@ return {
                     DMG = 202,
                     Delay = 390,
                     Accuracy = 40,
+                    MDMG = 248,
                     ADDS_WEAPONSKILL = 185,
                     AFTERMATH = 12,
                     EXTRA_DMG_CHANCE = 130,
                     ITEM_ADDEFFECT_TYPE = 1,
-                    MDMG = 248,
                     OCC_DO_EXTRA_DMG = 250,
                     WSDMG_GATE_OF_TARTARUS = 40,
                 }
@@ -52274,11 +52318,11 @@ return {
                     DMG = 202,
                     Delay = 390,
                     Accuracy = 40,
+                    MDMG = 248,
                     ADDS_WEAPONSKILL = 185,
                     AFTERMATH = 12,
                     EXTRA_DMG_CHANCE = 130,
                     ITEM_ADDEFFECT_TYPE = 1,
-                    MDMG = 248,
                     OCC_DO_EXTRA_DMG = 250,
                     WSDMG_GATE_OF_TARTARUS = 40,
                 }
@@ -53548,9 +53592,9 @@ return {
                     DMG = 198,
                     Delay = 390,
                     MP = 150,
+                    MDMG = 248,
                     ADDS_WEAPONSKILL = 190,
                     AFTERMATH = 44,
-                    MDMG = 248,
                 }
             },
             Hvergelmir_8 = {
@@ -53565,9 +53609,9 @@ return {
                     DMG = 198,
                     Delay = 390,
                     MP = 150,
+                    MDMG = 248,
                     ADDS_WEAPONSKILL = 190,
                     AFTERMATH = 44,
-                    MDMG = 248,
                 }
             },
             Hvergelmir_9 = {
@@ -53583,9 +53627,9 @@ return {
                     Delay = 390,
                     MP = 230,
                     FastCast = 50,
+                    MDMG = 279,
                     ADDS_WEAPONSKILL = 190,
                     AFTERMATH = 45,
-                    MDMG = 279,
                 }
             },
             HypnoStaff = {
@@ -53805,9 +53849,9 @@ return {
                     Accuracy = 35,
                     MagicAccuracy = 35,
                     MagicAttackBonus = 23,
+                    MDMG = 241,
                     ADDS_WEAPONSKILL = 184,
                     FireResistance = 15,
-                    MDMG = 241,
                     WSDMG_RETRIBUTION = 20,
                 }
             },
@@ -54057,10 +54101,10 @@ return {
                     Accuracy = 30,
                     MagicAccuracy = 10,
                     MagicAttackBonus = 60,
+                    MDMG = 248,
                     ADDS_WEAPONSKILL = 186,
                     AFTERMATH = 41,
                     ElementalSealBonus = 10,
-                    MDMG = 248,
                     WSDMG_VIDOHUNIR = 30,
                 }
             },
@@ -54078,10 +54122,10 @@ return {
                     Accuracy = 30,
                     MagicAccuracy = 30,
                     MagicAttackBonus = 70,
+                    MDMG = 279,
                     ADDS_WEAPONSKILL = 186,
                     AFTERMATH = 41,
                     ElementalSealBonus = 10,
-                    MDMG = 279,
                     WSDMG_VIDOHUNIR = 30,
                 }
             },
@@ -54236,10 +54280,10 @@ return {
                     Accuracy = 30,
                     MagicAccuracy = 10,
                     MagicAttackBonus = 60,
+                    MDMG = 248,
                     ADDS_WEAPONSKILL = 186,
                     AFTERMATH = 41,
                     ElementalSealBonus = 10,
-                    MDMG = 248,
                     WSDMG_VIDOHUNIR = 30,
                 }
             },
@@ -54850,8 +54894,8 @@ return {
                     MP = 70,
                     Accuracy = 50,
                     MagicAccuracy = 50,
-                    EnhancingMagicDuration = 20,
                     MDMG = 310,
+                    EnhancingMagicDuration = 20,
                 }
             },
             MusketeersPole = {
@@ -54963,8 +55007,8 @@ return {
                     INT = 12,
                     MND = 12,
                     MagicAttackBonus = 18,
-                    ElementalMagicRecast = -3,
                     MDMG = 207,
+                    ElementalMagicRecast = -3,
                 }
             },
             NibiruStaff = {
@@ -55022,10 +55066,10 @@ return {
                     DMG = 200,
                     Delay = 402,
                     Accuracy = 30,
+                    MDMG = 217,
                     ADDS_WEAPONSKILL = 187,
                     AFTERMATH = 39,
                     AvatarLevel = 2,
-                    MDMG = 217,
                     PerpetuationCost = 8,
                     WSDMG_GARLAND_OF_BLISS = 30,
                 }
@@ -55042,10 +55086,10 @@ return {
                     DMG = 251,
                     Delay = 402,
                     Accuracy = 30,
+                    MDMG = 279,
                     ADDS_WEAPONSKILL = 187,
                     AFTERMATH = 39,
                     AvatarLevel = 2,
-                    MDMG = 279,
                     WSDMG_GARLAND_OF_BLISS = 30,
                 }
             },
@@ -55184,10 +55228,10 @@ return {
                     DMG = 200,
                     Delay = 402,
                     Accuracy = 30,
+                    MDMG = 217,
                     ADDS_WEAPONSKILL = 187,
                     AFTERMATH = 39,
                     AvatarLevel = 2,
-                    MDMG = 217,
                     PerpetuationCost = 8,
                     WSDMG_GARLAND_OF_BLISS = 30,
                 }
@@ -55344,8 +55388,8 @@ return {
                     MagicAccuracy = 45,
                     MagicAttackBonus = 28,
                     FastCast = 7,
-                    EnhancingMagicDuration = 10,
                     MDMG = 217,
+                    EnhancingMagicDuration = 10,
                 }
             },
             Paikea = {
@@ -55458,8 +55502,8 @@ return {
                     MP = 60,
                     Accuracy = 40,
                     MagicAccuracy = 40,
-                    EnhancingMagicDuration = 15,
                     MDMG = 294,
+                    EnhancingMagicDuration = 15,
                 }
             },
             PerduStaff = {
@@ -55857,12 +55901,12 @@ return {
                     Accuracy = 43,
                     Attack = 13,
                     MagicAttackBonus = 30,
+                    MDMG = 226,
                     DarkResistance = 20,
                     EarthResistance = 20,
                     FireResistance = 20,
                     IceResistance = 20,
                     LightResistance = 20,
-                    MDMG = 226,
                     ThunderResistance = 20,
                     WaterResistance = 20,
                     WindResistance = 20,
@@ -56751,9 +56795,9 @@ return {
                     Accuracy = 30,
                     MagicAccuracy = 30,
                     MagicAttackBonus = 40,
+                    MDMG = 248,
                     ADDS_WEAPONSKILL = 188,
                     AFTERMATH = 41,
-                    MDMG = 248,
                     WSDMG_OMNISCIENCE = 30,
                 }
             },
@@ -56771,9 +56815,9 @@ return {
                     Accuracy = 40,
                     MagicAccuracy = 40,
                     MagicAttackBonus = 50,
+                    MDMG = 279,
                     ADDS_WEAPONSKILL = 188,
                     AFTERMATH = 41,
-                    MDMG = 279,
                     WSDMG_OMNISCIENCE = 30,
                 }
             },
@@ -56921,9 +56965,9 @@ return {
                     Accuracy = 30,
                     MagicAccuracy = 30,
                     MagicAttackBonus = 40,
+                    MDMG = 248,
                     ADDS_WEAPONSKILL = 188,
                     AFTERMATH = 41,
-                    MDMG = 248,
                     WSDMG_OMNISCIENCE = 30,
                 }
             },
@@ -57585,8 +57629,8 @@ return {
                     Accuracy = 40,
                     MagicAccuracy = 40,
                     MagicAttackBonus = 26,
-                    ADDS_WEAPONSKILL = 184,
                     MDMG = 241,
+                    ADDS_WEAPONSKILL = 184,
                     WSDMG_RETRIBUTION = 20,
                 }
             },
@@ -58350,8 +58394,8 @@ return {
                 HP = 15,
                 MP = 26,
                 MDT = -25,
-                ShieldSkill = 72,
                 ShieldBlockRate = 4,
+                ShieldSkill = 72,
             }
         },
         BeatificShield_1 = {
@@ -58366,8 +58410,8 @@ return {
                 HP = 22,
                 MP = 29,
                 MDT = -25,
-                ShieldSkill = 107,
                 ShieldBlockRate = 5,
+                ShieldSkill = 107,
             }
         },
         BenthosGrip = {
@@ -59905,8 +59949,8 @@ return {
                 Attack = 15,
                 Counter = 4,
                 DT = -10,
-                ShieldSkill = 112,
                 ShieldBlockRate = 6,
+                ShieldSkill = 112,
             }
         },
         GiltBuckler = {
@@ -60169,10 +60213,10 @@ return {
             Stats = {
                 DEF = 23,
                 VIT = 2,
-                IceResistance = 20,
                 ITEM_ADDEFFECT_CHANCE = 25,
                 ITEM_ADDEFFECT_DMG = 20,
                 ITEM_SUBEFFECT = 2,
+                IceResistance = 20,
                 ThunderResistance = 10,
             }
         },
@@ -60186,10 +60230,10 @@ return {
             Stats = {
                 DEF = 24,
                 VIT = 2,
-                IceResistance = 25,
                 ITEM_ADDEFFECT_CHANCE = 30,
                 ITEM_ADDEFFECT_DMG = 25,
                 ITEM_SUBEFFECT = 2,
+                IceResistance = 25,
                 ThunderResistance = 10,
             }
         },
@@ -64285,9 +64329,9 @@ return {
                     Delay = 600,
                     MagicAccuracy = 40,
                     StoreTP = 10,
+                    MDMG = 155,
                     TPBonus = 500,
                     ADDS_WEAPONSKILL = 203,
-                    MDMG = 155,
                 }
             },
             FailNot_2 = {
@@ -64303,9 +64347,9 @@ return {
                     Delay = 600,
                     MagicAccuracy = 40,
                     StoreTP = 10,
+                    MDMG = 155,
                     TPBonus = 500,
                     ADDS_WEAPONSKILL = 203,
-                    MDMG = 155,
                 }
             },
             Failnaught = {
@@ -66465,10 +66509,10 @@ return {
                     Delay = 582,
                     RangedAccuracy = 60,
                     RangedAttack = 45,
+                    MDMG = 155,
                     ADDS_WEAPONSKILL = 216,
                     AFTERMATH = 28,
                     EXTRA_DMG_CHANCE = 130,
-                    MDMG = 155,
                     OCC_DO_EXTRA_DMG = 300,
                     WSDMG_CORONACH = 40,
                 }
@@ -66486,9 +66530,9 @@ return {
                     Delay = 582,
                     RangedAccuracy = 60,
                     RangedAttack = 45,
+                    MDMG = 155,
                     ADDS_WEAPONSKILL = 216,
                     AFTERMATH = 28,
-                    MDMG = 155,
                 }
             },
             Annihilator_2 = {
@@ -66755,9 +66799,9 @@ return {
                     DMG = 143,
                     Delay = 582,
                     AGI = 50,
+                    MDMG = 217,
                     ADDS_WEAPONSKILL = 220,
                     AFTERMATH = 45,
-                    MDMG = 217,
                 }
             },
             Armageddon_2 = {
@@ -66884,9 +66928,9 @@ return {
                     DMG = 143,
                     Delay = 582,
                     AGI = 50,
+                    MDMG = 217,
                     ADDS_WEAPONSKILL = 220,
                     AFTERMATH = 45,
-                    MDMG = 217,
                 }
             },
             Armbrust = {
@@ -67450,9 +67494,9 @@ return {
                 Stats = {
                     DMG = 101,
                     Delay = 480,
+                    MDMG = 217,
                     ADDS_WEAPONSKILL = 218,
                     AFTERMATH = 43,
-                    MDMG = 217,
                     QuickDrawDamagePct = 60,
                     QuickDrawMACC = 60,
                     WSDMG_LEADEN_SALUTE = 30,
@@ -67469,9 +67513,9 @@ return {
                 Stats = {
                     DMG = 101,
                     Delay = 480,
+                    MDMG = 217,
                     ADDS_WEAPONSKILL = 218,
                     AFTERMATH = 38,
-                    MDMG = 217,
                     QuickDrawDamage = 60,
                     QuickDrawMACC = 60,
                 }
@@ -68017,9 +68061,9 @@ return {
                     Delay = 600,
                     MagicAccuracy = 40,
                     StoreTP = 10,
+                    MDMG = 155,
                     TPBonus = 500,
                     ADDS_WEAPONSKILL = 221,
-                    MDMG = 155,
                 }
             },
             ForefrontBowgun = {
@@ -68108,10 +68152,10 @@ return {
                     DMG = 176,
                     Delay = 432,
                     RangedAccuracy = 20,
+                    MDMG = 217,
                     ADDS_WEAPONSKILL = 217,
                     AFTERMATH = 43,
                     BarrageAcc = 70,
-                    MDMG = 217,
                     WSDMG_TRUEFLIGHT = 30,
                 }
             },
@@ -68127,10 +68171,10 @@ return {
                     DMG = 176,
                     Delay = 432,
                     RangedAccuracy = 20,
+                    MDMG = 217,
                     ADDS_WEAPONSKILL = 217,
                     AFTERMATH = 33,
                     BarrageAcc = 0,
-                    MDMG = 217,
                     Snapshot = 10,
                 }
             },
@@ -70820,7 +70864,10 @@ return {
                 Stats = {
                     DMG = 21,
                     Delay = 286,
-                    CHR = 3,
+                    DEX = 2,
+                    CHR = 5,
+                    Accuracy = 3,
+                    WaltzPotency = 3,
                 }
             },
             Wingcutter = {
@@ -80707,8 +80754,8 @@ return {
                 Haste = 6,
                 FastCast = 5,
                 SpellInterruptionRateDown = 10,
-                MagicBurstDamage = 7,
                 MDMG = 20,
+                MagicBurstDamage = 7,
                 ResistSilence = 9,
             }
         },
@@ -81422,9 +81469,9 @@ return {
             Type = "Head",
             Stats = {
                 DEF = 11,
-                ResistAmnesia = 1,
                 DarkMagicSkill = 10,
                 DrainAspirPotency = 10,
+                ResistAmnesia = 1,
             }
         },
         ArbatelBonnet = {
@@ -81508,9 +81555,9 @@ return {
                 MagicDefenseBonus = 9,
                 Haste = 6,
                 DT = -9,
+                MDMG = 21,
                 EbullienceAmount = 18,
                 EnhancingMagicSkill = 19,
-                MDMG = 21,
                 RaptureAmount = 18,
                 RegenPotency = 20,
             }
@@ -82282,8 +82329,8 @@ return {
                 MagicDefenseBonus = 6,
                 Haste = 6,
                 FastCast = 14,
-                ElementalMagicSkill = 15,
                 MagicBurstDamage = 5,
+                ElementalMagicSkill = 15,
             }
         },
         AtroChapeau_4 = {
@@ -82347,8 +82394,8 @@ return {
                 MagicDefenseBonus = 7,
                 Haste = 6,
                 FastCast = 16,
-                ElementalMagicSkill = 17,
                 MagicBurstDamage = 10,
+                ElementalMagicSkill = 17,
             }
         },
         AucubaCrown = {
@@ -82588,9 +82635,9 @@ return {
                 MagicDefenseBonus = 9,
                 Haste = 6,
                 DT = -11,
+                MDMG = 21,
                 FullCircleBonus = 3,
                 GEOMANCY_SKILL = 20,
-                MDMG = 21,
             }
         },
         AzimuthHood_3 = {
@@ -84228,8 +84275,8 @@ return {
                 FastCast = 10,
                 PDT = -7,
                 RDT = -7,
-                MagicBurstDamage = 7,
                 MDMG = 30,
+                MagicBurstDamage = 7,
             }
         },
         BuremteHat = {
@@ -86126,15 +86173,17 @@ return {
         },
         DancersTiara = {
             Name = "Dancer's Tiara",
-            Level = 54,
+            Level = 50,
             Id = 16138,
             Model = 210,
             Jobs = {"DNC"},
             Type = "Head",
             Stats = {
-                DEF = 18,
-                HP = 10,
-                CHR = 4,
+                DEF = 19,
+                HP = 15,
+                DEX = 3,
+                CHR = 5,
+                Accuracy = 5,
                 Enmity = -2,
                 EQUIPMENT_ONLY_RACE = 149,
                 SambaDuration = 30,
@@ -86176,15 +86225,17 @@ return {
         },
         DancersTiara_2 = {
             Name = "Dancer's Tiara",
-            Level = 54,
+            Level = 50,
             Id = 16139,
             Model = 211,
             Jobs = {"DNC"},
             Type = "Head",
             Stats = {
-                DEF = 18,
-                HP = 10,
-                CHR = 4,
+                DEF = 19,
+                HP = 15,
+                DEX = 3,
+                CHR = 5,
+                Accuracy = 5,
                 Enmity = -2,
                 EQUIPMENT_ONLY_RACE = 106,
                 SambaDuration = 30,
@@ -87439,8 +87490,8 @@ return {
                 MagicEvasion = 51,
                 MagicDefenseBonus = 2,
                 Haste = 5,
-                ResistBlind = 2,
                 LightResistance = 40,
+                ResistBlind = 2,
             }
         },
         EnifZucchetto = {
@@ -87569,9 +87620,9 @@ return {
                 MagicEvasion = 69,
                 MagicDefenseBonus = 5,
                 Haste = 8,
-                VivaciousPulseBonus = 10,
-                RefreshPotency = 2,
                 EnhancingMagicDuration = 15,
+                RefreshPotency = 2,
+                VivaciousPulseBonus = 10,
             }
         },
         ErilazGalea_2 = {
@@ -87599,9 +87650,9 @@ return {
                 MagicDefenseBonus = 8,
                 Haste = 8,
                 SpellInterruptionRateDown = 15,
-                VivaciousPulseBonus = 10,
-                RefreshPotency = 3,
                 EnhancingMagicDuration = 20,
+                RefreshPotency = 3,
+                VivaciousPulseBonus = 10,
             }
         },
         ErilazGalea_3 = {
@@ -96374,9 +96425,9 @@ return {
                 DEF = 30,
                 VIT = 9,
                 Evasion = -14,
+                MovementSpeed = -5,
                 PDT = -5,
                 RDT = -5,
-                MovementSpeed = -5,
             }
         },
         OneirosCoif = {
@@ -104078,9 +104129,9 @@ return {
                 Haste = 6,
                 Enmity = -9,
                 DT = -10,
-                ElementalMagicSkill = 30,
-                ElementalCelerity = 16,
                 MDMG = 21,
+                ElementalCelerity = 16,
+                ElementalMagicSkill = 30,
             }
         },
         WiccePetasos_3 = {
@@ -105119,8 +105170,8 @@ return {
             Jobs = {"BRD"},
             Type = "Neck",
             Stats = {
-                SongDurationBonus = 10,
                 SongCastTime = 3,
+                SongDurationBonus = 10,
             }
         },
         ApathyGorget = {
@@ -108275,8 +108326,8 @@ return {
                 INT = 4,
                 MND = 4,
                 MagicAttackBonus = 8,
-                ResistCharm = 5,
                 MagicBurstDamage = 10,
+                ResistCharm = 5,
             }
         },
         MnbwWhistle_1 = {
@@ -111228,9 +111279,9 @@ return {
             Jobs = {"All"},
             Type = "Ear",
             Stats = {
+                LightResistance = 12,
                 ResistBind = 2,
                 ResistGravity = 2,
-                LightResistance = 12,
                 ResistStun = 2,
             }
         },
@@ -117702,8 +117753,8 @@ return {
                 MagicDefenseBonus = 6,
                 Haste = 3,
                 Refresh = 2,
-                DarkArtsSkill = 22,
                 MagicBurstDamage = 5,
+                DarkArtsSkill = 22,
             }
         },
         AcadGown_3 = {
@@ -117730,8 +117781,8 @@ return {
                 MagicDefenseBonus = 7,
                 Haste = 3,
                 Refresh = 3,
-                DarkArtsSkill = 24,
                 MagicBurstDamage = 10,
+                DarkArtsSkill = 24,
             }
         },
         AcadGown_4 = {
@@ -118177,8 +118228,8 @@ return {
                 Haste = 3,
                 Refresh = 3,
                 FastCast = 8,
-                MagicBurstDamage = 10,
                 MDMG = 20,
+                MagicBurstDamage = 10,
                 ResistSilence = 12,
             }
         },
@@ -118675,9 +118726,9 @@ return {
                 MagicEvasion = 63,
                 MagicDefenseBonus = 4,
                 Haste = 4,
+                CriticalHitDamage = 4,
                 ChakraPotency = 64,
                 ChakraRemoval = 1,
-                CriticalHitDamage = 4,
             }
         },
         AnchCyclas_3 = {
@@ -118702,9 +118753,9 @@ return {
                 MagicEvasion = 73,
                 MagicDefenseBonus = 5,
                 Haste = 4,
+                CriticalHitDamage = 8,
                 ChakraPotency = 66,
                 ChakraRemoval = 1,
-                CriticalHitDamage = 8,
             }
         },
         AnchCyclas_4 = {
@@ -120248,8 +120299,8 @@ return {
                 Haste = 3,
                 Enmity = -9,
                 Refresh = 3,
-                ElementalMagicSkill = 23,
                 MDMG = 24,
+                ElementalMagicSkill = 23,
             }
         },
         AzimuthCoat_3 = {
@@ -121912,8 +121963,8 @@ return {
                 Enmity = -10,
                 CurePotency = 15,
                 DT = -10,
-                MagicBurstDamage = 10,
                 MDMG = 30,
+                MagicBurstDamage = 10,
             }
         },
         Byrnie = {
@@ -122490,8 +122541,8 @@ return {
                 MagicEvasion = 69,
                 MagicDefenseBonus = 6,
                 DoubleShotRate = 12,
-                TacticiansRollBonus = 100,
                 KickAttackDamage = 41,
+                TacticiansRollBonus = 100,
             }
         },
         ChasseursFrac_2 = {
@@ -122520,8 +122571,8 @@ return {
                 MagicDefenseBonus = 9,
                 Haste = 4,
                 DT = -12,
-                TacticiansRollBonus = 100,
                 AnnulFireDamage = 13,
+                TacticiansRollBonus = 100,
             }
         },
         ChasseursFrac_3 = {
@@ -123934,34 +123985,38 @@ return {
         },
         DancersCasaque = {
             Name = "Dancer's Casaque",
-            Level = 60,
+            Level = 50,
             Id = 14578,
             Model = 210,
             Jobs = {"DNC"},
             Type = "Body",
             Stats = {
-                DEF = 38,
-                HP = 20,
-                STR = 2,
-                DEX = 2,
-                Enmity = -2,
+                DEF = 40,
+                HP = 25,
+                STR = 3,
+                DEX = 3,
+                CHR = 5,
+                Attack = 5,
+                Enmity = -3,
                 EQUIPMENT_ONLY_RACE = 149,
                 WaltzPotency = 10,
             }
         },
         DancersCasaque_2 = {
             Name = "Dancer's Casaque",
-            Level = 60,
+            Level = 50,
             Id = 14579,
             Model = 211,
             Jobs = {"DNC"},
             Type = "Body",
             Stats = {
-                DEF = 38,
-                HP = 20,
-                STR = 2,
-                DEX = 2,
-                Enmity = -2,
+                DEF = 40,
+                HP = 25,
+                STR = 3,
+                DEX = 3,
+                CHR = 5,
+                Attack = 5,
+                Enmity = -3,
                 EQUIPMENT_ONLY_RACE = 106,
                 WaltzPotency = 10,
             }
@@ -125448,8 +125503,8 @@ return {
                 MagicEvasion = 80,
                 MagicDefenseBonus = 6,
                 Haste = 4,
-                PhysDamageToMP = 6,
                 EnmityLossReduction = 12,
+                PhysDamageToMP = 6,
             }
         },
         ErilazSurcoat_2 = {
@@ -125477,8 +125532,8 @@ return {
                 MagicDefenseBonus = 9,
                 Haste = 4,
                 FastCast = 10,
-                PhysDamageToMP = 7,
                 EnmityLossReduction = 13,
+                PhysDamageToMP = 7,
             }
         },
         ErilazSurcoat_3 = {
@@ -125821,8 +125876,8 @@ return {
                 MagicEvasion = 58,
                 MagicDefenseBonus = 5,
                 Haste = 3,
-                UncappedFastCast = 7,
                 WeaponSkillAccuracy = 24,
+                UncappedFastCast = 7,
             }
         },
         FallCuirass_3 = {
@@ -131685,8 +131740,8 @@ return {
                 MagicDefenseBonus = 3,
                 Haste = 2,
                 Refresh = 2,
-                EnfeeblingMagicSkill = 12,
                 EnfeeblingMagicPotency = 12,
+                EnfeeblingMagicSkill = 12,
             }
         },
         LethargySayon_1 = {
@@ -131713,8 +131768,8 @@ return {
                 MagicDefenseBonus = 7,
                 Haste = 3,
                 Refresh = 2,
-                EnfeeblingMagicSkill = 14,
                 EnfeeblingMagicPotency = 14,
+                EnfeeblingMagicSkill = 14,
             }
         },
         LethargySayon_2 = {
@@ -131744,8 +131799,8 @@ return {
                 Haste = 3,
                 Refresh = 3,
                 DT = -13,
-                EnfeeblingMagicPotency = 16,
                 MDMG = 24,
+                EnfeeblingMagicPotency = 16,
             }
         },
         LethargySayon_3 = {
@@ -135663,8 +135718,8 @@ return {
                 MagicEvasion = 90,
                 MagicDefenseBonus = 9,
                 Haste = 3,
-                EnhancingMagicSkill = 17,
                 EnhancingMagicDuration = 8,
+                EnhancingMagicSkill = 17,
                 HealingMagicSkill = 17,
                 SublimationBonus = 4,
             }
@@ -137572,10 +137627,10 @@ return {
             Type = "Body",
             Stats = {
                 DEF = 2,
-                NoSpellMPDepletion = 1,
                 AnnulMagicalDamage = 1,
                 AnnulPhysicalDamage = 1,
                 AnnulRangedDamage = 1,
+                NoSpellMPDepletion = 1,
             }
         },
         RheicKorazin = {
@@ -139857,8 +139912,8 @@ return {
                 MagicDefenseBonus = 6,
                 Haste = 3,
                 Enmity = -8,
-                EnfeeblingMagicSkill = 19,
                 MDMG = 38,
+                EnfeeblingMagicSkill = 19,
             }
         },
         SpaekonasCoat_3 = {
@@ -139885,8 +139940,8 @@ return {
                 MagicDefenseBonus = 7,
                 Haste = 3,
                 Enmity = -9,
-                EnfeeblingMagicSkill = 21,
                 MDMG = 48,
+                EnfeeblingMagicSkill = 21,
             }
         },
         SpoliaSaio = {
@@ -142243,8 +142298,8 @@ return {
                 MagicDefenseBonus = 7,
                 Haste = 3,
                 FastCast = 14,
-                EnhancingMagicSkill = 21,
                 EnhancingMagicDuration = 10,
+                EnhancingMagicSkill = 21,
                 HealingMagicSkill = 21,
             }
         },
@@ -143032,8 +143087,8 @@ return {
                 MagicDefenseBonus = 10,
                 Haste = 3,
                 Refresh = 3,
-                ElementalMagicRecast = -15,
                 MDMG = 24,
+                ElementalMagicRecast = -15,
             }
         },
         WicceCoat_3 = {
@@ -143480,8 +143535,8 @@ return {
             Stats = {
                 DEF = 49,
                 HP = 24,
-                ResistBlind = 2,
                 ParryingSkill = 15,
+                ResistBlind = 2,
                 WyvernSubjobTraits = 1,
             }
         },
@@ -144282,9 +144337,9 @@ return {
                 MagicDefenseBonus = 5,
                 Haste = 3,
                 FastCast = 6,
-                CurePotencyReceived = 10,
-                MagicBurstDamage = 8,
                 MDMG = 20,
+                MagicBurstDamage = 8,
+                CurePotencyReceived = 10,
                 ResistSilence = 10,
             }
         },
@@ -145112,8 +145167,8 @@ return {
                 MagicDefenseBonus = 6,
                 Haste = 3,
                 Enmity = -10,
-                MagicBurstDamage = 10,
                 MDMG = 22,
+                MagicBurstDamage = 10,
             }
         },
         ArbatelBracers_3 = {
@@ -145261,9 +145316,9 @@ return {
                 MagicDefenseBonus = 1,
                 Haste = 3,
                 Enmity = -5,
+                MagicBurstDamage = 13,
                 DivineMagicSkill = 17,
                 EnfeeblingMagicSkill = 17,
-                MagicBurstDamage = 13,
             }
         },
         ArchGloves_1 = {
@@ -145289,9 +145344,9 @@ return {
                 MagicDefenseBonus = 3,
                 Haste = 3,
                 Enmity = -5,
+                MagicBurstDamage = 16,
                 DivineMagicSkill = 19,
                 EnfeeblingMagicSkill = 19,
-                MagicBurstDamage = 16,
             }
         },
         ArchGloves_2 = {
@@ -145320,9 +145375,9 @@ return {
                 MagicDefenseBonus = 4,
                 Haste = 3,
                 Enmity = -6,
+                MagicBurstDamage = 18,
                 DarkMagicSkill = 21,
                 ElementalMagicSkill = 21,
-                MagicBurstDamage = 18,
             }
         },
         ArchGloves_3 = {
@@ -146233,8 +146288,8 @@ return {
                 Haste = 3,
                 Enmity = -12,
                 DT = -11,
-                EnfeeblingMagicSkill = 23,
                 MDMG = 22,
+                EnfeeblingMagicSkill = 23,
             }
         },
         AzimuthGloves_3 = {
@@ -146347,8 +146402,8 @@ return {
                 Haste = 3,
                 Enmity = -7,
                 Refresh = 1,
-                ElementalCelerity = 13,
                 MagicBurstDamage = 8,
+                ElementalCelerity = 13,
             }
         },
         BaguaMitaines_3 = {
@@ -146377,9 +146432,9 @@ return {
                 Haste = 3,
                 Enmity = 8,
                 Refresh = 2,
+                MagicBurstDamage = 12,
                 AlacrityCelerityBonus = 14,
                 IceMACC = 42,
-                MagicBurstDamage = 12,
             }
         },
         BaguaMitaines_4 = {
@@ -147728,8 +147783,8 @@ return {
                 Enmity = -8,
                 DoubleAttack = 8,
                 DT = -8,
-                MagicBurstDamage = 8,
                 MDMG = 30,
+                MagicBurstDamage = 8,
             }
         },
         BuremteGloves = {
@@ -149353,32 +149408,34 @@ return {
         },
         DancersBangles = {
             Name = "Dancer's Bangles",
-            Level = 52,
+            Level = 50,
             Id = 15002,
             Model = 210,
             Jobs = {"DNC"},
             Type = "Hands",
             Stats = {
-                DEF = 15,
-                HP = 12,
-                DEX = 2,
-                AGI = 2,
+                DEF = 16,
+                HP = 14,
+                DEX = 4,
+                Accuracy = 5,
+                Haste = 2,
                 EQUIPMENT_ONLY_RACE = 149,
                 StepAccuracy = 10,
             }
         },
         DancersBangles_2 = {
             Name = "Dancer's Bangles",
-            Level = 52,
+            Level = 50,
             Id = 15003,
             Model = 211,
             Jobs = {"DNC"},
             Type = "Hands",
             Stats = {
-                DEF = 15,
-                HP = 12,
-                DEX = 2,
-                AGI = 2,
+                DEF = 16,
+                HP = 14,
+                DEX = 4,
+                Accuracy = 5,
+                Haste = 2,
                 EQUIPMENT_ONLY_RACE = 106,
                 StepAccuracy = 10,
             }
@@ -149925,8 +149982,8 @@ return {
                 MagicEvasion = 37,
                 MagicDefenseBonus = 3,
                 Haste = 3,
-                EnhancingMagicSkill = 18,
                 EnhancingMagicDuration = 5,
+                EnhancingMagicSkill = 18,
             }
         },
         ELBracers_1 = {
@@ -151061,8 +151118,8 @@ return {
                 MagicEvasion = 37,
                 MagicDefenseBonus = 3,
                 Haste = 3,
-                DivineMagicSkill = 20,
                 CursnaBonus = 15,
+                DivineMagicSkill = 20,
             }
         },
         FeasCuffs = {
@@ -153219,8 +153276,8 @@ return {
                 MagicEvasion = 93,
                 MagicDefenseBonus = 5,
                 Haste = 5,
-                FutaeBonus = 26,
                 MagicBurstDamage = 10,
+                FutaeBonus = 26,
                 NinjutsuDamage = 16,
             }
         },
@@ -155826,9 +155883,9 @@ return {
                 MagicDefenseBonus = 6,
                 Haste = 3,
                 DT = -10,
+                MDMG = 22,
                 EnfeeblingMagicSkill = 24,
                 SaboteurBonus = 13,
-                MDMG = 22,
             }
         },
         LethGanth_3 = {
@@ -156050,8 +156107,8 @@ return {
                 MagicEvasion = 37,
                 MagicDefenseBonus = 3,
                 Haste = 3,
-                ElementalMagicSkill = 13,
                 ElementalMagicRecast = -7,
+                ElementalMagicSkill = 13,
             }
         },
         LordsGauntlets = {
@@ -158784,8 +158841,8 @@ return {
                 MagicDefenseBonus = 2,
                 Haste = 5,
                 Enmity = -5,
-                BarrageAcc = 22,
                 Barrage = 2,
+                BarrageAcc = 22,
                 ShadowBindDuration = 14,
             }
         },
@@ -158812,8 +158869,8 @@ return {
                 MagicDefenseBonus = 3,
                 Haste = 5,
                 Enmity = -6,
-                BarrageAcc = 32,
                 Barrage = 2,
+                BarrageAcc = 32,
                 ShadowBindDuration = 16,
             }
         },
@@ -162587,8 +162644,8 @@ return {
                 DEF = 15,
                 MP = 24,
                 Enmity = -2,
-                DarkMagicSkill = 10,
                 MagicBurstDamage = 5,
+                DarkMagicSkill = 10,
             }
         },
         SouvHandsch_1 = {
@@ -162695,8 +162752,8 @@ return {
                 MagicEvasion = 47,
                 MagicDefenseBonus = 3,
                 Haste = 3,
-                ElementalMagicSkill = 19,
                 MDMG = 34,
+                ElementalMagicSkill = 19,
             }
         },
         SpaeGloves_3 = {
@@ -162722,8 +162779,8 @@ return {
                 MagicEvasion = 57,
                 MagicDefenseBonus = 4,
                 Haste = 3,
-                ElementalMagicSkill = 21,
                 MDMG = 44,
+                ElementalMagicSkill = 21,
             }
         },
         SpaeGloves_4 = {
@@ -162825,8 +162882,8 @@ return {
                 DEF = 16,
                 MP = 24,
                 Enmity = -3,
-                DarkMagicSkill = 12,
                 MagicBurstDamage = 5,
+                DarkMagicSkill = 12,
             }
         },
         SrcGloves_2 = {
@@ -162840,9 +162897,9 @@ return {
                 DEF = 20,
                 MP = 34,
                 Enmity = -5,
+                MagicBurstDamage = 10,
                 DarkMagicSkill = 15,
                 ElementalMagicSkill = 15,
-                MagicBurstDamage = 10,
             }
         },
         StarletGloves = {
@@ -165518,9 +165575,9 @@ return {
                 MagicDefenseBonus = 6,
                 Haste = 3,
                 DT = -12,
+                MDMG = 22,
                 MagicCriticalHitRate = 11,
                 MagicCriticalHitDamage = 11,
-                MDMG = 22,
             }
         },
         WicceGloves_3 = {
@@ -165639,8 +165696,8 @@ return {
                 DEF = 14,
                 MP = 15,
                 INT = 3,
-                ElementalMagicSkill = 15,
                 MagicBurstDamage = 3,
+                ElementalMagicSkill = 15,
             }
         },
         WlkGloves_1 = {
@@ -168236,8 +168293,8 @@ return {
                 MP = 55,
                 MagicAccuracy = 3,
                 MagicAttackBonus = 3,
-                DarkResistance = 16,
                 MDMG = 5,
+                DarkResistance = 16,
             }
         },
         FeralRing = {
@@ -169318,8 +169375,8 @@ return {
             Type = "Ring",
             Stats = {
                 WeaponSkillDamage = 3,
-                Regain = 5,
                 WeaponSkillAccuracy = 5,
+                Regain = 5,
             }
         },
         KarieyhRing_1 = {
@@ -169330,8 +169387,8 @@ return {
             Type = "Ring",
             Stats = {
                 WeaponSkillDamage = 4,
-                Regain = 5,
                 WeaponSkillAccuracy = 10,
+                Regain = 5,
             }
         },
         KarkaRing = {
@@ -169706,8 +169763,8 @@ return {
             Jobs = {"All"},
             Type = "Ring",
             Stats = {
-                MagicCriticalHitRate = 5,
                 MagicBurstDamage = 5,
+                MagicCriticalHitRate = 5,
             }
         },
         LongshotRing = {
@@ -171665,8 +171722,8 @@ return {
             Jobs = {"All"},
             Type = "Ring",
             Stats = {
-                ResistDeath = 20,
                 AnnulMagicalDamage = 13,
+                ResistDeath = 20,
             }
         },
         ShellRing = {
@@ -173175,9 +173232,9 @@ return {
             Type = "Ring",
             Stats = {
                 DEF = 10,
-                ResistCharm = 2,
                 DarkResistance = 20,
                 LightResistance = 20,
+                ResistCharm = 2,
                 ResistSleep = 2,
             }
         },
@@ -173615,8 +173672,8 @@ return {
                 DEF = 20,
                 MP = 25,
                 MagicAccuracy = 8,
-                IceResistance = 10,
                 MDMG = 10,
+                IceResistance = 10,
             }
         },
         AputMantle_1 = {
@@ -173629,8 +173686,8 @@ return {
                 DEF = 21,
                 MP = 30,
                 MagicAccuracy = 9,
-                IceResistance = 11,
                 MDMG = 15,
+                IceResistance = 11,
             }
         },
         ArchonCape = {
@@ -174134,9 +174191,9 @@ return {
             Stats = {
                 DEF = 13,
                 MagicAttackBonus = 10,
+                MDMG = 10,
                 DarkMagicSkill = 8,
                 ElementalMagicSkill = 8,
-                MDMG = 10,
             }
         },
         BoxersMantle = {
@@ -174964,8 +175021,8 @@ return {
             Stats = {
                 DEF = 8,
                 MND = 5,
-                EnhancingMagicSkill = 6,
                 EnhancingMagicDuration = 10,
+                EnhancingMagicSkill = 6,
             }
         },
         EtherTank = {
@@ -175341,8 +175398,8 @@ return {
             Stats = {
                 DEF = 13,
                 CurePotency = 6,
-                EnspellDamage = 5,
                 MDMG = 6,
+                EnspellDamage = 5,
             }
         },
         GigantMantle = {
@@ -176398,8 +176455,8 @@ return {
             Type = "Back",
             Stats = {
                 DEF = 19,
-                DT = -5,
                 MovementSpeed = -5,
+                DT = -5,
             }
         },
         MoonbeamCape = {
@@ -183363,8 +183420,8 @@ return {
             Stats = {
                 MagicAccuracy = 6,
                 SpellInterruptionRateDown = 10,
-                MagicCriticalHitRate = 10,
                 MDMG = 5,
+                MagicCriticalHitRate = 10,
             }
         },
         TernStone = {
@@ -184483,9 +184540,9 @@ return {
                 MagicDefenseBonus = 8,
                 Haste = 5,
                 FastCast = 7,
-                ElementalDebuffEffect = 10,
-                MagicBurstDamage = 9,
                 MDMG = 20,
+                MagicBurstDamage = 9,
+                ElementalDebuffEffect = 10,
                 ResistSilence = 11,
             }
         },
@@ -185205,8 +185262,8 @@ return {
                 MagicDefenseBonus = 9,
                 Haste = 5,
                 DT = -11,
-                EnfeeblingMagicSkill = 23,
                 MDMG = 23,
+                EnfeeblingMagicSkill = 23,
             }
         },
         ArbatelPants_3 = {
@@ -185890,8 +185947,8 @@ return {
                 MagicDefenseBonus = 5,
                 Haste = 6,
                 SpellInterruptionRateDown = 22,
-                BurstAffinityBonus = 14,
                 MagicBurstDamage = 5,
+                BurstAffinityBonus = 14,
             }
         },
         AssimShalwar_3 = {
@@ -185917,8 +185974,8 @@ return {
                 MagicDefenseBonus = 6,
                 Haste = 6,
                 SpellInterruptionRateDown = 24,
-                BurstAffinityBonus = 16,
                 MagicBurstDamage = 10,
+                BurstAffinityBonus = 16,
             }
         },
         AssimShalwar_4 = {
@@ -186361,9 +186418,9 @@ return {
                 MagicEvasion = 158,
                 MagicDefenseBonus = 9,
                 Haste = 5,
-                DarkMagicSkill = 25,
-                MagicBurstDamage = 10,
                 MDMG = 23,
+                MagicBurstDamage = 10,
+                DarkMagicSkill = 25,
             }
         },
         AzimuthTights_3 = {
@@ -187784,8 +187841,8 @@ return {
                 Enmity = -9,
                 SpellInterruptionRateDown = 20,
                 DT = -9,
-                MagicBurstDamage = 9,
                 MDMG = 30,
+                MagicBurstDamage = 9,
             }
         },
         BustleDirs = {
@@ -189394,17 +189451,20 @@ return {
         },
         DancersTights = {
             Name = "Dancer's Tights",
-            Level = 58,
+            Level = 50,
             Id = 15659,
             Model = 210,
             Jobs = {"DNC"},
             Type = "Legs",
             Stats = {
-                DEF = 28,
-                HP = 10,
-                CHR = 3,
-                Accuracy = 3,
-                Enmity = -1,
+                DEF = 29,
+                HP = 15,
+                STR = 3,
+                DEX = 3,
+                CHR = 4,
+                Accuracy = 6,
+                Evasion = 5,
+                Enmity = -2,
                 EQUIPMENT_ONLY_RACE = 149,
             }
         },
@@ -189446,17 +189506,20 @@ return {
         },
         DancersTights_2 = {
             Name = "Dancer's Tights",
-            Level = 58,
+            Level = 50,
             Id = 15660,
             Model = 211,
             Jobs = {"DNC"},
             Type = "Legs",
             Stats = {
-                DEF = 28,
-                HP = 10,
-                CHR = 3,
-                Accuracy = 3,
-                Enmity = -1,
+                DEF = 29,
+                HP = 15,
+                STR = 3,
+                DEX = 3,
+                CHR = 4,
+                Accuracy = 6,
+                Evasion = 5,
+                Enmity = -2,
                 EQUIPMENT_ONLY_RACE = 106,
             }
         },
@@ -195942,9 +196005,9 @@ return {
                 MagicEvasion = 152,
                 MagicDefenseBonus = 9,
                 Haste = 5,
-                RefreshPotency = 3,
-                MagicBurstDamage = 10,
                 MDMG = 23,
+                MagicBurstDamage = 10,
+                RefreshPotency = 3,
             }
         },
         LethFuseau_3 = {
@@ -196721,8 +196784,8 @@ return {
                 MagicEvasion = 86,
                 MagicDefenseBonus = 6,
                 Haste = 4,
-                MagicBurstDamage = 3,
                 MDMG = 55,
+                MagicBurstDamage = 3,
             }
         },
         MallquisTrews_1 = {
@@ -196748,8 +196811,8 @@ return {
                 MagicEvasion = 86,
                 MagicDefenseBonus = 6,
                 Haste = 4,
-                MagicBurstDamage = 5,
                 MDMG = 55,
+                MagicBurstDamage = 5,
             }
         },
         MallquisTrews_2 = {
@@ -199233,8 +199296,8 @@ return {
                 Haste = 5,
                 Enmity = -6,
                 DarkMagicSkill = 17,
-                ElementalMagicSkill = 17,
                 DrainAspirPotency = 10,
+                ElementalMagicSkill = 17,
             }
         },
         PedaPants_3 = {
@@ -202206,8 +202269,8 @@ return {
                 Haste = 5,
                 Enmity = -8,
                 CurePotency = 10,
-                CureToMP = 4,
                 CureCastTime = 10,
+                CureToMP = 4,
             }
         },
         SigynsChausses = {
@@ -202661,8 +202724,8 @@ return {
                 MagicDefenseBonus = 3,
                 Haste = 5,
                 DT = -4,
-                ResistCharm = 20,
                 CurePotencyReceived = 8,
+                ResistCharm = 20,
             }
         },
         SouveranDiechlings = {
@@ -202688,8 +202751,8 @@ return {
                 MagicDefenseBonus = 3,
                 Haste = 5,
                 DT = -3,
-                ResistCharm = 15,
                 CurePotencyReceived = 7,
+                ResistCharm = 15,
             }
         },
         SpaeTonban_1 = {
@@ -202742,9 +202805,9 @@ return {
                 MagicDefenseBonus = 6,
                 Haste = 5,
                 Enmity = -5,
+                MDMG = 36,
                 DarkMagicSkill = 19,
                 DrainAspirPotency = 10,
-                MDMG = 36,
             }
         },
         SpaeTonban_3 = {
@@ -202771,9 +202834,9 @@ return {
                 MagicDefenseBonus = 7,
                 Haste = 5,
                 Enmity = -6,
+                MDMG = 46,
                 DarkMagicSkill = 21,
                 DrainAspirPotency = 20,
-                MDMG = 46,
             }
         },
         SpaeTonban_4 = {
@@ -203741,8 +203804,8 @@ return {
                 MagicDefenseBonus = 8,
                 Haste = 5,
                 Enmity = -6,
-                DivineMagicSkill = 21,
                 CursnaBonus = 21,
+                DivineMagicSkill = 21,
                 RegenDuration = 24,
             }
         },
@@ -203769,8 +203832,8 @@ return {
                 MagicDefenseBonus = 7,
                 Haste = 5,
                 Enmity = -5,
-                DivineMagicSkill = 19,
                 CursnaBonus = 17,
+                DivineMagicSkill = 19,
                 RegenDuration = 21,
             }
         },
@@ -203813,8 +203876,8 @@ return {
                 MagicDefenseBonus = 6,
                 Haste = 5,
                 Enmity = -4,
-                DivineMagicSkill = 17,
                 CursnaBonus = 15,
+                DivineMagicSkill = 17,
                 RegenDuration = 18,
             }
         },
@@ -203849,8 +203912,8 @@ return {
                 MagicDefenseBonus = 3,
                 Haste = 4,
                 Enmity = -4,
-                DivineMagicSkill = 17,
                 CursnaBonus = 10,
+                DivineMagicSkill = 17,
                 RegenDuration = 18,
             }
         },
@@ -205494,8 +205557,8 @@ return {
                 MagicEvasion = 158,
                 MagicDefenseBonus = 9,
                 Haste = 5,
-                MagicBurstDamage = 10,
                 MDMG = 23,
+                MagicBurstDamage = 10,
             }
         },
         WicceChausses_3 = {
@@ -206691,9 +206754,9 @@ return {
                 MagicDefenseBonus = 6,
                 Haste = 3,
                 FastCast = 4,
-                DrainAspirPotency = 20,
-                MagicBurstDamage = 6,
                 MDMG = 20,
+                MagicBurstDamage = 6,
+                DrainAspirPotency = 20,
                 ResistSilence = 8,
             }
         },
@@ -207440,8 +207503,8 @@ return {
                 MagicEvasion = 158,
                 MagicDefenseBonus = 9,
                 Haste = 3,
-                ElementalMagicSkill = 28,
                 MDMG = 20,
+                ElementalMagicSkill = 28,
             }
         },
         ArbatelLoafers_3 = {
@@ -207693,8 +207756,8 @@ return {
                 MagicDefenseBonus = 7,
                 Haste = 3,
                 Enmity = -6,
-                ElementalMagicSkill = 17,
                 ElementalDebuffEffect = 30,
+                ElementalMagicSkill = 17,
             }
         },
         ArchSabots_4 = {
@@ -208231,8 +208294,8 @@ return {
                 MagicEvasion = 117,
                 MagicDefenseBonus = 6,
                 Haste = 4,
-                ShieldSkill = 15,
                 ShieldBlockRate = 5,
+                ShieldSkill = 15,
             }
         },
         AtroBoots_3 = {
@@ -208258,8 +208321,8 @@ return {
                 MagicEvasion = 127,
                 MagicDefenseBonus = 7,
                 Haste = 4,
-                ShieldSkill = 17,
                 ShieldBlockRate = 10,
+                ShieldSkill = 17,
             }
         },
         AtroBoots_4 = {
@@ -209899,9 +209962,9 @@ return {
                 Haste = 3,
                 Enmity = -6,
                 DT = -6,
-                AvatarLevel = 1,
-                MagicBurstDamage = 6,
                 MDMG = 30,
+                MagicBurstDamage = 6,
+                AvatarLevel = 1,
             }
         },
         CCShoes_1 = {
@@ -210811,8 +210874,8 @@ return {
                 MagicDefenseBonus = 5,
                 Haste = 3,
                 Regen = 1,
-                SongRecast = 5,
                 SongCastTime = 8,
+                SongRecast = 5,
             }
         },
         CoarseLeggings = {
@@ -211503,32 +211566,36 @@ return {
         },
         DancersToeShoes = {
             Name = "Dancer's Toe Shoes",
-            Level = 56,
+            Level = 50,
             Id = 15746,
             Model = 210,
             Jobs = {"DNC"},
             Type = "Feet",
             Stats = {
-                DEF = 14,
-                HP = 7,
+                DEF = 15,
+                HP = 12,
+                STR = 3,
+                CHR = 4,
                 Attack = 5,
-                Evasion = 5,
+                Evasion = 6,
                 EQUIPMENT_ONLY_RACE = 149,
                 JigDuration = 25,
             }
         },
         DancersToeShoes_2 = {
             Name = "Dancer's Toe Shoes",
-            Level = 56,
+            Level = 50,
             Id = 15747,
             Model = 211,
             Jobs = {"DNC"},
             Type = "Feet",
             Stats = {
-                DEF = 14,
-                HP = 7,
+                DEF = 15,
+                HP = 12,
+                STR = 3,
+                CHR = 4,
                 Attack = 5,
-                Evasion = 5,
+                Evasion = 6,
                 EQUIPMENT_ONLY_RACE = 106,
                 JigDuration = 25,
             }
@@ -211636,8 +211703,8 @@ return {
                 PDT = -4,
                 RDT = -4,
                 AttackPct = 20,
-                ShieldSkill = 13,
                 ResistSleep = 15,
+                ShieldSkill = 13,
             }
         },
         DiamondSuneAte = {
@@ -212998,8 +213065,8 @@ return {
                 DEF = 17,
                 MND = 9,
                 Enmity = -4,
-                EnhancingMagicSkill = 10,
                 EnhancingMagicDuration = 10,
+                EnhancingMagicSkill = 10,
             }
         },
         EstqHouseaux_2 = {
@@ -213013,8 +213080,8 @@ return {
                 DEF = 19,
                 MND = 13,
                 Enmity = -7,
-                EnhancingMagicSkill = 15,
                 EnhancingMagicDuration = 20,
+                EnhancingMagicSkill = 15,
             }
         },
         EtaminGambieras = {
@@ -215236,8 +215303,8 @@ return {
                 MagicDefenseBonus = 9,
                 Haste = 3,
                 Enmity = -9,
-                BurstAffinityBonus = 18,
                 MagicBurstDamage = 10,
+                BurstAffinityBonus = 18,
             }
         },
         HashiBasmak_3 = {
@@ -215679,8 +215746,8 @@ return {
                 MagicEvasion = 43,
                 MagicDefenseBonus = 1,
                 Haste = 4,
-                CounterstanceEffect = 12,
                 CounterDamage = 15,
+                CounterstanceEffect = 12,
             }
         },
         HesGaiters_1 = {
@@ -215703,8 +215770,8 @@ return {
                 MagicEvasion = 64,
                 MagicDefenseBonus = 3,
                 Haste = 4,
-                CounterstanceEffect = 15,
                 CounterDamage = 18,
+                CounterstanceEffect = 15,
             }
         },
         HesGaiters_2 = {
@@ -215730,8 +215797,8 @@ return {
                 MagicEvasion = 74,
                 MagicDefenseBonus = 4,
                 Haste = 4,
-                CounterstanceEffect = 18,
                 CounterDamage = 21,
+                CounterstanceEffect = 18,
             }
         },
         HesGaiters_3 = {
@@ -218152,8 +218219,8 @@ return {
                 MagicDefenseBonus = 3,
                 Haste = 4,
                 Enmity = -8,
-                EnhancingMagicSkill = 20,
                 EnhancingMagicDuration = 25,
+                EnhancingMagicSkill = 20,
             }
         },
         LethHouseaux_1 = {
@@ -218179,8 +218246,8 @@ return {
                 MagicDefenseBonus = 6,
                 Haste = 3,
                 Enmity = -9,
-                EnhancingMagicSkill = 25,
                 EnhancingMagicDuration = 30,
+                EnhancingMagicSkill = 25,
             }
         },
         LethHouseaux_2 = {
@@ -218209,10 +218276,10 @@ return {
                 MagicDefenseBonus = 9,
                 Haste = 3,
                 Enmity = -10,
-                WeaponSkillDamageFirstHit = 8,
-                EnhancingMagicSkill = 30,
-                EnhancingMagicDuration = 35,
                 MDMG = 20,
+                WeaponSkillDamageFirstHit = 8,
+                EnhancingMagicDuration = 35,
+                EnhancingMagicSkill = 30,
             }
         },
         LethHouseaux_3 = {
@@ -218891,8 +218958,8 @@ return {
                 MagicEvasion = 86,
                 MagicDefenseBonus = 6,
                 Haste = 2,
-                DamageToMP = 7,
                 MDMG = 46,
+                DamageToMP = 7,
             }
         },
         MallquisClogs_1 = {
@@ -218919,8 +218986,8 @@ return {
                 MagicEvasion = 86,
                 MagicDefenseBonus = 6,
                 Haste = 2,
-                DamageToMP = 10,
                 MDMG = 46,
+                DamageToMP = 10,
             }
         },
         MallquisClogs_2 = {
@@ -219520,8 +219587,8 @@ return {
                 HPP = 5,
                 STR = 7,
                 DEX = 7,
-                CounterstanceEffect = 10,
                 CounterDamage = 10,
+                CounterstanceEffect = 10,
             }
         },
         MeleeGaiters = {
@@ -222011,10 +222078,10 @@ return {
             Type = "Feet",
             Stats = {
                 DEF = 49,
+                MovementSpeed = -20,
                 PDT = -5,
                 RDT = -5,
                 KnockbackReduction = 2,
-                MovementSpeed = -20,
             }
         },
         PlunPoulaines = {
@@ -222826,8 +222893,8 @@ return {
                 Haste = 3,
                 DT = 5,
                 WeaponSkillDamage = 6,
-                DarkMagicSkill = 42,
                 DarkMagicDuration = 20,
+                DarkMagicSkill = 42,
                 ScytheSkill = 42,
             }
         },
@@ -224668,8 +224735,8 @@ return {
             Stats = {
                 DEF = 13,
                 EarthResistance = 8,
-                ResistGravity = 2,
                 JumpAttack = 10,
+                ResistGravity = 2,
                 WindResistance = 8,
             }
         },
@@ -225131,8 +225198,8 @@ return {
                 MagicEvasion = 117,
                 MagicDefenseBonus = 5,
                 Haste = 3,
-                MagicBurstDamage = 5,
                 MDMG = 30,
+                MagicBurstDamage = 5,
             }
         },
         SpaeSabots_3 = {
@@ -225159,8 +225226,8 @@ return {
                 MagicEvasion = 127,
                 MagicDefenseBonus = 6,
                 Haste = 3,
-                MagicBurstDamage = 10,
                 MDMG = 40,
+                MagicBurstDamage = 10,
             }
         },
         SpaeSabots_4 = {
@@ -225209,8 +225276,8 @@ return {
                 DEF = 14,
                 CHR = 4,
                 ResistSilence = 2,
-                ThunderResistance = 8,
                 ResistVirus = 2,
+                ThunderResistance = 8,
             }
         },
         SpiritMoccasins = {
@@ -226248,8 +226315,8 @@ return {
                 Haste = 3,
                 SpellInterruptionRateDown = 27,
                 EnfeeblingMagicSkill = 19,
-                EnhancingMagicSkill = 19,
                 EnhancingMagicDuration = 5,
+                EnhancingMagicSkill = 19,
             }
         },
         TheoDuckbills_3 = {
@@ -226277,8 +226344,8 @@ return {
                 Haste = 3,
                 SpellInterruptionRateDown = 29,
                 EnfeeblingMagicSkill = 21,
-                EnhancingMagicSkill = 21,
                 EnhancingMagicDuration = 10,
+                EnhancingMagicSkill = 21,
             }
         },
         TheoDuckbills_4 = {
@@ -227244,8 +227311,8 @@ return {
                 MagicEvasion = 117,
                 MagicDefenseBonus = 6,
                 Haste = 3,
-                EnfeeblingMagicSkill = 14,
                 EnfeeblingMagicPotency = 5,
+                EnfeeblingMagicSkill = 14,
             }
         },
         VitiationBoots_3 = {
@@ -227273,8 +227340,8 @@ return {
                 MagicEvasion = 127,
                 MagicDefenseBonus = 7,
                 Haste = 3,
-                EnfeeblingMagicSkill = 16,
                 EnfeeblingMagicPotency = 10,
+                EnfeeblingMagicSkill = 16,
             }
         },
         VlrLeggings_1 = {
@@ -227923,8 +227990,8 @@ return {
                 Haste = 3,
                 Enmity = -15,
                 DT = -10,
-                DarkMagicSkill = 30,
                 MDMG = 20,
+                DarkMagicSkill = 30,
             }
         },
         WicceSabots_3 = {

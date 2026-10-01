@@ -258,6 +258,9 @@ function M.stats(rec, ctx)
     else
         base = rec.Stats;
     end
+    if type(ctx) == 'table' and ctx.stanceSet == true then
+        base = require('dlac\\gear\\stancestats').apply(rec, base, ctx);
+    end
     local augs = (type(ctx) == 'table' and type(ctx.augStats) == 'table') and ctx.augStats or nil;
     local a = (augs ~= nil and rec.Id ~= nil) and augs[rec.Id] or nil;
     if type(a) ~= 'table' then return base; end     -- zero-copy: nothing to fold

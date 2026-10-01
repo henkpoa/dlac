@@ -18,7 +18,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.09.28a';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.09.29b';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
                                 -- (03f = engine v163: the contest explains its own plan;
                                 --  03g = one floating tray: Teleports + the E-Box crates;
@@ -581,7 +581,7 @@ for _, mod in ipairs({ 'gear', 'feature\\augments', 'gear\\gearoptim', 'gear\\ge
                        'gear\\gearexport', 'gear\\unusedgear',
                        'feature\\useitem', 'feature\\craftwatch',
                        'feature\\synthrun',
-                       'ui\\craftbar', 'feature\\helmwatch', 'ui\\helmbar',
+                       'ui\\craftbar', 'feature\\helmwatch', 'feature\\helmstorage', 'ui\\helmbar',
                        'feature\\fishwatch', 'ui\\fishbar', 'feature\\chocowatch',
                        'feature\\meritwatch',
                        'feature\\integration', 'feature\\foodwatch',

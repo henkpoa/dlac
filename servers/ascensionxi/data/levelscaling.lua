@@ -8,8 +8,8 @@ return {
         { stat = "RangedAccuracy", add = 50, below = 31 },
     },
     [11811] = {
-        { stat = "COMBAT_SKILLUP_RATE", add = 1, below = 31 },
-        { stat = "MAGIC_SKILLUP_RATE", add = 1, below = 31 },
+        { stat = "CombatSkillupRate", add = 1, below = 31 },
+        { stat = "MagicSkillupRate", add = 1, below = 31 },
         { stat = "MovementSpeed", add = 12, below = 31 },
         { stat = "RERAISE_I", add = 1, below = 31 },
         { stat = "Refresh", add = 1, below = 31 },

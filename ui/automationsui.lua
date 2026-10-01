@@ -2071,7 +2071,7 @@ local function renderAutomations()
     -- Its own collapsible section too (Henrik's "Claim Priority"); the header IS
     -- the title, so render() drops its inline one (embedded) but keeps the hint.
     imgui.Spacing();
-    if imgui.CollapsingHeader('Claim Priority###autosec_priority', DEFOPEN) then
+    if imgui.CollapsingHeader('Claim Priority###autosec_priority') then
         -- The Arbiter Monitor toggle lives where the ranks do (the Trigger
         -- Monitor's second home is the Triggers tab for the same reason: the
         -- window watches what this list decides).

@@ -31,13 +31,13 @@ return {
         { stat = "Regen", add = 1, cond = "TIME_OF_DAY", param = 0 },
     },
     [10961] = {
-        { stat = "DARK_MEVA", add = -40, cond = "STATUS_EFFECT_ACTIVE", param = 14 },
-        { stat = "LIGHT_MEVA", add = -40, cond = "STATUS_EFFECT_ACTIVE", param = 14 },
+        { stat = "DarkResistance", add = -40, cond = "STATUS_EFFECT_ACTIVE", param = 14 },
+        { stat = "LightResistance", add = -40, cond = "STATUS_EFFECT_ACTIVE", param = 14 },
     },
     [10962] = {
-        { stat = "DARK_MEVA", add = -50, cond = "STATUS_EFFECT_ACTIVE", param = 14 },
-        { stat = "LIGHT_MEVA", add = -50, cond = "STATUS_EFFECT_ACTIVE", param = 14 },
-        { stat = "MOVE_SPEED_STACKABLE", add = -5, cond = "STATUS_EFFECT_ACTIVE", param = 14 },
+        { stat = "DarkResistance", add = -50, cond = "STATUS_EFFECT_ACTIVE", param = 14 },
+        { stat = "LightResistance", add = -50, cond = "STATUS_EFFECT_ACTIVE", param = 14 },
+        { stat = "MovementSpeed", add = -5, cond = "STATUS_EFFECT_ACTIVE", param = 14 },
     },
     [10975] = {
         { stat = "Accuracy", add = 13, cond = "WEATHER_ELEMENT", param = 8 },
@@ -63,14 +63,14 @@ return {
         { stat = "Refresh", add = 1, cond = "STATUS_EFFECT_ACTIVE", param = 267 },
     },
     [11367] = {
-        { stat = "AQUAN_KILLER", add = 4, cond = "FOOD_ACTIVE", param = 4604 },
+        { stat = "AquanKiller", add = 4, cond = "FOOD_ACTIVE", param = 4604 },
         { stat = "Attack", add = 50, cond = "FOOD_ACTIVE", param = 4277 },
         { stat = "Attack", add = 50, cond = "FOOD_ACTIVE", param = 4278 },
         { stat = "Attack", add = 40, cond = "FOOD_ACTIVE", param = 4590 },
         { stat = "Attack", add = 40, cond = "FOOD_ACTIVE", param = 4605 },
         { stat = "Attack", add = 60, cond = "FOOD_ACTIVE", param = 5928 },
         { stat = "Attack", add = 60, cond = "FOOD_ACTIVE", param = 5929 },
-        { stat = "BEAST_KILLER", add = 4, cond = "FOOD_ACTIVE", param = 4604 },
+        { stat = "BeastKiller", add = 4, cond = "FOOD_ACTIVE", param = 4604 },
         { stat = "DEF", add = 30, cond = "FOOD_ACTIVE", param = 4277 },
         { stat = "DEF", add = 30, cond = "FOOD_ACTIVE", param = 4278 },
         { stat = "DEF", add = 50, cond = "FOOD_ACTIVE", param = 4405 },
@@ -128,12 +128,12 @@ return {
         { stat = "Refresh", add = 1, cond = "STATUS_EFFECT_ACTIVE", param = 267 },
     },
     [11589] = {
-        { stat = "DARK", add = 3, cond = "DARKSDAY", param = 0 },
-        { stat = "ELEM", add = 3, cond = "DARKSDAY", param = 0 },
+        { stat = "DarkMagicSkill", add = 3, cond = "DARKSDAY", param = 0 },
+        { stat = "ElementalMagicSkill", add = 3, cond = "DARKSDAY", param = 0 },
     },
     [11590] = {
-        { stat = "ENHANCE", add = 3, cond = "LIGHTSDAY", param = 0 },
-        { stat = "HEALING", add = 3, cond = "LIGHTSDAY", param = 0 },
+        { stat = "EnhancingMagicSkill", add = 3, cond = "LIGHTSDAY", param = 0 },
+        { stat = "HealingMagicSkill", add = 3, cond = "LIGHTSDAY", param = 0 },
     },
     [11607] = {
         { stat = "MagicAccuracy", add = 10, cond = "MOON_PHASE", param = 0 },
@@ -199,7 +199,7 @@ return {
         { stat = "STR", add = 4, cond = "NATION_CONTROL", param = 0 },
     },
     [12374] = {
-        { stat = "CONVHPTOMP", add = 15, cond = "NATION_CONTROL", param = 0 },
+        { stat = "ConvertHPtoMP", add = 15, cond = "NATION_CONTROL", param = 0 },
     },
     [12376] = {
         { stat = "VIT", add = 3, cond = "NATION_CONTROL", param = 0 },
@@ -225,7 +225,7 @@ return {
         { stat = "MP", add = 7, cond = "SUBJOB", param = 5 },
     },
     [12394] = {
-        { stat = "SHIELD", add = 5, cond = "SUBJOB", param = 6 },
+        { stat = "ShieldSkill", add = 5, cond = "SUBJOB", param = 6 },
     },
     [12395] = {
         { stat = "AGI", add = 2, cond = "SUBJOB", param = 7 },
@@ -238,13 +238,13 @@ return {
         { stat = "MND", add = 2, cond = "SUBJOB", param = 9 },
     },
     [12398] = {
-        { stat = "PARRY", add = 5, cond = "SUBJOB", param = 10 },
+        { stat = "ParryingSkill", add = 5, cond = "SUBJOB", param = 10 },
     },
     [12399] = {
         { stat = "Evasion", add = 2, cond = "SUBJOB", param = 11 },
     },
     [12400] = {
-        { stat = "THROW", add = 5, cond = "SUBJOB", param = 12 },
+        { stat = "ThrowingSkill", add = 5, cond = "SUBJOB", param = 12 },
     },
     [12401] = {
         { stat = "Attack", add = 5, cond = "SUBJOB", param = 13 },
@@ -263,8 +263,8 @@ return {
         { stat = "PerpetuationCost", add = 1, cond = "PET_ID", param = 9 },
     },
     [12513] = {
-        { stat = "Accuracy", add = 6, cond = "STATUS_EFFECT_ACTIVE", param = 419 },
-        { stat = "Attack", add = 6, cond = "STATUS_EFFECT_ACTIVE", param = 419 },
+        { stat = "Accuracy", add = 6, cond = "RDM_STANCE_AT_LEAST", param = 2 },
+        { stat = "Attack", add = 6, cond = "RDM_STANCE_AT_LEAST", param = 2 },
     },
     [12589] = {
         { stat = "Regen", add = 2, cond = "STATUS_EFFECT_ACTIVE", param = 3 },
@@ -273,30 +273,30 @@ return {
         { stat = "Regen", add = 2, cond = "STATUS_EFFECT_ACTIVE", param = 3 },
     },
     [12642] = {
-        { stat = "Accuracy", add = 5, cond = "STATUS_EFFECT_ACTIVE", param = 419 },
-        { stat = "Attack", add = 5, cond = "STATUS_EFFECT_ACTIVE", param = 419 },
+        { stat = "Accuracy", add = 5, cond = "RDM_STANCE_AT_LEAST", param = 2 },
+        { stat = "Attack", add = 5, cond = "RDM_STANCE_AT_LEAST", param = 2 },
     },
     [12650] = {
-        { stat = "DARK_MEVA", add = 20, cond = "PET_ID", param = 7 },
-        { stat = "DARK_MEVA", add = 20, cond = "PET_ID", param = 9 },
-        { stat = "DARK_MEVA", add = 20, cond = "PET_ID", param = 16 },
-        { stat = "DARK_MEVA", add = 20, cond = "PET_ID", param = 18 },
-        { stat = "EARTH_MEVA", add = 20, cond = "PET_ID", param = 3 },
-        { stat = "EARTH_MEVA", add = 20, cond = "PET_ID", param = 11 },
-        { stat = "FIRE_MEVA", add = 20, cond = "PET_ID", param = 0 },
-        { stat = "FIRE_MEVA", add = 20, cond = "PET_ID", param = 10 },
-        { stat = "ICE_MEVA", add = 20, cond = "PET_ID", param = 1 },
-        { stat = "ICE_MEVA", add = 20, cond = "PET_ID", param = 14 },
-        { stat = "LIGHT_MEVA", add = 20, cond = "PET_ID", param = 6 },
-        { stat = "LIGHT_MEVA", add = 20, cond = "PET_ID", param = 8 },
-        { stat = "LIGHT_MEVA", add = 20, cond = "PET_ID", param = 17 },
-        { stat = "LIGHT_MEVA", add = 20, cond = "PET_ID", param = 20 },
-        { stat = "THUNDER_MEVA", add = 20, cond = "PET_ID", param = 4 },
-        { stat = "THUNDER_MEVA", add = 20, cond = "PET_ID", param = 15 },
-        { stat = "WATER_MEVA", add = 20, cond = "PET_ID", param = 5 },
-        { stat = "WATER_MEVA", add = 20, cond = "PET_ID", param = 12 },
-        { stat = "WIND_MEVA", add = 20, cond = "PET_ID", param = 2 },
-        { stat = "WIND_MEVA", add = 20, cond = "PET_ID", param = 13 },
+        { stat = "DarkResistance", add = 20, cond = "PET_ID", param = 7 },
+        { stat = "DarkResistance", add = 20, cond = "PET_ID", param = 9 },
+        { stat = "DarkResistance", add = 20, cond = "PET_ID", param = 16 },
+        { stat = "DarkResistance", add = 20, cond = "PET_ID", param = 18 },
+        { stat = "EarthResistance", add = 20, cond = "PET_ID", param = 3 },
+        { stat = "EarthResistance", add = 20, cond = "PET_ID", param = 11 },
+        { stat = "FireResistance", add = 20, cond = "PET_ID", param = 0 },
+        { stat = "FireResistance", add = 20, cond = "PET_ID", param = 10 },
+        { stat = "IceResistance", add = 20, cond = "PET_ID", param = 1 },
+        { stat = "IceResistance", add = 20, cond = "PET_ID", param = 14 },
+        { stat = "LightResistance", add = 20, cond = "PET_ID", param = 6 },
+        { stat = "LightResistance", add = 20, cond = "PET_ID", param = 8 },
+        { stat = "LightResistance", add = 20, cond = "PET_ID", param = 17 },
+        { stat = "LightResistance", add = 20, cond = "PET_ID", param = 20 },
+        { stat = "ThunderResistance", add = 20, cond = "PET_ID", param = 4 },
+        { stat = "ThunderResistance", add = 20, cond = "PET_ID", param = 15 },
+        { stat = "WaterResistance", add = 20, cond = "PET_ID", param = 5 },
+        { stat = "WaterResistance", add = 20, cond = "PET_ID", param = 12 },
+        { stat = "WindResistance", add = 20, cond = "PET_ID", param = 2 },
+        { stat = "WindResistance", add = 20, cond = "PET_ID", param = 13 },
     },
     [12717] = {
         { stat = "HMP", add = 5, cond = "STATUS_EFFECT_ACTIVE", param = 6 },
@@ -408,36 +408,36 @@ return {
         { stat = "MagicAttackBonus", add = 10, cond = "HP_UNDER_TP_UNDER_100", param = 76 },
     },
     [13290] = {
-        { stat = "ENSPELL_DMG_BONUS", add = 5, cond = "HP_UNDER_TP_UNDER_100", param = 75 },
+        { stat = "EnspellDamage", add = 5, cond = "HP_UNDER_TP_UNDER_100", param = 75 },
     },
     [13291] = {
-        { stat = "STEAL", add = 3, cond = "HP_UNDER_TP_UNDER_100", param = 75 },
+        { stat = "Steal", add = 3, cond = "HP_UNDER_TP_UNDER_100", param = 75 },
     },
     [13292] = {
-        { stat = "SHIELD_BASH", add = 10, cond = "HP_UNDER_TP_UNDER_100", param = 75 },
+        { stat = "ShieldBash", add = 10, cond = "HP_UNDER_TP_UNDER_100", param = 75 },
     },
     [13293] = {
-        { stat = "WEAPON_BASH", add = 10, cond = "HP_UNDER_TP_UNDER_100", param = 75 },
+        { stat = "WeaponBash", add = 10, cond = "HP_UNDER_TP_UNDER_100", param = 75 },
     },
     [13294] = {
-        { stat = "AMORPH_KILLER", add = 3, cond = "HP_UNDER_TP_UNDER_100", param = 75 },
-        { stat = "AQUAN_KILLER", add = 3, cond = "HP_UNDER_TP_UNDER_100", param = 75 },
-        { stat = "ARCANA_KILLER", add = 3, cond = "HP_UNDER_TP_UNDER_100", param = 75 },
-        { stat = "BEAST_KILLER", add = 3, cond = "HP_UNDER_TP_UNDER_100", param = 75 },
-        { stat = "BIRD_KILLER", add = 3, cond = "HP_UNDER_TP_UNDER_100", param = 75 },
-        { stat = "DEMON_KILLER", add = 3, cond = "HP_UNDER_TP_UNDER_100", param = 75 },
-        { stat = "DRAGON_KILLER", add = 3, cond = "HP_UNDER_TP_UNDER_100", param = 75 },
-        { stat = "EMPTY_KILLER", add = 3, cond = "HP_UNDER_TP_UNDER_100", param = 75 },
-        { stat = "HUMANOID_KILLER", add = 3, cond = "HP_UNDER_TP_UNDER_100", param = 75 },
-        { stat = "LIZARD_KILLER", add = 3, cond = "HP_UNDER_TP_UNDER_100", param = 75 },
-        { stat = "LUMINIAN_KILLER", add = 3, cond = "HP_UNDER_TP_UNDER_100", param = 75 },
-        { stat = "LUMINION_KILLER", add = 3, cond = "HP_UNDER_TP_UNDER_100", param = 75 },
-        { stat = "PLANTOID_KILLER", add = 3, cond = "HP_UNDER_TP_UNDER_100", param = 75 },
-        { stat = "UNDEAD_KILLER", add = 3, cond = "HP_UNDER_TP_UNDER_100", param = 75 },
-        { stat = "VERMIN_KILLER", add = 3, cond = "HP_UNDER_TP_UNDER_100", param = 75 },
+        { stat = "AmorphKiller", add = 3, cond = "HP_UNDER_TP_UNDER_100", param = 75 },
+        { stat = "AquanKiller", add = 3, cond = "HP_UNDER_TP_UNDER_100", param = 75 },
+        { stat = "ArcanaKiller", add = 3, cond = "HP_UNDER_TP_UNDER_100", param = 75 },
+        { stat = "BeastKiller", add = 3, cond = "HP_UNDER_TP_UNDER_100", param = 75 },
+        { stat = "BirdKiller", add = 3, cond = "HP_UNDER_TP_UNDER_100", param = 75 },
+        { stat = "DemonKiller", add = 3, cond = "HP_UNDER_TP_UNDER_100", param = 75 },
+        { stat = "DragonKiller", add = 3, cond = "HP_UNDER_TP_UNDER_100", param = 75 },
+        { stat = "EmptyKiller", add = 3, cond = "HP_UNDER_TP_UNDER_100", param = 75 },
+        { stat = "HumanoidKiller", add = 3, cond = "HP_UNDER_TP_UNDER_100", param = 75 },
+        { stat = "LizardKiller", add = 3, cond = "HP_UNDER_TP_UNDER_100", param = 75 },
+        { stat = "LuminianKiller", add = 3, cond = "HP_UNDER_TP_UNDER_100", param = 75 },
+        { stat = "LuminionKiller", add = 3, cond = "HP_UNDER_TP_UNDER_100", param = 75 },
+        { stat = "PlantoidKiller", add = 3, cond = "HP_UNDER_TP_UNDER_100", param = 75 },
+        { stat = "UndeadKiller", add = 3, cond = "HP_UNDER_TP_UNDER_100", param = 75 },
+        { stat = "VerminKiller", add = 3, cond = "HP_UNDER_TP_UNDER_100", param = 75 },
     },
     [13295] = {
-        { stat = "SONG_SPELLCASTING_TIME", add = 25, cond = "HP_UNDER_TP_UNDER_100", param = 75 },
+        { stat = "SongCastTime", add = 25, cond = "HP_UNDER_TP_UNDER_100", param = 75 },
     },
     [13296] = {
         { stat = "Enmity", add = -2, cond = "HP_UNDER_TP_UNDER_100", param = 75 },
@@ -449,7 +449,7 @@ return {
         { stat = "Haste", add = 4, cond = "HP_UNDER_TP_UNDER_100", param = 75 },
     },
     [13299] = {
-        { stat = "JUMP_TP_BONUS", add = 10, cond = "HP_UNDER_TP_UNDER_100", param = 75 },
+        { stat = "JumpTP", add = 10, cond = "HP_UNDER_TP_UNDER_100", param = 75 },
     },
     [13300] = {
         { stat = "PerpetuationCost", add = 1, cond = "HP_UNDER_TP_UNDER_100", param = 75 },
@@ -491,7 +491,7 @@ return {
         { stat = "RDT", add = -20, cond = "HP_UNDER_TP_UNDER_100", param = 25 },
     },
     [13427] = {
-        { stat = "TAME", add = 5, cond = "HP_UNDER_TP_UNDER_100", param = 25 },
+        { stat = "TameSuccess", add = 5, cond = "HP_UNDER_TP_UNDER_100", param = 25 },
     },
     [13428] = {
         { stat = "PDT", add = -30, cond = "HP_UNDER_TP_UNDER_100", param = 25 },
@@ -523,7 +523,7 @@ return {
         { stat = "Enmity", add = -1, cond = "SUBJOB", param = 3 },
     },
     [13438] = {
-        { stat = "ELEM", add = 5, cond = "SUBJOB", param = 4 },
+        { stat = "ElementalMagicSkill", add = 5, cond = "SUBJOB", param = 4 },
     },
     [13439] = {
         { stat = "HMP", add = 1, cond = "SUBJOB", param = 5 },
@@ -549,7 +549,7 @@ return {
         { stat = "RangedAttack", add = 15, cond = "FIRESDAY", param = 0 },
     },
     [13561] = {
-        { stat = "ELEM", add = 15, cond = "ICEDAY", param = 0 },
+        { stat = "ElementalMagicSkill", add = 15, cond = "ICEDAY", param = 0 },
         { stat = "MPP", add = -15, cond = "ICEDAY", param = 0 },
     },
     [13562] = {
@@ -592,7 +592,7 @@ return {
         { stat = "Enmity", add = 1, cond = "SUBJOB", param = 1 },
     },
     [13660] = {
-        { stat = "MARTIAL_ARTS", add = 10, cond = "SUBJOB", param = 2 },
+        { stat = "MartialArts", add = 10, cond = "SUBJOB", param = 2 },
     },
     [13661] = {
         { stat = "MagicDefenseBonus", add = 1, cond = "SUBJOB", param = 3 },
@@ -607,31 +607,31 @@ return {
         { stat = "Evasion", add = 4, cond = "SUBJOB", param = 6 },
     },
     [13665] = {
-        { stat = "UNDEAD_KILLER", add = 4, cond = "SUBJOB", param = 7 },
+        { stat = "UndeadKiller", add = 4, cond = "SUBJOB", param = 7 },
     },
     [13666] = {
-        { stat = "DARK", add = 5, cond = "SUBJOB", param = 8 },
+        { stat = "DarkMagicSkill", add = 5, cond = "SUBJOB", param = 8 },
     },
     [13667] = {
-        { stat = "SLOWRES", add = 5, cond = "SUBJOB", param = 9 },
+        { stat = "ResistSlow", add = 5, cond = "SUBJOB", param = 9 },
     },
     [13668] = {
         { stat = "ResistSilence", add = 5, cond = "SUBJOB", param = 10 },
     },
     [13669] = {
-        { stat = "RAPID_SHOT", add = 5, cond = "SUBJOB", param = 11 },
+        { stat = "RapidShot", add = 5, cond = "SUBJOB", param = 11 },
     },
     [13670] = {
-        { stat = "BLINDRES", add = 5, cond = "SUBJOB", param = 12 },
+        { stat = "ResistBlind", add = 5, cond = "SUBJOB", param = 12 },
     },
     [13671] = {
-        { stat = "BINDRES", add = 5, cond = "SUBJOB", param = 13 },
+        { stat = "ResistBind", add = 5, cond = "SUBJOB", param = 13 },
     },
     [13672] = {
         { stat = "Attack", add = 6, cond = "SUBJOB", param = 14 },
     },
     [13673] = {
-        { stat = "SUMMONING", add = 5, cond = "SUBJOB", param = 15 },
+        { stat = "SummoningMagicSkill", add = 5, cond = "SUBJOB", param = 15 },
     },
     [13693] = {
         { stat = "Refresh", add = 1, cond = "STATUS_EFFECT_ACTIVE", param = 2 },
@@ -716,14 +716,14 @@ return {
         { stat = "MND", add = 4, cond = "NATION_CONTROL", param = 0 },
     },
     [13910] = {
-        { stat = "AQUAN_KILLER", add = 4, cond = "FOOD_ACTIVE", param = 4604 },
+        { stat = "AquanKiller", add = 4, cond = "FOOD_ACTIVE", param = 4604 },
         { stat = "Attack", add = 50, cond = "FOOD_ACTIVE", param = 4277 },
         { stat = "Attack", add = 50, cond = "FOOD_ACTIVE", param = 4278 },
         { stat = "Attack", add = 40, cond = "FOOD_ACTIVE", param = 4590 },
         { stat = "Attack", add = 40, cond = "FOOD_ACTIVE", param = 4605 },
         { stat = "Attack", add = 60, cond = "FOOD_ACTIVE", param = 5928 },
         { stat = "Attack", add = 60, cond = "FOOD_ACTIVE", param = 5929 },
-        { stat = "BEAST_KILLER", add = 4, cond = "FOOD_ACTIVE", param = 4604 },
+        { stat = "BeastKiller", add = 4, cond = "FOOD_ACTIVE", param = 4604 },
         { stat = "DEF", add = 30, cond = "FOOD_ACTIVE", param = 4277 },
         { stat = "DEF", add = 30, cond = "FOOD_ACTIVE", param = 4278 },
         { stat = "DEF", add = 50, cond = "FOOD_ACTIVE", param = 4405 },
@@ -745,14 +745,14 @@ return {
         { stat = "Counter", add = 1, cond = "HP_UNDER_PERCENT", param = 25 },
     },
     [13949] = {
-        { stat = "AQUAN_KILLER", add = 4, cond = "FOOD_ACTIVE", param = 4604 },
+        { stat = "AquanKiller", add = 4, cond = "FOOD_ACTIVE", param = 4604 },
         { stat = "Attack", add = 50, cond = "FOOD_ACTIVE", param = 4277 },
         { stat = "Attack", add = 50, cond = "FOOD_ACTIVE", param = 4278 },
         { stat = "Attack", add = 40, cond = "FOOD_ACTIVE", param = 4590 },
         { stat = "Attack", add = 40, cond = "FOOD_ACTIVE", param = 4605 },
         { stat = "Attack", add = 60, cond = "FOOD_ACTIVE", param = 5928 },
         { stat = "Attack", add = 60, cond = "FOOD_ACTIVE", param = 5929 },
-        { stat = "BEAST_KILLER", add = 4, cond = "FOOD_ACTIVE", param = 4604 },
+        { stat = "BeastKiller", add = 4, cond = "FOOD_ACTIVE", param = 4604 },
         { stat = "DEF", add = 30, cond = "FOOD_ACTIVE", param = 4277 },
         { stat = "DEF", add = 30, cond = "FOOD_ACTIVE", param = 4278 },
         { stat = "DEF", add = 50, cond = "FOOD_ACTIVE", param = 4405 },
@@ -767,18 +767,18 @@ return {
         { stat = "TripleAttack", add = 2, cond = "FOOD_ACTIVE", param = 5929 },
     },
     [13965] = {
-        { stat = "Accuracy", add = 5, cond = "STATUS_EFFECT_ACTIVE", param = 419 },
-        { stat = "ENSPELL_DMG_BONUS", add = 2, cond = "STATUS_EFFECT_ACTIVE", param = 419 },
+        { stat = "Accuracy", add = 5, cond = "RDM_STANCE_AT_LEAST", param = 2 },
+        { stat = "EnspellDamage", add = 2, cond = "RDM_STANCE_AT_LEAST", param = 2 },
     },
     [13972] = {
-        { stat = "AQUAN_KILLER", add = 4, cond = "FOOD_ACTIVE", param = 4604 },
+        { stat = "AquanKiller", add = 4, cond = "FOOD_ACTIVE", param = 4604 },
         { stat = "Attack", add = 50, cond = "FOOD_ACTIVE", param = 4277 },
         { stat = "Attack", add = 50, cond = "FOOD_ACTIVE", param = 4278 },
         { stat = "Attack", add = 40, cond = "FOOD_ACTIVE", param = 4590 },
         { stat = "Attack", add = 40, cond = "FOOD_ACTIVE", param = 4605 },
         { stat = "Attack", add = 60, cond = "FOOD_ACTIVE", param = 5928 },
         { stat = "Attack", add = 60, cond = "FOOD_ACTIVE", param = 5929 },
-        { stat = "BEAST_KILLER", add = 4, cond = "FOOD_ACTIVE", param = 4604 },
+        { stat = "BeastKiller", add = 4, cond = "FOOD_ACTIVE", param = 4604 },
         { stat = "DEF", add = 30, cond = "FOOD_ACTIVE", param = 4277 },
         { stat = "DEF", add = 30, cond = "FOOD_ACTIVE", param = 4278 },
         { stat = "DEF", add = 50, cond = "FOOD_ACTIVE", param = 4405 },
@@ -805,7 +805,7 @@ return {
     },
     [14013] = {
         { stat = "DEX", add = 2, cond = "NATION_CONTROL", param = 1 },
-        { stat = "PARRY", add = 10, cond = "NATION_CONTROL", param = 1 },
+        { stat = "ParryingSkill", add = 10, cond = "NATION_CONTROL", param = 1 },
     },
     [14014] = {
         { stat = "AGI", add = 2, cond = "NATION_CONTROL", param = 1 },
@@ -813,16 +813,16 @@ return {
     },
     [14015] = {
         { stat = "Evasion", add = 5, cond = "NATION_CONTROL", param = 1 },
-        { stat = "PARRY", add = 5, cond = "NATION_CONTROL", param = 1 },
+        { stat = "ParryingSkill", add = 5, cond = "NATION_CONTROL", param = 1 },
         { stat = "VIT", add = 2, cond = "NATION_CONTROL", param = 1 },
     },
     [14016] = {
         { stat = "AGI", add = 2, cond = "NATION_CONTROL", param = 1 },
-        { stat = "EVASION", add = 10, cond = "NATION_CONTROL", param = 1 },
+        { stat = "EvasionSkill", add = 10, cond = "NATION_CONTROL", param = 1 },
     },
     [14017] = {
-        { stat = "ELEM", add = 7, cond = "NATION_CONTROL", param = 1 },
-        { stat = "ENFEEBLE", add = 7, cond = "NATION_CONTROL", param = 1 },
+        { stat = "ElementalMagicSkill", add = 7, cond = "NATION_CONTROL", param = 1 },
+        { stat = "EnfeeblingMagicSkill", add = 7, cond = "NATION_CONTROL", param = 1 },
         { stat = "INT", add = 1, cond = "NATION_CONTROL", param = 1 },
         { stat = "MND", add = 1, cond = "NATION_CONTROL", param = 1 },
     },
@@ -896,7 +896,7 @@ return {
         { stat = "Regen", add = 1, cond = "TIME_OF_DAY", param = 1 },
     },
     [14093] = {
-        { stat = "Accuracy", add = 6, cond = "STATUS_EFFECT_ACTIVE", param = 419 },
+        { stat = "Accuracy", add = 6, cond = "RDM_STANCE_AT_LEAST", param = 2 },
     },
     [14101] = {
         { stat = "MovementSpeed", add = 24, cond = "TIME_OF_DAY", param = 1 },
@@ -951,11 +951,11 @@ return {
         { stat = "INT", add = 4, cond = "NATION_CONTROL", param = 0 },
     },
     [14164] = {
-        { stat = "DARK", add = 3, cond = "MOON_PHASE", param = 0 },
+        { stat = "DarkMagicSkill", add = 3, cond = "MOON_PHASE", param = 0 },
         { stat = "INT", add = 1, cond = "MOON_PHASE", param = 0 },
     },
     [14165] = {
-        { stat = "DARK", add = 5, cond = "MOON_PHASE", param = 0 },
+        { stat = "DarkMagicSkill", add = 5, cond = "MOON_PHASE", param = 0 },
         { stat = "INT", add = 2, cond = "MOON_PHASE", param = 0 },
     },
     [14166] = {
@@ -968,8 +968,8 @@ return {
         { stat = "Counter", add = 1, cond = "HP_UNDER_PERCENT", param = 25 },
     },
     [14218] = {
-        { stat = "Accuracy", add = 4, cond = "STATUS_EFFECT_ACTIVE", param = 419 },
-        { stat = "Attack", add = 6, cond = "STATUS_EFFECT_ACTIVE", param = 419 },
+        { stat = "Accuracy", add = 4, cond = "RDM_STANCE_AT_LEAST", param = 2 },
+        { stat = "Attack", add = 6, cond = "RDM_STANCE_AT_LEAST", param = 2 },
     },
     [14226] = {
         { stat = "Evasion", add = 10, cond = "TIME_OF_DAY", param = 1 },
@@ -1018,12 +1018,12 @@ return {
         { stat = "DEX", add = 2, cond = "MOON_PHASE", param = 4 },
     },
     [14288] = {
-        { stat = "CONVHPTOMP", add = 20, cond = "TIME_OF_DAY", param = 1 },
-        { stat = "CONVMPTOHP", add = 20, cond = "TIME_OF_DAY", param = 0 },
+        { stat = "ConvertHPtoMP", add = 20, cond = "TIME_OF_DAY", param = 1 },
+        { stat = "ConvertMPtoHP", add = 20, cond = "TIME_OF_DAY", param = 0 },
     },
     [14289] = {
-        { stat = "CONVHPTOMP", add = 25, cond = "TIME_OF_DAY", param = 1 },
-        { stat = "CONVMPTOHP", add = 25, cond = "TIME_OF_DAY", param = 0 },
+        { stat = "ConvertHPtoMP", add = 25, cond = "TIME_OF_DAY", param = 1 },
+        { stat = "ConvertMPtoHP", add = 25, cond = "TIME_OF_DAY", param = 0 },
     },
     [14299] = {
         { stat = "Counter", add = 1, cond = "HP_UNDER_PERCENT", param = 25 },
@@ -1047,16 +1047,16 @@ return {
         { stat = "RangedAttack", add = 8, cond = "NATION_CONTROL", param = 0 },
     },
     [14342] = {
-        { stat = "EVASION", add = 6, cond = "NATION_CONTROL", param = 0 },
+        { stat = "EvasionSkill", add = 6, cond = "NATION_CONTROL", param = 0 },
     },
     [14343] = {
-        { stat = "EVASION", add = 7, cond = "NATION_CONTROL", param = 0 },
+        { stat = "EvasionSkill", add = 7, cond = "NATION_CONTROL", param = 0 },
     },
     [14346] = {
-        { stat = "EVASION", add = 3, cond = "NATION_CONTROL", param = 0 },
+        { stat = "EvasionSkill", add = 3, cond = "NATION_CONTROL", param = 0 },
     },
     [14347] = {
-        { stat = "EVASION", add = 4, cond = "NATION_CONTROL", param = 0 },
+        { stat = "EvasionSkill", add = 4, cond = "NATION_CONTROL", param = 0 },
     },
     [14352] = {
         { stat = "CHR", add = 1, cond = "NATION_CONTROL", param = 0 },
@@ -1065,10 +1065,10 @@ return {
         { stat = "CHR", add = 2, cond = "NATION_CONTROL", param = 0 },
     },
     [14354] = {
-        { stat = "EVASION", add = 4, cond = "NATION_CONTROL", param = 0 },
+        { stat = "EvasionSkill", add = 4, cond = "NATION_CONTROL", param = 0 },
     },
     [14355] = {
-        { stat = "EVASION", add = 6, cond = "NATION_CONTROL", param = 0 },
+        { stat = "EvasionSkill", add = 6, cond = "NATION_CONTROL", param = 0 },
     },
     [14356] = {
         { stat = "DEF", add = 6, cond = "NATION_CONTROL", param = 0 },
@@ -1139,26 +1139,26 @@ return {
         { stat = "Evasion", add = 10, cond = "FOOD_ACTIVE", param = 4468 },
     },
     [14487] = {
-        { stat = "DARK_MEVA", add = 25, cond = "PET_ID", param = 7 },
-        { stat = "DARK_MEVA", add = 25, cond = "PET_ID", param = 9 },
-        { stat = "DARK_MEVA", add = 25, cond = "PET_ID", param = 16 },
-        { stat = "DARK_MEVA", add = 25, cond = "PET_ID", param = 18 },
-        { stat = "EARTH_MEVA", add = 25, cond = "PET_ID", param = 3 },
-        { stat = "EARTH_MEVA", add = 25, cond = "PET_ID", param = 11 },
-        { stat = "FIRE_MEVA", add = 25, cond = "PET_ID", param = 0 },
-        { stat = "FIRE_MEVA", add = 25, cond = "PET_ID", param = 10 },
-        { stat = "ICE_MEVA", add = 25, cond = "PET_ID", param = 1 },
-        { stat = "ICE_MEVA", add = 25, cond = "PET_ID", param = 14 },
-        { stat = "LIGHT_MEVA", add = 25, cond = "PET_ID", param = 6 },
-        { stat = "LIGHT_MEVA", add = 25, cond = "PET_ID", param = 8 },
-        { stat = "LIGHT_MEVA", add = 25, cond = "PET_ID", param = 17 },
-        { stat = "LIGHT_MEVA", add = 25, cond = "PET_ID", param = 20 },
-        { stat = "THUNDER_MEVA", add = 25, cond = "PET_ID", param = 4 },
-        { stat = "THUNDER_MEVA", add = 25, cond = "PET_ID", param = 15 },
-        { stat = "WATER_MEVA", add = 25, cond = "PET_ID", param = 5 },
-        { stat = "WATER_MEVA", add = 25, cond = "PET_ID", param = 12 },
-        { stat = "WIND_MEVA", add = 25, cond = "PET_ID", param = 2 },
-        { stat = "WIND_MEVA", add = 25, cond = "PET_ID", param = 13 },
+        { stat = "DarkResistance", add = 25, cond = "PET_ID", param = 7 },
+        { stat = "DarkResistance", add = 25, cond = "PET_ID", param = 9 },
+        { stat = "DarkResistance", add = 25, cond = "PET_ID", param = 16 },
+        { stat = "DarkResistance", add = 25, cond = "PET_ID", param = 18 },
+        { stat = "EarthResistance", add = 25, cond = "PET_ID", param = 3 },
+        { stat = "EarthResistance", add = 25, cond = "PET_ID", param = 11 },
+        { stat = "FireResistance", add = 25, cond = "PET_ID", param = 0 },
+        { stat = "FireResistance", add = 25, cond = "PET_ID", param = 10 },
+        { stat = "IceResistance", add = 25, cond = "PET_ID", param = 1 },
+        { stat = "IceResistance", add = 25, cond = "PET_ID", param = 14 },
+        { stat = "LightResistance", add = 25, cond = "PET_ID", param = 6 },
+        { stat = "LightResistance", add = 25, cond = "PET_ID", param = 8 },
+        { stat = "LightResistance", add = 25, cond = "PET_ID", param = 17 },
+        { stat = "LightResistance", add = 25, cond = "PET_ID", param = 20 },
+        { stat = "ThunderResistance", add = 25, cond = "PET_ID", param = 4 },
+        { stat = "ThunderResistance", add = 25, cond = "PET_ID", param = 15 },
+        { stat = "WaterResistance", add = 25, cond = "PET_ID", param = 5 },
+        { stat = "WaterResistance", add = 25, cond = "PET_ID", param = 12 },
+        { stat = "WindResistance", add = 25, cond = "PET_ID", param = 2 },
+        { stat = "WindResistance", add = 25, cond = "PET_ID", param = 13 },
     },
     [14500] = {
         { stat = "Evasion", add = 10, cond = "STATUS_EFFECT_ACTIVE", param = 58 },
@@ -1202,18 +1202,18 @@ return {
         { stat = "MP", add = 3, cond = "IN_GARRISON", param = 75 },
     },
     [14658] = {
-        { stat = "TAME", add = 4, cond = "VS_ECOSYSTEM", param = 1 },
-        { stat = "TAME", add = 4, cond = "VS_ECOSYSTEM", param = 2 },
+        { stat = "TameSuccess", add = 4, cond = "VS_ECOSYSTEM", param = 1 },
+        { stat = "TameSuccess", add = 4, cond = "VS_ECOSYSTEM", param = 2 },
     },
     [14659] = {
         { stat = "Refresh", add = 1, cond = "HP_UNDER_PERCENT", param = 50 },
         { stat = "Regen", add = 3, cond = "HP_UNDER_PERCENT", param = 50 },
     },
     [14725] = {
-        { stat = "EVASION", add = 5, cond = "SONG_ROLL_ACTIVE", param = 0 },
+        { stat = "EvasionSkill", add = 5, cond = "SONG_ROLL_ACTIVE", param = 0 },
     },
     [14726] = {
-        { stat = "EVASION", add = 6, cond = "SONG_ROLL_ACTIVE", param = 0 },
+        { stat = "EvasionSkill", add = 6, cond = "SONG_ROLL_ACTIVE", param = 0 },
     },
     [14729] = {
         { stat = "DEX", add = 2, cond = "SUBJOB", param = 6 },
@@ -1234,7 +1234,7 @@ return {
         { stat = "RangedAccuracy", add = 3, cond = "SUBJOB", param = 11 },
     },
     [14735] = {
-        { stat = "PARRY", add = 5, cond = "SUBJOB", param = 12 },
+        { stat = "ParryingSkill", add = 5, cond = "SUBJOB", param = 12 },
     },
     [14736] = {
         { stat = "AGI", add = 4, cond = "SUBJOB", param = 13 },
@@ -1268,7 +1268,7 @@ return {
         { stat = "VIT", add = 4, cond = "TIME_OF_DAY", param = 1 },
     },
     [14806] = {
-        { stat = "CONVMPTOHP", add = 40, cond = "NATION_CONTROL", param = 1 },
+        { stat = "ConvertMPtoHP", add = 40, cond = "NATION_CONTROL", param = 1 },
     },
     [14814] = {
         { stat = "Accuracy", add = -3, cond = "WEATHER_ELEMENT", param = 8 },
@@ -1302,14 +1302,14 @@ return {
         { stat = "MagicAccuracy", add = 1, cond = "WINDSDAY", param = 0 },
     },
     [14901] = {
-        { stat = "AQUAN_KILLER", add = 4, cond = "FOOD_ACTIVE", param = 4604 },
+        { stat = "AquanKiller", add = 4, cond = "FOOD_ACTIVE", param = 4604 },
         { stat = "Attack", add = 50, cond = "FOOD_ACTIVE", param = 4277 },
         { stat = "Attack", add = 50, cond = "FOOD_ACTIVE", param = 4278 },
         { stat = "Attack", add = 40, cond = "FOOD_ACTIVE", param = 4590 },
         { stat = "Attack", add = 40, cond = "FOOD_ACTIVE", param = 4605 },
         { stat = "Attack", add = 60, cond = "FOOD_ACTIVE", param = 5928 },
         { stat = "Attack", add = 60, cond = "FOOD_ACTIVE", param = 5929 },
-        { stat = "BEAST_KILLER", add = 4, cond = "FOOD_ACTIVE", param = 4604 },
+        { stat = "BeastKiller", add = 4, cond = "FOOD_ACTIVE", param = 4604 },
         { stat = "DEF", add = 30, cond = "FOOD_ACTIVE", param = 4277 },
         { stat = "DEF", add = 30, cond = "FOOD_ACTIVE", param = 4278 },
         { stat = "DEF", add = 50, cond = "FOOD_ACTIVE", param = 4405 },
@@ -1351,7 +1351,7 @@ return {
         { stat = "SpellInterruptionRateDown", add = -5, cond = "NO_FOOD_ACTIVE", param = 0 },
     },
     [15008] = {
-        { stat = "BONE", add = 1, cond = "SYNTH_TRAINEE", param = 54 },
+        { stat = "BonecraftSkill", add = 1, cond = "SYNTH_TRAINEE", param = 54 },
     },
     [15016] = {
         { stat = "Regen", add = 2, cond = "STATUS_EFFECT_ACTIVE", param = 267 },
@@ -1371,10 +1371,10 @@ return {
         { stat = "DEF", add = 6, cond = "IN_DYNAMIS", param = 0 },
     },
     [15069] = {
-        { stat = "SHIELD_BASH", add = 200, cond = "IN_DYNAMIS", param = 0 },
+        { stat = "ShieldBash", add = 200, cond = "IN_DYNAMIS", param = 0 },
     },
     [15084] = {
-        { stat = "PARRY", add = 10, cond = "TIME_OF_DAY", param = 1 },
+        { stat = "ParryingSkill", add = 10, cond = "TIME_OF_DAY", param = 1 },
     },
     [15087] = {
         { stat = "Evasion", add = 10, cond = "STATUS_EFFECT_ACTIVE", param = 58 },
@@ -1447,40 +1447,40 @@ return {
         { stat = "Regen", add = 1, cond = "WEATHER_ELEMENT", param = 6 },
     },
     [15257] = {
-        { stat = "PARRY", add = 12, cond = "TIME_OF_DAY", param = 2 },
+        { stat = "ParryingSkill", add = 12, cond = "TIME_OF_DAY", param = 2 },
     },
     [15271] = {
-        { stat = "GAXE", add = 5, cond = "SUBJOB", param = 1 },
+        { stat = "GreatAxeSkill", add = 5, cond = "SUBJOB", param = 1 },
     },
     [15272] = {
-        { stat = "HTH", add = 5, cond = "SUBJOB", param = 2 },
+        { stat = "HandToHandSkill", add = 5, cond = "SUBJOB", param = 2 },
     },
     [15273] = {
-        { stat = "CLUB", add = 5, cond = "SUBJOB", param = 3 },
+        { stat = "ClubSkill", add = 5, cond = "SUBJOB", param = 3 },
     },
     [15274] = {
-        { stat = "STAFF", add = 5, cond = "SUBJOB", param = 4 },
+        { stat = "StaffSkill", add = 5, cond = "SUBJOB", param = 4 },
     },
     [15275] = {
-        { stat = "SWORD", add = 5, cond = "SUBJOB", param = 5 },
+        { stat = "SwordSkill", add = 5, cond = "SUBJOB", param = 5 },
     },
     [15276] = {
-        { stat = "DAGGER", add = 5, cond = "SUBJOB", param = 6 },
+        { stat = "DaggerSkill", add = 5, cond = "SUBJOB", param = 6 },
     },
     [15277] = {
-        { stat = "SHIELD", add = 5, cond = "SUBJOB", param = 7 },
+        { stat = "ShieldSkill", add = 5, cond = "SUBJOB", param = 7 },
     },
     [15278] = {
-        { stat = "SCYTHE", add = 5, cond = "SUBJOB", param = 8 },
+        { stat = "ScytheSkill", add = 5, cond = "SUBJOB", param = 8 },
     },
     [15279] = {
-        { stat = "AXE", add = 5, cond = "SUBJOB", param = 9 },
+        { stat = "AxeSkill", add = 5, cond = "SUBJOB", param = 9 },
     },
     [15280] = {
-        { stat = "SINGING", add = 5, cond = "SUBJOB", param = 10 },
+        { stat = "SingingSkill", add = 5, cond = "SUBJOB", param = 10 },
     },
     [15281] = {
-        { stat = "MARKSMAN", add = 5, cond = "SUBJOB", param = 11 },
+        { stat = "MarksmanshipSkill", add = 5, cond = "SUBJOB", param = 11 },
     },
     [15282] = {
         { stat = "StoreTP", add = 1, cond = "SUBJOB", param = 12 },
@@ -1489,7 +1489,7 @@ return {
         { stat = "DualWield", add = 1, cond = "SUBJOB", param = 13 },
     },
     [15284] = {
-        { stat = "POLEARM", add = 5, cond = "SUBJOB", param = 14 },
+        { stat = "PolearmSkill", add = 5, cond = "SUBJOB", param = 14 },
     },
     [15285] = {
         { stat = "PerpetuationCost", add = 2, cond = "SUBJOB", param = 15 },
@@ -1573,7 +1573,7 @@ return {
         { stat = "Regen", add = 1, cond = "WEAPON_DRAWN_MP_OVER", param = 2 },
     },
     [15557] = {
-        { stat = "DARK", add = 15, cond = "DARKSDAY", param = 0 },
+        { stat = "DarkMagicSkill", add = 15, cond = "DARKSDAY", param = 0 },
         { stat = "MPP", add = -15, cond = "DARKSDAY", param = 0 },
     },
     [15573] = {
@@ -1633,7 +1633,7 @@ return {
     },
     [15809] = {
         { stat = "AGI", add = 6, cond = "IN_ASSAULT", param = 0 },
-        { stat = "SNAPSHOT", add = 1, cond = "IN_ASSAULT", param = 0 },
+        { stat = "Snapshot", add = 1, cond = "IN_ASSAULT", param = 0 },
     },
     [15815] = {
         { stat = "HP", add = 20, cond = "TIME_OF_DAY", param = 0 },
@@ -1682,35 +1682,35 @@ return {
         { stat = "Regen", add = 3, cond = "TIME_OF_DAY", param = 0 },
     },
     [15934] = {
-        { stat = "DARK", add = 18, cond = "STATUS_EFFECT_ACTIVE", param = 267 },
+        { stat = "DarkMagicSkill", add = 18, cond = "STATUS_EFFECT_ACTIVE", param = 267 },
     },
     [15935] = {
-        { stat = "CURE_CAST_TIME", add = 14, cond = "STATUS_EFFECT_ACTIVE", param = 267 },
+        { stat = "CureCastTime", add = 14, cond = "STATUS_EFFECT_ACTIVE", param = 267 },
     },
     [15936] = {
-        { stat = "EARTH_MACC", add = 12, cond = "STATUS_EFFECT_ACTIVE", param = 267 },
+        { stat = "EarthMACC", add = 12, cond = "STATUS_EFFECT_ACTIVE", param = 267 },
     },
     [15946] = {
         { stat = "Haste", add = 6, cond = "WEATHER_ELEMENT", param = 3 },
     },
     [15955] = {
-        { stat = "CRIT_DMG_INCREASE", add = 2, cond = "STATUS_EFFECT_ACTIVE", param = 44 },
-        { stat = "CRIT_DMG_INCREASE", add = 2, cond = "STATUS_EFFECT_ACTIVE", param = 48 },
-        { stat = "CRIT_DMG_INCREASE", add = 2, cond = "STATUS_EFFECT_ACTIVE", param = 49 },
-        { stat = "CRIT_DMG_INCREASE", add = 2, cond = "STATUS_EFFECT_ACTIVE", param = 50 },
-        { stat = "CRIT_DMG_INCREASE", add = 2, cond = "STATUS_EFFECT_ACTIVE", param = 51 },
-        { stat = "CRIT_DMG_INCREASE", add = 2, cond = "STATUS_EFFECT_ACTIVE", param = 52 },
-        { stat = "CRIT_DMG_INCREASE", add = 2, cond = "STATUS_EFFECT_ACTIVE", param = 53 },
-        { stat = "CRIT_DMG_INCREASE", add = 2, cond = "STATUS_EFFECT_ACTIVE", param = 54 },
-        { stat = "CRIT_DMG_INCREASE", add = 2, cond = "STATUS_EFFECT_ACTIVE", param = 126 },
-        { stat = "CRIT_DMG_INCREASE", add = 2, cond = "STATUS_EFFECT_ACTIVE", param = 163 },
-        { stat = "CRIT_DMG_INCREASE", add = 2, cond = "STATUS_EFFECT_ACTIVE", param = 376 },
+        { stat = "CriticalHitDamage", add = 2, cond = "STATUS_EFFECT_ACTIVE", param = 44 },
+        { stat = "CriticalHitDamage", add = 2, cond = "STATUS_EFFECT_ACTIVE", param = 48 },
+        { stat = "CriticalHitDamage", add = 2, cond = "STATUS_EFFECT_ACTIVE", param = 49 },
+        { stat = "CriticalHitDamage", add = 2, cond = "STATUS_EFFECT_ACTIVE", param = 50 },
+        { stat = "CriticalHitDamage", add = 2, cond = "STATUS_EFFECT_ACTIVE", param = 51 },
+        { stat = "CriticalHitDamage", add = 2, cond = "STATUS_EFFECT_ACTIVE", param = 52 },
+        { stat = "CriticalHitDamage", add = 2, cond = "STATUS_EFFECT_ACTIVE", param = 53 },
+        { stat = "CriticalHitDamage", add = 2, cond = "STATUS_EFFECT_ACTIVE", param = 54 },
+        { stat = "CriticalHitDamage", add = 2, cond = "STATUS_EFFECT_ACTIVE", param = 126 },
+        { stat = "CriticalHitDamage", add = 2, cond = "STATUS_EFFECT_ACTIVE", param = 163 },
+        { stat = "CriticalHitDamage", add = 2, cond = "STATUS_EFFECT_ACTIVE", param = 376 },
     },
     [15966] = {
         { stat = "RangedAttack", add = 18, cond = "STATUS_EFFECT_ACTIVE", param = 267 },
     },
     [15967] = {
-        { stat = "LIGHT_MACC", add = 14, cond = "STATUS_EFFECT_ACTIVE", param = 267 },
+        { stat = "LightMACC", add = 14, cond = "STATUS_EFFECT_ACTIVE", param = 267 },
     },
     [15968] = {
         { stat = "Attack", add = 10, cond = "IN_ASSAULT", param = 0 },
@@ -1720,13 +1720,13 @@ return {
         { stat = "MP", add = 15, cond = "IN_ASSAULT", param = 0 },
     },
     [15975] = {
-        { stat = "BLUE", add = 5, cond = "SUBJOB", param = 16 },
+        { stat = "BlueMagicSkill", add = 5, cond = "SUBJOB", param = 16 },
     },
     [15976] = {
         { stat = "RangedAttack", add = 5, cond = "SUBJOB", param = 17 },
     },
     [15977] = {
-        { stat = "GUARD", add = 5, cond = "SUBJOB", param = 18 },
+        { stat = "GuardSkill", add = 5, cond = "SUBJOB", param = 18 },
     },
     [15981] = {
         { stat = "StoreTP", add = 2, cond = "STATUS_EFFECT_ACTIVE", param = 117 },
@@ -1799,7 +1799,7 @@ return {
         { stat = "HMP", add = 1, cond = "JOB_IN_PARTY", param = 20 },
     },
     [16057] = {
-        { stat = "CONSERVE_TP", add = 3, cond = "WEATHER_ELEMENT", param = 8 },
+        { stat = "ConserveTP", add = 3, cond = "WEATHER_ELEMENT", param = 8 },
     },
     [16058] = {
         { stat = "PDT", add = -1, cond = "WEATHER_ELEMENT", param = 7 },
@@ -1807,22 +1807,22 @@ return {
     },
     [16071] = {
         { stat = "CriticalHitRate", add = 5, cond = "STATUS_EFFECT_ACTIVE", param = 5 },
-        { stat = "WSACC", add = 5, cond = "STATUS_EFFECT_ACTIVE", param = 5 },
+        { stat = "WeaponSkillAccuracy", add = 5, cond = "STATUS_EFFECT_ACTIVE", param = 5 },
     },
     [16076] = {
         { stat = "HPP", add = 3, cond = "JOB_MULTIPLE", param = 0 },
         { stat = "MPP", add = 3, cond = "JOB_MULTIPLE", param = 2 },
     },
     [16121] = {
-        { stat = "LIGHT_MEVA", add = 15, cond = "ZONE", param = 54 },
-        { stat = "LIGHT_MEVA", add = 15, cond = "ZONE", param = 62 },
-        { stat = "LIGHT_MEVA", add = 15, cond = "ZONE", param = 65 },
+        { stat = "LightResistance", add = 15, cond = "ZONE", param = 54 },
+        { stat = "LightResistance", add = 15, cond = "ZONE", param = 62 },
+        { stat = "LightResistance", add = 15, cond = "ZONE", param = 65 },
         { stat = "STR", add = 4, cond = "ZONE", param = 54 },
         { stat = "STR", add = 4, cond = "ZONE", param = 62 },
         { stat = "STR", add = 4, cond = "ZONE", param = 65 },
-        { stat = "WIND_MEVA", add = 15, cond = "ZONE", param = 54 },
-        { stat = "WIND_MEVA", add = 15, cond = "ZONE", param = 62 },
-        { stat = "WIND_MEVA", add = 15, cond = "ZONE", param = 65 },
+        { stat = "WindResistance", add = 15, cond = "ZONE", param = 54 },
+        { stat = "WindResistance", add = 15, cond = "ZONE", param = 62 },
+        { stat = "WindResistance", add = 15, cond = "ZONE", param = 65 },
     },
     [16122] = {
         { stat = "HP", add = 32, cond = "ZONE", param = 54 },
@@ -1831,17 +1831,17 @@ return {
         { stat = "VIT", add = 5, cond = "ZONE", param = 54 },
         { stat = "VIT", add = 5, cond = "ZONE", param = 62 },
         { stat = "VIT", add = 5, cond = "ZONE", param = 65 },
-        { stat = "WATER_MEVA", add = -50, cond = "ZONE", param = 54 },
-        { stat = "WATER_MEVA", add = -50, cond = "ZONE", param = 62 },
-        { stat = "WATER_MEVA", add = -50, cond = "ZONE", param = 65 },
+        { stat = "WaterResistance", add = -50, cond = "ZONE", param = 54 },
+        { stat = "WaterResistance", add = -50, cond = "ZONE", param = 62 },
+        { stat = "WaterResistance", add = -50, cond = "ZONE", param = 65 },
     },
     [16123] = {
         { stat = "CHR", add = 7, cond = "ZONE", param = 54 },
         { stat = "CHR", add = 7, cond = "ZONE", param = 62 },
         { stat = "CHR", add = 7, cond = "ZONE", param = 65 },
-        { stat = "POISONRES", add = 2, cond = "ZONE", param = 54 },
-        { stat = "POISONRES", add = 2, cond = "ZONE", param = 62 },
-        { stat = "POISONRES", add = 2, cond = "ZONE", param = 65 },
+        { stat = "ResistPoison", add = 2, cond = "ZONE", param = 54 },
+        { stat = "ResistPoison", add = 2, cond = "ZONE", param = 62 },
+        { stat = "ResistPoison", add = 2, cond = "ZONE", param = 65 },
     },
     [16124] = {
         { stat = "Evasion", add = 2, cond = "ZONE", param = 54 },
@@ -1864,7 +1864,7 @@ return {
         { stat = "PerpetuationCost", add = 2, cond = "PET_ID", param = 13 },
     },
     [16165] = {
-        { stat = "SHIELD", add = 5, cond = "IN_ASSAULT", param = 0 },
+        { stat = "ShieldSkill", add = 5, cond = "IN_ASSAULT", param = 0 },
     },
     [16180] = {
         { stat = "MagicAttackBonus", add = 9, cond = "STATUS_EFFECT_ACTIVE", param = 267 },
@@ -1873,10 +1873,10 @@ return {
         { stat = "DT", add = -10, cond = "STATUS_EFFECT_ACTIVE", param = 267 },
     },
     [16217] = {
-        { stat = "SLEEPRES", add = 5, cond = "SUBJOB", param = 16 },
+        { stat = "ResistSleep", add = 5, cond = "SUBJOB", param = 16 },
     },
     [16218] = {
-        { stat = "PARALYZERES", add = 5, cond = "SUBJOB", param = 17 },
+        { stat = "ResistParalyze", add = 5, cond = "SUBJOB", param = 17 },
     },
     [16219] = {
         { stat = "Enmity", add = -2, cond = "SUBJOB", param = 18 },
@@ -1900,10 +1900,10 @@ return {
         { stat = "HMP", add = 3, cond = "WEATHER_ELEMENT", param = 1 },
     },
     [16258] = {
-        { stat = "ENFEEBLE", add = 18, cond = "STATUS_EFFECT_ACTIVE", param = 267 },
+        { stat = "EnfeeblingMagicSkill", add = 18, cond = "STATUS_EFFECT_ACTIVE", param = 267 },
     },
     [16278] = {
-        { stat = "WIND", add = 5, cond = "STATUS_EFFECT_ACTIVE", param = 267 },
+        { stat = "WindInstrumentSkill", add = 5, cond = "STATUS_EFFECT_ACTIVE", param = 267 },
     },
     [16280] = {
         { stat = "StoreTP", add = 4, cond = "WEATHER_ELEMENT", param = 2 },
@@ -2030,9 +2030,9 @@ return {
         { stat = "STR", add = 2, cond = "NATION_CONTROL", param = 1 },
     },
     [16735] = {
-        { stat = "EARTH_MEVA", add = -10, cond = "WEAPON_BROKEN", param = 0 },
+        { stat = "EarthResistance", add = -10, cond = "WEAPON_BROKEN", param = 0 },
         { stat = "HP", add = -20, cond = "WEAPON_BROKEN", param = 0 },
-        { stat = "WATER_MEVA", add = -10, cond = "WEAPON_BROKEN", param = 0 },
+        { stat = "WaterResistance", add = -10, cond = "WEAPON_BROKEN", param = 0 },
     },
     [16756] = {
         { stat = "Evasion", add = 20, cond = "WINDSDAY", param = 0 },
@@ -2042,26 +2042,26 @@ return {
     },
     [16793] = {
         { stat = "HP", add = -20, cond = "WEAPON_BROKEN", param = 0 },
-        { stat = "LIGHT_MEVA", add = -10, cond = "WEAPON_BROKEN", param = 0 },
-        { stat = "THUNDER_MEVA", add = -10, cond = "WEAPON_BROKEN", param = 0 },
+        { stat = "LightResistance", add = -10, cond = "WEAPON_BROKEN", param = 0 },
+        { stat = "ThunderResistance", add = -10, cond = "WEAPON_BROKEN", param = 0 },
     },
     [16829] = {
-        { stat = "Accuracy", add = 5, cond = "STATUS_EFFECT_ACTIVE", param = 419 },
-        { stat = "Attack", add = 5, cond = "STATUS_EFFECT_ACTIVE", param = 419 },
+        { stat = "Accuracy", add = 5, cond = "RDM_STANCE_AT_LEAST", param = 2 },
+        { stat = "Attack", add = 5, cond = "RDM_STANCE_AT_LEAST", param = 2 },
     },
     [16883] = {
         { stat = "Accuracy", add = 10, cond = "WEATHER_ELEMENT", param = 6 },
     },
     [16892] = {
-        { stat = "DARK_MEVA", add = -10, cond = "WEAPON_BROKEN", param = 0 },
+        { stat = "DarkResistance", add = -10, cond = "WEAPON_BROKEN", param = 0 },
         { stat = "HP", add = -20, cond = "WEAPON_BROKEN", param = 0 },
-        { stat = "WATER_MEVA", add = -10, cond = "WEAPON_BROKEN", param = 0 },
+        { stat = "WaterResistance", add = -10, cond = "WEAPON_BROKEN", param = 0 },
     },
     [16893] = {
         { stat = "DEF", add = 10, cond = "NATION_CITIZEN", param = 0 },
     },
     [16899] = {
-        { stat = "PARRY", add = 5, cond = "SONG_ROLL_ACTIVE", param = 0 },
+        { stat = "ParryingSkill", add = 5, cond = "SONG_ROLL_ACTIVE", param = 0 },
     },
     [16911] = {
         { stat = "DMG_RATING", add = 1, cond = "HP_UNDER_PERCENT", param = 1 },
@@ -2080,7 +2080,7 @@ return {
         { stat = "CriticalHitRate", add = 5, cond = "VS_ECOSYSTEM", param = 16 },
     },
     [16924] = {
-        { stat = "COOK", add = 3, cond = "EQUIPPED_IN_SLOT", param = 0 },
+        { stat = "CookingSkill", add = 3, cond = "EQUIPPED_IN_SLOT", param = 0 },
     },
     [16948] = {
         { stat = "VIT", add = 2, cond = "NATION_CONTROL", param = 1 },
@@ -2089,9 +2089,9 @@ return {
         { stat = "VIT", add = 3, cond = "NATION_CONTROL", param = 1 },
     },
     [16952] = {
-        { stat = "EARTH_MEVA", add = -10, cond = "WEAPON_BROKEN", param = 0 },
+        { stat = "EarthResistance", add = -10, cond = "WEAPON_BROKEN", param = 0 },
         { stat = "HP", add = -20, cond = "WEAPON_BROKEN", param = 0 },
-        { stat = "ICE_MEVA", add = -10, cond = "WEAPON_BROKEN", param = 0 },
+        { stat = "IceResistance", add = -10, cond = "WEAPON_BROKEN", param = 0 },
     },
     [16953] = {
         { stat = "Accuracy", add = 7, cond = "NATION_CITIZEN", param = 0 },
@@ -2134,7 +2134,7 @@ return {
     },
     [17204] = {
         { stat = "DMG_RATING", add = 10, cond = "WINDSDAY", param = 0 },
-        { stat = "WIND_MEVA", add = 15, cond = "WINDSDAY", param = 0 },
+        { stat = "WindResistance", add = 15, cond = "WINDSDAY", param = 0 },
     },
     [17207] = {
         { stat = "DMG_RATING", add = 13, cond = "WEAPON_BROKEN", param = 0 },
@@ -2191,25 +2191,25 @@ return {
         { stat = "MND", add = 2, cond = "NATION_CONTROL", param = 1 },
     },
     [17451] = {
-        { stat = "CRITHITRATE_ONLY_WEP", add = 6, cond = "WEAPON_BROKEN", param = 0 },
+        { stat = "CritRateWeapon", add = 6, cond = "WEAPON_BROKEN", param = 0 },
         { stat = "DMG_RATING", add = 13, cond = "WEAPON_BROKEN", param = 0 },
     },
     [17456] = {
-        { stat = "EARTH_MEVA", add = -10, cond = "WEAPON_BROKEN", param = 0 },
+        { stat = "EarthResistance", add = -10, cond = "WEAPON_BROKEN", param = 0 },
         { stat = "HP", add = -10, cond = "WEAPON_BROKEN", param = 0 },
         { stat = "MP", add = -10, cond = "WEAPON_BROKEN", param = 0 },
-        { stat = "WATER_MEVA", add = -10, cond = "WEAPON_BROKEN", param = 0 },
+        { stat = "WaterResistance", add = -10, cond = "WEAPON_BROKEN", param = 0 },
     },
     [17458] = {
         { stat = "HMP", add = 7, cond = "NATION_CITIZEN", param = 0 },
     },
     [17461] = {
         { stat = "Attack", add = 10, cond = "WEAPON_DRAWN_MP_OVER", param = 0 },
-        { stat = "HEALING", add = 6, cond = "WEAPON_DRAWN_MP_OVER", param = 0 },
+        { stat = "HealingMagicSkill", add = 6, cond = "WEAPON_DRAWN_MP_OVER", param = 0 },
         { stat = "REFRESH_DOWN", add = 4, cond = "WEAPON_DRAWN_MP_OVER", param = 0 },
     },
     [17465] = {
-        { stat = "FIRE_MEVA", add = 15, cond = "FIRESDAY", param = 0 },
+        { stat = "FireResistance", add = 15, cond = "FIRESDAY", param = 0 },
         { stat = "INT", add = 9, cond = "FIRESDAY", param = 0 },
         { stat = "MND", add = 9, cond = "FIRESDAY", param = 0 },
     },
@@ -2227,18 +2227,18 @@ return {
         { stat = "CHR", add = 4, cond = "NATION_CONTROL", param = 1 },
     },
     [17507] = {
-        { stat = "EARTH_MEVA", add = -10, cond = "WEAPON_BROKEN", param = 0 },
+        { stat = "EarthResistance", add = -10, cond = "WEAPON_BROKEN", param = 0 },
         { stat = "HP", add = -20, cond = "WEAPON_BROKEN", param = 0 },
-        { stat = "WATER_MEVA", add = -10, cond = "WEAPON_BROKEN", param = 0 },
+        { stat = "WaterResistance", add = -10, cond = "WEAPON_BROKEN", param = 0 },
     },
     [17509] = {
-        { stat = "CRITHITRATE_ONLY_WEP", add = 6, cond = "WEAPON_BROKEN", param = 0 },
+        { stat = "CritRateWeapon", add = 6, cond = "WEAPON_BROKEN", param = 0 },
         { stat = "DMG_RATING", add = 13, cond = "WEAPON_BROKEN", param = 0 },
     },
     [17527] = {
-        { stat = "FIRE_MEVA", add = -10, cond = "WEAPON_BROKEN", param = 0 },
+        { stat = "FireResistance", add = -10, cond = "WEAPON_BROKEN", param = 0 },
         { stat = "HP", add = -10, cond = "WEAPON_BROKEN", param = 0 },
-        { stat = "LIGHT_MEVA", add = -10, cond = "WEAPON_BROKEN", param = 0 },
+        { stat = "LightResistance", add = -10, cond = "WEAPON_BROKEN", param = 0 },
         { stat = "MP", add = -10, cond = "WEAPON_BROKEN", param = 0 },
     },
     [17529] = {
@@ -2253,12 +2253,12 @@ return {
         { stat = "MP", add = 12, cond = "NATION_CONTROL", param = 1 },
     },
     [17581] = {
-        { stat = "DIVINE", add = 13, cond = "WINDSDAY", param = 0 },
-        { stat = "ELEM", add = 13, cond = "WINDSDAY", param = 0 },
-        { stat = "WIND_MEVA", add = 15, cond = "WINDSDAY", param = 0 },
+        { stat = "DivineMagicSkill", add = 13, cond = "WINDSDAY", param = 0 },
+        { stat = "ElementalMagicSkill", add = 13, cond = "WINDSDAY", param = 0 },
+        { stat = "WindResistance", add = 15, cond = "WINDSDAY", param = 0 },
     },
     [17589] = {
-        { stat = "CRITHITRATE_ONLY_WEP", add = 6, cond = "WEAPON_BROKEN", param = 0 },
+        { stat = "CritRateWeapon", add = 6, cond = "WEAPON_BROKEN", param = 0 },
         { stat = "DMG_RATING", add = 13, cond = "WEAPON_BROKEN", param = 0 },
     },
     [17590] = {
@@ -2280,12 +2280,12 @@ return {
         { stat = "DELAY", add = -1383, cond = "FOOD_ACTIVE", param = 4596 },
     },
     [17599] = {
-        { stat = "ENH_DRAIN_ASPIR", add = 25, cond = "WEATHER_ELEMENT", param = 8 },
+        { stat = "DrainAspirPotency", add = 25, cond = "WEATHER_ELEMENT", param = 8 },
     },
     [17616] = {
-        { stat = "EARTH_MEVA", add = -10, cond = "WEAPON_BROKEN", param = 0 },
+        { stat = "EarthResistance", add = -10, cond = "WEAPON_BROKEN", param = 0 },
         { stat = "HP", add = -20, cond = "WEAPON_BROKEN", param = 0 },
-        { stat = "ICE_MEVA", add = -10, cond = "WEAPON_BROKEN", param = 0 },
+        { stat = "IceResistance", add = -10, cond = "WEAPON_BROKEN", param = 0 },
     },
     [17619] = {
         { stat = "Accuracy", add = 12, cond = "TIME_OF_DAY", param = 0 },
@@ -2297,9 +2297,9 @@ return {
         { stat = "Accuracy", add = 12, cond = "TIME_OF_DAY", param = 1 },
     },
     [17654] = {
-        { stat = "FIRE_MEVA", add = -10, cond = "WEAPON_BROKEN", param = 0 },
+        { stat = "FireResistance", add = -10, cond = "WEAPON_BROKEN", param = 0 },
         { stat = "HP", add = -20, cond = "WEAPON_BROKEN", param = 0 },
-        { stat = "WIND_MEVA", add = -10, cond = "WEAPON_BROKEN", param = 0 },
+        { stat = "WindResistance", add = -10, cond = "WEAPON_BROKEN", param = 0 },
     },
     [17661] = {
         { stat = "DMG_RATING", add = 4, cond = "IN_ASSAULT", param = 0 },
@@ -2361,10 +2361,10 @@ return {
     },
     [17697] = {
         { stat = "DMG_RATING", add = 8, cond = "WINDSDAY", param = 0 },
-        { stat = "WIND_MEVA", add = 15, cond = "WINDSDAY", param = 0 },
+        { stat = "WindResistance", add = 15, cond = "WINDSDAY", param = 0 },
     },
     [17699] = {
-        { stat = "CRITHITRATE_ONLY_WEP", add = 6, cond = "WEAPON_BROKEN", param = 0 },
+        { stat = "CritRateWeapon", add = 6, cond = "WEAPON_BROKEN", param = 0 },
         { stat = "DMG_RATING", add = 13, cond = "WEAPON_BROKEN", param = 0 },
     },
     [17711] = {
@@ -2405,7 +2405,7 @@ return {
         { stat = "DMG_RATING", add = 6, cond = "EQUIPPED_IN_SLOT", param = 0 },
     },
     [17764] = {
-        { stat = "ALCHEMY", add = 1, cond = "SYNTH_TRAINEE", param = 55 },
+        { stat = "AlchemySkill", add = 1, cond = "SYNTH_TRAINEE", param = 55 },
     },
     [17766] = {
         { stat = "VIT", add = 2, cond = "PARTY_MEMBERS_IN_ZONE", param = 3 },
@@ -2414,9 +2414,9 @@ return {
         { stat = "VIT", add = 2, cond = "PARTY_MEMBERS_IN_ZONE", param = 6 },
     },
     [17773] = {
-        { stat = "FIRE_MEVA", add = -10, cond = "WEAPON_BROKEN", param = 0 },
+        { stat = "FireResistance", add = -10, cond = "WEAPON_BROKEN", param = 0 },
         { stat = "HP", add = -20, cond = "WEAPON_BROKEN", param = 0 },
-        { stat = "LIGHT_MEVA", add = -10, cond = "WEAPON_BROKEN", param = 0 },
+        { stat = "LightResistance", add = -10, cond = "WEAPON_BROKEN", param = 0 },
     },
     [17788] = {
         { stat = "Enmity", add = 1, cond = "DARKSDAY", param = 0 },
@@ -2424,10 +2424,10 @@ return {
     },
     [17791] = {
         { stat = "DMG_RATING", add = 7, cond = "FIRESDAY", param = 0 },
-        { stat = "FIRE_MEVA", add = 15, cond = "FIRESDAY", param = 0 },
+        { stat = "FireResistance", add = 15, cond = "FIRESDAY", param = 0 },
     },
     [17793] = {
-        { stat = "CRITHITRATE_ONLY_WEP", add = 6, cond = "WEAPON_BROKEN", param = 0 },
+        { stat = "CritRateWeapon", add = 6, cond = "WEAPON_BROKEN", param = 0 },
         { stat = "DMG_RATING", add = 13, cond = "WEAPON_BROKEN", param = 0 },
     },
     [17804] = {
@@ -2440,16 +2440,16 @@ return {
         { stat = "Attack", add = 10, cond = "WEATHER_ELEMENT", param = 5 },
     },
     [17815] = {
-        { stat = "DARK_MEVA", add = -10, cond = "WEAPON_BROKEN", param = 0 },
+        { stat = "DarkResistance", add = -10, cond = "WEAPON_BROKEN", param = 0 },
         { stat = "HP", add = -20, cond = "WEAPON_BROKEN", param = 0 },
-        { stat = "ICE_MEVA", add = -10, cond = "WEAPON_BROKEN", param = 0 },
+        { stat = "IceResistance", add = -10, cond = "WEAPON_BROKEN", param = 0 },
     },
     [17824] = {
         { stat = "DMG_RATING", add = 10, cond = "FIRESDAY", param = 0 },
-        { stat = "FIRE_MEVA", add = 15, cond = "FIRESDAY", param = 0 },
+        { stat = "FireResistance", add = 15, cond = "FIRESDAY", param = 0 },
     },
     [17827] = {
-        { stat = "CRITHITRATE_ONLY_WEP", add = 6, cond = "WEAPON_BROKEN", param = 0 },
+        { stat = "CritRateWeapon", add = 6, cond = "WEAPON_BROKEN", param = 0 },
         { stat = "DMG_RATING", add = 13, cond = "WEAPON_BROKEN", param = 0 },
     },
     [17831] = {
@@ -2457,10 +2457,10 @@ return {
         { stat = "Regen", add = 1, cond = "STATUS_EFFECT_ACTIVE", param = 19 },
     },
     [17843] = {
-        { stat = "WIND", add = 3, cond = "NATION_CONTROL", param = 1 },
+        { stat = "WindInstrumentSkill", add = 3, cond = "NATION_CONTROL", param = 1 },
     },
     [17851] = {
-        { stat = "BALLAD_EFFECT", add = 1, cond = "IN_ASSAULT", param = 0 },
+        { stat = "BalladEffect", add = 1, cond = "IN_ASSAULT", param = 0 },
     },
     [17931] = {
         { stat = "DEX", add = 2, cond = "NATION_CONTROL", param = 1 },
@@ -2470,18 +2470,18 @@ return {
     },
     [17933] = {
         { stat = "HP", add = -20, cond = "WEAPON_BROKEN", param = 0 },
-        { stat = "THUNDER_MEVA", add = -10, cond = "WEAPON_BROKEN", param = 0 },
-        { stat = "WIND_MEVA", add = -10, cond = "WEAPON_BROKEN", param = 0 },
+        { stat = "ThunderResistance", add = -10, cond = "WEAPON_BROKEN", param = 0 },
+        { stat = "WindResistance", add = -10, cond = "WEAPON_BROKEN", param = 0 },
     },
     [17934] = {
         { stat = "Attack", add = 10, cond = "NATION_CITIZEN", param = 0 },
     },
     [17941] = {
         { stat = "DMG_RATING", add = 5, cond = "WINDSDAY", param = 0 },
-        { stat = "WIND_MEVA", add = 15, cond = "WINDSDAY", param = 0 },
+        { stat = "WindResistance", add = 15, cond = "WINDSDAY", param = 0 },
     },
     [17944] = {
-        { stat = "CRITHITRATE_ONLY_WEP", add = 6, cond = "WEAPON_BROKEN", param = 0 },
+        { stat = "CritRateWeapon", add = 6, cond = "WEAPON_BROKEN", param = 0 },
         { stat = "DMG_RATING", add = 13, cond = "WEAPON_BROKEN", param = 0 },
     },
     [17946] = {
@@ -2494,7 +2494,7 @@ return {
         { stat = "RangedAttack", add = 3, cond = "NATION_CONTROL", param = 0 },
     },
     [17950] = {
-        { stat = "CHARM_CHANCE", add = 2, cond = "IN_ASSAULT", param = 0 },
+        { stat = "CharmChance", add = 2, cond = "IN_ASSAULT", param = 0 },
         { stat = "DMG_RATING", add = 4, cond = "IN_ASSAULT", param = 0 },
     },
     [17952] = {
@@ -2555,10 +2555,10 @@ return {
     },
     [18000] = {
         { stat = "DMG_RATING", add = 10, cond = "WINDSDAY", param = 0 },
-        { stat = "WIND_MEVA", add = 15, cond = "WINDSDAY", param = 0 },
+        { stat = "WindResistance", add = 15, cond = "WINDSDAY", param = 0 },
     },
     [18005] = {
-        { stat = "CRITHITRATE_ONLY_WEP", add = 6, cond = "WEAPON_BROKEN", param = 0 },
+        { stat = "CritRateWeapon", add = 6, cond = "WEAPON_BROKEN", param = 0 },
         { stat = "DMG_RATING", add = 15, cond = "WEAPON_BROKEN", param = 0 },
     },
     [18015] = {
@@ -2577,10 +2577,10 @@ return {
     },
     [18049] = {
         { stat = "DMG_RATING", add = 8, cond = "WINDSDAY", param = 0 },
-        { stat = "WIND_MEVA", add = 15, cond = "WINDSDAY", param = 0 },
+        { stat = "WindResistance", add = 15, cond = "WINDSDAY", param = 0 },
     },
     [18053] = {
-        { stat = "CRITHITRATE_ONLY_WEP", add = 6, cond = "WEAPON_BROKEN", param = 0 },
+        { stat = "CritRateWeapon", add = 6, cond = "WEAPON_BROKEN", param = 0 },
         { stat = "DMG_RATING", add = 13, cond = "WEAPON_BROKEN", param = 0 },
     },
     [18063] = {
@@ -2612,10 +2612,10 @@ return {
     },
     [18091] = {
         { stat = "DMG_RATING", add = 12, cond = "FIRESDAY", param = 0 },
-        { stat = "FIRE_MEVA", add = 15, cond = "FIRESDAY", param = 0 },
+        { stat = "FireResistance", add = 15, cond = "FIRESDAY", param = 0 },
     },
     [18097] = {
-        { stat = "CRITHITRATE_ONLY_WEP", add = 6, cond = "WEAPON_BROKEN", param = 0 },
+        { stat = "CritRateWeapon", add = 6, cond = "WEAPON_BROKEN", param = 0 },
         { stat = "DMG_RATING", add = 13, cond = "WEAPON_BROKEN", param = 0 },
     },
     [18099] = {
@@ -2658,13 +2658,13 @@ return {
     },
     [18144] = {
         { stat = "HP", add = -20, cond = "WEAPON_BROKEN", param = 0 },
-        { stat = "THUNDER_MEVA", add = -10, cond = "WEAPON_BROKEN", param = 0 },
-        { stat = "WIND_MEVA", add = -10, cond = "WEAPON_BROKEN", param = 0 },
+        { stat = "ThunderResistance", add = -10, cond = "WEAPON_BROKEN", param = 0 },
+        { stat = "WindResistance", add = -10, cond = "WEAPON_BROKEN", param = 0 },
     },
     [18146] = {
-        { stat = "EARTH_MEVA", add = -10, cond = "WEAPON_BROKEN", param = 0 },
+        { stat = "EarthResistance", add = -10, cond = "WEAPON_BROKEN", param = 0 },
         { stat = "HP", add = -20, cond = "WEAPON_BROKEN", param = 0 },
-        { stat = "WATER_MEVA", add = -10, cond = "WEAPON_BROKEN", param = 0 },
+        { stat = "WaterResistance", add = -10, cond = "WEAPON_BROKEN", param = 0 },
     },
     [18165] = {
         { stat = "Evasion", add = 10, cond = "TIME_OF_DAY", param = 1 },
@@ -2677,10 +2677,10 @@ return {
     },
     [18213] = {
         { stat = "DMG_RATING", add = 10, cond = "FIRESDAY", param = 0 },
-        { stat = "FIRE_MEVA", add = 15, cond = "FIRESDAY", param = 0 },
+        { stat = "FireResistance", add = 15, cond = "FIRESDAY", param = 0 },
     },
     [18217] = {
-        { stat = "CRITHITRATE_ONLY_WEP", add = 6, cond = "WEAPON_BROKEN", param = 0 },
+        { stat = "CritRateWeapon", add = 6, cond = "WEAPON_BROKEN", param = 0 },
         { stat = "DMG_RATING", add = 13, cond = "WEAPON_BROKEN", param = 0 },
     },
     [18256] = {
@@ -2690,173 +2690,173 @@ return {
     },
     [18261] = {
         { stat = "DMG_RATING", add = 15, cond = "IN_DYNAMIS", param = 0 },
-        { stat = "WATER_MEVA", add = 7, cond = "IN_DYNAMIS", param = 0 },
+        { stat = "WaterResistance", add = 7, cond = "IN_DYNAMIS", param = 0 },
     },
     [18262] = {
         { stat = "DMG_RATING", add = 2, cond = "IN_DYNAMIS", param = 0 },
-        { stat = "WATER_MEVA", add = 9, cond = "IN_DYNAMIS", param = 0 },
+        { stat = "WaterResistance", add = 9, cond = "IN_DYNAMIS", param = 0 },
     },
     [18263] = {
         { stat = "ADDS_WEAPONSKILL", add = 10, cond = "IN_DYNAMIS", param = 0 },
     },
     [18267] = {
-        { stat = "DARK_MEVA", add = 7, cond = "IN_DYNAMIS", param = 0 },
         { stat = "DMG_RATING", add = 22, cond = "IN_DYNAMIS", param = 0 },
+        { stat = "DarkResistance", add = 7, cond = "IN_DYNAMIS", param = 0 },
     },
     [18268] = {
-        { stat = "DARK_MEVA", add = 9, cond = "IN_DYNAMIS", param = 0 },
         { stat = "DMG_RATING", add = 3, cond = "IN_DYNAMIS", param = 0 },
+        { stat = "DarkResistance", add = 9, cond = "IN_DYNAMIS", param = 0 },
     },
     [18269] = {
         { stat = "ADDS_WEAPONSKILL", add = 26, cond = "IN_DYNAMIS", param = 0 },
     },
     [18273] = {
         { stat = "DMG_RATING", add = 39, cond = "IN_DYNAMIS", param = 0 },
-        { stat = "THUNDER_MEVA", add = 7, cond = "IN_DYNAMIS", param = 0 },
+        { stat = "ThunderResistance", add = 7, cond = "IN_DYNAMIS", param = 0 },
     },
     [18274] = {
         { stat = "DMG_RATING", add = 8, cond = "IN_DYNAMIS", param = 0 },
-        { stat = "THUNDER_MEVA", add = 9, cond = "IN_DYNAMIS", param = 0 },
+        { stat = "ThunderResistance", add = 9, cond = "IN_DYNAMIS", param = 0 },
     },
     [18275] = {
         { stat = "ADDS_WEAPONSKILL", add = 43, cond = "IN_DYNAMIS", param = 0 },
     },
     [18279] = {
         { stat = "DMG_RATING", add = 79, cond = "IN_DYNAMIS", param = 0 },
-        { stat = "WIND_MEVA", add = 7, cond = "IN_DYNAMIS", param = 0 },
+        { stat = "WindResistance", add = 7, cond = "IN_DYNAMIS", param = 0 },
     },
     [18280] = {
         { stat = "DMG_RATING", add = 5, cond = "IN_DYNAMIS", param = 0 },
-        { stat = "WIND_MEVA", add = 9, cond = "IN_DYNAMIS", param = 0 },
+        { stat = "WindResistance", add = 9, cond = "IN_DYNAMIS", param = 0 },
     },
     [18281] = {
         { stat = "ADDS_WEAPONSKILL", add = 57, cond = "IN_DYNAMIS", param = 0 },
     },
     [18285] = {
         { stat = "DMG_RATING", add = 45, cond = "IN_DYNAMIS", param = 0 },
-        { stat = "LIGHT_MEVA", add = 7, cond = "IN_DYNAMIS", param = 0 },
+        { stat = "LightResistance", add = 7, cond = "IN_DYNAMIS", param = 0 },
     },
     [18286] = {
         { stat = "DMG_RATING", add = 4, cond = "IN_DYNAMIS", param = 0 },
-        { stat = "LIGHT_MEVA", add = 9, cond = "IN_DYNAMIS", param = 0 },
+        { stat = "LightResistance", add = 9, cond = "IN_DYNAMIS", param = 0 },
     },
     [18287] = {
         { stat = "ADDS_WEAPONSKILL", add = 73, cond = "IN_DYNAMIS", param = 0 },
     },
     [18291] = {
         { stat = "DMG_RATING", add = 86, cond = "IN_DYNAMIS", param = 0 },
-        { stat = "LIGHT_MEVA", add = 7, cond = "IN_DYNAMIS", param = 0 },
+        { stat = "LightResistance", add = 7, cond = "IN_DYNAMIS", param = 0 },
     },
     [18292] = {
         { stat = "DMG_RATING", add = 4, cond = "IN_DYNAMIS", param = 0 },
-        { stat = "LIGHT_MEVA", add = 9, cond = "IN_DYNAMIS", param = 0 },
+        { stat = "LightResistance", add = 9, cond = "IN_DYNAMIS", param = 0 },
     },
     [18293] = {
         { stat = "ADDS_WEAPONSKILL", add = 89, cond = "IN_DYNAMIS", param = 0 },
     },
     [18297] = {
         { stat = "DMG_RATING", add = 81, cond = "IN_DYNAMIS", param = 0 },
-        { stat = "EARTH_MEVA", add = 7, cond = "IN_DYNAMIS", param = 0 },
+        { stat = "EarthResistance", add = 7, cond = "IN_DYNAMIS", param = 0 },
     },
     [18298] = {
         { stat = "DMG_RATING", add = 2, cond = "IN_DYNAMIS", param = 0 },
-        { stat = "EARTH_MEVA", add = 9, cond = "IN_DYNAMIS", param = 0 },
+        { stat = "EarthResistance", add = 9, cond = "IN_DYNAMIS", param = 0 },
     },
     [18299] = {
         { stat = "ADDS_WEAPONSKILL", add = 121, cond = "IN_DYNAMIS", param = 0 },
     },
     [18303] = {
         { stat = "DMG_RATING", add = 81, cond = "IN_DYNAMIS", param = 0 },
-        { stat = "ICE_MEVA", add = 7, cond = "IN_DYNAMIS", param = 0 },
+        { stat = "IceResistance", add = 7, cond = "IN_DYNAMIS", param = 0 },
     },
     [18304] = {
         { stat = "DMG_RATING", add = 3, cond = "IN_DYNAMIS", param = 0 },
-        { stat = "ICE_MEVA", add = 9, cond = "IN_DYNAMIS", param = 0 },
+        { stat = "IceResistance", add = 9, cond = "IN_DYNAMIS", param = 0 },
     },
     [18305] = {
         { stat = "ADDS_WEAPONSKILL", add = 105, cond = "IN_DYNAMIS", param = 0 },
     },
     [18309] = {
-        { stat = "DARK_MEVA", add = 7, cond = "IN_DYNAMIS", param = 0 },
         { stat = "DMG_RATING", add = 32, cond = "IN_DYNAMIS", param = 0 },
+        { stat = "DarkResistance", add = 7, cond = "IN_DYNAMIS", param = 0 },
     },
     [18310] = {
-        { stat = "DARK_MEVA", add = 9, cond = "IN_DYNAMIS", param = 0 },
         { stat = "DMG_RATING", add = 7, cond = "IN_DYNAMIS", param = 0 },
+        { stat = "DarkResistance", add = 9, cond = "IN_DYNAMIS", param = 0 },
     },
     [18311] = {
         { stat = "ADDS_WEAPONSKILL", add = 137, cond = "IN_DYNAMIS", param = 0 },
     },
     [18315] = {
         { stat = "DMG_RATING", add = 75, cond = "IN_DYNAMIS", param = 0 },
-        { stat = "WIND_MEVA", add = 7, cond = "IN_DYNAMIS", param = 0 },
+        { stat = "WindResistance", add = 7, cond = "IN_DYNAMIS", param = 0 },
     },
     [18316] = {
         { stat = "DMG_RATING", add = 3, cond = "IN_DYNAMIS", param = 0 },
-        { stat = "WIND_MEVA", add = 9, cond = "IN_DYNAMIS", param = 0 },
+        { stat = "WindResistance", add = 9, cond = "IN_DYNAMIS", param = 0 },
     },
     [18317] = {
         { stat = "ADDS_WEAPONSKILL", add = 153, cond = "IN_DYNAMIS", param = 0 },
     },
     [18321] = {
         { stat = "DMG_RATING", add = 28, cond = "IN_DYNAMIS", param = 0 },
-        { stat = "THUNDER_MEVA", add = 7, cond = "IN_DYNAMIS", param = 0 },
+        { stat = "ThunderResistance", add = 7, cond = "IN_DYNAMIS", param = 0 },
     },
     [18322] = {
         { stat = "DMG_RATING", add = 5, cond = "IN_DYNAMIS", param = 0 },
-        { stat = "THUNDER_MEVA", add = 9, cond = "IN_DYNAMIS", param = 0 },
+        { stat = "ThunderResistance", add = 9, cond = "IN_DYNAMIS", param = 0 },
     },
     [18323] = {
         { stat = "ADDS_WEAPONSKILL", add = 170, cond = "IN_DYNAMIS", param = 0 },
     },
     [18327] = {
         { stat = "DMG_RATING", add = 54, cond = "IN_DYNAMIS", param = 0 },
-        { stat = "FIRE_MEVA", add = 7, cond = "IN_DYNAMIS", param = 0 },
+        { stat = "FireResistance", add = 7, cond = "IN_DYNAMIS", param = 0 },
     },
     [18328] = {
         { stat = "DMG_RATING", add = 3, cond = "IN_DYNAMIS", param = 0 },
-        { stat = "FIRE_MEVA", add = 9, cond = "IN_DYNAMIS", param = 0 },
+        { stat = "FireResistance", add = 9, cond = "IN_DYNAMIS", param = 0 },
     },
     [18329] = {
         { stat = "ADDS_WEAPONSKILL", add = 185, cond = "IN_DYNAMIS", param = 0 },
     },
     [18333] = {
         { stat = "DMG_RATING", add = 38, cond = "IN_DYNAMIS", param = 0 },
-        { stat = "FIRE_MEVA", add = 7, cond = "IN_DYNAMIS", param = 0 },
+        { stat = "FireResistance", add = 7, cond = "IN_DYNAMIS", param = 0 },
     },
     [18334] = {
         { stat = "DMG_RATING", add = 3, cond = "IN_DYNAMIS", param = 0 },
-        { stat = "FIRE_MEVA", add = 9, cond = "IN_DYNAMIS", param = 0 },
+        { stat = "FireResistance", add = 9, cond = "IN_DYNAMIS", param = 0 },
     },
     [18335] = {
         { stat = "ADDS_WEAPONSKILL", add = 216, cond = "IN_DYNAMIS", param = 0 },
     },
     [18339] = {
         { stat = "CHR", add = 1, cond = "IN_DYNAMIS", param = 0 },
-        { stat = "ICE_MEVA", add = 7, cond = "IN_DYNAMIS", param = 0 },
+        { stat = "IceResistance", add = 7, cond = "IN_DYNAMIS", param = 0 },
     },
     [18340] = {
         { stat = "CHR", add = 2, cond = "IN_DYNAMIS", param = 0 },
-        { stat = "ICE_MEVA", add = 9, cond = "IN_DYNAMIS", param = 0 },
+        { stat = "IceResistance", add = 9, cond = "IN_DYNAMIS", param = 0 },
     },
     [18341] = {
-        { stat = "ALL_SONGS_EFFECT", add = 2, cond = "IN_DYNAMIS", param = 0 },
+        { stat = "AllSongsEffect", add = 2, cond = "IN_DYNAMIS", param = 0 },
         { stat = "CHR", add = 3, cond = "IN_DYNAMIS", param = 0 },
     },
     [18345] = {
         { stat = "DMG_RATING", add = 67, cond = "IN_DYNAMIS", param = 0 },
-        { stat = "WATER_MEVA", add = 7, cond = "IN_DYNAMIS", param = 0 },
+        { stat = "WaterResistance", add = 7, cond = "IN_DYNAMIS", param = 0 },
     },
     [18346] = {
         { stat = "DMG_RATING", add = 3, cond = "IN_DYNAMIS", param = 0 },
-        { stat = "WATER_MEVA", add = 9, cond = "IN_DYNAMIS", param = 0 },
+        { stat = "WaterResistance", add = 9, cond = "IN_DYNAMIS", param = 0 },
     },
     [18347] = {
         { stat = "ADDS_WEAPONSKILL", add = 200, cond = "IN_DYNAMIS", param = 0 },
     },
     [18352] = {
         { stat = "DMG_RATING", add = 5, cond = "FIRESDAY", param = 0 },
-        { stat = "FIRE_MEVA", add = 15, cond = "FIRESDAY", param = 0 },
+        { stat = "FireResistance", add = 15, cond = "FIRESDAY", param = 0 },
     },
     [18358] = {
         { stat = "Accuracy", add = 5, cond = "TP_UNDER", param = 1000 },
@@ -2869,10 +2869,10 @@ return {
     },
     [18374] = {
         { stat = "DMG_RATING", add = 9, cond = "FIRESDAY", param = 0 },
-        { stat = "FIRE_MEVA", add = 15, cond = "FIRESDAY", param = 0 },
+        { stat = "FireResistance", add = 15, cond = "FIRESDAY", param = 0 },
     },
     [18378] = {
-        { stat = "CRITHITRATE_ONLY_WEP", add = 6, cond = "WEAPON_BROKEN", param = 0 },
+        { stat = "CritRateWeapon", add = 6, cond = "WEAPON_BROKEN", param = 0 },
         { stat = "DMG_RATING", add = 13, cond = "WEAPON_BROKEN", param = 0 },
     },
     [18387] = {
@@ -2899,10 +2899,10 @@ return {
         { stat = "SubtleBlow", add = 1, cond = "IN_ASSAULT", param = 0 },
     },
     [18422] = {
-        { stat = "ATTP", add = 1, cond = "STATUS_EFFECT_ACTIVE", param = 66 },
-        { stat = "ATTP", add = 1, cond = "STATUS_EFFECT_ACTIVE", param = 444 },
-        { stat = "ATTP", add = 1, cond = "STATUS_EFFECT_ACTIVE", param = 445 },
-        { stat = "ATTP", add = 1, cond = "STATUS_EFFECT_ACTIVE", param = 446 },
+        { stat = "AttackPct", add = 1, cond = "STATUS_EFFECT_ACTIVE", param = 66 },
+        { stat = "AttackPct", add = 1, cond = "STATUS_EFFECT_ACTIVE", param = 444 },
+        { stat = "AttackPct", add = 1, cond = "STATUS_EFFECT_ACTIVE", param = 445 },
+        { stat = "AttackPct", add = 1, cond = "STATUS_EFFECT_ACTIVE", param = 446 },
     },
     [18425] = {
         { stat = "Accuracy", add = 5, cond = "TP_UNDER", param = 1000 },
@@ -2935,7 +2935,7 @@ return {
         { stat = "MAX_SWINGS", add = 2, cond = "STATUS_EFFECT_ACTIVE", param = 267 },
     },
     [18502] = {
-        { stat = "WOOD", add = 1, cond = "SYNTH_TRAINEE", param = 49 },
+        { stat = "WoodworkingSkill", add = 1, cond = "SYNTH_TRAINEE", param = 49 },
     },
     [18504] = {
         { stat = "CriticalHitRate", add = 7, cond = "VS_ECOSYSTEM", param = 16 },
@@ -3015,7 +3015,7 @@ return {
         { stat = "MagicAccuracy", add = 13, cond = "STATUS_EFFECT_ACTIVE", param = 267 },
     },
     [18735] = {
-        { stat = "WALTZ_POTENCY", add = 9, cond = "STATUS_EFFECT_ACTIVE", param = 267 },
+        { stat = "WaltzPotency", add = 9, cond = "STATUS_EFFECT_ACTIVE", param = 267 },
     },
     [18741] = {
         { stat = "Accuracy", add = 10, cond = "PET_ID", param = 4 },
@@ -3029,7 +3029,7 @@ return {
         { stat = "STR", add = 3, cond = "MOON_PHASE", param = 4 },
     },
     [18763] = {
-        { stat = "CLOTH", add = 1, cond = "SYNTH_TRAINEE", param = 52 },
+        { stat = "ClothcraftSkill", add = 1, cond = "SYNTH_TRAINEE", param = 52 },
     },
     [18767] = {
         { stat = "Accuracy", add = 3, cond = "VS_ECOSYSTEM", param = 7 },
@@ -3056,7 +3056,7 @@ return {
         { stat = "MAX_SWINGS", add = 6, cond = "JOB_MULTIPLE", param = 8 },
     },
     [18855] = {
-        { stat = "SMITH", add = 1, cond = "SYNTH_TRAINEE", param = 50 },
+        { stat = "SmithingSkill", add = 1, cond = "SYNTH_TRAINEE", param = 50 },
     },
     [18859] = {
         { stat = "Regen", add = 3, cond = "HP_UNDER_PERCENT", param = 50 },
@@ -3104,8 +3104,8 @@ return {
         { stat = "DoubleAttack", add = 3, cond = "STATUS_EFFECT_ACTIVE", param = 56 },
     },
     [18992] = {
-        { stat = "ATTP", add = 5, cond = "STATUS_EFFECT_ACTIVE", param = 59 },
         { stat = "Accuracy", add = 5, cond = "STATUS_EFFECT_ACTIVE", param = 59 },
+        { stat = "AttackPct", add = 5, cond = "STATUS_EFFECT_ACTIVE", param = 59 },
         { stat = "CriticalHitRate", add = 3, cond = "STATUS_EFFECT_ACTIVE", param = 59 },
         { stat = "Evasion", add = 5, cond = "STATUS_EFFECT_ACTIVE", param = 60 },
         { stat = "GUARD_PERCENT", add = 5, cond = "STATUS_EFFECT_ACTIVE", param = 60 },
@@ -3121,8 +3121,8 @@ return {
         { stat = "DoubleAttack", add = 3, cond = "STATUS_EFFECT_ACTIVE", param = 56 },
     },
     [19061] = {
-        { stat = "ATTP", add = 5, cond = "STATUS_EFFECT_ACTIVE", param = 59 },
         { stat = "Accuracy", add = 10, cond = "STATUS_EFFECT_ACTIVE", param = 59 },
+        { stat = "AttackPct", add = 5, cond = "STATUS_EFFECT_ACTIVE", param = 59 },
         { stat = "CriticalHitRate", add = 3, cond = "STATUS_EFFECT_ACTIVE", param = 59 },
         { stat = "Evasion", add = 10, cond = "STATUS_EFFECT_ACTIVE", param = 60 },
         { stat = "GUARD_PERCENT", add = 5, cond = "STATUS_EFFECT_ACTIVE", param = 60 },
@@ -3132,20 +3132,20 @@ return {
         { stat = "DoubleAttack", add = 3, cond = "STATUS_EFFECT_ACTIVE", param = 56 },
     },
     [19081] = {
-        { stat = "ATTP", add = 5, cond = "STATUS_EFFECT_ACTIVE", param = 59 },
         { stat = "Accuracy", add = 20, cond = "STATUS_EFFECT_ACTIVE", param = 59 },
+        { stat = "AttackPct", add = 5, cond = "STATUS_EFFECT_ACTIVE", param = 59 },
         { stat = "CriticalHitRate", add = 3, cond = "STATUS_EFFECT_ACTIVE", param = 59 },
         { stat = "Evasion", add = 20, cond = "STATUS_EFFECT_ACTIVE", param = 60 },
         { stat = "GUARD_PERCENT", add = 5, cond = "STATUS_EFFECT_ACTIVE", param = 60 },
     },
     [19101] = {
-        { stat = "COOK", add = 1, cond = "SYNTH_TRAINEE", param = 56 },
+        { stat = "CookingSkill", add = 1, cond = "SYNTH_TRAINEE", param = 56 },
     },
     [19108] = {
         { stat = "DMG_RATING", add = 5, cond = "HP_UNDER_PERCENT", param = 75 },
     },
     [19110] = {
-        { stat = "LEATHER", add = 1, cond = "SYNTH_TRAINEE", param = 53 },
+        { stat = "LeathercraftSkill", add = 1, cond = "SYNTH_TRAINEE", param = 53 },
     },
     [19113] = {
         { stat = "CriticalHitRate", add = 7, cond = "VS_ECOSYSTEM", param = 13 },
@@ -3176,7 +3176,7 @@ return {
         { stat = "DMG_RATING", add = 6, cond = "TP_UNDER", param = 1000 },
     },
     [19155] = {
-        { stat = "CRIT_DMG_INCREASE", add = 5, cond = "STATUS_EFFECT_ACTIVE", param = 267 },
+        { stat = "CriticalHitDamage", add = 5, cond = "STATUS_EFFECT_ACTIVE", param = 267 },
         { stat = "CriticalHitRate", add = 15, cond = "STATUS_EFFECT_ACTIVE", param = 267 },
     },
     [19158] = {
@@ -3211,7 +3211,7 @@ return {
         { stat = "CriticalHitRate", add = 7, cond = "VS_ECOSYSTEM", param = 5 },
     },
     [19274] = {
-        { stat = "GOLDSMITH", add = 1, cond = "SYNTH_TRAINEE", param = 51 },
+        { stat = "GoldsmithingSkill", add = 1, cond = "SYNTH_TRAINEE", param = 51 },
     },
     [19275] = {
         { stat = "DMG_RATING", add = 4, cond = "EQUIPPED_IN_SLOT", param = 0 },
@@ -3237,8 +3237,8 @@ return {
         { stat = "DoubleAttack", add = 3, cond = "STATUS_EFFECT_ACTIVE", param = 56 },
     },
     [19613] = {
-        { stat = "ATTP", add = 5, cond = "STATUS_EFFECT_ACTIVE", param = 59 },
         { stat = "Accuracy", add = 25, cond = "STATUS_EFFECT_ACTIVE", param = 59 },
+        { stat = "AttackPct", add = 5, cond = "STATUS_EFFECT_ACTIVE", param = 59 },
         { stat = "CriticalHitRate", add = 3, cond = "STATUS_EFFECT_ACTIVE", param = 59 },
         { stat = "Evasion", add = 25, cond = "STATUS_EFFECT_ACTIVE", param = 60 },
         { stat = "GUARD_PERCENT", add = 5, cond = "STATUS_EFFECT_ACTIVE", param = 60 },
@@ -3248,8 +3248,8 @@ return {
         { stat = "DoubleAttack", add = 3, cond = "STATUS_EFFECT_ACTIVE", param = 56 },
     },
     [19711] = {
-        { stat = "ATTP", add = 5, cond = "STATUS_EFFECT_ACTIVE", param = 59 },
         { stat = "Accuracy", add = 25, cond = "STATUS_EFFECT_ACTIVE", param = 59 },
+        { stat = "AttackPct", add = 5, cond = "STATUS_EFFECT_ACTIVE", param = 59 },
         { stat = "CriticalHitRate", add = 3, cond = "STATUS_EFFECT_ACTIVE", param = 59 },
         { stat = "Evasion", add = 25, cond = "STATUS_EFFECT_ACTIVE", param = 60 },
         { stat = "GUARD_PERCENT", add = 5, cond = "STATUS_EFFECT_ACTIVE", param = 60 },
@@ -3259,8 +3259,8 @@ return {
         { stat = "DoubleAttack", add = 3, cond = "STATUS_EFFECT_ACTIVE", param = 56 },
     },
     [19820] = {
-        { stat = "ATTP", add = 5, cond = "STATUS_EFFECT_ACTIVE", param = 59 },
         { stat = "Accuracy", add = 30, cond = "STATUS_EFFECT_ACTIVE", param = 59 },
+        { stat = "AttackPct", add = 5, cond = "STATUS_EFFECT_ACTIVE", param = 59 },
         { stat = "CriticalHitRate", add = 3, cond = "STATUS_EFFECT_ACTIVE", param = 59 },
         { stat = "Evasion", add = 30, cond = "STATUS_EFFECT_ACTIVE", param = 60 },
         { stat = "GUARD_PERCENT", add = 5, cond = "STATUS_EFFECT_ACTIVE", param = 60 },
@@ -3270,29 +3270,29 @@ return {
         { stat = "DoubleAttack", add = 3, cond = "STATUS_EFFECT_ACTIVE", param = 56 },
     },
     [19949] = {
-        { stat = "ATTP", add = 5, cond = "STATUS_EFFECT_ACTIVE", param = 59 },
         { stat = "Accuracy", add = 30, cond = "STATUS_EFFECT_ACTIVE", param = 59 },
+        { stat = "AttackPct", add = 5, cond = "STATUS_EFFECT_ACTIVE", param = 59 },
         { stat = "CriticalHitRate", add = 3, cond = "STATUS_EFFECT_ACTIVE", param = 59 },
         { stat = "Evasion", add = 30, cond = "STATUS_EFFECT_ACTIVE", param = 60 },
         { stat = "GUARD_PERCENT", add = 5, cond = "STATUS_EFFECT_ACTIVE", param = 60 },
     },
     [20482] = {
-        { stat = "ATTP", add = 5, cond = "STATUS_EFFECT_ACTIVE", param = 59 },
         { stat = "Accuracy", add = 30, cond = "STATUS_EFFECT_ACTIVE", param = 59 },
+        { stat = "AttackPct", add = 5, cond = "STATUS_EFFECT_ACTIVE", param = 59 },
         { stat = "CriticalHitRate", add = 3, cond = "STATUS_EFFECT_ACTIVE", param = 59 },
         { stat = "Evasion", add = 30, cond = "STATUS_EFFECT_ACTIVE", param = 60 },
         { stat = "GUARD_PERCENT", add = 5, cond = "STATUS_EFFECT_ACTIVE", param = 60 },
     },
     [20483] = {
-        { stat = "ATTP", add = 5, cond = "STATUS_EFFECT_ACTIVE", param = 59 },
         { stat = "Accuracy", add = 30, cond = "STATUS_EFFECT_ACTIVE", param = 59 },
+        { stat = "AttackPct", add = 5, cond = "STATUS_EFFECT_ACTIVE", param = 59 },
         { stat = "CriticalHitRate", add = 3, cond = "STATUS_EFFECT_ACTIVE", param = 59 },
         { stat = "Evasion", add = 30, cond = "STATUS_EFFECT_ACTIVE", param = 60 },
         { stat = "GUARD_PERCENT", add = 5, cond = "STATUS_EFFECT_ACTIVE", param = 60 },
     },
     [20510] = {
-        { stat = "ATTP", add = 5, cond = "STATUS_EFFECT_ACTIVE", param = 59 },
         { stat = "Accuracy", add = 30, cond = "STATUS_EFFECT_ACTIVE", param = 59 },
+        { stat = "AttackPct", add = 5, cond = "STATUS_EFFECT_ACTIVE", param = 59 },
         { stat = "CriticalHitRate", add = 3, cond = "STATUS_EFFECT_ACTIVE", param = 59 },
         { stat = "Evasion", add = 30, cond = "STATUS_EFFECT_ACTIVE", param = 60 },
         { stat = "GUARD_PERCENT", add = 5, cond = "STATUS_EFFECT_ACTIVE", param = 60 },
@@ -3344,10 +3344,10 @@ return {
         { stat = "REFRESH_DOWN", add = 3, cond = "WEAPON_DRAWN_MP_OVER", param = 0 },
     },
     [21923] = {
-        { stat = "COOK", add = 2, cond = "EQUIPPED_IN_SLOT", param = 0 },
+        { stat = "CookingSkill", add = 2, cond = "EQUIPPED_IN_SLOT", param = 0 },
     },
     [21924] = {
-        { stat = "COOK", add = 3, cond = "EQUIPPED_IN_SLOT", param = 0 },
+        { stat = "CookingSkill", add = 3, cond = "EQUIPPED_IN_SLOT", param = 0 },
     },
     [21968] = {
         { stat = "TPBonus", add = 50, cond = "STATUS_EFFECT_ACTIVE", param = 408 },
@@ -3370,7 +3370,7 @@ return {
         { stat = "ADDS_WEAPONSKILL", add = 158, cond = "STATUS_EFFECT_ACTIVE", param = 408 },
     },
     [22118] = {
-        { stat = "CONSERVE_TP", add = 5, cond = "STATUS_EFFECT_ACTIVE", param = 198 },
+        { stat = "ConserveTP", add = 5, cond = "STATUS_EFFECT_ACTIVE", param = 198 },
         { stat = "RangedAttack", add = 35, cond = "STATUS_EFFECT_ACTIVE", param = 198 },
         { stat = "SKILLCHAINBONUS", add = 5, cond = "STATUS_EFFECT_ACTIVE", param = 198 },
     },
@@ -3381,40 +3381,40 @@ return {
         { stat = "DoubleAttack", add = 11, cond = "STATUS_EFFECT_ACTIVE", param = 421 },
     },
     [23100] = {
-        { stat = "MAGIC_DAMAGE", add = 26, cond = "STATUS_EFFECT_ACTIVE", param = 164 },
+        { stat = "MDMG", add = 26, cond = "STATUS_EFFECT_ACTIVE", param = 164 },
     },
     [23103] = {
-        { stat = "CRIT_DMG_INCREASE", add = 28, cond = "STATUS_EFFECT_ACTIVE", param = 443 },
+        { stat = "CriticalHitDamage", add = 28, cond = "STATUS_EFFECT_ACTIVE", param = 443 },
         { stat = "CriticalHitRate", add = 1, cond = "STATUS_EFFECT_ACTIVE", param = 443 },
     },
     [23121] = {
-        { stat = "DARK_MEVA", add = 40, cond = "PET_ID", param = 7 },
-        { stat = "DARK_MEVA", add = 40, cond = "PET_ID", param = 9 },
-        { stat = "DARK_MEVA", add = 40, cond = "PET_ID", param = 16 },
-        { stat = "DARK_MEVA", add = 40, cond = "PET_ID", param = 18 },
-        { stat = "EARTH_MEVA", add = 40, cond = "PET_ID", param = 3 },
-        { stat = "EARTH_MEVA", add = 40, cond = "PET_ID", param = 11 },
-        { stat = "FIRE_MEVA", add = 40, cond = "PET_ID", param = 0 },
-        { stat = "FIRE_MEVA", add = 40, cond = "PET_ID", param = 10 },
-        { stat = "ICE_MEVA", add = 40, cond = "PET_ID", param = 1 },
-        { stat = "ICE_MEVA", add = 40, cond = "PET_ID", param = 14 },
-        { stat = "LIGHT_MEVA", add = 40, cond = "PET_ID", param = 6 },
-        { stat = "LIGHT_MEVA", add = 40, cond = "PET_ID", param = 8 },
-        { stat = "LIGHT_MEVA", add = 40, cond = "PET_ID", param = 17 },
-        { stat = "LIGHT_MEVA", add = 40, cond = "PET_ID", param = 20 },
-        { stat = "THUNDER_MEVA", add = 40, cond = "PET_ID", param = 4 },
-        { stat = "THUNDER_MEVA", add = 40, cond = "PET_ID", param = 15 },
-        { stat = "WATER_MEVA", add = 40, cond = "PET_ID", param = 5 },
-        { stat = "WATER_MEVA", add = 40, cond = "PET_ID", param = 12 },
-        { stat = "WIND_MEVA", add = 40, cond = "PET_ID", param = 2 },
-        { stat = "WIND_MEVA", add = 40, cond = "PET_ID", param = 13 },
+        { stat = "DarkResistance", add = 40, cond = "PET_ID", param = 7 },
+        { stat = "DarkResistance", add = 40, cond = "PET_ID", param = 9 },
+        { stat = "DarkResistance", add = 40, cond = "PET_ID", param = 16 },
+        { stat = "DarkResistance", add = 40, cond = "PET_ID", param = 18 },
+        { stat = "EarthResistance", add = 40, cond = "PET_ID", param = 3 },
+        { stat = "EarthResistance", add = 40, cond = "PET_ID", param = 11 },
+        { stat = "FireResistance", add = 40, cond = "PET_ID", param = 0 },
+        { stat = "FireResistance", add = 40, cond = "PET_ID", param = 10 },
+        { stat = "IceResistance", add = 40, cond = "PET_ID", param = 1 },
+        { stat = "IceResistance", add = 40, cond = "PET_ID", param = 14 },
+        { stat = "LightResistance", add = 40, cond = "PET_ID", param = 6 },
+        { stat = "LightResistance", add = 40, cond = "PET_ID", param = 8 },
+        { stat = "LightResistance", add = 40, cond = "PET_ID", param = 17 },
+        { stat = "LightResistance", add = 40, cond = "PET_ID", param = 20 },
+        { stat = "ThunderResistance", add = 40, cond = "PET_ID", param = 4 },
+        { stat = "ThunderResistance", add = 40, cond = "PET_ID", param = 15 },
+        { stat = "WaterResistance", add = 40, cond = "PET_ID", param = 5 },
+        { stat = "WaterResistance", add = 40, cond = "PET_ID", param = 12 },
+        { stat = "WindResistance", add = 40, cond = "PET_ID", param = 2 },
+        { stat = "WindResistance", add = 40, cond = "PET_ID", param = 13 },
     },
     [23171] = {
         { stat = "Enmity", add = -26, cond = "STATUS_EFFECT_ACTIVE", param = 401 },
         { stat = "Enmity", add = -26, cond = "STATUS_EFFECT_ACTIVE", param = 402 },
     },
     [23197] = {
-        { stat = "SHIELDBLOCKRATE", add = 10, cond = "STATUS_EFFECT_ACTIVE", param = 57 },
+        { stat = "ShieldBlockRate", add = 10, cond = "STATUS_EFFECT_ACTIVE", param = 57 },
     },
     [23238] = {
         { stat = "SkillchainDamage", add = 12, cond = "STATUS_EFFECT_ACTIVE", param = 470 },
@@ -3432,39 +3432,39 @@ return {
         { stat = "DEFP", add = 10, cond = "STATUS_EFFECT_ACTIVE", param = 64 },
     },
     [23350] = {
-        { stat = "ALACRITY_CELERITY_EFFECT", add = 17, cond = "WEATHER_ELEMENT", param = 1 },
-        { stat = "ALACRITY_CELERITY_EFFECT", add = 17, cond = "WEATHER_ELEMENT", param = 2 },
-        { stat = "ALACRITY_CELERITY_EFFECT", add = 17, cond = "WEATHER_ELEMENT", param = 3 },
-        { stat = "ALACRITY_CELERITY_EFFECT", add = 17, cond = "WEATHER_ELEMENT", param = 4 },
-        { stat = "ALACRITY_CELERITY_EFFECT", add = 17, cond = "WEATHER_ELEMENT", param = 5 },
-        { stat = "ALACRITY_CELERITY_EFFECT", add = 17, cond = "WEATHER_ELEMENT", param = 6 },
-        { stat = "ALACRITY_CELERITY_EFFECT", add = 17, cond = "WEATHER_ELEMENT", param = 7 },
-        { stat = "ALACRITY_CELERITY_EFFECT", add = 17, cond = "WEATHER_ELEMENT", param = 8 },
+        { stat = "AlacrityCelerityBonus", add = 17, cond = "WEATHER_ELEMENT", param = 1 },
+        { stat = "AlacrityCelerityBonus", add = 17, cond = "WEATHER_ELEMENT", param = 2 },
+        { stat = "AlacrityCelerityBonus", add = 17, cond = "WEATHER_ELEMENT", param = 3 },
+        { stat = "AlacrityCelerityBonus", add = 17, cond = "WEATHER_ELEMENT", param = 4 },
+        { stat = "AlacrityCelerityBonus", add = 17, cond = "WEATHER_ELEMENT", param = 5 },
+        { stat = "AlacrityCelerityBonus", add = 17, cond = "WEATHER_ELEMENT", param = 6 },
+        { stat = "AlacrityCelerityBonus", add = 17, cond = "WEATHER_ELEMENT", param = 7 },
+        { stat = "AlacrityCelerityBonus", add = 17, cond = "WEATHER_ELEMENT", param = 8 },
     },
     [23456] = {
-        { stat = "DARK_MEVA", add = 50, cond = "PET_ID", param = 7 },
-        { stat = "DARK_MEVA", add = 50, cond = "PET_ID", param = 9 },
-        { stat = "DARK_MEVA", add = 50, cond = "PET_ID", param = 16 },
-        { stat = "DARK_MEVA", add = 50, cond = "PET_ID", param = 18 },
-        { stat = "EARTH_MEVA", add = 50, cond = "PET_ID", param = 3 },
-        { stat = "EARTH_MEVA", add = 50, cond = "PET_ID", param = 11 },
-        { stat = "FIRE_MEVA", add = 50, cond = "PET_ID", param = 0 },
-        { stat = "FIRE_MEVA", add = 50, cond = "PET_ID", param = 10 },
-        { stat = "ICE_MEVA", add = 50, cond = "PET_ID", param = 1 },
-        { stat = "ICE_MEVA", add = 50, cond = "PET_ID", param = 14 },
-        { stat = "LIGHT_MEVA", add = 50, cond = "PET_ID", param = 6 },
-        { stat = "LIGHT_MEVA", add = 50, cond = "PET_ID", param = 8 },
-        { stat = "LIGHT_MEVA", add = 50, cond = "PET_ID", param = 17 },
-        { stat = "LIGHT_MEVA", add = 50, cond = "PET_ID", param = 20 },
-        { stat = "THUNDER_MEVA", add = 50, cond = "PET_ID", param = 4 },
-        { stat = "THUNDER_MEVA", add = 50, cond = "PET_ID", param = 15 },
-        { stat = "WATER_MEVA", add = 50, cond = "PET_ID", param = 5 },
-        { stat = "WATER_MEVA", add = 50, cond = "PET_ID", param = 12 },
-        { stat = "WIND_MEVA", add = 50, cond = "PET_ID", param = 2 },
-        { stat = "WIND_MEVA", add = 50, cond = "PET_ID", param = 13 },
+        { stat = "DarkResistance", add = 50, cond = "PET_ID", param = 7 },
+        { stat = "DarkResistance", add = 50, cond = "PET_ID", param = 9 },
+        { stat = "DarkResistance", add = 50, cond = "PET_ID", param = 16 },
+        { stat = "DarkResistance", add = 50, cond = "PET_ID", param = 18 },
+        { stat = "EarthResistance", add = 50, cond = "PET_ID", param = 3 },
+        { stat = "EarthResistance", add = 50, cond = "PET_ID", param = 11 },
+        { stat = "FireResistance", add = 50, cond = "PET_ID", param = 0 },
+        { stat = "FireResistance", add = 50, cond = "PET_ID", param = 10 },
+        { stat = "IceResistance", add = 50, cond = "PET_ID", param = 1 },
+        { stat = "IceResistance", add = 50, cond = "PET_ID", param = 14 },
+        { stat = "LightResistance", add = 50, cond = "PET_ID", param = 6 },
+        { stat = "LightResistance", add = 50, cond = "PET_ID", param = 8 },
+        { stat = "LightResistance", add = 50, cond = "PET_ID", param = 17 },
+        { stat = "LightResistance", add = 50, cond = "PET_ID", param = 20 },
+        { stat = "ThunderResistance", add = 50, cond = "PET_ID", param = 4 },
+        { stat = "ThunderResistance", add = 50, cond = "PET_ID", param = 15 },
+        { stat = "WaterResistance", add = 50, cond = "PET_ID", param = 5 },
+        { stat = "WaterResistance", add = 50, cond = "PET_ID", param = 12 },
+        { stat = "WindResistance", add = 50, cond = "PET_ID", param = 2 },
+        { stat = "WindResistance", add = 50, cond = "PET_ID", param = 13 },
     },
     [23532] = {
-        { stat = "SHIELDBLOCKRATE", add = 15, cond = "STATUS_EFFECT_ACTIVE", param = 57 },
+        { stat = "ShieldBlockRate", add = 15, cond = "STATUS_EFFECT_ACTIVE", param = 57 },
     },
     [23573] = {
         { stat = "SkillchainDamage", add = 13, cond = "STATUS_EFFECT_ACTIVE", param = 470 },
@@ -3473,43 +3473,43 @@ return {
         { stat = "MovementSpeed", add = 24, cond = "TIME_OF_DAY", param = 2 },
     },
     [23685] = {
-        { stat = "ALACRITY_CELERITY_EFFECT", add = 18, cond = "WEATHER_ELEMENT", param = 1 },
-        { stat = "ALACRITY_CELERITY_EFFECT", add = 18, cond = "WEATHER_ELEMENT", param = 2 },
-        { stat = "ALACRITY_CELERITY_EFFECT", add = 18, cond = "WEATHER_ELEMENT", param = 3 },
-        { stat = "ALACRITY_CELERITY_EFFECT", add = 18, cond = "WEATHER_ELEMENT", param = 4 },
-        { stat = "ALACRITY_CELERITY_EFFECT", add = 18, cond = "WEATHER_ELEMENT", param = 5 },
-        { stat = "ALACRITY_CELERITY_EFFECT", add = 18, cond = "WEATHER_ELEMENT", param = 6 },
-        { stat = "ALACRITY_CELERITY_EFFECT", add = 18, cond = "WEATHER_ELEMENT", param = 7 },
-        { stat = "ALACRITY_CELERITY_EFFECT", add = 18, cond = "WEATHER_ELEMENT", param = 8 },
+        { stat = "AlacrityCelerityBonus", add = 18, cond = "WEATHER_ELEMENT", param = 1 },
+        { stat = "AlacrityCelerityBonus", add = 18, cond = "WEATHER_ELEMENT", param = 2 },
+        { stat = "AlacrityCelerityBonus", add = 18, cond = "WEATHER_ELEMENT", param = 3 },
+        { stat = "AlacrityCelerityBonus", add = 18, cond = "WEATHER_ELEMENT", param = 4 },
+        { stat = "AlacrityCelerityBonus", add = 18, cond = "WEATHER_ELEMENT", param = 5 },
+        { stat = "AlacrityCelerityBonus", add = 18, cond = "WEATHER_ELEMENT", param = 6 },
+        { stat = "AlacrityCelerityBonus", add = 18, cond = "WEATHER_ELEMENT", param = 7 },
+        { stat = "AlacrityCelerityBonus", add = 18, cond = "WEATHER_ELEMENT", param = 8 },
     },
     [23804] = {
+        { stat = "AnnulMagicalDamage", add = 5, cond = "WATERSDAY", param = 0 },
+        { stat = "AnnulPhysicalDamage", add = 5, cond = "WATERSDAY", param = 0 },
+        { stat = "AnnulRangedDamage", add = 5, cond = "WATERSDAY", param = 0 },
         { stat = "Haste", add = 25, cond = "WATERSDAY", param = 0 },
-        { stat = "NULL_MAGICAL_DAMAGE", add = 5, cond = "WATERSDAY", param = 0 },
-        { stat = "NULL_PHYSICAL_DAMAGE", add = 5, cond = "WATERSDAY", param = 0 },
-        { stat = "NULL_RANGED_DAMAGE", add = 5, cond = "WATERSDAY", param = 0 },
-        { stat = "STATUSRES", add = 25, cond = "WATERSDAY", param = 0 },
+        { stat = "ResistStatus", add = 25, cond = "WATERSDAY", param = 0 },
     },
     [23954] = {
-        { stat = "DARK_MEVA", add = 50, cond = "PET_ID", param = 7 },
-        { stat = "DARK_MEVA", add = 50, cond = "PET_ID", param = 9 },
-        { stat = "DARK_MEVA", add = 50, cond = "PET_ID", param = 16 },
-        { stat = "DARK_MEVA", add = 50, cond = "PET_ID", param = 18 },
-        { stat = "EARTH_MEVA", add = 50, cond = "PET_ID", param = 3 },
-        { stat = "EARTH_MEVA", add = 50, cond = "PET_ID", param = 11 },
-        { stat = "FIRE_MEVA", add = 50, cond = "PET_ID", param = 0 },
-        { stat = "FIRE_MEVA", add = 50, cond = "PET_ID", param = 10 },
-        { stat = "ICE_MEVA", add = 50, cond = "PET_ID", param = 1 },
-        { stat = "ICE_MEVA", add = 50, cond = "PET_ID", param = 14 },
-        { stat = "LIGHT_MEVA", add = 50, cond = "PET_ID", param = 6 },
-        { stat = "LIGHT_MEVA", add = 50, cond = "PET_ID", param = 8 },
-        { stat = "LIGHT_MEVA", add = 50, cond = "PET_ID", param = 17 },
-        { stat = "LIGHT_MEVA", add = 50, cond = "PET_ID", param = 20 },
-        { stat = "THUNDER_MEVA", add = 50, cond = "PET_ID", param = 4 },
-        { stat = "THUNDER_MEVA", add = 50, cond = "PET_ID", param = 15 },
-        { stat = "WATER_MEVA", add = 50, cond = "PET_ID", param = 5 },
-        { stat = "WATER_MEVA", add = 50, cond = "PET_ID", param = 12 },
-        { stat = "WIND_MEVA", add = 50, cond = "PET_ID", param = 2 },
-        { stat = "WIND_MEVA", add = 50, cond = "PET_ID", param = 13 },
+        { stat = "DarkResistance", add = 50, cond = "PET_ID", param = 7 },
+        { stat = "DarkResistance", add = 50, cond = "PET_ID", param = 9 },
+        { stat = "DarkResistance", add = 50, cond = "PET_ID", param = 16 },
+        { stat = "DarkResistance", add = 50, cond = "PET_ID", param = 18 },
+        { stat = "EarthResistance", add = 50, cond = "PET_ID", param = 3 },
+        { stat = "EarthResistance", add = 50, cond = "PET_ID", param = 11 },
+        { stat = "FireResistance", add = 50, cond = "PET_ID", param = 0 },
+        { stat = "FireResistance", add = 50, cond = "PET_ID", param = 10 },
+        { stat = "IceResistance", add = 50, cond = "PET_ID", param = 1 },
+        { stat = "IceResistance", add = 50, cond = "PET_ID", param = 14 },
+        { stat = "LightResistance", add = 50, cond = "PET_ID", param = 6 },
+        { stat = "LightResistance", add = 50, cond = "PET_ID", param = 8 },
+        { stat = "LightResistance", add = 50, cond = "PET_ID", param = 17 },
+        { stat = "LightResistance", add = 50, cond = "PET_ID", param = 20 },
+        { stat = "ThunderResistance", add = 50, cond = "PET_ID", param = 4 },
+        { stat = "ThunderResistance", add = 50, cond = "PET_ID", param = 15 },
+        { stat = "WaterResistance", add = 50, cond = "PET_ID", param = 5 },
+        { stat = "WaterResistance", add = 50, cond = "PET_ID", param = 12 },
+        { stat = "WindResistance", add = 50, cond = "PET_ID", param = 2 },
+        { stat = "WindResistance", add = 50, cond = "PET_ID", param = 13 },
     },
     [25633] = {
         { stat = "PerpetuationCost", add = 1, cond = "PET_ID", param = 8 },
@@ -3527,24 +3527,24 @@ return {
         { stat = "DEFP", add = 10, cond = "STATUS_EFFECT_ACTIVE", param = 64 },
     },
     [27366] = {
-        { stat = "ALACRITY_CELERITY_EFFECT", add = 15, cond = "WEATHER_ELEMENT", param = 1 },
-        { stat = "ALACRITY_CELERITY_EFFECT", add = 15, cond = "WEATHER_ELEMENT", param = 2 },
-        { stat = "ALACRITY_CELERITY_EFFECT", add = 15, cond = "WEATHER_ELEMENT", param = 3 },
-        { stat = "ALACRITY_CELERITY_EFFECT", add = 15, cond = "WEATHER_ELEMENT", param = 4 },
-        { stat = "ALACRITY_CELERITY_EFFECT", add = 15, cond = "WEATHER_ELEMENT", param = 5 },
-        { stat = "ALACRITY_CELERITY_EFFECT", add = 15, cond = "WEATHER_ELEMENT", param = 6 },
-        { stat = "ALACRITY_CELERITY_EFFECT", add = 15, cond = "WEATHER_ELEMENT", param = 7 },
-        { stat = "ALACRITY_CELERITY_EFFECT", add = 15, cond = "WEATHER_ELEMENT", param = 8 },
+        { stat = "AlacrityCelerityBonus", add = 15, cond = "WEATHER_ELEMENT", param = 1 },
+        { stat = "AlacrityCelerityBonus", add = 15, cond = "WEATHER_ELEMENT", param = 2 },
+        { stat = "AlacrityCelerityBonus", add = 15, cond = "WEATHER_ELEMENT", param = 3 },
+        { stat = "AlacrityCelerityBonus", add = 15, cond = "WEATHER_ELEMENT", param = 4 },
+        { stat = "AlacrityCelerityBonus", add = 15, cond = "WEATHER_ELEMENT", param = 5 },
+        { stat = "AlacrityCelerityBonus", add = 15, cond = "WEATHER_ELEMENT", param = 6 },
+        { stat = "AlacrityCelerityBonus", add = 15, cond = "WEATHER_ELEMENT", param = 7 },
+        { stat = "AlacrityCelerityBonus", add = 15, cond = "WEATHER_ELEMENT", param = 8 },
     },
     [27367] = {
-        { stat = "ALACRITY_CELERITY_EFFECT", add = 16, cond = "WEATHER_ELEMENT", param = 1 },
-        { stat = "ALACRITY_CELERITY_EFFECT", add = 16, cond = "WEATHER_ELEMENT", param = 2 },
-        { stat = "ALACRITY_CELERITY_EFFECT", add = 16, cond = "WEATHER_ELEMENT", param = 3 },
-        { stat = "ALACRITY_CELERITY_EFFECT", add = 16, cond = "WEATHER_ELEMENT", param = 4 },
-        { stat = "ALACRITY_CELERITY_EFFECT", add = 16, cond = "WEATHER_ELEMENT", param = 5 },
-        { stat = "ALACRITY_CELERITY_EFFECT", add = 16, cond = "WEATHER_ELEMENT", param = 6 },
-        { stat = "ALACRITY_CELERITY_EFFECT", add = 16, cond = "WEATHER_ELEMENT", param = 7 },
-        { stat = "ALACRITY_CELERITY_EFFECT", add = 16, cond = "WEATHER_ELEMENT", param = 8 },
+        { stat = "AlacrityCelerityBonus", add = 16, cond = "WEATHER_ELEMENT", param = 1 },
+        { stat = "AlacrityCelerityBonus", add = 16, cond = "WEATHER_ELEMENT", param = 2 },
+        { stat = "AlacrityCelerityBonus", add = 16, cond = "WEATHER_ELEMENT", param = 3 },
+        { stat = "AlacrityCelerityBonus", add = 16, cond = "WEATHER_ELEMENT", param = 4 },
+        { stat = "AlacrityCelerityBonus", add = 16, cond = "WEATHER_ELEMENT", param = 5 },
+        { stat = "AlacrityCelerityBonus", add = 16, cond = "WEATHER_ELEMENT", param = 6 },
+        { stat = "AlacrityCelerityBonus", add = 16, cond = "WEATHER_ELEMENT", param = 7 },
+        { stat = "AlacrityCelerityBonus", add = 16, cond = "WEATHER_ELEMENT", param = 8 },
     },
     [27726] = {
         { stat = "Regen", add = 1, cond = "STATUS_EFFECT_ACTIVE", param = 2 },
@@ -3552,48 +3552,48 @@ return {
         { stat = "Regen", add = 1, cond = "STATUS_EFFECT_ACTIVE", param = 193 },
     },
     [27821] = {
-        { stat = "DARK_MEVA", add = 30, cond = "PET_ID", param = 7 },
-        { stat = "DARK_MEVA", add = 30, cond = "PET_ID", param = 9 },
-        { stat = "DARK_MEVA", add = 30, cond = "PET_ID", param = 16 },
-        { stat = "DARK_MEVA", add = 30, cond = "PET_ID", param = 18 },
-        { stat = "EARTH_MEVA", add = 30, cond = "PET_ID", param = 3 },
-        { stat = "EARTH_MEVA", add = 30, cond = "PET_ID", param = 11 },
-        { stat = "FIRE_MEVA", add = 30, cond = "PET_ID", param = 0 },
-        { stat = "FIRE_MEVA", add = 30, cond = "PET_ID", param = 10 },
-        { stat = "ICE_MEVA", add = 30, cond = "PET_ID", param = 1 },
-        { stat = "ICE_MEVA", add = 30, cond = "PET_ID", param = 14 },
-        { stat = "LIGHT_MEVA", add = 30, cond = "PET_ID", param = 6 },
-        { stat = "LIGHT_MEVA", add = 30, cond = "PET_ID", param = 8 },
-        { stat = "LIGHT_MEVA", add = 30, cond = "PET_ID", param = 17 },
-        { stat = "LIGHT_MEVA", add = 30, cond = "PET_ID", param = 20 },
-        { stat = "THUNDER_MEVA", add = 30, cond = "PET_ID", param = 4 },
-        { stat = "THUNDER_MEVA", add = 30, cond = "PET_ID", param = 15 },
-        { stat = "WATER_MEVA", add = 30, cond = "PET_ID", param = 5 },
-        { stat = "WATER_MEVA", add = 30, cond = "PET_ID", param = 12 },
-        { stat = "WIND_MEVA", add = 30, cond = "PET_ID", param = 2 },
-        { stat = "WIND_MEVA", add = 30, cond = "PET_ID", param = 13 },
+        { stat = "DarkResistance", add = 30, cond = "PET_ID", param = 7 },
+        { stat = "DarkResistance", add = 30, cond = "PET_ID", param = 9 },
+        { stat = "DarkResistance", add = 30, cond = "PET_ID", param = 16 },
+        { stat = "DarkResistance", add = 30, cond = "PET_ID", param = 18 },
+        { stat = "EarthResistance", add = 30, cond = "PET_ID", param = 3 },
+        { stat = "EarthResistance", add = 30, cond = "PET_ID", param = 11 },
+        { stat = "FireResistance", add = 30, cond = "PET_ID", param = 0 },
+        { stat = "FireResistance", add = 30, cond = "PET_ID", param = 10 },
+        { stat = "IceResistance", add = 30, cond = "PET_ID", param = 1 },
+        { stat = "IceResistance", add = 30, cond = "PET_ID", param = 14 },
+        { stat = "LightResistance", add = 30, cond = "PET_ID", param = 6 },
+        { stat = "LightResistance", add = 30, cond = "PET_ID", param = 8 },
+        { stat = "LightResistance", add = 30, cond = "PET_ID", param = 17 },
+        { stat = "LightResistance", add = 30, cond = "PET_ID", param = 20 },
+        { stat = "ThunderResistance", add = 30, cond = "PET_ID", param = 4 },
+        { stat = "ThunderResistance", add = 30, cond = "PET_ID", param = 15 },
+        { stat = "WaterResistance", add = 30, cond = "PET_ID", param = 5 },
+        { stat = "WaterResistance", add = 30, cond = "PET_ID", param = 12 },
+        { stat = "WindResistance", add = 30, cond = "PET_ID", param = 2 },
+        { stat = "WindResistance", add = 30, cond = "PET_ID", param = 13 },
     },
     [27842] = {
-        { stat = "DARK_MEVA", add = 30, cond = "PET_ID", param = 7 },
-        { stat = "DARK_MEVA", add = 30, cond = "PET_ID", param = 9 },
-        { stat = "DARK_MEVA", add = 30, cond = "PET_ID", param = 16 },
-        { stat = "DARK_MEVA", add = 30, cond = "PET_ID", param = 18 },
-        { stat = "EARTH_MEVA", add = 30, cond = "PET_ID", param = 3 },
-        { stat = "EARTH_MEVA", add = 30, cond = "PET_ID", param = 11 },
-        { stat = "FIRE_MEVA", add = 30, cond = "PET_ID", param = 0 },
-        { stat = "FIRE_MEVA", add = 30, cond = "PET_ID", param = 10 },
-        { stat = "ICE_MEVA", add = 30, cond = "PET_ID", param = 1 },
-        { stat = "ICE_MEVA", add = 30, cond = "PET_ID", param = 14 },
-        { stat = "LIGHT_MEVA", add = 30, cond = "PET_ID", param = 6 },
-        { stat = "LIGHT_MEVA", add = 30, cond = "PET_ID", param = 8 },
-        { stat = "LIGHT_MEVA", add = 30, cond = "PET_ID", param = 17 },
-        { stat = "LIGHT_MEVA", add = 30, cond = "PET_ID", param = 20 },
-        { stat = "THUNDER_MEVA", add = 30, cond = "PET_ID", param = 4 },
-        { stat = "THUNDER_MEVA", add = 30, cond = "PET_ID", param = 15 },
-        { stat = "WATER_MEVA", add = 30, cond = "PET_ID", param = 5 },
-        { stat = "WATER_MEVA", add = 30, cond = "PET_ID", param = 12 },
-        { stat = "WIND_MEVA", add = 30, cond = "PET_ID", param = 2 },
-        { stat = "WIND_MEVA", add = 30, cond = "PET_ID", param = 13 },
+        { stat = "DarkResistance", add = 30, cond = "PET_ID", param = 7 },
+        { stat = "DarkResistance", add = 30, cond = "PET_ID", param = 9 },
+        { stat = "DarkResistance", add = 30, cond = "PET_ID", param = 16 },
+        { stat = "DarkResistance", add = 30, cond = "PET_ID", param = 18 },
+        { stat = "EarthResistance", add = 30, cond = "PET_ID", param = 3 },
+        { stat = "EarthResistance", add = 30, cond = "PET_ID", param = 11 },
+        { stat = "FireResistance", add = 30, cond = "PET_ID", param = 0 },
+        { stat = "FireResistance", add = 30, cond = "PET_ID", param = 10 },
+        { stat = "IceResistance", add = 30, cond = "PET_ID", param = 1 },
+        { stat = "IceResistance", add = 30, cond = "PET_ID", param = 14 },
+        { stat = "LightResistance", add = 30, cond = "PET_ID", param = 6 },
+        { stat = "LightResistance", add = 30, cond = "PET_ID", param = 8 },
+        { stat = "LightResistance", add = 30, cond = "PET_ID", param = 17 },
+        { stat = "LightResistance", add = 30, cond = "PET_ID", param = 20 },
+        { stat = "ThunderResistance", add = 30, cond = "PET_ID", param = 4 },
+        { stat = "ThunderResistance", add = 30, cond = "PET_ID", param = 15 },
+        { stat = "WaterResistance", add = 30, cond = "PET_ID", param = 5 },
+        { stat = "WaterResistance", add = 30, cond = "PET_ID", param = 12 },
+        { stat = "WindResistance", add = 30, cond = "PET_ID", param = 2 },
+        { stat = "WindResistance", add = 30, cond = "PET_ID", param = 13 },
     },
     [27923] = {
         { stat = "MovementSpeed", add = 24, cond = "IN_ADOULIN", param = 0 },

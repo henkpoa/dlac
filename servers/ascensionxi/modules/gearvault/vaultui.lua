@@ -264,16 +264,20 @@ local function bucket(grouped, rec, entry)
     end
 end
 
+local function byLevel(a, b)
+    local al = (a.rec and a.rec.Level) or 0;
+    local bl = (b.rec and b.rec.Level) or 0;
+    if al ~= bl then return al > bl; end
+    if a.name == b.name then return (a.sortKey or 0) < (b.sortKey or 0); end
+    return a.name < b.name;
+end
+
 local function sortGroups(grouped)
-    local byName = function(a, b)
-        if a.name == b.name then return (a.sortKey or 0) < (b.sortKey or 0); end
-        return a.name < b.name;
-    end
     for _, data in pairs(grouped) do
         if data._cats ~= nil then
-            for _, list in pairs(data._cats) do table.sort(list, byName); end
+            for _, list in pairs(data._cats) do table.sort(list, byLevel); end
         else
-            table.sort(data, byName);
+            table.sort(data, byLevel);
         end
     end
 end
@@ -1332,12 +1336,33 @@ function M.render(job, level)
             for _, b in ipairs(usg.excludedList()) do
                 imgui.TextColored(COL.USABLE or { 1, 1, 1, 1 }, esc(nameOf(b.itemId)));
                 imgui.SameLine(0, 10);
-                if imgui.SmallButton('Restore##gvrb' .. tostring(b.itemId)) then
+                if imgui.SmallButton('Restore##gvrb' .. b.key) then
                     usg.unexclude(b.key);
                     noteResult(nameOf(b.itemId) .. ' restored -- it rejoins the layout when your wardrobes have room', false);
                 end
                 if imgui.IsItemHovered() then
                     imgui.SetTooltip('Let dlac add this back -- it returns to the layout on the next\nbeat if your wardrobes have room, and waits (visibly) if not.');
+                end
+                -- Exclusions can cover an item type or one specific copy.
+                -- Offer each matching vault row separately so augmented
+                -- copies retain their identity through the normal withdraw.
+                if vc.mirror.fresh then
+                    for _, row in ipairs(vc.mirror.rows) do
+                        if row.itemId == b.itemId and (b.key == usg.keyOf(b.itemId, nil)
+                            or b.key == usg.keyOf(row.itemId, row.identity, row.instanceId)
+                            or b.key == usg.keyOf(row.itemId, row.identity)) then
+                            imgui.SameLine(0, 10);
+                            if imgui.SmallButton('To inventory##gvbi' .. b.key .. ':' .. tostring(row.rowId)) then
+                                withdrawRow(row);
+                            end
+                            if imgui.IsItemHovered() then
+                                local aug = augTextOf(row.identity);
+                                imgui.SetTooltip(esc('Move this copy to your inventory (at a Void Warden).\n'
+                                    .. 'It stays benched; dlac will not re-add it to your wardrobes.'
+                                    .. ((aug ~= nil) and ('\n' .. aug) or '')));
+                            end
+                        end
+                    end
                 end
             end
         end
@@ -1437,7 +1462,7 @@ function M.render(job, level)
 
     local function renderInvTab()
         -- FLAT list, no category tree (Henrik: "skip the categories in
-        -- Inventory, it can't hold that much anyway") -- sorted by name,
+        -- Inventory, it can't hold that much anyway") -- highest level first,
         -- the same two-row rows as everywhere else.
         local shown = {};
         for _, r in ipairs(invList) do
@@ -1445,10 +1470,7 @@ function M.render(job, level)
                 shown[#shown + 1] = r;
             end
         end
-        table.sort(shown, function(a, b)
-            if a.name == b.name then return a.slot < b.slot; end
-            return a.name < b.name;
-        end);
+        table.sort(shown, byLevel);
         -- No [wanted] tags and no Store-wanted shortcut any more (Henrik,
         -- 2026-08-30: "it's confusing, people need to realize themselves
         -- that they need to add gear into vault for mog wardrobe usage") --

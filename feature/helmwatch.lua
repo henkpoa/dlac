@@ -156,6 +156,8 @@ M.activeGather = 'Harvesting';   -- 'Harvesting' | 'Excavation' | 'Logging' | 'M
                            -- overrides from a VALID persisted value, so an
                            -- old gather="" state file heals to the default.
 M.enabled = false;         -- "Set HELM Idle": session-only; starts OFF
+M.moveCase = false;        -- opt-in gathered-item destinations, per character
+M.moveSatchel = false;
 M.autoHelm = false;        -- "Auto HELM": detection-armed temporary overlay;
                            -- session-only like the idle switch (Henrik
                            -- reversed the brief persist-it ruling: armed,
@@ -196,9 +198,10 @@ local function saveState()
         local p = statePath();
         if p == nil then return; end
         local f = io.open(p, 'wb'); if f == nil then return; end
-        f:write(string.format('return { gather = %q, enabled = %s, at = %d, auto = %s, autoUntil = %d, range = %d }\n',
+        f:write(string.format('return { gather = %q, enabled = %s, at = %d, auto = %s, autoUntil = %d, range = %d, moveCase = %s, moveSatchel = %s }\n',
             tostring(M.activeGather or ''), tostring(M.enabled == true), M._enabledAt or 0,
-            tostring(M.autoHelm == true), M._autoUntil or 0, M._proxRange or 0));
+            tostring(M.autoHelm == true), M._autoUntil or 0, M._proxRange or 0,
+            tostring(M.moveCase == true), tostring(M.moveSatchel == true)));
         f:close();
     end);
 end
@@ -214,6 +217,7 @@ function M.loadState()
         if chunk ~= nil then
             local ok, t = pcall(chunk);
             if ok and type(t) == 'table' then
+                M.moveCase, M.moveSatchel = t.moveCase == true, t.moveSatchel == true;
                 if type(t.gather) == 'string' and VALID[t.gather] == true then M.activeGather = t.gather; end
                 -- NEITHER switch is restored -- both start OFF each session.
                 -- Auto HELM was briefly persisted; Henrik reversed it same day:
@@ -235,6 +239,14 @@ function M.loadState()
 end
 
 function M.getGather() M.loadState(); return M.activeGather; end
+function M.setMoveDestination(cid, on)
+    M.loadState();
+    if cid == 7 then M.moveCase = on == true;
+    elseif cid == 5 then M.moveSatchel = on == true;
+    else return; end
+    saveState();
+    require('dlac\\feature\\helmstorage').live.changed();
+end
 function M.isEnabled() M.loadState(); return M.enabled == true; end
 function M.isAutoHelm() M.loadState(); return M.autoHelm == true; end
 -- Is the detection-armed hold currently dressing us?
