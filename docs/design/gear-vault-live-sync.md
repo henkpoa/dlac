@@ -276,6 +276,28 @@ With the server PR deployed: `/dl vault` says `live updates: on, one-request
 reads`, checks 2 and 5 get faster, and check 6 sends nothing even in a city; the
 wire log shows `push` lines.
 
+### Field round 2026-10-01 (owner, local shard with AscensionXI #728)
+
+dlac `2026.10.01b` (PR #191 on `dev`), Mindlor, the shard on
+`local/shard-2026-10-01` (main + #728 + #736 + #719). Passed, by the owner:
+`/dl vault` says `live updates: on, one-request reads`; zone lines are steady
+(nothing flickers); a counter trade shows quickly; a job change shows its
+layout; an Add in the field is refused and the row comes back; combat is
+quiet; log out and in works. Set edits add and remove pieces quickly. The
+wire log shows `push op=4B` lines. Checks 1-7 are done.
+
+Still owed: 8 (unload goodbye), 9 (store all with more than 62 pieces).
+
+Check 10 found ONE `Rate-limiting packet GP_CLI_COMMAND_VOID_STORAGE`, at
+login (20:51:00.29 server time). dlac's LAYOUT_LIST2 (seq 118) left at
+.066, 450 ms after its previous send, so dlac alone cannot have tripped the
+50 ms limit; another addon's 0x1E0 must have landed just before it. Nexus is
+the only other sender and keeps no wire log, so that is likely, not proven.
+Nexus waits `LISTEN_GAP` (0.3 s) after any foreign 0x1E0; dlac's transport
+does not watch foreign sends at all. Cost: that read retried with the same
+seq 2.5 s later and succeeded. Fix if wanted: dlac's transport observes
+foreign 0x1E0 in packet_out and keeps its own gap after one, as Nexus does.
+
 ## Not done (deliberately)
 
 - **Authoritative deltas in mutation replies** — the most expensive option

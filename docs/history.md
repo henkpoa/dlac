@@ -10654,3 +10654,8 @@ all-copies, already-bound and both plain-pin cases. `gearvault_instances`, `gear
 **Field check owed:** in a city with the Leather Vest still in the DNC Idle set, reload dlac:
 the vest moves into the Mog Wardrobe by itself (chat: `gear vault: layout +1 piece from your
 sets.`) and the Idle set wears it.
+
+**Field round (same evening):** the owner confirmed the vest now comes out by itself and set
+edits add and remove pieces quickly, then passed live-sync checks 1-7 against the shard
+running AscensionXI #728. One login-time rate-limit drop, most likely a collision with Nexus
+on 0x1E0, is written up in `gear-vault-live-sync.md` under "Field round 2026-10-01".
