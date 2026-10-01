@@ -1193,6 +1193,18 @@ function M.render(job, level)
         end
     end
 
+    -- Several differently augmented copies of something your sets want, and
+    -- fewer places for them: dlac does not guess which roll you meant.
+    local choose = (recon ~= nil and type(recon.chooseCopy) == 'function') and recon.chooseCopy() or {};
+    if #choose > 0 then
+        local wrapped = (fmt ~= nil and type(fmt.textWrapped) == 'function')
+            and fmt.textWrapped or function(col, s) imgui.TextColored(col, s); end;
+        for _, c in ipairs(choose) do
+            wrapped(cGOLD, string.format('%s: your sets want %d, and the vault holds %d copies with different augments. Choose with Add to Mog Wardrobe below.',
+                nameOf(c.itemId), c.need, c.copies));
+        end
+    end
+
     if pr ~= nil and prWant > 0 and not inField then
         -- BUTTON FIRST, text wrapped under it (Henrik's screenshot: the
         -- button rode the end of a long line and clipped off the pane edge).

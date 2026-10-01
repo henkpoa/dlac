@@ -412,7 +412,8 @@ local RD = {
             if type(S.lookupByName) ~= 'function' then return; end
             local r = S.lookupByName(name);
             if type(r) == 'table' and type(r.Id) == 'number' then
-                out = { id = r.Id, aug = (type(r.AugKey) == 'string' and r.AugKey ~= '') };
+                out = { id = r.Id, aug = (type(r.AugKey) == 'string' and r.AugKey ~= ''),
+                        plain = (r.AugKey == '') };
             end
         end);
         return out;
@@ -520,9 +521,9 @@ vaultWhy = function(name)
     end
     local s = usg.settings();
     local rst = rec._st();
-    line(string.format('  engine: additions=%s removals=%s cityBlocked=%s notVaulted=%d lastPushKey=%s%s%s',
+    line(string.format('  engine: additions=%s removals=%s cityBlocked=%s notVaulted=%d chooseCopy=%d lastPushKey=%s%s%s',
         s.additions, s.removals,
-        tostring(rec.cityBlocked()), rec.notVaulted(), rst.lastPushKey and 'set' or 'none',
+        tostring(rec.cityBlocked()), rec.notVaulted(), #rec.chooseCopy(), rst.lastPushKey and 'set' or 'none',
         _capOverride ~= nil and ('  CAP OVERRIDE=' .. _capOverride) or '',
         _tickErr ~= nil and ('  LAST ERROR: ' .. _tickErr) or ''));
     for _, s in ipairs(out) do vc._say(s); end

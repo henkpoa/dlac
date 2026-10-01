@@ -59,6 +59,9 @@ jobs:
       - name: Gear vault instance regression
         run: lua5.4 tests/gearvault_instances.lua
 
+      - name: Gear vault draws augmented copies when no choice is involved
+        run: lua5.4 tests/gearvault_augmented_draw.lua
+
       - name: Gear vault sync regression
         run: lua5.4 tests/gearvault_sync.lua && lua5.4 tests/gearvault_sync_probe.lua --budget
 

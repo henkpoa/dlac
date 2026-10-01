@@ -18,7 +18,15 @@
 -- (the vault client routes them past it; notePush only logs them). T3 -- a
 -- caller that gave up abandons its request instead of holding every other
 -- module for MAX_WAIT.
-local M = { MIN_GAP = 0.1, MAX_WAIT = 8 };
+--
+-- Another addon on 0x1E0 (Nexus) spends the same 50 ms server budget: a
+-- request of ours that lands right behind one of its packets is dropped.
+-- The 2026-10-01 field round lost a login LAYOUT_LIST2 that way (one
+-- "Rate-limiting packet GP_CLI_COMMAND_VOID_STORAGE", a 2.5 s retry). Nexus
+-- already waits LISTEN_GAP after any 0x1E0 that is not its own; this gate
+-- now does the same: FOREIGN_GAP after one it did not send.
+local M = { MIN_GAP = 0.1, MAX_WAIT = 8, FOREIGN_GAP = 0.3 };
+local unpack = table.unpack or unpack;
 local ok, socket = pcall(require, 'socket');
 -- Wall time, never frame count (uncapped FPS) or process CPU time.
 M._clock = ok and socket.gettime or os.time;
@@ -27,6 +35,8 @@ M._send = function(packet)
     return true;
 end;
 local last, pending, answered;
+local recent = {};   -- our last few frames, from the op byte on (the header is the client's)
+local foreignAt;     -- when another addon's 0x1E0 last went out
 M._audit = function(event, op, seq, why, now)
     local root = require('dlac\\profiles').dataDir();
     if not root then return; end
@@ -80,9 +90,27 @@ function M.abandon(op, seq)
     end
 end
 
+-- Every 0x1E0 the client sends (packet_out): one we did not send holds our
+-- next send for FOREIGN_GAP. Ours are recognised by their bytes after the
+-- 4-byte header, as Nexus recognises its own.
+function M.noteOutgoing(id, data)
+    if id ~= 0x1E0 or type(data) ~= 'string' then return; end
+    local body = data:sub(5);
+    for i = #recent, 1, -1 do
+        if body:sub(1, #recent[i]) == recent[i] then return; end
+    end
+    foreignAt = M._clock();
+    audit('foreign', data:byte(5), data:byte(6), nil, foreignAt);
+end
+
+local function foreignQuiet(now)
+    return foreignAt == nil or now - foreignAt >= M.FOREIGN_GAP;
+end
+
 function M.send(packet, why)
     local now = M._clock();
     if last and now - last < M.MIN_GAP then return false; end
+    if not foreignQuiet(now) then return false; end
     local op, seq = packet[5], packet[6] or 0;
     if pending then
         if now - pending.at >= M.MAX_WAIT then
@@ -93,8 +121,13 @@ function M.send(packet, why)
         end
     end
     last = now;
+    -- Remembered BEFORE the send: Ashita runs packet_out inside
+    -- AddOutgoingPacket, so noteOutgoing sees the frame before _send returns
+    -- (the first build of this marked every one of our own sends foreign).
+    recent[#recent + 1] = string.char(unpack(packet, 5));
+    if #recent > 8 then table.remove(recent, 1); end
     local sent, result = pcall(M._send, packet);
-    if not sent or result == false then return false; end
+    if not sent or result == false then table.remove(recent); return false; end
     pending = { op = op, seq = seq, at = now, why = why };
     audit('enqueue', op, seq, why, now);
     pcall(function() require('dlac\\feature\\sendlog').note(0x1E0, why); end);
@@ -105,8 +138,16 @@ end
 function M.idle()
     local now = M._clock();
     if last and now - last < M.MIN_GAP then return false; end
+    if not foreignQuiet(now) then return false; end
     return pending == nil or now - pending.at >= M.MAX_WAIT;
 end
 
-function M._reset() last, pending, answered = nil, nil, nil; end
+function M._reset() last, pending, answered, foreignAt = nil, nil, nil, nil; recent = {}; end
+
+-- In game only (the suites drive noteOutgoing directly).
+if ashita ~= nil and ashita.events ~= nil then
+    pcall(ashita.events.register, 'packet_out', 'dlac_axi_transport_foreign', function(e)
+        pcall(M.noteOutgoing, e.id, e.data_modified or e.data);
+    end);
+end
 return M;

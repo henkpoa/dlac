@@ -263,7 +263,13 @@ Layouts, per-copy admission, usage stamps and edits use instance IDs. Missing
 legacy entries reserve zero; stack rows reserve one slot. Existing bound copies
 continue satisfying generic item demand when their extra bytes change. New
 augmented-copy choices stay manual; Anchor Ring (27556) is the explicit exception
-because its signature stores EXP. Items with legacy rows awaiting review are
+because its signature stores EXP. **Amended 2026-10-01:** a set entry that names
+no augment takes plain vault copies first, then augmented copies when nothing is
+being chosen: the shortfall takes every augmented copy there is, or copies whose
+rolls are identical. Differently rolled copies competing for fewer places stay
+manual and are named in the vault tab ("choose with Add to Mog Wardrobe") instead
+of counting as not vaulted. An entry pinned to the plain copy (`AugKey = ''`)
+never draws an augmented one. Items with legacy rows awaiting review are
 not silently re-added by derivation. Equipment selection, augment requirements,
 item-ID ownership totals and stackable identity semantics stay unchanged.
 
