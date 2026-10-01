@@ -786,7 +786,8 @@ end
 local function candidatesForSlot(gearSlotKey, job, level, all)
     -- `all` is part of the cache key: the two pools are different answers to the
     -- same question and must never be served for one another.
-    local key = tostring(job) .. '|' .. tostring(level) .. '|' .. tostring(all == true);
+    local gen = (type(owned.generation) == 'function') and owned.generation() or 0;
+    local key = tostring(job) .. '|' .. tostring(level) .. '|' .. tostring(all == true) .. '|' .. tostring(gen);
     if candCache.key ~= key then candCache.key = key; candCache.data = {}; end
     if candCache.data[gearSlotKey] ~= nil then return candCache.data[gearSlotKey]; end
 

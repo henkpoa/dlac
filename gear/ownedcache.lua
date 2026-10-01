@@ -50,6 +50,17 @@ end
 -- Drop the cached split (Scan / Reload / the ~4s availability heartbeat).
 function M.resetCache() _ownedCounts = nil; end
 
+-- Ownership moved for real (a store, a withdrawal, a vault read): consumers
+-- that FILTER by ownership and cache the filtered answer (gearui's + Add
+-- candidate lists) key on this generation, so the piece that just arrived is
+-- offered at once. The ~4 s availability heartbeat deliberately does not bump
+-- it: re-sorting every picker every 4 s would cost more than it shows
+-- (2026-09-30 audit: a list built while a piece was between homes kept it
+-- out until a job or level change).
+local _generation = 0;
+function M.bumpGeneration() _generation = _generation + 1; _ownedCounts = nil; end
+function M.generation() return _generation; end
+
 -- The per-ROLL tallies for an augment-pinned record: { total, avail, where } for
 -- exactly the copies whose private-augment signature matches rec.AugKey, or nil
 -- when the record carries no pin / the split has no per-roll map (an old test

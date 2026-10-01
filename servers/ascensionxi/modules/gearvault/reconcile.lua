@@ -2,12 +2,23 @@
     ascensionxi/gearvault/reconcile.lua -- the ADDITIONS PUSH (GV3, slice 3).
 
     STATELESS BY DESIGN: instead of a durable queue of pending edits, the
-    engine recomputes the derived layout for the ACTIVE main job on a slow
-    beat and pushes whatever is missing from the server's layout. That one
-    shape covers every trigger at once -- a set commit (the derivation hash
-    moves), login (the first beat), the city gate (a NOT_IN_CITY refusal
-    sets the badge and a later beat in town simply succeeds), and a dlac
-    restart mid-queue (nothing was queued; the next beat re-derives).
+    engine recomputes the derived layout for the ACTIVE main job and pushes
+    whatever is missing from the server's layout. That one shape covers every
+    trigger at once -- a set commit (the derivation hash moves), login, the
+    city gate, and a dlac restart mid-queue (nothing was queued; the next run
+    re-derives).
+
+    EVENT-DRIVEN since 2026-09-30 (Henrik: "the 8 second sync is
+    confusing"). The engine used to wake on a fixed 8 s beat, which the tab
+    painted as a countdown and which put up to 8 s -- often 16 s -- between a
+    deposit and the add. Now every input that can change the answer KICKS it
+    (a vault or layout commit, a set commit, a zone or job change, a
+    capacity change, a settings or Bench change) and it runs a moment later;
+    a quiet local re-derive every BEAT seconds catches what has no event (a
+    trigger file saved elsewhere). The wire is touched only when the diff is
+    non-empty. And the engine never pushes where the server would refuse:
+    live edits to the active job need a CITY (the zone type's CITY bit, or
+    the Mog House), so out in the field the adds wait -- visibly -- for one.
 
     The 2026-09-18 unused-gear rule also releases unpinned instance rows
     proven unused by the current job's sets and triggers. Worn, outside,
@@ -20,6 +31,10 @@
     "+ Layout" carries real blobs); only zero-blob layout entries are
     compared against on legacy servers. Augmented references protect their
     item IDs during instance-mode cleanup even though auto-add skips them.
+    A set entry that names no augment takes plain vault copies first, then
+    augmented ones when no choice is involved (2026-10-01, see
+    augmentedPick); differently rolled copies competing for fewer places
+    stay the player's pick and are named by R.chooseCopy().
 
     The engine never derives WHILE BROWSING another job (the sets root
     answers for the browsed job there -- pushing WHM's gear into WAR's
@@ -32,17 +47,21 @@
 local R = {};
 local counts = require('dlac\\servers\\ascensionxi\\modules\\gearvault\\layoutcounts');
 
-R.BEAT     = 8.0;     -- seconds between derivation checks
-R.MAX_PUSH = 200;     -- adds per run -- a runaway derivation must not flood
+R.BEAT        = 3.0;  -- quiet local re-derive (no wire unless something is missing)
+R.KICK_SETTLE = 0.2;  -- a burst of kicks runs the engine once, this soon after the first
+R.RETRY       = 10.0; -- the same refused/unfinished adds are tried again after this
+R.MAX_PUSH    = 200;  -- adds per run -- a runaway derivation must not flood
 
 local D = nil;        -- { vc, derive, setsRoot(), triggers(), resolve(name),
-                      --   mainJob(), browsing(), say(msg), clock() }
+                      --   mainJob(), browsing(), say(msg), clock(), inCity() }
 function R.configure(deps) D = deps; end
 
 local st = {
     lastBeat    = 0,
-    lastPushKey = nil,   -- hash|layoutStamp|vaultStamp we already pushed for (no re-spam)
-    pendingCity = false, -- adds refused by the city gate: waiting for a town
+    kickAt      = nil,   -- a kick asked for a run at this time
+    lastPushKey = nil,   -- derivation hash + the exact adds last sent (no re-spam)
+    retryAt     = nil,   -- ...which may be sent again from this time
+    pendingCity = false, -- adds waiting for a city (refused, or held in the field)
     inFlight    = 0,     -- acks not yet counted this run
     runOk       = 0,
     runCity     = 0,
@@ -52,6 +71,23 @@ local st = {
     seedStamp   = nil,   -- layout stamp already seeded into usage
     evictStamp  = nil,   -- layout stamp auto-eviction already ran for
 };
+
+local function clock()
+    return (D ~= nil and type(D.clock) == 'function') and D.clock() or os.clock();
+end
+
+-- Something the answer depends on changed: run soon. Kicks coalesce -- a
+-- burst (a deposit's mirror + layout commits) runs the engine once.
+function R.kick(reason)
+    if st.kickAt == nil then st.kickAt = clock() + R.KICK_SETTLE; end
+    st.kickWhy = reason;
+end
+
+-- Is this a place the server accepts live edits to the ACTIVE job? false only
+-- when the town service says so; unknown (nil) never holds the engine.
+local function cityHeld()
+    return D ~= nil and type(D.inCity) == 'function' and D.inCity() == false;
+end
 
 -- The tab's badge (and /dl vault's line).
 function R.cityBlocked() return st.pendingCity; end
@@ -82,6 +118,11 @@ function R.freeSlots() return st.freeSlots; end
 -- aggregate line. 0 until a beat has measured.
 function R.notVaulted() return st.notVaulted or 0; end
 
+-- Set-wanted items the vault holds only as DIFFERENTLY augmented copies,
+-- more of them than the sets have room for: the player picks which.
+-- { { itemId, need, copies } ... }, empty until a beat has measured.
+function R.chooseCopy() return st.chooseCopy or {}; end
+
 -- What is on the body right now ({ [itemId] = true }) -- the tab's Remove
 -- guard reads the same eyes the eviction ranking uses.
 function R.wornNow()
@@ -99,29 +140,23 @@ function R.retireBlocked(itemId)
     return nil;
 end
 
--- The tab's countdown (Henrik, 2026-09-10: the beat is invisible, so a
--- stored piece "did nothing" for up to 8s). Returns seconds until the next
--- check as a number, or a word for why the clock is not running:
--- 'busy' (a run is still acking), 'syncing' (the mirror is being re-read),
--- 'paused' (browsing another job / no vault / no job), nil when unconfigured.
-function R.nextBeat()
-    if D == nil then return nil; end
-    local vc = D.vc;
-    if st.inFlight > 0 then return 'busy'; end
-    local vs = vc.state();
-    if vs == 'syncing' then return 'syncing'; end
-    if vs == 'dormant' or vs == 'unattuned' then return 'paused'; end
-    if type(D.browsing) == 'function' and D.browsing() == true then return 'paused'; end
-    local job = (type(D.mainJob) == 'function') and D.mainJob() or nil;
-    if type(job) ~= 'number' or job == 0 then return 'paused'; end
-    local now = (type(D.clock) == 'function') and D.clock() or os.clock();
-    return math.max(0, R.BEAT - (now - st.lastBeat));
+-- What the engine is DOING, for the tab's one quiet line (replaces the 8 s
+-- countdown, Henrik 2026-09-30: "the 8 second sync is confusing" -- a clock
+-- that ran whether or not anything was pending read as a sync that never
+-- came). { adding = n } while a run of additions is being acknowledged,
+-- { removing = n } for a cleanup run, nil when there is nothing to say.
+function R.activity()
+    if D == nil or st.inFlight <= 0 then return nil; end
+    if st.runKind == 'remove' then return { removing = st.inFlight }; end
+    return { adding = st.inFlight };
 end
 
--- A zone-in may have landed us in a city: let the next beat retry a
--- city-blocked push immediately instead of waiting out lastPushKey.
+-- A zone-in may have landed us in a city: a held or city-refused push goes
+-- again right away instead of waiting out its retry clock.
+-- Re-arms only: the run itself waits until the zone line is over (the vault
+-- client's zone-settled callback kicks it) -- nothing happens while zoning.
 function R.zoneArmed()
-    if st.pendingCity then st.lastPushKey = nil; end
+    if st.pendingCity then st.lastPushKey = nil; st.retryAt = nil; end
     st.repairBlocked, st.repairStamp = nil, nil;
 end
 
@@ -131,11 +166,15 @@ end
 
 local function finishRun()
     local vc = D.vc;
+    st.runKind = nil;
     if st.runOk > 0 then
         vc.requestLayout(0);   -- the view catches up in one ask
     end
     if st.runCity > 0 then
+        -- the town service thought this was a city and the server did not:
+        -- hold until the next zone line re-arms (never re-spam from here)
         st.pendingCity = true;
+        st.retryAt = math.huge;
         say('gear vault: layout additions are waiting for a city (edits to your ACTIVE job apply in town).');
     elseif st.runOk > 0 then
         st.pendingCity = false;
@@ -143,14 +182,17 @@ local function finishRun()
     end
 end
 
--- One engine beat; call every frame, it self-throttles. Returns what it did
--- (for the suite): 'idle' | 'asked-layout' | 'pushed:N' | 'clean'.
+-- One engine run; call every frame, it self-throttles: it runs when kicked
+-- (after KICK_SETTLE) or when the quiet BEAT has passed. Returns what it did
+-- (for the suite): 'idle' | 'asked-layout' | 'pushed:N' | 'clean' | ...
 function R.tick()
     if D == nil then return 'idle'; end
     local vc = D.vc;
-    local now = (type(D.clock) == 'function') and D.clock() or os.clock();
+    local now = clock();
     local instances = type(vc.instanceMode) == 'function' and vc.instanceMode();
-    if now - st.lastBeat < R.BEAT then return 'idle'; end
+    local kicked = st.kickAt ~= nil and now >= st.kickAt;
+    if not kicked and now - st.lastBeat < R.BEAT then return 'idle'; end
+    if type(vc.zoning) == 'function' and vc.zoning() then return 'idle'; end   -- nothing during a zone line
     if st.inFlight > 0 then return 'idle'; end            -- a run is still acking
     if type(vc.layoutBusy) == 'function' and vc.layoutBusy() then return 'idle'; end
     local vs = vc.state();
@@ -158,13 +200,17 @@ function R.tick()
     if type(D.browsing) == 'function' and D.browsing() == true then return 'idle'; end
     local job = (type(D.mainJob) == 'function') and D.mainJob() or nil;
     if type(job) ~= 'number' or job == 0 then return 'idle'; end
-    st.lastBeat = now;
 
-    -- The diff needs the server's CURRENT layout for the CURRENT job.
+    -- The diff needs the server's CURRENT layout for the CURRENT job. The ask
+    -- does not spend the run: the layout's commit kicks the engine, so the
+    -- adds follow the view at once instead of one beat later (a deposit used
+    -- to cost two 8 s beats before its add).
     if not vc.layoutCache.fresh or vc.layoutCache.job ~= job then
         vc.requestLayout(0);
         return 'asked-layout';
     end
+    st.lastBeat = now;
+    st.kickAt = nil;
 
     local d = D.derive.derive(D.setsRoot(), D.triggers(), D.resolve);
     st.lastDerived = d;
@@ -199,7 +245,7 @@ function R.tick()
     -- complete derivation can prove absence; review rows and outside copies
     -- remain assigned for recovery. Equipped pieces wait until taken off.
     if instances and d.cleanupSafe and type(D.worn) == 'function'
-        and type(D.inTown) == 'function' and D.inTown() == true then
+        and type(D.inTown) == 'function' and D.inTown() == true and not cityHeld() then
         local worn, obsolete = D.worn(), {};
         for _, e in ipairs(layout) do
             if worn and not e.pinned and e.kind ~= 2 and (e.state == 0 or e.state == 1)
@@ -211,16 +257,19 @@ function R.tick()
         if #obsolete > 0 then
             local n = math.min(#obsolete, R.MAX_PUSH);
             st.inFlight = n;
+            st.runKind = 'remove';
             for i = 1, n do
                 local e = obsolete[i];
                 local queued = vc.requestLayoutSet({ job = job, verb = vc.verb.REMOVE,
                     itemId = e.itemId, instanceId = e.instanceId, ordinal = e.ordinal,
                     identity = e.identity, count = 0, reason = 'unused-unpinned' }, function()
                         st.inFlight = math.max(0, st.inFlight - 1);
+                        if st.inFlight == 0 then st.runKind = nil; end
                         vc.requestLayout(0);
                     end);
                 if not queued then st.inFlight = math.max(0, st.inFlight - 1); end
             end
+            if st.inFlight == 0 then st.runKind = nil; end
             return 'released:' .. n;
         end
     end
@@ -257,7 +306,7 @@ function R.tick()
     -- are repaired. Active-job writes wait for town and a fresh layout.
     if #corrections > 0 then
         st.pressure = nil;
-        if st.repairBlocked or (type(D.inTown) == 'function' and D.inTown() == false) then return 'waiting-city'; end
+        if st.repairBlocked or cityHeld() or (type(D.inTown) == 'function' and D.inTown() == false) then return 'waiting-city'; end
         if st.repairStamp == vc.layoutCache.stamp then return 'clean'; end
         st.repairStamp = vc.layoutCache.stamp;
         local n = math.min(#corrections, R.MAX_PUSH);
@@ -286,32 +335,64 @@ function R.tick()
     -- shelves ONE; and the SHELF -- the engine never pushes an add that
     -- cannot fit, so a full shelf costs zero wire.
     local vaultCounts = (vc.mirror ~= nil and vc.mirror.counts) or {};
-    local candidates = {};
+    local candidates, augRows = {}, {};
     if instances then
         vaultCounts = {};
         for _, row in ipairs(vc.mirror.rows or {}) do
-            -- New augmented-copy choices stay manual, as before. Anchor
-            -- Ring's signature is EXP, not an augment requirement. Already
-            -- bound instances above keep satisfying demand after upgrades.
-            if not bound[row.instanceId] and (row.identity == vc.ZERO24 or row.itemId == 27556) then
-                candidates[#candidates + 1] = row;
-                vaultCounts[row.itemId] = (vaultCounts[row.itemId] or 0) + math.max(1, row.qty or 1);
+            -- Anchor Ring's signature is EXP, not an augment requirement.
+            -- Already bound instances above keep satisfying demand after
+            -- upgrades.
+            if not bound[row.instanceId] then
+                if row.identity == vc.ZERO24 or row.itemId == 27556 then
+                    candidates[#candidates + 1] = row;
+                    vaultCounts[row.itemId] = (vaultCounts[row.itemId] or 0) + math.max(1, row.qty or 1);
+                elseif (row.instanceId or 0) > 0 then
+                    augRows[row.itemId] = augRows[row.itemId] or {};
+                    table.insert(augRows[row.itemId], row);
+                end
             end
         end
     end
+
+    -- The augmented copies to draw for demand the plain copies cannot meet
+    -- (Henrik's 2026-10-01 Leather Vest: its one vaulted copy was augmented,
+    -- so the Idle set never got it). Only when nothing is being chosen: the
+    -- shortfall takes every augmented copy there is, or copies whose rolls
+    -- are identical. Different rolls competing for fewer places stay the
+    -- player's pick (returns choice = true). A plain-pinned entry (AugKey
+    -- = '') would refuse to wear any of them.
+    local function augmentedPick(it, short)
+        local rows = augRows[it.itemId];
+        if short <= 0 or rows == nil or it.plainOnly then return {}, false; end
+        for i = 2, #rows do
+            if #rows > short and rows[i].identity ~= rows[1].identity then return {}, true; end
+        end
+        local pick = {};
+        for i = 1, math.min(short, #rows) do pick[i] = rows[i]; end
+        return pick, false;
+    end
+
     local adds = {};
-    local waiting, waitingItems, notVaulted = 0, {}, 0;
+    local waiting, waitingItems, notVaulted, chooseCopy = 0, {}, 0, {};
     if vc.mirror.fresh ~= false and not (D.settings ~= nil and D.settings().additions == 'off') then
         local units = layoutUnits;
         for _, it in ipairs(d.items) do
             local c = have[it.itemId];
             local rec = type(D.lookupById) == 'function' and D.lookupById(it.itemId) or nil;
-            local wantable = math.min(counts.count(it, rec), (vaultCounts[it.itemId] or 0) + (c or 0));
+            local want = counts.count(it, rec);
+            local plainHave = (vaultCounts[it.itemId] or 0) + (c or 0);
+            local augPick, choice = {}, false;
+            if instances then augPick, choice = augmentedPick(it, want - plainHave); end
+            local wantable = math.min(want, plainHave + #augPick);
+            local excluded = false;
+            if D.usage ~= nil then
+                excluded = D.usage.isExcluded(D.usage.keyOf(it.itemId, nil));
+            end
+            if choice and not excluded and not review[it.itemId] then
+                chooseCopy[#chooseCopy + 1] = { itemId = it.itemId, need = want - plainHave,
+                                                copies = #augRows[it.itemId] };
+            end
             if wantable > (c or 0) and not review[it.itemId] then
-                local excluded = false;
-                if D.usage ~= nil then
-                    excluded = D.usage.isExcluded(D.usage.keyOf(it.itemId, nil));
-                end
                 if not excluded then
                     local need = wantable - (c or 0);
                     if capacity > 0 and units + need > capacity then
@@ -333,16 +414,23 @@ function R.tick()
                                         bound[row.instanceId] = true; need = need - 1;
                                     else
                                         adds[#adds + 1] = { itemId = it.itemId, count = math.min(need, 8), identity = row.identity };
+                                        need = 0;
                                         break;
                                     end
                                 end
+                            end
+                            for _, row in ipairs(augPick) do
+                                if need <= 0 or #adds >= R.MAX_PUSH then break; end
+                                adds[#adds + 1] = { itemId = it.itemId, count = 1,
+                                    instanceId = row.instanceId, identity = row.identity };
+                                bound[row.instanceId] = true; need = need - 1;
                             end
                         else
                             adds[#adds + 1] = { itemId = it.itemId, count = need };
                         end
                     end
                 end
-            elseif (c == nil or c < it.count) then
+            elseif not choice and (c == nil or c < it.count) then
                 -- the sets want it, the vault cannot supply it: NOT pushed,
                 -- NOT waiting -- it is the Inventory pane / Warden's problem
                 notVaulted = notVaulted + 1;
@@ -350,6 +438,7 @@ function R.tick()
         end
     end
     st.notVaulted = notVaulted;
+    st.chooseCopy = chooseCopy;
 
     -- SHELF PRESSURE (GV3): the layout (plus what is about to join it) must
     -- fit the live shelf, or the swap engine will be told to dress more
@@ -381,7 +470,7 @@ function R.tick()
             -- (the town service) gates the action, never the verdict --
             -- pressure is still computed and exposed, and unknown (nil)
             -- reads as town so a broken service returns old behaviour.
-            local town = not (type(D.inTown) == 'function' and D.inTown() == false);
+            local town = not (type(D.inTown) == 'function' and D.inTown() == false) and not cityHeld();
             if mode == 'auto' and over > 0 and town and st.evictStamp ~= vc.layoutCache.stamp then
                 st.evictStamp = vc.layoutCache.stamp;
                 local freed, evicted = 0, 0;
@@ -416,26 +505,42 @@ function R.tick()
     end
 
     -- The PUSH half alone rides the change gate (pressure above never does).
-    -- THREE inputs decide the adds, so all three key the gate: the
-    -- derivation, the layout, and the VAULT. The vault law made "does the
-    -- vault hold it" a gate on every add, but the key was still hash|layout
-    -- -- so a piece deposited AFTER a clean beat (Unequip & Store, Store,
-    -- Store all) was wantable at once and pushed never: the beat re-derived
-    -- the same hash against the same layout and answered 'clean' until an
-    -- unrelated set commit or relog moved the key (Henrik's brass set,
-    -- 2026-09-10). Every mirror commit re-stamps (a deposit's LIST resync,
-    -- a withdraw's arithmetic), so the stamp is the deposit's voice here.
-    local pushKey = d.hash .. '|' .. tostring(vc.layoutCache.stamp)
-        .. '|' .. tostring(vc.mirror ~= nil and vc.mirror.stamp or nil);
-    if vc.mirror.fresh == false then return 'clean'; end
-    if pushKey == st.lastPushKey then return 'clean'; end
-    st.lastPushKey = pushKey;
+    -- THE KEY IS WHAT WOULD BE SENT (2026-09-30): the derivation hash plus
+    -- the exact adds, never the stamps of the views they were read from.
+    --   * a deposit, a set commit or a layout change that makes a NEW add
+    --     makes a new key: it goes at once (Henrik's brass set, 2026-09-10,
+    --     is why the vault joined the key at all);
+    --   * a re-read that changes nothing keeps the key: no re-spam (the stamp
+    --     key re-sent a city-refused add after every re-read in the field,
+    --     one chat line each);
+    --   * a run that did not land goes again after RETRY (the stamp key parked
+    --     a BUSY-refused add until some unrelated stamp happened to move).
+    if vc.mirror.fresh == false then return 'clean'; end   -- a re-read is due; its commit kicks us
     if #adds == 0 then
-        if st.runCity == 0 then st.pendingCity = false; end
+        st.lastPushKey, st.retryAt = nil, nil;
+        st.pendingCity = false;   -- nothing waits for a city any more (the badge used to stick)
         return 'clean';
     end
+    local keyParts = { d.hash };
+    for _, it in ipairs(adds) do
+        keyParts[#keyParts + 1] = tostring(it.itemId) .. ':' .. tostring(it.instanceId or 0) .. ':' .. tostring(it.count);
+    end
+    local pushKey = table.concat(keyParts, '|');
+    -- Live edits to the ACTIVE job need a city; out in the field the server
+    -- would only refuse them. Hold the adds, send nothing, say they wait
+    -- (Henrik, 2026-09-30: no vault events outside a city). Nothing is
+    -- latched: the first run that finds us in a city sends them -- the zone
+    -- line's kick, or the next quiet beat if the zone read lagged the kick.
+    if cityHeld() then
+        st.pendingCity = true;
+        return 'waiting-city';
+    end
+    if pushKey == st.lastPushKey and now < (st.retryAt or 0) then return 'clean'; end
+    st.lastPushKey = pushKey;
+    st.retryAt = now + R.RETRY;
 
     st.inFlight, st.runOk, st.runCity, st.runFail = #adds, 0, 0, 0;
+    st.runKind = 'add';
     for _, it in ipairs(adds) do
         local queued = vc.requestLayoutSet(
             { job = 0, verb = vc.verb.ADD, itemId = it.itemId, count = it.count,
@@ -461,15 +566,15 @@ function R.tick()
             end);
         if not queued then st.inFlight = math.max(0, st.inFlight - 1); end
     end
-    if st.inFlight <= 0 then st.inFlight = 0; end
+    if st.inFlight <= 0 then st.inFlight = 0; st.runKind = nil; end
     return 'pushed:' .. #adds;
 end
 
 -- test seams
 function R._st() return st; end
 function R._reset()
-    st = { lastBeat = 0, lastPushKey = nil, pendingCity = false,
-           inFlight = 0, runOk = 0, runCity = 0, runFail = 0,
+    st = { lastBeat = 0, kickAt = nil, lastPushKey = nil, retryAt = nil, pendingCity = false,
+           inFlight = 0, runOk = 0, runCity = 0, runFail = 0, runKind = nil,
            lastDerived = nil, pressure = nil, seedStamp = nil, evictStamp = nil };
 end
 

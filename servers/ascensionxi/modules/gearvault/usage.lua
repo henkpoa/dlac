@@ -308,6 +308,12 @@ function M.rankEvictions(entries, assignedIds, wornIds)
 end
 
 -- test seam
+-- A different character logged in without an addon reload: forget this
+-- one's stamps, Bench and settings (unsaved stamps -- at most the 10 s save
+-- debounce -- are dropped rather than written into the NEW character's file),
+-- and let the next load() read the new character's own file.
+function M.resetCharacter() M._reset(); end
+
 function M._reset()
     st = { loaded = false, dirty = false, stamps = {}, excluded = {},
            settings = { additions = 'auto', removals = 'ask' } };

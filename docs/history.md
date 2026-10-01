@@ -10538,3 +10538,139 @@ Menu > Macro book. On AscensionXI the header line must read `<JOB>: <n> "Test 50
 name a trigger Group `Test 50%` and open a trigger's group condition: the picker must list
 `Test 50%` (it read `50%%` on both servers before `27d`). On CatsEyeXI both must look the same
 as before. The bludex kit (vendored) escapes three labels too; fix those in henkpoa/bludex.
+
+## Session "the vault goes live" (2026-09-30, `2026.09.30a`)
+
+**Theme:** Henrik: *"The 8 second sync is confusing ... Sometimes some things don't show up
+unless a manual sync happens ... Also do it from the axi perspective."* Two rulings arrived
+mid-session and bind everything: *"there should not be any gear vault events when outside
+the city, since you can only interact with it inside one"*, and *"our highest priority last
+time was the duping risk, where performance got the back seat. Keep duping risks in mind."*
+Design, evidence and the dupe review: `docs/design/gear-vault-live-sync.md`. Server half:
+AscensionXI PR #728 (`claude/gear-vault-sync`), local, not deployed.
+
+**Evidence first.** Four read-only investigations ran in parallel -- the dlac state machine,
+the server backend and its mutation paths, the server's push/pacing machinery, and 25,278
+lines of field wire logs (8 characters, 09-18..09-29). What they found:
+- a counter trade is invisible to dlac: it deposits with no 0x1E0 frame, and nothing hooked it;
+- six further state bugs, each reproduced headlessly before any fix;
+- 34-58 % of all vault traffic came from gear swaps: a 0x01F lock flag was treated as "everything moved";
+- two thirds of chained read time was dlac's own 0.35 s gap;
+- the "sync in 8s" countdown was the additions engine's beat, not a sync;
+- a server ACK overflow for DEPOSIT batches of 63+ entries.
+
+**Landed (dlac, `e325016` + follow-up):**
+- the additions engine runs on events, with a quiet 3 s re-derive and no countdown;
+- the field holds still; a city probes once and renews the push subscription;
+- gear swaps invalidate nothing (per-slot rule, `noteInventory`);
+- reads start when the server is done: 0.3 s after an edit, 1 s after a job change;
+- the post-reply gap is 0.1 s, with transport rules T1/T2/T3;
+- a counter-trade hook;
+- the mirror generation;
+- the probe compares the listed revision;
+- Sync always reads now;
+- the push key is "the exact adds" plus a 10 s retry;
+- the city badge clears;
+- the + Add picker keys on an ownership generation;
+- character-switch reset;
+- your edits show at once as an overlay, and Store says "Storing...";
+- a batch refused part-way re-reads.
+
+**Landed (server, #728):**
+- the CHANGED push (op 0x4B, seq 0, opt-in in HELLO);
+- streamed list reads (FOLLOWS = 4);
+- MaxDeposit 62.
+
+It is Lua-only and read-only. Tests: `gear_vault/live_sync` 8/8 (fail-first on main), the
+vault directory 242/242, axq 735/735.
+
+**Dead end avoided:** pipelining several requests. The server's replay ring holds 8 writes,
+and keyset pages cannot be pipelined anyway. One request in flight stays the law.
+
+**Field round owed:** the checklist at the end of `docs/design/gear-vault-live-sync.md`.
+
+## Session "a zone line changes nothing" (2026-10-01, `2026.10.01a`)
+
+**Ask:** "Can dlac cache between zones? Nothing should happen during zoning." The 09-30 round
+still dropped every slot -> copy identity at each zone line, probed in every city, and renewed
+the push subscription there because the server kept it on the entity (a zone line destroyed it).
+
+**Landed (dlac):**
+- every view survives a zone line whole: rows, layout, identities, lost list, subscription;
+- nothing is sent from the 0x00B (zone-out) until the new zone's inventory has loaded, not
+  even a write retry; a click made meanwhile waits; the re-send is not movement, the 0x01C
+  sizes are not wardrobe growth, and the layout engine idles until the zone settles;
+- the end of a zone line is read off the wire: the AllLoaded (0x01D State 1) that follows a
+  RUN of two or more StillLoading containers. The server's own zone-in tidy can fire while the
+  client still loads and names ONE container per AllLoaded (`GearVaultRefreshContainer`, the
+  equip flush), so "any AllLoaded" would end the wait early; a 30 s timeout backs it up;
+- a LOGIN is not a zone line: a zone-in counts as one only within 60 s of a 0x00B whose
+  LogoutState is 2 (ZONECHANGE; 1 = LOGOUT, a lost connection sends none). A login renews the
+  subscription with one probe wherever the player stands and re-reads the layout once;
+- against a server without pushes a city arrival still probes once, 3 s after the zone loads
+  (after the tidy's 2 s timer), and the rows stay fresh until that probe leaves (`probeAt`);
+- at the settle each pinned copy is checked against its bag slot (the tidy can move a piece
+  mid-load, and its packets were ignored with the re-send) -- locally, no traffic;
+- a renewal a quick zone line cut short runs at the next zone; an un-attuned login asks once
+  wherever it stands;
+- unloading dlac sends a goodbye HELLO (client caps 0).
+
+**Landed (server, #728 updated):** the subscription is a charvar written only when it changes:
+a zone line keeps it, `gv.noteGameIn` clears it on a fresh login (from the `onGameIn` hook,
+before the tidy's timer). LS-09 runs a real `gotoZone`. Vault directory 243/243.
+
+**Dead end avoided:** settling on the first AllLoaded after the zone-in. Found by reading the
+server: AllLoaded has ~20 senders, three of them vault paths that can run mid-load.
+
+**Pre-existing, not ours:** `tests/gear_repair.lua` fails under WSL lua5.4 on this CRLF
+working copy (its fixture pattern expects LF); CI's LF checkout passes.
+
+## Session "the vault's only copy is augmented" (2026-10-01, `2026.10.01b`)
+
+**Report:** "when adding something to my set, it seems like it doesn't auto-draw from gear
+vault into my MW layout as it should. Hands did, but leather vest isn't in my idle set."
+Mindlor (DNC 60, local shard) put Leather Vest and Hume M Gloves in the DNC Idle set. The
+gloves came out (`gear-vault-edits.log`: ADD 12754 instance 2832, `derived-from-sets`); the
+vest never got a request. The vault's one Leather Vest (instance 2974) carries augments
+(extra `02 03 00 22 19 48 ...`), and the 2026-09-18 instance rule offered only plain rows to
+the engine ("new augmented-copy choices stay manual"). The vest counted as not vaulted.
+
+**Landed:** for an entry that names no augment, `reconcile.lua`'s `augmentedPick` covers what
+plain copies cannot: it takes every augmented copy there is when that is not more than the
+shortfall, or any of several copies whose rolls are identical. Two or more different rolls
+competing for fewer places stay manual: `R.chooseCopy()` names them, the vault tab says
+"choose with Add to Mog Wardrobe", `/dl vault` prints `chooseCopy=N`, and they no longer
+count as not vaulted. `derive.lua` marks an item `plainOnly` when any entry pins the plain
+copy (`AugKey = ''`, which `equipcore.checkAugments` would refuse an augmented copy for);
+such an item never draws an augmented copy. The flag is OR-ed into the shared ref key's facts,
+because a generic and a plain-pinned record share `i:<id>` so pairs keep counting as one item.
+
+**Tests:** `tests/gearvault_augmented_draw.lua` (new, in CI) failed first on the field case
+(`pushed:1`, the gloves alone) and passes now, with plain-first, real-choice, identical-roll,
+all-copies, already-bound and both plain-pin cases. `gearvault_instances`, `gearvault_counts`,
+`gearvault_live`, `gearvault_sync`, `smoke_ui` (1620), `imgui_percent_literals` and
+`run_tests` (7521) pass on Windows Lua 5.4.
+
+**Field check owed:** in a city with the Leather Vest still in the DNC Idle set, reload dlac:
+the vest moves into the Mog Wardrobe by itself (chat: `gear vault: layout +1 piece from your
+sets.`) and the Idle set wears it.
+
+**Field round (same evening):** the owner confirmed the vest now comes out by itself and set
+edits add and remove pieces quickly, then passed live-sync checks 1-7 against the shard
+running AscensionXI #728. One login-time rate-limit drop, most likely a collision with Nexus
+on 0x1E0, is written up in `gear-vault-live-sync.md` under "Field round 2026-10-01".
+
+**Nexus collision fix (`2026.10.01c`, owner: "yes, make the Nexus collision fix"):** the
+shared 0x1E0 gate (`servers/ascensionxi/transport.lua`) now watches packet_out. A 0x1E0 that
+is not one of its last eight frames (compared from the op byte on) is another addon's, gets a
+`foreign` wire-log line, and holds the next vault/HELM/ascension send for `FOREIGN_GAP`
+(0.3 s), the same courtesy Nexus's `LISTEN_GAP` already gives dlac. Playtest phase: parse
+check only; CI runs the suites on the PR. A suite case for `noteOutgoing` is owed at the
+final test pass.
+
+**`2026.10.01d`, found on the first live relog:** every one of dlac's own sends logged a
+`foreign` line with the same timestamp as its `enqueue`. Ashita runs packet_out inside
+`AddOutgoingPacket`, so the frame reached `noteOutgoing` before `send` had remembered it, and
+each request held the next one 0.3 s. The frame is now remembered before `_send`. That relog
+also showed one real foreign packet, op 0x90 (the Onslaught band) at login, with no dlac send
+beside it: another addon talks on 0x1E0 at login besides Nexus.
