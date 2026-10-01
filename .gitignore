@@ -20,3 +20,6 @@ share/
 __pycache__/
 *.pyc
 luac.out
+
+# Reproducible release packages are build outputs, not source.
+dist/
