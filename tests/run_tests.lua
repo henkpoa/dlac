@@ -28354,21 +28354,25 @@ end)();
     check('GVC8 state reads fresh', vc.state(), 'fresh');
 
     -- the zone probe: count agrees -> re-stamped WITHOUT spending LIST pages.
-    -- A zone line itself changes nothing in the vault (2026-09-30): the rows
-    -- stay on screen and fresh; a probe is SCHEDULED for when the client
-    -- stands in the new zone (after the server's own zone-in tidy -- 5 s
-    -- against a server without pushes).
-    vc.noteZoneIn();
-    check('GVC9 zone-in schedules a probe and keeps the rows', vc.mirror.fresh == true and vc._st().zoneCheckAt ~= nil, true);
-    T = T + vc.SETTLE_ZONE_OLD + 1; vc.pump(true);
+    -- A zone line itself changes nothing (2026-10-01): the rows stay on
+    -- screen and fresh, nothing leaves until the new zone's inventory is
+    -- loaded, and against a server without pushes a city arrival SCHEDULES
+    -- one probe for after the server's own zone-in tidy.
+    local function zoneLine()   -- 0x00B ZONECHANGE, 0x00A, the re-send's run + AllLoaded
+        vc.noteZoneOut(vc.LOGOUT_ZONECHANGE); vc.noteZoneIn();
+        vc.noteItemSame(0); vc.noteItemSame(0); vc.noteItemSame(1);
+    end
+    zoneLine();
+    check('GVC9 a zone line keeps the rows and schedules a probe', vc.mirror.fresh == true and vc._st().probeAt ~= nil, true);
+    T = T + vc.SETTLE_TIDY + 1; vc.pump(true);
     local before = #sent;
     check('GVC10 the probe is a HELLO', sent[before][5], vc.op.HELLO);
     respond(0, 0, vc._wu16(1) .. vc._wu16(0) .. vc._wu32(3) .. string.char(15, 124, 62, 0));
     check('GVC11 agreeing count -> fresh again, no LIST', vc.mirror.fresh == true and #sent == before, true);
 
     -- ...and a DISAGREEING count escalates to a full LIST
-    vc.noteZoneIn();
-    T = T + vc.SETTLE_ZONE_OLD + 1; vc.pump(true);
+    zoneLine();
+    T = T + vc.SETTLE_TIDY + 1; vc.pump(true);
     respond(0, 0, vc._wu16(1) .. vc._wu16(0) .. vc._wu32(9) .. string.char(15, 124, 62, 0));
     check('GVC12 disagreeing count -> LIST begins', sent[#sent][5], vc.op.LIST);
     respond(0, 0, vc._wu16(0) .. vc._wu16(0));   -- empty vault now
@@ -28596,11 +28600,13 @@ end)();
     respond(vc.status.NOT_ATTUNED, 0, '');
     check('GVA10 a second refusal says nothing either', #said, 0);
     check('GVA11 ...and ownership is not re-told (nothing changed)', freshed, 1);
-    -- a reason (zone-in) pulls the re-check forward instead of pushing it out
-    vc.noteZoneIn();
-    check('GVA12 zone-in pulls the next check to the settle time',
-          vc.traceLine():find('next check in ' .. math.ceil(vc.SETTLE_ZONE) .. 's', 1, true) ~= nil, true);
-    T = T + vc.SETTLE_ZONE + 1; vc.pump(true);
+    -- a reason (arriving in a city) pulls the re-check forward instead of pushing it out
+    vc.noteZoneOut(vc.LOGOUT_ZONECHANGE); vc.noteZoneIn();
+    check('GVA12a nothing is asked while the zone loads', vc.traceLine():find('next check in 0s', 1, true) == nil, true);
+    vc.noteItemSame(0); vc.noteItemSame(0); vc.noteItemSame(1);
+    check('GVA12 a city arrival pulls the next check to now',
+          vc.traceLine():find('next check in 0s', 1, true) ~= nil, true);
+    T = T + vc.MIN_GAP + 0.01; vc.pump(true);
     check('GVA13 ...and the HELLO leaves', sent[#sent][5] == vc.op.HELLO and #sent == before + 2, true);
     -- the quest lands: the next OK clears the state, says so once, and syncs in full
     respond(vc.status.OK, 0, vc._wu16(1) .. vc._wu16(0) .. vc._wu32(1) .. string.char(15, 124, 62, 0));

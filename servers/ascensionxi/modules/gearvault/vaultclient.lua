@@ -23,13 +23,18 @@
         JOB change is seen (the server applied the swap BEFORE it sent the
         job packets -- the reply order is FIFO), after our own writes, after
         a counter trade or an outgoing `!vault`, and on manual refresh;
-      * a server PUSH (op CHANGED, negotiated in HELLO) names every change
-        we did not make ourselves -- counter trades, chat verbs, the
-        job-change and zone-in applies -- the moment it lands;
-      * a cheap HELLO probe when we arrive in a city: count + revision are
-        the dirty check, and the HELLO renews the push subscription (the
-        server forgets it at every zone line); out in the field the client
-        holds still -- nothing there can change the vault;
+      * a server PUSH (op CHANGED, negotiated in HELLO, kept for the whole
+        session) names every change we did not make ourselves -- counter
+        trades, chat verbs, the job-change and zone-in applies -- the
+        moment it lands;
+      * a ZONE LINE CHANGES NOTHING (Henrik, 2026-10-01): every view
+        survives it, nothing is sent until the new zone's inventory is
+        loaded, and the inventory re-send is not movement. Only against a
+        server without pushes does arriving in a city cost one cheap HELLO
+        probe (count + revision). Out in the field the client holds still --
+        nothing there can change the vault. A LOGIN (not a zone line: no
+        0x00B ZONECHANGE came first) costs one probe, which renews the
+        subscription the server dropped at its game-in;
       * gear swaps refresh NOTHING (an equip flips a lock flag in a bag
         slot; only a slot whose ITEM changed invalidates what it touches).
 
@@ -129,8 +134,9 @@ M.READ_RETRIES   = 3;     -- a read: then give up and back off
 M.MIN_GAP        = 0.1;   -- between two of OUR sends (the transport gates replies)
 M.GIVEUP_BACKOFF = 10;    -- seconds before a failed or refused sync may try again
 M.SETTLE_JOB     = 1.0;   -- after the main job is seen changed (the apply ran first)
-M.SETTLE_ZONE    = 1.0;   -- arriving in a city: probe (and re-subscribe) this soon
-M.SETTLE_ZONE_OLD = 5.0;  -- ...against a server without pushes: after its zone-in tidy
+M.ZONE_LOAD_TIMEOUT = 30.0; -- a zone-in whose inventory load is never seen to end ends its wait here
+M.ZONE_LINE_MAX  = 60.0;  -- a zone-out whose zone-in is later than this was not a zone line
+M.SETTLE_TIDY    = 3.0;   -- a server without pushes: probe after its zone-in tidy (2 s timer)
 M.SETTLE_CHAT    = 3.0;   -- after an outgoing !vault or a counter trade (no push)
 M.SETTLE_EDIT    = 0.3;   -- after our own write: coalesce a run of edits into one read
 M.SETTLE_PUSH    = 0.2;   -- coalesce a burst of pushes into one read
@@ -154,6 +160,7 @@ M._abandon  = nil;  -- transport.abandon(op, seq): we gave up on that request
 M._notePush = nil;  -- transport.notePush(op, why): log a push (never a reply)
 M._inCity   = nil;  -- () -> true | false | nil: is this zone a city (the server's predicate)?
 M._vaultZone = nil; -- () -> true | false | nil: can the vault change here (a city, or a counter)?
+M._onZoneSettled = nil; -- (field) after a zone line, once the new zone's inventory is loaded
 
 local function say(msg)
     if type(M._say) == 'function' then pcall(M._say, msg); return; end
@@ -729,18 +736,52 @@ function M.noteJob(job)
     st.lastJob = job;
 end
 
--- A zone line. The server rebuilt our entity: the push subscription is gone,
--- and a request that was on the wire is lost. Whether to look again is
--- decided once the client stands in the new zone (the pump, after a settle):
--- a city probes -- count + revision, and the HELLO renews the subscription
--- -- while the field holds still: nothing there can change the vault.
-function M.noteZoneIn()
-    M.invalidateInstances();
+-- A ZONE LINE CHANGES NOTHING (Henrik, 2026-10-01: "Can dlac cache between
+-- zones? Nothing should happen during zoning"). Zoning moves no gear: every
+-- view -- the vault rows, the layout, the slot -> copy identities, the lost
+-- list -- survives it whole. From the zone-out (0x00B) until the new zone's
+-- inventory has finished loading (see noteItemSame; a timeout if that is
+-- never seen) the client sends nothing, and the inventory re-send that
+-- refills the bags in between is not treated as movement. What COULD change
+-- the vault across a zone line -- the server's own zone-in tidy -- arrives as
+-- a CHANGED push (the subscription lasts the whole session on a server that
+-- offers pushes); against an older server, arriving in a city probes once.
+-- Every cached copy identity is still pinned to the revision it was read at,
+-- so the first reply that carries a newer revision drops them all.
+--
+-- A LOGIN is not a zone line. The server sends 0x00B with LogoutState 2
+-- (ZONECHANGE) before every zone line and 1 (LOGOUT) before a logout, and
+-- nothing at all when the connection is lost -- so a zone-in counts as a
+-- zone line only right after a ZONECHANGE. Anything else starts a session:
+-- the server dropped the subscription at its game-in, and its login tidy
+-- may move copies. The caches still stand (nothing moves while logged out);
+-- one probe once the zone is loaded re-subscribes and compares the revision.
+M.LOGOUT_ZONECHANGE = 2;   -- 0x00B LogoutState (byte 4) of a zone line
+
+function M.noteZoneOut(state)
     if st.dormant then return; end
-    st.subscribed = false;
-    -- the server's zone-in tidy may move copies: an open add batch's
-    -- admission snapshot no longer describes the shelf
-    if st.layoutBatch ~= nil then st.layoutBatch.valid = false; end
+    st.zoning = true;
+    st.zoneInAt, st.loadRun = nil, nil;
+    st.probeAt, st.probeWhy = nil, nil;   -- the next zone decides its own
+    st.zoneOutAt = M._clock();
+    st.zoneLine = (state == M.LOGOUT_ZONECHANGE);
+end
+
+function M.noteZoneIn()
+    if st.dormant then return; end
+    local now = M._clock();
+    local zoneLine = st.zoneLine == true and st.zoneOutAt ~= nil
+        and now - st.zoneOutAt <= M.ZONE_LINE_MAX;
+    st.zoneLine, st.zoneOutAt = nil, nil;
+    st.zoning = true;
+    st.zoneInAt, st.loadRun = now, 0;
+    st.probeAt, st.probeWhy = nil, nil;
+    if not zoneLine then
+        st.subscribed = false;   -- the server's game-in forgot it
+        st.zoneLogin = true;
+    end
+    -- a request on the wire across the zone line is lost with the old map
+    -- server's entity
     local p = st.pending;
     if p ~= nil and p.sentAt ~= nil then
         if isWrite(p.op) then
@@ -759,25 +800,88 @@ function M.noteZoneIn()
             if p.kind == 'sync-hello' or p.kind == 'sync-list' then st.zoneFull = true; end
         end
     end
-    if st.unattuned then
-        -- the quest may just have been finished: pull the rare re-check
-        -- forward (one HELLO; there is no vault here to hold still for)
-        M.markStale(M.SETTLE_ZONE, 'zone-in');
-        return;
-    end
-    st.zoneCheckAt = M._clock() + ((M.limits ~= nil and M.limits.push) and M.SETTLE_ZONE or M.SETTLE_ZONE_OLD);
 end
 
--- The zone decision, once the client stands in the new zone.
-local function zoneCheck(now)
-    st.zoneCheckAt = nil;
-    local full = st.zoneFull == true;
-    st.zoneFull = nil;
-    if updateHold() and not full then return; end   -- the field: hold still
-    if st.unattuned then st.staleAt = math.min(st.staleAt or now, now); return; end
-    M.markStale(0, 'zone-in');
-    if not full then st.probeOnly = true; end
+-- A cheap check (HELLO: the count and the revision) in `settle` seconds.
+-- Until it leaves, the rows stay fresh: it is a glance, not a doubt. A probe
+-- never downgrades a full read: one owed NOW answers an immediate probe,
+-- and a scheduled one (timed to follow the server's tidy) waits for it.
+local function probeSoon(settle, why)
+    if (settle or 0) > 0 then
+        st.probeAt, st.probeWhy = M._clock() + settle, why;
+        return;
+    end
+    if st.staleAt ~= nil and not st.probeOnly then return; end
+    st.probeAt, st.probeWhy = nil, nil;
+    M.markStale(0, why);
+    st.probeOnly = true;
 end
+
+-- The bags hold the zone-in re-send now. The server's tidy can move a piece
+-- while the zone still loads, and its packets were ignored with the re-send:
+-- a pinned copy whose slot no longer holds its item is forgotten -- locally,
+-- no traffic (a same-item swap moves the revision, which drops them all).
+local function checkIdentities()
+    if type(M._readSlot) ~= 'function' or st.instanceCache == nil then return; end
+    local dropped = false;
+    for key, e in pairs(st.instanceCache) do
+        local ok, id = pcall(M._readSlot, e.container, e.slot);
+        if not ok or id ~= e.itemId then st.instanceCache[key] = nil; dropped = true; end
+    end
+    if dropped then st.inventoryEpoch = (st.inventoryEpoch or 0) + 1; end
+end
+
+-- The zone is ours: the inventory finished loading (or the wait timed out).
+local function zoneSettled(now)
+    st.zoning = false;
+    st.zoneInAt, st.loadRun = nil, nil;
+    local cut, login = st.zoneFull == true, st.zoneLogin == true;
+    st.zoneFull, st.zoneLogin = nil, nil;
+    -- a session start, or a renewal a zone line cut short: the server
+    -- pushes, but not to us
+    local renew = login or (M.limits ~= nil and M.limits.push == true and not st.subscribed);
+    local field = updateHold();
+    checkIdentities();
+    if cut then
+        M.markStale(0, 'a read cut by the zone line');   -- finish what was asked, wherever we stand
+        st.probeOnly = false;
+    elseif st.unattuned then
+        -- The Deeper Room is finished in a city: there, ask now instead of in
+        -- five minutes (the server's ATTUNE push makes this moot when it lands;
+        -- a login asks wherever it stands, which renews that push)
+        if renew or not field then st.staleAt = math.min(st.staleAt or now, now); end
+    elseif renew then
+        -- wherever we stand: renew the subscription. A server that pushes
+        -- reports its login tidy when that runs; one that cannot is probed
+        -- after it.
+        probeSoon((M.limits ~= nil and M.limits.push) and 0 or M.SETTLE_TIDY, login and 'login' or 'renew');
+    elseif not field and not M.live() then
+        -- a server without pushes cannot tell us about its zone-in tidy:
+        -- one cheap probe once that has run
+        probeSoon(M.SETTLE_TIDY, 'zone-in');
+    end
+    -- A login also asks for the layout once: an edit made while we were away
+    -- (a GM, the website) moves no copy, so the revision need not show it.
+    if login and not st.unattuned then M.invalidateLayout(); end
+    if type(M._onZoneSettled) == 'function' then pcall(M._onZoneSettled, field); end
+end
+
+-- 0x01D (ITEM_SAME); byte 4 = State: 0 StillLoading (names one container),
+-- 1 AllLoaded. The re-send after a zone-in names every container in one run
+-- and then says AllLoaded; every other sender -- the vault's own tidy, a
+-- swap's flush -- names ONE container per AllLoaded, and the server's
+-- zone-in tidy can fire while the new zone is still loading. So the zone
+-- line is over at the first AllLoaded after a run of two or more. Before
+-- the zone-in nothing counts (a refresh at the old zone).
+function M.noteItemSame(state)
+    if not st.zoning or st.zoneInAt == nil then return; end
+    if state == 0 then st.loadRun = (st.loadRun or 0) + 1; return; end
+    if state ~= 1 then return; end
+    local run = st.loadRun or 0;
+    st.loadRun = 0;
+    if run >= 2 then zoneSettled(M._clock()); end
+end
+function M.zoning() return st.zoning == true; end
 
 function M.noteVaultChat()
     -- An outgoing `!vault ...` may mutate the store OR a layout; resync after
@@ -833,6 +937,8 @@ end
 -- layout -- in a city (out in the field the vault's side cannot move).
 -- Returns true when the packet changed anything we track.
 function M.noteInventory(id, data)
+    -- the zone-in re-send refills the bags with what was there: no movement
+    if st.zoning then return false; end
     local cid, slot, newId, qty = M.parseItemPacket(id, data);
     if cid == nil then return false; end
     local oldId = nil;
@@ -1237,7 +1343,16 @@ function M.pump(ready)
         st.staleAt = now + M.LOGIN_ARM;
         updateHold();
     end
-    if st.zoneCheckAt ~= nil and now >= st.zoneCheckAt then zoneCheck(now); end
+    -- Nothing leaves while zoning: from the zone-out until the new zone's
+    -- inventory is loaded (or the wait times out). Asks made meanwhile wait.
+    if st.zoning then
+        if st.zoneInAt ~= nil and now - st.zoneInAt >= M.ZONE_LOAD_TIMEOUT then
+            zoneSettled(now);
+        else
+            return;
+        end
+    end
+    if st.probeAt ~= nil and now >= st.probeAt then probeSoon(0, st.probeWhy); end
 
     if st.pending ~= nil then
         local p = st.pending;
@@ -1343,8 +1458,8 @@ function M.pump(ready)
     if st.staleAt == nil or now < st.staleAt then return; end
 
     -- A sync (or a probe) always starts at HELLO: proto check + the count --
-    -- and, since 2026-09-30, the push subscription (the server keeps it only
-    -- until our next zone line). `gen` pins the reasons this read answers.
+    -- and, since 2026-09-30, the push subscription (the server keeps it for
+    -- the session). `gen` pins the reasons this read answers.
     beginOp(st.probeOnly and 'probe' or 'sync-hello', M.op.HELLO, M.helloPayload(), now);
     st.pending.gen = st.mirrorGen;
 end
@@ -1547,7 +1662,7 @@ function M.onFrame(f)
         end
         local modeChanged = M.instanceMode() ~= (h.instances == true);
         M.limits = h;
-        st.subscribed = h.push == true;   -- the server keeps it until our next zone line
+        st.subscribed = h.push == true;   -- the server keeps it until we log out
         if modeChanged then
             -- A layout can arrive before the login HELLO. Its old rows lack
             -- instance/location fields even though the mirror is now v2.
@@ -1867,10 +1982,19 @@ function M.health()
     return nil;
 end
 
--- Live updates: the server pushes changes to us (negotiated, and renewed at
--- every city arrival -- a zone line ends it server-side).
+-- Live updates: the server pushes changes to us (negotiated in HELLO; it lasts
+-- the session -- zone lines keep it, a login renews it).
 function M.live()
     return M.limits ~= nil and M.limits.push == true and st.subscribed == true;
+end
+
+-- The goodbye HELLO (client caps 0) the glue sends as the addon unloads: the
+-- subscription lasts the session, so the server must hear that nothing is
+-- left to block its frames from reaching the game. nil when not subscribed.
+function M.unsubscribeFrame()
+    if not M.live() then return nil; end
+    st.subscribed = false;
+    return M.buildFrame(M.op.HELLO, nextSeq(), wu16(M.PROTO) .. wu16(0));
 end
 
 function M.statusLine()

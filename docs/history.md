@@ -10588,3 +10588,39 @@ vault directory 242/242, axq 735/735.
 and keyset pages cannot be pipelined anyway. One request in flight stays the law.
 
 **Field round owed:** the checklist at the end of `docs/design/gear-vault-live-sync.md`.
+
+## Session "a zone line changes nothing" (2026-10-01, `2026.10.01a`)
+
+**Ask:** "Can dlac cache between zones? Nothing should happen during zoning." The 09-30 round
+still dropped every slot -> copy identity at each zone line, probed in every city, and renewed
+the push subscription there because the server kept it on the entity (a zone line destroyed it).
+
+**Landed (dlac):**
+- every view survives a zone line whole: rows, layout, identities, lost list, subscription;
+- nothing is sent from the 0x00B (zone-out) until the new zone's inventory has loaded, not
+  even a write retry; a click made meanwhile waits; the re-send is not movement, the 0x01C
+  sizes are not wardrobe growth, and the layout engine idles until the zone settles;
+- the end of a zone line is read off the wire: the AllLoaded (0x01D State 1) that follows a
+  RUN of two or more StillLoading containers. The server's own zone-in tidy can fire while the
+  client still loads and names ONE container per AllLoaded (`GearVaultRefreshContainer`, the
+  equip flush), so "any AllLoaded" would end the wait early; a 30 s timeout backs it up;
+- a LOGIN is not a zone line: a zone-in counts as one only within 60 s of a 0x00B whose
+  LogoutState is 2 (ZONECHANGE; 1 = LOGOUT, a lost connection sends none). A login renews the
+  subscription with one probe wherever the player stands and re-reads the layout once;
+- against a server without pushes a city arrival still probes once, 3 s after the zone loads
+  (after the tidy's 2 s timer), and the rows stay fresh until that probe leaves (`probeAt`);
+- at the settle each pinned copy is checked against its bag slot (the tidy can move a piece
+  mid-load, and its packets were ignored with the re-send) -- locally, no traffic;
+- a renewal a quick zone line cut short runs at the next zone; an un-attuned login asks once
+  wherever it stands;
+- unloading dlac sends a goodbye HELLO (client caps 0).
+
+**Landed (server, #728 updated):** the subscription is a charvar written only when it changes:
+a zone line keeps it, `gv.noteGameIn` clears it on a fresh login (from the `onGameIn` hook,
+before the tidy's timer). LS-09 runs a real `gotoZone`. Vault directory 243/243.
+
+**Dead end avoided:** settling on the first AllLoaded after the zone-in. Found by reading the
+server: AllLoaded has ~20 senders, three of them vault paths that can run mid-load.
+
+**Pre-existing, not ours:** `tests/gear_repair.lua` fails under WSL lua5.4 on this CRLF
+working copy (its fixture pattern expects LF); CI's LF checkout passes.

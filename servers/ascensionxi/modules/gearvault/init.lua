@@ -120,6 +120,8 @@ vc._onFresh = function()
 end;
 vc._onLayout = function() pcall(rec.kick, 'layout'); end;
 vc._onPush = function() pcall(rec.kick, 'push'); end;
+-- the zone line is over: a city may now send adds that waited for one
+vc._onZoneSettled = function() pcall(rec.kick, 'zone'); end;
 vc._onLost = usg.forgetInstances;
 
 -- The service core consults (gearimport's vault fold, prune's guard, and
@@ -149,11 +151,28 @@ pcall(function()
         -- invalidates everything -- ran on every gear swap's lock-flag
         -- update and was 34-58 % of all vault traffic in the field logs.
         if e.id >= 0x01D and e.id <= 0x020 then
+            -- 0x01D State (byte 4): the zone line is over when the zone-in
+            -- re-send's run of containers ends (vaultclient.noteItemSame)
+            if e.id == 0x01D then
+                local d = e.data or '';
+                if #d >= 5 then pcall(vc.noteItemSame, d:byte(5)); end
+            end
             pcall(vc.noteInventory, e.id, e.data_modified or e.data);
             return;
         end
-        -- A wardrobe grew (container sizes): the engine's room changed.
-        if e.id == 0x01C then pcall(rec.kick, 'capacity'); return; end
+        -- A wardrobe grew (container sizes): the engine's room changed. The
+        -- zone-in re-send repeats the sizes; that is not growth.
+        if e.id == 0x01C then
+            if not vc.zoning() then pcall(rec.kick, 'capacity'); end
+            return;
+        end
+        -- Zone-out: nothing leaves until the next zone's inventory is loaded.
+        -- LogoutState (byte 4): 2 = a zone line, 1 = a logout.
+        if e.id == 0x00B then
+            local d = e.data or '';
+            pcall(vc.noteZoneOut, (#d >= 5) and d:byte(5) or nil);
+            return;
+        end
         if e.id == 0x00A then
             -- A different character without an addon reload: nothing we hold
             -- is theirs (the usage file, the mirror, the layout engine).
@@ -166,7 +185,7 @@ pcall(function()
             end
             if id ~= nil then _charId = id; end
             vc.noteZoneIn();
-            rec.zoneArmed();   -- a city-held push may go where we landed
+            rec.zoneArmed();   -- a city-held push may go where we land (it runs once settled)
             return;
         end
         if e.id ~= vc.PKT then return; end
@@ -188,6 +207,19 @@ pcall(function()
         if raw:match('^/?!vault') or raw:match('^!vault') then
             vc.noteVaultChat();
         end
+    end);
+end);
+
+-- Unloading (or reloading) dlac: the push subscription lasts the session, so
+-- say goodbye -- otherwise the server would keep sending frames that nothing
+-- blocks from reaching the game client. Best effort: one plain HELLO,
+-- straight to the packet manager (the shared gate is going away with us).
+pcall(function()
+    ashita.events.register('unload', 'dlac_gearvault_unload', function()
+        pcall(function()
+            local frame = vc.unsubscribeFrame();
+            if frame ~= nil then AshitaCore:GetPacketManager():AddOutgoingPacket(vc.PKT, frame); end
+        end);
     end);
 end);
 

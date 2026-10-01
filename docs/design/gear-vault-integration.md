@@ -44,8 +44,8 @@ dormant (the quest can land mid-session) and not a failed sync: no
 30 s retry loop, no layout asks (the reconcile engine idles), the mirror
 reads as an empty vault, and the tab and `/dl vault` name the quest that
 opens it (no chat line: a first-time player is not greeted by it). One HELLO re-checks
-every 5 min; zone-in, a job change, an outgoing `!vault`, and the tab's
-Check now / Sync pull that forward. The first OK afterwards says so once
+every 5 min; arriving in a city (once the zone has loaded), a job change,
+an outgoing `!vault`, and the tab's Check now / Sync pull that forward. The first OK afterwards says so once
 and runs a full sync.
 
 Vault partition 0x40–0x7F:

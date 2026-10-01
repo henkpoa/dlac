@@ -144,10 +144,11 @@ end
 
 -- A zone-in may have landed us in a city: a held or city-refused push goes
 -- again right away instead of waiting out its retry clock.
+-- Re-arms only: the run itself waits until the zone line is over (the vault
+-- client's zone-settled callback kicks it) -- nothing happens while zoning.
 function R.zoneArmed()
     if st.pendingCity then st.lastPushKey = nil; st.retryAt = nil; end
     st.repairBlocked, st.repairStamp = nil, nil;
-    R.kick('zone');
 end
 
 local function say(msg)
@@ -182,6 +183,7 @@ function R.tick()
     local instances = type(vc.instanceMode) == 'function' and vc.instanceMode();
     local kicked = st.kickAt ~= nil and now >= st.kickAt;
     if not kicked and now - st.lastBeat < R.BEAT then return 'idle'; end
+    if type(vc.zoning) == 'function' and vc.zoning() then return 'idle'; end   -- nothing during a zone line
     if st.inFlight > 0 then return 'idle'; end            -- a run is still acking
     if type(vc.layoutBusy) == 'function' and vc.layoutBusy() then return 'idle'; end
     local vs = vc.state();

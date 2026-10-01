@@ -55,9 +55,16 @@ local function pushFrame(scope, rev, jobs, count, pulled, evicted)
                  .. w16(pulled or 0) .. w16(evicted or 0) .. w32(1) };
 end
 
+-- A zone line as the wire tells it: 0x00B (LogoutState 2, ZONECHANGE), 0x00A,
+-- then the zone-in re-send -- a run of containers (State 0), then AllLoaded.
+local function zoneOut(state) vc.noteZoneOut(state or vc.LOGOUT_ZONECHANGE); end
+local function loaded() vc.noteItemSame(0); vc.noteItemSame(0); vc.noteItemSame(1); end
+local function zoneLine() zoneOut(); now = now + 2; vc.noteZoneIn(); now = now + 2; loaded(); end
+
 -- A synced instance-mode client: HELLO (caps given), 1 vault row, empty layout.
 local function boot(caps, rows)
     vc._reset(); rc._reset(); sent = {}; now = now + 100; zone.v = nil;
+    vc._onZoneSettled = nil;
     vc.noteJob(1); vc.refresh(); tick();
     assert(last()[5] == vc.op.HELLO, 'boot opens with HELLO');
     reply(hello(caps or 1, #(rows or { 1 }), 10));
@@ -119,14 +126,15 @@ end)(), true);
 
 -- ---- C: a job change never re-syncs as a count-only probe ----
 boot(1);
-vc.noteZoneIn();
+zoneLine();                               -- a city, a server without pushes: a probe is scheduled
 vc.noteJob(5);
-check('LV15 a job change clears probe mode', vc._st().probeOnly == true, false);
+now = now + vc.SETTLE_TIDY + 0.1; vc.pump(true);
+check('LV15 a job change is never downgraded to a count-only probe', vc._st().probeOnly == true, false);
 
 -- ---- D2: the probe compares the revision the rows were LISTED at ----
 boot(1);                                  -- listed at revision 10
 vc.noteRevision(14);                      -- a layout page / lookup moved the running revision
-vc.noteZoneIn(); now = now + vc.SETTLE_ZONE_OLD + 0.1; vc.pump(true);
+zoneLine(); now = now + vc.SETTLE_TIDY + 0.1; vc.pump(true);
 check('LV16 the probe HELLO leaves', last()[5], vc.op.HELLO);
 reply(hello(1, 1, 14));                   -- same count, revision 14 (count-neutral change)
 check('LV17 a moved revision escalates to a full LIST', vc._st().pending ~= nil and vc._st().pending.op, vc.op.LIST2);
@@ -134,7 +142,7 @@ check('LV17 a moved revision escalates to a full LIST', vc._st().pending ~= nil 
 -- ---- the field holds still; a city probes (Henrik 2026-09-30) ----
 boot(1);
 zone.v = false;                           -- landed in the field
-vc.noteZoneIn(); before = #sent;
+zoneLine(); before = #sent;
 for _ = 1, 40 do tick(0.25); end
 check('LV20 no probe in the field', #sent, before);
 check('LV21 ...the mirror stays trusted', vc.mirror.fresh, true);
@@ -142,8 +150,130 @@ local okInv = vc.noteInventory(0x020, string.rep('\0', 12) .. w16(100) .. string
 check('LV22 a field bag move forgets its slot only', okInv, true);
 check('LV23 ...and never re-reads the layout in the field', vc.layoutCache.fresh, true);
 zone.v = true;                            -- walked into a city
-vc.noteZoneIn(); now = now + vc.SETTLE_ZONE_OLD + 0.1; vc.pump(true);
-check('LV24 a city probes', last()[5], vc.op.HELLO);
+zoneLine();
+check('LV23a ...the rows stay fresh until the probe leaves', vc.mirror.fresh, true);
+now = now + vc.SETTLE_TIDY + 0.1; vc.pump(true);
+check('LV24 a city probes, after the server\'s zone-in tidy', last()[5], vc.op.HELLO);
+
+-- ---- a zone line changes nothing (Henrik 2026-10-01: "Can dlac cache
+-- between zones? Nothing should happen during zoning") ----
+boot(1 + 4 + 8);                          -- a pushing server: subscribed
+zone.v = true;
+vc._st().instanceCache = {
+    ['8:3'] = { container = 8, slot = 3, itemId = 555, instanceId = 7, revision = vc.revision },
+    ['8:4'] = { container = 8, slot = 4, itemId = 556, instanceId = 8, revision = vc.revision },
+};
+-- after the re-send: 8:3 still holds its piece; 8:4 was emptied by the
+-- server's tidy while the zone loaded (its packets were ignored with the rest)
+vc._readSlot = function(c, s) return (c == 8 and s == 3) and 555 or 0; end;
+vc.lost = { entries = {}, fresh = true, revision = vc.revision };
+local stamp, layoutStamp = vc.mirror.stamp, vc.layoutCache.stamp;
+before = #sent;
+zoneOut();
+check('ZL1 a zone-out starts the zone line', vc.zoning(), true);
+local zw;
+vc.requestWithdraw({ { rowId = 1, qty = 1 } }, function(_, e) zw = e; end);   -- a click meanwhile
+for _ = 1, 20 do tick(0.25); end
+check('ZL2 nothing leaves between the zone-out and the zone-in', #sent, before);
+vc.noteZoneIn();
+check('ZL3 the subscription survives a zone line', vc.live(), true);
+check('ZL4 the zone-in re-send is not movement',
+    vc.noteInventory(0x020, string.rep('\0', 12) .. w16(555) .. string.char(8, 3, 0) .. string.rep('\0', 24)), false);
+vc.noteItemSame(0); vc.noteItemSame(1);   -- one container + AllLoaded: the server's tidy, mid-load
+check('ZL5 a one-container refresh does not end the zone line', vc.zoning(), true);
+for _ = 1, 20 do tick(0.25); end
+check('ZL6 ...nothing leaves while the zone loads', #sent, before);
+loaded();
+check('ZL7 the re-send\'s run of containers, then AllLoaded, ends it', vc.zoning(), false);
+check('ZL8 every view survived: rows, layout, copy identities, lost list',
+    vc.mirror.fresh and vc.mirror.stamp == stamp and vc.layoutCache.fresh and vc.layoutCache.stamp == layoutStamp
+    and vc.instanceAt(8, 3, 555) ~= nil and vc.lost.fresh == true, true);
+check('ZL8a ...except a copy whose slot the zone-in left holding something else (no traffic)',
+    vc._st().instanceCache['8:4'] == nil and #sent == before, true);
+vc._readSlot = nil;
+tick();
+check('ZL9 the click made while zoning goes out once the zone is ours', #sent == before + 1 and last()[5] == vc.op.WITHDRAW, true);
+check('ZL10 ...and the zone line itself cost no read at all', (function()
+    for i = before + 1, #sent do if sent[i][5] ~= vc.op.WITHDRAW then return false; end end
+    return zw == nil;
+end)(), true);
+
+-- a load seen before the zone-in ends nothing (a refresh at the old zone)
+boot(1 + 4);
+zoneOut(); loaded();
+check('ZL11 an AllLoaded before the zone-in ends nothing', vc.zoning(), true);
+-- a zone that never reports loaded still ends its wait
+vc.noteZoneIn();
+now = now + vc.ZONE_LOAD_TIMEOUT - 0.5; vc.pump(true);
+check('ZL12 a zone whose load is never seen waits...', vc.zoning(), true);
+now = now + 1; vc.pump(true);
+check('ZL13 ...until the timeout', vc.zoning(), false);
+
+-- a read on the wire at the zone line runs again in full
+boot(1 + 4);
+vc.markStale(0, 'test'); tick();
+check('ZL14 a sync is on the wire', vc._st().pending ~= nil and vc._st().pending.kind, 'sync-hello');
+zoneOut(); vc.noteZoneIn(); loaded(); tick();
+check('ZL15 a read cut by the zone line runs again, in full', last()[5] == vc.op.HELLO
+    and vc._st().pending ~= nil and vc._st().pending.kind == 'sync-hello', true);
+
+-- ---- a LOGIN is not a zone line: one probe renews the subscription ----
+boot(1 + 4);
+zone.v = false;                           -- logging back in out in the field
+zoneOut(1);                               -- 0x00B LOGOUT
+now = now + 120;                          -- the title screen, the character list
+vc.noteZoneIn();
+check('ZL16 a login drops the subscription (the server forgot it)', vc.live(), false);
+before = #sent;
+loaded(); tick();
+check('ZL17 ...one probe renews it, wherever we stand',
+    #sent == before + 1 and last()[5] == vc.op.HELLO and vc._st().pending.kind == 'probe', true);
+reply(hello(1 + 4, 1, 10));               -- nothing moved while logged out
+check('ZL18 a probe that finds nothing moved: fresh and subscribed, no LIST',
+    vc.mirror.fresh == true and vc.live() == true and vc._st().pending == nil, true);
+check('ZL18a ...and the layout is asked again (an edit made while away moves no copy)',
+    vc.layoutCache.fresh, false);
+boot(1 + 4);
+vc.noteZoneIn();                          -- a lost connection sends no 0x00B at all
+check('ZL19 a zone-in with no zone-out before it is a login', vc.live(), false);
+boot(1 + 4);
+zoneOut(); now = now + vc.ZONE_LINE_MAX + 1; vc.noteZoneIn();
+check('ZL20 a zone-out whose zone-in comes much later is a login', vc.live(), false);
+-- a login whose renewal a quick zone line cut short renews at the next zone, even in the field
+boot(1 + 4);
+zone.v = false;
+vc.noteZoneIn(); loaded(); tick();
+check('ZL20a the login probe is on the wire', vc._st().pending ~= nil and vc._st().pending.kind, 'probe');
+zoneOut(); vc.noteZoneIn(); loaded();
+before = #sent; tick();
+check('ZL20b ...cut by a zone line, the renewal runs once the next zone loads, in the field too',
+    #sent == before + 1 and last()[5] == vc.op.HELLO, true);
+reply(hello(1 + 4, 1, 10));
+check('ZL20c ...and we are subscribed again', vc.live(), true);
+-- an un-attuned character logging in out in the field asks once (it renews the ATTUNE push)
+vc._reset(); sent = {}; zone.v = false; vc.noteJob(1); vc.refresh(); tick();
+frame(vc.status.NOT_ATTUNED);
+now = now + 30; vc.noteZoneIn(); loaded();
+before = #sent; tick();
+check('ZL20d an un-attuned login in the field still asks once', #sent == before + 1 and last()[5] == vc.op.HELLO, true);
+frame(vc.status.NOT_ATTUNED);
+zoneLine(); before = #sent;
+for _ = 1, 20 do tick(0.25); end
+check('ZL20e ...but a later field zone line does not', #sent, before);
+boot(1);                                  -- a server without pushes: after its login tidy
+zoneOut(1); now = now + 60; vc.noteZoneIn(); loaded();
+before = #sent;
+now = now + vc.SETTLE_TIDY - 0.5; vc.pump(true);
+check('ZL21 against a server without pushes the login probe waits out the tidy...', #sent, before);
+now = now + 1; vc.pump(true);
+check('ZL22 ...then leaves', #sent == before + 1 and last()[5] == vc.op.HELLO, true);
+
+-- ---- unloading says goodbye: the subscription lasts the session ----
+boot(1 + 4);
+local bye = vc.unsubscribeFrame();
+check('ZL23 the goodbye is a HELLO with client caps 0',
+    bye ~= nil and bye[5] == vc.op.HELLO and bye[9] == 1 and bye[10] == 0 and bye[11] == 0 and bye[12] == 0, true);
+check('ZL24 ...said once', vc.live() == false and vc.unsubscribeFrame() == nil, true);
 
 -- ---- gear swaps are not inventory changes ----
 boot(1);
@@ -252,14 +382,24 @@ boot(1);
 werr = nil;
 vc.requestWithdraw({ { rowId = 1, qty = 1 } }, function(_, e) werr = e; end);
 tick();
-local zseq = last()[6];
-vc.noteZoneIn();
+local function withdraws()
+    local n = 0;
+    for _, p in ipairs(sent) do if p[5] == vc.op.WITHDRAW then n = n + 1; end end
+    return n;
+end
+zoneOut();
 for _ = 1, 20 do tick(0.3); end
-local resent = false;
-for _, p in ipairs(sent) do if p[5] == vc.op.WITHDRAW and p[6] == zseq and p ~= sent[#sent] then end end
-local count = 0;
-for _, p in ipairs(sent) do if p[5] == vc.op.WITHDRAW then count = count + 1; end end
-check('LV55 a write lost at a zone line is reported, not re-sent', werr == 'timeout' and count == 1, true);
+check('LV55a zoned out, a write on the wire is not retried into the void', werr == nil and withdraws() == 1, true);
+vc.noteZoneIn(); loaded();
+for _ = 1, 20 do tick(0.3); end
+check('LV55 a write lost at a zone line is reported, not re-sent', werr == 'timeout' and withdraws() == 1, true);
+-- an ack that reaches us after the zone-out still counts (onFrame is not gated)
+boot(1);
+werr = 'unset';
+vc.requestDeposit({ { container = 0, slot = 1 } }, function(_, e) werr = e; end); tick();
+zoneOut();
+reply(w16(1) .. w16(0) .. string.char(0, 1) .. w16(0) .. w32(50));
+check('LV55b a write acked between the zone-out and the zone-in is a success', werr, nil);
 
 -- ---- deposits: one ack frame's worth, and the layout only when it names them ----
 boot(1);
@@ -331,6 +471,7 @@ local function engine()
         lookupById = function() return { Slot = 'Body' }; end, say = function(m) said[#said + 1] = m; end,
         capacity = function() return 0; end, inCity = function() return city.v; end,
         inTown = function() return city.v; end });
+    vc._onZoneSettled = function() rc.kick('zone'); end;   -- the glue's hook
 end
 boot(1, { { 1, 100 } });
 engine();
@@ -355,14 +496,18 @@ check('LV85 ...the badge says so', rc.cityBlocked(), true);
 check('LV86 ...nothing queued', #(vc._st().layoutSetQ or {}), 0);
 for _ = 1, 3 do now = now + rc.BEAT + 0.1; rc.tick(); end
 check('LV87 ...and no re-spam while standing there', #(vc._st().layoutSetQ or {}), 0);
-city.v = true; rc.zoneArmed(); now = now + rc.KICK_SETTLE + 0.01;
+city.v = true; zoneOut(); vc.noteZoneIn(); rc.zoneArmed();
+now = now + rc.BEAT + 0.1;
+check('LV88a nothing runs while the zone loads, not even a due beat', rc.tick(), 'idle');
+loaded(); now = now + rc.KICK_SETTLE + 0.01;
 check('LV88 arriving in a city sends them', rc.tick(), 'pushed:1');
 tick(); frame(0, 0, w16(vc.code.OK) .. w16(0) .. w32(10));
 -- a zone read that lags the zone line's kick never strands the adds
 boot(1, { { 1, 100 } });
 engine(); city.v = false;
 rc.kick('test'); now = now + rc.KICK_SETTLE + 0.01; rc.tick();
-rc.zoneArmed(); now = now + rc.KICK_SETTLE + 0.01;
+zoneOut(); vc.noteZoneIn(); rc.zoneArmed(); loaded();
+now = now + rc.KICK_SETTLE + 0.01;
 check('LV88b the kick still reads the old zone', rc.tick(), 'waiting-city');
 city.v = true; now = now + rc.BEAT + 0.1;
 check('LV88c ...the next quiet beat, in the city, sends them', rc.tick(), 'pushed:1');
@@ -400,6 +545,16 @@ do
     check('LV98 a mirror commit kicks the engine and bumps ownership',
         src:find("pcall(rec.kick, 'vault')", 1, true) ~= nil
         and src:find('bumpGeneration()', 1, true) ~= nil, true);
+    check('LV99 the zone line is read off 0x00B (LogoutState) and 0x01D (State), byte 4',
+        src:find('pcall(vc.noteZoneOut, (#d >= 5) and d:byte(5) or nil)', 1, true) ~= nil
+        and src:find('pcall(vc.noteItemSame, d:byte(5))', 1, true) ~= nil, true);
+    check('LV100 a zone line\'s container sizes are not wardrobe growth',
+        src:find("if not vc.zoning() then pcall(rec.kick, 'capacity'); end", 1, true) ~= nil, true);
+    check('LV101 the engine runs once the zone line is over',
+        src:find("vc._onZoneSettled = function() pcall(rec.kick, 'zone'); end", 1, true) ~= nil, true);
+    check('LV102 unloading sends the goodbye HELLO',
+        src:find("register('unload', 'dlac_gearvault_unload'", 1, true) ~= nil
+        and src:find('vc.unsubscribeFrame()', 1, true) ~= nil, true);
 end
 
 if failures > 0 then

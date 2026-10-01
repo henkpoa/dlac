@@ -1,11 +1,12 @@
 # Gear Vault live sync (2026-09-30)
 
-**Status:** dlac side on `dev` (`2026.09.30a`); server side in AscensionXI PR
+**Status:** dlac side on `dev` (`2026.09.30a`; the zone-line round of
+2026-10-01 in `2026.10.01a`); server side in AscensionXI PR
 [#728](https://github.com/henkpoa/AscensionXI/pull/728), branch
-`claude/gear-vault-sync` (pushes, one-request reads, the deposit cap). The dlac
-side is useful on its own against today's server: every server addition is
-negotiated in HELLO and stays off until the server advertises it. **Field
-round owed** (checklist at the end).
+`claude/gear-vault-sync` (pushes, one-request reads, the deposit cap, the
+session-long subscription). The dlac side is useful on its own against today's
+server: every server addition is negotiated in HELLO and stays off until the
+server advertises it. **Field round owed** (checklist at the end).
 
 Henrik's ask: "The 8 second sync is confusing, can we optimize this somewhat
 even if it increases server resources? Can dlac assume happy cases more and in
@@ -74,13 +75,57 @@ text changed). The wire is touched only when something is actually missing.
 The countdown is gone; the layout header names work in progress ("adding 2
 from your sets...", "saving your changes...", "updating...") or says nothing.
 
-**The field holds still.** At a zone line the client decides once it stands in
-the new zone (`location.inCity()` = the server's own CITY predicate, or a town
-with a counter such as Nashmau): a city probes (one HELLO — count + listed
-revision; it also renews the push subscription), the field sends nothing. Bag
-moves in the field only forget their own slot; they never re-read the layout.
-The engine holds its adds outside a city ("waiting for a city") instead of
-sending edits the server would refuse, and sends them on arrival.
+**The field holds still.** Bag moves in the field only forget their own slot;
+they never re-read the layout. The engine holds its adds outside a city
+("waiting for a city" — `location.inCity()` = the server's own CITY predicate,
+or a town with a counter such as Nashmau) instead of sending edits the server
+would refuse, and sends them on arrival.
+
+**A zone line changes nothing** (2026-10-01, Henrik: "Can dlac cache between
+zones? Nothing should happen during zoning"). Zoning moves no gear, so every
+view — the vault rows, the layout, the slot -> copy identities, the lost list,
+the push subscription — survives it whole, and nothing is sent from the
+zone-out until the new zone's inventory has loaded:
+
+- **The zone line's edges are read off the wire.** It starts at 0x00B, whose
+  `LogoutState` (byte 4) is 2 (ZONECHANGE) for a zone line and 1 (LOGOUT) for
+  a logout. It ends when the zone-in's inventory re-send is complete: the
+  server names every container in one run of 0x01D `StillLoading` (State 0)
+  and then says `AllLoaded` (State 1). Every other 0x01D sender — the vault's
+  own tidy, a swap's end-of-container flush — names ONE container per
+  AllLoaded, and the server's zone-in tidy can fire while the new zone is
+  still loading, so only an AllLoaded after a run of two or more counts. A
+  zone whose load is never seen ends its wait after 30 s.
+- **The re-send is not movement.** While zoning, `noteInventory` ignores the
+  item packets that refill the bags, and the 0x01C container sizes are not
+  wardrobe growth. The layout engine does not run; the zone's settle kicks it
+  once (adds held for a city go out then).
+- **What can change the vault across a zone line is the server's zone-in
+  tidy**, and a server that pushes reports it (APPLIED with Pulled / Evicted —
+  most zone lines move nothing and say nothing). Against a server without
+  pushes, arriving in a city probes once, 3 s after the zone has loaded (the
+  tidy runs on a 2 s timer); the rows stay fresh until that probe leaves. In
+  the field nothing is sent; the next city arrival catches it.
+- **Every cached copy identity is pinned to the revision it was read at**, so
+  the first reply carrying a newer revision drops them all. And once the zone
+  has loaded, each one is checked against what its bag slot now holds — the
+  tidy's own item packets were ignored with the re-send — and forgotten if the
+  item differs (locally, no traffic).
+- **A request on the wire at the zone line** is dropped at the zone-in (the
+  old map server's entity took its reply with it): a read runs again in full
+  once the zone is ours, a write is reported as outcome unknown and both
+  views re-read — never re-sent (dupe safety, below).
+
+**A login is not a zone line.** A zone-in counts as a zone line only within 60 s
+of a 0x00B ZONECHANGE; anything else — a logout, a lost connection (no 0x00B at
+all), a zone line that never arrived — starts a session. The server dropped the
+subscription at its game-in and its login tidy may move copies, so once the
+zone has loaded the client sends one probe (wherever it stands: it renews the
+subscription and compares the revision) and asks for the layout once (an edit
+made while away — a GM, the website — moves no copy, so the revision need not
+show it). A renewal a quick zone line cut short runs at the next zone, and an
+un-attuned character logging in asks once wherever it stands (that renews the
+ATTUNE push).
 
 **Gear swaps are not inventory changes.** `vaultclient.noteInventory` parses
 0x01E/0x01F/0x020 in `packet_in`, where the bag memory still shows the slot's
@@ -131,8 +176,12 @@ capability bit.
   coalesces a burst into one push, defers it past the change's own item packets
   (so it lands after them — FIFO), and does not push changes the subscriber
   made itself through 0x1E0 (it already has their acks). The subscription
-  lives on the server-side entity: a zone line ends it and the next HELLO
-  renews it. dlac never sends 0x4B and never uses seq 0, so a push is never
+  lasts the session (a charvar, written only when it changes): a zone line
+  keeps it, a fresh login clears it (the server's `onGameIn` with `zoning` =
+  false, before anything there can mark a change), and every HELLO restates
+  it. When dlac unloads it sends a goodbye HELLO with client caps 0, so the
+  server never keeps sending frames nothing would block from reaching the
+  game. dlac never sends 0x4B and never uses seq 0, so a push is never
   mistaken for a reply (and never touches the transport's pending slot — T2).
 - **STREAM reads:** LIST2 (0x46), LAYOUT_LIST2 (0x47) and LOST_LIST (0x4A) take
   an optional 2-byte tail after their cursor payload: `u8 Flags (bit 0 =
@@ -159,6 +208,13 @@ write safe. Nothing here weakens it, and several changes tighten it:
 - **A write on the wire at a zone line is never retried** — the new zone can be
   another map process whose ring has never seen it, and a retry there would
   run it again. Before, the retry loop re-sent it after the zone line.
+- **Nothing leaves while zoning** (2026-10-01): from the 0x00B until the new
+  zone's inventory has loaded, not even a retry is sent into the void, and a
+  click made meanwhile waits for the zone. An ack that arrives between the
+  0x00B and the zone-in still counts.
+- **The subscription moves nothing**: a lost push only delays a re-read. A
+  fresh login clears it so a client without dlac never receives an unasked
+  frame.
 - **Seqs start at a random point per load and never use 0**, so a reload can
   never re-send an identical write inside the old ring's window, and a server
   push can never be taken for a write's reply.
@@ -203,15 +259,22 @@ Reload dlac (`/addon reload dlac`, `/dl check` shows `2026.09.30a`), then:
    back with the reason.
 5. **Job change.** The new job's layout shows within ~2 s; the vault list
    follows.
-6. **Zone into a city and back out.** One HELLO at the city (the log), nothing
-   in the field.
-7. **Store all with more than 62 pieces** (if you have them): one result line,
+6. **Zone lines are free.** Zone between cities and the field a few times with
+   the vault tab open: the rows never flicker or go stale, and the wire log
+   shows NO vault traffic at zone lines (without server pushes: one HELLO ~3 s
+   after arriving in a city, nothing in the field).
+7. **Log out and back in** (same character, no addon reload): one HELLO and one
+   layout read after the zone loads, wherever you stand.
+8. **Unload** (`/addon unload dlac`): the wire log's last vault line is a HELLO
+   (the goodbye).
+9. **Store all with more than 62 pieces** (if you have them): one result line,
    no timeout.
-8. **Rate limits.** The map server log shows no new
+10. **Rate limits.** The map server log shows no new
    `Rate-limiting packet GP_CLI_COMMAND_VOID_STORAGE` lines.
 
 With the server PR deployed: `/dl vault` says `live updates: on, one-request
-reads`, and checks 2 and 5 get faster; the wire log shows `push` lines.
+reads`, checks 2 and 5 get faster, and check 6 sends nothing even in a city; the
+wire log shows `push` lines.
 
 ## Not done (deliberately)
 
