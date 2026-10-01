@@ -265,8 +265,9 @@ Reload dlac (`/addon reload dlac`, `/dl check` shows `2026.09.30a`), then:
    after arriving in a city, nothing in the field).
 7. **Log out and back in** (same character, no addon reload): one HELLO and one
    layout read after the zone loads, wherever you stand.
-8. **Unload** (`/addon unload dlac`): the wire log's last vault line is a HELLO
-   (the goodbye).
+8. **Unload** (`/addon unload dlac`): the server drops the subscription -- the
+   `[GV]PUSH_SUB` charvar is gone from `char_vars`. The goodbye goes straight to
+   the packet manager, past the shared gate, so the wire log never shows it.
 9. **Store all with more than 62 pieces** (if you have them): one result line,
    no timeout.
 10. **Rate limits.** The map server log shows no new
@@ -284,9 +285,13 @@ dlac `2026.10.01b` (PR #191 on `dev`), Mindlor, the shard on
 (nothing flickers); a counter trade shows quickly; a job change shows its
 layout; an Add in the field is refused and the row comes back; combat is
 quiet; log out and in works. Set edits add and remove pieces quickly. The
-wire log shows `push op=4B` lines. Checks 1-7 are done.
+wire log shows `push op=4B` lines. Checks 1-7 are done. Check 8 passed too:
+after the unload, `[GV]PUSH_SUB` was gone for charid 1 with no login since the
+21:36 pushes (the checklist used to expect a wire-log line the goodbye never
+writes; corrected above).
 
-Still owed: 8 (unload goodbye), 9 (store all with more than 62 pieces).
+Still owed: 9 (Store all with more than 62 pieces, Inventory sub-tab at a
+Void Warden).
 
 Check 10 found ONE `Rate-limiting packet GP_CLI_COMMAND_VOID_STORAGE`, at
 login (20:51:00.29 server time). dlac's LAYOUT_LIST2 (seq 118) left at
