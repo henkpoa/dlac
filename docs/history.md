@@ -10624,3 +10624,33 @@ server: AllLoaded has ~20 senders, three of them vault paths that can run mid-lo
 
 **Pre-existing, not ours:** `tests/gear_repair.lua` fails under WSL lua5.4 on this CRLF
 working copy (its fixture pattern expects LF); CI's LF checkout passes.
+
+## Session "the vault's only copy is augmented" (2026-10-01, `2026.10.01b`)
+
+**Report:** "when adding something to my set, it seems like it doesn't auto-draw from gear
+vault into my MW layout as it should. Hands did, but leather vest isn't in my idle set."
+Mindlor (DNC 60, local shard) put Leather Vest and Hume M Gloves in the DNC Idle set. The
+gloves came out (`gear-vault-edits.log`: ADD 12754 instance 2832, `derived-from-sets`); the
+vest never got a request. The vault's one Leather Vest (instance 2974) carries augments
+(extra `02 03 00 22 19 48 ...`), and the 2026-09-18 instance rule offered only plain rows to
+the engine ("new augmented-copy choices stay manual"). The vest counted as not vaulted.
+
+**Landed:** for an entry that names no augment, `reconcile.lua`'s `augmentedPick` covers what
+plain copies cannot: it takes every augmented copy there is when that is not more than the
+shortfall, or any of several copies whose rolls are identical. Two or more different rolls
+competing for fewer places stay manual: `R.chooseCopy()` names them, the vault tab says
+"choose with Add to Mog Wardrobe", `/dl vault` prints `chooseCopy=N`, and they no longer
+count as not vaulted. `derive.lua` marks an item `plainOnly` when any entry pins the plain
+copy (`AugKey = ''`, which `equipcore.checkAugments` would refuse an augmented copy for);
+such an item never draws an augmented copy. The flag is OR-ed into the shared ref key's facts,
+because a generic and a plain-pinned record share `i:<id>` so pairs keep counting as one item.
+
+**Tests:** `tests/gearvault_augmented_draw.lua` (new, in CI) failed first on the field case
+(`pushed:1`, the gloves alone) and passes now, with plain-first, real-choice, identical-roll,
+all-copies, already-bound and both plain-pin cases. `gearvault_instances`, `gearvault_counts`,
+`gearvault_live`, `gearvault_sync`, `smoke_ui` (1620), `imgui_percent_literals` and
+`run_tests` (7521) pass on Windows Lua 5.4.
+
+**Field check owed:** in a city with the Leather Vest still in the DNC Idle set, reload dlac:
+the vest moves into the Mog Wardrobe by itself (chat: `gear vault: layout +1 piece from your
+sets.`) and the Idle set wears it.

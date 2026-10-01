@@ -31,6 +31,10 @@
     "+ Layout" carries real blobs); only zero-blob layout entries are
     compared against on legacy servers. Augmented references protect their
     item IDs during instance-mode cleanup even though auto-add skips them.
+    A set entry that names no augment takes plain vault copies first, then
+    augmented ones when no choice is involved (2026-10-01, see
+    augmentedPick); differently rolled copies competing for fewer places
+    stay the player's pick and are named by R.chooseCopy().
 
     The engine never derives WHILE BROWSING another job (the sets root
     answers for the browsed job there -- pushing WHM's gear into WAR's
@@ -113,6 +117,11 @@ function R.freeSlots() return st.freeSlots; end
 -- vault holds no copy (the 2026-08-30 vault law) -- `/dl vault why`'s
 -- aggregate line. 0 until a beat has measured.
 function R.notVaulted() return st.notVaulted or 0; end
+
+-- Set-wanted items the vault holds only as DIFFERENTLY augmented copies,
+-- more of them than the sets have room for: the player picks which.
+-- { { itemId, need, copies } ... }, empty until a beat has measured.
+function R.chooseCopy() return st.chooseCopy or {}; end
 
 -- What is on the body right now ({ [itemId] = true }) -- the tab's Remove
 -- guard reads the same eyes the eviction ranking uses.
@@ -326,32 +335,64 @@ function R.tick()
     -- shelves ONE; and the SHELF -- the engine never pushes an add that
     -- cannot fit, so a full shelf costs zero wire.
     local vaultCounts = (vc.mirror ~= nil and vc.mirror.counts) or {};
-    local candidates = {};
+    local candidates, augRows = {}, {};
     if instances then
         vaultCounts = {};
         for _, row in ipairs(vc.mirror.rows or {}) do
-            -- New augmented-copy choices stay manual, as before. Anchor
-            -- Ring's signature is EXP, not an augment requirement. Already
-            -- bound instances above keep satisfying demand after upgrades.
-            if not bound[row.instanceId] and (row.identity == vc.ZERO24 or row.itemId == 27556) then
-                candidates[#candidates + 1] = row;
-                vaultCounts[row.itemId] = (vaultCounts[row.itemId] or 0) + math.max(1, row.qty or 1);
+            -- Anchor Ring's signature is EXP, not an augment requirement.
+            -- Already bound instances above keep satisfying demand after
+            -- upgrades.
+            if not bound[row.instanceId] then
+                if row.identity == vc.ZERO24 or row.itemId == 27556 then
+                    candidates[#candidates + 1] = row;
+                    vaultCounts[row.itemId] = (vaultCounts[row.itemId] or 0) + math.max(1, row.qty or 1);
+                elseif (row.instanceId or 0) > 0 then
+                    augRows[row.itemId] = augRows[row.itemId] or {};
+                    table.insert(augRows[row.itemId], row);
+                end
             end
         end
     end
+
+    -- The augmented copies to draw for demand the plain copies cannot meet
+    -- (Henrik's 2026-10-01 Leather Vest: its one vaulted copy was augmented,
+    -- so the Idle set never got it). Only when nothing is being chosen: the
+    -- shortfall takes every augmented copy there is, or copies whose rolls
+    -- are identical. Different rolls competing for fewer places stay the
+    -- player's pick (returns choice = true). A plain-pinned entry (AugKey
+    -- = '') would refuse to wear any of them.
+    local function augmentedPick(it, short)
+        local rows = augRows[it.itemId];
+        if short <= 0 or rows == nil or it.plainOnly then return {}, false; end
+        for i = 2, #rows do
+            if #rows > short and rows[i].identity ~= rows[1].identity then return {}, true; end
+        end
+        local pick = {};
+        for i = 1, math.min(short, #rows) do pick[i] = rows[i]; end
+        return pick, false;
+    end
+
     local adds = {};
-    local waiting, waitingItems, notVaulted = 0, {}, 0;
+    local waiting, waitingItems, notVaulted, chooseCopy = 0, {}, 0, {};
     if vc.mirror.fresh ~= false and not (D.settings ~= nil and D.settings().additions == 'off') then
         local units = layoutUnits;
         for _, it in ipairs(d.items) do
             local c = have[it.itemId];
             local rec = type(D.lookupById) == 'function' and D.lookupById(it.itemId) or nil;
-            local wantable = math.min(counts.count(it, rec), (vaultCounts[it.itemId] or 0) + (c or 0));
+            local want = counts.count(it, rec);
+            local plainHave = (vaultCounts[it.itemId] or 0) + (c or 0);
+            local augPick, choice = {}, false;
+            if instances then augPick, choice = augmentedPick(it, want - plainHave); end
+            local wantable = math.min(want, plainHave + #augPick);
+            local excluded = false;
+            if D.usage ~= nil then
+                excluded = D.usage.isExcluded(D.usage.keyOf(it.itemId, nil));
+            end
+            if choice and not excluded and not review[it.itemId] then
+                chooseCopy[#chooseCopy + 1] = { itemId = it.itemId, need = want - plainHave,
+                                                copies = #augRows[it.itemId] };
+            end
             if wantable > (c or 0) and not review[it.itemId] then
-                local excluded = false;
-                if D.usage ~= nil then
-                    excluded = D.usage.isExcluded(D.usage.keyOf(it.itemId, nil));
-                end
                 if not excluded then
                     local need = wantable - (c or 0);
                     if capacity > 0 and units + need > capacity then
@@ -373,16 +414,23 @@ function R.tick()
                                         bound[row.instanceId] = true; need = need - 1;
                                     else
                                         adds[#adds + 1] = { itemId = it.itemId, count = math.min(need, 8), identity = row.identity };
+                                        need = 0;
                                         break;
                                     end
                                 end
+                            end
+                            for _, row in ipairs(augPick) do
+                                if need <= 0 or #adds >= R.MAX_PUSH then break; end
+                                adds[#adds + 1] = { itemId = it.itemId, count = 1,
+                                    instanceId = row.instanceId, identity = row.identity };
+                                bound[row.instanceId] = true; need = need - 1;
                             end
                         else
                             adds[#adds + 1] = { itemId = it.itemId, count = need };
                         end
                     end
                 end
-            elseif (c == nil or c < it.count) then
+            elseif not choice and (c == nil or c < it.count) then
                 -- the sets want it, the vault cannot supply it: NOT pushed,
                 -- NOT waiting -- it is the Inventory pane / Warden's problem
                 notVaulted = notVaulted + 1;
@@ -390,6 +438,7 @@ function R.tick()
         end
     end
     st.notVaulted = notVaulted;
+    st.chooseCopy = chooseCopy;
 
     -- SHELF PRESSURE (GV3): the layout (plus what is about to join it) must
     -- fit the live shelf, or the swap engine will be told to dress more
