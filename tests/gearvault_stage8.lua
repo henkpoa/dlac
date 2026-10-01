@@ -635,6 +635,16 @@ vc.layoutCache.entries = { { itemId = 100, instanceId = 10, ordinal = 1, kind = 
 engineWith({ items = { { itemId = 100, count = 2 } }, slot = 'Ring' });
 run();
 check('EN9 a bound copy is never added a second time', queued(function(e) return e.instanceId == 10; end), 0);
+check('EN9a ...and the pair\'s missing copy counts as not vaulted (the bound one is not counted twice)',
+    rc.notVaulted(), 1);
+-- the augmented road has no second check: the bound copy must never become a candidate
+local rolled = string.char(2, 3, 0x22) .. string.rep('\0', 21);
+boot(1, { { 1, 100, 1, 10 } });
+vc.mirror.rows[1].identity = rolled;
+vc.layoutCache.entries = { { itemId = 100, instanceId = 10, ordinal = 1, kind = 0, state = 0, count = 1, identity = rolled } };
+engineWith({ items = { { itemId = 100, count = 2 } }, slot = 'Ring' });
+run();
+check('EN9b a bound AUGMENTED copy is never drawn again for a pair', queued(function(e) return e.instanceId == 10; end), 0);
 -- cleanup releases only from a complete derivation
 boot(1);
 vc.layoutCache.entries = { { itemId = 300, instanceId = 30, ordinal = 1, kind = 0, state = 1, count = 1 } };

@@ -318,6 +318,8 @@ ACCEPTED = {
            'anyway; zoneFull only re-states that',
     'R23': 'equivalent for the wire: the later `mirror.fresh == false -> clean` gate stops every send; this gate '
            'only skips the not-vaulted / choose-a-copy bookkeeping for a stale mirror',
+    'R02': 'equivalent with the real client: the engine\'s in-flight count is above 0 only while its edits sit '
+           'in layoutSetQ, which the layoutBusy gate (R03, killed) already sees',
 }
 
 
