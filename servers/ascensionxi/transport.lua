@@ -121,10 +121,13 @@ function M.send(packet, why)
         end
     end
     last = now;
-    local sent, result = pcall(M._send, packet);
-    if not sent or result == false then return false; end
+    -- Remembered BEFORE the send: Ashita runs packet_out inside
+    -- AddOutgoingPacket, so noteOutgoing sees the frame before _send returns
+    -- (the first build of this marked every one of our own sends foreign).
     recent[#recent + 1] = string.char(unpack(packet, 5));
     if #recent > 8 then table.remove(recent, 1); end
+    local sent, result = pcall(M._send, packet);
+    if not sent or result == false then table.remove(recent); return false; end
     pending = { op = op, seq = seq, at = now, why = why };
     audit('enqueue', op, seq, why, now);
     pcall(function() require('dlac\\feature\\sendlog').note(0x1E0, why); end);

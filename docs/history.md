@@ -10667,3 +10667,10 @@ is not one of its last eight frames (compared from the op byte on) is another ad
 (0.3 s), the same courtesy Nexus's `LISTEN_GAP` already gives dlac. Playtest phase: parse
 check only; CI runs the suites on the PR. A suite case for `noteOutgoing` is owed at the
 final test pass.
+
+**`2026.10.01d`, found on the first live relog:** every one of dlac's own sends logged a
+`foreign` line with the same timestamp as its `enqueue`. Ashita runs packet_out inside
+`AddOutgoingPacket`, so the frame reached `noteOutgoing` before `send` had remembered it, and
+each request held the next one 0.3 s. The frame is now remembered before `_send`. That relog
+also showed one real foreign packet, op 0x90 (the Onslaught band) at login, with no dlac send
+beside it: another addon talks on 0x1E0 at login besides Nexus.
