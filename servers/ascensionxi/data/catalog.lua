@@ -60653,6 +60653,42 @@ return {
             Jobs = {"All"},
             Type = "Sub",
             Stats = {
+                AlchemySkill = 1,
+                BonecraftSkill = 1,
+                ClothcraftSkill = 1,
+                CookingSkill = 1,
+                GoldsmithingSkill = 1,
+                LeathercraftSkill = 1,
+                SmithingSkill = 1,
+                WoodworkingSkill = 1,
+            }
+        },
+        KupoShield_1 = {
+            Name = "Kupo Shield +1",
+            Level = 1,
+            Id = 26572,
+            Model = 471,
+            Jobs = {"All"},
+            Type = "Sub",
+            Stats = {
+                AlchemySkill = 2,
+                BonecraftSkill = 2,
+                ClothcraftSkill = 2,
+                CookingSkill = 2,
+                GoldsmithingSkill = 2,
+                LeathercraftSkill = 2,
+                SmithingSkill = 2,
+                WoodworkingSkill = 2,
+            }
+        },
+        KupoShield_2 = {
+            Name = "Kupo Shield +2",
+            Level = 1,
+            Id = 26573,
+            Model = 645,
+            Jobs = {"All"},
+            Type = "Sub",
+            Stats = {
                 AlchemySkill = 3,
                 BonecraftSkill = 3,
                 ClothcraftSkill = 3,
@@ -82048,6 +82084,25 @@ return {
             Type = "Head",
             Stats = {
                 DEF = 2,
+            }
+        },
+        ArtisansHat = {
+            Name = "Artisan's Hat",
+            Level = 1,
+            Id = 26571,
+            Model = 524,
+            Jobs = {"All"},
+            Type = "Head",
+            Stats = {
+                DEF = 1,
+                AlchemySkill = 2,
+                BonecraftSkill = 2,
+                ClothcraftSkill = 2,
+                CookingSkill = 2,
+                GoldsmithingSkill = 2,
+                LeathercraftSkill = 2,
+                SmithingSkill = 2,
+                WoodworkingSkill = 2,
             }
         },
         ArtsieqHat = {
@@ -105089,7 +105144,7 @@ return {
         },
         AlchemstTorque = {
             Name = "Alchemst. Torque",
-            Level = 70,
+            Level = 1,
             Id = 10954,
             Jobs = {"All"},
             Type = "Neck",
@@ -105300,6 +105355,23 @@ return {
             Jobs = {"All"},
             Type = "Neck",
             Stats = {
+            }
+        },
+        ArtisansTorque = {
+            Name = "Artisan's Torque",
+            Level = 1,
+            Id = 26574,
+            Jobs = {"All"},
+            Type = "Neck",
+            Stats = {
+                AlchemySkill = 3,
+                BonecraftSkill = 3,
+                ClothcraftSkill = 3,
+                CookingSkill = 3,
+                GoldsmithingSkill = 3,
+                LeathercraftSkill = 3,
+                SmithingSkill = 3,
+                WoodworkingSkill = 3,
             }
         },
         AshuraNecklace = {
@@ -105723,7 +105795,7 @@ return {
         },
         BoneTorque = {
             Name = "Bone. Torque",
-            Level = 70,
+            Level = 1,
             Id = 10953,
             Jobs = {"All"},
             Type = "Neck",
@@ -105931,7 +106003,7 @@ return {
         },
         CarversTorque = {
             Name = "Carver's Torque",
-            Level = 70,
+            Level = 1,
             Id = 10948,
             Jobs = {"All"},
             Type = "Neck",
@@ -106352,7 +106424,7 @@ return {
         },
         CulinTorque = {
             Name = "Culin. Torque",
-            Level = 70,
+            Level = 1,
             Id = 10955,
             Jobs = {"All"},
             Type = "Neck",
@@ -107285,7 +107357,7 @@ return {
         },
         GoldsmTorque = {
             Name = "Goldsm. Torque",
-            Level = 70,
+            Level = 1,
             Id = 10950,
             Jobs = {"All"},
             Type = "Neck",
@@ -109826,7 +109898,7 @@ return {
         },
         SmithysTorque = {
             Name = "Smithy's Torque",
-            Level = 70,
+            Level = 1,
             Id = 10949,
             Jobs = {"All"},
             Type = "Neck",
@@ -110170,7 +110242,7 @@ return {
         },
         TannersTorque = {
             Name = "Tanner's Torque",
-            Level = 70,
+            Level = 1,
             Id = 10952,
             Jobs = {"All"},
             Type = "Neck",
@@ -110603,7 +110675,7 @@ return {
         },
         WeaversTorque = {
             Name = "Weaver's Torque",
-            Level = 70,
+            Level = 1,
             Id = 10951,
             Jobs = {"All"},
             Type = "Neck",
@@ -119586,6 +119658,25 @@ return {
             Type = "Body",
             Stats = {
                 DEF = 1,
+            }
+        },
+        ArtisansApron = {
+            Name = "Artisan's Apron",
+            Level = 1,
+            Id = 26570,
+            Model = 503,
+            Jobs = {"All"},
+            Type = "Body",
+            Stats = {
+                DEF = 2,
+                AlchemySkill = 2,
+                BonecraftSkill = 2,
+                ClothcraftSkill = 2,
+                CookingSkill = 2,
+                GoldsmithingSkill = 2,
+                LeathercraftSkill = 2,
+                SmithingSkill = 2,
+                WoodworkingSkill = 2,
             }
         },
         ArtsieqJubbah = {
@@ -182779,6 +182870,17 @@ return {
                 DEF = 2,
                 MP = 5,
                 INT = 1,
+            }
+        },
+        ShamansBelt_1 = {
+            Name = "Shaman's Belt +1",
+            Level = 20,
+            Id = 26569,
+            Jobs = {"MNK", "WHM", "BLM", "RDM", "PLD", "BRD", "RNG", "SMN", "BLU", "PUP", "SCH", "GEO", "RUN"},
+            Type = "Waist",
+            Stats = {
+                INT = 3,
+                MagicAccuracy = 5,
             }
         },
         ShaolinBelt = {
