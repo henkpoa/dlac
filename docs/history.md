@@ -10674,3 +10674,41 @@ final test pass.
 each request held the next one 0.3 s. The frame is now remembered before `_send`. That relog
 also showed one real foreign packet, op 0x90 (the Onslaught band) at login, with no dlac send
 beside it: another addon talks on 0x1E0 at login besides Nexus.
+
+## Session "stage 8: dupes, zone lines, reloads" (2026-10-01 night, `2026.10.01e`)
+
+**Ask (owner):** the final test pass for the Gear Vault live sync, "focus on duping risks,
+unloading addons, zoning, transactions during zoning, job change during zoning, and all others
+you can think of". The AscensionXI server half ran its own xi_test pass at the same time. This is
+the client half, on a branch from #191's head.
+
+**Bugs found and fixed:**
+
+- **A write retry could leave after the replay window.** The retries at 0, 1.5 and 3.0 s sit
+  inside the server's 5 s window, but the shared gate can hold one. Since `2026.10.01c` that
+  includes 0.3 s after *each* of another addon's 0x1E0 packets; a frame stall can too. Nothing
+  bounded the delay, and a retry past the window runs the write again. Now no write retry
+  leaves `WRITE_DEADLINE` (3.5 s, Nexus's figure) or more after the FIRST send; it is reported
+  as outcome unknown and both views are re-read.
+- **`a and parseNew() or (b and parseOld())`** turned an unreadable `LAYOUT_SET2` / `LIST2` /
+  `LAYOUT_LIST2` answer into `false`, so the next line indexed a boolean. For an edit, the
+  caller never heard back and the layout engine's in-flight count never came down: the engine
+  sat idle until a reload. Plain if/else now.
+
+**Landed:**
+
+- `tests/gearvault_stage8.lua` (115 checks, in CI): the write window, the foreign gate, writes
+  and late acks across zone lines and logouts, a job change while zoning, reloads with a
+  request on the wire, replies applied once, and the layout engine's own guards.
+- `tests/gearvault_mutation_sweep.py`: 114 mutants. The first sweep caught 90, mostly missing
+  layout-engine cases. The final sweep caught 111; the 3 others are equivalent, with reasons in
+  `ACCEPTED`.
+- The whole record, including what the server must guarantee: `docs/design/gear-vault-live-sync.md`,
+  "Stage 8 pass".
+
+**Dead end avoided:** a test helper (`boot`) dropped a row's instance id, and two "bound copy"
+cases passed vacuously. A bookkeeping check that went red on the UNMUTATED code exposed it. A
+case that has never been red is not evidence.
+
+**Checks:** every CI Lua command (23) passes on Windows Lua 5.4, `run_tests` and `smoke_ui`
+included. Nothing was installed into the owner's client.
