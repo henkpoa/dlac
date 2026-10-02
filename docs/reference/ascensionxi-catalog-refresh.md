@@ -1,3 +1,35 @@
+# AscensionXI catalog refresh, October 2, 2026
+
+DLAC `2026.10.02a` regenerates the complete pack from AscensionXI main
+`3a3e7f9df1`. It adds six equipment records and icons (26569-26574):
+Shaman's Belt +1, Artisan's Apron, Artisan's Hat, Kupo Shield +1/+2 and
+Artisan's Torque. The base Kupo Shield now grants +1 crafting skills;
+eight individual crafting torques now require level 1. No records are removed.
+The pack contains 15,446 equipment records and 51 icon overrides, with all
+names read from tracked client DATs. Hand-maintained pack files are unchanged.
+
+Reproduce from that server checkout (with LFS DATs available):
+
+```powershell
+python -m unittest discover -s tools/dlac-pack -v
+python tools/dlac-pack/gen_pack.py --out <dlac>/servers/ascensionxi --game "C:/AscensionXI/Game/FINAL FANTASY XI"
+```
+
+The normal generation command also runs the icon pipeline. Commit the whole
+pack, including PNGs. Verification passed: 24 generator tests, all DLAC CI
+commands (7,521 core checks, 1,620 UI smoke checks and focused regressions),
+and 33 pack-lint checks. Live client rendering remains unverified.
+
+Prepared for review, not deployed. Merge this DLAC PR before the companion
+AscensionXI launcher-pin PR; that PR must pin the exact reviewed DLAC commit
+and be re-resolved if the payload changes. Human release and client acceptance
+remain required. After installation, reload DLAC and check new names, icons
+and crafting bonuses. Developer Git installations need a Git update because
+the launcher protects them. Rollback restores the previous full pack and
+launcher pin together; no player configuration or database changes.
+
+---
+
 # AscensionXI catalog refresh, September 27, 2026
 
 DLAC `2026.09.27e` regenerates the complete AscensionXI pack from server
