@@ -1005,6 +1005,14 @@ local MATCHERS = {
     any             = function() return true; end,
     status          = function(v, ctx) return ctx.player ~= nil and ci(ctx.player.Status, v); end,
     moving          = function(v, ctx) return ctx.player ~= nil and ((ctx.player.IsMoving == true) == (v == true)); end,
+    mobtagged       = function(v, ctx)
+        if type(v) ~= 'boolean' then return false; end
+        if ctx.mobTagged == nil then
+            pcall(function() ctx.mobTagged = require('dlac\\feature\\mobtag').current(); end);
+        end
+        if ctx.mobTagged == nil then return false; end
+        return ctx.mobTagged == v;
+    end,
     mode            = function(v) return M.modeActive(v); end,
     name            = function(v, ctx) return ctx.action ~= nil and ci(ctx.action.Name, v); end,
     contains        = function(v, ctx) return nameContains(ctx, v); end,   -- substring: 'Madrigal' hits Blade+Sword
@@ -1149,6 +1157,7 @@ local TIER = {
     -- town show-off set should decisively overlay the plain Idle set, while an
     -- explicit mode still wins. Same 95 band.
     intown = 95,
+    mobtagged = 95, -- personal tag gate overlays the ordinary engaged set
     mode = 100,
     -- The cases guard sits at the BOTTOM tier (the specificity floor is 10, so a
     -- value at/under it can never become a rule's max) -- "the guard never moves
@@ -1171,6 +1180,7 @@ local PRETTY_KEY = {
     buff = 'buff', buffnot = 'buffNot',
     pet = 'pet', petstatus = 'petStatus', petname = 'petName',
     target = 'target', intown = 'inTown',
+    mobtagged = 'mobTagged',
     playerhpbelow = 'playerHPBelow', playerhpabove = 'playerHPAbove',
     playerhppercentbelow = 'playerHPPercentBelow', playerhppercentabove = 'playerHPPercentAbove',
     playermpbelow = 'playerMPBelow', playermpabove = 'playerMPAbove',

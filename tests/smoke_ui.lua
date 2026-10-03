@@ -4357,6 +4357,27 @@ end)();
             frame('+ & condition##trgac');
             check('TB36 a picked cycle value lands whole',
                 (trig.addConds[1] ~= nil) and trig.addConds[1].value, 'Weapon:Melee');
+
+            -- A boolean condition needs a real false picker, not the flag
+            -- widget (which can only author true). Drive the actual combo.
+            trig.data = {};
+            trig.addFor, trig.addConds, trig._addDef = 'Default', {}, 2;
+            trig._addValSel = nil; trig.addSet = 'TH';
+            IM.BeginCombo = function(id) return id == '##trgcondval'; end;
+            frame('+ & condition##trgac');
+            check('TB37 mobTagged without a choice adds nothing', #trig.addConds, 0);
+            frame('false##trgcv1');
+            frame('+ & condition##trgac');
+            check('TB38 mobTagged false is a boolean', trig.addConds[1].value, false);
+            check('TB39 mobTagged key survives the picker', trig.addConds[1].key, 'mobTagged');
+            frame('Add rule###trgaddgo');
+            check('TB40 saving the TH rule preserves false', trig.data.Default[1].when.mobtagged, false);
+
+            trig.addFor, trig.addConds, trig._addDef = 'Default', {}, 2;
+            trig._addValSel = nil;
+            frame('true##trgcv2'); frame('+ & condition##trgac');
+            check('TB41 mobTagged true also works', trig.addConds[1].value, true);
+            check('TB42 boolean picker popup balanced', depth.popup, 0);
         end
     end
 

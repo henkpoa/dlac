@@ -153,6 +153,8 @@ local SPELL_CONDS = {
 local COND_DEFS = {
     Default = {
         { key = 'status', kind = 'list', items = { 'Engaged', 'Resting', 'Idle' } },
+        { key = 'mobTagged', kind = 'boolean', items = { 'false', 'true' },
+          hint = 'you have landed a successful hostile action on the current mob,\nincluding hits, debuffs and abilities. Misses, resists, aggro and other\nplayers do not count. Use status = Engaged + mobTagged = false for TH gear.\nRemembers target switches; clears on death, disappearance, zoning or reload.\nTracks observed actions, not the server\'s actual TH level.' },
         { key = 'moving', kind = 'flag' },
         { key = 'inTown', kind = 'flag',
           hint = 'you are standing in a town -- pair with status = Idle to show off\nyour gear in the cities. The town list is server-derived (data/zones.lua):\nevery city plus Nashmau, Celennia Memorial Library, Mog Garden.' },
@@ -1839,6 +1841,7 @@ end
 local COND_COLORS = {
     status = { 0.55, 0.75, 1.00, 1.0 },  moving = { 0.55, 0.75, 1.00, 1.0 },
     intown = { 0.50, 0.82, 0.92, 1.0 },   -- location gate (v84): a teal-blue beside status/moving
+    mobtagged = { 0.95, 0.78, 0.35, 1.0 },
     mode = { 0.80, 0.60, 1.00, 1.0 },
     skill = { 0.55, 0.85, 0.55, 1.0 },
     magictype = { 0.45, 0.80, 0.75, 1.0 }, abilitytype = { 0.45, 0.80, 0.75, 1.0 },
@@ -1910,6 +1913,7 @@ local PSTATE_KEYS = {
     -- engine's own matcher (zoneOf does GetMemberZone on the addon side), so you
     -- can watch it light up as you walk into a city while building the rule.
     intown = true,
+    mobtagged = true,
 };
 -- LAC's EntityStatus resolution (constants.lua:236 via ResolveString's +1):
 -- raw entity status 0 Idle / 1 Engaged / 2-3 Dead / 4 Zoning / 33 Resting.
@@ -2856,6 +2860,7 @@ local function renderTrigAddPopup()
         trig.addValText[1] = ''; trig._addValSel = nil; trig.addValNum[1] = 0;
         if kind == 'number' then trig.addValNum[1] = tonumber(c.value) or 0;
         elseif kind == 'text' then trig.addValText[1] = tostring(c.value);
+        elseif kind == 'boolean' then trig._addValSel = tostring(c.value);
         elseif kind == 'list' or kind == 'group' or kind == 'buff' then trig._addValSel = c.value;
         elseif kind == 'mode' then
             -- `mode` is the one LIST-VALUED matcher (a rule may gate on several).
@@ -3007,7 +3012,7 @@ local function renderTrigAddPopup()
     cur = defs[trig._addDef];
     if cur ~= nil then
         imgui.SameLine(0, 6);
-        if cur.kind == 'list' then
+        if cur.kind == 'list' or cur.kind == 'boolean' then
             imgui.PushItemWidth(170);
             if imgui.BeginCombo('##trgcondval', trig._addValSel or '(pick)') then
                 for vi, it in ipairs(cur.items) do
@@ -3016,6 +3021,7 @@ local function renderTrigAddPopup()
                 imgui.EndCombo();
             end
             imgui.PopItemWidth();
+            if cur.hint ~= nil and imgui.IsItemHovered() then imgui.SetTooltip(cur.hint); end
         elseif cur.kind == 'group' then
             -- Value = a dropdown of the current job's defined groups (ADR 0009).
             -- Picking one writes  when = { group = '<name>' }. Build groups in the
@@ -3127,6 +3133,9 @@ local function renderTrigAddPopup()
             end
             local val;
             if ck == 'fixed' then val = fixedVal;   -- pet = true/false: false is a real value
+            elseif ck == 'boolean' then
+                if trig._addValSel == 'true' then val = true;
+                elseif trig._addValSel == 'false' then val = false; end
             elseif ck == 'list' or ck == 'group' or ck == 'buff' or ck == 'mode' then val = trig._addValSel;
             elseif ck == 'text' then val = (trig.addValText[1] ~= '') and trig.addValText[1] or nil;
             elseif ck == 'number' then

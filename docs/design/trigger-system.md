@@ -54,7 +54,7 @@ at dispatch time:
 
 | Handler | Conditions |
 |---|---|
-| Default | `status` (Engaged/Resting/Idle), `moving`, `inTown` (v84 — see below), `mode` (user-defined name) |
+| Default | `status` (Engaged/Resting/Idle), `mobTagged` (true/false; personal successful hostile action), `moving`, `inTown` (v84 — see below), `mode` (user-defined name) |
 | Precast / Midcast | `any`, `skill` (Enfeebling Magic, Singing, ...), `magicType` (White/Black Magic, Bard Song, ...), `element` (Fire..Dark), `songType` (Buff/Debuff — small static list of debuff families), `contains` (substring: "Madrigal" matches Blade+Sword, "Stone" every tier; legacy alias `family`), `group` (action name is in the named Groups list — single name or list-OR; ADR 0009), `name`, `dayWeatherBonus` (net day+weather sign for the spell's element — the obi's logic), `weatherMatch` (the spell's element equals the CURRENT weather element — a plain weather match, no day and no opposition; single/double weather and a Scholar's own storm all count; engine v121), `dayMatch` (the spell's element equals TODAY's day element — a plain day match, no weather and no opposition; engine v156) |
 | Ability | `any`, `abilityType` (Blood Pact: Rage/Ward, Corsair Roll, Quick Draw, Ready, Rune Enchantment), `contains`, `group`, `name` |
 | Item | `name`, `contains`, `group` |
@@ -304,6 +304,45 @@ Modeled on the Modes builder — a per-group box (members listed with remove but
 input, rename / delete) and a `+ Group...` create popup. The pure CRUD + name/member validation
 core is `gear/groupsmodel.lua` (Ashita/imgui-free, headless-tested TGM*); the Groups tab and the
 Triggers tab share one `trig.data` / one Commit, so they never stomp each other's file writes.
+
+## Personal mob tags (CEXI and AXI)
+
+In the Default trigger editor, choose **status = Engaged** and **mobTagged = false**,
+then assign your TH set. `mobTagged` has an explicit true/false dropdown. Example:
+
+```lua
+Default = {
+    { when = { status = 'Engaged' }, set = 'TP' },
+    { when = { status = 'Engaged', mobTagged = false }, set = 'TH' },
+}
+```
+
+`feature/mobtag.lua` records successful hostile actions authored by your character:
+melee/ranged hits, weapon skills, damaging spells, debuffs, dispels and abilities
+such as Provoke. Misses, parries, shadows, full resists, no-effect results, interrupted
+actions, aggro, party members and pets do not tag for you. AoE results are evaluated
+per target. Unknown result messages keep the mob untagged. A landed zero-damage hit
+counts; `mobTagged` records a successful action, not damage dealt or the server's TH level.
+
+Tags are keyed by server entity ID and survive target switches and disengaging.
+Death or disappearance clears that mob's tag, including disappearance out of view;
+zoning, logout, character changes and addon reload clear all tags. Reloading during a
+fight cannot recover earlier actions. No living monster target or an unreadable state
+matches neither polarity. Tier 95 overlays the ordinary Engaged rule; explicit
+priorities, modes and other claims still use normal arbitration.
+
+The watcher queues incoming bytes and drains them on the main thread. The matcher
+also drains pending packets before answering, so a dispatch never waits for the next
+frame to learn a completed action. `0x028` carries action results; masked `0x00E`
+updates clear deaths/despawns, and `0x00A`/`0x00B` reset zone history. Layout reference:
+[Windower packet fields](https://github.com/Windower/Lua/blob/dev/addons/libs/packets/fields.lua).
+Result meanings: [LandSandBoat messages](https://github.com/LandSandBoat/server/blob/base/scripts/enum/msg.lua).
+
+Verification: `lua tests/mobtag.lua` covers packet bounds, mixed AoE outcomes,
+lifetimes and trigger serialization/matching on both packs. The UI smoke suite drives
+both boolean choices through the real editor. Live field checks still needed on each
+server: first miss then hit; resisted then successful debuff; Provoke before engaging;
+switch A → B → A; kill and retag the same spawn; zone and re-engage.
 
 ## Picker database (GUI-only concern)
 

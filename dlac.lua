@@ -490,6 +490,8 @@ ashita.events.register('d3d_present', 'dlac-seed-watch', function()
         local ew = require('dlac\\feature\\engagewatch');
         if type(ew) == 'table' and type(ew.pump) == 'function' then ew.pump(); end
     end);
+    -- Drain personal tag history before combat consumers read this beat.
+    pcall(function() require('dlac\\feature\\mobtag').pump(); end);
     -- The combat state service's beat (feature\combat): engaged / target /
     -- targetChanged / first-swing, published to subscribers once per dispatch
     -- beat. It runs AFTER engagewatch's pump on purpose -- the edges that pump
@@ -597,6 +599,7 @@ for _, mod in ipairs({ 'gear', 'feature\\augments', 'gear\\gearoptim', 'gear\\ge
                        -- server pack, ADR 0035 -- servers\cexi\modules\, mounted
                        -- by feature\servermods below.)
                        'feature\\engagewatch', 'feature\\petvitals', 'feature\\combat',
+                       'feature\\mobtag',
                        'feature\\sendlog', 'feature\\check', 'feature\\debug', 'feature\\report',
                        -- nmtrack AFTER nmlookup: it requires the lookup module at
                        -- load for the disfavour curve, the shipped table and the

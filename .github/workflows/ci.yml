@@ -23,6 +23,9 @@ jobs:
       - name: UI smoke-load
         run: lua5.4 tests/smoke_ui.lua
 
+      - name: Personal mob tags and Treasure Hunter triggers
+        run: lua5.4 tests/mobtag.lua
+
       - name: ImGui percent literals
         run: lua5.4 tests/imgui_percent_literals.lua
 
