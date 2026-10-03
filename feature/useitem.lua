@@ -571,6 +571,11 @@ function M.menu()
             };
         end
     end
+    -- A pack can expose owned utility items kept in its server-side storage.
+    pcall(function()
+        local recharge = require('dlac\\gear\\serverpack').service('expRingRecharge');
+        if recharge and recharge.extendMenu then recharge.extendMenu(rows); end
+    end);
     _menuRows = rows;
     return rows;
 end

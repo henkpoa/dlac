@@ -1570,6 +1570,9 @@ local function renderTeleportRow(r, key)
             imgui.SetTooltip(string.format('%s: ready%s  (%s).', r.name, chinfo, r.cmd));
         end
     end
+    if r.grp == 'xp' then
+        require('dlac\\ui\\rechargeui').render(r, key);
+    end
     local col = COL.DIM;                           -- not owned
     if r.owned and r.avail then col = COL.USABLE;  -- lit
     elseif r.owned then col = COL.ERR; end         -- stored: red, as usual

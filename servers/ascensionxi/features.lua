@@ -20,7 +20,7 @@ return {
         lockstyle = true,
         macrobook = true,
         hobbybar  = true,
-        teleports = false,
+        teleports = true,
         nm        = false,
         wishlist  = false,
     },

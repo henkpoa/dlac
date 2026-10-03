@@ -59,6 +59,9 @@ jobs:
       - name: Gear vault count regression
         run: lua5.4 tests/gearvault_counts.lua
 
+      - name: EXP ring recharge menu and status regression
+        run: lua5.4 tests/exp_ring_recharge.lua
+
       - name: Gear vault instance regression
         run: lua5.4 tests/gearvault_instances.lua
 

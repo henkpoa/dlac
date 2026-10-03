@@ -82,6 +82,7 @@ M.cap =
     ATOMIC_ADD = 2,   -- selector-0 ADD stores pin/hint in one request
     PUSH       = 4,   -- CHANGED pushes to a subscribed client
     STREAM     = 8,   -- list reads answer up to N frames per request
+    EXP_BAND_STATUS = 16, -- read-only recharge preflight, op 0x4C
 };
 M.CLIENT_CAPS = 1;    -- request word bit 0: subscribe me to CHANGED pushes
 
@@ -266,6 +267,7 @@ function M.parseHello(payload)
         atomicInstanceAdd = instances and has(caps, M.cap.ATOMIC_ADD),
         push   = instances and has(caps, M.cap.PUSH),
         stream = instances and has(caps, M.cap.STREAM),
+        expBandStatus = has(caps, M.cap.EXP_BAND_STATUS),
         maxList2 = u8(payload, 16), maxLayoutList2 = u8(payload, 17),
         maxLookup = u8(payload, 18), maxLostList = u8(payload, 19),
         proto       = u16(payload, 0),

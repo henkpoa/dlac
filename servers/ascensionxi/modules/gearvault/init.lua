@@ -18,6 +18,7 @@ local vc  = require(base .. 'vaultclient');
 local drv = require(base .. 'derive');
 local rec = require(base .. 'reconcile');
 local usg = require(base .. 'usage');
+local recharge = require(base .. 'recharge');
 
 -- Production seams -----------------------------------------------------------
 
@@ -138,6 +139,7 @@ pcall(function()
         statusLine = vc.statusLine,
         cityBlocked = function() return rec.cityBlocked(); end,
     });
+    require('dlac\\gear\\serverpack').provide('expRingRecharge', recharge);
 end);
 
 -- Ashita glue (all guarded: headless there is no ashita global) ---------------
@@ -169,11 +171,13 @@ pcall(function()
         -- Zone-out: nothing leaves until the next zone's inventory is loaded.
         -- LogoutState (byte 4): 2 = a zone line, 1 = a logout.
         if e.id == 0x00B then
+            recharge.reset();
             local d = e.data or '';
             pcall(vc.noteZoneOut, (#d >= 5) and d:byte(5) or nil);
             return;
         end
         if e.id == 0x00A then
+            recharge.reset();
             -- A different character without an addon reload: nothing we hold
             -- is theirs (the usage file, the mirror, the layout engine).
             local data = e.data or '';
@@ -189,6 +193,7 @@ pcall(function()
             return;
         end
         if e.id ~= vc.PKT then return; end
+        if recharge.onPacket(e.data_modified or e.data) then e.blocked = true; return; end
         local ok, consumed = pcall(function()
             return vc.onFrame(vc.parseFrame(e.data_modified or e.data));
         end);
@@ -589,6 +594,7 @@ return {
             end);
         end
         vc.pump(ready);
+        recharge.pump(ready);
         if ready then pcall(usageBeat); end
         -- the tab's Unequip & Store pending step: the deposit leaves only
         -- once the client shows the piece off, tab open or not

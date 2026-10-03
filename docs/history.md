@@ -10712,3 +10712,24 @@ case that has never been red is not evidence.
 
 **Checks:** every CI Lua command (23) passes on Windows Lua 5.4, `run_tests` and `smoke_ui`
 included. Nothing was installed into the owner's client.
+
+## 2026-10-03: AXI Teleports and EXP band recharge
+
+Teleports is enabled by default for AscensionXI, matching the normal CEXI menu.
+The EXP ring rows offer a right-click Recharge ring action. A server-pack service
+owns eligibility; the shared UI stays unaware of AXI rules. Disabled actions show
+the reason directly, including weekly allowance and distance together. Vault-only
+Chariot, Empress and Emperor Bands also appear, without pretending their normalized
+vault identity bytes contain current charge counts.
+
+The existing `!vault charge_exp_band` remains the write. A companion AXI read-only
+preflight (HELLO capability 16, op 0x4C) supplies the hidden weekly flag and the
+native command's other checks. Unsupported servers leave the action disabled.
+No packet write, automatic unequip or automatic recharge was added. See
+[the integration record](design/gear-vault-integration.md#exp-band-recharge-in-teleports-2026-10-03).
+
+Checks: core 7,521; UI smoke 1,626; focused recharge test; existing live-sync and
+stage-8 tests; CEXI release packaging; Lua syntax and percent-literal checks.
+Native recharge tests (18) and the full vault suite (271) pass in the companion
+checkout; forcing previews to mutate made both read-only tests fail. Live Ashita field acceptance
+and server deployment remain outstanding.

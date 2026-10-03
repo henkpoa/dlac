@@ -409,3 +409,44 @@ invalidate anything, counter trades are noticed, the staleness bugs of the
 opt-in CHANGED pushes, one-request streamed reads and a 62-entry deposit cap.
 Its dupe-safety review covers every change. It supersedes the six-second
 post-edit delay and the 0.35 s pacing described above.
+
+### EXP band recharge in Teleports (2026-10-03)
+
+AXI now enables the normal Teleports menu by default (character overrides still
+win). Right-click an EXP ring for **Recharge ring**. The option is inert and dim
+when unavailable, with visible reasons underneath. Chariot, Empress and Emperor
+Bands held only in a fresh vault mirror also appear in the menu. Other EXP rings
+explain that the counter cannot recharge them. CEXI has no recharge service.
+
+`ui/rechargeui.lua` draws the context menu. The active pack provides
+`expRingRecharge`; AXI's `modules/gearvault/recharge.lua` owns its state, reads and
+explicit action. The existing command `/say !vault charge_exp_band` remains the
+only write. It uses the shared guard purchase/recharge allowance and current
+nation CP. There is no automatic unequip, withdrawal, recharge or retry.
+
+The companion AXI change advertises HELLO capability **16** and serves read-only
+op **0x4C**. Payloads: request `u32 nonce`; reply `u32 nonce, u16 selected item,
+u8 reason, u8 near counter`. Reasons: 0 ready, 1 busy, 2 weekly allowance used,
+3 equipped/reserved, 4 full, 5 insufficient CP, 6 absent from vault/wardrobes,
+7 error. The outer status still reports attunement and protocol errors. The
+server measures range independently, so weekly and distance reasons can both
+appear. All integers are little-endian; normal 0x1E0 envelope/padding applies.
+
+Queries run only while the context menu needs them, at most once every two
+seconds through the shared transport. A five-second timeout abandons its slot;
+responses older than three seconds cannot enable a recharge. Full nonces reject
+late replies across resets/zone lines. A live entity distance check also disables
+the action after walking away. Clicking rechecks eligibility and holds further
+actions for two seconds while the command settles. Legacy duplicate bands follow
+the server's first-match order; the option refuses if it would target another band.
+
+**Compatibility:** until the companion server binary and Lua are deployed, the
+menu says recharge status is unsupported and stays disabled. The server's preview
+capability is advertised only when the native binding declares support: an old
+binding would otherwise ignore the extra preview argument and perform a recharge.
+The preview returns before all recharge writes and outgoing item/CP packets.
+
+Regression: `lua tests/exp_ring_recharge.lua`, the normal core/UI suites and
+the AXI native `charge_exp_band` suite. Server source and native test handoff:
+`C:/repos/axi-dlac-ring-recharge/documentation/custom/vault-exp-band-recharge.md`.
+Live Ashita rendering and the deployed command round-trip still need a field check.
