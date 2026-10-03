@@ -65,6 +65,9 @@ jobs:
       - name: Gear vault draws augmented copies when no choice is involved
         run: lua5.4 tests/gearvault_augmented_draw.lua
 
+      - name: Gear vault stage 8 (write window, foreign gate, zone lines, job changes, reloads)
+        run: lua5.4 tests/gearvault_stage8.lua
+
       - name: Gear vault sync regression
         run: lua5.4 tests/gearvault_sync.lua && lua5.4 tests/gearvault_sync_probe.lua --budget
 

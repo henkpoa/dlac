@@ -18,7 +18,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.10.01d';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.10.02a';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
                                 -- (03f = engine v163: the contest explains its own plan;
                                 --  03g = one floating tray: Teleports + the E-Box crates;
@@ -304,7 +304,10 @@ addon.version = '2026.10.01d';  -- date of the last shipped change (Ashita print
                                 --  of a piece even when it is augmented;
                                 --  10.01c = vault/HELM requests wait 0.3 s after
                                 --  another addon's 0x1E0 (Nexus), like Nexus does;
-                                --  10.01d = ...and no longer mistakes its own)
+                                --  10.01d = ...and no longer mistakes its own;
+                                --  10.01e = no vault write retry after 3.5 s (the
+                                --  server's replay window), and an unreadable
+                                --  edit ack no longer stalls the layout engine)
 addon.desc    = 'Gear sets, triggers and live stats with level scaling -- dlac equips your gear itself.';
 
 -- Load BEACON ('/dl check' field round, 2026-07-23): written by PLAIN io at

@@ -129,6 +129,12 @@ M.ATTUNE_WIKI  = 'https://www.ascensionffxi.com/wiki/The_Deeper_Room';
 -- whose every copy was answered, late and together (2026-09-30).
 M.SEND_TIMEOUT   = 1.5;   -- a write: seconds before re-sending the SAME Seq
 M.MAX_RETRIES    = 2;     -- a write: then the outcome is unknown -> resync
+-- No write retry leaves later than this after the write's FIRST send: past
+-- the server's replay window a retry is a new request and runs again. The
+-- retries are timed inside it, but the shared gate can hold one (another
+-- producer, another addon's 0x1E0 -- FOREIGN_GAP, 2026.10.01c -- or a frame
+-- stall). Nexus keeps the same deadline (RETRY_DEADLINE 3.5 s).
+M.WRITE_DEADLINE = 3.5;
 M.READ_TIMEOUT   = 2.5;   -- a read: seconds of silence before re-sending
 M.READ_RETRIES   = 3;     -- a read: then give up and back off
 M.MIN_GAP        = 0.1;   -- between two of OUR sends (the transport gates replies)
@@ -566,6 +572,7 @@ local function sendPending(now, retry)
         if not ok or sent == false then return false; end
     end
     if retry then st.pending.retries = st.pending.retries + 1; end
+    st.pending.firstSentAt = st.pending.firstSentAt or now;
     st.pending.sentAt = now;
     st.lastSend = now;
     st.trace.lastSent = { kind = st.pending.kind, op = st.pending.op, seq = st.pending.seq,
@@ -1358,7 +1365,8 @@ function M.pump(ready)
         local p = st.pending;
         if p.sentAt == nil then sendPending(now); return; end
         if now - p.sentAt >= timeoutOf(p.op) then
-            if p.retries >= retriesOf(p.op) then
+            local late = isWrite(p.op) and now - (p.firstSentAt or p.sentAt) >= M.WRITE_DEADLINE;
+            if p.retries >= retriesOf(p.op) or late then
                 st.pending = nil;
                 abandon(p);   -- free the shared channel now, not after MAX_WAIT
                 if isWrite(p.op) then
@@ -1703,7 +1711,8 @@ function M.onFrame(f)
     end
 
     if p.op == M.op.LIST or p.op == M.op.LIST2 then
-        local chunk = p.op == M.op.LIST2 and M.parseList2(f.payload) or (p.op == M.op.LIST and M.parseListChunk(f.payload));
+        local chunk;   -- if/else: `a and parse() or ...` turns a failed parse into false, not nil
+        if p.op == M.op.LIST2 then chunk = M.parseList2(f.payload); else chunk = M.parseListChunk(f.payload); end
         if chunk == nil then
             st.pending = nil;
             st.rowsAcc = nil;
@@ -1744,7 +1753,8 @@ function M.onFrame(f)
     end
 
     if (p.op == M.op.LAYOUT_LIST or p.op == M.op.LAYOUT_LIST2) then
-        local chunk = p.op == M.op.LAYOUT_LIST2 and M.parseLayout2(f.payload) or (p.op == M.op.LAYOUT_LIST and M.parseLayoutChunk(f.payload));
+        local chunk;
+        if p.op == M.op.LAYOUT_LIST2 then chunk = M.parseLayout2(f.payload); else chunk = M.parseLayoutChunk(f.payload); end
         if chunk == nil then
             st.pending = nil;
             st.layoutAcc = nil;
@@ -1802,7 +1812,8 @@ function M.onFrame(f)
     end
 
     if (p.op == M.op.LAYOUT_SET or p.op == M.op.LAYOUT_SET2) then
-        local ack = p.op == M.op.LAYOUT_SET2 and M.parseLayoutSet2Ack(f.payload) or (p.op == M.op.LAYOUT_SET and M.parseLayoutSetAck(f.payload));
+        local ack;
+        if p.op == M.op.LAYOUT_SET2 then ack = M.parseLayoutSet2Ack(f.payload); else ack = M.parseLayoutSetAck(f.payload); end
         if ack then M.noteRevision(ack.revision); end
         st.pending = nil;
         local req = table.remove(st.layoutSetQ or {}, 1);
