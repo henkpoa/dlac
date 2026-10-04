@@ -293,3 +293,7 @@ _Avoid_: window (a Panel is not one — see Floating window); screen; "the <x> a
 **Hobby bar**:
 The one shared Floating window holding the Craft / HELM / Fishing / Chocobo tabs (ADR 0017). Switching tabs arms nothing; the armed hobby is merely marked.
 _Avoid_: hobby menu (that is the Menu popup's row that opens it), craft bar / fish bar / helm bar (the three separate windows it replaced — dead since ADR 0017)
+
+**Dig mover**:
+AscensionXI's move of dug items into the Mog Case / Mog Satchel (`feature/digstorage`, `docs/reference/ascensionxi-digging.md`), the digging sibling of HELM's gathered-item move — and deliberately not the same rule. A dig comes every second with up to three finds, so instead of moving each reward as it lands it keeps an **owed** count per item (the net rise of that item's inventory total across our own answered dig) and moves **whole stacks** only: full ones and non-stacking items while digging, the rest after a pause. Owed is the ceiling — stock carried in is never moved — and Gysahl Greens are never owed at all (the next dig needs them).
+_Avoid_: auto-move / auto-deposit (the player still digs; dlac only moves what digging added), sweep (it never moves what it did not see dug)

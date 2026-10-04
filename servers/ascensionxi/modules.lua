@@ -13,4 +13,4 @@
     Void Restock (`voidrestock`) left this list on 2026-09-27: the Nexus addon
     in the AscensionXI repo owns restocking now (docs/design/void-restock.md).
 ]]--
-return { 'gearvault', 'helm', 'ascension', 'restocknotice' };
+return { 'gearvault', 'helm', 'digging', 'ascension', 'restocknotice' };

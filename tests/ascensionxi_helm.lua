@@ -99,7 +99,18 @@ if arg and arg[1] then
         return chunk();
     end
     local endpoint = loadServer('modules/custom/lua/helm_status.lua');
-    env.require = function(name) assert(name == 'modules/custom/lua/helm_status'); return endpoint; end;
+    -- void_storage.lua's other requires play no part in the HELM route.
+    env.require = function(name)
+        if name == 'modules/custom/lua/helm_status' then return endpoint; end
+        assert(name == 'modules/custom/lua/ascension_status' or name == 'modules/custom/lua/storage_transfer_effects', name);
+        return {};
+    end;
+    -- Enough enum for the data files void_storage.lua reads at load.
+    local anyNumber = setmetatable({}, { __index = function() return 0; end });
+    env.xi.keyItem, env.xi.itemAHCategory, env.xi.zone = {}, anyNumber, anyNumber;
+    for _, data in ipairs({ 'tiers', 'exceptions', 'npcs', 'packs' }) do
+        loadServer('modules/custom/lua/void_storage_data/' .. data .. '.lua');
+    end
     loadServer('modules/custom/lua/void_storage.lua');
     local player = {
         getLocalVar = function() return nextRead; end,
@@ -116,7 +127,8 @@ if arg and arg[1] then
     assert(ask(0x80, payload).status == 3, 'server rate limit');
     assert(ask(0x80, '').status == 2 and ask(0x80, payload .. '\0').status == 2);
     assert(ask(0x80, p16(2) .. payload:sub(3)).status == 6);
-    assert(ask(0x81, payload).status == 1 and ask(0x90, payload).status == 1);
+    -- 0x82 is unclaimed in the HELM partition; 0x90 is Onslaught's, absent here.
+    assert(ask(0x82, payload).status == 1 and ask(0x90, payload).status == 5);
     serverTime = serverTime + 1;
     assert(ask(0x80, payload).status == 0);
     env.xi.gearVault = { onPacket = function() return { frames = { { status = 77 } } }; end };

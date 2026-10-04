@@ -2273,7 +2273,10 @@ end)();
     local oldFeatures = gate._packFeatures;
     gate._packFeatures = dofile('servers/ascensionxi/features.lua');
     local filtered = aui.listRows();
-    check('AXS16 AXI helper list contains only gathering', #filtered == 1 and filtered[1].key, 'helm');
+    local keys = {};
+    for _, row in ipairs(filtered) do keys[#keys + 1] = row.key; end
+    table.sort(keys);
+    check('AXS16 AXI helper list contains only gathering and digging', table.concat(keys, ','), 'choco,helm');
     gate._packFeatures = oldFeatures;
     points._send = oldSend; points.reset();
     sp.provide('gathering', oldService);
@@ -2940,8 +2943,24 @@ end)();
         check('HB23 AXI hobby bar renders', pcall(hb.render), true);
         local labels = table.concat(btns, '/');
         check('HB24 AXI hides other hobby tabs', labels:find('##hbtabcraft', 1, true)
-            or labels:find('##hbtabfish', 1, true) or labels:find('##hbtabchoco', 1, true), nil);
+            or labels:find('##hbtabfish', 1, true), nil);
         check('HB25 AXI retains HELM tab', labels:find('##hbtabhelm', 1, true) ~= nil, true);
+        check('HB26 AXI shows the Digging tab', labels:find('##hbtabchoco', 1, true) ~= nil, true);
+        -- On a server that reports digging, the tab carries its status block.
+        local spx = require('dlac\\gear\\serverpack');
+        local keptDig = spx.service('digging');
+        spx.provide('digging', { exactRank = true, status = { touch = function() end,
+            value = function() return nil; end, rank = function() return nil; end } });
+        -- chocoui loaded headless here, so its drawing functions are stand-ins.
+        local cu = require('dlac\\ui\\chocoui');
+        local keptStatus, keptMoves, drawnStatus = cu.renderDigStatus, cu.renderMoveDestinations, 0;
+        cu.renderDigStatus = function() drawnStatus = drawnStatus + 1; end;
+        cu.renderMoveDestinations = nop;
+        ui._hobbySel = 'choco';
+        local barDrawn = pcall(hb.render);
+        cu.renderDigStatus, cu.renderMoveDestinations = keptStatus, keptMoves;
+        spx.provide('digging', keptDig);
+        check('HB27 AXI Digging tab shows the server status', barDrawn and drawnStatus, 1);
         gate._packFeatures = oldFeatures;
 
         ui._hobbyBar = false;

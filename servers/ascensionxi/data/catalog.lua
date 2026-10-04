@@ -3798,6 +3798,38 @@ return {
                     Delay = 540,
                 }
             },
+            RkndlKnuckles_1 = {
+                Name = "Rkndl. Knuckles +1",
+                Level = 20,
+                Id = 19984,
+                Model = 143,
+                Jobs = {"MNK"},
+                OneHanded = false,
+                Type = "HandToHand",
+                Stats = {
+                    DMG = 12,
+                    Delay = 570,
+                    STR = 3,
+                    Haste = 3,
+                    StoreTP = 3,
+                }
+            },
+            RkndlKnuckles_2 = {
+                Name = "Rkndl. Knuckles +2",
+                Level = 30,
+                Id = 19991,
+                Model = 143,
+                Jobs = {"MNK"},
+                OneHanded = false,
+                Type = "HandToHand",
+                Stats = {
+                    DMG = 14,
+                    Delay = 570,
+                    STR = 4,
+                    Haste = 4,
+                    StoreTP = 4,
+                }
+            },
             RuneBaghnakhs = {
                 Name = "Rune Baghnakhs",
                 Level = 70,
@@ -10297,6 +10329,72 @@ return {
                     Evasion = 22,
                     MagicEvasion = 20,
                     WaltzPotency = 7,
+                }
+            },
+            RkndlDagger_1 = {
+                Name = "Rkndl. Dagger +1",
+                Level = 20,
+                Id = 19988,
+                Model = 157,
+                Jobs = {"THF"},
+                OneHanded = true,
+                Type = "Dagger",
+                Stats = {
+                    DMG = 14,
+                    Delay = 190,
+                    STR = 2,
+                    DEX = 2,
+                    AGI = 2,
+                    CriticalHitRate = 2,
+                }
+            },
+            RkndlDagger_2 = {
+                Name = "Rkndl. Dagger +2",
+                Level = 30,
+                Id = 19995,
+                Model = 157,
+                Jobs = {"THF"},
+                OneHanded = true,
+                Type = "Dagger",
+                Stats = {
+                    DMG = 16,
+                    Delay = 190,
+                    STR = 3,
+                    DEX = 3,
+                    AGI = 3,
+                    CriticalHitRate = 3,
+                }
+            },
+            RkndlJambiya_1 = {
+                Name = "Rkndl. Jambiya +1",
+                Level = 20,
+                Id = 19989,
+                Model = 409,
+                Jobs = {"DNC"},
+                OneHanded = true,
+                Type = "Dagger",
+                Stats = {
+                    DMG = 13,
+                    Delay = 190,
+                    DEX = 3,
+                    CHR = 3,
+                    StepAccuracy = 5,
+                }
+            },
+            RkndlJambiya_2 = {
+                Name = "Rkndl. Jambiya +2",
+                Level = 30,
+                Id = 19996,
+                Model = 409,
+                Jobs = {"DNC"},
+                OneHanded = true,
+                Type = "Dagger",
+                Stats = {
+                    DMG = 15,
+                    Delay = 190,
+                    DEX = 4,
+                    CHR = 4,
+                    StepAccuracy = 7,
                 }
             },
             Rostam = {
@@ -17621,6 +17719,36 @@ return {
                 Stats = {
                     DMG = 40,
                     Delay = 236,
+                }
+            },
+            RkndlRapier_1 = {
+                Name = "Rkndl. Rapier +1",
+                Level = 20,
+                Id = 19987,
+                Model = 182,
+                Jobs = {"RDM"},
+                OneHanded = true,
+                Type = "Sword",
+                Stats = {
+                    DMG = 21,
+                    Delay = 215,
+                    INT = 5,
+                    MND = 5,
+                }
+            },
+            RkndlRapier_2 = {
+                Name = "Rkndl. Rapier +2",
+                Level = 30,
+                Id = 19994,
+                Model = 182,
+                Jobs = {"RDM"},
+                OneHanded = true,
+                Type = "Sword",
+                Stats = {
+                    DMG = 25,
+                    Delay = 215,
+                    INT = 6,
+                    MND = 6,
                 }
             },
             Ruler = {
@@ -29701,6 +29829,38 @@ return {
                     Retaliation = 2,
                 }
             },
+            RkndlGtAxe_1 = {
+                Name = "Rkndl. Gt.Axe +1",
+                Level = 20,
+                Id = 19983,
+                Model = 10,
+                Jobs = {"WAR"},
+                OneHanded = false,
+                Type = "GreatAxe",
+                Stats = {
+                    DMG = 50,
+                    Delay = 490,
+                    STR = 3,
+                    Accuracy = 3,
+                    Retaliation = 3,
+                }
+            },
+            RkndlGtAxe_2 = {
+                Name = "Rkndl. Gt.Axe +2",
+                Level = 30,
+                Id = 19990,
+                Model = 10,
+                Jobs = {"WAR"},
+                OneHanded = false,
+                Type = "GreatAxe",
+                Stats = {
+                    DMG = 65,
+                    Delay = 490,
+                    STR = 4,
+                    Accuracy = 4,
+                    Retaliation = 4,
+                }
+            },
             Router = {
                 Name = "Router",
                 Level = 99,
@@ -33267,6 +33427,36 @@ return {
                     MP = 6,
                     STR = 2,
                     VIT = -1,
+                }
+            },
+            RkndlSickle_1 = {
+                Name = "Rkndl. Sickle +1",
+                Level = 20,
+                Id = 19986,
+                Model = 195,
+                Jobs = {"BLM"},
+                OneHanded = false,
+                Type = "Scythe",
+                Stats = {
+                    DMG = 45,
+                    Delay = 470,
+                    INT = 5,
+                    ElementalMagicSkill = 3,
+                }
+            },
+            RkndlSickle_2 = {
+                Name = "Rkndl. Sickle +2",
+                Level = 30,
+                Id = 19993,
+                Model = 195,
+                Jobs = {"BLM"},
+                OneHanded = false,
+                Type = "Scythe",
+                Stats = {
+                    DMG = 60,
+                    Delay = 470,
+                    INT = 6,
+                    ElementalMagicSkill = 4,
                 }
             },
             RuneScythe = {
@@ -49552,6 +49742,36 @@ return {
                     DMG = 18,
                     Delay = 306,
                     Accuracy = 3,
+                }
+            },
+            RkndlClub_1 = {
+                Name = "Rkndl. Club +1",
+                Level = 20,
+                Id = 19985,
+                Model = 105,
+                Jobs = {"WHM"},
+                OneHanded = true,
+                Type = "Club",
+                Stats = {
+                    DMG = 23,
+                    Delay = 310,
+                    MND = 5,
+                    HealingMagicSkill = 3,
+                }
+            },
+            RkndlClub_2 = {
+                Name = "Rkndl. Club +2",
+                Level = 30,
+                Id = 19992,
+                Model = 105,
+                Jobs = {"WHM"},
+                OneHanded = true,
+                Type = "Club",
+                Stats = {
+                    DMG = 29,
+                    Delay = 310,
+                    MND = 6,
+                    HealingMagicSkill = 4,
                 }
             },
             RoburMace = {

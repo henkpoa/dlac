@@ -277,6 +277,63 @@ function M.itemRows(entry, rankState, clock)
 end
 
 -- ---------------------------------------------------------------------------
+-- Server-reported digging (AscensionXI's `digging` pack service): what the
+-- server's !digging shows, polled silently while a surface shows it. nil on a
+-- pack without the service -- the CatsEye surfaces then render as before.
+-- ---------------------------------------------------------------------------
+M.GREENS_ID = 4545;   -- Gysahl Greens
+
+function M.packDigging()
+    local svc = nil;
+    pcall(function() svc = require('dlac\\gear\\serverpack').service('digging'); end);
+    return svc;
+end
+
+-- "1h 2m" / "2m" / "under a minute".
+function M.duration(seconds)
+    local s = math.max(0, math.floor(tonumber(seconds) or 0));
+    local h, m = math.floor(s / 3600), math.floor(s % 3600 / 60);
+    if h > 0 then return string.format('%dh %dm', h, m); end
+    if m > 0 then return string.format('%dm', m); end
+    return 'under a minute';
+end
+
+-- The status block as plain lines, from a status snapshot (see the pack's
+-- digging\status.lua), the rank ladder and the inventory's greens (nil when
+-- unread). nil while the server has not answered yet.
+function M.digStatusLines(snap, ladder, inventoryGreens)
+    if type(snap) ~= 'table' then return nil; end
+    local rankName = (type(ladder) == 'table' and ladder[snap.rank]) or ('rank ' .. tostring(snap.rank));
+    local lines = {
+        string.format('Skill %.1f (%s)  Dig delay %ds', snap.skill or 0, rankName, snap.delay or 0),
+        string.format('Allowance %d/%d  +%d in %s', snap.allowance or 0, snap.cap or 0, snap.credit or 0,
+            M.duration(type(snap.refillIn) == 'function' and snap.refillIn() or 0)),
+    };
+    local held = inventoryGreens ~= nil and tostring(inventoryGreens) or '?';
+    if snap.voidAccess then
+        lines[3] = string.format('Gysahl Greens %s in inventory, %d in Void Storage', held, snap.storedGreens or 0);
+    else
+        lines[3] = string.format('Gysahl Greens %s in inventory', held);
+    end
+    return lines;
+end
+
+-- Gysahl Greens in the inventory (digs use these before Void Storage); nil
+-- when the client memory cannot be read.
+function M.inventoryGreens()
+    local n = nil;
+    pcall(function()
+        local inv = AshitaCore:GetMemoryManager():GetInventory();
+        n = 0;
+        for slot = 1, (inv:GetContainerCountMax(0) or 0) do
+            local it = inv:GetContainerItem(0, slot);
+            if it and it.Id == M.GREENS_ID then n = n + (it.Count or 0); end
+        end
+    end);
+    return n;
+end
+
+-- ---------------------------------------------------------------------------
 -- The detail view (automationsui: auto.view == 'choco'). Everything below the
 -- imgui guard: headless require returns the pure stub above.
 -- ---------------------------------------------------------------------------
@@ -301,6 +358,56 @@ local function help(text, tip, col)
         uistyle.helpLabel(imgui, text, tip, col or COL_TEXT);
     else
         imgui.TextColored(col or COL_TEXT, text);
+    end
+end
+
+-- The server's digging numbers (the !digging readout). Asks the server while
+-- drawn -- the bar and the panel share one poll, as HELM's points do.
+function M.renderDigStatus()
+    local svc = M.packDigging();
+    if svc == nil then return; end
+    pcall(svc.status.touch);
+    local lines = M.digStatusLines(svc.status.value(), M.rankLadder(), M.inventoryGreens());
+    if lines == nil then
+        imgui.TextColored(COL_DIM, 'Digging status: waiting for the server.');
+        return;
+    end
+    for i, line in ipairs(lines) do
+        imgui.TextUnformatted(line);
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip(({
+                'Your digging skill, rank and the wait between digs, as !digging shows them.\nUpdated from the server every five seconds while shown.',
+                'Digs left now, and what Japanese midnight adds. The allowance holds up to seven days.',
+                'A dig uses greens from your inventory first, then from Void Storage.',
+            })[i]);
+        end
+    end
+end
+
+-- The Mog Case / Mog Satchel switches for dug items and the mover's state.
+function M.renderMoveDestinations(id)
+    if M.packDigging() == nil then return; end
+    local cwok, cw = pcall(require, 'dlac\\feature\\chocowatch');
+    if not cwok or type(cw) ~= 'table' or type(cw.setMoveDestination) ~= 'function' then return; end
+    cw.loadState();
+    help('Move dug items into:', 'Full stacks and items that do not stack move as you dig; partial stacks move\nwhen you pause for a few seconds. Items you already carried stay put.', COL_TEXT);
+    for _, destination in ipairs({ { 7, 'Mog Case', 'moveCase' }, { 5, 'Mog Satchel', 'moveSatchel' } }) do
+        imgui.SameLine(0, 12);
+        local checked = { cw[destination[3]] == true };
+        if imgui.Checkbox(destination[2] .. '##digmove' .. tostring(id), checked) then
+            cw.setMoveDestination(destination[1], checked[1]);
+        end
+    end
+    local dsok, ds = pcall(require, 'dlac\\feature\\digstorage');
+    if dsok and type(ds) == 'table' and ds.live ~= nil and (cw.moveCase or cw.moveSatchel) then
+        local waiting = ds.live.waiting();
+        if ds.live.status ~= '' then
+            imgui.TextColored(COL_DIM, esc(ds.live.status));
+        end
+        if waiting > 0 then
+            imgui.TextColored(COL_DIM, string.format('%d dug %s waiting for a full stack or a pause.',
+                waiting, waiting == 1 and 'item' or 'items'));
+        end
     end
 end
 
@@ -651,6 +758,53 @@ function M.renderByItem(deps, rs, clk)
     for _, s in ipairs(view.sources) do renderItemPoolRow(deps, s, rs); end
 end
 
+-- The CatsEye dig rank: masked from the client, so the player picks it and
+-- digging raises it (feature\digrank). `cw` is chocowatch, or nil.
+local function renderRankPicker(rs, cw)
+    local ladder = M.rankLadder();
+    -- Seed the picker from the RESOLVED rank (not just the manual pick), so a
+    -- timing/ratchet detection shows in the dropdown the moment you open the panel
+    -- -- otherwise the picker sat on your old manual pick while only the "Current
+    -- dig rank" line moved (Henrik, field 2026-07-24). Picking still sets the
+    -- manual seed; you can't drop below a detected floor (resolve takes max).
+    local seed = tonumber(rs.rank) or (cw and tonumber(cw.rankManual)) or 0;
+
+    help('Set your dig rank:', 'Masked from the client -- pick your best guess. Digging (a dug item or the first-dig timing) auto-raises it.', COL_TEXT);
+    imgui.SameLine(0, 6);
+    imgui.PushItemWidth(160);
+    local seedLabel = (ladder[seed] ~= nil) and tostring(ladder[seed]) or ('rank ' .. seed);
+    -- Walk 0..max(ladder) so the picker auto-covers the full 0..10 ladder
+    -- (Amateur .. Expert) without a magic number -- extend the ladder, the
+    -- picker follows.
+    local maxRank = 0;
+    for k in pairs(ladder) do
+        if type(k) == 'number' and k > maxRank then maxRank = k; end
+    end
+    if imgui.BeginCombo('##chocorank', seedLabel) then
+        for i = 0, maxRank do
+            local lbl = (ladder[i] ~= nil) and tostring(ladder[i]) or ('rank ' .. i);
+            if imgui.Selectable(string.format('%s##rank%d', lbl, i), i == seed) and cw then
+                cw.setManualRank(i);
+            end
+        end
+        imgui.EndCombo();
+    end
+    imgui.PopItemWidth();
+
+    -- The resolved rank + its honest source tag (the source key + "estimate"
+    -- meaning live in the label's hover). exact (server-reported) shows in green.
+    help('Current dig rank:', 'The rank is masked from the client, so dlac assembles it:\n  manual = your pick\n  >= from digs = raised by a dug item or the first-dig timing\n  reported by server = exact (rare)\n"estimate" = not yet server-confirmed.', COL_TEXT);
+    imgui.SameLine(0, 6);
+    imgui.TextColored(COL_GOLD, tostring(rs.label or ('rank ' .. (rs.rank or 0))));
+    imgui.SameLine(0, 6);
+    if rs.exact then
+        imgui.TextColored(GREEN_OWNED, '(' .. (rs.sourceLabel or 'reported by server') .. ')');
+    else
+        imgui.TextColored(COL_DIM, string.format('(%s -- estimate)', rs.sourceLabel or rs.source or 'manual'));
+    end
+    imgui.Spacing();
+end
+
 function M.render(deps, availW)
     local cwok, cw = pcall(require, 'dlac\\feature\\chocowatch');
     cwok = cwok and type(cw) == 'table';
@@ -733,50 +887,16 @@ function M.render(deps, availW)
     imgui.TextColored(COL_TEXT, 'your dig rank + the live moon/day/weather for the odds.');
     imgui.Spacing();
 
-    -- ---- Dig rank (manual pick + source label) ----
     local rs = M.rankState();
-    local ladder = M.rankLadder();
-    -- Seed the picker from the RESOLVED rank (not just the manual pick), so a
-    -- timing/ratchet detection shows in the dropdown the moment you open the panel
-    -- -- otherwise the picker sat on your old manual pick while only the "Current
-    -- dig rank" line moved (Henrik, field 2026-07-24). Picking still sets the
-    -- manual seed; you can't drop below a detected floor (resolve takes max).
-    local seed = tonumber(rs.rank) or (cwok and tonumber(cw.rankManual)) or 0;
-
-    help('Set your dig rank:', 'Masked from the client -- pick your best guess. Digging (a dug item or the first-dig timing) auto-raises it.', COL_TEXT);
-    imgui.SameLine(0, 6);
-    imgui.PushItemWidth(160);
-    local seedLabel = (ladder[seed] ~= nil) and tostring(ladder[seed]) or ('rank ' .. seed);
-    -- Walk 0..max(ladder) so the picker auto-covers the full 0..10 ladder
-    -- (Amateur .. Expert) without a magic number -- extend the ladder, the
-    -- picker follows.
-    local maxRank = 0;
-    for k in pairs(ladder) do
-        if type(k) == 'number' and k > maxRank then maxRank = k; end
-    end
-    if imgui.BeginCombo('##chocorank', seedLabel) then
-        for i = 0, maxRank do
-            local lbl = (ladder[i] ~= nil) and tostring(ladder[i]) or ('rank ' .. i);
-            if imgui.Selectable(string.format('%s##rank%d', lbl, i), i == seed) and cwok then
-                cw.setManualRank(i);
-            end
-        end
-        imgui.EndCombo();
-    end
-    imgui.PopItemWidth();
-
-    -- The resolved rank + its honest source tag (the source key + "estimate"
-    -- meaning live in the label's hover). exact (server-reported) shows in green.
-    help('Current dig rank:', 'The rank is masked from the client, so dlac assembles it:\n  manual = your pick\n  >= from digs = raised by a dug item or the first-dig timing\n  reported by server = exact (rare)\n"estimate" = not yet server-confirmed.', COL_TEXT);
-    imgui.SameLine(0, 6);
-    imgui.TextColored(COL_GOLD, tostring(rs.label or ('rank ' .. (rs.rank or 0))));
-    imgui.SameLine(0, 6);
-    if rs.exact then
-        imgui.TextColored(GREEN_OWNED, '(' .. (rs.sourceLabel or 'reported by server') .. ')');
+    if M.packDigging() ~= nil then
+        -- The server reports skill and rank: nothing to pick or guess.
+        M.renderDigStatus();
+        imgui.Spacing();
+        M.renderMoveDestinations('panel');
+        imgui.Spacing();
     else
-        imgui.TextColored(COL_DIM, string.format('(%s -- estimate)', rs.sourceLabel or rs.source or 'manual'));
+        renderRankPicker(rs, cwok and cw or nil);
     end
-    imgui.Spacing();
 
     -- ---- Live Vana'diel clock header (moon / day / weather) ----
     local clk = M.clock();

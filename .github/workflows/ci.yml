@@ -86,6 +86,15 @@ jobs:
       - name: HELM gathered-item storage regression
         run: lua5.4 tests/helmstorage.lua
 
+      - name: Dug-item storage regression
+        run: lua5.4 tests/digstorage.lua
+
+      - name: AscensionXI digging packet regression
+        run: lua5.4 tests/ascensionxi_digging.lua
+
+      - name: AscensionXI digging surfaces regression
+        run: lua5.4 tests/ascensionxi_digging_ui.lua
+
       - name: AscensionXI ascension packet regression
         run: lua5.4 tests/ascensionxi_ascension.lua
 

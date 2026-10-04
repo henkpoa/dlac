@@ -195,6 +195,16 @@ local function renderChocoContent()
     if toggled then cw.setEnabled(not on); end
     imgui.SameLine(0, 10);
     imgui.TextColored({ 0.70, 0.70, 0.70, 1 }, 'Chocobo riding gear (idle only)');
+    -- A server that reports digging (AscensionXI): its !digging numbers, the
+    -- greens on hand and where dug items go.
+    local cu = try('dlac\\ui\\chocoui');
+    local serverDigging = cu ~= nil and type(cu.packDigging) == 'function' and cu.packDigging() ~= nil;
+    if serverDigging then
+        imgui.Separator();
+        cu.renderDigStatus();
+        cu.renderMoveDestinations('bar');
+        imgui.Separator();
+    end
     -- Dig search, straight from the bar (2026-07-27). Was a grey sentence telling
     -- you to go to Automations > Chocobo; these are the panel's OWN two buttons,
     -- routed through chocoui's openers so the two surfaces cannot drift (Area
@@ -226,7 +236,9 @@ local function renderChocoContent()
         end);
     end
     if imgui.IsItemHovered() then
-        imgui.SetTooltip('Open Gear Helpers > Chocobo Gear: the dig rank picker, riding-time\ngear and the live moon/day/weather odds.');
+        imgui.SetTooltip(serverDigging
+            and 'Open Gear Helpers > Chocobo: riding-time gear and the live moon/day/weather odds.'
+            or 'Open Gear Helpers > Chocobo Gear: the dig rank picker, riding-time\ngear and the live moon/day/weather odds.');
     end
     imgui.Dummy({ 300, 1 });
 end
