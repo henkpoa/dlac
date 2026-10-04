@@ -1,8 +1,8 @@
 # AscensionXI Chocobo Digging — October 4, 2026
 
 The Digging tab of the Hobby bar and the Gear Helpers > Chocobo row are on for
-AscensionXI. Branch `claude/chocobo-digging`, paired with the server branch
-`claude/chocobo-digging-hobby` (its handoff:
+AscensionXI. Branch `claude/chocobo-digging` (PR #197), paired with the server
+branch `claude/chocobo-digging-hobby` (AscensionXI PR #780; its handoff:
 `documentation/custom/chocobo-digging-hobby.md` in the AscensionXI repo).
 Offline suites pass; not released and not yet seen in a client.
 
