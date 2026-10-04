@@ -1,6 +1,47 @@
-Since October 4, 2026 the same generator run also writes
-`data/digdata.lua`, the chocobo dig table, so every refresh keeps it current
-(`docs/reference/ascensionxi-digging.md`).
+# AscensionXI catalog refresh, October 4, 2026
+
+DLAC `2026.10.04b` regenerates the complete pack from AscensionXI main
+`b0222b6a41`. It adds the fourteen Rekindled +1/+2 weapons (19983-19996)
+and their icons: seven level-20 weapons and seven level-30 weapons. No
+existing equipment records change or disappear. Totals: 15,460 equipment
+records, all named from tracked client DATs, and 65 icon overrides.
+
+The generator change to write `data/digdata.lua` on every run is already
+merged in AscensionXI (`3271801528`, PR #780). This refresh verifies that
+the table in DLAC #197 matches main: 26 zones, 649 rows, Burrow and Bore
+enabled. The other generated datasets and hand-maintained pack files are
+unchanged. No new generator code is needed.
+
+Reproduce from that server commit with hydrated item DATs:
+
+```powershell
+python -m unittest discover -s tools/dlac-pack -v
+python tools/dlac-pack/gen_pack.py --out <dlac>/servers/ascensionxi --game "C:/AscensionXI/Game/FINAL FANTASY XI"
+```
+
+The release extends DLAC #197 so the accepted digging feature and current
+catalog ship together. The companion AscensionXI launcher PR must pin this
+exact DLAC revision and resolve every file hash; re-resolve if review changes
+the payload. Human merge order: DLAC first, launcher pin second. The pin merge
+publishes the staging DAT channel automatically. Test that channel, then select
+its resulting `sha-...` tag as `channel_tag` in today's production deployment;
+`keep` would retain the old DLAC release. See the companion server handoff
+`documentation/custom/dlac-2026-10-04-release.md` for validation and rollback.
+
+Players following addon updates receive this version on their next launcher
+start after channel promotion. Developer Git installs require a Git update;
+running clients need `/addon reload dlac`. Verify `/dl check` says
+`2026.10.04b`, inspect the new weapons and icons, and open the Digging tab.
+The digging feature was owner-accepted in the client in #197; this catalog
+refresh is verified offline only. Prepared for review, not deployed.
+
+Verification: 35 generator tests; all DLAC CI commands (7,547 core checks,
+1,628 UI smoke checks and focused regressions); 35 pack-lint checks; digging
+and HELM tests against the source server checkout. A complete record comparison
+confirms exactly IDs 19983-19996 were added at the intended levels, each with
+a PNG, and every previous catalog record is unchanged.
+
+---
 
 # AscensionXI catalog refresh, October 2, 2026
 
