@@ -602,7 +602,11 @@ if not _cfok then ledger.failed[#ledger.failed + 1] = { mod = 'chatfmt', err = t
 for _, mod in ipairs({ 'gear', 'feature\\augments', 'gear\\gearoptim', 'gear\\gearimport',
                        'gear\\gearexport', 'gear\\unusedgear',
                        'feature\\useitem', 'feature\\craftwatch',
-                       'feature\\synthrun', 'feature\\craftpick', 'feature\\nexuslink',
+                       'feature\\synthrun',
+                       -- AscensionXI's Nexus names each synth's crafts; these
+                       -- pick and lock the gear for it (docs/design/nexus-craft-gear.md).
+                       -- Their own line: release/build_cexi.py drops synthrun's line verbatim.
+                       'feature\\craftpick', 'feature\\nexuslink',
                        'ui\\craftbar', 'feature\\helmwatch', 'feature\\helmstorage', 'ui\\helmbar',
                        'feature\\fishwatch', 'ui\\fishbar', 'feature\\chocowatch',
                        'feature\\meritwatch',
