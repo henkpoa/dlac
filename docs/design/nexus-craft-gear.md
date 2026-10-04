@@ -101,6 +101,24 @@ craft), the recipe's requirements, the player's skills, the goal and the level.
 A piece that blocks HQ for a needed craft is never worn under hq. Ear and ring
 pairs respect how many copies you own. Ammo is never touched.
 
+**All-craft pieces** (Kupo Shield, +1, +2; Artisan's Hat, Torque and Apron)
+count for every craft a recipe needs, so on a subcraft recipe one piece raises
+both crafts; the better piece of a line wins its slot (Kupo Shield +2's +3
+beats +1, the plain shield and every craft ecu). Tests NC12.
+
+**The hands never fight** (owner, 2026-10-04: the Kupo Shield "shouldn't be
+battling with a 2-hander"). The pick never wears a two-handed or hand-to-hand
+craft weapon (it could not keep a shield beside it) and never a Sub that is not
+a shield (a grip or off-hand weapon needs a two-hander or Dual Wield). The
+manifest rows carry `twoHand` / `shield` for this (`rec.OneHanded`, the Type,
+`utils.classifySub`); a row without them is allowed. When the lock wears a
+shield and no weapon, the main hand is reserved by the engine's existing
+Sub-vs-Main guard (`craftMainGuard`, v37), which reads the same Craft claim: a
+two-handed or hand-to-hand set Main is held off while the lock stands, and a
+one-handed one stays. The server takes a worn two-hander or hand-to-hand weapon
+off when a shield goes on (`charutils.cpp` EquipArmor, `SLOT_SUB`), so nothing
+puts it back until the lock ends. Tests NC13, NX9, NX10 (the real dispatch).
+
 ## Where the lock lives (`feature/nexuslink.lua`, engine v169)
 
 In memory only. The engine's **Craft** claimant row reads it first
@@ -136,9 +154,9 @@ change and is not investigated here.
 
 ## Verification (2026-10-04)
 
-- `lua tests/run_tests.lua`: 7,536 (7,521 before; NX0-NX8c new).
+- `lua tests/run_tests.lua`: 7,547 (7,521 before; NX0-NX10e new).
 - `lua tests/smoke_ui.lua`: 1,626.
-- `lua tests/nexuscraft.lua`: 99 (NC1-NC11 pick, NL1-NL13 conversation and lock).
+- `lua tests/nexuscraft.lua`: 112 (NC1-NC13 pick, NL1-NL13 conversation and lock).
 - End to end with Nexus's real link over a pretend bus: the AscensionXI repo's
   `client/addons/nexus/tests/e2e_dlac_link.lua` (run it with this checkout's
   path), 14 checks.

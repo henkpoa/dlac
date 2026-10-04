@@ -8540,6 +8540,59 @@ end)();
     check('NX8b a state without picks is not taken for a lock', row.ensure('Default'), manual);
     package.loaded['dlac\\feature\\nexuslink'] = nil;
     check('NX8c a missing nexuslink module degrades to the manual state', row.ensure('Default'), manual);
+
+    -- NX9. THE MAIN HAND (owner, 2026-10-04: the Kupo Shield "shouldn't be
+    -- battling with a 2-hander"). A lock that wears a shield and no weapon is
+    -- exactly the craft claim the v37 Sub-vs-Main guard (section AF) reads, so
+    -- a two-handed or hand-to-hand set Main is held while the lock stands. The
+    -- server takes a worn two-hander off when the shield goes on.
+    package.loaded['dlac\\utils'] = utils;
+    local G = package.loaded['dlac\\gear'];
+    G.NameToObject['Kupo Shield +2'] = { Name = 'Kupo Shield +2', Type = 'Sub' };
+    G.NameToObject['Death Scythe']   = { Name = 'Death Scythe', Type = 'Great Scythe', OneHanded = false };
+    G.NameToObject['Parry Knife']    = { Name = 'Parry Knife', Type = 'Dagger', OneHanded = true };
+    G.NameToObject['Cat Baghnakhs']  = { Name = 'Cat Baghnakhs', Type = 'Hand-to-Hand', OneHanded = true };
+    utils._resetNameIndex();
+    local shieldLock = { enabled = true, craft = 'Nexus',
+                         nexus = { Sub = 'Kupo Shield +2', Body = 'Artisan\'s Apron' } };
+    local claim = row.claim(shieldLock, true, { ctx = {} });
+    local g = dispatchM._craftMainGuard(claim);
+    check('NX9 a shield lock with no weapon builds the main-hand guard', g ~= nil, true);
+    check('NX9b it holds a two-handed set Main', g and g('Death Scythe'), true);
+    check('NX9c and a hand-to-hand one', g and g('Cat Baghnakhs'), true);
+    check('NX9d a one-handed Main keeps its place beside the shield', g and g('Parry Knife'), false);
+    local _, held = dispatchM._equipResolved({ Main = 'Death Scythe', Body = 'Weaver Apron' }, { craftMainGuard = g });
+    check('NX9e the set\'s scythe stays off while the lock holds', held.Main, nil);
+    check('NX9f the rest of the set is untouched', held.Body, 'Weaver Apron');
+
+    -- NX10. END TO END through the REAL M.dispatch (the NK26 harness): with only
+    -- the lock armed, a Default dispatch reaches the equip door with the lock's
+    -- pieces and leaves the main hand alone.
+    lockSt = shieldLock;
+    package.loaded['dlac\\feature\\nexuslink'] = { lockState = function() return lockSt; end };
+    local savedPlayer, savedState = TEST_PLAYER, rawget(_G, 'gState');
+    local savedEng = package.loaded['dlac\\feature\\equipengine'];
+    TEST_PLAYER = { MainJob = 'WAR', MainJobLevel = 75, SubJob = 'MNK', SubJobLevel = 37,
+                    MainJobSync = 75, SubJobSync = 37, Status = 'Idle', IsMoving = false };
+    local wrote = {};
+    package.loaded['dlac\\feature\\equipengine'] = {
+        nativeOn = function() return true; end,
+        equipSet = function(t) for k, v in pairs(t or {}) do wrote[k] = v; end end,
+        state = { tripped = false },
+    };
+    _G.gState = { CurrentCall = 'N/A', Disabled = {} };
+    local okD, errD = pcall(dispatchM.dispatch, 'Default');
+    check('NX10 a Default dispatch with the lock armed does not throw', okD, true);
+    if not okD then print('NX10 error: ' .. tostring(errD)); end
+    check('NX10b the shield reaches the equip door', wrote.Sub, 'Kupo Shield +2');
+    check('NX10c and the apron', wrote.Body, 'Artisan\'s Apron');
+    check('NX10d the main hand is not written', wrote.Main, nil);
+    lockSt = nil;
+    wrote = {};
+    pcall(dispatchM.dispatch, 'Default');
+    check('NX10e lock gone: the same dispatch writes nothing', next(wrote), nil);
+    TEST_PLAYER, _G.gState = savedPlayer, savedState;
+    package.loaded['dlac\\feature\\equipengine'] = savedEng;
     package.loaded['dlac\\feature\\nexuslink'] = saved;
 end)();
 

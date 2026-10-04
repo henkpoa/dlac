@@ -486,7 +486,21 @@ local function autoCommit()
                     local ci = { name = rec.Name, slot = string.lower(sl), level = tonumber(rec.Level) or 0,
                                  n = (type(counts) == 'table' and rec.Id ~= nil and counts[rec.Id]) or 1,
                                  sk = {}, anti = {}, sb = {},
-                                 hqr = hqr, succ = succ, gain = gain, mat = mat, consv = consv };
+                                 hqr = hqr, succ = succ, gain = gain, mat = mat, consv = consv,
+                                 twoHand = false, shield = false };
+                    -- The hands, for craftpick's no-fight rule: a two-handed or
+                    -- hand-to-hand Main cannot keep a shield beside it, and only
+                    -- a shield is a Sub the pick may wear (utils' pairing facts).
+                    if sl == 'Main' then
+                        local t = string.lower((tostring(rec.Type or ''):gsub('%W', '')));
+                        ci.twoHand = (rec.OneHanded == false) or t == 'handtohand' or t == 'h2h';
+                    elseif sl == 'Sub' then
+                        -- A record with no Type is unknown, not "not a shield".
+                        ci.shield = rec.Type == nil;
+                        pcall(function()
+                            ci.shield = ci.shield or require('dlac\\utils').classifySub(rec) == 'Shield';
+                        end);
+                    end
                     local any = hqr > 0 or succ > 0 or gain > 0 or mat > 0 or consv > 0;
                     for _, cr in ipairs(CRAFTS) do
                         local v = tonumber(st[cr .. 'Skill']) or 0;
@@ -878,7 +892,8 @@ local function autoCommit()
     L[#L + 1] = '    },';
     -- craft pieces with their numbers (fmtver 17): what feature\craftpick
     -- weighs when Nexus names a recipe's crafts. sk = craft skill, anti = blocks
-    -- HQ for that craft, sb = success for that craft.
+    -- HQ for that craft, sb = success for that craft; twoHand / shield = the
+    -- hands facts its no-fight rule reads.
     local function craftMap(m)
         local ks, parts = {}, {};
         for k in pairs(m or {}) do ks[#ks + 1] = k; end
@@ -890,9 +905,9 @@ local function autoCommit()
     L[#L + 1] = '    craftItems = {';
     for _, ci in ipairs(craftItems) do
         L[#L + 1] = string.format('        { name = %q, slot = %q, level = %d, n = %d, sk = %s, anti = %s, sb = %s, '
-            .. 'hqr = %.14g, succ = %.14g, gain = %.14g, mat = %.14g, consv = %.14g },',
+            .. 'hqr = %.14g, succ = %.14g, gain = %.14g, mat = %.14g, consv = %.14g, twoHand = %s, shield = %s },',
             ci.name, ci.slot, ci.level, ci.n, craftMap(ci.sk), craftMap(ci.anti), craftMap(ci.sb),
-            ci.hqr, ci.succ, ci.gain, ci.mat, ci.consv);
+            ci.hqr, ci.succ, ci.gain, ci.mat, ci.consv, tostring(ci.twoHand == true), tostring(ci.shield == true));
     end
     L[#L + 1] = '    },';
     -- helm ladders: slotKey -> best-first rungs (Surveyor-major), plus the

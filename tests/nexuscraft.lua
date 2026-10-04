@@ -27,7 +27,8 @@ local function item(name, slot, t)
     t = t or {};
     return { name = name, slot = slot, level = t.level or 1, n = t.n or 1, sk = t.sk or {},
              anti = t.anti or {}, sb = t.sb or {}, hqr = t.hqr or 0, succ = t.succ or 0,
-             gain = t.gain or 0, mat = t.mat or 0, consv = t.consv or 0 };
+             gain = t.gain or 0, mat = t.mat or 0, consv = t.consv or 0,
+             twoHand = t.twoHand, shield = t.shield };
 end
 local ALL8 = function(n)
     local t = {};
@@ -160,6 +161,50 @@ for i = #GEAR, 1, -1 do rev[#rev + 1] = GEAR[i]; end
 local a = pick.pick(GEAR, { Smithing = 30, Woodworking = 30 }, { Smithing = 29, Woodworking = 30 }, { level = 75 });
 local b = pick.pick(rev, { Smithing = 30, Woodworking = 30 }, { Smithing = 29, Woodworking = 30 }, { level = 75 });
 check('NC11 same picks whatever the row order', pick.samePicks(a, b), true);
+
+-- NC12 the all-craft pieces (AscensionXI's catalog numbers): they count for
+-- every craft a recipe needs, and the better of a line wins.
+local UNI = {
+    item('Kupo Shield', 'sub', { sk = ALL8(1), shield = true }),
+    item('Kupo Shield +1', 'sub', { sk = ALL8(2), shield = true }),
+    item('Kupo Shield +2', 'sub', { sk = ALL8(3), shield = true }),
+    item('Chef\'s Ecu', 'sub', { sk = { Cooking = 1 }, shield = true }),
+    item('Artisan\'s Hat', 'head', { sk = ALL8(2) }),
+    item('Chef\'s Hat', 'head', { sk = { Cooking = 1 } }),
+    item('Artisan\'s Torque', 'neck', { sk = ALL8(3) }),
+    item('Culin. Torque', 'neck', { sk = { Cooking = 2 } }),
+    item('Artisan\'s Apron', 'body', { sk = ALL8(2) }),
+    item('Culinarian\'s Smock', 'body', { sk = { Cooking = 1 } }),
+    item('Caduceus', 'main', { sk = { Alchemy = 1 }, twoHand = false }),
+};
+p, info = pick.pick(UNI, { Cooking = 30 }, { Cooking = 30 }, { level = 75 });
+check('NC12 the Kupo Shield +2 beats +1, the plain one and the craft\'s own ecu', p.Sub, 'Kupo Shield +2');
+check('NC12b Artisan\'s Hat (+2) beats Chef\'s Hat (+1)', p.Head, 'Artisan\'s Hat');
+check('NC12c Artisan\'s Torque (+3) beats the craft torque (+2)', p.Neck, 'Artisan\'s Torque');
+check('NC12d Artisan\'s Apron (+2) beats the craft smock (+1)', p.Body, 'Artisan\'s Apron');
+check('NC12e +3 +2 +3 +2', info.margins.Cooking, 10);
+check('NC12f no cooking weapon: the main hand is left to the engine', p.Main, nil);
+check('NC12g beaten pieces are never tried: one combination', info.combos, 1);
+p, info = pick.pick(UNI, { Cooking = 30, Alchemy = 20 }, { Cooking = 30, Alchemy = 15 }, { level = 75 });
+check('NC12h a subcraft recipe: the all-craft pieces count for both crafts',
+    info.margins.Cooking .. '/' .. info.margins.Alchemy, '10/6');
+check('NC12i and the alchemy club joins the shield (one-handed)', p.Main, 'Caduceus');
+
+-- NC13 the hands never fight.
+local HANDS = {
+    item('Kupo Shield +2', 'sub', { sk = ALL8(3), shield = true }),
+    item('Smithing Scythe', 'main', { sk = { Smithing = 9 }, twoHand = true }),
+    item('Smithing Grip', 'sub', { sk = { Smithing = 9 }, shield = false }),
+    item('Smithing Hammer', 'main', { sk = { Smithing = 1 }, twoHand = false }),
+};
+p = pick.pick(HANDS, { Smithing = 30 }, { Smithing = 30 }, {});
+check('NC13 a two-handed craft weapon is never worn, however good', p.Main, 'Smithing Hammer');
+check('NC13b a Sub that is not a shield is never worn', p.Sub, 'Kupo Shield +2');
+p = pick.pick({ item('Smithing Scythe', 'main', { sk = { Smithing = 9 }, twoHand = true }) },
+    { Smithing = 30 }, { Smithing = 30 }, {});
+check('NC13c even when it is the only piece', p.Main, nil);
+p = pick.pick({ item('Old Row Shield', 'sub', { sk = { Smithing = 2 } }) }, { Smithing = 30 }, { Smithing = 30 }, {});
+check('NC13d a row written before the hands facts is still worn', p.Sub, 'Old Row Shield');
 
 -- ---------------------------------------------------------------------------
 -- NL. The conversation and the lock.

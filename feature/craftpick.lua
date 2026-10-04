@@ -157,9 +157,27 @@ local function prune(cands, goal, involved)
     return keep;
 end
 
+-- THE HANDS NEVER FIGHT (owner, 2026-10-04: a Kupo Shield "shouldn't be
+-- battling with a 2-hander"). A two-handed or hand-to-hand craft weapon is
+-- never picked: it cannot keep a shield beside it, so it would knock the Kupo
+-- Shield (or the set's own shield) off, and the shield it knocks back. A Sub
+-- that is not a shield (a grip, an off-hand weapon) is never picked either: it
+-- needs a two-hander or Dual Wield the pick cannot promise. With a shield and
+-- no craft weapon, the engine's Sub-vs-Main guard (dispatch craftMainGuard)
+-- keeps a two-handed set Main off while the lock holds; the server itself
+-- takes a worn two-hander off when the shield goes on. Rows written before
+-- these facts existed carry neither flag and are allowed.
+local function handsOk(item)
+    local fam = string.lower(tostring(item.slot or ''));
+    if fam == 'main' and item.twoHand == true then return false; end
+    if fam == 'sub' and item.shield == false then return false; end
+    return true;
+end
+
 local function usable(item, level)
     if type(item) ~= 'table' or type(item.name) ~= 'string' or item.name == '' then return false; end
     if level ~= nil and num(item.level) > level then return false; end
+    if not handsOk(item) then return false; end
     return M.FAMILY[string.lower(tostring(item.slot or ''))] ~= nil;
 end
 
