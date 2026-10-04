@@ -43,6 +43,13 @@ deliver(good:sub(1, 35), true);
 assert(status.value() == nil, 'truncated frame rejected');
 deliver('\32\16' .. good:sub(3) .. string.rep('\0', 476), true);
 assert(status.value() == nil, 'wrong declared wire size rejected');
+deliver(good:sub(1, 8) .. p16(2) .. good:sub(11) .. string.rep('\0', 476), true);
+assert(status.value() == nil, 'protocol version 2 rejected');
+local otherToken = {};
+for i = 1, #request do otherToken[i] = request[i]; end
+otherToken[13] = (otherToken[13] + 1) % 256;
+deliver(frame(otherToken, SAMPLE), true);
+assert(status.value() == nil, 'the same seq with another token rejected');
 deliver(good .. string.rep('\0', 512 - #good), true);
 local v = status.value();
 assert(v and v.skill == 45.7 and v.rank == 4 and status.rank() == 4, 'Ashita 512-byte buffer');
@@ -76,6 +83,19 @@ status.reset(); status.touch(); assert(sent == 4);
 deliver(frame(request, SAMPLE, 5), true);
 time = 105; status.touch(); assert(sent == 4, 'unavailable backs off');
 time = 130; status.touch(); assert(sent == 5);
+
+-- An unanswered request is sent twice, then given up for a fresh token.
+status.reset(); status.touch(); local asked = request[13];
+time = time + 5; status.touch(); assert(request[13] == asked, 'the second send repeats the token');
+time = time + 5; status.touch(); assert(request[13] ~= asked, 'the third asks afresh');
+-- A busy shared channel: retried within half a second, not at the next poll.
+status.reset();
+local realSend = status._send;
+status._send = function() return false; end;
+status.touch();
+status._send = realSend;
+local before = sent;
+time = time + 0.4; status.touch(); assert(sent == before + 1, 'a busy channel retries soon');
 
 if arg and arg[1] then
     local root, serverTime = arg[1], 1000;

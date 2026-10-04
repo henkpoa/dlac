@@ -11,7 +11,7 @@ local function attr(slot, id, count, cid, flags)
 end
 local STACK = { [100] = 12, [101] = 12, [300] = 1, [4096] = 12 };
 local function harness()
-    local H = { time = 10, sent = {}, opts = { [7] = true, [5] = true }, ready = true,
+    local H = { time = 10, sent = {}, opts = { [7] = true, [5] = true }, ready = true, worn = {}, refuse = false,
         bags = { [0] = { max = 8, items = {} }, [7] = { max = 2, items = {} }, [5] = { max = 2, items = {} } } };
     local function snapshot(cid)
         local b, out = H.bags[cid], { max = H.bags[cid].max, items = {} };
@@ -21,9 +21,9 @@ local function harness()
     H.m = storage.new({ clock = function() return H.time; end,
         options = function() return H.opts; end, bag = snapshot,
         playerId = function() return 99; end,
-        ready = function() return H.ready; end, equipped = function() return false; end,
+        ready = function() return H.ready; end, equipped = function(slot) return H.worn[slot] == true; end,
         stack = function(id) return STACK[id] or 12; end,
-        send = function(p) H.sent[#H.sent + 1] = p; return true; end });
+        send = function(p) if H.refuse then return false; end H.sent[#H.sent + 1] = p; return true; end });
     function H.put(cid, slot, id, n, flags)
         H.bags[cid].items[slot] = (n > 0) and { id = id, count = n, flags = flags or 0 } or nil;
     end
@@ -62,6 +62,8 @@ h = harness(); h.m.outgoing(0x01A, action()); h.land(1, 300, 1); h.m.incoming(0x
 h.tick(storage.CAPTURE_S + 0.1); h.pause(); assert(#h.sent == 0, 'a dig never answered counts nothing');
 h = harness(); h.m.outgoing(0x01A, action()); h.tick(storage.CAPTURE_S + 0.1);
 h.land(1, 300, 1); h.m.incoming(0x01D, ''); h.pause(); assert(#h.sent == 0, 'a refused dig counts nothing');
+h.dig({ { 2, 300, 1 } }); h.tick(); h.confirm(0, 1, 1); h.pause();
+assert(#h.sent == 1 and h.m.waiting() == 0, 'the next dig counts only its own find, not what arrived since');
 h = harness(); h.opts = {}; h.dig({ { 1, 300, 1 } }); h.pause(); assert(#h.sent == 0, 'no destination selected');
 
 -- An item that does not stack moves at once, one packet.
@@ -134,6 +136,24 @@ assert(#h.sent == 1 and h.m.status:find('not confirmed', 1, true) and h.m.waitin
 h.dig({ { 2, 300, 1 } }); h.tick(); assert(#h.sent == 1, 'stopped: digs are not tracked');
 h.m.changed(); h.dig({ { 3, 300, 1 } }); h.tick();
 assert(#h.sent == 2 and h.sent[2][5] == 1, 'resumed: one unit, the one dug since');
+h.confirm(0, 1, 1); h.pause();
+assert(#h.sent == 2 and h.m.waiting() == 0, 'what was dug while stopped is never moved');
+
+-- A refused send stops the mover until a switch changes.
+h = harness(); h.refuse = true; h.dig({ { 1, 300, 1 } }); h.tick();
+assert(#h.sent == 0 and h.m.status:find('Move failed', 1, true), 'a refused send stops');
+h.refuse = false; h.tick(); assert(#h.sent == 0, 'stopped until a switch changes');
+h.m.changed(); h.tick(); assert(#h.sent == 1, 'resumed');
+
+-- Moves wait for the inventory to settle, for the player to be ready, and
+-- never take an equipped item.
+h = harness(); h.dig({ { 1, 300, 1 } }); h.tick(storage.QUIET_S / 2);
+assert(#h.sent == 0, 'the inventory is still changing');
+h.tick(storage.QUIET_S); assert(#h.sent == 1);
+h = harness(); h.ready = false; h.dig({ { 1, 300, 1 } }); h.tick(); assert(#h.sent == 0, 'not ready');
+h.ready = true; h.tick(); assert(#h.sent == 1);
+h = harness(); h.dig({ { 1, 300, 1 } }); h.worn[1] = true; h.tick(); assert(#h.sent == 0, 'an equipped item stays');
+h.worn[1] = nil; h.tick(); assert(#h.sent == 1);
 
 -- Zoning and switching both destinations off forget the counts.
 h = harness(); h.dig({ { 1, 100, 1 } }); h.m.incoming(0x00B, ''); h.pause(); assert(#h.sent == 0);
