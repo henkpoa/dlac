@@ -82,6 +82,31 @@ while digging, greens moved, the mid-dig add-back removed, carried stock
 moved, another player's dig counted, wrong greens/rank offsets, timing
 guesses left on, the any-weather ore rule removed, the tab switched off.
 
+### Mutation sweep (owner request before merging, October 4)
+
+`python tests/digging_mutation_sweep.py --server <ascensionxi checkout>`
+breaks 67 guards once each (the mover, the status client, the rank, weather,
+switches, panel and wiring) and runs the six suites above. The first run left
+24 alive; the tests they pointed to are now in the suites:
+
+- the mover: a refused send stops it until a switch changes; finds dug while
+  stopped are never moved after the resume; a dig left unanswered expires, so
+  the next dig counts only its own find; moves wait for a quiet inventory and
+  a ready player and never take an equipped item;
+- the status client: protocol version 2 and another token on the same seq are
+  refused; an unanswered request is sent twice and then asked afresh; a busy
+  channel retries within half a second;
+- the ratchet now sees a real dig table, so "no guessing with the service"
+  can fail (and does, without the service); the move switches are container
+  7 = Case and 5 = Satchel, saved and read back, and a change wakes the
+  mover; the item search takes any elemental weather; the panel and the bar
+  show the server status instead of the rank picker; inventory greens count
+  only 4545; the pack lists `digging` and `dlac.lua` loads `digstorage`.
+
+Second run: 67 mutants, 65 killed, 2 accepted as equivalent (D02, H01; the
+reasons are in the tool), 0 open. Run it against a server checkout nobody is
+mutating: `ascensionxi_digging.lua`'s server half reads the live Lua files.
+
 ## Client checks
 
 Done October 4: the owner played the server handoff's "Client acceptance"
