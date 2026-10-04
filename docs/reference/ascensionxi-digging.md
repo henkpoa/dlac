@@ -4,7 +4,8 @@ The Digging tab of the Hobby bar and the Gear Helpers > Chocobo row are on for
 AscensionXI. Branch `claude/chocobo-digging` (PR #197), paired with the server
 branch `claude/chocobo-digging-hobby` (AscensionXI PR #780; its handoff:
 `documentation/custom/chocobo-digging-hobby.md` in the AscensionXI repo).
-Offline suites pass; not released and not yet seen in a client.
+Offline suites pass. Owner-accepted in the client on October 4 ("Digging works
+perfectly as intended, everything"); not released.
 
 ## What the player gets
 
@@ -81,7 +82,8 @@ while digging, greens moved, the mid-dig add-back removed, carried stock
 moved, another player's dig counted, wrong greens/rank offsets, timing
 guesses left on, the any-weather ore rule removed, the tab switched off.
 
-## Client checks owed
+## Client checks
 
-In the server handoff's "Client acceptance": the tab and its numbers, the
-searches, and the mover at full digging speed with Burrow and Bore finds.
+Done October 4: the owner played the server handoff's "Client acceptance"
+list (the tab and its numbers, the searches, the mover at full digging speed
+with Burrow and Bore finds) and accepted it.
