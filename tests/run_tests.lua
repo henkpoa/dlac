@@ -247,9 +247,9 @@ end)();
                    'gearfmt','gearimport','gearoptim','gearoracle','gearrecord','groupimport','groupscan',
                    'groupsmodel','jobgate','levelstats','modeslibrary','nativemp','ownedcache','profileexport','profilesets','rulecopy','serverpack','setimport',
                    'setmanager','statdefs','gathering','syncflags','triggermodel','unusedgear','weaponfilter','weightimport' };
-    local FEATURE = { 'actionseq','ammowatch','arbwatch','augments','check','chocowatch','combat','craftwatch','debug','digcalc','digrank',
+    local FEATURE = { 'actionseq','ammowatch','arbwatch','augments','check','chocowatch','combat','craftpick','craftwatch','debug','digcalc','digrank',
                       'engagewatch','fishcalc','fishwatch','foodwatch','gamehud','helmwatch','idleexcl','jobhelpers','location','lockstyle','lookpreview',
-                      'macrobook','meritwatch','modapi','modcfg','mpbands','petfood','petvitals','pinwatch','recast','servermods','synthrun','useitem','vanamoon' };
+                      'macrobook','meritwatch','modapi','modcfg','mpbands','nexuslink','petfood','petvitals','pinwatch','recast','servermods','synthrun','useitem','vanamoon' };
     local LIB = { 'cmdqueue','entwatch','safewrite','statefile' };
     -- Job helper modules (issue #137): each is a drop-in FOLDER under jobhelpers\
     -- with an init.lua, plus whatever pure cores it splits out beside it (issue
@@ -8496,6 +8496,51 @@ end)();
     check('CR10h an absent state is off', ajl(nil, 'DRK'), 'off');
     check('CR10i ammoStateOn stays file-level (the bail read is untouched)',
         dispatchM._ammoStateOn(fmt2), true);
+end)();
+
+-- ---------------------------------------------------------------------------
+-- NX. THE NEXUS LOCK RIDES THE CRAFT ROW (engine v169, feature\nexuslink).
+--     While AscensionXI's Nexus has named a recipe, the Craft row's state is
+--     the lock's { enabled, craft = 'Nexus', nexus = picks } and its claim is
+--     those picks; without a lock the row reads craftstate.lua as before.
+--     The pick and the lock themselves: tests\nexuscraft.lua.
+-- ---------------------------------------------------------------------------
+(function()
+    local saved = package.loaded['dlac\\feature\\nexuslink'];
+    local lockSt = nil;
+    package.loaded['dlac\\feature\\nexuslink'] = { lockState = function() return lockSt; end };
+    local row = nil;
+    for _, r in ipairs(dispatchM._claimants) do if r.name == 'Craft' then row = r; end end
+    check('NX0 the Craft row exists', type(row), 'table');
+    if row == nil then package.loaded['dlac\\feature\\nexuslink'] = saved; return; end
+
+    local manual = row.ensure('Default');
+    lockSt = { enabled = true, craft = 'Nexus',
+               nexus = { Body = 'Artisan\'s Apron', Neck = 'Smithy\'s Torque' } };
+    local st = row.ensure('Default');
+    check('NX1 a Nexus lock is the Craft row state on Default', st, lockSt);
+    check('NX2 and nothing on any other event', row.ensure('Precast'), nil);
+    check('NX3 the lock is active', row.active(st), true);
+    local eq = row.claim(st, true, { ctx = { player = { MainJobSync = 75 } } });
+    check('NX4 the claim carries the Body pick', eq and eq.Body, 'Artisan\'s Apron');
+    check('NX4b and the Neck pick', eq and eq.Neck, 'Smithy\'s Torque');
+    check('NX4c as a copy the engine may keep (never the lock\'s own table)', eq ~= lockSt.nexus, true);
+    check('NX4d an inactive row claims nothing', row.claim(st, false, { ctx = {} }), nil);
+    local lad = row.rladder('Neck', st);
+    check('NX5 the ladder for a picked slot is that one pick', lad and lad.items[1] and lad.items[1].name,
+        'Smithy\'s Torque');
+    check('NX5b and a slot the lock leaves alone has none', row.rladder('Feet', st), nil);
+    check('NX6 /dl prio names the Nexus recipe', row.prioStatus(), 'ON (Nexus recipe)');
+    check('NX7 the signature leg sees the picks (a new lock re-dispatches)',
+        row.sig(eq), 'Body=Artisan\'s Apron,Neck=Smithy\'s Torque');
+
+    lockSt = nil;
+    check('NX8 without a lock the row reads the manual craft state again', row.ensure('Default'), manual);
+    lockSt = { enabled = true, craft = 'Nexus' };   -- no picks table: not a lock
+    check('NX8b a state without picks is not taken for a lock', row.ensure('Default'), manual);
+    package.loaded['dlac\\feature\\nexuslink'] = nil;
+    check('NX8c a missing nexuslink module degrades to the manual state', row.ensure('Default'), manual);
+    package.loaded['dlac\\feature\\nexuslink'] = saved;
 end)();
 
 -- ---------------------------------------------------------------------------

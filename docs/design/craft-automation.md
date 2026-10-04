@@ -114,3 +114,10 @@ even grips off an H2H main, and a shield equipped onto one knocks the MAIN off
   Note the one asymmetry left standing: `SynthMaterialLoss` feeds `nqScore` only,
   so Craftkeeper's Ring can never be picked for `hq`/`skillup` — a scoring change,
   parked for Henrik.
+
+- **Nexus recipes (2026-10-04, AscensionXI):** Nexus names each synth's crafts
+  before sending it; `feature/nexuslink` locks the best pieces for that recipe
+  (`feature/craftpick`, weakest craft first) on the Craft row until the player
+  moves, and answers "ready". This is the first-synth coverage the TIMING TRUTH
+  note asked for, without detection. Design and verification:
+  [nexus-craft-gear.md](nexus-craft-gear.md).

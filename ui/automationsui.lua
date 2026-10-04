@@ -162,7 +162,7 @@ local UNIVERSAL = {
 -- Manifest schema version: bump when autoCommit writes NEW fields. An on-disk
 -- manifest with an older fmtver self-heals (renderAutomations triggers a rescan)
 -- so a dlac update never needs a manual "Rescan owned gear" click.
-local AUTO_FMT = 16;   -- 16: category-specific numeric gathering ladders;   -- 15: choco ladders (slotKey -> best-first rungs scored by ChocoboRidingTime; Main/Neck/Body/Hands/Legs/Feet -- the Chocobo Wand rides Main) for the Chocobo riding-gear automation (issue #95, engine dlac:AutoChoco);   -- 14: mv map (name -> MovementSpeed) + the mpMoveYield setting (movement gear may override batteries while moving);   -- 2: mpBest ladders; 3: MP level-effective; 4: staves/obis job-checked; 5: craft ladders; 6: skill-up fillers in hq/nq; 7: helm ladders + hat map; 8: fish ladders; 9: oneiros grip + mpMerits; 10: universals ladder; 11: Refresh rides mp/mpBest (rf map + rung rf); 12: AUGMENTS counted -- MP and Refresh deltas from your actual bag copies fold into mp/rf; 13: PAIR HOMES -- ear/ring ladders re-home to the IDLE SET's declared positions (Default rule matching status=Idle; the MaxMP panel picker ALWAYS overrides detection) so the engine never relocates a piece across its pair
+local AUTO_FMT = 17;   -- 17: craftItems (every owned craft piece with its per-craft numbers, for the recipe-wide Nexus pick, feature\craftpick);   -- 16: category-specific numeric gathering ladders;   -- 15: choco ladders (slotKey -> best-first rungs scored by ChocoboRidingTime; Main/Neck/Body/Hands/Legs/Feet -- the Chocobo Wand rides Main) for the Chocobo riding-gear automation (issue #95, engine dlac:AutoChoco);   -- 14: mv map (name -> MovementSpeed) + the mpMoveYield setting (movement gear may override batteries while moving);   -- 2: mpBest ladders; 3: MP level-effective; 4: staves/obis job-checked; 5: craft ladders; 6: skill-up fillers in hq/nq; 7: helm ladders + hat map; 8: fish ladders; 9: oneiros grip + mpMerits; 10: universals ladder; 11: Refresh rides mp/mpBest (rf map + rung rf); 12: AUGMENTS counted -- MP and Refresh deltas from your actual bag copies fold into mp/rf; 13: PAIR HOMES -- ear/ring ladders re-home to the IDLE SET's declared positions (Default rule matching status=Idle; the MaxMP panel picker ALWAYS overrides detection) so the engine never relocates a piece across its pair
 
 local auto = { data = nil, loadedFor = nil, status = '' };
 
@@ -456,6 +456,10 @@ local function autoCommit()
     -- Goals per Henrik: hq = raise HQ (AntiHQ gear DISQUALIFIES); nq = block
     -- HQ on purpose (crafting materials you don't want HQ'd).
     local craftBest = {};
+    -- Every owned craft piece with its numbers per craft (fmtver 17), for the
+    -- recipe-wide pick Nexus asks for (feature\craftpick: weakest craft first,
+    -- which the per-craft ladders below cannot answer -- they keep scores only).
+    local craftItems = {};
     pcall(function()
         if type(deps.ownedList) ~= 'function' then return; end
         local CRAFTS = { 'Woodworking', 'Smithing', 'Goldsmithing', 'Clothcraft',
@@ -464,6 +468,7 @@ local function autoCommit()
         local lvl = mainLevel();
         local CLADDER = 3;
         local bySlot = {};   -- slotKey -> craft -> goal -> { {name, score, level}, ... }
+        local seenItem = {};
         for _, rec in ipairs(deps.ownedList() or {}) do
             local st = gearOracle.stats(rec, { level = lvl });
             local sl = tostring(rec.Slot or '');
@@ -477,6 +482,25 @@ local function autoCommit()
                 local consv = tonumber(st.ConserveIngredient) or 0;
                 local dup = (sl == 'Ear' or sl == 'Ring') and type(counts) == 'table'
                             and rec.Id ~= nil and (counts[rec.Id] or 0) >= 2;
+                if not seenItem[rec.Name] then
+                    local ci = { name = rec.Name, slot = string.lower(sl), level = tonumber(rec.Level) or 0,
+                                 n = (type(counts) == 'table' and rec.Id ~= nil and counts[rec.Id]) or 1,
+                                 sk = {}, anti = {}, sb = {},
+                                 hqr = hqr, succ = succ, gain = gain, mat = mat, consv = consv };
+                    local any = hqr > 0 or succ > 0 or gain > 0 or mat > 0 or consv > 0;
+                    for _, cr in ipairs(CRAFTS) do
+                        local v = tonumber(st[cr .. 'Skill']) or 0;
+                        local a = tonumber(st['AntiHQ' .. cr]) or 0;
+                        local b = tonumber(st['SynthSuccess' .. cr]) or 0;
+                        if v ~= 0 then ci.sk[cr] = v; any = true; end
+                        if a ~= 0 then ci.anti[cr] = a; any = true; end
+                        if b ~= 0 then ci.sb[cr] = b; any = true; end
+                    end
+                    if any then
+                        seenItem[rec.Name] = true;
+                        craftItems[#craftItems + 1] = ci;
+                    end
+                end
                 -- Skill-up items (Midras's Helm, Bonze Cape, Shapers Shawl) have
                 -- no per-craft mod, so they'd only ever fill the SKILL-UP goal.
                 -- Henrik wants them worn under HQ/NQ TOO -- but only as FILLERS:
@@ -852,6 +876,25 @@ local function autoCommit()
         L[#L + 1] = '        },';
     end
     L[#L + 1] = '    },';
+    -- craft pieces with their numbers (fmtver 17): what feature\craftpick
+    -- weighs when Nexus names a recipe's crafts. sk = craft skill, anti = blocks
+    -- HQ for that craft, sb = success for that craft.
+    local function craftMap(m)
+        local ks, parts = {}, {};
+        for k in pairs(m or {}) do ks[#ks + 1] = k; end
+        table.sort(ks);
+        for _, k in ipairs(ks) do parts[#parts + 1] = string.format('%s = %.14g', k, m[k]); end
+        return '{ ' .. table.concat(parts, ', ') .. ' }';
+    end
+    table.sort(craftItems, function(a, b) return a.name < b.name; end);
+    L[#L + 1] = '    craftItems = {';
+    for _, ci in ipairs(craftItems) do
+        L[#L + 1] = string.format('        { name = %q, slot = %q, level = %d, n = %d, sk = %s, anti = %s, sb = %s, '
+            .. 'hqr = %.14g, succ = %.14g, gain = %.14g, mat = %.14g, consv = %.14g },',
+            ci.name, ci.slot, ci.level, ci.n, craftMap(ci.sk), craftMap(ci.anti), craftMap(ci.sb),
+            ci.hqr, ci.succ, ci.gain, ci.mat, ci.consv);
+    end
+    L[#L + 1] = '    },';
     -- helm ladders: slotKey -> best-first rungs (Surveyor-major), plus the
     -- owned-hat map keyed by category (engine: dlac:AutoHelm).
     if gathering.enabled() then
@@ -977,6 +1020,14 @@ function M.manifestStale()
     return (type(auto.data) ~= 'table') or (auto.data.fmtver ~= AUTO_FMT);
 end
 M.currentFmt = function() return AUTO_FMT; end
+
+-- The manifest's craft pieces (fmtver 17) for feature\nexuslink, or nil when
+-- none were written yet. Read-only: the caller must not change the rows.
+function M.craftItems()
+    autoLoad();
+    if type(auto.data) ~= 'table' or type(auto.data.craftItems) ~= 'table' then return nil; end
+    return auto.data.craftItems;
+end
 
 -- The Automations tab (its OWN main tab, right of Triggers -- rendered via
 -- M.renderTab below): the manifest data + rescan. The ON/OFF

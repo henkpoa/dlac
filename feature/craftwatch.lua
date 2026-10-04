@@ -482,6 +482,13 @@ local _stateLoaded = false;
 -- refuses to send and synths vanish.
 M.synthWait = 30;
 local WAIT_DEFAULT, WAIT_MIN, WAIT_MAX = 30, 20, 120;
+
+-- Follow Nexus (AscensionXI's crafting window, feature\nexuslink): put on the
+-- best gear for the recipe Nexus is about to synth, without the switch above.
+-- A SETTING like the wait: it persists, and it starts ON (owner, 2026-10-04:
+-- "You don't do anything else that matters when crafting, so it should be
+-- automatic"). /dl craft nexus off is the way out.
+M.followNexus = true;
 M.WAIT_MIN, M.WAIT_MAX = WAIT_MIN, WAIT_MAX;
 
 local function clampWait(n)
@@ -501,9 +508,9 @@ local function saveCraftState()
         local p = craftStatePath();
         if p == nil then return; end
         local f = io.open(p, 'wb'); if f == nil then return; end
-        f:write(string.format('return { craft = %q, goal = %q, enabled = %s, at = %d, wait = %d }\n',
+        f:write(string.format('return { craft = %q, goal = %q, enabled = %s, at = %d, wait = %d, nexus = %s }\n',
             tostring(M.activeCraft or ''), tostring(M.goal or 'hq'), tostring(M.enabled == true),
-            M._enabledAt or 0, clampWait(M.synthWait)));
+            M._enabledAt or 0, clampWait(M.synthWait), tostring(M.followNexus ~= false)));
         f:close();
     end);
 end
@@ -527,6 +534,9 @@ function M.loadCraftState()
                 -- this build -> the default stands, which is what a fresh
                 -- character gets too.
                 if tonumber(t.wait) ~= nil then M.synthWait = clampWait(t.wait); end
+                -- Follow Nexus: only an explicit false turns it off (a file
+                -- written before this build has no key and follows).
+                if t.nexus == false then M.followNexus = false; end
                 -- `enabled` is NOT restored: the switch starts OFF each session
                 -- (no craft gear glued on at login). craft+goal+wait DO persist.
             end
@@ -537,6 +547,15 @@ function M.loadCraftState()
 end
 
 function M.getGoal() M.loadCraftState(); return M.goal or 'hq'; end
+function M.getFollowNexus() M.loadCraftState(); return M.followNexus ~= false; end
+function M.setFollowNexus(on)
+    M.loadCraftState();
+    M.followNexus = (on == true);
+    saveCraftState();
+    if not M.followNexus then
+        pcall(function() require('dlac\\feature\\nexuslink').clear('off'); end);
+    end
+end
 function M.getCraft() M.loadCraftState(); return M.activeCraft; end
 function M.isEnabled() M.loadCraftState(); return M.enabled == true; end
 
@@ -804,6 +823,14 @@ if ashita ~= nil and ashita.events ~= nil and type(ashita.events.register) == 'f
                 end
                 return;
             end
+            if b == 'nexus' then                       -- follow Nexus's recipes (feature\nexuslink)
+                if c == 'on' or c == 'off' then M.setFollowNexus(c == 'on'); end
+                local line = nil;
+                pcall(function() line = require('dlac\\feature\\nexuslink').statusText(); end);
+                say(string.format('craft nexus: %s%s  (/dl craft nexus on|off)',
+                    M.getFollowNexus() and 'ON' or 'off', line and (' -- ' .. line) or ''));
+                return;
+            end
             if CRAFTS[b] ~= nil then
                 M.selectCraft(CRAFTS[b]);   -- equips immediately
                 return;
@@ -868,6 +895,12 @@ if ashita ~= nil and ashita.events ~= nil and type(ashita.events.register) == 'f
                 M.getCraft() or '(none -- /dl craft <name>)', M.getGoal(), M.isEnabled() and 'ON' or 'off'));
             say('  pick a craft + goal on the bar (/dl craft bar) or Gear Helpers panel, then flip the switch ON --');
             say('  the engine wears that craft\'s gear until you turn it off. /dl craft show lists the pieces.');
+            do
+                local line = nil;
+                pcall(function() line = require('dlac\\feature\\nexuslink').statusText(); end);
+                say(string.format('  Nexus recipes: %s%s.', M.getFollowNexus() and 'followed' or 'not followed',
+                    line and (' -- ' .. line) or ''));
+            end
             if M.current ~= nil then
                 say(string.format('  last synth seen: %s%s.', M.current.skill,
                     M.current.lv and (' lv ' .. M.current.lv) or ''));
