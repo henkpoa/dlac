@@ -10755,5 +10755,8 @@ gear knowledge and the claims switch).
 an end-to-end run against Nexus's real link; 30 deliberate breaks all caught.
 The autogear golden's two Tamas Ring lines were restored by hand after
 regeneration (standalone gen_goldens writes 15, smoke_ui expects 29, on main
-too). Not yet seen in the client. Record:
+too). Owner-accepted in the dev client the same day, with the follow-up that
+keeps a Kupo Shield from fighting a two-hander (the pick never wears a
+two-handed craft weapon or a non-shield Sub; the v37 Sub-vs-Main guard
+reserves the main hand). Record:
 [design/nexus-craft-gear.md](design/nexus-craft-gear.md).

@@ -2,8 +2,10 @@
 
 **Status (2026-10-04):** implemented and tested headless on branch
 `claude/nexus-craft-gear`, beside the matching Nexus change in the
-AscensionXI repo (Nexus 1.2.4, `documentation/custom/nexus.md` §17.20). Not
-yet seen in the client. Nothing ships until both PRs are merged and the
+AscensionXI repo (Nexus 1.2.4, `documentation/custom/nexus.md` §17.20).
+The owner play-tested it in the dev client on 2026-10-04, the Kupo Shield /
+two-hander follow-up included, and accepted it: "player testing works, good
+job!" Nothing ships until both PRs are merged and the
 launcher's DLAC pin is bumped.
 
 ## What it does
@@ -164,7 +166,7 @@ change and is not investigated here.
   guards above, each caught). The formal sweeps wait until the owner calls the
   feature final.
 
-## Client check (owner)
+## Client check (owner, done 2026-10-04)
 
 1. Craft gear in the inventory or a wardrobe (Artisan's Apron, a torque, the
    Kupo Shield). Update this checkout to the branch and Nexus to 1.2.4; then
