@@ -5,7 +5,7 @@
 -- higher tier per cast; ties go to the universal. WHETHER it fires is decided
 -- by the set: a dlac:AutoStaff / dlac:AutoObi entry in Main / Waist (Sets tab).
 return {
-    fmtver = 16,
+    fmtver = 17,
     written = "<golden -- normalized>",
     craftGoal = "hq",
     mpMerits = 0,
@@ -62,6 +62,11 @@ return {
         ring1 = {
             Cooking = { nq = { { name = "Chefs Ring", score = 100, level = 1 } } },
         },
+    },
+    craftItems = {
+        { name = "Bonze Cape", slot = "back", level = 1, n = 1, sk = {  }, anti = {  }, sb = {  }, hqr = 0, succ = 0, gain = 4, mat = 0, consv = 0, twoHand = false, shield = false },
+        { name = "Chefs Hat", slot = "head", level = 1, n = 1, sk = { Cooking = 1 }, anti = {  }, sb = {  }, hqr = 0, succ = 0, gain = 0, mat = 0, consv = 0, twoHand = false, shield = false },
+        { name = "Chefs Ring", slot = "ring", level = 1, n = 1, sk = {  }, anti = { Cooking = 1 }, sb = {  }, hqr = 0, succ = 0, gain = 0, mat = 0, consv = 0, twoHand = false, shield = false },
     },
     helm = {
         hats = {

@@ -10733,3 +10733,30 @@ stage-8 tests; CEXI release packaging; Lua syntax and percent-literal checks.
 Native recharge tests (18) and the full vault suite (271) pass in the companion
 checkout; forcing previews to mutate made both read-only tests fail. Live Ashita field acceptance
 and server deployment remain outstanding.
+
+## 2026-10-04: crafting gear for Nexus synths (AscensionXI)
+
+Henrik wanted the best skill gear on for every craft, with subcrafts' weakest
+links fixed first, without slowing Nexus down. Detection cannot do it (the
+server rolls a synth when it arrives), so Nexus now names each synth's crafts
+first and waits for dlac's "ready". dlac picks the pieces (feature/craftpick:
+every combination of the skill slots, weakest craft first, then the goal's
+rings and back) and holds them on the Craft row (engine v169) until the player
+moves, so a repeated recipe or a new run of it is answered at once (his ask:
+"lock the crafting gear until the person moves"). On by default,
+`/dl craft nexus off` to stop. Messages are plain key=value text on
+plugin_event, never code.
+
+**Not taken:** holding Nexus's 0x096 (the 07-13 no-intercept rule, and Nexus's
+2 s landing timeout), and Nexus filing an external claim (it would need dlac's
+gear knowledge and the claims switch).
+
+**Checks:** run_tests 7,536; smoke_ui 1,626; tests/nexuscraft.lua 99 (new, in CI);
+an end-to-end run against Nexus's real link; 30 deliberate breaks all caught.
+The autogear golden's two Tamas Ring lines were restored by hand after
+regeneration (standalone gen_goldens writes 15, smoke_ui expects 29, on main
+too). Owner-accepted in the dev client the same day, with the follow-up that
+keeps a Kupo Shield from fighting a two-hander (the pick never wears a
+two-handed craft weapon or a non-shield Sub; the v37 Sub-vs-Main guard
+reserves the main hand). Record:
+[design/nexus-craft-gear.md](design/nexus-craft-gear.md).

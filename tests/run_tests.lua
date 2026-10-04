@@ -247,9 +247,9 @@ end)();
                    'gearfmt','gearimport','gearoptim','gearoracle','gearrecord','groupimport','groupscan',
                    'groupsmodel','jobgate','levelstats','modeslibrary','nativemp','ownedcache','profileexport','profilesets','rulecopy','serverpack','setimport',
                    'setmanager','statdefs','gathering','syncflags','triggermodel','unusedgear','weaponfilter','weightimport' };
-    local FEATURE = { 'actionseq','ammowatch','arbwatch','augments','check','chocowatch','combat','craftwatch','debug','digcalc','digrank',
+    local FEATURE = { 'actionseq','ammowatch','arbwatch','augments','check','chocowatch','combat','craftpick','craftwatch','debug','digcalc','digrank',
                       'engagewatch','fishcalc','fishwatch','foodwatch','gamehud','helmwatch','idleexcl','jobhelpers','location','lockstyle','lookpreview',
-                      'macrobook','meritwatch','modapi','modcfg','mpbands','petfood','petvitals','pinwatch','recast','servermods','synthrun','useitem','vanamoon' };
+                      'macrobook','meritwatch','modapi','modcfg','mpbands','nexuslink','petfood','petvitals','pinwatch','recast','servermods','synthrun','useitem','vanamoon' };
     local LIB = { 'cmdqueue','entwatch','safewrite','statefile' };
     -- Job helper modules (issue #137): each is a drop-in FOLDER under jobhelpers\
     -- with an init.lua, plus whatever pure cores it splits out beside it (issue
@@ -8496,6 +8496,104 @@ end)();
     check('CR10h an absent state is off', ajl(nil, 'DRK'), 'off');
     check('CR10i ammoStateOn stays file-level (the bail read is untouched)',
         dispatchM._ammoStateOn(fmt2), true);
+end)();
+
+-- ---------------------------------------------------------------------------
+-- NX. THE NEXUS LOCK RIDES THE CRAFT ROW (engine v169, feature\nexuslink).
+--     While AscensionXI's Nexus has named a recipe, the Craft row's state is
+--     the lock's { enabled, craft = 'Nexus', nexus = picks } and its claim is
+--     those picks; without a lock the row reads craftstate.lua as before.
+--     The pick and the lock themselves: tests\nexuscraft.lua.
+-- ---------------------------------------------------------------------------
+(function()
+    local saved = package.loaded['dlac\\feature\\nexuslink'];
+    local lockSt = nil;
+    package.loaded['dlac\\feature\\nexuslink'] = { lockState = function() return lockSt; end };
+    local row = nil;
+    for _, r in ipairs(dispatchM._claimants) do if r.name == 'Craft' then row = r; end end
+    check('NX0 the Craft row exists', type(row), 'table');
+    if row == nil then package.loaded['dlac\\feature\\nexuslink'] = saved; return; end
+
+    local manual = row.ensure('Default');
+    lockSt = { enabled = true, craft = 'Nexus',
+               nexus = { Body = 'Artisan\'s Apron', Neck = 'Smithy\'s Torque' } };
+    local st = row.ensure('Default');
+    check('NX1 a Nexus lock is the Craft row state on Default', st, lockSt);
+    check('NX2 and nothing on any other event', row.ensure('Precast'), nil);
+    check('NX3 the lock is active', row.active(st), true);
+    local eq = row.claim(st, true, { ctx = { player = { MainJobSync = 75 } } });
+    check('NX4 the claim carries the Body pick', eq and eq.Body, 'Artisan\'s Apron');
+    check('NX4b and the Neck pick', eq and eq.Neck, 'Smithy\'s Torque');
+    check('NX4c as a copy the engine may keep (never the lock\'s own table)', eq ~= lockSt.nexus, true);
+    check('NX4d an inactive row claims nothing', row.claim(st, false, { ctx = {} }), nil);
+    local lad = row.rladder('Neck', st);
+    check('NX5 the ladder for a picked slot is that one pick', lad and lad.items[1] and lad.items[1].name,
+        'Smithy\'s Torque');
+    check('NX5b and a slot the lock leaves alone has none', row.rladder('Feet', st), nil);
+    check('NX6 /dl prio names the Nexus recipe', row.prioStatus(), 'ON (Nexus recipe)');
+    check('NX7 the signature leg sees the picks (a new lock re-dispatches)',
+        row.sig(eq), 'Body=Artisan\'s Apron,Neck=Smithy\'s Torque');
+
+    lockSt = nil;
+    check('NX8 without a lock the row reads the manual craft state again', row.ensure('Default'), manual);
+    lockSt = { enabled = true, craft = 'Nexus' };   -- no picks table: not a lock
+    check('NX8b a state without picks is not taken for a lock', row.ensure('Default'), manual);
+    package.loaded['dlac\\feature\\nexuslink'] = nil;
+    check('NX8c a missing nexuslink module degrades to the manual state', row.ensure('Default'), manual);
+
+    -- NX9. THE MAIN HAND (owner, 2026-10-04: the Kupo Shield "shouldn't be
+    -- battling with a 2-hander"). A lock that wears a shield and no weapon is
+    -- exactly the craft claim the v37 Sub-vs-Main guard (section AF) reads, so
+    -- a two-handed or hand-to-hand set Main is held while the lock stands. The
+    -- server takes a worn two-hander off when the shield goes on.
+    package.loaded['dlac\\utils'] = utils;
+    local G = package.loaded['dlac\\gear'];
+    G.NameToObject['Kupo Shield +2'] = { Name = 'Kupo Shield +2', Type = 'Sub' };
+    G.NameToObject['Death Scythe']   = { Name = 'Death Scythe', Type = 'Great Scythe', OneHanded = false };
+    G.NameToObject['Parry Knife']    = { Name = 'Parry Knife', Type = 'Dagger', OneHanded = true };
+    G.NameToObject['Cat Baghnakhs']  = { Name = 'Cat Baghnakhs', Type = 'Hand-to-Hand', OneHanded = true };
+    utils._resetNameIndex();
+    local shieldLock = { enabled = true, craft = 'Nexus',
+                         nexus = { Sub = 'Kupo Shield +2', Body = 'Artisan\'s Apron' } };
+    local claim = row.claim(shieldLock, true, { ctx = {} });
+    local g = dispatchM._craftMainGuard(claim);
+    check('NX9 a shield lock with no weapon builds the main-hand guard', g ~= nil, true);
+    check('NX9b it holds a two-handed set Main', g and g('Death Scythe'), true);
+    check('NX9c and a hand-to-hand one', g and g('Cat Baghnakhs'), true);
+    check('NX9d a one-handed Main keeps its place beside the shield', g and g('Parry Knife'), false);
+    local _, held = dispatchM._equipResolved({ Main = 'Death Scythe', Body = 'Weaver Apron' }, { craftMainGuard = g });
+    check('NX9e the set\'s scythe stays off while the lock holds', held.Main, nil);
+    check('NX9f the rest of the set is untouched', held.Body, 'Weaver Apron');
+
+    -- NX10. END TO END through the REAL M.dispatch (the NK26 harness): with only
+    -- the lock armed, a Default dispatch reaches the equip door with the lock's
+    -- pieces and leaves the main hand alone.
+    lockSt = shieldLock;
+    package.loaded['dlac\\feature\\nexuslink'] = { lockState = function() return lockSt; end };
+    local savedPlayer, savedState = TEST_PLAYER, rawget(_G, 'gState');
+    local savedEng = package.loaded['dlac\\feature\\equipengine'];
+    TEST_PLAYER = { MainJob = 'WAR', MainJobLevel = 75, SubJob = 'MNK', SubJobLevel = 37,
+                    MainJobSync = 75, SubJobSync = 37, Status = 'Idle', IsMoving = false };
+    local wrote = {};
+    package.loaded['dlac\\feature\\equipengine'] = {
+        nativeOn = function() return true; end,
+        equipSet = function(t) for k, v in pairs(t or {}) do wrote[k] = v; end end,
+        state = { tripped = false },
+    };
+    _G.gState = { CurrentCall = 'N/A', Disabled = {} };
+    local okD, errD = pcall(dispatchM.dispatch, 'Default');
+    check('NX10 a Default dispatch with the lock armed does not throw', okD, true);
+    if not okD then print('NX10 error: ' .. tostring(errD)); end
+    check('NX10b the shield reaches the equip door', wrote.Sub, 'Kupo Shield +2');
+    check('NX10c and the apron', wrote.Body, 'Artisan\'s Apron');
+    check('NX10d the main hand is not written', wrote.Main, nil);
+    lockSt = nil;
+    wrote = {};
+    pcall(dispatchM.dispatch, 'Default');
+    check('NX10e lock gone: the same dispatch writes nothing', next(wrote), nil);
+    TEST_PLAYER, _G.gState = savedPlayer, savedState;
+    package.loaded['dlac\\feature\\equipengine'] = savedEng;
+    package.loaded['dlac\\feature\\nexuslink'] = saved;
 end)();
 
 -- ---------------------------------------------------------------------------
