@@ -1,3 +1,7 @@
+Since October 4, 2026 the same generator run also writes
+`data/digdata.lua`, the chocobo dig table, so every refresh keeps it current
+(`docs/reference/ascensionxi-digging.md`).
+
 # AscensionXI catalog refresh, October 2, 2026
 
 DLAC `2026.10.02a` regenerates the complete pack from AscensionXI main

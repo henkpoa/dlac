@@ -33,7 +33,7 @@ return {
 
     files = {
         'catalog', 'spells', 'abilities', 'zones',
-        'gearsets', 'latentstats', 'levelscaling',
+        'gearsets', 'latentstats', 'levelscaling', 'digdata',
     },
 
     counts = {
@@ -44,5 +44,6 @@ return {
         gearsets     = 126,
         latentstats  = 866,
         levelscaling = 8,
+        digdata      = 26,
     },
 };

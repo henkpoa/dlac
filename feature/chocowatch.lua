@@ -37,6 +37,17 @@ local _drok, digrank = pcall(require, 'dlac\\feature\\digrank');
 _drok = _drok and type(digrank) == 'table';
 M._digrank = _drok and digrank or nil;   -- test seam
 
+-- A server pack that reports digging itself (AscensionXI's `digging` service):
+-- its rank is exact, so the guessing below -- the ratchet and the first-dig
+-- timing -- stays off. The timing read would be wrong there anyway: its zone
+-- wait is three seconds, which reads as Expert.
+local function packDigging()
+    local svc = nil;
+    pcall(function() svc = require('dlac\\gear\\serverpack').service('digging'); end);
+    return svc;
+end
+M._packDigging = packDigging;   -- test seam
+
 -- digcalc.db() is the shipped dig data: the rank ladder labels + the item->rank
 -- map the ratchet consults. Loaded lazily / fails soft, like everywhere else.
 local function digDb()
@@ -61,6 +72,8 @@ M._rescanned = false;      -- manifest freshness ensured once this session?
 -- floor are knowledge, not a session toggle.
 M.rankManual = 0;          -- the player's dropdown seed (0..10); default Amateur
 M.rankFloor  = 0;          -- the one-way ratchet floor (highest dug requirement)
+M.moveCase    = false;     -- dug items into the Mog Case / Mog Satchel
+M.moveSatchel = false;     -- (feature\digstorage), per character
 local _stateLoaded = false;
 
 -- Timing rank detection (issue #100): the server gates the first dig after a
@@ -117,9 +130,10 @@ local function saveState()
         local f = io.open(p, 'wb'); if f == nil then return; end
         -- enabled is session-only (written OFF-truthfully here); rankManual /
         -- rankFloor persist and are read back by loadState.
-        f:write(string.format('return { enabled = %s, at = %d, rankManual = %d, rankFloor = %d }\n',
+        f:write(string.format('return { enabled = %s, at = %d, rankManual = %d, rankFloor = %d, moveCase = %s, moveSatchel = %s }\n',
             tostring(M.enabled == true), M._enabledAt or 0,
-            M.rankManual or 0, M.rankFloor or 0));
+            M.rankManual or 0, M.rankFloor or 0,
+            tostring(M.moveCase == true), tostring(M.moveSatchel == true)));
         f:close();
     end);
 end
@@ -138,6 +152,7 @@ function M.loadState()
         if chunk ~= nil then
             local ok, t = pcall(chunk);
             if ok and type(t) == 'table' then
+                M.moveCase, M.moveSatchel = t.moveCase == true, t.moveSatchel == true;
                 if _drok then
                     M.rankManual = digrank.clamp(t.rankManual);
                     M.rankFloor  = digrank.clamp(t.rankFloor);
@@ -194,6 +209,16 @@ function M.setEnabled(on)
     saveState();
 end
 
+-- Where dug items go: 7 = Mog Case, 5 = Mog Satchel. Remembered per character.
+function M.setMoveDestination(cid, on)
+    M.loadState();
+    if cid == 7 then M.moveCase = on == true;
+    elseif cid == 5 then M.moveSatchel = on == true;
+    else return; end
+    saveState();
+    pcall(function() require('dlac\\feature\\digstorage').live.changed(); end);
+end
+
 -- ---------------------------------------------------------------------------
 -- Dig rank (issue #97). Three stacked sources, honestly labelled: the manual
 -- pick, the one-way ratchet floor, and a live (usually masked) server read.
@@ -213,7 +238,7 @@ end
 -- A non-diggable item (not in the data) is a no-op, so a stray "Obtained:" line
 -- from a non-dig source never moves the rank.
 function M.recordObtained(name)
-    if not _drok then return false; end
+    if not _drok or packDigging() ~= nil then return false; end
     M.loadState();
     local req = digrank.itemRequirement(name, digDb());
     if req == nil then return false; end
@@ -231,7 +256,7 @@ end
 -- Ratchets the one-way floor; returns true when it actually rose. Non-diggable id
 -- (or nil) is a no-op. Called from the MAIN-thread pump, so save is safe.
 function M.recordObtainedById(id, zoneId)
-    if not _drok then return false; end
+    if not _drok or packDigging() ~= nil then return false; end
     M.loadState();
     local req = digrank.itemRequirementById(id, digDb(), zoneId);
     if req == nil then return false; end
@@ -286,7 +311,7 @@ end
 -- visit is the tightest (highest) read; later, slower digs read lower and, being
 -- a ratchet input, never lower the floor.
 function M.recordDigTiming(elapsed)
-    if not _drok or M._rankMaxed() then return false; end
+    if not _drok or M._rankMaxed() or packDigging() ~= nil then return false; end
     M.loadState();
     local rank = digrank.rankFromZoneTiming(elapsed);
     if rank == nil then return false; end
@@ -320,6 +345,12 @@ end
 M._serverCache = { rank = nil, at = -1 };
 function M.serverRankLive()
     if not _drok then return nil; end
+    local svc = packDigging();
+    if svc ~= nil then
+        local rank = nil;
+        pcall(function() rank = svc.status.rank(); end);
+        return rank;
+    end
     local now = os.clock();
     if (now - (M._serverCache.at or -1)) < 2 then return M._serverCache.rank; end
     M._serverCache.at = now;

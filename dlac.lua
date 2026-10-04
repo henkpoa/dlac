@@ -18,7 +18,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.10.03a';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.10.04a';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
                                 -- (03f = engine v163: the contest explains its own plan;
                                 --  03g = one floating tray: Teleports + the E-Box crates;
@@ -307,7 +307,10 @@ addon.version = '2026.10.03a';  -- date of the last shipped change (Ashita print
                                 --  10.01d = ...and no longer mistakes its own;
                                 --  10.01e = no vault write retry after 3.5 s (the
                                 --  server's replay window), and an unreadable
-                                --  edit ack no longer stalls the layout engine)
+                                --  edit ack no longer stalls the layout engine;
+                                --  10.04a = AscensionXI Digging tab: the server's
+                                --  digging status, its dig table, and dug
+                                --  items into the Mog Case/Satchel by whole stacks)
 addon.desc    = 'Gear sets, triggers and live stats with level scaling -- dlac equips your gear itself.';
 
 -- Load BEACON ('/dl check' field round, 2026-07-23): written by PLAIN io at
@@ -608,7 +611,7 @@ for _, mod in ipairs({ 'gear', 'feature\\augments', 'gear\\gearoptim', 'gear\\ge
                        -- Their own line: release/build_cexi.py drops synthrun's line verbatim.
                        'feature\\craftpick', 'feature\\nexuslink',
                        'ui\\craftbar', 'feature\\helmwatch', 'feature\\helmstorage', 'ui\\helmbar',
-                       'feature\\fishwatch', 'ui\\fishbar', 'feature\\chocowatch',
+                       'feature\\fishwatch', 'ui\\fishbar', 'feature\\chocowatch', 'feature\\digstorage',
                        'feature\\meritwatch',
                        'feature\\integration', 'feature\\foodwatch',
                        -- (prestigewatch and giftbox left this list for the CEXI

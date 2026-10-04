@@ -2273,7 +2273,10 @@ end)();
     local oldFeatures = gate._packFeatures;
     gate._packFeatures = dofile('servers/ascensionxi/features.lua');
     local filtered = aui.listRows();
-    check('AXS16 AXI helper list contains only gathering', #filtered == 1 and filtered[1].key, 'helm');
+    local keys = {};
+    for _, row in ipairs(filtered) do keys[#keys + 1] = row.key; end
+    table.sort(keys);
+    check('AXS16 AXI helper list contains only gathering and digging', table.concat(keys, ','), 'choco,helm');
     gate._packFeatures = oldFeatures;
     points._send = oldSend; points.reset();
     sp.provide('gathering', oldService);
@@ -2940,8 +2943,9 @@ end)();
         check('HB23 AXI hobby bar renders', pcall(hb.render), true);
         local labels = table.concat(btns, '/');
         check('HB24 AXI hides other hobby tabs', labels:find('##hbtabcraft', 1, true)
-            or labels:find('##hbtabfish', 1, true) or labels:find('##hbtabchoco', 1, true), nil);
+            or labels:find('##hbtabfish', 1, true), nil);
         check('HB25 AXI retains HELM tab', labels:find('##hbtabhelm', 1, true) ~= nil, true);
+        check('HB26 AXI shows the Digging tab', labels:find('##hbtabchoco', 1, true) ~= nil, true);
         gate._packFeatures = oldFeatures;
 
         ui._hobbyBar = false;
