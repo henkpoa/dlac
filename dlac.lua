@@ -484,6 +484,15 @@ ashita.events.register('d3d_present', 'dlac-seed-watch', function()
         local ex = require('dlac\\feature\\extclaim');
         if type(ex) == 'table' and type(ex._pump) == 'function' then ex._pump(); end
     end);
+    -- The Nexus link's frame beat (2026-10-04, AscensionXI's crafting window):
+    -- pick and lock the gear for the recipe Nexus named, answer "ready" once it
+    -- is on, end the lock when the player moves. Beaten from here for
+    -- extclaim's reason: listening from the first frame. Idle and free when no
+    -- Nexus is talking.
+    pcall(function()
+        local nl = require('dlac\\feature\\nexuslink');
+        if type(nl) == 'table' and type(nl._pump) == 'function' then nl._pump(); end
+    end);
     -- The engage/target edge service's frame pump (issue #139): the packet_out
     -- handler stashes decoded edges on the NETWORK thread and does nothing else;
     -- this drains them HERE -- debounce, entity name, subscriber callbacks -- so
@@ -593,7 +602,7 @@ if not _cfok then ledger.failed[#ledger.failed + 1] = { mod = 'chatfmt', err = t
 for _, mod in ipairs({ 'gear', 'feature\\augments', 'gear\\gearoptim', 'gear\\gearimport',
                        'gear\\gearexport', 'gear\\unusedgear',
                        'feature\\useitem', 'feature\\craftwatch',
-                       'feature\\synthrun',
+                       'feature\\synthrun', 'feature\\craftpick', 'feature\\nexuslink',
                        'ui\\craftbar', 'feature\\helmwatch', 'feature\\helmstorage', 'ui\\helmbar',
                        'feature\\fishwatch', 'ui\\fishbar', 'feature\\chocowatch',
                        'feature\\meritwatch',

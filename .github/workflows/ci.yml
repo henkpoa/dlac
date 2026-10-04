@@ -50,6 +50,9 @@ jobs:
       - name: Custom equipment native pipeline regression
         run: lua5.4 tests/custom_equipment.lua
 
+      - name: Nexus crafting gear (recipe-wide pick, the lock and its conversation)
+        run: lua5.4 tests/nexuscraft.lua
+
       - name: Idle weapon resource report regression
         run: lua5.4 tests/idle_weapon_report.lua
 
