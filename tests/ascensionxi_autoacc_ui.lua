@@ -202,6 +202,9 @@ check('UI-04 holding, in the hover', tipHas('AutoAcc', 'Every piece stays on for
 check('UI-04 not on screen', has('a new target'), false);
 level, text = monitor.status();
 check('UI-04 row', text, 'holding -- a new target');
+rep.trigger = 'an odd 100% reason';
+level, text = monitor.status();
+check('UI-04 the row is a format string: escaped', text, 'holding -- an odd 100%% reason');
 rep.trigger = nil;
 
 -- UI-04b: the rows follow the equipment order whatever order pairs() gives
