@@ -27,7 +27,20 @@ Research date: 2026-09-28. Status: **built on 2026-10-05 (dlac `2026.10.05b`, en
 
 **The engine.** The decision runs in dlac's own engine, the only one since the 2026-07-27 LuaAshitacast purge. When the Tripwire disarms it for a session (LuaAshitacast loaded alongside), nothing dispatches and AutoAcc decides nothing; the Gear Rule tooltip and the readout say so. Without the service (CatsEyeXI) `_autoAccService()` is nil and the dormant v1 budget path keeps every AutoAcc piece worn.
 
-**Tests** (none in `ci.yml`; adding them is a workflow change for the owner): `tests/ascensionxi_telemetry_wire.lua` (90, the server's vectors and the comparison key), `tests/ascensionxi_telemetry_client.lua` (104), `tests/ascensionxi_autoacc.lua` (113, AA-01..AA-34), `tests/ascensionxi_autoacc_dispatch.lua` (37), `tests/ascensionxi_autoacc_ui.lua` (84), smoke GR1–GR11. `run_tests.lua` 7,547 and `smoke_ui.lua` 1,639 still pass. Seventy-three deliberate breaks across the module, dispatch and the UI were each caught; one more (a `math.floor` in `accToCap`) changed nothing and was taken back out.
+**Tests** (none in `ci.yml`; adding them is a workflow change for the owner): `tests/ascensionxi_telemetry_wire.lua` (90, the server's vectors and the comparison key), `tests/ascensionxi_telemetry_client.lua` (111), `tests/ascensionxi_autoacc.lua` (119, AA-01..AA-36), `tests/ascensionxi_autoacc_dispatch.lua` (40), `tests/ascensionxi_autoacc_ui.lua` (84), smoke GR1–GR11, run_tests AC25–AC31 (AutoAcc with a level range or a mode). `run_tests.lua` 7,554 and `smoke_ui.lua` 1,639 pass. During development 73 deliberate breaks were each caught (one more, a `math.floor` in `accToCap`, changed nothing and was taken back out); the stage-8 sweep follows.
+
+**Mutation sweep** (stage 8, 2026-10-05, the owner calling the feature final): `tests/autoacc_mutation_sweep.py` breaks 106 guards once each. That covers the codec, the client, the formula, the model and its prediction check, the single send, the box, the Gear Rule combo, the flatten's gates, the glue and the pack wiring. The fast AutoAcc suites run first, then pack_lint, smoke_ui and run_tests.
+
+**Result: 105 caught, 1 accepted, 0 open.** The accepted one, C21, is equivalent: both versions retry a busy send on the next frame. The first run left eight real gaps, each now covered:
+
+- a fallback that covers another slot (AA-35);
+- an unverified fallback at the decision (AA-26);
+- a candidate whose slot holds something else (AA-36);
+- a slot locked after the plan was made (AAD-10);
+- `/dl accuracy` and the box's session (CL-17);
+- the pack's module list and helper row (CL-18).
+
+Run it with `python tests/autoacc_mutation_sweep.py` on a clean tree (about 15 minutes), or `--check` after a merge. The server's sweep is AscensionXI `tools/combat-telemetry-mutation-sweep.py`.
 
 **Owed before anyone relies on it** (the owner's client; agents never drive it): the server handoff's L1 (unblocked 0x1E0 volume with dlac unloaded) and L2–L6 (unload, STOP, reload, collision with the vault and Nexus, cadence in a fight), the Gear Vault field round for #198, then a playtest of a real set: type one ring AutoAcc, fight an even match and a tough one, and read `/dl autoacc` and `/dl why Ring1`.
 
