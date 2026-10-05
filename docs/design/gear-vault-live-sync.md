@@ -231,7 +231,10 @@ write safe. Nothing here weakens it, and several changes tighten it:
   (TOO_FAR, decided at the first entry, still leaves the mirror standing).
 - **One request in flight stays the law.** Nothing is pipelined; the lower gap
   applies after a *matched* reply only (T1), and an abandoned request frees
-  the slot without ever being re-sent (T3).
+  the slot without ever being re-sent (T3). Since `2026.10.05a` the free slot
+  goes to the module that has waited longest (T4,
+  [below](#fair-turns-on-the-shared-gate-t4-2026-10-05)); a write's same-seq
+  retries never wait their turn.
 - **The optimistic overlays are display only** — the server's answer is
   still the only thing that moves anything, and the next read replaces them.
 - **The narrow inventory rule keeps the deposit guard sharp:** the
@@ -444,6 +447,97 @@ deleting the mutant.
    seq. If a reload inside the window happens to re-send a byte-identical
    write, the ring answers the old reply and does not run it again (keyed on
    the payload, per point 1).
+
+## Fair turns on the shared gate (T4, 2026-10-05)
+
+**Status:** dlac `2026.10.05a`, client only, no server change. The headless
+suites and the mutation sweep pass. **A Gear Vault field round is owed**
+(checklist at the end of this section), because the vault's send timing
+changed.
+
+**The problem.** Every module on the shared gate asks on its own clock: the
+vault and the EXP band check every frame while they have a request, HELM,
+digging and ascension 0.35 s after a refusal. The gate gave the slot to
+whoever asked first once the gap was spent, so the vault won nearly every
+time, and a long paged read held a HELM or digging poll back for as long as it
+paged. AutoAcc's WATCH would have waited behind it too (AscensionXI #719
+§4.7, T4).
+
+**The rule** (`servers/ascensionxi/transport.lua`):
+
+- A module is known by the op partition its packet uses
+  (`transport.producerOf(op)`): the vault `0x40–0x7F`, except the EXP band
+  check `0x4C`, which has its own pending request and is its own module; HELM
+  `0x80`; digging `0x81`; ascension `0xA0–0xAF`; combat telemetry
+  `0xC0–0xCF`. Any other op is a module of its own.
+- A NEW request that is refused puts its module in line, counted from that
+  first refusal. The refusal can come from the gap, another addon's packet
+  (`FOREIGN_GAP`), a busy slot or another module's turn.
+- When the gap and the slot would let a new request out, only the module that
+  has waited longest, among those still asking, may send it. The others get
+  the same `false` a busy slot gives them, so no caller changed.
+- A module stays in line while its last try is less than `STALE_WAIT` (1 s)
+  old. One that stops asking (its panel closed, a zone line) drops out and
+  holds nobody back; when it asks again it starts at the back. 1 s is nearly
+  three of the slowest module's 0.35 s retries, so a frame hitch does not
+  cost a module its place.
+- A granted turn ends the wait even when the packet manager then refuses the
+  frame, so a module whose sends always fail cannot stay first for ever.
+- **A retry of THE pending request** (same op and seq) holds the slot
+  already: it never waits its turn and never joins the line. That keeps the
+  write window intact: a waiting module cannot hold a write's retries at 1.5
+  and 3.0 s (WD14). A same-seq resend after `MAX_WAIT` is a new request.
+- `transport.idle(op)` answers for that op's module; `idle()` without an
+  argument answers for a module that is not waiting yet. Nothing in the addon
+  calls it today.
+- The wire log gets one `yield` line per wait, naming the module ahead:
+  `yield op=46 seq=12 gear vault -- behind HELM`.
+
+**What it costs the vault.** A HELM poll (every 5 s while the HELM panel or
+bar is up) takes the slot after the vault's current reply. In the 60 fps
+simulation with 160 ms answers (FT16), one poll cost a ten-page read 0.38 s,
+and HELM waited 0.37 s; with the old rule it waited for the whole read. A
+write waits at most one turn per other waiting module before its first send.
+`WRITE_DEADLINE` counts from that first send, so the wait does not count
+against it (WD13).
+
+**Tests:** `tests/gearvault_stage8.lua`, FT0–FT16d and WD13–WD16:
+
+- the op-to-module mapping;
+- vault paging against one HELM poll, and the reverse (a module asking every
+  frame against one vault request that waited longer);
+- three modules and the vault taking turns in waiting order;
+- the EXP band check as its own module;
+- a module that stops asking, and one that comes back;
+- a same-seq retry, a frame the packet manager refuses, equal waits, a lost
+  request at `MAX_WAIT`, and the `yield` line;
+- the real vault client and the real HELM module at 60 fps against 160 ms
+  answers;
+- a withdraw that waits behind a HELM poll, then loses its first two
+  answers while a telemetry module asks every frame. All three sends leave
+  inside `WRITE_DEADLINE`, and no other frame goes in between.
+
+Every case was made to fail once by breaking its rule.
+
+**Mutation sweep:** `transport.lua` now has 31 mutants. T01–T13 are as
+before; T01's and T02's patterns follow the `local op, seq` line, which moved
+above the gap checks. T14–T31 cover the line. All 31 are killed. The whole
+sweep is now 132 mutants: 129 killed, the same 3 accepted equivalents (V30,
+R02, R23), none open.
+
+**Field round owed** (owner, local shard). Reload dlac and check that
+`/dl check` shows `2026.10.05a`, then, with the HELM bar or panel visible:
+
+1. **Sync the vault.** The Gear Vault tab's list fills as before. When the
+   read takes more than one request (a large vault), `debug/gear-vault-wire.log`
+   shows an `enqueue op=80` line between two of the vault's `op=46` requests,
+   after a `yield ... behind HELM` line.
+2. **Withdraw a piece, then deposit one.** Each goes through within about a
+   second, with one result line and no "outcome unknown".
+3. **Open the Digging tab while the vault reads.** The digging status shows
+   up during the read, not after it.
+4. **Rate limits.** The map server log shows no new
+   `Rate-limiting packet GP_CLI_COMMAND_VOID_STORAGE` lines.
 
 ## Not done (deliberately)
 

@@ -1043,12 +1043,14 @@ round. Full records: the dated entries below, `docs/design/integration-surface.m
 Nothing below is half-built — these are deliberate stopping points, each with its
 research already recorded. In rough priority order:
 
-- **AscensionXI AutoAcc (planned 2026-09-29, nothing built):** the server publishes
+- **AscensionXI AutoAcc (planned 2026-09-29):** the server publishes
   stats without gear, and dlac computes every outfit locally. The joint plan agreed
   with the author of AscensionXI PR #719 is the "Status 2026-09-29" section at the
   top of `docs/design/ascensionxi-combat-telemetry-autoacc.md`. It is approved
   (only the Onslaught heal is still open). The first dlac step, transport fixes T1–T4, is
-  its own PR because it changes Gear Vault timing.
+  built: T1–T3 in `2026.09.30a`, T4 (fair turns) in `2026.10.05a`, its own PR because it
+  changes Gear Vault timing, with a Gear Vault field round owed. The status of T1–T8 is
+  the table under "Order" in that design doc.
 
 0. **THE LUASHITACAST PURGE — EXECUTED, ALL FIVE PHASES, 2026-07-27** on `dev`
    (Henrik: *"Can't you just go all the way to phase 5, I really just want this to

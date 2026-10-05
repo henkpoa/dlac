@@ -10760,3 +10760,24 @@ keeps a Kupo Shield from fighting a two-hander (the pick never wears a
 two-handed craft weapon or a non-shield Sub; the v37 Sub-vs-Main guard
 reserves the main hand). Record:
 [design/nexus-craft-gear.md](design/nexus-craft-gear.md).
+
+## 2026-10-05: fair turns on the shared 0x1E0 gate (AscensionXI, `2026.10.05a`)
+
+AutoAcc transport rule T4 (AscensionXI #719 §4.7, approved with the plan on 2026-09-29),
+in its own PR because it moves Gear Vault send timing. The shared gate
+(`servers/ascensionxi/transport.lua`) gave the free slot to whoever asked first once the
+gap was spent. The vault asks every frame and HELM, digging and ascension every 0.35 s,
+so a long vault read held their polls back for as long as it paged.
+
+Now a refused new request puts its module, known by its op partition, in line, and the
+module that has waited longest among those still asking sends next. A module silent for
+`STALE_WAIT` (1 s) drops out of line, and a same-seq retry of the pending request never
+waits, so the write window is unchanged. No caller changed: a refusal is the same `false`
+as before.
+
+**Checks:** `tests/gearvault_stage8.lua` gained FT0-FT16d and WD13-WD16 (47 checks,
+162 in all), each made to fail once by breaking its rule. Every CI suite passes. The
+mutation sweep's transport mutants T01-T31 (T14-T31 new) are all killed; the whole sweep
+is 132 mutants, 129 killed, the same 3 accepted equivalents, none open. Record and the
+owed Gear Vault field round: [design/gear-vault-live-sync.md](design/gear-vault-live-sync.md),
+"Fair turns on the shared gate".
