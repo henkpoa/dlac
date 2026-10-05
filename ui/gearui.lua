@@ -4375,12 +4375,11 @@ local function renderEntryEditPopup()
 
     -- Auto Type (Type automations): hand the piece to an equip automation that
     -- decides at equip time whether to wear it or the slot's next-best pick.
-    -- FOUNDATION ONLY on main: no types ship here yet -- the first one
-    -- (AutoAcc) lives on feature/autoacc pending GM approval, so the combo
-    -- offers None. The plumbing (autoType/removePrio wrappers, flatten
-    -- markers, engine budget) stays, so branch and main share one set format
-    -- and a branch-committed type still displays and can be cleared. Not
-    -- offered on virtual rows (they are already automations).
+    -- AutoAcc is offered where a server pack provides the 'autoacc' service
+    -- (AscensionXI's combat telemetry, dispatch v170); elsewhere a piece that
+    -- already carries a type still displays it and can be cleared
+    -- (M._gearRuleOptions). Not offered on virtual rows (they are already
+    -- automations).
     if it.rec == nil or it.rec.Virtual ~= true then
         imgui.Separator();
         imgui.TextColored(COL.DIM, 'Gear Rule');
@@ -4391,18 +4390,12 @@ local function renderEntryEditPopup()
                      or (it.dw == true) and 'Dual Wield' or 'None';
         imgui.PushItemWidth(120);
         if imgui.BeginCombo('##eeautotype', curType) then
-            if imgui.Selectable('None', it.autoType == nil and it.dw == nil)
-               and (it.autoType ~= nil or it.dw ~= nil) then
-                it.autoType = nil; it.removePrio = nil; it.acc = nil; it.dw = nil;
-                _setDirty = true;
-            end
-            if imgui.Selectable('Dual Wield', it.dw == true) and it.dw ~= true then
-                it.dw = true;
-                it.autoType = nil; it.removePrio = nil; it.acc = nil;
-                _setDirty = true;
-            end
-            if imgui.IsItemHovered() then
-                imgui.SetTooltip('This piece is a candidate only while the Dual Wield trait\nis available (main/sub job, or a BLU trait set). Read from\nthe server\'s own trait list, so it follows this server\'s rules.');
+            for _, opt in ipairs(M._gearRuleOptions(it)) do
+                if imgui.Selectable(opt.label, curType == opt.label) and curType ~= opt.label then
+                    M._applyGearRule(it, opt.label);
+                    _setDirty = true;
+                end
+                if opt.tip ~= nil and imgui.IsItemHovered() then imgui.SetTooltip(opt.tip); end
             end
             imgui.EndCombo();
         end
@@ -4422,6 +4415,43 @@ local function renderEntryEditPopup()
         end
     end
     imgui.EndPopup();
+end
+
+-- The Gear Rule combo's choices, in order. AutoAcc exists where a server pack
+-- provides the 'autoacc' service; a piece already typed AutoAcc keeps the
+-- choice offered, so it shows and can be cleared on any server.
+function M._gearRuleOptions(it)
+    local opts = {
+        { label = 'None' },
+        { label = 'Dual Wield',
+          tip = 'This piece is a candidate only while the Dual Wield trait\nis available (main/sub job, or a BLU trait set). Read from\nthe server\'s own trait list, so it follows this server\'s rules.' },
+    };
+    local svc = nil;
+    pcall(function() svc = require('dlac\\gear\\serverpack').service('autoacc'); end);
+    if svc ~= nil or (type(it) == 'table' and it.autoType == 'AutoAcc') then
+        local native = false;
+        pcall(function() native = require('dlac\\feature\\equipengine').nativeOn() == true; end);
+        opts[#opts + 1] = { label = 'AutoAcc',
+            tip = 'Worn only while the hit cap needs it. The server tells dlac your accuracy\n'
+               .. 'against the mob you fight; when the rest of the set still reaches the cap\n'
+               .. 'without this piece, dlac wears the slot\'s next-best piece instead.\n'
+               .. 'Armour only (Head to Back), the standing set only. /dl autoacc shows\n'
+               .. 'what it sees.'
+               .. (native and '' or '\n\ndlac\'s engine is disarmed this session, so AutoAcc decides nothing.') };
+    end
+    return opts;
+end
+
+-- One Gear Rule choice onto a working entry (the wrapper fields Commit bakes).
+function M._applyGearRule(it, label)
+    if label == 'None' then
+        it.autoType, it.removePrio, it.acc, it.dw = nil, nil, nil, nil;
+    elseif label == 'Dual Wield' then
+        it.dw = true;
+        it.autoType, it.removePrio, it.acc = nil, nil, nil;
+    elseif label == 'AutoAcc' then
+        it.autoType, it.removePrio, it.dw = 'AutoAcc', it.removePrio or 1, nil;
+    end
 end
 
 -- Left builder: 16 slot tiles + the expanded ordered list for the selected slot.
@@ -5829,6 +5859,20 @@ ashita.events.register('d3d_present', 'dlac-gearui-render', function()
             local amThemed = style ~= nil and style.push();
             pcall(amMod.renderMonitor, ui);
             if amThemed then style.pop(); end
+        end
+    end
+    -- The AutoAcc readout (/dl autoacc, or its Gear Helpers panel): INDEPENDENT
+    -- of the main box like the monitors above. It belongs to AscensionXI's
+    -- telemetry pack module, which provides it as the serverpack service
+    -- 'autoaccMonitor' -- core never requires a servers\ path. Own theme
+    -- bracket, function-scoped require -- no new chunk local (hard rule 1).
+    if has.imgui then
+        local aaMon = nil;
+        pcall(function() aaMon = require('dlac\\gear\\serverpack').service('autoaccMonitor'); end);
+        if type(aaMon) == 'table' and aaMon.visible == true and type(aaMon.render) == 'function' then
+            local aaThemed = style ~= nil and style.push();
+            pcall(aaMon.render);
+            if aaThemed then style.pop(); end
         end
     end
     -- Lockstyle window: INDEPENDENT of the main box (the header armor button

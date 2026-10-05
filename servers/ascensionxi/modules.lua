@@ -12,5 +12,7 @@
 
     Void Restock (`voidrestock`) left this list on 2026-09-27: the Nexus addon
     in the AscensionXI repo owns restocking now (docs/design/void-restock.md).
+    `telemetry` (2026-10-05) is the combat telemetry client and AutoAcc v1
+    (docs/design/ascensionxi-combat-telemetry-autoacc.md).
 ]]--
-return { 'gearvault', 'helm', 'digging', 'ascension', 'restocknotice' };
+return { 'gearvault', 'helm', 'digging', 'ascension', 'restocknotice', 'telemetry' };

@@ -1,8 +1,53 @@
 # AscensionXI: authoritative combat telemetry and AutoAcc
 
-Research date: 2026-09-28. Status: **researched implementation proposal; no runtime feature implemented or deployed**.
+Research date: 2026-09-28. Status: **built on 2026-10-05 (dlac `2026.10.05d`, engine v170; AscensionXI server slice 1) and tested in the owner's client the same day.** Read "Status 2026-10-05" first; the sections after it are the history of the design.
 
 **Backend research agent:** start with the [backend research assignment](#backend-research-assignment) appended below. It defines the remaining investigation and deliverable; the operation IDs, rate budgets and APIs proposed in this document are not already implemented or agreed wire contracts.
+
+## Status 2026-10-05: built
+
+**What exists.** Both halves of AutoAcc v1 are written, tested headless, and ran in the owner's client on 2026-10-05: *"I got buffs and it reflected immediately from madrigal etc, so it was very good."*
+
+- **Server** (AscensionXI PR #799, branch `claude/autoacc-telemetry`): the combat telemetry service, `modules/custom/lua/combat_telemetry.lua`, on 0x1E0 ops **0xC0–0xCF** (moved from the research's 0xB0, which Guild Work Orders took on 2026-10-04). Handoff: `documentation/custom/combat-telemetry.md` in that repo.
+- **dlac** (PR #199, branch `claude/axi-autoacc-v1`): the pack module `servers/ascensionxi/modules/telemetry/` (`wire.lua` codec, `client.lua` session and battle lane, `formula.lua`, `autoacc.lua` the decision, `monitor.lua` the accuracy box, `init.lua` the Ashita glue), dispatch v170 (the decision at THE ONE SEND), the Gear Rule combo's AutoAcc choice (`ui/gearui.lua` `M._gearRuleOptions`), the Gear Helpers row and `/dl accuracy` (or `/dl autoacc`). The transport fixes T1–T4 are their own PR (dlac #198).
+
+**How a decision is made.** The client keeps one session and one battle lane in FOLLOW mode. Each accepted frame goes to `autoacc.noteFrame`, which checks it (LIVE, the formula composes its own live totals, no GEAR_REFILL, the outfit it names is in the ring of worn outfits, live − R equals dlac's plain + set sums) and keeps it as a **basis** when it passes. At a Default dispatch, `dispatch.M._autoAccApply` hands the composed plan (every AutoAcc piece on, Free-equip slots as worn) to `autoacc.decide`, which picks a basis, projects the plan and each release from it, and returns the slots to release with a reason per slot (`/dl why <slot>`, the trace line, the readout).
+
+**Changes from the agreed design, all made while building it** (7, 8 and 10 asked for by the owner):
+
+1. **Bases per comparison key.** Two frames with the same server comparison key (`wire.snapshotKey`, research §4.4) differ only in the outfit, so each can speak for the other's outfit. dlac keeps every passing frame of the current key (up to 8) and decides from the newest one whose outfit differs from the plan only in modelled, verified pieces. Without this, a weapon skill's outfit frame (pushed once per new outfit) would become the only frame, and a WS outfit with one unmodelled piece would hold every AutoAcc piece on until something else changed, possibly for the whole fight. When no basis fits, dlac asks once per worn outfit for a republish (RESYNC mode 1), unless the newest frame was already taken in that outfit.
+2. **The buff-loss trigger is narrowed.** Losing *any* effect used to hold every piece until the next frame, but the server sends a frame only when a published input moves, so losing Protect would have held the pieces for the rest of the fight. Now only losing an effect in `autoacc.ACC_EFFECTS` holds (food, Madrigal, Etude, Aggressor, Focus, DEX/ACC boosts, Enchantment, Aftermath, Auspice, Hunter's Roll, Building Flourish, Prowess, the trust ACC aura, the custom Monk Resonance), and a listed loss that brings no frame within `LOSS_SETTLE` (2 s) is let go with a RESYNC renew, which recovers a lost push. Any other loss keeps the decision; if it did move an input, the server's frame follows within a tick. A gained Blindness, Accuracy Down or Flash holds for as long as it is up.
+3. **Demand.** The session starts only when `autoacc.decide` is first asked (a set with an AutoAcc piece is worn) and ends with STOP after 5 minutes without a question; the worn outfit is sampled only in that window. A player without AutoAcc pieces sends nothing and costs the server nothing.
+4. **GEAR_REFILL first.** An Onslaught frame is set aside before the gear check, so a run never marks pieces unverified.
+5. **A gear mismatch beside a verified basis** marks only the pieces that differ from that basis's outfit.
+6. **The player read is reused for 0.1 s** (two reads per dispatch and the readout's every frame cost one).
+7. **The accuracy box, for any player** (owner, 2026-10-05: *"a built in box with that for any player would be 100 % fine"*). The readout became a box anyone can open with `/dl accuracy`, AutoAcc piece or not: for each hand it shows the server's own ACC, the monster's EVA, the level correction, the hit rate, the cap, the ACC at which the cap starts and what is spare or missing. An open box is demand, so it starts and keeps the session by itself.
+8. **The prediction check.** A release predicts each protected hand's ACC and hit rate in the outfit it makes. When the server's frame for that outfit arrives with every non-gear input unchanged (`sameState`; key equality cannot be used, since a release that moves level latents moves R), the prediction is compared with the server's numbers: "matched", "WRONG" or "not checked". A wrong prediction keeps every piece that differs between the two outfits on for the rest of the session (`mispredicted`, cleared on zoning). The vectors' own release (TV-05 to TV-06) comes back "matched".
+9. **The decision memo is keyed on the event too.** Without it, a weapon skill whose plan equals the standing set's would have reused the standing set's release.
+10. **The box, minimal** (owner, 2026-10-05, after the client tests: *"remove the bloaty text in the accuracy box, keep information on hovering headlines instead as rest with DLAC. We want it as minimalistic as we can."*). On screen: the monster's name and level; the table, one row per hand that applies; and the AutoAcc header with one row per AutoAcc slot naming the piece it wears now (green: back to its normal pick; white: the accuracy piece, needed; dim: kept on for another reason). Everything else is in the hover of an underlined label (dlac's panel-text standard, `uistyle.helpLabel`): the session, the frame's age and dlac's checks on the top line; food on ACC; the hands that do not apply on Hand; holding and the prediction check on AutoAcc; each row's reason on its piece. A short label appears only while something is wrong: Engine disarmed, Telemetry off, Check failed, Flash -N, N kept on. The floating window sizes itself to its content (AlwaysAutoResize, so no SetNextWindowSize). `decide` now names each slot's AutoAcc piece (`typed`) for the rows. Then, in a player's words (owner: *"You don't need to give out super detailed server statistics"*, `2026.10.05d`): no session or frame counts, lane states, revisions or internal reasons anywhere a player reads. The model's reasons reach the hovers through `PLAIN` in `monitor.lua`, and any reason not listed (the checks, the lane, an outfit no frame covers) reads as AutoAcc waiting for the server's numbers. The prediction check is one sentence on the last swap; the Gear Helpers row says "waiting for the server's numbers". `/dl why` keeps the precise reasons.
+
+**The engine.** The decision runs in dlac's own engine, the only one since the 2026-07-27 LuaAshitacast purge. When the Tripwire disarms it for a session (LuaAshitacast loaded alongside), nothing dispatches and AutoAcc decides nothing; the Gear Rule tooltip and the readout say so. Without the service (CatsEyeXI) `_autoAccService()` is nil and the dormant v1 budget path keeps every AutoAcc piece worn.
+
+**Tests** (none in `ci.yml`; adding them is a workflow change for the owner): `tests/ascensionxi_telemetry_wire.lua` (90, the server's vectors and the comparison key), `tests/ascensionxi_telemetry_client.lua` (111), `tests/ascensionxi_autoacc.lua` (122, AA-01..AA-36), `tests/ascensionxi_autoacc_dispatch.lua` (40), `tests/ascensionxi_autoacc_ui.lua` (277, UI-10 the no-internals check, UI-11 every reason in words), smoke GR1–GR11, run_tests AC25–AC31 (AutoAcc with a level range or a mode). `run_tests.lua` 7,554 and `smoke_ui.lua` 1,639 pass. During development 73 deliberate breaks were each caught (one more, a `math.floor` in `accToCap`, changed nothing and was taken back out); the stage-8 sweep follows.
+
+**Mutation sweep** (stage 8, 2026-10-05, the owner calling the feature final): `tests/autoacc_mutation_sweep.py` breaks 130 guards once each (106 in the first run). That covers the codec, the client, the formula, the model and its prediction check, the single send, the box, the Gear Rule combo, the flatten's gates, the glue and the pack wiring. The fast AutoAcc suites run first, then pack_lint, smoke_ui and run_tests.
+
+**Result: 105 caught, 1 accepted, 0 open.** The accepted one, C21, is equivalent: both versions retry a busy send on the next frame. The first run left eight real gaps, each now covered:
+
+- a fallback that covers another slot (AA-35);
+- an unverified fallback at the decision (AA-26);
+- a candidate whose slot holds something else (AA-36);
+- a slot locked after the plan was made (AAD-10);
+- `/dl accuracy` and the box's session (CL-17);
+- the pack's module list and helper row (CL-18).
+
+**The minimal box (change 10)** rewrote the box, so its 27 guards (U01–U27), the two new `typed` guards (A37, A38) and P05, whose pattern moved, ran again: **30 of 30 caught.** The other 94 touch nothing that change moved, so their results stand. U05 (the rows follow the slot order) had been caught by luck: `pairs()` order changes from run to run, and the old check compared two slots of three. UI-04b now checks all sixteen slots in order. A check on an order that `pairs()` could produce needs enough keys that chance cannot pass it. The plain-language box re-ran all 33 box guards (U01–U33): 32 caught at once, and U04 (the row's escape) once a test gave the row a reason with a percent again.
+
+Run it with `python tests/autoacc_mutation_sweep.py` on a clean tree (about 15 minutes), only some mutants with their ids (`U05 A37`), or `--check` after a merge. The server's sweep is AscensionXI `tools/combat-telemetry-mutation-sweep.py`.
+
+**Client tests: done** (the owner, 2026-10-05: *"we have tested, so client tests are done I believe"*). They were the server handoff's L1 (unblocked 0x1E0 volume with dlac unloaded) and L2–L6 (unload, STOP, reload, collision with the vault and Nexus, cadence in a fight), and a playtest of a real set read through `/dl accuracy` and `/dl why`. The minimal box in plain words has not been seen in the client yet: `/addon reload dlac` prints `2026.10.05d`. Still not reported: the Gear Vault field round for #198 (a separate PR).
+
+**Next work:** weapon-skill decisions (§"Weapon skills" below), latent conditions (issue #41) to release more pieces, and modelling augmented copies.
 
 ## Status 2026-09-29: answered, and partly superseded
 
@@ -87,7 +132,7 @@ dlac reads caps and correction from the server. It never hardcodes them.
 1. **In parallel, now:**
    - Server: amend #719 (s0).
    - dlac: transport fixes T1–T4, so only a matched reply resets spacing, pushes never occupy the pending slot, `abandon` exists, and modules take fair turns. This is **its own PR, because it changes Gear Vault's send timing**, so a vault field round is owed.
-     - **Status 2026-10-05:** T1–T3 shipped with the Gear Vault live sync (`2026.09.30a`). T4 is `2026.10.05a` (branch `claude/axi-transport-fairness`), and its Gear Vault field round is owed. See the table after this list.
+     - **Status 2026-10-05:** T1–T3 shipped with the Gear Vault live sync (`2026.09.30a`). T4 is `2026.10.05a` (dlac #198, merged 2026-10-05), and its Gear Vault field round is owed. See the table after this list.
 2. Server slice 1 (Lua only), including a GM spike command.
 3. Live test L1: does the retail client tolerate unblocked `0x1E0` frames? This is the biggest unknown.
 4. dlac wire client:
@@ -109,9 +154,9 @@ The telemetry partition is now `0xC0–0xCF` (HELLO `C0`, WATCH `C1`, RESYNC `C3
 | T3 | `transport.abandon(op, seq)` frees the slot | shipped, `2026.09.30a` |
 | T4 | fair turns: the module that has waited longest sends next | `2026.10.05a`; Gear Vault field round owed ([gear-vault-live-sync.md](gear-vault-live-sync.md#fair-turns-on-the-shared-gate-t4-2026-10-05)) |
 | T5 | listen before talk after another addon's `0x1E0` | shipped as `FOREIGN_GAP`, `2026.10.01c`/`d` |
-| T6–T8 | the telemetry client: refuse without `socket.gettime`; block the whole partition inside `pcall`, STOP on unload; seed nonces per instance | with the wire client (step 4) |
+| T6–T8 | the telemetry client: refuse without `socket.gettime`; block the whole partition inside `pcall`, STOP on unload; seed nonces per instance | shipped with the telemetry client (#199): `client.refuse` in `init.lua`, the partition tap and `client.unload`, the nonce seed in `client.lua` |
 
-What the telemetry client inherits from T4: it is one module, every op in `0xC0–0xCF`. To keep its place in line it must ask again within `STALE_WAIT` (1 s) of a refused send; the other modules ask every frame or every 0.35 s. Its same-seq retries never wait their turn.
+What the telemetry client inherits from T4: it is one module, every op in `0xC0–0xCF`. To keep its place in line it must ask again within `STALE_WAIT` (1 s) of a refused send; the other modules ask every frame or every 0.35 s. Its same-seq retries never wait their turn. It does keep its place: a refused request stays queued and is tried again on the next pump.
 
 ## Result
 

@@ -10781,3 +10781,56 @@ mutation sweep's transport mutants T01-T31 (T14-T31 new) are all killed; the who
 is 132 mutants, 129 killed, the same 3 accepted equivalents, none open. Record and the
 owed Gear Vault field round: [design/gear-vault-live-sync.md](design/gear-vault-live-sync.md),
 "Fair turns on the shared gate".
+
+## 2026-10-05: AutoAcc on AscensionXI (combat telemetry)
+
+Henrik: *"This is a HUUUUUUGE feature on this server ... Performance IS KEY, we
+don't want to overload the server or the player."* The server half publishes,
+per watched mob, the accuracy inputs dlac cannot see, live and without gear;
+dlac projects every outfit from its own item data and releases an AutoAcc
+armour piece for its fallback only when the main hand, off hand and kick all
+stay at the cap. Built on the agreed design ("Status 2026-09-29" in
+design/ascensionxi-combat-telemetry-autoacc.md), with six changes found while
+building it ("Status 2026-10-05" there). The two that matter most: frames of
+one comparison key are all bases, so a weapon skill's outfit never costs the
+standing set its frame, and only losing an accuracy effect holds the pieces, so
+Protect wearing off does not hold them for the rest of the fight.
+
+**Performance:** no session at all without an AutoAcc piece worn (STOP after 5
+minutes idle); the decision is memoised on the plan, the frame revision, the
+trigger and the worn outfit; the worn outfit is read at most 4 times a second
+and the player at most 10 times, and only while a decision is wanted.
+
+**Not taken:** the old branch's frozen budget, baked ACC and /check injection;
+a generated list of accuracy effects (scanning the server's effect scripts
+lists every song, because each carries an augment-stat DEX/AGI term that is
+zero in practice, which would bring back the hold on every song).
+
+**Checks:** wire 90, client 104, AutoAcc 87, dispatch 37, readout 53 (new suites,
+not in CI: a workflow change for Henrik), smoke GR1-GR11; run_tests 7,547;
+smoke_ui 1,639; 59 deliberate breaks all caught. A Tripwire-disarmed engine
+dispatches nothing, so AutoAcc decides nothing; the readout says so.
+
+Later the same day Henrik asked for tools to see that it works, and for the
+numbers to be open to every player: the readout became the **accuracy box**
+(`/dl accuracy`), which shows each hand's ACC, the monster's EVA, the level
+correction, the hit rate, the cap and the ACC where the cap starts, and opens
+its own session. A release now predicts the new outfit's numbers and checks
+them against the server's frame for it (the vectors' release comes back
+"matched"); a wrong prediction keeps those pieces on. Writing that test found
+a real bug: the decision memo ignored the event, so a weapon skill with the
+standing set's plan would have reused its release.
+
+That evening Henrik tested it in the client (*"I got buffs and it reflected
+immediately from madrigal etc, so it was very good"*) and asked for the box
+without its bloaty text, *"as minimalistic as we can"*, with the information on
+hovered headlines as elsewhere in dlac (`2026.10.05c`). The box now shows the
+monster, the table and each AutoAcc slot's piece; the session, the checks, the
+frame's age, food, holding and the prediction check sit in the hovers of
+underlined labels, and a short label appears only while something is wrong.
+Re-running the box's mutants found that one had been caught by luck: the row
+order check compared two slots, and `pairs()` order changes from run to run.
+Then *"You don't need to give out super detailed server statistics like
+packet IDs"* (`2026.10.05d`): the hovers stopped showing frame counts, lane
+states, revisions and the model's internal reasons, and say it in a player's
+words; `/dl why` keeps the precise reasons.

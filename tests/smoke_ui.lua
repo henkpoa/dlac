@@ -8358,6 +8358,40 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- GR. The Gear Rule combo's choices (gearui M._gearRuleOptions, v170): AutoAcc
+--     only where a pack provides the 'autoacc' service, or on a piece that
+--     already carries the type; and each choice's effect on the entry.
+-- ---------------------------------------------------------------------------
+(function()
+    local function labels(it)
+        local out = {};
+        for _, o in ipairs(gearui._gearRuleOptions(it)) do out[#out + 1] = o.label; end
+        return table.concat(out, ',');
+    end
+    local SP = require('dlac\\gear\\serverpack');
+    check('GR1 no autoacc service: None and Dual Wield', labels({}), 'None,Dual Wield');
+    check('GR2 a typed piece keeps AutoAcc offered', labels({ autoType = 'AutoAcc' }), 'None,Dual Wield,AutoAcc');
+    SP.provide('autoacc', { decide = function() return {}; end });
+    check('GR3 the service offers AutoAcc', labels({}), 'None,Dual Wield,AutoAcc');
+    local tip = gearui._gearRuleOptions({})[3].tip;
+    check('GR4 the tip says the engine is disarmed (headless)', tip:find('engine is disarmed', 1, true) ~= nil, true);
+    check('GR5 no percent in the tip', tip:find('%', 1, true), nil);
+    SP.provide('autoacc', nil);
+    local it = { dw = true };
+    gearui._applyGearRule(it, 'AutoAcc');
+    check('GR6 AutoAcc types the piece', it.autoType, 'AutoAcc');
+    check('GR7 with removal priority 1', it.removePrio, 1);
+    check('GR8 and clears Dual Wield', it.dw, nil);
+    it.removePrio = 4;
+    gearui._applyGearRule(it, 'AutoAcc');
+    check('GR9 a set priority stays', it.removePrio, 4);
+    gearui._applyGearRule(it, 'Dual Wield');
+    check('GR10 Dual Wield clears the type', it.autoType == nil and it.removePrio == nil and it.dw == true, true);
+    gearui._applyGearRule(it, 'None');
+    check('GR11 None clears everything', it.autoType == nil and it.dw == nil and it.acc == nil, true);
+end)();
+
+-- ---------------------------------------------------------------------------
 -- verdict
 -- ---------------------------------------------------------------------------
 if #failures > 0 then
