@@ -197,6 +197,19 @@ level, text = monitor.status();
 check('UI-04 row', text, 'holding -- a new target');
 rep.trigger = nil;
 
+-- UI-04b: the rows follow the equipment order whatever order pairs() gives
+-- (it changes from run to run): all sixteen slots, and an unknown one last.
+local ORDER = { 'Head', 'Neck', 'Ear1', 'Ear2', 'Body', 'Hands', 'Ring1', 'Ring2', 'Back', 'Waist', 'Legs', 'Feet',
+                'Main', 'Sub', 'Range', 'Ammo' };
+local every = { release = {}, typed = {}, why = { Zzz = 'needed for the cap' } };
+local isSlot = { Zzz = true };
+for _, s in ipairs(ORDER) do every.why[s], every.typed[s], isSlot[s] = 'needed for the cap', s .. ' piece', true; end
+rep = { usable = true, bases = 1, frame = tv05, frameAt = 10.0, decision = every };
+render();
+local order = {};
+for _, t in ipairs(texts) do if isSlot[t] then order[#order + 1] = t; end end
+check('UI-04b the equipment order', table.concat(order, ' '), table.concat(ORDER, ' ') .. ' Zzz');
+
 -- UI-05: a failed check is the one loud thing, with a percent in its reason.
 rep = { usable = false, why = 'gear check: 100% wrong', mismatch = '100% wrong', formulaOk = true, gearOk = false,
         frame = tv05, frameAt = 10.0, unverified = {} };
