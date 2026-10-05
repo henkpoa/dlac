@@ -117,7 +117,7 @@ function M.check(row)
         why[#why + 1] = 'Move within 5 yalms of a Gear Vault to recharge the ring.';
     end
     if #why > 0 then return false, table.concat(why, '\n'); end
-    return true, string.format('Recharge missing charges for %d Conquest Points each. Uses your weekly EXP band allowance.', band.rate);
+    return true, string.format('Top up for %d Conquest Points per charge. Uses your weekly band recharge.', band.rate);
 end
 
 function M.recharge(row)

@@ -85,13 +85,19 @@ vc.mirror.fresh = false; rows = {}; recharge.extendMenu(rows); assert(#rows == 0
 -- stay inert, and only the enabled menu selection invokes the service.
 local sp = require('dlac\\gear\\serverpack');
 local drawn, opened, clicks, enabled = {}, 0, 0, false;
+local uiTime, hovered, rightClick, selectClick, popupOpen = 0, true, true, false, true;
+local tooltipCount, inTooltip = 0, false;
 package.loaded.imgui = {
-    IsItemHovered = function() return true; end, IsMouseClicked = function(n) return n == 1; end,
-    OpenPopup = function() opened = opened + 1; end, BeginPopup = function() return true; end,
+    IsItemHovered = function() return hovered; end, IsMouseClicked = function(n) return n == 1 and rightClick; end,
+    OpenPopup = function() opened = opened + 1; end, BeginPopup = function() return popupOpen; end,
     EndPopup = function() end, CloseCurrentPopup = function() end,
     TextDisabled = function(s) drawn[#drawn + 1] = s; end,
-    TextWrapped = function(s) drawn[#drawn + 1] = s; end,
-    Selectable = function() clicks = clicks + 1; return true; end,
+    TextWrapped = function(s) assert(inTooltip, 'explanation must only appear in the tooltip'); drawn[#drawn + 1] = s; end,
+    Selectable = function() clicks = clicks + 1; return selectClick; end,
+    GetTime = function() return uiTime; end,
+    BeginTooltip = function() tooltipCount = tooltipCount + 1; inTooltip = true; end,
+    EndTooltip = function() inTooltip = false; end,
+    PushTextWrapPos = function() end, PopTextWrapPos = function() end,
 };
 local ui = require('dlac\\ui\\rechargeui');
 ui.render(ring, 'x1'); assert(opened == 0, 'CEXI has no recharge service');
@@ -101,6 +107,15 @@ sp.provide('expRingRecharge', {
     recharge = function() commands = commands + 1; end,
 });
 ui.render(ring, 'x1'); assert(opened == 1 and clicks == 0 and commands == 1);
-assert(drawn[1] == 'Recharge ring' and drawn[2]:find('within 5 yalms', 1, true));
-enabled = true; ui.render(ring, 'x1'); assert(clicks == 1 and commands == 2);
+assert(#drawn == 1 and drawn[1] == 'Recharge ring');
+rightClick = false;
+uiTime = 0.49; ui.render(ring, 'x1'); assert(tooltipCount == 0);
+uiTime = 0.5; ui.render(ring, 'x1'); assert(tooltipCount == 1);
+assert(drawn[#drawn]:find('within 5 yalms', 1, true));
+hovered = false; ui.render(ring, 'x1');
+hovered = true; uiTime = 1; ui.render(ring, 'x1'); assert(tooltipCount == 1, 'leaving resets hover delay');
+popupOpen = false; ui.render(ring, 'x1');
+popupOpen = true; uiTime = 2; ui.render(ring, 'x1'); assert(tooltipCount == 1, 'closing resets hover delay');
+enabled = true; uiTime = 2.5; ui.render(ring, 'x1'); assert(tooltipCount == 2 and commands == 1);
+selectClick = true; ui.render(ring, 'x1'); assert(clicks == 2 and commands == 2);
 print('EXP ring recharge: client eligibility, packets, storage and context menu passed');
