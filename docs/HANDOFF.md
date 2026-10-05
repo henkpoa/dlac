@@ -1043,12 +1043,13 @@ round. Full records: the dated entries below, `docs/design/integration-surface.m
 Nothing below is half-built — these are deliberate stopping points, each with its
 research already recorded. In rough priority order:
 
-- **AscensionXI AutoAcc (built 2026-10-05, not yet run in a client):** the pack module
+- **AscensionXI AutoAcc (built 2026-10-05, tested in the owner's client the same day):** the pack module
   `servers/ascensionxi/modules/telemetry/` and engine v170, PR #199;
   the server half is AscensionXI PR #799; the transport fixes T1–T4
   are dlac #198 (a Gear Vault field round owed). Start at "Status 2026-10-05" in
-  `docs/design/ascensionxi-combat-telemetry-autoacc.md`: what was built, the six changes
-  from the agreed design, the Native-engine boundary, and the live tests owed.
+  `docs/design/ascensionxi-combat-telemetry-autoacc.md`: what was built, the ten changes
+  from the agreed design (10 is the minimal accuracy box), the Native-engine boundary,
+  the mutation sweep, and what is still open.
 
 0. **THE LUASHITACAST PURGE — EXECUTED, ALL FIVE PHASES, 2026-07-27** on `dev`
    (Henrik: *"Can't you just go all the way to phase 5, I really just want this to

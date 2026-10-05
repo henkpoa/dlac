@@ -10799,3 +10799,13 @@ them against the server's frame for it (the vectors' release comes back
 "matched"); a wrong prediction keeps those pieces on. Writing that test found
 a real bug: the decision memo ignored the event, so a weapon skill with the
 standing set's plan would have reused its release.
+
+That evening Henrik tested it in the client (*"I got buffs and it reflected
+immediately from madrigal etc, so it was very good"*) and asked for the box
+without its bloaty text, *"as minimalistic as we can"*, with the information on
+hovered headlines as elsewhere in dlac (`2026.10.05c`). The box now shows the
+monster, the table and each AutoAcc slot's piece; the session, the checks, the
+frame's age, food, holding and the prediction check sit in the hovers of
+underlined labels, and a short label appears only while something is wrong.
+Re-running the box's mutants found that one had been caught by luck: the row
+order check compared two slots, and `pairs()` order changes from run to run.
