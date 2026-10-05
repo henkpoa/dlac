@@ -18,7 +18,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.10.04b';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.10.05a';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
                                 -- (03f = engine v163: the contest explains its own plan;
                                 --  03g = one floating tray: Teleports + the E-Box crates;
@@ -310,7 +310,11 @@ addon.version = '2026.10.04b';  -- date of the last shipped change (Ashita print
                                 --  edit ack no longer stalls the layout engine;
                                 --  10.04a = AscensionXI Digging tab: the server's
                                 --  digging status, its dig table, and dug
-                                --  items into the Mog Case/Satchel by whole stacks)
+                                --  items into the Mog Case/Satchel by whole stacks;
+                                --  10.05a = the shared 0x1E0 gate takes turns
+                                --  (T4): the module that has waited longest
+                                --  sends next, so Gear Vault paging no longer
+                                --  holds HELM, digging or ascension back)
 addon.desc    = 'Gear sets, triggers and live stats with level scaling -- dlac equips your gear itself.';
 
 -- Load BEACON ('/dl check' field round, 2026-07-23): written by PLAIN io at

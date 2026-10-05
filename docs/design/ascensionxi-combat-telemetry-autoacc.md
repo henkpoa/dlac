@@ -87,6 +87,7 @@ dlac reads caps and correction from the server. It never hardcodes them.
 1. **In parallel, now:**
    - Server: amend #719 (s0).
    - dlac: transport fixes T1–T4, so only a matched reply resets spacing, pushes never occupy the pending slot, `abandon` exists, and modules take fair turns. This is **its own PR, because it changes Gear Vault's send timing**, so a vault field round is owed.
+     - **Status 2026-10-05:** T1–T3 shipped with the Gear Vault live sync (`2026.09.30a`). T4 is `2026.10.05a` (branch `claude/axi-transport-fairness`), and its Gear Vault field round is owed. See the table after this list.
 2. Server slice 1 (Lua only), including a GM spike command.
 3. Live test L1: does the retail client tolerate unblocked `0x1E0` frames? This is the biggest unknown.
 4. dlac wire client:
@@ -96,6 +97,21 @@ dlac reads caps and correction from the server. It never hardcodes them.
 5. dlac AutoAcc v1 (armour).
 6. Weapon-skill decisions.
 7. **At any time:** latent conditions (issue #41) widen what can be released.
+
+#### The transport rules T1–T8 (#719 §4.7): status
+
+The telemetry partition is now `0xC0–0xCF` (HELLO `C0`, WATCH `C1`, RESYNC `C3`, STOP `C4`; pushes `C8`/`C9`; the server's `documentation/custom/combat-telemetry.md`), not the `0xB0–0xBF` this brief and #719 §4.7 name.
+
+| Rule | What | Status |
+|---|---|---|
+| T1 | only the reply to THE pending request frees the slot and restarts the gap | shipped, `2026.09.30a` |
+| T2 | pushes never touch the pending slot or the spacing clock | shipped, `2026.09.30a` (`transport.notePush` only logs them) |
+| T3 | `transport.abandon(op, seq)` frees the slot | shipped, `2026.09.30a` |
+| T4 | fair turns: the module that has waited longest sends next | `2026.10.05a`; Gear Vault field round owed ([gear-vault-live-sync.md](gear-vault-live-sync.md#fair-turns-on-the-shared-gate-t4-2026-10-05)) |
+| T5 | listen before talk after another addon's `0x1E0` | shipped as `FOREIGN_GAP`, `2026.10.01c`/`d` |
+| T6–T8 | the telemetry client: refuse without `socket.gettime`; block the whole partition inside `pcall`, STOP on unload; seed nonces per instance | with the wire client (step 4) |
+
+What the telemetry client inherits from T4: it is one module, every op in `0xC0–0xCF`. To keep its place in line it must ask again within `STALE_WAIT` (1 s) of a refused send; the other modules ask every frame or every 0.35 s. Its same-seq retries never wait their turn.
 
 ## Result
 
@@ -281,6 +297,8 @@ Mark default gear resolution dirty when a result arrives and let the native engi
 An asynchronous packet cannot guarantee that the world stays unchanged between evaluation and equip. Report the exact sample/revision and re-evaluate on change. If atomic “apply only if this combat revision is still current” becomes a requirement, it needs a separate conditional server equip transaction integrated with the existing engine; ordinary 0x050/0x051 equip packets do not carry that telemetry precondition. Do not promise zero-latency or timeless accuracy.
 
 ## Transport integration details that could otherwise break this
+
+*This section describes the transport as it was on 2026-09-28. `MIN_GAP` has been 0.1 s since `2026.09.30a`, and the status of T1–T5 is in "The transport rules T1–T8" above.*
 
 The server's pinned `0x1E0` ingress minimum gap is **50 ms**, shared by every op on that opcode; over-limit requests are silently discarded before feature handling. The current dlac transport is more conservative: `MIN_GAP = 0.35`, one pending operation, `MAX_WAIT = 8`. All new requests must use its shared scheduling rather than open another packet injector. Treat these as current source values, not throughput targets. [S12, D2]
 
