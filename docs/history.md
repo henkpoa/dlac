@@ -10809,3 +10809,7 @@ frame's age, food, holding and the prediction check sit in the hovers of
 underlined labels, and a short label appears only while something is wrong.
 Re-running the box's mutants found that one had been caught by luck: the row
 order check compared two slots, and `pairs()` order changes from run to run.
+Then *"You don't need to give out super detailed server statistics like
+packet IDs"* (`2026.10.05d`): the hovers stopped showing frame counts, lane
+states, revisions and the model's internal reasons, and say it in a player's
+words; `/dl why` keeps the precise reasons.
