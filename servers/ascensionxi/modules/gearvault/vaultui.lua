@@ -43,6 +43,12 @@ local counts = require('dlac\\servers\\ascensionxi\\modules\\gearvault\\layoutco
 local recon  = try('dlac\\servers\\ascensionxi\\modules\\gearvault\\reconcile');
 local usg    = try('dlac\\servers\\ascensionxi\\modules\\gearvault\\usage');
 
+-- Tell the layout engine its inputs changed (a setting, the Bench): it runs
+-- a moment later instead of on its quiet beat.
+local function kickEngine(why)
+    if recon ~= nil and type(recon.kick) == 'function' then pcall(recon.kick, why); end
+end
+
 -- CatsEyeXI's old binding still needs percent escapes; keep these at text call sites.
 local esc = (fmt ~= nil and type(fmt.esc) == 'function') and fmt.esc or function(s) return (tostring(s or ''):gsub('%%', '%%%%')); end
 
@@ -198,21 +204,61 @@ local LAYOUT_CODE_WORDS = {
     [9]  = 'the vault store errored -- nothing changed',
 };
 
+-- YOUR EDITS SHOW AT ONCE (Henrik, 2026-09-30: "can dlac assume happy cases
+-- more"). A click on Add / Remove / Pin paints its result in the layout pane
+-- the moment it is queued -- an add as a dim "adding..." row, a remove as a
+-- row that is simply gone, a pin as the new pin -- and the server's answer
+-- only confirms it. A refusal takes the overlay back and says why. An
+-- accepted edit's overlay stays until a layout read NEWER than its answer
+-- shows the real row, so the pane never flickers back in between.
+M._overlay = {};         -- entryKey -> { verb, e, ackStamp = layout stamp at the answer | nil }
+local _overlayGen = 0;
+local function overlaySet(key, v)
+    M._overlay[key] = v;
+    _overlayGen = _overlayGen + 1;
+end
+local function overlayPrune()
+    local lc = vc.layoutCache;
+    local job = vc.currentJob();
+    for key, o in pairs(M._overlay) do
+        if (o.e.job ~= nil and job ~= nil and o.e.job ~= job)
+            or (o.ackStamp ~= nil and lc.fresh and lc.stamp ~= nil and lc.stamp ~= o.ackStamp) then
+            overlaySet(key, nil);
+        end
+    end
+end
+function M.overlayOf(key) return M._overlay[key]; end
+
 local function layoutEdit(e, okText)
     e.reason = e.reason or 'manual-layout';
     if (e.job or 0) == 0 then e.job = vc.currentJob() or vc.layoutCache.job or 0; end
+    local key = vc.entryKey(e);
+    local mine = (e.job == vc.currentJob())
+        and (e.verb == vc.verb.ADD or e.verb == vc.verb.REMOVE or e.verb == vc.verb.PIN);
+    if mine then
+        local copy = {};
+        for k, v in pairs(e) do copy[k] = v; end
+        overlaySet(key, { verb = e.verb, e = copy });
+    end
     local queued = vc.requestLayoutSet(e, function(code, err)
         if code == vc.code.OK or code == vc.code.PARTIAL then
+            if mine and M._overlay[key] ~= nil then
+                M._overlay[key].ackStamp = vc.layoutCache.stamp or 0;
+                _overlayGen = _overlayGen + 1;
+            end
             noteResult(code == vc.code.PARTIAL and (okText .. ' (partly applied; refreshing)') or okText, false);
             vc.requestLayout(0);
         elseif code ~= nil then
+            overlaySet(key, nil);
             noteResult(LAYOUT_CODE_WORDS[code] or ('layout edit refused (code ' .. tostring(code) .. ')'), true);
             if code == vc.code.NOT_IN_LAYOUT then vc.requestLayout(0); end
         else
+            overlaySet(key, nil);
             noteResult(ERR_WORDS[err] or ('layout edit failed (' .. tostring(err) .. ')'), true);
         end
     end);
     if not queued then
+        if mine then overlaySet(key, nil); end
         noteResult('could not queue the layout edit (client dormant)', true);
     end
 end
@@ -301,22 +347,47 @@ local function vaultView()
     return _vView;
 end
 
--- The layout pane's view: layout entries enriched the same way.
-local _lView, _lStamp = nil, nil;
+-- The layout pane's view: layout entries enriched the same way, with YOUR
+-- queued edits laid over them (see layoutEdit): a pending remove hides its
+-- row, a pending pin shows the new pin, a pending add shows a dim row.
+local _lView, _lStamp, _lGen = nil, nil, nil;
 local function layoutView()
-    if _lView ~= nil and _lStamp == vc.layoutCache.stamp then return _lView; end
-    _lStamp = vc.layoutCache.stamp;
-    local grouped, total = {}, 0;
+    overlayPrune();
+    if _lView ~= nil and _lStamp == vc.layoutCache.stamp and _lGen == _overlayGen then return _lView; end
+    _lStamp, _lGen = vc.layoutCache.stamp, _overlayGen;
+    local job = vc.layoutCache.job;
+    local grouped, total, seen = {}, 0, {};
     for _, e in ipairs(vc.layoutCache.entries or {}) do
         if e.kind ~= 2 then
-        local rec = recOf(e.itemId);
-        total = total + 1;
-        bucket(grouped, rec, {
-            itemId = e.itemId, count = e.count, hint = e.hint, pinned = e.pinned,
-            identity = e.identity, instanceId = e.instanceId, ordinal = e.ordinal, kind = e.kind, state = e.state,
-            location = e.location, slot = e.slot,
-            rec = rec, name = nameOf(e.itemId), sortKey = e.ordinal,
-        });
+            local key = vc.entryKey(e);
+            seen[key] = true;
+            local o = M._overlay[key];
+            if o ~= nil and o.e.job ~= job then o = nil; end
+            if not (o ~= nil and o.verb == vc.verb.REMOVE) then
+                local pinned = e.pinned;
+                if o ~= nil and o.verb == vc.verb.PIN then pinned = (o.e.pinned == true); end
+                local rec = recOf(e.itemId);
+                total = total + 1;
+                bucket(grouped, rec, {
+                    itemId = e.itemId, count = e.count, hint = e.hint, pinned = pinned,
+                    identity = e.identity, instanceId = e.instanceId, ordinal = e.ordinal, kind = e.kind, state = e.state,
+                    location = e.location, slot = e.slot,
+                    rec = rec, name = nameOf(e.itemId), sortKey = e.ordinal,
+                    pendingPin = (o ~= nil and o.verb == vc.verb.PIN) or nil,
+                });
+            end
+        end
+    end
+    for key, o in pairs(M._overlay) do
+        if o.verb == vc.verb.ADD and o.e.job == job and not seen[key] then
+            local rec = recOf(o.e.itemId);
+            total = total + 1;
+            bucket(grouped, rec, {
+                itemId = o.e.itemId, count = o.e.count or 1, pinned = (o.e.pinned == true),
+                identity = o.e.identity, instanceId = o.e.instanceId, kind = 0, state = 0,
+                rec = rec, name = nameOf(o.e.itemId), sortKey = 1000000 + (o.e.itemId or 0),
+                pendingAdd = true,
+            });
         end
     end
     sortGroups(grouped);
@@ -609,45 +680,82 @@ local DUPLICATE_WORDS = {
     [2] = 'Already Equipped',
     [3] = 'Already in Mog Wardrobe',
 };
+-- Rows whose deposit is on its way: the Inventory list shows them as
+-- "Storing..." from the click (they leave the bag when the server answers).
+M._storing = {};         -- container * 256 + slot -> true
+
+-- One Store / Store all. A long run goes out in several requests of at most
+-- vc.depositCap() entries (a longer ack does not fit one frame -- the server
+-- stored everything and the reply vanished, 2026-09-30 audit); the player
+-- still hears ONE line when the last answer is in.
 local function storeRows(rows, afterUnequip, onDone)
-    local list = {};
-    for _, r in ipairs(rows) do
-        list[#list + 1] = { container = r.container, slot = r.slot, expectedInstanceId = r.expectedInstanceId };
+    if type(rows) ~= 'table' or #rows == 0 then
+        if type(onDone) == 'function' then pcall(onDone); end
+        return;
     end
-    local queued = vc.requestDeposit(list, function(acks, err)
+    local cap = (type(vc.depositCap) == 'function') and vc.depositCap() or 62;
+    local chunks = {};
+    for i, r in ipairs(rows) do
+        local c = math.floor((i - 1) / cap) + 1;
+        chunks[c] = chunks[c] or {};
+        chunks[c][#chunks[c] + 1] = { container = r.container, slot = r.slot, expectedInstanceId = r.expectedInstanceId };
+    end
+    local left, acksAll, firstErr = #chunks, {}, nil;
+    local function finish()
         invalidateInv();
         if type(onDone) == 'function' then pcall(onDone); end
-        if acks == nil then
+        if #acksAll == 0 then
+            local err = firstErr;
             noteResult((err == 'too_far') and 'stand at a Void Warden to store'
                 or (ERR_WORDS[err] or ('store failed (' .. tostring(err) .. ')')), true);
             return;
         end
         local stored, dupes, refused = 0, 0, 0;
-        for _, a in ipairs(acks) do
+        for _, a in ipairs(acksAll) do
             if a.code == vc.code.OK or a.code == vc.code.PARTIAL then stored = stored + 1;
             elseif a.code == vc.code.DUPLICATE then dupes = dupes + 1;
             else refused = refused + 1; end
         end
-        if #acks == 1 and stored == 0 then
-            local words = DEPOSIT_WORDS[acks[1].code] or ('refused (code ' .. tostring(acks[1].code) .. ')');
-            if acks[1].code == vc.code.DUPLICATE then
-                words = DUPLICATE_WORDS[acks[1].duplicateLocation] or DEPOSIT_WORDS[vc.code.DUPLICATE];
+        if #acksAll == 1 and stored == 0 then
+            local words = DEPOSIT_WORDS[acksAll[1].code] or ('refused (code ' .. tostring(acksAll[1].code) .. ')');
+            if acksAll[1].code == vc.code.DUPLICATE then
+                words = DUPLICATE_WORDS[acksAll[1].duplicateLocation] or DEPOSIT_WORDS[vc.code.DUPLICATE];
             end
-            if afterUnequip and acks[1].code == 4 then
+            if afterUnequip and acksAll[1].code == 4 then
                 -- the deposit outran the unequip (or something dressed the
                 -- slot again in between): say which race, not just "busy"
                 words = 'still equipped when the store arrived -- try again';
             end
             noteResult((rows[1] and rows[1].name or 'that piece') .. ': ' .. words, true);
         else
-            noteResult(string.format('stored %d piece%s%s%s', stored, (stored == 1) and '' or 's',
+            noteResult(string.format('stored %d piece%s%s%s%s', stored, (stored == 1) and '' or 's',
                 (dupes > 0) and (' -- ' .. dupes .. ' duplicate(s) kept in your bags') or '',
-                (refused > 0) and (' -- ' .. refused .. ' refused') or ''), stored == 0);
+                (refused > 0) and (' -- ' .. refused .. ' refused') or '',
+                (firstErr ~= nil) and (' -- part of the run failed (' .. tostring(firstErr) .. ')') or ''), stored == 0);
         end
-    end);
-    if not queued then
-        if type(onDone) == 'function' then pcall(onDone); end
-        noteResult('could not queue the store (client dormant, or too many at once)', true);
+    end
+    for _, list in ipairs(chunks) do
+        for _, r in ipairs(list) do M._storing[r.container * 256 + r.slot] = true; end
+        local queued = vc.requestDeposit(list, function(acks, err)
+            for _, r in ipairs(list) do M._storing[r.container * 256 + r.slot] = nil; end
+            if acks == nil then firstErr = firstErr or err;
+            else for _, a in ipairs(acks) do acksAll[#acksAll + 1] = a; end end
+            left = left - 1;
+            if left == 0 then finish(); end
+        end);
+        if not queued then
+            for _, r in ipairs(list) do M._storing[r.container * 256 + r.slot] = nil; end
+            firstErr = firstErr or 'unavailable';
+            left = left - 1;
+            if left == 0 then
+                if #acksAll == 0 then
+                    if type(onDone) == 'function' then pcall(onDone); end
+                    noteResult('could not queue the store (client dormant, or too many at once)', true);
+                else
+                    finish();
+                end
+            end
+        end
     end
 end
 
@@ -901,11 +1009,24 @@ function M.render(job, level)
     end
     local vaultN = 0;
     for _, r in ipairs(vc.mirror.rows) do vaultN = vaultN + math.max(1, r.qty); end
-    if state ~= 'fresh' then
-        imgui.TextColored(cGOLD, '[' .. state .. ']');
+    -- The header speaks only when something is WRONG (2026-09-30: routine
+    -- re-reads flashed [stale]/[syncing] on every gear swap). A re-read in
+    -- progress is a dim word; a failing one, or none landed yet, is gold.
+    local health = (type(vc.health) == 'function') and vc.health() or nil;
+    local busy = (type(vc.activity) == 'function') and vc.activity() or nil;
+    if health == 'failing' then
+        imgui.TextColored(cGOLD, '[vault unreachable]');
         if imgui.IsItemHovered() then
-            imgui.SetTooltip('stale -- something moved (job change, !vault, zoning); a re-sync is due.\nsyncing -- pages are on the wire now. Nothing shows here when the\nmirror matches the server.');
+            imgui.SetTooltip('The last reads of the Gear Vault got no answer; dlac keeps retrying.\nThe lists below show the last known state. /dl vault says why.');
         end
+        imgui.SameLine(0, 12);
+    elseif health == 'never' and state ~= 'syncing' then
+        imgui.TextColored(cGOLD, '[not read yet]');
+        if imgui.IsItemHovered() then imgui.SetTooltip('The Gear Vault has not been read this session yet.'); end
+        imgui.SameLine(0, 12);
+    elseif busy == 'vault' or state == 'syncing' then
+        imgui.TextColored(cDIM, 'updating...');
+        if imgui.IsItemHovered() then imgui.SetTooltip('Reading the Gear Vault from the server.'); end
         imgui.SameLine(0, 12);
     end
     local occ = shelfOccupancy();
@@ -918,10 +1039,14 @@ function M.render(job, level)
     end
     if imgui.SmallButton('Sync##gvsync') then
         vc.refresh();
+        vc.invalidateLayout();
         vc.requestLayout(0);
+        if recon ~= nil and type(recon.kick) == 'function' then recon.kick('sync'); end
     end
     if imgui.IsItemHovered() then
-        imgui.SetTooltip('Re-read the vault and the layout from the server now.');
+        imgui.SetTooltip((type(vc.live) == 'function' and vc.live())
+            and 'dlac keeps this tab up to date by itself: the server tells it when\nsomething changes. Sync re-reads the vault and the layout anyway.'
+            or 'Re-read the vault and the layout from the server now.');
     end
     imgui.SameLine(0, 12);
     imgui.TextColored(cDIM, 'Search:');
@@ -963,6 +1088,7 @@ function M.render(job, level)
                     if on then imgui.PushStyleColor(ImGuiCol_Button, { 0.55, 0.45, 0.15, 1.0 }); end
                     if imgui.SmallButton(o.l .. '###gvset_' .. key .. '_' .. o.v) then
                         usg.setSetting(key, o.v);
+                        kickEngine('settings');
                     end
                     if on then imgui.PopStyleColor(1); end
                 end
@@ -990,6 +1116,12 @@ function M.render(job, level)
         _layoutAskAt = os.clock();
         vc.requestLayout(0);
     end
+    -- What this pane KNOWS about the current job: a layout read for it,
+    -- fresh or being re-read. Only an unknown job shows "(fetching...)" --
+    -- a re-read keeps the last rows on screen (2026-09-30: every gear swap
+    -- used to blank the pane while the layout was read again).
+    local curJob = vc.currentJob();
+    local knownJob = lc.stamp ~= nil and lc.job ~= nil and (curJob == nil or lc.job == curJob);
     -- HALF the window each (Henrik: "take 50% of the space, not a set
     -- amount"), split live from the available width so a resized window
     -- keeps the ratio. GetContentRegionAvail's first return is the width.
@@ -1004,26 +1136,32 @@ function M.render(job, level)
     else
         imgui.TextColored(cHEAD, 'Mog Wardrobe Layout');
     end
-    -- Right of the header: the fetch, or the additions engine's countdown.
-    -- The engine's 8s beat was invisible (Henrik, 2026-09-10: a stored
-    -- piece "did nothing" until the next beat, which reads as broken);
-    -- the header lost its "Current" to make room for the clock.
-    if not lc.fresh then
-        imgui.SameLine(0, 8);
-        imgui.TextColored(cGOLD, '(fetching...)');
-    else
-        local nb = (recon ~= nil and type(recon.nextBeat) == 'function') and recon.nextBeat() or nil;
-        local words = nil;
-        if type(nb) == 'number' then words = string.format('sync in %ds', math.ceil(nb));
-        elseif nb == 'busy' or nb == 'syncing' then words = 'syncing...';
-        elseif nb == 'paused' then words = 'sync paused';
+    -- Right of the header: what is actually HAPPENING, or nothing. The 8 s
+    -- countdown that sat here (2026-09-10) ran whether or not anything was
+    -- pending and read as "a sync that never came" (Henrik, 2026-09-30:
+    -- "the 8 second sync is confusing"); the engine is event-driven now, so
+    -- the words name the work: adding, removing, saving your edits, reading.
+    do
+        local ra = (recon ~= nil and type(recon.activity) == 'function') and recon.activity() or nil;
+        local va = (type(vc.activity) == 'function') and vc.activity() or nil;
+        local words, gold = nil, false;
+        if not knownJob then
+            words, gold = '(fetching...)', true;
+        elseif ra ~= nil and ra.adding then
+            words = string.format('adding %d from your sets...', ra.adding);
+        elseif ra ~= nil and ra.removing then
+            words = string.format('releasing %d unused...', ra.removing);
+        elseif va == 'edits' then
+            words = 'saving your changes...';
+        elseif va == 'layout' or not lc.fresh then
+            words = 'updating...';
         end
         if words ~= nil then
             imgui.SameLine(0, 8);
-            imgui.TextColored(cDIM, words);
-            if imgui.IsItemHovered() then
-                imgui.SetTooltip('Every 8 seconds dlac checks your sets and triggers against the Gear Vault\nand adds any vaulted piece this layout is missing (gear in your bags never\nmoves -- store it with a Void Storage Warden first). Additions to your\nACTIVE job apply in a city; elsewhere they wait. Sync re-reads the server now.');
-            end
+            imgui.TextColored(gold and cGOLD or cDIM, words);
+        end
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('dlac keeps this layout in step with your sets and triggers by itself:\nwhen a vaulted piece your sets use is missing, it is added right away\n(gear in your bags never moves -- store it at a Gear Vault counter first).\nChanges to your ACTIVE job apply in a city; elsewhere they wait for one.');
         end
     end
 
@@ -1052,6 +1190,18 @@ function M.render(job, level)
             or 'Additions from your sets are waiting for a city.');
         if imgui.IsItemHovered() then
             imgui.SetTooltip('Gear only moves between the Gear Vault and your wardrobes in a city\n(or your Mog House) -- everything pending transfers by itself when\nyou arrive. Other jobs\' layouts save from anywhere.');
+        end
+    end
+
+    -- Several differently augmented copies of something your sets want, and
+    -- fewer places for them: dlac does not guess which roll you meant.
+    local choose = (recon ~= nil and type(recon.chooseCopy) == 'function') and recon.chooseCopy() or {};
+    if #choose > 0 then
+        local wrapped = (fmt ~= nil and type(fmt.textWrapped) == 'function')
+            and fmt.textWrapped or function(col, s) imgui.TextColored(col, s); end;
+        for _, c in ipairs(choose) do
+            wrapped(cGOLD, string.format('%s: your sets want %d, and the vault holds %d copies with different augments. Choose with Add to Mog Wardrobe below.',
+                nameOf(c.itemId), c.need, c.copies));
         end
     end
 
@@ -1128,6 +1278,7 @@ function M.render(job, level)
                         end
                     end
                     if #tomb > 0 and usg ~= nil then pcall(usg.exclude, tomb); end
+                    kickEngine('bench');
                     M._evictOpen = false;
                     M._marks = {};
                 end
@@ -1191,9 +1342,21 @@ function M.render(job, level)
         end
     end
 
-    local lv = filterView(layoutView(), needle);
+    local lv = knownJob and filterView(layoutView(), needle) or { grouped = {}, total = 0 };
     if lv.total > 0 then
         renderTree(lv, 'L', searching, forceClose, level, COL, function(e)
+            if e.pendingAdd then
+                -- YOUR add, on its way: shown now, confirmed by the next read
+                return {
+                    key = 'Lp' .. tostring(e.sortKey),
+                    nameColor = cDIM,
+                    augOf = function() return isAugmented(e.identity) and augTextOf(e.identity) or nil; end,
+                    tags = function()
+                        imgui.SameLine(0, 8);
+                        imgui.TextColored(cDIM, 'adding...');
+                    end,
+                };
+            end
             local outside = (e.instanceId or 0) > 0 and e.kind == 0 and e.state == 2;
             local recycled = outside and e.location == 17;
             return {
@@ -1279,7 +1442,7 @@ function M.render(job, level)
                 end,
             };
         end);
-    elseif lc.fresh then
+    elseif knownJob then
         imgui.TextColored(cDIM, searching and 'Nothing in the layout matches.'
             or 'Nothing here yet -- add gear to your Mog Wardrobe layout:\neither from the Vault tab (Add to Mog Wardrobe),\nor let dlac add automatically based on your built sets\n(see settings, the cog wheel).');
     end
@@ -1304,6 +1467,7 @@ function M.render(job, level)
                 if imgui.SmallButton('Bench##gvwb' .. tostring(wI.itemId)) then
                     if usg ~= nil then
                         pcall(usg.exclude, { usg.keyOf(wI.itemId, nil) });
+                        kickEngine('bench');
                         noteResult(nameOf(wI.itemId) .. ' benched -- dlac stops trying to shelve it', false);
                     end
                 end
@@ -1338,6 +1502,7 @@ function M.render(job, level)
                 imgui.SameLine(0, 10);
                 if imgui.SmallButton('Restore##gvrb' .. b.key) then
                     usg.unexclude(b.key);
+                    kickEngine('restore');
                     noteResult(nameOf(b.itemId) .. ' restored -- it rejoins the layout when your wardrobes have room', false);
                 end
                 if imgui.IsItemHovered() then
@@ -1423,10 +1588,10 @@ function M.render(job, level)
                         end
                         local present = have >= ((e.instanceId or 0) > 0 and 1 or (counts.limit(e.rec) or math.huge));
                         local full = occ.max > 0 and units >= occ.max;
-                        if admission.pending then
-                            imgui.TextColored(cDIM, 'Queued / syncing...');
+                        if admission.pending or M._overlay[vc.entryKey(e)] ~= nil then
+                            imgui.TextColored(cDIM, 'Adding...');
                         elseif not admission.ready then
-                            imgui.TextColored(cDIM, 'Syncing layout...');
+                            imgui.TextColored(cDIM, 'Reading layout...');
                         elseif present then
                             imgui.TextColored(cDIM, 'In Mog Wardrobe');
                         elseif full then
@@ -1542,6 +1707,11 @@ function M.render(job, level)
                     imgui.TextColored(cDIM, esc('[worn: ' .. tostring(worn and worn.label or '?') .. ']'));
                     imgui.SameLine(unequipCol);
                     imgui.SmallButton('Storing...##gvus' .. tostring(e.slot));
+                elseif M._storing[e.container * 256 + e.slot] then
+                    -- the deposit is out: say so from the click, not after
+                    -- the answer (the row leaves when the server has it)
+                    imgui.SameLine(btnCol);
+                    imgui.TextColored(cDIM, 'Storing...');
                 elseif worn ~= nil then
                     imgui.SameLine(0, 6);
                     imgui.TextColored(cDIM, esc('[worn: ' .. tostring(worn.label) .. ']'));

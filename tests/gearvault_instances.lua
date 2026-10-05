@@ -149,15 +149,16 @@ now = now + 20; rc.tick();
 assert(#queue == 1 and queue[1].instanceId == 11 and queue[1].count == 1, 'pair adds only the unbound copy');
 print('OK -- instance protocol, movement races, legacy fallback and reconciliation');
 
--- The tab may fetch a v1 layout before HELLO. Negotiation MUST replace it,
--- otherwise the UI never gets state/location and cannot show In bags.
+-- The tab may ask for a layout before HELLO. No legacy page leaves before
+-- the negotiation (2026-09-30: every login sent one and threw it away); the
+-- ask waits, then goes out in the negotiated shape with state/location, so
+-- the UI can show In bags.
 vc._reset(); vc.noteJob(1); vc.requestLayout(0); tick();
-assert(vc._st().pending.op == vc.op.LAYOUT_LIST);
-reply(w16(0) .. w16(0));
-assert(vc.layoutCache.fresh);
+assert(vc._st().pending == nil or vc._st().pending.op ~= vc.op.LAYOUT_LIST, 'no layout page before HELLO');
 vc.refresh(); tick(); tick();
+assert(vc._st().pending.op == vc.op.HELLO);
 reply(w16(1) .. w16(1) .. w32(0) .. string.char(15,124,62,0) .. w32(10) .. string.char(13,12,41,30));
-assert(not vc.layoutCache.fresh and vc._st().layoutWant, 'HELLO retires pre-negotiation layout');
+assert(not vc.layoutCache.fresh and vc._st().layoutWant, 'the layout ask survives the negotiation');
 reply(header(0)); tick();
 assert(vc._st().pending.op == vc.op.LAYOUT_LIST2);
 reply(header(1) .. layoutRow(9, 55, 100, 0, 2));
@@ -226,57 +227,61 @@ print('OK -- augment-preserving set edits and verified deposits');
 -- timeout retry may bypass it, and waiting for the gate is not a timeout.
 local transport = require('dlac\\servers\\ascensionxi\\transport');
 local helm = require('dlac\\servers\\ascensionxi\\modules\\helm\\status');
+local GAP = transport.MIN_GAP;
 local transmissions = {};
 now = 1000; transport._clock = function() return now; end;
 transport._reset();
 transport._send = function(packet) transmissions[#transmissions + 1] = { at = now, packet = packet }; return true; end;
 vc._send = function(packet) return transport.send(packet, 'test vault'); end;
 vc._received = transport.received;
+vc._abandon = transport.abandon;
 transport._audit = nil;
 helm._clock = function() return now; end;
 helm._send = function(packet) return transport.send(packet, 'test HELM'); end;
 vc._reset(); vc.noteJob(1); vc.refresh(); vc.pump(true);
 local hello = w16(1) .. w16(1) .. w32(2) .. string.char(15,124,62,0) .. w32(10) .. string.char(13,12,41,30);
 reply(hello, 0, 0, true);
-assert(#transmissions == 1 and vc._st().pending.sentAt == nil);
-helm.reset(); helm.touch(); assert(#transmissions == 1);
-now = now + 0.1; vc.pump(true); assert(#transmissions == 1);
-now = now + 0.26; helm.touch(); assert(#transmissions == 2 and transmissions[2].packet[5] == 0x80);
-vc.pump(true); assert(vc._st().pending.sentAt == nil and vc._st().pending.retries == 0);
+assert(#transmissions == 1 and vc._st().pending.sentAt == nil, 'the LIST2 waits out the post-reply gap');
+helm.reset(); helm.touch(); assert(#transmissions == 1, 'HELM waits out the same gap');
+now = now + GAP / 2; vc.pump(true); assert(#transmissions == 1);
+-- HELM retries a refused poll on its own 0.35 s clock; it gets there first
+now = now + 0.36 - GAP / 2; helm.touch(); assert(#transmissions == 2 and transmissions[2].packet[5] == 0x80);
+vc.pump(true); assert(vc._st().pending.sentAt == nil and vc._st().pending.retries == 0,
+    'a request blocked by another producer is waiting, not timing out');
 transport.received(0x80, transmissions[2].packet[6]);
-now = now + 0.36; vc.pump(true);
+now = now + GAP + 0.01; vc.pump(true);
 assert(transmissions[3].packet[5] == vc.op.LIST2);
 reply(header(1) .. listRow(10, 100), 1, 0, true);
 assert(#transmissions == 3);
-now = now + 0.36; vc.pump(true); reply(header(1) .. listRow(11, 100), 0, 0, true);
-now = now + 0.36; vc.pump(true);
+now = now + GAP + 0.01; vc.pump(true); reply(header(1) .. listRow(11, 100), 0, 0, true);
+now = now + GAP + 0.01; vc.pump(true);
 assert(vc._st().pending.op == vc.op.LAYOUT_LIST2);
 reply(header(1) .. layoutRow(1, 10, 100), 1, 0, true);
 local beforePage = #transmissions; vc.pump(true); assert(#transmissions == beforePage);
-now = now + 0.36; vc.pump(true); reply(header(1) .. layoutRow(2, 11, 100), 0, 0, true);
-now = now + 0.36; vc.pump(true);
+now = now + GAP + 0.01; vc.pump(true); reply(header(1) .. layoutRow(2, 11, 100), 0, 0, true);
+now = now + GAP + 0.01; vc.pump(true);
 assert(vc._st().pending.op == vc.op.LOST_LIST);
 reply(w16(1) .. w16(0) .. w32(90) .. w16(300) .. string.char(1, 0) .. w32(0) .. w32(0), 1, 0, true);
 beforePage = #transmissions; vc.pump(true); assert(#transmissions == beforePage);
-now = now + 0.36; vc.pump(true); reply(w16(0) .. w16(0), 0, 0, true);
+now = now + GAP + 0.01; vc.pump(true); reply(w16(0) .. w16(0), 0, 0, true);
 vc.requestLayoutSet({ verb = vc.verb.PIN, instanceId = 10, itemId = 100, pinned = true });
-now = now + 0.36; vc.pump(true);
+now = now + GAP + 0.01; vc.pump(true);
 local writeSeq = vc._st().pending.seq;
 now = now + vc.SEND_TIMEOUT + 0.01; vc.pump(true);
 assert(vc._st().pending.seq == writeSeq and vc._st().pending.retries == 1, 'dropped write retry preserves its sequence');
 reply(w16(0) .. w16(1) .. w32(10) .. w32(10), 0, 0, true);
 for i = 2, #transmissions do
-    assert(transmissions[i].at - transmissions[i - 1].at >= 0.35, 'every actual 0x1E0 send observes shared gap');
+    assert(transmissions[i].at - transmissions[i - 1].at >= GAP, 'every actual 0x1E0 send observes shared gap');
 end
 -- If another producer takes the channel, a prepared but unsent write must
 -- still be cancelled on a job edge; it has not entered the replay contract.
-now = now + 0.36; assert(transport.send({ 0,0,0,0,0x80 }, 'test HELM'));
+now = now + GAP + 0.01; assert(transport.send({ 0,0,0,0,0x80 }, 'test HELM'));
 vc.requestLayoutSet({ verb = vc.verb.REMOVE, instanceId = 10, itemId = 100 });
 vc.pump(true); assert(vc._st().pending and not vc._st().pending.sentAt);
 local beforeCancel = #transmissions;
-vc.noteJob(2); now = now + 0.36; vc.pump(true);
+vc.noteJob(2); now = now + GAP + 0.01; vc.pump(true);
 assert(#transmissions == beforeCancel, 'job change cancels writes still waiting for shared pacing');
-print('OK -- shared 350ms pacing for HELLO, pages, HELM, writes and same-sequence retries');
+print('OK -- shared pacing for HELLO, pages, HELM, writes and same-sequence retries');
 
 -- Injection calls can sit in Ashita's outgoing queue. A second producer
 -- must wait for the server's reply, not just for an injection-time interval.
@@ -285,12 +290,26 @@ assert(transport.send({0,0,0,0,0x80,1}, 'HELM'));
 now = now + 0.4;
 assert(not transport.send({0,0,0,0,0x40,2}, 'vault'),
     'do not queue another producer while the previous request could still be buffered');
-now = now + 0.6; transport.received(0x80, 1);
+now = now + 0.6; assert(transport.received(0x80, 1), 'the pending reply is matched');
 assert(not transport.send({0,0,0,0,0x40,2}, 'vault'), 'reply arrival starts the cooldown');
-now = now + 0.1;
-assert(not transport.send({0,0,0,0,0x40,2}, 'vault'), '100ms alone is still within client cooldown');
-now = now + 0.26; assert(transport.send({0,0,0,0,0x40,2}, 'vault'));
+now = now + GAP + 0.001; assert(transport.send({0,0,0,0,0x40,2}, 'vault'));
 now = now + 1.5; assert(transport.send({0,0,0,0,0x40,2}, 'vault retry'), 'same-sequence retry is allowed');
 now = now + 0.4; assert(not transport.send({0,0,0,0,0x80,3}, 'HELM'));
 now = now + transport.MAX_WAIT; assert(transport.send({0,0,0,0,0x80,3}, 'HELM'), 'lost peer cannot stall channel forever');
 print('OK -- cross-producer reply serialization and post-reply cooldown');
+
+-- T1: only THE pending request's reply frees the slot and restarts the gap.
+-- A stray (a late duplicate, a later frame of a multi-frame reply, another
+-- addon's reply in our band) changes nothing -- it used to restart every
+-- module's cooldown. T3: a producer that gave up frees the slot at once.
+transport._reset(); transmissions = {}; now = 3000;
+assert(transport.send({0,0,0,0,0x46,7}, 'vault'));
+now = now + 0.2; assert(transport.received(0x46, 7));
+now = now + GAP + 0.001; assert(not transport.received(0x46, 7), 'a second frame of the same reply is not a reply');
+assert(not transport.received(0x41, 150), 'another addon\'s reply is not ours');
+assert(transport.send({0,0,0,0,0x80,8}, 'HELM'), 'strays never restart the gap');
+now = now + 1; transport.abandon(0x80, 8);
+now = now + GAP + 0.001; assert(transport.send({0,0,0,0,0x40,9}, 'vault'), 'an abandoned request frees the channel');
+now = now + 0.2; transport.notePush(0x4B, 'push');
+assert(not transport.send({0,0,0,0,0x80,10}, 'HELM'), 'a push is never mistaken for the pending reply');
+print('OK -- T1 matched replies only, T3 abandon, pushes bypass the slot');

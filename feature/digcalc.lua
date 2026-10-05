@@ -245,6 +245,18 @@ local function normElement(e)
 end
 M._normElement = normElement;   -- test seam
 
+-- The ore's weather gate. CatsEye wants the weather to match the day's
+-- element; a pack whose server takes any elemental weather (stock LSB, which
+-- AscensionXI runs) sets ores.anyElementalWeather.
+local function oreWeatherOK(ores, dayElement, weatherElement)
+    if not ores.requiresElementalWeather then return true; end
+    if ores.anyElementalWeather then return weatherElement ~= nil; end
+    return dayElement ~= nil and weatherElement == dayElement;
+end
+local function oreWeatherWords(ores)
+    return ores.anyElementalWeather and 'any elemental weather' or 'matching weather';
+end
+
 -- The conditional Regular-pool drops resolved against the LIVE clock for one
 -- zone: the current weather's crystal (or cluster on double weather), the
 -- current day's rock, and -- in an elemental-ore zone only -- the current day's
@@ -311,7 +323,7 @@ function M.conditionalDrops(zoneId, playerRank, clock)
         local minRank = tonumber(or_.minRank) or 0;
         local win = (type(or_.moonPhaseWindow) == 'table') and or_.moonPhaseWindow or {};
         local mp = tonumber(clock.moonPercent);
-        local weatherOK = (not or_.requiresElementalWeather) or (el ~= nil and wel == el);
+        local weatherOK = oreWeatherOK(or_, el, wel);
         local moonOK = (mp ~= nil and win.min ~= nil and win.max ~= nil
                         and mp >= win.min and mp <= win.max);
         local clockActive = (el ~= nil) and weatherOK and moonOK;
@@ -319,8 +331,8 @@ function M.conditionalDrops(zoneId, playerRank, clock)
             kind = 'ore', id = map and map.id or nil,
             n = map and map.n or 'Elemental ore',
             chance = or_.chance, minRank = minRank, element = el,
-            condition = string.format('%s day + matching weather, moon %s-%s%%',
-                el or 'matching', tostring(win.min or 0), tostring(win.max or 0)),
+            condition = string.format('%s day + %s, moon %s-%s%%',
+                el or 'matching', oreWeatherWords(or_), tostring(win.min or 0), tostring(win.max or 0)),
             clockActive = clockActive, rankOk = (rank >= minRank),
             active = clockActive and (rank >= minRank),
         };
@@ -511,10 +523,10 @@ function M.itemSources(entry, playerRank, mu, clock)
         local del = normElement(clock.dayElement);
         local wel = normElement(clock.weatherElement);
         local mp = tonumber(clock.moonPercent);
-        local weatherOK = (not or_.requiresElementalWeather) or (del ~= nil and wel == del);
+        local weatherOK = oreWeatherOK(or_, del, wel);
         local moonOK = (mp ~= nil and win.min ~= nil and win.max ~= nil and mp >= win.min and mp <= win.max);
-        condition = string.format('%s day + matching weather, moon %s-%s%%',
-            tostring(el), tostring(win.min or 0), tostring(win.max or 0));
+        condition = string.format('%s day + %s, moon %s-%s%%',
+            tostring(el), oreWeatherWords(or_), tostring(win.min or 0), tostring(win.max or 0));
         clockActive = (del == el) and weatherOK and moonOK;
     end
 

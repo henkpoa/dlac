@@ -47,7 +47,7 @@ M._loadStamp = M._loadStamp or string.format('%d:%.3f', os.time(), os.clock());
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code. From v32 the engine self-swaps when the seeded file's version moves, so
 -- the banner should only persist when a swap FAILED (or pre-v32 code is live).
-M.VERSION = 168;  -- 168: select category-specific numeric gathering ladders.  -- 167: THE MODE LOCK QUEUE REACHES BOTH MONITORS (Henrik: "where do I see the queue for the mode lock?"). It was in exactly one place -- the Mode Locks window, which is the surface you are LEAST likely to be looking at while playing. The monitors both named only the winner, so a slot doing something surprising gave no hint that another active mode was waiting behind it, which is the same invisibility the loser list existed to prevent. The queue now rides the DECISION RECORD (contest.mlq, captured at ensure time via the one door M.modeLockLive, which stashes it beside the plan): the Arbiter Monitor renders stashed records -- pinned historical ones included -- and deriving the queue live there would show TODAY's answer under a decision from ten minutes ago, the same law as the ladders and the reserve verdict. It is also a SIGNATURE LEG, for the rank-order leg's reason (v152): a mode that queues moves no gear and no claim, so without it the trace and /dl why would keep saying nobody waits until something unrelated happened to move. It deliberately does NOT enter the decision fingerprint -- the ring appends on a moved OUTCOME, and a queue-only record with zero changed slots is the v163 symptom rather than a feature; a queue that forms while nothing moves reaches /dl why immediately and reaches the ring on the next real decision. Renderers: the Arbiter Monitor draws a 'q' marker on the cell in BOTH grid modes (the fall-marker precedent -- a slot with someone waiting is exactly what you would never think to hover) and names holder + waiter in the hover; the Trigger Monitor's locks line grows an '(n queued)' count with the detail on hover, its IsItemHovered taken BEFORE the suffix is drawn so the tooltip stays on the held list. Tests MDL23-MDL26b, smoke AM8a-AM8e + MLK14-MLK16.
+M.VERSION = 169;  -- 169: THE NEXUS LOCK RIDES THE CRAFT ROW (2026-10-04, AscensionXI). Nexus names the next synth's crafts over plugin_event; feature\nexuslink picks the recipe-wide pieces (feature\craftpick, weakest craft first) and holds them until the player moves. The Craft row's ensure reads that lock first (craftRowState), claims its picks (craftRowClaim), and falls back to the manual craft pick when there is none -- same rank, same Locks and Free equip, same /dl why. Tests NX*. (Two M fields, M._craftRowState / M._craftRowClaim, not locals: the main chunk sits at Lua's 200-local ceiling.)  -- 168: select category-specific numeric gathering ladders.  -- 167: THE MODE LOCK QUEUE REACHES BOTH MONITORS (Henrik: "where do I see the queue for the mode lock?"). It was in exactly one place -- the Mode Locks window, which is the surface you are LEAST likely to be looking at while playing. The monitors both named only the winner, so a slot doing something surprising gave no hint that another active mode was waiting behind it, which is the same invisibility the loser list existed to prevent. The queue now rides the DECISION RECORD (contest.mlq, captured at ensure time via the one door M.modeLockLive, which stashes it beside the plan): the Arbiter Monitor renders stashed records -- pinned historical ones included -- and deriving the queue live there would show TODAY's answer under a decision from ten minutes ago, the same law as the ladders and the reserve verdict. It is also a SIGNATURE LEG, for the rank-order leg's reason (v152): a mode that queues moves no gear and no claim, so without it the trace and /dl why would keep saying nobody waits until something unrelated happened to move. It deliberately does NOT enter the decision fingerprint -- the ring appends on a moved OUTCOME, and a queue-only record with zero changed slots is the v163 symptom rather than a feature; a queue that forms while nothing moves reaches /dl why immediately and reaches the ring on the next real decision. Renderers: the Arbiter Monitor draws a 'q' marker on the cell in BOTH grid modes (the fall-marker precedent -- a slot with someone waiting is exactly what you would never think to hover) and names holder + waiter in the hover; the Trigger Monitor's locks line grows an '(n queued)' count with the detail on hover, its IsItemHovered taken BEFORE the suffix is drawn so the tooltip stays on the held list. Tests MDL23-MDL26b, smoke AM8a-AM8e + MLK14-MLK16.
                   -- 166: MODE LOCKS, FIRST COME FIRST SERVE (Henrik, 2026-08-03): "we will come into situations where we maybe have conflicting modes active... the one who took the slot lock first should get it, the rest stand in queue basically." v165 resolved a contested slot by sorted condition -- deterministic, but the alphabet is not fairness, and 'DT' beating a Weapon cycle that had held the slot for an hour is exactly the arbitrary answer that ruling rejects. So modes now carry an ACTIVATION CLOCK: M.modeSeq, one counter per mode NAME, stamped when its flag last CHANGED, and modeLockPlan walks conditions in that order. Stamped on CHANGE and never on re-assertion -- a macro re-asserting a mode every pull must not send it to the back of the queue -- and cleared when the mode goes off, because turning it back on is genuinely taking the slot again. A cycle VALUE change re-stamps: the lock is keyed by condition, so Weapon:Melee -> Weapon:Caster really is a different lock taking the slots. THE QUEUE NEEDS NO STATE: the plan is rebuilt every dispatch, so when the holder's mode goes off the next in line simply wins the next walk -- nothing remembers a queue, and nothing has to be re-armed. The clock rides the modestate mirror as `__seq` (loadModeState restores it, advances the counter past the highest, and sweeps any unstamped flag) because the GUI computes the same plan in the other Lua state: without it the Mode Locks window would order a contested slot alphabetically while the engine ordered it by the clock, and name the wrong winner. Every flag write now goes through the ONE seam M.modeSet so the clock cannot be forgotten at one of the six assignment sites. Ties (two flags restored from one mirror) still break alphabetically -- deterministic first, fair second. Also: gear\modeslibrary.applyStamp no longer EATS a job's mode locks (it rebuilt the definition from the plan, deleting them on Append too -- the branch that promises nothing disappears); locks belong to the job and ride a stamp untouched, and only an Overwrite killing a cycle value strips that value's. And profileexport.triggerRefs now reports `modeSets`, so the export form disables MODES (not Triggers -- a lock travels with the Modes section, Triggers need not be selected at all) when Sets is unticked. Tests MDL1-MDL22, ML44a-ML44f, PX9a-PX9g, smoke MLK1-MLK13.
                   -- 165: MODE LOCKS -- "once that mode is active, this piece MUST ALWAYS stay on" (Henrik, 2026-08-03). A very common problem when building sets: some slots must be immune to every trigger rule while a mode holds -- his caster mode swaps weapons on every pull, his melee mode must never see one move, and the only way to express that today is to teach every rule in the file to keep its hands off Main/Sub. So a mode definition now carries `locks = { ["Weapon:Melee"] = { Main = "MeleeWpn" } }`, keyed by the exact `mode` CONDITION string the rules already use -- which makes the activity test M.modeActive itself (one primitive, not a second dialect of "is this mode on") and makes the ADR 0019 cascade free, because deleting the mode or dropping a cycle value takes its locks with it: they are the same table. It arrives as an ORDINARY CLAIMANT (`ModeLock`), not a floor special case: one rank row shipping directly above External, one claim table, no new arm and no new state file. That buys the Arbiter Monitor grid, the /dl why contest, the Priority list and the fall-down-its-own-ladder behaviour with no new code in any of them -- and it means a player who wants the lock to beat their armed craft bench drags the row up instead of asking for a setting. Claims on EVERY event (Pins' and Naked's reason: a lock that let go mid-cast would not be a lock). A lock naming a set with no entry for its slot claims nothing and the floor keeps it -- the Mode Locks window flags that in red at edit time, which is the only place it can still be fixed. Two active modes naming one slot resolve by sorted condition, first keeps it, loser reported: arbitrary but STABLE, where pairs() order would land differently on two dispatches with nothing changed. Also here: the claimant sig legs take the ensure STATE as a third argument (which mode holds a slot has to retrace even when the item name does not), rows may supply an `rlabel` so a fall names the SET rather than the row, and the slot-canon map moved to its vocabulary owner (arbiter.CANON_OF) instead of a third inline copy. Tests ML1-ML22, smoke MLK1-MLK13.
                   -- 164: THE SECOND COPY IS A LIVE FACT, NOT A STAMP (Coffeepoo's field report, 2026-08-03: two Bone Knives +1, the Main took one and the Sub stayed as worn, while equipping the off-hand BY HAND worked). Dual Wield was up and the set was right; the refusal was ours. utils.subSlotAllowed's same-name off-hand case wants proof of a second copy, and the flatten offered it nothing but the record's `Count` -- a stamp renderEntry writes ONCE, at first index, and that no command can refresh: /dl sync is add-only (an already-known item is skipped) and /dl fix backfills CATALOG facts only, as it must, because "how many do you own" is not one. Acquire the twin AFTER the first was indexed and dlac could never learn about it -- there was no supported path back, only a hand edit. So the flatten reads the bags instead (M.bagCopies over the existing per-second cache, equip-eligible containers, worn pieces included), which is the 2026-08-01 Pair/RSlot ruling applied to the one fact that is genuinely per-player: read it, do not make them run a migration for it. The read only ever ADDS evidence -- subSlotAllowed takes the best of ctx.copies and Count -- so a stamped file behaves identically, an unreadable scan falls back to the stamp rather than demoting gear, and nothing that pairs today can stop pairing. Only asked when the two names actually match, so the ordinary off-hand costs no lookup. Tests LD6c-LD6h. (Shipped with the gearimport half of the same report: the base Animator is an ALL-JOBS item on this server, so the Range bucket's exact PUP-mask test dropped it from gear.lua entirely -- see gearimport.rangeCategory, tests E29*.)
@@ -1005,6 +1005,14 @@ local MATCHERS = {
     any             = function() return true; end,
     status          = function(v, ctx) return ctx.player ~= nil and ci(ctx.player.Status, v); end,
     moving          = function(v, ctx) return ctx.player ~= nil and ((ctx.player.IsMoving == true) == (v == true)); end,
+    mobtagged       = function(v, ctx)
+        if type(v) ~= 'boolean' then return false; end
+        if ctx.mobTagged == nil then
+            pcall(function() ctx.mobTagged = require('dlac\\feature\\mobtag').current(); end);
+        end
+        if ctx.mobTagged == nil then return false; end
+        return ctx.mobTagged == v;
+    end,
     mode            = function(v) return M.modeActive(v); end,
     name            = function(v, ctx) return ctx.action ~= nil and ci(ctx.action.Name, v); end,
     contains        = function(v, ctx) return nameContains(ctx, v); end,   -- substring: 'Madrigal' hits Blade+Sword
@@ -1149,6 +1157,7 @@ local TIER = {
     -- town show-off set should decisively overlay the plain Idle set, while an
     -- explicit mode still wins. Same 95 band.
     intown = 95,
+    mobtagged = 95, -- personal tag gate overlays the ordinary engaged set
     mode = 100,
     -- The cases guard sits at the BOTTOM tier (the specificity floor is 10, so a
     -- value at/under it can never become a rule's max) -- "the guard never moves
@@ -1171,6 +1180,7 @@ local PRETTY_KEY = {
     buff = 'buff', buffnot = 'buffNot',
     pet = 'pet', petstatus = 'petStatus', petname = 'petName',
     target = 'target', intown = 'inTown',
+    mobtagged = 'mobTagged',
     playerhpbelow = 'playerHPBelow', playerhpabove = 'playerHPAbove',
     playerhppercentbelow = 'playerHPPercentBelow', playerhppercentabove = 'playerHPPercentAbove',
     playermpbelow = 'playerMPBelow', playermpabove = 'playerMPAbove',
@@ -6066,6 +6076,32 @@ local function craftStateOn(cs)
        and type(cs.craft) == 'string' and cs.craft ~= '';
 end
 
+-- The NEXUS LOCK (feature\nexuslink, 2026-10-04), lazily and for extclaim's
+-- reasons (below): AscensionXI's Nexus names the next synth's crafts, dlac
+-- picks the pieces for that recipe and holds them until the player moves. The
+-- lock rides THIS Craft row -- same rank, same Locks / Free equip / /dl why --
+-- and, while it holds, replaces the manual craft pick: its state is
+-- { enabled = true, craft = 'Nexus', nexus = { Slot = item } }, one table per
+-- lock, so this read allocates nothing. (Fields of M, not locals: this chunk
+-- is at Lua's 200-local ceiling.)
+function M._craftRowState(ev)
+    if ev ~= 'Default' then return nil; end
+    local ok, nl = pcall(require, 'dlac\\feature\\nexuslink');
+    local st = (ok and type(nl) == 'table' and type(nl.lockState) == 'function') and nl.lockState() or nil;
+    if type(st) == 'table' and type(st.nexus) == 'table' then return st; end
+    return ensureCraftState();
+end
+function M._craftRowClaim(st, ctx)
+    if type(st) == 'table' and type(st.nexus) == 'table' then
+        local equip = nil;
+        for slot, item in pairs(st.nexus) do
+            if type(item) == 'string' then equip = equip or {}; equip[slot] = item; end
+        end
+        return equip;
+    end
+    return craftOverlayFor(st, ctx);
+end
+
 -- The Action sequencer (issue #138), lazily -- it lives in feature/ (one require
 -- away) and the JobHelper row reads its live claim/active/status through here.
 -- Cycle-safe: the require runs at dispatch time, never at load.
@@ -6186,22 +6222,31 @@ local CLAIMANTS = {
     -- stand-asides, Default-only application); arming never switches
     -- activities.
     { name = 'Craft',
-      ensure = function(ev) return (ev == 'Default') and ensureCraftState() or nil; end,
+      ensure = function(ev) return M._craftRowState(ev); end,
       active = craftStateOn,
       bail1 = true, bail2 = true,
-      claim = function(st, on, env) return on and craftOverlayFor(st, env.ctx) or nil; end,
+      claim = function(st, on, env) return on and M._craftRowClaim(st, env.ctx) or nil; end,
       -- Claim-side ladder (ADR 0027 stage 4): the craft chain in collect
       -- mode, same overrides as craftOverlayFor. No craft item carries an
       -- RSlot today -- this is future-proofing: the day one does, a beaten
-      -- craft piece FALLS down its chain instead of dying.
+      -- craft piece FALLS down its chain instead of dying. A Nexus lock's
+      -- ladder is its one pick (the recipe-wide choice has no per-slot chain).
       rladder = function(slot, st)
           if not craftStateOn(st) then return nil; end
+          if type(st.nexus) == 'table' then
+              local nm = st.nexus[slot];
+              return (type(nm) == 'string') and { items = { { name = nm } } } or nil;
+          end
           local goal = (st.goal == 'nq' or st.goal == 'skillup') and st.goal or 'hq';
           return chainLadder('dlac:AutoCraft', { craftOverride = st.craft, goalOverride = goal }, slot);
       end,
       sig = claimantSigLeg,
       apply = overlayApply('Craft', 'craft gear (overlay)  ->  '),
-      prioStatus = function() return craftStateOn(ensureCraftState()) and 'ON (armed)' or 'off'; end },
+      prioStatus = function()
+          local st = M._craftRowState('Default');
+          if type(st) == 'table' and type(st.nexus) == 'table' then return 'ON (Nexus recipe)'; end
+          return craftStateOn(st) and 'ON (armed)' or 'off';
+      end },
     -- HELM overlay: same law, its own Claim (co-claims since step 1.5).
     { name = 'HELM',
       ensure = function(ev) return (ev == 'Default') and ensureHelmState() or nil; end,

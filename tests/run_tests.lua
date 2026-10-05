@@ -247,9 +247,9 @@ end)();
                    'gearfmt','gearimport','gearoptim','gearoracle','gearrecord','groupimport','groupscan',
                    'groupsmodel','jobgate','levelstats','modeslibrary','nativemp','ownedcache','profileexport','profilesets','rulecopy','serverpack','setimport',
                    'setmanager','statdefs','gathering','syncflags','triggermodel','unusedgear','weaponfilter','weightimport' };
-    local FEATURE = { 'actionseq','ammowatch','arbwatch','augments','check','chocowatch','combat','craftwatch','debug','digcalc','digrank',
+    local FEATURE = { 'actionseq','ammowatch','arbwatch','augments','check','chocowatch','combat','craftpick','craftwatch','debug','digcalc','digrank',
                       'engagewatch','fishcalc','fishwatch','foodwatch','gamehud','helmwatch','idleexcl','jobhelpers','location','lockstyle','lookpreview',
-                      'macrobook','meritwatch','modapi','modcfg','mpbands','petfood','petvitals','pinwatch','recast','servermods','synthrun','useitem','vanamoon' };
+                      'macrobook','meritwatch','modapi','modcfg','mpbands','nexuslink','petfood','petvitals','pinwatch','recast','servermods','synthrun','useitem','vanamoon' };
     local LIB = { 'cmdqueue','entwatch','safewrite','statefile' };
     -- Job helper modules (issue #137): each is a drop-in FOLDER under jobhelpers\
     -- with an init.lua, plus whatever pure cores it splits out beside it (issue
@@ -8496,6 +8496,104 @@ end)();
     check('CR10h an absent state is off', ajl(nil, 'DRK'), 'off');
     check('CR10i ammoStateOn stays file-level (the bail read is untouched)',
         dispatchM._ammoStateOn(fmt2), true);
+end)();
+
+-- ---------------------------------------------------------------------------
+-- NX. THE NEXUS LOCK RIDES THE CRAFT ROW (engine v169, feature\nexuslink).
+--     While AscensionXI's Nexus has named a recipe, the Craft row's state is
+--     the lock's { enabled, craft = 'Nexus', nexus = picks } and its claim is
+--     those picks; without a lock the row reads craftstate.lua as before.
+--     The pick and the lock themselves: tests\nexuscraft.lua.
+-- ---------------------------------------------------------------------------
+(function()
+    local saved = package.loaded['dlac\\feature\\nexuslink'];
+    local lockSt = nil;
+    package.loaded['dlac\\feature\\nexuslink'] = { lockState = function() return lockSt; end };
+    local row = nil;
+    for _, r in ipairs(dispatchM._claimants) do if r.name == 'Craft' then row = r; end end
+    check('NX0 the Craft row exists', type(row), 'table');
+    if row == nil then package.loaded['dlac\\feature\\nexuslink'] = saved; return; end
+
+    local manual = row.ensure('Default');
+    lockSt = { enabled = true, craft = 'Nexus',
+               nexus = { Body = 'Artisan\'s Apron', Neck = 'Smithy\'s Torque' } };
+    local st = row.ensure('Default');
+    check('NX1 a Nexus lock is the Craft row state on Default', st, lockSt);
+    check('NX2 and nothing on any other event', row.ensure('Precast'), nil);
+    check('NX3 the lock is active', row.active(st), true);
+    local eq = row.claim(st, true, { ctx = { player = { MainJobSync = 75 } } });
+    check('NX4 the claim carries the Body pick', eq and eq.Body, 'Artisan\'s Apron');
+    check('NX4b and the Neck pick', eq and eq.Neck, 'Smithy\'s Torque');
+    check('NX4c as a copy the engine may keep (never the lock\'s own table)', eq ~= lockSt.nexus, true);
+    check('NX4d an inactive row claims nothing', row.claim(st, false, { ctx = {} }), nil);
+    local lad = row.rladder('Neck', st);
+    check('NX5 the ladder for a picked slot is that one pick', lad and lad.items[1] and lad.items[1].name,
+        'Smithy\'s Torque');
+    check('NX5b and a slot the lock leaves alone has none', row.rladder('Feet', st), nil);
+    check('NX6 /dl prio names the Nexus recipe', row.prioStatus(), 'ON (Nexus recipe)');
+    check('NX7 the signature leg sees the picks (a new lock re-dispatches)',
+        row.sig(eq), 'Body=Artisan\'s Apron,Neck=Smithy\'s Torque');
+
+    lockSt = nil;
+    check('NX8 without a lock the row reads the manual craft state again', row.ensure('Default'), manual);
+    lockSt = { enabled = true, craft = 'Nexus' };   -- no picks table: not a lock
+    check('NX8b a state without picks is not taken for a lock', row.ensure('Default'), manual);
+    package.loaded['dlac\\feature\\nexuslink'] = nil;
+    check('NX8c a missing nexuslink module degrades to the manual state', row.ensure('Default'), manual);
+
+    -- NX9. THE MAIN HAND (owner, 2026-10-04: the Kupo Shield "shouldn't be
+    -- battling with a 2-hander"). A lock that wears a shield and no weapon is
+    -- exactly the craft claim the v37 Sub-vs-Main guard (section AF) reads, so
+    -- a two-handed or hand-to-hand set Main is held while the lock stands. The
+    -- server takes a worn two-hander off when the shield goes on.
+    package.loaded['dlac\\utils'] = utils;
+    local G = package.loaded['dlac\\gear'];
+    G.NameToObject['Kupo Shield +2'] = { Name = 'Kupo Shield +2', Type = 'Sub' };
+    G.NameToObject['Death Scythe']   = { Name = 'Death Scythe', Type = 'Great Scythe', OneHanded = false };
+    G.NameToObject['Parry Knife']    = { Name = 'Parry Knife', Type = 'Dagger', OneHanded = true };
+    G.NameToObject['Cat Baghnakhs']  = { Name = 'Cat Baghnakhs', Type = 'Hand-to-Hand', OneHanded = true };
+    utils._resetNameIndex();
+    local shieldLock = { enabled = true, craft = 'Nexus',
+                         nexus = { Sub = 'Kupo Shield +2', Body = 'Artisan\'s Apron' } };
+    local claim = row.claim(shieldLock, true, { ctx = {} });
+    local g = dispatchM._craftMainGuard(claim);
+    check('NX9 a shield lock with no weapon builds the main-hand guard', g ~= nil, true);
+    check('NX9b it holds a two-handed set Main', g and g('Death Scythe'), true);
+    check('NX9c and a hand-to-hand one', g and g('Cat Baghnakhs'), true);
+    check('NX9d a one-handed Main keeps its place beside the shield', g and g('Parry Knife'), false);
+    local _, held = dispatchM._equipResolved({ Main = 'Death Scythe', Body = 'Weaver Apron' }, { craftMainGuard = g });
+    check('NX9e the set\'s scythe stays off while the lock holds', held.Main, nil);
+    check('NX9f the rest of the set is untouched', held.Body, 'Weaver Apron');
+
+    -- NX10. END TO END through the REAL M.dispatch (the NK26 harness): with only
+    -- the lock armed, a Default dispatch reaches the equip door with the lock's
+    -- pieces and leaves the main hand alone.
+    lockSt = shieldLock;
+    package.loaded['dlac\\feature\\nexuslink'] = { lockState = function() return lockSt; end };
+    local savedPlayer, savedState = TEST_PLAYER, rawget(_G, 'gState');
+    local savedEng = package.loaded['dlac\\feature\\equipengine'];
+    TEST_PLAYER = { MainJob = 'WAR', MainJobLevel = 75, SubJob = 'MNK', SubJobLevel = 37,
+                    MainJobSync = 75, SubJobSync = 37, Status = 'Idle', IsMoving = false };
+    local wrote = {};
+    package.loaded['dlac\\feature\\equipengine'] = {
+        nativeOn = function() return true; end,
+        equipSet = function(t) for k, v in pairs(t or {}) do wrote[k] = v; end end,
+        state = { tripped = false },
+    };
+    _G.gState = { CurrentCall = 'N/A', Disabled = {} };
+    local okD, errD = pcall(dispatchM.dispatch, 'Default');
+    check('NX10 a Default dispatch with the lock armed does not throw', okD, true);
+    if not okD then print('NX10 error: ' .. tostring(errD)); end
+    check('NX10b the shield reaches the equip door', wrote.Sub, 'Kupo Shield +2');
+    check('NX10c and the apron', wrote.Body, 'Artisan\'s Apron');
+    check('NX10d the main hand is not written', wrote.Main, nil);
+    lockSt = nil;
+    wrote = {};
+    pcall(dispatchM.dispatch, 'Default');
+    check('NX10e lock gone: the same dispatch writes nothing', next(wrote), nil);
+    TEST_PLAYER, _G.gState = savedPlayer, savedState;
+    package.loaded['dlac\\feature\\equipengine'] = savedEng;
+    package.loaded['dlac\\feature\\nexuslink'] = saved;
 end)();
 
 -- ---------------------------------------------------------------------------
@@ -27623,14 +27721,15 @@ end)();
     check('GVR13 ...arms the city badge', rc.cityBlocked(), true);
     T = T + rc.BEAT + 1;
     check('GVR14 the same derivation does not re-spam', rc.tick(), 'clean');
-    -- the tab's countdown reads the same clock the beat runs on
-    check('GVR14a right after a beat the countdown is the full beat', rc.nextBeat(), rc.BEAT);
-    T = T + 3;
-    check('GVR14b ...and it counts down', rc.nextBeat(), rc.BEAT - 3);
-    check('GVR14c an acking run reads busy', (function()
-        local st = rc._st(); local was = st.inFlight; st.inFlight = 1;
-        local r = rc.nextBeat(); st.inFlight = was; return r;
-    end)(), 'busy');
+    -- no countdown any more (2026-09-30): the tab names WORK in progress,
+    -- and an engine with nothing in flight has nothing to say
+    check('GVR14a an idle engine shows no activity', rc.activity(), nil);
+    check('GVR14b an acking run reads "adding N"', (function()
+        local st = rc._st(); local was = st.inFlight; st.inFlight = 3;
+        local r = rc.activity(); st.inFlight = was; return r and r.adding;
+    end)(), 3);
+    check('GVR14c ...and the held adds wait for the retry clock, not the beat',
+        rc._st().retryAt == math.huge, true);
     rc.zoneArmed();
     T = T + rc.BEAT + 1;
     check('GVR15 a zone-in re-arms the push', rc.tick(), 'pushed:5');
@@ -27881,7 +27980,11 @@ end)();
     T = T + rc.BEAT + 1;
     check('GVR29e the satisfied beat is clean', rc.tick(), 'clean');
     -- Unequip & Store: the deposit ack marks the mirror stale, the resync
-    -- LISTs Hat B (30) as a new row, the commit re-stamps
+    -- LISTs Hat B (30) as a new row, the commit re-stamps. The bag slot holds
+    -- Hat B as the deposit leaves -- a piece this layout does not name, so
+    -- the layout stays as it is (only a stored piece the layout NAMES is
+    -- moved on to the shelf by the server's apply).
+    vc._readSlot = function(c, s) return (c == 0 and s == 3) and 30 or 0; end;
     vc.requestDeposit({ { container = 0, slot = 3 } }, function() end);
     T = T + 1; vc.pump(true);
     check('GVR29f the deposit rides the wire', sent[#sent][5], vc.op.DEPOSIT);
@@ -27898,6 +28001,7 @@ end)();
         return q[1] ~= nil and q[1].e.itemId or 'not queued';
     end)(), 30);
     T = T + 1; vc.pump(true); respond(0, 0, vc._wu16(0) .. vc._wu16(0));
+    vc._readSlot = nil;
 
     -- AUTO-EVICT HOLDS IN THE FIELD (2026-08-30): the town service predicting
     -- 'not a town' keeps auto removals off the wire (they would only be
@@ -28013,15 +28117,16 @@ end)();
     check('FGT20 ascensionxi: Triggers on',       fg4.tabEnabled('Triggers'), true);
     check('FGT21 ascensionxi: Gear Helpers on',   fg4.tabEnabled('Gear Helpers'), true);
     check('FGT22 ascensionxi: Job Helpers off',   fg4.tabEnabled('Job Helpers'), false);
-    check('FGT23 ascensionxi: lockstyle, hobby bar and macro book enabled in menu', (function()
+    check('FGT23 ascensionxi: lockstyle, hobby bar, macro book and teleports enabled in menu', (function()
         for _, r in ipairs(fg4.MENU) do
-            if fg4.menuEnabled(r.key) ~= (r.key == 'lockstyle' or r.key == 'hobbybar' or r.key == 'macrobook') then return r.key; end
+            if fg4.menuEnabled(r.key) ~= (r.key == 'lockstyle' or r.key == 'hobbybar' or r.key == 'macrobook' or r.key == 'teleports') then return r.key; end
         end
         return true;
     end)(), true);
 
     check('FGT25 ascensionxi: gathering enabled', fg4.helperEnabled('helm'), true);
-    for _, key in ipairs({ 'craft', 'fish', 'choco', 'obi', 'ammo', 'maxmp', 'restock', 'future' }) do
+    check('FGT25b ascensionxi: chocobo digging enabled', fg4.helperEnabled('choco'), true);
+    for _, key in ipairs({ 'craft', 'fish', 'obi', 'ammo', 'maxmp', 'restock', 'future' }) do
         check('FGT26 ascensionxi: helper hidden ' .. key, fg4.helperEnabled(key), false);
     end
     check('FGT27 no allowlist keeps future helpers', fg3.helperEnabled('future'), true);
@@ -28347,18 +28452,26 @@ end)();
     check('GVC7 the fresh hook fired once', freshed, 1);
     check('GVC8 state reads fresh', vc.state(), 'fresh');
 
-    -- the zone probe: count agrees -> re-stamped WITHOUT spending LIST pages
-    vc.noteZoneIn();
-    check('GVC9 zone-in marks stale', vc.mirror.fresh, false);
-    T = T + vc.SETTLE_ZONE + 1; vc.pump(true);
+    -- the zone probe: count agrees -> re-stamped WITHOUT spending LIST pages.
+    -- A zone line itself changes nothing (2026-10-01): the rows stay on
+    -- screen and fresh, nothing leaves until the new zone's inventory is
+    -- loaded, and against a server without pushes a city arrival SCHEDULES
+    -- one probe for after the server's own zone-in tidy.
+    local function zoneLine()   -- 0x00B ZONECHANGE, 0x00A, the re-send's run + AllLoaded
+        vc.noteZoneOut(vc.LOGOUT_ZONECHANGE); vc.noteZoneIn();
+        vc.noteItemSame(0); vc.noteItemSame(0); vc.noteItemSame(1);
+    end
+    zoneLine();
+    check('GVC9 a zone line keeps the rows and schedules a probe', vc.mirror.fresh == true and vc._st().probeAt ~= nil, true);
+    T = T + vc.SETTLE_TIDY + 1; vc.pump(true);
     local before = #sent;
     check('GVC10 the probe is a HELLO', sent[before][5], vc.op.HELLO);
     respond(0, 0, vc._wu16(1) .. vc._wu16(0) .. vc._wu32(3) .. string.char(15, 124, 62, 0));
     check('GVC11 agreeing count -> fresh again, no LIST', vc.mirror.fresh == true and #sent == before, true);
 
     -- ...and a DISAGREEING count escalates to a full LIST
-    vc.noteZoneIn();
-    T = T + vc.SETTLE_ZONE + 1; vc.pump(true);
+    zoneLine();
+    T = T + vc.SETTLE_TIDY + 1; vc.pump(true);
     respond(0, 0, vc._wu16(1) .. vc._wu16(0) .. vc._wu32(9) .. string.char(15, 124, 62, 0));
     check('GVC12 disagreeing count -> LIST begins', sent[#sent][5], vc.op.LIST);
     respond(0, 0, vc._wu16(0) .. vc._wu16(0));   -- empty vault now
@@ -28371,13 +28484,16 @@ end)();
     vc.noteJob(3);
     check('GVC16 a job change marks stale', vc.state(), 'stale');
 
-    -- retries re-send the SAME Seq; exhaustion backs off quietly
+    -- retries re-send the SAME Seq; exhaustion backs off quietly (a READ
+    -- waits READ_TIMEOUT per try: repeating it is harmless but costs a walk)
     vc._reset(); T, sent = 100, {};
     vc.pump(true); T = 103; vc.pump(true);
     local seq1 = sent[1][6];
     T = T + vc.SEND_TIMEOUT + 0.1; vc.pump(true);
+    check('GVC17a a read is not re-sent on the write clock', #sent, 1);
+    T = T + vc.READ_TIMEOUT; vc.pump(true);
     check('GVC17 a timeout re-sends the SAME seq', #sent == 2 and sent[2][6] == seq1, true);
-    for _ = 1, vc.MAX_RETRIES + 1 do T = T + vc.SEND_TIMEOUT + 0.1; vc.pump(true); end
+    for _ = 1, vc.READ_RETRIES + 1 do T = T + vc.READ_TIMEOUT + 0.1; vc.pump(true); end
     check('GVC18 exhaustion clears pending and stays stale',
           vc._st().pending == nil and vc.state() == 'stale', true);
 
@@ -28520,7 +28636,7 @@ end)();
     tl = vc.traceLine();
     check('GVT4 a refusal is named by status word', tl:find('refused: UNAVAILABLE', 1, true) ~= nil, true);
     check('GVT5 ...the reply is on record', tl:find('last reply HELLO#', 1, true) ~= nil, true);
-    check('GVT6 ...with the next try counted down', tl:find('next try in 30s', 1, true) ~= nil, true);
+    check('GVT6 ...with the next try counted down', tl:find('next try in ' .. vc.GIVEUP_BACKOFF .. 's', 1, true) ~= nil, true);
     check('GVT7 ...and statusLine still counts NO failed syncs (a refusal is not a timeout)',
           vc.statusLine():find('failed sync', 1, true), nil);
     -- an unreadable HELLO (a changed server shape) says so
@@ -28532,8 +28648,8 @@ end)();
     -- a timeout is named too, with the retry count
     vc._reset(); T, sent = 0, {};
     T = 3; vc.pump(true); T = 6; vc.pump(true);   -- arm (+2s), then send
-    for _ = 1, vc.MAX_RETRIES + 1 do T = T + vc.SEND_TIMEOUT + 0.1; vc.pump(true); end
-    check('GVT9 a timeout is named, with the retries', vc.traceLine():find('timed out: no reply after 3 retries', 1, true) ~= nil, true);
+    for _ = 1, vc.READ_RETRIES + 1 do T = T + vc.READ_TIMEOUT + 0.1; vc.pump(true); end
+    check('GVT9 a timeout is named, with the retries', vc.traceLine():find('timed out: no reply after ' .. vc.READ_RETRIES .. ' retries', 1, true) ~= nil, true);
     -- BAD_OP: dormant, and the line says there is no retry
     vc._reset(); T, sent = 0, {};
     T = 3; vc.pump(true); T = 6; vc.pump(true);   -- arm (+2s), then send
@@ -28583,11 +28699,13 @@ end)();
     respond(vc.status.NOT_ATTUNED, 0, '');
     check('GVA10 a second refusal says nothing either', #said, 0);
     check('GVA11 ...and ownership is not re-told (nothing changed)', freshed, 1);
-    -- a reason (zone-in) pulls the re-check forward instead of pushing it out
-    vc.noteZoneIn();
-    check('GVA12 zone-in pulls the next check to the settle time',
-          vc.traceLine():find('next check in ' .. math.ceil(vc.SETTLE_ZONE) .. 's', 1, true) ~= nil, true);
-    T = T + vc.SETTLE_ZONE + 1; vc.pump(true);
+    -- a reason (arriving in a city) pulls the re-check forward instead of pushing it out
+    vc.noteZoneOut(vc.LOGOUT_ZONECHANGE); vc.noteZoneIn();
+    check('GVA12a nothing is asked while the zone loads', vc.traceLine():find('next check in 0s', 1, true) == nil, true);
+    vc.noteItemSame(0); vc.noteItemSame(0); vc.noteItemSame(1);
+    check('GVA12 a city arrival pulls the next check to now',
+          vc.traceLine():find('next check in 0s', 1, true) ~= nil, true);
+    T = T + vc.MIN_GAP + 0.01; vc.pump(true);
     check('GVA13 ...and the HELLO leaves', sent[#sent][5] == vc.op.HELLO and #sent == before + 2, true);
     -- the quest lands: the next OK clears the state, says so once, and syncs in full
     respond(vc.status.OK, 0, vc._wu16(1) .. vc._wu16(0) .. vc._wu32(1) .. string.char(15, 124, 62, 0));
@@ -28708,7 +28826,7 @@ end)();
     local src = (f ~= nil) and f:read('*a') or '';
     if f ~= nil then f:close(); end
     check('GVS10 a fresh mirror schedules the add-only gear sync',
-          src:find("syncflags').invDirty()", 1, true) ~= nil, true);
+          src:find("syncflags').invDirty(", 1, true) ~= nil, true);
 
     sp.provide('gearvault', nil);
     if hadAug == nil then package.loaded['dlac\\feature\\augments'] = nil; end

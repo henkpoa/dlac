@@ -18,6 +18,7 @@ local vc  = require(base .. 'vaultclient');
 local drv = require(base .. 'derive');
 local rec = require(base .. 'reconcile');
 local usg = require(base .. 'usage');
+local recharge = require(base .. 'recharge');
 
 -- Production seams -----------------------------------------------------------
 
@@ -25,6 +26,37 @@ local transport = require('dlac\\servers\\ascensionxi\\transport');
 vc._clock = transport._clock;
 vc._send = function(p) return transport.send(p, 'gear vault'); end;
 vc._received = transport.received;
+vc._abandon = transport.abandon;
+vc._notePush = transport.notePush;
+-- Start the seq anywhere: a reload that restarted at 1 could re-send an
+-- identical write inside the server's replay window (Nexus does the same).
+pcall(function()
+    local t = transport._clock();
+    vc.seedSeq((math.floor(t) * 31 + math.floor((t % 1) * 1000)) % 254);
+end);
+
+-- WHERE WE STAND (Henrik, 2026-09-30: "there should not be any gear vault
+-- events when outside the city, since you can only interact with it inside
+-- one"). A city (the server's own predicate: the zone type's CITY bit) or a
+-- town with a counter (Nashmau stores and withdraws without the CITY bit):
+-- the vault can change here. The field: it cannot -- the client holds still.
+local function location()
+    local ok, loc = pcall(require, 'dlac\\feature\\location');
+    return (ok and type(loc) == 'table') and loc or nil;
+end
+vc._inCity = function()
+    local loc = location();
+    return loc ~= nil and type(loc.inCity) == 'function' and loc.inCity() or nil;
+end;
+vc._vaultZone = function()
+    local loc = location();
+    if loc == nil then return nil; end
+    local c = (type(loc.inCity) == 'function') and loc.inCity() or nil;
+    local t = loc.inTown();
+    if c == true or t == true then return true; end
+    if t == false and c ~= true then return false; end
+    return nil;
+end;
 vc._audit = function(event, entry, seq, result)
     local dir = require('dlac\\profiles').dataDir();
     if not dir then return; end
@@ -76,10 +108,21 @@ end;
 -- sync an inventory packet does. First run on a character who stored gear
 -- before dlac ever loaded: login -> LIST -> fresh -> ~5s -> the vaulted
 -- pieces are records, and the + Add picker offers them (2026-09-08).
+-- 2026-09-30: the commit moves ownership for real, so it also bumps the
+-- ownership GENERATION (the + Add picker's cached lists key on it -- a list
+-- built while a piece was between homes used to keep it out until a job or
+-- level change), the gear scan follows in ~1 s instead of the packet
+-- debounce's 5 s, and the layout engine is KICKED: a stored piece the sets
+-- want is added as soon as the vault shows it, not on the next 8 s beat.
 vc._onFresh = function()
-    pcall(function() require('dlac\\gear\\ownedcache').resetCache(); end);
-    pcall(function() require('dlac\\gear\\syncflags').invDirty(); end);
+    pcall(function() require('dlac\\gear\\ownedcache').bumpGeneration(); end);
+    pcall(function() require('dlac\\gear\\syncflags').invDirty(1.0); end);
+    pcall(rec.kick, 'vault');
 end;
+vc._onLayout = function() pcall(rec.kick, 'layout'); end;
+vc._onPush = function() pcall(rec.kick, 'push'); end;
+-- the zone line is over: a city may now send adds that waited for one
+vc._onZoneSettled = function() pcall(rec.kick, 'zone'); end;
 vc._onLost = usg.forgetInstances;
 
 -- The service core consults (gearimport's vault fold, prune's guard, and
@@ -96,25 +139,61 @@ pcall(function()
         statusLine = vc.statusLine,
         cityBlocked = function() return rec.cityBlocked(); end,
     });
+    require('dlac\\gear\\serverpack').provide('expRingRecharge', recharge);
 end);
 
 -- Ashita glue (all guarded: headless there is no ashita global) ---------------
 
+local _charId = nil;   -- the character the vault state belongs to (0x00A's id)
 pcall(function()
     ashita.events.register('packet_in', 'dlac_gearvault_packet_in', function(e)
-        -- All inventory mutations invalidate slot identities, including
-        -- counts and flags. Conservative across containers until live hook
-        -- timing is verified; snapshots happen only on later present beats.
+        -- Inventory packets: only a slot whose ITEM changed forgets its copy,
+        -- and only a move of an item the layout names re-reads the layout
+        -- (vaultclient.noteInventory). The old rule -- every 0x01D-0x020
+        -- invalidates everything -- ran on every gear swap's lock-flag
+        -- update and was 34-58 % of all vault traffic in the field logs.
         if e.id >= 0x01D and e.id <= 0x020 then
-            vc.invalidateInstances();
-            if vc.instanceMode() then vc.invalidateLayout(vc.SETTLE_LAYOUT); end
+            -- 0x01D State (byte 4): the zone line is over when the zone-in
+            -- re-send's run of containers ends (vaultclient.noteItemSame)
+            if e.id == 0x01D then
+                local d = e.data or '';
+                if #d >= 5 then pcall(vc.noteItemSame, d:byte(5)); end
+            end
+            pcall(vc.noteInventory, e.id, e.data_modified or e.data);
+            return;
+        end
+        -- A wardrobe grew (container sizes): the engine's room changed. The
+        -- zone-in re-send repeats the sizes; that is not growth.
+        if e.id == 0x01C then
+            if not vc.zoning() then pcall(rec.kick, 'capacity'); end
+            return;
+        end
+        -- Zone-out: nothing leaves until the next zone's inventory is loaded.
+        -- LogoutState (byte 4): 2 = a zone line, 1 = a logout.
+        if e.id == 0x00B then
+            recharge.reset();
+            local d = e.data or '';
+            pcall(vc.noteZoneOut, (#d >= 5) and d:byte(5) or nil);
+            return;
         end
         if e.id == 0x00A then
+            recharge.reset();
+            -- A different character without an addon reload: nothing we hold
+            -- is theirs (the usage file, the mirror, the layout engine).
+            local data = e.data or '';
+            local id = (#data >= 8) and (data:byte(5) + data:byte(6) * 256 + data:byte(7) * 65536 + data:byte(8) * 16777216) or nil;
+            if id ~= nil and _charId ~= nil and id ~= _charId then
+                pcall(vc.resetCharacter);
+                pcall(rec._reset);
+                pcall(usg.resetCharacter);
+            end
+            if id ~= nil then _charId = id; end
             vc.noteZoneIn();
-            rec.zoneArmed();   -- a city-blocked push may retry where we landed
+            rec.zoneArmed();   -- a city-held push may go where we land (it runs once settled)
             return;
         end
         if e.id ~= vc.PKT then return; end
+        if recharge.onPacket(e.data_modified or e.data) then e.blocked = true; return; end
         local ok, consumed = pcall(function()
             return vc.onFrame(vc.parseFrame(e.data_modified or e.data));
         end);
@@ -136,6 +215,36 @@ pcall(function()
     end);
 end);
 
+-- Unloading (or reloading) dlac: the push subscription lasts the session, so
+-- say goodbye -- otherwise the server would keep sending frames that nothing
+-- blocks from reaching the game client. Best effort: one plain HELLO,
+-- straight to the packet manager (the shared gate is going away with us).
+pcall(function()
+    ashita.events.register('unload', 'dlac_gearvault_unload', function()
+        pcall(function()
+            local frame = vc.unsubscribeFrame();
+            if frame ~= nil then AshitaCore:GetPacketManager():AddOutgoingPacket(vc.PKT, frame); end
+        end);
+    end);
+end);
+
+-- A TRADE to a Gear Vault counter deposits on the server with no 0x1E0 frame
+-- at all -- the NPC's own help says "trade it gear" -- and dlac never noticed
+-- until a zone line or a manual Sync (2026-09-30 audit, the top staleness
+-- bug). 0x036 carries the target's entity index at 0x3A; the counters are
+-- named "Gear Vault" on the client (gear_vault_npcs.lua packetName).
+pcall(function()
+    ashita.events.register('packet_out', 'dlac_gearvault_trade', function(e)
+        if e.id ~= 0x036 then return; end
+        local data = e.data_modified or e.data;
+        if type(data) ~= 'string' or #data < 0x3C then return; end
+        local idx = data:byte(0x3A + 1) + data:byte(0x3B + 1) * 256;
+        local name = nil;
+        pcall(function() name = AshitaCore:GetMemoryManager():GetEntity():GetName(idx); end);
+        if name == 'Gear Vault' then vc.noteCounterTrade(); end
+    end);
+end);
+
 -- `/dl vault` -- the field probe: state, mirrored count, a `sync` verb, and
 -- `why <name>` (defined below, forward-declared here -- a local referenced
 -- before declaration is a silent nil global, hard rule 8). Registered like
@@ -152,7 +261,9 @@ pcall(function()
         e.blocked = true;
         if rest:match('^sync') then
             vc.refresh();
+            vc.invalidateLayout();
             vc.requestLayout(0);
+            pcall(rec.kick, 'sync');
             vc._say('gear vault: sync requested.');
         elseif rest:match('^cap%s*%d*$') then
             -- pressure-flow field testing: pretend the shelf holds only <n>
@@ -258,23 +369,47 @@ local RD = {
         end);
         return root;
     end,
-    triggers = function()
-        local t = nil;
-        pcall(function()
-            local j = mainJob();
-            local abbr = require('dlac\\gear\\jobgate').JOBS[j];
-            if abbr == nil then return; end
-            local prof = require('dlac\\profiles');
-            local disp = require('dlac\\dispatch');
-            local tt, err = disp.readTriggersRaw(prof.triggersPath(abbr));
-            if tt == nil and (err == 'no file' or err == 'no path') then
-                tt, err = disp.readTriggersRaw(prof.legacyTriggersPath(abbr));
-            end
-            if tt ~= nil then t = tt;
-            elseif err == 'no file' or err == 'no path' then t = {}; end
-        end);
-        return t;
-    end,
+    -- The engine re-derives often now (kicks + a 3 s quiet beat), so the
+    -- trigger file is parsed only when its TEXT changed; reading the bytes
+    -- to compare is the whole per-run cost.
+    triggers = (function()
+        local cache = { path = nil, raw = nil, t = nil };
+        local function readText(path)
+            if path == nil then return nil; end
+            local f = io.open(path, 'rb');
+            if f == nil then return nil; end
+            local s = f:read('*a');
+            f:close();
+            return s;
+        end
+        return function()
+            local t = nil;
+            pcall(function()
+                local j = mainJob();
+                local abbr = require('dlac\\gear\\jobgate').JOBS[j];
+                if abbr == nil then return; end
+                local prof = require('dlac\\profiles');
+                local disp = require('dlac\\dispatch');
+                local path = prof.triggersPath(abbr);
+                local raw = readText(path);
+                if raw == nil then
+                    path = prof.legacyTriggersPath(abbr);
+                    raw = readText(path);
+                end
+                if raw == nil then t = {}; return; end   -- no trigger file: nothing to derive
+                if cache.t ~= nil and cache.path == path and cache.raw == raw then t = cache.t; return; end
+                local tt = disp.readTriggersRaw(path);
+                if tt ~= nil then
+                    cache.path, cache.raw, cache.t = path, raw, tt;
+                    t = tt;
+                end
+            end);
+            return t;
+        end;
+    end)(),
+    -- The server's own city predicate: live edits to the active job are
+    -- refused outside one, so the engine holds its adds there.
+    inCity = function() return vc._inCity(); end,
     resolve = function(name)
         local out = nil;
         pcall(function()
@@ -282,7 +417,8 @@ local RD = {
             if type(S.lookupByName) ~= 'function' then return; end
             local r = S.lookupByName(name);
             if type(r) == 'table' and type(r.Id) == 'number' then
-                out = { id = r.Id, aug = (type(r.AugKey) == 'string' and r.AugKey ~= '') };
+                out = { id = r.Id, aug = (type(r.AugKey) == 'string' and r.AugKey ~= ''),
+                        plain = (r.AugKey == '') };
             end
         end);
         return out;
@@ -380,7 +516,8 @@ vaultWhy = function(name)
             tostring(lc.job), lc.fresh and 'fresh' or 'STALE', inLayout));
         if inLayout > 0 and held > 0 then
             line('  NOTE: the layout names it and the vault holds it -- the SHELF catches up at the');
-            line('  next job change or live layout edit (a deposit alone does not trigger an apply).');
+            line('  next apply: a job change, a live layout edit, a deposit of a piece it names, or');
+            line('  your next zone line (the server tidies the shelf at every zone-in).');
         end
     end
     if r ~= nil then
@@ -389,9 +526,9 @@ vaultWhy = function(name)
     end
     local s = usg.settings();
     local rst = rec._st();
-    line(string.format('  engine: additions=%s removals=%s cityBlocked=%s notVaulted=%d lastPushKey=%s%s%s',
+    line(string.format('  engine: additions=%s removals=%s cityBlocked=%s notVaulted=%d chooseCopy=%d lastPushKey=%s%s%s',
         s.additions, s.removals,
-        tostring(rec.cityBlocked()), rec.notVaulted(), rst.lastPushKey and 'set' or 'none',
+        tostring(rec.cityBlocked()), rec.notVaulted(), #rec.chooseCopy(), rst.lastPushKey and 'set' or 'none',
         _capOverride ~= nil and ('  CAP OVERRIDE=' .. _capOverride) or '',
         _tickErr ~= nil and ('  LAST ERROR: ' .. _tickErr) or ''));
     for _, s in ipairs(out) do vc._say(s); end
@@ -440,12 +577,24 @@ local function usageBeat()
     end
 end
 
+local _setsGen = nil;   -- profilesets' commit generation the engine last saw
 return {
     pump = function()
         local j = mainJob();
         local ready = (type(j) == 'number' and j ~= 0);
-        if ready then vc.noteJob(j); end
+        if ready then
+            local was = vc.currentJob();
+            vc.noteJob(j);
+            if was ~= nil and was ~= j then pcall(rec.kick, 'job'); end
+            -- a set commit changes what the layout should hold: run now
+            pcall(function()
+                local g = require('dlac\\gear\\profilesets').generation();
+                if _setsGen ~= nil and g ~= _setsGen then rec.kick('sets'); end
+                _setsGen = g;
+            end);
+        end
         vc.pump(ready);
+        recharge.pump(ready);
         if ready then pcall(usageBeat); end
         -- the tab's Unequip & Store pending step: the deposit leaves only
         -- once the client shows the piece off, tab open or not

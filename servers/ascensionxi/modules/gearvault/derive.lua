@@ -22,9 +22,11 @@
         layout entry needs the exact 24-byte blob, which derivation cannot
         mint safely -- the vault pane's "+ Layout" button carries it instead
         (GV8's road). Unresolvable names are collected for the report.
+      * AugKey = '' pins the PLAIN copy: the item is marked plainOnly, so the
+        engine never draws an augmented copy that entry would refuse to wear.
 
-    resolve(name) is injected: -> { id = <itemId>, aug = <boolean> } | nil.
-    Output: { items = { { itemId, count } ... } (ordered by id),
+    resolve(name) is injected: -> { id = <itemId>, aug = <boolean>, plain = <boolean> } | nil.
+    Output: { items = { { itemId, count, plainOnly } ... } (ordered by id),
               skippedAug = n, unresolved = { name ... },
               hash = a stable digest of items -- the reconcile engine's
               "did the derivation move" key }.
@@ -55,15 +57,24 @@ local function refOf(v)
         if type(v.Name) == 'string' and v.Name ~= '' then
             if isVirtual(v.Name) then return nil; end
             local aug = (type(v.AugKey) == 'string' and v.AugKey ~= '');
+            local plain = (v.AugKey == '');
             if type(v.Id) == 'number' then
-                return { key = 'i:' .. v.Id .. (aug and ':a' or ''), id = v.Id, name = v.Name, aug = aug };
+                return { key = 'i:' .. v.Id .. (aug and ':a' or ''), id = v.Id, name = v.Name, aug = aug, plain = plain };
             end
-            return { key = 'n:' .. v.Name, name = v.Name, aug = aug };
+            return { key = 'n:' .. v.Name, name = v.Name, aug = aug, plain = plain };
         end
         if v.gear ~= nil then return refOf(v.gear); end
         if v[1] ~= nil then return refOf(v[1]); end
     end
     return nil;
+end
+
+-- A generic record and a plain-pinned one share their key (pairs must count
+-- as one item), so the first ref's facts stay and a plain pin is OR-ed in.
+local function noteFact(facts, r)
+    local f = facts[r.key];
+    if f == nil then facts[r.key] = r;
+    elseif r.plain then f.plain = true; end
 end
 
 -- One set's contribution: ref key -> slots-it-fills count (+ the ref facts).
@@ -78,7 +89,7 @@ local function walkSet(set, into, facts)
             and (type(entry.Name) == 'string' or entry.gear ~= nil or entry.__dlacMissing)) then
             local r = refOf(entry);
             if r ~= nil then
-                facts[r.key] = facts[r.key] or r;
+                noteFact(facts, r);
                 into[r.key] = (into[r.key] or 0) + 1;
             end
         elseif type(entry) == 'table' then
@@ -90,7 +101,7 @@ local function walkSet(set, into, facts)
                 local r = refOf(cand);
                 if r ~= nil and not seen[r.key] then
                     seen[r.key] = true;
-                    facts[r.key] = facts[r.key] or r;
+                    noteFact(facts, r);
                     into[r.key] = (into[r.key] or 0) + 1;
                 end
             end
@@ -158,12 +169,13 @@ function M.derive(setsRoot, triggers, resolve)
     local skippedAug, unresolved = 0, {};
     for key, count in pairs(wanted) do
         local f = facts[key] or {};
-        local id, aug = f.id, (f.aug == true);
+        local id, aug, plain = f.id, (f.aug == true), (f.plain == true);
         if id == nil then
             local r = (type(resolve) == 'function') and resolve(f.name) or nil;
             if r ~= nil and type(r.id) == 'number' then
                 id = r.id;
                 aug = aug or (r.aug == true);
+                plain = plain or (r.plain == true);
             end
         end
         if id ~= nil then referencedIds[id] = true; end
@@ -174,10 +186,12 @@ function M.derive(setsRoot, triggers, resolve)
         else
             local e = byId[id];
             if e == nil then
-                byId[id] = { itemId = id, count = count };
+                e = { itemId = id, count = count };
+                byId[id] = e;
             elseif e.count < count then
                 e.count = count;
             end
+            if plain then e.plainOnly = true; end
         end
     end
 

@@ -18,7 +18,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.09.29b';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.10.04b';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
                                 -- (03f = engine v163: the contest explains its own plan;
                                 --  03g = one floating tray: Teleports + the E-Box crates;
@@ -296,7 +296,21 @@ addon.version = '2026.09.29b';  -- date of the last shipped change (Ashita print
                                 --  and the decision is ONE readable line in
                                 --  load-report.txt and /dl check;
                                 --  09.12a = AscensionXI custom equipment and
-                                --  numeric gathering bonuses, engine v168)
+                                --  numeric gathering bonuses, engine v168;
+                                --  09.30a = the Gear Vault syncs on events:
+                                --  no 8 s beat, quiet in the field, your
+                                --  edits show at once, server pushes;
+                                --  10.01b = a set draws the vault's only copy
+                                --  of a piece even when it is augmented;
+                                --  10.01c = vault/HELM requests wait 0.3 s after
+                                --  another addon's 0x1E0 (Nexus), like Nexus does;
+                                --  10.01d = ...and no longer mistakes its own;
+                                --  10.01e = no vault write retry after 3.5 s (the
+                                --  server's replay window), and an unreadable
+                                --  edit ack no longer stalls the layout engine;
+                                --  10.04a = AscensionXI Digging tab: the server's
+                                --  digging status, its dig table, and dug
+                                --  items into the Mog Case/Satchel by whole stacks)
 addon.desc    = 'Gear sets, triggers and live stats with level scaling -- dlac equips your gear itself.';
 
 -- Load BEACON ('/dl check' field round, 2026-07-23): written by PLAIN io at
@@ -473,6 +487,15 @@ ashita.events.register('d3d_present', 'dlac-seed-watch', function()
         local ex = require('dlac\\feature\\extclaim');
         if type(ex) == 'table' and type(ex._pump) == 'function' then ex._pump(); end
     end);
+    -- The Nexus link's frame beat (2026-10-04, AscensionXI's crafting window):
+    -- pick and lock the gear for the recipe Nexus named, answer "ready" once it
+    -- is on, end the lock when the player moves. Beaten from here for
+    -- extclaim's reason: listening from the first frame. Idle and free when no
+    -- Nexus is talking.
+    pcall(function()
+        local nl = require('dlac\\feature\\nexuslink');
+        if type(nl) == 'table' and type(nl._pump) == 'function' then nl._pump(); end
+    end);
     -- The engage/target edge service's frame pump (issue #139): the packet_out
     -- handler stashes decoded edges on the NETWORK thread and does nothing else;
     -- this drains them HERE -- debounce, entity name, subscriber callbacks -- so
@@ -482,6 +505,8 @@ ashita.events.register('d3d_present', 'dlac-seed-watch', function()
         local ew = require('dlac\\feature\\engagewatch');
         if type(ew) == 'table' and type(ew.pump) == 'function' then ew.pump(); end
     end);
+    -- Drain personal tag history before combat consumers read this beat.
+    pcall(function() require('dlac\\feature\\mobtag').pump(); end);
     -- The combat state service's beat (feature\combat): engaged / target /
     -- targetChanged / first-swing, published to subscribers once per dispatch
     -- beat. It runs AFTER engagewatch's pump on purpose -- the edges that pump
@@ -581,14 +606,19 @@ for _, mod in ipairs({ 'gear', 'feature\\augments', 'gear\\gearoptim', 'gear\\ge
                        'gear\\gearexport', 'gear\\unusedgear',
                        'feature\\useitem', 'feature\\craftwatch',
                        'feature\\synthrun',
+                       -- AscensionXI's Nexus names each synth's crafts; these
+                       -- pick and lock the gear for it (docs/design/nexus-craft-gear.md).
+                       -- Their own line: release/build_cexi.py drops synthrun's line verbatim.
+                       'feature\\craftpick', 'feature\\nexuslink',
                        'ui\\craftbar', 'feature\\helmwatch', 'feature\\helmstorage', 'ui\\helmbar',
-                       'feature\\fishwatch', 'ui\\fishbar', 'feature\\chocowatch',
+                       'feature\\fishwatch', 'ui\\fishbar', 'feature\\chocowatch', 'feature\\digstorage',
                        'feature\\meritwatch',
                        'feature\\integration', 'feature\\foodwatch',
                        -- (prestigewatch and giftbox left this list for the CEXI
                        -- server pack, ADR 0035 -- servers\cexi\modules\, mounted
                        -- by feature\servermods below.)
                        'feature\\engagewatch', 'feature\\petvitals', 'feature\\combat',
+                       'feature\\mobtag',
                        'feature\\sendlog', 'feature\\check', 'feature\\debug', 'feature\\report',
                        -- nmtrack AFTER nmlookup: it requires the lookup module at
                        -- load for the disfavour curve, the shipped table and the

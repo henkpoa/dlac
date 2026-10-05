@@ -13,17 +13,30 @@
     a second speaker.
 
     THE MIRROR IS REFRESHED ON REASON, NEVER ON A CLOCK (the E-Box
-    "box is a number we already know" law, adapted): the vault can only
-    change through our own ops (none in slice 1), the job-change swap, a
-    `!vault` chat command, or the website while we play. So:
+    "box is a number we already know" law, adapted). The vault only changes
+    IN A CITY (Henrik, 2026-09-30: "there should not be any gear vault
+    events when outside the city") -- deposits and withdrawals at a Gear
+    Vault counter, live layout edits in a city or the Mog House, the job
+    change in the Mog House -- plus the server's own zone-in tidy. So:
 
-      * full sync (HELLO + LIST pages) at first readiness, after a MAIN JOB
-        change settles (the swap stream is ~3-4 s), after an outgoing
-        `!vault` mutation settles, and on manual refresh;
-      * a cheap HELLO probe on zone-in settle -- its VaultCount doubles as
-        the dirty check: disagree with the mirror and the probe escalates
-        to a full sync, agree and the mirror is re-stamped fresh;
-      * ordinary looting refreshes NOTHING (a loot cannot change the vault).
+      * full sync (HELLO + LIST pages) at first readiness, as soon as a MAIN
+        JOB change is seen (the server applied the swap BEFORE it sent the
+        job packets -- the reply order is FIFO), after our own writes, after
+        a counter trade or an outgoing `!vault`, and on manual refresh;
+      * a server PUSH (op CHANGED, negotiated in HELLO, kept for the whole
+        session) names every change we did not make ourselves -- counter
+        trades, chat verbs, the job-change and zone-in applies -- the
+        moment it lands;
+      * a ZONE LINE CHANGES NOTHING (Henrik, 2026-10-01): every view
+        survives it, nothing is sent until the new zone's inventory is
+        loaded, and the inventory re-send is not movement. Only against a
+        server without pushes does arriving in a city cost one cheap HELLO
+        probe (count + revision). Out in the field the client holds still --
+        nothing there can change the vault. A LOGIN (not a zone line: no
+        0x00B ZONECHANGE came first) costs one probe, which renews the
+        subscription the server dropped at its game-in;
+      * gear swaps refresh NOTHING (an equip flips a lock flag in a bag
+        slot; only a slot whose ITEM changed invalidates what it touches).
 
     Retries re-send the SAME Seq: the server's replay ring answers a
     retried mutating frame with the SAME reply, so a lost frame can never
@@ -56,7 +69,35 @@ M.op =
     LAYOUT_SET  = 0x45,   -- slice 3
     LIST2 = 0x46, LAYOUT_LIST2 = 0x47, LAYOUT_SET2 = 0x48,
     INSTANCE_LOOKUP = 0x49, LOST_LIST = 0x4A,
+    CHANGED = 0x4B,       -- S2C push only (seq 0): the server says what changed
 };
+
+-- HELLO capability bits. The reply's u16 @2 is the server's; the request's
+-- u16 @2 is ours (an older server ignores it). A bit is used only when BOTH
+-- sides set it -- a new dlac never sends an op or flag the server did not
+-- advertise (an unknown op answers BAD_OP, which sends the client dormant).
+M.cap =
+{
+    INSTANCES  = 1,   -- ops 0x46-0x4A (persistent instance ids)
+    ATOMIC_ADD = 2,   -- selector-0 ADD stores pin/hint in one request
+    PUSH       = 4,   -- CHANGED pushes to a subscribed client
+    STREAM     = 8,   -- list reads answer up to N frames per request
+    EXP_BAND_STATUS = 16, -- read-only recharge preflight, op 0x4C
+};
+M.CLIENT_CAPS = 1;    -- request word bit 0: subscribe me to CHANGED pushes
+
+-- CHANGED scope bits (u16 @0 of the push payload).
+M.change =
+{
+    VAULT    = 1,     -- vault rows moved (deposit, withdraw, apply, reward)
+    LAYOUT   = 2,     -- layout rows changed for the jobs in the job mask
+    APPLIED  = 4,     -- an apply finished (job change, zone-in, deposit, edit)
+    LOST     = 8,     -- instances were lost / replaced / pruned
+    ATTUNE   = 16,    -- attunement changed (The Deeper Room finished)
+    CAPACITY = 32,    -- a wardrobe grew
+};
+
+M.STREAM_FRAMES = 8;  -- frames per streamed list request (the server caps too)
 
 M.status =
 {
@@ -70,7 +111,9 @@ M.status =
     NOT_ATTUNED       = 7,   -- The Deeper Room not finished: no vault for this character (D14)
 };
 
-M.FLAG_MORE = 1;
+M.FLAG_MORE    = 1;   -- another page exists past this reply (ask again with the cursor)
+M.FLAG_STALE   = 2;   -- INSTANCE_LOOKUP only: the request's revision is stale
+M.FLAG_FOLLOWS = 4;   -- STREAM only: another frame of THIS reply follows
 
 -- The attunement quest, named where the player reads it (statusLine, the
 -- tab, the one login line). The server's gate is the quest's completion
@@ -79,19 +122,36 @@ M.ATTUNE_QUEST = 'The Deeper Room';
 M.ATTUNE_HINT  = 'the Hollow One in your starting city, level 5, after The Hollow Room';
 M.ATTUNE_WIKI  = 'https://www.ascensionffxi.com/wiki/The_Deeper_Room';
 
--- Pacing. SEND_TIMEOUT must clear the server's frame turnaround with room;
--- retries stay under the 5 s replay window so a retried frame is answered
--- from the ring, never re-executed.
-M.SEND_TIMEOUT   = 1.5;   -- seconds before re-sending the SAME Seq
-M.MAX_RETRIES    = 3;     -- then give up: stale mirror + a long backoff
-M.MIN_GAP        = 0.35;  -- between any two sends (party-line courtesy)
-M.GIVEUP_BACKOFF = 30;    -- seconds before a failed sync may try again
-M.SETTLE_JOB     = 6.0;   -- job-change swap stream settle (~3-4 s + slack)
-M.SETTLE_ZONE    = 5.0;   -- zone-in flood settle before the probe
-M.SETTLE_CHAT    = 3.0;   -- after an outgoing !vault mutation
+-- Pacing. A WRITE's retries stay inside the server's 5 s replay window
+-- (kept per map process, os.time granularity), so a retried frame is answered
+-- from the ring and never re-executed: sends at 0, 1.5 and 3.0 s. A READ is
+-- harmless to repeat but costs the server a whole page walk, so it waits
+-- longer before assuming the frame was lost -- the field logs caught 71 reads
+-- whose every copy was answered, late and together (2026-09-30).
+M.SEND_TIMEOUT   = 1.5;   -- a write: seconds before re-sending the SAME Seq
+M.MAX_RETRIES    = 2;     -- a write: then the outcome is unknown -> resync
+-- No write retry leaves later than this after the write's FIRST send: past
+-- the server's replay window a retry is a new request and runs again. The
+-- retries are timed inside it, but the shared gate can hold one (another
+-- producer, another addon's 0x1E0 -- FOREIGN_GAP, 2026.10.01c -- or a frame
+-- stall). Nexus keeps the same deadline (RETRY_DEADLINE 3.5 s).
+M.WRITE_DEADLINE = 3.5;
+M.READ_TIMEOUT   = 2.5;   -- a read: seconds of silence before re-sending
+M.READ_RETRIES   = 3;     -- a read: then give up and back off
+M.MIN_GAP        = 0.1;   -- between two of OUR sends (the transport gates replies)
+M.GIVEUP_BACKOFF = 10;    -- seconds before a failed or refused sync may try again
+M.SETTLE_JOB     = 1.0;   -- after the main job is seen changed (the apply ran first)
+M.ZONE_LOAD_TIMEOUT = 30.0; -- a zone-in whose inventory load is never seen to end ends its wait here
+M.ZONE_LINE_MAX  = 60.0;  -- a zone-out whose zone-in is later than this was not a zone line
+M.SETTLE_TIDY    = 3.0;   -- a server without pushes: probe after its zone-in tidy (2 s timer)
+M.SETTLE_CHAT    = 3.0;   -- after an outgoing !vault or a counter trade (no push)
+M.SETTLE_EDIT    = 0.3;   -- after our own write: coalesce a run of edits into one read
+M.SETTLE_PUSH    = 0.2;   -- coalesce a burst of pushes into one read
 M.SETTLE_LAYOUT  = 0.25;  -- coalesce an inventory burst before reading its layout
 M.MAX_LAYOUT_WAIT = 1.0;  -- continuous inventory traffic cannot keep deferring the ask
 M.RECHECK_UNATTUNED = 300; -- an un-attuned character re-asks this rarely (one HELLO)
+M.LOGIN_ARM      = 0.5;   -- first readiness -> login sync
+M.MAX_DEPOSIT    = 62;    -- entries per DEPOSIT: a longer ack does not fit one frame
 
 -- ---------------------------------------------------------------------------
 -- Injectable seams (production wiring in init.lua; tests replace)
@@ -99,7 +159,15 @@ M.RECHECK_UNATTUNED = 300; -- an un-attuned character re-asks this rarely (one H
 M._clock  = os.clock;
 M._send   = nil;    -- function(byteTable) -> boolean; nil = frames go nowhere
 M._onFresh = nil;   -- called after every mirror commit (glue: ownedcache reset)
+M._onLayout = nil;  -- called after every layout commit (glue: the reconcile kick)
+M._onPush  = nil;   -- called with (scope, jobs, cause) after a CHANGED push
 M._say     = nil;   -- one-line chat sink (glue: chatfmt); nil = print
+M._received = nil;  -- transport.received(op, seq): a frame in our band arrived
+M._abandon  = nil;  -- transport.abandon(op, seq): we gave up on that request
+M._notePush = nil;  -- transport.notePush(op, why): log a push (never a reply)
+M._inCity   = nil;  -- () -> true | false | nil: is this zone a city (the server's predicate)?
+M._vaultZone = nil; -- () -> true | false | nil: can the vault change here (a city, or a counter)?
+M._onZoneSettled = nil; -- (field) after a zone line, once the new zone's inventory is loaded
 
 local function say(msg)
     if type(M._say) == 'function' then pcall(M._say, msg); return; end
@@ -160,22 +228,46 @@ function M.parseFrame(data)
     };
 end
 
+-- Is bit `b` (a power of two) set in `mask`? Plain arithmetic: the suite runs
+-- on Lua 5.4 and the game on LuaJIT, and they share no bit operator.
+local function has(mask, b)
+    return math.floor((mask or 0) / b) % 2 == 1;
+end
+M._has = has;
+
+-- HELLO C2S: { u16 Proto; u16 ClientCaps } -- the caps word was reserved
+-- (always 0) before 2026-09-30, and servers before then ignore it.
 function M.helloPayload()
-    return wu16(M.PROTO) .. wu16(0);
+    return wu16(M.PROTO) .. wu16(M.CLIENT_CAPS);
+end
+
+-- A STREAM read asks for several frames in one reply: the classic cursor
+-- payload plus { u8 Flags (bit 0 = stream); u8 MaxFrames }. Sent only to a
+-- server that advertised STREAM; an older one would read just the cursor.
+local function streamTail()
+    if M.limits ~= nil and M.limits.stream then
+        return string.char(1, M.STREAM_FRAMES);
+    end
+    return '';
 end
 
 function M.listPayload(afterRowId)
     return wu32(afterRowId or 0);
 end
 
--- HELLO S2C: { proto, vaultCount, maxList, maxDeposit, maxWithdraw } or nil.
+-- HELLO S2C: { proto, vaultCount, maxList, maxDeposit, maxWithdraw, caps... } or nil.
 function M.parseHello(payload)
     if type(payload) ~= 'string' or #payload < 12 then return nil; end
-    local instances = u16(payload, 2) % 2 == 1;
+    local caps = u16(payload, 2);
+    local instances = has(caps, M.cap.INSTANCES);
     if instances and #payload < 20 then return nil; end
     return {
+        caps = caps,
         instances = instances, revision = instances and u32(payload, 12) or nil,
-        atomicInstanceAdd = instances and math.floor(u16(payload, 2) / 2) % 2 == 1,
+        atomicInstanceAdd = instances and has(caps, M.cap.ATOMIC_ADD),
+        push   = instances and has(caps, M.cap.PUSH),
+        stream = instances and has(caps, M.cap.STREAM),
+        expBandStatus = has(caps, M.cap.EXP_BAND_STATUS),
         maxList2 = u8(payload, 16), maxLayoutList2 = u8(payload, 17),
         maxLookup = u8(payload, 18), maxLostList = u8(payload, 19),
         proto       = u16(payload, 0),
@@ -184,6 +276,24 @@ function M.parseHello(payload)
         maxDeposit  = u8(payload, 9),
         maxWithdraw = u8(payload, 10),
     };
+end
+
+-- CHANGED S2C push (seq 0): { u16 Scope; u16 Cause; u32 Rev; u32 JobMask;
+-- u32 VaultCount; u16 Pulled; u16 Evicted; u32 EventSeq } or nil.
+function M.parseChanged(payload)
+    if type(payload) ~= 'string' or #payload < 24 then return nil; end
+    return {
+        scope = u16(payload, 0), cause = u16(payload, 2), revision = u32(payload, 4),
+        jobs = u32(payload, 8), vaultCount = u32(payload, 12),
+        pulled = u16(payload, 16), evicted = u16(payload, 18), eventSeq = u32(payload, 20),
+    };
+end
+
+-- Entries per DEPOSIT request: the server's advertised figure, never more
+-- than one ack frame can carry (4 + 8 per entry <= 500 bytes -> 62).
+function M.depositCap()
+    local cap = (M.limits ~= nil and M.limits.maxDeposit) or M.MAX_DEPOSIT;
+    return math.max(1, math.min(cap, M.MAX_DEPOSIT));
 end
 
 -- LIST S2C chunk: { entries = { { rowId, itemId, qty, identity(24 raw
@@ -339,6 +449,7 @@ M.mirror =
     counts     = {},     -- itemId -> total quantity
     vaultCount = nil,    -- HELLO's figure (nil until first answer)
     stamp      = nil,    -- _clock() of the last commit
+    revision   = nil,    -- the server revision these rows were LISTED at (the probe's baseline)
 };
 
 M.limits = nil;          -- HELLO's { maxList, maxDeposit, maxWithdraw }
@@ -361,6 +472,8 @@ local st =
     seq      = 0,        -- last Seq used (wraps at 255)
     lastSend = 0,
     staleAt  = nil,      -- _clock() time a sync may begin (nil = fresh, no work)
+    mirrorGen = 0,       -- bumped by every reason to re-read; a read commits
+                         -- "fresh" only when no reason arrived while it ran
     giveups  = 0,
     rowsAcc  = nil,      -- accumulating LIST pages
     lastJob  = nil,      -- main-job edge detector (pump-fed)
@@ -386,9 +499,59 @@ local function noteWhy(why, now)
     st.trace.whyAt = now;
 end
 
+-- 1..255, never 0: seq 0 belongs to server pushes, so a reply can never be
+-- mistaken for one (and a push never for a reply).
 local function nextSeq()
-    st.seq = (st.seq + 1) % 256;
+    st.seq = (st.seq or 0) % 255 + 1;
     return st.seq;
+end
+
+-- Start the seq anywhere (init seeds it per load): a reload that restarted at
+-- 1 could re-send an identical write inside the server's replay window.
+function M.seedSeq(n)
+    st.seq = math.max(0, math.min(254, math.floor(tonumber(n) or 0)));
+end
+
+-- Retry policy per op: writes stay inside the replay window, reads wait longer.
+local WRITE_OPS = nil;
+local function isWrite(op)
+    WRITE_OPS = WRITE_OPS or { [M.op.DEPOSIT] = true, [M.op.WITHDRAW] = true,
+        [M.op.LAYOUT_SET] = true, [M.op.LAYOUT_SET2] = true };
+    return WRITE_OPS[op] == true;
+end
+local function timeoutOf(op) return isWrite(op) and M.SEND_TIMEOUT or M.READ_TIMEOUT; end
+local function retriesOf(op) return isWrite(op) and M.MAX_RETRIES or M.READ_RETRIES; end
+
+-- Tell the shared transport we will never send this request again (T3).
+local function abandon(p)
+    if p ~= nil and p.sentAt ~= nil and type(M._abandon) == 'function' then
+        pcall(M._abandon, p.op, p.seq);
+    end
+end
+
+-- A write whose outcome is UNKNOWN (retries spent, or its reply died at a
+-- zone line): it may have executed. Never re-send it with a fresh Seq --
+-- that is how a lost frame becomes a double op. Report it, and let a full
+-- re-read of both views reveal what actually landed.
+local function failWrite(p, why)
+    st.probeOnly = false;
+    if p.op == M.op.WITHDRAW or p.op == M.op.DEPOSIT then
+        local q = (p.op == M.op.WITHDRAW) and st.withdrawQ or st.depositQ;
+        local req = table.remove(q or {}, 1);
+        if req ~= nil and type(req.onDone) == 'function' then pcall(req.onDone, nil, 'timeout'); end
+        -- the VAULT view first (the rows that may have moved); the layout is
+        -- marked stale too, and the mirror's commit kicks the layout engine,
+        -- which asks for it
+        M.markStale(0, why);
+        M.invalidateLayout();
+    else
+        local req = table.remove(st.layoutSetQ or {}, 1);
+        if req and M._audit then pcall(M._audit, 'timeout', req.e, p.seq, 'outcome-unknown'); end
+        if req ~= nil and type(req.onDone) == 'function' then pcall(req.onDone, nil, 'timeout'); end
+        M.markStale(M.SETTLE_EDIT, why);
+        M.invalidateLayout();
+        M.requestLayout(0);
+    end
 end
 
 local function sendPending(now, retry)
@@ -411,6 +574,7 @@ local function sendPending(now, retry)
         if not ok or sent == false then return false; end
     end
     if retry then st.pending.retries = st.pending.retries + 1; end
+    st.pending.firstSentAt = st.pending.firstSentAt or now;
     st.pending.sentAt = now;
     st.lastSend = now;
     st.trace.lastSent = { kind = st.pending.kind, op = st.pending.op, seq = st.pending.seq,
@@ -432,18 +596,25 @@ local function beginOp(kind, op, payload, now, cursor)
     sendPending(now);
 end
 
-local function commitMirror(now)
+-- Commit the accumulated LIST pages. `gen` is the mirror generation the read
+-- STARTED under: a reason to re-read that arrived while the pages were on the
+-- wire (a job change, a push, a !vault) leaves the due time standing, so the
+-- read that could not see it is followed by one that can (2026-09-30: a
+-- finished read used to wipe such a request -- the job change went unseen).
+local function commitMirror(now, gen, revision)
     local rows = st.rowsAcc or {};
     local counts = {};
     for _, r in ipairs(rows) do
         counts[r.itemId] = (counts[r.itemId] or 0) + math.max(1, r.qty);
     end
+    local current = (gen == nil) or (gen == st.mirrorGen);
     M.mirror.rows   = rows;
     M.mirror.counts = counts;
-    M.mirror.fresh  = true;
+    M.mirror.fresh  = current;
     M.mirror.stamp  = now;
+    M.mirror.revision = revision;
     st.rowsAcc = nil;
-    st.staleAt = nil;
+    if current then st.staleAt = nil; end
     st.giveups = 0;
     if type(M._onFresh) == 'function' then pcall(M._onFresh); end
 end
@@ -467,6 +638,7 @@ function M.markStale(settle, why)
     if st.layoutBatch ~= nil and why ~= 'layout edit' then
         st.layoutBatch.valid = false;
     end
+    st.mirrorGen = (st.mirrorGen or 0) + 1;
     local at = M._clock() + (settle or 0);
     if st.unattuned then
         -- A reason (zone-in, job change, !vault, manual) PULLS the rare
@@ -514,45 +686,302 @@ local function goUnattuned(now)
     -- carry the quest; the one line that stays is the vault OPENING.
 end
 
--- Manual refresh (the service verb; also `/dl vault sync`).
-function M.refresh()
-    st.giveups = 0;
-    M.markStale(0, 'manual');
+-- A reason the SERVER vouched for (a push: "this changed, and it is done"):
+-- unlike markStale, which only ever slides the due time later (a debounce),
+-- this pulls it EARLIER -- a fallback timer armed by a guess (a chat verb, a
+-- counter trade) must not hold back the read the server just asked for.
+local function dueSoon(settle, why)
+    if st.dormant then return; end
+    M.markStale(settle, why);
+    local at = M._clock() + (settle or 0);
+    if st.staleAt == nil or at < st.staleAt then st.staleAt = at; end
 end
 
--- The main-job edge: a change means the server is (about to be) streaming
--- the swap -- resync after it settles. Fed by pump so headless tests drive
--- it directly.
+-- Can the vault change where we stand? false = the field (hold still), true =
+-- a city or a counter zone, nil = unknown (act as if it can -- never guess
+-- toward silence).
+local function updateHold()
+    local v = nil;
+    if type(M._vaultZone) == 'function' then
+        local ok, r = pcall(M._vaultZone);
+        if ok then v = r; end
+    end
+    st.fieldHold = (v == false);
+    return st.fieldHold;
+end
+function M.fieldHold() return st.fieldHold == true; end
+
+-- Manual refresh (the service verb; also `/dl vault sync`): NOW, over any
+-- backoff or settle, and always a full read -- the player asked
+-- (2026-09-30: Sync used to wait out a 30 s backoff, and inside the zone-in
+-- window it ran as a count-only probe).
+function M.refresh()
+    st.giveups = 0;
+    st.probeOnly = false;
+    M.markStale(0, 'manual');
+    st.staleAt = M._clock();
+end
+
+-- The main-job edge. The server swapped the shelf INSIDE the job-change
+-- request, before it sent the job packets that told us (FIFO), so the vault
+-- is final by the time we see the new job: read soon, not after a 6 s guess.
+-- Fed by pump so headless tests drive it directly.
 function M.noteJob(job)
     if type(job) ~= 'number' or job == 0 then return; end
     if st.lastJob ~= nil and job ~= st.lastJob then
         M.invalidateInstances();
         M.cancelLayoutSets('job_changed');
+        st.probeOnly = false;   -- a swap can be count-neutral: never a probe
         M.markStale(M.SETTLE_JOB, 'job change');
+        st.jobChangedAt = M._clock();
         M.invalidateLayout();   -- the current job's layout is a different job's now
         if st.pending and st.pending.kind == 'layout' and st.pending.sentAt == nil then
             st.pending, st.layoutAcc = nil, nil;
-            st.layoutWant = { job = 0 };
         end
+        st.lastJob = job;
+        M.requestLayout(0);
+        return;
     end
     st.lastJob = job;
 end
 
-function M.noteZoneIn()
-    M.invalidateInstances();
-    -- Cheap probe once the zone-in flood settles: HELLO's VaultCount is the
-    -- dirty check (website / offline edits surface here).
+-- A ZONE LINE CHANGES NOTHING (Henrik, 2026-10-01: "Can dlac cache between
+-- zones? Nothing should happen during zoning"). Zoning moves no gear: every
+-- view -- the vault rows, the layout, the slot -> copy identities, the lost
+-- list -- survives it whole. From the zone-out (0x00B) until the new zone's
+-- inventory has finished loading (see noteItemSame; a timeout if that is
+-- never seen) the client sends nothing, and the inventory re-send that
+-- refills the bags in between is not treated as movement. What COULD change
+-- the vault across a zone line -- the server's own zone-in tidy -- arrives as
+-- a CHANGED push (the subscription lasts the whole session on a server that
+-- offers pushes); against an older server, arriving in a city probes once.
+-- Every cached copy identity is still pinned to the revision it was read at,
+-- so the first reply that carries a newer revision drops them all.
+--
+-- A LOGIN is not a zone line. The server sends 0x00B with LogoutState 2
+-- (ZONECHANGE) before every zone line and 1 (LOGOUT) before a logout, and
+-- nothing at all when the connection is lost -- so a zone-in counts as a
+-- zone line only right after a ZONECHANGE. Anything else starts a session:
+-- the server dropped the subscription at its game-in, and its login tidy
+-- may move copies. The caches still stand (nothing moves while logged out);
+-- one probe once the zone is loaded re-subscribes and compares the revision.
+M.LOGOUT_ZONECHANGE = 2;   -- 0x00B LogoutState (byte 4) of a zone line
+
+function M.noteZoneOut(state)
     if st.dormant then return; end
-    M.markStale(M.SETTLE_ZONE, 'zone-in');
+    st.zoning = true;
+    st.zoneInAt, st.loadRun = nil, nil;
+    st.probeAt, st.probeWhy = nil, nil;   -- the next zone decides its own
+    st.zoneOutAt = M._clock();
+    st.zoneLine = (state == M.LOGOUT_ZONECHANGE);
+end
+
+function M.noteZoneIn()
+    if st.dormant then return; end
+    local now = M._clock();
+    local zoneLine = st.zoneLine == true and st.zoneOutAt ~= nil
+        and now - st.zoneOutAt <= M.ZONE_LINE_MAX;
+    st.zoneLine, st.zoneOutAt = nil, nil;
+    st.zoning = true;
+    st.zoneInAt, st.loadRun = now, 0;
+    st.probeAt, st.probeWhy = nil, nil;
+    if not zoneLine then
+        st.subscribed = false;   -- the server's game-in forgot it
+        st.zoneLogin = true;
+    end
+    -- a request on the wire across the zone line is lost with the old map
+    -- server's entity
+    local p = st.pending;
+    if p ~= nil and p.sentAt ~= nil then
+        if isWrite(p.op) then
+            -- the reply died with the old zone; the ring there cannot answer a
+            -- retry here -- the outcome is unknown, so report and re-read
+            st.pending = nil;
+            abandon(p);
+            failWrite(p, 'write lost at a zone line');
+        else
+            st.pending = nil;
+            abandon(p);
+            st.rowsAcc, st.layoutAcc, st.lostAcc = nil, nil, nil;
+            if p.kind == 'layout' then st.layoutWant = { job = 0 }; end
+            if p.kind == 'lookup' and st.lookupQ and st.lookupQ[1] then st.lookupQ[1].attempts = 0; end
+            if p.kind == 'lost' then st.lostWant = true; end
+            if p.kind == 'sync-hello' or p.kind == 'sync-list' then st.zoneFull = true; end
+        end
+    end
+end
+
+-- A cheap check (HELLO: the count and the revision) in `settle` seconds.
+-- Until it leaves, the rows stay fresh: it is a glance, not a doubt. A probe
+-- never downgrades a full read: one owed NOW answers an immediate probe,
+-- and a scheduled one (timed to follow the server's tidy) waits for it.
+local function probeSoon(settle, why)
+    if (settle or 0) > 0 then
+        st.probeAt, st.probeWhy = M._clock() + settle, why;
+        return;
+    end
+    if st.staleAt ~= nil and not st.probeOnly then return; end
+    st.probeAt, st.probeWhy = nil, nil;
+    M.markStale(0, why);
     st.probeOnly = true;
 end
 
+-- The bags hold the zone-in re-send now. The server's tidy can move a piece
+-- while the zone still loads, and its packets were ignored with the re-send:
+-- a pinned copy whose slot no longer holds its item is forgotten -- locally,
+-- no traffic (a same-item swap moves the revision, which drops them all).
+local function checkIdentities()
+    if type(M._readSlot) ~= 'function' or st.instanceCache == nil then return; end
+    local dropped = false;
+    for key, e in pairs(st.instanceCache) do
+        local ok, id = pcall(M._readSlot, e.container, e.slot);
+        if not ok or id ~= e.itemId then st.instanceCache[key] = nil; dropped = true; end
+    end
+    if dropped then st.inventoryEpoch = (st.inventoryEpoch or 0) + 1; end
+end
+
+-- The zone is ours: the inventory finished loading (or the wait timed out).
+local function zoneSettled(now)
+    st.zoning = false;
+    st.zoneInAt, st.loadRun = nil, nil;
+    local cut, login = st.zoneFull == true, st.zoneLogin == true;
+    st.zoneFull, st.zoneLogin = nil, nil;
+    -- a session start, or a renewal a zone line cut short: the server
+    -- pushes, but not to us
+    local renew = login or (M.limits ~= nil and M.limits.push == true and not st.subscribed);
+    local field = updateHold();
+    checkIdentities();
+    if cut then
+        M.markStale(0, 'a read cut by the zone line');   -- finish what was asked, wherever we stand
+        st.probeOnly = false;
+    elseif st.unattuned then
+        -- The Deeper Room is finished in a city: there, ask now instead of in
+        -- five minutes (the server's ATTUNE push makes this moot when it lands;
+        -- a login asks wherever it stands, which renews that push)
+        if renew or not field then st.staleAt = math.min(st.staleAt or now, now); end
+    elseif renew then
+        -- wherever we stand: renew the subscription. A server that pushes
+        -- reports its login tidy when that runs; one that cannot is probed
+        -- after it.
+        probeSoon((M.limits ~= nil and M.limits.push) and 0 or M.SETTLE_TIDY, login and 'login' or 'renew');
+    elseif not field and not M.live() then
+        -- a server without pushes cannot tell us about its zone-in tidy:
+        -- one cheap probe once that has run
+        probeSoon(M.SETTLE_TIDY, 'zone-in');
+    end
+    -- A login also asks for the layout once: an edit made while we were away
+    -- (a GM, the website) moves no copy, so the revision need not show it.
+    if login and not st.unattuned then M.invalidateLayout(); end
+    if type(M._onZoneSettled) == 'function' then pcall(M._onZoneSettled, field); end
+end
+
+-- 0x01D (ITEM_SAME); byte 4 = State: 0 StillLoading (names one container),
+-- 1 AllLoaded. The re-send after a zone-in names every container in one run
+-- and then says AllLoaded; every other sender -- the vault's own tidy, a
+-- swap's flush -- names ONE container per AllLoaded, and the server's
+-- zone-in tidy can fire while the new zone is still loading. So the zone
+-- line is over at the first AllLoaded after a run of two or more. Before
+-- the zone-in nothing counts (a refresh at the old zone).
+function M.noteItemSame(state)
+    if not st.zoning or st.zoneInAt == nil then return; end
+    if state == 0 then st.loadRun = (st.loadRun or 0) + 1; return; end
+    if state ~= 1 then return; end
+    local run = st.loadRun or 0;
+    st.loadRun = 0;
+    if run >= 2 then zoneSettled(M._clock()); end
+end
+function M.zoning() return st.zoning == true; end
+
 function M.noteVaultChat()
     -- An outgoing `!vault ...` may mutate the store OR a layout; resync after
-    -- it lands.
+    -- it lands (a push, when negotiated, pulls this earlier).
     M.markStale(M.SETTLE_CHAT, 'chat');
     M.invalidateLayout();
     st.probeOnly = false;
+end
+
+-- A trade to a Gear Vault counter (the NPC's own suggestion: "trade it
+-- gear"). The server deposits one tick later and applies what the layout
+-- names; nothing about it arrives on 0x1E0 -- before pushes, dlac never
+-- noticed until a zone or a manual Sync (2026-09-30 audit, bug 1).
+function M.noteCounterTrade()
+    M.markStale(M.SETTLE_CHAT, 'counter trade');
+    M.invalidateLayout();
+    st.probeOnly = false;
+    st.fieldHold = false;
+end
+
+-- An inventory packet's slot facts: container, slot, item id (nil for
+-- 0x01E, which carries none), quantity -- or nil for anything else.
+function M.parseItemPacket(id, data)
+    if type(data) ~= 'string' then return nil; end
+    if id == 0x020 and #data >= 17 then
+        return u8(data, 14), u8(data, 15), u16(data, 12), u32(data, 4);
+    elseif id == 0x01F and #data >= 13 then
+        return u8(data, 10), u8(data, 11), u16(data, 8), u32(data, 4);
+    elseif id == 0x01E and #data >= 11 then
+        return u8(data, 8), u8(data, 9), nil, u32(data, 4);
+    end
+    return nil;
+end
+
+local function layoutNames(itemId)
+    if itemId == nil or itemId == 0 then return false; end
+    local ids = M.layoutCache.ids;
+    -- the id set is only trusted for the entries it was built from
+    if ids ~= nil and M.layoutCache.idsOf == M.layoutCache.entries then return ids[itemId] == true; end
+    for _, e in ipairs(M.layoutCache.entries or {}) do
+        if e.itemId == itemId then return true; end
+    end
+    return false;
+end
+
+-- An inbound inventory packet, seen in packet_in BEFORE the client applies
+-- it -- so the bag memory still shows the slot's OLD item. The field logs
+-- (2026-09-30) put 34-58 % of all vault requests on the old rule, "any of
+-- 0x01D-0x020 invalidates every slot and the layout": every gear swap sends
+-- 0x01F to flip a lock flag, so combat re-read the layout, the lost list and
+-- the worn slots on every 8 s beat. Now only a slot whose ITEM changed
+-- forgets its copy, and only a move of an item the layout names re-reads the
+-- layout -- in a city (out in the field the vault's side cannot move).
+-- Returns true when the packet changed anything we track.
+function M.noteInventory(id, data)
+    -- the zone-in re-send refills the bags with what was there: no movement
+    if st.zoning then return false; end
+    local cid, slot, newId, qty = M.parseItemPacket(id, data);
+    if cid == nil then return false; end
+    local oldId = nil;
+    if type(M._readSlot) == 'function' then
+        local ok, v = pcall(M._readSlot, cid, slot);
+        if ok then oldId = v; end
+    end
+    if id == 0x01F and newId ~= nil and oldId ~= nil and newId == oldId then
+        return false;   -- a lock flag (equip / unequip) or a count: same item, same copy
+    end
+    if id == 0x01E then
+        if (qty or 0) > 0 then return false; end   -- a stack count moved; the copy did not
+        newId = 0;
+    end
+    local key = tostring(cid) .. ':' .. tostring(slot);
+    if st.instanceCache ~= nil then st.instanceCache[key] = nil; end
+    st.inventoryEpoch = (st.inventoryEpoch or 0) + 1;
+    st.lookupAfter = (st.beat or 0) + 2;
+    if M.instanceMode() and not st.fieldHold and (layoutNames(oldId) or layoutNames(newId)) then
+        M.invalidateLayout(M.SETTLE_LAYOUT);
+    end
+    -- belt and braces for a swap stream that trails the job packets
+    if st.jobChangedAt ~= nil and M._clock() - st.jobChangedAt < 10 then
+        M.markStale(M.SETTLE_JOB, 'swap stream');
+    end
+    return true;
+end
+
+-- A different character logged in without an addon reload: nothing we hold
+-- belongs to them (2026-09-30 audit, bug 10). Keeps the seams and the seq.
+function M.resetCharacter()
+    local seq = st.seq;
+    M._reset();
+    st.seq = seq;
 end
 
 -- Ask for a job's layout (0 = my main job). The tab calls this; pages ride
@@ -603,8 +1032,11 @@ end
 -- quantities, and one LIST after a Warden stop is cheap.
 function M.requestDeposit(entries, onDone)
     if st.dormant or type(entries) ~= 'table' or #entries == 0 then return false; end
-    local cap = (M.limits ~= nil and M.limits.maxDeposit) or 124;
-    if #entries > cap then return false; end
+    -- Never more than one ack frame can carry: the server advertised 124,
+    -- but an ack past 62 entries does not fit 500 bytes, and the whole reply
+    -- vanished while every deposit committed (2026-09-30 server audit).
+    -- Callers split longer runs (vaultui.storeRows).
+    if #entries > M.depositCap() then return false; end
     st.depositQ = st.depositQ or {};
     st.depositQ[#st.depositQ + 1] = { entries = entries, onDone = onDone };
     return true;
@@ -625,10 +1057,16 @@ function M.layoutAddState(itemId, identity, instanceId)
     end
     local batch = st.layoutBatch;
     local key = M.entryKey({ itemId = itemId, identity = identity, instanceId = instanceId });
+    -- A new batch may start from the last KNOWN views of this job, not only
+    -- from freshly re-read ones: a re-read in flight is not a reason to grey
+    -- out every Add button (the server still validates each add). An open
+    -- batch keeps its own snapshot and validity rules.
+    local known = M.layoutCache.stamp ~= nil and M.layoutCache.job ~= nil
+        and (st.lastJob == nil or M.layoutCache.job == st.lastJob) and M.mirror.stamp ~= nil;
     return {
         ready = not st.dormant and not st.unattuned and
             ((batch ~= nil and batch.valid) or
-             (batch == nil and M.layoutCache.fresh and M.mirror.fresh and not M.layoutBusy())),
+             (batch == nil and known and not M.layoutBusy())),
         pending = batch ~= nil and batch.items[key] == true,
         reserved = batch and batch.reserved or 0,
         entries = batch and batch.entries or M.layoutCache.entries,
@@ -803,7 +1241,7 @@ function M.invalidateInstances()
     st.instanceCache = {};
     st.inventoryEpoch = (st.inventoryEpoch or 0) + 1;
     -- Two present beats allow the game to apply inventory packets before
-    -- any snapshot. No inventory memory is read inside packet_in.
+    -- any lookup SNAPSHOT (noteInventory reads only a slot's OLD item there).
     st.lookupAfter = (st.beat or 0) + 2;
 end
 
@@ -814,13 +1252,15 @@ function M.noteRevision(revision)
     end
 end
 
+-- The lost list is the server's registry, and a loss moves the revision --
+-- so the revision alone says when to re-read it. It used to key on the
+-- client's inventory epoch too, which every gear swap bumped: 2,070 LOST
+-- pages in the field logs, 79 % of them straight after a layout read.
 function M.requestLost()
     if not M.instanceMode() then return false; end
-    if M.lost.fresh and M.lost.revision == M.revision
-        and M.lost.epoch == (st.inventoryEpoch or 0) then return true; end
+    if M.lost.fresh and M.lost.revision == M.revision then return true; end
     local p = st.pending;
-    if p and p.kind == 'lost' and p.lostRevision == M.revision
-        and p.lostEpoch == (st.inventoryEpoch or 0) then return true; end
+    if p and p.kind == 'lost' and p.lostRevision == M.revision then return true; end
     st.lostWant = true; M.lost.fresh = false; return true;
 end
 
@@ -906,51 +1346,45 @@ function M.pump(ready)
     local now = M._clock();
 
     -- First readiness of the session (addon load mid-session included, where
-    -- no zone-in packet will ever arrive): arm the login sync.
+    -- no zone-in packet will ever arrive): arm the login sync -- wherever we
+    -- stand, since ownership reads the mirror in the field too.
     if M.mirror.stamp == nil and st.staleAt == nil and st.pending == nil then
-        st.staleAt = now + 2.0;
+        st.staleAt = now + M.LOGIN_ARM;
+        updateHold();
     end
+    -- Nothing leaves while zoning: from the zone-out until the new zone's
+    -- inventory is loaded (or the wait times out). Asks made meanwhile wait.
+    if st.zoning then
+        if st.zoneInAt ~= nil and now - st.zoneInAt >= M.ZONE_LOAD_TIMEOUT then
+            zoneSettled(now);
+        else
+            return;
+        end
+    end
+    if st.probeAt ~= nil and now >= st.probeAt then probeSoon(0, st.probeWhy); end
 
     if st.pending ~= nil then
-        if st.pending.sentAt == nil then sendPending(now); return; end
-        if now - st.pending.sentAt >= M.SEND_TIMEOUT then
-            if st.pending.retries >= M.MAX_RETRIES then
-                local dead = st.pending;
+        local p = st.pending;
+        if p.sentAt == nil then sendPending(now); return; end
+        if now - p.sentAt >= timeoutOf(p.op) then
+            local late = isWrite(p.op) and now - (p.firstSentAt or p.sentAt) >= M.WRITE_DEADLINE;
+            if p.retries >= retriesOf(p.op) or late then
                 st.pending = nil;
-                if dead.op == M.op.WITHDRAW or dead.op == M.op.DEPOSIT then
-                    -- The outcome is UNKNOWN (it may have executed and the
-                    -- reply died). Never re-send with a fresh Seq -- that is
-                    -- how a lost frame becomes a double op. Report, and let
-                    -- a full resync reveal the truth.
-                    local q = (dead.op == M.op.WITHDRAW) and st.withdrawQ or st.depositQ;
-                    local req = table.remove(q or {}, 1);
-                    if req ~= nil and type(req.onDone) == 'function' then
-                        pcall(req.onDone, nil, 'timeout');
-                    end
-                    M.markStale(0, 'write timeout');
-                elseif (dead.op == M.op.LAYOUT_SET or dead.op == M.op.LAYOUT_SET2) then
-                    -- Same mutating-op law: report, drop, and let the layout
-                    -- re-ask reveal what actually landed.
-                    local req = table.remove(st.layoutSetQ or {}, 1);
-                    if req and M._audit then pcall(M._audit, 'timeout', req.e, dead.seq, 'outcome-unknown'); end
-                    if req ~= nil and type(req.onDone) == 'function' then
-                        pcall(req.onDone, nil, 'timeout');
-                    end
-                    M.invalidateLayout();
-                    M.markStale(M.SETTLE_JOB, 'layout edit timeout');
-                    st.probeOnly = false;
-                elseif dead.op == M.op.INSTANCE_LOOKUP then
+                abandon(p);   -- free the shared channel now, not after MAX_WAIT
+                if isWrite(p.op) then
+                    failWrite(p, 'write timeout');
+                elseif p.op == M.op.INSTANCE_LOOKUP then
                     finishLookup(nil, 'timeout');
-                elseif dead.op == M.op.LOST_LIST then
+                elseif p.op == M.op.LOST_LIST then
                     st.lostAcc = nil;
-                elseif (dead.op == M.op.LAYOUT_LIST or dead.op == M.op.LAYOUT_LIST2) then
-                    noteWhy('layout ask timed out (no reply after ' .. M.MAX_RETRIES .. ' retries)', now);
+                elseif (p.op == M.op.LAYOUT_LIST or p.op == M.op.LAYOUT_LIST2) then
+                    noteWhy('layout ask timed out (no reply after ' .. retriesOf(p.op) .. ' retries)', now);
                     st.layoutAcc = nil;   -- the tab just shows stale and re-asks
                 else
-                    -- Lost sync: stale mirror, long backoff, ONE quiet state
+                    -- Lost sync: stale mirror, a short backoff, ONE quiet state
                     -- (no chat spam -- /dl vault says it when asked).
                     noteWhy(string.format('%s (%s#%d) timed out: no reply after %d retries',
-                        dead.kind, opName(dead.op), dead.seq, M.MAX_RETRIES), now);
+                        p.kind, opName(p.op), p.seq, retriesOf(p.op)), now);
                     st.rowsAcc = nil;
                     st.giveups = st.giveups + 1;
                     st.staleAt = now + M.GIVEUP_BACKOFF;
@@ -972,7 +1406,21 @@ function M.pump(ready)
         return;
     end
     if st.depositQ ~= nil and st.depositQ[1] ~= nil then
-        beginOp('deposit', M.op.DEPOSIT, M.depositPayload(st.depositQ[1].entries), now);
+        local req = st.depositQ[1];
+        if req.itemIds == nil then
+            -- what the bag slots hold as the deposit leaves: the ack names
+            -- slots, not items, and says nothing of the apply that follows
+            req.itemIds = {};
+            for _, e in ipairs(req.entries) do
+                local id = nil;
+                if type(M._readSlot) == 'function' then
+                    local ok, v = pcall(M._readSlot, e.container, e.slot);
+                    if ok then id = v; end
+                end
+                req.itemIds[#req.itemIds + 1] = id;
+            end
+        end
+        beginOp('deposit', M.op.DEPOSIT, M.depositPayload(req.entries), now);
         return;
     end
     if st.layoutSetQ ~= nil and st.layoutSetQ[1] ~= nil then
@@ -981,13 +1429,20 @@ function M.pump(ready)
             M.instanceMode() and M.layoutSet2Payload(e) or M.layoutSetPayload(e), now);
         return;
     end
-    if st.layoutWant ~= nil and now >= (st.layoutAfter or 0) then
+    -- A layout ask waits for HELLO: before it, the client cannot know the
+    -- instance protocol, and the legacy page it would send was thrown away
+    -- by the negotiation at every login (~100 wasted reads in the logs).
+    if st.layoutWant ~= nil and M.limits ~= nil and now >= (st.layoutAfter or 0) then
         local want = st.layoutWant;
         st.layoutWant = nil;
         st.layoutAcc = {};
         st.layoutRev = nil;
         st.layoutDirtySince, st.layoutAfter = nil, nil;
-        beginOp('layout', M.instanceMode() and M.op.LAYOUT_LIST2 or M.op.LAYOUT_LIST, M.layoutPayload(want.job, 0), now, 0);
+        if M.instanceMode() then
+            beginOp('layout', M.op.LAYOUT_LIST2, M.layoutPayload(want.job, 0) .. streamTail(), now, 0);
+        else
+            beginOp('layout', M.op.LAYOUT_LIST, M.layoutPayload(want.job, 0), now, 0);
+        end
         st.pending.job = want.job == 0 and (st.lastJob or 0) or want.job;
         st.pending.layoutEpoch = st.layoutEpoch or 0;
         return;
@@ -1006,23 +1461,70 @@ function M.pump(ready)
     end
     if M.instanceMode() and st.lostWant and M.mirror.fresh then
         st.lostWant = nil; st.lostAcc = {};
-        beginOp('lost', M.op.LOST_LIST, wu32(0), now, 0);
+        beginOp('lost', M.op.LOST_LIST, wu32(0) .. streamTail(), now, 0);
         st.pending.lostRevision = M.revision;
-        st.pending.lostEpoch = st.inventoryEpoch or 0;
         return;
     end
     if st.staleAt == nil or now < st.staleAt then return; end
 
-    -- A sync (or a probe) always starts at HELLO: proto check + the count.
+    -- A sync (or a probe) always starts at HELLO: proto check + the count --
+    -- and, since 2026-09-30, the push subscription (the server keeps it for
+    -- the session). `gen` pins the reasons this read answers.
     beginOp(st.probeOnly and 'probe' or 'sync-hello', M.op.HELLO, M.helloPayload(), now);
+    st.pending.gen = st.mirrorGen;
+end
+
+-- A CHANGED push. T2: it is never a reply, so it bypasses the transport's
+-- pending slot and timing entirely (an unmatched frame restarted every
+-- module's send gap until 2026-09-30). The server sends one after every
+-- change a subscribed client did not make itself, coalesced per tick and
+-- queued BEHIND the item packets of the change it names (FIFO): when it
+-- lands, the bags already show the result, and the server is done.
+local function onPush(f, now)
+    if type(M._notePush) == 'function' then pcall(M._notePush, f.op, 'gear vault push'); end
+    local c = (f.status == M.status.OK) and M.parseChanged(f.payload) or nil;
+    if c == nil then
+        noteWhy('ate an unreadable push', now);
+        return true;
+    end
+    st.lastPush = { at = now, scope = c.scope, cause = c.cause, eventSeq = c.eventSeq };
+    if st.dormant then return true; end
+    if st.unattuned then
+        -- The Deeper Room just finished: ask now instead of in five minutes.
+        if has(c.scope, M.change.ATTUNE) then st.staleAt = now; end
+        return true;
+    end
+    M.noteRevision(c.revision);
+    local shelved = has(c.scope, M.change.APPLIED) and ((c.pulled or 0) + (c.evicted or 0)) > 0;
+    if has(c.scope, M.change.VAULT) or shelved then
+        st.probeOnly = false;
+        dueSoon(M.SETTLE_PUSH, 'push');
+    end
+    local job = st.lastJob;
+    local mine = has(c.scope, M.change.LAYOUT) and type(job) == 'number' and job > 0
+        and has(c.jobs, 2 ^ job);
+    if mine or shelved then
+        -- entries changed, or copies moved (the layout shows where each is);
+        -- an apply that moved nothing (most zone lines) changes neither view
+        M.invalidateLayout(M.SETTLE_PUSH);
+        M.requestLayout(0);
+    end
+    if has(c.scope, M.change.LOST) then
+        M.lost.fresh = false;
+        M.lost.revision = nil;   -- a prune can empty it without moving the revision
+        M.requestLost();
+    end
+    if type(M._onPush) == 'function' then pcall(M._onPush, c.scope, c.jobs, c.cause); end
+    return true;
 end
 
 -- One parsed inbound frame. Returns true when it was OURS (glue blocks it).
 function M.onFrame(f)
     if f == nil or type(f.op) ~= 'number' then return false; end
     if f.op < M.op.HELLO or f.op > 0x7F then return false; end
-    if M._received then M._received(f.op, f.seq); end
     local now = M._clock();
+    if f.op == M.op.CHANGED and (f.seq or 0) == 0 then return onPush(f, now); end
+    if M._received then M._received(f.op, f.seq); end
     st.trace.lastRecv = { op = f.op, seq = f.seq, status = f.status, len = #(f.payload or ''), at = now };
     local p = st.pending;
     if p == nil or p.sentAt == nil or f.op ~= p.op or f.seq ~= p.seq then
@@ -1069,7 +1571,15 @@ function M.onFrame(f)
                     or (f.status == M.status.BUSY and 'busy') or 'unavailable';
                 pcall(req.onDone, nil, word);
             end
-            return true;   -- a refused write moved nothing: the mirror stands
+            -- TOO_FAR is decided at the first entry: nothing moved, the
+            -- mirror stands. BUSY / UNAVAILABLE can end a BATCH part-way --
+            -- the server answers the whole frame with one status and the
+            -- entries already moved lose their results -- so re-read.
+            if f.status ~= M.status.TOO_FAR and f.status ~= M.status.MALFORMED then
+                M.markStale(0, 'write refused part-way');
+                st.probeOnly = false;
+            end
+            return true;
         end
         if (p.op == M.op.LAYOUT_SET or p.op == M.op.LAYOUT_SET2) then
             local req = table.remove(st.layoutSetQ or {}, 1);
@@ -1086,7 +1596,7 @@ function M.onFrame(f)
             return true;
         end
         st.rowsAcc = nil;
-        st.staleAt = now + M.GIVEUP_BACKOFF;
+        st.staleAt = math.max(st.staleAt or 0, now + M.GIVEUP_BACKOFF);
         M.mirror.fresh = false;
         return true;
     end
@@ -1098,7 +1608,7 @@ function M.onFrame(f)
         if not req then return true; end
         if not chunk then finishLookup(nil, 'malformed'); return true; end
         local raced = p.epoch ~= st.inventoryEpoch or p.revision ~= chunk.revision
-            or math.floor((f.flags or 0) / 2) % 2 == 1;
+            or has(f.flags, M.FLAG_STALE);
         M.noteRevision(chunk.revision);
         if not raced and #chunk.entries ~= #req.entries then finishLookup(nil, 'malformed'); return true; end
         for i, e in ipairs(chunk.entries) do
@@ -1121,24 +1631,31 @@ function M.onFrame(f)
         finishLookup(chunk.entries); return true;
     end
 
+    -- The three list reads share one shape: rows in ascending key order,
+    -- MORE = ask again past the last key, and (STREAM) FOLLOWS = another
+    -- frame of this same reply is already on its way. A retried request can
+    -- deliver a burst twice; a row at or below the last key taken is a
+    -- duplicate and is skipped, so the accumulator never double-counts.
     if p.op == M.op.LOST_LIST then
-        st.pending = nil;
         local chunk = M.parseLost(f.payload);
-        if not chunk then st.lostAcc = nil; return true; end
-        local last = p.cursor or 0;
+        if not chunk then st.pending = nil; st.lostAcc = nil; return true; end
+        st.lostAcc = st.lostAcc or {};
+        local accLast = p.accLast or p.cursor or 0;
         for _, e in ipairs(chunk.entries) do
-            st.lostAcc[#st.lostAcc + 1] = e;
-            last = math.max(last, e.instanceId);
+            if e.instanceId > accLast then st.lostAcc[#st.lostAcc + 1] = e; accLast = e.instanceId; end
         end
-        if (f.flags or 0) % 2 == 1 then
-            if last <= (p.cursor or 0) then st.lostAcc = nil; return true; end
-            beginOp('lost', M.op.LOST_LIST, wu32(last), now, last);
-            st.pending.lostRevision, st.pending.lostEpoch = p.lostRevision, p.lostEpoch;
+        p.accLast = accLast;
+        if has(f.flags, M.FLAG_FOLLOWS) then p.sentAt = now; return true; end
+        st.pending = nil;
+        if has(f.flags, M.FLAG_MORE) then
+            if accLast <= (p.cursor or 0) then st.lostAcc = nil; return true; end
+            beginOp('lost', M.op.LOST_LIST, wu32(accLast) .. streamTail(), now, accLast);
+            st.pending.lostRevision = p.lostRevision;
         else
-            if p.lostRevision ~= M.revision or p.lostEpoch ~= (st.inventoryEpoch or 0) then
+            if p.lostRevision ~= M.revision then
                 st.lostAcc = nil; M.requestLost(); return true;
             end
-            M.lost = { entries = st.lostAcc, fresh = true, revision = p.lostRevision, epoch = p.lostEpoch };
+            M.lost = { entries = st.lostAcc, fresh = true, revision = p.lostRevision };
             st.lostAcc = nil;
             if M._onLost then pcall(M._onLost, M.lost.entries); end
         end
@@ -1153,9 +1670,9 @@ function M.onFrame(f)
             st.staleAt = now + M.GIVEUP_BACKOFF;
             return true;
         end
-        local oldRevision = M.revision;
         local modeChanged = M.instanceMode() ~= (h.instances == true);
         M.limits = h;
+        st.subscribed = h.push == true;   -- the server keeps it until we log out
         if modeChanged then
             -- A layout can arrive before the login HELLO. Its old rows lack
             -- instance/location fields even though the mirror is now v2.
@@ -1165,121 +1682,171 @@ function M.onFrame(f)
         M.noteRevision(h.revision);
         M.mirror.vaultCount = h.vaultCount;
         local rowsHeld = #M.mirror.rows;
+        -- The probe compares against the revision these rows were LISTED at
+        -- (2026-09-30 audit: it used the client's running revision, which
+        -- layout pages and lookups advance, so a count-neutral change --
+        -- k pieces in, k out -- slipped through as "unchanged").
         if p.kind == 'probe' and M.mirror.stamp ~= nil and h.vaultCount == rowsHeld
-            and (not h.instances or oldRevision == h.revision) then
-            -- The count agrees with what we hold: the probe re-stamps fresh
-            -- and the LIST pages stay unspent.
-            M.mirror.fresh = true;
-            M.mirror.stamp = now;
-            st.staleAt = nil;
+            and (not h.instances or M.mirror.revision == h.revision) then
+            if p.gen == nil or p.gen == st.mirrorGen then
+                M.mirror.fresh = true;
+                M.mirror.stamp = now;
+                st.staleAt = nil;
+            end
             st.probeOnly = false;
             return true;
         end
+        if p.kind == 'probe' and h.instances and M.layoutCache.revision ~= h.revision then
+            -- copies moved since the layout was read: its locations may have too
+            M.invalidateLayout();
+            M.requestLayout(0);
+        end
         st.probeOnly = false;
         st.rowsAcc = {}; st.rowsRev = nil;
-        beginOp('sync-list', M.instanceMode() and M.op.LIST2 or M.op.LIST, M.listPayload(0), now, 0);
+        if M.instanceMode() then
+            beginOp('sync-list', M.op.LIST2, M.listPayload(0) .. streamTail(), now, 0);
+        else
+            beginOp('sync-list', M.op.LIST, M.listPayload(0), now, 0);
+        end
+        st.pending.gen = p.gen;
         return true;
     end
 
     if p.op == M.op.LIST or p.op == M.op.LIST2 then
-        local chunk = p.op == M.op.LIST2 and M.parseList2(f.payload) or (p.op == M.op.LIST and M.parseListChunk(f.payload));
-        st.pending = nil;
+        local chunk;   -- if/else: `a and parse() or ...` turns a failed parse into false, not nil
+        if p.op == M.op.LIST2 then chunk = M.parseList2(f.payload); else chunk = M.parseListChunk(f.payload); end
         if chunk == nil then
+            st.pending = nil;
             st.rowsAcc = nil;
-            st.staleAt = now + M.GIVEUP_BACKOFF;
+            st.staleAt = math.max(st.staleAt or 0, now + M.GIVEUP_BACKOFF);
             return true;
         end
         if chunk.revision ~= nil then
             M.noteRevision(chunk.revision);
             if st.rowsRev ~= nil and st.rowsRev ~= chunk.revision then
-                st.rowsAcc = nil; st.staleAt = now + 1; return true;
+                -- the vault moved between our pages: start over shortly (never
+                -- EARLIER than a settle someone else asked for)
+                st.pending = nil; st.rowsAcc = nil;
+                st.staleAt = math.max(st.staleAt or 0, now + 1);
+                return true;
             end
             st.rowsRev = chunk.revision;
         end
-        local last = p.cursor or 0;
+        st.rowsAcc = st.rowsAcc or {};
+        local accLast = p.accLast or p.cursor or 0;
         for _, e in ipairs(chunk.entries) do
-            st.rowsAcc[#st.rowsAcc + 1] = e;
-            if e.rowId > last then last = e.rowId; end
+            if e.rowId > accLast then st.rowsAcc[#st.rowsAcc + 1] = e; accLast = e.rowId; end
         end
-        if f.flags % 2 == M.FLAG_MORE then
-            if last <= (p.cursor or 0) then st.rowsAcc = nil; st.staleAt = now + M.GIVEUP_BACKOFF; return true; end
-            beginOp('sync-list', p.op, M.listPayload(last), now, last);
+        p.accLast = accLast;
+        if has(f.flags, M.FLAG_FOLLOWS) then p.sentAt = now; return true; end
+        st.pending = nil;
+        if has(f.flags, M.FLAG_MORE) then
+            if accLast <= (p.cursor or 0) then
+                st.rowsAcc = nil; st.staleAt = math.max(st.staleAt or 0, now + M.GIVEUP_BACKOFF); return true;
+            end
+            beginOp('sync-list', p.op, M.listPayload(accLast) .. ((p.op == M.op.LIST2) and streamTail() or ''), now, accLast);
+            st.pending.gen = p.gen;
         else
             M.mirror.vaultCount = #st.rowsAcc;   -- LIST is now the fresher truth
-            commitMirror(now);
+            commitMirror(now, p.gen, st.rowsRev or M.revision);
             if M.instanceMode() then M.requestLost(); end
         end
         return true;
     end
 
     if (p.op == M.op.LAYOUT_LIST or p.op == M.op.LAYOUT_LIST2) then
-        local chunk = p.op == M.op.LAYOUT_LIST2 and M.parseLayout2(f.payload) or (p.op == M.op.LAYOUT_LIST and M.parseLayoutChunk(f.payload));
-        st.pending = nil;
+        local chunk;
+        if p.op == M.op.LAYOUT_LIST2 then chunk = M.parseLayout2(f.payload); else chunk = M.parseLayoutChunk(f.payload); end
         if chunk == nil then
+            st.pending = nil;
             st.layoutAcc = nil;
             return true;
         end
         if p.job ~= nil and p.job ~= 0 and p.job ~= st.lastJob then
+            st.pending = nil;
             st.layoutAcc = nil; M.layoutCache.fresh = false; M.requestLayout(0); return true;
-        end
-        if p.layoutEpoch ~= (st.layoutEpoch or 0) then
-            st.layoutAcc = nil;
-            M.requestLayout(p.job);
-            return true;
         end
         if chunk.revision ~= nil then
             M.noteRevision(chunk.revision);
             if st.layoutRev ~= nil and st.layoutRev ~= chunk.revision then
-                st.layoutAcc = nil; M.layoutCache.fresh = false; return true;
+                st.pending = nil;
+                st.layoutAcc = nil; M.layoutCache.fresh = false; M.requestLayout(0); return true;
             end
             st.layoutRev = chunk.revision;
         end
-        local last = p.cursor or 0;
+        st.layoutAcc = st.layoutAcc or {};
+        local accLast = p.accLast or p.cursor or 0;
         for _, e in ipairs(chunk.entries) do
-            st.layoutAcc[#st.layoutAcc + 1] = e;
-            if e.ordinal > last then last = e.ordinal; end
+            if e.ordinal > accLast then st.layoutAcc[#st.layoutAcc + 1] = e; accLast = e.ordinal; end
         end
-        if f.flags % 2 == M.FLAG_MORE then
-            if last <= (p.cursor or 0) then st.layoutAcc = nil; return true; end
-            beginOp('layout', p.op, M.layoutPayload(p.job, last), now, last);
+        p.accLast = accLast;
+        if has(f.flags, M.FLAG_FOLLOWS) then p.sentAt = now; return true; end
+        st.pending = nil;
+        if has(f.flags, M.FLAG_MORE) then
+            if accLast <= (p.cursor or 0) then st.layoutAcc = nil; return true; end
+            beginOp('layout', p.op, M.layoutPayload(p.job, accLast) .. ((p.op == M.op.LAYOUT_LIST2) and streamTail() or ''), now, accLast);
             st.pending.job = p.job;
             st.pending.layoutEpoch = p.layoutEpoch;
         else
+            -- A change noticed while the pages were on the wire (the epoch
+            -- moved) no longer throws the read away: under steady inventory
+            -- churn that restarted forever (runs of 24-30 pages in the field
+            -- logs). The pages are one consistent server snapshot -- commit
+            -- them for the eye, keep the view marked stale, read once more.
+            local current = p.layoutEpoch == (st.layoutEpoch or 0);
+            local ids = {};
+            for _, e in ipairs(st.layoutAcc) do ids[e.itemId] = true; end
             M.layoutCache = {
-                job     = (p.job ~= nil and p.job ~= 0) and p.job or st.lastJob,
-                entries = st.layoutAcc,
-                fresh   = true,
-                stamp   = now,
+                job      = (p.job ~= nil and p.job ~= 0) and p.job or st.lastJob,
+                entries  = st.layoutAcc,
+                fresh    = current,
+                stamp    = now,
+                revision = st.layoutRev,
+                ids      = ids,
+                idsOf    = st.layoutAcc,
             };
             st.layoutAcc = nil;
+            if not current then M.requestLayout(0); end
             if M.instanceMode() then M.requestLost(); end
+            if type(M._onLayout) == 'function' then pcall(M._onLayout); end
         end
         return true;
     end
 
     if (p.op == M.op.LAYOUT_SET or p.op == M.op.LAYOUT_SET2) then
-        local ack = p.op == M.op.LAYOUT_SET2 and M.parseLayoutSet2Ack(f.payload) or (p.op == M.op.LAYOUT_SET and M.parseLayoutSetAck(f.payload));
+        local ack;
+        if p.op == M.op.LAYOUT_SET2 then ack = M.parseLayoutSet2Ack(f.payload); else ack = M.parseLayoutSetAck(f.payload); end
         if ack then M.noteRevision(ack.revision); end
         st.pending = nil;
         local req = table.remove(st.layoutSetQ or {}, 1);
         if req and M._audit then pcall(M._audit, 'reply', req.e, p.seq, ack and ack.code or 'malformed'); end
+        local active = req ~= nil and ((req.e.job or 0) == 0 or req.e.job == st.lastJob);
         if ack == nil then
             -- An unreadable acknowledgement cannot prove the edit failed.
             -- Refresh both stores before offering another increment.
             M.invalidateLayout();
             M.requestLayout(0);
-            M.markStale(M.SETTLE_JOB, 'layout edit malformed reply');
+            M.markStale(M.SETTLE_EDIT, 'layout edit malformed reply');
             st.probeOnly = false;
-        end
-        if ack ~= nil and (ack.code == M.code.OK or ack.code == M.code.PARTIAL) then
+        elseif ack.code == M.code.OK or ack.code == M.code.PARTIAL then
             M.invalidateLayout();
-            if req ~= nil and req.e.verb ~= M.verb.PIN
-                and ((req.e.job or 0) == 0 or req.e.job == st.lastJob) then
-                -- Applying the active layout moves items between vault and
-                -- wardrobes. The old LIST must not offer those copies again.
-                M.markStale(M.SETTLE_JOB, 'layout edit');
+            M.requestLayout(0);   -- the view catches up now (a caller's ask coalesces)
+            if req ~= nil and req.e.verb ~= M.verb.PIN and active then
+                -- The server applied the active layout INSIDE this request and
+                -- its item packets left before this ack (FIFO): the vault is
+                -- final now. Read it as soon as the run of edits ends -- it
+                -- was a fixed 6 s wait, most of every edit's 11 s median.
+                M.markStale(M.SETTLE_EDIT, 'layout edit');
                 st.probeOnly = false;
             end
+        elseif ack.code == M.code.NO_INSTANCE or ack.code == M.code.NOT_IN_LAYOUT
+            or ack.code == M.code.INSTANCE_LOST or ack.code == M.code.INSTANCE_OUTSIDE
+            or ack.code == M.code.ALREADY_BOUND then
+            -- the server says one of our views is out of date: re-read both
+            M.invalidateLayout();
+            M.requestLayout(0);
+            M.markStale(M.SETTLE_EDIT, 'layout edit met a changed copy');
+            st.probeOnly = false;
         end
         if req ~= nil and type(req.onDone) == 'function' then
             if ack == nil then
@@ -1297,14 +1864,33 @@ function M.onFrame(f)
         local req = table.remove(st.depositQ or {}, 1);
         if ack == nil then
             if req ~= nil and type(req.onDone) == 'function' then pcall(req.onDone, nil, 'malformed'); end
+            -- an unreadable ack cannot prove nothing moved
+            M.markStale(0, 'deposit malformed reply');
+            st.probeOnly = false;
             return true;
         end
         -- Anything stored changed the vault: one LIST resync is the honest
-        -- (and cheap -- you are standing at a Warden) way to fold it in.
-        for _, e in ipairs(ack.entries) do
+        -- (and cheap -- you are standing at a Warden) way to fold it in. The
+        -- server also applies what the layout NAMES right after a deposit
+        -- (applyDepositedWants), so a stored piece the layout carries moves
+        -- on to the shelf -- and the layout, which shows where each copy is,
+        -- is read again. A piece the layout does not name leaves it alone.
+        local stored, named = false, false;
+        for i, e in ipairs(ack.entries) do
             if e.code == M.code.OK or e.code == M.code.PARTIAL then
-                M.markStale(0, 'deposit');
-                break;
+                stored = true;
+                local id = req ~= nil and req.itemIds ~= nil and req.itemIds[i] or nil;
+                if id == nil or layoutNames(id) then named = true; end
+            end
+        end
+        if stored then
+            M.markStale(0, 'deposit');
+            st.probeOnly = false;
+            -- marked, not asked: the vault list goes first (it is what the
+            -- player is looking at), and its commit kicks the layout engine,
+            -- which asks for the stale layout itself
+            if named and (M.layoutCache.entries ~= nil and #M.layoutCache.entries > 0) then
+                M.invalidateLayout();
             end
         end
         if req ~= nil and type(req.onDone) == 'function' then pcall(req.onDone, ack.entries, nil); end
@@ -1317,18 +1903,27 @@ function M.onFrame(f)
         local req = table.remove(st.withdrawQ or {}, 1);
         if ack == nil then
             if req ~= nil and type(req.onDone) == 'function' then pcall(req.onDone, nil, 'malformed'); end
+            M.markStale(0, 'withdraw malformed reply');
+            st.probeOnly = false;
             return true;
         end
         -- SUBTRACTION, the E-Box law: we sent the rows, the ack says what
         -- moved, so the mirror is arithmetic -- no re-LIST. A NO_INSTANCE
         -- answer means the mirror believed a row the vault no longer holds:
         -- that one forces the honest resync.
-        local goneRow, changed = false, false;
+        local goneRow, changed, laidOut = false, false, false;
         for _, e in ipairs(ack.entries) do
             if e.moved > 0 then
                 changed = true;
                 for i, row in ipairs(M.mirror.rows) do
                     if row.rowId == e.rowId then
+                        -- a copy the layout names now sits in the bags: the
+                        -- layout shows where each copy is, so it re-reads
+                        if (row.instanceId or 0) > 0 then
+                            for _, le in ipairs(M.layoutCache.entries or {}) do
+                                if le.instanceId == row.instanceId then laidOut = true; break; end
+                            end
+                        end
                         row.qty = row.qty - e.moved;
                         if row.qty <= 0 then table.remove(M.mirror.rows, i); end
                         break;
@@ -1349,7 +1944,8 @@ function M.onFrame(f)
         -- player had to press Sync by hand (Henrik, playtest 2026-08-26).
         if changed then M.mirror.stamp = M._clock(); end
         if type(M._onFresh) == 'function' then pcall(M._onFresh); end
-        if goneRow then M.markStale(0, 'withdraw met a gone row'); end
+        if goneRow then M.markStale(0, 'withdraw met a gone row'); st.probeOnly = false; end
+        if laidOut then M.invalidateLayout(); M.requestLayout(0); end
         if req ~= nil and type(req.onDone) == 'function' then pcall(req.onDone, ack.entries, nil); end
         return true;
     end
@@ -1360,12 +1956,58 @@ end
 -- ---------------------------------------------------------------------------
 -- Readouts (the service surface + /dl vault)
 -- ---------------------------------------------------------------------------
+-- 'syncing' means the MIRROR is being re-read (HELLO/LIST on the wire) --
+-- not any op at all: a one-slot lookup or a lost-list page used to paint the
+-- whole vault as syncing and hold the layout engine (2026-09-30).
 function M.state()
     if st.dormant then return 'dormant'; end
     if st.unattuned then return 'unattuned'; end
-    if st.pending ~= nil then return 'syncing'; end
+    local k = st.pending and st.pending.kind;
+    if k == 'probe' or k == 'sync-hello' or k == 'sync-list' then return 'syncing'; end
     if M.mirror.fresh then return 'fresh'; end
     return 'stale';
+end
+
+-- What real work is under way, for a calm one-word readout: 'vault' (the
+-- vault list is being re-read), 'layout' (this job's layout is), 'edits'
+-- (layout changes are going out), 'moving' (a store / withdraw), or nil. A
+-- probe is a glance, not an update, and says nothing.
+function M.activity()
+    if st.dormant or st.unattuned then return nil; end
+    local k = st.pending and st.pending.kind;
+    if k == 'deposit' or k == 'withdraw' or #(st.depositQ or {}) > 0 or #(st.withdrawQ or {}) > 0 then
+        return 'moving';
+    end
+    if k == 'layoutset' or #(st.layoutSetQ or {}) > 0 then return 'edits'; end
+    if k == 'sync-hello' or k == 'sync-list' then return 'vault'; end
+    if k == 'layout' or (st.layoutWant ~= nil and M.limits ~= nil) then return 'layout'; end
+    if st.staleAt ~= nil and not st.probeOnly and M._clock() >= st.staleAt - 0.5 then return 'vault'; end
+    return nil;
+end
+
+-- Is anything WRONG enough to show? nil = fine (fresh, or a routine re-read
+-- under way), 'never' = no vault read has landed yet, 'failing' = reads are
+-- failing and backing off (/dl vault says why).
+function M.health()
+    if st.dormant or st.unattuned then return nil; end
+    if (st.giveups or 0) > 0 then return 'failing'; end
+    if M.mirror.stamp == nil then return 'never'; end
+    return nil;
+end
+
+-- Live updates: the server pushes changes to us (negotiated in HELLO; it lasts
+-- the session -- zone lines keep it, a login renews it).
+function M.live()
+    return M.limits ~= nil and M.limits.push == true and st.subscribed == true;
+end
+
+-- The goodbye HELLO (client caps 0) the glue sends as the addon unloads: the
+-- subscription lasts the session, so the server must hear that nothing is
+-- left to block its frames from reaching the game. nil when not subscribed.
+function M.unsubscribeFrame()
+    if not M.live() then return nil; end
+    st.subscribed = false;
+    return M.buildFrame(M.op.HELLO, nextSeq(), wu16(M.PROTO) .. wu16(0));
 end
 
 function M.statusLine()
@@ -1382,10 +2024,16 @@ function M.statusLine()
     local pinMode = M.limits == nil and 'server support: unchecked'
         or (M.instanceMode() and M.limits.atomicInstanceAdd and 'pinned instance adds: one request')
         or 'pinned adds: ADD then PIN';
-    return string.format('gear vault: %s -- %d piece%s mirrored (%d row%s)%s%s -- %s.',
+    local live = '';
+    if M.limits ~= nil then
+        live = ' -- live updates: ' .. ((not M.limits.push) and 'not offered by this server'
+            or (st.subscribed and 'on' or (st.fieldHold and 'off in the field' or 'renewing')))
+            .. (M.limits.stream and ', one-request reads' or '');
+    end
+    return string.format('gear vault: %s -- %d piece%s mirrored (%d row%s)%s%s -- %s%s.',
         s, n, (n == 1) and '' or 's', #M.mirror.rows, (#M.mirror.rows == 1) and '' or 's',
         (st.giveups > 0) and (' -- ' .. st.giveups .. ' failed sync(s), retrying') or '',
-        M.instanceMode() and (' -- instances, revision ' .. tostring(M.revision)) or '', pinMode);
+        M.instanceMode() and (' -- instances, revision ' .. tostring(M.revision)) or '', pinMode, live);
 end
 
 -- The evidence line (/dl vault's second line): what left, what came back,
@@ -1413,6 +2061,10 @@ function M.traceLine()
         parts[#parts + 1] = 'no reply ever seen';
     end
     if tr.why ~= nil then parts[#parts + 1] = 'outcome: ' .. tr.why; end
+    if st.lastPush ~= nil then
+        parts[#parts + 1] = string.format('last push %s (scope %d, cause %d)', ago(st.lastPush.at),
+            st.lastPush.scope or 0, st.lastPush.cause or 0);
+    end
     if st.dormant then
         parts[#parts + 1] = 'no retry (dormant)';
     elseif st.unattuned and st.pending == nil and st.staleAt ~= nil then
@@ -1421,17 +2073,20 @@ function M.traceLine()
         parts[#parts + 1] = st.pending.sentAt == nil and 'queued for paced send' or 'awaiting a reply';
     elseif st.staleAt ~= nil then
         parts[#parts + 1] = string.format('next try in %ds', math.max(0, math.ceil(st.staleAt - now)));
+    elseif st.fieldHold then
+        parts[#parts + 1] = 'holding still in the field (the vault only changes in a city)';
     end
     return 'gear vault: ' .. table.concat(parts, ' | ') .. '.';
 end
 
 -- test seam
 function M._reset()
-    M.mirror = { fresh = false, rows = {}, counts = {}, vaultCount = nil, stamp = nil };
+    M.mirror = { fresh = false, rows = {}, counts = {}, vaultCount = nil, stamp = nil, revision = nil };
     M.layoutCache = { job = nil, entries = {}, fresh = false, stamp = nil };
     M.limits = nil; M.revision = nil; M.lost = { entries = {}, fresh = false };
     st = { dormant = false, unattuned = false, pending = nil, seq = 0, lastSend = 0,
-           staleAt = nil, giveups = 0, rowsAcc = nil, lastJob = nil, saidProto = false, trace = {} };
+           staleAt = nil, mirrorGen = 0, giveups = 0, rowsAcc = nil, lastJob = nil,
+           saidProto = false, trace = {}, subscribed = false, fieldHold = false };
 end
 
 function M._st() return st; end

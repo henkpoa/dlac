@@ -23,6 +23,9 @@ jobs:
       - name: UI smoke-load
         run: lua5.4 tests/smoke_ui.lua
 
+      - name: Personal mob tags and Treasure Hunter triggers
+        run: lua5.4 tests/mobtag.lua
+
       - name: ImGui percent literals
         run: lua5.4 tests/imgui_percent_literals.lua
 
@@ -47,6 +50,9 @@ jobs:
       - name: Custom equipment native pipeline regression
         run: lua5.4 tests/custom_equipment.lua
 
+      - name: Nexus crafting gear (recipe-wide pick, the lock and its conversation)
+        run: lua5.4 tests/nexuscraft.lua
+
       - name: Idle weapon resource report regression
         run: lua5.4 tests/idle_weapon_report.lua
 
@@ -56,17 +62,38 @@ jobs:
       - name: Gear vault count regression
         run: lua5.4 tests/gearvault_counts.lua
 
+      - name: EXP ring recharge menu and status regression
+        run: lua5.4 tests/exp_ring_recharge.lua
+
       - name: Gear vault instance regression
         run: lua5.4 tests/gearvault_instances.lua
 
+      - name: Gear vault draws augmented copies when no choice is involved
+        run: lua5.4 tests/gearvault_augmented_draw.lua
+
+      - name: Gear vault stage 8 (write window, foreign gate, zone lines, job changes, reloads)
+        run: lua5.4 tests/gearvault_stage8.lua
+
       - name: Gear vault sync regression
         run: lua5.4 tests/gearvault_sync.lua && lua5.4 tests/gearvault_sync_probe.lua --budget
+
+      - name: Gear vault live sync (city rule, pushes, streams, write laws)
+        run: lua5.4 tests/gearvault_live.lua
 
       - name: AscensionXI HELM packet regression
         run: lua5.4 tests/ascensionxi_helm.lua
 
       - name: HELM gathered-item storage regression
         run: lua5.4 tests/helmstorage.lua
+
+      - name: Dug-item storage regression
+        run: lua5.4 tests/digstorage.lua
+
+      - name: AscensionXI digging packet regression
+        run: lua5.4 tests/ascensionxi_digging.lua
+
+      - name: AscensionXI digging surfaces regression
+        run: lua5.4 tests/ascensionxi_digging_ui.lua
 
       - name: AscensionXI ascension packet regression
         run: lua5.4 tests/ascensionxi_ascension.lua

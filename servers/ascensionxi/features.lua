@@ -10,6 +10,8 @@
 
     September 14: Gear Helpers and Hobby Bar enabled for HELM. The helpers
     allowlist keeps other helpers hidden until enabled for AscensionXI.
+    October 4: Chocobo (the Digging tab and its Gear Helpers row) enabled,
+    fed by the pack's digging module.
 ]]--
 return {
     tabs = {
@@ -20,10 +22,10 @@ return {
         lockstyle = true,
         macrobook = true,
         hobbybar  = true,
-        teleports = false,
+        teleports = true,
         nm        = false,
         wishlist  = false,
     },
     -- Also controls the shared hobby bar. Add helpers as they are enabled.
-    helpers = { helm = true },
+    helpers = { helm = true, choco = true },
 };

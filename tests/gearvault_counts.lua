@@ -112,7 +112,7 @@ wire.layoutCache.fresh = true;
 assert(manualState(100).pending and manualState(200).pending,
     'refreshing only the layout must not release item locks');
 assert(manualState(300).reserved == 2, 'acknowledgements retain capacity reservations');
-wire.noteZoneIn();
+wire.noteCounterTrade();   -- (a zone line is not one: it moves nothing -- 2026-10-01)
 assert(not manualState(300).ready, 'external changes must invalidate the batch snapshot');
 wire.cancelLayoutSets();
 wire.mirror.fresh = true; wire.layoutCache.fresh = true;

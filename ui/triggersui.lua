@@ -135,6 +135,9 @@ local MODE_COND = { key = 'mode', kind = 'mode',
         .. 'name (DT). Define them in the Modes section.\n'
         .. 'Stack with other conditions to make a rule mode-dependent.' };
 
+local MOB_TAGGED_COND = { key = 'mobTagged', kind = 'boolean', items = { 'false', 'true' },
+    hint = 'you have landed a successful hostile action on the current mob,\nincluding hits, debuffs and abilities. Misses, resists, aggro and other\nplayers do not count. Use mobTagged = false for TH gear on an untagged mob.\nRemembers target switches; clears on death, disappearance, zoning or reload.\nTracks observed actions, not the server\'s actual TH level.' };
+
 local SPELL_CONDS = {
     { key = 'skill',     kind = 'list', items = { 'Divine Magic', 'Healing Magic', 'Enhancing Magic', 'Enfeebling Magic', 'Elemental Magic', 'Dark Magic', 'Summoning', 'Ninjutsu', 'Singing', 'Blue Magic', 'Geomancy' } },
     { key = 'magicType', kind = 'list', items = { 'White Magic', 'Black Magic', 'Bard Song', 'Ninjutsu', 'Summoning', 'Blue Magic' } },
@@ -150,16 +153,22 @@ local SPELL_CONDS = {
     MODE_COND,
     { key = 'any',       kind = 'flag' },
 };
+-- Midcast adds the tag gate without adding it to Precast's picker.
+local MIDCAST_CONDS = {};
+for i, def in ipairs(SPELL_CONDS) do MIDCAST_CONDS[i] = def; end
+MIDCAST_CONDS[#MIDCAST_CONDS + 1] = MOB_TAGGED_COND;
+
 local COND_DEFS = {
     Default = {
         { key = 'status', kind = 'list', items = { 'Engaged', 'Resting', 'Idle' } },
+        MOB_TAGGED_COND,
         { key = 'moving', kind = 'flag' },
         { key = 'inTown', kind = 'flag',
           hint = 'you are standing in a town -- pair with status = Idle to show off\nyour gear in the cities. The town list is server-derived (data/zones.lua):\nevery city plus Nashmau, Celennia Memorial Library, Mog Garden.' },
         MODE_COND,
     },
     Precast = SPELL_CONDS,
-    Midcast = SPELL_CONDS,
+    Midcast = MIDCAST_CONDS,
     Ability = {
         { key = 'abilityType', kind = 'list', items = { 'Blood Pact: Rage', 'Blood Pact: Ward', 'Corsair Roll', 'Quick Draw', 'Ready', 'Rune Enchantment' } },
         { key = 'contains', kind = 'text', hint = 'name contains this text' },
@@ -182,7 +191,7 @@ local COND_DEFS = {
         { key = 'any',  kind = 'flag' },
     },
     Preshot = { { key = 'any', kind = 'flag' }, MODE_COND },
-    Midshot = { { key = 'any', kind = 'flag' }, MODE_COND },
+    Midshot = { { key = 'any', kind = 'flag' }, MODE_COND, MOB_TAGGED_COND },
     -- Fires when YOUR PET starts an action (Blood Pact, Ready move, pet spell).
     -- NO LAC version calls a pet handler -- the upstream tutorial's
     -- HandlePetAction is a call-it-yourself pattern; dlac's engine tick does
@@ -233,7 +242,7 @@ local PET_PARAMS = {
       hint = 'exact pet name, case-insensitive -- Garuda, Fire Spirit, a jug pet\'s name --\nfor avatar-specific perpetuation gear and the like. Never matches petless.' },
 };
 do
-    -- Precast/Midcast share one defs table (SPELL_CONDS) -- append ONCE per table.
+    -- Append the shared player/pet pickers once per defs table.
     local seenDef = {};
     for _, defs in pairs(COND_DEFS) do
         if not seenDef[defs] then
@@ -1839,6 +1848,7 @@ end
 local COND_COLORS = {
     status = { 0.55, 0.75, 1.00, 1.0 },  moving = { 0.55, 0.75, 1.00, 1.0 },
     intown = { 0.50, 0.82, 0.92, 1.0 },   -- location gate (v84): a teal-blue beside status/moving
+    mobtagged = { 0.95, 0.78, 0.35, 1.0 },
     mode = { 0.80, 0.60, 1.00, 1.0 },
     skill = { 0.55, 0.85, 0.55, 1.0 },
     magictype = { 0.45, 0.80, 0.75, 1.0 }, abilitytype = { 0.45, 0.80, 0.75, 1.0 },
@@ -1910,6 +1920,7 @@ local PSTATE_KEYS = {
     -- engine's own matcher (zoneOf does GetMemberZone on the addon side), so you
     -- can watch it light up as you walk into a city while building the rule.
     intown = true,
+    mobtagged = true,
 };
 -- LAC's EntityStatus resolution (constants.lua:236 via ResolveString's +1):
 -- raw entity status 0 Idle / 1 Engaged / 2-3 Dead / 4 Zoning / 33 Resting.
@@ -2856,6 +2867,7 @@ local function renderTrigAddPopup()
         trig.addValText[1] = ''; trig._addValSel = nil; trig.addValNum[1] = 0;
         if kind == 'number' then trig.addValNum[1] = tonumber(c.value) or 0;
         elseif kind == 'text' then trig.addValText[1] = tostring(c.value);
+        elseif kind == 'boolean' then trig._addValSel = tostring(c.value);
         elseif kind == 'list' or kind == 'group' or kind == 'buff' then trig._addValSel = c.value;
         elseif kind == 'mode' then
             -- `mode` is the one LIST-VALUED matcher (a rule may gate on several).
@@ -3007,7 +3019,7 @@ local function renderTrigAddPopup()
     cur = defs[trig._addDef];
     if cur ~= nil then
         imgui.SameLine(0, 6);
-        if cur.kind == 'list' then
+        if cur.kind == 'list' or cur.kind == 'boolean' then
             imgui.PushItemWidth(170);
             if imgui.BeginCombo('##trgcondval', trig._addValSel or '(pick)') then
                 for vi, it in ipairs(cur.items) do
@@ -3016,6 +3028,7 @@ local function renderTrigAddPopup()
                 imgui.EndCombo();
             end
             imgui.PopItemWidth();
+            if cur.hint ~= nil and imgui.IsItemHovered() then imgui.SetTooltip(cur.hint); end
         elseif cur.kind == 'group' then
             -- Value = a dropdown of the current job's defined groups (ADR 0009).
             -- Picking one writes  when = { group = '<name>' }. Build groups in the
@@ -3127,6 +3140,9 @@ local function renderTrigAddPopup()
             end
             local val;
             if ck == 'fixed' then val = fixedVal;   -- pet = true/false: false is a real value
+            elseif ck == 'boolean' then
+                if trig._addValSel == 'true' then val = true;
+                elseif trig._addValSel == 'false' then val = false; end
             elseif ck == 'list' or ck == 'group' or ck == 'buff' or ck == 'mode' then val = trig._addValSel;
             elseif ck == 'text' then val = (trig.addValText[1] ~= '') and trig.addValText[1] or nil;
             elseif ck == 'number' then

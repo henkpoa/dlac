@@ -2273,7 +2273,10 @@ end)();
     local oldFeatures = gate._packFeatures;
     gate._packFeatures = dofile('servers/ascensionxi/features.lua');
     local filtered = aui.listRows();
-    check('AXS16 AXI helper list contains only gathering', #filtered == 1 and filtered[1].key, 'helm');
+    local keys = {};
+    for _, row in ipairs(filtered) do keys[#keys + 1] = row.key; end
+    table.sort(keys);
+    check('AXS16 AXI helper list contains only gathering and digging', table.concat(keys, ','), 'choco,helm');
     gate._packFeatures = oldFeatures;
     points._send = oldSend; points.reset();
     sp.provide('gathering', oldService);
@@ -2940,8 +2943,24 @@ end)();
         check('HB23 AXI hobby bar renders', pcall(hb.render), true);
         local labels = table.concat(btns, '/');
         check('HB24 AXI hides other hobby tabs', labels:find('##hbtabcraft', 1, true)
-            or labels:find('##hbtabfish', 1, true) or labels:find('##hbtabchoco', 1, true), nil);
+            or labels:find('##hbtabfish', 1, true), nil);
         check('HB25 AXI retains HELM tab', labels:find('##hbtabhelm', 1, true) ~= nil, true);
+        check('HB26 AXI shows the Digging tab', labels:find('##hbtabchoco', 1, true) ~= nil, true);
+        -- On a server that reports digging, the tab carries its status block.
+        local spx = require('dlac\\gear\\serverpack');
+        local keptDig = spx.service('digging');
+        spx.provide('digging', { exactRank = true, status = { touch = function() end,
+            value = function() return nil; end, rank = function() return nil; end } });
+        -- chocoui loaded headless here, so its drawing functions are stand-ins.
+        local cu = require('dlac\\ui\\chocoui');
+        local keptStatus, keptMoves, drawnStatus = cu.renderDigStatus, cu.renderMoveDestinations, 0;
+        cu.renderDigStatus = function() drawnStatus = drawnStatus + 1; end;
+        cu.renderMoveDestinations = nop;
+        ui._hobbySel = 'choco';
+        local barDrawn = pcall(hb.render);
+        cu.renderDigStatus, cu.renderMoveDestinations = keptStatus, keptMoves;
+        spx.provide('digging', keptDig);
+        check('HB27 AXI Digging tab shows the server status', barDrawn and drawnStatus, 1);
         gate._packFeatures = oldFeatures;
 
         ui._hobbyBar = false;
@@ -4357,6 +4376,27 @@ end)();
             frame('+ & condition##trgac');
             check('TB36 a picked cycle value lands whole',
                 (trig.addConds[1] ~= nil) and trig.addConds[1].value, 'Weapon:Melee');
+
+            -- A boolean condition needs a real false picker, not the flag
+            -- widget (which can only author true). Drive the actual combo.
+            trig.data = {};
+            trig.addFor, trig.addConds, trig._addDef = 'Default', {}, 2;
+            trig._addValSel = nil; trig.addSet = 'TH';
+            IM.BeginCombo = function(id) return id == '##trgcondval'; end;
+            frame('+ & condition##trgac');
+            check('TB37 mobTagged without a choice adds nothing', #trig.addConds, 0);
+            frame('false##trgcv1');
+            frame('+ & condition##trgac');
+            check('TB38 mobTagged false is a boolean', trig.addConds[1].value, false);
+            check('TB39 mobTagged key survives the picker', trig.addConds[1].key, 'mobTagged');
+            frame('Add rule###trgaddgo');
+            check('TB40 saving the TH rule preserves false', trig.data.Default[1].when.mobtagged, false);
+
+            trig.addFor, trig.addConds, trig._addDef = 'Default', {}, 2;
+            trig._addValSel = nil;
+            frame('true##trgcv2'); frame('+ & condition##trgac');
+            check('TB41 mobTagged true also works', trig.addConds[1].value, true);
+            check('TB42 boolean picker popup balanced', depth.popup, 0);
         end
     end
 
@@ -7682,6 +7722,7 @@ end)();
     local pressUnequip = false;
     local pressStore = false;
     local pressLayout = false;
+    local pressLabel = nil;   -- any SmallButton whose label contains this text is clicked
     local nop = function() end;
     local IM = {
         TextColored   = function(_, s) texts[#texts + 1] = tostring(s); end,
@@ -7697,6 +7738,7 @@ end)();
         IsItemHovered = function() return true; end,
         SmallButton   = function(label)
             smallHits[#smallHits + 1] = tostring(label);
+            if pressLabel ~= nil and tostring(label):find(pressLabel, 1, true) ~= nil then return true; end
             if pressLayout then return label == 'Add to Mog Wardrobe##gvl' .. tostring(pressLayout == true and 1 or pressLayout); end;
             if pressStore then return tostring(label):match('^Store##') ~= nil; end
             if pressUnequip then return tostring(label):match('^Unequip & Store') ~= nil; end
@@ -7917,6 +7959,56 @@ end)();
         vc.layoutCache.entries = oldEntries;
         vc.layoutCache.stamp = vc.layoutCache.stamp + 1;
         pressLayout = false;
+    end
+
+    -- 2026-09-30 (Henrik: "the 8 second sync is confusing", "can dlac assume
+    -- happy cases more"): the layout header names WORK, never a clock; your
+    -- own edits show at once -- a remove as a row gone -- and a refusal puts
+    -- the row back; a Store says "Storing..." from the click.
+    do
+        vc.noteJob(1);
+        local oldEntries = vc.layoutCache.entries;
+        vc.layoutCache.job = 1;
+        vc.layoutCache.entries = { { ordinal = 1, itemId = 300, count = 1, pinned = false, identity = vc.ZERO24 } };
+        vc.layoutCache.fresh = true; vc.layoutCache.stamp = vc.layoutCache.stamp + 1;
+        vc._st().layoutSetQ = {};
+        texts = {};
+        vui.render(1, 75);
+        check('GVU20 no countdown in the layout header', table.concat(texts, '|'):find('sync in', 1, true), nil);
+        check('GVU21 the laid-out row is there', table.concat(texts, '|'):find('Item300', 1, true) ~= nil, true);
+        pressLabel = 'Remove##gvr';
+        vui.render(1, 75);
+        pressLabel = nil;
+        check('GVU22 Remove queues one edit', #vc._st().layoutSetQ, 1);
+        texts = {};
+        vui.render(1, 75);
+        check('GVU23 ...and the row is gone at once (before any answer)',
+            table.concat(texts, '|'):find('Item300', 1, true), nil);
+        check('GVU24 ...with the pane saying the change is on its way',
+            table.concat(texts, '|'):find('saving your changes...', 1, true) ~= nil, true);
+        local req = table.remove(vc._st().layoutSetQ, 1);
+        req.onDone(vc.code.NOT_IN_CITY);
+        texts = {};
+        vui.render(1, 75);
+        check('GVU25 a refusal puts the row back', table.concat(texts, '|'):find('Item300', 1, true) ~= nil, true);
+        -- Store: the row says Storing... from the click until the answer
+        pressStore = true;
+        vc._st().depositQ = {};
+        vui.render(1, 75);
+        pressStore = false;
+        texts = {};
+        vui.render(1, 75);
+        check('GVU26 a stored row says Storing... from the click',
+            table.concat(texts, '|'):find('Storing...', 1, true) ~= nil, true);
+        local dq = vc._st().depositQ;
+        if dq[1] ~= nil then dq[1].onDone(nil, 'too_far'); end
+        vc._st().depositQ = {};
+        texts = {};
+        vui.render(1, 75);
+        check('GVU27 ...and stops saying it once answered',
+            table.concat(texts, '|'):find('Storing...', 1, true), nil);
+        vc.layoutCache.entries = oldEntries;
+        vc.layoutCache.stamp = vc.layoutCache.stamp + 1;
     end
 
     -- the search filters BOTH panes
