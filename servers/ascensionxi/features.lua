@@ -12,6 +12,8 @@
     allowlist keeps other helpers hidden until enabled for AscensionXI.
     October 4: Chocobo (the Digging tab and its Gear Helpers row) enabled,
     fed by the pack's digging module.
+    October 5: AutoAcc (its Gear Helpers row and readout), fed by the pack's
+    telemetry module. Turn it off here if its field round finds a fault.
 ]]--
 return {
     tabs = {
@@ -27,5 +29,5 @@ return {
         wishlist  = false,
     },
     -- Also controls the shared hobby bar. Add helpers as they are enabled.
-    helpers = { helm = true, choco = true },
+    helpers = { helm = true, choco = true, autoacc = true },
 };

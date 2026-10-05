@@ -1,8 +1,34 @@
 # AscensionXI: authoritative combat telemetry and AutoAcc
 
-Research date: 2026-09-28. Status: **researched implementation proposal; no runtime feature implemented or deployed**.
+Research date: 2026-09-28. Status: **built on 2026-10-05 (dlac `2026.10.05b`, engine v170; AscensionXI server slice 1), awaiting the owner's live tests.** Read "Status 2026-10-05" first; the sections after it are the history of the design.
 
 **Backend research agent:** start with the [backend research assignment](#backend-research-assignment) appended below. It defines the remaining investigation and deliverable; the operation IDs, rate budgets and APIs proposed in this document are not already implemented or agreed wire contracts.
+
+## Status 2026-10-05: built
+
+**What exists.** Both halves of AutoAcc v1 are written and tested headless; nothing has run in a game client yet.
+
+- **Server** (AscensionXI, branch `claude/autoacc-telemetry`): the combat telemetry service, `modules/custom/lua/combat_telemetry.lua`, on 0x1E0 ops **0xC0–0xCF** (moved from the research's 0xB0, which Guild Work Orders took on 2026-10-04). Handoff: `documentation/custom/combat-telemetry.md` in that repo.
+- **dlac** (branch `claude/axi-autoacc-v1`): the pack module `servers/ascensionxi/modules/telemetry/` (`wire.lua` codec, `client.lua` session and battle lane, `formula.lua`, `autoacc.lua` the decision, `monitor.lua` the readout, `init.lua` the Ashita glue), dispatch v170 (the decision at THE ONE SEND), the Gear Rule combo's AutoAcc choice (`ui/gearui.lua` `M._gearRuleOptions`), the Gear Helpers row and `/dl autoacc`. The transport fixes T1–T4 are their own PR (dlac #198).
+
+**How a decision is made.** The client keeps one session and one battle lane in FOLLOW mode. Each accepted frame goes to `autoacc.noteFrame`, which checks it (LIVE, the formula composes its own live totals, no GEAR_REFILL, the outfit it names is in the ring of worn outfits, live − R equals dlac's plain + set sums) and keeps it as a **basis** when it passes. At a Default dispatch, `dispatch.M._autoAccApply` hands the composed plan (every AutoAcc piece on, Free-equip slots as worn) to `autoacc.decide`, which picks a basis, projects the plan and each release from it, and returns the slots to release with a reason per slot (`/dl why <slot>`, the trace line, the readout).
+
+**Changes from the agreed design, all made while building it:**
+
+1. **Bases per comparison key.** Two frames with the same server comparison key (`wire.snapshotKey`, research §4.4) differ only in the outfit, so each can speak for the other's outfit. dlac keeps every passing frame of the current key (up to 8) and decides from the newest one whose outfit differs from the plan only in modelled, verified pieces. Without this, a weapon skill's outfit frame (pushed once per new outfit) would become the only frame, and a WS outfit with one unmodelled piece would hold every AutoAcc piece on until something else changed, possibly for the whole fight. When no basis fits, dlac asks once per worn outfit for a republish (RESYNC mode 1), unless the newest frame was already taken in that outfit.
+2. **The buff-loss trigger is narrowed.** Losing *any* effect used to hold every piece until the next frame, but the server sends a frame only when a published input moves, so losing Protect would have held the pieces for the rest of the fight. Now only losing an effect in `autoacc.ACC_EFFECTS` holds (food, Madrigal, Etude, Aggressor, Focus, DEX/ACC boosts, Enchantment, Aftermath, Auspice, Hunter's Roll, Building Flourish, Prowess, the trust ACC aura, the custom Monk Resonance), and a listed loss that brings no frame within `LOSS_SETTLE` (2 s) is let go with a RESYNC renew, which recovers a lost push. Any other loss keeps the decision; if it did move an input, the server's frame follows within a tick. A gained Blindness, Accuracy Down or Flash holds for as long as it is up.
+3. **Demand.** The session starts only when `autoacc.decide` is first asked (a set with an AutoAcc piece is worn) and ends with STOP after 5 minutes without a question; the worn outfit is sampled only in that window. A player without AutoAcc pieces sends nothing and costs the server nothing.
+4. **GEAR_REFILL first.** An Onslaught frame is set aside before the gear check, so a run never marks pieces unverified.
+5. **A gear mismatch beside a verified basis** marks only the pieces that differ from that basis's outfit.
+6. **The player read is reused for 0.1 s** (two reads per dispatch and the readout's every frame cost one).
+
+**Native engine only.** The decision runs where the engine runs. Under LuaAshitacast the engine is the seeded copy in LAC's Lua state, where no pack module mounts, so `_autoAccService()` is nil and the dormant v1 budget path keeps every AutoAcc piece worn (ADR 0015: new features target the native engine). The Gear Rule tooltip and the readout say so when the Native engine is off.
+
+**Tests** (none in `ci.yml`; adding them is a workflow change for the owner): `tests/ascensionxi_telemetry_wire.lua` (90, the server's vectors and the comparison key), `tests/ascensionxi_telemetry_client.lua` (104), `tests/ascensionxi_autoacc.lua` (87, AA-01..AA-28), `tests/ascensionxi_autoacc_dispatch.lua` (37), `tests/ascensionxi_autoacc_ui.lua` (53), smoke GR1–GR11. `run_tests.lua` 7,547 and `smoke_ui.lua` 1,639 still pass. Fifty-nine deliberate breaks across the module, dispatch and the UI were each caught.
+
+**Owed before anyone relies on it** (the owner's client; agents never drive it): the server handoff's L1 (unblocked 0x1E0 volume with dlac unloaded) and L2–L6 (unload, STOP, reload, collision with the vault and Nexus, cadence in a fight), the Gear Vault field round for #198, then a playtest of a real set: type one ring AutoAcc, fight an even match and a tough one, and read `/dl autoacc` and `/dl why Ring1`.
+
+**Next work:** weapon-skill decisions (§"Weapon skills" below), latent conditions (issue #41) to release more pieces, and modelling augmented copies.
 
 ## Status 2026-09-29: answered, and partly superseded
 

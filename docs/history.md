@@ -10760,3 +10760,32 @@ keeps a Kupo Shield from fighting a two-hander (the pick never wears a
 two-handed craft weapon or a non-shield Sub; the v37 Sub-vs-Main guard
 reserves the main hand). Record:
 [design/nexus-craft-gear.md](design/nexus-craft-gear.md).
+
+## 2026-10-05: AutoAcc on AscensionXI (combat telemetry)
+
+Henrik: *"This is a HUUUUUUGE feature on this server ... Performance IS KEY, we
+don't want to overload the server or the player."* The server half publishes,
+per watched mob, the accuracy inputs dlac cannot see, live and without gear;
+dlac projects every outfit from its own item data and releases an AutoAcc
+armour piece for its fallback only when the main hand, off hand and kick all
+stay at the cap. Built on the agreed design ("Status 2026-09-29" in
+design/ascensionxi-combat-telemetry-autoacc.md), with six changes found while
+building it ("Status 2026-10-05" there). The two that matter most: frames of
+one comparison key are all bases, so a weapon skill's outfit never costs the
+standing set its frame, and only losing an accuracy effect holds the pieces, so
+Protect wearing off does not hold them for the rest of the fight.
+
+**Performance:** no session at all without an AutoAcc piece worn (STOP after 5
+minutes idle); the decision is memoised on the plan, the frame revision, the
+trigger and the worn outfit; the worn outfit is read at most 4 times a second
+and the player at most 10 times, and only while a decision is wanted.
+
+**Not taken:** the old branch's frozen budget, baked ACC and /check injection;
+a generated list of accuracy effects (scanning the server's effect scripts
+lists every song, because each carries an augment-stat DEX/AGI term that is
+zero in practice, which would bring back the hold on every song).
+
+**Checks:** wire 90, client 104, AutoAcc 87, dispatch 37, readout 53 (new suites,
+not in CI: a workflow change for Henrik), smoke GR1-GR11; run_tests 7,547;
+smoke_ui 1,639; 59 deliberate breaks all caught. Native engine only (the LAC
+state mounts no pack module, so it keeps every piece worn).
