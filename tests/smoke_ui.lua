@@ -8374,7 +8374,7 @@ end)();
     SP.provide('autoacc', { decide = function() return {}; end });
     check('GR3 the service offers AutoAcc', labels({}), 'None,Dual Wield,AutoAcc');
     local tip = gearui._gearRuleOptions({})[3].tip;
-    check('GR4 the tip says the Native engine is off (headless)', tip:find('Native engine is off', 1, true) ~= nil, true);
+    check('GR4 the tip says the engine is disarmed (headless)', tip:find('engine is disarmed', 1, true) ~= nil, true);
     check('GR5 no percent in the tip', tip:find('%', 1, true), nil);
     SP.provide('autoacc', nil);
     local it = { dw = true };

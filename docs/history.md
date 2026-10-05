@@ -10787,5 +10787,5 @@ zero in practice, which would bring back the hold on every song).
 
 **Checks:** wire 90, client 104, AutoAcc 87, dispatch 37, readout 53 (new suites,
 not in CI: a workflow change for Henrik), smoke GR1-GR11; run_tests 7,547;
-smoke_ui 1,639; 59 deliberate breaks all caught. Native engine only (the LAC
-state mounts no pack module, so it keeps every piece worn).
+smoke_ui 1,639; 59 deliberate breaks all caught. A Tripwire-disarmed engine
+dispatches nothing, so AutoAcc decides nothing; the readout says so.

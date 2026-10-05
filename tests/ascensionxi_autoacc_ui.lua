@@ -121,12 +121,12 @@ level, text = monitor.status();
 check('UI-04 row level', level, 0);
 check('UI-04 row text escaped', text, 'live -- gear check: 100%% wrong');
 
--- UI-05: the Native engine off says so first, and the row is off.
+-- UI-05: a disarmed engine (the Tripwire) says so first, and the row is off.
 native = false;
 render();
-check('UI-05 the warning', texts[1]:find('Native engine is off', 1, true) ~= nil, true);
+check('UI-05 the warning', texts[1]:find('engine is disarmed', 1, true) ~= nil, true);
 level, text = monitor.status();
-check('UI-05 row', text, 'off -- needs the Native engine');
+check('UI-05 row', text, 'off -- the engine is disarmed');
 native = true;
 
 -- UI-06: dormant (a server without telemetry).

@@ -47,6 +47,8 @@ local LANE_STATES = { [0] = 'idle', [1] = 'live', [2] = 'target not found', [3] 
 local SLOT_ORDER = { 'Head', 'Neck', 'Ear1', 'Ear2', 'Body', 'Hands', 'Ring1', 'Ring2', 'Back', 'Waist', 'Legs', 'Feet',
                      'Main', 'Sub', 'Range', 'Ammo' };
 
+-- dlac's engine is the only one since the LuaAshitacast purge; it is off
+-- only when the Tripwire disarmed it for the session.
 local function nativeOn()
     local eng = try('dlac\\feature\\equipengine');
     if eng == nil or type(eng.nativeOn) ~= 'function' then return false; end
@@ -71,7 +73,7 @@ end
 -- One line for the Gear Helpers row: level 1 while the model can decide.
 -- (The row draws its text as a format string: status() escapes.)
 local function status()
-    if not nativeOn() then return 0, 'off -- needs the Native engine'; end
+    if not nativeOn() then return 0, 'off -- the engine is disarmed'; end
     local cs = clientState();
     if cs.phase == 'dormant' then return 0, 'off -- ' .. tostring(cs.why or 'telemetry unavailable'); end
     if cs.phase ~= 'live' then
@@ -154,8 +156,8 @@ function M.drawBody()
     if imgui == nil then return; end
     local col = palette();
     if not nativeOn() then
-        imgui.TextColored(col.WANT, 'The Native engine is off: AutoAcc pieces are always worn.');
-        imgui.TextColored(col.DIM, 'Turn it on with /dl engine native on.');
+        imgui.TextColored(col.WANT, 'dlac\'s engine is disarmed this session: AutoAcc decides nothing.');
+        imgui.TextColored(col.DIM, 'Another engine is loaded (LuaAshitacast?). Unload it and /addon reload dlac.');
         imgui.Separator();
     end
 

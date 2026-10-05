@@ -22,7 +22,7 @@ Research date: 2026-09-28. Status: **built on 2026-10-05 (dlac `2026.10.05b`, en
 5. **A gear mismatch beside a verified basis** marks only the pieces that differ from that basis's outfit.
 6. **The player read is reused for 0.1 s** (two reads per dispatch and the readout's every frame cost one).
 
-**Native engine only.** The decision runs where the engine runs. Under LuaAshitacast the engine is the seeded copy in LAC's Lua state, where no pack module mounts, so `_autoAccService()` is nil and the dormant v1 budget path keeps every AutoAcc piece worn (ADR 0015: new features target the native engine). The Gear Rule tooltip and the readout say so when the Native engine is off.
+**The engine.** The decision runs in dlac's own engine, the only one since the 2026-07-27 LuaAshitacast purge. When the Tripwire disarms it for a session (LuaAshitacast loaded alongside), nothing dispatches and AutoAcc decides nothing; the Gear Rule tooltip and the readout say so. Without the service (CatsEyeXI) `_autoAccService()` is nil and the dormant v1 budget path keeps every AutoAcc piece worn.
 
 **Tests** (none in `ci.yml`; adding them is a workflow change for the owner): `tests/ascensionxi_telemetry_wire.lua` (90, the server's vectors and the comparison key), `tests/ascensionxi_telemetry_client.lua` (104), `tests/ascensionxi_autoacc.lua` (87, AA-01..AA-28), `tests/ascensionxi_autoacc_dispatch.lua` (37), `tests/ascensionxi_autoacc_ui.lua` (53), smoke GR1–GR11. `run_tests.lua` 7,547 and `smoke_ui.lua` 1,639 still pass. Fifty-nine deliberate breaks across the module, dispatch and the UI were each caught.
 

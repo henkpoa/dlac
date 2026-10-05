@@ -4437,7 +4437,7 @@ function M._gearRuleOptions(it)
                .. 'without this piece, dlac wears the slot\'s next-best piece instead.\n'
                .. 'Armour only (Head to Back), the standing set only. /dl autoacc shows\n'
                .. 'what it sees.'
-               .. (native and '' or '\n\nThe Native engine is off: until it is on, this piece is always worn.') };
+               .. (native and '' or '\n\ndlac\'s engine is disarmed this session, so AutoAcc decides nothing.') };
     end
     return opts;
 end
