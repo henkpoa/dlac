@@ -26,7 +26,7 @@
     Additions remain only FROM THE VAULT, the 2026-08-30
     law: a set-wanted piece the vault holds no copy of (it is in your bags,
     or not owned at all) is never pushed into a layout -- storing it with a
-    Void Warden is what makes it eligible. Derived entries carry the ZERO blob
+    Gear Vault is what makes it eligible. Derived entries carry the ZERO blob
     (augment-pinned records are skipped by derivation -- the vault pane's
     "+ Layout" carries real blobs); only zero-blob layout entries are
     compared against on legacy servers. Augmented references protect their
@@ -329,7 +329,7 @@ function R.tick()
     -- setting; the TOMBSTONES (an entry the player removed stays removed);
     -- the VAULT -- the engine may only shelve what the vault actually
     -- holds, never gear sitting in your bags or not owned at all (storing
-    -- it with a Void Warden is what makes it eligible; the Inventory pane's
+    -- it with a Gear Vault is what makes it eligible; the Inventory pane's
     -- [wanted] tags point at exactly those pieces). Want is capped at vault
     -- + layout copies, so a pair the sets need twice with one copy vaulted
     -- shelves ONE; and the SHELF -- the engine never pushes an add that

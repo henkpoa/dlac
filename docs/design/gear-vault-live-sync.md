@@ -296,7 +296,7 @@ after the unload, `[GV]PUSH_SUB` was gone for charid 1 with no login since the
 writes; corrected above).
 
 Still owed: 9 (Store all with more than 62 pieces, Inventory sub-tab at a
-Void Warden).
+Gear Vault).
 
 Check 10 found ONE `Rate-limiting packet GP_CLI_COMMAND_VOID_STORAGE`, at
 login (20:51:00.29 server time). dlac's LAYOUT_LIST2 (seq 118) left at

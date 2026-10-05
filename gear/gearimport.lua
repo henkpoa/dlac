@@ -441,7 +441,7 @@ function M.scan(containers)
     end
 
     -- THE VAULT IS A SOURCE OF TRUTH TOO (2026-09-08, Henrik's field report:
-    -- gear stored with a Void Warden BEFORE dlac's first run never reached
+    -- gear stored with a Gear Vault BEFORE dlac's first run never reached
     -- gear.lua, so the + Add picker could not offer it -- ownedSplit's GV5
     -- fold only re-counts records that already exist; the record itself is
     -- born HERE). Every mirror row walks through absorb() as a pseudo bag
@@ -634,7 +634,7 @@ function M.ownedSplit()
     -- THE VAULT FOLD (GV5, docs/design/gear-vault-integration.md): a mounted
     -- gear-vault pack module provides 'gearvault'; its mirror counts join
     -- total/where under VAULT_CID -- OWNED, never available (retrieval needs
-    -- a Void Warden). No pack, no service, no change -- the ADR 0035
+    -- a Gear Vault). No pack, no service, no change -- the ADR 0035
     -- ask-or-live-without pattern. Deliberately id-level in slice 1: an
     -- augment-pinned record's per-roll counts do not see vault copies yet
     -- (the mirror's identity blobs are not signature-decoded until the tab

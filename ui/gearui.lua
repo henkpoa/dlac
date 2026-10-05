@@ -1271,7 +1271,7 @@ local function renderItemTooltip(rec, note)
             -- The colour carries it, which is what was asked for originally.
             if owned.isVaulted ~= nil and owned.isVaulted(rec) then
                 imgui.TextColored(COL.VAULT,
-                    'IN THE GEAR VAULT  (in a city: add it to a layout; or withdraw at a Void Warden)');
+                    'IN THE GEAR VAULT  (in a city: add it to a layout; or withdraw at a Gear Vault)');
             elseif owned.isStored(rec) then
                 imgui.TextColored(COL.ERR, 'IN STORAGE: ' .. fmt.esc((locs ~= '') and locs or '?')
                     .. '  (move to Inventory/Wardrobe to equip)');

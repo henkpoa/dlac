@@ -10167,7 +10167,7 @@ mirrored instances / live shelf occupancy over Wardrobes 1–8 / Sync), **this
 job's layout** as the SERVER holds it (LAYOUT_LIST pages — `!vault` and website
 entries included; pinned + wardrobe-hint markers), and the **vault browser**
 (search, icons, [aug] tag for a non-zero identity blob, per-row **Withdraw**).
-dlac carries no Void Warden coordinates on purpose (server data, not in the
+dlac carries no Gear Vault coordinates on purpose (server data, not in the
 pack): the button is always live and a TOO_FAR refusal says in words where to
 stand.
 

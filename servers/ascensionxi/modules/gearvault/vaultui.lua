@@ -17,7 +17,7 @@
     default because the gate never hides a label it cannot name (ADR 0037).
 
     Withdraw (the slice's one write verb) rides each vault row. dlac does
-    not know the Void Wardens' coordinates (server data, deliberately not
+    not know the Gear Vaults' coordinates (server data, deliberately not
     in the pack), so the button is always live and a TOO_FAR refusal says
     in words where to stand.
 
@@ -178,7 +178,7 @@ local WITHDRAW_WORDS = {
 };
 
 local ERR_WORDS = {
-    too_far     = 'stand at a Void Warden to withdraw',
+    too_far     = 'stand at a Gear Vault to withdraw',
     busy        = 'the server is busy -- try again',
     unavailable = 'the vault is unavailable right now',
     not_attuned = 'finish The Deeper Room first -- the vault does not know you yet',
@@ -706,7 +706,7 @@ local function storeRows(rows, afterUnequip, onDone)
         if type(onDone) == 'function' then pcall(onDone); end
         if #acksAll == 0 then
             local err = firstErr;
-            noteResult((err == 'too_far') and 'stand at a Void Warden to store'
+            noteResult((err == 'too_far') and 'stand at a Gear Vault to store'
                 or (ERR_WORDS[err] or ('store failed (' .. tostring(err) .. ')')), true);
             return;
         end
@@ -1094,7 +1094,7 @@ function M.render(job, level)
                 end
             end
             settingRow('Additions from sets:',
-                'Auto (default): dlac pushes every VAULTED piece your sets and triggers name\ninto this job\'s layout by itself (gear in your bags never moves -- store it\nwith a Void Warden first).\nOff: layouts change only by your own hand (the buttons here, !vault).',
+                'Auto (default): dlac pushes every VAULTED piece your sets and triggers name\ninto this job\'s layout by itself (gear in your bags never moves -- store it\nwith a Gear Vault first).\nOff: layouts change only by your own hand (the buttons here, !vault).',
                 'additions', { { v = 'auto', l = 'Auto' }, { v = 'off', l = 'Off' } });
             settingRow('Removals when the wardrobes are full:',
                 'Ask (default): dlac presents a list of least-used entries for you to mark.\nAuto: dlac removes least-used UNPINNED entries by itself -- pinned entries\nstill always ask.\nOff: dlac never removes; trim the layout by hand.',
@@ -1522,7 +1522,7 @@ function M.render(job, level)
                             end
                             if imgui.IsItemHovered() then
                                 local aug = augTextOf(row.identity);
-                                imgui.SetTooltip(esc('Move this copy to your inventory (at a Void Warden).\n'
+                                imgui.SetTooltip(esc('Move this copy to your inventory (at a Gear Vault).\n'
                                     .. 'It stays benched; dlac will not re-add it to your wardrobes.'
                                     .. ((aug ~= nil) and ('\n' .. aug) or '')));
                             end
@@ -1614,7 +1614,7 @@ function M.render(job, level)
                         end
                         if imgui.IsItemHovered() then
                             hot();
-                            imgui.SetTooltip('Move this to your inventory (at a Void Warden).');
+                            imgui.SetTooltip('Move this to your inventory (at a Gear Vault).');
                         end
                     end,
                 };
@@ -1645,7 +1645,7 @@ function M.render(job, level)
                 storeRows(shown);
             end
             if imgui.IsItemHovered() then
-                imgui.SetTooltip('Deposit every listed piece into the Gear Vault.\nWorks at a Void Warden. Equipped pieces and\nduplicates are refused per item and stay in your bags\n(a worn piece has its own Unequip & Store button).');
+                imgui.SetTooltip('Deposit every listed piece into the Gear Vault.\nWorks at a Gear Vault. Equipped pieces and\nduplicates are refused per item and stay in your bags\n(a worn piece has its own Unequip & Store button).');
             end
             imgui.SameLine(0, 10);
             imgui.TextColored(cDIM, 'Storable gear in your inventory:');
@@ -1730,8 +1730,8 @@ function M.render(job, level)
                 if btnHovered then
                     imgui.SetTooltip(pendingHere and 'Taking it off -- the deposit follows once the game shows it unequipped.'
                         or (worn ~= nil)
-                        and 'Take this off, then deposit it into the Gear Vault (at a Void Warden).\nThe deposit waits until the game itself shows the piece unequipped.'
-                        or  'Deposit this into the Gear Vault (at a Void Warden).');
+                        and 'Take this off, then deposit it into the Gear Vault (at a Gear Vault).\nThe deposit waits until the game itself shows the piece unequipped.'
+                        or  'Deposit this into the Gear Vault (at a Gear Vault).');
                 elseif rowHovered then
                     showCard(e.rec, e.name);
                 end

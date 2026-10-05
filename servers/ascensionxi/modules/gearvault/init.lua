@@ -505,7 +505,7 @@ vaultWhy = function(name)
             want, #d.items, d.skippedAug, #d.unresolved));
         if want > 0 and held == 0 then
             line('  NOT IN THE VAULT: the engine will not shelve it (bags never count) --');
-            line('  store it with a Void Warden first, then it joins the layout by itself.');
+            line('  store it with a Gear Vault first, then it joins the layout by itself.');
         end
         local lc = vc.layoutCache;
         local inLayout = 0;

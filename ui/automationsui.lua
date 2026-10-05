@@ -1146,7 +1146,7 @@ local function autoItemLine(item, synergyNote)
         imgui.TextColored(vaulted and COL_VAULT or COL_ERR, esc(name));
         if imgui.IsItemHovered() then
             if vaulted then
-                imgui.SetTooltip('Owned -- in the Gear Vault. In a city, add it to a layout to shelve it;\nor withdraw it at a Void Warden. Then Rescan.');
+                imgui.SetTooltip('Owned -- in the Gear Vault. In a city, add it to a layout to shelve it;\nor withdraw it at a Gear Vault. Then Rescan.');
             else
                 local where = ocache.whereText(rec);
                 imgui.SetTooltip(string.format('Owned -- but parked in %s, so the automation cannot equip it.\nMove it to Inventory/Wardrobe, then Rescan.',

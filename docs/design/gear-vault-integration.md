@@ -20,7 +20,7 @@ Wardrobes 1–8 are a **sealed cache** — the vault system is the only door.
 Each **main job** owns one layout (identity → count, wardrobe hint, pinned);
 on job change the server swaps the shelf to the incoming job's layout,
 moving only the difference (~3–4 s of themed item streaming). Deposit and
-withdraw happen **only at a Void Warden**; live layout edits to the ACTIVE
+withdraw happen **only at a Gear Vault**; live layout edits to the ACTIVE
 job are **city-gated**, while edits to any other job's layout are pure data
 writes, legal anywhere, applied at the next job change. Duplicates are
 refused at the counter per identity (pairs allowed twice); the swap engine
@@ -121,7 +121,7 @@ like any other gear. `vaultui.keptOutOfVault(rec)` is dlac's mirror.
   swap stream settles (the 0x020/0x01D flood already schedules dlac's
   debounced re-scan — same signal).
   **Amended 2026-09-08 — the vault is a SOURCE OF TRUTH for gear.lua, not
-  only a counter.** Field report: gear stored with a Void Warden before
+  only a counter.** Field report: gear stored with a Gear Vault before
   dlac's first run never became a gear.lua record (the fold only re-counts
   records that already exist), so the + Add picker could not offer it.
   `gearimport.scan` now walks the mirror's rows exactly like bag slots
@@ -312,7 +312,7 @@ are removed too; references pinned to different augments are retained. Unsaved
 editor changes, unresolved entries, direct trigger references, and slot locks
 block the action with a reason. Equipped copies use the existing strip lease
 and wait for the client to show them unequipped. Outside copies in Inventory
-then use the ordinary deposit flow, which still requires a Void Warden.
+then use the ordinary deposit flow, which still requires a Gear Vault.
 
 Automatic unused-gear cleanup runs in town in instance mode. It preserves
 layout pins, worn pieces, outside assignments and legacy review rows. All
