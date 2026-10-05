@@ -432,6 +432,12 @@ check('AA-26 the mismatch', aa.report().gearOk, false);
 check('AA-26 Rajas Ring is unverified', aa.report().unverified[15543] ~= nil, true);
 check('AA-26 a piece both outfits share is not', aa.report().unverified[15515], nil);
 check('AA-26 the basis stays', aa.report().bases, 1);
+-- The standing set itself still fits the basis, so the decision runs, and
+-- the unverified fallback keeps the ring on.
+worn[13] = { 8, 11, 14674 }; time = time + 1;
+d = aa.decide({ plan = plan(), candidates = { RING }, event = 'Default' });
+check('AA-26 an unverified fallback is not released', d.release.Ring1, nil);
+check('AA-26 and says why', d.why.Ring1, 'unverified');
 CATALOG[15543].Stats.DEX = 2;
 aa._state().vectors = {};
 
@@ -553,6 +559,26 @@ check('AA-34 the standing set re-arms it', aa.report().prediction.verdict, 'wait
 wearRajas();
 aa.noteFrame(mainOnly(frameOf('TV-06')));
 check('AA-34 and the frame checks it', aa.report().prediction.verdict, 'matched');
+
+-- AA-35: a fallback that covers another slot is unmodelled (its Rslot
+-- takes a second slot off the outfit the model adds up).
+fresh();
+CATALOG[15800] = { Id = 15800, Name = 'Twin Band', Level = 30, Stats = { DEX = 2 }, RSlot = 14 };
+BY_NAME['twin band'] = 15800;
+aa.noteFrame(mainOnly(frameOf('TV-05')));
+d = aa.decide({ plan = plan(), event = 'Default',
+    candidates = { { slot = 'Ring1', typed = "Toreador's Ring", fallback = 'Twin Band', prio = 1 } } });
+check('AA-35 kept', d.release.Ring1, nil);
+check('AA-35 why', d.why.Ring1, 'it covers another slot');
+CATALOG[15800], BY_NAME['twin band'] = nil, nil;
+
+-- AA-36: a candidate whose slot holds something else in the plan (a claim
+-- took it) is never "released".
+fresh();
+aa.noteFrame(mainOnly(frameOf('TV-05')));
+d = aa.decide({ plan = plan({ Ring1 = 'Brass Ring' }), candidates = { RING }, event = 'Default' });
+check('AA-36 nothing released', d.release.Ring1, nil);
+check('AA-36 why', d.why.Ring1, 'the slot is not the piece');
 
 -- AA-33: a zone change forgets the session's verdicts.
 aa.report().mispredicted[15543] = 'a release predicted wrongly';

@@ -343,5 +343,28 @@ end
 check('CL-13 the unload hook', type(handlers.dlac_axi_combat_telemetry_unload), 'function');
 check('CL-13 a pump', type(init.pump), 'function');
 
+-- CL-17: /dl accuracy and /dl autoacc both toggle the box, and an open box
+-- keeps the session wanted through the client.
+local monitor = require('dlac\\servers\\ascensionxi\\modules\\telemetry\\monitor');
+local cmd = assert(handlers.dlac_axi_autoacc_cmd, 'the command is registered');
+monitor.visible = false;
+local e1 = { command = '/dl accuracy' };
+cmd(e1);
+check('CL-17 /dl accuracy opens the box', monitor.visible, true);
+check('CL-17 and is ours', e1.blocked, true);
+cmd({ command = '/dl autoacc' });
+check('CL-17 /dl autoacc closes it again', monitor.visible, false);
+local e3 = { command = '/dl accuracyx' };
+cmd(e3);
+check('CL-17 another word is not ours', e3.blocked, nil);
+check('CL-17 the box wants the session through the client', monitor._want, client.want);
+
+-- CL-18: the pack mounts the module, and the Gear Helpers row is on.
+local modules = dofile('servers/ascensionxi/modules.lua');
+local mounted = false;
+for _, name in ipairs(modules) do if name == 'telemetry' then mounted = true; end end
+check('CL-18 the pack mounts telemetry', mounted, true);
+check('CL-18 the AutoAcc helper row is enabled', dofile('servers/ascensionxi/features.lua').helpers.autoacc, true);
+
 print(('ascensionxi_telemetry_client: %d passed, %d failed'):format(pass, fail));
 if fail > 0 then os.exit(1); end

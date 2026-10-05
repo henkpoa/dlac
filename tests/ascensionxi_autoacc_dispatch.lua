@@ -134,6 +134,17 @@ asked = nil;
 check('AAD-07 nothing to decide', dispatchM._autoAccApply('Default', ctx), nil);
 check('AAD-07 not asked', asked, nil);
 
+-- AAD-10: a slot locked after the plan was made is not offered either (the
+-- send checks the locks again, whatever the plan carried).
+ctx = { event = 'Default', planOut = { Ring1 = "Toreador's Ring" },
+        planAcc = { Ring1 = { typed = "Toreador's Ring", fallback = 'Rajas Ring', prio = 2 } } };
+dispatchM.locks['ring1'] = true;
+asked = nil;
+check('AAD-10 a locked slot: nothing to decide', dispatchM._autoAccApply('Default', ctx), nil);
+check('AAD-10 the service is not asked', asked, nil);
+check('AAD-10 and the piece stays', ctx.planOut.Ring1, "Toreador's Ring");
+dispatchM.locks['ring1'] = nil;
+
 -- AAD-08: the wiring at the one send and the retrace leg (source pins).
 local f = assert(io.open('dispatch.lua', 'rb')); local src = f:read('*a'); f:close();
 local applyAt = src:find('local accOut = M._autoAccApply(event, ctx);', 1, true);
