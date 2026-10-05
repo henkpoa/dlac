@@ -10777,6 +10777,7 @@ as before.
 
 **Checks:** `tests/gearvault_stage8.lua` gained FT0-FT16d and WD13-WD16 (47 checks,
 162 in all), each made to fail once by breaking its rule. Every CI suite passes. The
-mutation sweep's transport mutants T01-T31 (T14-T31 new) are all killed. Record and the
+mutation sweep's transport mutants T01-T31 (T14-T31 new) are all killed; the whole sweep
+is 132 mutants, 129 killed, the same 3 accepted equivalents, none open. Record and the
 owed Gear Vault field round: [design/gear-vault-live-sync.md](design/gear-vault-live-sync.md),
 "Fair turns on the shared gate".

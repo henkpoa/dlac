@@ -521,7 +521,9 @@ Every case was made to fail once by breaking its rule.
 
 **Mutation sweep:** `transport.lua` now has 31 mutants. T01–T13 are as
 before; T01's and T02's patterns follow the `local op, seq` line, which moved
-above the gap checks. T14–T31 cover the line. All 31 are killed.
+above the gap checks. T14–T31 cover the line. All 31 are killed. The whole
+sweep is now 132 mutants: 129 killed, the same 3 accepted equivalents (V30,
+R02, R23), none open.
 
 **Field round owed** (owner, local shard). Reload dlac and check that
 `/dl check` shows `2026.10.05a`, then, with the HELM bar or panel visible:
