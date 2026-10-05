@@ -2895,6 +2895,50 @@ do
     check('AC23 serializes autoType', acSer:find('autoType = "AutoAcc"', 1, true) ~= nil, true);
     check('AC24 serializes removePrio + acc', acSer:find('removePrio = 3, acc = 10', 1, true) ~= nil, true);
 
+    -- AC25-AC31: AutoAcc combines with the entry's other rules (Henrik
+    -- 2026-10-05: "worst case we can just set level range for it"). Every
+    -- gate of an entry -- its main-job level range, its mode, the Dual Wield
+    -- rule -- is judged before the AutoAcc pool split, so a typed piece
+    -- outside its window is simply not a candidate and the slot wears the
+    -- normal pick; inside it, AutoAcc applies as usual.
+    local virtuoso = { Name = 'Virtuoso Belt', Level = 54 };
+    local speed    = { Name = 'Speed Belt',    Level = 55 };
+    local function waistAt(level, typed)
+        TEST_PLAYER = { MainJob = 'WAR', SubJob = 'NIN', MainJobSync = level, SubJobSync = 37 };
+        local s = utils.BuildDynamicSets({ Dynamic = { TP = { Waist = { typed, speed } } } });
+        TEST_PLAYER = { MainJob = 'WAR', SubJob = 'NIN', MainJobSync = 75, SubJobSync = 37 };
+        return s.TP and s.TP.Waist;
+    end
+    local capped = { gear = virtuoso, autoType = 'AutoAcc', removePrio = 1, acc = 12, maxLevel = 60 };
+    check('AC25 inside its level window: AutoAcc, with the normal pick as the fallback',
+        waistAt(60, capped), 'dlac:AutoAcc:1:12:Virtuoso Belt|Speed Belt');
+    check('AC26 above its max level: the normal pick, no AutoAcc', waistAt(61, capped), 'Speed Belt');
+    local floor = { gear = virtuoso, autoType = 'AutoAcc', removePrio = 1, acc = 12, minLevel = 70 };
+    check('AC27 below its min level: the normal pick, no AutoAcc', waistAt(69, floor), 'Speed Belt');
+    check('AC28 from its min level on: AutoAcc', waistAt(70, floor), 'dlac:AutoAcc:1:12:Virtuoso Belt|Speed Belt');
+    -- The range ranks the typed pool like any list: a windowed AutoAcc piece
+    -- beats an unbounded, higher-level one inside the pool, and never the
+    -- normal pick, which stays the fallback.
+    TEST_PLAYER = { MainJob = 'WAR', SubJob = 'NIN', MainJobSync = 60, SubJobSync = 37 };
+    local acRanked = utils.BuildDynamicSets({ Dynamic = { TP = { Waist = {
+        speed,
+        { gear = { Name = 'Life Belt', Level = 58 }, autoType = 'AutoAcc', removePrio = 1, acc = 10 },
+        capped,
+    } } } });
+    check('AC29 a windowed AutoAcc piece outranks an unbounded one in the pool', acRanked.TP and acRanked.TP.Waist,
+        'dlac:AutoAcc:1:12:Virtuoso Belt|Speed Belt');
+    TEST_PLAYER = { MainJob = 'WAR', SubJob = 'NIN', MainJobSync = 75, SubJobSync = 37 };
+    -- A mode gate combines the same way: off, the normal pick; on, AutoAcc.
+    local gated = { gear = virtuoso, autoType = 'AutoAcc', removePrio = 1, acc = 12, mode = 'AccTest' };
+    local savedModeActive = dispatchM.modeActive;
+    dispatchM.modeActive = function(m) return m == 'AccTest' and _G.__acModeOn == true; end;
+    _G.__acModeOn = false;
+    check('AC30 its mode off: the normal pick, no AutoAcc', waistAt(75, gated), 'Speed Belt');
+    _G.__acModeOn = true;
+    check('AC31 its mode on: AutoAcc', waistAt(75, gated), 'dlac:AutoAcc:1:12:Virtuoso Belt|Speed Belt');
+    _G.__acModeOn = nil;
+    dispatchM.modeActive = savedModeActive;
+
     dispatchM._accStateOverride = nil;
     dispatchM._accReset();
 end
