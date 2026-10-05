@@ -146,12 +146,12 @@ pcall(function()
     });
 end);
 
--- /dl accuracy (or /dl autoacc): the accuracy box, for any player.
+-- /dl accuracy (or /dl acc, /dl autoacc): the accuracy box, for any player.
 pcall(function()
     ashita.events.register('command', 'dlac_axi_autoacc_cmd', function(e)
         local raw = string.lower(tostring(e.command or ''));
         local word = raw:match('^/dl%s+(%a+)%s*$') or raw:match('^/dlac%s+(%a+)%s*$');
-        if word ~= 'accuracy' and word ~= 'autoacc' then return; end
+        if word ~= 'accuracy' and word ~= 'acc' and word ~= 'autoacc' then return; end
         e.blocked = true;
         monitor.toggle();
     end);
