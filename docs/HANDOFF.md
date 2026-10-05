@@ -1044,8 +1044,8 @@ Nothing below is half-built — these are deliberate stopping points, each with 
 research already recorded. In rough priority order:
 
 - **AscensionXI AutoAcc (built 2026-10-05, not yet run in a client):** the pack module
-  `servers/ascensionxi/modules/telemetry/` and engine v170, on `claude/axi-autoacc-v1`;
-  the server half is AscensionXI `claude/autoacc-telemetry`; the transport fixes T1–T4
+  `servers/ascensionxi/modules/telemetry/` and engine v170, PR #199;
+  the server half is AscensionXI PR #799; the transport fixes T1–T4
   are dlac #198 (a Gear Vault field round owed). Start at "Status 2026-10-05" in
   `docs/design/ascensionxi-combat-telemetry-autoacc.md`: what was built, the six changes
   from the agreed design, the Native-engine boundary, and the live tests owed.
