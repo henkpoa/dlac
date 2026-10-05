@@ -2,7 +2,8 @@
 -- the client rules whose failure could DUPLICATE, lose or misdirect gear --
 -- write retries and the server's replay window, writes and replies across a
 -- zone line, a job change while zoning, an addon reload with a request on
--- the wire, and the shared 0x1E0 gate's foreign-packet wait. The threat list
+-- the wire, the shared 0x1E0 gate's foreign-packet wait, and its fair turns
+-- (T4, the FT cases). The threat list
 -- and the mutation board are in docs/design/gear-vault-live-sync.md,
 -- "Stage 8 pass"; tests/gearvault_mutation_sweep.py breaks each guard and
 -- expects this suite (or a sibling) to go red.
@@ -253,6 +254,282 @@ transport.noteOutgoing(0x1E0, string.char(0, 0, 0, 0, 0x90, 3, 0, 0));   -- chai
 check('TR15 our reply still matches', transport.received(0x46, 7), true);
 now = now + transport.MIN_GAP + 0.01;
 check('TR16 ...the next request waits out the foreign gap', transport.send(pk(0x47, 8), 'v'), false);
+
+-- ===========================================================================
+-- FT: fair turns (T4). Each module asks on its own clock -- the vault every
+-- frame, HELM, digging and ascension 0.35 s after a refusal -- and whoever
+-- asked first once the gap was spent used to win, so the vault's paging held
+-- the others back for as long as it paged. Now the module that has waited
+-- longest, among those still asking, sends next.
+-- ===========================================================================
+local GAP = transport.MIN_GAP;
+local FRAME = 1 / 60;
+local function ask(op, seq, why) return transport.send(pk(op, seq), why or 'ft'); end
+local function fresh() transport._reset(); transport._send = ashitaSend; sent = {}; now = now + 100; end
+local who = transport.producerOf;
+check('FT0 a module is its op partition: every vault op is one', who(0x40) == who(0x46) and who(0x48) == who(0x7F), true);
+check('FT0a ...but the EXP band check (0x4C, inside that band) is its own', who(0x4C) ~= who(0x46), true);
+check('FT0b HELM (0x80) and digging (0x81) are two modules', who(0x80) ~= who(0x81), true);
+check('FT0c ascension is its whole partition', who(0xA0) == who(0xAF) and who(0xA0) ~= who(0x80), true);
+check('FT0d combat telemetry (HELLO C0, WATCH C1, RESYNC C3, STOP C4) is one module',
+    who(0xC0) == who(0xC1) and who(0xC3) == who(0xC4) and who(0xC0) ~= who(0xA0), true);
+check('FT0e an op outside every partition is a module of its own',
+    who(0x90) ~= who(0x91) and who(0x90) ~= who(0x80) and who(0xB0) ~= who(0xC0), true);
+
+-- vault paging against one HELM poll: HELM goes after the vault's current reply
+fresh();
+check('FT1 a vault page goes', ask(0x46, 1, 'vault'), true);
+now = now + 0.12;
+check('FT1a HELM\'s poll is refused while the page is on the wire', ask(0x80, 1, 'HELM'), false);
+now = now + 0.04; transport.received(0x46, 1);
+ask(0x46, 2, 'vault');                              -- the next page: the gap, the vault waits from here
+now = now + GAP + 0.01;
+check('FT2 ...then yields to HELM, which has waited longer', ask(0x46, 2, 'vault'), false);
+check('FT2a idle() says so to the vault', transport.idle(0x46), false);
+check('FT2b ...and to a module not waiting yet', transport.idle(), false);
+check('FT2c ...but not to HELM', transport.idle(0x80), true);
+now = now + 0.2;                                    -- HELM's own 0.35 s retry
+check('FT3 HELM\'s poll gets the slot after the vault\'s current reply', ask(0x80, 1, 'HELM'), true);
+check('FT3a ...the page waits while the poll is on the wire', ask(0x46, 2, 'vault'), false);
+now = now + 0.16; transport.received(0x80, 1); now = now + GAP + 0.01;
+check('FT3b ...and goes right after its reply', ask(0x46, 2, 'vault'), true);
+
+-- the reverse: a module asking every frame (combat telemetry's WATCH) cannot
+-- take the turn of a vault request that has waited longer
+fresh();
+check('FT4 a WATCH goes', ask(0xC1, 1, 'telemetry'), true);
+now = now + 0.12;
+check('FT4a the vault\'s request is refused while it is on the wire', ask(0x47, 9, 'vault'), false);
+now = now + 0.04; transport.received(0xC1, 1);
+local took = false;
+for _ = 1, 9 do now = now + FRAME; if ask(0xC1, 2, 'telemetry') then took = true; end end
+check('FT5 a module asking every frame, through the gap and past it, cannot take that turn', took, false);
+check('FT5a the vault, asking later, gets the slot after the WATCH\'s reply', ask(0x47, 9, 'vault'), true);
+now = now + 0.16; transport.received(0x47, 9); now = now + GAP + 0.01;
+check('FT5b ...then the next WATCH goes', ask(0xC1, 2, 'telemetry'), true);
+
+-- three waiting modules and the vault go in the order they began to wait,
+-- though every frame the latest waiter asks first
+fresh();
+check('FT6 a vault request goes', ask(0x46, 1, 'vault'), true);
+now = now + 0.02; ask(0x80, 1, 'HELM');
+now = now + 0.02; ask(0xA0, 1, 'ascension');
+now = now + 0.02; ask(0x81, 1, 'digging');
+local toSend = { [0x46] = 2, [0x81] = 1, [0xA0] = 1, [0x80] = 1 };
+local order, answer = {}, { at = now + 0.10, op = 0x46, seq = 1 };
+for _ = 1, 180 do
+    now = now + FRAME;
+    if answer and now >= answer.at then transport.received(answer.op, answer.seq); answer = nil; end
+    for _, op in ipairs({ 0x46, 0x81, 0xA0, 0x80 }) do
+        local s = toSend[op];
+        if s and ask(op, s) then
+            order[#order + 1] = string.format('%02X', op);
+            toSend[op], answer = nil, { at = now + 0.16, op = op, seq = s };
+        end
+    end
+end
+check('FT6a ...HELM, ascension, digging, then the vault', table.concat(order, ' '), '80 A0 81 46');
+
+-- the EXP band check is its own module, so the vault's paging cannot swallow its turn
+fresh();
+ask(0x46, 1, 'vault');
+now = now + 0.05; ask(0x4C, 1, 'EXP band');
+now = now + 0.11; transport.received(0x46, 1);
+ask(0x46, 2, 'vault');
+now = now + GAP + 0.01;
+check('FT7 the EXP band check, inside the vault\'s band, waits as its own module',
+    ask(0x46, 2, 'vault') == false and ask(0x4C, 1, 'EXP band'), true);
+
+-- a module that stops asking (its panel closed) drops out of line...
+fresh();
+ask(0x46, 1, 'vault');
+now = now + 0.12;
+local helmAt = now;
+check('FT8 HELM asks once while a page is on the wire, then stops', ask(0x80, 1, 'HELM'), false);
+now = now + 0.04; transport.received(0x46, 1); now = now + GAP + 0.01;
+check('FT8a the next page yields while HELM may still ask again', ask(0x46, 2, 'vault'), false);
+now = helmAt + 0.9;
+check('FT8b ...still 0.9 s after HELM\'s last try (a hitch past its 0.35 s retry)', ask(0x46, 2, 'vault'), false);
+now = helmAt + 1.2;
+check('FT9 1.2 s after its last try HELM holds nobody back', ask(0x46, 2, 'vault'), true);
+-- ...and when it comes back it starts at the back of the line, not with its old wait
+now = now + 0.16; transport.received(0x46, 2);
+ask(0x46, 3, 'vault');                              -- the gap: the vault waits from here
+now = now + 0.05; ask(0x80, 1, 'HELM');             -- the HELM panel is open again
+now = now + GAP;
+check('FT10 a module back from a stale wait queues behind those already waiting', ask(0x80, 1, 'HELM'), false);
+check('FT10a ...so the vault goes first', ask(0x46, 3, 'vault'), true);
+
+-- a retry of THE pending request never waits its turn, and never joins the line
+fresh();
+check('FT11 a vault write goes', ask(0x42, 5, 'vault write'), true);
+for _ = 1, 4 do now = now + 0.35; ask(0x80, 1, 'HELM'); end     -- HELM waits, asking
+now = now + 0.1;                                                 -- 1.5 s: the write's retry
+check('FT11a the write\'s same-seq retry goes, though HELM has waited longer',
+    ask(0x42, 5, 'vault write retry'), true);
+now = now + 0.16; transport.received(0x42, 5); now = now + GAP + 0.01;
+check('FT11b ...and HELM still goes first after the reply',
+    ask(0x46, 6, 'vault') == false and ask(0x80, 1, 'HELM'), true);
+
+-- a turn is spent even when the packet manager refuses the frame: a module
+-- whose sends always fail cannot stay first in line
+fresh();
+ask(0x46, 1, 'vault');
+now = now + 0.05; ask(0x80, 1, 'HELM');
+now = now + 0.05; ask(0xA0, 1, 'ascension');
+now = now + 0.06; transport.received(0x46, 1); now = now + GAP + 0.01;
+transport._send = function() return false; end;
+check('FT12 HELM\'s turn, but the packet manager refuses its frame', ask(0x80, 1, 'HELM'), false);
+transport._send = ashitaSend;
+now = now + GAP + 0.01;
+check('FT12a ...the turn is spent: the next in line goes',
+    ask(0x80, 1, 'HELM') == false and ask(0xA0, 1, 'ascension'), true);
+
+-- two modules that began to wait at the same instant: whichever asks first goes
+fresh();
+ask(0x46, 1, 'vault');
+now = now + 0.05; ask(0x80, 1, 'HELM'); ask(0x81, 1, 'digging');
+now = now + 0.11; transport.received(0x46, 1); now = now + GAP + 0.01;
+check('FT13 equal waits never block each other', ask(0x81, 1, 'digging'), true);
+
+-- a lost request: at MAX_WAIT the slot goes to the longest waiter, and the
+-- lost module's resend of its seq is a new request at the back of the line
+fresh();
+local lostAt = now;
+ask(0x80, 1, 'HELM');                               -- its reply never comes
+now = now + 0.5; ask(0x46, 1, 'vault');
+now = now + 0.2; ask(0xA0, 1, 'ascension');
+while now + 0.35 < lostAt + transport.MAX_WAIT do   -- both keep asking, every 0.35 s
+    now = now + 0.35; ask(0xA0, 1, 'ascension'); ask(0x46, 1, 'vault');
+end
+now = lostAt + transport.MAX_WAIT + 0.01;
+check('FT14 at MAX_WAIT the lost module\'s resend is a new request, behind those waiting',
+    ask(0x80, 1, 'HELM'), false);
+check('FT14a ...and the slot goes to the longest waiter',
+    ask(0xA0, 1, 'ascension') == false and ask(0x46, 1, 'vault'), true);
+
+-- a module held back by the line leaves ONE wire-log line per wait, naming the front
+local yields = {};
+transport._audit = function(event, _, _, why) if event == 'yield' then yields[#yields + 1] = why; end end;
+fresh();
+ask(0x46, 1, 'vault');
+now = now + 0.05; ask(0x80, 1, 'HELM');
+now = now + 0.11; transport.received(0x46, 1); now = now + GAP + 0.01;
+for _ = 1, 5 do ask(0x46, 2, 'vault'); now = now + FRAME; end
+transport._audit = nil;
+check('FT15 a held module logs one yield per wait, naming who is ahead',
+    #yields == 1 and yields[1]:find('behind HELM', 1, true) ~= nil, true);
+
+-- The real vault client and the real HELM module at 60 fps, against a
+-- server that answers every request 160 ms after it left: the vault re-reads
+-- a ten-page list while the HELM panel is open (it calls touch() every frame).
+boot(1, nil, true);
+local helm = require('dlac\\servers\\ascensionxi\\modules\\helm\\status');
+local helmFirstIdx, helmSentIdx, helmFirstAt, helmSentAt;
+helm._clock = function() return now; end;
+helm._received = transport.received;
+helm._send = function(p)
+    local ok = transport.send(p, 'HELM status');
+    if helmFirstIdx == nil then helmFirstIdx, helmFirstAt = #sent, now; end
+    if ok and helmSentIdx == nil then helmSentIdx, helmSentAt = #sent, now; end
+    return ok;
+end;
+local function helmReply(p)
+    return string.char(224, 15, 0, 0, 0x80, p[6], 0, 0) .. w16(1) .. w16(0)
+        .. string.char(p[13], p[14], p[15], p[16]) .. w32(100) .. w16(1) .. w16(1) .. w16(1) .. w16(1);
+end
+local PAGES = 10;
+local wire, onWire, inFlight, pages = {}, #sent, 0, 0;   -- boot's own sends were answered already
+vc.markStale(0, 'test');
+helm.reset(false);
+for _ = 1, 60 * 6 do
+    now = now + FRAME;
+    for i = #wire, 1, -1 do                         -- the answers that are due
+        local w = wire[i];
+        if now >= w.at then
+            table.remove(wire, i);
+            local op, seq = w.p[5], w.p[6];
+            if op == 0x80 then
+                helm.onPacket(helmReply(w.p));
+            elseif op == vc.op.HELLO then
+                vc.onFrame({ op = op, seq = seq, status = 0, flags = 0, payload = hello(1, PAGES, 10) });
+            elseif op == vc.op.LIST2 then
+                local n = #(vc._st().rowsAcc or {}) + 1;
+                vc.onFrame({ op = op, seq = seq, status = 0, flags = (n < PAGES) and vc.FLAG_MORE or 0,
+                    payload = list2({ listRow(n, 100 + n) }, 10) });
+            else
+                vc.onFrame({ op = op, seq = seq, status = 0, flags = 0, payload = w16(0) .. w16(0) });
+            end
+        end
+    end
+    vc.pump(true);
+    if pages >= 2 then helm.touch(); end              -- the panel opens mid-read
+    while onWire < #sent do                           -- this frame's sends go on the wire
+        onWire = onWire + 1;
+        wire[#wire + 1] = { at = sent[onWire].at + 0.16, p = sent[onWire].p };
+        if sent[onWire].p[5] == vc.op.LIST2 then pages = pages + 1; end
+    end
+    inFlight = math.max(inFlight, #wire);
+end
+local between, lastPage = 0, 0;
+for i, s in ipairs(sent) do
+    if s.p[5] == vc.op.LIST2 then lastPage = i; end
+    if helmFirstIdx and helmSentIdx and i > helmFirstIdx and i < helmSentIdx then between = between + 1; end
+end
+check('FT16 the real modules: HELM\'s poll leaves while the vault is still paging',
+    helmSentIdx ~= nil and lastPage > helmSentIdx, true);
+check('FT16a ...after at most one vault request (the current reply\'s)', between <= 1, true);
+check('FT16b ...within two of its own 0.35 s retries', helmSentAt ~= nil and helmSentAt - helmFirstAt < 0.8, true);
+check('FT16c ...the read still completes', vc.mirror.fresh == true and #vc.mirror.rows == PAGES, true);
+check('FT16d ...one request in flight at a time', inFlight, 1);
+
+-- WD13-WD16: the write window under fair turns, 60 fps, 160 ms answers. A
+-- withdraw waits behind exactly one other module's request (a HELM poll on
+-- the wire); then the server loses its first two answers while the telemetry
+-- module asks for a new WATCH every frame.
+boot(1, nil, true);
+assert(ask(0x80, 1, 'HELM'), 'the HELM poll leaves first');
+local helmDue, helmAnsweredAt = now + 0.16, nil;
+local wdErr = 'unset';
+vc.requestWithdraw({ { rowId = 1, qty = 1 } }, function(_, e) wdErr = e; end);
+local lose, answeredAt, wdDoneAt = 2, nil, nil;
+local watchSeq, watchDue = 1, nil;
+for _ = 1, 60 * 5 do
+    now = now + FRAME;
+    if helmDue and now >= helmDue then transport.received(0x80, 1); helmDue, helmAnsweredAt = nil, now; end
+    if watchDue and now >= watchDue then transport.received(0xC1, watchSeq); watchSeq, watchDue = watchSeq + 1, nil; end
+    local p = vc._st().pending;
+    if p and p.op == vc.op.WITHDRAW and p.sentAt and now - p.sentAt >= 0.16 and answeredAt ~= p.sentAt then
+        answeredAt = p.sentAt;
+        if lose > 0 then
+            lose = lose - 1;                          -- this answer is lost
+        else
+            vc.onFrame({ op = p.op, seq = p.seq, status = 0, flags = 0, payload = withdrawAck(1, 1) });
+            wdDoneAt = now;
+        end
+    end
+    vc.pump(true);
+    if watchDue == nil and sends(vc.op.WITHDRAW) > 0 and ask(0xC1, watchSeq, 'telemetry') then
+        watchDue = now + 0.16;
+    end
+end
+local wd = {};
+for _, s in ipairs(sent) do if s.p[5] == vc.op.WITHDRAW then wd[#wd + 1] = s; end end
+check('WD13 a write behind one other module\'s request leaves at the first frame the gap allows',
+    #wd > 0 and helmAnsweredAt ~= nil and wd[1].at > helmAnsweredAt
+        and wd[1].at - helmAnsweredAt <= GAP + 2 * FRAME, true);
+check('WD14 ...its two retries keep the seq and leave inside WRITE_DEADLINE of its first send',
+    #wd == 3 and wd[2].p[6] == wd[1].p[6] and wd[3].p[6] == wd[1].p[6] and wd[3].at - wd[1].at < DEADLINE, true);
+check('WD15 ...and the third answer lands: no outcome unknown', wdErr, nil);
+local others, watchAt = 0, nil;
+for _, s in ipairs(sent) do
+    if #wd > 0 and s.at > wd[1].at and s.at <= (wdDoneAt or math.huge) and s.p[5] ~= vc.op.WITHDRAW then
+        others = others + 1;
+    end
+    if watchAt == nil and s.p[5] == 0xC1 then watchAt = s.at; end
+end
+check('WD16 the module asking every frame never got in while the write awaited its answer, and went next',
+    others == 0 and wdDoneAt ~= nil and watchAt ~= nil and watchAt - wdDoneAt <= GAP + 2 * FRAME, true);
 
 -- ===========================================================================
 -- ZT: transactions across a zone line.
@@ -690,4 +967,4 @@ if failures > 0 then
     print(string.format('FAIL -- %d of %d stage-8 checks failed', failures, checks));
     os.exit(1);
 end
-print(string.format('OK -- %d stage-8 checks: write window, foreign gate, zone lines, job changes, reloads, replies', checks));
+print(string.format('OK -- %d stage-8 checks: write window, foreign gate, fair turns, zone lines, job changes, reloads, replies', checks));

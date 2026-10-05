@@ -17,7 +17,8 @@
 -- changes nothing. T2 -- server pushes never come through received() at all
 -- (the vault client routes them past it; notePush only logs them). T3 -- a
 -- caller that gave up abandons its request instead of holding every other
--- module for MAX_WAIT.
+-- module for MAX_WAIT. T4 -- fair turns: the module that has waited longest
+-- sends next (the "line", below).
 --
 -- Another addon on 0x1E0 (Nexus) spends the same 50 ms server budget: a
 -- request of ours that lands right behind one of its packets is dropped.
@@ -25,7 +26,14 @@
 -- "Rate-limiting packet GP_CLI_COMMAND_VOID_STORAGE", a 2.5 s retry). Nexus
 -- already waits LISTEN_GAP after any 0x1E0 that is not its own; this gate
 -- now does the same: FOREIGN_GAP after one it did not send.
-local M = { MIN_GAP = 0.1, MAX_WAIT = 8, FOREIGN_GAP = 0.3 };
+--
+-- STALE_WAIT is how long a module keeps its place in line without asking
+-- again. The slowest asker retries a refused request every 0.35 s (HELM,
+-- digging, ascension); the vault and the EXP band check ask every frame.
+-- 1 s is nearly three of those retries, so a frame hitch does not cost a
+-- module its place, while a module that stopped asking (its panel closed)
+-- holds the others back for at most 1 s.
+local M = { MIN_GAP = 0.1, MAX_WAIT = 8, FOREIGN_GAP = 0.3, STALE_WAIT = 1.0 };
 local unpack = table.unpack or unpack;
 local ok, socket = pcall(require, 'socket');
 -- Wall time, never frame count (uncapped FPS) or process CPU time.
@@ -37,6 +45,9 @@ end;
 local last, pending, answered;
 local recent = {};   -- our last few frames, from the op byte on (the header is the client's)
 local foreignAt;     -- when another addon's 0x1E0 last went out
+-- T4: producer -> { who, since = start of its wait (false: not waiting),
+-- at = its latest try, said = this wait's yield line is written }
+local line = {};
 M._audit = function(event, op, seq, why, now)
     local root = require('dlac\\profiles').dataDir();
     if not root then return; end
@@ -107,11 +118,77 @@ local function foreignQuiet(now)
     return foreignAt == nil or now - foreignAt >= M.FOREIGN_GAP;
 end
 
+-- T4: which producer (module) is asking. A module is known by the op
+-- partition its packet uses (packet[5]; the server's channel registry
+-- assigns the partitions). The EXP band check (0x4C) sits inside the vault's
+-- band but is its own module with its own pending request, so it takes its
+-- own turns. Any other op is a producer of its own.
+function M.producerOf(op)
+    if type(op) ~= 'number' then return 'unknown'; end
+    if op == 0x4C then return 'EXP band'; end
+    if op >= 0x40 and op <= 0x7F then return 'vault'; end
+    if op == 0x80 then return 'HELM'; end
+    if op == 0x81 then return 'digging'; end
+    if op >= 0xA0 and op <= 0xAF then return 'ascension'; end
+    if op >= 0xC0 and op <= 0xCF then return 'telemetry'; end
+    return op;
+end
+
+local function nameOf(who)
+    return type(who) == 'number' and string.format('op %02X', who) or tostring(who);
+end
+
+-- T4, the line. Each module asks on its own clock (the vault every frame,
+-- HELM, digging and ascension 0.35 s after a refusal), so "whoever asks
+-- first once the gap is spent" let the vault's paging hold the others back.
+-- Now a refused NEW request puts its module in line, and when the gap and
+-- the slot allow a new request, only the module that has waited longest,
+-- among those still asking, may send it. The others get the same false a
+-- busy slot gives them.
+
+-- In line: refused since `since`, not granted yet, and still asking.
+local function live(turn, now)
+    return turn.since ~= false and now - turn.at < M.STALE_WAIT;
+end
+
+-- A NEW request joins its module's place in line: the wait counts from its
+-- first refusal, or starts again at the back when the module had stopped
+-- asking. A retry of THE pending request holds the slot already, so it never
+-- waits its turn and never joins the line: nil.
+local function queue(op, seq, now)
+    if pending ~= nil and pending.op == op and pending.seq == seq and now - pending.at < M.MAX_WAIT then
+        return nil;
+    end
+    local who = M.producerOf(op);
+    local turn = line[who];
+    if turn == nil then
+        turn = { who = who, since = false, at = 0, said = false };
+        line[who] = turn;
+    end
+    if not live(turn, now) then turn.since, turn.said = now, false; end
+    turn.at = now;
+    return turn;
+end
+
+-- The front of the line, when it is not `turn`: the producer still asking
+-- that began to wait earliest, and before `since`. Equal waits go to
+-- whichever asks first.
+local function aheadOf(turn, since, now)
+    local front;
+    for _, t in pairs(line) do
+        if t ~= turn and live(t, now) and t.since < since and (front == nil or t.since < front.since) then
+            front = t;
+        end
+    end
+    return front;
+end
+
 function M.send(packet, why)
     local now = M._clock();
+    local op, seq = packet[5], packet[6] or 0;
+    local turn = queue(op, seq, now);
     if last and now - last < M.MIN_GAP then return false; end
     if not foreignQuiet(now) then return false; end
-    local op, seq = packet[5], packet[6] or 0;
     if pending then
         if now - pending.at >= M.MAX_WAIT then
             audit('expired', pending.op, pending.seq, pending.why, now);
@@ -119,6 +196,19 @@ function M.send(packet, why)
         elseif pending.op ~= op or pending.seq ~= seq then
             return false;
         end
+    end
+    if turn ~= nil then
+        local front = aheadOf(turn, turn.since, now);
+        if front ~= nil then
+            if not turn.said then
+                turn.said = true;
+                audit('yield', op, seq, tostring(why) .. ' -- behind ' .. nameOf(front.who), now);
+            end
+            return false;
+        end
+        -- Its turn, whatever the packet manager does with the frame: a module
+        -- whose sends always fail must not stay first in line for ever.
+        turn.since = false;
     end
     last = now;
     -- Remembered BEFORE the send: Ashita runs packet_out inside
@@ -134,15 +224,21 @@ function M.send(packet, why)
     return true;
 end
 
--- Is the channel free for a NEW request right now (no reply awaited, gap spent)?
-function M.idle()
+-- Would a NEW request go right now: no reply awaited, the gap spent, and
+-- nobody ahead in line (T4)? `op`, a packet's op byte, asks for that module,
+-- whose own wait counts; without it the answer is for a module not waiting,
+-- which every module still waiting is ahead of.
+function M.idle(op)
     local now = M._clock();
     if last and now - last < M.MIN_GAP then return false; end
+    local turn = op ~= nil and line[M.producerOf(op)] or nil;
+    local since = (turn ~= nil and live(turn, now)) and turn.since or now;
+    if aheadOf(turn, since, now) ~= nil then return false; end
     if not foreignQuiet(now) then return false; end
     return pending == nil or now - pending.at >= M.MAX_WAIT;
 end
 
-function M._reset() last, pending, answered, foreignAt = nil, nil, nil, nil; recent = {}; end
+function M._reset() last, pending, answered, foreignAt = nil, nil, nil, nil; recent = {}; line = {}; end
 
 -- In game only (the suites drive noteOutgoing directly).
 if ashita ~= nil and ashita.events ~= nil then
