@@ -113,6 +113,7 @@ local d = aa.decide({ plan = plan(), candidates = { RING }, event = 'Default' })
 check('AA-01 released', d.release.Ring1, 'Rajas Ring');
 check('AA-01 main hand AccToCap after', d.metrics[1].accToCap, -7);
 check('AA-01 the why', d.why.Ring1, 'released for Rajas Ring');
+check('AA-01 the piece it released', d.typed.Ring1, "Toreador's Ring");
 
 -- AA-02: with the off hand protected (TV-05 as published, off hand at 70 %)
 -- the full set misses the cap: nothing is released.
@@ -121,6 +122,7 @@ aa.noteFrame(frameOf('TV-05'));
 d = aa.decide({ plan = plan(), candidates = { RING }, event = 'Default' });
 check('AA-02 nothing released', d.release.Ring1, nil);
 check('AA-02 why', d.why.Ring1, 'the full set does not reach the cap');
+check('AA-02 a held piece is named', d.typed.Ring1, "Toreador's Ring");
 
 -- AA-03: removal priority. With 11 ACC to spare, Peacock Amulet (prio 5, ACC
 -- 10, for Spike Necklace's DEX+3: net -8) goes first and leaves 3; Toreador's
@@ -134,6 +136,7 @@ d = aa.decide({ plan = plan(), event = 'Default', candidates = {
 check('AA-03 the higher priority goes', d.release.Neck, 'Spike Necklace');
 check('AA-03 the lower is kept', d.release.Ring1, nil);
 check('AA-03 why kept', d.why.Ring1, 'needed for the cap');
+check('AA-03 both pieces named', d.typed.Neck .. ' / ' .. d.typed.Ring1, "Peacock Amulet / Toreador's Ring");
 d = aa.decide({ plan = plan(), event = 'Default', candidates = {
     RING, { slot = 'Neck', typed = 'Peacock Amulet', fallback = 'Spike Necklace', prio = 5 } } });
 check('AA-03 exactly at the cap is enough', d.release.Ring1, 'Rajas Ring');

@@ -693,9 +693,10 @@ end
 -- req = { plan = { [slotName] = item name }, augmented = { [slotName] = true }
 --         for a plan entry pinned to an augmented copy, candidates = { { slot,
 --         typed, fallback, prio } }, event = dispatch kind }. Returns
--- { release = { [slotName] = fallback }, why = { [slotName] = text }, metrics }.
+-- { release = { [slotName] = fallback }, why = { [slotName] = text },
+--   typed = { [slotName] = the AutoAcc piece }, metrics }.
 function M.decide(req)
-    local out = { release = {}, why = {}, metrics = nil };
+    local out = { release = {}, why = {}, typed = {}, metrics = nil };
     local cands = req.candidates or {};
     if #cands == 0 then return out; end
     st.wantedAt = M._clock();
@@ -707,7 +708,7 @@ function M.decide(req)
         .. '|' .. tostring(wornHash);
     if st.memo ~= nil and st.memo.key == key then return st.memo.out; end
     local function hold(why)
-        for _, c in ipairs(cands) do out.why[c.slot] = why; end
+        for _, c in ipairs(cands) do out.why[c.slot], out.typed[c.slot] = why, c.typed; end
         retire('the pieces went back on before the server measured it');
         st.memo, st.lastDecision, st.lastBasis = { key = key, out = out }, out, nil;
         return out;
@@ -790,7 +791,7 @@ function M.decide(req)
                 why = 'needed for the cap';
             end
         end
-        out.why[c.slot] = why;
+        out.why[c.slot], out.typed[c.slot] = why, c.typed;
     end
     if next(out.release) ~= nil then
         predict(out, accepted, basis);

@@ -1,10 +1,10 @@
 --[[
-    ascensionxi/telemetry/monitor -- the accuracy box: for the monster you
-    fight, your ACC for each hand, its evasion, the level correction, the hit
-    rate the server rolls against, the cap, the ACC at which the cap starts,
-    and how much you have to spare or still need. Below it, AutoAcc: why each
-    piece went or stayed on, and whether the server's numbers for the new
-    outfit matched what dlac predicted.
+    ascensionxi/telemetry/monitor -- the accuracy box: the monster you fight,
+    your ACC for each hand against it, and the piece AutoAcc wears in each of
+    its slots. One short line per thing: every explanation lives in the hover
+    of an underlined label (dlac's panel-text standard, ui\uistyle.helpLabel),
+    and a warning is drawn only while something is wrong (owner, 2026-10-05:
+    "as minimalistic as we can").
 
     For any player: an open box is demand, so it starts the telemetry session
     on its own and keeps it while it is open. The numbers are the server's
@@ -32,6 +32,7 @@ local function try(name)
     return (ok and type(m) == 'table') and m or nil;
 end
 local imgui = try('imgui');
+local uistyle = try('dlac\\ui\\uistyle');
 
 local FALLBACK = { HEADER = { 0.60, 0.75, 1.00, 1.00 }, DIM = { 0.70, 0.70, 0.70, 1.00 },
                    USABLE = { 1.00, 1.00, 1.00, 1.00 }, HAVE = { 0.45, 0.90, 0.45, 1.00 },
@@ -68,6 +69,10 @@ local COLUMNS = {
     { x = 340, label = 'Cap at', tip = 'The ACC at which this hand reaches the cap. More than that is wasted.' },
 };
 local TAIL_X = 410;
+local PIECE_X = COLUMNS[2].x;   -- an AutoAcc row's piece lines up with the ACC column
+
+local AUTOACC_TIP = 'AutoAcc wears your AutoAcc pieces only while you need the accuracy:\n'
+    .. 'once every hand reaches the cap without one, its slot wears its normal pick.';
 
 -- dlac's engine is the only one since the LuaAshitacast purge; it is off
 -- only when the Tripwire disarmed it for the session.
@@ -122,49 +127,128 @@ function M.status()
 end
 M.maxLevel = 1;
 
-local function line(col, label, text, color, tip)
-    imgui.TextColored(col.DIM, label);
-    imgui.SameLine(110);
-    imgui.TextColored(color or col.USABLE, esc(text));
+-- A label: underlined when it has a hover, which carries its explanation.
+-- helpLabel draws raw, so the escaping happens here.
+local function label(color, text, tip)
+    if tip ~= nil and uistyle ~= nil and type(uistyle.helpLabel) == 'function' then
+        uistyle.helpLabel(imgui, esc(text), esc(tip), color);
+        return;
+    end
+    imgui.TextColored(color, esc(text));
     if tip ~= nil and imgui.IsItemHovered() then imgui.SetTooltip(esc(tip)); end
 end
 
+-- A value with a hover, not underlined: the rows' data.
+local function cell(color, text, tip)
+    imgui.TextColored(color, esc(text));
+    if tip ~= nil and imgui.IsItemHovered() then imgui.SetTooltip(esc(tip)); end
+end
+
+-- A short label after the line's own, for as long as it applies.
+local function flag(color, text, tip)
+    imgui.SameLine(0, 12);
+    label(color, text, tip);
+end
+
+local function sessionText(cs)
+    local stats = type(cs.stats) == 'table' and cs.stats or {};
+    local phase = tostring(cs.phase or 'off');
+    local state = phase;
+    if phase == 'live' then state = 'live, battle lane ' .. tostring(LANE_STATES[cs.laneState] or cs.laneState);
+    elseif phase == 'hello' then state = 'starting a session';
+    elseif cs.why ~= nil then state = phase .. ', ' .. tostring(cs.why);
+    end
+    return ('Telemetry %s: %d frames received, %d accepted.'):format(state, stats.pushes or 0, stats.accepted or 0);
+end
+
+local function frameAge(r)
+    local a = M._autoacc;
+    if a == nil or type(a._clock) ~= 'function' or r.frameAt == nil then return nil; end
+    local ok, now = pcall(a._clock);
+    return (ok and type(now) == 'number') and (now - r.frameAt) or nil;
+end
+
+local function targetName(frame)
+    if type(M._targetName) ~= 'function' then return nil; end
+    local ok, n = pcall(M._targetName, frame);
+    return (ok and type(n) == 'string' and n ~= '') and n or nil;
+end
+
+-- The top line: the monster, or why there is none. The session and dlac's
+-- checks ride its hover.
+local function drawTarget(col, cs, r, frame)
+    local session = sessionText(cs);
+    if cs.phase == 'dormant' then
+        label(col.WANT, 'Telemetry off', tostring(cs.why or 'telemetry unavailable') .. '.\nAutoAcc keeps every piece on.');
+        return;
+    end
+    if cs.phase ~= 'live' then label(col.DIM, 'Starting', session); return; end
+    if frame == nil then
+        label(col.DIM, 'No target', 'Engage a monster: your numbers against it show here.\n' .. session);
+        return;
+    end
+    local failed = r.formulaOk == false or r.mismatch ~= nil;
+    local checks;
+    if failed then checks = 'The newest frame failed a check: ' .. tostring(r.why or '?') .. '.';
+    elseif r.usable == true then
+        checks = ('dlac\'s math and gear agree with the server (%d frame%s).'):format(r.bases or 0, (r.bases == 1) and '' or 's');
+    else checks = 'AutoAcc cannot use these numbers yet: ' .. tostring(r.why or 'no frame yet') .. '.';
+    end
+    local age = frameAge(r);
+    label(col.USABLE, ('%s, Lv %d'):format(targetName(frame) or 'Target', frame.targetLevel or 0),
+        ('Updated %s: the server sends a new frame only when something you cannot see changes.\n%s\n%s'):format(
+            age ~= nil and ('%.1f s ago'):format(age) or ('at rev ' .. tostring(frame.rev)), session, checks));
+    if (frame.flashPenalty or 0) > 0 then
+        flag(col.WANT, ('Flash -%d'):format(frame.flashPenalty), 'Flash takes this much ACC until it wears off.');
+    end
+    if failed then
+        flag(col.ERR, 'Check failed', tostring(r.why or '?') .. ((r.formulaOk == false)
+            and '\nAutoAcc keeps every piece on until a frame passes.' or '\nAutoAcc keeps the pieces it could not check on.'));
+    end
+end
+
+-- The applicable hands, one row each; the others are named in the Hand hover.
 local function drawTable(col, frame)
+    local rows, hidden = {}, {};
+    for _, ctx in ipairs(frame.contexts or {}) do
+        if ctx.applicability == wire.applicability.APPLICABLE then rows[#rows + 1] = ctx;
+        else
+            hidden[#hidden + 1] = ('%s: %s'):format(CONTEXT_NAMES[ctx.kind] or ('context ' .. tostring(ctx.kind)),
+                NOT_APPLICABLE[ctx.applicability] or 'not applicable');
+        end
+    end
     for i, c in ipairs(COLUMNS) do
         if i > 1 then imgui.SameLine(c.x); end
-        imgui.TextColored(col.DIM, c.label);
-        if c.tip ~= nil and imgui.IsItemHovered() then imgui.SetTooltip(esc(c.tip)); end
+        local tip = c.tip;
+        if i == 1 and #hidden > 0 then tip = 'Not shown:\n' .. table.concat(hidden, '\n'); end
+        if i == 2 and (frame.foodAccPct or 0) > 0 then
+            tip = tip .. ('\nYour food adds %d%% ACC, up to %d, and is counted in.'):format(frame.foodAccPct, frame.foodAccCap or 0);
+        end
+        label(col.DIM, c.label, tip);
     end
-    for _, ctx in ipairs(frame.contexts or {}) do
-        imgui.TextColored(col.USABLE, CONTEXT_NAMES[ctx.kind] or ('context ' .. tostring(ctx.kind)));
-        if ctx.applicability ~= wire.applicability.APPLICABLE then
-            imgui.SameLine(COLUMNS[2].x);
-            imgui.TextColored(col.DIM, NOT_APPLICABLE[ctx.applicability] or 'not applicable');
+    for _, ctx in ipairs(rows) do
+        imgui.TextColored(col.USABLE, esc(CONTEXT_NAMES[ctx.kind] or ('context ' .. tostring(ctx.kind))));
+        local eff = formula.effective(frame, ctx, ctx.liveAcc or 0);
+        local toCap = formula.accToCap(ctx, eff);
+        local atCap = (ctx.thresholdBp or 0) >= formula.capThresholdBp(ctx);
+        local cells = {
+            { ('%d'):format(ctx.liveAcc or 0), col.USABLE },
+            { ('%d'):format(ctx.targetEva or 0), col.USABLE },
+            { ('%+d'):format(ctx.levelCorrection or 0), (ctx.levelCorrection or 0) < 0 and col.WANT or col.DIM },
+            { pct(ctx.thresholdBp), atCap and col.HAVE or col.WANT },
+            { pct(ctx.capBp), col.DIM },
+            { ('%d'):format((ctx.liveAcc or 0) + toCap), col.USABLE },
+        };
+        for i, c in ipairs(cells) do
+            imgui.SameLine(COLUMNS[i + 1].x);
+            imgui.TextColored(c[2], esc(c[1]));
+        end
+        imgui.SameLine(TAIL_X);
+        local tip = (ctx.kind == wire.context.RANGED) and 'Shown for reference: AutoAcc decides on melee only.' or nil;
+        if toCap <= 0 then
+            cell(col.HAVE, ('%d spare'):format(-toCap), tip);
         else
-            local eff = formula.effective(frame, ctx, ctx.liveAcc or 0);
-            local toCap = formula.accToCap(ctx, eff);
-            local atCap = (ctx.thresholdBp or 0) >= formula.capThresholdBp(ctx);
-            local cells = {
-                { ('%d'):format(ctx.liveAcc or 0), col.USABLE },
-                { ('%d'):format(ctx.targetEva or 0), col.USABLE },
-                { ('%+d'):format(ctx.levelCorrection or 0), (ctx.levelCorrection or 0) < 0 and col.WANT or col.DIM },
-                { pct(ctx.thresholdBp), atCap and col.HAVE or col.WANT },
-                { pct(ctx.capBp), col.DIM },
-                { ('%d'):format((ctx.liveAcc or 0) + toCap), col.USABLE },
-            };
-            for i, cell in ipairs(cells) do
-                imgui.SameLine(COLUMNS[i + 1].x);
-                imgui.TextColored(cell[2], esc(cell[1]));
-            end
-            imgui.SameLine(TAIL_X);
-            if toCap <= 0 then
-                imgui.TextColored(col.HAVE, ('%d spare'):format(-toCap));
-            else
-                imgui.TextColored(col.WANT, ('needs %d'):format(toCap));
-            end
-            if ctx.kind == wire.context.RANGED and imgui.IsItemHovered() then
-                imgui.SetTooltip('Shown for reference: AutoAcc decides on melee only.');
-            end
+            cell(col.WANT, ('needs %d'):format(toCap), tip);
         end
     end
 end
@@ -176,69 +260,74 @@ local function releaseText(release)
     return table.concat(parts, ', ');
 end
 
-local function drawPrediction(col, pr)
-    if type(pr) ~= 'table' then return; end
+-- What the prediction check made of the last release, for the AutoAcc hover.
+local function predictionText(pr)
+    if type(pr) ~= 'table' then return nil; end
     local what = releaseText(pr.release);
-    if pr.verdict == 'waiting' then
-        line(col, 'Prediction', 'waiting for the server to measure ' .. what, col.DIM);
-        return;
-    end
-    if pr.verdict == 'not checked' then
-        line(col, 'Prediction', 'not checked: ' .. tostring(pr.why or '?'), col.DIM);
-        return;
-    end
+    local head = (what ~= '') and ('The prediction for ' .. what) or 'The prediction';
+    if pr.verdict == 'waiting' then return head .. ': waiting for the server to measure it.'; end
+    if pr.verdict == 'not checked' then return head .. ': not checked, ' .. tostring(pr.why or '?') .. '.'; end
     local good = pr.verdict == 'matched';
-    line(col, 'Prediction', good and ('matched the server for ' .. what) or ('WRONG for ' .. what .. ': those pieces stay on'),
-        good and col.HAVE or col.ERR,
-        'dlac predicts each hand\'s ACC and hit rate in the outfit a release makes,\n'
-        .. 'and compares them with the server\'s own numbers once it wears that outfit.');
+    local lines = { head .. (good and ': matched the server.' or ': WRONG, so those pieces stay on.') };
     local kinds = {};
     for kind in pairs(pr.rows or {}) do kinds[#kinds + 1] = kind; end
     table.sort(kinds);
     for _, kind in ipairs(kinds) do
         local row = pr.rows[kind];
         if row.measuredAcc ~= nil then
-            local same = row.acc == row.measuredAcc and row.threshold == row.measuredThreshold;
-            imgui.Dummy({ 0, 0 });
-            imgui.SameLine(110);
-            imgui.TextColored(same and col.DIM or col.ERR, esc(('%s: ACC %d predicted, %d measured; hit %s, %s'):format(
-                CONTEXT_NAMES[kind] or tostring(kind), row.acc or 0, row.measuredAcc, pct(row.threshold),
-                pct(row.measuredThreshold))));
+            lines[#lines + 1] = ('%s: ACC %d predicted, %d measured; hit %s, %s'):format(CONTEXT_NAMES[kind] or tostring(kind),
+                row.acc or 0, row.measuredAcc, pct(row.threshold), pct(row.measuredThreshold));
         end
     end
+    return table.concat(lines, '\n');
 end
 
+-- Pieces the server's numbers contradicted: AutoAcc leaves them on.
+local function keptOn(r)
+    local names = {};
+    for id in pairs(r.unverified or {}) do names[#names + 1] = itemName(id) .. ' (unverified)'; end
+    for id in pairs(r.mispredicted or {}) do names[#names + 1] = itemName(id) .. ' (predicted wrongly)'; end
+    table.sort(names);
+    return names;
+end
+
+-- The AutoAcc header, then each slot and the piece it wears now: green when
+-- the slot went back to its normal pick, white while the accuracy piece is
+-- needed, dim when it stays on for another reason (the hover says which).
 local function drawAutoAcc(col, r)
-    imgui.TextColored(col.HEADER, 'AutoAcc');
+    local tip = { AUTOACC_TIP };
+    if r.trigger ~= nil then tip[#tip + 1] = 'Every piece stays on until the next frame: ' .. tostring(r.trigger) .. '.'; end
+    tip[#tip + 1] = predictionText(r.prediction);
+    label(col.HEADER, 'AutoAcc', table.concat(tip, '\n\n'));
+    local kept = keptOn(r);
+    if #kept > 0 then
+        flag(col.WANT, ('%d kept on'):format(#kept),
+            'The server\'s numbers did not match dlac\'s for these, so AutoAcc leaves them on:\n' .. table.concat(kept, '\n'));
+    end
     local d = r.decision;
     if type(d) ~= 'table' or next(d.why or {}) == nil then
-        imgui.TextColored(col.DIM, 'No piece uses it. In the Sets tab, click ~ on an accuracy piece and choose Gear Rule: AutoAcc.');
+        flag(col.DIM, 'no piece', 'In the Sets tab, click ~ on an accuracy piece and choose Gear Rule: AutoAcc.');
         return;
     end
-    local seen = {};
+    local typed, release = d.typed or {}, d.release or {};
     local function row(slot, why)
         imgui.TextColored(col.USABLE, esc(slot));
-        imgui.SameLine(110);
-        local released = (d.release or {})[slot] ~= nil;
-        imgui.TextColored(released and col.HAVE or col.DIM, esc(why));
+        imgui.SameLine(PIECE_X);
+        local piece, fallback = typed[slot], release[slot];
+        local rowTip = (piece ~= nil) and (tostring(piece) .. ': ' .. tostring(why)) or tostring(why);
+        if fallback ~= nil then
+            cell(col.HAVE, fallback, rowTip);
+        else
+            cell((why == 'needed for the cap') and col.USABLE or col.DIM, piece or why, rowTip);
+        end
     end
+    local seen = {};
     for _, slot in ipairs(SLOT_ORDER) do
         if d.why[slot] ~= nil then row(slot, d.why[slot]); seen[slot] = true; end
     end
     for slot, why in pairs(d.why) do
         if not seen[slot] then row(tostring(slot), why); end
     end
-    drawPrediction(col, r.prediction);
-end
-
-local function keptOnLine(col, r)
-    local names, count = {}, 0;
-    for id in pairs(r.unverified or {}) do count = count + 1; names[#names + 1] = itemName(id) .. ' (unverified)'; end
-    for id in pairs(r.mispredicted or {}) do count = count + 1; names[#names + 1] = itemName(id) .. ' (predicted wrongly)'; end
-    if count == 0 then return; end
-    table.sort(names);
-    line(col, 'Kept on', ('%d piece%s'):format(count, count == 1 and '' or 's'), col.WANT,
-        'The server\'s numbers did not match dlac\'s for these, so AutoAcc leaves them on:\n' .. table.concat(names, '\n'));
 end
 
 -- The box itself (the panel and the floating window both draw this).
@@ -248,63 +337,17 @@ function M.drawBody()
     if type(M._want) == 'function' then pcall(M._want); end
     local col = palette();
     if not nativeOn() then
-        imgui.TextColored(col.WANT, 'dlac\'s engine is disarmed this session: AutoAcc decides nothing.');
-        imgui.TextColored(col.DIM, 'Another engine is loaded (LuaAshitacast?). Unload it and /addon reload dlac.');
-        imgui.Separator();
+        label(col.WANT, 'Engine disarmed',
+            'Another engine is loaded (LuaAshitacast?), so AutoAcc decides nothing.\nUnload it and /addon reload dlac.');
     end
-
-    local cs = clientState();
-    local phase = tostring(cs.phase or 'off');
-    local phaseText = phase;
-    if phase == 'settling' then phaseText = tostring(cs.why or 'starting');
-    elseif phase == 'dormant' then phaseText = 'off -- ' .. tostring(cs.why or '?');
-    elseif phase == 'live' then phaseText = 'live, battle lane ' .. tostring(LANE_STATES[cs.laneState] or cs.laneState);
-    elseif phase == 'hello' then phaseText = 'starting a session';
-    end
-    local stats = type(cs.stats) == 'table' and cs.stats or {};
-    line(col, 'Telemetry', phaseText, nil, ('%d frames received, %d accepted'):format(stats.pushes or 0, stats.accepted or 0));
-
-    local r = report();
+    local cs, r = clientState(), report();
     local frame = r.frame;
-    if type(frame) ~= 'table' or frame.laneState ~= wire.laneState.LIVE then
-        imgui.TextColored(col.DIM, 'Engage a monster: your numbers against it appear here.');
+    local live = cs.phase == 'live' and type(frame) == 'table' and frame.laneState == wire.laneState.LIVE;
+    drawTarget(col, cs, r, live and frame or nil);
+    if live then
         imgui.Separator();
-        drawAutoAcc(col, r);
-        return;
+        drawTable(col, frame);
     end
-
-    local age = nil;
-    local a = M._autoacc;
-    if a ~= nil and type(a._clock) == 'function' and r.frameAt ~= nil then
-        local ok, now = pcall(a._clock);
-        if ok and type(now) == 'number' then age = now - r.frameAt; end
-    end
-    local name = nil;
-    if type(M._targetName) == 'function' then
-        local ok, n = pcall(M._targetName, frame);
-        if ok and type(n) == 'string' and n ~= '' then name = n; end
-    end
-    line(col, 'Target', ('%slevel %d, updated %s'):format(name and (name .. ', ') or '', frame.targetLevel or 0,
-        age ~= nil and ('%.1f s ago'):format(age) or ('at rev ' .. tostring(frame.rev))), nil,
-        'The server sends a new frame only when something you cannot see changes,\nso "updated" can be a while ago.');
-    if r.usable == true then
-        line(col, 'Checks', ('dlac\'s math and gear agree with the server (%d frame%s)'):format(r.bases or 0,
-            (r.bases == 1) and '' or 's'), col.HAVE);
-    else
-        line(col, 'Checks', r.why or 'not usable', col.WANT);
-    end
-    if r.trigger ~= nil then
-        line(col, 'Holding', r.trigger, col.WANT, 'Every AutoAcc piece stays on until the next frame from the server.');
-    end
-    local effects = {};
-    if (frame.flashPenalty or 0) > 0 then effects[#effects + 1] = ('Flash takes %d ACC'):format(frame.flashPenalty); end
-    if (frame.foodAccPct or 0) > 0 then
-        effects[#effects + 1] = ('food adds %d%% ACC, up to %d'):format(frame.foodAccPct, frame.foodAccCap or 0);
-    end
-    if #effects > 0 then line(col, 'Effects', table.concat(effects, '; ')); end
-    keptOnLine(col, r);
-    imgui.Separator();
-    drawTable(col, frame);
     imgui.Separator();
     drawAutoAcc(col, r);
 end
@@ -313,22 +356,24 @@ end
 function M.panel()
     if imgui == nil then return; end
     local col = palette();
-    imgui.TextColored(col.HEADER, 'Accuracy and AutoAcc');
+    label(col.HEADER, 'Accuracy and AutoAcc',
+        'Your hit rate against the monster you fight.\nAutoAcc wears accuracy gear only while you need it.');
     imgui.SameLine(0, 10);
-    imgui.TextColored(col.DIM, 'your hit rate against the monster you fight; AutoAcc wears accuracy gear only while you need it');
-    if imgui.SmallButton(M.visible and 'Close the floating window##aamon' or 'Open as a floating window##aamon') then
+    if imgui.SmallButton(M.visible and 'Close window##aamon' or 'Open window##aamon') then
         M.visible = not M.visible;
     end
+    if imgui.IsItemHovered() then imgui.SetTooltip('This box in its own window. /dl accuracy opens and closes it too.'); end
     imgui.Separator();
     M.drawBody();
 end
 
 -- The floating window: gearui's d3d_present calls this while M.visible.
+-- AlwaysAutoResize makes it exactly as big as what it shows, so nothing sets
+-- its size (no SetNextWindowSize beside it: the collapse law in ui\hobbybar).
 function M.render()
     if imgui == nil or not M.visible then return; end
     local open = { true };
-    imgui.SetNextWindowSize({ 560, 380 }, ImGuiCond_FirstUseEver or 4);
-    if imgui.Begin('dlac -- Accuracy##dlac_autoacc', open, ImGuiWindowFlags_None or 0) then
+    if imgui.Begin('dlac -- Accuracy##dlac_autoacc', open, ImGuiWindowFlags_AlwaysAutoResize or 0) then
         local ok, err = pcall(M.drawBody);
         if not ok then pcall(imgui.TextColored, FALLBACK.ERR, esc('render error: ' .. tostring(err))); end
     end
