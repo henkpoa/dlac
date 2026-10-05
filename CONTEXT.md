@@ -56,7 +56,7 @@ The crafting pieces dlac holds on for the recipe AscensionXI's Nexus named last 
 _Avoid_: craft claim (the Craft row also carries the manual craft pick), auto-craft (dlac never crafts; Nexus does)
 
 **Combat telemetry**:
-AscensionXI's server stream of the accuracy inputs dlac cannot see, for the mob the player fights (0x1E0 ops 0xC0–0xCF; server `documentation/custom/combat-telemetry.md`, client `servers/ascensionxi/modules/telemetry/`). A **frame** carries each gear-movable input twice, live and without gear (**R**), so dlac projects any outfit as live + its gear − the frame's outfit's gear. A frame that passes dlac's checks is a **basis**; frames that share the server's comparison key differ only in outfit, so any of them can speak for the others. The session runs only while a worn set has an AutoAcc piece.
+AscensionXI's server stream of the accuracy inputs dlac cannot see, for the mob the player fights (0x1E0 ops 0xC0–0xCF; server `documentation/custom/combat-telemetry.md`, client `servers/ascensionxi/modules/telemetry/`). A **frame** carries each gear-movable input twice, live and without gear (**R**), so dlac projects any outfit as live + its gear − the frame's outfit's gear. A frame that passes dlac's checks is a **basis**; frames that share the server's comparison key differ only in outfit, so any of them can speak for the others. The session runs only while a worn set has an AutoAcc piece or the **accuracy box** (`/dl accuracy`, any player) is open.
 _Avoid_: snapshot (the wire's op name, not the concept), ACC watch (the CatsEyeXI branch's `/dl acc` engage estimate), telemetry lane (a lane is one of the session's two subscriptions)
 
 **Gear rule**:

@@ -10789,3 +10789,13 @@ zero in practice, which would bring back the hold on every song).
 not in CI: a workflow change for Henrik), smoke GR1-GR11; run_tests 7,547;
 smoke_ui 1,639; 59 deliberate breaks all caught. A Tripwire-disarmed engine
 dispatches nothing, so AutoAcc decides nothing; the readout says so.
+
+Later the same day Henrik asked for tools to see that it works, and for the
+numbers to be open to every player: the readout became the **accuracy box**
+(`/dl accuracy`), which shows each hand's ACC, the monster's EVA, the level
+correction, the hit rate, the cap and the ACC where the cap starts, and opens
+its own session. A release now predicts the new outfit's numbers and checks
+them against the server's frame for it (the vectors' release comes back
+"matched"); a wrong prediction keeps those pieces on. Writing that test found
+a real bug: the decision memo ignored the event, so a weapon skill with the
+standing set's plan would have reused its release.

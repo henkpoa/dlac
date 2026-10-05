@@ -50,6 +50,12 @@
     Demand: decide() tells the client a decision is wanted, and the worn
     outfit is sampled only while one is (IDLE_AFTER), so a player without
     AutoAcc pieces runs none of this.
+
+    The prediction check: a release predicts each protected hand's ACC and
+    hit rate in the new outfit. When the server's frame for that outfit
+    arrives with every non-gear input unchanged, the prediction is compared
+    with the server's own numbers. A mismatch keeps the pieces involved on
+    for the rest of the session (mispredicted), and the readout names it.
 ]]--
 
 local base = 'dlac\\servers\\ascensionxi\\modules\\telemetry\\';
@@ -131,6 +137,8 @@ function M.reset()
         rev = 0,                  -- what dispatch folds into its retrace signature
         memo = nil,               -- the last decision and its key
         lastDecision = nil, lastBasis = nil,
+        prediction = nil,         -- the last release's predicted hands, and the server's verdict
+        mispredicted = {},        -- itemId -> why (never cleared before a zone change)
         wantedAt = nil,           -- the last decide()
         player = nil, playerAt = nil,
         vectors = {},             -- itemId -> stat vector (catalog facts never change)
@@ -356,6 +364,118 @@ local function markUnverified(outfit, why)
     end
 end
 
+-- ---------------------------------------------------------------------------
+-- The prediction check
+-- ---------------------------------------------------------------------------
+
+-- Every input of the composition that gear does not move, for the frame and
+-- each context. Two frames agreeing here differ only in what the outfit adds.
+local STATE_FIELDS = { 'targetId', 'spawnGen', 'targetLevel', 'targetEva', 'mainJob', 'mainLevel', 'subJob', 'subLevel',
+                       'enlightAcc', 'tandemAcc', 'meritAcc', 'foodAccPct', 'foodAccCap', 'flashPenalty',
+                       'rangedAccBonus', 'foodRaccPct', 'foodRaccCap', 'flourishAcc' };
+local CONTEXT_STATE = { 'applicability', 'skillType', 'statMultMilli', 'policyAcc', 'levelCorrection', 'targetEva',
+                        'floorBp', 'capBp' };
+
+local function contextOf(frame, kind)
+    for _, ctx in ipairs(frame.contexts or {}) do
+        if ctx.kind == kind then return ctx; end
+    end
+    return nil;
+end
+
+local function sameState(a, b)
+    for _, f in ipairs(STATE_FIELDS) do
+        if a[f] ~= b[f] then return false; end
+    end
+    if #(a.contexts or {}) ~= #(b.contexts or {}) then return false; end
+    for _, ca in ipairs(a.contexts or {}) do
+        local cb = contextOf(b, ca.kind);
+        if cb == nil then return false; end
+        for _, f in ipairs(CONTEXT_STATE) do
+            if ca[f] ~= cb[f] then return false; end
+        end
+    end
+    return true;
+end
+
+local function sameIds(a, b)
+    for slot = 0, 15 do
+        if (a[slot] or 0) ~= (b[slot] or 0) then return false; end
+    end
+    return true;
+end
+
+-- Compares the waiting prediction with a frame taken in the predicted outfit.
+local function measure(frame)
+    local pr = st.prediction;
+    if pr == nil or pr.verdict ~= 'waiting' then return; end
+    local outfit = st.ring[frame.equipRev];
+    if outfit == nil or not sameIds(outfit.ids, pr.ids) then return; end
+    if frame.laneState ~= wire.laneState.LIVE then return; end
+    if not sameState(pr.basis, frame) then
+        pr.verdict = 'not checked';
+        pr.why = 'something besides the gear changed before the server measured it';
+        return;
+    end
+    local ok = true;
+    for kind, row in pairs(pr.rows) do
+        local ctx = contextOf(frame, kind);
+        if ctx ~= nil and ctx.applicability == wire.applicability.APPLICABLE then
+            row.measuredAcc, row.measuredThreshold = ctx.liveAcc, ctx.thresholdBp;
+            local eff = formula.effective(frame, ctx, ctx.liveAcc);
+            row.measuredToCap = formula.accToCap(ctx, eff);
+            if row.acc ~= ctx.liveAcc or row.threshold ~= ctx.thresholdBp then ok = false; end
+        end
+    end
+    pr.verdict = ok and 'matched' or 'mismatch';
+    pr.measuredAt = M._clock();
+    if not ok then
+        -- The model was wrong about this swap: its pieces stay on.
+        for slot = 0, 15 do
+            local before, after = pr.basisIds[slot] or 0, pr.ids[slot] or 0;
+            if before ~= after then
+                if before ~= 0 then st.mispredicted[before] = 'a release predicted wrongly'; end
+                if after ~= 0 then st.mispredicted[after] = 'a release predicted wrongly'; end
+            end
+        end
+        bump();
+    end
+end
+
+local function measureKnown()
+    if st.latest ~= nil then measure(st.latest); end
+    for _, b in pairs(st.bases) do measure(b.frame); end
+end
+
+-- The pieces went back on before the server measured the outfit.
+local function retire(why)
+    local pr = st.prediction;
+    if pr ~= nil and pr.verdict == 'waiting' then pr.verdict, pr.why = 'not checked', why; end
+end
+
+-- A release was decided: remember what it predicts for the outfit it makes.
+local function predict(out, accepted, basis)
+    local pr = st.prediction;
+    if pr ~= nil and sameIds(pr.ids, accepted) and pr.basis == basis.frame then
+        -- The same prediction again: keep a verdict, re-arm one that retired.
+        pr.release = out.release;
+        if pr.verdict == 'not checked' then
+            pr.verdict, pr.why = 'waiting', nil;
+            measureKnown();
+        end
+        return;
+    end
+    pr = { ids = {}, basisIds = {}, basis = basis.frame, release = out.release, rows = {}, verdict = 'waiting',
+           at = M._clock() };
+    for slot = 0, 15 do pr.ids[slot], pr.basisIds[slot] = accepted[slot] or 0, basis.outfit.ids[slot] or 0; end
+    for _, m in ipairs(out.metrics or {}) do
+        pr.rows[m.kind] = { acc = m.acc, threshold = m.threshold, accToCap = m.accToCap };
+    end
+    st.prediction = pr;
+    -- The server may already have measured this outfit under the same state.
+    measureKnown();
+end
+
 function M.noteFrame(frame)
     st.latest, st.latestAt = frame, M._clock();
     st.at, st.effectsAt = copyPlayer(playerNow(true)), nil;
@@ -389,6 +509,7 @@ function M.noteFrame(frame)
     for slot = 0, 15 do st.unverified[outfit.ids[slot]] = nil; end
     st.gearOk, st.why = true, nil;
     addBasis(frame, outfit);
+    measure(frame);
 end
 
 -- A conservative trigger since the newest frame: something the client can
@@ -428,6 +549,7 @@ end
 
 function M.zoneChange()
     st.latest, st.key, st.why, st.asked = nil, nil, 'zoned', {};
+    st.prediction, st.mispredicted = nil, {};
     dropBases();
     bump();
 end
@@ -453,10 +575,10 @@ local function evaluate(frame, base, ids, level)
         if M.PROTECTED[ctx.kind] and ctx.applicability == wire.applicability.APPLICABLE then
             local skill = (ctx.skillLive or 0) + (mine.skills[ctx.skillType] or 0) - (base.skills[ctx.skillType] or 0);
             x.skill = skill;
-            local _, eff = formula.compose(frame, ctx, x);
+            local acc, eff, threshold = formula.compose(frame, ctx, x);
             local toCap = formula.accToCap(ctx, eff);
             local meets = formula.thresholdBp(ctx, eff - M.MARGIN) >= formula.capThresholdBp(ctx);
-            metrics[#metrics + 1] = { kind = ctx.kind, accToCap = toCap, meets = meets };
+            metrics[#metrics + 1] = { kind = ctx.kind, acc = acc, threshold = threshold, accToCap = toCap, meets = meets };
             if not meets then allMeet = false; end
         end
     end
@@ -581,10 +703,12 @@ function M.decide(req)
     local latest = st.latest;
     local trigger = (latest ~= nil) and conservative() or nil;
     local wornHash = rememberWorn(false) or st.wornHash;
-    local key = planKey(req) .. '|' .. tostring(st.rev) .. '|' .. tostring(trigger) .. '|' .. tostring(wornHash);
+    local key = planKey(req) .. '|' .. tostring(req.event) .. '|' .. tostring(st.rev) .. '|' .. tostring(trigger)
+        .. '|' .. tostring(wornHash);
     if st.memo ~= nil and st.memo.key == key then return st.memo.out; end
     local function hold(why)
         for _, c in ipairs(cands) do out.why[c.slot] = why; end
+        retire('the pieces went back on before the server measured it');
         st.memo, st.lastDecision, st.lastBasis = { key = key, out = out }, out, nil;
         return out;
     end
@@ -644,6 +768,9 @@ function M.decide(req)
         else
             why = unmodelled(typedId, aug[slot]) or unmodelled(fallbackId, c.fallbackAugmented);
             if why == nil and (st.unverified[typedId] or st.unverified[fallbackId]) then why = 'unverified'; end
+            if why == nil and (st.mispredicted[typedId] or st.mispredicted[fallbackId]) then
+                why = 'a release of it was predicted wrongly';
+            end
             local typedV, fallbackV = vectorOf(typedId), vectorOf(fallbackId);
             if why == nil and typedV ~= nil and fallbackV ~= nil and fallbackV.hp < typedV.hp and wearsHpLatent(accepted) then
                 why = 'it lowers max HP while an HP latent is worn';
@@ -665,6 +792,11 @@ function M.decide(req)
         end
         out.why[c.slot] = why;
     end
+    if next(out.release) ~= nil then
+        predict(out, accepted, basis);
+    else
+        retire('the pieces went back on before the server measured it');
+    end
     st.memo, st.lastDecision = { key = key, out = out }, out;
     return out;
 end
@@ -676,7 +808,8 @@ function M.report()
         usable = #st.baseOrder > 0, why = st.why, formulaOk = st.formulaOk, gearOk = st.gearOk, mismatch = st.mismatch,
         frame = f, frameAt = st.latestAt, bases = #st.baseOrder, basis = st.lastBasis,
         trigger = (f ~= nil) and conservative() or nil, decision = st.lastDecision,
-        unverified = st.unverified, wanted = wanted(M._clock()),
+        unverified = st.unverified, mispredicted = st.mispredicted, prediction = st.prediction,
+        wanted = wanted(M._clock()),
     };
 end
 

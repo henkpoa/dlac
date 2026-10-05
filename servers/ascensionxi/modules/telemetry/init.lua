@@ -117,7 +117,12 @@ local _charId = nil;
 client._charId = function() return _charId; end;
 
 local monitor = require(base .. 'monitor');
-monitor._client, monitor._autoacc = client, autoacc;
+monitor._client, monitor._autoacc, monitor._want = client, autoacc, client.want;
+monitor._targetName = function(frame)
+    local name = nil;
+    pcall(function() name = AshitaCore:GetMemoryManager():GetEntity():GetName(frame.targetIndex or 0); end);
+    return name;
+end;
 
 pcall(function()
     require('dlac\\gear\\serverpack').provide('autoacc', autoacc);
@@ -141,11 +146,12 @@ pcall(function()
     });
 end);
 
--- /dl autoacc: the floating readout.
+-- /dl accuracy (or /dl autoacc): the accuracy box, for any player.
 pcall(function()
     ashita.events.register('command', 'dlac_axi_autoacc_cmd', function(e)
         local raw = string.lower(tostring(e.command or ''));
-        if raw:match('^/dl%s+autoacc%s*$') == nil and raw:match('^/dlac%s+autoacc%s*$') == nil then return; end
+        local word = raw:match('^/dl%s+(%a+)%s*$') or raw:match('^/dlac%s+(%a+)%s*$');
+        if word ~= 'accuracy' and word ~= 'autoacc' then return; end
         e.blocked = true;
         monitor.toggle();
     end);

@@ -1,8 +1,9 @@
 -- lua tests/ascensionxi_autoacc_ui.lua   (from the dlac repo root)
--- The AutoAcc readout (servers/ascensionxi/modules/telemetry/monitor.lua)
+-- The accuracy box (servers/ascensionxi/modules/telemetry/monitor.lua)
 -- against an imgui-shaped stub: every state renders whole, Begin pairs with
--- End, every drawn string is percent-safe, and the Gear Helpers row's status
--- line follows the client and the model.
+-- End, every drawn string is percent-safe, the table shows the server's own
+-- numbers, an open box keeps the session wanted, and the Gear Helpers row's
+-- status line follows the client and the model.
 table.insert(package.searchers or package.loaders, 1, function(name)
     local rel = name:match('^dlac\\(.+)$');
     if rel then return loadfile((rel:gsub('\\', '/')) .. '.lua'); end
@@ -18,13 +19,14 @@ end
 -- The stub records every string drawn; a lone '%' would be a format bug.
 local texts, tips, depth, buttons = {}, {}, { win = 0 }, {};
 local press = nil;
+local nop = function() end;
 local IM = {
     TextColored = function(_, s) texts[#texts + 1] = tostring(s); end,
-    SameLine = function() end, Separator = function() end,
+    SameLine = nop, Separator = nop, Dummy = nop,
     IsItemHovered = function() return true; end,
     SetTooltip = function(s) tips[#tips + 1] = tostring(s); end,
     SmallButton = function(label) buttons[#buttons + 1] = label; return press ~= nil and label:find(press, 1, true) ~= nil; end,
-    SetNextWindowSize = function() end,
+    SetNextWindowSize = nop,
     Begin = function() depth.win = depth.win + 1; return true; end,
     End = function() depth.win = depth.win - 1; end,
 };
@@ -34,6 +36,7 @@ local native = true;
 package.loaded['dlac\\feature\\equipengine'] = { nativeOn = function() return native; end };
 
 local wire = require('dlac\\servers\\ascensionxi\\modules\\telemetry\\wire');
+local formula = require('dlac\\servers\\ascensionxi\\modules\\telemetry\\formula');
 local monitor = require('dlac\\servers\\ascensionxi\\modules\\telemetry\\monitor');
 
 local function readVectors(path)
@@ -53,7 +56,10 @@ local V = readVectors('tests/fixtures/ascensionxi/telemetry-wire-vectors.md');
 local tv05 = assert(wire.decodeSnapshot(wire.incoming(V['TV-05']).payload));
 
 local clientState, rep = {}, {};
+local wants = 0;
 monitor._client = { state = function() return clientState; end };
+monitor._want = function() wants = wants + 1; end;
+monitor._targetName = function(frame) return frame.targetIndex == tv05.targetIndex and 'Greater Colibri' or nil; end;
 monitor._autoacc = { report = function() return rep; end, _clock = function() return 10.4; end,
                      _vectorOf = function(id) return { name = 'Item ' .. id .. ' 100%' }; end };
 
@@ -65,6 +71,7 @@ local function percentSafe(list)
     return true;
 end
 local function drawn() return table.concat(texts, '|'); end
+local function has(fragment) return drawn():find(fragment, 1, true) ~= nil; end
 local function render(fn)
     texts, tips, buttons = {}, {}, {};
     local ok, err = pcall(fn or monitor.drawBody);
@@ -73,81 +80,120 @@ local function render(fn)
     check('percent-safe tips', percentSafe(tips), true);
 end
 
--- UI-01: nothing yet.
+-- UI-01: nothing yet; the box itself is demand.
 clientState, rep = { phase = 'settling', why = 'waiting for an AutoAcc piece' }, {};
+wants = 0;
 render();
-check('UI-01 says it waits', drawn():find('waiting for an AutoAcc piece', 1, true) ~= nil, true);
-check('UI-01 no frame', drawn():find('No frame yet', 1, true) ~= nil, true);
+check('UI-01 an open box wants the session', wants, 1);
+check('UI-01 says it waits', has('waiting for an AutoAcc piece'), true);
+check('UI-01 asks for a fight', has('Engage a monster'), true);
+check('UI-01 explains AutoAcc', has('Gear Rule: AutoAcc'), true);
 local level, text = monitor.status();
 check('UI-01 row level', level, 0);
 check('UI-01 row text', text, 'no AutoAcc piece worn');
 
--- UI-02: live, a usable frame, one release, one held, one unverified piece.
+-- UI-02: live, a usable frame: the table is the server's numbers.
 clientState = { phase = 'live', laneState = wire.laneState.LIVE, stats = { pushes = 4, accepted = 4 } };
 rep = { usable = true, bases = 2, frame = tv05, frameAt = 10.0,
         decision = { release = { Ring1 = 'Rajas Ring' },
                      why = { Ring1 = 'released for Rajas Ring', Neck = 'needed for the cap', Zzz = 'odd 100% slot' } },
-        unverified = { [14674] = 'accMod' } };
+        unverified = { [14674] = 'accMod' }, mispredicted = {} };
 render();
-local all = drawn();
-check('UI-02 live lane', all:find('live, battle lane live', 1, true) ~= nil, true);
-check('UI-02 frame age', all:find('0.4 s ago', 1, true) ~= nil, true);
-check('UI-02 bases', all:find('2 frames for this state', 1, true) ~= nil, true);
-check('UI-02 main hand spare', all:find('11 ACC spare', 1, true) ~= nil, true);
-check('UI-02 off hand short', all:find('needs 50 ACC', 1, true) ~= nil, true);
-check('UI-02 a rate drawn escaped', all:find('70%%', 1, true) ~= nil, true);
-check('UI-02 ranged shown', all:find('Ranged', 1, true) ~= nil, true);
-check('UI-02 the release', all:find('released for Rajas Ring', 1, true) ~= nil, true);
-check('UI-02 slot order: Neck before Ring1', all:find('Neck', 1, true) < all:find('Ring1', 1, true), true);
-check('UI-02 an unknown slot still drawn, escaped', all:find('odd 100%% slot', 1, true) ~= nil, true);
-check('UI-02 unverified count', all:find('1 piece', 1, true) ~= nil, true);
+local main = tv05.contexts[1];
+local mainToCap = formula.accToCap(main, formula.effective(tv05, main, main.liveAcc));
+check('UI-02 the target by name', has('Greater Colibri, level ' .. tv05.targetLevel), true);
+check('UI-02 the frame age', has('0.4 s ago'), true);
+check('UI-02 the checks agree', has('agree with the server (2 frames)'), true);
+check('UI-02 ACC cell', has('|' .. main.liveAcc .. '|'), true);
+check('UI-02 EVA cell', has('|' .. main.targetEva .. '|'), true);
+check('UI-02 level cell', has('|' .. ('%+d'):format(main.levelCorrection) .. '|'), true);
+check('UI-02 hit cell, escaped', has('|' .. math.floor(main.thresholdBp / 100) .. '%%|'), true);
+check('UI-02 cap-at cell', has(('|%d|'):format(main.liveAcc + mainToCap)), true);
+check('UI-02 main hand spare', has(('%d spare'):format(-mainToCap)), true);
+check('UI-02 the vectors: 11 spare at the cap of ACC 372', has('11 spare') and has('|372|'), true);
+check('UI-02 off hand short', has('needs 50'), true);
+check('UI-02 food', has('food adds ' .. tv05.foodAccPct .. '%% ACC, up to ' .. tv05.foodAccCap), true);
+check('UI-02 the release', has('released for Rajas Ring'), true);
+check('UI-02 slot order: Neck before Ring1', drawn():find('Neck', 1, true) < drawn():find('Ring1', 1, true), true);
+check('UI-02 an unknown slot still drawn, escaped', has('odd 100%% slot'), true);
+check('UI-02 kept on', has('1 piece'), true);
 level, text = monitor.status();
 check('UI-02 row level', level, 1);
 check('UI-02 row text', text, 'live -- 1 piece released');
 
--- UI-03: holding on a trigger; the row says so.
+-- UI-03: the prediction check, every verdict.
+local rows = { [0] = { acc = 376, threshold = 9500, measuredAcc = 376, measuredThreshold = 9500 } };
+rep.prediction = { verdict = 'waiting', release = { Ring1 = 'Rajas Ring' }, rows = {} };
+render();
+check('UI-03 waiting', has('waiting for the server to measure Ring1 to Rajas Ring'), true);
+rep.prediction = { verdict = 'matched', release = { Ring1 = 'Rajas Ring' }, rows = rows };
+render();
+check('UI-03 matched', has('matched the server for Ring1 to Rajas Ring'), true);
+check('UI-03 the numbers', has('Main hand: ACC 376 predicted, 376 measured; hit 95%%, 95%%'), true);
+rep.prediction = { verdict = 'mismatch', release = { Ring1 = 'Rajas Ring' },
+                   rows = { [0] = { acc = 376, threshold = 9500, measuredAcc = 373, measuredThreshold = 9400 } } };
+rep.mispredicted = { [15543] = 'a release predicted wrongly' };
+render();
+check('UI-03 wrong, loudly', has('WRONG for Ring1 to Rajas Ring'), true);
+check('UI-03 the wrong numbers', has('ACC 376 predicted, 373 measured'), true);
+check('UI-03 kept on counts it', has('2 pieces'), true);
+rep.prediction = { verdict = 'not checked', why = 'something besides the gear changed', release = {}, rows = {} };
+render();
+check('UI-03 not checked', has('not checked: something besides the gear changed'), true);
+rep.prediction, rep.mispredicted = nil, {};
+
+-- UI-04: holding on a trigger; the row says so.
 rep.trigger = 'a new target';
 render();
-check('UI-03 holding drawn', drawn():find('a new target', 1, true) ~= nil, true);
+check('UI-04 holding drawn', has('a new target'), true);
 level, text = monitor.status();
-check('UI-03 row', text, 'holding -- a new target');
+check('UI-04 row', text, 'holding -- a new target');
 rep.trigger = nil;
 
--- UI-04: a frame that did not pass, and an odd reason with a percent in it.
+-- UI-05: a frame that did not pass, and an odd reason with a percent in it.
 rep = { usable = false, why = 'gear check: 100% wrong', frame = tv05, frameAt = 10.0, unverified = {} };
 render();
-check('UI-04 the reason, escaped', drawn():find('gear check: 100%% wrong', 1, true) ~= nil, true);
+check('UI-05 the reason, escaped', has('gear check: 100%% wrong'), true);
 level, text = monitor.status();
-check('UI-04 row level', level, 0);
-check('UI-04 row text escaped', text, 'live -- gear check: 100%% wrong');
+check('UI-05 row level', level, 0);
+check('UI-05 row text escaped', text, 'live -- gear check: 100%% wrong');
 
--- UI-05: a disarmed engine (the Tripwire) says so first, and the row is off.
-native = false;
+-- UI-06: a frame that is not LIVE shows no table.
+local idle = assert(wire.decodeSnapshot(wire.incoming(V['TV-05']).payload));
+idle.laneState = wire.laneState.IDLE;
+rep = { usable = false, why = 'the lane is not live (state 0)', frame = idle, frameAt = 10.0 };
 render();
-check('UI-05 the warning', texts[1]:find('engine is disarmed', 1, true) ~= nil, true);
+check('UI-06 asks for a fight', has('Engage a monster'), true);
+check('UI-06 no table', has('Cap at'), false);
+
+-- UI-07: a disarmed engine (the Tripwire) says so first, and the row is off.
+native = false;
+rep = { usable = true, bases = 1, frame = tv05, frameAt = 10.0 };
+render();
+check('UI-07 the warning', texts[1]:find('engine is disarmed', 1, true) ~= nil, true);
 level, text = monitor.status();
-check('UI-05 row', text, 'off -- the engine is disarmed');
+check('UI-07 row', text, 'off -- the engine is disarmed');
 native = true;
 
--- UI-06: dormant (a server without telemetry).
+-- UI-08: dormant (a server without telemetry).
 clientState = { phase = 'dormant', why = 'no telemetry on this server' };
 level, text = monitor.status();
-check('UI-06 row', text, 'off -- no telemetry on this server');
+check('UI-08 row', text, 'off -- no telemetry on this server');
 
--- UI-07: the floating window pairs Begin with End, closes, and the panel's
+-- UI-09: the floating window pairs Begin with End, closes, and the panel's
 -- button opens it.
 monitor.visible = false;
 render(monitor.render);
-check('UI-07 nothing while closed', depth.win, 0);
+check('UI-09 nothing while closed', depth.win, 0);
 monitor.visible = true;
 render(monitor.render);
-check('UI-07 Begin paired with End', depth.win, 0);
+check('UI-09 Begin paired with End', depth.win, 0);
 monitor.visible = false;
 press = 'Open as a floating window';
 render(monitor.panel);
-check('UI-07 the panel opens the window', monitor.visible, true);
+check('UI-09 the panel opens the window', monitor.visible, true);
 press = nil;
-check('UI-07 toggle closes', monitor.toggle(), false);
+check('UI-09 toggle closes', monitor.toggle(), false);
 
 print(('ascensionxi_autoacc_ui: %d passed, %d failed'):format(pass, fail));
 if fail > 0 then os.exit(1); end

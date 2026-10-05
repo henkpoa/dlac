@@ -213,10 +213,13 @@ aa.noteFrame(mainOnly(frameOf('TV-05')));
 d = aa.decide({ plan = plan(), candidates = { RING }, event = 'Default', augmented = { Ring1 = true } });
 check('AA-09 an augmented piece stays', d.release.Ring1, nil);
 
--- AA-10: only the standing Default set releases.
+-- AA-10: only the standing Default set releases, also when the weapon
+-- skill's plan is the standing set's (the memo keeps the two apart).
 fresh();
 aa.noteFrame(mainOnly(frameOf('TV-05')));
 check('AA-10 a weapon skill keeps its pieces', aa.decide({ plan = plan(), candidates = { RING }, event = 'Weaponskill' }).release.Ring1, nil);
+check('AA-10 the standing set after it releases', aa.decide({ plan = plan(), candidates = { RING }, event = 'Default' }).release.Ring1, 'Rajas Ring');
+check('AA-10 and the weapon skill after that still keeps them', aa.decide({ plan = plan(), candidates = { RING }, event = 'Weaponskill' }).release.Ring1, nil);
 
 -- AA-11: a frame naming an outfit dlac never saw is not used.
 fresh();
@@ -468,6 +471,94 @@ time = time + 0.2;
 aa.revision();
 check('AA-28 a new one after it', playerReads, 2);
 aa._player = realPlayer;
+
+-- AA-29..AA-33: the prediction check. TV-05's release of Toreador's Ring for
+-- Rajas Ring predicts each hand in the new outfit; TV-06 is the server's frame
+-- for that outfit, so the vectors' own projection must come back "matched".
+local function contextOf(frame, kind)
+    for _, c in ipairs(frame.contexts) do if c.kind == kind then return c; end end
+    return nil;
+end
+local function released()
+    fresh();
+    aa.noteFrame(mainOnly(frameOf('TV-05')));
+    return aa.decide({ plan = plan(), candidates = { RING }, event = 'Default' });
+end
+local function wearRajas() worn[13] = { 8, 12, 15543 }; time = time + 1; end
+
+d = released();
+check('AA-29 released', d.release.Ring1, 'Rajas Ring');
+check('AA-29 a prediction waits', aa.report().prediction.verdict, 'waiting');
+wearRajas();
+local six = mainOnly(frameOf('TV-06'));
+aa.noteFrame(six);
+local pr = aa.report().prediction;
+check('AA-29 the server measured it: matched', pr.verdict, 'matched');
+local mainRow = pr.rows[wire.context.MELEE_MAIN];
+check('AA-29 the predicted ACC is the server\'s', mainRow.acc, contextOf(six, wire.context.MELEE_MAIN).liveAcc);
+check('AA-29 the measured ACC', mainRow.measuredAcc, contextOf(six, wire.context.MELEE_MAIN).liveAcc);
+check('AA-29 the predicted hit rate is the server\'s', mainRow.threshold, contextOf(six, wire.context.MELEE_MAIN).thresholdBp);
+check('AA-29 measured: 7 spare', mainRow.measuredToCap, -7);
+d = aa.decide({ plan = plan(), candidates = { RING }, event = 'Default' });
+check('AA-29 a matched release goes on releasing', d.release.Ring1, 'Rajas Ring');
+check('AA-29 and keeps its verdict', aa.report().prediction.verdict, 'matched');
+
+-- AA-30: a wrong model (Rajas Ring's level latents doubled in dlac's data):
+-- the release still goes, the server's frame disagrees, and both rings stay
+-- on from then on.
+local savedRows = DATA.levelscaling[15543];
+DATA.levelscaling[15543] = { { stat = 'DEX', add = 2, from = 45 }, { stat = 'DEX', add = 2, from = 60 },
+                             { stat = 'DEX', add = 2, from = 75 } };
+d = released();
+check('AA-30 the wrong model releases', d.release.Ring1, 'Rajas Ring');
+wearRajas();
+aa.noteFrame(mainOnly(frameOf('TV-06')));
+pr = aa.report().prediction;
+check('AA-30 the server disagrees', pr.verdict, 'mismatch');
+check('AA-30 Rajas Ring is kept on', aa.report().mispredicted[15543] ~= nil, true);
+check('AA-30 so is Toreador\'s Ring', aa.report().mispredicted[14674] ~= nil, true);
+worn[13] = { 8, 11, 14674 }; time = time + 1;
+d = aa.decide({ plan = plan(), candidates = { RING }, event = 'Default' });
+check('AA-30 no second release', d.release.Ring1, nil);
+check('AA-30 and says why', d.why.Ring1, 'a release of it was predicted wrongly');
+DATA.levelscaling[15543] = savedRows;
+
+-- AA-31: something besides the gear changed before the server measured the
+-- new outfit (the monster levelled): not checked, nothing marked.
+d = released();
+wearRajas();
+local moved = mainOnly(frameOf('TV-06'));
+moved.targetLevel = moved.targetLevel + 1;
+aa.noteFrame(moved);
+check('AA-31 not checked', aa.report().prediction.verdict, 'not checked');
+check('AA-31 nothing marked', next(aa.report().mispredicted), nil);
+
+-- AA-32: the pieces go back on before the server measures: not checked.
+d = released();
+aa.MARGIN = 100;
+d = aa.decide({ plan = plan(), event = 'Default',
+    candidates = { { slot = 'Ring1', typed = "Toreador's Ring", fallback = 'Rajas Ring', prio = 2 } } });
+check('AA-32 nothing released now', d.release.Ring1, nil);
+check('AA-32 the waiting prediction retires', aa.report().prediction.verdict, 'not checked');
+aa.MARGIN = 0;
+
+-- AA-34: a weapon skill between the release and the server's frame retires
+-- the prediction; the standing set's next decision re-arms it, and the
+-- frame still checks it.
+d = released();
+aa.decide({ plan = plan(), candidates = { RING }, event = 'Weaponskill' });
+check('AA-34 the weapon skill retires it', aa.report().prediction.verdict, 'not checked');
+d = aa.decide({ plan = plan(), candidates = { RING }, event = 'Default' });
+check('AA-34 the standing set re-arms it', aa.report().prediction.verdict, 'waiting');
+wearRajas();
+aa.noteFrame(mainOnly(frameOf('TV-06')));
+check('AA-34 and the frame checks it', aa.report().prediction.verdict, 'matched');
+
+-- AA-33: a zone change forgets the session's verdicts.
+aa.report().mispredicted[15543] = 'a release predicted wrongly';
+aa.zoneChange();
+check('AA-33 zoning clears the marks', next(aa.report().mispredicted), nil);
+check('AA-33 and the prediction', aa.report().prediction, nil);
 
 print(('ascensionxi_autoacc: %d passed, %d failed'):format(pass, fail));
 if fail > 0 then os.exit(1); end
