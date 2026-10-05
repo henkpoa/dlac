@@ -3,9 +3,9 @@
 -- against an imgui-shaped stub: every state renders whole, Begin pairs with
 -- End, every drawn string is percent-safe, the table shows the server's own
 -- numbers, explanations live in the hovers of underlined labels while the
--- screen keeps one short line per thing, an open box keeps the session
--- wanted, and the Gear Helpers row's status line follows the client and the
--- model.
+-- screen keeps one short line per thing, nothing a player reads names the
+-- service's internals, an open box keeps the session wanted, and the Gear
+-- Helpers row's status line follows the client and the model.
 table.insert(package.searchers or package.loaders, 1, function(name)
     local rel = name:match('^dlac\\(.+)$');
     if rel then return loadfile((rel:gsub('\\', '/')) .. '.lua'); end
@@ -73,6 +73,9 @@ monitor._targetName = function(frame) return frame.targetIndex == tv05.targetInd
 monitor._autoacc = { report = function() return rep; end, _clock = function() return 10.4; end,
                      _vectorOf = function(id) return { name = 'Item ' .. id .. ' 100%' }; end };
 
+-- Everything a player read in the renders since the last reset, for UI-10.
+local seenTexts, seenTips = {}, {};
+
 local function percentSafe(list)
     for _, s in ipairs(list) do
         local stripped = s:gsub('%%%%', '');
@@ -95,6 +98,10 @@ local function tipHas(item, fragment)
     local t = tipFor[item];
     return t ~= nil and t:find(fragment, 1, true) ~= nil;
 end
+local function anyTip(fragment)
+    for _, t in ipairs(tips) do if t:find(fragment, 1, true) then return true; end end
+    return false;
+end
 local function render(fn)
     texts, tips, tipFor, underlined, last = {}, {}, {}, {}, nil;
     beginFlags, sizeCalls = nil, 0;
@@ -102,6 +109,8 @@ local function render(fn)
     check('render ok ' .. tostring(err), ok, true);
     check('percent-safe texts', percentSafe(texts), true);
     check('percent-safe tips', percentSafe(tips), true);
+    for _, s in ipairs(texts) do seenTexts[#seenTexts + 1] = s; end
+    for _, s in ipairs(tips) do seenTips[#seenTips + 1] = s; end
 end
 
 -- UI-01: nothing yet; the box itself is demand.
@@ -110,7 +119,7 @@ wants = 0;
 render();
 check('UI-01 an open box wants the session', wants, 1);
 check('UI-01 one word on top', texts[1], 'Starting');
-check('UI-01 underlined, the reason in its hover', underlined['Starting'] and tipHas('Starting', 'waiting for an AutoAcc piece'), true);
+check('UI-01 underlined, what it does in its hover', underlined['Starting'] and tipHas('Starting', 'Connecting to the server'), true);
 check('UI-01 no table', has('Cap at'), false);
 check('UI-01 the AutoAcc header is underlined', underlined['AutoAcc'], true);
 check('UI-01 no piece yet, how in the hover', drew('no piece') and tipHas('no piece', 'Gear Rule: AutoAcc'), true);
@@ -132,9 +141,8 @@ local main, ranged = tv05.contexts[1], tv05.contexts[3];
 local mainToCap = formula.accToCap(main, formula.effective(tv05, main, main.liveAcc));
 local rangedToCap = formula.accToCap(ranged, formula.effective(tv05, ranged, ranged.liveAcc));
 check('UI-02 the target by name and level', drew(target), true);
-check('UI-02 the frame age in its hover', tipHas(target, '0.4 s ago'), true);
-check('UI-02 the session in its hover', tipHas(target, 'Telemetry live, battle lane live: 4 frames received, 4 accepted'), true);
-check('UI-02 the checks in its hover', tipHas(target, 'agree with the server (2 frames)'), true);
+check('UI-02 the age in its hover', tipHas(target, 'Updated 0.4 s ago.'), true);
+check('UI-02 usable numbers say nothing more', tipHas(target, 'waiting'), false);
 check('UI-02 ACC cell', has('|' .. main.liveAcc .. '|'), true);
 check('UI-02 EVA cell', has('|' .. main.targetEva .. '|'), true);
 check('UI-02 level cell', has('|' .. ('%+d'):format(main.levelCorrection) .. '|'), true);
@@ -149,14 +157,15 @@ check('UI-02 food in the ACC hover, escaped', tipHas('ACC', 'Your food adds ' ..
 check('UI-02 the headers are underlined', underlined['ACC'] and underlined['Cap at'], true);
 check('UI-02 Hand has nothing to explain', underlined['Hand'], nil);
 check('UI-02 a released slot shows its normal pick', drew('Rajas Ring'), true);
-check('UI-02 its reason in the hover', tipFor['Rajas Ring'], "Toreador's Ring: released for Rajas Ring");
+check('UI-02 and why, in its hover', tipFor['Rajas Ring'], "Rajas Ring is on: you reach the cap without Toreador's Ring.");
 check('UI-02 a needed piece shows itself', drew('Peacock Amulet'), true);
-check('UI-02 and why', tipFor['Peacock Amulet'], 'Peacock Amulet: needed for the cap');
+check('UI-02 and why', tipFor['Peacock Amulet'], 'Peacock Amulet is on: you need it to reach the cap.');
 check('UI-02 rows are not underlined', underlined['Rajas Ring'], nil);
 check('UI-02 slot order: Neck before Ring1', drawn():find('Neck', 1, true) < drawn():find('Ring1', 1, true), true);
-check('UI-02 an unknown slot still drawn, escaped', drew('Zzz') and has('odd 100%% slot'), true);
+check('UI-02 an unknown slot is still drawn', drew('Zzz'), true);
+check('UI-02 an unknown reason is not shown', has('odd 100') or anyTip('odd 100'), false);
 check('UI-02 kept on, one short label', drew('1 kept on') and underlined['1 kept on'], true);
-check('UI-02 which, in its hover', tipHas('1 kept on', 'Item 14674 100%% (unverified)'), true);
+check('UI-02 which, in its hover', tipHas('1 kept on', 'Item 14674 100%%'), true);
 for _, gone in ipairs({ 'Telemetry', 'Checks', 'agree', 'released for', 'needed for', 'food', 'Effects', 'Prediction', 'Engage' }) do
     check('UI-02 not on screen: ' .. gone, has(gone), false);
 end
@@ -165,33 +174,31 @@ level, text = monitor.status();
 check('UI-02 row level', level, 1);
 check('UI-02 row text', text, 'live -- 1 piece released');
 
--- UI-03: the prediction check, every verdict, in the AutoAcc hover.
+-- UI-03: the prediction check, in the AutoAcc hover, in a sentence.
 local rows = { [0] = { acc = 376, threshold = 9500, measuredAcc = 376, measuredThreshold = 9500 } };
 rep.prediction = { verdict = 'waiting', release = { Ring1 = 'Rajas Ring' }, rows = {} };
 render();
 check('UI-03 the hover explains AutoAcc', tipHas('AutoAcc', 'only while you need the accuracy'), true);
-check('UI-03 waiting', tipHas('AutoAcc', 'The prediction for Ring1 to Rajas Ring: waiting for the server to measure it.'), true);
+check('UI-03 waiting', tipHas('AutoAcc', 'Your last swap: waiting for the server to confirm'), true);
 rep.prediction = { verdict = 'matched', release = { Ring1 = 'Rajas Ring' }, rows = rows };
 render();
-check('UI-03 matched', tipHas('AutoAcc', 'Ring1 to Rajas Ring: matched the server.'), true);
-check('UI-03 the numbers', tipHas('AutoAcc', 'Main hand: ACC 376 predicted, 376 measured; hit 95%%, 95%%'), true);
+check('UI-03 matched', tipHas('AutoAcc', "Your last swap: the server confirmed DLAC's numbers."), true);
+check('UI-03 no numbers', tipHas('AutoAcc', '376') or tipHas('AutoAcc', 'measured'), false);
 rep.prediction = { verdict = 'mismatch', release = { Ring1 = 'Rajas Ring' },
                    rows = { [0] = { acc = 376, threshold = 9500, measuredAcc = 373, measuredThreshold = 9400 } } };
 rep.mispredicted = { [15543] = 'a release predicted wrongly' };
 render();
-check('UI-03 wrong, in the hover', tipHas('AutoAcc', 'WRONG, so those pieces stay on'), true);
-check('UI-03 the wrong numbers', tipHas('AutoAcc', 'ACC 376 predicted, 373 measured'), true);
-check('UI-03 kept on counts it', drew('2 kept on') and tipHas('2 kept on', 'Item 15543 100%% (predicted wrongly)'), true);
-check('UI-03 nothing loud on screen', has('WRONG'), false);
+check('UI-03 wrong, in the hover', tipHas('AutoAcc', "didn't match DLAC's, so those pieces stay on"), true);
+check('UI-03 kept on counts it', drew('2 kept on') and tipHas('2 kept on', 'Item 15543 100%%'), true);
 rep.prediction = { verdict = 'not checked', why = 'something besides the gear changed', release = {}, rows = {} };
 render();
-check('UI-03 not checked', tipHas('AutoAcc', 'The prediction: not checked, something besides the gear changed.'), true);
+check('UI-03 a swap not checked says nothing', tipHas('AutoAcc', 'last swap') or tipHas('AutoAcc', 'besides'), false);
 rep.prediction, rep.mispredicted = nil, {};
 
 -- UI-04: holding on a trigger; the hover and the row say so.
 rep.trigger = 'a new target';
 render();
-check('UI-04 holding, in the hover', tipHas('AutoAcc', 'Every piece stays on until the next frame: a new target.'), true);
+check('UI-04 holding, in the hover', tipHas('AutoAcc', 'Every piece stays on for a moment (a new target).'), true);
 check('UI-04 not on screen', has('a new target'), false);
 level, text = monitor.status();
 check('UI-04 row', text, 'holding -- a new target');
@@ -210,26 +217,28 @@ local order = {};
 for _, t in ipairs(texts) do if isSlot[t] then order[#order + 1] = t; end end
 check('UI-04b the equipment order', table.concat(order, ' '), table.concat(ORDER, ' ') .. ' Zzz');
 
--- UI-05: a failed check is the one loud thing, with a percent in its reason.
+-- UI-05: a failed check is the one loud thing, and it never prints the
+-- check's own reason.
 rep = { usable = false, why = 'gear check: 100% wrong', mismatch = '100% wrong', formulaOk = true, gearOk = false,
         frame = tv05, frameAt = 10.0, unverified = {} };
 render();
 check('UI-05 flagged', drew('Check failed') and underlined['Check failed'], true);
-check('UI-05 the reason, escaped', tipHas('Check failed', 'gear check: 100%% wrong'), true);
-check('UI-05 a gear check keeps those pieces', tipHas('Check failed', 'could not check on'), true);
-check('UI-05 the target hover agrees', tipHas(target, 'failed a check: gear check: 100%% wrong'), true);
+check('UI-05 in a sentence', tipHas('Check failed', "DLAC's numbers don't match the server's"), true);
+check('UI-05 not the check\'s reason', anyTip('gear check') or anyTip('100%'), false);
+check('UI-05 the target hover says AutoAcc waits', tipHas(target, "waiting for the server's numbers"), true);
 level, text = monitor.status();
 check('UI-05 row level', level, 0);
-check('UI-05 row text escaped', text, 'live -- gear check: 100%% wrong');
+check('UI-05 row text', text, "waiting for the server's numbers");
 rep = { usable = false, why = 'formula check: ctx 0 accuracy 384, the server says 383', formulaOk = false,
         frame = tv05, frameAt = 10.0 };
 render();
-check('UI-05 a formula check keeps every piece', tipHas('Check failed', 'keeps every piece on until a frame passes'), true);
+check('UI-05 a failed formula check is flagged too', drew('Check failed'), true);
+check('UI-05 without its numbers', anyTip('ctx') or anyTip('384'), false);
 rep = { usable = false, why = 'the frame names an outfit dlac did not see', formulaOk = true, gearOk = false,
         frame = tv05, frameAt = 10.0 };
 render();
 check('UI-05 not usable yet is not a failure', drew('Check failed'), false);
-check('UI-05 why, in the target hover', tipHas(target, 'cannot use these numbers yet: the frame names an outfit dlac did not see'), true);
+check('UI-05 the target hover says AutoAcc waits', tipHas(target, "waiting for the server's numbers"), true);
 
 -- UI-06: no table without a live frame, a live session, and the hands that apply.
 local idle = tv05Frame();
@@ -242,7 +251,6 @@ clientState = { phase = 'hello', stats = {} };
 rep = { usable = true, bases = 1, frame = tv05, frameAt = 10.0 };
 render();
 check('UI-06 restarting', texts[1], 'Starting');
-check('UI-06 why', tipHas('Starting', 'starting a session'), true);
 check('UI-06 a stale frame shows no table', has('Cap at'), false);
 clientState = { phase = 'live', laneState = wire.laneState.LIVE, stats = {} };
 local oneHand = tv05Frame();
@@ -273,12 +281,13 @@ level, text = monitor.status();
 check('UI-07 row', text, 'off -- the engine is disarmed');
 native = true;
 
--- UI-08: dormant (a server without telemetry).
+-- UI-08: dormant (a server without telemetry): said plainly, not why.
 clientState = { phase = 'dormant', why = 'no telemetry on this server' };
 level, text = monitor.status();
-check('UI-08 row', text, 'off -- no telemetry on this server');
+check('UI-08 row', text, 'off -- the server is not sending numbers');
 render();
-check('UI-08 the box says so', drew('Telemetry off') and tipHas('Telemetry off', 'no telemetry on this server'), true);
+check('UI-08 the box says so', drew('Unavailable') and tipHas('Unavailable', "isn't sending accuracy numbers"), true);
+check('UI-08 not the client\'s reason', anyTip('no telemetry on this server'), false);
 check('UI-08 no table', has('Cap at'), false);
 
 -- UI-09: the floating window sizes itself, pairs Begin with End and closes;
@@ -299,6 +308,56 @@ check('UI-09 the panel header explains itself', underlined['Accuracy and AutoAcc
 check('UI-09 the button names the command', tipHas('Open window##aamon', '/dl accuracy'), true);
 press = nil;
 check('UI-09 toggle closes', monitor.toggle(), false);
+
+-- UI-11: every reason the model gives (autoacc.decide) reaches the hover in
+-- a player's words, and the model still gives each of them.
+local f = assert(io.open('servers/ascensionxi/modules/telemetry/autoacc.lua', 'rb'));
+local modelSource = f:read('*a'); f:close();
+local REASONS = {
+    { 'the full set does not reach the cap', "you don't reach the cap even with it" },
+    { 'only the standing Default set releases', 'only swaps pieces in your standing set' },
+    { 'weapon slots stay', 'weapons always stay on' },
+    { 'no fallback', 'nothing else to wear' },
+    { 'its enchantment would be lost', 'end its enchantment' },
+    { 'it lowers max HP while an HP latent is worn', 'lower your max HP' },
+    { 'unverified', "didn't match DLAC's" },
+    { 'a release of it was predicted wrongly', "didn't match DLAC's" },
+    { 'inside an Onslaught run', 'Onslaught run' },
+    { 'it covers another slot', 'two slots' },
+    { 'augmented', 'augmented copy' },
+    { 'an equip script dlac does not model', 'special equip effect' },
+    { 'not in the catalog', "doesn't know this piece" },
+    { 'the slot is not the piece', 'Something else is in this slot.' },
+    { 'an accuracy latent (HP>75%)', 'depends on a condition', 'an accuracy latent (' },
+    { 'held until the next frame: a new target', 'for a moment (a new target)', 'held until the next frame: ' },
+    { 'formula check: ctx 0 accuracy 384, the server says 383', "waiting for the server's numbers", 'formula check: ' },
+    { 'the lane is not live (state 0)', "waiting for the server's numbers", 'the lane is not live (state ' },
+    { 'Rajas Ring differs from the frame outfit and is unverified', "waiting for the server's numbers",
+      'differs from the frame outfit and is ' },
+    { 'the outfits are not known yet', "waiting for the server's numbers" },
+    { 'no frame speaks for this outfit', "waiting for the server's numbers" },
+};
+for _, r in ipairs(REASONS) do
+    rep = { usable = true, bases = 1, frame = tv05, frameAt = 10.0,
+            decision = { release = {}, typed = { Head = 'Head piece' }, why = { Head = r[1] } } };
+    render();
+    check('UI-11 ' .. r[1], tipHas('Head piece', r[2]), true);
+    check('UI-11 the model says "' .. (r[3] or r[1]) .. '"', modelSource:find(r[3] or r[1], 1, true) ~= nil, true);
+end
+
+-- UI-10: across every render above, nothing a player read named the
+-- service's internals (owner: "You don't need to give out super detailed
+-- server statistics").
+local INTERNALS = { 'frame', 'lane', 'rev ', 'ctx', 'state ', 'session', 'Telemetry', 'telemetry', 'formula check',
+                    'gear check', 'basis', 'unverified', 'predicted', 'measured', '0x', 'received', 'accepted' };
+for _, word in ipairs(INTERNALS) do
+    local leaked = nil;
+    for _, list in ipairs({ seenTexts, seenTips }) do
+        for _, s in ipairs(list) do if s:find(word, 1, true) then leaked = s; break; end end
+        if leaked then break; end
+    end
+    check('UI-10 no "' .. word .. '" ' .. tostring(leaked), leaked, nil);
+end
 
 print(('ascensionxi_autoacc_ui: %d passed, %d failed'):format(pass, fail));
 if fail > 0 then os.exit(1); end

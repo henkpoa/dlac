@@ -6,6 +6,11 @@
     and a warning is drawn only while something is wrong (owner, 2026-10-05:
     "as minimalistic as we can").
 
+    It speaks a player's language: no session or frame counts, lane states,
+    revisions or the model's internal reasons ("You don't need to give out
+    super detailed server statistics"). The precise reason for a slot stays
+    in /dl why.
+
     For any player: an open box is demand, so it starts the telemetry session
     on its own and keeps it while it is open. The numbers are the server's
     (each frame's own live totals), so the box never shows a guess.
@@ -53,8 +58,6 @@ local function pct(bp) return ('%d%%'):format(math.floor((bp or 0) / 100)); end
 local CONTEXT_NAMES = { [0] = 'Main hand', [1] = 'Off hand', [2] = 'Kick', [3] = 'Ranged' };
 local NOT_APPLICABLE = { [1] = 'no weapon', [2] = 'not available', [3] = 'out of range',
                          [4] = 'no valid target', [5] = 'not supported' };
-local LANE_STATES = { [0] = 'idle', [1] = 'live', [2] = 'target not found', [3] = 'target gone',
-                      [4] = 'out of range', [5] = 'suspended', [6] = 'not permitted', [7] = 'unsupported' };
 local SLOT_ORDER = { 'Head', 'Neck', 'Ear1', 'Ear2', 'Body', 'Hands', 'Ring1', 'Ring2', 'Back', 'Waist', 'Legs', 'Feet',
                      'Main', 'Sub', 'Range', 'Ammo' };
 
@@ -73,6 +76,36 @@ local PIECE_X = COLUMNS[2].x;   -- an AutoAcc row's piece lines up with the ACC 
 
 local AUTOACC_TIP = 'AutoAcc wears your AutoAcc pieces only while you need the accuracy:\n'
     .. 'once every hand reaches the cap without one, its slot wears its normal pick.';
+local WAITING = 'AutoAcc is waiting for the server\'s numbers';
+local KEPT_ON = 'AutoAcc keeps your accuracy pieces on';
+
+-- The model's reason for a slot (autoacc.decide), in a player's words. Any
+-- reason not listed (the checks, the lane, an outfit the frames do not
+-- cover) is the box waiting for the server.
+local PLAIN = {
+    ['needed for the cap'] = 'you need it to reach the cap',
+    ['the full set does not reach the cap'] = 'you don\'t reach the cap even with it',
+    ['only the standing Default set releases'] = 'AutoAcc only swaps pieces in your standing set',
+    ['weapon slots stay'] = 'weapons always stay on',
+    ['no fallback'] = 'the slot has nothing else to wear',
+    ['its enchantment would be lost'] = 'taking it off would end its enchantment',
+    ['it lowers max HP while an HP latent is worn'] = 'swapping it would lower your max HP while a piece that counts your HP is worn',
+    ['unverified'] = 'the server\'s numbers didn\'t match DLAC\'s for it',
+    ['a release of it was predicted wrongly'] = 'the server\'s numbers didn\'t match DLAC\'s for it',
+    ['inside an Onslaught run'] = 'you\'re in an Onslaught run',
+    ['it covers another slot'] = 'it takes up two slots',
+    ['augmented'] = 'DLAC can\'t work out an augmented copy exactly',
+    ['an equip script dlac does not model'] = 'it has a special equip effect',
+    ['not in the catalog'] = 'DLAC doesn\'t know this piece',
+};
+local function plainWhy(why)
+    why = tostring(why or '');
+    if PLAIN[why] ~= nil then return PLAIN[why]; end
+    local trigger = why:match('^held until the next frame: (.+)$');
+    if trigger ~= nil then return 'for a moment (' .. trigger .. ')'; end
+    if why:find('^an accuracy latent') ~= nil then return 'its accuracy depends on a condition'; end
+    return WAITING;
+end
 
 -- dlac's engine is the only one since the LuaAshitacast purge; it is off
 -- only when the Tripwire disarmed it for the session.
@@ -108,13 +141,13 @@ end
 local function status()
     if not nativeOn() then return 0, 'off -- the engine is disarmed'; end
     local cs = clientState();
-    if cs.phase == 'dormant' then return 0, 'off -- ' .. tostring(cs.why or 'telemetry unavailable'); end
+    if cs.phase == 'dormant' then return 0, 'off -- the server is not sending numbers'; end
     if cs.phase ~= 'live' then
         return 0, (cs.why == 'waiting for an AutoAcc piece') and 'no AutoAcc piece worn' or 'starting';
     end
     local r = report();
     if r.trigger ~= nil then return 0, 'holding -- ' .. tostring(r.trigger); end
-    if r.usable ~= true then return 0, 'live -- ' .. tostring(r.why or 'no frame yet'); end
+    if r.usable ~= true then return 0, 'waiting for the server\'s numbers'; end
     local released = 0;
     local d = r.decision;
     for _ in pairs(type(d) == 'table' and d.release or {}) do released = released + 1; end
@@ -150,17 +183,6 @@ local function flag(color, text, tip)
     label(color, text, tip);
 end
 
-local function sessionText(cs)
-    local stats = type(cs.stats) == 'table' and cs.stats or {};
-    local phase = tostring(cs.phase or 'off');
-    local state = phase;
-    if phase == 'live' then state = 'live, battle lane ' .. tostring(LANE_STATES[cs.laneState] or cs.laneState);
-    elseif phase == 'hello' then state = 'starting a session';
-    elseif cs.why ~= nil then state = phase .. ', ' .. tostring(cs.why);
-    end
-    return ('Telemetry %s: %d frames received, %d accepted.'):format(state, stats.pushes or 0, stats.accepted or 0);
-end
-
 local function frameAge(r)
     local a = M._autoacc;
     if a == nil or type(a._clock) ~= 'function' or r.frameAt == nil then return nil; end
@@ -174,36 +196,25 @@ local function targetName(frame)
     return (ok and type(n) == 'string' and n ~= '') and n or nil;
 end
 
--- The top line: the monster, or why there is none. The session and dlac's
--- checks ride its hover.
-local function drawTarget(col, cs, r, frame)
-    local session = sessionText(cs);
-    if cs.phase == 'dormant' then
-        label(col.WANT, 'Telemetry off', tostring(cs.why or 'telemetry unavailable') .. '.\nAutoAcc keeps every piece on.');
+-- The top line: the monster, or why there is none.
+local function drawTarget(col, r, phase, frame)
+    if phase == 'dormant' then
+        label(col.WANT, 'Unavailable', 'The server isn\'t sending accuracy numbers right now,\nso ' .. KEPT_ON .. '.');
         return;
     end
-    if cs.phase ~= 'live' then label(col.DIM, 'Starting', session); return; end
-    if frame == nil then
-        label(col.DIM, 'No target', 'Engage a monster: your numbers against it show here.\n' .. session);
-        return;
-    end
+    if phase ~= 'live' then label(col.DIM, 'Starting', 'Connecting to the server.'); return; end
+    if frame == nil then label(col.DIM, 'No target', 'Engage a monster to see your numbers against it.'); return; end
     local failed = r.formulaOk == false or r.mismatch ~= nil;
-    local checks;
-    if failed then checks = 'The newest frame failed a check: ' .. tostring(r.why or '?') .. '.';
-    elseif r.usable == true then
-        checks = ('dlac\'s math and gear agree with the server (%d frame%s).'):format(r.bases or 0, (r.bases == 1) and '' or 's');
-    else checks = 'AutoAcc cannot use these numbers yet: ' .. tostring(r.why or 'no frame yet') .. '.';
-    end
     local age = frameAge(r);
-    label(col.USABLE, ('%s, Lv %d'):format(targetName(frame) or 'Target', frame.targetLevel or 0),
-        ('Updated %s: the server sends a new frame only when something you cannot see changes.\n%s\n%s'):format(
-            age ~= nil and ('%.1f s ago'):format(age) or ('at rev ' .. tostring(frame.rev)), session, checks));
+    local tip = { (age ~= nil) and ('Updated %.1f s ago. '):format(age) or '' };
+    tip[1] = tip[1] .. 'The server only sends new numbers when something changes.';
+    if failed or r.usable ~= true then tip[#tip + 1] = WAITING .. ', so it keeps your accuracy pieces on.'; end
+    label(col.USABLE, ('%s, Lv %d'):format(targetName(frame) or 'Target', frame.targetLevel or 0), table.concat(tip, '\n'));
     if (frame.flashPenalty or 0) > 0 then
         flag(col.WANT, ('Flash -%d'):format(frame.flashPenalty), 'Flash takes this much ACC until it wears off.');
     end
     if failed then
-        flag(col.ERR, 'Check failed', tostring(r.why or '?') .. ((r.formulaOk == false)
-            and '\nAutoAcc keeps every piece on until a frame passes.' or '\nAutoAcc keeps the pieces it could not check on.'));
+        flag(col.ERR, 'Check failed', 'DLAC\'s numbers don\'t match the server\'s right now,\nso ' .. KEPT_ON .. ' until they do.');
     end
 end
 
@@ -253,42 +264,36 @@ local function drawTable(col, frame)
     end
 end
 
-local function releaseText(release)
-    local parts = {};
-    for slot, fallback in pairs(release or {}) do parts[#parts + 1] = tostring(slot) .. ' to ' .. tostring(fallback); end
-    table.sort(parts);
-    return table.concat(parts, ', ');
-end
-
--- What the prediction check made of the last release, for the AutoAcc hover.
+-- The prediction check on the last swap, for the AutoAcc hover. A swap that
+-- was not checked says nothing.
 local function predictionText(pr)
     if type(pr) ~= 'table' then return nil; end
-    local what = releaseText(pr.release);
-    local head = (what ~= '') and ('The prediction for ' .. what) or 'The prediction';
-    if pr.verdict == 'waiting' then return head .. ': waiting for the server to measure it.'; end
-    if pr.verdict == 'not checked' then return head .. ': not checked, ' .. tostring(pr.why or '?') .. '.'; end
-    local good = pr.verdict == 'matched';
-    local lines = { head .. (good and ': matched the server.' or ': WRONG, so those pieces stay on.') };
-    local kinds = {};
-    for kind in pairs(pr.rows or {}) do kinds[#kinds + 1] = kind; end
-    table.sort(kinds);
-    for _, kind in ipairs(kinds) do
-        local row = pr.rows[kind];
-        if row.measuredAcc ~= nil then
-            lines[#lines + 1] = ('%s: ACC %d predicted, %d measured; hit %s, %s'):format(CONTEXT_NAMES[kind] or tostring(kind),
-                row.acc or 0, row.measuredAcc, pct(row.threshold), pct(row.measuredThreshold));
-        end
+    if pr.verdict == 'waiting' then return 'Your last swap: waiting for the server to confirm DLAC\'s numbers.'; end
+    if pr.verdict == 'matched' then return 'Your last swap: the server confirmed DLAC\'s numbers.'; end
+    if pr.verdict == 'mismatch' then
+        return 'Your last swap: the server\'s numbers didn\'t match DLAC\'s, so those pieces stay on.';
     end
-    return table.concat(lines, '\n');
+    return nil;
 end
 
 -- Pieces the server's numbers contradicted: AutoAcc leaves them on.
 local function keptOn(r)
     local names = {};
-    for id in pairs(r.unverified or {}) do names[#names + 1] = itemName(id) .. ' (unverified)'; end
-    for id in pairs(r.mispredicted or {}) do names[#names + 1] = itemName(id) .. ' (predicted wrongly)'; end
+    for id in pairs(r.unverified or {}) do names[#names + 1] = itemName(id); end
+    for id in pairs(r.mispredicted or {}) do names[#names + 1] = itemName(id); end
     table.sort(names);
     return names;
+end
+
+-- A slot's hover: the piece it wears and why, in a player's words.
+local function rowTip(piece, fallback, why)
+    local name = (piece ~= nil) and tostring(piece) or 'The accuracy piece';
+    if fallback ~= nil then
+        return ('%s is on: you reach the cap without %s.'):format(tostring(fallback), (piece ~= nil) and tostring(piece) or 'it');
+    end
+    if why == 'the slot is not the piece' then return 'Something else is in this slot.'; end
+    if why == 'needed for the cap' then return ('%s is on: %s.'):format(name, PLAIN[why]); end
+    return ('%s stays on: %s.'):format(name, plainWhy(why));
 end
 
 -- The AutoAcc header, then each slot and the piece it wears now: green when
@@ -296,13 +301,13 @@ end
 -- needed, dim when it stays on for another reason (the hover says which).
 local function drawAutoAcc(col, r)
     local tip = { AUTOACC_TIP };
-    if r.trigger ~= nil then tip[#tip + 1] = 'Every piece stays on until the next frame: ' .. tostring(r.trigger) .. '.'; end
+    if r.trigger ~= nil then tip[#tip + 1] = 'Every piece stays on for a moment (' .. tostring(r.trigger) .. ').'; end
     tip[#tip + 1] = predictionText(r.prediction);
     label(col.HEADER, 'AutoAcc', table.concat(tip, '\n\n'));
     local kept = keptOn(r);
     if #kept > 0 then
         flag(col.WANT, ('%d kept on'):format(#kept),
-            'The server\'s numbers did not match dlac\'s for these, so AutoAcc leaves them on:\n' .. table.concat(kept, '\n'));
+            'The server\'s numbers didn\'t match DLAC\'s for these, so AutoAcc leaves them on:\n' .. table.concat(kept, '\n'));
     end
     local d = r.decision;
     if type(d) ~= 'table' or next(d.why or {}) == nil then
@@ -314,11 +319,10 @@ local function drawAutoAcc(col, r)
         imgui.TextColored(col.USABLE, esc(slot));
         imgui.SameLine(PIECE_X);
         local piece, fallback = typed[slot], release[slot];
-        local rowTip = (piece ~= nil) and (tostring(piece) .. ': ' .. tostring(why)) or tostring(why);
         if fallback ~= nil then
-            cell(col.HAVE, fallback, rowTip);
+            cell(col.HAVE, fallback, rowTip(piece, fallback, why));
         else
-            cell((why == 'needed for the cap') and col.USABLE or col.DIM, piece or why, rowTip);
+            cell((why == 'needed for the cap') and col.USABLE or col.DIM, piece or '?', rowTip(piece, nil, why));
         end
     end
     local seen = {};
@@ -338,12 +342,12 @@ function M.drawBody()
     local col = palette();
     if not nativeOn() then
         label(col.WANT, 'Engine disarmed',
-            'Another engine is loaded (LuaAshitacast?), so AutoAcc decides nothing.\nUnload it and /addon reload dlac.');
+            'Another gear addon (LuaAshitacast?) is loaded, so AutoAcc does nothing.\nUnload it and /addon reload dlac.');
     end
     local cs, r = clientState(), report();
     local frame = r.frame;
     local live = cs.phase == 'live' and type(frame) == 'table' and frame.laneState == wire.laneState.LIVE;
-    drawTarget(col, cs, r, live and frame or nil);
+    drawTarget(col, r, cs.phase, live and frame or nil);
     if live then
         imgui.Separator();
         drawTable(col, frame);
