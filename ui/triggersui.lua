@@ -135,6 +135,9 @@ local MODE_COND = { key = 'mode', kind = 'mode',
         .. 'name (DT). Define them in the Modes section.\n'
         .. 'Stack with other conditions to make a rule mode-dependent.' };
 
+local MOB_TAGGED_COND = { key = 'mobTagged', kind = 'boolean', items = { 'false', 'true' },
+    hint = 'you have landed a successful hostile action on the current mob,\nincluding hits, debuffs and abilities. Misses, resists, aggro and other\nplayers do not count. Use mobTagged = false for TH gear on an untagged mob.\nRemembers target switches; clears on death, disappearance, zoning or reload.\nTracks observed actions, not the server\'s actual TH level.' };
+
 local SPELL_CONDS = {
     { key = 'skill',     kind = 'list', items = { 'Divine Magic', 'Healing Magic', 'Enhancing Magic', 'Enfeebling Magic', 'Elemental Magic', 'Dark Magic', 'Summoning', 'Ninjutsu', 'Singing', 'Blue Magic', 'Geomancy' } },
     { key = 'magicType', kind = 'list', items = { 'White Magic', 'Black Magic', 'Bard Song', 'Ninjutsu', 'Summoning', 'Blue Magic' } },
@@ -150,18 +153,22 @@ local SPELL_CONDS = {
     MODE_COND,
     { key = 'any',       kind = 'flag' },
 };
+-- Midcast adds the tag gate without adding it to Precast's picker.
+local MIDCAST_CONDS = {};
+for i, def in ipairs(SPELL_CONDS) do MIDCAST_CONDS[i] = def; end
+MIDCAST_CONDS[#MIDCAST_CONDS + 1] = MOB_TAGGED_COND;
+
 local COND_DEFS = {
     Default = {
         { key = 'status', kind = 'list', items = { 'Engaged', 'Resting', 'Idle' } },
-        { key = 'mobTagged', kind = 'boolean', items = { 'false', 'true' },
-          hint = 'you have landed a successful hostile action on the current mob,\nincluding hits, debuffs and abilities. Misses, resists, aggro and other\nplayers do not count. Use status = Engaged + mobTagged = false for TH gear.\nRemembers target switches; clears on death, disappearance, zoning or reload.\nTracks observed actions, not the server\'s actual TH level.' },
+        MOB_TAGGED_COND,
         { key = 'moving', kind = 'flag' },
         { key = 'inTown', kind = 'flag',
           hint = 'you are standing in a town -- pair with status = Idle to show off\nyour gear in the cities. The town list is server-derived (data/zones.lua):\nevery city plus Nashmau, Celennia Memorial Library, Mog Garden.' },
         MODE_COND,
     },
     Precast = SPELL_CONDS,
-    Midcast = SPELL_CONDS,
+    Midcast = MIDCAST_CONDS,
     Ability = {
         { key = 'abilityType', kind = 'list', items = { 'Blood Pact: Rage', 'Blood Pact: Ward', 'Corsair Roll', 'Quick Draw', 'Ready', 'Rune Enchantment' } },
         { key = 'contains', kind = 'text', hint = 'name contains this text' },
@@ -184,7 +191,7 @@ local COND_DEFS = {
         { key = 'any',  kind = 'flag' },
     },
     Preshot = { { key = 'any', kind = 'flag' }, MODE_COND },
-    Midshot = { { key = 'any', kind = 'flag' }, MODE_COND },
+    Midshot = { { key = 'any', kind = 'flag' }, MODE_COND, MOB_TAGGED_COND },
     -- Fires when YOUR PET starts an action (Blood Pact, Ready move, pet spell).
     -- NO LAC version calls a pet handler -- the upstream tutorial's
     -- HandlePetAction is a call-it-yourself pattern; dlac's engine tick does
@@ -235,7 +242,7 @@ local PET_PARAMS = {
       hint = 'exact pet name, case-insensitive -- Garuda, Fire Spirit, a jug pet\'s name --\nfor avatar-specific perpetuation gear and the like. Never matches petless.' },
 };
 do
-    -- Precast/Midcast share one defs table (SPELL_CONDS) -- append ONCE per table.
+    -- Append the shared player/pet pickers once per defs table.
     local seenDef = {};
     for _, defs in pairs(COND_DEFS) do
         if not seenDef[defs] then
