@@ -134,3 +134,24 @@ open Gathering Gear, then confirm points refresh after earning/spending and
 after zoning. Check the compact bar and equipping near a Point. The working
 copy used for playtesting is a Git checkout, so launcher delivery needs its
 own check after promotion.
+
+## Gathered-item storage
+
+`feature/helmstorage.lua` uses the digging mover's whole-stack policy for the
+Mog Case / Mog Satchel switches. It tracks quantities per item across swings,
+not inventory slots. Only inventory gains between our confirmed gathering
+motion and ITEM_SAME count; arrivals outside that response are not gathered
+rewards. Inventory sorting does not add to the count or lose pending items.
+
+Full stacks and non-stacking items move after one second of inventory quiet.
+Partial stacks wait until six seconds without another HELM attempt. Moves
+never exceed the tracked gathered quantity: a stack mixed with carried stock
+stays if moving it would exceed that quantity, even during downtime.
+
+The mover tries Case before Satchel and explicitly merges into an existing
+stack with room before using an empty slot, without relying on bag auto-sort.
+One transfer is outstanding at a time; both source and destination must confirm.
+Zoning or disabling both destinations clears the session's pending quantities.
+
+Run `lua tests/helmstorage.lua` for packet-driven coverage of accumulation,
+sorting, unrelated arrivals, downtime, merges, and transfer confirmation.

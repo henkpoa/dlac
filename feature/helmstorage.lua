@@ -1,14 +1,13 @@
--- Gathered-item transfers. The 0x029 move and live preflight follow the
--- private hidden-features:gearmove.lua implementation, without its storage UI.
--- AscensionXI HELM sends our motion (0x05A), the rewards, then ITEM_SAME.
--- Observe only that response to our tool trade; never sweep old inventory.
-local M = {};
--- The native inventory sort can arrive ~550ms after a HELM reward (live
--- 2026-09-28). Wait for a full second without inventory changes before
--- choosing source slots; the server may otherwise stack one away mid-move.
-M.SETTLE_S = 1;
+-- Gathered-item transfers into Mog Case / Mog Satchel. Track the net item
+-- quantities from our answered HELM trades across swings and inventory sorts.
+-- Like digging, offer whole stacks only: full stacks and non-stacking items
+-- while gathering, partial stacks after six seconds without another attempt.
+-- Carried stock is never owed. Explicit destination merges avoid relying on
+-- storage auto-sort. Only one move is outstanding, with both ends confirmed.
+local M = { QUIET_S = 1, FLUSH_S = 6, CAPTURE_S = 5, CONFIRM_S = 5, GAP_S = 0.2 };
 local function u16(s, o) return (s:byte(o + 1) or 0) + (s:byte(o + 2) or 0) * 256; end
 local function u32(s, o) return u16(s, o) + u16(s, o + 2) * 65536; end
+-- container, slot, item id (nil: unchanged), count, flags.
 local function update(id, data)
     if id == 0x020 and #data >= 17 then
         return data:byte(15), data:byte(16), u16(data, 12), u32(data, 4), data:byte(17);
@@ -25,115 +24,151 @@ local function total(bag, id)
     return n;
 end
 
+-- Where a whole stack of `count` goes in `dst`: a stack of the same item with
+-- room (the server moves only what fits), else any free slot (0x52).
+-- Returns the slot and how many units will actually move.
+local function destination(dst, id, count, stack)
+    local free = false;
+    for i = 1, dst.max do
+        local other = item(dst, i);
+        if other.id == 0 or other.count == 0 then
+            free = true;
+        elseif other.id == id and other.flags == 0 and other.count < stack then
+            return i, math.min(count, stack - other.count);
+        end
+    end
+    if free then return 0x52, count; end
+end
+
 function M.new(D)
-    local self = { queue = {}, status = '' };
+    local self = { owed = {}, status = '' };
     local trade, capture, flight, nextAt, stopped = nil, nil, nil, 0, false;
+    local lastInventory, lastHelm = -math.huge, -math.huge;
     function self.reset()
         trade, capture, flight, nextAt, stopped = nil, nil, nil, 0, false;
-        self.queue, self.status = {}, '';
+        lastInventory, lastHelm = -math.huge, -math.huge;
+        self.owed, self.status = {}, '';
     end
     local function enabled()
         local opts = D.options();
         return opts[7] or opts[5];
     end
+    -- Gathered units still in the inventory, waiting for a full stack or a pause.
+    function self.waiting()
+        local n = 0;
+        for _, count in pairs(self.owed) do n = n + count; end
+        return n;
+    end
+
     local function finish()
-        if not capture then return; end
-        if not capture.complete then capture = nil; return; end
         local after = { items = {} };
         for slot, it in pairs(capture.before.items) do after.items[slot] = it; end
         for slot, it in pairs(capture.items) do after.items[slot] = it; end
-        -- Sorting can combine OLD stacks too. Only the net increase for an
-        -- item id is a gathering reward, regardless of which slots now hold it.
-        local remaining = {};
+        local seen = {};
         for _, it in pairs(after.items) do
-            if it.id > 0 and remaining[it.id] == nil then
-                remaining[it.id] = math.max(0, total(after, it.id) - total(capture.before, it.id));
+            if it.id > 0 and not seen[it.id] then
+                seen[it.id] = true;
+                -- A move of ours that landed during the swing lowered the total.
+                local gained = total(after, it.id) - total(capture.before, it.id) + (capture.movedOut[it.id] or 0);
+                if gained > 0 then self.owed[it.id] = (self.owed[it.id] or 0) + gained; end
             end
         end
-        for slot = 1, capture.before.max do
-            local it, before = item(after, slot), item(capture.before, slot);
-            local gained = math.min(it.count, remaining[it.id] or 0);
-            if gained > 0 and it.id > 0 and it.flags == 0 then
-                remaining[it.id] = remaining[it.id] - gained;
-                local merged = false;
-                for _, q in ipairs(self.queue) do
-                    if q.slot == slot and q.id == it.id and q.expected == before.count then
-                        q.count, q.expected = q.count + gained, it.count;
-                        merged = true; break;
-                    end
-                end
-                if not merged then
-                    self.queue[#self.queue + 1] = { slot = slot, id = it.id, count = gained, expected = it.count };
-                end
-            end
-        end
-        capture, trade = nil, nil;
+        capture = nil;
     end
+
     function self.outgoing(id, data)
         if id ~= 0x036 or #data < 64 or not enabled() or stopped then return; end
-        finish();
-        trade = nil;
         if not D.isPoint(u16(data, 0x3A)) then return; end
-        trade = { target = u32(data, 4), at = D.clock() };
+        capture = nil;
+        lastHelm = D.clock();
+        trade = { target = u32(data, 4), at = lastHelm };
     end
+
     function self.incoming(id, data)
         if id == 0x00A or id == 0x00B then self.reset(); return; end
+        local now = D.clock();
         local cid, slot, iid, count, flags = update(id, data);
         if flight and cid == 0 and slot == flight.slot and count == flight.remaining
             and (iid == nil or iid == flight.id or (count == 0 and iid == 0)) then
+            if capture and not flight.sourceConfirmed then
+                capture.movedOut[flight.id] = (capture.movedOut[flight.id] or 0) + flight.count;
+            end
             flight.sourceConfirmed = true;
         end
         if flight and cid == flight.cid then
             local old = item(flight.destItems, slot);
             local newId = iid or old.id;
-            -- Confirm the actual deposit, not a container-wide total: the
-            -- player can withdraw another stack while this move is pending.
-            -- A split/free-slot move creates a new stack; an explicit merge
-            -- updates precisely the destination slot selected when sending.
             if newId == flight.id then
                 if flight.toSlot == 0x52 then
-                    if (old.id == 0 or old.count == 0) and count == flight.count then
-                        flight.destConfirmed = true;
-                    end
+                    if (old.id == 0 or old.count == 0) and count == flight.count then flight.destConfirmed = true; end
                 elseif slot == flight.toSlot and old.id == flight.id and count == old.count + flight.count then
                     flight.destConfirmed = true;
                 end
             end
             flight.destItems.items[slot] = { id = newId, count = count, flags = flags };
         end
+        if cid == 0 and slot ~= nil and slot > 0 then
+            lastInventory = now;
+            if capture then
+                local old = capture.items[slot] or item(capture.before, slot);
+                capture.items[slot] = { id = iid or old.id, count = count, flags = flags };
+            end
+        end
         if not enabled() or stopped then return; end
-        local now = D.clock();
-        if id == 0x05A and #data >= 18 and trade and now - trade.at < 5
+        -- Only our tool trade followed by our gathering motion opens a batch.
+        if id == 0x05A and #data >= 18 and trade and now - trade.at < M.CAPTURE_S
             and u32(data, 4) == D.playerId() and u32(data, 8) == trade.target
             and u16(data, 16) >= 40 and u16(data, 16) <= 42 then
-            capture = { before = D.bag(0), items = {}, at = now, last = now };
-            return;
-        end
-        if not capture then return; end
-        if id == 0x01D then capture.complete = true; capture.last = now; return; end
-        if cid == 0 and slot > 0 then
-            local old = capture.items[slot] or item(capture.before, slot);
-            capture.items[slot] = { id = iid or old.id, count = count, flags = flags };
-            capture.last = now;
+            capture = { before = D.bag(0), items = {}, movedOut = {}, at = now };
+            trade = nil;
+        elseif capture and id == 0x01D then
+            -- Close provenance at the end of the server response. Later sorts
+            -- cannot change totals, and unrelated arrivals must not be counted.
+            finish();
         end
     end
+
+    local function send(it, srcSlot, id, src)
+        local opts = D.options();
+        for _, cid in ipairs({ 7, 5 }) do
+            if opts[cid] then
+                local dst = D.bag(cid);
+                local toSlot, moves = destination(dst, id, it.count, D.stack(id));
+                if toSlot then
+                    local amount = it.count;
+                    local p = { 0x29, 0x06, 0, 0, amount % 256, math.floor(amount / 256) % 256,
+                        math.floor(amount / 65536) % 256, math.floor(amount / 16777216) % 256,
+                        0, cid, srcSlot, toSlot };
+                    if not D.send(p) then
+                        stopped = true;
+                        self.status = 'Move failed. Toggle a destination to resume.';
+                        return true;
+                    end
+                    flight = { id = id, cid = cid, count = moves, source = total(src, id),
+                        dest = total(dst, id), destItems = dst, toSlot = toSlot,
+                        at = D.clock(), slot = srcSlot, remaining = it.count - moves };
+                    self.status = 'Moving gathered items...';
+                    return true;
+                end
+            end
+        end
+        return false;
+    end
+
     function self.tick()
         local now = D.clock();
         if flight then
             local src, dst = D.bag(0), D.bag(flight.cid);
             if (flight.sourceConfirmed or total(src, flight.id) <= flight.source - flight.count)
                 and (flight.destConfirmed or total(dst, flight.id) >= flight.dest + flight.count) then
-                local q = self.queue[1];
-                if q then
-                    q.count, q.expected = q.count - flight.count, q.expected - flight.count;
-                    if q.count <= 0 then table.remove(self.queue, 1); end
-                end
-                flight, nextAt = nil, now + 0.35;
+                local left = (self.owed[flight.id] or 0) - flight.count;
+                self.owed[flight.id] = left > 0 and left or nil;
+                flight, nextAt = nil, now + M.GAP_S;
                 self.status = 'Gathered items moved.';
-            elseif now - flight.at >= 5 then
+            elseif now - flight.at >= M.CONFIRM_S then
                 -- A late reply must never cause a second move of the same item.
-                flight, capture, trade, stopped = nil, nil, nil, true;
-                self.queue = {};
+                flight, capture, stopped = nil, nil, true;
+                self.owed = {};
                 self.status = 'Move not confirmed. Toggle a destination to resume.';
             end
             return;
@@ -141,64 +176,45 @@ function M.new(D)
         if not enabled() then self.reset(); return; end
         if stopped then return; end
         if capture then
-            if capture.complete and now - capture.last >= M.SETTLE_S then finish();
-            elseif now - capture.at >= 5 then capture, trade = nil, nil; end
+            if now - capture.at >= M.CAPTURE_S then capture = nil; end
             return;
         end
-        if trade and now - trade.at >= 5 then trade = nil; end
-        if trade or now < nextAt or #self.queue == 0 or not D.ready() then return; end
-        local q, src = self.queue[1], D.bag(0);
-        local it = item(src, q.slot);
-        if it.id ~= q.id or it.count ~= q.expected then
-            table.remove(self.queue, 1);
-            self.status = 'Inventory changed; gathered items left in Inventory.';
-            return;
+        if trade and now - trade.at >= M.CAPTURE_S then trade = nil; end
+        if trade or now < nextAt or now - lastInventory < M.QUIET_S or not D.ready() then return; end
+        local src = D.bag(0);
+        local flush = now - lastHelm >= M.FLUSH_S;
+        local ids = {};
+        for id, owed in pairs(self.owed) do
+            -- Units used or moved by hand are no longer ours to move.
+            local held = total(src, id);
+            if held < owed then owed = held; self.owed[id] = held > 0 and held or nil; end
+            if owed > 0 then ids[#ids + 1] = id; end
         end
-        if it.flags ~= 0 or D.equipped(q.slot) then return; end
-        local opts = D.options();
-        for _, cid in ipairs({ 7, 5 }) do
-            if opts[cid] then
-                local dst = D.bag(cid);
-                local slot, count, free = nil, 0, false;
-                for i = 1, dst.max do
-                    local other = item(dst, i);
-                    if other.id == 0 or other.count == 0 then free = true;
-                    elseif q.count == it.count and other.id == q.id and other.flags == 0
-                        and other.count < D.stack(q.id) then
-                        slot, count = i, math.min(q.count, D.stack(q.id) - other.count);
-                    end
-                end
-                if not slot and free then slot, count = 0x52, q.count; end
-                if slot and count > 0 then
-                    -- Whole-stack moves can merge; the server clamps to the
-                    -- destination's room. Partial moves require a free slot.
-                    local amount = slot == 0x52 and count or it.count;
-                    local p = { 0x29, 0x06, 0, 0, amount % 256, math.floor(amount / 256) % 256,
-                        math.floor(amount / 65536) % 256, math.floor(amount / 16777216) % 256,
-                        0, cid, q.slot, slot };
-                    if D.send(p) then
-                        flight = { id = q.id, cid = cid, count = count, source = total(src, q.id),
-                            dest = total(dst, q.id), destItems = dst, toSlot = slot,
-                            at = now, slot = q.slot, remaining = it.count - count };
-                        self.status = 'Moving gathered items...';
-                    else
-                        stopped = true;
-                        self.status = 'Move failed. Toggle a destination to resume.';
-                    end
-                    return;
+        table.sort(ids);
+        local blocked = false;
+        for _, id in ipairs(ids) do
+            local owed, stack = self.owed[id], D.stack(id);
+            for slot = 1, src.max do
+                local it = item(src, slot);
+                if it.id == id and it.flags == 0 and it.count > 0 and it.count <= owed
+                    and (flush or it.count >= stack) and not D.equipped(slot) then
+                    if send(it, slot, id, src) then return; end
+                    blocked = true;
+                    break;
                 end
             end
         end
-        self.status = 'Selected bags are full or unavailable; waiting for space.';
-        nextAt = now + 1;
+        if blocked then
+            self.status = 'Selected bags are full or unavailable; waiting for space.';
+            nextAt = now + 1;
+        end
     end
-    -- Selecting another destination can release items waiting for space.
-    -- Disabling both cancels unsent work, retaining any outstanding move.
+
+    -- A destination switched on or off: resume after a stop; with none left,
+    -- forget the counts (an outstanding move still confirms).
     function self.changed()
         trade, capture, stopped = nil, nil, false;
-        if not enabled() then
-            self.queue = flight and { self.queue[1] } or {};
-        end
+        if not enabled() then self.owed = {}; end
         if not flight then self.status = ''; end
     end
     return self;

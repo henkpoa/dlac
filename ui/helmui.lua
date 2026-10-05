@@ -401,6 +401,9 @@ function M.render(deps, availW)
             if imgui.Checkbox(destination[2] .. '##helmstorage', checked) then
                 hw.setMoveDestination(destination[1], checked[1]);
             end
+            if imgui.IsItemHovered() then
+                imgui.SetTooltip('Moves gathered full stacks and non-stacking items. Partial stacks wait for six seconds without gathering.');
+            end
         end
         imgui.Spacing();
     end

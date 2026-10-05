@@ -1,9 +1,7 @@
 -- Dug-item transfers into the Mog Case / Mog Satchel (AscensionXI digging,
 -- docs/reference/ascensionxi-digging.md).
 --
--- HELM's mover (helmstorage.lua) moves every reward as it lands. Digging is
--- too fast for that: a dig a second, up to three items each with Burrow and
--- Bore. So this one keeps a count per item of what digging added and moves
+-- Like HELM's mover, keep a count per item of what gathering added and move
 -- WHOLE stacks only -- a full stack, or an item that does not stack. Partial
 -- stacks wait until digging pauses (FLUSH_S). It never moves more of an item
 -- than digs added, so stock you carried in stays where it was.

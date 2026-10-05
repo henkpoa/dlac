@@ -39,7 +39,7 @@ rank ≤ 10, and blocks the whole reply from the retail client either way.
 
 ## The dig mover
 
-HELM's mover (`feature/helmstorage.lua`) moves each reward as it lands. A dig
+HELM's mover (`feature/helmstorage.lua`) now shares this whole-stack policy. A dig
 comes every second at skill 40+, with up to three items (Regular, Burrow,
 Bore), so per-unit moves would fall behind and spend a packet per unit. The
 dig mover:
