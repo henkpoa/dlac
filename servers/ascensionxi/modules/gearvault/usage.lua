@@ -50,6 +50,7 @@ local st = {
                                          -- the add/remove tug-of-war -- Henrik's
                                          -- 2026-08-27 field round)
     settings = { additions = 'auto', removals = 'ask' },
+    manual = {}, -- job -> instance key -> explicitly requested, pinned copy
 };
 
 local function hex48(identity)
@@ -105,12 +106,36 @@ function M._serialize()
         L[#L + 1] = string.format('        [%q] = true,', k);
     end
     L[#L + 1] = '    },';
+    L[#L + 1] = '    manual = {';
+    for job = 1, 22 do
+        L[#L + 1] = string.format('        [%d] = {', job);
+        local entries = st.manual[job] or {};
+        local ordered = {}; for key in pairs(entries) do ordered[#ordered + 1] = key; end
+        table.sort(ordered);
+        for _, key in ipairs(ordered) do
+            local e = entries[key];
+            L[#L + 1] = string.format('            [%q] = { itemId = %d, instanceId = %d, identity = %q },',
+                key, e.itemId, e.instanceId, e.identity);
+        end
+        L[#L + 1] = '        },';
+    end
+    L[#L + 1] = '    },';
     L[#L + 1] = '}';
     return table.concat(L, '\n') .. '\n';
 end
 
 function M._apply(t)
     if type(t) ~= 'table' then return; end
+    for job, entries in pairs(type(t.manual) == 'table' and t.manual or {}) do
+        if type(job) == 'number' and job >= 1 and job <= 22 and type(entries) == 'table' then
+            for _, e in pairs(entries) do
+                if type(e) == 'table' and type(e.itemId) == 'number' and type(e.instanceId) == 'number'
+                    and e.instanceId > 0 and type(e.identity) == 'string' and #e.identity == 24 then
+                    M.queueManual(job, e);
+                end
+            end
+        end
+    end
     if type(t.settings) == 'table' then
         local a, r = t.settings.additions, t.settings.removals;
         if a == 'auto' or a == 'off' then st.settings.additions = a; end
@@ -164,6 +189,18 @@ function M.save()
 end
 
 function M.dirty() return st.dirty; end
+
+function M.queueManual(job, e)
+    st.manual[job] = st.manual[job] or {};
+    st.manual[job][M.keyOf(e.itemId, nil, e.instanceId)] = {
+        itemId = e.itemId, instanceId = e.instanceId, identity = e.identity };
+    st.dirty = true;
+end
+function M.manualFor(job) return st.manual[job] or {}; end
+function M.clearManual(job, e)
+    local entries = st.manual[job];
+    if entries then entries[M.keyOf(e.itemId, nil, e.instanceId)] = nil; st.dirty = true; end
+end
 
 -- ---------------------------------------------------------------------------
 -- Stamps
@@ -315,7 +352,7 @@ end
 function M.resetCharacter() M._reset(); end
 
 function M._reset()
-    st = { loaded = false, dirty = false, stamps = {}, excluded = {},
+    st = { loaded = false, dirty = false, stamps = {}, excluded = {}, manual = {},
            settings = { additions = 'auto', removals = 'ask' } };
 end
 function M._st() return st; end

@@ -292,6 +292,40 @@ local function withdrawRow(row)
     end
 end
 
+function M.addToAllLayouts(e)
+    if not vc.instanceMode() or (e.instanceId or 0) == 0 or not usg then
+        return noteResult('refresh the vault before adding this copy to all layouts', true);
+    end
+    local fresh;
+    if vc.mirror.fresh then
+        for _, row in ipairs(vc.mirror.rows or {}) do
+            if row.instanceId == e.instanceId then fresh = row; break; end
+        end
+    end
+    if not fresh then return noteResult('refresh the vault before adding this copy to all layouts', true); end
+    e = fresh;
+    usg.load();
+    for job = 1, 22 do usg.queueManual(job, e); end
+    if not usg.save() then return noteResult('could not save the pending layout additions', true); end
+    usg.unexclude(usg.keyOf(e.itemId, nil));
+    for job = 1, 22 do
+        if job ~= vc.currentJob() then
+            local target = job;
+            vc.requestLayoutSet({ job = target, verb = vc.verb.ADD, itemId = e.itemId,
+                instanceId = e.instanceId, identity = e.identity, count = 1, pinned = true }, function(code)
+                if code == vc.code.ALREADY_BOUND then
+                    vc.requestLayoutSet({ job = target, verb = vc.verb.PIN, itemId = e.itemId,
+                        instanceId = e.instanceId, identity = e.identity, pinned = true }, function(pinCode)
+                        if pinCode == vc.code.OK then usg.clearManual(target, e); end
+                    end);
+                elseif code == vc.code.OK then usg.clearManual(target, e); end
+            end);
+        end
+    end
+    kickEngine('manual-all-layouts');
+    noteResult(nameOf(e.itemId) .. ' requested and pinned for all MW layouts; full layouts wait for room');
+end
+
 -- ---------------------------------------------------------------------------
 -- Grouping -- the All Equipment shape: rows bucketed by the record's Slot
 -- (Main/Range nest their weapon Category), unknown ids under 'Other'. Views
@@ -418,6 +452,7 @@ end
 -- over it, then normalize Y.
 local _hotKey, _hotNext = nil, nil;
 local _openLayoutMenu, _layoutMenu = nil, nil;
+local _openVaultMenu, _vaultMenu = nil, nil;
 local function renderRow(e, level, COL, deco)
     deco = deco or {};
     local rowH = 19;
@@ -435,7 +470,9 @@ local function renderRow(e, level, COL, deco)
     imgui.Selectable('##gvrow' .. tostring(deco.key or e.name), _hotKey ~= nil and _hotKey == deco.key,
         ImGuiSelectableFlags_None or 0, { math.max(60, w - 24), rowH });
     local rowHovered = imgui.IsItemHovered();
-    if rowHovered and deco.context and imgui.IsMouseClicked(1) then _openLayoutMenu = e; end
+    if rowHovered and deco.context and imgui.IsMouseClicked(1) then
+        if deco.context == 'vault' then _openVaultMenu = e; else _openLayoutMenu = e; end
+    end
     imgui.SetCursorPosY(y0);
 
     if icons ~= nil and type(icons.renderIcon) == 'function' then
@@ -828,6 +865,21 @@ end
 -- The pending step's beat (every frame from the module pump; `now` is a
 -- test seam). One pending store at a time: the row shows 'Storing...'.
 function M.pumpPending(now)
+    local w = M._pendingWithdraw;
+    if w then
+        if not w.sameContext() or os.clock() - w.at > 30 then
+            M._pendingWithdraw = nil;
+            noteResult('sets and layout updated; withdrawal cancelled -- use Withdraw in the Vault tab', true);
+        elseif vc.mirror.fresh then
+            for _, row in ipairs(vc.mirror.rows or {}) do
+                if row.instanceId == w.instanceId then
+                    M._pendingWithdraw = nil;
+                    withdrawRow({ rowId = row.rowId, itemId = row.itemId, qty = 1 });
+                    break;
+                end
+            end
+        end
+    end
     local p = M._pendingStore;
     if p == nil then return; end
     now = now or os.clock();
@@ -896,8 +948,8 @@ local function unequipAndStore(e, worn, after)
     M._pendingStore = { e = e, worn = worn, at = os.clock(), seenAt = nil, after = after };
 end
 
-function M.retireLayoutEntry(selected)
-    if M._pendingStore or vc.layoutBusy() then return noteResult('wait for the current gear move to finish', true); end
+function M.retireLayoutEntry(selected, withdraw)
+    if M._pendingStore or M._pendingWithdraw or vc.layoutBusy() then return noteResult('wait for the current gear move to finish', true); end
     local e;
     if vc.layoutCache.fresh and vc.currentJob() == vc.layoutCache.job then
         for _, row in ipairs(vc.layoutCache.entries or {}) do
@@ -931,10 +983,13 @@ function M.retireLayoutEntry(selected)
     local ok, err = edit(e.itemId, e.identity);
     if not ok then return noteResult(err or 'could not update sets', true); end
     local job = vc.currentJob();
+    if usg and usg.clearManual then usg.clearManual(job, e); end
     local profile = require('dlac\\profiles');
     local profileName = profile.activeName();
+    local usageState = usg and usg._st();
     local function sameContext()
-        return vc.currentJob() == job and profile.activeName() == profileName;
+        return vc.currentJob() == job and profile.activeName() == profileName
+            and (not usg or usg._st() == usageState);
     end
     local function move(done)
         done = done or function() end;
@@ -946,7 +1001,16 @@ function M.retireLayoutEntry(selected)
                     done(); return noteResult('sets updated; vault move failed: ' .. tostring(why or code), true);
                 end
                 vc.requestLayout(0);
-                if e.state == 2 then
+                if withdraw then
+                    done();
+                    if e.state == 2 then
+                        noteResult(name .. ' removed from sets and layout; already in Inventory');
+                    elseif sameContext() then
+                        M._pendingWithdraw = { instanceId = e.instanceId, job = job, at = os.clock(), sameContext = sameContext };
+                        vc.markStale(0, 'withdraw retired copy');
+                        noteResult(name .. ' removed from sets; waiting for the vault before withdrawing');
+                    else noteResult('sets and layout updated; job or profile changed, withdrawal cancelled', true); end
+                elseif e.state == 2 then
                     local lookup = vc.requestLookup({ { container = bag.container, slot = bag.slot } }, function(rows)
                         local at = rows and rows[1];
                         if not sameContext() or not at or at.instanceId ~= e.instanceId then
@@ -1418,6 +1482,7 @@ function M.render(job, level)
                             _confirm = { key = rkey, at = os.clock() };
                         else
                             _confirm = nil;
+                            if usg and usg.clearManual then usg.clearManual(lc.job, e); end
                             -- removing the plain copy of a SET-WANTED id is
                             -- tombstoned, or the engine re-adds it next beat
                             if usg ~= nil and ((e.instanceId or 0) > 0 or e.identity == ZERO24) then
@@ -1466,6 +1531,7 @@ function M.render(job, level)
                 imgui.SameLine(0, 10);
                 if imgui.SmallButton('Bench##gvwb' .. tostring(wI.itemId)) then
                     if usg ~= nil then
+                        if wI.instanceId then usg.clearManual(lc.job, wI); end
                         pcall(usg.exclude, { usg.keyOf(wI.itemId, nil) });
                         kickEngine('bench');
                         noteResult(nameOf(wI.itemId) .. ' benched -- dlac stops trying to shelve it', false);
@@ -1555,6 +1621,7 @@ function M.render(job, level)
             renderTree(vv, 'V', searching, forceClose, level, COL, function(e)
                 return {
                     key = 'V' .. tostring(e.rowId),
+                    context = 'vault',
                     augOf = function() return isAugmented(e.identity) and augTextOf(e.identity) or nil; end,
                     tags = function()
                         if e.qty > 1 then
@@ -1785,12 +1852,30 @@ function M.render(job, level)
         imgui.OpenPopup('##gv-layout-actions');
     end
     if imgui.BeginPopup('##gv-layout-actions') then
+        if imgui.Selectable('Remove from sets and withdraw from gear vault') and _layoutMenu then
+            M.retireLayoutEntry(_layoutMenu, true);
+            imgui.CloseCurrentPopup();
+        end
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('Remove this copy from this job\'s sets and layout, then withdraw it to Inventory.\nStand at a Gear Vault. Other jobs are unchanged.');
+        end
         if imgui.Selectable('Remove from sets and send to gear vault') and _layoutMenu then
             M.retireLayoutEntry(_layoutMenu);
             imgui.CloseCurrentPopup();
         end
         if imgui.IsItemHovered() then
             imgui.SetTooltip('Remove this copy\'s references from the current job\'s sets and release its layout assignment.\nOther jobs are unchanged. Generic references to this item are removed too.');
+        end
+        imgui.EndPopup();
+    end
+    if _openVaultMenu then
+        _vaultMenu, _openVaultMenu = _openVaultMenu, nil;
+        imgui.OpenPopup('##gv-vault-actions');
+    end
+    if imgui.BeginPopup('##gv-vault-actions') then
+        if imgui.Selectable('Add to Mog Wardrobe on all MW Layouts') and _vaultMenu then
+            M.addToAllLayouts(_vaultMenu);
+            imgui.CloseCurrentPopup();
         end
         imgui.EndPopup();
     end

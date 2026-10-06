@@ -248,7 +248,10 @@ function R.tick()
         and type(D.inTown) == 'function' and D.inTown() == true and not cityHeld() then
         local worn, obsolete = D.worn(), {};
         for _, e in ipairs(layout) do
+            local manual = D.usage and D.usage.manualFor and D.usage.manualFor(job);
+            local requested = manual and manual[D.usage.keyOf(e.itemId, nil, e.instanceId)];
             if worn and not e.pinned and e.kind ~= 2 and (e.state == 0 or e.state == 1)
+                and not requested
                 and not d.referencedIds[e.itemId] and not worn[e.itemId]
                 and not worn['i:' .. tostring(e.instanceId)] then
                 obsolete[#obsolete + 1] = e;
@@ -374,8 +377,39 @@ function R.tick()
 
     local adds = {};
     local waiting, waitingItems, notVaulted, chooseCopy = 0, {}, 0, {};
+    local manualUnits = 0;
+    if instances and D.usage and D.usage.manualFor and vc.mirror.fresh ~= false then
+        for _, wanted in pairs(D.usage.manualFor(job)) do
+            local present;
+            for _, e in ipairs(layout) do
+                if e.instanceId == wanted.instanceId then present = e; break; end
+            end
+            if present and present.pinned then
+                D.usage.clearManual(job, wanted);
+            elseif present then
+                adds[#adds + 1] = { itemId = present.itemId, instanceId = present.instanceId,
+                    identity = present.identity, count = 1, pinned = true, verb = vc.verb.PIN };
+            else
+                for _, row in ipairs(vc.mirror.rows or {}) do
+                    if row.instanceId == wanted.instanceId then
+                        if capacity > 0 and layoutUnits + manualUnits >= capacity then
+                            waiting = waiting + 1;
+                            waitingItems[#waitingItems + 1] = { itemId = row.itemId, instanceId = row.instanceId, need = 1 };
+                        elseif #adds < R.MAX_PUSH then
+                            adds[#adds + 1] = { itemId = row.itemId, instanceId = row.instanceId,
+                                identity = row.identity, count = 1, pinned = true };
+                            manualUnits = manualUnits + 1;
+                            bound[row.instanceId] = true;
+                            have[row.itemId] = (have[row.itemId] or 0) + 1;
+                        end
+                        break;
+                    end
+                end
+            end
+        end
+    end
     if vc.mirror.fresh ~= false and not (D.settings ~= nil and D.settings().additions == 'off') then
-        local units = layoutUnits;
+        local units = layoutUnits + manualUnits;
         for _, it in ipairs(d.items) do
             local c = have[it.itemId];
             local rec = type(D.lookupById) == 'function' and D.lookupById(it.itemId) or nil;
@@ -543,9 +577,9 @@ function R.tick()
     st.runKind = 'add';
     for _, it in ipairs(adds) do
         local queued = vc.requestLayoutSet(
-            { job = 0, verb = vc.verb.ADD, itemId = it.itemId, count = it.count,
+            { job = job, verb = it.verb or vc.verb.ADD, itemId = it.itemId, count = it.count,
               reason = 'derived-from-sets',
-              hint = 0, pinned = false, identity = it.identity or vc.ZERO24, instanceId = it.instanceId },
+              hint = 0, pinned = it.pinned == true, identity = it.identity or vc.ZERO24, instanceId = it.instanceId },
             function(code, err)
                 st.inFlight = math.max(0, st.inFlight - 1);
                 if code == vc.code.OK then
