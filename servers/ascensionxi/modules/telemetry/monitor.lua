@@ -276,13 +276,29 @@ local function predictionText(pr)
     return nil;
 end
 
--- Pieces the server's numbers contradicted: AutoAcc leaves them on.
+-- Pieces the server's numbers contradicted: AutoAcc leaves them on. Keep the
+-- recorded gear-check detail in the hover; it names the input and totals.
+local MISMATCH_INPUTS = {
+    dex = 'DEX', agi = 'AGI', accMod = 'ACC', raccMod = 'ranged ACC',
+    twoHandAccMod = 'two-handed ACC', wsAccMod = 'weapon-skill ACC',
+}
+local function keptOnWhy(why)
+    why = tostring(why or ''):gsub('^(%w+): the server adds (%-?%d+), dlac (%-?%d+)$', function(input, server, dlac)
+        return ('%s total: server adds %s; DLAC counts %s'):format(MISMATCH_INPUTS[input] or input, server, dlac);
+    end);
+    if why == 'a release predicted wrongly' then return 'the server returned different accuracy numbers after a swap'; end
+    return why;
+end
 local function keptOn(r)
-    local names = {};
-    for id in pairs(r.unverified or {}) do names[#names + 1] = itemName(id); end
-    for id in pairs(r.mispredicted or {}) do names[#names + 1] = itemName(id); end
-    table.sort(names);
-    return names;
+    local details = {};
+    for id, why in pairs(r.unverified or {}) do
+        details[#details + 1] = ('%s: %s'):format(itemName(id), keptOnWhy(why));
+    end
+    for id, why in pairs(r.mispredicted or {}) do
+        details[#details + 1] = ('%s: %s'):format(itemName(id), keptOnWhy(why));
+    end
+    table.sort(details);
+    return details;
 end
 
 -- A slot's hover: the piece it wears and why, in a player's words.
@@ -307,7 +323,8 @@ local function drawAutoAcc(col, r)
     local kept = keptOn(r);
     if #kept > 0 then
         flag(col.WANT, ('%d kept on'):format(#kept),
-            'The server\'s numbers didn\'t match DLAC\'s for these, so AutoAcc leaves them on:\n' .. table.concat(kept, '\n'));
+            'AutoAcc leaves these pieces on after a gear total disagreed with the server.\n'
+            .. 'Each reported total covers the outfit, not an individual piece:\n' .. table.concat(kept, '\n'));
     end
     local d = r.decision;
     if type(d) ~= 'table' or next(d.why or {}) == nil then

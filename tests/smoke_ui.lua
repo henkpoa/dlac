@@ -5479,7 +5479,12 @@ end)();
 
     local saved = { imgui = package.loaded['imgui'],
                     icons = package.loaded['dlac\\ui\\itemicons'],
-                    am = package.loaded['dlac\\ui\\arbmonui'] };
+                    am = package.loaded['dlac\\ui\\arbmonui'],
+                    serverpack = package.loaded['dlac\\gear\\serverpack'] };
+    local autoAccDiagnostic = { mismatch = 'server totals differ', unverified = { [1] = 'item' } };
+    package.loaded['dlac\\gear\\serverpack'] = {
+        service = function(name) return name == 'autoacc' and { report = function() return autoAccDiagnostic; end } or nil; end,
+    };
     package.loaded['imgui'] = IM;
     package.loaded['dlac\\ui\\itemicons'] = { renderIcon = nop };
     package.loaded['dlac\\ui\\arbmonui'] = nil;
@@ -5497,6 +5502,12 @@ end)();
         local rok = pcall(am.renderMonitor, ui);
         check('AM4 a ring-less/empty frame renders', rok, true);
         check('AM4b Begin/End balanced', depth.win, 0);
+        smalls = {};
+        local dok = pcall(am.renderAutoAccDiagnostic, ui);
+        check('AM4c AutoAcc diagnostic renders', dok, true);
+        check('AM4d diagnostic offers one-click report capture',
+            table.concat(smalls, ' '):find('Capture AutoAcc issue##arbmon_autoacc', 1, true) ~= nil, true);
+        check('AM4e diagnostic is not an Arbiter decision', #dspS.getDecisions(), 0);
 
         -- Seed the REAL ring through the engine's own test seam, then drive the
         -- full grid + legend + log with hover on everywhere. Shapes mirror the
@@ -5645,6 +5656,7 @@ end)();
     package.loaded['imgui'] = saved.imgui;
     package.loaded['dlac\\ui\\itemicons'] = saved.icons;
     package.loaded['dlac\\ui\\arbmonui'] = saved.am;
+    package.loaded['dlac\\gear\\serverpack'] = saved.serverpack;
 end)();
 
 -- ---------------------------------------------------------------------------

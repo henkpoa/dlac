@@ -518,6 +518,71 @@ local COL_REC  = { 0.95, 0.35, 0.35, 1.0 };
 local COL_OK   = { 0.45, 0.85, 0.45, 1.0 };
 local _markBuf = { '' };
 
+local function autoAccReport()
+    local ok, sp = pcall(require, 'dlac\\gear\\serverpack');
+    if not ok or type(sp) ~= 'table' or type(sp.service) ~= 'function' then return nil; end
+    local got, svc = pcall(sp.service, 'autoacc');
+    if not got or type(svc) ~= 'table' or type(svc.report) ~= 'function' then return nil; end
+    local good, report = pcall(svc.report);
+    return good and type(report) == 'table' and report or nil;
+end
+
+local function diagnosticLine(report)
+    local prediction = type(report.prediction) == 'table' and report.prediction or nil;
+    local mismatch = report.mismatch;
+    local predictedWrong = prediction ~= nil and prediction.verdict == 'mismatch';
+    local unverified = type(report.unverified) == 'table' and report.unverified or {}
+    local count = 0;
+    for _ in pairs(unverified) do count = count + 1; end
+    if mismatch == nil and not predictedWrong and count == 0 then return nil; end
+    local parts = { 'AutoAcc diagnostic' };
+    if mismatch ~= nil then parts[#parts + 1] = 'server check: ' .. tostring(mismatch); end
+    if predictedWrong then parts[#parts + 1] = 'swap prediction disagreed with server'; end
+    if count > 0 then parts[#parts + 1] = tostring(count) .. ' kept item(s) unverified'; end
+    return table.concat(parts, '; '), count
+end
+
+function M.renderAutoAccDiagnostic(ui)
+    local report = autoAccReport();
+    if report == nil then return; end
+    local line, count = diagnosticLine(report);
+    if line == nil then
+        if ui ~= nil then ui._arbAutoAccSeen = nil; end
+        return;
+    end
+    local signature = line;
+    if ui ~= nil and ui._arbAutoAccSeen ~= signature then
+        ui._arbAutoAccSeen = signature;
+        local R = rep();
+        if R ~= nil and type(R.note) == 'function' then pcall(R.note, line); end
+    end
+    imgui.TextColored(COL_REC, line);
+    if imgui.IsItemHovered() then
+        imgui.SetTooltip('AutoAcc found a server/DLAC disagreement or a piece it cannot verify. '
+            .. 'This is separate from the Arbiter decision history. Capture a report to include '
+            .. 'the current gear, recent decisions, and this diagnostic.');
+    end
+    imgui.SameLine(0, 8);
+    if imgui.SmallButton('Capture AutoAcc issue##arbmon_autoacc') then
+        local R = rep();
+        if R ~= nil then
+            local recording = nil;
+            pcall(function() recording = R.status(); end);
+            local ok, started = true, true;
+            if recording == nil then ok, started = pcall(R.start, R.DEF_S, false); end
+            if ok and started == true then
+                pcall(R.note, line);
+                pcall(R.mark, line);
+                if ui ~= nil then ui._arbRepPath = nil; end
+                print('[dlac] report: AutoAcc issue captured; the report writes when the window closes.');
+            else
+                print('[dlac] report: could not capture AutoAcc issue -- ' .. tostring(started));
+            end
+        end
+    end
+    if imgui.IsItemHovered() then imgui.SetTooltip('Start a support capture and mark this AutoAcc diagnostic.'); end
+end
+
 function M.renderRecorder(ui)
     if not hasImgui then return; end
     local R = rep();
@@ -624,6 +689,7 @@ function M.renderMonitor(ui)
         -- The recorder bar sits ABOVE the ring check on purpose: "nothing has
         -- happened yet" is exactly when a player wants to start recording.
         M.renderRecorder(ui);
+        M.renderAutoAccDiagnostic(ui);
         imgui.Separator();
         local ring = hasDispatch and dsp.getDecisions() or nil;
         if type(ring) ~= 'table' or #ring == 0 then

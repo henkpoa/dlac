@@ -24682,6 +24682,18 @@ end)();
     check('RPT3d typed uppercase',  RP._markParse('/DL MARK Here'),           'Here');
     check('RPT3e a neighbour',      RP._markParse('/dl marker'),              nil);
 
+    local noteOutput, append = {}, RP._fs.append;
+    RP._fs.append = function(_, text) noteOutput[#noteOutput + 1] = text; end;
+    RP.st = { path = 'capture', q = {}, lastSeq = 0, lastASeq = 0 };
+    check('RPT3f diagnostic note enters an active capture', RP.note('AutoAcc mismatch'), true);
+    check('RPT3g diagnostic note is written to the active capture',
+        table.concat(noteOutput):find('DIAGNOSTIC  AutoAcc mismatch', 1, true) ~= nil, true);
+    RP.st = nil;
+    RP._fs.append = append;
+    local idleNote, idleWhy = RP.note('AutoAcc mismatch');
+    check('RPT3h idle diagnostic does not start a capture', idleNote, false);
+    check('RPT3i idle diagnostic is explicit', idleWhy, 'idle');
+
     check('RPT4a clock minutes', RP._clock(250), '4:10');
     check('RPT4b clock seconds', RP._clock(38),  '0:38');
 

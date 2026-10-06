@@ -134,7 +134,7 @@ rep = { usable = true, bases = 2, frame = tv05, frameAt = 10.0, formulaOk = true
         decision = { release = { Ring1 = 'Rajas Ring' },
                      typed = { Ring1 = "Toreador's Ring", Neck = 'Peacock Amulet' },
                      why = { Ring1 = 'released for Rajas Ring', Neck = 'needed for the cap', Zzz = 'odd 100% slot' } },
-        unverified = { [14674] = 'accMod' }, mispredicted = {} };
+        unverified = { [14674] = 'accMod: the server adds 12, dlac 10' }, mispredicted = {} };
 render();
 local target = 'Greater Colibri, Lv ' .. tv05.targetLevel;
 local main, ranged = tv05.contexts[1], tv05.contexts[3];
@@ -190,6 +190,10 @@ rep.mispredicted = { [15543] = 'a release predicted wrongly' };
 render();
 check('UI-03 wrong, in the hover', tipHas('AutoAcc', "didn't match DLAC's, so those pieces stay on"), true);
 check('UI-03 kept on counts it', drew('2 kept on') and tipHas('2 kept on', 'Item 15543 100%%'), true);
+check('UI-03 gear mismatch names outfit-wide input totals', tipHas('2 kept on', 'ACC total: server adds 12; DLAC counts 10'), true);
+check('UI-03 kept-on explains outfit mismatch', tipHas('2 kept on', 'after a gear total disagreed with the server'), true);
+check('UI-03 gear mismatch does not blame an individual piece', tipHas('2 kept on', 'Each reported total covers the outfit, not an individual piece'), true);
+check('UI-03 swap mismatch uses player wording', tipHas('2 kept on', 'the server returned different accuracy numbers after a swap'), true);
 rep.prediction = { verdict = 'not checked', why = 'something besides the gear changed', release = {}, rows = {} };
 render();
 check('UI-03 a swap not checked says nothing', tipHas('AutoAcc', 'last swap') or tipHas('AutoAcc', 'besides'), false);

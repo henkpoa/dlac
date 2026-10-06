@@ -1229,6 +1229,18 @@ function M.status()
     };
 end
 
+-- Add a structured subsystem observation to an active capture. The monitor
+-- supplies already-sanitized, single-line text; idle captures stay opt-in.
+function M.note(text)
+    local st = M.st;
+    if st == nil then return false, 'idle'; end
+    local line = tostring(text or ''):gsub('[\r\n]+', ' ');
+    if line == '' then return false, 'empty'; end
+    q(string.format('[%s] DIAGNOSTIC  %s', os.date('%H:%M:%S'), line));
+    pump();
+    return true;
+end
+
 -- ---------------------------------------------------------------------------
 -- the bundler
 -- ---------------------------------------------------------------------------
