@@ -46302,7 +46302,6 @@ return {
                 Stats = {
                     DMG = 3,
                     Delay = 216,
-                    AlchemySkill = 1,
                 }
             },
             CagliostrosRod = {
@@ -66681,6 +66680,21 @@ return {
                     RangedAttack = 4,
                 }
             },
+            AlmogavarBow_1 = {
+                Name = "Almogavar Bow +1",
+                Level = 30,
+                Id = 19997,
+                Model = 53,
+                Jobs = {"WAR", "THF", "DRK", "RNG"},
+                Type = "Marksmanship",
+                Pair = "26:0",
+                Stats = {
+                    DMG = 17,
+                    Delay = 288,
+                    RangedAccuracy = 4,
+                    RangedAttack = 4,
+                }
+            },
             Anarchy = {
                 Name = "Anarchy",
                 Level = 80,
@@ -81055,6 +81069,18 @@ return {
                 RangedAttack = 2,
             }
         },
+        AlchemistsGoggles = {
+            Name = "Alchemist's Goggles",
+            Level = 1,
+            Id = 26579,
+            Model = 119,
+            Jobs = {"All"},
+            Type = "Head",
+            Stats = {
+                DEF = 1,
+                AlchemySkill = 1,
+            }
+        },
         AlcidesCap = {
             Name = "Alcide's Cap",
             Level = 87,
@@ -84977,6 +85003,18 @@ return {
                 FastCast = 10,
                 EnfeeblingMagicSkill = 11,
                 EnhancingMagicSkill = 11,
+            }
+        },
+        CarpentersCap = {
+            Name = "Carpenter's Cap",
+            Level = 1,
+            Id = 26576,
+            Model = 18,
+            Jobs = {"All"},
+            Type = "Head",
+            Stats = {
+                DEF = 1,
+                WoodworkingSkill = 1,
             }
         },
         CassiesCap = {
@@ -101148,6 +101186,18 @@ return {
             Stats = {
             }
         },
+        SmithysGoggles = {
+            Name = "Smithy's Goggles",
+            Level = 1,
+            Id = 26577,
+            Model = 121,
+            Jobs = {"All"},
+            Type = "Head",
+            Stats = {
+                DEF = 1,
+                SmithingSkill = 1,
+            }
+        },
         SmnHorn_1 = {
             Name = "Smn. Horn +1",
             Level = 75,
@@ -102225,6 +102275,18 @@ return {
                 MagicEvasion = 53,
                 MagicDefenseBonus = 3,
                 StoreTP = 7,
+            }
+        },
+        TannersBandana = {
+            Name = "Tanner's Bandana",
+            Level = 1,
+            Id = 26578,
+            Model = 1,
+            Jobs = {"All"},
+            Type = "Head",
+            Stats = {
+                DEF = 1,
+                LeathercraftSkill = 1,
             }
         },
         TantraCrown = {
@@ -126133,6 +126195,28 @@ return {
                 WindResistance = 2,
             }
         },
+        FaerieTunic_1 = {
+            Name = "Faerie Tunic +1",
+            Level = 20,
+            Id = 26575,
+            Model = 46,
+            Jobs = {"MNK", "WHM", "BLM", "RDM", "PLD", "BRD", "RNG", "SMN", "BLU", "PUP", "SCH", "GEO", "RUN"},
+            Type = "Body",
+            RSlot = 16,
+            Stats = {
+                DEF = 22,
+                HP = 6,
+                Refresh = 1,
+                DarkResistance = 2,
+                EarthResistance = 2,
+                FireResistance = 2,
+                IceResistance = 2,
+                LightResistance = 2,
+                ThunderResistance = 2,
+                WaterResistance = 2,
+                WindResistance = 2,
+            }
+        },
         FallCuirass_1 = {
             Name = "Fall. Cuirass +1",
             Level = 99,
@@ -148454,7 +148538,6 @@ return {
             Stats = {
                 DEF = 2,
                 EarthResistance = 1,
-                WoodworkingSkill = 1,
             }
         },
         ChainMittens = {
@@ -162840,7 +162923,6 @@ return {
             Stats = {
                 DEF = 3,
                 FireResistance = 1,
-                SmithingSkill = 1,
             }
         },
         SmnBracers_1 = {
@@ -163711,7 +163793,6 @@ return {
             Stats = {
                 DEF = 2,
                 DarkResistance = 1,
-                LeathercraftSkill = 1,
             }
         },
         TantraGloves = {
