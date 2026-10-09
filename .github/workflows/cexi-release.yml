@@ -1,10 +1,8 @@
 name: CEXI release ZIP
 
+# Manual only: the CEXI ZIP is built when Henrik releases it, never on PRs or pushes.
 on:
   workflow_dispatch:
-  pull_request:
-  push:
-    branches: [main]
 
 permissions:
   contents: read
