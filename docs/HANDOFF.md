@@ -78,6 +78,14 @@ maintainer IMO, I am just the one with the creative vision."*
     host takes the selection by rebuilding the tab bar instead of asking for it. Read the
     guide before writing the row, not after.
 
+12. **Shipping anything to AscensionXI players**:
+    [reference/ascensionxi-release-routine.md](reference/ascensionxi-release-routine.md).
+    Merging into dlac main ships nothing. AXI's launcher installs the dlac commit pinned
+    in AXI `client/addons/catalog.json`, and the pin is baked into each DAT channel image.
+    A merged pin PR lands on **staging** automatically; **prod** only changes when a human
+    promotes that staging channel tag. Server-coupled data (catalog refreshes) must reach
+    prod in the same deploy as its server change.
+
 There is also a cross-session memory dir (Claude-specific) at
 `~\.claude\projects\C--catseyexi-catseyexi-client-Ashita-addons-dlac\memory\` — it
 holds working-preference notes; the repo docs are the durable record.
