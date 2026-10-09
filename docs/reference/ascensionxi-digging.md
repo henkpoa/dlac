@@ -55,13 +55,20 @@ dig mover:
 3. Moves whole slots only, one 0x029 at a time, each confirmed before the
    next: a **full stack**, or an item whose stack size is 1, as soon as the
    inventory has been quiet for 0.3 s and no dig is in flight; any other
-   stack wholly made of dug units once digging pauses for six seconds. The
-   Mog Case first, then the Satchel; a stack of the same item with room
-   first, else a free slot (0x52).
+   stack wholly made of dug units once digging pauses for six seconds. A
+   stack of the same item with room in either selected bag first (Case, then
+   Satchel), else a free slot (0x52), Case first. The server never merges a
+   free-slot move into a stack, so this is what keeps the bags from filling
+   one slot per move.
 4. Never counts Gysahl Greens (`M.KEEP`): some zones dig them up, and the
    next dig needs them in the inventory.
 5. Stops on an unconfirmed move (five seconds) and resumes when a switch is
-   touched; zoning, or both switches off, forgets the counts.
+   touched; both switches off forgets the counts. A zone line keeps the
+   counts, drops the move in flight (counted as done, so carried stock never
+   takes its place) and holds moves for five seconds (`ZONE_S`).
+
+The server sends ITEM_SAME after every item it adds, so one dig carries up to
+four of them; our 0x02F comes last and is what ends the dig.
 
 The server's inventory sort (0x03A) only merges partial stacks of one item, so
 a full stack's slot cannot change under a move. The mover arms only where the

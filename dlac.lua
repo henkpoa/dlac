@@ -18,7 +18,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.10.09a';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.10.09b';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
                                 -- (03f = engine v163: the contest explains its own plan;
                                 --  03g = one floating tray: Teleports + the E-Box crates;
@@ -320,7 +320,11 @@ addon.version = '2026.10.09a';  -- date of the last shipped change (Ashita print
                                 --  Gear Vault layouts from the UI;
                                 --  10.09a = AscensionXI catalog: the four guild
                                 --  crafting headpieces replace the old guild
-                                --  gloves/Caduceus bonuses, keeping Artisan at +10)
+                                --  gloves/Caduceus bonuses, keeping Artisan at +10;
+                                --  10.09b = HELM storage counts every find of a
+                                --  multi-roll swing, moves top up a stack in
+                                --  either bag first, and a zone line keeps the
+                                --  dig/HELM counts)
 addon.desc    = 'Gear sets, triggers and live stats with level scaling -- dlac equips your gear itself.';
 
 -- Load BEACON ('/dl check' field round, 2026-07-23): written by PLAIN io at
