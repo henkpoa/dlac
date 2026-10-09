@@ -4,6 +4,30 @@ A log of AscensionXI catalog refreshes, newest first. To get one from DLAC main 
 
 ---
 
+# AscensionXI catalog refresh, October 9, 2026
+
+DLAC `2026.10.09a` regenerates the complete pack from AscensionXI main
+`b311f830b3` (AXI #834). The four guild crafting headpieces are added with
+their icons: Carpenter's Cap (26576), Smithy's Goggles (26577), Tanner's
+Bandana (26578) and Alchemist's Goggles (26579). Each is a level-1 Head piece
+with DEF 1 and +1 to its craft. Carpenter's Gloves, Smithy's Mitts, Tanner's
+Gloves and Caduceus lose their +1 craft skill. Those pieces sat outside the
+Head slot, so they could stack with Artisan's Hat past the intended +10. The
+refresh also picks up Almogavar Bow +1 (19997) and Faerie Tunic +1 (26575),
+which were already live on the server. Totals: 15,466 equipment records, all
+named from tracked client DATs, and 71 icon overrides.
+
+A fresh `gen_pack.py` run from that commit is byte-identical to the
+committed pack. Generator tests (37), AscensionXI pack lint, the core and UI
+suites, and `tests/ascensionxi_guild_headgear.lua` all pass. That last test
+checks +10 for all eight crafts with the full set. The server half (items,
+guild menus, free exchanges, the Artisan recipe) shipped in AXI #834. The
+DLAC pin follows in an AXI PR
+([ascensionxi-release-routine.md](ascensionxi-release-routine.md)). Prod must
+promote that pin's channel together with #834's server image.
+
+---
+
 # AscensionXI catalog refresh, October 4, 2026
 
 DLAC `2026.10.04b` regenerates the complete pack from AscensionXI main
