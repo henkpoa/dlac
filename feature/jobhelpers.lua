@@ -815,8 +815,18 @@ function M.load(deps)
     -- name under two job folders is a collision -- the first (job-sorted) wins
     -- and the second is refused loudly, exactly like any other bad module.
     local names, jobOf = {}, {};
+    local gate = nil;
+    pcall(function() gate = require('dlac\\lib\\featuregate'); end);
     for _, c in ipairs(M._listModules()) do
-        if jobOf[c.id] ~= nil then
+        local approved = true;
+        if type(gate) == 'table' and type(gate.jobHelperEnabled) == 'function' then
+            local okGate, result = pcall(gate.jobHelperEnabled, c.id);
+            approved = okGate and result == true;
+        end
+        if not approved then
+            -- Pack allowlists are approval boundaries, not per-character
+            -- settings. Omit unapproved modules before requiring their code.
+        elseif jobOf[c.id] ~= nil then
             fail(ledger, emit, c.job .. '\\' .. c.id,
                  string.format('duplicate module name (already loaded from %s\\)', jobOf[c.id]));
         else

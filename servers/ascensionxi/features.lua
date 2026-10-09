@@ -14,11 +14,12 @@
     fed by the pack's digging module.
     October 5: AutoAcc (its Gear Helpers row and readout), fed by the pack's
     telemetry module. Turn it off here if its field round finds a fault.
+    October 8: DNC Status is the only Job helper approved for AscensionXI.
 ]]--
 return {
     tabs = {
         gearhelpers = true,
-        jobhelpers  = false,
+        jobhelpers  = true,
     },
     menu = {
         lockstyle = true,
@@ -30,4 +31,5 @@ return {
     },
     -- Also controls the shared hobby bar. Add helpers as they are enabled.
     helpers = { helm = true, choco = true, autoacc = true },
+    jobhelpers = { ['dnc-status'] = true },
 };

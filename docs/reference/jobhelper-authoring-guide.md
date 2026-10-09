@@ -192,10 +192,12 @@ Anything else on the table is ignored by the loader and is yours to use.
 value is **2**. Not "at least", not "compatible with" — equal. A mismatch is a **loud refusal**:
 your module does not load, one chat line says so, and `/dl check` lists it among the load failures.
 
-That is the entire version gate. There are no capability tiers, no allowlist and no sandbox
-(ADR 0028: "visibility and contracts, not walls"). It exists so that a module built for a
-different dlac fails **visibly** after an update instead of misbehaving quietly. When the number
-moves, read this guide again and bump yours deliberately.
+That is the entire version gate. There are no capability tiers or sandbox (ADR 0028: "visibility
+and contracts, not walls"). A server pack may also allowlist module folder names; when it does,
+only listed helpers load on that server. The allowlist chooses modules, not what a loaded module
+may call. The API version exists so that a module built for a different dlac fails **visibly**
+after an update instead of misbehaving quietly. When the number moves, read this guide again and
+bump yours deliberately.
 
 The version now lives with the **module API** rather than with the loader, because what a module
 actually depends on is the service surface — `api = 1`'s gate could only say "your table has the
@@ -545,6 +547,7 @@ a plain table from a factory, built once per module at load.
 -- identity + plumbing (§6.1)
 S.id  S.job  S.api  S.label  S.jobs
 S.sibling('reward')          -- one of YOUR files, by bare name
+S.server.service(name)       -- an active server-pack service, or nil
 S.now()                      -- the one monotonic clock
 S.say.good/warn/err(line)    -- the only route to chat
 S.cfg                        -- your settings store (§5), or nil if you declared none
@@ -599,6 +602,10 @@ throws into your module. Every one of them also has a documented direction for "
 and the direction is always the safe one — see each section.
 
 ### 6.1 Identity and plumbing
+
+`S.server.service(name)` asks the selected server pack for a live service. It returns `nil` when
+the pack or service is unavailable. Server-specific answers belong behind this seam rather than
+being inferred from chat text or client-side effects.
 
 ```lua
 S.id       -- 'bst-helper'   the folder name; the loader's answer, not yours to declare
