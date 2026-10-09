@@ -17,8 +17,9 @@ an embedded `RELEASE.json` with the source commit and every payload file's hash.
 Fixed entry order and timestamps make repeated builds reproducible with the same
 builder, source revision and compression runtime.
 
-The **CEXI release ZIP** GitHub Actions workflow tests and builds on pull requests,
-main pushes, and manual dispatch. Its artifact contains the distributable ZIP and
+The **CEXI release ZIP** GitHub Actions workflow runs only by manual dispatch
+(Actions → CEXI release ZIP → Run workflow), when a CEXI release is wanted; pull
+requests and main pushes do not trigger it. Its artifact contains the distributable ZIP and
 checksum. It does not create or publish a GitHub Release. For public distribution,
 attach the verified ZIP to a release; GitHub's automatic source archive is **not**
 the CEXI package.
