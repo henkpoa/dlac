@@ -1,3 +1,9 @@
+A log of AscensionXI catalog refreshes, newest first. To get one from DLAC main to players
+(AXI pin PR, staging channel, prod promotion), follow
+[ascensionxi-release-routine.md](ascensionxi-release-routine.md).
+
+---
+
 # AscensionXI catalog refresh, October 9, 2026
 
 DLAC `2026.10.09a` regenerates the complete pack from AscensionXI main
