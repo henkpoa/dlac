@@ -114,6 +114,10 @@ Second run: 67 mutants, 65 killed, 2 accepted as equivalent (D02, H01; the
 reasons are in the tool), 0 open. Run it against a server checkout nobody is
 mutating: `ascensionxi_digging.lua`'s server half reads the live Lua files.
 
+October 9 (2026.10.09b): D18, D19 and D23 follow the mover's new code, and D25
+(the zone hold), D26 (a move lost to a zone line) and D27 (a stack with room
+in either bag first) were added. `D17 D18 D19 D23 D24 D25 D26 D27`: 8 killed.
+
 ## Client checks
 
 Done October 4: the owner played the server handoff's "Client acceptance"
