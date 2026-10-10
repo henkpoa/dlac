@@ -321,6 +321,9 @@ addon.version = '2026.10.09c';  -- date of the last shipped change (Ashita print
                                 --  10.09a = AscensionXI catalog: the four guild
                                 --  crafting headpieces replace the old guild
                                 --  gloves/Caduceus bonuses, keeping Artisan at +10;
+                                --  10.09b = the Nexus link answers previews: the
+                                --  pieces the lock would wear for a recipe and how
+                                --  they change the worn numbers, for Nexus's odds;
                                 --  10.09c = the Anchor Ring joins the Teleports
                                 --  menu's Exp rings, usable from there or with
                                 --  /dl xp anchor)
