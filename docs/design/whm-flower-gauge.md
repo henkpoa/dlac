@@ -3,7 +3,7 @@
 **Status, 2026-10-10:** prototype, seen in game. The dlac half is complete and tested
 headless (`tests/ascensionxi_whmgauge.lua`), and the owner saw it on the local shard on
 10-10. The server half is on AXI draft PR #873 (branch `claude/whm-flower-gauge`,
-`modules/custom/lua/whm_flowers.lua`). It has 43 xi_test cases, two mutation sweeps, and
+`modules/custom/lua/whm_flowers.lua`). It has 44 xi_test cases, three mutation sweeps, and
 the three job abilities that spend flowers: Bloom, Harvest and Nightshade. It is not in the
 game until AXI merges and deploys it. The design record and the owner's open questions are
 in the AXI repo: `documentation/custom/whm-flower-gauge.md`.
@@ -19,15 +19,15 @@ AscensionXI gives White Mage one resource per Afflatus stance. FFXIV's Lily Gaug
 visual reference. dlac draws it **passively**: no tab and no Job helper row. The gauge
 appears by itself while the main job is WHM and a stance is up, and hides otherwise.
 
-- **Afflatus Solace.** Your Regens charge the gauge with the HP they really heal; only base
-  healing counts. A flower is one unbonused Regen's whole healing: 125, 240 or 400 HP for
-  Regen I, II or III. The big golden bloom on the right is Divine Seal: lit while ready, a
+- **Afflatus Solace.** Your Regens charge the gauge with the HP they really heal, bonuses
+  included, so a bloomed or sealed Regen fills it faster (owner, 10-10 evening). A flower
+  costs one unbonused Regen's whole healing: 125, 240 or 400 HP for Regen I, II or III. The big golden bloom on the right is Divine Seal: lit while ready, a
   clock sweep while recasting, bright and turning while it's up.
 - **Afflatus Misery.** Melee rounds that land on a Judged monster (Banish marks it) charge
   the gauge with one hit's base TP; a flower is 500 (1000 until the owner's 10-10 ruling,
   "it was very slow"). The threshold rides every STATE, so dlac needed no change. A magic
-  burst with Banish makes a
-  flower at once. The glyph on the right is Banish's element: a sun, or a moon once the
+  burst with Banish is damage only and charges nothing (owner, 10-10 evening). The glyph on
+  the right is Banish's element: a sun, or a moon once the
   Banish has been turned dark.
 - **Flower size.** Three slots, as in FFXIV. A flower's size is its tier:
   - Regen/Banish I: a small glimmer (5 petals)
