@@ -1,11 +1,12 @@
 # White Mage flower gauge (AscensionXI)
 
-**Status, 2026-10-10:** prototype. The dlac half is complete and tested headless
-(`tests/ascensionxi_whmgauge.lua`). The server half is a **local probe** on AXI branch
-`claude/whm-flower-gauge` (`modules/custom/lua/whm_flowers.lua`), with 27 xi_test cases
-green and a mutation sweep. It is not in the game until AXI merges and deploys it. The design
-record and the owner's open questions are in the AXI repo:
-`documentation/custom/whm-flower-gauge.md`.
+**Status, 2026-10-10:** prototype, seen in game. The dlac half is complete and tested
+headless (`tests/ascensionxi_whmgauge.lua`), and the owner saw it on the local shard on
+10-10. The server half is on AXI draft PR #873 (branch `claude/whm-flower-gauge`,
+`modules/custom/lua/whm_flowers.lua`). It has 43 xi_test cases, two mutation sweeps, and
+the three job abilities that spend flowers: Bloom, Harvest and Nightshade. It is not in the
+game until AXI merges and deploys it. The design record and the owner's open questions are
+in the AXI repo: `documentation/custom/whm-flower-gauge.md`.
 
 ## What it is
 
@@ -23,7 +24,9 @@ appears by itself while the main job is WHM and a stance is up, and hides otherw
   Regen I, II or III. The big golden bloom on the right is Divine Seal: lit while ready, a
   clock sweep while recasting, bright and turning while it's up.
 - **Afflatus Misery.** Melee rounds that land on a Judged monster (Banish marks it) charge
-  the gauge with one hit's base TP; a flower is 1000. A magic burst with Banish makes a
+  the gauge with one hit's base TP; a flower is 500 (1000 until the owner's 10-10 ruling,
+  "it was very slow"). The threshold rides every STATE, so dlac needed no change. A magic
+  burst with Banish makes a
   flower at once. The glyph on the right is Banish's element: a sun, or a moon once the
   Banish has been turned dark.
 - **Flower size.** Three slots, as in FFXIV. A flower's size is its tier:
@@ -91,15 +94,22 @@ losing the stance (zoning, death, Dispel) keeps the flowers.
 
 The position is remembered once a drag settles.
 
-## Field checks owed
+## Field checks
 
-These need the AXI probe running on the local shard:
+Round 1 (10-10 morning): the gauge never drew, because `init.lua` read a global `imgui`.
+Fixed in 2026.10.10b. Round 2: "looks good", but the x2.5 label clipped in the game font.
+Fixed in 2026.10.10c by measuring with `CalcTextSize`. Regen "doing nothing" was full HP:
+only real healing counts (owner ruling).
 
-1. The gauge appears on Afflatus Solace, fills from Regen ticks, and lights a flower.
+Still owed, with the AXI branch running on the local shard:
+
+1. The gauge fills from Regen ticks on a hurt target and lights a flower.
 2. The Divine Seal bloom and its recast sweep.
 3. A switch to Misery empties it.
-4. Banish Judgement plus melee fills the Misery gauge.
-5. The art reads well at scale 1 and 1.5.
-6. Scroll Lock hides it with the game HUD.
+4. Banish Judgement plus melee fills the Misery gauge, now twice as fast.
+5. Bloom, Harvest and Nightshade change it within a quarter second: a flower spent, the x
+   label, the sun turning to a moon.
+6. The art reads well at scale 1 and 1.5.
+7. Scroll Lock hides it with the game HUD.
 
 Stub-imgui tests can't catch width or printf problems. A screenshot is the test for those.

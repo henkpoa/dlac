@@ -28,10 +28,10 @@ local function solace(e)
 end
 
 local function misery(e)
-    local st = { stance = 2, tier = 3, flowers = { 0, 0, 0 }, flags = 0, boost = 0, threshold = 1000 };
+    local st = { stance = 2, tier = 3, flowers = { 0, 0, 0 }, flags = 0, boost = 0, threshold = 500 };
     local made = math.min(2, math.floor(e / 5));
     for i = 1, made do st.flowers[i] = 3; end
-    st.charge = (made < 2) and math.floor(1000 * ((e % 5) / 5)) or math.floor(1000 * math.min(0.6, (e - 10) / 6));
+    st.charge = (made < 2) and math.floor(500 * ((e % 5) / 5)) or math.floor(500 * math.min(0.6, (e - 10) / 6));
     if e >= 8 then st.flags = st.flags + 0x01; end            -- Banish converted to dark
     if e >= 14 then st.flowers[3] = 3; st.charge = 0; end    -- a magic burst: a flower at once
     if e >= 16 then st.flags = st.flags + 0x04; end           -- capped: the charge waits

@@ -173,7 +173,7 @@ time = time + 1;
 check(gauge.view().burst[1] == nil, 'the burst fades');
 push({ stance = 1, tier = 3, flowers = { 0, 0, 0 }, flags = 0, boost = 0, charge = 0, threshold = 280, rev = 9 });
 check(gauge.view().flowers[1] == 3, 'an older rev is ignored');
-push({ stance = 2, tier = 2, flowers = { 2, 0, 0 }, flags = 1, boost = 0, charge = 500, threshold = 1000, rev = 12 });
+push({ stance = 2, tier = 2, flowers = { 2, 0, 0 }, flags = 1, boost = 0, charge = 250, threshold = 500, rev = 12 });
 check(not gauge.view().synced, 'the server moving to Misery while the client sees Solace: not trusted');
 player.buffs = { [418] = true };
 v = gauge.view();

@@ -359,7 +359,7 @@ function M.tooltip(v, extra)
     end
     local unit = solace and 'HP healed by your Regens' or 'TP from your hits on Judged monsters';
     if v.capped then
-        lines[#lines + 1] = 'Three flowers held. Spend one to keep charging.';
+        lines[#lines + 1] = 'Three flowers held. Use Bloom or Harvest to keep charging.';
     else
         lines[#lines + 1] = string.format('Charge: %d / %d %s', v.charge, v.threshold, unit);
     end
