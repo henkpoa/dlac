@@ -338,6 +338,25 @@ end
 check(L.bar[3] < L.side[1] - 25, 'the bar stops before the bloom');
 check(L.side[1] + 27 <= draw.W and L.side[2] + 27 <= draw.H, 'the bloom glow stays inside the box');
 
+-- Text never hangs below the panel, whatever the font (field round 2: the
+-- x2.5 label was clipped by the window edge with the game's taller font).
+for _, scale in ipairs({ 0.6, 1, 1.5, 3 }) do
+    for _, fontH in ipairs({ 13, 16, 20 }) do
+        local texts = {};
+        local dl = setmetatable({ AddText = function(_, p, col, txt) texts[#texts + 1] = { p[2], txt }; end },
+            { __index = function() return function() end; end });
+        local measure = function(t) return #t * fontH * 0.5, fontH; end
+        local x0, y0 = 0, 0;
+        local _, h = draw.size(scale);
+        draw.panel(dl, u32, x0, y0, scale, viewOf({ boosting = true, boost = 3 }), measure);
+        draw.panel(dl, u32, x0, y0, scale, viewOf({ synced = false, live = true }), measure);
+        check(#texts == 2, 'both labels drawn');
+        for _, t in ipairs(texts) do
+            check(t[1] + fontH <= h + 0.001, string.format('%s inside the panel at scale %.1f, font %d', t[2], scale, fontH));
+        end
+    end
+end
+
 -- ---------------------------------------------------------------------------
 -- demo
 -- ---------------------------------------------------------------------------

@@ -110,6 +110,18 @@ gauge._shown = function() return cfg.shown; end;
 -- ---------------------------------------------------------------------------
 local function esc(s) return (tostring(s):gsub('%%', '%%%%')); end
 
+-- Text size in the game font; the binding answers numbers or a vector.
+local function measure(text)
+    local w, h = #tostring(text) * 7, 14;
+    pcall(function()
+        local a, b = imgui.CalcTextSize(text);
+        if type(a) == 'table' then a, b = a[1] or a.x, a[2] or a.y; end
+        if type(a) == 'number' and a > 0 then w = a; end
+        if type(b) == 'number' and b > 0 then h = b; end
+    end);
+    return w, h;
+end
+
 local function flag(name) return rawget(_G, name) or 0; end
 
 local _open = { true };
@@ -143,7 +155,7 @@ local function render()
         imgui.Dummy({ w, h });
         local hovered = imgui.IsItemHovered();
         local ok, err = pcall(function()
-            draw.panel(imgui.GetWindowDrawList(), imgui.GetColorU32, x, y, s, v);
+            draw.panel(imgui.GetWindowDrawList(), imgui.GetColorU32, x, y, s, v, measure);
         end);
         if not ok then pcall(imgui.TextColored, { 1, 0.4, 0.4, 1 }, esc('gauge: ' .. tostring(err))); end
         if hovered then

@@ -277,8 +277,15 @@ local function banishGlyph(P, x, y, s, dark, t)
     P.circle(x, y, 8 * s, rgba({ 1.0, 0.92, 0.62 }, 1), 24);
 end
 
--- One whole gauge. `u32` turns {r,g,b,a} into the draw list's colour.
-function M.panel(dl, u32, x0, y0, s, v)
+-- Text size when no measure is handed in: about the game font's.
+local function guessSize(text) return #tostring(text) * 7, 14; end
+
+-- One whole gauge. `u32` turns {r,g,b,a} into the draw list's colour;
+-- `measure(text) -> w, h` sizes text in the real font (imgui.CalcTextSize),
+-- because the font does not scale with the gauge: labels are placed from
+-- the panel's bottom edge up, so they can never hang outside it.
+function M.panel(dl, u32, x0, y0, s, v, measure)
+    measure = measure or guessSize
     local P = painter(dl, u32);
     local pal = M.PALETTE[v.stance] or M.PALETTE[1];
     local w, h = M.size(s);
@@ -313,7 +320,9 @@ function M.panel(dl, u32, x0, y0, s, v)
     local p = v.capped and 1 or v.progress;
     if p > 0 then P.rect(bx1, by1, bx1 + (bx2 - bx1) * p, by2, rgba(fillCol, 0.95), 3 * s); end
     if not v.synced then
-        P.text(bx1, by2 + 2 * s, rgba(GREY, 0.9), v.live and 'syncing' or 'no server data');
+        local msg = v.live and 'syncing' or 'no server data';
+        local _, th = measure(msg);
+        P.text(bx1, math.min(by2 + 2 * s, y0 + h - th - 2 * s), rgba(GREY, 0.9), msg);
     end
 
     local sx, sy = x0 + L.side[1] * s, y0 + L.side[2] * s;
@@ -324,7 +333,8 @@ function M.panel(dl, u32, x0, y0, s, v)
     end
     if v.boosting and (v.boost or 0) > 0 then
         local label = ({ 'x1.5', 'x2', 'x2.5' })[v.boost] or '';
-        P.text(sx - 9 * s, y0 + h - 13 * s, rgba(pal.glow, 1), label);
+        local tw, th = measure(label);
+        P.text(sx - tw / 2, y0 + h - th - 3 * s, rgba(pal.glow, 1), label);
     end
 end
 
