@@ -22,6 +22,14 @@
     gauge.lua, wire.lua and draw.lua.
 ]]--
 
+-- imgui is a module, never a global: every dlac file takes its own handle
+-- (the gauge's first field round drew nothing because this read a global).
+local function try(name)
+    local ok, m = pcall(require, name);
+    return (ok and type(m) == 'table') and m or nil;
+end
+local imgui = try('imgui');
+
 local base = 'dlac\\servers\\ascensionxi\\modules\\whmgauge\\';
 local wire  = require(base .. 'wire');
 local gauge = require(base .. 'gauge');
@@ -255,4 +263,5 @@ end
 
 return {
     pump = function() gauge.pump(); end,
+    _render = render,   -- the suite drives the window through a stub imgui
 };

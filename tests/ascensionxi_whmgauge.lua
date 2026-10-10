@@ -23,6 +23,26 @@ check(mounted, 'the AscensionXI pack mounts the whmgauge module');
 
 local handlers = {};
 ashita = { events = { register = function(kind, name, callback) handlers[name] = { kind = kind, fn = callback }; end } };
+
+-- A stub imgui, loaded the way every dlac file loads it (require, never a
+-- global): the first field round drew nothing because init.lua read a global.
+local ui = { begins = 0, draws = 0, dummy = nil };
+local stubDl = setmetatable({}, { __index = function() return function() ui.draws = ui.draws + 1; end; end });
+package.loaded['imgui'] = {
+    SetNextWindowPos = function() end,
+    PushStyleVar = function() end,
+    PopStyleVar = function() end,
+    Begin = function(name) ui.begins = ui.begins + 1; ui.name = name; return true; end,
+    End = function() end,
+    GetCursorScreenPos = function() return 100, 200; end,
+    Dummy = function(size) ui.dummy = size; end,
+    IsItemHovered = function() return false; end,
+    GetWindowDrawList = function() return stubDl; end,
+    GetColorU32 = function() return 0xFFFFFFFF; end,
+    SetTooltip = function() end,
+    TextColored = function() end,
+    GetWindowPos = function() return 100, 200; end,
+};
 local mod   = require('dlac\\servers\\ascensionxi\\modules\\whmgauge\\init');
 local gauge = require('dlac\\servers\\ascensionxi\\modules\\whmgauge\\gauge');
 local wire  = require('dlac\\servers\\ascensionxi\\modules\\whmgauge\\wire');
@@ -226,6 +246,28 @@ reply(last[6], 1, nil);
 check(gauge.debugState().dormant, 'BAD_OP: this server has no gauge');
 zoneIn(); time = time + 10; mod.pump();
 check(sent == 9, 'and nothing more is asked');
+
+-- ---------------------------------------------------------------------------
+-- the window (init.lua's render, through the stub imgui)
+-- ---------------------------------------------------------------------------
+gauge.reset();
+shown = true;
+player = { job = 3, level = 75, buffs = {} };
+ui.begins, ui.draws = 0, 0;
+mod._render();
+check(ui.begins == 0, 'no stance: no window');
+player.buffs = { [417] = true };
+mod._render();
+check(ui.begins == 1 and ui.name == '##dlac_whmgauge', 'Afflatus Solace opens the gauge window');
+check(ui.draws > 20, 'and paints the gauge (' .. ui.draws .. ' draw calls)');
+check(type(ui.dummy) == 'table' and ui.dummy[1] == draw.W and ui.dummy[2] == draw.H, 'reserving the panel at scale 1');
+player.buffs = { [418] = true };
+mod._render();
+check(ui.begins == 2, 'Afflatus Misery opens it too');
+player.job = 1;
+mod._render();
+check(ui.begins == 2, 'not on another job');
+player.job, player.buffs = 3, {};
 
 -- ---------------------------------------------------------------------------
 -- draw
