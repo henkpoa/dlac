@@ -118,6 +118,8 @@ end
 
 -- Job helpers are individually approved modules. A pack can expose only the
 -- modules it has approved; an absent allowlist preserves the existing roster.
+-- feature\jobhelpers asks before it loads a folder and lists the ones left
+-- out under /dl jh, so a dropped-in helper never disappears silently.
 function M.jobHelperEnabled(id)
     local feats = packFeatures();
     local approved = type(feats) == 'table' and feats.jobhelpers or nil;

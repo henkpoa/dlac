@@ -14,7 +14,9 @@
     fed by the pack's digging module.
     October 5: AutoAcc (its Gear Helpers row and readout), fed by the pack's
     telemetry module. Turn it off here if its field round finds a fault.
-    October 8: DNC Status is the only Job helper approved for AscensionXI.
+    October 10: the Job Helpers tab, with DNC Status as its only helper (fed
+    by the pack's dncstatus module). The `jobhelpers` list names the helper
+    folders this server loads; /dl jh names the ones it leaves out.
 ]]--
 return {
     tabs = {

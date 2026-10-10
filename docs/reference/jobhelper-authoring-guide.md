@@ -174,6 +174,7 @@ return {
     api    = 2,                        -- REQUIRED. must equal the running dlac's API
     label  = 'BST Helper',             -- REQUIRED. the one string players see
     jobs   = { 'BST' },                -- REQUIRED. declared MAIN jobs, non-empty
+    servers = { 'ascensionxi' },       -- optional. the server packs you are built for (§2.3b)
     config = { keys = {}, defaults = {} },  -- optional. what you store (§5)
     commands = { summon = { run = function(S) end } },  -- optional. named actions (§2.7)
     init   = function(S) end,          -- optional. arm standing behaviors, once, at load
@@ -193,11 +194,13 @@ value is **2**. Not "at least", not "compatible with" — equal. A mismatch is a
 your module does not load, one chat line says so, and `/dl check` lists it among the load failures.
 
 That is the entire version gate. There are no capability tiers or sandbox (ADR 0028: "visibility
-and contracts, not walls"). A server pack may also allowlist module folder names; when it does,
-only listed helpers load on that server. The allowlist chooses modules, not what a loaded module
-may call. The API version exists so that a module built for a different dlac fails **visibly**
-after an update instead of misbehaving quietly. When the number moves, read this guide again and
-bump yours deliberately.
+and contracts, not walls"). A server pack may also list the module folders it shows
+(`servers\<id>\features.lua`, `jobhelpers = { ['dnc-status'] = true }`, the same default-surface
+role its `helpers` list plays for Gear Helpers); when it does, only listed helpers load on that
+server, and `/dl jh` names every folder it left out. The list chooses modules, not what a loaded
+module may call. The API version exists so that a module built for a different dlac fails
+**visibly** after an update instead of misbehaving quietly. When the number moves, read this guide
+again and bump yours deliberately.
 
 The version now lives with the **module API** rather than with the loader, because what a module
 actually depends on is the service surface — `api = 1`'s gate could only say "your table has the
@@ -228,6 +231,20 @@ switch state.
 main job's helpers and — for helpers whose *Sub job* switch is on (Panel header, default **on**)
 — the current sub job's too. That switch gates **menu visibility only**; the activity predicate
 stays main-job, matching the approved envelope. Declare nothing for it.
+
+### 2.3b `servers` — the server packs you are built for
+
+Optional (added 2026-10-10; the first consumer is DNC Status). A non-empty array of server pack ids
+(`'ascensionxi'`, `'cexi'`). Declare it when your module reads something only one server sends —
+DNC Status reads AscensionXI's `dncStatus` service through `S.server.service` (§6.1), which no
+other server has. On any other server, and when no server is chosen, the module is **skipped
+quietly**: it is not loaded, its `init` never runs, nothing is said in chat, and `/dl jh` lists it
+under "Not loaded on this server". That is not a refusal — a module for another server is not
+broken. A malformed list (not an array, or an entry that is not a string) **is** refused loudly,
+like any other bad contract.
+
+Omit it and the module loads everywhere, which is right for anything that reads only what every
+client sees.
 
 ### 2.4 `init(S)` — arm your standing behaviors
 
@@ -605,7 +622,9 @@ and the direction is always the safe one — see each section.
 
 `S.server.service(name)` asks the selected server pack for a live service. It returns `nil` when
 the pack or service is unavailable. Server-specific answers belong behind this seam rather than
-being inferred from chat text or client-side effects.
+being inferred from chat text or client-side effects. Look the service up when you need it, not
+once in `init`: a pack module may mount after your `init` runs. A module that only works with
+one server's service should also declare `servers` (§2.3b).
 
 ```lua
 S.id       -- 'bst-helper'   the folder name; the loader's answer, not yours to declare
