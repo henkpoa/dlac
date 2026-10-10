@@ -1,10 +1,11 @@
 # Dancer status (AscensionXI)
 
 **Status, 2026-10-10:** built and tested headless (`tests/ascensionxi_dncstatus.lua`); not yet
-seen in game. The server half is an AscensionXI draft PR (branch `claude/dnc-status`,
-`modules/custom/lua/dnc_status.lua`), whose design record is
-`documentation/custom/dnc-status.md` in that repo. The window is empty in game until that PR
-deploys: dlac draws nothing until the server has sent a state.
+seen in game. The server half is AscensionXI draft PR #876 (branch `claude/dnc-status`,
+`modules/custom/lua/dnc_status.lua`, 25 xi_test cases), whose design record is
+`documentation/custom/dnc-status.md` in that repo. The two codecs agree on the shared vector and
+on 2,000 random frames. The window is empty in game until that PR deploys: dlac draws nothing
+until the server has sent a state.
 
 ## What it is
 
@@ -59,7 +60,8 @@ tap reads only its own slot. `wire.lua`'s header has the byte layout. In short, 
 carries:
 
 - the Perpetual Step power (four bits per Step);
-- the battle target's entity index (0 when not engaged to a live monster);
+- the battle target's entity index as the client knows it (0 when not engaged to a live
+  monster; an echo monster's index is translated the way combat telemetry does it);
 - each Step's Daze level on it, and the seconds left;
 - the three Unbroken Rhythm prices;
 - the base level and the levels each stack adds;
@@ -88,6 +90,9 @@ what it alone knows.
   - a Daze's end moving by 2 s or more (a new Step);
   - the prices or caps.
   The client counts the seconds down itself, so a fight with no new Steps pushes nothing.
+  Measured in the server suite: 30 s idle with two Dazes counting down, 0 pushes; a Quickstep
+  every 5 s for 30 s, 6 pushes (one per Step); a Dancer who never subscribed, 0 pushes and no
+  work at all. A frame is 36 bytes.
 - **Unknown or old servers cost almost nothing.**
   - `BAD_OP` or `UNAVAILABLE`: silent for the session.
   - `BUSY`: retry after 2 s.
