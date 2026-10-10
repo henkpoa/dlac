@@ -10782,6 +10782,17 @@ is 132 mutants, 129 killed, the same 3 accepted equivalents, none open. Record a
 owed Gear Vault field round: [design/gear-vault-live-sync.md](design/gear-vault-live-sync.md),
 "Fair turns on the shared gate".
 
+## 2026-10-09: Nexus odds preview (AscensionXI, `2026.10.09b`)
+
+Henrik asked for Nexus to show the HQ chance of a craft "with current or
+anticipated gear that it will equip". dlac picks that gear, so the Nexus link
+gained `op=preview`: the same pick `next` makes, answered at once as the change
+from what is worn (craft skill, HQ block, Synth HQ, success) and the pieces it
+would put on. It never equips or touches the lock. The server reports the
+numbers you have now; Nexus adds this change and does the arithmetic. Tests
+NL14-NL23 (`tests/nexuscraft.lua`, 147); 22 deliberate breaks all caught.
+Design: `docs/design/nexus-craft-gear.md`, "Preview for Nexus's odds".
+
 ## 2026-10-05: AutoAcc on AscensionXI (combat telemetry)
 
 Henrik: *"This is a HUUUUUUGE feature on this server ... Performance IS KEY, we
