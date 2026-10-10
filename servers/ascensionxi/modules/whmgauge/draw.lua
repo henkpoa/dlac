@@ -26,7 +26,7 @@ local M = {};
 local PI = math.pi;
 
 -- Base layout at scale 1. Slots are 40 px apart; the side element sits right.
-M.W, M.H = 196, 78;
+M.W, M.H = 196, 70;
 local PAD, SLOT_X0, SLOT_DX, SLOT_Y, BAR_Y, BAR_H = 8, 30, 40, 28, 54, 5;
 local SIDE_X, SIDE_Y = 160, 30;
 
@@ -77,7 +77,7 @@ function M.petalPoints(cx, cy, angle, len, width, n)
     for k = 0, n do
         local s = k / n;
         local u = base + (len - base) * s;
-        local v = (width / 2) * (math.max(0, math.sin(PI * s)) ^ 0.75) * (1 - 0.30 * s);
+        local v = (width / 2) * (math.max(0, math.sin(PI * s)) ^ 0.55) * (1 - 0.22 * s);
         right[#right + 1] = { cx + u * ca - v * sa, cy + u * sa + v * ca };
         left[#left + 1]   = { cx + u * ca + v * sa, cy + u * sa - v * ca };
     end
@@ -324,7 +324,7 @@ function M.panel(dl, u32, x0, y0, s, v)
     end
     if v.boosting and (v.boost or 0) > 0 then
         local label = ({ 'x1.5', 'x2', 'x2.5' })[v.boost] or '';
-        P.text(sx - 9 * s, y0 + h - 15 * s, rgba(pal.glow, 1), label);
+        P.text(sx - 9 * s, y0 + h - 13 * s, rgba(pal.glow, 1), label);
     end
 end
 

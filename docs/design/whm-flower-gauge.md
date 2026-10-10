@@ -9,6 +9,11 @@ record and the owner's open questions are in the AXI repo:
 
 ## What it is
 
+![The gauge in eight states](../img/whm-flower-gauge-preview.png)
+
+*Offline render of `draw.panel`'s actual draw-list calls at scale 1.5: recorded in Lua,
+painted with PIL. The in-game anti-aliasing differs slightly.*
+
 AscensionXI gives White Mage one resource per Afflatus stance. FFXIV's Lily Gauge is the
 visual reference. dlac draws it **passively**: no tab and no Job helper row. The gauge
 appears by itself while the main job is WHM and a stance is up, and hides otherwise.
