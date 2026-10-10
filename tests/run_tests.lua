@@ -257,7 +257,8 @@ end)();
     -- inside dlac, so they join the ratchet too -- entries are folder-relative
     -- module paths under jobhelpers\<job>\<module>\, no extension.
     local JOBHELP = { 'bst/bst-helper/init', 'bst/bst-helper/fight',
-                      'bst/bst-helper/reward', 'bst/bst-helper/resummon', 'bst/bst-helper/jugs' };
+                      'bst/bst-helper/reward', 'bst/bst-helper/resummon', 'bst/bst-helper/jugs',
+                      'dnc/dnc-status/init' };
     -- Server-pack modules (ADR 0035): the CEXI pack's drop-in folders under
     -- servers\cexi\modules\. They ship inside dlac, so they join the ratchet
     -- too -- entries are pack-relative module paths, no extension.
@@ -20526,6 +20527,34 @@ end)();
     check('JH11g ...naming the open hook',
           (ledger4.failed[1] or {}).err and ledger4.failed[1].err:find('open', 1, true) ~= nil, true);
 
+    -- `servers` (2026-10-10, the DNC Status helper): a module built for another
+    -- server pack is skipped quietly -- no init, no ledger failure, no chat line
+    -- -- and named in the skipped list; a malformed list is refused loudly.
+    local ledger5, lines5, skipped5, inits5 = { total = 0, failed = {} }, {}, {}, 0;
+    local axiOnly = { api = jh.API, label = 'A', jobs = { 'DNC' }, servers = { 'ascensionxi' },
+                      panel = function() end, init = function() inits5 = inits5 + 1; end };
+    local function srvLoader(id)
+        if id == 'axionly' then return true, axiOnly; end
+        if id == 'badservers' then
+            return true, { api = jh.API, label = 'B', jobs = { 'DNC' }, servers = 'ascensionxi', panel = function() end };
+        end
+        return true, { api = jh.API, label = 'E', jobs = { 'DNC' }, panel = function() end };
+    end
+    jh.loadAll({ names = { 'axionly', 'badservers', 'everywhere' }, loadModule = srvLoader,
+                 ledger = ledger5, emit = function(s) lines5[#lines5 + 1] = s; end,
+                 server = 'cexi', skipped = skipped5 });
+    check('JH11h on another server only the unrestricted module loads',
+          jh.count() == 1 and jh.list()[1].id == 'everywhere', true);
+    check('JH11i the module for another server never ran init', inits5, 0);
+    check('JH11j ...and is skipped, not failed',
+          #skipped5 == 1 and skipped5[1].id == 'axionly' and skipped5[1].why:find('ascensionxi', 1, true) ~= nil, true);
+    check('JH11k a malformed servers list is refused loudly',
+          #ledger5.failed == 1 and ledger5.failed[1].mod == 'jobhelper:badservers' and #lines5 == 1, true);
+    jh.loadAll({ names = { 'axionly' }, loadModule = srvLoader, server = 'ascensionxi' });
+    check('JH11l on its own server it loads and inits', jh.count() == 1 and inits5 == 1, true);
+    check('JH11m no server chosen: a server-bound module stays out', jh.forServer({ 'ascensionxi' }, nil), false);
+    check('JH11n no servers list: every server', jh.forServer(nil, 'cexi'), true);
+
     -- ---- registry queries ---------------------------------------------------
     local a = { api = jh.API, label = 'Alpha', jobs = { 'BST', 'PUP' }, panel = function() end };
     local b = { api = jh.API, label = 'Beta',  jobs = { 'PUP' },        panel = function() end };
@@ -28212,7 +28241,7 @@ end)();
     fg3.applySaved(nil, 'tab:sets;x,not a token,tab :sets');
     check('FGT16 a malformed OFF token is dropped', fg3.tabEnabled('Sets'), true);
 
-    -- the SHIPPED ascensionxi defaults: gear only (the file is tracked data --
+    -- the SHIPPED ascensionxi defaults (the file is tracked data --
     -- pin it so a pack regeneration cannot silently widen the surface)
     local vf = dofile('servers/ascensionxi/features.lua');
     local fg4 = dofile('lib/featuregate.lua');
@@ -28222,7 +28251,11 @@ end)();
     check('FGT19 ascensionxi: Sets on',           fg4.tabEnabled('Sets'), true);
     check('FGT20 ascensionxi: Triggers on',       fg4.tabEnabled('Triggers'), true);
     check('FGT21 ascensionxi: Gear Helpers on',   fg4.tabEnabled('Gear Helpers'), true);
-    check('FGT22 ascensionxi: Job Helpers off',   fg4.tabEnabled('Job Helpers'), false);
+    check('FGT22 ascensionxi: Job Helpers on',    fg4.tabEnabled('Job Helpers'), true);
+    check('FGT22b ascensionxi: the DNC Status helper is listed', fg4.jobHelperEnabled('dnc-status'), true);
+    for _, id in ipairs({ 'bst-helper', 'bludex', 'future' }) do
+        check('FGT22c ascensionxi: Job helper not listed ' .. id, fg4.jobHelperEnabled(id), false);
+    end
     check('FGT23 ascensionxi: lockstyle, hobby bar, macro book and teleports enabled in menu', (function()
         for _, r in ipairs(fg4.MENU) do
             if fg4.menuEnabled(r.key) ~= (r.key == 'lockstyle' or r.key == 'hobbybar' or r.key == 'macrobook' or r.key == 'teleports') then return r.key; end
@@ -28236,6 +28269,7 @@ end)();
         check('FGT26 ascensionxi: helper hidden ' .. key, fg4.helperEnabled(key), false);
     end
     check('FGT27 no allowlist keeps future helpers', fg3.helperEnabled('future'), true);
+    check('FGT27b no Job helper list keeps every Job helper', fg3.jobHelperEnabled('bst-helper'), true);
 
     -- roster labels match the registrations they gate (a rename on either
     -- side must fail HERE, not vanish a tab in the field)

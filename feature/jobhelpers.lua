@@ -87,6 +87,11 @@ M.API = (_maok and type(_mapi) == 'table' and tonumber(_mapi.API)) or 2;
 --     S     = <its module API table> }
 M.modules = {};
 
+-- Module folders this server does not load: { { id, why }, .. }. Off the
+-- server pack's list (features.lua `jobhelpers`), or built for another server
+-- (the module's `servers`). Neither is a failure; /dl jh names them.
+M.skipped = {};
+
 -- ---------------------------------------------------------------------------
 -- the config store (per-character, statefile-shaped) -- see lib/statefile
 -- ---------------------------------------------------------------------------
@@ -557,6 +562,19 @@ function M._validate(id, mod)
     if mod.status ~= nil and type(mod.status) ~= 'function' then return nil, 'status is not a function'; end
     if mod.window ~= nil and type(mod.window) ~= 'function' then return nil, 'window is not a function'; end
     if mod.open ~= nil and type(mod.open) ~= 'function' then return nil, 'open is not a function'; end
+    -- The optional `servers` list: the server pack ids the module is built for
+    -- (it reads a service only that server sends). Absent = every server.
+    local servers = nil;
+    if mod.servers ~= nil then
+        if type(mod.servers) ~= 'table' or #mod.servers == 0 then
+            return nil, 'servers is not a list of server pack ids';
+        end
+        servers = {};
+        for _, s in ipairs(mod.servers) do
+            if type(s) ~= 'string' or s == '' then return nil, 'a declared server is not a server pack id'; end
+            servers[#servers + 1] = s;
+        end
+    end
     -- The optional `config` block (api 2): the module declares its keys and their
     -- types, the framework owns the file format. Refused LOUDLY on a bad shape
     -- rather than silently dropping writes -- a settings declaration that does not
@@ -614,7 +632,17 @@ function M._validate(id, mod)
             end
         end
     end
-    return { id = id, label = mod.label, jobs = jobs, mod = mod };
+    return { id = id, label = mod.label, jobs = jobs, mod = mod, servers = servers };
+end
+
+-- Does a module's `servers` list admit the active pack? No list = every
+-- server; a list with no active pack (no server chosen) admits nothing.
+function M.forServer(servers, active)
+    if servers == nil then return true; end
+    for _, s in ipairs(servers) do
+        if s == active then return true; end
+    end
+    return false;
 end
 
 -- Record a failure: one loud line + a ledger entry (mod = 'jobhelper:<id>')
@@ -676,15 +704,20 @@ end
 --   host       = <ui\uihost>              -- carried on the module API table
 --   ledger     = <the load ledger table>
 --   emit       = function(line)           -- one loud line per failure
+--   server     = <the active server pack id, or nil>
+--   skipped    = { { id, why }, .. }      -- appended: modules built for another server
 -- }
 -- Populates M.modules with the survivors, one ledger.total per candidate, and a
--- ledger.failed entry + loud line per refusal. Returns M.modules.
+-- ledger.failed entry + loud line per refusal. A module whose `servers` list
+-- does not name the active pack is neither: it is skipped quietly and listed
+-- by /dl jh. Returns M.modules.
 function M.loadAll(opts)
     opts = opts or {};
     M.modules = {};
     local ledger = opts.ledger;
     local emit   = opts.emit;
     local names  = type(opts.names) == 'table' and opts.names or {};
+    local skipped = type(opts.skipped) == 'table' and opts.skipped or nil;
     for _, id in ipairs(names) do
         if type(id) ~= 'string' or id == '' then
             -- skip junk names silently (not a real candidate folder)
@@ -701,6 +734,13 @@ function M.loadAll(opts)
                 local rec, reason = M._validate(id, mod);
                 if rec == nil then
                     fail(ledger, emit, id, reason);
+                elseif not M.forServer(rec.servers, opts.server) then
+                    -- Built for another server: not a failure, nothing to say
+                    -- in chat, and no init. /dl jh lists it.
+                    if skipped ~= nil then
+                        skipped[#skipped + 1] = { id = id,
+                            why = 'built for ' .. table.concat(rec.servers, ', ') };
+                    end
                 else
                     -- Everything the framework knows about this module and the
                     -- module cannot know about itself: the job folder it filed
@@ -815,8 +855,21 @@ function M.load(deps)
     -- name under two job folders is a collision -- the first (job-sorted) wins
     -- and the second is refused loudly, exactly like any other bad module.
     local names, jobOf = {}, {};
+    local gate = nil;
+    pcall(function() gate = require('dlac\\lib\\featuregate'); end);
+    M.skipped = {};
     for _, c in ipairs(M._listModules()) do
-        if jobOf[c.id] ~= nil then
+        local approved = true;
+        if type(gate) == 'table' and type(gate.jobHelperEnabled) == 'function' then
+            local okGate, result = pcall(gate.jobHelperEnabled, c.id);
+            approved = okGate and result == true;
+        end
+        if not approved then
+            -- The server pack lists the helpers it shows (features.lua
+            -- `jobhelpers`); one off that list is not loaded at all, and
+            -- /dl jh names it, so a dropped-in folder never vanishes silently.
+            M.skipped[#M.skipped + 1] = { id = c.id, why = 'not on this server pack\'s list' };
+        elseif jobOf[c.id] ~= nil then
             fail(ledger, emit, c.job .. '\\' .. c.id,
                  string.format('duplicate module name (already loaded from %s\\)', jobOf[c.id]));
         else
@@ -825,12 +878,16 @@ function M.load(deps)
         end
     end
     M._jobOf = jobOf;
+    local server = nil;
+    pcall(function() server = require('dlac\\gear\\serverpack').active(); end);
     return M.loadAll({
         names      = names,
         loadModule = M._requireModule,
         deps       = deps,
         ledger     = ledger,
         emit       = emit,
+        server     = server,
+        skipped    = M.skipped,
     });
 end
 
@@ -1145,9 +1202,11 @@ function M.reportCommands(id)
     end);
 end
 
--- Every installed module, for a bare `/dl jh`.
+-- Every installed module, for a bare `/dl jh`, and every folder this server
+-- does not load, with why.
 function M.reportModules()
-    if #M.modules == 0 then
+    local skipped = type(M.skipped) == 'table' and M.skipped or {};
+    if #M.modules == 0 and #skipped == 0 then
         M._say('no Job helpers are installed.');
         return;
     end
@@ -1155,12 +1214,20 @@ function M.reportModules()
         local cf = require('dlac\\chatfmt');
         local line = (type(cf) == 'table' and type(cf.msg) == 'function') and cf.msg
                      or function(s) print('[dlac] ' .. s); end;
-        line('Job helpers installed:');
-        for _, rec in ipairs(M.modules) do
-            line(string.format('  %-16s %s (%s)', rec.id, rec.label or rec.id,
-                               table.concat(rec.jobs, '/')));
+        if #M.modules > 0 then
+            line('Job helpers installed:');
+            for _, rec in ipairs(M.modules) do
+                line(string.format('  %-16s %s (%s)', rec.id, rec.label or rec.id,
+                                   table.concat(rec.jobs, '/')));
+            end
+            line('ask one for what it does:  /dl jh <module>');
         end
-        line('ask one for what it does:  /dl jh <module>');
+        if #skipped > 0 then
+            line('Not loaded on this server:');
+            for _, s in ipairs(skipped) do
+                line(string.format('  %-16s %s', tostring(s.id), tostring(s.why)));
+            end
+        end
     end);
 end
 

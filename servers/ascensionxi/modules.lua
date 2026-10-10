@@ -16,5 +16,8 @@
     (docs/design/ascensionxi-combat-telemetry-autoacc.md).
     `whmgauge` (2026-10-10) draws the White Mage flower gauge the server
     pushes on 0x1E0 ops 0xD0-0xDF (docs/design/whm-flower-gauge.md).
+    `dncstatus` (2026-10-10) is the Dancer status channel, slot 1 of that
+    partition (0xD1, 0xD9), read by the DNC Status Job helper
+    (docs/design/dnc-status.md).
 ]]--
-return { 'gearvault', 'helm', 'digging', 'ascension', 'restocknotice', 'telemetry', 'whmgauge' };
+return { 'gearvault', 'helm', 'digging', 'ascension', 'restocknotice', 'telemetry', 'whmgauge', 'dncstatus' };
