@@ -349,12 +349,12 @@ local function clock(sec)
     return string.format('%d:%02d', math.floor(sec / 60), sec % 60);
 end
 
-function M.tooltip(v, extra)
+function M.tooltip(v)
     local lines = {};
     local solace = v.stance == 1;
     lines[#lines + 1] = solace and 'Afflatus Solace: Regen flowers' or 'Afflatus Misery: Judgement flowers';
     if not v.synced then
-        lines[#lines + 1] = extra or 'Waiting for the server.';
+        lines[#lines + 1] = 'Waiting for the server.';
         return table.concat(lines, '\n');
     end
     local unit = solace and 'HP healed by your Regens' or 'TP from your hits on Judged monsters';

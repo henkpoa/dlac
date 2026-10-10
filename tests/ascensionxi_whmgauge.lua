@@ -137,6 +137,9 @@ time = 1013.5; mod.pump(); mod.pump(); mod.pump();
 check(sent == 1 and last[5] == 0xD0 and last[10] == 1, 'a WHM subscribes once the zone settles: one request');
 local seq1 = last[6];
 check(gauge.view() == nil, 'no stance up: nothing drawn even while subscribed');
+player.buffs = { [417] = true };
+check(gauge.view() == nil, 'a stance up before the server has answered: still nothing drawn');
+player.buffs = {};
 
 check(not deliver('\0\0\0\0' .. string.char(0x80, 1, 0, 0)), 'another partition is left alone');
 check(reply((seq1 + 1) % 256, 0, S0), 'a reply to another seq is still blocked');
@@ -189,6 +192,7 @@ zoneOut();
 time = time + 30; mod.pump();
 check(sent == 1, 'nothing asked between zone-out and zone-in');
 zoneIn();
+check(gauge.view() ~= nil and gauge.view().synced, 'the last state stays drawn across the zone line');
 time = time + 2; mod.pump();
 check(sent == 1, 'nothing while the new zone settles');
 time = time + 2; mod.pump(); mod.pump();
@@ -218,6 +222,7 @@ local function silentRound(expectSends)
 end
 silentRound(6);   -- the first, then 5, 15 and 60 seconds later
 check(gauge.debugState().dormant, 'three misses after the first: dormant');
+check(player.buffs[417] and gauge.view() == nil, 'a silent server: nothing drawn, even with a state from before');
 check(#abandoned >= 4, 'each miss frees the shared gate (T3)');
 zoneIn();
 silentRound(6);
@@ -242,8 +247,11 @@ gauge.reset();
 zoneIn();
 time = time + 4; mod.pump();
 check(sent == 9, 'asks again after a reset');
+time = time + 1;
+check(player.buffs[417] and gauge.view() == nil, 'waiting on the first answer: nothing drawn');
 reply(last[6], 1, nil);
 check(gauge.debugState().dormant, 'BAD_OP: this server has no gauge');
+check(gauge.view() == nil, 'and nothing is drawn (AscensionXI before the gauge shipped)');
 zoneIn(); time = time + 10; mod.pump();
 check(sent == 9, 'and nothing more is asked');
 
@@ -257,6 +265,11 @@ ui.begins, ui.draws = 0, 0;
 mod._render();
 check(ui.begins == 0, 'no stance: no window');
 player.buffs = { [417] = true };
+mod._render();
+check(ui.begins == 0, 'a stance before the server has answered: no window');
+zoneIn();
+time = time + 4; mod.pump();
+reply(last[6], 0, st1);
 mod._render();
 check(ui.begins == 1 and ui.name == '##dlac_whmgauge', 'Afflatus Solace opens the gauge window');
 check(ui.draws > 20, 'and paints the gauge (' .. ui.draws .. ' draw calls)');
@@ -384,5 +397,32 @@ end
 check(sawSolace and sawMisery and sawBoost and sawCapped and sawSealActive and sawRecast,
       'the demo plays every state');
 gauge.setDemo(nil);
+
+-- Demo off over a live subscription: the demo overwrote the server's state,
+-- so ask for it again rather than wait for a push that may not come.
+time = 5000;
+player = { job = 3, level = 75, buffs = { [417] = true } };
+gauge.reset();
+mod.pump();
+reply(last[6], 0, st1);
+check(gauge.debugState().sub == 'live' and gauge.view() ~= nil, 'live and drawn before the demo');
+local beforeOff = sent;
+gauge.setDemo(src);
+gauge.setDemo(nil);
+check(gauge.view() == nil, 'demo off: nothing drawn until the server answers again');
+mod.pump();
+check(sent == beforeOff + 1 and last[5] == 0xD0 and last[10] == 1, 'demo off asks the server for its state again');
+reply(last[6], 0, st1);
+check(gauge.view() ~= nil and gauge.view().synced, 'and draws once it has');
+gauge.reset();
+mod.pump();
+reply(last[6], 1, nil);
+check(gauge.debugState().dormant, 'a server without the gauge goes dormant');
+beforeOff = sent;
+gauge.setDemo(src);
+gauge.setDemo(nil);
+mod.pump();
+check(sent == beforeOff, 'and demo off asks it nothing');
+check(gauge.debugState().sub == 'dormant', 'and /dl gauge status still calls it dormant');
 
 print(string.format('ascensionxi_whmgauge: %d checks passed', checks));

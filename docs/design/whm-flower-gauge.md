@@ -73,6 +73,11 @@ element and a waiting Bloom. In detail:
   - `BAD_OP` or `UNAVAILABLE`: silent for the session.
   - `BUSY` (more than one subscribe a second): retry after 2 s.
   - Silence: back off 5, 15 and 60 s, then silent for the session.
+- **Nothing is drawn until the server has sent a state,** and nothing on a server that has
+  gone silent for the session. An AscensionXI server without the gauge therefore shows no
+  White Mage an empty gauge. `/dl gauge status` still names the channel's state.
+- **Ending the demo** asks the server for its state again (one subscribe), since the demo
+  replaced it and pushes come only on a change.
 - **Hiding the gauge** (`/dl gauge hide`) also stops the requests.
 - **Unload** sends a stop straight to the packet manager, as combat telemetry does.
 
