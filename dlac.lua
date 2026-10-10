@@ -18,7 +18,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.10.09d';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.10.10e';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
                                 -- (03f = engine v163: the contest explains its own plan;
                                 --  03g = one floating tray: Teleports + the E-Box crates;
@@ -330,7 +330,10 @@ addon.version = '2026.10.09d';  -- date of the last shipped change (Ashita print
                                 --  10.09d = HELM storage counts every find of a
                                 --  multi-roll swing, moves top up a stack in
                                 --  either bag first, and a zone line keeps the
-                                --  dig/HELM counts)
+                                --  dig/HELM counts;
+                                --  10.10a-e = the AscensionXI White Mage flower
+                                --  gauge: shows itself under Afflatus Solace or
+                                --  Misery, /dl gauge to show, hide, scale or demo)
 addon.desc    = 'Gear sets, triggers and live stats with level scaling -- dlac equips your gear itself.';
 
 -- Load BEACON ('/dl check' field round, 2026-07-23): written by PLAIN io at
