@@ -65,7 +65,9 @@ dig mover:
 5. Stops on an unconfirmed move (five seconds) and resumes when a switch is
    touched; both switches off forgets the counts. A zone line keeps the
    counts, drops the move in flight (counted as done, so carried stock never
-   takes its place) and holds moves for five seconds (`ZONE_S`).
+   takes its place) and holds moves for five seconds (`ZONE_S`). Nothing moves
+   while the client still reports zoning (`GetIsZoning`), however long the
+   load takes.
 
 The server sends ITEM_SAME after every item it adds, so one dig carries up to
 four of them; our 0x02F comes last and is what ends the dig.

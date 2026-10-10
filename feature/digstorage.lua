@@ -273,6 +273,11 @@ M.live = M.new({
     ready = function()
         local mm = AshitaCore:GetMemoryManager();
         local index = mm:GetParty():GetMemberTargetIndex(0);
+        -- Counts outlive a zone line now, so a load longer than ZONE_S must
+        -- still hold moves (the helmwatch/jobhelpers zoning probe).
+        local pl = mm:GetPlayer();
+        local z = pl and pl.GetIsZoning and pl:GetIsZoning();
+        if z == true or (type(z) == 'number' and z ~= 0) then return false; end
         return index ~= nil and index > 0 and mm:GetPlayer():GetMainJob() > 0
             and mm:GetEntity():GetStatus(index) ~= 4;
     end,

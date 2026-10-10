@@ -167,8 +167,9 @@ transfer is outstanding at a time; both source and destination must confirm.
 
 A zone line drops the move in flight (counted as done, so carried stock never
 takes its place) and holds moves for five seconds (`ZONE_S`) while the
-inventory is sent again. The counts survive it. Disabling both destinations
-clears them.
+inventory is sent again. Nothing moves while the client still reports zoning
+(`GetIsZoning`), however long the load takes. The counts survive it.
+Disabling both destinations clears them.
 
 Run `lua tests/helmstorage.lua` for packet-driven coverage of accumulation,
 multi-find swings, sorting, unrelated arrivals, downtime, merges, zone lines
