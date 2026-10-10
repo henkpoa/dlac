@@ -158,11 +158,7 @@ local function render()
             draw.panel(imgui.GetWindowDrawList(), imgui.GetColorU32, x, y, s, v, measure);
         end);
         if not ok then pcall(imgui.TextColored, { 1, 0.4, 0.4, 1 }, esc('gauge: ' .. tostring(err))); end
-        if hovered then
-            local d = gauge.debugState();
-            local why = d.dormant and 'This server does not send the gauge.' or nil;
-            pcall(imgui.SetTooltip, esc(draw.tooltip(v, why)));
-        end
+        if hovered then pcall(imgui.SetTooltip, esc(draw.tooltip(v))); end
         -- Remember where it was dragged; save once the drag settles.
         local px, py = imgui.GetWindowPos();
         if type(px) == 'table' then py = px[2] or px.y; px = px[1] or px.x; end

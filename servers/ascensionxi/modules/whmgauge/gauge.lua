@@ -14,6 +14,10 @@
     server's stance matches the buff the client sees, so a stance switch
     draws an empty gauge at once instead of the withered flowers.
 
+    It also shows only once the server has sent a STATE, and never on a
+    dormant channel: a server without the gauge (AscensionXI before it
+    shipped) would otherwise draw an empty gauge for every White Mage.
+
     Requests: ONE subscribe per zone while the main job is WHM (the server
     forgets subscriptions at every zone-out, so nothing has to stop them),
     sent SETTLE seconds after the zone-in. A server without the channel
@@ -152,10 +156,15 @@ function M.unload()
 end
 
 -- The demo: a source table with :at(now) -> state, client stance and seal.
+-- Ending it drops the demo's state, so ask the server for its own again
+-- (one subscribe; pushes come only on a change).
 function M.setDemo(src)
     demo = src;
     gainedAt, lastFlowers = {}, { 0, 0, 0 };
-    if src == nil then state, stateAt = nil, nil; end
+    if src == nil then
+        state, stateAt = nil, nil;
+        if not dormant and sub ~= 'pending' then sub, due = nil, M._clock(); end
+    end
 end
 function M.demoOn() return demo ~= nil; end
 
@@ -169,7 +178,7 @@ function M.view()
         if d.state ~= nil and (state == nil or d.state.rev ~= state.rev) then apply(d.state); end
         stance, seal, sealActive, level = d.stance, d.seal, d.sealActive, d.level or 75;
     else
-        if not M._shown() then return nil; end
+        if not M._shown() or dormant or state == nil then return nil; end
         p = M._player();
         if not isWhm(p) then return nil; end
         stance = clientStance(p);
