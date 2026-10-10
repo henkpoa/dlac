@@ -1,8 +1,9 @@
 # dlac — Handoff (start here)
 
-You are picking up **dlac** ("dynamic LuaAshitacast"): an Ashita v4 addon for the
-CatsEyeXI FFXI private server that GUI-drives LuaAshitacast so players never hand-edit
-Lua. Maintainer of record is Henrik (in-game character **Mindie**, profile dir
+You are picking up **dlac** ("dynamic LuaAshitacast"): an Ashita v4 addon that
+GUI-drives gear so players never hand-edit Lua. It is developed **first and foremost
+for AscensionXI (AXI)**, where it is fully integrated (the `ascensionxi` server pack,
+pinned in AXI's launcher); CatsEyeXI stays supported through its own pack. Maintainer of record is Henrik (in-game character **Mindie**, profile dir
 `Mindie_29909`); most code is written by Claude sessions under his direction — his
 words: *"don't ask for permissions to edit files within the addon, you are the
 maintainer IMO, I am just the one with the creative vision."*
@@ -77,6 +78,14 @@ maintainer IMO, I am just the one with the creative vision."*
     why: this build's imgui binding drops `ImGuiTabItemFlags_SetSelected` on the floor, so the
     host takes the selection by rebuilding the tab bar instead of asking for it. Read the
     guide before writing the row, not after.
+
+12. **Shipping anything to AscensionXI players**:
+    [reference/ascensionxi-release-routine.md](reference/ascensionxi-release-routine.md).
+    Merging into dlac main ships nothing. AXI's launcher installs the dlac commit pinned
+    in AXI `client/addons/catalog.json`, and the pin is baked into each DAT channel image.
+    A merged pin PR lands on **staging** automatically; **prod** only changes when a human
+    promotes that staging channel tag. Server-coupled data (catalog refreshes) must reach
+    prod in the same deploy as its server change.
 
 There is also a cross-session memory dir (Claude-specific) at
 `~\.claude\projects\C--catseyexi-catseyexi-client-Ashita-addons-dlac\memory\` — it
@@ -286,6 +295,17 @@ agent; the per-repo setup lives in `docs/agents/`.
   (what to build, design rulings) + **field test** (he'll flag anything that reads
   wrong in-game). Bring him direction forks and things only live testing can settle;
   decide the rest. Don't extrapolate a design *direction* from silence.
+- **The AXI server side is yours to research; you do not need Henrik as the go-between**
+  (his words, 2026-10-09). A dlac session may start agents in the AXI checkouts
+  (`C:\repos\ascensionxi`, `C:\repos\ascensionxi-02`, `-03` ...) for backend research
+  and work. Reading and research need no permission. A change there needs Henrik's
+  approval in the dlac session, then follows that repo's own `CLAUDE.md` (topic branch
+  and PR; an agent never merges to `main` or starts a game client). Those checkouts may
+  hold another session's uncommitted work: read `git status` first and make changes in
+  a fresh worktree from `origin/main`.
+- **Henrik's production client:** when he asks, you may overwrite the dlac in
+  `C:\AscensionXI-Prod\Ashita\addons\dlac` (only on his request). The launcher manages
+  that install, so a launcher sync may put the pinned version back.
 - Examples in docs/UI use generic names, never his personal set names.
 - He tests live and reports fast; expect mid-session scope shifts and parallel edits.
 - A GM is currently evaluating the addon for server approval — polish requests from

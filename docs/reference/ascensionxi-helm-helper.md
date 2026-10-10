@@ -139,19 +139,38 @@ own check after promotion.
 
 `feature/helmstorage.lua` uses the digging mover's whole-stack policy for the
 Mog Case / Mog Satchel switches. It tracks quantities per item across swings,
-not inventory slots. Only inventory gains between our confirmed gathering
-motion and ITEM_SAME count; arrivals outside that response are not gathered
-rewards. Inventory sorting does not add to the count or lose pending items.
+not inventory slots. Inventory sorting does not add to the count or lose
+pending items.
+
+What one swing sends us (AXI `modules/custom/lua/helm.lua` `onTrade`): our
+motion (0x05A), then ITEM_ATTR + ITEM_SAME for **each** item the server adds
+(special finds, then every roll that hit; `transaction.cpp` `applyAddItem`
+sends an ITEM_SAME per add), then one more ITEM_SAME as the tool comes back.
+Field gear gives up to three rolls a swing, so a swing often carries several
+ITEM_SAMEs and no packet marks the last. The mover counts every inventory gain
+from our motion until the response has been quiet for 0.5 s (`SETTLE_S`), or
+until our next trade. Before 2026.10.09d it stopped at the first ITEM_SAME:
+only the first find of each swing counted, and since a stack never moves when
+it holds more than was counted, multi-roll stacks never moved at all.
 
 Full stacks and non-stacking items move after one second of inventory quiet.
 Partial stacks wait until six seconds without another HELM attempt. Moves
 never exceed the tracked gathered quantity: a stack mixed with carried stock
 stays if moving it would exceed that quantity, even during downtime.
 
-The mover tries Case before Satchel and explicitly merges into an existing
-stack with room before using an empty slot, without relying on bag auto-sort.
-One transfer is outstanding at a time; both source and destination must confirm.
-Zoning or disabling both destinations clears the session's pending quantities.
+The server never stacks a move into an existing stack by itself: a move to a
+free slot (0x52) takes an empty slot even when the bag already holds that item
+(`0x029_item_move.cpp`), and storage bags have no auto-sort. So the mover aims
+each move at a stack of the same item with room in **either** selected bag
+(Case first, then Satchel), and only then at a free slot, Case first. One
+transfer is outstanding at a time; both source and destination must confirm.
+
+A zone line drops the move in flight (counted as done, so carried stock never
+takes its place) and holds moves for five seconds (`ZONE_S`) while the
+inventory is sent again. Nothing moves while the client still reports zoning
+(`GetIsZoning`), however long the load takes. The counts survive it.
+Disabling both destinations clears them.
 
 Run `lua tests/helmstorage.lua` for packet-driven coverage of accumulation,
-sorting, unrelated arrivals, downtime, merges, and transfer confirmation.
+multi-find swings, sorting, unrelated arrivals, downtime, merges, zone lines
+and transfer confirmation.

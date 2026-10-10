@@ -15662,6 +15662,56 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- UA. useitem Anchor Ring -- AscensionXI's EXP bank rides the Exp rings
+--     section. It carries no bonus, so /dl xp anchor must stage it through
+--     its own verb rather than the "popping the <bonus>" line.
+-- ---------------------------------------------------------------------------
+(function()
+    local savedReg = ashita.events.register;
+    local cmdHandler = nil;
+    ashita.events.register = function(evt, name, fn)
+        if evt == 'command' then cmdHandler = fn; end
+    end;
+    local said = {};
+    package.loaded['dlac\\chatfmt'] = { print = function(s) said[#said + 1] = s; end };
+
+    local bag0 = { { Id = 27556, Count = 1, Extra = '' } };
+    local inv = {
+        GetContainerCountMax = function(self, bag) return (bag == 0) and #bag0 or 0; end,
+        GetContainerItem = function(self, bag, i) return (bag == 0) and bag0[i] or nil; end,
+    };
+    AshitaCore = {
+        GetMemoryManager = function(self) return { GetInventory = function() return inv; end }; end,
+        GetResourceManager = function(self) return {
+            GetItemById = function(self2, id)
+                return { Name = { (id == 27556) and 'Anchor Ring' or nil }, MaxCharges = 0 };
+            end,
+        }; end,
+        GetChatManager = function(self) return { QueueCommand = function() end }; end,
+    };
+
+    local useitem = dofile('feature/useitem.lua');
+    ashita.events.register = savedReg;
+
+    local row = nil;
+    for _, r in ipairs(useitem.menu()) do
+        if r.name == 'Anchor Ring' then row = r; end
+    end
+    check('UA1 an owned Anchor Ring is a menu row', row ~= nil, true);
+    check('UA1b ...in the Exp rings section', row and row.grp, 'xp');
+    check('UA1c ...labelled Anchor', row and row.label, 'Anchor');
+    check('UA1d ...run by /dl xp anchor', row and row.cmd, '/dl xp anchor');
+
+    local ok = cmdHandler ~= nil and pcall(cmdHandler, { command = '/dl xp anchor' });
+    check('UA2 /dl xp anchor runs without a bonus', ok, true);
+    local pend = useitem.pending();
+    check('UA2b ...and stages the Anchor Ring', pend and pend.name, 'Anchor Ring');
+    check('UA2c ...saying what a use does', (said[#said] or ''):find('banked EXP', 1, true) ~= nil, true);
+
+    AshitaCore = nil;
+end)();
+
+-- ---------------------------------------------------------------------------
 -- UT. useitem utility teleports (Henrik, 2026-07-23): the 'util' family
 --     (Maat's Cap, Ducal Guard's Ring, stables gear, the Purgonorgo suits...)
 --     is owned-only in the menu, Kazham Earring joins the ear cascade as a

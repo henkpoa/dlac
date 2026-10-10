@@ -18,7 +18,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.10.07a';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.10.10f';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
                                 -- (03f = engine v163: the contest explains its own plan;
                                 --  03g = one floating tray: Teleports + the E-Box crates;
@@ -317,7 +317,25 @@ addon.version = '2026.10.07a';  -- date of the last shipped change (Ashita print
                                 --  holds HELM, digging or ascension back;
                                 --  10.07a = the Arbiter Monitor explains AutoAcc
                                 --  decisions, and players can recover manual
-                                --  Gear Vault layouts from the UI)
+                                --  Gear Vault layouts from the UI;
+                                --  10.09a = AscensionXI catalog: the four guild
+                                --  crafting headpieces replace the old guild
+                                --  gloves/Caduceus bonuses, keeping Artisan at +10;
+                                --  10.09b = the Nexus link answers previews: the
+                                --  pieces the lock would wear for a recipe and how
+                                --  they change the worn numbers, for Nexus's odds;
+                                --  10.09c = the Anchor Ring joins the Teleports
+                                --  menu's Exp rings, usable from there or with
+                                --  /dl xp anchor;
+                                --  10.09d = HELM storage counts every find of a
+                                --  multi-roll swing, moves top up a stack in
+                                --  either bag first, and a zone line keeps the
+                                --  dig/HELM counts;
+                                --  10.10a-e = the AscensionXI White Mage flower
+                                --  gauge: shows itself under Afflatus Solace or
+                                --  Misery, /dl gauge to show, hide, scale or demo;
+                                --  10.10f = the gauge waits for the server's first
+                                --  state, so a server without it shows nothing)
 addon.desc    = 'Gear sets, triggers and live stats with level scaling -- dlac equips your gear itself.';
 
 -- Load BEACON ('/dl check' field round, 2026-07-23): written by PLAIN io at

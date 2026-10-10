@@ -12,7 +12,7 @@
 -- that dig with ITEM_SAME (0x01D) and our own dig animation (0x02F). A refused
 -- dig gets neither and counts nothing. Inventory sorting merges partial
 -- stacks only, so a full stack's slot cannot change under a move.
-local M = { QUIET_S = 0.3, FLUSH_S = 6, CAPTURE_S = 3, CONFIRM_S = 5, GAP_S = 0.2 };
+local M = { QUIET_S = 0.3, FLUSH_S = 6, CAPTURE_S = 3, CONFIRM_S = 5, GAP_S = 0.2, ZONE_S = 5 };
 M.DIG_ACTION = 0x11;
 -- Gysahl Greens can be dug, and the next dig needs them in the inventory:
 -- they stay, whatever the switches say.
@@ -36,28 +36,35 @@ local function total(bag, id)
     return n;
 end
 
--- Where a whole stack of `count` goes in `dst`: a stack of the same item with
--- room (the server moves only what fits), else any free slot (0x52).
--- Returns the slot and how many units will actually move.
-local function destination(dst, id, count, stack)
-    local free = false;
-    for i = 1, dst.max do
-        local other = item(dst, i);
-        if other.id == 0 or other.count == 0 then
-            free = true;
-        elseif other.id == id and other.flags == 0 and other.count < stack then
-            return i, math.min(count, stack - other.count);
+-- Where a whole stack of `count` goes among the selected `bags` (in order):
+-- a stack of the same item with room in ANY of them first (the server moves
+-- only what fits), else a free slot (0x52). A move to a free slot never joins
+-- a stack, so without the merge each move would take a slot of its own.
+-- Returns the bag, the slot and how many units will actually move.
+local function destination(bags, id, count, stack)
+    for _, b in ipairs(bags) do
+        for i = 1, b.bag.max do
+            local other = item(b.bag, i);
+            if other.id == id and other.flags == 0 and other.count > 0 and other.count < stack then
+                return b, i, math.min(count, stack - other.count);
+            end
         end
     end
-    if free then return 0x52, count; end
+    for _, b in ipairs(bags) do
+        for i = 1, b.bag.max do
+            local other = item(b.bag, i);
+            if other.id == 0 or other.count == 0 then return b, 0x52, count; end
+        end
+    end
 end
 
 function M.new(D)
     local self = { owed = {}, status = '' };
     local capture, flight, nextAt, stopped = nil, nil, 0, false;
-    local lastInventory, lastDig = -math.huge, -math.huge;
+    local lastInventory, lastDig, holdUntil = -math.huge, -math.huge, -math.huge;
     function self.reset()
         capture, flight, nextAt, stopped = nil, nil, 0, false;
+        holdUntil = -math.huge;
         self.owed, self.status = {}, '';
     end
     local function enabled()
@@ -87,6 +94,20 @@ function M.new(D)
         capture = nil;
     end
 
+    -- A zone line: drop what was in flight (its reply may never come) and hold
+    -- moves while the inventory is sent again. The counts stay, so what was dug
+    -- before the zone line still moves after it. A move in flight is taken as
+    -- done: if it never landed, those units stay in the inventory.
+    function self.zoned()
+        if flight then
+            local left = (self.owed[flight.id] or 0) - flight.count;
+            self.owed[flight.id] = left > 0 and left or nil;
+        end
+        capture, flight = nil, nil;
+        holdUntil = D.clock() + M.ZONE_S;
+        if not stopped then self.status = ''; end
+    end
+
     function self.outgoing(id, data)
         if id ~= 0x01A or #data < 12 or u16(data, 10) ~= M.DIG_ACTION then return; end
         if not enabled() or stopped then return; end
@@ -100,7 +121,7 @@ function M.new(D)
     end
 
     function self.incoming(id, data)
-        if id == 0x00A or id == 0x00B then self.reset(); return; end
+        if id == 0x00A or id == 0x00B then self.zoned(); return; end
         local now = D.clock();
         local cid, slot, iid, count, flags = update(id, data);
         if flight and cid == 0 and slot == flight.slot and count == flight.remaining
@@ -139,30 +160,26 @@ function M.new(D)
     end
 
     local function send(it, srcSlot, id, src)
-        local opts = D.options();
+        local opts, bags = D.options(), {};
         for _, cid in ipairs({ 7, 5 }) do
-            if opts[cid] then
-                local dst = D.bag(cid);
-                local toSlot, moves = destination(dst, id, it.count, D.stack(id));
-                if toSlot then
-                    local amount = it.count;
-                    local p = { 0x29, 0x06, 0, 0, amount % 256, math.floor(amount / 256) % 256,
-                        math.floor(amount / 65536) % 256, math.floor(amount / 16777216) % 256,
-                        0, cid, srcSlot, toSlot };
-                    if not D.send(p) then
-                        stopped = true;
-                        self.status = 'Move failed. Toggle a destination to resume.';
-                        return true;
-                    end
-                    flight = { id = id, cid = cid, count = moves, source = total(src, id),
-                        dest = total(dst, id), destItems = dst, toSlot = toSlot,
-                        at = D.clock(), slot = srcSlot, remaining = it.count - moves };
-                    self.status = 'Moving dug items...';
-                    return true;
-                end
-            end
+            if opts[cid] then bags[#bags + 1] = { cid = cid, bag = D.bag(cid) }; end
         end
-        return false;
+        local dst, toSlot, moves = destination(bags, id, it.count, D.stack(id));
+        if not dst then return false; end
+        local amount = it.count;
+        local p = { 0x29, 0x06, 0, 0, amount % 256, math.floor(amount / 256) % 256,
+            math.floor(amount / 65536) % 256, math.floor(amount / 16777216) % 256,
+            0, dst.cid, srcSlot, toSlot };
+        if not D.send(p) then
+            stopped = true;
+            self.status = 'Move failed. Toggle a destination to resume.';
+            return true;
+        end
+        flight = { id = id, cid = dst.cid, count = moves, source = total(src, id),
+            dest = total(dst.bag, id), destItems = dst.bag, toSlot = toSlot,
+            at = D.clock(), slot = srcSlot, remaining = it.count - moves };
+        self.status = 'Moving dug items...';
+        return true;
     end
 
     function self.tick()
@@ -190,7 +207,7 @@ function M.new(D)
             if now - capture.at >= M.CAPTURE_S then capture = nil; end
             return;
         end
-        if now < nextAt or now - lastInventory < M.QUIET_S or not D.ready() then return; end
+        if now < nextAt or now < holdUntil or now - lastInventory < M.QUIET_S or not D.ready() then return; end
         local src = D.bag(0);
         local flush = now - lastDig >= M.FLUSH_S;
         local ids = {};
@@ -256,6 +273,11 @@ M.live = M.new({
     ready = function()
         local mm = AshitaCore:GetMemoryManager();
         local index = mm:GetParty():GetMemberTargetIndex(0);
+        -- Counts outlive a zone line now, so a load longer than ZONE_S must
+        -- still hold moves (the helmwatch/jobhelpers zoning probe).
+        local pl = mm:GetPlayer();
+        local z = pl and pl.GetIsZoning and pl:GetIsZoning();
+        if z == true or (type(z) == 'number' and z ~= 0) then return false; end
         return index ~= nil and index > 0 and mm:GetPlayer():GetMainJob() > 0
             and mm:GetEntity():GetStatus(index) ~= 4;
     end,

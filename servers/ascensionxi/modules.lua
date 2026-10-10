@@ -14,5 +14,7 @@
     in the AscensionXI repo owns restocking now (docs/design/void-restock.md).
     `telemetry` (2026-10-05) is the combat telemetry client and AutoAcc v1
     (docs/design/ascensionxi-combat-telemetry-autoacc.md).
+    `whmgauge` (2026-10-10) draws the White Mage flower gauge the server
+    pushes on 0x1E0 ops 0xD0-0xDF (docs/design/whm-flower-gauge.md).
 ]]--
-return { 'gearvault', 'helm', 'digging', 'ascension', 'restocknotice', 'telemetry' };
+return { 'gearvault', 'helm', 'digging', 'ascension', 'restocknotice', 'telemetry', 'whmgauge' };
