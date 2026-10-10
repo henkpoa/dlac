@@ -155,10 +155,40 @@ h.ready = true; h.tick(); assert(#h.sent == 1);
 h = harness(); h.dig({ { 1, 300, 1 } }); h.worn[1] = true; h.tick(); assert(#h.sent == 0, 'an equipped item stays');
 h.worn[1] = nil; h.tick(); assert(#h.sent == 1);
 
--- Zoning and switching both destinations off forget the counts.
-h = harness(); h.dig({ { 1, 100, 1 } }); h.m.incoming(0x00B, ''); h.pause(); assert(#h.sent == 0);
+-- Switching both destinations off forgets the counts.
 h = harness(); h.dig({ { 1, 100, 1 } }); h.opts = {}; h.m.changed(); h.opts = { [7] = true }; h.pause();
 assert(#h.sent == 0);
+
+-- The counts survive a zone line; nothing moves until the zone has settled.
+h = harness(); h.dig({ { 1, 100, 5 } }); h.tick(); assert(h.m.waiting() == 5);
+h.m.incoming(0x00B, ''); h.tick(storage.ZONE_S - 0.2); h.m.incoming(0x00A, '');
+h.tick(storage.ZONE_S - 0.2); assert(#h.sent == 0, 'nothing moves while the zone settles');
+h.tick(0.3); assert(#h.sent == 1 and h.sent[1][5] == 5, 'what was dug before the zone line still moves');
+
+-- A move cut off by a zone line counts as done, so carried stock never takes
+-- its place: here it landed, and only the carried 5 are left.
+h = harness(); h.put(0, 2, 100, 5); h.dig({ { 1, 100, 12 } }); h.tick(); assert(#h.sent == 1);
+h.m.incoming(0x00B, ''); h.put(0, 1, 100, 0); h.put(7, 1, 100, 12); h.m.incoming(0x00A, '');
+h.tick(storage.ZONE_S + 0.1); h.pause();
+assert(#h.sent == 1 and h.m.waiting() == 0, 'the carried stack stays');
+
+-- The server sends ITEM_SAME after every item it adds; our dig animation
+-- comes last, so all three finds count.
+h = harness(); h.m.outgoing(0x01A, action());
+for slot, id in ipairs({ 100, 101, 102 }) do h.land(slot, id, 1); h.m.incoming(0x01D, ''); end
+h.m.incoming(0x02F, digAnimation()); assert(h.m.waiting() == 3, 'every find of one dig');
+
+-- Single units moved one by one stack in the Case: a move to a free slot never
+-- joins a stack server-side, so the mover aims each at the Case stack itself.
+h = harness(); h.dig({ { 1, 100, 1 } }); h.dig({ { 2, 100, 1 } }); h.pause();
+assert(#h.sent == 1 and h.sent[1][12] == 0x52, 'the first unit opens a Case stack');
+h.confirm(0, 1, 1); h.tick(1.1);
+assert(#h.sent == 2 and h.sent[2][11] == 2 and h.sent[2][10] == 7 and h.sent[2][12] == 1,
+    'the second unit joins it instead of taking a slot of its own');
+
+-- A stack with room in the Satchel comes before a free slot in the Case.
+h = harness(); h.put(5, 1, 100, 4); for n = 1, 12 do h.dig({ { 1, 100, n } }); end h.tick();
+assert(h.sent[1][10] == 5 and h.sent[1][12] == 1 and h.sent[1][5] == 12, 'the Satchel stack with room first');
 
 -- Locked stacks are left alone; truncated packets are ignored.
 h = harness(); h.m.outgoing(0x01A, action()); h.m.incoming(0x020, attr(1, 300, 1, 0, 5)); h.put(0, 1, 300, 1, 5);
