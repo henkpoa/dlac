@@ -18,7 +18,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.10.09b';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.10.09d';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
                                 -- (03f = engine v163: the contest explains its own plan;
                                 --  03g = one floating tray: Teleports + the E-Box crates;
@@ -321,7 +321,13 @@ addon.version = '2026.10.09b';  -- date of the last shipped change (Ashita print
                                 --  10.09a = AscensionXI catalog: the four guild
                                 --  crafting headpieces replace the old guild
                                 --  gloves/Caduceus bonuses, keeping Artisan at +10;
-                                --  10.09b = HELM storage counts every find of a
+                                --  10.09b = the Nexus link answers previews: the
+                                --  pieces the lock would wear for a recipe and how
+                                --  they change the worn numbers, for Nexus's odds;
+                                --  10.09c = the Anchor Ring joins the Teleports
+                                --  menu's Exp rings, usable from there or with
+                                --  /dl xp anchor;
+                                --  10.09d = HELM storage counts every find of a
                                 --  multi-roll swing, moves top up a stack in
                                 --  either bag first, and a zone line keeps the
                                 --  dig/HELM counts)

@@ -26,7 +26,8 @@
                            lists every destination.
         /dl xp <ring>      lock Ring2, equip the matching EXPERIENCE ring, use it
                            (empress, emperor, resolution, chariot, expertise,
-                           anniversary, kupofried, allied, caliber, echad). Same
+                           anniversary, kupofried, allied, caliber, echad,
+                           anchor, venture). Same
                            countdown machinery; the GUI menu lists only the ones
                            you own.
         /dl p|w|c|shirt|t|xp off   cancel the pending use and release the slot.
@@ -203,6 +204,12 @@ local EXPRINGS = {
     { name = 'Allied Ring',      dest = 'Allied',      bonus = '+150%', aliases = { 'allied' } },
     { name = 'Caliber Ring',     dest = 'Caliber',     bonus = '+150%', aliases = { 'caliber' } },
     { name = 'Echad Ring',       dest = 'Echad',       bonus = '+150%', aliases = { 'echad' } },
+    -- AscensionXI's EXP bank: the Echad Ring's item (27556), renamed in that
+    -- server's client DAT, so only an AscensionXI character can own it. No
+    -- bonus: one use arms it, disarms it or pays the banked EXP out, as the
+    -- server decides. Its 5s equip delay fits inside XP_WAIT.
+    { name = 'Anchor Ring',      dest = 'Anchor',      aliases = { 'anchor' },
+      verb = 'using it (it arms, disarms or pays out your banked EXP)' },
     { name = 'Venture Ring',     dest = 'Venture',     bonus = '+100% VP', aliases = { 'venture' } },   -- Venture POINT bonus, not exp (field-confirmed 07-21)
 };
 
@@ -717,7 +724,7 @@ ashita.events.register('command', 'dlac-useitem', function(e)
         else
             local x = hits[1];
             start({ name = x.name, slot = 'ring2', wait = x.wait or XP_WAIT },
-                'popping the ' .. x.bonus .. ' exp bonus', '/dl xp off');
+                x.verb or ('popping the ' .. x.bonus .. ' exp bonus'), '/dl xp off');
         end
         return;
     end

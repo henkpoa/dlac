@@ -67,8 +67,10 @@ Plain `key=value;key=value` text, parsed with patterns, never run as code.
 |---|---|---|---|
 | Nexus | `nexus_craft` | `op=hello` | Nexus loaded, or a run starts |
 | Nexus | `nexus_craft` | `op=next;seq=N;crafts=Smithing:30,Woodworking:60;recipe=R;result=I;desynth=0\|1` | the next synth |
-| dlac | `dlac_craft` | `op=hello;v=1;follow=1\|0` | dlac is here (answer to hello, and on its first frame) |
+| Nexus | `nexus_craft` | `op=preview;seq=N;crafts=...;recipe=R;result=I;desynth=0\|1` | what would you wear for this recipe? (same fields as `next`) |
+| dlac | `dlac_craft` | `op=hello;v=1;follow=1\|0;preview=1` | dlac is here (answer to hello, and on its first frame); `preview=1` = it answers previews |
 | dlac | `dlac_craft` | `op=ready;seq=N;state=S` | synth N may go |
+| dlac | `dlac_craft` | `op=gear;seq=N;state=pick\|none\|off;sk=...;anti=...;hqr=H;succ=S;pieces=A\|B` | the answer to preview N (below) |
 | dlac | `dlac_craft` | `op=bye` | dlac unloaded |
 
 `state` is `worn` (every picked piece is on), `partial` (some piece never went
@@ -79,6 +81,37 @@ waited, or a newer synth replaced this one).
 Nexus waits only after dlac has said hello, and never longer than 3 s; after
 a timeout it stops waiting until dlac says hello again. A client without dlac,
 or with a dlac older than this change, crafts exactly as before.
+
+## Preview for Nexus's odds (2026-10-09)
+
+Nexus shows the success and HQ chance of the next synth on its recipe page,
+with the gear the lock **will** wear for it (AscensionXI
+`documentation/custom/nexus.md`, the odds section). The server tells Nexus the
+numbers you have now; dlac tells it how its pick would change them.
+
+- `op=preview` carries the same fields as `next`. dlac runs the very pick `next`
+  would (`M.pickFor`: the same craftItems manifest, skills, goal and level), so
+  the preview never disagrees with what goes on.
+- It answers on the same frame with `op=gear`. It never equips, never sets,
+  replaces or ends the lock, and never answers `ready`. A preview without a
+  number for `seq` gets no answer.
+- `state`: `pick` (the lock would wear the pieces named), `none` (follow is on
+  but there is no crafting gear for this recipe, or no craft dlac knows), `off`
+  (`/dl craft nexus off`: dlac will not dress, so nothing changes).
+- `sk` and `anti`: per craft, `Craft:n` in craft order, zeros left out, may be
+  negative. Each slot whose pick is not on yet adds the pick's craft skill
+  (`sk`) and HQ block (`anti`) and takes away the worn piece's. A worn piece
+  with no craftItems row carries no craft numbers. An all-craft piece shows up
+  under every craft; Nexus reads the crafts its recipe needs.
+- `hqr` and `succ`: the same change for Synth HQ and the flat Synth success.
+  The guild ring's +1 own-craft success is the server's rule (it comes with the
+  HQ block), so dlac leaves it to Nexus, which reads `anti`.
+- `pieces`: the picked pieces that are not on yet, `|`-separated.
+- A shield with no craft weapon also takes off a worn two-handed or
+  hand-to-hand Main (the server removes it when the shield goes on), so that
+  Main's numbers come off too. A one-handed Main stays.
+
+Tests NL14-NL23 in `tests/nexuscraft.lua`.
 
 ## How the pieces are picked (`feature/craftpick.lua`)
 
@@ -179,6 +212,11 @@ change and is not investigated here.
 4. Take a step: the normal gear comes back.
 5. A recipe with a subcraft: the weaker craft gets the one-craft pieces.
 6. `/dl craft nexus off`, craft: no gear changes, no wait.
+
+**Preview (2026-10-09):** `lua tests/nexuscraft.lua` 147 (NL14-NL23 new, 35
+checks). A scratch mutation check (22 deliberate breaks of the preview, each
+restored by bytes) caught every one, and every new check failed under at least
+one of them.
 
 ## Rollback and open items
 

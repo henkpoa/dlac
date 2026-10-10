@@ -16,8 +16,16 @@
         op=hello                       Nexus loaded: who is listening?
         op=next;seq=N;crafts=Smithing:30,Woodworking:60;recipe=R;result=I;desynth=0|1
                                        the next synth needs these crafts
+        op=preview;seq=N;crafts=...    (same fields as next) what WOULD you wear?
       dlac -> 'dlac_craft'
-        op=hello;v=1;follow=1|0        dlac is here (the answer to hello, and at load)
+        op=hello;v=1;follow=1|0;preview=1
+                                       dlac is here (the answer to hello, and at load)
+        op=gear;seq=N;state=S;sk=Woodworking:2,Smithing:1;anti=Smithing:-1;hqr=0;succ=0;pieces=A|B
+                                       the answer to a preview: how the pieces `next`
+                                       would put on change the worn numbers
+                                         pick  the lock would wear these pieces
+                                         none  no craft gear for this recipe
+                                         off   /dl craft nexus off (nothing changes)
         op=ready;seq=N;state=S         gear for synth N is settled:
                                          worn     every picked piece is on
                                          partial  some piece never went on (a Lock,
@@ -28,6 +36,14 @@
         op=bye                         dlac unloaded
     Nexus waits for `ready` only when dlac has said hello, and never longer than
     its own few seconds, so a client without dlac crafts exactly as before.
+
+    THE PREVIEW (2026-10-09, Nexus's success and HQ odds): Nexus shows the odds
+    of a synth with the gear the lock WILL wear for it. A preview runs the same
+    pick as `next` (M.pickFor, same reads) and answers at once with the change
+    from what is worn now: per craft skill (sk) and HQ block (anti), Synth HQ
+    (hqr) and flat Synth success (succ). It never equips, never touches the
+    lock and never answers `ready`. A preview without a number for seq is
+    ignored.
 
     THE LOCK (owner, 2026-10-04): "lock the crafting gear until the person moves
     or until Nexus says something else that needs changing". The picks stay on
@@ -143,7 +159,7 @@ local function reply(seq, state)
 end
 
 local function hello()
-    emit({ op = 'hello', v = M.PROTOCOL, follow = (io_('follow') ~= false) });
+    emit({ op = 'hello', v = M.PROTOCOL, follow = (io_('follow') ~= false), preview = true });
     M._hello = true;
 end
 
@@ -174,6 +190,15 @@ function M.missing(picks)
     return out;
 end
 
+-- The pieces `next` would pick for `req`: the one place both messages read
+-- their inputs, so a preview always shows what the lock will wear.
+function M.pickFor(req, items)
+    local skills = {};
+    for c in pairs(req) do skills[c] = io_('skill', c); end
+    return craftpick.pick(items or io_('items') or {}, req, skills,
+        { goal = io_('goal'), level = io_('level') });
+end
+
 -- One `next` message: pick, lock, and start waiting for the gear.
 function M.handleNext(msg, now)
     local seq = tonumber(msg.seq) or 0;
@@ -188,10 +213,7 @@ function M.handleNext(msg, now)
     end
     local req = M.crafts(msg.crafts);
     if next(req) == nil then reply(seq, 'none'); return; end
-    local skills = {};
-    for c in pairs(req) do skills[c] = io_('skill', c); end
-    local picks, info = craftpick.pick(io_('items') or {}, req, skills,
-        { goal = io_('goal'), level = io_('level') });
+    local picks, info = M.pickFor(req);
     if next(picks) == nil then
         M.clear('no gear');
         reply(seq, 'none');
@@ -213,6 +235,87 @@ function M.handleNext(msg, now)
         M._lastNote = nil;
     end
     M._pending = { seq = seq, deadline = now + M.CONFIRM_S };
+end
+
+local function addRow(d, row, sign)
+    if type(row) ~= 'table' then return; end
+    for _, c in ipairs(craftpick.CRAFTS) do
+        local sk = tonumber((row.sk or {})[c]) or 0;
+        local anti = tonumber((row.anti or {})[c]) or 0;
+        if sk ~= 0 then d.sk[c] = (d.sk[c] or 0) + sign * sk; end
+        if anti ~= 0 then d.anti[c] = (d.anti[c] or 0) + sign * anti; end
+    end
+    d.hqr = d.hqr + sign * (tonumber(row.hqr) or 0);
+    d.succ = d.succ + sign * (tonumber(row.succ) or 0);
+end
+
+-- How wearing `picks` changes the numbers worn now: each slot whose pick is
+-- not on yet adds the pick's row and takes away the worn piece's row (a worn
+-- piece with no row carries no craft numbers). A shield with no craft weapon
+-- also takes off a worn two-handed or hand-to-hand Main: the server removes
+-- it when the shield goes on (charutils EquipArmor, SLOT_SUB).
+-- Returns { sk = { Craft = n }, anti = { Craft = n }, hqr, succ, pieces = { name } }.
+function M.gearDelta(picks, items)
+    local rows = {};
+    for _, it in ipairs(items or {}) do
+        if type(it) == 'table' and type(it.name) == 'string' then rows[string.lower(it.name)] = it; end
+    end
+    local d = { sk = {}, anti = {}, hqr = 0, succ = 0, pieces = {} };
+    for _, slot in ipairs(craftpick.SLOT_ORDER) do
+        local want = picks[slot];
+        if want ~= nil then
+            local worn = io_('wornName', slot);
+            if type(worn) ~= 'string' or string.lower(worn) ~= string.lower(want) then
+                addRow(d, rows[string.lower(want)], 1);
+                if type(worn) == 'string' then addRow(d, rows[string.lower(worn)], -1); end
+                d.pieces[#d.pieces + 1] = want;
+            end
+        end
+    end
+    local sub = picks.Sub and rows[string.lower(picks.Sub)] or nil;
+    if picks.Sub ~= nil and picks.Main == nil and (sub == nil or sub.shield ~= false) then
+        local worn = io_('wornName', 'Main');
+        local main = type(worn) == 'string' and rows[string.lower(worn)] or nil;
+        if main ~= nil and main.twoHand == true then addRow(d, main, -1); end
+    end
+    return d;
+end
+
+-- { Craft = n } -> "Woodworking:2,Smithing:-1": craft order, zeros left out.
+function M.deltaText(map)
+    local parts = {};
+    for _, c in ipairs(craftpick.CRAFTS) do
+        local n = tonumber((map or {})[c]) or 0;
+        if n ~= 0 then parts[#parts + 1] = c .. ':' .. tostring(math.floor(n)); end
+    end
+    return table.concat(parts, ',');
+end
+
+-- One `preview` message: the pick `next` would make, answered as the change
+-- from what is worn. Nothing is equipped or locked.
+function M.handlePreview(msg)
+    local seq = tonumber(msg.seq);
+    if seq == nil then return; end
+    local out = { op = 'gear', seq = seq, sk = '', anti = '', hqr = 0, succ = 0, pieces = '' };
+    if io_('follow') == false then
+        out.state = 'off';
+        emit(out);
+        return;
+    end
+    local req = M.crafts(msg.crafts);
+    local items = io_('items') or {};
+    local picks = {};
+    if next(req) ~= nil then picks = M.pickFor(req, items); end
+    if next(picks) == nil then
+        out.state = 'none';
+        emit(out);
+        return;
+    end
+    local d = M.gearDelta(picks, items);
+    out.state, out.sk, out.anti = 'pick', M.deltaText(d.sk), M.deltaText(d.anti);
+    out.hqr, out.succ = d.hqr, d.succ;
+    out.pieces = table.concat(d.pieces, '|');
+    emit(out);
 end
 
 -- Answer the waiting synth once its gear is on (or once it is clear it never
@@ -261,7 +364,8 @@ function M._pump(now)
         M._inbox = {};
         for _, msg in ipairs(box) do
             if msg.op == 'hello' then hello();
-            elseif msg.op == 'next' then M.handleNext(msg, now); end
+            elseif msg.op == 'next' then M.handleNext(msg, now);
+            elseif msg.op == 'preview' then M.handlePreview(msg); end
         end
     end
     M.checkPending(now);

@@ -149,7 +149,7 @@ sends an ITEM_SAME per add), then one more ITEM_SAME as the tool comes back.
 Field gear gives up to three rolls a swing, so a swing often carries several
 ITEM_SAMEs and no packet marks the last. The mover counts every inventory gain
 from our motion until the response has been quiet for 0.5 s (`SETTLE_S`), or
-until our next trade. Before 2026.10.09b it stopped at the first ITEM_SAME:
+until our next trade. Before 2026.10.09d it stopped at the first ITEM_SAME:
 only the first find of each swing counted, and since a stack never moves when
 it holds more than was counted, multi-roll stacks never moved at all.
 
