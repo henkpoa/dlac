@@ -320,7 +320,20 @@ addon.version = '2026.10.10e';  -- date of the last shipped change (Ashita print
                                 --  Gear Vault layouts from the UI;
                                 --  10.09a = AscensionXI catalog: the four guild
                                 --  crafting headpieces replace the old guild
-                                --  gloves/Caduceus bonuses, keeping Artisan at +10)
+                                --  gloves/Caduceus bonuses, keeping Artisan at +10;
+                                --  10.09b = the Nexus link answers previews: the
+                                --  pieces the lock would wear for a recipe and how
+                                --  they change the worn numbers, for Nexus's odds;
+                                --  10.09c = the Anchor Ring joins the Teleports
+                                --  menu's Exp rings, usable from there or with
+                                --  /dl xp anchor;
+                                --  10.09d = HELM storage counts every find of a
+                                --  multi-roll swing, moves top up a stack in
+                                --  either bag first, and a zone line keeps the
+                                --  dig/HELM counts;
+                                --  10.10a-e = the AscensionXI White Mage flower
+                                --  gauge: shows itself under Afflatus Solace or
+                                --  Misery, /dl gauge to show, hide, scale or demo)
 addon.desc    = 'Gear sets, triggers and live stats with level scaling -- dlac equips your gear itself.';
 
 -- Load BEACON ('/dl check' field round, 2026-07-23): written by PLAIN io at

@@ -28,9 +28,18 @@ local function harness()
     function H.put(cid, slot, id, n, flags)
         H.bags[cid].items[slot] = { id = id, count = n, flags = flags or 0 };
     end
+    -- An inventory update with no ITEM_SAME, as a sort sends it.
+    function H.update(slot, id, n)
+        H.m.incoming(0x020, attr(slot, id, n));
+        H.put(0, slot, id, n);
+    end
+    -- The server adding one find: ITEM_ATTR, then ITEM_SAME after EVERY item
+    -- (AscensionXI transaction.cpp applyAddItem). H.done sends the last
+    -- ITEM_SAME, the tool coming back (confirmTrade).
     function H.reward(slot, id, n, packet)
         H.m.incoming(packet or 0x020, attr(slot, id, n));
         H.put(0, slot, id, n);
+        H.m.incoming(0x01D, '');
         H.responding = true;
     end
     function H.done()
@@ -85,11 +94,29 @@ h.reward(2, 200, 12); -- unrelated arrival outside a HELM response
 h.pause(); assert(#h.sent == 1 and h.sent[1][11] == 1 and h.sent[1][5] == 5);
 h.confirm(1, 100, 0, 7, 1, 5); h.pause(); assert(#h.sent == 1);
 
--- ITEM_SAME closes the reward window before the settle delay expires.
-h = harness(); h.start(); h.reward(1, 100, 12); h.done();
+-- Every find of a swing counts: a special find and two rolls each come with
+-- their own ITEM_SAME, and the tool coming back sends one more.
+h = harness(); h.start(); h.reward(1, 100, 1); h.reward(2, 100, 1); h.reward(3, 101, 1); h.flush();
+assert(h.m.waiting() == 3, 'the first ITEM_SAME does not end the swing');
+
+-- The swing ends once its response has been quiet; an arrival after that is
+-- not a HELM find.
+h = harness(); h.start(); h.reward(1, 100, 12); h.done(); h.tick(storage.SETTLE_S + 0.1);
 h.reward(2, 200, 12); h.flush();
-assert(h.m.waiting() == 12, 'unrelated arrivals after ITEM_SAME are not HELM rewards');
+assert(h.m.waiting() == 12, 'an arrival after the swing settled is not counted');
 h.confirm(1, 100, 0, 7, 1, 12); h.pause(); assert(#h.sent == 1);
+
+-- Single units moved one by one stack in the Case: a move to a free slot never
+-- joins a stack server-side, so the mover aims each at the Case stack itself.
+h = harness(); h.start(); h.reward(1, 100, 1); h.reward(2, 100, 1); h.pause();
+assert(#h.sent == 1 and h.sent[1][12] == 0x52, 'the first unit opens a Case stack');
+h.confirm(1, 100, 0, 7, 1, 1); h.tick(1.1);
+assert(#h.sent == 2 and h.sent[2][11] == 2 and h.sent[2][10] == 7 and h.sent[2][12] == 1,
+    'the second unit joins it instead of taking a slot of its own');
+
+-- A stack with room in the Satchel comes before a free slot in the Case.
+h = harness(); h.put(5, 1, 100, 4); h.start(); h.reward(1, 100, 12); h.flush();
+assert(h.sent[1][10] == 5 and h.sent[1][12] == 1 and h.sent[1][5] == 12, 'the Satchel stack with room first');
 
 -- Old stock is not owed, even if sorting merges it with a reward.
 h = harness(); h.put(0, 1, 100, 8); h.start(); h.reward(1, 100, 12); h.pause();
@@ -120,23 +147,42 @@ assert(h.m.waiting() == 2, 'subtract the confirmed move and retain the new rewar
 h.pause(); assert(#h.sent == 2 and h.sent[2][5] == 2);
 
 -- A new swing can arrive before the previous batch settles.
-h = harness(); h.start(); h.reward(1, 100, 6); h.tick(0.5);
+-- The next trade counts the last swing even before its response has gone quiet.
+h = harness(); h.start(); h.reward(1, 100, 6); h.tick(storage.SETTLE_S / 2);
 h.start(); h.reward(1, 100, 12); h.flush();
-assert(#h.sent == 1 and h.sent[1][5] == 12);
+assert(#h.sent == 1 and h.sent[1][5] == 12, 'the unsettled swing is counted, not dropped');
 
 -- Count-only updates, sorting old stacks, and the observed delayed sort race.
 h = harness(); h.put(0, 1, 100, 2); h.put(0, 2, 100, 3); h.start(); h.reward(3, 100, 1);
-h.tick(0.544); h.reward(2, 0, 0); h.reward(3, 0, 0);
+h.tick(0.544); h.update(2, 0, 0); h.update(3, 0, 0);
 h.m.incoming(0x01E, string.rep('\0', 4) .. p32(6) .. string.char(0, 1, 0));
 h.put(0, 1, 100, 6); h.m.incoming(0x01D, ''); h.pause();
 assert(#h.sent == 0 and h.m.waiting() == 1, 'old stock relocated by sorting is not a reward');
 for _, id in ipairs({ 0x020, 0x01F, 0x01E, 0x05A }) do h.m.incoming(id, ''); end
 
--- Incomplete responses, zoning, and disabled destinations cancel work.
+-- Sorting while the swing is still open does not change what counts.
+h = harness(); h.put(0, 1, 100, 2); h.put(0, 2, 100, 3); h.start(); h.reward(3, 100, 1);
+h.tick(0.2); h.update(2, 0, 0); h.update(3, 0, 0); h.update(1, 100, 6); h.done(); h.pause();
+assert(#h.sent == 0 and h.m.waiting() == 1, 'a sort inside the swing is not a find');
+
+-- Incomplete responses, a zone line mid-swing, and disabled destinations cancel work.
 h = harness(); h.start(); h.m.incoming(0x020, attr(1, 100, 12)); h.put(0, 1, 100, 12);
 h.pause(); assert(#h.sent == 0 and h.m.waiting() == 0);
 h = harness(); h.start(); h.reward(1, 100, 12); h.m.incoming(0x00B, ''); h.pause(); assert(#h.sent == 0);
 h = harness(); h.start(); h.reward(1, 100, 12); h.opts = {}; h.m.changed(); h.pause(); assert(#h.sent == 0);
+
+-- The counts survive a zone line; nothing moves until the zone has settled.
+h = harness(); h.start(); h.reward(1, 100, 5); h.flush(); assert(h.m.waiting() == 5);
+h.m.incoming(0x00B, ''); h.tick(storage.ZONE_S - 0.2); h.m.incoming(0x00A, '');
+h.tick(storage.ZONE_S - 0.2); assert(#h.sent == 0, 'nothing moves while the zone settles');
+h.tick(0.3); assert(#h.sent == 1 and h.sent[1][5] == 5, 'what was gathered before the zone line still moves');
+
+-- A move cut off by a zone line counts as done, so carried stock never takes
+-- its place: here it landed, and only the carried 5 are left.
+h = harness(); h.put(0, 2, 100, 5); h.start(); h.reward(1, 100, 12); h.flush(); assert(#h.sent == 1);
+h.m.incoming(0x00B, ''); h.put(0, 1, 0, 0); h.put(7, 1, 100, 12); h.m.incoming(0x00A, '');
+h.tick(storage.ZONE_S + 0.1); h.pause();
+assert(#h.sent == 1 and h.m.waiting() == 0, 'the carried stack stays');
 
 -- Missing confirmation stops further moves; no duplicate retry.
 h = harness(); h.start(); h.reward(1, 300, 1); h.flush();
