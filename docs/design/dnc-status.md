@@ -13,12 +13,14 @@ AscensionXI gives the Dancer two abilities whose state the client cannot show:
 
 - **Perpetual Step** remembers the Steps on the party's last kills (the best level per Step, for
   2 minutes) and puts them back on the next monster. It puts on 1 level plus 3 per Unbroken
-  Rhythm stack, or all of them under Trance. Since AscensionXI #876 (2026-10-11), every Step that
-  lands, Perpetual Step included, keeps the memory for at least 30 s plus 30 s per stack (it was
-  60 seconds from a kill, with no refresh, before). The helper needs nothing new for it: the
+  Rhythm stack, or all of them under Trance. Since AscensionXI #876 (2026-10-11), every Step use,
+  Perpetual Step included, hit or miss, puts the memory back to the full 2 minutes (it was 60
+  seconds from a kill, with no refresh, before). The helper needs nothing new for it: the
   memory's timer is the buff's own.
 - **Unbroken Rhythm** sells those stacks for TP: 600, 900, then 1200, and 1200 again to refresh at
-  three. Each stack drops 60 seconds after the last one.
+  three. Each stack drops 60 seconds after the last one. Since #876 the stacks also lengthen a
+  re-stepped Daze: a Step on a Daze already there adds 30 s plus 30 s per stack, up to 2 minutes.
+  The server already pushes a Daze whose end moves, so the helper shows it with no change.
 
 The memory is the buff's power, which the client never receives. The Dazes on a monster are
 invisible to the client too. The **DNC Status** Job helper (`jobhelpers\dnc\dnc-status`, the
@@ -128,7 +130,8 @@ With the AscensionXI branch running on the local shard, as a main Dancer 30+:
 
 1. The Panel shows "Waiting for the server." until the first state, then the three sections.
 2. Kill a stepped monster: the window appears with the memory and its 2:00 countdown. Each
-   Step you land after that puts it back up (to 2:00 at three Unbroken Rhythm stacks).
+   Step you use after that, hit or miss, puts it back to 2:00. With three Unbroken Rhythm
+   stacks, re-stepping a Daze puts the Daze's own countdown back to 2:00 too.
 3. Buy Unbroken Rhythm stacks: the count, the drop timer and the next price follow (600, 900,
    1200, then "Refresh 1200"), orange when TP is short.
 4. Step a monster: the target section names it and counts each Step down; a second Step
