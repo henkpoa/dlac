@@ -18,7 +18,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.10.10g';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.10.11a';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
                                 -- (03f = engine v163: the contest explains its own plan;
                                 --  03g = one floating tray: Teleports + the E-Box crates;
@@ -338,7 +338,10 @@ addon.version = '2026.10.10g';  -- date of the last shipped change (Ashita print
                                 --  state, so a server without it shows nothing;
                                 --  10.10g = the AscensionXI DNC Status Job helper:
                                 --  Perpetual Step's memory, Unbroken Rhythm's
-                                --  stacks and price, the Steps on your target)
+                                --  stacks and price, the Steps on your target;
+                                --  10.11a = AscensionXI catalog: Refresh +2 on the
+                                --  four high-level Refresh bodies, Sleep Arrow and
+                                --  Sleep Bolt get +100 ranged accuracy)
 addon.desc    = 'Gear sets, triggers and live stats with level scaling -- dlac equips your gear itself.';
 
 -- Load BEACON ('/dl check' field round, 2026-07-23): written by PLAIN io at

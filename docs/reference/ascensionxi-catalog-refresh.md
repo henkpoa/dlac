@@ -4,6 +4,41 @@ A log of AscensionXI catalog refreshes, newest first. To get one from DLAC main 
 
 ---
 
+# AscensionXI catalog refresh, October 11, 2026
+
+DLAC `2026.10.11a` regenerates the complete pack from AscensionXI main
+`65225edf03` (after #896). Six existing records change. Nothing is added
+or removed.
+
+- Royal Cloak (13749), Aristocrat's Coat (13774), Demon's Cloak (13780)
+  and Dalmatica +1 (13788) go from Refresh +1 to Refresh +2 (AXI #871).
+  Vermillion Cloak and Dalmatica keep +1 on purpose.
+- Sleep Bolt (18149) and Sleep Arrow (18158) gain +100 ranged accuracy and
+  `RANGED_FIXED_DAMAGE = 1`, so a hit lands as exactly 1 damage. Sleep
+  Arrow's sleep chance goes from 95 to 100 (AXI #891).
+
+`RANGED_FIXED_DAMAGE` has no DLAC stat name, so it shows as a raw key under
+Misc. Totals: 15,466 equipment records, all named from tracked client DATs,
+and 71 icon overrides, both unchanged. Every other generated file comes back
+byte-identical, so the generator still reproduces the committed pack and the
+diff is only these two server changes.
+
+Verification, offline only: 37 generator tests, AscensionXI pack lint (39
+checks), the core suite (7,577 checks), UI smoke (1,645 checks) and the other
+27 commands in DLAC CI, all on Lua 5.4.
+
+This release also carries everything merged into DLAC main since AXI's
+current pin `ea8f4cf` (`2026.10.09a`): the Nexus crafting-odds preview
+(#204), the Anchor Ring in the Teleports menu (#205), the dig and HELM
+storage fixes (#206), the White Mage flower gauge (#207, 10.10a-f) and the
+DNC Status Job helper (#201). Their server halves (AXI #855, #873, #876) and
+the two catalog changes above are all on AXI main. Prod runs `6134da8063`,
+which has none of them, so promote the pin's channel in the same deploy as
+a server image built from AXI main at or after `65225edf03`
+([ascensionxi-release-routine.md](ascensionxi-release-routine.md)).
+
+---
+
 # AscensionXI catalog refresh, October 9, 2026
 
 DLAC `2026.10.09a` regenerates the complete pack from AscensionXI main

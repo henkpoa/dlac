@@ -79155,12 +79155,14 @@ return {
             Stats = {
                 DMG = 1,
                 Delay = 90,
-                ITEM_ADDEFFECT_CHANCE = 95,
+                RangedAccuracy = 100,
+                ITEM_ADDEFFECT_CHANCE = 100,
                 ITEM_ADDEFFECT_DURATION = 25,
                 ITEM_ADDEFFECT_LVADJUST = 5,
                 ITEM_ADDEFFECT_STATUS = 2,
                 ITEM_ADDEFFECT_TYPE = 2,
                 ITEM_SUBEFFECT = 9,
+                RANGED_FIXED_DAMAGE = 1,
             }
         },
         SleepBolt = {
@@ -79174,6 +79176,7 @@ return {
             Stats = {
                 DMG = 1,
                 Delay = 288,
+                RangedAccuracy = 100,
                 ITEM_ADDEFFECT_CHANCE = 100,
                 ITEM_ADDEFFECT_DSTAT = 12,
                 ITEM_ADDEFFECT_DURATION = 25,
@@ -79182,6 +79185,7 @@ return {
                 ITEM_ADDEFFECT_STATUS = 2,
                 ITEM_ADDEFFECT_TYPE = 2,
                 ITEM_SUBEFFECT = 9,
+                RANGED_FIXED_DAMAGE = 1,
             }
         },
         SliceOfBluetail = {
@@ -119891,7 +119895,7 @@ return {
             Stats = {
                 DEF = 41,
                 MP = 18,
-                Refresh = 1,
+                Refresh = 2,
                 CurePotency = 12,
             }
         },
@@ -124351,7 +124355,7 @@ return {
             Stats = {
                 DEF = 46,
                 MagicDefenseBonus = 6,
-                Refresh = 1,
+                Refresh = 2,
                 ConvertHPtoMP = 55,
                 ResistParalyze = 3,
             }
@@ -124512,7 +124516,7 @@ return {
             Stats = {
                 DEF = 61,
                 INT = 5,
-                Refresh = 1,
+                Refresh = 2,
                 ElementalMagicSkill = 10,
             }
         },
@@ -138242,7 +138246,7 @@ return {
                 MP = 20,
                 MPP = 1,
                 Evasion = -10,
-                Refresh = 1,
+                Refresh = 2,
             }
         },
         RoyalRedingote = {
