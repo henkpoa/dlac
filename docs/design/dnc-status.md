@@ -13,7 +13,9 @@ AscensionXI gives the Dancer two abilities whose state the client cannot show:
 
 - **Perpetual Step** remembers the Steps on the party's last kills (the best level per Step, for
   60 seconds) and puts them back on the next monster. It puts on 1 level plus 3 per Unbroken
-  Rhythm stack, or all of them under Trance.
+  Rhythm stack, or all of them under Trance. Since AscensionXI #876 (2026-10-11), a Step that
+  lands on a monster already carrying a Step keeps the memory for 30 s plus 30 s per stack. The
+  helper needs nothing new for it: the memory's timer is the buff's own.
 - **Unbroken Rhythm** sells those stacks for TP: 600, 900, then 1200, and 1200 again to refresh at
   three. Each stack drops 60 seconds after the last one.
 
