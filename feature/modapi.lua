@@ -208,6 +208,14 @@ function M.build(rec)
     -- entry above.
     function S.service(path) return svc(path); end
 
+    -- A server pack may answer facts that only its server knows. Keep the
+    -- lookup behind the module API so helpers do not depend on pack internals.
+    S.server = {
+        service = function(name)
+            return ask('dlac\\gear\\serverpack', 'service', nil, name);
+        end,
+    };
+
     -- The ONE monotonic clock: the cmdqueue frame counter (the addon's steady
     -- tick), falling back to os.clock. Measure every lockout and every debounce
     -- against this, and never against os.time -- os.clock is process CPU time on

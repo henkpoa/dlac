@@ -122,7 +122,9 @@ end
 -- partition its packet uses (packet[5]; the server's channel registry
 -- assigns the partitions). The EXP band check (0x4C) sits inside the vault's
 -- band but is its own module with its own pending request, so it takes its
--- own turns. Any other op is a producer of its own.
+-- own turns. The job gauge partition is shared by job, slot = op % 8 (0 the
+-- White Mage gauge, 1 the Dancer status), and each slot is its own module.
+-- Any other op is a producer of its own.
 function M.producerOf(op)
     if type(op) ~= 'number' then return 'unknown'; end
     if op == 0x4C then return 'EXP band'; end
@@ -131,7 +133,7 @@ function M.producerOf(op)
     if op == 0x81 then return 'digging'; end
     if op >= 0xA0 and op <= 0xAF then return 'ascension'; end
     if op >= 0xC0 and op <= 0xCF then return 'telemetry'; end
-    if op >= 0xD0 and op <= 0xDF then return 'whm gauge'; end
+    if op >= 0xD0 and op <= 0xDF then return (op % 8 == 1) and 'dnc status' or 'whm gauge'; end
     return op;
 end
 

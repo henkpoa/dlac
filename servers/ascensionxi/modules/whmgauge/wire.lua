@@ -4,6 +4,10 @@
     modules/custom/lua/job_gauge_wire.lua in the ascensionxi repo; the
     contract is documentation/custom/whm-flower-gauge.md there.
 
+    The partition is shared by job (slot = op % 8): this is slot 0. Slot 1
+    (0xD1, 0xD9) is the Dancer status (dncstatus/wire.lua); gauge.onFrame
+    reads only the two ops below, so its frames never reach the gauge.
+
     Why a channel at all: the gauge's numbers live only on the server. The
     client never sees a Regen tick land on someone outside its party, and the
     server decides every flower anyway, because it applies them. What the

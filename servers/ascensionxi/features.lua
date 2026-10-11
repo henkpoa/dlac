@@ -14,11 +14,14 @@
     fed by the pack's digging module.
     October 5: AutoAcc (its Gear Helpers row and readout), fed by the pack's
     telemetry module. Turn it off here if its field round finds a fault.
+    October 10: the Job Helpers tab, with DNC Status as its only helper (fed
+    by the pack's dncstatus module). The `jobhelpers` list names the helper
+    folders this server loads; /dl jh names the ones it leaves out.
 ]]--
 return {
     tabs = {
         gearhelpers = true,
-        jobhelpers  = false,
+        jobhelpers  = true,
     },
     menu = {
         lockstyle = true,
@@ -30,4 +33,5 @@ return {
     },
     -- Also controls the shared hobby bar. Add helpers as they are enabled.
     helpers = { helm = true, choco = true, autoacc = true },
+    jobhelpers = { ['dnc-status'] = true },
 };
