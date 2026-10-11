@@ -88,6 +88,13 @@ touch game sessions. AXI `dat-channel-swap-isolation.md` lists the inputs.
   the old pin. Promote the newer channel from the pin PR instead.
 - **Git installs are held.** The launcher never writes a `dlac` folder that is a
   Git working copy, so such an install doesn't show what staging serves.
+- **Excluded folders never install.** AXI's dlac entry has an `exclude` list:
+  `docs`, `tests`, `tools`, and the Job helpers AscensionXI doesn't turn on
+  (`jobhelpers/blu`, `jobhelpers/bst`). A playtest on a Git checkout can't
+  catch this, because a checkout has every folder. DNC Status nearly shipped
+  without its window that way (AXI #898). A new AscensionXI Job helper fails
+  AXI's `test_addon_distribution.py` until the pin PR adds its folder to
+  `SHIPPED_HELPERS` there, or excludes it.
 - **Rollback:** revert the AXI pin PR, which builds a new staging channel, then
   promote that channel.
 
