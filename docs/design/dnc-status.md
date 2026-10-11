@@ -1,7 +1,8 @@
 # Dancer status (AscensionXI)
 
-**Status, 2026-10-10:** built and tested headless (`tests/ascensionxi_dncstatus.lua`); not yet
-seen in game. The server half is AscensionXI draft PR #876 (branch `claude/dnc-status`,
+**Status, 2026-10-11:** owner playtest passed on the local shard ("Works perfectly, player
+testing approved."); ready to merge with its server half. Tests: `tests/ascensionxi_dncstatus.lua`.
+The server half is AscensionXI PR #876 (branch `claude/dnc-status`,
 `modules/custom/lua/dnc_status.lua`, 25 xi_test cases), whose design record is
 `documentation/custom/dnc-status.md` in that repo. The two codecs agree on the shared vector and
 on 2,000 random frames. The window is empty in game until that PR deploys: dlac draws nothing
@@ -124,7 +125,7 @@ what it alone knows.
 `/dl dnc` prints the channel's state and the last frame, for field rounds. Everything else is in
 the Panel (Job Helpers > DNC > DNC Status).
 
-## Field checks owed
+## Field checks (owner playtest passed 2026-10-11: "Works perfectly, player testing approved.")
 
 With the AscensionXI branch running on the local shard, as a main Dancer 30+:
 
