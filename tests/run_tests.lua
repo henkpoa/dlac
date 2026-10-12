@@ -2213,6 +2213,80 @@ check('T35 current keeps ings order', curT.ings[1] == 1165 and #curT.ings == 2, 
 end)();
 
 -- ---------------------------------------------------------------------------
+-- HAO. AscensionXI HELM settings (Henrik 2026-10-12): "Always on" arms the
+--      Equip-near-Points switch at every login (the one-hobby lock still
+--      applies), and "Show HELM badge" hides the floating badge. Both live in
+--      helmstate.lua; a "login" here is a fresh helmwatch reading that file.
+-- ---------------------------------------------------------------------------
+;(function()
+    local dir = 'tests' .. package.config:sub(1, 1);
+    local path = dir .. 'helmstate.lua';
+    os.remove(path);
+    local constants = require('dlac\\gear\\serverpack').manifest().const;
+    local oldModel = constants.helmModel;
+    constants.helmModel = 'extra-rolls';
+    local saved = {};
+    for _, k in ipairs({ 'craftwatch', 'helmwatch', 'fishwatch', 'chocowatch', 'idleexcl' }) do
+        saved[k] = package.loaded['dlac\\feature\\' .. k];
+    end
+    local cw = dofile('feature/craftwatch.lua');
+    package.loaded['dlac\\feature\\craftwatch'] = cw;
+    package.loaded['dlac\\feature\\fishwatch'] = dofile('feature/fishwatch.lua');
+    package.loaded['dlac\\feature\\chocowatch'] = dofile('feature/chocowatch.lua');
+    local idleexcl = dofile('feature/idleexcl.lua');
+    package.loaded['dlac\\feature\\idleexcl'] = idleexcl;
+    local function login()
+        local hw = dofile('feature/helmwatch.lua');
+        hw._charDir = function() return dir; end;
+        package.loaded['dlac\\feature\\helmwatch'] = hw;
+        return hw;
+    end
+
+    local hw = login();
+    check('HAO1 a fresh character starts with the switch off', hw.isAutoHelm(), false);
+    check('HAO1b Always on starts unticked',                    hw.isAlwaysOn(), false);
+    check('HAO1c the HELM badge starts shown',                  hw.badgeShown(), true);
+    hw.setAlwaysOn(true);
+    check('HAO2 ticking Always on arms the switch now',         hw.isAutoHelm(), true);
+    check('HAO2b the badge rides along by default',             (idleexcl.getActive() or {}).badge, true);
+    hw.setShowBadge(false);
+    check('HAO3 unticking Show HELM badge hides the badge',     (idleexcl.getActive() or {}).badge, false);
+    check('HAO3b HELM is still the armed hobby',                (idleexcl.getActive() or {}).key, 'helm');
+
+    hw = login();
+    check('HAO4 Always on arms at the next login',              hw.isAutoHelm(), true);
+    check('HAO4b ...without carrying a hold over',              hw.autoActive(), false);
+    check('HAO4c the badge setting survives a login',           hw.badgeShown(), false);
+    hw.setAutoHelm(false);
+    check('HAO5 the switch still turns off',                    hw.isAutoHelm(), false);
+    check('HAO5b turning it off keeps Always on',               hw.isAlwaysOn(), true);
+
+    -- The one-hobby lock is not bypassed: craft is on before the login reads
+    -- the file, so the Always-on arm is refused.
+    cw.setEnabled(true);
+    hw = login();
+    check('HAO6 another hobby on at login: HELM stays off',     hw.isAutoHelm(), false);
+    check('HAO6b ...and craft is still the armed one',          (idleexcl.getActive() or {}).key, 'craft');
+    cw.setEnabled(false);
+
+    hw.setAutoHelm(true);
+    hw.setAlwaysOn(false);
+    check('HAO7 unticking Always on leaves the switch as it is', hw.isAutoHelm(), true);
+    hw = login();
+    check('HAO7b unticked: the next login starts off again',    hw.isAutoHelm(), false);
+
+    -- AscensionXI only: another server ignores both saved settings.
+    hw.setAlwaysOn(true); hw.setAutoHelm(false); hw.setShowBadge(false);
+    constants.helmModel = oldModel;
+    hw = login();
+    check('HAO8 other servers ignore Always on',                hw.isAutoHelm(), false);
+    check('HAO8b ...and always show the badge',                 hw.badgeShown(), true);
+
+    os.remove(path);
+    for k, v in pairs(saved) do package.loaded['dlac\\feature\\' .. k] = v; end
+end)();
+
+-- ---------------------------------------------------------------------------
 -- U. Set-entry name resolution -- case-insensitive fallback + quiet-once warn.
 --    Field case (SMN "test" commit): static-migrated sets say "Solid wand" but
 --    gear.lua's client name is "Solid Wand"; every rebuild flooded chat with

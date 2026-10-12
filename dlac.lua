@@ -342,6 +342,9 @@ addon.version = '2026.10.12b';  -- date of the last shipped change (Ashita print
                                 --  10.11a = AscensionXI catalog: Refresh +2 on the
                                 --  four high-level Refresh bodies, Sleep Arrow and
                                 --  Sleep Bolt get +100 ranged accuracy;
+                                --  10.12a = AscensionXI Gathering Gear settings:
+                                --  "Always on" turns Equip near Points on at every
+                                --  login, "Show HELM badge" hides the floating badge;
                                 --  10.12b = Gear Vault: the layout's right-click
                                 --  acts on the first click -- it waits for the
                                 --  copy's location instead of asking for a second)

@@ -10846,6 +10846,24 @@ packet IDs"* (`2026.10.05d`): the hovers stopped showing frame counts, lane
 states, revisions and the model's internal reasons, and say it in a player's
 words; `/dl why` keeps the precise reasons.
 
+## 2026-10-12: Gathering Gear "Always on" and the HELM badge (AscensionXI, `2026.10.12a`)
+
+Henrik asked for two settings under Gear Helpers > Gathering Gear, AXI only:
+"Always on" and a way to show or hide the floating HELM window. Asked which
+meaning he wanted for each, he chose: **Always on keeps the switch on**
+(Equip near Points arms itself at every login; the gear still only goes on
+near a Point; NOT the old always-worn "Set HELM Idle"), and **the window is
+the small HELM badge** (ui/idlefloat) that appears while the switch is on.
+Both save per character in `helmstate.lua` (`alwaysOn`, `badge`).
+
+This is the player's own opt-in, so it does not undo the earlier ruling
+(063713d) that the switch is never restored by itself. Arming at login goes through
+`setAutoHelm`, so the one-hobby lock still refuses it (in chat) when another
+hobby is on. Unticking Always on leaves the switch as it is. Other packs
+ignore both saved values. Tests HAO1-HAO8b (`run_tests`), AXS23-AXS26 and
+HB28-HB31 (`smoke_ui`); deliberate breaks of the login arm, the badge gate and
+the AXI gate were each caught.
+
 ## 2026-10-12: the layout's right-click acts on the first click (AscensionXI, `2026.10.12b`)
 
 Henrik: right-clicking a Mog Wardrobe layout row to withdraw *"always stops me

@@ -99,15 +99,18 @@ local function say(s) if _cfok and _cfmt.msg then _cfmt.msg(s); else print('[dla
 
 -- <char>\dlac\ dir: the one addon-side copy (lib\statefile). nil pre-login.
 local _sfok, _sfile = pcall(require, 'dlac\\lib\\statefile');
-local charDir = (_sfok and type(_sfile) == 'table') and _sfile.charDir
-    or function() return nil; end;
-M._charDir = charDir;   -- test seam
+M._charDir = (_sfok and type(_sfile) == 'table') and _sfile.charDir
+    or function() return nil; end;   -- test seam (every path below reads through it)
+local function charDir() return M._charDir(); end
 
 -- The CENTRAL entity watcher (lib/entwatch): Auto HELM's proximity hold
 -- subscribes to the four "* Point" names through it -- see the proximity
 -- section. Never write a local entity scan (the architecture.md rule).
 local _ewok, _ew = pcall(require, 'dlac\\lib\\entwatch');
 _ewok = _ewok and type(_ew) == 'table';
+
+-- The numeric gathering rules; enabled() = the AscensionXI pack.
+local gathering = require('dlac\\gear\\gathering');
 
 -- ---------------------------------------------------------------------------
 -- byte helpers (pure; shared by every parser below)
@@ -185,6 +188,11 @@ M.AUTO_HOLD_S = 5;         -- hold tail after each swing's result. TIMING TRUTH
                            -- 5s of a result or that swing rolls undressed
                            -- (its own result re-opens the hold) -- watch the
                            -- bar's AUTO line when judging break tests.
+M.alwaysOn = false;        -- AscensionXI "Always on" (Henrik 10-12): the player
+                           -- opts in to Auto HELM arming at every login. The
+                           -- gear still only goes on near a Point.
+M.showBadge = true;        -- AscensionXI: show the floating HELM badge
+                           -- (ui/idlefloat) while the switch is on
 M._enabledAt = 0;          -- os.time() of the last enable (state-file `at`)
 M._rescanned = false;      -- manifest freshness ensured once this session?
 local _stateLoaded = false;
@@ -198,10 +206,11 @@ local function saveState()
         local p = statePath();
         if p == nil then return; end
         local f = io.open(p, 'wb'); if f == nil then return; end
-        f:write(string.format('return { gather = %q, enabled = %s, at = %d, auto = %s, autoUntil = %d, range = %d, moveCase = %s, moveSatchel = %s }\n',
+        f:write(string.format('return { gather = %q, enabled = %s, at = %d, auto = %s, autoUntil = %d, range = %d, moveCase = %s, moveSatchel = %s, alwaysOn = %s, badge = %s }\n',
             tostring(M.activeGather or ''), tostring(M.enabled == true), M._enabledAt or 0,
             tostring(M.autoHelm == true), M._autoUntil or 0, M._proxRange or 0,
-            tostring(M.moveCase == true), tostring(M.moveSatchel == true)));
+            tostring(M.moveCase == true), tostring(M.moveSatchel == true),
+            tostring(M.alwaysOn == true), tostring(M.showBadge ~= false)));
         f:close();
     end);
 end
@@ -218,12 +227,15 @@ function M.loadState()
             local ok, t = pcall(chunk);
             if ok and type(t) == 'table' then
                 M.moveCase, M.moveSatchel = t.moveCase == true, t.moveSatchel == true;
+                M.alwaysOn, M.showBadge = t.alwaysOn == true, t.badge ~= false;
                 if type(t.gather) == 'string' and VALID[t.gather] == true then M.activeGather = t.gather; end
                 -- NEITHER switch is restored -- both start OFF each session.
                 -- Auto HELM was briefly persisted; Henrik reversed it same day:
                 -- armed, it re-dresses you for merely COMING NEAR a Point in
                 -- passing, which is annoying when you are not out gathering.
-                -- Only the category (and the range setting) persist.
+                -- Only the category (and the range setting) persist. The one
+                -- way back is the AscensionXI "Always on" setting, applied
+                -- below -- the player's own opt-in, not a restored switch.
                 -- Detect-range override (0 / out-of-bounds = unset -> default,
                 -- so an old file tracks a future default change).
                 if type(t.range) == 'number' and t.range >= M.PROX_MIN and t.range <= M.PROX_MAX then
@@ -236,9 +248,32 @@ function M.loadState()
     M.autoHelm = false;
     M._autoUntil = 0;                     -- holds never survive a login
     saveState();                          -- sync the file for the engine
+    -- "Always on" arms through setAutoHelm, so the one-hobby lock still
+    -- refuses it (in chat) when another hobby is already on.
+    if M.isAlwaysOn() then M.setAutoHelm(true); end
 end
 
 function M.getGather() M.loadState(); return M.activeGather; end
+
+-- AscensionXI "Always on": Auto HELM arms at every login. Ticking it arms
+-- now too; unticking leaves the switch as it is (the pill turns it off).
+-- Other packs ignore a saved true.
+function M.isAlwaysOn() M.loadState(); return M.alwaysOn == true and gathering.enabled(); end
+function M.setAlwaysOn(on)
+    M.loadState();
+    M.alwaysOn = (on == true);
+    saveState();
+    if M.isAlwaysOn() and not M.autoHelm then M.setAutoHelm(true); end
+end
+
+-- The floating HELM badge while the switch is on (idleexcl hands this to
+-- ui/idlefloat). AscensionXI setting; other packs always show it.
+function M.badgeShown() M.loadState(); return M.showBadge ~= false or not gathering.enabled(); end
+function M.setShowBadge(on)
+    M.loadState();
+    M.showBadge = (on == true);
+    saveState();
+end
 function M.setMoveDestination(cid, on)
     M.loadState();
     if cid == 7 then M.moveCase = on == true;
@@ -788,7 +823,6 @@ end
 -- Rating = sum of HELM over the non-Head picks; >= 5 -> breakage impossible
 -- (roll floor 1 + 5*7.3 = 37.5 > the 33% default). Excavation ignores it.
 -- ---------------------------------------------------------------------------
-local gathering = require('dlac\\gear\\gathering');
 M.numericGathering = gathering.enabled;
 local _man = { data = nil, at = -10 };
 local function manifest()
