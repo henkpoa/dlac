@@ -42,7 +42,7 @@ return {
         abilities    = 485,
         zones        = 300,
         gearsets     = 126,
-        latentstats  = 866,
+        latentstats  = 869,
         levelscaling = 8,
         digdata      = 26,
         itemscripts  = 62,

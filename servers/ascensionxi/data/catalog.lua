@@ -79154,8 +79154,8 @@ return {
             Pair = "25:0",
             Stats = {
                 DMG = 1,
-                Delay = 90,
-                RangedAccuracy = 100,
+                Delay = 180,
+                RangedAccuracy = 40,
                 ITEM_ADDEFFECT_CHANCE = 100,
                 ITEM_ADDEFFECT_DURATION = 25,
                 ITEM_ADDEFFECT_LVADJUST = 5,
@@ -79175,8 +79175,8 @@ return {
             Pair = "26:0",
             Stats = {
                 DMG = 1,
-                Delay = 288,
-                RangedAccuracy = 100,
+                Delay = 180,
+                RangedAccuracy = 40,
                 ITEM_ADDEFFECT_CHANCE = 100,
                 ITEM_ADDEFFECT_DSTAT = 12,
                 ITEM_ADDEFFECT_DURATION = 25,
