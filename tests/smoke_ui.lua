@@ -8303,6 +8303,58 @@ end)();
     check('GVI19 outside retirement waits for verified lookup', lookupReply ~= nil and deposited == nil, true);
     lookupReply({ { instanceId = 55 } });
     check('GVI20 deposit carries copy guard', deposited and deposited[1].expectedInstanceId, 55);
+    -- The first right-click acts (Henrik, 2026-10-12: it stopped once and
+    -- wanted a second click while the layout re-read or the slot's lookup
+    -- was out). It waits for those answers, then carries on by itself.
+    local known, asked, relaid = nil, {}, 0;
+    vc.instanceAt = function(c, s, id) asked[#asked + 1] = c .. ':' .. s .. ':' .. id; return known; end;
+    local oldRelay = vc.requestLayout;
+    vc.requestLayout = function() relaid = relaid + 1; return true; end;
+    entry.state, entry.location, entry.slot = 1, 8, 3;
+    vc.layoutCache.fresh = false;
+    sequence = {}; vui.retireLayoutEntry(entry, true);
+    check('GVI21 a re-reading layout makes the click wait, not refuse',
+        vui._pendingRetire ~= nil and #sequence == 0 and relaid > 0, true);
+    check('GVI21b the wait is a quiet tab line',
+        vui._lastResult().text == 'checking where this copy is...' and not vui._lastResult().err, true);
+    vc.layoutCache.fresh = true;
+    vui.pumpPending();
+    check('GVI22 an unknown slot keeps waiting and asks for it',
+        vui._pendingRetire ~= nil and #sequence == 0 and asked[#asked] == '8:3:100', true);
+    vui.retireLayoutEntry(entry, true);
+    check('GVI23 a second click while waiting does not double the move',
+        vui._lastResult().text, 'wait for the current gear move to finish');
+    known = { instanceId = 55 };
+    vc.layoutBusy = function() return true; end;
+    vui.pumpPending();
+    check('GVI24 another gear move goes first', vui._pendingRetire ~= nil and #sequence == 0, true);
+    vc.layoutBusy = function() return false; end;
+    local withdrawn2;
+    vc.requestWithdraw = function(rows) withdrawn2 = rows; return true; end;
+    vui.pumpPending();
+    check('GVI25 the answer in, the same click carries on', table.concat(sequence, ','), 'sets,remove:55');
+    check('GVI25b ...on into the withdraw',
+        vui._pendingRetire == nil and (vui._pendingWithdraw ~= nil or withdrawn2 ~= nil), true);
+    vui._pendingWithdraw = nil; vc.requestWithdraw = oldWithdraw;
+    known = nil; sequence = {};
+    vui.retireLayoutEntry(entry, true);
+    vui._pendingRetire.at = os.clock() - vui.RETIRE_WAIT - 1;
+    vui.pumpPending();
+    check('GVI26 a wait with no answer gives up in words', vui._pendingRetire == nil and #sequence == 0
+        and vui._lastResult().text == 'no answer from the vault; nothing moved -- try again', true);
+    vui.retireLayoutEntry(entry, true);
+    vc.noteJob(2); vui.pumpPending();
+    check('GVI27 a job change cancels the wait', vui._pendingRetire == nil and #sequence == 0
+        and vui._lastResult().text == 'job, profile or zone changed; gear move cancelled', true);
+    vc.noteJob(1); vc.layoutCache.fresh = true;
+    asked = {}; vc.layoutCache.stamp = 59;
+    IM.Selectable = function() return false; end;
+    vui.render(1, 75);
+    check('GVI28 the menu asks for the slot as it opens', asked[1], '8:3:100');
+    entry.state = 0; vc.layoutCache.stamp = 60; asked = {};
+    vui.render(1, 75);
+    check('GVI28b a copy in the vault asks nothing', #asked, 0);
+    vc.requestLayout = oldRelay;
     vui._wornOverride, vui._clientViewOverride = nil, nil;
     package.loaded['dlac\\dispatch'] = oldDispatch;
     vc.instanceAt, vc.requestLookup, vc.requestDeposit = oldAt, oldLookup, oldDeposit;

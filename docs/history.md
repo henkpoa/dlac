@@ -10845,3 +10845,26 @@ Then *"You don't need to give out super detailed server statistics like
 packet IDs"* (`2026.10.05d`): the hovers stopped showing frame counts, lane
 states, revisions and the model's internal reasons, and say it in a player's
 words; `/dl why` keeps the precise reasons.
+
+## 2026-10-12: the layout's right-click acts on the first click (AscensionXI, `2026.10.12b`)
+
+Henrik: right-clicking a Mog Wardrobe layout row to withdraw *"always stops me
+first attempt, like it's syncing, but second attempt always works"*. The cause
+was a safety check, not a sync. Before it moves a copy that sits in the bags,
+the retire asks the server which copy is in that slot (`vc.instanceAt`). That
+answer is cached, but only worn gear is looked up in the background, and every
+vault write clears the cache, so the first click always found it empty: it
+sent the lookup and refused with "checking this copy's location; try again in
+a moment". By the second click the answer was in.
+
+Now the click waits instead (`M._pendingRetire`, driven by `pumpPending`) and
+carries on by itself once the answer is in. The same wait covers a layout
+that is still re-reading after the previous move. The menu also asks for the
+slot as it opens, so the answer is usually in before the pick. That is the
+same one lookup as before, just sent earlier. The wait gives up after 10 s,
+and a job, profile or zone change cancels it. While it waits, a second click
+is refused, and it holds off until any other gear move has finished. Filling
+the cache from the layout read was considered and not taken: it would widen
+what counts as a verified copy in the cache that duplicate-item safety relies
+on, to save one round trip. Tests GVI21-GVI28b; all ten deliberate breaks
+caught.
