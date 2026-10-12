@@ -12661,37 +12661,42 @@ end)();
 -- ---------------------------------------------------------------------------
 -- section MS: Sets-tab mode sections (gear/gearfmt.lua modeSections)
 -- Henrik 2026-07-18: mode ladders (many Caster rungs + many Club rungs in one
--- Main list) drown the flat display. A mode gating 2+ rows earns a collapsed
--- section; a row whose EVERY gate is sectioned leaves the root; a row ungated
--- or alone on ANY gate stays in the root (and still shows under its sectioned
--- gates); an OR list means membership in every sectioned gate.
+-- Main list) drown the flat display. Every mode that gates a row earns a
+-- collapsed section -- ONE row is enough since 2026-10-12 (the section carries
+-- the Add more that grows the mode, so the first gated row must open it); a
+-- gated row leaves the root; an ungated row stays; an OR list means
+-- membership in every one of its gates.
 -- ---------------------------------------------------------------------------
 (function()
     local gf = dofile('gear/gearfmt.lua');
     check('MS0 modeSections exported', type(gf.modeSections), 'function');
-    local A = { rec = { Name = 'Yew Wand',      Level = 18 }, mode = 'Weapon:Caster' };
-    local B = { rec = { Name = 'Chestnut Wand', Level = 30 }, mode = { 'Weapon:Caster', 'Weapon:Club' } };
-    local C = { rec = { Name = 'Warp Cudgel',   Level = 51 }, mode = { 'weapon:club', 'DT' } };  -- spelling drift + a solo gate
-    local D = { rec = { Name = 'Pilgrim Wand',  Level = 7  } };                                  -- ungated
-    local E = { rec = { Name = 'Kraken Club',   Level = 63 }, mode = 'Solo:Only' };              -- solo gate only
-    local root, secs = gf.modeSections({ A, B, C, D, E });
+    local A  = { rec = { Name = 'Yew Wand',      Level = 18 }, mode = 'Weapon:Caster' };
+    local B  = { rec = { Name = 'Chestnut Wand', Level = 30 }, mode = { 'Weapon:Caster', 'Weapon:Club' } };
+    local C  = { rec = { Name = 'Warp Cudgel',   Level = 51 }, mode = { 'weapon:club', 'DT' } };  -- spelling drift + a one-row gate
+    local D  = { rec = { Name = 'Pilgrim Wand',  Level = 7  } };                                  -- ungated
+    local E  = { rec = { Name = 'Kraken Club',   Level = 63 }, mode = 'Solo:Only' };              -- one-row gate only
+    local D2 = { rec = { Name = 'Ash Club',      Level = 1  } };                                  -- ungated, after E
+    local root, secs = gf.modeSections({ A, B, C, D, E, D2 });
     local function has(list, x) for _, v in ipairs(list) do if v == x then return true; end end return false; end
-    check('MS1 two sections form (caster, club)', #secs, 2);
-    check('MS2 alpha order + first-seen spelling names', secs[1].name .. '/' .. secs[2].name, 'Weapon:Caster/Weapon:Club');
-    check('MS3 caster section holds its two rows', has(secs[1].items, A) and has(secs[1].items, B), true);
-    check('MS4 club groups case-insensitively (B + drifted C)', has(secs[2].items, B) and has(secs[2].items, C), true);
+    local names = {};
+    for _, s in ipairs(secs) do names[#names + 1] = s.name; end
+    check('MS1 every gate forms a section (dt, solo, caster, club)', #secs, 4);
+    check('MS2 alpha order + first-seen spelling names', table.concat(names, '/'), 'DT/Solo:Only/Weapon:Caster/Weapon:Club');
+    check('MS3 caster section holds its two rows', has(secs[3].items, A) and has(secs[3].items, B), true);
+    check('MS4 club groups case-insensitively (B + drifted C)', has(secs[4].items, B) and has(secs[4].items, C), true);
     check('MS5 ungated row stays in the root', has(root, D), true);
-    check('MS6 solo-gated row stays in the root', has(root, E), true);
-    check('MS7 fully-sectioned rows leave the root', has(root, A) or has(root, B), false);
-    check('MS8 sectioned + solo gate -> root AND section', has(root, C) and has(secs[2].items, C), true);
-    check('MS9 root keeps display order', root[1] == C and root[2] == D and root[3] == E, true);
-    check('MS10 header ladder ascends', table.concat(secs[1].levels, ','), '18,30');
-    check('MS11 ladder sorts across spelling drift', table.concat(secs[2].levels, ','), '30,51');
-    -- a duplicated gate inside ONE row's OR list must not fake a 2-row section
+    check('MS6 a ONE-row gate gets its own section (10-12)', #secs[2].items == 1 and secs[2].items[1] == E, true);
+    check('MS7 every gated row leaves the root', has(root, A) or has(root, B) or has(root, C) or has(root, E), false);
+    check('MS8 an OR-gated row shows under each of its gates', has(secs[1].items, C) and has(secs[4].items, C), true);
+    check('MS9 root = the ungated rows, in display order', #root == 2 and root[1] == D and root[2] == D2, true);
+    check('MS10 header ladder ascends', table.concat(secs[3].levels, ','), '18,30');
+    check('MS11 ladder sorts across spelling drift', table.concat(secs[4].levels, ','), '30,51');
+    check('MS11b a one-row section still carries its level', table.concat(secs[1].levels, ','), '51');
+    -- a duplicated gate inside ONE row's OR list is one section holding the row once
     local F = { rec = { Name = 'X', Level = 5 }, mode = { 'Zerg', 'zerg' } };
     local r2, s2 = gf.modeSections({ F });
-    check('MS12 dup gate in one row makes no section', #s2, 0);
-    check('MS13 ...and that row stays in the root', r2[1], F);
+    check('MS12 dup gate in one row makes ONE section with the row once', #s2 == 1 and #s2[1].items == 1, true);
+    check('MS13 ...and that row leaves the root', #r2, 0);
     -- two rows at the SAME item level: one ladder entry, not two
     local G1 = { rec = { Name = 'G1', Level = 40 }, mode = 'M' };
     local G2 = { rec = { Name = 'G2', Level = 40 }, mode = 'M' };

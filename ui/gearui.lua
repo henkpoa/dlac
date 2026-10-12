@@ -2454,7 +2454,7 @@ end
 -- the id unique when two combos can render in one frame (builder + open add-popup).
 local function renderSortCombo(idSuffix)
     imgui.TextColored(COL.DIM, 'Sort:'); imgui.SameLine(0, 3);
-    imgui.PushItemWidth(70);
+    imgui.PushItemWidth(84);   -- 70 clipped "Level" under the arrow (themed font, 10-12)
     if imgui.BeginCombo('##ffxilac_sort' .. tostring(idSuffix or ''), ui.sortMode or 'Name') then
         if imgui.Selectable('Name',  ui.sortMode == 'Name')  then ui.sortMode = 'Name';  end
         if imgui.Selectable('Level', ui.sortMode == 'Level') then ui.sortMode = 'Level'; end
@@ -4358,7 +4358,10 @@ local function renderEntryEditPopup()
             end
             if not dup then
                 shown = shown + 1;
-                if imgui.Selectable(c, false) then modes[#modes + 1] = c; changed = true; end
+                if imgui.Selectable(c, false) then
+                    modes[#modes + 1] = c; changed = true;
+                    ui._openModeSec = string.lower(c);   -- the row moves into this section: show it open
+                end
             end
         end
         if shown == 0 then imgui.TextColored(COL.DIM, (#opts == 0) and '(no modes yet -- define them on the Triggers tab)' or '(all defined modes already added)'); end
@@ -4681,12 +4684,13 @@ local function renderSetBuilder(job, level)
             imgui.EndChild();
             imgui.PopStyleColor(1);
         end
-        -- Mode sections (Henrik, 2026-07-18): a mode gating 2+ rows collapses
-        -- them under one header -- mode name + the level ladder inside -- so a
+        -- Mode sections (Henrik, 2026-07-18): a mode's gated rows collapse
+        -- under one header -- mode name + the level ladder inside -- so a
         -- slot bloated with per-mode ladders (Caster rungs + Club rungs on WHM)
-        -- stays readable. Rows whose every gate is sectioned live only there;
-        -- ungated / solo-gated rows stay in the root list (a solo-gated row that
-        -- ALSO has a sectioned gate renders in both). Default collapsed; the id
+        -- stays readable. Gated rows live only there; ungated rows stay in the
+        -- root list. The FIRST gated row opens the section (10-12: it used to
+        -- take two, so the Add more that grows a mode was missing exactly
+        -- when the mode was new). Default collapsed; the id
         -- is set+slot+mode so a toggled-open header survives re-sorts but never
         -- leaks its state across sets or slots.
         local rootRows, modeSecs = fmt.modeSections(disp);
@@ -4697,12 +4701,19 @@ local function renderSetBuilder(job, level)
                 sec.name, #sec.items, table.concat(sec.levels, ', '),
                 tostring(M.workingSetName), tostring(ui.setSelected), sec.key);
             if act then imgui.PushStyleColor(ImGuiCol_Text, COL.JOBS); end
-            -- AllowItemOverlap is LOAD-BEARING for the Add more button: without
+            -- A section you just put rows into opens once (a gate added under
+            -- Behaviour, or its own Add more): what you touched stays in view
+            -- instead of vanishing into a collapsed header.
+            if ui._openModeSec == sec.key then imgui.SetNextItemOpen(true); ui._openModeSec = nil; end
+            -- The overlap flag is LOAD-BEARING for the Add more button: without
             -- it the header owns the whole row's hit box and the button only
-            -- toggles the section (field report, 07-18). Guarded like every
-            -- flag constant -- absent just means the header keeps the row.
+            -- toggles the section (field report, 07-18). ImGui 1.89.7 renamed
+            -- it AllowItemOverlap -> AllowOverlap (same bit), and AscensionXI's
+            -- 1.92 libs\imgui.lua defines only the new name -- reading just the
+            -- old one gave 0 there and the button went dead again (field
+            -- report, 10-12). Either name, whichever the lib file defines.
             local open = imgui.CollapsingHeader(label,
-                (ImGuiTreeNodeFlags_AllowItemOverlap ~= nil) and ImGuiTreeNodeFlags_AllowItemOverlap or 0);
+                ImGuiTreeNodeFlags_AllowOverlap or ImGuiTreeNodeFlags_AllowItemOverlap or 0);
             if act then imgui.PopStyleColor(1); end
             if imgui.IsItemHovered() then
                 imgui.SetTooltip('All rows in this list gated on this mode; the numbers are\ntheir item levels, so you can see the ladder at a glance.\nGreen = the mode is active right now (these rows beat the\nunconditional ones). A row gated on several modes appears\nunder each of its sections.');
@@ -4716,6 +4727,7 @@ local function renderSetBuilder(job, level)
                 ui._openAddPopup = true; ui.addSearch = { '' };
                 ui.addTypeFilter = {};                  -- same All reset as + Add
                 ui._addGate = sec.name;
+                ui._openModeSec = sec.key;
             end
             if imgui.IsItemHovered() then
                 imgui.SetTooltip('Add gear straight into this mode: every piece added in the picker\ngets the @' .. fmt.esc(sec.name) .. ' gate automatically.');
