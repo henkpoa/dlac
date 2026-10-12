@@ -2213,6 +2213,8 @@ end)();
     IM.TextWrapped = function(value) text[#text + 1] = string.format(value); end;
     IM.TextUnformatted = function(value) text[#text + 1] = value; end;
     IM.CalcTextSize = function() return 10; end;
+    local boxes = {};
+    IM.Checkbox = function(label) boxes[#boxes + 1] = label; return false; end;
     package.loaded.imgui = IM;
     local hw = require('dlac\\feature\\helmwatch');
     local previousCategory = hw.getGather();
@@ -2222,6 +2224,19 @@ end)();
     check('AXS6 numeric panel renders', pcall(numericUi.render, numericDeps, 900), true);
     local numericBar = dofile('ui/helmbar.lua');
     check('AXS7 numeric bar renders', pcall(numericBar.renderContent, 600), true);
+    -- The AscensionXI HELM settings (2026-10-12) render on AXI only.
+    local boxText = table.concat(boxes, '\n');
+    check('AXS23 AXI panel offers Always on', boxText:find('Always on##helmalwayson', 1, true) ~= nil, true);
+    check('AXS24 AXI panel offers Show HELM badge', boxText:find('Show HELM badge##helmbadge', 1, true) ~= nil, true);
+    constants.helmModel = oldModel;
+    boxes = {};
+    local keptText = text;
+    text = {};
+    check('AXS25 the CEXI panel still renders', pcall(numericUi.render, numericDeps, 900), true);
+    text = keptText;
+    check('AXS26 other servers do not show the AXI settings',
+        table.concat(boxes, '\n'):find('helmalwayson', 1, true) or table.concat(boxes, '\n'):find('helmbadge', 1, true), nil);
+    constants.helmModel = 'extra-rolls';
     local rendered = table.concat(text, '\n');
     check('AXS8 displays numeric planned bonuses', rendered:find('Extra rolls +60%', 1, true) ~= nil, true);
     check('AXS9 removes CEXI claims', rendered:find('Surveyor') or rendered:find('VP:') or rendered:find('Plain') or rendered:find('tools break anyway'), nil);
@@ -2964,6 +2979,29 @@ end)();
         gate._packFeatures = oldFeatures;
 
         ui._hobbyBar = false;
+
+        -- The idle badge (ui/idlefloat) stands aside when the armed hobby says
+        -- badge = false: HELM's AscensionXI "Show HELM badge" setting (10-12).
+        local keptFloat = package.loaded['dlac\\ui\\idlefloat'];
+        package.loaded['dlac\\ui\\idlefloat'] = nil;
+        local fok, badgeUi = pcall(require, 'dlac\\ui\\idlefloat');
+        check('HB28 idlefloat loads against the stub imgui', fok and type(badgeUi.render), 'function');
+        if fok then
+            local opened, keptBegin = 0, IM.Begin;
+            IM.Begin = function() opened = opened + 1; return keptBegin(); end
+            IM.GetWindowPos = function() return 5, 5; end
+            IM.SetNextWindowPos = nop;   -- the 2nd render restores the remembered position
+            activeStub = { key = 'helm', name = 'HELM', badge = true };
+            pcall(badgeUi.render);
+            check('HB29 an armed hobby shows the badge', opened, 1);
+            activeStub = { key = 'helm', name = 'HELM', badge = false };
+            pcall(badgeUi.render);
+            check('HB30 a hidden HELM badge opens no window', opened, 1);
+            check('HB31 badge Begin/End balanced', depth.win, 0);
+            IM.Begin, activeStub = keptBegin, nil;
+        end
+        package.loaded['dlac\\ui\\idlefloat'] = keptFloat;
+        if keptFloat ~= nil then host.provide({ idlefloat = keptFloat }); end
     end
 
     for _, k in ipairs(NAMES) do package.loaded[k] = saved[k]; end
