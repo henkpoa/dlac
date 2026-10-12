@@ -341,7 +341,13 @@ addon.version = '2026.10.12c';  -- date of the last shipped change (Ashita print
                                 --  stacks and price, the Steps on your target;
                                 --  10.11a = AscensionXI catalog: Refresh +2 on the
                                 --  four high-level Refresh bodies, Sleep Arrow and
-                                --  Sleep Bolt get +100 ranged accuracy)
+                                --  Sleep Bolt get +100 ranged accuracy;
+                                --  10.12a = AscensionXI Gathering Gear settings:
+                                --  "Always on" turns Equip near Points on at every
+                                --  login, "Show HELM badge" hides the floating badge;
+                                --  10.12b = Gear Vault: the layout's right-click
+                                --  acts on the first click -- it waits for the
+                                --  copy's location instead of asking for a second)
 addon.desc    = 'Gear sets, triggers and live stats with level scaling -- dlac equips your gear itself.';
 
 -- Load BEACON ('/dl check' field round, 2026-07-23): written by PLAIN io at

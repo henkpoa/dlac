@@ -357,8 +357,10 @@ function M.render(deps, availW)
     imgui.TextColored(COL_TEXT, 'Equip near Points:');
     imgui.SameLine(0, 6);
     local rangeY = (hwok and type(hw.proxEnter) == 'function') and hw.proxEnter() or 10;
-    local AUTO_ON  = string.format('ARMED: come within %d yalms of a gathering Point and that\ncategory\'s gear equips itself -- no targeting needed; it stays on while ANY\nPoint is near (stacked respawns included) and your normal gear returns\nmoments after you walk away. Starts OFF each session.\nClick to turn off.', rangeY);
-    local AUTO_OFF = string.format('Arm it and your gathering gear equips within %d yalms of a Point --\nno targeting needed; it stays on while ANY Point is near and your normal\ngear returns moments after you leave. This is the ONE HELM switch now --\nthere is no separate always-on manual idle set. Starts OFF each session.', rangeY);
+    local session = (hwok and type(hw.isAlwaysOn) == 'function' and hw.isAlwaysOn())
+        and 'Always on: turns itself on at login.' or 'Starts OFF each session.';
+    local AUTO_ON  = string.format('ARMED: come within %d yalms of a gathering Point and that\ncategory\'s gear equips itself -- no targeting needed; it stays on while ANY\nPoint is near (stacked respawns included) and your normal gear returns\nmoments after you walk away. %s\nClick to turn off.', rangeY, session);
+    local AUTO_OFF = string.format('Arm it and your gathering gear equips within %d yalms of a Point --\nno targeting needed; it stays on while ANY Point is near and your normal\ngear returns moments after you leave. This is the ONE HELM switch now --\nthere is no separate always-on manual idle set. %s', rangeY, session);
     if pill ~= nil then
         if pill(autoOn, 'helmauto', AUTO_ON, AUTO_OFF) and hwok then hw.setAutoHelm(not autoOn); end
     else
@@ -392,6 +394,22 @@ function M.render(deps, availW)
             or 'The shared hobby bar, on HELM: category glyphs, the arm switch, points\nand rating. Also /dl helm bar.');
     end
     imgui.Spacing();
+
+    -- AscensionXI settings (Henrik 10-12), saved per character.
+    if gathering.enabled() and hwok and type(hw.setAlwaysOn) == 'function' then
+        local always = { hw.isAlwaysOn() };
+        if imgui.Checkbox('Always on##helmalwayson', always) then hw.setAlwaysOn(always[1]); end
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('Turns Equip near Points on now and every time you log in.\nThe gear still only goes on near a Point. Unticking leaves the switch as it is.');
+        end
+        imgui.SameLine(0, 16);
+        local badge = { hw.badgeShown() };
+        if imgui.Checkbox('Show HELM badge##helmbadge', badge) then hw.setShowBadge(badge[1]); end
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('The small floating HELM badge with its Off button,\nshown while Equip near Points is on.');
+        end
+        imgui.Spacing();
+    end
 
     if gathering.enabled() and hwok and type(hw.setMoveDestination) == 'function' then
         imgui.TextColored(COL_TEXT, 'Move gathered items into:');

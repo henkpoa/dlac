@@ -2213,6 +2213,8 @@ end)();
     IM.TextWrapped = function(value) text[#text + 1] = string.format(value); end;
     IM.TextUnformatted = function(value) text[#text + 1] = value; end;
     IM.CalcTextSize = function() return 10; end;
+    local boxes = {};
+    IM.Checkbox = function(label) boxes[#boxes + 1] = label; return false; end;
     package.loaded.imgui = IM;
     local hw = require('dlac\\feature\\helmwatch');
     local previousCategory = hw.getGather();
@@ -2222,6 +2224,19 @@ end)();
     check('AXS6 numeric panel renders', pcall(numericUi.render, numericDeps, 900), true);
     local numericBar = dofile('ui/helmbar.lua');
     check('AXS7 numeric bar renders', pcall(numericBar.renderContent, 600), true);
+    -- The AscensionXI HELM settings (2026-10-12) render on AXI only.
+    local boxText = table.concat(boxes, '\n');
+    check('AXS23 AXI panel offers Always on', boxText:find('Always on##helmalwayson', 1, true) ~= nil, true);
+    check('AXS24 AXI panel offers Show HELM badge', boxText:find('Show HELM badge##helmbadge', 1, true) ~= nil, true);
+    constants.helmModel = oldModel;
+    boxes = {};
+    local keptText = text;
+    text = {};
+    check('AXS25 the CEXI panel still renders', pcall(numericUi.render, numericDeps, 900), true);
+    text = keptText;
+    check('AXS26 other servers do not show the AXI settings',
+        table.concat(boxes, '\n'):find('helmalwayson', 1, true) or table.concat(boxes, '\n'):find('helmbadge', 1, true), nil);
+    constants.helmModel = 'extra-rolls';
     local rendered = table.concat(text, '\n');
     check('AXS8 displays numeric planned bonuses', rendered:find('Extra rolls +60%', 1, true) ~= nil, true);
     check('AXS9 removes CEXI claims', rendered:find('Surveyor') or rendered:find('VP:') or rendered:find('Plain') or rendered:find('tools break anyway'), nil);
@@ -2964,6 +2979,29 @@ end)();
         gate._packFeatures = oldFeatures;
 
         ui._hobbyBar = false;
+
+        -- The idle badge (ui/idlefloat) stands aside when the armed hobby says
+        -- badge = false: HELM's AscensionXI "Show HELM badge" setting (10-12).
+        local keptFloat = package.loaded['dlac\\ui\\idlefloat'];
+        package.loaded['dlac\\ui\\idlefloat'] = nil;
+        local fok, badgeUi = pcall(require, 'dlac\\ui\\idlefloat');
+        check('HB28 idlefloat loads against the stub imgui', fok and type(badgeUi.render), 'function');
+        if fok then
+            local opened, keptBegin = 0, IM.Begin;
+            IM.Begin = function() opened = opened + 1; return keptBegin(); end
+            IM.GetWindowPos = function() return 5, 5; end
+            IM.SetNextWindowPos = nop;   -- the 2nd render restores the remembered position
+            activeStub = { key = 'helm', name = 'HELM', badge = true };
+            pcall(badgeUi.render);
+            check('HB29 an armed hobby shows the badge', opened, 1);
+            activeStub = { key = 'helm', name = 'HELM', badge = false };
+            pcall(badgeUi.render);
+            check('HB30 a hidden HELM badge opens no window', opened, 1);
+            check('HB31 badge Begin/End balanced', depth.win, 0);
+            IM.Begin, activeStub = keptBegin, nil;
+        end
+        package.loaded['dlac\\ui\\idlefloat'] = keptFloat;
+        if keptFloat ~= nil then host.provide({ idlefloat = keptFloat }); end
     end
 
     for _, k in ipairs(NAMES) do package.loaded[k] = saved[k]; end
@@ -8303,6 +8341,58 @@ end)();
     check('GVI19 outside retirement waits for verified lookup', lookupReply ~= nil and deposited == nil, true);
     lookupReply({ { instanceId = 55 } });
     check('GVI20 deposit carries copy guard', deposited and deposited[1].expectedInstanceId, 55);
+    -- The first right-click acts (Henrik, 2026-10-12: it stopped once and
+    -- wanted a second click while the layout re-read or the slot's lookup
+    -- was out). It waits for those answers, then carries on by itself.
+    local known, asked, relaid = nil, {}, 0;
+    vc.instanceAt = function(c, s, id) asked[#asked + 1] = c .. ':' .. s .. ':' .. id; return known; end;
+    local oldRelay = vc.requestLayout;
+    vc.requestLayout = function() relaid = relaid + 1; return true; end;
+    entry.state, entry.location, entry.slot = 1, 8, 3;
+    vc.layoutCache.fresh = false;
+    sequence = {}; vui.retireLayoutEntry(entry, true);
+    check('GVI21 a re-reading layout makes the click wait, not refuse',
+        vui._pendingRetire ~= nil and #sequence == 0 and relaid > 0, true);
+    check('GVI21b the wait is a quiet tab line',
+        vui._lastResult().text == 'checking where this copy is...' and not vui._lastResult().err, true);
+    vc.layoutCache.fresh = true;
+    vui.pumpPending();
+    check('GVI22 an unknown slot keeps waiting and asks for it',
+        vui._pendingRetire ~= nil and #sequence == 0 and asked[#asked] == '8:3:100', true);
+    vui.retireLayoutEntry(entry, true);
+    check('GVI23 a second click while waiting does not double the move',
+        vui._lastResult().text, 'wait for the current gear move to finish');
+    known = { instanceId = 55 };
+    vc.layoutBusy = function() return true; end;
+    vui.pumpPending();
+    check('GVI24 another gear move goes first', vui._pendingRetire ~= nil and #sequence == 0, true);
+    vc.layoutBusy = function() return false; end;
+    local withdrawn2;
+    vc.requestWithdraw = function(rows) withdrawn2 = rows; return true; end;
+    vui.pumpPending();
+    check('GVI25 the answer in, the same click carries on', table.concat(sequence, ','), 'sets,remove:55');
+    check('GVI25b ...on into the withdraw',
+        vui._pendingRetire == nil and (vui._pendingWithdraw ~= nil or withdrawn2 ~= nil), true);
+    vui._pendingWithdraw = nil; vc.requestWithdraw = oldWithdraw;
+    known = nil; sequence = {};
+    vui.retireLayoutEntry(entry, true);
+    vui._pendingRetire.at = os.clock() - vui.RETIRE_WAIT - 1;
+    vui.pumpPending();
+    check('GVI26 a wait with no answer gives up in words', vui._pendingRetire == nil and #sequence == 0
+        and vui._lastResult().text == 'no answer from the vault; nothing moved -- try again', true);
+    vui.retireLayoutEntry(entry, true);
+    vc.noteJob(2); vui.pumpPending();
+    check('GVI27 a job change cancels the wait', vui._pendingRetire == nil and #sequence == 0
+        and vui._lastResult().text == 'job, profile or zone changed; gear move cancelled', true);
+    vc.noteJob(1); vc.layoutCache.fresh = true;
+    asked = {}; vc.layoutCache.stamp = 59;
+    IM.Selectable = function() return false; end;
+    vui.render(1, 75);
+    check('GVI28 the menu asks for the slot as it opens', asked[1], '8:3:100');
+    entry.state = 0; vc.layoutCache.stamp = 60; asked = {};
+    vui.render(1, 75);
+    check('GVI28b a copy in the vault asks nothing', #asked, 0);
+    vc.requestLayout = oldRelay;
     vui._wornOverride, vui._clientViewOverride = nil, nil;
     package.loaded['dlac\\dispatch'] = oldDispatch;
     vc.instanceAt, vc.requestLookup, vc.requestDeposit = oldAt, oldLookup, oldDeposit;
