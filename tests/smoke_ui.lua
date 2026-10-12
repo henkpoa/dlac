@@ -4629,6 +4629,39 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- MSA. A mode section's Add more must be CLICKABLE (field report 2026-10-12:
+-- the header took every click and only toggled). The header needs the overlap
+-- tree-node flag; ImGui 1.89.7 renamed it AllowItemOverlap -> AllowOverlap,
+-- and AscensionXI's 1.92 libs\imgui.lua defines ONLY the new name -- reading
+-- the old one alone gave 0 there. The Sets render has no smoke drive (LSP0),
+-- so the header's flag EXPRESSION is lifted from the source and evaluated
+-- against each lib generation's globals.
+-- ---------------------------------------------------------------------------
+(function()
+    local f = io.open('ui/gearui.lua', 'r');
+    check('MSA0 gearui is readable', f ~= nil, true);
+    if f == nil then return; end
+    local src = f:read('*a'); f:close();
+    local expr = src:match('imgui%.CollapsingHeader%(label,%s*([^\n]-)%);');
+    check('MSA1 the mode-section header passes a flag', expr ~= nil, true);
+    local function flagUnder(env)
+        local fn = expr and load('return ' .. expr, 'msa', 't', env) or nil;
+        return fn and fn() or nil;
+    end
+    check('MSA2 a 1.92 lib (AllowOverlap only) -> the overlap bit',
+          flagUnder({ ImGuiTreeNodeFlags_AllowOverlap = 4 }), 4);
+    check('MSA3 a 1.80 lib (AllowItemOverlap only) -> the overlap bit',
+          flagUnder({ ImGuiTreeNodeFlags_AllowItemOverlap = 4 }), 4);
+    check('MSA4 neither name -> 0, never an error', flagUnder({}), 0);
+    -- The section you just put rows into opens once: a gate added under
+    -- Behaviour, or the section's own Add more.
+    check('MSA5 the header opens on request',
+          src:find('if ui._openModeSec == sec.key then imgui.SetNextItemOpen(true); ui._openModeSec = nil; end', 1, true) ~= nil, true);
+    check('MSA6 ...requested by a new gate', src:find('ui._openModeSec = string.lower(c);', 1, true) ~= nil, true);
+    check('MSA7 ...and by Add more',         src:find('ui._openModeSec = sec.key;', 1, true) ~= nil, true);
+end)();
+
+-- ---------------------------------------------------------------------------
 -- TE. Trigger CASES, edit-side (issue #127, slice 3/5). The rule builder gains
 -- two buttons (+ & case / + | case) and renders added cases as bordered boxes,
 -- each hosting the IDENTICAL picker flow. Two halves, both proven: the pure

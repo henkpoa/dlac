@@ -299,16 +299,15 @@ local function augTag(rec)
     return 'Aug: ' .. txt;
 end
 
--- Mode sections for the Sets-tab slot list: a mode gating MORE THAN ONE row
+-- Mode sections for the Sets-tab slot list: every mode that gates a row
 -- earns a collapsible section named after it (mode ladders were drowning the
 -- root list -- many Caster rungs + many Club rungs in one flat Main list).
--- Membership rules (Henrik, 2026-07-18):
---   * a row whose EVERY gate has a section leaves the root -- it shows only
---     under its section(s);
---   * a row that is ungated, or alone on ANY of its gates (no section formed
---     for it), stays in the root -- and still ALSO appears under each of its
---     sectioned gates;
---   * an OR-gated row (mode = {A, B}) appears under EVERY sectioned gate.
+-- Membership rules (Henrik, 2026-07-18; ONE row is enough since 2026-10-12 --
+-- the section is where its Add more lives, so the first gated row has to
+-- open it, not the second):
+--   * a gated row leaves the root -- it shows only under its section(s);
+--   * an ungated row stays in the root;
+--   * an OR-gated row (mode = {A, B}) appears under EVERY one of its gates.
 -- Grouping is case-insensitive; the first-seen spelling names the section.
 -- Pure: input is the display-ordered wrapper list ({rec, mode, ...}); row
 -- order inside root/sections preserves the input order. Returns two values:
@@ -331,36 +330,28 @@ local function modeSections(items)
     end
     local byKey = {};
     for _, it in ipairs(items) do
-        for _, g in ipairs(gatesOf(it)) do
+        local gates = gatesOf(it);
+        if #gates == 0 then root[#root + 1] = it; end
+        for _, g in ipairs(gates) do
             local k = string.lower(g);
             local sec = byKey[k];
             if sec == nil then
                 sec = { name = g, key = k, items = {}, levels = {} };
                 byKey[k] = sec;
+                kept[#kept + 1] = sec;
             end
             sec.items[#sec.items + 1] = it;
         end
     end
-    for _, sec in pairs(byKey) do
-        if #sec.items >= 2 then
-            kept[#kept + 1] = sec;
-            local seen = {};
-            for _, it in ipairs(sec.items) do
-                local lv = (it.rec ~= nil and tonumber(it.rec.Level)) or 0;
-                if not seen[lv] then seen[lv] = true; sec.levels[#sec.levels + 1] = lv; end
-            end
-            table.sort(sec.levels);
+    for _, sec in ipairs(kept) do
+        local seen = {};
+        for _, it in ipairs(sec.items) do
+            local lv = (it.rec ~= nil and tonumber(it.rec.Level)) or 0;
+            if not seen[lv] then seen[lv] = true; sec.levels[#sec.levels + 1] = lv; end
         end
+        table.sort(sec.levels);
     end
     table.sort(kept, function(a, b) return a.key < b.key; end);
-    for _, it in ipairs(items) do
-        local gates = gatesOf(it);
-        local inRoot = (#gates == 0);
-        for _, g in ipairs(gates) do
-            if #byKey[string.lower(g)].items < 2 then inRoot = true; break; end
-        end
-        if inRoot then root[#root + 1] = it; end
-    end
     return root, kept;
 end
 
