@@ -56,6 +56,8 @@ local function chocoMod() return try('dlac\\feature\\chocowatch'); end
 --              refuses it while another hobby runs (this table never bypasses the lock).
 --   disable(): stand it FULLY down. HELM clears BOTH switches.
 --   detail() : short sub-label for the float / bar (craft/category/target), or nil.
+--   badge()  : optional; false hides the floating badge (ui/idlefloat) -- HELM's
+--              AscensionXI "Show HELM badge" setting. Absent = shown.
 M.MEMBERS = {
     {
         key = 'craft', name = 'Craft',
@@ -73,6 +75,10 @@ M.MEMBERS = {
             if w ~= nil then pcall(w.setAutoHelm, false); pcall(w.setEnabled, false); end
         end,
         detail  = function() local w = helmMod(); return w ~= nil and w.getGather() or nil; end,
+        badge   = function()
+            local w = helmMod();
+            return w == nil or type(w.badgeShown) ~= 'function' or w.badgeShown() ~= false;
+        end,
     },
     {
         key = 'fish', name = 'Fishing',
@@ -102,13 +108,18 @@ end
 -- The one armed hobby, or nil. The lock guarantees at most one; if a hand-edited
 -- state file somehow arms two, the FIRST in MEMBERS order wins (deterministic --
 -- the badge/selector never flicker between them).
---   returns { key = <id>, name = <label>, detail = <string|nil> }
+--   returns { key = <id>, name = <label>, detail = <string|nil>, badge = <bool> }
 function M.getActive()
     for _, m in ipairs(M.MEMBERS) do
         if m.isOn() == true then
             local ok, d = pcall(m.detail);
             local detail = (ok and type(d) == 'string' and d ~= '') and d or nil;
-            return { key = m.key, name = m.name, detail = detail };
+            local badge = true;
+            if type(m.badge) == 'function' then
+                local okb, b = pcall(m.badge);
+                badge = not (okb and b == false);
+            end
+            return { key = m.key, name = m.name, detail = detail, badge = badge };
         end
     end
     return nil;

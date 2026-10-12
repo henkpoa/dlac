@@ -43,6 +43,7 @@ function M.render()
     if excl == nil then return; end
     local active = excl.getActive();
     if active == nil then return; end        -- nothing armed -> no badge
+    if active.badge == false then return; end -- the hobby's own "hide the badge" setting (HELM, AscensionXI)
 
     if type(ui._idlePos) == 'table' then
         imgui.SetNextWindowPos({ ui._idlePos[1], ui._idlePos[2] }, ImGuiCond_Once or 0);

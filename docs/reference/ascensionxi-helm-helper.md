@@ -1,5 +1,20 @@
 # AscensionXI HELM helper — September 14, 2026
 
+## October 12 settings: Always on and the HELM badge (2026.10.12a)
+
+Two checkboxes sit under the Equip near Points row on AscensionXI only:
+
+- **Always on** turns Equip near Points on now and at every login. The gear
+  still only goes on near a gathering Point. The one-hobby lock still applies:
+  if another hobby is on at login, HELM stays off and chat says why. Unticking
+  it leaves the switch as it is; the switch itself still turns off by hand.
+- **Show HELM badge** (ticked by default) shows or hides the small floating
+  "HELM" badge with its Off button. Hiding it changes nothing else: the hobby
+  bar and the Gear Helpers list still show and switch HELM.
+
+Both save per character in `helmstate.lua` as `alwaysOn` and `badge`. Other
+server packs ignore them.
+
 ## September 15 live reply fix (2026.09.15a)
 
 The live probe confirmed successful 0x80 replies every five seconds, carrying
