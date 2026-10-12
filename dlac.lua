@@ -18,7 +18,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.10.12a';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.10.12b';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
                                 -- (03f = engine v163: the contest explains its own plan;
                                 --  03g = one floating tray: Teleports + the E-Box crates;
@@ -344,7 +344,10 @@ addon.version = '2026.10.12a';  -- date of the last shipped change (Ashita print
                                 --  Sleep Bolt get +100 ranged accuracy;
                                 --  10.12a = AscensionXI Gathering Gear settings:
                                 --  "Always on" turns Equip near Points on at every
-                                --  login, "Show HELM badge" hides the floating badge)
+                                --  login, "Show HELM badge" hides the floating badge;
+                                --  10.12b = Gear Vault: the layout's right-click
+                                --  acts on the first click -- it waits for the
+                                --  copy's location instead of asking for a second)
 addon.desc    = 'Gear sets, triggers and live stats with level scaling -- dlac equips your gear itself.';
 
 -- Load BEACON ('/dl check' field round, 2026-07-23): written by PLAIN io at

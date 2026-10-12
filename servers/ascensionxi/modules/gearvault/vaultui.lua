@@ -862,9 +862,38 @@ local function clientView(e, worn)
     return stillWorn, flags, id;
 end
 
+-- THE RIGHT-CLICK WAITS FOR ITS ANSWERS (Henrik, 2026-10-12: the layout's
+-- withdraw "always stops me first attempt ... second attempt always works").
+-- Moving a copy out of the layout needs two facts this client may not hold
+-- yet: a fresh layout (it re-reads after every move) and, for a copy in the
+-- bags, the server's word on which copy sits in that slot (only worn gear is
+-- looked up in the background, and every vault write clears those answers).
+-- The first click used to ask for them and refuse; it now waits here and
+-- carries on by itself once they are in. The menu asks for the slot as it
+-- opens, so the wait is usually over before the pick.
+M._pendingRetire = nil;    -- { selected, withdraw, at, job, profile }
+M.RETIRE_WAIT = 10;        -- seconds before that wait gives up
+local retirePass;          -- defined with retireLayoutEntry below
+
+local function activeProfile()
+    local ok, name = pcall(function() return require('dlac\\profiles').activeName(); end);
+    return ok and name or nil;
+end
+
 -- The pending step's beat (every frame from the module pump; `now` is a
 -- test seam). One pending store at a time: the row shows 'Storing...'.
 function M.pumpPending(now)
+    local r = M._pendingRetire;
+    if r then
+        M._pendingRetire = nil;
+        if vc.currentJob() ~= r.job or activeProfile() ~= r.profile or vc.zoning() then
+            noteResult('job, profile or zone changed; gear move cancelled', true);
+        elseif os.clock() - r.at > M.RETIRE_WAIT then
+            noteResult('no answer from the vault; nothing moved -- try again', true);
+        elseif M._pendingStore or M._pendingWithdraw or vc.layoutBusy() or retirePass(r.selected, r.withdraw) then
+            M._pendingRetire = r;   -- another gear move first, or still waiting
+        end
+    end
     local w = M._pendingWithdraw;
     if w then
         if not w.sameContext() or os.clock() - w.at > 30 then
@@ -949,27 +978,40 @@ local function unequipAndStore(e, worn, after)
 end
 
 function M.retireLayoutEntry(selected, withdraw)
-    if M._pendingStore or M._pendingWithdraw or vc.layoutBusy() then return noteResult('wait for the current gear move to finish', true); end
+    if M._pendingStore or M._pendingWithdraw or M._pendingRetire or vc.layoutBusy() then return noteResult('wait for the current gear move to finish', true); end
+    if retirePass(selected, withdraw) then
+        M._pendingRetire = { selected = selected, withdraw = withdraw, at = os.clock(),
+            job = vc.currentJob(), profile = activeProfile() };
+        _lastMsg = { text = 'checking where this copy is...', err = false };   -- the tab only: the result follows
+    end
+end
+
+-- One go at moving the selected copy out of this job's layout. Returns true
+-- while an answer it needs is still on its way (the pump runs it again);
+-- otherwise it has acted, or said why not.
+function retirePass(selected, withdraw)
+    if not (vc.layoutCache.fresh and vc.currentJob() == vc.layoutCache.job) then
+        vc.requestLayout(0); return true;
+    end
     local e;
-    if vc.layoutCache.fresh and vc.currentJob() == vc.layoutCache.job then
-        for _, row in ipairs(vc.layoutCache.entries or {}) do
-            if row.instanceId == selected.instanceId and row.ordinal == selected.ordinal then e = row; break; end
-        end
+    for _, row in ipairs(vc.layoutCache.entries or {}) do
+        if row.instanceId == selected.instanceId and row.ordinal == selected.ordinal then e = row; break; end
     end
     if not e or (e.instanceId or 0) == 0 then
-        vc.requestLayout(0); return noteResult('refreshing this copy; try again once the layout is fresh', true);
+        vc.requestLayout(0); noteResult('refreshing this copy; try again once the layout is fresh', true); return false;
     end
     local blocked = recon.retireBlocked(e.itemId);
-    if blocked then return noteResult(blocked, true); end
+    if blocked then noteResult(blocked, true); return false; end
     local name = nameOf(e.itemId);
     local bag = { itemId = e.itemId, name = name, container = e.location, slot = e.slot };
     if e.state ~= 0 then
         local mapping = vc.instanceAt(e.location, e.slot, e.itemId);
-        if not mapping or mapping.instanceId ~= e.instanceId then
-            return noteResult('checking this copy\'s location; try again in a moment', true);
+        if not mapping then return true; end   -- the slot's lookup is out
+        if mapping.instanceId ~= e.instanceId then
+            noteResult('checking this copy\'s location; try again in a moment', true); return false;
         end
         if e.state == 2 and e.location ~= 0 then
-            return noteResult('move this copy to Inventory before sending it to the Gear Vault', true);
+            noteResult('move this copy to Inventory before sending it to the Gear Vault', true); return false;
         end
     end
     local worn = e.state ~= 0 and wornAtSlot()[e.location * 256 + e.slot] or nil;
@@ -1849,6 +1891,12 @@ function M.render(job, level)
     -- Both popup calls share the parent window scope, like the floating menus.
     if _openLayoutMenu then
         _layoutMenu, _openLayoutMenu = _openLayoutMenu, nil;
+        -- ask which copy sits in that bag slot now: the answer is usually in
+        -- before the pick, so the pick acts at once
+        local m = _layoutMenu;
+        if (m.instanceId or 0) > 0 and (m.state or 0) ~= 0 and m.location ~= nil and m.slot ~= nil then
+            vc.instanceAt(m.location, m.slot, m.itemId);
+        end
         imgui.OpenPopup('##gv-layout-actions');
     end
     if imgui.BeginPopup('##gv-layout-actions') then
