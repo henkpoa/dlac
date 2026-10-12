@@ -4,6 +4,34 @@ A log of AscensionXI catalog refreshes, newest first. To get one from DLAC main 
 
 ---
 
+# AscensionXI catalog refresh, October 12, 2026
+
+DLAC `2026.10.12c` regenerates the complete pack from AscensionXI main
+`8f8e736aee` (after #923). Five existing records change. Nothing is added
+or removed.
+
+- Rekindled Club (19976), +1 (19985) and +2 (19992) gain stance latents:
+  Regen +1/+2/+3 (`REGEN_BONUS`) while Solace (417) is active and
+  Judgement +1/+2/+3 (`JUDGEMENT_BONUS`) while Misery (418) is active
+  (AXI #914). Like `GUARD_PERCENT`, both keep their raw server names.
+- Sleep Bolt (18149) and Sleep Arrow (18158) go from +100 to +40 ranged
+  accuracy, and both take a 180 delay (the bolt was 90, the arrow 288)
+  (AXI #905).
+
+Totals: 15,466 equipment records, all named from tracked client DATs, 71
+icon overrides, and 869 latent-stat items (866 before). Every other
+generated file comes back byte-identical.
+
+Verification, offline only: AscensionXI pack lint (39 checks), the core
+suite (7,577 checks), UI smoke (1,645 checks) and the other 28 commands in
+DLAC CI, all on Lua 5.4.
+
+The version letter is `c` because the open DLAC #209 and #210 already
+claim `2026.10.12a` and `b`. Whichever of the three merges last resolves
+the one-line `addon.version` conflict in `dlac.lua`.
+
+---
+
 # AscensionXI catalog refresh, October 11, 2026
 
 DLAC `2026.10.11a` regenerates the complete pack from AscensionXI main

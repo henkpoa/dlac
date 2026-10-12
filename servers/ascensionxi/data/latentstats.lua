@@ -3276,6 +3276,18 @@ return {
         { stat = "Evasion", add = 30, cond = "STATUS_EFFECT_ACTIVE", param = 60 },
         { stat = "GUARD_PERCENT", add = 5, cond = "STATUS_EFFECT_ACTIVE", param = 60 },
     },
+    [19976] = {
+        { stat = "JUDGEMENT_BONUS", add = 1, cond = "STATUS_EFFECT_ACTIVE", param = 418 },
+        { stat = "REGEN_BONUS", add = 1, cond = "STATUS_EFFECT_ACTIVE", param = 417 },
+    },
+    [19985] = {
+        { stat = "JUDGEMENT_BONUS", add = 2, cond = "STATUS_EFFECT_ACTIVE", param = 418 },
+        { stat = "REGEN_BONUS", add = 2, cond = "STATUS_EFFECT_ACTIVE", param = 417 },
+    },
+    [19992] = {
+        { stat = "JUDGEMENT_BONUS", add = 3, cond = "STATUS_EFFECT_ACTIVE", param = 418 },
+        { stat = "REGEN_BONUS", add = 3, cond = "STATUS_EFFECT_ACTIVE", param = 417 },
+    },
     [20482] = {
         { stat = "Accuracy", add = 30, cond = "STATUS_EFFECT_ACTIVE", param = 59 },
         { stat = "AttackPct", add = 5, cond = "STATUS_EFFECT_ACTIVE", param = 59 },
