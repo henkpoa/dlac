@@ -10960,3 +10960,74 @@ rule, and no full-table walk per outfit), and the wire-log batch check in
 `gearvault_instances`. Each was run against the old code and goes red; the two
 quiet-cache mutations (no skip, no settle window) are each caught. **Field check
 owed:** TrueFPS before and after with full wardrobes, idle and in a fight.
+
+## 2026-10-13: the bags are kept (`2026.10.13b`)
+
+Henrik, reading the 13a report: "Why does it need to check EVERYTHING all the
+time? Should cache it and only check if something arrives into inventory."
+Right, and 13a had only trimmed the habit: the walk still ran whenever
+something had to move, once a second in `dispatch.bagCounts`, and again
+whenever the quiet cache's 3 s trust ran out. The bags never change behind the
+client's back. The server reports every item it adds, moves, re-flags or uses
+up with a packet that names the container and slot (the AscensionXI server's
+`src/map/packets/s2c`): `0x01E` ITEM_NUM, `0x01F` ITEM_LIST (an equip re-flags
+the pieces with one, from `flushEquipChanges`), `0x020` ITEM_ATTR, `0x050`
+EQUIP_LIST. It resets them wholesale with the `0x00A` zone-in and `0x01C`
+sizes; `0x01D` ITEM_SAME carries no content.
+
+- **`feature/bagindex.lua`:** one walk, then only the slot a packet names is
+  read again, on the next ask. A read within `SETTLE_S` (0.25 s) of a packet is
+  used but stays marked, because Ashita hands packets over before the client
+  applies them. An empty walk is never kept (char select, mid-zone). Entries
+  never change once linked, so the engine keeps its planSet view on each.
+- **equipengine:** the worn view reads WHERE each piece sits (one call a slot)
+  and takes WHAT sits there from the index; the bag lookup and the trust stamps
+  come from the index too. Item gates are memoized per id (resources and the
+  catalog are fixed for a session). The 13a quiet-walk cache is gone, with
+  nothing left for it to save.
+- **The safety net:** before a plan goes out, every slot it equips FROM is read
+  once more. A piece that is not where the index put it means a packet the index
+  never saw: `invalidateAll()`, one re-walk, a re-plan. So a missed packet costs
+  a walk, never a wrong piece (EQF10, with the piece moved behind its back).
+- **dispatch.bagCounts** answers from the index (its live tables plus a version;
+  the apostrophe alias memo keys on it). The per-second walk is gone, and every
+  answer is as fresh as a walk, so `fresh` has nothing left to force.
+
+Harness, 60 s, 720 bag items, the same settings for all three builds (the
+profiler now also sends the server's equip replies):
+
+| | `main` 261bd10 | 13a | 13b |
+|---|---|---|---|
+| idle: frames with >= 4 ms of dlac | 361 / 3600 | 61 | 1 |
+| idle: GetContainerItem / GetItemById per s | 5993 / 4490 | 782 / 62 | 0 / 0 |
+| idle: Lua garbage | 13.8 MB/s | 1.67 MB/s | 0.60 MB/s |
+| combat RDM: frames >= 4 ms | 135 | 41 | 1 |
+| combat RDM: GetContainerItem / GetItemById per s | 2970 / 1667 | 723 / 25 | 40 / 0 |
+
+The 40/s left in combat is the Gear Vault's worn-item reads (`gearoracle`), not
+the bags. Gear decisions are unchanged: the packets each build sent in the same
+runs match.
+
+**The one frame left at >= 4 ms** (9 ms in the harness, once a minute, on
+AscensionXI) is the Gear Vault's usage beat. Every 60 s it stamps the worn
+pieces with the time, which dirties `gearvault_usage.lua`, and the save then
+runs `safewrite.replaceLua`: three compiles, a write, a remove and a rename on
+the main thread. Not changed here. The usage state also loads once per session
+and saves into whichever character dir is current, which looks able to carry one
+character's stamps into the next after a character swap. Look at that before
+changing the save cadence.
+
+Tests: BIX1-BIX21 (each layout re-reads exactly its slot; non-equip bags, the gil
+slot, unequips and ITEM_SAME cost nothing; counts and the version follow a count
+change, an emptied slot and a move; the timing rule; zone-in / sizes / a torn
+packet walk again; empty never kept; unreadable is nil; dispatch counts through
+the index; the bag lists agree). EQF rewritten for the kept index: one walk at
+the first pass, then 0 reads settled; a move costs the safety net's 1 read; an
+arriving piece costs its own slot; the safety net heals a silent move. Suites
+whose fake bags change without packets set `_walkEveryAsk` (`run_tests`,
+`custom_equipment`); `idle_weapon_report` swaps client resources between
+"sessions" and resets the index with them. Seven mutations were each caught: no
+safety net, no settle window, a wrong 0x01F offset, no entry reuse, an empty walk
+kept, walk every ask, and no bag filter. **Prod:** copied to
+`C:\AscensionXI-Prod` on Henrik's ask for a TrueFPS check (see the memory note
+for the backup). **Field check owed:** TrueFPS idle and in a fight.

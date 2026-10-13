@@ -5051,7 +5051,25 @@ local AMMO_BAGS = { 0, 8, 10, 11, 12, 13, 14, 15, 16 };
 M.AMMO_BAGS = AMMO_BAGS;
 local _bagCache = { at = -1, byId = nil, byName = nil };
 local _itemNmMemo = {};
+-- THE BAG INDEX (2026-10-13, the stutter report): feature\bagindex keeps these
+-- counts between asks and re-reads only the slots an inventory packet named,
+-- so the every-second walk below -- up to 720 slots, a C++ call each, in one
+-- frame -- is gone, and every answer is as fresh as a walk would be (which is
+-- why `fresh` no longer has anything to force). The index's tables are LIVE:
+-- the third return is their version, the thing to key a memo on. Required at
+-- first call and kept in _bagCache.bix (false = absent: the walk below still
+-- answers). No new chunk locals: this chunk sits at the 200-local cap.
 local function bagCounts(fresh)
+    local bix = _bagCache.bix;
+    if bix == nil then
+        local ok, m = pcall(require, 'dlac\\feature\\bagindex');
+        bix = (ok and type(m) == 'table' and type(m.counts) == 'function') and m or false;
+        _bagCache.bix = bix;
+    end
+    if bix then
+        local byId, byName, ver = bix.counts();
+        if byId ~= nil then return byId, byName, ver; end
+    end
     local now = os.time();
     if not fresh and _bagCache.byId ~= nil and _bagCache.at == now then
         return _bagCache.byId, _bagCache.byName;
@@ -5150,7 +5168,7 @@ local function haveEquippable(name)
     if low == 'remove' or low == 'ignore' then return nil; end
     if string.sub(low, 1, 5) == 'dlac:' then return nil; end
     if string.sub(low, 1, 1) == '(' then return nil; end
-    local _, byName = bagCounts();
+    local _, byName, ver = bagCounts();
     if type(byName) ~= 'table' or next(byName) == nil then return nil; end
     if (byName[low] or 0) > 0 then return true; end
     -- Apostrophe-tolerant second look, the same law utils.resolveGearName runs
@@ -5159,17 +5177,18 @@ local function haveEquippable(name)
     -- CatsEyeXI catalog says "Arhats Gi". A name that only differs by the
     -- possessive must never read as a piece you do not own, because that would
     -- silently demote gear you are holding. Aliased lazily and memoized on the
-    -- bag map's IDENTITY: bagCounts builds a fresh table every refresh, so this
-    -- rebuilds exactly when the counts do.
+    -- bag map's identity AND version: the bag index keeps one live table and
+    -- bumps its version on every change (the fallback walk builds a fresh table
+    -- instead), so this rebuilds exactly when the counts do.
     local stripped = (string.gsub(low, "'", ""));
     if stripped ~= low then
-        if _availAlias.src ~= byName then
+        if _availAlias.src ~= byName or _availAlias.ver ~= ver then
             local m = {};
             for k, v in pairs(byName) do
                 local s = (string.gsub(k, "'", ""));
                 if m[s] == nil then m[s] = v; end
             end
-            _availAlias.src, _availAlias.map = byName, m;
+            _availAlias.src, _availAlias.ver, _availAlias.map = byName, ver, m;
         end
         if (_availAlias.map[stripped] or 0) > 0 then return true; end
     end

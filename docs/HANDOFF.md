@@ -122,7 +122,10 @@ hosting the engine — is history; see `docs/design/lac-purge-plan.md` and histo
   `sample=1` / `alloc=1` say where the Lua time and garbage go; `combat=1 job=RDM`
   adds spell casts; `bags=560` fills the wardrobes). Manual tool, not CI: Windows only,
   and the fake API is nearly free, so read API COUNTS, not its milliseconds, as the
-  in-game cost. History: 2026-10-13, "the frame stutter".
+  in-game cost. History: 2026-10-13, "the frame stutter" and "the bags are kept".
+  The rule that came out of it: **never walk the equip bags per pass** — ask
+  `feature\bagindex` (kept, re-read only where an inventory packet lands; see the
+  central-services table in `docs/architecture.md`).
 - **A player's report is the best evidence you will get.** `/dl report` (or the
   Arbiter Monitor's **[Record a report]**) records up to 5 minutes and writes ONE
   sendable file, `addons\dlac\debug\dlac-report-<Char>.txt`: health verdict, config,

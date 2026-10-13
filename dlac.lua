@@ -18,7 +18,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.10.13a';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.10.13b';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
                                 -- (03f = engine v163: the contest explains its own plan;
                                 --  03g = one floating tray: Teleports + the E-Box crates;
@@ -355,7 +355,12 @@ addon.version = '2026.10.13a';  -- date of the last shipped change (Ashita print
                                 --  is not repeated until the bags change, idle
                                 --  dig/HELM movers read no bag, AutoAcc indexes
                                 --  set bonuses, and the AscensionXI wire log
-                                --  writes in batches)
+                                --  writes in batches;
+                                --  10.13b = the equip bags are KEPT: walked once,
+                                --  then only the slot an inventory packet names
+                                --  is read again -- no every-second bag count, no
+                                --  walk per gear swap; a piece about to go on is
+                                --  checked where it sits)
 addon.desc    = 'Gear sets, triggers and live stats with level scaling -- dlac equips your gear itself.';
 
 -- Load BEACON ('/dl check' field round, 2026-07-23): written by PLAIN io at
@@ -674,7 +679,7 @@ for _, mod in ipairs({ 'gear', 'feature\\augments', 'gear\\gearoptim', 'gear\\ge
                        -- place in this list is only where it reads best.
                        'feature\\nmlookup', 'feature\\nmtrack', 'feature\\nmloot',
                        'feature\\lockstyle',
-                       'feature\\lockstyleapply', 'feature\\equipengine',
+                       'feature\\lockstyleapply', 'feature\\bagindex', 'feature\\equipengine',
                        'feature\\engine', 'ui\\gearui',
                        -- jobbrowse is reached through gearui's (and equippedui's)
                        -- guarded try(), so a broken one costs the job picker in

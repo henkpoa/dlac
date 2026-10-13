@@ -416,10 +416,40 @@ local function itemAt(c, i)
     local it = b and b[i] or nil;
     return it;
 end
+-- What the server sends back for an equip, as its flushEquipChanges does
+-- (src/map/entities/char_entity.cpp): an EQUIP_LIST (0x050) for the slot, then
+-- an ITEM_LIST (0x01F) re-flagging each piece put on or taken off. Delivered
+-- the next frame, like a reply.
+local INQ = {};
+local function reply(id, size, writes)
+    local b = {};
+    for i = 1, size do b[i] = 0; end
+    local h = id | ((size // 4) << 9);
+    b[1], b[2] = h & 0xFF, h >> 8;
+    for off, v in pairs(writes) do b[off + 1] = v & 0xFF; end
+    local s = {};
+    for i = 1, size do s[i] = string.char(b[i]); end
+    INQ[#INQ + 1] = { id = id, data = table.concat(s) };
+end
+local function itemListReply(c, i, flag)
+    local it = itemAt(c, i);
+    if it == nil then return; end
+    reply(0x01F, 0x10, { [0x08] = it.Id & 0xFF, [0x09] = it.Id >> 8, [0x0A] = c, [0x0B] = i, [0x0C] = flag });
+end
 local function applyEquip(index, slot, container)
     if slot == nil or slot > 15 then return; end
-    if index == 0 then W.equipped[slot] = 0; return; end
-    if itemAt(container, index) ~= nil then W.equipped[slot] = container * 256 + index; end
+    local old = W.equipped[slot] or 0;
+    if index == 0 then
+        W.equipped[slot] = 0;
+        reply(0x050, 8, { [0x04] = 0, [0x05] = slot, [0x06] = 0 });
+    elseif itemAt(container, index) ~= nil then
+        W.equipped[slot] = container * 256 + index;
+        reply(0x050, 8, { [0x04] = index, [0x05] = slot, [0x06] = container });
+        itemListReply(container, index, 5);
+    else
+        return;
+    end
+    if old ~= 0 and old ~= W.equipped[slot] then itemListReply(old // 256, old % 256, 0); end
 end
 
 local buffs = {};
@@ -859,6 +889,11 @@ for f = 1, nWarm + nFrames do
         for _, t in ipairs(due) do
             CUR = rec('ashita.tasks', 'once'); pcall(t.fn); CUR = nil;
         end
+    end
+    if #INQ > 0 then
+        local due = INQ;
+        INQ = {};
+        for _, p in ipairs(due) do fire('packet_in', packetEvent(p.id, p.data, false)); end
     end
     inboundFor(dt);
     if opt.combat == 1 and VT >= nextSwing then

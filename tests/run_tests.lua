@@ -21,6 +21,8 @@ package.loaded['dlac\\gear\\gearoracle'] = dofile('gear/gearoracle.lua');   -- T
 package.loaded['dlac\\lib\\statefile'] = dofile('lib/statefile.lua');   -- addon-side charDir: the watchers require it (guarded)
 package.loaded['dlac\\feature\\wishlist'] = dofile('feature/wishlist.lua');   -- utils asks it before warning about an unresolvable set entry (ADR 0026)
 package.loaded['dlac\\gear\\arbiter'] = dofile('gear/arbiter.lua');   -- THE pure decision core (ADR 0027 stage 3): dispatch hard-requires it; one shared instance for every dofile('dispatch.lua') below
+package.loaded['dlac\\feature\\bagindex'] = dofile('feature/bagindex.lua');   -- the KEPT bag index (2026-10-13): dispatch + equipengine require it
+package.loaded['dlac\\feature\\bagindex']._walkEveryAsk = true;   -- ...walking every ask, as these suites' fake bags change without packets; BIX/EQF pin the kept behavior
 -- THE SERVER SEAM (ADR 0035), armed with the REAL CEXI manifest so capability
 -- gates (helmwatch/fishwatch ventures, the CW service reads) answer as live
 -- CEXI does. Pack DATA stays unmounted on purpose: this suite always ran
@@ -247,7 +249,7 @@ end)();
                    'gearfmt','gearimport','gearoptim','gearoracle','gearrecord','groupimport','groupscan',
                    'groupsmodel','jobgate','levelstats','modeslibrary','nativemp','ownedcache','profileexport','profilesets','rulecopy','serverpack','setimport',
                    'setmanager','statdefs','gathering','syncflags','triggermodel','unusedgear','weaponfilter','weightimport' };
-    local FEATURE = { 'actionseq','ammowatch','arbwatch','augments','check','chocowatch','combat','craftpick','craftwatch','debug','digcalc','digrank',
+    local FEATURE = { 'actionseq','ammowatch','arbwatch','augments','bagindex','check','chocowatch','combat','craftpick','craftwatch','debug','digcalc','digrank',
                       'engagewatch','fishcalc','fishwatch','foodwatch','gamehud','helmwatch','idleexcl','jobhelpers','location','lockstyle','lookpreview',
                       'macrobook','meritwatch','modapi','modcfg','mpbands','nexuslink','petfood','petvitals','pinwatch','recast','servermods','synthrun','useitem','vanamoon' };
     local LIB = { 'cmdqueue','entwatch','safewrite','statefile' };
@@ -17477,23 +17479,190 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- BIX. feature\bagindex -- the equip bags KEPT, re-read only where a packet
+-- says they changed (2026-10-13, Henrik: "cache it and only check if
+-- something arrives into inventory"). The wire offsets are the AscensionXI
+-- server's own layouts (src/map/packets/s2c 0x01E/0x01F/0x020/0x050); each
+-- case is a body built at those offsets, driven through noteIncoming.
+-- ---------------------------------------------------------------------------
+(function()
+    local bix = package.loaded['dlac\\feature\\bagindex'];
+    local savedAshita, savedWalk, savedClock = AshitaCore, bix._walkEveryAsk, bix._clock;
+    bix._walkEveryAsk = false;
+    bix._reset();
+    local clock = 100;
+    bix._clock = function() return clock; end
+    local RES, bags, readLog = {}, {}, {};
+    local function put(c, i, id, name, n)
+        RES[id] = { Name = { name } };
+        bags[c] = bags[c] or {};
+        bags[c][i] = { Id = id, Count = n or 1, Flags = 0, Extra = '' };
+    end
+    AshitaCore = {
+        GetMemoryManager = function() return { GetInventory = function() return {
+            GetContainerItem = function(_, c, i)
+                readLog[#readLog + 1] = c .. ':' .. i;
+                return (bags[c] or {})[i] or { Id = 0, Count = 0, Flags = 0 };
+            end,
+            GetContainerCountMax = function(_, c) return (c == 0 or c == 8) and 80 or 0; end,
+        }; end }; end,
+        GetResourceManager = function() return { GetItemById = function(_, id) return RES[id]; end }; end,
+    };
+    local function body(len, at)   -- a wire body: zeros, with bytes at offsets
+        local b = {};
+        for k = 1, len do b[k] = string.char(0); end
+        for off, v in pairs(at) do b[off + 1] = string.char(v); end
+        return table.concat(b);
+    end
+
+    put(8, 3, 1001, 'Gold Ring');
+    put(0, 5, 1001, 'Gold Ring');
+    put(0, 6, 1002, 'Tathlum', 12);
+    local byId, byName = bix.counts();
+    check('BIX1 the first ask walks the equip bags once', #readLog, 160);   -- bags 0 and 8, 80 each
+    check('BIX1b ...and counts by id and by lowered name',
+        byId[1001] == 2 and byName['gold ring'] == 2 and byName['tathlum'] == 12, true);
+    readLog = {};
+    bix.counts(); bix.named({ ['gold ring'] = true }); bix.entryAt(8, 3);
+    check('BIX2 nothing owed -> no ask reads a slot', #readLog, 0);
+    local rings = bix.named({ ['gold ring'] = true });
+    check('BIX3 named() lists the copies in scan order (wardrobe first, as LAC scans)',
+        #rings == 2 and rings[1].Container == 8 and rings[2].Container == 0, true);
+
+    -- each layout names its slot, and only that slot is read again
+    for _, cse in ipairs({
+        { 'BIX4 0x01E ITEM_NUM',   0x01E, body(0x0C, { [0x08] = 0, [0x09] = 6 }), '0:6' },
+        { 'BIX5 0x01F ITEM_LIST',  0x01F, body(0x10, { [0x0A] = 8, [0x0B] = 3 }), '8:3' },
+        { 'BIX6 0x020 ITEM_ATTR',  0x020, body(0x30, { [0x0E] = 0, [0x0F] = 5 }), '0:5' },
+        { 'BIX7 0x050 EQUIP_LIST', 0x050, body(0x08, { [0x04] = 3, [0x05] = 13, [0x06] = 8 }), '8:3' },
+    }) do
+        bix.noteIncoming(cse[2], cse[3]);
+        clock = clock + 1;
+        readLog = {};
+        bix.counts();
+        check(cse[1] .. ' re-reads exactly the slot it names', table.concat(readLog, ','), cse[4]);
+    end
+
+    local before = bix.entryAt(8, 3);
+    bix.noteIncoming(0x01F, body(0x10, { [0x0A] = 8, [0x0B] = 3 }));
+    clock = clock + 1;
+    check('BIX8 a slot read back unchanged keeps its entry (views built on it stay)', bix.entryAt(8, 3) == before, true);
+    local v0 = bix.version;
+    bags[0][6].Count = 3;   -- nine tathlums used
+    bix.noteIncoming(0x01E, body(0x0C, { [0x08] = 0, [0x09] = 6 }));
+    clock = clock + 1;
+    local _, byName2, v1 = bix.counts();
+    check('BIX9 a count change lands in the counts', byName2['tathlum'], 3);
+    check('BIX9b ...and bumps the version (the memo key)', v1 > v0, true);
+    bags[0][6] = nil;
+    bix.noteIncoming(0x020, body(0x30, { [0x0E] = 0, [0x0F] = 6 }));
+    clock = clock + 1;
+    local byId3, byName3 = bix.counts();
+    check('BIX10 an emptied slot drops its counts (no zero left behind)',
+        byName3['tathlum'] == nil and byId3[1002] == nil, true);
+    bags[8][7], bags[0][5] = bags[0][5], nil;   -- a move: two slots, two packets
+    bix.noteIncoming(0x020, body(0x30, { [0x0E] = 8, [0x0F] = 7 }));
+    bix.noteIncoming(0x020, body(0x30, { [0x0E] = 0, [0x0F] = 5 }));
+    clock = clock + 1;
+    rings = bix.named({ ['gold ring'] = true });
+    check('BIX11 a move lands both ends: both copies in wardrobe 8, in slot order',
+        #rings == 2 and rings[1].Container == 8 and rings[1].Index == 3
+        and rings[2].Container == 8 and rings[2].Index == 7, true);
+    check('BIX11b ...and the count is unchanged', select(2, bix.counts())['gold ring'], 2);
+
+    readLog = {};
+    bix.noteIncoming(0x01F, body(0x10, { [0x0A] = 1, [0x0B] = 4 }));                -- Mog Safe
+    bix.noteIncoming(0x01E, body(0x0C, { [0x08] = 0, [0x09] = 0 }));                -- the gil slot
+    bix.noteIncoming(0x050, body(0x08, { [0x04] = 0, [0x05] = 2, [0x06] = 0 }));   -- an unequip
+    bix.noteIncoming(0x01D, body(0x0C, {}));                                        -- ITEM_SAME
+    clock = clock + 1;
+    bix.counts();
+    check('BIX12 safe / gil / unequip / ITEM_SAME packets cost no read', #readLog, 0);
+
+    -- THE TIMING RULE: inside SETTLE_S of its packet a slot is read, and read
+    -- again on the next ask; after the window it is kept.
+    put(0, 9, 1003, 'Bronze Cap');
+    bix.noteIncoming(0x01F, body(0x10, { [0x0A] = 0, [0x0B] = 9 }));
+    readLog = {};
+    local _, byName4 = bix.counts();
+    check('BIX13 a piece whose packet just landed is counted at once', byName4['bronze cap'], 1);
+    readLog = {};
+    bix.counts();
+    check('BIX13b ...its slot read again while the client may still be applying it', table.concat(readLog, ','), '0:9');
+    clock = clock + bix.SETTLE_S;
+    bix.counts();
+    readLog = {};
+    bix.counts();
+    check('BIX13c ...and kept once the window has passed', #readLog, 0);
+
+    local disp = package.loaded['dlac\\dispatch'];
+    readLog = {};
+    check('BIX14 dispatch counts copies through the index', disp.bagCopies(1001), 2);
+    check('BIX14b ...without reading a bag slot', #readLog, 0);
+
+    for _, z in ipairs({ { 'BIX15 0x00A zone-in', 0x00A, body(8, {}) },
+                         { 'BIX16 0x01C container sizes', 0x01C, body(0x80, {}) },
+                         { 'BIX17 a torn 0x020', 0x020, body(4, {}) } }) do
+        bix.noteIncoming(z[2], z[3]);
+        clock = clock + 1;
+        readLog = {};
+        bix.counts();
+        check(z[1] .. ' walks every equip bag again', #readLog, 160);
+    end
+
+    bix._reset();
+    local savedBags = bags;
+    bags = {};
+    bix.counts();
+    readLog = {};
+    bix.counts();
+    check('BIX18 an EMPTY walk is never kept (char select, mid-zone)', #readLog, 160);
+    bags = savedBags;
+
+    bix._reset();
+    AshitaCore = nil;
+    check('BIX19 bags never readable -> counts() answers nil, never "you own none"', bix.counts() == nil, true);
+
+    local eqcore = package.loaded['dlac\\gear\\equipcore'];
+    check('BIX20 the index scans in LuaAshitacast order (equipcore.DEFAULT_EQUIP_BAGS)', table.concat(bix.BAGS, ','),
+        (type(eqcore) == 'table') and table.concat(eqcore.DEFAULT_EQUIP_BAGS, ',') or '?');
+    local a, b = {}, {};
+    for _, c in ipairs(disp.AMMO_BAGS) do a[#a + 1] = c; end
+    for _, c in ipairs(bix.BAGS) do b[#b + 1] = c; end
+    table.sort(a); table.sort(b);
+    check('BIX21 ...over the bags dispatch counts (AMMO_BAGS)', table.concat(b, ','), table.concat(a, ','));
+
+    AshitaCore, bix._walkEveryAsk, bix._clock = savedAshita, savedWalk, savedClock;
+    bix._reset();
+end)();
+
+-- ---------------------------------------------------------------------------
 -- EQF. the flush BUDGET (2026-10-13, the stutter report). A settled Default --
 -- every outgoing chunk plus the 0.4s tick, ~6 a second -- asks for what is
--- already worn. bufferFlush used to walk every slot of every equip bag on each
--- of those passes (a GetContainerItem per slot, plus GetItemById and the Name
--- table the binding builds for every item in them), and the walk is what made
--- the frame graph spike. Driven through the real fireEvent door against a
+-- already worn, and every pass used to walk every slot of every equip bag (a
+-- GetContainerItem per slot, plus GetItemById and the Name table the binding
+-- builds for every item) -- the walk that made the frame graph spike. The bags
+-- are KEPT now (feature\bagindex) and read again only where an inventory
+-- packet says they changed. Driven through the real fireEvent door against a
 -- live-shaped inventory, counting the calls the game pays for:
---   * worn already -> the 16 worn slots are read and no bag is walked;
---   * something to move -> the walk runs and the same packet goes out as ever
+--   * the first pass walks once; a settled pass after it reads no bag slot;
+--   * something to move goes on with no walk -- one read, the safety net's
 --     (NOT plain `satisfied`: an empty item list says that too, which is how
 --     the first cut of this fix silently stopped equipping anything);
---   * a second walk asks GetItemById only for what it wants, not per slot.
+--   * a piece that arrives (its 0x01F names the slot) is read alone, goes on;
+--   * an entry no bag can fill costs nothing, pass after pass;
+--   * a piece that moved WITHOUT a packet is caught before the equip goes out:
+--     one re-walk, the slot it is in, never the stale one;
+--   * a zone-in walks again, once.
 -- ---------------------------------------------------------------------------
 (function()
     local eng = package.loaded['dlac\\feature\\equipengine'];
+    local bix = package.loaded['dlac\\feature\\bagindex'];
     if type(eng) ~= 'table' then check('EQF0 equipengine is loaded', type(eng), 'table'); return; end
     local savedAshita, savedOnEvent = AshitaCore, eng.onEvent;
+    local savedWalk, savedBixClock = bix._walkEveryAsk, bix._clock;
+    bix._walkEveryAsk = false;
+    bix._reset();
 
     local calls = {};
     local function count(k) calls[k] = (calls[k] or 0) + 1; end
@@ -17543,77 +17712,108 @@ end)();
         }; end,
     };
     local clock = 1000;
-    local savedClock = eng._clock;
-    eng._clock = function() return clock; end
+    bix._clock = function() return clock; end
     local want = {};
     eng.onEvent = function() eng.equipSet(want); end
     local function pass(set)
         want, calls, sent = set, {}, {};
         eng.fireEvent('Default', 'auto');
     end
+    local function reads() return calls.GetContainerItem or 0; end
+    -- the server's ITEM_LIST for one slot (Category @0x0A, ItemIndex @0x0B)
+    local function itemList(c, i)
+        local b = {};
+        for k = 1, 0x10 do b[k] = string.char(0); end
+        b[0x0A + 1], b[0x0B + 1] = string.char(c), string.char(i);
+        bix.noteIncoming(0x01F, table.concat(b));
+    end
+    local function sentFrom(slot0, c, i)
+        for _, q in ipairs(sent) do
+            if q.id == 0x50 and q.bytes[6] == slot0 and q.bytes[5] == i and q.bytes[7] == c then return true; end
+            if q.id == 0x51 then
+                for k = 1, q.bytes[5] do
+                    local o = 4 + k * 4 + 1;
+                    if q.bytes[o + 1] == slot0 and q.bytes[o] == i and q.bytes[o + 2] == c then return true; end
+                end
+            end
+        end
+        return false;
+    end
 
-    -- 1) worn already: no packet, no bag walk.
+    -- 1) worn already: no packet. The first pass builds the index (one walk);
+    -- every settled pass after it reads no bag slot and asks no resource.
     equipped[4], equipped[5] = 8 * 256 + 1, 8 * 256 + 2;
     pass({ Head = 'Cap A', Body = 'Harness' });
     check('EQF1 a settled pass sends nothing', #sent, 0);
-    check('EQF2 ...and reads only the two worn pieces, not the 80-slot bag',
-          calls.GetContainerItem, 2);
+    check('EQF2 ...the first one walks the bag once, to build the index', reads(), 80);
+    pass({ Head = 'Cap A', Body = 'Harness' });
+    check('EQF2b the next settled pass reads NO bag slot', reads(), 0);
+    check('EQF2c ...and asks no item resource', calls.GetItemById or 0, 0);
 
-    -- 2) the Body is off: the walk runs and the Harness goes on, as ever.
+    -- 2) the Body is off: the Harness goes on from wardrobe 8:2 as ever -- with
+    -- no walk, just the safety net's read of the slot it equips from.
     equipped[5] = nil;
     pass({ Head = 'Cap A', Body = 'Harness' });
-    local p = sent[1];
-    local body = p ~= nil and ((p.id == 0x50 and p.bytes[6] == 5 and p.bytes[5] == 2 and p.bytes[7] == 8)
-        or (p.id == 0x51 and p.bytes[5] == 1 and p.bytes[10] == 5 and p.bytes[9] == 2 and p.bytes[11] == 8));
-    check('EQF3 something to move -> the Harness is equipped from wardrobe 8:2', body, true);
-    check('EQF4 ...because the bag WAS walked (every slot of it)', (calls.GetContainerItem or 0) >= 80, true);
+    check('EQF3 something to move -> the Harness is equipped from wardrobe 8:2', sentFrom(5, 8, 2), true);
+    check('EQF4 ...with no walk: one read, the safety net', reads(), 1);
 
-    -- 3) a second walk: the names are remembered by item id, so GetItemById is
-    -- asked for the worn pieces and the wanted one -- not for 42 bag slots.
+    -- 3) a ring arrives: its ITEM_LIST names the slot, that slot alone is read
+    -- (its resource asked once for the name, once for the gates -- ever).
     item(43, 50043, 'Gold Ring', 8192);   -- Ring1 (slot id 14 -> bit 13)
+    itemList(8, 43);
+    clock = clock + 1;
     pass({ Ring1 = 'Gold Ring' });
-    check('EQF5 the ring still goes on', #sent >= 1, true);
-    check('EQF6 ...and the walk asked GetItemById a handful of times, not per slot',
-          (calls.GetItemById or 0) <= 4, true);
+    check('EQF5 the ring that arrived goes on', sentFrom(13, 8, 43), true);
+    check('EQF6 ...reading its slot and the safety net -- not the bag', reads(), 2);
+    check('EQF6b ...and asking its resource at most twice', (calls.GetItemById or 0) <= 2, true);
 
     -- 4) an entry no bag can fill (a ring you do not own, a piece in storage):
     -- allWorn can never be true, and every Default used to walk every bag to
-    -- send nothing. The walk that found nothing is not repeated...
-    local function walked() return (calls.GetContainerItem or 0) >= 80; end
-    clock = clock + 10;
+    -- send nothing. Now it costs nothing, pass after pass.
     pass({ Ring2 = 'Missing Ring' });
-    check('EQF7 an unfillable entry: the first pass walks the bags', walked(), true);
-    check('EQF7b ...and sends nothing', #sent, 0);
-    clock = clock + 0.5;
+    check('EQF7 an unfillable entry sends nothing', #sent, 0);
+    check('EQF7b ...and reads no bag slot', reads(), 0);
     pass({ Ring2 = 'Missing Ring' });
-    check('EQF8 ...the same pass again does not walk them again', walked(), false);
-    -- ...until an inventory packet lands (the ring may have arrived): walked
-    -- again at once, but not trusted while the client may still be applying it,
-    clock = clock + 0.5;
-    eng.handleIncoming({ id = 0x020, data = string.rep(string.char(0), 0x20) });
-    pass({ Ring2 = 'Missing Ring' });
-    check('EQF9 an inventory packet: the next pass walks again', walked(), true);
-    clock = clock + 0.2;
-    pass({ Ring2 = 'Missing Ring' });
-    check('EQF9b ...and so does the one after, inside the settle window', walked(), true);
-    clock = clock + eng.INV_SETTLE_S;
-    pass({ Ring2 = 'Missing Ring' });
-    pass({ Ring2 = 'Missing Ring' });
-    check('EQF9c ...then it settles and stays quiet', walked(), false);
-    -- ...or REWALK_S passes; and a different request is never answered from it.
-    clock = clock + eng.REWALK_S;
-    pass({ Ring2 = 'Missing Ring' });
-    check('EQF10 REWALK_S later the walk runs again', walked(), true);
-    pass({ Ring2 = 'Other Missing Ring' });
-    check('EQF10b a different request is walked on its own', walked(), true);
-    -- ...and once the ring IS in the bags (with the packet that says so), it goes on.
-    item(44, 50044, 'Missing Ring', 16384);   -- Ring2 (slot id 15 -> bit 14)
-    eng.handleIncoming({ id = 0x01F, data = string.rep(string.char(0), 0x20) });
-    clock = clock + 0.1;
-    pass({ Ring2 = 'Missing Ring' });
-    check('EQF11 the ring that arrived is equipped on the next pass', #sent >= 1, true);
+    check('EQF8 ...again and again', reads(), 0);
 
-    AshitaCore, eng.onEvent, eng._clock = savedAshita, savedOnEvent, savedClock;
+    -- 5) THE TIMING RULE: a piece whose packet just landed goes on at once; its
+    -- slot is read once more after the settle window, then left alone.
+    item(44, 50044, 'Missing Ring', 16384);   -- Ring2 (slot id 15 -> bit 14)
+    itemList(8, 44);
+    pass({ Ring2 = 'Missing Ring' });
+    check('EQF9 the piece that just arrived goes on at once', sentFrom(14, 8, 44), true);
+    clock = clock + bix.SETTLE_S;
+    pass({ Ring2 = 'Missing Ring' });
+    check('EQF9b ...its slot is read once more after the window', reads(), 1);
+    pass({ Ring2 = 'Missing Ring' });
+    check('EQF9c ...and then left alone', reads(), 0);
+
+    -- 6) THE SAFETY NET: the Mitts move 8:45 -> 8:50 with no packet the index
+    -- saw (a missed packet). The pass that wants them must not equip 8:45 on
+    -- the index's stale word: one re-walk, and they go on from where they ARE.
+    item(45, 50045, 'Mitts', 64);         -- Hands (slot id 7 -> bit 6)
+    itemList(8, 45);
+    clock = clock + 1;
+    pass({ Head = 'Cap A' });             -- the index learns 8:45
+    bag8[50], bag8[45] = bag8[45], nil;
+    local heals = bix.stats.heals;
+    clock = clock + 1;
+    pass({ Hands = 'Mitts' });
+    check('EQF10 a piece moved without a packet goes on from where it IS', sentFrom(6, 8, 50), true);
+    check('EQF10b ...never from the stale slot', sentFrom(6, 8, 45), false);
+    check('EQF10c ...at the price of one re-walk', bix.stats.heals - heals, 1);
+
+    -- 7) a zone-in sends the whole inventory again: one walk, then quiet.
+    bix.noteIncoming(0x00A, string.rep(string.char(0), 8));
+    clock = clock + 1;
+    pass({ Head = 'Cap A' });
+    check('EQF11 a zone-in walks the bag again', reads(), 80);
+    pass({ Head = 'Cap A' });
+    check('EQF11b ...once', reads(), 0);
+
+    AshitaCore, eng.onEvent = savedAshita, savedOnEvent;
+    bix._walkEveryAsk, bix._clock = savedWalk, savedBixClock;
+    bix._reset();
     eng.bufferClear();
 end)();
 
