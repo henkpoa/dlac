@@ -11051,7 +11051,8 @@ all. A harness cannot see any of that, so the measurement moves to the player.
   dlac's own time inside it, per event handler; every file operation dlac made,
   timed, including the close of a written file, where antivirus scanners do
   their work; the Lua heap (a fall = a collection cycle ended); and the gear
-  packets on the wire. It writes ONE file, `debug\dlac-perf-<Name>.txt`. The
+  packets on the wire. It writes one file per run,
+  `debug\dlac-perf-<Name>-<date>-<time>.txt` (idle and a fight side by side). The
   top of the file counts, of the hitches, how many dlac's own code explains,
   how many followed a gear packet, how many had a collection or a slow file
   operation in them, and how many were slow somewhere else. Chat gets the same

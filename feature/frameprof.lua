@@ -21,7 +21,7 @@
       * the Lua heap (a fall = a garbage collection cycle ended there);
       * the gear packets on the wire (a swap makes the CLIENT load the new
         piece's model -- a hitch that is not dlac's Lua at all).
-    and writes ONE file: addons\dlac\debug\dlac-perf-<Name>.txt, whose top
+    and writes ONE file per run, addons\dlac\debug\dlac-perf-<Name>-<when>.txt, whose top
     says how many hitches dlac's own work explains and how many it does not.
 
     HOW IT SEES EVERY HANDLER: dlac.lua requires this module before anything
@@ -682,7 +682,9 @@ function M._out()
     local name = (P.ctx and P.ctx.name) or 'unknown';
     name = tostring(name):gsub('%W', '');
     if name == '' then name = 'unknown'; end
-    return root .. 'addons\\dlac\\debug\\dlac-perf-' .. name .. '.txt';
+    -- One file PER RUN (unlike /dl report's overwrite): the useful comparison
+    -- is two runs side by side -- idle in town, then a fight.
+    return root .. 'addons\\dlac\\debug\\dlac-perf-' .. name .. '-' .. os.date('%Y%m%d-%H%M%S') .. '.txt';
 end
 
 function M._write(path, text)
@@ -723,7 +725,7 @@ end
 
 function M._usage()
     return 'perf [seconds|stop]  -- time every frame for a while (default ' .. M.DEF_S .. 's, '
-        .. M.MIN_S .. '-' .. M.MAX_S .. ') and write debug\\dlac-perf-<Name>.txt: frame times,'
+        .. M.MIN_S .. '-' .. M.MAX_S .. ') and write debug\\dlac-perf-<Name>-<when>.txt: frame times,'
         .. ' what dlac did in each, file and gear-packet timing.';
 end
 

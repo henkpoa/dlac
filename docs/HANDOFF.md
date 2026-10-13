@@ -128,7 +128,7 @@ hosting the engine — is history; see `docs/design/lac-purge-plan.md` and histo
   central-services table in `docs/architecture.md`).
 - **A stutter report gets `/dl perf` first.** The harness measures dlac on this
   machine; a player's stutter lives on theirs. `/dl perf [seconds]` writes
-  `addons\dlac\debug\dlac-perf-<Char>.txt`: frame times, dlac's own time per
+  `addons\dlac\debug\dlac-perf-<Char>-<date>-<time>.txt`, one per run: frame times, dlac's own time per
   frame and per handler, every file operation timed, collections, gear packets,
   and a block that says how many hitches dlac's own code explains and how many
   it does not. `feature\frameprof` wraps the event registrar and the file

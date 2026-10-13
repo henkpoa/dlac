@@ -900,7 +900,7 @@ for f = 1, nWarm + nFrames do
     W.frame = f;
     MEASURING = (f > nWarm);
     -- perf=<s>: run dlac's own /dl perf through the whole addon (its report
-    -- lands in <scratch>\addon-debug\dlac-perf-<Name>.txt).
+    -- lands in <scratch>\addon-debug\dlac-perf-<Name>-<when>.txt).
     if f == nWarm + 1 and opt.perf ~= nil then
         fire('command', { command = '/dl perf ' .. tostring(opt.perf), blocked = false });
     end
