@@ -450,7 +450,7 @@ local function liveJobs()
     end);
     if mj == nil then
         pcall(function()
-            local p = gData.GetPlayer();
+            local p = (gData.GetPlayerFrame or gData.GetPlayer)();
             mj = mj or p.MainJob;
             sj = sj or p.SubJob;
         end);
@@ -510,7 +510,7 @@ function M.liveReads(id)
     local reads = { enabled = M.isEnabled(id) };
     reads.mainJob = (liveJobs());
     pcall(function()
-        local p = gData and gData.GetPlayer and gData.GetPlayer() or nil;
+        local p = gData and gData.GetPlayer and (gData.GetPlayerFrame or gData.GetPlayer)() or nil;
         if type(p) == 'table' then
             reads.mainJob = reads.mainJob or p.MainJob;
             reads.dead    = (p.Status == 'Dead');

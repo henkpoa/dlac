@@ -352,7 +352,7 @@ local function getSubInfo()
     local sj, slv = nil, 0;
     pcall(function()
         if gData ~= nil and gData.GetPlayer ~= nil then
-            local p = gData.GetPlayer();
+            local p = (gData.GetPlayerFrame or gData.GetPlayer)();
             if p ~= nil then
                 sj  = p.SubJob;
                 slv = p.SubJobSync or 0;
@@ -492,7 +492,7 @@ local function getPlayerInfo()
     local job, level = nil, 0;
     pcall(function()
         if gData == nil or gData.GetPlayer == nil then return; end
-        local p = gData.GetPlayer();
+        local p = (gData.GetPlayerFrame or gData.GetPlayer)();
         if p == nil then return; end
         job = p.MainJob;
         if type(staticMainLevel) == 'number' and staticMainLevel > 0 then
@@ -509,7 +509,7 @@ local function jobHeader()
     local s = '?';
     pcall(function()
         if gData == nil or gData.GetPlayer == nil then return; end
-        local p = gData.GetPlayer();
+        local p = (gData.GetPlayerFrame or gData.GetPlayer)();
         if p == nil then return; end
         local mj  = p.MainJob or '?';
         local mjl = (type(staticMainLevel) == 'number' and staticMainLevel > 0) and staticMainLevel or (p.MainJobSync or 0);
@@ -2192,6 +2192,18 @@ local function renderSlotGrid(idPrefix, gridHeight, selectedLabel, getItemId, ge
     if opts.backgroundAlpha ~= nil then imgui.PopStyleColor(); end
     local boxBg = { 0.10, 0.10, 0.13, 1.0 };
     local boxSel = { 0.42, 0.36, 0.16, 1.0 };          -- gold: the slot being edited
+    -- Once per grid, not once per slot (13e): the faded button surfaces are the
+    -- same for all sixteen -- three colours and a border pushed sixteen times a
+    -- frame were ~60 ImGui calls for one look. Same for the icon geometry.
+    local imgSz, uv0, uv1, tint = { IMG, IMG }, { 0, 0 }, { 1, 1 }, { 1, 1, 1, 1 };
+    local boxSz = { BOX, BOX };
+    if opts.backgroundAlpha ~= nil then
+        local alpha = opts.backgroundAlpha;
+        imgui.PushStyleColor(ImGuiCol_Button, { 0.18, 0.18, 0.22, alpha });
+        imgui.PushStyleColor(ImGuiCol_ButtonHovered, { 0.28, 0.28, 0.35, alpha });
+        imgui.PushStyleColor(ImGuiCol_ButtonActive, { 0.35, 0.35, 0.42, alpha });
+        imgui.PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0);
+    end
     for i, sl in ipairs(EQUIP_SLOTS) do
         local selected = (selectedLabel == sl.label);
         local clicked = false;
@@ -2201,18 +2213,13 @@ local function renderSlotGrid(idPrefix, gridHeight, selectedLabel, getItemId, ge
         local box = (opts.boxColorOf ~= nil) and opts.boxColorOf(sl) or nil;
         if box == nil then box = selected and boxSel or boxBg; end
         -- Fade only the button surfaces. Global style alpha would fade the gear
-        -- textures and tooltips too. Scope these overrides to the button itself.
+        -- textures and tooltips too. The faded button colours are pushed once
+        -- around the whole grid (above); the box itself fades per slot.
         if opts.backgroundAlpha ~= nil then
-            local alpha = opts.backgroundAlpha;
-            box = { box[1], box[2], box[3], box[4] * alpha };
-            imgui.PushStyleColor(ImGuiCol_Button, { 0.18, 0.18, 0.22, alpha });
-            imgui.PushStyleColor(ImGuiCol_ButtonHovered, { 0.28, 0.28, 0.35, alpha });
-            imgui.PushStyleColor(ImGuiCol_ButtonActive, { 0.35, 0.35, 0.42, alpha });
-            imgui.PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0);
+            box = { box[1], box[2], box[3], box[4] * opts.backgroundAlpha };
         end
         if handle ~= nil then
-            clicked = imgui.ImageButton(handle, { IMG, IMG }, { 0, 0 }, { 1, 1 }, PAD,
-                box, { 1, 1, 1, 1 });
+            clicked = imgui.ImageButton(handle, imgSz, uv0, uv1, PAD, box, tint);
         else
             local vrec = (hoverRec ~= nil) and hoverRec(sl) or nil;
             local isVirt = (vrec ~= nil and vrec.Virtual == true);
@@ -2223,7 +2230,7 @@ local function renderSlotGrid(idPrefix, gridHeight, selectedLabel, getItemId, ge
                 textColor = { textColor[1], textColor[2], textColor[3], textColor[4] * opts.backgroundAlpha };
             end
             imgui.PushStyleColor(ImGuiCol_Text, textColor);
-            clicked = imgui.Button(isVirt and ('##vbox' .. sl.label) or sl.short, { BOX, BOX });
+            clicked = imgui.Button(isVirt and ('##vbox' .. sl.label) or sl.short, boxSz);
             imgui.PopStyleColor(2);
             if isVirt then   -- the element wheel over the button (virtuals have no texture)
                 pcall(function()
@@ -2232,10 +2239,6 @@ local function renderSlotGrid(idPrefix, gridHeight, selectedLabel, getItemId, ge
                     icons.drawElementWheel(wheel, x + (BOX - wheel) / 2, y + (BOX - wheel) / 2);
                 end);
             end
-        end
-        if opts.backgroundAlpha ~= nil then
-            imgui.PopStyleVar();
-            imgui.PopStyleColor(3);
         end
         -- The X goes on AFTER the button, so it lands over the icon: within one
         -- draw list, later is on top. Same order drawElementWheel relies on.
@@ -2275,6 +2278,10 @@ local function renderSlotGrid(idPrefix, gridHeight, selectedLabel, getItemId, ge
         end
         imgui.PopID();
         if i % 4 ~= 0 then imgui.SameLine(0, gap); end
+    end
+    if opts.backgroundAlpha ~= nil then
+        imgui.PopStyleVar();
+        imgui.PopStyleColor(3);
     end
     imgui.EndChild();
     if opts.tight then imgui.PopStyleVar(2); end
@@ -2813,7 +2820,7 @@ local function previewCctx(mainLevel)
     local isDW = false;
     pcall(function()
         local utils = require("dlac\\utils");
-        local p = gData.GetPlayer();
+        local p = (gData.GetPlayerFrame or gData.GetPlayer)();
         local _, sjL = utils.determineLevels();
         isDW = utils.isDualWieldAvailable(p.MainJob, tonumber(mainLevel) or 0, p.SubJob, sjL) == true;
     end);
@@ -5777,7 +5784,11 @@ function M.trayTeleportsDraw()
     pcall(renderTeleportsPopup);
 end
 
-ashita.events.register('d3d_present', 'dlac-gearui-render', function()
+-- The frame's body. An M. field, not a chunk local (hard rule 1: this chunk
+-- sits at the 200-local cap); the hook below wraps it in uistyle's FRAME
+-- BRACKET, so the dozen windows it draws push the theme once, not a dozen
+-- times (2026-10-13, 13e).
+M._renderFrame = function()
     cmdq.tick();   -- advance the frame clock, flush due commands
     if (cmdq.frame() % 240) == 0 then owned.resetCache(); end   -- availability heartbeat (~4s):
                                                                 -- container moves recolour live
@@ -6037,6 +6048,15 @@ ashita.events.register('d3d_present', 'dlac-gearui-render', function()
     local themed = style ~= nil and style.push();
     pcall(drawWindow);
     if themed then style.pop(); end
+end;
+
+ashita.events.register('d3d_present', 'dlac-gearui-render', function()
+    local bracket = style ~= nil and type(style.frameBegin) == 'function';
+    if bracket then style.frameBegin(); end
+    local ok, err = pcall(M._renderFrame);
+    -- Closed on every path, an error included: the style stack is shared.
+    if bracket then style.frameEnd(); end
+    if not ok then error(err, 0); end
 end);
 
 -- ---------------------------------------------------------------------------

@@ -18,7 +18,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.10.13d';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.10.13e';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
                                 -- (03f = engine v163: the contest explains its own plan;
                                 --  03g = one floating tray: Teleports + the E-Box crates;
@@ -372,7 +372,14 @@ addon.version = '2026.10.13d';  -- date of the last shipped change (Ashita print
                                 --  written on every decision, and the Gear Vault
                                 --  stamps a worn piece once an hour, not once a
                                 --  minute -- the three biggest spikes /dl perf
-                                --  found on a friend's machine)
+                                --  found on a friend's machine;
+                                --  10.13e = the floating windows cost half: the
+                                --  theme goes on once a frame instead of once per
+                                --  window, what you wear and who you are are KEPT
+                                --  until a packet says they changed, the windows
+                                --  share one player read per frame, and the WHM
+                                --  gauge stops reading every other job's buffs
+                                --  every frame)
 addon.desc    = 'Gear sets, triggers and live stats with level scaling -- dlac equips your gear itself.';
 
 -- Load BEACON ('/dl check' field round, 2026-07-23): written by PLAIN io at

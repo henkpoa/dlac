@@ -11130,3 +11130,55 @@ server's half of that.
 Tests: FPR17 (allocation per handler), FIR1-FIR7 (the ring in memory, written at
 unload only, no stream left, the sync keyed on `0x020` alone, the usage beat
 through `stampWorn`), USG7a-USG7f (the hour rule).
+
+## 2026-10-13: the floating windows cost half (`2026.10.13e`)
+
+Henrik: "having DLAC enabled, we lose 10 FPS, that's quite a lot." Abraxis's
+second `/dl perf` (13d): no dlac spike left over 8 ms, but dlac still ran 0.81 ms
+in EVERY frame -- three quarters of it `gearui-render`, the gear float and the
+TP float (596 us a frame, 2.3 MB/s of garbage). With the harness finally drawing
+windows (13d), the same two floats here: 478 us a frame, 417 AshitaCore calls
+and 512 imgui calls a frame. Most of it re-asked the game for things that
+change only when a packet says so:
+
+- **The theme, once a frame.** Each window pushed the whole theme (34 colours)
+  and popped it again -- the tray's and the job-helper floats' even when they
+  drew nothing: 340 `PushStyleColor` a frame. `uistyle.frameBegin/frameEnd`
+  wraps the present hook; inside it the first `push()` puts the theme on, every
+  other returns false, a pop matching a skipped push is a no-op, and frameEnd
+  pops once. (The module's own header always said "pushed once per frame".)
+- **The worn view is kept** (`gearoracle.wornItem`, asked 33 times a frame):
+  each slot's answer is kept until `0x050` names the slot, a zone (`0x00B` /
+  `0x00A`) resets them all, or an item packet (`0x01E/0x01F/0x020`) names the
+  worn piece's bag slot -- then read live through the settle window, as
+  `feature\bagindex` does. One slot every 0.5 s is read live anyway, the net
+  under a packet nobody listed. Nothing is kept until the hook has heard a
+  packet, so a caller with no wire (every headless suite) reads live as before.
+- **The identity is kept** (`profiles` charIdentity, behind every state-file
+  path, asked 22 times a frame): kept once read, read live for 3 s after a
+  zone-in (a login is one), re-checked live once a second (a logout empties the
+  name and must stop the writes). The install path and the folder strings are
+  kept with it.
+- **One player snapshot per drawn frame for the windows**
+  (`gData.GetPlayerFrame`, ~20 C++ reads each): the engine still calls
+  `GetPlayer`, fresh, at every decision.
+- **The slot grid** pushes its faded button colours once per grid, not per slot,
+  and stops building the same icon-geometry tables sixteen times a frame.
+- **The WHM flower gauge** read the player and copied the buff list every
+  frame, for every job, to learn it was not a WHM: now once a second, and only
+  a WHM's buffs are copied.
+
+Harness, 60 s, the two floats drawn: dlac 0.59 -> 0.34 ms a frame, the gear UI
+478 -> 236 us, garbage 3.1 -> 1.4 MB/s, AshitaCore calls 28,048 -> 8,516 a
+second, imgui calls 512 -> 194 a frame.
+
+Not in Lua and not measured by `/dl perf`: Ashita calling each of dlac's ~40
+present handlers and ~25 packet handlers (a C++ to Lua crossing each), and
+ImGui turning the windows into draw calls. One registered handler per event,
+dispatching to dlac's own list, would be the next step on the first.
+
+Tests: PFU0-PFU16 (the bracket pushes once and stays balanced either way a
+caller pops; the worn view kept, re-read on its own slot's equip, its bag
+slot's item packet and a zone, the net's one slot a beat, never keeping an
+unreadable slot; the identity kept, re-checked, ended by a logout, re-read at a
+zone-in; one snapshot per frame), and the gauge suite's Warrior-once-a-second.

@@ -195,6 +195,23 @@ function M.GetPlayer()
     return t;
 end
 
+-- THE WINDOWS' SNAPSHOT (2026-10-13, 13e). The floats ask for the job line ~3
+-- times a frame, and every GetPlayer is ~20 C++ reads and a fresh table. One
+-- snapshot per drawn frame (lib\cmdqueue's frame clock, which gearui's
+-- present hook advances) is all a window can show; the ENGINE keeps calling
+-- GetPlayer, fresh, at every decision. Read it, never write it.
+local _pf = { frame = -1, t = nil, cq = nil };
+function M.GetPlayerFrame()
+    if _pf.cq == nil then
+        local ok, cq = pcall(require, 'dlac\\lib\\cmdqueue');
+        _pf.cq = (ok and type(cq) == 'table' and type(cq.frame) == 'function') and cq or false;
+    end
+    local f = _pf.cq and _pf.cq.frame() or nil;
+    if f ~= nil and _pf.t ~= nil and _pf.frame == f then return _pf.t; end
+    _pf.t, _pf.frame = M.GetPlayer(), f or -1;
+    return _pf.t;
+end
+
 -- The in-flight action, LAC GetAction shape (nil when idle).
 function M.GetAction()
     if not _engok then return nil; end
@@ -354,6 +371,7 @@ end
 function M.build()
     return {
         GetPlayer       = M.GetPlayer,
+        GetPlayerFrame  = M.GetPlayerFrame,   -- windows only: once per drawn frame (13e)
         GetAction       = M.GetAction,
         GetActionTarget = M.GetActionTarget,
         GetPet          = M.GetPet,

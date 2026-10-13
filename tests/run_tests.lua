@@ -29630,6 +29630,185 @@ end)();
         and gi:find('usg.stamp(keys);', 1, true) == nil, true);
 end)();
 
+-- ---------------------------------------------------------------------------
+-- PFU. The windows' per-frame cost (13e -- Henrik: "having DLAC enabled, we
+-- lose 10 FPS"; Abraxis's /dl perf: the gear UI at ~600 us a frame, 400
+-- AshitaCore and 512 imgui calls). The theme goes on once a frame; the worn
+-- view and the identity are KEPT until a packet says otherwise; the windows
+-- share one player snapshot per drawn frame.
+-- ---------------------------------------------------------------------------
+(function()
+    -- 1. the theme's frame bracket
+    local pushes, pops = 0, 0;
+    local savedIm = package.loaded['imgui'];
+    package.loaded['imgui'] = {
+        PushStyleColor = function() pushes = pushes + 1; end,
+        PopStyleColor  = function(n) pops = pops + (n or 1); end,
+    };
+    local okS, sty = pcall(dofile, 'ui/uistyle.lua');
+    package.loaded['imgui'] = savedIm;
+    check('PFU0 uistyle loads with an imgui', okS and type(sty) == 'table', true);
+    if okS and type(sty) == 'table' then
+        check('PFU1 outside a bracket, push() pushes the theme and says so', sty.push(), true);
+        local N = pushes;
+        sty.pop();
+        check('PFU1a ...and pop() pops all of it', N > 0 and pops == N, true);
+        pushes, pops = 0, 0;
+        sty.frameBegin();
+        local a, b, c = sty.push(), sty.push(), sty.push();
+        check('PFU2 inside a bracket, push() says nothing was pushed', (a or b or c), false);
+        check('PFU2a ...the theme went on ONCE, at the first ask', pushes, N);
+        sty.pop();
+        check('PFU2b ...a pop matching a skipped push is a no-op', pops, 0);
+        sty.frameEnd();
+        check('PFU2c frameEnd pops the one push', pops, N);
+        pushes, pops = 0, 0;
+        sty.frameBegin();
+        sty.frameEnd();
+        check('PFU3 a frame nobody themed pushes and pops nothing', pushes + pops, 0);
+    end
+
+    -- 2. the kept worn view (a FRESH oracle: the suite's shared one stays live)
+    local savedCore, savedGState = AshitaCore, rawget(_G, 'gState');
+    _G.gState = nil;
+    local T = 100;
+    local reads, unreadable = 0, false;
+    local equip = { [4] = { Index = 8 * 256 + 5 } };
+    local items = { [8 * 256 + 5] = { Id = 1001, Count = 1, Flags = 5, Extra = '' },
+                    [8 * 256 + 6] = { Id = 1002, Count = 1, Flags = 5, Extra = '' } };
+    AshitaCore = {
+        GetMemoryManager = function() return {
+            GetInventory = function() return {
+                GetEquippedItem = function(_, s)
+                    reads = reads + 1;
+                    if unreadable then return nil; end
+                    return equip[s] or { Index = 0 };
+                end,
+                GetContainerItem = function(_, cnt, i) reads = reads + 1; return items[cnt * 256 + i]; end,
+            }; end,
+            GetParty = function() return {
+                GetMemberName = function() reads = reads + 1; return 'Testy'; end,
+                GetMemberServerId = function() return 1234; end,
+            }; end,
+        }; end,
+        GetInstallPath = function() return 'C:\\G\\'; end,
+    };
+    local okO, wo = pcall(dofile, 'gear/gearoracle.lua');
+    check('PFU4 a fresh oracle loads', okO and type(wo) == 'table', true);
+    if okO and type(wo) == 'table' then
+        wo._clock = function() return T; end
+        wo.wornItem(4); wo.wornItem(4);
+        check('PFU4a never heard the wire: every ask reads live (the suites)', reads, 4);
+        wo.noteIncoming(0x028, '');
+        reads = 0;
+        local w1, w2 = wo.wornItem(4), wo.wornItem(4);
+        check('PFU5 heard: the first ask reads, the next is kept', reads == 2 and w1 == w2 and w1.id == 1001, true);
+        -- the server equips wardrobe 8 slot 6 on Head (EQUIP_LIST: @4 index, @5 slot, @6 bag)
+        equip[4] = { Index = 8 * 256 + 6 };
+        wo.noteIncoming(0x050, string.char(0x50, 0x04, 0, 0, 6, 4, 8, 0));
+        reads = 0;
+        local w3 = wo.wornItem(4);
+        check('PFU6 an equip packet for the slot: read live', reads == 2 and w3 ~= nil and w3.id == 1002, true);
+        wo.wornItem(4);
+        check('PFU6a ...and live again inside the settle window', reads, 4);
+        T = T + wo.WORN_SETTLE_S;
+        wo.wornItem(4);
+        reads = 0;
+        wo.wornItem(4);
+        check('PFU6b settled: kept again', reads, 0);
+        wo.noteIncoming(0x050, string.char(0x50, 0x04, 0, 0, 3, 9, 8, 0));
+        wo.wornItem(4);
+        check('PFU7 an equip packet for ANOTHER slot leaves this one kept', reads, 0);
+        -- ITEM_LIST naming the worn piece's bag slot (@0x0A bag, @0x0B slot)
+        wo.noteIncoming(0x01F, string.char(0x1F, 0x08, 0, 0, 0, 0, 0, 0, 0xEA, 0x03, 8, 6, 5, 0, 0, 0));
+        wo.wornItem(4);
+        check('PFU8 an item packet for the worn piece\'s bag slot: read again', reads, 2);
+        wo.noteIncoming(0x00B, '');
+        T = T + 10;
+        reads = 0;
+        wo.wornItem(4); wo.wornItem(4);
+        check('PFU9 zoning out: every ask live until the zone-in', reads, 4);
+        wo.noteIncoming(0x00A, '');
+        T = T + wo.WORN_ZONE_S;
+        wo.wornItem(4);
+        reads = 0;
+        wo.wornItem(4);
+        check('PFU9a zoned in and settled: kept again', reads, 0);
+        local rereads = 0;
+        for _ = 1, 16 do
+            T = T + wo.WORN_TRICKLE_S;
+            reads = 0;
+            wo.wornItem(4);
+            if reads > 0 then rereads = rereads + 1; end
+        end
+        check('PFU10 the net reads each slot live once in 16 beats', rereads, 1);
+        wo._wornReset();
+        wo.noteIncoming(0x028, '');
+        unreadable = true;
+        wo.wornItem(4);
+        unreadable = false;
+        reads = 0;
+        local w4 = wo.wornItem(4);
+        check('PFU11 an unreadable slot (mid-zone) is never kept as empty', reads == 2 and w4 ~= nil, true);
+    end
+
+    -- 3. the kept identity (a FRESH profiles instance)
+    local okP, pr = pcall(dofile, 'profiles.lua');
+    check('PFU12 a fresh profiles loads', okP and type(pr) == 'table', true);
+    if okP and type(pr) == 'table' then
+        pr._identClock = function() return T; end
+        reads = 0;
+        pr.charFolder(); pr.charFolder();
+        check('PFU12a never heard the wire: every ask reads live', reads, 2);
+        pr.noteIncoming(0x028);
+        reads = 0;
+        pr.charFolder(); pr.charFolder(); pr.dataDir();
+        check('PFU13 heard: one read, then kept', reads, 1);
+        check('PFU13a the path is the same as ever', pr.dataDir(), 'C:\\G\\config\\addons\\dlac\\Testy_1234\\');
+        T = T + pr.IDENT_CHECK_S;
+        reads = 0;
+        pr.charFolder();
+        check('PFU14 re-checked live once a second', reads, 1);
+        local mm = AshitaCore.GetMemoryManager;
+        AshitaCore.GetMemoryManager = function()
+            local m = mm();
+            m.GetParty = function() return { GetMemberName = function() return ''; end,
+                                             GetMemberServerId = function() return 0; end }; end;
+            return m;
+        end;
+        T = T + pr.IDENT_CHECK_S;
+        check('PFU14a a logout (empty name) ends the answer at the next check', pr.dataDir(), nil);
+        AshitaCore.GetMemoryManager = function()
+            local m = mm();
+            m.GetParty = function() return { GetMemberName = function() return 'Other'; end,
+                                             GetMemberServerId = function() return 99; end }; end;
+            return m;
+        end;
+        pr.noteIncoming(0x00A);
+        check('PFU15 a zone-in reads live: the character logging in', pr.charFolder(), 'Other_99');
+    end
+    AshitaCore = savedCore;
+    _G.gState = savedGState;
+
+    -- 4. one player snapshot per drawn frame, for the windows only
+    local savedCq = package.loaded['dlac\\lib\\cmdqueue'];
+    local FR = 1;
+    package.loaded['dlac\\lib\\cmdqueue'] = { frame = function() return FR; end };
+    local okN, nd = pcall(dofile, 'feature/nativedata.lua');
+    check('PFU16 nativedata loads', okN and type(nd) == 'table', true);
+    if okN and type(nd) == 'table' then
+        local builds = 0;
+        nd.GetPlayer = function() builds = builds + 1; return { MainJob = 'WHM' }; end
+        nd.GetPlayerFrame(); nd.GetPlayerFrame(); nd.GetPlayerFrame();
+        check('PFU16a one snapshot per drawn frame', builds, 1);
+        FR = 2;
+        nd.GetPlayerFrame();
+        check('PFU16b ...a new one the next frame', builds, 2);
+        check('PFU16c gData hands the windows the frame snapshot', type(nd.build().GetPlayerFrame), 'function');
+    end
+    package.loaded['dlac\\lib\\cmdqueue'] = savedCq;
+end)();
+
 -- The warm-note artifact the dispatch-driving sections leave behind (dataDir
 -- stubbed 'tests\'): on Windows a real tests\debug\mpwarm.txt (gitignored via
 -- debug/), under WSL ONE backslash-bearing filename that drvfs PUA-mangles on
