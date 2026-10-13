@@ -59,7 +59,9 @@ for k, v in pairs(JOBS) do JOB_ABBR[v] = k; end
 local REPO = (function()
     local p = io.popen('cd'); local d = p:read('*l'); p:close(); return d;
 end)();
-local INSTALL = REPO:gsub('\\addons\\dlac$', '');
+-- install=<Ashita root>: read character folders from another install (to run
+-- an older checkout's code, e.g. a worktree, against the same characters).
+local INSTALL = opt.install or REPO:gsub('\\addons\\dlac$', '');
 local SCRATCH = opt.scratch or ((os.getenv('TEMP') or '.') .. '\\dlac-perf');
 local FAKE = 'Z:\\FAKEASHITA\\';
 local CHARNAME, CHARID = tostring(opt.char):match('^(.-)_(%d+)$');
@@ -435,10 +437,13 @@ local function itemAt(c, i)
     return it;
 end
 -- What the server sends back for an equip, as its flushEquipChanges does
--- (src/map/entities/char_entity.cpp): an EQUIP_LIST (0x050) for the slot, then
--- an ITEM_LIST (0x01F) re-flagging each piece put on or taken off. Delivered
--- the next frame, like a reply.
+-- (src/map/entities/char_entity.cpp): an EQUIP_LIST (0x050) + GRAP_LIST
+-- (0x051) pair per slot, an ITEM_LIST (0x01F) re-flagging each piece put on or
+-- taken off, and once per flush the ITEM_SAME pair (0x01D) and the spell and
+-- ability lists (0x0AA / 0x0AC). Delivered the next frame, like a reply.
 local INQ = {};
+local FLUSH_DUE = false;
+local EVERY_AT = nil;
 local function reply(id, size, writes)
     local b = {};
     for i = 1, size do b[i] = 0; end
@@ -460,13 +465,16 @@ local function applyEquip(index, slot, container)
     if index == 0 then
         W.equipped[slot] = 0;
         reply(0x050, 8, { [0x04] = 0, [0x05] = slot, [0x06] = 0 });
+        reply(0x051, 0x18, {});
     elseif itemAt(container, index) ~= nil then
         W.equipped[slot] = container * 256 + index;
         reply(0x050, 8, { [0x04] = index, [0x05] = slot, [0x06] = container });
+        reply(0x051, 0x18, {});
         itemListReply(container, index, 5);
     else
         return;
     end
+    FLUSH_DUE = true;
     if old ~= 0 and old ~= W.equipped[slot] then itemListReply(old // 256, old % 256, 0); end
 end
 
@@ -698,12 +706,36 @@ local IMGUI_FN = {
     GetScrollY = function() return 0; end, GetScrollMaxY = function() return 0; end,
     GetMousePos = function() return 0, 0; end,
 };
+-- imcount=1: count every imgui call during measurement, by name and by the
+-- handler that made it. In game each one is a crossing into C++ (sol2 + ImGui),
+-- nearly free here -- so, like the AshitaCore calls, read the COUNT.
+-- ui=0 leaves imgui unloadable (every window skipped), as this harness did
+-- before 2026-10-13: dlac's modules get imgui through require('imgui'), and
+-- nothing registered the fake for it, so no window ever drew here.
+local IMCOUNT, IMBY, IMWRAP = {}, {}, {};
+local function imFalse() return false; end
 imgui = setmetatable({}, { __index = function(_, k)
     local f = IMGUI_FN[k];
-    if f ~= nil then return f; end
-    if type(k) == 'string' and k:match('^ImGui') then return 0; end
-    return function() return false; end;
+    if f == nil then
+        if type(k) == 'string' and k:match('^ImGui') then return 0; end
+        f = imFalse;   -- ONE function: a fresh closure per lookup was garbage the game never makes
+    end
+    if opt.imcount ~= 1 then return f; end
+    local w = IMWRAP[k];
+    if w == nil then
+        w = function(...)
+            if MEASURING then
+                IMCOUNT[k] = (IMCOUNT[k] or 0) + 1;
+                local who = (CUR ~= nil) and CUR.key or '?';
+                IMBY[who] = (IMBY[who] or 0) + 1;
+            end
+            return f(...);
+        end
+        IMWRAP[k] = w;
+    end
+    return w;
 end });
+if opt.ui ~= 0 then package.loaded['imgui'] = imgui; end
 -- ImGui enum globals (ImGuiWindowFlags_*, ImGuiCol_*, ...) read as 0.
 setmetatable(_G, { __index = function(_, k)
     if type(k) == 'string' and k:match('^ImGui') then return 0; end
@@ -913,7 +945,24 @@ for f = 1, nWarm + nFrames do
             CUR = rec('ashita.tasks', 'once'); pcall(t.fn); CUR = nil;
         end
     end
+    -- every=<id>:<s> (e.g. every=0x01D:7): an incoming packet on a timer --
+    -- the ITEM_SAME a fight's gear swaps bring, without needing the swaps.
+    if opt.every ~= nil then
+        local eid, es = tostring(opt.every):match('^(0?x?%x+):([%d%.]+)$');
+        eid, es = tonumber(eid), tonumber(es);
+        if eid ~= nil and es ~= nil and es > 0 then
+            EVERY_AT = EVERY_AT or (VT + es);
+            if VT >= EVERY_AT then EVERY_AT = VT + es; reply(eid, 8, {}); end
+        end
+    end
     if #INQ > 0 then
+        if FLUSH_DUE then           -- the flush's tail, once per batch of equips
+            FLUSH_DUE = false;
+            reply(0x01D, 8, {});
+            reply(0x01D, 8, {});
+            reply(0x0AA, 0x48, {});
+            reply(0x0AC, 0x48, {});
+        end
         local due = INQ;
         INQ = {};
         for _, p in ipairs(due) do fire('packet_in', packetEvent(p.id, p.data, false)); end
@@ -1057,6 +1106,29 @@ if opt.sites == 1 then
         if i > 20 then break; end
         print(string.format('  %8.0f/s  %s', e.n / secs, e.k));
     end
+end
+
+if opt.imcount == 1 then
+    print('');
+    local tot = 0;
+    for _, n in pairs(IMCOUNT) do tot = tot + n; end
+    print(string.format('imgui calls during measurement: %.1f per frame', tot / math.max(1, measuredFrames)));
+    local byWho = {};
+    for k, n in pairs(IMBY) do byWho[#byWho + 1] = { k = k, n = n }; end
+    table.sort(byWho, function(a, b) return a.n > b.n; end);
+    for i, e in ipairs(byWho) do
+        if i > 8 then break; end
+        print(string.format('  %8.1f/frame  %s', e.n / math.max(1, measuredFrames), e.k));
+    end
+    local byName = {};
+    for k, n in pairs(IMCOUNT) do byName[#byName + 1] = { k = k, n = n }; end
+    table.sort(byName, function(a, b) return a.n > b.n; end);
+    local s = {};
+    for i, e in ipairs(byName) do
+        if i > 24 then break; end
+        s[#s + 1] = string.format('%s %.1f', e.k, e.n / math.max(1, measuredFrames));
+    end
+    print('  by function (per frame): ' .. table.concat(s, ', '));
 end
 
 -- what dlac sent

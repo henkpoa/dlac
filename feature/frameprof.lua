@@ -18,7 +18,8 @@
       * dlac's own time inside it: every event handler dlac registered, timed
         one by one;
       * every file dlac opened, loaded, renamed or removed, timed;
-      * the Lua heap (a fall = a garbage collection cycle ended there);
+      * the Lua heap (a fall = the garbage collector freeing memory there),
+        and per handler the memory it allocated (the collector's workload);
       * the gear packets on the wire (a swap makes the CLIENT load the new
         piece's model -- a hitch that is not dlac's Lua at all).
     and writes ONE file per run, addons\dlac\debug\dlac-perf-<Name>-<when>.txt, whose top
@@ -45,7 +46,7 @@ M.PER_FRAME  = 6;        -- handlers / files / packets named per kept frame
 M.NOTE_S     = 0.0002;   -- a handler call this long is named in its frame
 M.IO_NOTE_S  = 0.0001;   -- a file operation this long is named in its frame
 M.GEAR_S     = 0.6;      -- "a gear packet just before the hitch": this far back
-M.GC_DROP_KB = 256;      -- the heap falling this much inside a frame = a GC cycle ended
+M.GC_DROP_KB = 256;      -- the heap falling this much inside a frame = the collector freed memory there
 
 -- Gear packets: outgoing equip / equip-set / lockstyle, incoming equip and
 -- the appearance list (the one after which the client loads models).
@@ -110,7 +111,7 @@ local function recFor(name, alias)
     local key = tostring(name) .. '/' .. tostring(alias);
     local r = REC[key];
     if r == nil then
-        r = { key = key, ev = tostring(name), calls = 0, total = 0, max = 0, n2 = 0, n8 = 0, off = 0 };
+        r = { key = key, ev = tostring(name), calls = 0, total = 0, max = 0, n2 = 0, n8 = 0, off = 0, kb = 0 };
         REC[key] = r;
     end
     return r;
@@ -152,11 +153,16 @@ local function noteHandler(r, dt, outer)
     if dt > lo then hk[at] = r.key; ht[at] = dt; end
 end
 
-local function finish(r, t0, outer, ...)
+-- kb0: the heap before the call. What the call allocated is the rise; a
+-- collector step inside the call frees memory too, so a fall counts as 0 and
+-- the figure is a floor, not an exact count.
+local function finish(r, t0, kb0, outer, ...)
     local dt = M._now() - t0;
+    local dk = M._heap() - kb0;
     P.depth = outer and 0 or (P.depth - 1);
     if P.on then
         noteHandler(r, dt, outer);
+        if dk > 0 then r.kb = r.kb + dk; end
         if r.ev ~= 'd3d_present' and P.mainTid ~= nil and M._tid() ~= P.mainTid then
             r.off = r.off + 1;
         end
@@ -169,8 +175,9 @@ local function shim(r, fn)
         if not P.on then return fn(...); end
         local outer = (P.depth == 0);
         P.depth = P.depth + 1;
+        local kb0 = M._heap();
         local t0 = M._now();
-        return finish(r, t0, outer, fn(...));
+        return finish(r, t0, kb0, outer, fn(...));
     end
 end
 M._shim = shim;
@@ -379,7 +386,7 @@ end
 function M.start(secs)
     if P.on then return false, 'already measuring'; end
     for _, r in pairs(REC) do
-        r.calls, r.total, r.max, r.n2, r.n8, r.off = 0, 0, 0, 0, 0, 0;
+        r.calls, r.total, r.max, r.n2, r.n8, r.off, r.kb = 0, 0, 0, 0, 0, 0, 0;
     end
     for k in pairs(IOS) do IOS[k] = nil; end
     P.secs = secs or M.DEF_S;
@@ -512,7 +519,7 @@ function M.render(why)
         add(string.format('of %d hitches%s:', #hitches, kept));
         add(string.format('  %4d  dlac\'s own code was at least half of the extra time', cDlac));
         add(string.format('  %4d  a gear packet went out or came in within %.1f s before', cGear, M.GEAR_S));
-        add(string.format('  %4d  a Lua garbage collection cycle ended inside it', cGc));
+        add(string.format('  %4d  the Lua garbage collector freed >= %d KB inside it', cGc, M.GC_DROP_KB));
         add(string.format('  %4d  a dlac file operation took >= 1 ms inside it', cIo));
         add(string.format('  %4d  none of these: the frame was slow OUTSIDE dlac\'s code', cNone));
         add('  (one hitch can count in more than one row)');
@@ -522,25 +529,27 @@ function M.render(why)
     add('');
 
     add('===== GARBAGE =====');
-    add(string.format('Lua heap: %.1f MB at the end (window min %.1f, max %.1f); %d collection cycle(s) ended',
-        (P.heapLast or P.heapMax) / 1024, (P.heapMin < math.huge and P.heapMin or 0) / 1024, P.heapMax / 1024, P.gcCycles));
-    add(string.format('heap growth between collections: ~%.0f KB/s', P.heapRise / math.max(wall, 1e-9)));
+    add(string.format('Lua heap: %.1f MB at the end (window min %.1f, max %.1f)',
+        (P.heapLast or P.heapMax) / 1024, (P.heapMin < math.huge and P.heapMin or 0) / 1024, P.heapMax / 1024));
+    add(string.format('frames where the collector freed >= %d KB: %d', M.GC_DROP_KB, P.gcCycles));
+    add(string.format('allocation (the heap\'s growth between collections): ~%.0f KB/s', P.heapRise / math.max(wall, 1e-9)));
     add('');
 
     add('===== dlac HANDLERS (by total time) =====');
-    add(string.format('%-46s %7s %9s %7s %8s %7s %5s %5s %4s', 'event/handler', 'calls', 'total ms', 'ms/s',
-        'avg us', 'max ms', '>=2ms', '>=8ms', 'off'));
+    add(string.format('%-46s %7s %9s %7s %8s %7s %5s %5s %8s %4s', 'event/handler', 'calls', 'total ms', 'ms/s',
+        'avg us', 'max ms', '>=2ms', '>=8ms', 'KB/s', 'off'));
     local list = {};
     for _, r in pairs(REC) do if r.calls > 0 then list[#list + 1] = r; end end
     table.sort(list, function(a, b) return a.total > b.total; end);
     for i, r in ipairs(list) do
         if i > 30 then break; end
-        add(string.format('%-46s %7d %9s %7.2f %8.1f %7s %5d %5d %4s', string.sub(r.key, 1, 46), r.calls,
+        add(string.format('%-46s %7d %9s %7.2f %8.1f %7s %5d %5d %8.1f %4s', string.sub(r.key, 1, 46), r.calls,
             ms(r.total), r.total * 1000 / math.max(wall, 1e-9), r.total * 1e6 / r.calls, ms(r.max),
-            r.n2, r.n8, (r.off > 0) and tostring(r.off) or ''));
+            r.n2, r.n8, (r.kb or 0) / math.max(wall, 1e-9), (r.off > 0) and tostring(r.off) or ''));
     end
     if #list == 0 then add('  (no dlac handler ran)'); end
-    add('("off" = calls that ran on a different thread than the frame)');
+    add('("KB/s" = memory the handler allocated -- the garbage collector\'s workload; a floor, as');
+    add(' a collector step inside a call frees some back. "off" = calls on another thread than the frame)');
     add('');
 
     add('===== dlac FILE OPERATIONS (by total time) =====');
@@ -560,7 +569,7 @@ function M.render(why)
         local bits = {};
         if rec.gearOut ~= nil and rec.gearOut <= 5 then bits[#bits + 1] = string.format('gear out %.2fs before', rec.gearOut); end
         if rec.gearIn ~= nil and rec.gearIn <= 5 then bits[#bits + 1] = string.format('gear in %.2fs before', rec.gearIn); end
-        if rec.gc then bits[#bits + 1] = 'GC cycle ended'; end
+        if rec.gc then bits[#bits + 1] = 'GC freed memory'; end
         add(string.format('  +%7.2fs  frame %6s ms  dlac %6s ms  files %d (%s ms)  heap %+.0f KB  pkts %d in / %d out%s',
             rec.t, ms(rec.iv), ms(rec.dlac), rec.io, ms(rec.iot), rec.heapDelta, rec.pin, rec.pout,
             (#bits > 0) and ('  -- ' .. table.concat(bits, ', ')) or ''));

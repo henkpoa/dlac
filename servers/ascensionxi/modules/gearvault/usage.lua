@@ -217,6 +217,23 @@ function M.stamp(keys)
     end
 end
 
+-- The usage beat's witness (every minute): pieces SEEN WORN, stamped only
+-- once their stamp is RESTAMP_S old. The ranking this feeds works in days;
+-- stamping every worn piece every minute dirtied the file every minute, and
+-- that save (safewrite: three compiles, a write, a remove and a rename) was an
+-- 18 ms frame each minute on a field machine (Abraxis, /dl perf, 2026-10-13).
+-- Returns how many were stamped.
+M.RESTAMP_S = 3600;
+function M.stampWorn(keys)
+    local now, due = M._clock(), {};
+    for _, k in ipairs(keys or {}) do
+        local last = st.stamps[k];
+        if last == nil or now - last >= M.RESTAMP_S then due[#due + 1] = k; end
+    end
+    M.stamp(due);
+    return #due;
+end
+
 -- First sight in the layout: give unseen identities an age WITHOUT touching
 -- real stamps (a seed must never make used gear look fresher).
 function M.seed(keys)

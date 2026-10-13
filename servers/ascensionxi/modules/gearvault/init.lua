@@ -537,7 +537,8 @@ end
 -- THE USAGE BEATS (slice 4). Worn observation is GV4's one witness: A+C
 -- both end with the piece ON the body, so a periodic worn scan through the
 -- shared services (never a raw GetEquippedItem -- GRD1's law) stamps every
--- identity actually worn. The save rides a lazy debounce.
+-- identity actually worn (usage.stampWorn: once an hour per piece, 13d). The
+-- save rides a lazy debounce.
 local _wornAt, _saveAt = 0, 0;
 local function usageBeat()
     local nowc = os.clock();
@@ -568,7 +569,7 @@ local function usageBeat()
                     end
                 end
             end
-            usg.stamp(keys);
+            usg.stampWorn(keys);
         end);
     end
     if usg.dirty() and nowc - _saveAt >= 10 then

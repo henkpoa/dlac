@@ -17589,11 +17589,15 @@ end)();
     check('FPR8 a call on another thread than the frame is counted as off', fp._recs['packet_in/test-light'].off, 1);
     mark();
 
-    -- Garbage: the heap falling inside a frame = a collection cycle ended.
+    -- Allocation: what a handler adds to the heap is its own column.
+    ashita.events.register('d3d_present', 'test-alloc', function() heap = heap + 100; end);
+    reg['d3d_present/test-alloc']();
+    check('FPR17 a handler\'s allocation is measured', fp._recs['d3d_present/test-alloc'].kb, 100);
+    -- Garbage: the heap falling inside a frame = the collector freed memory.
     heap = 25000;
     clock = clock + 0.016;
     mark();
-    check('FPR9 a heap fall is a collection cycle', fp._P.gcCycles, 1);
+    check('FPR9 a heap fall inside a frame is counted', fp._P.gcCycles, 1);
 
     -- Last: a hitch right after a gear packet went out (last, so the 0.6 s
     -- look-back cannot reach any other hitch).
@@ -17619,7 +17623,8 @@ end)();
     check('FPR11e ...and the one that was slow elsewhere', written:find('1  none of these: the frame was slow OUTSIDE', 1, true) ~= nil, true);
     check('FPR11f the handler table carries the 40 ms handler', written:find('packet_in/test-heavy', 1, true) ~= nil, true);
     check('FPR11g file paths read without the install root', written:find('<char>\\helmstate.lua', 1, true) ~= nil, true);
-    check('FPR11h the garbage block counts the cycle', written:find('1 collection cycle(s) ended', 1, true) ~= nil, true);
+    check('FPR11h the garbage block counts the freeing frame', written:find('frames where the collector freed >= 256 KB: 1', 1, true) ~= nil, true);
+    check('FPR11i the handler table carries the allocation column', written:find('KB/s', 1, true) ~= nil, true);
 
     -- Disarmed again: the shims are free.
     local n0 = fp._recs['d3d_present/test-tick'].calls;
@@ -20164,6 +20169,21 @@ end)();
         check('TRC1 empty store: the trace says NOT FOUND (true today)',
               saidHas('NOT FOUND in profile Sets'), true);
         check('TRC1b ...for the rule that matched', saidHas('set Idle'), true);
+
+        -- FIR2 (13d): what fired lands in the engine's ring, which the Trigger
+        -- Monitor reads in memory; the file is written once, by the unload hook.
+        local fired = D.getFired();
+        check('FIR2 the dispatch put its fired rule in the ring, newest first',
+              #fired >= 1 and fired[1]:match('^%d%d:%d%d:%d%d  Default') ~= nil, true);
+        local firedPath = 'tests' .. SEP .. 'firedstate.lua';
+        pcall(os.remove, firedPath);
+        if type(handlers['unload']) == 'function' then pcall(handlers['unload']); end
+        local ff = io.open(firedPath, 'r');
+        local fbody = (ff ~= nil) and ff:read('*a') or '';
+        if ff ~= nil then ff:close(); end
+        pcall(os.remove, firedPath);
+        check('FIR2a unload writes the ring for the next load\'s monitor',
+              #fired >= 1 and fbody:find(fired[1], 1, true) ~= nil, true);
 
         -- The install lands: the store is swapped and modesRev bumped -- the
         -- two things EVERY installSets branch does (5668/5714). The next
@@ -28483,6 +28503,22 @@ end)();
         return t.settings.removals == 'auto' and t.stamps['a:00'] == 2000;
     end)(), true);
 
+    -- The beat's witness (13d): a worn piece is stamped once an hour, not
+    -- every minute -- so a steady outfit no longer dirties the file (and pays
+    -- a save) every minute.
+    ug._reset();
+    UT = 10000;
+    check('USG7a a piece never stamped is stamped when seen worn', ug.stampWorn({ 'w:00' }), 1);
+    ug._st().dirty = false;
+    UT = 10000 + 59 * 60;
+    check('USG7b seen worn again within the hour: no stamp', ug.stampWorn({ 'w:00' }), 0);
+    check('USG7c ...and the file is not dirtied', ug.dirty(), false);
+    check('USG7d ...the stamp holds', ug.lastUsed('w:00'), 10000);
+    UT = 10000 + ug.RESTAMP_S;
+    check('USG7e an hour on: stamped again', ug.stampWorn({ 'w:00', 'x:00' }), 2);
+    check('USG7f ...with the time now', ug.lastUsed('w:00') == UT and ug.dirty() == true, true);
+    UT = 2000;   -- the ranking below seeds at the clock USG7 left
+
     -- ranking: unpinned only auto-rank; unassigned first; oldest first
     ug._reset();
     ug.seed({ ug.keyOf(1, vc.ZERO24), ug.keyOf(2, vc.ZERO24), ug.keyOf(3, vc.ZERO24) });
@@ -29558,6 +29594,40 @@ end)();
     sp.provide('gearvault', nil);
     if hadAug == nil then package.loaded['dlac\\feature\\augments'] = nil; end
     AshitaCore = savedCore;
+end)();
+
+-- ---------------------------------------------------------------------------
+-- FIR. The Trigger Monitor's feed is the engine's ring IN MEMORY, and a gear
+-- swap is not an inventory change (13d, Abraxis's /dl perf: on his machine a
+-- file write cost 1.5-10 ms, firedstate.lua was written 55 times a minute in a
+-- fight, and the 0x01D after every equip re-ran the whole gear sync -- 21-55 ms
+-- frames). The tick and unload hooks need Ashita, so their contract is pinned
+-- as text (the GVS10 precedent); the ring itself is read live.
+-- ---------------------------------------------------------------------------
+(function()
+    check('FIR1 the engine hands out its fired ring (filled: FIR2, in the TRC section)',
+        type(dispatchM.getFired()), 'table');
+    local function src(p)
+        local f = io.open(p, 'rb');
+        local s = (f ~= nil) and f:read('*a') or '';
+        if f ~= nil then f:close(); end
+        return s;
+    end
+    local d = src('dispatch.lua');
+    check('FIR3 no command-bus stream left in the engine', d:find("QueueCommand(1, '/dlacmonev", 1, true), nil);
+    local _, nCalls = d:gsub('saveFiredState%(%)', '');
+    check('FIR4 firedstate.lua is written from ONE place', nCalls, 1);
+    check('FIR4a ...the unload hook', d:find("register('unload', 'dlac-fired-save'", 1, true) ~= nil, true);
+    local t = src('ui/triggersui.lua');
+    check('FIR5 the monitor reads the engine ring', t:find('dsp.getFired()', 1, true) ~= nil, true);
+    check('FIR5a ...and listens for no stream', t:find("'dlac-trigmon'", 1, true), nil);
+    local g = src('ui/gearui.lua');
+    check('FIR6 an equip\'s 0x01D no longer schedules the gear sync',
+        g:find("'dlac%-gearui%-invdirty', function%(e%)%s+if e%.id == 0x020 then") ~= nil, true);
+    check('FIR6a ...no 0x01D test left in that hook', g:find('e.id == 0x01D', 1, true), nil);
+    local gi = src('servers/ascensionxi/modules/gearvault/init.lua');
+    check('FIR7 the usage beat stamps through stampWorn', gi:find('usg.stampWorn(keys);', 1, true) ~= nil
+        and gi:find('usg.stamp(keys);', 1, true) == nil, true);
 end)();
 
 -- The warm-note artifact the dispatch-driving sections leave behind (dataDir

@@ -5670,10 +5670,15 @@ pcall(function()
     });
 end);
 
--- Any inventory-changing packet (loot, buy, trade, move -- 0x020 item update /
--- 0x01D inventory finish) schedules the debounced sync (see syncflags.lua).
+-- An item arriving, leaving or moving (loot, buy, trade, move: 0x020 ITEM_ATTR,
+-- which names the item) schedules the debounced sync (see syncflags.lua).
+-- NOT 0x01D ITEM_SAME (2026-10-13, 13d): it carries nothing, and the server
+-- sends it after EVERY equip (AscensionXI flushEquipChanges; LSB the same), so
+-- a fight's gear swaps kept re-running the whole sync -- every container walked
+-- plus the automations rebuild and an autogear.lua write: 21-55 ms frames in
+-- Abraxis's /dl perf. Equipping never changes what you own.
 ashita.events.register('packet_in', 'dlac-gearui-invdirty', function(e)
-    if e.id == 0x020 or e.id == 0x01D then
+    if e.id == 0x020 then
         sf.invDirty();
         -- ...and arm the Wishlist's "you got it" check. Hung off THIS signal
         -- rather than a timer: an item landing in your bags is exactly the event

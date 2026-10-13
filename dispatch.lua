@@ -406,12 +406,11 @@ local _actions = {};
 local _actSeq = 0;
 M.ACTION_CAP = 32;
 -- Trigger-monitor feed (v55): the last 5 fired-rule lines, newest first. The
--- ring updates on every CHANGE of what fired (retrace); the tick flushes it to
--- firedstate.lua (GUI display only) at most once per pass, so Precast/Midcast
--- bursts cost one write, not three.
+-- ring updates on every CHANGE of what fired (retrace). The Trigger Monitor
+-- reads it in memory (M.getFired); firedstate.lua is written at unload only,
+-- as the monitor's reload bootstrap (13d).
 local _fired = {};
 local _firedDirty = false;
-local _monQ = {};   -- fired lines awaiting the live stream -- drained ONE per frame (v58)
 local saveFiredState;   -- defined with the mode-state block below (needs charDir/writeFile)
 
 -- (inLac() died in the purge, Phase 2: there is no LuaAshitacast-hosted copy
@@ -7111,19 +7110,12 @@ function M.dispatch(event)
             table.insert(_fired, 1, os.date('%H:%M:%S') .. '  ' .. event .. '   ' .. table.concat(mp, '   ||   '));
             while #_fired > 5 do table.remove(_fired); end
             _firedDirty = true;
-            -- Event push: STREAM the new line to the addon state's monitor over
-            -- the command bus -- the one live channel two Lua states share (the
-            -- mode-keybind /bind precedent). Fires only on retrace, so a rule
-            -- matching again unchanged never re-sends. The firedstate.lua file
-            -- stays as the reload bootstrap + fallback. NOT QueueCommand'd here:
-            -- two commands queued in the SAME frame arrive at the addon in
-            -- REVERSE order (Henrik's field report -- every cast showed Precast
-            -- above Midcast, both stamped the same second), so lines land in
-            -- _monQ and the frame tick streams them one per frame -- the
-            -- cmdqueue.lua frame-spacing precedent, engine-side (v58).
-            local line = string.gsub(_fired[1], '%c', ' ');
-            if #line > 180 then line = string.sub(line, 1, 180); end
-            _monQ[#_monQ + 1] = line;
+            -- (2026-10-13, 13d) The Trigger Monitor reads this ring in memory
+            -- (M.getFired) -- one Lua state, so the '/dlacmonev' command-bus
+            -- stream and the per-pass firedstate.lua write are gone. Field
+            -- measure (Abraxis, /dl perf): that write cost 1.5-10 ms a time on
+            -- his machine, 55 times a minute in a fight. The file is written
+            -- once, at unload, for the monitor's reload bootstrap.
         end
 
         -- Apply in order, attributing each SLOT to its final writer -- with partial
@@ -7558,6 +7550,9 @@ function M.getTrace() return _trace; end
 -- The decision ring, read-only: the Arbiter Monitor's feed (and later the
 -- integration stream's). Newest LAST; records are never mutated after append.
 function M.getDecisions() return _decisions; end
+-- The Trigger Monitor's feed: the last 5 fired-rule lines, newest first. LIVE
+-- table -- read it, never write it.
+function M.getFired() return _fired; end
 
 -- ---------------------------------------------------------------------------
 -- Trigger file read/write for the GUI (the format lives HERE, next to the parser).
@@ -8261,14 +8256,6 @@ if engineActive() then
     -- in git history -- cb2fbe2..40288e3 -- if this class of thing ever returns.)
     ashita.events.register('d3d_present', 'dlac-dispatch-tick', function()
         pcall(function()
-            -- Monitor stream drain: ONE line per frame, AHEAD of the 0.4s
-            -- throttle. Same-frame QueueCommand pairs cross the bus reversed
-            -- (v58); a frame apart they arrive in order, and a Precast/Midcast
-            -- burst still lands within ~2 frames.
-            if _monQ[1] ~= nil then
-                local line = table.remove(_monQ, 1);
-                pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '/dlacmonev ' .. line); end);
-            end
             if os.clock() < _tickAt then return; end
             _tickAt = os.clock() + 0.4;
                                                  -- (the addon state reloads whole via /addon reload)
@@ -8386,13 +8373,18 @@ if engineActive() then
                     end
                 end
             end
-            -- Coalesced trigger-monitor flush: whatever fired since the last
-            -- pass lands in firedstate.lua as ONE write.
-            if _firedDirty and saveFiredState ~= nil then
-                _firedDirty = false;
-                saveFiredState();
-            end
         end);
+    end);
+
+    -- The trigger-monitor mirror, written ONCE: at unload, so the monitor of
+    -- the next load can show what fired last (its reload bootstrap). Never
+    -- per pass (13d -- see the ring above).
+    pcall(function() ashita.events.unregister('unload', 'dlac-fired-save'); end);
+    ashita.events.register('unload', 'dlac-fired-save', function()
+        if _firedDirty and saveFiredState ~= nil then
+            _firedDirty = false;
+            saveFiredState();
+        end
     end);
 
     pcall(function() ashita.events.unregister('command', 'dlac-dispatch'); end);

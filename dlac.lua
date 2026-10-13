@@ -18,7 +18,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.10.13c';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.10.13d';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
                                 -- (03f = engine v163: the contest explains its own plan;
                                 --  03g = one floating tray: Teleports + the E-Box crates;
@@ -364,7 +364,15 @@ addon.version = '2026.10.13c';  -- date of the last shipped change (Ashita print
                                 --  10.13c = /dl perf: every frame timed on the
                                 --  player's own machine -- what dlac did in it,
                                 --  the files it touched, gear packets and garbage
-                                --  -- into one file for support)
+                                --  -- into one file for support;
+                                --  10.13d = a gear swap no longer re-runs the
+                                --  gear library sync (the packet after every
+                                --  equip carries nothing), the Trigger Monitor
+                                --  reads what fired from memory instead of a file
+                                --  written on every decision, and the Gear Vault
+                                --  stamps a worn piece once an hour, not once a
+                                --  minute -- the three biggest spikes /dl perf
+                                --  found on a friend's machine)
 addon.desc    = 'Gear sets, triggers and live stats with level scaling -- dlac equips your gear itself.';
 
 -- Load BEACON ('/dl check' field round, 2026-07-23): written by PLAIN io at

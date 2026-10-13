@@ -11073,3 +11073,60 @@ collection; the four kinds of hitch are each named; the commands parse; the
 wrappers come off). The harness takes `perf=<s>` to run `/dl perf` through the
 whole addon, and `flags=` / `overlay=` to load a field report's settings and
 state files.
+
+## 2026-10-13: what /dl perf found (`2026.10.13d`)
+
+Abraxis's first `/dl perf` (RDM20 in a fight, 60 s): median frame 16.6 ms, 18
+hitches a minute, dlac at 0.94 ms per frame on average -- about ten times the
+harness. On his machine every file WRITE cost 1.5 to 10 ms (reads stayed under
+0.1 ms), which reads as an antivirus scanning each written file. Three things
+were writing, or spending, inside frames:
+
+- **The gear library sync after every gear swap.** `gearui` scheduled the
+  debounced sync on `0x020` AND `0x01D`. The server sends `0x01D` ITEM_SAME
+  after EVERY equip (AscensionXI's `flushEquipChanges`; LSB the same) and it
+  names nothing, so a fight's swaps kept re-running the whole sync -- every
+  container walked, the automations manifest rebuilt and `autogear.lua`
+  written: his 21 and 55 ms frames. Now only `0x020` ITEM_ATTR, which names an
+  item, schedules it. The harness with an `0x01D` every 7 s: 13c 31-38 ms frames
+  and 4.3 MB of garbage per sync; 13d none.
+- **`firedstate.lua` on every decision.** The Trigger Monitor's mirror was
+  written once per pass that fired something (55 times a minute in his fight,
+  2-10 ms each) and streamed to the monitor as a `/dlacmonev` chat command --
+  plumbing from the two-Lua-state era. The monitor now reads the engine's ring
+  in memory (`dispatch.getFired`); the file is written once, at unload, so the
+  next load's monitor still shows what fired last.
+- **The Gear Vault usage save every minute.** The usage beat re-stamped every
+  worn piece each minute, so the file was always dirty and `safewrite` (three
+  compiles, a write, a remove and a rename) ran every minute: an 18 ms frame for
+  him. `usage.stampWorn` stamps a piece only once its stamp is an hour old -- the
+  oldest-first ranking it feeds works in days. Harness, 180 s idle: 13c saved at
+  45, 105 and 165 s; 13d once, at 45 s.
+
+`/dl perf` itself: the "collection cycles" count was really counting the frames
+where the collector freed memory (225 in his minute), and now says so; each
+handler gets a KB/s column -- what it allocated, the collector's workload.
+
+**The harness had never drawn a window.** dlac's modules get imgui through
+`require('imgui')`, and nothing registered the harness's fake for it, so every
+window was skipped -- the gear UI measured at ~25 us a frame. With the fake
+registered (`ui=0` restores the old behaviour) the gear float and the TP float
+cost ~480 us a frame and 3.6 MB/s of garbage here -- Abraxis's machine showed
+630 us and 3.1 MB/s. `imcount=1` counts the imgui calls: 512 a frame, 340 of
+them `PushStyleColor` (one theme bracket per window), and 421 AshitaCore calls a
+frame -- the worn-gear door read 33 times a frame, the character folder rebuilt
+22 times. That is the next round. The harness also replies to an equip the way
+the AscensionXI server does now (`0x050` + `0x051` per slot, `0x01F` per piece,
+then `0x01D` twice and the spell and ability lists), takes `every=<id>:<s>` for a
+timed incoming packet and `install=<root>` to run another checkout against the
+same characters.
+
+Not dlac's Lua, and not changed here: 9 of his 15 slowest frames came right
+after a swap's server reply -- per changed slot an `0x050` and an `0x051`
+(the appearance, after which the client rebuilds the model), then the spell and
+ability lists, every swap. One appearance packet per flush would be the
+server's half of that.
+
+Tests: FPR17 (allocation per handler), FIR1-FIR7 (the ring in memory, written at
+unload only, no stream left, the sync keyed on `0x020` alone, the usage beat
+through `stampWorn`), USG7a-USG7f (the hour rule).
