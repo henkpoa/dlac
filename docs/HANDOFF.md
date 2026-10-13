@@ -126,6 +126,14 @@ hosting the engine — is history; see `docs/design/lac-purge-plan.md` and histo
   The rule that came out of it: **never walk the equip bags per pass** — ask
   `feature\bagindex` (kept, re-read only where an inventory packet lands; see the
   central-services table in `docs/architecture.md`).
+- **A stutter report gets `/dl perf` first.** The harness measures dlac on this
+  machine; a player's stutter lives on theirs. `/dl perf [seconds]` writes
+  `addons\dlac\debug\dlac-perf-<Char>.txt`: frame times, dlac's own time per
+  frame and per handler, every file operation timed, collections, gear packets,
+  and a block that says how many hitches dlac's own code explains and how many
+  it does not. `feature\frameprof` wraps the event registrar and the file
+  functions at load, so it sees every handler any module registers. A new
+  module needs nothing to be measured.
 - **A player's report is the best evidence you will get.** `/dl report` (or the
   Arbiter Monitor's **[Record a report]**) records up to 5 minutes and writes ONE
   sendable file, `addons\dlac\debug\dlac-report-<Char>.txt`: health verdict, config,

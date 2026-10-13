@@ -11031,3 +11031,44 @@ safety net, no settle window, a wrong 0x01F offset, no entry reuse, an empty wal
 kept, walk every ask, and no bag filter. **Prod:** copied to
 `C:\AscensionXI-Prod` on Henrik's ask for a TrueFPS check (see the memory note
 for the backup). **Field check owed:** TrueFPS idle and in a fight.
+
+## 2026-10-13: dlac times its own frames (`2026.10.13c`)
+
+The first field round on 13b came back from Abraxis, a friend who can make the
+stutter happen every time: "might be a bit better, but he's still getting em,
+way worse than us". His `/dl report` showed the gear engine nearly idle (4
+decisions in 131 s), and the harness, booted with his settings (dancer, the
+Arbiter Monitor open, his 18 KB Gear Vault usage file), puts 13b at about
+0.1 ms of dlac Lua per frame on Henrik's machine, with one spike a minute. What
+is left is on HIS machine: a slow disk, an antivirus that scans the files dlac
+opens (about 22 small reads a second are still polled), a slower CPU, or the
+game loading a gear model from disk after a swap, which is not dlac's Lua at
+all. A harness cannot see any of that, so the measurement moves to the player.
+
+- **`/dl perf [seconds]`** (`feature/frameprof.lua`; 60 s by default, 10-300,
+  `/dl perf stop` finishes early) records, for every frame: the frame time,
+  present to present, by QueryPerformanceCounter (the number TrueFPS draws);
+  dlac's own time inside it, per event handler; every file operation dlac made,
+  timed, including the close of a written file, where antivirus scanners do
+  their work; the Lua heap (a fall = a collection cycle ended); and the gear
+  packets on the wire. It writes ONE file, `debug\dlac-perf-<Name>.txt`. The
+  top of the file counts, of the hitches, how many dlac's own code explains,
+  how many followed a gear packet, how many had a collection or a slow file
+  operation in them, and how many were slow somewhere else. Chat gets the same
+  verdict in two lines.
+- **How it sees every handler:** `dlac.lua` installs it before anything
+  registers an event. It wraps `ashita.events.register` for dlac's Lua state,
+  and `io.open`, `loadfile`, `dofile`, `os.remove`, `os.rename` and
+  `ashita.fs.*`, so a module that copied one into a local at load time copied
+  the wrapper. Disarmed, a wrapper is one table read and a tail call. A nested
+  handler (a print raising `text_in`) counts once in its frame. The profiler's
+  own hooks register on the real function, so they never appear in its table.
+
+Tests: FPR1-FPR16 (disarmed costs nothing and passes arguments and returns
+through; armed times every handler and file operation by path, including a
+written file's close; a nested handler counts once; an error propagates and the
+next frame heals the depth; an off-thread call is counted; a heap fall is a
+collection; the four kinds of hitch are each named; the commands parse; the
+wrappers come off). The harness takes `perf=<s>` to run `/dl perf` through the
+whole addon, and `flags=` / `overlay=` to load a field report's settings and
+state files.

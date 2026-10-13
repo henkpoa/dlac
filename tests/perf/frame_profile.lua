@@ -73,6 +73,24 @@ sh(string.format('robocopy "%s\\config\\addons\\dlac\\%s" "%s\\config\\addons\\d
     INSTALL, opt.char, SCRATCH, opt.char));
 sh(string.format('copy /Y "%s\\config\\addons\\dlac\\server.lua" "%s\\config\\addons\\dlac\\server.lua"', INSTALL, SCRATCH));
 for _, d in ipairs({ 'addon-debug', 'install', 'stray' }) do sh(string.format('mkdir "%s\\%s"', SCRATCH, d)); end
+-- A field report's state on top of the copy (2026-10-13, Abraxis):
+-- overlay=<dir> copies a folder of character files over it, and
+-- flags=arbmon:true,gearfloat:false sets uiflags keys in it.
+if opt.overlay ~= nil then
+    sh(string.format('robocopy "%s" "%s\\config\\addons\\dlac\\%s" /E /NFL /NDL /NJH /NJS /NP', opt.overlay, SCRATCH, opt.char));
+end
+if opt.flags ~= nil then
+    local p = SCRATCH .. '\\config\\addons\\dlac\\' .. opt.char .. '\\uiflags.lua';
+    local f = REAL_OPEN(p, 'rb');
+    local s = (f ~= nil) and f:read('*a') or '';
+    if f ~= nil then f:close(); end
+    for k, v in tostring(opt.flags):gmatch('([%w_]+):([^,]+)') do
+        s = s:gsub('(%f[%w_]' .. k .. ' = )[^,}]+', '%1' .. v);
+    end
+    f = assert(REAL_OPEN(p, 'wb'));
+    f:write(s);
+    f:close();
+end
 
 local MAP = {
     { FAKE .. 'config\\addons\\dlac\\', SCRATCH .. '\\config\\addons\\dlac\\', true },
@@ -881,6 +899,11 @@ for f = 1, nWarm + nFrames do
     VT = VT + dt;
     W.frame = f;
     MEASURING = (f > nWarm);
+    -- perf=<s>: run dlac's own /dl perf through the whole addon (its report
+    -- lands in <scratch>\addon-debug\dlac-perf-<Name>.txt).
+    if f == nWarm + 1 and opt.perf ~= nil then
+        fire('command', { command = '/dl perf ' .. tostring(opt.perf), blocked = false });
+    end
     FRAME = MEASURING and { ms = 0, kb = 0, who = {}, at = VT, f = f - nWarm } or nil;
     -- tasks
     if #TASKS > 0 then

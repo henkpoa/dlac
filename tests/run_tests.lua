@@ -250,7 +250,7 @@ end)();
                    'groupsmodel','jobgate','levelstats','modeslibrary','nativemp','ownedcache','profileexport','profilesets','rulecopy','serverpack','setimport',
                    'setmanager','statdefs','gathering','syncflags','triggermodel','unusedgear','weaponfilter','weightimport' };
     local FEATURE = { 'actionseq','ammowatch','arbwatch','augments','bagindex','check','chocowatch','combat','craftpick','craftwatch','debug','digcalc','digrank',
-                      'engagewatch','fishcalc','fishwatch','foodwatch','gamehud','helmwatch','idleexcl','jobhelpers','location','lockstyle','lookpreview',
+                      'engagewatch','fishcalc','fishwatch','foodwatch','frameprof','gamehud','helmwatch','idleexcl','jobhelpers','location','lockstyle','lookpreview',
                       'macrobook','meritwatch','modapi','modcfg','mpbands','nexuslink','petfood','petvitals','pinwatch','recast','servermods','synthrun','useitem','vanamoon' };
     local LIB = { 'cmdqueue','entwatch','safewrite','statefile' };
     -- Job helper modules (issue #137): each is a drop-in FOLDER under jobhelpers\
@@ -17476,6 +17476,173 @@ end)();
     -- a separate packet, so a stale true would strike out a slot forever.
     eng.readEncumbrance(packStr(0x64, {}));
     check('EQE42 an empty word clears every slot', eng.isEncumbered(4), false);
+end)();
+
+-- ---------------------------------------------------------------------------
+-- FPR. feature\frameprof -- /dl perf, the frame profiler (2026-10-13: Abraxis
+-- still stutters on 13b, "way worse than us", and the harness cannot see his
+-- machine). Every handler registered after install() and every file
+-- operation is timed while a window is open and costs nothing while it is
+-- not. Driven through the REAL wrappers with a fake clock; uninstalled after.
+-- ---------------------------------------------------------------------------
+(function()
+    local fp = dofile('feature/frameprof.lua');
+    local savedAshita, savedPrint = ashita, print;
+    local savedOpen, savedLoadfile, savedDofile, savedRemove, savedRename = io.open, loadfile, dofile, os.remove, os.rename;
+    local reg = {};
+    ashita = { events = { register = function(name, alias, fn) reg[name .. '/' .. alias] = fn; end },
+               fs = { exists = function() return true; end } };
+    local clock, heap, tid = 1000, 30000, 7;
+    fp._now = function() return clock; end
+    fp._heap = function() return heap; end
+    fp._tid = function() return tid; end
+    check('FPR1 install wraps the registrar', fp.install(), true);
+    check('FPR1a ...and hooks itself on the REAL one (never timed)', type(reg['d3d_present/dlac-frameprof']), 'function');
+
+    local calls = 0;
+    ashita.events.register('d3d_present', 'test-tick', function(a, b)
+        calls = calls + 1;
+        clock = clock + 0.003;
+        return a + b, 'x';
+    end);
+    local tick = reg['d3d_present/test-tick'];
+    local r1, r2 = tick(2, 3);
+    check('FPR2 disarmed: the handler runs and its returns come back', calls == 1 and r1 == 5 and r2 == 'x', true);
+    check('FPR2a disarmed: nothing is counted', fp._recs['d3d_present/test-tick'].calls, 0);
+
+    -- io.open's real function is faked from here: each open costs 2 ms.
+    local opened = {};
+    fp._REAL.open = function(p, m)
+        clock = clock + 0.002;
+        opened[#opened + 1] = p;
+        if m ~= nil and m:find('w') then
+            return { write = function(self) return self; end, close = function() clock = clock + 0.004; return true; end };
+        end
+        return nil, 'no such file';
+    end
+    io.open('C:\\G\\x.lua', 'r');
+    check('FPR2b disarmed: a file open passes through uncounted', #opened == 1 and next(fp._ios) == nil, true);
+
+    fp._context = function() return { name = 'Testy', version = 'T', root = 'C:\\G\\' }; end
+    check('FPR3 start arms the window', fp.start(30), true);
+    check('FPR3a a second start is refused while one runs', (fp.start(30)), false);
+    local mark = reg['d3d_present/dlac-frameprof'];
+    mark();                                   -- the first mark only opens the window
+    for _ = 1, 120 do                         -- 120 quiet 16 ms frames, 3 ms of them dlac
+        clock = clock + 0.013;
+        tick(1, 1);
+        mark();
+    end
+    check('FPR4 every frame is recorded', fp._P.n, 120);
+    check('FPR4a the handler is timed per call', fp._recs['d3d_present/test-tick'].calls, 120);
+    check('FPR4b ...and summed into its frame', math.abs(fp._P.dl[1] - 0.003) < 1e-9, true);
+    check('FPR4c the frame time is present to present', math.abs(fp._P.iv[5] - 0.016) < 1e-9, true);
+
+    -- A hitch dlac had no part in.
+    clock = clock + 0.070;
+    mark();
+    -- A hitch that IS dlac: a 40 ms handler.
+    ashita.events.register('packet_in', 'test-heavy', function() clock = clock + 0.040; end);
+    clock = clock + 0.005;
+    reg['packet_in/test-heavy']({ id = 0x028 });
+    mark();
+    -- A hitch with a slow file open in it (2 ms open, 40 ms frame).
+    io.open('C:\\G\\config\\addons\\dlac\\Testy_1\\helmstate.lua', 'r');
+    clock = clock + 0.038;
+    mark();
+    check('FPR5 a read is timed by path', fp._ios['open.r']['C:\\G\\config\\addons\\dlac\\Testy_1\\helmstate.lua'].n, 1);
+    -- A write: the open AND the close are timed (antivirus scans on close).
+    local f = io.open('C:\\G\\out.lua', 'wb');
+    f:write('x');
+    f:close();
+    check('FPR5a a write open is timed', fp._ios['open.w']['C:\\G\\out.lua'].n, 1);
+    check('FPR5b ...and its close', math.abs(fp._ios['close.w']['C:\\G\\out.lua'].total - 0.004) < 1e-9, true);
+    mark();
+
+    -- Nesting: a handler that raises another inside itself counts once.
+    ashita.events.register('text_in', 'test-inner', function() clock = clock + 0.001; end);
+    ashita.events.register('command', 'test-outer', function()
+        clock = clock + 0.002;
+        reg['text_in/test-inner']({});
+    end);
+    local before = fp._P.n;
+    clock = clock + 0.010;
+    reg['command/test-outer']({});
+    mark();
+    check('FPR6 a nested handler is not counted twice in its frame', math.abs(fp._P.dl[before + 1] - 0.003) < 1e-9, true);
+    check('FPR6a ...but each keeps its own record', fp._recs['text_in/test-inner'].calls == 1
+        and fp._recs['command/test-outer'].calls == 1, true);
+
+    -- An error inside a handler propagates (Ashita prints it) and the next
+    -- frame heals the nesting depth.
+    ashita.events.register('d3d_present', 'test-throw', function() error('boom', 0); end);
+    local ok, err = pcall(reg['d3d_present/test-throw']);
+    check('FPR7 an error inside a handler propagates unchanged', (not ok) and err == 'boom', true);
+    mark();
+    check('FPR7a the frame mark heals the nesting depth', fp._P.depth, 0);
+
+    -- Off the frame's thread.
+    ashita.events.register('packet_in', 'test-light', function() end);
+    tid = 8;
+    reg['packet_in/test-light']({ id = 0x028 });
+    tid = 7;
+    check('FPR8 a call on another thread than the frame is counted as off', fp._recs['packet_in/test-light'].off, 1);
+    mark();
+
+    -- Garbage: the heap falling inside a frame = a collection cycle ended.
+    heap = 25000;
+    clock = clock + 0.016;
+    mark();
+    check('FPR9 a heap fall is a collection cycle', fp._P.gcCycles, 1);
+
+    -- Last: a hitch right after a gear packet went out (last, so the 0.6 s
+    -- look-back cannot reach any other hitch).
+    reg['packet_out/dlac-frameprof-out']({ id = 0x050 });
+    clock = clock + 0.045;
+    mark();
+
+    local written, out = nil, nil;
+    fp._out = function() return 'C:\\G\\addons\\dlac\\debug\\dlac-perf-Testy.txt'; end
+    fp._write = function(p, t) out, written = p, t; end
+    local printed = {};
+    print = function(s) printed[#printed + 1] = s; end
+    local path = fp.stop('the test stopped it');
+    print = savedPrint;
+    check('FPR10 stop writes the file and names it', path == out and type(written) == 'string', true);
+    check('FPR10a the chat says the verdict', #printed >= 3 and printed[1]:find('hitch') ~= nil, true);
+    written = written or '';
+    check('FPR11 the file states the frame times', written:find('frame time: median 16.0 ms', 1, true) ~= nil, true);
+    check('FPR11a ...counts the hitches against the median (>= 24 ms)', written:find('hitches (frames >= 24.0 ms): 4', 1, true) ~= nil, true);
+    check('FPR11b ...names the dlac hitch', written:find('1  dlac\'s own code was at least half of the extra time', 1, true) ~= nil, true);
+    check('FPR11c ...the gear hitch', written:find('1  a gear packet went out or came in within', 1, true) ~= nil, true);
+    check('FPR11d ...the file hitch', written:find('1  a dlac file operation took >= 1 ms inside it', 1, true) ~= nil, true);
+    check('FPR11e ...and the one that was slow elsewhere', written:find('1  none of these: the frame was slow OUTSIDE', 1, true) ~= nil, true);
+    check('FPR11f the handler table carries the 40 ms handler', written:find('packet_in/test-heavy', 1, true) ~= nil, true);
+    check('FPR11g file paths read without the install root', written:find('<char>\\helmstate.lua', 1, true) ~= nil, true);
+    check('FPR11h the garbage block counts the cycle', written:find('1 collection cycle(s) ended', 1, true) ~= nil, true);
+
+    -- Disarmed again: the shims are free.
+    local n0 = fp._recs['d3d_present/test-tick'].calls;
+    tick(1, 1);
+    check('FPR12 after stop nothing is counted', fp._recs['d3d_present/test-tick'].calls, n0);
+    check('FPR12a stop with nothing running says so', (fp.stop()), nil);
+
+    check('FPR13 /dl perf (bare) parses', fp._parse('/dl perf'), '');
+    check('FPR13a /dl perf 90', fp._parse('/dl perf 90'), '90');
+    check('FPR13b /dlac perf stop', fp._parse('/dlac perf stop'), 'stop');
+    check('FPR13c a neighbour is not eaten', fp._parse('/dl perfx'), nil);
+    check('FPR14 the window clamps low', fp._dur('3'), fp.MIN_S);
+    check('FPR14a ...and high', fp._dur('9999'), fp.MAX_S);
+    check('FPR14b ...and defaults', fp._dur(nil), fp.DEF_S);
+    check('FPR15 hitch line at 60 fps is 1.5x the frame', math.abs(fp._threshold(0.016) - 0.024) < 1e-9, true);
+    check('FPR15a ...at 144 fps never under 12 ms', fp._threshold(0.0069), 0.012);
+
+    fp._REAL.open = savedOpen;
+    fp._uninstall();
+    ashita = savedAshita;
+    check('FPR16 uninstall puts the file functions back', io.open == savedOpen and loadfile == savedLoadfile
+        and dofile == savedDofile and os.remove == savedRemove and os.rename == savedRename, true);
+    io.open, loadfile, dofile, os.remove, os.rename = savedOpen, savedLoadfile, savedDofile, savedRemove, savedRename;
 end)();
 
 -- ---------------------------------------------------------------------------

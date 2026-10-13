@@ -18,7 +18,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.10.13b';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.10.13c';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
                                 -- (03f = engine v163: the contest explains its own plan;
                                 --  03g = one floating tray: Teleports + the E-Box crates;
@@ -360,7 +360,11 @@ addon.version = '2026.10.13b';  -- date of the last shipped change (Ashita print
                                 --  then only the slot an inventory packet names
                                 --  is read again -- no every-second bag count, no
                                 --  walk per gear swap; a piece about to go on is
-                                --  checked where it sits)
+                                --  checked where it sits;
+                                --  10.13c = /dl perf: every frame timed on the
+                                --  player's own machine -- what dlac did in it,
+                                --  the files it touched, gear packets and garbage
+                                --  -- into one file for support)
 addon.desc    = 'Gear sets, triggers and live stats with level scaling -- dlac equips your gear itself.';
 
 -- Load BEACON ('/dl check' field round, 2026-07-23): written by PLAIN io at
@@ -384,6 +388,14 @@ require('common');
 -- Resolve the profile-style "dlac\\X" requires to addons/dlac/X.lua in the addon state.
 pcall(function()
     package.path = package.path .. ';' .. AshitaCore:GetInstallPath() .. 'addons\\?.lua';
+end);
+
+-- THE FRAME PROFILER (/dl perf, 2026-10-13) -- before anything registers an
+-- event or opens a file: it wraps both for this Lua state, so a window can
+-- time every handler and every file dlac touches on the player's own machine.
+-- Disarmed, a wrapper costs one table read. See feature\frameprof.lua.
+pcall(function()
+    require('dlac\\feature\\frameprof').install();
 end);
 
 -- THE IMGUI-BINDING SEAM: newer Ashita builds ship ImGui 1.90+, where
@@ -670,6 +682,7 @@ for _, mod in ipairs({ 'gear', 'feature\\augments', 'gear\\gearoptim', 'gear\\ge
                        'feature\\engagewatch', 'feature\\petvitals', 'feature\\combat',
                        'feature\\mobtag',
                        'feature\\sendlog', 'feature\\check', 'feature\\debug', 'feature\\report',
+                       'feature\\frameprof',
                        -- nmtrack AFTER nmlookup: it requires the lookup module at
                        -- load for the disfavour curve, the shipped table and the
                        -- pop kind (the reverse edge is call-time only, so there
