@@ -211,22 +211,44 @@ local function levelRows(itemId, level, out)
     end
 end
 
+-- Piece id -> the ids of the sets that list it (once per set), built once per
+-- gearsets table: the data never changes in a session. setBonus used to walk
+-- every set and every piece (126 sets, 804 pieces on AscensionXI) for each of
+-- the 16 slots, four times per decision (2026-10-13, the stutter report).
+local _setIndex = { sets = nil, of = nil };
+local function setsOf(sets)
+    if _setIndex.sets ~= sets then
+        local of = {};
+        for sid, e in pairs(sets) do
+            if type(e) == 'table' and type(e.pieces) == 'table' then
+                for _, pid in ipairs(e.pieces) do
+                    local list = of[pid];
+                    if list == nil then list = {}; of[pid] = list; end
+                    -- A piece listed twice in one set counts once, as the
+                    -- walk's first-match break always made it.
+                    if list[#list] ~= sid then list[#list + 1] = sid; end
+                end
+            end
+        end
+        _setIndex.sets, _setIndex.of = sets, of;
+    end
+    return _setIndex.of;
+end
+
 -- The set bonuses of an outfit at a level: { statKey = n } (the server's rule:
 -- per slot, level-gated, tiers replace).
 local function setBonus(ids, level)
     local sets = data().gearsets;
     if type(sets) ~= 'table' then return {}; end
+    local of = setsOf(sets);
     local count = {};
     for slot = 0, 15 do
         local id = ids[slot];
         local v = vectorOf(id);
         if v ~= nil and v.level <= level then
-            for sid, e in pairs(sets) do
-                if type(e.pieces) == 'table' then
-                    for _, pid in ipairs(e.pieces) do
-                        if pid == id then count[sid] = (count[sid] or 0) + 1; break; end
-                    end
-                end
+            local list = of[id];
+            if list ~= nil then
+                for _, sid in ipairs(list) do count[sid] = (count[sid] or 0) + 1; end
             end
         end
     end

@@ -115,6 +115,14 @@ hosting the engine — is history; see `docs/design/lac-purge-plan.md` and histo
   gate — run it on every touched Lua file. The pure-logic modules
   (utils/gearimport/setmanager cores) are testable without Ashita; add checks when you
   fix behavior there.
+- **Frame budget (stutter reports):** `lua tests\perf\frame_profile.lua` boots the WHOLE
+  addon headless against a fake Ashita, a scratch COPY of a real character folder and a
+  virtual clock, drives frames and packets, and reports per handler: time, Lua
+  allocation, file opens by path and AshitaCore calls (`sites=1` names the call sites,
+  `sample=1` / `alloc=1` say where the Lua time and garbage go; `combat=1 job=RDM`
+  adds spell casts; `bags=560` fills the wardrobes). Manual tool, not CI: Windows only,
+  and the fake API is nearly free, so read API COUNTS, not its milliseconds, as the
+  in-game cost. History: 2026-10-13, "the frame stutter".
 - **A player's report is the best evidence you will get.** `/dl report` (or the
   Arbiter Monitor's **[Record a report]**) records up to 5 minutes and writes ONE
   sendable file, `addons\dlac\debug\dlac-report-<Char>.txt`: health verdict, config,

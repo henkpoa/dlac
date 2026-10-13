@@ -10886,3 +10886,77 @@ the cache from the layout read was considered and not taken: it would widen
 what counts as a verified copy in the cache that duplicate-item safety relies
 on, to save one round trip. Tests GVI21-GVI28b; all ten deliberate breaks
 caught.
+
+## 2026-10-13: the frame stutter (`2026.10.13a`)
+
+Henrik's report: friends unloading addons one at a time found dlac makes the
+game stutter, plainly visible in TrueFPS's frame graph and gone when dlac
+unloads; the suspicion was AutoAcc. Before reading code for a theory, the
+session built `tests/perf/frame_profile.lua`: the whole addon booted headless
+against a fake Ashita, a scratch copy of a real character folder and a virtual
+clock, driving frames and packets and reporting, per handler, time, Lua
+allocation, file opens by path and AshitaCore calls by call site.
+
+**The cause was not AutoAcc.** Every Default pass (each outgoing packet chunk
+plus the 0.4 s tick, about six a second) ends in `equipengine.bufferFlush`, and
+its `liveSnapshot` walked every slot of the nine equip bags on every pass: a
+GetContainerItem per slot, then GetItemById, the Name table the binding builds
+on each access and a `string.lower` for every item, before anything asked
+whether something had to move. Almost always nothing did. With full wardrobes
+(720 items) that was ~1450 C++ calls and a few hundred KB of garbage per pass,
+landing in the frames the chunks land in: a comb of spikes at the chunk
+cadence. It dates from the native engine (2026-07-23) and grows with the
+wardrobes, which is why the players with the most gear saw it first.
+
+- **equipengine, worn view first.** `equipcore.planSet` now marks `allWorn`
+  when the worn slots alone satisfy it, and the bag walk runs only without it.
+  Never plain `satisfied`: an EMPTY item list says that too, when nothing can be
+  located. The first cut tested `satisfied` and quietly stopped equipping
+  anything; the harness caught it (no 0x051 at login), and EQF3 pins it. Item
+  names are memoized by id inside the walk (dispatch's bagCounts already did),
+  so GetItemById is asked for the wanted pieces only.
+- **equipengine, no fruitless re-walk.** An entry the bags cannot fill (a piece
+  in storage, a second copy you do not own, gear above a level sync) kept
+  `allWorn` false for good, and every pass walked every bag to send nothing. The
+  combat profile on a real RDM set (one Spike Earring for two ear slots) did 6.4
+  walks a second. A walk that found nothing is now not repeated for the same
+  request, worn view, job, level and bags. Inventory packets (0x01D, 0x01E,
+  0x01F, 0x020, 0x050, the 0x00A zone-in) bump a generation; nothing is cached
+  within `INV_SETTLE_S` (1 s) of one, because the client may not have applied it
+  to memory yet; `REWALK_S` (3 s) bounds the trust.
+- **digstorage / helmstorage:** the ten-a-second tick no longer walks bag 0
+  when nothing is owed.
+- **AutoAcc (the suspect, a smaller cost):** `setBonus` walked all 126 AXI gear
+  sets and their 804 pieces for each of 16 slots, four times per decision. A
+  piece -> sets index makes a recompute ~12x cheaper (1.24 ms -> 0.1 ms in Lua
+  5.4). Only players with AutoAcc pieces in their sets ever paid it.
+- **The AXI wire log** (`debug\gear-vault-wire.log`) created its folder and
+  opened, appended to and closed the file on every request, reply and push. The
+  lines now collect, stamped when their event happened as before, and reach the
+  file together at most 2 s later and at unload.
+
+Harness, 720 bag items, idle WHM, before -> after: GetItemById 4491/s -> 63/s,
+GetContainerItem 5970/s -> 782/s, Lua garbage 2965 -> 707 KB/s, frames carrying
+2 ms or more of dlac 119 -> 29 of 2400. Combat RDM: GetItemById 1625 -> 25/s,
+GetContainerItem 2856 -> 674/s. The fake API is nearly free, so the harness's
+milliseconds understate the game; its call counts are the in-game cost.
+
+Measured and left as follow-ups (smaller): `dispatch.bagCounts` still walks the
+bags once a second (720 GetContainerItem, names memoized) for the arbiter's
+availability read; about twenty small state-file reads a second remain from
+the two-state era (craftstate, helmstate and the rest once a second each, the
+trigger file twice, once inside `triggersPath` only to test that it exists, the
+lockstyle files, the debug handoffs); and the 5 s setup beat reads `gear.lua`,
+the sets file and the trigger file in full only to see that they exist. On
+Henrik's machine a small file read costs ~51 us, a missing file ~14 us, a
+wire-log append ~186 us.
+
+Tests: EQF1-EQF11 (`run_tests`: a settled pass reads the two worn pieces and no
+bag; the move still goes out; a second walk asks GetItemById a handful of
+times; a fruitless walk is not repeated until an inventory packet or
+`REWALK_S`; nothing is cached inside the settle window; the ring that arrives
+goes on), the digstorage and helmstorage idle-tick checks, AA-34 (the set-bonus
+rule, and no full-table walk per outfit), and the wire-log batch check in
+`gearvault_instances`. Each was run against the old code and goes red; the two
+quiet-cache mutations (no skip, no settle window) are each caught. **Field check
+owed:** TrueFPS before and after with full wardrobes, idle and in a fight.

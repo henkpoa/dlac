@@ -14,6 +14,7 @@ local function harness()
     local H = { time = 10, sent = {}, opts = { [7] = true, [5] = true }, ready = true, worn = {}, refuse = false,
         bags = { [0] = { max = 8, items = {} }, [7] = { max = 2, items = {} }, [5] = { max = 2, items = {} } } };
     local function snapshot(cid)
+        H.reads = (H.reads or 0) + 1;
         local b, out = H.bags[cid], { max = H.bags[cid].max, items = {} };
         for k, it in pairs(b.items) do out.items[k] = { id = it.id, count = it.count, flags = it.flags }; end
         return out;
@@ -194,4 +195,13 @@ assert(h.sent[1][10] == 5 and h.sent[1][12] == 1 and h.sent[1][5] == 12, 'the Sa
 h = harness(); h.m.outgoing(0x01A, action()); h.m.incoming(0x020, attr(1, 300, 1, 0, 5)); h.put(0, 1, 300, 1, 5);
 h.m.incoming(0x01D, ''); h.m.incoming(0x02F, digAnimation()); h.tick(); assert(#h.sent == 0);
 for _, id in ipairs({ 0x020, 0x01F, 0x01E, 0x02F, 0x01A }) do h.m.incoming(id, ''); h.m.outgoing(id, ''); end
+-- Idle with a destination on: nothing is owed, so the tick -- ten times a
+-- second in game -- reads no bag at all (2026-10-13, the stutter report: it
+-- walked bag 0 on every tick). A dig still reads and moves as before.
+h = harness(); for _ = 1, 50 do h.tick(0.1); end
+assert((h.reads or 0) == 0, 'an idle mover reads no bag');
+h.dig({ { 1, 300, 1 } }); h.tick(); assert(#h.sent == 1, 'a dig still moves at once');
+h.confirm(0, 1, 1); local settled = h.reads; for _ = 1, 50 do h.tick(0.1); end
+assert(h.reads == settled, 'once the move confirms, the idle tick reads nothing again');
+
 print('OK -- dig counts, whole-stack moves, pauses, carried stock, sorting, merges and cancellation');

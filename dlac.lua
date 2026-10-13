@@ -18,7 +18,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.10.12d';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.10.13a';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
                                 -- (03f = engine v163: the contest explains its own plan;
                                 --  03g = one floating tray: Teleports + the E-Box crates;
@@ -347,7 +347,15 @@ addon.version = '2026.10.12d';  -- date of the last shipped change (Ashita print
                                 --  login, "Show HELM badge" hides the floating badge;
                                 --  10.12b = Gear Vault: the layout's right-click
                                 --  acts on the first click -- it waits for the
-                                --  copy's location instead of asking for a second)
+                                --  copy's location instead of asking for a second;
+                                --  10.13a = smoother frames: a gear pass with
+                                --  everything already on no longer walks every
+                                --  bag (it did ~6 times a second -- the stutter
+                                --  in frame graphs), a walk that found nothing
+                                --  is not repeated until the bags change, idle
+                                --  dig/HELM movers read no bag, AutoAcc indexes
+                                --  set bonuses, and the AscensionXI wire log
+                                --  writes in batches)
 addon.desc    = 'Gear sets, triggers and live stats with level scaling -- dlac equips your gear itself.';
 
 -- Load BEACON ('/dl check' field round, 2026-07-23): written by PLAIN io at

@@ -17477,6 +17477,147 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- EQF. the flush BUDGET (2026-10-13, the stutter report). A settled Default --
+-- every outgoing chunk plus the 0.4s tick, ~6 a second -- asks for what is
+-- already worn. bufferFlush used to walk every slot of every equip bag on each
+-- of those passes (a GetContainerItem per slot, plus GetItemById and the Name
+-- table the binding builds for every item in them), and the walk is what made
+-- the frame graph spike. Driven through the real fireEvent door against a
+-- live-shaped inventory, counting the calls the game pays for:
+--   * worn already -> the 16 worn slots are read and no bag is walked;
+--   * something to move -> the walk runs and the same packet goes out as ever
+--     (NOT plain `satisfied`: an empty item list says that too, which is how
+--     the first cut of this fix silently stopped equipping anything);
+--   * a second walk asks GetItemById only for what it wants, not per slot.
+-- ---------------------------------------------------------------------------
+(function()
+    local eng = package.loaded['dlac\\feature\\equipengine'];
+    if type(eng) ~= 'table' then check('EQF0 equipengine is loaded', type(eng), 'table'); return; end
+    local savedAshita, savedOnEvent = AshitaCore, eng.onEvent;
+
+    local calls = {};
+    local function count(k) calls[k] = (calls[k] or 0) + 1; end
+    local RES, bag8, equipped, sent = {}, {}, {}, {};
+    local function item(index, id, name, slotMask)
+        RES[id] = { Name = { name }, Level = 1, Jobs = 0x7FFFFE, Slots = slotMask, Flags = 0x800 };
+        bag8[index] = { Id = id, Count = 1, Flags = 0, Extra = string.rep(string.char(0), 24) };
+    end
+    item(1, 50001, 'Cap A', 16);          -- Head  (slot id 5 -> bit 4)
+    item(2, 50002, 'Harness', 32);        -- Body  (slot id 6 -> bit 5)
+    for i = 3, 42 do item(i, 50100 + i, 'Filler ' .. i, 64); end
+    local inv = {
+        GetEquippedItem = function(_, s) count('GetEquippedItem'); return { Index = equipped[s] or 0 }; end,
+        GetContainerItem = function(_, c, i)
+            count('GetContainerItem');
+            if c ~= 8 then return nil; end
+            return bag8[i] or { Id = 0, Count = 0, Flags = 0 };
+        end,
+        GetContainerCountMax = function(_, c) return (c == 8) and 80 or 0; end,
+    };
+    local player = {
+        GetMainJob = function() return 3; end, GetMainJobLevel = function() return 75; end,
+        GetJobLevel = function() return 75; end,
+    };
+    AshitaCore = {
+        GetMemoryManager = function() return {
+            GetInventory = function() return inv; end, GetPlayer = function() return player; end,
+        }; end,
+        GetResourceManager = function() return {
+            GetItemById = function(_, id) count('GetItemById'); return RES[id]; end,
+        }; end,
+        GetPacketManager = function() return {
+            -- ...and the server applies it, as the game does: the worn view a
+            -- later pass reads is the same whether the trust window or live
+            -- memory answers it.
+            AddOutgoingPacket = function(_, id, bytes)
+                sent[#sent + 1] = { id = id, bytes = bytes };
+                if id == 0x50 then
+                    equipped[bytes[6]] = (bytes[5] ~= 0) and (bytes[7] * 256 + bytes[5]) or nil;
+                elseif id == 0x51 then
+                    for k = 1, bytes[5] do
+                        local o = 4 + k * 4 + 1;
+                        equipped[bytes[o + 1]] = bytes[o + 2] * 256 + bytes[o];
+                    end
+                end
+            end,
+        }; end,
+    };
+    local clock = 1000;
+    local savedClock = eng._clock;
+    eng._clock = function() return clock; end
+    local want = {};
+    eng.onEvent = function() eng.equipSet(want); end
+    local function pass(set)
+        want, calls, sent = set, {}, {};
+        eng.fireEvent('Default', 'auto');
+    end
+
+    -- 1) worn already: no packet, no bag walk.
+    equipped[4], equipped[5] = 8 * 256 + 1, 8 * 256 + 2;
+    pass({ Head = 'Cap A', Body = 'Harness' });
+    check('EQF1 a settled pass sends nothing', #sent, 0);
+    check('EQF2 ...and reads only the two worn pieces, not the 80-slot bag',
+          calls.GetContainerItem, 2);
+
+    -- 2) the Body is off: the walk runs and the Harness goes on, as ever.
+    equipped[5] = nil;
+    pass({ Head = 'Cap A', Body = 'Harness' });
+    local p = sent[1];
+    local body = p ~= nil and ((p.id == 0x50 and p.bytes[6] == 5 and p.bytes[5] == 2 and p.bytes[7] == 8)
+        or (p.id == 0x51 and p.bytes[5] == 1 and p.bytes[10] == 5 and p.bytes[9] == 2 and p.bytes[11] == 8));
+    check('EQF3 something to move -> the Harness is equipped from wardrobe 8:2', body, true);
+    check('EQF4 ...because the bag WAS walked (every slot of it)', (calls.GetContainerItem or 0) >= 80, true);
+
+    -- 3) a second walk: the names are remembered by item id, so GetItemById is
+    -- asked for the worn pieces and the wanted one -- not for 42 bag slots.
+    item(43, 50043, 'Gold Ring', 8192);   -- Ring1 (slot id 14 -> bit 13)
+    pass({ Ring1 = 'Gold Ring' });
+    check('EQF5 the ring still goes on', #sent >= 1, true);
+    check('EQF6 ...and the walk asked GetItemById a handful of times, not per slot',
+          (calls.GetItemById or 0) <= 4, true);
+
+    -- 4) an entry no bag can fill (a ring you do not own, a piece in storage):
+    -- allWorn can never be true, and every Default used to walk every bag to
+    -- send nothing. The walk that found nothing is not repeated...
+    local function walked() return (calls.GetContainerItem or 0) >= 80; end
+    clock = clock + 10;
+    pass({ Ring2 = 'Missing Ring' });
+    check('EQF7 an unfillable entry: the first pass walks the bags', walked(), true);
+    check('EQF7b ...and sends nothing', #sent, 0);
+    clock = clock + 0.5;
+    pass({ Ring2 = 'Missing Ring' });
+    check('EQF8 ...the same pass again does not walk them again', walked(), false);
+    -- ...until an inventory packet lands (the ring may have arrived): walked
+    -- again at once, but not trusted while the client may still be applying it,
+    clock = clock + 0.5;
+    eng.handleIncoming({ id = 0x020, data = string.rep(string.char(0), 0x20) });
+    pass({ Ring2 = 'Missing Ring' });
+    check('EQF9 an inventory packet: the next pass walks again', walked(), true);
+    clock = clock + 0.2;
+    pass({ Ring2 = 'Missing Ring' });
+    check('EQF9b ...and so does the one after, inside the settle window', walked(), true);
+    clock = clock + eng.INV_SETTLE_S;
+    pass({ Ring2 = 'Missing Ring' });
+    pass({ Ring2 = 'Missing Ring' });
+    check('EQF9c ...then it settles and stays quiet', walked(), false);
+    -- ...or REWALK_S passes; and a different request is never answered from it.
+    clock = clock + eng.REWALK_S;
+    pass({ Ring2 = 'Missing Ring' });
+    check('EQF10 REWALK_S later the walk runs again', walked(), true);
+    pass({ Ring2 = 'Other Missing Ring' });
+    check('EQF10b a different request is walked on its own', walked(), true);
+    -- ...and once the ring IS in the bags (with the packet that says so), it goes on.
+    item(44, 50044, 'Missing Ring', 16384);   -- Ring2 (slot id 15 -> bit 14)
+    eng.handleIncoming({ id = 0x01F, data = string.rep(string.char(0), 0x20) });
+    clock = clock + 0.1;
+    pass({ Ring2 = 'Missing Ring' });
+    check('EQF11 the ring that arrived is equipped on the next pass', #sent >= 1, true);
+
+    AshitaCore, eng.onEvent, eng._clock = savedAshita, savedOnEvent, savedClock;
+    eng.bufferClear();
+end)();
+
+-- ---------------------------------------------------------------------------
 -- NEB. native backend wiring (feature/native-engine step 5) -- the arming
 -- rules and the pet-stream decode. The dispatch-side seams (engineActive,
 -- the native sets store, engineEquipSet) are exercised through the 2600+

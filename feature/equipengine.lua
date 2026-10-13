@@ -387,13 +387,14 @@ function M.currentEquipView(slot)
     return item;
 end
 
--- A full equipcore snapshot from live memory. `wantNames` (set of lowercased
--- names) prefilters the bag scan -- only names the buffer actually asks for
--- are collected, so a cast never pays for the whole inventory.
-local function liveSnapshot(wantNames)
+-- The worn half of an equipcore snapshot: job, level and the 16 worn slots
+-- (trust window first). This is everything equipcore.planSet reads to decide
+-- "already satisfied" -- its items list is only consulted to LOCATE what is
+-- not worn yet. nil when live memory cannot be read.
+local function wornSnapshot()
     local snap = { job = 0, level = 0, disabled = M.state.disabled,
                    encumbered = M.state.encumbered, equipped = {}, items = {} };
-    local okAll = pcall(function()
+    local ok = pcall(function()
         local mm = AshitaCore:GetMemoryManager();
         local invMgr, resMgr = mm:GetInventory(), AshitaCore:GetResourceManager();
         local player = mm:GetPlayer();
@@ -406,6 +407,35 @@ local function liveSnapshot(wantNames)
         for slot = 1, 16 do
             snap.equipped[slot] = currentEquip(slot, invMgr, resMgr);
         end
+    end);
+    if not ok then return nil; end
+    return snap;
+end
+
+-- Item id -> lowercased client name. Resources are immutable for the session
+-- (dispatch's bagCounts keeps the same memo), so a bag walk pays
+-- GetItemById -- and the Name table the binding builds on every access --
+-- once per item ID, ever, instead of once per bag slot per walk. A nil
+-- resource is NOT remembered: it is asked again on the next walk.
+local _nameById = {};
+local function itemName(resMgr, id)
+    local nm = _nameById[id];
+    if nm ~= nil then return nm, nil; end
+    local res = resMgr:GetItemById(id);
+    if res == nil then return nil, nil; end
+    nm = string.lower(res.Name[1] or '');
+    _nameById[id] = nm;
+    return nm, res;
+end
+
+-- The bag half: append every bag item whose name `wantNames` (set of
+-- lowercased names) asks for to snap.items, in scan order -- only names the
+-- buffer actually asks for are collected, so a cast never pays for the whole
+-- inventory. false when live memory cannot be read.
+local function scanBags(snap, wantNames)
+    return pcall(function()
+        local mm = AshitaCore:GetMemoryManager();
+        local invMgr, resMgr = mm:GetInventory(), AshitaCore:GetResourceManager();
         -- Bag availability: LAC gates wardrobes 3+ behind retail account-flag
         -- sig-scans -- checks its own comments say "do not work on topaz".
         -- CatsEye is Topaz-lineage: an unavailable container reports max 0 and
@@ -417,14 +447,15 @@ local function liveSnapshot(wantNames)
             local max = invMgr:GetContainerCountMax(container);
             for index = 1, max do
                 local ci = invMgr:GetContainerItem(container, index);
-                if ci ~= nil and ci.Id ~= 0 and ci.Count > 0 then
-                    local res = resMgr:GetItemById(ci.Id);
-                    if res ~= nil then
-                        local nm = string.lower(res.Name[1] or '');
-                        if wantNames == nil or wantNames[nm] then
-                            local facts = equipmentFacts(ci.Id, res);
+                local id = (ci ~= nil) and ci.Id or 0;
+                if id ~= 0 and ci.Count > 0 then
+                    local nm, res = itemName(resMgr, id);
+                    if nm ~= nil and (wantNames == nil or wantNames[nm]) then
+                        res = res or resMgr:GetItemById(id);
+                        if res ~= nil then
+                            local facts = equipmentFacts(id, res);
                             snap.items[#snap.items + 1] = {
-                                Container = container, Index = index, Id = ci.Id,
+                                Container = container, Index = index, Id = id,
                                 Count = ci.Count, Flags = ci.Flags,
                                 Name = nm, Level = facts.Level, Jobs = facts.Jobs,
                                 Slots = facts.Slots, ResFlags = facts.ResFlags,
@@ -436,8 +467,37 @@ local function liveSnapshot(wantNames)
             end
         end
     end);
-    if not okAll then return nil; end
-    return snap;
+end
+
+-- The quiet-walk cache (bufferFlush): a bag walk that found nothing to send,
+-- keyed by everything planSet reads except the bag contents -- and those are
+-- the inventory generation, bumped by every inventory packet (handleIncoming).
+M.REWALK_S = 3;       -- a fruitless walk is trusted this long at most
+M.INV_SETTLE_S = 1;   -- ...and never cached this soon after an inventory packet
+M._clock = os.clock;  -- test seam
+local _quiet = { key = nil, at = 0, gen = 0, invAt = -math.huge };
+local function pinText(v)
+    if type(v) ~= 'table' then return tostring(v); end
+    local parts = {};
+    for _, s in pairs(v) do parts[#parts + 1] = tostring(s); end
+    table.sort(parts);   -- checkAugments reads the pins as a set
+    return table.concat(parts, '\31');
+end
+local function flushKey(snap)
+    local parts = { tostring(_quiet.gen), tostring(snap.job), tostring(snap.level) };
+    local disabled, encumbered = snap.disabled or {}, snap.encumbered or {};
+    for slot = 1, 16 do
+        local w, e = snap.equipped[slot], _buffer[slot];
+        local want = e;
+        if type(e) == 'table' then
+            want = table.concat({ tostring(e.Name), tostring(e.Bag), tostring(e.Priority), tostring(e.AugKey),
+                tostring(e.AugPath), tostring(e.AugRank), tostring(e.AugTrial), pinText(e.Augment) }, '\30');
+        end
+        parts[#parts + 1] = ((w ~= nil) and (tostring(w.Container) .. ':' .. tostring(w.Index) .. ':' .. tostring(w.Id)) or '-')
+            .. '|' .. tostring(want) .. '|' .. ((disabled[slot] == true) and 'd' or '')
+            .. ((encumbered[slot] == true) and 'e' or '');
+    end
+    return table.concat(parts, '\29');
 end
 
 -- ---------------------------------------------------------------------------
@@ -567,9 +627,40 @@ function M.bufferFlush(style)
         end
     end
 
-    local snap = liveSnapshot(wantNames);
+    -- WORN FIRST (2026-10-13, the stutter report). A settled Default -- every
+    -- outgoing chunk plus the 0.4s tick, ~6 a second -- asks for what is
+    -- already on, and planSet's allWorn answer comes from the 16 worn slots
+    -- alone (never plain `satisfied`: that is also what an EMPTY item list
+    -- says when nothing could be located). The bag walk -- every slot of nine
+    -- bags, a GetContainerItem each -- used to run on every one of those
+    -- passes; it now runs only when something has to move, and the plan it
+    -- feeds is the one it always was.
+    local snap = wornSnapshot();
     if snap == nil then return; end
     local plan = eqc.planSet(_buffer, snap);
+    if plan.allWorn ~= true then
+        -- ...AND NOT TWICE FOR NOTHING. An entry the bags cannot fill -- a
+        -- piece left in storage, a second copy you do not own, gear above a
+        -- level sync -- keeps allWorn false for good, and every Default then
+        -- walked every bag to find nothing to send. The same request against
+        -- the same worn view and the same bags answers the same, so a walk
+        -- that found nothing is not repeated until an inventory packet lands
+        -- or REWALK_S passes. Never cached right after an inventory packet:
+        -- the client may not have applied it to memory yet.
+        local key = flushKey(snap);
+        local now = M._clock();
+        if key == _quiet.key and now - _quiet.at < M.REWALK_S then
+            M.bufferClear();
+            return;
+        end
+        if not scanBags(snap, wantNames) then return; end
+        plan = eqc.planSet(_buffer, snap);
+        if plan.satisfied and now - _quiet.invAt >= M.INV_SETTLE_S then
+            _quiet.key, _quiet.at = key, now;
+        else
+            _quiet.key = nil;
+        end
+    end
     M.bufferClear();
     if plan.satisfied then return; end
 
@@ -823,7 +914,15 @@ function M.isEncumbered(equipIdx)
     return M.state.encumbered[i + 1] == true;
 end
 
+-- Packets that change what the bags hold (or reset them: a zone-in), whatever
+-- the engine's state: the quiet-walk cache must not outlive any of them.
+local INV_PACKETS = { [0x00A] = true, [0x01D] = true, [0x01E] = true, [0x01F] = true,
+                      [0x020] = true, [0x050] = true };
+
 function M.handleIncoming(e)
+    if INV_PACKETS[e.id] then
+        _quiet.gen, _quiet.invAt, _quiet.key = _quiet.gen + 1, M._clock(), nil;
+    end
     -- 0x01B is handled AHEAD of the engine gate, unlike everything below it.
     -- These bits are a pure READ of server state -- nothing is sent, nothing is
     -- blocked -- and the floating bar's cross draws from them, so they have to

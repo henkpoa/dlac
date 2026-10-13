@@ -312,4 +312,35 @@ now = now + 1; transport.abandon(0x80, 8);
 now = now + GAP + 0.001; assert(transport.send({0,0,0,0,0x40,9}, 'vault'), 'an abandoned request frees the channel');
 now = now + 0.2; transport.notePush(0x4B, 'push');
 assert(not transport.send({0,0,0,0,0x80,10}, 'HELM'), 'a push is never mistaken for the pending reply');
+-- The wire log is BATCHED (2026-10-13, the stutter report): events collect in
+-- memory, stamped when they happened, and reach debug\gear-vault-wire.log
+-- together at most AUDIT_FLUSH_S after the first -- not one file open per
+-- request, reply and push on the game's frame. A fresh copy of the module:
+-- the shared one above runs with its audit seam switched off.
+do
+    local tr = dofile('servers/ascensionxi/transport.lua');
+    local t = 500; tr._clock = function() return t; end;
+    local savedProfiles, savedOpen = package.loaded['dlac\\profiles'], io.open;
+    package.loaded['dlac\\profiles'] = { dataDir = function() return 'CHAR\\'; end };
+    local opens, written, paths = 0, {}, {};
+    io.open = function(path)
+        opens = opens + 1; paths[#paths + 1] = path;
+        return { seek = function() return 0; end, close = function() end,
+                 write = function(_, text) written[#written + 1] = text; end };
+    end;
+    local ok, err = pcall(function()
+        for _ = 1, 5 do tr.notePush(0xD0, 'whm gauge'); t = t + 0.3; tr.pumpAudit(); end
+        assert(opens == 0, 'five pushes inside the batch window open no file');
+        t = 502.1; tr.pumpAudit();
+        assert(opens == 1 and #written == 1, 'the batch goes out in ONE open and ONE write');
+        assert(paths[1] == 'CHAR\\debug\\gear-vault-wire.log', 'to the same file as ever');
+        local n = 0; for _ in written[1]:gmatch('push op=D0 seq=0 whm gauge\n') do n = n + 1; end
+        assert(n == 5, 'all five lines, in the old format');
+        assert(written[1]:match('^%d+%-%d+%-%d+ %d+:%d+:%d+ 500%.000000 push'), 'each stamped when it happened');
+        tr.pumpAudit(); tr.flushAudit();
+        assert(opens == 1, 'nothing buffered, nothing opened');
+    end);
+    io.open, package.loaded['dlac\\profiles'] = savedOpen, savedProfiles;
+    assert(ok, err);
+end
 print('OK -- T1 matched replies only, T3 abandon, pushes bypass the slot');

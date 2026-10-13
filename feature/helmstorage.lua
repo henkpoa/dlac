@@ -208,6 +208,10 @@ function M.new(D)
             return;
         end
         if trade and now - trade.at >= M.CAPTURE_S then trade = nil; end
+        -- Nothing owed, nothing to move: the bag walk below only ever serves
+        -- self.owed, and this tick runs ten times a second with a destination
+        -- on (2026-10-13, the stutter report).
+        if next(self.owed) == nil then return; end
         if trade or now < nextAt or now < holdUntil or now - lastInventory < M.QUIET_S or not D.ready() then return; end
         local src = D.bag(0);
         local flush = now - lastHelm >= M.FLUSH_S;

@@ -48,11 +48,26 @@ local foreignAt;     -- when another addon's 0x1E0 last went out
 -- T4: producer -> { who, since = start of its wait (false: not waiting),
 -- at = its latest try, said = this wait's yield line is written }
 local line = {};
-M._audit = function(event, op, seq, why, now)
+-- The wire log, debug\gear-vault-wire.log: one line per event, BATCHED
+-- (2026-10-13, the stutter report). It used to create its folder and open,
+-- append to and close the file on every request, reply and push -- a file
+-- open on the game's frame per event, and reopening a file just written is
+-- where an antivirus scan makes the frame wait. Lines now collect in memory,
+-- each stamped when its event happened exactly as before, and reach the file
+-- together at most AUDIT_FLUSH_S later (and at unload).
+M.AUDIT_FLUSH_S = 2;
+local auditLines, auditSince, auditDir = {}, nil, nil;
+function M.flushAudit()
+    if #auditLines == 0 then return; end
+    local text = table.concat(auditLines);
+    auditLines, auditSince = {}, nil;
     local root = require('dlac\\profiles').dataDir();
     if not root then return; end
     local dir = root .. 'debug\\';
-    if ashita and ashita.fs then ashita.fs.create_directory(dir); end
+    if dir ~= auditDir then
+        if ashita and ashita.fs then ashita.fs.create_directory(dir); end
+        auditDir = dir;
+    end
     local path = dir .. 'gear-vault-wire.log';
     local f = io.open(path, 'a');
     if not f then return; end
@@ -60,9 +75,18 @@ M._audit = function(event, op, seq, why, now)
         f:close(); os.remove(path .. '.previous'); os.rename(path, path .. '.previous');
         f = io.open(path, 'a'); if not f then return; end
     end
-    f:write(string.format('%s %.6f %s op=%02X seq=%d %s\n',
-        os.date('%Y-%m-%d %H:%M:%S'), now, event, op or 0, seq or 0, why or ''));
+    f:write(text);
     f:close();
+end
+-- A frame beat's question: is a batch due? One length check when idle.
+function M.pumpAudit()
+    if auditSince ~= nil and M._clock() - auditSince >= M.AUDIT_FLUSH_S then M.flushAudit(); end
+end
+M._audit = function(event, op, seq, why, now)
+    auditLines[#auditLines + 1] = string.format('%s %.6f %s op=%02X seq=%d %s\n',
+        os.date('%Y-%m-%d %H:%M:%S'), now, event, op or 0, seq or 0, why or '');
+    auditSince = auditSince or M._clock();
+    if #auditLines >= 256 then M.flushAudit(); end
 end;
 local function audit(event, op, seq, why, now)
     if M._audit then pcall(M._audit, event, op, seq, why, now); end
@@ -247,6 +271,13 @@ function M._reset() last, pending, answered, foreignAt = nil, nil, nil, nil; rec
 if ashita ~= nil and ashita.events ~= nil then
     pcall(ashita.events.register, 'packet_out', 'dlac_axi_transport_foreign', function(e)
         pcall(M.noteOutgoing, e.id, e.data_modified or e.data);
+    end);
+    -- The wire log's batch beat, and its last batch at unload.
+    pcall(ashita.events.register, 'd3d_present', 'dlac_axi_transport_audit', function()
+        pcall(M.pumpAudit);
+    end);
+    pcall(ashita.events.register, 'unload', 'dlac_axi_transport_audit_unload', function()
+        pcall(M.flushAudit);
     end);
 end
 return M;
