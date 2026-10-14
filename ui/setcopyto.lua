@@ -23,7 +23,10 @@
         named in chat, ONE line for the whole copy. Copied as it is, the piece
         would be a candidate the flatten still picks and the server refuses.
         Virtual entries (dlac:AutoStaff ...) always travel: the engine resolves
-        them for the job it is on.
+        them for the job it is on. A job that can wear NONE of it is skipped
+        and named: an empty copy would wipe that job's own set of the name.
+      * STAT WEIGHTS STAY. They are kept per job and set apart from the sets
+        file, so each job keeps its own weights for the name.
       * MODE GATES travel as written. Modes live per job entry, so a gated piece
         only equips on a job that has that Mode -- one chat line names the gates
         rather than guessing which jobs have them.
@@ -90,8 +93,11 @@ local function jobLevel(id)
 end
 
 -- One row per OTHER job, in the game's job order: { job, level, has, fresh }.
--- has   = that job's sets file already holds a set of this name (Copy replaces it)
--- fresh = dlac has no sets file for that job yet (Copy starts one)
+-- has   = that job already holds a set of this name (Copy replaces it)
+-- fresh = dlac has nothing for that job yet (Copy starts it with the base sets)
+-- A job with no profile sets file may still have an OLD <JOB>.lua whose Dynamic
+-- block the first commit imports (setmanager's commitTarget), so that file is
+-- read too: a set of this name there is replaced just the same.
 local function buildRows(job, setName)
     local rows, err = {}, nil;
     local prof = try('dlac\\profiles');
@@ -100,6 +106,12 @@ local function buildRows(job, setName)
     for i, j in ipairs(prof.JOBS) do
         if j ~= job then
             local text = readAll(prof.setsPath(j));
+            local old = false;
+            if text == nil then
+                pcall(function() text = readAll(deps.setmgr.jobPath(j)); end);
+                old = text ~= nil and text:find('Dynamic%s*=%s*{') ~= nil;
+                if not old then text = nil; end
+            end
             local has = false;
             pcall(function() has = deps.setmgr.hasSetText(text, setName) == true; end);
             rows[#rows + 1] = { job = j, level = jobLevel(i), has = has, fresh = (text == nil) };
@@ -124,6 +136,8 @@ end
 
 -- Write the set into every ticked job, then tell the player what happened: the
 -- receipt on the status line, the left-out pieces and the Mode gates in chat.
+-- A job that can wear NONE of the set is skipped, not written: an empty copy
+-- would replace that job's own set of the same name with nothing.
 local function apply()
     local simport = require('dlac\\gear\\setimport');
     local name = st.src;
@@ -132,6 +146,7 @@ local function apply()
     local live = nil;
     pcall(function() live = liveJob(require('dlac\\profiles').JOBS); end);
     local results, perJob, wroteLive = {}, {}, false;
+    local gateSeen, gates, gated = {}, {}, 0;
     for _, row in ipairs(st.rows) do
         local b = st.marks[row.job];
         if b ~= nil and b[1] == true then
@@ -139,16 +154,30 @@ local function apply()
             local r = simport.workingForJob(working, deps.slotLabels,
                 function(rec) return deps.canWear(rec, job); end);
             local slots = deps.slotsFor(r.working) or {};
-            local ok, action = nil, nil;
-            local pok, perr = pcall(function() ok, action = deps.setmgr.commitSet(job, name, slots); end);
-            local res = { job = job, ok = (pok and ok == true) };
-            if res.ok then
-                res.replaced = (tostring(action):find('^replaced') ~= nil);
-                res.empty = (#slots == 0 and srcSlots > 0);
-                perJob[#perJob + 1] = { job = job, dropped = r.dropped };
-                if job == live then wroteLive = true; end
+            local res = { job = job };
+            if #slots == 0 and srcSlots > 0 then
+                res.skipped = true;
             else
-                res.err = pok and tostring(action) or tostring(perr);
+                local ok, action = nil, nil;
+                local pok, perr = pcall(function() ok, action = deps.setmgr.commitSet(job, name, slots); end);
+                res.ok = (pok and ok == true);
+                if res.ok then
+                    -- "replaced" is what the row warned about before the copy: a
+                    -- fresh job's commit replaces only the empty base set it was
+                    -- seeded with a moment ago, which is not news.
+                    res.replaced = row.has == true and (tostring(action):find('^replaced') ~= nil);
+                    perJob[#perJob + 1] = { job = job, dropped = r.dropped };
+                    if job == live then wroteLive = true; end
+                    -- Mode gates on the pieces that actually went, not on
+                    -- pieces this job left out.
+                    local g, n = simport.modeGates(r.working, deps.slotLabels);
+                    for _, nm in ipairs(g) do
+                        if not gateSeen[nm] then gateSeen[nm] = true; gates[#gates + 1] = nm; end
+                    end
+                    if n > gated then gated = n; end
+                else
+                    res.err = pok and tostring(action) or tostring(perr);
+                end
             end
             results[#results + 1] = res;
         end
@@ -159,10 +188,10 @@ local function apply()
     if dropNote ~= nil then
         pcall(print, string.format('[dlac] Copy "%s": left out where the job cannot wear it -- %s.', name, dropNote));
     end
-    local gates, gated = simport.modeGates(working, deps.slotLabels);
-    if gated > 0 and #perJob > 0 then
-        pcall(print, string.format('[dlac] Copy "%s": %d piece%s equip only under a Mode (%s) -- on a job without that Mode %s never equip.',
-            name, gated, (gated == 1) and '' or 's', table.concat(gates, ', '), (gated == 1) and 'it' or 'they'));
+    if gated > 0 then
+        pcall(print, string.format('[dlac] Copy "%s": %d %s only under a Mode (%s) -- on a job without that Mode %s.',
+            name, gated, (gated == 1) and 'piece equips' or 'pieces equip', table.concat(gates, ', '),
+            (gated == 1) and 'it never equips' or 'they never equip'));
     end
     if #perJob > 0 then
         pcall(deps.invalidate);
@@ -262,7 +291,8 @@ local function body()
         if imgui.IsItemHovered() then
             imgui.SetTooltip(esc(string.format('Writes "%s" into each ticked job\'s sets, under the same name\n'
                 .. '(each file is backed up first). Gear a job cannot wear is left out\n'
-                .. 'there and named in chat. This job\'s own set is not touched.', st.src)));
+                .. 'there and named in chat; a job that can wear none of it is skipped.\n'
+                .. 'Stat weights are not copied. This job\'s own set is not touched.', st.src)));
         end
     else
         imgui.TextColored(COL.DIM, 'Tick the jobs to copy into.');

@@ -18,7 +18,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.10.14b';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.10.14c';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
                                 -- (03f = engine v163: the contest explains its own plan;
                                 --  03g = one floating tray: Teleports + the E-Box crates;
@@ -380,11 +380,20 @@ addon.version = '2026.10.14b';  -- date of the last shipped change (Ashita print
                                 --  share one player read per frame, and the WHM
                                 --  gauge stops reading every other job's buffs
                                 --  every frame;
+                                --  10.14a = Sets: Manage... > Copy to... writes
+                                --  the set into other jobs (same name, backed
+                                --  up, unwearable pieces left out and named);
                                 --  10.14b = the set builder counts a twin in the
                                 --  Gear Vault: Ring2 offers the Beetle Ring +1
                                 --  Ring1 already uses when the second copy is
                                 --  vaulted, so the vault pulls both; with
-                                --  "Available only" ticked, bags only)
+                                --  "Available only" ticked, bags only;
+                                --  10.14c = review fixes: Copy to skips a job
+                                --  that can wear none of the set instead of
+                                --  writing it empty, warns before replacing a
+                                --  set in an old job file, and names only the
+                                --  Mode gates that went; the windows' player
+                                --  snapshot ages out if the frame clock stops)
 addon.desc    = 'Gear sets, triggers and live stats with level scaling -- dlac equips your gear itself.';
 
 -- Load BEACON ('/dl check' field round, 2026-07-23): written by PLAIN io at

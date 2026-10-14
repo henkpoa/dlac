@@ -354,24 +354,29 @@ end
 
 -- The receipt for the Sets tab's status line.
 --   setName : the copied set
---   results : ordered { { job, ok, replaced, empty, err }, ... } -- one per ticked job
+--   results : ordered { { job, ok, replaced, skipped, err }, ... } -- one per ticked job;
+--             skipped = nothing in the set is wearable there, so nothing was written
 --   leftOut : distinct pieces left out anywhere (copyToDropNote's second value)
 --   dirty   : the copy carried edits the source set has not committed yet
 -- -> text, isErr (an error only when NOTHING landed)
 function M.copyToReceipt(setName, results, leftOut, dirty)
-    local okJobs, replaced, empty, failed = {}, {}, {}, {};
+    local okJobs, replaced, skipped, failed = {}, {}, {}, {};
     for _, r in ipairs((type(results) == 'table') and results or {}) do
-        if r.ok then
+        if r.skipped then
+            skipped[#skipped + 1] = tostring(r.job);
+        elseif r.ok then
             okJobs[#okJobs + 1] = tostring(r.job);
             if r.replaced then replaced[#replaced + 1] = tostring(r.job); end
-            if r.empty then empty[#empty + 1] = tostring(r.job); end
         else
             failed[#failed + 1] = string.format('%s (%s)', tostring(r.job), tostring(r.err or 'unknown'));
         end
     end
     local name = tostring(setName);
     local text;
-    if #okJobs == 0 then
+    if #okJobs == 0 and #failed == 0 then
+        text = string.format('Nothing copied -- none of "%s" is wearable on the ticked job%s.',
+            name, (#skipped == 1) and '' or 's');
+    elseif #okJobs == 0 then
         text = string.format('Nothing copied -- "%s" could not be written anywhere.', name);
     else
         text = string.format('Copied "%s" to %s.', name, table.concat(okJobs, ', '));
@@ -384,8 +389,10 @@ function M.copyToReceipt(setName, results, leftOut, dirty)
         text = text .. string.format('  %d piece%s left out where the job cannot wear %s -- see chat.',
             leftOut, (leftOut == 1) and '' or 's', (leftOut == 1) and 'it' or 'them');
     end
-    if #empty > 0 then
-        text = text .. string.format('  EMPTY on %s: none of it is wearable there.', table.concat(empty, ', '));
+    if #skipped > 0 and #okJobs + #failed > 0 then
+        text = text .. string.format('  Skipped %s: none of it is wearable there, so %s set%s stayed as %s.',
+            table.concat(skipped, ', '), (#skipped == 1) and 'its' or 'their',
+            (#skipped == 1) and '' or 's', (#skipped == 1) and 'it was' or 'they were');
     end
     if dirty == true and #okJobs > 0 then
         text = text .. '  Your uncommitted edits went with it.';

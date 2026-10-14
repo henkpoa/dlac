@@ -200,15 +200,19 @@ end
 -- snapshot per drawn frame (lib\cmdqueue's frame clock, which gearui's
 -- present hook advances) is all a window can show; the ENGINE keeps calling
 -- GetPlayer, fresh, at every decision. Read it, never write it.
-local _pf = { frame = -1, t = nil, cq = nil };
+-- The snapshot also ages out after PF_MAX_AGE: should the frame clock stop
+-- (gearui's present hook gone), a caller still sees the player move on.
+local PF_MAX_AGE = 0.25;
+local _pf = { frame = -1, t = nil, cq = nil, at = 0 };
 function M.GetPlayerFrame()
     if _pf.cq == nil then
         local ok, cq = pcall(require, 'dlac\\lib\\cmdqueue');
         _pf.cq = (ok and type(cq) == 'table' and type(cq.frame) == 'function') and cq or false;
     end
     local f = _pf.cq and _pf.cq.frame() or nil;
-    if f ~= nil and _pf.t ~= nil and _pf.frame == f then return _pf.t; end
-    _pf.t, _pf.frame = M.GetPlayer(), f or -1;
+    local now = os.clock();
+    if f ~= nil and _pf.t ~= nil and _pf.frame == f and now - _pf.at < PF_MAX_AGE then return _pf.t; end
+    _pf.t, _pf.frame, _pf.at = M.GetPlayer(), f or -1, now;
     return _pf.t;
 end
 

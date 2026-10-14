@@ -29869,11 +29869,12 @@ end)();
     -- copyToReceipt: the status line.
     local text, isErr = simport.copyToReceipt('Idle', {
         { job = 'WAR', ok = true, replaced = true }, { job = 'MNK', ok = true },
-        { job = 'BLU', ok = true, empty = true }, { job = 'SCH', ok = false, err = 'boom' } }, 3, true);
-    check('SCT19 names where it landed', text:find('Copied "Idle" to WAR, MNK, BLU.', 1, true) ~= nil, true);
+        { job = 'BLU', skipped = true }, { job = 'SCH', ok = false, err = 'boom' } }, 3, true);
+    check('SCT19 names where it landed', text:find('Copied "Idle" to WAR, MNK.', 1, true) ~= nil, true);
     check('SCT20 ...what it replaced', text:find('Replaced the "Idle" already on WAR (backed up first).', 1, true) ~= nil, true);
     check('SCT21 ...what was left out', text:find('3 pieces left out where the job cannot wear them -- see chat.', 1, true) ~= nil, true);
-    check('SCT22 ...a job that got nothing wearable', text:find('EMPTY on BLU', 1, true) ~= nil, true);
+    check('SCT22 ...a job skipped because nothing is wearable there',
+        text:find('Skipped BLU: none of it is wearable there, so its set stayed as it was.', 1, true) ~= nil, true);
     check('SCT23 ...the uncommitted edits that went along', text:find('uncommitted edits went with it', 1, true) ~= nil, true);
     check('SCT24 ...and the failure with its reason', text:find('FAILED: SCH (boom).', 1, true) ~= nil, true);
     check('SCT25 not an error while anything landed', isErr, false);
@@ -29883,6 +29884,9 @@ end)();
     local t2, e2 = simport.copyToReceipt('Idle', { { job = 'WAR', ok = false, err = 'x' } }, 0, true);
     check('SCT28 nothing landed is an error', e2, true);
     check('SCT29 ...and says so', t2:find('Nothing copied', 1, true) ~= nil and t2:find('uncommitted', 1, true) == nil, true);
+    local t3, e3 = simport.copyToReceipt('Idle', { { job = 'WAR', skipped = true }, { job = 'MNK', skipped = true } }, 0, false);
+    check('SCT29a every job skipped: nothing copied, and why',
+        t3 == 'Nothing copied -- none of "Idle" is wearable on the ticked jobs.' and e3, true);
 
     -- setmanager.hasSetText: the key rule the writers use.
     local smP = dofile('gear/setmanager.lua');
@@ -29930,12 +29934,18 @@ end)();
         package.loaded['dlac\\gear\\setimport'], AshitaCore, print;
     package.loaded['dlac\\gear\\setimport'] = simport;
     local function tmpFor(j) return 'tests/_tmp_sct_' .. j .. '.lua'; end
+    local function oldFor(j) return 'tests/_tmp_sct_old_' .. j .. '.lua'; end   -- a pre-profile <JOB>.lua
     local loggedIn = true;
+    local CUR = nil;   -- the working set the shell copies (nil = W)
     package.loaded['dlac\\profiles'] = { JOBS = profReal.JOBS,
         setsPath = function(j) return loggedIn and tmpFor(j) or nil; end };
     local function put(p, t) local f = io.open(p, 'w'); f:write(t); f:close(); end
     put(tmpFor('WAR'), 'local sets = {\n    Dynamic = {\n        Idle = {\n        },\n    },\n};\n');
     put(tmpFor('MNK'), 'local sets = {\n    Dynamic = {\n        Tp = {\n        },\n    },\n};\n');
+    -- DRK has no profile file but an old job file whose Dynamic block the first
+    -- commit imports; BST's old file has no Dynamic block to import.
+    put(oldFor('DRK'), 'local sets = {\n    Dynamic = {\n        Idle = {\n        },\n    },\n};\nreturn sets;\n');
+    put(oldFor('BST'), 'local profile = {};\nreturn profile;\n');
     local queued = {};
     AshitaCore = {
         GetMemoryManager = function() return { GetPlayer = function() return {
@@ -29948,7 +29958,7 @@ end)();
     print = function(s) chat[#chat + 1] = tostring(s); end
     local sct = dofile('ui/setcopyto.lua');
     sct.configure({
-        working  = function() return W; end,
+        working  = function() return CUR or W; end,
         dirty    = function() return false; end,
         slotsFor = function(w)
             local out = {};
@@ -29967,10 +29977,13 @@ end)();
         setStatus = function(m, e) status, statusErr = m, e; end,
         setmgr = {
             hasSetText = smP.hasSetText,
+            jobPath = oldFor,
             commitSet = function(job, name, slots)
                 commits[#commits + 1] = { job = job, name = name, slots = slots };
                 if job == 'BLU' then return false, 'disk full'; end
-                return true, (job == 'WAR') and 'replaced' or 'inserted';
+                -- MNK "replaces" too: what a fresh job's commit says when it
+                -- overwrites the empty base set it was just seeded with.
+                return true, (job == 'WAR' or job == 'MNK') and 'replaced' or 'inserted';
             end,
         },
         invalidate = function() invalidated = invalidated + 1; end,
@@ -29988,6 +30001,10 @@ end)();
         check('SCT43 a job without it does not', byJob.MNK.has == false and byJob.MNK.fresh, false);
         check('SCT44 a job dlac has nothing for is fresh', byJob.THF.fresh, true);
         check('SCT45 rows carry the job level', byJob.WAR.level == 75 and byJob.THF.level, 0);
+        check('SCT45a an old job file holding the name reads "replaces" too',
+            byJob.DRK.has == true and byJob.DRK.fresh, false);
+        check('SCT45b an old job file with no Dynamic block is still fresh',
+            byJob.BST.has == false and byJob.BST.fresh, true);
         sct._tickMine();
         check('SCT46 "All my jobs" ticks the unlocked ones',
             st.marks.WAR[1] == true and st.marks.MNK[1] == true and st.marks.THF[1], false);
@@ -30002,6 +30019,8 @@ end)();
         check('SCT49 ...minus what that job cannot wear', warBody ~= nil and #warBody.items == 1 and warBody.items[1].path, 'Field Tunica');
         check('SCT50 the receipt names where it landed', status:find('Copied "Idle" to WAR, MNK.', 1, true) ~= nil, true);
         check('SCT51 ...the replaced one', status:find('already on WAR', 1, true) ~= nil, true);
+        check('SCT51a ...and only the one its row warned about (MNK held no "Idle")',
+            status:find('Replaced the "Idle" already on WAR (backed up first).', 1, true) ~= nil, true);
         check('SCT52 ...and the failure', status:find('FAILED: BLU (disk full)', 1, true) ~= nil, true);
         check('SCT52a ...which is not an error while others landed', statusErr, false);
         check('SCT53 ONE chat line for what was left out, landed jobs only',
@@ -30019,6 +30038,30 @@ end)();
         sct._apply();
         check('SCT57 nothing ticked writes nothing', #commits, 0);
         check('SCT58 ...and says what to do', status == 'Tick at least one job first.' and statusErr, true);
+        -- A job that can wear NONE of the set is skipped, never written empty
+        -- (it would wipe that job's own "Idle").
+        CUR = { Body = { whmBody } };
+        commits, chat = {}, {};
+        st.marks = { MNK = { true } };
+        sct._apply();
+        check('SCT58a nothing wearable -> nothing written', #commits, 0);
+        check('SCT58b ...and the receipt says why',
+            status == 'Nothing copied -- none of "Idle" is wearable on the ticked job.' and statusErr, true);
+        -- Mode gates are named for the pieces that went, not for left-out ones.
+        CUR = { Body = { { rec = whmBody.rec, mode = 'DT' }, allBody } };
+        commits, chat = {}, {};
+        st.marks = { MNK = { true } };
+        sct._apply();
+        local modeLine = false;
+        for _, s in ipairs(chat) do if s:find('only under a Mode', 1, true) then modeLine = true; end end
+        check('SCT58c a gate only on a left-out piece is not named', #commits == 1 and modeLine, false);
+        CUR = { Body = { { rec = allBody.rec, mode = 'DT' } } };
+        commits, chat = {}, {};
+        st.marks = { MNK = { true } };
+        sct._apply();
+        check('SCT58d a gate on a piece that went is named',
+            chat[1], '[dlac] Copy "Idle": 1 piece equips only under a Mode (DT) -- on a job without that Mode it never equips.');
+        CUR = nil;
         -- Not logged in: no rows, a reason.
         loggedIn = false;
         sct.open('WHM', 'Idle');
@@ -30030,7 +30073,7 @@ end)();
     print = savedPrint;
     AshitaCore = savedAC;
     package.loaded['dlac\\profiles'], package.loaded['dlac\\gear\\setimport'] = savedProf, savedSimp;
-    for _, j in ipairs(profReal.JOBS) do os.remove(tmpFor(j)); end
+    for _, j in ipairs(profReal.JOBS) do os.remove(tmpFor(j)); os.remove(oldFor(j)); end
 
     -- THE POPUP'S STACKS: a push left open is native UB no pcall catches (the
     -- floatgear crash). Counted against a stub imgui, popup shut and open.
