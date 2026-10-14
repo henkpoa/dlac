@@ -1097,7 +1097,7 @@ end
 -- the real pairing per cast; the builder never pre-empts it. The only Main
 -- interaction left is the same-name second-copy rule (checked against each
 -- Main plan; an empty Main list checks against none and offers everything).
-local function subFilterAnyMain(cands, mainList, job, level)
+local function subFilterAnyMain(cands, mainList, job, level, availOnly)
     local mains = {};
     if type(mainList) == 'table' then
         for _, it in ipairs(mainList) do
@@ -1113,7 +1113,8 @@ local function subFilterAnyMain(cands, mainList, job, level)
         end
     end
     local sj, slv = getSubInfo();
-    local oc = owned.totals();   -- planning: a twin in the vault is a second copy
+    -- planning: a twin in storage is a second copy, unless "Available only"
+    local oc = availOnly and owned.counts() or owned.totals();
     local out = {};
     for _, r in ipairs(cands) do
         if #mains == 0 then
@@ -1140,12 +1141,13 @@ local PAIR_OF = { Ring1 = 'Ring2', Ring2 = 'Ring1', Ear1 = 'Ear2', Ear2 = 'Ear1'
 -- A set is a PLAN, so the builder counts copies owned ANYWHERE: the second Beetle
 -- Ring +1 sitting in the Gear Vault is still a second copy (Henrik 2026-10-14 --
 -- Ring2's list hid it, so the vault engine derived one ring and pulled one).
--- The equipped path counts bag copies: it equips now.
-local function pairedBlockedIds(slotLabel, fromSets)
+-- The equipped path counts bag copies: it equips now. So does the builder when
+-- "Available only" is ticked (availOnly): a twin in storage cannot be worn yet.
+local function pairedBlockedIds(slotLabel, fromSets, availOnly)
     local blocked = {};
     local other = PAIR_OF[slotLabel];
     if other == nil then return blocked; end
-    local oc = fromSets and owned.totals() or owned.counts();
+    local oc = (fromSets and not availOnly) and owned.totals() or owned.counts();
     if fromSets then
         local list = M.working[other];
         if type(list) == 'table' then
@@ -4102,15 +4104,18 @@ local function renderAddPopup(job, level)
         ui.addShowAll = ui.addShowAll or { false };
         local wantAll = (ui.addShowAll[1] == true) and has.catalog;
         local cands = candidatesForSlot(gearKey, job, useLevel, wantAll);
+        -- "Available only" (the filter row below) also decides whether a twin in
+        -- storage counts as the second copy of a pair.
+        local availOnly = ui.addAvail ~= nil and ui.addAvail[1] == true;
         if gearKey == 'Sub' then
             -- Full pool (shields/grips + 1H weapons), paired against EVERY Main
             -- plan -- not just the current pick: that pick is mode/level-dependent,
             -- and a mode-gated staff pick would wrongly hide all 1H weapons. Sets
             -- are plans: a 1H off-hand is addable without the DW trait;
             -- BuildDynamicSets decides at equip time (shield = fallback).
-            cands = subFilterAnyMain(subCandidatePool(job, useLevel, wantAll), M.working['Main'], job, useLevel);
+            cands = subFilterAnyMain(subCandidatePool(job, useLevel, wantAll), M.working['Main'], job, useLevel, availOnly);
         end
-        local blocked = pairedBlockedIds(ui.setSelected, true);
+        local blocked = pairedBlockedIds(ui.setSelected, true, availOnly);
         cands = sortForDisplay(cands);
 
         -- Filter row: name search + hide gear parked in unavailable containers
@@ -4130,7 +4135,7 @@ local function renderAddPopup(job, level)
         imgui.SameLine(0, 14);
         imgui.Checkbox('Available only', ui.addAvail);
         if imgui.IsItemHovered() then
-            imgui.SetTooltip('Hide gear parked in a container you cannot equip from\n(the red names -- Safe, Storage, Locker, Satchel...).');
+            imgui.SetTooltip('Hide gear parked in a container you cannot equip from\n(the red names -- Safe, Storage, Locker, Satchel...).\nA piece its partner slot already uses (Ring1/Ring2, Ear1/Ear2,\nMain/Sub) is offered only when the second copy is in your bags too.');
         end
         imgui.SameLine(0, 14);
         imgui.Checkbox('Hide teleport/exp items', ui.addHideTravel);

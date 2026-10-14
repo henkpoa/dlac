@@ -383,7 +383,8 @@ addon.version = '2026.10.14b';  -- date of the last shipped change (Ashita print
                                 --  10.14b = the set builder counts a twin in the
                                 --  Gear Vault: Ring2 offers the Beetle Ring +1
                                 --  Ring1 already uses when the second copy is
-                                --  vaulted, so the vault pulls both)
+                                --  vaulted, so the vault pulls both; with
+                                --  "Available only" ticked, bags only)
 addon.desc    = 'Gear sets, triggers and live stats with level scaling -- dlac equips your gear itself.';
 
 -- Load BEACON ('/dl check' field round, 2026-07-23): written by PLAIN io at
