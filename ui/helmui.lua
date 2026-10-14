@@ -189,6 +189,9 @@ local function progression(deps, availW)
         end
         imgui.EndGroup();
     end
+end
+
+local function sectionBreak()
     imgui.Spacing();
     imgui.Separator();
     imgui.Spacing();
@@ -428,12 +431,16 @@ function M.render(deps, availW)
 
     if gathering.enabled() then
         M.renderPoints('panel');
-        progression(deps, availW);
         local service = gatheringService();
         if service and service.skills then
+            -- Skill and success chances first, the gear ladder below (Henrik 10-14).
             successTable(hwok and hw or nil, availW);
+            sectionBreak();
+            progression(deps, availW);
             return;
         end
+        progression(deps, availW);
+        sectionBreak();
         imgui.TextColored(COL_HEADER, 'Planned gathering outfit');
         for i, category in ipairs(ORDER) do
             if i > 1 then imgui.SameLine(0, 8); end

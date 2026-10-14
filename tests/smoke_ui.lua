@@ -2280,6 +2280,8 @@ end)();
     for _, label in ipairs({ 'Extra roll chance: 60%', 'Success chance per band', 'Skill', 'Band 5', '75.4%', '54.5%', 'Locked' }) do
         check('AXS17 skill table shows ' .. label, rendered:find(label, 1, true) ~= nil, true);
     end
+    check('AXS27 skill table sits above the gear grid',
+        (rendered:find('Success chance per band', 1, true) or math.huge) < (rendered:find('Field Gear', 1, true) or 0), true);
     for _, label in ipairs({ 'Planned gathering outfit', 'Purchases and upgrades:', 'Green =', 'Each 100%', 'These totals describe',
         'pick a category (on the hobby bar)', 'Field gear quests', 'WEARING', '%%' }) do
         check('AXS18 removed explanation ' .. label, rendered:find(label, 1, true), nil);
