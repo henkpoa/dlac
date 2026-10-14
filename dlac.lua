@@ -18,7 +18,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.10.14a';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.10.14b';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
                                 -- (03f = engine v163: the contest explains its own plan;
                                 --  03g = one floating tray: Teleports + the E-Box crates;
@@ -379,7 +379,11 @@ addon.version = '2026.10.14a';  -- date of the last shipped change (Ashita print
                                 --  until a packet says they changed, the windows
                                 --  share one player read per frame, and the WHM
                                 --  gauge stops reading every other job's buffs
-                                --  every frame)
+                                --  every frame;
+                                --  10.14b = the set builder counts a twin in the
+                                --  Gear Vault: Ring2 offers the Beetle Ring +1
+                                --  Ring1 already uses when the second copy is
+                                --  vaulted, so the vault pulls both)
 addon.desc    = 'Gear sets, triggers and live stats with level scaling -- dlac equips your gear itself.';
 
 -- Load BEACON ('/dl check' field round, 2026-07-23): written by PLAIN io at

@@ -1113,7 +1113,7 @@ local function subFilterAnyMain(cands, mainList, job, level)
         end
     end
     local sj, slv = getSubInfo();
-    local oc = owned.counts();
+    local oc = owned.totals();   -- planning: a twin in the vault is a second copy
     local out = {};
     for _, r in ipairs(cands) do
         if #mains == 0 then
@@ -1137,11 +1137,15 @@ local PAIR_OF = { Ring1 = 'Ring2', Ring2 = 'Ring1', Ear1 = 'Ear2', Ear2 = 'Ear1'
 
 -- Ids the paired slot already uses that we own only ONE of (so the current slot must
 -- not reuse them). fromSets = read the working set; else read the equipped slot.
+-- A set is a PLAN, so the builder counts copies owned ANYWHERE: the second Beetle
+-- Ring +1 sitting in the Gear Vault is still a second copy (Henrik 2026-10-14 --
+-- Ring2's list hid it, so the vault engine derived one ring and pulled one).
+-- The equipped path counts bag copies: it equips now.
 local function pairedBlockedIds(slotLabel, fromSets)
     local blocked = {};
     local other = PAIR_OF[slotLabel];
     if other == nil then return blocked; end
-    local oc = owned.counts();
+    local oc = fromSets and owned.totals() or owned.counts();
     if fromSets then
         local list = M.working[other];
         if type(list) == 'table' then
@@ -3089,7 +3093,6 @@ local function autoBuild(job, level)
     -- candidates as if at MAX_LEVEL (item level cap lifted; the JOB restriction inside
     -- candidatesForSlot still applies). Otherwise use the character's real level.
     local useLevel = setBuildLevel(level);   -- "Build as lv.75" lifts the item-level cap
-    local oc = owned.counts();
     local built = {};
 
     -- "Auto-build with gear in storage" (Setting, /dl buildstored, default ON).
@@ -3106,6 +3109,9 @@ local function autoBuild(job, level)
     -- stored), so at char select / headless this is a no-op rather than a set
     -- that suddenly builds empty.
     local storedOK = (sf.flags.buildstored ~= false);
+    -- Copies for the pair rules (Ring1+Ring2 of one Id) follow the same pool:
+    -- a build that plans with stored gear counts the twin in the Gear Vault too.
+    local oc = storedOK and owned.totals() or owned.counts();
     local function inField(cands)
         if storedOK or type(cands) ~= 'table' then return cands; end
         local out = {};
