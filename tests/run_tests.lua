@@ -21,6 +21,8 @@ package.loaded['dlac\\gear\\gearoracle'] = dofile('gear/gearoracle.lua');   -- T
 package.loaded['dlac\\lib\\statefile'] = dofile('lib/statefile.lua');   -- addon-side charDir: the watchers require it (guarded)
 package.loaded['dlac\\feature\\wishlist'] = dofile('feature/wishlist.lua');   -- utils asks it before warning about an unresolvable set entry (ADR 0026)
 package.loaded['dlac\\gear\\arbiter'] = dofile('gear/arbiter.lua');   -- THE pure decision core (ADR 0027 stage 3): dispatch hard-requires it; one shared instance for every dofile('dispatch.lua') below
+package.loaded['dlac\\feature\\bagindex'] = dofile('feature/bagindex.lua');   -- the KEPT bag index (2026-10-13): dispatch + equipengine require it
+package.loaded['dlac\\feature\\bagindex']._walkEveryAsk = true;   -- ...walking every ask, as these suites' fake bags change without packets; BIX/EQF pin the kept behavior
 -- THE SERVER SEAM (ADR 0035), armed with the REAL CEXI manifest so capability
 -- gates (helmwatch/fishwatch ventures, the CW service reads) answer as live
 -- CEXI does. Pack DATA stays unmounted on purpose: this suite always ran
@@ -247,8 +249,8 @@ end)();
                    'gearfmt','gearimport','gearoptim','gearoracle','gearrecord','groupimport','groupscan',
                    'groupsmodel','jobgate','levelstats','modeslibrary','nativemp','ownedcache','profileexport','profilesets','rulecopy','serverpack','setimport',
                    'setmanager','statdefs','gathering','syncflags','triggermodel','unusedgear','weaponfilter','weightimport' };
-    local FEATURE = { 'actionseq','ammowatch','arbwatch','augments','check','chocowatch','combat','craftpick','craftwatch','debug','digcalc','digrank',
-                      'engagewatch','fishcalc','fishwatch','foodwatch','gamehud','helmwatch','idleexcl','jobhelpers','location','lockstyle','lookpreview',
+    local FEATURE = { 'actionseq','ammowatch','arbwatch','augments','bagindex','check','chocowatch','combat','craftpick','craftwatch','debug','digcalc','digrank',
+                      'engagewatch','fishcalc','fishwatch','foodwatch','frameprof','gamehud','helmwatch','idleexcl','jobhelpers','location','lockstyle','lookpreview',
                       'macrobook','meritwatch','modapi','modcfg','mpbands','nexuslink','petfood','petvitals','pinwatch','recast','servermods','synthrun','useitem','vanamoon' };
     local LIB = { 'cmdqueue','entwatch','safewrite','statefile' };
     -- Job helper modules (issue #137): each is a drop-in FOLDER under jobhelpers\
@@ -17477,6 +17479,517 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- FPR. feature\frameprof -- /dl perf, the frame profiler (2026-10-13: Abraxis
+-- still stutters on 13b, "way worse than us", and the harness cannot see his
+-- machine). Every handler registered after install() and every file
+-- operation is timed while a window is open and costs nothing while it is
+-- not. Driven through the REAL wrappers with a fake clock; uninstalled after.
+-- ---------------------------------------------------------------------------
+(function()
+    local fp = dofile('feature/frameprof.lua');
+    local savedAshita, savedPrint = ashita, print;
+    local savedOpen, savedLoadfile, savedDofile, savedRemove, savedRename = io.open, loadfile, dofile, os.remove, os.rename;
+    local reg = {};
+    ashita = { events = { register = function(name, alias, fn) reg[name .. '/' .. alias] = fn; end },
+               fs = { exists = function() return true; end } };
+    local clock, heap, tid = 1000, 30000, 7;
+    fp._now = function() return clock; end
+    fp._heap = function() return heap; end
+    fp._tid = function() return tid; end
+    check('FPR1 install wraps the registrar', fp.install(), true);
+    check('FPR1a ...and hooks itself on the REAL one (never timed)', type(reg['d3d_present/dlac-frameprof']), 'function');
+
+    local calls = 0;
+    ashita.events.register('d3d_present', 'test-tick', function(a, b)
+        calls = calls + 1;
+        clock = clock + 0.003;
+        return a + b, 'x';
+    end);
+    local tick = reg['d3d_present/test-tick'];
+    local r1, r2 = tick(2, 3);
+    check('FPR2 disarmed: the handler runs and its returns come back', calls == 1 and r1 == 5 and r2 == 'x', true);
+    check('FPR2a disarmed: nothing is counted', fp._recs['d3d_present/test-tick'].calls, 0);
+
+    -- io.open's real function is faked from here: each open costs 2 ms.
+    local opened = {};
+    fp._REAL.open = function(p, m)
+        clock = clock + 0.002;
+        opened[#opened + 1] = p;
+        if m ~= nil and m:find('w') then
+            return { write = function(self) return self; end, close = function() clock = clock + 0.004; return true; end };
+        end
+        return nil, 'no such file';
+    end
+    io.open('C:\\G\\x.lua', 'r');
+    check('FPR2b disarmed: a file open passes through uncounted', #opened == 1 and next(fp._ios) == nil, true);
+
+    fp._context = function() return { name = 'Testy', version = 'T', root = 'C:\\G\\' }; end
+    check('FPR3 start arms the window', fp.start(30), true);
+    check('FPR3a a second start is refused while one runs', (fp.start(30)), false);
+    local mark = reg['d3d_present/dlac-frameprof'];
+    mark();                                   -- the first mark only opens the window
+    for _ = 1, 120 do                         -- 120 quiet 16 ms frames, 3 ms of them dlac
+        clock = clock + 0.013;
+        tick(1, 1);
+        mark();
+    end
+    check('FPR4 every frame is recorded', fp._P.n, 120);
+    check('FPR4a the handler is timed per call', fp._recs['d3d_present/test-tick'].calls, 120);
+    check('FPR4b ...and summed into its frame', math.abs(fp._P.dl[1] - 0.003) < 1e-9, true);
+    check('FPR4c the frame time is present to present', math.abs(fp._P.iv[5] - 0.016) < 1e-9, true);
+
+    -- A hitch dlac had no part in.
+    clock = clock + 0.070;
+    mark();
+    -- A hitch that IS dlac: a 40 ms handler.
+    ashita.events.register('packet_in', 'test-heavy', function() clock = clock + 0.040; end);
+    clock = clock + 0.005;
+    reg['packet_in/test-heavy']({ id = 0x028 });
+    mark();
+    -- A hitch with a slow file open in it (2 ms open, 40 ms frame).
+    io.open('C:\\G\\config\\addons\\dlac\\Testy_1\\helmstate.lua', 'r');
+    clock = clock + 0.038;
+    mark();
+    check('FPR5 a read is timed by path', fp._ios['open.r']['C:\\G\\config\\addons\\dlac\\Testy_1\\helmstate.lua'].n, 1);
+    -- A write: the open AND the close are timed (antivirus scans on close).
+    local f = io.open('C:\\G\\out.lua', 'wb');
+    f:write('x');
+    f:close();
+    check('FPR5a a write open is timed', fp._ios['open.w']['C:\\G\\out.lua'].n, 1);
+    check('FPR5b ...and its close', math.abs(fp._ios['close.w']['C:\\G\\out.lua'].total - 0.004) < 1e-9, true);
+    mark();
+
+    -- Nesting: a handler that raises another inside itself counts once.
+    ashita.events.register('text_in', 'test-inner', function() clock = clock + 0.001; end);
+    ashita.events.register('command', 'test-outer', function()
+        clock = clock + 0.002;
+        reg['text_in/test-inner']({});
+    end);
+    local before = fp._P.n;
+    clock = clock + 0.010;
+    reg['command/test-outer']({});
+    mark();
+    check('FPR6 a nested handler is not counted twice in its frame', math.abs(fp._P.dl[before + 1] - 0.003) < 1e-9, true);
+    check('FPR6a ...but each keeps its own record', fp._recs['text_in/test-inner'].calls == 1
+        and fp._recs['command/test-outer'].calls == 1, true);
+
+    -- An error inside a handler propagates (Ashita prints it) and the next
+    -- frame heals the nesting depth.
+    ashita.events.register('d3d_present', 'test-throw', function() error('boom', 0); end);
+    local ok, err = pcall(reg['d3d_present/test-throw']);
+    check('FPR7 an error inside a handler propagates unchanged', (not ok) and err == 'boom', true);
+    mark();
+    check('FPR7a the frame mark heals the nesting depth', fp._P.depth, 0);
+
+    -- Off the frame's thread.
+    ashita.events.register('packet_in', 'test-light', function() end);
+    tid = 8;
+    reg['packet_in/test-light']({ id = 0x028 });
+    tid = 7;
+    check('FPR8 a call on another thread than the frame is counted as off', fp._recs['packet_in/test-light'].off, 1);
+    mark();
+
+    -- Allocation: what a handler adds to the heap is its own column.
+    ashita.events.register('d3d_present', 'test-alloc', function() heap = heap + 100; end);
+    reg['d3d_present/test-alloc']();
+    check('FPR17 a handler\'s allocation is measured', fp._recs['d3d_present/test-alloc'].kb, 100);
+    -- Garbage: the heap falling inside a frame = the collector freed memory.
+    heap = 25000;
+    clock = clock + 0.016;
+    mark();
+    check('FPR9 a heap fall inside a frame is counted', fp._P.gcCycles, 1);
+
+    -- Last: a hitch right after a gear packet went out (last, so the 0.6 s
+    -- look-back cannot reach any other hitch).
+    reg['packet_out/dlac-frameprof-out']({ id = 0x050 });
+    clock = clock + 0.045;
+    mark();
+
+    local written, out = nil, nil;
+    fp._out = function() return 'C:\\G\\addons\\dlac\\debug\\dlac-perf-Testy.txt'; end
+    fp._write = function(p, t) out, written = p, t; end
+    local printed = {};
+    print = function(s) printed[#printed + 1] = s; end
+    local path = fp.stop('the test stopped it');
+    print = savedPrint;
+    check('FPR10 stop writes the file and names it', path == out and type(written) == 'string', true);
+    check('FPR10a the chat says the verdict', #printed >= 3 and printed[1]:find('hitch') ~= nil, true);
+    written = written or '';
+    check('FPR11 the file states the frame times', written:find('frame time: median 16.0 ms', 1, true) ~= nil, true);
+    check('FPR11a ...counts the hitches against the median (>= 24 ms)', written:find('hitches (frames >= 24.0 ms): 4', 1, true) ~= nil, true);
+    check('FPR11b ...names the dlac hitch', written:find('1  dlac\'s own code was at least half of the extra time', 1, true) ~= nil, true);
+    check('FPR11c ...the gear hitch', written:find('1  a gear packet went out or came in within', 1, true) ~= nil, true);
+    check('FPR11d ...the file hitch', written:find('1  a dlac file operation took >= 1 ms inside it', 1, true) ~= nil, true);
+    check('FPR11e ...and the one that was slow elsewhere', written:find('1  none of these: the frame was slow OUTSIDE', 1, true) ~= nil, true);
+    check('FPR11f the handler table carries the 40 ms handler', written:find('packet_in/test-heavy', 1, true) ~= nil, true);
+    check('FPR11g file paths read without the install root', written:find('<char>\\helmstate.lua', 1, true) ~= nil, true);
+    check('FPR11h the garbage block counts the freeing frame', written:find('frames where the collector freed >= 256 KB: 1', 1, true) ~= nil, true);
+    check('FPR11i the handler table carries the allocation column', written:find('KB/s', 1, true) ~= nil, true);
+
+    -- Disarmed again: the shims are free.
+    local n0 = fp._recs['d3d_present/test-tick'].calls;
+    tick(1, 1);
+    check('FPR12 after stop nothing is counted', fp._recs['d3d_present/test-tick'].calls, n0);
+    check('FPR12a stop with nothing running says so', (fp.stop()), nil);
+
+    check('FPR13 /dl perf (bare) parses', fp._parse('/dl perf'), '');
+    check('FPR13a /dl perf 90', fp._parse('/dl perf 90'), '90');
+    check('FPR13b /dlac perf stop', fp._parse('/dlac perf stop'), 'stop');
+    check('FPR13c a neighbour is not eaten', fp._parse('/dl perfx'), nil);
+    check('FPR14 the window clamps low', fp._dur('3'), fp.MIN_S);
+    check('FPR14a ...and high', fp._dur('9999'), fp.MAX_S);
+    check('FPR14b ...and defaults', fp._dur(nil), fp.DEF_S);
+    check('FPR15 hitch line at 60 fps is 1.5x the frame', math.abs(fp._threshold(0.016) - 0.024) < 1e-9, true);
+    check('FPR15a ...at 144 fps never under 12 ms', fp._threshold(0.0069), 0.012);
+
+    fp._REAL.open = savedOpen;
+    fp._uninstall();
+    ashita = savedAshita;
+    check('FPR16 uninstall puts the file functions back', io.open == savedOpen and loadfile == savedLoadfile
+        and dofile == savedDofile and os.remove == savedRemove and os.rename == savedRename, true);
+    io.open, loadfile, dofile, os.remove, os.rename = savedOpen, savedLoadfile, savedDofile, savedRemove, savedRename;
+end)();
+
+-- ---------------------------------------------------------------------------
+-- BIX. feature\bagindex -- the equip bags KEPT, re-read only where a packet
+-- says they changed (2026-10-13, Henrik: "cache it and only check if
+-- something arrives into inventory"). The wire offsets are the AscensionXI
+-- server's own layouts (src/map/packets/s2c 0x01E/0x01F/0x020/0x050); each
+-- case is a body built at those offsets, driven through noteIncoming.
+-- ---------------------------------------------------------------------------
+(function()
+    local bix = package.loaded['dlac\\feature\\bagindex'];
+    local savedAshita, savedWalk, savedClock = AshitaCore, bix._walkEveryAsk, bix._clock;
+    bix._walkEveryAsk = false;
+    bix._reset();
+    local clock = 100;
+    bix._clock = function() return clock; end
+    local RES, bags, readLog = {}, {}, {};
+    local function put(c, i, id, name, n)
+        RES[id] = { Name = { name } };
+        bags[c] = bags[c] or {};
+        bags[c][i] = { Id = id, Count = n or 1, Flags = 0, Extra = '' };
+    end
+    AshitaCore = {
+        GetMemoryManager = function() return { GetInventory = function() return {
+            GetContainerItem = function(_, c, i)
+                readLog[#readLog + 1] = c .. ':' .. i;
+                return (bags[c] or {})[i] or { Id = 0, Count = 0, Flags = 0 };
+            end,
+            GetContainerCountMax = function(_, c) return (c == 0 or c == 8) and 80 or 0; end,
+        }; end }; end,
+        GetResourceManager = function() return { GetItemById = function(_, id) return RES[id]; end }; end,
+    };
+    local function body(len, at)   -- a wire body: zeros, with bytes at offsets
+        local b = {};
+        for k = 1, len do b[k] = string.char(0); end
+        for off, v in pairs(at) do b[off + 1] = string.char(v); end
+        return table.concat(b);
+    end
+
+    put(8, 3, 1001, 'Gold Ring');
+    put(0, 5, 1001, 'Gold Ring');
+    put(0, 6, 1002, 'Tathlum', 12);
+    local byId, byName = bix.counts();
+    check('BIX1 the first ask walks the equip bags once', #readLog, 160);   -- bags 0 and 8, 80 each
+    check('BIX1b ...and counts by id and by lowered name',
+        byId[1001] == 2 and byName['gold ring'] == 2 and byName['tathlum'] == 12, true);
+    readLog = {};
+    bix.counts(); bix.named({ ['gold ring'] = true }); bix.entryAt(8, 3);
+    check('BIX2 nothing owed -> no ask reads a slot', #readLog, 0);
+    local rings = bix.named({ ['gold ring'] = true });
+    check('BIX3 named() lists the copies in scan order (wardrobe first, as LAC scans)',
+        #rings == 2 and rings[1].Container == 8 and rings[2].Container == 0, true);
+
+    -- each layout names its slot, and only that slot is read again
+    for _, cse in ipairs({
+        { 'BIX4 0x01E ITEM_NUM',   0x01E, body(0x0C, { [0x08] = 0, [0x09] = 6 }), '0:6' },
+        { 'BIX5 0x01F ITEM_LIST',  0x01F, body(0x10, { [0x0A] = 8, [0x0B] = 3 }), '8:3' },
+        { 'BIX6 0x020 ITEM_ATTR',  0x020, body(0x30, { [0x0E] = 0, [0x0F] = 5 }), '0:5' },
+        { 'BIX7 0x050 EQUIP_LIST', 0x050, body(0x08, { [0x04] = 3, [0x05] = 13, [0x06] = 8 }), '8:3' },
+    }) do
+        bix.noteIncoming(cse[2], cse[3]);
+        clock = clock + 1;
+        readLog = {};
+        bix.counts();
+        check(cse[1] .. ' re-reads exactly the slot it names', table.concat(readLog, ','), cse[4]);
+    end
+
+    local before = bix.entryAt(8, 3);
+    bix.noteIncoming(0x01F, body(0x10, { [0x0A] = 8, [0x0B] = 3 }));
+    clock = clock + 1;
+    check('BIX8 a slot read back unchanged keeps its entry (views built on it stay)', bix.entryAt(8, 3) == before, true);
+    local v0 = bix.version;
+    bags[0][6].Count = 3;   -- nine tathlums used
+    bix.noteIncoming(0x01E, body(0x0C, { [0x08] = 0, [0x09] = 6 }));
+    clock = clock + 1;
+    local _, byName2, v1 = bix.counts();
+    check('BIX9 a count change lands in the counts', byName2['tathlum'], 3);
+    check('BIX9b ...and bumps the version (the memo key)', v1 > v0, true);
+    bags[0][6] = nil;
+    bix.noteIncoming(0x020, body(0x30, { [0x0E] = 0, [0x0F] = 6 }));
+    clock = clock + 1;
+    local byId3, byName3 = bix.counts();
+    check('BIX10 an emptied slot drops its counts (no zero left behind)',
+        byName3['tathlum'] == nil and byId3[1002] == nil, true);
+    bags[8][7], bags[0][5] = bags[0][5], nil;   -- a move: two slots, two packets
+    bix.noteIncoming(0x020, body(0x30, { [0x0E] = 8, [0x0F] = 7 }));
+    bix.noteIncoming(0x020, body(0x30, { [0x0E] = 0, [0x0F] = 5 }));
+    clock = clock + 1;
+    rings = bix.named({ ['gold ring'] = true });
+    check('BIX11 a move lands both ends: both copies in wardrobe 8, in slot order',
+        #rings == 2 and rings[1].Container == 8 and rings[1].Index == 3
+        and rings[2].Container == 8 and rings[2].Index == 7, true);
+    check('BIX11b ...and the count is unchanged', select(2, bix.counts())['gold ring'], 2);
+
+    readLog = {};
+    bix.noteIncoming(0x01F, body(0x10, { [0x0A] = 1, [0x0B] = 4 }));                -- Mog Safe
+    bix.noteIncoming(0x01E, body(0x0C, { [0x08] = 0, [0x09] = 0 }));                -- the gil slot
+    bix.noteIncoming(0x050, body(0x08, { [0x04] = 0, [0x05] = 2, [0x06] = 0 }));   -- an unequip
+    bix.noteIncoming(0x01D, body(0x0C, {}));                                        -- ITEM_SAME
+    clock = clock + 1;
+    bix.counts();
+    check('BIX12 safe / gil / unequip / ITEM_SAME packets cost no read', #readLog, 0);
+
+    -- THE TIMING RULE: inside SETTLE_S of its packet a slot is read, and read
+    -- again on the next ask; after the window it is kept.
+    put(0, 9, 1003, 'Bronze Cap');
+    bix.noteIncoming(0x01F, body(0x10, { [0x0A] = 0, [0x0B] = 9 }));
+    readLog = {};
+    local _, byName4 = bix.counts();
+    check('BIX13 a piece whose packet just landed is counted at once', byName4['bronze cap'], 1);
+    readLog = {};
+    bix.counts();
+    check('BIX13b ...its slot read again while the client may still be applying it', table.concat(readLog, ','), '0:9');
+    clock = clock + bix.SETTLE_S;
+    bix.counts();
+    readLog = {};
+    bix.counts();
+    check('BIX13c ...and kept once the window has passed', #readLog, 0);
+
+    local disp = package.loaded['dlac\\dispatch'];
+    readLog = {};
+    check('BIX14 dispatch counts copies through the index', disp.bagCopies(1001), 2);
+    check('BIX14b ...without reading a bag slot', #readLog, 0);
+
+    for _, z in ipairs({ { 'BIX15 0x00A zone-in', 0x00A, body(8, {}) },
+                         { 'BIX16 0x01C container sizes', 0x01C, body(0x80, {}) },
+                         { 'BIX17 a torn 0x020', 0x020, body(4, {}) } }) do
+        bix.noteIncoming(z[2], z[3]);
+        clock = clock + 1;
+        readLog = {};
+        bix.counts();
+        check(z[1] .. ' walks every equip bag again', #readLog, 160);
+    end
+
+    bix._reset();
+    local savedBags = bags;
+    bags = {};
+    bix.counts();
+    readLog = {};
+    bix.counts();
+    check('BIX18 an EMPTY walk is never kept (char select, mid-zone)', #readLog, 160);
+    bags = savedBags;
+
+    bix._reset();
+    AshitaCore = nil;
+    check('BIX19 bags never readable -> counts() answers nil, never "you own none"', bix.counts() == nil, true);
+
+    local eqcore = package.loaded['dlac\\gear\\equipcore'];
+    check('BIX20 the index scans in LuaAshitacast order (equipcore.DEFAULT_EQUIP_BAGS)', table.concat(bix.BAGS, ','),
+        (type(eqcore) == 'table') and table.concat(eqcore.DEFAULT_EQUIP_BAGS, ',') or '?');
+    local a, b = {}, {};
+    for _, c in ipairs(disp.AMMO_BAGS) do a[#a + 1] = c; end
+    for _, c in ipairs(bix.BAGS) do b[#b + 1] = c; end
+    table.sort(a); table.sort(b);
+    check('BIX21 ...over the bags dispatch counts (AMMO_BAGS)', table.concat(b, ','), table.concat(a, ','));
+
+    AshitaCore, bix._walkEveryAsk, bix._clock = savedAshita, savedWalk, savedClock;
+    bix._reset();
+end)();
+
+-- ---------------------------------------------------------------------------
+-- EQF. the flush BUDGET (2026-10-13, the stutter report). A settled Default --
+-- every outgoing chunk plus the 0.4s tick, ~6 a second -- asks for what is
+-- already worn, and every pass used to walk every slot of every equip bag (a
+-- GetContainerItem per slot, plus GetItemById and the Name table the binding
+-- builds for every item) -- the walk that made the frame graph spike. The bags
+-- are KEPT now (feature\bagindex) and read again only where an inventory
+-- packet says they changed. Driven through the real fireEvent door against a
+-- live-shaped inventory, counting the calls the game pays for:
+--   * the first pass walks once; a settled pass after it reads no bag slot;
+--   * something to move goes on with no walk -- one read, the safety net's
+--     (NOT plain `satisfied`: an empty item list says that too, which is how
+--     the first cut of this fix silently stopped equipping anything);
+--   * a piece that arrives (its 0x01F names the slot) is read alone, goes on;
+--   * an entry no bag can fill costs nothing, pass after pass;
+--   * a piece that moved WITHOUT a packet is caught before the equip goes out:
+--     one re-walk, the slot it is in, never the stale one;
+--   * a zone-in walks again, once.
+-- ---------------------------------------------------------------------------
+(function()
+    local eng = package.loaded['dlac\\feature\\equipengine'];
+    local bix = package.loaded['dlac\\feature\\bagindex'];
+    if type(eng) ~= 'table' then check('EQF0 equipengine is loaded', type(eng), 'table'); return; end
+    local savedAshita, savedOnEvent = AshitaCore, eng.onEvent;
+    local savedWalk, savedBixClock = bix._walkEveryAsk, bix._clock;
+    bix._walkEveryAsk = false;
+    bix._reset();
+
+    local calls = {};
+    local function count(k) calls[k] = (calls[k] or 0) + 1; end
+    local RES, bag8, equipped, sent = {}, {}, {}, {};
+    local function item(index, id, name, slotMask)
+        RES[id] = { Name = { name }, Level = 1, Jobs = 0x7FFFFE, Slots = slotMask, Flags = 0x800 };
+        bag8[index] = { Id = id, Count = 1, Flags = 0, Extra = string.rep(string.char(0), 24) };
+    end
+    item(1, 50001, 'Cap A', 16);          -- Head  (slot id 5 -> bit 4)
+    item(2, 50002, 'Harness', 32);        -- Body  (slot id 6 -> bit 5)
+    for i = 3, 42 do item(i, 50100 + i, 'Filler ' .. i, 64); end
+    local inv = {
+        GetEquippedItem = function(_, s) count('GetEquippedItem'); return { Index = equipped[s] or 0 }; end,
+        GetContainerItem = function(_, c, i)
+            count('GetContainerItem');
+            if c ~= 8 then return nil; end
+            return bag8[i] or { Id = 0, Count = 0, Flags = 0 };
+        end,
+        GetContainerCountMax = function(_, c) return (c == 8) and 80 or 0; end,
+    };
+    local player = {
+        GetMainJob = function() return 3; end, GetMainJobLevel = function() return 75; end,
+        GetJobLevel = function() return 75; end,
+    };
+    AshitaCore = {
+        GetMemoryManager = function() return {
+            GetInventory = function() return inv; end, GetPlayer = function() return player; end,
+        }; end,
+        GetResourceManager = function() return {
+            GetItemById = function(_, id) count('GetItemById'); return RES[id]; end,
+        }; end,
+        GetPacketManager = function() return {
+            -- ...and the server applies it, as the game does: the worn view a
+            -- later pass reads is the same whether the trust window or live
+            -- memory answers it.
+            AddOutgoingPacket = function(_, id, bytes)
+                sent[#sent + 1] = { id = id, bytes = bytes };
+                if id == 0x50 then
+                    equipped[bytes[6]] = (bytes[5] ~= 0) and (bytes[7] * 256 + bytes[5]) or nil;
+                elseif id == 0x51 then
+                    for k = 1, bytes[5] do
+                        local o = 4 + k * 4 + 1;
+                        equipped[bytes[o + 1]] = bytes[o + 2] * 256 + bytes[o];
+                    end
+                end
+            end,
+        }; end,
+    };
+    local clock = 1000;
+    bix._clock = function() return clock; end
+    local want = {};
+    eng.onEvent = function() eng.equipSet(want); end
+    local function pass(set)
+        want, calls, sent = set, {}, {};
+        eng.fireEvent('Default', 'auto');
+    end
+    local function reads() return calls.GetContainerItem or 0; end
+    -- the server's ITEM_LIST for one slot (Category @0x0A, ItemIndex @0x0B)
+    local function itemList(c, i)
+        local b = {};
+        for k = 1, 0x10 do b[k] = string.char(0); end
+        b[0x0A + 1], b[0x0B + 1] = string.char(c), string.char(i);
+        bix.noteIncoming(0x01F, table.concat(b));
+    end
+    local function sentFrom(slot0, c, i)
+        for _, q in ipairs(sent) do
+            if q.id == 0x50 and q.bytes[6] == slot0 and q.bytes[5] == i and q.bytes[7] == c then return true; end
+            if q.id == 0x51 then
+                for k = 1, q.bytes[5] do
+                    local o = 4 + k * 4 + 1;
+                    if q.bytes[o + 1] == slot0 and q.bytes[o] == i and q.bytes[o + 2] == c then return true; end
+                end
+            end
+        end
+        return false;
+    end
+
+    -- 1) worn already: no packet. The first pass builds the index (one walk);
+    -- every settled pass after it reads no bag slot and asks no resource.
+    equipped[4], equipped[5] = 8 * 256 + 1, 8 * 256 + 2;
+    pass({ Head = 'Cap A', Body = 'Harness' });
+    check('EQF1 a settled pass sends nothing', #sent, 0);
+    check('EQF2 ...the first one walks the bag once, to build the index', reads(), 80);
+    pass({ Head = 'Cap A', Body = 'Harness' });
+    check('EQF2b the next settled pass reads NO bag slot', reads(), 0);
+    check('EQF2c ...and asks no item resource', calls.GetItemById or 0, 0);
+
+    -- 2) the Body is off: the Harness goes on from wardrobe 8:2 as ever -- with
+    -- no walk, just the safety net's read of the slot it equips from.
+    equipped[5] = nil;
+    pass({ Head = 'Cap A', Body = 'Harness' });
+    check('EQF3 something to move -> the Harness is equipped from wardrobe 8:2', sentFrom(5, 8, 2), true);
+    check('EQF4 ...with no walk: one read, the safety net', reads(), 1);
+
+    -- 3) a ring arrives: its ITEM_LIST names the slot, that slot alone is read
+    -- (its resource asked once for the name, once for the gates -- ever).
+    item(43, 50043, 'Gold Ring', 8192);   -- Ring1 (slot id 14 -> bit 13)
+    itemList(8, 43);
+    clock = clock + 1;
+    pass({ Ring1 = 'Gold Ring' });
+    check('EQF5 the ring that arrived goes on', sentFrom(13, 8, 43), true);
+    check('EQF6 ...reading its slot and the safety net -- not the bag', reads(), 2);
+    check('EQF6b ...and asking its resource at most twice', (calls.GetItemById or 0) <= 2, true);
+
+    -- 4) an entry no bag can fill (a ring you do not own, a piece in storage):
+    -- allWorn can never be true, and every Default used to walk every bag to
+    -- send nothing. Now it costs nothing, pass after pass.
+    pass({ Ring2 = 'Missing Ring' });
+    check('EQF7 an unfillable entry sends nothing', #sent, 0);
+    check('EQF7b ...and reads no bag slot', reads(), 0);
+    pass({ Ring2 = 'Missing Ring' });
+    check('EQF8 ...again and again', reads(), 0);
+
+    -- 5) THE TIMING RULE: a piece whose packet just landed goes on at once; its
+    -- slot is read once more after the settle window, then left alone.
+    item(44, 50044, 'Missing Ring', 16384);   -- Ring2 (slot id 15 -> bit 14)
+    itemList(8, 44);
+    pass({ Ring2 = 'Missing Ring' });
+    check('EQF9 the piece that just arrived goes on at once', sentFrom(14, 8, 44), true);
+    clock = clock + bix.SETTLE_S;
+    pass({ Ring2 = 'Missing Ring' });
+    check('EQF9b ...its slot is read once more after the window', reads(), 1);
+    pass({ Ring2 = 'Missing Ring' });
+    check('EQF9c ...and then left alone', reads(), 0);
+
+    -- 6) THE SAFETY NET: the Mitts move 8:45 -> 8:50 with no packet the index
+    -- saw (a missed packet). The pass that wants them must not equip 8:45 on
+    -- the index's stale word: one re-walk, and they go on from where they ARE.
+    item(45, 50045, 'Mitts', 64);         -- Hands (slot id 7 -> bit 6)
+    itemList(8, 45);
+    clock = clock + 1;
+    pass({ Head = 'Cap A' });             -- the index learns 8:45
+    bag8[50], bag8[45] = bag8[45], nil;
+    local heals = bix.stats.heals;
+    clock = clock + 1;
+    pass({ Hands = 'Mitts' });
+    check('EQF10 a piece moved without a packet goes on from where it IS', sentFrom(6, 8, 50), true);
+    check('EQF10b ...never from the stale slot', sentFrom(6, 8, 45), false);
+    check('EQF10c ...at the price of one re-walk', bix.stats.heals - heals, 1);
+
+    -- 7) a zone-in sends the whole inventory again: one walk, then quiet.
+    bix.noteIncoming(0x00A, string.rep(string.char(0), 8));
+    clock = clock + 1;
+    pass({ Head = 'Cap A' });
+    check('EQF11 a zone-in walks the bag again', reads(), 80);
+    pass({ Head = 'Cap A' });
+    check('EQF11b ...once', reads(), 0);
+
+    AshitaCore, eng.onEvent = savedAshita, savedOnEvent;
+    bix._walkEveryAsk, bix._clock = savedWalk, savedBixClock;
+    bix._reset();
+    eng.bufferClear();
+end)();
+
+-- ---------------------------------------------------------------------------
 -- NEB. native backend wiring (feature/native-engine step 5) -- the arming
 -- rules and the pet-stream decode. The dispatch-side seams (engineActive,
 -- the native sets store, engineEquipSet) are exercised through the 2600+
@@ -19656,6 +20169,21 @@ end)();
         check('TRC1 empty store: the trace says NOT FOUND (true today)',
               saidHas('NOT FOUND in profile Sets'), true);
         check('TRC1b ...for the rule that matched', saidHas('set Idle'), true);
+
+        -- FIR2 (13d): what fired lands in the engine's ring, which the Trigger
+        -- Monitor reads in memory; the file is written once, by the unload hook.
+        local fired = D.getFired();
+        check('FIR2 the dispatch put its fired rule in the ring, newest first',
+              #fired >= 1 and fired[1]:match('^%d%d:%d%d:%d%d  Default') ~= nil, true);
+        local firedPath = 'tests' .. SEP .. 'firedstate.lua';
+        pcall(os.remove, firedPath);
+        if type(handlers['unload']) == 'function' then pcall(handlers['unload']); end
+        local ff = io.open(firedPath, 'r');
+        local fbody = (ff ~= nil) and ff:read('*a') or '';
+        if ff ~= nil then ff:close(); end
+        pcall(os.remove, firedPath);
+        check('FIR2a unload writes the ring for the next load\'s monitor',
+              #fired >= 1 and fbody:find(fired[1], 1, true) ~= nil, true);
 
         -- The install lands: the store is swapped and modesRev bumped -- the
         -- two things EVERY installSets branch does (5668/5714). The next
@@ -27975,6 +28503,22 @@ end)();
         return t.settings.removals == 'auto' and t.stamps['a:00'] == 2000;
     end)(), true);
 
+    -- The beat's witness (13d): a worn piece is stamped once an hour, not
+    -- every minute -- so a steady outfit no longer dirties the file (and pays
+    -- a save) every minute.
+    ug._reset();
+    UT = 10000;
+    check('USG7a a piece never stamped is stamped when seen worn', ug.stampWorn({ 'w:00' }), 1);
+    ug._st().dirty = false;
+    UT = 10000 + 59 * 60;
+    check('USG7b seen worn again within the hour: no stamp', ug.stampWorn({ 'w:00' }), 0);
+    check('USG7c ...and the file is not dirtied', ug.dirty(), false);
+    check('USG7d ...the stamp holds', ug.lastUsed('w:00'), 10000);
+    UT = 10000 + ug.RESTAMP_S;
+    check('USG7e an hour on: stamped again', ug.stampWorn({ 'w:00', 'x:00' }), 2);
+    check('USG7f ...with the time now', ug.lastUsed('w:00') == UT and ug.dirty() == true, true);
+    UT = 2000;   -- the ranking below seeds at the clock USG7 left
+
     -- ranking: unpinned only auto-rank; unassigned first; oldest first
     ug._reset();
     ug.seed({ ug.keyOf(1, vc.ZERO24), ug.keyOf(2, vc.ZERO24), ug.keyOf(3, vc.ZERO24) });
@@ -29050,6 +29594,541 @@ end)();
     sp.provide('gearvault', nil);
     if hadAug == nil then package.loaded['dlac\\feature\\augments'] = nil; end
     AshitaCore = savedCore;
+end)();
+
+-- ---------------------------------------------------------------------------
+-- FIR. The Trigger Monitor's feed is the engine's ring IN MEMORY, and a gear
+-- swap is not an inventory change (13d, Abraxis's /dl perf: on his machine a
+-- file write cost 1.5-10 ms, firedstate.lua was written 55 times a minute in a
+-- fight, and the 0x01D after every equip re-ran the whole gear sync -- 21-55 ms
+-- frames). The tick and unload hooks need Ashita, so their contract is pinned
+-- as text (the GVS10 precedent); the ring itself is read live.
+-- ---------------------------------------------------------------------------
+(function()
+    check('FIR1 the engine hands out its fired ring (filled: FIR2, in the TRC section)',
+        type(dispatchM.getFired()), 'table');
+    local function src(p)
+        local f = io.open(p, 'rb');
+        local s = (f ~= nil) and f:read('*a') or '';
+        if f ~= nil then f:close(); end
+        return s;
+    end
+    local d = src('dispatch.lua');
+    check('FIR3 no command-bus stream left in the engine', d:find("QueueCommand(1, '/dlacmonev", 1, true), nil);
+    local _, nCalls = d:gsub('saveFiredState%(%)', '');
+    check('FIR4 firedstate.lua is written from ONE place', nCalls, 1);
+    check('FIR4a ...the unload hook', d:find("register('unload', 'dlac-fired-save'", 1, true) ~= nil, true);
+    local t = src('ui/triggersui.lua');
+    check('FIR5 the monitor reads the engine ring', t:find('dsp.getFired()', 1, true) ~= nil, true);
+    check('FIR5a ...and listens for no stream', t:find("'dlac-trigmon'", 1, true), nil);
+    local g = src('ui/gearui.lua');
+    check('FIR6 an equip\'s 0x01D no longer schedules the gear sync',
+        g:find("'dlac%-gearui%-invdirty', function%(e%)%s+if e%.id == 0x020 then") ~= nil, true);
+    check('FIR6a ...no 0x01D test left in that hook', g:find('e.id == 0x01D', 1, true), nil);
+    local gi = src('servers/ascensionxi/modules/gearvault/init.lua');
+    check('FIR7 the usage beat stamps through stampWorn', gi:find('usg.stampWorn(keys);', 1, true) ~= nil
+        and gi:find('usg.stamp(keys);', 1, true) == nil, true);
+end)();
+
+-- ---------------------------------------------------------------------------
+-- PFU. The windows' per-frame cost (13e -- Henrik: "having DLAC enabled, we
+-- lose 10 FPS"; Abraxis's /dl perf: the gear UI at ~600 us a frame, 400
+-- AshitaCore and 512 imgui calls). The theme goes on once a frame; the worn
+-- view and the identity are KEPT until a packet says otherwise; the windows
+-- share one player snapshot per drawn frame.
+-- ---------------------------------------------------------------------------
+(function()
+    -- 1. the theme's frame bracket
+    local pushes, pops = 0, 0;
+    local savedIm = package.loaded['imgui'];
+    package.loaded['imgui'] = {
+        PushStyleColor = function() pushes = pushes + 1; end,
+        PopStyleColor  = function(n) pops = pops + (n or 1); end,
+    };
+    local okS, sty = pcall(dofile, 'ui/uistyle.lua');
+    package.loaded['imgui'] = savedIm;
+    check('PFU0 uistyle loads with an imgui', okS and type(sty) == 'table', true);
+    if okS and type(sty) == 'table' then
+        check('PFU1 outside a bracket, push() pushes the theme and says so', sty.push(), true);
+        local N = pushes;
+        sty.pop();
+        check('PFU1a ...and pop() pops all of it', N > 0 and pops == N, true);
+        pushes, pops = 0, 0;
+        sty.frameBegin();
+        local a, b, c = sty.push(), sty.push(), sty.push();
+        check('PFU2 inside a bracket, push() says nothing was pushed', (a or b or c), false);
+        check('PFU2a ...the theme went on ONCE, at the first ask', pushes, N);
+        sty.pop();
+        check('PFU2b ...a pop matching a skipped push is a no-op', pops, 0);
+        sty.frameEnd();
+        check('PFU2c frameEnd pops the one push', pops, N);
+        pushes, pops = 0, 0;
+        sty.frameBegin();
+        sty.frameEnd();
+        check('PFU3 a frame nobody themed pushes and pops nothing', pushes + pops, 0);
+    end
+
+    -- 2. the kept worn view (a FRESH oracle: the suite's shared one stays live)
+    local savedCore, savedGState = AshitaCore, rawget(_G, 'gState');
+    _G.gState = nil;
+    local T = 100;
+    local reads, unreadable = 0, false;
+    local equip = { [4] = { Index = 8 * 256 + 5 } };
+    local items = { [8 * 256 + 5] = { Id = 1001, Count = 1, Flags = 5, Extra = '' },
+                    [8 * 256 + 6] = { Id = 1002, Count = 1, Flags = 5, Extra = '' } };
+    AshitaCore = {
+        GetMemoryManager = function() return {
+            GetInventory = function() return {
+                GetEquippedItem = function(_, s)
+                    reads = reads + 1;
+                    if unreadable then return nil; end
+                    return equip[s] or { Index = 0 };
+                end,
+                GetContainerItem = function(_, cnt, i) reads = reads + 1; return items[cnt * 256 + i]; end,
+            }; end,
+            GetParty = function() return {
+                GetMemberName = function() reads = reads + 1; return 'Testy'; end,
+                GetMemberServerId = function() return 1234; end,
+            }; end,
+        }; end,
+        GetInstallPath = function() return 'C:\\G\\'; end,
+    };
+    local okO, wo = pcall(dofile, 'gear/gearoracle.lua');
+    check('PFU4 a fresh oracle loads', okO and type(wo) == 'table', true);
+    if okO and type(wo) == 'table' then
+        wo._clock = function() return T; end
+        wo.wornItem(4); wo.wornItem(4);
+        check('PFU4a never heard the wire: every ask reads live (the suites)', reads, 4);
+        wo.noteIncoming(0x028, '');
+        reads = 0;
+        local w1, w2 = wo.wornItem(4), wo.wornItem(4);
+        check('PFU5 heard: the first ask reads, the next is kept', reads == 2 and w1 == w2 and w1.id == 1001, true);
+        -- the server equips wardrobe 8 slot 6 on Head (EQUIP_LIST: @4 index, @5 slot, @6 bag)
+        equip[4] = { Index = 8 * 256 + 6 };
+        wo.noteIncoming(0x050, string.char(0x50, 0x04, 0, 0, 6, 4, 8, 0));
+        reads = 0;
+        local w3 = wo.wornItem(4);
+        check('PFU6 an equip packet for the slot: read live', reads == 2 and w3 ~= nil and w3.id == 1002, true);
+        wo.wornItem(4);
+        check('PFU6a ...and live again inside the settle window', reads, 4);
+        T = T + wo.WORN_SETTLE_S;
+        wo.wornItem(4);
+        reads = 0;
+        wo.wornItem(4);
+        check('PFU6b settled: kept again', reads, 0);
+        wo.noteIncoming(0x050, string.char(0x50, 0x04, 0, 0, 3, 9, 8, 0));
+        wo.wornItem(4);
+        check('PFU7 an equip packet for ANOTHER slot leaves this one kept', reads, 0);
+        -- ITEM_LIST naming the worn piece's bag slot (@0x0A bag, @0x0B slot)
+        wo.noteIncoming(0x01F, string.char(0x1F, 0x08, 0, 0, 0, 0, 0, 0, 0xEA, 0x03, 8, 6, 5, 0, 0, 0));
+        wo.wornItem(4);
+        check('PFU8 an item packet for the worn piece\'s bag slot: read again', reads, 2);
+        wo.noteIncoming(0x00B, '');
+        T = T + 10;
+        reads = 0;
+        wo.wornItem(4); wo.wornItem(4);
+        check('PFU9 zoning out: every ask live until the zone-in', reads, 4);
+        wo.noteIncoming(0x00A, '');
+        T = T + wo.WORN_ZONE_S;
+        wo.wornItem(4);
+        reads = 0;
+        wo.wornItem(4);
+        check('PFU9a zoned in and settled: kept again', reads, 0);
+        local rereads = 0;
+        for _ = 1, 16 do
+            T = T + wo.WORN_TRICKLE_S;
+            reads = 0;
+            wo.wornItem(4);
+            if reads > 0 then rereads = rereads + 1; end
+        end
+        check('PFU10 the net reads each slot live once in 16 beats', rereads, 1);
+        wo._wornReset();
+        wo.noteIncoming(0x028, '');
+        unreadable = true;
+        wo.wornItem(4);
+        unreadable = false;
+        reads = 0;
+        local w4 = wo.wornItem(4);
+        check('PFU11 an unreadable slot (mid-zone) is never kept as empty', reads == 2 and w4 ~= nil, true);
+    end
+
+    -- 3. the kept identity (a FRESH profiles instance)
+    local okP, pr = pcall(dofile, 'profiles.lua');
+    check('PFU12 a fresh profiles loads', okP and type(pr) == 'table', true);
+    if okP and type(pr) == 'table' then
+        pr._identClock = function() return T; end
+        reads = 0;
+        pr.charFolder(); pr.charFolder();
+        check('PFU12a never heard the wire: every ask reads live', reads, 2);
+        pr.noteIncoming(0x028);
+        reads = 0;
+        pr.charFolder(); pr.charFolder(); pr.dataDir();
+        check('PFU13 heard: one read, then kept', reads, 1);
+        check('PFU13a the path is the same as ever', pr.dataDir(), 'C:\\G\\config\\addons\\dlac\\Testy_1234\\');
+        T = T + pr.IDENT_CHECK_S;
+        reads = 0;
+        pr.charFolder();
+        check('PFU14 re-checked live once a second', reads, 1);
+        local mm = AshitaCore.GetMemoryManager;
+        AshitaCore.GetMemoryManager = function()
+            local m = mm();
+            m.GetParty = function() return { GetMemberName = function() return ''; end,
+                                             GetMemberServerId = function() return 0; end }; end;
+            return m;
+        end;
+        T = T + pr.IDENT_CHECK_S;
+        check('PFU14a a logout (empty name) ends the answer at the next check', pr.dataDir(), nil);
+        AshitaCore.GetMemoryManager = function()
+            local m = mm();
+            m.GetParty = function() return { GetMemberName = function() return 'Other'; end,
+                                             GetMemberServerId = function() return 99; end }; end;
+            return m;
+        end;
+        pr.noteIncoming(0x00A);
+        check('PFU15 a zone-in reads live: the character logging in', pr.charFolder(), 'Other_99');
+    end
+    AshitaCore = savedCore;
+    _G.gState = savedGState;
+
+    -- 4. one player snapshot per drawn frame, for the windows only
+    local savedCq = package.loaded['dlac\\lib\\cmdqueue'];
+    local FR = 1;
+    package.loaded['dlac\\lib\\cmdqueue'] = { frame = function() return FR; end };
+    local okN, nd = pcall(dofile, 'feature/nativedata.lua');
+    check('PFU16 nativedata loads', okN and type(nd) == 'table', true);
+    if okN and type(nd) == 'table' then
+        local builds = 0;
+        nd.GetPlayer = function() builds = builds + 1; return { MainJob = 'WHM' }; end
+        nd.GetPlayerFrame(); nd.GetPlayerFrame(); nd.GetPlayerFrame();
+        check('PFU16a one snapshot per drawn frame', builds, 1);
+        FR = 2;
+        nd.GetPlayerFrame();
+        check('PFU16b ...a new one the next frame', builds, 2);
+        check('PFU16c gData hands the windows the frame snapshot', type(nd.build().GetPlayerFrame), 'function');
+    end
+    package.loaded['dlac\\lib\\cmdqueue'] = savedCq;
+end)();
+
+-- ---------------------------------------------------------------------------
+-- SCT. The Sets tab's "Copy to" (Henrik 2026-10-14: "copy that set to other
+--      jobs ... so it's easy to bring general sets to every job you have").
+--
+--   The pure half (setimport.workingForJob / modeGates / copyToDropNote /
+--   copyToReceipt, setmanager.hasSetText); the shell (ui\setcopyto) driven end
+--   to end against recording deps; its popup's imgui stacks; the first-commit
+--   seed that starts a job dlac has never seen with the four empty base sets;
+--   and the gearui wiring, pinned as source (the Sets tab render has no drive).
+-- ---------------------------------------------------------------------------
+(function()
+    local simport = dofile('gear/setimport.lua');
+    local SL = { { label = 'Main' }, { label = 'Body' }, { label = 'Ring1' } };
+    local staff   = { rec = { Name = 'dlac:AutoStaff', Virtual = true } };
+    local whmBody = { rec = { Name = 'Hlr. Bliaut +1', Jobs = { 'WHM' }, Level = 74 } };
+    local allBody = { rec = { Name = 'Field Tunica', Jobs = { 'All' }, Level = 1 } };
+    local whmRing = { rec = { Name = 'Hlr. Bliaut +1', Jobs = { 'WHM' }, Level = 1 } };   -- same NAME, another slot
+    local W = { Main = { staff }, Body = { whmBody, allBody }, Ring1 = { whmRing } };
+    local function gateFor(job) return function(rec) return dispatchM.canWear(rec, job, math.huge); end; end
+
+    -- workingForJob: the set as one target job receives it.
+    local r = simport.workingForJob(W, SL, gateFor('WAR'));
+    check('SCT1 a virtual entry always travels', r.working.Main ~= nil and r.working.Main[1], staff);
+    check('SCT2 a piece the job cannot wear is left out, the rest kept in order',
+        (#r.working.Body == 1) and r.working.Body[1], allBody);
+    check('SCT3 a slot left with nothing is absent', r.working.Ring1, nil);
+    check('SCT4 ...the left-out piece is named ONCE', table.concat(r.dropped, ','), 'Hlr. Bliaut +1');
+    check('SCT5 ...and every left-out entry is counted', r.droppedCount, 2);
+    check('SCT6 slots kept', r.slotCount, 2);
+    check('SCT7 the source set is untouched', #W.Body, 2);
+    local rw = simport.workingForJob(W, SL, gateFor('WHM'));
+    check('SCT8 the job that CAN wear it keeps everything', rw.droppedCount == 0 and #rw.working.Body, 2);
+    local rt = simport.workingForJob(W, SL, function() error('boom'); end);
+    check('SCT9 a throwing gate keeps the piece (fail open)', rt.droppedCount, 0);
+    local rn = simport.workingForJob(W, SL, function() return nil; end);
+    check('SCT10 only an explicit false leaves a piece out', rn.droppedCount, 0);
+    check('SCT11 nothing to copy -> nothing', next(simport.workingForJob(nil, SL, gateFor('WAR')).working), nil);
+    check('SCT11a plain label strings walk too',
+        #simport.workingForJob(W, { 'Body' }, gateFor('WAR')).working.Body, 1);
+
+    -- modeGates: Modes live per job entry, so the copy names what it carried.
+    local MW = { Body = { { rec = allBody.rec, mode = 'DT' }, { rec = allBody.rec, mode = { 'Weapon:Melee', 'DT' } } },
+                 Main = { staff } };
+    local gates, gated = simport.modeGates(MW, SL);
+    check('SCT12 the distinct gates, first seen first', table.concat(gates, ','), 'DT,Weapon:Melee');
+    check('SCT13 ...and how many entries carry one', gated, 2);
+    check('SCT14 an ungated set has none', select(2, simport.modeGates(W, SL)), 0);
+
+    -- copyToDropNote: twenty jobs, ONE chat line.
+    local note, n = simport.copyToDropNote({
+        { job = 'WAR', dropped = { 'A', 'B' } }, { job = 'MNK', dropped = { 'A' } }, { job = 'THF', dropped = {} } });
+    check('SCT15 each piece once, with the jobs it was left out of', note, 'A (WAR, MNK), B (WAR)');
+    check('SCT16 ...counting distinct pieces', n, 2);
+    check('SCT17 nothing left out -> nil', simport.copyToDropNote({ { job = 'WAR', dropped = {} } }), nil);
+    check('SCT18 a long list is capped',
+        simport.copyToDropNote({ { job = 'WAR', dropped = { 'A', 'B', 'C' } } }, 2), 'A (WAR), B (WAR) (+1 more)');
+
+    -- copyToReceipt: the status line.
+    local text, isErr = simport.copyToReceipt('Idle', {
+        { job = 'WAR', ok = true, replaced = true }, { job = 'MNK', ok = true },
+        { job = 'BLU', skipped = true }, { job = 'SCH', ok = false, err = 'boom' } }, 3, true);
+    check('SCT19 names where it landed', text:find('Copied "Idle" to WAR, MNK.', 1, true) ~= nil, true);
+    check('SCT20 ...what it replaced', text:find('Replaced the "Idle" already on WAR (backed up first).', 1, true) ~= nil, true);
+    check('SCT21 ...what was left out', text:find('3 pieces left out where the job cannot wear them -- see chat.', 1, true) ~= nil, true);
+    check('SCT22 ...a job skipped because nothing is wearable there',
+        text:find('Skipped BLU: none of it is wearable there, so its set stayed as it was.', 1, true) ~= nil, true);
+    check('SCT23 ...the uncommitted edits that went along', text:find('uncommitted edits went with it', 1, true) ~= nil, true);
+    check('SCT24 ...and the failure with its reason', text:find('FAILED: SCH (boom).', 1, true) ~= nil, true);
+    check('SCT25 not an error while anything landed', isErr, false);
+    local t1 = simport.copyToReceipt('Idle', { { job = 'WAR', ok = true } }, 1, false);
+    check('SCT26 one piece reads as one', t1:find('1 piece left out where the job cannot wear it', 1, true) ~= nil, true);
+    check('SCT27 clean edits say nothing about them', t1:find('uncommitted', 1, true), nil);
+    local t2, e2 = simport.copyToReceipt('Idle', { { job = 'WAR', ok = false, err = 'x' } }, 0, true);
+    check('SCT28 nothing landed is an error', e2, true);
+    check('SCT29 ...and says so', t2:find('Nothing copied', 1, true) ~= nil and t2:find('uncommitted', 1, true) == nil, true);
+    local t3, e3 = simport.copyToReceipt('Idle', { { job = 'WAR', skipped = true }, { job = 'MNK', skipped = true } }, 0, false);
+    check('SCT29a every job skipped: nothing copied, and why',
+        t3 == 'Nothing copied -- none of "Idle" is wearable on the ticked jobs.' and e3, true);
+
+    -- setmanager.hasSetText: the key rule the writers use.
+    local smP = dofile('gear/setmanager.lua');
+    local HT = 'local sets = {\n    Dynamic = {\n        Idle = {\n        },\n        ["Midcast_STR-VIT"] = {\n        },\n    },\n'
+            .. '    Precast = { Head = "Z" },\n};\nreturn sets;\n';
+    check('SCT30 a bare key is found', smP.hasSetText(HT, 'Idle'), true);
+    check('SCT31 a bracket-quoted key is found', smP.hasSetText(HT, 'Midcast_STR-VIT'), true);
+    check('SCT32 an absent name is not', smP.hasSetText(HT, 'Tp'), false);
+    check('SCT33 a static OUTSIDE Dynamic does not count', smP.hasSetText(HT, 'Precast'), false);
+    check('SCT34 no file, no set', smP.hasSetText(nil, 'Idle'), false);
+    check('SCT35 a prefix is not the name', smP.hasSetText(HT, 'Idl'), false);
+
+    -- The first-commit seed: a job dlac has never seen starts with the four
+    -- empty base sets, so its first visit finds what the starter triggers point at.
+    local profReal = package.loaded['dlac\\profiles'];
+    local P_SETS, P_JOB = 'tests/_tmp_sct_sets.lua', 'tests/_tmp_sct_job.lua';
+    os.remove(P_SETS); os.remove(P_JOB);
+    package.loaded['dlac\\profiles'] = setmetatable({
+        setsPath = function() return P_SETS; end,
+        ensureStorage = function() end,
+        activeName = function() return 'Default'; end,
+    }, { __index = profReal });
+    local smS = dofile('gear/setmanager.lua');
+    package.loaded['dlac\\profiles'] = profReal;
+    smS.jobPath = function() return P_JOB; end;
+    local path, ftext, fnote = smS._commitTarget('WAR');
+    check('SCT36 a never-seen job gets a sets file', path, P_SETS);
+    local starterNames = 0;
+    for _, nm in ipairs({ 'Idle', 'Tp_Default', 'Resting', 'Movement' }) do
+        if smS.hasSetText(ftext, nm) then starterNames = starterNames + 1; end
+    end
+    check('SCT37 ...holding the four empty base sets', starterNames, 4);
+    check('SCT38 ...and the note says so', tostring(fnote):find('started with the four empty base sets', 1, true) ~= nil, true);
+    -- An old job file to import from still wins: its sets, not the starters.
+    os.remove(P_SETS);
+    local jf = io.open(P_JOB, 'w');
+    jf:write('local sets = {\n    Dynamic = {\n        Nuke = {\n        },\n    },\n};\nreturn sets;\n'); jf:close();
+    local _, itext = smS._commitTarget('WAR');
+    check('SCT39 an old job file is imported, not replaced by the starters',
+        smS.hasSetText(itext, 'Nuke') and not smS.hasSetText(itext, 'Tp_Default'), true);
+    os.remove(P_SETS); os.remove(P_JOB);
+
+    -- THE SHELL, end to end: ui\setcopyto against recording deps.
+    local savedProf, savedSimp, savedAC, savedPrint = package.loaded['dlac\\profiles'],
+        package.loaded['dlac\\gear\\setimport'], AshitaCore, print;
+    package.loaded['dlac\\gear\\setimport'] = simport;
+    local function tmpFor(j) return 'tests/_tmp_sct_' .. j .. '.lua'; end
+    local function oldFor(j) return 'tests/_tmp_sct_old_' .. j .. '.lua'; end   -- a pre-profile <JOB>.lua
+    local loggedIn = true;
+    local CUR = nil;   -- the working set the shell copies (nil = W)
+    package.loaded['dlac\\profiles'] = { JOBS = profReal.JOBS,
+        setsPath = function(j) return loggedIn and tmpFor(j) or nil; end };
+    local function put(p, t) local f = io.open(p, 'w'); f:write(t); f:close(); end
+    put(tmpFor('WAR'), 'local sets = {\n    Dynamic = {\n        Idle = {\n        },\n    },\n};\n');
+    put(tmpFor('MNK'), 'local sets = {\n    Dynamic = {\n        Tp = {\n        },\n    },\n};\n');
+    -- DRK has no profile file but an old job file whose Dynamic block the first
+    -- commit imports; BST's old file has no Dynamic block to import.
+    put(oldFor('DRK'), 'local sets = {\n    Dynamic = {\n        Idle = {\n        },\n    },\n};\nreturn sets;\n');
+    put(oldFor('BST'), 'local profile = {};\nreturn profile;\n');
+    local queued = {};
+    AshitaCore = {
+        GetMemoryManager = function() return { GetPlayer = function() return {
+            GetMainJob = function() return 1; end,                                   -- on WAR
+            GetJobLevel = function(_, id) return (id <= 3) and 75 or 0; end,         -- WAR, MNK, WHM unlocked
+        }; end }; end,
+        GetChatManager = function() return { QueueCommand = function(_, _, c) queued[#queued + 1] = c; end }; end,
+    };
+    local commits, status, statusErr, invalidated, chat = {}, nil, nil, 0, {};
+    print = function(s) chat[#chat + 1] = tostring(s); end
+    local sct = dofile('ui/setcopyto.lua');
+    sct.configure({
+        working  = function() return CUR or W; end,
+        dirty    = function() return false; end,
+        slotsFor = function(w)
+            local out = {};
+            for _, sl in ipairs(SL) do
+                local l = w[sl.label];
+                if type(l) == 'table' and #l > 0 then
+                    local items = {};
+                    for _, it in ipairs(l) do items[#items + 1] = { path = it.rec.Name }; end
+                    out[#out + 1] = { name = sl.label, items = items };
+                end
+            end
+            return out;
+        end,
+        slotLabels = SL,
+        canWear  = function(rec, job) return dispatchM.canWear(rec, job, math.huge); end,
+        setStatus = function(m, e) status, statusErr = m, e; end,
+        setmgr = {
+            hasSetText = smP.hasSetText,
+            jobPath = oldFor,
+            commitSet = function(job, name, slots)
+                commits[#commits + 1] = { job = job, name = name, slots = slots };
+                if job == 'BLU' then return false, 'disk full'; end
+                -- MNK "replaces" too: what a fresh job's commit says when it
+                -- overwrites the empty base set it was just seeded with.
+                return true, (job == 'WAR' or job == 'MNK') and 'replaced' or 'inserted';
+            end,
+        },
+        invalidate = function() invalidated = invalidated + 1; end,
+        esc = function(s) return s; end,
+        COL = {},
+    });
+    local ok, err = pcall(function()
+        sct.open('WHM', 'Idle');
+        local st = sct._state;
+        local byJob = {};
+        for _, row in ipairs(st.rows) do byJob[row.job] = row; end
+        check('SCT40 every OTHER job is offered', #st.rows, 21);
+        check('SCT41 ...never the one the set is on', byJob.WHM, nil);
+        check('SCT42 a job already holding the name reads "replaces"', byJob.WAR.has, true);
+        check('SCT43 a job without it does not', byJob.MNK.has == false and byJob.MNK.fresh, false);
+        check('SCT44 a job dlac has nothing for is fresh', byJob.THF.fresh, true);
+        check('SCT45 rows carry the job level', byJob.WAR.level == 75 and byJob.THF.level, 0);
+        check('SCT45a an old job file holding the name reads "replaces" too',
+            byJob.DRK.has == true and byJob.DRK.fresh, false);
+        check('SCT45b an old job file with no Dynamic block is still fresh',
+            byJob.BST.has == false and byJob.BST.fresh, true);
+        sct._tickMine();
+        check('SCT46 "All my jobs" ticks the unlocked ones',
+            st.marks.WAR[1] == true and st.marks.MNK[1] == true and st.marks.THF[1], false);
+        st.marks.BLU = { true };   -- one ticked by hand, whose write fails
+        sct._apply();
+        local order = {};
+        for _, c in ipairs(commits) do order[#order + 1] = c.job; end
+        check('SCT47 each ticked job is written, in job order', table.concat(order, ','), 'WAR,MNK,BLU');
+        check('SCT48 ...under the SAME name', commits[1].name, 'Idle');
+        local warBody = nil;
+        for _, s in ipairs(commits[1].slots) do if s.name == 'Body' then warBody = s; end end
+        check('SCT49 ...minus what that job cannot wear', warBody ~= nil and #warBody.items == 1 and warBody.items[1].path, 'Field Tunica');
+        check('SCT50 the receipt names where it landed', status:find('Copied "Idle" to WAR, MNK.', 1, true) ~= nil, true);
+        check('SCT51 ...the replaced one', status:find('already on WAR', 1, true) ~= nil, true);
+        check('SCT51a ...and only the one its row warned about (MNK held no "Idle")',
+            status:find('Replaced the "Idle" already on WAR (backed up first).', 1, true) ~= nil, true);
+        check('SCT52 ...and the failure', status:find('FAILED: BLU (disk full)', 1, true) ~= nil, true);
+        check('SCT52a ...which is not an error while others landed', statusErr, false);
+        check('SCT53 ONE chat line for what was left out, landed jobs only',
+            chat[1], '[dlac] Copy "Idle": left out where the job cannot wear it -- Hlr. Bliaut +1 (WAR, MNK).');
+        check('SCT54 the live job was written -> one hot-swap', table.concat(queued, '|'), '/dl sets reload');
+        check('SCT55 the sets cache is dropped', invalidated, 1);
+        -- Only off-job writes: nothing in the engine to reload.
+        queued = {}; commits = {};
+        st.marks = { MNK = { true } };
+        sct._apply();
+        check('SCT56 no live job written -> no reload', #queued, 0);
+        -- Nothing ticked is refused, not written.
+        commits = {};
+        st.marks = {};
+        sct._apply();
+        check('SCT57 nothing ticked writes nothing', #commits, 0);
+        check('SCT58 ...and says what to do', status == 'Tick at least one job first.' and statusErr, true);
+        -- A job that can wear NONE of the set is skipped, never written empty
+        -- (it would wipe that job's own "Idle").
+        CUR = { Body = { whmBody } };
+        commits, chat = {}, {};
+        st.marks = { MNK = { true } };
+        sct._apply();
+        check('SCT58a nothing wearable -> nothing written', #commits, 0);
+        check('SCT58b ...and the receipt says why',
+            status == 'Nothing copied -- none of "Idle" is wearable on the ticked job.' and statusErr, true);
+        -- Mode gates are named for the pieces that went, not for left-out ones.
+        CUR = { Body = { { rec = whmBody.rec, mode = 'DT' }, allBody } };
+        commits, chat = {}, {};
+        st.marks = { MNK = { true } };
+        sct._apply();
+        local modeLine = false;
+        for _, s in ipairs(chat) do if s:find('only under a Mode', 1, true) then modeLine = true; end end
+        check('SCT58c a gate only on a left-out piece is not named', #commits == 1 and modeLine, false);
+        CUR = { Body = { { rec = allBody.rec, mode = 'DT' } } };
+        commits, chat = {}, {};
+        st.marks = { MNK = { true } };
+        sct._apply();
+        check('SCT58d a gate on a piece that went is named',
+            chat[1], '[dlac] Copy "Idle": 1 piece equips only under a Mode (DT) -- on a job without that Mode it never equips.');
+        CUR = nil;
+        -- Not logged in: no rows, a reason.
+        loggedIn = false;
+        sct.open('WHM', 'Idle');
+        check('SCT59 logged out -> no rows and a reason',
+            #sct._state.rows == 0 and tostring(sct._state.err):find('Log in first', 1, true) ~= nil, true);
+        loggedIn = true;
+    end);
+    check('SCT60 the shell ran without throwing', ok and true or tostring(err), true);
+    print = savedPrint;
+    AshitaCore = savedAC;
+    package.loaded['dlac\\profiles'], package.loaded['dlac\\gear\\setimport'] = savedProf, savedSimp;
+    for _, j in ipairs(profReal.JOBS) do os.remove(tmpFor(j)); os.remove(oldFor(j)); end
+
+    -- THE POPUP'S STACKS: a push left open is native UB no pcall catches (the
+    -- floatgear crash). Counted against a stub imgui, popup shut and open.
+    local depth = { col = 0, popup = 0 };
+    local popupOpen = false;
+    local IM = setmetatable({}, { __index = function() return function() return false; end; end });
+    IM.PushStyleColor = function() depth.col = depth.col + 1; end
+    IM.PopStyleColor  = function(n) depth.col = depth.col - (tonumber(n) or 1); end
+    IM.BeginPopup = function() if popupOpen then depth.popup = depth.popup + 1; end return popupOpen; end
+    IM.EndPopup   = function() depth.popup = depth.popup - 1; end
+    IM.GetCursorPosX = function() return 8; end
+    local savedIm, savedCol = package.loaded['imgui'], ImGuiCol_Text;
+    package.loaded['imgui'] = IM;
+    ImGuiCol_Text = 0;
+    local sctR = dofile('ui/setcopyto.lua');
+    package.loaded['imgui'] = savedIm;
+    AshitaCore = { GetMemoryManager = function() return { GetPlayer = function() return {
+        GetMainJob = function() return 1; end, GetJobLevel = function(_, id) return (id <= 3) and 75 or 0; end,
+    }; end }; end };
+    package.loaded['dlac\\profiles'] = { JOBS = profReal.JOBS, setsPath = function(j) return tmpFor(j); end };
+    sctR.configure({ working = function() return W; end, dirty = function() return false; end,
+        slotsFor = function() return {}; end, slotLabels = SL, canWear = function() return true; end,
+        setStatus = function() end, setmgr = { hasSetText = smP.hasSetText, commitSet = function() return true, 'inserted'; end },
+        invalidate = function() end, esc = function(s) return s; end,
+        COL = { DIM = {}, ERR = {}, WANT = {}, UNOWN = {} } });
+    local okR1 = pcall(sctR.render);
+    check('SCT61 a shut popup renders', okR1 and depth.popup == 0 and depth.col, 0);
+    sctR.open('WHM', 'Idle');
+    sctR._tickMine();
+    popupOpen = true;
+    local okR2 = pcall(sctR.render);
+    check('SCT62 the open popup renders every row', okR2, true);
+    check('SCT63 ...its colour pushes balanced (dimmed locked jobs)', depth.col, 0);
+    check('SCT64 ...and BeginPopup/EndPopup balanced', depth.popup, 0);
+    -- A body that throws still reaches EndPopup.
+    sctR.configure({ COL = nil, esc = function(s) return s; end });
+    local okR3 = pcall(sctR.render);
+    check('SCT65 a throwing body still closes the popup', okR3 and depth.popup, 0);
+    ImGuiCol_Text = savedCol;
+    AshitaCore = savedAC;
+    package.loaded['dlac\\profiles'] = savedProf;
+
+    -- gearui's end of the wire. Source pins (the Sets tab render has no drive):
+    -- a renamed id or a dropped call is a menu item that does nothing, silently.
+    local f = io.open('ui/gearui.lua', 'r');
+    local src = f and f:read('*a') or ''; if f then f:close(); end
+    check('SCT66 Manage... offers Copy to', src:find("Selectable('Copy to...##smg_copyto')", 1, true) ~= nil, true);
+    check('SCT67 ...which opens the module on the tab\'s job and set',
+        src:find("require('dlac\\\\ui\\\\setcopyto').open(job, nm)", 1, true) ~= nil, true);
+    check('SCT68 the popup is drawn in the tab\'s window scope', src:find('if okc and type(sct) == \'table\' then sct.render(); end', 1, true) ~= nil, true);
+    check('SCT69 the module is handed the commit builder',
+        src:find('slotsFor   = buildCommitSlots,', 1, true) ~= nil
+        and src:find('local function buildCommitSlots(working)', 1, true) ~= nil, true);
+    check('SCT70 ...and the JOB half of the wear gate',
+        src:find('gearOracle.canWear(rec, job, math.huge)', 1, true) ~= nil, true);
 end)();
 
 -- The warm-note artifact the dispatch-driving sections leave behind (dataDir

@@ -10886,3 +10886,326 @@ the cache from the layout read was considered and not taken: it would widen
 what counts as a verified copy in the cache that duplicate-item safety relies
 on, to save one round trip. Tests GVI21-GVI28b; all ten deliberate breaks
 caught.
+
+## 2026-10-13: the frame stutter (`2026.10.13a`)
+
+Henrik's report: friends unloading addons one at a time found dlac makes the
+game stutter, plainly visible in TrueFPS's frame graph and gone when dlac
+unloads; the suspicion was AutoAcc. Before reading code for a theory, the
+session built `tests/perf/frame_profile.lua`: the whole addon booted headless
+against a fake Ashita, a scratch copy of a real character folder and a virtual
+clock, driving frames and packets and reporting, per handler, time, Lua
+allocation, file opens by path and AshitaCore calls by call site.
+
+**The cause was not AutoAcc.** Every Default pass (each outgoing packet chunk
+plus the 0.4 s tick, about six a second) ends in `equipengine.bufferFlush`, and
+its `liveSnapshot` walked every slot of the nine equip bags on every pass: a
+GetContainerItem per slot, then GetItemById, the Name table the binding builds
+on each access and a `string.lower` for every item, before anything asked
+whether something had to move. Almost always nothing did. With full wardrobes
+(720 items) that was ~1450 C++ calls and a few hundred KB of garbage per pass,
+landing in the frames the chunks land in: a comb of spikes at the chunk
+cadence. It dates from the native engine (2026-07-23) and grows with the
+wardrobes, which is why the players with the most gear saw it first.
+
+- **equipengine, worn view first.** `equipcore.planSet` now marks `allWorn`
+  when the worn slots alone satisfy it, and the bag walk runs only without it.
+  Never plain `satisfied`: an EMPTY item list says that too, when nothing can be
+  located. The first cut tested `satisfied` and quietly stopped equipping
+  anything; the harness caught it (no 0x051 at login), and EQF3 pins it. Item
+  names are memoized by id inside the walk (dispatch's bagCounts already did),
+  so GetItemById is asked for the wanted pieces only.
+- **equipengine, no fruitless re-walk.** An entry the bags cannot fill (a piece
+  in storage, a second copy you do not own, gear above a level sync) kept
+  `allWorn` false for good, and every pass walked every bag to send nothing. The
+  combat profile on a real RDM set (one Spike Earring for two ear slots) did 6.4
+  walks a second. A walk that found nothing is now not repeated for the same
+  request, worn view, job, level and bags. Inventory packets (0x01D, 0x01E,
+  0x01F, 0x020, 0x050, the 0x00A zone-in) bump a generation; nothing is cached
+  within `INV_SETTLE_S` (1 s) of one, because the client may not have applied it
+  to memory yet; `REWALK_S` (3 s) bounds the trust.
+- **digstorage / helmstorage:** the ten-a-second tick no longer walks bag 0
+  when nothing is owed.
+- **AutoAcc (the suspect, a smaller cost):** `setBonus` walked all 126 AXI gear
+  sets and their 804 pieces for each of 16 slots, four times per decision. A
+  piece -> sets index makes a recompute ~12x cheaper (1.24 ms -> 0.1 ms in Lua
+  5.4). Only players with AutoAcc pieces in their sets ever paid it.
+- **The AXI wire log** (`debug\gear-vault-wire.log`) created its folder and
+  opened, appended to and closed the file on every request, reply and push. The
+  lines now collect, stamped when their event happened as before, and reach the
+  file together at most 2 s later and at unload.
+
+Harness, 720 bag items, idle WHM, before -> after: GetItemById 4491/s -> 63/s,
+GetContainerItem 5970/s -> 782/s, Lua garbage 2965 -> 707 KB/s, frames carrying
+2 ms or more of dlac 119 -> 29 of 2400. Combat RDM: GetItemById 1625 -> 25/s,
+GetContainerItem 2856 -> 674/s. The fake API is nearly free, so the harness's
+milliseconds understate the game; its call counts are the in-game cost.
+
+Measured and left as follow-ups (smaller): `dispatch.bagCounts` still walks the
+bags once a second (720 GetContainerItem, names memoized) for the arbiter's
+availability read; about twenty small state-file reads a second remain from
+the two-state era (craftstate, helmstate and the rest once a second each, the
+trigger file twice, once inside `triggersPath` only to test that it exists, the
+lockstyle files, the debug handoffs); and the 5 s setup beat reads `gear.lua`,
+the sets file and the trigger file in full only to see that they exist. On
+Henrik's machine a small file read costs ~51 us, a missing file ~14 us, a
+wire-log append ~186 us.
+
+Tests: EQF1-EQF11 (`run_tests`: a settled pass reads the two worn pieces and no
+bag; the move still goes out; a second walk asks GetItemById a handful of
+times; a fruitless walk is not repeated until an inventory packet or
+`REWALK_S`; nothing is cached inside the settle window; the ring that arrives
+goes on), the digstorage and helmstorage idle-tick checks, AA-34 (the set-bonus
+rule, and no full-table walk per outfit), and the wire-log batch check in
+`gearvault_instances`. Each was run against the old code and goes red; the two
+quiet-cache mutations (no skip, no settle window) are each caught. **Field check
+owed:** TrueFPS before and after with full wardrobes, idle and in a fight.
+
+## 2026-10-13: the bags are kept (`2026.10.13b`)
+
+Henrik, reading the 13a report: "Why does it need to check EVERYTHING all the
+time? Should cache it and only check if something arrives into inventory."
+Right, and 13a had only trimmed the habit: the walk still ran whenever
+something had to move, once a second in `dispatch.bagCounts`, and again
+whenever the quiet cache's 3 s trust ran out. The bags never change behind the
+client's back. The server reports every item it adds, moves, re-flags or uses
+up with a packet that names the container and slot (the AscensionXI server's
+`src/map/packets/s2c`): `0x01E` ITEM_NUM, `0x01F` ITEM_LIST (an equip re-flags
+the pieces with one, from `flushEquipChanges`), `0x020` ITEM_ATTR, `0x050`
+EQUIP_LIST. It resets them wholesale with the `0x00A` zone-in and `0x01C`
+sizes; `0x01D` ITEM_SAME carries no content.
+
+- **`feature/bagindex.lua`:** one walk, then only the slot a packet names is
+  read again, on the next ask. A read within `SETTLE_S` (0.25 s) of a packet is
+  used but stays marked, because Ashita hands packets over before the client
+  applies them. An empty walk is never kept (char select, mid-zone). Entries
+  never change once linked, so the engine keeps its planSet view on each.
+- **equipengine:** the worn view reads WHERE each piece sits (one call a slot)
+  and takes WHAT sits there from the index; the bag lookup and the trust stamps
+  come from the index too. Item gates are memoized per id (resources and the
+  catalog are fixed for a session). The 13a quiet-walk cache is gone, with
+  nothing left for it to save.
+- **The safety net:** before a plan goes out, every slot it equips FROM is read
+  once more. A piece that is not where the index put it means a packet the index
+  never saw: `invalidateAll()`, one re-walk, a re-plan. So a missed packet costs
+  a walk, never a wrong piece (EQF10, with the piece moved behind its back).
+- **dispatch.bagCounts** answers from the index (its live tables plus a version;
+  the apostrophe alias memo keys on it). The per-second walk is gone, and every
+  answer is as fresh as a walk, so `fresh` has nothing left to force.
+
+Harness, 60 s, 720 bag items, the same settings for all three builds (the
+profiler now also sends the server's equip replies):
+
+| | `main` 261bd10 | 13a | 13b |
+|---|---|---|---|
+| idle: frames with >= 4 ms of dlac | 361 / 3600 | 61 | 1 |
+| idle: GetContainerItem / GetItemById per s | 5993 / 4490 | 782 / 62 | 0 / 0 |
+| idle: Lua garbage | 13.8 MB/s | 1.67 MB/s | 0.60 MB/s |
+| combat RDM: frames >= 4 ms | 135 | 41 | 1 |
+| combat RDM: GetContainerItem / GetItemById per s | 2970 / 1667 | 723 / 25 | 40 / 0 |
+
+The 40/s left in combat is the Gear Vault's worn-item reads (`gearoracle`), not
+the bags. Gear decisions are unchanged: the packets each build sent in the same
+runs match.
+
+**The one frame left at >= 4 ms** (9 ms in the harness, once a minute, on
+AscensionXI) is the Gear Vault's usage beat. Every 60 s it stamps the worn
+pieces with the time, which dirties `gearvault_usage.lua`, and the save then
+runs `safewrite.replaceLua`: three compiles, a write, a remove and a rename on
+the main thread. Not changed here. The usage state also loads once per session
+and saves into whichever character dir is current, which looks able to carry one
+character's stamps into the next after a character swap. Look at that before
+changing the save cadence.
+
+Tests: BIX1-BIX21 (each layout re-reads exactly its slot; non-equip bags, the gil
+slot, unequips and ITEM_SAME cost nothing; counts and the version follow a count
+change, an emptied slot and a move; the timing rule; zone-in / sizes / a torn
+packet walk again; empty never kept; unreadable is nil; dispatch counts through
+the index; the bag lists agree). EQF rewritten for the kept index: one walk at
+the first pass, then 0 reads settled; a move costs the safety net's 1 read; an
+arriving piece costs its own slot; the safety net heals a silent move. Suites
+whose fake bags change without packets set `_walkEveryAsk` (`run_tests`,
+`custom_equipment`); `idle_weapon_report` swaps client resources between
+"sessions" and resets the index with them. Seven mutations were each caught: no
+safety net, no settle window, a wrong 0x01F offset, no entry reuse, an empty walk
+kept, walk every ask, and no bag filter. **Prod:** copied to
+`C:\AscensionXI-Prod` on Henrik's ask for a TrueFPS check (see the memory note
+for the backup). **Field check owed:** TrueFPS idle and in a fight.
+
+## 2026-10-13: dlac times its own frames (`2026.10.13c`)
+
+The first field round on 13b came back from Abraxis, a friend who can make the
+stutter happen every time: "might be a bit better, but he's still getting em,
+way worse than us". His `/dl report` showed the gear engine nearly idle (4
+decisions in 131 s), and the harness, booted with his settings (dancer, the
+Arbiter Monitor open, his 18 KB Gear Vault usage file), puts 13b at about
+0.1 ms of dlac Lua per frame on Henrik's machine, with one spike a minute. What
+is left is on HIS machine: a slow disk, an antivirus that scans the files dlac
+opens (about 22 small reads a second are still polled), a slower CPU, or the
+game loading a gear model from disk after a swap, which is not dlac's Lua at
+all. A harness cannot see any of that, so the measurement moves to the player.
+
+- **`/dl perf [seconds]`** (`feature/frameprof.lua`; 60 s by default, 10-300,
+  `/dl perf stop` finishes early) records, for every frame: the frame time,
+  present to present, by QueryPerformanceCounter (the number TrueFPS draws);
+  dlac's own time inside it, per event handler; every file operation dlac made,
+  timed, including the close of a written file, where antivirus scanners do
+  their work; the Lua heap (a fall = a collection cycle ended); and the gear
+  packets on the wire. It writes one file per run,
+  `debug\dlac-perf-<Name>-<date>-<time>.txt` (idle and a fight side by side). The
+  top of the file counts, of the hitches, how many dlac's own code explains,
+  how many followed a gear packet, how many had a collection or a slow file
+  operation in them, and how many were slow somewhere else. Chat gets the same
+  verdict in two lines.
+- **How it sees every handler:** `dlac.lua` installs it before anything
+  registers an event. It wraps `ashita.events.register` for dlac's Lua state,
+  and `io.open`, `loadfile`, `dofile`, `os.remove`, `os.rename` and
+  `ashita.fs.*`, so a module that copied one into a local at load time copied
+  the wrapper. Disarmed, a wrapper is one table read and a tail call. A nested
+  handler (a print raising `text_in`) counts once in its frame. The profiler's
+  own hooks register on the real function, so they never appear in its table.
+
+Tests: FPR1-FPR16 (disarmed costs nothing and passes arguments and returns
+through; armed times every handler and file operation by path, including a
+written file's close; a nested handler counts once; an error propagates and the
+next frame heals the depth; an off-thread call is counted; a heap fall is a
+collection; the four kinds of hitch are each named; the commands parse; the
+wrappers come off). The harness takes `perf=<s>` to run `/dl perf` through the
+whole addon, and `flags=` / `overlay=` to load a field report's settings and
+state files.
+
+## 2026-10-13: what /dl perf found (`2026.10.13d`)
+
+Abraxis's first `/dl perf` (RDM20 in a fight, 60 s): median frame 16.6 ms, 18
+hitches a minute, dlac at 0.94 ms per frame on average -- about ten times the
+harness. On his machine every file WRITE cost 1.5 to 10 ms (reads stayed under
+0.1 ms), which reads as an antivirus scanning each written file. Three things
+were writing, or spending, inside frames:
+
+- **The gear library sync after every gear swap.** `gearui` scheduled the
+  debounced sync on `0x020` AND `0x01D`. The server sends `0x01D` ITEM_SAME
+  after EVERY equip (AscensionXI's `flushEquipChanges`; LSB the same) and it
+  names nothing, so a fight's swaps kept re-running the whole sync -- every
+  container walked, the automations manifest rebuilt and `autogear.lua`
+  written: his 21 and 55 ms frames. Now only `0x020` ITEM_ATTR, which names an
+  item, schedules it. The harness with an `0x01D` every 7 s: 13c 31-38 ms frames
+  and 4.3 MB of garbage per sync; 13d none.
+- **`firedstate.lua` on every decision.** The Trigger Monitor's mirror was
+  written once per pass that fired something (55 times a minute in his fight,
+  2-10 ms each) and streamed to the monitor as a `/dlacmonev` chat command --
+  plumbing from the two-Lua-state era. The monitor now reads the engine's ring
+  in memory (`dispatch.getFired`); the file is written once, at unload, so the
+  next load's monitor still shows what fired last.
+- **The Gear Vault usage save every minute.** The usage beat re-stamped every
+  worn piece each minute, so the file was always dirty and `safewrite` (three
+  compiles, a write, a remove and a rename) ran every minute: an 18 ms frame for
+  him. `usage.stampWorn` stamps a piece only once its stamp is an hour old -- the
+  oldest-first ranking it feeds works in days. Harness, 180 s idle: 13c saved at
+  45, 105 and 165 s; 13d once, at 45 s.
+
+`/dl perf` itself: the "collection cycles" count was really counting the frames
+where the collector freed memory (225 in his minute), and now says so; each
+handler gets a KB/s column -- what it allocated, the collector's workload.
+
+**The harness had never drawn a window.** dlac's modules get imgui through
+`require('imgui')`, and nothing registered the harness's fake for it, so every
+window was skipped -- the gear UI measured at ~25 us a frame. With the fake
+registered (`ui=0` restores the old behaviour) the gear float and the TP float
+cost ~480 us a frame and 3.6 MB/s of garbage here -- Abraxis's machine showed
+630 us and 3.1 MB/s. `imcount=1` counts the imgui calls: 512 a frame, 340 of
+them `PushStyleColor` (one theme bracket per window), and 421 AshitaCore calls a
+frame -- the worn-gear door read 33 times a frame, the character folder rebuilt
+22 times. That is the next round. The harness also replies to an equip the way
+the AscensionXI server does now (`0x050` + `0x051` per slot, `0x01F` per piece,
+then `0x01D` twice and the spell and ability lists), takes `every=<id>:<s>` for a
+timed incoming packet and `install=<root>` to run another checkout against the
+same characters.
+
+Not dlac's Lua, and not changed here: 9 of his 15 slowest frames came right
+after a swap's server reply -- per changed slot an `0x050` and an `0x051`
+(the appearance, after which the client rebuilds the model), then the spell and
+ability lists, every swap. One appearance packet per flush would be the
+server's half of that.
+
+Tests: FPR17 (allocation per handler), FIR1-FIR7 (the ring in memory, written at
+unload only, no stream left, the sync keyed on `0x020` alone, the usage beat
+through `stampWorn`), USG7a-USG7f (the hour rule).
+
+## 2026-10-13: the floating windows cost half (`2026.10.13e`)
+
+Henrik: "having DLAC enabled, we lose 10 FPS, that's quite a lot." Abraxis's
+second `/dl perf` (13d): no dlac spike left over 8 ms, but dlac still ran 0.81 ms
+in EVERY frame -- three quarters of it `gearui-render`, the gear float and the
+TP float (596 us a frame, 2.3 MB/s of garbage). With the harness finally drawing
+windows (13d), the same two floats here: 478 us a frame, 417 AshitaCore calls
+and 512 imgui calls a frame. Most of it re-asked the game for things that
+change only when a packet says so:
+
+- **The theme, once a frame.** Each window pushed the whole theme (34 colours)
+  and popped it again -- the tray's and the job-helper floats' even when they
+  drew nothing: 340 `PushStyleColor` a frame. `uistyle.frameBegin/frameEnd`
+  wraps the present hook; inside it the first `push()` puts the theme on, every
+  other returns false, a pop matching a skipped push is a no-op, and frameEnd
+  pops once. (The module's own header always said "pushed once per frame".)
+- **The worn view is kept** (`gearoracle.wornItem`, asked 33 times a frame):
+  each slot's answer is kept until `0x050` names the slot, a zone (`0x00B` /
+  `0x00A`) resets them all, or an item packet (`0x01E/0x01F/0x020`) names the
+  worn piece's bag slot -- then read live through the settle window, as
+  `feature\bagindex` does. One slot every 0.5 s is read live anyway, the net
+  under a packet nobody listed. Nothing is kept until the hook has heard a
+  packet, so a caller with no wire (every headless suite) reads live as before.
+- **The identity is kept** (`profiles` charIdentity, behind every state-file
+  path, asked 22 times a frame): kept once read, read live for 3 s after a
+  zone-in (a login is one), re-checked live once a second (a logout empties the
+  name and must stop the writes). The install path and the folder strings are
+  kept with it.
+- **One player snapshot per drawn frame for the windows**
+  (`gData.GetPlayerFrame`, ~20 C++ reads each): the engine still calls
+  `GetPlayer`, fresh, at every decision.
+- **The slot grid** pushes its faded button colours once per grid, not per slot,
+  and stops building the same icon-geometry tables sixteen times a frame.
+- **The WHM flower gauge** read the player and copied the buff list every
+  frame, for every job, to learn it was not a WHM: now once a second, and only
+  a WHM's buffs are copied.
+
+Harness, 60 s, the two floats drawn: dlac 0.59 -> 0.34 ms a frame, the gear UI
+478 -> 236 us, garbage 3.1 -> 1.4 MB/s, AshitaCore calls 28,048 -> 8,516 a
+second, imgui calls 512 -> 194 a frame.
+
+Not in Lua and not measured by `/dl perf`: Ashita calling each of dlac's ~40
+present handlers and ~25 packet handlers (a C++ to Lua crossing each), and
+ImGui turning the windows into draw calls. One registered handler per event,
+dispatching to dlac's own list, would be the next step on the first.
+
+Tests: PFU0-PFU16 (the bracket pushes once and stays balanced either way a
+caller pops; the worn view kept, re-read on its own slot's equip, its bag
+slot's item packet and a zone, the net's one slot a beat, never keeping an
+unreadable slot; the identity kept, re-checked, ended by a logout, re-read at a
+zone-in; one snapshot per frame), and the gauge suite's Warrior-once-a-second.
+
+## 2026-10-14: Sets tab, Copy to other jobs (`2026.10.14a`)
+
+Henrik: "In sets, we have a "Copy From..", I want to add "Copy To..." where you
+copy that set to other jobs, when you click that, get a list of jobs that you
+wanna copy the set to, so it's easy to bring general sets to every job you have."
+
+**Manage... > Copy to...** opens the other 21 jobs in three columns, each with its
+level; **All my jobs** ticks every unlocked one. **Copy to N jobs** writes the
+selected set into each ticked job under the same name, with the Commit button's
+backup and parse check. A job that already has a set of that name says
+`replaces` before you tick it, and its set is replaced. Gear a job cannot wear is
+left out of that job's copy and named in ONE chat line (piece, then the jobs it
+was left out of); Mode gates travel as written and get their own line, since
+Modes live per job. Only a write to the job you are on reloads the engine.
+
+A job dlac has never seen now starts its sets file with the four empty base sets
+before the copy lands. A first commit used to create a bare file, which Setup's
+seeder then treats as the player's own and never fills, so the job's starter
+triggers would point at four missing sets on its first visit. Same fix for a
+commit made while browsing another job.
+
+Tests: SCT1-SCT70 (the per-job filter, Mode gates, the pooled chat line and the
+receipt; `hasSetText`; the first-commit seed and the old-job-file import that
+still wins over it; the module driven end to end against recording deps; the
+popup's colour and popup stacks balanced, a throwing body included; gearui's
+wiring as source pins).

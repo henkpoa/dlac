@@ -66,18 +66,52 @@ add(ImGuiCol_ResizeGripActive,     { 0.50, 0.50, 0.58, 0.90 });
 add(ImGuiCol_TextSelectedBg,       { 0.30, 0.40, 0.60, 0.55 });
 
 -- Push the theme; returns true when pushed (pass that to pop). A false return
--- means imgui is unavailable and nothing was pushed.
-function M.push()
-    if not hasImgui then return false; end
+-- means nothing was pushed: imgui is unavailable, or a FRAME BRACKET is open.
+--
+-- THE FRAME BRACKET (2026-10-13, 13e). gearui's present hook draws a dozen
+-- windows, and each pushed the whole theme (34 colours) and popped it again --
+-- ~340 PushStyleColor C++ calls every frame, the tray's and the job-helper
+-- floats' even when they drew nothing (the /dl perf round on a friend's
+-- machine). Inside frameBegin/frameEnd the theme is pushed ONCE, lazily, by
+-- the first push() that asks, and popped once at frameEnd; every push() in
+-- between returns false, and a pop() matching one of those is a no-op, so a
+-- caller written either way stays balanced.
+local _frame = { open = false, pushed = false, skipped = 0 };
+
+local function pushAll()
     for _, s in ipairs(STYLES) do
         imgui.PushStyleColor(s[1], s[2]);
     end
+end
+
+function M.push()
+    if not hasImgui then return false; end
+    if _frame.open then
+        if not _frame.pushed then _frame.pushed = true; pushAll(); end
+        _frame.skipped = _frame.skipped + 1;
+        return false;
+    end
+    pushAll();
     return true;
 end
 
 function M.pop()
     if not hasImgui then return; end
+    if _frame.open and _frame.skipped > 0 then _frame.skipped = _frame.skipped - 1; return; end
     imgui.PopStyleColor(#STYLES);
+end
+
+-- Open the bracket (nothing is pushed until a window asks).
+function M.frameBegin()
+    _frame.open, _frame.pushed, _frame.skipped = true, false, 0;
+end
+
+-- Close it: pop the one push, if any window asked for it. Always call it --
+-- an unbalanced style stack corrupts every OTHER addon's windows too.
+function M.frameEnd()
+    local pushed = _frame.pushed;
+    _frame.open, _frame.pushed, _frame.skipped = false, false, 0;
+    if pushed and hasImgui then imgui.PopStyleColor(#STYLES); end
 end
 
 -- ---------------------------------------------------------------------------

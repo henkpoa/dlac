@@ -4,6 +4,10 @@ table.insert(package.searchers or package.loaders, 1, function(name)
     if rel then return loadfile((rel:gsub('\\', '/')) .. '.lua'); end
 end);
 ashita = { events = { register = function() end } };
+-- The kept bag index (feature\bagindex, 2026-10-13) learns of bag changes from
+-- inventory packets; these fixtures rewrite the fake bags directly, so it walks
+-- on every ask here, as the engine did before it.
+require('dlac\\feature\\bagindex')._walkEveryAsk = true;
 local sp = require('dlac\\gear\\serverpack');
 sp._configLoader = function() return { server = 'ascensionxi' }; end;
 sp.init();

@@ -115,6 +115,25 @@ hosting the engine — is history; see `docs/design/lac-purge-plan.md` and histo
   gate — run it on every touched Lua file. The pure-logic modules
   (utils/gearimport/setmanager cores) are testable without Ashita; add checks when you
   fix behavior there.
+- **Frame budget (stutter reports):** `lua tests\perf\frame_profile.lua` boots the WHOLE
+  addon headless against a fake Ashita, a scratch COPY of a real character folder and a
+  virtual clock, drives frames and packets, and reports per handler: time, Lua
+  allocation, file opens by path and AshitaCore calls (`sites=1` names the call sites,
+  `sample=1` / `alloc=1` say where the Lua time and garbage go; `combat=1 job=RDM`
+  adds spell casts; `bags=560` fills the wardrobes). Manual tool, not CI: Windows only,
+  and the fake API is nearly free, so read API COUNTS, not its milliseconds, as the
+  in-game cost. History: 2026-10-13, "the frame stutter" and "the bags are kept".
+  The rule that came out of it: **never walk the equip bags per pass** — ask
+  `feature\bagindex` (kept, re-read only where an inventory packet lands; see the
+  central-services table in `docs/architecture.md`).
+- **A stutter report gets `/dl perf` first.** The harness measures dlac on this
+  machine; a player's stutter lives on theirs. `/dl perf [seconds]` writes
+  `addons\dlac\debug\dlac-perf-<Char>-<date>-<time>.txt`, one per run: frame times, dlac's own time per
+  frame and per handler, every file operation timed, collections, gear packets,
+  and a block that says how many hitches dlac's own code explains and how many
+  it does not. `feature\frameprof` wraps the event registrar and the file
+  functions at load, so it sees every handler any module registers. A new
+  module needs nothing to be measured.
 - **A player's report is the best evidence you will get.** `/dl report` (or the
   Arbiter Monitor's **[Record a report]**) records up to 5 minutes and writes ONE
   sendable file, `addons\dlac\debug\dlac-report-<Char>.txt`: health verdict, config,
@@ -134,11 +153,17 @@ hosting the engine — is history; see `docs/design/lac-purge-plan.md` and histo
   handler's **WHITELIST**, not just given a branch (v46 printed nothing for exactly that,
   and looked like the command did not exist); and a changed seeded file at an **unmoved
   `M.VERSION`** never loads at all (hard rule 4).
-- **Git:** work on `dev` — **directly, no feature branch** (hard rule, see "Branch model"
-  below); `feature/storage-move` and `feature/autoacc` are **parked local-only archives**
-  (never push, never merge, never check out). Multi-line commit messages: write to a file
-  and `git commit -F` (PowerShell 5.1 mangles embedded quotes in `-m`). Do not push
-  without being asked.
+- **Git: every change lands through a pull request to `main`, the way AscensionXI works**
+  (Henrik, 2026-10-14: *"make it default to create PRs like we do with AXI"*). Work on a
+  topic branch (`claude/<topic>`). Once the work is done and its suites are green, commit,
+  push the branch and open its PR **without asking first**; that is standing permission.
+  It does **not** cover merging. Henrik reviews and merges every PR himself: never
+  `gh pr merge`, never merge or push to `main`, whatever the wording ("merge it", "ship
+  it" and "approved" all mean *open or update the PR and stop*). Keep one task batch on one
+  branch and one PR, and push a fix for an open PR to that PR instead of opening a sibling.
+  This replaces the older dev-only model and the "Ready to merge" queue below, which stay
+  as history. Multi-line commit messages: write to a file and `git commit -F`
+  (PowerShell 5.1 mangles embedded quotes in `-m`).
 - **Merging a branch that predates the folder move: use `-X find-renames=20%`.** Branches
   older than the layout commit still edit the flat root paths. Git's default 50% rename
   threshold silently fails where main also grew the file a lot since the branch forked —
@@ -282,6 +307,9 @@ agent; the per-repo setup lives in `docs/agents/`.
     nothing left to ask about once he has said it). Claude may run the merge and the push
     since 2026-08-01 (`ff92f4e` was the first); older notes below saying the classifier
     refuses both are **historical records of how it was then**, not live procedure.
+    **Superseded 2026-10-14:** work now lands through PRs that Henrik merges (the Git rule
+    under "Environment & workflow"). The `git log` duty stands: check
+    `git log --oneline origin/main..HEAD` and `gh pr list` before saying what is on main.
 
 ## Working with Henrik
 
@@ -312,6 +340,10 @@ agent; the per-repo setup lives in `docs/agents/`.
   that channel (like the word-wrap fix) take priority.
 
 ## Ready to merge (dev → main)
+
+**History since 2026-10-14:** open pull requests are the queue now (`gh pr list`); see the
+Git rule under "Environment & workflow". The section below is kept as the record of the
+dev-era process.
 
 **A queue, not a record.** Everything listed here is committed on `dev`, green on both
 suites, and field-confirmed by Henrik — it waits only on his go-ahead to promote. The agent

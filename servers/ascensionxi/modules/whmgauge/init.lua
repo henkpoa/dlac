@@ -46,15 +46,22 @@ gauge._direct   = function(packet)
     AshitaCore:GetPacketManager():AddOutgoingPacket(wire.PKT, packet);
 end;
 
+-- The buff list only for a WHM (13e): it is a 32-entry copy and a fresh table
+-- per read, and no other job's gauge reads it.
+local NO_BUFFS = {};
 gauge._player = function()
     local out = nil;
     pcall(function()
         local p = AshitaCore:GetMemoryManager():GetPlayer();
-        local buffs = {};
-        for _, id in pairs(p:GetBuffs() or {}) do
-            if type(id) == 'number' and id > 0 and id < 1024 then buffs[id] = true; end
+        local job = p:GetMainJob();
+        local buffs = NO_BUFFS;
+        if job == wire.JOB_WHM then
+            buffs = {};
+            for _, id in pairs(p:GetBuffs() or {}) do
+                if type(id) == 'number' and id > 0 and id < 1024 then buffs[id] = true; end
+            end
         end
-        out = { job = p:GetMainJob(), level = p:GetMainJobLevel(), buffs = buffs };
+        out = { job = job, level = p:GetMainJobLevel(), buffs = buffs };
     end);
     return out;
 end;

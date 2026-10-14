@@ -117,19 +117,103 @@ end
 -- RAW (0/65535 included): each worn reader keeps its own id guard so routing
 -- through the oracle is behaviour-identical to the copies it replaces. Wrapped in
 -- pcall -- a mid-zone GetEquippedItem can be nil (dispatch.lua's zoning guard).
+--
+-- THE WORN VIEW IS KEPT (2026-10-13, 13e). The floats asked this ~33 times a
+-- frame -- three game reads, a closure and a result table each -- for an
+-- answer that changes only when the server says so: EQUIP_LIST (0x050) names
+-- the slot it changed, a zone (0x00B out, 0x00A in) resets them all, and a
+-- worn piece's own data (charges, flags) changes with an item packet naming
+-- its bag slot (0x01E / 0x01F / 0x020). So each slot's answer is KEPT, and
+-- read live again only once such a packet has settled -- Ashita hands a packet
+-- over BEFORE the client applies it (feature\bagindex's rule). Under that,
+-- one slot every WORN_TRICKLE_S is read live anyway: the net under a packet
+-- nobody listed. Nothing is kept until the hook has HEARD a packet, so a
+-- caller with no wire -- every headless suite -- reads live as before. The
+-- kept table is SHARED: read it, never write it. (`cont` / `index` ride
+-- along: where the piece sits, for the item packets.)
+M.WORN_SETTLE_S  = 0.25;
+M.WORN_ZONE_S    = 3;
+M.WORN_TRICKLE_S = 0.5;
+M._clock = os.clock;
+local _worn = { heard = false, kept = {}, liveUntil = {}, at = {}, trickleAt = 0, trickleSlot = 0 };
+
+-- One live read: the answer, and whether the slot was READABLE at all (a
+-- mid-zone GetEquippedItem can be nil -- dispatch.lua's zoning guard -- and
+-- an unreadable slot must never be kept as an empty one).
+local function readWorn(equipSlot)
+    local inv = AshitaCore:GetMemoryManager():GetInventory();
+    if inv == nil then return nil, false; end
+    local eitem = inv:GetEquippedItem(equipSlot);
+    if eitem == nil then return nil, false; end
+    if eitem.Index == 0 then return nil, true; end
+    local cont, slotInCont = M.decodeIndex(eitem.Index);
+    local item = inv:GetContainerItem(cont, slotInCont);
+    if item == nil then return nil, false; end
+    return { id = item.Id, rec = recordFor(item.Id), extra = item.Extra, item = item,
+             cont = cont, index = slotInCont }, true;
+end
+
+local function forget(slot, liveUntil)
+    local k = _worn.kept[slot];
+    if type(k) == 'table' then _worn.at[k.cont * 256 + k.index] = nil; end
+    _worn.kept[slot] = nil;
+    if liveUntil ~= nil then _worn.liveUntil[slot] = liveUntil; end
+end
+
 function M.wornItem(equipSlot)
-    local out = nil;
-    pcall(function()
-        local inv = AshitaCore:GetMemoryManager():GetInventory();
-        if inv == nil then return; end
-        local eitem = inv:GetEquippedItem(equipSlot);
-        if eitem == nil or eitem.Index == 0 then return; end
-        local cont, slotInCont = M.decodeIndex(eitem.Index);
-        local item = inv:GetContainerItem(cont, slotInCont);
-        if item == nil then return; end
-        out = { id = item.Id, rec = recordFor(item.Id), extra = item.Extra, item = item };
-    end);
+    local now = M._clock();
+    local W = _worn;
+    if W.heard and now >= W.trickleAt then            -- the net: one slot a beat
+        W.trickleAt = now + M.WORN_TRICKLE_S;
+        forget(W.trickleSlot);
+        W.trickleSlot = (W.trickleSlot + 1) % 16;
+    end
+    local lu = W.liveUntil[equipSlot];
+    local settled = W.heard and (lu == nil or now >= lu);
+    if settled then
+        local k = W.kept[equipSlot];
+        if k ~= nil then return k or nil; end
+    end
+    local ok, out, readable = pcall(readWorn, equipSlot);
+    if not ok then return nil; end
+    if settled and readable then
+        W.liveUntil[equipSlot] = nil;
+        W.kept[equipSlot] = out or false;
+        if out ~= nil then W.at[out.cont * 256 + out.index] = equipSlot; end
+    end
     return out;
+end
+
+-- The wire: what makes a kept answer stale. packet_in hands the packet over
+-- before the client applies it, so a named slot is read live for the settle
+-- window and kept again after.
+local ITEM_AT = { [0x01E] = 0x08, [0x01F] = 0x0A, [0x020] = 0x0E };   -- container byte; the bag slot follows
+function M.noteIncoming(id, data)
+    local now = M._clock();
+    _worn.heard = true;
+    if id == 0x050 then
+        local slot = (type(data) == 'string' and #data > 5) and string.byte(data, 6) or nil;
+        if slot ~= nil and slot < 16 then
+            forget(slot, now + M.WORN_SETTLE_S);
+        else
+            for s = 0, 15 do forget(s, now + M.WORN_SETTLE_S); end
+        end
+    elseif id == 0x00B then                            -- zoning out: live until the zone-in
+        for s = 0, 15 do forget(s, math.huge); end
+    elseif id == 0x00A then
+        for s = 0, 15 do forget(s, now + M.WORN_ZONE_S); end
+    else
+        local off = ITEM_AT[id];
+        if off ~= nil and type(data) == 'string' and #data > off + 1 then
+            local slot = _worn.at[string.byte(data, off + 1) * 256 + string.byte(data, off + 2)];
+            if slot ~= nil then forget(slot, now + M.WORN_SETTLE_S); end
+        end
+    end
+end
+
+-- Test seam: back to "never heard the wire" (every ask reads live).
+function M._wornReset()
+    _worn = { heard = false, kept = {}, liveUntil = {}, at = {}, trickleAt = 0, trickleSlot = 0 };
 end
 
 -- WHERE the item worn in equipment slot 0-15 sits: container, slot-in-container
@@ -458,6 +542,16 @@ function M.dumpAugments()
     local a = augmod();
     if a == nil or type(a.dumpToFile) ~= 'function' then return nil, nil, nil; end
     return a.dumpToFile();
+end
+
+-- The kept worn view's wire (see wornItem). Guarded: headless suites load this
+-- module with a stub registrar, or none.
+if ashita ~= nil and type(ashita.events) == 'table' and type(ashita.events.register) == 'function' then
+    pcall(function()
+        ashita.events.register('packet_in', 'dlac-oracle-worn', function(e)
+            M.noteIncoming(e.id, e.data);
+        end);
+    end);
 end
 
 return M;

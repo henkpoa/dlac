@@ -46,6 +46,12 @@ local M = {};
 local _eqok, eqc = pcall(require, 'dlac\\gear\\equipcore');
 _eqok = _eqok and type(eqc) == 'table';
 
+-- What the equip bags hold, kept between passes and re-read only where an
+-- inventory packet says something changed (2026-10-13). Guarded: without it
+-- the engine reads the bags live, as it always did.
+local _bok, bagidx = pcall(require, 'dlac\\feature\\bagindex');
+_bok = _bok and type(bagidx) == 'table';
+
 -- The send counter (/dl sends). Guarded like every other peer require: an
 -- absent counter must never cost an equip.
 local _slok, slog = pcall(require, 'dlac\\feature\\sendlog');
@@ -344,8 +350,46 @@ local function equipmentFacts(id, res)
     return records.equipMetadata(catalog[id], res);
 end
 
+-- Item id -> the gates planSet reads. Resources and the shipped catalog are
+-- immutable for the session, so an id pays GetItemById and the catalog merge
+-- once, ever. A nil resource is not remembered.
+local _factsById = {};
+local function factsOf(id, resMgr)
+    local f = _factsById[id];
+    if f ~= nil then return f; end
+    local res = resMgr:GetItemById(id);
+    if res == nil then return nil; end
+    local facts = equipmentFacts(id, res);
+    f = { Level = facts.Level, Jobs = facts.Jobs, Slots = facts.Slots, ResFlags = facts.ResFlags };
+    _factsById[id] = f;
+    return f;
+end
+
+-- The planSet item for one bag-index entry, built once and kept ON the entry:
+-- the index hands out a new entry when its slot changes, so a kept view is
+-- never stale, and planSet never mutates its snapshot, so the worn view and
+-- the bag scan can share it. Rebuilt if the augment reader was wired after,
+-- or if another copy of this module built it (its own facts memo).
+local function viewOf(entry, resMgr)
+    local v = entry.view;
+    if v ~= nil and entry.viewKeyOf == M.augmentKeyOf and entry.viewFacts == _factsById then return v; end
+    if entry.Name == nil then return nil; end
+    local f = factsOf(entry.Id, resMgr);
+    if f == nil then return nil; end
+    v = {
+        Container = entry.Container, Index = entry.Index, Id = entry.Id,
+        Count = entry.Count, Flags = entry.Flags, Name = entry.Name,
+        Level = f.Level, Jobs = f.Jobs, Slots = f.Slots, ResFlags = f.ResFlags,
+        augment = augmentView(entry.Extra),
+    };
+    entry.view, entry.viewKeyOf, entry.viewFacts = v, M.augmentKeyOf, _factsById;
+    return v;
+end
+
 -- The worn view for one slot: the trust window first (packets we just sent
--- outrun the memory view by ~0.2s), then live equipment memory.
+-- outrun the memory view by ~0.2s), then live equipment memory -- WHERE the
+-- piece sits is read every time (one call), WHAT sits there comes from the
+-- bag index, which already knows.
 local function currentEquip(slot, invMgr, resMgr)
     local t = _trust[slot];
     if t ~= nil then
@@ -359,6 +403,16 @@ local function currentEquip(slot, invMgr, resMgr)
         local index = eq.Index % 256;
         if index == 0 then return; end
         local container = math.floor(eq.Index / 256) % 256;
+        if _bok then
+            local entry = bagidx.entryAt(container, index);
+            if entry ~= nil then
+                item = viewOf(entry, resMgr);
+                return;
+            end
+            -- Worn from a slot the index holds as empty: a packet it has not
+            -- seen applied yet. Read it live below, and have the index look.
+            bagidx.touch(container, index);
+        end
         local ci = invMgr:GetContainerItem(container, index);
         if ci == nil or ci.Id == 0 or ci.Count == 0 then return; end
         local res = resMgr:GetItemById(ci.Id);
@@ -387,13 +441,14 @@ function M.currentEquipView(slot)
     return item;
 end
 
--- A full equipcore snapshot from live memory. `wantNames` (set of lowercased
--- names) prefilters the bag scan -- only names the buffer actually asks for
--- are collected, so a cast never pays for the whole inventory.
-local function liveSnapshot(wantNames)
+-- The worn half of an equipcore snapshot: job, level and the 16 worn slots
+-- (trust window first). This is everything equipcore.planSet reads to decide
+-- "already satisfied" -- its items list is only consulted to LOCATE what is
+-- not worn yet. nil when live memory cannot be read.
+local function wornSnapshot()
     local snap = { job = 0, level = 0, disabled = M.state.disabled,
                    encumbered = M.state.encumbered, equipped = {}, items = {} };
-    local okAll = pcall(function()
+    local ok = pcall(function()
         local mm = AshitaCore:GetMemoryManager();
         local invMgr, resMgr = mm:GetInventory(), AshitaCore:GetResourceManager();
         local player = mm:GetPlayer();
@@ -406,6 +461,51 @@ local function liveSnapshot(wantNames)
         for slot = 1, 16 do
             snap.equipped[slot] = currentEquip(slot, invMgr, resMgr);
         end
+    end);
+    if not ok then return nil; end
+    return snap;
+end
+
+-- Item id -> lowercased client name, for the fallback walk below (the bag
+-- index keeps its own). Resources are immutable for the session, so a walk
+-- pays GetItemById -- and the Name table the binding builds on every access
+-- -- once per item ID, ever, instead of once per bag slot per walk. A nil
+-- resource is NOT remembered: it is asked again on the next walk.
+local _nameById = {};
+local function itemName(resMgr, id)
+    local nm = _nameById[id];
+    if nm ~= nil then return nm, nil; end
+    local res = resMgr:GetItemById(id);
+    if res == nil then return nil, nil; end
+    nm = string.lower(res.Name[1] or '');
+    _nameById[id] = nm;
+    return nm, res;
+end
+
+-- The bag half: append every bag item whose name `wantNames` (set of
+-- lowercased names) asks for to snap.items, in scan order -- only names the
+-- buffer actually asks for are collected, so a cast never pays for the whole
+-- inventory. false when memory cannot be read.
+--
+-- From the bag index (feature\bagindex): a lookup per wanted name, no bag
+-- walk -- the index re-reads only the slots inventory packets named. The live
+-- walk below is the fallback: no index, or an EquipBags override the index
+-- does not scan in.
+local function scanBags(snap, wantNames)
+    if _bok and M.SETTINGS.EquipBags == nil then
+        return pcall(function()
+            local resMgr = AshitaCore:GetResourceManager();
+            local entries = bagidx.named(wantNames);
+            if entries == nil then error('bags unreadable'); end
+            for _, entry in ipairs(entries) do
+                local v = viewOf(entry, resMgr);
+                if v ~= nil then snap.items[#snap.items + 1] = v; end
+            end
+        end);
+    end
+    return pcall(function()
+        local mm = AshitaCore:GetMemoryManager();
+        local invMgr, resMgr = mm:GetInventory(), AshitaCore:GetResourceManager();
         -- Bag availability: LAC gates wardrobes 3+ behind retail account-flag
         -- sig-scans -- checks its own comments say "do not work on topaz".
         -- CatsEye is Topaz-lineage: an unavailable container reports max 0 and
@@ -417,14 +517,15 @@ local function liveSnapshot(wantNames)
             local max = invMgr:GetContainerCountMax(container);
             for index = 1, max do
                 local ci = invMgr:GetContainerItem(container, index);
-                if ci ~= nil and ci.Id ~= 0 and ci.Count > 0 then
-                    local res = resMgr:GetItemById(ci.Id);
-                    if res ~= nil then
-                        local nm = string.lower(res.Name[1] or '');
-                        if wantNames == nil or wantNames[nm] then
-                            local facts = equipmentFacts(ci.Id, res);
+                local id = (ci ~= nil) and ci.Id or 0;
+                if id ~= 0 and ci.Count > 0 then
+                    local nm, res = itemName(resMgr, id);
+                    if nm ~= nil and (wantNames == nil or wantNames[nm]) then
+                        res = res or resMgr:GetItemById(id);
+                        if res ~= nil then
+                            local facts = equipmentFacts(id, res);
                             snap.items[#snap.items + 1] = {
-                                Container = container, Index = index, Id = ci.Id,
+                                Container = container, Index = index, Id = id,
                                 Count = ci.Count, Flags = ci.Flags,
                                 Name = nm, Level = facts.Level, Jobs = facts.Jobs,
                                 Slots = facts.Slots, ResFlags = facts.ResFlags,
@@ -436,8 +537,29 @@ local function liveSnapshot(wantNames)
             end
         end
     end);
-    if not okAll then return nil; end
-    return snap;
+end
+
+-- THE SAFETY NET under the bag index: before a plan goes out on the index's
+-- word, every slot it equips FROM is read once more -- a handful of calls,
+-- and only when something is sent. A piece that is not where the index put it
+-- means a packet the index never saw: the caller re-walks and re-plans, so a
+-- missed packet costs one walk, never a wrong piece.
+local function planHolds(plan, snap, invMgr)
+    if not _bok or invMgr == nil then return true; end
+    for _, eq in ipairs(plan.equips) do
+        if eq.Index ~= 0 then
+            local want = nil;
+            for _, it in ipairs(snap.items) do
+                if it.Container == eq.Container and it.Index == eq.Index then want = it.Id; break; end
+            end
+            local ok, holds = pcall(function()
+                local ci = invMgr:GetContainerItem(eq.Container, eq.Index);
+                return ci ~= nil and want ~= nil and ci.Id == want and (tonumber(ci.Count) or 0) > 0;
+            end);
+            if not ok or not holds then return false; end
+        end
+    end
+    return true;
 end
 
 -- ---------------------------------------------------------------------------
@@ -479,7 +601,13 @@ local function stampTrust(stamps, invMgr)
     local now = os.clock();
     for _, s in ipairs(stamps or {}) do
         local entry = { Timer = now + 0.2, Item = nil };
-        if s.Index ~= nil and s.Index > 0 then
+        -- What was just sent sits where the bag index says (the safety net read
+        -- those very slots a moment ago); the live read is the fallback.
+        local kept = (_bok and s.Index ~= nil and s.Index > 0)
+            and bagidx.entryAt(s.Container, s.Index) or nil;
+        if kept ~= nil then
+            pcall(function() entry.Item = viewOf(kept, AshitaCore:GetResourceManager()); end);
+        elseif s.Index ~= nil and s.Index > 0 then
             pcall(function()
                 local ci = invMgr:GetContainerItem(s.Container, s.Index);
                 if ci ~= nil and ci.Id ~= 0 then
@@ -554,27 +682,45 @@ end
 -- Resolve + send the buffered set. One resolution per event, LAC-parity.
 function M.bufferFlush(style)
     if not _eqok then return; end
-    local any = false;
-    for _ in pairs(_buffer) do any = true; break; end
-    if not any then return; end
+    local buf = _buffer;
+    if next(buf) == nil then return; end
 
-    -- prefilter: only names the buffer references get scanned out of bags
+    -- prefilter: only names the buffer references get looked up in the bags
     local wantNames = {};
-    for _, v in pairs(_buffer) do
+    for _, v in pairs(buf) do
         local e = eqc.normalizeEntry(v);
         if e ~= nil and e.Name ~= 'remove' and e.Name ~= 'displaced' then
             wantNames[e.Name] = true;
         end
     end
 
-    local snap = liveSnapshot(wantNames);
+    -- WORN FIRST (2026-10-13, the stutter report). A settled Default -- every
+    -- outgoing chunk plus the 0.4s tick, ~6 a second -- asks for what is
+    -- already on, and planSet's allWorn answer comes from the 16 worn slots
+    -- alone (never plain `satisfied`: that is also what an EMPTY item list
+    -- says when nothing could be located). Only a pass with something to
+    -- move looks in the bags -- and that is the bag index's lookup, not the
+    -- walk over every slot of nine bags that every pass used to pay.
+    local snap = wornSnapshot();
     if snap == nil then return; end
-    local plan = eqc.planSet(_buffer, snap);
+    local plan = eqc.planSet(buf, snap);
+    if plan.allWorn ~= true then
+        if not scanBags(snap, wantNames) then return; end
+        plan = eqc.planSet(buf, snap);
+    end
     M.bufferClear();
     if plan.satisfied then return; end
 
     local invMgr;
     pcall(function() invMgr = AshitaCore:GetMemoryManager():GetInventory(); end);
+
+    if not planHolds(plan, snap, invMgr) then
+        bagidx.invalidateAll();
+        snap.items = {};
+        if not scanBags(snap, wantNames) then return; end
+        plan = eqc.planSet(buf, snap);
+        if plan.satisfied then return; end
+    end
 
     -- The cause every send in this flush is stamped with (/dl sends). The
     -- dispatch point alone answers the field question a raw count cannot:

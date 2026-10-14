@@ -232,4 +232,175 @@ function M.resolveNewSetNames(sources, existing)
     return out;
 end
 
+-- ---------------------------------------------------------------------------
+-- "Copy to" (Henrik 2026-10-14: "copy that set to other jobs ... so it's easy to
+-- bring general sets to every job you have"). ONE set, written into each job the
+-- player ticks, under the same name. The shell -- the job list, the writes, the
+-- chat lines -- is ui\setcopyto; what has no ImGui and no file I/O lives here.
+-- ---------------------------------------------------------------------------
+
+-- The slot label of a slot descriptor ({ label = 'Main' } or a bare string).
+local function labelOf(sl) return (type(sl) == 'table') and sl.label or sl; end
+
+-- The set as ONE target job receives it. A piece that job cannot wear is LEFT OUT
+-- and named: copied as it is, it would sit in the set as a candidate the flatten
+-- still picks (BuildDynamicSets ranks by level and never asks about jobs) and the
+-- server then refuses -- the slot keeps whatever was worn, and nothing says why.
+-- Copy from's law for gear you do not own, applied to gear the job cannot wear:
+-- never a refusal, always said.
+--   working    : the Sets tab's working model (slotLabel -> { entry, ... })
+--   slotLabels : the slot order to walk (EQUIP_SLOTS, or plain label strings)
+--   canWear    : function(rec) -> bool, the TARGET job's gate. A throw or a
+--                non-false answer KEEPS the piece -- fail open, the way
+--                jobCanEquip treats a record with no job list.
+-- Virtual entries (dlac:AutoStaff, dlac:AutoObi, ...) are always kept: the engine
+-- resolves them for the job it is on, at equip time. Candidate ORDER is kept, and
+-- a slot left with nothing is absent.
+-- -> { working, dropped = { 'Name', ... } (distinct, first seen first),
+--      droppedCount = <every entry left out>, slotCount = <slots kept> }
+function M.workingForJob(working, slotLabels, canWear)
+    local out, dropped, seen, droppedCount, slotCount = {}, {}, {}, 0, 0;
+    if type(working) ~= 'table' or type(slotLabels) ~= 'table' then
+        return { working = out, dropped = dropped, droppedCount = 0, slotCount = 0 };
+    end
+    for _, sl in ipairs(slotLabels) do
+        local label = labelOf(sl);
+        local list = (label ~= nil) and working[label] or nil;
+        if type(list) == 'table' then
+            local kept = {};
+            for _, it in ipairs(list) do
+                local rec = (type(it) == 'table') and it.rec or nil;
+                local keep = true;
+                if type(rec) == 'table' and rec.Virtual ~= true and type(canWear) == 'function' then
+                    local ok, yes = pcall(canWear, rec);
+                    keep = not (ok and yes == false);
+                end
+                if keep then
+                    kept[#kept + 1] = it;
+                else
+                    droppedCount = droppedCount + 1;
+                    local nm = (type(rec.Name) == 'string') and rec.Name or nil;
+                    if nm ~= nil and not seen[string.lower(nm)] then
+                        seen[string.lower(nm)] = true;
+                        dropped[#dropped + 1] = nm;
+                    end
+                end
+            end
+            if #kept > 0 then
+                out[label] = kept;
+                slotCount = slotCount + 1;
+            end
+        end
+    end
+    return { working = out, dropped = dropped, droppedCount = droppedCount, slotCount = slotCount };
+end
+
+-- The Mode gates a working set carries: the distinct gate strings ('DT',
+-- 'Weapon:Melee'), first seen first, and how many entries carry one. Modes live
+-- PER JOB ENTRY, so a gated piece copied to a job without that Mode never equips
+-- there -- the copy says so instead of guessing which jobs have which Modes.
+-- An entry's `mode` is one string or a list of them.
+-- -> gates = { 'DT', ... }, count
+function M.modeGates(working, slotLabels)
+    local gates, seen, count = {}, {}, 0;
+    if type(working) ~= 'table' or type(slotLabels) ~= 'table' then return gates, 0; end
+    local function add(m)
+        local s = tostring(m);
+        if s ~= '' and not seen[s] then seen[s] = true; gates[#gates + 1] = s; end
+    end
+    for _, sl in ipairs(slotLabels) do
+        local list = working[labelOf(sl)];
+        if type(list) == 'table' then
+            for _, it in ipairs(list) do
+                local m = (type(it) == 'table') and it.mode or nil;
+                if type(m) == 'string' and m ~= '' then
+                    count = count + 1; add(m);
+                elseif type(m) == 'table' and m[1] ~= nil then
+                    count = count + 1;
+                    for _, x in ipairs(m) do add(x); end
+                end
+            end
+        end
+    end
+    return gates, count;
+end
+
+-- Every job's left-out pieces pooled into ONE chat clause: each piece once, with
+-- the jobs it was left out of, in the order the jobs were written. Twenty jobs
+-- must not print twenty lines.
+--   perJob : ordered { { job = 'WAR', dropped = { 'Name', ... } }, ... }
+--   cap    : pieces named before '(+N more)' (default 8)
+-- -> 'Hlr. Bliaut +1 (WAR, MNK), Cobra Cape (THF)', <distinct pieces>
+--    or nil, 0 when nothing was left out anywhere
+function M.copyToDropNote(perJob, cap)
+    cap = tonumber(cap) or 8;
+    local order, jobsOf = {}, {};
+    for _, pj in ipairs((type(perJob) == 'table') and perJob or {}) do
+        for _, nm in ipairs((type(pj) == 'table' and type(pj.dropped) == 'table') and pj.dropped or {}) do
+            local s = tostring(nm);
+            if jobsOf[s] == nil then jobsOf[s] = {}; order[#order + 1] = s; end
+            local js = jobsOf[s];
+            js[#js + 1] = tostring(pj.job);
+        end
+    end
+    if #order == 0 then return nil, 0; end
+    local parts = {};
+    for i = 1, math.min(#order, cap) do
+        parts[i] = string.format('%s (%s)', order[i], table.concat(jobsOf[order[i]], ', '));
+    end
+    local tail = (#order > cap) and string.format(' (+%d more)', #order - cap) or '';
+    return table.concat(parts, ', ') .. tail, #order;
+end
+
+-- The receipt for the Sets tab's status line.
+--   setName : the copied set
+--   results : ordered { { job, ok, replaced, skipped, err }, ... } -- one per ticked job;
+--             skipped = nothing in the set is wearable there, so nothing was written
+--   leftOut : distinct pieces left out anywhere (copyToDropNote's second value)
+--   dirty   : the copy carried edits the source set has not committed yet
+-- -> text, isErr (an error only when NOTHING landed)
+function M.copyToReceipt(setName, results, leftOut, dirty)
+    local okJobs, replaced, skipped, failed = {}, {}, {}, {};
+    for _, r in ipairs((type(results) == 'table') and results or {}) do
+        if r.skipped then
+            skipped[#skipped + 1] = tostring(r.job);
+        elseif r.ok then
+            okJobs[#okJobs + 1] = tostring(r.job);
+            if r.replaced then replaced[#replaced + 1] = tostring(r.job); end
+        else
+            failed[#failed + 1] = string.format('%s (%s)', tostring(r.job), tostring(r.err or 'unknown'));
+        end
+    end
+    local name = tostring(setName);
+    local text;
+    if #okJobs == 0 and #failed == 0 then
+        text = string.format('Nothing copied -- none of "%s" is wearable on the ticked job%s.',
+            name, (#skipped == 1) and '' or 's');
+    elseif #okJobs == 0 then
+        text = string.format('Nothing copied -- "%s" could not be written anywhere.', name);
+    else
+        text = string.format('Copied "%s" to %s.', name, table.concat(okJobs, ', '));
+    end
+    if #replaced > 0 then
+        text = text .. string.format('  Replaced the "%s" already on %s (backed up first).', name, table.concat(replaced, ', '));
+    end
+    leftOut = tonumber(leftOut) or 0;
+    if leftOut > 0 then
+        text = text .. string.format('  %d piece%s left out where the job cannot wear %s -- see chat.',
+            leftOut, (leftOut == 1) and '' or 's', (leftOut == 1) and 'it' or 'them');
+    end
+    if #skipped > 0 and #okJobs + #failed > 0 then
+        text = text .. string.format('  Skipped %s: none of it is wearable there, so %s set%s stayed as %s.',
+            table.concat(skipped, ', '), (#skipped == 1) and 'its' or 'their',
+            (#skipped == 1) and '' or 's', (#skipped == 1) and 'it was' or 'they were');
+    end
+    if dirty == true and #okJobs > 0 then
+        text = text .. '  Your uncommitted edits went with it.';
+    end
+    if #failed > 0 then
+        text = text .. '  FAILED: ' .. table.concat(failed, '; ') .. '.';
+    end
+    return text, (#okJobs == 0);
+end
+
 return M;

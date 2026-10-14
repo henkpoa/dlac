@@ -352,7 +352,7 @@ local function getSubInfo()
     local sj, slv = nil, 0;
     pcall(function()
         if gData ~= nil and gData.GetPlayer ~= nil then
-            local p = gData.GetPlayer();
+            local p = (gData.GetPlayerFrame or gData.GetPlayer)();
             if p ~= nil then
                 sj  = p.SubJob;
                 slv = p.SubJobSync or 0;
@@ -492,7 +492,7 @@ local function getPlayerInfo()
     local job, level = nil, 0;
     pcall(function()
         if gData == nil or gData.GetPlayer == nil then return; end
-        local p = gData.GetPlayer();
+        local p = (gData.GetPlayerFrame or gData.GetPlayer)();
         if p == nil then return; end
         job = p.MainJob;
         if type(staticMainLevel) == 'number' and staticMainLevel > 0 then
@@ -509,7 +509,7 @@ local function jobHeader()
     local s = '?';
     pcall(function()
         if gData == nil or gData.GetPlayer == nil then return; end
-        local p = gData.GetPlayer();
+        local p = (gData.GetPlayerFrame or gData.GetPlayer)();
         if p == nil then return; end
         local mj  = p.MainJob or '?';
         local mjl = (type(staticMainLevel) == 'number' and staticMainLevel > 0) and staticMainLevel or (p.MainJobSync or 0);
@@ -1097,7 +1097,7 @@ end
 -- the real pairing per cast; the builder never pre-empts it. The only Main
 -- interaction left is the same-name second-copy rule (checked against each
 -- Main plan; an empty Main list checks against none and offers everything).
-local function subFilterAnyMain(cands, mainList, job, level)
+local function subFilterAnyMain(cands, mainList, job, level, availOnly)
     local mains = {};
     if type(mainList) == 'table' then
         for _, it in ipairs(mainList) do
@@ -1113,7 +1113,8 @@ local function subFilterAnyMain(cands, mainList, job, level)
         end
     end
     local sj, slv = getSubInfo();
-    local oc = owned.counts();
+    -- planning: a twin in storage is a second copy, unless "Available only"
+    local oc = availOnly and owned.counts() or owned.totals();
     local out = {};
     for _, r in ipairs(cands) do
         if #mains == 0 then
@@ -1137,11 +1138,16 @@ local PAIR_OF = { Ring1 = 'Ring2', Ring2 = 'Ring1', Ear1 = 'Ear2', Ear2 = 'Ear1'
 
 -- Ids the paired slot already uses that we own only ONE of (so the current slot must
 -- not reuse them). fromSets = read the working set; else read the equipped slot.
-local function pairedBlockedIds(slotLabel, fromSets)
+-- A set is a PLAN, so the builder counts copies owned ANYWHERE: the second Beetle
+-- Ring +1 sitting in the Gear Vault is still a second copy (Henrik 2026-10-14 --
+-- Ring2's list hid it, so the vault engine derived one ring and pulled one).
+-- The equipped path counts bag copies: it equips now. So does the builder when
+-- "Available only" is ticked (availOnly): a twin in storage cannot be worn yet.
+local function pairedBlockedIds(slotLabel, fromSets, availOnly)
     local blocked = {};
     local other = PAIR_OF[slotLabel];
     if other == nil then return blocked; end
-    local oc = owned.counts();
+    local oc = (fromSets and not availOnly) and owned.totals() or owned.counts();
     if fromSets then
         local list = M.working[other];
         if type(list) == 'table' then
@@ -2192,6 +2198,18 @@ local function renderSlotGrid(idPrefix, gridHeight, selectedLabel, getItemId, ge
     if opts.backgroundAlpha ~= nil then imgui.PopStyleColor(); end
     local boxBg = { 0.10, 0.10, 0.13, 1.0 };
     local boxSel = { 0.42, 0.36, 0.16, 1.0 };          -- gold: the slot being edited
+    -- Once per grid, not once per slot (13e): the faded button surfaces are the
+    -- same for all sixteen -- three colours and a border pushed sixteen times a
+    -- frame were ~60 ImGui calls for one look. Same for the icon geometry.
+    local imgSz, uv0, uv1, tint = { IMG, IMG }, { 0, 0 }, { 1, 1 }, { 1, 1, 1, 1 };
+    local boxSz = { BOX, BOX };
+    if opts.backgroundAlpha ~= nil then
+        local alpha = opts.backgroundAlpha;
+        imgui.PushStyleColor(ImGuiCol_Button, { 0.18, 0.18, 0.22, alpha });
+        imgui.PushStyleColor(ImGuiCol_ButtonHovered, { 0.28, 0.28, 0.35, alpha });
+        imgui.PushStyleColor(ImGuiCol_ButtonActive, { 0.35, 0.35, 0.42, alpha });
+        imgui.PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0);
+    end
     for i, sl in ipairs(EQUIP_SLOTS) do
         local selected = (selectedLabel == sl.label);
         local clicked = false;
@@ -2201,18 +2219,13 @@ local function renderSlotGrid(idPrefix, gridHeight, selectedLabel, getItemId, ge
         local box = (opts.boxColorOf ~= nil) and opts.boxColorOf(sl) or nil;
         if box == nil then box = selected and boxSel or boxBg; end
         -- Fade only the button surfaces. Global style alpha would fade the gear
-        -- textures and tooltips too. Scope these overrides to the button itself.
+        -- textures and tooltips too. The faded button colours are pushed once
+        -- around the whole grid (above); the box itself fades per slot.
         if opts.backgroundAlpha ~= nil then
-            local alpha = opts.backgroundAlpha;
-            box = { box[1], box[2], box[3], box[4] * alpha };
-            imgui.PushStyleColor(ImGuiCol_Button, { 0.18, 0.18, 0.22, alpha });
-            imgui.PushStyleColor(ImGuiCol_ButtonHovered, { 0.28, 0.28, 0.35, alpha });
-            imgui.PushStyleColor(ImGuiCol_ButtonActive, { 0.35, 0.35, 0.42, alpha });
-            imgui.PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0);
+            box = { box[1], box[2], box[3], box[4] * opts.backgroundAlpha };
         end
         if handle ~= nil then
-            clicked = imgui.ImageButton(handle, { IMG, IMG }, { 0, 0 }, { 1, 1 }, PAD,
-                box, { 1, 1, 1, 1 });
+            clicked = imgui.ImageButton(handle, imgSz, uv0, uv1, PAD, box, tint);
         else
             local vrec = (hoverRec ~= nil) and hoverRec(sl) or nil;
             local isVirt = (vrec ~= nil and vrec.Virtual == true);
@@ -2223,7 +2236,7 @@ local function renderSlotGrid(idPrefix, gridHeight, selectedLabel, getItemId, ge
                 textColor = { textColor[1], textColor[2], textColor[3], textColor[4] * opts.backgroundAlpha };
             end
             imgui.PushStyleColor(ImGuiCol_Text, textColor);
-            clicked = imgui.Button(isVirt and ('##vbox' .. sl.label) or sl.short, { BOX, BOX });
+            clicked = imgui.Button(isVirt and ('##vbox' .. sl.label) or sl.short, boxSz);
             imgui.PopStyleColor(2);
             if isVirt then   -- the element wheel over the button (virtuals have no texture)
                 pcall(function()
@@ -2232,10 +2245,6 @@ local function renderSlotGrid(idPrefix, gridHeight, selectedLabel, getItemId, ge
                     icons.drawElementWheel(wheel, x + (BOX - wheel) / 2, y + (BOX - wheel) / 2);
                 end);
             end
-        end
-        if opts.backgroundAlpha ~= nil then
-            imgui.PopStyleVar();
-            imgui.PopStyleColor(3);
         end
         -- The X goes on AFTER the button, so it lands over the icon: within one
         -- draw list, later is on top. Same order drawElementWheel relies on.
@@ -2275,6 +2284,10 @@ local function renderSlotGrid(idPrefix, gridHeight, selectedLabel, getItemId, ge
         end
         imgui.PopID();
         if i % 4 ~= 0 then imgui.SameLine(0, gap); end
+    end
+    if opts.backgroundAlpha ~= nil then
+        imgui.PopStyleVar();
+        imgui.PopStyleColor(3);
     end
     imgui.EndChild();
     if opts.tight then imgui.PopStyleVar(2); end
@@ -2813,7 +2826,7 @@ local function previewCctx(mainLevel)
     local isDW = false;
     pcall(function()
         local utils = require("dlac\\utils");
-        local p = gData.GetPlayer();
+        local p = (gData.GetPlayerFrame or gData.GetPlayer)();
         local _, sjL = utils.determineLevels();
         isDW = utils.isDualWieldAvailable(p.MainJob, tonumber(mainLevel) or 0, p.SubJob, sjL) == true;
     end);
@@ -2951,10 +2964,12 @@ local function workingWeightedScore(mainLevel)
 end
 
 -- Build setmanager's ORDERED slots array from the working model (non-empty slots only).
-local function buildCommitSlots()
+-- `working` defaults to the Sets tab's own; "Copy to" passes each job's filtered copy.
+local function buildCommitSlots(working)
+    working = working or M.working;
     local slots = {};
     for _, sl in ipairs(EQUIP_SLOTS) do
-        local list = M.working[sl.label];
+        local list = working[sl.label];
         if type(list) == 'table' and #list > 0 then
             local items = {};
             for _, it in ipairs(list) do
@@ -3080,7 +3095,6 @@ local function autoBuild(job, level)
     -- candidates as if at MAX_LEVEL (item level cap lifted; the JOB restriction inside
     -- candidatesForSlot still applies). Otherwise use the character's real level.
     local useLevel = setBuildLevel(level);   -- "Build as lv.75" lifts the item-level cap
-    local oc = owned.counts();
     local built = {};
 
     -- "Auto-build with gear in storage" (Setting, /dl buildstored, default ON).
@@ -3097,6 +3111,9 @@ local function autoBuild(job, level)
     -- stored), so at char select / headless this is a no-op rather than a set
     -- that suddenly builds empty.
     local storedOK = (sf.flags.buildstored ~= false);
+    -- Copies for the pair rules (Ring1+Ring2 of one Id) follow the same pool:
+    -- a build that plans with stored gear counts the twin in the Gear Vault too.
+    local oc = storedOK and owned.totals() or owned.counts();
     local function inField(cands)
         if storedOK or type(cands) ~= 'table' then return cands; end
         local out = {};
@@ -3775,6 +3792,25 @@ local function copyAsNewSets(job, sources)
         (made == 0));
 end
 
+-- "Copy to" (Manage... > Copy to): the selected set into other jobs. Its own
+-- module (ui\setcopyto -- this chunk sits at the 200-local cap), handed what it
+-- needs once. The wear gate is the JOB half only: a set is a level ladder, so a
+-- piece above the job's level is the ladder's business, not the copy's.
+pcall(function()
+    require('dlac\\ui\\setcopyto').configure({
+        working    = function() return M.working; end,
+        dirty      = function() return _setDirty; end,
+        slotsFor   = buildCommitSlots,
+        slotLabels = EQUIP_SLOTS,
+        canWear    = function(rec, job) return gearOracle.canWear(rec, job, math.huge); end,
+        setStatus  = setStatus,
+        setmgr     = setmgr,
+        invalidate = profsets.invalidate,
+        esc        = fmt.esc,
+        COL        = COL,
+    });
+end);
+
 -- quiet=true (Auto-Build All's loop, Henrik 07-20: "just state how many sets
 -- you've rebuilt, not one line for each"): no per-set status and no per-set
 -- '/dl sets reload' -- the caller queues ONE reload and one summary at the
@@ -4068,15 +4104,18 @@ local function renderAddPopup(job, level)
         ui.addShowAll = ui.addShowAll or { false };
         local wantAll = (ui.addShowAll[1] == true) and has.catalog;
         local cands = candidatesForSlot(gearKey, job, useLevel, wantAll);
+        -- "Available only" (the filter row below) also decides whether a twin in
+        -- storage counts as the second copy of a pair.
+        local availOnly = ui.addAvail ~= nil and ui.addAvail[1] == true;
         if gearKey == 'Sub' then
             -- Full pool (shields/grips + 1H weapons), paired against EVERY Main
             -- plan -- not just the current pick: that pick is mode/level-dependent,
             -- and a mode-gated staff pick would wrongly hide all 1H weapons. Sets
             -- are plans: a 1H off-hand is addable without the DW trait;
             -- BuildDynamicSets decides at equip time (shield = fallback).
-            cands = subFilterAnyMain(subCandidatePool(job, useLevel, wantAll), M.working['Main'], job, useLevel);
+            cands = subFilterAnyMain(subCandidatePool(job, useLevel, wantAll), M.working['Main'], job, useLevel, availOnly);
         end
-        local blocked = pairedBlockedIds(ui.setSelected, true);
+        local blocked = pairedBlockedIds(ui.setSelected, true, availOnly);
         cands = sortForDisplay(cands);
 
         -- Filter row: name search + hide gear parked in unavailable containers
@@ -4096,7 +4135,7 @@ local function renderAddPopup(job, level)
         imgui.SameLine(0, 14);
         imgui.Checkbox('Available only', ui.addAvail);
         if imgui.IsItemHovered() then
-            imgui.SetTooltip('Hide gear parked in a container you cannot equip from\n(the red names -- Safe, Storage, Locker, Satchel...).');
+            imgui.SetTooltip('Hide gear parked in a container you cannot equip from\n(the red names -- Safe, Storage, Locker, Satchel...).\nA piece its partner slot already uses (Ring1/Ring2, Ear1/Ear2,\nMain/Sub) is offered only when the second copy is in your bags too.');
         end
         imgui.SameLine(0, 14);
         imgui.Checkbox('Hide teleport/exp items', ui.addHideTravel);
@@ -4838,6 +4877,16 @@ local function renderSetsTab(job, level)
             ui._copyMarks = {};
             ui._copyFromOpen = true;
         end
+        if imgui.Selectable('Copy to...##smg_copyto') then
+            if M.workingSetName == nil or M.workingSetName == '' then
+                setStatus('No set selected (pick one first).', true);
+            elseif not has.setmgr then
+                setStatus('setmanager unavailable.', true);
+            else
+                local nm = M.workingSetName;
+                pcall(function() require('dlac\\ui\\setcopyto').open(job, nm); end);
+            end
+        end
         if #profsets.staticSetNames() > 0 then
             if imgui.Selectable('Delete static...##smg_dstat') then
                 ui._delStatic = nil;
@@ -4848,7 +4897,7 @@ local function renderSetsTab(job, level)
     end
     imgui.PopItemWidth();
     if imgui.IsItemHovered() then
-        imgui.SetTooltip('Everything that manages the selected set: New, Rename (propagates\neverywhere), Delete, Copy from another set or a legacy one -- old\nFFXI-LAC (Dynamic and static alike) and Ashitacast/LegacyAC XML\n-- and Delete static when legacy static sets are present.');
+        imgui.SetTooltip('Everything that manages the selected set: New, Rename (propagates\neverywhere), Delete, Copy from another set or a legacy one -- old\nFFXI-LAC (Dynamic and static alike) and Ashitacast/LegacyAC XML\n-- Copy to other jobs, and Delete static when legacy static sets are present.');
     end
 
     imgui.SameLine();
@@ -5284,6 +5333,14 @@ local function renderSetsTab(job, level)
         imgui.EndPopup();
     end
 
+    -- Copy to (Manage... > Copy to): the job list lives in ui\setcopyto, which
+    -- reaches its own EndPopup whatever its body does. No closure: this runs every
+    -- frame the tab is drawn.
+    do
+        local okc, sct = pcall(require, 'dlac\\ui\\setcopyto');
+        if okc and type(sct) == 'table' then sct.render(); end
+    end
+
     -- Delete static (Manage... > Delete static): pick a row to arm it, then
     -- the red DELETE confirms -- same backup + Reload-LAC contract as before.
     if ui._delStaticOpen then imgui.OpenPopup('##dlac_delstaticpop'); ui._delStaticOpen = false; end
@@ -5670,10 +5727,15 @@ pcall(function()
     });
 end);
 
--- Any inventory-changing packet (loot, buy, trade, move -- 0x020 item update /
--- 0x01D inventory finish) schedules the debounced sync (see syncflags.lua).
+-- An item arriving, leaving or moving (loot, buy, trade, move: 0x020 ITEM_ATTR,
+-- which names the item) schedules the debounced sync (see syncflags.lua).
+-- NOT 0x01D ITEM_SAME (2026-10-13, 13d): it carries nothing, and the server
+-- sends it after EVERY equip (AscensionXI flushEquipChanges; LSB the same), so
+-- a fight's gear swaps kept re-running the whole sync -- every container walked
+-- plus the automations rebuild and an autogear.lua write: 21-55 ms frames in
+-- Abraxis's /dl perf. Equipping never changes what you own.
 ashita.events.register('packet_in', 'dlac-gearui-invdirty', function(e)
-    if e.id == 0x020 or e.id == 0x01D then
+    if e.id == 0x020 then
         sf.invDirty();
         -- ...and arm the Wishlist's "you got it" check. Hung off THIS signal
         -- rather than a timer: an item landing in your bags is exactly the event
@@ -5772,7 +5834,11 @@ function M.trayTeleportsDraw()
     pcall(renderTeleportsPopup);
 end
 
-ashita.events.register('d3d_present', 'dlac-gearui-render', function()
+-- The frame's body. An M. field, not a chunk local (hard rule 1: this chunk
+-- sits at the 200-local cap); the hook below wraps it in uistyle's FRAME
+-- BRACKET, so the dozen windows it draws push the theme once, not a dozen
+-- times (2026-10-13, 13e).
+M._renderFrame = function()
     cmdq.tick();   -- advance the frame clock, flush due commands
     if (cmdq.frame() % 240) == 0 then owned.resetCache(); end   -- availability heartbeat (~4s):
                                                                 -- container moves recolour live
@@ -6032,6 +6098,15 @@ ashita.events.register('d3d_present', 'dlac-gearui-render', function()
     local themed = style ~= nil and style.push();
     pcall(drawWindow);
     if themed then style.pop(); end
+end;
+
+ashita.events.register('d3d_present', 'dlac-gearui-render', function()
+    local bracket = style ~= nil and type(style.frameBegin) == 'function';
+    if bracket then style.frameBegin(); end
+    local ok, err = pcall(M._renderFrame);
+    -- Closed on every path, an error included: the style stack is shared.
+    if bracket then style.frameEnd(); end
+    if not ok then error(err, 0); end
 end);
 
 -- ---------------------------------------------------------------------------

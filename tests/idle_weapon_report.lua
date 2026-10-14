@@ -6,6 +6,11 @@ table.insert(package.searchers or package.loaders, 1, function(name)
     if rel then return loadfile((rel:gsub('\\', '/')) .. '.lua'); end
 end);
 ashita = { events = { register = function() end } };
+-- The kept bag index (feature\bagindex, 2026-10-13) remembers item names for
+-- the session, as the client's resources never change in one. This replay
+-- swaps them between "sessions" (fresh engines), so each starts a fresh index.
+local bagindex = require('dlac\\feature\\bagindex');
+bagindex._walkEveryAsk = true;
 local sp = require('dlac\\gear\\serverpack');
 sp._configLoader = function() return { server = 'ascensionxi' }; end;
 sp.init();
@@ -35,6 +40,7 @@ AshitaCore = {
 };
 local function equip(name)
     -- Fresh engine bypasses the 0.2s trust window, as the report's four-second rest does.
+    bagindex._reset();
     local engine = dofile('feature/equipengine.lua');
     sent = {};
     engine.equipSet({ Main = name }); engine.bufferFlush('single');
@@ -53,6 +59,7 @@ resources[19977].Jobs = 0;
 resources[19977].Slots = 3;
 assert(equip('Rekindled Sickle') == 1, 'Abraxis resource fixture: catalog equipment must restore the sickle');
 assert(sent[1].bytes[5] == 1 and sent[1].bytes[6] == 0, 'restore the actual sickle in Main');
+bagindex._reset();
 local engine = dofile('feature/equipengine.lua');
 engine.equipSet({ Main = 'Rekindled Sickle' }); engine.bufferFlush('single');
 assert(engine.currentEquipView(1).ResFlags == 0xF840, 'trust view uses corrected equip flag');

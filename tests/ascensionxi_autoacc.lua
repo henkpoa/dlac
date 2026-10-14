@@ -589,5 +589,42 @@ aa.zoneChange();
 check('AA-33 zoning clears the marks', next(aa.report().mispredicted), nil);
 check('AA-33 and the prediction', aa.report().prediction, nil);
 
+-- AA-34: set bonuses, the server's rule -- counted per slot, level-gated,
+-- active from `min`, tiers replace (tiers[min(count, max)]). Pinned when
+-- setBonus moved from a walk over every set for every slot to a piece -> sets
+-- index (2026-10-13, the stutter report: 126 sets and 804 pieces, 16 times per
+-- call, four calls per decision).
+do
+    local savedSets = DATA.gearsets;
+    CATALOG[30001] = { Id = 30001, Name = 'Set Hat', Level = 50, Stats = {} };
+    CATALOG[30002] = { Id = 30002, Name = 'Set Coat', Level = 50, Stats = {} };
+    CATALOG[30003] = { Id = 30003, Name = 'Set Gloves', Level = 80, Stats = {} };
+    local raw = {
+        [1] = { pieces = { 30001, 30002, 30003, 30002 }, min = 2, max = 3,
+                tiers = { [2] = { Accuracy = 5 }, [3] = { Accuracy = 9 } } },
+        [2] = { pieces = { 30002, 30009 }, min = 2, tiers = { [2] = { DEX = 4 } } },
+        [3] = { pieces = { 30001 }, min = 1, tiers = { [1] = { AGI = 1 } } },
+    };
+    local walks = 0;   -- how often anything iterates the whole gear-set table
+    DATA.gearsets = setmetatable({}, { __index = raw,
+        __pairs = function() walks = walks + 1; return next, raw, nil; end });
+    aa.reset();
+    local s = aa._gearSums({ [4] = 30001, [5] = 30002 }, 75, false);
+    check('AA-34 two of a min-2 set give its tier-2 bonus', s.accMod, 5);
+    check('AA-34 a piece listed twice in a set counts once', s.accMod ~= 9, true);
+    check('AA-34 one piece of a min-2 set gives nothing', s.dex, 0);
+    check('AA-34 a min-1 set from one piece', s.agi, 1);
+    s = aa._gearSums({ [4] = 30001, [5] = 30002, [6] = 30003 }, 75, false);
+    check('AA-34 a piece above the level does not count', s.accMod, 5);
+    s = aa._gearSums({ [4] = 30001, [5] = 30002, [6] = 30003 }, 80, false);
+    check('AA-34 at its level it lifts the set to tier 3', s.accMod, 9);
+    walks = 0;
+    for _ = 1, 10 do aa._gearSums({ [4] = 30001, [5] = 30002, [6] = 30003 }, 80, false); end
+    check('AA-34 ten more outfits never walk the whole set table again', walks, 0);
+    DATA.gearsets = savedSets;
+    CATALOG[30001], CATALOG[30002], CATALOG[30003] = nil, nil, nil;
+    aa.reset();
+end
+
 print(('ascensionxi_autoacc: %d passed, %d failed'):format(pass, fail));
 if fail > 0 then os.exit(1); end

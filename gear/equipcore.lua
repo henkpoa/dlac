@@ -37,7 +37,11 @@
 
     PLAN shape (what the resolver returns):
         plan = {
-            satisfied = bool,               -- everything already worn: send nothing
+            satisfied = bool,               -- nothing to send (worn already, or
+                                            -- nothing in snap.items could be located)
+            allWorn   = true|nil,           -- satisfied by the WORN VIEW ALONE:
+                                            -- decided before snap.items is read, so
+                                            -- the shell can skip the bag walk
             conflicts = { { Slot=<0-based worn slot>, Container= }, ... },
             equips    = { { Slot=<0-based>, Index=, Container= }, ... },  -- ordered
             stamps    = { { Slot=<0-based>, Index=, Container= }, ... },  -- trust-window
@@ -257,6 +261,7 @@ function M.planSet(set, snap)
     end
     if allDone then
         plan.satisfied = true;
+        plan.allWorn = true;   -- decided from the worn view alone (snap.items unread)
         return plan;
     end
 

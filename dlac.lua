@@ -18,7 +18,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.10.12d';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.10.14c';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
                                 -- (03f = engine v163: the contest explains its own plan;
                                 --  03g = one floating tray: Teleports + the E-Box crates;
@@ -347,7 +347,53 @@ addon.version = '2026.10.12d';  -- date of the last shipped change (Ashita print
                                 --  login, "Show HELM badge" hides the floating badge;
                                 --  10.12b = Gear Vault: the layout's right-click
                                 --  acts on the first click -- it waits for the
-                                --  copy's location instead of asking for a second)
+                                --  copy's location instead of asking for a second;
+                                --  10.13a = smoother frames: a gear pass with
+                                --  everything already on no longer walks every
+                                --  bag (it did ~6 times a second -- the stutter
+                                --  in frame graphs), a walk that found nothing
+                                --  is not repeated until the bags change, idle
+                                --  dig/HELM movers read no bag, AutoAcc indexes
+                                --  set bonuses, and the AscensionXI wire log
+                                --  writes in batches;
+                                --  10.13b = the equip bags are KEPT: walked once,
+                                --  then only the slot an inventory packet names
+                                --  is read again -- no every-second bag count, no
+                                --  walk per gear swap; a piece about to go on is
+                                --  checked where it sits;
+                                --  10.13c = /dl perf: every frame timed on the
+                                --  player's own machine -- what dlac did in it,
+                                --  the files it touched, gear packets and garbage
+                                --  -- into one file for support;
+                                --  10.13d = a gear swap no longer re-runs the
+                                --  gear library sync (the packet after every
+                                --  equip carries nothing), the Trigger Monitor
+                                --  reads what fired from memory instead of a file
+                                --  written on every decision, and the Gear Vault
+                                --  stamps a worn piece once an hour, not once a
+                                --  minute -- the three biggest spikes /dl perf
+                                --  found on a friend's machine;
+                                --  10.13e = the floating windows cost half: the
+                                --  theme goes on once a frame instead of once per
+                                --  window, what you wear and who you are are KEPT
+                                --  until a packet says they changed, the windows
+                                --  share one player read per frame, and the WHM
+                                --  gauge stops reading every other job's buffs
+                                --  every frame;
+                                --  10.14a = Sets: Manage... > Copy to... writes
+                                --  the set into other jobs (same name, backed
+                                --  up, unwearable pieces left out and named);
+                                --  10.14b = the set builder counts a twin in the
+                                --  Gear Vault: Ring2 offers the Beetle Ring +1
+                                --  Ring1 already uses when the second copy is
+                                --  vaulted, so the vault pulls both; with
+                                --  "Available only" ticked, bags only;
+                                --  10.14c = review fixes: Copy to skips a job
+                                --  that can wear none of the set instead of
+                                --  writing it empty, warns before replacing a
+                                --  set in an old job file, and names only the
+                                --  Mode gates that went; the windows' player
+                                --  snapshot ages out if the frame clock stops)
 addon.desc    = 'Gear sets, triggers and live stats with level scaling -- dlac equips your gear itself.';
 
 -- Load BEACON ('/dl check' field round, 2026-07-23): written by PLAIN io at
@@ -371,6 +417,14 @@ require('common');
 -- Resolve the profile-style "dlac\\X" requires to addons/dlac/X.lua in the addon state.
 pcall(function()
     package.path = package.path .. ';' .. AshitaCore:GetInstallPath() .. 'addons\\?.lua';
+end);
+
+-- THE FRAME PROFILER (/dl perf, 2026-10-13) -- before anything registers an
+-- event or opens a file: it wraps both for this Lua state, so a window can
+-- time every handler and every file dlac touches on the player's own machine.
+-- Disarmed, a wrapper costs one table read. See feature\frameprof.lua.
+pcall(function()
+    require('dlac\\feature\\frameprof').install();
 end);
 
 -- THE IMGUI-BINDING SEAM: newer Ashita builds ship ImGui 1.90+, where
@@ -657,6 +711,7 @@ for _, mod in ipairs({ 'gear', 'feature\\augments', 'gear\\gearoptim', 'gear\\ge
                        'feature\\engagewatch', 'feature\\petvitals', 'feature\\combat',
                        'feature\\mobtag',
                        'feature\\sendlog', 'feature\\check', 'feature\\debug', 'feature\\report',
+                       'feature\\frameprof',
                        -- nmtrack AFTER nmlookup: it requires the lookup module at
                        -- load for the disfavour curve, the shipped table and the
                        -- pop kind (the reverse edge is call-time only, so there
@@ -666,7 +721,7 @@ for _, mod in ipairs({ 'gear', 'feature\\augments', 'gear\\gearoptim', 'gear\\ge
                        -- place in this list is only where it reads best.
                        'feature\\nmlookup', 'feature\\nmtrack', 'feature\\nmloot',
                        'feature\\lockstyle',
-                       'feature\\lockstyleapply', 'feature\\equipengine',
+                       'feature\\lockstyleapply', 'feature\\bagindex', 'feature\\equipengine',
                        'feature\\engine', 'ui\\gearui',
                        -- jobbrowse is reached through gearui's (and equippedui's)
                        -- guarded try(), so a broken one costs the job picker in

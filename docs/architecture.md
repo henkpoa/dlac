@@ -37,7 +37,7 @@ PROFILE_TEMPLATE.lua     what Setup writes into a user's <JOB>.lua
 
 ui/        imgui modules: gearui, triggersui, automationsui, equippedui, profilesmenu,
            setupui, weightsui, craftbar, uistyle, uihost, itemicons, filetex, floatgear,
-           ammoui (the AutoAmmo panel)
+           ammoui (the AutoAmmo panel), setcopyto (the Sets tab's Copy to)
 data/      generated / static tables: catalog, crafts, fishdb, spells, abilities,
            statdefs, levelscaling, levelstats
 gear/      the gear pipeline: gearoptim, gearimport, gearexport, gearcheck, gearfmt,
@@ -83,6 +83,7 @@ engine cannot require them; it has its own minimal reads).
 | **Is this character a Crystal Warrior?** (game mode at all) | `gamemode.get()` → `'CW'` \| `'Wings'` \| `'ACE'` \| `nil` | `feature/gamemode.lua` | UCW deliberately ⇒ `'CW'` (same playmode — Henrik's ruling). `nil` = UNKNOWN, never a value to gate on: CW-only UI must gate on the **affirmative** `== 'CW'` and stay hidden on nil. **That rule guards EXCLUSIVE surfaces, and only those** — `ui/giftboxui` (2026-08-06) consumes this row as a *place selector* rather than a permission (CW ⇒ near an E-Box, everyone else ⇒ in town), so both modes see the icon and a nil read falls to the town rule instead of hiding it. Ask which the surface is before copying either shape. First consumer was AutoAmmo's E-Box section (removed 2026-07-27); today `eboxclient.isCW()`, `ui/restockui` (exclusive) and `ui/giftboxui` (selector). |
 | **Is there an entity named X nearby, and how far?** | `entwatch.watch(who, name[, cb])` then `entwatch.nearest(name)` / `.matches(name)`; `.poke(name)` = rescan | `lib/entwatch.lua` | THE central entity watcher — never write a local scan. It owns the idioms that cost three field rounds: GetName pads with whitespace (trim + ci), rendered bit 0x200 (signed-u32 fix) before trusting a distance, `GetRawEntity` (never the dead `GetEntity(i)`), the FULL 0x000-0x8FF range (custom NPCs are dynamic entities). Distances in yalms (squared on the wire). Callbacks fire on match-set changes incl. evictions; callback-less watches sleep 15 s after the last ask. Consumers: `eboxclient` (Ephemeral Box — for AutoAmmo + E-Box Restock), `helmwatch` (the four "* Point" names while Auto HELM is armed). |
 | **How many of item id N do I own?** | `ownedcache.counts()` (equippable bags) / `.totals()` (anywhere) / `.verdict(rec)` | `gear/ownedcache.lua` | counts = what can actually be equipped/consumed NOW; totals includes storage (the red "stored" coloring everywhere in dlac). |
+| **What do my equip bags hold, and where?** (engine side: the gear pass, the arbiter's availability read, AutoAmmo) | `bagindex.counts()` → `byId, byName, version` · `.named({ [lowerName] = true })` → entries in scan order · `.entryAt(container, index)` | `feature/bagindex.lua` (2026-10-13, the stutter report) | **Never walk the equip bags per pass** — that walk (720 slots, a C++ call each, ~6 times a second) WAS the frame stutter. The index walks once (load, zone-in `0x00A`, sizes `0x01C`) and then re-reads only the slot an inventory packet names (`0x01E`/`0x01F`/`0x020`/`0x050`, the server's own layouts). A read within `SETTLE_S` of a packet stays marked — Ashita hands packets over before the client applies them. Entries never change once linked (a changed slot gets a new entry), so a consumer may cache what it derives ON one. `counts()` hands out LIVE tables: read them, key a memo on `version`. nil = the bags were never readable, never "you own none". The equip engine re-reads the slot it is about to equip FROM and calls `invalidateAll()` on a mismatch, so a missed packet costs a walk, never a wrong piece. `BAGS` is the LAC scan order, a parity-pinned twin of `equipcore.DEFAULT_EQUIP_BAGS` and of `dispatch.AMMO_BAGS`' set (BIX20/21). Consumers: `equipengine` (worn view, bag lookup, trust stamps), `dispatch.bagCounts`. |
 | **What is this item?** (any item, owned or not) | `catalogindex.flat()` / `.rawById(id)` / `.rawIndex()` | `gear/catalogindex.lua` over `data/catalog.lua` | The catalog's `Slot` lies toward Body for unimplemented rows (`jobs==0` is the junk marker); `AmmoType` absent = trinket. |
 | **Any gear question** (worn item, equip bags, eligibility, identity, effective stats) | `gearoracle.wornItem(slot)` → `{ id, rec, extra, item }` \| nil; `.equipBags()`; `.canWear(rec, job, level)`; `.anyJobCanWear(rec, jobLevels)`; `.lookup(idOrName)`; `.stats(rec, ctx)`; `.setStats(comp, ctx)` | `gear/gearoracle.lua` | THE one door in the addon state (issues #70/#71, PRD #69; boundary rulings in **ADR 0013**). **FETCH:** the worn-item decode (packed Index → container/slot → item) + the ONE equip-bag list (Inventory + 8 Wardrobes); byte-identical engine TWINS (`dispatch.decodeEquipIndex` / `dispatch.AMMO_BAGS`, ADR 0002) held by the OR-section parity pins. `wornItem` hands the id back RAW (0/65535 included). **ELIGIBILITY:** `canWear` fronts the engine rule (`dispatch.canWear` — main job only, level on main); `anyJobCanWear` delegates to the addon-state gate (`gear/jobgate.canEquip`, fail-open). **IDENTITY:** `lookup` joins owned-first then catalog (id authoritative). **Claim-BLIND, permanently** — capability only, never permission (`canWear`, never `canEquip`); the Arbiter is the sole precedence authority. FACADE, not absorb: the interpreters keep their homes. **The door is LAW (#73):** the HARD RULE source guards (run_tests §GRD) confine the worn read, the packed-index decode, the equip-bag list and the 22-job list to their one home, and forbid feature/UI modules from requiring the stat interpreters — the Phase-2 stat-glue allowlist was **emptied by #74** (`stats`/`setStats` migration), so the rule is now absolute. |
 | **Where is this character's dlac state dir?** | `statefile.charDir()` | `lib/statefile.lua` | nil pre-login — retry, never cache the nil. (The seeded engine has its own `charDir()` inside dispatch.lua.) |
@@ -1120,6 +1121,35 @@ those lists were always read by dlac's highest-item-Level rule, so importing one
 changes nothing. `acNames` (Ashitacast) is a THIRD kind with its **own name space** —
 it comes from a different engine's file, so a shared name is a different set and
 deduping it away would lose one (tests AQ0–AQ20).
+
+### ui/setcopyto.lua — Copy to other jobs (2026-10-14)
+Henrik: *"copy that set to other jobs ... so it's easy to bring general sets to every job
+you have."* **Manage… → Copy to…** lists every other job (game order, three columns, the
+level beside each); **All my jobs** ticks the unlocked ones (level 1+). Copy writes the
+selected set into each ticked job's `sets\<JOB>.lua` under the **same name**, through
+`setmanager.commitSet` — the Commit button's rails (parse check, backup first).
+
+- **What travels** is the set as the tab shows it, uncommitted edits included (the
+  receipt says so).
+- **A name already there is replaced.** The row reads `replaces` before you tick it
+  (`setmanager.hasSetText`, the writers' own key rule), the button's line repeats it.
+- **Gear the job cannot wear is left out there** (`setimport.workingForJob`, the job half
+  of `canWear`; level is the ladder's business). Copied as it is, the piece would be a
+  candidate the flatten still picks — `BuildDynamicSets` never asks about jobs — and the
+  server refuses. One chat line for the whole copy (`copyToDropNote`). Virtual entries
+  always travel.
+- **Mode gates travel as written**; Modes are per job entry, so one chat line names the
+  gates (`modeGates`) rather than guessing which jobs have them.
+- **A job dlac has never seen** starts with the four empty base sets plus this one:
+  `setmanager`'s `commitTarget` now frames a new sets file from `starterDynText` when
+  there is no old Dynamic block to import (Setup and the migration already did) — else
+  Setup's `seedSetsFile` would see user data and the starter triggers would point at four
+  missing sets. A commit while browsing gets the same.
+- Only the job you are ON is loaded in the engine, so `/dl sets reload` is queued only
+  when the live job was written.
+
+Its own module because gearui's chunk is at the 200-local cap; gearui hands it
+`buildCommitSlots(working)` and friends once (`configure`). Tests SCT1–SCT70.
 
 ### gear/acimport.lua — the Ashitacast (LegacyAC) XML → sets transform (pure)
 The third "Copy from" source (2026-07-31). **Ashitacast** is the legacy XML gear-swap

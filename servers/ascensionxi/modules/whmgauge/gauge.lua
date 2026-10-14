@@ -28,7 +28,7 @@
 
 local wire = require('dlac\\servers\\ascensionxi\\modules\\whmgauge\\wire');
 
-local M = { SETTLE = 3, REPLY_WAIT = 5, BUSY_WAIT = 2, BACKOFF = { 5, 15, 60 }, BURST = 0.8 };
+local M = { SETTLE = 3, REPLY_WAIT = 5, BUSY_WAIT = 2, BACKOFF = { 5, 15, 60 }, BURST = 0.8, JOB_RECHECK = 1 };
 
 M.BUFF = { SOLACE = 417, MISERY = 418, DIVINE_SEAL = 78 };
 M.DIVINE_SEAL_LEVEL = 15;
@@ -109,7 +109,9 @@ function M.pump()
     if sub ~= nil or dormant or due == nil or now < due then return; end
     if not M._shown() then return; end
     local p = M._player();
-    if not isWhm(p) then return; end
+    -- Not a WHM: look again in a second, not next frame (2026-10-13, 13e --
+    -- every other job paid a player read and a buff table each frame here).
+    if not isWhm(p) then due = now + M.JOB_RECHECK; return; end
     seq = (seq % 255) + 1;
     local ok, went = pcall(M._send, wire.subscribe(seq, true));
     if ok and went == true then

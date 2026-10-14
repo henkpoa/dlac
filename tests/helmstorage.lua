@@ -15,6 +15,7 @@ local function harness()
     local H = { time = 0, sent = {}, opts = { [7] = true, [5] = true }, ready = true,
         bags = { [0] = { max = 4, items = {} }, [7] = { max = 2, items = {} }, [5] = { max = 2, items = {} } } };
     local function snapshot(cid)
+        H.reads = (H.reads or 0) + 1;
         local b, out = H.bags[cid], { max = H.bags[cid].max, items = {} };
         for k, it in pairs(b.items) do out.items[k] = { id = it.id, count = it.count, flags = it.flags }; end
         return out;
@@ -204,4 +205,10 @@ h.worn = false; h.tick(); assert(#h.sent == 1);
 h = harness(); h.start(); h.reward(1, 100, 12); h.tick(0.5); h.tick(0.1); assert(#h.sent == 0);
 h.flush(); assert(#h.sent == 1);
 h = harness(); h.start(); h.reward(1, 100, 12); h.put(0, 1, 100, 12, 5); h.flush(); assert(#h.sent == 0);
+-- Idle with a destination on: nothing is owed, so the tick -- ten times a
+-- second in game -- reads no bag at all (2026-10-13, the stutter report: it
+-- walked bag 0 on every tick).
+h = harness(); for _ = 1, 50 do h.tick(0.1); end
+assert((h.reads or 0) == 0, 'an idle mover reads no bag');
+
 print('OK -- HELM counts across swings/sorts, whole stacks, downtime, stock protection, merges and confirmations');

@@ -54,27 +54,75 @@ _swok = _swok and type(sw) == 'table';
 
 -- Character identity: LuaAshitacast's gState inside a profile, else the party
 -- manager (addon state). name, id -- or nil, nil pre-login.
-local function charIdentity()
+--
+-- THE IDENTITY IS KEPT (2026-10-13, 13e). Every state-file path asks for it --
+-- ~22 times a frame with the floats up -- and each ask read the party name and
+-- server id (four C++ calls and a closure). A character changes only at a
+-- login, which is a zone-in (0x00A): once read, the identity is kept, read
+-- live again for IDENT_SETTLE_S after each 0x00A (the client applies a packet
+-- after Ashita hands it over), and re-checked live once every IDENT_CHECK_S
+-- anyway -- a logout empties the party name, and that has to stop the writes.
+-- Nothing is kept until the hook has HEARD a packet (headless suites swap
+-- their stub identity freely), and nothing is kept while there is none.
+M.IDENT_SETTLE_S = 3;
+M.IDENT_CHECK_S  = 1;
+M._identClock = os.clock;
+local _ident = { heard = false, name = nil, id = nil, liveUntil = 0, checkAt = 0 };
+
+local function liveIdentity()
     local name, id;
-    if gState ~= nil and gState.PlayerName ~= nil and gState.PlayerId ~= nil then
-        name, id = gState.PlayerName, gState.PlayerId;
-    else
-        pcall(function()
-            local party = AshitaCore:GetMemoryManager():GetParty();
-            name = party:GetMemberName(0);
-            id   = party:GetMemberServerId(0);
-            if name == '' then name = nil; end
-        end);
-    end
+    pcall(function()
+        local party = AshitaCore:GetMemoryManager():GetParty();
+        name = party:GetMemberName(0);
+        id   = party:GetMemberServerId(0);
+        if name == '' then name = nil; end
+    end);
     if name == nil or id == nil then return nil, nil; end
     return name, id;
 end
 
+local function charIdentity()
+    if gState ~= nil and gState.PlayerName ~= nil and gState.PlayerId ~= nil then
+        return gState.PlayerName, gState.PlayerId;
+    end
+    local I = _ident;
+    if not I.heard then return liveIdentity(); end
+    local now = M._identClock();
+    if I.name ~= nil and now < I.checkAt and now >= I.liveUntil then return I.name, I.id; end
+    local name, id = liveIdentity();
+    if name ~= nil and now >= I.liveUntil then
+        I.name, I.id, I.checkAt = name, id, now + M.IDENT_CHECK_S;
+    else
+        I.name, I.id = nil, nil;
+    end
+    return name, id;
+end
+
+-- The wire: a zone-in may be a different character logging in.
+function M.noteIncoming(id)
+    _ident.heard = true;
+    if id == 0x00A then
+        _ident.name, _ident.id = nil, nil;
+        _ident.liveUntil = M._identClock() + M.IDENT_SETTLE_S;
+    end
+end
+
+-- Test seam: back to "never heard the wire" (every ask reads live).
+function M._identReset()
+    _ident = { heard = false, name = nil, id = nil, liveUntil = 0, checkAt = 0 };
+end
+
 -- '<Name>_<Id>' -- the per-character folder name, identical under both roots.
+-- The string is kept with the identity it was built from (no format per ask).
+local _folder = { name = nil, id = nil, s = nil };
 function M.charFolder()
     local name, id = charIdentity();
     if name == nil then return nil; end
-    return string.format('%s_%u', name, id);
+    local F = _folder;
+    if F.s == nil or F.name ~= name or F.id ~= id then
+        F.name, F.id, F.s = name, id, string.format('%s_%u', name, id);
+    end
+    return F.s;
 end
 
 -- LuaAshitacast's per-char config home:
@@ -173,11 +221,17 @@ end
 -- mean anything when LuaAshitacast is the equip engine.
 -- ---------------------------------------------------------------------------
 
+-- The install path never changes in a session: kept once the wire is heard
+-- (see the identity above -- headless suites point it anywhere they like).
+local _rootKept = nil;
 function M.nativeRoot()
+    if _rootKept ~= nil and _ident.heard then return _rootKept; end
     local ok, p = pcall(function()
         return AshitaCore:GetInstallPath() .. 'config\\addons\\dlac\\';
     end);
-    return ok and p or nil;
+    p = ok and p or nil;
+    if p ~= nil and _ident.heard then _rootKept = p; end
+    return p;
 end
 
 -- NATIVE, ALWAYS (the purge, Phase 2 -- Henrik: "I really just want this to
@@ -190,10 +244,13 @@ function M.nativeMode() return true; end
 function M.invalidateNative() end   -- kept for callers; nothing to invalidate
 
 -- This character's home under the native root.
+local _base = { r = nil, cf = nil, s = nil };
 function M.nativeCharBase()
     local r, cf = M.nativeRoot(), M.charFolder();
     if r == nil or cf == nil then return nil; end
-    return r .. cf .. '\\';
+    local B = _base;
+    if B.s == nil or B.r ~= r or B.cf ~= cf then B.r, B.cf, B.s = r, cf, r .. cf .. '\\'; end
+    return B.s;
 end
 
 -- The per-char home dlac-owned NON-dlac\ paths (backups\) compose off.
@@ -1635,6 +1692,16 @@ function M.migrate(execute, say)
     say(string.format('[dlac] profile migration done: %d migrated, %d skipped, %d failed. Statics from your old files stay available to "Copy from" via backups\\pre-profiles\\.',
         done, skipped, failed));
     return done, skipped, failed;
+end
+
+-- The kept identity's wire (see charIdentity). Guarded: headless suites load
+-- this module with a stub registrar, or none.
+if ashita ~= nil and type(ashita.events) == 'table' and type(ashita.events.register) == 'function' then
+    pcall(function()
+        ashita.events.register('packet_in', 'dlac-profiles-ident', function(e)
+            M.noteIncoming(e.id);
+        end);
+    end);
 end
 
 return M;

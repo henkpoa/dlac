@@ -47,7 +47,7 @@ M._loadStamp = M._loadStamp or string.format('%d:%.3f', os.time(), os.clock());
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code. From v32 the engine self-swaps when the seeded file's version moves, so
 -- the banner should only persist when a swap FAILED (or pre-v32 code is live).
-M.VERSION = 170;  -- 170: AUTOACC DECIDES AT THE ONE SEND (2026-10-05, AscensionXI). A piece typed AutoAcc yields its slot to its fallback only when the server's combat telemetry proves the whole outfit still reaches the hit cap (servers\ascensionxi\modules\telemetry, the serverpack service 'autoacc'; docs/design/ascensionxi-combat-telemetry-autoacc.md). With the service present the dormant budget stands down: every typed piece is planned ON, equipResolved carries each slot's candidate (typed, fallback, removal priority) into ctx.planAcc beside ctx.planOut -- the slot's LAST writer decides, so a claim that overwrites the slot drops the candidate -- and M._autoAccApply asks the service once, at the send, on the composed outfit (Free-equip slots read as worn). Default only; locks and weapon slots never release. The provider's revision is the newest retrace leg ('|aa'), and its per-slot reasons ride /dl why. Without the service (CatsEyeXI, or telemetry off) nothing changes. Tests AA*, AAD*.  -- 169: THE NEXUS LOCK RIDES THE CRAFT ROW (2026-10-04, AscensionXI). Nexus names the next synth's crafts over plugin_event; feature\nexuslink picks the recipe-wide pieces (feature\craftpick, weakest craft first) and holds them until the player moves. The Craft row's ensure reads that lock first (craftRowState), claims its picks (craftRowClaim), and falls back to the manual craft pick when there is none -- same rank, same Locks and Free equip, same /dl why. Tests NX*. (Two M fields, M._craftRowState / M._craftRowClaim, not locals: the main chunk sits at Lua's 200-local ceiling.)  -- 168: select category-specific numeric gathering ladders.  -- 167: THE MODE LOCK QUEUE REACHES BOTH MONITORS (Henrik: "where do I see the queue for the mode lock?"). It was in exactly one place -- the Mode Locks window, which is the surface you are LEAST likely to be looking at while playing. The monitors both named only the winner, so a slot doing something surprising gave no hint that another active mode was waiting behind it, which is the same invisibility the loser list existed to prevent. The queue now rides the DECISION RECORD (contest.mlq, captured at ensure time via the one door M.modeLockLive, which stashes it beside the plan): the Arbiter Monitor renders stashed records -- pinned historical ones included -- and deriving the queue live there would show TODAY's answer under a decision from ten minutes ago, the same law as the ladders and the reserve verdict. It is also a SIGNATURE LEG, for the rank-order leg's reason (v152): a mode that queues moves no gear and no claim, so without it the trace and /dl why would keep saying nobody waits until something unrelated happened to move. It deliberately does NOT enter the decision fingerprint -- the ring appends on a moved OUTCOME, and a queue-only record with zero changed slots is the v163 symptom rather than a feature; a queue that forms while nothing moves reaches /dl why immediately and reaches the ring on the next real decision. Renderers: the Arbiter Monitor draws a 'q' marker on the cell in BOTH grid modes (the fall-marker precedent -- a slot with someone waiting is exactly what you would never think to hover) and names holder + waiter in the hover; the Trigger Monitor's locks line grows an '(n queued)' count with the detail on hover, its IsItemHovered taken BEFORE the suffix is drawn so the tooltip stays on the held list. Tests MDL23-MDL26b, smoke AM8a-AM8e + MLK14-MLK16.
+M.VERSION = 171;  -- 171: THE BAGS ARE KEPT, NOT WALKED (2026-10-13, the stutter report). bagCounts answers from featureagindex (one walk at load / zone-in / size change, then only the slot an inventory packet names is read again), and the avail alias map re-keys on the index version. The fired ring is written at UNLOAD only (M.getFired hands the Trigger Monitor the live ring), and the /dlacmonev line stream (_monQ) is gone. Tests BIX*, PF*.  -- 170: AUTOACC DECIDES AT THE ONE SEND (2026-10-05, AscensionXI). A piece typed AutoAcc yields its slot to its fallback only when the server's combat telemetry proves the whole outfit still reaches the hit cap (servers\ascensionxi\modules\telemetry, the serverpack service 'autoacc'; docs/design/ascensionxi-combat-telemetry-autoacc.md). With the service present the dormant budget stands down: every typed piece is planned ON, equipResolved carries each slot's candidate (typed, fallback, removal priority) into ctx.planAcc beside ctx.planOut -- the slot's LAST writer decides, so a claim that overwrites the slot drops the candidate -- and M._autoAccApply asks the service once, at the send, on the composed outfit (Free-equip slots read as worn). Default only; locks and weapon slots never release. The provider's revision is the newest retrace leg ('|aa'), and its per-slot reasons ride /dl why. Without the service (CatsEyeXI, or telemetry off) nothing changes. Tests AA*, AAD*.  -- 169: THE NEXUS LOCK RIDES THE CRAFT ROW (2026-10-04, AscensionXI). Nexus names the next synth's crafts over plugin_event; feature\nexuslink picks the recipe-wide pieces (feature\craftpick, weakest craft first) and holds them until the player moves. The Craft row's ensure reads that lock first (craftRowState), claims its picks (craftRowClaim), and falls back to the manual craft pick when there is none -- same rank, same Locks and Free equip, same /dl why. Tests NX*. (Two M fields, M._craftRowState / M._craftRowClaim, not locals: the main chunk sits at Lua's 200-local ceiling.)  -- 168: select category-specific numeric gathering ladders.  -- 167: THE MODE LOCK QUEUE REACHES BOTH MONITORS (Henrik: "where do I see the queue for the mode lock?"). It was in exactly one place -- the Mode Locks window, which is the surface you are LEAST likely to be looking at while playing. The monitors both named only the winner, so a slot doing something surprising gave no hint that another active mode was waiting behind it, which is the same invisibility the loser list existed to prevent. The queue now rides the DECISION RECORD (contest.mlq, captured at ensure time via the one door M.modeLockLive, which stashes it beside the plan): the Arbiter Monitor renders stashed records -- pinned historical ones included -- and deriving the queue live there would show TODAY's answer under a decision from ten minutes ago, the same law as the ladders and the reserve verdict. It is also a SIGNATURE LEG, for the rank-order leg's reason (v152): a mode that queues moves no gear and no claim, so without it the trace and /dl why would keep saying nobody waits until something unrelated happened to move. It deliberately does NOT enter the decision fingerprint -- the ring appends on a moved OUTCOME, and a queue-only record with zero changed slots is the v163 symptom rather than a feature; a queue that forms while nothing moves reaches /dl why immediately and reaches the ring on the next real decision. Renderers: the Arbiter Monitor draws a 'q' marker on the cell in BOTH grid modes (the fall-marker precedent -- a slot with someone waiting is exactly what you would never think to hover) and names holder + waiter in the hover; the Trigger Monitor's locks line grows an '(n queued)' count with the detail on hover, its IsItemHovered taken BEFORE the suffix is drawn so the tooltip stays on the held list. Tests MDL23-MDL26b, smoke AM8a-AM8e + MLK14-MLK16.
                   -- 166: MODE LOCKS, FIRST COME FIRST SERVE (Henrik, 2026-08-03): "we will come into situations where we maybe have conflicting modes active... the one who took the slot lock first should get it, the rest stand in queue basically." v165 resolved a contested slot by sorted condition -- deterministic, but the alphabet is not fairness, and 'DT' beating a Weapon cycle that had held the slot for an hour is exactly the arbitrary answer that ruling rejects. So modes now carry an ACTIVATION CLOCK: M.modeSeq, one counter per mode NAME, stamped when its flag last CHANGED, and modeLockPlan walks conditions in that order. Stamped on CHANGE and never on re-assertion -- a macro re-asserting a mode every pull must not send it to the back of the queue -- and cleared when the mode goes off, because turning it back on is genuinely taking the slot again. A cycle VALUE change re-stamps: the lock is keyed by condition, so Weapon:Melee -> Weapon:Caster really is a different lock taking the slots. THE QUEUE NEEDS NO STATE: the plan is rebuilt every dispatch, so when the holder's mode goes off the next in line simply wins the next walk -- nothing remembers a queue, and nothing has to be re-armed. The clock rides the modestate mirror as `__seq` (loadModeState restores it, advances the counter past the highest, and sweeps any unstamped flag) because the GUI computes the same plan in the other Lua state: without it the Mode Locks window would order a contested slot alphabetically while the engine ordered it by the clock, and name the wrong winner. Every flag write now goes through the ONE seam M.modeSet so the clock cannot be forgotten at one of the six assignment sites. Ties (two flags restored from one mirror) still break alphabetically -- deterministic first, fair second. Also: gear\modeslibrary.applyStamp no longer EATS a job's mode locks (it rebuilt the definition from the plan, deleting them on Append too -- the branch that promises nothing disappears); locks belong to the job and ride a stamp untouched, and only an Overwrite killing a cycle value strips that value's. And profileexport.triggerRefs now reports `modeSets`, so the export form disables MODES (not Triggers -- a lock travels with the Modes section, Triggers need not be selected at all) when Sets is unticked. Tests MDL1-MDL22, ML44a-ML44f, PX9a-PX9g, smoke MLK1-MLK13.
                   -- 165: MODE LOCKS -- "once that mode is active, this piece MUST ALWAYS stay on" (Henrik, 2026-08-03). A very common problem when building sets: some slots must be immune to every trigger rule while a mode holds -- his caster mode swaps weapons on every pull, his melee mode must never see one move, and the only way to express that today is to teach every rule in the file to keep its hands off Main/Sub. So a mode definition now carries `locks = { ["Weapon:Melee"] = { Main = "MeleeWpn" } }`, keyed by the exact `mode` CONDITION string the rules already use -- which makes the activity test M.modeActive itself (one primitive, not a second dialect of "is this mode on") and makes the ADR 0019 cascade free, because deleting the mode or dropping a cycle value takes its locks with it: they are the same table. It arrives as an ORDINARY CLAIMANT (`ModeLock`), not a floor special case: one rank row shipping directly above External, one claim table, no new arm and no new state file. That buys the Arbiter Monitor grid, the /dl why contest, the Priority list and the fall-down-its-own-ladder behaviour with no new code in any of them -- and it means a player who wants the lock to beat their armed craft bench drags the row up instead of asking for a setting. Claims on EVERY event (Pins' and Naked's reason: a lock that let go mid-cast would not be a lock). A lock naming a set with no entry for its slot claims nothing and the floor keeps it -- the Mode Locks window flags that in red at edit time, which is the only place it can still be fixed. Two active modes naming one slot resolve by sorted condition, first keeps it, loser reported: arbitrary but STABLE, where pairs() order would land differently on two dispatches with nothing changed. Also here: the claimant sig legs take the ensure STATE as a third argument (which mode holds a slot has to retrace even when the item name does not), rows may supply an `rlabel` so a fall names the SET rather than the row, and the slot-canon map moved to its vocabulary owner (arbiter.CANON_OF) instead of a third inline copy. Tests ML1-ML22, smoke MLK1-MLK13.
                   -- 164: THE SECOND COPY IS A LIVE FACT, NOT A STAMP (Coffeepoo's field report, 2026-08-03: two Bone Knives +1, the Main took one and the Sub stayed as worn, while equipping the off-hand BY HAND worked). Dual Wield was up and the set was right; the refusal was ours. utils.subSlotAllowed's same-name off-hand case wants proof of a second copy, and the flatten offered it nothing but the record's `Count` -- a stamp renderEntry writes ONCE, at first index, and that no command can refresh: /dl sync is add-only (an already-known item is skipped) and /dl fix backfills CATALOG facts only, as it must, because "how many do you own" is not one. Acquire the twin AFTER the first was indexed and dlac could never learn about it -- there was no supported path back, only a hand edit. So the flatten reads the bags instead (M.bagCopies over the existing per-second cache, equip-eligible containers, worn pieces included), which is the 2026-08-01 Pair/RSlot ruling applied to the one fact that is genuinely per-player: read it, do not make them run a migration for it. The read only ever ADDS evidence -- subSlotAllowed takes the best of ctx.copies and Count -- so a stamped file behaves identically, an unreadable scan falls back to the stamp rather than demoting gear, and nothing that pairs today can stop pairing. Only asked when the two names actually match, so the ordinary off-hand costs no lookup. Tests LD6c-LD6h. (Shipped with the gearimport half of the same report: the base Animator is an ALL-JOBS item on this server, so the Range bucket's exact PUP-mask test dropped it from gear.lua entirely -- see gearimport.rangeCategory, tests E29*.)
@@ -406,12 +406,11 @@ local _actions = {};
 local _actSeq = 0;
 M.ACTION_CAP = 32;
 -- Trigger-monitor feed (v55): the last 5 fired-rule lines, newest first. The
--- ring updates on every CHANGE of what fired (retrace); the tick flushes it to
--- firedstate.lua (GUI display only) at most once per pass, so Precast/Midcast
--- bursts cost one write, not three.
+-- ring updates on every CHANGE of what fired (retrace). The Trigger Monitor
+-- reads it in memory (M.getFired); firedstate.lua is written at unload only,
+-- as the monitor's reload bootstrap (13d).
 local _fired = {};
 local _firedDirty = false;
-local _monQ = {};   -- fired lines awaiting the live stream -- drained ONE per frame (v58)
 local saveFiredState;   -- defined with the mode-state block below (needs charDir/writeFile)
 
 -- (inLac() died in the purge, Phase 2: there is no LuaAshitacast-hosted copy
@@ -5051,7 +5050,25 @@ local AMMO_BAGS = { 0, 8, 10, 11, 12, 13, 14, 15, 16 };
 M.AMMO_BAGS = AMMO_BAGS;
 local _bagCache = { at = -1, byId = nil, byName = nil };
 local _itemNmMemo = {};
+-- THE BAG INDEX (2026-10-13, the stutter report): feature\bagindex keeps these
+-- counts between asks and re-reads only the slots an inventory packet named,
+-- so the every-second walk below -- up to 720 slots, a C++ call each, in one
+-- frame -- is gone, and every answer is as fresh as a walk would be (which is
+-- why `fresh` no longer has anything to force). The index's tables are LIVE:
+-- the third return is their version, the thing to key a memo on. Required at
+-- first call and kept in _bagCache.bix (false = absent: the walk below still
+-- answers). No new chunk locals: this chunk sits at the 200-local cap.
 local function bagCounts(fresh)
+    local bix = _bagCache.bix;
+    if bix == nil then
+        local ok, m = pcall(require, 'dlac\\feature\\bagindex');
+        bix = (ok and type(m) == 'table' and type(m.counts) == 'function') and m or false;
+        _bagCache.bix = bix;
+    end
+    if bix then
+        local byId, byName, ver = bix.counts();
+        if byId ~= nil then return byId, byName, ver; end
+    end
     local now = os.time();
     if not fresh and _bagCache.byId ~= nil and _bagCache.at == now then
         return _bagCache.byId, _bagCache.byName;
@@ -5150,7 +5167,7 @@ local function haveEquippable(name)
     if low == 'remove' or low == 'ignore' then return nil; end
     if string.sub(low, 1, 5) == 'dlac:' then return nil; end
     if string.sub(low, 1, 1) == '(' then return nil; end
-    local _, byName = bagCounts();
+    local _, byName, ver = bagCounts();
     if type(byName) ~= 'table' or next(byName) == nil then return nil; end
     if (byName[low] or 0) > 0 then return true; end
     -- Apostrophe-tolerant second look, the same law utils.resolveGearName runs
@@ -5159,17 +5176,18 @@ local function haveEquippable(name)
     -- CatsEyeXI catalog says "Arhats Gi". A name that only differs by the
     -- possessive must never read as a piece you do not own, because that would
     -- silently demote gear you are holding. Aliased lazily and memoized on the
-    -- bag map's IDENTITY: bagCounts builds a fresh table every refresh, so this
-    -- rebuilds exactly when the counts do.
+    -- bag map's identity AND version: the bag index keeps one live table and
+    -- bumps its version on every change (the fallback walk builds a fresh table
+    -- instead), so this rebuilds exactly when the counts do.
     local stripped = (string.gsub(low, "'", ""));
     if stripped ~= low then
-        if _availAlias.src ~= byName then
+        if _availAlias.src ~= byName or _availAlias.ver ~= ver then
             local m = {};
             for k, v in pairs(byName) do
                 local s = (string.gsub(k, "'", ""));
                 if m[s] == nil then m[s] = v; end
             end
-            _availAlias.src, _availAlias.map = byName, m;
+            _availAlias.src, _availAlias.ver, _availAlias.map = byName, ver, m;
         end
         if (_availAlias.map[stripped] or 0) > 0 then return true; end
     end
@@ -7092,19 +7110,12 @@ function M.dispatch(event)
             table.insert(_fired, 1, os.date('%H:%M:%S') .. '  ' .. event .. '   ' .. table.concat(mp, '   ||   '));
             while #_fired > 5 do table.remove(_fired); end
             _firedDirty = true;
-            -- Event push: STREAM the new line to the addon state's monitor over
-            -- the command bus -- the one live channel two Lua states share (the
-            -- mode-keybind /bind precedent). Fires only on retrace, so a rule
-            -- matching again unchanged never re-sends. The firedstate.lua file
-            -- stays as the reload bootstrap + fallback. NOT QueueCommand'd here:
-            -- two commands queued in the SAME frame arrive at the addon in
-            -- REVERSE order (Henrik's field report -- every cast showed Precast
-            -- above Midcast, both stamped the same second), so lines land in
-            -- _monQ and the frame tick streams them one per frame -- the
-            -- cmdqueue.lua frame-spacing precedent, engine-side (v58).
-            local line = string.gsub(_fired[1], '%c', ' ');
-            if #line > 180 then line = string.sub(line, 1, 180); end
-            _monQ[#_monQ + 1] = line;
+            -- (2026-10-13, 13d) The Trigger Monitor reads this ring in memory
+            -- (M.getFired) -- one Lua state, so the '/dlacmonev' command-bus
+            -- stream and the per-pass firedstate.lua write are gone. Field
+            -- measure (Abraxis, /dl perf): that write cost 1.5-10 ms a time on
+            -- his machine, 55 times a minute in a fight. The file is written
+            -- once, at unload, for the monitor's reload bootstrap.
         end
 
         -- Apply in order, attributing each SLOT to its final writer -- with partial
@@ -7539,6 +7550,9 @@ function M.getTrace() return _trace; end
 -- The decision ring, read-only: the Arbiter Monitor's feed (and later the
 -- integration stream's). Newest LAST; records are never mutated after append.
 function M.getDecisions() return _decisions; end
+-- The Trigger Monitor's feed: the last 5 fired-rule lines, newest first. LIVE
+-- table -- read it, never write it.
+function M.getFired() return _fired; end
 
 -- ---------------------------------------------------------------------------
 -- Trigger file read/write for the GUI (the format lives HERE, next to the parser).
@@ -8242,14 +8256,6 @@ if engineActive() then
     -- in git history -- cb2fbe2..40288e3 -- if this class of thing ever returns.)
     ashita.events.register('d3d_present', 'dlac-dispatch-tick', function()
         pcall(function()
-            -- Monitor stream drain: ONE line per frame, AHEAD of the 0.4s
-            -- throttle. Same-frame QueueCommand pairs cross the bus reversed
-            -- (v58); a frame apart they arrive in order, and a Precast/Midcast
-            -- burst still lands within ~2 frames.
-            if _monQ[1] ~= nil then
-                local line = table.remove(_monQ, 1);
-                pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '/dlacmonev ' .. line); end);
-            end
             if os.clock() < _tickAt then return; end
             _tickAt = os.clock() + 0.4;
                                                  -- (the addon state reloads whole via /addon reload)
@@ -8367,13 +8373,18 @@ if engineActive() then
                     end
                 end
             end
-            -- Coalesced trigger-monitor flush: whatever fired since the last
-            -- pass lands in firedstate.lua as ONE write.
-            if _firedDirty and saveFiredState ~= nil then
-                _firedDirty = false;
-                saveFiredState();
-            end
         end);
+    end);
+
+    -- The trigger-monitor mirror, written ONCE: at unload, so the monitor of
+    -- the next load can show what fired last (its reload bootstrap). Never
+    -- per pass (13d -- see the ring above).
+    pcall(function() ashita.events.unregister('unload', 'dlac-fired-save'); end);
+    ashita.events.register('unload', 'dlac-fired-save', function()
+        if _firedDirty and saveFiredState ~= nil then
+            _firedDirty = false;
+            saveFiredState();
+        end
     end);
 
     pcall(function() ashita.events.unregister('command', 'dlac-dispatch'); end);

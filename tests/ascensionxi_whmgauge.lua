@@ -425,4 +425,17 @@ mod.pump();
 check(sent == beforeOff, 'and demo off asks it nothing');
 check(gauge.debugState().sub == 'dormant', 'and /dl gauge status still calls it dormant');
 
+-- Every other job (2026-10-13, 13e): the pump read the player -- and copied
+-- the buff list -- every frame to learn it was not a WHM. Once a second now.
+gauge.reset();
+local asked = 0;
+gauge._player = function() asked = asked + 1; return { job = 1, level = 75, buffs = {} }; end;
+for _ = 1, 60 do mod.pump(); end
+check(asked == 1, 'a Warrior is read once, not once a frame (' .. asked .. ')');
+time = time + gauge.JOB_RECHECK;
+mod.pump(); mod.pump();
+check(asked == 2, '...and again a second later');
+check(sent == beforeOff, 'and never asked the server for anything');
+gauge._player = function() return player; end;
+
 print(string.format('ascensionxi_whmgauge: %d checks passed', checks));
