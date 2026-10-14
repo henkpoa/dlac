@@ -269,6 +269,20 @@ M.copySetText = function(srcText, dstText, setName)
     return table.concat(out, nl), 'copied';
 end
 
+-- Does this sets file's Dynamic block hold `setName`? The Sets tab's "Copy to"
+-- job list asks it once per job, to mark the jobs a copy would REPLACE rather
+-- than add to. The writers' own key rule (findSetKey: bare or bracket-quoted),
+-- so it answers exactly what spliceSet will do. Pure; false on anything unreadable.
+M.hasSetText = function(fileText, setName)
+    if type(fileText) ~= 'string' or type(setName) ~= 'string' or setName == '' then return false; end
+    local ds, de = fileText:find('Dynamic%s*=%s*{');
+    if not ds then return false; end
+    local dynClose = matchBrace(fileText, de);
+    if not dynClose then return false; end
+    local ss = findSetKey(fileText, setName, ds);
+    return ss ~= nil and ss < dynClose;
+end
+
 -- Rename a set IN TEXT: re-key its block (bare or bracket-quoted, whichever
 -- the file holds), content and indentation untouched -- the new key renders
 -- through renderKey so a dashed/keyword name bracket-quotes itself. Refuses
@@ -630,18 +644,28 @@ local function commitTarget(job)
             if ptext ~= nil then return ppath, ptext, nil; end
             local jtext = readFile(jpath);
             local dyn = jtext ~= nil and _prof.extractDynamicText(jtext) or nil;
-            local framed = _prof.frameSetsText(dyn);
+            -- Nothing to import (a job dlac has never seen): start it the way
+            -- Setup and the profile migration do, with the four EMPTY base sets
+            -- the starter triggers target. Without them this file reads as user
+            -- data, Setup's seedSetsFile never writes over it, and the job's
+            -- first visit seeds triggers that point at four missing sets. In
+            -- practice only an off-job write gets here -- the Sets tab's "Copy
+            -- to", or a commit while browsing -- since Setup seeds the job you
+            -- are on first.
+            local starter = (dyn == nil) and _prof.starterDynText or nil;
+            local framed = _prof.frameSetsText(dyn or starter);
             if loadstring(framed) == nil then
                 -- a mangled Dynamic block must not poison the new store: start
                 -- empty instead (the block stays untouched in <JOB>.lua).
                 framed = _prof.frameSetsText(nil);
-                dyn = nil;
+                dyn, starter = nil, nil;
             end
             _prof.ensureStorage();
             if not writeFile(ppath, framed) then return nil, 'could not create ' .. ppath; end
             local note = string.format('  NOTE: sets now live in dlac\\profiles\\%s\\sets\\%s.lua (%s)%s',
                 _prof.activeName(), job,
-                dyn ~= nil and 'existing Dynamic block imported' or 'started empty',
+                dyn ~= nil and 'existing Dynamic block imported'
+                    or (starter ~= nil and 'started with the four empty base sets' or 'started empty'),
                 '; ' .. job .. '.lua is no longer written -- /dl profile migrate cleans it up fully');
             return ppath, framed, note;
         end
@@ -650,6 +674,7 @@ local function commitTarget(job)
     if text == nil then return nil, 'could not read ' .. jpath; end
     return jpath, text, nil;
 end
+M._commitTarget = commitTarget;   -- headless seam (SCT: the first-commit seed)
 
 M.commitSet = function(job, setName, slots)
     local path, text, note = commitTarget(job);

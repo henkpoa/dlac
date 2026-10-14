@@ -2958,10 +2958,12 @@ local function workingWeightedScore(mainLevel)
 end
 
 -- Build setmanager's ORDERED slots array from the working model (non-empty slots only).
-local function buildCommitSlots()
+-- `working` defaults to the Sets tab's own; "Copy to" passes each job's filtered copy.
+local function buildCommitSlots(working)
+    working = working or M.working;
     local slots = {};
     for _, sl in ipairs(EQUIP_SLOTS) do
-        local list = M.working[sl.label];
+        local list = working[sl.label];
         if type(list) == 'table' and #list > 0 then
             local items = {};
             for _, it in ipairs(list) do
@@ -3781,6 +3783,25 @@ local function copyAsNewSets(job, sources)
         (failed > 0) and string.format('  %d FAILED to commit -- try one by hand for the reason.', failed) or ''),
         (made == 0));
 end
+
+-- "Copy to" (Manage... > Copy to): the selected set into other jobs. Its own
+-- module (ui\setcopyto -- this chunk sits at the 200-local cap), handed what it
+-- needs once. The wear gate is the JOB half only: a set is a level ladder, so a
+-- piece above the job's level is the ladder's business, not the copy's.
+pcall(function()
+    require('dlac\\ui\\setcopyto').configure({
+        working    = function() return M.working; end,
+        dirty      = function() return _setDirty; end,
+        slotsFor   = buildCommitSlots,
+        slotLabels = EQUIP_SLOTS,
+        canWear    = function(rec, job) return gearOracle.canWear(rec, job, math.huge); end,
+        setStatus  = setStatus,
+        setmgr     = setmgr,
+        invalidate = profsets.invalidate,
+        esc        = fmt.esc,
+        COL        = COL,
+    });
+end);
 
 -- quiet=true (Auto-Build All's loop, Henrik 07-20: "just state how many sets
 -- you've rebuilt, not one line for each"): no per-set status and no per-set
@@ -4845,6 +4866,16 @@ local function renderSetsTab(job, level)
             ui._copyMarks = {};
             ui._copyFromOpen = true;
         end
+        if imgui.Selectable('Copy to...##smg_copyto') then
+            if M.workingSetName == nil or M.workingSetName == '' then
+                setStatus('No set selected (pick one first).', true);
+            elseif not has.setmgr then
+                setStatus('setmanager unavailable.', true);
+            else
+                local nm = M.workingSetName;
+                pcall(function() require('dlac\\ui\\setcopyto').open(job, nm); end);
+            end
+        end
         if #profsets.staticSetNames() > 0 then
             if imgui.Selectable('Delete static...##smg_dstat') then
                 ui._delStatic = nil;
@@ -4855,7 +4886,7 @@ local function renderSetsTab(job, level)
     end
     imgui.PopItemWidth();
     if imgui.IsItemHovered() then
-        imgui.SetTooltip('Everything that manages the selected set: New, Rename (propagates\neverywhere), Delete, Copy from another set or a legacy one -- old\nFFXI-LAC (Dynamic and static alike) and Ashitacast/LegacyAC XML\n-- and Delete static when legacy static sets are present.');
+        imgui.SetTooltip('Everything that manages the selected set: New, Rename (propagates\neverywhere), Delete, Copy from another set or a legacy one -- old\nFFXI-LAC (Dynamic and static alike) and Ashitacast/LegacyAC XML\n-- Copy to other jobs, and Delete static when legacy static sets are present.');
     end
 
     imgui.SameLine();
@@ -5289,6 +5320,14 @@ local function renderSetsTab(job, level)
             end
         end
         imgui.EndPopup();
+    end
+
+    -- Copy to (Manage... > Copy to): the job list lives in ui\setcopyto, which
+    -- reaches its own EndPopup whatever its body does. No closure: this runs every
+    -- frame the tab is drawn.
+    do
+        local okc, sct = pcall(require, 'dlac\\ui\\setcopyto');
+        if okc and type(sct) == 'table' then sct.render(); end
     end
 
     -- Delete static (Manage... > Delete static): pick a row to arm it, then

@@ -37,7 +37,7 @@ PROFILE_TEMPLATE.lua     what Setup writes into a user's <JOB>.lua
 
 ui/        imgui modules: gearui, triggersui, automationsui, equippedui, profilesmenu,
            setupui, weightsui, craftbar, uistyle, uihost, itemicons, filetex, floatgear,
-           ammoui (the AutoAmmo panel)
+           ammoui (the AutoAmmo panel), setcopyto (the Sets tab's Copy to)
 data/      generated / static tables: catalog, crafts, fishdb, spells, abilities,
            statdefs, levelscaling, levelstats
 gear/      the gear pipeline: gearoptim, gearimport, gearexport, gearcheck, gearfmt,
@@ -1121,6 +1121,35 @@ those lists were always read by dlac's highest-item-Level rule, so importing one
 changes nothing. `acNames` (Ashitacast) is a THIRD kind with its **own name space** —
 it comes from a different engine's file, so a shared name is a different set and
 deduping it away would lose one (tests AQ0–AQ20).
+
+### ui/setcopyto.lua — Copy to other jobs (2026-10-14)
+Henrik: *"copy that set to other jobs ... so it's easy to bring general sets to every job
+you have."* **Manage… → Copy to…** lists every other job (game order, three columns, the
+level beside each); **All my jobs** ticks the unlocked ones (level 1+). Copy writes the
+selected set into each ticked job's `sets\<JOB>.lua` under the **same name**, through
+`setmanager.commitSet` — the Commit button's rails (parse check, backup first).
+
+- **What travels** is the set as the tab shows it, uncommitted edits included (the
+  receipt says so).
+- **A name already there is replaced.** The row reads `replaces` before you tick it
+  (`setmanager.hasSetText`, the writers' own key rule), the button's line repeats it.
+- **Gear the job cannot wear is left out there** (`setimport.workingForJob`, the job half
+  of `canWear`; level is the ladder's business). Copied as it is, the piece would be a
+  candidate the flatten still picks — `BuildDynamicSets` never asks about jobs — and the
+  server refuses. One chat line for the whole copy (`copyToDropNote`). Virtual entries
+  always travel.
+- **Mode gates travel as written**; Modes are per job entry, so one chat line names the
+  gates (`modeGates`) rather than guessing which jobs have them.
+- **A job dlac has never seen** starts with the four empty base sets plus this one:
+  `setmanager`'s `commitTarget` now frames a new sets file from `starterDynText` when
+  there is no old Dynamic block to import (Setup and the migration already did) — else
+  Setup's `seedSetsFile` would see user data and the starter triggers would point at four
+  missing sets. A commit while browsing gets the same.
+- Only the job you are ON is loaded in the engine, so `/dl sets reload` is queued only
+  when the live job was written.
+
+Its own module because gearui's chunk is at the 200-local cap; gearui hands it
+`buildCommitSlots(working)` and friends once (`configure`). Tests SCT1–SCT70.
 
 ### gear/acimport.lua — the Ashitacast (LegacyAC) XML → sets transform (pure)
 The third "Copy from" source (2026-07-31). **Ashitacast** is the legacy XML gear-swap

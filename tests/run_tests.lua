@@ -29809,6 +29809,285 @@ end)();
     package.loaded['dlac\\lib\\cmdqueue'] = savedCq;
 end)();
 
+-- ---------------------------------------------------------------------------
+-- SCT. The Sets tab's "Copy to" (Henrik 2026-10-14: "copy that set to other
+--      jobs ... so it's easy to bring general sets to every job you have").
+--
+--   The pure half (setimport.workingForJob / modeGates / copyToDropNote /
+--   copyToReceipt, setmanager.hasSetText); the shell (ui\setcopyto) driven end
+--   to end against recording deps; its popup's imgui stacks; the first-commit
+--   seed that starts a job dlac has never seen with the four empty base sets;
+--   and the gearui wiring, pinned as source (the Sets tab render has no drive).
+-- ---------------------------------------------------------------------------
+(function()
+    local simport = dofile('gear/setimport.lua');
+    local SL = { { label = 'Main' }, { label = 'Body' }, { label = 'Ring1' } };
+    local staff   = { rec = { Name = 'dlac:AutoStaff', Virtual = true } };
+    local whmBody = { rec = { Name = 'Hlr. Bliaut +1', Jobs = { 'WHM' }, Level = 74 } };
+    local allBody = { rec = { Name = 'Field Tunica', Jobs = { 'All' }, Level = 1 } };
+    local whmRing = { rec = { Name = 'Hlr. Bliaut +1', Jobs = { 'WHM' }, Level = 1 } };   -- same NAME, another slot
+    local W = { Main = { staff }, Body = { whmBody, allBody }, Ring1 = { whmRing } };
+    local function gateFor(job) return function(rec) return dispatchM.canWear(rec, job, math.huge); end; end
+
+    -- workingForJob: the set as one target job receives it.
+    local r = simport.workingForJob(W, SL, gateFor('WAR'));
+    check('SCT1 a virtual entry always travels', r.working.Main ~= nil and r.working.Main[1], staff);
+    check('SCT2 a piece the job cannot wear is left out, the rest kept in order',
+        (#r.working.Body == 1) and r.working.Body[1], allBody);
+    check('SCT3 a slot left with nothing is absent', r.working.Ring1, nil);
+    check('SCT4 ...the left-out piece is named ONCE', table.concat(r.dropped, ','), 'Hlr. Bliaut +1');
+    check('SCT5 ...and every left-out entry is counted', r.droppedCount, 2);
+    check('SCT6 slots kept', r.slotCount, 2);
+    check('SCT7 the source set is untouched', #W.Body, 2);
+    local rw = simport.workingForJob(W, SL, gateFor('WHM'));
+    check('SCT8 the job that CAN wear it keeps everything', rw.droppedCount == 0 and #rw.working.Body, 2);
+    local rt = simport.workingForJob(W, SL, function() error('boom'); end);
+    check('SCT9 a throwing gate keeps the piece (fail open)', rt.droppedCount, 0);
+    local rn = simport.workingForJob(W, SL, function() return nil; end);
+    check('SCT10 only an explicit false leaves a piece out', rn.droppedCount, 0);
+    check('SCT11 nothing to copy -> nothing', next(simport.workingForJob(nil, SL, gateFor('WAR')).working), nil);
+    check('SCT11a plain label strings walk too',
+        #simport.workingForJob(W, { 'Body' }, gateFor('WAR')).working.Body, 1);
+
+    -- modeGates: Modes live per job entry, so the copy names what it carried.
+    local MW = { Body = { { rec = allBody.rec, mode = 'DT' }, { rec = allBody.rec, mode = { 'Weapon:Melee', 'DT' } } },
+                 Main = { staff } };
+    local gates, gated = simport.modeGates(MW, SL);
+    check('SCT12 the distinct gates, first seen first', table.concat(gates, ','), 'DT,Weapon:Melee');
+    check('SCT13 ...and how many entries carry one', gated, 2);
+    check('SCT14 an ungated set has none', select(2, simport.modeGates(W, SL)), 0);
+
+    -- copyToDropNote: twenty jobs, ONE chat line.
+    local note, n = simport.copyToDropNote({
+        { job = 'WAR', dropped = { 'A', 'B' } }, { job = 'MNK', dropped = { 'A' } }, { job = 'THF', dropped = {} } });
+    check('SCT15 each piece once, with the jobs it was left out of', note, 'A (WAR, MNK), B (WAR)');
+    check('SCT16 ...counting distinct pieces', n, 2);
+    check('SCT17 nothing left out -> nil', simport.copyToDropNote({ { job = 'WAR', dropped = {} } }), nil);
+    check('SCT18 a long list is capped',
+        simport.copyToDropNote({ { job = 'WAR', dropped = { 'A', 'B', 'C' } } }, 2), 'A (WAR), B (WAR) (+1 more)');
+
+    -- copyToReceipt: the status line.
+    local text, isErr = simport.copyToReceipt('Idle', {
+        { job = 'WAR', ok = true, replaced = true }, { job = 'MNK', ok = true },
+        { job = 'BLU', ok = true, empty = true }, { job = 'SCH', ok = false, err = 'boom' } }, 3, true);
+    check('SCT19 names where it landed', text:find('Copied "Idle" to WAR, MNK, BLU.', 1, true) ~= nil, true);
+    check('SCT20 ...what it replaced', text:find('Replaced the "Idle" already on WAR (backed up first).', 1, true) ~= nil, true);
+    check('SCT21 ...what was left out', text:find('3 pieces left out where the job cannot wear them -- see chat.', 1, true) ~= nil, true);
+    check('SCT22 ...a job that got nothing wearable', text:find('EMPTY on BLU', 1, true) ~= nil, true);
+    check('SCT23 ...the uncommitted edits that went along', text:find('uncommitted edits went with it', 1, true) ~= nil, true);
+    check('SCT24 ...and the failure with its reason', text:find('FAILED: SCH (boom).', 1, true) ~= nil, true);
+    check('SCT25 not an error while anything landed', isErr, false);
+    local t1 = simport.copyToReceipt('Idle', { { job = 'WAR', ok = true } }, 1, false);
+    check('SCT26 one piece reads as one', t1:find('1 piece left out where the job cannot wear it', 1, true) ~= nil, true);
+    check('SCT27 clean edits say nothing about them', t1:find('uncommitted', 1, true), nil);
+    local t2, e2 = simport.copyToReceipt('Idle', { { job = 'WAR', ok = false, err = 'x' } }, 0, true);
+    check('SCT28 nothing landed is an error', e2, true);
+    check('SCT29 ...and says so', t2:find('Nothing copied', 1, true) ~= nil and t2:find('uncommitted', 1, true) == nil, true);
+
+    -- setmanager.hasSetText: the key rule the writers use.
+    local smP = dofile('gear/setmanager.lua');
+    local HT = 'local sets = {\n    Dynamic = {\n        Idle = {\n        },\n        ["Midcast_STR-VIT"] = {\n        },\n    },\n'
+            .. '    Precast = { Head = "Z" },\n};\nreturn sets;\n';
+    check('SCT30 a bare key is found', smP.hasSetText(HT, 'Idle'), true);
+    check('SCT31 a bracket-quoted key is found', smP.hasSetText(HT, 'Midcast_STR-VIT'), true);
+    check('SCT32 an absent name is not', smP.hasSetText(HT, 'Tp'), false);
+    check('SCT33 a static OUTSIDE Dynamic does not count', smP.hasSetText(HT, 'Precast'), false);
+    check('SCT34 no file, no set', smP.hasSetText(nil, 'Idle'), false);
+    check('SCT35 a prefix is not the name', smP.hasSetText(HT, 'Idl'), false);
+
+    -- The first-commit seed: a job dlac has never seen starts with the four
+    -- empty base sets, so its first visit finds what the starter triggers point at.
+    local profReal = package.loaded['dlac\\profiles'];
+    local P_SETS, P_JOB = 'tests/_tmp_sct_sets.lua', 'tests/_tmp_sct_job.lua';
+    os.remove(P_SETS); os.remove(P_JOB);
+    package.loaded['dlac\\profiles'] = setmetatable({
+        setsPath = function() return P_SETS; end,
+        ensureStorage = function() end,
+        activeName = function() return 'Default'; end,
+    }, { __index = profReal });
+    local smS = dofile('gear/setmanager.lua');
+    package.loaded['dlac\\profiles'] = profReal;
+    smS.jobPath = function() return P_JOB; end;
+    local path, ftext, fnote = smS._commitTarget('WAR');
+    check('SCT36 a never-seen job gets a sets file', path, P_SETS);
+    local starterNames = 0;
+    for _, nm in ipairs({ 'Idle', 'Tp_Default', 'Resting', 'Movement' }) do
+        if smS.hasSetText(ftext, nm) then starterNames = starterNames + 1; end
+    end
+    check('SCT37 ...holding the four empty base sets', starterNames, 4);
+    check('SCT38 ...and the note says so', tostring(fnote):find('started with the four empty base sets', 1, true) ~= nil, true);
+    -- An old job file to import from still wins: its sets, not the starters.
+    os.remove(P_SETS);
+    local jf = io.open(P_JOB, 'w');
+    jf:write('local sets = {\n    Dynamic = {\n        Nuke = {\n        },\n    },\n};\nreturn sets;\n'); jf:close();
+    local _, itext = smS._commitTarget('WAR');
+    check('SCT39 an old job file is imported, not replaced by the starters',
+        smS.hasSetText(itext, 'Nuke') and not smS.hasSetText(itext, 'Tp_Default'), true);
+    os.remove(P_SETS); os.remove(P_JOB);
+
+    -- THE SHELL, end to end: ui\setcopyto against recording deps.
+    local savedProf, savedSimp, savedAC, savedPrint = package.loaded['dlac\\profiles'],
+        package.loaded['dlac\\gear\\setimport'], AshitaCore, print;
+    package.loaded['dlac\\gear\\setimport'] = simport;
+    local function tmpFor(j) return 'tests/_tmp_sct_' .. j .. '.lua'; end
+    local loggedIn = true;
+    package.loaded['dlac\\profiles'] = { JOBS = profReal.JOBS,
+        setsPath = function(j) return loggedIn and tmpFor(j) or nil; end };
+    local function put(p, t) local f = io.open(p, 'w'); f:write(t); f:close(); end
+    put(tmpFor('WAR'), 'local sets = {\n    Dynamic = {\n        Idle = {\n        },\n    },\n};\n');
+    put(tmpFor('MNK'), 'local sets = {\n    Dynamic = {\n        Tp = {\n        },\n    },\n};\n');
+    local queued = {};
+    AshitaCore = {
+        GetMemoryManager = function() return { GetPlayer = function() return {
+            GetMainJob = function() return 1; end,                                   -- on WAR
+            GetJobLevel = function(_, id) return (id <= 3) and 75 or 0; end,         -- WAR, MNK, WHM unlocked
+        }; end }; end,
+        GetChatManager = function() return { QueueCommand = function(_, _, c) queued[#queued + 1] = c; end }; end,
+    };
+    local commits, status, statusErr, invalidated, chat = {}, nil, nil, 0, {};
+    print = function(s) chat[#chat + 1] = tostring(s); end
+    local sct = dofile('ui/setcopyto.lua');
+    sct.configure({
+        working  = function() return W; end,
+        dirty    = function() return false; end,
+        slotsFor = function(w)
+            local out = {};
+            for _, sl in ipairs(SL) do
+                local l = w[sl.label];
+                if type(l) == 'table' and #l > 0 then
+                    local items = {};
+                    for _, it in ipairs(l) do items[#items + 1] = { path = it.rec.Name }; end
+                    out[#out + 1] = { name = sl.label, items = items };
+                end
+            end
+            return out;
+        end,
+        slotLabels = SL,
+        canWear  = function(rec, job) return dispatchM.canWear(rec, job, math.huge); end,
+        setStatus = function(m, e) status, statusErr = m, e; end,
+        setmgr = {
+            hasSetText = smP.hasSetText,
+            commitSet = function(job, name, slots)
+                commits[#commits + 1] = { job = job, name = name, slots = slots };
+                if job == 'BLU' then return false, 'disk full'; end
+                return true, (job == 'WAR') and 'replaced' or 'inserted';
+            end,
+        },
+        invalidate = function() invalidated = invalidated + 1; end,
+        esc = function(s) return s; end,
+        COL = {},
+    });
+    local ok, err = pcall(function()
+        sct.open('WHM', 'Idle');
+        local st = sct._state;
+        local byJob = {};
+        for _, row in ipairs(st.rows) do byJob[row.job] = row; end
+        check('SCT40 every OTHER job is offered', #st.rows, 21);
+        check('SCT41 ...never the one the set is on', byJob.WHM, nil);
+        check('SCT42 a job already holding the name reads "replaces"', byJob.WAR.has, true);
+        check('SCT43 a job without it does not', byJob.MNK.has == false and byJob.MNK.fresh, false);
+        check('SCT44 a job dlac has nothing for is fresh', byJob.THF.fresh, true);
+        check('SCT45 rows carry the job level', byJob.WAR.level == 75 and byJob.THF.level, 0);
+        sct._tickMine();
+        check('SCT46 "All my jobs" ticks the unlocked ones',
+            st.marks.WAR[1] == true and st.marks.MNK[1] == true and st.marks.THF[1], false);
+        st.marks.BLU = { true };   -- one ticked by hand, whose write fails
+        sct._apply();
+        local order = {};
+        for _, c in ipairs(commits) do order[#order + 1] = c.job; end
+        check('SCT47 each ticked job is written, in job order', table.concat(order, ','), 'WAR,MNK,BLU');
+        check('SCT48 ...under the SAME name', commits[1].name, 'Idle');
+        local warBody = nil;
+        for _, s in ipairs(commits[1].slots) do if s.name == 'Body' then warBody = s; end end
+        check('SCT49 ...minus what that job cannot wear', warBody ~= nil and #warBody.items == 1 and warBody.items[1].path, 'Field Tunica');
+        check('SCT50 the receipt names where it landed', status:find('Copied "Idle" to WAR, MNK.', 1, true) ~= nil, true);
+        check('SCT51 ...the replaced one', status:find('already on WAR', 1, true) ~= nil, true);
+        check('SCT52 ...and the failure', status:find('FAILED: BLU (disk full)', 1, true) ~= nil, true);
+        check('SCT52a ...which is not an error while others landed', statusErr, false);
+        check('SCT53 ONE chat line for what was left out, landed jobs only',
+            chat[1], '[dlac] Copy "Idle": left out where the job cannot wear it -- Hlr. Bliaut +1 (WAR, MNK).');
+        check('SCT54 the live job was written -> one hot-swap', table.concat(queued, '|'), '/dl sets reload');
+        check('SCT55 the sets cache is dropped', invalidated, 1);
+        -- Only off-job writes: nothing in the engine to reload.
+        queued = {}; commits = {};
+        st.marks = { MNK = { true } };
+        sct._apply();
+        check('SCT56 no live job written -> no reload', #queued, 0);
+        -- Nothing ticked is refused, not written.
+        commits = {};
+        st.marks = {};
+        sct._apply();
+        check('SCT57 nothing ticked writes nothing', #commits, 0);
+        check('SCT58 ...and says what to do', status == 'Tick at least one job first.' and statusErr, true);
+        -- Not logged in: no rows, a reason.
+        loggedIn = false;
+        sct.open('WHM', 'Idle');
+        check('SCT59 logged out -> no rows and a reason',
+            #sct._state.rows == 0 and tostring(sct._state.err):find('Log in first', 1, true) ~= nil, true);
+        loggedIn = true;
+    end);
+    check('SCT60 the shell ran without throwing', ok and true or tostring(err), true);
+    print = savedPrint;
+    AshitaCore = savedAC;
+    package.loaded['dlac\\profiles'], package.loaded['dlac\\gear\\setimport'] = savedProf, savedSimp;
+    for _, j in ipairs(profReal.JOBS) do os.remove(tmpFor(j)); end
+
+    -- THE POPUP'S STACKS: a push left open is native UB no pcall catches (the
+    -- floatgear crash). Counted against a stub imgui, popup shut and open.
+    local depth = { col = 0, popup = 0 };
+    local popupOpen = false;
+    local IM = setmetatable({}, { __index = function() return function() return false; end; end });
+    IM.PushStyleColor = function() depth.col = depth.col + 1; end
+    IM.PopStyleColor  = function(n) depth.col = depth.col - (tonumber(n) or 1); end
+    IM.BeginPopup = function() if popupOpen then depth.popup = depth.popup + 1; end return popupOpen; end
+    IM.EndPopup   = function() depth.popup = depth.popup - 1; end
+    IM.GetCursorPosX = function() return 8; end
+    local savedIm, savedCol = package.loaded['imgui'], ImGuiCol_Text;
+    package.loaded['imgui'] = IM;
+    ImGuiCol_Text = 0;
+    local sctR = dofile('ui/setcopyto.lua');
+    package.loaded['imgui'] = savedIm;
+    AshitaCore = { GetMemoryManager = function() return { GetPlayer = function() return {
+        GetMainJob = function() return 1; end, GetJobLevel = function(_, id) return (id <= 3) and 75 or 0; end,
+    }; end }; end };
+    package.loaded['dlac\\profiles'] = { JOBS = profReal.JOBS, setsPath = function(j) return tmpFor(j); end };
+    sctR.configure({ working = function() return W; end, dirty = function() return false; end,
+        slotsFor = function() return {}; end, slotLabels = SL, canWear = function() return true; end,
+        setStatus = function() end, setmgr = { hasSetText = smP.hasSetText, commitSet = function() return true, 'inserted'; end },
+        invalidate = function() end, esc = function(s) return s; end,
+        COL = { DIM = {}, ERR = {}, WANT = {}, UNOWN = {} } });
+    local okR1 = pcall(sctR.render);
+    check('SCT61 a shut popup renders', okR1 and depth.popup == 0 and depth.col, 0);
+    sctR.open('WHM', 'Idle');
+    sctR._tickMine();
+    popupOpen = true;
+    local okR2 = pcall(sctR.render);
+    check('SCT62 the open popup renders every row', okR2, true);
+    check('SCT63 ...its colour pushes balanced (dimmed locked jobs)', depth.col, 0);
+    check('SCT64 ...and BeginPopup/EndPopup balanced', depth.popup, 0);
+    -- A body that throws still reaches EndPopup.
+    sctR.configure({ COL = nil, esc = function(s) return s; end });
+    local okR3 = pcall(sctR.render);
+    check('SCT65 a throwing body still closes the popup', okR3 and depth.popup, 0);
+    ImGuiCol_Text = savedCol;
+    AshitaCore = savedAC;
+    package.loaded['dlac\\profiles'] = savedProf;
+
+    -- gearui's end of the wire. Source pins (the Sets tab render has no drive):
+    -- a renamed id or a dropped call is a menu item that does nothing, silently.
+    local f = io.open('ui/gearui.lua', 'r');
+    local src = f and f:read('*a') or ''; if f then f:close(); end
+    check('SCT66 Manage... offers Copy to', src:find("Selectable('Copy to...##smg_copyto')", 1, true) ~= nil, true);
+    check('SCT67 ...which opens the module on the tab\'s job and set',
+        src:find("require('dlac\\\\ui\\\\setcopyto').open(job, nm)", 1, true) ~= nil, true);
+    check('SCT68 the popup is drawn in the tab\'s window scope', src:find('if okc and type(sct) == \'table\' then sct.render(); end', 1, true) ~= nil, true);
+    check('SCT69 the module is handed the commit builder',
+        src:find('slotsFor   = buildCommitSlots,', 1, true) ~= nil
+        and src:find('local function buildCommitSlots(working)', 1, true) ~= nil, true);
+    check('SCT70 ...and the JOB half of the wear gate',
+        src:find('gearOracle.canWear(rec, job, math.huge)', 1, true) ~= nil, true);
+end)();
+
 -- The warm-note artifact the dispatch-driving sections leave behind (dataDir
 -- stubbed 'tests\'): on Windows a real tests\debug\mpwarm.txt (gitignored via
 -- debug/), under WSL ONE backslash-bearing filename that drvfs PUA-mangles on

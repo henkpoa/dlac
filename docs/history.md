@@ -11182,3 +11182,30 @@ caller pops; the worn view kept, re-read on its own slot's equip, its bag
 slot's item packet and a zone, the net's one slot a beat, never keeping an
 unreadable slot; the identity kept, re-checked, ended by a logout, re-read at a
 zone-in; one snapshot per frame), and the gauge suite's Warrior-once-a-second.
+
+## 2026-10-14: Sets tab, Copy to other jobs (`2026.10.14a`)
+
+Henrik: "In sets, we have a "Copy From..", I want to add "Copy To..." where you
+copy that set to other jobs, when you click that, get a list of jobs that you
+wanna copy the set to, so it's easy to bring general sets to every job you have."
+
+**Manage... > Copy to...** opens the other 21 jobs in three columns, each with its
+level; **All my jobs** ticks every unlocked one. **Copy to N jobs** writes the
+selected set into each ticked job under the same name, with the Commit button's
+backup and parse check. A job that already has a set of that name says
+`replaces` before you tick it, and its set is replaced. Gear a job cannot wear is
+left out of that job's copy and named in ONE chat line (piece, then the jobs it
+was left out of); Mode gates travel as written and get their own line, since
+Modes live per job. Only a write to the job you are on reloads the engine.
+
+A job dlac has never seen now starts its sets file with the four empty base sets
+before the copy lands. A first commit used to create a bare file, which Setup's
+seeder then treats as the player's own and never fills, so the job's starter
+triggers would point at four missing sets on its first visit. Same fix for a
+commit made while browsing another job.
+
+Tests: SCT1-SCT70 (the per-job filter, Mode gates, the pooled chat line and the
+receipt; `hasSetText`; the first-commit seed and the old-job-file import that
+still wins over it; the module driven end to end against recording deps; the
+popup's colour and popup stacks balanced, a throwing body included; gearui's
+wiring as source pins).
