@@ -435,5 +435,7 @@ own economy and rules, all read from its pack — the full handoff is
   skill in tenths, the wardrobe slots and the guild rank; no GP, no VP, no
   doubloons. A fishdb `shop` (Fennella) replaces the four-column matrix with
   her Fisherman's → Angler's ladder, caps included.
-- **fishstate** gained `moveCase/moveSatchel`: the Catch mover
-  (`feature/fishstorage`), armed only by the pack's `fishing` service.
+- **fishstate** gained `moveCase/moveSatchel/moveTrash`: the Catch mover
+  (`feature/fishstorage`), armed only by the pack's `fishing` service. It moves
+  fish; trash (fishdb `item` rows) only with `moveTrash`, off by default
+  (Henrik, `2026.10.15b`).

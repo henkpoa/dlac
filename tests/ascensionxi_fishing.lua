@@ -180,16 +180,29 @@ local changes = 0;
 local liveChanged = fs.live.changed;
 fs.live.changed = function() changes = changes + 1; return liveChanged(); end;
 assert(next(fs._options()) ~= nil and fs._options()[7] == false and fs._options()[5] == false);
+assert(fs._options().trash == false, 'trash is off by default: fish only');
 fw.setMoveDestination(7, true);
 assert(fs._options()[7] == true and fs._options()[5] == false and changes == 1, 'the Case switch wakes the mover');
 fw.setMoveDestination(5, true);
 local saved = loadfile(tmp .. 'fishstate.lua')();
 assert(saved.moveCase == true and saved.moveSatchel == true and saved.enabled == false, 'saved per character');
+assert(saved.moveTrash == false);
 fw.setMoveDestination(3, true);
 assert(changes == 2, 'only the Case (7) and the Satchel (5)');
-assert(fs._catchable(4401) and fs._catchable(90), 'fish and junk are catches');
-for bait in pairs(db.baits) do assert(not fs._catchable(bait), 'bait is never a catch'); end
-assert(not fs._catchable(489), "a broken rod is not a catch");
+fw.setMoveTrash(true);
+assert(fs._options().trash == true and changes == 3, 'the trash switch reaches the mover and wakes it');
+assert(loadfile(tmp .. 'fishstate.lua')().moveTrash == true, 'the trash switch is saved per character');
+fw.setMoveTrash(false);
+assert(fs._options().trash == false and loadfile(tmp .. 'fishstate.lua')().moveTrash == false);
+assert(fs._catchKind(4401) == 'fish', 'Moat Carp is a fish');
+assert(fs._catchKind(90) == 'trash', 'the Rusty Bucket is trash (the server flags it as not a fish)');
+for bait in pairs(db.baits) do assert(fs._catchKind(bait) == nil, 'bait is never a catch'); end
+assert(fs._catchKind(489) == nil, "a broken rod is not a catch");
+for id, f in pairs(db.fish) do
+    if db.baits[id] == nil then
+        assert(fs._catchKind(id) == ((f.item or 0) ~= 0 and 'trash' or 'fish'), 'the item flag decides');
+    end
+end
 sp.provide('fishing', { status = status });
 assert(next(fs._options()) == nil, 'a service without moveCatches arms nothing');
 sp.provide('fishing', service);

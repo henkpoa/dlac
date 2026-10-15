@@ -9,9 +9,10 @@ end
 local function attr(slot, id, count, cid, flags)
     return string.rep('\0', 4) .. p32(count) .. p32(0) .. p16(id) .. string.char(cid or 0, slot, flags or 0);
 end
--- 100/101 stack to 12 and 300 does not stack (fish); 200 is junk a line brings
--- up. 400 is a broken rod and 500 the bait: neither is a catch.
-local CATCH = { [100] = true, [101] = true, [200] = true, [300] = true };
+-- 100/101 stack to 12 and 300 does not stack (fish); 200 is trash a line
+-- brings up (stacks to 12). 400 is a broken rod and 500 the bait: neither is
+-- a catch.
+local CATCH = { [100] = 'fish', [101] = 'fish', [200] = 'trash', [300] = 'fish' };
 local function harness()
     local H = { time = 0, sent = {}, opts = { [7] = true, [5] = true }, ready = true,
         bags = { [0] = { max = 4, items = {} }, [7] = { max = 2, items = {} }, [5] = { max = 2, items = {} } } };
@@ -23,7 +24,7 @@ local function harness()
     end
     H.m = storage.new({ clock = function() return H.time; end,
         options = function() return H.opts; end, bag = snapshot,
-        catchable = function(id) return CATCH[id] == true; end,
+        catchKind = function(id) return CATCH[id]; end,
         ready = function() return H.ready; end, equipped = function() return H.worn == true; end,
         stack = function(id) return id == 300 and 1 or 12; end,
         send = function(p) if H.refuse then return false; end H.sent[#H.sent + 1] = p; return true; end });
@@ -82,11 +83,31 @@ h.confirm(1, 100, 0, 7, 1, 12); assert(h.m.waiting() == 0);
 h = harness(); h.reel(); h.catch(1, 100, 3); h.release(); h.flush(); assert(#h.sent == 0);
 h.pause(); assert(#h.sent == 1 and h.sent[1][5] == 3, 'the pause flushes the partial stack');
 
--- Junk a line brings up is a catch too; a broken rod and the bait never are.
+-- Trash stays unless its switch is on (Henrik 2026-10-15: fish only by
+-- default); a fish caught beside it still moves.
 h = harness(); h.put(0, 2, 500, 10);
 h.reel(); h.catch(1, 200, 1); h.release(); h.pause();
-assert(#h.sent == 1 and h.sent[1][11] == 1, 'the junk catch moves');
-h = harness(); h.put(0, 2, 500, 10); h.put(0, 3, 17, 1);
+assert(#h.sent == 0 and h.m.waiting() == 0, 'trash stays by default');
+h.reel(); h.catch(3, 300, 1); h.release(); h.flush();
+assert(#h.sent == 1 and h.sent[1][11] == 3, 'the fish still moves');
+-- With "Move trash too" on, the trash catch moves like a fish.
+h = harness(); h.opts.trash = true;
+h.reel(); h.catch(1, 200, 1); h.release(); h.pause();
+assert(#h.sent == 1 and h.sent[1][11] == 1, 'trash moves with its switch on');
+-- Trash counted while the switch was on is forgotten when it goes off, at
+-- once through changed(), and by the tick if the switch changes behind it.
+h = harness(); h.opts.trash = true;
+h.reel(); h.catch(1, 200, 3); h.catch(2, 100, 2); h.release(); h.flush();
+assert(h.m.waiting() == 5, 'three trash and two fish owed');
+h.opts.trash = false; h.m.changed();
+assert(h.m.waiting() == 2, 'switching trash off forgets the trash at once');
+h.pause(); assert(#h.sent == 1 and h.sent[1][11] == 2, 'only the fish moves');
+h = harness(); h.opts.trash = true;
+h.reel(); h.catch(1, 200, 3); h.release(); h.flush(); assert(h.m.waiting() == 3);
+h.opts.trash = false; h.pause();
+assert(#h.sent == 0 and h.m.waiting() == 0, 'the tick drops trash it may no longer move');
+-- A broken rod and the bait are never catches, trash switch or not.
+h = harness(); h.opts.trash = true; h.put(0, 2, 500, 10); h.put(0, 3, 17, 1);
 h.reel();
 h.m.incoming(0x020, attr(3, 400, 1)); h.put(0, 3, 400, 1);   -- the rod breaks
 h.m.incoming(0x020, attr(2, 500, 9)); h.put(0, 2, 500, 9);   -- the bait goes
@@ -169,4 +190,4 @@ h.opts = {}; h.m.changed(); assert(h.m.waiting() == 0);
 h = harness(); for _ = 1, 50 do h.tick(0.1); end
 assert((h.reads or 0) == 0, 'an idle mover reads no bag');
 
-print('OK -- catches counted per reel, whole stacks, pauses, junk vs bait and broken rods, carried stock, merges, zones and confirmations');
+print('OK -- catches counted per reel, fish vs trash vs bait and broken rods, whole stacks, pauses, carried stock, merges, zones and confirmations');

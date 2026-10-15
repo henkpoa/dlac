@@ -883,20 +883,31 @@ function M.renderServerStatus(oc)
     end
 end
 
--- The Mog Case / Mog Satchel switches for catches, and the mover's state.
+-- The Mog Case / Mog Satchel switches for catches, the trash switch, and the
+-- mover's state.
 function M.renderMoveDestinations(id)
     local svc = packFishing();
     if svc == nil or svc.moveCatches ~= true or type(fw.setMoveDestination) ~= 'function' then return; end
     fw.loadState();
     imgui.TextColored(COL_TEXT, 'Move catches into:');
     if imgui.IsItemHovered() then
-        imgui.SetTooltip('What you reel in -- fish and the odd item -- moves out of your inventory:\nfull stacks and items that do not stack right away, the rest once you\nhave not reeled in for a few seconds. Bait and what you carried in stay put.');
+        imgui.SetTooltip('The fish you reel in move out of your inventory: full stacks and fish that\ndo not stack right away, the rest once you have not reeled in for a few\nseconds. Bait and what you carried in stay put; trash only with Move trash too.');
     end
     for _, destination in ipairs({ { 7, 'Mog Case', 'moveCase' }, { 5, 'Mog Satchel', 'moveSatchel' } }) do
         imgui.SameLine(0, 12);
         local checked = { fw[destination[3]] == true };
         if imgui.Checkbox(destination[2] .. '##fishmove' .. tostring(id), checked) then
             fw.setMoveDestination(destination[1], checked[1]);
+        end
+    end
+    -- Trash is its own choice, off by default (Henrik 2026-10-15): fish only.
+    if type(fw.setMoveTrash) == 'function' then
+        local trash = { fw.moveTrash == true };
+        if imgui.Checkbox('Move trash too##fishtrash' .. tostring(id), trash) then
+            fw.setMoveTrash(trash[1]);
+        end
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('Also move what you reel in that is not a fish: rusty gear, kelp, shells,\nscrolls and the like (the server\'s own junk list). Off: they stay in your inventory.');
         end
     end
     local fsok, fs = pcall(require, 'dlac\\feature\\fishstorage');

@@ -13,8 +13,11 @@
 -- the broken rod. Nothing marks the last packet, so a reel is counted once its
 -- answer has been quiet for SETTLE_S, or at our own release (0x110 mode 4),
 -- which the client sends only after the catch animation. Only ids the pack's
--- fishing tables list as catches are ever owed -- fish and the junk a line
--- brings up (fishdb.fish) -- never bait, never a broken rod.
+-- fishing tables list as catches are ever owed (fishdb.fish), never bait,
+-- never a broken rod -- and of those, TRASH (the rows the server flags as not
+-- a fish: rusty gear, kelp, shells, scrolls) only while the player's "Move
+-- trash too" switch is on. It is off by default: fish only (Henrik
+-- 2026-10-15). D.catchKind(id) says 'fish', 'trash' or nil.
 local M = { QUIET_S = 1, FLUSH_S = 6, CAPTURE_S = 5, SETTLE_S = 0.5, CONFIRM_S = 5, GAP_S = 0.2, ZONE_S = 5 };
 M.REEL, M.RELEASE = 3, 4;   -- GP_CLI_COMMAND_FISHING_2_MODE
 local function u16(s, o) return (s:byte(o + 1) or 0) + (s:byte(o + 2) or 0) * 256; end
@@ -78,13 +81,19 @@ function M.new(D)
         return n;
     end
 
+    -- A fish is always owed; trash only while its switch is on.
+    local function owes(id, opts)
+        local kind = D.catchKind(id);
+        return kind == 'fish' or (kind == 'trash' and opts.trash == true);
+    end
+
     local function finish()
         local after = { items = {} };
         for slot, it in pairs(capture.before.items) do after.items[slot] = it; end
         for slot, it in pairs(capture.items) do after.items[slot] = it; end
-        local seen = {};
+        local seen, opts = {}, D.options();
         for _, it in pairs(after.items) do
-            if it.id > 0 and not seen[it.id] and D.catchable(it.id) then
+            if it.id > 0 and not seen[it.id] and owes(it.id, opts) then
                 seen[it.id] = true;
                 -- A move of ours that landed during the reel lowered the total.
                 local gained = total(after, it.id) - total(capture.before, it.id) + (capture.movedOut[it.id] or 0);
@@ -217,12 +226,13 @@ function M.new(D)
         -- self.owed (the 2026-10-13 stutter rule).
         if next(self.owed) == nil then return; end
         if now < nextAt or now < holdUntil or now - lastInventory < M.QUIET_S or not D.ready() then return; end
-        local src = D.bag(0);
+        local src, opts = D.bag(0), D.options();
         local flush = now - lastReel >= M.FLUSH_S;
         local ids = {};
         for id, owed in pairs(self.owed) do
-            -- Units used or moved by hand are no longer ours to move.
-            local held = total(src, id);
+            -- Units used or moved by hand are no longer ours to move, nor is
+            -- trash once its switch is off.
+            local held = owes(id, opts) and total(src, id) or 0;
             if held < owed then owed = held; self.owed[id] = held > 0 and held or nil; end
             if owed > 0 then ids[#ids + 1] = id; end
         end
@@ -246,11 +256,19 @@ function M.new(D)
         end
     end
 
-    -- A destination switched on or off: resume after a stop; with none left,
-    -- forget the counts (an outstanding move still confirms).
+    -- A switch changed: resume after a stop; with no destination left, forget
+    -- the counts; with trash switched off, forget the trash (an outstanding
+    -- move still confirms).
     function self.changed()
         capture, stopped = nil, false;
-        if not enabled() then self.owed = {}; end
+        if not enabled() then
+            self.owed = {};
+        else
+            local opts = D.options();
+            for id in pairs(self.owed) do
+                if not owes(id, opts) then self.owed[id] = nil; end
+            end
+        end
         if not flight then self.status = ''; end
     end
     return self;
@@ -275,18 +293,20 @@ local function options()
     if svc == nil or svc.moveCatches ~= true then return {}; end
     local fw = require('dlac\\feature\\fishwatch');
     fw.loadState();
-    return { [7] = fw.moveCase == true, [5] = fw.moveSatchel == true };
+    return { [7] = fw.moveCase == true, [5] = fw.moveSatchel == true, trash = fw.moveTrash == true };
 end
--- What a line can bring up: the pack's fishing tables (fish and junk alike),
--- minus anything that is also bait -- the next cast needs it.
-local function catchable(id)
+-- What a line can bring up, by kind: 'fish', or 'trash' for a row the server
+-- flags as not a fish (fishdb `item`); nil for anything else, bait included --
+-- the next cast needs it.
+local function catchKind(id)
     local db = require('dlac\\feature\\fishcalc').db();
-    if db == nil or db.fish == nil or db.fish[id] == nil then return false; end
-    return (db.baits or {})[id] == nil;
+    local f = (db ~= nil and db.fish ~= nil) and db.fish[id] or nil;
+    if f == nil or (db.baits or {})[id] ~= nil then return nil; end
+    return (f.item or 0) ~= 0 and 'trash' or 'fish';
 end
-M._options, M._catchable = options, catchable;   -- test seams (the live wiring)
+M._options, M._catchKind = options, catchKind;   -- test seams (the live wiring)
 M.live = M.new({
-    clock = os.clock, options = options, bag = bag, catchable = catchable,
+    clock = os.clock, options = options, bag = bag, catchKind = catchKind,
     ready = function()
         local mm = AshitaCore:GetMemoryManager();
         local index = mm:GetParty():GetMemberTargetIndex(0);

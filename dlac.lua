@@ -18,7 +18,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.10.15a';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.10.15b';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
                                 -- (03f = engine v163: the contest explains its own plan;
                                 --  03g = one floating tray: Teleports + the E-Box crates;
@@ -401,7 +401,10 @@ addon.version = '2026.10.15a';  -- date of the last shipped change (Ashita print
                                 --  the skill in tenths (op 0x83), Fennella's
                                 --  shelf with the fishing caps, the +10 hook
                                 --  rule in the target window, and catches into
-                                --  the Mog Case/Satchel by whole stacks)
+                                --  the Mog Case/Satchel by whole stacks;
+                                --  10.15b = the catch mover moves fish only;
+                                --  trash (the server's non-fish catches) has
+                                --  its own Move trash too switch, off by default)
 addon.desc    = 'Gear sets, triggers and live stats with level scaling -- dlac equips your gear itself.';
 
 -- Load BEACON ('/dl check' field round, 2026-07-23): written by PLAIN io at

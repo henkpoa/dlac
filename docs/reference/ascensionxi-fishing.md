@@ -1,7 +1,7 @@
 # AscensionXI Fishing — October 15, 2026
 
 The Gear Helpers > Fishing Gear panel and the Hobby bar's Fishing tab are on for
-AscensionXI. Branch `claude/axi-fishing` (dlac PR #215, `2026.10.15a`), paired with the
+AscensionXI. Branch `claude/axi-fishing` (dlac PR #215, `2026.10.15a`/`b`), paired with the
 server branch `claude/dlac-fishing` (AscensionXI PR #964; its handoff:
 `documentation/custom/dlac-fishing.md` in the AscensionXI repo). Offline suites
 pass, including the client codec against the real server endpoint. **Not tried
@@ -16,7 +16,8 @@ Mariners venture gear, Crooked Jones).
 
 - **The panel**, AscensionXI's own layout (`fishui.renderShopPanel`):
   - the Set Fish Idle switch, the target window and the bar button;
-  - **Move catches into: Mog Case / Mog Satchel**, per character;
+  - **Move catches into: Mog Case / Mog Satchel**, per character, fish only;
+    **Move trash too** (off by default) adds the non-fish catches;
   - the server's numbers: **Fishing points**, the skill in tenths with the
     best owned gear on top and the guild rank's cap, and the hook range ("Fish
     up to skill N can bite") with the skill-up chance at your skill;
@@ -54,7 +55,7 @@ Mariners venture gear, Crooked Jones).
 | `servers/ascensionxi/transport.lua` | names op 0x83 `fishing` in the shared line (T4) |
 | `servers/ascensionxi/modules/helm/status.lua` | comment only: 0x82 and 0x83 have owners now |
 | `feature/fishcalc.lua` | `rules`, `canHook`, `minSkillToHook`, `skillupFor`, `pointsFor`; `isolationFor(fish, eff)` gates rivals; `wornFishTotal(counts, level)` |
-| `feature/fishwatch.lua` | `packFishing`, `serverStatus`, `moveCase`/`moveSatchel` in `fishstate.lua`, `setMoveDestination`; `/dl fish points` reads the server's points |
+| `feature/fishwatch.lua` | `packFishing`, `serverStatus`, `moveCase`/`moveSatchel`/`moveTrash` in `fishstate.lua`, `setMoveDestination`, `setMoveTrash`; `/dl fish points` reads the server's points |
 | `feature/fishstorage.lua` | the catch mover (below) |
 | `ui/fishui.lua` | `serverStatusLines`, `status` (shelf coverage), `renderShopPanel`, `renderServerStatus`, `renderMoveDestinations`, `targetHookWarning`; the target window's rule lines |
 | `ui/fishbar.lua` | the server block on the Fishing tab; VP only where the pack has ventures |
@@ -131,8 +132,12 @@ per item and whole stacks only.
    counted once it has been quiet for 0.5 s, or at our release (mode 4). A reel
    never answered counts nothing.
 2. Owed = the net rise of each item's total, but only for ids the fishing
-   tables list as catches: fish and the junk a line brings up. Bait is never
-   owed (the next cast needs it), nor is a broken rod.
+   tables list as catches. A **fish** is always owed. **Trash** -- a row the
+   server flags as not a fish (fishdb `item`: rusty gear, kelp, shells,
+   scrolls) -- only while the player's **Move trash too** switch is on; it is
+   off by default (Henrik, October 15: "I personally wouldn't want that").
+   Switching it off forgets trash still waiting. Bait is never owed (the next
+   cast needs it), nor is a broken rod.
 3. Full stacks and non-stacking fish move as soon as the inventory is quiet;
    a partial stack once you have not reeled in for six seconds. With the
    13-second bite wait that is usually between casts, one move per catch.
@@ -148,7 +153,7 @@ inert on CatsEye.
 
 | Command | Covers |
 |---|---|
-| `lua tests/fishstorage.lua` | the mover: only our reel counts, release vs settle, unanswered reels, junk vs bait vs a broken rod, whole stacks, pauses, carried stock, merges, zones, confirmations, a refused send, the idle tick |
+| `lua tests/fishstorage.lua` | the mover: only our reel counts, release vs settle, unanswered reels, fish vs trash (its switch on, off, and off again) vs bait vs a broken rod, whole stacks, pauses, carried stock, merges, zones, confirmations, a refused send, the idle tick |
 | `lua tests/ascensionxi_fishing.lua [server-checkout]` | the 0x83 codec, the reel/event refresh, BUSY/UNAVAILABLE/BAD_OP, zoning, fishdb's rules and shelf, the fishcalc rules, the mover's live wiring; with a server checkout, against the real `helm_status.lua` |
 | `lua tests/ascensionxi_fishing_ui.lua` | the status lines, shelf coverage, the panel, target window and bar under a recording imgui (stacks balanced, no CatsEye section), the switches, an older server |
 | `lua tests/ascensionxi_helm.lua [server-checkout]` | its server half had drifted from main since op 0x82 (fixed); it now also proves 0x83 is routed |
@@ -157,14 +162,18 @@ inert on CatsEye.
 Before the PR, ten guards were broken once each (the reel gate, catches-only,
 release, reel-only staleness, the second ask, the hook gate, isolation gating,
 the switch ids, the skill range check, the AXI panel branch); every one went
-red. The full mutation sweep stays owed until the feature is called final.
+red. `2026.10.15b` did the same for the trash switch's six (trash only with
+its switch, forgotten on switching off and by the tick, the item flag, the
+option's wiring, the checkbox's state). The full mutation sweep stays owed
+until the feature is called final.
 `tests/ascensionxi_digging.lua`'s server half has drifted from server main too
 (the October 15 allowance rework); left alone here, it belongs to that work.
 
 ## Decisions made without the owner (say if any is wrong)
 
-1. "Move catches" moves everything the line brings up, junk included, not only
-   fish: a full inventory pays no points, and junk fills it too. Bait and
+1. ~~"Move catches" moves everything the line brings up, junk included.~~
+   **Ruled by Henrik on October 15 (`2026.10.15b`):** fish only; trash moves
+   only with its own **Move trash too** switch, off by default. Bait and
    broken rods never move.
 2. A partial stack moves six seconds after the last reel, which in practice
    means between casts.
@@ -190,9 +199,11 @@ red. The full mutation sweep stays owed until the feature is called final.
    cannot bite yet; a fish above your skill shows the skill-up line; every
    fish shows its points.
 5. Set Fish Idle with the caps in your bags: the best cap goes on the head.
-6. Tick Mog Case: a non-stacking catch leaves the inventory at once, a
-   stacking one about six seconds after the reel; bait stays; a broken rod
-   stays; nothing moves while zoning.
+6. Tick Mog Case: a non-stacking fish leaves the inventory at once, a
+   stacking one about six seconds after the reel; trash (a rusty bucket, kelp)
+   stays; bait stays; a broken rod stays; nothing moves while zoning. Tick
+   Move trash too: the next trash you reel in moves as well; untick it and
+   trash caught meanwhile stays.
 7. On a server without op 0x83: the panel says "waiting for the server", the
    shelf still draws, no errors.
 

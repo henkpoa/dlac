@@ -102,6 +102,7 @@ M.rodId, M.rod = nil, nil;     -- chosen rod: item id + CLIENT name
 M.baitId, M.bait = nil, nil;   -- chosen bait: item id + CLIENT name
 M.rodPin, M.baitPin = false, false;   -- manual dropdown picks (beat auto while owned)
 M.moveCase, M.moveSatchel = false, false;   -- catches into the Mog Case / Satchel (feature\fishstorage)
+M.moveTrash = false;    -- ...and the non-fish catches too (off: fish only -- Henrik 2026-10-15)
 M._enabledAt = 0;
 M._rescanned = false;
 local _stateLoaded = false;
@@ -117,12 +118,14 @@ local function saveState()
         local f = io.open(p, 'wb'); if f == nil then return; end
         f:write(string.format(
             'return { enabled = %s, at = %d, target = %d, targetName = %q, rod = %q, bait = %q,'
-            .. ' rodId = %d, baitId = %d, rodPin = %s, baitPin = %s, moveCase = %s, moveSatchel = %s }\n',
+            .. ' rodId = %d, baitId = %d, rodPin = %s, baitPin = %s, moveCase = %s, moveSatchel = %s,'
+            .. ' moveTrash = %s }\n',
             tostring(M.enabled == true), M._enabledAt or 0, M.target or 0,
             tostring(M.targetName or ''), tostring(M.rod or ''), tostring(M.bait or ''),
             M.rodId or 0, M.baitId or 0,
             tostring(M.rodPin == true), tostring(M.baitPin == true),
-            tostring(M.moveCase == true), tostring(M.moveSatchel == true)));
+            tostring(M.moveCase == true), tostring(M.moveSatchel == true),
+            tostring(M.moveTrash == true)));
         f:close();
     end);
 end
@@ -149,6 +152,7 @@ function M.loadState()
                 M.rodPin = t.rodPin == true;
                 M.baitPin = t.baitPin == true;
                 M.moveCase, M.moveSatchel = t.moveCase == true, t.moveSatchel == true;
+                M.moveTrash = t.moveTrash == true;
             end
         end
     end);
@@ -378,6 +382,16 @@ function M.setMoveDestination(cid, on)
     if cid == 7 then M.moveCase = on == true;
     elseif cid == 5 then M.moveSatchel = on == true;
     else return; end
+    saveState();
+    pcall(function() require('dlac\\feature\\fishstorage').live.changed(); end);
+end
+
+-- Trash (the catches that are not fish: the server's junk list) moves only
+-- with this on. Off is the default: fish only (Henrik 2026-10-15, "I
+-- personally wouldn't want that"). Turning it off forgets trash still owed.
+function M.setMoveTrash(on)
+    M.loadState();
+    M.moveTrash = on == true;
     saveState();
     pcall(function() require('dlac\\feature\\fishstorage').live.changed(); end);
 end

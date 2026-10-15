@@ -303,5 +303,5 @@ AscensionXI's move of dug items into the Mog Case / Mog Satchel (`feature/digsto
 _Avoid_: auto-move / auto-deposit (the player still digs; dlac only moves what digging added), sweep (it never moves what it did not see dug)
 
 **Catch mover**:
-AscensionXI's move of what you reel in into the Mog Case / Mog Satchel (`feature/fishstorage`, `docs/reference/ascensionxi-fishing.md`), the third mover after HELM's and the Dig mover, with their **owed** count and **whole stacks**. A reel is our own 0x110 RequestEndMiniGame; its answer counts once quiet or at our release. A **catch** is any id the pack's fishing tables list (fish and the junk a line brings up) — never bait, never a broken rod.
-_Avoid_: fish mover (junk moves too), auto-fishing (dlac never casts or reels; it only moves what the reel added)
+AscensionXI's move of what you reel in into the Mog Case / Mog Satchel (`feature/fishstorage`, `docs/reference/ascensionxi-fishing.md`), the third mover after HELM's and the Dig mover, with their **owed** count and **whole stacks**. A reel is our own 0x110 RequestEndMiniGame; its answer counts once quiet or at our release. A **catch** is any id the pack's fishing tables list — never bait, never a broken rod — and it is either a **fish** (always moved) or **trash**, a row the server flags as not a fish (rusty gear, kelp, shells), moved only with the player's own Move trash too switch, off by default.
+_Avoid_: junk (say trash, the switch's word), auto-fishing (dlac never casts or reels; it only moves what the reel added)

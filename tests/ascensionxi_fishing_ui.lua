@@ -127,19 +127,34 @@ for _, needle in ipairs({ 'GUILD (GP)', 'MARINERS (VP)', 'CROOKED JONES', 'GP sh
 end
 check('FU19 the creel note', tipHas('Twelve Moat Carp a use'), true);
 check('FU20 the better-piece cascade on the gloves row', tipHas("You're awesome"), true);
-local sawCase, sawSatchel = false, false;
+local sawCase, sawSatchel, trashBox = false, false, nil;
 for _, b in ipairs(boxes) do
     if b.label == 'Mog Case##fishmovepanel' then sawCase = true; end
     if b.label == 'Mog Satchel##fishmovepanel' then sawSatchel = true; end
+    if b.label == 'Move trash too##fishtrashpanel' then trashBox = b; end
 end
 check('FU21 the Case switch', sawCase, true);
 check('FU22 the Satchel switch', sawSatchel, true);
+check('FU22b the trash switch', trashBox ~= nil, true);
+check('FU22c ...off by default: fish only', trashBox ~= nil and trashBox.value, false);
+check('FU22d the switch says what trash is', tipHas('rusty gear, kelp, shells'), true);
+check('FU22e the move tooltip keeps trash out', tipHas('trash only with Move trash too'), true);
 clickBox = 'Mog Case##fishmovepanel';
 pcall(fu.render, deps, 800);
 clickBox = nil;
 check('FU23 ticking the Case switch arms it', fw.moveCase, true);
 check('FU24 ...and only the Case', fw.moveSatchel, false);
 check('FU24b ...saved for the character', (loadfile(tmp .. 'fishstate.lua')() or {}).moveCase, true);
+check('FU24c trash still off', fw.moveTrash, false);
+clickBox = 'Move trash too##fishtrashpanel';
+pcall(fu.render, deps, 800);
+clickBox = nil;
+check('FU24d ticking Move trash too turns it on', fw.moveTrash, true);
+check('FU24e ...saved for the character', (loadfile(tmp .. 'fishstate.lua')() or {}).moveTrash, true);
+clickBox = 'Move trash too##fishtrashpanel';
+pcall(fu.render, deps, 800);
+clickBox = nil;
+check('FU24f ...and off again', fw.moveTrash, false);
 
 -- The target window: the +10 hook rule, skill-ups and points per catch.
 fw.target, fw.targetName = 4401, 'Moat Carp';
@@ -175,9 +190,13 @@ check('FU36 bar points', has('Fishing points: 12,345'), true);
 check('FU37 bar skill', has('Skill 23.4 (+3 gear = 26)'), true);
 check('FU38 bar warns the target cannot bite', has('Ryugu Titan cannot bite yet: needs skill 140 with gear (you: 26)'), true);
 check('FU39 no VP on the bar', has('VP '), false);
-local barCase = false;
-for _, b in ipairs(boxes) do if b.label == 'Mog Case##fishmovebar' then barCase = true; end end
+local barCase, barTrash = false, false;
+for _, b in ipairs(boxes) do
+    if b.label == 'Mog Case##fishmovebar' then barCase = true; end
+    if b.label == 'Move trash too##fishtrashbar' then barTrash = true; end
+end
 check('FU40 the bar carries the switches', barCase, true);
+check('FU40b ...the trash switch too', barTrash, true);
 fw.target, fw.targetName = 4401, 'Moat Carp';
 texts = {};
 pcall(fb.renderContent, 320);
