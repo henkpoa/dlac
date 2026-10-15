@@ -1,7 +1,7 @@
 # AscensionXI Fishing — October 15, 2026
 
 The Gear Helpers > Fishing Gear panel and the Hobby bar's Fishing tab are on for
-AscensionXI. Branch `claude/axi-fishing` (dlac `2026.10.15a`), paired with the
+AscensionXI. Branch `claude/axi-fishing` (dlac PR #215, `2026.10.15a`), paired with the
 server branch `claude/dlac-fishing` (AscensionXI PR #964; its handoff:
 `documentation/custom/dlac-fishing.md` in the AscensionXI repo). Offline suites
 pass, including the client codec against the real server endpoint. **Not tried
