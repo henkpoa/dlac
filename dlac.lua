@@ -18,7 +18,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.10.14d';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.10.15b';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
                                 -- (03f = engine v163: the contest explains its own plan;
                                 --  03g = one floating tray: Teleports + the E-Box crates;
@@ -393,7 +393,18 @@ addon.version = '2026.10.14d';  -- date of the last shipped change (Ashita print
                                 --  writing it empty, warns before replacing a
                                 --  set in an old job file, and names only the
                                 --  Mode gates that went; the windows' player
-                                --  snapshot ages out if the frame clock stops)
+                                --  snapshot ages out if the frame clock stops;
+                                --  10.14d = Gathering Gear (AXI): the skill
+                                --  table sits above the gear grid;
+                                --  10.15a = Fishing Gear on AscensionXI: the
+                                --  server's fishing tables, Fishing points and
+                                --  the skill in tenths (op 0x83), Fennella's
+                                --  shelf with the fishing caps, the +10 hook
+                                --  rule in the target window, and catches into
+                                --  the Mog Case/Satchel by whole stacks;
+                                --  10.15b = the catch mover moves fish only;
+                                --  trash (the server's non-fish catches) has
+                                --  its own Move trash too switch, off by default)
 addon.desc    = 'Gear sets, triggers and live stats with level scaling -- dlac equips your gear itself.';
 
 -- Load BEACON ('/dl check' field round, 2026-07-23): written by PLAIN io at
@@ -702,7 +713,7 @@ for _, mod in ipairs({ 'gear', 'feature\\augments', 'gear\\gearoptim', 'gear\\ge
                        -- Their own line: release/build_cexi.py drops synthrun's line verbatim.
                        'feature\\craftpick', 'feature\\nexuslink',
                        'ui\\craftbar', 'feature\\helmwatch', 'feature\\helmstorage', 'ui\\helmbar',
-                       'feature\\fishwatch', 'ui\\fishbar', 'feature\\chocowatch', 'feature\\digstorage',
+                       'feature\\fishwatch', 'feature\\fishstorage', 'ui\\fishbar', 'feature\\chocowatch', 'feature\\digstorage',
                        'feature\\meritwatch',
                        'feature\\integration', 'feature\\foodwatch',
                        -- (prestigewatch and giftbox left this list for the CEXI

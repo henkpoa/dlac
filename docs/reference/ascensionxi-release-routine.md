@@ -38,7 +38,11 @@ Catalogue every item with AXI's own generator. Don't hand-edit the catalog.
    ```
 
    Read the catalog diff: the added, changed and removed records should be
-   exactly what the server changed.
+   exactly what the server changed. `data/fishdb.lua` (the Fishing Gear helper's
+   tables, written on every run since the server's `fishdb.py`) only changes when
+   fishing data, Fennella's prices or the progression rules moved. Pack lint
+   fails (L18) when a regeneration drops a table a pack module needs: an AXI
+   checkout older than the fishing generator would drop `fishdb`.
 6. Commit the whole pack, PNGs included. Name the AXI commit in the message.
    Add an entry to [ascensionxi-catalog-refresh.md](ascensionxi-catalog-refresh.md).
 7. Open the PR into dlac `main` and merge it. Nothing reaches players yet.

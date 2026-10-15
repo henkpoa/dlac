@@ -14,6 +14,13 @@
 --     hunting": search, rod verdicts from the server's own fail math, ISOLATION
 --     rows. A floating window (chocoui's dig-search precedent), so the hobby bar
 --     can reach it and it is never buried at the bottom of the panel.
+--
+-- A pack whose fishdb carries a `shop` (AscensionXI, 2026-10-15) gets its own
+-- panel instead of the matrix above (renderShopPanel: the server's points and
+-- skill, the move switches, Fennella's Fisherman's -> Angler's ladder with the
+-- caps, the rest of her shelf, rods, baits, the rank test), and a fishdb with
+-- `rules` puts them in the target window: the +10 hook limit, skill-ups, the
+-- points a fish pays. docs/reference/ascensionxi-fishing.md.
 
 local M = {};
 
@@ -150,12 +157,98 @@ function M.coverage(deps)
     return lvl;
 end
 
+-- ---------------------------------------------------------------------------
+-- A pack whose fishdb carries a SHOP (AscensionXI: Fennella in Port Windurst,
+-- priced in Fishing points) draws that shop's ladder instead of CatsEye's
+-- guild/venture matrix, and its own coverage: 1 = anything fishing-positive,
+-- 2 = the shop's base set on every row (either tier), 3 = every row upgraded,
+-- 4 = a legendary rod. Pure, so the headless suites reach it.
+-- ---------------------------------------------------------------------------
+M.txtShop = { [0] = 'nothing yet', 'gear started', "Fisherman's set dressed",
+              "Angler's set -- every piece upgraded", 'LEGENDARY rod -- awesome' };
+
+function M.shop()
+    if not _fcok then return nil; end
+    local db = fcalc.db();
+    local s = db ~= nil and db.shop or nil;
+    if type(s) ~= 'table' or type(s.gear) ~= 'table' or #s.gear == 0 then return nil; end
+    return s;
+end
+
+local function shopCoverage(oc, db, shop)
+    local lvl = 0;
+    for id in pairs(db.gearBonus or {}) do if owned(oc, id) then lvl = 1; break; end end
+    if lvl == 0 then
+        for id in pairs(db.rods or {}) do if owned(oc, id) then lvl = 1; break; end end
+    end
+    if lvl == 0 then return 0; end
+    local base, top = true, true;
+    for _, row in ipairs(shop.gear) do
+        local up = row.up ~= nil and owned(oc, row.up);
+        if not (owned(oc, row.id) or up) then base = false; end
+        if not up then top = false; end
+    end
+    if base then lvl = 2; end
+    if base and top then lvl = 3; end
+    for id in pairs(LEG_ANY) do
+        if owned(oc, id) then lvl = 4; break; end
+    end
+    return lvl;
+end
+
 function M.status(deps)
-    local lvl = M.coverage(deps);
+    local shop = M.shop();
+    local lvl, label;
+    if shop ~= nil then
+        local oc = counts(deps);
+        lvl = (oc ~= nil) and shopCoverage(oc, fcalc.db(), shop) or 0;
+        label = M.txtShop[lvl] or '';
+    else
+        lvl = M.coverage(deps);
+        label = M.txt[lvl] or '';
+    end
     local ft = fishTotal(counts(deps));
-    local label = M.txt[lvl] or '';
     if ft > 0 then label = string.format('%s (Fish+%d)', label, ft); end
     return lvl, label;
+end
+
+-- 12345 -> "12,345".
+local function comma(n)
+    local s = tostring(math.floor(tonumber(n) or 0));
+    local out = s:reverse():gsub('(%d%d%d)', '%1,'):reverse();
+    return (out:gsub('^,', ''));
+end
+M.comma = comma;
+
+-- The status lines a server snapshot ({ points, skill, slots, rank }) makes,
+-- with the worn Fish+ total and the client's own skill/rank as fallbacks.
+-- nil while neither the server nor the client has a skill to show.
+function M.serverStatusLines(snap, ft, clientSkill, clientRank)
+    ft = tonumber(ft) or 0;
+    local skill = (type(snap) == 'table' and snap.skill) or clientSkill;
+    local rank = (type(snap) == 'table' and snap.rank) or clientRank;
+    local lines = {};
+    lines[1] = 'Fishing points: ' .. ((type(snap) == 'table' and snap.points ~= nil)
+        and comma(snap.points) or 'waiting for the server');
+    if skill == nil then return lines; end
+    local whole = math.floor(skill + 0.0001);
+    local eff = whole + ft;
+    local ranks = (_fcok and fcalc.db() ~= nil and fcalc.db().guild ~= nil) and fcalc.db().guild.ranks or nil;
+    local rankName = (rank ~= nil and type(ranks) == 'table') and ranks[rank + 1] or nil;
+    lines[2] = string.format('Skill %s%s%s', (type(snap) == 'table' and snap.skill ~= nil)
+            and string.format('%.1f', skill) or tostring(whole),
+        ft > 0 and string.format(' (+%d gear = %d)', ft, eff) or '',
+        rankName ~= nil and string.format('  |  %s, cap %d', rankName, (rank + 1) * 10) or '');
+    local r = _fcok and fcalc.rules() or nil;
+    if r ~= nil and tonumber(r.hookGate) ~= nil then
+        local chance = 0;
+        for _, band in ipairs(r.gain or {}) do
+            if band.below == nil or skill < band.below then chance = band.chance or 0; break; end
+        end
+        lines[3] = string.format('Fish up to skill %d can bite  |  %d%% skill-up chance per catch above your skill',
+            eff + r.hookGate, chance);
+    end
+    return lines;
 end
 
 -- ---------------------------------------------------------------------------
@@ -175,13 +268,21 @@ local GREEN_GLOW  = { 0.75, 1.00, 0.70, 1.0 };
 
 local function esc(s) return (tostring(s):gsub('%%', '%%%%')); end
 
--- 12000 -> "12,000". The Stash prices are five figures and read as noise
--- without it; same grouping the wiki's shop table uses.
-local function comma(n)
-    local s = tostring(math.floor(tonumber(n) or 0));
-    local out = s:reverse():gsub('(%d%d%d)', '%1,'):reverse();
-    return (out:gsub('^,', ''));
+-- TextUnformatted under a pushed colour: no printf, so a '%' in the text is
+-- just a percent sign (helmui's coloredPlain). Falls back to an escaped
+-- TextColored where a binding lacks the pieces.
+local function coloredLine(color, text)
+    if ImGuiCol_Text ~= nil and type(imgui.TextUnformatted) == 'function' then
+        imgui.PushStyleColor(ImGuiCol_Text, color);
+        imgui.TextUnformatted(tostring(text));
+        imgui.PopStyleColor();
+    else
+        imgui.TextColored(color, esc(text));
+    end
 end
+
+-- comma() (above the imgui guard): 12000 -> "12,000". The Stash prices are
+-- five figures and read as noise without it; same grouping the wiki uses.
 
 local _fwok, fw = pcall(require, 'dlac\\feature\\fishwatch');
 _fwok = _fwok and type(fw) == 'table';
@@ -358,6 +459,13 @@ function M.renderTargetBody(deps, availW)
     local oc = counts(deps);
     local skill = _fwok and fw.playerFishSkill() or nil;
     local ft = fishTotal(oc);
+    -- A server that reports fishing (AscensionXI) gives the skill in tenths
+    -- and the guild rank; its fishdb carries the hook/skill-up rules.
+    local snap = nil;
+    if _fwok and type(fw.serverStatus) == 'function' then
+        pcall(function() snap = fw.serverStatus(); end);
+    end
+    local rules = fcalc.rules();
     -- The spot list places its bait column at availW * 0.55, so a too-narrow
     -- value crushes the zone names rather than wrapping them.
     if type(availW) ~= 'number' or availW < 420 then availW = 740; end
@@ -432,11 +540,13 @@ function M.renderTargetBody(deps, availW)
     local fid = sel.id;
     if fid ~= nil and db.fish[fid] ~= nil then
         local f = db.fish[fid];
-        local eff = (skill or 0) + ft;
+        local base = (snap ~= nil and snap.skill) or skill or 0;
+        local eff = math.floor(base + 0.0001) + ft;
         imgui.Spacing();
         imgui.TextColored(COL_GOLD, esc(f.n));
         imgui.SameLine(0, 10);
         local skCol = (eff >= (f.sk or 0)) and GREEN_OWNED or COL_WARN;
+        if rules ~= nil and not fcalc.canHook(f, eff) then skCol = COL_ERR; end
         imgui.TextColored(skCol, string.format('skill %d (you: %d)', f.sk or 0, eff));
         imgui.SameLine(0, 10);
         imgui.TextColored(COL_DIM, string.format('%s%s%s  |  bites: %s%s',
@@ -445,10 +555,38 @@ function M.renderTargetBody(deps, availW)
             (f.item or 0) ~= 0 and ', item' or '',
             fcalc.hourHint(f.hp),
             fcalc.moonHint(f.mp) ~= nil and (', ' .. fcalc.moonHint(f.mp)) or ''));
-        local d = (f.sk or 0) - eff;
-        if d >= 1 and d <= 50 then
-            imgui.TextColored(GREEN_OWNED, string.format('skill-up window: +%d above you%s', d,
-                (d >= 9 and d <= 13) and ' -- the ~+11 sweet spot' or ''));
+        if rules ~= nil then
+            -- The pack's own rules (AscensionXI): a fish bites only up to your
+            -- skill + hookGate, skill-ups come at a flat chance until the
+            -- fish's skill, your guild cap or the ceiling, and a landed fish
+            -- pays Fishing points by its skill.
+            if not fcalc.canHook(f, eff) then
+                imgui.TextColored(COL_ERR, string.format('cannot bite yet: needs skill %d with gear (you: %d)',
+                    fcalc.minSkillToHook(f) or 0, eff));
+            end
+            local rank = (snap ~= nil and snap.rank) or (_fwok and fw.playerFishRank()) or nil;
+            local up = fcalc.skillupFor(f, base, rank);
+            local pts = fcalc.pointsFor(f);
+            local tail = (pts ~= nil and pts > 0) and string.format('  |  pays %d Fishing points', pts) or '';
+            if up ~= nil and up.gains then
+                local why = ({ fish = "this fish's skill", guild = 'your guild cap -- then take the rank test',
+                               max = 'the skill ceiling' })[up.limit] or '';
+                coloredLine(GREEN_OWNED, string.format('skill-ups: %d%% a catch, up to %d (%s)%s',
+                    up.chance, up.ceiling, why, tail));
+            elseif up ~= nil then
+                coloredLine(COL_DIM, (string.format('no skill-ups from this fish (%s)%s',
+                    (f.item or 0) ~= 0 and 'a junk catch'
+                    or (up.limit == 'guild' and string.format('your guild cap is %d -- take the rank test', up.ceiling))
+                    or string.format('your skill has reached %d', up.ceiling), tail)));
+            elseif pts ~= nil and pts > 0 then
+                imgui.TextColored(COL_GOLD, string.format('pays %d Fishing points', pts));
+            end
+        else
+            local d = (f.sk or 0) - eff;
+            if d >= 1 and d <= 50 then
+                imgui.TextColored(GREEN_OWNED, string.format('skill-up window: +%d above you%s', d,
+                    (d >= 9 and d <= 13) and ' -- the ~+11 sweet spot' or ''));
+            end
         end
         if _fwok and tgtId == fid then
             local _, rodN = fw.getRod();
@@ -495,8 +633,10 @@ function M.renderTargetBody(deps, availW)
         -- where + bait (the flagship: ISOLATION first). A breath of air first
         -- (Henrik: separate the fish info from the spot list).
         imgui.Spacing();
-        imgui.TextColored(COL_DIM, 'spots + baits -- best isolation first, click a ROW to fish it:');
-        local iso = fcalc.isolationFor(fid);
+        imgui.TextColored(COL_DIM, rules ~= nil
+            and 'spots + baits -- best isolation first (rivals that can bite at your skill), click a ROW to fish it:'
+            or 'spots + baits -- best isolation first, click a ROW to fish it:');
+        local iso = fcalc.isolationFor(fid, rules ~= nil and eff or nil);
         if #iso == 0 then
             imgui.TextColored(COL_DIM, 'no known catch spot (quest/contest-gated?).');
         else
@@ -560,7 +700,371 @@ function M.renderTargetBody(deps, availW)
                     sel.showAllIso = true;
                 end
             end
-            imgui.TextColored(COL_DIM, 'Items can always bite (Smock/Apron reduce them); monsters only outside cities.');
+            imgui.TextColored(COL_DIM, M.shop() ~= nil
+                and 'Items can always bite; monsters only outside cities.'
+                or 'Items can always bite (Smock/Apron reduce them); monsters only outside cities.');
+        end
+    end
+end
+
+-- ---------------------------------------------------------------------------
+-- Pieces both panel layouts share.
+-- ---------------------------------------------------------------------------
+
+-- The panel chrome: the target picker, the idle pill and the bar toggle. The
+-- TARGET FISH section that used to sit below is a floating window now
+-- (M.renderSearch) -- this panel is "what I own", that window is "what am I
+-- hunting". The caller places it (SameLine or its own row).
+local function panelChrome()
+    local _, tName = fw.getTarget();
+    if imgui.Button((tName ~= nil and ('Target: ' .. tostring(tName)) or 'Target fish...')
+            .. '##fishtgtopen') then
+        M.openTarget();
+    end
+    if imgui.IsItemHovered() then
+        imgui.SetTooltip('Search a fish, read the rod verdicts, pick a spot + bait.\nOpens a floating window, so it is never buried at the bottom of\nthis panel (also: /dl fish find).');
+    end
+    imgui.SameLine(0, 10);
+    -- The shared pill, at last. This row is no longer the crowded one that
+    -- forced a shortened text button here -- Make target / target / Clear
+    -- moved to the window -- so Fishing now matches Craft / HELM / Chocobo /
+    -- AutoAmmo / Restock instead of being the one panel with its own switch.
+    local pillOn = fw.isEnabled();
+    local cbok, craftbar = pcall(require, 'dlac\\ui\\craftbar');
+    if cbok and type(craftbar) == 'table' and type(craftbar.onOffSwitch) == 'function' then
+        if craftbar.onOffSwitch(pillOn, 'fishpanel',
+            'Fishing idle set is ON -- rod, bait and fishing gear stay on while idle. Click to turn off.',
+            'Set Fish Idle: wears your best fishing kit whenever idle, until turned off.\nRod and bait follow the target fish.')
+        then fw.setEnabled(not pillOn); end
+    elseif imgui.Button((pillOn and 'ON' or 'OFF') .. '##fishpanelonoff', { 46, 22 }) then
+        fw.setEnabled(not pillOn);
+    end
+    imgui.SameLine(0, 10);
+    local barShown = false;
+    pcall(function() barShown = require('dlac\\ui\\hobbybar').isShown('fish'); end);
+    if imgui.Button(barShown and 'Hide bar##fishbar' or 'Fish bar##fishbar') then
+        pcall(function() require('dlac\\ui\\hobbybar').toggle('fish'); end);
+    end
+    if imgui.IsItemHovered() then
+        imgui.SetTooltip('The shared hobby bar, on Fishing (also: /dl fish bar).');
+    end
+end
+
+-- ---- rods ---------------------------------------------------------------
+local function renderRods(deps, db, oc, colW)
+    imgui.TextColored(COL_HEADER, 'RODS');
+    imgui.SameLine(colW * 2); imgui.TextColored(COL_HEADER, 'LEGENDARY');
+    imgui.Separator();
+    local standard = {};
+    for id, r in pairs(db.rods) do
+        if (r.leg or 0) == 0 and not SPECIAL_RODS[id] then
+            standard[#standard + 1] = { id = id, r = r };
+        end
+    end
+    table.sort(standard, function(a, b)
+        if (a.r.rating or 0) ~= (b.r.rating or 0) then return (a.r.rating or 0) < (b.r.rating or 0); end
+        return nameOf(a.id) < nameOf(b.id);
+    end);
+    -- Owning a legendary rod greens the whole standard ladder ("you're
+    -- awesome" cascade -- Henrik 2026-07-18: Lu Shang's/Ebisu covers them all).
+    local legOwned = false;
+    for id in pairs(LEG_ANY) do if owned(oc, id) then legOwned = true; break; end end
+    local function rodNote(e, better)
+        return string.format('%s -- size %s, durability %d%s%s', nameOf(e.id),
+            (e.r.sz or 0) == 1 and 'LARGE' or 'small', e.r.maxR or 0,
+            (e.r.brk or 0) ~= 0 and ', breakable' or '',
+            better and '\nGreen via progression: your legendary rod covers this one.' or '');
+    end
+    local half = math.ceil(#standard / 2);
+    for i = 1, half do
+        local a = standard[i];
+        local aSt = owned(oc, a.id) and 'owned' or (legOwned and 'better' or 'dim');
+        itemLine(deps, a.id, aSt, rodNote(a, aSt == 'better'));
+        local b = standard[i + half];
+        if b ~= nil then
+            imgui.SameLine(colW);
+            local bSt = owned(oc, b.id) and 'owned' or (legOwned and 'better' or 'dim');
+            itemLine(deps, b.id, bSt, rodNote(b, bSt == 'better'));
+        end
+        local lId = LEGENDARY_RODS[i];
+        if lId ~= nil then
+            imgui.SameLine(colW * 2);
+            itemLine(deps, lId, owned(oc, lId) and 'glow' or 'dim',
+                (lId == 17011) and (nameOf(lId) .. ' -- NEVER breaks')
+                or (nameOf(lId) .. ' -- breakable (quest-restorable)'));
+        end
+    end
+    for id in pairs(SPECIAL_RODS) do
+        if owned(oc, id) then
+            itemLine(deps, id, 'owned', nameOf(id) .. ' -- special rod');
+        end
+    end
+    imgui.Spacing();
+end
+
+-- ---- baits owned ----------------------------------------------------------
+local function renderBaits(deps, db)
+    if imgui.CollapsingHeader('Baits owned') then
+        local whereOf, totals = nil, nil;
+        pcall(function()
+            local ocm = require('dlac\\gear\\ownedcache');
+            whereOf, totals = ocm.whereOf, ocm.totals();
+        end);
+        local CONTAINERS = { [0] = 'Inventory', 'Mog Safe', 'Storage', 'Temporary',
+                             'Mog Locker', 'Mog Satchel', 'Mog Sack', 'Mog Case',
+                             'Wardrobe', 'Mog Safe 2', 'Wardrobe 2', 'Wardrobe 3',
+                             'Wardrobe 4', 'Wardrobe 5', 'Wardrobe 6', 'Wardrobe 7',
+                             'Wardrobe 8' };
+        local ids = {};
+        for id in pairs(db.baits) do ids[#ids + 1] = id; end
+        for id in pairs(db.customBaits or {}) do ids[#ids + 1] = id; end
+        table.sort(ids, function(a, b) return nameOf(a) < nameOf(b); end);
+        local any = false;
+        for _, id in ipairs(ids) do
+            local total = (type(totals) == 'table') and (totals[id] or 0) or 0;
+            if total > 0 then
+                any = true;
+                itemLine(deps, id, 'owned');
+                imgui.SameLine(0, 8);
+                imgui.TextColored(COL_TEXT, 'x' .. total);
+                if imgui.IsItemHovered() and whereOf ~= nil then
+                    local parts2 = {};
+                    local ok, w = pcall(whereOf, id);
+                    if ok and type(w) == 'table' then
+                        for cid, n in pairs(w) do
+                            parts2[#parts2 + 1] = string.format('%s: %d', CONTAINERS[cid] or ('bag ' .. cid), n);
+                        end
+                    end
+                    table.sort(parts2);
+                    local catches = {};
+                    for _, e in ipairs(fcalc.fishForBait(id)) do
+                        if #catches < 8 then catches[#catches + 1] = (e.fish or {}).n; end
+                    end
+                    imgui.SetTooltip(table.concat(parts2, '\n')
+                        .. (#catches > 0 and ('\ncatches: ' .. table.concat(catches, ', ')) or ''));
+                end
+                local b = db.baits[id];
+                if b ~= nil and (b.t or 0) == 1 then
+                    imgui.SameLine(0, 8);
+                    imgui.TextColored(COL_DIM, '(lure -- reusable)');
+                end
+            end
+        end
+        if not any then imgui.TextColored(COL_DIM, 'no bait in any bag.'); end
+    end
+end
+
+-- ---------------------------------------------------------------------------
+-- The server-reported fishing blocks (a pack with the `fishing` service --
+-- AscensionXI). The panel and the hobby bar both draw them; the snapshot is
+-- one shared poll (fishwatch.serverStatus -> the pack's status module).
+-- ---------------------------------------------------------------------------
+local function packFishing()
+    if not _fwok or type(fw.packFishing) ~= 'function' then return nil; end
+    local svc = nil;
+    pcall(function() svc = fw.packFishing(); end);
+    return svc;
+end
+M.packFishing = packFishing;
+
+-- Points, skill (tenths), rank and the hook range, as plain lines.
+function M.renderServerStatus(oc)
+    if packFishing() == nil then return; end
+    local snap = fw.serverStatus();
+    local lines = M.serverStatusLines(snap, fishTotal(oc), fw.playerFishSkill(), fw.playerFishRank());
+    local tips = {
+        'Fishing points: every fish you land pays 40 to 80 by its skill; Fennella in Port Windurst\nspends them. Asked of the server when you reel in, after an NPC menu, and once a minute\nwhile this shows.',
+        'Your skill without gear (the server keeps tenths), plus the best fishing gear you own --\nwhat the fishing idle set wears. The cap is your guild rank\'s.',
+        'A fish bites only while its skill is at most your skill with gear + 10.\nEvery fish you land that is above your skill rolls this chance for +0.1.',
+    };
+    for i, line in ipairs(lines) do
+        coloredLine(i == 1 and (snap ~= nil and COL_GOLD or COL_DIM) or COL_TEXT, line);
+        if imgui.IsItemHovered() then imgui.SetTooltip(tips[i]); end
+    end
+end
+
+-- The Mog Case / Mog Satchel switches for catches, the trash switch, and the
+-- mover's state.
+function M.renderMoveDestinations(id)
+    local svc = packFishing();
+    if svc == nil or svc.moveCatches ~= true or type(fw.setMoveDestination) ~= 'function' then return; end
+    fw.loadState();
+    imgui.TextColored(COL_TEXT, 'Move catches into:');
+    if imgui.IsItemHovered() then
+        imgui.SetTooltip('The fish you reel in move out of your inventory: full stacks and fish that\ndo not stack right away, the rest once you have not reeled in for a few\nseconds. Bait and what you carried in stay put; trash only with Move trash too.');
+    end
+    for _, destination in ipairs({ { 7, 'Mog Case', 'moveCase' }, { 5, 'Mog Satchel', 'moveSatchel' } }) do
+        imgui.SameLine(0, 12);
+        local checked = { fw[destination[3]] == true };
+        if imgui.Checkbox(destination[2] .. '##fishmove' .. tostring(id), checked) then
+            fw.setMoveDestination(destination[1], checked[1]);
+        end
+    end
+    -- Trash is its own choice, off by default (Henrik 2026-10-15): fish only.
+    if type(fw.setMoveTrash) == 'function' then
+        local trash = { fw.moveTrash == true };
+        if imgui.Checkbox('Move trash too##fishtrash' .. tostring(id), trash) then
+            fw.setMoveTrash(trash[1]);
+        end
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('Also move what you reel in that is not a fish: rusty gear, kelp, shells,\nscrolls and the like (the server\'s own junk list). Off: they stay in your inventory.');
+        end
+    end
+    local fsok, fs = pcall(require, 'dlac\\feature\\fishstorage');
+    if fsok and type(fs) == 'table' and fs.live ~= nil and (fw.moveCase or fw.moveSatchel) then
+        local waiting = fs.live.waiting();
+        if fs.live.status ~= '' then imgui.TextColored(COL_DIM, esc(fs.live.status)); end
+        if waiting > 0 then
+            imgui.TextColored(COL_DIM, string.format('%d caught %s waiting for a full stack or a pause.',
+                waiting, waiting == 1 and 'item' or 'items'));
+        end
+    end
+end
+
+-- The target's hook verdict for the bar: nil when it can bite (or there is no
+-- target / no rule), else the line to show.
+function M.targetHookWarning(oc)
+    if not _fcok or not _fwok or fcalc.rules() == nil then return nil; end
+    local db = fcalc.db();
+    local tid = fw.getTarget();
+    local f = (db ~= nil and tid ~= nil) and db.fish[tid] or nil;
+    if f == nil then return nil; end
+    local snap = nil;
+    pcall(function() snap = fw.serverStatus(); end);
+    local base = (snap ~= nil and snap.skill) or fw.playerFishSkill();
+    if base == nil then return nil; end
+    local eff = math.floor(base + 0.0001) + fishTotal(oc);
+    if fcalc.canHook(f, eff) then return nil; end
+    return string.format('%s cannot bite yet: needs skill %d with gear (you: %d)', f.n,
+        fcalc.minSkillToHook(f) or 0, eff);
+end
+
+-- A Voidseal-style key item, read from the client (nil: cannot tell).
+local function hasKeyItem(ki)
+    local v = nil;
+    pcall(function() v = AshitaCore:GetMemoryManager():GetPlayer():HasKeyItem(ki) == true; end);
+    return v;
+end
+
+-- The shop's ladder (AscensionXI: Fennella's Fisherman's set, every piece
+-- upgradable to its Angler's grade), then the rest of her shelf.
+local function renderShop(deps, db, oc, availW, shop, snap)
+    local colW = math.max(220, math.floor((availW or 800) / 2));
+    imgui.TextColored(COL_HEADER, esc(string.format("%s's shelf (%s)", shop.npc or 'Shop', shop.zone or '?')));
+    if imgui.IsItemHovered() then
+        imgui.SetTooltip(string.format('Bought with %s. Upgrades: trade %s the piece and %s points.',
+            shop.currency or 'points', shop.npc or 'the vendor', comma(shop.upgradeCost or 0)));
+    end
+    imgui.Separator();
+    imgui.TextColored(COL_HEADER, "Fisherman's");
+    imgui.SameLine(colW); imgui.TextColored(COL_HEADER, "Angler's (upgrade)");
+    for _, row in ipairs(shop.gear) do
+        local up = row.up ~= nil and owned(oc, row.up);
+        local base = owned(oc, row.id);
+        local bs = base and 'owned' or (up and 'better' or 'dim');
+        itemLine(deps, row.id, bs, bs == 'better' and BETTER_NOTE or nil);
+        imgui.SameLine(colW);
+        if row.up ~= nil then
+            itemLine(deps, row.up, up and 'glow' or 'dim');
+        else
+            imgui.Dummy({ 0, 18 });
+        end
+        local price = string.format('%s points', comma(row.price or 0));
+        local upPrice = row.up ~= nil and string.format('%s points + the piece', comma(shop.upgradeCost or 0)) or '';
+        local afford = snap ~= nil and snap.points ~= nil;
+        imgui.TextColored((afford and snap.points >= (row.price or 0)) and COL_TEXT or COL_DIM, '    ' .. price);
+        if row.up ~= nil then
+            imgui.SameLine(colW);
+            imgui.TextColored((afford and snap.points >= (shop.upgradeCost or 0)) and COL_TEXT or COL_DIM, '    ' .. upPrice);
+        end
+    end
+    imgui.Spacing();
+    -- The rest of the shelf: what the points also buy.
+    imgui.TextColored(COL_HEADER, 'Also on the shelf');
+    imgui.Separator();
+    if type(shop.creel) == 'table' then
+        itemLine(deps, shop.creel.id, 'dim', string.format('Twelve Moat Carp a use -- the road to Lu Shang\'s rod\n(10,000 carp) for a fisher who would rather catch anything else.'));
+        imgui.SameLine(colW);
+        imgui.TextColored(COL_TEXT, string.format('%s points  (%d Moat Carp a use)', comma(shop.creel.price or 0), shop.creel.carp or 0));
+    end
+    if type(shop.slots) == 'table' then
+        local bought = snap ~= nil and snap.slots or nil;
+        coloredLine(COL_TEXT, 'Mog Wardrobe 3 slot');
+        imgui.SameLine(colW);
+        coloredLine((bought ~= nil and bought >= (shop.slots.max or 0)) and GREEN_OWNED or COL_TEXT,
+            string.format('%s points each  (%s of %d bought)', comma(shop.slots.price or 0),
+                bought ~= nil and tostring(bought) or '?', shop.slots.max or 0));
+    end
+    if type(shop.voidseal) == 'table' then
+        local have = hasKeyItem(shop.voidseal.ki);
+        coloredLine(have and GREEN_OWNED or COL_TEXT, "Fisher's Voidseal");
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('A key item: fish, bait and lures can be stored in Void Storage.\nSold once The Hollow Room is done.');
+        end
+        imgui.SameLine(colW);
+        coloredLine(have and GREEN_OWNED or COL_TEXT, have and 'owned'
+            or string.format('%s points (after The Hollow Room)', comma(shop.voidseal.price or 0)));
+    end
+    -- Fishing gear you own that the shelf does not sell (found, crafted).
+    local inShop = {};
+    for _, row in ipairs(shop.gear) do inShop[row.id] = true; if row.up then inShop[row.up] = true; end end
+    local others = {};
+    for id, g in pairs(db.gearBonus or {}) do
+        if not inShop[id] and owned(oc, id) and (tonumber(g.fish) or 0) > 0 then others[#others + 1] = id; end
+    end
+    if #others > 0 then
+        table.sort(others, function(a, b) return nameOf(a) < nameOf(b); end);
+        imgui.Spacing();
+        imgui.TextColored(COL_HEADER, 'Other fishing gear you own');
+        for _, id in ipairs(others) do
+            local g = db.gearBonus[id];
+            itemLine(deps, id, 'owned', string.format('%s -- %s, Fishing skill +%d', nameOf(id), g.sl or '?', g.fish or 0));
+        end
+    end
+    imgui.Spacing();
+end
+
+-- The layout for a pack with a fishing shop (AscensionXI).
+local function renderShopPanel(deps, db, oc, availW, shop)
+    imgui.TextColored(COL_HEADER, 'Fishing Gear');
+    imgui.SameLine(0, 16);
+    panelChrome();
+    imgui.Spacing();
+    M.renderMoveDestinations('panel');
+    imgui.Spacing();
+    local snap = nil;
+    if packFishing() ~= nil then
+        pcall(function() snap = fw.serverStatus(); end);
+        M.renderServerStatus(oc);
+    else
+        local skill = fw.playerFishSkill();
+        coloredLine(COL_TEXT, skill ~= nil and string.format('Fishing skill %d', skill) or 'Fishing skill: (not read yet)');
+    end
+    imgui.Spacing();
+    imgui.Separator();
+    imgui.Spacing();
+    renderShop(deps, db, oc, availW, shop, snap);
+    renderRods(deps, db, oc, math.max(190, math.floor(availW / 4)));
+    renderBaits(deps, db);
+    -- The guild corner: the rank tests still stand (the guild-point shop does
+    -- not -- its currency is never earned here).
+    if imgui.CollapsingHeader("Fisherman's Guild (Port Windurst)") then
+        local g = db.guild or {};
+        local rank = (snap ~= nil and snap.rank) or fw.playerFishRank();
+        if rank ~= nil and g.rankFish ~= nil then
+            local nextFish = g.rankFish[rank + 1];
+            if nextFish ~= nil then
+                imgui.TextColored(COL_GOLD, esc(string.format(
+                    'next rank test: trade %s to %s (within 2.0 of your cap %d)', nameOf(nextFish),
+                    g.master or 'the guild master', (rank + 1) * 10)));
+            else
+                imgui.TextColored(GREEN_OWNED, 'Expert -- the ladder is yours.');
+            end
+        else
+            imgui.TextColored(COL_DIM, 'Guild rank: not read yet.');
+        end
+        if not (owned(oc, 17386) or owned(oc, 19320)) then
+            imgui.TextColored(COL_DIM, "Lu Shang's rod: 10,000 Moat Carp to Gallijaux/Joulet (Port San d'Oria) -- or buy Carp Creels above.");
         end
     end
 end
@@ -576,6 +1080,12 @@ function M.render(deps, availW)
     local db = fcalc.db();
     local oc = counts(deps);
     availW = availW or 900;
+
+    local shop = M.shop();
+    if shop ~= nil and _fwok then
+        renderShopPanel(deps, db, oc, availW, shop);
+        return;
+    end
 
     -- Refresh the point streams on panel entry (>5s throttle, debounced again
     -- inside the watchers).
@@ -621,38 +1131,7 @@ function M.render(deps, availW)
     -- window is "what am I hunting".
     if _fwok then
         imgui.SameLine(0, 16);
-        local _, tName = fw.getTarget();
-        if imgui.Button((tName ~= nil and ('Target: ' .. tostring(tName)) or 'Target fish...')
-                .. '##fishtgtopen') then
-            M.openTarget();
-        end
-        if imgui.IsItemHovered() then
-            imgui.SetTooltip('Search a fish, read the rod verdicts, pick a spot + bait.\nOpens a floating window, so it is never buried at the bottom of\nthis panel (also: /dl fish find).');
-        end
-        imgui.SameLine(0, 10);
-        -- The shared pill, at last. This row is no longer the crowded one that
-        -- forced a shortened text button here -- Make target / target / Clear
-        -- moved to the window -- so Fishing now matches Craft / HELM / Chocobo /
-        -- AutoAmmo / Restock instead of being the one panel with its own switch.
-        local pillOn = fw.isEnabled();
-        local cbok, craftbar = pcall(require, 'dlac\\ui\\craftbar');
-        if cbok and type(craftbar) == 'table' and type(craftbar.onOffSwitch) == 'function' then
-            if craftbar.onOffSwitch(pillOn, 'fishpanel',
-                'Fishing idle set is ON -- rod, bait and fishing gear stay on while idle. Click to turn off.',
-                'Set Fish Idle: wears your best fishing kit whenever idle, until turned off.\nRod and bait follow the target fish.')
-            then fw.setEnabled(not pillOn); end
-        elseif imgui.Button((pillOn and 'ON' or 'OFF') .. '##fishpanelonoff', { 46, 22 }) then
-            fw.setEnabled(not pillOn);
-        end
-        imgui.SameLine(0, 10);
-        local barShown = false;
-        pcall(function() barShown = require('dlac\\ui\\hobbybar').isShown('fish'); end);
-        if imgui.Button(barShown and 'Hide bar##fishbar' or 'Fish bar##fishbar') then
-            pcall(function() require('dlac\\ui\\hobbybar').toggle('fish'); end);
-        end
-        if imgui.IsItemHovered() then
-            imgui.SetTooltip('The shared hobby bar, on Fishing (also: /dl fish bar).');
-        end
+        panelChrome();
     end
     imgui.Spacing();
 
@@ -747,105 +1226,8 @@ function M.render(deps, availW)
     end
     imgui.Spacing();
 
-    -- ---- rods -------------------------------------------------------------
-    imgui.TextColored(COL_HEADER, 'RODS');
-    imgui.SameLine(colW * 2); imgui.TextColored(COL_HEADER, 'LEGENDARY');
-    imgui.Separator();
-    local standard = {};
-    for id, r in pairs(db.rods) do
-        if (r.leg or 0) == 0 and not SPECIAL_RODS[id] then
-            standard[#standard + 1] = { id = id, r = r };
-        end
-    end
-    table.sort(standard, function(a, b)
-        if (a.r.rating or 0) ~= (b.r.rating or 0) then return (a.r.rating or 0) < (b.r.rating or 0); end
-        return nameOf(a.id) < nameOf(b.id);
-    end);
-    -- Owning a legendary rod greens the whole standard ladder ("you're
-    -- awesome" cascade -- Henrik 2026-07-18: Lu Shang's/Ebisu covers them all).
-    local legOwned = false;
-    for id in pairs(LEG_ANY) do if owned(oc, id) then legOwned = true; break; end end
-    local function rodNote(e, better)
-        return string.format('%s -- size %s, durability %d%s%s', nameOf(e.id),
-            (e.r.sz or 0) == 1 and 'LARGE' or 'small', e.r.maxR or 0,
-            (e.r.brk or 0) ~= 0 and ', breakable' or '',
-            better and '\nGreen via progression: your legendary rod covers this one.' or '');
-    end
-    local half = math.ceil(#standard / 2);
-    for i = 1, half do
-        local a = standard[i];
-        local aSt = owned(oc, a.id) and 'owned' or (legOwned and 'better' or 'dim');
-        itemLine(deps, a.id, aSt, rodNote(a, aSt == 'better'));
-        local b = standard[i + half];
-        if b ~= nil then
-            imgui.SameLine(colW);
-            local bSt = owned(oc, b.id) and 'owned' or (legOwned and 'better' or 'dim');
-            itemLine(deps, b.id, bSt, rodNote(b, bSt == 'better'));
-        end
-        local lId = LEGENDARY_RODS[i];
-        if lId ~= nil then
-            imgui.SameLine(colW * 2);
-            itemLine(deps, lId, owned(oc, lId) and 'glow' or 'dim',
-                (lId == 17011) and (nameOf(lId) .. ' -- NEVER breaks')
-                or (nameOf(lId) .. ' -- breakable (quest-restorable)'));
-        end
-    end
-    for id in pairs(SPECIAL_RODS) do
-        if owned(oc, id) then
-            itemLine(deps, id, 'owned', nameOf(id) .. ' -- special rod');
-        end
-    end
-    imgui.Spacing();
-
-    -- ---- baits owned ------------------------------------------------------
-    if imgui.CollapsingHeader('Baits owned') then
-        local whereOf, totals = nil, nil;
-        pcall(function()
-            local ocm = require('dlac\\gear\\ownedcache');
-            whereOf, totals = ocm.whereOf, ocm.totals();
-        end);
-        local CONTAINERS = { [0] = 'Inventory', 'Mog Safe', 'Storage', 'Temporary',
-                             'Mog Locker', 'Mog Satchel', 'Mog Sack', 'Mog Case',
-                             'Wardrobe', 'Mog Safe 2', 'Wardrobe 2', 'Wardrobe 3',
-                             'Wardrobe 4', 'Wardrobe 5', 'Wardrobe 6', 'Wardrobe 7',
-                             'Wardrobe 8' };
-        local ids = {};
-        for id in pairs(db.baits) do ids[#ids + 1] = id; end
-        for id in pairs(db.customBaits or {}) do ids[#ids + 1] = id; end
-        table.sort(ids, function(a, b) return nameOf(a) < nameOf(b); end);
-        local any = false;
-        for _, id in ipairs(ids) do
-            local total = (type(totals) == 'table') and (totals[id] or 0) or 0;
-            if total > 0 then
-                any = true;
-                itemLine(deps, id, 'owned');
-                imgui.SameLine(0, 8);
-                imgui.TextColored(COL_TEXT, 'x' .. total);
-                if imgui.IsItemHovered() and whereOf ~= nil then
-                    local parts2 = {};
-                    local ok, w = pcall(whereOf, id);
-                    if ok and type(w) == 'table' then
-                        for cid, n in pairs(w) do
-                            parts2[#parts2 + 1] = string.format('%s: %d', CONTAINERS[cid] or ('bag ' .. cid), n);
-                        end
-                    end
-                    table.sort(parts2);
-                    local catches = {};
-                    for _, e in ipairs(fcalc.fishForBait(id)) do
-                        if #catches < 8 then catches[#catches + 1] = (e.fish or {}).n; end
-                    end
-                    imgui.SetTooltip(table.concat(parts2, '\n')
-                        .. (#catches > 0 and ('\ncatches: ' .. table.concat(catches, ', ')) or ''));
-                end
-                local b = db.baits[id];
-                if b ~= nil and (b.t or 0) == 1 then
-                    imgui.SameLine(0, 8);
-                    imgui.TextColored(COL_DIM, '(lure -- reusable)');
-                end
-            end
-        end
-        if not any then imgui.TextColored(COL_DIM, 'no bait in any bag.'); end
-    end
+    renderRods(deps, db, oc, colW);
+    renderBaits(deps, db);
 
     -- ---- today's ventures (only where the pack has them, ADR 0035) --------
     local ventHdrOn = false;

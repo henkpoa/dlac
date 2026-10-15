@@ -2293,7 +2293,7 @@ end)();
     local keys = {};
     for _, row in ipairs(filtered) do keys[#keys + 1] = row.key; end
     table.sort(keys);
-    check('AXS16 AXI helper list contains only gathering and digging', table.concat(keys, ','), 'choco,helm');
+    check('AXS16 AXI helper list contains only gathering, digging and fishing', table.concat(keys, ','), 'choco,fish,helm');
     gate._packFeatures = oldFeatures;
     points._send = oldSend; points.reset();
     sp.provide('gathering', oldService);
@@ -2959,10 +2959,10 @@ end)();
         check('HB22 AXI stale/disabled selection falls back to HELM', ui._hobbySel, 'helm');
         check('HB23 AXI hobby bar renders', pcall(hb.render), true);
         local labels = table.concat(btns, '/');
-        check('HB24 AXI hides other hobby tabs', labels:find('##hbtabcraft', 1, true)
-            or labels:find('##hbtabfish', 1, true), nil);
+        check('HB24 AXI hides the Crafting tab', labels:find('##hbtabcraft', 1, true), nil);
         check('HB25 AXI retains HELM tab', labels:find('##hbtabhelm', 1, true) ~= nil, true);
         check('HB26 AXI shows the Digging tab', labels:find('##hbtabchoco', 1, true) ~= nil, true);
+        check('HB26b AXI shows the Fishing tab', labels:find('##hbtabfish', 1, true) ~= nil, true);
         -- On a server that reports digging, the tab carries its status block.
         local spx = require('dlac\\gear\\serverpack');
         local keptDig = spx.service('digging');

@@ -17,6 +17,8 @@
     October 10: the Job Helpers tab, with DNC Status as its only helper (fed
     by the pack's dncstatus module). The `jobhelpers` list names the helper
     folders this server loads; /dl jh names the ones it leaves out.
+    October 15: Fishing (its Gear Helpers row and the Hobby bar's Fishing
+    tab), fed by the pack's fishing module and data/fishdb.lua.
 ]]--
 return {
     tabs = {
@@ -32,6 +34,6 @@ return {
         wishlist  = false,
     },
     -- Also controls the shared hobby bar. Add helpers as they are enabled.
-    helpers = { helm = true, choco = true, autoacc = true },
+    helpers = { helm = true, choco = true, autoacc = true, fish = true },
     jobhelpers = { ['dnc-status'] = true },
 };

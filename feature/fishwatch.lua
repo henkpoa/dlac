@@ -25,6 +25,12 @@
     holds) -- raw lines still mirror to fishventures_capture.txt as drift
     insurance, 'Fishing:' lines parse structurally.
 
+    AscensionXI (2026-10-15): a pack `fishing` service replaces all three --
+    its server reports Fishing points, the skill in tenths, Fennella's
+    wardrobe slots and the guild rank (op 0x83; serverStatus below), and its
+    switches send catches to the Mog Case / Satchel (feature\fishstorage).
+    docs/reference/ascensionxi-fishing.md.
+
     Pure helpers are headless-testable; Ashita glue guarded at the bottom.
 ]]--
 
@@ -95,6 +101,8 @@ M.targetName = nil;     -- display name (fishdb)
 M.rodId, M.rod = nil, nil;     -- chosen rod: item id + CLIENT name
 M.baitId, M.bait = nil, nil;   -- chosen bait: item id + CLIENT name
 M.rodPin, M.baitPin = false, false;   -- manual dropdown picks (beat auto while owned)
+M.moveCase, M.moveSatchel = false, false;   -- catches into the Mog Case / Satchel (feature\fishstorage)
+M.moveTrash = false;    -- ...and the non-fish catches too (off: fish only -- Henrik 2026-10-15)
 M._enabledAt = 0;
 M._rescanned = false;
 local _stateLoaded = false;
@@ -110,11 +118,14 @@ local function saveState()
         local f = io.open(p, 'wb'); if f == nil then return; end
         f:write(string.format(
             'return { enabled = %s, at = %d, target = %d, targetName = %q, rod = %q, bait = %q,'
-            .. ' rodId = %d, baitId = %d, rodPin = %s, baitPin = %s }\n',
+            .. ' rodId = %d, baitId = %d, rodPin = %s, baitPin = %s, moveCase = %s, moveSatchel = %s,'
+            .. ' moveTrash = %s }\n',
             tostring(M.enabled == true), M._enabledAt or 0, M.target or 0,
             tostring(M.targetName or ''), tostring(M.rod or ''), tostring(M.bait or ''),
             M.rodId or 0, M.baitId or 0,
-            tostring(M.rodPin == true), tostring(M.baitPin == true)));
+            tostring(M.rodPin == true), tostring(M.baitPin == true),
+            tostring(M.moveCase == true), tostring(M.moveSatchel == true),
+            tostring(M.moveTrash == true)));
         f:close();
     end);
 end
@@ -140,6 +151,8 @@ function M.loadState()
                 if type(t.baitId) == 'number' and t.baitId > 0 then M.baitId = t.baitId; end
                 M.rodPin = t.rodPin == true;
                 M.baitPin = t.baitPin == true;
+                M.moveCase, M.moveSatchel = t.moveCase == true, t.moveSatchel == true;
+                M.moveTrash = t.moveTrash == true;
             end
         end
     end);
@@ -339,6 +352,49 @@ function M.setBait(id)
 end
 function M.rodPinned() M.loadState(); return M.rodPin == true; end
 function M.baitPinned() M.loadState(); return M.baitPin == true; end
+
+-- ---------------------------------------------------------------------------
+-- A server that reports fishing (AscensionXI's `fishing` pack service):
+-- Fishing points, the skill in tenths, Fennella's wardrobe slots, the guild
+-- rank -- and the Mog Case / Mog Satchel switches for what you reel in
+-- (feature\fishstorage). nil service = CatsEye's surfaces, unchanged.
+-- ---------------------------------------------------------------------------
+function M.packFishing()
+    local svc = nil;
+    pcall(function() svc = require('dlac\\gear\\serverpack').service('fishing'); end);
+    return svc;
+end
+
+-- The server's snapshot ({ points, skill, slots, rank }) or nil. Asks the
+-- server when due -- every surface showing it calls this.
+function M.serverStatus()
+    local svc = M.packFishing();
+    if svc == nil or type(svc.status) ~= 'table' then return nil; end
+    pcall(svc.status.touch);
+    local v = nil;
+    pcall(function() v = svc.status.value(); end);
+    return v;
+end
+
+-- Catches into the Mog Case (7) / Mog Satchel (5), per character.
+function M.setMoveDestination(cid, on)
+    M.loadState();
+    if cid == 7 then M.moveCase = on == true;
+    elseif cid == 5 then M.moveSatchel = on == true;
+    else return; end
+    saveState();
+    pcall(function() require('dlac\\feature\\fishstorage').live.changed(); end);
+end
+
+-- Trash (the catches that are not fish: the server's junk list) moves only
+-- with this on. Off is the default: fish only (Henrik 2026-10-15, "I
+-- personally wouldn't want that"). Turning it off forgets trash still owed.
+function M.setMoveTrash(on)
+    M.loadState();
+    M.moveTrash = on == true;
+    saveState();
+    pcall(function() require('dlac\\feature\\fishstorage').live.changed(); end);
+end
 
 -- The pill (bar + panel). The four idle hobbies (Craft/HELM/Fishing/Chocobo) are
 -- MUTUALLY EXCLUSIVE at this toggle (lock-while-active, ADR 0017): arming fishing
@@ -693,6 +749,13 @@ if ashita ~= nil and ashita.events ~= nil and type(ashita.events.register) == 'f
                 say(opened
                     and ('target window open' .. (q ~= nil and (' -- searching "' .. q .. '"') or '') .. '.')
                     or 'target window unavailable (GUI not loaded).');
+            elseif b == 'points' and M.packFishing() ~= nil then
+                -- The server's own Fishing points (op 0x83): ask now, read
+                -- the last answer -- a fresh one shows on the next call.
+                local svc = M.packFishing();
+                pcall(function() svc.status.markStale(0); end);
+                local v = M.serverStatus();
+                say('Fishing points: ' .. (v ~= nil and tostring(v.points) or 'waiting for the server (try again in a moment)'));
             elseif b == 'points' then
                 M.requestPoints(true);
                 local v = M.venturePoints();

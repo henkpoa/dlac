@@ -61,6 +61,17 @@ local function baitCount(id)
     return (t ~= nil) and (t[id] or 0) or nil;
 end
 
+-- A line with no printf in the way (a '%' prints as itself).
+local function plainLine(color, text)
+    if ImGuiCol_Text ~= nil and type(imgui.TextUnformatted) == 'function' then
+        imgui.PushStyleColor(ImGuiCol_Text, color);
+        imgui.TextUnformatted(tostring(text));
+        imgui.PopStyleColor();
+    else
+        imgui.TextColored(color, (tostring(text):gsub('%%', '%%%%')));
+    end
+end
+
 -- ---------------------------------------------------------------------------
 -- Manual override dropdowns (Henrik, field round 5: "manual overrides beat
 -- automation, every day"). Clicking the rod or bait name opens a popup of
@@ -225,7 +236,7 @@ function M.renderContent(availW)
         end);
     end
     if imgui.IsItemHovered() then
-        imgui.SetTooltip('Open Gear Helpers > Fishing Gear: the fishing gear matrix,\ntoday\'s ventures and the guild corner.');
+        imgui.SetTooltip('Open Gear Helpers > Fishing Gear: your fishing gear and where\nthe next piece comes from, rods, baits and the guild corner.');
     end
     imgui.Separator();
     -- Row 2: rod + bait, icons first (the identity); the names are BUTTONS --
@@ -250,12 +261,36 @@ function M.renderContent(availW)
         imgui.SetTooltip('Bait in your equippable bags -- a used-up stack re-equips\nitself; the LAST one gone auto-switches (chat line says so).\nClick: pick the bait yourself. A manual pick (*) beats auto\nwhile its stack lasts.');
     end
     baitPopup();
-    -- Row 3: skill + VP breadcrumb.
+    -- A server that reports fishing (AscensionXI): its Fishing points and the
+    -- skill in tenths, a warning while the target fish cannot bite yet, and
+    -- where catches go. Same blocks and the same poll as the panel.
+    local fu = nil;
+    pcall(function() fu = require('dlac\\ui\\fishui'); end);
+    if fu ~= nil and type(fu.packFishing) == 'function' and fu.packFishing() ~= nil then
+        imgui.Separator();
+        local counts = bagCounts();
+        local lines = fu.serverStatusLines(fw.serverStatus(), _fcok and fcalc.wornFishTotal(counts) or 0,
+            fw.playerFishSkill(), fw.playerFishRank());
+        for i = 1, math.min(2, #lines) do
+            plainLine(i == 1 and COL_GOLD or COL_TEXT, lines[i]);
+        end
+        local warn = fu.targetHookWarning(counts);
+        if warn ~= nil then plainLine(COL_WARN, warn); end
+        if on then plainLine(COL_GREEN, 'dressed while idle'); end
+        fu.renderMoveDestinations('bar');
+        imgui.Dummy({ BAR_MIN_W, 1 });
+        return;
+    end
+    -- Row 3: skill + VP breadcrumb (VP only where the pack has ventures).
     local sk = fw.playerFishSkill();
-    local vp = fw.venturePoints();
-    if sk ~= nil or vp ~= nil then
+    local ventOn = true;
+    if type(fw.venturesOn) == 'function' then pcall(function() ventOn = fw.venturesOn() == true; end); end
+    local vp = ventOn and fw.venturePoints() or nil;
+    if ventOn and (sk ~= nil or vp ~= nil) then
         imgui.TextColored(COL_DIM, string.format('skill %s   VP %s',
             sk ~= nil and tostring(sk) or '?', vp ~= nil and tostring(vp) or '?'));
+    elseif sk ~= nil then
+        imgui.TextColored(COL_DIM, string.format('skill %s', tostring(sk)));
     end
     if on then
         imgui.SameLine(0, 10);

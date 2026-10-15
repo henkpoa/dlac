@@ -19,5 +19,8 @@
     `dncstatus` (2026-10-10) is the Dancer status channel, slot 1 of that
     partition (0xD1, 0xD9), read by the DNC Status Job helper
     (docs/design/dnc-status.md).
+    `fishing` (2026-10-15) reads Fishing points and the skill in tenths (op
+    0x83 in the HELM partition) and arms the catch mover
+    (docs/reference/ascensionxi-fishing.md).
 ]]--
-return { 'gearvault', 'helm', 'digging', 'ascension', 'restocknotice', 'telemetry', 'whmgauge', 'dncstatus' };
+return { 'gearvault', 'helm', 'digging', 'ascension', 'restocknotice', 'telemetry', 'whmgauge', 'dncstatus', 'fishing' };

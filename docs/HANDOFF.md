@@ -87,6 +87,15 @@ maintainer IMO, I am just the one with the creative vision."*
     promotes that staging channel tag. Server-coupled data (catalog refreshes) must reach
     prod in the same deploy as its server change.
 
+13. **AscensionXI's hobby helpers** share one shape — a pack module reading a silent
+    0x1E0 status op (HELM 0x80, digging 0x81, fishing 0x83; 0x82 is Nexus's), data the
+    server's `gen_pack.py` writes on every pack run, and a whole-stack Mog Case/Satchel
+    mover: [reference/ascensionxi-helm-helper.md](reference/ascensionxi-helm-helper.md),
+    [reference/ascensionxi-digging.md](reference/ascensionxi-digging.md),
+    [reference/ascensionxi-fishing.md](reference/ascensionxi-fishing.md). The fishing
+    one asks the server only when a reel or an NPC menu can have changed the answer
+    (the packet budget), not on a five-second clock.
+
 There is also a cross-session memory dir (Claude-specific) at
 `~\.claude\projects\C--catseyexi-catseyexi-client-Ashita-addons-dlac\memory\` — it
 holds working-preference notes; the repo docs are the durable record.
