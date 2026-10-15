@@ -102,6 +102,72 @@ function M.breakChance(fish, rod, skill)
     return 0;
 end
 
+-- ---------------------------------------------------------------------------
+-- Server rules a pack's fishdb declares (AscensionXI's static progression,
+-- docs/reference/ascensionxi-fishing.md). No `rules` table = stock LSB, where
+-- every fish within 100 of your skill can bite and skill-ups follow the
+-- stock curve -- the helpers below then answer nil / true as before.
+-- ---------------------------------------------------------------------------
+function M.rules()
+    local db = M.db();
+    return (db ~= nil and type(db.rules) == 'table') and db.rules or nil;
+end
+
+-- Can this fish bite at all at this effective skill (display skill + worn
+-- Fish+)? AscensionXI: only while its skill <= effective + hookGate
+-- (fishing_progression_policy.h canHook). Stock: within 100 (FishingCheck).
+function M.canHook(fish, eff)
+    local sk, e = (fish and fish.sk) or 0, tonumber(eff) or 0;
+    local r = M.rules();
+    if r ~= nil and tonumber(r.hookGate) ~= nil then return sk <= e + r.hookGate; end
+    return sk - e <= 100;
+end
+
+-- The lowest effective skill that lets this fish bite, or nil without a gate.
+function M.minSkillToHook(fish)
+    local r = M.rules();
+    if r == nil or tonumber(r.hookGate) == nil then return nil; end
+    return math.max(0, ((fish and fish.sk) or 0) - r.hookGate);
+end
+
+-- Skill-ups from landing this fish under the pack's rules, or nil without
+-- them: base = your skill without gear (a decimal is fine), rank = guild rank
+-- or nil. The ceiling is the lowest of the fish's skill, the guild cap
+-- ((rank + 1) x 10) and skillCap; below it every eligible catch rolls the
+-- band chance for one step.
+function M.skillupFor(fish, base, rank)
+    local r = M.rules();
+    if r == nil or type(r.gain) ~= 'table' or fish == nil then return nil; end
+    base = tonumber(base) or 0;
+    local ceiling, limit = tonumber(r.skillCap) or 110, 'max';
+    if (fish.sk or 0) < ceiling then ceiling, limit = fish.sk or 0, 'fish'; end
+    if rank ~= nil and (rank + 1) * 10 < ceiling then ceiling, limit = (rank + 1) * 10, 'guild'; end
+    local chance = 0;
+    for _, band in ipairs(r.gain) do
+        if band.below == nil or base < band.below then chance = band.chance or 0; break; end
+    end
+    -- Skills are kept in tenths server-side; compare there so 22.9 < 23.
+    local gains = math.floor(base * 10 + 0.5) < ceiling * 10 and (fish.item or 0) == 0;
+    return { gains = gains, ceiling = ceiling, limit = limit, chance = gains and chance or 0,
+             step = tonumber(r.step) or 0.1 };
+end
+
+-- Points a landed fish pays under the pack's points table (AscensionXI's
+-- Fishing points, by the fish's skill), or nil without one. Junk catches and
+-- monsters pay nothing.
+function M.pointsFor(fish)
+    local db = M.db();
+    local p = (db ~= nil and type(db.points) == 'table') and db.points or nil;
+    if p == nil or type(p.bands) ~= 'table' or fish == nil then return nil; end
+    if (fish.item or 0) ~= 0 then return 0; end
+    local last = 0;
+    for _, band in ipairs(p.bands) do
+        last = band.points or last;
+        if (fish.sk or 0) <= (band.upTo or 0) then return band.points; end
+    end
+    return last;
+end
+
 -- The full verdict for one fish + rod + effective skill.
 function M.verdictFor(fish, rod, skill)
     local lose, why = M.loseChance(fish, rod, skill);
@@ -254,16 +320,22 @@ end
 -- player missing the KI sees BETTER isolation than promised, never worse).
 -- Items/monsters ride separate pools -- callers must show mobRisk + the
 -- "items can always bite" footnote rather than promising exclusivity.
-function M.isolationFor(fishid)
+-- eff (optional): your effective skill. Where the pack's rules gate hooking
+-- (AscensionXI: a fish bites only up to effective + 10), a rival that cannot
+-- bite at that skill is no rival -- so the same water can read ISOLATED at
+-- skill 20 and crowded at skill 60. Without eff or rules, every member counts.
+function M.isolationFor(fishid, eff)
     local db = M.db(); local ix = indexes();
     if db == nil or ix == nil then return {}; end
+    local gated = eff ~= nil and M.rules() ~= nil and tonumber(M.rules().hookGate) ~= nil;
     local rows = {};
     for _, spot in ipairs(ix.fishSpots[fishid] or {}) do
         local pool = (db.pools[spot.z] or {})[spot.a] or {};
         for _, e in ipairs(ix.fishBaits[fishid] or {}) do
             local others = {};
             for _, f in ipairs(pool) do
-                if f ~= fishid and (db.aff[e.b] or {})[f] ~= nil then
+                if f ~= fishid and (db.aff[e.b] or {})[f] ~= nil
+                   and (not gated or M.canHook(db.fish[f], eff)) then
                     others[#others + 1] = f;
                 end
             end
@@ -346,13 +418,16 @@ end
 -- Mod::FISH piece (rings twice when two are owned -- two fingers). Rod/bait
 -- slots excluded -- they're the pick, not the bonus. Shared by fishui's
 -- status label and fishbar's verdict tags (one effective-skill convention).
-function M.wornFishTotal(counts)
+-- level (optional): a piece whose gearBonus names a higher level (lv) is
+-- left out -- you could not wear it. CatsEye's table carries no lv.
+function M.wornFishTotal(counts, level)
     local db = M.db();
     if db == nil or type(counts) ~= 'table' then return 0; end
     local bySlot = {};
     for id, g in pairs(db.gearBonus or {}) do
         local f = tonumber(g.fish) or 0;
-        if f > 0 and (counts[id] or 0) >= 1 and g.sl ~= 'Range' and g.sl ~= 'Ammo' then
+        local wearable = level == nil or g.lv == nil or g.lv <= level;
+        if f > 0 and wearable and (counts[id] or 0) >= 1 and g.sl ~= 'Range' and g.sl ~= 'Ammo' then
             local cur = bySlot[g.sl];
             local pair = (g.sl == 'Ring' and (counts[id] or 0) >= 2) and f * 2 or f;
             if cur == nil or pair > cur then bySlot[g.sl] = pair; end

@@ -95,6 +95,15 @@ jobs:
       - name: AscensionXI digging surfaces regression
         run: lua5.4 tests/ascensionxi_digging_ui.lua
 
+      - name: Caught-item storage regression
+        run: lua5.4 tests/fishstorage.lua
+
+      - name: AscensionXI fishing packet regression
+        run: lua5.4 tests/ascensionxi_fishing.lua
+
+      - name: AscensionXI fishing surfaces regression
+        run: lua5.4 tests/ascensionxi_fishing_ui.lua
+
       - name: AscensionXI ascension packet regression
         run: lua5.4 tests/ascensionxi_ascension.lua
 

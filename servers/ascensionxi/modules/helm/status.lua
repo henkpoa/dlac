@@ -49,7 +49,8 @@ function M.onPacket(data)
     if type(data) ~= 'string' or #data < 8 then return false; end
     local op, seq, status, flags = data:byte(5, 8);
     if op < 0x80 or op > 0x8F then return false; end
-    -- Other ops in the partition have their own owners (0x81: digging).
+    -- Other ops in the partition have their own owners (0x81: digging,
+    -- 0x82: Nexus, 0x83: fishing).
     if op == M.OP and M._received then M._received(op, seq); end
     -- Block our partition even when late/malformed: the retail client has
     -- no handler for it. Never consume another addon's storage replies.

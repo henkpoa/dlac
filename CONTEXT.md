@@ -301,3 +301,7 @@ _Avoid_: hobby menu (that is the Menu popup's row that opens it), craft bar / fi
 **Dig mover**:
 AscensionXI's move of dug items into the Mog Case / Mog Satchel (`feature/digstorage`, `docs/reference/ascensionxi-digging.md`), the digging sibling of HELM's gathered-item move — and deliberately not the same rule. A dig comes every second with up to three finds, so instead of moving each reward as it lands it keeps an **owed** count per item (the net rise of that item's inventory total across our own answered dig) and moves **whole stacks** only: full ones and non-stacking items while digging, the rest after a pause. Owed is the ceiling — stock carried in is never moved — and Gysahl Greens are never owed at all (the next dig needs them).
 _Avoid_: auto-move / auto-deposit (the player still digs; dlac only moves what digging added), sweep (it never moves what it did not see dug)
+
+**Catch mover**:
+AscensionXI's move of what you reel in into the Mog Case / Mog Satchel (`feature/fishstorage`, `docs/reference/ascensionxi-fishing.md`), the third mover after HELM's and the Dig mover, with their **owed** count and **whole stacks**. A reel is our own 0x110 RequestEndMiniGame; its answer counts once quiet or at our release. A **catch** is any id the pack's fishing tables list (fish and the junk a line brings up) — never bait, never a broken rod.
+_Avoid_: fish mover (junk moves too), auto-fishing (dlac never casts or reels; it only moves what the reel added)

@@ -155,6 +155,7 @@ function M.producerOf(op)
     if op >= 0x40 and op <= 0x7F then return 'vault'; end
     if op == 0x80 then return 'HELM'; end
     if op == 0x81 then return 'digging'; end
+    if op == 0x83 then return 'fishing'; end
     if op >= 0xA0 and op <= 0xAF then return 'ascension'; end
     if op >= 0xC0 and op <= 0xCF then return 'telemetry'; end
     if op >= 0xD0 and op <= 0xDF then return (op % 8 == 1) and 'dnc status' or 'whm gauge'; end

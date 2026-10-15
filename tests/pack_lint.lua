@@ -171,6 +171,37 @@ for _, mname in ipairs(modlist) do
     check('L17 module init compiles: ' .. mname, chunk ~= nil, true);
 end
 
+-- A module that reads a generated table needs the manifest to name it: the
+-- virtual namespace mounts only what `files` lists, so a regeneration from a
+-- server checkout without that generator drops the table with no error and
+-- the surface says "fishdb missing" (the fishing module, 2026-10-15).
+local NEEDS = { fishing = 'fishdb', digging = 'digdata' };
+for _, mname in ipairs(modlist) do
+    local fname = NEEDS[mname];
+    if fname ~= nil then
+        local listed = false;
+        for _, f in ipairs((man and man.files) or {}) do if f == fname then listed = true; end end
+        check('L18 module ' .. mname .. ' has its table ' .. fname .. ' in the manifest', listed, true);
+    end
+end
+local fdb = sp.data('fishdb');
+if fdb ~= nil then
+    local bad, n = 0, 0;
+    for _, f in pairs(fdb.fish or {}) do
+        n = n + 1;
+        if type(f.n) ~= 'string' or type(f.sk) ~= 'number' then bad = bad + 1; end
+    end
+    check('L19 fishdb fish rows carry n+sk', bad, 0);
+    if counts.fishdb ~= nil then check('L19a fishdb count matches the manifest', n == tonumber(counts.fishdb), true); end
+    local stray = 0;
+    for _, areas in pairs(fdb.pools or {}) do
+        for _, list in pairs(areas) do
+            for _, id in ipairs(list) do if (fdb.fish or {})[id] == nil then stray = stray + 1; end end
+        end
+    end
+    check('L19b every fish in a water has a row', stray, 0);
+end
+
 if #failures == 0 then
     print(('OK -- pack "%s": %d checks passed'):format(packid, count));
     os.exit(0);

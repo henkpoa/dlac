@@ -88,7 +88,12 @@ if arg and arg[1] then
     local root, serverTime, nextRead = arg[1], 1000, 0;
     local env = setmetatable({ xi = {
         item = setmetatable({}, { __index = function(_, key) return key; end }),
-        skill = { HARVESTING = 60, EXCAVATION = 61, LOGGING = 62, MINING = 63 },
+        skill = { HARVESTING = 60, EXCAVATION = 61, LOGGING = 62, MINING = 63, FISHING = 48,
+                  WOODWORKING = 49, SMITHING = 50, GOLDSMITHING = 51, CLOTHCRAFT = 52,
+                  LEATHERCRAFT = 53, BONECRAFT = 54, ALCHEMY = 55, COOKING = 56 },
+        -- Op 0x82 (Nexus's craft read, 2026-10-09) names its modifiers at load.
+        mod = setmetatable({}, { __index = function(_, key) return key; end }),
+        settings = { map = { CRAFT_HQ_CHANCE_MULTIPLIER = 1.0 } },
         helm = { points = function() return 758; end },
     }, VoidStoreCode = setmetatable({}, { __index = function(_, key) return key; end }),
     VoidStoreStatus = { OK = 0, BAD_OP = 1, MALFORMED = 2, BUSY = 3, UNAVAILABLE = 5, PROTO_UNSUPPORTED = 6 },
@@ -102,7 +107,8 @@ if arg and arg[1] then
     -- void_storage.lua's other requires play no part in the HELM route.
     env.require = function(name)
         if name == 'modules/custom/lua/helm_status' then return endpoint; end
-        assert(name == 'modules/custom/lua/ascension_status' or name == 'modules/custom/lua/storage_transfer_effects', name);
+        assert(name == 'modules/custom/lua/ascension_status' or name == 'modules/custom/lua/storage_transfer_effects'
+            or name == 'modules/custom/lua/job_gauge_wire', name);
         return {};
     end;
     -- Enough enum for the data files void_storage.lua reads at load.
@@ -127,8 +133,12 @@ if arg and arg[1] then
     assert(ask(0x80, payload).status == 3, 'server rate limit');
     assert(ask(0x80, '').status == 2 and ask(0x80, payload .. '\0').status == 2);
     assert(ask(0x80, p16(2) .. payload:sub(3)).status == 6);
-    -- 0x82 is unclaimed in the HELM partition; 0x90 is Onslaught's, absent here.
-    assert(ask(0x82, payload).status == 1 and ask(0x90, payload).status == 5);
+    -- 0x82 is Nexus's and 0x83 fishing's; 0x8F is unclaimed in the HELM
+    -- partition; 0x90 is Onslaught's, absent here.
+    assert(ask(0x8F, payload).status == 1 and ask(0x90, payload).status == 5);
+    -- Fishing's 0x83 rides the same route; without its points module it is
+    -- unavailable rather than unknown (tests/ascensionxi_fishing.lua reads it).
+    assert(ask(0x83, payload).status == 5, 'op 0x83 routed to the HELM partition');
     serverTime = serverTime + 1;
     assert(ask(0x80, payload).status == 0);
     env.xi.gearVault = { onPacket = function() return { frames = { { status = 77 } } }; end };

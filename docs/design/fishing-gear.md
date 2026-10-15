@@ -415,3 +415,25 @@ Henrik's live findings (Moat Carp + Lu Shang's/Clothespole session), all shipped
   the spot list looked unclearable. Clear now also nils the frame's copy.
 
 Tests F70–F84; fishstate format gained `rodId/baitId/rodPin/baitPin`.
+
+## 9. AscensionXI (2026-10-15, `2026.10.15a`)
+
+Everything above is CatsEye's server. AscensionXI runs the same fail math but its
+own economy and rules, all read from its pack — the full handoff is
+[reference/ascensionxi-fishing.md](../reference/ascensionxi-fishing.md):
+
+- **Data**: the pack's `data/fishdb.lua` comes from the server repo's
+  `tools/dlac-pack/fishdb.py` (a port of `tools/gen_fishdb.py`, reading the
+  website's era rules from `extract.ts`), in the §4 shape plus `rules`, `points`
+  and `shop`.
+- **Rules** (`fishcalc.rules`): a fish bites only up to effective skill + 10
+  (`canHook`), skill-ups are a flat band chance until the lowest of the fish's
+  skill, the guild cap and 110 (`skillupFor`), and a landed fish pays Fishing
+  points (`pointsFor`). With no `rules` table (CatsEye) every helper answers as
+  before; the stock "skill-up window / ~+11 sweet spot" line stays CatsEye's.
+- **Currency**: Fishing points from the server's silent op 0x83, beside the
+  skill in tenths, the wardrobe slots and the guild rank; no GP, no VP, no
+  doubloons. A fishdb `shop` (Fennella) replaces the four-column matrix with
+  her Fisherman's → Angler's ladder, caps included.
+- **fishstate** gained `moveCase/moveSatchel`: the Catch mover
+  (`feature/fishstorage`), armed only by the pack's `fishing` service.
