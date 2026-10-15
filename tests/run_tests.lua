@@ -28889,7 +28889,8 @@ end)();
     check('FGT25 ascensionxi: gathering enabled', fg4.helperEnabled('helm'), true);
     check('FGT25b ascensionxi: chocobo digging enabled', fg4.helperEnabled('choco'), true);
     check('FGT25c ascensionxi: fishing enabled', fg4.helperEnabled('fish'), true);
-    for _, key in ipairs({ 'craft', 'obi', 'ammo', 'maxmp', 'restock', 'future' }) do
+    check('FGT25d ascensionxi: MaxMP enabled', fg4.helperEnabled('maxmp'), true);
+    for _, key in ipairs({ 'craft', 'obi', 'ammo', 'oneiros', 'iridescence', 'restock', 'future' }) do
         check('FGT26 ascensionxi: helper hidden ' .. key, fg4.helperEnabled(key), false);
     end
     check('FGT27 no allowlist keeps future helpers', fg3.helperEnabled('future'), true);
