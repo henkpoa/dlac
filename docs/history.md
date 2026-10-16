@@ -11209,3 +11209,40 @@ receipt; `hasSetText`; the first-commit seed and the old-job-file import that
 still wins over it; the module driven end to end against recording deps; the
 popup's colour and popup stacks balanced, a throwing body included; gearui's
 wiring as source pins).
+
+## 2026-10-16: race-specific gear says who may wear it (`2026.10.16a`)
+
+Henrik, with dlac's card for Custom Tunic beside the game's: dlac read
+"DEF+18 HP+32 VIT+3 INT-1 CHR+1 EQUIPMENT_ONLY_RACE+1", the game prints
+"[Body]H♂". "It doesn't really tell you what race can only equip it."
+
+The AscensionXI pack carries the server's race restriction (mod 276,
+`EQUIPMENT_ONLY_RACE`) in `Stats`, like any other mod. It is a bitmask over the
+server's race ids 1..8 (bit race-1; 0 = every race, `item_equipment.cpp`
+`isEquippableByRace`), not a bonus, so every surface that prints stats printed
+it as one: the stat line, the row summary and its "(+N more)" count, the
+Equipped tab's compare delta ("+127 EQUIPMENT_ONLY_RACE" between a Hume and a
+Galka piece) and the totals panel's Other section (the masks of the worn pieces,
+summed). 423 pieces carry it, in thirteen masks.
+
+`gearfmt.raceText` says it in words: "Hume male only", "Tarutaru only" (both
+sexes), "Mithra only", "Galka only", "Male only" (149: every male, Galka
+included), "Female only" (106). It sits beside the slot, where the game puts
+"H♂": the item tooltip's "(Body)" line, the pin menu's facts line (ahead of
+the job list, so a narrow popup cuts the jobs and not the race) and the compare
+cards' "[Body]" line, in the jobs colour. Words rather than ♂/♀, which the
+ImGui font is not known to carry. The mask leaves every stat line through the
+same filter that collapses the additional-effect keys, and the delta and the
+totals panel skip it. Shared code: the CatsEye catalog has no race key, so
+nothing changes there.
+
+Not done: no wear check reads the mask. The usable-now filter, the
+auto-builder and the lockstyle picker still treat a Hume-only piece as
+wearable by any race; the server refuses the equip.
+
+Tests: `gearfmt_effects` (the field report's piece, all thirteen masks, mixes,
+and every race-restricted piece in the shipped catalog: words, and no mask in a
+stat line or row summary); RAC1-RAC12 in `smoke_ui` (the facts line, the
+compare cards and delta driven through the Equipped tab, gearui's tooltip and
+totals panel as source pins). Each of the eight guards was broken once; every
+one went red.
