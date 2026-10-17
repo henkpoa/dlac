@@ -114,6 +114,10 @@ _Avoid_: favourability (the signed net both over- and under-fires a day-only ite
 The obi's environment score for an element: +1 per matching day OR weather, −1 per the OPPOSING element on the elemental wheel; net > 0 = favourable. Powers `dlac:AutoObi` and the `dayWeatherBonus` Trigger condition. A SIGNED net over day AND weather WITH opposition — deliberately different from both one-sided equalities.
 _Avoid_: weather match / day match (the two one-sided equalities above — the net over- and under-fires either one); "favourable weather" (it folds in day and opposition, not just weather)
 
+**Pet element match**:
+The three environment tests above, asked about YOUR PET's element instead of the action's (engine v172, ADR 0038). `petDayMatch` asks whether today's day element is the pet's, `petWeatherMatch` whether the current weather element is (single or double, the player's own storm counted), and `petDayWeatherBonus` takes the favourability net over the pet's element. The pet's element is its server `pet_list.element`. Avatars and elemental spirits carry one and every other pet carries none. A pet without one, like no pet at all, matches neither polarity. This is what the Summoner's day/weather perpetuation gear keys on (Summoner's Doublet on the avatar's day, Summoner's Horn in its weather).
+_Avoid_: day match / weather match / favourability for these (those test the ACTION's element: a Fire spell cast on Firesday with Shiva out is a day match, while Shiva is not)
+
 **Claim**:
 A feature's declared wish to dress one or more slots (wear this item, or keep what's worn), registered with the Arbiter instead of equipped directly. Slots are contested one by one — losing a contest costs a claimant only that slot.
 _Avoid_: pin (the floatgear feature — one claimant among many), override, hijack
