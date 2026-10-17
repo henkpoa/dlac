@@ -239,7 +239,17 @@ local PET_PARAMS = {
     { key = 'petStatus', label = 'PetStatus', kind = 'list', items = { 'Idle', 'Engaged' },
       hint = 'what the PET is doing. status = Idle + petStatus = Engaged is the classic\n"master stands back while the pet fights" posture. Never matches petless.' },
     { key = 'petName',   label = 'PetName',   kind = 'text',
-      hint = 'exact pet name, case-insensitive -- Garuda, Fire Spirit, a jug pet\'s name --\nfor avatar-specific perpetuation gear and the like. Never matches petless.' },
+      hint = 'exact pet name, case-insensitive -- Garuda, FireSpirit (a spirit\'s name has no\nspace), a jug pet\'s name -- for avatar-specific perpetuation gear and the like.\nNever matches petless.' },
+    -- The pet ELEMENT against the day and weather (engine v172): the three
+    -- environment tests of Precast/Midcast, asked about the avatar's or
+    -- spirit's element instead of a spell's -- so they work in Default too.
+    -- Flags: the parameter carries its value (true), like HasPet.
+    { key = 'petDayWeatherBonus', label = 'PetDayWeatherBonus', kind = 'fixed', value = true,
+      hint = 'the day + weather NET favours your pet\'s element -- the obi rule over the\navatar\'s or spirit\'s element (+1 per matching day/weather, -1 per the\nopposing element). Elemental Siphon\'s drain follows the same day and\nweather. Never matches without an avatar or spirit out.' },
+    { key = 'petWeatherMatch',    label = 'PetWeatherMatch',    kind = 'fixed', value = true,
+      hint = 'the CURRENT weather is your pet\'s element (single or double; your own\nstorm counts) -- Summoner\'s Horn: perpetuation -3 in the avatar\'s weather.\nNo day, no opposition. Never matches without an avatar or spirit out.' },
+    { key = 'petDayMatch',        label = 'PetDayMatch',        kind = 'fixed', value = true,
+      hint = 'TODAY is your pet\'s element day -- Ifrit on Firesday -- Summoner\'s\nDoublet: perpetuation -3 on the avatar\'s day. No weather, no opposition.\nNever matches without an avatar or spirit out.' },
 };
 do
     -- Append the shared player/pet pickers once per defs table.
@@ -1859,6 +1869,12 @@ local COND_COLORS = {
     -- lighter (identity, like `name` vs `skill`).
     pet = { 0.50, 0.90, 0.60, 1.0 }, petstatus = { 0.50, 0.90, 0.60, 1.0 },
     petname = { 0.75, 0.95, 0.60, 1.0 },
+    -- The pet element tests (engine v172) wear their environment siblings'
+    -- colours: the colour says WHICH test (net / weather / day -- the reason
+    -- dayMatch got its own), the 'pet' in the name says whose element.
+    petdayweatherbonus = { 0.60, 0.90, 0.90, 1.0 },
+    petweathermatch = { 0.55, 0.80, 0.95, 1.0 },
+    petdaymatch = { 1.00, 0.70, 0.85, 1.0 },
 };
 
 -- A rule's conditions as display lines (sorted, one per line; 'any' when empty).
@@ -1898,6 +1914,10 @@ local PSTATE_KEYS = {
     -- Pet conditions (engine v63) light too: pet-out is exactly the kind of
     -- state you want to SEE holding while you build the rule.
     pet = true, petstatus = true, petname = true,
+    -- ...and the pet element tests (engine v172): the matcher reads the day
+    -- and weather through gData (nativedata, this state's own), so the marker
+    -- lights the moment the avatar's day or weather comes round.
+    petdayweatherbonus = true, petweathermatch = true, petdaymatch = true,
     -- inTown (engine v84): the [on now] marker reads your live zone through the
     -- engine's own matcher (zoneOf does GetMemberZone on the addon side), so you
     -- can watch it light up as you walk into a city while building the rule.
@@ -2935,7 +2955,7 @@ local function renderTrigAddPopup()
         imgui.OpenPopup('##trgcondmenu');
     end
     if imgui.IsItemHovered() then
-        imgui.SetTooltip('Pick the condition type. Player and Pet cascade into their\nparameter lists (HP / MP / buffs; pet out / status / name).');
+        imgui.SetTooltip('Pick the condition type. Player and Pet cascade into their\nparameter lists (HP / MP / buffs; pet out / status / name /\nthe pet\'s element against the day and weather).');
     end
     if imgui.BeginPopup('##trgcondmenu') then
         local function pickDef(di)
