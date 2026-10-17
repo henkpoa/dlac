@@ -77909,7 +77909,7 @@ return {
             Level = 1,
             Id = 17296,
             Model = 23,
-            Jobs = {"WAR", "MNK", "WHM", "BLM", "THF", "DRK", "BST", "BRD", "RNG", "NIN", "DRG", "SMN"},
+            Jobs = {"All"},
             Type = "Ammo",
             AmmoType = "Throwing",
             Pair = "27:0",
@@ -79146,7 +79146,7 @@ return {
         },
         SleepArrow = {
             Name = "Sleep Arrow",
-            Level = 35,
+            Level = 15,
             Id = 18158,
             Jobs = {"WAR", "RDM", "THF", "PLD", "DRK", "BST", "RNG", "SAM", "NIN"},
             Type = "Ammo",
@@ -79167,7 +79167,7 @@ return {
         },
         SleepBolt = {
             Name = "Sleep Bolt",
-            Level = 20,
+            Level = 15,
             Id = 18149,
             Jobs = {"WAR", "THF", "DRK", "RNG"},
             Type = "Ammo",
@@ -106395,7 +106395,7 @@ return {
         },
         ChocoboTorque = {
             Name = "Chocobo Torque",
-            Level = 81,
+            Level = 1,
             Id = 10924,
             Jobs = {"All"},
             Type = "Neck",

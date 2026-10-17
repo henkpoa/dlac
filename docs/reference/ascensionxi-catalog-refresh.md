@@ -4,6 +4,58 @@ A log of AscensionXI catalog refreshes, newest first. To get one from DLAC main 
 
 ---
 
+# AscensionXI catalog refresh, October 17, 2026
+
+DLAC `2026.10.17b` regenerates the complete pack from AscensionXI main
+`776bfe8693` (after #989), with the generator fix in AXI #991
+(`d1dd5b5996`). Four existing records change. Nothing is added or removed.
+
+- Pebble (17296) is for every job, not the twelve it listed (AXI #959).
+- Sleep Arrow (18158) goes from level 35 to 15, and Sleep Bolt (18149) from
+  20 to 15 (AXI #959).
+- Chocobo Torque (10924) goes from level 81 to 1 (AXI #901).
+
+`data/fishdb.lua` learns what a skill-up is worth since AXI #982: 0.1 to
+0.4, even odds, from a fish at least 10 above your base skill, and 0.1 from
+any other (`stepUpTo = 0.4`, `stepGap = 10`). The chances and the ceiling
+are unchanged, and they are all the fish window shows, so nothing DLAC
+displays was wrong. Nothing reads the new fields yet.
+
+#982 had stopped the generator: `fishdb.py` refuses a progression header it
+does not recognise, and #982 reflowed the chance ternary and changed the
+amount. AXI #991 reads both shapes, the one before #982 and the one after,
+and still fails on anything else. Rerun from main once #991 merges: the pack
+should come back byte-identical.
+
+Totals: 15,466 equipment records, all named from tracked client DATs, 71
+icon overrides and 869 latent-stat items, all unchanged. Every other
+generated file comes back byte-identical.
+
+Not covered, before this refresh or after it: `data/spells.lua` and
+`data/abilities.lua` come from the stock `sql/spell_list.sql` and
+`sql/abilities.sql` only. The 22 enabled module SQL files that grant or
+re-level a spell or an ability never reach DLAC's pickers: Despoil at THF 45
+(AXI #979) and Twin Burst at BLM 50 (`blm_elemental.sql`) are missing.
+Triggers still match those actions by name.
+
+Verification, offline only: 53 generator tests, AscensionXI pack lint (46
+checks), the core suite (7,818 checks), UI smoke (1,689 checks) and the
+other 30 commands in DLAC CI, on Lua 5.4 under Windows and under WSL from
+an LF export of the tree.
+
+This release also carries everything merged into DLAC main since AXI's
+current pin `f5b7779` (`2026.10.12c`), the head of #211, which did not
+include #209 and #210: HELM's Always on and badge switch (#209), the Gear
+Vault layout's one-click right-click (#210), mode sections from one row
+(#212), smoother frames and Sets Copy to (#213), the Gathering Gear skill
+table (#214), Fishing Gear on AscensionXI (#215, with AXI #964), MaxMP on
+AscensionXI (#216) and race-specific gear in words (#217). Promote the
+pin's channel in the same deploy as a server image from AXI main at or after
+`776bfe8693`, which holds #964 and every catalog change above
+([ascensionxi-release-routine.md](ascensionxi-release-routine.md)).
+
+---
+
 # AscensionXI catalog refresh, October 12, 2026
 
 DLAC `2026.10.12c` regenerates the complete pack from AscensionXI main

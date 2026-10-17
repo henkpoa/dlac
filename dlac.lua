@@ -18,7 +18,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.10.16a';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.10.17b';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
                                 -- (03f = engine v163: the contest explains its own plan;
                                 --  03g = one floating tray: Teleports + the E-Box crates;
@@ -409,7 +409,11 @@ addon.version = '2026.10.16a';  -- date of the last shipped change (Ashita print
                                 --  Helpers row and panel are on there;
                                 --  10.16a = race-specific gear says who may wear
                                 --  it ("Hume male only") beside the slot, not
-                                --  as an EQUIPMENT_ONLY_RACE+1 stat)
+                                --  as an EQUIPMENT_ONLY_RACE+1 stat;
+                                --  10.17b = AscensionXI catalog: Pebble for every
+                                --  job, Sleep Bolt/Arrow at level 15, Chocobo
+                                --  Torque at level 1, and the fishing rules say
+                                --  a skill-up can be 0.1-0.4)
 addon.desc    = 'Gear sets, triggers and live stats with level scaling -- dlac equips your gear itself.';
 
 -- Load BEACON ('/dl check' field round, 2026-07-23): written by PLAIN io at
