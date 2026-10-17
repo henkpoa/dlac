@@ -18,8 +18,10 @@ DLAC `2026.10.17b` regenerates the complete pack from AscensionXI main
 `data/fishdb.lua` learns what a skill-up is worth since AXI #982: 0.1 to
 0.4, even odds, from a fish at least 10 above your base skill, and 0.1 from
 any other (`stepUpTo = 0.4`, `stepGap = 10`). The chances and the ceiling
-are unchanged, and they are all the fish window shows, so nothing DLAC
-displays was wrong. Nothing reads the new fields yet.
+are unchanged, and they were all the fish window showed, so nothing DLAC
+displayed was wrong. `2026.10.17c`, in the same PR, adds the amount: a fish
+that qualifies reads "skill-ups: 50% a catch, 0.1-0.4 each, up to 40 (...)",
+and any other "0.1 each".
 
 #982 had stopped the generator: `fishdb.py` refuses a progression header it
 does not recognise, and #982 reflowed the chance ternary and changed the
@@ -39,9 +41,9 @@ re-level a spell or an ability never reach DLAC's pickers: Despoil at THF 45
 Triggers still match those actions by name.
 
 Verification, offline only: 53 generator tests, AscensionXI pack lint (46
-checks), the core suite (7,818 checks), UI smoke (1,689 checks) and the
-other 30 commands in DLAC CI, on Lua 5.4 under Windows and under WSL from
-an LF export of the tree.
+checks), the core suite (7,872 checks, #218 included), UI smoke (1,696
+checks) and the other 30 commands in DLAC CI, on Lua 5.4 under Windows and
+under WSL from an LF export of the tree.
 
 This release also carries everything merged into DLAC main since AXI's
 current pin `f5b7779` (`2026.10.12c`), the head of #211, which did not
@@ -49,7 +51,8 @@ include #209 and #210: HELM's Always on and badge switch (#209), the Gear
 Vault layout's one-click right-click (#210), mode sections from one row
 (#212), smoother frames and Sets Copy to (#213), the Gathering Gear skill
 table (#214), Fishing Gear on AscensionXI (#215, with AXI #964), MaxMP on
-AscensionXI (#216) and race-specific gear in words (#217). Promote the
+AscensionXI (#216), race-specific gear in words (#217) and the Pet
+conditions on the pet's element (#218, `2026.10.17a`). Promote the
 pin's channel in the same deploy as a server image from AXI main at or after
 `776bfe8693`, which holds #964 and every catalog change above
 ([ascensionxi-release-routine.md](ascensionxi-release-routine.md)).

@@ -149,6 +149,22 @@ up = fcalc.skillupFor(carp, 11, 3);
 assert(not up.gains and up.chance == 0, 'no skill-ups once you reach the fish');
 assert(fcalc.skillupFor(carp, 10.9, 3).gains, 'tenths still learn below the fish');
 assert(fcalc.skillupFor(db.fish[4305], 95, 10).chance == 20, 'the top band');
+-- AscensionXI #982: a skill-up is 0.1 to 0.4 from a fish at least 10 above
+-- your base skill, else 0.1, and every award stops at the ceiling.
+assert(db.rules.stepUpTo == 0.4 and db.rules.stepGap == 10, 'the pack carries the amount rule');
+assert(fcalc.skillupFor(carp, 5, 3).stepMax == 0.1, 'a fish 6 above pays 0.1');
+assert(fcalc.skillupFor(carp, 1, 3).stepMax == 0.4, 'exactly 10 above pays up to 0.4');
+assert(fcalc.skillupFor(carp, 1.1, 3).stepMax == 0.1, '9.9 above pays 0.1');
+up = fcalc.skillupFor(db.fish[4305], 39.8, 3);
+assert(up.gains and up.ceiling == 40 and up.stepMax == 0.2, 'the guild cap clips the award to 0.2');
+assert(fcalc.skillupFor(carp, 11, 3).stepMax == 0.1, 'nothing to learn, no bigger step');
+local olderRules = {};
+for k, v in pairs(db.rules) do olderRules[k] = v; end
+olderRules.stepUpTo, olderRules.stepGap = nil, nil;
+fcalc._setDb({ rules = olderRules });
+up = fcalc.skillupFor(carp, 1, 3);
+assert(up.gains and up.chance == 50 and up.stepMax == nil, 'a pack from before #982 says no amount');
+fcalc._setDb(db);
 -- Rivals that cannot bite at your skill are no rivals: some water reads
 -- isolated at a low skill and crowded at a high one.
 local changed = nil;

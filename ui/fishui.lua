@@ -558,8 +558,9 @@ function M.renderTargetBody(deps, availW)
         if rules ~= nil then
             -- The pack's own rules (AscensionXI): a fish bites only up to your
             -- skill + hookGate, skill-ups come at a flat chance until the
-            -- fish's skill, your guild cap or the ceiling, and a landed fish
-            -- pays Fishing points by its skill.
+            -- fish's skill, your guild cap or the ceiling (each worth 0.1, or
+            -- 0.1 to 0.4 from a fish 10+ above your base skill), and a landed
+            -- fish pays Fishing points by its skill.
             if not fcalc.canHook(f, eff) then
                 imgui.TextColored(COL_ERR, string.format('cannot bite yet: needs skill %d with gear (you: %d)',
                     fcalc.minSkillToHook(f) or 0, eff));
@@ -571,8 +572,13 @@ function M.renderTargetBody(deps, availW)
             if up ~= nil and up.gains then
                 local why = ({ fish = "this fish's skill", guild = 'your guild cap -- then take the rank test',
                                max = 'the skill ceiling' })[up.limit] or '';
-                coloredLine(GREEN_OWNED, string.format('skill-ups: %d%% a catch, up to %d (%s)%s',
-                    up.chance, up.ceiling, why, tail));
+                local each = '';
+                if up.stepMax ~= nil then
+                    each = up.stepMax > up.step + 0.001 and string.format(', %.1f-%.1f each', up.step, up.stepMax)
+                        or string.format(', %.1f each', up.step);
+                end
+                coloredLine(GREEN_OWNED, string.format('skill-ups: %d%% a catch%s, up to %d (%s)%s',
+                    up.chance, each, up.ceiling, why, tail));
             elseif up ~= nil then
                 coloredLine(COL_DIM, (string.format('no skill-ups from this fish (%s)%s',
                     (f.item or 0) ~= 0 and 'a junk catch'
