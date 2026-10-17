@@ -6313,6 +6313,164 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- PE. Pet element vs the environment (engine v172): petDayWeatherBonus /
+--     petWeatherMatch / petDayMatch -- the three environment tests above, asked
+--     about YOUR PET's element (dispatch.petElementOf, off ctx.pet.Name) instead
+--     of the action's. Same ctx.del / ctx.wel seams as DM / WM. No pet, a pet
+--     without an element, or an unreadable day/weather matches NEITHER polarity.
+--     Tier 24: above petStatus (23), under moving (25).
+-- ---------------------------------------------------------------------------
+(function()
+    local mm, pe = dispatchM._matchers, dispatchM.petElementOf;
+    -- The element table is the SERVER's: AscensionXI sql/pet_list.sql, names as
+    -- the rows spell them (the name the server sends the client) and the element
+    -- column as the server's ELEMENT ids (1 Fire, 2 Ice, 3 Wind, 4 Earth,
+    -- 5 Thunder, 6 Water, 7 Light, 8 Dark -- the order of status_effect_container's
+    -- strong[] / weatherStrong[] tables). Pinned row by row, so the code's table
+    -- answers to the source and not to itself.
+    local SERVER_ROWS = {
+        { 'FireSpirit', 1 }, { 'IceSpirit', 2 }, { 'AirSpirit', 3 }, { 'EarthSpirit', 4 },
+        { 'ThunderSpirit', 5 }, { 'WaterSpirit', 6 }, { 'LightSpirit', 7 }, { 'DarkSpirit', 8 },
+        { 'Carbuncle', 7 }, { 'Fenrir', 8 }, { 'Ifrit', 1 }, { 'Titan', 4 }, { 'Leviathan', 6 },
+        { 'Garuda', 3 }, { 'Shiva', 2 }, { 'Ramuh', 5 }, { 'Diabolos', 8 }, { 'Alexander', 7 },
+        { 'Odin', 8 }, { 'Atomos', 8 }, { 'Cait Sith', 7 }, { 'Siren', 3 },
+    };
+    local SERVER_ELEMENT = { 'Fire', 'Ice', 'Wind', 'Earth', 'Thunder', 'Water', 'Light', 'Dark' };
+    local wrong = {};
+    for _, row in ipairs(SERVER_ROWS) do
+        local got = pe({ pet = { Name = row[1] } });
+        if got ~= SERVER_ELEMENT[row[2]] then wrong[#wrong + 1] = row[1] .. '=' .. tostring(got); end
+    end
+    check('PE1 every avatar and spirit reads the server\'s element', table.concat(wrong, ', '), '');
+    local n = 0;
+    for _ in pairs(dispatchM.PET_ELEMENT) do n = n + 1; end
+    check('PE2 ...and the table holds those rows and no others', n, #SERVER_ROWS);
+    -- One key per pet, however it is spelled.
+    check('PE3 a spirit spelled as its SPELL lands on the same key', pe({ pet = { Name = 'Fire Spirit' } }), 'Fire');
+    check('PE4 Cait Sith without its space too',                     pe({ pet = { Name = 'CaitSith' } }), 'Light');
+    check('PE5 case does not matter',                                pe({ pet = { Name = 'IFRIT' } }), 'Fire');
+    -- Pets without an element: nil, never a guess.
+    check('PE6 no pet: no element',                    pe({ player = { Status = 'Idle' } }), nil);
+    check('PE7 a jug pet carries none',                pe({ pet = { Name = 'CourierCarrie' } }), nil);
+    check('PE8 a luopan carries none',                 pe({ pet = { Name = 'Luopan' } }), nil);
+    check('PE9 an automaton carries none',             pe({ pet = { Name = 'Harlequin' } }), nil);
+    local memo = { pet = { Name = 'Titan' } };
+    pe(memo);
+    check('PE10 the element is read once and kept on ctx.pel', memo.pel, 'Earth');
+
+    -- petWeatherMatch: the avatar's element == the current weather element.
+    local function ifrit(wel, del)
+        return { player = { Status = 'Idle' }, pet = { Name = 'Ifrit', Status = 'Idle' }, wel = wel, del = del };
+    end
+    check('PE11 petWeatherMatch fires in the avatar\'s weather',  mm.petweathermatch(true,  ifrit('Fire', 'Ice')), true);
+    check('PE12 ...quiet in another weather',                     mm.petweathermatch(true,  ifrit('Ice', 'Fire')), false);
+    check('PE13 =false fires on a real non-match',                mm.petweathermatch(false, ifrit('Ice', 'Fire')), true);
+    check('PE14 =false quiet on a match',                         mm.petweathermatch(false, ifrit('Fire', 'Ice')), false);
+    check('PE15 clear weather is a real non-match',
+        mm.petweathermatch(true, ifrit('None', 'Fire')) == false and mm.petweathermatch(false, ifrit('None', 'Fire')) == true, true);
+    check('PE16 unreadable weather: neither polarity',
+        mm.petweathermatch(true, ifrit('', 'Fire')) or mm.petweathermatch(false, ifrit('', 'Fire')), false);
+    check('PE17 no pet: neither polarity',
+        mm.petweathermatch(true, { wel = 'Fire' }) or mm.petweathermatch(false, { wel = 'Fire' }), false);
+    local jug = { pet = { Name = 'CourierCarrie', Status = 'Engaged' }, wel = 'Water', del = 'Water' };
+    check('PE18 a pet without an element: neither polarity',
+        mm.petweathermatch(true, jug) or mm.petweathermatch(false, jug), false);
+
+    -- petDayMatch: the avatar's element == TODAY's day element.
+    check('PE19 petDayMatch fires on the avatar\'s day',     mm.petdaymatch(true,  ifrit('None', 'Fire')), true);
+    check('PE20 ...quiet on another day',                    mm.petdaymatch(true,  ifrit('Fire', 'Ice')), false);
+    check('PE21 =false fires on a real non-match',           mm.petdaymatch(false, ifrit('Fire', 'Ice')), true);
+    check('PE22 the opposing day is a plain non-match',      mm.petdaymatch(false, ifrit('None', 'Water')), true);
+    check('PE23 unreadable day: neither polarity',
+        mm.petdaymatch(true, ifrit('Fire', '')) or mm.petdaymatch(false, ifrit('Fire', '')), false);
+    check('PE24 no pet: neither polarity',
+        mm.petdaymatch(true, { del = 'Fire' }) or mm.petdaymatch(false, { del = 'Fire' }), false);
+    check('PE25 a pet without an element: neither polarity',
+        mm.petdaymatch(true, jug) or mm.petdaymatch(false, jug), false);
+    check('PE26 a spirit counts like an avatar',
+        mm.petdaymatch(true, { pet = { Name = 'LightSpirit' }, del = 'Light' }), true);
+
+    -- petDayWeatherBonus: the obi's signed net over the avatar's element.
+    check('PE27 day and weather both match: +2 fires',          mm.petdayweatherbonus(true,  ifrit('Fire', 'Fire')), true);
+    check('PE28 the day alone in clear weather: +1 fires',      mm.petdayweatherbonus(true,  ifrit('None', 'Fire')), true);
+    check('PE29 the day in OPPOSING weather nets 0: quiet',     mm.petdayweatherbonus(true,  ifrit('Water', 'Fire')), false);
+    check('PE30 ...and =false fires on that 0',                 mm.petdayweatherbonus(false, ifrit('Water', 'Fire')), true);
+    check('PE31 the OPPOSING day cancels the avatar\'s weather: 0 is quiet',
+        mm.petdayweatherbonus(true, ifrit('Fire', 'Water')), false);
+    check('PE32 Light and Dark oppose: Darksday cancels Carbuncle\'s Light weather',
+        mm.petdayweatherbonus(true, { pet = { Name = 'Carbuncle' }, del = 'Dark', wel = 'Light' }), false);
+    check('PE33 a numeric threshold: 2 wants both',
+        mm.petdayweatherbonus(2, ifrit('Fire', 'Fire')) == true and mm.petdayweatherbonus(2, ifrit('None', 'Fire')) == false, true);
+    check('PE34 no pet: neither polarity',
+        mm.petdayweatherbonus(true, { del = 'Fire', wel = 'Fire' }) or mm.petdayweatherbonus(false, { del = 'Fire', wel = 'Fire' }), false);
+    check('PE35 a pet without an element: neither polarity',
+        mm.petdayweatherbonus(true, jug) or mm.petdayweatherbonus(false, jug), false);
+    check('PE36 an unreadable weather: neither polarity',
+        mm.petdayweatherbonus(true, ifrit('', 'Fire')) or mm.petdayweatherbonus(false, ifrit('', 'Fire')), false);
+
+    -- The PET's element, never the action's: a Fire spell on Firesday in Ice
+    -- weather with Shiva out.
+    local shivaFireSpell = { action = { Element = 'Fire' }, pet = { Name = 'Shiva' }, del = 'Fire', wel = 'Ice' };
+    check('PE37 petDayMatch reads the pet, not the spell',     mm.petdaymatch(true, shivaFireSpell), false);
+    check('PE38 ...while dayMatch reads the spell',            mm.daymatch(true, shivaFireSpell), true);
+    check('PE39 petWeatherMatch reads the pet, not the spell', mm.petweathermatch(true, shivaFireSpell), true);
+    check('PE40 ...while weatherMatch reads the spell',        mm.weathermatch(true, shivaFireSpell), false);
+    -- Default has no action at all: the pet conditions still answer there,
+    -- where the action conditions cannot.
+    local idleGaruda = { player = { Status = 'Idle' }, pet = { Name = 'Garuda', Status = 'Idle' }, del = 'Wind', wel = 'Wind' };
+    check('PE41 petDayMatch holds in Default (no action)',     mm.petdaymatch(true, idleGaruda), true);
+    check('PE42 ...where dayMatch has nothing to test',
+        mm.daymatch(true, idleGaruda) or mm.daymatch(false, idleGaruda), false);
+
+    -- Tier 24: one step above petStatus, under moving.
+    local dp = dispatchM.defaultPriority;
+    check('PE43 the three sit at 24',
+        dp({ petDayWeatherBonus = true }) == 24 and dp({ petWeatherMatch = true }) == 24
+            and dp({ petDayMatch = true }) == 24, true);
+    check('PE44 a pet + petDayMatch rule outranks pet and petStatus',
+        dp({ pet = true, petDayMatch = true }) > dp({ petStatus = 'Engaged' }), true);
+    check('PE45 moving still overlays it', dp({ moving = true }) > dp({ petWeatherMatch = true }), true);
+
+    -- Through matches(): the Summoner's Doublet rule, idle on Default.
+    local mt = dispatchM._matches;
+    local perpDay = { when = { pet = true, petdaymatch = true } };
+    check('PE46 matches(): the day perpetuation rule fires on Garuda\'s day', mt(perpDay, idleGaruda), true);
+    check('PE47 ...and is quiet on another day',
+        mt(perpDay, { player = { Status = 'Idle' }, pet = { Name = 'Garuda', Status = 'Idle' }, del = 'Fire' }), false);
+
+    -- First-class vocabulary: PRETTY-case serialize, byte-stable round trip,
+    -- and _normalize keeps all three rules (TIER is mandatory) at prio 24.
+    local text = dispatchM.serializeTriggers({
+        Default = {
+            { when = { pet = true, petDayMatch = true }, set = 'PerpDay' },
+            { when = { petWeatherMatch = true }, set = 'PerpWeather' },
+        },
+        Ability = { { when = { name = 'Elemental Siphon', petDayWeatherBonus = true }, set = 'Siphon' } },
+    });
+    check('PE48 the three serialize PRETTY-case',
+        text:find('petDayMatch = true', 1, true) ~= nil and text:find('petWeatherMatch = true', 1, true) ~= nil
+            and text:find('petDayWeatherBonus = true', 1, true) ~= nil, true);
+    local t2 = (loadstring or load)(text)();
+    check('PE49 round-trip byte-stable', dispatchM.serializeTriggers(t2) == text, true);
+    local norm, warns = dispatchM._normalize(t2);
+    check('PE50 normalize keeps every rule, warns nothing',
+        #(norm.Default or {}) == 2 and #(norm.Ability or {}) == 1 and #(warns or {}) == 0, true);
+    check('PE51 normalized prio = 24', norm.Default[1].prio, 24);
+
+    -- The LIVE read path, no ctx.del / ctx.wel seam: gData.GetEnvironment is a
+    -- FUNCTION here, as nativedata's is, so the matchers must call it and cache
+    -- what it says (the injected-values blind spot, closed for these three).
+    local savedEnv = gData.GetEnvironment;
+    gData.GetEnvironment = function() return { DayElement = 'Earth', WeatherElement = 'Earth' }; end;
+    local live = { player = { Status = 'Idle' }, pet = { Name = 'Titan', Status = 'Idle' } };
+    check('PE52 live read: petDayMatch holds on Earthsday with Titan out', mm.petdaymatch(true, live), true);
+    check('PE53 ...petWeatherMatch in Earth weather, both reads cached on ctx',
+        mm.petweathermatch(true, live) == true and live.del == 'Earth' and live.wel == 'Earth', true);
+    check('PE54 ...and the net counts both', mm.petdayweatherbonus(2, live), true);
+    gData.GetEnvironment = savedEnv;
+end)();
+
+-- ---------------------------------------------------------------------------
 
 -- ---------------------------------------------------------------------------
 -- TGM. Trigger Groups model (G2, issue #25, ADR 0009): the pure GUI-side CRUD +

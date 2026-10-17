@@ -47,7 +47,7 @@ M._loadStamp = M._loadStamp or string.format('%d:%.3f', os.time(), os.clock());
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code. From v32 the engine self-swaps when the seeded file's version moves, so
 -- the banner should only persist when a swap FAILED (or pre-v32 code is live).
-M.VERSION = 171;  -- 171: THE BAGS ARE KEPT, NOT WALKED (2026-10-13, the stutter report). bagCounts answers from featureagindex (one walk at load / zone-in / size change, then only the slot an inventory packet names is read again), and the avail alias map re-keys on the index version. The fired ring is written at UNLOAD only (M.getFired hands the Trigger Monitor the live ring), and the /dlacmonev line stream (_monQ) is gone. Tests BIX*, PF*.  -- 170: AUTOACC DECIDES AT THE ONE SEND (2026-10-05, AscensionXI). A piece typed AutoAcc yields its slot to its fallback only when the server's combat telemetry proves the whole outfit still reaches the hit cap (servers\ascensionxi\modules\telemetry, the serverpack service 'autoacc'; docs/design/ascensionxi-combat-telemetry-autoacc.md). With the service present the dormant budget stands down: every typed piece is planned ON, equipResolved carries each slot's candidate (typed, fallback, removal priority) into ctx.planAcc beside ctx.planOut -- the slot's LAST writer decides, so a claim that overwrites the slot drops the candidate -- and M._autoAccApply asks the service once, at the send, on the composed outfit (Free-equip slots read as worn). Default only; locks and weapon slots never release. The provider's revision is the newest retrace leg ('|aa'), and its per-slot reasons ride /dl why. Without the service (CatsEyeXI, or telemetry off) nothing changes. Tests AA*, AAD*.  -- 169: THE NEXUS LOCK RIDES THE CRAFT ROW (2026-10-04, AscensionXI). Nexus names the next synth's crafts over plugin_event; feature\nexuslink picks the recipe-wide pieces (feature\craftpick, weakest craft first) and holds them until the player moves. The Craft row's ensure reads that lock first (craftRowState), claims its picks (craftRowClaim), and falls back to the manual craft pick when there is none -- same rank, same Locks and Free equip, same /dl why. Tests NX*. (Two M fields, M._craftRowState / M._craftRowClaim, not locals: the main chunk sits at Lua's 200-local ceiling.)  -- 168: select category-specific numeric gathering ladders.  -- 167: THE MODE LOCK QUEUE REACHES BOTH MONITORS (Henrik: "where do I see the queue for the mode lock?"). It was in exactly one place -- the Mode Locks window, which is the surface you are LEAST likely to be looking at while playing. The monitors both named only the winner, so a slot doing something surprising gave no hint that another active mode was waiting behind it, which is the same invisibility the loser list existed to prevent. The queue now rides the DECISION RECORD (contest.mlq, captured at ensure time via the one door M.modeLockLive, which stashes it beside the plan): the Arbiter Monitor renders stashed records -- pinned historical ones included -- and deriving the queue live there would show TODAY's answer under a decision from ten minutes ago, the same law as the ladders and the reserve verdict. It is also a SIGNATURE LEG, for the rank-order leg's reason (v152): a mode that queues moves no gear and no claim, so without it the trace and /dl why would keep saying nobody waits until something unrelated happened to move. It deliberately does NOT enter the decision fingerprint -- the ring appends on a moved OUTCOME, and a queue-only record with zero changed slots is the v163 symptom rather than a feature; a queue that forms while nothing moves reaches /dl why immediately and reaches the ring on the next real decision. Renderers: the Arbiter Monitor draws a 'q' marker on the cell in BOTH grid modes (the fall-marker precedent -- a slot with someone waiting is exactly what you would never think to hover) and names holder + waiter in the hover; the Trigger Monitor's locks line grows an '(n queued)' count with the detail on hover, its IsItemHovered taken BEFORE the suffix is drawn so the tooltip stays on the held list. Tests MDL23-MDL26b, smoke AM8a-AM8e + MLK14-MLK16.
+M.VERSION = 172;  -- 172: THE PET'S ELEMENT MEETS THE DAY AND THE WEATHER (2026-10-17, Henrik: "like dayWeatherBonus, weatherMatch and dayMatch, but for pets" -- mainly Summoner). Three conditions, petDayWeatherBonus / petWeatherMatch / petDayMatch, run the three environment tests against YOUR PET's element instead of the action's, so they hold in Default (the idle perpetuation set: Summoner's Doublet is perpetuation -3 on the avatar's day, Summoner's Horn -3 in its weather) as well as in Ability and PetAction. The element is M.PET_ELEMENT off the pet's name (the server's pet_list.element: spirits and avatars carry one, jug pets / wyvern / automatons / luopans none). The day and weather reads are the SAME cached ctx.del / ctx.wel the action conditions use -- weatherMatchesAction/dayMatchesAction became weatherMatchesElement/dayMatchesElement(ctx, el) -- so nothing can disagree about the world inside one dispatch. No pet, a pet without an element, or an unreadable day/weather matches NEITHER polarity. Tier 24: one step above petStatus, under moving. ADR 0038. Tests PE*.  -- 171: THE BAGS ARE KEPT, NOT WALKED (2026-10-13, the stutter report). bagCounts answers from featureagindex (one walk at load / zone-in / size change, then only the slot an inventory packet names is read again), and the avail alias map re-keys on the index version. The fired ring is written at UNLOAD only (M.getFired hands the Trigger Monitor the live ring), and the /dlacmonev line stream (_monQ) is gone. Tests BIX*, PF*.  -- 170: AUTOACC DECIDES AT THE ONE SEND (2026-10-05, AscensionXI). A piece typed AutoAcc yields its slot to its fallback only when the server's combat telemetry proves the whole outfit still reaches the hit cap (servers\ascensionxi\modules\telemetry, the serverpack service 'autoacc'; docs/design/ascensionxi-combat-telemetry-autoacc.md). With the service present the dormant budget stands down: every typed piece is planned ON, equipResolved carries each slot's candidate (typed, fallback, removal priority) into ctx.planAcc beside ctx.planOut -- the slot's LAST writer decides, so a claim that overwrites the slot drops the candidate -- and M._autoAccApply asks the service once, at the send, on the composed outfit (Free-equip slots read as worn). Default only; locks and weapon slots never release. The provider's revision is the newest retrace leg ('|aa'), and its per-slot reasons ride /dl why. Without the service (CatsEyeXI, or telemetry off) nothing changes. Tests AA*, AAD*.  -- 169: THE NEXUS LOCK RIDES THE CRAFT ROW (2026-10-04, AscensionXI). Nexus names the next synth's crafts over plugin_event; feature\nexuslink picks the recipe-wide pieces (feature\craftpick, weakest craft first) and holds them until the player moves. The Craft row's ensure reads that lock first (craftRowState), claims its picks (craftRowClaim), and falls back to the manual craft pick when there is none -- same rank, same Locks and Free equip, same /dl why. Tests NX*. (Two M fields, M._craftRowState / M._craftRowClaim, not locals: the main chunk sits at Lua's 200-local ceiling.)  -- 168: select category-specific numeric gathering ladders.  -- 167: THE MODE LOCK QUEUE REACHES BOTH MONITORS (Henrik: "where do I see the queue for the mode lock?"). It was in exactly one place -- the Mode Locks window, which is the surface you are LEAST likely to be looking at while playing. The monitors both named only the winner, so a slot doing something surprising gave no hint that another active mode was waiting behind it, which is the same invisibility the loser list existed to prevent. The queue now rides the DECISION RECORD (contest.mlq, captured at ensure time via the one door M.modeLockLive, which stashes it beside the plan): the Arbiter Monitor renders stashed records -- pinned historical ones included -- and deriving the queue live there would show TODAY's answer under a decision from ten minutes ago, the same law as the ladders and the reserve verdict. It is also a SIGNATURE LEG, for the rank-order leg's reason (v152): a mode that queues moves no gear and no claim, so without it the trace and /dl why would keep saying nobody waits until something unrelated happened to move. It deliberately does NOT enter the decision fingerprint -- the ring appends on a moved OUTCOME, and a queue-only record with zero changed slots is the v163 symptom rather than a feature; a queue that forms while nothing moves reaches /dl why immediately and reaches the ring on the next real decision. Renderers: the Arbiter Monitor draws a 'q' marker on the cell in BOTH grid modes (the fall-marker precedent -- a slot with someone waiting is exactly what you would never think to hover) and names holder + waiter in the hover; the Trigger Monitor's locks line grows an '(n queued)' count with the detail on hover, its IsItemHovered taken BEFORE the suffix is drawn so the tooltip stays on the held list. Tests MDL23-MDL26b, smoke AM8a-AM8e + MLK14-MLK16.
                   -- 166: MODE LOCKS, FIRST COME FIRST SERVE (Henrik, 2026-08-03): "we will come into situations where we maybe have conflicting modes active... the one who took the slot lock first should get it, the rest stand in queue basically." v165 resolved a contested slot by sorted condition -- deterministic, but the alphabet is not fairness, and 'DT' beating a Weapon cycle that had held the slot for an hour is exactly the arbitrary answer that ruling rejects. So modes now carry an ACTIVATION CLOCK: M.modeSeq, one counter per mode NAME, stamped when its flag last CHANGED, and modeLockPlan walks conditions in that order. Stamped on CHANGE and never on re-assertion -- a macro re-asserting a mode every pull must not send it to the back of the queue -- and cleared when the mode goes off, because turning it back on is genuinely taking the slot again. A cycle VALUE change re-stamps: the lock is keyed by condition, so Weapon:Melee -> Weapon:Caster really is a different lock taking the slots. THE QUEUE NEEDS NO STATE: the plan is rebuilt every dispatch, so when the holder's mode goes off the next in line simply wins the next walk -- nothing remembers a queue, and nothing has to be re-armed. The clock rides the modestate mirror as `__seq` (loadModeState restores it, advances the counter past the highest, and sweeps any unstamped flag) because the GUI computes the same plan in the other Lua state: without it the Mode Locks window would order a contested slot alphabetically while the engine ordered it by the clock, and name the wrong winner. Every flag write now goes through the ONE seam M.modeSet so the clock cannot be forgotten at one of the six assignment sites. Ties (two flags restored from one mirror) still break alphabetically -- deterministic first, fair second. Also: gear\modeslibrary.applyStamp no longer EATS a job's mode locks (it rebuilt the definition from the plan, deleting them on Append too -- the branch that promises nothing disappears); locks belong to the job and ride a stamp untouched, and only an Overwrite killing a cycle value strips that value's. And profileexport.triggerRefs now reports `modeSets`, so the export form disables MODES (not Triggers -- a lock travels with the Modes section, Triggers need not be selected at all) when Sets is unticked. Tests MDL1-MDL22, ML44a-ML44f, PX9a-PX9g, smoke MLK1-MLK13.
                   -- 165: MODE LOCKS -- "once that mode is active, this piece MUST ALWAYS stay on" (Henrik, 2026-08-03). A very common problem when building sets: some slots must be immune to every trigger rule while a mode holds -- his caster mode swaps weapons on every pull, his melee mode must never see one move, and the only way to express that today is to teach every rule in the file to keep its hands off Main/Sub. So a mode definition now carries `locks = { ["Weapon:Melee"] = { Main = "MeleeWpn" } }`, keyed by the exact `mode` CONDITION string the rules already use -- which makes the activity test M.modeActive itself (one primitive, not a second dialect of "is this mode on") and makes the ADR 0019 cascade free, because deleting the mode or dropping a cycle value takes its locks with it: they are the same table. It arrives as an ORDINARY CLAIMANT (`ModeLock`), not a floor special case: one rank row shipping directly above External, one claim table, no new arm and no new state file. That buys the Arbiter Monitor grid, the /dl why contest, the Priority list and the fall-down-its-own-ladder behaviour with no new code in any of them -- and it means a player who wants the lock to beat their armed craft bench drags the row up instead of asking for a setting. Claims on EVERY event (Pins' and Naked's reason: a lock that let go mid-cast would not be a lock). A lock naming a set with no entry for its slot claims nothing and the floor keeps it -- the Mode Locks window flags that in red at edit time, which is the only place it can still be fixed. Two active modes naming one slot resolve by sorted condition, first keeps it, loser reported: arbitrary but STABLE, where pairs() order would land differently on two dispatches with nothing changed. Also here: the claimant sig legs take the ensure STATE as a third argument (which mode holds a slot has to retrace even when the item name does not), rows may supply an `rlabel` so a fall names the SET rather than the row, and the slot-canon map moved to its vocabulary owner (arbiter.CANON_OF) instead of a third inline copy. Tests ML1-ML22, smoke MLK1-MLK13.
                   -- 164: THE SECOND COPY IS A LIVE FACT, NOT A STAMP (Coffeepoo's field report, 2026-08-03: two Bone Knives +1, the Main took one and the Sub stayed as worn, while equipping the off-hand BY HAND worked). Dual Wield was up and the set was right; the refusal was ours. utils.subSlotAllowed's same-name off-hand case wants proof of a second copy, and the flatten offered it nothing but the record's `Count` -- a stamp renderEntry writes ONCE, at first index, and that no command can refresh: /dl sync is add-only (an already-known item is skipped) and /dl fix backfills CATALOG facts only, as it must, because "how many do you own" is not one. Acquire the twin AFTER the first was indexed and dlac could never learn about it -- there was no supported path back, only a hand edit. So the flatten reads the bags instead (M.bagCopies over the existing per-second cache, equip-eligible containers, worn pieces included), which is the 2026-08-01 Pair/RSlot ruling applied to the one fact that is genuinely per-player: read it, do not make them run a migration for it. The read only ever ADDS evidence -- subSlotAllowed takes the best of ctx.copies and Count -- so a stamped file behaves identically, an unreadable scan falls back to the stamp rather than demoting gear, and nothing that pairs today can stop pairing. Only asked when the two names actually match, so the ordinary off-hand costs no lookup. Tests LD6c-LD6h. (Shipped with the gearimport half of the same report: the base Animator is an ALL-JOBS item on this server, so the Range bucket's exact PUP-mask test dropped it from gear.lua entirely -- see gearimport.rangeCategory, tests E29*.)
@@ -654,17 +654,19 @@ local function netDayWeather(ctx)
     return ctx.dw;
 end
 
--- Does the current WEATHER's element equal the action's element? A plain match --
--- NOT the day+weather net above. Reads the SAME env the obi uses
+-- Does the current WEATHER's element equal `el`? A plain match -- NOT the
+-- day+weather net above. Reads the SAME env the obi uses
 -- (gData.GetEnvironment().WeatherElement), which already folds a Scholar's own
 -- storm buff over the zone weather (Firestorm etc.), so a self-storm counts --
--- exactly what CatsEyeXI's ALACRITY_CELERITY_EFFECT gate keys on. The weather
--- element is read once and cached on ctx.wel. Returns true (match), false (a real
--- non-match, incl. clear/'None' weather), or nil when there is no action element
--- (Default / Non-Elemental) or the weather is unreadable -- nil makes the matcher
--- fire on NEITHER polarity, never blind.
-local function weatherMatchesAction(ctx)
-    local el = ctx.action and ctx.action.Element;
+-- exactly what CatsEyeXI's ALACRITY_CELERITY_EFFECT gate keys on. `el` is the
+-- element under test: the ACTION's for weatherMatch, YOUR PET's for
+-- petWeatherMatch (v172). The weather element is read once and cached on ctx.wel,
+-- so the two can never disagree about the weather inside one dispatch. Returns
+-- true (match), false (a real non-match, incl. clear/'None' weather), or nil when
+-- there is no element to test (no action element -- Default / Non-Elemental -- or
+-- a pet without one) or the weather is unreadable -- nil makes the matcher fire
+-- on NEITHER polarity, never blind.
+local function weatherMatchesElement(ctx, el)
     if type(el) ~= 'string' or ci(el, 'Non-Elemental') then return nil; end
     if ctx.wel == nil then
         local w = '';
@@ -678,19 +680,20 @@ local function weatherMatchesAction(ctx)
     return ci(ctx.wel, el);
 end
 
--- Does the current DAY's element equal the action's element? The obi's positive
--- DAY term standing alone -- no weather, no opposition (that whole sum is
+-- Does the current DAY's element equal `el`? The obi's positive DAY term
+-- standing alone -- no weather, no opposition (that whole sum is
 -- dayWeatherBonus). Gear that pays out on the day ALONE (the Vana'diel weekday
 -- latents) is tracked by neither the net nor weatherMatch, so it gets its own
 -- primitive. Unlike weather there is no "clear day": every one of the eight
 -- weekdays carries an element (Firesday..Darksday), so a day we can READ is
--- always a real element and only a failed read is unknown. The day element is
+-- always a real element and only a failed read is unknown. `el` is the ACTION's
+-- element for dayMatch, YOUR PET's for petDayMatch (v172). The day element is
 -- read once and cached on ctx.del ("day element", the ctx.wel pattern). Returns
--- true (match), false (a real non-match), or nil when there is no action element
--- (Default / Non-Elemental) or the day is unreadable -- nil makes the matcher
--- fire on NEITHER polarity, never blind.
-local function dayMatchesAction(ctx)
-    local el = ctx.action and ctx.action.Element;
+-- true (match), false (a real non-match), or nil when there is no element to
+-- test (no action element -- Default / Non-Elemental -- or a pet without one) or
+-- the day is unreadable -- nil makes the matcher fire on NEITHER polarity, never
+-- blind.
+local function dayMatchesElement(ctx, el)
     if type(el) ~= 'string' or ci(el, 'Non-Elemental') then return nil; end
     if ctx.del == nil then
         local d = '';
@@ -702,6 +705,41 @@ local function dayMatchesAction(ctx)
     end
     if ctx.del == '' then return nil; end
     return ci(ctx.del, el);
+end
+
+-- YOUR PET's element (v172) -- the element the pet* environment conditions
+-- test. An avatar or an elemental spirit carries one; every other pet (jug pets,
+-- the wyvern, automatons, luopans) carries none and reads nil, which matches
+-- NEITHER polarity. Source: the server's pet_list.element column (AscensionXI
+-- sql/pet_list.sql, 1 Fire .. 8 Dark; CatsEyeXI's is identical for every row it
+-- has), the field the server's own perpetuation check reads (PPet->m_Element).
+-- Keyed by the name lowercased with everything but letters stripped: the server
+-- sends a spirit as 'FireSpirit' (pet_list.name, verbatim in the 0x00E name
+-- field) while its summoning spell is 'Fire Spirit', and 'Cait Sith' keeps its
+-- space -- every spelling lands on one key. Fields on M, not locals: the main
+-- chunk sits at Lua's 200-local ceiling.
+M.PET_ELEMENT = {
+    firespirit = 'Fire', icespirit = 'Ice', airspirit = 'Wind', earthspirit = 'Earth',
+    thunderspirit = 'Thunder', waterspirit = 'Water', lightspirit = 'Light', darkspirit = 'Dark',
+    carbuncle = 'Light', fenrir = 'Dark', ifrit = 'Fire', titan = 'Earth',
+    leviathan = 'Water', garuda = 'Wind', shiva = 'Ice', ramuh = 'Thunder',
+    diabolos = 'Dark', alexander = 'Light', odin = 'Dark', atomos = 'Dark',
+    caitsith = 'Light', siren = 'Wind',
+};
+
+-- The element of the pet on ctx, or nil (no pet, or a pet without one). Read
+-- once per dispatch and cached on ctx.pel ('' = none), the ctx.wel pattern.
+function M.petElementOf(ctx)
+    if ctx.pel == nil then
+        local e = '';
+        local p = ctx.pet;
+        if p ~= nil and type(p.Name) == 'string' then
+            e = M.PET_ELEMENT[(string.gsub(string.lower(p.Name), '%A', ''))] or '';
+        end
+        ctx.pel = e;
+    end
+    if ctx.pel == '' then return nil; end
+    return ctx.pel;
 end
 
 -- Debuff song families (Bard Song + one of these words in the name = Debuff;
@@ -1031,7 +1069,7 @@ local MATCHERS = {
     -- Scholar's own storm counts. v=true requires a match, v=false requires a real
     -- non-match; unknown weather / no action element matches NEITHER (nil result).
     weathermatch = function(v, ctx)
-        local m = weatherMatchesAction(ctx);
+        local m = weatherMatchesElement(ctx, ctx.action and ctx.action.Element);
         if m == nil then return false; end
         return m == (v == true);
     end,
@@ -1041,7 +1079,7 @@ local MATCHERS = {
     -- v=true requires a match, v=false requires a real non-match; unknown day /
     -- no action element matches NEITHER (nil result).
     daymatch = function(v, ctx)
-        local m = dayMatchesAction(ctx);
+        local m = dayMatchesElement(ctx, ctx.action and ctx.action.Element);
         if m == nil then return false; end
         return m == (v == true);
     end,
@@ -1082,6 +1120,41 @@ local MATCHERS = {
     pet       = function(v, ctx) return (ctx.pet ~= nil) == (v == true); end,
     petstatus = function(v, ctx) return ctx.pet ~= nil and ci(ctx.pet.Status, v); end,
     petname   = function(v, ctx) return ctx.pet ~= nil and ci(ctx.pet.Name, v); end,
+    -- Pet element vs the environment (v172): dayWeatherBonus / weatherMatch /
+    -- dayMatch asked about YOUR PET's element (M.petElementOf) instead of the
+    -- action's. They read no action, so they hold in Default (the idle
+    -- perpetuation set) exactly as in Ability or PetAction. The model is the
+    -- server's own perpetuation check (AscensionXI status_effect_container.cpp,
+    -- TickRegen): DAY_REDUCTION when the day's element is the avatar's,
+    -- WEATHER_REDUCTION when the weather's is -- single or double, the master's
+    -- own storm included (GetWeather(PChar, false), the read WeatherElement
+    -- folds) -- and no opposition in either. petDayWeatherBonus is the obi's
+    -- signed net over the pet's element, built from the SAME two cached reads,
+    -- so the three never disagree inside one dispatch. No pet, a pet without an
+    -- element (jug, wyvern, automaton, luopan) or an unreadable day/weather
+    -- matches NEITHER polarity -- unlike the v1 dayWeatherBonus, which scores an
+    -- unknown as a 0 net.
+    petdayweatherbonus = function(v, ctx)
+        local el = M.petElementOf(ctx);
+        local dm, wm = dayMatchesElement(ctx, el), weatherMatchesElement(ctx, el);
+        if dm == nil or wm == nil then return false; end
+        local opp = OPPOSED[string.lower(el)];
+        local n = (dm and 1 or (dayMatchesElement(ctx, opp) and -1 or 0))
+                + (wm and 1 or (weatherMatchesElement(ctx, opp) and -1 or 0));
+        if v == true  then return n > 0;  end
+        if v == false then return n <= 0; end
+        return n >= (tonumber(v) or 1);
+    end,
+    petweathermatch = function(v, ctx)
+        local m = weatherMatchesElement(ctx, M.petElementOf(ctx));
+        if m == nil then return false; end
+        return m == (v == true);
+    end,
+    petdaymatch = function(v, ctx)
+        local m = dayMatchesElement(ctx, M.petElementOf(ctx));
+        if m == nil then return false; end
+        return m == (v == true);
+    end,
     -- Target condition (v81): WHO the action is aimed at. Vocabulary is a
     -- closed list the GUI mirrors as a dropdown -- v1: 'Self' (the action
     -- targets YOU; Henrik's case: a self-waltz wants VIT+CHR together, since
@@ -1135,6 +1208,10 @@ local TIER = {
     -- no hand priority, and Movement still overlays a pet idle set. petName is
     -- identity -> the exact-name tier (50, next to `name` below).
     pet = 22, petstatus = 23,
+    -- The pet element conditions (v172) refine a pet rule the way petStatus
+    -- does, one step higher: {pet = true} + petDayMatch overlays the plain
+    -- perpetuation set with no hand priority, and Movement still overlays both.
+    petdayweatherbonus = 24, petweathermatch = 24, petdaymatch = 24,
     moving = 25,
     magictype = 30, element = 30, songtype = 30, dayweatherbonus = 30, weathermatch = 30,
     daymatch = 30,
@@ -1178,6 +1255,8 @@ local PRETTY_KEY = {
     mpabove = 'mpAbove', tpbelow = 'tpBelow', tpabove = 'tpAbove',
     buff = 'buff', buffnot = 'buffNot',
     pet = 'pet', petstatus = 'petStatus', petname = 'petName',
+    petdayweatherbonus = 'petDayWeatherBonus', petweathermatch = 'petWeatherMatch',
+    petdaymatch = 'petDayMatch',
     target = 'target', intown = 'inTown',
     mobtagged = 'mobTagged',
     playerhpbelow = 'playerHPBelow', playerhpabove = 'playerHPAbove',
@@ -8003,6 +8082,9 @@ M.starterTriggersText = [[
 --             day+weather net, with the opposing element as a minus), weatherMatch (the
 --             spell's element == the CURRENT weather element -- your own storm counts),
 --             dayMatch (the spell's element == TODAY's day element -- no weather)
+--             | the same three for YOUR PET's element (an avatar's or a spirit's):
+--             petDayWeatherBonus, petWeatherMatch, petDayMatch -- the Summoner's
+--             day/weather perpetuation gear; never match with no avatar or spirit out
 --             | abilityType | target ('Self': the action is aimed at YOU -- a self-waltz
 --             can wear VIT+CHR while waltzing someone else keeps the plain CHR set)
 --             | player state: playerHPBelow/Above, playerHPPercentBelow/Above,
@@ -8012,7 +8094,8 @@ M.starterTriggersText = [[
 --             applies, lowest priority first (later overlays earlier per slot).
 -- OR groups:  whenAny = { { buff = "Sleep" }, { buff = "Lullaby" } } -- the rule matches
 --             when ALL `when` conditions hold OR ANY whenAny entry holds.
--- Priority defaults by specificity: any 10 < status/skill 20 < pet 22/petStatus 23 < moving 25
+-- Priority defaults by specificity: any 10 < status/skill 20 < pet 22/petStatus 23
+--             < pet element 24 < moving 25
 --             < class/element 30 < family 40 < exact name/petName 50 < target 55
 --             < player state 95 < mode 100.  See docs/design/trigger-system.md.
 return {

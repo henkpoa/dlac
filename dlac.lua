@@ -410,6 +410,11 @@ addon.version = '2026.10.17b';  -- date of the last shipped change (Ashita print
                                 --  10.16a = race-specific gear says who may wear
                                 --  it ("Hume male only") beside the slot, not
                                 --  as an EQUIPMENT_ONLY_RACE+1 stat;
+                                --  10.17a = engine v172: the Pet conditions test
+                                --  YOUR PET's element against the day and the
+                                --  weather -- petDayWeatherBonus, petWeatherMatch,
+                                --  petDayMatch -- for the Summoner's day/weather
+                                --  perpetuation gear, in Default and Ability alike;
                                 --  10.17b = AscensionXI catalog: Pebble for every
                                 --  job, Sleep Bolt/Arrow at level 15, Chocobo
                                 --  Torque at level 1, and the fishing rules say
