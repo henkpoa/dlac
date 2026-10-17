@@ -1192,6 +1192,22 @@ end)();
         #FL({ Name = string.rep('Ab ', 60), Slot = 'Body', Level = 1 }, 75, 40)
             >= nShort, true);
 
+    -- RAC. Who may wear a piece (server mod EQUIPMENT_ONLY_RACE) rides with the
+    -- slot, as on the game's own card ("[Body]H♂"), and ahead of the job list the
+    -- line truncates. The raw mask used to print as a stat: "EQUIPMENT_ONLY_RACE+1".
+    local rse = { Name = 'Custom Tunic', Slot = 'Body', Level = 30, Jobs = nil,
+                  Stats = { DEF = 18, HP = 32, EQUIPMENT_ONLY_RACE = 1 } };
+    local rl = FL(rse, 75, 60);
+    check('RAC1 the facts say who may wear it, beside the slot',
+        rl[2] and rl[2].text, 'Body   Hume male only   Lv.30   All Jobs');
+    local rawMask = false;
+    for _, ln in ipairs(rl) do if ln.text:find('RACE', 1, true) then rawMask = true; end end
+    check('RAC2 ...and no facts line prints the raw mask', rawMask, false);
+    check('RAC3 a narrow popup cuts the job list, never the race',
+        FL(rse, 75, 30)[2].text, 'Body   Hume male only   Lv.3..');
+    check('RAC3b a piece every race wears keeps the line it had',
+        FL(tallRec, 75, 60)[2].text, 'Body   Lv.75   All Jobs');
+
     -- THE RESERVATION. The pool's tallest piece sets the height for every piece,
     -- which is the difference between a popup that holds still and one that
     -- resizes under the cursor on every row.
@@ -2293,7 +2309,7 @@ end)();
     local keys = {};
     for _, row in ipairs(filtered) do keys[#keys + 1] = row.key; end
     table.sort(keys);
-    check('AXS16 AXI helper list contains only gathering, digging and fishing', table.concat(keys, ','), 'choco,fish,helm');
+    check('AXS16 AXI helper list contains only gathering, digging, fishing and MaxMP', table.concat(keys, ','), 'choco,fish,helm,maxmp');
     gate._packFeatures = oldFeatures;
     points._send = oldSend; points.reset();
     sp.provide('gathering', oldService);
@@ -2714,6 +2730,31 @@ end)();
         Sx.engineHeld = keptHeld;
         heldState = nil;
 
+        -- RAC (continued). The compare cards say who may wear each piece, in
+        -- words, and the stat delta under them never subtracts one race mask
+        -- from another ("+127 EQUIPMENT_ONLY_RACE" before).
+        local cmdqm = require('dlac\\lib\\cmdqueue');
+        local tunicR = { Name = 'Custom Tunic', Id = 12654, Slot = 'Body', Level = 30,
+                         Stats = { DEF = 18, HP = 32, EQUIPMENT_ONLY_RACE = 1 } };
+        local galkaR = { Name = 'Galka Coat', Id = 99001, Slot = 'Body', Level = 30,
+                         Stats = { DEF = 20, HP = 32, EQUIPMENT_ONLY_RACE = 128 } };
+        Sx.getEquippedId = function() return 12654; end
+        Sx.lookupById    = function(id) return (id == 12654) and tunicR or nil; end
+        u.eqSelected = 'Body';
+        u._cmpHover, u._cmpFrame = galkaR, cmdqm.frame();
+        local drawn = {};
+        local keptTC3 = IM.TextColored;
+        IM.TextColored = function(_, t) drawn[#drawn + 1] = tostring(t); end
+        local okR = pcall(render, 'WHM', 75);
+        IM.TextColored = keptTC3;
+        local cmp = table.concat(drawn, '\n');
+        check('RAC4 the compare panel renders two race-restricted cards', okR, true);
+        check('RAC5 the equipped card says who may wear it', cmp:find('Hume male only', 1, true) ~= nil, true);
+        check('RAC6 ...and so does the hovered one', cmp:find('Galka only', 1, true) ~= nil, true);
+        check('RAC7 the delta still shows the real stat change', cmp:find('+2 DEF', 1, true) ~= nil, true);
+        check('RAC8 no line prints the raw mask', cmp:find('RACE', 1, true), nil);
+        u._cmpHover, u._cmpFrame, u.eqSelected = nil, nil, nil;
+
         AshitaCore = realAshita;
         for i, f in ipairs({ 'renderSlotGrid', 'renderStatsPanel', 'renderSortCombo',
             'candidatesForSlot', 'sortForDisplay', 'getEquippedId', 'displayName',
@@ -2729,6 +2770,28 @@ end)();
     package.loaded['dlac\\ui\\equippedui'] = nil;
     pcall(require, 'dlac\\gear\\gearfmt');
     pcall(require, 'dlac\\ui\\equippedui');
+end)();
+
+-- ---------------------------------------------------------------------------
+-- RAC (gearui). The item tooltip and the worn/working totals panel draw through
+-- gearui's own imgui, which loaded against the real (nil) binding and has no
+-- smoke drive -- so they are pinned as SOURCE. The words are gearfmt's
+-- (tests/gearfmt_effects.lua); the facts block and the compare cards are driven
+-- above (RAC1-RAC8).
+-- ---------------------------------------------------------------------------
+(function()
+    local f = io.open('ui/gearui.lua', 'r');
+    check('RAC9 gearui is readable', f ~= nil, true);
+    if f == nil then return; end
+    local src = f:read('*a'):gsub('\r', ''); f:close();
+    local tip = src:match('local function renderItemTooltip%(rec, note%)(.-)\nend\n');
+    check('RAC10 the item tooltip asks gearfmt who may wear the piece',
+        tip ~= nil and tip:find('local race = fmt.raceText(rec);', 1, true) ~= nil, true);
+    check('RAC11 ...and draws the answer escaped, in the jobs colour',
+        tip ~= nil and tip:find('imgui.TextColored(COL.JOBS, fmt.esc(race));', 1, true) ~= nil, true);
+    local panel = src:match('local function renderStatsPanel%(title, totals, setBonuses%)(.-)\nend\n');
+    check('RAC12 the totals panel keeps the race mask out of Other',
+        panel ~= nil and panel:find('k ~= fmt.RACE_KEY', 1, true) ~= nil, true);
 end)();
 
 -- ---------------------------------------------------------------------------
@@ -6774,6 +6837,28 @@ end)();
         clickId, activeStub = 'autorow_helm', { key = 'helm', name = 'HELM' };
         pcall(aui.renderTab, 'WHM', 99);
         check('HP16 clicking the armed pill turns it off', setOnLog[#setOnLog], 'helm=false');
+
+        -- AscensionXI's MaxMP row (2026-10-15): under that pack's features the
+        -- panel opens all the way down, and a Battle rule the pack still hides
+        -- lands on the list instead of a blank detail.
+        local gate = require('dlac\\lib\\featuregate');
+        local keptFeatures = gate._packFeatures;
+        gate._packFeatures = dofile('servers/ascensionxi/features.lua');
+        IM.BeginChild = function() return true; end
+        IM.EndChild = nop;
+        clickId, activeStub, log = nil, nil, {};
+        aui.openDetail('maxmp');
+        pcall(aui.renderTab, 'WHM', 99);
+        check('HP17 AXI opens the MaxMP panel',
+            table.concat(log, '\n'):find('Ear/ring positions follow the idle set', 1, true) ~= nil, true);
+        log = {};
+        aui.openDetail('oneiros');
+        pcall(aui.renderTab, 'WHM', 99);
+        check('HP18 ...while a rule AXI hides lands on the list',
+            table.concat(log, '\n'):find('It never acts for you', 1, true) ~= nil, true);
+        IM.BeginChild, IM.EndChild = nil, nil;
+        gate._packFeatures = keptFeatures;
+        aui.openDetail(nil);
     end
     io.open = realOpen;
     package.loaded['imgui'] = saved.imgui;

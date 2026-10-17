@@ -4,8 +4,8 @@
     Split out of gearui.lua: LuaJIT caps a chunk at 200 local variables, and gearui's
     main chunk was already at it -- cohesive helpers get their own module from now on.
 
-    Pure text formatters (esc/truncate/jobsText/statSummary/fullStatList) plus the two
-    imgui-measuring helpers (textWrapped/nameWidthOf) and the owned-quantity tag
+    Pure text formatters (esc/truncate/jobsText/statSummary/fullStatList/raceText) plus
+    the two imgui-measuring helpers (textWrapped/nameWidthOf) and the owned-quantity tag
     (qtyTag). gearui injects its live deps once via M.configure:
       effStats(rec, level) -- level-scaled stats of a record (latents resolved)
       ownedCounts()        -- live owned quantities { itemId -> n } (avail bags)
@@ -58,6 +58,47 @@ local function fmtStat(k, v)
     return k .. ':' .. tostring(v);
 end
 
+-- The race restriction (server mod EQUIPMENT_ONLY_RACE) says WHO may wear a piece;
+-- it is not a bonus. The value is a bitmask over the server's race ids 1..8, bit
+-- race-1, and 0 means every race (item_equipment.cpp isEquippableByRace). Printed
+-- as a stat it read "EQUIPMENT_ONLY_RACE+1", so it leaves every stat line and
+-- raceText says it in words beside the slot, where the game's own card prints
+-- "[Body]H♂". Words rather than the game's sex signs: the ImGui font is not known
+-- to carry them.
+local RACE_KEY = 'EQUIPMENT_ONLY_RACE';
+local RACES = {   -- server race order; a one-sex race has one bit
+    { name = 'Hume',     male = 1,  female = 2 },
+    { name = 'Elvaan',   male = 4,  female = 8 },
+    { name = 'Tarutaru', male = 16, female = 32 },
+    { name = 'Mithra',   female = 64 },
+    { name = 'Galka',    male = 128 },
+};
+local ALL_MALE, ALL_FEMALE = 1 + 4 + 16 + 128, 2 + 8 + 32 + 64;   -- 149 / 106
+local function hasBit(mask, b) return math.floor(mask / b) % 2 == 1; end
+
+-- "Hume male only", "Tarutaru only", "Male only", ... or nil when every race may
+-- wear the piece. A race whose every sex is allowed is named once.
+local function raceText(rec)
+    local st = (type(rec) == 'table') and rec.Stats or nil;
+    local m = (type(st) == 'table') and tonumber(st[RACE_KEY]) or nil;
+    if m == nil or m <= 0 then return nil; end
+    m = math.floor(m) % 256;               -- the server tests bits 0..7 only
+    if m == 255 then return nil; end
+    if m == ALL_MALE then return 'Male only'; end
+    if m == ALL_FEMALE then return 'Female only'; end
+    local parts = {};
+    for _, r in ipairs(RACES) do
+        local male   = r.male ~= nil and hasBit(m, r.male);
+        local female = r.female ~= nil and hasBit(m, r.female);
+        if male or female then
+            local whole = (male or r.male == nil) and (female or r.female == nil);
+            parts[#parts + 1] = whole and r.name or (r.name .. (male and ' male' or ' female'));
+        end
+    end
+    if #parts == 0 then return nil; end
+    return table.concat(parts, ', ') .. ' only';
+end
+
 -- Additional-effect modifiers describe one proc, not independent gear bonuses.
 -- Type ids follow the server's scripts/globals/additional_effects.lua.
 local EFFECT_TYPES = {
@@ -73,7 +114,7 @@ local function displayEffectStats(stats)
     for k, v in pairs(stats) do
         if type(k) == 'string' and (k:match('^ITEM_ADDEFFECT_') or k == 'ITEM_SUBEFFECT') then
             if v ~= 0 and v ~= false then hasEffect = true; end
-        else
+        elseif k ~= RACE_KEY then          -- who may wear it, not a bonus: raceText
             out[k] = v;
         end
     end
@@ -392,6 +433,8 @@ M.sortedKeys   = sortedKeys;
 M.jobsText     = jobsText;
 M.statSummary  = statSummary;
 M.fullStatList = fullStatList;
+M.raceText     = raceText;
+M.RACE_KEY     = RACE_KEY;
 M.petLines     = petLines;
 M.qtyTag       = qtyTag;
 M.augTag       = augTag;

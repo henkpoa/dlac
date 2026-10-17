@@ -593,12 +593,17 @@ local function factsLines(rec, level, wrapN)
         local t = fmt.jobsText(rec.Jobs);
         if type(t) == 'string' and t ~= '' then jt = (t == 'All') and 'All Jobs' or t; end
     end);
+    -- Who may wear it rides with the slot, as on the game's own card ("[Body]H♂"),
+    -- and ahead of the job list, so the truncation below never takes it.
+    local race = nil;
+    pcall(function() race = fmt.raceText(rec); end);
     -- Truncated, not wrapped: a job list is slash-joined with no spaces, so it is
     -- ONE token and wrapTo could never break it. It still asks for its full width
     -- (factsWantW measures unwrapped), so a popup wide enough shows all of it --
     -- this only bounds what happens when the answer is no.
-    add(COL.JOBS, fmt.truncate(string.format('%s   Lv.%s   %s',
-        tostring(rec.Slot or '?'), tostring(rec.Level or 0), jt), wrapN));
+    add(COL.JOBS, fmt.truncate(string.format('%s%s   Lv.%s   %s',
+        tostring(rec.Slot or '?'), (race ~= nil) and ('   ' .. race) or '',
+        tostring(rec.Level or 0), jt), wrapN));
     -- What the piece takes AWAY. A fact about the item, and the reason half a set
     -- goes missing -- it belongs above the stats, not buried under them.
     pcall(function()

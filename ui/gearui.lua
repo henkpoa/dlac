@@ -1188,6 +1188,13 @@ local function renderItemTooltip(rec, note)
         imgui.TextColored(COL.HEADER, fmt.esc(rec.Name or '?'));
         local typeStr = rec.Type or rec.Category or rec.Slot;
         if typeStr ~= nil then imgui.TextColored(COL.DIM, '(' .. fmt.esc(tostring(typeStr)) .. ')'); end
+        -- Who may wear it, beside the slot as on the game's own card ("[Body]H♂"),
+        -- in the jobs colour: it is a wear requirement like the job list.
+        local race = fmt.raceText(rec);
+        if race ~= nil then
+            if typeStr ~= nil then imgui.SameLine(); end
+            imgui.TextColored(COL.JOBS, fmt.esc(race));
+        end
         -- Reserved slots: the piece takes another slot away while worn (server
         -- item_equipment.rslot). Not a dlac rule and not optional -- the slot is
         -- empty on the character no matter what any set says.
@@ -2441,7 +2448,10 @@ local function renderStatsPanel(title, totals, setBonuses)
         section(g.name, g.stats);
     end
     local others = {};
-    for k in pairs(resolved) do if not STAT_LISTED[k] then others[#others + 1] = k; end end
+    for k in pairs(resolved) do
+        -- the race mask is no stat: summed over the worn pieces it is a meaningless number
+        if not STAT_LISTED[k] and k ~= fmt.RACE_KEY then others[#others + 1] = k; end
+    end
     table.sort(others);
     if #others > 0 then
         section('Other', others);

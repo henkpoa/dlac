@@ -11210,6 +11210,84 @@ still wins over it; the module driven end to end against recording deps; the
 popup's colour and popup stacks balanced, a throwing body included; gearui's
 wiring as source pins).
 
+## 2026-10-15: MaxMP on AscensionXI (`2026.10.15c`)
+
+Henrik: "Can you check how maxmp mode is functioning, as well as enable it for
+AXI?" Nothing in the engine checks the server: `/dl mode maxmp on` would have
+run on AscensionXI all along. The pack's Gear Helpers allowlist just left out
+the row and the panel. `helpers.maxmp = true` adds them. The engine and the
+manifest builder are unchanged.
+
+The check, since the mode had not been touched since the arbiter fold
+(07-27) and the native, perf and vault work that followed:
+
+- The suites that pin it (MB, MPS, MSS, MPL, MR, MF, the ARE/LV/MH row and
+  constraint tests, S169) pass.
+- An end-to-end run, outside the repo: the frame-profile harness booted the
+  whole addon on the AscensionXI pack as a Hume WHM75/BLM37 with an idle set,
+  a cure set (0-MP pieces) and twelve batteries in the bags. The fake server
+  raised max MP by what is worn and clamped on unequip, and recovered 12 MP
+  every 3 s. With the mode on, the batteries climbed in band order until all
+  of them were worn (1215/1215), came off top-down while a cure went out every
+  4 s, and went back on bottom-up during recovery. Every threshold in `/dl
+  plan` matched the swap that happened. The one blip came from the harness:
+  its warm-up filled the pool in one jump, and that jump was the first "tick"
+  measured. For about a second the thresholds sat low and two batteries went
+  on and off. In game the first rise after a load is a refresh tick, unless
+  it is an Ether.
+- AscensionXI specifics, from its `origin/main`: base MP grows from era tables
+  (`grades.cpp`, `modules/era/data/stats.yaml`), which match dlac's CatsEye
+  formula at level 75 for every main job with MP, but not for Elvaan and Galka
+  below 75 or for a main job without MP. The offset MaxMP learns at its first
+  full pool absorbs that. Merits: 10 MP per level, usable up to 10 at 75, with
+  the same 0x08C layout. Batteries in the Gear Vault are skipped like Mog Safe
+  ones, so a battery outside every set usually never reaches the shelf.
+- Found on the way (every server, not fixed): a slot no set fills (Ammo in
+  the run) gets a battery that never comes off, and `/dl plan` then reads
+  RELEASING on that row for good. Parked in `docs/design/maxmp-mode.md`.
+
+Tests: FGT25d and FGT26 (`run_tests`); AXS16, HP17 and HP18 (`smoke_ui`: the
+panel opens under the AscensionXI features, and a rule the pack still hides
+lands on the list). With `maxmp` taken back out of the list, all three
+went red.
+
+## 2026-10-16: race-specific gear says who may wear it (`2026.10.16a`)
+
+Henrik, with dlac's card for Custom Tunic beside the game's: dlac read
+"DEF+18 HP+32 VIT+3 INT-1 CHR+1 EQUIPMENT_ONLY_RACE+1", the game prints
+"[Body]H♂". "It doesn't really tell you what race can only equip it."
+
+The AscensionXI pack carries the server's race restriction (mod 276,
+`EQUIPMENT_ONLY_RACE`) in `Stats`, like any other mod. It is a bitmask over the
+server's race ids 1..8 (bit race-1; 0 = every race, `item_equipment.cpp`
+`isEquippableByRace`), not a bonus, so every surface that prints stats printed
+it as one: the stat line, the row summary and its "(+N more)" count, the
+Equipped tab's compare delta ("+127 EQUIPMENT_ONLY_RACE" between a Hume and a
+Galka piece) and the totals panel's Other section (the masks of the worn pieces,
+summed). 423 pieces carry it, in thirteen masks.
+
+`gearfmt.raceText` says it in words: "Hume male only", "Tarutaru only" (both
+sexes), "Mithra only", "Galka only", "Male only" (149: every male, Galka
+included), "Female only" (106). It sits beside the slot, where the game puts
+"H♂": the item tooltip's "(Body)" line, the pin menu's facts line (ahead of
+the job list, so a narrow popup cuts the jobs and not the race) and the compare
+cards' "[Body]" line, in the jobs colour. Words rather than ♂/♀, which the
+ImGui font is not known to carry. The mask leaves every stat line through the
+same filter that collapses the additional-effect keys, and the delta and the
+totals panel skip it. Shared code: the CatsEye catalog has no race key, so
+nothing changes there.
+
+Not done: no wear check reads the mask. The usable-now filter, the
+auto-builder and the lockstyle picker still treat a Hume-only piece as
+wearable by any race; the server refuses the equip.
+
+Tests: `gearfmt_effects` (the field report's piece, all thirteen masks, mixes,
+and every race-restricted piece in the shipped catalog: words, and no mask in a
+stat line or row summary); RAC1-RAC12 in `smoke_ui` (the facts line, the
+compare cards and delta driven through the Equipped tab, gearui's tooltip and
+totals panel as source pins). Each of the eight guards was broken once; every
+one went red.
+
 ## 2026-10-17: the pet's element meets the day and the weather (`2026.10.17a`, engine v172)
 
 Henrik: "We need to add, in the pet category under default and ability. We need
