@@ -10466,7 +10466,7 @@ window names.
 the idle set still names it, the wardrobes had room -- and dlac never pulled it into
 the Mog Wardrobe layout. "Why?"
 
-**Diagnosis (code, no artifact needed):** the additions engine (`gearvaulteconcile`)
+**Diagnosis (code, no artifact needed):** the additions engine (`gearvault\reconcile`)
 gates its push on a change key of derivation hash | layout stamp. The 2026-08-30 vault
 law made "does the vault hold it" a third input to every add, but a deposit moves
 neither of the two keyed inputs: the beat after the store computed the brass pieces as
