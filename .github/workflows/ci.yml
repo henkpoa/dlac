@@ -32,7 +32,7 @@ jobs:
       - name: AscensionXI restock migration notice
         run: lua5.4 tests/restock_notice.lua
 
-      - name: Additional-effect tooltip formatting
+      - name: Tooltip formatting (additional effects, race restrictions)
         run: lua5.4 tests/gearfmt_effects.lua
 
       - name: AscensionXI catalog and import regression

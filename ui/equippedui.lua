@@ -184,8 +184,17 @@ local function renderItemCard(rec, level, w, tag)
         { w, CARD_H }, true, ImGuiWindowFlags_NoScrollbar or 0);
     icons.renderIcon(rec.Id, 18);
     fmt.textWrapped(nameShade(rec), fmt.esc(tostring(rec.Name or '?')));
-    imgui.TextColored(COL.DIM, '[' .. tostring(ui.eqSelected or rec.Slot or '?') .. ']'
-        .. ((tag ~= nil) and ('  ' .. tag) or ''));
+    -- [Slot], then who may wear it (as on the game's own card, "[Body]H♂"), then the tag.
+    local race = fmt.raceText(rec);
+    imgui.TextColored(COL.DIM, '[' .. tostring(ui.eqSelected or rec.Slot or '?') .. ']');
+    if race ~= nil then
+        imgui.SameLine();
+        imgui.TextColored(COL.JOBS, fmt.esc(race));
+    end
+    if tag ~= nil then
+        imgui.SameLine();
+        imgui.TextColored(COL.DIM, ' ' .. tag);
+    end
     if ss ~= '' then fmt.textWrapped(COL.STATS, fmt.esc(ss)); end
     if augText ~= nil then fmt.textWrapped(COL.SCORE, fmt.esc(augText)); end
     -- 'Lv.73  WHM/BLM/' -- continuation lines break at job boundaries only.
@@ -221,7 +230,7 @@ local function renderStatDelta(eq, cand, level)
     local any, x = false, 0;
     for _, k in ipairs(keys) do
         local d = (tonumber(b[k]) or 0) - (tonumber(a[k]) or 0);
-        if d ~= 0 then
+        if d ~= 0 and k ~= fmt.RACE_KEY then   -- the race mask is no stat; the cards say it in words
             local lower = false;
             if statdefs ~= nil and type(statdefs.get) == 'function' then
                 local e = statdefs.get(k);

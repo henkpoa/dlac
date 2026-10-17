@@ -1797,7 +1797,11 @@ typed use — the deafness bugs came from BOTH states claiming `/dl`.
 
 - **catalog.lua** (shipped) — crawled base-truth stats; addon-state only (browse,
   tooltips, enrichment, optimizer). `enrichGearFromCatalog` fills statless owned entries
-  by Id.
+  by Id. Not every key in `Stats` is a bonus: a pack built from server SQL also passes
+  the race restriction (`EQUIPMENT_ONLY_RACE`, a bitmask of who may wear the piece) and
+  the additional-effect keys (`ITEM_ADDEFFECT_*`) through raw. `gearfmt` keeps both out
+  of stat lines and says them in words (`raceText` beside the slot; "Additional effect:
+  ..."). No wear check reads the race mask yet.
 - **petmods.lua** (shipped) — pet-channel gear stats (`item_mods_pet`: what the gear
   grants TO YOUR PET, e.g. Drachen Brais "Wyvern: HP+10%"). Lives BESIDE catalog Stats
   because the live API never serializes the pet channel — the repo SQL is the only
