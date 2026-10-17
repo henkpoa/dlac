@@ -4437,6 +4437,56 @@ end)();
             frame('true##trgcv2'); frame('+ & condition##trgac');
             check('TB41 mobTagged true also works', trig.addConds[1].value, true);
             check('TB42 boolean picker popup balanced', depth.popup, 0);
+
+            -- TB43-47. The Pet cascade's element tests (engine v172), driven
+            -- through the real popup on the two handlers they were asked for:
+            -- Default (the perpetuation set) and Ability (Blood Pacts, Elemental
+            -- Siphon). Each must save as `key = true` AND load in the engine --
+            -- a key the GUI can author but TIER does not know drops the whole
+            -- rule at load, the trap the dispatch registries warn about.
+            local PUP = {};
+            for i = 1, 250 do
+                local n, v = debug.getupvalue(popup, i);
+                if n == nil then break; end
+                PUP[n] = v;
+            end
+            local PET, DEFS = PUP.PET_PARAMS, PUP.COND_DEFS;
+            check('TB43 the Pet parameters and handler defs are reachable',
+                type(PET) == 'table' and type(DEFS) == 'table', true);
+            if type(PET) == 'table' and type(DEFS) == 'table' then
+                local D = require('dlac\\dispatch');
+                local KEYS = { 'petDayWeatherBonus', 'petWeatherMatch', 'petDayMatch' };
+                local function idxOf(list, pred)
+                    for i, x in ipairs(list or {}) do if pred(x) then return i; end end
+                    return nil;
+                end
+                local missing = {};
+                for _, k in ipairs(KEYS) do
+                    if idxOf(PET, function(p) return p.key == k; end) == nil then missing[#missing + 1] = k; end
+                end
+                check('TB44 the Pet cascade offers all three', table.concat(missing, ','), '');
+                for hi, h in ipairs({ 'Default', 'Ability' }) do
+                    local petDef = idxOf(DEFS[h], function(d) return d.kind == 'pet'; end);
+                    local bad, dropped = {}, {};
+                    for _, k in ipairs(KEYS) do
+                        trig.data = {};
+                        trig.addFor, trig.addConds, trig._addDef = h, {}, petDef;
+                        trig._addPet = idxOf(PET, function(p) return p.key == k; end);
+                        trig._addValSel = nil; trig.addSet = 'Perp';
+                        trig.addNote, trig.addSwap = nil, nil;
+                        frame('+ & condition##trgac');
+                        frame('Add rule###trgaddgo');
+                        local r = trig.data[h] and trig.data[h][1];
+                        local got = (type(r) == 'table') and (r.when or {})[string.lower(k)] or nil;
+                        if got ~= true then bad[#bad + 1] = k .. '=' .. tostring(got); end
+                        local norm, warns = D._normalize({ [h] = { r } });
+                        if #((norm or {})[h] or {}) ~= 1 or #(warns or {}) ~= 0 then dropped[#dropped + 1] = k; end
+                    end
+                    check(string.format('TB%d %s: each saves as key = true', 44 + hi, h), table.concat(bad, ','), '');
+                    check(string.format('TB%d %s: ...and the engine loads it', 46 + hi, h), table.concat(dropped, ','), '');
+                end
+                check('TB49 the pet element popup stayed balanced', depth.popup, 0);
+            end
         end
     end
 

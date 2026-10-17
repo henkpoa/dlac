@@ -11209,3 +11209,56 @@ receipt; `hasSetText`; the first-commit seed and the old-job-file import that
 still wins over it; the module driven end to end against recording deps; the
 popup's colour and popup stacks balanced, a throwing body included; gearui's
 wiring as source pins).
+
+## 2026-10-17: the pet's element meets the day and the weather (`2026.10.17a`, engine v172)
+
+Henrik: "We need to add, in the pet category under default and ability. We need
+to have under pet category like dayWeatherBonus, weatherMatch and dayMatch, but
+for pets. This is mainly for summoner, when they arrive, they want to be able to
+match elements for gear etc, if the weather, day match etc."
+
+Three conditions in the Pet cascade: petDayWeatherBonus, petWeatherMatch and
+petDayMatch. They are the three environment tests with YOUR PET's element, an
+avatar's or a spirit's, in place of the action's. The action's three could never
+do this job: Default has no action, and in Ability a Blood Pact or Elemental
+Siphon carries no element (abilities never resolve one). ADR 0038.
+
+Checked against AscensionXI origin/main (a2eb939b5f):
+- Perpetuation (`status_effect_container.cpp`, TickRegen): DAY_REDUCTION,
+  WEATHER_REDUCTION and HALF_PERPETUATION_DAY/WEATHER apply on a plain day or
+  weather equality with the pet's element. The weather comes through
+  GetWeather(PChar, false), single or double, with the master's own storm
+  counted. There is no opposition term.
+- The gear: Summoner's Dblt. 15101 and Smn. Doublet +1 14514 (DAY_REDUCTION 3);
+  Summoner's Horn 15086 and Smn. Horn +1 15259 (WEATHER_REDUCTION 3); Caller's
+  Pendant 11619 (WEATHER_REDUCTION 1).
+- Elemental Siphon drains power x calculateDayAndWeather(player, spiritElement,
+  true): the obi's signed rule over the spirit's element, always applied.
+- pet_list.element gives the 22 avatars and spirits an element and every other
+  pet 0. CatsEyeXI stable is identical for the rows it has (no Atomos, no Siren).
+- Pets go out in 0x00E under getName(), which is pet_list.name, so a spirit is
+  "FireSpirit". The PetName hint said "Fire Spirit", which could never match;
+  corrected in the same table.
+
+The engine: weatherMatchesAction and dayMatchesAction became
+weatherMatchesElement and dayMatchesElement(ctx, el), sharing the ctx.wel and
+ctx.del reads between the action's three and the pet's three. The element table
+and its reader are M fields (M.PET_ELEMENT, M.petElementOf) because the main
+chunk is at 199 of Lua's 200 locals. A pet without an element, no pet, or an
+unreadable read matches neither polarity. Tier 24, between petStatus and moving.
+
+Found, not fixed (asked in the PR): mods 372/373 reach the catalog as
+DayDamageReduction and WeatherDamageReduction, which gear/statdefs labels "Day
+Dmg-" / "Weather Dmg-" (Defense, percent). The server uses them only as the
+day/weather perpetuation reductions above, so dlac shows the Summoner's Doublet
+as "Day Dmg- 3%". The label is dlac's; the key comes from AXI's
+tools/dlac-pack/modtable.py.
+
+Tests: PE1-PE54 (every SQL row's element, one key per spelling, both polarities
+and the unknowns for all three, the net's opposition both ways, the pet's
+element and never the action's, Default with no action, tier 24, serialize /
+normalize, and the live gData.GetEnvironment read path) and TB43-TB49 (the real
+builder popup on Default and Ability: each saves as key = true and the engine
+loads it). Mutation sweep: 10 mutations, all killed. On the first pass the
+day-opposition term survived; PE31/PE32 now make an opposing day cancel a
+matching weather.
