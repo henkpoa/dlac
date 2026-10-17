@@ -405,6 +405,8 @@ addon.version = '2026.10.16a';  -- date of the last shipped change (Ashita print
                                 --  10.15b = the catch mover moves fish only;
                                 --  trash (the server's non-fish catches) has
                                 --  its own Move trash too switch, off by default;
+                                --  10.15c = MaxMP on AscensionXI: its Gear
+                                --  Helpers row and panel are on there;
                                 --  10.16a = race-specific gear says who may wear
                                 --  it ("Hume male only") beside the slot, not
                                 --  as an EQUIPMENT_ONLY_RACE+1 stat)

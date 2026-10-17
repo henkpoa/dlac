@@ -2309,7 +2309,7 @@ end)();
     local keys = {};
     for _, row in ipairs(filtered) do keys[#keys + 1] = row.key; end
     table.sort(keys);
-    check('AXS16 AXI helper list contains only gathering, digging and fishing', table.concat(keys, ','), 'choco,fish,helm');
+    check('AXS16 AXI helper list contains only gathering, digging, fishing and MaxMP', table.concat(keys, ','), 'choco,fish,helm,maxmp');
     gate._packFeatures = oldFeatures;
     points._send = oldSend; points.reset();
     sp.provide('gathering', oldService);
@@ -6787,6 +6787,28 @@ end)();
         clickId, activeStub = 'autorow_helm', { key = 'helm', name = 'HELM' };
         pcall(aui.renderTab, 'WHM', 99);
         check('HP16 clicking the armed pill turns it off', setOnLog[#setOnLog], 'helm=false');
+
+        -- AscensionXI's MaxMP row (2026-10-15): under that pack's features the
+        -- panel opens all the way down, and a Battle rule the pack still hides
+        -- lands on the list instead of a blank detail.
+        local gate = require('dlac\\lib\\featuregate');
+        local keptFeatures = gate._packFeatures;
+        gate._packFeatures = dofile('servers/ascensionxi/features.lua');
+        IM.BeginChild = function() return true; end
+        IM.EndChild = nop;
+        clickId, activeStub, log = nil, nil, {};
+        aui.openDetail('maxmp');
+        pcall(aui.renderTab, 'WHM', 99);
+        check('HP17 AXI opens the MaxMP panel',
+            table.concat(log, '\n'):find('Ear/ring positions follow the idle set', 1, true) ~= nil, true);
+        log = {};
+        aui.openDetail('oneiros');
+        pcall(aui.renderTab, 'WHM', 99);
+        check('HP18 ...while a rule AXI hides lands on the list',
+            table.concat(log, '\n'):find('It never acts for you', 1, true) ~= nil, true);
+        IM.BeginChild, IM.EndChild = nil, nil;
+        gate._packFeatures = keptFeatures;
+        aui.openDetail(nil);
     end
     io.open = realOpen;
     package.loaded['imgui'] = saved.imgui;
