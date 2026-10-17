@@ -34,8 +34,11 @@ Mariners venture gear, Crooked Jones).
 - **The target window** follows this server's rules: a fish above your skill
   + 10 cannot bite ("cannot bite yet: needs skill N with gear"), skill-ups come
   at a flat chance until the fish's skill, your guild cap or 110 ("skill-ups:
-  50% a catch, up to 40 (your guild cap -- then take the rank test)"), and each
-  fish says what it pays in Fishing points. Bait isolation counts only rivals
+  50% a catch, 0.1-0.4 each, up to 40 (your guild cap -- then take the rank
+  test)"), and each fish says what it pays in Fishing points. Since AXI #982 a
+  skill-up is 0.1 to 0.4 from a fish at least 10 above your base skill and 0.1
+  from any other, clipped to the ceiling (`fishcalc.skillupFor`'s `stepMax`; a
+  pack without `stepUpTo` prints no amount). Bait isolation counts only rivals
   that can bite at your skill, so a water can be isolated at skill 20 and
   crowded at 60.
 - **The hobby bar's Fishing tab**: points and skill, a warning while the

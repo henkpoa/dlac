@@ -18,7 +18,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.10.17a';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.10.17c';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
                                 -- (03f = engine v163: the contest explains its own plan;
                                 --  03g = one floating tray: Teleports + the E-Box crates;
@@ -414,7 +414,14 @@ addon.version = '2026.10.17a';  -- date of the last shipped change (Ashita print
                                 --  YOUR PET's element against the day and the
                                 --  weather -- petDayWeatherBonus, petWeatherMatch,
                                 --  petDayMatch -- for the Summoner's day/weather
-                                --  perpetuation gear, in Default and Ability alike)
+                                --  perpetuation gear, in Default and Ability alike;
+                                --  10.17b = AscensionXI catalog: Pebble for every
+                                --  job, Sleep Bolt/Arrow at level 15, Chocobo
+                                --  Torque at level 1, and the fishing rules say
+                                --  a skill-up can be 0.1-0.4;
+                                --  10.17c = the fish window says what a skill-up
+                                --  from that fish is worth: 0.1-0.4 from a fish
+                                --  10+ above your base skill, else 0.1)
 addon.desc    = 'Gear sets, triggers and live stats with level scaling -- dlac equips your gear itself.';
 
 -- Load BEACON ('/dl check' field round, 2026-07-23): written by PLAIN io at

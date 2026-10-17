@@ -134,7 +134,10 @@ end
 -- them: base = your skill without gear (a decimal is fine), rank = guild rank
 -- or nil. The ceiling is the lowest of the fish's skill, the guild cap
 -- ((rank + 1) x 10) and skillCap; below it every eligible catch rolls the
--- band chance for one step.
+-- band chance for one step. With stepUpTo (AscensionXI #982) a fish at least
+-- stepGap above your base skill pays step to stepUpTo instead, even odds,
+-- and every award stops at the ceiling: stepMax is the most one skill-up
+-- can give (nil when the pack has no such rule).
 function M.skillupFor(fish, base, rank)
     local r = M.rules();
     if r == nil or type(r.gain) ~= 'table' or fish == nil then return nil; end
@@ -147,9 +150,18 @@ function M.skillupFor(fish, base, rank)
         if band.below == nil or base < band.below then chance = band.chance or 0; break; end
     end
     -- Skills are kept in tenths server-side; compare there so 22.9 < 23.
-    local gains = math.floor(base * 10 + 0.5) < ceiling * 10 and (fish.item or 0) == 0;
-    return { gains = gains, ceiling = ceiling, limit = limit, chance = gains and chance or 0,
-             step = tonumber(r.step) or 0.1 };
+    local base10 = math.floor(base * 10 + 0.5);
+    local gains = base10 < ceiling * 10 and (fish.item or 0) == 0;
+    local out = { gains = gains, ceiling = ceiling, limit = limit, chance = gains and chance or 0,
+                  step = tonumber(r.step) or 0.1 };
+    local upTo, gap = tonumber(r.stepUpTo), tonumber(r.stepGap);
+    if upTo ~= nil and gap ~= nil then
+        out.stepMax = out.step;
+        if gains and (fish.sk or 0) * 10 - base10 >= gap * 10 then
+            out.stepMax = math.max(out.step, math.min(upTo * 10, ceiling * 10 - base10) / 10);
+        end
+    end
+    return out;
 end
 
 -- Points a landed fish pays under the pack's points table (AscensionXI's

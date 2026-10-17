@@ -11340,3 +11340,41 @@ builder popup on Default and Ability: each saves as key = true and the engine
 loads it). Mutation sweep: 10 mutations, all killed. On the first pass the
 day-opposition term survived; PE31/PE32 now make an opposing day cancel a
 matching weather.
+
+## 2026-10-17: the release catalog, and what a skill-up is worth (`2026.10.17b`, `2026.10.17c`)
+
+Henrik: "recatalog and do everything we usually do pre axi prod deploy". The
+catalog (`17b`, PR #219) regenerated from AXI main `776bfe8693` and changed
+four records: Pebble for every job, Sleep Bolt and Sleep Arrow at level 15,
+and Chocobo Torque at level 1. The log is in
+`docs/reference/ascensionxi-catalog-refresh.md`. The AXI half is AscensionXI
+#991: the pin, the Nexus bait recipes, the handoff and the wiki entry.
+
+The generator would not run at first. AXI #982 (larger fishing skill-ups)
+reflowed `fishing_progression_policy.h`'s chance ternary and changed what a
+skill-up is worth, and `fishdb.py` refuses a header it does not recognise.
+#991 teaches it both shapes, so `fishdb.lua` gains `stepUpTo = 0.4` and
+`stepGap = 10`.
+
+Henrik then asked for #218 in the release ("include #218 in this release")
+and, if it could be done, for the fish window to say the amount. `17c`:
+`fishcalc.skillupFor` returns `stepMax`, the most one skill-up from that fish
+can give. That is 0.1 to 0.4 from a fish at least 10 above your base skill,
+compared in tenths as the server does, so 9.9 above is still 0.1. Any other
+fish gives 0.1, and every award is clipped to the ceiling: at 39.8 with a
+guild cap of 40 the most is 0.2. The target window's line reads "skill-ups:
+50% a catch, 0.1-0.4 each, up to 40 (your guild cap -- then take the rank
+test)". A pack without `stepUpTo` (CatsEye, or an AscensionXI pack from
+before #982) prints no amount.
+
+Found on the way, not fixed: `data/spells.lua` and `data/abilities.lua` come
+from the stock SQL only, so 22 enabled AXI module SQL files that grant or
+re-level a spell or an ability never reach the pickers (Despoil at THF 45,
+Twin Burst at BLM 50). The pin AXI had shipped since 10-12 (`f5b7779`, #211's
+head) never included #209 or #210; they reach players with this pin.
+
+Tests: the amount rule in `ascensionxi_fishing` (the pack's fields, 6 and
+exactly 10 above, 9.9 above, the guild-cap clip, nothing left to learn, a
+pack from before #982) and FU33/FU33b in `ascensionxi_fishing_ui` (0.1-0.4 on
+Ryugu Titan, 0.1 on Fat Greedie). Five mutations (the >= boundary, the clip,
+the 0.1 default, the older-pack branch, the window text) all went red.

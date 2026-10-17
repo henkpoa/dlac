@@ -1189,7 +1189,9 @@ guild = {
 rules = {
   hookGate = 10,   -- a fish bites only while its skill <= effective skill (gear included) + this
   skillCap = 110,   -- base skill learns up to the fish's skill, the guild cap and this, whichever is lowest
-  step = 0.1,       -- one skill-up, from an eligible landed fish
+  step = 0.1,       -- one skill-up, from an eligible landed fish...
+  stepUpTo = 0.4,   -- ...or 0.1 to this, even odds, from a fish whose skill is at least stepGap above your base skill
+  stepGap = 10,     -- (every award is clipped to the same ceiling)
   gain = { { below = 30, chance = 50 }, { below = 60, chance = 40 }, { below = 90, chance = 30 }, { chance = 20 } },
 },
 points = { name = "Fishing points", bands = { { upTo = 19, points = 40 }, { upTo = 39, points = 50 }, { upTo = 59, points = 60 }, { upTo = 79, points = 70 }, { upTo = 255, points = 80 } } },

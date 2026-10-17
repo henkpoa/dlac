@@ -178,7 +178,15 @@ texts, tips = {}, {};
 pcall(fu.renderSearch, deps);
 pick = nil;
 check('FU32 a fish beyond you cannot bite yet', has('cannot bite yet: needs skill 140 with gear (you: 26)'), true);
-check('FU33 ...but it would teach', has('skill-ups: 50% a catch, up to 40 (your guild cap -- then take the rank test)  |  pays 80 Fishing points'), true);
+check('FU33 ...but it would teach, 0.1-0.4 a time (#982)', has('skill-ups: 50% a catch, 0.1-0.4 each, up to 40 (your guild cap -- then take the rank test)  |  pays 80 Fishing points'), true);
+fw.target, fw.targetName = 4501, 'Fat Greedie';
+pick = 'Fat Greedie  (skill 24';
+fu.openTarget('Fat Greedie');
+texts, tips = {}, {};
+pcall(fu.renderSearch, deps);
+pick = nil;
+check('FU33b a fish under 10 above you teaches 0.1 a time', has("skill-ups: 50% a catch, 0.1 each, up to 24 (this fish's skill)  |  pays 50 Fishing points"), true);
+fw.target, fw.targetName = 4305, 'Ryugu Titan';   -- the bar checks below expect the fish that cannot bite
 
 -- The hobby bar's Fishing tab.
 texts, tips, boxes = {}, {}, {};
