@@ -165,6 +165,39 @@ their precedence in the per-slot chain.
   picker. (The Teleports quick menu carried the same switch until
   2026-07-26; that cascade is gone — the tab is the one surface now.)
 
+### On AscensionXI (enabled 2026-10-15, `2026.10.15c`)
+
+The Gear Helpers row and panel are on in `servers/ascensionxi/features.lua`
+(`helpers.maxmp`). Nothing in the engine changed: it never checked the
+server, so `/dl mode maxmp` would already have run there. Only the row and
+the panel were hidden. What differs on that server:
+
+- **Batteries come from the shelf.** A battery must be in Inventory or a
+  Mog Wardrobe right now (`haveInBags and not isStored`). A copy in the Gear
+  Vault is skipped, the way a Mog Safe copy always was: nothing could put it
+  on. The vault's layout follows your sets, so a battery that sits in no set
+  usually lives in the vault and is never used. Put it in a set (the resting
+  set is the natural one) or keep it in a bag. Duplicates pair only on
+  equippable copies (`owned.counts`), so a ring in the bag plus its twin in
+  the vault is one ring.
+- **The base pool formula.** AscensionXI grows MP from the era tables
+  (`modules/era/data/stats.yaml`, read by `grades.cpp`), not CatsEye's linear
+  grades. At level 75 the two agree exactly for every race when the main job
+  has MP. Below 75, Elvaan differs by up to 30 MP and Galka by up to 15. A
+  main job without MP (WAR/NIN with a mage sub) is off by 3 (Elvaan) or 5
+  (Galka) even at 75. MaxMP only uses the formula until the pool reads full
+  once with the mode on: the offset learned there absorbs it.
+- **Merits** count the same: 10 MP per level, usable up to 10 at level 75
+  (era Max MP stops at 8 upgrades), and 0x08C has the same shape, so
+  `meritwatch` learns them at zone-in.
+- Party MP%, the measured tick and the band math are server-neutral.
+
+Checked headless before enabling: the whole addon booted on the
+AscensionXI pack as a WHM with an idle set, a cure set and twelve batteries in
+the bags. The ladder climbed in band order to every battery worn (1215/1215),
+released top-down while casting, and re-equipped bottom-up while recovering;
+`/dl plan` and `/dl why` matched what went on.
+
 ### Data flow
 
 ```
@@ -272,6 +305,19 @@ screenshot, and each produced a pinned test.
   clamp-on-unequip server behavior (assumed retail-like, unfalsified).
 - Multi-job sweep: architecture is job-generic (per-job manifest, per-job
   LOW scan, job-aware base); confirmed WHM + a BLU cameo.
+- **A slot no set fills** (found 2026-10-15): the band still forms (LOW
+  reads 0), the battery goes on at the top, and it never comes off, because
+  no set piece is there to flow back in. Free MP, but `/dl plan` reads
+  `RELEASING` on that row forever and its footer points at a stall. Options:
+  no band for a slot no trigger-reachable set writes, or a plan state that
+  says "kept: no set piece to return to".
+- **AscensionXI's base pool tables** (see "On AscensionXI"): `nativemp` could
+  read growth tables from the pack instead of CatsEye's linear grades. MaxMP
+  would only gain in the moments before its first full pool; Auto Oneiros,
+  which has no offset, would gain more if it is ever turned on there.
+- **The vault and the shelf**: the AscensionXI vault layout could count the
+  MaxMP ladder so batteries outside every set reach the wardrobe. That is a
+  design call (shelf space is shared), not a bug.
 
 ## Test map
 

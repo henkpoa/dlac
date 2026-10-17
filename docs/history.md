@@ -11209,3 +11209,44 @@ receipt; `hasSetText`; the first-commit seed and the old-job-file import that
 still wins over it; the module driven end to end against recording deps; the
 popup's colour and popup stacks balanced, a throwing body included; gearui's
 wiring as source pins).
+
+## 2026-10-15: MaxMP on AscensionXI (`2026.10.15c`)
+
+Henrik: "Can you check how maxmp mode is functioning, as well as enable it for
+AXI?" Nothing in the engine checks the server: `/dl mode maxmp on` would have
+run on AscensionXI all along. The pack's Gear Helpers allowlist just left out
+the row and the panel. `helpers.maxmp = true` adds them. The engine and the
+manifest builder are unchanged.
+
+The check, since the mode had not been touched since the arbiter fold
+(07-27) and the native, perf and vault work that followed:
+
+- The suites that pin it (MB, MPS, MSS, MPL, MR, MF, the ARE/LV/MH row and
+  constraint tests, S169) pass.
+- An end-to-end run, outside the repo: the frame-profile harness booted the
+  whole addon on the AscensionXI pack as a Hume WHM75/BLM37 with an idle set,
+  a cure set (0-MP pieces) and twelve batteries in the bags. The fake server
+  raised max MP by what is worn and clamped on unequip, and recovered 12 MP
+  every 3 s. With the mode on, the batteries climbed in band order until all
+  of them were worn (1215/1215), came off top-down while a cure went out every
+  4 s, and went back on bottom-up during recovery. Every threshold in `/dl
+  plan` matched the swap that happened. The one blip came from the harness:
+  its warm-up filled the pool in one jump, and that jump was the first "tick"
+  measured. For about a second the thresholds sat low and two batteries went
+  on and off. In game the first rise after a load is a refresh tick, unless
+  it is an Ether.
+- AscensionXI specifics, from its `origin/main`: base MP grows from era tables
+  (`grades.cpp`, `modules/era/data/stats.yaml`), which match dlac's CatsEye
+  formula at level 75 for every main job with MP, but not for Elvaan and Galka
+  below 75 or for a main job without MP. The offset MaxMP learns at its first
+  full pool absorbs that. Merits: 10 MP per level, usable up to 10 at 75, with
+  the same 0x08C layout. Batteries in the Gear Vault are skipped like Mog Safe
+  ones, so a battery outside every set usually never reaches the shelf.
+- Found on the way (every server, not fixed): a slot no set fills (Ammo in
+  the run) gets a battery that never comes off, and `/dl plan` then reads
+  RELEASING on that row for good. Parked in `docs/design/maxmp-mode.md`.
+
+Tests: FGT25d and FGT26 (`run_tests`); AXS16, HP17 and HP18 (`smoke_ui`: the
+panel opens under the AscensionXI features, and a rule the pack still hides
+lands on the list). With `maxmp` taken back out of the list, all three
+went red.

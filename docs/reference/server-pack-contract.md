@@ -109,8 +109,9 @@ module and never touches the engine.
 `helpers` is a separate pack allowlist. When present, only helper keys set
 to `true` appear in the helper list, detail navigation and hobby selector.
 When absent, all helpers remain visible. Parent-tab/menu overrides do not
-expand the allowlist. AscensionXI enables `gearhelpers` and `hobbybar` with
-only `helm` in this list.
+expand the allowlist. AscensionXI enables `gearhelpers`, `jobhelpers` and
+`hobbybar`; its list is `helm`, `choco`, `autoacc`, `fish` and `maxmp`
+(2026-10-15).
 
 ## catalog.lua — the contract that matters most
 
