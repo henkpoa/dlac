@@ -56,6 +56,17 @@
     arrives with every non-gear input unchanged, the prediction is compared
     with the server's own numbers. A mismatch keeps the pieces involved on
     for the rest of the session (mispredicted), and the readout names it.
+
+    Weapon skills (2026-10-18, the Set Type). A weapon skill dispatch
+    releases only candidates from a set typed '1-Hit WS', and never for a
+    ranged weapon skill. The server adds +100 ACC to a melee weapon skill's
+    first hit (weaponskills.lua, firstHitRate), on top of WSACC and a spent
+    Building Flourish (FlourishAcc), and rolls each hit against the rate
+    untruncated. So the main hand must reach the cap with all of those, the
+    off hand (its dual-wield hit) with WSACC and the flourish, and kicks,
+    which a weapon skill never throws, are not asked. fTP gear's accuracy and
+    accVaries are left out: both only add, so leaving them out keeps more on.
+    Every other non-Default dispatch keeps its pieces on.
 ]]--
 
 local base = 'dlac\\servers\\ascensionxi\\modules\\telemetry\\';
@@ -72,6 +83,8 @@ local M = {
     IDLE_AFTER = 300, -- seconds after the last decision that the outfit is still sampled
     FIRST_ARMOUR = 4, -- Head: equip slots 4..15 may be released in v1
     PROTECTED = { [0] = true, [1] = true, [2] = true },   -- main hand, off hand, kick
+    WS_PROTECTED = { [0] = true, [1] = true },             -- a weapon skill's hits: main hand, off hand
+    FIRST_HIT = 100,  -- ACC the server adds to a melee weapon skill's first hit
 };
 
 M._clock = os.clock;
@@ -588,18 +601,30 @@ end
 -- The decision (research 2.13)
 -- ---------------------------------------------------------------------------
 
-local function evaluate(frame, base, ids, level)
+-- ws: the hits of a 1-Hit WS set's weapon skill instead of the standing
+-- swings. acc and threshold stay the standing ones either way: the
+-- prediction check compares them with the server's frame for the outfit.
+local function evaluate(frame, base, ids, level, ws)
     local x = { skills = {} };
     local mine = gearSums(ids, level, true);
     for _, k in ipairs(INPUTS) do x[k] = (frame[k .. 'Live'] or 0) + mine[k] - base[k]; end
     local metrics, allMeet = {}, true;
+    local guard = ws and M.WS_PROTECTED or M.PROTECTED;
     for _, ctx in ipairs(frame.contexts or {}) do
-        if M.PROTECTED[ctx.kind] and ctx.applicability == wire.applicability.APPLICABLE then
+        if guard[ctx.kind] and ctx.applicability == wire.applicability.APPLICABLE then
             local skill = (ctx.skillLive or 0) + (mine.skills[ctx.skillType] or 0) - (base.skills[ctx.skillType] or 0);
             x.skill = skill;
             local acc, eff, threshold = formula.compose(frame, ctx, x);
-            local toCap = formula.accToCap(ctx, eff);
-            local meets = formula.thresholdBp(ctx, eff - M.MARGIN) >= formula.capThresholdBp(ctx);
+            local toCap, meets;
+            if ws then
+                local hit = eff + x.wsAccMod + (frame.flourishAcc or 0)
+                    + ((ctx.kind == wire.context.MELEE_MAIN) and M.FIRST_HIT or 0);
+                toCap = formula.accToCapContinuous(ctx, hit);
+                meets = formula.reachesCapContinuous(ctx, hit - M.MARGIN);
+            else
+                toCap = formula.accToCap(ctx, eff);
+                meets = formula.thresholdBp(ctx, eff - M.MARGIN) >= formula.capThresholdBp(ctx);
+            end
             metrics[#metrics + 1] = { kind = ctx.kind, acc = acc, threshold = threshold, accToCap = toCap, meets = meets };
             if not meets then allMeet = false; end
         end
@@ -630,8 +655,10 @@ local function planKey(req)
     end
     table.sort(parts);
     for _, c in ipairs(req.candidates or {}) do
-        parts[#parts + 1] = ('%s:%s>%s@%s'):format(tostring(c.slot), tostring(c.typed), tostring(c.fallback), tostring(c.prio));
+        parts[#parts + 1] = ('%s:%s>%s@%s/%s'):format(tostring(c.slot), tostring(c.typed), tostring(c.fallback),
+            tostring(c.prio), tostring(c.setType));
     end
+    if req.rangedWs then parts[#parts + 1] = 'ranged'; end
     return table.concat(parts, ';');
 end
 
@@ -662,14 +689,22 @@ local function idOf(name)
     return ok and id or nil;
 end
 
+-- The weapons set each hand's skill, its DEX multiplier (one-handed, two-
+-- handed, hand-to-hand, off hand), two-handed ACC and whether an off hand
+-- swings at all. Only the server's frame carries those, for the weapons it
+-- was taken in, so a basis must wear the plan's weapons (2026-10-18: a
+-- weapon skill set that swaps the weapon was judged by the old one's frame).
+local WEAPONS_DIFFER = 'the weapons differ from the frame outfit';
+
 -- The newest basis whose outfit differs from the baseline only in modelled,
 -- verified pieces; else nil and why the newest one cannot speak.
 local function basisFor(ids, aug)
     local first = nil;
     for i = #st.baseOrder, 1, -1 do
         local b = st.bases[st.baseOrder[i]];
-        local why = nil;
+        local why = (ids[0] ~= b.outfit.ids[0] or ids[1] ~= b.outfit.ids[1]) and WEAPONS_DIFFER or nil;
         for slot = 0, 15 do
+            if why ~= nil then break; end
             if ids[slot] ~= b.outfit.ids[slot] or aug[slot] ~= b.outfit.aug[slot] then
                 for _, piece in ipairs({ { ids[slot], aug[slot] }, { b.outfit.ids[slot], b.outfit.aug[slot] } }) do
                     local bad = unmodelled(piece[1], piece[2]) or (st.unverified[piece[1]] and 'unverified');
@@ -679,7 +714,6 @@ local function basisFor(ids, aug)
                     end
                 end
             end
-            if why ~= nil then break; end
         end
         if why == nil then return b; end
         first = first or why;
@@ -712,10 +746,13 @@ local function enchanted(slot, itemId)
     return outfit ~= nil and outfit.ids[slot] == itemId and wire.hasBit(latest.enchantedSlotMask or 0, bit);
 end
 
+local NOT_WS1 = 'its weapon skill set is not typed 1-Hit WS';
+
 -- req = { plan = { [slotName] = item name }, augmented = { [slotName] = true }
 --         for a plan entry pinned to an augmented copy, candidates = { { slot,
---         typed, fallback, prio } }, event = dispatch kind }. Returns
--- { release = { [slotName] = fallback }, why = { [slotName] = text },
+--         typed, fallback, prio, setType = the Set Type of the set it came
+--         from } }, event = dispatch kind, rangedWs = a ranged weapon skill }.
+-- Returns { release = { [slotName] = fallback }, why = { [slotName] = text },
 --   typed = { [slotName] = the AutoAcc piece }, metrics }.
 function M.decide(req)
     local out = { release = {}, why = {}, typed = {}, metrics = nil };
@@ -735,7 +772,14 @@ function M.decide(req)
         st.memo, st.lastDecision, st.lastBasis = { key = key, out = out }, out, nil;
         return out;
     end
-    if req.event ~= nil and req.event ~= 'Default' then return hold('only the standing Default set releases'); end
+    local ws = req.event == 'Weaponskill';
+    if req.event ~= nil and req.event ~= 'Default' and not ws then return hold('only the standing Default set releases'); end
+    if ws then
+        if req.rangedWs then return hold('a ranged weapon skill has no first-hit bonus'); end
+        local typed = false;
+        for _, c in ipairs(cands) do if c.setType == 'ws1' then typed = true; break; end end
+        if not typed then return hold(NOT_WS1); end
+    end
     if latest == nil then return hold(st.why or 'no telemetry yet'); end
     if trigger ~= nil then return hold('held until the next frame: ' .. trigger); end
 
@@ -769,7 +813,7 @@ function M.decide(req)
     local level = frame.mainLevel or 0;
 
     local frameSums = gearSums(frameOutfit.ids, level, true);
-    local meets, metrics = evaluate(frame, frameSums, ids, level);
+    local meets, metrics = evaluate(frame, frameSums, ids, level, ws);
     out.metrics = metrics;
     if not meets then return hold('the full set does not reach the cap'); end
 
@@ -783,7 +827,8 @@ function M.decide(req)
         local slot = slotId(c.slot);
         local typedId, fallbackId = idOf(c.typed), idOf(c.fallback);
         local why = nil;
-        if slot == nil or slot < M.FIRST_ARMOUR then why = 'weapon slots stay';
+        if ws and c.setType ~= 'ws1' then why = NOT_WS1;
+        elseif slot == nil or slot < M.FIRST_ARMOUR then why = 'weapon slots stay';
         elseif c.fallback == nil or fallbackId == nil then why = 'no fallback';
         elseif typedId ~= accepted[slot] then why = 'the slot is not the piece';
         elseif enchanted(slot, typedId) then
@@ -803,7 +848,7 @@ function M.decide(req)
             local trial = {};
             for k, v in pairs(accepted) do trial[k] = v; end
             trial[slot] = fallbackId;
-            local ok, m = evaluate(frame, frameSums, trial, level);
+            local ok, m = evaluate(frame, frameSums, trial, level, ws);
             if ok then
                 accepted = trial;
                 out.release[c.slot] = c.fallback;

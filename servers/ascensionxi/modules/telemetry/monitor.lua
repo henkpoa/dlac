@@ -75,7 +75,9 @@ local TAIL_X = 410;
 local PIECE_X = COLUMNS[2].x;   -- an AutoAcc row's piece lines up with the ACC column
 
 local AUTOACC_TIP = 'AutoAcc wears your AutoAcc pieces only while you need the accuracy:\n'
-    .. 'once every hand reaches the cap without one, its slot wears its normal pick.';
+    .. 'once every hand reaches the cap without one, its slot wears its normal pick.\n'
+    .. 'A weapon skill set with the Set Type 1-Hit WS also counts the +100 accuracy\n'
+    .. 'the server adds to the first hit.';
 local WAITING = 'AutoAcc is waiting for the server\'s numbers';
 local KEPT_ON = 'AutoAcc keeps your accuracy pieces on';
 
@@ -85,7 +87,10 @@ local KEPT_ON = 'AutoAcc keeps your accuracy pieces on';
 local PLAIN = {
     ['needed for the cap'] = 'you need it to reach the cap',
     ['the full set does not reach the cap'] = 'you don\'t reach the cap even with it',
-    ['only the standing Default set releases'] = 'AutoAcc only swaps pieces in your standing set',
+    ['only the standing Default set releases'] = 'AutoAcc only swaps pieces in your standing set and in 1-Hit WS sets',
+    ['its weapon skill set is not typed 1-Hit WS'] = 'this weapon skill set\'s Set Type isn\'t 1-Hit WS (Sets tab)',
+    ['a ranged weapon skill has no first-hit bonus'] = 'a ranged weapon skill gets no first-hit accuracy bonus',
+    ['the weapons differ from the frame outfit'] = 'the server hasn\'t sent numbers for these weapons yet',
     ['weapon slots stay'] = 'weapons always stay on',
     ['no fallback'] = 'the slot has nothing else to wear',
     ['its enchantment would be lost'] = 'taking it off would end its enchantment',

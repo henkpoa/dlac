@@ -322,7 +322,10 @@ local f = assert(io.open('servers/ascensionxi/modules/telemetry/autoacc.lua', 'r
 local modelSource = f:read('*a'); f:close();
 local REASONS = {
     { 'the full set does not reach the cap', "you don't reach the cap even with it" },
-    { 'only the standing Default set releases', 'only swaps pieces in your standing set' },
+    { 'only the standing Default set releases', 'only swaps pieces in your standing set and in 1-Hit WS sets' },
+    { 'its weapon skill set is not typed 1-Hit WS', "Set Type isn't 1-Hit WS" },
+    { 'a ranged weapon skill has no first-hit bonus', 'no first-hit accuracy bonus' },
+    { 'the weapons differ from the frame outfit', 'numbers for these weapons' },
     { 'weapon slots stay', 'weapons always stay on' },
     { 'no fallback', 'nothing else to wear' },
     { 'its enchantment would be lost', 'end its enchantment' },
