@@ -9178,7 +9178,7 @@ return {
                 Level = 50,
                 Id = 18020,
                 Model = 178,
-                Jobs = {"WAR", "THF", "PLD", "DRK", "BRD", "RNG", "SAM", "NIN", "DRG", "COR", "PUP"},
+                Jobs = {"WAR", "THF", "PLD", "DRK", "BRD", "RNG", "SAM", "NIN", "DRG", "COR", "PUP", "DNC"},
                 OneHanded = true,
                 Type = "Dagger",
                 Stats = {
