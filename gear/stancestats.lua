@@ -14,6 +14,14 @@ local function data()
     return cachedData;
 end
 
+-- The job's stance as the Set Type menu names it ('Duelist Stance'), or nil
+-- when the pack has no stance gear for the job.
+function M.label(job)
+    local rows = data();
+    local t = rows and rows[job];
+    return (type(t) == 'table' and type(t.label) == 'string') and t.label or nil;
+end
+
 function M.apply(rec, base, ctx)
     if not ctx or ctx.stanceSet ~= true or type(rec) ~= 'table' then return base; end
     if ctx.level and (rec.Level or 0) > ctx.level then return base; end

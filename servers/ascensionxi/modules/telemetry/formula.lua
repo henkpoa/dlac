@@ -16,6 +16,8 @@
       both   : eff = getACC + PolicyAccBonus - FlashPenalty + LevelCorrection
                rate = clamp((75 + (eff - TargetEVA) / 2) / 100, floor, cap)
                threshold = trunc(rate x 100), in doubles, as the server converts it
+      weapon skill hit: eff + bonus (first melee hit +100, WSACC, FlourishAcc),
+               its rate compared with the cap untruncated
 ]]--
 
 local M = {};
@@ -91,6 +93,19 @@ function M.accToCap(ctx, effective)
         delta = delta + 1;
     end
     return delta;
+end
+
+-- A weapon skill's hit is rolled against the rate itself, not a truncated
+-- percent (weaponskills.lua: math.random() > hitRate misses), so it reaches
+-- the cap when the unclamped rate does: 75 + (eff - EVA) / 2 >= cap x 100.
+-- Kept in integers: (150 + eff - EVA) x 50 >= capBp.
+function M.reachesCapContinuous(ctx, effective)
+    return (150 + effective - (ctx.targetEva or 0)) * 50 >= (ctx.capBp or 0);
+end
+
+-- The smallest extra ACC that does (negative: what can be given up).
+function M.accToCapContinuous(ctx, effective)
+    return math.ceil((ctx.capBp or 0) / 50) - 150 + (ctx.targetEva or 0) - effective;
 end
 
 -- Composes a context from inputs v: accessor, effective ACC, threshold.

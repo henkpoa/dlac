@@ -11378,3 +11378,51 @@ exactly 10 above, 9.9 above, the guild-cap clip, nothing left to learn, a
 pack from before #982) and FU33/FU33b in `ascensionxi_fishing_ui` (0.1-0.4 on
 Ryugu Titan, 0.1 on Fat Greedie). Five mutations (the >= boundary, the clip,
 the 0.1 default, the older-pack branch, the window text) all went red.
+
+## 2026-10-18: the Set Type, and AutoAcc at a 1-Hit WS (`2026.10.18a`, engine v173)
+
+Henrik asked how AutoAcc on AscensionXI handles weapon skills: does it add
++100 ACC? It did not. `autoacc.decide` held every piece on at any
+non-Default dispatch, so a weapon skill set wore all its AutoAcc pieces.
+Then: "Can we switch [Stance Set] out to 'Set Type'?" A dropdown per set,
+Normal by default, then 1-Hit WS, then Duelist Stance. Existing stance sets
+become Duelist Stance automatically. "1-Hit WS though, should assume that
+there is a +100 ACC for the feature of auto acc."
+
+- **The Set Type** (`gearoptim`): `typePerSet` is keyed '<JOB>|<Set>' beside
+  the weights and holds 'ws1' or 'stance' (absent = Normal). `setType`,
+  `setSetType`, `setTypeOf` and `setTypeOptions` replace
+  `isStanceSet`/`setStanceSet`. On load, a file's `stancePerSet` flags become
+  'stance'. The writer still writes `stancePerSet` for the stance sets, so an
+  older dlac after a branch flip keeps planning them. Rename,
+  export/import and the per-set binding carry the type as they carried the
+  flag.
+- **The stance option is named by the pack**: `stances.lua` gained a
+  per-job `label`. RDM shows "Duelist Stance". WAR, whose Razor Axe was
+  already a stance row (and is in the wiki's Stance Set text), shows
+  "Berserk". A job without stance gear gets only Normal and 1-Hit WS.
+- **AutoAcc** (dispatch v173 + `autoacc.lua`): each candidate names the set
+  it came from (`ctx.setName` during `equipSetByName`). At a weapon skill
+  only candidates from a 1-Hit WS set may go, and no ranged weapon skill.
+  The main hand's first hit is composed with +100 + WSACC + FlourishAcc, the
+  off hand's with WSACC + FlourishAcc, and the kick is not asked. Every hit
+  is compared with the cap untruncated. Checked against AXI main 8d82391aff:
+  `weaponskills.lua` firstHitRate is `getHitRate(bonusAcc + 100)`, the
+  offhand gets `bonusAcc` alone, and `getHitRateModifiers(isWeaponskill)`
+  adds the flourish to every hit. fTP-gear accuracy and accVaries are left
+  out; they only add.
+- **"Does it handle DEX? It depends on weapon type as well"** (asked
+  mid-work). The DEX term already composes per hand with the frame's
+  `statMultMilli`. The server's telemetry picks that from the
+  ONE_HAND_MAIN / OFF_HAND / TWO_HANDED / HAND_TO_HAND settings, and dlac
+  floors the total as `battle_entity.cpp` does. The real gap: a plan whose
+  Main or Sub differed from the basis's outfit was judged with the old
+  weapon's skill, multiplier, two-handed ACC and off hand. `basisFor` now
+  refuses such a basis, and the pieces stay on until the server's frame for
+  those weapons arrives.
+
+Tests: `stance_sets.lua` (the type store, migration, the legacy block, the
+menu); AA-10, AA-37–AA-37g and AA-38 in `ascensionxi_autoacc`; AAD-11; UI-11;
+smoke ST0–ST6. Thirteen ad-hoc mutations all went red, and the AutoAcc sweep
+gained 17 mutants (A39–A49, F05–F06, D07–D10). Its A26/A27 patterns moved
+with the gate. I05/I06 had already drifted on main and were re-pointed.

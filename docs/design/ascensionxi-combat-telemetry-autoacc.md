@@ -1,8 +1,22 @@
 # AscensionXI: authoritative combat telemetry and AutoAcc
 
-Research date: 2026-09-28. Status: **built on 2026-10-05 (dlac `2026.10.05d`, engine v170; AscensionXI server slice 1) and tested in the owner's client the same day.** Read "Status 2026-10-05" first; the sections after it are the history of the design.
+Research date: 2026-09-28. Status: **built on 2026-10-05 (dlac `2026.10.05d`, engine v170; AscensionXI server slice 1) and tested in the owner's client the same day; weapon skills for 1-Hit WS sets added 2026-10-18 (`2026.10.18a`, engine v173).** Read "Status 2026-10-18" and "Status 2026-10-05" first; the sections after them are the history of the design.
 
 **Backend research agent:** start with the [backend research assignment](#backend-research-assignment) appended below. It defines the remaining investigation and deliverable; the operation IDs, rate budgets and APIs proposed in this document are not already implemented or agreed wire contracts.
+
+## Status 2026-10-18: weapon skills, for sets typed 1-Hit WS
+
+Owner, 2026-10-18: *"1-Hit WS though, should assume that there is a +100 ACC for the feature of auto acc, so it can act accordingly and equip the proper pieces."* Until now `decide` held every piece on at any non-Default dispatch, so a weapon skill set wore all its AutoAcc pieces.
+
+- **The Set Type** (Sets tab, per job and set, `gearoptim.setTypeOf`; it replaced the Stance Set checkbox): Normal, **1-Hit WS**, or the job's stance. The player says which sets are one-hit weapon skill sets; dlac does not guess it from the weapon skill.
+- **Dispatch v173.** `equipSetByName` puts the set's name on `ctx` while it resolves, so each AutoAcc candidate's meta names its set. At a `Weaponskill` send, `_autoAccApply` gives each candidate its set's type and sets `rangedWs` from the `M._ammoWs` lists (Archery and Marksmanship weapon skills).
+- **The decision.** At a weapon skill only candidates from a 1-Hit WS set may go, and none for a ranged one. Every hit is checked against the cap with the rate untruncated, as the server rolls it:
+  - the main hand: its composition + 100 + WSACC + `FlourishAcc` (server `weaponskills.lua`: `firstHitRate = getHitRate(bonusAcc + 100)`, `bonusAcc = gearAcc + WSACC`; the flourish arrives through `getHitRateModifiers(isWeaponskill)`);
+  - the off hand (the dual-wield or hand-to-hand hit): WSACC + `FlourishAcc`, no +100;
+  - the kick: not asked, since a weapon skill never kicks.
+  The metrics keep the standing ACC and threshold, so the server's frame for the outfit still checks the release (AA-37g, "matched"). fTP gear's accuracy (`ceil(gearFTP × 100)`) and `accVaries` are left out. Both only add accuracy, so leaving them out keeps more pieces on; it never takes one off wrongly.
+- **The weapons must be the frame's** (the owner asked whether AutoAcc counts DEX by weapon type). DEX already composes per hand with the server's own `statMultMilli`, which the server picks by weapon type: one-handed main, off hand, two-handed, hand-to-hand. The floor applies to the total, as on the server. The gap was a plan whose Main or Sub differs from the basis's outfit. It was judged by the old weapon's skill, multiplier, two-handed ACC and off hand. `basisFor` now refuses such a basis (`the weapons differ from the frame outfit`), so a set that swaps weapons waits for the server's frame for those weapons. A weapon skill set that swaps the weapon therefore keeps its pieces on.
+- **Tests:** AA-10 (Normal sets and spells hold), AA-37–AA-37g, AA-38; AAD-11; UI-11 (the three new reasons in words); `tests/stance_sets.lua` (the Set Type store, migration, menu); smoke ST0–ST6. The sweep has 17 new mutants (A39–A49, F05–F06, D07–D10), and its four stale patterns were re-pointed (A26, A27; I05 and I06 had already drifted on main).
 
 ## Status 2026-10-05: built
 
@@ -47,7 +61,7 @@ Run it with `python tests/autoacc_mutation_sweep.py` on a clean tree (about 15 m
 
 **Client tests: done** (the owner, 2026-10-05: *"we have tested, so client tests are done I believe"*). They were the server handoff's L1 (unblocked 0x1E0 volume with dlac unloaded) and L2–L6 (unload, STOP, reload, collision with the vault and Nexus, cadence in a fight), and a playtest of a real set read through `/dl accuracy` and `/dl why`. The minimal box in plain words has not been seen in the client yet: `/addon reload dlac` prints `2026.10.05d`. Still not reported: the Gear Vault field round for #198 (a separate PR).
 
-**Next work:** weapon-skill decisions (§"Weapon skills" below), latent conditions (issue #41) to release more pieces, and modelling augmented copies.
+**Next work:** ~~weapon-skill decisions~~ (built 2026-10-18 for sets typed 1-Hit WS, above; exact fTP-gear accuracy still to come), latent conditions (issue #41) to release more pieces, and modelling augmented copies.
 
 ## Status 2026-09-29: answered, and partly superseded
 

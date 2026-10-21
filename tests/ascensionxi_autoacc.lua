@@ -223,6 +223,13 @@ aa.noteFrame(mainOnly(frameOf('TV-05')));
 check('AA-10 a weapon skill keeps its pieces', aa.decide({ plan = plan(), candidates = { RING }, event = 'Weaponskill' }).release.Ring1, nil);
 check('AA-10 the standing set after it releases', aa.decide({ plan = plan(), candidates = { RING }, event = 'Default' }).release.Ring1, 'Rajas Ring');
 check('AA-10 and the weapon skill after that still keeps them', aa.decide({ plan = plan(), candidates = { RING }, event = 'Weaponskill' }).release.Ring1, nil);
+check('AA-10 why: its set is not typed 1-Hit WS', aa.decide({ plan = plan(), candidates = { RING }, event = 'Weaponskill' }).why.Ring1,
+    'its weapon skill set is not typed 1-Hit WS');
+check('AA-10 a spell keeps them too', aa.decide({ plan = plan(), candidates = { RING }, event = 'Midcast' }).why.Ring1,
+    'only the standing Default set releases');
+fresh();
+check('AA-10 before any frame, the reason is still the Set Type',
+    aa.decide({ plan = plan(), candidates = { RING }, event = 'Weaponskill' }).why.Ring1, 'its weapon skill set is not typed 1-Hit WS');
 
 -- AA-11: a frame naming an outfit dlac never saw is not used.
 fresh();
@@ -625,6 +632,88 @@ do
     CATALOG[30001], CATALOG[30002], CATALOG[30003] = nil, nil, nil;
     aa.reset();
 end
+
+-- AA-37: a set typed 1-Hit WS (the Set Type, 2026-10-18). At a weapon skill
+-- the main hand's first hit carries +100 ACC (server weaponskills.lua,
+-- firstHitRate) plus WSACC and the flourish, rolled against the rate
+-- untruncated; the off hand's hit only WSACC and the flourish; kicks are not
+-- asked. TV-05's main hand: eff 371 vs EVA 320 -> 11 to spare standing,
+-- 111 on the first hit (the vectors' own "weapon skill, first hit" line).
+local NECK_WS = { slot = 'Neck', typed = 'Peacock Amulet', fallback = 'Spike Necklace', prio = 5, setType = 'ws1' };
+local RING_WS = { slot = 'Ring1', typed = "Toreador's Ring", fallback = 'Brass Ring', prio = 1, setType = 'ws1' };
+local function ws(cands, over)
+    local req = { plan = plan(), candidates = cands, event = 'Weaponskill' };
+    for k, v in pairs(over or {}) do req[k] = v; end
+    return aa.decide(req);
+end
+fresh();
+aa.noteFrame(mainOnly(frameOf('TV-05')));
+d = ws({ NECK_WS, RING_WS });
+check('AA-37 the first hit lets the neck go', d.release.Neck, 'Spike Necklace');
+check('AA-37 and the ring, which the standing set needs (AA-03)', d.release.Ring1, 'Brass Ring');
+check('AA-37 the main hand to the cap on the first hit', d.metrics[1].accToCap, -96);
+check('AA-37 the standing threshold (93 %, not the hit\'s cap) rides the metrics, for the prediction check',
+    d.metrics[1].threshold, 9300);
+check('AA-37 a prediction waits', aa.report().prediction.verdict, 'waiting');
+d = ws({ { slot = 'Neck', typed = 'Peacock Amulet', fallback = 'Spike Necklace', prio = 5 }, RING_WS });
+check('AA-37b a piece from a Normal set stays', d.release.Neck, nil);
+check('AA-37b why', d.why.Neck, 'its weapon skill set is not typed 1-Hit WS');
+check('AA-37b beside one that goes', d.release.Ring1, 'Brass Ring');
+check('AA-37c the same skill melee releases', ws({ NECK_WS, RING_WS }).release.Neck, 'Spike Necklace');
+d = ws({ NECK_WS, RING_WS }, { rangedWs = true });
+check('AA-37c a ranged weapon skill keeps them (the memo keeps the two apart)', d.release.Neck, nil);
+check('AA-37c why', d.why.Ring1, 'a ranged weapon skill has no first-hit bonus');
+d = aa.decide({ plan = plan(), event = 'Default', candidates = { NECK_WS, RING_WS } });
+check('AA-37d the standing set ignores the type', d.release.Ring1, nil);
+check('AA-37d and decides as ever', d.why.Ring1, 'needed for the cap');
+
+-- AA-37e: the off hand (TV-05 as published, eff 310 vs EVA 320) gets no
+-- +100: its hit needs 50 from WSACC and the flourish together.
+local function offHandWith(flourish, wsacc)
+    fresh();
+    local f = frameOf('TV-05');
+    f.flourishAcc = flourish;
+    f.wsAccModLive, f.wsAccModR = (f.wsAccModLive or 0) + wsacc, (f.wsAccModR or 0) + wsacc;
+    aa.noteFrame(f);
+    return ws({ RING_WS });
+end
+check('AA-37e the off hand short of the cap holds all', offHandWith(0, 0).why.Ring1, 'the full set does not reach the cap');
+check('AA-37e 49 short by one', offHandWith(49, 0).why.Ring1, 'the full set does not reach the cap');
+check('AA-37e 25 + 25 exactly at the cap', offHandWith(25, 25).why.Ring1, 'needed for the cap');
+check('AA-37e the flourish alone', offHandWith(50, 0).why.Ring1, 'needed for the cap');
+
+-- AA-37f: a kick is never thrown in a weapon skill; standing, it is asked.
+fresh();
+local kicked = frameOf('TV-05');
+for _, c in ipairs(kicked.contexts) do if c.kind == wire.context.MELEE_SUB then c.kind = wire.context.KICK; end end
+aa.noteFrame(kicked);
+check('AA-37f standing, the kick holds them', aa.decide({ plan = plan(), event = 'Default',
+    candidates = { RING } }).why.Ring1, 'the full set does not reach the cap');
+check('AA-37f the weapon skill does not ask it', ws({ RING_WS }).release.Ring1, 'Brass Ring');
+
+-- AA-37g: the weapon skill's release is checked by the server's frame for
+-- the outfit like any other (TV-06 = Toreador's Ring gone for Rajas Ring).
+fresh();
+aa.noteFrame(mainOnly(frameOf('TV-05')));
+d = ws({ { slot = 'Ring1', typed = "Toreador's Ring", fallback = 'Rajas Ring', prio = 1, setType = 'ws1' } });
+check('AA-37g released', d.release.Ring1, 'Rajas Ring');
+wearRajas();
+aa.noteFrame(mainOnly(frameOf('TV-06')));
+check('AA-37g the server confirms it', aa.report().prediction.verdict, 'matched');
+
+-- AA-38: the weapons set each hand's skill, DEX multiplier, two-handed ACC
+-- and off hand, which only the frame for those weapons carries: a plan that
+-- swaps the main or off hand weapon finds no basis (TV-05 wears a Kris and
+-- an Iron Sword).
+fresh();
+aa.noteFrame(mainOnly(frameOf('TV-05')));
+d = aa.decide({ plan = plan({ Main = 'Iron Sword' }), candidates = { RING }, event = 'Default' });
+check('AA-38 another main hand weapon keeps them', d.release.Ring1, nil);
+check('AA-38 why', d.why.Ring1, 'the weapons differ from the frame outfit');
+d = ws({ RING_WS }, { plan = plan({ Sub = 'Kris' }) });
+check('AA-38 a 1-Hit WS set swapping the off hand too', d.why.Ring1, 'the weapons differ from the frame outfit');
+d = aa.decide({ plan = plan({ Main = 'Kris', Sub = 'Iron Sword' }), candidates = { RING }, event = 'Default' });
+check('AA-38 naming the worn weapons is no swap', d.release.Ring1, 'Rajas Ring');
 
 print(('ascensionxi_autoacc: %d passed, %d failed'):format(pass, fail));
 if fail > 0 then os.exit(1); end

@@ -4928,16 +4928,32 @@ local function renderSetsTab(job, level)
                                                 -- is defined below this function)
         end
         if axi then
-            imgui.SameLine();
-            local stance = { optim.isStanceSet() };
-            if imgui.Checkbox('Stance Set', stance) then
-                local ok, err = optim.setStanceSet(stance[1]);
-                if ok then ok, err = optim.saveWeights(); end
-                if not ok then setStatus(tostring(err)); end
-                invalidateCandidates();
+            -- The Set Type (2026-10-18; it replaced the Stance Set checkbox).
+            imgui.SameLine(0, 14);
+            imgui.TextColored(COL.DIM, 'Set Type'); imgui.SameLine(0, 4);
+            local cur = optim.setType();
+            local opts = optim.setTypeOptions(job, cur);
+            local curLabel, w = 'Normal', 0;
+            for _, o in ipairs(opts) do
+                if o.id == cur then curLabel = o.label; end
+                w = math.max(w, (imgui.CalcTextSize(o.label)));
             end
+            imgui.PushItemWidth(w + 44);   -- frame padding plus the arrow
+            if imgui.BeginCombo('##settype', curLabel) then
+                for _, o in ipairs(opts) do
+                    if imgui.Selectable(o.label .. '##settype_' .. o.id, o.id == cur) and o.id ~= cur then
+                        local ok, err = optim.setSetType(o.id);
+                        if ok then ok, err = optim.saveWeights(); end
+                        if not ok then setStatus(tostring(err)); end
+                        invalidateCandidates();
+                    end
+                    if imgui.IsItemHovered() then imgui.SetTooltip(o.tip); end
+                end
+                imgui.EndCombo();
+            end
+            imgui.PopItemWidth();
             if imgui.IsItemHovered() then
-                imgui.SetTooltip("Include this job's stance bonuses when building and viewing this set.");
+                imgui.SetTooltip('What this set is for. Remembered for each job and set.');
             end
         end
     end
