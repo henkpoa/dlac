@@ -7,15 +7,17 @@ package.loaded['dlac\\gear'] = {NameToObject={}}
 ashita = {events={register=function() end}}
 local optim = require('dlac\\gear\\gearoptim')
 local fmt = require('dlac\\gear\\gearfmt'); fmt.configure({effStats=function(r) return r.Stats end})
-local r = ci.rawById(12642)
+-- Duelist's Chapeau +1: the Warlock's Tabard lost its Enfeebling +15 in
+-- AscensionXI's artifact rework (2026-10-20 pack).
+local r = ci.rawById(15249)
 local score = optim.score(r.Stats, {EnfeeblingMagicSkill={perUnit=2}})
 print('tooltip: '..fmt.fullStatList(r.Stats))
 print('list: '..fmt.statSummary(r))
 print('score: '..score)
-assert(score == 30, 'Warlock tabard must score 15 enfeebling skill x 2 = 30')
+assert(score == 30, 'Duelist chapeau +1 must score 15 enfeebling skill x 2 = 30')
 assert(fmt.fullStatList(r.Stats):find('Enfeebling',1,true), 'tooltip must name enfeebling skill')
 assert(fmt.statSummary(r):find('Enfeebling',1,true), 'list must include enfeebling skill')
-assert(fmt.statSummary(r):find('(+1 more)',1,true), 'summary must disclose omitted stats')
+assert(fmt.statSummary(r):find('%(%+%d+ more%)'), 'summary must disclose omitted stats')
 local aliases = require('dlac\\gear\\modaliases')
 local sd = require('dlac\\gear\\statdefs')
 local checked, found = 0, {}

@@ -11426,3 +11426,25 @@ menu); AA-10, AA-37–AA-37g and AA-38 in `ascensionxi_autoacc`; AAD-11; UI-11;
 smoke ST0–ST6. Thirteen ad-hoc mutations all went red, and the AutoAcc sweep
 gained 17 mutants (A39–A49, F05–F06, D07–D10). Its A26/A27 patterns moved
 with the gate. I05/I06 had already drifted on main and were re-pointed.
+
+## 2026-10-21: Craftsman's Restraint for Nexus's NQ only (`2026.10.21a`)
+
+Henrik, on AscensionXI's new Max HQ in Nexus: "We've added an NQ only ring,
+please only use this feature to set HQ level, as you need the NQ ring to only
+get NQs. But maybe add the option to do it, IF you have the NQ ring
+available." Asked how, he chose: dlac wears the ring.
+
+- **Server pack** refreshed from AscensionXI main (`tools/dlac-pack`, which
+  now maps `SYNTH_NQ_ONLY` to `SynthNQOnly` and skips Fennella's Sand Charm on
+  the fishing shelf). It brings Craftsman's Restraint (26580) and the
+  artifact-gear rework; `catalog_stat_mapping` moved from the Warlock's Tabard
+  (no longer Enfeebling +15) to the Duelist's Chapeau +1.
+- **`SynthNQOnly`** in statdefs and modaliases. The automation manifest
+  (fmtver 18) marks such a piece `nqOnly` and gives it an HQ block in every
+  craft; it never fills a skillup ladder.
+- **`nq=1`** on Nexus's `next` and `preview`; hello advertises `nq=1`; `ready`
+  answers `nq=pick|missing`. `craftpick` puts the NQ-only piece in Ring1
+  before the skill pass and uses the nq goal for the free slots.
+
+Design: `docs/design/nexus-craft-gear.md` § "Nexus's NQ only". Tests: NCQ1-7,
+NL24-27, the autogear golden. Six ad-hoc mutations went red.

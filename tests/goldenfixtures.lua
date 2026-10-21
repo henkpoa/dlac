@@ -147,6 +147,7 @@ local INV = {
     { Name = 'Chefs Hat',         Id = 90020, Level = 1,  Slot = 'Head',  Jobs = { 'All' }, Stats = { CookingSkill = 1 } },   -- tops the hq ladder
     { Name = 'Chefs Ring',        Id = 90021, Level = 1,  Slot = 'Ring',  Jobs = { 'All' }, Stats = { AntiHQCooking = 1 } },  -- nq only; BLOCKED from hq
     { Name = 'Bonze Cape',        Id = 90022, Level = 1,  Slot = 'Back',  Jobs = { 'All' }, Stats = { SynthSkillGain = 4 } }, -- skillup goal + hq/nq filler
+    { Name = 'Craftsmans Restraint', Id = 90023, Level = 1, Slot = 'Ring', Jobs = { 'All' }, Stats = { SynthNQOnly = 1, SynthSuccessRate = 1 } }, -- NQ in every craft: anti 1 for all eight, nqOnly; BLOCKED from hq
     -- Fishing ladders -------------------------------------------------------
     { Name = 'Fishermans Tunica', Id = 90040, Level = 1,  Slot = 'Body',  Jobs = { 'All' }, Stats = { FishingSkill = 1 } },
     { Name = 'Halieutica',        Id = 90041, Level = 49, Slot = 'Main',  Jobs = { 'All' }, Stats = { FishingSkill = 2 } },   -- fishing weapon rides the Main fish ladder

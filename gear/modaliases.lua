@@ -366,6 +366,7 @@ return {
     SYNTH_ANTI_HQ_WOODWORKING = 'AntiHQWoodworking',
     SYNTH_HQ_RATE = 'SynthHQRate',
     SYNTH_MATERIAL_LOSS = 'SynthMaterialLoss',
+    SYNTH_NQ_ONLY = 'SynthNQOnly',
     SYNTH_SKILL_GAIN = 'SynthSkillGain',
     SYNTH_SUCCESS_RATE = 'SynthSuccessRate',
     SYNTH_SUCCESS_RATE_ALCHEMY = 'SynthSuccessAlchemy',
