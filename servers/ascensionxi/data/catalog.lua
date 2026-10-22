@@ -95325,7 +95325,7 @@ return {
                 STR = 5,
                 VIT = 5,
                 Accuracy = 6,
-                RESONANCE_DURATION = 15,
+                ResonanceDuration = 15,
             }
         },
         MercySomen = {
@@ -104266,7 +104266,7 @@ return {
                 Accuracy = 4,
                 Enmity = 3,
                 PDT = -2,
-                DEFENDER_CURE_RECEIVED = 5,
+                DefenderCureReceived = 5,
             }
         },
         WayfarerCirclet = {
@@ -120088,7 +120088,7 @@ return {
                 Haste = 4,
                 StoreTP = 5,
                 Enmity = 3,
-                COLLABORATOR_SHARE = 4,
+                CollaboratorShare = 4,
             }
         },
         AssaultBrstplate = {
@@ -126052,7 +126052,7 @@ return {
                 DEX = 4,
                 Accuracy = 10,
                 Attack = 12,
-                UNBROKEN_RHYTHM_DURATION = 5,
+                UnbrokenRhythmDuration = 5,
             }
         },
         EtoileCasaque_1 = {
@@ -133797,7 +133797,7 @@ return {
                 Accuracy = 5,
                 Haste = 2,
                 StoreTP = 2,
-                FOCUS_DURATION = 15,
+                FocusDuration = 15,
             }
         },
         MenetriersAlb = {
@@ -140173,7 +140173,7 @@ return {
                 Enmity = -2,
                 Refresh = 1,
                 ElementalMagicSkill = 5,
-                TWIN_BURST_BURST_BONUS = 5,
+                TwinBurstBonus = 5,
             }
         },
         SouvCuirass_1 = {

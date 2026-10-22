@@ -11467,10 +11467,16 @@ added + run the scripts."
   `tests/stance_sets.lua` now holds the RDM table equal to the pack's
   generated latent 30000 rows both ways, and fails on a row at any other
   power. Five mutations went red.
-- **Left for Henrik:** the six ability modifiers #1022 added (30011-30016,
-  e.g. Defender's Cure received on the Warrior's Mask) reach the catalog under
-  their raw names and show in the Misc section. Composure-only stats (latent
-  30001) have no Set Type option. Warrior's Berserk table has Razor Axe only,
+- **#1022's six ability stats get names (`2026.10.22c`).** Modifiers
+  30011-30016 are read when the ability is used. They reached the catalog
+  under raw server names (`FOCUS_DURATION`) in Misc. Henrik approved the
+  labels: Defender Cure Rcv.%, Collaborator %, Resonance Dur., Focus Dur.,
+  U.Rhythm Dur. and Twin Burst%, all in Ability and all weightable. As with
+  #222's `SynthNQOnly`, AXI's `tools/dlac-pack/modtable.py` maps them (in the
+  pin PR, AXI #1040), and `statdefs` and `modaliases` register them.
+  `catalog_stat_mapping` checks 444 aliases.
+- **Left for Henrik:** Composure-only stats (latent 30001) have no Set Type
+  option. Warrior's Berserk table has Razor Axe only,
   not the retail Berserk latents of the War. Calligae +1/+2 and Conqueror. The
   ability picker still lacks module-SQL abilities (Subjugate, Primal Font,
   Power Trip).

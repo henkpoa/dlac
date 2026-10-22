@@ -17,12 +17,22 @@ four Duelist's relic pieces' Focus or Trance stats (#1022, latent 30000), so
 a **Duelist Stance** set counts them. `tests/stance_sets.lua` now fails when
 that table and the pack's latent 30000 rows disagree.
 
+`2026.10.22c` names #1022's six ability modifiers (30011-30016), which had
+reached the catalog under their raw server names. The generator change that
+maps them is in the AXI pin PR (#1040, `tools/dlac-pack/modtable.py`). Six
+records change one key each:
+
+| Piece | Catalog key | Label |
+|---|---|---|
+| Warrior's Mask | `DefenderCureReceived` 5 | Defender Cure Rcv.% |
+| Assassin's Vest | `CollaboratorShare` 4 | Collaborator % |
+| Melee Crown | `ResonanceDuration` 15 | Resonance Dur. |
+| Melee Cyclas | `FocusDuration` 15 | Focus Dur. |
+| Etoile Casaque | `UnbrokenRhythmDuration` 5 | U.Rhythm Dur. |
+| Sorcerer's Coat | `TwinBurstBonus` 5 | Twin Burst% |
+
 Not mapped, so not in any weighted build:
 
-- #1022's six ability modifiers (30011-30016: Defender's Cure received,
-  Collaborator's share, Resonance, Focus and Unbroken Rhythm durations, Twin
-  Burst's bonus). They are in the catalog under their raw names, and the gear
-  views show them in **Misc**.
 - Composure-only stats (latent 30001, seven Warlock's and Duelist's rows).
   Like other latents, they stay dormant.
 - `abilities.lua` reads stock `sql/abilities.sql` only, so the ability picker
