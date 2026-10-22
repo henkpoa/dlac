@@ -20,7 +20,7 @@ _Avoid_: level-scaling set, scaling set
 The plain slot→item table produced from a Dynamic Set by `rebuildSets` — what LuaAshitacast actually equips.
 
 **Set Type**:
-What a set is *for*, picked per job and set in the Sets tab (stored beside its weights, `gearoptim` `typePerSet`), so behaviour rules can read it (2026-10-18). **Normal** changes nothing. **1-Hit WS** marks a weapon skill set: at a weapon skill, AutoAcc counts the +100 ACC the server adds to the first melee hit. The **stance** type (named per job by the server pack: RDM *Duelist Stance*, WAR *Berserk*) plans the set with that stance up, so its gear bonuses join Stats and weighted builds; it never uses the stance. It replaced the Stance Set checkbox, whose ticked sets load as the stance type.
+What a set is *for*, picked per job and set in the Sets tab (stored beside its weights, `gearoptim` `typePerSet`), so behaviour rules can read it (2026-10-18). **Normal** changes nothing. **1-Hit WS** marks a weapon skill set: at a weapon skill, AutoAcc counts the +100 ACC the server adds to the first melee hit. The **stance** type (named per job by the server pack: RDM *Duelist Stance*, WAR *Berserk*) plans the set with that stance up, so its gear bonuses join Stats and weighted builds; it never uses the stance. **Composure** (2026-10-22) does the same for Red Mage's support stance; the menu offers it only on jobs whose pack has Composure gear (`stances.lua`). The Set Type replaced the Stance Set checkbox, whose ticked sets load as the stance type.
 _Avoid_: set kind, set mode (a Mode is a player switch), stance set (the retired checkbox)
 
 **Ammo ladder**:

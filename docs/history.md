@@ -11475,8 +11475,21 @@ added + run the scripts."
   #222's `SynthNQOnly`, AXI's `tools/dlac-pack/modtable.py` maps them (in the
   pin PR, AXI #1040), and `statdefs` and `modaliases` register them.
   `catalog_stat_mapping` checks 444 aliases.
-- **Left for Henrik:** Composure-only stats (latent 30001) have no Set Type
-  option. Warrior's Berserk table has Razor Axe only,
+- **Set Type Composure (`2026.10.22d`).** On AscensionXI, Composure is Red
+  Mage's support stance (since AXI 10-06), and Composure, Focus and Trance
+  replace each other. #1022 moved seven stats to plain Composure (latent
+  30001, power 1): the Warlock's Tabard's and Duelist's Chapeau's Enfeebling
+  +15, Healing +10 on the Warlock's Tights and Duelist's Tabard, Conserve MP
+  +3 and +5 on the boots, and INT +5 on the Duelist's Tights. Prod's 17c
+  counted the Tabard's +15 as a plain stat, so this release would have made
+  enfeebling builds undervalue it. Henrik: "make it visible to applicable
+  jobs, this time, RDM then." `stances.lua` now keys each job's tables by
+  Set Type id (`stance`, `composure`), and the menu offers a stance type only
+  where the pack has its table. Red Mage reads Normal / 1-Hit WS / Composure
+  / Duelist Stance. The legacy `stancePerSet` block still lists `stance`
+  sets only, so an older dlac loads a Composure set as Normal, never as
+  Duelist Stance. The parity check covers both tables. Eleven mutations went
+  red. Warrior's Berserk table has Razor Axe only,
   not the retail Berserk latents of the War. Calligae +1/+2 and Conqueror. The
   ability picker still lacks module-SQL abilities (Subjugate, Primal Font,
   Power Trip).

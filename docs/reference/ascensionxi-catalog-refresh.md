@@ -31,10 +31,12 @@ records change one key each:
 | Etoile Casaque | `UnbrokenRhythmDuration` 5 | U.Rhythm Dur. |
 | Sorcerer's Coat | `TwinBurstBonus` 5 | Twin Burst% |
 
-Not mapped, so not in any weighted build:
+`2026.10.22d` adds the **Composure** Set Type for Red Mage. `stances.lua`
+gains the seven Composure-only rows (latent 30001, power 1) of the Warlock's
+and Duelist's pieces, and the parity check holds them to the pack too.
 
-- Composure-only stats (latent 30001, seven Warlock's and Duelist's rows).
-  Like other latents, they stay dormant.
+Still not in DLAC:
+
 - `abilities.lua` reads stock `sql/abilities.sql` only, so the ability picker
   doesn't offer module abilities such as #1013's Subjugate, Primal Font and
   Power Trip.
