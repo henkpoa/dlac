@@ -162,7 +162,7 @@ local UNIVERSAL = {
 -- Manifest schema version: bump when autoCommit writes NEW fields. An on-disk
 -- manifest with an older fmtver self-heals (renderAutomations triggers a rescan)
 -- so a dlac update never needs a manual "Rescan owned gear" click.
-local AUTO_FMT = 17;   -- 17: craftItems (every owned craft piece with its per-craft numbers, for the recipe-wide Nexus pick, feature\craftpick);   -- 16: category-specific numeric gathering ladders;   -- 15: choco ladders (slotKey -> best-first rungs scored by ChocoboRidingTime; Main/Neck/Body/Hands/Legs/Feet -- the Chocobo Wand rides Main) for the Chocobo riding-gear automation (issue #95, engine dlac:AutoChoco);   -- 14: mv map (name -> MovementSpeed) + the mpMoveYield setting (movement gear may override batteries while moving);   -- 2: mpBest ladders; 3: MP level-effective; 4: staves/obis job-checked; 5: craft ladders; 6: skill-up fillers in hq/nq; 7: helm ladders + hat map; 8: fish ladders; 9: oneiros grip + mpMerits; 10: universals ladder; 11: Refresh rides mp/mpBest (rf map + rung rf); 12: AUGMENTS counted -- MP and Refresh deltas from your actual bag copies fold into mp/rf; 13: PAIR HOMES -- ear/ring ladders re-home to the IDLE SET's declared positions (Default rule matching status=Idle; the MaxMP panel picker ALWAYS overrides detection) so the engine never relocates a piece across its pair
+local AUTO_FMT = 18;   -- 18: craftItems nqOnly (Craftsman's Restraint, SynthNQOnly: Nexus's NQ only wears it; blocks HQ in every craft);   -- 17: craftItems (every owned craft piece with its per-craft numbers, for the recipe-wide Nexus pick, feature\craftpick);   -- 16: category-specific numeric gathering ladders;   -- 15: choco ladders (slotKey -> best-first rungs scored by ChocoboRidingTime; Main/Neck/Body/Hands/Legs/Feet -- the Chocobo Wand rides Main) for the Chocobo riding-gear automation (issue #95, engine dlac:AutoChoco);   -- 14: mv map (name -> MovementSpeed) + the mpMoveYield setting (movement gear may override batteries while moving);   -- 2: mpBest ladders; 3: MP level-effective; 4: staves/obis job-checked; 5: craft ladders; 6: skill-up fillers in hq/nq; 7: helm ladders + hat map; 8: fish ladders; 9: oneiros grip + mpMerits; 10: universals ladder; 11: Refresh rides mp/mpBest (rf map + rung rf); 12: AUGMENTS counted -- MP and Refresh deltas from your actual bag copies fold into mp/rf; 13: PAIR HOMES -- ear/ring ladders re-home to the IDLE SET's declared positions (Default rule matching status=Idle; the MaxMP panel picker ALWAYS overrides detection) so the engine never relocates a piece across its pair
 
 local auto = { data = nil, loadedFor = nil, status = '' };
 
@@ -480,6 +480,9 @@ local function autoCommit()
                 local gain  = tonumber(st.SynthSkillGain) or 0;
                 local mat   = tonumber(st.SynthMaterialLoss) or 0;
                 local consv = tonumber(st.ConserveIngredient) or 0;
+                -- Craftsman's Restraint: NQ in every craft, so it blocks HQ
+                -- for each of them like a guild ring does for its own.
+                local nqOnly = (tonumber(st.SynthNQOnly) or 0) > 0;
                 local dup = (sl == 'Ear' or sl == 'Ring') and type(counts) == 'table'
                             and rec.Id ~= nil and (counts[rec.Id] or 0) >= 2;
                 if not seenItem[rec.Name] then
@@ -487,7 +490,7 @@ local function autoCommit()
                                  n = (type(counts) == 'table' and rec.Id ~= nil and counts[rec.Id]) or 1,
                                  sk = {}, anti = {}, sb = {},
                                  hqr = hqr, succ = succ, gain = gain, mat = mat, consv = consv,
-                                 twoHand = false, shield = false };
+                                 twoHand = false, shield = false, nqOnly = nqOnly };
                     -- The hands, for craftpick's no-fight rule: a two-handed or
                     -- hand-to-hand Main cannot keep a shield beside it, and only
                     -- a shield is a Sub the pick may wear (utils' pairing facts).
@@ -501,10 +504,10 @@ local function autoCommit()
                             ci.shield = ci.shield or require('dlac\\utils').classifySub(rec) == 'Shield';
                         end);
                     end
-                    local any = hqr > 0 or succ > 0 or gain > 0 or mat > 0 or consv > 0;
+                    local any = hqr > 0 or succ > 0 or gain > 0 or mat > 0 or consv > 0 or nqOnly;
                     for _, cr in ipairs(CRAFTS) do
                         local v = tonumber(st[cr .. 'Skill']) or 0;
-                        local a = tonumber(st['AntiHQ' .. cr]) or 0;
+                        local a = nqOnly and 1 or (tonumber(st['AntiHQ' .. cr]) or 0);
                         local b = tonumber(st['SynthSuccess' .. cr]) or 0;
                         if v ~= 0 then ci.sk[cr] = v; any = true; end
                         if a ~= 0 then ci.anti[cr] = a; any = true; end
@@ -525,7 +528,7 @@ local function autoCommit()
                 local gainFill = math.floor(gain * 0.3);
                 for _, cr in ipairs(CRAFTS) do
                     local skill = tonumber(st[cr .. 'Skill']) or 0;
-                    local anti  = tonumber(st['AntiHQ' .. cr]) or 0;
+                    local anti  = nqOnly and 1 or (tonumber(st['AntiHQ' .. cr]) or 0);
                     -- hq (Henrik): "prioritize Skill gear to break tiers" --
                     -- craft skill first, HQ+ second; anti-HQ BLOCKS the goal;
                     -- skill-up items fill empty slots (gainFill, always < skill).
@@ -535,7 +538,9 @@ local function autoCommit()
                     local nqScore = anti * 100 + skill * 3 + succ * 2 + mat + consv + gainFill;
                     -- skillup: "skill up items over skill+" -- SynthSkillGain
                     -- gear first, raw craft skill second.
-                    local suScore = gain * 10 + skill * 2 + succ;
+                    -- An NQ-only piece never fills it: skilling up must not
+                    -- quietly turn every HQ into NQ.
+                    local suScore = nqOnly and 0 or (gain * 10 + skill * 2 + succ);
                     for goal, score in pairs({ hq = hqScore, nq = nqScore, skillup = suScore }) do
                         if score > 0 then
                             bySlot[sl] = bySlot[sl] or {};
@@ -905,9 +910,10 @@ local function autoCommit()
     L[#L + 1] = '    craftItems = {';
     for _, ci in ipairs(craftItems) do
         L[#L + 1] = string.format('        { name = %q, slot = %q, level = %d, n = %d, sk = %s, anti = %s, sb = %s, '
-            .. 'hqr = %.14g, succ = %.14g, gain = %.14g, mat = %.14g, consv = %.14g, twoHand = %s, shield = %s },',
+            .. 'hqr = %.14g, succ = %.14g, gain = %.14g, mat = %.14g, consv = %.14g, twoHand = %s, shield = %s, nqOnly = %s },',
             ci.name, ci.slot, ci.level, ci.n, craftMap(ci.sk), craftMap(ci.anti), craftMap(ci.sb),
-            ci.hqr, ci.succ, ci.gain, ci.mat, ci.consv, tostring(ci.twoHand == true), tostring(ci.shield == true));
+            ci.hqr, ci.succ, ci.gain, ci.mat, ci.consv, tostring(ci.twoHand == true), tostring(ci.shield == true),
+            tostring(ci.nqOnly == true));
     end
     L[#L + 1] = '    },';
     -- helm ladders: slotKey -> best-first rungs (Surveyor-major), plus the

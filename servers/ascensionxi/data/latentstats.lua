@@ -275,6 +275,7 @@ return {
     [12642] = {
         { stat = "Accuracy", add = 5, cond = "RDM_STANCE_AT_LEAST", param = 2 },
         { stat = "Attack", add = 5, cond = "RDM_STANCE_AT_LEAST", param = 2 },
+        { stat = "EnfeeblingMagicSkill", add = 15, cond = "RDM_STANCE_EXACTLY", param = 1 },
     },
     [12650] = {
         { stat = "DarkResistance", add = 20, cond = "PET_ID", param = 7 },
@@ -897,6 +898,7 @@ return {
     },
     [14093] = {
         { stat = "Accuracy", add = 6, cond = "RDM_STANCE_AT_LEAST", param = 2 },
+        { stat = "ConserveMP", add = 3, cond = "RDM_STANCE_EXACTLY", param = 1 },
     },
     [14101] = {
         { stat = "MovementSpeed", add = 24, cond = "TIME_OF_DAY", param = 1 },
@@ -970,6 +972,7 @@ return {
     [14218] = {
         { stat = "Accuracy", add = 4, cond = "RDM_STANCE_AT_LEAST", param = 2 },
         { stat = "Attack", add = 6, cond = "RDM_STANCE_AT_LEAST", param = 2 },
+        { stat = "HealingMagicSkill", add = 10, cond = "RDM_STANCE_EXACTLY", param = 1 },
     },
     [14226] = {
         { stat = "Evasion", add = 10, cond = "TIME_OF_DAY", param = 1 },
@@ -1373,11 +1376,19 @@ return {
     [15069] = {
         { stat = "ShieldBash", add = 200, cond = "IN_DYNAMIS", param = 0 },
     },
+    [15076] = {
+        { stat = "EnfeeblingMagicSkill", add = 15, cond = "RDM_STANCE_EXACTLY", param = 1 },
+        { stat = "EnhancingMagicSkill", add = 15, cond = "RDM_STANCE_AT_LEAST", param = 2 },
+    },
     [15084] = {
         { stat = "ParryingSkill", add = 10, cond = "TIME_OF_DAY", param = 1 },
     },
     [15087] = {
-        { stat = "Evasion", add = 10, cond = "STATUS_EFFECT_ACTIVE", param = 58 },
+        { stat = "Counter", add = 5, cond = "STATUS_EFFECT_ACTIVE", param = 58 },
+    },
+    [15091] = {
+        { stat = "ElementalMagicSkill", add = 10, cond = "RDM_STANCE_AT_LEAST", param = 2 },
+        { stat = "HealingMagicSkill", add = 10, cond = "RDM_STANCE_EXACTLY", param = 1 },
     },
     [15096] = {
         { stat = "AGI", add = 8, cond = "WEAPON_DRAWN", param = 0 },
@@ -1392,6 +1403,10 @@ return {
         { stat = "Haste", add = 4, cond = "TIME_OF_DAY", param = 1 },
         { stat = "STR", add = 12, cond = "TIME_OF_DAY", param = 1 },
     },
+    [15121] = {
+        { stat = "ElementalMagicSkill", add = 10, cond = "RDM_STANCE_AT_LEAST", param = 2 },
+        { stat = "INT", add = 5, cond = "RDM_STANCE_EXACTLY", param = 1 },
+    },
     [15126] = {
         { stat = "AGI", add = -8, cond = "WEAPON_SHEATHED", param = 0 },
         { stat = "CHR", add = 8, cond = "WEAPON_SHEATHED", param = 0 },
@@ -1404,8 +1419,9 @@ return {
     [15129] = {
         { stat = "Evasion", add = 10, cond = "TIME_OF_DAY", param = 1 },
     },
-    [15132] = {
-        { stat = "DEFP", add = 10, cond = "STATUS_EFFECT_ACTIVE", param = 56 },
+    [15136] = {
+        { stat = "ConserveMP", add = 5, cond = "RDM_STANCE_EXACTLY", param = 1 },
+        { stat = "MagicAttackBonus", add = 4, cond = "RDM_STANCE_AT_LEAST", param = 2 },
     },
     [15139] = {
         { stat = "DEFP", add = 10, cond = "STATUS_EFFECT_ACTIVE", param = 64 },

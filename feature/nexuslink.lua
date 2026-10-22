@@ -154,12 +154,13 @@ local function emit(t)
 end
 M._emit = emit;
 
-local function reply(seq, state)
-    emit({ op = 'ready', seq = seq, state = state });
+-- `nq` ('pick' or 'missing') answers a next that asked for NQ only.
+local function reply(seq, state, nq)
+    emit({ op = 'ready', seq = seq, state = state, nq = nq });
 end
 
 local function hello()
-    emit({ op = 'hello', v = M.PROTOCOL, follow = (io_('follow') ~= false), preview = true });
+    emit({ op = 'hello', v = M.PROTOCOL, follow = (io_('follow') ~= false), preview = true, nq = true });
     M._hello = true;
 end
 
@@ -191,12 +192,18 @@ function M.missing(picks)
 end
 
 -- The pieces `next` would pick for `req`: the one place both messages read
--- their inputs, so a preview always shows what the lock will wear.
-function M.pickFor(req, items)
+-- their inputs, so a preview always shows what the lock will wear. `nq`:
+-- Nexus's NQ only (the message's nq=1), which puts Craftsman's Restraint on.
+function M.pickFor(req, items, nq)
     local skills = {};
     for c in pairs(req) do skills[c] = io_('skill', c); end
     return craftpick.pick(items or io_('items') or {}, req, skills,
-        { goal = io_('goal'), level = io_('level') });
+        { goal = io_('goal'), level = io_('level'), nq = nq == true });
+end
+
+-- A message's nq=1: Nexus wants this synth NQ (hq-tier-cap.md in AscensionXI).
+local function wantsNq(msg)
+    return msg.nq == '1' or msg.nq == 'true';
 end
 
 -- One `next` message: pick, lock, and start waiting for the gear.
@@ -213,10 +220,11 @@ function M.handleNext(msg, now)
     end
     local req = M.crafts(msg.crafts);
     if next(req) == nil then reply(seq, 'none'); return; end
-    local picks, info = M.pickFor(req);
+    local nq = wantsNq(msg);
+    local picks, info = M.pickFor(req, nil, nq);
     if next(picks) == nil then
         M.clear('no gear');
-        reply(seq, 'none');
+        reply(seq, 'none', nq and info.nq or nil);
         return;
     end
     local lock = M._lock;
@@ -234,7 +242,7 @@ function M.handleNext(msg, now)
         };
         M._lastNote = nil;
     end
-    M._pending = { seq = seq, deadline = now + M.CONFIRM_S };
+    M._pending = { seq = seq, deadline = now + M.CONFIRM_S, nq = nq and info.nq or nil };
 end
 
 local function addRow(d, row, sign)
@@ -305,7 +313,7 @@ function M.handlePreview(msg)
     local req = M.crafts(msg.crafts);
     local items = io_('items') or {};
     local picks = {};
-    if next(req) ~= nil then picks = M.pickFor(req, items); end
+    if next(req) ~= nil then picks = M.pickFor(req, items, wantsNq(msg)); end
     if next(picks) == nil then
         out.state = 'none';
         emit(out);
@@ -329,11 +337,11 @@ function M.checkPending(now)
     local miss = M.missing(lock.picks);
     if #miss == 0 then
         lock.settled = true;
-        reply(p.seq, 'worn');
+        reply(p.seq, 'worn', p.nq);
         M._pending = nil;
     elseif lock.settled or now >= p.deadline then
         lock.settled = true;
-        reply(p.seq, 'partial');
+        reply(p.seq, 'partial', p.nq);
         M._pending = nil;
     end
 end

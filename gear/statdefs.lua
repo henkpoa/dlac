@@ -375,6 +375,9 @@ M.list = {
     { key = 'AntiHQBonecraft',   label = 'Anti-HQ Bone',     section = 'Misc' },
     { key = 'AntiHQAlchemy',     label = 'Anti-HQ Alch.',    section = 'Misc' },
     { key = 'AntiHQCooking',     label = 'Anti-HQ Cook',     section = 'Misc' },
+    -- AscensionXI's Craftsman's Restraint: every successful synth is NQ, in
+    -- every craft (the server's SYNTH_NQ_ONLY). Nexus's NQ only asks for it.
+    { key = 'SynthNQOnly',       label = 'NQ Only',          section = 'Misc' },
     { key = 'Delay',         label = 'Delay',    section = 'Misc', lowerBetter = true },  -- weapon delay; rarely weighted
     { key = 'TreasureHunter', label = 'TH',      section = 'Misc' },   -- THF
     { key = 'Steal',          label = 'Steal',   section = 'Misc' },   -- THF
