@@ -82434,11 +82434,13 @@ return {
             Jobs = {"THF"},
             Type = "Head",
             Stats = {
-                DEF = 24,
+                DEF = 25,
                 HP = 16,
+                STR = 5,
                 DEX = 5,
-                Enmity = 2,
+                Attack = 12,
                 MugEffect = 1,
+                TreasureHunter = 1,
             }
         },
         AssimKeffiyeh = {
@@ -85749,9 +85751,9 @@ return {
             Stats = {
                 DEF = 24,
                 MP = 25,
-                VIT = 4,
-                Enmity = -4,
-                ResistSilence = 1,
+                Enmity = -3,
+                FastCast = 5,
+                CurePotency = 5,
             }
         },
         ClrCap_1 = {
@@ -87014,11 +87016,11 @@ return {
             Jobs = {"RDM"},
             Type = "Head",
             Stats = {
-                DEF = 24,
-                MP = 14,
+                DEF = 25,
+                MP = 20,
+                INT = 4,
+                MND = 5,
                 Refresh = 1,
-                EnfeeblingMagicSkill = 15,
-                WindResistance = 10,
             }
         },
         DuskMask = {
@@ -88103,6 +88105,7 @@ return {
                 DEF = 18,
                 HP = 20,
                 STR = 4,
+                Accuracy = 3,
                 Attack = 5,
                 WaltzPotency = 5,
             }
@@ -95317,11 +95320,12 @@ return {
             Jobs = {"MNK"},
             Type = "Head",
             Stats = {
-                DEF = 23,
-                HPP = 5,
+                DEF = 24,
+                HPP = 6,
                 STR = 5,
-                Enmity = -3,
-                SubtleBlow = 6,
+                VIT = 5,
+                Accuracy = 6,
+                RESONANCE_DURATION = 15,
             }
         },
         MercySomen = {
@@ -101359,11 +101363,12 @@ return {
             Jobs = {"BLM"},
             Type = "Head",
             Stats = {
-                DEF = 23,
-                MP = 23,
+                DEF = 24,
+                MP = 25,
+                INT = 5,
                 Enmity = -2,
                 ElementalMagicSkill = 10,
-                EnfeeblingMagicSkill = 5,
+                OccultAcumen = 25,
             }
         },
         SouvSchaller_1 = {
@@ -104255,11 +104260,13 @@ return {
             Jobs = {"WAR"},
             Type = "Head",
             Stats = {
-                DEF = 28,
-                DEX = 5,
-                Enmity = 1,
-                ParryingSkill = 5,
-                WarcryDuration = 10,
+                DEF = 30,
+                HP = 30,
+                VIT = 6,
+                Accuracy = 4,
+                Enmity = 3,
+                PDT = -2,
+                DEFENDER_CURE_RECEIVED = 5,
             }
         },
         WayfarerCirclet = {
@@ -120076,11 +120083,12 @@ return {
             Jobs = {"THF"},
             Type = "Body",
             Stats = {
-                DEF = 45,
+                DEF = 46,
                 HP = 22,
-                AGI = 4,
+                Haste = 4,
+                StoreTP = 5,
                 Enmity = 3,
-                CriticalHitRate = 1,
+                COLLABORATOR_SHARE = 4,
             }
         },
         AssaultBrstplate = {
@@ -123377,8 +123385,8 @@ return {
             Jobs = {"WHM"},
             Type = "Body",
             Stats = {
-                DEF = 42,
-                MP = 24,
+                DEF = 43,
+                MP = 26,
                 Enmity = -2,
                 Refresh = 1,
                 RegenPotency = 12,
@@ -124901,11 +124909,10 @@ return {
             Jobs = {"RDM"},
             Type = "Body",
             Stats = {
-                DEF = 45,
-                MP = 24,
-                AGI = 4,
+                DEF = 46,
+                MP = 26,
+                MND = 4,
                 FastCast = 10,
-                HealingMagicSkill = 10,
             }
         },
         DuendeCotehardie = {
@@ -126045,7 +126052,7 @@ return {
                 DEX = 4,
                 Accuracy = 10,
                 Attack = 12,
-                VFlourishMACC = 20,
+                UNBROKEN_RHYTHM_DURATION = 5,
             }
         },
         EtoileCasaque_1 = {
@@ -133785,11 +133792,12 @@ return {
             Jobs = {"MNK"},
             Type = "Body",
             Stats = {
-                DEF = 44,
-                HPP = 5,
-                VIT = 5,
-                Regen = 1,
-                HHP = 6,
+                DEF = 45,
+                HPP = 6,
+                Accuracy = 5,
+                Haste = 2,
+                StoreTP = 2,
+                FOCUS_DURATION = 15,
             }
         },
         MenetriersAlb = {
@@ -140160,11 +140168,12 @@ return {
             Jobs = {"BLM"},
             Type = "Body",
             Stats = {
-                DEF = 41,
-                MP = 12,
+                DEF = 42,
+                MP = 15,
                 Enmity = -2,
                 Refresh = 1,
                 ElementalMagicSkill = 5,
+                TWIN_BURST_BURST_BONUS = 5,
             }
         },
         SouvCuirass_1 = {
@@ -143234,7 +143243,6 @@ return {
                 MP = 25,
                 INT = 4,
                 MND = 4,
-                EnfeeblingMagicSkill = 15,
             }
         },
         WarriorsLorica = {
@@ -143245,10 +143253,12 @@ return {
             Jobs = {"WAR"},
             Type = "Body",
             Stats = {
-                DEF = 50,
-                HP = 10,
-                Attack = 10,
-                Enmity = 4,
+                DEF = 51,
+                HP = 30,
+                VIT = 8,
+                Accuracy = 8,
+                Enmity = 10,
+                PDT = -3,
             }
         },
         WayfarerRobe = {
@@ -146101,11 +146111,12 @@ return {
             Jobs = {"THF"},
             Type = "Hands",
             Stats = {
-                DEF = 16,
+                DEF = 17,
                 HP = 7,
-                CHR = 5,
-                Enmity = 3,
-                TreasureHunter = 1,
+                STR = 4,
+                DEX = 3,
+                Accuracy = 4,
+                CriticalHitRate = 1,
             }
         },
         AssimBazu = {
@@ -149028,8 +149039,8 @@ return {
             Jobs = {"WHM"},
             Type = "Hands",
             Stats = {
-                DEF = 16,
-                MP = 20,
+                DEF = 17,
+                MP = 22,
                 Enmity = -3,
                 EnfeeblingMagicSkill = 15,
             }
@@ -150250,7 +150261,7 @@ return {
             Type = "Hands",
             Stats = {
                 DEF = 17,
-                MP = 18,
+                MP = 20,
                 INT = 4,
                 MagicDefenseBonus = 2,
                 EnhancingMagicSkill = 15,
@@ -157714,10 +157725,11 @@ return {
             Jobs = {"MNK"},
             Type = "Hands",
             Stats = {
-                DEF = 15,
-                HPP = 3,
+                DEF = 16,
+                HPP = 4,
+                STR = 3,
+                VIT = 5,
                 Attack = 16,
-                SubtleBlow = 4,
                 ChakraPotency = 30,
                 ChakraRemoval = 2,
             }
@@ -163038,9 +163050,10 @@ return {
             Jobs = {"BLM"},
             Type = "Hands",
             Stats = {
-                DEF = 15,
+                DEF = 16,
                 MP = 24,
                 Enmity = -2,
+                ConserveMP = 5,
                 MagicBurstDamage = 5,
                 DarkMagicSkill = 10,
             }
@@ -165732,11 +165745,12 @@ return {
             Jobs = {"WAR"},
             Type = "Hands",
             Stats = {
-                DEF = 22,
+                DEF = 23,
                 HP = 20,
-                VIT = 5,
-                Attack = 12,
-                Enmity = 2,
+                VIT = 6,
+                Accuracy = 6,
+                Enmity = 4,
+                PDT = -2,
             }
         },
         WaterMitts = {
@@ -167920,6 +167934,17 @@ return {
             Type = "Ring",
             Stats = {
                 SynthHQRate = 1,
+            }
+        },
+        CraftsmansRestraint = {
+            Name = "Craftsman's Restraint",
+            Level = 1,
+            Id = 26580,
+            Jobs = {"All"},
+            Type = "Ring",
+            Stats = {
+                SynthNQOnly = 1,
+                SynthSuccessRate = 1,
             }
         },
         CrepuscularRing = {
@@ -186240,9 +186265,11 @@ return {
             Jobs = {"THF"},
             Type = "Legs",
             Stats = {
-                DEF = 34,
+                DEF = 35,
                 HP = 19,
-                Enmity = 4,
+                STR = 3,
+                Accuracy = 3,
+                Haste = 3,
                 Gilfinder = 1,
                 Steal = 5,
             }
@@ -189117,8 +189144,8 @@ return {
             Jobs = {"WHM"},
             Type = "Legs",
             Stats = {
-                DEF = 31,
-                MP = 17,
+                DEF = 32,
+                MP = 18,
                 Enmity = -2,
                 BarspellPotency = 20,
                 HealingMagicSkill = 15,
@@ -190461,11 +190488,9 @@ return {
             Jobs = {"RDM"},
             Type = "Legs",
             Stats = {
-                DEF = 33,
-                MP = 16,
-                DEX = 5,
-                ElementalMagicSkill = 10,
-                SpikesDamageBonus = 20,
+                DEF = 34,
+                MP = 18,
+                MND = 5,
             }
         },
         DuneBoxers = {
@@ -197809,10 +197834,10 @@ return {
             Jobs = {"MNK"},
             Type = "Legs",
             Stats = {
-                DEF = 31,
-                HPP = 6,
-                AGI = 4,
-                SubtleBlow = 5,
+                DEF = 32,
+                HPP = 7,
+                STR = 4,
+                VIT = 4,
                 KickAttackRate = 5,
             }
         },
@@ -203101,11 +203126,11 @@ return {
             Jobs = {"BLM"},
             Type = "Legs",
             Stats = {
-                DEF = 30,
-                MP = 13,
-                INT = 3,
+                DEF = 31,
+                MP = 20,
+                INT = 4,
                 Enmity = -2,
-                DayNukeBonus = 5,
+                EnfeeblingMagicSkill = 5,
             }
         },
         SouvDiechlings_1 = {
@@ -205737,7 +205762,6 @@ return {
                 MP = 20,
                 MND = 5,
                 EnhancingMagicSkill = 15,
-                HealingMagicSkill = 10,
             }
         },
         WarriorsCuisses = {
@@ -205748,10 +205772,12 @@ return {
             Jobs = {"WAR"},
             Type = "Legs",
             Stats = {
-                DEF = 39,
-                STR = 5,
+                DEF = 40,
+                HP = 30,
+                VIT = 8,
+                Accuracy = 8,
                 Enmity = 3,
-                DoubleAttack = 1,
+                PDT = -2,
             }
         },
         WayfarerSlops = {
@@ -208510,10 +208536,11 @@ return {
             Jobs = {"THF"},
             Type = "Feet",
             Stats = {
-                DEF = 15,
+                DEF = 16,
                 HP = 15,
-                CHR = 5,
-                Enmity = 2,
+                DEX = 5,
+                AGI = 3,
+                Attack = 8,
                 TripleAttack = 1,
             }
         },
@@ -211193,7 +211220,7 @@ return {
             Type = "Feet",
             Stats = {
                 DEF = 15,
-                MP = 18,
+                MP = 19,
                 MND = 5,
                 Enmity = -1,
                 EnhancingMagicSkill = 10,
@@ -212443,11 +212470,10 @@ return {
             Jobs = {"RDM"},
             Type = "Feet",
             Stats = {
-                DEF = 15,
-                MP = 15,
+                DEF = 16,
+                MP = 16,
+                INT = 4,
                 MND = 4,
-                MagicAttackBonus = 4,
-                EvasionSkill = 5,
             }
         },
         DuneBoots = {
@@ -220006,11 +220032,11 @@ return {
             Jobs = {"MNK"},
             Type = "Feet",
             Stats = {
-                DEF = 15,
-                HPP = 4,
-                DEX = 4,
+                DEF = 16,
+                HPP = 5,
+                VIT = 4,
                 CounterstanceEffect = 10,
-                GuardSkill = 12,
+                GuardSkill = 15,
             }
         },
         MenhitLeggings = {
@@ -225497,8 +225523,9 @@ return {
                 DEF = 14,
                 MP = 18,
                 INT = 2,
+                MagicAttackBonus = 4,
                 Enmity = -1,
-                ConserveMP = 5,
+                ConserveMP = 3,
             }
         },
         SouveranSchuhs = {
@@ -228190,7 +228217,6 @@ return {
                 DEX = 3,
                 INT = 3,
                 MND = 3,
-                ConserveMP = 3,
             }
         },
         WarriorsCalligae = {
@@ -228201,10 +228227,12 @@ return {
             Jobs = {"WAR"},
             Type = "Feet",
             Stats = {
-                DEF = 19,
-                HP = 10,
-                AGI = 5,
-                Enmity = 1,
+                DEF = 20,
+                HP = 20,
+                VIT = 6,
+                Accuracy = 4,
+                Enmity = 2,
+                PDT = -1,
             }
         },
         WayfarerClogs = {

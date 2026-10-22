@@ -5,7 +5,7 @@
 -- higher tier per cast; ties go to the universal. WHETHER it fires is decided
 -- by the set: a dlac:AutoStaff / dlac:AutoObi entry in Main / Waist (Sets tab).
 return {
-    fmtver = 18,
+    fmtver = 19,
     written = "<golden -- normalized>",
     craftGoal = "hq",
     mpMerits = 0,
@@ -60,13 +60,24 @@ return {
             Cooking = { hq = { { name = "Chefs Hat", score = 10, level = 1 } }, nq = { { name = "Chefs Hat", score = 3, level = 1 } }, skillup = { { name = "Chefs Hat", score = 2, level = 1 } } },
         },
         ring1 = {
+            Alchemy = { nq = { { name = "Craftsmans Restraint", score = 102, level = 1 } } },
+            Bonecraft = { nq = { { name = "Craftsmans Restraint", score = 102, level = 1 } } },
+            Clothcraft = { nq = { { name = "Craftsmans Restraint", score = 102, level = 1 } } },
+            Cooking = { nq = { { name = "Craftsmans Restraint", score = 102, level = 1 } } },
+            Goldsmithing = { nq = { { name = "Craftsmans Restraint", score = 102, level = 1 } } },
+            Leathercraft = { nq = { { name = "Craftsmans Restraint", score = 102, level = 1 } } },
+            Smithing = { nq = { { name = "Craftsmans Restraint", score = 102, level = 1 } } },
+            Woodworking = { nq = { { name = "Craftsmans Restraint", score = 102, level = 1 } } },
+        },
+        ring2 = {
             Cooking = { nq = { { name = "Chefs Ring", score = 100, level = 1 } } },
         },
     },
     craftItems = {
-        { name = "Bonze Cape", slot = "back", level = 1, n = 1, sk = {  }, anti = {  }, sb = {  }, hqr = 0, succ = 0, gain = 4, mat = 0, consv = 0, twoHand = false, shield = false },
-        { name = "Chefs Hat", slot = "head", level = 1, n = 1, sk = { Cooking = 1 }, anti = {  }, sb = {  }, hqr = 0, succ = 0, gain = 0, mat = 0, consv = 0, twoHand = false, shield = false },
-        { name = "Chefs Ring", slot = "ring", level = 1, n = 1, sk = {  }, anti = { Cooking = 1 }, sb = {  }, hqr = 0, succ = 0, gain = 0, mat = 0, consv = 0, twoHand = false, shield = false },
+        { name = "Bonze Cape", slot = "back", level = 1, n = 1, sk = {  }, anti = {  }, sb = {  }, hqr = 0, succ = 0, gain = 4, mat = 0, consv = 0, twoHand = false, shield = false, nqOnly = false },
+        { name = "Chefs Hat", slot = "head", level = 1, n = 1, sk = { Cooking = 1 }, anti = {  }, sb = {  }, hqr = 0, succ = 0, gain = 0, mat = 0, consv = 0, twoHand = false, shield = false, nqOnly = false },
+        { name = "Chefs Ring", slot = "ring", level = 1, n = 1, sk = {  }, anti = { Cooking = 1 }, sb = {  }, hqr = 0, succ = 0, gain = 0, mat = 0, consv = 0, twoHand = false, shield = false, nqOnly = false },
+        { name = "Craftsmans Restraint", slot = "ring", level = 1, n = 1, sk = {  }, anti = { Alchemy = 1, Bonecraft = 1, Clothcraft = 1, Cooking = 1, Goldsmithing = 1, Leathercraft = 1, Smithing = 1, Woodworking = 1 }, sb = {  }, hqr = 0, succ = 1, gain = 0, mat = 0, consv = 0, twoHand = false, shield = false, nqOnly = true },
     },
     helm = {
         hats = {

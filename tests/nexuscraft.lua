@@ -28,7 +28,7 @@ local function item(name, slot, t)
     return { name = name, slot = slot, level = t.level or 1, n = t.n or 1, sk = t.sk or {},
              anti = t.anti or {}, sb = t.sb or {}, hqr = t.hqr or 0, succ = t.succ or 0,
              gain = t.gain or 0, mat = t.mat or 0, consv = t.consv or 0,
-             twoHand = t.twoHand, shield = t.shield };
+             twoHand = t.twoHand, shield = t.shield, nqOnly = t.nqOnly };
 end
 local ALL8 = function(n)
     local t = {};
@@ -123,6 +123,44 @@ check('NC6g hq: skill gear that blocks HQ loses to weaker gear that does not', p
 p = pick.pick(GEAR, { Smithing = 30 }, { Smithing = 30 }, { goal = 'skillup', level = 99 });
 check('NC6d skillup at 99: the skill-up ring first', p.Ring1, 'Orvail Ring');
 check('NC6e skillup: the skill-up cape', p.Back, 'Shaper\'s Shawl');
+
+-- NCQ Nexus's NQ only (opts.nq): Craftsman's Restraint (SynthNQOnly; the
+-- manifest gives it anti in every craft) goes in Ring1 before the skill pass,
+-- whatever the player's goal, even when two skill rings want both slots.
+local RESTRAINT = item('Craftsman\'s Restraint', 'ring', { anti = ALL8(1), succ = 1, nqOnly = true });
+local NQGEAR = {
+    item('Smithy\'s Torque', 'neck', { sk = { Smithing = 2 } }),
+    item('Forge Ring', 'ring', { sk = { Smithing = 2 } }),
+    item('Anvil Ring', 'ring', { sk = { Smithing = 1 } }),
+    RESTRAINT,
+};
+p, info = pick.pick(NQGEAR, { Smithing = 30 }, { Smithing = 30 }, { goal = 'hq', level = 75, nq = true });
+check('NCQ1 nq: the Restraint takes Ring1', p.Ring1, 'Craftsman\'s Restraint');
+check('NCQ1b the better skill ring keeps Ring2', p.Ring2, 'Forge Ring');
+check('NCQ1c the skill pass still dresses the neck', p.Neck, 'Smithy\'s Torque');
+check('NCQ1d info says it was picked', info.nq, 'pick');
+check('NCQ1e the margin counts Ring2 and the torque, not the Restraint', info.margins.Smithing, 4);
+p, info = pick.pick(NQGEAR, { Smithing = 30 }, { Smithing = 30 }, { goal = 'hq', level = 75 });
+check('NCQ2 without nq the hq goal never wears it', p.Ring1 ~= 'Craftsman\'s Restraint'
+    and p.Ring2 ~= 'Craftsman\'s Restraint', true);
+check('NCQ2b and info has no nq', info.nq, nil);
+p, info = pick.pick({ item('Smithy\'s Torque', 'neck', { sk = { Smithing = 2 } }) },
+    { Smithing = 30 }, { Smithing = 30 }, { goal = 'hq', level = 75, nq = true });
+check('NCQ3 nq without the Restraint: missing', info.nq, 'missing');
+check('NCQ3b the rest is still dressed', p.Neck, 'Smithy\'s Torque');
+p = pick.pick({ RESTRAINT, item('Orvail Ring', 'ring', { gain = 5 }) },
+    { Cooking = 30, Alchemy = 20 }, { Cooking = 40, Alchemy = 30 }, { goal = 'skillup', level = 99, nq = true });
+check('NCQ4 nq overrides a skillup goal and covers every craft', p.Ring1, 'Craftsman\'s Restraint');
+p = pick.pick({ RESTRAINT }, { Cooking = 30 }, { Cooking = 40 }, { goal = 'skillup', level = 99 });
+check('NCQ5 skillup without nq: never the Restraint for its +1% success', p.Ring1, nil);
+p = pick.pick({ RESTRAINT }, { Cooking = 30 }, { Cooking = 40 }, { goal = 'nq', level = 99 });
+check('NCQ6 the player\'s own nq goal may wear it', p.Ring1, 'Craftsman\'s Restraint');
+-- One skill ring: the skill pass must leave Ring1 to the Restraint and put
+-- the ring in Ring2, not lose it under the Restraint.
+p, info = pick.pick({ RESTRAINT, item('Forge Ring', 'ring', { sk = { Smithing = 2 } }) },
+    { Smithing = 30 }, { Smithing = 30 }, { goal = 'hq', level = 75, nq = true });
+check('NCQ7 one skill ring goes to Ring2', p.Ring2, 'Forge Ring');
+check('NCQ7b and counts', info.margins.Smithing, 2);
 
 -- NC7 a ring owned once fills one ring slot; owned twice, both.
 local RINGS = { item('Craftmaster\'s Ring', 'ring', { hqr = 1 }) };
@@ -605,6 +643,48 @@ check('NL22 the scythe\'s +9 comes off with the shield\'s +3 on', deltas(g and g
 W.worn = { Main = 'High Hammer' };
 g = preview(65, 'Smithing:30', 315);
 check('NL22b a one-handed Main stays on', deltas(g and g.sk).Smithing, 3);
+W.items, W.worn = GEAR, {};
+
+-- NL24-NL27. Nexus's NQ only: nq=1 on next and preview.
+link.clear('test');
+W.follow, W.goal, W.worn = true, 'hq', {};
+W.items = { RESTRAINT, item('Smithy\'s Torque', 'neck', { sk = { Smithing = 2 } }) };
+deliver('op=hello');
+link._pump(400);
+check('NL24 dlac\'s hello says it understands nq', last() and last().nq, '1');
+deliver('op=next;seq=70;crafts=Smithing:30;recipe=7;result=9;nq=1');
+link._pump(401);
+st = link.lockState();
+check('NL25 nq=1 locks the Restraint on', st and st.nexus.Ring1, 'Craftsman\'s Restraint');
+wearAll();
+link._pump(402);
+check('NL25b ready once worn', last() and last().seq, '70');
+check('NL25c and says the Restraint was picked', last() and last().nq, 'pick');
+deliver('op=next;seq=71;crafts=Smithing:30;recipe=7;result=9');
+link._pump(403);
+st = link.lockState();
+check('NL25d the same recipe without nq: the Restraint comes off the lock', st and st.nexus.Ring1, nil);
+check('NL25e a ready without nq carries none', last() and last().op == 'ready' and last().nq or nil, nil);
+W.items = { item('Smithy\'s Torque', 'neck', { sk = { Smithing = 2 } }) };
+W.worn = {};
+deliver('op=next;seq=72;crafts=Smithing:30;nq=1');
+link._pump(404);
+wearAll();
+link._pump(405);
+check('NL26 nq=1 without the Restraint: missing', last() and last().nq, 'missing');
+W.items = { RESTRAINT, item('Smithy\'s Torque', 'neck', { sk = { Smithing = 2 } }) };
+W.worn = {};
+deliver('op=preview;seq=73;crafts=Smithing:30;recipe=1;result=2;desynth=0;nq=1');
+link._pump(406);
+local g27 = nil;
+for i = #sent, 1, -1 do
+    if sent[i].msg and sent[i].msg.op == 'gear' then g27 = sent[i].msg; break; end
+end
+check('NL27 a preview with nq=1 names the Restraint', g27 and sortedPieces(g27.pieces),
+    'Craftsman\'s Restraint|Smithy\'s Torque');
+check('NL27b and its HQ block in every craft', deltas(g27 and g27.anti).Cooking, 1);
+check('NL27c and its success', g27 and g27.succ, '1');
+link.clear('test');
 W.items, W.worn = GEAR, {};
 
 -- NL23 a preview without a number for seq is ignored.

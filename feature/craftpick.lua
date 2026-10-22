@@ -28,6 +28,13 @@
                    material loss, conserve, skill-up gain
            skillup skill-up gain, then success, material loss, Synth HQ
     A piece that blocks HQ for a needed craft is never worn under the hq goal.
+
+    NEXUS'S NQ ONLY (opts.nq). AscensionXI's Max HQ never makes a synth NQ:
+    only wearing Craftsman's Restraint does (its server stat SynthNQOnly;
+    the craftItems row's nqOnly). So an NQ-only synth puts that piece in the
+    first slot of its family (Ring1) BEFORE the skill pass, which then has one
+    ring slot fewer, and the free slots follow the nq goal whatever the
+    player's goal is. info.nq = 'pick' when one is owned, 'missing' when not.
 ]]--
 
 local M = {};
@@ -187,12 +194,15 @@ end
 --   req    -- { Craft = recipe level } for every craft the recipe needs
 --   skills -- { Craft = your level }; a craft missing here counts as exactly
 --             at the recipe's level
---   opts   -- { goal = 'hq'|'nq'|'skillup' (default hq), level = main job level }
+--   opts   -- { goal = 'hq'|'nq'|'skillup' (default hq), level = main job level,
+--               nq = true: Nexus's NQ only, the NQ-only piece goes on first }
 -- Returns picks { Slot = item name } and info { involved, margins = { Craft =
--- margin with the picks on }, weakest, combos, greedy }.
+-- margin with the picks on }, weakest, combos, greedy, nq = 'pick'|'missing'
+-- (only with opts.nq) }.
 function M.pick(items, req, skills, opts)
     opts = opts or {};
     local goal = (opts.goal == 'nq' or opts.goal == 'skillup') and opts.goal or 'hq';
+    if opts.nq then goal = 'nq'; end
     local level = tonumber(opts.level);
     local involved = M.involved(req);
     local picks, info = {}, { involved = involved, margins = {}, combos = 0, greedy = false };
@@ -208,7 +218,10 @@ function M.pick(items, req, skills, opts)
     local byFamily = {};
     local list = {};
     for _, it in ipairs(items or {}) do
-        if usable(it, level) and not (goal == 'hq' and blocksHq(it, involved)) then
+        -- An NQ-only piece (Craftsman's Restraint) is worn only when NQ is
+        -- wanted: never as a skill-up goal's +1% success ring.
+        if usable(it, level) and not (goal == 'hq' and blocksHq(it, involved))
+           and not (it.nqOnly == true and goal ~= 'nq') then
             list[#list + 1] = it;
         end
     end
@@ -218,6 +231,21 @@ function M.pick(items, req, skills, opts)
         byFamily[fam] = byFamily[fam] or {};
         local fl = byFamily[fam];
         fl[#fl + 1] = it;
+    end
+
+    -- Nexus's NQ only: the NQ-only piece (first by name) takes the first slot
+    -- of its family before anything else is chosen.
+    local reserved, reservedSlot = nil, nil;
+    if opts.nq then
+        for _, it in ipairs(list) do
+            if it.nqOnly == true then reserved = it; break; end
+        end
+        if reserved ~= nil then reservedSlot = M.FAMILY[string.lower(reserved.slot)][1]; end
+        info.nq = reserved ~= nil and 'pick' or 'missing';
+    end
+    local function withReserved(used)
+        if reserved ~= nil then used[reserved.name] = (used[reserved.name] or 0) + 1; end
+        return used;
     end
 
     -- Pass 1: the skill slots.
@@ -234,13 +262,15 @@ function M.pick(items, req, skills, opts)
             local paired = #M.FAMILY[fam] > 1;
             if not paired then cs = prune(cs, goal, involved); end
             for _, slot in ipairs(M.FAMILY[fam]) do
-                slots[#slots + 1] = slot;
-                -- A pair slot may also stay empty: its partner may need the
-                -- only copy of the piece.
-                local opts2 = {};
-                for _, c in ipairs(cs) do opts2[#opts2 + 1] = c; end
-                if paired then opts2[#opts2 + 1] = false; end
-                cands[slot] = opts2;
+                if slot ~= reservedSlot then
+                    slots[#slots + 1] = slot;
+                    -- A pair slot may also stay empty: its partner may need the
+                    -- only copy of the piece.
+                    local opts2 = {};
+                    for _, c in ipairs(cs) do opts2[#opts2 + 1] = c; end
+                    if paired then opts2[#opts2 + 1] = false; end
+                    cands[slot] = opts2;
+                end
             end
         end
     end
@@ -296,7 +326,7 @@ function M.pick(items, req, skills, opts)
     local best, bestKey = nil, nil;
     if #slots > 0 and combos <= M.COMBO_LIMIT then
         local sel = {};
-        local used = {};
+        local used = withReserved({});
         local function walk(i)
             if i > #slots then
                 local k = keyOf(sel);
@@ -337,7 +367,7 @@ function M.pick(items, req, skills, opts)
                 if not stuck[i] and (w == nil or m[i] < m[w]) then w = i; end
             end
             if w == nil then break; end
-            local used = counts(best);
+            local used = withReserved(counts(best));
             local pickSlot, pickC = nil, nil;
             for _, slot in ipairs(slots) do
                 if best[slot] == nil then
@@ -365,6 +395,7 @@ function M.pick(items, req, skills, opts)
     for slot, c in pairs(best or {}) do
         if c then chosen[slot] = c.item; end
     end
+    if reserved ~= nil then chosen[reservedSlot] = reserved; end
 
     -- Pass 2: the free slots, for the goal.
     local used = {};

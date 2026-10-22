@@ -119,7 +119,7 @@ Pure; it takes the gear-helper manifest's new `craftItems` rows (fmtver 17:
 every owned, wearable, in-bags piece with craft stats, with its numbers per
 craft), the recipe's requirements, the player's skills, the goal and the level.
 
-The numbers include a piece's latents for its own slot (fmtver 18, 2026-10-19):
+The numbers include a piece's latents for its own slot (fmtver 19, 2026-10-19):
 the builder asks `gearoracle.stats` with `slot`, which adds the item's
 `EQUIPPED_IN_SLOT` latents for that slot. The Debahocho (Cooking +2) and
 Debahocho +1 (+3) need it: their bonus is a main-hand latent, and AscensionXI's
@@ -161,6 +161,34 @@ one-handed one stays. The server takes a worn two-hander or hand-to-hand weapon
 off when a shield goes on (`charutils.cpp` EquipArmor, `SLOT_SUB`), so nothing
 puts it back until the lock ends. Tests NC13, NX9, NX10 (the real dispatch).
 
+## Nexus's NQ only: Craftsman's Restraint (2026-10-21, `2026.10.21a`)
+
+AscensionXI's Max HQ (Nexus 1.2.19; `documentation/custom/hq-tier-cap.md` in
+that repo) caps a synth at HQ1, HQ2 or HQ3 but never makes it NQ. The owner:
+"you need the NQ ring to only get NQs", with Nexus offering NQ only when the
+ring is in the bags and DLAC wearing it. So:
+
+- **The ring's stat.** The server pack maps the ring's `SYNTH_NQ_ONLY` to
+  `SynthNQOnly` (statdefs, modaliases). The automation manifest (fmtver 18)
+  gives a piece with it `nqOnly = true` and an HQ block in all eight crafts,
+  so it is in every craft's nq ladder and in no hq or skillup ladder.
+- **The message.** Nexus adds `nq=1` to `next` and `preview` for an NQ-only
+  synth; dlac's hello says `nq=1` when it understands it. `ready` then carries
+  `nq=pick` (the ring is in the lock) or `nq=missing` (none owned in the
+  equippable bags).
+- **The pick** (`craftpick`, `opts.nq`): the NQ-only piece takes Ring1 before
+  the skill pass, which then has one ring slot fewer, and the free slots
+  follow the nq goal whatever `/dl craft goal` says. Without `nq` an NQ-only
+  piece is worn only under the player's own nq goal: never as a skill-up
+  goal's +1% success ring, never under hq.
+- Nexus checks the ring is actually worn before it sends each NQ-only synth,
+  so a ring dlac could not put on stops the run instead of making an HQ.
+
+Tests: NCQ1-NCQ7 (Ring1 first, the skill ring in Ring2, missing, nq beats a
+skillup goal, no ring under skillup, the player's nq goal, one skill ring),
+NL24-NL27 (hello, the lock, `nq=pick|missing`, the preview), the autogear
+golden's Craftsmans Restraint row. Six ad-hoc mutants, all red.
+
 ## Where the lock lives (`feature/nexuslink.lua`, engine v169)
 
 In memory only. The engine's **Craft** claimant row reads it first
@@ -184,7 +212,7 @@ still its only writer); a file without the key follows.
 `feature/craftpick.lua` (new), `feature/nexuslink.lua` (new),
 `feature/craftwatch.lua` (follow switch, `/dl craft nexus`, status line),
 `dispatch.lua` (Craft row, v169), `ui/automationsui.lua` (`craftItems`,
-fmtver 17, `M.craftItems()`; fmtver 18 asks for slot latents),
+fmtver 17, `M.craftItems()`; fmtver 19 asks for slot latents),
 `gear/gearoracle.lua` (`stats` with `ctx.slot`), `dlac.lua` (load + frame beat),
 `tests/nexuscraft.lua` (new, in CI), `tests/run_tests.lua` (NX, the guard list),
 `tests/golden/autogear.golden`.

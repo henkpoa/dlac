@@ -8700,6 +8700,25 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- SET TYPE (2026-10-18): the Sets tab's dropdown replaced the Stance Set
+-- checkbox. gearui captured the real (nil) imgui at load, so these are source
+-- pins; the menu and the store behind it are tests/stance_sets.lua's.
+-- ---------------------------------------------------------------------------
+(function()
+    local f = io.open('ui/gearui.lua', 'r');
+    check('ST0 gearui is readable', f ~= nil, true);
+    if f == nil then return; end
+    local src = f:read('*a'); f:close();
+    check('ST1 the checkbox is gone', src:find("Checkbox('Stance Set'", 1, true), nil);
+    check('ST2 the dropdown is drawn', src:find("BeginCombo('##settype', curLabel)", 1, true) ~= nil, true);
+    check('ST3 ...from the job\'s menu', src:find('optim.setTypeOptions(job, cur)', 1, true) ~= nil, true);
+    check('ST4 a pick stores the type', src:find('optim.setSetType(o.id)', 1, true) ~= nil, true);
+    check('ST5 ...and saves it',
+        src:find('optim%.setSetType%(o%.id%);%s*if ok then ok, err = optim%.saveWeights%(%); end') ~= nil, true);
+    check('ST6 the combo is closed', src:find('imgui.EndCombo();', 1, true) ~= nil, true);
+end)();
+
+-- ---------------------------------------------------------------------------
 -- verdict
 -- ---------------------------------------------------------------------------
 if #failures > 0 then

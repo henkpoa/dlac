@@ -145,6 +145,54 @@ check('AAD-10 the service is not asked', asked, nil);
 check('AAD-10 and the piece stays', ctx.planOut.Ring1, "Toreador's Ring");
 dispatchM.locks['ring1'] = nil;
 
+-- AAD-11: v173, the Set Type at a weapon skill. A set's name rides its
+-- candidates; the send asks each one's Set Type, and says whether the skill
+-- is a ranged one.
+local savedSets = dispatchM._nativeSets;
+dispatchM._nativeSets = { ['WS Savage'] = { Ring1 = RING }, ['TP'] = { Neck = NECK } };
+ctx = { event = 'Weaponskill', planOut = {}, planAcc = {}, player = TEST_PLAYER,
+        action = { Name = 'Savage Blade', Id = 42 } };
+dispatchM._equipSetByName('TP', ctx);
+dispatchM._equipSetByName('WS Savage', ctx);
+check('AAD-11 the candidate names its set', ctx.planAcc.Ring1 and ctx.planAcc.Ring1.set, 'WS Savage');
+check('AAD-11 each its own', ctx.planAcc.Neck and ctx.planAcc.Neck.set, 'TP');
+check('AAD-11 the name leaves ctx with the set', ctx.setName, nil);
+local savedTypeOf = dispatchM._setTypeOf;
+local typeAsked = {};
+dispatchM._setTypeOf = function(set, c)
+    typeAsked[#typeAsked + 1] = tostring(set) .. '@' .. tostring(c.player.MainJob);
+    return (set == 'WS Savage') and 'ws1' or 'normal';
+end;
+asked, answer = nil, nil;
+dispatchM._autoAccApply('Weaponskill', ctx);
+local bySlot = {};
+for _, c in ipairs(asked and asked.candidates or {}) do bySlot[c.slot] = c; end
+check('AAD-11 the 1-Hit WS set\'s candidate', bySlot.Ring1 and bySlot.Ring1.setType, 'ws1');
+check('AAD-11 the Normal set\'s', bySlot.Neck and bySlot.Neck.setType, 'normal');
+table.sort(typeAsked);
+check('AAD-11 asked by set name and main job', table.concat(typeAsked, ','), 'TP@THF,WS Savage@THF');
+check('AAD-11 a melee weapon skill', asked and asked.rangedWs, false);
+ctx.action = { Name = 'Sidewinder', Id = 196 };
+dispatchM._autoAccApply('Weaponskill', ctx);
+check('AAD-11 a ranged one is said', asked.rangedWs, true);
+ctx.action = { Name = 'Leaden Salute', Id = 218 };
+dispatchM._autoAccApply('Weaponskill', ctx);
+check('AAD-11 a magical ranged one too', asked.rangedWs, true);
+typeAsked = {};
+dispatchM._autoAccApply('Default', ctx);
+check('AAD-11 the standing set asks no Set Type', #typeAsked, 0);
+check('AAD-11 and sends none', asked.candidates[1].setType, nil);
+check('AAD-11 nor a ranged flag', asked.rangedWs, nil);
+dispatchM._setTypeOf = savedTypeOf;
+dispatchM._nativeSets = savedSets;
+-- The real reader: gearoptim's store, asked with the main job; 'normal'
+-- when there is no set name or no store.
+check('AAD-11 no set name', dispatchM._setTypeOf(nil, ctx), 'normal');
+check('AAD-11 no store', dispatchM._setTypeOf('WS Savage', ctx), 'normal');
+package.loaded['dlac\\gear\\gearoptim'] = { setTypeOf = function(job, set) return job .. '|' .. set; end };
+check('AAD-11 the store is asked', dispatchM._setTypeOf('WS Savage', ctx), 'THF|WS Savage');
+package.loaded['dlac\\gear\\gearoptim'] = nil;
+
 -- AAD-08: the wiring at the one send and the retrace leg (source pins).
 local f = assert(io.open('dispatch.lua', 'rb')); local src = f:read('*a'); f:close();
 local applyAt = src:find('local accOut = M._autoAccApply(event, ctx);', 1, true);

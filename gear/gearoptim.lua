@@ -449,7 +449,7 @@ local UNBOUND_PRIO = {};                 -- priority-list sentinel
 M._weights  = M._weights or UNBOUND_W;   -- ACTIVE points table (follows the binding)
 M._perSet   = M._perSet or {};           -- '<JOB>|<SetName>' -> weights table
 M._boundKey = nil;                       -- current binding, nil = none
-M._stancePerSet = {};                    -- key -> true; absent = ordinary set
+M._typePerSet = {};                      -- key -> 'ws1' | 'stance'; absent = 'normal' (the Set Type)
 
 -- Priority-list mode (2026-07-17, the "simple" weights): an ORDERED stat list --
 -- top matters most, each entry optionally capped -- for people the pts/cap point
@@ -470,20 +470,57 @@ local ensureWeightsLoaded;   -- forward: defined with the persistence block belo
 local activeWeights;         -- forward: the mode-resolved scoring table (points table,
                              -- or the dominance weights DERIVED from the priority list)
 
-function M.isStanceSet()
+-- The Set Type (2026-10-18, Henrik): what a set is for, so behaviour rules
+-- can read it. 'normal' (the default, stored as absent); 'ws1', a one-hit
+-- weapon skill set, where AutoAcc counts the first hit's +100 ACC; 'stance',
+-- planned with the job's stance up, so the pack's stance bonuses join Stats
+-- and weighted builds. It replaced the Stance Set checkbox, whose ticked
+-- sets load as 'stance'.
+M.SET_TYPES = { normal = true, ws1 = true, stance = true };
+
+function M.setType()
     if ensureWeightsLoaded then ensureWeightsLoaded(); end
-    return M._boundKey ~= nil and M._stancePerSet[M._boundKey] == true;
+    return (M._boundKey ~= nil and M._typePerSet[M._boundKey]) or 'normal';
 end
 
-function M.setStanceSet(on)
+function M.setSetType(t)
     if ensureWeightsLoaded then ensureWeightsLoaded(); end
     if M._boundKey == nil then return false, 'no set selected'; end
-    M._stancePerSet[M._boundKey] = on == true or nil;
+    if M.SET_TYPES[t] ~= true then return false, 'unknown set type ' .. tostring(t); end
+    M._typePerSet[M._boundKey] = (t ~= 'normal') and t or nil;
     return true;
 end
 
+-- The Set Type menu for a job: Normal, 1-Hit WS, and the job's stance when
+-- the pack has stance gear for it (RDM: Duelist Stance). A set already typed
+-- 'stance' keeps its row on a job without one, so it can be set back.
+function M.setTypeOptions(job, current)
+    local opts = {
+        { id = 'normal', label = 'Normal', tip = 'Nothing special.' },
+        { id = 'ws1', label = '1-Hit WS',
+          tip = 'For a weapon skill that hits once. The server adds +100 accuracy to a\n'
+             .. 'weapon skill\'s first hit, and AutoAcc counts it: the set only keeps\n'
+             .. 'the AutoAcc pieces that hit still needs. Melee weapon skills only.' },
+    };
+    local stance = require('dlac\\gear\\stancestats').label(job);
+    if stance ~= nil or current == 'stance' then
+        stance = stance or 'Stance';
+        opts[#opts + 1] = { id = 'stance', label = stance,
+            tip = ('Plans this set with %s up: its bonuses count in the set\'s\n'
+                .. 'Stats and weighted builds. It does not use the stance for you.'):format(stance) };
+    end
+    return opts;
+end
+
+-- Any set's type, bound or not: the engine asks at a weapon skill.
+function M.setTypeOf(job, setName)
+    if ensureWeightsLoaded then ensureWeightsLoaded(); end
+    if job == nil or setName == nil then return 'normal'; end
+    return M._typePerSet[tostring(job) .. '|' .. tostring(setName)] or 'normal';
+end
+
 function M.stanceContext(level, job)
-    local on = M.isStanceSet();
+    local on = M.setType() == 'stance';
     local boundJob = M._boundKey and M._boundKey:match('^([^|]+)|');
     return { level = level, job = job or boundJob,
         stanceSet = on and (job == nil or job == boundJob) };
@@ -881,7 +918,7 @@ function M.renameSetKey(job, old, new)
         if type(t) == 'table' and t[ok] ~= nil then t[nk] = t[ok]; t[ok] = nil; end
     end
     mv(M._perSet); mv(M._slotsPerSet); mv(M._prioPerSet); mv(M._modePerSet);
-    mv(M._stancePerSet);
+    mv(M._typePerSet);
     mv(M._copyUndo); mv(M._prioUndo);
     if M._boundKey == ok then M._boundKey = nk; end
     return true;
@@ -2652,10 +2689,15 @@ local function parseWeightsData(result)
        or (type(result.shared) ~= 'table' and type(result.perSet) ~= 'table') then
         return nil;
     end
-    local d = { perSet = {}, slotsPerSet = {}, named = {}, namedSlots = {}, stancePerSet = {},
+    local d = { perSet = {}, slotsPerSet = {}, named = {}, namedSlots = {}, typePerSet = {},
                 modePerSet = {}, prioPerSet = {}, prioNamed = {} };
+    for k, v in pairs(type(result.typePerSet) == 'table' and result.typePerSet or {}) do
+        if type(k) == 'string' and M.SET_TYPES[v] == true and v ~= 'normal' then d.typePerSet[k] = v; end
+    end
+    -- The Stance Set checkbox's flags (files before 2026-10-18, or written by
+    -- an older dlac after a rollback): a ticked set is a 'stance' set.
     for k, v in pairs(type(result.stancePerSet) == 'table' and result.stancePerSet or {}) do
-        if type(k) == 'string' and v == true then d.stancePerSet[k] = true; end
+        if type(k) == 'string' and v == true and d.typePerSet[k] == nil then d.typePerSet[k] = 'stance'; end
     end
     if type(result.perSet) == 'table' then
         for k, t in pairs(result.perSet) do
@@ -2788,11 +2830,18 @@ local function renderWeightsFileText(d)
                 (type(e.cap) == 'number') and (', cap = ' .. tostring(e.cap)) or '');
         end
     end
+    L[#L + 1] = '    typePerSet = {';
+    local typeKeys = {};
+    for k, v in pairs(d.typePerSet or {}) do if v ~= 'normal' then typeKeys[#typeKeys + 1] = k; end end
+    table.sort(typeKeys);
+    for _, k in ipairs(typeKeys) do L[#L + 1] = string.format('        [%q] = %q,', k, d.typePerSet[k]); end
+    L[#L + 1] = '    },';
+    -- The stance sets again in the old checkbox's shape, so an older dlac
+    -- reading this file still plans them with the stance.
     L[#L + 1] = '    stancePerSet = {';
-    local stanceKeys = {};
-    for k, v in pairs(d.stancePerSet or {}) do if v == true then stanceKeys[#stanceKeys + 1] = k; end end
-    table.sort(stanceKeys);
-    for _, k in ipairs(stanceKeys) do L[#L + 1] = string.format('        [%q] = true,', k); end
+    for _, k in ipairs(typeKeys) do
+        if d.typePerSet[k] == 'stance' then L[#L + 1] = string.format('        [%q] = true,', k); end
+    end
     L[#L + 1] = '    },';
     L[#L + 1] = '    modePerSet = {';
     local mokeys = {};
@@ -2843,7 +2892,7 @@ local function writeTextFile(path, text)
 end
 
 local function liveWeightsData()
-    return { perSet = M._perSet, slotsPerSet = M._slotsPerSet, stancePerSet = M._stancePerSet,
+    return { perSet = M._perSet, slotsPerSet = M._slotsPerSet, typePerSet = M._typePerSet,
              named = M._named, namedSlots = M._namedSlots,
              modePerSet = M._modePerSet, prioPerSet = M._prioPerSet,
              prioNamed = M._prioNamed };
@@ -2874,7 +2923,7 @@ function M.loadWeights()
     local d = parseWeightsData(result);   -- the ONE validating reader for this format
     if d ~= nil then
         M._perSet      = d.perSet;
-        M._stancePerSet = d.stancePerSet;
+        M._typePerSet  = d.typePerSet;
         M._slotsPerSet = d.slotsPerSet;
         M._named       = d.named;
         M._namedSlots  = d.namedSlots;
@@ -2884,7 +2933,7 @@ function M.loadWeights()
     else
         -- Legacy FLAT file: it was nothing but the dead shared table -- drop it.
         M._perSet = {};
-        M._stancePerSet = {};
+        M._typePerSet = {};
         M._slotsPerSet = {};
         M._named, M._namedSlots = {}, {};
         M._modePerSet = {};
@@ -2957,9 +3006,9 @@ end
 function M.renderJobWeightsTextAt(charFolder, job)
     local d = weightsDataFor(charFolder);
     if d == nil then return nil, 'no weights file for ' .. tostring(charFolder); end
-    local out = { perSet = {}, slotsPerSet = {}, named = {}, namedSlots = {}, stancePerSet = {},
+    local out = { perSet = {}, slotsPerSet = {}, named = {}, namedSlots = {}, typePerSet = {},
                   modePerSet = {}, prioPerSet = {}, prioNamed = {} };
-    rekeyJobEntries(d.stancePerSet, job, job, out.stancePerSet);
+    rekeyJobEntries(d.typePerSet, job, job, out.typePerSet);
     rekeyJobEntries(d.perSet, job, job, out.perSet);
     rekeyJobEntries(d.slotsPerSet, job, job, out.slotsPerSet);
     rekeyJobEntries(d.modePerSet, job, job, out.modePerSet);
@@ -2967,7 +3016,7 @@ function M.renderJobWeightsTextAt(charFolder, job)
     -- Meaningful = at least one set with real weights or a real priority
     -- list (empty tables and bare masks are skipped by the renderer anyway).
     local sets = {};
-    for k in pairs(out.stancePerSet) do sets[k] = true; end
+    for k in pairs(out.typePerSet) do sets[k] = true; end
     for k, t in pairs(out.perSet) do if next(t) ~= nil then sets[k] = true; end end
     for k, t in pairs(out.prioPerSet) do if #t > 0 then sets[k] = true; end end
     local n = 0;
@@ -2996,14 +3045,14 @@ function M.importJobWeightsTextAt(charFolder, text, srcJob, dstJob)
     local d = parseWeightsData(result);
     if d == nil then return nil, 'not a dlac weights payload'; end
 
-    local add = { perSet = {}, slotsPerSet = {}, modePerSet = {}, prioPerSet = {}, stancePerSet = {} };
-    rekeyJobEntries(d.stancePerSet, srcJob, dstJob, add.stancePerSet);
+    local add = { perSet = {}, slotsPerSet = {}, modePerSet = {}, prioPerSet = {}, typePerSet = {} };
+    rekeyJobEntries(d.typePerSet, srcJob, dstJob, add.typePerSet);
     local n = 0;
     n = n + rekeyJobEntries(d.perSet, srcJob, dstJob, add.perSet);
     rekeyJobEntries(d.slotsPerSet, srcJob, dstJob, add.slotsPerSet);
     rekeyJobEntries(d.modePerSet, srcJob, dstJob, add.modePerSet);
     n = n + rekeyJobEntries(d.prioPerSet, srcJob, dstJob, add.prioPerSet);
-    for k in pairs(add.stancePerSet) do
+    for k in pairs(add.typePerSet) do
         if not add.perSet[k] and not add.prioPerSet[k] then n = n + 1; end
     end
     if n == 0 then return nil, 'payload holds no weights for ' .. tostring(srcJob); end
@@ -3029,9 +3078,9 @@ function M.importJobWeightsTextAt(charFolder, text, srcJob, dstJob)
         -- The current character: merge live, save through the one writer.
         if ensureWeightsLoaded ~= nil then ensureWeightsLoaded(); end
         for k, v in pairs(add.perSet) do M._perSet[k] = v; end
-        for k in pairs(add.perSet) do M._stancePerSet[k] = add.stancePerSet[k]; end
-        for k in pairs(add.prioPerSet) do M._stancePerSet[k] = add.stancePerSet[k]; end
-        for k in pairs(add.stancePerSet) do M._stancePerSet[k] = true; end
+        for k in pairs(add.perSet) do M._typePerSet[k] = add.typePerSet[k]; end
+        for k in pairs(add.prioPerSet) do M._typePerSet[k] = add.typePerSet[k]; end
+        for k, v in pairs(add.typePerSet) do M._typePerSet[k] = v; end
         for k, v in pairs(add.slotsPerSet) do M._slotsPerSet[k] = v; end
         for k, v in pairs(add.modePerSet) do M._modePerSet[k] = v; end
         for k, v in pairs(add.prioPerSet) do M._prioPerSet[k] = v; end
@@ -3054,10 +3103,10 @@ function M.importJobWeightsTextAt(charFolder, text, srcJob, dstJob)
     local dst = weightsDataFor(charFolder) or { perSet = {}, slotsPerSet = {}, named = {}, namedSlots = {},
                                                 modePerSet = {}, prioPerSet = {}, prioNamed = {} };
     for k, v in pairs(add.perSet) do dst.perSet[k] = v; end
-    dst.stancePerSet = dst.stancePerSet or {};
-    for k in pairs(add.perSet) do dst.stancePerSet[k] = add.stancePerSet[k]; end
-    for k in pairs(add.prioPerSet) do dst.stancePerSet[k] = add.stancePerSet[k]; end
-    for k in pairs(add.stancePerSet) do dst.stancePerSet[k] = true; end
+    dst.typePerSet = dst.typePerSet or {};
+    for k in pairs(add.perSet) do dst.typePerSet[k] = add.typePerSet[k]; end
+    for k in pairs(add.prioPerSet) do dst.typePerSet[k] = add.typePerSet[k]; end
+    for k, v in pairs(add.typePerSet) do dst.typePerSet[k] = v; end
     for k, v in pairs(add.slotsPerSet) do dst.slotsPerSet[k] = v; end
     for k, v in pairs(add.modePerSet) do dst.modePerSet[k] = v; end
     for k, v in pairs(add.prioPerSet) do dst.prioPerSet[k] = v; end

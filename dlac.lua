@@ -422,6 +422,10 @@ addon.version = '2026.10.19b';  -- date of the last shipped change (Ashita print
                                 --  10.17c = the fish window says what a skill-up
                                 --  from that fish is worth: 0.1-0.4 from a fish
                                 --  10+ above your base skill, else 0.1;
+                                --  10.18a = engine v173: the Sets tab's Set Type
+                                --  (Normal / 1-Hit WS / Duelist Stance) replaces
+                                --  the Stance Set checkbox; a 1-Hit WS set lets
+                                --  AutoAcc count the first hit's +100 ACC;
                                 --  10.19a = Nexus puts the Debahocho on for
                                 --  cooking: a piece's latents for its own slot
                                 --  count in the craft numbers (main-hand
