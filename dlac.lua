@@ -18,7 +18,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.10.22a';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.10.22b';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
                                 -- (03f = engine v163: the contest explains its own plan;
                                 --  03g = one floating tray: Teleports + the E-Box crates;
@@ -437,7 +437,10 @@ addon.version = '2026.10.22a';  -- date of the last shipped change (Ashita print
                                 --  craft;
                                 --  10.22a = 10.19a-b on top of 10.21a: the
                                 --  manifest goes to fmtver 19, so one 10.21a
-                                --  wrote rescans and gets the Debahocho)
+                                --  wrote rescans and gets the Debahocho;
+                                --  10.22b = Duelist Stance counts the
+                                --  Duelist's relic pieces' Focus/Trance stats
+                                --  (AXI #1022))
 addon.desc    = 'Gear sets, triggers and live stats with level scaling -- dlac equips your gear itself.';
 
 -- Load BEACON ('/dl check' field round, 2026-07-23): written by PLAIN io at

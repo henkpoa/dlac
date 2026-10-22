@@ -38,6 +38,33 @@ for slot,id in pairs({Head=12513,Body=12642,Hands=13965,Legs=14218,Feet=14093}) 
 end
 local totals=oracle.setStats(comp,optim.stanceContext(75)).stats
 assert(totals.Accuracy==26 and totals.Attack==17 and totals.EnspellDamage==2)
+local duel = {Id=15076, Level=74, Stats={}}
+assert(stance.apply(duel,duel.Stats,optim.stanceContext(75)).EnhancingMagicSkill == 15, "Duelist's Chapeau under Focus/Trance")
+-- stances.lua is hand-kept: its RDM table must equal the pack's generated
+-- latent 30000 rows (RDM_STANCE_AT_LEAST, power 2 = Focus or Trance), both ways.
+local rdm = dofile('servers/ascensionxi/stances.lua').RDM
+local gen = {}
+for id, rows in pairs(dofile('servers/ascensionxi/data/latentstats.lua')) do
+    for _, r in ipairs(rows) do
+        if r.cond == 'RDM_STANCE_AT_LEAST' then
+            assert(r.param == 2, ('item %d: a stance latent at power %s; decide whether Duelist Stance counts it'):format(id, tostring(r.param)))
+            gen[id] = gen[id] or {}
+            gen[id][r.stat] = (gen[id][r.stat] or 0) + r.add
+        end
+    end
+end
+for id, stats in pairs(gen) do
+    for k, v in pairs(stats) do
+        assert(rdm[id] and rdm[id][k] == v, ('stances.lua RDM lacks item %d %s+%d'):format(id, k, v))
+    end
+end
+for id, stats in pairs(rdm) do
+    if type(id) == 'number' then
+        for k, v in pairs(stats) do
+            assert(gen[id] and gen[id][k] == v, ('stances.lua RDM item %d %s=%s has no latent row'):format(id, k, tostring(v)))
+        end
+    end
+end
 optim.bindSetWeights('RDM','WS')
 assert(optim.setSetType('ws1'))
 optim.bindSetWeights('RDM','Melee')

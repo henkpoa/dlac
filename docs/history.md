@@ -11448,3 +11448,29 @@ available." Asked how, he chose: dlac wears the ring.
 
 Design: `docs/design/nexus-craft-gear.md` § "Nexus's NQ only". Tests: NCQ1-7,
 NL24-27, the autogear golden. Six ad-hoc mutations went red.
+
+## 2026-10-22: the October 22 AscensionXI refresh (`2026.10.22b`)
+
+Henrik: "run the process of recatalogueing and preparing DLAC properly before
+the next prod deploy, please check AXI PRs for anything new that needs to be
+added + run the scripts."
+
+- **The pack regenerated** from AscensionXI main `b55f2d3416` (#1038) comes
+  back identical to main's apart from line endings. #222's refresh had already
+  picked up #1022's relic armor. 24 AXI merges since the last refresh, and
+  three open PRs (#1039, #1006, #930), none touching gear.
+- **Duelist Stance missed four pieces.** #1022 gave the Duelist's Chapeau,
+  Tabard, Tights and Boots stats under Duelist's Focus or Trance (latent 30000,
+  power 2). The Set Type's stance table, `servers/ascensionxi/stances.lua`, is
+  kept by hand and had only the Warlock's pieces and Fencing Degen. The four
+  are added, checked against `relic_armor.sql` lines 124-131.
+  `tests/stance_sets.lua` now holds the RDM table equal to the pack's
+  generated latent 30000 rows both ways, and fails on a row at any other
+  power. Five mutations went red.
+- **Left for Henrik:** the six ability modifiers #1022 added (30011-30016,
+  e.g. Defender's Cure received on the Warrior's Mask) reach the catalog under
+  their raw names and show in the Misc section. Composure-only stats (latent
+  30001) have no Set Type option. Warrior's Berserk table has Razor Axe only,
+  not the retail Berserk latents of the War. Calligae +1/+2 and Conqueror. The
+  ability picker still lacks module-SQL abilities (Subjugate, Primal Font,
+  Power Trip).

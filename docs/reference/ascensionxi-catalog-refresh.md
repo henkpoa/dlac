@@ -4,6 +4,31 @@ A log of AscensionXI catalog refreshes, newest first. To get one from DLAC main 
 
 ---
 
+# AscensionXI catalog refresh, October 22, 2026
+
+DLAC `2026.10.22b` regenerates the complete pack from AscensionXI main
+`b55f2d3416` (after #1038). Every generated file comes back identical to
+main's apart from line endings: #222's refresh (`2026.10.21a`) had already
+picked up the relic armor rework (#1022) and Craftsman's Restraint. Nothing
+is added, changed or removed. The `tools/dlac-pack` tests pass (54).
+
+One hand-kept table did need the server's change. `stances.lua` gains the
+four Duelist's relic pieces' Focus or Trance stats (#1022, latent 30000), so
+a **Duelist Stance** set counts them. `tests/stance_sets.lua` now fails when
+that table and the pack's latent 30000 rows disagree.
+
+Not mapped, so not in any weighted build:
+
+- #1022's six ability modifiers (30011-30016: Defender's Cure received,
+  Collaborator's share, Resonance, Focus and Unbroken Rhythm durations, Twin
+  Burst's bonus). They are in the catalog under their raw names, and the gear
+  views show them in **Misc**.
+- Composure-only stats (latent 30001, seven Warlock's and Duelist's rows).
+  Like other latents, they stay dormant.
+- `abilities.lua` reads stock `sql/abilities.sql` only, so the ability picker
+  doesn't offer module abilities such as #1013's Subjugate, Primal Font and
+  Power Trip.
+
 # AscensionXI catalog refresh, October 19, 2026
 
 DLAC `2026.10.19b` regenerates the complete pack from AscensionXI main
