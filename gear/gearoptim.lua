@@ -449,7 +449,7 @@ local UNBOUND_PRIO = {};                 -- priority-list sentinel
 M._weights  = M._weights or UNBOUND_W;   -- ACTIVE points table (follows the binding)
 M._perSet   = M._perSet or {};           -- '<JOB>|<SetName>' -> weights table
 M._boundKey = nil;                       -- current binding, nil = none
-M._typePerSet = {};                      -- key -> 'ws1' | 'stance'; absent = 'normal' (the Set Type)
+M._typePerSet = {};                      -- key -> 'ws1' | 'stance' | 'composure'; absent = 'normal' (the Set Type)
 
 -- Priority-list mode (2026-07-17, the "simple" weights): an ORDERED stat list --
 -- top matters most, each entry optionally capped -- for people the pts/cap point
@@ -474,9 +474,10 @@ local activeWeights;         -- forward: the mode-resolved scoring table (points
 -- can read it. 'normal' (the default, stored as absent); 'ws1', a one-hit
 -- weapon skill set, where AutoAcc counts the first hit's +100 ACC; 'stance',
 -- planned with the job's stance up, so the pack's stance bonuses join Stats
--- and weighted builds. It replaced the Stance Set checkbox, whose ticked
--- sets load as 'stance'.
-M.SET_TYPES = { normal = true, ws1 = true, stance = true };
+-- and weighted builds; 'composure', the same for Red Mage's support stance
+-- (2026-10-22). It replaced the Stance Set checkbox, whose ticked sets load
+-- as 'stance'.
+M.SET_TYPES = { normal = true, ws1 = true, stance = true, composure = true };
 
 function M.setType()
     if ensureWeightsLoaded then ensureWeightsLoaded(); end
@@ -491,9 +492,11 @@ function M.setSetType(t)
     return true;
 end
 
--- The Set Type menu for a job: Normal, 1-Hit WS, and the job's stance when
--- the pack has stance gear for it (RDM: Duelist Stance). A set already typed
--- 'stance' keeps its row on a job without one, so it can be set back.
+-- The Set Type menu for a job: Normal, 1-Hit WS, and each stance the pack
+-- has gear for on that job (RDM: Composure, Duelist Stance). A set already
+-- typed with a stance keeps its row on a job without one, so it can be set
+-- back.
+local STANCE_FALLBACK = { stance = 'Stance', composure = 'Composure' };
 function M.setTypeOptions(job, current)
     local opts = {
         { id = 'normal', label = 'Normal', tip = 'Nothing special.' },
@@ -502,12 +505,15 @@ function M.setTypeOptions(job, current)
              .. 'weapon skill\'s first hit, and AutoAcc counts it: the set only keeps\n'
              .. 'the AutoAcc pieces that hit still needs. Melee weapon skills only.' },
     };
-    local stance = require('dlac\\gear\\stancestats').label(job);
-    if stance ~= nil or current == 'stance' then
-        stance = stance or 'Stance';
-        opts[#opts + 1] = { id = 'stance', label = stance,
-            tip = ('Plans this set with %s up: its bonuses count in the set\'s\n'
-                .. 'Stats and weighted builds. It does not use the stance for you.'):format(stance) };
+    local stances = require('dlac\\gear\\stancestats');
+    for _, id in ipairs(stances.TYPES) do
+        local label = stances.label(job, id);
+        if label ~= nil or current == id then
+            label = label or STANCE_FALLBACK[id];
+            opts[#opts + 1] = { id = id, label = label,
+                tip = ('Plans this set with %s up: its bonuses count in the set\'s\n'
+                    .. 'Stats and weighted builds. It does not use the stance for you.'):format(label) };
+        end
     end
     return opts;
 end
@@ -520,10 +526,12 @@ function M.setTypeOf(job, setName)
 end
 
 function M.stanceContext(level, job)
-    local on = M.setType() == 'stance';
+    local t = M.setType();
+    local on = t == 'stance' or t == 'composure';
     local boundJob = M._boundKey and M._boundKey:match('^([^|]+)|');
     return { level = level, job = job or boundJob,
-        stanceSet = on and (job == nil or job == boundJob) };
+        stanceSet = on and (job == nil or job == boundJob),
+        stanceType = on and t or nil };
 end
 
 -- The table scoring actually uses right now. The points editor must NOT read

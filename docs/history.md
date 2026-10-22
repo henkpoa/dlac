@@ -11448,3 +11448,48 @@ available." Asked how, he chose: dlac wears the ring.
 
 Design: `docs/design/nexus-craft-gear.md` § "Nexus's NQ only". Tests: NCQ1-7,
 NL24-27, the autogear golden. Six ad-hoc mutations went red.
+
+## 2026-10-22: the October 22 AscensionXI refresh (`2026.10.22b`)
+
+Henrik: "run the process of recatalogueing and preparing DLAC properly before
+the next prod deploy, please check AXI PRs for anything new that needs to be
+added + run the scripts."
+
+- **The pack regenerated** from AscensionXI main `b55f2d3416` (#1038) comes
+  back identical to main's apart from line endings. #222's refresh had already
+  picked up #1022's relic armor. 24 AXI merges since the last refresh, and
+  three open PRs (#1039, #1006, #930), none touching gear.
+- **Duelist Stance missed four pieces.** #1022 gave the Duelist's Chapeau,
+  Tabard, Tights and Boots stats under Duelist's Focus or Trance (latent 30000,
+  power 2). The Set Type's stance table, `servers/ascensionxi/stances.lua`, is
+  kept by hand and had only the Warlock's pieces and Fencing Degen. The four
+  are added, checked against `relic_armor.sql` lines 124-131.
+  `tests/stance_sets.lua` now holds the RDM table equal to the pack's
+  generated latent 30000 rows both ways, and fails on a row at any other
+  power. Five mutations went red.
+- **#1022's six ability stats get names (`2026.10.22c`).** Modifiers
+  30011-30016 are read when the ability is used. They reached the catalog
+  under raw server names (`FOCUS_DURATION`) in Misc. Henrik approved the
+  labels: Defender Cure Rcv.%, Collaborator %, Resonance Dur., Focus Dur.,
+  U.Rhythm Dur. and Twin Burst%, all in Ability and all weightable. As with
+  #222's `SynthNQOnly`, AXI's `tools/dlac-pack/modtable.py` maps them (in the
+  pin PR, AXI #1040), and `statdefs` and `modaliases` register them.
+  `catalog_stat_mapping` checks 444 aliases.
+- **Set Type Composure (`2026.10.22d`).** On AscensionXI, Composure is Red
+  Mage's support stance (since AXI 10-06), and Composure, Focus and Trance
+  replace each other. #1022 moved seven stats to plain Composure (latent
+  30001, power 1): the Warlock's Tabard's and Duelist's Chapeau's Enfeebling
+  +15, Healing +10 on the Warlock's Tights and Duelist's Tabard, Conserve MP
+  +3 and +5 on the boots, and INT +5 on the Duelist's Tights. Prod's 17c
+  counted the Tabard's +15 as a plain stat, so this release would have made
+  enfeebling builds undervalue it. Henrik: "make it visible to applicable
+  jobs, this time, RDM then." `stances.lua` now keys each job's tables by
+  Set Type id (`stance`, `composure`), and the menu offers a stance type only
+  where the pack has its table. Red Mage reads Normal / 1-Hit WS / Composure
+  / Duelist Stance. The legacy `stancePerSet` block still lists `stance`
+  sets only, so an older dlac loads a Composure set as Normal, never as
+  Duelist Stance. The parity check covers both tables. Eleven mutations went
+  red. Warrior's Berserk table has Razor Axe only,
+  not the retail Berserk latents of the War. Calligae +1/+2 and Conqueror. The
+  ability picker still lacks module-SQL abilities (Subjugate, Primal Font,
+  Power Trip).

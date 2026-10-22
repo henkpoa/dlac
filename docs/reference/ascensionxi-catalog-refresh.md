@@ -4,6 +4,43 @@ A log of AscensionXI catalog refreshes, newest first. To get one from DLAC main 
 
 ---
 
+# AscensionXI catalog refresh, October 22, 2026
+
+DLAC `2026.10.22b` regenerates the complete pack from AscensionXI main
+`b55f2d3416` (after #1038). Every generated file comes back identical to
+main's apart from line endings: #222's refresh (`2026.10.21a`) had already
+picked up the relic armor rework (#1022) and Craftsman's Restraint. Nothing
+is added, changed or removed. The `tools/dlac-pack` tests pass (54).
+
+One hand-kept table did need the server's change. `stances.lua` gains the
+four Duelist's relic pieces' Focus or Trance stats (#1022, latent 30000), so
+a **Duelist Stance** set counts them. `tests/stance_sets.lua` now fails when
+that table and the pack's latent 30000 rows disagree.
+
+`2026.10.22c` names #1022's six ability modifiers (30011-30016), which had
+reached the catalog under their raw server names. The generator change that
+maps them is in the AXI pin PR (#1040, `tools/dlac-pack/modtable.py`). Six
+records change one key each:
+
+| Piece | Catalog key | Label |
+|---|---|---|
+| Warrior's Mask | `DefenderCureReceived` 5 | Defender Cure Rcv.% |
+| Assassin's Vest | `CollaboratorShare` 4 | Collaborator % |
+| Melee Crown | `ResonanceDuration` 15 | Resonance Dur. |
+| Melee Cyclas | `FocusDuration` 15 | Focus Dur. |
+| Etoile Casaque | `UnbrokenRhythmDuration` 5 | U.Rhythm Dur. |
+| Sorcerer's Coat | `TwinBurstBonus` 5 | Twin Burst% |
+
+`2026.10.22d` adds the **Composure** Set Type for Red Mage. `stances.lua`
+gains the seven Composure-only rows (latent 30001, power 1) of the Warlock's
+and Duelist's pieces, and the parity check holds them to the pack too.
+
+Still not in DLAC:
+
+- `abilities.lua` reads stock `sql/abilities.sql` only, so the ability picker
+  doesn't offer module abilities such as #1013's Subjugate, Primal Font and
+  Power Trip.
+
 # AscensionXI catalog refresh, October 19, 2026
 
 DLAC `2026.10.19b` regenerates the complete pack from AscensionXI main

@@ -446,6 +446,7 @@ M.list = {
     { key = 'AggressorDuration', label = 'Aggressor Dur.', section = 'Ability' },
     { key = 'WarcryDuration', label = 'Warcry Dur.', section = 'Ability' },
     { key = 'DefenderDuration', label = 'Defender Dur.', section = 'Ability' },
+    { key = 'DefenderCureReceived', label = 'Defender Cure Rcv.%', section = 'Ability', percent = true },   -- AXI: cures received under a Defender used in it
     { key = 'Retaliation', label = 'Retaliation+', section = 'Ability' },
     { key = 'BloodRageBonus', label = 'Blood Rage+', section = 'Ability' },
     { key = 'RestraintBonus', label = 'Restraint+', section = 'Ability' },   -- VERIFY: values 50-120, likely the WS-dmg accumulation cap
@@ -457,6 +458,8 @@ M.list = {
     { key = 'BoostEffect', label = 'Boost+', section = 'Ability' },
     { key = 'DodgeEffect', label = 'Dodge+', section = 'Ability' },
     { key = 'FocusEffect', label = 'Focus+', section = 'Ability' },
+    { key = 'FocusDuration', label = 'Focus Dur.', section = 'Ability' },   -- AXI
+    { key = 'ResonanceDuration', label = 'Resonance Dur.', section = 'Ability' },   -- AXI: buffs Resonance releases
     { key = 'CounterstanceEffect', label = 'Counterstance+', section = 'Ability' },
     { key = 'PerfectCounterAttack', label = 'Perf.Counter Att', section = 'Ability' },
     { key = 'FootworkAttack', label = 'Footwork Att', section = 'Ability' },
@@ -575,6 +578,7 @@ M.list = {
     { key = 'SambaDuration', label = 'Samba Dur.', section = 'Ability' },
     { key = 'SambaPDuration', label = 'Samba Dur.%', section = 'Ability', percent = true },
     { key = 'JigDuration', label = 'Jig Dur.', section = 'Ability', percent = true },
+    { key = 'UnbrokenRhythmDuration', label = 'U.Rhythm Dur.', section = 'Ability' },   -- AXI: seconds per stack
     { key = 'WaltzDelay', label = 'Waltz Recast-', section = 'Ability', lowerBetter = true },   -- stored negative
     { key = 'StepTPConsumed', label = 'Step TP-', section = 'Ability', lowerBetter = true },   -- stored negative
     { key = 'StepFinish', label = 'Step Finish+', section = 'Ability' },   -- extra finishing moves
@@ -599,6 +603,7 @@ M.list = {
     { key = 'SneakAttackDEX', label = 'SA DEX+%', section = 'Ability', percent = true },
     { key = 'HideDuration', label = 'Hide Dur.', section = 'Ability' },
     { key = 'AccompliceBonus', label = 'Accomplice+', section = 'Ability' },   -- Accomplice/Collaborator
+    { key = 'CollaboratorShare', label = 'Collaborator %', section = 'Ability', percent = true },   -- AXI: points added to the enmity share
     { key = 'FleeDuration', label = 'Flee Dur.', section = 'Ability' },
     -- SCH
     { key = 'AlacrityCelerityBonus', label = 'Alacrity/Celerity+', section = 'Ability' },
@@ -612,6 +617,7 @@ M.list = {
     { key = 'LifeCycleEffect', label = 'Life Cycle+', section = 'Ability' },
     -- BLM (relic)
     { key = 'ElementalSealBonus', label = 'Elem. Seal+', section = 'Ability' },   -- Laevateinn
+    { key = 'TwinBurstBonus', label = 'Twin Burst%', section = 'Ability', percent = true },   -- AXI: a Twin Burst spell's burst
 
     -- ---- Pet (new section, approved 2026-07-14) ----
     { key = 'Pet_STR', label = 'Pet STR', section = 'Pet' },   -- augment id 1792; first of the Pet_ attribute family

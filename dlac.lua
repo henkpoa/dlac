@@ -18,7 +18,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.10.22a';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.10.22d';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
                                 -- (03f = engine v163: the contest explains its own plan;
                                 --  03g = one floating tray: Teleports + the E-Box crates;
@@ -437,7 +437,16 @@ addon.version = '2026.10.22a';  -- date of the last shipped change (Ashita print
                                 --  craft;
                                 --  10.22a = 10.19a-b on top of 10.21a: the
                                 --  manifest goes to fmtver 19, so one 10.21a
-                                --  wrote rescans and gets the Debahocho)
+                                --  wrote rescans and gets the Debahocho;
+                                --  10.22b = Duelist Stance counts the
+                                --  Duelist's relic pieces' Focus/Trance stats
+                                --  (AXI #1022);
+                                --  10.22c = #1022's six ability stats get
+                                --  names (Focus Dur., Twin Burst% ...) and
+                                --  weights instead of raw server names;
+                                --  10.22d = Set Type Composure: Red Mage's
+                                --  support stance, the Composure-only stats
+                                --  of the Warlock's and Duelist's pieces)
 addon.desc    = 'Gear sets, triggers and live stats with level scaling -- dlac equips your gear itself.';
 
 -- Load BEACON ('/dl check' field round, 2026-07-23): written by PLAIN io at
