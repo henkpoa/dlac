@@ -10,6 +10,11 @@ DLAC `2026.10.19b` regenerates the complete pack from AscensionXI main
 `073c9ac6ec` (after #1012), with the generator fix in the October 19 pin
 PR. One record changes. Nothing is added or removed.
 
+On main it lands after DLAC `2026.10.21a` (#222), whose own pack refresh
+(Craftsman's Restraint; 15,467 records, 872 latent-stat items) already
+carries the Mercurial Kris line, so `catalog.lua` stays as #222 wrote it.
+With this PR on main, DLAC prints `2026.10.22a`.
+
 - Mercurial Kris (18020) adds Dancer to its jobs (AXI #1004,
   `mercurial_kris_dnc.sql`).
 
