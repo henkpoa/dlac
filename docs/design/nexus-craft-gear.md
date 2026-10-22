@@ -119,6 +119,13 @@ Pure; it takes the gear-helper manifest's new `craftItems` rows (fmtver 17:
 every owned, wearable, in-bags piece with craft stats, with its numbers per
 craft), the recipe's requirements, the player's skills, the goal and the level.
 
+The numbers include a piece's latents for its own slot (fmtver 19, 2026-10-19):
+the builder asks `gearoracle.stats` with `slot`, which adds the item's
+`EQUIPPED_IN_SLOT` latents for that slot. The Debahocho (Cooking +2) and
+Debahocho +1 (+3) need it: their bonus is a main-hand latent, and AscensionXI's
+pack ships it only in `latentstats.lua`, not in the catalog's Stats (CatsEyeXI's
+catalog stamps it flat, so it reads the same there). Tests NC14, S174c/d.
+
 1. **Skill slots.** For every slot where a piece raises a craft the recipe
    needs, try every combination (a piece that another piece for the same slot
    matches or beats on every needed craft is dropped first; AscensionXI's gear
@@ -205,7 +212,8 @@ still its only writer); a file without the key follows.
 `feature/craftpick.lua` (new), `feature/nexuslink.lua` (new),
 `feature/craftwatch.lua` (follow switch, `/dl craft nexus`, status line),
 `dispatch.lua` (Craft row, v169), `ui/automationsui.lua` (`craftItems`,
-fmtver 17, `M.craftItems()`), `dlac.lua` (load + frame beat),
+fmtver 17, `M.craftItems()`; fmtver 19 asks for slot latents),
+`gear/gearoracle.lua` (`stats` with `ctx.slot`), `dlac.lua` (load + frame beat),
 `tests/nexuscraft.lua` (new, in CI), `tests/run_tests.lua` (NX, the guard list),
 `tests/golden/autogear.golden`.
 

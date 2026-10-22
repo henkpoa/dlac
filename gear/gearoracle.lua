@@ -322,13 +322,38 @@ local function levelstats()  return interp('dlac\\gear\\levelstats');   end
 local function geareffects() return interp('dlac\\gear\\geareffects');  end
 local function augmod()      return interp('dlac\\feature\\augments');  end
 local function petmods()     return interp('dlac\\data\\petmods');      end
+local function equipcore()   return interp('dlac\\gear\\equipcore');    end
+
+-- The item's "equipped in this slot" latents (the server's EQUIPPED_IN_SLOT, param =
+-- the slot's id, Main = 0) for the slot it will be worn in: { statKey -> delta }, or
+-- nil. Such a latent holds for exactly as long as the piece sits in that slot, so a
+-- caller that knows the slot can count it like a flat stat. The Debahocho's Cooking
+-- +2 is one: the AscensionXI pack ships it only as a main-hand latent.
+local function slotLatents(rec, slot)
+    local ge, eqc = geareffects(), equipcore();
+    if ge == nil or eqc == nil or type(ge.latentsOf) ~= 'function' then return nil; end
+    local n = eqc.SLOT_ID[slot];     -- 1-based; the server counts slots from 0
+    local rows = (n ~= nil) and ge.latentsOf(rec.Id) or nil;
+    if type(rows) ~= 'table' then return nil; end
+    local out = nil;
+    for _, r in ipairs(rows) do
+        if r.cond == 'EQUIPPED_IN_SLOT' and tonumber(r.param) == n - 1
+           and type(r.stat) == 'string' and type(r.add) == 'number' then
+            out = out or {};
+            out[r.stat] = (out[r.stat] or 0) + r.add;
+        end
+    end
+    return out;
+end
 
 -- stats(rec, ctx): the effective item stats for THIS character right now -- the
 -- level-scaled resolver (levelstats.effective at ctx.level) PLUS the private-augment
 -- fold (ctx.augStats = { itemId -> { statKey -> delta } }, optional; folded per Id
--- exactly like comboStats). ONE recipe, replacing the hand-glue the manifest builders
--- carried. Copy-on-write (the levelstats.apply discipline: never mutate rec.Stats) --
--- a FRESH table only when an augment delta actually lands, otherwise the resolver's
+-- exactly like comboStats) PLUS, when ctx.slot names the equip slot the piece will be
+-- worn in ('Main', 'Head', 'Ear1'...), its latents for that slot (slotLatents). ONE
+-- recipe, replacing the hand-glue the manifest builders carried. Copy-on-write (the
+-- levelstats.apply discipline: never mutate rec.Stats) -- a FRESH table only when an
+-- augment delta or a slot latent actually lands, otherwise the resolver's
 -- own (zero-copy) return. Returns nil for a non-table rec, and the level-scaled base
 -- (possibly nil) when no augment applies -- each caller keeps its own type guard, so
 -- routing through the oracle is behaviour-identical to the glue it replaces.
@@ -347,13 +372,17 @@ function M.stats(rec, ctx)
     end
     local augs = (type(ctx) == 'table' and type(ctx.augStats) == 'table') and ctx.augStats or nil;
     local a = (augs ~= nil and rec.Id ~= nil) and augs[rec.Id] or nil;
-    if type(a) ~= 'table' then return base; end     -- zero-copy: nothing to fold
+    if type(a) ~= 'table' then a = nil; end
+    local sl = (type(ctx) == 'table' and ctx.slot ~= nil and rec.Id ~= nil) and slotLatents(rec, ctx.slot) or nil;
+    if a == nil and sl == nil then return base; end     -- zero-copy: nothing to fold
     local out = {};
     if type(base) == 'table' then
         for k, v in pairs(base) do out[k] = v; end
     end
-    for k, v in pairs(a) do
-        if type(v) == 'number' then out[k] = (out[k] or 0) + v; end
+    for _, delta in ipairs({ a or {}, sl or {} }) do
+        for k, v in pairs(delta) do
+            if type(v) == 'number' then out[k] = (out[k] or 0) + v; end
+        end
     end
     return out;
 end

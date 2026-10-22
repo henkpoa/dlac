@@ -162,7 +162,7 @@ local UNIVERSAL = {
 -- Manifest schema version: bump when autoCommit writes NEW fields. An on-disk
 -- manifest with an older fmtver self-heals (renderAutomations triggers a rescan)
 -- so a dlac update never needs a manual "Rescan owned gear" click.
-local AUTO_FMT = 18;   -- 18: craftItems nqOnly (Craftsman's Restraint, SynthNQOnly: Nexus's NQ only wears it; blocks HQ in every craft);   -- 17: craftItems (every owned craft piece with its per-craft numbers, for the recipe-wide Nexus pick, feature\craftpick);   -- 16: category-specific numeric gathering ladders;   -- 15: choco ladders (slotKey -> best-first rungs scored by ChocoboRidingTime; Main/Neck/Body/Hands/Legs/Feet -- the Chocobo Wand rides Main) for the Chocobo riding-gear automation (issue #95, engine dlac:AutoChoco);   -- 14: mv map (name -> MovementSpeed) + the mpMoveYield setting (movement gear may override batteries while moving);   -- 2: mpBest ladders; 3: MP level-effective; 4: staves/obis job-checked; 5: craft ladders; 6: skill-up fillers in hq/nq; 7: helm ladders + hat map; 8: fish ladders; 9: oneiros grip + mpMerits; 10: universals ladder; 11: Refresh rides mp/mpBest (rf map + rung rf); 12: AUGMENTS counted -- MP and Refresh deltas from your actual bag copies fold into mp/rf; 13: PAIR HOMES -- ear/ring ladders re-home to the IDLE SET's declared positions (Default rule matching status=Idle; the MaxMP panel picker ALWAYS overrides detection) so the engine never relocates a piece across its pair
+local AUTO_FMT = 19;   -- 19: a craft piece's latents for its own slot count (the Debahocho's main-hand Cooking +2 / +3 reach craftItems and the craft ladders);   -- 18: craftItems nqOnly (Craftsman's Restraint, SynthNQOnly: Nexus's NQ only wears it; blocks HQ in every craft);   -- 17: craftItems (every owned craft piece with its per-craft numbers, for the recipe-wide Nexus pick, feature\craftpick);   -- 16: category-specific numeric gathering ladders;   -- 15: choco ladders (slotKey -> best-first rungs scored by ChocoboRidingTime; Main/Neck/Body/Hands/Legs/Feet -- the Chocobo Wand rides Main) for the Chocobo riding-gear automation (issue #95, engine dlac:AutoChoco);   -- 14: mv map (name -> MovementSpeed) + the mpMoveYield setting (movement gear may override batteries while moving);   -- 2: mpBest ladders; 3: MP level-effective; 4: staves/obis job-checked; 5: craft ladders; 6: skill-up fillers in hq/nq; 7: helm ladders + hat map; 8: fish ladders; 9: oneiros grip + mpMerits; 10: universals ladder; 11: Refresh rides mp/mpBest (rf map + rung rf); 12: AUGMENTS counted -- MP and Refresh deltas from your actual bag copies fold into mp/rf; 13: PAIR HOMES -- ear/ring ladders re-home to the IDLE SET's declared positions (Default rule matching status=Idle; the MaxMP panel picker ALWAYS overrides detection) so the engine never relocates a piece across its pair
 
 local auto = { data = nil, loadedFor = nil, status = '' };
 
@@ -470,8 +470,10 @@ local function autoCommit()
         local bySlot = {};   -- slotKey -> craft -> goal -> { {name, score, level}, ... }
         local seenItem = {};
         for _, rec in ipairs(deps.ownedList() or {}) do
-            local st = gearOracle.stats(rec, { level = lvl });
             local sl = tostring(rec.Slot or '');
+            -- slot: the piece is worn in its own slot to craft, so its latents for
+            -- that slot count (the Debahocho's Cooking +2 is a main-hand latent).
+            local st = gearOracle.stats(rec, { level = lvl, slot = sl });
             if type(st) == 'table' and rec.Name ~= nil and sl ~= ''
                and (not hasDispatch or type(dsp.canWear) ~= 'function' or dsp.canWear(rec, job, 99))
                and (type(deps.haveInBags) ~= 'function' or deps.haveInBags(rec)) then

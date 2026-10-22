@@ -244,6 +244,59 @@ check('NC13c even when it is the only piece', p.Main, nil);
 p = pick.pick({ item('Old Row Shield', 'sub', { sk = { Smithing = 2 } }) }, { Smithing = 30 }, { Smithing = 30 }, {});
 check('NC13d a row written before the hands facts is still worn', p.Sub, 'Old Row Shield');
 
+-- NC14 the Debahocho's Cooking counts (owner, 2026-10-19: Nexus never put it
+-- on). It is a main-hand latent (EQUIPPED_IN_SLOT, slot 0): AscensionXI's
+-- pack ships it only in latentstats, CatsEyeXI's catalog also as a flat stat.
+-- The craft list asks the oracle with the slot the piece is worn in; both
+-- servers' real data must read +2 / +3, never 0 and never doubled.
+do
+    local oracle = require('dlac\\gear\\gearoracle');
+    local savedGfx = package.loaded['dlac\\gear\\geareffects'];
+    local function catalogRow(cat, id)
+        for slot, group in pairs(cat) do
+            for _, a in pairs(group) do
+                if type(a) == 'table' and a.Id == id then return a, slot; end
+                if type(a) == 'table' and a.Id == nil then
+                    for _, b in pairs(a) do
+                        if type(b) == 'table' and b.Id == id then return b, slot; end
+                    end
+                end
+            end
+        end
+    end
+    for _, server in ipairs({ 'ascensionxi', 'cexi' }) do
+        local cat = dofile('servers/' .. server .. '/data/catalog.lua');
+        local gfx = dofile('gear/geareffects.lua');
+        gfx.configure({ latents = dofile('servers/' .. server .. '/data/latentstats.lua') });
+        package.loaded['dlac\\gear\\geareffects'] = gfx;
+        for id, want in pairs({ [21923] = 2, [21924] = 3 }) do
+            local row, slot = catalogRow(cat, id);
+            local tag = 'NC14 ' .. server .. ' ' .. id;
+            check(tag .. ' is a Main-slot catalog row', slot, 'Main');
+            local rec = { Name = row and row.Name, Id = id, Slot = slot, Stats = row and row.Stats };
+            check(tag .. ' worn in Main: Cooking', (oracle.stats(rec, { level = 75, slot = 'Main' }) or {}).CookingSkill, want);
+            check(tag .. ' worn in Sub: the latent stays off',
+                (oracle.stats(rec, { level = 75, slot = 'Sub' }) or {}).CookingSkill,
+                server == 'cexi' and want or nil);
+        end
+    end
+    -- Without a slot the answer is the flat catalog's, as before: AscensionXI's
+    -- catalog has no Cooking on the Debahocho (the reason Nexus skipped it).
+    local axi = dofile('servers/ascensionxi/data/catalog.lua');
+    local row = catalogRow(axi, 21924);
+    check('NC14e no slot, no latent', (oracle.stats({ Id = 21924, Slot = 'Main', Stats = row.Stats }, { level = 75 }) or {}).CookingSkill, nil);
+    package.loaded['dlac\\gear\\geareffects'] = savedGfx;
+
+    -- With the numbers in the row, a cooking recipe wears the +1 beside the shield.
+    p = pick.pick({
+        item('Debahocho', 'main', { sk = { Cooking = 2 }, twoHand = false }),
+        item('Debahocho +1', 'main', { sk = { Cooking = 3 }, twoHand = false }),
+        item('Kupo Shield', 'sub', { sk = ALL8(1), shield = true }),
+    }, { Cooking = 30 }, { Cooking = 30 }, {});
+    check('NC14f a cooking recipe: Debahocho +1 in Main', p.Main, 'Debahocho +1');
+    check('NC14g ...and the shield stays in Sub', p.Sub, 'Kupo Shield');
+end
+
 -- ---------------------------------------------------------------------------
 -- NL. The conversation and the lock.
 -- ---------------------------------------------------------------------------

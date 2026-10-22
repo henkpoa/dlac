@@ -2045,6 +2045,10 @@ end)();
           Stats = { AntiHQCooking = 1 } },
         { Name = 'Bonze Cape',        Id = 90022, Level = 1,  Slot = 'Back',  Jobs = { 'All' },
           Stats = { SynthSkillGain = 4 } },
+        -- a main-hand latent: the Debahocho +1's Cooking +3 lives only in
+        -- latentstats on AscensionXI (injected below), not in Stats.
+        { Name = 'Debahocho +1',      Id = 21924, Level = 1,  Slot = 'Main',  Jobs = { 'All' },
+          OneHanded = true, Type = 'Katana', Stats = { DMG = 2, Delay = 222 } },
         -- helm: Surveyor-major scoring + the semantic hat map. The hat rides
         -- its REAL id: the map is id-PINNED (the Laevateinn rule below),
         -- because the CLIENT name carries an apostrophe the catalog drops --
@@ -2102,7 +2106,15 @@ end)();
             return { [90013] = { MP = 18 }, [90014] = { Refresh = 1 } };
         end,
     };
+    -- The AscensionXI pack's Debahocho +1 row (servers/ascensionxi/data/latentstats.lua).
+    local savedGfx = package.loaded['dlac\\gear\\geareffects'];
+    local gfx = dofile('gear/geareffects.lua');
+    gfx.configure({ latents = {
+        [21924] = { { stat = 'CookingSkill', add = 3, cond = 'EQUIPPED_IN_SLOT', param = 0 } },
+    } });
+    package.loaded['dlac\\gear\\geareffects'] = gfx;
     aui.rescanAutogear();
+    package.loaded['dlac\\gear\\geareffects'] = savedGfx;
 
     local mpath = root .. 'dlac\\autogear.lua';
     local chunk = loadfile(mpath);
@@ -2167,6 +2179,15 @@ end)();
         and m.craft.back.Cooking.hq[1].name .. '/' .. m.craft.back.Cooking.hq[1].score, 'Bonze Cape/1');
     check('S174b ...and tops the skillup goal at full weight',
         m.craft.back.Cooking.skillup and m.craft.back.Cooking.skillup[1].score, 40);
+    local deba = nil;
+    for _, ci in ipairs(m.craftItems or {}) do
+        if ci.name == 'Debahocho +1' then deba = ci; end
+    end
+    check('S174c a main-hand latent reaches Nexus\'s craft list (Debahocho +1, Cooking +3)',
+        deba and deba.slot .. '/' .. tostring(deba.sk.Cooking) .. '/' .. tostring(deba.twoHand), 'main/3/false');
+    check('S174d ...and tops the Main cooking ladder',
+        m.craft.main and m.craft.main.Cooking and m.craft.main.Cooking.hq
+        and m.craft.main.Cooking.hq[1].name .. '/' .. m.craft.main.Cooking.hq[1].score, 'Debahocho +1/30');
     check('S175 helm ladder is Surveyor-major (surv*10 + helm)',
         m.helm and m.helm.body and m.helm.body[1].name .. '/' .. m.helm.body[1].score, 'Field Tunica/12');
     check('S176 helm hat map: id-PIN adopts the DB record -- the CLIENT spelling, not the catalog\'s',

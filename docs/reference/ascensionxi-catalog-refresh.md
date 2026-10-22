@@ -4,6 +4,39 @@ A log of AscensionXI catalog refreshes, newest first. To get one from DLAC main 
 
 ---
 
+# AscensionXI catalog refresh, October 19, 2026
+
+DLAC `2026.10.19b` regenerates the complete pack from AscensionXI main
+`073c9ac6ec` (after #1012), with the generator fix in the October 19 pin
+PR. One record changes. Nothing is added or removed.
+
+On main it lands after DLAC `2026.10.21a` (#222), whose own pack refresh
+(Craftsman's Restraint; 15,467 records, 872 latent-stat items) already
+carries the Mercurial Kris line, so `catalog.lua` stays as #222 wrote it.
+With this PR on main, DLAC prints `2026.10.22a`.
+
+- Mercurial Kris (18020) adds Dancer to its jobs (AXI #1004,
+  `mercurial_kris_dnc.sql`).
+
+AXI #1004 also put the Sand Charm (13095, a neck with no fishing stat) on
+Fennella's shelf while Celestina's quest is active, and that stopped the
+generator: `fishdb.py` refused any shelf item outside Head to Feet. It now
+leaves gear without a fishing stat off the set's ladder, so the fish window
+shows the same five Fisherman's pieces. `data/fishdb.lua` comes back
+byte-identical. #1004's new fish turn-ins (half a catch's points, six fish
+excluded) are not read: nothing in DLAC shows them yet.
+
+The Debahocho's Cooking +2 / +3 (`2026.10.19a`, same PR) stays a main-hand
+latent in `data/latentstats.lua`, not a catalog stat: the generator reads
+`item_mods` into the catalog and `item_latents` into the latents, and DLAC
+now folds a piece's latents for its own slot into the craft numbers.
+
+Totals: 15,466 equipment records, all named from tracked client DATs, 71
+icon overrides and 869 latent-stat items, all unchanged. Every other
+generated file comes back byte-identical.
+
+The spell and ability gap below is still open.
+
 # AscensionXI catalog refresh, October 17, 2026
 
 DLAC `2026.10.17b` regenerates the complete pack from AscensionXI main
